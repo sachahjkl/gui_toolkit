@@ -1,0 +1,13 @@
+name: "gui_toolkit"
+description: "Toolkit GUI natif en Odin (UI immediate-mode + D3D11), portage idiomatique des couches UI de raddebugger."
+topics:
+  - "odin"
+  - "gui"
+  - "immediate-mode-ui"
+  - "d3d11"
+  - "windows"
+homepage: ""
+source:
+  provider: github
+  namespace: "sachahjkl"
+  path: "sachahjkl/gui_toolkit"

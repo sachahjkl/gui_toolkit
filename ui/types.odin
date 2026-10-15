@@ -1,0 +1,277 @@
+// Package ui: retained-state immediate-mode UI core (a port of raddebugger's ui layer, written in Odin).
+//
+// The model, in short:
+//   * Every frame the app rebuilds a tree of `Box`es between `begin_build` and `end_build`.
+//   * A box has a stable `Key` (hash of its id string under its parent). Boxes persist across frames in a table keyed by
+//     that key, which is where hover/press animation, scroll offsets and text-field state survive rebuilds.
+//   * Layout runs after the build: sizes are `Size`s (pixels, text, percent of parent, sum of children) resolved in the
+//     same passes as raddebugger (standalone, upward-dependent, downward-dependent, violation solving, positions).
+//   * Widgets return a `Signal` computed from last frame's layout and this frame's input.
+//   * Style (font, sizes, padding, tags for the theme, ...) is a stack: `if style({...}) { ... }` overrides it for a
+//     block, `next({...})` overrides it for the next box only.
+package ui
+
+import "core:mem/virtual"
+import "../draw"
+import "../font"
+import "../platform"
+
+Vec2  :: draw.Vec2
+Rect  :: draw.Rect
+Color :: draw.Color
+
+Axis :: enum u8 { X, Y }
+
+Key :: distinct u64
+
+////////////////////////////////
+// Sizes
+
+Size_Kind :: enum u8 {
+	None,
+	Pixels,         // value px
+	Text,           // text width/height + (text_pad + value) px of padding on each side
+	Percent,        // value (0..1) of the nearest sized ancestor
+	Children_Sum,   // sum (along the layout axis) or max (across it) of the children
+}
+
+Size :: struct {
+	kind:       Size_Kind,
+	value:      f32,
+	strictness: f32,   // 0 = shrinks freely when space runs out, 1 = never shrinks
+}
+
+px :: proc(v: f32, strictness: f32 = 1) -> Size { return {.Pixels, v, strictness} }
+text_size :: proc(padding: f32 = 0, strictness: f32 = 1) -> Size { return {.Text, padding, strictness} }
+pct :: proc(p: f32, strictness: f32 = 0) -> Size { return {.Percent, p, strictness} }
+children_sum :: proc(strictness: f32 = 1) -> Size { return {.Children_Sum, 0, strictness} }
+fill :: proc() -> Size { return pct(1, 0) }
+
+////////////////////////////////
+// Boxes
+
+Box_Flag :: enum u8 {
+	Clickable,
+	Focusable,           // can own keyboard focus (text fields)
+	View_Scroll_X,
+	View_Scroll_Y,
+	View_Clamp_X,
+	View_Clamp_Y,
+	Allow_Overflow_X,    // children may exceed this box along X without being shrunk
+	Allow_Overflow_Y,
+	Floating_X,          // positioned by `fixed_pos`, ignored by the parent's layout
+	Floating_Y,
+	Clip,
+	Disabled,
+	Draw_Background,
+	Draw_Border,
+	Draw_Text,
+	Draw_Shadow,
+	Draw_Hot_Effects,    // subtle hover/press overlay
+	Draw_Focus_Ring,
+	Draw_Side_Top,
+	Draw_Side_Bottom,
+	Draw_Side_Left,
+	Draw_Side_Right,
+	No_Text_Trunc,       // never replace overflowing text with "..."
+}
+Box_Flags :: bit_set[Box_Flag; u64]
+
+Text_Align :: enum u8 { Left, Center, Right }
+
+// How children are placed across the parent's layout axis.
+Cross_Align :: enum u8 { Start, Center, End }
+
+Custom_Draw :: proc(box: ^Box, user: rawptr, dc: ^draw.Context)
+
+Box :: struct {
+	// tree (rebuilt every frame)
+	first, last, next, prev, parent: ^Box,
+	child_count: int,
+
+	// identity / persistence
+	key:         Key,
+	last_build:  u64,
+	first_build: u64,
+
+	// inputs from the build
+	flags:       Box_Flags,
+	pref:        [Axis]Size,
+	layout_axis: Axis,
+	cross:       Cross_Align,
+	fixed_pos:   Vec2,           // for Floating_X / Floating_Y, relative to the parent's top-left
+	text:        string,         // display string (arena-allocated, valid for this frame)
+	font:        font.Font_Id,
+	font_size:   f32,
+	text_pad:    f32,
+	text_align:  Text_Align,
+	radius:      f32,
+	squish:      f32,
+	transparency: f32,
+	cursor:      platform.Cursor,
+	tags_key:    Key,            // identifies the tag stack the box was built under (for theme lookups while drawing)
+	custom:      Custom_Draw,
+	custom_user: rawptr,
+
+	// colors: targets from the theme, and the animated values actually drawn
+	target_bg, target_border, target_text: Color,
+	bg, border, text_color:                Color,
+
+	// layout results
+	size:        Vec2,           // computed size
+	rel_pos:     Vec2,           // position relative to the parent's origin
+	rect:        Rect,           // final screen rect
+	text_dim:    Vec2,           // measured size of `text` (without padding)
+	view_off:    Vec2,           // scroll offset, animated
+	view_target: Vec2,           // scroll offset target
+	view_bounds: Vec2,           // extent of the children (for clamping)
+
+	// animation (0..1)
+	hot_t, active_t, disabled_t, focus_t: f32,
+}
+
+////////////////////////////////
+// Signals
+
+Signal :: struct {
+	box:             ^Box,
+	mouse:           Vec2,    // mouse position relative to the box
+	hovering:        bool,
+	pressed:         bool,    // left press began on this box this frame
+	released:        bool,
+	clicked:         bool,    // left press and release both on this box
+	double_clicked:  bool,
+	right_clicked:   bool,
+	middle_clicked:  bool,
+	dragging:        bool,    // left button is held and this box was pressed
+	drag_delta:      Vec2,    // since the press
+	scrolled:        Vec2,    // wheel delta consumed by this box
+	focused:         bool,    // owns keyboard focus
+	mods:            platform.Modifiers,
+}
+
+////////////////////////////////
+// Style stack
+
+Style :: struct {
+	pref:         [Axis]Size,
+	font:         font.Font_Id,
+	font_size:    f32,
+	text_pad:     f32,
+	text_align:   Text_Align,
+	radius:       f32,
+	transparency: f32,
+	squish:       f32,
+	extra_flags:  Box_Flags,
+	cursor:       platform.Cursor,
+}
+
+// Optional overrides: set only the fields you want. `fixed_*` position/size a box (and make it floating).
+Style_Mod :: struct {
+	width, height: Maybe(Size),
+	font:          Maybe(font.Font_Id),
+	font_size:     Maybe(f32),
+	text_pad:      Maybe(f32),
+	text_align:    Maybe(Text_Align),
+	radius:        Maybe(f32),
+	transparency:  Maybe(f32),
+	squish:        Maybe(f32),
+	flags:         Box_Flags,                // added to every box built under this style
+	cursor:        Maybe(platform.Cursor),
+	axis:          Maybe(Axis),              // child layout axis (applies to the box itself, not inherited)
+	cross:         Maybe(Cross_Align),       // child alignment across that axis (next box only)
+	fixed_x:       Maybe(f32),
+	fixed_y:       Maybe(f32),
+	fixed_w:       Maybe(f32),
+	fixed_h:       Maybe(f32),
+	bg:            Maybe(Color),             // explicit color overrides (skip the theme)
+	border:        Maybe(Color),
+	fg:            Maybe(Color),
+}
+
+// Theme: (tags -> color) patterns. A pattern applies when its last tag equals the queried name and all its other tags
+// are on the tag stack; the pattern with the most tags wins, ties go to the first one in the list.
+Theme_Pattern :: struct {
+	tags:  []string,
+	color: Color,
+}
+
+Theme :: struct {
+	patterns: [dynamic]Theme_Pattern,
+}
+
+Animation :: struct {
+	value:      f32,
+	last_build: u64,
+}
+
+Events :: struct {
+	list:     [dynamic]platform.Event,
+	consumed: [dynamic]bool,
+}
+
+State :: struct {
+	// persistent
+	boxes:       map[Key]^Box,
+	free_boxes:  [dynamic]^Box,
+	anims:       map[Key]Animation,
+	arena:       virtual.Arena,
+	build_index: u64,
+	zoom:        f32,                // user zoom factor (Ctrl+wheel, Ctrl +/-/0); multiplies the DPI scale
+	scale:       f32,                // effective scale = dpi scale * zoom, applied to every logical size
+	root:        ^Box,
+	theme:       ^Theme,
+	fonts:       ^font.State,
+	icon_font:   font.Font_Id,
+
+	// per build
+	parent_stack: [dynamic]^Box,
+	style_stack:  [dynamic]Style,
+	tag_stack:    [dynamic]string,
+	tag_marks:    [dynamic]int,       // tag stack depth to restore on pop (for `tags` scopes)
+	tag_keys:     [dynamic]Key,       // running hash of the tag stack (tag_keys[i] covers tag_stack[:i+1])
+	tag_sets:     map[Key][]string,   // per-frame: tag stack contents by key, for theme lookups while drawing
+	color_memo:   map[[2]u64]Color,   // per-frame: (tags key, name hash) -> resolved color
+	next_mod:     Style_Mod,
+	has_next:     bool,
+	overlay_root: ^Box,
+	anim_rate:    f32,                // exponential rate multiplier: 0 disables animation (values jump)
+	dt:           f32,
+	window_size:  Vec2,
+	boxes_built:  int,
+	anim_busy:    bool,
+	wake_ms:      int,                // ask the app loop for a timed wake (caret blink)
+
+	// input
+	events:      Events,
+	typed:       [dynamic]rune,
+	mouse:       Vec2,
+	mouse_valid: bool,
+	mods:        platform.Modifiers,
+	hot_key:     Key,
+	active_key:  [platform.Mouse_Button]Key,
+	press_pos:   [platform.Mouse_Button]Vec2,
+	pressed_key:  [platform.Mouse_Button]Key,
+	released_key: [platform.Mouse_Button]Key,
+	clicked_key:  [platform.Mouse_Button]Key,
+	double_key:   Key,
+	scroll_delta: Vec2,
+	scroll_key:   Key,
+	last_click_key:  Key,
+	last_click_ms:   f64,
+	focus_key:    Key,
+	time_ms:      f64,
+	cursor_request: platform.Cursor,
+	clipboard_get: proc() -> string,
+	clipboard_set: proc(text: string),
+
+	// popups
+	ctx_menu_key:    Key,
+	ctx_menu_anchor: Key,
+	ctx_menu_pos:    Vec2,
+	ctx_menu_open_build: u64,
+	popup_stack:     [dynamic]bool,   // one entry per open popup scope: did it push parents/tags?
+	menu_width:      f32,
+	hover_since_ms:  f64,
+	hover_key:       Key,
+}
