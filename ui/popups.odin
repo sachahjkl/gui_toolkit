@@ -5,8 +5,11 @@ import "core:fmt"
 // Popups (context menus, dropdowns, tooltips) are floating boxes appended to the ROOT, so they draw above everything
 // built so far and win hit testing. Their contents inherit the style of the call site.
 
-ctx_menu_open :: proc(key: Key, pos: Vec2) {
+// `anchor`: the box that opens the menu (dropdown button, menu bar entry). Pressing it again is not a click
+// "outside": the widget toggles the menu itself, instead of the press closing it and the release reopening it.
+ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0) {
 	g.ctx_menu_key = key
+	g.ctx_menu_anchor = anchor
 	g.ctx_menu_pos = pos
 	g.ctx_menu_open_build = g.build_index
 }
@@ -42,6 +45,7 @@ ctx_menu :: proc(key: Key, width: f32) -> bool {
 		hit := s.pressed_key[.Left] if s.pressed_key[.Left] != 0 else s.pressed_key[.Right]
 		hb := s.boxes[hit]
 		outside = panel == nil || hb == nil || !is_descendant(hb, panel)
+		if hit == s.ctx_menu_anchor && hit != 0 { outside = false }
 	}
 	if key_press(.Escape) || outside {
 		ctx_menu_close()

@@ -387,7 +387,8 @@ build_about :: proc(app: ^App) {
 			if ui.row(.Center, id = "###ab_head") {
 				ui.spacer(ui.px(pad))
 				d := ui.frame_new(Logo_Draw)
-				d.angle = f32(ui.now_ms() / 1000 * 0.15)
+				// time-driven: only when animations are on (otherwise it would jump on every mouse event)
+				d.angle = animations_enabled(app) ? f32(math.mod(ui.now_ms() / 1000 * 0.15, 1)) : 0.08
 				d.accent, d.track, d.text = ui.color("accent"), ui.color("track"), ui.color("text")
 				d.frame = draw.hex(0x121212ff)   // same look as the project logo: dark rounded square, spinner on top
 				d.text = draw.hex(0xf0f0f0ff)

@@ -408,7 +408,7 @@ progress :: proc(id: string, t: f32, indeterminate := false) {
 	d := frame_new(Bar_Draw)
 	d.t = anim(key_from_string(b.key, "t"), t, 24, t)
 	d.indeterminate = indeterminate
-	d.phase = f32(math.mod(g.time_ms, 1600)) / 1600
+	d.phase = g.anim_rate != 0 ? f32(math.mod(g.time_ms, 1600)) / 1600 : 0.5   // animations off: a still bar
 	d.track, d.fill = color("track"), color("accent")
 	b.custom, b.custom_user = bar_draw, d
 	if indeterminate && g.anim_rate != 0 { g.anim_busy = true }
@@ -435,7 +435,9 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
 		}
 	}
-	if sig.clicked { ctx_menu_open(menu_key, {btn.rect.min.x, btn.rect.max.y + 4}) }
+	if sig.clicked {
+		if open { ctx_menu_close() } else { ctx_menu_open(menu_key, {btn.rect.min.x, btn.rect.max.y + 4}, btn.key) }
+	}
 	if ctx_menu(menu_key, max(btn.size.x, em * 10)) {
 		for item, i in items {
 			if menu_item(item, "", i == selected^).clicked { selected^ = i; changed = true }
