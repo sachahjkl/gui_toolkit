@@ -18,6 +18,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.theme = theme
 	s.zoom = 1
 	s.scale = 1
+	s.toast_pos = .Top_Right
 	_ = virtual.arena_init_growing(&s.arena)
 	s.boxes = make(map[Key]^Box)
 	s.anims = make(map[Key]Animation)

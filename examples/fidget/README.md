@@ -13,13 +13,16 @@ The widget gallery: the Odin counterpart of `gui_fidget`'s demo app, built entir
   picker (edits the theme while you drag), draggable sticky notes
 - **Command palette** (Ctrl+K): fuzzy search over every command
 - **Menu bar** with hover-to-switch, check marks and shortcuts; status bar with a frame-time sparkline
-- 6 cross-fading themes; settings (theme, animations, status bar, zoom) persisted to
-  `%APPDATA%\gui_toolkit_fidget\settings.txt`
+- **Settings dialog** (View > Settings..., Ctrl+, or the palette): theme, zoom, status bar, animations
+  (system / on / off), toast position (click a cell of a mini 3x3 screen), test toast, restore defaults.
+  Persisted to `%APPDATA%\gui_toolkit_fidget\settings.txt`
+- **About dialog** (Help > About or F1)
+- 6 cross-fading themes
 - Animations follow the Windows "show animations" setting by default (View menu: system / on / off)
 - Ctrl+wheel / Ctrl +/-/0 zoom the whole UI (toolkit feature)
 
 Shortcuts: Ctrl+K, Ctrl+1..4, Ctrl+T theme, Ctrl+B status bar, Ctrl+J animations.
-Test flags: `--page=N --theme=N --palette --modal --anim=on|off --dump`.
+Test flags: `--page=N --theme=N --palette --modal --about --settings --toasts --toast_pos=N --anim=on|off --dump`.
 
 Files: `app.odin` (state, palettes, command table), `main.odin` (frame loop, settings), `shell.odin`
 (menu bar, tabs, status bar, palette, modal), `pages.odin` (Controls, Inputs), `pages_data.odin`,
