@@ -1,7 +1,8 @@
 # Regenerates docs/screenshots/*.png (window captures, resized to 1400 px wide).
 # Uses clean default settings (the user's settings are moved aside and restored). The mouse cursor is parked outside
 # each window while it is captured (otherwise the app shows hover states), then put back.
-#   powershell -File tools/screenshots.ps1
+#   powershell -File tools/screenshots.ps1 [-Only name]
+param([string]$Only = "")
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $out = Join-Path $repo 'docs\screenshots'
@@ -28,6 +29,7 @@ $script:cursor = New-Object S1+POINT
 [S1]::GetCursorPos([ref]$script:cursor) | Out-Null
 
 function Capture($exe, $argList, $name, $waitMs) {
+  if($Only -ne "" -and $name -ne $Only) { return }
   if($argList) { $p = Start-Process $exe -ArgumentList $argList -PassThru -WorkingDirectory (Split-Path $exe) }
   else { $p = Start-Process $exe -PassThru -WorkingDirectory (Split-Path $exe) }
   $sw = [Diagnostics.Stopwatch]::StartNew()
