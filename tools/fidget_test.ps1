@@ -1,5 +1,6 @@
 # Interaction test for examples/fidget. REAL mouse clicks inside the app window: hands off while it runs (~30 s).
-# Coordinates are fractions of a 2089 px wide reference screenshot; aborts if another window covers the target.
+# Coordinates are read from screenshots downscaled to 2000 px wide (the image viewer shrinks them), so they are scaled
+# by window width / 2000. Aborts if another window covers the target.
 param([string]$Exe = "$PSScriptRoot\..\build\fidget.exe", [string]$OutDir = "$env:TEMP")
 Add-Type @"
 using System; using System.Runtime.InteropServices;
@@ -34,7 +35,7 @@ Start-Sleep -Milliseconds 1500
 [U1]::SetForegroundWindow($h) | Out-Null
 Start-Sleep -Milliseconds 500
 $r = New-Object U1+RECT; [U1]::GetWindowRect($h, [ref]$r) | Out-Null
-$f = ($r.R - $r.L) / 2089.0
+$f = ($r.R - $r.L) / 2000.0
 
 function At($x, $y) { return @(($r.L + [int]($x * $f)), ($r.T + [int]($y * $f))) }
 function Ours($a) { $pt = New-Object U1+POINT; $pt.X = $a[0]; $pt.Y = $a[1]; return ([U1]::GetAncestor([U1]::WindowFromPoint($pt), 2) -eq $h) }
@@ -80,11 +81,11 @@ try {
   "start          : $(Title)"
   Click 1888 375;        "toggle Bluetooth clicked"
   Click 851 653;         "segmented Month"
-  Click 469 722;         "chip Beta"
-  Click 629 790;         "dropdown open"
+  Click 469 710;         "chip Beta"
+  Click 629 777;         "dropdown open"
   Shot "ft_dd"
-  Click 640 1075;        "dropdown pick (Odin)"
-  Click 1465 912;        "slider Volume ~35%"
+  Click 640 1070;        "dropdown pick (Odin)"
+  Click 1465 901;        "slider Volume ~35%"
   Hover 338 393 1000;    Shot "ft_tip"; "tooltip shown"
   Click 515 1064 $true;  Shot "ft_ctx"; "context menu"
   Key 0x1B

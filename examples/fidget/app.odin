@@ -62,7 +62,7 @@ Command :: enum {
 	Go_Controls, Go_Inputs, Go_Data, Go_Playground,
 	Theme_Midnight, Theme_Graphite, Theme_Daylight, Theme_Nord, Theme_Dracula, Theme_Amber, Next_Theme,
 	Toggle_Status, Toggle_Animations, Anim_System, Anim_On, Anim_Off, Toggle_Slowmo, Toggle_Boxes,
-	Toast_Info, Toast_Good, Toast_Warn, Toast_Bad, Clear_Toasts, Open_Modal, About,
+	Toast_Info, Toast_Good, Toast_Warn, Toast_Bad, Clear_Toasts, Open_Modal, About, Settings,
 	Spawn_Balls, Confetti, Clear_Balls, Reset_Values,
 	Zoom_In, Zoom_Out, Zoom_Reset,
 	Quit,
@@ -96,6 +96,7 @@ command_info := [Command]Command_Info{
 	.Clear_Toasts = {"Toast: Dismiss all", "Feedback", "", ui.ICON_X},
 	.Open_Modal = {"Dialog: Open confirm dialog", "Feedback", "", ICON_QUESTION},
 	.About = {"Help: About gui_toolkit fidget", "General", "F1", ui.ICON_INFO},
+	.Settings = {"Settings...", "General", "Ctrl+,", ICON_GEAR},
 	.Spawn_Balls = {"Playground: Spawn 25 balls", "Playground", "", ICON_DOT},
 	.Confetti = {"Playground: Confetti", "Playground", "", ICON_TARGET},
 	.Clear_Balls = {"Playground: Clear balls", "Playground", "", ICON_TRASH},
@@ -150,6 +151,7 @@ App :: struct {
 	frame_index: u64,
 	title_cache: string,
 	debug_dump: bool,
+	debug_toasts: bool,
 	want_quit: bool,
 	ui_ms: f32,
 	real_dt: f32,
@@ -180,6 +182,7 @@ App :: struct {
 	palette_frames: int,
 	modal_open:   bool,
 	about_open:   bool,
+	settings_open: bool,
 
 	// controls page
 	sw:      [3]bool,
@@ -227,7 +230,7 @@ App :: struct {
 	spawn_next_ms: f64,
 }
 
-Saved_Settings :: struct { palette, anim, status: i32, zoom: f32 }
+Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom: f32 }
 
 Palette_Entry :: struct { cmd: Command, ranges: []ui.Fuzzy_Range }
 

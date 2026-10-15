@@ -59,7 +59,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 - **Widgets**: label, button (+icon variant), icon button, checkbox, radio, switch, slider, range slider, stepper,
   segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
   (selection, word moves, clipboard, mouse), scroll region, context menu + items, menu bar, tooltip with hover delay,
-  toasts, modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
+  toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
@@ -73,7 +73,8 @@ Not there yet: multi-line text, Tab focus navigation, drag-and-drop files, backg
 `tools\ui_test.ps1` drives `examples/todo` and `tools\fidget_test.ps1` drives `examples/fidget` with real clicks
 (typing, Enter, toggles, segmented, chips, dropdown, slider, tooltip, context menu, wheel scroll, command palette,
 theme switch) and check the title / saved files. They abort if another window covers the target point.
-Debug aids: `-define:UI_PROBE=true` logs every press with the hit box's rect; `--dump` (fidget) prints oversized boxes.
+Screenshot coordinates: image viewers often downscale captures (e.g. to 2000 px wide); scale click targets by
+window width / image width, or clicks land a few percent off. Debug aids: `-define:UI_PROBE=true` logs every press with the hit box's rect; `--dump` (fidget) prints oversized boxes.
 
 ## License
 

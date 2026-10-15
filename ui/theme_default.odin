@@ -35,7 +35,7 @@ entries := [?]Entry{
 	{"accent", .Accent, 1}, {"track", .Panel2, 1},
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
-	{"bad border", .Bad, 1}, {"good border", .Good, 1},
+	{"bad border", .Bad, 1}, {"good border", .Good, 1}, {"warn border", .Warn, 1},
 	{"accent_button background", .Accent, 1}, {"accent_button text", .Accent_Text, 1}, {"accent_button border", .Accent, 1},
 	{"danger_button background", .Bad, 1}, {"danger_button text", .White, 1}, {"danger_button border", .Bad, 1},
 	{"ghost_button background", .Panel, 0}, {"ghost_button border", .Panel, 0},

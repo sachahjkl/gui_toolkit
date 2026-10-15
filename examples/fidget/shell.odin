@@ -40,6 +40,7 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Clear_Toasts: ui.toasts_clear()
 	case .Open_Modal: app.modal_open = true
 	case .About: app.about_open = true
+	case .Settings: app.settings_open = true
 	case .Spawn_Balls: app.page = .Playground; spawn_balls(app, 25)
 	case .Confetti: app.page = .Playground; spawn_confetti(app, {app.arena_size.x * 0.5, app.arena_size.y * 0.7}, 120)
 	case .Clear_Balls: for &b in app.balls { b.alive = false }
@@ -72,6 +73,7 @@ handle_shortcuts :: proc(app: ^App) {
 	if ui.key_press(.B, ctrl) { run_cmd(app, .Toggle_Status) }
 	if ui.key_press(.J, ctrl) { run_cmd(app, .Toggle_Animations) }
 	if ui.key_press(.F1) { run_cmd(app, .About) }
+	if ui.key_press(.Comma, ctrl) { run_cmd(app, .Settings) }
 }
 
 ////////////////////////////////
@@ -79,6 +81,12 @@ handle_shortcuts :: proc(app: ^App) {
 
 build_ui :: proc(app: ^App) {
 	handle_shortcuts(app)
+	if app.debug_toasts && app.frame_index == 3 {
+		ui.toast(.Info, "Heads up: this is an info toast")
+		ui.toast(.Good, "Saved successfully")
+		ui.toast(.Warn, "Careful: the disk is almost full")
+		ui.toast(.Bad, "Something went wrong")
+	}
 	em := ui.font_size()
 	if ui.style({width = ui.fill(), height = ui.fill(), radius = em * 0.45}) {
 		ui.next({axis = .Y})
@@ -100,6 +108,11 @@ build_ui :: proc(app: ^App) {
 		build_palette(app)
 		build_confirm(app)
 		build_about(app)
+		build_settings(app)
+		// toasts live in the content area: below the menu bar + tabs, above the status bar
+		top := em * (2.6 + 2.9)
+		bottom := f32(app.win.size.y) - (app.show_status ? em * 2.1 : 0)
+		ui.set_toast_area({{0, top}, {f32(app.win.size.x), bottom}})
 		ui.toasts_build()
 	}
 }
@@ -134,6 +147,8 @@ build_menubar :: proc(app: ^App, em: f32) {
 				if ui.menu_item("Quit", "Alt+F4", false, ICON_STOP).clicked { run_cmd(app, .Quit) }
 			}
 			if ui.ctx_menu(view_m, menu_w) {
+				if ui.menu_item("Settings...", "Ctrl+,", false, ICON_GEAR).clicked { run_cmd(app, .Settings) }
+				ui.hline(ui.px(menu_w))
 				if ui.menu_item("Status bar", "Ctrl+B", app.show_status).clicked { run_cmd(app, .Toggle_Status) }
 				if ui.menu_item("Count UI boxes", "", app.show_boxes).clicked { run_cmd(app, .Toggle_Boxes) }
 				if ui.menu_item("Slow-motion animations", "", app.slowmo).clicked { run_cmd(app, .Toggle_Slowmo) }

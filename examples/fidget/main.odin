@@ -25,12 +25,13 @@ settings_dir :: proc() -> string {
 }
 
 snapshot :: proc(app: ^App) -> Saved_Settings {
-	return {palette = i32(app.palette_idx), anim = i32(app.anim_mode), status = app.show_status ? 1 : 0, zoom = ui.zoom(&app.ui_state)}
+	return {palette = i32(app.palette_idx), anim = i32(app.anim_mode), status = app.show_status ? 1 : 0, toast_pos = i32(ui.toast_position(&app.ui_state)), zoom = ui.zoom(&app.ui_state)}
 }
 
 settings_save :: proc(app: ^App) {
 	names := [Anim_Mode]string{.System = "system", .On = "on", .Off = "off"}
-	text := fmt.tprintf("animations=%s\npalette=%d\nstatus_bar=%d\nzoom=%.3f\n", names[app.anim_mode], app.palette_idx, app.show_status ? 1 : 0, ui.zoom(&app.ui_state))
+	pos_names := [ui.Toast_Position]string{.Top_Left = "top_left", .Top_Center = "top_center", .Top_Right = "top_right", .Middle_Left = "middle_left", .Middle_Right = "middle_right", .Bottom_Left = "bottom_left", .Bottom_Center = "bottom_center", .Bottom_Right = "bottom_right"}
+	text := fmt.tprintf("animations=%s\npalette=%d\nstatus_bar=%d\ntoasts=%s\nzoom=%.3f\n", names[app.anim_mode], app.palette_idx, app.show_status ? 1 : 0, pos_names[ui.toast_position(&app.ui_state)], ui.zoom(&app.ui_state))
 	_ = os.make_directory_all(settings_dir())
 	_ = os.write_entire_file(fmt.tprintf("%s/settings.txt", settings_dir()), transmute([]byte)text)
 	app.saved = snapshot(app)
@@ -49,6 +50,11 @@ settings_load :: proc(app: ^App) {
 		case "palette": if v, ok := strconv.parse_int(val); ok { set_palette(app, v) }
 		case "status_bar": app.show_status = val != "0"
 		case "zoom": if v, ok := strconv.parse_f32(val); ok { ui.set_zoom(&app.ui_state, v) }
+		case "toasts":
+			for p in ui.Toast_Position {
+				name, _ := strings.replace_all(strings.to_lower(ui.toast_position_names[p], context.temp_allocator), " ", "_", context.temp_allocator)
+				if name == val { ui.set_toast_position(&app.ui_state, p) }
+			}
 		}
 	}
 }
@@ -175,6 +181,9 @@ main :: proc() {
 		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
 		if a == "--modal" { app.modal_open = true }
 		if a == "--about" { app.about_open = true }
+		if a == "--settings" { app.settings_open = true }
+		if a == "--toasts" { app.debug_toasts = true }
+		if strings.has_prefix(a, "--toast_pos=") { if v, vok := strconv.parse_int(a[12:]); vok { ui.set_toast_position(&app.ui_state, ui.Toast_Position(clamp(v, 0, len(ui.Toast_Position) - 1))) } }
 		if a == "--anim=off" { app.anim_mode = .Off }
 		if a == "--anim=on" { app.anim_mode = .On }
 		if a == "--dump" { app.debug_dump = true }
