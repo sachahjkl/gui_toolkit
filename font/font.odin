@@ -14,8 +14,9 @@ GLYPH_GAMMA :: 0.80   // < 1 thickens coverage a little: unhinted grayscale text
 Font_Id :: distinct int
 
 Font :: struct {
-	info: stbtt.fontinfo,
-	data: []byte,
+	info:  stbtt.fontinfo,
+	data:  []byte,
+	owned: bool,   // false for data embedded in the exe (load_embedded)
 }
 
 Metrics :: struct {
@@ -59,7 +60,7 @@ init :: proc(s: ^State) {
 }
 
 destroy :: proc(s: ^State) {
-	for f in s.fonts { delete(f.data) }
+	for f in s.fonts { if f.owned { delete(f.data) } }
 	delete(s.fonts)
 	delete(s.glyphs)
 	delete(s.pending)
@@ -74,11 +75,33 @@ load_from_file :: proc(s: ^State, path: string) -> (id: Font_Id, ok: bool) {
 
 // Takes ownership of `data`.
 load_from_memory :: proc(s: ^State, data: []byte) -> (id: Font_Id, ok: bool) {
-	f := Font{data = data}
+	f := Font{data = data, owned = true}
 	if !stbtt.InitFont(&f.info, raw_data(data), stbtt.GetFontOffsetForIndex(raw_data(data), 0)) {
 		delete(data)
 		return 0, false
 	}
+	append(&s.fonts, f)
+	return Font_Id(len(s.fonts) - 1), true
+}
+
+// Fallback fonts compiled into every exe that loads them (Odin's #load: no file next to the exe). Used when a system
+// font is missing, e.g. under Wine. Roboto: Apache 2.0, Inconsolata: SIL OFL 1.1 (licences in font/data).
+FALLBACK_UI_DATA   :: #load("data/Roboto-Regular.ttf")
+FALLBACK_MONO_DATA :: #load("data/Inconsolata-Regular.ttf")
+
+// Loads a system font file, or `fallback` (embedded data) when the file is missing or unreadable.
+load_system_or_embedded :: proc(s: ^State, path: string, fallback: []byte) -> (id: Font_Id, ok: bool, from_system: bool) {
+	if path != "" {
+		if id, ok = load_from_file(s, path); ok { return id, true, true }
+	}
+	id, ok = load_embedded(s, fallback)
+	return id, ok, false
+}
+
+// A font compiled into the exe (`#load("x.ttf")`): read in place, never freed.
+load_embedded :: proc(s: ^State, data: []byte) -> (id: Font_Id, ok: bool) {
+	f := Font{data = data}
+	if !stbtt.InitFont(&f.info, raw_data(data), stbtt.GetFontOffsetForIndex(raw_data(data), 0)) { return 0, false }
 	append(&s.fonts, f)
 	return Font_Id(len(s.fonts) - 1), true
 }

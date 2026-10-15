@@ -10,7 +10,11 @@ import "core:strings"
 import "../draw"
 import "../font"
 
-// Characters of the bundled icon font (raddebugger's icons.ttf) that the widgets use.
+// The icon font (raddebugger's icons.ttf), compiled into every app that uses the toolkit: load it with
+// `font.load_embedded(&fonts, ui.ICON_FONT_DATA)`.
+ICON_FONT_DATA :: #load("icons.ttf")
+
+// Characters of the icon font that the widgets use.
 ICON_CHECK :: "V"
 ICON_UP :: "^"
 ICON_DOWN :: "v"

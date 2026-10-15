@@ -3,6 +3,15 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.3.1] - 2026-10-15
+
+### Changed
+- **Self-contained exes**: the icon font is compiled in (`ui.ICON_FONT_DATA`, `font.load_embedded`); nothing has to
+  sit next to the exe any more.
+- Text fonts: Segoe UI and Consolas are read from the Windows font folder (`platform.system_font_path`); when they
+  are missing (Wine, trimmed installs) the exe falls back to Roboto and Inconsolata compiled into it
+  (`font.load_system_or_embedded`, `font.FALLBACK_UI_DATA`, `font.FALLBACK_MONO_DATA`). fidget: `--embedded_fonts`
+  forces the fallbacks.
 ## [0.3.0] - 2026-10-15
 
 ### Added

@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.3.0-1d57ba" alt="version 0.3.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.3.1-1d57ba" alt="version 0.3.1"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -11,8 +11,9 @@ The design (box tree, keyed persistence, size-kind layout, signals, tag-based th
 ![fidget, the widget gallery](docs/screenshots/controls.png)
 
 ~4,800 lines of toolkit (+2,800 of examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`,
-`stb/truetype`). The widget gallery is a 1 MB exe, the todo example 770 KB; windows show in ~0.25 s, idle at 0 % CPU,
-and a frame of the gallery takes under 1 ms of CPU (`fidget --bench=300`).
+`stb/truetype`). The exes are self-contained (icon font compiled in, fallback text fonts for Wine): the widget gallery is
+1.3 MB, the todo example 950 KB; windows show in ~0.25 s, idle at 0 % CPU, and a frame of the gallery takes under 1 ms
+of CPU (`fidget --bench=300`).
 
     build.bat fidget     # the widget gallery           ->  build\fidget.exe
     build.bat todo       # a todo app                   ->  build\todo.exe
@@ -64,7 +65,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.3.0`; while `0.x`, a minor bump may change the API).
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.3.1`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -73,7 +74,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 |---|---|
 | `platform` | Win32 window, DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
 | `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners) and glyphs. sRGB target: colors are linear, blending is in linear space. Optional translucent window (DirectComposition, fp16 scRGB). |
-| `font` | TrueType (`stb_truetype`), glyph cache, shelf-packed atlas, text measurement. |
+| `font` | TrueType (`stb_truetype`), glyph cache, shelf-packed atlas, text measurement. Embedded fallback fonts (Roboto, Inconsolata) for systems without Segoe UI / Consolas. |
 | `draw` | Rect / text / clip / alpha / scale stacks over the renderer. |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
 

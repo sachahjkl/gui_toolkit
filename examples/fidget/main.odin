@@ -178,13 +178,15 @@ main :: proc() {
 	app.win = platform.open_window("gui_toolkit fidget", {1180, 780}, transparent = true)
 	if !render.init(&app.r, app.win.hwnd, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
 	ok: bool
-	app.ui_font, ok = font.load_from_file(&app.fonts, "C:/Windows/Fonts/segoeui.ttf")
-	if !ok { fmt.eprintln("cannot load segoeui.ttf"); return }
-	app.mono, _ = font.load_from_file(&app.fonts, "C:/Windows/Fonts/consola.ttf")
-	if app.mono == 0 { app.mono = app.ui_font }
-	exe_dir, _ := os.get_executable_directory(context.temp_allocator)
-	app.icons, ok = font.load_from_file(&app.fonts, fmt.tprintf("%s/icons.ttf", exe_dir))
-	if !ok { fmt.eprintln("cannot load icons.ttf (expected next to the exe)"); return }
+	// system fonts when present, else the fallbacks compiled into the exe (Wine, trimmed installs);
+	// --embedded_fonts forces the fallbacks
+	use_system := !slice.contains(os.args, "--embedded_fonts")
+	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, use_system ? platform.system_font_path("segoeui.ttf") : "", font.FALLBACK_UI_DATA)
+	if !ok { fmt.eprintln("cannot load a UI font"); return }
+	app.mono, ok, _ = font.load_system_or_embedded(&app.fonts, use_system ? platform.system_font_path("consola.ttf") : "", font.FALLBACK_MONO_DATA)
+	if !ok { app.mono = app.ui_font }
+	app.icons, ok = font.load_embedded(&app.fonts, ui.ICON_FONT_DATA)
+	if !ok { fmt.eprintln("cannot load the icon font"); return }
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
 	app.ui_state.icon_font = app.icons

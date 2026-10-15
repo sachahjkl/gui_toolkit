@@ -54,7 +54,7 @@ main :: proc() {
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit smoke", {900, 600}, app)
 	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("renderer init failed"); return }
-	id, ok := font.load_from_file(&app.fonts, "C:/Windows/Fonts/segoeui.ttf")
+	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id
 	draw.init(&app.dc, &app.r, &app.fonts)
