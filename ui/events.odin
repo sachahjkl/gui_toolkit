@@ -35,6 +35,8 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			s.active_key[e.button] = hot
 			s.press_pos[e.button] = e.pos
 			s.pressed_key[e.button] = hot
+			s.pressed_any[e.button] = true
+			if e.button == .Left { scrollbar_press(s, hot, e.pos) }
 			if e.button == .Left {
 				if hot != 0 && hot == s.last_click_key && now_ms() - s.last_click_ms < 400 {
 					s.double_key = hot
@@ -86,6 +88,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	if s.mouse_valid { hit = hit_test(s, s.mouse) }
 	active := s.active_key[.Left]
 	s.hot_key = (active == 0 || hit == active) ? hit : 0
+	scrollbar_drag(s)
 	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse) : 0
 	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = now_ms() }
 }
@@ -100,6 +103,14 @@ hit_test :: proc(s: ^State, p: Vec2) -> Key {
 @(private)
 hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
+	if track, _, ok := scrollbar_geom(b); ok {
+		grab := Rect{{track.min.x - 4, track.min.y}, {track.max.x + 2, track.max.y}}   // a little wider than it looks
+		if contains(grab, p) {
+			k := scrollbar_key(b)
+			g.sb_owner[k] = b.key
+			return k
+		}
+	}
 	child_clip := clip
 	if .Clip in b.flags {
 		child_clip = Rect{{max(clip.min.x, b.rect.min.x), max(clip.min.y, b.rect.min.y)}, {min(clip.max.x, b.rect.max.x), min(clip.max.y, b.rect.max.y)}}

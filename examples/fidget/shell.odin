@@ -16,7 +16,7 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Go_Inputs: app.page = .Inputs
 	case .Go_Data: app.page = .Data
 	case .Go_Playground: app.page = .Playground
-	case .Theme_Midnight, .Theme_Graphite, .Theme_Daylight, .Theme_Nord, .Theme_Dracula, .Theme_Amber:
+	case .Theme_Midnight, .Theme_Graphite, .Theme_Daylight, .Theme_Nord, .Theme_Dracula, .Theme_Amber, .Theme_Aero, .Theme_Bootstrap:
 		set_palette(app, int(cmd) - int(Command.Theme_Midnight))
 		ui.toast(.Info, "Theme: %s", palettes[app.palette_idx].name)
 	case .Next_Theme:
@@ -89,7 +89,7 @@ build_ui :: proc(app: ^App) {
 	}
 	em := ui.font_size()
 	if ui.style({width = ui.fill(), height = ui.fill(), radius = em * 0.45}) {
-		ui.next({axis = .Y})
+		ui.next({axis = .Y, radius = 0})   // touches the window edges: square
 		page := ui.build_box({.Draw_Background}, "###page")
 		if ui.parent(page) {
 			build_menubar(app, em)
@@ -120,7 +120,7 @@ build_ui :: proc(app: ^App) {
 build_menubar :: proc(app: ^App, em: f32) {
 	menu_w := em * 21
 	if ui.tags("bar") {
-		ui.next({width = ui.fill(), height = ui.px(em * 2.6)})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.6)), radius = 0})
 		if ui.row(.Center, {.Draw_Background, .Draw_Side_Bottom}, "###menubar") {
 			ui.spacer(ui.px(em * 0.6))
 			if ui.tags("weak") { ui.icon(ICON_CUBE, em * 2) }
@@ -183,7 +183,7 @@ build_menubar :: proc(app: ^App, em: f32) {
 }
 
 build_tab_row :: proc(app: ^App, em: f32) {
-	ui.next({width = ui.fill(), height = ui.px(em * 2.9)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.9))})
 	if ui.row(.Start, id = "###tabrow") {
 		ui.spacer(ui.px(em * 0.8))
 		sel := int(app.page)
@@ -210,7 +210,7 @@ spark_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 build_statusbar :: proc(app: ^App, em: f32) {
 	if !app.show_status { return }
 	if ui.tags("bar") {
-		ui.next({width = ui.fill(), height = ui.px(em * 2.1)})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.1)), radius = 0})
 		if ui.row(.Center, {.Draw_Background, .Draw_Side_Top}, "###statusbar") {
 			if ui.style({font_size = math.round(em * 0.85)}) {
 				ui.spacer(ui.px(em * 0.9))
@@ -278,11 +278,11 @@ build_palette :: proc(app: ^App) {
 
 	if ui.modal("palette", pw, &app.palette_open, 0.11) {
 		if ui.style({width = ui.px(pw)}) {
-			ui.next({width = ui.px(pw), height = ui.px(em * 3.4)})
+			ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 3.4))})
 			if ui.row(.Center, id = "###pal_head") {
 				ui.spacer(ui.px(em * 0.9))
 				input_key := ui.key_from_string(ui.parent_box().key, "###pal_input")
-				ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 				field_ui := ui.line_edit("###pal_input", &app.palette_field, "Type a command...")
 				if field_ui.changed { app.palette_sel, app.palette_scroll = 0, 0 }
 				if field_ui.committed && n > 0 { run = int(entries[app.palette_sel].cmd) }
@@ -291,42 +291,45 @@ build_palette :: proc(app: ^App) {
 			}
 			ui.hline(ui.px(pw))
 			ui.spacer(ui.px(em * 0.4))
-			for vi in 0 ..< min(n, ROWS) {
-				hi := app.palette_scroll + vi
-				e := entries[hi]
-				info := command_info[e.cmd]
-				selected := hi == app.palette_sel
-				if selected { ui.push_tags("selected") }
-				ui.next({width = ui.px(pw - em * 1.2), height = ui.px(em * 2.6), radius = em * 0.5})
-				row_sig: ui.Signal
-				row_flags := ui.Box_Flags{.Clickable, .Draw_Hot_Effects}
-				if selected { row_flags += {.Draw_Background} }
-				if ui.row(.Center, row_flags, fmt.tprintf("###pal_row_%d", int(e.cmd))) {
-					row_sig = ui.signal(ui.parent_box())
-					ui.spacer(ui.px(em * 0.5))
-					if ui.tags("weak") { ui.icon(info.icon, em * 1.9) }
-					ui.next({width = ui.fill(), height = ui.pct(1)})
-					ui.label_fuzzy(info.title, e.ranges)
-					if ui.tags("weak") {
-						ui.next({width = ui.text_size(em * 0.5), height = ui.pct(1), font_size = math.round(em * 0.85)})
-						ui.label(info.category)
+			ui.next({width = ui.px(pw), height = ui.children_sum()})
+			if ui.column(.Center, id = "###pal_rows") {
+				for vi in 0 ..< min(n, ROWS) {
+					hi := app.palette_scroll + vi
+					e := entries[hi]
+					info := command_info[e.cmd]
+					selected := hi == app.palette_sel
+					if selected { ui.push_tags("selected") }
+					ui.next({width = ui.px(pw - em * 1.2), height = ui.px(ui.dense(em * 2.6)), radius = em * 0.5, border = selected ? nil : draw.Color{}})
+					row_sig: ui.Signal
+					row_flags := ui.Box_Flags{.Clickable, .Draw_Hot_Effects, .Draw_Border}   // border always laid out, visible when selected
+					if selected { row_flags += {.Draw_Background} }
+					if ui.row(.Center, row_flags, fmt.tprintf("###pal_row_%d", int(e.cmd))) {
+						row_sig = ui.signal(ui.parent_box())
+						ui.spacer(ui.px(em * 0.5))
+						if ui.tags("weak") { ui.icon(info.icon, em * 1.9) }
+						ui.next({width = ui.fill(), height = ui.pct(1)})
+						ui.label_fuzzy(info.title, e.ranges)
+						if ui.tags("weak") {
+							ui.next({width = ui.text_size(em * 0.5), height = ui.pct(1), font_size = math.round(em * 0.85)})
+							ui.label(info.category)
+						}
+						if info.shortcut != "" { ui.spacer(ui.px(em * 0.6)); ui.kbd(info.shortcut) }
+						ui.spacer(ui.px(em * 0.6))
 					}
-					if info.shortcut != "" { ui.spacer(ui.px(em * 0.6)); ui.kbd(info.shortcut) }
-					ui.spacer(ui.px(em * 0.6))
+					if selected { ui.pop_tags() }
+					if row_sig.clicked { run = int(e.cmd) }
+					if row_sig.hovering && moved { app.palette_sel = hi }
 				}
-				if selected { ui.pop_tags() }
-				if row_sig.clicked { run = int(e.cmd) }
-				if row_sig.hovering && moved { app.palette_sel = hi }
 			}
 			if n == 0 {
 				if ui.tags("weak") {
-					ui.next({width = ui.px(pw), height = ui.px(em * 4), text_align = .Center})
+					ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 4)), text_align = .Center})
 					ui.label("No matching commands")
 				}
 			}
 			ui.spacer(ui.px(em * 0.4))
 			ui.hline(ui.px(pw))
-			ui.next({width = ui.px(pw), height = ui.px(em * 2.3)})
+			ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 2.3))})
 			if ui.row(.Center, id = "###pal_foot") {
 				ui.spacer(ui.px(em))
 				if ui.tags("weak") {
@@ -345,7 +348,7 @@ build_confirm :: proc(app: ^App) {
 	if ui.modal("confirm", w, &app.modal_open) {
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.2))
-			ui.next({width = ui.px(w), height = ui.px(em * 2.4)})
+			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.4))})
 			if ui.row(.Center, id = "###cf_title") {
 				ui.spacer(ui.px(em * 1.4))
 				if ui.tags("bad") { ui.icon(ui.ICON_WARN_BIG, em * 2.2) }
@@ -354,12 +357,12 @@ build_confirm :: proc(app: ^App) {
 			}
 			if ui.tags("weak") {
 				for line in ([]string{"This is a demo dialog: a modal floating panel,", "a scrim that eats clicks, Esc to dismiss."}) {
-					ui.next({width = ui.px(w - em * 2.8), height = ui.px(em * 1.7), text_align = .Left})
+					ui.next({width = ui.px(w - em * 2.8), height = ui.px(ui.dense(em * 1.7)), text_align = .Left})
 					ui.label(line)
 				}
 			}
 			ui.spacer(ui.px(em * 0.8))
-			ui.next({width = ui.px(w), height = ui.px(em * 2.6)})
+			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.6))})
 			if ui.row(.Center, id = "###cf_btns") {
 				ui.spacer(ui.fill())
 				if ui.button_icon("Cancel###cf_cancel", "", "Cancel").clicked { app.modal_open = false; ui.toast(.Info, "Cancelled") }
@@ -398,7 +401,7 @@ build_about :: proc(app: ^App) {
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.6))
 			// header: logo + name + tagline
-			ui.next({width = ui.px(w), height = ui.px(em * 5.2)})
+			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 5.2))})
 			if ui.row(.Center, id = "###ab_head") {
 				ui.spacer(ui.px(pad))
 				d := ui.frame_new(Logo_Draw)
@@ -414,11 +417,11 @@ build_about :: proc(app: ^App) {
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 				if ui.column(id = "###ab_title") {
 					if ui.style({font_size = math.round(em * 1.5)}) {
-						ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.2))})
 						ui.label("gui_toolkit fidget")
 					}
 					if ui.tags("weak") {
-						ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.6))})
 						ui.label("A widget gallery for gui_toolkit")
 					}
 				}
@@ -442,7 +445,7 @@ build_about :: proc(app: ^App) {
 				{"License", "MIT, design after the RAD Debugger UI"},
 			}
 			for f in facts {
-				ui.next({width = ui.px(w), height = ui.px(em * 1.9)})
+				ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 1.9))})
 				if ui.row(.Center, id = fmt.tprintf("###ab_%s", f.k)) {
 					ui.spacer(ui.px(pad))
 					if ui.tags("weak") {
@@ -456,7 +459,7 @@ build_about :: proc(app: ^App) {
 			ui.spacer(ui.px(em * 1.0))
 
 			// actions
-			ui.next({width = ui.px(w), height = ui.px(em * 2.6)})
+			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.6))})
 			if ui.row(.Center, id = "###ab_btns") {
 				ui.spacer(ui.px(pad))
 				if ui.tags("weak") {

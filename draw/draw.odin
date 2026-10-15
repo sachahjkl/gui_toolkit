@@ -167,7 +167,7 @@ rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, bord
 		dst = {r.min.x * xf.scale + xf.offset.x, r.min.y * xf.scale + xf.offset.y, r.max.x * xf.scale + xf.offset.x, r.max.y * xf.scale + xf.offset.y},
 		colors = colors, radii = radii * xf.scale, border = border * xf.scale, soft = soft, use_tex = 0, tex_size = font.ATLAS_SIZE,
 	}
-	for &col in inst.colors { col.a *= alpha }
+	for i in 0 ..< 4 { inst.colors[i].a *= alpha }
 	append(&c.insts, inst)
 }
 

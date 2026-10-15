@@ -213,7 +213,7 @@ menu_bar_button :: proc(id: string) -> Key {
 	for k in s.bar_keys_prev { if s.ctx_menu_key == k { bar_active = true } }
 
 	push_tags(open ? "selected" : "ghost_button")
-	next({width = px(font_text_width(id) + em * 1.6), height = px(em * 1.9), text_align = .Center, radius = em * 0.4})
+	next({width = px(font_text_width(id) + em * 1.6), height = px(dense(em * 1.9)), text_align = .Center, radius = em * 0.4})
 	b := build_box({.Clickable, .Draw_Text, .Draw_Hot_Effects, .Draw_Background}, id)
 	pop_tags()
 	sig := signal(b)

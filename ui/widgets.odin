@@ -1,6 +1,7 @@
 package ui
 
 import "core:fmt"
+import "core:math"
 
 
 ////////////////////////////////
@@ -42,8 +43,11 @@ column :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "
 
 // Empty space along the parent's layout axis. The off-axis size is None (0): a spacer must never drive the
 // cross-axis size of a children_sum parent (pct would resolve against a distant ancestor and explode it).
-spacer :: proc(size: Size) {
+// Vertical pixel gaps follow the density setting unless `exact` (e.g. the stand-ins for virtualized rows).
+spacer :: proc(size: Size, exact := false) {
 	p := parent_box()
+	size := size
+	if !exact && p.layout_axis == .Y && size.kind == .Pixels { size.value = math.round(size.value * g.density) }
 	m: Style_Mod
 	if p.layout_axis == .X { m.width = size; m.height = Size{} } else { m.height = size; m.width = Size{} }
 	if g.has_next { m = merge_mod(g.next_mod, m) }
@@ -112,5 +116,20 @@ scroll_y :: proc(id: string) -> bool {
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}, id)
 	_ = signal(b)
 	push_parent(b)
+	return true
+}
+
+// `if flow({em * 0.5, em * 0.5}) { ... }`: children flow left to right and wrap onto new lines when the row is too
+// narrow, instead of overflowing. Full width and as tall as its lines unless `next` says otherwise.
+@(deferred_none = pop_parent)
+flow :: proc(gap: Vec2 = {}, id: string = "") -> bool {
+	m := g.has_next ? g.next_mod : Style_Mod{}
+	if m.width == nil { m.width = fill() }
+	if m.height == nil { m.height = children_sum() }
+	m.axis = .X
+	m.gap = gap
+	g.next_mod = m
+	g.has_next = true
+	push_parent(build_box({.Wrap}, id))
 	return true
 }

@@ -9,6 +9,7 @@ package ui
 //   Tab moves the focus to the next widget, unless `tab_indents` (then Tab inserts 4 spaces, Ctrl+Tab... leaves).
 // Mouse: click places the caret, drag selects, Shift+click extends, double-click selects a word, wheel scrolls.
 
+import "core:hash"
 import "core:math"
 import "core:strings"
 import "core:unicode/utf8"
@@ -31,6 +32,69 @@ Text_Area :: struct {
 	undo, redo: [dynamic]Text_Snapshot,
 	group:      Edit_Kind, // consecutive edits of one kind within a second form one undo step
 	group_ms:   f64,
+	sb_drag:    u8,        // 0 none, 1 vertical scrollbar held, 2 horizontal
+	sb_grab:    f32,
+	ext_key:    u64,       // content size cache (measuring every line each frame is the editor's main cost)
+	ext:        Vec2,
+}
+
+// Scrollbar geometry of the editor (screen space). The bars overlay the text at the right / bottom edges.
+@(private="file")
+Editor_Bars :: struct {
+	vtrack, vthumb, htrack, hthumb: Rect,
+	has_v, has_h: bool,
+}
+
+@(private="file")
+editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll: Vec2) -> (e: Editor_Bars) {
+	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
+	e.has_v = content.y > view.y + 0.5
+	e.has_h = content.x + 4 > view.x + 0.5
+	w := max(6, math.round(font_size * 0.5))
+	m := math.round(w * 0.35)
+	if e.has_v {
+		e.vtrack = {{r.max.x - w - m, r.min.y + m}, {r.max.x - m, r.max.y - m - (e.has_h ? w + m : 0)}}
+		len_ := e.vtrack.max.y - e.vtrack.min.y
+		th := max(font_size * 1.6, len_ * view.y / content.y)
+		t := clamp(scroll.y / max(1, content.y - view.y), 0, 1)
+		y := e.vtrack.min.y + t * (len_ - th)
+		e.vthumb = {{e.vtrack.min.x, y}, {e.vtrack.max.x, y + th}}
+	}
+	if e.has_h {
+		e.htrack = {{r.min.x + gutter + m, r.max.y - w - m}, {r.max.x - m - (e.has_v ? w + m : 0), r.max.y - m}}
+		len_ := e.htrack.max.x - e.htrack.min.x
+		tw := max(font_size * 1.6, len_ * view.x / (content.x + 4))
+		t := clamp(scroll.x / max(1, content.x + 4 - view.x), 0, 1)
+		x := e.htrack.min.x + t * (len_ - tw)
+		e.hthumb = {{x, e.htrack.min.y}, {x + tw, e.htrack.max.y}}
+	}
+	return
+}
+
+@(private="file")
+content_extent :: proc(a: ^Text_Area, text: string, b: ^Box, lh: f32) -> Vec2 {
+	key := hash.fnv64a(transmute([]u8)text) ~ (u64(transmute(u32)b.font_size) << 20) ~ u64(b.font) ~ u64(transmute(u32)lh)
+	if key != a.ext_key || key == 0 {
+		a.ext = content_extent_measure(text, b, lh)
+		a.ext_key = key
+	}
+	return a.ext
+}
+
+@(private="file")
+content_extent_measure :: proc(text: string, b: ^Box, lh: f32) -> Vec2 {
+	w: f32
+	lines := 0
+	start := 0
+	for {
+		nl := strings.index_byte(text[start:], '\n')
+		end := nl < 0 ? len(text) : start + nl
+		w = max(w, font.text_width(g.fonts, b.font, b.font_size, text[start:end]))
+		lines += 1
+		if nl < 0 { break }
+		start = end + 1
+	}
+	return {w, f32(lines) * lh}
 }
 
 Text_Snapshot :: struct {
@@ -152,6 +216,9 @@ Text_Edit_Draw :: struct {
 	line_h:      f32,
 	selection, caret, weak, gutter_bg, gutter_line: Color,
 	mono:        font.Font_Id,
+	bars:        Editor_Bars,
+	bar_color:   Color,
+	bar_hot:     u8,        // 1 vertical, 2 horizontal: hovered or held
 }
 
 @(private="file")
@@ -204,6 +271,20 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		line_start = line_end + 1
 	}
 	draw.pop_clip(dc)
+
+	// scrollbars
+	for which in 1 ..= 2 {
+		has := which == 1 ? d.bars.has_v : d.bars.has_h
+		if !has { continue }
+		track := which == 1 ? d.bars.vtrack : d.bars.htrack
+		thumb := which == 1 ? d.bars.vthumb : d.bars.hthumb
+		w := which == 1 ? track.max.x - track.min.x : track.max.y - track.min.y
+		c := d.bar_color
+		hot := d.bar_hot == u8(which)
+		if hot { tc := c; tc.a = 0.06; draw.rect(dc, track, tc, w * 0.5 * s.rounding) }
+		c.a = hot ? 0.45 : 0.22
+		draw.rect(dc, thumb, c, w * 0.5 * s.rounding)
+	}
 
 	// line numbers (not scrolled horizontally)
 	if d.gutter > 0 {
@@ -274,14 +355,40 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			_, end := line_bounds(text, start)
 			return start + font.index_from_x(g.fonts, b.font, b.font_size, text[start:end], p.x - gutter - pad + a.scroll.x)
 		}
-		if res.pressed || res.dragging {
+		// scrollbars: press on a thumb grabs it, press on a track jumps there; while held they own the drag
+		bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh), a.scroll)
+		mp := b.rect.min + res.mouse
+		if res.pressed {
+			a.sb_drag = 0
+			vgrab := Rect{{bars.vtrack.min.x - 4, bars.vtrack.min.y}, {bars.vtrack.max.x + 2, bars.vtrack.max.y}}
+			hgrab := Rect{{bars.htrack.min.x, bars.htrack.min.y - 4}, {bars.htrack.max.x, bars.htrack.max.y + 2}}
+			if bars.has_v && contains(vgrab, mp) {
+				a.sb_drag = 1
+				a.sb_grab = (mp.y >= bars.vthumb.min.y && mp.y < bars.vthumb.max.y) ? mp.y - bars.vthumb.min.y : (bars.vthumb.max.y - bars.vthumb.min.y) * 0.5
+			} else if bars.has_h && contains(hgrab, mp) {
+				a.sb_drag = 2
+				a.sb_grab = (mp.x >= bars.hthumb.min.x && mp.x < bars.hthumb.max.x) ? mp.x - bars.hthumb.min.x : (bars.hthumb.max.x - bars.hthumb.min.x) * 0.5
+			}
+		}
+		if !res.dragging && !res.pressed { a.sb_drag = 0 }
+		if a.sb_drag != 0 && (res.pressed || res.dragging) {
+			content := content_extent(a, text, b, lh)
+			view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
+			if a.sb_drag == 1 {
+				span := (bars.vtrack.max.y - bars.vtrack.min.y) - (bars.vthumb.max.y - bars.vthumb.min.y)
+				if span > 0 { a.scroll.y = clamp((mp.y - a.sb_grab - bars.vtrack.min.y) / span, 0, 1) * (content.y - view.y) }
+			} else {
+				span := (bars.htrack.max.x - bars.htrack.min.x) - (bars.hthumb.max.x - bars.hthumb.min.x)
+				if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + 4 - view.x) }
+			}
+		} else if res.pressed || res.dragging {
 			idx := point_to_index(a, b, res.mouse, gutter, pad, lh)
 			a.cursor = idx
 			if res.pressed && .Shift not_in res.mods { a.mark = idx }
 			a.has_pref = false
 			moved = true
 		}
-		if res.double_clicked {
+		if res.double_clicked && a.sb_drag == 0 {
 			a.mark = word_left(text, min(a.cursor + 1, len(text)))
 			a.cursor = word_right(text, a.mark)
 		}
@@ -420,19 +527,8 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		// content size and scrolling
 		view_w := max(8, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
 		view_h := max(8, (b.rect.max.y - b.rect.min.y) - 2 * pad)
-		lines := strings.count(text, "\n") + 1
-		content_w: f32 = 0
-		{
-			start := 0
-			for {
-				nl := strings.index_byte(text[start:], '\n')
-				end := nl < 0 ? len(text) : start + nl
-				content_w = max(content_w, font.text_width(s.fonts, b.font, b.font_size, text[start:end]))
-				if nl < 0 { break }
-				start = end + 1
-			}
-		}
-		content_h := f32(lines) * lh
+		ext := content_extent(a, text, b, lh)
+		content_w, content_h := ext.x, ext.y
 		if cursor_moved {
 			ls, _ := line_bounds(text, a.cursor)
 			cx := font.x_from_index(s.fonts, b.font, b.font_size, text[ls:a.cursor], a.cursor - ls)
@@ -460,6 +556,14 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		d.gutter_bg.a *= 0.35
 		d.gutter_line = color("border")
 		d.mono = mono
+		d.bars = editor_bars(b.rect, gutter, pad, b.font_size, {content_w, content_h}, a.scroll)
+		d.bar_color = color("text")
+		mpos := b.rect.min + res.mouse
+		if a.sb_drag != 0 { d.bar_hot = a.sb_drag } else if res.hovering {
+			if d.bars.has_v && contains(Rect{{d.bars.vtrack.min.x - 4, d.bars.vtrack.min.y}, d.bars.vtrack.max}, mpos) { d.bar_hot = 1 }
+			if d.bars.has_h && contains(Rect{{d.bars.htrack.min.x, d.bars.htrack.min.y - 4}, d.bars.htrack.max}, mpos) { d.bar_hot = 2 }
+		}
+		if d.bar_hot != 0 { s.cursor_request = .Arrow }
 		b.custom = text_edit_draw
 		b.custom_user = d
 	}

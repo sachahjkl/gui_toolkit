@@ -5,7 +5,8 @@
 cbuffer Globals : register(b0)
 {
 	float2 viewport_size;
-	float2 _pad;
+	float  corner_n;       // corner shape exponent: 2 = circular arcs, > 2 = superellipse ("squircle", continuous curvature)
+	float  corner_boost;   // radius multiplier that keeps squircle corners visually as round as the circular ones
 };
 
 Texture2D<float> atlas : register(t0);
@@ -52,10 +53,16 @@ PSIn vs_main(VSIn i)
 	return o;
 }
 
+// Rounded-rect distance. With corner_n > 2 the corner is a superellipse: its curvature ramps up from the straight
+// edge instead of jumping (the visible kink where a circular arc meets a straight side). The p-norm is not an exact
+// distance, but close enough for 1 px antialiasing.
 float rect_sdf(float2 p, float2 half_size, float r)
 {
+	r = min(r * corner_boost, min(half_size.x, half_size.y));
 	float2 d = abs(p) - half_size + r;
-	return min(max(d.x, d.y), 0) + length(max(d, 0)) - r;
+	float2 q = max(d, 0);
+	float outside = corner_n > 2.01 ? pow(pow(max(q.x, 1e-6), corner_n) + pow(max(q.y, 1e-6), corner_n), 1.0 / corner_n) : length(q);
+	return min(max(d.x, d.y), 0) + outside - r;
 }
 
 float4 ps_main(PSIn i) : SV_Target

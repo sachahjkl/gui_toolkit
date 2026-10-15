@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.0-1d57ba" alt="version 0.2.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.3.0-1d57ba" alt="version 0.3.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -10,8 +10,9 @@ The design (box tree, keyed persistence, size-kind layout, signals, tag-based th
 
 ![fidget, the widget gallery](docs/screenshots/controls.png)
 
-~4,100 lines of toolkit (+2,700 of examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`,
-`stb/truetype`). The widget gallery is a 930 KB exe, the todo example 720 KB; windows show in ~0.25 s and idle at 0 % CPU.
+~4,800 lines of toolkit (+2,800 of examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`,
+`stb/truetype`). The widget gallery is a 1 MB exe, the todo example 770 KB; windows show in ~0.25 s, idle at 0 % CPU,
+and a frame of the gallery takes under 1 ms of CPU (`fidget --bench=300`).
 
     build.bat fidget     # the widget gallery           ->  build\fidget.exe
     build.bat todo       # a todo app                   ->  build\todo.exe
@@ -26,17 +27,20 @@ Prebuilt binaries are attached to the [GitHub releases](https://github.com/sacha
 | | |
 |---|---|
 | ![Inputs: validation, multi-line editor, fuzzy search, tags, form](docs/screenshots/inputs.png) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
-| **Inputs**: validated fields, multi-line editor, live fuzzy search, tag input, form | **Data**: 20,000-row virtualized table (sort, filter, resize), file tree |
+| **Inputs**: validated fields, multi-line editor, live fuzzy search, tag input, form | **Data**: 20,000-row virtualized table (groups with totals, sort, filter, resize), file tree |
 | ![Playground: physics, spinner, live accent picker](docs/screenshots/playground.png) | ![Command palette with fuzzy matching](docs/screenshots/palette.png) |
 | **Playground**: physics balls, fidget spinner, live accent color picker | **Command palette** (Ctrl+K), fuzzy matches highlighted, Nord theme |
 | ![Settings dialog](docs/screenshots/settings.png) | ![Toasts](docs/screenshots/toasts.png) |
 | **Settings**: theme, zoom, animations, toast position (click a cell) | **Toasts**: 8 anchor positions, border tinted by kind |
 | ![About dialog](docs/screenshots/about.png) | ![Light theme](docs/screenshots/light.png) |
-| **About** (F1), Dracula theme | **Daylight** theme (6 themes, cross-fading) |
+| **About** (F1), Dracula theme | **Daylight** theme (8 themes, cross-fading) |
+| ![Bootstrap theme](docs/screenshots/bootstrap.png) | ![Compact density](docs/screenshots/compact.png) |
+| **Bootstrap** theme: gradient finish, embossed text, focus glow | **Compact** density: more rows, same text size |
 
 <p align="center"><img src="docs/screenshots/todo.png" width="420" alt="todo example"><br><b>examples/todo</b></p>
 
 Screenshots are regenerated with `powershell -File tools/screenshots.ps1` (default settings, 175 % DPI).
+
 ## What it looks like
 
 ```odin
@@ -60,7 +64,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.2.0`; while `0.x`, a minor bump may change the API).
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.3.0`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -68,18 +72,22 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 | Package | Role |
 |---|---|
 | `platform` | Win32 window, DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
-| `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF) and glyphs. sRGB target: colors are linear, blending is in linear space. |
+| `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners) and glyphs. sRGB target: colors are linear, blending is in linear space. Optional translucent window (DirectComposition, fp16 scRGB). |
 | `font` | TrueType (`stb_truetype`), glyph cache, shelf-packed atlas, text measurement. |
 | `draw` | Rect / text / clip / alpha / scale stacks over the renderer. |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
 
 ## Features
 
-- **Layout**: pixels / text / percent / children-sum sizes with strictness, floating boxes, cross-axis alignment, scrolling.
+- **Layout**: pixels / text / percent / children-sum sizes with strictness, floating boxes, cross-axis alignment,
+  wrapping rows (`flow`), borders kept out of the content (border-box), scrolling with overlay scrollbars.
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
 - **Theme**: `(tags -> color)` patterns, `apply_palette` expands an 11-color palette (dark and light included);
-  colors cross-fade when the palette changes.
+  colors cross-fade when the palette changes. Finishes: flat, gradient (Bootstrap 2) or glass (Aero), optionally over
+  a translucent window with the Windows 11 acrylic backdrop.
+- **Look controls**: corner rounding (square to very round, squircle or circular corners) and density
+  (comfortable / compact), both live.
 - **Zoom, built in**: Ctrl+wheel, Ctrl +, Ctrl -, Ctrl 0 scale every size and the font (`ui.zoom`, `ui.set_zoom`;
   the effective scale is dpi scale x zoom). Apps write sizes in logical pixels.
 - **DPI**: per-monitor aware, window sized from the monitor DPI and clamped to the work area.
@@ -95,15 +103,17 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms now (`-define:RENDER_PROBE=true` prints
   it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
 
-- **Keyboard**: Tab / Shift+Tab focus navigation (trapped inside modals, scrolled into view, focus ring), Enter / Space
-  activate, arrows drive sliders, menus and dropdowns.
+- **Keyboard**: Tab / Shift+Tab focus navigation (trapped inside modals, scrolled into view, focus ring), arrow keys
+  move the focus spatially, Enter / Space activate, arrows drive sliders, menus and dropdowns.
+- **Disabled / muted** scopes: `if ui.disabled(cond) { ... }` disables a whole subtree with a neutral look.
 
-Not there yet: word wrap in the editor, IME composition, drag-and-drop files, background blur, Linux/macOS backends.
+Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
 
 ## Testing
 
-`tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (28 checks: clipboard, Tab focus, Space
-activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown) and reads the state from the
+`tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
+focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a
+click outside) and reads the state from the
 window title (`--state_title`); keys are sent only while fidget is the foreground window.
 `tools\ui_test.ps1` drives `examples/todo` and `tools\fidget_test.ps1` drives `examples/fidget` with real clicks
 (typing, Enter, toggles, segmented, chips, dropdown, slider, tooltip, context menu, wheel scroll, command palette,

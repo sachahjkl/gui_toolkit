@@ -14,7 +14,7 @@ section_title :: proc(text: string, width: f32) {
 	em := ui.font_size()
 	ui.spacer(ui.px(em * 0.9))
 	if ui.tags("weak") {
-		ui.next({width = ui.px(width), height = ui.px(em * 1.7), font_size = math.round(em * 0.82)})
+		ui.next({width = ui.px(width), height = ui.px(ui.dense(em * 1.7)), font_size = math.round(em * 0.82)})
 		ui.label(text)
 	}
 	ui.hline(ui.px(width))
@@ -43,9 +43,9 @@ pill_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	case:                                             y = (r.min.y + r.max.y - ph) * 0.5
 	}
 	if d.filled {
-		draw.rect(dc, {{x, y}, {x + pw, y + ph}}, d.color, ph * 0.5)
+		draw.rect(dc, {{x, y}, {x + pw, y + ph}}, d.color, ui.rad(ph * 0.5))
 	} else {
-		draw.rect(dc, {{x, y}, {x + pw, y + ph}}, d.color, ph * 0.5, 1.5)
+		draw.rect(dc, {{x, y}, {x + pw, y + ph}}, d.color, ui.rad(ph * 0.5), 1.5)
 	}
 }
 
@@ -84,7 +84,7 @@ position_picker :: proc(app: ^App, size: ui.Vec2) -> (changed: bool) {
 						}
 						if ui.hovered_for(sig, 0.35) {
 							if ui.tooltip() {
-								ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 2)})
+								ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 								ui.label(ui.toast_position_names[p])
 							}
 						}
@@ -107,7 +107,7 @@ build_settings :: proc(app: ^App) {
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.1))
 			// header
-			ui.next({width = ui.px(w), height = ui.px(em * 2.6)})
+			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.6))})
 			if ui.row(.Center, id = "###st_head") {
 				ui.spacer(ui.px(pad))
 				if ui.tags("weak") { ui.icon(ICON_GEAR, em * 1.9) }
@@ -139,10 +139,26 @@ build_settings :: proc(app: ^App) {
 						if z != old { ui.set_zoom(&app.ui_state, z / 100) }
 					}
 					if ui.tags("weak") {
-						ui.next({width = ui.px(inner), height = ui.px(em * 1.6), font_size = math.round(em * 0.82)})
+						ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 1.6)), font_size = math.round(em * 0.82)})
 						ui.label("Also Ctrl+wheel, Ctrl +, Ctrl -, Ctrl 0 anywhere.")
 					}
-					ui.next({width = ui.px(inner), height = ui.px(em * 2.4)})
+					if ui.form_row("Density") {
+						modes := [?]string{"Comfortable", "Compact"}
+						sel := ui.density(&app.ui_state) < 0.99 ? 1 : 0
+						if ui.segmented("###st_density", modes[:], &sel) { ui.set_density(&app.ui_state, sel == 1 ? ui.DENSITY_COMPACT : 1) }
+					}
+					if ui.form_row("Rounding") {
+						rnd := ui.rounding(&app.ui_state) * 100
+						old := rnd
+						ui.slider("###st_round", &rnd, 0, 200, 5, rnd == 0 ? "Square" : "%.0f%%")
+						if rnd != old { ui.set_rounding(&app.ui_state, rnd / 100) }
+					}
+					if ui.form_row("Corner shape") {
+						shapes := [?]string{"Circular", "Squircle"}
+						sel := app.corner_smoothing > 0.5 ? 1 : 0
+						if ui.segmented("###st_shape", shapes[:], &sel) { app.corner_smoothing = f32(sel) }
+					}
+					ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 2.4))})
 					ui.toggle("###st_status", "Status bar", &app.show_status)
 
 					//- motion
@@ -152,26 +168,26 @@ build_settings :: proc(app: ^App) {
 						if ui.segmented("###st_anim", anim_mode_labels[:], &sel) { app.anim_mode = Anim_Mode(sel); app.os_anim_checked_ms = 0 }
 					}
 					if ui.tags("weak") {
-						ui.next({width = ui.px(inner), height = ui.px(em * 1.6), font_size = math.round(em * 0.82)})
+						ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 1.6)), font_size = math.round(em * 0.82)})
 						ui.label(fmt.tprintf("System follows Windows (Accessibility > Visual effects), currently %s.", platform.os_animations_enabled() ? "on" : "off"))
 					}
 
 					//- notifications
 					section_title("NOTIFICATIONS", inner)
-					ui.next({width = ui.px(inner), height = ui.px(em * 7)})
+					ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 7))})
 					if ui.row(.Center, id = "###st_toast_row") {
 						position_picker(app, {em * 10.5, em * 6.5})
 						ui.spacer(ui.px(em * 1.2))
 						ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 						if ui.column(id = "###st_toast_col") {
 							if ui.tags("weak") {
-								ui.next({width = ui.fill(), height = ui.px(em * 1.6), font_size = math.round(em * 0.82)})
+								ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.6)), font_size = math.round(em * 0.82)})
 								ui.label("Toast position")
 							}
-							ui.next({width = ui.fill(), height = ui.px(em * 2)})
+							ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2))})
 							ui.label(ui.toast_position_names[ui.toast_position(&app.ui_state)])
 							ui.spacer(ui.px(em * 0.5))
-							ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+							ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 							if ui.row(.Center, id = "###st_test_row") {
 								if ui.button_icon("###st_test", ICON_PLAY, "Send a test toast").clicked {
 									kinds := [?]ui.Toast_Kind{.Info, .Good, .Warn, .Bad}
@@ -184,16 +200,19 @@ build_settings :: proc(app: ^App) {
 					}
 
 					ui.spacer(ui.px(em * 1.2))
-					ui.next({width = ui.px(inner), height = ui.px(em * 2.6)})
+					ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 2.6))})
 					if ui.row(.Center, id = "###st_foot") {
 						if ui.tags("ghost_button") {
 							if ui.button_icon("###st_reset", ICON_UNDO, "Restore defaults").clicked {
-								set_palette(app, 0)
+								set_palette(app, DEFAULT_PALETTE)
 								app.anim_mode = .System
 								app.os_anim_checked_ms = 0
 								app.show_status = true
 								ui.set_zoom(&app.ui_state, 1)
 								ui.set_toast_position(&app.ui_state, .Top_Right)
+								ui.set_rounding(&app.ui_state, 1)
+								ui.set_density(&app.ui_state, 1)
+								app.corner_smoothing = 1
 								ui.toast(.Good, "Settings restored to defaults")
 							}
 						}

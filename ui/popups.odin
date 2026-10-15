@@ -41,10 +41,10 @@ ctx_menu :: proc(key: Key, width: f32) -> bool {
 	}
 	panel_key := key_from_string(s.root.key, fmt.tprintf("###ctx_%d", u64(key)))
 	panel := s.boxes[panel_key]
-	pressed := s.pressed_key[.Left] != 0 || s.pressed_key[.Right] != 0
+	pressed := s.pressed_any[.Left] || s.pressed_any[.Right]   // anywhere, not only on clickable boxes
 	outside := false
 	if pressed && s.build_index > s.ctx_menu_open_build {
-		hit := s.pressed_key[.Left] if s.pressed_key[.Left] != 0 else s.pressed_key[.Right]
+		hit := s.pressed_key[.Left] if s.pressed_any[.Left] else s.pressed_key[.Right]
 		hb := s.boxes[hit]
 		outside = panel == nil || hb == nil || !is_descendant(hb, panel)
 		if hit == s.ctx_menu_anchor && hit != 0 { outside = false }
@@ -117,9 +117,10 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "") ->
 		if selected { push_tags("selected") }
 		set_next_axis(.X, .Center)
 		g.next_mod.width = px(width)
-		g.next_mod.height = px(em * 2.2)
+		g.next_mod.height = px(dense(em * 2.2))
 		g.next_mod.radius = em * 0.35
-		b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background}, text)   // text = id; drawn by a child below
+		if !selected { g.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
+		b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, text)   // text = id; drawn by a child below
 		b.text = ""
 		if selected { pop_tags() }
 		sig = signal(b)

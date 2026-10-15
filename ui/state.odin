@@ -19,6 +19,9 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.zoom = 1
 	s.scale = 1
 	s.toast_pos = .Top_Right
+	s.rounding = 1
+	s.density = 1
+	s.sb_owner = make(map[Key]Key)
 	_ = virtual.arena_init_growing(&s.arena)
 	s.boxes = make(map[Key]^Box)
 	s.anims = make(map[Key]Animation)
@@ -50,6 +53,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)
+	clear(&s.disabled_stack); s.disabled_depth = 0
 	clear(&s.focus_order)
 	s.trap_depth = 0
 	s.modal_prev, s.modal_now = s.modal_now, 0
@@ -98,6 +102,7 @@ end_build :: proc() {
 	assert(len(s.tag_marks) == 0, "ui: unbalanced tags push/pop")
 	assert(len(s.popup_stack) == 0, "ui: unbalanced popup scopes")
 	assert(len(s.style_stack) == 1, "ui: unbalanced style push/pop")
+	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
 
 	layout(s)
 	handle_tab_navigation(s)
@@ -118,6 +123,7 @@ end_build :: proc() {
 	s.scroll_delta = {}
 	for b in platform.Mouse_Button {
 		s.pressed_key[b] = 0
+		s.pressed_any[b] = false
 		s.released_key[b] = 0
 		s.clicked_key[b] = 0
 	}
@@ -129,6 +135,13 @@ needs_frame :: proc(s: ^State) -> bool { return s.anim_busy }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 cursor :: proc(s: ^State) -> platform.Cursor { return s.cursor_request }
 boxes_built :: proc(s: ^State) -> int { return s.boxes_built }
+
+// Density: row heights and vertical gaps are multiplied by it (text keeps its size). Built-in widgets and
+// vertical spacers follow it; use `dense` for your own row heights.
+DENSITY_COMPACT :: 0.78
+density :: proc(s: ^State) -> f32 { return s.density }
+set_density :: proc(s: ^State, d: f32) { s.density = clamp(d, 0.6, 1.2) }
+dense :: proc(v: f32) -> f32 { return math.round(v * g.density) }
 
 ZOOM_MIN :: 0.5
 ZOOM_MAX :: 3.0
@@ -199,11 +212,15 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	}
 
 	b.flags = flags + st.extra_flags
+	if s.disabled_depth > 0 { b.flags += {.Disabled} }
+	if .Disabled in b.flags && s.focus_key == b.key { s.focus_key = 0 }
 	b.name = ""
 	if id != "" { b.name = fmt.aprint(hash_part(id), allocator = frame_allocator()) }
 	b.pref = st.pref
 	b.layout_axis = axis
 	b.cross = cross
+	b.gap = {}
+	if has_mod { if v, ok := mod.gap.?; ok { b.gap = v } }
 	b.font = st.font
 	b.font_size = st.font_size
 	b.text_pad = st.text_pad
@@ -240,6 +257,13 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		if c, ok := mod.bg.?; ok { b.target_bg = c }
 		if c, ok := mod.border.?; ok { b.target_border = c }
 		if c, ok := mod.fg.?; ok { b.target_text = c }
+	}
+	if .Disabled in b.flags {
+		// neutral look: an accent or danger fill would keep its colour while its text faded away
+		plain := []string{"button"}
+		if b.target_bg.a > 0.01 { b.target_bg = theme_lookup(s.theme, plain, "background") }
+		if b.target_border.a > 0.01 { b.target_border = theme_lookup(s.theme, plain, "border") }
+		b.target_text = theme_lookup(s.theme, nil, "weak text")
 	}
 	if b.first_build == s.build_index || s.anim_rate == 0 {
 		b.bg, b.border, b.text_color = b.target_bg, b.target_border, b.target_text
@@ -353,6 +377,26 @@ current_tags_key :: proc(s: ^State) -> Key {
 @(private)
 push_tags_key :: proc(s: ^State) { _ = current_tags_key(s) }
 
+// `if disabled(!enabled) { ... }`: when `cond` is true, every box built in the block is disabled: no clicks,
+// no hover, no keyboard focus, and it fades to a muted look. Scopes nest; `disabled(false)` changes nothing.
+@(deferred_none = pop_disabled)
+disabled :: proc(cond := true) -> bool {
+	append(&g.disabled_stack, cond)
+	if cond { g.disabled_depth += 1 }
+	return true
+}
+
+pop_disabled :: proc() {
+	if pop(&g.disabled_stack) { g.disabled_depth -= 1 }
+}
+
+// `if muted() { ... }`: secondary content, drawn with the theme's weak text colour. Still interactive (see `disabled`).
+@(deferred_none = pop_tags)
+muted :: proc() -> bool {
+	push_tags("weak")
+	return true
+}
+
 ////////////////////////////////
 // Animation helper
 
@@ -425,8 +469,12 @@ debug_dump_tall :: proc(s: ^State, limit: f32) {
 // Tab / Shift+Tab move the focus through the Tab stops (boxes with .Focusable) in build order, wrapping around.
 // While a modal is open only its own Tab stops take part. Runs after layout, so the newly focused box can be
 // scrolled into view inside its scroll containers.
+//
+// Arrow keys move the focus spatially (to the nearest Tab stop in that direction) once a widget that does not use
+// arrows itself has the focus; sliders, text fields and open menus consume their arrows before this runs.
 @(private)
 handle_tab_navigation :: proc(s: ^State) {
+	if handle_arrow_navigation(s) { return }
 	dir := 0
 	if key_press(.Tab) { dir = 1 } else if key_press(.Tab, {.Shift}) { dir = -1 }
 	if dir == 0 || len(s.focus_order) == 0 { return }
@@ -441,7 +489,56 @@ handle_tab_navigation :: proc(s: ^State) {
 	if cur < 0 { next = dir > 0 ? 0 : len(stops) - 1 } else { next = (cur + dir + len(stops)) % len(stops) }
 	s.focus_key = stops[next]
 	s.focus_visible = true
-	// bring it into view
+	scroll_focus_into_view(s)
+}
+
+@(private)
+handle_arrow_navigation :: proc(s: ^State) -> bool {
+	if s.focus_key == 0 || s.ctx_menu_key != 0 || len(s.focus_order) == 0 { return false }
+	cur := s.boxes[s.focus_key]
+	if cur == nil || cur.last_build != s.build_index || .Text_Input in cur.flags { return false }
+	dir: Vec2
+	switch {
+	case key_press(.Left):  dir = {-1, 0}
+	case key_press(.Right): dir = {1, 0}
+	case key_press(.Up):    dir = {0, -1}
+	case key_press(.Down):  dir = {0, 1}
+	case: return false
+	}
+	trapped := false
+	for e in s.focus_order { if e.trapped { trapped = true; break } }
+	c0 := (cur.rect.min + cur.rect.max) * 0.5
+	best: Key
+	best_score := max(f32)
+	for e in s.focus_order {
+		if e.trapped != trapped || e.key == cur.key { continue }
+		b := s.boxes[e.key]
+		if b == nil { continue }
+		c := (b.rect.min + b.rect.max) * 0.5
+		d := c - c0
+		along := d.x * dir.x + d.y * dir.y            // distance in the arrow direction
+		if along <= 1 { continue }
+		// distance across it; zero when the two boxes overlap on that axis (same row / same column)
+		across: f32
+		if dir.x != 0 {
+			gap := max(b.rect.min.y - cur.rect.max.y, cur.rect.min.y - b.rect.max.y)
+			across = max(gap, 0)
+		} else {
+			gap := max(b.rect.min.x - cur.rect.max.x, cur.rect.min.x - b.rect.max.x)
+			across = max(gap, 0)
+		}
+		score := along + across * 4
+		if score < best_score { best_score = score; best = e.key }
+	}
+	if best == 0 { return true }   // nothing that way: the key is still ours (do not scroll the page)
+	s.focus_key = best
+	s.focus_visible = true
+	scroll_focus_into_view(s)
+	return true
+}
+
+@(private)
+scroll_focus_into_view :: proc(s: ^State) {
 	b := s.boxes[s.focus_key]
 	if b == nil { return }
 	for p := b.parent; p != nil; p = p.parent {

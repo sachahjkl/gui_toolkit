@@ -90,6 +90,8 @@ try {
   Capture $fidget '--page=2 --toasts --toast_pos=2 --anim=on' 'toasts' 1800
   Capture $fidget '--about --theme=4 --anim=on' 'about' 1500
   Capture $fidget '--page=0 --theme=2 --anim=on' 'light' 1500
+  Capture $fidget '--page=0 --theme=7 --anim=on' 'bootstrap' 1500
+  Capture $fidget '--page=2 --compact --anim=on' 'compact' 1500
   Capture $todo '' 'todo' 1500
 } finally {
   [S1]::SetCursorPos($script:cursor.X, $script:cursor.Y) | Out-Null

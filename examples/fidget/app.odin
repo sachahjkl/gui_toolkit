@@ -44,6 +44,8 @@ Anim_Mode :: enum { System, On, Off }
 ////////////////////////////////
 // Palettes (each one expands into the full theme)
 
+DEFAULT_PALETTE :: 1   // Graphite
+
 Named_Palette :: struct { name: string, palette: ui.Palette }
 
 palettes := [?]Named_Palette{
@@ -53,6 +55,10 @@ palettes := [?]Named_Palette{
 	{"Nord", {bg = 0x2e3440ff, panel = 0x3b4252ff, panel2 = 0x434c5eff, text = 0xeceff4ff, weak = 0x9aa5b8ff, border = 0x4c566aff, accent = 0x88c0d0ff, accent_text = 0x1d2430ff, good = 0xa3be8cff, warn = 0xebcb8bff, bad = 0xbf616aff, dark = true}},
 	{"Dracula", {bg = 0x1e1f29ff, panel = 0x282a36ff, panel2 = 0x343746ff, text = 0xf8f8f2ff, weak = 0x9aa0c8ff, border = 0x44475aff, accent = 0xbd93f9ff, accent_text = 0x1a1326ff, good = 0x50fa7bff, warn = 0xf1fa8cff, bad = 0xff5555ff, dark = true}},
 	{"Amber", {bg = 0x16120bff, panel = 0x201a10ff, panel2 = 0x2d2415ff, text = 0xffe9c2ff, weak = 0xb59a66ff, border = 0x3d311cff, accent = 0xffb000ff, accent_text = 0x1a1200ff, good = 0x9acd32ff, warn = 0xffd54fff, bad = 0xff7043ff, dark = true}},
+	// Windows 7: sky-blue glass behind white panels, glossy silver buttons, Aero blue for selection
+	{"Aero", {bg = 0xb9d1ee8c, panel = 0xfbfcfeff, panel2 = 0xe3e9f1ff, text = 0x1b2633ff, weak = 0x4f6178ff, border = 0x8ea6c6ff, accent = 0x2f86dbff, accent_text = 0xffffffff, good = 0x2e9e45ff, warn = 0xd08c00ff, bad = 0xd13b2eff, dark = false, finish = .Glass, bar = 0x6fa3dcb0, translucent = true}},
+	// Bootstrap 2 (2012): white page, grey wells, gradient buttons with embossed text, blue focus glow
+	{"Bootstrap", {bg = 0xffffffff, panel = 0xf5f5f5ff, panel2 = 0xe9e9e9ff, text = 0x333333ff, weak = 0x8a8a8aff, border = 0xccccccff, accent = 0x0a6fd1ff, accent_text = 0xffffffff, good = 0x51a351ff, warn = 0xf89406ff, bad = 0xd2463fff, dark = false, finish = .Gradient}},
 }
 
 ////////////////////////////////
@@ -60,7 +66,7 @@ palettes := [?]Named_Palette{
 
 Command :: enum {
 	Go_Controls, Go_Inputs, Go_Data, Go_Playground,
-	Theme_Midnight, Theme_Graphite, Theme_Daylight, Theme_Nord, Theme_Dracula, Theme_Amber, Next_Theme,
+	Theme_Midnight, Theme_Graphite, Theme_Daylight, Theme_Nord, Theme_Dracula, Theme_Amber, Theme_Aero, Theme_Bootstrap, Next_Theme,
 	Toggle_Status, Toggle_Animations, Anim_System, Anim_On, Anim_Off, Toggle_Slowmo, Toggle_Boxes,
 	Toast_Info, Toast_Good, Toast_Warn, Toast_Bad, Clear_Toasts, Open_Modal, About, Settings,
 	Spawn_Balls, Confetti, Clear_Balls, Reset_Values,
@@ -81,6 +87,8 @@ command_info := [Command]Command_Info{
 	.Theme_Nord = {"Theme: Nord", "Theme", "", ICON_PALETTE},
 	.Theme_Dracula = {"Theme: Dracula", "Theme", "", ICON_PALETTE},
 	.Theme_Amber = {"Theme: Amber", "Theme", "", ICON_PALETTE},
+	.Theme_Aero = {"Theme: Aero", "Theme", "", ICON_PALETTE},
+	.Theme_Bootstrap = {"Theme: Bootstrap", "Theme", "", ICON_PALETTE},
 	.Next_Theme = {"Theme: Cycle next", "Theme", "Ctrl+T", ICON_REFRESH},
 	.Toggle_Status = {"View: Toggle status bar", "View", "Ctrl+B", ICON_WINDOW},
 	.Toggle_Animations = {"View: Toggle animations", "View", "Ctrl+J", ui.ICON_RADIO_ON},
@@ -148,6 +156,9 @@ App :: struct {
 	ui_font, mono, icons: font.Font_Id,
 	last_tick: time.Tick,
 	frames_requested: int,
+	bench_n: int,             // --bench: frames to measure
+	bench_out: string,
+	bench_ms: [dynamic]f32,
 	frame_index: u64,
 	title_cache: string,
 	debug_dump: bool,
@@ -183,9 +194,13 @@ App :: struct {
 	modal_open:   bool,
 	about_open:   bool,
 	settings_open: bool,
+	corner_smoothing: f32,   // 0 circular, 1 squircle
+	window_square: bool,
+	translucent, backdrop_ok: bool,   // current palette shows the OS backdrop (and the OS accepted it)     // last value sent to the OS (window corners follow rounding = 0)
 
 	// controls page
 	sw:      [3]bool,
+	sliders_on: bool,
 	chk:     [3]bool,
 	radio_sel: int,
 	slider:  [3]f32,
@@ -214,7 +229,13 @@ App :: struct {
 	sort_col: int,
 	sort_asc: bool,
 	order_key: u64,
-	selected_row: int,
+	selected_row: int,       // index in the display lines (group headers + rows), -1 = none
+	selected_disp: Maybe(Disp),
+	group_closed: [8]bool,   // per department
+	disp_count, disp_groups: int,
+	disp:      [dynamic]Disp,   // display lines cache (see build_display)
+	disp_sums: [len(dept_names)]Group_Sum,
+	disp_key:  u64,
 	table_focus: bool,
 	col_w:   [DATA_COLS]f32,
 	tree_open: [32]bool,
@@ -233,7 +254,7 @@ App :: struct {
 	spawn_next_ms: f64,
 }
 
-Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom: f32 }
+Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom, rounding, smoothing, density: f32 }
 
 Palette_Entry :: struct { cmd: Command, ranges: []ui.Fuzzy_Range }
 
