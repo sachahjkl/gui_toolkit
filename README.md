@@ -1,11 +1,15 @@
 # gui_toolkit
 
+[![version](https://img.shields.io/badge/version-0.1.0-7c8cff)](CHANGELOG.md)
+
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
 [RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
 
-~6,300 lines (toolkit + examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`, `stb/truetype`).
-The todo example is a 680 KB exe, shows its window in ~0.26 s and uses 0 % CPU when idle.
+![fidget, the widget gallery](docs/screenshots/controls.png)
+
+~4,100 lines of toolkit (+2,700 of examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`,
+`stb/truetype`). The widget gallery is a 930 KB exe, the todo example 720 KB; windows show in ~0.25 s and idle at 0 % CPU.
 
     build.bat fidget     # the widget gallery           ->  build\fidget.exe
     build.bat todo       # a todo app                   ->  build\todo.exe
@@ -13,7 +17,24 @@ The todo example is a 680 KB exe, shows its window in ~0.26 s and uses 0 % CPU w
     build.bat todo debug
 
 Needs the Odin compiler (tested with `dev-2026-10`) and Windows 10+ (Win32 + D3D11 only for now).
+Prebuilt binaries are attached to the [GitHub releases](https://github.com/sachahjkl/gui_toolkit/releases).
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Inputs: validation, fuzzy search, tags, form](docs/screenshots/inputs.png) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
+| **Inputs**: validated fields, live fuzzy search, tag input, form | **Data**: 20,000-row virtualized table (sort, filter, resize), file tree |
+| ![Playground: physics, spinner, live accent picker](docs/screenshots/playground.png) | ![Command palette with fuzzy matching](docs/screenshots/palette.png) |
+| **Playground**: physics balls, fidget spinner, live accent color picker | **Command palette** (Ctrl+K), fuzzy matches highlighted, Nord theme |
+| ![Settings dialog](docs/screenshots/settings.png) | ![Toasts](docs/screenshots/toasts.png) |
+| **Settings**: theme, zoom, animations, toast position (click a cell) | **Toasts**: 8 anchor positions, border tinted by kind |
+| ![About dialog](docs/screenshots/about.png) | ![Light theme](docs/screenshots/light.png) |
+| **About** (F1), Dracula theme | **Daylight** theme (6 themes, cross-fading) |
+
+<p align="center"><img src="docs/screenshots/todo.png" width="420" alt="todo example"><br><b>examples/todo</b></p>
+
+Screenshots are regenerated with `powershell -File tools/screenshots.ps1` (default settings, 175 % DPI).
 ## What it looks like
 
 ```odin
@@ -34,6 +55,11 @@ if ui.style({width = ui.fill(), radius = em * 0.45}) {
 
 Scopes use Odin's `@(deferred_none)`, so `if ui.row() { ... }`, `if ui.style({...}) { ... }`, `if ui.tags("card") { ... }`
 open and close themselves. Overrides for a single box go through `ui.next({...})`.
+
+## Versioning
+
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.1.0`; while `0.x`, a minor bump may change the API).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
 

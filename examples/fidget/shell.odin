@@ -432,7 +432,7 @@ build_about :: proc(app: ^App) {
 			// facts: label / value pairs
 			Fact :: struct { k, v: string }
 			facts := [?]Fact{
-				{"Toolkit", "gui_toolkit (Odin, immediate-mode UI)"},
+				{"Toolkit", fmt.tprintf("gui_toolkit %s (Odin, immediate-mode UI)", ui.VERSION)},
 				{"Renderer", "Direct3D 11, SDF rects + glyph atlas"},
 				{"Compiler", fmt.tprintf("Odin %s", ODIN_VERSION)},
 				{"Display", fmt.tprintf("%dx%d px, scale %.2f, zoom %d%%", app.win.size.x, app.win.size.y, app.win.dpi_scale, int(math.round(ui.zoom(&app.ui_state) * 100)))},
