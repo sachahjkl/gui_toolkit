@@ -354,10 +354,12 @@ build_notes :: proc(app: ^App, em: f32) {
 				}
 			}
 		}
-		if bring_front > 0 {
+		// later siblings draw on top (and win hit testing): the front note is the last one
+		last := len(app.note_order) - 1
+		if bring_front >= 0 && bring_front < last {
 			v := app.note_order[bring_front]
-			for j := bring_front; j > 0; j -= 1 { app.note_order[j] = app.note_order[j - 1] }
-			app.note_order[0] = v
+			for j := bring_front; j < last; j += 1 { app.note_order[j] = app.note_order[j + 1] }
+			app.note_order[last] = v
 		}
 	}
 }
