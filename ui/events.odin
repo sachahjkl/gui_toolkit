@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:math"
 import "../platform"
 
+_ :: fmt   // used by the UI_PROBE debug output only
+
 // Input is resolved once per frame, in begin_build, against LAST frame's layout (the tree is still intact at that
 // point): hot / active / pressed / clicked keys are plain lookups afterwards, so `signal` is just a comparison.
 
