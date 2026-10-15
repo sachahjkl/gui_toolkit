@@ -1,8 +1,5 @@
 package ui
 
-import "core:math"
-import "../draw"
-import "../font"
 
 ////////////////////////////////
 // Layout helpers
@@ -15,8 +12,14 @@ set_next_axis :: proc(a: Axis, cross := Cross_Align.Start) {
 	g.has_next = true
 }
 
-@(private)
+// Manual parent scope (prefer if parent(box) { ... }; pair with pop_parent).
 push_parent :: proc(b: ^Box) { append(&g.parent_stack, b) }
+
+// A box whose children lay out left to right, centered (no scope; pair with `if parent(b)`).
+row_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
+	set_next_axis(.X, .Center)
+	return build_box(flags, id)
+}
 
 // `if row() { ... }`: children are laid out left to right. Size comes from the style stack (or a preceding `next`).
 // Pass `flags` (e.g. {.Draw_Background}) and a stable `id` to make it a visible, persistent container.
@@ -35,11 +38,12 @@ column :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "
 	return true
 }
 
-// Empty space along the parent's layout axis.
+// Empty space along the parent's layout axis. The off-axis size is None (0): a spacer must never drive the
+// cross-axis size of a children_sum parent (pct would resolve against a distant ancestor and explode it).
 spacer :: proc(size: Size) {
 	p := parent_box()
 	m: Style_Mod
-	if p.layout_axis == .X { m.width = size; m.height = fill() } else { m.height = size; m.width = fill() }
+	if p.layout_axis == .X { m.width = size; m.height = Size{} } else { m.height = size; m.width = Size{} }
 	if g.has_next { m = merge_mod(g.next_mod, m) }
 	next(m)
 	build_box({})
@@ -95,54 +99,6 @@ icon_button :: proc(id: string, icon: string) -> Signal {
 		}
 	}
 	return {}
-}
-
-Mark_Draw :: struct { t: f32, accent, ring: Color, size: f32 }
-
-@(private)
-mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	d := (^Mark_Draw)(user)
-	r := b.rect
-	w := r.max.x - r.min.x
-	inset := (1 - d.t) * w * 0.5
-	fill := d.accent
-	fill.a *= min(1, d.t * 1.6)
-	draw.rect(dc, draw.rect_pad(r, -inset), fill, w * 0.28)
-	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), w * 0.28, 1.5)
-	if d.t > 0.05 {
-		// check mark: two strokes drawn as thin rects would alias; use the icon font glyph when available
-		size := d.size * d.t
-		if g.icon_font != 0 {
-			m := font.metrics(g.fonts, g.icon_font, size)
-			dim := font.text_width(g.fonts, g.icon_font, size, "V")
-			c := draw.rect_center(r)
-			draw.text(dc, g.icon_font, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, "V")
-		}
-	}
-}
-
-// Clickable row: animated box + label. Returns the signal; `value` is toggled on click.
-checkbox :: proc(id: string, text: string, value: ^bool) -> Signal {
-	em := font_size()
-	set_next_axis(.X, .Center)
-	row_box := build_box({.Clickable, .Draw_Hot_Effects}, id)
-	sig := signal(row_box)
-	if sig.clicked { value^ = !value^ }
-	if parent(row_box) {
-		t := anim(key_from_string(row_box.key, "t"), value^ ? 1 : 0, 30)
-		next({width = px(em * 1.4), height = px(em * 1.4)})
-		d := frame_new(Mark_Draw)
-		d.t = t
-		d.accent = color("accent")
-		d.ring = color("text")
-		d.ring.a = 0.5 + 0.25 * row_box.hot_t
-		d.size = em * 0.95
-		custom("mark", mark_draw, d)
-		spacer(px(em * 0.6))
-		next({width = text_size(), height = px(em * 1.6)})
-		build_box({.Draw_Text}, text)
-	}
-	return sig
 }
 
 ////////////////////////////////

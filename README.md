@@ -1,13 +1,14 @@
 # gui_toolkit
 
-A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer,
-written as an idiomatic Odin port of the UI layers of the [RAD Debugger](https://github.com/EpicGamesExt/raddebugger)
-(box tree, keyed persistence, size-kind layout, signals, tag-based themes, animation).
+A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
+The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
+[RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
 
-~3,400 lines, no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`, `stb/truetype`).
+~6,300 lines (toolkit + examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`, `stb/truetype`).
 The todo example is a 680 KB exe, shows its window in ~0.26 s and uses 0 % CPU when idle.
 
-    build.bat            # build examples\todo (optimized)  ->  build\todo.exe
+    build.bat fidget     # the widget gallery           ->  build\fidget.exe
+    build.bat todo       # a todo app                   ->  build\todo.exe
     build.bat smoke      # renderer / font / draw smoke test (no UI layer)
     build.bat todo debug
 
@@ -55,24 +56,11 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
   the effective scale is dpi scale x zoom). Apps write sizes in logical pixels.
 - **DPI**: per-monitor aware, window sized from the monitor DPI and clamped to the work area.
 - **Animations** follow the OS "show animations" setting (`Build_Params.animations`); when off, every transition jumps.
-- **Widgets**: label, button, icon button, checkbox, single-line text field (selection, word moves, clipboard, mouse),
-  scroll region, context menu + items, tooltip with hover delay, custom-draw boxes.
+- **Widgets**: label, button (+icon variant), icon button, checkbox, radio, switch, slider, range slider, stepper,
+  segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
+  (selection, word moves, clipboard, mouse), scroll region, context menu + items, menu bar, tooltip with hover delay,
+  toasts, modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
-
-## Parity with the C original
-
-Done and exercised in `examples/todo` (real input, DPI 175 %, resize burst, zoom): box tree and persistence, keys,
-style and tag stacks, the five layout passes, signals (hover, press, click, double click, right click, drag, wheel),
-animations, themes, line edit, scrolling, popups, tooltips, DPI, zoom.
-
-Not ported yet: color pickers, sort headers / expanders, virtualized list helper (`ui_scroll_list`), fuzzy-match
-highlighting, drag and drop, Tab focus navigation, multi-line text, background blur, custom title bar, Linux / macOS
-backends. The widget gallery of `gui_fidget` (switch, slider, dropdown, tabs, command palette, toasts, table) is the
-natural next port, since it only uses the primitives that exist here.
-
-Known gaps in what is ported: keyboard shortcuts with modifiers (Ctrl+A/C/X/V, shift selection) are implemented but were
-not exercised by the automated test (synthetic key messages do not carry modifier state); the glyph atlas resets when
-full (rare, may flicker one frame).
 
 ## Testing
 

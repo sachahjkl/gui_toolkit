@@ -1,0 +1,191 @@
+package fidget
+
+import "core:fmt"
+import "core:math"
+import "core:os"
+import "core:strconv"
+import "core:strings"
+import "core:time"
+import "../../draw"
+import "../../font"
+import "../../platform"
+import "../../render"
+import "../../ui"
+
+the_app: ^App
+
+clip_get :: proc() -> string { return platform.get_clipboard(the_app.win, context.temp_allocator) }
+clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
+
+////////////////////////////////
+// Settings (%APPDATA%\gui_toolkit_fidget\settings.txt)
+
+settings_dir :: proc() -> string {
+	return fmt.tprintf("%s/gui_toolkit_fidget", platform.config_dir(context.temp_allocator))
+}
+
+snapshot :: proc(app: ^App) -> Saved_Settings {
+	return {palette = i32(app.palette_idx), anim = i32(app.anim_mode), status = app.show_status ? 1 : 0, zoom = ui.zoom(&app.ui_state)}
+}
+
+settings_save :: proc(app: ^App) {
+	names := [Anim_Mode]string{.System = "system", .On = "on", .Off = "off"}
+	text := fmt.tprintf("animations=%s\npalette=%d\nstatus_bar=%d\nzoom=%.3f\n", names[app.anim_mode], app.palette_idx, app.show_status ? 1 : 0, ui.zoom(&app.ui_state))
+	_ = os.make_directory_all(settings_dir())
+	_ = os.write_entire_file(fmt.tprintf("%s/settings.txt", settings_dir()), transmute([]byte)text)
+	app.saved = snapshot(app)
+}
+
+settings_load :: proc(app: ^App) {
+	data, err := os.read_entire_file(fmt.tprintf("%s/settings.txt", settings_dir()), context.temp_allocator)
+	if err != nil { return }
+	text := string(data)
+	for line in strings.split_lines_iterator(&text) {
+		eq := strings.index_byte(line, '=')
+		if eq < 0 { continue }
+		key, val := strings.trim_space(line[:eq]), strings.trim_space(line[eq + 1:])
+		switch key {
+		case "animations": app.anim_mode = val == "on" ? .On : (val == "off" ? .Off : .System)
+		case "palette": if v, ok := strconv.parse_int(val); ok { set_palette(app, v) }
+		case "status_bar": app.show_status = val != "0"
+		case "zoom": if v, ok := strconv.parse_f32(val); ok { ui.set_zoom(&app.ui_state, v) }
+		}
+	}
+}
+
+////////////////////////////////
+// Theme, animation mode
+
+set_palette :: proc(app: ^App, idx: int) {
+	app.palette_idx = (idx % len(palettes) + len(palettes)) % len(palettes)
+	app.accent_override = false
+	h, s, v := draw.hsv_from_hex(palettes[app.palette_idx].palette.accent)
+	app.hue, app.sat, app.val = h, s, v
+}
+
+apply_theme :: proc(app: ^App) {
+	p := palettes[app.palette_idx].palette
+	ui.apply_palette(&app.theme, p)
+	if app.accent_override {
+		ui.theme_set(&app.theme, "accent", draw.hsv(app.hue, app.sat, app.val))
+		ui.theme_set(&app.theme, "accent_button background", draw.hsv(app.hue, app.sat, app.val))
+		ui.theme_set(&app.theme, "accent_button border", draw.hsv(app.hue, app.sat, app.val))
+		ui.theme_set(&app.theme, "focus border", draw.hsv(app.hue, app.sat, app.val))
+	}
+}
+
+animations_enabled :: proc(app: ^App) -> bool {
+	switch app.anim_mode {
+	case .On:  return true
+	case .Off: return false
+	case .System:
+		now := ui.now_ms()
+		if app.os_anim_checked_ms == 0 || now - app.os_anim_checked_ms > 500 {
+			app.os_anim_on = platform.os_animations_enabled()
+			app.os_anim_checked_ms = now
+		}
+		return app.os_anim_on
+	}
+	return true
+}
+
+////////////////////////////////
+// Frame
+
+frame :: proc(app: ^App, events: []platform.Event) {
+	scale := app.win.dpi_scale
+	render.resize(&app.r, app.win.size)
+	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
+
+	now := time.tick_now()
+	dt := clamp(f32(time.duration_seconds(time.tick_diff(app.last_tick, now))), 0.0005, 0.1)
+	app.last_tick = now
+	app.real_dt = dt
+	t_begin := time.tick_now()
+
+	apply_theme(app)
+	platform.set_dark_title(app.win, palettes[app.palette_idx].palette.dark)
+
+	base := ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(36)}, font = app.ui_font, font_size = 15, text_pad = 7, cursor = .Arrow}
+	ui.begin_build(&app.ui_state, {
+		window_size = size, events = events, dt = dt * (app.slowmo ? 0.2 : 1), animations = animations_enabled(app),
+		dpi_scale = scale, base = base, clipboard_get = clip_get, clipboard_set = clip_set,
+	})
+	build_ui(app)
+	ui.end_build()
+	if app.debug_dump && app.frame_index == 5 { ui.debug_dump_tall(&app.ui_state, f32(app.win.size.y) * 0.5) }
+	platform.set_cursor(app.win, ui.cursor(&app.ui_state))
+	if ui.needs_frame(&app.ui_state) { app.frames_requested = max(app.frames_requested, 2) }
+	if snapshot(app) != app.saved { settings_save(app) }
+
+	// window title
+	title := fmt.tprintf("gui_toolkit fidget  |  %s  |  %s", page_names[int(app.page)], palettes[app.palette_idx].name)
+	if title != app.title_cache { app.title_cache = strings.clone(title); platform.set_title(app.win, title) }
+
+	draw.begin_frame(&app.dc, size)
+	render.frame_begin(&app.r, {0, 0, 0, 1})
+	ui.draw_tree(&app.ui_state, &app.dc)
+	draw.end_frame(&app.dc)
+	ms := f32(time.duration_milliseconds(time.tick_since(t_begin)))   // before present: vsync wait is not our cost
+	render.frame_end(&app.r)
+
+	app.ui_ms = math.lerp(app.ui_ms, ms, f32(0.25))
+	app.ms_hist[app.ms_idx % 64] = ms
+	app.ms_idx += 1
+	app.frame_index += 1
+	free_all(context.temp_allocator)
+}
+
+main :: proc() {
+	app := new(App)
+	the_app = app
+	rng_state ~= u64(time.tick_now()._nsec) * 0x9e3779b97f4a7c15
+	font.init(&app.fonts)
+	app.win = platform.open_window("gui_toolkit fidget", {1180, 780})
+	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("renderer init failed"); return }
+	ok: bool
+	app.ui_font, ok = font.load_from_file(&app.fonts, "C:/Windows/Fonts/segoeui.ttf")
+	if !ok { fmt.eprintln("cannot load segoeui.ttf"); return }
+	app.mono, _ = font.load_from_file(&app.fonts, "C:/Windows/Fonts/consola.ttf")
+	if app.mono == 0 { app.mono = app.ui_font }
+	exe_dir, _ := os.get_executable_directory(context.temp_allocator)
+	app.icons, ok = font.load_from_file(&app.fonts, fmt.tprintf("%s/icons.ttf", exe_dir))
+	if !ok { fmt.eprintln("cannot load icons.ttf (expected next to the exe)"); return }
+	draw.init(&app.dc, &app.r, &app.fonts)
+	ui.init(&app.ui_state, &app.fonts, &app.theme)
+	app.ui_state.icon_font = app.icons
+	app.ui_state.mono_font = app.mono
+
+	app.show_status = true
+	set_palette(app, 0)
+	reset_values(app)
+	data_init(app)
+	app.tree_open[0], app.tree_open[1], app.tree_open[6], app.tree_open[10] = true, true, true, true
+	app.tree_sel = 2
+	settings_load(app)
+	args := os.args
+	for a in args[1:] {   // test flags: --page=N --palette=N --anim=on|off
+		if strings.has_prefix(a, "--page=") { if v, vok := strconv.parse_int(a[7:]); vok { app.page = Page(clamp(v, 0, len(Page) - 1)) } }
+		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
+		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
+		if a == "--modal" { app.modal_open = true }
+		if a == "--anim=off" { app.anim_mode = .Off }
+		if a == "--anim=on" { app.anim_mode = .On }
+		if a == "--dump" { app.debug_dump = true }
+	}
+	app.saved = snapshot(app)
+
+	app.last_tick = time.tick_now()
+	app.frames_requested = 4
+	app.win.user = app
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), nil) }
+	platform.show_window(app.win)
+
+	for !platform.is_closed(app.win) && !app.want_quit {
+		wait := app.frames_requested == 0 && !ui.needs_frame(&app.ui_state)
+		events := platform.poll_events(app.win, wait, ui.wake_ms(&app.ui_state))
+		if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
+		frame(app, events)
+		if app.frames_requested > 0 { app.frames_requested -= 1 }
+	}
+}

@@ -200,6 +200,22 @@ Theme :: struct {
 	patterns: [dynamic]Theme_Pattern,
 }
 
+Timer :: struct {
+	next_ms:    f64,
+	last_build: u64,
+}
+
+Toast_Kind :: enum u8 { Info, Good, Warn, Bad }
+
+Toast :: struct {
+	alive:   bool,
+	kind:    Toast_Kind,
+	text:    [112]u8,
+	len:     int,
+	born_ms: f64,
+	life_ms: f64,
+}
+
 Animation :: struct {
 	value:      f32,
 	last_build: u64,
@@ -223,6 +239,12 @@ State :: struct {
 	theme:       ^Theme,
 	fonts:       ^font.State,
 	icon_font:   font.Font_Id,
+	mono_font:   font.Font_Id,           // optional: used by sliders, kbd chips and tables (falls back to the UI font)
+	timers:      map[Key]Timer,
+	drag_payload: [4]f32,               // data stored at press time for the active drag (see drag_store / drag_load)
+	toasts:      [8]Toast,
+	bar_keys:    [dynamic]Key,          // menu bar menus built this frame
+	bar_keys_prev: [dynamic]Key,
 
 	// per build
 	parent_stack: [dynamic]^Box,
