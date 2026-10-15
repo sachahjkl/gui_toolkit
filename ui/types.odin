@@ -52,7 +52,9 @@ fill :: proc() -> Size { return pct(1, 0) }
 
 Box_Flag :: enum u8 {
 	Clickable,
-	Focusable,           // can own keyboard focus (text fields)
+	Focusable,           // a Tab stop: can own keyboard focus; Enter / Space activate it unless it is a Text_Input
+	Text_Input,          // handles keys and text itself (line_edit, text_edit): no Enter / Space activation
+	Scroll_Self,         // receives wheel deltas in `signal(...).scrolled` and scrolls its own content
 	View_Scroll_X,
 	View_Scroll_Y,
 	View_Clamp_X,
@@ -91,6 +93,7 @@ Box :: struct {
 
 	// identity / persistence
 	key:         Key,
+	name:        string,         // hash part of the id string ("" for anonymous boxes), for debugging and tests
 	last_build:  u64,
 	first_build: u64,
 
@@ -217,6 +220,11 @@ Toast :: struct {
 	life_ms: f64,
 }
 
+Focus_Entry :: struct {
+	key:     Key,
+	trapped: bool,
+}
+
 Animation :: struct {
 	value:      f32,
 	last_build: u64,
@@ -287,6 +295,12 @@ State :: struct {
 	last_click_key:  Key,
 	last_click_ms:   f64,
 	focus_key:    Key,
+	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box
+	focus_order:  [dynamic]Focus_Entry,  // Tab stops in build order (this frame)
+	trap_depth:   int,               // > 0 while building inside a modal: Tab cycles inside it only
+	modal_prev, modal_now: Key,      // modal open last frame / this frame (focus resets when a modal opens)
+	menu_sel, menu_index, menu_count: int,   // keyboard selection inside the open context menu
+	menu_activate: bool,
 	time_ms:      f64,
 	cursor_request: platform.Cursor,
 	clipboard_get: proc() -> string,

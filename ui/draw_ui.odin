@@ -48,9 +48,10 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		if .Draw_Side_Left in flags   { draw.rect(dc, {r.min, {r.min.x + t, r.max.y}}, b.border) }
 		if .Draw_Side_Right in flags  { draw.rect(dc, {{r.max.x - t, r.min.y}, r.max}, b.border) }
 	}
-	if .Draw_Focus_Ring in flags && b.focus_t > 0.01 {
+	keyboard_focus := s.focus_visible && b.key == s.focus_key
+	if (.Draw_Focus_Ring in flags && b.focus_t > 0.01) || keyboard_focus {
 		c := color_from_tags(s, b.tags_key, "focus border")
-		c.a *= b.focus_t
+		if !keyboard_focus { c.a *= b.focus_t }
 		draw.rect(dc, r, c, radius, 1.5 * scale)
 	}
 	if b.disabled_t > 0.005 {

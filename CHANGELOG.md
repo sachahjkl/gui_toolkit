@@ -3,9 +3,28 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-15
 
+### Added
+- **Multi-line editor** `ui.text_edit` with `ui.Text_Area`: selection (keyboard and mouse, double-click word),
+  Up / Down keep the column, Home goes to the first non-blank character, Ctrl+Home / End, Page Up / Down,
+  word moves and deletes, Enter keeps the indentation, clipboard (CRLF and tabs normalized), undo / redo
+  (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z; edits grouped per second), wheel scrolling, optional line numbers,
+  optional Tab-indents mode, Ctrl+Enter = committed, Escape leaves the field.
+- **Keyboard focus navigation**: Tab / Shift+Tab move through the Tab stops in build order (wrapping), the
+  focused widget is scrolled into view and gets a focus ring; Enter / Space activate buttons, checkboxes, radios,
+  switches, segmented items, chips, tabs and dropdowns; sliders take arrows, Page Up / Down, Home / End.
+  Inside a modal, Tab cycles through the dialog only, and the page loses the focus when the dialog opens.
+- **Context menus and dropdowns from the keyboard**: Up / Down select, Enter / Space choose.
+- `ui.focused_name()` (id of the focused box), new box flags `Text_Input` and `Scroll_Self`.
+- fidget: a multi-line editor card, more shortcuts in the cheat sheet, `--state_title` for scripted tests.
+- `tools/keyboard_test.ps1`: 28 checks with real keystrokes and modifiers (Ctrl+A/C/V, Tab, Space, Ctrl+Z/Y,
+  Ctrl +/-/0, Ctrl+K, Ctrl+, and a dropdown driven from the keyboard), only sent while fidget is in front.
 - New logo: a white switch and slider on a cobalt rounded square (`tools/make_logo.ps1`), also the icon of `todo.exe`.
+
+### Fixed
+- `icon_button` registered its box under a key it then replaced: the button could not hold the keyboard focus.
+- A focused widget no longer steals Enter / Space from an open context menu.
 
 ## [0.1.0] - 2026-10-15
 
@@ -40,4 +59,5 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.2.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.1.0

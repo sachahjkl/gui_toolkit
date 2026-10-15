@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.0-7c8cff" alt="version 0.1.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.0-1d57ba" alt="version 0.2.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -25,8 +25,8 @@ Prebuilt binaries are attached to the [GitHub releases](https://github.com/sacha
 
 | | |
 |---|---|
-| ![Inputs: validation, fuzzy search, tags, form](docs/screenshots/inputs.png) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
-| **Inputs**: validated fields, live fuzzy search, tag input, form | **Data**: 20,000-row virtualized table (sort, filter, resize), file tree |
+| ![Inputs: validation, multi-line editor, fuzzy search, tags, form](docs/screenshots/inputs.png) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
+| **Inputs**: validated fields, multi-line editor, live fuzzy search, tag input, form | **Data**: 20,000-row virtualized table (sort, filter, resize), file tree |
 | ![Playground: physics, spinner, live accent picker](docs/screenshots/playground.png) | ![Command palette with fuzzy matching](docs/screenshots/palette.png) |
 | **Playground**: physics balls, fidget spinner, live accent color picker | **Command palette** (Ctrl+K), fuzzy matches highlighted, Nord theme |
 | ![Settings dialog](docs/screenshots/settings.png) | ![Toasts](docs/screenshots/toasts.png) |
@@ -60,7 +60,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.1.0`; while `0.x`, a minor bump may change the API).
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.2.0`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -86,7 +86,8 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 - **Animations** follow the OS "show animations" setting (`Build_Params.animations`); when off, every transition jumps.
 - **Widgets**: label, button (+icon variant), icon button, checkbox, radio, switch, slider, range slider, stepper,
   segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
-  (selection, word moves, clipboard, mouse), scroll region, context menu + items, menu bar, tooltip with hover delay,
+  (selection, word moves, clipboard, mouse), **multi-line editor** (`text_edit`: undo / redo, line numbers,
+  indentation, Up / Down keep the column), scroll region, context menu + items, menu bar, tooltip with hover delay,
   toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
@@ -94,10 +95,16 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms now (`-define:RENDER_PROBE=true` prints
   it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
 
-Not there yet: multi-line text, Tab focus navigation, drag-and-drop files, background blur, Linux/macOS backends.
+- **Keyboard**: Tab / Shift+Tab focus navigation (trapped inside modals, scrolled into view, focus ring), Enter / Space
+  activate, arrows drive sliders, menus and dropdowns.
+
+Not there yet: word wrap in the editor, IME composition, drag-and-drop files, background blur, Linux/macOS backends.
 
 ## Testing
 
+`tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (28 checks: clipboard, Tab focus, Space
+activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown) and reads the state from the
+window title (`--state_title`); keys are sent only while fidget is the foreground window.
 `tools\ui_test.ps1` drives `examples/todo` and `tools\fidget_test.ps1` drives `examples/fidget` with real clicks
 (typing, Enter, toggles, segmented, chips, dropdown, slider, tooltip, context menu, wheel scroll, command palette,
 theme switch) and check the title / saved files. They abort if another window covers the target point.

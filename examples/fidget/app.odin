@@ -201,6 +201,9 @@ App :: struct {
 
 	// inputs page
 	name, email, number, search, tag_input, bio, filter: ui.Text_Field,
+	editor:  ui.Text_Area,
+	editor_tab_indents: bool,
+	state_title: bool,
 	tags:    [dynamic]string,
 	agree:   bool,
 

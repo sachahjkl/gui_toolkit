@@ -18,6 +18,7 @@ public class S1 {
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint f);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X,Y; }
 }
@@ -41,16 +42,32 @@ function Capture($exe, $argList, $name, $waitMs) {
   [S1]::SetWindowPos($h, [IntPtr](-1), 0, 0, 0, 0, 0x13) | Out-Null
   [S1]::SetForegroundWindow($h) | Out-Null
   Start-Sleep -Milliseconds $waitMs
-  $r = New-Object S1+RECT; [S1]::GetWindowRect($h, [ref]$r) | Out-Null
+  # the visible frame only (DWMWA_EXTENDED_FRAME_BOUNDS): GetWindowRect includes the invisible resize border,
+  # through which whatever is behind the window would end up in the capture
+  $r = New-Object S1+RECT
+  if([S1]::DwmGetWindowAttribute($h, 9, [ref]$r, 16) -ne 0) { [S1]::GetWindowRect($h, [ref]$r) | Out-Null }
   $w = $r.R - $r.L; $hh = $r.B - $r.T
   # only capture when our window is really what is visible (never grab someone else's window)
   $pt = New-Object S1+POINT; $pt.X = $r.L + [int]($w / 2); $pt.Y = $r.T + [int]($hh / 2)
   if([S1]::GetAncestor([S1]::WindowFromPoint($pt), 2) -ne $h) { $p.Kill(); throw "window covered, not capturing $name" }
-  $full = New-Object Drawing.Bitmap $w, $hh
-  [Drawing.Graphics]::FromImage($full).CopyFromScreen($r.L, $r.T, 0, 0, $full.Size)
+  $grab = New-Object Drawing.Bitmap $w, $hh
+  [Drawing.Graphics]::FromImage($grab).CopyFromScreen($r.L, $r.T, 0, 0, $grab.Size)
   $p.Kill()
+  # Windows 11 rounds window corners and the frame bounds can include a 1 px seam: whatever is behind the window
+  # shows there. Inset by 1 px and make the corners transparent so nothing from the desktop ends up in the image.
+  $inset = 1
+  $w -= 2 * $inset; $hh -= 2 * $inset
+  $full = New-Object Drawing.Bitmap $w, $hh, ([Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $gf = [Drawing.Graphics]::FromImage($full); $gf.Clear([Drawing.Color]::Transparent); $gf.SmoothingMode = 'AntiAlias'
+  $rad = [Math]::Max(8, [int]((($r.R - $r.L) / 2089.0) * 16))   # ~8 logical px at 175 %
+  $path = New-Object Drawing.Drawing2D.GraphicsPath; $d = 2 * $rad
+  $path.AddArc(0, 0, $d, $d, 180, 90); $path.AddArc($w - $d, 0, $d, $d, 270, 90)
+  $path.AddArc($w - $d, $hh - $d, $d, $d, 0, 90); $path.AddArc(0, $hh - $d, $d, $d, 90, 90); $path.CloseFigure()
+  $gf.SetClip($path)
+  $gf.DrawImage($grab, (New-Object Drawing.Rectangle 0, 0, $w, $hh), (New-Object Drawing.Rectangle $inset, $inset, $w, $hh), [Drawing.GraphicsUnit]::Pixel)
+  $gf.Dispose(); $grab.Dispose()
   $tw = [Math]::Min(1400, $w); $th = [int]($hh * $tw / $w)
-  $small = New-Object Drawing.Bitmap $tw, $th
+  $small = New-Object Drawing.Bitmap $tw, $th, ([Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $g = [Drawing.Graphics]::FromImage($small)
   $g.InterpolationMode = 'HighQualityBicubic'; $g.PixelOffsetMode = 'HighQuality'; $g.SmoothingMode = 'AntiAlias'
   $g.DrawImage($full, 0, 0, $tw, $th)

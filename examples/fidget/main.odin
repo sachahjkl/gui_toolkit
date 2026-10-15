@@ -131,6 +131,11 @@ frame :: proc(app: ^App) {
 
 	// window title
 	title := fmt.tprintf("gui_toolkit fidget  |  %s  |  %s", page_names[int(app.page)], palettes[app.palette_idx].name)
+	if app.state_title {   // machine-readable state for scripted tests
+		title = fmt.tprintf("S zoom=%d page=%d name=%s bio=%s agree=%d sw1=%d vol=%.0f lang=%d focus=%s editor_lines=%d editor_len=%d pal=%d settings=%d theme=%d",
+			int(math.round(ui.zoom(&app.ui_state) * 100)), int(app.page), ui.field_string(&app.name), ui.field_string(&app.bio), int(app.agree),
+			int(app.sw[1]), app.slider[0], app.dd[0], ui.focused_name(), ui.area_line_count(&app.editor), len(app.editor.buf), int(app.palette_open), int(app.settings_open), app.palette_idx)
+	}
 	if title != app.title_cache { app.title_cache = strings.clone(title); platform.set_title(app.win, title) }
 
 	draw.begin_frame(&app.dc, size)
@@ -184,6 +189,7 @@ main :: proc() {
 		if a == "--about" { app.about_open = true }
 		if a == "--settings" { app.settings_open = true }
 		if a == "--toasts" { app.debug_toasts = true }
+		if a == "--state_title" { app.state_title = true }
 		if strings.has_prefix(a, "--toast_pos=") { if v, vok := strconv.parse_int(a[12:]); vok { ui.set_toast_position(&app.ui_state, ui.Toast_Position(clamp(v, 0, len(ui.Toast_Position) - 1))) } }
 		if a == "--anim=off" { app.anim_mode = .Off }
 		if a == "--anim=on" { app.anim_mode = .On }

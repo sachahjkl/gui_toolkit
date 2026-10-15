@@ -92,7 +92,7 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 	em := font_size()
 	set_next_axis(.X, .Center)
-	row_box := build_box({.Clickable, .Draw_Hot_Effects}, id)
+	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
 	sig := signal(row_box)
 	if parent(row_box) {
 		t := anim(key_from_string(row_box.key, "t"), on ? 1 : 0, 30)
@@ -149,7 +149,7 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 	em := font_size()
 	set_next_axis(.X, .Center)
-	row_box := build_box({.Clickable, .Draw_Hot_Effects}, id)
+	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
 	sig := signal(row_box)
 	if sig.clicked { value^ = !value^ }
 	if parent(row_box) {
@@ -225,10 +225,24 @@ slider_pct :: proc(b: ^Box) -> f32 {
 }
 
 // `format` is a printf format for the value text, e.g. "%.0f" or "%.1f C". step 0 = continuous.
+// Keyboard (when focused): Left / Down and Right / Up step the value (`step`, or 1 % of the range), Home / End jump
+// to the ends, Page Up / Page Down move by 10 steps.
 slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f") -> (sig: Signal) {
-	b := build_box({.Clickable}, id)
+	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
 	sig = signal(b)
+	if sig.focused {
+		k := step > 0 ? step : (hi - lo) / 100
+		v := value^
+		if key_press(.Left) || key_press(.Down) { v -= k }
+		if key_press(.Right) || key_press(.Up) { v += k }
+		if key_press(.Page_Down) { v -= 10 * k }
+		if key_press(.Page_Up) { v += 10 * k }
+		if key_press(.Home) { v = lo }
+		if key_press(.End) { v = hi }
+		if step > 0 { v = math.round(v / step) * step }
+		value^ = clamp(v, lo, hi)
+	}
 	if sig.pressed || sig.dragging {
 		v := lo + slider_pct(b) * (hi - lo)
 		if step > 0 { v = math.round(v / step) * step }
@@ -335,7 +349,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 			for label, i in labels {
 				fg := i == selected^ ? text_on : text_off
 				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg})
-				item := build_box({.Clickable, .Draw_Text}, fmt.tprintf("%s###seg%d", label, i))
+				item := build_box({.Clickable, .Focusable, .Draw_Text}, fmt.tprintf("%s###seg%d", label, i))
 				if signal(item).clicked && i != selected^ { selected^ = i; changed = true }
 			}
 		}
@@ -351,7 +365,7 @@ chips :: proc(id: string, labels: []string, mask: ^u32) {
 			on := mask^ & (1 << u32(i)) != 0
 			push_tags(on ? "accent_button" : "button")
 			next({width = text_size(em * 0.5, 0.6), height = px(em * 1.9), radius = em * 0.95, text_align = .Center})
-			b := build_box({.Clickable, .Draw_Text, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, fmt.tprintf("%s###%s_%d", label, id, i))
+			b := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, fmt.tprintf("%s###%s_%d", label, id, i))
 			pop_tags()
 			if signal(b).clicked { mask^ ~= (1 << u32(i)) }
 			spacer(px(em * 0.45))
@@ -426,7 +440,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	sig: Signal
 	if tags("button") {
 		set_next_axis(.X, .Center)
-		btn = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, id)
+		btn = build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, id)
 		sig = signal(btn)
 		if parent(btn) {
 			spacer(px(em * 0.8))
@@ -436,7 +450,10 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 		}
 	}
 	if sig.clicked {
-		if open { ctx_menu_close() } else { ctx_menu_open(menu_key, {btn.rect.min.x, btn.rect.max.y + 4}, btn.key) }
+		if open { ctx_menu_close() } else {
+			ctx_menu_open(menu_key, {btn.rect.min.x, btn.rect.max.y + 4}, btn.key)
+			g.menu_sel = selected^   // keyboard starts from the current value
+		}
 	}
 	if ctx_menu(menu_key, max(btn.size.x, em * 10)) {
 		for item, i in items {
@@ -470,7 +487,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 		set_next_axis(.X, .Center)
 		g.next_mod.width = children_sum()
 		g.next_mod.height = pct(1)
-		b := build_box({.Clickable, .Draw_Hot_Effects}, tab_id)
+		b := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, tab_id)
 		d := frame_new(Tab_Draw)
 		d.t, d.accent = t, color("accent")
 		b.custom, b.custom_user = tab_draw, d
@@ -578,7 +595,7 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig:
 		g.next_mod.width = children_sum()
 		g.next_mod.height = px(em * 2.2)
 		g.next_mod.radius = em * 0.45
-		flags := Box_Flags{.Clickable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
+		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
 		if disabled { flags += {.Disabled} }
 		b := build_box(flags, id)
 		b.squish = anim(key_from_string(b.key, "squish"), g.active_key[.Left] == b.key && g.hot_key == b.key ? 0.04 : 0, 60)

@@ -33,6 +33,7 @@ reset_values :: proc(app: ^App) {
 	ui.field_clear(&app.tag_input)
 	ui.field_clear(&app.bio)
 	ui.field_clear(&app.filter)
+	ui.area_set(&app.editor, "# Notes\n\nA multi-line editor from gui_toolkit:\n  - Enter keeps the indentation\n  - Ctrl+Z / Ctrl+Y undo and redo\n  - Up / Down keep the column\n  - Tab moves the focus (or indents, see below)\n")
 	clear(&app.tags)
 	append(&app.tags, "ui", "odin", "fast")
 	app.agree = false
@@ -318,6 +319,20 @@ page_inputs :: proc(app: ^App) {
 			}
 			ui.spacer(ui.px(em))
 			if half("###right") {
+				if ui.card("Multi-line editor", ICON_PENCIL) {
+					ui.next({width = ui.fill(), height = ui.px(em * 13)})
+					res := ui.text_edit("###editor", &app.editor, "Write something...", line_numbers = true, tab_indents = app.editor_tab_indents)
+					if res.committed { ui.toast(.Good, "Ctrl+Enter: %d lines", ui.area_line_count(&app.editor)) }
+					ui.next({width = ui.fill(), height = ui.px(em * 2.3)})
+					if ui.row(.Center, id = "###editor_bar") {
+						ui.next({width = ui.pct(0.55), height = ui.pct(1)})
+						ui.checkbox("###editor_tab", "Tab inserts spaces", &app.editor_tab_indents)
+						if ui.tags("weak") {
+							ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.85), text_align = .Right})
+							ui.label(fmt.tprintf("%d lines, %d chars", ui.area_line_count(&app.editor), len(app.editor.buf)))
+						}
+					}
+				}
 				if ui.card("Tag input", ICON_PIN) {
 					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
 					if ui.row(.Center, id = "###tagrow") {
@@ -370,6 +385,8 @@ page_inputs :: proc(app: ^App) {
 					entries := [?]Entry{
 						{"Ctrl+K", "Command palette"}, {"Ctrl+1..4", "Switch page"}, {"Ctrl+T", "Next theme"},
 						{"Ctrl+B", "Toggle status bar"}, {"Ctrl+J", "Toggle animations"}, {"Ctrl+wheel", "Zoom"},
+						{"Tab", "Next widget (Shift+Tab: previous)"}, {"Enter / Space", "Activate the focused widget"},
+						{"Ctrl+Z / Ctrl+Y", "Undo / redo in the editor"},
 					}
 					for e in entries {
 						ui.next({width = ui.fill(), height = ui.px(em * 2.2)})

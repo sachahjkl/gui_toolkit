@@ -152,7 +152,7 @@ toasts_build :: proc() {
 // Modal dialog
 
 // `if modal("confirm", width, &open) { ... }`: dims the page, centers a panel, closes on Escape or a click outside.
-@(deferred_none = ctx_menu_end)
+@(deferred_none = modal_end)
 modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
 	s := g
 	if !open^ {
@@ -184,7 +184,17 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	_ = signal(panel)
 	push_parent(panel)
 	append(&s.popup_stack, true)
+	// keyboard: Tab cycles inside the dialog; the page widget that had the focus loses it when the dialog opens
+	s.trap_depth += 1
+	s.modal_now = panel.key
+	if s.modal_prev != panel.key { s.focus_key = 0 }
 	return true
+}
+
+@(private)
+modal_end :: proc() {
+	if len(g.popup_stack) > 0 && g.popup_stack[len(g.popup_stack) - 1] { g.trap_depth -= 1 }
+	ctx_menu_end()
 }
 
 ////////////////////////////////
