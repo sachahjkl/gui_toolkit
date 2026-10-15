@@ -149,9 +149,9 @@ menu_bar_button :: proc(id: string) -> Key {
 	sig := signal(b)
 	pos := Vec2{b.rect.min.x, b.rect.max.y + 4}
 	if sig.clicked {
-		if open { ctx_menu_close() } else { ctx_menu_open(menu_key, pos) }
+		if open { ctx_menu_close() } else { ctx_menu_open(menu_key, pos, b.key) }
 	} else if sig.hovering && bar_active && !open {
-		ctx_menu_open(menu_key, pos)
+		ctx_menu_open(menu_key, pos, b.key)
 	}
 	return menu_key
 }

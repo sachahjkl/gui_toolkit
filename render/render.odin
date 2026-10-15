@@ -72,6 +72,8 @@ Renderer :: struct {
 	probe_lat_sum: f64,
 	probe_lat_n: int,
 	probe_last_seen: u32,
+	probe_prev_ns: u64,
+	probe_worst_ms: f64,
 	probe_tick: u64,
 	size:        [2]int,
 	hwnd:        win.HWND,
@@ -315,8 +317,11 @@ frame_end :: proc(r: ^Renderer, vsync := true) {
 			}
 		} else { r.probe_fail += 1; r.probe_hr = u32(hr) }
 		now := u64(time.tick_now()._nsec)
+		if r.probe_prev_ns != 0 { r.probe_worst_ms = max(r.probe_worst_ms, f64(now - r.probe_prev_ns) / 1e6) }
+		r.probe_prev_ns = now
 		if now - r.probe_tick > 1_000_000_000 {
-			fmt.eprintf("render: %d presents | input -> scan-out %.1f ms avg (%d samples) | LOW_LATENCY=%v\n", r.probe_frames, r.probe_lat_n > 0 ? r.probe_lat_sum / f64(r.probe_lat_n) : 0, r.probe_lat_n, LOW_LATENCY)
+			fmt.eprintf("render: %d presents | worst gap %.1f ms | input -> scan-out %.1f ms avg (%d samples) | LOW_LATENCY=%v\n", r.probe_frames, r.probe_worst_ms, r.probe_lat_n > 0 ? r.probe_lat_sum / f64(r.probe_lat_n) : 0, r.probe_lat_n, LOW_LATENCY)
+			r.probe_worst_ms = 0
 			r.probe_sum, r.probe_n, r.probe_fail, r.probe_frames, r.probe_tick = 0, 0, 0, 0, now
 			r.probe_lat_sum, r.probe_lat_n = 0, 0
 		}
