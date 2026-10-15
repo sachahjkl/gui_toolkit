@@ -6,7 +6,6 @@ cd /D "%~dp0"
 set "EX=%1"
 if "%EX%"=="" set "EX=fidget"
 if not exist build mkdir build
-if exist "examples\%EX%\data" copy /y "examples\%EX%\data\*.ttf" build >nul
 :: exe icon: examples\<name>\<name>.rc when present (needs rc.exe from the Windows SDK, found by Odin)
 set "RES="
 if exist "examples\%EX%\%EX%.rc" set "RES=-resource:examples/%EX%/%EX%.rc"

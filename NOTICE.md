@@ -22,4 +22,13 @@ RAD Debugger is MIT licensed:
     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-`examples/todo/data/icons.ttf` is the icon font from `raddebugger/data/`.
+`ui/icons.ttf` (compiled into the exes) is the icon font from `raddebugger/data/`.
+
+## Embedded fallback fonts
+
+Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas) are missing, e.g. under Wine:
+
+- `font/data/Roboto-Regular.ttf`: Roboto, font data copyright Google 2011, Apache License 2.0
+  (`font/data/Roboto-LICENSE.txt`).
+- `font/data/Inconsolata-Regular.ttf`: Inconsolata, copyright (c) 2006-2012 Raph Levien, copyright (c) 2011-2012
+  Cyreal, SIL Open Font License 1.1 (`font/data/Inconsolata-OFL.txt`).

@@ -352,11 +352,10 @@ main :: proc() {
 	app.win = platform.open_window("gui_toolkit todo", {640, 860})
 	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("renderer init failed"); return }
 	ok: bool
-	app.ui_font, ok = font.load_from_file(&app.fonts, "C:/Windows/Fonts/segoeui.ttf")
-	if !ok { fmt.eprintln("cannot load segoeui.ttf"); return }
-	exe_dir, _ := os.get_executable_directory(context.temp_allocator)
-	app.icons, ok = font.load_from_file(&app.fonts, fmt.tprintf("%s/icons.ttf", exe_dir))
-	if !ok { fmt.eprintln("cannot load icons.ttf (expected next to the exe)"); return }
+	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
+	if !ok { fmt.eprintln("cannot load a UI font"); return }
+	app.icons, ok = font.load_embedded(&app.fonts, ui.ICON_FONT_DATA)
+	if !ok { fmt.eprintln("cannot load the icon font"); return }
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
 	app.ui_state.icon_font = app.icons

@@ -2,6 +2,7 @@
 package platform
 
 import "base:runtime"
+import "core:strings"
 import "core:unicode/utf16"
 import win "core:sys/windows"
 
@@ -93,6 +94,17 @@ set_title :: proc(w: ^Window, title: string) {
 }
 
 // Matches the OS title bar to a dark or light theme.
+// Path of a font in the Windows font folder (%WINDIR%\Fonts), e.g. system_font_path("segoeui.ttf").
+system_font_path :: proc(file: string, allocator := context.temp_allocator) -> string {
+	buf: [win.MAX_PATH]u16
+	n := win.GetWindowsDirectoryW(&buf[0], win.MAX_PATH)
+	dir := "C:\\Windows"
+	if n > 0 && n < win.MAX_PATH {
+		if s, err := win.wstring_to_utf8(win.wstring(&buf[0]), int(n), allocator); err == nil { dir = s }
+	}
+	return strings.concatenate({dir, "\\Fonts\\", file}, allocator)
+}
+
 // Translucent window: the OS backdrop (acrylic: blurred desktop, Windows 11 22H2+) shows wherever the app draws with
 // alpha < 1. The renderer must clear to transparent black. Returns false when the OS does not support it.
 set_backdrop :: proc(w: ^Window, on: bool) -> bool {
