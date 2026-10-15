@@ -3,12 +3,22 @@ package render
 
 import "core:fmt"
 import "core:mem"
+import "core:time"
+
+_ :: time   // RENDER_PROBE only
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
 import "vendor:directx/dxgi"
 
 SHADER_SOURCE :: #load("rect.hlsl", string)
+
+// LOW_LATENCY (default on): at most one frame in flight + a waitable swap chain. The app waits for the GPU *before*
+// reading input, so what is drawn is based on the freshest mouse position. With DXGI's default (3 frames queued) a
+// hover or a drag shows up 2-3 refreshes late, which feels "floaty". Build with -define:LOW_LATENCY=false to compare.
+LOW_LATENCY :: #config(LOW_LATENCY, true)
+// RENDER_PROBE: print, once per second, how many presented frames are still waiting to reach the screen.
+RENDER_PROBE :: #config(RENDER_PROBE, false)
 
 // One primitive. 128 bytes, laid out exactly as the vertex shader's per-instance input.
 Rect_Inst :: struct #packed {
@@ -53,6 +63,16 @@ Renderer :: struct {
 	raster:      ^d3d11.IRasterizerState,
 	sampler:     ^d3d11.ISamplerState,
 	textures:    [dynamic]Texture_Data,   // index 0 is a dummy so Texture(0) means "none"
+	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
+	swap_flags:  dxgi.SWAP_CHAIN,
+	probe_sum, probe_n, probe_fail, probe_frames: int,
+	probe_hr: u32,
+	probe_input_qpc: [64]i64,   // QPC at input read, indexed by present id
+	probe_pending_qpc: i64,
+	probe_lat_sum: f64,
+	probe_lat_n: int,
+	probe_last_seen: u32,
+	probe_tick: u64,
 	size:        [2]int,
 	hwnd:        win.HWND,
 }
@@ -92,11 +112,21 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int) -> bool {
 		SwapEffect  = .FLIP_DISCARD,
 		AlphaMode   = .UNSPECIFIED,
 	}
+	when LOW_LATENCY { desc.Flags = {.FRAME_LATENCY_WAITABLE_OBJECT} }
+	r.swap_flags = desc.Flags
 	if hr := factory->CreateSwapChainForHwnd(r.device, hwnd, &desc, nil, nil, &r.swapchain); win.FAILED(hr) {
 		fmt.eprintln("render: CreateSwapChainForHwnd failed", hr)
 		return false
 	}
 	factory->MakeWindowAssociation(hwnd, {.NO_ALT_ENTER})
+	when LOW_LATENCY {
+		sc2: ^dxgi.ISwapChain2
+		if win.SUCCEEDED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) {
+			sc2->SetMaximumFrameLatency(1)
+			r.latency_handle = sc2->GetFrameLatencyWaitableObject()
+			sc2->Release()
+		}
+	}
 	create_target(r)
 
 	// shaders
@@ -165,7 +195,7 @@ resize :: proc(r: ^Renderer, size: [2]int) {
 	r.size = size
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
-	r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, {})
+	r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, r.swap_flags)   // flags must match creation
 	create_target(r)
 }
 
@@ -185,6 +215,21 @@ update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u
 	td := r.textures[int(t)]
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
+}
+
+// Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
+// polling input and building the UI: then the frame you build is the next one shown.
+wait_for_frame :: proc(r: ^Renderer) {
+	if r.latency_handle != nil { win.WaitForSingleObjectEx(r.latency_handle, 100, true) }
+}
+
+// RENDER_PROBE: call right after reading input; the next present is credited with this timestamp.
+mark_input :: proc(r: ^Renderer) {
+	when RENDER_PROBE {
+		qpc: win.LARGE_INTEGER
+		win.QueryPerformanceCounter(&qpc)
+		r.probe_pending_qpc = i64(qpc)
+	}
 }
 
 frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
@@ -243,5 +288,37 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch) {
 }
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
+	when RENDER_PROBE {
+		before: u32
+		r.swapchain->GetLastPresentCount(&before)
+		r.probe_input_qpc[(before + 1) % 64] = r.probe_pending_qpc
+	}
 	r.swapchain->Present(vsync ? 1 : 0, {})
+	when RENDER_PROBE {
+		last: u32
+		stats: dxgi.FRAME_STATISTICS
+		r.probe_frames += 1
+		hr := r.swapchain->GetFrameStatistics(&stats)
+		if win.SUCCEEDED(r.swapchain->GetLastPresentCount(&last)) && win.SUCCEEDED(hr) {
+			r.probe_sum += int(last) - int(stats.PresentCount)
+			r.probe_n += 1
+			// input -> scan-out latency of the frame that was most recently displayed
+			if stats.PresentCount != r.probe_last_seen && last - stats.PresentCount < 60 {
+				r.probe_last_seen = stats.PresentCount
+				in_qpc := r.probe_input_qpc[stats.PresentCount % 64]
+				freq: win.LARGE_INTEGER
+				win.QueryPerformanceFrequency(&freq)
+				if in_qpc > 0 && i64(stats.SyncQPCTime) > in_qpc {
+					r.probe_lat_sum += f64(i64(stats.SyncQPCTime) - in_qpc) * 1000 / f64(freq)
+					r.probe_lat_n += 1
+				}
+			}
+		} else { r.probe_fail += 1; r.probe_hr = u32(hr) }
+		now := u64(time.tick_now()._nsec)
+		if now - r.probe_tick > 1_000_000_000 {
+			fmt.eprintf("render: %d presents | input -> scan-out %.1f ms avg (%d samples) | LOW_LATENCY=%v\n", r.probe_frames, r.probe_lat_n > 0 ? r.probe_lat_sum / f64(r.probe_lat_n) : 0, r.probe_lat_n, LOW_LATENCY)
+			r.probe_sum, r.probe_n, r.probe_fail, r.probe_frames, r.probe_tick = 0, 0, 0, 0, now
+			r.probe_lat_sum, r.probe_lat_n = 0, 0
+		}
+	}
 }

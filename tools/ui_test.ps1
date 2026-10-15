@@ -21,7 +21,10 @@ public class T1 {
 Add-Type -AssemblyName System.Drawing
 [T1]::SetProcessDPIAware() | Out-Null
 $orig = New-Object T1+POINT; [T1]::GetCursorPos([ref]$orig) | Out-Null
-Remove-Item "$env:APPDATA\gui_toolkit_todo" -Recurse -Force -ErrorAction SilentlyContinue
+# keep the user's settings: move them aside for the run, put them back at the end
+$userDir = "$env:APPDATA\gui_toolkit_todo"; $backup = "$env:TEMP\gui_toolkit_todo.backup"
+Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
+if(Test-Path $userDir) { Move-Item $userDir $backup }
 if($ErrFile -ne "") { $p = Start-Process $Exe -PassThru -RedirectStandardError $ErrFile -WorkingDirectory (Split-Path $Exe) } else { $p = Start-Process $Exe -PassThru }
 $sw = [Diagnostics.Stopwatch]::StartNew()
 while(-not $p.HasExited -and $p.MainWindowHandle -eq 0 -and $sw.ElapsedMilliseconds -lt 10000) { Start-Sleep -Milliseconds 20; $p.Refresh() }
@@ -76,4 +79,7 @@ try {
   Click 1038 470;                "delete #1     : $(Saved)"
   "end          : responding=$($p.Responding) exited=$($p.HasExited)"
 } catch { "ERROR: $_" }
-finally { [T1]::SetCursorPos($orig.X, $orig.Y) | Out-Null; if(-not $p.HasExited) { $p.Kill() } }
+finally {
+  [T1]::SetCursorPos($orig.X, $orig.Y) | Out-Null; if(-not $p.HasExited) { $p.Kill() }
+  Start-Sleep -Milliseconds 300; Remove-Item $userDir -Recurse -Force -ErrorAction SilentlyContinue; if(Test-Path $backup) { Move-Item $backup $userDir }
+}

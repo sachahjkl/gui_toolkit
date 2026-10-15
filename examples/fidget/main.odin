@@ -92,7 +92,12 @@ animations_enabled :: proc(app: ^App) -> bool {
 ////////////////////////////////
 // Frame
 
-frame :: proc(app: ^App, events: []platform.Event) {
+frame :: proc(app: ^App) {
+	// wait for the GPU first, read input second: the picture we build is the next one on screen
+	render.wait_for_frame(&app.r)
+	events := platform.poll_events(app.win, false)
+	render.mark_input(&app.r)   // returns nil when re-entered from a live resize
+	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
 	scale := app.win.dpi_scale
 	render.resize(&app.r, app.win.size)
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
@@ -169,6 +174,7 @@ main :: proc() {
 		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
 		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
 		if a == "--modal" { app.modal_open = true }
+		if a == "--about" { app.about_open = true }
 		if a == "--anim=off" { app.anim_mode = .Off }
 		if a == "--anim=on" { app.anim_mode = .On }
 		if a == "--dump" { app.debug_dump = true }
@@ -178,14 +184,15 @@ main :: proc() {
 	app.last_tick = time.tick_now()
 	app.frames_requested = 4
 	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), nil) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) && !app.want_quit {
-		wait := app.frames_requested == 0 && !ui.needs_frame(&app.ui_state)
-		events := platform.poll_events(app.win, wait, ui.wake_ms(&app.ui_state))
-		if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
-		frame(app, events)
+		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) {
+			when #config(LOOP_PROBE, false) { fmt.eprintln("loop: idle wait, frame", app.frame_index, "anim_mode", app.anim_mode, "enabled", animations_enabled(app), "os", platform.os_animations_enabled()) }
+			platform.wait_event(app.win, ui.wake_ms(&app.ui_state))
+		}
+		frame(app)
 		if app.frames_requested > 0 { app.frames_requested -= 1 }
 	}
 }
