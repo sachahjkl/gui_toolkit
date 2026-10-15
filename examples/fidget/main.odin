@@ -154,7 +154,7 @@ frame :: proc(app: ^App) {
 
 	draw.begin_frame(&app.dc, size)
 	// translucent palettes clear to transparent so the backdrop shows; others to the page colour (no dark seams)
-	clear_c := app.translucent && app.backdrop_ok ? draw.Color{} : draw.hex(palettes[app.palette_idx].palette.bg | 0xff)
+	clear_c := app.translucent && app.backdrop_ok && render.is_transparent(&app.r) ? draw.Color{} : draw.hex(palettes[app.palette_idx].palette.bg | 0xff)
 	render.frame_begin(&app.r, clear_c)
 	ui.draw_tree(&app.ui_state, &app.dc)
 	draw.end_frame(&app.dc)

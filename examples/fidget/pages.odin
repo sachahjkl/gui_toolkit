@@ -34,8 +34,10 @@ reset_values :: proc(app: ^App) {
 	ui.field_clear(&app.bio)
 	ui.field_clear(&app.filter)
 	ui.area_set(&app.editor, "# Notes\n\nA multi-line editor from gui_toolkit:\n  - Enter keeps the indentation\n  - Ctrl+Z / Ctrl+Y undo and redo\n  - Up / Down keep the column\n  - Tab moves the focus (or indents, see below)\n")
+	// every tag is heap-owned (removing one deletes its string)
+	for t in app.tags { delete(t) }
 	clear(&app.tags)
-	append(&app.tags, "ui", "odin", "fast")
+	for t in ([?]string{"ui", "odin", "fast"}) { append(&app.tags, strings.clone(t)) }
 	app.agree = false
 	app.gravity, app.bounce, app.repel, app.phys_run = 1, 0.72, true, true
 	app.sort_col, app.sort_asc, app.selected_row = 0, true, -1

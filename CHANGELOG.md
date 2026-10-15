@@ -3,6 +3,13 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.3.2] - 2026-10-15
+
+### Fixed
+- Wine (and any system without DirectComposition): `render.init(transparent = true)` fell over on
+  `CreateSwapChainForComposition`; it now falls back to an opaque window (`render.is_transparent` tells which).
+- fidget: removing one of the initial tags crashed (it deleted a string literal).
+- fidget: a clicked or dragged sticky note went to the back instead of the front.
 ## [0.3.1] - 2026-10-15
 
 ### Changed

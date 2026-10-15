@@ -125,29 +125,16 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 	}
 	when LOW_LATENCY { desc.Flags = {.FRAME_LATENCY_WAITABLE_OBJECT} }
 	r.swap_flags = desc.Flags
-	if transparent {
-		desc.Width, desc.Height = u32(max(size.x, 1)), u32(max(size.y, 1))
-		desc.Scaling = .STRETCH
-		desc.AlphaMode = .PREMULTIPLIED
-		// scRGB (linear fp16): DWM composes it in linear light, like our blending, so translucent pixels come out
-		// right. With 8-bit sRGB it expects alpha premultiplied in sRGB space, and our linear output looks washed out.
-		desc.Format = .R16G16B16A16_FLOAT
-		if hr := factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain); win.FAILED(hr) {
-			fmt.eprintln("render: CreateSwapChainForComposition failed", hr)
+	// translucent: through DirectComposition; where that is missing (Wine, old systems) fall back to an opaque window
+	if transparent && !init_composition(r, factory, dxgi_device, hwnd, desc, size) {
+		fmt.eprintln("render: DirectComposition unavailable, the window is opaque")
+		r.transparent = false
+	}
+	if !r.transparent {
+		if hr := factory->CreateSwapChainForHwnd(r.device, hwnd, &desc, nil, nil, &r.swapchain); win.FAILED(hr) {
+			fmt.eprintln("render: CreateSwapChainForHwnd failed", hr)
 			return false
 		}
-		if hr := DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)); win.FAILED(hr) {
-			fmt.eprintln("render: DCompositionCreateDevice failed", hr)
-			return false
-		}
-		r.dcomp->CreateTargetForHwnd(hwnd, true, &r.dcomp_target)
-		r.dcomp->CreateVisual(&r.dcomp_visual)
-		r.dcomp_visual->SetContent((^win.IUnknown)(r.swapchain))
-		r.dcomp_target->SetRoot(r.dcomp_visual)
-		r.dcomp->Commit()
-	} else if hr := factory->CreateSwapChainForHwnd(r.device, hwnd, &desc, nil, nil, &r.swapchain); win.FAILED(hr) {
-		fmt.eprintln("render: CreateSwapChainForHwnd failed", hr)
-		return false
 	}
 	factory->MakeWindowAssociation(hwnd, {.NO_ALT_ENTER})
 	when LOW_LATENCY {
@@ -198,6 +185,35 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 	r.corner_smoothing = 1
 	return true
 }
+
+@(private)
+init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^dxgi.IDevice, hwnd: win.HWND, base: dxgi.SWAP_CHAIN_DESC1, size: [2]int) -> bool {
+	desc := base
+	desc.Width, desc.Height = u32(max(size.x, 1)), u32(max(size.y, 1))
+	desc.Scaling = .STRETCH
+	desc.AlphaMode = .PREMULTIPLIED
+	// scRGB (linear fp16): DWM composes it in linear light, like our blending, so translucent pixels come out
+	// right. With 8-bit sRGB it expects alpha premultiplied in sRGB space, and our linear output looks washed out.
+	desc.Format = .R16G16B16A16_FLOAT
+	if win.FAILED(factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain)) { return false }
+	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)))
+	ok = ok && win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(hwnd, true, &r.dcomp_target))
+	ok = ok && win.SUCCEEDED(r.dcomp->CreateVisual(&r.dcomp_visual))
+	ok = ok && win.SUCCEEDED(r.dcomp_visual->SetContent((^win.IUnknown)(r.swapchain)))
+	ok = ok && win.SUCCEEDED(r.dcomp_target->SetRoot(r.dcomp_visual))
+	ok = ok && win.SUCCEEDED(r.dcomp->Commit())
+	if !ok {
+		if r.dcomp_visual != nil { r.dcomp_visual->Release(); r.dcomp_visual = nil }
+		if r.dcomp_target != nil { r.dcomp_target->Release(); r.dcomp_target = nil }
+		if r.dcomp != nil { r.dcomp->Release(); r.dcomp = nil }
+		r.swapchain->Release()
+		r.swapchain = nil
+	}
+	return ok
+}
+
+// True when the window shows through pixels with alpha < 1 (init asked for it and the system supports it).
+is_transparent :: proc(r: ^Renderer) -> bool { return r.transparent }
 
 @(private)
 compile :: proc(src: string, entry, target: cstring) -> (blob: ^d3d11.IBlob, ok: bool) {
