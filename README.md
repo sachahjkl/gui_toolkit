@@ -62,10 +62,14 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
   toasts, modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 
+Not there yet: multi-line text, Tab focus navigation, drag-and-drop files, background blur, Linux/macOS backends.
+
 ## Testing
 
-`tools\ui_test.ps1` drives `examples/todo` with a few real clicks (typing, Enter, checkbox, filters, tooltip, context
-menu, theme toggle, delete) and checks the saved file. It aborts if another window covers the target point.
+`tools\ui_test.ps1` drives `examples/todo` and `tools\fidget_test.ps1` drives `examples/fidget` with real clicks
+(typing, Enter, toggles, segmented, chips, dropdown, slider, tooltip, context menu, wheel scroll, command palette,
+theme switch) and check the title / saved files. They abort if another window covers the target point.
+Debug aids: `-define:UI_PROBE=true` logs every press with the hit box's rect; `--dump` (fidget) prints oversized boxes.
 
 ## License
 
