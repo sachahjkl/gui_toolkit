@@ -179,6 +179,7 @@ main :: proc() {
 		if strings.has_prefix(a, "--page=") { if v, vok := strconv.parse_int(a[7:]); vok { app.page = Page(clamp(v, 0, len(Page) - 1)) } }
 		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
 		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
+		if strings.has_prefix(a, "--palette_query=") { app.palette_open = true; app.palette_focus = true; ui.field_set(&app.palette_field, a[16:]) }
 		if a == "--modal" { app.modal_open = true }
 		if a == "--about" { app.about_open = true }
 		if a == "--settings" { app.settings_open = true }
