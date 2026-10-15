@@ -44,6 +44,7 @@ entries := [?]Entry{
 	{"menu_item background", .Panel2, 0},
 	{"selected background", .Accent, 0.28},
 	{"input background", .Bg, 1}, {"input border", .Border, 1},
+	{"kbd background", .Panel2, 1}, {"kbd text", .Weak, 1}, {"kbd border", .Border, 1},
 	{"scrim background", .Black, 0.55},
 	// containers (last)
 	{"card background", .Panel, 1}, {"card border", .Border, 1},

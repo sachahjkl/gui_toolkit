@@ -26,7 +26,7 @@ layout_standalone :: proc(b: ^Box, axis: Axis) {
 	ai := int(axis)
 	switch b.pref[axis].kind {
 	case .Pixels: b.size[ai] = b.pref[axis].value
-	case .Text:   b.size[ai] = b.text_dim[ai] + 2 * (b.text_pad + b.pref[axis].value)   // value = extra padding on top of text_pad
+	case .Text:   b.size[ai] = math.ceil(b.text_dim[ai] + 2 * (b.text_pad + b.pref[axis].value))   // value = extra padding on top of text_pad; ceil: rounding during placement must never trigger "..." truncation
 	case .None, .Percent, .Children_Sum:
 	}
 	for c := b.first; c != nil; c = c.next { layout_standalone(c, axis) }

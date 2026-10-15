@@ -1,5 +1,6 @@
 package ui
 
+import "core:fmt"
 import "core:math"
 import "../platform"
 
@@ -25,6 +26,10 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			s.mouse_valid = true
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)
+			when #config(UI_PROBE, false) {
+				hb := s.boxes[hot] if hot != 0 else nil
+				fmt.eprintf("press pos=(%.0f,%.0f) hit=%v rect=%v text=%q\n", e.pos.x, e.pos.y, hot, hb != nil ? hb.rect : Rect{}, hb != nil ? hb.text : "")
+			}
 			s.active_key[e.button] = hot
 			s.press_pos[e.button] = e.pos
 			s.pressed_key[e.button] = hot

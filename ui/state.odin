@@ -21,6 +21,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	_ = virtual.arena_init_growing(&s.arena)
 	s.boxes = make(map[Key]^Box)
 	s.anims = make(map[Key]Animation)
+	s.timers = make(map[Key]Timer)
 	s.tag_sets = make(map[Key][]string)
 	s.color_memo = make(map[[2]u64]Color)
 	tick_origin = time.tick_now()
@@ -48,6 +49,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)
+	s.bar_keys, s.bar_keys_prev = s.bar_keys_prev, s.bar_keys
+	clear(&s.bar_keys)
 	s.has_next = false
 	s.next_mod = {}
 	s.window_size = p.window_size
@@ -391,4 +394,17 @@ update_animations :: proc(s: ^State) {
 			step(&b.view_off[int(axis)], b.view_target[int(axis)], f32(1 - math.pow(2, -40 * f64(s.dt))) if s.anim_rate != 0 else 1, &s.anim_busy)
 		}
 	}
+}
+
+// Prints every box taller than `limit` px (id text, size, pref kinds): layout debugging aid.
+debug_dump_tall :: proc(s: ^State, limit: f32) {
+	g = s
+	walk :: proc(b: ^Box, depth: int, limit: f32) {
+		if b.size.y > limit {
+			fmt.printf("%*s text=%q size=%.0fx%.0f pref=(%v %.1f, %v %.1f) children=%d axis=%v\n",
+				depth * 2, "", b.text, b.size.x, b.size.y, b.pref[Axis.X].kind, b.pref[Axis.X].value, b.pref[Axis.Y].kind, b.pref[Axis.Y].value, b.child_count, b.layout_axis)
+		}
+		for c := b.first; c != nil; c = c.next { walk(c, depth + 1, limit) }
+	}
+	walk(s.root, 0, limit)
 }

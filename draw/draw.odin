@@ -29,6 +29,41 @@ srgb :: proc(r, g, b: f32, a: f32 = 1) -> Color {
 	return {lin(r), lin(g), lin(b), a}
 }
 
+// HSV (all 0..1, hue wraps) to a linear color
+hsv :: proc(h, s, v: f32, a: f32 = 1) -> Color {
+	hh := (h - math.floor(h)) * 6
+	i := int(hh)
+	f := hh - f32(i)
+	p, q, t := v * (1 - s), v * (1 - s * f), v * (1 - s * (1 - f))
+	r, g, b: f32
+	switch i {
+	case 0: r, g, b = v, t, p
+	case 1: r, g, b = q, v, p
+	case 2: r, g, b = p, v, t
+	case 3: r, g, b = p, q, v
+	case 4: r, g, b = t, p, v
+	case: r, g, b = v, p, q
+	}
+	return srgb(r, g, b, a)
+}
+
+// sRGB (0..1) hue/sat/val of a 0xRRGGBBAA color
+hsv_from_hex :: proc(v: u32) -> (h, s, val: f32) {
+	r, g, b := f32((v >> 24) & 255) / 255, f32((v >> 16) & 255) / 255, f32((v >> 8) & 255) / 255
+	mx, mn := max(r, g, b), min(r, g, b)
+	d := mx - mn
+	val = mx
+	s = mx == 0 ? 0 : d / mx
+	switch {
+	case d == 0: h = 0
+	case mx == r: h = math.mod((g - b) / d, 6) / 6
+	case mx == g: h = ((b - r) / d + 2) / 6
+	case: h = ((r - g) / d + 4) / 6
+	}
+	if h < 0 { h += 1 }
+	return
+}
+
 // 0xRRGGBBAA in sRGB
 hex :: proc(v: u32) -> Color {
 	return srgb(f32((v >> 24) & 255) / 255, f32((v >> 16) & 255) / 255, f32((v >> 8) & 255) / 255, f32(v & 255) / 255)
