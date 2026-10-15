@@ -303,7 +303,11 @@ build_footer :: proc(app: ^App, em: f32, total, done: int) {
 clip_get :: proc() -> string { return platform.get_clipboard(the_app.win, context.temp_allocator) }
 clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
 
-frame :: proc(app: ^App, events: []platform.Event) {
+frame :: proc(app: ^App) {
+	render.wait_for_frame(&app.r)
+	events := platform.poll_events(app.win, false)
+	render.mark_input(&app.r)
+	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
 	scale := app.win.dpi_scale
 	render.resize(&app.r, app.win.size)
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
@@ -361,14 +365,12 @@ main :: proc() {
 	app.last_tick = time.tick_now()
 	app.frames_requested = 4
 	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), nil) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) {
-		wait := app.frames_requested == 0 && !ui.needs_frame(&app.ui_state)
-		events := platform.poll_events(app.win, wait, ui.wake_ms(&app.ui_state))
-		if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
-		frame(app, events)
+		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_ms(&app.ui_state)) }
+		frame(app)
 		if app.frames_requested > 0 { app.frames_requested -= 1 }
 	}
 }

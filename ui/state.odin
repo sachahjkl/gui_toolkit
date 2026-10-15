@@ -237,7 +237,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	if b.first_build == s.build_index || s.anim_rate == 0 {
 		b.bg, b.border, b.text_color = b.target_bg, b.target_border, b.target_text
 	} else {
-		rate := f32(1 - math.pow(2, -30 * f64(s.dt)))
+		rate := f32(1 - math.pow(2, -60 * f64(s.dt)))
 		busy := false
 		approach :: proc(cur: ^Color, target: Color, rate: f32, busy: ^bool) {
 			d: f32
@@ -366,7 +366,7 @@ anim :: proc(key: Key, target: f32, rate: f32 = 40, initial: Maybe(f32) = nil) -
 
 @(private)
 update_animations :: proc(s: ^State) {
-	rate := f32(1 - math.pow(2, -50 * f64(s.dt)))
+	rate := f32(1 - math.pow(2, -60 * f64(s.dt)))
 	if s.anim_rate == 0 { rate = 1 }
 	step :: proc(cur: ^f32, target: f32, rate: f32, busy: ^bool) {
 		d := target - cur^
@@ -391,7 +391,7 @@ update_animations :: proc(s: ^State) {
 			if scroll_flag not_in b.flags { continue }
 			limit := max(0, b.view_bounds[int(axis)] - b.size[int(axis)])
 			b.view_target[int(axis)] = clamp(b.view_target[int(axis)], 0, limit)
-			step(&b.view_off[int(axis)], b.view_target[int(axis)], f32(1 - math.pow(2, -40 * f64(s.dt))) if s.anim_rate != 0 else 1, &s.anim_busy)
+			step(&b.view_off[int(axis)], b.view_target[int(axis)], f32(1 - math.pow(2, -60 * f64(s.dt))) if s.anim_rate != 0 else 1, &s.anim_busy)
 		}
 	}
 }

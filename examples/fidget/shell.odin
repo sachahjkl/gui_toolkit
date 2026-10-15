@@ -2,6 +2,7 @@ package fidget
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import "../../draw"
 import "../../platform"
 import "../../ui"
@@ -38,6 +39,7 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Toast_Bad: ui.toast(.Bad, "Something went wrong (just kidding)")
 	case .Clear_Toasts: ui.toasts_clear()
 	case .Open_Modal: app.modal_open = true
+	case .About: app.about_open = true
 	case .Spawn_Balls: app.page = .Playground; spawn_balls(app, 25)
 	case .Confetti: app.page = .Playground; spawn_confetti(app, {app.arena_size.x * 0.5, app.arena_size.y * 0.7}, 120)
 	case .Clear_Balls: for &b in app.balls { b.alive = false }
@@ -69,6 +71,7 @@ handle_shortcuts :: proc(app: ^App) {
 	if ui.key_press(.T, ctrl) { run_cmd(app, .Next_Theme) }
 	if ui.key_press(.B, ctrl) { run_cmd(app, .Toggle_Status) }
 	if ui.key_press(.J, ctrl) { run_cmd(app, .Toggle_Animations) }
+	if ui.key_press(.F1) { run_cmd(app, .About) }
 }
 
 ////////////////////////////////
@@ -96,6 +99,7 @@ build_ui :: proc(app: ^App) {
 		}
 		build_palette(app)
 		build_confirm(app)
+		build_about(app)
 		ui.toasts_build()
 	}
 }
@@ -156,7 +160,8 @@ build_menubar :: proc(app: ^App, em: f32) {
 			if ui.ctx_menu(help_m, menu_w) {
 				if ui.menu_item("Command palette", "Ctrl+K", false, ICON_FIND).clicked { palette_toggle(app) }
 				if ui.menu_item("Confirm dialog demo", "", false, ICON_QUESTION).clicked { run_cmd(app, .Open_Modal) }
-				if ui.menu_item("About", "", false, ui.ICON_INFO).clicked { ui.toast(.Info, "gui_toolkit fidget: a widget gallery on gui_toolkit (Odin + D3D11)") }
+				ui.hline(ui.px(menu_w))
+				if ui.menu_item("About", "F1", false, ui.ICON_INFO).clicked { run_cmd(app, .About) }
 			}
 		}
 	}
@@ -350,6 +355,111 @@ build_confirm :: proc(app: ^App) {
 				ui.spacer(ui.px(em * 1.4))
 			}
 			ui.spacer(ui.px(em * 1.2))
+		}
+	}
+}
+
+////////////////////////////////
+// About dialog
+
+Logo_Draw :: struct { angle: f32, accent, track, text, frame: draw.Color }
+
+// the app logo, drawn live: rounded frame + the spinner (it turns while the dialog is open)
+logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Logo_Draw)(user)
+	r := b.rect
+	w := r.max.x - r.min.x
+	draw.rect(dc, r, d.frame, w * 0.25)
+	inner := Spin_Draw{angle = d.angle, accent = d.accent, track = d.frame, text = d.text}
+	spinner_draw(b, &inner, dc)
+}
+
+build_about :: proc(app: ^App) {
+	em := ui.font_size()
+	w := min(em * 32, f32(app.win.size.x) * 0.9)
+	pad := em * 1.6
+	inner := w - 2 * pad
+	if ui.modal("about", w, &app.about_open, 0.16) {
+		if ui.style({width = ui.px(w)}) {
+			ui.spacer(ui.px(em * 1.6))
+			// header: logo + name + tagline
+			ui.next({width = ui.px(w), height = ui.px(em * 5.2)})
+			if ui.row(.Center, id = "###ab_head") {
+				ui.spacer(ui.px(pad))
+				d := ui.frame_new(Logo_Draw)
+				d.angle = f32(ui.now_ms() / 1000 * 0.15)
+				d.accent, d.track, d.text = ui.color("accent"), ui.color("track"), ui.color("text")
+				d.frame = draw.hex(0x121212ff)   // same look as the project logo: dark rounded square, spinner on top
+				d.text = draw.hex(0xf0f0f0ff)
+				ui.next({width = ui.px(em * 5.2), height = ui.px(em * 5.2)})
+				ui.custom("logo", logo_draw, d)
+				if animations_enabled(app) { app.frames_requested = max(app.frames_requested, 2) }
+				ui.spacer(ui.px(em * 1.2))
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+				if ui.column(id = "###ab_title") {
+					if ui.style({font_size = math.round(em * 1.5)}) {
+						ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+						ui.label("gui_toolkit fidget")
+					}
+					if ui.tags("weak") {
+						ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
+						ui.label("A widget gallery for gui_toolkit")
+					}
+				}
+				ui.spacer(ui.px(pad))
+			}
+			ui.spacer(ui.px(em * 1.0))
+			ui.next({width = ui.px(w), height = ui.px(1)})
+			if ui.row(id = "###ab_line") { ui.spacer(ui.px(pad)); ui.hline(ui.px(inner)) }
+			ui.spacer(ui.px(em * 0.6))
+
+			// facts: label / value pairs
+			Fact :: struct { k, v: string }
+			facts := [?]Fact{
+				{"Toolkit", "gui_toolkit (Odin, immediate-mode UI)"},
+				{"Renderer", "Direct3D 11, SDF rects + glyph atlas"},
+				{"Compiler", fmt.tprintf("Odin %s", ODIN_VERSION)},
+				{"Display", fmt.tprintf("%dx%d px, scale %.2f, zoom %d%%", app.win.size.x, app.win.size.y, app.win.dpi_scale, int(math.round(ui.zoom(&app.ui_state) * 100)))},
+				{"Theme", palettes[app.palette_idx].name},
+				{"Animations", app.anim_mode == .System ? fmt.tprintf("system (%s)", animations_enabled(app) ? "on" : "off") : (app.anim_mode == .On ? "always on" : "always off")},
+				{"Frame", fmt.tprintf("%.2f ms to build and draw", app.ui_ms)},
+				{"License", "MIT, design after the RAD Debugger UI"},
+			}
+			for f in facts {
+				ui.next({width = ui.px(w), height = ui.px(em * 1.9)})
+				if ui.row(.Center, id = fmt.tprintf("###ab_%s", f.k)) {
+					ui.spacer(ui.px(pad))
+					if ui.tags("weak") {
+						ui.next({width = ui.px(em * 7), height = ui.pct(1)})
+						ui.label(f.k)
+					}
+					ui.next({width = ui.px(inner - em * 7), height = ui.pct(1)})
+					ui.label(f.v)
+				}
+			}
+			ui.spacer(ui.px(em * 1.0))
+
+			// actions
+			ui.next({width = ui.px(w), height = ui.px(em * 2.6)})
+			if ui.row(.Center, id = "###ab_btns") {
+				ui.spacer(ui.px(pad))
+				if ui.tags("weak") {
+					ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.85)})
+					ui.label("Esc or a click outside closes")
+				}
+				if ui.button_icon("###ab_copy", ICON_CLIPBOARD, "Copy info").clicked {
+					sb := strings.builder_make(context.temp_allocator)
+					for f in facts { fmt.sbprintf(&sb, "%s: %s\n", f.k, f.v) }
+					platform.set_clipboard(app.win, strings.to_string(sb))
+					ui.toast(.Good, "Copied to the clipboard")
+				}
+				ui.spacer(ui.px(em * 0.6))
+				if ui.tags("accent_button") {
+					if ui.button_icon("###ab_close", "", "Close").clicked { app.about_open = false }
+				}
+				ui.spacer(ui.px(pad))
+			}
+			ui.spacer(ui.px(em * 1.4))
 		}
 	}
 }

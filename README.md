@@ -61,6 +61,10 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
   (selection, word moves, clipboard, mouse), scroll region, context menu + items, menu bar, tooltip with hover delay,
   toasts, modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
+- **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
+  the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
+  Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms now (`-define:RENDER_PROBE=true` prints
+  it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
 
 Not there yet: multi-line text, Tab focus navigation, drag-and-drop files, background blur, Linux/macOS backends.
 

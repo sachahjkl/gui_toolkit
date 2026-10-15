@@ -21,7 +21,10 @@ public class U1 {
 Add-Type -AssemblyName System.Drawing
 [U1]::SetProcessDPIAware() | Out-Null
 $orig = New-Object U1+POINT; [U1]::GetCursorPos([ref]$orig) | Out-Null
-Remove-Item "$env:APPDATA\gui_toolkit_fidget" -Recurse -Force -ErrorAction SilentlyContinue
+# keep the user's settings: move them aside for the run, put them back at the end
+$userDir = "$env:APPDATA\gui_toolkit_fidget"; $backup = "$env:TEMP\gui_toolkit_fidget.backup"
+Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
+if(Test-Path $userDir) { Move-Item $userDir $backup }
 $p = Start-Process $Exe -PassThru
 $sw = [Diagnostics.Stopwatch]::StartNew()
 while(-not $p.HasExited -and $p.MainWindowHandle -eq 0 -and $sw.ElapsedMilliseconds -lt 10000) { Start-Sleep -Milliseconds 20; $p.Refresh() }
@@ -90,7 +93,12 @@ try {
   Click 1700 83;         "palette via button"
   TypeText "nord"
   Key 0x0D;              "palette Enter -> $(Title)"
+  Key 0x70;              Shot "ft_about"; "F1 -> About"
+  Key 0x1B;              "Esc closes About"
   Click 1888 375;        "(sanity) still responding: $($p.Responding)"
   "end            : $(Title)  zoom=$(Zoom)"
 } catch { "ERROR: $_" }
-finally { [U1]::SetCursorPos($orig.X, $orig.Y) | Out-Null; if(-not $p.HasExited) { $p.Kill() } }
+finally {
+  [U1]::SetCursorPos($orig.X, $orig.Y) | Out-Null; if(-not $p.HasExited) { $p.Kill() }
+  Start-Sleep -Milliseconds 300; Remove-Item $userDir -Recurse -Force -ErrorAction SilentlyContinue; if(Test-Path $backup) { Move-Item $backup $userDir }
+}

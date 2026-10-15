@@ -121,6 +121,16 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	return w.events[:]
 }
 
+// Blocks until a message is pending or `timeout_ms` elapsed (0 = no timeout). Does not consume anything: follow
+// with render.wait_for_frame, then poll_events(w, false), so the frame is built from the freshest input.
+wait_event :: proc(w: ^Window, timeout_ms := 0) {
+	msg: win.MSG
+	if win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) { return }
+	if timeout_ms > 0 { win.SetTimer(w.hwnd, 1, u32(timeout_ms), nil) }
+	win.WaitMessage()
+	if timeout_ms > 0 { win.KillTimer(w.hwnd, 1) }
+}
+
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_NULL, 0, 0) }
 
@@ -284,8 +294,9 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		return 1
 
 	case win.WM_SIZE:
+		// only record the size: CS_HREDRAW|CS_VREDRAW invalidate the window, and WM_PAINT (which follows at once,
+		// also inside the live-resize loop) renders. Rendering here too meant two presents per resize step.
 		update_client_size(w)
-		if w.on_frame != nil && w.size.x > 0 && w.size.y > 0 { w.on_frame(w.user) }
 		return 0
 
 	case win.WM_PAINT:

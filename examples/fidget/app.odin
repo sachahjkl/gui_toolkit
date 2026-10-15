@@ -62,7 +62,7 @@ Command :: enum {
 	Go_Controls, Go_Inputs, Go_Data, Go_Playground,
 	Theme_Midnight, Theme_Graphite, Theme_Daylight, Theme_Nord, Theme_Dracula, Theme_Amber, Next_Theme,
 	Toggle_Status, Toggle_Animations, Anim_System, Anim_On, Anim_Off, Toggle_Slowmo, Toggle_Boxes,
-	Toast_Info, Toast_Good, Toast_Warn, Toast_Bad, Clear_Toasts, Open_Modal,
+	Toast_Info, Toast_Good, Toast_Warn, Toast_Bad, Clear_Toasts, Open_Modal, About,
 	Spawn_Balls, Confetti, Clear_Balls, Reset_Values,
 	Zoom_In, Zoom_Out, Zoom_Reset,
 	Quit,
@@ -95,6 +95,7 @@ command_info := [Command]Command_Info{
 	.Toast_Bad = {"Toast: Error", "Feedback", "", ui.ICON_WARN_BIG},
 	.Clear_Toasts = {"Toast: Dismiss all", "Feedback", "", ui.ICON_X},
 	.Open_Modal = {"Dialog: Open confirm dialog", "Feedback", "", ICON_QUESTION},
+	.About = {"Help: About gui_toolkit fidget", "General", "F1", ui.ICON_INFO},
 	.Spawn_Balls = {"Playground: Spawn 25 balls", "Playground", "", ICON_DOT},
 	.Confetti = {"Playground: Confetti", "Playground", "", ICON_TARGET},
 	.Clear_Balls = {"Playground: Clear balls", "Playground", "", ICON_TRASH},
@@ -178,6 +179,7 @@ App :: struct {
 	palette_mouse: [2]f32,
 	palette_frames: int,
 	modal_open:   bool,
+	about_open:   bool,
 
 	// controls page
 	sw:      [3]bool,
