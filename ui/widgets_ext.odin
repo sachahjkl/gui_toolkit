@@ -6,6 +6,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import "../draw"
 import "../font"
 
@@ -77,8 +78,8 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	inset := (1 - d.t) * w * 0.5
 	fill := d.accent
 	fill.a *= min(1, d.t * 1.6)
-	draw.rect(dc, draw.rect_pad(r, -inset), fill, w * 0.28)
-	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), w * 0.28, 1.5)
+	paint_rect(dc, draw.rect_pad(r, -inset), fill, rad(w * 0.28), d.t)
+	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * 0.28), 1.5)
 	if d.t > 0.05 && g.icon_font != 0 {
 		size := d.size * d.t
 		m := font.metrics(g.fonts, g.icon_font, size)
@@ -136,13 +137,13 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Toggle_Draw)(user)
 	r := b.rect
 	h := r.max.y - r.min.y
-	draw.rect(dc, r, draw.mix(d.track, d.accent, d.t), h * 0.5)
+	paint_rect(dc, r, draw.mix(d.track, d.accent, d.t), rad(h * 0.5), d.t)
 	pad := h * 0.14
 	kd := h - 2 * pad
 	kw := kd * (1 + 0.28 * d.active + 0.06 * d.hot)
 	x := math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t)
-	draw.rect(dc, {{x - 1, r.min.y + pad + 1}, {x + kw + 1, r.max.y - pad + 2}}, {0, 0, 0, 0.30}, kd * 0.5, 0, 3)
-	draw.rect(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, {1, 1, 1, 1}, kd * 0.5)
+	draw.rect(dc, {{x - 1, r.min.y + pad + 1}, {x + kw + 1, r.max.y - pad + 2}}, {0, 0, 0, 0.30}, rad(kd * 0.5), 0, 3)
+	draw.rect(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, {1, 1, 1, 1}, rad(kd * 0.5))
 }
 
 // Switch (named `toggle` because `switch` is an Odin keyword).
@@ -198,18 +199,18 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	x0, x1 := slider_geom(r, em)
 	cy := (r.min.y + r.max.y) * 0.5
 	th := em * 0.34
-	draw.rect(dc, {{x0, cy - th * 0.5}, {x1, cy + th * 0.5}}, d.track, th * 0.5)
+	draw.rect(dc, {{x0, cy - th * 0.5}, {x1, cy + th * 0.5}}, d.track, rad(th * 0.5))
 	fx0 := d.range ? math.lerp(x0, x1, d.t0) : x0
 	fx1 := math.lerp(x0, x1, d.t1)
-	draw.rect(dc, {{fx0, cy - th * 0.5}, {fx1, cy + th * 0.5}}, d.accent, th * 0.5)
+	draw.rect(dc, {{fx0, cy - th * 0.5}, {fx1, cy + th * 0.5}}, d.accent, rad(th * 0.5))
 	kr := em * (0.52 + 0.12 * d.hot + 0.10 * d.active)
 	knobs := [2]f32{math.lerp(x0, x1, d.t0), fx1}
 	for i in (d.range ? 0 : 1) ..< 2 {
 		kx := knobs[i]
-		draw.rect(dc, {{kx - kr - 1, cy - kr + 1}, {kx + kr + 1, cy + kr + 3}}, {0, 0, 0, 0.35}, kr, 0, 4)
-		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, {1, 1, 1, 1}, kr)
-		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, d.accent, kr, 2)
-		draw.rect(dc, {{kx - kr * 0.38, cy - kr * 0.38}, {kx + kr * 0.38, cy + kr * 0.38}}, d.accent, kr)
+		draw.rect(dc, {{kx - kr - 1, cy - kr + 1}, {kx + kr + 1, cy + kr + 3}}, {0, 0, 0, 0.35}, rad(kr), 0, 4)
+		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, {1, 1, 1, 1}, rad(kr))
+		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, d.accent, rad(kr), 2)
+		draw.rect(dc, {{kx - kr * 0.38, cy - kr * 0.38}, {kx + kr * 0.38, cy + kr * 0.38}}, d.accent, rad(kr))
 	}
 	size := em * 0.88
 	m := font.metrics(g.fonts, d.mono, size)
@@ -224,7 +225,8 @@ slider_pct :: proc(b: ^Box) -> f32 {
 	return clamp((g.mouse.x - x0) / (x1 - x0), 0, 1)
 }
 
-// `format` is a printf format for the value text, e.g. "%.0f" or "%.1f C". step 0 = continuous.
+// `format` is a printf format for the value text, e.g. "%.0f" or "%.1f C"; text without a % is shown as is
+// (pick it per value for labels such as "Off"). step 0 = continuous.
 // Keyboard (when focused): Left / Down and Right / Up step the value (`step`, or 1 % of the range), Home / End jump
 // to the ends, Page Up / Page Down move by 10 steps.
 slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f") -> (sig: Signal) {
@@ -253,7 +255,7 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	d.t1 = anim(key_from_string(b.key, "t"), t, 60, t)
 	d.hot, d.active = b.hot_t, b.active_t
 	d.track, d.accent, d.text = color("track"), color("accent"), color("text")
-	d.value_text = fmt.aprintf(format, value^, allocator = frame_allocator())
+	d.value_text = strings.index_byte(format, '%') >= 0 ? fmt.aprintf(format, value^, allocator = frame_allocator()) : format
 	d.mono = mono_font()
 	b.custom, b.custom_user = slider_draw, d
 	return
@@ -327,7 +329,7 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
 	x := r.min.x + d.pad + d.t * iw
-	draw.rect(dc, {{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}, d.accent, max(0, b.radius - d.pad * 0.5))
+	paint_rect(dc, {{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
 }
 
 // Sliding-pill segmented control. Returns true when the selection changed.
@@ -357,18 +359,18 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 	return
 }
 
-// Toggle chips: bit i of `mask` is chip i.
+// Toggle chips: bit i of `mask` is chip i. They wrap onto more lines when there is not enough room.
 chips :: proc(id: string, labels: []string, mask: ^u32) {
 	em := font_size()
-	if row() {
+	next({width = fill(), height = children_sum()})
+	if flow({em * 0.45, em * 0.45}) {
 		for label, i in labels {
 			on := mask^ & (1 << u32(i)) != 0
 			push_tags(on ? "accent_button" : "button")
-			next({width = text_size(em * 0.5, 0.6), height = px(em * 1.9), radius = em * 0.95, text_align = .Center})
+			next({width = text_size(em * 0.5, 0.6), height = px(dense(em * 1.9)), radius = em * 0.95, text_align = .Center})
 			b := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, fmt.tprintf("%s###%s_%d", label, id, i))
 			pop_tags()
 			if signal(b).clicked { mask^ ~= (1 << u32(i)) }
-			spacer(px(em * 0.45))
 		}
 	}
 }
@@ -403,7 +405,7 @@ bar_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Bar_Draw)(user)
 	r := b.rect
 	w := r.max.x - r.min.x
-	radius := (r.max.y - r.min.y) * 0.5
+	radius := rad((r.max.y - r.min.y) * 0.5)
 	draw.rect(dc, r, d.track, radius)
 	if d.indeterminate {
 		seg := w * 0.32
@@ -412,7 +414,7 @@ bar_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		f := Rect{{r.min.x + max(0, x), r.min.y}, {r.min.x + min(w, x + seg), r.max.y}}
 		if f.max.x > f.min.x { draw.rect(dc, f, d.fill, radius) }
 	} else if d.t > 0.002 {
-		draw.rect(dc, {r.min, {r.min.x + max(radius * 2, w * d.t), r.max.y}}, d.fill, radius)
+		paint_rect(dc, {r.min, {r.min.x + max(radius * 2, w * d.t), r.max.y}}, d.fill, radius)
 	}
 }
 
@@ -511,7 +513,7 @@ kbd :: proc(text: string) {
 	em := font_size()
 	if tags("kbd") {
 		if style({font = mono_font(), font_size = em * 0.8, radius = em * 0.3, text_align = .Center}) {
-			next({width = text_size(em * 0.5), height = px(em * 1.5)})
+			next({width = text_size(em * 0.5), height = px(dense(em * 1.5))})
 			build_box({.Draw_Background, .Draw_Border, .Draw_Text, .No_Text_Trunc}, text)
 		}
 	}
@@ -539,7 +541,7 @@ card :: proc(title: string, icon_glyph: string = "") -> bool {
 	g.next_mod.height = children_sum()
 	push_parent(build_box({}, "###card_body"))
 	if title != "" {
-		next({width = fill(), height = px(em * 2.2)})
+		next({width = fill(), height = px(dense(em * 2.2))})
 		if row(.Center) {
 			if icon_glyph != "" { if tags("weak") { icon(icon_glyph, em * 1.8) } }
 			next({width = fill(), height = pct(1)})
@@ -566,17 +568,18 @@ card_end :: proc() {
 @(deferred_none = form_row_end)
 form_row :: proc(label_text: string) -> bool {
 	em := font_size()
+	// as tall as its widget (at least one line): wrapped content such as chips grows the row
 	set_next_axis(.X, .Center)
 	g.next_mod.width = fill()
-	g.next_mod.height = px(em * 2.5)
+	g.next_mod.height = children_sum()
 	r := build_box({}, fmt.tprintf("###frow_%s", label_text))
 	push_parent(r)
 	if tags("weak") {
-		next({width = pct(0.34), height = pct(1)})
+		next({width = pct(0.34), height = px(dense(em * 2.5))})
 		build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label_text))
 	}
 	push_style_copy()
-	top_style().pref = {.X = fill(), .Y = px(em * 2.3)}
+	top_style().pref = {.X = fill(), .Y = px(dense(em * 2.3))}
 	return true
 }
 
@@ -590,13 +593,16 @@ form_row_end :: proc() {
 // Button with an icon-font glyph and a label. Push a kind tag first ("accent_button", "danger_button", "ghost_button").
 button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig: Signal) {
 	em := font_size()
+	// a disabled scope, so the label and icon inside go neutral too
+	append(&g.disabled_stack, disabled)
+	if disabled { g.disabled_depth += 1 }
+	defer pop_disabled()
 	if tags("button") {
 		set_next_axis(.X, .Center)
 		g.next_mod.width = children_sum()
-		g.next_mod.height = px(em * 2.2)
+		g.next_mod.height = px(dense(em * 2.2))
 		g.next_mod.radius = em * 0.45
 		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
-		if disabled { flags += {.Disabled} }
 		b := build_box(flags, id)
 		b.squish = anim(key_from_string(b.key, "squish"), g.active_key[.Left] == b.key && g.hot_key == b.key ? 0.04 : 0, 60)
 		sig = signal(b)

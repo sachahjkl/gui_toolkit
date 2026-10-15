@@ -85,7 +85,7 @@ try {
   Click 629 777;         "dropdown open"
   Shot "ft_dd"
   Click 640 1070;        "dropdown pick (Odin)"
-  Click 1465 901;        "slider Volume ~35%"
+  Click 1465 963;        "slider Volume ~35%"
   Hover 338 393 1000;    Shot "ft_tip"; "tooltip shown"
   Click 515 1064 $true;  Shot "ft_ctx"; "context menu"
   Key 0x1B

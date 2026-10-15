@@ -77,11 +77,20 @@ Renderer :: struct {
 	probe_tick: u64,
 	size:        [2]int,
 	hwnd:        win.HWND,
+	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
+	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
+	dcomp:        ^IDCompositionDevice,
+	dcomp_target: ^IDCompositionTarget,
+	dcomp_visual: ^IDCompositionVisual,
 }
 
-init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int) -> bool {
+// `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
+// Clear to {0, 0, 0, 0} and draw translucent colours; the output is premultiplied, which is what blending onto a
+// transparent clear produces anyway.
+init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -> bool {
 	r.hwnd = hwnd
 	r.size = size
+	r.transparent = transparent
 	feature_levels := [?]d3d11.FEATURE_LEVEL{._11_0}
 	base_device: ^d3d11.IDevice
 	base_ctx: ^d3d11.IDeviceContext
@@ -116,7 +125,27 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int) -> bool {
 	}
 	when LOW_LATENCY { desc.Flags = {.FRAME_LATENCY_WAITABLE_OBJECT} }
 	r.swap_flags = desc.Flags
-	if hr := factory->CreateSwapChainForHwnd(r.device, hwnd, &desc, nil, nil, &r.swapchain); win.FAILED(hr) {
+	if transparent {
+		desc.Width, desc.Height = u32(max(size.x, 1)), u32(max(size.y, 1))
+		desc.Scaling = .STRETCH
+		desc.AlphaMode = .PREMULTIPLIED
+		// scRGB (linear fp16): DWM composes it in linear light, like our blending, so translucent pixels come out
+		// right. With 8-bit sRGB it expects alpha premultiplied in sRGB space, and our linear output looks washed out.
+		desc.Format = .R16G16B16A16_FLOAT
+		if hr := factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain); win.FAILED(hr) {
+			fmt.eprintln("render: CreateSwapChainForComposition failed", hr)
+			return false
+		}
+		if hr := DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)); win.FAILED(hr) {
+			fmt.eprintln("render: DCompositionCreateDevice failed", hr)
+			return false
+		}
+		r.dcomp->CreateTargetForHwnd(hwnd, true, &r.dcomp_target)
+		r.dcomp->CreateVisual(&r.dcomp_visual)
+		r.dcomp_visual->SetContent((^win.IUnknown)(r.swapchain))
+		r.dcomp_target->SetRoot(r.dcomp_visual)
+		r.dcomp->Commit()
+	} else if hr := factory->CreateSwapChainForHwnd(r.device, hwnd, &desc, nil, nil, &r.swapchain); win.FAILED(hr) {
 		fmt.eprintln("render: CreateSwapChainForHwnd failed", hr)
 		return false
 	}
@@ -166,6 +195,7 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int) -> bool {
 	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP}, &r.sampler)
 
 	append(&r.textures, Texture_Data{})   // dummy slot 0
+	r.corner_smoothing = 1
 	return true
 }
 
@@ -188,7 +218,8 @@ create_target :: proc(r: ^Renderer) {
 	backbuffer: ^d3d11.ITexture2D
 	r.swapchain->GetBuffer(0, d3d11.ITexture2D_UUID, (^rawptr)(&backbuffer))
 	// sRGB view over a UNORM buffer: the shader writes linear colors, the hardware encodes (and blends) correctly
-	r.device->CreateRenderTargetView(backbuffer, &{Format = .B8G8R8A8_UNORM_SRGB, ViewDimension = .TEXTURE2D}, &r.rtv)
+	format: dxgi.FORMAT = r.transparent ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM_SRGB
+	r.device->CreateRenderTargetView(backbuffer, &{Format = format, ViewDimension = .TEXTURE2D}, &r.rtv)
 	backbuffer->Release()
 }
 
@@ -218,6 +249,9 @@ update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
 }
+
+// Corner shape for every rounded rect: 0 = circular arcs, 1 = squircle (superellipse corners, continuous curvature).
+set_corner_smoothing :: proc(r: ^Renderer, smoothing: f32) { r.corner_smoothing = clamp(smoothing, 0, 1) }
 
 // Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
 // polling input and building the UI: then the frame you build is the next one shown.
@@ -253,7 +287,10 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch) {
 	r.ctx->Unmap(r.inst_buf, 0)
 
 	r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)
-	(^[2]f32)(mapped.pData)^ = {f32(r.size.x), f32(r.size.y)}
+	sm := clamp(r.corner_smoothing, 0, 1)
+	// n = 2.6 softens the arc-to-edge junction without turning capsules into rounded boxes; the radius is enlarged
+	// a bit so the corners do not look tighter than circular ones
+	(^[4]f32)(mapped.pData)^ = {f32(r.size.x), f32(r.size.y), 2 + 0.6 * sm, 1 + 0.25 * sm}
 	r.ctx->Unmap(r.globals, 0)
 
 	vp := d3d11.VIEWPORT{0, 0, f32(r.size.x), f32(r.size.y), 0, 1}
@@ -269,6 +306,7 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch) {
 	r.ctx->VSSetShader(r.vs, nil, 0)
 	r.ctx->VSSetConstantBuffers(0, 1, &r.globals)
 	r.ctx->PSSetShader(r.ps, nil, 0)
+	r.ctx->PSSetConstantBuffers(0, 1, &r.globals)   // the pixel shader reads the corner shape
 	r.ctx->PSSetSamplers(0, 1, &r.sampler)
 
 	bound: Texture = -1

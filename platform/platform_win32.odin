@@ -21,7 +21,8 @@ Native_Window :: struct {
 
 // Open a window. `size` is in logical pixels (96 dpi): it is scaled by the DPI of the monitor the window lands on
 // and clamped to the monitor work area (CW_USEDEFAULT can pick a non-primary monitor with another DPI).
-open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
+// `transparent`: no GDI redirection surface, for a renderer that presents with alpha (render.init `transparent`).
+open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil, transparent := false) -> ^Window {
 	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
 	icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
@@ -48,7 +49,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	for c in Cursor { w.cursors[c] = win.LoadCursorA(nil, cursor_resource(c)) }
 
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
-	w.hwnd = win.CreateWindowExW(0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
+	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
 		win.CW_USEDEFAULT, win.CW_USEDEFAULT, 640, 480, nil, nil, instance, w)
 
 	dpi := win.GetDpiForWindow(w.hwnd)
@@ -73,6 +74,15 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	return w
 }
 
+// Resize the window so its client area is `size` logical pixels (scaled by the window's DPI).
+set_size :: proc(w: ^Window, size: [2]int) {
+	dpi := win.GetDpiForWindow(w.hwnd)
+	rect := win.RECT{0, 0, i32(f32(size.x) * w.dpi_scale), i32(f32(size.y) * w.dpi_scale)}
+	win.AdjustWindowRectExForDpi(&rect, win.WS_OVERLAPPEDWINDOW, false, 0, dpi)
+	win.SetWindowPos(w.hwnd, nil, 0, 0, rect.right - rect.left, rect.bottom - rect.top, win.SWP_NOMOVE | win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+	update_client_size(w)
+}
+
 show_window :: proc(w: ^Window) {
 	win.ShowWindow(w.hwnd, win.SW_SHOW)
 	win.SetForegroundWindow(w.hwnd)
@@ -83,6 +93,22 @@ set_title :: proc(w: ^Window, title: string) {
 }
 
 // Matches the OS title bar to a dark or light theme.
+// Translucent window: the OS backdrop (acrylic: blurred desktop, Windows 11 22H2+) shows wherever the app draws with
+// alpha < 1. The renderer must clear to transparent black. Returns false when the OS does not support it.
+set_backdrop :: proc(w: ^Window, on: bool) -> bool {
+	m := on ? win.MARGINS{-1, -1, -1, -1} : win.MARGINS{}
+	win.DwmExtendFrameIntoClientArea(w.hwnd, &m)
+	kind: i32 = on ? 3 : 1   // DWMSBT_TRANSIENTWINDOW (acrylic) : DWMSBT_NONE
+	hr := win.DwmSetWindowAttribute(w.hwnd, u32(win.DWMWINDOWATTRIBUTE.DWMWA_SYSTEMBACKDROP_TYPE), &kind, size_of(kind))
+	return !on || win.SUCCEEDED(hr)
+}
+
+// Windows 11 rounds window corners; `square` turns that off (no effect on Windows 10, which never rounds them).
+set_square_corners :: proc(w: ^Window, square: bool) {
+	pref: i32 = square ? 1 : 0   // DWMWCP_DONOTROUND : DWMWCP_DEFAULT
+	win.DwmSetWindowAttribute(w.hwnd, 33, &pref, size_of(pref))   // DWMWA_WINDOW_CORNER_PREFERENCE
+}
+
 set_dark_title :: proc(w: ^Window, dark: bool) {
 	if w.dark_title == dark { return }
 	w.dark_title = dark

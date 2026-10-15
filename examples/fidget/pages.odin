@@ -93,24 +93,21 @@ page_controls :: proc(app: ^App) {
 		if ui.row(id = "###cols") {
 			if half("###left") {
 				if ui.card("Buttons", ICON_PLAY) {
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###btnrow") {
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.5, em * 0.5}, "###btnrow") {
 						if ui.tags("accent_button") {
 							if ui.button_icon("###b_primary", ICON_PLAY, "Primary").clicked { ui.toast(.Good, "Primary clicked") }
 						}
-						ui.spacer(ui.px(em * 0.5))
 						if ui.button_icon("###b_secondary", "", "Secondary").clicked { ui.toast(.Info, "Secondary clicked") }
-						ui.spacer(ui.px(em * 0.5))
 						if ui.tags("danger_button") {
 							if ui.button_icon("###b_danger", ICON_TRASH, "Danger").clicked { ui.toast(.Bad, "Danger clicked") }
 						}
-						ui.spacer(ui.px(em * 0.5))
 						if ui.tags("ghost_button") {
 							if ui.button_icon("###b_ghost", "", "Ghost").clicked { ui.toast(.Info, "Ghost clicked") }
 						}
 					}
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###iconrow") {
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.2, em * 0.2}, "###iconrow") {
 						icons := [?]string{ICON_PLAY, ICON_PAUSE, ICON_STOP, ICON_REFRESH, ICON_SAVE, ICON_PIN, ICON_CLIPBOARD, ICON_GEAR}
 						tips := [?]string{"Play", "Pause", "Stop", "Refresh", "Save", "Pin", "Copy", "Settings"}
 						for g, i in icons {
@@ -118,15 +115,15 @@ page_controls :: proc(app: ^App) {
 							sig := ui.icon_button(fmt.tprintf("ib_%d", i), g)
 							if ui.hovered_for(sig, 0.4) {
 								if ui.tooltip() {
-									ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 2)})
+									ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 									ui.label(tips[i])
 								}
 							}
 							if sig.clicked { ui.toast(.Info, "%s", tips[i]) }
-							ui.spacer(ui.px(em * 0.2))
 						}
 					}
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
+					ui.spacer(ui.px(em * 0.3))
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###disrow") {
 						ui.button_icon("###b_disabled", "", "Disabled", disabled = true)
 						ui.spacer(ui.px(em * 0.8))
@@ -145,7 +142,7 @@ page_controls :: proc(app: ^App) {
 				if ui.card("Menus & tooltips", ICON_WINDOW) {
 					ctx_key := ui.key_from_string(0, "ctx_demo")
 					if ui.tags("input") {
-						ui.next({width = ui.fill(), height = ui.px(em * 5.5), text_align = .Center, radius = em * 0.6})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 5.5)), text_align = .Center, radius = em * 0.6})
 						area := ui.build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Text, .Draw_Hot_Effects}, "Right-click anywhere in this box###ctx_area")
 						area.cursor = .Arrow
 						if ui.signal(area).right_clicked { ui.ctx_menu_open(ctx_key, ui.mouse_pos()) }
@@ -161,12 +158,12 @@ page_controls :: proc(app: ^App) {
 						if ui.menu_item("Delete", "Del", false, ICON_TRASH).clicked { ui.toast(.Bad, "Delete") }
 					}
 					ui.spacer(ui.px(em * 0.7))
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###tiprow") {
 						sig := ui.button_icon("###b_tip", ui.ICON_INFO, "Hover for a rich tooltip")
 						if ui.hovered_for(sig, 0.4) {
 							if ui.tooltip() {
-								if ui.style({width = ui.text_size(em * 0.5), height = ui.px(em * 2)}) {
+								if ui.style({width = ui.text_size(em * 0.5), height = ui.px(ui.dense(em * 2))}) {
 									if ui.style({font_size = math.round(em * 1.1)}) { ui.label("Rich tooltip") }
 									if ui.tags("weak") { ui.label("Tooltips are floating boxes:") }
 									if ui.tags("weak") { ui.label("any widgets work in them.") }
@@ -179,7 +176,7 @@ page_controls :: proc(app: ^App) {
 			ui.spacer(ui.px(em))
 			if half("###right") {
 				if ui.card("Toggles", ICON_TARGET) {
-					if ui.style({width = ui.fill(), height = ui.px(em * 2.3)}) {
+					if ui.style({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))}) {
 						ui.toggle("###sw0", "Wi-Fi", &app.sw[0])
 						ui.toggle("###sw1", "Bluetooth", &app.sw[1])
 						ui.toggle("###sw2", "Notifications", &app.sw[2])
@@ -191,12 +188,16 @@ page_controls :: proc(app: ^App) {
 					}
 				}
 				if ui.card("Sliders & steppers", ICON_GRID) {
-					if ui.form_row("Volume") { ui.slider("###sl0", &app.slider[0], 0, 100, 1, "%.0f") }
-					if ui.form_row("Opacity") { ui.slider("###sl1", &app.slider[1], 0, 1, 0, "%.2f") }
-					if ui.form_row("Temperature") { ui.slider("###sl2", &app.slider[2], -10, 40, 0.5, "%.1f C") }
-					if ui.form_row("Range") { ui.range_slider("###rng1", &app.range_lo, &app.range_hi, 0, 100) }
-					if ui.form_row("Stepper") { ui.stepper("###step1", &app.stepper, 0, 99) }
-					if ui.form_row("Rating") { ui.rating("###rate1", &app.rating) }
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
+					ui.toggle("###sl_on", "Enabled", &app.sliders_on)
+					if ui.disabled(!app.sliders_on) {
+						if ui.form_row("Volume") { ui.slider("###sl0", &app.slider[0], 0, 100, 1, "%.0f") }
+						if ui.form_row("Opacity") { ui.slider("###sl1", &app.slider[1], 0, 1, 0, "%.2f") }
+						if ui.form_row("Temperature") { ui.slider("###sl2", &app.slider[2], -10, 40, 0.5, "%.1f C") }
+						if ui.form_row("Range") { ui.range_slider("###rng1", &app.range_lo, &app.range_hi, 0, 100) }
+						if ui.form_row("Stepper") { ui.stepper("###step1", &app.stepper, 0, 99) }
+						if ui.form_row("Rating") { ui.rating("###rate1", &app.rating) }
+					}
 				}
 				if ui.card("Progress & feedback", ui.ICON_INFO) {
 					if app.progress_run {
@@ -204,30 +205,27 @@ page_controls :: proc(app: ^App) {
 						app.frames_requested = 4
 						if app.progress >= 1 { app.progress, app.progress_run = 1, false; ui.toast(.Good, "Download complete") }
 					}
-					if ui.form_row("Download") { ui.next({width = ui.fill(), height = ui.px(em * 0.55)}); ui.progress("###pr_det", app.progress) }
-					if ui.form_row("Loading") { ui.next({width = ui.fill(), height = ui.px(em * 0.55)}); ui.progress("###pr_ind", 0, true) }
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###dlrow") {
+					if ui.form_row("Download") { ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.55))}); ui.progress("###pr_det", app.progress) }
+					if ui.form_row("Loading") { ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.55))}); ui.progress("###pr_ind", 0, true) }
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.5, em * 0.5}, "###dlrow") {
 						if ui.tags("accent_button") {
 							if ui.button_icon("###b_dl", app.progress_run ? ICON_PAUSE : ICON_PLAY, app.progress_run ? "Pause" : "Start").clicked {
 								if app.progress >= 1 { app.progress = 0 }
 								app.progress_run = !app.progress_run
 							}
 						}
-						ui.spacer(ui.px(em * 0.5))
 						if ui.button_icon("###b_dl_reset", ICON_UNDO, "Reset").clicked { app.progress, app.progress_run = 0, false }
 					}
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###toastrow") {
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.5, em * 0.5}, "###toastrow") {
 						if ui.button_icon("###t_info", "", "Info").clicked { run_cmd(app, .Toast_Info) }
-						ui.spacer(ui.px(em * 0.4))
 						if ui.button_icon("###t_good", "", "Success").clicked { run_cmd(app, .Toast_Good) }
-						ui.spacer(ui.px(em * 0.4))
 						if ui.button_icon("###t_warn", "", "Warning").clicked { run_cmd(app, .Toast_Warn) }
-						ui.spacer(ui.px(em * 0.4))
 						if ui.button_icon("###t_bad", "", "Error").clicked { run_cmd(app, .Toast_Bad) }
 					}
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
+					ui.spacer(ui.px(em * 0.3))
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###modalrow") {
 						if ui.tags("ghost_button") {
 							if ui.button_icon("###b_modal", ICON_QUESTION, "Open dialog").clicked { app.modal_open = true }
@@ -285,12 +283,12 @@ page_inputs :: proc(app: ^App) {
 					}
 					hint(app, em, len(app.number.buf) == 0 ? 0 : (num_ok ? 1 : 2), "Try typing letters.", "Valid integer.", "Not a number.")
 					if ui.tags("weak") {
-						ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.2))})
 						ui.label("Arrows, Home/End, Ctrl+arrows, Shift = select, Ctrl+A/C/X/V.")
 					}
 				}
 				if ui.card("Live fuzzy search", ICON_FIND) {
-					ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 					ui.line_edit("###in_search", &app.search, "Search concepts (try: ar al)")
 					needle := ui.field_string(&app.search)
 					matches := 0
@@ -298,7 +296,7 @@ page_inputs :: proc(app: ^App) {
 						ranges, ok := ui.fuzzy_find(needle, w)
 						if !ok { continue }
 						matches += 1
-						ui.next({width = ui.fill(), height = ui.px(em * 2)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2))})
 						if ui.row(.Center, {.Clickable, .Draw_Hot_Effects}, fmt.tprintf("###word_%d", i)) {
 							sig := ui.signal(ui.parent_box())
 							ui.spacer(ui.px(em * 0.5))
@@ -309,10 +307,10 @@ page_inputs :: proc(app: ^App) {
 						}
 					}
 					if matches == 0 {
-						if ui.tags("weak") { ui.next({width = ui.fill(), height = ui.px(em * 2.2)}); ui.label("No matches.") }
+						if ui.tags("weak") { ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.2))}); ui.label("No matches.") }
 					}
 					if ui.tags("weak") {
-						ui.next({width = ui.fill(), height = ui.px(em * 1.8), font_size = math.round(em * 0.85)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.8)), font_size = math.round(em * 0.85)})
 						ui.label(fmt.tprintf("%d of %d", matches, len(words)))
 					}
 				}
@@ -320,10 +318,10 @@ page_inputs :: proc(app: ^App) {
 			ui.spacer(ui.px(em))
 			if half("###right") {
 				if ui.card("Multi-line editor", ICON_PENCIL) {
-					ui.next({width = ui.fill(), height = ui.px(em * 13)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 13))})
 					res := ui.text_edit("###editor", &app.editor, "Write something...", line_numbers = true, tab_indents = app.editor_tab_indents)
 					if res.committed { ui.toast(.Good, "Ctrl+Enter: %d lines", ui.area_line_count(&app.editor)) }
-					ui.next({width = ui.fill(), height = ui.px(em * 2.3)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
 					if ui.row(.Center, id = "###editor_bar") {
 						ui.next({width = ui.pct(0.55), height = ui.pct(1)})
 						ui.checkbox("###editor_tab", "Tab inserts spaces", &app.editor_tab_indents)
@@ -334,12 +332,12 @@ page_inputs :: proc(app: ^App) {
 					}
 				}
 				if ui.card("Tag input", ICON_PIN) {
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###tagrow") {
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.4, em * 0.4}, "###tagrow") {
 						remove := -1
 						for tag, i in app.tags {
 							if ui.tags("button") {
-								ui.next({width = ui.children_sum(), height = ui.px(em * 1.9), radius = em * 0.95, axis = .X, cross = .Center})
+								ui.next({width = ui.children_sum(), height = ui.px(ui.dense(em * 1.9)), radius = em * 0.95, axis = .X, cross = .Center})
 								chip := ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###tag_%s", tag))
 								if ui.parent(chip) {
 									ui.spacer(ui.px(em * 0.8))
@@ -350,11 +348,11 @@ page_inputs :: proc(app: ^App) {
 									ui.spacer(ui.px(em * 0.3))
 								}
 							}
-							ui.spacer(ui.px(em * 0.4))
 						}
 						if remove >= 0 { delete(app.tags[remove]); ordered_remove(&app.tags, remove) }
 					}
-					ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+					ui.spacer(ui.px(em * 0.3))
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 					ts := ui.line_edit("###in_tag", &app.tag_input, len(app.tags) >= 8 ? "Tag limit reached" : "Type a tag, press Enter")
 					if ts.committed && len(app.tag_input.buf) > 0 && len(app.tags) < 8 {
 						append(&app.tags, strings.clone(ui.field_string(&app.tag_input)))
@@ -364,9 +362,9 @@ page_inputs :: proc(app: ^App) {
 				if ui.card("A small form", ICON_CLIPBOARD) {
 					can_submit := len(app.name.buf) > 0 && email_valid(&app.email) && app.agree
 					if ui.form_row("Title") { ui.line_edit("###in_bio", &app.bio, "Engineer, designer, ...") }
-					ui.next({width = ui.fill(), height = ui.px(em * 2.3)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
 					ui.checkbox("###ck_agree", "I agree to the terms", &app.agree)
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###submitrow") {
 						if ui.tags("accent_button") {
 							if ui.button_icon("###b_submit", ui.ICON_CHECK, "Submit", disabled = !can_submit).clicked {
@@ -389,7 +387,7 @@ page_inputs :: proc(app: ^App) {
 						{"Ctrl+Z / Ctrl+Y", "Undo / redo in the editor"},
 					}
 					for e in entries {
-						ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.2))})
 						if ui.row(.Center, id = fmt.tprintf("###sc_%s", e.keys)) {
 							ui.kbd(e.keys)
 							ui.spacer(ui.px(em * 0.8))
@@ -407,7 +405,7 @@ page_inputs :: proc(app: ^App) {
 
 @(private)
 hint :: proc(app: ^App, em: f32, state: int, s0, s1, s2: string) {
-	ui.next({width = ui.fill(), height = ui.px(em * 1.8)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.8))})
 	if ui.row(.Center, id = fmt.tprintf("###hint_%s", s0[:6])) {
 		ui.spacer(ui.pct(0.34, 1))
 		tag := state == 0 ? "weak" : (state == 1 ? "good" : "bad")

@@ -72,7 +72,7 @@ function TypeText($t) {
   foreach($c in [char[]]$t) { [K2]::PostMessage($h, 0x102, [IntPtr][int]$c, [IntPtr]1) | Out-Null; Start-Sleep -Milliseconds 25 }
   Start-Sleep -Milliseconds 250
 }
-$VK = @{ A = 0x41; C = 0x43; V = 0x56; Z = 0x5A; Y = 0x59; K = 0x4B; Tab = 0x09; Space = 0x20; Enter = 0x0D; Esc = 0x1B; End = 0x23; Down = 0x28; Plus = 0xBB; Minus = 0xBD; Zero = 0x30; Comma = 0xBC }
+$VK = @{ A = 0x41; C = 0x43; V = 0x56; Z = 0x5A; Y = 0x59; K = 0x4B; Tab = 0x09; Space = 0x20; Enter = 0x0D; Esc = 0x1B; End = 0x23; Down = 0x28; Up = 0x26; Plus = 0xBB; Minus = 0xBD; Zero = 0x30; Comma = 0xBC }
 
 try {
   "start: $(State)"
@@ -86,6 +86,10 @@ try {
   Key @('ctrl') $VK.V;                               Check 'Ctrl+V' 'bio' 'Grace Hopper'
   Key @() $VK.Tab;                                   Check 'Tab to the checkbox' 'focus' 'ck_agree'
   Key @() $VK.Space;                                 Check 'Space activates it' 'agree' '1'
+  "--- arrow keys move the focus spatially"
+  Key @() $VK.Down;                                  Check 'Down (to Submit)' 'focus' 'b_submit'
+  Key @() $VK.Up;                                    Check 'Up (back to the checkbox)' 'focus' 'ck_agree'
+  Key @() $VK.Up;                                    Check 'Up (to the Title field)' 'focus' 'in_bio'
   "--- multi-line editor"
   Click 1400 585;                                    Check 'click editor' 'focus' 'editor'
   Key @('ctrl') $VK.End
@@ -109,8 +113,11 @@ try {
   Key @() $VK.Tab;                                   Check 'Tab inside Settings' 'focus' 'st_close'
   Key @() $VK.Tab;                                   Check 'Tab' 'focus' 'st_theme'
   Key @() $VK.Enter; Key @() $VK.Down; Key @() $VK.Enter
-  Check 'Enter, Down, Enter in the dropdown' 'theme' '1'
+  Check 'Enter, Down, Enter in the dropdown' 'theme' '2'   # default theme is Graphite (1)
   Key @() $VK.Esc;                                   Check 'Esc closes Settings' 'settings' '0'
+  "--- menus close on a click outside"
+  Click 290 83;                                      Check 'click File' 'menu' '1'
+  Click 1000 1346;                                   Check 'click the status bar' 'menu' '0'
 } catch { "ERROR: $_"; $script:fail += 1 }
 finally {
   [K2]::SetCursorPos($orig.X, $orig.Y) | Out-Null

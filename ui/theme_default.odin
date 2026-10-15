@@ -5,7 +5,10 @@ import "../draw"
 // A palette is eleven sRGB colors; `apply_palette` expands it into the full tag-based theme the built-in widgets use.
 Palette :: struct {
 	bg, panel, panel2, text, weak, border, accent, accent_text, good, warn, bad: u32,   // 0xRRGGBBAA
-	dark: bool,
+	dark:   bool,
+	finish: Finish,   // how raised surfaces are painted; their "sheen" entry (0..1) says how strongly
+	bar:    u32,      // menu / status bars (0 = panel)
+	translucent: bool, // `bg` has alpha < 1 and the app shows the OS backdrop behind it (see platform.set_backdrop)
 }
 
 PALETTE_MIDNIGHT :: Palette{
@@ -20,7 +23,7 @@ PALETTE_DAYLIGHT :: Palette{
 
 // Slots a theme entry can point at.
 @(private)
-Slot :: enum { Bg, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover }
+Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar }
 
 @(private)
 Entry :: struct { tags: string, slot: Slot, alpha: f32 }
@@ -32,23 +35,26 @@ entries := [?]Entry{
 	// generic names
 	{"background", .Bg, 1}, {"text", .Text, 1}, {"border", .Border, 1}, {"hover", .Hover, 1},
 	{"drop_shadow", .Black, 0.6}, {"selection", .Accent, 0.35}, {"cursor", .Text, 1}, {"focus border", .Accent, 1},
-	{"accent", .Accent, 1}, {"track", .Panel2, 1},
+	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0},
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
 	{"bad border", .Bad, 1}, {"good border", .Good, 1}, {"warn border", .Warn, 1},
 	{"accent_button background", .Accent, 1}, {"accent_button text", .Accent_Text, 1}, {"accent_button border", .Accent, 1},
 	{"danger_button background", .Bad, 1}, {"danger_button text", .White, 1}, {"danger_button border", .Bad, 1},
-	{"ghost_button background", .Panel, 0}, {"ghost_button border", .Panel, 0},
-	{"icon_button background", .Panel, 0},
-	{"button background", .Panel2, 1}, {"button border", .Border, 1},
-	{"menu_item background", .Panel2, 0},
-	{"selected background", .Accent, 0.28},
-	{"input background", .Bg, 1}, {"input border", .Border, 1},
+	{"ghost_button background", .Panel, 0}, {"ghost_button border", .Panel, 0}, {"ghost_button sheen", .White, 0},
+	{"icon_button background", .Panel, 0}, {"icon_button sheen", .White, 0},
+	{"accent_button sheen", .White, 1}, {"danger_button sheen", .White, 1},
+	{"button background", .Panel2, 1}, {"button border", .Border, 1}, {"button sheen", .White, 1},
+	{"menu_item background", .Panel2, 0}, {"menu_item sheen", .White, 0},
+	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
+	{"kbd sheen", .White, 0.7},
+	{"zebra background", .Bg_Solid, 0.45},
+	{"input background", .Bg_Solid, 1}, {"input border", .Border, 1},
 	{"kbd background", .Panel2, 1}, {"kbd text", .Weak, 1}, {"kbd border", .Border, 1},
 	{"scrim background", .Black, 0.55},
 	// containers (last)
 	{"card background", .Panel, 1}, {"card border", .Border, 1},
-	{"bar background", .Panel, 1}, {"bar border", .Border, 1},
+	{"bar background", .Bar, 1}, {"bar border", .Border, 1}, {"bar sheen", .White, 0.6},
 	{"floating background", .Panel2, 1}, {"floating text", .Text, 1}, {"floating border", .Border, 1},
 }
 
@@ -56,6 +62,8 @@ entries := [?]Entry{
 slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	switch s {
 	case .Bg: return p.bg
+	case .Bg_Solid: return p.bg | 0xff   // inputs stay opaque on translucent palettes
+	case .Bar: return p.bar != 0 ? p.bar : p.panel
 	case .Panel: return p.panel
 	case .Panel2: return p.panel2
 	case .Text: return p.text
@@ -83,4 +91,5 @@ apply_palette :: proc(t: ^Theme, p: Palette) {
 		c.a *= e.alpha
 		t.patterns[i].color = c
 	}
+	t.finish = p.finish
 }

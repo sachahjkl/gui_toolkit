@@ -183,7 +183,7 @@ page_playground :: proc(app: ^App) {
 		if ui.row(id = "###cols") {
 			if half("###left", 0.56) {
 				if ui.card("Physics arena", ICON_DOT) {
-					ui.next({width = ui.fill(), height = ui.px(em * 2.5)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.5))})
 					if ui.row(.Center, id = "###physrow") {
 						ui.next({width = ui.pct(0.5), height = ui.pct(1)})
 						ui.toggle("###ph_run", "Simulate", &app.phys_run)
@@ -193,26 +193,24 @@ page_playground :: proc(app: ^App) {
 					}
 					if ui.form_row("Gravity") { ui.slider("###ph_g", &app.gravity, 0, 2, 0, "%.2f") }
 					if ui.form_row("Bounce") { ui.slider("###ph_b", &app.bounce, 0.1, 1, 0, "%.2f") }
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###spawnrow") {
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.5, em * 0.5}, "###spawnrow") {
 						if ui.tags("accent_button") {
 							if ui.button_icon("###ph_add", ui.ICON_ADD, "25 balls").clicked { spawn_balls(app, 25) }
 						}
-						ui.spacer(ui.px(em * 0.4))
 						if ui.button_icon("###ph_shake", "", "Shake").clicked {
 							for &b in app.balls { if b.alive { b.v += {rand_range(-900, 900), -rand_range(300, 1400)} } }
 						}
-						ui.spacer(ui.px(em * 0.4))
 						if ui.button_icon("###ph_conf", ICON_TARGET, "Confetti").clicked { run_cmd(app, .Confetti) }
-						ui.spacer(ui.px(em * 0.4))
 						if ui.tags("ghost_button") {
 							if ui.button_icon("###ph_clear", ICON_TRASH, "Clear").clicked { run_cmd(app, .Clear_Balls) }
 						}
 					}
+					ui.spacer(ui.px(em * 0.3))
 
 					// the arena (positions are logical pixels relative to the box)
 					if ui.tags("input") {
-						ui.next({width = ui.fill(), height = ui.px(em * 21), radius = em * 0.6})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 21)), radius = em * 0.6})
 						arena := ui.build_box({.Clickable, .Draw_Background, .Draw_Border, .Clip}, "###ball_arena")
 						arena.cursor = .Arrow
 						ad := ui.frame_new(Arena_Draw)
@@ -238,7 +236,7 @@ page_playground :: proc(app: ^App) {
 					alive := 0
 					for b in app.balls { if b.alive { alive += 1 } }
 					if ui.tags("weak") {
-						ui.next({width = ui.fill(), height = ui.px(em * 2), font_size = math.round(em * 0.85)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2)), font_size = math.round(em * 0.85)})
 						ui.label(fmt.tprintf("%d balls  |  click / drag to spawn  |  right-click for confetti", alive))
 					}
 				}
@@ -246,7 +244,7 @@ page_playground :: proc(app: ^App) {
 			ui.spacer(ui.px(em))
 			if half("###right", 0.44) {
 				if ui.card("Fidget spinner", ICON_REFRESH) {
-					ui.next({width = ui.fill(), height = ui.px(em * 15), cursor = platform.Cursor.Hand})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 15)), cursor = platform.Cursor.Hand})
 					sp := ui.build_box({.Clickable}, "###spinner")
 					sig := ui.signal(sp)
 					c := draw.rect_center(sp.rect)
@@ -272,32 +270,32 @@ page_playground :: proc(app: ^App) {
 					d.accent, d.track, d.text = ui.color("accent"), ui.color("track"), ui.color("text")
 					sp.custom, sp.custom_user = spinner_draw, d
 					if ui.tags("weak") {
-						ui.next({width = ui.fill(), height = ui.px(em * 1.9), font_size = math.round(em * 0.85)})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.9)), font_size = math.round(em * 0.85)})
 						ui.label(fmt.tprintf("Grab and flick it: %d rpm, friction slows it down.", int(abs(app.spin_omega) * 60)))
 					}
 				}
 				if ui.card("Accent color (live theme edit)", ICON_PALETTE) {
-					ui.next({width = ui.fill(), height = ui.px(em * 9.5)})
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 9.5))})
 					if ui.row(id = "###pickrow") {
-						ui.next({width = ui.fill(), height = ui.px(em * 9), radius = em * 0.4})
+						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 9)), radius = em * 0.4})
 						if ui.sat_val_picker("###sv", app.hue, &app.sat, &app.val) { app.accent_override = true }
 						ui.spacer(ui.px(em * 0.7))
 						ui.next({width = ui.px(em * 1.9), height = ui.px(em * 9), radius = em * 0.4})
 						if ui.hue_picker("###hue", &app.hue) { app.accent_override = true }
 					}
 					ui.spacer(ui.px(em * 0.5))
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
-					if ui.row(.Center, id = "###swatchrow") {
+					ui.spacer(ui.px(em * 0.3))
+					if ui.flow({em * 0.35, em * 0.35}, "###swatchrow") {
 						hues := [?]f32{0.62, 0.08, 0.40, 0.83, 0.52, 0.02, 0.13}
 						for h, i in hues {
 							ui.next({width = ui.px(em * 2.1), height = ui.px(em * 2.1), radius = em, bg = draw.hsv(h, 0.65, 0.95)})
-							sw := ui.build_box({.Clickable, .Draw_Background, .Draw_Border}, fmt.tprintf("###swatch_%d", i))
+							sw := ui.build_box({.Clickable, .Draw_Background, .Draw_Border, .Fixed_Radius}, fmt.tprintf("###swatch_%d", i))
 							sw.cursor = .Hand
 							if ui.signal(sw).clicked { app.hue, app.sat, app.val = h, 0.65, 0.95; app.accent_override = true }
-							ui.spacer(ui.px(em * 0.35))
 						}
 					}
-					ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
+					ui.spacer(ui.px(em * 0.3))
+					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###accresetrow") {
 						if ui.button_icon("###acc_reset", ICON_UNDO, "Reset to palette accent", disabled = !app.accent_override).clicked {
 							set_palette(app, app.palette_idx)
@@ -316,7 +314,7 @@ page_playground :: proc(app: ^App) {
 build_notes :: proc(app: ^App, em: f32) {
 	s := ui.scale()
 	if ui.tags("input") {
-		ui.next({width = ui.fill(), height = ui.px(em * 19), radius = em * 0.6, axis = .Y})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 19)), radius = em * 0.6, axis = .Y})
 		area := ui.build_box({.Draw_Background, .Draw_Border, .Clip}, "###notes_area")
 		adim := (area.rect.max - area.rect.min) / s
 		bring_front := -1
@@ -332,7 +330,7 @@ build_notes :: proc(app: ^App, em: f32) {
 					nb.cursor = .Arrow
 					if ui.parent(nb) {
 						if ui.tags("bar") {
-							ui.next({width = ui.fill(), height = ui.px(em * 1.9), cursor = platform.Cursor.Move})
+							ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.9)), cursor = platform.Cursor.Move})
 							hd := ui.row_box({.Clickable, .Draw_Background, .Draw_Side_Bottom}, fmt.tprintf("###note_hd_%d", ni))
 							if ui.parent(hd) {
 								ui.spacer(ui.px(em * 0.6))
@@ -369,21 +367,21 @@ note_body :: proc(app: ^App, n: ^Note, em: f32) {
 	switch n.kind {
 	case 0:
 		if ui.tags("weak") {
-			if ui.style({width = ui.fill(), height = ui.px(em * 1.6), font_size = math.round(em * 0.9)}) {
+			if ui.style({width = ui.fill(), height = ui.px(ui.dense(em * 1.6)), font_size = math.round(em * 0.9)}) {
 				ui.label("Drag my title bar.")
 				ui.label("Click to bring me to front.")
 			}
 		}
 	case 1:
-		ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 		if ui.row(.Center, id = "###note_cnt") {
 			ui.spacer(ui.px(em * 0.5))
 			ui.stepper("###note_step", &app.note_counter, -99, 999)
 		}
 	case 2:
-		ui.next({width = ui.fill(), height = ui.px(em * 2.1)})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.1))})
 		ui.toggle("###note_sw", " Repel", &app.repel)
-		ui.next({width = ui.fill(), height = ui.px(em * 2.1)})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.1))})
 		ui.slider("###note_sl", &app.slider[1], 0, 1, 0, "%.2f")
 	}
 }

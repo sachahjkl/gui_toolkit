@@ -3,6 +3,48 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.3.0] - 2026-10-15
+
+### Added
+- **Arrow-key focus navigation**: once a widget that does not use arrows has the focus, the arrows move it to the
+  nearest Tab stop in that direction (trapped inside modals, scrolled into view). Sliders, text fields and open
+  menus keep their arrows.
+- **Scrollbars**: every `View_Scroll_Y` box gets an overlay scrollbar (drag the thumb, click the track to jump);
+  `text_edit` has vertical and horizontal bars.
+- **Wrapping rows**: `ui.flow(gap)` and the `Wrap` box flag place children left to right and start a new line when
+  the row is too narrow. Chips and the fidget button / tag / swatch rows use it.
+- **Corner rounding**: `ui.set_rounding` (0 = square, 1 = default, up to 2) scales box radii and widget chrome;
+  `ui.rad` for custom draws. Radio buttons stay round, and so do boxes with the new `Fixed_Radius` flag.
+  Rounded rects can use squircle corners (`render.set_corner_smoothing`), which removes the visible kink where an
+  arc meets a straight edge. At rounding 0 the Windows 11 window corners go square (`platform.set_square_corners`).
+- **Density**: `ui.set_density` / `ui.dense` (Comfortable or `DENSITY_COMPACT`): row heights, vertical gaps and
+  paddings shrink, the text keeps its size.
+- **Disabled and muted scopes**: `if ui.disabled(cond) { ... }` disables everything built inside (no clicks, hover or
+  focus) with a neutral look and a fade; `button_icon(disabled = ...)` uses it. `if ui.muted() { ... }` dims
+  secondary content that stays interactive.
+- **Finishes**: `Palette.finish` paints raised surfaces `Flat`, `Gradient` (Bootstrap 2: vertical gradient, top
+  highlight, embossed text, focus glow) or `Glass` (Windows 7 Aero: glossy top half, bottom glow, white rim).
+  `ui.paint_rect` gives custom draws the same finish. Palettes can also set a bar colour.
+- **Translucent windows**: `render.init(transparent = true)` presents through DirectComposition with a linear fp16
+  (scRGB) swap chain, so translucent pixels compose correctly; `platform.set_backdrop` shows the Windows 11 acrylic
+  backdrop behind them.
+- **Selection outline**: selected rows, menu items and palette entries get a crisp accent border over a light fill.
+- fidget: Aero and Bootstrap themes (8 themes; Graphite is now the default), Settings for rounding, corner shape and
+  density, an "Enabled" switch that disables a card, a grouped data table (collapsible department groups with
+  totals, two-line headers with column totals, right-aligned numbers, column separators, alternating rows),
+  `--bench=N` (CPU time per frame), `--compact`, `--size=WxH`, `--long_text`.
+- `tools/keyboard_test.ps1`: 33 checks (arrow navigation, menus closing on a click outside).
+
+### Changed
+- A box with `Draw_Border` keeps its border out of the layout (like CSS border-box): its children sit inside it, so a
+  border never hides a child's own outline.
+- Disabled boxes no longer get a dimming overlay: they switch to neutral colours and fade as a whole.
+
+### Fixed
+- Context menus and dropdowns now close on a click anywhere outside, not only on clickable boxes.
+- Rects ignored the alpha stack (`draw.push_alpha`): only text faded.
+- The page and the menu bar inherited the default radius, leaving dark pixels in the window corners.
+- The sort arrow and resize lines of the table header were not aligned with the column separators.
 ## [0.2.0] - 2026-10-15
 
 ### Added

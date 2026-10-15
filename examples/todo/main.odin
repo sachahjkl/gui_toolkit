@@ -102,10 +102,10 @@ progress_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Progress_Draw)(user)
 	r := b.rect
 	h := r.max.y - r.min.y
-	draw.rect(dc, r, d.track, h * 0.5)
+	draw.rect(dc, r, d.track, ui.rad(h * 0.5))
 	if d.t > 0.001 {
 		w := max(h, (r.max.x - r.min.x) * d.t)
-		draw.rect(dc, {r.min, {r.min.x + w, r.max.y}}, d.fill, h * 0.5)
+		draw.rect(dc, {r.min, {r.min.x + w, r.max.y}}, d.fill, ui.rad(h * 0.5))
 	}
 }
 
@@ -124,7 +124,7 @@ build_ui :: proc(app: ^App) {
 	for t in app.tasks { if t.done { done += 1 } }
 
 	if ui.style({width = ui.fill(), height = ui.fill(), radius = em * 0.45}) {
-		ui.next({axis = .Y})
+		ui.next({axis = .Y, radius = 0})   // touches the window edges: square
 		page := ui.build_box({.Draw_Background}, "###page")
 		if ui.parent(page) {
 			ui.next({width = ui.fill(), height = ui.fill()})
@@ -162,9 +162,9 @@ build_ui :: proc(app: ^App) {
 }
 
 build_header :: proc(app: ^App, em: f32, done, total: int) {
-	ui.next({width = ui.fill(), height = ui.px(em * 3)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 3))})
 	if ui.row(.Center) {
-		ui.next({width = ui.text_size(0), height = ui.px(em * 2.4)})
+		ui.next({width = ui.text_size(0), height = ui.px(ui.dense(em * 2.4))})
 		if ui.style({font_size = math.round(em * 1.7)}) { ui.label("Tasks") }
 		ui.spacer(ui.fill())
 		ui.next({width = ui.px(em * 2.4), height = ui.px(em * 2.4)})
@@ -172,15 +172,15 @@ build_header :: proc(app: ^App, em: f32, done, total: int) {
 		if sig.clicked { app.dark = !app.dark; app.dirty = true }
 		if ui.hovered_for(sig, 0.4) {
 			if ui.tooltip() {
-				ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 2)})
+				ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 				ui.label("Toggle light / dark")
 			}
 		}
 	}
 	ui.spacer(ui.px(em * 0.4))
-	ui.next({width = ui.fill(), height = ui.px(em * 1.4)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.4))})
 	if ui.tags("weak") {
-		ui.next({width = ui.text_size(0), height = ui.px(em * 1.4)})
+		ui.next({width = ui.text_size(0), height = ui.px(ui.dense(em * 1.4))})
 		ui.label(fmt.tprintf("%d of %d done", done, total))
 	}
 	ui.spacer(ui.px(em * 0.3))
@@ -188,20 +188,20 @@ build_header :: proc(app: ^App, em: f32, done, total: int) {
 	d.t = ui.anim(ui.key_from_string(0, "progress"), total > 0 ? f32(done) / f32(total) : 0, 24)
 	d.track = ui.color("track")
 	d.fill = ui.color("accent")
-	ui.next({width = ui.fill(), height = ui.px(em * 0.5)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.5))})
 	ui.custom("progress_bar", progress_draw, d)
 }
 
 build_input_row :: proc(app: ^App, em: f32) {
-	ui.next({width = ui.fill(), height = ui.px(em * 2.6)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.6))})
 	if ui.row(.Center) {
 		input_key := ui.key_from_string(ui.parent_box().key, "###new_task")
-		ui.next({width = ui.fill(), height = ui.px(em * 2.6)})
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.6))})
 		res := ui.line_edit("###new_task", &app.input, "What needs doing?")
 		submit := res.committed
 		ui.spacer(ui.px(em * 0.6))
 		if ui.tags("accent_button") {
-			ui.next({width = ui.text_size(em * 1.2), height = ui.px(em * 2.6)})
+			ui.next({width = ui.text_size(em * 1.2), height = ui.px(ui.dense(em * 2.6))})
 			if ui.button("Add###add").clicked { submit = true }
 		}
 		if submit && len(app.input.buf) > 0 {
@@ -213,14 +213,14 @@ build_input_row :: proc(app: ^App, em: f32) {
 }
 
 build_filters :: proc(app: ^App, em: f32, total, done: int) {
-	ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 	if ui.row(.Center) {
 		names := [Filter]string{.All = "All", .Active = "Active", .Done = "Done"}
 		counts := [Filter]int{.All = total, .Active = total - done, .Done = done}
 		for f in Filter {
 			selected := app.filter == f
 			if selected { ui.push_tags("accent_button") }
-			ui.next({width = ui.text_size(em * 1.0), height = ui.px(em * 2.2)})
+			ui.next({width = ui.text_size(em * 1.0), height = ui.px(ui.dense(em * 2.2))})
 			if ui.button(fmt.tprintf("%s %d###filter_%d", names[f], counts[f], int(f))).clicked { app.filter = f }
 			if selected { ui.pop_tags() }
 			ui.spacer(ui.px(em * 0.4))
@@ -242,7 +242,7 @@ build_list :: proc(app: ^App, em: f32) {
 			if !matches(t, app.filter, query) { continue }
 			shown += 1
 			if ui.tags("card") {
-				ui.next({width = ui.fill(), height = ui.px(em * 3), radius = em * 0.6})
+				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 3)), radius = em * 0.6})
 				if ui.row(.Center, {.Draw_Background, .Draw_Border}, fmt.tprintf("###task_%d", t.id)) {
 					ui.spacer(ui.px(em * 0.8))
 					dim := t.done   // the checkbox toggles t.done: remember what we pushed
@@ -257,7 +257,7 @@ build_list :: proc(app: ^App, em: f32) {
 					if del.clicked { remove_id = t.id }
 					if ui.hovered_for(del, 0.4) {
 						if ui.tooltip() {
-							ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 2)})
+							ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 							ui.label("Delete task")
 						}
 					}
@@ -268,7 +268,7 @@ build_list :: proc(app: ^App, em: f32) {
 		}
 		if shown == 0 {
 			if ui.tags("weak") {
-				ui.next({width = ui.fill(), height = ui.px(em * 6)})
+				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 6))})
 				if ui.style({text_align = .Center}) { ui.label(app.tasks == nil || len(app.tasks) == 0 ? "Nothing here yet. Add a task above." : "No task matches.") }
 			}
 		}
@@ -280,15 +280,15 @@ build_list :: proc(app: ^App, em: f32) {
 }
 
 build_footer :: proc(app: ^App, em: f32, total, done: int) {
-	ui.next({width = ui.fill(), height = ui.px(em * 2.4)})
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 	if ui.row(.Center) {
 		if ui.tags("weak") {
-			ui.next({width = ui.text_size(0), height = ui.px(em * 2)})
+			ui.next({width = ui.text_size(0), height = ui.px(ui.dense(em * 2))})
 			ui.label(fmt.tprintf("%d left", total - done))
 		}
 		ui.spacer(ui.fill())
 		if done > 0 {
-			ui.next({width = ui.text_size(em * 1.0), height = ui.px(em * 2.2)})
+			ui.next({width = ui.text_size(em * 1.0), height = ui.px(ui.dense(em * 2.2))})
 			if ui.button("Clear completed###clear").clicked {
 				for i := len(app.tasks) - 1; i >= 0; i -= 1 { if app.tasks[i].done { delete(app.tasks[i].title); ordered_remove(&app.tasks, i) } }
 				app.dirty = true

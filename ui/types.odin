@@ -76,6 +76,8 @@ Box_Flag :: enum u8 {
 	Draw_Side_Left,
 	Draw_Side_Right,
 	No_Text_Trunc,       // never replace overflowing text with "..."
+	Fixed_Radius,        // the radius is part of the shape (colour dot, avatar): not scaled by the rounding setting
+	Wrap,                // children flow left to right and wrap onto new lines when the box is too narrow (see `flow`)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -102,6 +104,8 @@ Box :: struct {
 	pref:        [Axis]Size,
 	layout_axis: Axis,
 	cross:       Cross_Align,
+	gap:         Vec2,           // .Wrap boxes: horizontal space between items, vertical space between lines
+	wrap_line:   int,            // .Wrap children: line index (set by the X layout pass, used by the Y one)
 	fixed_pos:   Vec2,           // for Floating_X / Floating_Y, relative to the parent's top-left
 	text:        string,         // display string (arena-allocated, valid for this frame)
 	font:        font.Font_Id,
@@ -183,6 +187,7 @@ Style_Mod :: struct {
 	cursor:        Maybe(platform.Cursor),
 	axis:          Maybe(Axis),              // child layout axis (applies to the box itself, not inherited)
 	cross:         Maybe(Cross_Align),       // child alignment across that axis (next box only)
+	gap:           Maybe(Vec2),              // .Wrap boxes: spacing between items / lines (next box only)
 	fixed_x:       Maybe(f32),
 	fixed_y:       Maybe(f32),
 	fixed_w:       Maybe(f32),
@@ -199,8 +204,16 @@ Theme_Pattern :: struct {
 	color: Color,
 }
 
+// How raised surfaces (buttons, bars, selected items) are painted.
+Finish :: enum u8 {
+	Flat,       // plain colour
+	Gradient,   // vertical gradient, highlight line along the top edge, embossed text, glowing focus (Bootstrap 2)
+	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
+}
+
 Theme :: struct {
 	patterns: [dynamic]Theme_Pattern,
+	finish:   Finish,
 }
 
 Timer :: struct {
@@ -263,6 +276,9 @@ State :: struct {
 	parent_stack: [dynamic]^Box,
 	style_stack:  [dynamic]Style,
 	tag_stack:    [dynamic]string,
+	disabled_stack: [dynamic]bool,   // `disabled` scopes; disabled_depth counts the true ones
+	disabled_depth: int,
+	disabled_keep:  f32,             // opacity of disabled widgets for the current theme (set by draw_tree)
 	tag_marks:    [dynamic]int,       // tag stack depth to restore on pop (for `tags` scopes)
 	tag_keys:     [dynamic]Key,       // running hash of the tag stack (tag_keys[i] covers tag_stack[:i+1])
 	tag_sets:     map[Key][]string,   // per-frame: tag stack contents by key, for theme lookups while drawing
@@ -287,6 +303,7 @@ State :: struct {
 	active_key:  [platform.Mouse_Button]Key,
 	press_pos:   [platform.Mouse_Button]Vec2,
 	pressed_key:  [platform.Mouse_Button]Key,
+	pressed_any:  [platform.Mouse_Button]bool,   // a press happened this frame (even on nothing clickable)
 	released_key: [platform.Mouse_Button]Key,
 	clicked_key:  [platform.Mouse_Button]Key,
 	double_key:   Key,
@@ -301,6 +318,10 @@ State :: struct {
 	modal_prev, modal_now: Key,      // modal open last frame / this frame (focus resets when a modal opens)
 	menu_sel, menu_index, menu_count: int,   // keyboard selection inside the open context menu
 	menu_activate: bool,
+	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
+	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
+	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)
+	rounding:     f32,               // corner rounding factor applied to every rounded shape (0 = square, 1 = default)
 	time_ms:      f64,
 	cursor_request: platform.Cursor,
 	clipboard_get: proc() -> string,
