@@ -1,5 +1,5 @@
 name: "gui_toolkit"
-description: "Toolkit GUI natif en Odin (UI immediate-mode + D3D11), portage idiomatique des couches UI de raddebugger."
+description: "Toolkit GUI natif en Odin (UI immediate-mode, rendu D3D11), avec une galerie de widgets (fidget) et une app todo."
 topics:
   - "odin"
   - "gui"
