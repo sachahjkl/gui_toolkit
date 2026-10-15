@@ -46,6 +46,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 				// keyboard focus follows the click
 				b := s.boxes[hot] if hot != 0 else nil
 				s.focus_key = (b != nil && .Focusable in b.flags) ? hot : 0
+				s.focus_visible = false
 			}
 		case .Mouse_Release:
 			s.mouse = e.pos
@@ -126,7 +127,7 @@ scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 	for c := b.last; c != nil; c = c.prev {
 		if k := scroll_hit_box(c, p, child_clip); k != 0 { return k }
 	}
-	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && contains(b.rect, p) { return b.key }
+	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags || .Scroll_Self in b.flags) && contains(b.rect, p) { return b.key }
 	return 0
 }
 
@@ -178,7 +179,15 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 			sig.drag_delta = s.mouse - s.press_pos[.Left]
 		}
 		if sig.hovering && b.cursor != .Arrow { s.cursor_request = b.cursor }
+		// keyboard activation of the focused Tab stop (text inputs handle their own keys)
+		// (not while a context menu is open: Enter / Space then belong to the menu)
+		if sig.focused && .Focusable in b.flags && .Text_Input not_in b.flags && s.ctx_menu_key == 0 {
+			if key_press(.Return) || key_press(.Space) {
+				sig.clicked, sig.pressed, sig.released = true, true, true
+			}
+		}
 	}
+	if .Scroll_Self in b.flags && s.scroll_key == b.key { sig.scrolled = s.scroll_delta }
 	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && s.scroll_key == b.key {
 		step := b.font_size * 4
 		d := s.scroll_delta

@@ -1,5 +1,7 @@
 package ui
 
+import "core:fmt"
+
 
 ////////////////////////////////
 // Layout helpers
@@ -79,7 +81,7 @@ label :: proc(text: string) -> Signal {
 // Tags used: "button" (+ any tag you pushed, e.g. "accent"). `id` follows the id-string rules: "Add###add_btn".
 button :: proc(id: string) -> Signal {
 	if tags("button") {
-		b := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Text, .Draw_Hot_Effects}, id)
+		b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Text, .Draw_Hot_Effects}, id)
 		b.text_align = .Center
 		b.squish = anim(key_from_string(b.key, "squish"), g.active_key[.Left] == b.key && g.hot_key == b.key ? 0.04 : 0, 60)
 		return signal(b)
@@ -91,9 +93,8 @@ button :: proc(id: string) -> Signal {
 icon_button :: proc(id: string, icon: string) -> Signal {
 	if tags("icon_button") {
 		if style({font = g.icon_font}) {
-			b := build_box({.Clickable, .Draw_Background, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc}, icon)
-			// the icon is the text; the id decides the key
-			b.key = key_from_string(parent_box().key, id)
+			// the glyph is the displayed text, `id` alone decides the key (so changing the icon keeps the state)
+			b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc}, fmt.tprintf("%s###%s", icon, id))
 			b.text_align = .Center
 			return signal(b)
 		}

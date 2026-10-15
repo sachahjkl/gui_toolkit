@@ -50,6 +50,9 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)
+	clear(&s.focus_order)
+	s.trap_depth = 0
+	s.modal_prev, s.modal_now = s.modal_now, 0
 	s.bar_keys, s.bar_keys_prev = s.bar_keys_prev, s.bar_keys
 	clear(&s.bar_keys)
 	s.has_next = false
@@ -97,6 +100,7 @@ end_build :: proc() {
 	assert(len(s.style_stack) == 1, "ui: unbalanced style push/pop")
 
 	layout(s)
+	handle_tab_navigation(s)
 	update_animations(s)
 
 	// drop boxes and animations that were not touched this build
@@ -195,6 +199,8 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	}
 
 	b.flags = flags + st.extra_flags
+	b.name = ""
+	if id != "" { b.name = fmt.aprint(hash_part(id), allocator = frame_allocator()) }
 	b.pref = st.pref
 	b.layout_axis = axis
 	b.cross = cross
@@ -251,6 +257,10 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		approach(&b.border, b.target_border, rate, &busy)
 		approach(&b.text_color, b.target_text, rate, &busy)
 		if busy { s.anim_busy = true }
+	}
+
+	if .Focusable in b.flags && .Disabled not_in b.flags {
+		append(&s.focus_order, Focus_Entry{key = b.key, trapped = s.trap_depth > 0})
 	}
 
 	// link into the parent
@@ -408,4 +418,42 @@ debug_dump_tall :: proc(s: ^State, limit: f32) {
 		for c := b.first; c != nil; c = c.next { walk(c, depth + 1, limit) }
 	}
 	walk(s.root, 0, limit)
+}
+////////////////////////////////
+// Keyboard focus navigation
+
+// Tab / Shift+Tab move the focus through the Tab stops (boxes with .Focusable) in build order, wrapping around.
+// While a modal is open only its own Tab stops take part. Runs after layout, so the newly focused box can be
+// scrolled into view inside its scroll containers.
+@(private)
+handle_tab_navigation :: proc(s: ^State) {
+	dir := 0
+	if key_press(.Tab) { dir = 1 } else if key_press(.Tab, {.Shift}) { dir = -1 }
+	if dir == 0 || len(s.focus_order) == 0 { return }
+	trapped := false
+	for e in s.focus_order { if e.trapped { trapped = true; break } }
+	stops := make([dynamic]Key, 0, len(s.focus_order), context.temp_allocator)
+	for e in s.focus_order { if e.trapped == trapped { append(&stops, e.key) } }
+	if len(stops) == 0 { return }
+	cur := -1
+	for k, i in stops { if k == s.focus_key { cur = i; break } }
+	next: int
+	if cur < 0 { next = dir > 0 ? 0 : len(stops) - 1 } else { next = (cur + dir + len(stops)) % len(stops) }
+	s.focus_key = stops[next]
+	s.focus_visible = true
+	// bring it into view
+	b := s.boxes[s.focus_key]
+	if b == nil { return }
+	for p := b.parent; p != nil; p = p.parent {
+		if .View_Scroll_Y not_in p.flags { continue }
+		margin := b.font_size
+		if b.rect.min.y < p.rect.min.y { p.view_target.y -= p.rect.min.y - b.rect.min.y + margin }
+		if b.rect.max.y > p.rect.max.y { p.view_target.y += b.rect.max.y - p.rect.max.y + margin }
+	}
+}
+
+// Hash part of the id of the focused box ("" if none): handy for tests and debugging.
+focused_name :: proc() -> string {
+	if b, ok := g.boxes[g.focus_key]; ok { return b.name }
+	return ""
 }

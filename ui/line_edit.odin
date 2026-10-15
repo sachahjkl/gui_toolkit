@@ -153,7 +153,7 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_Result) {
 	s := g
 	if tags("input") {
-		b := build_box({.Clickable, .Focusable, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
+		b := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
 		b.cursor = .Text
 		b.text = ""
 		res.signal = signal(b)

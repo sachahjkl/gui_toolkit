@@ -11,6 +11,7 @@ ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0) {
 	g.ctx_menu_key = key
 	g.ctx_menu_anchor = anchor
 	g.ctx_menu_pos = pos
+	g.menu_sel = -1
 	g.ctx_menu_open_build = g.build_index
 }
 
@@ -30,7 +31,8 @@ clamp_popup :: proc(pos: Vec2, size, window: Vec2) -> Vec2 {
 }
 
 // `if ctx_menu(key, width) { menu_item(...) ... }`. Closes on Escape, on a click outside, or when an item is chosen.
-@(deferred_none = ctx_menu_end)
+// Keyboard: Up / Down move the selection, Enter or Space choose it.
+@(deferred_none = menu_end)
 ctx_menu :: proc(key: Key, width: f32) -> bool {
 	s := g
 	if !ctx_menu_is_open(key) {
@@ -55,6 +57,13 @@ ctx_menu :: proc(key: Key, width: f32) -> bool {
 
 	append(&s.popup_stack, true)
 	s.menu_width = width
+	s.menu_index = 0
+	s.menu_activate = false
+	if s.menu_count > 0 {
+		if key_press(.Down) { s.menu_sel = (s.menu_sel + 1) % s.menu_count }
+		if key_press(.Up)   { s.menu_sel = s.menu_sel <= 0 ? s.menu_count - 1 : s.menu_sel - 1 }
+		if s.menu_sel >= 0 && (key_press(.Return) || key_press(.Space)) { s.menu_activate = true }
+	}
 	em := font_size()
 	size := panel != nil ? panel.size : Vec2{width, em * 10}
 	pos := clamp_popup(s.ctx_menu_pos, size, s.window_size)
@@ -78,6 +87,12 @@ ctx_menu :: proc(key: Key, width: f32) -> bool {
 push_style_copy :: proc() { append(&g.style_stack, top_style()^) }
 
 @(private)
+menu_end :: proc() {
+	if len(g.popup_stack) > 0 && g.popup_stack[len(g.popup_stack) - 1] { g.menu_count = g.menu_index }
+	ctx_menu_end()
+}
+
+@(private)
 ctx_menu_end :: proc() {
 	s := g
 	if pop(&s.popup_stack) {
@@ -95,14 +110,20 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "") ->
 	width := s.menu_width
 	clicked: bool
 	sig: Signal
+	idx := s.menu_index
+	s.menu_index += 1
+	selected := idx == s.menu_sel
 	if tags("menu_item") {
+		if selected { push_tags("selected") }
 		set_next_axis(.X, .Center)
 		g.next_mod.width = px(width)
 		g.next_mod.height = px(em * 2.2)
 		g.next_mod.radius = em * 0.35
 		b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background}, text)   // text = id; drawn by a child below
 		b.text = ""
+		if selected { pop_tags() }
 		sig = signal(b)
+		if sig.hovering { s.menu_sel = idx }
 		if parent(b) {
 			spacer(px(em * 0.6))
 			next({width = px(em * 1.5), height = px(em * 1.5)})
@@ -123,7 +144,8 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "") ->
 			}
 			spacer(px(em * 0.5))
 		}
-		clicked = sig.clicked
+		clicked = sig.clicked || (selected && s.menu_activate)
+		sig.clicked = clicked
 	}
 	if clicked { ctx_menu_close() }
 	return sig
