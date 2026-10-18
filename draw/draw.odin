@@ -105,20 +105,25 @@ Context :: struct {
 	xforms:   [dynamic]Transform,
 	xform_table: [dynamic]render.Xform_Data,   // GPU transforms of this frame (entry 0 unused)
 	clip_table:  [dynamic]render.Clip_Data,    // clip shapes of this frame (entry 0 unused)
+	clip_points: [dynamic][2]f32,              // polygon clip vertices of this frame
 	layers:   [dynamic]render.Layer,           // offscreen layers of this frame (push_layer), by id - 1
+	ops:      [dynamic]render.Op,              // clears, copies and filter passes of this frame, in order
 	open_layers: [dynamic]Open_Layer,
+	filter_store: [dynamic]Filter,             // the filters of open layers (Open_Layer.filters indexes it)
 	target:   int,                             // where new batches draw: 0 = the frame, else a layer id
-	layers_done: int,
 	circular: bool,                            // set_circular_corners
 	size:     Vec2,
 	generation: int,
 }
 
-// A layer being drawn (push_layer ... pop_layer).
+// A layer being drawn (push_layer / push_effects ... pop_layer).
 Open_Layer :: struct {
-	id:     int,      // 0: no layer (fallback to per-primitive alpha)
-	alpha:  f32,
-	parent: int,      // the target to go back to
+	id:      int,       // 0: no layer (fallback to per-primitive alpha)
+	alpha:   f32,
+	parent:  int,       // the target to go back to
+	filters: [2]int,    // [first, end) of Context.filter_store
+	blend:   Blend_Mode,
+	xform:   Affine,    // the transform when it was pushed (filter lengths and offsets are in that local space)
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
@@ -130,13 +135,15 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 
 destroy :: proc(c: ^Context) {
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
-	delete(c.xform_table); delete(c.clip_table); delete(c.layers); delete(c.open_layers)
+	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
+	delete(c.open_layers); delete(c.filter_store)
 }
 
 begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
-	clear(&c.xform_table); clear(&c.clip_table); clear(&c.layers); clear(&c.open_layers)
-	c.target, c.layers_done = 0, 0
+	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
+	clear(&c.open_layers); clear(&c.filter_store)
+	c.target = 0
 	c.circular = false
 	c.size = size
 	append(&c.clips, Clip{rect = {{0, 0}, size}})
@@ -151,6 +158,15 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 start_batch :: proc(c: ^Context) {
 	cl := c.clips[len(c.clips) - 1].rect
 	append(&c.batches, render.Batch{clip = {cl.min.x, cl.min.y, cl.max.x, cl.max.y}, tex = c.atlas, first = len(c.insts), target = c.target})
+}
+
+// Records a step that is not a draw call (it runs between the batches recorded before and after it).
+@(private)
+add_op :: proc(c: ^Context, op: render.Op) {
+	close_batch(c)
+	append(&c.ops, op)
+	append(&c.batches, render.Batch{first = len(c.insts), target = c.target, op = len(c.ops)})
+	start_batch(c)
 }
 
 @(private)
@@ -184,16 +200,28 @@ push_clip :: proc(c: ^Context, r: Rect) {
 push_clip_rounded :: proc(c: ^Context, r: Rect, radii: [4]f32) {
 	xf := c.xforms[len(c.xforms) - 1]
 	if xf.simple && radii == {} { push_clip(c, r); return }
+	half := rect_size(r) * 0.5
+	push_clip_shape(c, r, render.Clip_Data{
+		kind = render.CLIP_RRECT, flags = c.circular ? render.CLIP_CIRCLE : 0,
+		center = rect_center(r), half_size = {max(half.x, 0), max(half.y, 0)}, radii = radii,
+	})
+}
+
+// Pushes a clip shape whose local bounds are `bounds` (the scissor is their screen bounds): the transform's inverse,
+// the antialiasing scale and the parent link are filled in here.
+@(private)
+push_clip_shape :: proc(c: ^Context, bounds: Rect, shape: render.Clip_Data) {
+	xf := c.xforms[len(c.xforms) - 1]
 	parent := c.clips[len(c.clips) - 1]
 	inv, ok := affine_inverse(xf.m)
 	// 1 px of slack: the scissor is integer, the shape's antialiased edge is not
-	scissor := rect_intersect(rect_pad(affine_bounds(xf.m, r), 1), parent.rect)
+	scissor := rect_intersect(rect_pad(affine_bounds(xf.m, bounds), 1), parent.rect)
 	if !ok { scissor = {} }
-	half := rect_size(r) * 0.5
-	append(&c.clip_table, render.Clip_Data{
-		inv = {inv.a, inv.b, inv.c, inv.d, inv.e, inv.f}, px = affine_scale_factor(xf.m), parent = parent.shape | (c.circular ? render.CLIP_CIRCLE : 0),
-		center = rect_center(r), half_size = {max(half.x, 0), max(half.y, 0)}, radii = radii,
-	})
+	d := shape
+	d.inv = {inv.a, inv.b, inv.c, inv.d, inv.e, inv.f}
+	d.px = affine_scale_factor(xf.m)
+	d.parent = parent.shape
+	append(&c.clip_table, d)
 	close_batch(c)
 	append(&c.clips, Clip{rect = scissor, shape = u32(len(c.clip_table) - 1)})
 	start_batch(c)
@@ -213,68 +241,6 @@ current_clip :: proc(c: ^Context) -> Rect { return c.clips[len(c.clips) - 1].rec
 
 push_alpha :: proc(c: ^Context, a: f32) { append(&c.alphas, c.alphas[len(c.alphas) - 1] * a) }
 pop_alpha :: proc(c: ^Context) { pop(&c.alphas) }
-
-////////////////////////////////
-// Layers: group opacity
-
-// Everything drawn until pop_layer goes to an offscreen layer, composited once at pop with opacity `alpha` (times
-// the alpha stack): overlapping primitives inside do not show through each other, as with CSS `opacity` on an element
-// (push_alpha instead fades each primitive on its own). `bounds` (current local space) must contain what is drawn:
-// the layer covers its screen bounds, cut to the current clip, and nothing outside shows. Layers nest; transforms
-// and clips work inside as outside. When the layer would be empty or too large for a texture, this falls back to
-// push_alpha. Costs a render target of the layer's size (pooled by the renderer) and one extra pass.
-push_layer :: proc(c: ^Context, bounds: Rect, alpha: f32) {
-	xf := c.xforms[len(c.xforms) - 1]
-	r := rect_intersect(affine_bounds(xf.m, bounds), c.clips[len(c.clips) - 1].rect)
-	r = rect_intersect(r, Rect{{0, 0}, c.size})
-	x0, y0 := math.floor(r.min.x), math.floor(r.min.y)
-	x1, y1 := math.ceil(r.max.x), math.ceil(r.max.y)
-	w, h := int(x1 - x0), int(y1 - y0)
-	tex: render.Texture
-	if w > 0 && h > 0 && alpha > 0 { tex = render.acquire_target(c.renderer, w, h) }
-	if tex == 0 {
-		append(&c.open_layers, Open_Layer{id = 0, alpha = alpha, parent = c.target})
-		push_alpha(c, alpha)
-		return
-	}
-	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}})
-	id := len(c.layers)
-	append(&c.open_layers, Open_Layer{id = id, alpha = alpha, parent = c.target})
-	close_batch(c)
-	c.target = id
-	start_batch(c)
-	append(&c.alphas, 1)   // full opacity inside: the layer's alpha applies once, when it is composited
-}
-
-pop_layer :: proc(c: ^Context) {
-	ol := pop(&c.open_layers)
-	pop(&c.alphas)
-	if ol.id == 0 { return }
-	close_batch(c)
-	c.target = ol.parent
-	c.layers_done += 1
-	ly := &c.layers[ol.id - 1]
-	ly.done = c.layers_done
-	start_batch(c)
-	// the composite: the layer's pixels 1:1 at their screen place (no transform: the content already went through
-	// it; no clip shape: the content was clipped)
-	b := &c.batches[len(c.batches) - 1]
-	if b.image != ly.tex {
-		if b.image != 0 && len(c.insts) > b.first {
-			close_batch(c)
-			start_batch(c)
-			b = &c.batches[len(c.batches) - 1]
-		}
-		b.image = ly.tex
-	}
-	a := c.alphas[len(c.alphas) - 1] * ol.alpha
-	x0, y0 := ly.origin.x, ly.origin.y
-	w, h := f32(ly.size.x), f32(ly.size.y)
-	append(&c.insts, render.Rect_Inst{
-		dst = {x0, y0, x0 + w, y0 + h}, src = {0, 0, w, h}, colors = {{1, 1, 1, a}, {1, 1, 1, a}, {1, 1, 1, a}, {1, 1, 1, a}},
-		soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, flags = render.FLAG_LAYER,
-	})
-}
 
 // Rounded corners drawn from now on (rects, images, rounded clips) are circular arcs when `on`, whatever the
 // renderer's corner shape (render.set_corner_smoothing, the squircle of the UI): content that follows its own rules,
@@ -483,7 +449,10 @@ end_frame :: proc(c: ^Context) {
 	}
 	clear(&f.pending)
 	clear(&f.pending_pixels)
-	xforms := len(c.xform_table) > 1 ? c.xform_table[:] : nil
-	clips := len(c.clip_table) > 1 ? c.clip_table[:] : nil
-	render.frame_submit(c.renderer, c.insts[:], c.batches[:], xforms, clips, c.layers[:])
+	render.frame_submit(c.renderer, render.Frame_Data{
+		insts = c.insts[:], batches = c.batches[:],
+		xforms = len(c.xform_table) > 1 ? c.xform_table[:] : nil,
+		clips = len(c.clip_table) > 1 ? c.clip_table[:] : nil,
+		points = c.clip_points[:], layers = c.layers[:], ops = c.ops[:],
+	})
 }

@@ -94,6 +94,7 @@ try {
   Capture $fidget '--page=2 --compact --anim=on' 'compact' 1500
   Capture $todo '' 'todo' 1500
   Capture (Join-Path $repo 'build\transforms.exe') '--time=2.0' 'transforms' 1500
+  Capture (Join-Path $repo 'build\effects.exe') '--time=2.0' 'effects' 1500
 } finally {
   [S1]::SetCursorPos($script:cursor.X, $script:cursor.Y) | Out-Null
   foreach($d in $dirs) { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; $b = "$d.shotbackup"; if(Test-Path $b) { Move-Item $b $d } }

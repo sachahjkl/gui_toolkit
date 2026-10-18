@@ -1,8 +1,9 @@
-# Drawing: transforms, clips and images
+# Drawing: transforms, clips, images and effects
 
-The `draw` package is the immediate-mode layer under `ui`: you can also use it on its own (see `examples/smoke` and
-`examples/transforms`). This page covers the 2D transforms, the clips and the images added in 0.4.0, and the layers (group opacity) and
-offscreen rendering added in 0.4.1.
+The `draw` package is the immediate-mode layer under `ui`: you can also use it on its own (see `examples/smoke`,
+`examples/transforms` and `examples/effects`). This page covers the 2D transforms, the clips and the images added in
+0.4.0, the layers (group opacity) and offscreen rendering added in 0.4.1, and the effects added in 0.5.0: filters,
+blend modes, backdrops, ellipse and polygon clips.
 
 ![examples/transforms](screenshots/transforms.png)
 
@@ -74,7 +75,11 @@ it.
   transform), antialiased, with the same corner shape as `rect` (so a clip matches a box drawn with the same radii).
   Use it for `overflow: hidden` + `border-radius`, or to clip the content of a rotated element. Nested shapes multiply
   (up to `render.MAX_CLIP_DEPTH` = 8 deep). The scissor is the shape's bounds, so pixels outside cost nothing.
-- `pop_clip(dc)` pops either kind. `current_clip(dc)` returns the scissor rect.
+- `push_clip_ellipse(dc, center, radii)`: an ellipse (a circle with equal radii), current local space, antialiased.
+- `push_clip_polygon(dc, points, evenodd = false)`: a polygon with the nonzero or even-odd fill rule, antialiased by
+  its exact signed distance. The vertices go into a per-frame table (`render.Frame_Data.points`, t4); the cost per
+  pixel inside its bounds is proportional to the vertex count.
+- `pop_clip(dc)` pops any kind. `current_clip(dc)` returns the scissor rect.
 
 ## Corner shape
 
@@ -102,19 +107,95 @@ draw.pop_layer(dc)                     // composited once, at 50 %
 - Inside, everything works as outside: transforms, clips (rounded, rotated), images, text, nested layers, alpha.
   The alpha stack restarts at 1 inside a layer; the layer's `alpha` times the enclosing alpha applies when it is
   composited.
-- The composite is pixel for pixel (`render.FLAG_LAYER`: texels fetched, no filtering), with no transform and no
-  clip shape (the content was already transformed and clipped).
+- The clip stack restarts too: what is drawn inside is cut only by the layer's rect and the clips pushed inside.
+  The clip shapes around the layer cut its composite (after its filters: a blurred layer inside a rounded clip is
+  blurred, then clipped, as CSS does).
+- The composite is pixel for pixel (`render.FLAG_LAYER`: texels fetched, no filtering), with no transform (the
+  content was already transformed).
 - Layers are linear fp16 (`R16G16B16A16_FLOAT`), premultiplied: an opaque layer looks like no layer (antialiased
   edges may differ by a couple of 8-bit levels, the layer keeping more precision).
 - Render targets come from a pool in the renderer (`render.acquire_target`, sizes rounded up to 128 px, released
-  after 120 unused frames, `render.release_targets`, `render.targets_bytes`).
-- A layer that would be empty, or larger than `render.max_texture_size`, falls back to `push_alpha`.
+  after 120 unused frames, `render.release_targets`, `render.targets_bytes`). A target is handed back as soon as
+  the last step reading it is recorded (`render.release_target`): many layers in a frame share a few textures.
+- A layer that would be empty, or larger than `render.max_texture_size`, falls back to `push_alpha` (its filters
+  and blend mode are then lost).
 - `draw.layer_depth(dc)`: layers open. `end_frame` closes any left open.
 
-How it is drawn: batches carry a `target` (0 = the frame, k = `layers[k - 1]`); `frame_submit` draws the layers
-first, in completion order (an inner layer before the outer one that composites it), each with its own viewport
-and `target_origin` (the screen pixel at its texel 0, subtracted by the vertex shader and added back for clip
-shapes and scissors), then the frame.
+How it is drawn: the frame is a list of steps run in the order they were recorded (`render.Frame_Data`): draw
+calls (a `Batch` into a `target`: 0 = the frame, k = `layers[k - 1]`) and operations (`render.Op`: clear a layer,
+copy what a target holds, run a filter pass). A layer is cleared when pushed, drawn, then sampled by the instance
+that composites it; each target is drawn with its own viewport and `target_origin` (the screen pixel at its texel 0,
+subtracted by the vertex shader and added back for clip shapes and scissors).
+
+## Effects: filters, blend modes
+
+```odin
+fx := draw.Layer_Effects{
+	alpha   = 0.9,
+	filters = {draw.filter_blur(4), draw.filter_drop_shadow({0, 6}, 5, draw.srgb(0, 0, 0, 0.5)), draw.filter_sepia(0.6)},
+	blend   = .Multiply,
+}
+draw.push_effects(dc, card, fx)   // `card`: local bounds of what is drawn (the filters' spread is added)
+draw.rect(dc, card, color, 12)
+draw.text(dc, font_id, 15, pos, white, "Filtered")
+draw.pop_layer(dc)
+```
+
+`push_effects` is `push_layer` with filters and a blend mode, applied in the CSS order: filters, then opacity, then
+the blend with what is already drawn. `push_layer(dc, bounds, alpha)` is `push_effects` with only an alpha.
+
+| Filter | CSS | Notes |
+|---|---|---|
+| `filter_blur(sigma)` | `blur()` | gaussian, standard deviation in local units (follows the transform) |
+| `filter_drop_shadow(offset, sigma, color)` | `drop-shadow()` | the blurred alpha of what is drawn, moved, in `color`, under it. CSS gives a blur radius: sigma = radius / 2 |
+| `filter_brightness`, `filter_contrast`, `filter_grayscale`, `filter_sepia`, `filter_saturate`, `filter_hue_rotate` (radians), `filter_invert`, `filter_opacity` | the functions of the same name | 4 x 5 color matrices of Filter Effects 1 §13 |
+| `filter_matrix(m)` | `feColorMatrix` | any `Color_Matrix` (row-major 4 x 5 on straight values) |
+
+- Colors are filtered **in sRGB**, on straight values for the matrices (each result clamped, so
+  `brightness(3) brightness(0.5)` is not the identity) and premultiplied values for blurs, as browsers compute them;
+  the layer is linear and is converted once at each end of the chain.
+- `filter_is_identity(f)` tells filters that change nothing (`brightness(1)`, `blur(0)`...): `push_effects` skips
+  them, and a chain of identities runs no pass. `filters_outset(m, filters)` is how far they spread content, in
+  screen pixels (left, top, right, bottom); the layer is grown by it, and so is the area whose content may spread
+  into the visible part.
+- **Blur**: two separable passes, taps folded in bilinear pairs. Above `render.set_blur_sigma_limit` (8 screen
+  pixels by default) the image is first halved (2 x 2 averages) as many times as needed, blurred there and filtered
+  back up by the next pass: the cost per pixel is bounded whatever the radius. What lies outside the layer is
+  transparent.
+- **Color matrices**: up to `render.MAX_COLOR_MATRICES` consecutive ones run in one pass.
+- **Drop shadow**: the blur of the input's alpha, then one pass that moves it, tints it and puts the input on top.
+
+**Blend modes** (`Blend_Mode`, CSS Compositing 1): `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`,
+`Color_Dodge`, `Color_Burn`, `Hard_Light`, `Soft_Light`, `Difference`, `Exclusion`, `Hue`, `Saturation`, `Color`,
+`Luminosity`, and the composite operators `Plus_Darker`, `Plus_Lighter`. When the layer is composited, what lies
+under it in the enclosing layer (or the frame) is copied (`Op.Copy` into `render.acquire_snapshot`), and the
+composite instance (`render.FLAG_BLEND`) computes the spec's formulas on straight sRGB values and writes the result
+(its batch draws without hardware blending; clip shapes around it still apply). A blend sees only what was drawn in
+its enclosing layer: open a layer to make an **isolated group**.
+
+## Backdrops
+
+```odin
+draw.backdrop(dc, glass, radii, {draw.filter_blur(12), draw.filter_saturate(1.6)})   // frosted glass
+draw.rect_corners(dc, glass, tint, radii)                                            // then the panel itself
+```
+
+`backdrop_capture(dc, r, filters)` copies what the current target (frame or layer) holds under the screen bounds of
+`r` (cut to the current clip), filters it with edges repeated (a blur does not darken the borders), and returns a
+`Backdrop`; `backdrop_draw(dc, b, r, radii)` draws it clipped to the rounded rect `r` under the current transform,
+clips and alpha (`render.FLAG_SCREEN`: texels are screen pixels). `backdrop` does both. Capture before opening a
+layer and draw inside it to fade the backdrop with the element (CSS `backdrop-filter` with `opacity`).
+
+## Cost of effects
+
+Measured with `examples/effects` (`--bench=200`, `-define:GPU_TIMING=true`, 1280 x 820 window at 125 %, release
+build):
+
+| Scene | Layers | Filter passes | Pooled targets | `end_frame` (CPU) | GPU |
+|---|---|---|---|---|---|
+| demo page (8 filtered thumbnails, frosted glass, 18 blend modes, shadow, clips, glow) | 28 | 22 | 8 (6.5 MB) | 0.03 ms | 0.42 ms |
+| 12 cards: frosted backdrop (blur 12) + drop shadow + sepia, full window | 12 | 108 | 11 (9.6 MB) | 0.06 ms | 2.2 ms |
+| 40 cards, same | 40 | 360 | 11 (5.0 MB) | 0.18 ms | 2.0 ms |
 
 ## Offscreen rendering (tests, export)
 
@@ -125,7 +206,11 @@ pixels := render.read_pixels(&r)                    // RGBA8, sRGB, top-down
 render.destroy(&r)                                  // releases every GPU object
 ```
 
-`tests/layers` uses it to check group opacity against direct drawing pixel by pixel.
+`tests/layers` uses it to check group opacity against direct drawing pixel by pixel; `tests/effects` checks every
+filter and blend mode against the formulas of the specifications on flat colors, the blur's energy, symmetry and
+gaussian profile, the antialiased coverage of ellipse and polygon clips, backdrops, and target reuse.
+
+![examples/effects](screenshots/effects.png)
 
 ## Images
 
@@ -187,3 +272,10 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
 - A layer costs one render target of its size and a full-screen-sized fill at most; dozens of large layers per
   frame are expensive (callers should fall back to `push_alpha` when the group holds a single primitive, which is
   exact).
+- Filters run in screen space: a blur under a non-uniform scale or a skew is isotropic (the transform's mean
+  scale), a drop shadow's offset follows the transform exactly.
+- Every effect except the color matrices reads pixels around the one it writes: a layer whose bounds are cut by
+  the window edge blurs as if nothing lay past `bounds` + the filters' reach outside the visible area.
+- The renderer blends in linear light (everything, not only effects): translucent content composited over other
+  content is lighter than in an sRGB compositor such as a web browser (50 % black over white: 188 instead of 128).
+  Filters and blend modes themselves compute in sRGB.

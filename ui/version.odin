@@ -2,6 +2,6 @@ package ui
 
 // gui_toolkit version (semantic versioning: while 0.x, minor bumps may change the API). See CHANGELOG.md.
 VERSION_MAJOR :: 0
-VERSION_MINOR :: 4
-VERSION_PATCH :: 2
-VERSION :: "0.4.2"
+VERSION_MINOR :: 5
+VERSION_PATCH :: 0
+VERSION :: "0.5.0"
