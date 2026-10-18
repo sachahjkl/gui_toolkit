@@ -1,7 +1,8 @@
 # Drawing: transforms, clips and images
 
 The `draw` package is the immediate-mode layer under `ui`: you can also use it on its own (see `examples/smoke` and
-`examples/transforms`). This page covers the 2D transforms, the clips and the images added in 0.4.0.
+`examples/transforms`). This page covers the 2D transforms, the clips and the images added in 0.4.0, and the layers (group opacity) and
+offscreen rendering added in 0.4.1.
 
 ![examples/transforms](screenshots/transforms.png)
 
@@ -75,6 +76,49 @@ it.
   (up to `render.MAX_CLIP_DEPTH` = 8 deep). The scissor is the shape's bounds, so pixels outside cost nothing.
 - `pop_clip(dc)` pops either kind. `current_clip(dc)` returns the scissor rect.
 
+## Layers: group opacity
+
+```odin
+draw.push_layer(dc, bounds, 0.5)      // bounds: current local space, must contain what is drawn
+draw.rect(dc, a, red)                  // overlapping shapes...
+draw.rect(dc, b, blue)                 // ...do not show through each other
+draw.pop_layer(dc)                     // composited once, at 50 %
+```
+
+`push_alpha` fades every primitive on its own: where two of them overlap, the one below shows through. CSS
+`opacity` (and any "fade this group" effect) needs the group drawn first, then blended once: `push_layer` /
+`pop_layer` do that with an offscreen render target.
+
+- The layer covers the screen bounds of `bounds` (through the current transform), cut to the current clip and to
+  the frame; pixels drawn outside are lost. Pass tight bounds: the cost is the layer's area.
+- Inside, everything works as outside: transforms, clips (rounded, rotated), images, text, nested layers, alpha.
+  The alpha stack restarts at 1 inside a layer; the layer's `alpha` times the enclosing alpha applies when it is
+  composited.
+- The composite is pixel for pixel (`render.FLAG_LAYER`: texels fetched, no filtering), with no transform and no
+  clip shape (the content was already transformed and clipped).
+- Layers are linear fp16 (`R16G16B16A16_FLOAT`), premultiplied: an opaque layer looks like no layer (antialiased
+  edges may differ by a couple of 8-bit levels, the layer keeping more precision).
+- Render targets come from a pool in the renderer (`render.acquire_target`, sizes rounded up to 128 px, released
+  after 120 unused frames, `render.release_targets`, `render.targets_bytes`).
+- A layer that would be empty, or larger than `render.max_texture_size`, falls back to `push_alpha`.
+- `draw.layer_depth(dc)`: layers open. `end_frame` closes any left open.
+
+How it is drawn: batches carry a `target` (0 = the frame, k = `layers[k - 1]`); `frame_submit` draws the layers
+first, in completion order (an inner layer before the outer one that composites it), each with its own viewport
+and `target_origin` (the screen pixel at its texel 0, subtracted by the vertex shader and added back for clip
+shapes and scissors), then the frame.
+
+## Offscreen rendering (tests, export)
+
+```odin
+render.init_offscreen(&r, {64, 64}, warp = true)   // no window; WARP = software rasterizer, deterministic
+// ... draw.begin_frame / render.frame_begin / draw / draw.end_frame / render.frame_end as usual
+pixels := render.read_pixels(&r)                    // RGBA8, sRGB, top-down
+render.destroy(&r)                                  // releases every GPU object
+```
+
+`tests/layers` uses it to check group opacity against direct drawing pixel by pixel.
+
 ## Images
 
 ```odin
@@ -132,3 +176,6 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
 - Soft shapes (shadows, `soft > 1`) blur in local units: under a strong downscale the blur can drop below a pixel.
 - Rotated text is the 1x glyph bitmap, sampled bilinearly (slightly softer than axis-aligned text, no hinting).
 - Perspective (3D) transforms are not supported (2D affine only).
+- A layer costs one render target of its size and a full-screen-sized fill at most; dozens of large layers per
+  frame are expensive (callers should fall back to `push_alpha` when the group holds a single primitive, which is
+  exact).

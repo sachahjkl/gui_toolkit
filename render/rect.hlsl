@@ -7,11 +7,16 @@
 // edge is not cut by rasterization. The pixel shader evaluates the rounded-rect distance in local space and converts
 // it to screen pixels with the derivatives of the local position (exact for an affine map), so rotated, skewed and
 // scaled shapes keep a 1 px antialiased edge.
+//
+// Layers (draw.push_layer): the same shader draws into an offscreen target whose texel (0, 0) is the screen pixel
+// 	arget_origin; positions arrive in screen pixels and are moved by it, clip shapes are evaluated back in screen
+// pixels. The layer is then composited as an image with FLAG_LAYER (texels fetched one for one, never filtered).
 
 #define KIND_SHAPE 0
 #define KIND_GLYPH 1
 #define KIND_IMAGE 2
 #define FLAG_TILE 1
+#define FLAG_LAYER 2
 #define MAX_CLIP_DEPTH 8
 
 cbuffer Globals : register(b0)
@@ -19,6 +24,8 @@ cbuffer Globals : register(b0)
 	float2 viewport_size;
 	float  corner_n;       // corner shape exponent: 2 = circular arcs, > 2 = superellipse ("squircle", continuous curvature)
 	float  corner_boost;   // radius multiplier that keeps squircle corners visually as round as the circular ones
+	float2 target_origin;  // screen pixel at (0, 0) of the render target: (0, 0) for the frame, the corner of a layer
+	float2 _pad;
 };
 
 // x' = a*x + c*y + e, y' = b*x + d*y + f
@@ -96,6 +103,7 @@ PSIn vs_main(VSIn i)
 		pix = lerp(i.dst.xy, i.dst.zw, corner);
 	}
 	PSIn o;
+	pix -= target_origin;
 	o.pos = float4(pix.x / viewport_size.x * 2 - 1, 1 - pix.y / viewport_size.y * 2, 0, 1);
 	o.rect_pos = (t - 0.5) * size;
 	o.half_size = size * 0.5;
@@ -179,7 +187,10 @@ float4 ps_main(PSIn i) : SV_Target
 			image.GetDimensions(dim.x, dim.y);
 			float2 uv = i.uv / dim;
 			float4 texel;
-			if (i.extra.z & FLAG_TILE) { texel = image.SampleGrad(samp_wrap, uv, duvx / dim, duvy / dim); }
+			// a layer is composited pixel for pixel: fetch, never filter (filter weights would leak the transparent
+			// texels around its edges)
+			if (i.extra.z & FLAG_LAYER) { texel = image.Load(int3(int2(floor(i.uv)), 0)); }
+			else if (i.extra.z & FLAG_TILE) { texel = image.SampleGrad(samp_wrap, uv, duvx / dim, duvy / dim); }
 			else
 			{
 				float2 h = 0.5 / dim;   // never filter in texels outside the source rect (sprite sheets)
@@ -212,6 +223,6 @@ float4 ps_main(PSIn i) : SV_Target
 		}
 		color.a *= coverage;
 	}
-	if (i.extra.y != 0) { color.a *= clip_coverage(i.pos.xy, i.extra.y); }
+	if (i.extra.y != 0) { color.a *= clip_coverage(i.pos.xy + target_origin, i.extra.y); }
 	return color;
 }

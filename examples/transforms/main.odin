@@ -236,19 +236,22 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	}
 	// 7. nested transforms: orbits
 	{
-		r := panel(app, cell(6, cols, m, top, cw, ch), "nested transforms", s)
+		r := panel(app, cell(6, cols, m, top, cw, ch), "nested transforms + push_layer", s)
 		c := draw.rect_center(r)
 		draw.rect(dc, {c - 30 * s, c + 30 * s}, draw.hex(0xffb020ff), 30 * s)
 		draw.rect(dc, {c - 46 * s, c + 46 * s}, draw.hex(0xffb02060), 46 * s, 0, 14 * s)
 		draw.rect(dc, {c - 100 * s, c + 100 * s}, draw.hex(0xffffff30), 100 * s, 1.2 * s)
 		draw.push_transform(dc, draw.affine_mul(draw.affine_translate(c), draw.affine_rotate(t * 0.8)))
 		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({100 * s, 0}), draw.affine_rotate(t * 2)))
+		// the planet and its moon fade as one group: the ring does not show through the planet
+		draw.push_layer(dc, {-50 * s, 50 * s}, 0.55 + 0.45 * math.sin(t * 1.3))
 		draw.rect(dc, {-14 * s, 14 * s}, draw.hex(0x4ade80ff), 5 * s)
 		draw.rect(dc, {-14 * s, 14 * s}, draw.hex(0x0b3d1cff), 5 * s, 1.5 * s)
 		draw.rect(dc, {-36 * s, 36 * s}, draw.hex(0xffffff30), 36 * s, 1 * s)
 		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({36 * s, 0}), draw.affine_rotate(-t * 4)))
 		draw.image(dc, app.sticker, {-10 * s, 10 * s})
 		draw.pop_transform(dc)
+		draw.pop_layer(dc)
 		draw.pop_transform(dc)
 		draw.pop_transform(dc)
 	}

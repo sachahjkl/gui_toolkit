@@ -51,6 +51,7 @@ KIND_GLYPH :: 1
 KIND_IMAGE :: 2
 
 FLAG_TILE :: 1   // image: repeat (wrap addressing) instead of clamping to `src`; `src` should be the whole texture
+FLAG_LAYER :: 2  // image: a layer composited 1:1 in screen pixels (texels fetched, not filtered); no transform
 
 // A 2D affine transform for the vertex shader, x' = a*x + c*y + e, y' = b*x + d*y + f (`m` = a b c d e f).
 Xform_Data :: struct {
@@ -78,18 +79,32 @@ MAX_CLIP_DEPTH :: 8
 Texture :: distinct int
 
 Batch :: struct {
-	clip:  [4]f32,        // scissor x0 y0 x1 y1 (pixels)
+	clip:  [4]f32,        // scissor x0 y0 x1 y1 (screen pixels, also inside a layer)
 	tex:   Texture,       // coverage texture (glyph atlas, t0), 0 = none
 	first: int,
 	count: int,
 	image: Texture,       // RGBA texture of the batch's KIND_IMAGE instances (t1), 0 = none
+	target: int,          // 0 = the frame; k > 0 = layers[k - 1] (offscreen, see Layer)
 }
 
-Texture_Kind :: enum u8 { None, R8, RGBA }
+// An offscreen layer: the batches whose `target` is its index + 1 draw into `tex` (a render target from
+// acquire_target, cleared to transparent) instead of the frame, with screen pixel (x, y) landing on texel
+// (x, y) - origin. Layers are drawn before the frame, in the order of `done` (a layer is complete before the one
+// that composites it), so a layer's texture is ready when an instance of the frame (or of an enclosing layer)
+// samples it. Content accumulates as premultiplied color: sampling it as a KIND_IMAGE composites it exactly.
+Layer :: struct {
+	tex:    Texture,      // 0: nothing to draw (empty or refused): its batches are skipped
+	origin: [2]f32,
+	size:   [2]int,
+	done:   int,          // completion rank
+}
+
+Texture_Kind :: enum u8 { None, R8, RGBA, Target }
 
 Texture_Data :: struct {
 	tex:  ^d3d11.ITexture2D,
 	view: ^d3d11.IShaderResourceView,
+	rtv:  ^d3d11.IRenderTargetView,   // Target only
 	size: int,            // R8: width = height
 	w, h: int,
 	kind: Texture_Kind,
@@ -121,6 +136,7 @@ Renderer :: struct {
 	clip_cap:    int,
 	textures:    [dynamic]Texture_Data,   // index 0 is a dummy so Texture(0) means "none"
 	free_textures: [dynamic]Texture,      // destroyed slots, reused by the next create
+	targets:     [dynamic]Pooled_Target,  // layer render targets, reused from frame to frame
 	scratch:     [dynamic]u8,             // RGBA upload conversion
 	gpu_queries: [GPU_QUERY_FRAMES][3]^d3d11.IQuery,   // GPU_TIMING: disjoint, begin, end per frame slot
 	gpu_frame:   int,
@@ -144,6 +160,7 @@ Renderer :: struct {
 	dcomp:        ^IDCompositionDevice,
 	dcomp_target: ^IDCompositionTarget,
 	dcomp_visual: ^IDCompositionVisual,
+	offscreen:   ^d3d11.ITexture2D,      // init_offscreen: the frame target instead of a swap chain
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
@@ -153,19 +170,7 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 	r.hwnd = hwnd
 	r.size = size
 	r.transparent = transparent
-	feature_levels := [?]d3d11.FEATURE_LEVEL{._11_0}
-	base_device: ^d3d11.IDevice
-	base_ctx: ^d3d11.IDeviceContext
-	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT}
-	when ODIN_DEBUG { flags += {.DEBUG} }
-	if hr := d3d11.CreateDevice(nil, .HARDWARE, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx); win.FAILED(hr) {
-		fmt.eprintln("render: CreateDevice failed", hr)
-		return false
-	}
-	base_device->QueryInterface(d3d11.IDevice_UUID, (^rawptr)(&r.device))
-	base_ctx->QueryInterface(d3d11.IDeviceContext_UUID, (^rawptr)(&r.ctx))
-	base_device->Release()
-	base_ctx->Release()
+	create_device(r, .HARDWARE) or_return
 
 	dxgi_device: ^dxgi.IDevice
 	r.device->QueryInterface(dxgi.IDevice_UUID, (^rawptr)(&dxgi_device))
@@ -208,8 +213,90 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 		}
 	}
 	create_target(r)
+	return init_pipeline(r)
+}
 
-	// shaders
+// Releases every GPU object and the renderer's memory (textures still alive included). The renderer can be
+// initialized again afterwards.
+destroy :: proc(r: ^Renderer) {
+	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
+	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
+	for &q in r.gpu_queries { for &x in q { rel(&x) } }
+	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
+	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
+	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
+	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
+	if r.latency_handle != nil { win.CloseHandle(r.latency_handle) }
+	if r.ctx != nil { r.ctx->ClearState() }
+	rel(&r.ctx); rel(&r.device)
+	r^ = {}
+}
+
+// A renderer without a window: frames are drawn into an offscreen B8G8R8A8 (sRGB) image of `size` that
+// `read_pixels` returns. For tests and image export. `warp`: the software rasterizer (deterministic, no GPU needed).
+init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false) -> bool {
+	r.size = size
+	if !create_device(r, warp ? .WARP : .HARDWARE) {
+		if warp || !create_device(r, .WARP) { return false }
+	}
+	r.device->CreateTexture2D(&{
+		Width = u32(size.x), Height = u32(size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
+		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.RENDER_TARGET},
+	}, nil, &r.offscreen)
+	if r.offscreen == nil { return false }
+	// typeless storage: the view is sRGB (like the swap chain's), the readback copies raw bytes
+	r.device->CreateRenderTargetView(r.offscreen, &{Format = .B8G8R8A8_UNORM_SRGB, ViewDimension = .TEXTURE2D}, &r.rtv)
+	if r.rtv == nil { return false }
+	return init_pipeline(r)
+}
+
+// The offscreen image (init_offscreen) after the last frame: RGBA8, sRGB, `size.x * size.y * 4` bytes.
+read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
+	if r.offscreen == nil { return nil }
+	staging: ^d3d11.ITexture2D
+	r.device->CreateTexture2D(&{
+		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
+		SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ},
+	}, nil, &staging)
+	if staging == nil { return nil }
+	defer staging->Release()
+	r.ctx->CopyResource(staging, r.offscreen)
+	mapped: d3d11.MAPPED_SUBRESOURCE
+	if win.FAILED(r.ctx->Map(staging, 0, .READ, {}, &mapped)) { return nil }
+	defer r.ctx->Unmap(staging, 0)
+	out := make([]u8, r.size.x * r.size.y * 4, allocator)
+	for y in 0 ..< r.size.y {
+		row := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))), r.size.x * 4)
+		for x in 0 ..< r.size.x {
+			o := (y * r.size.x + x) * 4
+			out[o], out[o + 1], out[o + 2], out[o + 3] = row[x * 4 + 2], row[x * 4 + 1], row[x * 4], row[x * 4 + 3]
+		}
+	}
+	return out
+}
+
+@(private)
+create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
+	feature_levels := [?]d3d11.FEATURE_LEVEL{._11_0}
+	base_device: ^d3d11.IDevice
+	base_ctx: ^d3d11.IDeviceContext
+	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT}
+	when ODIN_DEBUG { flags += {.DEBUG} }
+	if hr := d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx); win.FAILED(hr) {
+		fmt.eprintln("render: CreateDevice failed", hr)
+		return false
+	}
+	base_device->QueryInterface(d3d11.IDevice_UUID, (^rawptr)(&r.device))
+	base_ctx->QueryInterface(d3d11.IDeviceContext_UUID, (^rawptr)(&r.ctx))
+	base_device->Release()
+	base_ctx->Release()
+	return true
+}
+
+// Shaders, input layout, constant buffer and fixed states: everything after the device and the frame target.
+@(private)
+init_pipeline :: proc(r: ^Renderer) -> bool {
 	vs_blob := compile(SHADER_SOURCE, "vs_main", "vs_5_0") or_return
 	ps_blob := compile(SHADER_SOURCE, "ps_main", "ps_5_0") or_return
 	defer { vs_blob->Release(); ps_blob->Release() }
@@ -231,7 +318,7 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 		return false
 	}
 
-	r.device->CreateBuffer(&{ByteWidth = 16, Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
+	r.device->CreateBuffer(&{ByteWidth = 32, Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
 
 	bd := d3d11.BLEND_DESC{}
 	bd.RenderTarget[0] = {
@@ -305,7 +392,7 @@ create_target :: proc(r: ^Renderer) {
 }
 
 resize :: proc(r: ^Renderer, size: [2]int) {
-	if size.x <= 0 || size.y <= 0 || size == r.size { return }
+	if size.x <= 0 || size.y <= 0 || size == r.size || r.swapchain == nil { return }
 	r.size = size
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
@@ -430,10 +517,85 @@ destroy_texture :: proc(r: ^Renderer, t: Texture) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
 	if td.kind == .None { return }
+	if td.rtv != nil { td.rtv->Release() }
 	if td.view != nil { td.view->Release() }
 	if td.tex != nil { td.tex->Release() }
 	td^ = {}
 	append(&r.free_textures, t)
+}
+
+////////////////////////////////
+// Layer targets
+
+@(private)
+Pooled_Target :: struct {
+	tex:   Texture,
+	w, h:  int,
+	used:  bool,          // handed out for the frame being built
+	idle:  int,           // frames since it was last used
+}
+
+// Pooled targets are allocated in steps of this many pixels, so a layer that grows or shrinks a little (an animation)
+// keeps its texture.
+@(private) TARGET_STEP :: 128
+// A pooled target nobody used for this many frames is released.
+@(private) TARGET_IDLE_FRAMES :: 120
+
+// A render target of at least w x h pixels for a layer of the frame being built (linear fp16, premultiplied).
+// It belongs to the renderer and is handed back by frame_submit. 0 when the size is out of range or the device
+// refuses (draw then falls back to per-primitive alpha).
+acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture {
+	if w <= 0 || h <= 0 || w > max_texture_size(r) || h > max_texture_size(r) { return 0 }
+	best := -1
+	for &p, i in r.targets {
+		if p.used || p.w < w || p.h < h { continue }
+		if best < 0 || p.w * p.h < r.targets[best].w * r.targets[best].h { best = i }
+	}
+	if best >= 0 {
+		r.targets[best].used, r.targets[best].idle = true, 0
+		return r.targets[best].tex
+	}
+	limit := max_texture_size(r)
+	aw := min((w + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
+	ah := min((h + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
+	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = .Target}
+	desc := d3d11.TEXTURE2D_DESC{
+		Width = u32(aw), Height = u32(ah), MipLevels = 1, ArraySize = 1, Format = .R16G16B16A16_FLOAT,
+		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE, .RENDER_TARGET},
+	}
+	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { return 0 }
+	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); return 0 }
+	if win.FAILED(r.device->CreateRenderTargetView(td.tex, nil, &td.rtv)) { td.view->Release(); td.tex->Release(); return 0 }
+	t := add_texture(r, td)
+	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, used = true})
+	return t
+}
+
+// Ends the frame's use of the layer targets; releases the ones idle for long.
+@(private)
+recycle_targets :: proc(r: ^Renderer) {
+	for i := len(r.targets) - 1; i >= 0; i -= 1 {
+		p := &r.targets[i]
+		if p.used { p.used, p.idle = false, 0; continue }
+		p.idle += 1
+		if p.idle > TARGET_IDLE_FRAMES {
+			destroy_texture(r, p.tex)
+			unordered_remove(&r.targets, i)
+		}
+	}
+}
+
+// Releases every pooled layer target (memory pressure, device teardown).
+release_targets :: proc(r: ^Renderer) {
+	for p in r.targets { destroy_texture(r, p.tex) }
+	clear(&r.targets)
+}
+
+// GPU memory held by the pooled layer targets, in bytes.
+targets_bytes :: proc(r: ^Renderer) -> int {
+	n := 0
+	for p in r.targets { n += p.w * p.h * 8 }
+	return n
 }
 
 @(private) LINEAR_STEPS :: 4096
@@ -537,10 +699,12 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 	r.ctx->Unmap(buf^, 0)
 }
 
-// Draws all instances; each batch is a range with its own scissor rect and textures.
+// Draws all instances; each batch is a range with its own scissor rect, textures and target.
 // `xforms` / `clips`: the tables that Rect_Inst.xform / Rect_Inst.clip index (entry 0 is never read; pass nil when
-// no instance uses them).
-frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms: []Xform_Data = nil, clips: []Clip_Data = nil) {
+// no instance uses them). `layers`: the offscreen layers batches may target (see Layer); drawn first, in `done`
+// order. The layer targets are handed back to the renderer's pool afterwards.
+frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms: []Xform_Data = nil, clips: []Clip_Data = nil, layers: []Layer = nil) {
+	defer recycle_targets(r)
 	if len(insts) == 0 { return }
 	when GPU_TIMING {
 		gpu_timing_begin(r)
@@ -562,17 +726,7 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms:
 	mem.copy(mapped.pData, raw_data(insts), len(insts) * size_of(Rect_Inst))
 	r.ctx->Unmap(r.inst_buf, 0)
 
-	r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)
-	sm := clamp(r.corner_smoothing, 0, 1)
-	// n = 2.6 softens the arc-to-edge junction without turning capsules into rounded boxes; the radius is enlarged
-	// a bit so the corners do not look tighter than circular ones
-	(^[4]f32)(mapped.pData)^ = {f32(r.size.x), f32(r.size.y), 2 + 0.6 * sm, 1 + 0.25 * sm}
-	r.ctx->Unmap(r.globals, 0)
-
-	vp := d3d11.VIEWPORT{0, 0, f32(r.size.x), f32(r.size.y), 0, 1}
-	r.ctx->RSSetViewports(1, &vp)
 	r.ctx->RSSetState(r.raster)
-	r.ctx->OMSetRenderTargets(1, &r.rtv, nil)
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 	r.ctx->IASetPrimitiveTopology(.TRIANGLESTRIP)
 	r.ctx->IASetInputLayout(r.layout)
@@ -588,19 +742,58 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms:
 	r.ctx->PSSetSamplers(0, 3, &samplers[0])
 	r.ctx->PSSetShaderResources(3, 1, &r.clip_view)
 
+	// layers first, each complete before whatever composites it
+	if len(layers) > 0 {
+		order := make([]int, len(layers), context.temp_allocator)
+		for i in 0 ..< len(layers) { order[i] = i }
+		for i in 1 ..< len(order) {   // insertion sort by completion rank: few layers
+			for j := i; j > 0 && layers[order[j]].done < layers[order[j - 1]].done; j -= 1 { order[j], order[j - 1] = order[j - 1], order[j] }
+		}
+		for li in order {
+			ly := layers[li]
+			if int(ly.tex) <= 0 || int(ly.tex) >= len(r.textures) || r.textures[int(ly.tex)].rtv == nil { continue }
+			rtv := r.textures[int(ly.tex)].rtv
+			unbind := [2]^d3d11.IShaderResourceView{}
+			r.ctx->PSSetShaderResources(0, 2, &unbind[0])   // the target may still be bound as the image of an earlier pass
+			clear := [4]f32{}
+			r.ctx->ClearRenderTargetView(rtv, &clear)
+			draw_target(r, batches, li + 1, rtv, ly.size, ly.origin)
+		}
+		unbind := [2]^d3d11.IShaderResourceView{}
+		r.ctx->PSSetShaderResources(0, 2, &unbind[0])
+	}
+	draw_target(r, batches, 0, r.rtv, r.size, {0, 0})
+}
+
+// The batches of one target: the frame (target 0, the swap chain) or a layer's texture, whose texel (0, 0) is the
+// screen pixel `origin` (the vertex shader and the clip shapes work in screen pixels and subtract it).
+@(private)
+draw_target :: proc(r: ^Renderer, batches: []Batch, target: int, rtv: ^d3d11.IRenderTargetView, size: [2]int, origin: [2]f32) {
+	mapped: d3d11.MAPPED_SUBRESOURCE
+	r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)
+	sm := clamp(r.corner_smoothing, 0, 1)
+	// n = 2.6 softens the arc-to-edge junction without turning capsules into rounded boxes; the radius is enlarged
+	// a bit so the corners do not look tighter than circular ones
+	(^[8]f32)(mapped.pData)^ = {f32(size.x), f32(size.y), 2 + 0.6 * sm, 1 + 0.25 * sm, origin.x, origin.y, 0, 0}
+	r.ctx->Unmap(r.globals, 0)
+	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
+	r.ctx->RSSetViewports(1, &vp)
+	target_rtv := rtv
+	r.ctx->OMSetRenderTargets(1, &target_rtv, nil)
+
 	// glyphs read t0 and images t1, so text and an image interleave in one batch; only a change of image (or of
 	// scissor) costs a new draw call
 	bound, bound_image: Texture = -1, -1
 	for b in batches {
-		if b.count == 0 { continue }
+		if b.count == 0 || b.target != target { continue }
 		if b.tex != bound || b.image != bound_image {
 			views := [2]^d3d11.IShaderResourceView{texture_view(r, b.tex), texture_view(r, b.image)}
 			r.ctx->PSSetShaderResources(0, 2, &views[0])
 			bound, bound_image = b.tex, b.image
 		}
 		rc := d3d11.RECT{
-			left   = i32(clamp(b.clip.x, 0, f32(r.size.x))), top    = i32(clamp(b.clip.y, 0, f32(r.size.y))),
-			right  = i32(clamp(b.clip.z, 0, f32(r.size.x))), bottom = i32(clamp(b.clip.w, 0, f32(r.size.y))),
+			left   = i32(clamp(b.clip.x - origin.x, 0, f32(size.x))), top    = i32(clamp(b.clip.y - origin.y, 0, f32(size.y))),
+			right  = i32(clamp(b.clip.z - origin.x, 0, f32(size.x))), bottom = i32(clamp(b.clip.w - origin.y, 0, f32(size.y))),
 		}
 		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
 		r.ctx->RSSetScissorRects(1, &rc)
@@ -609,6 +802,7 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms:
 }
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
+	if r.swapchain == nil { r.ctx->Flush(); return }   // offscreen
 	when RENDER_PROBE {
 		before: u32
 		r.swapchain->GetLastPresentCount(&before)
