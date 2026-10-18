@@ -109,6 +109,7 @@ Context :: struct {
 	open_layers: [dynamic]Open_Layer,
 	target:   int,                             // where new batches draw: 0 = the frame, else a layer id
 	layers_done: int,
+	circular: bool,                            // set_circular_corners
 	size:     Vec2,
 	generation: int,
 }
@@ -136,6 +137,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.layers); clear(&c.open_layers)
 	c.target, c.layers_done = 0, 0
+	c.circular = false
 	c.size = size
 	append(&c.clips, Clip{rect = {{0, 0}, size}})
 	append(&c.alphas, 1)
@@ -189,7 +191,7 @@ push_clip_rounded :: proc(c: ^Context, r: Rect, radii: [4]f32) {
 	if !ok { scissor = {} }
 	half := rect_size(r) * 0.5
 	append(&c.clip_table, render.Clip_Data{
-		inv = {inv.a, inv.b, inv.c, inv.d, inv.e, inv.f}, px = affine_scale_factor(xf.m), parent = parent.shape,
+		inv = {inv.a, inv.b, inv.c, inv.d, inv.e, inv.f}, px = affine_scale_factor(xf.m), parent = parent.shape | (c.circular ? render.CLIP_CIRCLE : 0),
 		center = rect_center(r), half_size = {max(half.x, 0), max(half.y, 0)}, radii = radii,
 	})
 	close_batch(c)
@@ -274,6 +276,15 @@ pop_layer :: proc(c: ^Context) {
 	})
 }
 
+// Rounded corners drawn from now on (rects, images, rounded clips) are circular arcs when `on`, whatever the
+// renderer's corner shape (render.set_corner_smoothing, the squircle of the UI): content that follows its own rules,
+// such as CSS border-radius, sets it around its drawing. Returns the previous setting. begin_frame resets it.
+set_circular_corners :: proc(c: ^Context, on: bool) -> (previous: bool) {
+	previous = c.circular
+	c.circular = on
+	return
+}
+
 // Layers opened and not closed yet.
 layer_depth :: proc(c: ^Context) -> int { return len(c.open_layers) }
 
@@ -331,7 +342,7 @@ rect :: proc(c: ^Context, r: Rect, color: Color, radius: f32 = 0, border: f32 = 
 // Per-corner colors (gradients) and radii; corner order: top-left, bottom-left, top-right, bottom-right.
 rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, border: f32 = 0, soft: f32 = 1) {
 	xf, alpha, shape := cur(c)
-	inst := render.Rect_Inst{colors = colors, soft = soft, use_tex = render.KIND_SHAPE, tex_size = font.ATLAS_SIZE, clip = shape}
+	inst := render.Rect_Inst{colors = colors, soft = soft, use_tex = render.KIND_SHAPE, tex_size = font.ATLAS_SIZE, clip = shape, flags = c.circular ? render.FLAG_CIRCLE : 0}
 	if xf.simple {
 		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 		inst.dst = {r.min.x * s + o.x, r.min.y * s + o.y, r.max.x * s + o.x, r.max.y * s + o.y}
@@ -449,7 +460,7 @@ image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tin
 	}
 	col := tint
 	col.a *= alpha
-	inst := render.Rect_Inst{src = src, colors = {col, col, col, col}, soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, clip = shape, flags = flags}
+	inst := render.Rect_Inst{src = src, colors = {col, col, col, col}, soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, clip = shape, flags = flags | (c.circular ? render.FLAG_CIRCLE : 0)}
 	if xf.simple {
 		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 		inst.dst = {dst.min.x * s + o.x, dst.min.y * s + o.y, dst.max.x * s + o.x, dst.max.y * s + o.y}
