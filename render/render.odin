@@ -52,6 +52,8 @@ KIND_IMAGE :: 2
 
 FLAG_TILE :: 1   // image: repeat (wrap addressing) instead of clamping to `src`; `src` should be the whole texture
 FLAG_LAYER :: 2  // image: a layer composited 1:1 in screen pixels (texels fetched, not filtered); no transform
+FLAG_CIRCLE :: 4 // circular corners whatever set_corner_smoothing says (content with its own rules: CSS border-radius)
+CLIP_CIRCLE :: 0x8000_0000   // or-ed into Clip_Data.parent: the same for a clip shape
 
 // A 2D affine transform for the vertex shader, x' = a*x + c*y + e, y' = b*x + d*y + f (`m` = a b c d e f).
 Xform_Data :: struct {

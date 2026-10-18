@@ -17,6 +17,8 @@
 #define KIND_IMAGE 2
 #define FLAG_TILE 1
 #define FLAG_LAYER 2
+#define FLAG_CIRCLE 4      // circular corners whatever the renderer's corner shape (web content)
+#define CLIP_CIRCLE 0x80000000u   // ClipShape.parent: same, for a clip shape
 #define MAX_CLIP_DEPTH 8
 
 cbuffer Globals : register(b0)
@@ -120,12 +122,22 @@ PSIn vs_main(VSIn i)
 // Rounded-rect distance. With corner_n > 2 the corner is a superellipse: its curvature ramps up from the straight
 // edge instead of jumping (the visible kink where a circular arc meets a straight side). The p-norm is not an exact
 // distance, but close enough for 1 px antialiasing. `dir`: direction of the distance gradient (local space).
+// the corner shape of the primitive being shaded: the renderer's, or circular (FLAG_CIRCLE / CLIP_CIRCLE)
+static float shape_n;
+static float shape_boost;
+
+void use_corner_shape(bool circle)
+{
+	shape_n = circle ? 2 : corner_n;
+	shape_boost = circle ? 1 : corner_boost;
+}
+
 float rect_sdf_dir(float2 p, float2 half_size, float r, out float2 dir)
 {
-	r = min(r * corner_boost, min(half_size.x, half_size.y));
+	r = min(r * shape_boost, min(half_size.x, half_size.y));
 	float2 d = abs(p) - half_size + r;
 	float2 q = max(d, 0);
-	float outside = corner_n > 2.01 ? pow(pow(max(q.x, 1e-6), corner_n) + pow(max(q.y, 1e-6), corner_n), 1.0 / corner_n) : length(q);
+	float outside = shape_n > 2.01 ? pow(pow(max(q.x, 1e-6), shape_n) + pow(max(q.y, 1e-6), shape_n), 1.0 / shape_n) : length(q);
 	dir = (q.x > 0 && q.y > 0) ? normalize(q) : (d.x > d.y ? float2(1, 0) : float2(0, 1));
 	dir *= float2(p.x < 0 ? -1 : 1, p.y < 0 ? -1 : 1);
 	return min(max(d.x, d.y), 0) + outside - r;
@@ -155,9 +167,10 @@ float clip_coverage(float2 screen, uint idx)
 	[loop] for (int k = 0; k < MAX_CLIP_DEPTH && idx != 0; k++)
 	{
 		ClipShape c = clips[idx];
+		use_corner_shape((c.parent & CLIP_CIRCLE) != 0);
 		float2 lp = float2(c.inv.x * screen.x + c.inv.z * screen.y + c.t.x, c.inv.y * screen.x + c.inv.w * screen.y + c.t.y) - c.center;
 		coverage *= saturate(0.5 - rect_sdf(lp, c.half_size, corner_radius(lp, c.radii)) * c.px);
-		idx = c.parent;
+		idx = c.parent & ~CLIP_CIRCLE;
 	}
 	return coverage;
 }
@@ -170,6 +183,7 @@ float4 ps_main(PSIn i) : SV_Target
 	float2 duvx = ddx(i.uv), duvy = ddy(i.uv);
 	bool xf = i.extra.x != 0;
 	uint kind = (uint)(i.style.z + 0.5);
+	use_corner_shape((i.extra.z & FLAG_CIRCLE) != 0);
 	float4 color = i.color;
 	float2 dir;
 	if (kind == KIND_GLYPH)

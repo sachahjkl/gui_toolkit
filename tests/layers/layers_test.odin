@@ -129,6 +129,35 @@ layers_nest_and_follow_transforms_and_clips :: proc(t: ^testing.T) {
 }
 
 @(test)
+circular_corners_override_the_squircle :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	disc :: proc(dc: ^draw.Context) {
+		draw.rect(dc, {{0, 0}, {64, 64}}, RED, 32)
+		draw.push_clip_rounded(dc, {{8, 8}, {56, 56}}, {24, 24, 24, 24})
+		draw.rect(dc, {{0, 0}, {64, 64}}, BLUE)
+		draw.pop_clip(dc)
+	}
+	render.set_corner_smoothing(&f.r, 0)
+	circle := frame(&f, disc)
+	render.set_corner_smoothing(&f.r, 1)
+	squircle := frame(&f, disc)
+	forced := frame(&f, proc(dc: ^draw.Context) {
+		prev := draw.set_circular_corners(dc, true)
+		disc(dc)
+		draw.set_circular_corners(dc, prev)
+	})
+	diff :: proc(a, b: []u8) -> int {
+		worst := 0
+		for i in 0 ..< len(a) { worst = max(worst, abs(int(a[i]) - int(b[i]))) }
+		return worst
+	}
+	testing.expect(t, diff(circle, squircle) > 20, "the squircle differs from the circle")
+	testing.expectf(t, diff(circle, forced) <= 1, "set_circular_corners draws circles under the squircle setting (difference %d)", diff(circle, forced))
+}
+
+@(test)
 empty_layer_falls_back :: proc(t: ^testing.T) {
 	f: Fx
 	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }

@@ -76,6 +76,14 @@ it.
   (up to `render.MAX_CLIP_DEPTH` = 8 deep). The scissor is the shape's bounds, so pixels outside cost nothing.
 - `pop_clip(dc)` pops either kind. `current_clip(dc)` returns the scissor rect.
 
+## Corner shape
+
+`render.set_corner_smoothing(r, s)` sets the corner shape of every rounded rect and rounded clip of the renderer
+(0 = circular arcs, 1 = squircle, the UI's default). Content with its own rules (CSS `border-radius` is circular)
+draws inside `prev := draw.set_circular_corners(dc, true)` ... `draw.set_circular_corners(dc, prev)`: those
+primitives and clips are circular whatever the renderer's setting (`render.FLAG_CIRCLE` per instance,
+`render.CLIP_CIRCLE` per clip shape).
+
 ## Layers: group opacity
 
 ```odin

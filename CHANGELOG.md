@@ -3,6 +3,14 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.4.2] - 2026-10-18
+
+### Added
+- `draw.set_circular_corners(dc, on) -> previous`: rounded rects, images and rounded clips drawn while it is on use
+  circular arcs whatever `render.set_corner_smoothing` says (the squircle suits the UI; web content and other
+  specifications need circles). Per primitive: `render.FLAG_CIRCLE`, `render.CLIP_CIRCLE` (or-ed into
+  `Clip_Data.parent`). Reset by `begin_frame`. Pixel test in `tests/layers`.
+
 ## [0.4.1] - 2026-10-18
 
 ### Added
