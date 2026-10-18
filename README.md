@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.3.2-1d57ba" alt="version 0.3.2"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.0-1d57ba" alt="version 0.4.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -18,6 +18,7 @@ of CPU (`fidget --bench=300`).
     build.bat fidget     # the widget gallery           ->  build\fidget.exe
     build.bat todo       # a todo app                   ->  build\todo.exe
     build.bat smoke      # renderer / font / draw smoke test (no UI layer)
+    build.bat transforms # rotated / skewed / scaled shapes, text and images, rounded clips (draw layer only)
     build.bat todo debug
 
 Needs the Odin compiler (tested with `dev-2026-10`) and Windows 10+ (Win32 + D3D11 only for now).
@@ -39,6 +40,9 @@ Prebuilt binaries are attached to the [GitHub releases](https://github.com/sacha
 | **Bootstrap** theme: gradient finish, embossed text, focus glow | **Compact** density: more rows, same text size |
 
 <p align="center"><img src="docs/screenshots/todo.png" width="420" alt="todo example"><br><b>examples/todo</b></p>
+
+![examples/transforms: rotated, skewed and scaled shapes, text and images, rounded clips](docs/screenshots/transforms.png)
+<p align="center"><b>examples/transforms</b>: the draw layer's affine transforms, rounded clips and images</p>
 
 Screenshots are regenerated with `powershell -File tools/screenshots.ps1` (default settings, 175 % DPI).
 
@@ -65,7 +69,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.3.2`; while `0.x`, a minor bump may change the API).
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.4.0`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -73,9 +77,9 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 | Package | Role |
 |---|---|
 | `platform` | Win32 window, DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
-| `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners) and glyphs. sRGB target: colors are linear, blending is in linear space. Optional translucent window (DirectComposition, fp16 scRGB). |
+| `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners), glyphs and RGBA images (mipmapped, sRGB, premultiplied in linear light), with an optional 2D affine transform and rounded clip per instance. sRGB target: colors are linear, blending is in linear space. Optional translucent window (DirectComposition, fp16 scRGB). |
 | `font` | TrueType (`stb_truetype`), glyph cache, shelf-packed atlas, text measurement. Embedded fallback fonts (Roboto, Inconsolata) for systems without Segoe UI / Consolas. |
-| `draw` | Rect / text / clip / alpha / scale stacks over the renderer. |
+| `draw` | Rect / text / image primitives; clip (scissor or rounded, transformed), alpha and 2D affine transform stacks over the renderer. See [docs/draw.md](docs/draw.md). |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
 
 ## Features
@@ -98,6 +102,11 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   (selection, word moves, clipboard, mouse), **multi-line editor** (`text_edit`: undo / redo, line numbers,
   indentation, Up / Down keep the column), scroll region, context menu + items, menu bar, tooltip with hover delay,
   toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
+- **2D transforms and images** (draw layer): `draw.push_transform` with a CSS-style `Affine` matrix (rotate, skew,
+  scale, nested) applies to rects, borders, shadows, gradients, text and images, antialiased in local space; scaled
+  text is re-rasterized at its screen size. `draw.push_clip_rounded` clips to a rounded rect under any transform.
+  `render.create_texture_rgba` + `draw.image` / `draw.image_tiled`: mipmapped, rounded corners, tiling. See
+  [docs/draw.md](docs/draw.md) and `examples/transforms`.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
@@ -111,6 +120,8 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
 
 ## Testing
+
+`odin test tests/affine -vet` runs the unit tests of the affine helpers.
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
 focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a

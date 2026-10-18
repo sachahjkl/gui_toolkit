@@ -2,7 +2,9 @@
 package render
 
 import "core:fmt"
+import "core:math"
 import "core:mem"
+import "base:runtime"
 import "core:time"
 
 _ :: time   // RENDER_PROBE only
@@ -19,33 +21,80 @@ SHADER_SOURCE :: #load("rect.hlsl", string)
 LOW_LATENCY :: #config(LOW_LATENCY, true)
 // RENDER_PROBE: print, once per second, how many presented frames are still waiting to reach the screen.
 RENDER_PROBE :: #config(RENDER_PROBE, false)
+// GPU_TIMING: timestamp queries around frame_submit; `gpu_ms` returns the GPU time of a recent frame (read a few
+// frames late so it never stalls).
+GPU_TIMING :: #config(GPU_TIMING, false)
+@(private) GPU_QUERY_FRAMES :: 4
 
-// One primitive. 128 bytes, laid out exactly as the vertex shader's per-instance input.
+// One primitive. 144 bytes, laid out exactly as the vertex shader's per-instance input.
+// Without a transform (`xform` = 0) `dst` is in pixels. With one, `dst`, `radii`, `border` and `soft` are in the
+// transform's local space: the vertex shader maps the corners to the screen and the pixel shader evaluates the shape
+// in local space, so rotated / skewed rects keep exact rounded corners and a 1 px antialiased edge.
 Rect_Inst :: struct #packed {
-	dst:    [4]f32,       // x0 y0 x1 y1 (pixels)
+	dst:    [4]f32,       // x0 y0 x1 y1 (pixels, or local units with a transform)
 	src:    [4]f32,       // u0 v0 u1 v1 (texels)
 	colors: [4][4]f32,    // top-left, bottom-left, top-right, bottom-right (linear rgba)
 	radii:  [4]f32,       // same corner order
 	border: f32,          // > 0: draw only a ring of this thickness
 	soft:   f32,          // <= 1: crisp antialiased edge; > 1: soft shape (shadows)
-	use_tex: f32,         // 1: multiply alpha with the atlas coverage
-	tex_size: f32,        // atlas width/height in texels (square)
+	use_tex: f32,         // KIND_SHAPE, KIND_GLYPH (alpha x atlas coverage) or KIND_IMAGE (color x RGBA texel)
+	tex_size: f32,        // atlas width/height in texels (square); 1 for images (the shader asks the texture)
+	xform:  u32,          // index into the frame's transform table (`frame_submit`), 0 = none (dst in pixels)
+	clip:   u32,          // index into the frame's clip-shape table, 0 = none (only the batch scissor clips)
+	flags:  u32,          // FLAG_*
+	_:      u32,
 }
-#assert(size_of(Rect_Inst) == 128)
+#assert(size_of(Rect_Inst) == 144)
+
+KIND_SHAPE :: 0
+KIND_GLYPH :: 1
+KIND_IMAGE :: 2
+
+FLAG_TILE :: 1   // image: repeat (wrap addressing) instead of clamping to `src`; `src` should be the whole texture
+
+// A 2D affine transform for the vertex shader, x' = a*x + c*y + e, y' = b*x + d*y + f (`m` = a b c d e f).
+Xform_Data :: struct {
+	m: [6]f32,
+	_: [2]f32,
+}
+#assert(size_of(Xform_Data) == 32)
+
+// A rounded-rect clip evaluated per pixel: `inv` maps screen pixels to the clip's local space (same layout as
+// Xform_Data.m), where the shape is centered on `center` with `half_size` and per-corner `radii` (top-left,
+// bottom-left, top-right, bottom-right). `px` = screen pixels per local unit (antialiasing width). `parent` chains
+// nested clips (0 = end); the shader follows at most MAX_CLIP_DEPTH links.
+Clip_Data :: struct {
+	inv:       [6]f32,
+	px:        f32,
+	parent:    u32,
+	center:    [2]f32,
+	half_size: [2]f32,
+	radii:     [4]f32,
+}
+#assert(size_of(Clip_Data) == 64)
+
+MAX_CLIP_DEPTH :: 8
 
 Texture :: distinct int
 
 Batch :: struct {
 	clip:  [4]f32,        // scissor x0 y0 x1 y1 (pixels)
-	tex:   Texture,       // 0 = none
+	tex:   Texture,       // coverage texture (glyph atlas, t0), 0 = none
 	first: int,
 	count: int,
+	image: Texture,       // RGBA texture of the batch's KIND_IMAGE instances (t1), 0 = none
 }
+
+Texture_Kind :: enum u8 { None, R8, RGBA }
 
 Texture_Data :: struct {
 	tex:  ^d3d11.ITexture2D,
 	view: ^d3d11.IShaderResourceView,
-	size: int,
+	size: int,            // R8: width = height
+	w, h: int,
+	kind: Texture_Kind,
+	mips: bool,           // has a full mip chain (generated after updates, before the next draw)
+	mips_dirty: bool,
 }
 
 Renderer :: struct {
@@ -61,8 +110,21 @@ Renderer :: struct {
 	globals:     ^d3d11.IBuffer,
 	blend:       ^d3d11.IBlendState,
 	raster:      ^d3d11.IRasterizerState,
-	sampler:     ^d3d11.ISamplerState,
+	sampler:     ^d3d11.ISamplerState,    // glyph atlas: bilinear, clamp, level 0 only
+	sampler_img: ^d3d11.ISamplerState,    // images: trilinear, clamp
+	sampler_wrap: ^d3d11.ISamplerState,   // tiled images: trilinear, wrap
+	xform_buf:   ^d3d11.IBuffer,          // StructuredBuffer<Xform_Data> (t2, vertex shader)
+	xform_view:  ^d3d11.IShaderResourceView,
+	xform_cap:   int,
+	clip_buf:    ^d3d11.IBuffer,          // StructuredBuffer<Clip_Data> (t3, pixel shader)
+	clip_view:   ^d3d11.IShaderResourceView,
+	clip_cap:    int,
 	textures:    [dynamic]Texture_Data,   // index 0 is a dummy so Texture(0) means "none"
+	free_textures: [dynamic]Texture,      // destroyed slots, reused by the next create
+	scratch:     [dynamic]u8,             // RGBA upload conversion
+	gpu_queries: [GPU_QUERY_FRAMES][3]^d3d11.IQuery,   // GPU_TIMING: disjoint, begin, end per frame slot
+	gpu_frame:   int,
+	gpu_last_ms: f32,
 	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
 	swap_flags:  dxgi.SWAP_CHAIN,
 	probe_sum, probe_n, probe_fail, probe_frames: int,
@@ -161,6 +223,7 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 	elems := [?]d3d11.INPUT_ELEMENT_DESC{
 		inst("DST", 0, 0), inst("SRC", 0, 16), inst("C", 0, 32), inst("C", 1, 48), inst("C", 2, 64), inst("C", 3, 80),
 		inst("RADII", 0, 96), inst("STYLE", 0, 112),
+		{SemanticName = "EXTRA", Format = .R32G32B32A32_UINT, AlignedByteOffset = 128, InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1},
 	}
 	// semantic names in the shader are C0..C3: D3D matches "C" + index, so the HLSL semantics C0..C3 are "C" 0..3
 	if hr := r.device->CreateInputLayout(&elems[0], len(elems), vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), &r.layout); win.FAILED(hr) {
@@ -180,6 +243,8 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -
 	r.device->CreateBlendState(&bd, &r.blend)
 	r.device->CreateRasterizerState(&{FillMode = .SOLID, CullMode = .NONE, ScissorEnable = true}, &r.raster)
 	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP}, &r.sampler)
+	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP, MaxLOD = max(f32)}, &r.sampler_img)
+	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .WRAP, AddressV = .WRAP, AddressW = .CLAMP, MaxLOD = max(f32)}, &r.sampler_wrap)
 
 	append(&r.textures, Texture_Data{})   // dummy slot 0
 	r.corner_smoothing = 1
@@ -250,20 +315,145 @@ resize :: proc(r: ^Renderer, size: [2]int) {
 
 // A single-channel (coverage) texture, used for the glyph atlas.
 create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
-	td := Texture_Data{size = size}
+	td := Texture_Data{size = size, w = size, h = size, kind = .R8}
 	r.device->CreateTexture2D(&{
 		Width = u32(size), Height = u32(size), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
 	}, nil, &td.tex)
 	r.device->CreateShaderResourceView(td.tex, nil, &td.view)
-	append(&r.textures, td)
-	return Texture(len(r.textures) - 1)
+	return add_texture(r, td)
 }
 
 update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
 	td := r.textures[int(t)]
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
+}
+
+@(private)
+add_texture :: proc(r: ^Renderer, td: Texture_Data) -> Texture {
+	if n := len(r.free_textures); n > 0 {
+		t := pop(&r.free_textures)
+		r.textures[int(t)] = td
+		return t
+	}
+	append(&r.textures, td)
+	return Texture(len(r.textures) - 1)
+}
+
+// Largest width / height `create_texture_rgba` accepts (from the device's feature level).
+max_texture_size :: proc(r: ^Renderer) -> int {
+	#partial switch r.device->GetFeatureLevel() {
+	case ._9_1, ._9_2: return 2048
+	case ._9_3: return 4096
+	case ._10_0, ._10_1: return 8192
+	}
+	return d3d11.REQ_TEXTURE2D_U_OR_V_DIMENSION
+}
+
+// Size in texels (0, 0 for an invalid or destroyed texture).
+texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return {} }
+	td := r.textures[int(t)]
+	return {td.w, td.h}
+}
+
+// A color image for `draw.image`. Contents start transparent; fill it with `update_texture_rgba`.
+// `mips`: allocate a full mip chain, regenerated (GenerateMips) before the next frame that follows an update, so
+// images drawn smaller than their size stay smooth instead of shimmering. Returns 0 when the size is out of range or
+// the device refuses the texture.
+//
+// Storage is R8G8B8A8_UNORM_SRGB holding PREMULTIPLIED colors (see update_texture_rgba): the sampler decodes sRGB to
+// linear before filtering, so bilinear filtering and mip averaging happen in linear light on premultiplied values
+// (no dark fringes around transparent pixels), consistent with the renderer's linear blending.
+create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
+	limit := max_texture_size(r)
+	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
+	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA}
+	support: u32
+	r.device->CheckFormatSupport(.R8G8B8A8_UNORM_SRGB, &support)
+	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
+	desc := d3d11.TEXTURE2D_DESC{
+		Width = u32(w), Height = u32(h), MipLevels = td.mips ? 0 : 1, ArraySize = 1, Format = .R8G8B8A8_UNORM_SRGB,
+		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
+	}
+	if td.mips { desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
+	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { return 0 }
+	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); return 0 }
+	// start transparent (D3D leaves DEFAULT textures undefined)
+	zero := make([]u8, w * 4)
+	defer delete(zero)
+	for y in 0 ..< h {
+		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(w), bottom = u32(y + 1), back = 1}
+		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(zero), u32(w * 4), 0)
+	}
+	td.mips_dirty = td.mips
+	return add_texture(r, td)
+}
+
+// Uploads a w x h block at (x, y). `pixels`: RGBA8, sRGB encoded, NOT premultiplied (what PNG / JPEG decoders and
+// the web produce); `stride` = bytes per row (0: w * 4). Converted on the CPU to premultiplied alpha in linear light,
+// re-encoded as sRGB for storage. Opaque pixels go through unchanged.
+update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return }
+	td := &r.textures[int(t)]
+	if td.kind != .RGBA || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
+	pitch := stride > 0 ? stride : w * 4
+	if len(pixels) < pitch * (h - 1) + w * 4 { return }
+	srgb_tables_init()
+	runtime.resize(&r.scratch, w * h * 4)
+	for row in 0 ..< h {
+		src := pixels[row * pitch:][:w * 4]
+		dst := r.scratch[row * w * 4:][:w * 4]
+		for i := 0; i < w * 4; i += 4 {
+			a := src[i + 3]
+			switch a {
+			case 255: dst[i], dst[i + 1], dst[i + 2], dst[i + 3] = src[i], src[i + 1], src[i + 2], 255
+			case 0:   dst[i], dst[i + 1], dst[i + 2], dst[i + 3] = 0, 0, 0, 0
+			case:
+				af := f32(a) / 255
+				for k in 0 ..< 3 {
+					lin := srgb_to_linear_table[src[i + k]] * af
+					dst[i + k] = linear_to_srgb_table[int(lin * (LINEAR_STEPS - 1) + 0.5)]
+				}
+				dst[i + 3] = a
+			}
+		}
+	}
+	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
+	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.scratch), u32(w * 4), 0)
+	if td.mips { td.mips_dirty = true }
+}
+
+// Frees the GPU texture; the handle may be reused by a later create. Drawing a destroyed texture draws nothing.
+destroy_texture :: proc(r: ^Renderer, t: Texture) {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return }
+	td := &r.textures[int(t)]
+	if td.kind == .None { return }
+	if td.view != nil { td.view->Release() }
+	if td.tex != nil { td.tex->Release() }
+	td^ = {}
+	append(&r.free_textures, t)
+}
+
+@(private) LINEAR_STEPS :: 4096
+@(private) srgb_to_linear_table: [256]f32
+@(private) linear_to_srgb_table: [LINEAR_STEPS]u8
+@(private) srgb_tables_ready: bool
+
+@(private)
+srgb_tables_init :: proc() {
+	if srgb_tables_ready { return }
+	for i in 0 ..< 256 {
+		c := f32(i) / 255
+		srgb_to_linear_table[i] = c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4)
+	}
+	for i in 0 ..< LINEAR_STEPS {
+		l := f32(i) / (LINEAR_STEPS - 1)
+		s := l <= 0.0031308 ? l * 12.92 : 1.055 * math.pow(l, 1 / 2.4) - 0.055
+		linear_to_srgb_table[i] = u8(clamp(s * 255 + 0.5, 0, 255))
+	}
+	srgb_tables_ready = true
 }
 
 // Corner shape for every rounded rect: 0 = circular arcs, 1 = squircle (superellipse corners, continuous curvature).
@@ -289,9 +479,79 @@ frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	r.ctx->ClearRenderTargetView(r.rtv, &c)
 }
 
-// Draws all instances; each batch is a range with its own scissor rect and texture.
-frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch) {
+// GPU time of frame_submit (milliseconds) for a frame a few frames back; 0 without -define:GPU_TIMING=true.
+gpu_ms :: proc(r: ^Renderer) -> f32 { return r.gpu_last_ms }
+
+@(private)
+gpu_timing_begin :: proc(r: ^Renderer) {
+	q := &r.gpu_queries[r.gpu_frame % GPU_QUERY_FRAMES]
+	if q[0] == nil {
+		r.device->CreateQuery(&{Query = .TIMESTAMP_DISJOINT}, &q[0])
+		r.device->CreateQuery(&{Query = .TIMESTAMP}, &q[1])
+		r.device->CreateQuery(&{Query = .TIMESTAMP}, &q[2])
+	} else if r.gpu_frame >= GPU_QUERY_FRAMES {
+		// this slot was issued GPU_QUERY_FRAMES frames ago: its results are (almost always) ready
+		dj: d3d11.QUERY_DATA_TIMESTAMP_DISJOINT
+		t0, t1: u64
+		if r.ctx->GetData((^d3d11.IAsynchronous)(q[0]), &dj, size_of(dj), 0) == 0 &&
+		   r.ctx->GetData((^d3d11.IAsynchronous)(q[1]), &t0, size_of(t0), 0) == 0 &&
+		   r.ctx->GetData((^d3d11.IAsynchronous)(q[2]), &t1, size_of(t1), 0) == 0 && !bool(dj.Disjoint) && dj.Frequency > 0 {
+			r.gpu_last_ms = f32(f64(t1 - t0) * 1000 / f64(dj.Frequency))
+		}
+	}
+	r.ctx->Begin((^d3d11.IAsynchronous)(q[0]))
+	r.ctx->End((^d3d11.IAsynchronous)(q[1]))
+}
+
+@(private)
+gpu_timing_end :: proc(r: ^Renderer) {
+	q := &r.gpu_queries[r.gpu_frame % GPU_QUERY_FRAMES]
+	r.ctx->End((^d3d11.IAsynchronous)(q[2]))
+	r.ctx->End((^d3d11.IAsynchronous)(q[0]))
+	r.gpu_frame += 1
+}
+
+@(private)
+texture_view :: proc(r: ^Renderer, t: Texture) -> ^d3d11.IShaderResourceView {
+	return int(t) > 0 && int(t) < len(r.textures) ? r.textures[int(t)].view : nil
+}
+
+// (Re)creates a dynamic structured buffer and its view when `n` elements do not fit, then uploads `data`.
+@(private)
+upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.IShaderResourceView, cap: ^int, data: rawptr, n, stride: int) {
+	if buf^ == nil || n > cap^ {
+		if view^ != nil { view^->Release(); view^ = nil }
+		if buf^ != nil { buf^->Release(); buf^ = nil }
+		cap^ = max(n, cap^ * 2, 64)
+		r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
+			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_STRUCTURED}, StructureByteStride = u32(stride)}, nil, buf)
+		srv := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .UNKNOWN, ViewDimension = .BUFFER}
+		srv.Buffer.FirstElement = 0
+		srv.Buffer.NumElements = u32(cap^)
+		r.device->CreateShaderResourceView(buf^, &srv, view)
+	}
+	if n == 0 { return }
+	mapped: d3d11.MAPPED_SUBRESOURCE
+	r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)
+	mem.copy(mapped.pData, data, n * stride)
+	r.ctx->Unmap(buf^, 0)
+}
+
+// Draws all instances; each batch is a range with its own scissor rect and textures.
+// `xforms` / `clips`: the tables that Rect_Inst.xform / Rect_Inst.clip index (entry 0 is never read; pass nil when
+// no instance uses them).
+frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms: []Xform_Data = nil, clips: []Clip_Data = nil) {
 	if len(insts) == 0 { return }
+	when GPU_TIMING {
+		gpu_timing_begin(r)
+		defer gpu_timing_end(r)
+	}
+	// images updated since their last draw: rebuild their mip chains first
+	for &td in r.textures {
+		if td.mips_dirty { r.ctx->GenerateMips(td.view); td.mips_dirty = false }
+	}
+	upload_structured(r, &r.xform_buf, &r.xform_view, &r.xform_cap, raw_data(xforms), len(xforms), size_of(Xform_Data))
+	upload_structured(r, &r.clip_buf, &r.clip_view, &r.clip_cap, raw_data(clips), len(clips), size_of(Clip_Data))
 	if len(insts) > r.inst_cap {
 		if r.inst_buf != nil { r.inst_buf->Release() }
 		r.inst_cap = max(len(insts), max(r.inst_cap * 2, 4096))
@@ -321,17 +581,22 @@ frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch) {
 	r.ctx->IASetVertexBuffers(0, 1, &r.inst_buf, &stride, &offset)
 	r.ctx->VSSetShader(r.vs, nil, 0)
 	r.ctx->VSSetConstantBuffers(0, 1, &r.globals)
+	r.ctx->VSSetShaderResources(2, 1, &r.xform_view)
 	r.ctx->PSSetShader(r.ps, nil, 0)
 	r.ctx->PSSetConstantBuffers(0, 1, &r.globals)   // the pixel shader reads the corner shape
-	r.ctx->PSSetSamplers(0, 1, &r.sampler)
+	samplers := [3]^d3d11.ISamplerState{r.sampler, r.sampler_img, r.sampler_wrap}
+	r.ctx->PSSetSamplers(0, 3, &samplers[0])
+	r.ctx->PSSetShaderResources(3, 1, &r.clip_view)
 
-	bound: Texture = -1
+	// glyphs read t0 and images t1, so text and an image interleave in one batch; only a change of image (or of
+	// scissor) costs a new draw call
+	bound, bound_image: Texture = -1, -1
 	for b in batches {
 		if b.count == 0 { continue }
-		if b.tex != bound {
-			view := r.textures[int(b.tex)].view
-			r.ctx->PSSetShaderResources(0, 1, &view)
-			bound = b.tex
+		if b.tex != bound || b.image != bound_image {
+			views := [2]^d3d11.IShaderResourceView{texture_view(r, b.tex), texture_view(r, b.image)}
+			r.ctx->PSSetShaderResources(0, 2, &views[0])
+			bound, bound_image = b.tex, b.image
 		}
 		rc := d3d11.RECT{
 			left   = i32(clamp(b.clip.x, 0, f32(r.size.x))), top    = i32(clamp(b.clip.y, 0, f32(r.size.y))),

@@ -1,6 +1,6 @@
 @echo off
 :: Builds an example with the Odin compiler (https://odin-lang.org). Output: build\<example>.exe
-::   build.bat [fidget|todo|smoke] [debug]        (default: fidget, optimized)
+::   build.bat [fidget|todo|smoke|transforms] [debug]        (default: fidget, optimized)
 setlocal
 cd /D "%~dp0"
 set "EX=%1"
