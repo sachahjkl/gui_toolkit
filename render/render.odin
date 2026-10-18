@@ -53,7 +53,16 @@ KIND_IMAGE :: 2
 FLAG_TILE :: 1   // image: repeat (wrap addressing) instead of clamping to `src`; `src` should be the whole texture
 FLAG_LAYER :: 2  // image: a layer composited 1:1 in screen pixels (texels fetched, not filtered); no transform
 FLAG_CIRCLE :: 4 // circular corners whatever set_corner_smoothing says (content with its own rules: CSS border-radius)
-CLIP_CIRCLE :: 0x8000_0000   // or-ed into Clip_Data.parent: the same for a clip shape
+FLAG_SCREEN :: 8 // image: texels are screen pixels (texel 0 = screen pixel src.xy, src.zw = valid size): a backdrop
+FLAG_BLEND :: 16 // layer composite through a blend mode (bits BLEND_SHIFT..): reads the batch's `backdrop` (t5),
+                 // whose texel 0 is screen pixel radii.xy, and writes the result (the batch draws without blending)
+BLEND_SHIFT :: 8
+
+// Blend modes of CSS Compositing 1 (mix-blend-mode), computed in sRGB on straight colors as browsers do.
+Blend_Mode :: enum u8 {
+	Normal, Multiply, Screen, Overlay, Darken, Lighten, Color_Dodge, Color_Burn, Hard_Light, Soft_Light, Difference,
+	Exclusion, Hue, Saturation, Color, Luminosity, Plus_Darker, Plus_Lighter,
+}
 
 // A 2D affine transform for the vertex shader, x' = a*x + c*y + e, y' = b*x + d*y + f (`m` = a b c d e f).
 Xform_Data :: struct {
@@ -62,10 +71,18 @@ Xform_Data :: struct {
 }
 #assert(size_of(Xform_Data) == 32)
 
-// A rounded-rect clip evaluated per pixel: `inv` maps screen pixels to the clip's local space (same layout as
-// Xform_Data.m), where the shape is centered on `center` with `half_size` and per-corner `radii` (top-left,
-// bottom-left, top-right, bottom-right). `px` = screen pixels per local unit (antialiasing width). `parent` chains
-// nested clips (0 = end); the shader follows at most MAX_CLIP_DEPTH links.
+// Clip shape kinds (Clip_Data.kind).
+CLIP_RRECT :: 0     // rounded rect: center, half_size, per-corner radii
+CLIP_ELLIPSE :: 1   // ellipse: center, half_size = radii
+CLIP_POLYGON :: 2   // polygon: points[first ..< first + count] of the frame's point table, local space
+// Clip_Data.flags
+CLIP_CIRCLE :: 1    // rounded rect: circular corners whatever set_corner_smoothing says
+CLIP_EVENODD :: 2   // polygon: even-odd fill rule (else nonzero)
+
+// A clip shape evaluated per pixel: `inv` maps screen pixels to the clip's local space (same layout as Xform_Data.m),
+// where the shape lies (see CLIP_*; rounded rect radii in the order top-left, bottom-left, top-right, bottom-right).
+// `px` = screen pixels per local unit (antialiasing width). `parent` chains nested clips (0 = end); the shader follows
+// at most MAX_CLIP_DEPTH links.
 Clip_Data :: struct {
 	inv:       [6]f32,
 	px:        f32,
@@ -73,13 +90,20 @@ Clip_Data :: struct {
 	center:    [2]f32,
 	half_size: [2]f32,
 	radii:     [4]f32,
+	kind:      u32,
+	first:     u32,
+	count:     u32,
+	flags:     u32,
 }
-#assert(size_of(Clip_Data) == 64)
+#assert(size_of(Clip_Data) == 80)
 
 MAX_CLIP_DEPTH :: 8
 
 Texture :: distinct int
 
+// One step of the frame, in recording order: a draw call (a range of instances under one scissor, with its
+// textures, into one target) or, when `op` > 0, the operation ops[op - 1] (clear a layer, copy what a target holds,
+// run a filter pass).
 Batch :: struct {
 	clip:  [4]f32,        // scissor x0 y0 x1 y1 (screen pixels, also inside a layer)
 	tex:   Texture,       // coverage texture (glyph atlas, t0), 0 = none
@@ -87,21 +111,81 @@ Batch :: struct {
 	count: int,
 	image: Texture,       // RGBA texture of the batch's KIND_IMAGE instances (t1), 0 = none
 	target: int,          // 0 = the frame; k > 0 = layers[k - 1] (offscreen, see Layer)
+	backdrop: Texture,    // FLAG_BLEND composites: what the target held under them (t5); the batch does not blend
+	op:    int,           // > 0: not a draw call: Frame_Data.ops[op - 1]
 }
 
 // An offscreen layer: the batches whose `target` is its index + 1 draw into `tex` (a render target from
-// acquire_target, cleared to transparent) instead of the frame, with screen pixel (x, y) landing on texel
-// (x, y) - origin. Layers are drawn before the frame, in the order of `done` (a layer is complete before the one
-// that composites it), so a layer's texture is ready when an instance of the frame (or of an enclosing layer)
-// samples it. Content accumulates as premultiplied color: sampling it as a KIND_IMAGE composites it exactly.
+// acquire_target) instead of the frame, with screen pixel (x, y) landing on texel (x, y) - origin. Batches run in the
+// order they were recorded, so a layer is cleared (an Op), drawn, then sampled by the instance that composites it.
+// Content accumulates as premultiplied linear color: sampling it as a KIND_IMAGE composites it exactly.
 Layer :: struct {
 	tex:    Texture,      // 0: nothing to draw (empty or refused): its batches are skipped
 	origin: [2]f32,
 	size:   [2]int,
-	done:   int,          // completion rank
 }
 
-Texture_Kind :: enum u8 { None, R8, RGBA, Target }
+// A region of a texture holding screen pixels: texel (0, 0) is screen pixel `origin`, one texel covers 1 / `scale`
+// screen pixels (1, or 1/2^k for the reduced images of large blurs), `size` texels hold valid content.
+Image_Ref :: struct {
+	tex:    Texture,
+	origin: [2]f32,
+	scale:  f32,
+	size:   [2]int,
+}
+
+MAX_COLOR_MATRICES :: 8
+// Taps of one blur pass (bilinear pairs, center included): a standard deviation up to MAX_BLUR_SIGMA texels.
+MAX_BLUR_TAPS :: 64
+MAX_BLUR_SIGMA :: 40
+
+Pass_Mode :: enum u32 {
+	Color,       // the color matrices, in order, each result clamped (CSS filter functions other than blur)
+	Blur,        // one direction of a separable gaussian (`dir`, `sigma` in src texels)
+	Downsample,  // half size: 2 x 2 average (the next texel row and column of src)
+	Shadow,      // drop shadow: src = blurred alpha, src2 = the input; out = src2 over (color x src.a moved by offset)
+}
+PASS_IN_LINEAR :: 1    // src holds linear premultiplied color (the frame, a layer); else sRGB-encoded premultiplied
+PASS_OUT_LINEAR :: 2   // write linear premultiplied color (the end of a chain); else sRGB-encoded premultiplied
+PASS_CLAMP :: 4        // reads past src's valid region repeat its edge (backdrops); else they are transparent
+PASS_SRC2_LINEAR :: 8  // Shadow: src2 holds linear color
+
+// A filter pass (CSS Filter Effects 1). Colors are processed in sRGB as browsers do: a chain converts once from the
+// linear layer (PASS_IN_LINEAR on its first pass) and back once (PASS_OUT_LINEAR on its last).
+Pass :: struct {
+	mode:   Pass_Mode,
+	flags:  u32,
+	src, src2, dst: Image_Ref,   // dst.tex is written (cleared first); sources are sampled bilinearly
+	dir:    [2]f32,
+	sigma:  f32,
+	offset: [2]f32,              // Shadow: screen pixels
+	color:  [4]f32,              // Shadow: sRGB, straight alpha
+	matrices: [MAX_COLOR_MATRICES][20]f32,   // Color: row-major 4 x 5 (r g b a 1) on straight sRGB values
+	matrix_count: int,
+}
+
+Op_Kind :: enum u8 { Clear, Copy, Pass }
+
+Op :: struct {
+	kind:   Op_Kind,
+	dst:    Texture,      // Clear: the layer's texture; Copy: a snapshot (acquire_snapshot); Pass: pass.dst.tex
+	source: int,          // Copy: the target read, as Batch.target
+	box:    [4]i32,       // Copy: x0 y0 x1 y1 in the source target's texels, copied to texel (0, 0) of dst
+	pass:   Pass,
+}
+
+// Everything one frame draws (draw.end_frame builds it). Tables may be empty; entry 0 of xforms / clips is never read.
+Frame_Data :: struct {
+	insts:   []Rect_Inst,
+	batches: []Batch,
+	xforms:  []Xform_Data,
+	clips:   []Clip_Data,
+	points:  [][2]f32,    // polygon clip vertices
+	layers:  []Layer,
+	ops:     []Op,
+}
+
+Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot }
 
 Texture_Data :: struct {
 	tex:  ^d3d11.ITexture2D,
@@ -136,9 +220,20 @@ Renderer :: struct {
 	clip_buf:    ^d3d11.IBuffer,          // StructuredBuffer<Clip_Data> (t3, pixel shader)
 	clip_view:   ^d3d11.IShaderResourceView,
 	clip_cap:    int,
+	points_buf:  ^d3d11.IBuffer,          // StructuredBuffer<float2> (t4, pixel shader): polygon clip vertices
+	points_view: ^d3d11.IShaderResourceView,
+	points_cap:  int,
+	blend_replace: ^d3d11.IBlendState,    // FLAG_BLEND composites write their result
+	fx_vs:       ^d3d11.IVertexShader,    // filter passes (filter.hlsl)
+	fx_ps:       ^d3d11.IPixelShader,
+	fx_constants: ^d3d11.IBuffer,
+	sampler_border: ^d3d11.ISamplerState, // filter passes: bilinear, transparent outside the texture
+	frame_tex:   ^d3d11.ITexture2D,       // what `rtv` draws into (back buffer or offscreen image): snapshots copy it
+	frame_format: dxgi.FORMAT,            // its storage format
+	blur_sigma_limit: f32,                // set_blur_sigma_limit
 	textures:    [dynamic]Texture_Data,   // index 0 is a dummy so Texture(0) means "none"
 	free_textures: [dynamic]Texture,      // destroyed slots, reused by the next create
-	targets:     [dynamic]Pooled_Target,  // layer render targets, reused from frame to frame
+	targets:     [dynamic]Pooled_Target,  // layer render targets and snapshots, reused from frame to frame
 	scratch:     [dynamic]u8,             // RGBA upload conversion
 	gpu_queries: [GPU_QUERY_FRAMES][3]^d3d11.IQuery,   // GPU_TIMING: disjoint, begin, end per frame slot
 	gpu_frame:   int,
@@ -226,6 +321,8 @@ destroy :: proc(r: ^Renderer) {
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
+	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
+	rel(&r.sampler_border); rel(&r.frame_tex)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
@@ -250,6 +347,9 @@ init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false) -> bool {
 	// typeless storage: the view is sRGB (like the swap chain's), the readback copies raw bytes
 	r.device->CreateRenderTargetView(r.offscreen, &{Format = .B8G8R8A8_UNORM_SRGB, ViewDimension = .TEXTURE2D}, &r.rtv)
 	if r.rtv == nil { return false }
+	r.frame_tex = r.offscreen
+	r.frame_tex->AddRef()
+	r.frame_format = .B8G8R8A8_TYPELESS
 	return init_pipeline(r)
 }
 
@@ -335,8 +435,20 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP, MaxLOD = max(f32)}, &r.sampler_img)
 	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .WRAP, AddressV = .WRAP, AddressW = .CLAMP, MaxLOD = max(f32)}, &r.sampler_wrap)
 
+	bd.RenderTarget[0] = {BlendEnable = false, RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL)}
+	r.device->CreateBlendState(&bd, &r.blend_replace)
+	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .BORDER, AddressV = .BORDER, AddressW = .BORDER, BorderColor = {0, 0, 0, 0}}, &r.sampler_border)
+	fx_vs_blob := compile(FILTER_SOURCE, "vs_fx", "vs_5_0", "filter.hlsl") or_return
+	fx_ps_blob := compile(FILTER_SOURCE, "ps_fx", "ps_5_0", "filter.hlsl") or_return
+	defer { fx_vs_blob->Release(); fx_ps_blob->Release() }
+	r.device->CreateVertexShader(fx_vs_blob->GetBufferPointer(), fx_vs_blob->GetBufferSize(), nil, &r.fx_vs)
+	r.device->CreatePixelShader(fx_ps_blob->GetBufferPointer(), fx_ps_blob->GetBufferSize(), nil, &r.fx_ps)
+	r.device->CreateBuffer(&{ByteWidth = size_of(Pass_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.fx_constants)
+	if r.fx_vs == nil || r.fx_ps == nil || r.fx_constants == nil || r.blend_replace == nil || r.sampler_border == nil { return false }
+
 	append(&r.textures, Texture_Data{})   // dummy slot 0
 	r.corner_smoothing = 1
+	r.blur_sigma_limit = DEFAULT_BLUR_SIGMA_LIMIT
 	return true
 }
 
@@ -370,9 +482,9 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 is_transparent :: proc(r: ^Renderer) -> bool { return r.transparent }
 
 @(private)
-compile :: proc(src: string, entry, target: cstring) -> (blob: ^d3d11.IBlob, ok: bool) {
+compile :: proc(src: string, entry, target: cstring, name: cstring = "rect.hlsl") -> (blob: ^d3d11.IBlob, ok: bool) {
 	errors: ^d3d11.IBlob
-	hr := d3d_compiler.Compile(raw_data(src), uint(len(src)), "rect.hlsl", nil, nil, entry, target, 0, 0, &blob, &errors)
+	hr := d3d_compiler.Compile(raw_data(src), uint(len(src)), name, nil, nil, entry, target, 0, 0, &blob, &errors)
 	if win.FAILED(hr) {
 		if errors != nil {
 			fmt.eprintln("render: shader error:", string(mem.slice_ptr(cast([^]u8)errors->GetBufferPointer(), int(errors->GetBufferSize()))))
@@ -390,7 +502,9 @@ create_target :: proc(r: ^Renderer) {
 	// sRGB view over a UNORM buffer: the shader writes linear colors, the hardware encodes (and blends) correctly
 	format: dxgi.FORMAT = r.transparent ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM_SRGB
 	r.device->CreateRenderTargetView(backbuffer, &{Format = format, ViewDimension = .TEXTURE2D}, &r.rtv)
-	backbuffer->Release()
+	// kept for snapshots (backdrop filters, blend modes); with flip swap chains buffer 0 is always the one drawn
+	r.frame_tex = backbuffer
+	r.frame_format = r.transparent ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM
 }
 
 resize :: proc(r: ^Renderer, size: [2]int) {
@@ -398,6 +512,7 @@ resize :: proc(r: ^Renderer, size: [2]int) {
 	r.size = size
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
+	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
 	r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, r.swap_flags)   // flags must match creation
 	create_target(r)
 }
@@ -533,6 +648,7 @@ destroy_texture :: proc(r: ^Renderer, t: Texture) {
 Pooled_Target :: struct {
 	tex:   Texture,
 	w, h:  int,
+	snapshot: bool,       // a copy of the frame (its format, no render target view); else an fp16 render target
 	used:  bool,          // handed out for the frame being built
 	idle:  int,           // frames since it was last used
 }
@@ -543,14 +659,30 @@ Pooled_Target :: struct {
 // A pooled target nobody used for this many frames is released.
 @(private) TARGET_IDLE_FRAMES :: 120
 
-// A render target of at least w x h pixels for a layer of the frame being built (linear fp16, premultiplied).
-// It belongs to the renderer and is handed back by frame_submit. 0 when the size is out of range or the device
-// refuses (draw then falls back to per-primitive alpha).
-acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture {
+// A render target of at least w x h pixels for the frame being built (linear fp16, premultiplied): a layer, a filter
+// pass. It belongs to the renderer and is handed back by frame_submit, or earlier by release_target. 0 when the size
+// is out of range or the device refuses (draw then falls back to per-primitive alpha).
+acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pooled(r, w, h, false) }
+
+// A texture that can receive a copy of `target` (0: the frame, k: a layer, as Batch.target): the frame's own format
+// (8-bit sRGB, or fp16 for a translucent window), fp16 for a layer. For backdrops and blend modes.
+acquire_snapshot :: proc(r: ^Renderer, w, h: int, target: int) -> Texture {
+	return acquire_pooled(r, w, h, target == 0 && r.frame_format != .R16G16B16A16_FLOAT)
+}
+
+// Hands a pooled texture back before the end of the frame: a texture acquired later in the frame may reuse it. Safe
+// because steps run in the order they are recorded: release it once the last step reading it is recorded.
+release_target :: proc(r: ^Renderer, t: Texture) {
+	if t == 0 { return }
+	for &p in r.targets { if p.tex == t { p.used = false; return } }
+}
+
+@(private)
+acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool) -> Texture {
 	if w <= 0 || h <= 0 || w > max_texture_size(r) || h > max_texture_size(r) { return 0 }
 	best := -1
 	for &p, i in r.targets {
-		if p.used || p.w < w || p.h < h { continue }
+		if p.used || p.snapshot != snapshot || p.w < w || p.h < h { continue }
 		if best < 0 || p.w * p.h < r.targets[best].w * r.targets[best].h { best = i }
 	}
 	if best >= 0 {
@@ -560,16 +692,26 @@ acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture {
 	limit := max_texture_size(r)
 	aw := min((w + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
 	ah := min((h + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
-	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = .Target}
+	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = snapshot ? .Snapshot : .Target}
 	desc := d3d11.TEXTURE2D_DESC{
 		Width = u32(aw), Height = u32(ah), MipLevels = 1, ArraySize = 1, Format = .R16G16B16A16_FLOAT,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE, .RENDER_TARGET},
 	}
+	if snapshot {
+		// the frame's typeless storage, read through an sRGB view: texels decode to linear like a layer's
+		desc.Format, desc.BindFlags = .B8G8R8A8_TYPELESS, {.SHADER_RESOURCE}
+	}
 	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { return 0 }
-	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); return 0 }
-	if win.FAILED(r.device->CreateRenderTargetView(td.tex, nil, &td.rtv)) { td.view->Release(); td.tex->Release(); return 0 }
+	if snapshot {
+		sd := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .B8G8R8A8_UNORM_SRGB, ViewDimension = .TEXTURE2D}
+		sd.Texture2D.MipLevels = 1
+		if win.FAILED(r.device->CreateShaderResourceView(td.tex, &sd, &td.view)) { td.tex->Release(); return 0 }
+	} else {
+		if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); return 0 }
+		if win.FAILED(r.device->CreateRenderTargetView(td.tex, nil, &td.rtv)) { td.view->Release(); td.tex->Release(); return 0 }
+	}
 	t := add_texture(r, td)
-	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, used = true})
+	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, used = true})
 	return t
 }
 
@@ -596,7 +738,7 @@ release_targets :: proc(r: ^Renderer) {
 // GPU memory held by the pooled layer targets, in bytes.
 targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
-	for p in r.targets { n += p.w * p.h * 8 }
+	for p in r.targets { n += p.w * p.h * (p.snapshot ? 4 : 8) }
 	return n
 }
 
@@ -699,108 +841,6 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 	r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)
 	mem.copy(mapped.pData, data, n * stride)
 	r.ctx->Unmap(buf^, 0)
-}
-
-// Draws all instances; each batch is a range with its own scissor rect, textures and target.
-// `xforms` / `clips`: the tables that Rect_Inst.xform / Rect_Inst.clip index (entry 0 is never read; pass nil when
-// no instance uses them). `layers`: the offscreen layers batches may target (see Layer); drawn first, in `done`
-// order. The layer targets are handed back to the renderer's pool afterwards.
-frame_submit :: proc(r: ^Renderer, insts: []Rect_Inst, batches: []Batch, xforms: []Xform_Data = nil, clips: []Clip_Data = nil, layers: []Layer = nil) {
-	defer recycle_targets(r)
-	if len(insts) == 0 { return }
-	when GPU_TIMING {
-		gpu_timing_begin(r)
-		defer gpu_timing_end(r)
-	}
-	// images updated since their last draw: rebuild their mip chains first
-	for &td in r.textures {
-		if td.mips_dirty { r.ctx->GenerateMips(td.view); td.mips_dirty = false }
-	}
-	upload_structured(r, &r.xform_buf, &r.xform_view, &r.xform_cap, raw_data(xforms), len(xforms), size_of(Xform_Data))
-	upload_structured(r, &r.clip_buf, &r.clip_view, &r.clip_cap, raw_data(clips), len(clips), size_of(Clip_Data))
-	if len(insts) > r.inst_cap {
-		if r.inst_buf != nil { r.inst_buf->Release() }
-		r.inst_cap = max(len(insts), max(r.inst_cap * 2, 4096))
-		r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)
-	}
-	mapped: d3d11.MAPPED_SUBRESOURCE
-	r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)
-	mem.copy(mapped.pData, raw_data(insts), len(insts) * size_of(Rect_Inst))
-	r.ctx->Unmap(r.inst_buf, 0)
-
-	r.ctx->RSSetState(r.raster)
-	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
-	r.ctx->IASetPrimitiveTopology(.TRIANGLESTRIP)
-	r.ctx->IASetInputLayout(r.layout)
-	stride := u32(size_of(Rect_Inst))
-	offset := u32(0)
-	r.ctx->IASetVertexBuffers(0, 1, &r.inst_buf, &stride, &offset)
-	r.ctx->VSSetShader(r.vs, nil, 0)
-	r.ctx->VSSetConstantBuffers(0, 1, &r.globals)
-	r.ctx->VSSetShaderResources(2, 1, &r.xform_view)
-	r.ctx->PSSetShader(r.ps, nil, 0)
-	r.ctx->PSSetConstantBuffers(0, 1, &r.globals)   // the pixel shader reads the corner shape
-	samplers := [3]^d3d11.ISamplerState{r.sampler, r.sampler_img, r.sampler_wrap}
-	r.ctx->PSSetSamplers(0, 3, &samplers[0])
-	r.ctx->PSSetShaderResources(3, 1, &r.clip_view)
-
-	// layers first, each complete before whatever composites it
-	if len(layers) > 0 {
-		order := make([]int, len(layers), context.temp_allocator)
-		for i in 0 ..< len(layers) { order[i] = i }
-		for i in 1 ..< len(order) {   // insertion sort by completion rank: few layers
-			for j := i; j > 0 && layers[order[j]].done < layers[order[j - 1]].done; j -= 1 { order[j], order[j - 1] = order[j - 1], order[j] }
-		}
-		for li in order {
-			ly := layers[li]
-			if int(ly.tex) <= 0 || int(ly.tex) >= len(r.textures) || r.textures[int(ly.tex)].rtv == nil { continue }
-			rtv := r.textures[int(ly.tex)].rtv
-			unbind := [2]^d3d11.IShaderResourceView{}
-			r.ctx->PSSetShaderResources(0, 2, &unbind[0])   // the target may still be bound as the image of an earlier pass
-			clear := [4]f32{}
-			r.ctx->ClearRenderTargetView(rtv, &clear)
-			draw_target(r, batches, li + 1, rtv, ly.size, ly.origin)
-		}
-		unbind := [2]^d3d11.IShaderResourceView{}
-		r.ctx->PSSetShaderResources(0, 2, &unbind[0])
-	}
-	draw_target(r, batches, 0, r.rtv, r.size, {0, 0})
-}
-
-// The batches of one target: the frame (target 0, the swap chain) or a layer's texture, whose texel (0, 0) is the
-// screen pixel `origin` (the vertex shader and the clip shapes work in screen pixels and subtract it).
-@(private)
-draw_target :: proc(r: ^Renderer, batches: []Batch, target: int, rtv: ^d3d11.IRenderTargetView, size: [2]int, origin: [2]f32) {
-	mapped: d3d11.MAPPED_SUBRESOURCE
-	r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)
-	sm := clamp(r.corner_smoothing, 0, 1)
-	// n = 2.6 softens the arc-to-edge junction without turning capsules into rounded boxes; the radius is enlarged
-	// a bit so the corners do not look tighter than circular ones
-	(^[8]f32)(mapped.pData)^ = {f32(size.x), f32(size.y), 2 + 0.6 * sm, 1 + 0.25 * sm, origin.x, origin.y, 0, 0}
-	r.ctx->Unmap(r.globals, 0)
-	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
-	r.ctx->RSSetViewports(1, &vp)
-	target_rtv := rtv
-	r.ctx->OMSetRenderTargets(1, &target_rtv, nil)
-
-	// glyphs read t0 and images t1, so text and an image interleave in one batch; only a change of image (or of
-	// scissor) costs a new draw call
-	bound, bound_image: Texture = -1, -1
-	for b in batches {
-		if b.count == 0 || b.target != target { continue }
-		if b.tex != bound || b.image != bound_image {
-			views := [2]^d3d11.IShaderResourceView{texture_view(r, b.tex), texture_view(r, b.image)}
-			r.ctx->PSSetShaderResources(0, 2, &views[0])
-			bound, bound_image = b.tex, b.image
-		}
-		rc := d3d11.RECT{
-			left   = i32(clamp(b.clip.x - origin.x, 0, f32(size.x))), top    = i32(clamp(b.clip.y - origin.y, 0, f32(size.y))),
-			right  = i32(clamp(b.clip.z - origin.x, 0, f32(size.x))), bottom = i32(clamp(b.clip.w - origin.y, 0, f32(size.y))),
-		}
-		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
-		r.ctx->RSSetScissorRects(1, &rc)
-		r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))
-	}
 }
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
