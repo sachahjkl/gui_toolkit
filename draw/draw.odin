@@ -105,8 +105,19 @@ Context :: struct {
 	xforms:   [dynamic]Transform,
 	xform_table: [dynamic]render.Xform_Data,   // GPU transforms of this frame (entry 0 unused)
 	clip_table:  [dynamic]render.Clip_Data,    // clip shapes of this frame (entry 0 unused)
+	layers:   [dynamic]render.Layer,           // offscreen layers of this frame (push_layer), by id - 1
+	open_layers: [dynamic]Open_Layer,
+	target:   int,                             // where new batches draw: 0 = the frame, else a layer id
+	layers_done: int,
 	size:     Vec2,
 	generation: int,
+}
+
+// A layer being drawn (push_layer ... pop_layer).
+Open_Layer :: struct {
+	id:     int,      // 0: no layer (fallback to per-primitive alpha)
+	alpha:  f32,
+	parent: int,      // the target to go back to
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
@@ -118,12 +129,13 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 
 destroy :: proc(c: ^Context) {
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
-	delete(c.xform_table); delete(c.clip_table)
+	delete(c.xform_table); delete(c.clip_table); delete(c.layers); delete(c.open_layers)
 }
 
 begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
-	clear(&c.xform_table); clear(&c.clip_table)
+	clear(&c.xform_table); clear(&c.clip_table); clear(&c.layers); clear(&c.open_layers)
+	c.target, c.layers_done = 0, 0
 	c.size = size
 	append(&c.clips, Clip{rect = {{0, 0}, size}})
 	append(&c.alphas, 1)
@@ -136,7 +148,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 @(private)
 start_batch :: proc(c: ^Context) {
 	cl := c.clips[len(c.clips) - 1].rect
-	append(&c.batches, render.Batch{clip = {cl.min.x, cl.min.y, cl.max.x, cl.max.y}, tex = c.atlas, first = len(c.insts)})
+	append(&c.batches, render.Batch{clip = {cl.min.x, cl.min.y, cl.max.x, cl.max.y}, tex = c.atlas, first = len(c.insts), target = c.target})
 }
 
 @(private)
@@ -199,6 +211,71 @@ current_clip :: proc(c: ^Context) -> Rect { return c.clips[len(c.clips) - 1].rec
 
 push_alpha :: proc(c: ^Context, a: f32) { append(&c.alphas, c.alphas[len(c.alphas) - 1] * a) }
 pop_alpha :: proc(c: ^Context) { pop(&c.alphas) }
+
+////////////////////////////////
+// Layers: group opacity
+
+// Everything drawn until pop_layer goes to an offscreen layer, composited once at pop with opacity `alpha` (times
+// the alpha stack): overlapping primitives inside do not show through each other, as with CSS `opacity` on an element
+// (push_alpha instead fades each primitive on its own). `bounds` (current local space) must contain what is drawn:
+// the layer covers its screen bounds, cut to the current clip, and nothing outside shows. Layers nest; transforms
+// and clips work inside as outside. When the layer would be empty or too large for a texture, this falls back to
+// push_alpha. Costs a render target of the layer's size (pooled by the renderer) and one extra pass.
+push_layer :: proc(c: ^Context, bounds: Rect, alpha: f32) {
+	xf := c.xforms[len(c.xforms) - 1]
+	r := rect_intersect(affine_bounds(xf.m, bounds), c.clips[len(c.clips) - 1].rect)
+	r = rect_intersect(r, Rect{{0, 0}, c.size})
+	x0, y0 := math.floor(r.min.x), math.floor(r.min.y)
+	x1, y1 := math.ceil(r.max.x), math.ceil(r.max.y)
+	w, h := int(x1 - x0), int(y1 - y0)
+	tex: render.Texture
+	if w > 0 && h > 0 && alpha > 0 { tex = render.acquire_target(c.renderer, w, h) }
+	if tex == 0 {
+		append(&c.open_layers, Open_Layer{id = 0, alpha = alpha, parent = c.target})
+		push_alpha(c, alpha)
+		return
+	}
+	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}})
+	id := len(c.layers)
+	append(&c.open_layers, Open_Layer{id = id, alpha = alpha, parent = c.target})
+	close_batch(c)
+	c.target = id
+	start_batch(c)
+	append(&c.alphas, 1)   // full opacity inside: the layer's alpha applies once, when it is composited
+}
+
+pop_layer :: proc(c: ^Context) {
+	ol := pop(&c.open_layers)
+	pop(&c.alphas)
+	if ol.id == 0 { return }
+	close_batch(c)
+	c.target = ol.parent
+	c.layers_done += 1
+	ly := &c.layers[ol.id - 1]
+	ly.done = c.layers_done
+	start_batch(c)
+	// the composite: the layer's pixels 1:1 at their screen place (no transform: the content already went through
+	// it; no clip shape: the content was clipped)
+	b := &c.batches[len(c.batches) - 1]
+	if b.image != ly.tex {
+		if b.image != 0 && len(c.insts) > b.first {
+			close_batch(c)
+			start_batch(c)
+			b = &c.batches[len(c.batches) - 1]
+		}
+		b.image = ly.tex
+	}
+	a := c.alphas[len(c.alphas) - 1] * ol.alpha
+	x0, y0 := ly.origin.x, ly.origin.y
+	w, h := f32(ly.size.x), f32(ly.size.y)
+	append(&c.insts, render.Rect_Inst{
+		dst = {x0, y0, x0 + w, y0 + h}, src = {0, 0, w, h}, colors = {{1, 1, 1, a}, {1, 1, 1, a}, {1, 1, 1, a}, {1, 1, 1, a}},
+		soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, flags = render.FLAG_LAYER,
+	})
+}
+
+// Layers opened and not closed yet.
+layer_depth :: proc(c: ^Context) -> int { return len(c.open_layers) }
 
 // Everything drawn next goes through `m` first, then through the transforms already pushed (CSS nesting: push the
 // element's `transform` with its transform-origin folded in, see affine_around). Pop with pop_transform.
@@ -387,6 +464,7 @@ image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tin
 
 // Uploads new glyphs, then draws the whole frame. Call once per frame after all primitives.
 end_frame :: proc(c: ^Context) {
+	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
 	f := c.fonts
 	for u in f.pending {
@@ -396,5 +474,5 @@ end_frame :: proc(c: ^Context) {
 	clear(&f.pending_pixels)
 	xforms := len(c.xform_table) > 1 ? c.xform_table[:] : nil
 	clips := len(c.clip_table) > 1 ? c.clip_table[:] : nil
-	render.frame_submit(c.renderer, c.insts[:], c.batches[:], xforms, clips)
+	render.frame_submit(c.renderer, c.insts[:], c.batches[:], xforms, clips, c.layers[:])
 }

@@ -3,6 +3,25 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.4.1] - 2026-10-18
+
+### Added
+- **Layers (group opacity)**: `draw.push_layer(dc, bounds, alpha)` / `draw.pop_layer` draw into an offscreen render
+  target composited once with `alpha`, so overlapping primitives of the group do not show through each other (CSS
+  `opacity`). Transforms, rounded / rotated clips, images, text and nested layers work inside. Falls back to
+  `push_alpha` when the layer would be empty or too large. `draw.layer_depth`.
+- Renderer support: `render.Layer`, `Batch.target`, `frame_submit(..., layers)`, a pool of fp16 render targets
+  (`render.acquire_target`, `release_targets`, `targets_bytes`), `render.FLAG_LAYER` (texel-exact composite).
+- **Offscreen renderer**: `render.init_offscreen(r, size, warp)` (no window; WARP software rasterizer available) and
+  `render.read_pixels`. `render.destroy` releases every GPU object.
+- `tests/layers`: pixel tests (group opacity vs. per-primitive alpha, opaque layer = no layer, nested layers with a
+  rotated rounded clip, target pooling, fallback).
+- `examples/transforms`: the orbiting planet fades as one group (`push_layer`).
+
+### Changed
+- The shader constant buffer is 32 bytes (adds `target_origin`). `init` is split into device creation and pipeline
+  setup (shared with `init_offscreen`); `frame_end` and `resize` do nothing for an offscreen renderer.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added
