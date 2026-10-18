@@ -3,6 +3,34 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.4.0] - 2026-10-18
+
+### Added
+- **2D affine transforms** in `draw`: `Affine` (CSS `matrix(a, b, c, d, e, f)` convention), `push_transform` /
+  `pop_transform`, `current_transform`, and the helpers `affine_mul`, `affine_translate`, `affine_scale`,
+  `affine_rotate`, `affine_skew`, `affine_around`, `affine_apply`, `affine_apply_vector`, `affine_inverse`,
+  `affine_bounds`, `affine_determinant`, `affine_scale_factor`, `affine_is_identity`, `affine_is_scale_translate`,
+  `affine_from_xform`. Rects (rounded, borders, shadows), gradients, text and images follow the transform; rotated and
+  skewed shapes are evaluated in local space in the pixel shader (exact corners, 1 px antialiasing). Scaled text is
+  re-rasterized at its on-screen size.
+- **Rounded / transformed clips**: `draw.push_clip_rounded(dc, r, radii)` (per-pixel, antialiased, nests up to 8
+  deep); `push_clip` under rotation or skew clips the exact rect. `draw.current_clip`.
+- **Images**: `render.create_texture_rgba`, `update_texture_rgba` (sRGB, straight alpha in; stored premultiplied in
+  linear light), `destroy_texture`, `texture_size`, `max_texture_size`; mip chains regenerated after updates.
+  `draw.image`, `draw.image_corners` (rounded corners, sub-rectangles, tint) and `draw.image_tiled` (seamless
+  repeat). Images and glyphs share batches.
+- `examples/transforms` (`build.bat transforms`): animated demo, `--stress=N` / `--bench=N` load test.
+- `-define:GPU_TIMING=true` + `render.gpu_ms`: GPU time of the frame (timestamp queries).
+- Unit tests for the affine helpers: `odin test tests/affine`.
+- [docs/draw.md](docs/draw.md): transforms, clips, images, costs and limits.
+
+### Changed
+- `render.Rect_Inst` is 144 bytes (adds `xform`, `clip`, `flags`); `use_tex` takes `KIND_SHAPE` / `KIND_GLYPH` /
+  `KIND_IMAGE`. `render.Batch` gains `image`; `render.frame_submit` takes the optional transform and clip tables.
+- `draw.Context.clips` holds `draw.Clip` (scissor + shape) and `xforms` holds `draw.Transform` (an `Affine`).
+  `push_scale` / `pop_xform` keep their behaviour; the existing examples render pixel-identical to 0.3.2.
+- Soft shapes (`soft > 1`) drawn under `push_scale` scale their blur with the rest of the shape.
+
 ## [0.3.2] - 2026-10-15
 
 ### Fixed
