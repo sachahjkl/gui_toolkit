@@ -34,6 +34,11 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - `Picture.atlas_generation` and `font.reset_atlas` are gone (`font.clear_atlas` clears the pages: pictures on them go
   stale).
 
+### Fixed (merge)
+- `font.shape` of one right-to-left run of several words (`one_run`, a layout fragment) left its clusters in visual
+  word order: the caret of the logical end and hit testing landed inside the text. Clusters are sorted back to logical
+  order (`O(n log n)`).
+
 ### Changed
 - **`font` is rebuilt on DirectWrite** (stb_truetype is gone): faces from the system collection
   (`font.load_system`, `font.has_system_family`), files (`load_from_file`) and memory (`load_memory`,
