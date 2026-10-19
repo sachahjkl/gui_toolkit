@@ -47,13 +47,24 @@ theme_lookup :: proc(t: ^Theme, stack: []string, name: string) -> Color {
 	return t.patterns[best].color
 }
 
-// Color for `name` under the tags a box was built with (usable from custom draw procs).
+// Color for `name` under the tags a box was built with (usable from custom draw procs). Looked up once per build and
+// draw for each (tag stack, name): every box asks for the same few.
 color_from_tags :: proc(s: ^State, tags_key: Key, name: string) -> Color {
-	stack := s.tag_sets[tags_key]
-	return theme_lookup(s.theme, stack, name)
+	k := [2]u64{u64(tags_key), name_hash(name)}
+	if c, ok := s.color_memo[k]; ok { return c }
+	c := theme_lookup(s.theme, s.tag_sets[tags_key], name)
+	s.color_memo[k] = c
+	return c
 }
 
 // Color for `name` under the current tag stack while building.
 color :: proc(name: string) -> Color {
-	return theme_lookup(g.theme, g.tag_stack[:], name)
+	return color_from_tags(g, current_tags_key(g), name)
+}
+
+@(private)
+name_hash :: proc(s: string) -> u64 {
+	h: u64 = 0xcbf29ce484222325
+	for c in transmute([]u8)s { h = (h ~ u64(c)) * 0x100000001b3 }
+	return h
 }
