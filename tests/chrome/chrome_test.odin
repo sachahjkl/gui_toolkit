@@ -4,6 +4,7 @@
 package chrome_test
 
 import "core:fmt"
+import "core:sync"
 import "core:testing"
 import "../../font"
 import "../../platform"
@@ -67,8 +68,15 @@ sample_regions :: proc() -> (c: platform.Chrome_Regions) {
 	return
 }
 
+// The tests drive the toolkit's global UI state: the test runner's threads take turns (no -define:ODIN_TEST_THREADS=1
+// needed).
+@(private = "file")
+ui_state_lock: sync.Mutex
+
 @(test)
 hit_test_zones :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	c := sample_regions()
 	defer platform.chrome_regions_destroy(&c)
 	size := [2]f32{1000, 700}
@@ -86,6 +94,8 @@ hit_test_zones :: proc(t: ^testing.T) {
 
 @(test)
 hit_test_edges :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	c := sample_regions()
 	defer platform.chrome_regions_destroy(&c)
 	size := [2]f32{1000, 700}
@@ -112,6 +122,8 @@ hit_test_edges :: proc(t: ^testing.T) {
 
 @(test)
 hit_test_maximized :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	c := sample_regions()
 	defer platform.chrome_regions_destroy(&c)
 	// maximized: no resize band; the very top row of pixels is the buttons' and the caption's (Fitts)
@@ -127,6 +139,8 @@ hit_test_maximized :: proc(t: ^testing.T) {
 
 @(test)
 title_bar_regions :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
@@ -165,6 +179,8 @@ title_bar_regions :: proc(t: ^testing.T) {
 
 @(test)
 caption_button_click :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
@@ -240,6 +256,8 @@ vl_teardown :: proc(r: ^Vl_Run) {
 
 @(test)
 vlist_builds_only_what_is_seen :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
@@ -261,6 +279,8 @@ vlist_builds_only_what_is_seen :: proc(t: ^testing.T) {
 
 @(test)
 vlist_keyboard_reaches_every_row :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
@@ -297,6 +317,8 @@ vlist_keyboard_reaches_every_row :: proc(t: ^testing.T) {
 
 @(test)
 vlist_view_stays_on_its_row :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
@@ -324,6 +346,8 @@ vlist_view_stays_on_its_row :: proc(t: ^testing.T) {
 
 @(test)
 wrapped_text_is_cached :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
@@ -348,6 +372,8 @@ wrapped_text_is_cached :: proc(t: ^testing.T) {
 
 @(test)
 scroll_curve :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	for c in ui.Scroll_Curve {
 		if c == .Exponential { continue }
 		p0, _ := ui.scroll_curve_eval(c, 5, 0)
