@@ -3,6 +3,41 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased]
+
+### Added
+- **Kept filter results** (`draw/layer_cache.odin`): `Layer_Effects.cache_id`, `cache_key`, `cache_anchor` keep a
+  layer's filtered texture from frame to frame (stored once the same key came two frames in a row); while the caller's
+  key, the filters run by passes, the transform's linear part, the anchor's fraction and the bounds relative to the
+  anchor hold, `push_effects` returns **false** (the content need not be drawn; what is drawn is discarded) and
+  `pop_layer` composites the kept result, moved by whole-pixel moves of the anchor. Opacity, blend mode and trailing
+  color matrices stay live. A layer up to `max_layer_px` is drawn whole when it is to be kept (scrolling it into view
+  keeps it good). `Layer_Effects.cache_under` (blend modes into the opaque frame) keeps the blended pixels: no layer,
+  copy or blend while what lies under is the same. `backdrop_capture` / `backdrop` take `cache_id`, `cache_key`
+  (what lies under), `cache_anchor`. `set_layer_cache(dc, budget, max_layer_px, idle_frames)`, `layer_cache_stats`,
+  `layer_cache_forget`, `layer_cache_clear`.
+- `render.keep_target` / `unkeep_target` (a pooled texture held across frames), `targets_generation`,
+  `kept_targets_bytes`, `texture_bpp`, `acquire_target_format`, `Target_Format`.
+- **Per-step GPU profile** (`render/gpu_profile.odin`): `set_gpu_profile(r, on, detail)`, `gpu_profile(r)`:
+  time, count, pixels and estimated traffic of each kind of step (`Gpu_Step`: draw runs into the frame or a layer,
+  clears, copies, color / blur / reduction / shadow passes), render targets bound, the slowest steps; `detail` times
+  every draw call (batch, instances, kinds, flags, scissor).
+- `render.set_filter_precision(r, .Unorm8 | .Half)`: filter results in sRGB-encoded 8 bits or fp16.
+- `render.FLAG_SCALED`, `render.FLAG_MATRIX` for layer composites and backdrops; `Pass.factor`.
+- `examples/effects`: `--nocache`, `--half`; `--bench` prints the GPU time by kind of step; the thumbnails and the
+  stress cards keep their results. `tests/gpufx`: reduced blurs against the exact gaussian, kept layers / blended
+  pixels / backdrops against drawn ones (hits, whole-pixel moves, invalidation), stale texels never read, the profile.
+
+### Changed
+- Color matrices ending a filter chain are applied by the composite (one pass and one target fewer; a layer with only
+  color filters runs no pass).
+- Large blurs: the reduction by 2, 4 or 8 is one pass; the result stays reduced and is sampled back by the next pass or
+  the composite (no upsampling pass); the variance of the bilinear resampling is taken off the gaussian's.
+- Filter passes no longer clear their target: they write a transparent ring of one texel past their region and read no
+  further. Filter chains end in sRGB-encoded values (no conversion pass back to linear).
+- `push_effects` returns a bool (see above); existing calls that ignore it are unchanged.
+- `Backdrop` holds the chain's trailing matrices and whether its texture is kept.
+
 ## [0.9.2] - 2026-10-19
 
 ### Added

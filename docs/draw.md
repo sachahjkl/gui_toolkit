@@ -163,11 +163,36 @@ the blend with what is already drawn. `push_layer(dc, bounds, alpha)` is `push_e
   screen pixels (left, top, right, bottom); the layer is grown by it, and so is the area whose content may spread
   into the visible part.
 - **Blur**: two separable passes, taps folded in bilinear pairs. Above `render.set_blur_sigma_limit` (8 screen
-  pixels by default) the image is first halved (2 x 2 averages) as many times as needed, blurred there and filtered
-  back up by the next pass: the cost per pixel is bounded whatever the radius. What lies outside the layer is
-  transparent.
-- **Color matrices**: up to `render.MAX_COLOR_MATRICES` consecutive ones run in one pass.
+  pixels by default) the image is first reduced by 2, 4 or 8 in one pass (box averages through bilinear taps; 16 and
+  more in two), blurred there (the variance of the reduction and of the bilinear resampling taken off the
+  gaussian's), and stays reduced: the next pass, or the composite (`render.FLAG_SCALED`), samples it back up. The
+  cost per pixel is bounded whatever the radius; `tests/gpufx` keeps the result within 2.5 % of coverage of the exact
+  gaussian (0.6 % on average) from sigma 3 to 30. What lies outside the layer is transparent.
+- **Color matrices**: up to `render.MAX_COLOR_MATRICES` consecutive ones run in one pass; those that end a chain are
+  applied by the composite itself (`render.FLAG_MATRIX`, matrices in the frame's gradient table): a layer with only
+  color filters runs no pass at all.
 - **Drop shadow**: the blur of the input's alpha, then one pass that moves it, tints it and puts the input on top.
+- Pass targets are not cleared: a pass writes its region and a one-texel transparent ring past it, and reads no
+  further. Results are stored as `render.set_filter_precision` says: `.Half` (fp16, the default) or `.Unorm8`
+  (sRGB-encoded 8 bits, as browsers keep them: half the memory and bandwidth).
+
+**Kept results** (`draw/layer_cache.odin`). Give a layer `cache_id` (its identity), `cache_key` (a signature of what
+you draw in it) and `cache_anchor` (the screen point its content moves with): once the same key came two frames in a
+row, the filtered result is kept, and while the key, the filters run by passes, the transform's linear part, the
+anchor's fraction and the bounds relative to the anchor stay the same, `push_effects` returns false (skip the
+content) and `pop_layer` composites the kept texture, moved by the anchor's whole-pixel moves (scrolling). Opacity,
+blend mode and trailing color matrices are applied by the composite: animating them keeps the result. With a blend
+mode, composited into the opaque frame, `cache_under` (a signature of what lies under) keeps the blended pixels
+themselves: no copy, layer or blend while both keys hold. `backdrop_capture` / `backdrop` take the same three
+parameters (the key describing what lies under the rect). `set_layer_cache(dc, budget_bytes, max_layer_px,
+idle_frames)` (64 MB, 4 Mpx, 600 frames by default; 0 bytes turns it off), `layer_cache_stats`, `layer_cache_forget`,
+`layer_cache_clear`. A lost device or an emptied pool (`render.targets_generation`) drops everything.
+
+**GPU profile** (`render/gpu_profile.odin`): `render.set_gpu_profile(r, true)` puts a timestamp after each step of
+`frame_submit` (a run of draw calls into one target, a clear, a copy, a filter pass); `render.gpu_profile(r)` gives,
+a few frames later, the time, count, pixels written and estimated traffic of each kind of step
+(`Gpu_Step`), the render targets bound and the slowest steps. `detail = true` times every draw call (batch, instance
+count, kinds, flags, scissor of the slowest).
 
 **Blend modes** (`Blend_Mode`, CSS Compositing 1): `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`,
 `Color_Dodge`, `Color_Burn`, `Hard_Light`, `Soft_Light`, `Difference`, `Exclusion`, `Hue`, `Saturation`, `Color`,
@@ -200,6 +225,10 @@ build):
 | demo page (8 filtered thumbnails, frosted glass, 18 blend modes, shadow, clips, glow) | 28 | 22 | 8 (6.5 MB) | 0.03 ms | 0.42 ms |
 | 12 cards: frosted backdrop (blur 12) + drop shadow + sepia, full window | 12 | 108 | 11 (9.6 MB) | 0.06 ms | 2.2 ms |
 | 40 cards, same | 40 | 360 | 11 (5.0 MB) | 0.18 ms | 2.0 ms |
+
+Unreleased (`examples/effects --bench=300`, 2240 x 1400, GPU p50 under the per-step profile; the stress cards' content is
+kept, their backdrops move): demo page 2.29 → 2.28 ms (21 layers, 11 passes instead of 28 and 20); 40 cards
+4.61 → 2.91 ms (0 layers drawn, 120 passes instead of 360), 4.21 ms without kept results.
 
 ## Blend spaces
 
