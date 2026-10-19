@@ -3,6 +3,34 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased]
+
+### Added
+- **Status bars and frame statistics** (`ui/status.odin`): `status_bar(id)` (a bar along the bottom of a window, theme
+  tags "bar", text a little smaller), `status_fill(id)` (the flexible part of the bar: takes the room left, clips its
+  items), `status_item(id, tone, mono, clickable, width)`, `status_separator()`.
+- `Frame_History`: a ring of `History_Sample`s (up to `HISTORY_SERIES` = 8 stacked values, a time, an app tag):
+  `history_init` / `history_destroy` / `history_resize` (keeps the newest) / `history_clear` / `history_push` /
+  `history_at` / `history_last` / `history_find_tag` (complete a sample later: GPU times arrive a few frames late) /
+  `sample_total`; `history_stats(h, since_ms, budget)` (n, mean, min, max, p50, p95, p99, over budget, per-series mean
+  and max, span) and `history_rate(h, now_ms, window_ms)` (samples per second).
+- `frame_graph(id, &history, Frame_Graph_Opts)`: one stacked bar per sample, newest at the right; per-series colors,
+  `series` (draw more series than the history counts, e.g. a GPU time over the CPU phases), `bars`, a dashed `budget`
+  line, `scale` / `max_scale` (the top fits most bars; a rare spike is cut and marked instead of flattening the rest),
+  `warn` / `bad` cap marks, `highlight`. The result is the box's signal plus the history index of the bar under the
+  pointer. `graph_scale` gives the top it uses. Nothing asks for frames.
+- `stat_row(id, label, value, width, mono, swatch_color, tone)`, `stat_heading`, `swatch`: rows of detail panels and
+  graph legends.
+- `popover(id, anchor, width, side, align_right)`: a floating panel above or below a widget (the other side when it
+  does not fit, clamped to the window), open as long as the app builds it; `popover_rect(id)` for input the app routes
+  itself.
+- `render.set_gpu_timing(r, on)`: the GPU time of each `frame_submit` measured at run time, without
+  `-define:GPU_TIMING` (timestamp queries in a ring, read back later: the CPU never waits); `gpu_timing_enabled`,
+  `gpu_next_frame` and `gpu_result` (the time and the index of the submit it measured, to attribute it to its frame).
+- `render.texture_memory(r)`: GPU memory of the renderer's textures by kind (glyph atlases, images with their mips,
+  layer targets).
+- `examples/fidget`: its status bar uses them (build and draw time per frame, stacked, with a tooltip per frame).
+
 ## [0.8.0] - 2026-10-19
 
 ### Added

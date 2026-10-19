@@ -62,10 +62,9 @@ blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
 	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
-	when GPU_TIMING {
-		gpu_timing_begin(r)
-		defer gpu_timing_end(r)
-	}
+	timed := GPU_TIMING || r.gpu_timing
+	if timed { gpu_timing_begin(r) }
+	defer if timed { gpu_timing_end(r) }
 	// images updated since their last draw: rebuild their mip chains first
 	for &td in r.textures {
 		if td.mips_dirty { r.ctx->GenerateMips(td.view); td.mips_dirty = false }
