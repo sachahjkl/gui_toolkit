@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Odin dev-2026-10
+        shell: pwsh
+        env:
+          # odin version: dev-2026-10-nightly:84bc3fc (the tag dev-2026-10 is that commit)
+          ODIN_TAG: dev-2026-10
+          ODIN_SHA256: b6b2e426a8b6f147b74ec7e18bef8df27cf40fe16193159df7ca09a0cc0c2011
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "odin-$env:ODIN_TAG.zip"
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest "https://github.com/odin-lang/Odin/releases/download/$env:ODIN_TAG/odin-windows-amd64-$env:ODIN_TAG.zip" -OutFile $zip
+          $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:ODIN_SHA256) { throw "Odin archive SHA-256 mismatch: $got" }
+          $dir = Join-Path $env:RUNNER_TEMP 'odin'
+          Expand-Archive $zip -DestinationPath $dir -Force
+          Add-Content $env:GITHUB_PATH (Join-Path $dir 'dist')
+          & (Join-Path $dir 'dist\odin.exe') version
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build the examples
+        shell: cmd
+        run: |
+          for %%e in (fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
+
+      - name: Tests (no window; pixel tests on WARP)
+        shell: pwsh
+        run: |
+          $failed = 0
+          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status') {
+            $extra = if ($t -in 'keyboard', 'status') { @('-define:ODIN_TEST_THREADS=1') } else { @() }
+            $o = odin test "tests/$t" -vet @extra -out:"build/${t}_test.exe" 2>&1 | Out-String
+            if ($o -match 'All tests were successful') { "PASS $t" } else { "FAIL $t"; $o; $failed++ }
+          }
+          if ($failed) { exit 1 }
