@@ -3,6 +3,41 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased] - branch feat/ui-keyboard
+
+### Added
+- **Menus** rebuilt (`popups.odin`): any depth of submenus (`menu_submenu`, opens on click, after
+  `MENU_HOVER_MS` of hover, or with Right / Enter / Space; to the right of its item, or the left when there is no room),
+  `menu_separator`, disabled items (`menu_item(..., enabled = false)` or a `disabled` scope: muted, skipped by the
+  keyboard), automatic width (`ctx_menu(key)` with width 0: as wide as the widest item), placement that stays on screen
+  (flips to the other side of the point or anchor rect, then clamps), `ctx_menu_open_rect` (below a button, above when
+  there is no room), `ctx_menu_open(..., from_keyboard = true)` (first enabled item selected), `menu_select`,
+  `menu_depth`, `menu_rect`. An open menu owns the keyboard (key presses and typed text, in order): Up / Down / Home /
+  End over enabled items (wrapping), Right / Left through submenus, Enter / Space choose, Escape closes one level, a
+  letter selects the next item starting with it. Levels the app stops building close.
+- **Keyboard lists** (`list.odin`): `list(id, &List_State)` + `list_row(&st, i, label, selectable)`: one Tab stop with
+  an active row; Up / Down / Page Up / Page Down / Home / End (skipping non-selectable rows such as group headers),
+  Enter or double click (`activated`), Escape (`cancelled`), type-ahead (`LIST_TYPEAHEAD_MS`), the active row kept in
+  view; rows drawn with "selected" / "weak_selected" tags. `list_select`, `list_state_destroy`.
+- **Wrapped text**: `Box_Flag.Text_Wrap` (a `.Text` height is that of all the lines at the width the X pass gave),
+  `paragraph(id)`, `wrap_lines`.
+- **Line edit history and commands**: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z (typing and deleting merge into steps,
+  `FIELD_UNDO_STEPS`), Ctrl+Insert / Shift+Insert / Shift+Delete; `field_undo`, `field_redo`, `field_can_undo`,
+  `field_can_redo`, `field_cut`, `field_copy`, `field_paste`, `field_delete`, `field_insert`, `field_select_all`,
+  `field_has_selection`, `field_selection` (for context menus).
+- `tab_stops(on)` scopes (widgets left out of the Tab order), `tab_direction(s)` and `focus_step(s, from, dir)` (an app
+  handing the focus to its own content and back), `tabs(..., right_clicked, middle_clicked)`.
+- `ui.destroy(s)` frees the state. `platform.Key.Menu` (the application key), `Num_Add`, `Num_Subtract` (Ctrl+keypad
+  plus / minus zoom), keypad digits as `N0`..`N9`.
+- `tests/keyboard`: menus (keyboard, submenus, Escape by level, placement, press outside), lists (moves, headers,
+  type-ahead, kept in view, Enter / Escape), line edit history and clipboard, wrapped text, without a window.
+- fidget: View menu with submenus.
+
+### Changed
+- `ctx_menu` (`width` now optional) pads its panel; `State.ctx_menu_key`, `menu_sel`, `menu_width`... are replaced by
+  `State.menus` (the stack of open levels). Dropdowns open below their button (above without room) and from the
+  keyboard (Down, Alt+Down, F4) with the current value selected.
+
 ## [0.6.0] - 2026-10-19
 
 ### Added

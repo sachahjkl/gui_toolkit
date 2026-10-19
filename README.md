@@ -100,7 +100,9 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 - **Widgets**: label, button (+icon variant), icon button, checkbox, radio, switch, slider, range slider, stepper,
   segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
   (selection, word moves, clipboard, mouse), **multi-line editor** (`text_edit`: undo / redo, line numbers,
-  indentation, Up / Down keep the column), scroll region, context menu + items, menu bar, tooltip with hover delay,
+  indentation, Up / Down keep the column), scroll region, **menus** (context menus, dropdowns, menu bar: submenus,
+  separators, disabled items, shortcuts, full keyboard, kept on screen), **keyboard lists** (`List_State`: active row,
+  Page Up / Down, type-ahead, Enter / Escape, kept in view), wrapped text (`paragraph`), tooltip with hover delay,
   toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **2D transforms and images** (draw layer): `draw.push_transform` with a CSS-style `Affine` matrix (rotate, skew,
   scale, nested) applies to rects, borders, shadows, gradients, text and images, antialiased in local space; scaled
@@ -122,14 +124,19 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
 
 - **Keyboard**: Tab / Shift+Tab focus navigation (trapped inside modals, scrolled into view, focus ring), arrow keys
-  move the focus spatially, Enter / Space activate, arrows drive sliders, menus and dropdowns.
+  move the focus spatially, Enter / Space activate, arrows drive sliders, menus and dropdowns; an open menu owns the
+  keyboard (Up / Down / Home / End over enabled items, Right / Left through submenus, letters jump, Escape closes one
+  level); lists keep an active row; `tab_stops(false)` scopes leave widgets out of the Tab order; `tab_direction` and
+  `focus_step` let an app hand the focus to content of its own (a document view) and back. Line edits keep an edit
+  history (Ctrl+Z / Ctrl+Y) and expose their edit commands for menus (`field_cut`, `field_paste`, `field_undo`...).
 - **Disabled / muted** scopes: `if ui.disabled(cond) { ... }` disables a whole subtree with a neutral look.
 
 Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
 
 ## Testing
 
-`odin test tests/affine -vet` runs the unit tests of the affine helpers. `tests/layers`, `tests/effects` and`ntests/blend_space` are pixel tests on an offscreen WARP renderer, in both blend spaces.
+`odin test tests/affine -vet` runs the unit tests of the affine helpers. `odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1`
+drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window. `tests/layers`, `tests/effects` and`ntests/blend_space` are pixel tests on an offscreen WARP renderer, in both blend spaces.
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
 focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a
