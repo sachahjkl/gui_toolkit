@@ -693,9 +693,13 @@ float arc_part(float2 p, float2 center, float r, float sx, float sy, float sigma
 	float s0 = sy * (p.y - 4 * sigma - center.y) / r, s1 = sy * (p.y + 4 * sigma - center.y) / r;
 	float lo = clamp(min(s0, s1), 0, 1), hi = clamp(max(s0, s1), 0, 1);
 	if (hi <= lo) return 0;
+	float inv = 1 / sigma;
+	// the edge of these rows lies within [center.x - r, center.x] or [center.x, center.x + r]: far from it, Phi is 0 or 1
+	float xa = sx < 0 ? center.x - r : center.x, xb = sx < 0 ? center.x : center.x + r;
+	if ((p.x - xa) * inv < -5) return 0;
+	if ((p.x - xb) * inv > 5) return abs(Phi((p.y - (center.y + sy * r * lo)) * inv) - Phi((p.y - (center.y + sy * r * hi)) * inv));
 	float a0 = asin(lo), a1 = asin(hi);
 	float h = (a1 - a0) / SHADOW_SAMPLES;
-	float inv = 1 / sigma;
 	float acc = 0;
 	[loop] for (int k = 0; k < SHADOW_SAMPLES; k++)
 	{
@@ -867,9 +871,13 @@ float4 ps_main(PSIn i) : SV_Target
 		uint sflags = (uint)(i.p2.y + 0.5);
 		// below a third of a screen pixel the blur is invisible: the shape's antialiased coverage
 		float px_per_unit = 1 / max(length(float2(length(ldx), length(ldy))) * 0.7071067811865476, 1e-6);
+		// the other rect first: where it hides everything (inside the box of an outer shadow, outside the padding box of
+		// an inset one), nothing to blur
+		float other = (sflags & (SHADOW_INSET | SHADOW_HOLE)) ? rrect_coverage(lp, i.p0, i.p1, ldx, ldy) : 0;
+		float keep = (sflags & SHADOW_INSET) ? other : 1 - other;
+		if (keep <= 0) discard;
 		float mask = sigma * px_per_unit < 0.33 ? rrect_coverage(lp, i.src, i.radii, ldx, ldy) : blurred_rrect(lp, i.src, i.radii, sigma);
-		if (sflags & SHADOW_INSET) mask = rrect_coverage(lp, i.p0, i.p1, ldx, ldy) * (1 - mask);
-		else if (sflags & SHADOW_HOLE) mask *= 1 - rrect_coverage(lp, i.p0, i.p1, ldx, ldy);
+		mask = (sflags & SHADOW_INSET) ? keep * (1 - mask) : keep * mask;
 		color.a *= mask;
 		if (clipped) color.a *= any_clip_coverage(screen, i.extra.y);
 		return color;

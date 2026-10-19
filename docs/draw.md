@@ -3,7 +3,8 @@
 The `draw` package is the immediate-mode layer under `ui`: you can also use it on its own (see `examples/smoke`,
 `examples/transforms` and `examples/effects`). This page covers the 2D transforms, the clips and the images added in
 0.4.0, the layers (group opacity) and offscreen rendering added in 0.4.1, the effects added in 0.5.0 (filters,
-blend modes, backdrops, ellipse and polygon clips) and the blend spaces added in 0.6.0.
+blend modes, backdrops, ellipse and polygon clips), the blend spaces added in 0.6.0, and the retained pictures,
+gradients, box shadows and device-loss recovery added in 0.7.0.
 
 ![examples/transforms](screenshots/transforms.png)
 
@@ -278,6 +279,115 @@ Measured with `-define:GPU_TIMING=true` (minimum of 4 runs, GPU p50): `examples/
 ms. The shader work added (a division by the interpolated alpha, a conversion when spaces differ, the text curve) is
 below the run-to-run noise.
 
+## Retained drawing: pictures
+
+```odin
+pic: draw.Picture
+draw.picture_begin(dc, &pic)                 // what is drawn now is recorded, not drawn
+for c, i in cards {
+	draw.push_transform(dc, spin(c))         // while recording, a pushed transform is a slot of the picture
+	slots[i] = draw.current_slot(dc)
+	draw.rect(dc, c.rect, c.color, 8)
+	draw.text(dc, font_id, 13, c.pos, draw.WHITE, c.label)
+	draw.pop_transform(dc)
+}
+draw.picture_end(dc)
+
+// every frame
+for c, i in cards { draw.picture_set_slot(&pic, slots[i], spin(c)) }   // move content without recording
+if draw.replay(dc, &pic, draw.affine_translate({0, -scroll})) == .Stale { /* record again (see below) */ }
+```
+
+A picture holds instances, clips, gradients and transform slots in its own space. Its first replay uploads them to
+persistent GPU heaps (`render.Heap_Kind`: instances, slots, clips, polygon points, gradients; first-fit ranges, grown
+by a GPU copy); later replays cost one draw call per batch of the picture (a batch ends where a clip or an image
+changes, as for immediate drawing) and a small constant buffer, whatever the number of instances.
+
+- **A replay** draws under `m` after the current transform, faded by the alpha stack, cut by the clips pushed around
+  it, in the frame's order: immediate drawing and replays interleave with exact z order, inside layers too. It returns
+  `.Culled` when nothing can show (its bounds miss the clip; nothing is uploaded), `.Stale` when it must be recorded
+  again (below), `.Drawn` otherwise.
+- **Slots**: transforms pushed while recording (`push_transform`, `push_scale`) become slots, nested like the stack.
+  `picture_set_slot(pic, k, local)` changes slot `k` relative to its parent; its descendants follow. Only the changed
+  range of slots is uploaded again. `push_slot(dc, k)` draws in an existing slot again during the same recording.
+- **The same pixels**: under a uniform scale + translation (`affine_is_scale_translate` of replay matrix x slot) the
+  vertex shader bakes positions exactly as `draw` bakes them on the CPU, so a picture replayed at an integer
+  translation is identical to direct drawing, byte for byte (tested). Under rotations and skews the transformed path is
+  the same as direct drawing; matrices are composed in another order (a level of 8 bits on rare edge pixels).
+- **Clips** recorded in a picture live in the space of their slot. A `push_clip` (plain rect) becomes the scissor at
+  replay when the picture is under a uniform scale + translation (exact, free), a per-pixel shape otherwise, as when
+  drawn directly.
+- **Text** keeps the glyph atlas positions it was recorded with, at the raster size of its scale (`picture_begin`'s
+  `raster_scale` times the slot's scale). The picture is **stale** when the atlas was reset (`font.State.generation`)
+  or when a text would be rasterized at another size (scale beyond `TEXT_RASTER_TOLERANCE` changed): replay returns
+  `.Stale`, `picture_stale` tells beforehand.
+- **Images** are referenced by texture handle. Offscreen effects are not recordable: `push_layer` / `push_effects`
+  fall back to the alpha alone and `backdrop_capture` returns nothing while recording; apply effects around a replay.
+- **Memory**: `set_retained_budget(dc, bytes)`: past it, pictures not drawn in the current frame give their ranges back,
+  least recently drawn first, and upload again from their recording (kept on the CPU) when drawn next.
+  `retained_bytes` tells what is used and reserved. `picture_release` gives the GPU ranges back explicitly,
+  `picture_destroy` frees everything (call it before freeing the `Picture`).
+
+Measured with `examples/transforms --stress=N --bench=200` (`-define:GPU_TIMING=true`, release, 2244 x 1489):
+
+| Scene | Immediate: draw calls (CPU) | Retained: CPU per frame | GPU (immediate / retained) |
+|---|---|---|---|
+| 2,000 rotating cards (14,890 instances) | 1.71 ms | 0.07 ms (2,000 slots changed) | 0.53 / 0.42 ms |
+| 8,000 rotating cards (62,890 instances) | 7.54 ms | 0.26 ms (8,000 slots changed) | 1.15 / 1.16 ms |
+| 8,000 cards, still | 6.61 ms | 0.09 ms | 1.05 / 0.76 ms |
+
+## Gradients
+
+```odin
+draw.gradient(dc, r, draw.Gradient{
+	kind = .Radial, center = {60, 40}, radii = {60, 40}, space = .Oklch, hue = .Longer,
+	stops = {{color = draw.hex(0xff0000ff), pos = 0}, {color = draw.hex(0x0000ffff), pos = 1}},
+	tile = {{0, 0}, {120, 80}}, repeat = {true, true}, dither = true,
+}, radii = {8, 8, 8, 8})
+```
+
+One instance (`render.KIND_GRADIENT`) per gradient, filled into a rounded rect like `rect` (so it follows transforms,
+clips and pictures); the color is evaluated per pixel from an entry of the frame's (or the picture's) gradient table.
+
+- **Kinds**: `Linear` (t = 0 at `start`, 1 at `end`), `Radial` (t = 1 on the ellipse of `radii` around `center`),
+  `Conic` (t = 0 at `angle`, radians clockwise from up, one turn = 1). `repeating` repeats the stops from the first
+  position to the last (a period of zero paints the average color, CSS Images 4 §3.6).
+- **Stops**: linear colors with straight alpha, positions in t (any value, never decreasing), and a transition hint to
+  the next stop (`has_hint`, `hint` = where in the interval the colors mix half and half: CSS's hint exponent).
+- **Interpolation** (`Gradient_Space`): premultiplied, in sRGB values (CSS default), linear light, Oklab, Oklch, CIE Lab
+  and Lch (D50, Bradford), HSL, HWB; polar spaces follow `Hue_Method` (shorter, longer, increasing, decreasing) and
+  powerless hues (grays) take their neighbor's. The colors are converted on the CPU once, back per pixel.
+- **Tiles**: `tile` is one copy of the gradient (geometry relative to its corner); `repeat` per axis, `spacing` between
+  copies (CSS background-repeat: space); without repeat, outside the tile is transparent. A zero tile: the gradient
+  spans the drawn rect.
+- **Dithering**: triangular noise of one 8-bit level in the target's encoding, against banding of slow ramps.
+
+## Box shadows
+
+```odin
+draw.box_shadow(dc, shape, radii, sigma, color, hole = border_box, hole_radii = border_radii)   // CSS box-shadow
+draw.inset_shadow(dc, padding_box, padding_radii, hole, hole_radii, sigma, color)              // CSS inset
+```
+
+The gaussian blur (standard deviation `sigma`, CSS: half the blur radius) of a rounded rect with per-corner circular
+radii, computed analytically per pixel (`render.KIND_SHADOW`): the convolution is the integral over rows of
+Phi(left edge) - Phi(right edge); each edge is straight (a product of two erf) except along its two corner arcs, which
+are integrated over their angle (smooth there, unlike along y) at 16 samples, only where the gaussian matters. Against
+a numeric convolution (`tests/shadows`): within 1 level of 8 bits for sigma 3 to 10, 1.7 levels at sigma 0.8. An
+outer shadow is not drawn inside `hole` (CSS cuts it out of the border box: correct under translucent boxes); an inset
+one is drawn inside the padding box, outside the blurred hole. Under a third of a screen pixel of blur the shape is
+drawn with an antialiased edge.
+
+## Device loss
+
+When the GPU is reset or removed (driver update, TDR), `Present` fails: the renderer marks itself lost
+(`render.device_lost`). The next `draw.begin_frame` (or `render.frame_begin`) calls `render.recover`: a new device,
+swap chain (or offscreen target), pipeline, and every texture re-created **under the same handle** with its size and
+format, contents cleared. `render.Renderer.device_generation` changes: owners of images upload them again (the glyph
+atlas is reset by `draw.begin_frame`, which makes pictures with text stale); the retained heaps are emptied
+(`heap_generation`), pictures upload again from their recording at their next replay. If no device can be had yet,
+frames draw nothing and recovery is tried again. `render.simulate_device_loss` exercises the path in tests.
+
 ## Offscreen rendering (tests, export)
 
 ```odin
@@ -365,4 +475,4 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
   browser (50 % black over white: 188 instead of 128); use the `Srgb` space for web content (see Blend spaces).
 - Filters always compute on sRGB values (CSS shorthand filters as browsers run them); SVG's
   `color-interpolation-filters: linearRGB` is not available.
-- Gradients interpolate in sRGB or linear light only (CSS `in oklab` and other spaces need intermediate stops).
+- `rect_corners` interpolates corner colors in sRGB or linear light only; `draw.gradient` has the other spaces.
