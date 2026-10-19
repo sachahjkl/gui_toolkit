@@ -37,6 +37,7 @@ Virtual_List :: struct {
 	anchor_id:   u64,              // the row at the top of the view last build, and where it was in the content then
 	anchor_top:  f32,
 	has_anchor:  bool,
+	reveal_wait: int,              // builds the active row has been waited for (to be laid out, to measure it)
 }
 
 Vlist_Rows :: struct { first, last: int }
@@ -92,7 +93,8 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	set_next_axis(.Y)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
 	b.cursor = .Arrow
-	_ = signal(b)   // the wheel (against last build's bounds)
+	wheel := signal(b).scrolled   // the wheel (against last build's bounds)
+	if wheel != {} { st.reveal = 0 }   // the user scrolls: the active row no longer pulls the view
 	st.virtual = true
 	st.key = b.key
 	st.activated, st.cancelled, st.changed = false, false, false
@@ -139,7 +141,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 			moved := st.offsets[at] - st.anchor_top   // what the rows above it grew or shrank by
 			if abs(moved) > 0.01 && b.view_off.y > 0 {
 				b.view_off.y += moved
-				b.view_target.y += moved
+				if b.view_target.y > 0 { b.view_target.y += moved }   // (heading for the top: stays the top)
 			}
 		}
 	}
@@ -169,7 +171,13 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	// the active row in view, at once (its place is known even when it is not built), and again for a few builds while
 	// the rows around it get measured
 	if st.reveal > 0 && st.sel >= 0 && st.sel < n {
-		st.reveal -= 1
+		// (until the row itself has been laid out: its height was an estimate, the view may still be on its way)
+		if _, measured := st.measured[ids[st.sel]]; measured || st.reveal_wait > 600 {
+			st.reveal -= 1
+			st.reveal_wait = 0
+		} else {
+			st.reveal_wait += 1
+		}
 		top, bottom := st.offsets[st.sel], st.offsets[st.sel + 1]
 		if top < b.view_target.y { b.view_target.y = top }
 		if bottom > b.view_target.y + view_h { b.view_target.y = min(bottom - view_h, top) }
