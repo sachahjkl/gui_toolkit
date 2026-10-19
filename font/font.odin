@@ -120,6 +120,7 @@ State :: struct {
 	factory:    ^IDWriteFactory,
 	factory2:   ^IDWriteFactory2,    // system fallback, color glyphs, grayscale analysis
 	factory4:   ^IDWriteFactory4,    // color glyph image formats
+	factory8:   ^IDWriteFactory8,    // COLR v1 paint trees (Windows 11 22H2)
 	system:     ^IDWriteFontCollection,
 	fallback:   ^IDWriteFontFallback,
 	analyzer:   ^IDWriteTextAnalyzer,
@@ -132,6 +133,7 @@ State :: struct {
 	keys:       map[string]Font_Id,  // what made each font, for sharing
 	words:      Word_Cache,
 	atlas:      Atlas,
+	color_raster: Color_Raster,      // Direct2D drawing of color glyphs (under the atlas lock)
 	generation: int,                 // bumps when faces are unloaded
 }
 
@@ -157,6 +159,7 @@ init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
 	s.factory = (^IDWriteFactory)(f)
 	s.factory2 = com_query(s.factory, &IID_IDWriteFactory2, IDWriteFactory2)
 	s.factory4 = com_query(s.factory, &IID_IDWriteFactory4, IDWriteFactory4)
+	s.factory8 = com_query(s.factory, &IID_IDWriteFactory8, IDWriteFactory8)
 	if s.factory->GetSystemFontCollection(&s.system, false) < 0 { s.system = nil }
 	if s.factory->CreateTextAnalyzer(&s.analyzer) < 0 { s.analyzer = nil }
 	if s.factory2 != nil {
@@ -197,6 +200,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	old := s.settings
 	if st.subpixel_steps != old.subpixel_steps || st.rendering != old.rendering || st.grid_fit != old.grid_fit || st.color_glyphs != old.color_glyphs {
 		clear(&s.atlas.glyphs)
+		clear(&s.atlas.fg_glyphs)
 		s.atlas.settings_generation += 1
 	}
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
@@ -215,6 +219,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
+	color_raster_destroy(&s.color_raster)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
 	for i in 1 ..< n { release_font(font_ptr(s, Font_Id(i))) }
@@ -230,6 +235,7 @@ destroy :: proc(s: ^State) {
 	com_release(s.fallback)
 	com_release(s.analyzer)
 	com_release(s.system)
+	com_release(s.factory8)
 	com_release(s.factory4)
 	com_release(s.factory2)
 	com_release(s.factory)
@@ -292,8 +298,7 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	f.upem = f32(max(f.dm.designUnitsPerEm, 1))
 	if f.dw4 != nil {
 		formats := f.dw4->GetGlyphImageFormats()
-		f.color = formats & (DWRITE_GLYPH_IMAGE_FORMATS_COLR | DWRITE_GLYPH_IMAGE_FORMATS_SVG | DWRITE_GLYPH_IMAGE_FORMATS_PNG |
-			DWRITE_GLYPH_IMAGE_FORMATS_JPEG | DWRITE_GLYPH_IMAGE_FORMATS_TIFF | DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8) != 0
+		f.color = formats & COLOR_FORMATS != 0
 	} else if f.dw2 != nil {
 		f.color = bool(f.dw2->IsColorFont())
 	}

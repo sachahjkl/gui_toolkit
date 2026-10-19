@@ -5,7 +5,7 @@ import "core:math"
 import "core:sync"
 
 // Glyph bitmaps. Coverage (grayscale antialiasing, raw coverage: the renderer applies its text correction, see
-// render.Text_Rendering) and color glyphs (COLR / CPAL layers composited to straight-alpha sRGB RGBA) are packed into
+// render.Text_Rendering) and color glyphs (every color format, drawn by Direct2D: color.odin) are packed into
 // atlas pages kept on the CPU; each draw context uploads what changed since it last looked (atlas_sync_page), so any
 // number of renderers can share one font state.
 //
@@ -26,6 +26,13 @@ Glyph_Image :: struct {
 	offset: [2]f32,    // top-left of the bitmap from the pen position (whole pixels) on the baseline
 	size:   [2]f32,
 	epoch:  u32,       // the page's epoch when the bitmap was put there (see Page_Ref)
+	uses_fg: bool,     // a color glyph with layers in the text color: kept once per text color
+}
+
+@(private)
+Fg_Key :: struct {
+	key: u64,
+	fg:  [3]u8,
 }
 
 // A page as something recorded saw it: the bitmaps it points at are still there while the page's epoch is the same
@@ -64,6 +71,7 @@ Atlas :: struct {
 	mu:     sync.Mutex,
 	pages:  [dynamic]^Page,
 	glyphs: map[u64]Glyph_Image,
+	fg_glyphs: map[Fg_Key]Glyph_Image,   // color glyphs that use the text color, per color (`glyphs` marks them)
 	clock:  u64,
 	users:  map[rawptr]u64,    // draw contexts: the clock at the start of their current frame
 	evictions: int,
@@ -76,6 +84,7 @@ Atlas :: struct {
 atlas_init :: proc(a: ^Atlas) {
 	context.allocator = runtime.heap_allocator()
 	a.glyphs = make(map[u64]Glyph_Image)
+	a.fg_glyphs = make(map[Fg_Key]Glyph_Image)
 	a.users = make(map[rawptr]u64)
 	a.clock = 1
 }
@@ -86,6 +95,7 @@ atlas_destroy :: proc(a: ^Atlas) {
 	for p in a.pages { delete(p.pixels); delete(p.shelves); delete(p.log); free(p) }
 	delete(a.pages)
 	delete(a.glyphs)
+	delete(a.fg_glyphs)
 	delete(a.users)
 }
 
@@ -98,6 +108,9 @@ atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 	defer atlas_unlock(a)
 	for k in a.glyphs {
 		if Font_Id(k >> 44) == face { delete_key(&a.glyphs, k) }
+	}
+	for k in a.fg_glyphs {
+		if Font_Id(k.key >> 44) == face { delete_key(&a.fg_glyphs, k) }
 	}
 }
 
@@ -125,6 +138,7 @@ clear_atlas :: proc(s: ^State) {
 	atlas_lock(a)
 	defer atlas_unlock(a)
 	clear(&a.glyphs)
+	clear(&a.fg_glyphs)
 	for p in a.pages { page_reset(p) }
 }
 
@@ -261,6 +275,7 @@ atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, 
 		}
 		if victim >= 0 {
 			for k, g in a.glyphs { if int(g.page) == victim { delete_key(&a.glyphs, k) } }
+			for k, g in a.fg_glyphs { if int(g.page) == victim { delete_key(&a.fg_glyphs, k) } }
 			page_reset(a.pages[victim])
 			a.evictions += 1
 			if x, y, ok = page_alloc(a.pages[victim], w, h); ok { return victim, x, y, true }
@@ -299,19 +314,39 @@ subpixel :: proc(s: ^State, x: f32) -> (ix: f32, sub: int) {
 }
 
 // The bitmap of glyph `gid` of `face` at `size` px, its pen at subpixel position `sub` (see `subpixel`). Rasterized
-// on first use. Call from drawing threads only.
-glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int) -> Glyph_Image {
+// on first use. `fg` (sRGB) is the text color: only color glyphs with layers in the text color depend on it (coverage
+// is colored when drawn). Call from drawing threads only.
+glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg: [3]u8 = {}) -> Glyph_Image {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	key := glyph_key(face, gid, size, sub)
 	atlas_lock(a)
 	defer atlas_unlock(a)
+	x := f32(sub) / f32(s.settings.subpixel_steps)
 	if g, ok := a.glyphs[key]; ok {
-		if g.page >= 0 { a.pages[g.page].last_used = a.clock }
-		return g
+		if !g.uses_fg {
+			if g.page >= 0 { a.pages[g.page].last_used = a.clock }
+			return g
+		}
+		fk := Fg_Key{key, fg}
+		if fg_g, found := a.fg_glyphs[fk]; found {
+			if fg_g.page >= 0 { a.pages[fg_g.page].last_used = a.clock }
+			return fg_g
+		}
+		fg_g, _ := rasterize(s, face, gid, size, x, fg, false)
+		fg_g.uses_fg = true
+		a.fg_glyphs[fk] = fg_g
+		if fg_g.page >= 0 { a.pages[fg_g.page].last_used = a.clock }
+		return fg_g
 	}
-	g := rasterize(s, face, gid, size, f32(sub) / f32(s.settings.subpixel_steps))
-	a.glyphs[key] = g
+	g, uses_fg := rasterize(s, face, gid, size, x, fg, true)
+	if uses_fg {
+		g.uses_fg = true
+		a.glyphs[key] = Glyph_Image{page = -1, color = true, uses_fg = true}
+		a.fg_glyphs[Fg_Key{key, fg}] = g
+	} else {
+		a.glyphs[key] = g
+	}
 	if g.page >= 0 { a.pages[g.page].last_used = a.clock }
 	return g
 }
@@ -367,22 +402,22 @@ coverage :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x, y: f32) -> (bounds: RECT,
 
 // Caller holds the atlas lock.
 @(private)
-rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32) -> Glyph_Image {
+rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]u8, probe_fg: bool) -> (Glyph_Image, bool) {
 	blank := Glyph_Image{page = -1}
 	f := face_ptr(s, face)
-	if f == nil || s.factory == nil || size <= 0 { return blank }
+	if f == nil || s.factory == nil || size <= 0 { return blank, false }
 	ids := [1]u16{gid}
 	advs := [1]f32{0}
 	offs := [1]DWRITE_GLYPH_OFFSET{}
 	run := DWRITE_GLYPH_RUN{fontFace = f.dw, fontEmSize = size, glyphCount = 1, glyphIndices = &ids[0], glyphAdvances = &advs[0], glyphOffsets = &offs[0]}
-	if f.color && s.settings.color_glyphs && s.factory2 != nil {
-		if g, ok := rasterize_color(s, &run, x); ok { return g }
+	if f.color && s.settings.color_glyphs {
+		if g, uses_fg, ok := rasterize_color(s, f, &run, x, fg, probe_fg); ok { return g, uses_fg }
 	}
 	bounds, px, ok := coverage(s, &run, x, 0)
-	if !ok || px == nil { return blank }
+	if !ok || px == nil { return blank, false }
 	w, h := int(bounds.right - bounds.left), int(bounds.bottom - bounds.top)
 	pi, ax, ay, aok := atlas_alloc(s, .Gray, w, h)
-	if !aok { return blank }
+	if !aok { return blank, false }
 	p := s.atlas.pages[pi]
 	for row in 0 ..< h { copy(p.pixels[(ay + row) * p.size + ax:][:w], px[row * w:][:w]) }
 	page_log(p, ax, ay, w, h)
@@ -390,96 +425,5 @@ rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32) -> Glyp
 	return Glyph_Image{
 		page = i32(pi), uv = {f32(ax), f32(ay), f32(ax + w), f32(ay + h)},
 		offset = {f32(bounds.left), f32(bounds.top)}, size = {f32(w), f32(h)}, epoch = p.epoch,
-	}
-}
-
-@(private)
-Layer :: struct {
-	bounds: RECT,
-	pixels: []u8,
-	color:  [4]f32,   // sRGB, straight alpha
-}
-
-// COLR / CPAL glyph: its layers composited into a Color page. ok = false: not a color glyph (draw its outline).
-@(private)
-rasterize_color :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x: f32) -> (Glyph_Image, bool) {
-	layers := make([dynamic]Layer, 0, 8, context.temp_allocator)
-	collect :: proc(s: ^State, layers: ^[dynamic]Layer, cr: ^DWRITE_COLOR_GLYPH_RUN) {
-		b, px, ok := coverage(s, &cr.glyphRun, cr.baselineOriginX, cr.baselineOriginY)
-		if !ok || px == nil { return }
-		col := [4]f32{cr.runColor.r, cr.runColor.g, cr.runColor.b, cr.runColor.a}
-		if cr.paletteIndex == 0xFFFF { col = {0, 0, 0, 1} }   // "text color" layers: no text color is known here
-		append(layers, Layer{b, px, col})
-	}
-	if s.factory4 != nil {
-		e: ^IDWriteColorGlyphRunEnumerator1
-		formats := DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE | DWRITE_GLYPH_IMAGE_FORMATS_CFF | DWRITE_GLYPH_IMAGE_FORMATS_COLR
-		hr := s.factory4->TranslateColorGlyphRun4({x, 0}, run, nil, formats, .NATURAL, nil, 0, &e)
-		if hr < 0 || e == nil { return {}, false }
-		defer com_release(e)
-		for {
-			has: BOOL
-			if e->MoveNext(&has) < 0 || !has { break }
-			cr: ^DWRITE_COLOR_GLYPH_RUN1
-			if e->GetCurrentRun1(&cr) < 0 || cr == nil { break }
-			if cr.glyphImageFormat & (DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE | DWRITE_GLYPH_IMAGE_FORMATS_CFF | DWRITE_GLYPH_IMAGE_FORMATS_COLR) == 0 { continue }
-			collect(s, &layers, &cr.base)
-		}
-	} else {
-		e: ^IDWriteColorGlyphRunEnumerator
-		hr := s.factory2->TranslateColorGlyphRun(x, 0, run, nil, .NATURAL, nil, 0, &e)
-		if hr < 0 || e == nil { return {}, false }
-		defer com_release(e)
-		for {
-			has: BOOL
-			if e->MoveNext(&has) < 0 || !has { break }
-			cr: ^DWRITE_COLOR_GLYPH_RUN
-			if e->GetCurrentRun(&cr) < 0 || cr == nil { break }
-			collect(s, &layers, cr)
-		}
-	}
-	if len(layers) == 0 { return Glyph_Image{page = -1, color = true}, true }
-	u := layers[0].bounds
-	for l in layers[1:] {
-		u.left, u.top = min(u.left, l.bounds.left), min(u.top, l.bounds.top)
-		u.right, u.bottom = max(u.right, l.bounds.right), max(u.bottom, l.bounds.bottom)
-	}
-	w, h := int(u.right - u.left), int(u.bottom - u.top)
-	if w <= 0 || h <= 0 { return Glyph_Image{page = -1, color = true}, true }
-	// "over", layer after layer, on straight-alpha sRGB values (as Direct2D draws color fonts into an 8-bit target)
-	acc := make([]f32, w * h * 4, context.temp_allocator)
-	for l in layers {
-		lw := int(l.bounds.right - l.bounds.left)
-		lh := int(l.bounds.bottom - l.bounds.top)
-		ox, oy := int(l.bounds.left - u.left), int(l.bounds.top - u.top)
-		for row in 0 ..< lh {
-			for col in 0 ..< lw {
-				cov := f32(l.pixels[row * lw + col]) / 255
-				if cov <= 0 { continue }
-				sa := cov * l.color[3]
-				d := acc[((oy + row) * w + ox + col) * 4:][:4]
-				da := d[3]
-				oa := sa + da * (1 - sa)
-				if oa <= 0 { continue }
-				for k in 0 ..< 3 { d[k] = (l.color[k] * sa + d[k] * da * (1 - sa)) / oa }
-				d[3] = oa
-			}
-		}
-	}
-	pi, ax, ay, ok := atlas_alloc(s, .Color, w, h)
-	if !ok { return Glyph_Image{page = -1, color = true}, true }
-	p := s.atlas.pages[pi]
-	for row in 0 ..< h {
-		dst := p.pixels[((ay + row) * p.size + ax) * 4:][:w * 4]
-		for col in 0 ..< w {
-			sv := acc[(row * w + col) * 4:][:4]
-			for k in 0 ..< 4 { dst[col * 4 + k] = u8(clamp(sv[k] * 255 + 0.5, 0, 255)) }
-		}
-	}
-	page_log(p, ax, ay, w, h)
-	p.glyphs += 1
-	return Glyph_Image{
-		page = i32(pi), color = true, uv = {f32(ax), f32(ay), f32(ax + w), f32(ay + h)},
-		offset = {f32(u.left), f32(u.top)}, size = {f32(w), f32(h)}, epoch = p.epoch,
-	}, true
+	}, false
 }
