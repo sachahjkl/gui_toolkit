@@ -29,9 +29,15 @@ Gpu_Step_Rec :: struct {
 	kind: Gpu_Step,
 	ms:   f32,
 	w, h: i32,     // destination region (0 for draw runs)
+	// detailed profile (set_gpu_profile(detail = true)): each draw call is a step
+	batch: i32,    // index in Frame_Data.batches (-1: not a single draw call)
+	insts: i32,    // instances drawn
+	kinds: u32,    // bit k: an instance of KIND k (immediate instances), bit 31: retained (a picture's replay)
+	flags: u32,    // FLAG_* of its instances, together
+	scissor: [4]i32,
 }
 
-GPU_PROFILE_SLOWEST :: 8
+GPU_PROFILE_SLOWEST :: 16
 // Steps timed per frame; past it the remaining steps are counted in the last one.
 GPU_PROFILE_MAX_STEPS :: 2048
 
@@ -51,6 +57,7 @@ Prof_Rec :: struct {
 	w, h:   i32,
 	pixels: int,
 	bytes:  int,
+	detail: Gpu_Step_Rec,   // batch, insts, kinds, flags, scissor (detailed profile)
 }
 
 @(private)
@@ -64,6 +71,7 @@ Prof_Slot :: struct {
 
 Gpu_Profiler :: struct {
 	on:    bool,
+	detail: bool,
 	slots: [GPU_QUERY_FRAMES]Prof_Slot,
 	cur:   ^Prof_Slot,  // the submit being recorded (nil: none)
 	last:  Gpu_Profile,
@@ -71,8 +79,9 @@ Gpu_Profiler :: struct {
 }
 
 // Measures each step of frame_submit from now on (implies set_gpu_timing's measurement). Costs one timestamp query per
-// step; off, nothing.
-set_gpu_profile :: proc(r: ^Renderer, on: bool) { r.prof.on = on }
+// step; off, nothing. `detail`: every draw call is a step of its own (to find an expensive one: Gpu_Profile.slowest
+// gives its batch, instance count, kinds and flags); the timestamps between draw calls slow the frame more.
+set_gpu_profile :: proc(r: ^Renderer, on: bool, detail := false) { r.prof.on, r.prof.detail = on, detail }
 gpu_profile_enabled :: proc(r: ^Renderer) -> bool { return r.prof.on }
 
 // The latest per-step profile read back (ok false: none yet).
@@ -107,7 +116,7 @@ profile_end :: proc(r: ^Renderer) { r.prof.cur = nil }
 
 // A step just recorded: a timestamp after it.
 @(private)
-profile_step :: proc(r: ^Renderer, kind: Gpu_Step, w, h: int, pixels, bytes: int) {
+profile_step :: proc(r: ^Renderer, kind: Gpu_Step, w, h: int, pixels, bytes: int, detail := Gpu_Step_Rec{batch = -1}) {
 	s := r.prof.cur
 	if s == nil { return }
 	n := len(s.recs)
@@ -125,7 +134,7 @@ profile_step :: proc(r: ^Renderer, kind: Gpu_Step, w, h: int, pixels, bytes: int
 		if r.device->CreateQuery(&{Query = .TIMESTAMP}, &q) < 0 || q == nil { return }
 		append(&s.queries, q)
 	}
-	append(&s.recs, Prof_Rec{kind = kind, w = i32(w), h = i32(h), pixels = pixels, bytes = bytes})
+	append(&s.recs, Prof_Rec{kind = kind, w = i32(w), h = i32(h), pixels = pixels, bytes = bytes, detail = detail})
 	r.ctx->End((^d3d11.IAsynchronous)(s.queries[n]))
 }
 
@@ -154,7 +163,9 @@ profile_collect :: proc(r: ^Renderer, slot: int, frame: int, t0: u64, freq: u64,
 		k := p.n_slowest
 		if k < GPU_PROFILE_SLOWEST { p.n_slowest += 1 } else if ms <= p.slowest[k - 1].ms { continue } else { k -= 1 }
 		for k > 0 && p.slowest[k - 1].ms < ms { p.slowest[k] = p.slowest[k - 1]; k -= 1 }
-		p.slowest[k] = Gpu_Step_Rec{kind = rec.kind, ms = ms, w = rec.w, h = rec.h}
+		d := rec.detail
+		d.kind, d.ms, d.w, d.h = rec.kind, ms, rec.w, rec.h
+		p.slowest[k] = d
 	}
 	r.prof.last = p
 	r.prof.have = true

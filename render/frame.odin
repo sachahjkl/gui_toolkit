@@ -100,7 +100,7 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	bound_replay := 0      // the Replay in b2 (0: immediate instances, identity)
 	retained_vb := false   // the retained instance heap is the bound vertex buffer
 	drawing := false       // profile: a run of draw calls into `cur` is open
-	for b in f.batches {
+	for b, bi in f.batches {
 		if b.op > 0 {
 			if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0); drawing = false }
 			op := &f.ops[b.op - 1]
@@ -152,6 +152,16 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		r.ctx->RSSetScissorRects(1, &rc)
 		r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))
 		drawing = true
+		if r.prof.detail && r.prof.cur != nil {
+			d := Gpu_Step_Rec{batch = i32(bi), insts = i32(b.count), scissor = {rc.left, rc.top, rc.right, rc.bottom}}
+			if b.replay > 0 {
+				d.kinds = 1 << 31
+			} else if b.first + b.count <= len(f.insts) {
+				for inst in f.insts[b.first:][:b.count] { d.kinds |= 1 << u32(inst.use_tex); d.flags |= inst.flags }
+			}
+			profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0, d)
+			drawing = false
+		}
 	}
 	if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0) }
 	unbind_inputs(r)
