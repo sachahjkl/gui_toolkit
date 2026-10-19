@@ -139,6 +139,7 @@ Context :: struct {
 	size:     Vec2,
 	grads:    [dynamic][4]f32,                 // gradient table of this frame (or of the picture being recorded)
 	replays:  [dynamic]render.Replay,          // pictures drawn this frame
+	glyphs:   Glyph_Pages,                     // textures of the font atlas pages (text.odin)
 	// retained drawing (picture.odin)
 	rec:      ^Picture,                        // the picture being recorded, nil = drawing the frame
 	saved:    Saved_Frame,                     // the frame's lists while a picture is recorded
@@ -162,7 +163,7 @@ Open_Layer :: struct {
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 	c.renderer = r
 	c.fonts = fonts
-	c.atlas = render.create_texture_r8(r, font.ATLAS_SIZE)
+	c.atlas = render.create_texture_r8(r, fonts.settings.page_size > 0 ? fonts.settings.page_size : font.ATLAS_SIZE)
 	c.device_generation = r.device_generation
 	c.raster_scale = 1
 }
@@ -173,15 +174,16 @@ destroy :: proc(c: ^Context) {
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
 	delete(c.open_layers); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures)
 	saved_destroy(&c.saved)
+	text_destroy(c)
 }
 
 begin_frame :: proc(c: ^Context, size: Vec2) {
 	assert(c.rec == nil, "draw.begin_frame while a picture is being recorded")
-	// a lost device is recreated before anything is drawn: the glyph atlas came back empty
+	// a lost device is recreated before anything is drawn: the atlas page textures came back empty (same handles)
 	if c.renderer.lost { render.recover(c.renderer) }
 	if c.renderer.device_generation != c.device_generation {
 		c.device_generation = c.renderer.device_generation
-		font.reset_atlas(c.fonts)
+		text_device_reset(c)
 	}
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
@@ -192,6 +194,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	c.circular = false
 	c.interp = .Target
 	c.size = size
+	text_begin_frame(c)
 	append(&c.clips, Clip{rect = {{0, 0}, size}})
 	append(&c.alphas, 1)
 	append(&c.xforms, Transform{m = AFFINE_IDENTITY, simple = true})
@@ -421,65 +424,6 @@ rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, bord
 	append(&c.insts, inst)
 }
 
-// Glyphs are re-rasterized at the on-screen size when the transform scales text by more than this (either way);
-// within it the bitmap is stretched (press "squish" animations must not fill the atlas with in-between sizes).
-TEXT_RASTER_TOLERANCE :: 0.1
-
-// Draws `s` with the pen starting at `pos` = (left, baseline). Returns the advance width (local units).
-// Layout (advances, kerning) always uses `size`, so a transformed string measures as font.text_width says.
-text :: proc(c: ^Context, id: font.Font_Id, size: f32, pos: Vec2, color: Color, s: string) -> f32 {
-	xf, alpha, shape := cur(c)
-	col := color
-	col.a *= alpha
-	pen := Vec2{pos.x, math.round(pos.y)}
-	prev: rune
-	px := f32(u16(math.round(size)))
-	// k: raster size / layout size. Scaled text gets bitmaps at its screen size: sharp, not a blurred or aliased
-	// stretch of the 1x bitmap.
-	k: f32 = 1
-	sf := affine_scale_factor(xf.m) * c.raster_scale   // while recording: the scale the picture is expected at
-	if px >= 1 && abs(sf - 1) > TEXT_RASTER_TOLERANCE {
-		k = clamp(math.round(px * sf), 1, 512) / px
-	}
-	// baked on the CPU: uniform scale + translation (in a picture only at its own scale: the screen is not known)
-	baked := xf.simple && (c.rec == nil || k == 1)
-	gpu: u32 = xf.simple ? 0 : gpu_xform(c, xf)
-	if c.rec != nil && len(s) > 0 { picture_note_text(c, xf.gpu, sf) }
-	for r in s {
-		if prev != 0 { pen.x += font.kern(c.fonts, id, px, prev, r) }
-		g := font.glyph(c.fonts, id, size, r)
-		gr := k == 1 ? g : font.glyph(c.fonts, id, px * k, r)
-		if gr.size.x > 0 {
-			inst := render.Rect_Inst{
-				src = {gr.uv.x, gr.uv.y, gr.uv.z, gr.uv.w},
-				colors = {col, col, col, col}, use_tex = render.KIND_GLYPH, soft = 1, tex_size = font.ATLAS_SIZE,
-				xform = gpu, clip = shape,
-			}
-			if baked {
-				sc, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
-				if k == 1 {
-					x0 := math.round(pen.x) + g.offset.x
-					y0 := pen.y + g.offset.y
-					inst.dst = {x0 * sc + o.x, y0 * sc + o.y, (x0 + g.size.x) * sc + o.x, (y0 + g.size.y) * sc + o.y}
-				} else {
-					// bitmap at screen size: snap the pen on the screen pixel grid
-					x0 := math.round(pen.x * sc + o.x) + gr.offset.x
-					y0 := math.round(pen.y * sc + o.y) + gr.offset.y
-					inst.dst = {x0, y0, x0 + gr.size.x, y0 + gr.size.y}
-				}
-			} else {
-				x0 := (k == 1 ? math.round(pen.x) : pen.x) + gr.offset.x / k
-				y0 := pen.y + gr.offset.y / k
-				inst.dst = {x0, y0, x0 + gr.size.x / k, y0 + gr.size.y / k}
-			}
-			append(&c.insts, inst)
-		}
-		pen.x += g.advance
-		prev = r
-	}
-	return pen.x - pos.x
-}
-
 ////////////////////////////////
 // Images
 
@@ -547,17 +491,12 @@ image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tin
 	append(&c.insts, inst)
 }
 
-// Uploads new glyphs, then draws the whole frame. Call once per frame after all primitives.
+// Uploads new glyphs (text.odin), then draws the whole frame. Call once per frame after all primitives.
 end_frame :: proc(c: ^Context) {
 	if c.rec != nil { picture_end(c) }   // an unbalanced picture_begin: what was recorded is kept, not drawn
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
-	f := c.fonts
-	for u in f.pending {
-		render.update_texture_r8(c.renderer, c.atlas, u.x, u.y, u.w, u.h, f.pending_pixels[u.offset:u.offset + u.w * u.h], u.w)
-	}
-	clear(&f.pending)
-	clear(&f.pending_pixels)
+	text_upload(c)
 	render.frame_submit(c.renderer, render.Frame_Data{
 		insts = c.insts[:], batches = c.batches[:],
 		xforms = len(c.xform_table) > 1 ? c.xform_table[:] : nil,

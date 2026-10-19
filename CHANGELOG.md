@@ -3,6 +3,85 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.9.1] - 2026-10-19
+
+Merge of 0.9.0 (DirectWrite text, retained glyph runs) with 0.8.1 (status bar, frame graph) and 0.8.2 (named palettes).
+
+## [0.9.0] - 2026-10-19
+
+Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged with retained drawing (0.7.0).
+
+### Retained text
+- **Glyph runs record into pictures**: `draw.glyph_run` (and `text` / `text_ex` on top of it) records shaped glyphs
+  (positions from the shaper, subpixel positions, color glyphs) like direct drawing; text is rasterized for the
+  picture's `raster_scale` times the slot's scale (within `TEXT_RASTER_TOLERANCE` the bitmap is stretched), baked only
+  at the picture's own scale. Batches switch between gray and color pages inside a picture as in a frame.
+- **Staleness per atlas page**: a picture remembers the pages its glyphs are on and their epoch (`font.Page_Ref`,
+  `Picture.pages`); it is `.Stale` when one of them was reused for other glyphs, or when the rendering settings changed
+  (`font.atlas_settings_generation`), not on every eviction. A replayed picture marks its pages as used by the current
+  frame (`font.atlas_pages_hold`): they are not reused under it. `Batch_Bounds.gray` / `.color`: the pages a picture
+  batch samples, bound to the replaying context's textures (a picture can be replayed by another context).
+- **Device loss**: the atlas pages upload again whole from their CPU copy (same texture handles); pictures with text
+  stay valid and replay without recording (before: the atlas was reset and every picture with text went stale).
+- `font.Glyph_Image.epoch`, `font.Page_Ref`, `font.atlas_pages_hold`, `font.atlas_settings_generation`.
+- `tests/retained`: the scene has color emoji and shaped Arabic (system fallback) next to Latin text, rotated glyphs
+  with an emoji; a page reuse with tiny pages makes only the picture on it stale while a picture drawn every frame
+  keeps its page and replays exactly; new rendering settings and `clear_atlas` make a picture stale; after a device
+  loss a picture with text replays identically without recording.
+
+### Changed (retained text)
+- `font.set_settings` with new rendering settings (subpixel steps, rendering mode, grid fit, color glyphs) forgets the
+  cached bitmaps (they were made with the old settings; with other subpixel steps their keys meant other positions)
+  and bumps the settings generation.
+- Text under a GPU transform at its layout size (rotation, skew) is placed at subpixel positions in local units, as
+  text at a uniform scale: a picture recorded at its own scale and replayed rotated draws what direct drawing draws.
+- `Picture.atlas_generation` and `font.reset_atlas` are gone (`font.clear_atlas` clears the pages: pictures on them go
+  stale).
+
+### Fixed (merge)
+- `font.shape` of one right-to-left run of several words (`one_run`, a layout fragment) left its clusters in visual
+  word order: the caret of the logical end and hit testing landed inside the text. Clusters are sorted back to logical
+  order (`O(n log n)`).
+
+### Changed
+- **`font` is rebuilt on DirectWrite** (stb_truetype is gone): faces from the system collection
+  (`font.load_system`, `font.has_system_family`), files (`load_from_file`) and memory (`load_memory`,
+  `load_from_memory`, `load_embedded`: a custom font file loader, keys never reused). Same `Font_Id`, `metrics`,
+  `text_width`, `x_from_index`, `index_from_x`, `glyph` (now outline metrics) and `kern` (a pair shaped together minus
+  apart) as before, so existing callers get fallback and shaping unchanged. See [docs/text.md](docs/text.md).
+- `font.Metrics` gains `x_height`, `cap_height`, `underline_offset` / `_thickness`, `strike_offset` / `_thickness`.
+- `draw.text` shapes (fallback, ligatures, kerning, bidi in the string's direction) and draws through `draw.glyph_run`;
+  it moved to `draw/text.odin` with `TEXT_RASTER_TOLERANCE`. `draw.Context.glyphs` holds the textures of the atlas
+  pages; `draw.init` / `begin_frame` / `end_frame` / `destroy` call into it (text.odin).
+- `font.State` no longer has `pending` / `pending_pixels` / `glyphs` / `fonts`: the atlas is in pages uploaded per
+  draw context (`font.atlas_sync_page`).
+
+### Added
+- **Cascades**: `font.cascade(entries, features, no_system_fallback)`: per-character fallback through the entries
+  (`ranges` = CSS `unicode-range`), then the **system fallback** (`IDWriteFontFallback::MapCharacters`); clusters stay
+  in one face (marks, selectors, ZWJ emoji sequences). OpenType `features` on every face.
+- `font.with_simulations` (synthetic bold / oblique), `font.axes`, `font.with_variations` (variable fonts),
+  `font.unload`, `font.valid`, `font.primary_face`, `font.set_settings`, `font.clear_atlas`, `font.clear_word_cache`.
+- **Shaping**: `font.shape` -> `Shaped{glyphs (visual order), clusters (logical order), width}` (`Glyph_Pos`,
+  `Cluster`), `Shape_Options{direction, one_run, letter_spacing, word_spacing, justify}`, `font.measure`,
+  `font.caret_x`, `font.hit_index`, `font.shaped_destroy`. Words shaped once and cached (sharded, bounded, per-thread
+  front cache): measuring is thread-safe without a global lock.
+- **Analyses**: `font.bidi_levels`, `bidi_runs`, `runs_of_levels`, `visual_order`, `reorder` (UAX #9);
+  `font.line_breaks` (UAX #14, dictionaries for Thai...); `font.maybe_rtl`, `font.first_strong_rtl`.
+- **Glyph bitmaps**: `font.glyph_image` (grayscale, `Settings.subpixel_steps` horizontal positions, rendering mode and
+  grid fitting from `Settings`), **color glyphs** (COLR / CPAL layers composited to RGBA, drawn as images: emoji),
+  atlas pages of both kinds with LRU reuse that never clears a page a current frame uses (`atlas_begin_frame`,
+  `atlas_remove_user`, `atlas_page_count`, `atlas_page_info`, `atlas_evictions`).
+- `draw.glyph_run(dc, size, pos, color, glyphs)` (the painter's entry point), `draw.text_ex(..., opts)`.
+- `font.Settings` / `font.DEFAULT_SETTINGS` (`font.init(s, settings)`).
+- `tests/text`: faces, memory faces, fallback (U+2190 in a Latin font), ligatures and kerning, Arabic joining,
+  Devanagari, bidi, line breaks, color emoji pixels, atlas stress with a tiny atlas, measuring from 8 threads, and a
+  WARP pixel test of drawn text.
+
+### Fixed
+- A full atlas no longer resets in the middle of a frame (glyphs drawn earlier in the frame showed the glyphs
+  rasterized over them: "20 ☒ 7 minutes").
+
 ## [0.8.2] - 2026-10-19
 
 ### Added
