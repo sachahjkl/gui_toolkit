@@ -46,20 +46,9 @@ Anim_Mode :: enum { System, On, Off }
 
 DEFAULT_PALETTE :: 1   // Graphite
 
-Named_Palette :: struct { name: string, palette: ui.Palette }
+Named_Palette :: ui.Named_Palette
 
-palettes := [?]Named_Palette{
-	{"Midnight", ui.PALETTE_MIDNIGHT},
-	{"Graphite", {bg = 0x151515ff, panel = 0x1e1e1eff, panel2 = 0x2a2a2aff, text = 0xeaeaeaff, weak = 0x8e8e8eff, border = 0x353535ff, accent = 0x4cc2ffff, accent_text = 0x06222fff, good = 0x5dd39eff, warn = 0xf4c95dff, bad = 0xff6b6bff, dark = true}},
-	{"Daylight", ui.PALETTE_DAYLIGHT},
-	{"Nord", {bg = 0x2e3440ff, panel = 0x3b4252ff, panel2 = 0x434c5eff, text = 0xeceff4ff, weak = 0x9aa5b8ff, border = 0x4c566aff, accent = 0x88c0d0ff, accent_text = 0x1d2430ff, good = 0xa3be8cff, warn = 0xebcb8bff, bad = 0xbf616aff, dark = true}},
-	{"Dracula", {bg = 0x1e1f29ff, panel = 0x282a36ff, panel2 = 0x343746ff, text = 0xf8f8f2ff, weak = 0x9aa0c8ff, border = 0x44475aff, accent = 0xbd93f9ff, accent_text = 0x1a1326ff, good = 0x50fa7bff, warn = 0xf1fa8cff, bad = 0xff5555ff, dark = true}},
-	{"Amber", {bg = 0x16120bff, panel = 0x201a10ff, panel2 = 0x2d2415ff, text = 0xffe9c2ff, weak = 0xb59a66ff, border = 0x3d311cff, accent = 0xffb000ff, accent_text = 0x1a1200ff, good = 0x9acd32ff, warn = 0xffd54fff, bad = 0xff7043ff, dark = true}},
-	// Windows 7: sky-blue glass behind white panels, glossy silver buttons, Aero blue for selection
-	{"Aero", {bg = 0xb9d1ee8c, panel = 0xfbfcfeff, panel2 = 0xe3e9f1ff, text = 0x1b2633ff, weak = 0x4f6178ff, border = 0x8ea6c6ff, accent = 0x2f86dbff, accent_text = 0xffffffff, good = 0x2e9e45ff, warn = 0xd08c00ff, bad = 0xd13b2eff, dark = false, finish = .Glass, bar = 0x6fa3dcb0, translucent = true}},
-	// Bootstrap 2 (2012): white page, grey wells, gradient buttons with embossed text, blue focus glow
-	{"Bootstrap", {bg = 0xffffffff, panel = 0xf5f5f5ff, panel2 = 0xe9e9e9ff, text = 0x333333ff, weak = 0x8a8a8aff, border = 0xccccccff, accent = 0x0a6fd1ff, accent_text = 0xffffffff, good = 0x51a351ff, warn = 0xf89406ff, bad = 0xd2463fff, dark = false, finish = .Gradient}},
-}
+palettes := ui.NAMED_PALETTES
 
 ////////////////////////////////
 // Commands: one enum + one table drive the palette, the menus and the shortcuts
