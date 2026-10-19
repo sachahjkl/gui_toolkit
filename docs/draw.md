@@ -65,8 +65,10 @@ it.
   antialiased ramp under rotation, skew and non-uniform scale.
 - **Text** is laid out at its nominal size (so `font.text_width` still measures it), but when the transform scales it
   by more than 10 % the glyphs are rasterized at the on-screen size (`TEXT_RASTER_TOLERANCE`): scaled text stays
-  sharp. Under scale + translation the glyphs also snap to the pixel grid. Rotated text samples the atlas
-  bilinearly.
+  sharp. Under scale + translation the glyphs also snap to the pixel grid (at subpixel positions, see
+  [text.md](text.md)). Rotated text at its layout size is placed at the same subpixel positions in local units and
+  samples the atlas bilinearly. Text is drawn from shaped glyph runs (`draw.glyph_run`; `draw.text` shapes then calls
+  it).
 
 ## Clips
 
@@ -317,10 +319,16 @@ changes, as for immediate drawing) and a small constant buffer, whatever the num
 - **Clips** recorded in a picture live in the space of their slot. A `push_clip` (plain rect) becomes the scissor at
   replay when the picture is under a uniform scale + translation (exact, free), a per-pixel shape otherwise, as when
   drawn directly.
-- **Text** keeps the glyph atlas positions it was recorded with, at the raster size of its scale (`picture_begin`'s
-  `raster_scale` times the slot's scale). The picture is **stale** when the atlas was reset (`font.State.generation`)
-  or when a text would be rasterized at another size (scale beyond `TEXT_RASTER_TOLERANCE` changed): replay returns
-  `.Stale`, `picture_stale` tells beforehand.
+- **Text** (glyph runs: shaped positions, subpixel positions, color glyphs) keeps the glyph atlas positions it was
+  recorded with, at the raster size of its scale (`picture_begin`'s `raster_scale` times the slot's scale); positions
+  are baked on the pixel grid only at the picture's own scale. The picture remembers the atlas pages its glyphs are on
+  with their epoch (`Picture.pages`, `font.Page_Ref`). It is **stale** when one of those pages was reused for other
+  glyphs (only the pictures on that page: an eviction elsewhere costs nothing), when the text rendering settings
+  changed (`font.set_settings`, `font.clear_atlas`), or when a text would be rasterized at another size (scale beyond
+  `TEXT_RASTER_TOLERANCE` changed): replay returns `.Stale`, `picture_stale` tells beforehand. A picture that is not
+  stale marks its pages as used by the current frame: they are not reused before the frame is drawn. Batches of a
+  picture remember which gray / color page they sample (`Batch_Bounds.gray`, `.color`) and bind the replaying
+  context's textures of those pages.
 - **Images** are referenced by texture handle. Offscreen effects are not recordable: `push_layer` / `push_effects`
   fall back to the alpha alone and `backdrop_capture` returns nothing while recording; apply effects around a replay.
 - **Memory**: `set_retained_budget(dc, bytes)`: past it, pictures not drawn in the current frame give their ranges back,
@@ -383,8 +391,9 @@ drawn with an antialiased edge.
 When the GPU is reset or removed (driver update, TDR), `Present` fails: the renderer marks itself lost
 (`render.device_lost`). The next `draw.begin_frame` (or `render.frame_begin`) calls `render.recover`: a new device,
 swap chain (or offscreen target), pipeline, and every texture re-created **under the same handle** with its size and
-format, contents cleared. `render.Renderer.device_generation` changes: owners of images upload them again (the glyph
-atlas is reset by `draw.begin_frame`, which makes pictures with text stale); the retained heaps are emptied
+format, contents cleared. `render.Renderer.device_generation` changes: owners of images upload them again
+(`draw.begin_frame` uploads the glyph atlas pages again whole from their CPU copy: glyphs stay where they were and
+pictures with text stay valid); the retained heaps are emptied
 (`heap_generation`), pictures upload again from their recording at their next replay. If no device can be had yet,
 frames draw nothing and recovery is tried again. `render.simulate_device_loss` exercises the path in tests.
 
@@ -439,8 +448,9 @@ render.destroy_texture(&r, tex)
 - **Tiling** uses the hardware wrap mode on the whole texture: seamless, one instance, the tile can be any size and
   offset (scrolling backgrounds). For one-axis repeat make `dst` one tile tall or wide. Repeating a sub-rectangle of a
   texture is not supported in one draw: draw one `image` per tile.
-- **Batching**: glyphs read the atlas (t0) and images their own texture (t1), so text, shapes and one image share a
-  batch; only switching to a different image (or a different scissor) starts a new draw call.
+- **Batching**: glyphs read a gray atlas page (t0) and images their own texture (t1), so text, shapes and one image
+  share a batch; switching to a different image (a color glyph page is one), another gray page or a different scissor
+  starts a new draw call.
 
 ## Cost
 
@@ -462,7 +472,7 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
 - A rotated or skewed `push_clip` / `push_clip_rounded` costs a little pixel-shader work for every pixel drawn inside
   its bounds; more than 8 nested clip shapes are ignored (the outermost 8 apply).
 - Soft shapes (shadows, `soft > 1`) blur in local units: under a strong downscale the blur can drop below a pixel.
-- Rotated text is the 1x glyph bitmap, sampled bilinearly (slightly softer than axis-aligned text, no hinting).
+- Rotated text is the glyph bitmap at its layout size, sampled bilinearly (slightly softer than axis-aligned text).
 - Perspective (3D) transforms are not supported (2D affine only).
 - A layer costs one render target of its size and a full-screen-sized fill at most; dozens of large layers per
   frame are expensive (callers should fall back to `push_alpha` when the group holds a single primitive, which is

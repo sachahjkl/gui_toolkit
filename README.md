@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.7.0-1d57ba" alt="version 0.7.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.9.0-1d57ba" alt="version 0.9.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -10,8 +10,7 @@ The design (box tree, keyed persistence, size-kind layout, signals, tag-based th
 
 ![fidget, the widget gallery](docs/screenshots/controls.png)
 
-~4,800 lines of toolkit (+2,800 of examples), no dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`,
-`stb/truetype`). The exes are self-contained (icon font compiled in, fallback text fonts for Wine): the widget gallery is
+No dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`) and the platform (DirectWrite for text). The exes are self-contained (icon font compiled in, fallback text fonts for Wine): the widget gallery is
 1.3 MB, the todo example 950 KB; windows show in ~0.25 s, idle at 0 % CPU, and a frame of the gallery takes under 1 ms
 of CPU (`fidget --bench=300`).
 
@@ -69,7 +68,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.7.0`; while `0.x`, a minor bump may change the API).
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.9.0`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -78,8 +77,8 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 |---|---|
 | `platform` | Win32 window, DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
 | `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners), glyphs, RGBA images (mipmapped, premultiplied), gradients and analytic shadows, with an optional 2D affine transform and rounded clip per instance; retained instances replayed from persistent GPU heaps. Colors are given linear; a blend space chosen per renderer (and per layer) says where they mix: linear light, or sRGB values as web browsers do. Optional translucent window (DirectComposition: fp16 scRGB, or 8-bit sRGB). |
-| `font` | TrueType (`stb_truetype`), glyph cache, shelf-packed atlas, text measurement. Embedded fallback fonts (Roboto, Inconsolata) for systems without Segoe UI / Consolas. |
-| `draw` | Rect / text / image primitives; clips (scissor, rounded, ellipse, polygon; transformed), alpha and 2D affine transform stacks, layers with filters (blur, color matrices, drop shadow), blend modes and backdrops, gradients, box shadows, retained pictures over the renderer. See [docs/draw.md](docs/draw.md). |
+| `font` | Text on DirectWrite: system / file / memory faces, cascades with per-character fallback (`unicode-range`, then the system fallback), shaping (OpenType features, ligatures, kerning, complex scripts) with a thread-safe word cache, bidi (UAX #9), line breaks (UAX #14), carets through clusters, grayscale glyph bitmaps at subpixel positions and color glyphs (emoji) in atlas pages. Embedded fallback fonts (Roboto, Inconsolata). See [docs/text.md](docs/text.md). |
+| `draw` | Rect / glyph run / image primitives; clips (scissor, rounded, ellipse, polygon; transformed), alpha and 2D affine transform stacks, layers with filters (blur, color matrices, drop shadow), blend modes and backdrops, gradients, box shadows, retained pictures (text included: shaped runs, color glyphs) over the renderer. See [docs/draw.md](docs/draw.md). |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
 
 ## Features
@@ -118,7 +117,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   browser (`rgba(0,0,0,.5)` over white = 128, CSS gradients, opacity, image filtering), per renderer and per layer, with
   Skia's text correction (Chromium's Windows settings by default in sRGB). The UI theme adapts its translucent colors.
 - **Retained drawing** (`draw.Picture`): record once, replay every frame for a few draw calls whatever the number of
-  instances; instances live in persistent GPU heaps (budget, eviction, re-upload after a device loss); transforms pushed
+  instances (text too: glyphs keep their atlas pages, a page reused makes only the pictures on it stale); instances live in persistent GPU heaps (budget, eviction, re-upload after a device loss); transforms pushed
   while recording are *slots* whose matrices change without recording (animations, scrolling). Immediate drawing and
   replays mix in one frame in exact z order. 8,000 rotating cards: 7.5 ms of CPU per frame immediate, 0.26 ms retained.
 - **Gradients and shadows in the shader**: `draw.gradient` (linear, radial, conic, repeating, stop positions and
@@ -147,7 +146,7 @@ Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Li
 
 `odin test tests/affine -vet` runs the unit tests of the affine helpers. `odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1`
 drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window. `tests/layers`, `tests/effects`,
-`tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` are pixel tests on an offscreen WARP renderer (most in both blend spaces)
+`tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` (text, color emoji and transformed glyphs included) are pixel tests on an offscreen WARP renderer (most in both blend spaces); `tests/text` covers faces, fallback, shaping, bidi, line breaks, carets, color glyphs and the atlas pages (`atlas_stress`)
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
 focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a
