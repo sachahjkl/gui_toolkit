@@ -335,7 +335,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 	s := g
 	em := font_size()
 	label := display_part(text)
-	natural := em * 0.6 + em * 1.5 + text_width(top_style().font, em, label) + 2 * top_style().text_pad + em * 0.5
+	// spacers, icon cell, label and its padding, borders (with a little room so the label never gets "...")
+	natural := em * 0.6 + em * 1.5 + text_width(top_style().font, em, label) + 2 * top_style().text_pad + em * 0.5 + em * 0.6 + 4 * max(1, scale())
 	if shortcut != "" { natural += text_width(top_style().font, em, shortcut) + em * 2.5 }
 	if submenu { natural += em * 1.6 }
 	lv.width = max(lv.width, natural)

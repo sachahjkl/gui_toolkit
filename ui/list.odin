@@ -145,7 +145,8 @@ list_end :: proc() {
 	if st.reveal > 0 && st.sel >= 0 {
 		st.reveal -= 1
 		if r := box_from_key(key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel))); r != nil && r.last_build + 1 >= s.build_index {
-			top := r.rect.min.y - b.rect.min.y + b.view_off.y
+			// rows are children of the list: rel_pos is their place in the content, whatever the scroll animation did
+			top := r.rel_pos.y
 			bottom := top + r.size.y
 			if top < b.view_target.y { b.view_target.y = top }
 			if bottom > b.view_target.y + b.size.y { b.view_target.y = bottom - b.size.y }
