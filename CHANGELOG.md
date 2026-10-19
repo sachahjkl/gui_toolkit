@@ -6,6 +6,34 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 ## [0.10.0] - 2026-10-19
 
 ### Added
+- **Kept filter results** (`draw/layer_cache.odin`): `Layer_Effects.cache_id`, `cache_key`, `cache_anchor` keep a
+  layer's filtered texture from frame to frame (stored once the same key came two frames in a row); while the caller's
+  key, the filters run by passes, the transform's linear part, the anchor's fraction and the bounds relative to the
+  anchor hold, `push_effects` returns **false** (the content need not be drawn; what is drawn is discarded) and
+  `pop_layer` composites the kept result, moved by whole-pixel moves of the anchor. Opacity, blend mode and trailing
+  color matrices stay live. A layer up to `max_layer_px` is drawn whole when it is to be kept (scrolling it into view
+  keeps it good). `Layer_Effects.cache_under` (blend modes into the opaque frame) keeps the blended pixels: no layer,
+  copy or blend while what lies under is the same. `backdrop_capture` / `backdrop` take `cache_id`, `cache_key`
+  (what lies under), `cache_anchor`. `set_layer_cache(dc, budget, max_layer_px, idle_frames)`, `layer_cache_stats`,
+  `layer_cache_forget`, `layer_cache_clear`.
+- **Masked layers are kept too**: `push_mask` takes the same `cache_*` fields and returns false like `push_effects`
+  when the kept result stands (the mask is in the kept result: neither the content nor the mask layers are drawn, and
+  `mask_layer` does nothing). The caller's `cache_key` must cover the mask layers; the toolkit salts it so that a masked
+  and an unmasked layer never share a result. Trailing color matrices stay live only when they commute with the mask
+  (no alpha column in the color rows, an alpha row that only scales alpha by [0, 1], as every CSS filter function);
+  others run as passes before the mask, as CSS orders them.
+- `render.keep_target` / `unkeep_target` (a pooled texture held across frames), `targets_generation`,
+  `kept_targets_bytes`, `texture_bpp`, `acquire_target_format`, `Target_Format`.
+- **Per-step GPU profile** (`render/gpu_profile.odin`): `set_gpu_profile(r, on, detail)`, `gpu_profile(r)`:
+  time, count, pixels and estimated traffic of each kind of step (`Gpu_Step`: draw runs into the frame or a layer,
+  clears, copies, color / blur / reduction / shadow / mask passes), render targets bound, the slowest steps; `detail`
+  times every draw call (batch, instances, kinds, flags, scissor).
+- `render.set_filter_precision(r, .Unorm8 | .Half)`: filter results in sRGB-encoded 8 bits or fp16.
+- `render.FLAG_SCALED`, `render.FLAG_MATRIX` for layer composites and backdrops; `Pass.factor`.
+- `examples/effects`: `--nocache`, `--half`; `--bench` prints the GPU time by kind of step; the thumbnails and the
+  stress cards keep their results. `tests/gpufx`: reduced blurs against the exact gaussian, kept layers / blended
+  pixels / backdrops against drawn ones (hits, whole-pixel moves, invalidation), stale texels never read, the profile,
+  masked layers kept (against drawn ones, a new mask key redraws, a blur under a mask).
 - **Integrated title bar** (`platform`, `ui/window_chrome.odin`): the app's own boxes are the window's title bar, as in
   Edge and Chrome (tabs in the title bar).
   - `platform.open_window(..., integrated_title = true)` or `platform.set_integrated_title(w, on)` at any time: the client
@@ -50,6 +78,16 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 ### Changed
 - `list`: the keyboard handling and type-ahead are shared with `vlist` (`List_State.virtual`); no change for `list`.
 - Wrapped text is drawn at the width layout wrapped it at (`Box.size`), not the rounded rect's.
+- Color matrices ending a filter chain are applied by the composite (one pass and one target fewer; a layer with only
+  color filters runs no pass).
+- Large blurs: the reduction by 2, 4 or 8 is one pass; the result stays reduced and is sampled back by the next pass or
+  the composite (no upsampling pass); the variance of the bilinear resampling is taken off the gaussian's.
+- Filter passes no longer clear their target: they write a transparent ring of one texel past their region and read no
+  further (the mask pass included). Filter chains end in sRGB-encoded values (no conversion pass back to linear).
+- `push_effects` and `push_mask` return a bool (see above); existing calls that ignore it are unchanged.
+- `Backdrop` holds the chain's trailing matrices and whether its texture is kept.
+- A masked layer whose filters end with a large blur applies its mask at scale 1 over the reduced result (sampled back
+  bilinearly, as the composite would).
 
 ## [0.9.3] - 2026-10-19
 
