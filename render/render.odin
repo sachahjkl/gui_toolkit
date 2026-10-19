@@ -72,6 +72,12 @@ FLAG_TEX_SRGB :: 32    // image: texels hold premultiplied sRGB-encoded color (e
 FLAG_LERP_SRGB :: 64   // corner colors interpolate across the primitive in sRGB (else in the target's Blend_Space)
 FLAG_LERP_LINEAR :: 128 // corner colors interpolate in linear light
 BLEND_SHIFT :: 8
+// Layer composites (FLAG_LAYER) and backdrops (FLAG_SCREEN) of a filter chain's result:
+FLAG_SCALED :: 0x10000 // the texture holds the image reduced (a large blur): sampled bilinearly. FLAG_LAYER: `src` is the
+                       // rect in reduced texels (valid size src.zw), read transparent past it; FLAG_SCREEN: tex_size is
+                       // the scale (texels per screen pixel), edges repeat
+FLAG_MATRIX :: 0x20000 // color matrices applied to the texel (straight sRGB values, each result clamped), as a Color
+                       // pass would: `aux` is their entry in the frame's gradient table (see Color_Matrix_Entry)
 
 // The space colors are combined in: alpha blending, antialiased edges, interpolation of corner colors, image
 // filtering, layer composites. Colors given to the renderer are always linear (draw.srgb / draw.hex convert); the
@@ -234,7 +240,7 @@ MAX_BLUR_SIGMA :: 40
 Pass_Mode :: enum u32 {
 	Color,       // the color matrices, in order, each result clamped (CSS filter functions other than blur)
 	Blur,        // one direction of a separable gaussian (`dir`, `sigma` in src texels)
-	Downsample,  // half size: 2 x 2 average (the next texel row and column of src)
+	Downsample,  // 1 / factor size: factor x factor average (bilinear taps between texel pairs)
 	Shadow,      // drop shadow: src = blurred alpha, src2 = the input; out = src2 over (color x src.a moved by offset)
 }
 PASS_IN_LINEAR :: 1    // src holds linear premultiplied color (the frame, a layer); else sRGB-encoded premultiplied
@@ -255,6 +261,7 @@ Pass :: struct {
 	color:  [4]f32,              // Shadow: sRGB, straight alpha
 	matrices: [MAX_COLOR_MATRICES][20]f32,   // Color: row-major 4 x 5 (r g b a 1) on straight sRGB values
 	matrix_count: int,
+	factor: int,                 // Downsample: 2, 4 or 8 (box average of factor x factor source texels); 0 = 2
 }
 
 Op_Kind :: enum u8 { Clear, Copy, Pass }
@@ -292,6 +299,7 @@ Texture_Data :: struct {
 	mips: bool,           // has a full mip chain (generated after updates, before the next draw)
 	mips_dirty: bool,
 	space: Blend_Space,   // RGBA: how texels are stored (see create_texture_rgba)
+	unorm: bool,          // Target: 8 bits per channel (else fp16)
 }
 
 Renderer :: struct {
@@ -347,6 +355,9 @@ Renderer :: struct {
 	gpu_last_ms: f32,
 	gpu_last_frame: int,                  // 1 + the timed submit `gpu_last_ms` belongs to (0: none yet)
 	gpu_timing:  bool,                    // set_gpu_timing: measure without -define:GPU_TIMING
+	prof:        Gpu_Profiler,            // set_gpu_profile: GPU time of each step (gpu_profile.odin)
+	targets_gen: u64,                     // targets_generation
+	filter_format: Target_Format,         // set_filter_precision
 	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
 	swap_flags:  dxgi.SWAP_CHAIN,
 	present:     Present_State,           // present.odin: mode, frame statistics
@@ -436,6 +447,7 @@ destroy :: proc(r: ^Renderer) {
 	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
+	profile_destroy(r)
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
@@ -886,9 +898,17 @@ destroy_texture :: proc(r: ^Renderer, t: Texture) {
 Pooled_Target :: struct {
 	tex:   Texture,
 	w, h:  int,
-	snapshot: bool,       // a copy of the frame (its format, no render target view); else an fp16 render target
+	snapshot: bool,       // a copy of the frame (its format, no render target view); else a render target
+	unorm: bool,          // render target in 8 bits per channel (filter results, sRGB-encoded); else fp16
 	used:  bool,          // handed out for the frame being built
+	kept:  bool,          // keep_target: held across frames by its owner (a cached filter result), never handed out
 	idle:  int,           // frames since it was last used
+}
+
+// Formats of pooled render targets (acquire_target_format).
+Target_Format :: enum u8 {
+	Half,    // fp16 RGBA: layers (content blended in linear light needs it), linear results
+	Unorm8,  // 8-bit RGBA: sRGB-encoded premultiplied filter results (half the memory and bandwidth)
 }
 
 // Pooled targets are allocated in steps of this many pixels, so a layer that grows or shrinks a little (an animation)
@@ -902,6 +922,11 @@ Pooled_Target :: struct {
 // is out of range or the device refuses (draw then falls back to per-primitive alpha).
 acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pooled(r, w, h, false) }
 
+// acquire_target in a chosen format.
+acquire_target_format :: proc(r: ^Renderer, w, h: int, format: Target_Format) -> Texture {
+	return acquire_pooled(r, w, h, false, format == .Unorm8)
+}
+
 // A texture that can receive a copy of `target` (0: the frame, k: a layer, as Batch.target): the frame's own format
 // (8-bit, read in the frame's blend space, or fp16 for a linear translucent window), fp16 for a layer. For backdrops
 // and blend modes.
@@ -910,18 +935,52 @@ acquire_snapshot :: proc(r: ^Renderer, w, h: int, target: int) -> Texture {
 }
 
 // Hands a pooled texture back before the end of the frame: a texture acquired later in the frame may reuse it. Safe
-// because steps run in the order they are recorded: release it once the last step reading it is recorded.
+// because steps run in the order they are recorded: release it once the last step reading it is recorded. A kept
+// texture is not affected (unkeep_target hands it back).
 release_target :: proc(r: ^Renderer, t: Texture) {
 	if t == 0 { return }
-	for &p in r.targets { if p.tex == t { p.used = false; return } }
+	for &p in r.targets { if p.tex == t { if !p.kept { p.used = false }; return } }
+}
+
+// Keeps a pooled texture acquired this frame beyond the frame (a filter result reused by later frames): the pool never
+// hands it out again until unkeep_target. Its contents survive until then, except when the pool is emptied
+// (release_targets, a lost device: `targets_generation` changes) . false: not a pooled texture.
+keep_target :: proc(r: ^Renderer, t: Texture) -> bool {
+	if t == 0 { return false }
+	for &p in r.targets {
+		if p.tex == t { p.kept, p.used, p.idle = true, true, 0; return true }
+	}
+	return false
+}
+
+// Gives a kept texture back to the pool (reusable from the next acquire on).
+unkeep_target :: proc(r: ^Renderer, t: Texture) {
+	if t == 0 { return }
+	for &p in r.targets { if p.tex == t { p.kept, p.used, p.idle = false, false, 0; return } }
+}
+
+// Changes whenever pooled textures were destroyed wholesale (release_targets, device recovery): kept textures of an
+// older generation are gone.
+targets_generation :: proc(r: ^Renderer) -> u64 { return r.targets_gen }
+
+// Bytes per texel of a texture (render targets and images; 0 for none).
+texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return 0 }
+	switch r.textures[int(t)].kind {
+	case .None: return 0
+	case .R8: return 1
+	case .RGBA, .Snapshot: return 4
+	case .Target: return r.textures[int(t)].unorm ? 4 : 8
+	}
+	return 0
 }
 
 @(private)
-acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool) -> Texture {
+acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false) -> Texture {
 	if w <= 0 || h <= 0 || w > max_texture_size(r) || h > max_texture_size(r) { return 0 }
 	best := -1
 	for &p, i in r.targets {
-		if p.used || p.snapshot != snapshot || p.w < w || p.h < h { continue }
+		if p.used || p.kept || p.snapshot != snapshot || p.unorm != unorm || p.w < w || p.h < h { continue }
 		if best < 0 || p.w * p.h < r.targets[best].w * r.targets[best].h { best = i }
 	}
 	if best >= 0 {
@@ -931,9 +990,9 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool) -> Texture {
 	limit := max_texture_size(r)
 	aw := min((w + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
 	ah := min((h + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
-	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = snapshot ? .Snapshot : .Target}
+	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = snapshot ? .Snapshot : .Target, unorm = unorm && !snapshot}
 	desc := d3d11.TEXTURE2D_DESC{
-		Width = u32(aw), Height = u32(ah), MipLevels = 1, ArraySize = 1, Format = .R16G16B16A16_FLOAT,
+		Width = u32(aw), Height = u32(ah), MipLevels = 1, ArraySize = 1, Format = unorm ? .R8G8B8A8_UNORM : .R16G16B16A16_FLOAT,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE, .RENDER_TARGET},
 	}
 	if snapshot {
@@ -951,7 +1010,7 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool) -> Texture {
 		if win.FAILED(r.device->CreateRenderTargetView(td.tex, nil, &td.rtv)) { td.view->Release(); td.tex->Release(); return 0 }
 	}
 	t := add_texture(r, td)
-	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, used = true})
+	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, used = true})
 	return t
 }
 
@@ -960,6 +1019,7 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool) -> Texture {
 recycle_targets :: proc(r: ^Renderer) {
 	for i := len(r.targets) - 1; i >= 0; i -= 1 {
 		p := &r.targets[i]
+		if p.kept { continue }
 		if p.used { p.used, p.idle = false, 0; continue }
 		p.idle += 1
 		if p.idle > TARGET_IDLE_FRAMES {
@@ -969,16 +1029,24 @@ recycle_targets :: proc(r: ^Renderer) {
 	}
 }
 
-// Releases every pooled layer target (memory pressure, device teardown).
+// Releases every pooled layer target (memory pressure, device teardown), kept ones included (targets_generation).
 release_targets :: proc(r: ^Renderer) {
 	for p in r.targets { destroy_texture(r, p.tex) }
 	clear(&r.targets)
+	r.targets_gen += 1
 }
 
-// GPU memory held by the pooled layer targets, in bytes.
+// GPU memory held by the pooled layer targets, in bytes (kept ones included).
 targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
-	for p in r.targets { n += p.w * p.h * (p.snapshot ? 4 : 8) }
+	for p in r.targets { n += p.w * p.h * (p.snapshot || p.unorm ? 4 : 8) }
+	return n
+}
+
+// GPU memory of the kept targets (keep_target), in bytes.
+kept_targets_bytes :: proc(r: ^Renderer) -> int {
+	n := 0
+	for p in r.targets { if p.kept { n += p.w * p.h * (p.unorm ? 4 : 8) } }
 	return n
 }
 
@@ -1071,7 +1139,7 @@ texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 		case .RGBA:
 			n := td.w * td.h * 4
 			m.images += td.mips ? n * 4 / 3 : n
-		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot ? 4 : 8)
+		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : 8)
 		}
 	}
 	return
@@ -1093,14 +1161,17 @@ gpu_timing_begin :: proc(r: ^Renderer) {
 		   r.ctx->GetData((^d3d11.IAsynchronous)(q[2]), &t1, size_of(t1), 0) == 0 && !bool(dj.Disjoint) && dj.Frequency > 0 {
 			r.gpu_last_ms = f32(f64(t1 - t0) * 1000 / f64(dj.Frequency))
 			r.gpu_last_frame = r.gpu_frame - GPU_QUERY_FRAMES + 1
+			profile_collect(r, r.gpu_frame % GPU_QUERY_FRAMES, r.gpu_frame - GPU_QUERY_FRAMES, t0, dj.Frequency, r.gpu_last_ms)
 		}
 	}
 	r.ctx->Begin((^d3d11.IAsynchronous)(q[0]))
 	r.ctx->End((^d3d11.IAsynchronous)(q[1]))
+	profile_begin(r, r.gpu_frame % GPU_QUERY_FRAMES)
 }
 
 @(private)
 gpu_timing_end :: proc(r: ^Renderer) {
+	profile_end(r)
 	q := &r.gpu_queries[r.gpu_frame % GPU_QUERY_FRAMES]
 	r.ctx->End((^d3d11.IAsynchronous)(q[2]))
 	r.ctx->End((^d3d11.IAsynchronous)(q[0]))

@@ -15,6 +15,11 @@ DEFAULT_BLUR_SIGMA_LIMIT :: 8
 // 2 .. MAX_BLUR_SIGMA.
 set_blur_sigma_limit :: proc(r: ^Renderer, sigma: f32) { r.blur_sigma_limit = clamp(sigma, 2, MAX_BLUR_SIGMA) }
 
+// Storage of the intermediate and final images of filter chains: Unorm8 (sRGB-encoded premultiplied 8-bit values,
+// as browsers keep them: half the memory and bandwidth) or Half (fp16, the default). Layers themselves are always fp16.
+set_filter_precision :: proc(r: ^Renderer, f: Target_Format) { r.filter_format = f }
+filter_precision :: proc(r: ^Renderer) -> Target_Format { return r.filter_format }
+
 // The constant buffer of filter.hlsl (register b1), laid out as HLSL packs it.
 @(private)
 Pass_Constants :: struct #packed {
@@ -25,7 +30,7 @@ Pass_Constants :: struct #packed {
 	src2_size:   [2]f32, src2_dim: [2]f32,
 	dir:         [2]f32, offset: [2]f32,
 	color:       [4]f32,
-	matrix_count: u32, _: [3]u32,
+	matrix_count: u32, dst_size: [2]f32, factor: f32,
 	tap:         [MAX_BLUR_TAPS / 2][4]f32,              // (offset, weight) x 2
 	m:           [MAX_COLOR_MATRICES * 5][4]f32,         // per matrix: rows r g b a, then the constant column
 }
@@ -62,7 +67,7 @@ blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
 	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
-	timed := GPU_TIMING || r.gpu_timing
+	timed := GPU_TIMING || r.gpu_timing || r.prof.on
 	if timed { gpu_timing_begin(r) }
 	defer if timed { gpu_timing_end(r) }
 	// images updated since their last draw: rebuild their mip chains first
@@ -94,8 +99,10 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	replacing := false
 	bound_replay := 0      // the Replay in b2 (0: immediate instances, identity)
 	retained_vb := false   // the retained instance heap is the bound vertex buffer
+	drawing := false       // profile: a run of draw calls into `cur` is open
 	for b in f.batches {
 		if b.op > 0 {
+			if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0); drawing = false }
 			op := &f.ops[b.op - 1]
 			if run_op(r, f, op) {
 				// a filter pass replaced the pipeline and the target
@@ -108,9 +115,11 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		if b.count == 0 { continue }
 		if b.replay > len(f.replays) || (b.replay > 0 && r.heaps[.Insts].buf == nil) { continue }
 		if b.target != cur {
+			if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0); drawing = false }
 			cur = b.target
 			cur_ok, cur_size, cur_origin = bind_target(r, f, cur)
 			bound, bound_image, bound_backdrop = -1, -1, -1
+			profile_target_change(r)
 		}
 		if !cur_ok { continue }
 		if (b.replay > 0) != retained_vb {
@@ -142,7 +151,9 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
 		r.ctx->RSSetScissorRects(1, &rc)
 		r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))
+		drawing = true
 	}
+	if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0) }
 	unbind_inputs(r)
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 }
@@ -164,8 +175,8 @@ bind_main :: proc(r: ^Renderer) {
 	r.ctx->PSSetShader(r.ps, nil, 0)
 	r.ctx->PSSetConstantBuffers(0, 1, &r.globals)   // the pixel shader reads the corner shape and the target origin
 	r.ctx->PSSetConstantBuffers(2, 1, &r.replay_cb)
-	samplers := [3]^d3d11.ISamplerState{r.sampler, r.sampler_img, r.sampler_wrap}
-	r.ctx->PSSetSamplers(0, 3, &samplers[0])
+	samplers := [4]^d3d11.ISamplerState{r.sampler, r.sampler_img, r.sampler_wrap, r.sampler_border}
+	r.ctx->PSSetSamplers(0, 4, &samplers[0])
 	tables := [2]^d3d11.IShaderResourceView{r.clip_view, r.points_view}
 	r.ctx->PSSetShaderResources(3, 2, &tables[0])
 	// heaps no picture used yet are bound as a 1-element placeholder: the shader declares them, the debug layer reports
@@ -235,6 +246,8 @@ run_op :: proc(r: ^Renderer, f: Frame_Data, op: ^Op) -> bool {
 		if !valid(r, op.dst) || r.textures[int(op.dst)].rtv == nil { return false }
 		zero := [4]f32{}
 		r.ctx->ClearRenderTargetView(r.textures[int(op.dst)].rtv, &zero)
+		td := r.textures[int(op.dst)]
+		profile_step(r, .Clear, td.w, td.h, td.w * td.h, td.w * td.h * texture_bpp(r, op.dst))
 	case .Copy:
 		if !valid(r, op.dst) { return false }
 		src := r.frame_tex
@@ -252,6 +265,8 @@ run_op :: proc(r: ^Renderer, f: Frame_Data, op: ^Op) -> bool {
 		if x1 <= x0 || y1 <= y0 { return false }
 		box := d3d11.BOX{left = u32(x0), top = u32(y0), front = 0, right = u32(x1), bottom = u32(y1), back = 1}
 		r.ctx->CopySubresourceRegion(d.tex, 0, 0, 0, 0, src, 0, &box)
+		px := int(x1 - x0) * int(y1 - y0)
+		profile_step(r, .Copy, int(x1 - x0), int(y1 - y0), px, px * 2 * max(texture_bpp(r, op.dst), 4))
 	case .Pass:
 		run_pass(r, &op.pass)
 		return true
@@ -259,17 +274,19 @@ run_op :: proc(r: ^Renderer, f: Frame_Data, op: ^Op) -> bool {
 	return false
 }
 
+// A filter pass writes its region and a ring of one transparent texel past its right and bottom edges, and reads its
+// sources no further than that ring: no clear of the whole texture is needed (texels further away keep whatever an
+// earlier user of the pooled texture left, and are never read).
 @(private)
 run_pass :: proc(r: ^Renderer, p: ^Pass) {
 	t := int(p.dst.tex)
 	if t <= 0 || t >= len(r.textures) || r.textures[t].rtv == nil || p.dst.size.x <= 0 || p.dst.size.y <= 0 { return }
 	dtd := r.textures[t]
 	unbind_inputs(r)
-	zero := [4]f32{}
-	r.ctx->ClearRenderTargetView(dtd.rtv, &zero)   // whole texture: what lies past the region reads as transparent
 	rtv := dtd.rtv
 	r.ctx->OMSetRenderTargets(1, &rtv, nil)
-	w, h := min(p.dst.size.x, dtd.w), min(p.dst.size.y, dtd.h)
+	profile_target_change(r)
+	w, h := min(p.dst.size.x + 1, dtd.w), min(p.dst.size.y + 1, dtd.h)
 	vp := d3d11.VIEWPORT{0, 0, f32(w), f32(h), 0, 1}
 	r.ctx->RSSetViewports(1, &vp)
 	rc := d3d11.RECT{0, 0, i32(w), i32(h)}
@@ -287,6 +304,7 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 		src2_size = {f32(p.src2.size.x), f32(p.src2.size.y)}, src2_dim = dim(r, p.src2.tex),
 		dir = p.dir, offset = p.offset, color = p.color,
 		matrix_count = u32(clamp(p.matrix_count, 0, MAX_COLOR_MATRICES)),
+		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, 8)),
 	}
 	if p.mode == .Blur { pc.taps = u32(blur_taps(p.sigma, &pc.tap)) }
 	for k in 0 ..< int(pc.matrix_count) {
@@ -310,4 +328,17 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 	r.ctx->PSSetShaderResources(0, 2, &views[0])
 	r.ctx->Draw(3, 0)
 	unbind_inputs(r)
+	if r.prof.cur != nil {
+		kind: Gpu_Step
+		switch p.mode {
+		case .Color: kind = .Color
+		case .Blur: kind = .Blur
+		case .Downsample: kind = .Downsample
+		case .Shadow: kind = .Shadow
+		}
+		px := w * h
+		bytes := px * texture_bpp(r, p.dst.tex) + p.src.size.x * p.src.size.y * texture_bpp(r, p.src.tex)
+		if p.src2.tex != 0 { bytes += p.src2.size.x * p.src2.size.y * texture_bpp(r, p.src2.tex) }
+		profile_step(r, kind, w, h, px, bytes)
+	}
 }
