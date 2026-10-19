@@ -48,6 +48,8 @@ Key :: enum u8 {
 	Left, Right, Up, Down, Home, End, Page_Up, Page_Down,
 	Comma, Period, Slash, Minus, Equal,
 	Shift, Ctrl, Alt,
+	Menu,                       // the context-menu (application) key
+	Num_Add, Num_Subtract,      // keypad + and - (keypad digits arrive as N0..N9)
 }
 
 Window :: struct {

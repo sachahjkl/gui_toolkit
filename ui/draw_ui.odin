@@ -73,7 +73,9 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		h.a *= 0.014 * b.hot_t * (1 - b.active_t) + 0.02 * b.active_t   // tuned for linear blending: tiny alphas
 		draw.rect(dc, r, tuned(h, b.bg.a > 0.5 ? Color{b.bg.r, b.bg.g, b.bg.b, 1} : g.backdrop), radius)
 	}
-	if .Draw_Text in flags && b.text != "" { draw_box_text(s, dc, b) }
+	if .Draw_Text in flags && b.text != "" {
+		if .Text_Wrap in flags { draw_wrapped_text(s, dc, b) } else { draw_box_text(s, dc, b) }
+	}
 
 	if .Clip in flags { draw.push_clip(dc, r) }
 	if b.custom != nil { b.custom(b, b.custom_user, dc) }
