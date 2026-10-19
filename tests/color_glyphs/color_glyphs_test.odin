@@ -3,6 +3,7 @@
 // their licences: data/README.txt.
 package color_glyphs_test
 
+import "base:intrinsics"
 import "core:testing"
 import "../../draw"
 import "../../font"
@@ -230,6 +231,100 @@ color_glyphs_off :: proc(t: ^testing.T) {
 	font.set_settings(&f.s, st)
 	b := glyph_of(f, f.colr, 0xF0100, 40)
 	testing.expect(t, !b.img.color, "with color glyphs off a COLR v1 glyph is its outline")
+}
+
+@(test)
+async_color_glyphs :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
+	defer font.destroy(&f.s)
+	st := f.s.settings
+	st.color_async = true
+	font.set_settings(&f.s, st)
+	@(static) calls: int
+	calls = 0
+	font.set_color_ready_callback(&f.s, proc(user: rawptr) { sync_add(&calls) }, nil)
+	cas := font.cascade(&f.s, {{font = f.colr}}, nil, true)
+	sh := font.shape(&f.s, cas, 40, "\U000F0100\U000F0B06", {}, context.temp_allocator)
+	testing.expect_value(t, len(sh.glyphs), 2)
+	gen := font.color_ready_generation(&f.s)
+	a := font.glyph_image(&f.s, f.colr, sh.glyphs[0].id, 40, 0)
+	b := font.glyph_image(&f.s, f.colr, sh.glyphs[1].id, 40, 0, {0, 160, 0})
+	testing.expect(t, a.pending && b.pending && a.page < 0, "the first lookups do not wait")
+	again := font.glyph_image(&f.s, f.colr, sh.glyphs[0].id, 40, 0)
+	testing.expect(t, again.pending, "asked again while pending: still pending, not queued twice")
+	font.color_wait(&f.s)
+	testing.expect(t, font.color_ready_generation(&f.s) - gen == 2, "two requests drawn")
+	testing.expect(t, sync_load(&calls) >= 1, "the ready callback was called")
+	a2 := bitmap_of(&f.s, font.glyph_image(&f.s, f.colr, sh.glyphs[0].id, 40, 0))
+	testing.expect(t, !a2.img.pending && a2.img.color && near(at(a2, 0.02, 0.5), {255, 0, 0}, 40), "the gradient glyph after it was drawn")
+	b2 := bitmap_of(&f.s, font.glyph_image(&f.s, f.colr, sh.glyphs[1].id, 40, 0, {0, 160, 0}))
+	testing.expect(t, b2.img.uses_fg && near(at(b2, 0.5, 0.5), {0, 160, 0}, 8), "the text-color glyph in green")
+	// another text color for a glyph known to use it: queued again, for that color
+	c := font.glyph_image(&f.s, f.colr, sh.glyphs[1].id, 40, 0, {200, 0, 0})
+	testing.expect(t, c.pending)
+	font.color_wait(&f.s)
+	c2 := bitmap_of(&f.s, font.glyph_image(&f.s, f.colr, sh.glyphs[1].id, 40, 0, {200, 0, 0}))
+	testing.expect(t, near(at(c2, 0.5, 0.5), {200, 0, 0}, 8), "the same glyph in red")
+	// a face unloaded with a request queued: the request is dropped
+	_ = font.glyph_image(&f.s, f.sbix, 2, 30, 0)
+	font.unload(&f.s, f.sbix)
+	font.color_wait(&f.s)
+}
+
+@(private = "file")
+sync_add :: proc(p: ^int) { intrinsics.atomic_add(p, 1) }
+@(private = "file")
+sync_load :: proc(p: ^int) -> int { return intrinsics.atomic_load(p) }
+
+// A picture recorded while a color glyph is pending is stale when it is ready, then replays with it.
+@(test)
+async_glyphs_in_pictures :: proc(t: ^testing.T) {
+	r: render.Renderer
+	if !render.init_offscreen(&r, DSIZE, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
+	defer render.destroy(&r)
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
+	defer font.destroy(&f.s)
+	st := f.s.settings
+	st.color_async = true
+	font.set_settings(&f.s, st)
+	dc: draw.Context
+	draw.init(&dc, &r, &f.s)
+	defer draw.destroy(&dc)
+	pic: draw.Picture
+	defer draw.picture_destroy(&dc, &pic)
+	colr := font.cascade(&f.s, {{font = f.colr}}, nil, true)
+	record_and_replay :: proc(dc: ^draw.Context, r: ^render.Renderer, pic: ^draw.Picture, colr: font.Font_Id, record: bool) -> (draw.Replay_Result, []u8) {
+		draw.begin_frame(dc, {f32(DSIZE.x), f32(DSIZE.y)})
+		render.frame_begin(r, {1, 1, 1, 1})
+		if record {
+			draw.picture_begin(dc, pic)
+			draw.text(dc, colr, 48, {10, 60}, draw.Color{0, 0, 0, 1}, "\U000F0100")
+			draw.picture_end(dc)
+		}
+		res := draw.replay(dc, pic, draw.AFFINE_IDENTITY)
+		draw.end_frame(dc)
+		render.frame_end(r)
+		return res, render.read_pixels(r, context.temp_allocator)
+	}
+	px :: proc(img: []u8, x, y: int) -> RGBA {
+		o := (y * DSIZE.x + x) * 4
+		return {int(img[o]), int(img[o + 1]), int(img[o + 2]), int(img[o + 3])}
+	}
+	_, first := record_and_replay(&dc, &r, &pic, colr, true)
+	testing.expect(t, pic.glyphs_pending, "recorded while the glyph was pending")
+	testing.expect(t, px(first, 17, 40) == {255, 255, 255, 255}, "nothing drawn yet")
+	font.color_wait(&f.s)
+	res, _ := record_and_replay(&dc, &r, &pic, colr, false)
+	testing.expect_value(t, res, draw.Replay_Result.Stale)
+	_, after := record_and_replay(&dc, &r, &pic, colr, true)
+	l := px(after, 17, 40)
+	testing.expectf(t, !pic.glyphs_pending && l[0] > 200 && l[2] < 60, "recorded again with the glyph: %v", l)
+	res2, _ := record_and_replay(&dc, &r, &pic, colr, false)
+	testing.expect_value(t, res2, draw.Replay_Result.Drawn)
 }
 
 ////////////////////////////////

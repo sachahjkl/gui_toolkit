@@ -3,6 +3,7 @@ package font
 
 import "base:runtime"
 import "core:math"
+import "core:sync"
 import "vendor:directx/d3d11"
 
 // Color glyphs. A glyph a face draws in color (COLR v0 layers, COLR v1 paint trees with their gradients, transforms,
@@ -16,10 +17,16 @@ import "vendor:directx/d3d11"
 // glyph is drawn with: such a glyph is found by drawing it in two colors, and is then kept once per text color.
 //
 // The device is made on first use, on the WARP software rasterizer (results do not depend on the GPU or its driver,
-// and nothing is lost when the display device is reset). Everything here runs under the atlas lock.
+// and nothing is lost when the display device is reset). Direct2D is used under Color_Raster.mu (one context); with
+// Settings.color_async the drawing runs on a thread of its own (color_async.odin), else on the drawing thread under
+// the atlas lock.
 
 @(private)
 Color_Raster :: struct {
+	mu:      sync.Mutex,            // the Direct2D objects below
+	once:    sync.Once,
+	ok:      bool,                  // set once: Direct2D draws color glyphs (ID2D1DeviceContext4 and IDWriteFactory4)
+	paint:   bool,                  // ... COLR v1 paint trees too (ID2D1DeviceContext7, IDWriteFactory8)
 	tried:   bool,
 	device:  ^d3d11.IDevice,
 	dxgi:    rawptr,
@@ -104,10 +111,10 @@ color_canvas :: proc(cr: ^Color_Raster, w, h: int) -> bool {
 	return true
 }
 
-// The color formats of the runs glyph `run` translates to (0: not a color glyph). Paint trees are asked for only where
-// they can be drawn (`paint`).
+// The color formats of the runs glyph `run` translates to (0: not a color glyph), and whether a COLR layer is in the
+// text color. Paint trees are asked for only where they can be drawn (`paint`).
 @(private)
-glyph_formats :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, paint: bool) -> DWRITE_GLYPH_IMAGE_FORMATS {
+glyph_formats :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, paint: bool) -> (fmts: DWRITE_GLYPH_IMAGE_FORMATS, text_color: bool) {
 	all := COLOR_FORMATS | DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE | DWRITE_GLYPH_IMAGE_FORMATS_CFF
 	e: ^IDWriteColorGlyphRunEnumerator1
 	hr: HRESULT
@@ -118,23 +125,44 @@ glyph_formats :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, paint: bool) -> DWRITE_
 		hr = s.factory4->TranslateColorGlyphRun4({0, 0}, run, nil, all &~ DWRITE_GLYPH_IMAGE_FORMATS_COLR_PAINT_TREE, .NATURAL, nil, 0, &e)
 	case s.factory2 != nil:
 		e0: ^IDWriteColorGlyphRunEnumerator
-		if s.factory2->TranslateColorGlyphRun(0, 0, run, nil, .NATURAL, nil, 0, &e0) < 0 || e0 == nil { return 0 }
-		com_release(e0)
-		return DWRITE_GLYPH_IMAGE_FORMATS_COLR
+		if s.factory2->TranslateColorGlyphRun(0, 0, run, nil, .NATURAL, nil, 0, &e0) < 0 || e0 == nil { return 0, false }
+		defer com_release(e0)
+		for {
+			has: BOOL
+			if e0->MoveNext(&has) < 0 || !has { break }
+			c: ^DWRITE_COLOR_GLYPH_RUN
+			if e0->GetCurrentRun(&c) < 0 || c == nil { break }
+			if c.paletteIndex == 0xFFFF { text_color = true }
+		}
+		return DWRITE_GLYPH_IMAGE_FORMATS_COLR, text_color
 	case:
-		return 0
+		return 0, false
 	}
-	if hr < 0 || e == nil { return 0 }   // DWRITE_E_NOCOLOR
+	if hr < 0 || e == nil { return 0, false }   // DWRITE_E_NOCOLOR
 	defer com_release(e)
-	fmts: DWRITE_GLYPH_IMAGE_FORMATS
 	for {
 		has: BOOL
 		if e->MoveNext(&has) < 0 || !has { break }
 		c: ^DWRITE_COLOR_GLYPH_RUN1
 		if e->GetCurrentRun1(&c) < 0 || c == nil { break }
 		fmts |= c.glyphImageFormat
+		if c.glyphImageFormat & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0 && c.paletteIndex == 0xFFFF { text_color = true }
 	}
-	return fmts & COLOR_FORMATS
+	return fmts & COLOR_FORMATS, text_color
+}
+
+// Whether the COLR v1 paint tree of glyph `gid` uses the text color (ok = false: no paint reader to tell).
+@(private)
+paint_uses_text_color :: proc(f: ^Font, gid: u16) -> (uses, ok: bool) {
+	if f.dw7 == nil { return }
+	r: ^IDWritePaintReader
+	if f.dw7->CreatePaintReader(DWRITE_GLYPH_IMAGE_FORMATS_COLR_PAINT_TREE, DWRITE_PAINT_FEATURE_LEVEL_COLR_V1, &r) < 0 || r == nil { return }
+	defer com_release(r)
+	el: DWRITE_PAINT_ELEMENT
+	clip: [4]f32
+	attrs: u32
+	if r->SetCurrentGlyph(u32(gid), &el, size_of(el), &clip, &attrs) < 0 { return }
+	return attrs & DWRITE_PAINT_ATTRIBUTES_USES_TEXT_COLOR != 0, true
 }
 // Can this package draw the color glyphs of face `id` in color? False for a face whose only color representation is
 // one the system cannot draw (COLR v1 paint trees before Windows 11 22H2 without v0 layers): a cascade should rather
@@ -143,14 +171,28 @@ color_renderable :: proc(s: ^State, id: Font_Id) -> bool {
 	f := face_ptr(s, id)
 	if f == nil || !f.color || f.dw4 == nil { return true }
 	fmts := f.dw4->GetGlyphImageFormats() & COLOR_FORMATS
-	atlas_lock(&s.atlas)
-	defer atlas_unlock(&s.atlas)
-	cr := &s.color_raster
-	d2d := color_raster_init(cr)
-	if d2d && cr.dc7 != nil && s.factory8 != nil { return true }
+	d2d, paint := color_caps(s)
+	if paint { return true }
 	drawable := DWRITE_GLYPH_IMAGE_FORMATS_COLR
-	if d2d && cr.dc4 != nil && s.factory4 != nil { drawable |= DWRITE_GLYPH_IMAGE_FORMATS_SVG | BITMAP_FORMATS }
+	if d2d { drawable |= DWRITE_GLYPH_IMAGE_FORMATS_SVG | BITMAP_FORMATS }
 	return fmts & drawable != 0
+}
+
+// What Direct2D can draw here (the device is made on the first call): color glyphs at all, COLR v1 paint trees.
+@(private)
+color_caps :: proc(s: ^State) -> (d2d, paint: bool) {
+	cr := &s.color_raster
+	sync.once_do_with_data(&cr.once, proc(data: rawptr) {
+		s := (^State)(data)
+		cr := &s.color_raster
+		sync.mutex_lock(&cr.mu)
+		defer sync.mutex_unlock(&cr.mu)
+		if color_raster_init(cr) && cr.dc4 != nil && s.factory4 != nil {
+			cr.ok = true
+			cr.paint = cr.dc7 != nil && s.factory8 != nil
+		}
+	}, s)
+	return cr.ok, cr.paint
 }
 
 // sRGB, straight alpha.
@@ -254,27 +296,46 @@ d2d_draw_runs :: proc(s: ^State, o: D2D1_POINT_2F, run: ^DWRITE_GLYPH_RUN, fg: [
 // representations can be drawn here (draw its outline). `uses_fg`: the result depends on `fg`.
 @(private)
 rasterize_color :: proc(s: ^State, f: ^Font, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]u8, probe_fg: bool) -> (g: Glyph_Image, uses_fg: bool, ok: bool) {
-	cr := &s.color_raster
-	d2d := color_raster_init(cr)
-	fmts := glyph_formats(s, run, d2d && cr.dc7 != nil && cr.dc4 != nil)
+	_, paint := color_caps(s)
+	fmts, text_color := glyph_formats(s, run, paint)
 	if fmts == 0 { return {}, false, false }
-	if d2d && cr.dc4 != nil && s.factory4 != nil {
-		{
-			px, w, h, origin, drawn := d2d_draw_glyph(s, f, run, x, fg)
-			if drawn {
-				if probe_fg && fmts & (COLOR_FORMATS &~ BITMAP_FORMATS) != 0 {
-					// drawn again in a color far from fg on every channel: a difference anywhere means text-color layers
-					other := [3]u8{fg[0] < 128 ? 255 : 0, fg[1] < 128 ? 255 : 0, fg[2] < 128 ? 255 : 0}
-					if px2, w2, h2, _, again := d2d_draw_glyph(s, f, run, x, other); again && w2 == w && h2 == h {
-						for i in 0 ..< len(px) { if px[i] != px2[i] { uses_fg = true; break } }
-					}
-				}
-				return color_bitmap_put(s, px, w, h, origin), uses_fg, true
-			}
-		}
-	}
+	px, w, h, origin, fg_dep, drawn := color_render(s, f, run, x, fg, probe_fg, fmts, text_color)
+	if drawn { return color_bitmap_put(s, px, w, h, origin), fg_dep, true }
 	if fmts & DWRITE_GLYPH_IMAGE_FORMATS_COLR == 0 { return {}, false, false }
 	return rasterize_colr_layers(s, run, x, fg)
+}
+
+// The color glyph of `run` (its formats and COLR text-color use from glyph_formats) drawn by Direct2D: the canvas
+// (premultiplied BGRA, temp allocator), where the pen is on it, and whether it depends on the text color. drawn =
+// false: Direct2D cannot draw it. Takes the Direct2D lock; needs no other.
+@(private)
+color_render :: proc(s: ^State, f: ^Font, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]u8, probe_fg: bool, fmts: DWRITE_GLYPH_IMAGE_FORMATS,
+	text_color: bool) -> (px: []u8, w, h: int, origin: [2]int, uses_fg, drawn: bool) {
+	d2d, paint := color_caps(s)
+	if !d2d { return }
+	cr := &s.color_raster
+	sync.mutex_lock(&cr.mu)
+	defer sync.mutex_unlock(&cr.mu)
+	px, w, h, origin, drawn = d2d_draw_glyph(s, f, run, x, fg)
+	if !drawn { return }
+	// text-color layers: COLR v0 runs in palette entry 0xFFFF, COLR v1 trees by their paint attributes; an SVG
+	// document (currentColor, context-fill) can only be drawn again in a color far from fg on every channel: a
+	// difference anywhere means it uses it
+	uses_fg = text_color
+	probe := false
+	if fmts & DWRITE_GLYPH_IMAGE_FORMATS_COLR_PAINT_TREE != 0 && paint {
+		u, known := paint_uses_text_color(f, run.glyphIndices[0])
+		uses_fg = uses_fg || u
+		probe = !known
+	}
+	if fmts & DWRITE_GLYPH_IMAGE_FORMATS_SVG != 0 { probe = true }
+	if probe && probe_fg && !uses_fg {
+		other := [3]u8{fg[0] < 128 ? 255 : 0, fg[1] < 128 ? 255 : 0, fg[2] < 128 ? 255 : 0}
+		if px2, w2, h2, _, again := d2d_draw_glyph(s, f, run, x, other); again && w2 == w && h2 == h {
+			for i in 0 ..< len(px) { if px[i] != px2[i] { uses_fg = true; break } }
+		}
+	}
+	return
 }
 
 // A canvas (premultiplied BGRA) cut to its ink and put in a Color page as straight-alpha RGBA.

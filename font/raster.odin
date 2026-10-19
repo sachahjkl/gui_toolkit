@@ -27,6 +27,7 @@ Glyph_Image :: struct {
 	size:   [2]f32,
 	epoch:  u32,       // the page's epoch when the bitmap was put there (see Page_Ref)
 	uses_fg: bool,     // a color glyph with layers in the text color: kept once per text color
+	pending: bool,     // a color glyph being drawn (Settings.color_async): nothing to draw yet (see color_async.odin)
 }
 
 @(private)
@@ -72,6 +73,8 @@ Atlas :: struct {
 	pages:  [dynamic]^Page,
 	glyphs: map[u64]Glyph_Image,
 	fg_glyphs: map[Fg_Key]Glyph_Image,   // color glyphs that use the text color, per color (`glyphs` marks them)
+	pending:   map[u64]bool,             // color glyphs queued (color_async.odin), by key
+	fg_pending: map[Fg_Key]bool,         // ... and those known to use the text color, by key and color
 	clock:  u64,
 	users:  map[rawptr]u64,    // draw contexts: the clock at the start of their current frame
 	evictions: int,
@@ -85,6 +88,8 @@ atlas_init :: proc(a: ^Atlas) {
 	context.allocator = runtime.heap_allocator()
 	a.glyphs = make(map[u64]Glyph_Image)
 	a.fg_glyphs = make(map[Fg_Key]Glyph_Image)
+	a.pending = make(map[u64]bool)
+	a.fg_pending = make(map[Fg_Key]bool)
 	a.users = make(map[rawptr]u64)
 	a.clock = 1
 }
@@ -96,6 +101,8 @@ atlas_destroy :: proc(a: ^Atlas) {
 	delete(a.pages)
 	delete(a.glyphs)
 	delete(a.fg_glyphs)
+	delete(a.pending)
+	delete(a.fg_pending)
 	delete(a.users)
 }
 
@@ -112,6 +119,8 @@ atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 	for k in a.fg_glyphs {
 		if Font_Id(k.key >> 44) == face { delete_key(&a.fg_glyphs, k) }
 	}
+	for k in a.pending { if Font_Id(k >> 44) == face { delete_key(&a.pending, k) } }
+	for k in a.fg_pending { if Font_Id(k.key >> 44) == face { delete_key(&a.fg_pending, k) } }
 }
 
 // A draw context starts a frame: pages it draws from until its next frame are kept.
@@ -333,11 +342,28 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 			if fg_g.page >= 0 { a.pages[fg_g.page].last_used = a.clock }
 			return fg_g
 		}
+		if s.settings.color_async {
+			if fk in a.fg_pending { return Glyph_Image{page = -1, color = true, pending = true} }
+			if color_enqueue(s, Color_Job{key = key, fg = fg, known_fg = true, face = face, gid = gid, size = size, x = x, settings = a.settings_generation}) {
+				a.fg_pending[fk] = true
+				return Glyph_Image{page = -1, color = true, pending = true}
+			}
+		}
 		fg_g, _ := rasterize(s, face, gid, size, x, fg, false)
 		fg_g.uses_fg = true
 		a.fg_glyphs[fk] = fg_g
 		if fg_g.page >= 0 { a.pages[fg_g.page].last_used = a.clock }
 		return fg_g
+	}
+	if key in a.pending { return Glyph_Image{page = -1, color = true, pending = true} }
+	if s.settings.color_async && s.settings.color_glyphs {
+		// a color glyph is drawn on the color glyph thread (outlines of color faces are rasterized here)
+		if f := face_ptr(s, face); f != nil && f.color && s.factory != nil && size > 0 && is_color_glyph(s, f, gid, size) {
+			if color_enqueue(s, Color_Job{key = key, fg = fg, face = face, gid = gid, size = size, x = x, settings = a.settings_generation}) {
+				a.pending[key] = true
+				return Glyph_Image{page = -1, color = true, pending = true}
+			}
+		}
 	}
 	g, uses_fg := rasterize(s, face, gid, size, x, fg, true)
 	if uses_fg {
@@ -413,7 +439,14 @@ rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]
 	if f.color && s.settings.color_glyphs {
 		if g, uses_fg, ok := rasterize_color(s, f, &run, x, fg, probe_fg); ok { return g, uses_fg }
 	}
-	bounds, px, ok := coverage(s, &run, x, 0)
+	return rasterize_outline(s, f, &run, x)
+}
+
+// The coverage of the glyph of `run` into a Gray page. Caller holds the atlas lock.
+@(private)
+rasterize_outline :: proc(s: ^State, f: ^Font, run: ^DWRITE_GLYPH_RUN, x: f32) -> (Glyph_Image, bool) {
+	blank := Glyph_Image{page = -1}
+	bounds, px, ok := coverage(s, run, x, 0)
 	if !ok || px == nil { return blank, false }
 	w, h := int(bounds.right - bounds.left), int(bounds.bottom - bounds.top)
 	pi, ax, ay, aok := atlas_alloc(s, .Gray, w, h)
