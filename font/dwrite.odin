@@ -270,6 +270,24 @@ IDWriteFactory4_VTable :: struct {
 	ComputeGlyphOrigins:     rawptr,
 }
 
+// IDWriteFactory5 (43..47), 6 (48..54), 7 (55..56), 8 (57): only the paint-tree aware TranslateColorGlyphRun is called.
+IDWriteFactory8 :: struct #raw_union {
+	#subtype factory: IDWriteFactory,
+	using vtable: ^IDWriteFactory8_VTable,
+}
+IDWriteFactory8_VTable :: struct {
+	using factory4_vtable: IDWriteFactory4_VTable,
+	_f5: [5]rawptr,
+	_f6: [7]rawptr,
+	_f7: [2]rawptr,
+	TranslateColorGlyphRun8: proc "system" (this: ^IDWriteFactory8, origin: D2D1_POINT_2F, run: ^DWRITE_GLYPH_RUN, desc: ^DWRITE_GLYPH_RUN_DESCRIPTION, formats: DWRITE_GLYPH_IMAGE_FORMATS,
+		paint_level: u32, mode: DWRITE_MEASURING_MODE, transform: ^DWRITE_MATRIX, palette: u32, layers: ^^IDWriteColorGlyphRunEnumerator1) -> HRESULT,
+}
+#assert(offset_of(IDWriteFactory8_VTable, TranslateColorGlyphRun8) == 57 * size_of(rawptr))
+#assert(offset_of(IDWriteFactory4_VTable, TranslateColorGlyphRun4) == 40 * size_of(rawptr))
+
+IID_IDWriteFactory8 := IID{0xee0a7fb5, 0xdef4, 0x4c23, {0xa4, 0x54, 0xc9, 0xc7, 0xdc, 0x87, 0x83, 0x98}}
+
 IDWriteFontFile :: struct #raw_union {
 	#subtype iunknown: IUnknown,
 	using vtable: ^IDWriteFontFile_VTable,

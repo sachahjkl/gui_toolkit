@@ -235,11 +235,22 @@ Pass_Mode :: enum u32 {
 	Blur,        // one direction of a separable gaussian (`dir`, `sigma` in src texels)
 	Downsample,  // half size: 2 x 2 average (the next texel row and column of src)
 	Shadow,      // drop shadow: src = blurred alpha, src2 = the input; out = src2 over (color x src.a moved by offset)
+	Mask,        // masks (CSS Masking 1): src2 = a mask layer, its coverage its alpha or luminance (PASS_MASK_LUMINANCE).
+	             // PASS_MASK_APPLY: out = src (the content, any space) x coverage. Else out = the coverage composited
+	             // with src's alpha (the layers below, PASS_MASK_DEST) by the Mask_Op in flags >> MASK_OP_SHIFT,
+	             // as premultiplied white
 }
 PASS_IN_LINEAR :: 1    // src holds linear premultiplied color (the frame, a layer); else sRGB-encoded premultiplied
 PASS_OUT_LINEAR :: 2   // write linear premultiplied color (the end of a chain); else sRGB-encoded premultiplied
 PASS_CLAMP :: 4        // reads past src's valid region repeat its edge (backdrops); else they are transparent
-PASS_SRC2_LINEAR :: 8  // Shadow: src2 holds linear color
+PASS_SRC2_LINEAR :: 8  // Shadow, Mask: src2 holds linear color
+PASS_MASK_LUMINANCE :: 16
+PASS_MASK_DEST :: 32
+PASS_MASK_APPLY :: 64
+MASK_OP_SHIFT :: 8
+
+// How a mask layer combines with the layers below it (CSS mask-composite).
+Mask_Op :: enum u32 { Add, Subtract, Intersect, Exclude }
 
 // A filter pass (CSS Filter Effects 1). Colors are processed in sRGB as browsers do: a chain over a linear layer
 // converts once from it (PASS_IN_LINEAR on its first pass) and back once (PASS_OUT_LINEAR on its last); over an sRGB

@@ -147,6 +147,9 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	if c.rec != nil { picture_note_text(c, xf.gpu, sf) }
 	sc, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 	page_size := f32(c.fonts.settings.page_size)
+	// the text color as color glyphs with text-color layers are drawn in it (sRGB; the alpha is the image's tint)
+	enc :: #force_inline proc(v: f32) -> u8 { return u8(clamp(render.linear_to_srgb(clamp(v, 0, 1)) * 255 + 0.5, 0, 255)) }
+	fg := [3]u8{enc(color.r), enc(color.g), enc(color.b)}
 	for g in glyphs {
 		lx, ly := pos.x + g.x, pos.y + g.y
 		// where the bitmap goes: screen pixels (baked) or local units (GPU transform, or a picture's slot)
@@ -158,7 +161,7 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 				// layout and raster sizes agree: snap in local units, then scale (sc is within the tolerance of 1)
 				ix: f32
 				ix, sub = font.subpixel(c.fonts, lx)
-				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub)
+				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
 				if img.page < 0 { continue }
 				x0 := ix + img.offset.x
 				y0 := math.round(ly) + img.offset.y
@@ -167,7 +170,7 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 				// bitmap at screen size: snap the pen on the screen pixel grid
 				ix: f32
 				ix, sub = font.subpixel(c.fonts, lx * sc + o.x)
-				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub)
+				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
 				if img.page < 0 { continue }
 				x0 := ix + img.offset.x
 				y0 := math.round(ly * sc + o.y) + img.offset.y
@@ -178,13 +181,13 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 			// what direct drawing draws)
 			ix: f32
 			ix, sub = font.subpixel(c.fonts, lx)
-			img = font.glyph_image(c.fonts, g.face, g.id, raster, sub)
+			img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
 			if img.page < 0 { continue }
 			x0 := ix + img.offset.x
 			y0 := math.round(ly) + img.offset.y
 			dst = {x0, y0, x0 + img.size.x, y0 + img.size.y}
 		} else {
-			img = font.glyph_image(c.fonts, g.face, g.id, raster, 0)
+			img = font.glyph_image(c.fonts, g.face, g.id, raster, 0, fg)
 			if img.page < 0 { continue }
 			x0 := lx + img.offset.x / k
 			y0 := ly + img.offset.y / k
