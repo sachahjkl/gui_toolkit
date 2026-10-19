@@ -131,6 +131,12 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
   Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms now (`-define:RENDER_PROBE=true` prints
   it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
+  `platform.wait_handle(w, render.frame_waitable(&r))` waits the same way while taking input as it arrives (time-stamped:
+  `Event.stamp`).
+- **Frame pacing**: `platform.display_info` gives the exact refresh rate of the window's monitor (followed across
+  monitors and mode changes); `render.set_present_mode` (vsync, or tearing for variable refresh), `set_sync_interval`;
+  `render.take_displayed` reports every frame that reached the screen (vblank time, input latency, missed refreshes),
+  `measured_refresh_hz` and `vblank_grid` the measured vblank interval and phase.
 
 - **Keyboard**: Tab / Shift+Tab focus navigation (trapped inside modals, scrolled into view, focus ring), arrow keys
   move the focus spatially, Enter / Space activate, arrows drive sliders, menus and dropdowns; an open menu owns the

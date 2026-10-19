@@ -319,7 +319,13 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 			old := value^
 			if sig.pressed { value^ += dir * amount; timer_set(key, 420) }
 			else if sig.dragging && timer_due(key) { value^ += dir * amount; timer_set(key, 55) }
-			if sig.dragging { g.anim_busy = true; g.wake_ms = 30 }
+			if sig.dragging {
+				// a wake at the next repeat, not a frame at every refresh while the button is held
+				if t, ok := g.timers[key]; ok {
+					left := max(1, int(t.next_ms - g.time_ms + 0.999))
+					g.wake_ms = g.wake_ms == 0 ? left : min(g.wake_ms, left)
+				}
+			}
 			value^ = clamp(value^, lo, hi)
 			if value^ != old { changed = true }
 		}

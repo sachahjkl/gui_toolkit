@@ -3,6 +3,7 @@ package platform
 
 import "base:runtime"
 import "core:strings"
+import "core:time"
 import "core:unicode/utf16"
 import win "core:sys/windows"
 
@@ -15,6 +16,11 @@ Native_Window :: struct {
 	closed:         bool,
 	dark_title:     bool,
 	cursors:        [Cursor]win.HCURSOR,
+	keep_events:    bool,           // wait_handle took input: the next poll_events adds to it
+	paint_requested: bool,          // WM_PAINT came during poll_events: take_paint_request
+	modal:          int,            // inside a loop of the system (move / size, menu): it owns the messages, frames come from WM_PAINT
+	display:        Display_Info,   // display_info's cache
+	display_stale:  bool,
 }
 
 @(private) class_name: win.wstring
@@ -47,6 +53,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.on_frame = on_frame
 	w.dpi_scale = 1
 	w.focused = true
+	w.display_stale = true
 	for c in Cursor { w.cursors[c] = win.LoadCursorA(nil, cursor_resource(c)) }
 
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
@@ -139,9 +146,10 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	w.in_poll = true
 	defer w.in_poll = false
 
-	clear(&w.events)
+	if !w.keep_events { clear(&w.events) }   // what wait_handle took is the start of this batch
+	w.keep_events = false
 	msg: win.MSG
-	if wait && !win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) {
+	if wait && len(w.events) == 0 && !win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) {
 		// with a timeout, a timer message wakes the wait (caret blink, tooltip delay)
 		if timeout_ms > 0 { win.SetTimer(w.hwnd, 1, u32(timeout_ms), nil) }
 		win.WaitMessage()
@@ -167,6 +175,14 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	if timeout_ms > 0 { win.SetTimer(w.hwnd, 1, u32(timeout_ms), nil) }
 	win.WaitMessage()
 	if timeout_ms > 0 { win.KillTimer(w.hwnd, 1) }
+}
+
+// True once after the system asked for a repaint (uncovered, resized) while the app polled: draw a frame. (Inside a
+// loop of the system the window calls on_frame itself.)
+take_paint_request :: proc(w: ^Window) -> bool {
+	r := w.paint_requested
+	w.paint_requested = false
+	return r
 }
 
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
@@ -298,7 +314,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	w = cast(^Window)uintptr(win.GetWindowLongPtrW(hwnd, win.GWLP_USERDATA))
 	if w == nil { return win.DefWindowProcW(hwnd, msg, wparam, lparam) }
 
-	push :: proc(w: ^Window, e: Event) { append(&w.events, e) }
+	push :: proc(w: ^Window, e: Event) {
+		e := e
+		e.stamp = time.tick_now()
+		append(&w.events, e)
+	}
 	mouse_pos :: proc(lparam: win.LPARAM) -> [2]f32 {
 		return {f32(win.GET_X_LPARAM(lparam)), f32(win.GET_Y_LPARAM(lparam))}
 	}
@@ -326,7 +346,16 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		mmi.ptMinTrackSize = {i32(320 * w.dpi_scale), i32(240 * w.dpi_scale)}
 		return 0
 
+	case win.WM_DISPLAYCHANGE:
+		w.display_stale = true   // a mode (resolution, refresh rate) or the monitor layout changed
+
+	case win.WM_ENTERSIZEMOVE, win.WM_ENTERMENULOOP: w.modal += 1
+	case win.WM_EXITSIZEMOVE, win.WM_EXITMENULOOP:
+		w.modal = max(w.modal - 1, 0)
+		w.display_stale = true   // a move may have landed on another monitor
+
 	case win.WM_DPICHANGED:
+		w.display_stale = true
 		w.dpi_scale = f32(win.HIWORD(u32(wparam))) / 96
 		r := cast(^win.RECT)uintptr(lparam)
 		win.SetWindowPos(hwnd, nil, r.left, r.top, r.right - r.left, r.bottom - r.top, win.SWP_NOZORDER | win.SWP_NOACTIVATE)
@@ -345,6 +374,9 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		ps: win.PAINTSTRUCT
 		win.BeginPaint(hwnd, &ps)
 		win.EndPaint(hwnd, &ps)
+		// from the app's own poll the frame being built repaints anyway: a nested one would present twice in one turn
+		// and wait twice for the swap chain. Only a loop of the system (live resize, menu) needs the frame from here.
+		if w.in_poll && w.modal == 0 { w.paint_requested = true; return 0 }
 		if w.on_frame != nil && w.size.x > 0 && w.size.y > 0 { w.on_frame(w.user) }
 		return 0
 
