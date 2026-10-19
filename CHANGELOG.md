@@ -3,6 +3,36 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.6.0] - 2026-10-19
+
+### Added
+- **Blend spaces**: `render.Blend_Space` (`Linear`, `Srgb`): where colors mix (blending, antialiased edges,
+  interpolation, image filtering and mips, layer composites). `Srgb` composites like web browsers (CSS Color 4 /
+  Compositing 1: `rgba(0, 0, 0, .5)` over white is 128). `render.init(..., space)`, `render.init_offscreen(..., space)`,
+  `render.set_blend_space` (at run time: frame view, translucent swap chain format and color space, pooled targets),
+  `render.blend_space`. Per layer: `draw.Layer_Effects.space` (`draw.Layer_Space`), `draw.blend_space(dc)`;
+  `render.Layer.space`, `render.Image_Ref.space`.
+- `draw.set_interpolation(dc, .Target | .Srgb | .Linear)` (`draw.Interpolation`): where corner colors interpolate
+  (`render.FLAG_LERP_SRGB`, `FLAG_LERP_LINEAR`), e.g. CSS gradients in sRGB whatever the frame's space.
+- RGBA textures stored in the renderer's space when created (`render.texture_space`; `R8G8B8A8_UNORM` premultiplied on
+  sRGB values in `Srgb`), converted by the shader when drawn into a target of the other space (`render.FLAG_TEX_SRGB`).
+- **Text correction**: `render.Text_Rendering` (`curve`: `None`, `Srgb`, `Power`; `gamma`, `contrast`,
+  `coverage_exponent`), `render.set_text_rendering`, `render.text_rendering`, `render.text_rendering_default`,
+  `TEXT_RENDERING_LINEAR` (the historical look), `TEXT_RENDERING_SRGB` (Chromium on Windows: Skia's sRGB curve,
+  contrast 1.0). Skia's `SkMaskGamma` computed per glyph in the vertex shader; same text weight in both spaces.
+- `draw.alpha_like_linear`, `ui.tuned`: translucent colors tuned for linear light keep their look in an sRGB frame;
+  `ui.apply_palette(t, p, space)`; the UI interpolates its gradients in linear light in both spaces.
+- `render.linear_to_srgb`, `render.srgb_to_linear`.
+- `tests/blend_space` (WARP pixel tests of both spaces); `tests/layers` and `tests/effects` run in both spaces.
+- Examples: `effects --srgb`, `transforms --srgb`, fidget's Settings > Blending (and `--blending=srgb|linear`).
+
+### Changed
+- Corner colors are interpolated **premultiplied** (a transparent corner no longer darkens a gradient).
+- The glyph atlas holds raw coverage (`font.GLYPH_GAMMA` is gone): the 0.8 exponent is now
+  `Text_Rendering.coverage_exponent`, applied by the shader (same look in `Linear`).
+- The constant buffer of `rect.hlsl` is 48 bytes (target space, text parameters).
+- A translucent window's swap chain color space is set explicitly (`SetColorSpace1`).
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

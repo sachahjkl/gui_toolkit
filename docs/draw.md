@@ -2,8 +2,8 @@
 
 The `draw` package is the immediate-mode layer under `ui`: you can also use it on its own (see `examples/smoke`,
 `examples/transforms` and `examples/effects`). This page covers the 2D transforms, the clips and the images added in
-0.4.0, the layers (group opacity) and offscreen rendering added in 0.4.1, and the effects added in 0.5.0: filters,
-blend modes, backdrops, ellipse and polygon clips.
+0.4.0, the layers (group opacity) and offscreen rendering added in 0.4.1, the effects added in 0.5.0 (filters,
+blend modes, backdrops, ellipse and polygon clips) and the blend spaces added in 0.6.0.
 
 ![examples/transforms](screenshots/transforms.png)
 
@@ -112,8 +112,9 @@ draw.pop_layer(dc)                     // composited once, at 50 %
   blurred, then clipped, as CSS does).
 - The composite is pixel for pixel (`render.FLAG_LAYER`: texels fetched, no filtering), with no transform (the
   content was already transformed).
-- Layers are linear fp16 (`R16G16B16A16_FLOAT`), premultiplied: an opaque layer looks like no layer (antialiased
-  edges may differ by a couple of 8-bit levels, the layer keeping more precision).
+- Layers are fp16 (`R16G16B16A16_FLOAT`), premultiplied, in their blend space (`Layer_Effects.space`, the enclosing
+  one by default): an opaque layer looks like no layer (antialiased edges may differ by a couple of 8-bit levels, the
+  layer keeping more precision).
 - Render targets come from a pool in the renderer (`render.acquire_target`, sizes rounded up to 128 px, released
   after 120 unused frames, `render.release_targets`, `render.targets_bytes`). A target is handed back as soon as
   the last step reading it is recorded (`render.release_target`): many layers in a frame share a few textures.
@@ -153,7 +154,7 @@ the blend with what is already drawn. `push_layer(dc, bounds, alpha)` is `push_e
 
 - Colors are filtered **in sRGB**, on straight values for the matrices (each result clamped, so
   `brightness(3) brightness(0.5)` is not the identity) and premultiplied values for blurs, as browsers compute them;
-  the layer is linear and is converted once at each end of the chain.
+  a linear layer is converted once at each end of the chain, an sRGB layer not at all.
 - `filter_is_identity(f)` tells filters that change nothing (`brightness(1)`, `blur(0)`...): `push_effects` skips
   them, and a chain of identities runs no pass. `filters_outset(m, filters)` is how far they spread content, in
   screen pixels (left, top, right, bottom); the layer is grown by it, and so is the area whose content may spread
@@ -197,6 +198,86 @@ build):
 | 12 cards: frosted backdrop (blur 12) + drop shadow + sepia, full window | 12 | 108 | 11 (9.6 MB) | 0.06 ms | 2.2 ms |
 | 40 cards, same | 40 | 360 | 11 (5.0 MB) | 0.18 ms | 2.0 ms |
 
+## Blend spaces
+
+Colors given to `draw` are always **linear** (`draw.srgb`, `draw.hex` convert). The **blend space**
+(`render.Blend_Space`) says where they are mixed: alpha blending, antialiased edges, interpolation of corner colors,
+image filtering and mips, layer composites.
+
+| | `Linear` (default) | `Srgb` |
+|---|---|---|
+| mixes | linear light (physically correct) | sRGB-encoded values, as every web browser (CSS Color 4, Compositing 1) |
+| `rgba(0, 0, 0, .5)` over white | 188 | 128 |
+| frame render target view | `B8G8R8A8_UNORM_SRGB` (the hardware encodes) | `B8G8R8A8_UNORM` (the shader writes sRGB values) |
+| RGBA textures | `R8G8B8A8_UNORM_SRGB`, premultiplied in linear light | `R8G8B8A8_UNORM`, premultiplied on sRGB values |
+| translucent window | fp16 scRGB swap chain | 8-bit premultiplied sRGB swap chain (color space set explicitly) |
+| filters, blend modes | converted to sRGB and back at the ends of a chain | computed as they are (no conversion) |
+| text (default `Text_Rendering`) | coverage^0.8 blended in linear light (the toolkit's historical look) | Chromium on Windows: Skia's sRGB curve, contrast 1.0 |
+
+```odin
+render.init(&r, hwnd, size, space = .Srgb)            // or render.init_offscreen(&r, size, space = .Srgb)
+render.set_blend_space(&r, .Linear)                    // later, between frames
+draw.push_effects(dc, bounds, {alpha = 1, space = .Srgb})   // a layer of its own space
+prev := draw.set_interpolation(dc, .Srgb)              // CSS gradients: sRGB whatever the frame's space
+```
+
+- **Per renderer**: `render.init(..., space)`, `render.init_offscreen(..., space)`, `render.set_blend_space` (recreates
+  the frame's view, switches a translucent window's swap chain format, releases pooled targets, resets the text
+  rendering to the space's default), `render.blend_space`.
+- **Per layer**: `Layer_Effects.space` (`Inherit`, `Linear`, `Srgb`): the layer's draw calls blend in it; its composite
+  blends in the enclosing target's space (an opaque layer of one space inside a frame of the other is exact).
+  `draw.blend_space(dc)` is the space of what is drawn now. Each target's space goes to the shader in its constant
+  buffer (`target_space`).
+- **Interpolation**: `draw.set_interpolation(dc, .Target | .Srgb | .Linear)` chooses where the corner colors of
+  `rect_corners` are interpolated (`render.FLAG_LERP_SRGB` / `FLAG_LERP_LINEAR` per instance). Colors are interpolated
+  **premultiplied** (a transparent corner does not darken the others), as CSS gradients are.
+- **Textures** are stored in the renderer's space when created (`render.texture_space`); an instance drawing one carries
+  `render.FLAG_TEX_SRGB` when its texels are sRGB values, and the shader converts when the texture's space and the
+  target's differ (after `set_blend_space`, existing textures keep working). The same flag marks layer composites
+  and backdrops of sRGB layers.
+- **`read_pixels`** returns 8-bit sRGB in both spaces; `frame_begin`'s clear color is linear (premultiplied) in both.
+
+### Text
+
+Glyph coverage becomes alpha through `render.Text_Rendering` (`render.set_text_rendering`, per renderer):
+
+```odin
+Text_Rendering :: struct { curve: Text_Curve, gamma, contrast, coverage_exponent: f32 }
+Text_Curve :: enum u8 { None, Srgb, Power }
+```
+
+The coverage is raised to `coverage_exponent`, then corrected as Skia does (`SkMaskGamma`, what Chromium uses): the
+text's luminance `s` and a background guessed as its opposite `d = 1 - s` are taken through the curve (`Srgb`: the
+sRGB transfer function, Skia's `SK_GAMMA_SRGB`; `Power`: `x^gamma`, Skia's `SK_GAMMA_EXPONENT`); the coverage `a` is
+boosted, `a' = a + (1 - a) * contrast * Ld * a` (the contrast fades out as the guessed background gets dark), the
+wanted color `Ls * a' + Ld * (1 - a')` is taken back through the curve, and the shader uses the coverage that makes the
+target's own blend (sRGB values or linear light) give it. With the same settings, text therefore has the same weight in
+both spaces (tested). The per-glyph terms are computed by the vertex shader; the pixel shader adds one curve
+evaluation.
+
+What Chromium does on Windows (chromium `skia/BUILD.gn`: `SK_GAMMA_SRGB`, `SK_GAMMA_CONTRAST=1.0` since Chrome 132; the
+ClearType tuner's registry values replace them when present): `TEXT_RENDERING_SRGB`, the default of the `Srgb` space.
+Measured against Edge on the same page (Segoe UI 15 px at 175 %): ink per pixel of text width within 2 % for black on
+white and for light on dark, where plain sRGB coverage is 4 % heavier and 17 % lighter respectively. Remaining
+differences come from the rasterizer: stb_truetype, unhinted, grayscale; Edge uses DirectWrite with ClearType.
+Linux Chromium's values are `{curve = .Power, gamma = 1.2, contrast = 0.2}`.
+
+### The UI in the sRGB space
+
+The `ui` package's translucent colors (hover tints, focus glow, sheens, scrollbars, theme entries with an alpha,
+disabled fading) are tuned for linear light. `ui.apply_palette(t, p, space)` and `ui.tuned(color, over)` change their
+alpha so they look the same over the theme's background (`draw.alpha_like_linear`: luminance match), and `draw_tree`
+interpolates the UI's gradients in linear light: a UI looks the same in both spaces, except antialiased edges and text.
+`examples/fidget` has the switch in its Settings dialog (and `--blending=srgb`); `examples/effects` and
+`examples/transforms` take `--srgb`.
+
+### Cost
+
+Measured with `-define:GPU_TIMING=true` (minimum of 4 runs, GPU p50): `examples/effects --stress=12` 1.25 ms (0.5.0),
+1.19 ms (Linear), 1.20 ms (Srgb); `examples/transforms` 0.47 / 0.49 / 0.40 ms; `--stress=2000` 0.291 / 0.288 / 0.285
+ms. The shader work added (a division by the interpolated alpha, a conversion when spaces differ, the text curve) is
+below the run-to-run noise.
+
 ## Offscreen rendering (tests, export)
 
 ```odin
@@ -208,7 +289,10 @@ render.destroy(&r)                                  // releases every GPU object
 
 `tests/layers` uses it to check group opacity against direct drawing pixel by pixel; `tests/effects` checks every
 filter and blend mode against the formulas of the specifications on flat colors, the blur's energy, symmetry and
-gaussian profile, the antialiased coverage of ellipse and polygon clips, backdrops, and target reuse.
+gaussian profile, the antialiased coverage of ellipse and polygon clips, backdrops, and target reuse;
+`tests/blend_space` checks blending, edges, gradients and their interpolation, textures (premultiplication,
+filtering, mips, a texture of the other space), layers of either space, `set_blend_space` and the text correction.
+The first two run in both spaces.
 
 ![examples/effects](screenshots/effects.png)
 
@@ -235,10 +319,11 @@ render.destroy_texture(&r, tex)
 | `draw.image_tiled(dc, tex, dst, tile: Rect, tint = WHITE, radii = {})` | one copy of the whole texture on `tile`, repeated, cropped to `dst` |
 
 - **Color**: pixels are sRGB and not premultiplied (what PNG / JPEG decoders and the web produce). The upload
-  converts them to premultiplied alpha in linear light, stored as `R8G8B8A8_UNORM_SRGB`: the sampler decodes to
-  linear before filtering, so bilinear filtering and mip averaging are done in linear light on premultiplied values
-  (no dark fringes around transparent pixels), matching the renderer's linear blending. `tint` is a linear color
-  with straight alpha, like every other color in `draw`; the alpha stack applies.
+  premultiplies them in the texture's blend space (see Blend spaces): in linear light, stored as
+  `R8G8B8A8_UNORM_SRGB` (the sampler decodes to linear before filtering, so filtering and mips happen in linear light),
+  or on the sRGB values, stored as `R8G8B8A8_UNORM` (filtering and mips on sRGB values, as browsers). Either way the
+  values are premultiplied: no dark fringes around transparent pixels. `tint` is a linear color with straight alpha,
+  like every other color in `draw`; the alpha stack applies.
 - **Filtering**: trilinear. Mips are regenerated (`GenerateMips`) before the first frame that follows an update.
   Without tiling, sampling never reads outside `src` (sprite sheets do not bleed).
 - **Tiling** uses the hardware wrap mode on the whole texture: seamless, one instance, the tile can be any size and
@@ -276,6 +361,8 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
   scale), a drop shadow's offset follows the transform exactly.
 - Every effect except the color matrices reads pixels around the one it writes: a layer whose bounds are cut by
   the window edge blurs as if nothing lay past `bounds` + the filters' reach outside the visible area.
-- The renderer blends in linear light (everything, not only effects): translucent content composited over other
-  content is lighter than in an sRGB compositor such as a web browser (50 % black over white: 188 instead of 128).
-  Filters and blend modes themselves compute in sRGB.
+- In the `Linear` blend space (the default) translucent content composited over other content is lighter than in a web
+  browser (50 % black over white: 188 instead of 128); use the `Srgb` space for web content (see Blend spaces).
+- Filters always compute on sRGB values (CSS shorthand filters as browsers run them); SVG's
+  `color-interpolation-filters: linearRGB` is not available.
+- Gradients interpolate in sRGB or linear light only (CSS `in oklab` and other spaces need intermediate stops).

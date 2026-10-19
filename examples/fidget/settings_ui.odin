@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:math"
 import "../../draw"
 import "../../platform"
+import "../../render"
 import "../../ui"
 
 @(private)
@@ -158,6 +159,15 @@ build_settings :: proc(app: ^App) {
 						sel := app.corner_smoothing > 0.5 ? 1 : 0
 						if ui.segmented("###st_shape", shapes[:], &sel) { app.corner_smoothing = f32(sel) }
 					}
+					if ui.form_row("Blending") {
+						spaces := [?]string{"Linear light", "sRGB (web)"}
+						sel := int(render.blend_space(&app.r))
+						if ui.segmented("###st_blend", spaces[:], &sel) { render.set_blend_space(&app.r, render.Blend_Space(sel)) }
+					}
+					if ui.tags("weak") {
+						ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 1.6)), font_size = math.round(em * 0.82)})
+						ui.label("Where colors mix: edges, text and gradients change, the theme adapts.")
+					}
 					ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 2.4))})
 					ui.toggle("###st_status", "Status bar", &app.show_status)
 
@@ -213,6 +223,7 @@ build_settings :: proc(app: ^App) {
 								ui.set_rounding(&app.ui_state, 1)
 								ui.set_density(&app.ui_state, 1)
 								app.corner_smoothing = 1
+								render.set_blend_space(&app.r, .Linear)
 								ui.toast(.Good, "Settings restored to defaults")
 							}
 						}

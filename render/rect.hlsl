@@ -1,6 +1,13 @@
 // One instanced quad draws every primitive: filled / bordered / soft rounded rects (signed distance field),
-// glyphs (atlas coverage) and images (RGBA textures). Colors arrive in LINEAR space and the render target view is
-// sRGB, so blending happens in linear space (same choice as raddebugger).
+// glyphs (atlas coverage) and images (RGBA textures).
+//
+// Blend spaces: colors arrive LINEAR (straight alpha). Each target has a blend space (target_space): in Linear the
+// shader outputs linear colors and the frame's render target view is sRGB, so the hardware blends in linear light
+// (raddebugger's choice); in Srgb the shader outputs sRGB-encoded values into a UNORM view, so blending, antialiased
+// edges and interpolation happen on encoded values, as web browsers do. Corner colors are interpolated premultiplied,
+// in the target's space unless FLAG_LERP_SRGB / FLAG_LERP_LINEAR asks for another one (CSS gradients interpolate in
+// sRGB whatever the compositor does). Image texels carry their own space (FLAG_TEX_SRGB) and are converted when it
+// differs from the target's.
 //
 // Transforms: an instance with a transform index (extra.x != 0) has its rect in a local space; the vertex shader maps
 // the 4 corners to the screen through the 2D affine matrix and grows the quad by 1 screen pixel so the antialiased
@@ -20,7 +27,12 @@
 #define FLAG_CIRCLE 4      // circular corners whatever the renderer's corner shape (web content)
 #define FLAG_SCREEN 8      // image texels are screen pixels: texel 0 = screen pixel src.xy, src.zw texels valid
 #define FLAG_BLEND 16      // layer composite through the blend mode in bits 8..15, against `backdrop`
+#define FLAG_TEX_SRGB 32   // image texels are premultiplied sRGB values (else premultiplied linear)
+#define FLAG_LERP_SRGB 64  // corner colors interpolate in sRGB
+#define FLAG_LERP_LINEAR 128 // corner colors interpolate in linear light
 #define BLEND_SHIFT 8
+#define SPACE_LINEAR 0
+#define SPACE_SRGB 1
 #define CLIP_RRECT 0
 #define CLIP_ELLIPSE 1
 #define CLIP_POLYGON 2
@@ -54,6 +66,10 @@ cbuffer Globals : register(b0)
 	float  corner_n;       // corner shape exponent: 2 = circular arcs, > 2 = superellipse ("squircle", continuous curvature)
 	float  corner_boost;   // radius multiplier that keeps squircle corners visually as round as the circular ones
 	float2 target_origin;  // screen pixel at (0, 0) of the render target: (0, 0) for the frame, the corner of a layer
+	uint   target_space;   // SPACE_LINEAR or SPACE_SRGB: what the target holds and blends in
+	float  text_gamma;     // render.Text_Rendering
+	float  text_contrast;
+	float  text_exponent;
 	float2 _pad;
 };
 
@@ -117,6 +133,48 @@ struct PSIn
 	nointerpolation uint4 extra : EXTRA;
 };
 
+float3 srgb_encode(float3 c)
+{
+	c = saturate(c);
+	return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+}
+
+float3 srgb_decode(float3 c)
+{
+	c = saturate(c);
+	return (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+}
+
+float srgb_decode1(float c) { return srgb_decode(float3(c, c, c)).x; }
+
+// A straight color from one space to the other.
+float3 convert_space(float3 c, uint from, uint to)
+{
+	if (from == to) return c;
+	return to == SPACE_SRGB ? srgb_encode(c) : srgb_decode(c);
+}
+
+// A premultiplied color from one space to the other.
+float4 convert_premul(float4 c, uint from, uint to)
+{
+	if (from == to || c.a <= 0) return from == to ? c : 0;
+	return float4(convert_space(c.rgb / c.a, from, to) * c.a, c.a);
+}
+
+// The text correction's curve (text_gamma: < 0 the sRGB transfer function, > 0 a power) from encoded values to luma
+// and back.
+float text_to_luma(float x) { return text_gamma < 0 ? srgb_decode1(x) : pow(max(x, 0), text_gamma); }
+float3 text_to_luma3(float3 x) { return text_gamma < 0 ? srgb_decode(x) : pow(max(x, 0), text_gamma); }
+float text_from_luma(float l) { return text_gamma < 0 ? srgb_encode(float3(l, l, l)).x : pow(max(l, 0), 1 / text_gamma); }
+
+// Where an instance's corner colors are interpolated.
+uint lerp_space(uint flags)
+{
+	if (flags & FLAG_LERP_SRGB) return SPACE_SRGB;
+	if (flags & FLAG_LERP_LINEAR) return SPACE_LINEAR;
+	return target_space;
+}
+
 PSIn vs_main(VSIn i)
 {
 	float2 corner = float2(i.vid >> 1, i.vid & 1);   // 0: (0,0) 1: (0,1) 2: (1,0) 3: (1,1) as a triangle strip
@@ -145,11 +203,46 @@ PSIn vs_main(VSIn i)
 	float tex = max(i.style.w, 1);
 	o.uv = lerp(i.src.xy, i.src.zw, t) / tex;
 	o.src = i.src / tex;
-	o.color = (i.vid == 0) ? i.c0 : ((i.vid == 1) ? i.c1 : ((i.vid == 2) ? i.c2 : i.c3));
+	float4 c = (i.vid == 0) ? i.c0 : ((i.vid == 1) ? i.c1 : ((i.vid == 2) ? i.c2 : i.c3));
+	if (lerp_space(i.extra.z) == SPACE_SRGB) c.rgb = srgb_encode(c.rgb);
+	o.color = float4(c.rgb * c.a, c.a);   // premultiplied: a transparent corner does not drag the others' hue to black
 	o.radii = i.radii;
 	o.style = i.style;
 	o.extra = i.extra;
+	if ((uint)(i.style.z + 0.5) == KIND_GLYPH)
+	{
+		// Skia's text correction (SkMaskGamma), per glyph: the text's luminance s (sRGB-encoded) and the background
+		// guessed as its opposite d = 1 - s, as luma through the text curve (Ls, Ld) and as the target blends them
+		// (bs, bd). The pixel shader boosts and re-blends the coverage with them.
+		o.style.y = 0;
+		if (text_gamma != 0)
+		{
+			float s = text_from_luma(dot(float3(0.2126, 0.7152, 0.0722), text_to_luma3(srgb_encode(i.c0.rgb))));
+			float d = 1 - s;
+			if (abs(s - d) >= 1.0 / 256)
+			{
+				float ls = text_to_luma(s), ld = text_to_luma(d);
+				float bs = target_space == SPACE_LINEAR ? srgb_decode1(s) : s;
+				float bd = target_space == SPACE_LINEAR ? srgb_decode1(d) : d;
+				o.radii = float4(ls, ld, bd, 1 / (bs - bd));
+				o.style.x = text_contrast * ld;   // the contrast fades out as the guessed background gets dark
+				o.style.y = 1;
+			}
+		}
+	}
 	return o;
+}
+
+// Glyph coverage to alpha (render.Text_Rendering): exponent, then Skia's correction prepared by the vertex shader.
+float text_coverage(float a, PSIn i)
+{
+	if (text_exponent != 1) a = pow(max(a, 0), text_exponent);
+	if (i.style.y < 0.5) return a;
+	float boosted = a + (1 - a) * i.style.x * a;
+	float lin = i.radii.x * boosted + (1 - boosted) * i.radii.y;   // the blend wanted, through the text curve
+	float o = text_from_luma(lin);                                 // back to encoded values
+	if (target_space == SPACE_LINEAR) o = srgb_decode1(o);
+	return saturate((o - i.radii.z) * i.radii.w);                   // the coverage the target's blend needs for it
 }
 
 // Rounded-rect distance. With corner_n > 2 the corner is a superellipse: its curvature ramps up from the straight
@@ -253,18 +346,6 @@ float clip_coverage(float2 screen, uint idx)
 ////////////////////////////////
 // Blend modes (CSS Compositing 1 §10), on straight sRGB colors as browsers compute them.
 
-float3 srgb_encode(float3 c)
-{
-	c = saturate(c);
-	return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;
-}
-
-float3 srgb_decode(float3 c)
-{
-	c = saturate(c);
-	return (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
-}
-
 float blend_channel(float b, float s, uint mode)
 {
 	switch (mode)
@@ -324,12 +405,15 @@ float3 blend_color(float3 b, float3 s, uint mode)
 	return float3(blend_channel(b.r, s.r, mode), blend_channel(b.g, s.g, mode), blend_channel(b.b, s.b, mode));
 }
 
-// Source (the layer) over backdrop through `mode`; both and the result are linear premultiplied.
+// Source (the layer) over backdrop through `mode`; both and the result are premultiplied in the target's space (the
+// formulas run on straight sRGB values: converted in and out only for a linear target).
 float4 blend_composite(float4 src, float4 dst, uint mode)
 {
 	float as = saturate(src.a), ab = saturate(dst.a);
-	float3 cs = as > 0 ? srgb_encode(src.rgb / as) : 0;
-	float3 cb = ab > 0 ? srgb_encode(dst.rgb / ab) : 0;
+	float3 cs = as > 0 ? convert_space(src.rgb / as, target_space, SPACE_SRGB) : 0;
+	float3 cb = ab > 0 ? convert_space(dst.rgb / ab, target_space, SPACE_SRGB) : 0;
+	cs = saturate(cs);
+	cb = saturate(cb);
 	float ao;
 	float3 co;   // premultiplied sRGB
 	if (mode == BLEND_PLUS_LIGHTER)
@@ -349,7 +433,7 @@ float4 blend_composite(float4 src, float4 dst, uint mode)
 		co = as * mixed + (1 - as) * ab * cb;
 	}
 	if (ao <= 0) return 0;
-	return float4(srgb_decode(co / ao) * ao, ao);
+	return float4(convert_space(saturate(co / ao), SPACE_SRGB, target_space) * ao, ao);
 }
 
 float4 ps_main(PSIn i) : SV_Target
@@ -361,13 +445,17 @@ float4 ps_main(PSIn i) : SV_Target
 	bool xf = i.extra.x != 0;
 	uint kind = (uint)(i.style.z + 0.5);
 	use_corner_shape((i.extra.z & FLAG_CIRCLE) != 0);
+	// straight color in the target's space
 	float4 color = i.color;
+	color.rgb = color.a > 0 ? color.rgb / color.a : 0;
+	color.rgb = convert_space(color.rgb, lerp_space(i.extra.z), target_space);
+	uint tex_space = (i.extra.z & FLAG_TEX_SRGB) ? SPACE_SRGB : SPACE_LINEAR;
 	float2 dir;
 	float2 screen = i.pos.xy + target_origin;
 	if (i.extra.z & FLAG_BLEND)
 	{
 		// the layer's texel and what lay under it; the batch writes the result (no hardware blending)
-		float4 s = image.Load(int3(int2(floor(i.uv)), 0)) * color.a;
+		float4 s = convert_premul(image.Load(int3(int2(floor(i.uv)), 0)), tex_space, target_space) * color.a;
 		float4 d = backdrop.Load(int3(int2(floor(screen - i.radii.xy)), 0));
 		float4 o = blend_composite(s, d, (i.extra.z >> BLEND_SHIFT) & 0xff);
 		float cov = i.extra.y != 0 ? clip_coverage(screen, i.extra.y) : 1;
@@ -377,7 +465,7 @@ float4 ps_main(PSIn i) : SV_Target
 	{
 		// coverage from the atlas, kept inside the glyph's cell (a transformed quad is grown past it)
 		float h = 0.5 / max(i.style.w, 1);
-		color.a *= atlas.SampleGrad(samp, clamp(i.uv, i.src.xy + h, i.src.zw - h), duvx, duvy);
+		color.a *= text_coverage(atlas.SampleGrad(samp, clamp(i.uv, i.src.xy + h, i.src.zw - h), duvx, duvy), i);
 		if (xf) { color.a *= saturate(0.5 - to_px(rect_sdf_dir(p, i.half_size, 0, dir), dir, dpx, dpy)); }
 	}
 	else
@@ -402,7 +490,8 @@ float4 ps_main(PSIn i) : SV_Target
 				float2 h = 0.5 / dim;   // never filter in texels outside the source rect (sprite sheets)
 				texel = image.SampleGrad(samp_img, clamp(uv, i.src.xy / dim + h, i.src.zw / dim - h), duvx / dim, duvy / dim);
 			}
-			color.rgb *= texel.rgb / max(texel.a, 1e-6);   // stored premultiplied, blended straight
+			// stored premultiplied, blended straight
+			color.rgb *= convert_space(texel.a > 0 ? texel.rgb / texel.a : 0, tex_space, target_space);
 			color.a *= texel.a;
 		}
 		float r = corner_radius(p, i.radii);

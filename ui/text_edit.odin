@@ -281,9 +281,9 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		w := which == 1 ? track.max.x - track.min.x : track.max.y - track.min.y
 		c := d.bar_color
 		hot := d.bar_hot == u8(which)
-		if hot { tc := c; tc.a = 0.06; draw.rect(dc, track, tc, w * 0.5 * s.rounding) }
+		if hot { tc := c; tc.a = 0.06; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
 		c.a = hot ? 0.45 : 0.22
-		draw.rect(dc, thumb, c, w * 0.5 * s.rounding)
+		draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
 	}
 
 	// line numbers (not scrolled horizontally)
@@ -554,6 +554,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		if tags("weak") { d.weak = color("text") }
 		d.gutter_bg = color("background")
 		d.gutter_bg.a *= 0.35
+		d.gutter_bg = tuned(d.gutter_bg)
 		d.gutter_line = color("border")
 		d.mono = mono
 		d.bars = editor_bars(b.rect, gutter, pad, b.font_size, {content_w, content_h}, a.scroll)

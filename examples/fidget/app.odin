@@ -254,7 +254,7 @@ App :: struct {
 	spawn_next_ms: f64,
 }
 
-Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom, rounding, smoothing, density: f32 }
+Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom, rounding, smoothing, density: f32, blending: i32 }
 
 Palette_Entry :: struct { cmd: Command, ranges: []ui.Fuzzy_Range }
 

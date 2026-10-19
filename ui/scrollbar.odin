@@ -77,8 +77,8 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	w := track.max.x - track.min.x
 	if hot || active {
 		tc := c; tc.a = 0.06
-		draw.rect(dc, track, tc, w * 0.5 * s.rounding)
+		draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding)
 	}
 	c.a = active ? 0.55 : (hot ? 0.4 : 0.22)
-	draw.rect(dc, thumb, c, w * 0.5 * s.rounding)
+	draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
 }

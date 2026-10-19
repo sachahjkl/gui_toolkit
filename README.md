@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.5.0-1d57ba" alt="version 0.5.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.6.0-1d57ba" alt="version 0.6.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -69,7 +69,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.5.0`; while `0.x`, a minor bump may change the API).
+The toolkit follows semantic versioning (`ui.VERSION`, currently `0.6.0`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -77,7 +77,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 | Package | Role |
 |---|---|
 | `platform` | Win32 window, DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
-| `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners), glyphs and RGBA images (mipmapped, sRGB, premultiplied in linear light), with an optional 2D affine transform and rounded clip per instance. sRGB target: colors are linear, blending is in linear space. Optional translucent window (DirectComposition, fp16 scRGB). |
+| `render` | D3D11. One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners), glyphs and RGBA images (mipmapped, premultiplied), with an optional 2D affine transform and rounded clip per instance. Colors are given linear; a blend space chosen per renderer (and per layer) says where they mix: linear light, or sRGB values as web browsers do. Optional translucent window (DirectComposition: fp16 scRGB, or 8-bit sRGB). |
 | `font` | TrueType (`stb_truetype`), glyph cache, shelf-packed atlas, text measurement. Embedded fallback fonts (Roboto, Inconsolata) for systems without Segoe UI / Consolas. |
 | `draw` | Rect / text / image primitives; clips (scissor, rounded, ellipse, polygon; transformed), alpha and 2D affine transform stacks, layers with filters (blur, color matrices, drop shadow), blend modes and backdrops over the renderer. See [docs/draw.md](docs/draw.md). |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
@@ -112,6 +112,9 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   the 16 blend modes of CSS Compositing plus plus-lighter / plus-darker, backdrops (what is already drawn behind a
   shape, filtered: frosted glass), ellipse and polygon clips (nonzero / even-odd). GPU passes, pooled render targets,
   pixel-tested. See [docs/draw.md](docs/draw.md) and `examples/effects`.
+- **Blend spaces** (`render.Blend_Space`): mix colors in linear light (the UI's default) or on sRGB values like a web
+  browser (`rgba(0,0,0,.5)` over white = 128, CSS gradients, opacity, image filtering), per renderer and per layer, with
+  Skia's text correction (Chromium's Windows settings by default in sRGB). The UI theme adapts its translucent colors.
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
@@ -126,7 +129,7 @@ Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Li
 
 ## Testing
 
-`odin test tests/affine -vet` runs the unit tests of the affine helpers.
+`odin test tests/affine -vet` runs the unit tests of the affine helpers. `tests/layers`, `tests/effects` and`ntests/blend_space` are pixel tests on an offscreen WARP renderer, in both blend spaces.
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
 focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a

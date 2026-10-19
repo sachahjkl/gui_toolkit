@@ -56,7 +56,47 @@ FLAG_CIRCLE :: 4 // circular corners whatever set_corner_smoothing says (content
 FLAG_SCREEN :: 8 // image: texels are screen pixels (texel 0 = screen pixel src.xy, src.zw = valid size): a backdrop
 FLAG_BLEND :: 16 // layer composite through a blend mode (bits BLEND_SHIFT..): reads the batch's `backdrop` (t5),
                  // whose texel 0 is screen pixel radii.xy, and writes the result (the batch draws without blending)
+FLAG_TEX_SRGB :: 32    // image: texels hold premultiplied sRGB-encoded color (else premultiplied linear color)
+FLAG_LERP_SRGB :: 64   // corner colors interpolate across the primitive in sRGB (else in the target's Blend_Space)
+FLAG_LERP_LINEAR :: 128 // corner colors interpolate in linear light
 BLEND_SHIFT :: 8
+
+// The space colors are combined in: alpha blending, antialiased edges, interpolation of corner colors, image
+// filtering, layer composites. Colors given to the renderer are always linear (draw.srgb / draw.hex convert); the
+// space is where the arithmetic happens.
+Blend_Space :: enum u8 {
+	Linear,   // linear light: physically correct mixing (50 % black over white is 188), what the UI is tuned for
+	Srgb,     // gamma-encoded sRGB values, as web browsers composite (CSS Color 4, Compositing 1: 50 % black over white is 128)
+}
+
+// How a text color and the background guessed under it are blended by the text correction (Skia's "device gamma").
+Text_Curve :: enum u8 {
+	None,    // no correction: coverage blended as it is, in the target's space
+	Srgb,    // as in linear light (the sRGB transfer curve): Skia's SK_GAMMA_SRGB, Chromium on Windows and macOS
+	Power,   // in a space of exponent `gamma` over sRGB values: Skia's SK_GAMMA_EXPONENT (Chromium on Linux 1.2, Android 1.4)
+}
+
+// How glyph coverage becomes alpha (see set_text_rendering). Coverage is first raised to `coverage_exponent` (< 1
+// thickens). Then, unless `curve` is None, it is corrected the way Skia does (SkMaskGamma, as used by Chromium): it is
+// boosted by `contrast` (0..1, tapered by the luminance of the background, guessed as the opposite of the text's), text
+// and guessed background are blended through `curve`, and the coverage that makes the target's own blend (sRGB values
+// or linear light) produce that result is used. With the same settings text has the same weight in both blend spaces.
+Text_Rendering :: struct {
+	curve:             Text_Curve,
+	gamma:             f32,   // curve = Power: the exponent
+	contrast:          f32,   // 0..1 (Chromium on Windows: 1.0; Linux 0.2; macOS and Android 0)
+	coverage_exponent: f32,   // 1: none
+}
+
+// The renderer's defaults: Linear keeps the toolkit's historical look (linear blending thickened by 0.8); Srgb is what
+// Chromium does on Windows (Skia built with SK_GAMMA_SRGB and SK_GAMMA_CONTRAST=1.0, see chromium/src skia/BUILD.gn).
+// (`gamma` 1.2, unused by these curves, is what a switch to Power starts from.)
+TEXT_RENDERING_LINEAR :: Text_Rendering{curve = .None, gamma = 1.2, contrast = 0, coverage_exponent = 0.8}
+TEXT_RENDERING_SRGB :: Text_Rendering{curve = .Srgb, gamma = 1.2, contrast = 1, coverage_exponent = 1}
+
+text_rendering_default :: proc(space: Blend_Space) -> Text_Rendering {
+	return space == .Srgb ? TEXT_RENDERING_SRGB : TEXT_RENDERING_LINEAR
+}
 
 // Blend modes of CSS Compositing 1 (mix-blend-mode), computed in sRGB on straight colors as browsers do.
 Blend_Mode :: enum u8 {
@@ -118,20 +158,24 @@ Batch :: struct {
 // An offscreen layer: the batches whose `target` is its index + 1 draw into `tex` (a render target from
 // acquire_target) instead of the frame, with screen pixel (x, y) landing on texel (x, y) - origin. Batches run in the
 // order they were recorded, so a layer is cleared (an Op), drawn, then sampled by the instance that composites it.
-// Content accumulates as premultiplied linear color: sampling it as a KIND_IMAGE composites it exactly.
+// Content accumulates as premultiplied color in the layer's `space`: sampling it as a KIND_IMAGE (FLAG_TEX_SRGB for an
+// sRGB layer) composites it exactly, into a target of either space.
 Layer :: struct {
 	tex:    Texture,      // 0: nothing to draw (empty or refused): its batches are skipped
 	origin: [2]f32,
 	size:   [2]int,
+	space:  Blend_Space,  // what its draw calls blend in
 }
 
 // A region of a texture holding screen pixels: texel (0, 0) is screen pixel `origin`, one texel covers 1 / `scale`
-// screen pixels (1, or 1/2^k for the reduced images of large blurs), `size` texels hold valid content.
+// screen pixels (1, or 1/2^k for the reduced images of large blurs), `size` texels hold valid content, premultiplied in
+// `space`.
 Image_Ref :: struct {
 	tex:    Texture,
 	origin: [2]f32,
 	scale:  f32,
 	size:   [2]int,
+	space:  Blend_Space,
 }
 
 MAX_COLOR_MATRICES :: 8
@@ -150,8 +194,9 @@ PASS_OUT_LINEAR :: 2   // write linear premultiplied color (the end of a chain);
 PASS_CLAMP :: 4        // reads past src's valid region repeat its edge (backdrops); else they are transparent
 PASS_SRC2_LINEAR :: 8  // Shadow: src2 holds linear color
 
-// A filter pass (CSS Filter Effects 1). Colors are processed in sRGB as browsers do: a chain converts once from the
-// linear layer (PASS_IN_LINEAR on its first pass) and back once (PASS_OUT_LINEAR on its last).
+// A filter pass (CSS Filter Effects 1). Colors are processed in sRGB as browsers do: a chain over a linear layer
+// converts once from it (PASS_IN_LINEAR on its first pass) and back once (PASS_OUT_LINEAR on its last); over an sRGB
+// layer it converts nothing.
 Pass :: struct {
 	mode:   Pass_Mode,
 	flags:  u32,
@@ -196,6 +241,7 @@ Texture_Data :: struct {
 	kind: Texture_Kind,
 	mips: bool,           // has a full mip chain (generated after updates, before the next draw)
 	mips_dirty: bool,
+	space: Blend_Space,   // RGBA: how texels are stored (see create_texture_rgba)
 }
 
 Renderer :: struct {
@@ -230,6 +276,9 @@ Renderer :: struct {
 	sampler_border: ^d3d11.ISamplerState, // filter passes: bilinear, transparent outside the texture
 	frame_tex:   ^d3d11.ITexture2D,       // what `rtv` draws into (back buffer or offscreen image): snapshots copy it
 	frame_format: dxgi.FORMAT,            // its storage format
+	frame_view:  dxgi.FORMAT,             // how a copy of it is read: values in `space`, like the frame's render target view
+	space:       Blend_Space,             // of the frame (init, set_blend_space); new RGBA textures are stored in it
+	text:        Text_Rendering,          // set_text_rendering
 	blur_sigma_limit: f32,                // set_blur_sigma_limit
 	textures:    [dynamic]Texture_Data,   // index 0 is a dummy so Texture(0) means "none"
 	free_textures: [dynamic]Texture,      // destroyed slots, reused by the next create
@@ -262,11 +311,12 @@ Renderer :: struct {
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
 // Clear to {0, 0, 0, 0} and draw translucent colours; the output is premultiplied, which is what blending onto a
-// transparent clear produces anyway.
-init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false) -> bool {
+// transparent clear produces anyway. `space`: what the frame blends in (set_blend_space changes it later).
+init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
 	r.hwnd = hwnd
 	r.size = size
 	r.transparent = transparent
+	r.space = space
 	create_device(r, .HARDWARE) or_return
 
 	dxgi_device: ^dxgi.IDevice
@@ -334,8 +384,9 @@ destroy :: proc(r: ^Renderer) {
 
 // A renderer without a window: frames are drawn into an offscreen B8G8R8A8 (sRGB) image of `size` that
 // `read_pixels` returns. For tests and image export. `warp`: the software rasterizer (deterministic, no GPU needed).
-init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false) -> bool {
+init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
 	r.size = size
+	r.space = space
 	if !create_device(r, warp ? .WARP : .HARDWARE) {
 		if warp || !create_device(r, .WARP) { return false }
 	}
@@ -344,16 +395,67 @@ init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false) -> bool {
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.RENDER_TARGET},
 	}, nil, &r.offscreen)
 	if r.offscreen == nil { return false }
-	// typeless storage: the view is sRGB (like the swap chain's), the readback copies raw bytes
-	r.device->CreateRenderTargetView(r.offscreen, &{Format = .B8G8R8A8_UNORM_SRGB, ViewDimension = .TEXTURE2D}, &r.rtv)
-	if r.rtv == nil { return false }
 	r.frame_tex = r.offscreen
 	r.frame_tex->AddRef()
-	r.frame_format = .B8G8R8A8_TYPELESS
+	// typeless storage: the view is chosen by the blend space (like the swap chain's), the readback copies raw bytes
+	if !create_offscreen_view(r) { return false }
 	return init_pipeline(r)
 }
 
-// The offscreen image (init_offscreen) after the last frame: RGBA8, sRGB, `size.x * size.y * 4` bytes.
+@(private)
+create_offscreen_view :: proc(r: ^Renderer) -> bool {
+	r.frame_format = .B8G8R8A8_TYPELESS
+	r.frame_view = r.space == .Srgb ? .B8G8R8A8_UNORM : .B8G8R8A8_UNORM_SRGB
+	r.device->CreateRenderTargetView(r.offscreen, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
+	return r.rtv != nil
+}
+
+// Changes what the frame blends in (see Blend_Space) and resets the text rendering to that space's default
+// (text_rendering_default; call set_text_rendering afterwards to keep your own). Pooled targets are released (snapshots
+// of the frame are read in its space). Existing RGBA textures keep the space they were stored in and are converted
+// when drawn; layers keep their own. Call it between frames.
+set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
+	if space == r.space { return }
+	previous := r.space
+	r.space = space
+	r.text = text_rendering_default(space)
+	release_targets(r)
+	r.ctx->OMSetRenderTargets(0, nil, nil)
+	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
+	if r.offscreen != nil {
+		create_offscreen_view(r)
+		return
+	}
+	if r.swapchain == nil { return }
+	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
+	if r.transparent {
+		// a translucent window's buffers change format: linear fp16 (scRGB) or 8-bit premultiplied sRGB
+		if hr := r.swapchain->ResizeBuffers(0, u32(max(r.size.x, 1)), u32(max(r.size.y, 1)), composition_format(space), r.swap_flags); win.FAILED(hr) {
+			fmt.eprintln("render: ResizeBuffers to the format of the blend space failed", hr, "- staying in", previous)
+			r.space = previous
+			r.text = text_rendering_default(previous)
+		}
+		set_composition_color_space(r)
+	}
+	create_target(r)
+}
+
+blend_space :: proc(r: ^Renderer) -> Blend_Space { return r.space }
+
+// Glyph coverage to alpha (see Text_Rendering). Applies to the whole frame, from the next frame_submit.
+set_text_rendering :: proc(r: ^Renderer, t: Text_Rendering) {
+	r.text = Text_Rendering{
+		curve = t.curve,
+		gamma = clamp(t.gamma, 0.25, 4),
+		contrast = clamp(t.contrast, 0, 1),
+		coverage_exponent = clamp(t.coverage_exponent, 0.1, 4),
+	}
+}
+
+text_rendering :: proc(r: ^Renderer) -> Text_Rendering { return r.text }
+
+// The offscreen image (init_offscreen) after the last frame: RGBA8, sRGB, `size.x * size.y * 4` bytes (whatever the
+// blend space: in Linear the view encodes, in Srgb the values are stored as they are).
 read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	if r.offscreen == nil { return nil }
 	staging: ^d3d11.ITexture2D
@@ -420,7 +522,7 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 		return false
 	}
 
-	r.device->CreateBuffer(&{ByteWidth = 32, Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
+	r.device->CreateBuffer(&{ByteWidth = size_of(Globals), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
 
 	bd := d3d11.BLEND_DESC{}
 	bd.RenderTarget[0] = {
@@ -449,7 +551,38 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	append(&r.textures, Texture_Data{})   // dummy slot 0
 	r.corner_smoothing = 1
 	r.blur_sigma_limit = DEFAULT_BLUR_SIGMA_LIMIT
+	r.text = text_rendering_default(r.space)
 	return true
+}
+
+// The constant buffer of rect.hlsl (register b0), per target.
+@(private)
+Globals :: struct #packed {
+	viewport_size: [2]f32,
+	corner_n, corner_boost: f32,
+	target_origin: [2]f32,
+	target_space: u32,       // Blend_Space of the target being drawn
+	text_gamma: f32,         // 0: no correction; < 0: the sRGB curve; > 0: a power curve
+	text_contrast, text_exponent: f32,
+	_: [2]f32,
+}
+#assert(size_of(Globals) == 48)
+
+// Swap chain format of a translucent window: DWM composes scRGB (linear fp16) in linear light, and 8-bit buffers as
+// premultiplied sRGB values, which is exactly what each blend space produces.
+@(private)
+composition_format :: proc(space: Blend_Space) -> dxgi.FORMAT {
+	return space == .Srgb ? .B8G8R8A8_UNORM : .R16G16B16A16_FLOAT
+}
+
+// Tells DWM how to read a translucent window's buffers: a swap chain keeps its color space through ResizeBuffers, so an
+// fp16 chain switched to 8 bits would still be read as linear (and look washed out).
+@(private)
+set_composition_color_space :: proc(r: ^Renderer) {
+	sc3: ^dxgi.ISwapChain3
+	if r.swapchain == nil || win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain3_UUID, (^rawptr)(&sc3))) { return }
+	sc3->SetColorSpace1(r.space == .Srgb ? .RGB_FULL_G22_NONE_P709 : .RGB_FULL_G10_NONE_P709)
+	sc3->Release()
 }
 
 @(private)
@@ -458,10 +591,11 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 	desc.Width, desc.Height = u32(max(size.x, 1)), u32(max(size.y, 1))
 	desc.Scaling = .STRETCH
 	desc.AlphaMode = .PREMULTIPLIED
-	// scRGB (linear fp16): DWM composes it in linear light, like our blending, so translucent pixels come out
-	// right. With 8-bit sRGB it expects alpha premultiplied in sRGB space, and our linear output looks washed out.
-	desc.Format = .R16G16B16A16_FLOAT
+	// Linear: scRGB (linear fp16), composed by DWM in linear light like our blending. Srgb: 8-bit, which DWM takes as
+	// premultiplied sRGB values, our output in that space (a linear output there would look washed out).
+	desc.Format = composition_format(r.space)
 	if win.FAILED(factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain)) { return false }
+	set_composition_color_space(r)
 	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)))
 	ok = ok && win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(hwnd, true, &r.dcomp_target))
 	ok = ok && win.SUCCEEDED(r.dcomp->CreateVisual(&r.dcomp_visual))
@@ -499,12 +633,14 @@ compile :: proc(src: string, entry, target: cstring, name: cstring = "rect.hlsl"
 create_target :: proc(r: ^Renderer) {
 	backbuffer: ^d3d11.ITexture2D
 	r.swapchain->GetBuffer(0, d3d11.ITexture2D_UUID, (^rawptr)(&backbuffer))
-	// sRGB view over a UNORM buffer: the shader writes linear colors, the hardware encodes (and blends) correctly
-	format: dxgi.FORMAT = r.transparent ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM_SRGB
-	r.device->CreateRenderTargetView(backbuffer, &{Format = format, ViewDimension = .TEXTURE2D}, &r.rtv)
+	// Linear: an sRGB view over a UNORM buffer: the shader writes linear colors, the hardware encodes (and blends in
+	// linear light). Srgb: a UNORM view: the shader writes sRGB values, blended as they are.
+	fp16 := r.transparent && r.space == .Linear
+	r.frame_format = fp16 ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM
+	r.frame_view = fp16 ? .R16G16B16A16_FLOAT : (r.space == .Srgb ? .B8G8R8A8_UNORM : .B8G8R8A8_UNORM_SRGB)
+	r.device->CreateRenderTargetView(backbuffer, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
 	// kept for snapshots (backdrop filters, blend modes); with flip swap chains buffer 0 is always the one drawn
 	r.frame_tex = backbuffer
-	r.frame_format = r.transparent ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM
 }
 
 resize :: proc(r: ^Renderer, size: [2]int) {
@@ -567,18 +703,23 @@ texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int {
 // images drawn smaller than their size stay smooth instead of shimmering. Returns 0 when the size is out of range or
 // the device refuses the texture.
 //
-// Storage is R8G8B8A8_UNORM_SRGB holding PREMULTIPLIED colors (see update_texture_rgba): the sampler decodes sRGB to
-// linear before filtering, so bilinear filtering and mip averaging happen in linear light on premultiplied values
-// (no dark fringes around transparent pixels), consistent with the renderer's linear blending.
+// The texture is stored in the renderer's blend space at creation (texture_space), always with PREMULTIPLIED colors
+// (see update_texture_rgba), so filtering never darkens the edges of transparent areas:
+// - Linear: R8G8B8A8_UNORM_SRGB holding colors premultiplied in linear light: the sampler decodes sRGB to linear
+//   before filtering, so bilinear filtering and mip averaging happen in linear light.
+// - Srgb: R8G8B8A8_UNORM holding sRGB values premultiplied as they are: filtering and mips average sRGB values, as
+//   browsers do.
+// Drawn into a target of the other space, texels are converted by the shader.
 create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
 	limit := max_texture_size(r)
 	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
-	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA}
+	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = r.space}
+	format: dxgi.FORMAT = td.space == .Srgb ? .R8G8B8A8_UNORM : .R8G8B8A8_UNORM_SRGB
 	support: u32
-	r.device->CheckFormatSupport(.R8G8B8A8_UNORM_SRGB, &support)
+	r.device->CheckFormatSupport(format, &support)
 	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
 	desc := d3d11.TEXTURE2D_DESC{
-		Width = u32(w), Height = u32(h), MipLevels = td.mips ? 0 : 1, ArraySize = 1, Format = .R8G8B8A8_UNORM_SRGB,
+		Width = u32(w), Height = u32(h), MipLevels = td.mips ? 0 : 1, ArraySize = 1, Format = format,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
 	}
 	if td.mips { desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
@@ -596,8 +737,9 @@ create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
 }
 
 // Uploads a w x h block at (x, y). `pixels`: RGBA8, sRGB encoded, NOT premultiplied (what PNG / JPEG decoders and
-// the web produce); `stride` = bytes per row (0: w * 4). Converted on the CPU to premultiplied alpha in linear light,
-// re-encoded as sRGB for storage. Opaque pixels go through unchanged.
+// the web produce); `stride` = bytes per row (0: w * 4). Converted on the CPU to premultiplied alpha in the texture's
+// space: in linear light, re-encoded as sRGB for storage (Linear), or on the sRGB values (Srgb). Opaque pixels go
+// through unchanged.
 update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
@@ -615,10 +757,14 @@ update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: [
 			case 255: dst[i], dst[i + 1], dst[i + 2], dst[i + 3] = src[i], src[i + 1], src[i + 2], 255
 			case 0:   dst[i], dst[i + 1], dst[i + 2], dst[i + 3] = 0, 0, 0, 0
 			case:
-				af := f32(a) / 255
-				for k in 0 ..< 3 {
-					lin := srgb_to_linear_table[src[i + k]] * af
-					dst[i + k] = linear_to_srgb_table[int(lin * (LINEAR_STEPS - 1) + 0.5)]
+				if td.space == .Srgb {
+					for k in 0 ..< 3 { dst[i + k] = u8((u32(src[i + k]) * u32(a) + 127) / 255) }
+				} else {
+					af := f32(a) / 255
+					for k in 0 ..< 3 {
+						lin := srgb_to_linear_table[src[i + k]] * af
+						dst[i + k] = linear_to_srgb_table[int(lin * (LINEAR_STEPS - 1) + 0.5)]
+					}
 				}
 				dst[i + 3] = a
 			}
@@ -627,6 +773,12 @@ update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: [
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.scratch), u32(w * 4), 0)
 	if td.mips { td.mips_dirty = true }
+}
+
+// How an RGBA texture stores its texels (the renderer's blend space when it was created).
+texture_space :: proc(r: ^Renderer, t: Texture) -> Blend_Space {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return .Linear }
+	return r.textures[int(t)].space
 }
 
 // Frees the GPU texture; the handle may be reused by a later create. Drawing a destroyed texture draws nothing.
@@ -659,13 +811,14 @@ Pooled_Target :: struct {
 // A pooled target nobody used for this many frames is released.
 @(private) TARGET_IDLE_FRAMES :: 120
 
-// A render target of at least w x h pixels for the frame being built (linear fp16, premultiplied): a layer, a filter
-// pass. It belongs to the renderer and is handed back by frame_submit, or earlier by release_target. 0 when the size
+// A render target of at least w x h pixels for the frame being built (fp16, premultiplied, in whatever space its
+// writer uses): a layer, a filter pass. It belongs to the renderer and is handed back by frame_submit, or earlier by release_target. 0 when the size
 // is out of range or the device refuses (draw then falls back to per-primitive alpha).
 acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pooled(r, w, h, false) }
 
 // A texture that can receive a copy of `target` (0: the frame, k: a layer, as Batch.target): the frame's own format
-// (8-bit sRGB, or fp16 for a translucent window), fp16 for a layer. For backdrops and blend modes.
+// (8-bit, read in the frame's blend space, or fp16 for a linear translucent window), fp16 for a layer. For backdrops
+// and blend modes.
 acquire_snapshot :: proc(r: ^Renderer, w, h: int, target: int) -> Texture {
 	return acquire_pooled(r, w, h, target == 0 && r.frame_format != .R16G16B16A16_FLOAT)
 }
@@ -698,12 +851,13 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool) -> Texture {
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE, .RENDER_TARGET},
 	}
 	if snapshot {
-		// the frame's typeless storage, read through an sRGB view: texels decode to linear like a layer's
+		// the frame's typeless storage, read through the view of its blend space: texels hold the values the frame
+		// blends with (linear decoded from sRGB, or sRGB as stored)
 		desc.Format, desc.BindFlags = .B8G8R8A8_TYPELESS, {.SHADER_RESOURCE}
 	}
 	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { return 0 }
 	if snapshot {
-		sd := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .B8G8R8A8_UNORM_SRGB, ViewDimension = .TEXTURE2D}
+		sd := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = r.frame_view, ViewDimension = .TEXTURE2D}
 		sd.Texture2D.MipLevels = 1
 		if win.FAILED(r.device->CreateShaderResourceView(td.tex, &sd, &td.view)) { td.tex->Release(); return 0 }
 	} else {
@@ -780,9 +934,24 @@ mark_input :: proc(r: ^Renderer) {
 	}
 }
 
+// Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
 frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	c := clear
+	if r.space == .Srgb && c.a > 0 {
+		for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a }
+	}
 	r.ctx->ClearRenderTargetView(r.rtv, &c)
+}
+
+// The sRGB transfer functions (IEC 61966-2-1), on one channel in 0..1.
+linear_to_srgb :: proc(l: f32) -> f32 {
+	x := clamp(l, 0, 1)
+	return x <= 0.0031308 ? x * 12.92 : 1.055 * math.pow(x, 1 / 2.4) - 0.055
+}
+
+srgb_to_linear :: proc(s: f32) -> f32 {
+	x := clamp(s, 0, 1)
+	return x <= 0.04045 ? x / 12.92 : math.pow((x + 0.055) / 1.055, 2.4)
 }
 
 // GPU time of frame_submit (milliseconds) for a frame a few frames back; 0 without -define:GPU_TIMING=true.

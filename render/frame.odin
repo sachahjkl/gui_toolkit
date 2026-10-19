@@ -165,11 +165,12 @@ unbind_inputs :: proc(r: ^Renderer) {
 bind_target :: proc(r: ^Renderer, f: Frame_Data, target: int) -> (ok: bool, size: [2]int, origin: [2]f32) {
 	rtv := r.rtv
 	size = r.size
+	space := r.space
 	if target > 0 {
 		if target > len(f.layers) { return }
 		ly := f.layers[target - 1]
 		if int(ly.tex) <= 0 || int(ly.tex) >= len(r.textures) || r.textures[int(ly.tex)].rtv == nil { return }
-		rtv, size, origin = r.textures[int(ly.tex)].rtv, ly.size, ly.origin
+		rtv, size, origin, space = r.textures[int(ly.tex)].rtv, ly.size, ly.origin, ly.space
 	}
 	unbind_inputs(r)
 	mapped: d3d11.MAPPED_SUBRESOURCE
@@ -177,7 +178,17 @@ bind_target :: proc(r: ^Renderer, f: Frame_Data, target: int) -> (ok: bool, size
 	sm := clamp(r.corner_smoothing, 0, 1)
 	// n = 2.6 softens the arc-to-edge junction without turning capsules into rounded boxes; the radius is enlarged
 	// a bit so the corners do not look tighter than circular ones
-	(^[8]f32)(mapped.pData)^ = {f32(size.x), f32(size.y), 2 + 0.6 * sm, 1 + 0.25 * sm, origin.x, origin.y, 0, 0}
+	text_gamma: f32
+	switch r.text.curve {
+	case .None: text_gamma = 0
+	case .Srgb: text_gamma = -1
+	case .Power: text_gamma = max(r.text.gamma, 0.25)
+	}
+	(^Globals)(mapped.pData)^ = Globals{
+		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + 0.6 * sm, corner_boost = 1 + 0.25 * sm,
+		target_origin = origin, target_space = u32(space),
+		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, 0.1),
+	}
 	r.ctx->Unmap(r.globals, 0)
 	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
 	r.ctx->RSSetViewports(1, &vp)

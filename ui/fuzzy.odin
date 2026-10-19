@@ -60,6 +60,7 @@ label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 		d.text = b.text
 		d.color = color("accent")
 		d.color.a *= 0.30
+		d.color = tuned(d.color)
 		b.custom, b.custom_user = fuzzy_draw, d
 	}
 	return signal(b)

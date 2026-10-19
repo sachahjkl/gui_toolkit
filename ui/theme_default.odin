@@ -81,14 +81,18 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	return 0xff00ffff
 }
 
-// Creates the entries on first use, then only updates colors (so box colors cross-fade between palettes).
-apply_palette :: proc(t: ^Theme, p: Palette) {
+// Creates the entries on first use, then only updates colors (so box colors cross-fade between palettes). `space`: the
+// blend space of the renderer the theme draws with; translucent entries (tuned for linear light) get the alpha that
+// looks the same over the palette's background in it (draw.alpha_like_linear). Apply again when the space changes.
+apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	if len(t.patterns) == 0 {
 		for e in entries { theme_add(t, e.tags, {}) }
 	}
+	bg := draw.hex(slot_color(p, .Bg_Solid))
 	for e, i in entries {
 		c := draw.hex(slot_color(p, e.slot))
 		c.a *= e.alpha
+		c.a = draw.alpha_like_linear(space, c, c.a, bg)
 		t.patterns[i].color = c
 	}
 	t.finish = p.finish
