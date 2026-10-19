@@ -3,6 +3,48 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.9.3] - 2026-10-19
+
+### Color glyphs in every format
+- **Direct2D draws color glyphs** (`font/color.odin`, bindings in `font/d2d.odin`): COLR v1 paint trees (linear,
+  radial and sweep gradients with their extend modes, transforms, PaintComposite modes, clip boxes, PaintColrGlyph),
+  COLR v0 layers, sbix / CBDT / PNG bitmaps and OT-SVG (plain or gzip) are drawn on a private WARP device into a
+  bitmap read back into the atlas' Color pages. Windows 11 22H2 and later: `ID2D1DeviceContext7::DrawGlyphRunWithColorSupport`;
+  Windows 10 1607 and later: the runs of `TranslateColorGlyphRun` drawn by the call of their format (no paint trees:
+  v0 layers or the outline); without Direct2D: COLR v0 layers composited on the CPU as before. Whether a glyph is a
+  color glyph comes from `IDWriteFactory8::TranslateColorGlyphRun` (paint trees) or `IDWriteFactory4`'s.
+- **Text-color layers** (palette entry 0xFFFF, COLR v1 foreground paints, SVG `currentColor`) take the text color: a
+  color glyph is drawn in two colors once to find whether it depends on it; such glyphs are kept once per text color.
+  `font.glyph_image` gains an `fg` parameter (sRGB, default black); `draw.glyph_run` passes the run's color.
+  `Glyph_Image.uses_fg`.
+- `font.color_renderable(s, id)`: false for a face whose only color format the system cannot draw (COLR v1 before
+  Windows 11 22H2): a cascade should take those characters elsewhere rather than show outlines.
+- Faces with only COLR v1 (`DWRITE_GLYPH_IMAGE_FORMATS_COLR_PAINT_TREE`) count as color faces. Whether a COLR v1 glyph
+  uses the text color comes from its paint attributes (`IDWriteFontFace7::CreatePaintReader`), of a COLR v0 glyph from
+  its layers; only SVG glyphs are drawn twice to find out.
+- **Off the drawing thread** (`Settings.color_async`, off by default): a complex color glyph costs milliseconds (a
+  Segoe UI Emoji COLR v1 emoji: about 4 ms on WARP). The first lookup queues it and returns a pending image
+  (`Glyph_Image.pending`); one thread draws the queue, puts the bitmaps in the atlas and calls
+  `font.set_color_ready_callback`'s callback (ask for a frame there). `font.color_ready_generation`,
+  `font.color_pending`, `font.color_wait`. A picture recorded while one of its glyphs was pending is stale once the
+  ready generation moves (`Picture.glyphs_pending`, `pending_ready`; checked before the empty-picture cull).
+  `unload` drops a face's queued requests and waits for the one in flight; `destroy` stops the thread.
+- `tests/color_glyphs`: Google's COLR v1 test glyphs (gradient ends and middle, sweep quadrants, radial, composite,
+  rotate / skew / transform, foreground paints in two text colors), Twemoji sbix / OT-SVG / OT-SVGZ smileys, the
+  ChromaCheck CBDT glyph, color glyphs off, and the same glyphs drawn through the draw layer (WARP).
+
+### Masks
+- `draw.push_mask(dc, bounds, fx)`, `draw.mask_layer(dc, mode, op)`, `draw.pop_mask(dc)` (`draw/mask.odin`): content
+  drawn into a layer, multiplied by the coverage of mask layers drawn after it, each by its alpha or its luminance
+  (`Mask_Mode`), composited with the layers below it by `Mask_Op` (add, subtract, intersect, exclude: CSS
+  mask-composite); then filters, opacity and blend mode as `push_effects`. Mask layers draw in sRGB. Without a render
+  target (or in a picture) the content is drawn unmasked and the mask layers are cut away. CSS mask-image and
+  background-clip: text are drawn with it.
+- `render.Pass_Mode.Mask` (`render/filter.hlsl`), `PASS_MASK_LUMINANCE`, `PASS_MASK_DEST`, `PASS_MASK_APPLY`,
+  `MASK_OP_SHIFT`, `render.Mask_Op`. `pop_layer` closes a mask too.
+- `tests/masks` (both blend spaces): alpha and luminance coverage, the four operators, a gradient mask under opacity
+  and a clip, no mask layer, text as a mask (background-clip: text), the fallback inside a picture.
+
 ## [0.9.2] - 2026-10-19
 
 ### Added

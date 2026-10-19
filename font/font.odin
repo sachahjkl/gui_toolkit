@@ -71,7 +71,9 @@ Settings :: struct {
 	subpixel_steps:  int,       // horizontal glyph positions per pixel (1: whole pixels, up to 4)
 	rendering:       Rendering, // DirectWrite rendering mode of the glyph bitmaps
 	grid_fit:        Grid_Fit,
-	color_glyphs:    bool,      // COLR / CPAL glyphs (emoji) in color; else their outline in the text color
+	color_glyphs:    bool,      // color glyphs (emoji: COLR, sbix, CBDT, SVG) in color; else their outline in the text color
+	color_async:     bool,      // color glyphs are drawn on a thread of their own: pending until ready (color_async.odin;
+	                            // the application asks for a frame from set_color_ready_callback)
 	system_fallback: bool,      // characters no face of a cascade has come from the system fallback fonts
 	page_size:       int,       // texels on a side of an atlas page
 	max_gray_pages:  int,       // coverage pages kept before the least recently used one is reused
@@ -80,7 +82,7 @@ Settings :: struct {
 }
 
 DEFAULT_SETTINGS :: Settings{
-	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, system_fallback = true,
+	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 }
 
@@ -99,6 +101,7 @@ Font :: struct {
 	dw2:      ^IDWriteFontFace2,     // nil before Windows 8.1
 	dw4:      ^IDWriteFontFace4,     // nil before Windows 10 1607
 	dw5:      ^IDWriteFontFace5,     // nil before Windows 10 1803
+	dw7:      ^IDWriteFontFace7,     // nil before Windows 11 22H2 (COLR v1 paint reader)
 	file:     ^IDWriteFontFile,      // files this package made (memory, path)
 	memory:   ^Memory_Font,
 	dm:       DWRITE_FONT_METRICS,
@@ -120,6 +123,7 @@ State :: struct {
 	factory:    ^IDWriteFactory,
 	factory2:   ^IDWriteFactory2,    // system fallback, color glyphs, grayscale analysis
 	factory4:   ^IDWriteFactory4,    // color glyph image formats
+	factory8:   ^IDWriteFactory8,    // COLR v1 paint trees (Windows 11 22H2)
 	system:     ^IDWriteFontCollection,
 	fallback:   ^IDWriteFontFallback,
 	analyzer:   ^IDWriteTextAnalyzer,
@@ -132,6 +136,8 @@ State :: struct {
 	keys:       map[string]Font_Id,  // what made each font, for sharing
 	words:      Word_Cache,
 	atlas:      Atlas,
+	color_raster: Color_Raster,      // Direct2D drawing of color glyphs (color.odin)
+	color_queue:  Color_Queue,       // the color glyph thread (color_async.odin)
 	generation: int,                 // bumps when faces are unloaded
 }
 
@@ -157,6 +163,7 @@ init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
 	s.factory = (^IDWriteFactory)(f)
 	s.factory2 = com_query(s.factory, &IID_IDWriteFactory2, IDWriteFactory2)
 	s.factory4 = com_query(s.factory, &IID_IDWriteFactory4, IDWriteFactory4)
+	s.factory8 = com_query(s.factory, &IID_IDWriteFactory8, IDWriteFactory8)
 	if s.factory->GetSystemFontCollection(&s.system, false) < 0 { s.system = nil }
 	if s.factory->CreateTextAnalyzer(&s.analyzer) < 0 { s.analyzer = nil }
 	if s.factory2 != nil {
@@ -197,10 +204,12 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	old := s.settings
 	if st.subpixel_steps != old.subpixel_steps || st.rendering != old.rendering || st.grid_fit != old.grid_fit || st.color_glyphs != old.color_glyphs {
 		clear(&s.atlas.glyphs)
+		clear(&s.atlas.fg_glyphs)
 		s.atlas.settings_generation += 1
 	}
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
 	s.settings.color_glyphs, s.settings.max_gray_pages, s.settings.max_color_pages = st.color_glyphs, st.max_gray_pages, st.max_color_pages
+	s.settings.color_async = st.color_async
 	atlas_unlock(&s.atlas)
 	if st.system_fallback != s.settings.system_fallback {
 		s.settings.system_fallback = st.system_fallback
@@ -215,6 +224,8 @@ set_settings :: proc(s: ^State, settings: Settings) {
 destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
+	color_queue_destroy(s)
+	color_raster_destroy(&s.color_raster)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
 	for i in 1 ..< n { release_font(font_ptr(s, Font_Id(i))) }
@@ -230,6 +241,7 @@ destroy :: proc(s: ^State) {
 	com_release(s.fallback)
 	com_release(s.analyzer)
 	com_release(s.system)
+	com_release(s.factory8)
 	com_release(s.factory4)
 	com_release(s.factory2)
 	com_release(s.factory)
@@ -240,7 +252,7 @@ destroy :: proc(s: ^State) {
 release_font :: proc(f: ^Font) {
 	context.allocator = runtime.heap_allocator()
 	if f == nil || f.kind == .None { return }
-	com_release(f.dw5); com_release(f.dw4); com_release(f.dw2); com_release(f.dw)
+	com_release(f.dw7); com_release(f.dw5); com_release(f.dw4); com_release(f.dw2); com_release(f.dw)
 	com_release(f.file)
 	if f.memory != nil { memory_font_release(f.memory) }
 	delete(f.family)
@@ -288,12 +300,12 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	f.dw2 = com_query(dw, &IID_IDWriteFontFace2, IDWriteFontFace2)
 	f.dw4 = com_query(dw, &IID_IDWriteFontFace4, IDWriteFontFace4)
 	f.dw5 = com_query(dw, &IID_IDWriteFontFace5, IDWriteFontFace5)
+	f.dw7 = com_query(dw, &IID_IDWriteFontFace7, IDWriteFontFace7)
 	dw->GetMetrics(&f.dm)
 	f.upem = f32(max(f.dm.designUnitsPerEm, 1))
 	if f.dw4 != nil {
 		formats := f.dw4->GetGlyphImageFormats()
-		f.color = formats & (DWRITE_GLYPH_IMAGE_FORMATS_COLR | DWRITE_GLYPH_IMAGE_FORMATS_SVG | DWRITE_GLYPH_IMAGE_FORMATS_PNG |
-			DWRITE_GLYPH_IMAGE_FORMATS_JPEG | DWRITE_GLYPH_IMAGE_FORMATS_TIFF | DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8) != 0
+		f.color = formats & COLOR_FORMATS != 0
 	} else if f.dw2 != nil {
 		f.color = bool(f.dw2->IsColorFont())
 	}
@@ -605,7 +617,10 @@ unload :: proc(s: ^State, id: Font_Id) {
 	f := font_ptr(s, id)
 	if f == nil || f.dead { return }
 	words_clear(&s.words)
-	if f.kind == .Face { atlas_forget_face(&s.atlas, id) }
+	if f.kind == .Face {
+		color_forget_face(s, id)
+		atlas_forget_face(&s.atlas, id)
+	}
 	sync.mutex_lock(&s.mu)
 	dead := make([dynamic]string, context.temp_allocator)
 	for k, v in s.keys { if v == id { append(&dead, k) } }

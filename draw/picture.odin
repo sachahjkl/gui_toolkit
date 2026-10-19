@@ -41,6 +41,8 @@ Picture :: struct {
 	pages:      [dynamic]font.Page_Ref,      // the atlas pages its glyphs are on
 	pages_broken: bool,                      // a page it used was reused while it was recorded
 	text_settings: u64,                      // font.atlas_settings_generation of its glyphs
+	glyphs_pending: bool,                    // a color glyph it draws was still being drawn (font.Glyph_Image.pending)...
+	pending_ready:  u64,                     // ... at this font.color_ready_generation: stale once it moves
 	text:       bool,
 	raster_scale: f32,
 	version:    u64,                         // bumps at each recording
@@ -108,6 +110,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	clear(&pic.points); clear(&pic.grads)
 	clear(&pic.pages)
 	pic.text, pic.pages_broken = false, false
+	pic.glyphs_pending, pic.pending_ready = false, 0
 	pic.dirty, pic.eff_stale = {}, false
 	pic.raster_scale = raster_scale > 0 ? raster_scale : 1
 	pic.text_settings = font.atlas_settings_generation(c.fonts)
@@ -271,6 +274,7 @@ picture_bounds :: proc(c: ^Context, pic: ^Picture, m: Affine) -> (r: Rect, ok: b
 picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 	if !pic.text { return false }
 	if pic.pages_broken || pic.text_settings != font.atlas_settings_generation(c.fonts) { return true }
+	if pic.glyphs_pending && font.color_ready_generation(c.fonts) != pic.pending_ready { return true }
 	if !font.atlas_pages_hold(c.fonts, pic.pages[:]) { return true }
 	slots_update(pic)
 	l := affine_mul(top_transform(c), m)
@@ -289,7 +293,10 @@ picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 // it. Its instances are uploaded first if needed (first replay, re-recorded, evicted, device lost); changed slots are
 // rewritten. Not while recording.
 replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
-	if c.rec != nil || len(pic.insts) == 0 || len(pic.batches) == 0 { return .Culled }
+	if c.rec != nil { return .Culled }
+	// (a picture of nothing but pending glyphs is empty until they are ready)
+	if pic.glyphs_pending && font.color_ready_generation(c.fonts) != pic.pending_ready { return .Stale }
+	if len(pic.insts) == 0 || len(pic.batches) == 0 { return .Culled }
 	slots_update(pic)
 	if picture_stale(c, pic, m) { return .Stale }
 	l := affine_mul(top_transform(c), m)
