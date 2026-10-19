@@ -120,8 +120,13 @@ build_ui :: proc(app: ^App) {
 build_menubar :: proc(app: ^App, em: f32) {
 	menu_w := em * 21
 	if ui.tags("bar") {
-		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.6)), radius = 0})
-		if ui.row(.Center, {.Draw_Background, .Draw_Side_Bottom}, "###menubar") {
+		// --integrated: the bar is the window's title bar (its empty parts drag the window), with the window buttons
+		h := ui.dense(em * 2.6)
+		if app.integrated { h = max(h, math.round(32 * app.win.dpi_scale)) }
+		ui.next({width = ui.fill(), height = ui.px(h), radius = 0})
+		bar_flags: ui.Box_Flags = {.Draw_Background, .Draw_Side_Bottom}
+		if app.integrated { bar_flags += {.Window_Caption} }
+		if ui.row(.Center, bar_flags, "###menubar") {
 			ui.spacer(ui.px(em * 0.6))
 			if ui.tags("weak") { ui.icon(ICON_CUBE, em * 2) }
 			ui.next({width = ui.text_size(em * 0.4), height = ui.pct(1)})
@@ -139,6 +144,7 @@ build_menubar :: proc(app: ^App, em: f32) {
 			ui.spacer(ui.px(em * 0.4))
 			ui.kbd("Ctrl+K")
 			ui.spacer(ui.px(em * 0.8))
+			if app.integrated { _, _ = ui.window_buttons() }
 
 			if ui.ctx_menu(file_m, menu_w) {
 				if ui.menu_item("Reset all values", "", false, ICON_UNDO).clicked { run_cmd(app, .Reset_Values) }

@@ -3,6 +3,92 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.10.0] - 2026-10-19
+
+### Added
+- **Kept filter results** (`draw/layer_cache.odin`): `Layer_Effects.cache_id`, `cache_key`, `cache_anchor` keep a
+  layer's filtered texture from frame to frame (stored once the same key came two frames in a row); while the caller's
+  key, the filters run by passes, the transform's linear part, the anchor's fraction and the bounds relative to the
+  anchor hold, `push_effects` returns **false** (the content need not be drawn; what is drawn is discarded) and
+  `pop_layer` composites the kept result, moved by whole-pixel moves of the anchor. Opacity, blend mode and trailing
+  color matrices stay live. A layer up to `max_layer_px` is drawn whole when it is to be kept (scrolling it into view
+  keeps it good). `Layer_Effects.cache_under` (blend modes into the opaque frame) keeps the blended pixels: no layer,
+  copy or blend while what lies under is the same. `backdrop_capture` / `backdrop` take `cache_id`, `cache_key`
+  (what lies under), `cache_anchor`. `set_layer_cache(dc, budget, max_layer_px, idle_frames)`, `layer_cache_stats`,
+  `layer_cache_forget`, `layer_cache_clear`.
+- **Masked layers are kept too**: `push_mask` takes the same `cache_*` fields and returns false like `push_effects`
+  when the kept result stands (the mask is in the kept result: neither the content nor the mask layers are drawn, and
+  `mask_layer` does nothing). The caller's `cache_key` must cover the mask layers; the toolkit salts it so that a masked
+  and an unmasked layer never share a result. Trailing color matrices stay live only when they commute with the mask
+  (no alpha column in the color rows, an alpha row that only scales alpha by [0, 1], as every CSS filter function);
+  others run as passes before the mask, as CSS orders them.
+- `render.keep_target` / `unkeep_target` (a pooled texture held across frames), `targets_generation`,
+  `kept_targets_bytes`, `texture_bpp`, `acquire_target_format`, `Target_Format`.
+- **Per-step GPU profile** (`render/gpu_profile.odin`): `set_gpu_profile(r, on, detail)`, `gpu_profile(r)`:
+  time, count, pixels and estimated traffic of each kind of step (`Gpu_Step`: draw runs into the frame or a layer,
+  clears, copies, color / blur / reduction / shadow / mask passes), render targets bound, the slowest steps; `detail`
+  times every draw call (batch, instances, kinds, flags, scissor).
+- `render.set_filter_precision(r, .Unorm8 | .Half)`: filter results in sRGB-encoded 8 bits or fp16.
+- `render.FLAG_SCALED`, `render.FLAG_MATRIX` for layer composites and backdrops; `Pass.factor`.
+- `examples/effects`: `--nocache`, `--half`; `--bench` prints the GPU time by kind of step; the thumbnails and the
+  stress cards keep their results. `tests/gpufx`: reduced blurs against the exact gaussian, kept layers / blended
+  pixels / backdrops against drawn ones (hits, whole-pixel moves, invalidation), stale texels never read, the profile,
+  masked layers kept (against drawn ones, a new mask key redraws, a blur under a mask).
+- **Integrated title bar** (`platform`, `ui/window_chrome.odin`): the app's own boxes are the window's title bar, as in
+  Edge and Chrome (tabs in the title bar).
+  - `platform.open_window(..., integrated_title = true)` or `platform.set_integrated_title(w, on)` at any time: the client
+    area covers the title bar (`WM_NCCALCSIZE`); the system's frame stays on the left, right and bottom (invisible resize
+    borders, the shadow, Windows 11's rounded corners and border). Maximized, the client area stops at the monitor's
+    edge and leaves 2 px along an auto-hidden taskbar so that it still comes up.
+  - The app reports its title bar every frame (`platform.set_chrome_regions(w, &Chrome_Regions)`: caption areas, the
+    interactive holes in them, the caption buttons); `WM_NCHITTEST` answers from it (`platform.hit_test_chrome`, pure and
+    unit-tested): `HTCAPTION` where nothing is interactive (drag, Aero Snap, double-click to maximize, right click for the
+    system menu), `HTMINBUTTON` / `HTMAXBUTTON` (Snap Layouts on Windows 11) / `HTCLOSE`, `HTTOP*` along the top edge
+    (a band of the frame's thickness, corners at both ends), the system's own answer on the other borders.
+  - Over the caption and its buttons, mouse moves come as `Mouse_Move` events (hover follows); a press on a caption button
+    is captured and comes as `Mouse_Press` / `Mouse_Release` (the system never draws its own buttons over the app's).
+    `Mouse_Leave` only when the pointer leaves the window, not when it goes from the client area to the title bar.
+  - `Event_Kind.Activate` and `Window.active`: the window became active or inactive (dimmed caption glyphs).
+  - `platform.minimize`, `toggle_maximize`, `request_close`, `is_maximized`, `is_minimized`, `show_system_menu(w, pos)`,
+    `set_fullscreen(w, on)` / `is_fullscreen` (the window covers its monitor without frame; back to its placement),
+    `needs_top_border` (Windows 10 draws no top edge: the toolkit draws it), `resize_border`, `is_windows_11`,
+    `app_icon_rgba(size)` (the exe's icon as RGBA, to draw it in the title bar). Alt+Space opens the system menu.
+  - `ui.Build_Params.window`: after each build the toolkit sends the window its title bar: every box with the new
+    `.Window_Caption` flag is a caption, every clickable box over it a hole (popups included), `window_buttons` are the
+    caption buttons. `ui.title_bar(id)` (a row with `.Window_Caption`), `ui.window_buttons()` (minimize, maximize /
+    restore, close: 46 px wide, as tall as the row, glyphs from Segoe Fluent Icons or Segoe MDL2 Assets, else drawn;
+    the system's fills: hover / pressed tints, close in red `#c42b1c`, dimmed glyphs while the window is inactive; clicks
+    act on the window), `ui.chrome_regions(s)`.
+  - fidget: `--integrated` makes its menu bar the title bar.
+- **Virtualized list** `ui.vlist(id, &Virtual_List, ids, labels, selectable)` (`ui/vlist.odin`): only the rows in view
+  (and a margin) are built, whatever their number. Rows of any height: measured when laid out, kept per row identity and
+  per width / scale / font size, the average for rows never seen; the view stays on the row it shows when heights above
+  it change. The keyboard of `list` over every row (Up / Down, Page Up / Down, Home / End, type-ahead on `labels`,
+  Enter, Escape), the active row scrolled into view at once. `vlist_destroy`, `vlist_invalidate`, `vlist_scroll_to`,
+  `vlist_row_extent`.
+- **Wrapped text cache**: a paragraph's lines are kept per (text, font, size, width) between builds
+  (`wrap_lines_cached`, `wrap_cache_len`); layout and drawing no longer wrap every paragraph twice per frame.
+- **Smooth scrolling along a curve** for the toolkit's scroll regions (`ui/scroll_anim.odin`): impulse (default, as
+  Edge) or ease-out, a duration per move, sampled at the frame's time (`Build_Params.frame_ms`: a display clock, e.g. the
+  vblank the frame is shown at); a new target while moving keeps the speed. `ui.set_scroll_settings(s, {curve, impulse,
+  duration_ms})`; `.Exponential` is the former easing. Apps that scroll their own document the same way feel alike.
+- `tests/chrome`: hit test (zones, edges, maximized), title bar regions and caption button clicks from a ui tree,
+  virtualized list (rows built, measured heights, keyboard over unbuilt rows, view anchoring), wrap cache, scroll curve.
+
+### Changed
+- `list`: the keyboard handling and type-ahead are shared with `vlist` (`List_State.virtual`); no change for `list`.
+- Wrapped text is drawn at the width layout wrapped it at (`Box.size`), not the rounded rect's.
+- Color matrices ending a filter chain are applied by the composite (one pass and one target fewer; a layer with only
+  color filters runs no pass).
+- Large blurs: the reduction by 2, 4 or 8 is one pass; the result stays reduced and is sampled back by the next pass or
+  the composite (no upsampling pass); the variance of the bilinear resampling is taken off the gaussian's.
+- Filter passes no longer clear their target: they write a transparent ring of one texel past their region and read no
+  further (the mask pass included). Filter chains end in sRGB-encoded values (no conversion pass back to linear).
+- `push_effects` and `push_mask` return a bool (see above); existing calls that ignore it are unchanged.
+- `Backdrop` holds the chain's trailing matrices and whether its texture is kept.
+- A masked layer whose filters end with a large blur applies its mask at scale 1 over the reduced result (sampled back
+  bilinearly, as the composite would).
+
 ## [0.9.3] - 2026-10-19
 
 ### Color glyphs in every format

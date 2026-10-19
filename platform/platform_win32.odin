@@ -21,6 +21,23 @@ Native_Window :: struct {
 	modal:          int,            // inside a loop of the system (move / size, menu): it owns the messages, frames come from WM_PAINT
 	display:        Display_Info,   // display_info's cache
 	display_stale:  bool,
+	integrated:     bool,           // set_integrated_title: the client area covers the title bar
+	fullscreen:     bool,
+	nc_tracking:    bool,           // TrackMouseEvent asked for WM_NCMOUSELEAVE
+	saved_style:    i32,            // before full screen
+	saved_place:    win.WINDOWPLACEMENT,
+}
+
+@(private) os_build: u32   // Windows build number (RtlGetVersion), 0 until asked
+
+// Windows 11 (build 22000 or later): rounded corners, Snap Layouts, a frame drawn by the compositor around the window.
+is_windows_11 :: proc() -> bool {
+	if os_build == 0 {
+		vi := win.OSVERSIONINFOEXW{dwOSVersionInfoSize = size_of(win.OSVERSIONINFOEXW)}
+		win.RtlGetVersion(&vi)
+		os_build = max(vi.dwBuildNumber, 1)
+	}
+	return os_build >= 22000
 }
 
 @(private) class_name: win.wstring
@@ -29,7 +46,8 @@ Native_Window :: struct {
 // Open a window. `size` is in logical pixels (96 dpi): it is scaled by the DPI of the monitor the window lands on
 // and clamped to the monitor work area (CW_USEDEFAULT can pick a non-primary monitor with another DPI).
 // `transparent`: no GDI redirection surface, for a renderer that presents with alpha (render.init `transparent`).
-open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil, transparent := false) -> ^Window {
+// `integrated_title`: the app draws the title bar (set_integrated_title); `size` is then the whole window's inside.
+open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil, transparent := false, integrated_title := false) -> ^Window {
 	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
 	icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
@@ -53,7 +71,9 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.on_frame = on_frame
 	w.dpi_scale = 1
 	w.focused = true
+	w.active = true
 	w.display_stale = true
+	w.integrated = integrated_title
 	for c in Cursor { w.cursors[c] = win.LoadCursorA(nil, cursor_resource(c)) }
 
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
@@ -72,23 +92,160 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	work_h := int(mi.rcWork.bottom - mi.rcWork.top)
 	cw := min(int(f32(size.x) * w.dpi_scale), int(f32(work_w) * 0.94))
 	ch := min(int(f32(size.y) * w.dpi_scale), int(f32(work_h) * 0.92))
-	rect := win.RECT{0, 0, i32(cw), i32(ch)}
-	win.AdjustWindowRectExForDpi(&rect, win.WS_OVERLAPPEDWINDOW, false, 0, dpi)
-	ow, oh := int(rect.right - rect.left), int(rect.bottom - rect.top)
+	ow, oh := outer_size(w, cw, ch, dpi)
 	x := int(mi.rcWork.left) + (work_w - ow) / 2
 	y := int(mi.rcWork.top) + (work_h - oh) / 2
-	win.SetWindowPos(w.hwnd, nil, i32(x), i32(y), i32(ow), i32(oh), win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+	// (with an integrated title bar SWP_FRAMECHANGED makes the system ask WM_NCCALCSIZE again)
+	win.SetWindowPos(w.hwnd, nil, i32(x), i32(y), i32(ow), i32(oh), win.SWP_NOZORDER | win.SWP_NOACTIVATE | win.SWP_FRAMECHANGED)
 	update_client_size(w)
 	return w
+}
+
+// Outer size of a window whose client area is cw x ch: the frame around it (no top frame nor caption with an
+// integrated title bar: the client area starts at the window's top).
+@(private)
+outer_size :: proc(w: ^Window, cw, ch: int, dpi: u32) -> (int, int) {
+	rect := win.RECT{0, 0, i32(cw), i32(ch)}
+	win.AdjustWindowRectExForDpi(&rect, win.WS_OVERLAPPEDWINDOW, false, 0, dpi)
+	if w.integrated { rect.top = 0 }
+	return int(rect.right - rect.left), int(rect.bottom - rect.top)
 }
 
 // Resize the window so its client area is `size` logical pixels (scaled by the window's DPI).
 set_size :: proc(w: ^Window, size: [2]int) {
 	dpi := win.GetDpiForWindow(w.hwnd)
-	rect := win.RECT{0, 0, i32(f32(size.x) * w.dpi_scale), i32(f32(size.y) * w.dpi_scale)}
-	win.AdjustWindowRectExForDpi(&rect, win.WS_OVERLAPPEDWINDOW, false, 0, dpi)
-	win.SetWindowPos(w.hwnd, nil, 0, 0, rect.right - rect.left, rect.bottom - rect.top, win.SWP_NOMOVE | win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+	ow, oh := outer_size(w, int(f32(size.x) * w.dpi_scale), int(f32(size.y) * w.dpi_scale), dpi)
+	win.SetWindowPos(w.hwnd, nil, 0, 0, i32(ow), i32(oh), win.SWP_NOMOVE | win.SWP_NOZORDER | win.SWP_NOACTIVATE)
 	update_client_size(w)
+}
+
+////////////////////////////////
+// Integrated title bar, window state
+
+// Switches between the system's title bar and one drawn by the app, at any time: the window keeps its outer rect (the
+// client area grows by the old title bar, or shrinks back). With `on`, the app reports its title bar every frame with
+// set_chrome_regions (the toolkit's ui does it when Build_Params.window is set) and draws the caption buttons
+// (ui.window_buttons).
+set_integrated_title :: proc(w: ^Window, on: bool) {
+	if w.integrated == on { return }
+	w.integrated = on
+	chrome_regions_clear(&w.chrome)
+	win.SetWindowPos(w.hwnd, nil, 0, 0, 0, 0, win.SWP_NOMOVE | win.SWP_NOSIZE | win.SWP_NOZORDER | win.SWP_NOACTIVATE | win.SWP_FRAMECHANGED)
+	update_client_size(w)
+}
+
+is_integrated_title :: proc(w: ^Window) -> bool { return w.integrated }
+
+// The title bar the app drew this frame (client pixels): copied, the caller keeps its regions.
+set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
+	chrome_regions_clear(&w.chrome)
+	append(&w.chrome.caption, ..c.caption[:])
+	append(&w.chrome.holes, ..c.holes[:])
+	w.chrome.buttons = c.buttons
+}
+
+is_maximized :: proc(w: ^Window) -> bool { return bool(win.IsZoomed(w.hwnd)) }
+is_minimized :: proc(w: ^Window) -> bool { return bool(win.IsIconic(w.hwnd)) }
+is_fullscreen :: proc(w: ^Window) -> bool { return w.fullscreen }
+
+minimize :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.SC_MINIMIZE, 0) }
+
+// Maximizes, or restores a maximized window (the maximize / restore caption button, a double click on the title bar).
+toggle_maximize :: proc(w: ^Window) {
+	win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, is_maximized(w) ? win.SC_RESTORE : win.SC_MAXIMIZE, 0)
+}
+
+// Asks the window to close as the close button of the system does (the app sees a .Close event).
+request_close :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.SC_CLOSE, 0) }
+
+// Full screen: the window covers its monitor, without frame nor title bar (F11). Off: back to where it was, maximized or not.
+set_fullscreen :: proc(w: ^Window, on: bool) {
+	if w.fullscreen == on { return }
+	if on {
+		w.saved_place = {length = size_of(win.WINDOWPLACEMENT)}
+		win.GetWindowPlacement(w.hwnd, &w.saved_place)
+		w.saved_style = win.GetWindowLongW(w.hwnd, win.GWL_STYLE)
+		mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
+		win.GetMonitorInfoW(win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST), &mi)
+		w.fullscreen = true
+		win.SetWindowLongW(w.hwnd, win.GWL_STYLE, i32(u32(w.saved_style) & ~win.WS_OVERLAPPEDWINDOW))
+		r := mi.rcMonitor
+		win.SetWindowPos(w.hwnd, win.HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top, win.SWP_NOOWNERZORDER | win.SWP_FRAMECHANGED)
+	} else {
+		w.fullscreen = false
+		win.SetWindowLongW(w.hwnd, win.GWL_STYLE, w.saved_style)
+		win.SetWindowPlacement(w.hwnd, &w.saved_place)
+		win.SetWindowPos(w.hwnd, nil, 0, 0, 0, 0, win.SWP_NOMOVE | win.SWP_NOSIZE | win.SWP_NOZORDER | win.SWP_NOOWNERZORDER | win.SWP_FRAMECHANGED)
+	}
+	w.display_stale = true
+	update_client_size(w)
+}
+
+// The system menu (Restore, Move, Size, Minimize, Maximize, Close) at `pos` (client pixels), as a right click on a
+// title bar of the system opens it. The chosen command runs as if it came from the system's title bar.
+show_system_menu :: proc(w: ^Window, pos: [2]f32) {
+	menu := win.GetSystemMenu(w.hwnd, false)
+	if menu == nil { return }
+	maxed := is_maximized(w)
+	state :: proc(on: bool) -> u32 { return on ? win.MF_ENABLED : win.MF_GRAYED }
+	win.EnableMenuItem(menu, win.SC_RESTORE, win.MF_BYCOMMAND | state(maxed))
+	win.EnableMenuItem(menu, win.SC_MOVE, win.MF_BYCOMMAND | state(!maxed))
+	win.EnableMenuItem(menu, win.SC_SIZE, win.MF_BYCOMMAND | state(!maxed))
+	win.EnableMenuItem(menu, win.SC_MINIMIZE, win.MF_BYCOMMAND | win.MF_ENABLED)
+	win.EnableMenuItem(menu, win.SC_MAXIMIZE, win.MF_BYCOMMAND | state(!maxed))
+	win.EnableMenuItem(menu, win.SC_CLOSE, win.MF_BYCOMMAND | win.MF_ENABLED)
+	win.SetMenuDefaultItem(menu, win.SC_CLOSE, 0)
+	pt := win.POINT{i32(pos.x), i32(pos.y)}
+	win.ClientToScreen(w.hwnd, &pt)
+	cmd := win.TrackPopupMenu(menu, win.TPM_RETURNCMD | win.TPM_LEFTALIGN | win.TPM_TOPALIGN | win.TPM_RIGHTBUTTON, pt.x, pt.y, 0, w.hwnd, nil)
+	if cmd != 0 { win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.WPARAM(cmd), 0) }
+}
+
+// Windows 10 draws no line along the top of a window whose client area covers its title bar: the app draws it there
+// (1 px, the theme's border colour) while the window is neither maximized nor full screen.
+needs_top_border :: proc(w: ^Window) -> bool {
+	return w.integrated && !w.fullscreen && !is_windows_11() && !is_maximized(w)
+}
+
+foreign import user32_chrome "system:User32.lib"
+@(default_calling_convention = "system", private)
+foreign user32_chrome {
+	GetIconInfo :: proc(icon: win.HICON, info: ^win.ICONINFO) -> win.BOOL ---
+}
+
+// The exe's icon (resource id 1, the one the window and the taskbar show) at `size` x `size` pixels, as RGBA8 with
+// straight alpha (sRGB): for an app that draws it in its own title bar. ok = false when the exe has no icon.
+app_icon_rgba :: proc(size: int, allocator := context.allocator) -> (pixels: []u8, ok: bool) {
+	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
+	icon := win.HICON(win.LoadImageW(instance, transmute(win.LPCWSTR)uintptr(1), win.IMAGE_ICON, i32(size), i32(size), win.LR_DEFAULTCOLOR))
+	if icon == nil { return nil, false }
+	defer win.DestroyIcon(icon)
+	info: win.ICONINFO
+	if !GetIconInfo(icon, &info) { return nil, false }
+	defer { if info.hbmColor != nil { win.DeleteObject(win.HGDIOBJ(info.hbmColor)) }; if info.hbmMask != nil { win.DeleteObject(win.HGDIOBJ(info.hbmMask)) } }
+	if info.hbmColor == nil { return nil, false }
+	bmi := win.BITMAPINFO{bmiHeader = {biSize = size_of(win.BITMAPINFOHEADER), biWidth = i32(size), biHeight = -i32(size), biPlanes = 1, biBitCount = 32, biCompression = win.BI_RGB}}
+	dc := win.CreateCompatibleDC(nil)
+	defer win.DeleteDC(dc)
+	pixels = make([]u8, size * size * 4, allocator)
+	if win.GetDIBits(dc, info.hbmColor, 0, u32(size), raw_data(pixels), &bmi, win.DIB_RGB_COLORS) == 0 {
+		delete(pixels, allocator)
+		return nil, false
+	}
+	// icons keep straight alpha: BGRA to RGBA
+	any_alpha := false
+	for i := 0; i < len(pixels); i += 4 {
+		pixels[i], pixels[i + 2] = pixels[i + 2], pixels[i]
+		if pixels[i + 3] != 0 { any_alpha = true }
+	}
+	if !any_alpha { for i := 3; i < len(pixels); i += 4 { pixels[i] = 255 } }   // an icon without alpha: opaque
+	return pixels, true
+}
+
+// Thickness of the resize band along the top of an integrated title bar, and of the system's frame (physical pixels).
+resize_border :: proc(w: ^Window) -> int {
+	dpi := win.GetDpiForWindow(w.hwnd)
+	return int(win.GetSystemMetricsForDpi(win.SM_CYFRAME, dpi) + win.GetSystemMetricsForDpi(win.SM_CXPADDEDBORDER, dpi))
 }
 
 show_window :: proc(w: ^Window) {
@@ -252,6 +409,57 @@ cursor_resource :: proc(c: Cursor) -> cstring {
 }
 
 @(private)
+hit_code :: proc(h: Hit) -> win.LRESULT {
+	switch h {
+	case .Client:       return win.HTCLIENT
+	case .Caption:      return win.HTCAPTION
+	case .Minimize:     return win.HTMINBUTTON
+	case .Maximize:     return win.HTMAXBUTTON
+	case .Close:        return win.HTCLOSE
+	case .Left:         return win.HTLEFT
+	case .Right:        return win.HTRIGHT
+	case .Top:          return win.HTTOP
+	case .Bottom:       return win.HTBOTTOM
+	case .Top_Left:     return win.HTTOPLEFT
+	case .Top_Right:    return win.HTTOPRIGHT
+	case .Bottom_Left:  return win.HTBOTTOMLEFT
+	case .Bottom_Right: return win.HTBOTTOMRIGHT
+	}
+	return win.HTCLIENT
+}
+
+@(private)
+is_caption_button :: proc(ht: win.WPARAM) -> bool { return ht == win.HTMINBUTTON || ht == win.HTMAXBUTTON || ht == win.HTCLOSE }
+
+// A maximized window covering a monitor whose taskbar hides itself would hide it for good (the system takes such a
+// window for a full screen one): leave 2 px along the taskbar's edge so that it comes up when the pointer reaches it.
+@(private)
+autohide_taskbar_insets :: proc(hwnd: win.HWND, r: ^win.RECT) {
+	ABM_GETAUTOHIDEBAREX :: 0x0000000b
+	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
+	if !win.GetMonitorInfoW(win.MonitorFromWindow(hwnd, .MONITOR_DEFAULTTONEAREST), &mi) { return }
+	if mi.rcWork != mi.rcMonitor { return }   // a taskbar that stays up already reserves its space
+	for edge in u32(0) ..= 3 {   // ABE_LEFT, ABE_TOP, ABE_RIGHT, ABE_BOTTOM
+		abd := win.APPBARDATA{cbSize = size_of(win.APPBARDATA), uEdge = edge, rc = mi.rcMonitor}
+		if win.SHAppBarMessage(ABM_GETAUTOHIDEBAREX, &abd) == 0 { continue }
+		switch edge {
+		case 0: r.left += 2
+		case 1: r.top += 2
+		case 2: r.right -= 2
+		case 3: r.bottom -= 2
+		}
+	}
+}
+
+// What the pointer is over: -1 when it is not over this window (another window, or outside), else the hit test code.
+@(private)
+pointer_hit :: proc(w: ^Window) -> win.LRESULT {
+	pt: win.POINT
+	if !win.GetCursorPos(&pt) || win.WindowFromPoint(pt) != w.hwnd { return -1 }
+	return win.SendMessageW(w.hwnd, win.WM_NCHITTEST, 0, win.LPARAM(uintptr(u32(u16(i16(pt.x))) | u32(u16(i16(pt.y))) << 16)))
+}
+
+@(private)
 update_client_size :: proc(w: ^Window) {
 	r: win.RECT
 	win.GetClientRect(w.hwnd, &r)
@@ -322,6 +530,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	mouse_pos :: proc(lparam: win.LPARAM) -> [2]f32 {
 		return {f32(win.GET_X_LPARAM(lparam)), f32(win.GET_Y_LPARAM(lparam))}
 	}
+	screen_to_client :: proc(hwnd: win.HWND, lparam: win.LPARAM) -> [2]f32 {
+		pt := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
+		win.ScreenToClient(hwnd, &pt)
+		return {f32(pt.x), f32(pt.y)}
+	}
 
 	switch msg {
 	case win.WM_CLOSE:
@@ -334,6 +547,66 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_SETFOCUS:  w.focused = true
 	case win.WM_KILLFOCUS: w.focused = false
+
+	case win.WM_ACTIVATE:
+		active := win.LOWORD(u32(wparam)) != win.WA_INACTIVE
+		if active != w.active { w.active = active; push(w, {kind = .Activate}) }
+
+	case win.WM_NCACTIVATE:
+		// lParam -1: no repaint of a frame the client area covers (it would flash the system's title bar)
+		if w.integrated && !w.fullscreen { return win.DefWindowProcW(hwnd, msg, wparam, -1) }
+
+	case win.WM_NCCALCSIZE:
+		// the client area takes the whole window but the system's frame on the left, right and bottom (invisible
+		// resize borders and the shadow, as with the system's title bar); the top resize band is inside it (WM_NCHITTEST)
+		if w.integrated && !w.fullscreen && wparam != 0 {
+			params := cast(^win.NCCALCSIZE_PARAMS)uintptr(lparam)
+			top := params.rgrc[0].top
+			if r := win.DefWindowProcW(hwnd, msg, wparam, lparam); r != 0 { return r }
+			params.rgrc[0].top = top
+			if win.IsZoomed(hwnd) {
+				// a maximized window hangs over its monitor by its frame: the client area starts at the monitor's top
+				params.rgrc[0].top += i32(resize_border(w))
+				autohide_taskbar_insets(hwnd, &params.rgrc[0])
+			}
+			return 0
+		}
+
+	case win.WM_NCHITTEST:
+		if w.integrated && !w.fullscreen {
+			// the system's answer for its own frame (left, right, bottom borders and corners); the rest is the app's
+			if r := win.DefWindowProcW(hwnd, msg, wparam, lparam); r != win.HTCLIENT { return r }
+			pt := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
+			win.ScreenToClient(hwnd, &pt)
+			border := f32(resize_border(w))
+			sides: Sides = win.IsZoomed(hwnd) ? {} : {.Top}
+			return hit_code(hit_test_chrome(&w.chrome, {f32(pt.x), f32(pt.y)}, {f32(w.size.x), f32(w.size.y)}, border, border * 2, sides))
+		}
+
+	// Over the title bar the pointer is in the non-client area: its moves become the app's (hover of the caption
+	// buttons, hover cleared over the caption); a press on a caption button is the app's widget's (captured: the release
+	// comes as WM_LBUTTONUP), never the system's (it would draw its own buttons over the app's).
+	case win.WM_NCMOUSEMOVE:
+		if w.integrated && !w.fullscreen {
+			if !w.nc_tracking {
+				tme := win.TRACKMOUSEEVENT{cbSize = size_of(win.TRACKMOUSEEVENT), dwFlags = win.TME_LEAVE | win.TME_NONCLIENT, hwndTrack = hwnd}
+				win.TrackMouseEvent(&tme)
+				w.nc_tracking = true
+			}
+			push(w, {kind = .Mouse_Move, pos = screen_to_client(hwnd, lparam), mods = current_mods()})
+			if is_caption_button(wparam) { return 0 }
+		}
+	case win.WM_NCMOUSELEAVE:
+		w.nc_tracking = false
+		if w.integrated && pointer_hit(w) != win.HTCLIENT { push(w, {kind = .Mouse_Leave}) }
+	case win.WM_NCLBUTTONDOWN, win.WM_NCLBUTTONDBLCLK:
+		if w.integrated && is_caption_button(wparam) {
+			win.SetCapture(hwnd)
+			push(w, {kind = .Mouse_Press, button = .Left, pos = screen_to_client(hwnd, lparam), mods = current_mods()})
+			return 0
+		}
+	case win.WM_NCLBUTTONUP, win.WM_NCRBUTTONDOWN, win.WM_NCRBUTTONUP, win.WM_NCRBUTTONDBLCLK:
+		if w.integrated && is_caption_button(wparam) { return 0 }
 
 	case win.WM_SETCURSOR:
 		if win.LOWORD(u32(lparam)) == win.HTCLIENT {
@@ -383,7 +656,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_KEYDOWN, win.WM_SYSKEYDOWN:
 		key := key_from_vk(wparam)
 		if key != .None { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & (1 << 30)) != 0}) }
-		if msg == win.WM_SYSKEYDOWN && key != .None && wparam != win.VK_F4 { return 0 }   // no menu-bar beep on Alt+key
+		// no menu-bar beep on Alt+key; Alt+F4 closes, Alt+Space opens the system menu
+		if msg == win.WM_SYSKEYDOWN && key != .None && wparam != win.VK_F4 && wparam != win.VK_SPACE { return 0 }
 	case win.WM_KEYUP, win.WM_SYSKEYUP:
 		key := key_from_vk(wparam)
 		if key != .None { push(w, {kind = .Key_Release, key = key, mods = current_mods()}) }
@@ -410,7 +684,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		push(w, {kind = .Mouse_Move, pos = mouse_pos(lparam), mods = current_mods()})
 	case win.WM_MOUSELEAVE:
 		w.tracking_mouse = false
-		push(w, {kind = .Mouse_Leave})
+		// into the app's own title bar or frame: WM_NCMOUSEMOVE goes on with the moves
+		if !(w.integrated && pointer_hit(w) >= 0) { push(w, {kind = .Mouse_Leave}) }
 
 	case win.WM_LBUTTONDOWN, win.WM_LBUTTONDBLCLK: win.SetCapture(hwnd); push(w, {kind = .Mouse_Press, button = .Left, pos = mouse_pos(lparam), mods = current_mods()})
 	case win.WM_RBUTTONDOWN, win.WM_RBUTTONDBLCLK: win.SetCapture(hwnd); push(w, {kind = .Mouse_Press, button = .Right, pos = mouse_pos(lparam), mods = current_mods()})
