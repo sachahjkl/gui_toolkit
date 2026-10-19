@@ -626,15 +626,18 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 	for i < len(w) {
 		r, n := decode16(w, i)
 		chosen: Font_Id
-		if i > 0 && sticks(r, prev_r) && faces[i - 1] != 0 {
-			pf := face_ptr(s, faces[i - 1])
-			// a mark the base's face lacks may still come from elsewhere; joiners and selectors always stay
-			if pf != nil && (face_has(pf, r) || r == 0x200D || r == 0x200C || (r >= 0xFE00 && r <= 0xFE0F) || prev_r == 0x200D ||
-				(r >= 0xE0100 && r <= 0xE01EF) || (r >= 0xE0020 && r <= 0xE007F)) {
+		search := true
+		if i > 0 && sticks(r, prev_r) {
+			if faces[i - 1] == 0 {
+				// the base goes to the system fallback: so does the rest of its cluster (emoji ZWJ sequences, modifiers)
+				search = false
+			} else if pf := face_ptr(s, faces[i - 1]); pf != nil && (face_has(pf, r) || r == 0x200D || r == 0x200C ||
+				(r >= 0xFE00 && r <= 0xFE0F) || prev_r == 0x200D || (r >= 0xE0100 && r <= 0xE01EF) || (r >= 0xE0020 && r <= 0xE007F)) {
+				// a mark the base's face lacks may still come from elsewhere; joiners and selectors always stay
 				chosen = faces[i - 1]
 			}
 		}
-		if chosen == 0 {
+		if chosen == 0 && search {
 			for e in entries {
 				if !in_ranges(e.ranges, r) { continue }
 				f := face_ptr(s, e.font)
