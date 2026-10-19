@@ -195,48 +195,30 @@ build_tab_row :: proc(app: ^App, em: f32) {
 	}
 }
 
-Spark_Draw :: struct { v: [64]f32, idx: int, color: draw.Color }
-
-spark_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
-	d := (^Spark_Draw)(user)
-	r := b.rect
-	w := (r.max.x - r.min.x) / 64
-	h := r.max.y - r.min.y
-	for i in 0 ..< 64 {
-		ms := d.v[(d.idx + i) % 64]
-		bh := clamp(ms / 8 * h, 1, h)
-		c := d.color
-		c.a = 0.35 + 0.65 * f32(i) / 63
-		draw.rect(dc, {{r.min.x + f32(i) * w, r.max.y - bh}, {r.min.x + f32(i) * w + max(1, w - 1), r.max.y}}, c)
-	}
-}
-
+// The status bar: page, theme and zoom on the left; on the right the last frames (build and draw time, stacked; the
+// line is a 60 Hz frame budget), with the values of the frame under the pointer in a tooltip.
 build_statusbar :: proc(app: ^App, em: f32) {
 	if !app.show_status { return }
-	if ui.tags("bar") {
-		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.1)), radius = 0})
-		if ui.row(.Center, {.Draw_Background, .Draw_Side_Top}, "###statusbar") {
-			if ui.style({font_size = math.round(em * 0.85)}) {
-				ui.spacer(ui.px(em * 0.9))
-				if ui.tags("weak") {
-					ui.next({width = ui.text_size(), height = ui.pct(1)})
-					ui.label(fmt.tprintf("%s  |  %s  |  zoom %d%%", page_names[int(app.page)], palettes[app.palette_idx].name, int(math.round(ui.zoom(&app.ui_state) * 100))))
-				}
-				ui.spacer(ui.fill())
-				d := ui.frame_new(Spark_Draw)
-				d.v, d.idx, d.color = app.ms_hist, app.ms_idx % 64, ui.color("accent")
-				ui.next({width = ui.px(em * 8), height = ui.px(em * 1.2)})
-				ui.custom("spark", spark_draw, d)
-				ui.spacer(ui.px(em * 0.8))
-				if ui.style({font = app.mono}) {
-					if ui.tags("weak") {
-						ui.next({width = ui.text_size(), height = ui.pct(1)})
-						ui.label(app.show_boxes ? fmt.tprintf("%d boxes  |  frame %.2f ms", ui.boxes_built(&app.ui_state), app.ui_ms) : fmt.tprintf("frame %.2f ms", app.ui_ms))
-					}
-				}
-				ui.spacer(ui.px(em * 0.9))
+	if ui.status_bar("###statusbar", 2.1, 0.85) {
+		if ui.status_fill("###sb_left") {
+			ui.status_item(fmt.tprintf("%s###sb_page", page_names[int(app.page)]))
+			ui.status_separator()
+			ui.status_item(fmt.tprintf("%s###sb_theme", palettes[app.palette_idx].name))
+			ui.status_separator()
+			ui.status_item(fmt.tprintf("zoom %d%%###sb_zoom", int(math.round(ui.zoom(&app.ui_state) * 100))))
+		}
+		colors := [2]draw.Color{ui.color("accent"), ui.color("good")}
+		ui.next({width = ui.px(em * 8), height = ui.px(em * 1.2)})
+		graph := ui.frame_graph("###sb_graph", &app.frames, {colors = colors[:], budget = 16.7, scale = 4, bars = 64})
+		if s := ui.history_at(&app.frames, graph.hovered); s != nil {
+			if ui.tooltip() {
+				ui.stat_row("build", "build", fmt.tprintf("%.2f ms", s.v[0]), em * 11, swatch_color = colors[0])
+				ui.stat_row("draw", "draw", fmt.tprintf("%.2f ms", s.v[1]), em * 11, swatch_color = colors[1])
 			}
 		}
+		if graph.clicked { app.show_boxes = !app.show_boxes }
+		ui.spacer(ui.px(em * 0.5))
+		ui.status_item(app.show_boxes ? fmt.tprintf("%d boxes  |  frame %.2f ms###sb_ms", ui.boxes_built(&app.ui_state), app.ui_ms) : fmt.tprintf("frame %.2f ms###sb_ms", app.ui_ms), mono = true)
 	}
 }
 

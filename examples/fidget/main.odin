@@ -139,6 +139,7 @@ frame :: proc(app: ^App) {
 	})
 	build_ui(app)
 	ui.end_build()
+	build_ms := f32(time.duration_milliseconds(time.tick_since(t_begin)))
 	if app.debug_dump && app.frame_index == 5 { ui.debug_dump_tall(&app.ui_state, f32(app.win.size.y) * 0.5) }
 	platform.set_cursor(app.win, ui.cursor(&app.ui_state))
 	if ui.needs_frame(&app.ui_state) { app.frames_requested = max(app.frames_requested, 2) }
@@ -164,8 +165,7 @@ frame :: proc(app: ^App) {
 
 	if app.bench_n > 0 { bench_frame(app, ms) }
 	app.ui_ms = math.lerp(app.ui_ms, ms, f32(0.25))
-	app.ms_hist[app.ms_idx % 64] = ms
-	app.ms_idx += 1
+	if s := ui.history_push(&app.frames, ui.now_ms()); s != nil { s.v[0], s.v[1] = build_ms, max(ms - build_ms, 0) }
 	app.frame_index += 1
 	free_all(context.temp_allocator)
 }
@@ -194,6 +194,7 @@ main :: proc() {
 	app.ui_state.mono_font = app.mono
 
 	app.show_status = true
+	ui.history_init(&app.frames, 96, 2)
 	app.sliders_on = true
 	app.corner_smoothing = 1
 	set_palette(app, DEFAULT_PALETTE)
