@@ -3,6 +3,47 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased] - text on DirectWrite (branch feat/text-dwrite)
+
+### Changed
+- **`font` is rebuilt on DirectWrite** (stb_truetype is gone): faces from the system collection
+  (`font.load_system`, `font.has_system_family`), files (`load_from_file`) and memory (`load_memory`,
+  `load_from_memory`, `load_embedded`: a custom font file loader, keys never reused). Same `Font_Id`, `metrics`,
+  `text_width`, `x_from_index`, `index_from_x`, `glyph` (now outline metrics) and `kern` (a pair shaped together minus
+  apart) as before, so existing callers get fallback and shaping unchanged. See [docs/text.md](docs/text.md).
+- `font.Metrics` gains `x_height`, `cap_height`, `underline_offset` / `_thickness`, `strike_offset` / `_thickness`.
+- `draw.text` shapes (fallback, ligatures, kerning, bidi in the string's direction) and draws through `draw.glyph_run`;
+  it moved to `draw/text.odin` with `TEXT_RASTER_TOLERANCE`. `draw.Context.glyphs` holds the textures of the atlas
+  pages; `draw.init` / `begin_frame` / `end_frame` / `destroy` call into it (text.odin).
+- `font.State` no longer has `pending` / `pending_pixels` / `glyphs` / `fonts`: the atlas is in pages uploaded per
+  draw context (`font.atlas_sync_page`).
+
+### Added
+- **Cascades**: `font.cascade(entries, features, no_system_fallback)`: per-character fallback through the entries
+  (`ranges` = CSS `unicode-range`), then the **system fallback** (`IDWriteFontFallback::MapCharacters`); clusters stay
+  in one face (marks, selectors, ZWJ emoji sequences). OpenType `features` on every face.
+- `font.with_simulations` (synthetic bold / oblique), `font.axes`, `font.with_variations` (variable fonts),
+  `font.unload`, `font.valid`, `font.primary_face`, `font.set_settings`, `font.clear_atlas`, `font.clear_word_cache`.
+- **Shaping**: `font.shape` -> `Shaped{glyphs (visual order), clusters (logical order), width}` (`Glyph_Pos`,
+  `Cluster`), `Shape_Options{direction, one_run, letter_spacing, word_spacing, justify}`, `font.measure`,
+  `font.caret_x`, `font.hit_index`, `font.shaped_destroy`. Words shaped once and cached (sharded, bounded, per-thread
+  front cache): measuring is thread-safe without a global lock.
+- **Analyses**: `font.bidi_levels`, `bidi_runs`, `runs_of_levels`, `visual_order`, `reorder` (UAX #9);
+  `font.line_breaks` (UAX #14, dictionaries for Thai...); `font.maybe_rtl`, `font.first_strong_rtl`.
+- **Glyph bitmaps**: `font.glyph_image` (grayscale, `Settings.subpixel_steps` horizontal positions, rendering mode and
+  grid fitting from `Settings`), **color glyphs** (COLR / CPAL layers composited to RGBA, drawn as images: emoji),
+  atlas pages of both kinds with LRU reuse that never clears a page a current frame uses (`atlas_begin_frame`,
+  `atlas_remove_user`, `atlas_page_count`, `atlas_page_info`, `atlas_evictions`).
+- `draw.glyph_run(dc, size, pos, color, glyphs)` (the painter's entry point), `draw.text_ex(..., opts)`.
+- `font.Settings` / `font.DEFAULT_SETTINGS` (`font.init(s, settings)`).
+- `tests/text`: faces, memory faces, fallback (U+2190 in a Latin font), ligatures and kerning, Arabic joining,
+  Devanagari, bidi, line breaks, color emoji pixels, atlas stress with a tiny atlas, measuring from 8 threads, and a
+  WARP pixel test of drawn text.
+
+### Fixed
+- A full atlas no longer resets in the middle of a frame (glyphs drawn earlier in the frame showed the glyphs
+  rasterized over them: "20 ☒ 7 minutes").
+
 ## [0.6.0] - 2026-10-19
 
 ### Added
