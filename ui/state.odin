@@ -31,6 +31,37 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	tick_origin = time.tick_now()
 }
 
+// Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
+destroy :: proc(s: ^State) {
+	for _, b in s.boxes { free(b) }
+	for b in s.free_boxes { free(b) }
+	delete(s.boxes)
+	delete(s.free_boxes)
+	delete(s.anims)
+	delete(s.timers)
+	delete(s.tag_sets)
+	delete(s.color_memo)
+	delete(s.sb_owner)
+	delete(s.bar_keys)
+	delete(s.bar_keys_prev)
+	delete(s.parent_stack)
+	delete(s.style_stack)
+	delete(s.tag_stack)
+	delete(s.disabled_stack)
+	delete(s.tag_marks)
+	delete(s.tag_keys)
+	delete(s.events.list)
+	delete(s.events.consumed)
+	delete(s.typed)
+	delete(s.focus_order)
+	delete(s.popup_stack)
+	delete(s.list_stack)
+	menus_destroy(s)
+	virtual.arena_destroy(&s.arena)
+	if g == s { g = nil }
+	s^ = {}
+}
+
 frame_allocator :: proc() -> mem.Allocator { return virtual.arena_allocator(&g.arena) }
 
 now_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since(tick_origin)) }
@@ -73,6 +104,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.cursor_request = .Arrow
 
 	process_events(s, p.events, !p.disable_zoom)
+	menu_capture_keys(s, p.events)
+	s.tab_dir = 0
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
 
 	// root: fills the window
@@ -105,6 +138,7 @@ end_build :: proc() {
 	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
 
 	layout(s)
+	menu_prune(s)
 	handle_tab_navigation(s)
 	update_animations(s)
 
@@ -489,12 +523,30 @@ handle_tab_navigation :: proc(s: ^State) {
 	if cur < 0 { next = dir > 0 ? 0 : len(stops) - 1 } else { next = (cur + dir + len(stops)) % len(stops) }
 	s.focus_key = stops[next]
 	s.focus_visible = true
+	s.tab_dir = dir
 	scroll_focus_into_view(s)
+}
+
+// +1 / -1 when Tab / Shift+Tab moved the focus in the last build (0 otherwise): an app that hands the focus over to
+// content of its own when a box takes it (a document view) knows from which side it came.
+tab_direction :: proc(s: ^State) -> int { return s.tab_dir }
+
+// Moves the focus as Tab (dir > 0) or Shift+Tab would, from `from` (0: from the start or the end). For an app whose
+// own content passes the focus back to the toolkit's Tab order.
+focus_step :: proc(s: ^State, from: Key, dir: int) {
+	if len(s.focus_order) == 0 { return }
+	cur := -1
+	for e, i in s.focus_order { if e.key == from { cur = i; break } }
+	n := len(s.focus_order)
+	next: int
+	if cur < 0 { next = dir > 0 ? 0 : n - 1 } else { next = (cur + (dir > 0 ? 1 : -1) + n) % n }
+	s.focus_key = s.focus_order[next].key
+	s.focus_visible = true
 }
 
 @(private)
 handle_arrow_navigation :: proc(s: ^State) -> bool {
-	if s.focus_key == 0 || s.ctx_menu_key != 0 || len(s.focus_order) == 0 { return false }
+	if s.focus_key == 0 || len(s.menus) > 0 || len(s.focus_order) == 0 { return false }
 	cur := s.boxes[s.focus_key]
 	if cur == nil || cur.last_build != s.build_index || .Text_Input in cur.flags { return false }
 	dir: Vec2

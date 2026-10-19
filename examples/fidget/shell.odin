@@ -143,39 +143,43 @@ build_menubar :: proc(app: ^App, em: f32) {
 			if ui.ctx_menu(file_m, menu_w) {
 				if ui.menu_item("Reset all values", "", false, ICON_UNDO).clicked { run_cmd(app, .Reset_Values) }
 				if ui.menu_item("Dismiss all toasts", "", false, ui.ICON_X).clicked { run_cmd(app, .Clear_Toasts) }
-				ui.hline(ui.px(menu_w))
+				ui.menu_separator()
 				if ui.menu_item("Quit", "Alt+F4", false, ICON_STOP).clicked { run_cmd(app, .Quit) }
 			}
 			if ui.ctx_menu(view_m, menu_w) {
 				if ui.menu_item("Settings...", "Ctrl+,", false, ICON_GEAR).clicked { run_cmd(app, .Settings) }
-				ui.hline(ui.px(menu_w))
+				ui.menu_separator()
 				if ui.menu_item("Status bar", "Ctrl+B", app.show_status).clicked { run_cmd(app, .Toggle_Status) }
 				if ui.menu_item("Count UI boxes", "", app.show_boxes).clicked { run_cmd(app, .Toggle_Boxes) }
 				if ui.menu_item("Slow-motion animations", "", app.slowmo).clicked { run_cmd(app, .Toggle_Slowmo) }
-				ui.hline(ui.px(menu_w))
-				if ui.menu_item("Animations: system setting", "", app.anim_mode == .System).clicked { run_cmd(app, .Anim_System) }
-				if ui.menu_item("Animations: always on", "", app.anim_mode == .On).clicked { run_cmd(app, .Anim_On) }
-				if ui.menu_item("Animations: always off", "Ctrl+J", app.anim_mode == .Off).clicked { run_cmd(app, .Anim_Off) }
-				ui.hline(ui.px(menu_w))
-				if ui.menu_item("Zoom in", "Ctrl +").clicked { run_cmd(app, .Zoom_In) }
-				if ui.menu_item("Zoom out", "Ctrl -").clicked { run_cmd(app, .Zoom_Out) }
-				if ui.menu_item("Reset zoom", "Ctrl 0").clicked { run_cmd(app, .Zoom_Reset) }
-				ui.hline(ui.px(menu_w))
-				for p in Page {
-					if ui.menu_item(page_names[int(p)], fmt.tprintf("Ctrl+%d", int(p) + 1), app.page == p, page_icons[int(p)]).clicked { app.page = p }
+				ui.menu_separator()
+				if ui.menu_submenu("Animations") {
+					if ui.menu_item("System setting", "", app.anim_mode == .System).clicked { run_cmd(app, .Anim_System) }
+					if ui.menu_item("Always on", "", app.anim_mode == .On).clicked { run_cmd(app, .Anim_On) }
+					if ui.menu_item("Always off", "Ctrl+J", app.anim_mode == .Off).clicked { run_cmd(app, .Anim_Off) }
+				}
+				if ui.menu_submenu("Zoom") {
+					if ui.menu_item("Zoom in", "Ctrl +").clicked { run_cmd(app, .Zoom_In) }
+					if ui.menu_item("Zoom out", "Ctrl -").clicked { run_cmd(app, .Zoom_Out) }
+					if ui.menu_item("Reset zoom", "Ctrl 0", enabled = ui.zoom(&app.ui_state) != 1).clicked { run_cmd(app, .Zoom_Reset) }
+				}
+				if ui.menu_submenu("Go to page") {
+					for p in Page {
+						if ui.menu_item(page_names[int(p)], fmt.tprintf("Ctrl+%d", int(p) + 1), app.page == p, page_icons[int(p)]).clicked { app.page = p }
+					}
 				}
 			}
 			if ui.ctx_menu(theme_m, menu_w) {
 				for p, i in palettes {
 					if ui.menu_item(p.name, "", app.palette_idx == i).clicked { run_cmd(app, Command(int(Command.Theme_Midnight) + i)) }
 				}
-				ui.hline(ui.px(menu_w))
+				ui.menu_separator()
 				if ui.menu_item("Cycle next", "Ctrl+T", false, ICON_REFRESH).clicked { run_cmd(app, .Next_Theme) }
 			}
 			if ui.ctx_menu(help_m, menu_w) {
 				if ui.menu_item("Command palette", "Ctrl+K", false, ICON_FIND).clicked { palette_toggle(app) }
 				if ui.menu_item("Confirm dialog demo", "", false, ICON_QUESTION).clicked { run_cmd(app, .Open_Modal) }
-				ui.hline(ui.px(menu_w))
+				ui.menu_separator()
 				if ui.menu_item("About", "F1", false, ui.ICON_INFO).clicked { run_cmd(app, .About) }
 			}
 		}

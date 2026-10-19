@@ -15,10 +15,12 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	clear(&s.events.consumed)
 	clear(&s.typed)
 	left := platform.Mouse_Button.Left
+	s.mouse_moved = false
 
 	for e in events {
 		#partial switch e.kind {
 		case .Mouse_Move:
+			if e.pos != s.mouse { s.mouse_moved = true }
 			s.mouse = e.pos
 			s.mouse_valid = true
 		case .Mouse_Leave:
@@ -70,8 +72,8 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			s.mods = e.mods
 			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
 				#partial switch e.key {
-				case .Equal: s.zoom = clamp(s.zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
-				case .Minus: s.zoom = clamp(s.zoom / ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
+				case .Equal, .Num_Add: s.zoom = clamp(s.zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
+				case .Minus, .Num_Subtract: s.zoom = clamp(s.zoom / ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
 				case .N0:    s.zoom = 1; continue
 				case:
 				}
@@ -192,7 +194,7 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 		if sig.hovering && b.cursor != .Arrow { s.cursor_request = b.cursor }
 		// keyboard activation of the focused Tab stop (text inputs handle their own keys)
 		// (not while a context menu is open: Enter / Space then belong to the menu)
-		if sig.focused && .Focusable in b.flags && .Text_Input not_in b.flags && s.ctx_menu_key == 0 {
+		if sig.focused && .Focusable in b.flags && .Text_Input not_in b.flags && len(s.menus) == 0 {
 			if key_press(.Return) || key_press(.Space) {
 				sig.clicked, sig.pressed, sig.released = true, true, true
 			}
