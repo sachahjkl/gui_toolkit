@@ -1,7 +1,9 @@
 // Filter passes (CSS Filter Effects 1): one full-screen triangle per pass over the destination region. Texel t of the
 // destination is screen pixel dst_origin + (t + 0.5) / dst_scale; sources are sampled at the same screen point
-// (bilinear, transparent outside the texture: the rest of a pooled texture is cleared). Colors are processed as
-// browsers do, in sRGB on premultiplied values; PASS_IN_LINEAR / PASS_OUT_LINEAR convert at the ends of a chain.
+// (bilinear, transparent outside the texture). A pass writes its region plus a ring of one transparent texel past its
+// right and bottom edges, and reads sources no further than their ring: what lies beyond (a pooled texture is not
+// cleared) is never seen. Colors are processed as browsers do, in sRGB on premultiplied values; PASS_IN_LINEAR /
+// PASS_OUT_LINEAR convert at the ends of a chain.
 
 #define MODE_COLOR 0
 #define MODE_BLUR 1
@@ -23,7 +25,7 @@ cbuffer PassConstants : register(b1)
 	float2 src2_size; float2 src2_dim;
 	float2 dir; float2 offset;
 	float4 color;
-	uint matrix_count; uint3 _pad;
+	uint matrix_count; float2 dst_size; float factor;
 	float4 tap[MAX_TAPS / 2];
 	float4 m[MAX_MATRICES * 5];
 };
@@ -62,16 +64,19 @@ float4 to_linear(float4 c)
 	return float4(decode(c.rgb / c.a) * c.a, c.a);
 }
 
-// A source texel position (continuous, in texels) sampled; with PASS_CLAMP, kept inside the valid region.
+// A source texel position (continuous, in texels) sampled: with PASS_CLAMP kept inside the valid region (edges
+// repeat), else kept within the transparent ring past it (left and top: the texture's own border).
 float4 sample_at(Texture2D<float4> t, float2 tc, float2 size, float2 dim, bool lin)
 {
 	if (flags & PASS_CLAMP) tc = clamp(tc, 0.5, max(size - 0.5, 0.5));
+	else tc = min(tc, size + 0.5);
 	float4 c = t.SampleLevel(samp, tc / dim, 0);
 	return lin ? to_srgb(c) : c;
 }
 
 float4 ps_fx(float4 pos : SV_Position) : SV_Target
 {
+	if (any(pos.xy > dst_size)) return 0;   // the ring
 	float2 p = dst_origin + pos.xy / dst_scale;   // screen point of this texel's center
 	float2 tc = (p - src_origin) * src_scale;
 	bool lin = (flags & PASS_IN_LINEAR) != 0;
@@ -85,6 +90,20 @@ float4 ps_fx(float4 pos : SV_Position) : SV_Target
 			if (i == 0) c += ow.y * sample_at(src, tc, src_size, src_dim, lin);
 			else c += ow.y * (sample_at(src, tc + dir * ow.x, src_size, src_dim, lin) + sample_at(src, tc - dir * ow.x, src_size, src_dim, lin));
 		}
+	}
+	else if (mode == MODE_DOWNSAMPLE)
+	{
+		// a factor x factor box: bilinear taps centered between texel pairs, (factor / 2)^2 of them
+		uint n = (uint)(factor * 0.5 + 0.5);
+		float first = 1 - (float)n;
+		for (uint y = 0; y < n; y++)
+		{
+			for (uint x = 0; x < n; x++)
+			{
+				c += sample_at(src, tc + float2(first + 2 * x, first + 2 * y), src_size, src_dim, lin);
+			}
+		}
+		c /= (float)(n * n);
 	}
 	else if (mode == MODE_SHADOW)
 	{
