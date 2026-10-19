@@ -94,6 +94,15 @@ text_upload :: proc(c: ^Context) {
 	}
 }
 
+// A glyph with nothing to draw. A color glyph still being drawn (font.Glyph_Image.pending) shows in a later frame; a
+// picture recorded without it is stale once it is ready.
+@(private)
+glyph_missing :: proc(c: ^Context, img: font.Glyph_Image, ready: u64) {
+	if !img.pending || c.rec == nil || c.rec.glyphs_pending { return }
+	c.rec.glyphs_pending = true
+	c.rec.pending_ready = ready   // read before the lookups: a glyph finished since makes it differ
+}
+
 // The current batch samples `tex` as its coverage texture (t0); a different one starts a new batch.
 @(private)
 use_glyph_tex :: proc(c: ^Context, tex: render.Texture) {
@@ -147,6 +156,10 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	if c.rec != nil { picture_note_text(c, xf.gpu, sf) }
 	sc, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 	page_size := f32(c.fonts.settings.page_size)
+	// the text color as color glyphs with text-color layers are drawn in it (sRGB; the alpha is the image's tint)
+	enc :: #force_inline proc(v: f32) -> u8 { return u8(clamp(render.linear_to_srgb(clamp(v, 0, 1)) * 255 + 0.5, 0, 255)) }
+	fg := [3]u8{enc(color.r), enc(color.g), enc(color.b)}
+	ready := font.color_ready_generation(c.fonts)
 	for g in glyphs {
 		lx, ly := pos.x + g.x, pos.y + g.y
 		// where the bitmap goes: screen pixels (baked) or local units (GPU transform, or a picture's slot)
@@ -158,8 +171,8 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 				// layout and raster sizes agree: snap in local units, then scale (sc is within the tolerance of 1)
 				ix: f32
 				ix, sub = font.subpixel(c.fonts, lx)
-				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub)
-				if img.page < 0 { continue }
+				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
+				if img.page < 0 { glyph_missing(c, img, ready); continue }
 				x0 := ix + img.offset.x
 				y0 := math.round(ly) + img.offset.y
 				dst = {x0 * sc + o.x, y0 * sc + o.y, (x0 + img.size.x) * sc + o.x, (y0 + img.size.y) * sc + o.y}
@@ -167,8 +180,8 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 				// bitmap at screen size: snap the pen on the screen pixel grid
 				ix: f32
 				ix, sub = font.subpixel(c.fonts, lx * sc + o.x)
-				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub)
-				if img.page < 0 { continue }
+				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
+				if img.page < 0 { glyph_missing(c, img, ready); continue }
 				x0 := ix + img.offset.x
 				y0 := math.round(ly * sc + o.y) + img.offset.y
 				dst = {x0, y0, x0 + img.size.x, y0 + img.size.y}
@@ -178,14 +191,14 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 			// what direct drawing draws)
 			ix: f32
 			ix, sub = font.subpixel(c.fonts, lx)
-			img = font.glyph_image(c.fonts, g.face, g.id, raster, sub)
-			if img.page < 0 { continue }
+			img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
+			if img.page < 0 { glyph_missing(c, img, ready); continue }
 			x0 := ix + img.offset.x
 			y0 := math.round(ly) + img.offset.y
 			dst = {x0, y0, x0 + img.size.x, y0 + img.size.y}
 		} else {
-			img = font.glyph_image(c.fonts, g.face, g.id, raster, 0)
-			if img.page < 0 { continue }
+			img = font.glyph_image(c.fonts, g.face, g.id, raster, 0, fg)
+			if img.page < 0 { glyph_missing(c, img, ready); continue }
 			x0 := lx + img.offset.x / k
 			y0 := ly + img.offset.y / k
 			dst = {x0, y0, x0 + img.size.x / k, y0 + img.size.y / k}

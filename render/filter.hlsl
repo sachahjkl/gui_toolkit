@@ -7,10 +7,15 @@
 #define MODE_BLUR 1
 #define MODE_DOWNSAMPLE 2
 #define MODE_SHADOW 3
+#define MODE_MASK 4
 #define PASS_IN_LINEAR 1
 #define PASS_OUT_LINEAR 2
 #define PASS_CLAMP 4
 #define PASS_SRC2_LINEAR 8
+#define PASS_MASK_LUMINANCE 16
+#define PASS_MASK_DEST 32
+#define PASS_MASK_APPLY 64
+#define MASK_OP_SHIFT 8
 #define MAX_TAPS 64
 #define MAX_MATRICES 8
 
@@ -92,6 +97,34 @@ float4 ps_fx(float4 pos : SV_Position) : SV_Target
 		float4 o = sample_at(src2, (p - src2_origin) * src2_scale, src2_size, src2_dim, (flags & PASS_SRC2_LINEAR) != 0);
 		float4 sh = float4(color.rgb * color.a, color.a) * a;
 		c = o + sh * (1 - o.a);
+	}
+	else if (mode == MODE_MASK)
+	{
+		// src2: a mask layer (premultiplied sRGB); its coverage is its alpha, or its luminance (CSS Masking 1 §7.1:
+		// the luminance of the straight color times the alpha, i.e. of the premultiplied color)
+		float4 m = sample_at(src2, (p - src2_origin) * src2_scale, src2_size, src2_dim, (flags & PASS_SRC2_LINEAR) != 0);
+		float s = (flags & PASS_MASK_LUMINANCE) ? saturate(dot(m.rgb, float3(0.2125, 0.7154, 0.0721))) : m.a;
+		if (flags & PASS_MASK_APPLY)
+		{
+			// src: the masked content, in whatever space it is (scaling premultiplied color commutes with it)
+			c = src.SampleLevel(samp, tc / src_dim, 0) * s;
+		}
+		else
+		{
+			// src: the mask layers below, composited so far (mask-composite: add, subtract, intersect, exclude)
+			float r = s;
+			if (flags & PASS_MASK_DEST)
+			{
+				float d = sample_at(src, tc, src_size, src_dim, false).a;
+				uint op = (flags >> MASK_OP_SHIFT) & 3;
+				if (op == 0) r = s + d * (1 - s);
+				else if (op == 1) r = s * (1 - d);
+				else if (op == 2) r = s * d;
+				else r = s * (1 - d) + d * (1 - s);
+			}
+			c = float4(r, r, r, r);
+		}
+		return c;
 	}
 	else
 	{

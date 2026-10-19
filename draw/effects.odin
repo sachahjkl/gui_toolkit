@@ -212,6 +212,7 @@ push_effects :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects) {
 }
 
 pop_layer :: proc(c: ^Context) {
+	if len(c.open_layers) > 0 && c.open_layers[len(c.open_layers) - 1].masked { pop_mask(c); return }
 	ol := pop(&c.open_layers)
 	pop(&c.alphas)
 	if ol.id == 0 { return }
@@ -225,6 +226,13 @@ pop_layer :: proc(c: ^Context) {
 		img = run_filters(c, img, c.filter_store[ol.filters[0]:ol.filters[1]], ol.xform, false)
 	}
 	resize(&c.filter_store, ol.filters[0])
+	composite_layer(c, ol, img)
+}
+
+// Draws a closed layer's result (`img`, its filters applied) into the enclosing target: with the layer's opacity
+// times the alpha stack, its blend mode, cut by the clips around it. Hands `img` back.
+@(private)
+composite_layer :: proc(c: ^Context, ol: Open_Layer, img: render.Image_Ref) {
 	a := c.alphas[len(c.alphas) - 1] * ol.alpha
 	_, _, shape := cur(c)
 	x0, y0 := img.origin.x, img.origin.y

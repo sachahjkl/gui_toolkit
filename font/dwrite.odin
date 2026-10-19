@@ -270,6 +270,24 @@ IDWriteFactory4_VTable :: struct {
 	ComputeGlyphOrigins:     rawptr,
 }
 
+// IDWriteFactory5 (43..47), 6 (48..54), 7 (55..56), 8 (57): only the paint-tree aware TranslateColorGlyphRun is called.
+IDWriteFactory8 :: struct #raw_union {
+	#subtype factory: IDWriteFactory,
+	using vtable: ^IDWriteFactory8_VTable,
+}
+IDWriteFactory8_VTable :: struct {
+	using factory4_vtable: IDWriteFactory4_VTable,
+	_f5: [5]rawptr,
+	_f6: [7]rawptr,
+	_f7: [2]rawptr,
+	TranslateColorGlyphRun8: proc "system" (this: ^IDWriteFactory8, origin: D2D1_POINT_2F, run: ^DWRITE_GLYPH_RUN, desc: ^DWRITE_GLYPH_RUN_DESCRIPTION, formats: DWRITE_GLYPH_IMAGE_FORMATS,
+		paint_level: u32, mode: DWRITE_MEASURING_MODE, transform: ^DWRITE_MATRIX, palette: u32, layers: ^^IDWriteColorGlyphRunEnumerator1) -> HRESULT,
+}
+#assert(offset_of(IDWriteFactory8_VTable, TranslateColorGlyphRun8) == 57 * size_of(rawptr))
+#assert(offset_of(IDWriteFactory4_VTable, TranslateColorGlyphRun4) == 40 * size_of(rawptr))
+
+IID_IDWriteFactory8 := IID{0xee0a7fb5, 0xdef4, 0x4c23, {0xa4, 0x54, 0xc9, 0xc7, 0xdc, 0x87, 0x83, 0x98}}
+
 IDWriteFontFile :: struct #raw_union {
 	#subtype iunknown: IUnknown,
 	using vtable: ^IDWriteFontFile_VTable,
@@ -388,6 +406,42 @@ IDWriteFontFace5_VTable :: struct {
 	HasVariations:         proc "system" (this: ^IDWriteFontFace5) -> BOOL,
 	GetFontResource:       proc "system" (this: ^IDWriteFontFace5, resource: ^^IDWriteFontResource) -> HRESULT,
 	Equals:                rawptr,
+}
+
+// IDWriteFontFace6 (58..59), 7 (60..61): the COLR v1 paint reader.
+IDWriteFontFace7 :: struct #raw_union {
+	#subtype face: IDWriteFontFace,
+	using vtable: ^IDWriteFontFace7_VTable,
+}
+IDWriteFontFace7_VTable :: struct {
+	using face5_vtable: IDWriteFontFace5_VTable,
+	GetFamilyNames7:      rawptr,
+	GetFaceNames7:        rawptr,
+	GetPaintFeatureLevel: proc "system" (this: ^IDWriteFontFace7, format: DWRITE_GLYPH_IMAGE_FORMATS) -> u32,
+	CreatePaintReader:    proc "system" (this: ^IDWriteFontFace7, format: DWRITE_GLYPH_IMAGE_FORMATS, level: u32, reader: ^^IDWritePaintReader) -> HRESULT,
+}
+#assert(offset_of(IDWriteFontFace7_VTable, CreatePaintReader) == 61 * size_of(rawptr))
+
+IID_IDWriteFontFace7 := IID{0x3945b85b, 0xbc95, 0x40f7, {0xb7, 0x2c, 0x8b, 0x73, 0xbf, 0xc7, 0xe1, 0x3b}}
+
+// DWRITE_PAINT_ELEMENT: the paint type and a union whose largest member is 32 bytes (dwrite_3.h).
+DWRITE_PAINT_ELEMENT :: struct {
+	paintType: u32,
+	paint:     [8]u32,
+}
+#assert(size_of(DWRITE_PAINT_ELEMENT) == 36)
+
+DWRITE_PAINT_ATTRIBUTES_USES_TEXT_COLOR :: u32(0x02)
+
+IDWritePaintReader :: struct #raw_union {
+	#subtype iunknown: IUnknown,
+	using vtable: ^IDWritePaintReader_VTable,
+}
+IDWritePaintReader_VTable :: struct {
+	using iunknown_vtable: IUnknown_VTable,
+	SetCurrentGlyph: proc "system" (this: ^IDWritePaintReader, glyph: u32, element: ^DWRITE_PAINT_ELEMENT, size: u32, clip_box: ^[4]f32, attributes: ^u32) -> HRESULT,
+	// SetTextColor, SetColorPaletteIndex, SetCustomColorPalette, MoveToFirstChild, MoveToNextSibling, MoveToParent,
+	// GetGradientStops, GetGradientStopColors follow
 }
 
 IDWriteFontResource :: struct #raw_union {

@@ -158,6 +158,13 @@ Open_Layer :: struct {
 	filters: [2]int,    // [first, end) of Context.filter_store
 	blend:   Blend_Mode,
 	xform:   Affine,    // the transform when it was pushed (filter lengths and offsets are in that local space)
+	// a masked layer (push_mask): the content is layer `id`; mask layers are drawn one after the other into layer
+	// `mask` and folded into `coverage` (mask_layer, pop_mask)
+	masked:   bool,
+	mask:     int,               // the mask layer being drawn (0: still the content)
+	mask_mode: Mask_Mode,
+	mask_op:  Mask_Op,
+	coverage: render.Image_Ref,  // the mask layers drawn so far, composited (tex 0: none yet)
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
