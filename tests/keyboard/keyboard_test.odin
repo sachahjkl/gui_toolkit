@@ -258,6 +258,19 @@ list_keyboard :: proc(t: ^testing.T) {
 	frame(&f, {typed('b'), typed('a')}, build_list, &r)
 	testing.expect_value(t, r.st.sel, 3)
 
+	// the active row is scrolled into view
+	frame(&f, {key(.End)}, build_list, &r)
+	for _ in 0 ..< 6 { frame(&f, nil, build_list, &r) }
+	r.st.typed_ms = -10000
+	frame(&f, {typed('a'), typed('p'), typed('r')}, build_list, &r)
+	for _ in 0 ..< 6 { frame(&f, nil, build_list, &r) }
+	testing.expect_value(t, r.st.sel, 2)
+	{
+		lb2 := ui.box_from_key(r.st.key)
+		row := ui.box_from_key(ui.key_from_string(r.st.key, "###lrow_2"))
+		testing.expect(t, row != nil && lb2 != nil && row.rect.min.y >= lb2.rect.min.y - 0.5 && row.rect.max.y <= lb2.rect.max.y + 0.5, "apricot is visible")
+	}
+
 	frame(&f, {key(.Return)}, build_list, &r)
 	testing.expect(t, r.st.activated, "Enter activates the row")
 	frame(&f, {key(.Escape)}, build_list, &r)

@@ -48,6 +48,7 @@ destroy :: proc(s: ^State) {
 	delete(s.style_stack)
 	delete(s.tag_stack)
 	delete(s.disabled_stack)
+	delete(s.tab_stops_off)
 	delete(s.tag_marks)
 	delete(s.tag_keys)
 	delete(s.events.list)
@@ -85,6 +86,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)
 	clear(&s.disabled_stack); s.disabled_depth = 0
+	clear(&s.tab_stops_off); s.tab_skip = 0
 	clear(&s.focus_order)
 	s.trap_depth = 0
 	s.modal_prev, s.modal_now = s.modal_now, 0
@@ -105,7 +107,6 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 
 	process_events(s, p.events, !p.disable_zoom)
 	menu_capture_keys(s, p.events)
-	s.tab_dir = 0
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
 
 	// root: fills the window
@@ -136,6 +137,7 @@ end_build :: proc() {
 	assert(len(s.popup_stack) == 0, "ui: unbalanced popup scopes")
 	assert(len(s.style_stack) == 1, "ui: unbalanced style push/pop")
 	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
+	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 
 	layout(s)
 	menu_prune(s)
@@ -317,7 +319,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		if busy { s.anim_busy = true }
 	}
 
-	if .Focusable in b.flags && .Disabled not_in b.flags {
+	if .Focusable in b.flags && .Disabled not_in b.flags && s.tab_skip == 0 {
 		append(&s.focus_order, Focus_Entry{key = b.key, trapped = s.trap_depth > 0})
 	}
 
@@ -424,6 +426,20 @@ pop_disabled :: proc() {
 	if pop(&g.disabled_stack) { g.disabled_depth -= 1 }
 }
 
+// `if tab_stops(false) { ... }`: the widgets built in the block are no Tab stops (Tab and the arrow keys skip them);
+// they still take the focus when clicked or through set_focus. For rows of a list whose editors only the active row
+// should offer, and the like. Scopes nest; `tab_stops(true)` changes nothing.
+@(deferred_none = pop_tab_stops)
+tab_stops :: proc(on: bool) -> bool {
+	append(&g.tab_stops_off, !on)
+	if !on { g.tab_skip += 1 }
+	return true
+}
+
+pop_tab_stops :: proc() {
+	if pop(&g.tab_stops_off) { g.tab_skip -= 1 }
+}
+
 // `if muted() { ... }`: secondary content, drawn with the theme's weak text colour. Still interactive (see `disabled`).
 @(deferred_none = pop_tags)
 muted :: proc() -> bool {
@@ -508,6 +524,7 @@ debug_dump_tall :: proc(s: ^State, limit: f32) {
 // arrows itself has the focus; sliders, text fields and open menus consume their arrows before this runs.
 @(private)
 handle_tab_navigation :: proc(s: ^State) {
+	s.tab_dir = 0
 	if handle_arrow_navigation(s) { return }
 	dir := 0
 	if key_press(.Tab) { dir = 1 } else if key_press(.Tab, {.Shift}) { dir = -1 }
@@ -527,8 +544,9 @@ handle_tab_navigation :: proc(s: ^State) {
 	scroll_focus_into_view(s)
 }
 
-// +1 / -1 when Tab / Shift+Tab moved the focus in the last build (0 otherwise): an app that hands the focus over to
-// content of its own when a box takes it (a document view) knows from which side it came.
+// +1 / -1 when Tab / Shift+Tab moved the focus at the end of the last build (0 otherwise; valid during the next build):
+// an app that hands the focus over to content of its own when a box takes it (a document view) knows from which side
+// it came.
 tab_direction :: proc(s: ^State) -> int { return s.tab_dir }
 
 // Moves the focus as Tab (dir > 0) or Shift+Tab would, from `from` (0: from the start or the end). For an app whose

@@ -318,6 +318,8 @@ State :: struct {
 	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box
 	focus_order:  [dynamic]Focus_Entry,  // Tab stops in build order (this frame)
 	trap_depth:   int,               // > 0 while building inside a modal: Tab cycles inside it only
+	tab_stops_off: [dynamic]bool,    // `tab_stops` scopes; tab_skip counts the ones that turned Tab stops off
+	tab_skip:     int,
 	modal_prev, modal_now: Key,      // modal open last frame / this frame (focus resets when a modal opens)
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
