@@ -2,7 +2,8 @@
 //
 // Primitives are appended to one instance list; a new GPU batch starts only when the clip rect changes or when an
 // image needs a different texture than the batch's (glyphs and shapes never break a batch).
-// Colors are LINEAR rgba (use `srgb` / `hex` to author them). A transform stack (2D affine, see `Affine`) and an alpha
+// Colors are LINEAR rgba (use `srgb` / `hex` to author them), whatever the renderer's blend space (render.Blend_Space:
+// where they are mixed, linear light or sRGB values). A transform stack (2D affine, see `Affine`) and an alpha
 // stack apply to everything drawn while they are pushed. Uniform scale + translation (press "squish", zoom) is baked
 // on the CPU; rotation, skew and non-uniform scale go to the GPU as a per-instance transform, with shapes evaluated
 // in local space (exact rounded corners, 1 px antialiasing under any transform).
@@ -76,6 +77,28 @@ hex :: proc(v: u32) -> Color {
 
 mix :: proc(a, b: Color, t: f32) -> Color { return a + (b - a) * t }
 
+Blend_Space :: render.Blend_Space
+
+// Where the corner colors of rect_corners (gradients) are interpolated across the primitive.
+Interpolation :: enum u8 {
+	Target,   // the blend space of the target drawn into (the default)
+	Srgb,     // sRGB values: CSS gradients (CSS Images 4: `in srgb`, the default)
+	Linear,   // linear light (CSS `in srgb-linear`)
+}
+
+// The alpha that makes `color` over `over` look, blended in `space`, as it does at `alpha` blended in linear light
+// (luminance match; colors linear). For colors tuned for one space (a theme's translucent hover, a selection tint)
+// drawn in the other one. Identity in Linear, or when color and backdrop have the same luminance.
+alpha_like_linear :: proc(space: Blend_Space, color: Color, alpha: f32, over: Color) -> f32 {
+	if space == .Linear || alpha <= 0 || alpha >= 1 { return alpha }
+	y :: proc(c: Color) -> f32 { return clamp(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, 0, 1) }
+	yc, yb := y(color), y(over)
+	sc, sb := render.linear_to_srgb(yc), render.linear_to_srgb(yb)
+	if abs(sc - sb) < 1.0 / 255 { return alpha }
+	want := render.linear_to_srgb(alpha * yc + (1 - alpha) * yb)
+	return clamp((want - sb) / (sc - sb), 0, 1)
+}
+
 // Legacy scale + offset transform (p' = p * scale + offset); the stack now holds `Affine`s (see affine_from_xform).
 Xform :: struct { scale: f32, offset: Vec2 }
 
@@ -112,6 +135,7 @@ Context :: struct {
 	filter_store: [dynamic]Filter,             // the filters of open layers (Open_Layer.filters indexes it)
 	target:   int,                             // where new batches draw: 0 = the frame, else a layer id
 	circular: bool,                            // set_circular_corners
+	interp:   Interpolation,                   // set_interpolation
 	size:     Vec2,
 	generation: int,
 }
@@ -145,6 +169,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.open_layers); clear(&c.filter_store)
 	c.target = 0
 	c.circular = false
+	c.interp = .Target
 	c.size = size
 	append(&c.clips, Clip{rect = {{0, 0}, size}})
 	append(&c.alphas, 1)
@@ -251,6 +276,20 @@ set_circular_corners :: proc(c: ^Context, on: bool) -> (previous: bool) {
 	return
 }
 
+// Where the corner colors of what is drawn from now on (rect_corners) are interpolated. Returns the previous setting.
+// begin_frame resets it to .Target.
+set_interpolation :: proc(c: ^Context, interp: Interpolation) -> (previous: Interpolation) {
+	previous = c.interp
+	c.interp = interp
+	return
+}
+
+// The blend space of what is drawn now: the open layer's, or the frame's.
+blend_space :: proc(c: ^Context) -> Blend_Space {
+	if c.target > 0 { return c.layers[c.target - 1].space }
+	return c.renderer.space
+}
+
 // Layers opened and not closed yet.
 layer_depth :: proc(c: ^Context) -> int { return len(c.open_layers) }
 
@@ -305,10 +344,17 @@ rect :: proc(c: ^Context, r: Rect, color: Color, radius: f32 = 0, border: f32 = 
 	rect_corners(c, r, {color, color, color, color}, {radius, radius, radius, radius}, border, soft)
 }
 
-// Per-corner colors (gradients) and radii; corner order: top-left, bottom-left, top-right, bottom-right.
+// Per-corner colors (gradients) and radii; corner order: top-left, bottom-left, top-right, bottom-right. Colors are
+// interpolated premultiplied, in the space set_interpolation chooses.
 rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, border: f32 = 0, soft: f32 = 1) {
 	xf, alpha, shape := cur(c)
-	inst := render.Rect_Inst{colors = colors, soft = soft, use_tex = render.KIND_SHAPE, tex_size = font.ATLAS_SIZE, clip = shape, flags = c.circular ? render.FLAG_CIRCLE : 0}
+	flags: u32 = c.circular ? render.FLAG_CIRCLE : 0
+	switch c.interp {
+	case .Target:
+	case .Srgb: flags |= render.FLAG_LERP_SRGB
+	case .Linear: flags |= render.FLAG_LERP_LINEAR
+	}
+	inst := render.Rect_Inst{colors = colors, soft = soft, use_tex = render.KIND_SHAPE, tex_size = font.ATLAS_SIZE, clip = shape, flags = flags}
 	if xf.simple {
 		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 		inst.dst = {r.min.x * s + o.x, r.min.y * s + o.y, r.max.x * s + o.x, r.max.y * s + o.y}
@@ -394,7 +440,13 @@ image_corners :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: Rect, ti
 	if ts.x == 0 { return }
 	s := src
 	if s == {} { s = {{0, 0}, {f32(ts.x), f32(ts.y)}} }
-	image_inst(c, tex, dst, {s.min.x, s.min.y, s.max.x, s.max.y}, tint, radii, 0)
+	image_inst(c, tex, dst, {s.min.x, s.min.y, s.max.x, s.max.y}, tint, radii, texture_flags(c, tex))
+}
+
+// FLAG_TEX_SRGB for an RGBA texture stored in sRGB (render.texture_space).
+@(private)
+texture_flags :: proc(c: ^Context, tex: render.Texture) -> u32 {
+	return render.texture_space(c.renderer, tex) == .Srgb ? render.FLAG_TEX_SRGB : 0
 }
 
 // Repeats the whole texture (CSS background-repeat): one copy lands on `tile` (local coords, may be smaller or larger
@@ -408,7 +460,7 @@ image_tiled :: proc(c: ^Context, tex: render.Texture, dst: Rect, tile: Rect, tin
 	k := Vec2{f32(ts.x), f32(ts.y)} / tsz   // texels per local unit
 	uv0 := (dst.min - tile.min) * k
 	uv1 := (dst.max - tile.min) * k
-	image_inst(c, tex, dst, {uv0.x, uv0.y, uv1.x, uv1.y}, tint, radii, render.FLAG_TILE)
+	image_inst(c, tex, dst, {uv0.x, uv0.y, uv1.x, uv1.y}, tint, radii, render.FLAG_TILE | texture_flags(c, tex))
 }
 
 @(private)

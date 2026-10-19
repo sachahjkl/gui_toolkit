@@ -22,7 +22,7 @@ The widget gallery: the Odin counterpart of `gui_fidget`'s demo app, built entir
 - Ctrl+wheel / Ctrl +/-/0 zoom the whole UI (toolkit feature)
 
 Shortcuts: Ctrl+K, Ctrl+1..4, Ctrl+T theme, Ctrl+B status bar, Ctrl+J animations.
-Test flags: `--page=N --theme=N --palette --modal --about --settings --toasts --toast_pos=N --anim=on|off --dump`.
+Test flags: `--page=N --theme=N --palette --modal --about --settings --toasts --toast_pos=N --anim=on|off --blending=srgb|linear --dump`.
 
 Files: `app.odin` (state, palettes, command table), `main.odin` (frame loop, settings), `shell.odin`
 (menu bar, tabs, status bar, palette, modal), `pages.odin` (Controls, Inputs), `pages_data.odin`,

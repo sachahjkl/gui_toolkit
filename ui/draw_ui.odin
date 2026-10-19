@@ -7,18 +7,37 @@ import "../font"
 
 // Paints the box tree built by the last build. Parents first, then children (later siblings on top);
 // borders, focus rings and the disabled overlay are drawn after the children so they land above them.
-// Opacity kept by disabled widgets. Blending happens in linear space, where the same alpha looks far more opaque over a
-// dark background than over a light one, so it depends on the theme. Disabled boxes also switch to neutral colours
-// (see build_box), so this only has to dim them a little.
+// Opacity kept by disabled widgets. Tuned for blending in linear light, where the same alpha looks far more opaque over
+// a dark background than over a light one, so it depends on the theme (and is adapted by `tuned` in an sRGB frame).
+// Disabled boxes also switch to neutral colours (see build_box), so this only has to dim them a little.
 DISABLED_KEEP_DARK :: 0.4
 DISABLED_KEEP_LIGHT :: 0.65
+
+// The UI's translucent colors (hover tints, glows, sheens, scrollbars, theme entries with an alpha) are tuned for
+// blending in linear light. Drawn into an sRGB target (render.Blend_Space.Srgb, a web browser's choice), `tuned`
+// changes their alpha so they look the same over the theme's background (or `over`); corner gradients of the UI are
+// interpolated in linear light in both spaces. The tree therefore looks the same in both spaces, except for
+// antialiased edges and text, which follow the space.
+tuned :: proc(c: Color, over: Maybe(Color) = nil) -> Color {
+	if g == nil || g.space == .Linear { return c }
+	o := c
+	o.a = draw.alpha_like_linear(g.space, c, c.a, over.? or_else g.backdrop)
+	return o
+}
 
 draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	g = s
 	bg := color_from_tags(s, 0, "background")
+	s.space = draw.blend_space(dc)
+	s.backdrop = {bg.r, bg.g, bg.b, 1}
 	lum := clamp(0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b, 0, 1)
 	s.disabled_keep = math.lerp(f32(DISABLED_KEEP_DARK), f32(DISABLED_KEEP_LIGHT), lum)
+	if s.space != .Linear {
+		s.disabled_keep = tuned(color_from_tags(s, 0, "text") * {1, 1, 1, 0} + {0, 0, 0, s.disabled_keep}).a
+	}
+	interp := draw.set_interpolation(dc, .Linear)
 	draw_box(s, dc, s.root, s.scale)
+	draw.set_interpolation(dc, interp)
 }
 
 @(private)
@@ -34,7 +53,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if squished { draw.push_scale(dc, draw.rect_center(r), 1 - b.squish) }
 
 	if .Draw_Shadow in flags {
-		sc := color_from_tags(s, b.tags_key, "drop_shadow")
+		sc := tuned(color_from_tags(s, b.tags_key, "drop_shadow"))
 		draw.rect(dc, draw.rect_shift(draw.rect_pad(r, 8 * scale), {4 * scale, 4 * scale}), sc, radius, 0, 8 * scale)
 	}
 	keyboard_focus := s.focus_visible && b.key == s.focus_key
@@ -44,15 +63,15 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		c := color_from_tags(s, b.tags_key, "focus border")
 		c.a *= (keyboard_focus ? 1 : b.focus_t) * 0.55
 		glow := 5 * scale
-		draw.rect(dc, draw.rect_pad(r, glow), c, radius + glow, 0, glow)
+		draw.rect(dc, draw.rect_pad(r, glow), tuned(c), radius + glow, 0, glow)
 	}
 	if .Draw_Background in flags {
 		paint_rect(dc, r, b.bg, radius, box_sheen(s, b))
 	}
 	if .Draw_Hot_Effects in flags {
 		h := color_from_tags(s, b.tags_key, "hover")
-		h.a *= 0.014 * b.hot_t * (1 - b.active_t) + 0.02 * b.active_t   // blending is in linear space: tiny alphas
-		draw.rect(dc, r, h, radius)
+		h.a *= 0.014 * b.hot_t * (1 - b.active_t) + 0.02 * b.active_t   // tuned for linear blending: tiny alphas
+		draw.rect(dc, r, tuned(h, b.bg.a > 0.5 ? Color{b.bg.r, b.bg.g, b.bg.b, 1} : g.backdrop), radius)
 	}
 	if .Draw_Text in flags && b.text != "" { draw_box_text(s, dc, b) }
 
@@ -107,7 +126,7 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 			// light text sits in a groove (dark shadow above), dark text is lit from below
 			tc := b.text_color
 			light := 0.2126 * tc.r + 0.7152 * tc.g + 0.0722 * tc.b > 0.5
-			sc := light ? Color{0, 0, 0, 0.35 * k * tc.a} : Color{1, 1, 1, 0.75 * k * tc.a}
+			sc := tuned(light ? Color{0, 0, 0, 0.35 * k * tc.a} : Color{1, 1, 1, 0.75 * k * tc.a}, Color{b.bg.r, b.bg.g, b.bg.b, 1})
 			draw.text(dc, b.font, b.font_size, pos + {0, light ? -1 : 1}, sc, text)
 		}
 	}
@@ -163,7 +182,7 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 		bot := draw.mix(c, black, 0.14 * k)
 		draw.rect_corners(dc, r, {top, bot, top, bot}, {radius, radius, radius, radius})
 		inset := min(radius, (r.max.x - r.min.x) * 0.5) * 0.7
-		draw.rect(dc, {{r.min.x + inset, r.min.y + px}, {r.max.x - inset, r.min.y + 2 * px}}, {1, 1, 1, 0.30 * k * c.a})
+		draw.rect(dc, {{r.min.x + inset, r.min.y + px}, {r.max.x - inset, r.min.y + 2 * px}}, tuned({1, 1, 1, 0.30 * k * c.a}, top))
 	case .Glass:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
 		// saturated fills keep more of their colour so white text stays readable on them
@@ -176,7 +195,7 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 		rr := min(radius, (r.max.y - r.min.y) * 0.5, (r.max.x - r.min.x) * 0.5)
 		draw.rect_corners(dc, {r.min, {r.max.x, mid}}, {t0, t1, t0, t1}, {rr, 0, rr, 0})
 		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr, 0, rr})
-		draw.rect(dc, draw.rect_pad(r, -px), {1, 1, 1, 0.55 * k * c.a}, max(0, rr - px), px)
+		draw.rect(dc, draw.rect_pad(r, -px), tuned({1, 1, 1, 0.55 * k * c.a}, Color{c.r, c.g, c.b, 1}), max(0, rr - px), px)
 	}
 }
 

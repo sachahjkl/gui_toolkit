@@ -108,6 +108,7 @@ mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 		d.accent = color("accent")
 		d.ring = color("text")
 		d.ring.a = 0.5 + 0.25 * row_box.hot_t
+		d.ring = tuned(d.ring)
 		d.size = em * 0.95
 		d.radio = radio
 		custom("mark", mark_draw, d)
@@ -167,6 +168,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 		d.hot, d.active = row_box.hot_t, row_box.active_t
 		d.track = color("text")
 		d.track.a = 0.28
+		d.track = tuned(d.track)
 		d.accent = color("accent")
 		custom("track", toggle_draw, d)
 		spacer(px(em * 0.4))

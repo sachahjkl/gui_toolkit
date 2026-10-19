@@ -26,13 +26,13 @@ settings_dir :: proc() -> string {
 }
 
 snapshot :: proc(app: ^App) -> Saved_Settings {
-	return {palette = i32(app.palette_idx), anim = i32(app.anim_mode), status = app.show_status ? 1 : 0, toast_pos = i32(ui.toast_position(&app.ui_state)), zoom = ui.zoom(&app.ui_state), rounding = ui.rounding(&app.ui_state), smoothing = app.corner_smoothing, density = ui.density(&app.ui_state)}
+	return {palette = i32(app.palette_idx), anim = i32(app.anim_mode), status = app.show_status ? 1 : 0, toast_pos = i32(ui.toast_position(&app.ui_state)), zoom = ui.zoom(&app.ui_state), rounding = ui.rounding(&app.ui_state), smoothing = app.corner_smoothing, density = ui.density(&app.ui_state), blending = i32(render.blend_space(&app.r))}
 }
 
 settings_save :: proc(app: ^App) {
 	names := [Anim_Mode]string{.System = "system", .On = "on", .Off = "off"}
 	pos_names := [ui.Toast_Position]string{.Top_Left = "top_left", .Top_Center = "top_center", .Top_Right = "top_right", .Middle_Left = "middle_left", .Middle_Right = "middle_right", .Bottom_Left = "bottom_left", .Bottom_Center = "bottom_center", .Bottom_Right = "bottom_right"}
-	text := fmt.tprintf("animations=%s\npalette=%d\nstatus_bar=%d\ntoasts=%s\nzoom=%.3f\nrounding=%.2f\ncorners=%s\ndensity=%s\n", names[app.anim_mode], app.palette_idx, app.show_status ? 1 : 0, pos_names[ui.toast_position(&app.ui_state)], ui.zoom(&app.ui_state), ui.rounding(&app.ui_state), app.corner_smoothing > 0.5 ? "squircle" : "circular", ui.density(&app.ui_state) < 0.99 ? "compact" : "comfortable")
+	text := fmt.tprintf("animations=%s\npalette=%d\nstatus_bar=%d\ntoasts=%s\nzoom=%.3f\nrounding=%.2f\ncorners=%s\ndensity=%s\nblending=%s\n", names[app.anim_mode], app.palette_idx, app.show_status ? 1 : 0, pos_names[ui.toast_position(&app.ui_state)], ui.zoom(&app.ui_state), ui.rounding(&app.ui_state), app.corner_smoothing > 0.5 ? "squircle" : "circular", ui.density(&app.ui_state) < 0.99 ? "compact" : "comfortable", render.blend_space(&app.r) == .Srgb ? "srgb" : "linear")
 	_ = os.make_directory_all(settings_dir())
 	_ = os.write_entire_file(fmt.tprintf("%s/settings.txt", settings_dir()), transmute([]byte)text)
 	app.saved = snapshot(app)
@@ -54,6 +54,7 @@ settings_load :: proc(app: ^App) {
 		case "rounding": if v, ok := strconv.parse_f32(val); ok { ui.set_rounding(&app.ui_state, v) }
 		case "corners": app.corner_smoothing = val == "circular" ? 0 : 1
 		case "density": ui.set_density(&app.ui_state, val == "compact" ? ui.DENSITY_COMPACT : 1)
+		case "blending": render.set_blend_space(&app.r, val == "srgb" ? .Srgb : .Linear)
 		case "toasts":
 			for p in ui.Toast_Position {
 				name, _ := strings.replace_all(strings.to_lower(ui.toast_position_names[p], context.temp_allocator), " ", "_", context.temp_allocator)
@@ -75,7 +76,7 @@ set_palette :: proc(app: ^App, idx: int) {
 
 apply_theme :: proc(app: ^App) {
 	p := palettes[app.palette_idx].palette
-	ui.apply_palette(&app.theme, p)
+	ui.apply_palette(&app.theme, p, render.blend_space(&app.r))
 	if app.accent_override {
 		ui.theme_set(&app.theme, "accent", draw.hsv(app.hue, app.sat, app.val))
 		ui.theme_set(&app.theme, "accent_button background", draw.hsv(app.hue, app.sat, app.val))
@@ -228,6 +229,8 @@ main :: proc() {
 		if a == "--anim=on" { app.anim_mode = .On }
 		if a == "--dump" { app.debug_dump = true }
 		if a == "--compact" { ui.set_density(&app.ui_state, ui.DENSITY_COMPACT) }
+		if a == "--blending=srgb" { render.set_blend_space(&app.r, .Srgb) }
+		if a == "--blending=linear" { render.set_blend_space(&app.r, .Linear) }
 		if strings.has_prefix(a, "--bench=") { if v, vok := strconv.parse_int(a[8:]); vok { app.bench_n = v } }
 		if strings.has_prefix(a, "--bench_out=") { app.bench_out = a[12:] }
 	}

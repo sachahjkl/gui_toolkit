@@ -6,6 +6,7 @@
 //               [--stress=N]         N blurred, shadowed cards over a frosted backdrop each, instead of the demo
 //               [--bench=FRAMES]     print instance / layer / pass counts and CPU (and GPU with
 //                                    -define:GPU_TIMING=true) times, then quit
+//               [--srgb]             blend in sRGB as web browsers do (render.Blend_Space.Srgb), not in linear light
 package effects
 
 import "core:fmt"
@@ -33,6 +34,7 @@ App :: struct {
 	bench_n: int,
 	bench_build, bench_submit, bench_gpu: [dynamic]f32,
 	frames:  int,
+	space:   render.Blend_Space,
 }
 
 photo_pixel :: proc(x, y, w, h: int) -> [4]u8 {
@@ -262,10 +264,11 @@ main :: proc() {
 		if strings.has_prefix(a, "--time=") { if v, ok := strconv.parse_f32(a[7:]); ok { app.freeze = v } }
 		if strings.has_prefix(a, "--stress=") { if v, ok := strconv.parse_int(a[9:]); ok { app.stress = v } }
 		if strings.has_prefix(a, "--bench=") { if v, ok := strconv.parse_int(a[8:]); ok { app.bench_n = v } }
+		if a == "--srgb" { app.space = .Srgb }
 	}
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit effects", {1280, 820}, app)
-	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("renderer init failed"); return }
+	if !render.init(&app.r, app.win.hwnd, app.win.size, space = app.space) { fmt.eprintln("renderer init failed"); return }
 	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeuib.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id

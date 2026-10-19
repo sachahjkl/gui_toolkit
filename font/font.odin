@@ -9,7 +9,6 @@ import "core:os"
 import stbtt "vendor:stb/truetype"
 
 ATLAS_SIZE :: 2048
-GLYPH_GAMMA :: 0.80   // < 1 thickens coverage a little: unhinted grayscale text blended in linear space looks thin otherwise
 
 Font_Id :: distinct int
 
@@ -165,8 +164,8 @@ glyph :: proc(s: ^State, id: Font_Id, size: f32, r: rune) -> Glyph {
 		off := len(s.pending_pixels)
 		resize(&s.pending_pixels, off + w * h)
 		px := s.pending_pixels[off:]
+		// raw coverage: the renderer turns it into alpha for its blend space (render.Text_Rendering)
 		stbtt.MakeCodepointBitmap(&f.info, raw_data(px), i32(w), i32(h), i32(w), sc, sc, r)
-		for &p in px[:w * h] { p = u8(math.pow(f32(p) / 255, GLYPH_GAMMA) * 255 + 0.5) }
 		append(&s.pending, Upload{ax, ay, w, h, off})
 		g.uv = {f32(ax), f32(ay), f32(ax + w), f32(ay + h)}
 		g.offset = {f32(x0), f32(y0)}

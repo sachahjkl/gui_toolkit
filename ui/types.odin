@@ -279,6 +279,8 @@ State :: struct {
 	disabled_stack: [dynamic]bool,   // `disabled` scopes; disabled_depth counts the true ones
 	disabled_depth: int,
 	disabled_keep:  f32,             // opacity of disabled widgets for the current theme (set by draw_tree)
+	space:          draw.Blend_Space, // what the tree is drawn into (set by draw_tree): translucent colors adapt (tuned)
+	backdrop:       Color,           // the theme's background (set by draw_tree): what `tuned` assumes is under a color
 	tag_marks:    [dynamic]int,       // tag stack depth to restore on pop (for `tags` scopes)
 	tag_keys:     [dynamic]Key,       // running hash of the tag stack (tag_keys[i] covers tag_stack[:i+1])
 	tag_sets:     map[Key][]string,   // per-frame: tag stack contents by key, for theme lookups while drawing

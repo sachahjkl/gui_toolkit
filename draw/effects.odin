@@ -142,11 +142,19 @@ blur_extent :: proc(sigma: f32) -> f32 { return sigma <= 0 ? 0 : math.ceil(3 * s
 ////////////////////////////////
 // Layers
 
+// The blend space of a layer's content.
+Layer_Space :: enum u8 {
+	Inherit,   // the enclosing target's (layer or frame)
+	Linear,
+	Srgb,
+}
+
 // How a layer is composited.
 Layer_Effects :: struct {
 	alpha:   f32,          // group opacity
 	filters: []Filter,     // applied in order to the layer's pixels before compositing (copied: may be temporary)
 	blend:   Blend_Mode,   // how the result combines with what is already drawn in the enclosing layer (or frame)
+	space:   Layer_Space,  // what the content blends in inside the layer (the composite blends in the enclosing space)
 }
 
 // Everything drawn until pop_layer goes to an offscreen layer, composited once at pop with opacity `alpha` (times
@@ -185,7 +193,13 @@ push_effects :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects) {
 		push_alpha(c, fx.alpha)
 		return
 	}
-	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}})
+	space := blend_space(c)
+	switch fx.space {
+	case .Inherit:
+	case .Linear: space = .Linear
+	case .Srgb: space = .Srgb
+	}
+	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}, space = space})
 	ol.id = len(c.layers)
 	append(&c.open_layers, ol)
 	add_op(c, render.Op{kind = .Clear, dst = tex})
@@ -205,7 +219,7 @@ pop_layer :: proc(c: ^Context) {
 	c.target = ol.parent
 	start_batch(c)
 	ly := c.layers[ol.id - 1]
-	img := render.Image_Ref{tex = ly.tex, origin = ly.origin, scale = 1, size = ly.size}
+	img := render.Image_Ref{tex = ly.tex, origin = ly.origin, scale = 1, size = ly.size, space = ly.space}
 	if ol.filters[1] > ol.filters[0] {
 		img = run_filters(c, img, c.filter_store[ol.filters[0]:ol.filters[1]], ol.xform, false)
 	}
@@ -214,9 +228,10 @@ pop_layer :: proc(c: ^Context) {
 	_, _, shape := cur(c)
 	x0, y0 := img.origin.x, img.origin.y
 	w, h := f32(img.size.x), f32(img.size.y)
+	tex_flag: u32 = img.space == .Srgb ? render.FLAG_TEX_SRGB : 0
 	inst := render.Rect_Inst{
 		dst = {x0, y0, x0 + w, y0 + h}, src = {0, 0, w, h}, colors = {{1, 1, 1, a}, {1, 1, 1, a}, {1, 1, 1, a}, {1, 1, 1, a}},
-		soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, flags = render.FLAG_LAYER, clip = shape,
+		soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, flags = render.FLAG_LAYER | tex_flag, clip = shape,
 	}
 	if ol.blend != .Normal && img.tex != 0 {
 		// what lies under the composite, copied from the enclosing target, is read by the blend
@@ -231,7 +246,7 @@ pop_layer :: proc(c: ^Context) {
 				inst.dst = {ux0, uy0, ux1, uy1}
 				inst.src = {ux0 - x0, uy0 - y0, ux1 - x0, uy1 - y0}
 				inst.radii = {ux0, uy0, 0, 0}
-				inst.flags = render.FLAG_LAYER | render.FLAG_BLEND | u32(ol.blend) << render.BLEND_SHIFT
+				inst.flags = render.FLAG_LAYER | render.FLAG_BLEND | tex_flag | u32(ol.blend) << render.BLEND_SHIFT
 				close_batch(c)
 				start_batch(c)
 				b := &c.batches[len(c.batches) - 1]
@@ -296,15 +311,16 @@ chain_target :: proc(ch: ^Chain, scale: f32, origin: Vec2) -> (render.Image_Ref,
 	return render.Image_Ref{tex = t, origin = origin, scale = scale, size = {w, h}}, true
 }
 
-// The passes of `filters` on `input` (which they take over: it is released once read). Returns the result: linear
-// premultiplied, at scale 1, on the same screen rect; the caller releases it after recording what reads it.
+// The passes of `filters` on `input` (which they take over: it is released once read). Returns the result:
+// premultiplied in the input's space, at scale 1, on the same screen rect; the caller releases it after recording
+// what reads it. The passes compute in sRGB (converting from and back to a linear input at the ends of the chain).
 // `clamp_edges`: what lies past the input repeats its edge (a backdrop) instead of being transparent.
 @(private)
 run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: Affine, clamp_edges: bool) -> render.Image_Ref {
 	ch := Chain{c = c, full = input.size}
 	ch.passes = make([dynamic]render.Pass, 0, 8, context.temp_allocator)
 	cur := input
-	cur_linear := true
+	cur_linear := input.space == .Linear
 	base: u32 = clamp_edges ? render.PASS_CLAMP : 0
 	k := affine_scale_factor(m)
 	limit := max(c.renderer.blur_sigma_limit, 2)
@@ -386,7 +402,8 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 			cur = d
 		}
 	}
-	ch.passes[len(ch.passes) - 1].flags |= render.PASS_OUT_LINEAR
+	if input.space == .Linear { ch.passes[len(ch.passes) - 1].flags |= render.PASS_OUT_LINEAR }
+	cur.space = input.space
 	// record in order; a texture is handed back after the last pass that reads it
 	last_read := make(map[render.Texture]int, 16, context.temp_allocator)
 	for p, n in ch.passes {
@@ -422,7 +439,7 @@ backdrop_capture :: proc(c: ^Context, r: Rect, filters: []Filter) -> Backdrop {
 	if snap == 0 { return {} }
 	o := target_origin(c)
 	add_op(c, render.Op{kind = .Copy, dst = snap, source = c.target, box = {i32(x0 - o.x), i32(y0 - o.y), i32(x1 - o.x), i32(y1 - o.y)}})
-	img := render.Image_Ref{tex = snap, origin = {x0, y0}, scale = 1, size = {w, h}}
+	img := render.Image_Ref{tex = snap, origin = {x0, y0}, scale = 1, size = {w, h}, space = blend_space(c)}
 	active := make([dynamic]Filter, 0, len(filters), context.temp_allocator)
 	for f in filters { if !filter_is_identity(f) { append(&active, f) } }
 	if len(active) > 0 { img = run_filters(c, img, active[:], m, true) }
@@ -434,7 +451,8 @@ backdrop_capture :: proc(c: ^Context, r: Rect, filters: []Filter) -> Backdrop {
 backdrop_draw :: proc(c: ^Context, b: Backdrop, r: Rect, radii: [4]f32) {
 	im := b.image
 	if im.tex == 0 { return }
-	image_inst(c, im.tex, r, {im.origin.x, im.origin.y, f32(im.size.x), f32(im.size.y)}, WHITE, radii, render.FLAG_SCREEN)
+	flags: u32 = render.FLAG_SCREEN | (im.space == .Srgb ? render.FLAG_TEX_SRGB : 0)
+	image_inst(c, im.tex, r, {im.origin.x, im.origin.y, f32(im.size.x), f32(im.size.y)}, WHITE, radii, flags)
 	render.release_target(c.renderer, im.tex)
 }
 
