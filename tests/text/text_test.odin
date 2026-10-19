@@ -178,6 +178,16 @@ bidi_mixed :: proc(t: ^testing.T) {
 	// an RTL paragraph: the Latin word comes first visually at the right
 	sh2 := font.shape(s, ui, 20, "\u05e9\u05dc\u05d5\u05dd abc", {direction = .Rtl}, context.temp_allocator)
 	testing.expect(t, x_of(sh2, 0) > x_of(sh2, 9))
+	// one right-to-left run of several words (a layout fragment): clusters in logical order, the caret of the logical
+	// end at the left edge, and hit testing finds every caret again
+	rtl := "\u0633\u0644\u0627\u0645 \u0639\u0644\u064a\u0643\u0645"
+	sh3 := font.shape(s, ui, 20, rtl, {one_run = true, direction = .Rtl}, context.temp_allocator)
+	for i in 1 ..< len(sh3.clusters) { testing.expect(t, sh3.clusters[i].start > sh3.clusters[i - 1].start, "clusters in logical order") }
+	testing.expect(t, abs(font.caret_x(sh3, rtl, len(rtl))) < 0.01 && abs(font.caret_x(sh3, rtl, 0) - sh3.width) < 0.01)
+	for i in 0 ..= len(rtl) {
+		if i < len(rtl) && rtl[i] & 0xC0 == 0x80 { continue }
+		testing.expect_value(t, font.hit_index(sh3, rtl, font.caret_x(sh3, rtl, i)), i)
+	}
 	// L2 reordering of levels
 	order := font.reorder({0, 1, 1, 2, 2, 1, 0}, context.temp_allocator)
 	want := [?]int{0, 5, 3, 4, 2, 1, 6}

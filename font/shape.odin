@@ -1,6 +1,7 @@
 package font
 
 import "base:runtime"
+import "core:slice"
 import "core:sync"
 import "core:unicode"
 
@@ -66,6 +67,8 @@ shape :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Optio
 	if opts.one_run || (opts.direction != .Rtl && !maybe_rtl(text)) {
 		rtl := opts.direction == .Rtl || (opts.direction == .Auto && opts.one_run && first_strong_rtl(text))
 		pen = shape_run(s, id, size, text, 0, len(text), rtl, opts, &glyphs, &clusters, pen)
+		// a right-to-left run places its words from the last one: clusters back to logical order
+		if rtl { sort_clusters(clusters[:]) }
 	} else {
 		runs := bidi_runs(s, text, opts.direction, context.temp_allocator)
 		order := visual_order(runs, context.temp_allocator)
@@ -280,13 +283,8 @@ cluster_of :: proc(cs: []Cluster, start: i32) -> int {
 
 @(private)
 sort_clusters :: proc(cs: []Cluster) {
-	// insertion sort: runs are few and mostly in order
-	for i in 1 ..< len(cs) {
-		v := cs[i]
-		j := i - 1
-		for j >= 0 && cs[j].start > v.start { cs[j + 1] = cs[j]; j -= 1 }
-		cs[j + 1] = v
-	}
+	// starts are distinct: no stability needed (a right-to-left line comes in reversed blocks, not nearly sorted)
+	slice.sort_by(cs, proc(a, b: Cluster) -> bool { return a.start < b.start })
 }
 
 ////////////////////////////////
