@@ -115,15 +115,16 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 - **Blend spaces** (`render.Blend_Space`): mix colors in linear light (the UI's default) or on sRGB values like a web
   browser (`rgba(0,0,0,.5)` over white = 128, CSS gradients, opacity, image filtering), per renderer and per layer, with
   Skia's text correction (Chromium's Windows settings by default in sRGB). The UI theme adapts its translucent colors.
-- **Retained drawing** (draw.Picture): record once, replay every frame for a few draw calls whatever the number of
+- **Retained drawing** (`draw.Picture`): record once, replay every frame for a few draw calls whatever the number of
   instances; instances live in persistent GPU heaps (budget, eviction, re-upload after a device loss); transforms pushed
   while recording are *slots* whose matrices change without recording (animations, scrolling). Immediate drawing and
   replays mix in one frame in exact z order. 8,000 rotating cards: 7.5 ms of CPU per frame immediate, 0.26 ms retained.
-- **Gradients and shadows in the shader**: draw.gradient (linear, radial, conic, repeating, stop positions and
+- **Gradients and shadows in the shader**: `draw.gradient` (linear, radial, conic, repeating, stop positions and
   transition hints, interpolation in sRGB / linear / Oklab / Oklch / Lab / Lch / HSL / HWB with hue methods, tiles,
-  dithering), draw.box_shadow / draw.inset_shadow (the exact gaussian blur of a rounded rect: erf along x, the
+  dithering), `draw.box_shadow` / `draw.inset_shadow` (the exact gaussian blur of a rounded rect: erf along x, the
   corner arcs integrated by angle; within 1 level of 8 bits of a numeric convolution).
-- **Device loss**: ender.recover recreates the device and every texture handle (frame_begin does it on its own).
+- **Device loss**: `render.recover` recreates the device and every texture under the same handle (`frame_begin` and
+  `draw.begin_frame` do it on their own).
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
@@ -138,7 +139,8 @@ Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Li
 
 ## Testing
 
-`odin test tests/affine -vet` runs the unit tests of the affine helpers. `tests/layers`, `tests/effects`,`n`tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` are pixel tests on an offscreen WARP renderer (most in both blend spaces).
+`odin test tests/affine -vet` runs the unit tests of the affine helpers. `tests/layers`, `tests/effects`,
+`tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` are pixel tests on an offscreen WARP renderer (most in both blend spaces).
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
 focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a
