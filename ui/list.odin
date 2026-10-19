@@ -41,11 +41,66 @@ List_State :: struct {
 	seek_after, seek_first: int,
 	reveal:      int,     // frames left to keep scrolling the active row into view
 	page_rows:   int,     // rows that fit in the view (last frame)
+	virtual:     bool,    // a Virtual_List: the row count and selectability come from the app, not from the rows built
 }
 
 list_state_destroy :: proc(st: ^List_State) {
 	delete(st.selectable)
 	delete(st.building)
+}
+
+// Type-ahead: does row `i`, labelled `label`, match what was typed? Records the first match and the first one at or
+// after the active row (st.seek_first / st.seek_after).
+@(private)
+list_seek_row :: proc(st: ^List_State, i: int, label: string) {
+	if !st.seek || st.typed_len == 0 { return }
+	// the same letter typed again cycles through the rows starting with it; different letters spell a prefix,
+	// looked for from the active row on
+	typed := string(st.typed[:st.typed_len])
+	first_r, first_n := utf8.decode_rune_in_string(typed)
+	same := true
+	for r in typed { if r != first_r { same = false; break } }
+	prefix := same ? typed[:first_n] : typed
+	if len(label) < len(prefix) { return }
+	if strings.has_prefix(strings.to_lower(label[:min(len(label), len(prefix) * 4)], context.temp_allocator), prefix) {
+		if st.seek_first < 0 { st.seek_first = i }
+		after := same ? i > st.sel : i >= st.sel
+		if after && st.seek_after < 0 { st.seek_after = i }
+	}
+}
+
+// The keys of a focused list: moves, Enter, Escape, type-ahead (resolved later, against the rows' labels).
+@(private)
+list_keys :: proc(s: ^State, st: ^List_State) {
+	page := max(st.page_rows - 1, 1)
+	up :: proc(st: ^List_State) -> int { return st.sel < 0 ? list_next_selectable(st, -1, 1) : list_next_selectable(st, st.sel, -1) }
+	for e, i in s.events.list {
+		if s.events.consumed[i] || e.mods != {} { continue }
+		used := true
+		#partial switch e.key {
+		case .Down:      st.sel = list_next_selectable(st, st.sel, 1)
+		case .Up:        st.sel = up(st)
+		case .Home:      st.sel = list_next_selectable(st, -1, 1)
+		case .End:       st.sel = list_next_selectable(st, st.count, -1)
+		case .Page_Down: for _ in 0 ..< page { st.sel = list_next_selectable(st, st.sel, 1) }
+		case .Page_Up:   for _ in 0 ..< page { st.sel = up(st) }
+		case .Return:    if st.sel >= 0 { st.activated = true }
+		case .Escape:    st.cancelled = true
+		case:            used = false
+		}
+		if used { s.events.consumed[i] = true; st.reveal = 3 }
+	}
+	if len(s.typed) > 0 {
+		if s.time_ms - st.typed_ms > LIST_TYPEAHEAD_MS { st.typed_len = 0 }
+		st.typed_ms = s.time_ms
+		for r in s.typed {
+			buf, n := utf8.encode_rune(unicode.to_lower(r))
+			if st.typed_len + n <= len(st.typed) { copy(st.typed[st.typed_len:], buf[:n]); st.typed_len += n }
+		}
+		clear(&s.typed)
+		st.seek = true
+		st.seek_after, st.seek_first = -1, -1
+	}
 }
 
 // Makes row `i` active and scrolls it into view (e.g. to restore a position).
@@ -83,38 +138,7 @@ list :: proc(id: string, st: ^List_State) -> bool {
 	if st.sel >= st.count { st.sel = st.count - 1 }
 	old := st.sel
 	st.seek = false
-	if st.focused {
-		page := max(st.page_rows - 1, 1)
-		up :: proc(st: ^List_State) -> int { return st.sel < 0 ? list_next_selectable(st, -1, 1) : list_next_selectable(st, st.sel, -1) }
-		for e, i in s.events.list {
-			if s.events.consumed[i] || e.mods != {} { continue }
-			used := true
-			#partial switch e.key {
-			case .Down:      st.sel = list_next_selectable(st, st.sel, 1)
-			case .Up:        st.sel = up(st)
-			case .Home:      st.sel = list_next_selectable(st, -1, 1)
-			case .End:       st.sel = list_next_selectable(st, st.count, -1)
-			case .Page_Down: for _ in 0 ..< page { st.sel = list_next_selectable(st, st.sel, 1) }
-			case .Page_Up:   for _ in 0 ..< page { st.sel = up(st) }
-			case .Return:    if st.sel >= 0 { st.activated = true }
-			case .Escape:    st.cancelled = true
-			case:            used = false
-			}
-			if used { s.events.consumed[i] = true; st.reveal = 3 }
-		}
-		if len(s.typed) > 0 {
-			if s.time_ms - st.typed_ms > LIST_TYPEAHEAD_MS { st.typed_len = 0 }
-			st.typed_ms = s.time_ms
-			for r in s.typed {
-				buf, n := utf8.encode_rune(unicode.to_lower(r))
-				if st.typed_len + n <= len(st.typed) { copy(st.typed[st.typed_len:], buf[:n]); st.typed_len += n }
-			}
-			clear(&s.typed)
-			// one letter repeated cycles through the rows starting with it; more letters refine from the current row
-			st.seek = true
-			st.seek_after, st.seek_first = -1, -1
-		}
-	}
+	if st.focused { list_keys(s, st) }
 	if st.sel != old { st.changed = true }
 	append(&s.list_stack, st)
 	push_parent(b)
@@ -159,21 +183,10 @@ list_end :: proc() {
 // otherwise). `label` is what type-ahead matches. Rows that are not `selectable` (headers) are skipped by the keys.
 list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> Signal {
 	s := g
-	for len(st.building) <= i { append(&st.building, true) }
-	st.building[i] = selectable
-	if st.seek && selectable && st.typed_len > 0 {
-		// the same letter typed again cycles through the rows starting with it; different letters spell a prefix,
-		// looked for from the active row on
-		typed := string(st.typed[:st.typed_len])
-		first_r, first_n := utf8.decode_rune_in_string(typed)
-		same := true
-		for r in typed { if r != first_r { same = false; break } }
-		prefix := same ? typed[:first_n] : typed
-		if strings.has_prefix(strings.to_lower(label, context.temp_allocator), prefix) {
-			if st.seek_first < 0 { st.seek_first = i }
-			after := same ? i > st.sel : i >= st.sel
-			if after && st.seek_after < 0 { st.seek_after = i }
-		}
+	if !st.virtual {
+		for len(st.building) <= i { append(&st.building, true) }
+		st.building[i] = selectable
+		if selectable { list_seek_row(st, i, label) }
 	}
 	active := selectable && i == st.sel
 	if active { push_tags(st.focused ? "selected" : "weak_selected") }

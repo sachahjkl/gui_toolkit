@@ -4,6 +4,7 @@ import "core:math"
 import "core:strings"
 import "../draw"
 import "../font"
+import "../platform"
 
 // Paints the box tree built by the last build. Parents first, then children (later siblings on top);
 // borders, focus rings and the disabled overlay are drawn after the children so they land above them.
@@ -90,6 +91,10 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		if .Draw_Side_Bottom in flags { draw.rect(dc, {{r.min.x, r.max.y - t}, r.max}, b.border) }
 		if .Draw_Side_Left in flags   { draw.rect(dc, {r.min, {r.min.x + t, r.max.y}}, b.border) }
 		if .Draw_Side_Right in flags  { draw.rect(dc, {{r.max.x - t, r.min.y}, r.max}, b.border) }
+	}
+	if .Window_Caption in flags && s.window != nil && r.min.y <= 0 && platform.needs_top_border(s.window) {
+		// Windows 10 draws no top edge over an integrated title bar
+		draw.rect(dc, {{r.min.x, 0}, {r.max.x, 1}}, color_from_tags(s, b.tags_key, "border"))
 	}
 	if focus_ring {
 		c := color_from_tags(s, b.tags_key, "focus border")
