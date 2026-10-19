@@ -29,6 +29,7 @@ Picture_Slot :: struct {
 Picture :: struct {
 	insts:      [dynamic]render.Rect_Inst,
 	batches:    [dynamic]render.Batch,       // first / count relative to insts; shape = innermost clip
+	batch_bounds: [dynamic]Batch_Bounds,     // per batch: where it draws, to cull it at replay
 	slots:      [dynamic]Picture_Slot,       // 0: the picture's own space
 	clips:      [dynamic]render.Clip_Data,   // 0 unused
 	clip_rects: [dynamic]Rect,               // per clip: local bounds of its shape (the scissor at replay)
@@ -48,6 +49,16 @@ Picture :: struct {
 	eff_stale:  bool,                        // slots of `dirty` need their `eff` recomputed
 	last_used:  u64,
 	start_gen:  int,
+}
+
+// Instances per batch of a picture at most: a replay culls batches whose bounds miss the clip (long runs of text are
+// not all drawn when one line shows).
+PICTURE_BATCH_INSTANCES :: 256
+
+// Where a batch draws: `r` in the space of slot `slot` (max(u32): instances of several slots, never culled).
+Batch_Bounds :: struct {
+	slot: u32,
+	r:    Rect,
 }
 
 Replay_Result :: enum u8 {
@@ -85,7 +96,7 @@ saved_destroy :: proc(s: ^Saved_Frame) {
 // mostly be shown at (text is rasterized for it; 1 = the picture's units are screen pixels). Not nestable.
 picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	assert(c.rec == nil, "draw.picture_begin: a picture is already being recorded")
-	clear(&pic.insts); clear(&pic.batches); clear(&pic.slots); clear(&pic.clips); clear(&pic.clip_rects)
+	clear(&pic.insts); clear(&pic.batches); clear(&pic.batch_bounds); clear(&pic.slots); clear(&pic.clips); clear(&pic.clip_rects)
 	clear(&pic.points); clear(&pic.grads)
 	pic.text = false
 	pic.dirty, pic.eff_stale = {}, false
@@ -125,14 +136,29 @@ picture_end :: proc(c: ^Context) {
 	s.insts, s.batches, s.clips, s.alphas, s.xforms, s.clip_table, s.clip_points, s.grads, s.open_layers = {}, {}, {}, {}, {}, {}, {}, {}, {}
 	c.rec = nil
 	c.raster_scale = 1
-	// empty batches out
-	n := 0
+	// empty batches out; long ones cut every PICTURE_BATCH_INSTANCES so that a replay culls what lies off screen
+	split := make([dynamic]render.Batch, 0, len(pic.batches) + len(pic.insts) / PICTURE_BATCH_INSTANCES + 1, context.temp_allocator)
 	for b in pic.batches {
-		if b.count == 0 { continue }
-		pic.batches[n] = b
-		n += 1
+		for first := b.first; first < b.first + b.count; first += PICTURE_BATCH_INSTANCES {
+			part := b
+			part.first = first
+			part.count = min(PICTURE_BATCH_INSTANCES, b.first + b.count - first)
+			append(&split, part)
+		}
 	}
-	resize(&pic.batches, n)
+	clear(&pic.batches)
+	clear(&pic.batch_bounds)
+	for b in split {
+		append(&pic.batches, b)
+		// bounds when every instance is in one slot (else none: never culled)
+		bb := Batch_Bounds{slot = pic.insts[b.first].xform}
+		for inst, k in pic.insts[b.first:][:b.count] {
+			if inst.xform != bb.slot { bb.slot = max(u32); break }
+			r := Rect{{min(inst.dst[0], inst.dst[2]), min(inst.dst[1], inst.dst[3])}, {max(inst.dst[0], inst.dst[2]), max(inst.dst[1], inst.dst[3])}}
+			bb.r = k == 0 ? r : rect_union(bb.r, r)
+		}
+		append(&pic.batch_bounds, bb)
+	}
 	for &sl in pic.slots { sl.has_bounds = false }
 	for inst in pic.insts {
 		sl := &pic.slots[inst.xform]
@@ -259,7 +285,10 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
 	idx := len(c.replays)
 	close_batch(c)
 	base := pic.offsets[.Insts]
-	for b in pic.batches {
+	for b, k in pic.batches {
+		if bb := pic.batch_bounds[k]; bb.slot != max(u32) {
+			if rect_empty(rect_intersect(rect_pad(affine_bounds(affine_mul(l, pic.slots[bb.slot].eff), bb.r), 1), scissor)) { continue }
+		}
 		sc := rect_intersect(batch_scissor(pic, b.shape, l), scissor)
 		if rect_empty(sc) { continue }
 		append(&c.batches, render.Batch{
@@ -397,7 +426,7 @@ picture_release :: proc(c: ^Context, pic: ^Picture) {
 // Frees the picture: its GPU ranges and its recording.
 picture_destroy :: proc(c: ^Context, pic: ^Picture) {
 	picture_release(c, pic)
-	delete(pic.insts); delete(pic.batches); delete(pic.slots); delete(pic.clips); delete(pic.clip_rects)
+	delete(pic.insts); delete(pic.batches); delete(pic.batch_bounds); delete(pic.slots); delete(pic.clips); delete(pic.clip_rects)
 	delete(pic.points); delete(pic.grads)
 	pic^ = {}
 }
