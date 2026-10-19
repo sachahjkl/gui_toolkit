@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.8.2] - 2026-10-19
+
+### Added
+- The palettes of fidget are built in: `PALETTE_GRAPHITE`, `PALETTE_NORD`, `PALETTE_DRACULA`, `PALETTE_AMBER`, `PALETTE_AERO`,
+  `PALETTE_BOOTSTRAP`, the `NAMED_PALETTES` table (with Midnight and Daylight) and `palette_named(name)`. fidget uses the table.
+
 ## [0.8.1] - 2026-10-19
 
 ### Added
