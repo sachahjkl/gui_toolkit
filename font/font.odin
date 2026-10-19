@@ -124,6 +124,8 @@ State :: struct {
 	fallback:   ^IDWriteFontFallback,
 	analyzer:   ^IDWriteTextAnalyzer,
 	ok:         bool,                // DirectWrite is usable
+	latin:      DWRITE_SCRIPT_ANALYSIS,   // the script analysis of ASCII text (reused: no analysis per word)
+	latin_ok:   bool,
 	mu:         sync.Mutex,          // adding / removing fonts
 	chunks:     [MAX_CHUNKS]^[CHUNK]Font,
 	count:      int,                 // fonts published (atomic)
@@ -165,6 +167,14 @@ init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
 	loader_users += 1
 	sync.mutex_unlock(&loader_mu)
 	s.ok = s.analyzer != nil
+	if s.ok {
+		a := [1]u16{'a'}
+		scripts := make([dynamic]Script_Run, 0, 1, context.temp_allocator)
+		an: Analysis
+		analysis_init(&an, a[:], false)
+		an.scripts = &scripts
+		if s.analyzer->AnalyzeScript(&an.source, 0, 1, &an.sink) >= 0 && len(scripts) == 1 { s.latin, s.latin_ok = scripts[0].sa, true }
+	}
 }
 
 @(private)
@@ -186,7 +196,10 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
 	s.settings.color_glyphs, s.settings.max_gray_pages, s.settings.max_color_pages = st.color_glyphs, st.max_gray_pages, st.max_color_pages
 	atlas_unlock(&s.atlas)
-	s.settings.system_fallback = st.system_fallback
+	if st.system_fallback != s.settings.system_fallback {
+		s.settings.system_fallback = st.system_fallback
+		words_clear(&s.words)   // what text measures changes
+	}
 	if st.word_cache != s.settings.word_cache {
 		s.settings.word_cache = st.word_cache
 		words_resize(&s.words, st.word_cache)
