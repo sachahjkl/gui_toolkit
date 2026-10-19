@@ -16,12 +16,45 @@
 // scaled shapes keep a 1 px antialiased edge.
 //
 // Layers (draw.push_layer): the same shader draws into an offscreen target whose texel (0, 0) is the screen pixel
-// 	arget_origin; positions arrive in screen pixels and are moved by it, clip shapes are evaluated back in screen
+// target_origin; positions arrive in screen pixels and are moved by it, clip shapes are evaluated back in screen
 // pixels. The layer is then composited as an image with FLAG_LAYER (texels fetched one for one, never filtered).
+//
+// Pictures (draw.Picture, retained): their instances live in a heap that persists across frames, in the picture's own
+// space. A replay (constant buffer b2) gives the matrix L from that space to the screen, an alpha, the clip shape
+// around the replay and where the picture's tables start in the retained heaps. An instance's transform index is then
+// a slot of the picture (t7: its matrix to the picture's space, rewritten when it moves): the instance is drawn
+// through L * slot. When that product is a uniform scale + translation the vertex shader bakes it exactly as draw
+// bakes it on the CPU for immediate instances (same arithmetic, same pixels); otherwise the transformed path is used.
+// Picture clips (t8) lie in the space of a slot, chained to the clips around the replay.
+//
+// Gradients (KIND_GRADIENT) are evaluated per pixel from a table (t6 for the frame, t10 for pictures); shadows
+// (KIND_SHADOW) are the analytic gaussian blur of a rounded rect (exact in x with erf, integrated numerically in y
+// over the rows of the corners only). Both are evaluated in the instance's own units (`lpos`), before any baking.
 
 #define KIND_SHAPE 0
 #define KIND_GLYPH 1
 #define KIND_IMAGE 2
+#define KIND_GRADIENT 3
+#define KIND_SHADOW 4
+#define SHADOW_INSET 1
+#define SHADOW_HOLE 2
+#define GRAD_LINEAR 0
+#define GRAD_RADIAL 1
+#define GRAD_CONIC 2
+#define GRAD_REPEATING 0x100
+#define GRAD_DITHER 0x200
+#define GRAD_REPEAT_X 0x400
+#define GRAD_REPEAT_Y 0x800
+#define GRAD_HEADER 4
+#define MAX_GRADIENT_STOPS 256
+#define GSPACE_SRGB 0
+#define GSPACE_LINEAR 1
+#define GSPACE_OKLAB 2
+#define GSPACE_OKLCH 3
+#define GSPACE_LAB 4
+#define GSPACE_LCH 5
+#define GSPACE_HSL 6
+#define GSPACE_HWB 7
 #define FLAG_TILE 1
 #define FLAG_LAYER 2
 #define FLAG_CIRCLE 4      // circular corners whatever the renderer's corner shape (web content)
@@ -38,6 +71,7 @@
 #define CLIP_POLYGON 2
 #define CLIP_CIRCLE 1      // ClipShape.flags: circular corners, for a clip shape
 #define CLIP_EVENODD 2
+#define CLIP_SCISSOR 4     // picture clip also cut by the scissor: skipped under a uniform scale + translation
 #define MAX_CLIP_DEPTH 8
 #define MAX_POLYGON_POINTS 4096
 
@@ -73,6 +107,17 @@ cbuffer Globals : register(b0)
 	float2 _pad;
 };
 
+// The picture being replayed (render.Replay); identity, alpha 1 and rp_misc.x = 0 for immediate instances.
+cbuffer Replay : register(b2)
+{
+	float4 rp_m0;          // L (picture space -> screen pixels): a b c d
+	float4 rp_m1;          // e f, alpha, unused
+	float4 rp_i0;          // L^-1: a b c d
+	float4 rp_i1;          // e f
+	uint4  rp_base;        // first slot, clip, point and gradient entry of the picture in the retained heaps
+	uint4  rp_misc;        // x: 1 = retained instances; y: clip shape around the replay (frame table), 0 = none
+};
+
 // x' = a*x + c*y + e, y' = b*x + d*y + f
 struct Xform
 {
@@ -93,7 +138,18 @@ struct ClipShape
 	uint   kind;           // CLIP_RRECT, CLIP_ELLIPSE, CLIP_POLYGON
 	uint   first;          // polygon: its vertices in `points`
 	uint   count;
-	uint   flags;          // CLIP_CIRCLE, CLIP_EVENODD
+	uint   flags;          // CLIP_CIRCLE, CLIP_EVENODD, CLIP_SCISSOR
+	uint   xform;          // picture clips: the slot whose space the shape lies in (0 = the picture's space)
+	uint3  _pad2;
+};
+
+// A transform slot of a picture: to the picture's space, and back.
+struct Slot
+{
+	float4 abcd;
+	float4 ef;
+	float4 inv_abcd;
+	float4 inv_ef;
 };
 
 Texture2D<float>  atlas : register(t0);
@@ -102,6 +158,11 @@ StructuredBuffer<Xform> xforms : register(t2);
 StructuredBuffer<ClipShape> clips : register(t3);
 StructuredBuffer<float2> points : register(t4);
 Texture2D<float4> backdrop : register(t5);   // FLAG_BLEND: what the target held under the composite (linear premultiplied)
+StructuredBuffer<float4> grads : register(t6);       // gradient table of the frame
+StructuredBuffer<Slot> slots : register(t7);         // retained heaps (pictures)
+StructuredBuffer<ClipShape> rclips : register(t8);
+StructuredBuffer<float2> rpoints : register(t9);
+StructuredBuffer<float4> rgrads : register(t10);
 SamplerState samp      : register(s0);     // atlas
 SamplerState samp_img  : register(s1);     // images, clamp
 SamplerState samp_wrap : register(s2);     // images, repeat
@@ -130,8 +191,42 @@ struct PSIn
 	nointerpolation float4 radii : RADII;
 	nointerpolation float4 style : STYLE;
 	nointerpolation float4 src : SRCRECT;       // like uv: normalized for glyphs, texels for images
-	nointerpolation uint4 extra : EXTRA;
+	nointerpolation uint4 extra : EXTRA;        // x: 1 = transformed path, y: clip, z: flags, w: aux
+	float2 lpos : LPOS;                         // position in the instance's own units (gradients, shadows)
+	nointerpolation float4 p0 : PARAM0;         // colors[1..3] of gradient and shadow instances
+	nointerpolation float4 p1 : PARAM1;
+	nointerpolation float4 p2 : PARAM2;
 };
+
+// A 2D affine map (x' = a x + c y + e, y' = b x + d y + f).
+struct Mat
+{
+	float4 abcd;
+	float2 ef;
+};
+
+Mat mat_make(float4 abcd, float2 ef) { Mat m; m.abcd = abcd; m.ef = ef; return m; }
+
+// m after n
+Mat mat_mul(Mat m, Mat n)
+{
+	Mat o;
+	o.abcd = float4(m.abcd.x * n.abcd.x + m.abcd.z * n.abcd.y, m.abcd.y * n.abcd.x + m.abcd.w * n.abcd.y,
+	                m.abcd.x * n.abcd.z + m.abcd.z * n.abcd.w, m.abcd.y * n.abcd.z + m.abcd.w * n.abcd.w);
+	o.ef = float2(m.abcd.x * n.ef.x + m.abcd.z * n.ef.y + m.ef.x, m.abcd.y * n.ef.x + m.abcd.w * n.ef.y + m.ef.y);
+	return o;
+}
+
+float2 mat_apply(Mat m, float2 p) { return float2(m.abcd.x * p.x + m.abcd.z * p.y + m.ef.x, m.abcd.y * p.x + m.abcd.w * p.y + m.ef.y); }
+
+// uniform positive scale + translation: what draw bakes on the CPU (draw.affine_is_scale_translate)
+bool mat_simple(Mat m) { return m.abcd.y == 0 && m.abcd.z == 0 && m.abcd.x == m.abcd.w && m.abcd.x > 0; }
+
+float mat_scale(Mat m) { return sqrt(abs(m.abcd.x * m.abcd.w - m.abcd.y * m.abcd.z)); }
+
+Mat replay_mat() { return mat_make(rp_m0, rp_m1.xy); }
+Mat replay_inv() { return mat_make(rp_i0, rp_i1.xy); }
+bool is_retained() { return rp_misc.x != 0; }
 
 float3 srgb_encode(float3 c)
 {
@@ -178,38 +273,75 @@ uint lerp_space(uint flags)
 PSIn vs_main(VSIn i)
 {
 	float2 corner = float2(i.vid >> 1, i.vid & 1);   // 0: (0,0) 1: (0,1) 2: (1,0) 3: (1,1) as a triangle strip
-	float2 size = i.dst.zw - i.dst.xy;
+	uint kind = (uint)(i.style.z + 0.5);
+	float4 dst = i.dst;
+	float4 radii = i.radii;
+	float4 style = i.style;
+	bool xf = false;
+	Mat m = mat_make(float4(1, 0, 0, 1), float2(0, 0));
+	if (is_retained())
+	{
+		// picture space -> screen, through the instance's slot
+		m = replay_mat();
+		if (i.extra.x != 0)
+		{
+			Slot s = slots[rp_base.x + i.extra.x];
+			m = mat_mul(m, mat_make(s.abcd, s.ef.xy));
+		}
+		if (mat_simple(m))
+		{
+			// baked as draw bakes uniform scale + translation on the CPU (rect_corners, text, image_inst)
+			float k = m.abcd.x;
+			dst = float4(dst.x * k + m.ef.x, dst.y * k + m.ef.y, dst.z * k + m.ef.x, dst.w * k + m.ef.y);
+			if (kind != KIND_SHADOW) radii *= k;
+			style.x *= k;
+			if (style.y > 1) style.y *= k;
+		}
+		else xf = true;
+	}
+	else if (i.extra.x != 0)
+	{
+		Xform x = xforms[i.extra.x];
+		m = mat_make(x.abcd, x.ef.xy);
+		xf = true;
+	}
+	float2 size = dst.zw - dst.xy;
 	float2 t = corner;                               // position across the rect (0..1, beyond when grown)
 	float2 pix;
-	if (i.extra.x != 0)
+	if (xf)
 	{
-		Xform m = xforms[i.extra.x];
 		float det = m.abcd.x * m.abcd.w - m.abcd.y * m.abcd.z;
 		// local margin that is 1 px on screen, measured perpendicular to each pair of sides
 		float2 grow = abs(det) > 1e-12 ? float2(length(m.abcd.zw), length(m.abcd.xy)) / abs(det) : 0;
 		t += (corner * 2 - 1) * grow / max(abs(size), 1e-6);
-		float2 lp = i.dst.xy + t * size;
-		pix = float2(m.abcd.x * lp.x + m.abcd.z * lp.y + m.ef.x, m.abcd.y * lp.x + m.abcd.w * lp.y + m.ef.y);
+		float2 lp = dst.xy + t * size;
+		pix = mat_apply(m, lp);
 	}
 	else
 	{
-		pix = lerp(i.dst.xy, i.dst.zw, corner);
+		pix = lerp(dst.xy, dst.zw, corner);
 	}
 	PSIn o;
 	pix -= target_origin;
 	o.pos = float4(pix.x / viewport_size.x * 2 - 1, 1 - pix.y / viewport_size.y * 2, 0, 1);
 	o.rect_pos = (t - 0.5) * size;
 	o.half_size = size * 0.5;
-	float tex = max(i.style.w, 1);
+	o.lpos = i.dst.xy + t * (i.dst.zw - i.dst.xy);
+	float tex = max(style.w, 1);
 	o.uv = lerp(i.src.xy, i.src.zw, t) / tex;
 	o.src = i.src / tex;
-	float4 c = (i.vid == 0) ? i.c0 : ((i.vid == 1) ? i.c1 : ((i.vid == 2) ? i.c2 : i.c3));
+	// gradients and shadows have one color; their other "colors" are parameters
+	float4 c = (kind >= KIND_GRADIENT || i.vid == 0) ? i.c0 : ((i.vid == 1) ? i.c1 : ((i.vid == 2) ? i.c2 : i.c3));
+	c.a *= rp_m1.z;   // the replay's alpha (1 for immediate instances)
 	if (lerp_space(i.extra.z) == SPACE_SRGB) c.rgb = srgb_encode(c.rgb);
 	o.color = float4(c.rgb * c.a, c.a);   // premultiplied: a transparent corner does not drag the others' hue to black
-	o.radii = i.radii;
-	o.style = i.style;
-	o.extra = i.extra;
-	if ((uint)(i.style.z + 0.5) == KIND_GLYPH)
+	o.radii = radii;
+	o.style = style;
+	o.extra = uint4(xf ? 1 : 0, i.extra.yzw);
+	o.p0 = i.c1;
+	o.p1 = i.c2;
+	o.p2 = i.c3;
+	if (kind == KIND_GLYPH)
 	{
 		// Skia's text correction (SkMaskGamma), per glyph: the text's luminance s (sRGB-encoded) and the background
 		// guessed as its opposite d = 1 - s, as luma through the text curve (Ls, Ld) and as the target blends them
@@ -297,17 +429,20 @@ float ellipse_sdf(float2 p, float2 r)
 	return k1 > 1e-6 ? k0 * (k0 - 1) / k1 : -min(r.x, r.y);
 }
 
+// A polygon vertex: from the frame's table, or from the retained heap (a picture's clip).
+float2 point_at(bool ret, uint k) { return ret ? rpoints[rp_base.z + k] : points[k]; }
+
 // Signed distance to a polygon (negative inside), with the nonzero or even-odd rule.
-float polygon_sdf(float2 p, uint first, uint count, bool evenodd)
+float polygon_sdf(float2 p, uint first, uint count, bool evenodd, bool ret)
 {
 	count = min(count, MAX_POLYGON_POINTS);
 	if (count < 3) return 1e9;
 	float d = 1e30;
 	int winding = 0;
-	float2 a = points[first + count - 1];
+	float2 a = point_at(ret, first + count - 1);
 	[loop] for (uint i = 0; i < count; i++)
 	{
-		float2 b = points[first + i];
+		float2 b = point_at(ret, first + i);
 		float2 e = b - a, w = p - a;
 		float2 q = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-12));
 		d = min(d, dot(q, q));
@@ -320,7 +455,17 @@ float polygon_sdf(float2 p, uint first, uint count, bool evenodd)
 	return inside ? -sqrt(d) : sqrt(d);
 }
 
-// Coverage of the (nested) clip shapes at a screen position.
+// Signed distance of a clip shape at `lp` (its local space).
+float clip_sdf(ClipShape c, float2 lp, bool ret)
+{
+	if (c.kind == CLIP_ELLIPSE) return ellipse_sdf(lp - c.center, c.half_size);
+	if (c.kind == CLIP_POLYGON) return polygon_sdf(lp, c.first, c.count, (c.flags & CLIP_EVENODD) != 0, ret);
+	use_corner_shape((c.flags & CLIP_CIRCLE) != 0);
+	lp -= c.center;
+	return rect_sdf(lp, c.half_size, corner_radius(lp, c.radii));
+}
+
+// Coverage of the (nested) clip shapes of the frame's table at a screen position.
 float clip_coverage(float2 screen, uint idx)
 {
 	float coverage = 1;
@@ -328,23 +473,275 @@ float clip_coverage(float2 screen, uint idx)
 	{
 		ClipShape c = clips[idx];
 		float2 lp = float2(c.inv.x * screen.x + c.inv.z * screen.y + c.t.x, c.inv.y * screen.x + c.inv.w * screen.y + c.t.y);
-		float s;
-		if (c.kind == CLIP_ELLIPSE) s = ellipse_sdf(lp - c.center, c.half_size);
-		else if (c.kind == CLIP_POLYGON) s = polygon_sdf(lp, c.first, c.count, (c.flags & CLIP_EVENODD) != 0);
-		else
-		{
-			use_corner_shape((c.flags & CLIP_CIRCLE) != 0);
-			lp -= c.center;
-			s = rect_sdf(lp, c.half_size, corner_radius(lp, c.radii));
-		}
-		coverage *= saturate(0.5 - s * c.px);
+		coverage *= saturate(0.5 - clip_sdf(c, lp, false) * c.px);
 		idx = c.parent;
 	}
 	return coverage;
 }
 
+// Coverage of a picture's clips (each in the space of its slot, through the replay's matrix), then of the clips
+// around the replay.
+float retained_clip_coverage(float2 screen, uint idx)
+{
+	float coverage = 1;
+	Mat l = replay_mat();
+	float2 q = mat_apply(replay_inv(), screen);   // picture space
+	[loop] for (int k = 0; k < MAX_CLIP_DEPTH && idx != 0; k++)
+	{
+		ClipShape c = rclips[rp_base.y + idx];
+		Mat to_screen = l;
+		float2 lp = q;
+		if (c.xform != 0)
+		{
+			Slot s = slots[rp_base.x + c.xform];
+			to_screen = mat_mul(l, mat_make(s.abcd, s.ef.xy));
+			lp = mat_apply(mat_make(s.inv_abcd, s.inv_ef.xy), q);
+		}
+		// a plain rect under a uniform scale + translation: the scissor already cut it exactly (as push_clip does)
+		if (!((c.flags & CLIP_SCISSOR) != 0 && mat_simple(to_screen)))
+		{
+			coverage *= saturate(0.5 - clip_sdf(c, lp, true) * mat_scale(to_screen));
+		}
+		idx = c.parent;
+	}
+	return coverage * clip_coverage(screen, rp_misc.y);
+}
+
+float any_clip_coverage(float2 screen, uint idx)
+{
+	return is_retained() ? retained_clip_coverage(screen, idx) : clip_coverage(screen, idx);
+}
+
 ////////////////////////////////
-// Blend modes (CSS Compositing 1 §10), on straight sRGB colors as browsers compute them.
+// Gradients (CSS Images 4): see render.Gradient_Header in render.odin for the table layout.
+
+float4 grad_entry(uint k) { return is_retained() ? rgrads[rp_base.w + k] : grads[k]; }
+
+float3 oklab_to_linear(float3 c)
+{
+	float l_ = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
+	float m_ = c.x - 0.1055613458 * c.y - 0.0638541728 * c.z;
+	float s_ = c.x - 0.0894841775 * c.y - 1.2914855480 * c.z;
+	float l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+	return float3(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+	             -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+	             -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
+}
+
+// CIE Lab (D50) to linear sRGB (D65, Bradford adaptation), as CSS Color 4.
+float3 lab_to_linear(float3 c)
+{
+	float fy = (c.x + 16) / 116, fx = fy + c.y / 500, fz = fy - c.z / 200;
+	const float e = 216.0 / 24389, k = 24389.0 / 27;
+	float x = fx * fx * fx > e ? fx * fx * fx : (116 * fx - 16) / k;
+	float y = c.x > k * e ? fy * fy * fy : c.x / k;
+	float z = fz * fz * fz > e ? fz * fz * fz : (116 * fz - 16) / k;
+	float3 xyz = float3(x * 0.3457 / 0.3585, y, z * (1 - 0.3457 - 0.3585) / 0.3585);   // D50 white
+	float3 d65 = float3( 0.9554734527042182 * xyz.x - 0.023098536874261423 * xyz.y + 0.0632593086610217 * xyz.z,
+	                    -0.028369706963208136 * xyz.x + 1.0099954580058226 * xyz.y + 0.021041398966943008 * xyz.z,
+	                     0.012314001688319899 * xyz.x - 0.020507696433477912 * xyz.y + 1.3303659366080753 * xyz.z);
+	return float3( 3.2409699419045226 * d65.x - 1.537383177570094 * d65.y - 0.4986107602930034 * d65.z,
+	              -0.9692436362808796 * d65.x + 1.8759675015077202 * d65.y + 0.04155505740717559 * d65.z,
+	               0.05563007969699366 * d65.x - 0.20397695888897652 * d65.y + 1.0569715142428786 * d65.z);
+}
+
+// HSL (hue in degrees, s and l 0..1) to sRGB values.
+float3 hsl_to_srgb(float3 c)
+{
+	float h = c.x - 360 * floor(c.x / 360);
+	float3 k = fmod(float3(0, 8, 4) + h / 30, 12);
+	float a = c.y * min(c.z, 1 - c.z);
+	return c.z - a * max(-1, min(min(k - 3, 9 - k), 1));
+}
+
+float3 hwb_to_srgb(float3 c)
+{
+	float w = c.y, b = c.z;
+	if (w + b >= 1) { float g = w / (w + b); return float3(g, g, g); }
+	return hsl_to_srgb(float3(c.x, 1, 0.5)) * (1 - w - b) + w;
+}
+
+// The color of gradient `h` at instance position `p`: straight, in linear light or sRGB values (`srgb_out`).
+float4 gradient_color(float2 p, uint h, out bool srgb_out, out bool dither)
+{
+	uint4 hd = asuint(grad_entry(h));
+	uint flags = hd.x;
+	uint space = hd.y;
+	uint n = min(hd.w, MAX_GRADIENT_STOPS);
+	srgb_out = space == GSPACE_SRGB || space == GSPACE_HSL || space == GSPACE_HWB;
+	dither = (flags & GRAD_DITHER) != 0;
+	float4 geom = grad_entry(h + 1);
+	float4 tile = grad_entry(h + 2);
+	float4 per = grad_entry(h + 3);
+	float2 q = p - tile.xy;
+	if (tile.z > 0)
+	{
+		float period = tile.z + per.x;
+		if (flags & GRAD_REPEAT_X) q.x -= floor(q.x / period) * period;
+		if (q.x < 0 || q.x > tile.z) return 0;
+	}
+	if (tile.w > 0)
+	{
+		float period = tile.w + per.y;
+		if (flags & GRAD_REPEAT_Y) q.y -= floor(q.y / period) * period;
+		if (q.y < 0 || q.y > tile.w) return 0;
+	}
+	float t;
+	uint kind = flags & 0xff;
+	if (kind == GRAD_RADIAL)
+	{
+		t = length((q - geom.xy) / max(abs(geom.zw), 1e-4));
+	}
+	else if (kind == GRAD_CONIC)
+	{
+		float2 d = q - geom.xy;
+		float a = atan2(d.x, -d.y);   // clockwise from up
+		t = frac((a - geom.z) / 6.283185307179586);
+	}
+	else
+	{
+		float2 d = geom.zw - geom.xy;
+		t = dot(q - geom.xy, d) / max(dot(d, d), 1e-12);
+	}
+	if (flags & GRAD_REPEATING)
+	{
+		float span = per.w - per.z;
+		if (span > 1e-6) t = per.z + frac((t - per.z) / span) * span;
+	}
+	uint s0 = h + GRAD_HEADER;
+	float4 c;
+	if (n <= 1 || t <= grad_entry(s0 + 1).x) c = grad_entry(s0);
+	else if (t >= grad_entry(s0 + 2 * (n - 1) + 1).x) c = grad_entry(s0 + 2 * (n - 1));
+	else
+	{
+		uint k = 1;
+		[loop] for (; k < n - 1; k++) { if (t < grad_entry(s0 + 2 * k + 1).x) break; }
+		float4 pa = grad_entry(s0 + 2 * (k - 1) + 1);
+		float pb = grad_entry(s0 + 2 * k + 1).x;
+		float f = pb > pa.x ? (t - pa.x) / (pb - pa.x) : 1;
+		if (pa.y >= 0)
+		{
+			// transition hint (CSS Images 4 Â§3.5.3): the midpoint color sits at fraction pa.y of the interval
+			float hint = pa.y;
+			if (hint <= 0) f = 1;
+			else if (hint >= 1) f = f >= 1 ? 1 : 0;
+			else f = pow(saturate(f), log(0.5) / log(hint));
+		}
+		c = lerp(grad_entry(s0 + 2 * (k - 1)), grad_entry(s0 + 2 * k), f);
+	}
+	if (c.a <= 1e-7) return 0;
+	float3 v = c.rgb;
+	// premultiplied: divide every component but a polar space's hue
+	if (space == GSPACE_OKLCH || space == GSPACE_LCH) v.xy /= c.a;
+	else if (space == GSPACE_HSL || space == GSPACE_HWB) v.yz /= c.a;
+	else v /= c.a;
+	float3 rgb;
+	switch (space)
+	{
+	case GSPACE_LINEAR: rgb = v; break;
+	case GSPACE_OKLAB: rgb = oklab_to_linear(v); break;
+	case GSPACE_OKLCH: { float hr = radians(v.z); rgb = oklab_to_linear(float3(v.x, v.y * cos(hr), v.y * sin(hr))); break; }
+	case GSPACE_LAB: rgb = lab_to_linear(v); break;
+	case GSPACE_LCH: { float hr = radians(v.z); rgb = lab_to_linear(float3(v.x, v.y * cos(hr), v.y * sin(hr))); break; }
+	case GSPACE_HSL: rgb = hsl_to_srgb(v); break;
+	case GSPACE_HWB: rgb = hwb_to_srgb(v); break;
+	default: rgb = v; break;
+	}
+	return float4(saturate(rgb), saturate(c.a));
+}
+
+// Triangular noise of +-1 level of 8 bits at a screen pixel (dithering of gradients).
+float dither_noise(float2 screen)
+{
+	uint2 p = uint2(screen);
+	uint hsh = p.x * 1973u + p.y * 9277u + 26699u;
+	hsh = (hsh ^ (hsh >> 13)) * 1274126177u;
+	hsh ^= hsh >> 16;
+	float a = float(hsh & 0xffffu) / 65535.0, b = float(hsh >> 16) / 65535.0;
+	return (a + b - 1) / 255.0;
+}
+
+////////////////////////////////
+// Shadows: a gaussian of standard deviation `sigma` over a rounded rect. Along x the integral is exact (erf); along y
+// the rows of the straight middle part are exact too (the box is a product of two intervals there), the rows of the
+// corners are integrated with the midpoint rule over the part of the kernel that matters.
+
+float erf_approx(float x)
+{
+	// Abramowitz & Stegun 7.1.26 (|error| < 1.5e-7)
+	float s = sign(x);
+	x = abs(x);
+	float t = 1 / (1 + 0.3275911 * x);
+	float y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x);
+	return s * y;
+}
+
+// The standard normal cumulative distribution.
+float Phi(float x) { return 0.5 + 0.5 * erf_approx(x * 0.7071067811865476); }
+
+// The blur is (left part) - (right part): the gaussian-weighted integral over the rows of Phi((p.x - left edge) / sigma)
+// minus the same with the right edge. Each edge is straight except along two corner arcs, so each part is a product of
+// two Phi on its straight stretch plus one integral per arc. An arc is integrated over its angle (y = cy + sy r sin a,
+// x = cx + sx r cos a): smooth there (along y the edge has a square-root singularity), sampled only where the gaussian
+// in y matters.
+#define SHADOW_SAMPLES 16
+
+float arc_part(float2 p, float2 center, float r, float sx, float sy, float sigma)
+{
+	if (r <= 0) return 0;
+	// sin a for the rows within 4 sigma of p
+	float s0 = sy * (p.y - 4 * sigma - center.y) / r, s1 = sy * (p.y + 4 * sigma - center.y) / r;
+	float lo = clamp(min(s0, s1), 0, 1), hi = clamp(max(s0, s1), 0, 1);
+	if (hi <= lo) return 0;
+	float a0 = asin(lo), a1 = asin(hi);
+	float h = (a1 - a0) / SHADOW_SAMPLES;
+	float inv = 1 / sigma;
+	float acc = 0;
+	[loop] for (int k = 0; k < SHADOW_SAMPLES; k++)
+	{
+		float a = a0 + (k + 0.5) * h;
+		float sa, ca;
+		sincos(a, sa, ca);
+		float dy = (p.y - (center.y + sy * r * sa)) * inv;
+		acc += exp(-0.5 * dy * dy) * Phi((p.x - (center.x + sx * r * ca)) * inv) * ca;
+	}
+	return acc * h * r * inv * 0.3989422804014327;
+}
+
+// The blurred coverage of a rounded rect (x0 y0 x1 y1, radii tl bl tr br) at p.
+float blurred_rrect(float2 p, float4 rect, float4 radii, float sigma)
+{
+	float2 c = (rect.xy + rect.zw) * 0.5;
+	float2 hs = max((rect.zw - rect.xy) * 0.5, 0);
+	if (hs.x <= 0 || hs.y <= 0) return 0;
+	p -= c;
+	float4 r = min(max(radii, 0), min(hs.x, hs.y));
+	float inv = 1 / sigma;
+	// left edge: straight between the top-left and bottom-left arcs
+	float left = Phi((p.x + hs.x) * inv) * max(Phi((p.y + hs.y - r.x) * inv) - Phi((p.y - hs.y + r.y) * inv), 0)
+		+ arc_part(p, float2(-hs.x + r.x, -hs.y + r.x), r.x, -1, -1, sigma)
+		+ arc_part(p, float2(-hs.x + r.y, hs.y - r.y), r.y, -1, 1, sigma);
+	float right = Phi((p.x - hs.x) * inv) * max(Phi((p.y + hs.y - r.z) * inv) - Phi((p.y - hs.y + r.w) * inv), 0)
+		+ arc_part(p, float2(hs.x - r.z, -hs.y + r.z), r.z, 1, -1, sigma)
+		+ arc_part(p, float2(hs.x - r.w, hs.y - r.w), r.w, 1, 1, sigma);
+	return saturate(left - right);
+}
+
+// Antialiased coverage of a rounded rect (x0 y0 x1 y1, radii tl bl tr br, circular corners) at p, in units whose
+// screen rate of change is given by dpx / dpy.
+float rrect_coverage(float2 p, float4 rect, float4 radii, float2 dpx, float2 dpy)
+{
+	float2 c = (rect.xy + rect.zw) * 0.5;
+	float2 hs = max((rect.zw - rect.xy) * 0.5, 0);
+	float2 dir;
+	use_corner_shape(true);
+	float2 q = p - c;
+	float s = rect_sdf_dir(q, hs, corner_radius(q, radii), dir);
+	return saturate(0.5 - to_px(s, dir, dpx, dpy));
+}
+
+////////////////////////////////
+// Blend modes (CSS Compositing 1 Â§10), on straight sRGB colors as browsers compute them.
 
 float blend_channel(float b, float s, uint mode)
 {
@@ -442,6 +839,7 @@ float4 ps_main(PSIn i) : SV_Target
 	// derivatives first, outside any branch: local units per screen pixel (constant per primitive), texture LOD
 	float2 dpx = ddx(p), dpy = ddy(p);
 	float2 duvx = ddx(i.uv), duvy = ddy(i.uv);
+	float2 ldx = ddx(i.lpos), ldy = ddy(i.lpos);   // instance units per screen pixel (gradients, shadows)
 	bool xf = i.extra.x != 0;
 	uint kind = (uint)(i.style.z + 0.5);
 	use_corner_shape((i.extra.z & FLAG_CIRCLE) != 0);
@@ -452,14 +850,37 @@ float4 ps_main(PSIn i) : SV_Target
 	uint tex_space = (i.extra.z & FLAG_TEX_SRGB) ? SPACE_SRGB : SPACE_LINEAR;
 	float2 dir;
 	float2 screen = i.pos.xy + target_origin;
+	bool clipped = i.extra.y != 0 || rp_misc.y != 0;
 	if (i.extra.z & FLAG_BLEND)
 	{
 		// the layer's texel and what lay under it; the batch writes the result (no hardware blending)
 		float4 s = convert_premul(image.Load(int3(int2(floor(i.uv)), 0)), tex_space, target_space) * color.a;
 		float4 d = backdrop.Load(int3(int2(floor(screen - i.radii.xy)), 0));
 		float4 o = blend_composite(s, d, (i.extra.z >> BLEND_SHIFT) & 0xff);
-		float cov = i.extra.y != 0 ? clip_coverage(screen, i.extra.y) : 1;
+		float cov = clipped ? any_clip_coverage(screen, i.extra.y) : 1;
 		return lerp(d, o, cov);
+	}
+	float2 lp = i.lpos;
+	if (kind == KIND_SHADOW)
+	{
+		float sigma = i.p2.x;
+		uint sflags = (uint)(i.p2.y + 0.5);
+		// below a third of a screen pixel the blur is invisible: the shape's antialiased coverage
+		float px_per_unit = 1 / max(length(float2(length(ldx), length(ldy))) * 0.7071067811865476, 1e-6);
+		float mask = sigma * px_per_unit < 0.33 ? rrect_coverage(lp, i.src, i.radii, ldx, ldy) : blurred_rrect(lp, i.src, i.radii, sigma);
+		if (sflags & SHADOW_INSET) mask = rrect_coverage(lp, i.p0, i.p1, ldx, ldy) * (1 - mask);
+		else if (sflags & SHADOW_HOLE) mask *= 1 - rrect_coverage(lp, i.p0, i.p1, ldx, ldy);
+		color.a *= mask;
+		if (clipped) color.a *= any_clip_coverage(screen, i.extra.y);
+		return color;
+	}
+	bool dither = false;
+	if (kind == KIND_GRADIENT)
+	{
+		bool srgb_out;
+		float4 g = gradient_color(lp, i.extra.w, srgb_out, dither);
+		color.rgb = convert_space(g.rgb, srgb_out ? SPACE_SRGB : SPACE_LINEAR, target_space);
+		color.a *= g.a;
 	}
 	if (kind == KIND_GLYPH)
 	{
@@ -518,6 +939,12 @@ float4 ps_main(PSIn i) : SV_Target
 		}
 		color.a *= coverage;
 	}
-	if (i.extra.y != 0) { color.a *= clip_coverage(screen, i.extra.y); }
+	if (clipped) { color.a *= any_clip_coverage(screen, i.extra.y); }
+	if (dither && color.a > 0)
+	{
+		// against banding: noise in the target's 8-bit encoding
+		float n = dither_noise(screen);
+		color.rgb = target_space == SPACE_SRGB ? saturate(color.rgb + n) : srgb_decode(srgb_encode(color.rgb) + n);
+	}
 	return color;
 }

@@ -61,7 +61,7 @@ blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {
 // filter passes). Pooled targets are handed back to the pool afterwards.
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
-	if len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0) { return }
+	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
 	when GPU_TIMING {
 		gpu_timing_begin(r)
 		defer gpu_timing_end(r)
@@ -73,6 +73,7 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	upload_structured(r, &r.xform_buf, &r.xform_view, &r.xform_cap, raw_data(f.xforms), len(f.xforms), size_of(Xform_Data))
 	upload_structured(r, &r.clip_buf, &r.clip_view, &r.clip_cap, raw_data(f.clips), len(f.clips), size_of(Clip_Data))
 	upload_structured(r, &r.points_buf, &r.points_view, &r.points_cap, raw_data(f.points), len(f.points), size_of([2]f32))
+	upload_structured(r, &r.grads_buf, &r.grads_view, &r.grads_cap, raw_data(f.grads), len(f.grads), size_of([4]f32))
 	if len(f.insts) > r.inst_cap {
 		if r.inst_buf != nil { r.inst_buf->Release() }
 		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, 4096))
@@ -86,28 +87,44 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 
 	bind_main(r)
+	write_replay(r, nil, false)
 	cur, cur_ok := -1, false
 	cur_size: [2]int
 	cur_origin: [2]f32
 	bound, bound_image, bound_backdrop: Texture = -1, -1, -1
 	replacing := false
+	bound_replay := 0      // the Replay in b2 (0: immediate instances, identity)
+	retained_vb := false   // the retained instance heap is the bound vertex buffer
 	for b in f.batches {
 		if b.op > 0 {
 			op := &f.ops[b.op - 1]
 			if run_op(r, f, op) {
 				// a filter pass replaced the pipeline and the target
 				bind_main(r)
+				retained_vb = false
 				cur = -1
 			}
 			continue
 		}
 		if b.count == 0 { continue }
+		if b.replay > len(f.replays) || (b.replay > 0 && r.heaps[.Insts].buf == nil) { continue }
 		if b.target != cur {
 			cur = b.target
 			cur_ok, cur_size, cur_origin = bind_target(r, f, cur)
 			bound, bound_image, bound_backdrop = -1, -1, -1
 		}
 		if !cur_ok { continue }
+		if (b.replay > 0) != retained_vb {
+			retained_vb = b.replay > 0
+			stride := u32(size_of(Rect_Inst))
+			offset := u32(0)
+			vb := retained_vb ? r.heaps[.Insts].buf : r.inst_buf
+			r.ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset)
+		}
+		if b.replay != bound_replay {
+			bound_replay = b.replay
+			write_replay(r, b.replay > 0 ? &f.replays[b.replay - 1] : nil, b.replay > 0)
+		}
 		if b.tex != bound || b.image != bound_image || b.backdrop != bound_backdrop {
 			views := [2]^d3d11.IShaderResourceView{texture_view(r, b.tex), texture_view(r, b.image)}
 			r.ctx->PSSetShaderResources(0, 2, &views[0])
@@ -143,13 +160,18 @@ bind_main :: proc(r: ^Renderer) {
 	r.ctx->IASetVertexBuffers(0, 1, &r.inst_buf, &stride, &offset)
 	r.ctx->VSSetShader(r.vs, nil, 0)
 	r.ctx->VSSetConstantBuffers(0, 1, &r.globals)
+	r.ctx->VSSetConstantBuffers(2, 1, &r.replay_cb)
 	r.ctx->VSSetShaderResources(2, 1, &r.xform_view)
+	r.ctx->VSSetShaderResources(7, 1, &r.heaps[.Slots].view)
 	r.ctx->PSSetShader(r.ps, nil, 0)
 	r.ctx->PSSetConstantBuffers(0, 1, &r.globals)   // the pixel shader reads the corner shape and the target origin
+	r.ctx->PSSetConstantBuffers(2, 1, &r.replay_cb)
 	samplers := [3]^d3d11.ISamplerState{r.sampler, r.sampler_img, r.sampler_wrap}
 	r.ctx->PSSetSamplers(0, 3, &samplers[0])
 	tables := [2]^d3d11.IShaderResourceView{r.clip_view, r.points_view}
 	r.ctx->PSSetShaderResources(3, 2, &tables[0])
+	retained := [5]^d3d11.IShaderResourceView{r.grads_view, r.heaps[.Slots].view, r.heaps[.Clips].view, r.heaps[.Points].view, r.heaps[.Grads].view}
+	r.ctx->PSSetShaderResources(6, 5, &retained[0])
 }
 
 // Textures a step reads (t0, t1, t5) are unbound before another step writes one of them.

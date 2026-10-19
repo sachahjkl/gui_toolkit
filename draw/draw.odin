@@ -137,7 +137,16 @@ Context :: struct {
 	circular: bool,                            // set_circular_corners
 	interp:   Interpolation,                   // set_interpolation
 	size:     Vec2,
-	generation: int,
+	grads:    [dynamic][4]f32,                 // gradient table of this frame (or of the picture being recorded)
+	replays:  [dynamic]render.Replay,          // pictures drawn this frame
+	// retained drawing (picture.odin)
+	rec:      ^Picture,                        // the picture being recorded, nil = drawing the frame
+	saved:    Saved_Frame,                     // the frame's lists while a picture is recorded
+	raster_scale: f32,                         // while recording: screen pixels per picture unit expected (text raster size)
+	pictures: [dynamic]^Picture,               // pictures holding retained heap ranges (eviction)
+	frame_no: u64,
+	retained_budget: int,                      // bytes of retained heaps kept before evicting unused pictures, 0 = no limit
+	device_generation: u64,                    // render.Renderer.device_generation seen last
 }
 
 // A layer being drawn (push_layer / push_effects ... pop_layer).
@@ -154,19 +163,31 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 	c.renderer = r
 	c.fonts = fonts
 	c.atlas = render.create_texture_r8(r, font.ATLAS_SIZE)
-	c.generation = fonts.generation
+	c.device_generation = r.device_generation
+	c.raster_scale = 1
 }
 
+// Frees the context's memory. Pictures recorded with it should be destroyed first (picture_destroy).
 destroy :: proc(c: ^Context) {
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
-	delete(c.open_layers); delete(c.filter_store)
+	delete(c.open_layers); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures)
+	saved_destroy(&c.saved)
 }
 
 begin_frame :: proc(c: ^Context, size: Vec2) {
+	assert(c.rec == nil, "draw.begin_frame while a picture is being recorded")
+	// a lost device is recreated before anything is drawn: the glyph atlas came back empty
+	if c.renderer.lost { render.recover(c.renderer) }
+	if c.renderer.device_generation != c.device_generation {
+		c.device_generation = c.renderer.device_generation
+		font.reset_atlas(c.fonts)
+	}
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
-	clear(&c.open_layers); clear(&c.filter_store)
+	clear(&c.open_layers); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
+	c.frame_no += 1
+	c.raster_scale = 1
 	c.target = 0
 	c.circular = false
 	c.interp = .Target
@@ -181,8 +202,9 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 
 @(private)
 start_batch :: proc(c: ^Context) {
-	cl := c.clips[len(c.clips) - 1].rect
-	append(&c.batches, render.Batch{clip = {cl.min.x, cl.min.y, cl.max.x, cl.max.y}, tex = c.atlas, first = len(c.insts), target = c.target})
+	top := c.clips[len(c.clips) - 1]
+	cl := top.rect
+	append(&c.batches, render.Batch{clip = {cl.min.x, cl.min.y, cl.max.x, cl.max.y}, tex = c.atlas, first = len(c.insts), target = c.target, shape = top.shape})
 }
 
 // Records a step that is not a draw call (it runs between the batches recorded before and after it).
@@ -208,6 +230,11 @@ close_batch :: proc(c: ^Context) {
 // (as push_clip_rounded with zero radii).
 push_clip :: proc(c: ^Context, r: Rect) {
 	xf := c.xforms[len(c.xforms) - 1]
+	if c.rec != nil {
+		// the screen is not known yet: a clip of the picture, turned into the scissor at replay
+		push_clip_shape(c, r, render.Clip_Data{kind = render.CLIP_RRECT, flags = render.CLIP_SCISSOR, center = rect_center(r), half_size = rect_half(r)})
+		return
+	}
 	if !xf.simple { push_clip_rounded(c, r, {}); return }
 	s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 	parent := c.clips[len(c.clips) - 1]
@@ -225,11 +252,16 @@ push_clip :: proc(c: ^Context, r: Rect) {
 push_clip_rounded :: proc(c: ^Context, r: Rect, radii: [4]f32) {
 	xf := c.xforms[len(c.xforms) - 1]
 	if xf.simple && radii == {} { push_clip(c, r); return }
-	half := rect_size(r) * 0.5
 	push_clip_shape(c, r, render.Clip_Data{
 		kind = render.CLIP_RRECT, flags = c.circular ? render.CLIP_CIRCLE : 0,
-		center = rect_center(r), half_size = {max(half.x, 0), max(half.y, 0)}, radii = radii,
+		center = rect_center(r), half_size = rect_half(r), radii = radii,
 	})
+}
+
+@(private)
+rect_half :: proc(r: Rect) -> Vec2 {
+	half := rect_size(r) * 0.5
+	return {max(half.x, 0), max(half.y, 0)}
 }
 
 // Pushes a clip shape whose local bounds are `bounds` (the scissor is their screen bounds): the transform's inverse,
@@ -238,6 +270,18 @@ push_clip_rounded :: proc(c: ^Context, r: Rect, radii: [4]f32) {
 push_clip_shape :: proc(c: ^Context, bounds: Rect, shape: render.Clip_Data) {
 	xf := c.xforms[len(c.xforms) - 1]
 	parent := c.clips[len(c.clips) - 1]
+	if c.rec != nil {
+		// a clip of the picture: in the space of the current slot, its scissor computed at replay
+		d := shape
+		d.xform = xf.gpu
+		d.parent = parent.shape
+		append(&c.clip_table, d)
+		append(&c.rec.clip_rects, bounds)
+		close_batch(c)
+		append(&c.clips, Clip{shape = u32(len(c.clip_table) - 1)})
+		start_batch(c)
+		return
+	}
 	inv, ok := affine_inverse(xf.m)
 	// 1 px of slack: the scissor is integer, the shape's antialiased edge is not
 	scissor := rect_intersect(rect_pad(affine_bounds(xf.m, bounds), 1), parent.rect)
@@ -295,8 +339,10 @@ layer_depth :: proc(c: ^Context) -> int { return len(c.open_layers) }
 
 // Everything drawn next goes through `m` first, then through the transforms already pushed (CSS nesting: push the
 // element's `transform` with its transform-origin folded in, see affine_around). Pop with pop_transform.
+// While a picture is recorded, each pushed transform is a slot of the picture (see picture_set_slot).
 push_transform :: proc(c: ^Context, m: Affine) {
 	n := affine_mul(c.xforms[len(c.xforms) - 1].m, m)
+	if c.rec != nil { push_new_slot(c, m, n); return }
 	append(&c.xforms, Transform{m = n, simple = affine_is_scale_translate(n)})
 }
 pop_transform :: proc(c: ^Context) { pop(&c.xforms) }
@@ -306,6 +352,11 @@ push_scale :: proc(c: ^Context, center: Vec2, s: f32) {
 	m := c.xforms[len(c.xforms) - 1].m
 	// new(p) = (cur(p) - center) * s + center
 	n := Affine{m.a * s, m.b * s, m.c * s, m.d * s, (m.e - center.x) * s + center.x, (m.f - center.y) * s + center.y}
+	if c.rec != nil {
+		inv, _ := affine_inverse(m)
+		push_new_slot(c, affine_mul(inv, n), n)
+		return
+	}
 	append(&c.xforms, Transform{m = n, simple = affine_is_scale_translate(n)})
 }
 // Same as pop_transform (pops push_scale or push_transform).
@@ -322,6 +373,7 @@ cur :: proc(c: ^Context) -> (xf: ^Transform, alpha: f32, shape: u32) {
 // GPU table index of the current transform (uploaded on first use).
 @(private)
 gpu_xform :: proc(c: ^Context, xf: ^Transform) -> u32 {
+	if c.rec != nil { return xf.gpu }   // the slot, made when it was pushed
 	if xf.gpu == 0 {
 		m := xf.m
 		append(&c.xform_table, render.Xform_Data{m = {m.a, m.b, m.c, m.d, m.e, m.f}})
@@ -385,10 +437,14 @@ text :: proc(c: ^Context, id: font.Font_Id, size: f32, pos: Vec2, color: Color, 
 	// k: raster size / layout size. Scaled text gets bitmaps at its screen size: sharp, not a blurred or aliased
 	// stretch of the 1x bitmap.
 	k: f32 = 1
-	if sf := affine_scale_factor(xf.m); px >= 1 && abs(sf - 1) > TEXT_RASTER_TOLERANCE {
+	sf := affine_scale_factor(xf.m) * c.raster_scale   // while recording: the scale the picture is expected at
+	if px >= 1 && abs(sf - 1) > TEXT_RASTER_TOLERANCE {
 		k = clamp(math.round(px * sf), 1, 512) / px
 	}
+	// baked on the CPU: uniform scale + translation (in a picture only at its own scale: the screen is not known)
+	baked := xf.simple && (c.rec == nil || k == 1)
 	gpu: u32 = xf.simple ? 0 : gpu_xform(c, xf)
+	if c.rec != nil && len(s) > 0 { picture_note_text(c, xf.gpu, sf) }
 	for r in s {
 		if prev != 0 { pen.x += font.kern(c.fonts, id, px, prev, r) }
 		g := font.glyph(c.fonts, id, size, r)
@@ -399,7 +455,7 @@ text :: proc(c: ^Context, id: font.Font_Id, size: f32, pos: Vec2, color: Color, 
 				colors = {col, col, col, col}, use_tex = render.KIND_GLYPH, soft = 1, tex_size = font.ATLAS_SIZE,
 				xform = gpu, clip = shape,
 			}
-			if xf.simple {
+			if baked {
 				sc, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 				if k == 1 {
 					x0 := math.round(pen.x) + g.offset.x
@@ -493,6 +549,7 @@ image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tin
 
 // Uploads new glyphs, then draws the whole frame. Call once per frame after all primitives.
 end_frame :: proc(c: ^Context) {
+	if c.rec != nil { picture_end(c) }   // an unbalanced picture_begin: what was recorded is kept, not drawn
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
 	f := c.fonts
@@ -506,5 +563,6 @@ end_frame :: proc(c: ^Context) {
 		xforms = len(c.xform_table) > 1 ? c.xform_table[:] : nil,
 		clips = len(c.clip_table) > 1 ? c.clip_table[:] : nil,
 		points = c.clip_points[:], layers = c.layers[:], ops = c.ops[:],
+		grads = c.grads[:], replays = c.replays[:],
 	})
 }

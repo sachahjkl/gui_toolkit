@@ -185,7 +185,8 @@ push_effects :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects) {
 	x1, y1 := math.ceil(r.max.x), math.ceil(r.max.y)
 	w, h := int(x1 - x0), int(y1 - y0)
 	tex: render.Texture
-	if w > 0 && h > 0 && fx.alpha > 0 && !rect_empty(visible) { tex = render.acquire_target(c.renderer, w, h) }
+	// a picture holds no offscreen layer (its screen place is not known): the alpha alone, as without a target
+	if w > 0 && h > 0 && fx.alpha > 0 && !rect_empty(visible) && c.rec == nil { tex = render.acquire_target(c.renderer, w, h) }
 	if tex == 0 {
 		resize(&c.filter_store, first)
 		ol.filters = {first, first}
@@ -429,6 +430,7 @@ Backdrop :: struct {
 // the current clip) and runs `filters` on it (lengths in local units). Past the copied area the image repeats its
 // edge, so a blur does not darken the borders. Record it before drawing what goes in front.
 backdrop_capture :: proc(c: ^Context, r: Rect, filters: []Filter) -> Backdrop {
+	if c.rec != nil { return {} }   // nothing to capture while recording a picture
 	m := c.xforms[len(c.xforms) - 1].m
 	reg := rect_intersect(rect_intersect(affine_bounds(m, r), c.clips[len(c.clips) - 1].rect), target_rect(c))
 	x0, y0 := math.floor(reg.min.x), math.floor(reg.min.y)
