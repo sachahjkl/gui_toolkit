@@ -1,5 +1,6 @@
 package draw
 
+import "../font"
 import "../render"
 
 // Pictures: retained drawing. What is drawn between picture_begin and picture_end is recorded into a Picture instead
@@ -13,9 +14,11 @@ import "../render"
 // GPU range.
 //
 // What a picture cannot hold: offscreen layers (push_layer / push_effects fall back to push_alpha, backdrops capture
-// nothing): apply effects around the replay instead. Texts keep the glyph atlas positions they were recorded with:
-// when the atlas is reset (full), or when the picture is shown at a scale where text would be rasterized at another
-// size, `replay` returns .Stale and the picture must be recorded again. Images are referenced by texture handle.
+// nothing): apply effects around the replay instead. Texts keep the glyph atlas positions they were recorded with, and
+// the picture remembers the atlas pages they are on (font.Page_Ref): when one of those pages is reused for other
+// glyphs, when the text rendering settings change, or when the picture is shown at a scale where text would be
+// rasterized at another size, `replay` returns .Stale and the picture must be recorded again. Pages are tracked one by
+// one: reusing a page only makes the pictures with glyphs on it stale. Images are referenced by texture handle.
 
 // One transform slot: its matrix to its parent slot (`local`) and to the picture's space (`eff`).
 Picture_Slot :: struct {
@@ -35,7 +38,9 @@ Picture :: struct {
 	clip_rects: [dynamic]Rect,               // per clip: local bounds of its shape (the scissor at replay)
 	points:     [dynamic][2]f32,
 	grads:      [dynamic][4]f32,
-	atlas_generation: int,                   // font.State.generation of its glyphs (-1: an atlas reset hit the recording)
+	pages:      [dynamic]font.Page_Ref,      // the atlas pages its glyphs are on
+	pages_broken: bool,                      // a page it used was reused while it was recorded
+	text_settings: u64,                      // font.atlas_settings_generation of its glyphs
 	text:       bool,
 	raster_scale: f32,
 	version:    u64,                         // bumps at each recording
@@ -48,17 +53,20 @@ Picture :: struct {
 	dirty:      [2]int,                      // slots to upload again: [first, end)
 	eff_stale:  bool,                        // slots of `dirty` need their `eff` recomputed
 	last_used:  u64,
-	start_gen:  int,
 }
 
 // Instances per batch of a picture at most: a replay culls batches whose bounds miss the clip (long runs of text are
 // not all drawn when one line shows).
 PICTURE_BATCH_INSTANCES :: 256
 
-// Where a batch draws: `r` in the space of slot `slot` (max(u32): instances of several slots, never culled).
+// Where a batch draws: `r` in the space of slot `slot` (max(u32): instances of several slots, never culled). `gray`,
+// `color`: the atlas pages it samples as its coverage texture and its image (-1: none), bound to the replaying
+// context's textures of those pages.
 Batch_Bounds :: struct {
-	slot: u32,
-	r:    Rect,
+	slot:  u32,
+	r:     Rect,
+	gray:  i32,
+	color: i32,
 }
 
 Replay_Result :: enum u8 {
@@ -98,10 +106,11 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	assert(c.rec == nil, "draw.picture_begin: a picture is already being recorded")
 	clear(&pic.insts); clear(&pic.batches); clear(&pic.batch_bounds); clear(&pic.slots); clear(&pic.clips); clear(&pic.clip_rects)
 	clear(&pic.points); clear(&pic.grads)
-	pic.text = false
+	clear(&pic.pages)
+	pic.text, pic.pages_broken = false, false
 	pic.dirty, pic.eff_stale = {}, false
 	pic.raster_scale = raster_scale > 0 ? raster_scale : 1
-	pic.start_gen = c.fonts.generation
+	pic.text_settings = font.atlas_settings_generation(c.fonts)
 	append(&pic.slots, Picture_Slot{local = AFFINE_IDENTITY, eff = AFFINE_IDENTITY})
 	append(&pic.clips, render.Clip_Data{})
 	append(&pic.clip_rects, Rect{})
@@ -151,7 +160,7 @@ picture_end :: proc(c: ^Context) {
 	for b in split {
 		append(&pic.batches, b)
 		// bounds when every instance is in one slot (else none: never culled)
-		bb := Batch_Bounds{slot = pic.insts[b.first].xform}
+		bb := Batch_Bounds{slot = pic.insts[b.first].xform, gray = glyph_page_of(c, b.tex), color = glyph_page_of(c, b.image)}
 		for inst, k in pic.insts[b.first:][:b.count] {
 			if inst.xform != bb.slot { bb.slot = max(u32); break }
 			r := Rect{{min(inst.dst[0], inst.dst[2]), min(inst.dst[1], inst.dst[3])}, {max(inst.dst[0], inst.dst[2]), max(inst.dst[1], inst.dst[3])}}
@@ -166,8 +175,8 @@ picture_end :: proc(c: ^Context) {
 		sl.bounds = sl.has_bounds ? rect_union(sl.bounds, r) : r
 		sl.has_bounds = true
 	}
-	// a glyph atlas reset during the recording left glyphs recorded before it pointing at nothing
-	pic.atlas_generation = c.fonts.generation == pic.start_gen ? c.fonts.generation : -1
+	// rendering settings changed during the recording: glyphs recorded before and after it differ
+	if font.atlas_settings_generation(c.fonts) != pic.text_settings { pic.pages_broken = true }
 	pic.version += 1
 }
 
@@ -210,6 +219,17 @@ picture_note_text :: proc(c: ^Context, slot: u32, sf: f32) {
 	c.rec.slots[slot].glyph_scale = sf
 }
 
+// A glyph bitmap recorded: the picture depends on its page (as it was then).
+@(private)
+picture_note_page :: proc(pic: ^Picture, img: font.Glyph_Image) {
+	for r in pic.pages {
+		if r.page != img.page { continue }
+		if r.epoch != img.epoch { pic.pages_broken = true }   // the page was reused under the recording
+		return
+	}
+	append(&pic.pages, font.Page_Ref{page = img.page, epoch = img.epoch})
+}
+
 // Changes the matrix of slot `k` relative to its parent slot (what push_transform was given). Its descendants follow.
 // Uploaded at the next replay. A text whose screen size changes beyond the raster tolerance makes the picture stale.
 picture_set_slot :: proc(pic: ^Picture, k: u32, local: Affine) {
@@ -245,11 +265,13 @@ picture_bounds :: proc(c: ^Context, pic: ^Picture, m: Affine) -> (r: Rect, ok: b
 	return picture_bounds_l(pic, affine_mul(top_transform(c), m))
 }
 
-// Whether text of the picture would be rasterized at another size under `m` (or the glyph atlas changed): record it
-// again (replay returns .Stale then).
+// Whether text of the picture would be rasterized at another size under `m`, an atlas page its glyphs are on was
+// reused, or the text rendering settings changed: record it again (replay returns .Stale then). When it is not stale,
+// its pages count as used by the current frame (they are not reused before it is drawn).
 picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 	if !pic.text { return false }
-	if pic.atlas_generation != c.fonts.generation { return true }
+	if pic.pages_broken || pic.text_settings != font.atlas_settings_generation(c.fonts) { return true }
+	if !font.atlas_pages_hold(c.fonts, pic.pages[:]) { return true }
 	slots_update(pic)
 	l := affine_mul(top_transform(c), m)
 	ls := affine_scale_factor(l)
@@ -291,8 +313,11 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
 		}
 		sc := rect_intersect(batch_scissor(pic, b.shape, l), scissor)
 		if rect_empty(sc) { continue }
+		bb := pic.batch_bounds[k]
+		tex := bb.gray >= 0 ? glyph_texture(c, int(bb.gray)) : c.atlas
+		image := bb.color >= 0 ? glyph_texture(c, int(bb.color)) : b.image
 		append(&c.batches, render.Batch{
-			clip = {sc.min.x, sc.min.y, sc.max.x, sc.max.y}, tex = c.atlas, image = b.image,
+			clip = {sc.min.x, sc.min.y, sc.max.x, sc.max.y}, tex = tex, image = image,
 			first = base + b.first, count = b.count, target = c.target, replay = idx,
 		})
 	}
@@ -427,7 +452,7 @@ picture_release :: proc(c: ^Context, pic: ^Picture) {
 picture_destroy :: proc(c: ^Context, pic: ^Picture) {
 	picture_release(c, pic)
 	delete(pic.insts); delete(pic.batches); delete(pic.batch_bounds); delete(pic.slots); delete(pic.clips); delete(pic.clip_rects)
-	delete(pic.points); delete(pic.grads)
+	delete(pic.points); delete(pic.grads); delete(pic.pages)
 	pic^ = {}
 }
 

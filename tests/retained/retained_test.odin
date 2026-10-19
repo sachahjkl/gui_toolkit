@@ -62,6 +62,9 @@ scene :: proc(f: ^Fx) {
 	draw.rect(dc, {{70, 6}, {120, 30}}, draw.hex(0x00000060), 6, 0, 4)
 	draw.text(dc, f.ui, 13, {8, 30}, draw.hex(0xffffffff), "Hello 123")
 	draw.image(dc, f.tex, {{70, 40}, {102, 72}}, {}, draw.WHITE, 5)
+	// color glyphs (a color page: batches switch between gray and color pages) and shaped Arabic (system fallback)
+	draw.text(dc, f.ui, 14, {104, 54}, draw.hex(0x000000ff), "\U0001F600")
+	draw.text(dc, f.ui, 10, {103, 76}, draw.hex(0x101010ff), "\u0633\u0644\u0627\u0645")
 	draw.gradient(dc, {{4, 48}, {64, 72}}, draw.Gradient{kind = .Linear, start = {0, 0}, end = {60, 0},
 		stops = {{color = draw.hex(0xff0000ff), pos = 0}, {color = draw.hex(0x0000ffff), pos = 1}}}, {6, 6, 6, 6})
 	draw.box_shadow(dc, {{12, 84}, {40, 108}}, {4, 4, 4, 4}, 3, draw.hex(0x000000a0), {{10, 80}, {38, 104}}, {4, 4, 4, 4})
@@ -72,7 +75,7 @@ scene :: proc(f: ^Fx) {
 	draw.push_clip_ellipse(dc, {87, 102}, {20, 10})
 	draw.rect(dc, {{60, 90}, {114, 114}}, draw.hex(0xe03131ff))
 	draw.pop_clip(dc)
-	draw.text(dc, f.ui, 11, {64, 100}, draw.hex(0x000000ff), "turned")
+	draw.text(dc, f.ui, 11, {64, 100}, draw.hex(0x000000ff), "turned \U0001F44D")
 	draw.pop_transform(dc)
 	draw.pop_clip(dc)
 	draw.pop_clip(dc)
@@ -140,6 +143,9 @@ replay_is_identical_to_direct_drawing :: proc(t: ^testing.T) {
 		// glyphs are rasterized while recording: draw once directly so both see the same atlas
 		_ = frame(&f, nil, .Direct, draw.AFFINE_IDENTITY)
 		record(&f, &pic)
+		color_batches := 0
+		for bb in pic.batch_bounds { if bb.color >= 0 { color_batches += 1 } }
+		testing.expect(t, color_batches > 0 && len(pic.pages) >= 2, "the picture holds glyphs of a gray and a color page")
 		cases := []struct { name: string, m: draw.Affine, alpha: f32, clip: bool, exact: bool }{
 			{"identity", draw.AFFINE_IDENTITY, 1, false, true},
 			{"integer translation", draw.affine_translate({7, -5}), 1, false, true},
@@ -178,9 +184,94 @@ text_scale_makes_a_picture_stale :: proc(t: ^testing.T) {
 	scene(&f)
 	draw.picture_end(&f.dc)
 	testing.expect(t, !draw.picture_stale(&f.dc, &pic, draw.affine_scale({2, 2})))
-	// an atlas reset makes it stale
-	font.reset_atlas(&f.fonts)
-	testing.expect(t, draw.picture_stale(&f.dc, &pic, draw.affine_scale({2, 2})), "after an atlas reset")
+	// new text rendering settings make it stale
+	st := f.fonts.settings
+	st.subpixel_steps = st.subpixel_steps == 4 ? 2 : 4
+	font.set_settings(&f.fonts, st)
+	testing.expect(t, draw.picture_stale(&f.dc, &pic, draw.affine_scale({2, 2})), "after a change of the rendering settings")
+	draw.picture_begin(&f.dc, &pic, 2)
+	scene(&f)
+	draw.picture_end(&f.dc)
+	testing.expect(t, !draw.picture_stale(&f.dc, &pic, draw.affine_scale({2, 2})), "recorded with the new settings")
+	// clearing the atlas makes it stale
+	font.clear_atlas(&f.fonts)
+	testing.expect(t, draw.picture_stale(&f.dc, &pic, draw.affine_scale({2, 2})), "after the atlas was cleared")
+}
+
+// Tiny atlas pages: reusing a page makes the pictures with glyphs on it stale, and only them; a picture drawn in the
+// current frame keeps its page (never reused under it); a picture still valid replays what direct drawing draws.
+@(test)
+page_reuse_makes_only_its_pictures_stale :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !render.init_offscreen(&f.r, SIZE, warp = true) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	st := font.DEFAULT_SETTINGS
+	st.page_size, st.max_gray_pages = 256, 2
+	font.init(&f.fonts, st)
+	draw.init(&f.dc, &f.r, &f.fonts)
+	defer close(f)
+	ok: bool
+	f.ui, ok = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
+	if !ok { testing.fail_now(t, "no font") }
+	gray_pages :: proc(f: ^Fx) -> int {
+		n := 0
+		for i in 0 ..< font.atlas_page_count(&f.fonts) { if k, _, _ := font.atlas_page_info(&f.fonts, i); k == .Gray { n += 1 } }
+		return n
+	}
+	a, b: draw.Picture
+	defer { draw.picture_destroy(&f.dc, &a); draw.picture_destroy(&f.dc, &b) }
+	ALPHABET :: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	draw_b :: proc(f: ^Fx) { draw.text(&f.dc, f.ui, 120, {0, 100}, draw.hex(0x000000ff), "Wg") }
+	direct_b :: proc(f: ^Fx) -> []u8 {
+		draw.begin_frame(&f.dc, {N, N})
+		render.frame_begin(&f.r, {1, 1, 1, 1})
+		draw_b(f)
+		draw.end_frame(&f.dc)
+		render.frame_end(&f.r)
+		return render.read_pixels(&f.r, context.temp_allocator)
+	}
+	draw.picture_begin(&f.dc, &a)
+	draw.text(&f.dc, f.ui, 12, {4, 20}, draw.hex(0x000000ff), "Hello")
+	draw.picture_end(&f.dc)
+	// fill the first page until a second one is made
+	size: f32 = 20
+	for gray_pages(f) < 2 && size < 200 {
+		draw.begin_frame(&f.dc, {N, N})
+		render.frame_begin(&f.r, {1, 1, 1, 1})
+		draw.text(&f.dc, f.ui, size, {0, 60}, draw.hex(0x000000ff), ALPHABET)
+		draw.end_frame(&f.dc)
+		render.frame_end(&f.r)
+		size += 1
+	}
+	testing.expect(t, gray_pages(f) == 2, "a second gray page")
+	// b: glyphs too tall for what is left of the first page
+	draw.picture_begin(&f.dc, &b)
+	draw_b(f)
+	draw.picture_end(&f.dc)
+	for ra in a.pages { for rb in b.pages { testing.expect(t, ra.page != rb.page, "a and b on different pages") } }
+	// b is drawn every frame while other text fills the atlas: the page of a goes
+	evictions := font.atlas_evictions(&f.fonts)
+	for font.atlas_evictions(&f.fonts) == evictions && size < 400 {
+		draw.begin_frame(&f.dc, {N, N})
+		render.frame_begin(&f.r, {1, 1, 1, 1})
+		testing.expect(t, draw.replay(&f.dc, &b, draw.AFFINE_IDENTITY) == .Drawn, "b drawn")
+		draw.text(&f.dc, f.ui, size, {0, 60}, draw.hex(0x000000ff), ALPHABET)
+		draw.end_frame(&f.dc)
+		render.frame_end(&f.r)
+		size += 1
+	}
+	testing.expect(t, font.atlas_evictions(&f.fonts) > evictions, "a page was reused")
+	testing.expect(t, draw.picture_stale(&f.dc, &a, draw.AFFINE_IDENTITY), "its page was reused: a is stale")
+	testing.expect(t, !draw.picture_stale(&f.dc, &b, draw.AFFINE_IDENTITY), "b kept its page")
+	direct := direct_b(f)
+	draw.begin_frame(&f.dc, {N, N})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	res := draw.replay(&f.dc, &b, draw.AFFINE_IDENTITY)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	replayed := render.read_pixels(&f.r, context.temp_allocator)
+	worst, count := diff(direct, replayed)
+	testing.expectf(t, res == .Drawn && worst == 0, "b replays what direct drawing draws (%d bytes, worst %d)", count, worst)
 }
 
 // A picture of cards whose rotations are slots: changing a slot moves the card with no recording.
@@ -338,17 +429,19 @@ device_loss_recovers :: proc(t: ^testing.T) {
 		before := frame(&f, &pic, .Replay, draw.AFFINE_IDENTITY)
 		gen := f.r.device_generation
 		render.simulate_device_loss(&f.r)
-		// the next frame recreates the device; texture contents are gone: the owner uploads its image again
+		// the next frame recreates the device; texture contents are gone: the owner uploads its image again, the
+		// atlas pages upload again from the CPU copy (the picture's glyphs are where they were: not stale)
 		draw.begin_frame(&f.dc, {N, N})
 		testing.expect(t, !render.device_lost(&f.r) && f.r.device_generation == gen + 1, "recovered at the start of the frame")
-		testing.expect(t, draw.picture_stale(&f.dc, &pic, draw.AFFINE_IDENTITY), "the glyph atlas was reset: the picture is stale")
+		testing.expect(t, !draw.picture_stale(&f.dc, &pic, draw.AFFINE_IDENTITY), "the atlas pages come back: the picture is not stale")
 		render.frame_begin(&f.r, {1, 1, 1, 1})
 		draw.end_frame(&f.dc)
 		render.frame_end(&f.r)
 		fill_image(&f.r, f.tex)   // same handle, contents uploaded again
-		_ = frame(&f, nil, .Direct, draw.AFFINE_IDENTITY)   // the atlas fills again in the same order
-		after := frame(&f, &pic, .Replay, draw.AFFINE_IDENTITY)   // stale: recorded again, then replayed
+		version := pic.version
+		after := frame(&f, &pic, .Replay, draw.AFFINE_IDENTITY)
 		worst, count := diff(before, after)
 		testing.expectf(t, worst == 0, "%v: after the device loss the same pixels (%d bytes, worst %d)", space, count, worst)
+		testing.expect(t, pic.version == version, "replayed without recording")
 	}
 }
