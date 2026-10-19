@@ -19,7 +19,16 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
   `Glyph_Image.uses_fg`.
 - `font.color_renderable(s, id)`: false for a face whose only color format the system cannot draw (COLR v1 before
   Windows 11 22H2): a cascade should take those characters elsewhere rather than show outlines.
-- Faces with only COLR v1 (`DWRITE_GLYPH_IMAGE_FORMATS_COLR_PAINT_TREE`) count as color faces.
+- Faces with only COLR v1 (`DWRITE_GLYPH_IMAGE_FORMATS_COLR_PAINT_TREE`) count as color faces. Whether a COLR v1 glyph
+  uses the text color comes from its paint attributes (`IDWriteFontFace7::CreatePaintReader`), of a COLR v0 glyph from
+  its layers; only SVG glyphs are drawn twice to find out.
+- **Off the drawing thread** (`Settings.color_async`, off by default): a complex color glyph costs milliseconds (a
+  Segoe UI Emoji COLR v1 emoji: about 4 ms on WARP). The first lookup queues it and returns a pending image
+  (`Glyph_Image.pending`); one thread draws the queue, puts the bitmaps in the atlas and calls
+  `font.set_color_ready_callback`'s callback (ask for a frame there). `font.color_ready_generation`,
+  `font.color_pending`, `font.color_wait`. A picture recorded while one of its glyphs was pending is stale once the
+  ready generation moves (`Picture.glyphs_pending`, `pending_ready`; checked before the empty-picture cull).
+  `unload` drops a face's queued requests and waits for the one in flight; `destroy` stops the thread.
 - `tests/color_glyphs`: Google's COLR v1 test glyphs (gradient ends and middle, sweep quadrants, radial, composite,
   rotate / skew / transform, foreground paints in two text colors), Twemoji sbix / OT-SVG / OT-SVGZ smileys, the
   ChromaCheck CBDT glyph, color glyphs off, and the same glyphs drawn through the draw layer (WARP).
