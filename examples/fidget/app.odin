@@ -166,8 +166,7 @@ App :: struct {
 	want_quit: bool,
 	ui_ms: f32,
 	real_dt: f32,
-	ms_hist: [64]f32,
-	ms_idx: int,
+	frames: ui.Frame_History,   // per frame: build ms, draw ms (the status bar's graph)
 
 	// settings (persisted)
 	palette_idx: int,

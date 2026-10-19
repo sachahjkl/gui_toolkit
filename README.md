@@ -140,13 +140,24 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   `focus_step` let an app hand the focus to content of its own (a document view) and back. Line edits keep an edit
   history (Ctrl+Z / Ctrl+Y) and expose their edit commands for menus (`field_cut`, `field_paste`, `field_undo`...).
 - **Disabled / muted** scopes: `if ui.disabled(cond) { ... }` disables a whole subtree with a neutral look.
+- **Status bars and frame statistics** (`status.odin`): `status_bar` (a bar along the bottom, smaller text),
+  `status_fill` (its flexible, clipped part), `status_item` (compact text, tones, monospace digits, clickable),
+  `status_separator`; `Frame_History` (a ring of samples of up to 8 stacked series: `history_push`, `history_at`,
+  `history_find_tag` for values that arrive late, `history_stats` with mean / p50 / p95 / p99 / over-budget,
+  `history_rate`) and `frame_graph` (stacked bars, newest at the right, dashed budget line, rare spikes cut and marked,
+  the bar under the pointer in the result); `stat_row` / `stat_heading` / `swatch` for detail panels and legends;
+  `popover` (a panel anchored above or below a widget that stays open while the app builds it). Nothing asks for
+  frames: the graph changes when the app pushes a sample. `render.set_gpu_timing` measures the GPU time of each frame
+  at run time (`gpu_next_frame` + `gpu_result` match it to its frame), `render.texture_memory` reports GPU memory.
+  See the status bar of `examples/fidget`.
 
 Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
 
 ## Testing
 
 `odin test tests/affine -vet` runs the unit tests of the affine helpers. `odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1`
-drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window. `tests/layers`, `tests/effects`,
+drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window;
+`tests/status` the sample history (ring, resize, statistics, rates) and the frame graph's scale and hit testing. `tests/layers`, `tests/effects`,
 `tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` are pixel tests on an offscreen WARP renderer (most in both blend spaces)
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
