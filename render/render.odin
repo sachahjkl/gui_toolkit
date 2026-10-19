@@ -22,7 +22,7 @@ LOW_LATENCY :: #config(LOW_LATENCY, true)
 // RENDER_PROBE: print, once per second, how many presented frames are still waiting to reach the screen.
 RENDER_PROBE :: #config(RENDER_PROBE, false)
 // GPU_TIMING: timestamp queries around frame_submit; `gpu_ms` returns the GPU time of a recent frame (read a few
-// frames late so it never stalls).
+// frames late so it never stalls). Without it, `set_gpu_timing` turns the same measurement on at run time.
 GPU_TIMING :: #config(GPU_TIMING, false)
 @(private) GPU_QUERY_FRAMES :: 4
 
@@ -344,6 +344,8 @@ Renderer :: struct {
 	gpu_queries: [GPU_QUERY_FRAMES][3]^d3d11.IQuery,   // GPU_TIMING: disjoint, begin, end per frame slot
 	gpu_frame:   int,
 	gpu_last_ms: f32,
+	gpu_last_frame: int,                  // 1 + the timed submit `gpu_last_ms` belongs to (0: none yet)
+	gpu_timing:  bool,                    // set_gpu_timing: measure without -define:GPU_TIMING
 	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
 	swap_flags:  dxgi.SWAP_CHAIN,
 	probe_sum, probe_n, probe_fail, probe_frames: int,
@@ -1039,8 +1041,42 @@ srgb_to_linear :: proc(s: f32) -> f32 {
 	return x <= 0.04045 ? x / 12.92 : math.pow((x + 0.055) / 1.055, 2.4)
 }
 
-// GPU time of frame_submit (milliseconds) for a frame a few frames back; 0 without -define:GPU_TIMING=true.
+// GPU time of frame_submit (milliseconds) for a frame a few frames back; 0 when nothing is measured (neither
+// -define:GPU_TIMING=true nor set_gpu_timing).
 gpu_ms :: proc(r: ^Renderer) -> f32 { return r.gpu_last_ms }
+
+// Measures the GPU time of each frame_submit from now on (timestamp queries in a ring, read GPU_QUERY_FRAMES submits
+// later: the CPU never waits for them). Costs a few queries per frame; off, nothing.
+set_gpu_timing :: proc(r: ^Renderer, on: bool) { r.gpu_timing = on }
+gpu_timing_enabled :: proc(r: ^Renderer) -> bool { return GPU_TIMING || r.gpu_timing }
+
+// The index the next timed frame_submit will have: remember it with a frame to match `gpu_result` to it later.
+gpu_next_frame :: proc(r: ^Renderer) -> int { return r.gpu_frame }
+
+// The latest GPU time read back, and the index of the submit it measured (ok false: none yet).
+gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
+	if r.gpu_last_frame == 0 { return 0, -1, false }
+	return r.gpu_last_ms, r.gpu_last_frame - 1, true
+}
+
+// GPU memory of the textures the renderer made, by kind, in bytes (mip chains included).
+Texture_Memory :: struct { glyphs, images, targets, count: int }
+
+texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
+	for td, i in r.textures {
+		if i == 0 || td.tex == nil { continue }
+		m.count += 1
+		switch td.kind {
+		case .None:
+		case .R8: m.glyphs += td.size * td.size
+		case .RGBA:
+			n := td.w * td.h * 4
+			m.images += td.mips ? n * 4 / 3 : n
+		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot ? 4 : 8)
+		}
+	}
+	return
+}
 
 @(private)
 gpu_timing_begin :: proc(r: ^Renderer) {
@@ -1057,6 +1093,7 @@ gpu_timing_begin :: proc(r: ^Renderer) {
 		   r.ctx->GetData((^d3d11.IAsynchronous)(q[1]), &t0, size_of(t0), 0) == 0 &&
 		   r.ctx->GetData((^d3d11.IAsynchronous)(q[2]), &t1, size_of(t1), 0) == 0 && !bool(dj.Disjoint) && dj.Frequency > 0 {
 			r.gpu_last_ms = f32(f64(t1 - t0) * 1000 / f64(dj.Frequency))
+			r.gpu_last_frame = r.gpu_frame - GPU_QUERY_FRAMES + 1
 		}
 	}
 	r.ctx->Begin((^d3d11.IAsynchronous)(q[0]))
