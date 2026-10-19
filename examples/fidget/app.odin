@@ -207,6 +207,7 @@ App :: struct {
 	editor:  ui.Text_Area,
 	editor_tab_indents: bool,
 	state_title: bool,
+	integrated:  bool,   // --integrated: the menu bar is the window's title bar (ui.title_bar, ui.window_buttons)
 	tags:    [dynamic]string,
 	agree:   bool,
 

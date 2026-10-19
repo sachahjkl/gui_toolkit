@@ -155,6 +155,15 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   frames: the graph changes when the app pushes a sample. `render.set_gpu_timing` measures the GPU time of each frame
   at run time (`gpu_next_frame` + `gpu_result` match it to its frame), `render.texture_memory` reports GPU memory.
   See the status bar of `examples/fidget`.
+- **Integrated title bar** (tabs in the title bar, as Edge and Chrome): `platform.set_integrated_title(w, true)`, then
+  `if ui.title_bar(id) { ...; ui.window_buttons() }` with `Build_Params.window` set. The empty parts of the bar drag the
+  window, clickable boxes stay the app's; the system gets its usual answers (double-click to maximize, Aero Snap, Snap
+  Layouts over the maximize button on Windows 11, system menu, resize along the top edge), maximized windows stay on
+  their monitor (auto-hidden taskbars still come up). Caption buttons with the system's sizes, glyphs and colours.
+  `platform.set_fullscreen`. Try `fidget --integrated`.
+- **Long lists**: `vlist` builds only the rows in view (rows of any height, measured and cached; keyboard and type-ahead
+  over all rows); wrapped paragraphs are cached between frames; scroll regions glide along an impulse or ease-out curve
+  on the app's frame clock (`set_scroll_settings`).
 
 Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
 
@@ -162,7 +171,9 @@ Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Li
 
 `odin test tests/affine -vet` runs the unit tests of the affine helpers. `odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1`
 drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window;
-`tests/status` the sample history (ring, resize, statistics, rates) and the frame graph's scale and hit testing. `tests/layers`, `tests/effects`,
+`tests/status` the sample history (ring, resize, statistics, rates) and the frame graph's scale and hit testing;
+`tests/chrome` the integrated title bar's hit test (zones, edges, maximized) and regions, the virtualized list, the wrap
+cache and the scroll curve. `tests/layers`, `tests/effects`,
 `tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` (text, color emoji and transformed glyphs included) are pixel tests on an offscreen WARP renderer (most in both blend spaces); `tests/text` covers faces, fallback, shaping, bidi, line breaks, carets, color glyphs and the atlas pages (`atlas_stress`)
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
