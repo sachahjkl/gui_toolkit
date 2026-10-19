@@ -159,6 +159,10 @@ Layer_Effects :: struct {
 	cache_id:     u64,     // the layer's identity (unique among the layers and backdrops of a frame)
 	cache_key:    u64,     // a signature of everything drawn in the layer, in a frame moving with cache_anchor
 	cache_anchor: Vec2,    // screen point the content moves with (whole-pixel moves reuse the kept result)
+	// With a blend mode, composited into the (opaque) frame: a signature of what lies under the layer, in the same frame
+	// as cache_key. The blended pixels themselves are kept then: while both keys hold, they are drawn back as they were
+	// (no copy of what is under, no layer, no blend).
+	cache_under:  u64,
 }
 
 // Everything drawn until pop_layer goes to an offscreen layer, composited once at pop with opacity `alpha` (times
@@ -197,8 +201,40 @@ push_effects :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects) -> (draw_cont
 		core, _ := split_tail(c.filter_store[first:])
 		whole, frac := anchor_split(fx.cache_anchor)
 		key := cache_full_key(c, fx.cache_key, core, m, frac, Rect{full.min - whole, full.max - whole}, space)
-		ask := cache_ask(c, fx.cache_id, key, whole, snap_rect(r))
+		needed := snap_rect(r)
+		// the blended result kept: it depends on what is under, the opacity, the matrices and the clips around too
+		result := fx.blend != .Normal && fx.cache_under != 0 && c.target == 0 && !c.renderer.transparent
+		if result {
+			_, tail := split_tail(c.filter_store[first:])
+			key = hash_mix(hash_mix(key, fx.cache_under), u64(fx.blend))
+			key = hash_f32(key, fx.alpha * c.alphas[len(c.alphas) - 1])
+			for t in tail { for v in t.cm { key = hash_f32(key, v) } }
+			cl := c.clips[len(c.clips) - 1]
+			// (the part of the scissor that cuts the layer: none when it shows whole)
+			cut := rect_intersect(rect_intersect(cl.rect, target_rect(c)), full)
+			key = hash_f32(hash_f32(key, quantize(cut.min.x - whole.x)), quantize(cut.min.y - whole.y))
+			key = hash_f32(hash_f32(key, quantize(cut.max.x - whole.x)), quantize(cut.max.y - whole.y))
+			for s := cl.shape; s != 0 && int(s) < len(c.clip_table); s = c.clip_table[s].parent {
+				d := c.clip_table[s]
+				// its map from screen pixels relative to the anchor (unchanged when both move together)
+				iv := d.inv
+				te := iv[0] * whole.x + iv[2] * whole.y + iv[4]
+				tf := iv[1] * whole.x + iv[3] * whole.y + iv[5]
+				for v in iv[:4] { key = hash_f32(key, v) }
+				key = hash_f32(hash_f32(key, quantize(te)), quantize(tf))
+				key = hash_f32(hash_f32(hash_f32(hash_f32(key, d.center.x), d.center.y), d.half_size.x), d.half_size.y)
+				for v in d.radii { key = hash_f32(key, v) }
+				key = hash_mix(hash_mix(key, u64(d.kind)), u64(d.flags))
+				if d.kind == render.CLIP_POLYGON && int(d.first + d.count) <= len(c.clip_points) {
+					for p in c.clip_points[d.first:][:d.count] { key = hash_f32(hash_f32(key, p.x), p.y) }
+				}
+			}
+			needed = snap_rect(rect_intersect(rect_intersect(r, cl.rect), target_rect(c)))
+		}
+		ask := cache_ask(c, fx.cache_id, key, whole, needed)
+		ask.result = result
 		ol.cache = ask
+		ol.region = needed
 		if ask.hit {
 			// nothing to draw: what comes until pop_layer goes nowhere (an empty clip)
 			append(&c.open_layers, ol)
@@ -244,6 +280,28 @@ push_effects :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects) -> (draw_cont
 pop_layer :: proc(c: ^Context) {
 	ol := pop(&c.open_layers)
 	pop(&c.alphas)
+	if ol.cache.hit && ol.cache.result {
+		close_batch(c)
+		pop(&c.clips)
+		start_batch(c)
+		resize(&c.filter_store, ol.filters[0])
+		// the blended pixels as they were (opaque: they replace what is under)
+		im := ol.cache.img
+		need := ol.region
+		_, _, shape := cur(c)
+		inst := render.Rect_Inst{
+			dst = {need.min.x, need.min.y, need.max.x, need.max.y}, src = {im.origin.x, im.origin.y, f32(im.size.x), f32(im.size.y)},
+			colors = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}}, soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1,
+			flags = render.FLAG_SCREEN | (im.space == .Srgb ? render.FLAG_TEX_SRGB : 0), clip = shape,
+		}
+		b := &c.batches[len(c.batches) - 1]
+		if b.image != im.tex {
+			if b.image != 0 && len(c.insts) > b.first { close_batch(c); start_batch(c); b = &c.batches[len(c.batches) - 1] }
+			b.image = im.tex
+		}
+		append(&c.insts, inst)
+		return
+	}
 	if ol.cache.hit {
 		close_batch(c)
 		pop(&c.clips)   // the empty clip that discarded the content
@@ -267,14 +325,14 @@ pop_layer :: proc(c: ^Context) {
 	if len(core) > 0 { f = run_filters(c, img, core, ol.xform, false) }
 	set_tail(&f, filters)
 	resize(&c.filter_store, ol.filters[0])
-	kept := ol.cache.store && cache_store(c, ol.cache, f.img, f.full, ol.region)
-	composite(c, f, ol.alpha, ol.blend, kept)
+	kept := ol.cache.store && !ol.cache.result && cache_store(c, ol.cache, f.img, f.full, ol.region)
+	composite(c, f, ol.alpha, ol.blend, kept, ol.cache.result ? ol.cache : {})
 }
 
 // Composites a filter result into the current target with opacity `alpha` (times the alpha stack) and `blend`, cut by
-// the clip shapes around it; hands its texture back unless it is kept.
+// the clip shapes around it; hands its texture back unless it is kept. `result`: the blended pixels are to be kept.
 @(private)
-composite :: proc(c: ^Context, f: Filtered, alpha: f32, blend: Blend_Mode, kept: bool) {
+composite :: proc(c: ^Context, f: Filtered, alpha: f32, blend: Blend_Mode, kept: bool, result := Cache_Ask{}) {
 	img := f.img
 	a := c.alphas[len(c.alphas) - 1] * alpha
 	_, _, shape := cur(c)
@@ -305,6 +363,16 @@ composite :: proc(c: ^Context, f: Filtered, alpha: f32, blend: Blend_Mode, kept:
 				start_batch(c)
 				render.release_target(c.renderer, snap)
 				if !kept { render.release_target(c.renderer, img.tex) }
+				if result.store {
+					// the blended pixels, kept (drawn back as they are while what is under and the layer stay the same)
+					box := [4]i32{i32(ux0 - o.x), i32(uy0 - o.y), i32(ux1 - o.x), i32(uy1 - o.y)}
+					if res := render.acquire_snapshot(c.renderer, int(ux1 - ux0), int(uy1 - uy0), c.target); res != 0 {
+						add_op(c, render.Op{kind = .Copy, dst = res, source = c.target, box = box})
+						under_img := render.Image_Ref{tex = res, origin = {ux0, uy0}, scale = 1, size = {int(ux1 - ux0), int(uy1 - uy0)}, space = blend_space(c)}
+						region := Rect{{ux0, uy0}, {ux1, uy1}}
+						if !cache_store(c, result, under_img, under_img.size, region) { render.release_target(c.renderer, res) }
+					}
+				}
 				return
 			}
 		}
