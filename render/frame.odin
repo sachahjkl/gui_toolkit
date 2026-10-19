@@ -162,7 +162,6 @@ bind_main :: proc(r: ^Renderer) {
 	r.ctx->VSSetConstantBuffers(0, 1, &r.globals)
 	r.ctx->VSSetConstantBuffers(2, 1, &r.replay_cb)
 	r.ctx->VSSetShaderResources(2, 1, &r.xform_view)
-	r.ctx->VSSetShaderResources(7, 1, &r.heaps[.Slots].view)
 	r.ctx->PSSetShader(r.ps, nil, 0)
 	r.ctx->PSSetConstantBuffers(0, 1, &r.globals)   // the pixel shader reads the corner shape and the target origin
 	r.ctx->PSSetConstantBuffers(2, 1, &r.replay_cb)
@@ -170,7 +169,16 @@ bind_main :: proc(r: ^Renderer) {
 	r.ctx->PSSetSamplers(0, 3, &samplers[0])
 	tables := [2]^d3d11.IShaderResourceView{r.clip_view, r.points_view}
 	r.ctx->PSSetShaderResources(3, 2, &tables[0])
-	retained := [5]^d3d11.IShaderResourceView{r.grads_view, r.heaps[.Slots].view, r.heaps[.Clips].view, r.heaps[.Points].view, r.heaps[.Grads].view}
+	// heaps no picture used yet are bound as a 1-element placeholder: the shader declares them, the debug layer reports
+	// every draw with an unbound slot (costly), and reads of nothing return zeros anyway
+	heap_view :: proc(r: ^Renderer, k: Heap_Kind) -> ^d3d11.IShaderResourceView {
+		if r.heaps[k].view != nil { return r.heaps[k].view }
+		if r.heaps[k].buf == nil { heap_grow(r, k, 1) }
+		return r.heaps[k].view
+	}
+	slots := heap_view(r, .Slots)
+	r.ctx->VSSetShaderResources(7, 1, &slots)
+	retained := [5]^d3d11.IShaderResourceView{r.grads_view, slots, heap_view(r, .Clips), heap_view(r, .Points), heap_view(r, .Grads)}
 	r.ctx->PSSetShaderResources(6, 5, &retained[0])
 }
 
