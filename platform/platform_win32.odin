@@ -279,6 +279,10 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 	case win.VK_SHIFT:   return .Shift
 	case win.VK_CONTROL: return .Ctrl
 	case win.VK_MENU:    return .Alt
+	case win.VK_APPS:    return .Menu
+	case win.VK_ADD:     return .Num_Add
+	case win.VK_SUBTRACT: return .Num_Subtract
+	case win.VK_NUMPAD0..=win.VK_NUMPAD9: return Key(int(Key.N0) + int(vk - win.VK_NUMPAD0))
 	}
 	return .None
 }

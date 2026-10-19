@@ -160,7 +160,7 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 		return false
 	}
 	em := font_size()
-	if s.ctx_menu_key == 0 && key_press(.Escape) { open^ = false; append(&s.popup_stack, false); return false }
+	if len(s.menus) == 0 && key_press(.Escape) { open^ = false; append(&s.popup_stack, false); return false }
 	push_parent(s.root)
 	push_tags("floating")
 	push_style_copy()
@@ -210,18 +210,17 @@ menu_bar_button :: proc(id: string) -> Key {
 	append(&s.bar_keys, menu_key)
 	open := ctx_menu_is_open(menu_key)
 	bar_active := false
-	for k in s.bar_keys_prev { if s.ctx_menu_key == k { bar_active = true } }
+	for k in s.bar_keys_prev { if ctx_menu_is_open(k) { bar_active = true } }
 
 	push_tags(open ? "selected" : "ghost_button")
 	next({width = px(font_text_width(id) + em * 1.6), height = px(dense(em * 1.9)), text_align = .Center, radius = em * 0.4})
 	b := build_box({.Clickable, .Draw_Text, .Draw_Hot_Effects, .Draw_Background}, id)
 	pop_tags()
 	sig := signal(b)
-	pos := Vec2{b.rect.min.x, b.rect.max.y + 4}
 	if sig.clicked {
-		if open { ctx_menu_close() } else { ctx_menu_open(menu_key, pos, b.key) }
+		if open { ctx_menu_close() } else { ctx_menu_open_rect(menu_key, b.rect, b.key) }
 	} else if sig.hovering && bar_active && !open {
-		ctx_menu_open(menu_key, pos, b.key)
+		ctx_menu_open_rect(menu_key, b.rect, b.key)
 	}
 	return menu_key
 }

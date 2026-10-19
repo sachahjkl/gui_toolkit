@@ -78,6 +78,7 @@ Box_Flag :: enum u8 {
 	No_Text_Trunc,       // never replace overflowing text with "..."
 	Fixed_Radius,        // the radius is part of the shape (colour dot, avatar): not scaled by the rounding setting
 	Wrap,                // children flow left to right and wrap onto new lines when the box is too narrow (see `flow`)
+	Text_Wrap,           // the text wraps onto lines at the box's width; a .Text height is that of all its lines (`paragraph`)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -317,9 +318,10 @@ State :: struct {
 	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box
 	focus_order:  [dynamic]Focus_Entry,  // Tab stops in build order (this frame)
 	trap_depth:   int,               // > 0 while building inside a modal: Tab cycles inside it only
+	tab_stops_off: [dynamic]bool,    // `tab_stops` scopes; tab_skip counts the ones that turned Tab stops off
+	tab_skip:     int,
 	modal_prev, modal_now: Key,      // modal open last frame / this frame (focus resets when a modal opens)
-	menu_sel, menu_index, menu_count: int,   // keyboard selection inside the open context menu
-	menu_activate: bool,
+	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
 	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)
@@ -330,12 +332,12 @@ State :: struct {
 	clipboard_set: proc(text: string),
 
 	// popups
-	ctx_menu_key:    Key,
-	ctx_menu_anchor: Key,
-	ctx_menu_pos:    Vec2,
-	ctx_menu_open_build: u64,
+	menus:           [dynamic]Menu_Level,   // the open menu and its open submenus, outermost first (menu.odin)
+	menu_build:      [dynamic]int,          // levels whose items are being built (innermost last)
+	menu_keys:       Events,                // key presses and text of this frame while a menu is open: the menu owns them
 	popup_stack:     [dynamic]bool,   // one entry per open popup scope: did it push parents/tags?
-	menu_width:      f32,
 	hover_since_ms:  f64,
 	hover_key:       Key,
+	mouse_moved:     bool,            // the pointer moved this frame
+	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
 }
