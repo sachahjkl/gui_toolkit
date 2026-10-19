@@ -3,6 +3,42 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.7.0] - 2026-10-19
+
+### Added
+- **Retained drawing**: `draw.Picture`, `picture_begin` / `picture_end` (record what is drawn between them instead of
+  drawing it), `replay(dc, pic, m)` (`Replay_Result`: `Drawn`, `Culled`, `Stale`), `picture_destroy`,
+  `picture_release`, `picture_bounds`, `picture_stale`, `picture_size`, `recording`. Transforms pushed while
+  recording are **slots** (`current_slot`, `push_slot`, `picture_set_slot`, `picture_slot`): their matrices change
+  without recording again (one GPU range rewritten). Clips pushed while recording are mapped at replay (an exact
+  scissor under a uniform scale + translation, as `push_clip`). A replay draws under the current transform, alpha
+  stack and clips, in the order of the frame (immediate drawing and replays mix). Pictures that would show text at
+  another raster size, or whose glyphs were evicted from the atlas, report `Stale`.
+- Persistent GPU heaps for pictures (`render.Heap_Kind`, `heap_alloc`, `heap_free`, `heap_write`, `heap_bytes`,
+  `heaps_reset`, `Slot_Data`, `Replay`, `Batch.replay`, `Frame_Data.replays`): first-fit ranges, growth by
+  GPU copy. `draw.set_retained_budget` / `retained_bytes`: pictures not drawn in the current frame are evicted
+  (least recently drawn first) past the budget and uploaded again from their recording when drawn.
+- **Device loss**: `render.recover` recreates the device, the swap chain or offscreen target, the pipeline and every
+  texture under the same handle (contents cleared: `device_generation` changes); `frame_begin` and
+  `draw.begin_frame` recover on their own (`Present` failures and `GetDeviceRemovedReason` are watched);
+  `device_lost`, `simulate_device_loss` (tests). The glyph atlas is reset, the heaps emptied (`heap_generation`).
+- **Gradients** evaluated per pixel: `draw.gradient(dc, rect, Gradient, radii, tint)`; `Gradient_Kind` (linear,
+  radial, conic), repeating, stop positions, transition hints, `Gradient_Space` (sRGB, linear, Oklab, Oklch, Lab,
+  Lch, HSL, HWB), `Hue_Method`, tiles (size, repeat per axis, spacing: CSS background-size / repeat / space),
+  dithering. `render.KIND_GRADIENT`, gradient tables (`Frame_Data.grads`, `GRAD_*`).
+- **Box shadows**: `draw.box_shadow` (outer, optionally cut out of a rounded rect) and `draw.inset_shadow`: the
+  exact gaussian blur of a rounded rect with per-corner radii (erf along x, the corner arcs integrated over their
+  angle), `render.KIND_SHADOW`, `SHADOW_INSET`, `SHADOW_HOLE`.
+- `Rect_Inst.aux`, `Clip_Data.xform`, `CLIP_SCISSOR`, `Batch.shape`.
+- Tests: `tests/retained` (replay identical to direct drawing, slots, z order, partial recording, culling, budget,
+  device loss, in both blend spaces), `tests/gradients`, `tests/shadows` (against a numeric convolution).
+- `examples/transforms --retained` (with `--stress=N`).
+
+### Changed
+- `Clip_Data` is 96 bytes; `render.init` and `init_offscreen` are split (`create_swapchain`,
+  `create_offscreen_target`) so that `recover` can rebuild them.
+- `push_effects` / `push_layer` while recording fall back to the alpha (a picture holds no offscreen layer);
+  `backdrop_capture` returns nothing.
 ## [0.6.0] - 2026-10-19
 
 ### Added
