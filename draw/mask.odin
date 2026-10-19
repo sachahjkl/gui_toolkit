@@ -29,9 +29,11 @@ Mask_Op :: render.Mask_Op
 
 // Opens a masked layer: what is drawn next is its content, until mask_layer starts the mask. `fx` composites the
 // result as push_effects does (its filters apply to the content before the mask, as CSS orders them).
-push_mask :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects = {alpha = 1}) {
-	push_effects(c, bounds, fx)
-	c.open_layers[len(c.open_layers) - 1].masked = true
+// `fx.cache_id`: the masked result is kept as push_effects keeps a layer's (layer_cache.odin); `fx.cache_key` must then
+// cover the mask layers as well as the content. Returns false when the kept result stands: neither the content nor the
+// mask layers need be drawn (what is drawn until pop_mask is discarded).
+push_mask :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects = {alpha = 1}) -> (draw_content: bool) {
+	return open_layer(c, bounds, fx, true)
 }
 
 // Starts the next mask layer of the innermost push_mask: what is drawn until the next mask_layer or pop_mask is that
@@ -39,7 +41,7 @@ push_mask :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects = {alpha = 1}) {
 mask_layer :: proc(c: ^Context, mode: Mask_Mode, op: Mask_Op) {
 	if len(c.open_layers) == 0 { return }
 	ol := &c.open_layers[len(c.open_layers) - 1]
-	if !ol.masked { return }
+	if !ol.masked || ol.cache.hit { return }   // (a kept result: everything drawn is already discarded)
 	if ol.id == 0 {
 		// no layer: the mask cannot apply; its drawing is cut away (an empty scissor) instead of showing
 		if ol.mask == 0 {
@@ -96,7 +98,7 @@ mask_fold :: proc(c: ^Context, ol: ^Open_Layer) {
 pop_mask :: proc(c: ^Context) {
 	if len(c.open_layers) == 0 { return }
 	top := &c.open_layers[len(c.open_layers) - 1]
-	if !top.masked { pop_layer(c); return }
+	if !top.masked || top.cache.hit { pop_layer(c); return }
 	if top.id == 0 {
 		if top.mask == -1 { pop_clip(c) }
 		pop(&c.open_layers)
@@ -112,19 +114,23 @@ pop_mask :: proc(c: ^Context) {
 	start_batch(c)
 	ly := c.layers[ol.id - 1]
 	img := render.Image_Ref{tex = ly.tex, origin = ly.origin, scale = 1, size = ly.size, space = ly.space}
-	if ol.filters[1] > ol.filters[0] {
-		img = run_filters(c, img, c.filter_store[ol.filters[0]:ol.filters[1]], ol.xform, false)
-	}
+	filters := c.filter_store[ol.filters[0]:ol.filters[1]]
+	core, tail := layer_split(filters, true)
+	f := Filtered{img = img, full = ly.size}
+	if len(core) > 0 { f = run_filters(c, img, core, ol.xform, false) }
+	set_tail(&f, tail)
 	resize(&c.filter_store, ol.filters[0])
 	if ol.coverage.tex != 0 {
-		dst := render.acquire_target(c.renderer, img.size.x, img.size.y)
+		// at scale 1, as the coverage: a reduced result (a large blur last) is sampled back bilinearly, as the
+		// composite would
+		dst := render.acquire_target(c.renderer, f.full.x, f.full.y)
 		if dst != 0 {
-			out := render.Image_Ref{tex = dst, origin = img.origin, scale = 1, size = img.size, space = img.space}
-			add_op(c, render.Op{kind = .Pass, dst = dst, pass = render.Pass{mode = .Mask, flags = render.PASS_MASK_APPLY, src = img, src2 = ol.coverage, dst = out}})
-			render.release_target(c.renderer, img.tex)
-			img = out
+			out := render.Image_Ref{tex = dst, origin = f.img.origin, scale = 1, size = f.full, space = f.img.space}
+			add_op(c, render.Op{kind = .Pass, dst = dst, pass = render.Pass{mode = .Mask, flags = render.PASS_MASK_APPLY, src = f.img, src2 = ol.coverage, dst = out}})
+			render.release_target(c.renderer, f.img.tex)
+			f.img = out
 		}
 		render.release_target(c.renderer, ol.coverage.tex)
 	}
-	composite_layer(c, ol, img)
+	composite_layer(c, ol, f)
 }

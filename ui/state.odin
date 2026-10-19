@@ -28,6 +28,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.timers = make(map[Key]Timer)
 	s.tag_sets = make(map[Key][]string)
 	s.color_memo = make(map[[2]u64]Color)
+	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
 	tick_origin = time.tick_now()
 }
 
@@ -58,6 +59,8 @@ destroy :: proc(s: ^State) {
 	delete(s.popup_stack)
 	delete(s.list_stack)
 	menus_destroy(s)
+	platform.chrome_regions_destroy(&s.chrome)
+	wrap_cache_destroy(s)
 	virtual.arena_destroy(&s.arena)
 	if g == s { g = nil }
 	s^ = {}
@@ -77,6 +80,9 @@ Build_Params :: struct {
 	disable_zoom:   bool,      // true: ignore Ctrl+wheel and Ctrl +/-/0
 	clipboard_get:  proc() -> string,
 	clipboard_set:  proc(text: string),
+	window:         ^platform.Window,   // optional: with an integrated title bar, gets its regions after each build
+	frame_ms:       f64,                // optional: the frame's time in ms (a display clock: when it will be shown);
+	                                    // scroll animations are sampled on it. 0: now_ms()
 }
 
 begin_build :: proc(s: ^State, p: Build_Params) {
@@ -101,9 +107,13 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.wake_ms = 0
 	s.boxes_built = 0
 	s.time_ms = now_ms()
+	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
 	s.clipboard_get = p.clipboard_get
 	s.clipboard_set = p.clipboard_set
 	s.cursor_request = .Arrow
+	s.window = p.window
+	s.caption_keys = {}
+	s.caption_built = false
 
 	process_events(s, p.events, !p.disable_zoom)
 	menu_capture_keys(s, p.events)
@@ -140,6 +150,13 @@ end_build :: proc() {
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 
 	layout(s)
+	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
+	if s.caption_built || s.caption_keys != {} {
+		chrome_collect(s)
+	} else if s.window != nil && platform.is_integrated_title(s.window) && len(s.chrome.caption) > 0 {
+		chrome_collect(s)   // none any more (full screen bars hidden...): the window forgets the last ones
+	}
+	wrap_cache_trim(s)
 	menu_prune(s)
 	handle_tab_navigation(s)
 	update_animations(s)
@@ -249,6 +266,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 
 	b.flags = flags + st.extra_flags
 	if s.disabled_depth > 0 { b.flags += {.Disabled} }
+	if .Window_Caption in b.flags { s.caption_built = true }
 	if .Disabled in b.flags && s.focus_key == b.key { s.focus_key = 0 }
 	b.name = ""
 	if id != "" { b.name = fmt.aprint(hash_part(id), allocator = frame_allocator()) }
@@ -490,13 +508,13 @@ update_animations :: proc(s: ^State) {
 		step(&b.focus_t, focus, rate, &s.anim_busy)
 		step(&b.disabled_t, disabled, rate, &s.anim_busy)
 
-		// scrolling: ease the offset toward the (clamped) target
+		// scrolling: the offset follows the (clamped) target (scroll_anim.odin)
 		for axis in Axis {
 			scroll_flag := axis == .X ? Box_Flag.View_Scroll_X : Box_Flag.View_Scroll_Y
 			if scroll_flag not_in b.flags { continue }
 			limit := max(0, b.view_bounds[int(axis)] - b.size[int(axis)])
 			b.view_target[int(axis)] = clamp(b.view_target[int(axis)], 0, limit)
-			step(&b.view_off[int(axis)], b.view_target[int(axis)], f32(1 - math.pow(2, -60 * f64(s.dt))) if s.anim_rate != 0 else 1, &s.anim_busy)
+			scroll_step(s, b, int(axis))
 		}
 	}
 }

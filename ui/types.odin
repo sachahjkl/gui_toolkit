@@ -79,6 +79,7 @@ Box_Flag :: enum u8 {
 	Fixed_Radius,        // the radius is part of the shape (colour dot, avatar): not scaled by the rounding setting
 	Wrap,                // children flow left to right and wrap onto new lines when the box is too narrow (see `flow`)
 	Text_Wrap,           // the text wraps onto lines at the box's width; a .Text height is that of all its lines (`paragraph`)
+	Window_Caption,      // part of an integrated title bar: where nothing clickable is over it, it drags the window (`title_bar`)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -133,6 +134,7 @@ Box :: struct {
 	view_off:    Vec2,           // scroll offset, animated
 	view_target: Vec2,           // scroll offset target
 	view_bounds: Vec2,           // extent of the children (for clamping)
+	view_anim:   [2]Scroll_Anim, // smooth scrolling toward view_target (scroll_anim.odin)
 
 	// animation (0..1)
 	hot_t, active_t, disabled_t, focus_t: f32,
@@ -340,4 +342,20 @@ State :: struct {
 	hover_key:       Key,
 	mouse_moved:     bool,            // the pointer moved this frame
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
+
+	// integrated title bar (window_chrome.odin)
+	window:          ^platform.Window,      // Build_Params.window: gets the title bar regions after each build
+	chrome:          platform.Chrome_Regions,
+	caption_keys:    [platform.Caption_Button]Key,
+	caption_built:   bool,                  // a box with .Window_Caption was built this build
+	caption_font:    font.Font_Id,
+	caption_font_tried: bool,
+
+	// smooth scrolling of scroll regions (scroll_anim.odin)
+	scroll_cfg:      Scroll_Settings,
+	scroll_cfg_set:  bool,
+	frame_ms:        f64,                   // the frame's time (Build_Params.frame_ms, else now_ms)
+
+	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
+	wrap_cache:      map[Wrap_Key]Wrap_Entry,
 }

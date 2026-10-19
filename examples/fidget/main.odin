@@ -136,6 +136,7 @@ frame :: proc(app: ^App) {
 	ui.begin_build(&app.ui_state, {
 		window_size = size, events = events, dt = dt * (app.slowmo ? 0.2 : 1), animations = animations_enabled(app),
 		dpi_scale = scale, base = base, clipboard_get = clip_get, clipboard_set = clip_set,
+		window = app.win,   // with --integrated: the menu bar is the title bar
 	})
 	build_ui(app)
 	ui.end_build()
@@ -176,7 +177,8 @@ main :: proc() {
 	rng_state ~= u64(time.tick_now()._nsec) * 0x9e3779b97f4a7c15
 	font.init(&app.fonts)
 	// transparent: some palettes (Aero) let the OS backdrop show through the page background
-	app.win = platform.open_window("gui_toolkit fidget", {1180, 780}, transparent = true)
+	app.integrated = slice.contains(os.args, "--integrated")
+	app.win = platform.open_window("gui_toolkit fidget", {1180, 780}, transparent = true, integrated_title = app.integrated)
 	if !render.init(&app.r, app.win.hwnd, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
 	ok: bool
 	// system fonts when present, else the fallbacks compiled into the exe (Wine, trimmed installs);

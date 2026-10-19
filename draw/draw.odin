@@ -148,6 +148,7 @@ Context :: struct {
 	frame_no: u64,
 	retained_budget: int,                      // bytes of retained heaps kept before evicting unused pictures, 0 = no limit
 	device_generation: u64,                    // render.Renderer.device_generation seen last
+	layer_cache: Layer_Cache,                  // filter results kept across frames (layer_cache.odin)
 }
 
 // A layer being drawn (push_layer / push_effects ... pop_layer).
@@ -165,6 +166,8 @@ Open_Layer :: struct {
 	mask_mode: Mask_Mode,
 	mask_op:  Mask_Op,
 	coverage: render.Image_Ref,  // the mask layers drawn so far, composited (tex 0: none yet)
+	cache:   Cache_Ask, // Layer_Effects.cache_id: a kept result composited (cache.hit: nothing drawn), or one to keep
+	region:  Rect,      // screen region of the layer
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
@@ -182,6 +185,7 @@ destroy :: proc(c: ^Context) {
 	delete(c.open_layers); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures)
 	saved_destroy(&c.saved)
 	text_destroy(c)
+	cache_destroy(c)
 }
 
 begin_frame :: proc(c: ^Context, size: Vec2) {
@@ -196,6 +200,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
 	clear(&c.open_layers); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
 	c.frame_no += 1
+	cache_begin_frame(c)
 	c.raster_scale = 1
 	c.target = 0
 	c.circular = false

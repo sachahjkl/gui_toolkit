@@ -63,6 +63,8 @@
 #define FLAG_TEX_SRGB 32   // image texels are premultiplied sRGB values (else premultiplied linear)
 #define FLAG_LERP_SRGB 64  // corner colors interpolate in sRGB
 #define FLAG_LERP_LINEAR 128 // corner colors interpolate in linear light
+#define FLAG_SCALED 0x10000  // layer / backdrop texture holds the image reduced: sampled bilinearly
+#define FLAG_MATRIX 0x20000  // color matrices on the layer / backdrop texel: gradient table entry `aux`
 #define BLEND_SHIFT 8
 #define SPACE_LINEAR 0
 #define SPACE_SRGB 1
@@ -166,6 +168,7 @@ StructuredBuffer<float4> rgrads : register(t10);
 SamplerState samp      : register(s0);     // atlas
 SamplerState samp_img  : register(s1);     // images, clamp
 SamplerState samp_wrap : register(s2);     // images, repeat
+SamplerState samp_border : register(s3);   // reduced filter results: bilinear, transparent outside the texture
 
 struct VSIn
 {
@@ -837,6 +840,55 @@ float4 blend_composite(float4 src, float4 dst, uint mode)
 	return float4(convert_space(saturate(co / ao), SPACE_SRGB, target_space) * ao, ao);
 }
 
+// The texel of a layer composite (FLAG_LAYER: at uv, texels of the layer) or a backdrop (FLAG_SCREEN: at the screen
+// pixel) as a filter chain left it: fetched one for one, or sampled bilinearly from a reduced image (FLAG_SCALED), then
+// through its color matrices (FLAG_MATRIX: a Color pass done here instead of in a target of its own). `space` is the
+// texel's space, sRGB after the matrices.
+float4 layer_texel(PSIn i, float2 screen, inout uint space)
+{
+	uint flags = i.extra.z;
+	float2 dim;
+	image.GetDimensions(dim.x, dim.y);
+	float4 t;
+	if (flags & FLAG_SCREEN)
+	{
+		if (flags & FLAG_SCALED)
+		{
+			// edges repeat (a backdrop); tex_size (style.w) is the scale
+			float2 tc = clamp((screen - i.src.xy) * i.style.w, 0.5, max(i.src.zw - 0.5, 0.5));
+			t = image.SampleLevel(samp_border, tc / dim, 0);
+		}
+		else
+		{
+			int2 tc = clamp(int2(floor(screen - i.src.xy)), 0, max(int2(i.src.zw) - 1, 0));
+			t = image.Load(int3(tc, 0));
+		}
+	}
+	else if (flags & FLAG_SCALED)
+	{
+		// transparent past the reduced image (its ring, the texture's border)
+		t = image.SampleLevel(samp_border, min(i.uv, i.src.zw + 0.5) / dim, 0);
+	}
+	else
+	{
+		t = image.Load(int3(int2(floor(i.uv)), 0));
+	}
+	if (flags & FLAG_MATRIX)
+	{
+		uint base = i.extra.w;
+		uint n = min((uint)(grads[base].x + 0.5), 8);
+		float4 v = float4(t.a > 0 ? convert_space(t.rgb / t.a, space, SPACE_SRGB) : 0, t.a);
+		for (uint k = 0; k < n; k++)
+		{
+			uint e = base + 1 + k * 5;
+			v = saturate(float4(dot(grads[e], v), dot(grads[e + 1], v), dot(grads[e + 2], v), dot(grads[e + 3], v)) + grads[e + 4]);
+		}
+		t = float4(v.rgb * v.a, v.a);
+		space = SPACE_SRGB;
+	}
+	return t;
+}
+
 float4 ps_main(PSIn i) : SV_Target
 {
 	float2 p = i.rect_pos;
@@ -858,7 +910,9 @@ float4 ps_main(PSIn i) : SV_Target
 	if (i.extra.z & FLAG_BLEND)
 	{
 		// the layer's texel and what lay under it; the batch writes the result (no hardware blending)
-		float4 s = convert_premul(image.Load(int3(int2(floor(i.uv)), 0)), tex_space, target_space) * color.a;
+		uint ls = tex_space;
+		float4 s = layer_texel(i, screen, ls);
+		s = convert_premul(s, ls, target_space) * color.a;
 		float4 d = backdrop.Load(int3(int2(floor(screen - i.radii.xy)), 0));
 		float4 o = blend_composite(s, d, (i.extra.z >> BLEND_SHIFT) & 0xff);
 		float cov = clipped ? any_clip_coverage(screen, i.extra.y) : 1;
@@ -907,12 +961,7 @@ float4 ps_main(PSIn i) : SV_Target
 			float4 texel;
 			// a layer is composited pixel for pixel: fetch, never filter (filter weights would leak the transparent
 			// texels around its edges)
-			if (i.extra.z & FLAG_LAYER) { texel = image.Load(int3(int2(floor(i.uv)), 0)); }
-			else if (i.extra.z & FLAG_SCREEN)
-			{
-				int2 tc = clamp(int2(floor(screen - i.src.xy)), 0, max(int2(i.src.zw) - 1, 0));
-				texel = image.Load(int3(tc, 0));
-			}
+			if (i.extra.z & (FLAG_LAYER | FLAG_SCREEN)) { texel = layer_texel(i, screen, tex_space); }
 			else if (i.extra.z & FLAG_TILE) { texel = image.SampleGrad(samp_wrap, uv, duvx / dim, duvy / dim); }
 			else
 			{
