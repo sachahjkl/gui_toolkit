@@ -37,18 +37,29 @@ Rect_Inst :: struct #packed {
 	radii:  [4]f32,       // same corner order
 	border: f32,          // > 0: draw only a ring of this thickness
 	soft:   f32,          // <= 1: crisp antialiased edge; > 1: soft shape (shadows)
-	use_tex: f32,         // KIND_SHAPE, KIND_GLYPH (alpha x atlas coverage) or KIND_IMAGE (color x RGBA texel)
+	use_tex: f32,         // KIND_*: shape, glyph (alpha x atlas coverage), image (color x RGBA texel), gradient, shadow
 	tex_size: f32,        // atlas width/height in texels (square); 1 for images (the shader asks the texture)
-	xform:  u32,          // index into the frame's transform table (`frame_submit`), 0 = none (dst in pixels)
-	clip:   u32,          // index into the frame's clip-shape table, 0 = none (only the batch scissor clips)
+	xform:  u32,          // index into the frame's transform table (`frame_submit`), 0 = none (dst in pixels);
+	                      // in a picture: its transform slot, 0 = the picture's own space
+	clip:   u32,          // index into the frame's clip-shape table, 0 = none (only the batch scissor clips);
+	                      // in a picture: into the picture's clip table, 0 = only the clips around the replay
 	flags:  u32,          // FLAG_*
-	_:      u32,
+	aux:    u32,          // KIND_GRADIENT: first entry of the gradient in the gradient table (frame or picture)
 }
 #assert(size_of(Rect_Inst) == 144)
 
 KIND_SHAPE :: 0
 KIND_GLYPH :: 1
 KIND_IMAGE :: 2
+// A rounded rect filled with a gradient evaluated per pixel (linear, radial, conic, repeating, tiled): `aux` is its
+// entry in the gradient table (see Gradient_Header); colors[0].a multiplies it.
+KIND_GRADIENT :: 3
+// The gaussian blur of a rounded rect, computed analytically (box-shadow): `src` is the shape (x0 y0 x1 y1), `radii`
+// its corners, colors[0] the color; colors[1] the second rect (x0 y0 x1 y1), colors[2] its corners, colors[3].x the
+// standard deviation, colors[3].y SHADOW_* flags. All in the instance's units (local units under a transform).
+KIND_SHADOW :: 4
+SHADOW_INSET :: 1   // inside the second rect, outside the blurred shape (CSS inset box-shadow)
+SHADOW_HOLE :: 2    // outer shadow: not drawn inside the second rect (CSS: the shadow is clipped out of the border box)
 
 FLAG_TILE :: 1   // image: repeat (wrap addressing) instead of clamping to `src`; `src` should be the whole texture
 FLAG_LAYER :: 2  // image: a layer composited 1:1 in screen pixels (texels fetched, not filtered); no transform
@@ -118,11 +129,14 @@ CLIP_POLYGON :: 2   // polygon: points[first ..< first + count] of the frame's p
 // Clip_Data.flags
 CLIP_CIRCLE :: 1    // rounded rect: circular corners whatever set_corner_smoothing says
 CLIP_EVENODD :: 2   // polygon: even-odd fill rule (else nonzero)
+CLIP_SCISSOR :: 4   // picture clip: a plain rect, also cut by the batch scissor; skipped per pixel when the picture is
+                    // replayed under a uniform scale + translation (the scissor is exact then, as for push_clip)
 
 // A clip shape evaluated per pixel: `inv` maps screen pixels to the clip's local space (same layout as Xform_Data.m),
 // where the shape lies (see CLIP_*; rounded rect radii in the order top-left, bottom-left, top-right, bottom-right).
 // `px` = screen pixels per local unit (antialiasing width). `parent` chains nested clips (0 = end); the shader follows
-// at most MAX_CLIP_DEPTH links.
+// at most MAX_CLIP_DEPTH links. In a picture, `inv` and `px` are unused: the shape lies in the space of transform slot
+// `xform` (0 = the picture's space), mapped at replay; `parent` 0 continues with the clips around the replay.
 Clip_Data :: struct {
 	inv:       [6]f32,
 	px:        f32,
@@ -134,8 +148,10 @@ Clip_Data :: struct {
 	first:     u32,
 	count:     u32,
 	flags:     u32,
+	xform:     u32,
+	_:         [3]u32,
 }
-#assert(size_of(Clip_Data) == 80)
+#assert(size_of(Clip_Data) == 96)
 
 MAX_CLIP_DEPTH :: 8
 
@@ -153,7 +169,38 @@ Batch :: struct {
 	target: int,          // 0 = the frame; k > 0 = layers[k - 1] (offscreen, see Layer)
 	backdrop: Texture,    // FLAG_BLEND composites: what the target held under them (t5); the batch does not blend
 	op:    int,           // > 0: not a draw call: Frame_Data.ops[op - 1]
+	replay: int,          // > 0: draws retained instances (`first` indexes the retained instance heap) through
+	                      // Frame_Data.replays[replay - 1]
+	shape: u32,           // while a picture is recorded: its innermost clip (the scissor is computed at replay)
 }
+
+// How a picture's instances are drawn this frame (draw.replay): its matrix (picture space -> screen pixels), the
+// alpha it is faded by, the clip shape around it (frame table, 0 = none) and where its tables start in the retained
+// heaps.
+Replay :: struct {
+	m, inv:  [6]f32,
+	alpha:   f32,
+	outer:   u32,
+	slots, clips, points, grads: u32,
+}
+
+// Gradient table entries (KIND_GRADIENT), [4]f32 each, from the instance's `aux`:
+//   [0] bits: kind | GRAD_* flags, space, hue method, stop count
+//   [1] geometry: Linear: start x y, end x y; Radial: center x y, radii x y; Conic: center x y, start angle (radians,
+//       clockwise from up), 0
+//   [2] tile: x y w h (w = 0: not tiled)
+//   [3] gap between tiles x y, first and last stop position (the period of a repeating gradient)
+//   [4 + 2k] stop k color, premultiplied in the interpolation space (the hue of polar spaces is not premultiplied)
+//   [5 + 2k] stop k: position, transition hint (< 0: none) as a fraction of the interval to the next stop, 0, 0
+GRAD_LINEAR :: 0
+GRAD_RADIAL :: 1
+GRAD_CONIC :: 2
+GRAD_REPEATING :: 0x100
+GRAD_DITHER :: 0x200
+GRAD_REPEAT_X :: 0x400
+GRAD_REPEAT_Y :: 0x800
+GRAD_HEADER :: 4      // entries before the stops
+MAX_GRADIENT_STOPS :: 256
 
 // An offscreen layer: the batches whose `target` is its index + 1 draw into `tex` (a render target from
 // acquire_target) instead of the frame, with screen pixel (x, y) landing on texel (x, y) - origin. Batches run in the
@@ -228,6 +275,8 @@ Frame_Data :: struct {
 	points:  [][2]f32,    // polygon clip vertices
 	layers:  []Layer,
 	ops:     []Op,
+	grads:   [][4]f32,    // gradient table (KIND_GRADIENT of immediate instances)
+	replays: []Replay,    // pictures drawn this frame (Batch.replay)
 }
 
 Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot }
@@ -269,6 +318,14 @@ Renderer :: struct {
 	points_buf:  ^d3d11.IBuffer,          // StructuredBuffer<float2> (t4, pixel shader): polygon clip vertices
 	points_view: ^d3d11.IShaderResourceView,
 	points_cap:  int,
+	grads_buf:   ^d3d11.IBuffer,          // StructuredBuffer<float4> (t6): gradient table of the frame
+	grads_view:  ^d3d11.IShaderResourceView,
+	grads_cap:   int,
+	replay_cb:   ^d3d11.IBuffer,          // constant buffer b2: the Replay of the batch being drawn
+	heaps:       [Heap_Kind]Heap,         // retained data of pictures (retained.odin)
+	heap_generation: u64,                 // bumps when the heaps are emptied (device lost): pictures upload again
+	device_generation: u64,               // bumps when the device was recreated (recover): texture contents were lost
+	lost:        bool,                    // the device was removed or reset: recover() before drawing again
 	blend_replace: ^d3d11.IBlendState,    // FLAG_BLEND composites write their result
 	fx_vs:       ^d3d11.IVertexShader,    // filter passes (filter.hlsl)
 	fx_ps:       ^d3d11.IPixelShader,
@@ -307,6 +364,7 @@ Renderer :: struct {
 	dcomp_target: ^IDCompositionTarget,
 	dcomp_visual: ^IDCompositionVisual,
 	offscreen:   ^d3d11.ITexture2D,      // init_offscreen: the frame target instead of a swap chain
+	warp:        bool,                   // the device is WARP (software)
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
@@ -318,7 +376,14 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, s
 	r.transparent = transparent
 	r.space = space
 	create_device(r, .HARDWARE) or_return
+	create_swapchain(r) or_return
+	return init_pipeline(r)
+}
 
+// The swap chain of the window (a composition one when translucent), its waitable object and the frame's view.
+@(private)
+create_swapchain :: proc(r: ^Renderer) -> bool {
+	hwnd, size, transparent := r.hwnd, r.size, r.transparent
 	dxgi_device: ^dxgi.IDevice
 	r.device->QueryInterface(dxgi.IDevice_UUID, (^rawptr)(&dxgi_device))
 	adapter: ^dxgi.IAdapter
@@ -360,7 +425,7 @@ init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, s
 		}
 	}
 	create_target(r)
-	return init_pipeline(r)
+	return true
 }
 
 // Releases every GPU object and the renderer's memory (textures still alive included). The renderer can be
@@ -372,7 +437,8 @@ destroy :: proc(r: ^Renderer) {
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
-	rel(&r.sampler_border); rel(&r.frame_tex)
+	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
+	heaps_destroy(r)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
@@ -387,19 +453,26 @@ destroy :: proc(r: ^Renderer) {
 init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
 	r.size = size
 	r.space = space
+	r.warp = warp
 	if !create_device(r, warp ? .WARP : .HARDWARE) {
 		if warp || !create_device(r, .WARP) { return false }
+		r.warp = true
 	}
+	create_offscreen_target(r) or_return
+	return init_pipeline(r)
+}
+
+@(private)
+create_offscreen_target :: proc(r: ^Renderer) -> bool {
 	r.device->CreateTexture2D(&{
-		Width = u32(size.x), Height = u32(size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
+		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.RENDER_TARGET},
 	}, nil, &r.offscreen)
 	if r.offscreen == nil { return false }
 	r.frame_tex = r.offscreen
 	r.frame_tex->AddRef()
 	// typeless storage: the view is chosen by the blend space (like the swap chain's), the readback copies raw bytes
-	if !create_offscreen_view(r) { return false }
-	return init_pipeline(r)
+	return create_offscreen_view(r)
 }
 
 @(private)
@@ -523,6 +596,8 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	}
 
 	r.device->CreateBuffer(&{ByteWidth = size_of(Globals), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
+	r.device->CreateBuffer(&{ByteWidth = size_of(Replay_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.replay_cb)
+	if r.globals == nil || r.replay_cb == nil { return false }
 
 	bd := d3d11.BLEND_DESC{}
 	bd.RenderTarget[0] = {
@@ -548,6 +623,7 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	r.device->CreateBuffer(&{ByteWidth = size_of(Pass_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.fx_constants)
 	if r.fx_vs == nil || r.fx_ps == nil || r.fx_constants == nil || r.blend_replace == nil || r.sampler_border == nil { return false }
 
+	if len(r.textures) > 0 { return true }   // recover: the settings stay
 	append(&r.textures, Texture_Data{})   // dummy slot 0
 	r.corner_smoothing = 1
 	r.blur_sigma_limit = DEFAULT_BLUR_SIGMA_LIMIT
@@ -656,12 +732,34 @@ resize :: proc(r: ^Renderer, size: [2]int) {
 // A single-channel (coverage) texture, used for the glyph atlas.
 create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
 	td := Texture_Data{size = size, w = size, h = size, kind = .R8}
-	r.device->CreateTexture2D(&{
-		Width = u32(size), Height = u32(size), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
-		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
-	}, nil, &td.tex)
-	r.device->CreateShaderResourceView(td.tex, nil, &td.view)
+	if !texture_objects(r, &td) { return 0 }
 	return add_texture(r, td)
+}
+
+// The GPU texture and view of an R8 or RGBA texture described by `td` (kind, size, mips, space), contents zeroed
+// (D3D leaves DEFAULT textures undefined). Used by the create procs and to recreate textures after a device loss.
+@(private)
+texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
+	desc := d3d11.TEXTURE2D_DESC{
+		Width = u32(td.w), Height = u32(td.h), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
+		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
+	}
+	texel := 1
+	if td.kind == .RGBA {
+		desc.Format = td.space == .Srgb ? .R8G8B8A8_UNORM : .R8G8B8A8_UNORM_SRGB
+		texel = 4
+		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
+	}
+	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
+	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
+	zero := make([]u8, td.w * texel)
+	defer delete(zero)
+	for y in 0 ..< td.h {
+		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(y + 1), back = 1}
+		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(zero), u32(td.w * texel), 0)
+	}
+	td.mips_dirty = td.mips
+	return true
 }
 
 update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
@@ -718,21 +816,7 @@ create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
 	support: u32
 	r.device->CheckFormatSupport(format, &support)
 	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
-	desc := d3d11.TEXTURE2D_DESC{
-		Width = u32(w), Height = u32(h), MipLevels = td.mips ? 0 : 1, ArraySize = 1, Format = format,
-		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
-	}
-	if td.mips { desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
-	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { return 0 }
-	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); return 0 }
-	// start transparent (D3D leaves DEFAULT textures undefined)
-	zero := make([]u8, w * 4)
-	defer delete(zero)
-	for y in 0 ..< h {
-		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(w), bottom = u32(y + 1), back = 1}
-		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(zero), u32(w * 4), 0)
-	}
-	td.mips_dirty = td.mips
+	if !texture_objects(r, &td) { return 0 }   // starts transparent
 	return add_texture(r, td)
 }
 
@@ -936,6 +1020,7 @@ mark_input :: proc(r: ^Renderer) {
 
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
 frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
+	if r.lost && !recover(r) { return }
 	c := clear
 	if r.space == .Srgb && c.a > 0 {
 		for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a }
@@ -1019,7 +1104,10 @@ frame_end :: proc(r: ^Renderer, vsync := true) {
 		r.swapchain->GetLastPresentCount(&before)
 		r.probe_input_qpc[(before + 1) % 64] = r.probe_pending_qpc
 	}
-	r.swapchain->Present(vsync ? 1 : 0, {})
+	if hr := r.swapchain->Present(vsync ? 1 : 0, {}); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
+		r.lost = true
+		return
+	}
 	when RENDER_PROBE {
 		last: u32
 		stats: dxgi.FRAME_STATISTICS

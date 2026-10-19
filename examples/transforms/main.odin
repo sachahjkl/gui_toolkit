@@ -6,6 +6,8 @@
 //   transforms.exe [--time=SECONDS]     freeze the animation at that time (screenshots)
 //                  [--stress=N]         N rotated cards (shape + border + text + image each) instead of the demo
 //                  [--flat]             with --stress: no rotation (the CPU-baked path), for comparison
+//                  [--retained]         with --stress: the cards are recorded once into a draw.Picture; each frame
+//                                       changes their transform slots and replays it (CPU cost: the slots only)
 //                  [--bench=FRAMES]     print instance / batch counts and CPU (and GPU with
 //                                       -define:GPU_TIMING=true) times, then quit
 //                  [--srgb]             blend in sRGB as web browsers do (render.Blend_Space.Srgb), not in linear light
@@ -45,6 +47,11 @@ App :: struct {
 	bench_build, bench_submit, bench_gpu: [dynamic]f32,
 	frames:  int,
 	space:   render.Blend_Space,
+	retained: bool,             // --retained: the stress cards are a picture whose slots turn
+	pic:     draw.Picture,
+	slots:   [dynamic]u32,
+	pic_size: draw.Vec2,
+	pic_scale: f32,
 }
 
 ////////////////////////////////
@@ -280,16 +287,46 @@ stress :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	cols := max(1, int(math.sqrt(f32(n) * size.x / size.y)))
 	cw := size.x / f32(cols)
 	ch := cw * 0.6
+	center :: proc(i, cols: int, cw, ch: f32) -> draw.Vec2 { return {(f32(i % cols) + 0.5) * cw, (f32(i / cols) + 0.5) * ch} }
+	spin :: proc(app: ^App, i: int, c: draw.Vec2, t: f32) -> draw.Affine {
+		return app.flat ? draw.AFFINE_IDENTITY : draw.affine_around(draw.affine_rotate(t + f32(i) * 0.1), c)
+	}
+	if app.retained {
+		// recorded once (and when the window changes size); each frame only the cards' slots change
+		if app.pic_size != size || app.pic_scale != s || len(app.slots) != n {
+			app.pic_size, app.pic_scale = size, s
+			resize(&app.slots, n)
+			draw.picture_begin(dc, &app.pic)
+			for i in 0 ..< n {
+				c := center(i, cols, cw, ch)
+				draw.push_transform(dc, spin(app, i, c, t))
+				app.slots[i] = draw.current_slot(dc)
+				stress_card(app, c, cw, ch, s, i)
+				draw.pop_transform(dc)
+			}
+			draw.picture_end(dc)
+		}
+		if !app.flat {
+			for i in 0 ..< n { draw.picture_set_slot(&app.pic, app.slots[i], spin(app, i, center(i, cols, cw, ch), t)) }
+		}
+		if draw.replay(dc, &app.pic, draw.AFFINE_IDENTITY) == .Stale { app.pic_size = {} }   // recorded again next frame
+		return
+	}
 	for i in 0 ..< n {
-		c := draw.Vec2{(f32(i % cols) + 0.5) * cw, (f32(i / cols) + 0.5) * ch}
-		if !app.flat { draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t + f32(i) * 0.1), c)) }
-		r := draw.Rect{c - {cw, ch} * 0.4, c + {cw, ch} * 0.4}
-		draw.rect(dc, r, draw.hex(0x3b4a9aff), 6 * s)
-		draw.rect(dc, r, draw.hex(0xffffff70), 6 * s, 1 * s)
-		draw.image(dc, app.checker, {r.min + 4 * s, r.min + 4 * s + ch * 0.4}, {}, draw.WHITE, 3 * s)
-		draw.text(dc, app.ui, 11 * s, {r.min.x + ch * 0.5, c.y + 4 * s}, draw.hex(0xffffffff), fmt.tprintf("#%d", i))
+		c := center(i, cols, cw, ch)
+		if !app.flat { draw.push_transform(dc, spin(app, i, c, t)) }
+		stress_card(app, c, cw, ch, s, i)
 		if !app.flat { draw.pop_transform(dc) }
 	}
+}
+
+stress_card :: proc(app: ^App, c: draw.Vec2, cw, ch, s: f32, i: int) {
+	dc := &app.dc
+	r := draw.Rect{c - {cw, ch} * 0.4, c + {cw, ch} * 0.4}
+	draw.rect(dc, r, draw.hex(0x3b4a9aff), 6 * s)
+	draw.rect(dc, r, draw.hex(0xffffff70), 6 * s, 1 * s)
+	draw.image(dc, app.checker, {r.min + 4 * s, r.min + 4 * s + ch * 0.4}, {}, draw.WHITE, 3 * s)
+	draw.text(dc, app.ui, 11 * s, {r.min.x + ch * 0.5, c.y + 4 * s}, draw.hex(0xffffffff), fmt.tprintf("#%d", i))
 }
 
 frame :: proc(app: ^App) {
@@ -319,9 +356,10 @@ frame :: proc(app: ^App) {
 
 bench_report :: proc(app: ^App) {
 	med :: proc(v: []f32) -> f32 { slice.sort(v); return v[len(v) / 2] }
-	fmt.printf("insts=%d batches=%d xforms=%d clips=%d inst_bytes=%d | draw calls (CPU) p50=%.3f ms | end_frame (upload + submit) p50=%.3f ms | GPU p50=%.3f ms\n",
+	used, _ := draw.retained_bytes(&app.dc)
+	fmt.printf("insts=%d batches=%d xforms=%d clips=%d inst_bytes=%d retained=%d (%d bytes) | draw calls (CPU) p50=%.3f ms | end_frame (upload + submit) p50=%.3f ms | GPU p50=%.3f ms\n",
 		len(app.dc.insts), len(app.dc.batches), len(app.dc.xform_table) - 1, len(app.dc.clip_table) - 1, size_of(render.Rect_Inst),
-		med(app.bench_build[:]), med(app.bench_submit[:]), med(app.bench_gpu[:]))
+		draw.picture_size(&app.pic), used, med(app.bench_build[:]), med(app.bench_submit[:]), med(app.bench_gpu[:]))
 	os.exit(0)
 }
 
@@ -333,6 +371,7 @@ main :: proc() {
 		if strings.has_prefix(a, "--stress=") { if v, ok := strconv.parse_int(a[9:]); ok { app.stress = v } }
 		if strings.has_prefix(a, "--bench=") { if v, ok := strconv.parse_int(a[8:]); ok { app.bench_n = v } }
 		if a == "--flat" { app.flat = true }
+		if a == "--retained" { app.retained = true }
 		if a == "--srgb" { app.space = .Srgb }
 	}
 	font.init(&app.fonts)
