@@ -21,6 +21,7 @@ Event_Kind :: enum u8 {
 	Mouse_Leave,
 	Scroll,
 	Close,
+	Activate,   // the window became active or inactive (Window.active): a title bar drawn by the app dims or lights up
 }
 
 Mouse_Button :: enum u8 { Left, Right, Middle }
@@ -79,6 +80,91 @@ Window :: struct {
 	size:         [2]int,   // client size in pixels
 	dpi_scale:    f32,
 	focused:      bool,
+	active:       bool,     // the foreground window (title bars of inactive windows are drawn dimmed)
 	user:         rawptr,
 	on_frame:     proc(user: rawptr),   // called while Windows owns the message loop (resize, move, menus)
+	chrome:       Chrome_Regions,       // integrated title bar: what the app drew where (set_chrome_regions)
+}
+
+////////////////////////////////
+// Integrated title bar (set_integrated_title): the client area covers the whole window, the app draws the title bar and
+// says each frame where it is (Chrome_Regions); the window procedure answers the system's hit tests from that, so that
+// moving, resizing, Aero Snap, Snap Layouts (Windows 11), the system menu and double-click to maximize work as with a
+// title bar of the system.
+
+// What a point of the window is to the system (WM_NCHITTEST).
+Hit :: enum u8 {
+	Client,                   // the app's (widgets, page)
+	Caption,                  // drags the window, double click maximizes, right click opens the system menu
+	Minimize, Maximize, Close,
+	Left, Right, Top, Bottom, Top_Left, Top_Right, Bottom_Left, Bottom_Right,   // resize
+}
+
+Caption_Button :: enum u8 { Minimize, Maximize, Close }
+
+Region :: struct { min, max: [2]f32 }
+
+region_contains :: proc(r: Region, p: [2]f32) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
+region_empty :: proc(r: Region) -> bool { return r.max.x <= r.min.x || r.max.y <= r.min.y }
+
+// The title bar of the last frame, in client pixels. `caption`: areas that drag the window; `holes`: what is
+// interactive inside them (tabs, buttons, fields): those stay the app's; `buttons`: the caption buttons the app drew
+// (an empty region: none), answered as the system's own so that Snap Layouts opens over the maximize button.
+Chrome_Regions :: struct {
+	caption: [dynamic]Region,
+	holes:   [dynamic]Region,
+	buttons: [Caption_Button]Region,
+}
+
+chrome_regions_clear :: proc(c: ^Chrome_Regions) {
+	clear(&c.caption)
+	clear(&c.holes)
+	c.buttons = {}
+}
+
+chrome_regions_destroy :: proc(c: ^Chrome_Regions) {
+	delete(c.caption)
+	delete(c.holes)
+	c^ = {}
+}
+
+Side :: enum u8 { Left, Top, Right, Bottom }
+Sides :: bit_set[Side; u8]
+
+// Hit test of a point `p` (client pixels) of a client area of `size`. `resize_sides`: the sides where the client area
+// reaches the window's edge, so a band of `border` pixels along them resizes (none when maximized or full screen);
+// `corner`: how far along an edge a resize corner reaches. Resize bands win over everything, then the caption buttons,
+// then the holes, then the caption; anything else is the client's.
+hit_test_chrome :: proc(c: ^Chrome_Regions, p: [2]f32, size: [2]f32, border, corner: f32, resize_sides: Sides) -> Hit {
+	if border > 0 && resize_sides != {} {
+		left   := .Left in resize_sides && p.x < border
+		right  := .Right in resize_sides && p.x >= size.x - border
+		top    := .Top in resize_sides && p.y < border
+		bottom := .Bottom in resize_sides && p.y >= size.y - border
+		// along a band, the ends reach the corner
+		near_left, near_right := p.x < corner, p.x >= size.x - corner
+		near_top, near_bottom := p.y < corner, p.y >= size.y - corner
+		switch {
+		case top && near_left, left && near_top:          return .Top_Left
+		case top && near_right, right && near_top:        return .Top_Right
+		case bottom && near_left, left && near_bottom:    return .Bottom_Left
+		case bottom && near_right, right && near_bottom:  return .Bottom_Right
+		case top:    return .Top
+		case bottom: return .Bottom
+		case left:   return .Left
+		case right:  return .Right
+		}
+	}
+	for b in Caption_Button {
+		if region_contains(c.buttons[b], p) {
+			switch b {
+			case .Minimize: return .Minimize
+			case .Maximize: return .Maximize
+			case .Close:    return .Close
+			}
+		}
+	}
+	for h in c.holes { if region_contains(h, p) { return .Client } }
+	for r in c.caption { if region_contains(r, p) { return .Caption } }
+	return .Client
 }
