@@ -47,7 +47,8 @@ Shape_Options :: struct {
 	one_run:        bool,       // the text is a single directional run already (bidi resolved by the caller): it is
 	                            // not reordered; `direction` is its direction (Auto: from its first strong character)
 	letter_spacing: f32,        // added after each character (CSS letter-spacing; disables optional ligatures)
-	word_spacing:   f32,        // added after each space (U+0020, U+00A0): CSS word-spacing, plus justification
+	word_spacing:   f32,        // added after each space (U+0020, U+00A0): CSS word-spacing
+	justify:        f32,        // added after each U+0020: the share of a justified line's free space
 }
 
 shaped_destroy :: proc(sh: ^Shaped, allocator := context.allocator) {
@@ -82,21 +83,36 @@ shape :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Optio
 measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Options = {}) -> f32 {
 	if len(text) == 0 || size <= 0 { return 0 }
 	no_liga := opts.letter_spacing != 0
+	if !no_liga && opts.word_spacing == 0 && opts.justify == 0 {
+		// one word (what layout asks for): one pass over the bytes
+		hi: u8
+		single := true
+		for i in 0 ..< len(text) {
+			b := text[i]
+			if b == ' ' && len(text) > 1 { single = false; break }
+			hi = max(hi, b)
+		}
+		if single {
+			rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : (hi >= 0xD6 && first_strong_rtl(text))
+			return word_width(s, id, size, text, rtl, false)
+		}
+	}
 	w: f32
 	i := 0
 	for i < len(text) {
 		j := i
 		if text[i] == ' ' { j = i + 1 } else { for j < len(text) && text[j] != ' ' { j += 1 } }
 		piece := text[i:j]
-		rtl := opts.one_run ? (opts.direction == .Rtl || (opts.direction == .Auto && first_strong_rtl(piece))) : first_strong_rtl(piece)
+		rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : piece_rtl(piece)
 		w += word_width(s, id, size, piece, rtl, no_liga)
 		i = j
 	}
-	if opts.letter_spacing != 0 || opts.word_spacing != 0 {
+	if opts.letter_spacing != 0 || opts.word_spacing != 0 || opts.justify != 0 {
 		for k := 0; k < len(text); k += 1 {
 			b := text[k]
 			if b & 0xC0 != 0x80 { w += opts.letter_spacing }
-			if b == ' ' || (b == 0xC2 && k + 1 < len(text) && text[k + 1] == 0xA0) { w += opts.word_spacing }
+			if b == ' ' { w += opts.word_spacing + opts.justify }
+			if b == 0xC2 && k + 1 < len(text) && text[k + 1] == 0xA0 { w += opts.word_spacing }
 		}
 	}
 	return w
@@ -202,7 +218,7 @@ place_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, a, b: int, r
 	g0, c0 := len(glyphs), len(clusters)
 	w := word_copy(s, id, size, piece, rtl, no_liga, glyphs, clusters)
 	ng, nc := len(glyphs) - g0, len(clusters) - c0
-	spacing := opts.letter_spacing != 0 || opts.word_spacing != 0
+	spacing := opts.letter_spacing != 0 || opts.word_spacing != 0 || opts.justify != 0
 	if !spacing {
 		for gi in g0 ..< g0 + ng { glyphs[gi].x += x; glyphs[gi].cluster += i32(a) }
 		for ci in c0 ..< c0 + nc { clusters[ci].x0 += x; clusters[ci].x1 += x; clusters[ci].start += i32(a); clusters[ci].end += i32(a) }
@@ -216,7 +232,8 @@ place_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, a, b: int, r
 		for j in c.start ..< c.end {
 			ch := piece[j]
 			if ch & 0xC0 != 0x80 { sp[ci] += opts.letter_spacing }
-			if ch == ' ' || (ch == 0xC2 && int(j) + 1 < len(piece) && piece[j + 1] == 0xA0) { sp[ci] += opts.word_spacing }
+			if ch == ' ' { sp[ci] += opts.word_spacing + opts.justify }
+			if ch == 0xC2 && int(j) + 1 < len(piece) && piece[j + 1] == 0xA0 { sp[ci] += opts.word_spacing }
 		}
 		total += sp[ci]
 	}
@@ -303,11 +320,13 @@ Word_Shard :: struct {
 Word_Cache :: struct {
 	shards: [SHARDS]Word_Shard,
 	cap:    int,             // words per shard generation (0: no cache)
+	epoch:  u32,             // bumps when the cache is cleared (the threads' own caches then miss)
 }
 
 @(private)
 words_init :: proc(c: ^Word_Cache, total: int) {
 	c.cap = total > 0 ? max(total / SHARDS, 16) : 0
+	c.epoch = sync.atomic_add(&words_epochs, 1) + 1
 }
 
 @(private)
@@ -326,8 +345,12 @@ free_words :: proc(m: ^map[u64]^Word) {
 	clear(m)
 }
 
+// Epochs are unique in the process (a state made where a destroyed one was gets new ones).
+@(private) words_epochs: u32
+
 @(private)
 words_clear :: proc(c: ^Word_Cache) {
+	sync.atomic_store(&c.epoch, sync.atomic_add(&words_epochs, 1) + 1)
 	for &sh in c.shards {
 		sync.mutex_lock(&sh.mu)
 		free_words(&sh.cur); free_words(&sh.old)
@@ -409,6 +432,28 @@ word_insert :: proc(c: ^Word_Cache, sh: ^Word_Shard, h: u64, w: ^Word) {
 	link(sh, h, w)
 }
 
+// Widths of short words a thread measured last: layout threads hit the same few hundred words all the time, and this
+// answers them without touching the shared cache (no lock, no shared cache line). Entries hold their own copy of the
+// text; the shared cache's epoch tells them apart from what was measured before a clear.
+@(private) L1_SIZE :: 1024
+@(private) L1_TEXT :: 30
+
+@(private)
+L1_Entry :: struct {
+	state:   ^State,
+	hash:    u64,
+	font:    Font_Id,
+	size:    f32,
+	width:   f32,
+	epoch:   u32,
+	flags:   u8,
+	n:       u8,
+	text:    [L1_TEXT]u8,
+}
+
+@(private, thread_local)
+l1_words: [L1_SIZE]L1_Entry
+
 // Width of one word (text without U+0020, or a single space).
 @(private)
 word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool) -> f32 {
@@ -418,19 +463,34 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 		return w.width
 	}
 	h := word_hash(id, size, rtl, no_liga, text)
+	flags := u8(rtl) | u8(no_liga) << 1
+	epoch := sync.atomic_load_explicit(&s.words.epoch, .Relaxed)
+	e: ^L1_Entry
+	if len(text) <= L1_TEXT {
+		e = &l1_words[h & (L1_SIZE - 1)]
+		if e.hash == h && e.state == s && e.epoch == epoch && e.font == id && e.size == size && e.flags == flags &&
+		   int(e.n) == len(text) && string(e.text[:e.n]) == text {
+			return e.width
+		}
+	}
 	sh := &s.words.shards[h % SHARDS]
+	width: f32
 	sync.mutex_lock(&sh.mu)
 	if w := word_find(sh, h, id, size, rtl, no_liga, text); w != nil {
-		width := w.width
+		width = w.width
 		sync.mutex_unlock(&sh.mu)
-		return width
+	} else {
+		sync.mutex_unlock(&sh.mu)
+		nw := shape_word(s, id, size, text, rtl, no_liga, context.allocator)
+		width = nw.width
+		sync.mutex_lock(&sh.mu)
+		if word_find(sh, h, id, size, rtl, no_liga, text) == nil { word_insert(&s.words, sh, h, nw) } else { free(nw) }
+		sync.mutex_unlock(&sh.mu)
 	}
-	sync.mutex_unlock(&sh.mu)
-	w := shape_word(s, id, size, text, rtl, no_liga, context.allocator)
-	width := w.width
-	sync.mutex_lock(&sh.mu)
-	if word_find(sh, h, id, size, rtl, no_liga, text) == nil { word_insert(&s.words, sh, h, w) } else { free(w) }
-	sync.mutex_unlock(&sh.mu)
+	if e != nil {
+		e^ = L1_Entry{state = s, hash = h, font = id, size = size, width = width, epoch = epoch, flags = flags, n = u8(len(text))}
+		copy(e.text[:], text)
+	}
 	return width
 }
 
@@ -642,7 +702,11 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	an: Analysis
 	analysis_init(&an, w, rtl)
 	an.scripts = &scripts
-	if s.analyzer->AnalyzeScript(&an.source, 0, u32(len(w)), &an.sink) < 0 || len(scripts) == 0 {
+	ascii := s.latin_ok
+	if ascii { for u in w { if u >= 0x80 { ascii = false; break } } }
+	if ascii {
+		append(&scripts, Script_Run{0, u32(len(w)), s.latin})
+	} else if s.analyzer->AnalyzeScript(&an.source, 0, u32(len(w)), &an.sink) < 0 || len(scripts) == 0 {
 		clear(&scripts)
 		append(&scripts, Script_Run{0, u32(len(w)), {}})
 	}
@@ -820,6 +884,13 @@ decode_at :: proc(text: string, i: int) -> rune {
 is_rtl_char :: proc(r: rune) -> bool {
 	return (r >= 0x0590 && r <= 0x08FF) || (r >= 0xFB1D && r <= 0xFDFF) || (r >= 0xFE70 && r <= 0xFEFF) ||
 		(r >= 0x10800 && r <= 0x10FFF) || (r >= 0x1E800 && r <= 0x1EFFF)
+}
+
+// first_strong_rtl, answering ASCII text without decoding it.
+@(private)
+piece_rtl :: #force_inline proc(text: string) -> bool {
+	for i in 0 ..< len(text) { if text[i] >= 0xD6 { return first_strong_rtl(text) } }
+	return false
 }
 
 // Whether the first strong character of `text` is right-to-left (UAX #9 P2, without isolates).
