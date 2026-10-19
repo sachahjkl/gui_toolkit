@@ -3,6 +3,40 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.9.2] - 2026-10-19
+
+### Added
+- **Frame pacing at the monitor's rate** (`platform/display_win32.odin`, `render/present.odin`):
+  - `platform.display_info(w)`: the refresh rate of the monitor the window is on, exact (`Display_Info.hz` 59.94,
+    143.998, 180: the rational rate of the display path from `QueryDisplayConfig`, else the current mode, else DWM's
+    composition rate, else 60), its `source`, the monitor and a `serial` that changes with any of them. Cached; read again
+    after `WM_DISPLAYCHANGE`, `WM_DPICHANGED`, a move or size loop, or when the window is on another monitor.
+    `display_invalidate(w)`.
+  - `platform.wait_handle(w, handle, timeout_ms)`: waits for a handle (the swap chain's latency object, a timer) while
+    taking the window's keyboard and mouse messages as they arrive; they are kept for the next `poll_events`.
+  - `Event.stamp`: when the window procedure received the event (input latency).
+  - `platform.take_paint_request(w)`: a `WM_PAINT` that came during the app's own `poll_events` (see Changed).
+  - `render.set_present_mode(r, .Vsync | .Tearing)` (tearing: for variable refresh displays, the app paces its frames;
+    the swap chain is created with `ALLOW_TEARING` when `tearing_supported(r)`), `present_mode`, `set_sync_interval(r, n)`
+    (every n-th refresh), `set_expected_refreshes(r, x)` (app-timed frames), `frame_waitable(r)`.
+  - Frame statistics after every present: `take_displayed(r)` returns each frame once it reached the screen
+    (`Displayed_Frame`: present number, the input it was built from (`set_frame_input`, or `mark_input`), when Present
+    returned, the vblank it was shown at, refreshes since the previous one and refreshes it came late for in a run of
+    continuous frames (`set_frame_continuous`)). `present_totals`, `measured_refresh_hz` (vblank interval measured from
+    the statistics), `vblank_grid` (the last vblank and the period: the grid frames land on), `qpc_to_tick`.
+  - `Renderer.swap_buffers` (set before `init`): back buffers of the swap chain (default 2).
+  - `-define:D3D_DEBUG=false` turns the Direct3D debug layer off in a `-debug` build (profiling with true GPU times).
+- `render.wait_for_frame(r, timeout_ms)` takes a timeout and says whether the swap chain was ready.
+
+### Changed
+- `WM_PAINT` during the app's own `poll_events` no longer runs a nested frame (it presented twice in one turn of the
+  loop and waited twice for the swap chain, breaking the cadence): the frame being built repaints, and
+  `take_paint_request` says one was asked for. Inside a loop of the system (live resize, move, menus:
+  `WM_ENTERSIZEMOVE` / `WM_ENTERMENULOOP`) `on_frame` is still called from `WM_PAINT`.
+- `RENDER_PROBE` prints frames presented / shown / missed, input-to-screen latency and the measured rate from the new
+  statistics.
+- `stepper`: holding a button wakes the loop at the next repeat instead of drawing a frame at every refresh.
+
 ## [0.9.1] - 2026-10-19
 
 Merge of 0.9.0 (DirectWrite text, retained glyph runs) with 0.8.1 (status bar, frame graph) and 0.8.2 (named palettes).

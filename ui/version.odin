@@ -4,4 +4,4 @@ package ui
 VERSION_MAJOR :: 0
 VERSION_MINOR :: 9
 VERSION_PATCH :: 0
-VERSION :: "0.9.1"
+VERSION :: "0.9.2"
