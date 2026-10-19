@@ -154,9 +154,9 @@ page_controls :: proc(app: ^App) {
 						if ui.menu_item("Copy", "Ctrl+C", false, ICON_CLIPBOARD).clicked { ui.toast(.Info, "Copy") }
 						if ui.menu_item("Paste", "Ctrl+V").clicked { ui.toast(.Info, "Paste") }
 						if ui.menu_item("Duplicate", "Ctrl+D").clicked { ui.toast(.Info, "Duplicate") }
-						ui.hline(ui.px(mw))
+						ui.menu_separator()
 						if ui.menu_item("Show grid", "", app.ctx_check).clicked { app.ctx_check = !app.ctx_check }
-						ui.hline(ui.px(mw))
+						ui.menu_separator()
 						if ui.menu_item("Delete", "Del", false, ICON_TRASH).clicked { ui.toast(.Bad, "Delete") }
 					}
 					ui.spacer(ui.px(em * 0.7))

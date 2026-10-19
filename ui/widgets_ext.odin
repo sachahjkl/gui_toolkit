@@ -457,10 +457,12 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
 		}
 	}
-	if sig.clicked {
+	// Down / Alt+Down on the focused button opens the list from the keyboard too
+	kb := sig.focused && !open && (key_press(.Down, {.Alt}) || key_press(.Down) || key_press(.F4))
+	if sig.clicked || kb {
 		if open { ctx_menu_close() } else {
-			ctx_menu_open(menu_key, {btn.rect.min.x, btn.rect.max.y + 4}, btn.key)
-			g.menu_sel = selected^   // keyboard starts from the current value
+			ctx_menu_open_rect(menu_key, btn.rect, btn.key, from_keyboard = kb)
+			menu_select(selected^)   // keyboard starts from the current value
 		}
 	}
 	if ctx_menu(menu_key, max(btn.size.x, em * 10)) {
@@ -484,7 +486,10 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 }
 
 // Row of tabs with a growing underline. `icons` may be nil. Returns true when the selection changed.
-tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
+// `right_clicked` / `middle_clicked` (optional) receive the index of a tab clicked with that button this frame (else -1).
+tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, right_clicked: ^int = nil, middle_clicked: ^int = nil) -> (changed: bool) {
+	if right_clicked != nil { right_clicked^ = -1 }
+	if middle_clicked != nil { middle_clicked^ = -1 }
 	em := font_size()
 	for label, i in labels {
 		on := selected^ == i
@@ -507,7 +512,10 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 			spacer(px(em))
 		}
 		if !on { pop_tags() }
-		if signal(b).clicked && !on { selected^ = i; changed = true }
+		sig := signal(b)
+		if sig.clicked && !on { selected^ = i; changed = true }
+		if sig.right_clicked && right_clicked != nil { right_clicked^ = i }
+		if sig.middle_clicked && middle_clicked != nil { middle_clicked^ = i }
 	}
 	return
 }

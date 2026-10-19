@@ -47,6 +47,7 @@ entries := [?]Entry{
 	{"button background", .Panel2, 1}, {"button border", .Border, 1}, {"button sheen", .White, 1},
 	{"menu_item background", .Panel2, 0}, {"menu_item sheen", .White, 0},
 	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
+	{"weak_selected background", .Accent, 0.09}, {"weak_selected border", .Accent, 0.35},
 	{"kbd sheen", .White, 0.7},
 	{"zebra background", .Bg_Solid, 0.45},
 	{"input background", .Bg_Solid, 1}, {"input border", .Border, 1},
