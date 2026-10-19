@@ -14,17 +14,49 @@ import "core:sync"
 // opened on it, so the bytes stay valid as long as DirectWrite may read them, whatever the order of the releases.
 @(private)
 Memory_Font :: struct {
-	refs:  i32,
-	data:  []byte,
-	owned: bool,   // false: data compiled into the exe, never freed
+	refs:      i32,
+	data:      []byte,
+	owned:     bool,   // false: data compiled into the exe, never freed (else heap memory)
+	key:       u64,
+}
+
+// Memory fonts by key. A key is never used twice: DirectWrite's shared factory caches files by (loader, key), so a key
+// made from an address could bring back the faces of a font freed before at that address.
+@(private) memory_mu: sync.Mutex
+@(private) memory_fonts: map[u64]^Memory_Font
+@(private) memory_next: u64
+
+@(private)
+memory_font_new :: proc(data: []byte, owned: bool) -> ^Memory_Font {
+	context.allocator = runtime.heap_allocator()
+	m := new(Memory_Font)
+	m.refs, m.data, m.owned = 1, data, owned
+	sync.mutex_lock(&memory_mu)
+	memory_next += 1
+	m.key = memory_next
+	memory_fonts[m.key] = m
+	sync.mutex_unlock(&memory_mu)
+	return m
 }
 
 @(private)
 memory_font_release :: proc "contextless" (m: ^Memory_Font) {
-	if sync.atomic_sub(&m.refs, 1) != 1 { return }
 	context = runtime.default_context()
-	if m.owned { delete(m.data) }
-	free(m)
+	sync.mutex_lock(&memory_mu)
+	m.refs -= 1
+	last := m.refs == 0
+	if last { delete_key(&memory_fonts, m.key) }
+	sync.mutex_unlock(&memory_mu)
+	if !last { return }
+	if m.owned { delete(m.data, runtime.heap_allocator()) }
+	free(m, runtime.heap_allocator())
+}
+
+@(private)
+memory_font_retain :: proc(m: ^Memory_Font) {
+	sync.mutex_lock(&memory_mu)
+	m.refs += 1
+	sync.mutex_unlock(&memory_mu)
 }
 
 @(private)
@@ -54,7 +86,7 @@ memory_stream_vtable := IDWriteFontFileStream_VTable{
 		if n == 0 {
 			memory_font_release(s.font)
 			context = runtime.default_context()
-			free(s)
+			free(s, runtime.heap_allocator())
 		}
 		return u32(n)
 	},
@@ -72,8 +104,8 @@ memory_stream_vtable := IDWriteFontFileStream_VTable{
 		return S_OK
 	},
 	GetLastWriteTime = proc "system" (this: ^IDWriteFontFileStream, time: ^u64) -> HRESULT {
-		time^ = 0
-		return E_FAIL   // documented answer for streams that have no file time
+		time^ = 0   // no file time (E_NOTIMPL makes some DirectWrite versions refuse the face)
+		return S_OK
 	},
 }
 
@@ -96,13 +128,18 @@ memory_loader_vtable := IDWriteFontFileLoader_VTable{
 	AddRef = proc "system" (this: ^IDWriteFontFileLoader) -> u32 { return 1 },    // static object
 	Release = proc "system" (this: ^IDWriteFontFileLoader) -> u32 { return 1 },
 	CreateStreamFromKey = proc "system" (this: ^IDWriteFontFileLoader, key: rawptr, key_size: u32, stream: ^^IDWriteFontFileStream) -> HRESULT {
-		if key == nil || key_size != size_of(^Memory_Font) { stream^ = nil; return E_INVALIDARG }
-		m := (^^Memory_Font)(key)^
+		stream^ = nil
+		if key == nil || key_size != size_of(u64) { return E_INVALIDARG }
+		k := (^u64)(key)^
 		context = runtime.default_context()
-		s := new(Memory_Stream)
+		sync.mutex_lock(&memory_mu)
+		m := memory_fonts[k]
+		if m != nil { m.refs += 1 }
+		sync.mutex_unlock(&memory_mu)
+		if m == nil { return E_FAIL }   // unloaded
+		s := new(Memory_Stream, runtime.heap_allocator())
 		s.vtable = &memory_stream_vtable
 		s.refs = 1
-		sync.atomic_add(&m.refs, 1)
 		s.font = m
 		stream^ = &s.iface
 		return S_OK

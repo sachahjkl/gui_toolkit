@@ -10,6 +10,7 @@
 // call that uses what they free.
 package font
 
+import "base:runtime"
 import "core:math"
 import "core:os"
 import "core:strings"
@@ -139,6 +140,7 @@ loader_users: int
 
 // Starts DirectWrite. Without it (not Windows, or a failure) every face fails to load and text measures 0.
 init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
+	context.allocator = runtime.heap_allocator()
 	s.settings = settings
 	sanitize_settings(&s.settings)
 	s.keys = make(map[string]Font_Id)
@@ -192,6 +194,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 }
 
 destroy :: proc(s: ^State) {
+	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
@@ -216,6 +219,7 @@ destroy :: proc(s: ^State) {
 
 @(private)
 release_font :: proc(f: ^Font) {
+	context.allocator = runtime.heap_allocator()
 	if f == nil || f.kind == .None { return }
 	com_release(f.dw5); com_release(f.dw4); com_release(f.dw2); com_release(f.dw)
 	com_release(f.file)
@@ -246,6 +250,7 @@ face_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
 // Caller holds s.mu. Publishes `f` (written completely before the count moves).
 @(private)
 add_font_locked :: proc(s: ^State, f: Font) -> Font_Id {
+	context.allocator = runtime.heap_allocator()
 	n := s.count
 	if n >= CHUNK * MAX_CHUNKS { return 0 }
 	if s.chunks[n / CHUNK] == nil { s.chunks[n / CHUNK] = new([CHUNK]Font) }
@@ -259,6 +264,7 @@ add_font_locked :: proc(s: ^State, f: Font) -> Font_Id {
 @(private)
 add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFontFile, memory: ^Memory_Font, family: string,
 	weight: DWRITE_FONT_WEIGHT, stretch: DWRITE_FONT_STRETCH, style: DWRITE_FONT_STYLE) -> Font_Id {
+	context.allocator = runtime.heap_allocator()
 	f := Font{kind = .Face, dw = dw, file = file, memory = memory, weight = weight, stretch = stretch, style = style}
 	f.dw2 = com_query(dw, &IID_IDWriteFontFace2, IDWriteFontFace2)
 	f.dw4 = com_query(dw, &IID_IDWriteFontFace4, IDWriteFontFace4)
@@ -301,6 +307,7 @@ find_key :: proc(s: ^State, key: string) -> (Font_Id, bool) {
 
 @(private)
 remember_key :: proc(s: ^State, key: string, id: Font_Id) {
+	context.allocator = runtime.heap_allocator()
 	sync.mutex_lock(&s.mu)
 	defer sync.mutex_unlock(&s.mu)
 	if key not_in s.keys { s.keys[strings.clone(key)] = id }
@@ -340,11 +347,18 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 		if owned { delete(data) }
 		return 0, false
 	}
-	m := new(Memory_Font)
-	m.refs, m.data, m.owned = 1, data, owned
-	key_ptr := m
+	// DirectWrite may release its last stream on one of its own threads: the bytes it reads are freed from there, so
+	// they must come from the (thread-safe) heap, not from the caller's allocator
+	bytes := data
+	if owned {
+		bytes = make([]byte, len(data), runtime.heap_allocator())
+		copy(bytes, data)
+		delete(data)
+	}
+	m := memory_font_new(bytes, owned)
+	key := m.key
 	file: ^IDWriteFontFile
-	if s.factory->CreateCustomFontFileReference(&key_ptr, size_of(^Memory_Font), &memory_loader.iface, &file) < 0 || file == nil {
+	if s.factory->CreateCustomFontFileReference(&key, size_of(u64), &memory_loader.iface, &file) < 0 || file == nil {
 		memory_font_release(m)
 		return 0, false
 	}
@@ -452,7 +466,7 @@ with_simulations :: proc(s: ^State, id: Font_Id, bold, oblique: bool) -> Font_Id
 	defer for i in 0 ..< n { com_release(files[i]) }
 	dw: ^IDWriteFontFace
 	if s.factory->CreateFontFace(f.dw->GetType(), n, &files[0], f.dw->GetIndex(), want, &dw) < 0 || dw == nil { return id }
-	if f.memory != nil { sync.atomic_add(&f.memory.refs, 1) }
+	if f.memory != nil { memory_font_retain(f.memory) }
 	family := from_wide(f.family, context.temp_allocator)
 	nid := add_face(s, key, dw, nil, f.memory, family, f.weight, f.stretch, f.style)
 	return nid != 0 ? nid : id
@@ -507,7 +521,7 @@ with_variations :: proc(s: ^State, id: Font_Id, values: []Axis_Value) -> Font_Id
 	dw := com_query(dw5, &IID_IDWriteFontFace, IDWriteFontFace)
 	com_release(dw5)
 	if dw == nil { return id }
-	if f.memory != nil { sync.atomic_add(&f.memory.refs, 1) }
+	if f.memory != nil { memory_font_retain(f.memory) }
 	family := from_wide(f.family, context.temp_allocator)
 	nid := add_face(s, key, dw, nil, f.memory, family, f.weight, f.stretch, f.style)
 	return nid != 0 ? nid : id
@@ -542,6 +556,7 @@ cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, 
 	if no_system_fallback { strings.write_string(&sb, "|nosys") }
 	key := strings.to_string(sb)
 	if id, ok := find_key(s, key); ok { return id }
+	context.allocator = runtime.heap_allocator()
 	f := Font{kind = .Cascade, no_system_fallback = no_system_fallback}
 	f.entries = make([]Cascade_Entry, len(entries))
 	for e, i in entries {
@@ -567,6 +582,7 @@ cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, 
 // Frees a font: its face (and data), the shaped words and glyph bitmaps that use it. Cascades that list it skip it
 // from then on. Nothing may use the font meanwhile (no shaping, measuring or drawing on any thread).
 unload :: proc(s: ^State, id: Font_Id) {
+	context.allocator = runtime.heap_allocator()
 	f := font_ptr(s, id)
 	if f == nil || f.dead { return }
 	words_clear(&s.words)

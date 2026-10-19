@@ -318,6 +318,7 @@ words_resize :: proc(c: ^Word_Cache, total: int) {
 
 @(private)
 free_words :: proc(m: ^map[u64]^Word) {
+	context.allocator = runtime.heap_allocator()
 	for _, w in m {
 		n := w
 		for n != nil { nx := n.next; free(n); n = nx }
@@ -337,6 +338,7 @@ words_clear :: proc(c: ^Word_Cache) {
 
 @(private)
 words_destroy :: proc(c: ^Word_Cache) {
+	context.allocator = runtime.heap_allocator()
 	for &sh in c.shards {
 		free_words(&sh.cur); free_words(&sh.old)
 		delete(sh.cur); delete(sh.old)
@@ -410,6 +412,7 @@ word_insert :: proc(c: ^Word_Cache, sh: ^Word_Shard, h: u64, w: ^Word) {
 // Width of one word (text without U+0020, or a single space).
 @(private)
 word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool) -> f32 {
+	context.allocator = runtime.heap_allocator()
 	if s.words.cap == 0 {
 		w := shape_word(s, id, size, text, rtl, no_liga, context.temp_allocator)
 		return w.width
@@ -434,6 +437,7 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 // Appends the shaped word (glyph x from the word origin, clusters from the word start). Returns its width.
 @(private)
 word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool, glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster) -> f32 {
+	context.allocator = runtime.heap_allocator()
 	if s.words.cap == 0 {
 		w := shape_word(s, id, size, text, rtl, no_liga, context.temp_allocator)
 		append(glyphs, ..w.glyphs)

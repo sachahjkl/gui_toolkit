@@ -1,5 +1,6 @@
 package font
 
+import "base:runtime"
 import "core:math"
 import "core:sync"
 
@@ -63,6 +64,7 @@ Atlas :: struct {
 
 @(private)
 atlas_init :: proc(a: ^Atlas) {
+	context.allocator = runtime.heap_allocator()
 	a.glyphs = make(map[u64]Glyph_Image)
 	a.users = make(map[rawptr]u64)
 	a.clock = 1
@@ -70,6 +72,7 @@ atlas_init :: proc(a: ^Atlas) {
 
 @(private)
 atlas_destroy :: proc(a: ^Atlas) {
+	context.allocator = runtime.heap_allocator()
 	for p in a.pages { delete(p.pixels); delete(p.shelves); delete(p.log); free(p) }
 	delete(a.pages)
 	delete(a.glyphs)
@@ -90,6 +93,7 @@ atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 
 // A draw context starts a frame: pages it draws from until its next frame are kept.
 atlas_begin_frame :: proc(s: ^State, user: rawptr) {
+	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	atlas_lock(a)
 	defer atlas_unlock(a)
@@ -205,6 +209,7 @@ page_log :: proc(p: ^Page, x, y, w, h: int) {
 // Room for a w x h bitmap in a page of `kind`. Caller holds the lock.
 @(private)
 atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, ok: bool) {
+	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	n_kind := 0
 	for p, i in a.pages {
@@ -265,6 +270,7 @@ subpixel :: proc(s: ^State, x: f32) -> (ix: f32, sub: int) {
 // The bitmap of glyph `gid` of `face` at `size` px, its pen at subpixel position `sub` (see `subpixel`). Rasterized
 // on first use. Call from drawing threads only.
 glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int) -> Glyph_Image {
+	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	key := glyph_key(face, gid, size, sub)
 	atlas_lock(a)
