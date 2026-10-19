@@ -6,8 +6,6 @@ import "core:math"
 import "core:mem"
 import "base:runtime"
 import "core:time"
-
-_ :: time   // RENDER_PROBE only
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
@@ -19,8 +17,11 @@ SHADER_SOURCE :: #load("rect.hlsl", string)
 // reading input, so what is drawn is based on the freshest mouse position. With DXGI's default (3 frames queued) a
 // hover or a drag shows up 2-3 refreshes late, which feels "floaty". Build with -define:LOW_LATENCY=false to compare.
 LOW_LATENCY :: #config(LOW_LATENCY, true)
-// RENDER_PROBE: print, once per second, how many presented frames are still waiting to reach the screen.
+// RENDER_PROBE: print, once per second, frames presented / shown / missed, input -> screen latency, the measured rate.
 RENDER_PROBE :: #config(RENDER_PROBE, false)
+// D3D_DEBUG: the Direct3D debug layer (validation messages; slows drawing and presenting). On in debug builds; a profiling
+// build that wants true GPU and present times turns it off with -define:D3D_DEBUG=false.
+D3D_DEBUG :: #config(D3D_DEBUG, ODIN_DEBUG)
 // GPU_TIMING: timestamp queries around frame_submit; `gpu_ms` returns the GPU time of a recent frame (read a few
 // frames late so it never stalls). Without it, `set_gpu_timing` turns the same measurement on at run time.
 GPU_TIMING :: #config(GPU_TIMING, false)
@@ -348,16 +349,10 @@ Renderer :: struct {
 	gpu_timing:  bool,                    // set_gpu_timing: measure without -define:GPU_TIMING
 	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
 	swap_flags:  dxgi.SWAP_CHAIN,
-	probe_sum, probe_n, probe_fail, probe_frames: int,
-	probe_hr: u32,
-	probe_input_qpc: [64]i64,   // QPC at input read, indexed by present id
-	probe_pending_qpc: i64,
-	probe_lat_sum: f64,
-	probe_lat_n: int,
-	probe_last_seen: u32,
-	probe_prev_ns: u64,
-	probe_worst_ms: f64,
-	probe_tick: u64,
+	present:     Present_State,           // present.odin: mode, frame statistics
+	swap_buffers: int,                    // set before init: back buffers of the swap chain (0 = 2). 3 lets frames be
+	                                      // presented faster than the compositor takes them (tearing on a fixed-rate display)
+	                                      // without Present blocking; latency stays bounded by the latency object.
 	size:        [2]int,
 	hwnd:        win.HWND,
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
@@ -399,13 +394,17 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 		Format      = .B8G8R8A8_UNORM,
 		SampleDesc  = {Count = 1},
 		BufferUsage = {.RENDER_TARGET_OUTPUT},
-		BufferCount = 2,
+		BufferCount = u32(clamp(r.swap_buffers, 2, 16) if r.swap_buffers > 0 else 2),
 		Scaling     = .NONE,
 		SwapEffect  = .FLIP_DISCARD,
 		AlphaMode   = .UNSPECIFIED,
 	}
 	when LOW_LATENCY { desc.Flags = {.FRAME_LATENCY_WAITABLE_OBJECT} }
+	// tearing presents (variable refresh) need the flag from creation on; a composition swap chain cannot tear
+	r.present.tearing_ok = !transparent && check_tearing(factory)
+	if r.present.tearing_ok { desc.Flags += {.ALLOW_TEARING} }
 	r.swap_flags = desc.Flags
+	present_reset(r)
 	// translucent: through DirectComposition; where that is missing (Wine, old systems) fall back to an opaque window
 	if transparent && !init_composition(r, factory, dxgi_device, hwnd, desc, size) {
 		fmt.eprintln("render: DirectComposition unavailable, the window is opaque")
@@ -445,6 +444,7 @@ destroy :: proc(r: ^Renderer) {
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle) }
+	present_destroy(r)
 	if r.ctx != nil { r.ctx->ClearState() }
 	rel(&r.ctx); rel(&r.device)
 	r^ = {}
@@ -561,7 +561,7 @@ create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
 	base_device: ^d3d11.IDevice
 	base_ctx: ^d3d11.IDeviceContext
 	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT}
-	when ODIN_DEBUG { flags += {.DEBUG} }
+	when D3D_DEBUG { flags += {.DEBUG} }
 	if hr := d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx); win.FAILED(hr) {
 		fmt.eprintln("render: CreateDevice failed", hr)
 		return false
@@ -1007,17 +1007,16 @@ set_corner_smoothing :: proc(r: ^Renderer, smoothing: f32) { r.corner_smoothing 
 
 // Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
 // polling input and building the UI: then the frame you build is the next one shown.
-wait_for_frame :: proc(r: ^Renderer) {
-	if r.latency_handle != nil { win.WaitForSingleObjectEx(r.latency_handle, 100, true) }
+// (platform.wait_handle on frame_waitable does the same while taking the window's input as it arrives.)
+wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
+	if r.latency_handle == nil { return true }
+	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
 }
 
-// RENDER_PROBE: call right after reading input; the next present is credited with this timestamp.
+// Call right after reading input: the next present is credited with this time (Displayed_Frame.input), unless
+// set_frame_input gave an earlier one (the time the input arrived).
 mark_input :: proc(r: ^Renderer) {
-	when RENDER_PROBE {
-		qpc: win.LARGE_INTEGER
-		win.QueryPerformanceCounter(&qpc)
-		r.probe_pending_qpc = i64(qpc)
-	}
+	if r.present.input._nsec == 0 { r.present.input = time.tick_now() }
 }
 
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
@@ -1134,45 +1133,10 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 	r.ctx->Unmap(buf^, 0)
 }
 
+// Presents the frame: `vsync` false presents at once (with tearing where supported) whatever set_present_mode says.
 frame_end :: proc(r: ^Renderer, vsync := true) {
 	if r.swapchain == nil { r.ctx->Flush(); return }   // offscreen
-	when RENDER_PROBE {
-		before: u32
-		r.swapchain->GetLastPresentCount(&before)
-		r.probe_input_qpc[(before + 1) % 64] = r.probe_pending_qpc
-	}
-	if hr := r.swapchain->Present(vsync ? 1 : 0, {}); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
+	if hr := present_frame(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
 		r.lost = true
-		return
-	}
-	when RENDER_PROBE {
-		last: u32
-		stats: dxgi.FRAME_STATISTICS
-		r.probe_frames += 1
-		hr := r.swapchain->GetFrameStatistics(&stats)
-		if win.SUCCEEDED(r.swapchain->GetLastPresentCount(&last)) && win.SUCCEEDED(hr) {
-			r.probe_sum += int(last) - int(stats.PresentCount)
-			r.probe_n += 1
-			// input -> scan-out latency of the frame that was most recently displayed
-			if stats.PresentCount != r.probe_last_seen && last - stats.PresentCount < 60 {
-				r.probe_last_seen = stats.PresentCount
-				in_qpc := r.probe_input_qpc[stats.PresentCount % 64]
-				freq: win.LARGE_INTEGER
-				win.QueryPerformanceFrequency(&freq)
-				if in_qpc > 0 && i64(stats.SyncQPCTime) > in_qpc {
-					r.probe_lat_sum += f64(i64(stats.SyncQPCTime) - in_qpc) * 1000 / f64(freq)
-					r.probe_lat_n += 1
-				}
-			}
-		} else { r.probe_fail += 1; r.probe_hr = u32(hr) }
-		now := u64(time.tick_now()._nsec)
-		if r.probe_prev_ns != 0 { r.probe_worst_ms = max(r.probe_worst_ms, f64(now - r.probe_prev_ns) / 1e6) }
-		r.probe_prev_ns = now
-		if now - r.probe_tick > 1_000_000_000 {
-			fmt.eprintf("render: %d presents | worst gap %.1f ms | input -> scan-out %.1f ms avg (%d samples) | LOW_LATENCY=%v\n", r.probe_frames, r.probe_worst_ms, r.probe_lat_n > 0 ? r.probe_lat_sum / f64(r.probe_lat_n) : 0, r.probe_lat_n, LOW_LATENCY)
-			r.probe_worst_ms = 0
-			r.probe_sum, r.probe_n, r.probe_fail, r.probe_frames, r.probe_tick = 0, 0, 0, 0, now
-			r.probe_lat_sum, r.probe_lat_n = 0, 0
-		}
 	}
 }

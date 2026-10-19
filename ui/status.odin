@@ -158,7 +158,7 @@ Frame_Graph_Opts :: struct {
 	series:    int,       // series stacked (0: the history's); more than the history's draws values it does not count
 	                      // (a GPU time over the CPU phases a history's statistics are about)
 	bars:      int,       // bars shown (0: the history's capacity); the newest is at the right edge
-	budget:    f32,       // a dashed line at this value (0: none), e.g. 16.7 ms for 60 frames per second
+	budget:    f32,       // a dashed line at this value (0: none): the frame period, 1000 / refresh rate (5.56 ms at 180 Hz)
 	scale:     f32,       // the graph's top is at least this value (0: the budget, else the tallest bar)
 	max_scale: f32,       // and at most this one: taller bars are cut and get a cap mark (0: no limit)
 	warn, bad: f32,       // totals (of the history's series) above these get a cap mark in the theme's warn / bad colour
