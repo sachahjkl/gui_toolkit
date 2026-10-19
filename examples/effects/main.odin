@@ -4,9 +4,11 @@
 //   build.bat effects
 //   effects.exe [--time=SECONDS]     freeze the animation at that time (screenshots)
 //               [--stress=N]         N blurred, shadowed cards over a frosted backdrop each, instead of the demo
-//               [--bench=FRAMES]     print instance / layer / pass counts and CPU (and GPU with
-//                                    -define:GPU_TIMING=true) times, then quit
+//               [--bench=FRAMES]     print instance / layer / pass counts, CPU and GPU times (the GPU time of each
+//                                    kind of step: render.set_gpu_profile), then quit
 //               [--srgb]             blend in sRGB as web browsers do (render.Blend_Space.Srgb), not in linear light
+//               [--nocache]          draw every filtered layer every frame (no kept results: draw.set_layer_cache 0)
+//               [--half]             filter results in fp16 (render.set_filter_precision), not 8 bits
 package effects
 
 import "core:fmt"
@@ -33,8 +35,13 @@ App :: struct {
 	stress:  int,
 	bench_n: int,
 	bench_build, bench_submit, bench_gpu: [dynamic]f32,
+	bench_steps: [render.Gpu_Step]render.Gpu_Step_Stat,   // summed over the profiles read back
+	bench_profiles: int,
+	bench_last_profile: int,
 	frames:  int,
 	space:   render.Blend_Space,
+	nocache: bool,
+	half:    bool,
 }
 
 photo_pixel :: proc(x, y, w, h: int) -> [4]u8 {
@@ -109,8 +116,10 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 			p := r.min + {f32(i % 4) * (tw + 8 * s), f32(i / 4) * (th + 26 * s)}
 			box := draw.Rect{p, p + {tw, th}}
 			one := [1]draw.Filter{fs[i]}
-			draw.push_effects(dc, box, draw.Layer_Effects{alpha = 1, filters = one[:]})
-			draw.image(dc, app.photo, box, {}, draw.WHITE, 8 * s)
+			// the photo does not change: its filtered result is kept (the animated blur's is not: its key changes)
+			if draw.push_effects(dc, box, draw.Layer_Effects{alpha = 1, filters = one[:], cache_id = u64(100 + i), cache_key = u64(app.photo), cache_anchor = box.min}) {
+				draw.image(dc, app.photo, box, {}, draw.WHITE, 8 * s)
+			}
 			draw.pop_layer(dc)
 			draw.text(dc, app.ui, 12 * s, {p.x, box.max.y + 15 * s}, draw.hex(0x9aa3c7ff), names[i])
 		}
@@ -216,10 +225,13 @@ stress :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	for i in 0 ..< n {
 		c := draw.Vec2{(f32(i % cols) + 0.5) * cw, (f32(i / cols) + 0.5) * ch}
 		r := draw.Rect{c - draw.Vec2{cw, ch} * 0.38, c + draw.Vec2{cw, ch} * 0.38}
-		draw.backdrop(dc, r, {8 * s, 8 * s, 8 * s, 8 * s}, bf[:])
-		draw.push_effects(dc, r, draw.Layer_Effects{alpha = 0.9, filters = fl[:]})
-		draw.rect(dc, draw.rect_pad(r, -6 * s), draw.Color{1, 1, 1, 0.25}, 6 * s)
-		draw.text(dc, app.ui, 12 * s, {r.min.x + 10 * s, c.y + 4 * s}, draw.hex(0xffffffff), fmt.tprintf("#%d", i))
+		// what lies under it depends on the time only (kept while the animation is frozen: --time)
+		draw.backdrop(dc, r, {8 * s, 8 * s, 8 * s, 8 * s}, bf[:], cache_id = u64(5000 + i), cache_key = u64(transmute(u32)t), cache_anchor = r.min)
+		// the card's content is the same every frame: its shadowed, sepia result is kept (the backdrop moves under it)
+		if draw.push_effects(dc, r, draw.Layer_Effects{alpha = 0.9, filters = fl[:], cache_id = u64(1000 + i), cache_key = u64(i), cache_anchor = r.min}) {
+			draw.rect(dc, draw.rect_pad(r, -6 * s), draw.Color{1, 1, 1, 0.25}, 6 * s)
+			draw.text(dc, app.ui, 12 * s, {r.min.x + 10 * s, c.y + 4 * s}, draw.hex(0xffffffff), fmt.tprintf("#%d", i))
+		}
 		draw.pop_layer(dc)
 	}
 }
@@ -242,6 +254,17 @@ frame :: proc(app: ^App) {
 		append(&app.bench_build, f32(time.duration_milliseconds(time.tick_diff(t0, t1))))
 		append(&app.bench_submit, f32(time.duration_milliseconds(time.tick_diff(t1, t2))))
 		append(&app.bench_gpu, render.gpu_ms(&app.r))
+		if p, ok := render.gpu_profile(&app.r); ok && p.frame != app.bench_last_profile {
+			app.bench_last_profile = p.frame
+			app.bench_profiles += 1
+			for k in render.Gpu_Step {
+				st := &app.bench_steps[k]
+				st.count += p.steps[k].count
+				st.ms += p.steps[k].ms
+				st.pixels += p.steps[k].pixels
+				st.bytes += p.steps[k].bytes
+			}
+		}
 		if len(app.bench_build) >= app.bench_n { bench_report(app) }
 	}
 	free_all(context.temp_allocator)
@@ -251,9 +274,19 @@ bench_report :: proc(app: ^App) {
 	med :: proc(v: []f32) -> f32 { slice.sort(v); return v[len(v) / 2] }
 	passes := 0
 	for op in app.dc.ops { if op.kind == .Pass { passes += 1 } }
-	fmt.printf("insts=%d batches=%d layers=%d passes=%d targets=%d (%.1f MB) | draw calls (CPU) p50=%.3f ms | end_frame p50=%.3f ms | GPU p50=%.3f ms\n",
+	cs := draw.layer_cache_stats(&app.dc)
+	fmt.printf("insts=%d batches=%d layers=%d passes=%d targets=%d (%.1f MB, kept %.1f MB in %d) | draw calls (CPU) p50=%.3f ms | end_frame p50=%.3f ms | GPU p50=%.3f ms\n",
 		len(app.dc.insts), len(app.dc.batches), len(app.dc.layers), passes, len(app.r.targets), f32(render.targets_bytes(&app.r)) / (1 << 20),
-		med(app.bench_build[:]), med(app.bench_submit[:]), med(app.bench_gpu[:]))
+		f32(cs.bytes) / (1 << 20), cs.entries, med(app.bench_build[:]), med(app.bench_submit[:]), med(app.bench_gpu[:]))
+	if app.bench_profiles > 0 {
+		n := f32(app.bench_profiles)
+		fmt.printf("GPU per frame, mean of %d profiles (step: count, ms, Mpx written, MB moved):\n", app.bench_profiles)
+		for k in render.Gpu_Step {
+			st := app.bench_steps[k]
+			if st.count == 0 { continue }
+			fmt.printf("  %-11v %6.1f  %7.3f ms  %7.3f Mpx  %7.2f MB\n", k, f32(st.count) / n, st.ms / n, f32(st.pixels) / n / 1e6, f32(st.bytes) / n / (1 << 20))
+		}
+	}
 	os.exit(0)
 }
 
@@ -265,6 +298,8 @@ main :: proc() {
 		if strings.has_prefix(a, "--stress=") { if v, ok := strconv.parse_int(a[9:]); ok { app.stress = v } }
 		if strings.has_prefix(a, "--bench=") { if v, ok := strconv.parse_int(a[8:]); ok { app.bench_n = v } }
 		if a == "--srgb" { app.space = .Srgb }
+		if a == "--nocache" { app.nocache = true }
+		if a == "--half" { app.half = true }
 	}
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit effects", {1280, 820}, app)
@@ -274,6 +309,9 @@ main :: proc() {
 	app.ui = id
 	draw.init(&app.dc, &app.r, &app.fonts)
 	render.set_corner_smoothing(&app.r, 0)
+	if app.nocache { draw.set_layer_cache(&app.dc, 0) }
+	render.set_filter_precision(&app.r, app.half ? .Half : .Unorm8)
+	if app.bench_n > 0 { render.set_gpu_profile(&app.r, true) }
 	app.photo = make_texture(&app.r, 256, 160, photo_pixel)
 	free_all(context.temp_allocator)
 	app.start = time.tick_now()
