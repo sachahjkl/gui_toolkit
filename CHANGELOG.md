@@ -89,6 +89,9 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - A masked layer whose filters end with a large blur applies its mask at scale 1 over the reduced result (sampled back
   bilinearly, as the composite would).
 
+### Tests
+- `tests/chrome` and `tests/keyboard` take a lock around each test (they drive the global UI state): they no longer need `-define:ODIN_TEST_THREADS=1`, without which `tests/chrome` used to hang the test runner.
+
 ## [0.9.3] - 2026-10-19
 
 ### Color glyphs in every format

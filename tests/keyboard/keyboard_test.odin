@@ -3,6 +3,7 @@
 //   odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1
 package keyboard_test
 
+import "core:sync"
 import "core:testing"
 import "../../font"
 import "../../platform"
@@ -101,8 +102,15 @@ build_menu :: proc(f: ^Fx, user: rawptr) {
 @(private = "file")
 nothing :: proc(f: ^Fx, user: rawptr) {}
 
+// The tests drive the toolkit's global UI state: the test runner's threads take turns (no -define:ODIN_TEST_THREADS=1
+// needed).
+@(private = "file")
+ui_state_lock: sync.Mutex
+
 @(test)
 menu_keyboard :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
@@ -142,6 +150,8 @@ menu_keyboard :: proc(t: ^testing.T) {
 
 @(test)
 menu_submenus :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
@@ -182,6 +192,8 @@ menu_submenus :: proc(t: ^testing.T) {
 
 @(test)
 menu_stays_on_screen :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
@@ -225,6 +237,8 @@ build_list :: proc(f: ^Fx, user: rawptr) {
 
 @(test)
 list_keyboard :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
@@ -291,6 +305,8 @@ build_edit :: proc(f: ^Fx, user: rawptr) {
 
 @(test)
 line_edit_history :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
@@ -322,6 +338,8 @@ build_para :: proc(f: ^Fx, user: rawptr) {
 
 @(test)
 paragraph_wraps :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
