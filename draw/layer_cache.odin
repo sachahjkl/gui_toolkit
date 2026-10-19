@@ -202,6 +202,7 @@ Cache_Ask :: struct {
 	img:     render.Image_Ref,   // hit: in screen pixels
 	full:    [2]int,
 	store:   bool,               // miss: keep the result made this frame
+	result:  bool,               // what is kept is the blended pixels (Layer_Effects.cache_under), not the layer
 }
 
 @(private)

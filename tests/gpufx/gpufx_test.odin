@@ -126,6 +126,7 @@ reduced_blurs_stay_close_to_the_gaussian :: proc(t: ^testing.T) {
 @(private = "file", thread_local) scene_filters: []draw.Filter
 @(private = "file", thread_local) scene_blend: draw.Blend_Mode
 @(private = "file", thread_local) drawn: int
+@(private = "file", thread_local) scene_under: u64
 
 // A card with a blurred drop shadow and a color filter, at scene_shift; its content changes with scene_key.
 @(private = "file")
@@ -135,7 +136,7 @@ card :: proc(dc: ^draw.Context) {
 	o := scene_shift
 	r := draw.Rect{o + {40, 40}, o + {100, 90}}
 	fx := draw.Layer_Effects{alpha = 0.9, filters = scene_filters, blend = scene_blend}
-	if scene_cache { fx.cache_id, fx.cache_key, fx.cache_anchor = 7, scene_key, o }
+	if scene_cache { fx.cache_id, fx.cache_key, fx.cache_anchor, fx.cache_under = 7, scene_key, o, scene_under }
 	if draw.push_effects(dc, r, fx) {
 		drawn += 1
 		c := scene_key == 1 ? draw.srgb(0.8, 0.2, 0.1) : draw.srgb(0.1, 0.7, 0.3)
@@ -217,6 +218,15 @@ kept_layers_match_drawn_ones :: proc(t: ^testing.T) {
 		drawn = 0
 		bl := frame(f, card)
 		testing.expectf(t, drawn == 0 && max_diff(bl, want_blend) <= 1, "kept result through multiply = drawn (drawn %d, diff %d)", drawn, max_diff(bl, want_blend))
+		// what lies under is known too: the blended pixels are kept, no copy of what is under
+		scene_under = 1
+		for _ in 0 ..< 3 { _ = frame(f, card) }
+		drawn = 0
+		blr := frame(f, card)
+		copies := 0
+		for op in f.dc.ops { if op.kind == .Copy { copies += 1 } }
+		testing.expectf(t, drawn == 0 && copies == 0 && max_diff(blr, want_blend) <= 1, "kept blended pixels = drawn (drawn %d, copies %d, diff %d)", drawn, copies, max_diff(blr, want_blend))
+		scene_under = 0
 
 		// nothing kept with caching off; kept textures go back to the pool
 		draw.set_layer_cache(&f.dc, 0)
