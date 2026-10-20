@@ -11,8 +11,6 @@ import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
 import "vendor:directx/dxgi"
 
-SHADER_SOURCE :: #load("rect.hlsl", string)
-
 // LOW_LATENCY (default on): at most one frame in flight + a waitable swap chain. The app waits for the GPU *before*
 // reading input, so what is drawn is based on the freshest mouse position. With DXGI's default (3 frames queued) a
 // hover or a drag shows up 2-3 refreshes late, which feels "floaty". Build with -define:LOW_LATENCY=false to compare.
@@ -599,11 +597,16 @@ create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
 // Shaders, input layout, constant buffer and fixed states: everything after the device and the frame target.
 @(private)
 init_pipeline :: proc(r: ^Renderer) -> bool {
-	vs_blob := compile(SHADER_SOURCE, "vs_main", "vs_5_0") or_return
-	ps_blob := compile(SHADER_SOURCE, "ps_main", "ps_5_0") or_return
-	defer { vs_blob->Release(); ps_blob->Release() }
-	r.device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), nil, &r.vs)
-	r.device->CreatePixelShader(ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), nil, &r.ps)
+	vs_code, vs_blob := shader_code(.Rect_VS) or_return
+	defer shader_code_done(vs_blob)
+	ps_code, ps_blob := shader_code(.Rect_PS) or_return
+	defer shader_code_done(ps_blob)
+	r.device->CreateVertexShader(raw_data(vs_code), uint(len(vs_code)), nil, &r.vs)
+	r.device->CreatePixelShader(raw_data(ps_code), uint(len(ps_code)), nil, &r.ps)
+	if r.vs == nil || r.ps == nil {
+		fmt.eprintln("render: the instanced-quad shaders were refused by the device")
+		return false
+	}
 
 	inst :: proc(name: cstring, idx: u32, off: u32) -> d3d11.INPUT_ELEMENT_DESC {
 		return {SemanticName = name, SemanticIndex = idx, Format = .R32G32B32A32_FLOAT, InputSlot = 0,
@@ -615,7 +618,7 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 		{SemanticName = "EXTRA", Format = .R32G32B32A32_UINT, AlignedByteOffset = 128, InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1},
 	}
 	// semantic names in the shader are C0..C3: D3D matches "C" + index, so the HLSL semantics C0..C3 are "C" 0..3
-	if hr := r.device->CreateInputLayout(&elems[0], len(elems), vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), &r.layout); win.FAILED(hr) {
+	if hr := r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &r.layout); win.FAILED(hr) {
 		fmt.eprintln("render: CreateInputLayout failed", hr)
 		return false
 	}
@@ -640,11 +643,12 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	bd.RenderTarget[0] = {BlendEnable = false, RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL)}
 	r.device->CreateBlendState(&bd, &r.blend_replace)
 	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .BORDER, AddressV = .BORDER, AddressW = .BORDER, BorderColor = {0, 0, 0, 0}}, &r.sampler_border)
-	fx_vs_blob := compile(FILTER_SOURCE, "vs_fx", "vs_5_0", "filter.hlsl") or_return
-	fx_ps_blob := compile(FILTER_SOURCE, "ps_fx", "ps_5_0", "filter.hlsl") or_return
-	defer { fx_vs_blob->Release(); fx_ps_blob->Release() }
-	r.device->CreateVertexShader(fx_vs_blob->GetBufferPointer(), fx_vs_blob->GetBufferSize(), nil, &r.fx_vs)
-	r.device->CreatePixelShader(fx_ps_blob->GetBufferPointer(), fx_ps_blob->GetBufferSize(), nil, &r.fx_ps)
+	fx_vs_code, fx_vs_blob := shader_code(.Filter_VS) or_return
+	defer shader_code_done(fx_vs_blob)
+	fx_ps_code, fx_ps_blob := shader_code(.Filter_PS) or_return
+	defer shader_code_done(fx_ps_blob)
+	r.device->CreateVertexShader(raw_data(fx_vs_code), uint(len(fx_vs_code)), nil, &r.fx_vs)
+	r.device->CreatePixelShader(raw_data(fx_ps_code), uint(len(fx_ps_code)), nil, &r.fx_ps)
 	r.device->CreateBuffer(&{ByteWidth = size_of(Pass_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.fx_constants)
 	if r.fx_vs == nil || r.fx_ps == nil || r.fx_constants == nil || r.blend_replace == nil || r.sampler_border == nil { return false }
 
