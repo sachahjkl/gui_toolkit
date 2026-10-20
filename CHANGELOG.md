@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.10.1] - 2026-10-20
+
+### Added
+- `font.Metrics.line_gap`: the face's line gap, unrounded (a layout rounds ascent, descent and gap one by one, as Blink does).
+
 ## [0.10.0] - 2026-10-19
 
 ### Added
