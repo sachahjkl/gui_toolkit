@@ -4,8 +4,6 @@ import "core:math"
 import "core:mem"
 import "vendor:directx/d3d11"
 
-FILTER_SOURCE :: #load("filter.hlsl", string)
-
 // Blurs with a larger standard deviation (screen pixels) run on images reduced by powers of two (see
 // set_blur_sigma_limit).
 DEFAULT_BLUR_SIGMA_LIMIT :: 8
