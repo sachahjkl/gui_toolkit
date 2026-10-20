@@ -373,7 +373,10 @@ Renderer :: struct {
 	swap_buffers: int,                    // set before init: back buffers of the swap chain (0 = 2). 3 lets frames be
 	                                      // presented faster than the compositor takes them (tearing on a fixed-rate display)
 	                                      // without Present blocking; latency stays bounded by the latency object.
-	size:        [2]int,
+	size:        [2]int,                  // what is drawn and shown (the window's client area)
+	buffer_size: [2]int,                  // the swap chain's buffers: `size` or larger (resize, set_resize_slack)
+	source_size: [2]int,                  // the region of the buffers presented (SetSourceSize)
+	resize_slack: int,                    // set_resize_slack: 0 = DEFAULT_RESIZE_SLACK, < 0 = buffers of the exact size
 	hwnd:        win.HWND,
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
 	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
@@ -415,7 +418,10 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 		SampleDesc  = {Count = 1},
 		BufferUsage = {.RENDER_TARGET_OUTPUT},
 		BufferCount = u32(clamp(r.swap_buffers, 2, 16) if r.swap_buffers > 0 else 2),
-		Scaling     = .NONE,
+		// STRETCH: the presented region (SetSourceSize, see resize) maps onto the client area 1:1 when it has the
+		// window's size. (With NONE, DWM drew a source region smaller than the buffers magnified.) A frame that
+		// comes after the window changed size is stretched for the refresh it is shown in.
+		Scaling     = .STRETCH,
 		SwapEffect  = .FLIP_DISCARD,
 		AlphaMode   = .UNSPECIFIED,
 	}
@@ -446,6 +452,7 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 		}
 	}
 	create_target(r)
+	r.source_size = r.buffer_size
 	return true
 }
 
@@ -526,7 +533,9 @@ set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
 	if r.transparent {
 		// a translucent window's buffers change format: linear fp16 (scRGB) or 8-bit premultiplied sRGB
-		if hr := r.swapchain->ResizeBuffers(0, u32(max(r.size.x, 1)), u32(max(r.size.y, 1)), composition_format(space), r.swap_flags); win.FAILED(hr) {
+		b := r.buffer_size
+		if b.x <= 0 || b.y <= 0 { b = r.size }
+		if hr := r.swapchain->ResizeBuffers(0, u32(max(b.x, 1)), u32(max(b.y, 1)), composition_format(space), r.swap_flags); win.FAILED(hr) {
 			fmt.eprintln("render: ResizeBuffers to the format of the blend space failed", hr, "- staying in", previous)
 			r.space = previous
 			r.text = text_rendering_default(previous)
@@ -534,6 +543,10 @@ set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 		set_composition_color_space(r)
 	}
 	create_target(r)
+	if r.transparent {
+		r.source_size = r.buffer_size   // ResizeBuffers presents the whole buffers again
+		if r.size != r.buffer_size && !set_source_size(r, r.size) { resize_buffers(r, r.size) }
+	}
 }
 
 blend_space :: proc(r: ^Renderer) -> Blend_Space { return r.space }
@@ -746,16 +759,69 @@ create_target :: proc(r: ^Renderer) {
 	r.device->CreateRenderTargetView(backbuffer, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
 	// kept for snapshots (backdrop filters, blend modes); with flip swap chains buffer 0 is always the one drawn
 	r.frame_tex = backbuffer
+	// the buffers' own size (resize may keep them larger than what is shown)
+	if backbuffer != nil {
+		desc: d3d11.TEXTURE2D_DESC
+		backbuffer->GetDesc(&desc)
+		r.buffer_size = {int(desc.Width), int(desc.Height)}
+	}
 }
 
+// The window's client area is now `size`. ResizeBuffers is costly (1.6 to 3.5 ms a call: DXGI enumerates the outputs
+// each time), so with a resize slack (set_resize_slack) the buffers are allocated with room to grow and a size that
+// fits in them is only a new source region of the swap chain (IDXGISwapChain2::SetSourceSize, a few microseconds):
+// a window dragged to a new size reallocates once per `slack` pixels crossed instead of at every step. The buffers are
+// made smaller again once they hold more than twice the pixels shown. Without SetSourceSize (or with a slack of 0)
+// the buffers follow the size exactly.
 resize :: proc(r: ^Renderer, size: [2]int) {
 	if size.x <= 0 || size.y <= 0 || size == r.size || r.swapchain == nil { return }
 	r.size = size
+	slack := resize_slack(r)
+	b := r.buffer_size
+	fits := size.x <= b.x && size.y <= b.y && b.x * b.y <= 2 * size.x * size.y
+	if slack > 0 && fits && set_source_size(r, size) { return }
+	want := size
+	if slack > 0 { want = {(size.x + slack - 1) / slack * slack, (size.y + slack - 1) / slack * slack} }
+	resize_buffers(r, want)
+	if want != size && !set_source_size(r, size) {
+		resize_buffers(r, size)   // no source region here: buffers of the exact size, as without a slack
+		r.resize_slack = -1
+	}
+}
+
+DEFAULT_RESIZE_SLACK :: 256
+
+// Room the swap chain's buffers keep to grow during a resize, in pixels per axis (see resize; 0 = buffers of the exact
+// size). Default DEFAULT_RESIZE_SLACK. Takes effect at the next resize.
+set_resize_slack :: proc(r: ^Renderer, px: int) { r.resize_slack = px > 0 ? px : -1 }
+
+@(private)
+resize_slack :: proc(r: ^Renderer) -> int { return r.resize_slack == 0 ? DEFAULT_RESIZE_SLACK : max(r.resize_slack, 0) }
+
+// The size of the swap chain's buffers (at least the presented size; see resize).
+buffer_size :: proc(r: ^Renderer) -> [2]int { return r.buffer_size }
+
+@(private)
+resize_buffers :: proc(r: ^Renderer, size: [2]int) {
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
 	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
 	r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, r.swap_flags)   // flags must match creation
 	create_target(r)
+	r.source_size = r.buffer_size   // ResizeBuffers presents the whole buffers again
+}
+
+// Presents only the region [0, size) of the buffers. false: not available (the buffers must be the size shown).
+@(private)
+set_source_size :: proc(r: ^Renderer, size: [2]int) -> bool {
+	if size == r.source_size { return true }
+	if size.x > r.buffer_size.x || size.y > r.buffer_size.y { return false }
+	sc2: ^dxgi.ISwapChain2
+	if win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) || sc2 == nil { return false }
+	defer sc2->Release()
+	if win.FAILED(sc2->SetSourceSize(u32(size.x), u32(size.y))) { return false }
+	r.source_size = size
+	return true
 }
 
 // A single-channel (coverage) texture, used for the glyph atlas.

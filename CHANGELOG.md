@@ -3,6 +3,21 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased]
+
+### Changed
+- **Shaders compiled ahead of time**: `render/rect.hlsl` and `render/filter.hlsl` are embedded as DXBC
+  (`render/shaders/*.dxbc`, `render.SHADERS`) instead of being compiled by `D3DCompile` when the renderer starts
+  (280 ms to 1.5 s of every launch, `rect.hlsl`'s pixel shader dominating). `odin run tools/shaders` writes the blobs
+  after an edit of the HLSL; `tests/shaders` fails while one is stale. `-define:RENDER_COMPILE_SHADERS=true` compiles
+  at start-up as before. `render.shader_compile(id)`.
+- **Resizing without `ResizeBuffers` at every step**: `render.resize` keeps the swap chain's buffers larger than the
+  window (rounded up to `set_resize_slack` pixels, default `DEFAULT_RESIZE_SLACK` = 256) and only changes the presented
+  region (`IDXGISwapChain2::SetSourceSize`, microseconds) while the window fits in them; they are reallocated once per
+  slack crossed, and made smaller when they hold more than twice the pixels shown. `ResizeBuffers` cost 1.6 to 3.5 ms
+  a step. `render.buffer_size`. The window's swap chain is created with `DXGI_SCALING_STRETCH` (with `NONE`, DWM showed
+  a smaller source region magnified).
+
 ## [0.10.0] - 2026-10-19
 
 ### Added
