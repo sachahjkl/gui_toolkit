@@ -13,3 +13,16 @@ blobs_match_sources :: proc(t: ^testing.T) {
 		testing.expectf(t, len(d.blob) > 0 && slice.equal(code, d.blob), "render/shaders/%s is stale: run odin run tools/shaders", d.file)
 	}
 }
+
+// What is embedded is compiled shader code (DXBC container: its magic, then the size it says it has).
+@(test)
+blobs_are_dxbc :: proc(t: ^testing.T) {
+	for d in render.SHADERS {
+		ok := len(d.blob) > 32 && string(d.blob[:4]) == "DXBC"
+		if ok {
+			size := int(d.blob[24]) | int(d.blob[25]) << 8 | int(d.blob[26]) << 16 | int(d.blob[27]) << 24
+			ok = size == len(d.blob)
+		}
+		testing.expectf(t, ok, "render/shaders/%s is not a DXBC container", d.file)
+	}
+}
