@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.11.1] - 2026-10-20
+
+### Fixed
+- `ui.init` makes the state current: getters (`scale`, `font_size`, `focus_key`...) called before the first `begin_build` read a nil state and crashed (Wren crashed at start-up when the pointer was over its window).
+
 ## [0.11.0] - 2026-10-20
 
 ### Changed

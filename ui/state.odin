@@ -14,6 +14,9 @@ import "../platform"
 @(private) tick_origin: time.Tick
 
 init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
+	// the state is current from here: an app may read it (scale, font_size, focus...) before its first build, e.g.
+	// routing the input of its first frame
+	g = s
 	s.fonts = fonts
 	s.theme = theme
 	s.zoom = 1

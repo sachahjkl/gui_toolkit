@@ -398,3 +398,22 @@ scroll_curve :: proc(t: ^testing.T) {
 	end, _, done := ui.scroll_anim_sample(&a, cfg, 10 + a.dur)
 	testing.expect(t, done && end == pos + 10)
 }
+
+// An app may read the UI state before its first build (Wren routed the mouse of its first frame through ui.scale and
+// crashed when the pointer was over the window at start-up): init makes the state current.
+@(test)
+state_readable_before_the_first_build :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	fs: font.State
+	font.init(&fs)
+	defer font.destroy(&fs)
+	theme: ui.Theme
+	s: ui.State
+	ui.init(&s, &fs, &theme)
+	defer ui.destroy(&s)
+	// the getters read this state, not whatever state built last (or none)
+	s.scale = 2.5
+	testing.expect_value(t, ui.scale(), f32(2.5))
+	testing.expect_value(t, ui.focus_key(), ui.Key(0))
+}
