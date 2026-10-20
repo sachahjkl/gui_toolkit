@@ -25,6 +25,7 @@ Metrics :: struct {
 	ascent:      f32,   // pixels above the baseline (positive)
 	descent:     f32,   // pixels below the baseline (positive)
 	line_height: f32,   // ascent + descent + line gap, rounded
+	line_gap:    f32,   // the face's line gap (DirectWrite's lineGap: OS/2 typo or hhea as the face asks), not rounded
 	x_height:    f32,
 	cap_height:  f32,
 	underline_offset:    f32,   // below the baseline (positive down)
@@ -666,7 +667,7 @@ metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 	f := face_ptr(s, primary_face(s, id))
 	if f == nil {
 		t := max(size / 15, 1)
-		return {ascent = size * 0.8, descent = size * 0.2, line_height = math.round(size * 1.2), x_height = size * 0.5, cap_height = size * 0.7,
+		return {ascent = size * 0.8, descent = size * 0.2, line_height = math.round(size * 1.2), line_gap = size * 0.2, x_height = size * 0.5, cap_height = size * 0.7,
 			underline_offset = size * 0.1, underline_thickness = t, strike_offset = size * 0.25, strike_thickness = t}
 	}
 	k := size / f.upem
@@ -677,7 +678,8 @@ metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 		underline_offset = -f32(dm.underlinePosition) * k, underline_thickness = f32(dm.underlineThickness) * k,
 		strike_offset = f32(dm.strikethroughPosition) * k, strike_thickness = f32(dm.strikethroughThickness) * k,
 	}
-	m.line_height = math.round(m.ascent + m.descent + f32(dm.lineGap) * k)
+	m.line_gap = f32(dm.lineGap) * k
+	m.line_height = math.round(m.ascent + m.descent + m.line_gap)
 	if m.x_height <= 0 { m.x_height = size * 0.5 }
 	if m.cap_height <= 0 { m.cap_height = m.ascent * 0.7 }
 	if m.underline_thickness <= 0 { m.underline_thickness = size / 15 }

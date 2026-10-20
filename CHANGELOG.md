@@ -18,6 +18,11 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
   a step. `render.buffer_size`. The window's swap chain is created with `DXGI_SCALING_STRETCH` (with `NONE`, DWM showed
   a smaller source region magnified).
 
+## [0.10.1] - 2026-10-20
+
+### Added
+- `font.Metrics.line_gap`: the face's line gap, unrounded (a layout rounds ascent, descent and gap one by one, as Blink does).
+
 ## [0.10.0] - 2026-10-19
 
 ### Added
