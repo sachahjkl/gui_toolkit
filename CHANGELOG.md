@@ -3,7 +3,7 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [Unreleased]
+## [0.11.0] - 2026-10-20
 
 ### Changed
 - **Shaders compiled ahead of time**: `render/rect.hlsl` and `render/filter.hlsl` are embedded as DXBC
