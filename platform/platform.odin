@@ -59,7 +59,66 @@ Display_Info :: struct {
 	serial:      u64,      // changes whenever the rate, its source or the monitor does
 }
 
-Cursor :: enum u8 { Arrow, Hand, Text, Resize_H, Resize_V, Move, Not_Allowed }
+// Every cursor of CSS (Basic User Interface 4 §5.1 `cursor`), named after the CSS keyword but for the first seven,
+// which keep their older names: Arrow = default, Hand = pointer, Resize_H = ew-resize, Resize_V = ns-resize.
+// On Windows a cursor is the system's own (IDC_*, following the user's cursor scheme and size) when the system has
+// one, else drawn by the toolkit in the scheme's colours (cursors_win32.odin); None hides the pointer.
+// cursor_from_css / cursor_css_name convert from / to the CSS keyword.
+Cursor :: enum u8 {
+	Arrow, Hand, Text, Resize_H, Resize_V, Move, Not_Allowed,
+	None, Context_Menu, Help, Progress, Wait, Cell, Crosshair, Vertical_Text, Alias, Copy, No_Drop,
+	Grab, Grabbing, All_Scroll, Col_Resize, Row_Resize,
+	Resize_N, Resize_E, Resize_S, Resize_W, Resize_NE, Resize_NW, Resize_SE, Resize_SW, Resize_NESW, Resize_NWSE,
+	Zoom_In, Zoom_Out,
+}
+
+// The CSS keyword of each cursor.
+CURSOR_CSS_NAMES := [Cursor]string{
+	.Arrow = "default", .Hand = "pointer", .Text = "text", .Resize_H = "ew-resize", .Resize_V = "ns-resize",
+	.Move = "move", .Not_Allowed = "not-allowed", .None = "none", .Context_Menu = "context-menu", .Help = "help",
+	.Progress = "progress", .Wait = "wait", .Cell = "cell", .Crosshair = "crosshair", .Vertical_Text = "vertical-text",
+	.Alias = "alias", .Copy = "copy", .No_Drop = "no-drop", .Grab = "grab", .Grabbing = "grabbing",
+	.All_Scroll = "all-scroll", .Col_Resize = "col-resize", .Row_Resize = "row-resize",
+	.Resize_N = "n-resize", .Resize_E = "e-resize", .Resize_S = "s-resize", .Resize_W = "w-resize",
+	.Resize_NE = "ne-resize", .Resize_NW = "nw-resize", .Resize_SE = "se-resize", .Resize_SW = "sw-resize",
+	.Resize_NESW = "nesw-resize", .Resize_NWSE = "nwse-resize", .Zoom_In = "zoom-in", .Zoom_Out = "zoom-out",
+}
+
+cursor_css_name :: proc(c: Cursor) -> string { return CURSOR_CSS_NAMES[c] }
+
+// The cursor of a CSS keyword (ASCII case-insensitive; the legacy -webkit-grab, -webkit-grabbing, -webkit-zoom-in and
+// -webkit-zoom-out too). `auto` is not a cursor: it depends on what is under the pointer (ok = false, as for any other
+// word).
+cursor_from_css :: proc(name: string) -> (Cursor, bool) {
+	buf: [32]u8
+	if len(name) > len(buf) { return .Arrow, false }
+	for i in 0 ..< len(name) {
+		ch := name[i]
+		buf[i] = ch >= 'A' && ch <= 'Z' ? ch + 32 : ch
+	}
+	s := string(buf[:len(name)])
+	if len(s) > 8 && s[:8] == "-webkit-" {
+		switch s[8:] {
+		case "grab", "grabbing", "zoom-in", "zoom-out": s = s[8:]
+		}
+	}
+	for c in Cursor { if CURSOR_CSS_NAMES[c] == s { return c, true } }
+	return .Arrow, false
+}
+
+// A cursor made from an image (custom_cursor_create): 0 = none.
+Custom_Cursor :: distinct u64
+
+// The largest custom cursor, in CSS pixels on each side (Chromium's limit: a larger image is not used as a cursor, its
+// fallback is).
+CUSTOM_CURSOR_MAX_CSS :: 128
+
+Custom_Cursor_Error :: enum u8 {
+	None,
+	Bad_Size,    // no pixels, or fewer bytes than width * height * 4
+	Too_Large,   // larger than the limit in CSS pixels: use the fallback
+	System,      // the system refused to make the cursor
+}
 
 Key :: enum u8 {
 	None,
