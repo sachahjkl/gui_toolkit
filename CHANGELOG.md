@@ -3,7 +3,7 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [Unreleased]
+## [0.14.0] - 2026-10-22
 
 ### Added
 - Slug text: `font.Settings.text_renderer = .Slug` (default `.Atlas`, unchanged) draws glyphs on the GPU from their quadratic Bézier outlines (Eric Lengyel's Slug algorithm, MIT, patent in the public domain; shaders pinned in `font/slug_ref`, credit in NOTICE.md): sharp at any scale, rotation, skew or page zoom, exact subpixel positions, no bitmaps, nothing to re-rasterize when the scale changes (a picture of Slug text is never stale for its scale). Color glyphs (emoji) stay on the atlas path.
