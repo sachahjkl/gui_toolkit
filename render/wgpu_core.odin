@@ -2,8 +2,11 @@ package render
 
 import "base:runtime"
 import "core:fmt"
+import "core:os"
+import "core:strings"
 import "core:math/bits"
 import "core:thread"
+import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
@@ -22,6 +25,7 @@ import "vendor:wgpu"
 //     (presentation estimates, see wgpu_present.odin).
 
 WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12")   // "dx12" | "vulkan"
+WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/fetch_wgpu.ps1)
 
 @(private) WGPU_RECT_SOURCE :: #load("rect.wgsl", string)
 @(private) WGPU_FILTER_SOURCE :: #load("filter.wgsl", string)
@@ -89,6 +93,9 @@ Wgpu_State :: struct {
 	arena_used:    int,
 	// latency (wgpu_present.odin)
 	latency:       Wgpu_Latency,
+	// start-up costs, milliseconds (wgpu_costs)
+	t_device, t_modules, t_pipelines: f64,
+	n_pipelines: int,
 }
 
 @(private)
@@ -128,6 +135,22 @@ wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 	return req.done && req.ok
 }
 
+// The path of dxcompiler.dll when it and dxil.dll sit next to the program ("" otherwise: FXC compiles the shaders).
+@(private)
+find_dxc :: proc() -> string {
+	buf: [win.MAX_PATH_WIDE]u16
+	n := win.GetModuleFileNameW(nil, raw_data(buf[:]), len(buf))
+	if n == 0 { return "" }
+	dir, err := win.utf16_to_utf8(buf[:n], context.temp_allocator)
+	if err != nil { return "" }
+	slash := strings.last_index_byte(dir, '\\')
+	if slash < 0 { return "" }
+	dll := fmt.tprintf("%s\\dxcompiler.dll", dir[:slash])
+	il := fmt.tprintf("%s\\dxil.dll", dir[:slash])
+	if !os.exists(dll) || !os.exists(il) { return "" }
+	return dll
+}
+
 // Instance, (surface), adapter, device and queue. `hwnd` nil: no surface (offscreen). `fallback`: the software adapter.
 //
 // Run on a thread of its own: Direct3D 12 and DXGI raise and catch C++ exceptions (0xE06D7363) while they probe adapters,
@@ -136,7 +159,10 @@ wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 @(private)
 wgpu_create_device :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool {
 	Job :: struct { r: ^Renderer, hwnd: win.HWND, fallback, ok: bool }
+	if r.wg.shared == nil { r.wg.shared = new(Wgpu_Shared) }   // with the caller's allocator (a thread's default one differs under a tracking allocator)
 	job := Job{r, hwnd, fallback, false}
+	t0 := time.tick_now()
+	defer r.wg.t_device = time.duration_milliseconds(time.tick_since(t0))
 	th := thread.create_and_start_with_data(&job, proc(data: rawptr) {
 		j := (^Job)(data)
 		j.ok = wgpu_create_device_here(j.r, j.hwnd, j.fallback)
@@ -149,11 +175,13 @@ wgpu_create_device :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool
 @(private)
 wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool {
 	g := &r.wg
-	if g.shared == nil { g.shared = new(Wgpu_Shared) }
+	dxc_path := WGPU_DX12_COMPILER != "fxc" ? find_dxc() : ""
 	extras := wgpu.InstanceExtras{
 		chain = {sType = .InstanceExtras},
 		backends = WGPU_BACKEND == "vulkan" ? wgpu.InstanceBackendFlags{.Vulkan} : wgpu.InstanceBackendFlags{.DX12},
-		dx12ShaderCompiler = .Fxc,
+		dx12ShaderCompiler = dxc_path != "" ? .Dxc : .Fxc,
+		dxcPath = dxc_path,
+		dcxMaxShaderModel = .V6_0,
 	}
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
 	if g.instance == nil { fmt.eprintln("render: wgpu: no instance"); return false }
@@ -371,9 +399,11 @@ bgl_sampler :: proc(binding: u32, vis: wgpu.ShaderStageFlags) -> wgpu.BindGroupL
 @(private)
 wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
+	t0 := time.tick_now()
 	g.module_rect = wgpu_module(g, "rect.wgsl", WGPU_RECT_SOURCE)
 	g.module_fx = wgpu_module(g, "filter.wgsl", WGPU_FILTER_SOURCE)
 	g.module_mip = wgpu_module(g, "mip.wgsl", WGPU_MIP_SOURCE)
+	g.t_modules = time.duration_milliseconds(time.tick_since(t0))
 	VF :: wgpu.ShaderStageFlags{.Vertex, .Fragment}
 	V :: wgpu.ShaderStageFlags{.Vertex}
 	F :: wgpu.ShaderStageFlags{.Fragment}
@@ -448,6 +478,7 @@ wgpu_blend :: proc() -> wgpu.BlendState {
 wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -> wgpu.RenderPipeline {
 	g := &r.wg
 	for p in g.pipes { if p.format == format && p.replace == replace { return p.pipe } }
+	t0 := time.tick_now()
 	attrs := [?]wgpu.VertexAttribute{
 		{format = .Float32x4, offset = 0, shaderLocation = 0},
 		{format = .Float32x4, offset = 16, shaderLocation = 1},
@@ -470,6 +501,7 @@ wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	append(&g.pipes, Wgpu_Pipe{format, replace, pipe})
 	return pipe
 }
@@ -478,6 +510,7 @@ wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -
 wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.RenderPipeline {
 	g := &r.wg
 	for p in g.fx_pipes { if p.format == format { return p.pipe } }
+	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_fx, entryPoint = "ps_fx", targetCount = 1, targets = &target}
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
@@ -487,6 +520,7 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe})
 	return pipe
 }
@@ -495,6 +529,7 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.RenderPipeline {
 	g := &r.wg
 	for p in g.mip_pipes { if p.format == format { return p.pipe } }
+	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_mip, entryPoint = "ps_mip", targetCount = 1, targets = &target}
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
@@ -504,6 +539,7 @@ wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rend
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	append(&g.mip_pipes, Wgpu_Pipe{format, false, pipe})
 	return pipe
 }
@@ -780,4 +816,9 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	r.gpu_frame = 0
 	r.lost = !ok
 	return ok
+}
+
+// Start-up costs of the WebGPU backend, in milliseconds: device creation, shader modules, and the render pipelines made so far (count).
+wgpu_costs :: proc(r: ^Renderer) -> (device, modules, pipelines: f64, count: int) {
+	return r.wg.t_device, r.wg.t_modules, r.wg.t_pipelines, r.wg.n_pipelines
 }
