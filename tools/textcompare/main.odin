@@ -142,7 +142,7 @@ render_scene :: proc(g: ^Rig, s: Scene, dpr: f32) -> []u8 {
 main :: proc() {
 	out, space_name, only := ".", "srgb", ""
 	dpr: f32 = 1
-	warp := false
+	warp, sweep_only := false, false
 	frames := 300
 	args := os.args[1:]
 	for i := 0; i < len(args); i += 1 {
@@ -153,7 +153,12 @@ main :: proc() {
 		case "-scene": i += 1; only = args[i]
 		case "-frames": i += 1; frames, _ = strconv.parse_int(args[i])
 		case "-warp": warp = true
+		case "-sweep": sweep_only = true
 		}
+	}
+	if sweep_only {
+		sweep(out, dpr, space_name == "linear" ? render.Blend_Space.Linear : .Srgb, warp, frames)
+		return
 	}
 	space := space_name == "linear" ? render.Blend_Space.Linear : .Srgb
 	_ = os.make_directory(out)
@@ -210,6 +215,47 @@ main :: proc() {
 		fmt.printfln("mean|diff| %.2f/255  first paint ms %.2f/%.2f  CPU ms/frame %.3f/%.3f  GPU ms %.3f/%.3f  glyph GPU memory KB %d/%d  (atlas/slug) -> %s",
 			diff_sum / f64(w * h), first[0], first[1], cpu[0], cpu[1], gpu[0], gpu[1], mem[0] / 1024, mem[1] / 1024, name)
 	}
+}
+
+// A pinch or Ctrl+wheel zoom: every frame is the page text at a new scale (1x to 3x and back). The atlas rasterizes every
+// glyph again at each new size; Slug has nothing to make.
+sweep :: proc(out: string, dpr: f32, space: render.Blend_Space, warp: bool, frames: int) {
+	s := SCENES[0]
+	size := [2]int{int(f32(s.size.x) * dpr * 3), int(f32(s.size.y) * dpr * 3)}
+	res: [2][2]f64   // [mode] {mean CPU ms, worst CPU ms}
+	for mode in 0 ..< 2 {
+		g := new(Rig)
+		if !rig_open(g, size, space, warp, mode == 1) { fmt.eprintln("cannot open the renderer or the fonts"); os.exit(1) }
+		for i in 0 ..< 4 { _ = render_zoom(g, s, dpr, 1 + 0.01 * f32(i)) }   // warm up (the first glyphs, the pipelines)
+		sum, worst: f64
+		for i in 0 ..< frames {
+			t := f32(i) / f32(frames)
+			k := 1 + 2 * (t < 0.5 ? t * 2 : 2 - t * 2)
+			t0 := time.tick_now()
+			_ = render_zoom(g, s, dpr, k)
+			ms := time.duration_milliseconds(time.tick_since(t0))
+			sum += ms
+			worst = max(worst, ms)
+		}
+		res[mode] = {sum / f64(frames), worst}
+		st := font.slug_stats(&g.fonts)
+		fmt.printfln("  %s: %d atlas evictions, %d Slug glyphs built", mode == 0 ? "atlas" : "slug ", font.atlas_evictions(&g.fonts), st.built)
+		rig_close(g)
+		free(g)
+	}
+	fmt.printfln("zoom sweep 1x-3x-1x, %d frames: CPU ms/frame mean atlas %.3f slug %.3f, worst frame atlas %.2f slug %.2f", frames, res[0][0], res[1][0], res[0][1], res[1][1])
+}
+
+render_zoom :: proc(g: ^Rig, s: Scene, dpr, k: f32) -> bool {
+	size := [2]f32{f32(s.size.x) * dpr * 3, f32(s.size.y) * dpr * 3}
+	draw.begin_frame(&g.dc, size)
+	render.frame_begin(&g.r, {1, 1, 1, 1})
+	draw.push_scale(&g.dc, {0, 0}, dpr * k)
+	s.body(&g.dc, g.ui, g.mono)
+	draw.pop_xform(&g.dc)
+	draw.end_frame(&g.dc)
+	render.frame_end(&g.r)
+	return true
 }
 
 render_scene_nopixels :: proc(g: ^Rig, s: Scene, dpr: f32) -> bool {

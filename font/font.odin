@@ -90,10 +90,20 @@ Settings :: struct {
 // Color glyphs (emoji) are always atlas images.
 Text_Renderer :: enum u8 { Atlas, Slug }
 
+// -define:FONT_TEXT_RENDERER=slug makes Slug the default renderer of a build (to run the pixel tests of the other
+// packages with it: `odin test tests/retained -define:FONT_TEXT_RENDERER=slug`).
+DEFAULT_TEXT_RENDERER :: #config(FONT_TEXT_RENDERER, "atlas")
+#assert(DEFAULT_TEXT_RENDERER == "atlas" || DEFAULT_TEXT_RENDERER == "slug", "FONT_TEXT_RENDERER is atlas or slug")
+when DEFAULT_TEXT_RENDERER == "slug" {
+	@(private) BUILD_TEXT_RENDERER :: Text_Renderer.Slug
+} else {
+	@(private) BUILD_TEXT_RENDERER :: Text_Renderer.Atlas
+}
+
 DEFAULT_SETTINGS :: Settings{
 	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
-	text_renderer = .Atlas, slug_pages = 128, slug_tolerance = 1.0 / 4096,
+	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
 }
 
 @(private) CHUNK :: 256
