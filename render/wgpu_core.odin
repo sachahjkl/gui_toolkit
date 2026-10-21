@@ -93,6 +93,7 @@ Wgpu_State :: struct {
 	arena_used:    int,
 	// latency (wgpu_present.odin)
 	latency:       Wgpu_Latency,
+	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
 	// start-up costs, milliseconds (wgpu_costs)
 	t_device, t_modules, t_pipelines: f64,
 	n_pipelines: int,

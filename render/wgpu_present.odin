@@ -160,9 +160,6 @@ wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
 }
 
 @(private)
-wgpu_profile_release :: proc(r: ^Renderer) {}
-
-@(private)
 wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
 	g := &r.wg
 	if g.shared != nil && g.shared.lost { r.lost = true }
