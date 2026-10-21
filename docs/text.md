@@ -127,6 +127,10 @@ The path, from the font to the screen:
    the reference's, then the same text correction as the atlas path (`render.Text_Rendering`), the clip shapes and the
    color. `slug.hlsl` is compiled after `rect.hlsl` (one source for the shared helpers); porting it to WGSL is a translation.
 
+`-define:FONT_TEXT_RENDERER=slug` makes Slug the default of a build (the pixel tests of the other packages run with
+it: all pass except the ones that count atlas pages or compare 8-bit atlas coverage). `odin run tools/textcompare --
+-sweep` measures a page zoom animation (every frame at a new scale: the atlas rasterizes again, Slug does not).
+
 Positions: the pen is not rounded across; the baseline is put on a whole pixel (of the screen when the transform is a
 scale and a translation, as the bitmaps do). There is no hinting: horizontal stems are as the outline says (the Slug
 README suggests sizes whose cap height is a whole number of pixels).

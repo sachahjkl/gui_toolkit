@@ -168,6 +168,40 @@ slug_in_pictures :: proc(t: ^testing.T) {
 	testing.expect_value(t, result, draw.Replay_Result.Stale)
 }
 
+// Switching the renderer while the app runs: what was recorded with the other one is recorded again, and both draw.
+@(test)
+slug_switch_at_run_time :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f, .Atlas) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
+	defer close(f)
+	@(static) pic: draw.Picture
+	defer draw.picture_destroy(&f.dc, &pic)
+	@(static) result: draw.Replay_Result
+	frame(f, proc(f: ^Fx) {
+		draw.picture_begin(&f.dc, &pic)
+		draw.text(&f.dc, f.ui, 16, {4, 20}, BLACK, "Picture text 123")
+		draw.picture_end(&f.dc)
+	})
+	frame(f, proc(f: ^Fx) { result = draw.replay(&f.dc, &pic, draw.AFFINE_IDENTITY) })
+	testing.expect_value(t, result, draw.Replay_Result.Drawn)
+	atlas_img := frame(f, proc(f: ^Fx) { result = draw.replay(&f.dc, &pic, draw.AFFINE_IDENTITY) })
+	st := f.fonts.settings
+	st.text_renderer = .Slug
+	font.set_settings(&f.fonts, st)
+	frame(f, proc(f: ^Fx) { result = draw.replay(&f.dc, &pic, draw.AFFINE_IDENTITY) })
+	testing.expect_value(t, result, draw.Replay_Result.Stale)
+	frame(f, proc(f: ^Fx) {
+		draw.picture_begin(&f.dc, &pic)
+		draw.text(&f.dc, f.ui, 16, {4, 20}, BLACK, "Picture text 123")
+		draw.picture_end(&f.dc)
+	})
+	slug_img := frame(f, proc(f: ^Fx) { result = draw.replay(&f.dc, &pic, draw.AFFINE_IDENTITY) })
+	testing.expect_value(t, result, draw.Replay_Result.Drawn)
+	diff, ink_a, ink_s := compare(atlas_img, slug_img, 0, 0, SIZE.x, SIZE.y)
+	testing.expect(t, ink_a > 1 && ink_s > 1 && diff < 5)
+}
+
 // A lost device: the next frame recreates the textures and uploads the glyph pages again.
 @(test)
 slug_survives_device_loss :: proc(t: ^testing.T) {
