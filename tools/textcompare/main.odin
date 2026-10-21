@@ -66,6 +66,19 @@ scene_transforms :: proc(c: ^draw.Context, ui, mono: font.Font_Id) {
 	draw.pop_transform(c)
 }
 
+DENSE := "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us"
+
+// a full window of body text: the cost of many glyphs
+scene_dense :: proc(c: ^draw.Context, ui, mono: font.Font_Id) {
+	line := 0
+	for y: f32 = 16; y < 790; y += 19 {
+		off := (line * 37) % 120
+		draw.text(c, ui, 14, {10, y}, INK, DENSE[off:min(off + 150, len(DENSE))])
+		draw.text(c, ui, 14, {510, y}, INK, DENSE[(off + 40) % 120:][:min(150, len(DENSE) - (off + 40) % 120)])
+		line += 1
+	}
+}
+
 scene_tree :: proc(c: ^draw.Context, ui, mono: font.Font_Id) {
 	// a history tree: small labels on nodes joined by lines
 	for row in 0 ..< 6 {
@@ -84,6 +97,7 @@ SCENES := [?]Scene{
 	{"zoom300", {420, 110}, 3, scene_page_zoom},
 	{"tree", {420, 170}, 1, scene_tree},
 	{"tree_zoom", {420, 170}, 2.2, scene_tree},
+	{"dense", {1000, 800}, 1, scene_dense},
 }
 
 scene_page_zoom :: proc(c: ^draw.Context, ui, mono: font.Font_Id) {
@@ -148,13 +162,16 @@ main :: proc() {
 		if only != "" && s.name != only { continue }
 		size := [2]int{int(f32(s.size.x) * dpr + 0.5), int(f32(s.size.y) * dpr + 0.5)}
 		imgs: [2][]u8
-		cpu, gpu: [2]f64
+		cpu, gpu, first: [2]f64
 		mem: [2]int
 		for mode in 0 ..< 2 {
 			g := new(Rig)
 			if !rig_open(g, size, space, warp, mode == 1) { fmt.eprintln("cannot open the renderer or the fonts"); os.exit(1) }
 			render.set_gpu_timing(&g.r, true)
-			imgs[mode] = render_scene(g, s, dpr)   // also builds the glyphs
+			// first paint: shaping, glyph bitmaps or curves, upload, the first draw (the fonts are loaded already)
+			tf := time.tick_now()
+			imgs[mode] = render_scene(g, s, dpr)
+			first[mode] = time.duration_milliseconds(time.tick_since(tf))
 			for _ in 0 ..< 8 { _ = render_scene(g, s, dpr) }
 			// CPU time of building + submitting one frame (the offscreen target has no vsync), GPU time from the queries
 			t0 := time.tick_now()
@@ -174,12 +191,12 @@ main :: proc() {
 		}
 		w, h := size.x, size.y
 		sheet := make([]u8, w * 3 * h * 4)
-		diff_sum: f64
+		diff_sum, ink_a, ink_s: f64
 		for y in 0 ..< h {
 			for x in 0 ..< w {
 				a, b := imgs[0][(y * w + x) * 4:][:3], imgs[1][(y * w + x) * 4:][:3]
 				d := 0
-				for k in 0 ..< 3 { d += abs(int(a[k]) - int(b[k])) }
+				for k in 0 ..< 3 { d += abs(int(a[k]) - int(b[k])); ink_a += f64(255 - int(a[k])) / 3; ink_s += f64(255 - int(b[k])) / 3 }
 				diff_sum += f64(d) / 3
 				copy(sheet[(y * w * 3 + x) * 4:][:4], imgs[0][(y * w + x) * 4:][:4])
 				copy(sheet[(y * w * 3 + w + x) * 4:][:4], imgs[1][(y * w + x) * 4:][:4])
@@ -189,8 +206,9 @@ main :: proc() {
 		}
 		name := fmt.tprintf("%s/%s_%s_%.0f.png", out, s.name, space_name, dpr * 100)
 		stbi.write_png(strings.clone_to_cstring(name, context.temp_allocator), i32(w * 3), i32(h), 4, raw_data(sheet), i32(w * 3 * 4))
-		fmt.printfln("%-11s mean|diff| %.2f/255   CPU ms/frame atlas %.3f slug %.3f   GPU ms atlas %.3f slug %.3f   glyph memory atlas %d KB slug %d KB   -> %s",
-			s.name, diff_sum / f64(w * h), cpu[0], cpu[1], gpu[0], gpu[1], mem[0] / 1024, mem[1] / 1024, name)
+		fmt.printf("%-11s ink slug/atlas %.3f  ", s.name, ink_s / max(ink_a, 1))
+		fmt.printfln("mean|diff| %.2f/255  first paint ms %.2f/%.2f  CPU ms/frame %.3f/%.3f  GPU ms %.3f/%.3f  glyph GPU memory KB %d/%d  (atlas/slug) -> %s",
+			diff_sum / f64(w * h), first[0], first[1], cpu[0], cpu[1], gpu[0], gpu[1], mem[0] / 1024, mem[1] / 1024, name)
 	}
 }
 
