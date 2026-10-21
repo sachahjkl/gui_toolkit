@@ -145,12 +145,19 @@ detect_scheme :: proc() -> Cursor_Scheme {
 		shots[i] = make([]u32, N * N, context.temp_allocator)
 		copy(shots[i], px)
 	}
+	// the fill: opaque pixels whose four neighbours are opaque too (the outline is the edge)
+	opaque :: proc(shots: [2][]u32, x, y: int) -> bool {
+		if x < 0 || y < 0 || x >= N || y >= N { return false }
+		return shots[0][y * N + x] & 0xFFFFFF == shots[1][y * N + x] & 0xFFFFFF
+	}
 	sum, count := 0, 0
-	for i in 0 ..< N * N {
-		a, b := shots[0][i] & 0xFFFFFF, shots[1][i] & 0xFFFFFF
-		if a != b { continue }
-		sum += int((a & 0xFF) + ((a >> 8) & 0xFF) + ((a >> 16) & 0xFF)) / 3
-		count += 1
+	for y in 0 ..< N {
+		for x in 0 ..< N {
+			if !opaque(shots, x, y) || !opaque(shots, x - 1, y) || !opaque(shots, x + 1, y) || !opaque(shots, x, y - 1) || !opaque(shots, x, y + 1) { continue }
+			a := shots[0][y * N + x]
+			sum += int((a & 0xFF) + ((a >> 8) & 0xFF) + ((a >> 16) & 0xFF)) / 3
+			count += 1
+		}
 	}
 	if count == 0 { return .Light }
 	return sum / count < 128 ? .Dark : .Light
