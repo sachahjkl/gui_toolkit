@@ -17,6 +17,10 @@ Gpu_Step :: enum u8 {
 	Downsample,   // filter pass: reduction by 2, 4 or 8 before a large blur
 	Shadow,       // filter pass: drop shadow composited under its input
 	Mask,         // filter pass: a mask layer folded into the coverage, or the coverage applied to the content
+	Upload,       // from the submit's start to its first draw: mip chains, structured buffers, instance upload
+	Acquire,      // the back buffer cleared once before anything is drawn: the wait for the compositor to release it shows here
+	Present,      // not part of the submit: the GPU time of the Present call itself (timestamps around it)
+	Idle,         // not part of the submit: the GPU waiting for work between the previous frame's Present and this submit
 }
 
 Gpu_Step_Stat :: struct {
@@ -68,6 +72,8 @@ Prof_Slot :: struct {
 	target_changes: int,
 	truncated: bool,
 	valid:   bool,      // recorded by a timed submit, not read back yet
+	pq:      [3]^d3d11.IQuery,   // disjoint, before, after: around the Present that followed the submit
+	present_rec: bool,
 }
 
 Gpu_Profiler :: struct {
@@ -75,6 +81,12 @@ Gpu_Profiler :: struct {
 	detail: bool,
 	slots: [GPU_QUERY_FRAMES]Prof_Slot,
 	cur:   ^Prof_Slot,  // the submit being recorded (nil: none)
+	cur_slot: int,
+	pend_slot: int,     // the slot of the last timed submit, while its Present has not been recorded
+	pend_ok: bool,
+	prev_tb: u64,       // the previous frame's last timestamp (after its Present), to measure the idle time before the next
+	prev_frame: int,
+	prev_ok: bool,
 	last:  Gpu_Profile,
 	have:  bool,
 }
@@ -92,6 +104,7 @@ gpu_profile :: proc(r: ^Renderer) -> (p: Gpu_Profile, ok: bool) { return r.prof.
 profile_destroy :: proc(r: ^Renderer) {
 	for &s in r.prof.slots {
 		for q in s.queries { if q != nil { q->Release() } }
+		for q in s.pq { if q != nil { q->Release() } }
 		delete(s.queries)
 		delete(s.recs)
 		s = {}
@@ -109,11 +122,41 @@ profile_begin :: proc(r: ^Renderer, slot: int) {
 	s.target_changes = 0
 	s.truncated = false
 	s.valid = true
+	s.present_rec = false
 	r.prof.cur = s
+	r.prof.cur_slot = slot
 }
 
 @(private)
-profile_end :: proc(r: ^Renderer) { r.prof.cur = nil }
+profile_end :: proc(r: ^Renderer) {
+	if r.prof.cur != nil { r.prof.pend_slot, r.prof.pend_ok = r.prof.cur_slot, true }
+	r.prof.cur = nil
+}
+
+// Timestamps around the Present that follows a timed submit (present_frame): its own GPU time, and the reference for the
+// idle time before the next submit. Returns the slot to hand to profile_present_end (nil: not measured).
+@(private)
+profile_present_begin :: proc(r: ^Renderer) -> ^Prof_Slot {
+	if !r.prof.pend_ok { return nil }
+	r.prof.pend_ok = false
+	s := &r.prof.slots[r.prof.pend_slot]
+	if !s.valid { return nil }
+	for i in 0 ..< 3 {
+		if s.pq[i] != nil { continue }
+		if r.device->CreateQuery(&{Query = i == 0 ? .TIMESTAMP_DISJOINT : .TIMESTAMP}, &s.pq[i]) < 0 || s.pq[i] == nil { return nil }
+	}
+	r.ctx->Begin((^d3d11.IAsynchronous)(s.pq[0]))
+	r.ctx->End((^d3d11.IAsynchronous)(s.pq[1]))
+	return s
+}
+
+@(private)
+profile_present_end :: proc(r: ^Renderer, s: ^Prof_Slot) {
+	if s == nil { return }
+	r.ctx->End((^d3d11.IAsynchronous)(s.pq[2]))
+	r.ctx->End((^d3d11.IAsynchronous)(s.pq[0]))
+	s.present_rec = true
+}
 
 // A step just recorded: a timestamp after it.
 @(private)
@@ -167,6 +210,21 @@ profile_collect :: proc(r: ^Renderer, slot: int, frame: int, t0: u64, freq: u64,
 		d := rec.detail
 		d.kind, d.ms, d.w, d.h = rec.kind, ms, rec.w, rec.h
 		p.slowest[k] = d
+	}
+	had_prev := r.prof.prev_ok && r.prof.prev_frame == frame - 1
+	r.prof.prev_ok = false
+	if s.present_rec {
+		dj: d3d11.QUERY_DATA_TIMESTAMP_DISJOINT
+		ta, tb: u64
+		if r.ctx->GetData((^d3d11.IAsynchronous)(s.pq[0]), &dj, size_of(dj), 0) == 0 &&
+		   r.ctx->GetData((^d3d11.IAsynchronous)(s.pq[1]), &ta, size_of(ta), 0) == 0 &&
+		   r.ctx->GetData((^d3d11.IAsynchronous)(s.pq[2]), &tb, size_of(tb), 0) == 0 && !bool(dj.Disjoint) && dj.Frequency > 0 {
+			if tb >= ta { p.steps[.Present] = Gpu_Step_Stat{count = 1, ms = f32(f64(tb - ta) * 1000 / f64(dj.Frequency))} }
+			if had_prev && t0 >= r.prof.prev_tb {
+				p.steps[.Idle] = Gpu_Step_Stat{count = 1, ms = f32(f64(t0 - r.prof.prev_tb) * 1000 / f64(freq))}
+			}
+			r.prof.prev_tb, r.prof.prev_frame, r.prof.prev_ok = tb, frame, true
+		}
 	}
 	r.prof.last = p
 	r.prof.have = true
