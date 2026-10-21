@@ -26,6 +26,8 @@ Native_Window :: struct {
 	nc_tracking:    bool,           // TrackMouseEvent asked for WM_NCMOUSELEAVE
 	saved_style:    i32,            // before full screen
 	saved_place:    win.WINDOWPLACEMENT,
+	border_color:   u32,            // set_border_color: the COLORREF given to the compositor
+	border_color_set: bool,
 }
 
 @(private) os_build: u32   // Windows build number (RtlGetVersion), 0 until asked
@@ -283,6 +285,21 @@ set_backdrop :: proc(w: ^Window, on: bool) -> bool {
 set_square_corners :: proc(w: ^Window, square: bool) {
 	pref: i32 = square ? 1 : 0   // DWMWCP_DONOTROUND : DWMWCP_DEFAULT
 	win.DwmSetWindowAttribute(w.hwnd, 33, &pref, size_of(pref))   // DWMWA_WINDOW_CORNER_PREFERENCE
+}
+
+// The 1-pixel border Windows 11 draws around the window (DWMWA_BORDER_COLOR): an opaque color (0xRRGGBB), or nil for
+// the system's. With an integrated title bar, the system's border is drawn half transparent along the top edge, over
+// the app's tab strip: a line of whatever lies behind the window shows there (a console's text). An app that draws its
+// title bar gives the color of its edge. No effect on Windows 10 (no such border). Cheap to call every frame.
+set_border_color :: proc(w: ^Window, rgb: Maybe(u32)) {
+	if !is_windows_11() { return }
+	DWMWA_BORDER_COLOR :: 34
+	DWMWA_COLOR_DEFAULT :: 0xFFFFFFFF
+	v: u32 = DWMWA_COLOR_DEFAULT
+	if c, ok := rgb.?; ok { v = (c >> 16 & 0xFF) | (c & 0xFF00) | (c & 0xFF) << 16 }   // COLORREF is 0x00BBGGRR
+	if w.border_color_set && w.border_color == v { return }
+	w.border_color, w.border_color_set = v, true
+	win.DwmSetWindowAttribute(w.hwnd, DWMWA_BORDER_COLOR, &v, size_of(v))
 }
 
 set_dark_title :: proc(w: ^Window, dark: bool) {

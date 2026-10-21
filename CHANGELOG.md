@@ -3,6 +3,13 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased]
+
+### Added
+- `platform.set_border_color(w, rgb)`: the color of the 1-pixel border Windows 11 draws around the window
+  (`DWMWA_BORDER_COLOR`), or `nil` for the system's. With an integrated title bar the system's border is half
+  transparent along the top edge: a line of whatever lies behind the window showed above the app's tab strip.
+
 ## [0.11.1] - 2026-10-20
 
 ### Fixed
