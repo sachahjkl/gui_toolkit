@@ -112,6 +112,7 @@ entries := [?]Entry{
 	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
 	{"weak_selected background", .Accent, 0.09}, {"weak_selected border", .Accent, 0.35},
 	{"kbd sheen", .White, 0.7},
+	{"remove_button hot text", .Bad, 1},   // "hot": the box is under the pointer (build_box)
 	{"zebra background", .Bg_Solid, 0.45},
 	{"input background", .Bg_Solid, 1}, {"input border", .Border, 1},
 	{"kbd background", .Panel2, 1}, {"kbd text", .Weak, 1}, {"kbd border", .Border, 1},
@@ -120,6 +121,27 @@ entries := [?]Entry{
 	{"card background", .Panel, 1}, {"card border", .Border, 1},
 	{"bar background", .Bar, 1}, {"bar border", .Border, 1}, {"bar sheen", .White, 0.6},
 	{"floating background", .Panel2, 1}, {"floating text", .Text, 1}, {"floating border", .Border, 1},
+}
+
+// Interaction state fills. `alpha` is a fraction of the way from the surface under the box to the slot's colour in sRGB
+// values (draw.alpha_like_srgb when drawn into linear light), so a step reads alike on dark and light palettes and in
+// both blend spaces: about +7 % toward white (dark palettes) or black (light ones) under the pointer, +12 % while
+// pressed. "hover_fill" over a clickable box under the pointer, "press_fill" while the left button is held on it,
+// "hover_border": the border that much toward the tint (fields). Same ORDER rule as `entries` (roles first).
+@(private)
+state_entries := [?]Entry{
+	{"menu_item hover_fill", .Hover, 0}, {"menu_item press_fill", .Hover, 0.08},   // a hovered item is the selected one
+	{"remove_button hover_fill", .Bad, 0.14}, {"remove_button press_fill", .Bad, 0.24},
+	{"accent_button hover_fill", .Hover, 0.10}, {"accent_button press_fill", .Hover, 0.18},
+	{"danger_button hover_fill", .Hover, 0.10}, {"danger_button press_fill", .Hover, 0.18},
+	{"ghost_button hover_fill", .Hover, 0.08}, {"ghost_button press_fill", .Hover, 0.14},
+	{"icon_button hover_fill", .Hover, 0.08}, {"icon_button press_fill", .Hover, 0.14},
+	{"segment hover_fill", .Hover, 0.07}, {"segment press_fill", .Hover, 0.12},
+	{"list_row hover_fill", .Hover, 0.05}, {"list_row press_fill", .Hover, 0.09},
+	{"tab hover_fill", .Hover, 0.06}, {"tab press_fill", .Hover, 0.10},
+	{"button hover_fill", .Hover, 0.07}, {"button press_fill", .Hover, 0.13},
+	{"input hover_border", .Hover, 0.22},
+	{"hover_fill", .Hover, 0.07}, {"press_fill", .Hover, 0.12}, {"hover_border", .Hover, 0},
 }
 
 @(private)
@@ -151,13 +173,48 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	if len(t.patterns) == 0 {
 		for e in entries { theme_add(t, e.tags, {}) }
+		for e in state_entries { theme_add(t, e.tags, {}) }
 	}
 	bg := draw.hex(slot_color(p, .Bg_Solid))
+	changed := false
 	for e, i in entries {
 		c := draw.hex(slot_color(p, e.slot))
 		c.a *= e.alpha
 		c.a = draw.alpha_like_linear(space, c, c.a, bg)
-		t.patterns[i].color = c
+		if t.patterns[i].color != c { t.patterns[i].color = c; changed = true }
 	}
-	t.finish = p.finish
+	// state fills keep their fraction: it is converted where it is drawn, over the surface actually under it
+	for e, i in state_entries {
+		c := draw.hex(slot_color(p, e.slot))
+		c.a = e.alpha
+		k := len(entries) + i
+		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
+	}
+	if t.finish != p.finish { t.finish = p.finish; changed = true }
+	if changed { t.serial += 1 }
+}
+
+// The fill of an interaction state ("hover_fill", "press_fill") under the tags of `b`, to draw over `under` (the
+// opaque surface below it): its alpha is the one that gives the theme's sRGB step in the blend space of the frame.
+// For custom draw procs that paint their own hover (rows, nodes of a graph).
+state_fill :: proc(b: ^Box, name: string, under: Maybe(Color) = nil) -> Color {
+	c := color_from_tags(g, b.tags_key, name)
+	o := under.? or_else box_under(b)
+	c.a = draw.alpha_like_srgb(g.space, c, c.a, o)
+	return c
+}
+
+// The opaque colour under `b`: its own background when opaque, else the nearest ancestor's, else the theme's.
+box_under :: proc(b: ^Box) -> Color {
+	for p := b; p != nil; p = p.parent {
+		if .Draw_Background in p.flags && p.bg.a > 0.5 { return {p.bg.r, p.bg.g, p.bg.b, 1} }
+	}
+	return g.backdrop
+}
+
+// Mixes `a` toward `b` by `t` in sRGB values (linear colours in and out): one step of the theme's state scale.
+srgb_step :: proc(a, b: Color, t: f32) -> Color {
+	m := srgb_mix(a, b, t)
+	m.a = a.a
+	return m
 }

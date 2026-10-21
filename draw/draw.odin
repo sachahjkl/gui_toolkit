@@ -99,6 +99,19 @@ alpha_like_linear :: proc(space: Blend_Space, color: Color, alpha: f32, over: Co
 	return clamp((want - sb) / (sc - sb), 0, 1)
 }
 
+// The alpha that makes `color` over `over` look, blended in `space`, as it does at `alpha` blended in sRGB values (a
+// perceptual step: the theme's hover and press fills are fractions of the way to a tint in sRGB values, so they read
+// as the same step over dark and light surfaces). Identity in Srgb, or when color and backdrop have the same luminance.
+alpha_like_srgb :: proc(space: Blend_Space, color: Color, alpha: f32, over: Color) -> f32 {
+	if space == .Srgb || alpha <= 0 || alpha >= 1 { return alpha }
+	y :: proc(c: Color) -> f32 { return clamp(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, 0, 1) }
+	yc, yb := y(color), y(over)
+	if abs(yc - yb) < 1e-6 { return alpha }
+	sc, sb := render.linear_to_srgb(yc), render.linear_to_srgb(yb)
+	want := render.srgb_to_linear(sb + alpha * (sc - sb))
+	return clamp((want - yb) / (yc - yb), 0, 1)
+}
+
 // Legacy scale + offset transform (p' = p * scale + offset); the stack now holds `Affine`s (see affine_from_xform).
 Xform :: struct { scale: f32, offset: Vec2 }
 

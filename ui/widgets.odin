@@ -87,10 +87,16 @@ button :: proc(id: string) -> Signal {
 	if tags("button") {
 		b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Text, .Draw_Hot_Effects}, id)
 		b.text_align = .Center
-		b.squish = anim(key_from_string(b.key, "squish"), g.active_key[.Left] == b.key && g.hot_key == b.key ? 0.04 : 0, 60)
+		b.squish = press_squish(b)
 		return signal(b)
 	}
 	return {}
+}
+
+// How much a pressed button shrinks: the theme's press_squish while the left button is held on it (at once), else 0.
+press_squish :: proc(b: ^Box) -> f32 {
+	if g.theme == nil || g.theme.press_squish <= 0 { return 0 }
+	return g.active_key[.Left] == b.key && g.hot_key == b.key ? g.theme.press_squish : 0
 }
 
 // Icon-font glyph as a clickable button without frame.

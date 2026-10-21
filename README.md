@@ -88,7 +88,9 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
 - **Theme**: `(tags -> color)` patterns, `apply_palette` expands an 11-color palette (dark and light included);
-  colors cross-fade when the palette changes. Finishes: flat, gradient (Bootstrap 2) or glass (Aero), optionally over
+  colors cross-fade when the palette changes. Interaction states (hover, press, focus, selection) show at once, as
+  visible steps per role (`hover_fill`, `press_fill`: a fraction of the way to the tint in sRGB values, right in both
+  blend spaces); `Theme.transition_ms` brings back short fades. Finishes: flat, gradient (Bootstrap 2) or glass (Aero), optionally over
   a translucent window with the Windows 11 acrylic backdrop.
 - **Look controls**: corner rounding (square to very round, squircle or circular corners) and density
   (comfortable / compact), both live.
