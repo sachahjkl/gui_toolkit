@@ -78,7 +78,9 @@ set_sync_interval :: proc(r: ^Renderer, n: int) { r.present.interval = u32(clamp
 set_expected_refreshes :: proc(r: ^Renderer, refreshes: f64) { r.present.expected = max(refreshes, 0) }
 
 // The swap chain's frame latency object (nil without LOW_LATENCY or offscreen). Signaled when a frame can be queued.
-frame_waitable :: proc(r: ^Renderer) -> rawptr { return rawptr(r.latency_handle) }
+frame_waitable :: proc(r: ^Renderer) -> rawptr {
+	when USE_WGPU { return wgpu_waitable(r) } else { return rawptr(r.latency_handle) }
+}
 
 // The earliest input the next frame is built from (its event time): Displayed_Frame.input, for input latency.
 set_frame_input :: proc(r: ^Renderer, t: time.Tick) { r.present.input = t }
