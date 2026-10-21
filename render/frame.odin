@@ -87,9 +87,17 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		mem.copy(mapped.pData, raw_data(f.insts), len(f.insts) * size_of(Rect_Inst))
 		r.ctx->Unmap(r.inst_buf, 0)
 	}
+	profile_step(r, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst))
 
 	bind_main(r)
 	write_replay(r, nil, false)
+	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil {
+		// first use of the back buffer, alone: the compositor may still hold it, and the draw that touches it first
+		// would otherwise carry that wait. Every frame draws all of its pixels, so the clear changes nothing.
+		zero := [4]f32{}
+		r.ctx->ClearRenderTargetView(r.rtv, &zero)
+		profile_step(r, .Acquire, r.size.x, r.size.y, r.size.x * r.size.y, r.size.x * r.size.y * 4)
+	}
 	cur, cur_ok := -1, false
 	cur_size: [2]int
 	cur_origin: [2]f32

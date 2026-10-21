@@ -149,7 +149,9 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	sync: u32 = vsync && !tearing ? p.interval : 0
 	flags: dxgi.PRESENT
 	if sync == 0 && .ALLOW_TEARING in r.swap_flags && p.tearing_ok { flags += {.ALLOW_TEARING} }
+	ps := profile_present_begin(r)
 	hr := r.swapchain->Present(sync, flags)
+	profile_present_end(r, ps)
 	now := time.tick_now()
 	if win.FAILED(hr) { return hr }
 	p.presents += 1
