@@ -15,6 +15,8 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - `Theme.transition_ms`: > 0 brings back short cross-fades of the interaction states (default 0); `Theme.serial`, bumped by `theme_add`, `theme_set` and `apply_palette` when a colour changes.
 - Selectable `list_row`s have `.Draw_Hot_Effects` (tag `list_row`, built under it only); `segmented` items light up under the pointer (tag `segment`); `tabs` items have the tag `tab`.
 - `"<tags> hot text"`: the text colour of a clickable box under the pointer (falls back to the normal one). `remove_button hot text` is the palette's red, `remove_button hover_fill` / `press_fill` a light red step: push the tag `remove_button` around an `icon_button` for a delete cross.
+- `Box_Flag.Hot_Within`: a box stays hot (and lit) while the pointer is on a clickable box inside it; selectable `list_row`s have it (a row and its delete button). `ui.hot_within(key)`: the same question while building (last frame's tree), e.g. to show a row's buttons only while the pointer is on it.
+- `list_row` keeps a cursor given with `next({cursor = .Hand})` (rows that open something).
 - `ui.state_fill(box, name, under)`, `ui.box_under(box)`, `ui.srgb_step(a, b, t)`: the theme's state steps for custom draw procs.
 - `draw.alpha_like_srgb`: the inverse of `alpha_like_linear` (the alpha that looks in a blend space as a given alpha blended in sRGB values).
 - `tests/states`: instant states, transitions on demand, palette cross-fade, the size of the steps in both blend spaces.

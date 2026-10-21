@@ -80,6 +80,7 @@ Box_Flag :: enum u8 {
 	Wrap,                // children flow left to right and wrap onto new lines when the box is too narrow (see `flow`)
 	Text_Wrap,           // the text wraps onto lines at the box's width; a .Text height is that of all its lines (`paragraph`)
 	Window_Caption,      // part of an integrated title bar: where nothing clickable is over it, it drags the window (`title_bar`)
+	Hot_Within,          // hot (hot_t, its hover fill) also while the pointer is on a clickable box inside it (a row and its buttons)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
