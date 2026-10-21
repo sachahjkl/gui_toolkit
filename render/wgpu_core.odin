@@ -319,6 +319,8 @@ wgpu_surface_alpha :: proc(r: ^Renderer) -> wgpu.CompositeAlphaMode {
 wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
 	if g.surface == nil { return true }
+	t_start := time.tick_now()
+	t_drain := time.tick_now()
 	wgpu_drop_frame(r)
 	wgpu_query_tearing(r)
 	vf := [1]wgpu.TextureFormat{g.view_format}
@@ -331,9 +333,12 @@ wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 		alphaMode = wgpu_surface_alpha(r), presentMode = wgpu_pick_present_mode(r),
 	}
 	g.present_mode = cfg.presentMode
+	t_conf := time.tick_now()
 	wgpu.SurfaceConfigure(g.surface, &cfg)
+	if wgpu_trace() { fmt.eprintfln("wgpu: configure %dx%d: drain %.2f ms, SurfaceConfigure %.2f ms", r.size.x, r.size.y, time.duration_milliseconds(time.tick_diff(t_start, t_drain)), time.duration_milliseconds(time.tick_since(t_conf))) }
 	g.configured = true
 	r.buffer_size, r.source_size = r.size, r.size
+	wgpu_latency_start(r)
 	return true
 }
 
@@ -778,9 +783,9 @@ wgpu_release_device :: proc(r: ^Renderer) {
 wgpu_destroy :: proc(r: ^Renderer) {
 	for i in 1 ..< len(r.textures) { wgpu_destroy_texture(r, Texture(i)) }
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
+	wgpu_latency_stop(r)
 	wgpu_release_objects(r)
 	wgpu_heaps_destroy(r)
-	wgpu_latency_stop(r)
 	wgpu_release_device(r)
 	present_destroy(r)
 	delete(r.wg.pipes); delete(r.wg.fx_pipes); delete(r.wg.mip_pipes)
@@ -821,4 +826,12 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 // Start-up costs of the WebGPU backend, in milliseconds: device creation, shader modules, and the render pipelines made so far (count).
 wgpu_costs :: proc(r: ^Renderer) -> (device, modules, pipelines: f64, count: int) {
 	return r.wg.t_device, r.wg.t_modules, r.wg.t_pipelines, r.wg.n_pipelines
+}
+
+// TOOLKIT_WGPU_TRACE=1 in the environment: timings of the surface calls on stderr.
+@(private)
+wgpu_trace :: proc() -> bool {
+	@(static) state: int   // 0: unknown, 1: off, 2: on
+	if state == 0 { state = os.get_env("TOOLKIT_WGPU_TRACE", context.temp_allocator) != "" ? 2 : 1 }
+	return state == 2
 }

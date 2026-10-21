@@ -1,6 +1,8 @@
 package render
 
 import "base:runtime"
+import "core:fmt"
+import "core:time"
 import "vendor:wgpu"
 
 // WebGPU backend: frames. See wgpu_core.odin for the overview.
@@ -17,7 +19,9 @@ wgpu_ensure_frame :: proc(r: ^Renderer) -> bool {
 	if g.surface == nil { return false }
 	if !g.configured { wgpu_configure_surface(r) }
 	for _ in 0 ..< 2 {
+		t_acq := time.tick_now()
 		st := wgpu_acquire(r)
+		if wgpu_trace() { fmt.eprintfln("wgpu: acquire %v after %.2f ms", st.status, time.duration_milliseconds(time.tick_since(t_acq))) }
 		#partial switch st.status {
 		case .SuccessOptimal, .SuccessSuboptimal:
 			g.frame_tex = st.texture
