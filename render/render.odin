@@ -57,6 +57,11 @@ KIND_GRADIENT :: 3
 // its corners, colors[0] the color; colors[1] the second rect (x0 y0 x1 y1), colors[2] its corners, colors[3].x the
 // standard deviation, colors[3].y SHADOW_* flags. All in the instance's units (local units under a transform).
 KIND_SHADOW :: 4
+// A glyph drawn from its outline by the Slug shaders (slug.hlsl, their own pipeline: the instance is drawn between
+// the others in order, see Frame_Data.slug_runs). dst: the glyph's box (instance units, y down); src: the same box in
+// em units (y up); colors[0]: the color; radii: band scale x y, offset x y; xform and clip as any instance;
+// flags: band max x | band max y << 8; aux: glyph location in the band texture, x | y << 16.
+KIND_SLUG :: 5
 SHADOW_INSET :: 1   // inside the second rect, outside the blurred shape (CSS inset box-shadow)
 SHADOW_HOLE :: 2    // outer shadow: not drawn inside the second rect (CSS: the shadow is clipped out of the border box)
 
@@ -187,6 +192,8 @@ Replay :: struct {
 	alpha:   f32,
 	outer:   u32,
 	slots, clips, points, grads: u32,
+	slug_runs: [][2]int,   // the picture's Slug instances: [first, count) in its own numbering (from `insts`)
+	insts:   u32,          // where the picture's instances start in the retained instance heap
 }
 
 // Gradient table entries (KIND_GRADIENT), [4]f32 each, from the instance's `aux`:
@@ -294,9 +301,15 @@ Frame_Data :: struct {
 	ops:     []Op,
 	grads:   [][4]f32,    // gradient table (KIND_GRADIENT of immediate instances)
 	replays: []Replay,    // pictures drawn this frame (Batch.replay)
+	// Slug text (slug.hlsl): the instances of KIND_SLUG are drawn by their own pipeline. `slug_runs` lists them as
+	// [first, count) of `insts`, ascending and not adjacent; a batch is drawn in pieces alternating between the two
+	// pipelines, in order. `slug_curves` / `slug_bands` are the glyph data textures (create_slug_textures).
+	slug_runs:   [][2]int,
+	slug_curves: Texture,
+	slug_bands:  Texture,
 }
 
-Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot }
+Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot, Slug_Curves, Slug_Bands }
 
 Texture_Data :: struct {
 	tex:  ^d3d11.ITexture2D,
@@ -319,6 +332,7 @@ Renderer :: struct {
 	vs:          ^d3d11.IVertexShader,
 	ps:          ^d3d11.IPixelShader,
 	layout:      ^d3d11.IInputLayout,
+	slug:        Slug_Pipeline,           // slug.odin
 	inst_buf:    ^d3d11.IBuffer,
 	inst_cap:    int,
 	globals:     ^d3d11.IBuffer,
@@ -470,6 +484,7 @@ destroy :: proc(r: ^Renderer) {
 	heaps_destroy(r)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
+	slug_destroy(r)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle) }
 	present_destroy(r)
@@ -664,6 +679,7 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	r.device->CreatePixelShader(raw_data(fx_ps_code), uint(len(fx_ps_code)), nil, &r.fx_ps)
 	r.device->CreateBuffer(&{ByteWidth = size_of(Pass_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.fx_constants)
 	if r.fx_vs == nil || r.fx_ps == nil || r.fx_constants == nil || r.blend_replace == nil || r.sampler_border == nil { return false }
+	slug_pipeline_init(r) or_return
 
 	if len(r.textures) > 0 { return true }   // recover: the settings stay
 	append(&r.textures, Texture_Data{})   // dummy slot 0
@@ -844,6 +860,10 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 		desc.Format = td.space == .Srgb ? .R8G8B8A8_UNORM : .R8G8B8A8_UNORM_SRGB
 		texel = 4
 		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
+	}
+	#partial switch td.kind {
+	case .Slug_Curves: desc.Format, texel = .R16G16B16A16_FLOAT, 8
+	case .Slug_Bands: desc.Format, texel = .R16G16_UINT, 4
 	}
 	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
 	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
@@ -1050,8 +1070,9 @@ texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
 	switch r.textures[int(t)].kind {
 	case .None: return 0
 	case .R8: return 1
-	case .RGBA, .Snapshot: return 4
+	case .RGBA, .Snapshot, .Slug_Bands: return 4
 	case .Target: return r.textures[int(t)].unorm ? 4 : 8
+	case .Slug_Curves: return 8
 	}
 	return 0
 }
@@ -1208,7 +1229,7 @@ gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
 }
 
 // GPU memory of the textures the renderer made, by kind, in bytes (mip chains included).
-Texture_Memory :: struct { glyphs, images, targets, count: int }
+Texture_Memory :: struct { glyphs, images, targets, count: int, slug: int }
 
 texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 	for td, i in r.textures {
@@ -1221,6 +1242,8 @@ texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 			n := td.w * td.h * 4
 			m.images += td.mips ? n * 4 / 3 : n
 		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : 8)
+		case .Slug_Curves: m.slug += td.w * td.h * 8
+		case .Slug_Bands: m.slug += td.w * td.h * 4
 		}
 	}
 	return

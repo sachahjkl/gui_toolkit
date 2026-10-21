@@ -153,8 +153,9 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	// baked on the CPU: uniform scale + translation (in a picture only at its own scale: the screen is not known)
 	baked := xf.simple && (c.rec == nil || k == 1)
 	gpu: u32 = xf.simple ? 0 : gpu_xform(c, xf)
-	if c.rec != nil { picture_note_text(c, xf.gpu, sf) }
+	noted := false   // a picture knows this slot's text is made of bitmaps (picture_note_text)
 	sc, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
+	slug := c.fonts.settings.text_renderer == .Slug
 	page_size := f32(c.fonts.settings.page_size)
 	// the text color as color glyphs with text-color layers are drawn in it (sRGB; the alpha is the image's tint)
 	enc :: #force_inline proc(v: f32) -> u8 { return u8(clamp(render.linear_to_srgb(clamp(v, 0, 1)) * 255 + 0.5, 0, 255)) }
@@ -162,6 +163,23 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	ready := font.color_ready_generation(c.fonts)
 	for g in glyphs {
 		lx, ly := pos.x + g.x, pos.y + g.y
+		if slug {
+			// The outline is drawn as it is: at any scale or transform, the pen unrounded across, the baseline on a
+			// whole pixel (of the screen when baked, else of the local space at the 1:1 scale) as the bitmaps' is.
+			if sg := font.slug_glyph(c.fonts, g.face, g.id); sg.kind != .Atlas {
+				if sg.kind == .Curves {
+					if c.rec != nil { picture_note_slug(c.rec, sg) }
+					if xf.simple {
+						oy := ly * sc + o.y
+						slug_inst(c, sg, lx * sc + o.x, math.round(oy), size * sc, col, 0, shape)
+					} else {
+						slug_inst(c, sg, lx, k == 1 ? math.round(ly) : ly, size, col, gpu, shape)
+					}
+				}
+				continue
+			}
+		}
+		if c.rec != nil && !noted { picture_note_text(c, xf.gpu, sf); noted = true }
 		// where the bitmap goes: screen pixels (baked) or local units (GPU transform, or a picture's slot)
 		dst: [4]f32
 		sub := 0

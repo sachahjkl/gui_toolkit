@@ -39,6 +39,8 @@ Picture :: struct {
 	points:     [dynamic][2]f32,
 	grads:      [dynamic][4]f32,
 	pages:      [dynamic]font.Page_Ref,      // the atlas pages its glyphs are on
+	slug_pages: [dynamic]font.Page_Ref,      // the Slug glyph pages its text draws from
+	slug_runs:  [dynamic][2]int,             // its KIND_SLUG instances: [first, count) of insts
 	pages_broken: bool,                      // a page it used was reused while it was recorded
 	text_settings: u64,                      // font.atlas_settings_generation of its glyphs
 	glyphs_pending: bool,                    // a color glyph it draws was still being drawn (font.Glyph_Image.pending)...
@@ -85,6 +87,7 @@ Saved_Frame :: struct {
 	clips:   [dynamic]Clip,
 	alphas:  [dynamic]f32,
 	xforms:  [dynamic]Transform,
+	slug_runs: [dynamic][2]int,
 	clip_table: [dynamic]render.Clip_Data,
 	clip_points: [dynamic][2]f32,
 	grads:   [dynamic][4]f32,
@@ -107,8 +110,8 @@ saved_destroy :: proc(s: ^Saved_Frame) {
 picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	assert(c.rec == nil, "draw.picture_begin: a picture is already being recorded")
 	clear(&pic.insts); clear(&pic.batches); clear(&pic.batch_bounds); clear(&pic.slots); clear(&pic.clips); clear(&pic.clip_rects)
-	clear(&pic.points); clear(&pic.grads)
-	clear(&pic.pages)
+	clear(&pic.points); clear(&pic.grads); clear(&pic.slug_runs)
+	clear(&pic.pages); clear(&pic.slug_pages)
 	pic.text, pic.pages_broken = false, false
 	pic.glyphs_pending, pic.pending_ready = false, 0
 	pic.dirty, pic.eff_stale = {}, false
@@ -122,6 +125,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	s.clip_table, s.clip_points, s.grads, s.open_layers, s.target = c.clip_table, c.clip_points, c.grads, c.open_layers, c.target
 	c.insts, c.batches, c.clip_table, c.clip_points, c.grads = pic.insts, pic.batches, pic.clips, pic.points, pic.grads
 	pic.insts, pic.batches, pic.clips, pic.points, pic.grads = {}, {}, {}, {}, {}
+	s.slug_runs, c.slug_runs, pic.slug_runs = c.slug_runs, pic.slug_runs, {}
 	c.clips, c.alphas, c.xforms, c.open_layers = s.spare_clips, s.spare_alphas, s.spare_xforms, s.spare_open
 	clear(&c.clips); clear(&c.alphas); clear(&c.xforms); clear(&c.open_layers)
 	BIG :: 1e9
@@ -146,6 +150,7 @@ picture_end :: proc(c: ^Context) {
 	c.insts, c.batches, c.clips, c.alphas, c.xforms = s.insts, s.batches, s.clips, s.alphas, s.xforms
 	c.clip_table, c.clip_points, c.grads, c.open_layers, c.target = s.clip_table, s.clip_points, s.grads, s.open_layers, s.target
 	s.insts, s.batches, s.clips, s.alphas, s.xforms, s.clip_table, s.clip_points, s.grads, s.open_layers = {}, {}, {}, {}, {}, {}, {}, {}, {}
+	pic.slug_runs, c.slug_runs, s.slug_runs = c.slug_runs, s.slug_runs, {}
 	c.rec = nil
 	c.raster_scale = 1
 	// empty batches out; long ones cut every PICTURE_BATCH_INSTANCES so that a replay culls what lies off screen
@@ -276,6 +281,7 @@ picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 	if pic.pages_broken || pic.text_settings != font.atlas_settings_generation(c.fonts) { return true }
 	if pic.glyphs_pending && font.color_ready_generation(c.fonts) != pic.pending_ready { return true }
 	if !font.atlas_pages_hold(c.fonts, pic.pages[:]) { return true }
+	if len(pic.slug_pages) > 0 && !font.slug_pages_hold(c.fonts, pic.slug_pages[:]) { return true }
 	slots_update(pic)
 	l := affine_mul(top_transform(c), m)
 	ls := affine_scale_factor(l)
@@ -306,14 +312,15 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
 	if rect_empty(scissor) { return .Culled }
 	if b, ok := picture_bounds_l(pic, l); !ok || rect_empty(rect_intersect(rect_pad(b, 1), scissor)) { return .Culled }
 	if !picture_upload(c, pic) { return .Culled }
+	base := pic.offsets[.Insts]
 	append(&c.replays, render.Replay{
 		m = {l.a, l.b, l.c, l.d, l.e, l.f}, inv = {inv.a, inv.b, inv.c, inv.d, inv.e, inv.f},
 		alpha = c.alphas[len(c.alphas) - 1], outer = c.clips[len(c.clips) - 1].shape,
 		slots = u32(pic.offsets[.Slots]), clips = u32(pic.offsets[.Clips]), points = u32(pic.offsets[.Points]), grads = u32(pic.offsets[.Grads]),
+		slug_runs = pic.slug_runs[:], insts = u32(base),
 	})
 	idx := len(c.replays)
 	close_batch(c)
-	base := pic.offsets[.Insts]
 	for b, k in pic.batches {
 		if bb := pic.batch_bounds[k]; bb.slot != max(u32) {
 			if rect_empty(rect_intersect(rect_pad(affine_bounds(affine_mul(l, pic.slots[bb.slot].eff), bb.r), 1), scissor)) { continue }
@@ -459,7 +466,7 @@ picture_release :: proc(c: ^Context, pic: ^Picture) {
 picture_destroy :: proc(c: ^Context, pic: ^Picture) {
 	picture_release(c, pic)
 	delete(pic.insts); delete(pic.batches); delete(pic.batch_bounds); delete(pic.slots); delete(pic.clips); delete(pic.clip_rects)
-	delete(pic.points); delete(pic.grads); delete(pic.pages)
+	delete(pic.points); delete(pic.grads); delete(pic.pages); delete(pic.slug_pages); delete(pic.slug_runs)
 	pic^ = {}
 }
 

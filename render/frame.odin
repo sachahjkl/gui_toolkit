@@ -90,6 +90,8 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	profile_step(r, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst))
 
 	bind_main(r)
+	has_slug := frame_has_slug(f)
+	if has_slug { slug_bind_inputs(r, f) }
 	write_replay(r, nil, false)
 	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil {
 		// first use of the back buffer, alone: the compositor may still hold it, and the draw that touches it first
@@ -113,6 +115,7 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 			if run_op(r, f, op) {
 				// a filter pass replaced the pipeline and the target
 				bind_main(r)
+				if has_slug { slug_bind_inputs(r, f) }
 				retained_vb = false
 				cur = -1
 			}
@@ -156,7 +159,7 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		}
 		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
 		r.ctx->RSSetScissorRects(1, &rc)
-		r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))
+		if has_slug { draw_batch_split(r, f, b) } else { r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first)) }
 		drawing = true
 		if r.prof.detail && r.prof.cur != nil {
 			d := Gpu_Step_Rec{batch = i32(bi), insts = i32(b.count), scissor = {rc.left, rc.top, rc.right, rc.bottom}}
@@ -171,6 +174,10 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0) }
 	unbind_inputs(r)
+	if has_slug {
+		slug_select(r, false)
+		slug_unbind_inputs(r)
+	}
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 }
 
@@ -206,6 +213,7 @@ bind_main :: proc(r: ^Renderer) {
 	r.ctx->VSSetShaderResources(7, 1, &slots)
 	retained := [5]^d3d11.IShaderResourceView{r.grads_view, slots, heap_view(r, .Clips), heap_view(r, .Points), heap_view(r, .Grads)}
 	r.ctx->PSSetShaderResources(6, 5, &retained[0])
+	r.slug.on = false
 }
 
 // Textures a step reads (t0, t1, t5) are unbound before another step writes one of them.
