@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Continue'
 Set-Location (Split-Path $PSScriptRoot)
 New-Item -ItemType Directory build -Force | Out-Null
 $all = 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'shaders'
-$list = if ($Only) { $Only } else { $all }
+$list = if ($Only) { $Only | ForEach-Object { $_ -split ',' } } else { $all }
 $failed = 0
 foreach ($t in $list) {
 	$extra = @(if ($t -in 'keyboard', 'status', 'states') { '-define:ODIN_TEST_THREADS=1' })
