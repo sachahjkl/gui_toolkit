@@ -163,6 +163,10 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   Layouts over the maximize button on Windows 11, system menu, resize along the top edge), maximized windows stay on
   their monitor (auto-hidden taskbars still come up). Caption buttons with the system's sizes, glyphs and colours.
   `platform.set_fullscreen`. Try `fidget --integrated`.
+- **Cursors**: every CSS cursor (`platform.Cursor`, `cursor_from_css`); on Windows the system's own when it has one, the
+  others (grab, grabbing, zoom, cell, copy, alias...) drawn in the user's pointer scheme and size; custom cursors from
+  RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
+  also during a drag. Try `examples/cursors`.
 - **Long lists**: `vlist` builds only the rows in view (rows of any height, measured and cached; keyboard and type-ahead
   over all rows); wrapped paragraphs are cached between frames; scroll regions glide along an impulse or ease-out curve
   on the app's frame clock (`set_scroll_settings`).
@@ -175,7 +179,8 @@ Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Li
 drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window;
 `tests/status` the sample history (ring, resize, statistics, rates) and the frame graph's scale and hit testing;
 `tests/chrome` the integrated title bar's hit test (zones, edges, maximized) and regions, the virtualized list, the wrap
-cache and the scroll curve. `tests/layers`, `tests/effects`,
+cache and the scroll curve; `tests/cursors` the cursors' CSS names, system or drawn, the drawn shapes, resampling, and
+custom cursors on a hidden window. `tests/layers`, `tests/effects`,
 `tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` (text, color emoji and transformed glyphs included) are pixel tests on an offscreen WARP renderer (most in both blend spaces); `tests/text` covers faces, fallback, shaping, bidi, line breaks, carets, color glyphs and the atlas pages (`atlas_stress`)
 
 `tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow

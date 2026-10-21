@@ -3,7 +3,7 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [Unreleased]
+## [0.13.0] - 2026-10-21
 
 ### Changed
 - Interaction states show at once: hover, press, focus, selection and disabled no longer fade in or out (`hot_t`, `active_t`, `focus_t`, `disabled_t` go from 0 to 1 in the frame that sees the change), and box colours jump to their targets (a selected row, the hovered menu item). A hover change asks for no further frame. A change of palette still cross-fades every colour for `ui.PALETTE_FADE_MS` (160 ms).
@@ -20,6 +20,46 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - `ui.state_fill(box, name, under)`, `ui.box_under(box)`, `ui.srgb_step(a, b, t)`: the theme's state steps for custom draw procs.
 - `draw.alpha_like_srgb`: the inverse of `alpha_like_linear` (the alpha that looks in a blend space as a given alpha blended in sRGB values).
 - `tests/states`: instant states, transitions on demand, palette cross-fade, the size of the steps in both blend spaces.
+## [0.12.0] - 2026-10-21
+
+### Added
+- **Every CSS cursor**: `platform.Cursor` has all the values of CSS Basic User Interface 4 (`none`, `context-menu`, `help`,
+  `progress`, `wait`, `cell`, `crosshair`, `vertical-text`, `alias`, `copy`, `no-drop`, `grab`, `grabbing`,
+  `all-scroll`, `col-resize`, `row-resize`, the eight one-way resizes, `nesw-resize`, `nwse-resize`, `zoom-in`,
+  `zoom-out`) next to the seven it had, which keep their names (`Arrow` = default, `Hand` = pointer, `Resize_H` =
+  ew-resize, `Resize_V` = ns-resize). `cursor_from_css` / `cursor_css_name` (`CURSOR_CSS_NAMES`) convert from / to the
+  keyword (`-webkit-grab` and the other legacy names too).
+- On Windows a cursor is the system's (`IDC_*`: the user's scheme and size) when Windows has it (`cursor_system_id`,
+  `cursor_source`); the twelve it lacks (`grab`, `grabbing`, `zoom-in`, `zoom-out`, `cell`, `copy`, `alias`,
+  `context-menu`, `no-drop`, `vertical-text`, `col-resize`, `row-resize`) are **drawn by the toolkit**
+  (`platform/cursor_shapes.odin`: shapes on a 32-unit grid, signed distances sampled 4 x 4 per pixel, `cursor_draw`) at
+  the size of the system's cursors on the window's monitor (`SM_CXCURSOR` at its dpi, `cursor_size_px`), in the colours
+  of the user's scheme (white or black pointer, read from the system's arrow: `cursor_scheme`), with the hotspot where
+  Windows puts it (an arrow's tip, a hand's palm, a magnifier's lens); made once per size and scheme, again when the
+  dpi or the cursor settings change (`WM_SETTINGCHANGE` `SPI_SETCURSORS`), destroyed with the window. `None` hides the
+  pointer over the client area.
+- **Custom cursors** from an image: `custom_cursor_create(w, rgba, size, hotspot, density, key, max_css)` (hotspot
+  clamped into the image; larger than `CUSTOM_CURSOR_MAX_CSS` = 128 CSS pixels, Chromium's limit: `.Too_Large`, the
+  caller shows its fallback), shared by `key` with counted references, `custom_cursor_release`,
+  `set_cursor_custom(w, cc, fallback, scale)` (the image resized to its CSS size times the scale, `cursor_resample`:
+  premultiplied, a tent filter as wide as the reduction; at most four sizes kept per image), `custom_cursor_valid`,
+  `custom_cursor_stats`, `custom_cursor_info`.
+- `destroy_window`: destroys the window and what it holds (its cursors, events, title bar regions).
+- `cursor_info`, `cursor_handle_of`, `shown_cursor`, `cursor_render` (a cursor as the system draws it, for previews and
+  tests).
+- `examples/cursors`: every cursor in a grid (light and dark tiles, its CSS name, system or drawn), hover a cell to get
+  it; the last cell has a custom cursor. `--preview N` draws the previews at N pixels.
+- `tests/cursors`: CSS names, system or drawn for each value, the drawn shapes at several sizes and both schemes
+  (colours, bounds, hotspots), resampling, and on a hidden window every cursor made at the system's size, custom
+  cursors' references, sizes, hotspots, limits and release.
+
+### Changed
+- The cursor is shown **at once** when `set_cursor` / `set_cursor_custom` changes it while the pointer is over the
+  client area or captured by the window (a drag: no `WM_SETCURSOR` comes during a capture; a page scrolled or changed
+  under a pointer that does not move), and `WM_SETCURSOR` over the client area sets the one resolved last (no frame
+  needed while the pointer moves over the same thing). The system keeps its own over the frame, the resize bands and
+  the caption of an integrated title bar.
+- `Native_Window.cursors` is no longer an array of handles (the cursor state of cursors_win32.odin).
 
 ## [0.11.1] - 2026-10-20
 
