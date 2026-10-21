@@ -6,11 +6,15 @@ import "core:strings"
 theme_add :: proc(t: ^Theme, tags: string, color: Color) {
 	parts := strings.split(tags, " ", context.allocator)
 	append(&t.patterns, Theme_Pattern{tags = parts, color = color})
+	t.serial += 1
 }
 
 theme_set :: proc(t: ^Theme, tags: string, color: Color) {
 	for &p in t.patterns {
-		if strings.join(p.tags, " ", context.temp_allocator) == tags { p.color = color; return }
+		if strings.join(p.tags, " ", context.temp_allocator) == tags {
+			if p.color != color { p.color = color; t.serial += 1 }
+			return
+		}
 	}
 	theme_add(t, tags, color)
 }

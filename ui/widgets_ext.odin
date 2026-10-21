@@ -362,8 +362,10 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 			spacer(px(em * 0.25))
 			for label, i in labels {
 				fg := i == selected^ ? text_on : text_off
-				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg})
-				item := build_box({.Clickable, .Focusable, .Draw_Text}, fmt.tprintf("%s###seg%d", label, i))
+				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg, radius = max(0, b.radius - em * 0.125)})
+				push_tags("segment")
+				item := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects}, fmt.tprintf("%s###seg%d", label, i))
+				pop_tags()
 				if signal(item).clicked && i != selected^ { selected^ = i; changed = true }
 			}
 		}
@@ -506,7 +508,9 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, righ
 		set_next_axis(.X, .Center)
 		g.next_mod.width = children_sum()
 		g.next_mod.height = pct(1)
+		push_tags("tab")
 		b := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, tab_id)
+		pop_tags()
 		d := frame_new(Tab_Draw)
 		d.t, d.accent = t, color("accent")
 		b.custom, b.custom_user = tab_draw, d
@@ -624,7 +628,7 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig:
 		g.next_mod.radius = em * 0.45
 		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
 		b := build_box(flags, id)
-		b.squish = anim(key_from_string(b.key, "squish"), g.active_key[.Left] == b.key && g.hot_key == b.key ? 0.04 : 0, 60)
+		b.squish = press_squish(b)
 		sig = signal(b)
 		if parent(b) {
 			spacer(px(em * 0.95))

@@ -69,7 +69,7 @@ Box_Flag :: enum u8 {
 	Draw_Border,
 	Draw_Text,
 	Draw_Shadow,
-	Draw_Hot_Effects,    // subtle hover/press overlay
+	Draw_Hot_Effects,    // hover / press fill over the box (theme: "hover_fill", "press_fill", "hover_border")
 	Draw_Focus_Ring,
 	Draw_Side_Top,
 	Draw_Side_Bottom,
@@ -214,9 +214,16 @@ Finish :: enum u8 {
 	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
 }
 
+// Interaction states (hover, press, focus, selection, disabled) show at once by default: the frame that sees the pointer
+// enter a box draws it hot, with no fade in or out. `transition_ms` > 0 brings back short cross-fades of those states;
+// `press_squish` > 0 shrinks a pressed button by that fraction (at once, no animation). A change of palette still
+// cross-fades every colour for PALETTE_FADE_MS (apply_palette bumps `serial`).
 Theme :: struct {
-	patterns: [dynamic]Theme_Pattern,
-	finish:   Finish,
+	patterns:      [dynamic]Theme_Pattern,
+	finish:        Finish,
+	transition_ms: f32,   // 0: states change at once (default)
+	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"
+	serial:        u64,   // bumped when a colour changes (theme_add, theme_set, apply_palette)
 }
 
 Timer :: struct {
@@ -297,6 +304,8 @@ State :: struct {
 	boxes_built:  int,
 	anim_busy:    bool,
 	wake_ms:      int,                // ask the app loop for a timed wake (caret blink)
+	theme_serial: u64,                // Theme.serial seen by the last build
+	fade_until_ms: f64,               // box colours cross-fade until then (a palette change), else they jump
 
 	// input
 	events:      Events,

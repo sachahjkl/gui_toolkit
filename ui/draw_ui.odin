@@ -69,10 +69,17 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .Draw_Background in flags {
 		paint_rect(dc, r, b.bg, radius, box_sheen(s, b))
 	}
-	if .Draw_Hot_Effects in flags {
-		h := color_from_tags(s, b.tags_key, "hover")
-		h.a *= 0.014 * b.hot_t * (1 - b.active_t) + 0.02 * b.active_t   // tuned for linear blending: tiny alphas
-		draw.rect(dc, r, tuned(h, b.bg.a > 0.5 ? Color{b.bg.r, b.bg.g, b.bg.b, 1} : g.backdrop), radius)
+	if .Draw_Hot_Effects in flags && b.hot_t > 0.001 {
+		// the theme's step toward its tint, over what is actually under the box (theme_default.odin: state_entries)
+		hover := color_from_tags(s, b.tags_key, "hover_fill")
+		press := color_from_tags(s, b.tags_key, "press_fill")
+		held := b.active_t * b.hot_t   // pressed, and the pointer still on it
+		h := draw.mix(hover, press, held)
+		h.a = math.lerp(hover.a * b.hot_t, press.a, held)
+		if h.a > 0.001 {
+			h.a = draw.alpha_like_srgb(s.space, h, h.a, box_under(b))
+			draw.rect(dc, r, h, radius)
+		}
 	}
 	if .Draw_Text in flags && b.text != "" {
 		if .Text_Wrap in flags { draw_wrapped_text(s, dc, b) } else { draw_box_text(s, dc, b) }
@@ -84,7 +91,13 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .Clip in flags { draw.pop_clip(dc) }
 	if .View_Scroll_Y in flags { draw_scrollbar(s, dc, b) }
 
-	if .Draw_Border in flags && b.border.a > 0.002 { draw.rect(dc, r, b.border, radius, max(1, math.round(scale))) }
+	if .Draw_Border in flags && b.border.a > 0.002 {
+		border := b.border
+		if b.hot_t > 0.001 && b.focus_t < 0.5 && .Clickable in flags {
+			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > 0.001 { border = srgb_step(border, k, k.a * b.hot_t) }
+		}
+		draw.rect(dc, r, border, radius, max(1, math.round(scale)))
+	}
 	if flags & {.Draw_Side_Top, .Draw_Side_Bottom, .Draw_Side_Left, .Draw_Side_Right} != {} {
 		t := max(1, math.round(scale))
 		if .Draw_Side_Top in flags    { draw.rect(dc, {r.min, {r.max.x, r.min.y + t}}, b.border) }

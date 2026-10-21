@@ -198,8 +198,11 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> 
 	g.has_next = true
 	flags := Box_Flags{.Clickable}
 	if active { flags += {.Draw_Background} }
+	// rows that can be chosen light up under the pointer (theme: "list_row hover_fill"), headers do not
+	if selectable { flags += {.Draw_Hot_Effects}; push_tags("list_row") }
 	b := build_box(flags, fmt.tprintf("###lrow_%d", i))
 	b.cursor = .Arrow
+	if selectable { pop_tags() }
 	if active { pop_tags() }
 	sig := signal(b)
 	if selectable && (sig.pressed || sig.right_clicked) {

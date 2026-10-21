@@ -131,7 +131,7 @@ page_controls :: proc(app: ^App) {
 						ui.spacer(ui.px(em * 0.8))
 						if ui.tags("weak") {
 							ui.next({width = ui.fill(), height = ui.pct(1)})
-							ui.label("Hover, press (they squish), Ctrl+wheel zooms the whole UI.")
+							ui.label("Hover, press (the state shows at once), Ctrl+wheel zooms the whole UI.")
 						}
 					}
 				}

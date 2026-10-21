@@ -111,6 +111,11 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.boxes_built = 0
 	s.time_ms = now_ms()
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
+	if s.theme != nil && s.theme.serial != s.theme_serial {
+		// another palette (not the first one): every colour cross-fades to it for a moment
+		if s.theme_serial != 0 { s.fade_until_ms = s.time_ms + PALETTE_FADE_MS }
+		s.theme_serial = s.theme.serial
+	}
 	s.clipboard_get = p.clipboard_get
 	s.clipboard_set = p.clipboard_set
 	s.cursor_request = .Arrow
@@ -310,6 +315,8 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.target_bg = color("background")
 	b.target_border = color("border")
 	b.target_text = color("text")
+	// under the pointer: "hot text" (the theme's "<tags> hot text" when it has one, else the plain text colour)
+	if .Clickable in b.flags && s.hot_key == b.key && .Disabled not_in b.flags { b.target_text = color("hot text") }
 	if has_mod {
 		if c, ok := mod.bg.?; ok { b.target_bg = c }
 		if c, ok := mod.border.?; ok { b.target_border = c }
@@ -322,10 +329,13 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		if b.target_border.a > 0.01 { b.target_border = theme_lookup(s.theme, plain, "border") }
 		b.target_text = theme_lookup(s.theme, nil, "weak text")
 	}
-	if b.first_build == s.build_index || s.anim_rate == 0 {
+	// colours jump to their targets (states show at once), except while a palette change cross-fades or when the theme
+	// asks for transitions
+	fading := s.time_ms < s.fade_until_ms || (s.theme != nil && s.theme.transition_ms > 0)
+	if b.first_build == s.build_index || s.anim_rate == 0 || !fading {
 		b.bg, b.border, b.text_color = b.target_bg, b.target_border, b.target_text
 	} else {
-		rate := f32(1 - math.pow(2, -60 * f64(s.dt)))
+		rate := state_rate(s)
 		busy := false
 		approach :: proc(cur: ^Color, target: Color, rate: f32, busy: ^bool) {
 			d: f32
@@ -490,13 +500,27 @@ anim :: proc(key: Key, target: f32, rate: f32 = 40, initial: Maybe(f32) = nil) -
 	return a.value
 }
 
+// How long a palette change cross-fades the colours of the boxes.
+PALETTE_FADE_MS :: 160.0
+
+// Per-frame approach rate of colours and state values: the theme's transition (about 95 % of the way in
+// transition_ms), else the cross-fade of a palette change; 1 (at once) with animations off.
+@(private)
+state_rate :: proc(s: ^State) -> f32 {
+	if s.anim_rate == 0 { return 1 }
+	halvings: f64 = 60
+	if s.theme != nil && s.theme.transition_ms > 0 { halvings = 4.32 * 1000 / f64(s.theme.transition_ms) }
+	return f32(1 - math.pow(2, -halvings * f64(s.dt)))
+}
+
 @(private)
 update_animations :: proc(s: ^State) {
-	rate := f32(1 - math.pow(2, -60 * f64(s.dt)))
-	if s.anim_rate == 0 { rate = 1 }
+	// hover, press, focus and disabled: at once unless the theme asks for transitions
+	rate: f32 = 1
+	if s.theme != nil && s.theme.transition_ms > 0 { rate = state_rate(s) }
 	step :: proc(cur: ^f32, target: f32, rate: f32, busy: ^bool) {
 		d := target - cur^
-		if abs(d) < 0.003 { cur^ = target; return }
+		if abs(d) < 0.003 || rate >= 1 { cur^ = target; return }
 		cur^ += d * rate
 		busy^ = true
 	}

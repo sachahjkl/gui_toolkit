@@ -3,6 +3,22 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [Unreleased]
+
+### Changed
+- Interaction states show at once: hover, press, focus, selection and disabled no longer fade in or out (`hot_t`, `active_t`, `focus_t`, `disabled_t` go from 0 to 1 in the frame that sees the change), and box colours jump to their targets (a selected row, the hovered menu item). A hover change asks for no further frame. A change of palette still cross-fades every colour for `ui.PALETTE_FADE_MS` (160 ms).
+- Hover and press fills are visible: the theme's new state entries `hover_fill` / `press_fill` are fractions of the way to the palette's tint (white on dark palettes, black on light ones) in sRGB values, drawn over the surface actually under the box (`ui.box_under`) with the alpha that gives that step in either blend space (`draw.alpha_like_srgb`). Per role: buttons 7 % / 13 %, ghost and icon buttons 8 % / 14 %, accent and danger buttons 10 % / 18 %, list rows 5 % / 9 %, tabs 6 % / 10 %, segments 7 % / 12 %, anything else with `.Draw_Hot_Effects` 7 % / 12 %; menu items show their selection under the pointer (8 % more while pressed). The old tiny overlay (1.4 % / 2 % in linear light) is gone. The tint entry `hover` itself is unchanged.
+- Fields: the border of a `line_edit` under the pointer moves 22 % toward the tint (`input hover_border`).
+- No press "squish" by default; `Theme.press_squish` (e.g. 0.04) brings it back, at once and without animation.
+
+### Added
+- `Theme.transition_ms`: > 0 brings back short cross-fades of the interaction states (default 0); `Theme.serial`, bumped by `theme_add`, `theme_set` and `apply_palette` when a colour changes.
+- Selectable `list_row`s have `.Draw_Hot_Effects` (tag `list_row`, built under it only); `segmented` items light up under the pointer (tag `segment`); `tabs` items have the tag `tab`.
+- `"<tags> hot text"`: the text colour of a clickable box under the pointer (falls back to the normal one). `remove_button hot text` is the palette's red, `remove_button hover_fill` / `press_fill` a light red step: push the tag `remove_button` around an `icon_button` for a delete cross.
+- `ui.state_fill(box, name, under)`, `ui.box_under(box)`, `ui.srgb_step(a, b, t)`: the theme's state steps for custom draw procs.
+- `draw.alpha_like_srgb`: the inverse of `alpha_like_linear` (the alpha that looks in a blend space as a given alpha blended in sRGB values).
+- `tests/states`: instant states, transitions on demand, palette cross-fade, the size of the steps in both blend spaces.
+
 ## [0.11.1] - 2026-10-20
 
 ### Fixed
