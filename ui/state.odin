@@ -524,9 +524,18 @@ update_animations :: proc(s: ^State) {
 		cur^ += d * rate
 		busy^ = true
 	}
+	// the hot box and its ancestors (for .Hot_Within boxes)
+	chain: [48]Key
+	n := 0
+	if hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil; hb != nil && hb.last_build == s.build_index {
+		for p := hb; p != nil && n < len(chain); p = p.parent { chain[n] = p.key; n += 1 }
+	}
 	for _, b in s.boxes {
 		if b.last_build != s.build_index { continue }
 		hot: f32 = s.hot_key == b.key ? 1 : 0
+		if .Hot_Within in b.flags && hot == 0 {
+			for k in chain[:n] { if k == b.key { hot = 1; break } }
+		}
 		active: f32 = s.active_key[.Left] == b.key ? 1 : 0
 		focus: f32 = s.focus_key == b.key ? 1 : 0
 		disabled: f32 = .Disabled in b.flags ? 1 : 0

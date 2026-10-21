@@ -167,6 +167,19 @@ key_pressed_peek :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bo
 
 mouse_pos :: proc() -> Vec2 { return g.mouse }
 hot_key :: proc() -> Key { return g.hot_key }
+
+// Is the pointer on box `key` or on a clickable box inside it (by the last frame's tree)? For a row that shows its
+// buttons while the pointer is anywhere on it.
+hot_within :: proc(key: Key) -> bool {
+	s := g
+	if s.hot_key == 0 || key == 0 { return false }
+	hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil
+	for p, depth := hb, 0; p != nil && depth < 64; p, depth = p.parent, depth + 1 {
+		if p.key == key { return true }
+		if p.last_build + 1 < s.build_index { break }
+	}
+	return false
+}
 active_key :: proc() -> Key { return g.active_key[.Left] }
 focus_key :: proc() -> Key { return g.focus_key }
 set_focus :: proc(k: Key) { g.focus_key = k }

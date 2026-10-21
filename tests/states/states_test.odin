@@ -48,6 +48,8 @@ close :: proc(f: ^Fx) {
 
 Run :: struct {
 	btn, row, other: ^ui.Box,
+	row2, cross:     ^ui.Box,
+	within:          bool,
 	list:            ui.List_State,
 }
 
@@ -60,8 +62,18 @@ body :: proc(r: ^Run) {
 	if ui.list("###list", &r.list) {
 		for i in 0 ..< 3 {
 			ui.next({height = ui.px(30)})
+			if i == 2 { ui.next({height = ui.px(30), cursor = .Hand}) }
 			sig := ui.list_row(&r.list, i, "row")
 			if i == 1 { r.row = sig.box }
+			if i == 2 {
+				r.row2 = sig.box
+				if ui.parent(sig.box) {
+					ui.spacer(ui.fill())
+					ui.next({width = ui.px(30), height = ui.px(30)})
+					if ui.tags("remove_button") { r.cross = ui.icon_button("###x", ui.ICON_X).box }
+				}
+				r.within = ui.hot_within(sig.box.key)
+			}
 		}
 	}
 	ui.next({fixed_x = 400, fixed_y = 20, width = ui.px(120), height = ui.px(30)})
@@ -134,6 +146,17 @@ hover_and_press_are_instant :: proc(t: ^testing.T) {
 	frame(&f, &r, nil)
 	testing.expect_value(t, r.list.sel, 1)
 	testing.expect(t, r.row.bg == r.row.target_bg && r.row.target_bg.a > 0.05, "the selected row has its colour in the frame it is selected")
+
+	// a row with a button: lit while the pointer is on the button, which turns red; the row's own cursor
+	frame(&f, &r, {move(300, 155)})   // row 2 spans y 140..170, its button x 290..320
+	testing.expect_value(t, r.row2.hot_t, 1)
+	testing.expect_value(t, r.cross.hot_t, 1)
+	testing.expect(t, r.within, "hot_within: the row holds the hot button")
+	testing.expect(t, r.cross.text_color == draw.hex(ui.PALETTE_GRAPHITE.bad), "the remove cross is red under the pointer")
+	frame(&f, &r, {move(100, 155)})
+	testing.expect_value(t, r.cross.hot_t, 0)
+	testing.expect(t, r.cross.text_color != draw.hex(ui.PALETTE_GRAPHITE.bad), "and back at once")
+	testing.expect_value(t, ui.cursor(&f.s), platform.Cursor.Hand)
 }
 
 @(test)
