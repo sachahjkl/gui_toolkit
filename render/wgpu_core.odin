@@ -3,6 +3,7 @@ package render
 import "base:runtime"
 import "core:fmt"
 import "core:math/bits"
+import "core:thread"
 import win "core:sys/windows"
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
@@ -128,8 +129,25 @@ wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 }
 
 // Instance, (surface), adapter, device and queue. `hwnd` nil: no surface (offscreen). `fallback`: the software adapter.
+//
+// Run on a thread of its own: Direct3D 12 and DXGI raise and catch C++ exceptions (0xE06D7363) while they probe adapters,
+// and a vectored exception handler that treats every exception as fatal (the one of Odin's test runner, debuggers' `break
+// on first chance` options) would stop the process on them. Only the thread that makes the calls sees them.
 @(private)
 wgpu_create_device :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool {
+	Job :: struct { r: ^Renderer, hwnd: win.HWND, fallback, ok: bool }
+	job := Job{r, hwnd, fallback, false}
+	th := thread.create_and_start_with_data(&job, proc(data: rawptr) {
+		j := (^Job)(data)
+		j.ok = wgpu_create_device_here(j.r, j.hwnd, j.fallback)
+	})
+	thread.join(th)
+	thread.destroy(th)
+	return job.ok
+}
+
+@(private)
+wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool {
 	g := &r.wg
 	if g.shared == nil { g.shared = new(Wgpu_Shared) }
 	extras := wgpu.InstanceExtras{
