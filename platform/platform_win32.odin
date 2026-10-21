@@ -15,7 +15,7 @@ Native_Window :: struct {
 	in_poll:        bool,
 	closed:         bool,
 	dark_title:     bool,
-	cursors:        [Cursor]win.HCURSOR,
+	cursors:        Cursor_State,   // cursors_win32.odin
 	keep_events:    bool,           // wait_handle took input: the next poll_events adds to it
 	paint_requested: bool,          // WM_PAINT came during poll_events: take_paint_request
 	modal:          int,            // inside a loop of the system (move / size, menu): it owns the messages, frames come from WM_PAINT
@@ -74,7 +74,6 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.active = true
 	w.display_stale = true
 	w.integrated = integrated_title
-	for c in Cursor { w.cursors[c] = win.LoadCursorA(nil, cursor_resource(c)) }
 
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
 	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
@@ -292,9 +291,22 @@ set_dark_title :: proc(w: ^Window, dark: bool) {
 	win.DwmSetWindowAttribute(w.hwnd, u32(win.DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE), &v, size_of(v))
 }
 
-set_cursor :: proc(w: ^Window, c: Cursor) { w.cursor = c }
-
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
+
+// Destroys the window and what it holds (its cursors, drawn and custom; its event list; its title bar's regions),
+// then frees `w`. A process that ends with its window open needs not call it.
+destroy_window :: proc(w: ^Window) {
+	if w == nil { return }
+	if w.hwnd != nil {
+		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
+		win.DestroyWindow(w.hwnd)
+		w.hwnd = nil
+	}
+	cursors_destroy(w)
+	delete(w.events)
+	chrome_regions_destroy(&w.chrome)
+	free(w)
+}
 
 // Collects pending OS events. With `wait` the call blocks until at least one message arrives (idle = 0 % CPU),\n// or until `timeout_ms` elapsed when it is > 0.
 // The returned slice is valid until the next call. Re-entrant calls return nil.
@@ -393,20 +405,6 @@ config_dir :: proc(allocator := context.allocator) -> string {
 
 ////////////////////////////////
 // internals
-
-@(private)
-cursor_resource :: proc(c: Cursor) -> cstring {
-	switch c {
-	case .Arrow:       return win.IDC_ARROW
-	case .Hand:        return win.IDC_HAND
-	case .Text:        return win.IDC_IBEAM
-	case .Resize_H:    return win.IDC_SIZEWE
-	case .Resize_V:    return win.IDC_SIZENS
-	case .Move:        return win.IDC_SIZEALL
-	case .Not_Allowed: return win.IDC_NO
-	}
-	return win.IDC_ARROW
-}
 
 @(private)
 hit_code :: proc(h: Hit) -> win.LRESULT {
@@ -609,9 +607,17 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		if w.integrated && is_caption_button(wparam) { return 0 }
 
 	case win.WM_SETCURSOR:
-		if win.LOWORD(u32(lparam)) == win.HTCLIENT {
-			win.SetCursor(w.cursors[w.cursor])
+		// over the client area the app's cursor (cursors_win32.odin); elsewhere (resize bands, the caption of an
+		// integrated title bar, the system's frame) the system's
+		if win.HWND(wparam) == hwnd && win.LOWORD(u32(lparam)) == win.HTCLIENT {
+			cursor_on_setcursor(w)
 			return 1
+		}
+
+	case win.WM_SETTINGCHANGE:
+		if wparam == win.SPI_SETCURSORS {   // another pointer size or scheme: drawn cursors are made again
+			cursor_settings_changed()
+			cursor_on_dpi_change(w)
 		}
 
 	case win.WM_GETMINMAXINFO:
@@ -632,6 +638,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		w.dpi_scale = f32(win.HIWORD(u32(wparam))) / 96
 		r := cast(^win.RECT)uintptr(lparam)
 		win.SetWindowPos(hwnd, nil, r.left, r.top, r.right - r.left, r.bottom - r.top, win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+		cursor_on_dpi_change(w)   // drawn cursors at the new monitor's size
 		return 0
 
 	case win.WM_ERASEBKGND:
