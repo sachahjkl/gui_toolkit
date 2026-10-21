@@ -3,7 +3,7 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [Unreleased] (0.12.0 proposed)
+## [0.12.0] - 2026-10-21
 
 ### Added
 - **Every CSS cursor**: `platform.Cursor` has all the values of CSS Basic User Interface 4 (`none`, `context-menu`, `help`,
