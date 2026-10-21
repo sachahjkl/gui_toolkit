@@ -90,7 +90,7 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	profile_step(r, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst))
 
 	bind_main(r)
-	has_slug := frame_has_slug(f)
+	has_slug := frame_has_slug(f) && slug_pipeline_ensure(r)
 	if has_slug { slug_bind_inputs(r, f) }
 	write_replay(r, nil, false)
 	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil {

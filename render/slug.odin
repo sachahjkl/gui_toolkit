@@ -19,6 +19,19 @@ Slug_Pipeline :: struct {
 	layout: ^d3d11.IInputLayout,
 	on:     bool,   // frame_submit: the Slug shaders are the bound ones
 	ready:  bool,   // the textures of the frame are bound
+	failed: bool,   // the device refused the shaders: no Slug text this run (until the device is recreated)
+}
+
+// The Slug pipeline exists when the first frame that draws Slug text needs it, not at start-up: creating the shaders
+// costs the device's compiler several milliseconds that a renderer that never draws Slug text should not pay.
+@(private)
+slug_pipeline_ensure :: proc(r: ^Renderer) -> bool {
+	if r.slug.vs != nil { return true }
+	if r.slug.failed { return false }
+	if slug_pipeline_init(r) { return true }
+	slug_destroy(r)
+	r.slug.failed = true   // once: the message was printed, every frame would print it again
+	return false
 }
 
 // The Slug shaders and their input layout (the same instance data as the main pipeline).

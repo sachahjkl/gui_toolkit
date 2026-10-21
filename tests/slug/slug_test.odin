@@ -184,6 +184,67 @@ bands_give_the_outline_coverage :: proc(t: ^testing.T) {
 	}
 }
 
+// A cubic that is a quadratic raised in degree comes back as that quadratic; a true cubic is cut into pieces whose
+// quadratics stay within the tolerance of it.
+@(test)
+cubics_become_quadratics :: proc(t: ^testing.T) {
+	o: font.Outline
+	defer font.outline_destroy(&o)
+	q0, q1, q2 := [2]f32{0, 0}, [2]f32{0.5, 1}, [2]f32{1, 0}
+	font.outline_cubic(&o, q0, q0 + (q1 - q0) * (2.0 / 3), q2 + (q1 - q2) * (2.0 / 3), q2, 1.0 / 4096)
+	testing.expect_value(t, len(o.quads), 1)
+	testing.expect(t, abs(o.quads[0].p[1].x - 0.5) < 1e-5 && abs(o.quads[0].p[1].y - 1) < 1e-5)
+	// an S-shaped cubic
+	p0, c1, c2, p3 := [2]f32{0, 0}, [2]f32{0.1, 1}, [2]f32{0.9, -1}, [2]f32{1, 0}
+	clear(&o.quads)
+	tol := f32(1.0 / 2048)
+	font.outline_cubic(&o, p0, c1, c2, p3, tol)
+	testing.expect(t, len(o.quads) > 1)
+	cubic :: proc(t: f32, p0, c1, c2, p3: [2]f32) -> [2]f32 {
+		u := 1 - t
+		return p0 * (u * u * u) + c1 * (3 * u * u * t) + c2 * (3 * u * t * t) + p3 * (t * t * t)
+	}
+	worst: f32
+	for q in o.quads {
+		for i in 0 ..= 16 {
+			s := f32(i) / 16
+			u := 1 - s
+			pt := q.p[0] * (u * u) + q.p[1] * (2 * u * s) + q.p[2] * (s * s)
+			// distance to the cubic's polyline
+			best := max(f32)
+			for k in 0 ..< 2000 {
+				c := cubic(f32(k) / 1999, p0, c1, c2, p3)
+				d := pt - c
+				best = min(best, math.sqrt(d.x * d.x + d.y * d.y))
+			}
+			worst = max(worst, best)
+		}
+	}
+	testing.expectf(t, worst <= tol * 1.5, "the quadratics are %.6f em from the cubic (tolerance %.6f)", worst, tol)
+	// the chain is continuous
+	for i in 1 ..< len(o.quads) { testing.expect(t, math.sqrt(math.pow(o.quads[i].p[0].x - o.quads[i - 1].p[2].x, 2) + math.pow(o.quads[i].p[0].y - o.quads[i - 1].p[2].y, 2)) < 1e-5) }
+}
+
+// Another provider replaces DirectWrite's: a square, built here, is drawn from the store like any glyph.
+@(test)
+provider_is_replaceable :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	face, ok := font.load_system(s, "Segoe UI")
+	testing.expect(t, ok)
+	font.slug_set_provider(s, proc(s: ^font.State, face: font.Font_Id, gid: u16, tol: f32, out: ^font.Outline) -> bool {
+		a, b, c, d := [2]f32{0.1, 0}, [2]f32{0.1, 0.5}, [2]f32{0.6, 0.5}, [2]f32{0.6, 0}
+		font.outline_line(out, a, b); font.outline_line(out, b, c); font.outline_line(out, c, d)
+		font.outline_end(out, a, d)
+		font.outline_bounds(out)
+		return true
+	})
+	g := font.slug_glyph(s, face, 7)
+	testing.expect_value(t, g.kind, font.Slug_Kind.Curves)
+	testing.expect_value(t, g.bbox, [4]f32{0.1, 0, 0.6, 0.5})
+	testing.expect_value(t, g.band_max, [2]u8{0, 0})
+}
+
 @(test)
 cache_pages_and_eviction :: proc(t: ^testing.T) {
 	st := font.DEFAULT_SETTINGS

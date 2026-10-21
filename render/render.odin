@@ -679,7 +679,6 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	r.device->CreatePixelShader(raw_data(fx_ps_code), uint(len(fx_ps_code)), nil, &r.fx_ps)
 	r.device->CreateBuffer(&{ByteWidth = size_of(Pass_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.fx_constants)
 	if r.fx_vs == nil || r.fx_ps == nil || r.fx_constants == nil || r.blend_replace == nil || r.sampler_border == nil { return false }
-	slug_pipeline_init(r) or_return
 
 	if len(r.textures) > 0 { return true }   // recover: the settings stay
 	append(&r.textures, Texture_Data{})   // dummy slot 0
