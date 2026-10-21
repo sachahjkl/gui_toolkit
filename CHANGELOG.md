@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.13.1] - 2026-10-21
+
+### Added
+- GPU profile steps `Upload`, `Acquire`, `Present` and `Idle` (only while `set_gpu_profile` is on): where a frame's GPU time goes, the swap chain's wait and the present included.
+
 ## [0.13.0] - 2026-10-21
 
 ### Changed
