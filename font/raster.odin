@@ -79,6 +79,7 @@ Atlas :: struct {
 	users:  map[rawptr]u64,    // draw contexts: the clock at the start of their current frame
 	evictions: int,
 	settings_generation: u64,  // bumps when the rendering settings change (bitmaps made before no longer match)
+	slug:   Slug_Store,        // glyph curves of the Slug renderer (slug_cache.odin); shares the lock and the clock
 }
 
 @(private) LOG_MAX :: 4096
@@ -92,6 +93,7 @@ atlas_init :: proc(a: ^Atlas) {
 	a.fg_pending = make(map[Fg_Key]bool)
 	a.users = make(map[rawptr]u64)
 	a.clock = 1
+	slug_init(&a.slug)
 }
 
 @(private)
@@ -104,6 +106,7 @@ atlas_destroy :: proc(a: ^Atlas) {
 	delete(a.pending)
 	delete(a.fg_pending)
 	delete(a.users)
+	slug_destroy(&a.slug)
 }
 
 @(private) atlas_lock :: proc(a: ^Atlas) { sync.mutex_lock(&a.mu) }
@@ -121,6 +124,7 @@ atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 	}
 	for k in a.pending { if Font_Id(k >> 44) == face { delete_key(&a.pending, k) } }
 	for k in a.fg_pending { if Font_Id(k.key >> 44) == face { delete_key(&a.fg_pending, k) } }
+	slug_forget_face(&a.slug, face)
 }
 
 // A draw context starts a frame: pages it draws from until its next frame are kept.
