@@ -1,5 +1,6 @@
 package render
 
+import "core:fmt"
 import "core:time"
 import win "core:sys/windows"
 import "vendor:wgpu"
@@ -24,10 +25,12 @@ Wgpu_Latency :: struct {
 	have_dwm:   bool,
 	last_index: u64,          // the vblank the previous frame was shown at (compositor's refresh counter)
 	have_index: bool,
+	lag_ns:     f64,          // how much later than the next vblank the swap chain really takes a new frame (learned from the acquires that had to wait)
+	armed_at:   time.Tick,    // when the latency object was last set (the acquire that follows measures its lag against it)
 }
 
 @(private)
-DWM_TIMING_INFO :: struct {
+DWM_TIMING_INFO :: struct #packed {   // the header packs it to 1 byte
 	cbSize:                u32,
 	rateRefresh:           [2]u32,   // numerator, denominator
 	qpcRefreshPeriod:      u64,
@@ -69,6 +72,8 @@ DWM_TIMING_INFO :: struct {
 	cPixelsDrawn:          u64,
 	cBuffersEmpty:         u64,
 }
+
+#assert(size_of(DWM_TIMING_INFO) == 292)
 
 foreign import dwmapi_present "system:dwmapi.lib"
 @(default_calling_convention = "system", private = "file")
@@ -113,7 +118,16 @@ wgpu_waitable :: proc(r: ^Renderer) -> rawptr { return rawptr(r.wg.latency.timer
 
 @(private)
 wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
-	return wgpu.SurfaceGetCurrentTexture(r.wg.surface)
+	t0 := time.tick_now()
+	st := wgpu.SurfaceGetCurrentTexture(r.wg.surface)
+	// the texture came waited after the call: if that is long, the latency object was set too early (the app read its input
+	// and then waited for the swap chain): set it later next time; if it came at once, try a little earlier
+	l := &r.wg.latency
+	if l.timer != nil && (st.status == .SuccessOptimal || st.status == .SuccessSuboptimal) {
+		waited := f64(time.tick_since(t0))
+		if waited > 300_000 { l.lag_ns = min(l.lag_ns + waited, 2 * max(r.present.period_ns, 1e6)) } else { l.lag_ns = max(l.lag_ns - 50_000, 0) }
+	}
+	return st
 }
 
 // wait_for_frame: the frame latency object, then the texture of the frame (which waits for the real object).
@@ -135,6 +149,7 @@ wgpu_query_tearing :: proc(r: ^Renderer) {
 		for i in 0 ..< caps.presentModeCount {
 			if caps.presentModes[i] == .Immediate { r.present.tearing_ok = true }
 		}
+		if wgpu_trace() { fmt.eprintfln("wgpu: surface present modes %v, formats %v, alpha %v", caps.presentModes[:caps.presentModeCount], caps.formats[:caps.formatCount], caps.alphaModes[:caps.alphaModeCount]) }
 	}
 }
 
@@ -196,8 +211,10 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	} else if ok {
 		index = info.cRefresh + u64(max(f64(time.tick_diff(p.sync_tick, now)), 0) / max(p.period_ns, 1))
 	}
-	// the latency object: the screen has taken the frame when it reaches that vblank
-	wgpu_latency_arm(r, sync > 0 ? max(i64(time.tick_diff(now, shown)) - 200_000, 0) : 0)
+	// the latency object: the screen has taken the frame when it reaches that vblank (plus the lag learned so far)
+	wgpu_latency_arm(r, sync > 0 ? max(i64(time.tick_diff(now, shown) + time.Duration(l.lag_ns)) - 200_000, 0) : 0)
+	if sync > 0 && l.lag_ns >= 0.5 * p.period_ns { shown._nsec += i64(l.lag_ns / p.period_ns + 0.5) * i64(p.period_ns) }
+	if wgpu_trace() { fmt.eprintfln("wgpu: present done: shown in %.2f ms, interval %d, lag %.2f ms, period %.2f ms, dwm ok %v", f64(time.tick_diff(now, shown)) / 1e6, sync, l.lag_ns / 1e6, p.period_ns / 1e6, ok) }
 	d := Displayed_Frame{present = u32(p.presents), input = p.input, presented = now, shown = shown}
 	if ok && sync > 0 && l.have_index && index > l.last_index && index - l.last_index < 240 && p.continuous {
 		d.refreshes = u32(index - l.last_index)
