@@ -71,9 +71,13 @@ if ($ok) {
 	Write-Host "wgpu-native ${WgpuVersion} installed in $libDir"
 }
 
+# --- the shared library (-define:WGPU_SHARED=true: a program that already links another Rust static library, as Wren does with its image decoders,
+# cannot link wgpu_native.lib too: both carry the Rust runtime, "rust_eh_personality is multiply defined") ----------------------------
+New-Item -ItemType Directory $Dest -Force | Out-Null
+Copy-Item (Join-Path $libDir 'wgpu_native.dll') (Join-Path $Dest 'wgpu_native.dll') -Force
+
 # --- DXC -------------------------------------------------------------------------------------------------------
 if (-not $NoDxc) {
-	New-Item -ItemType Directory $Dest -Force | Out-Null
 	$have = (Test-Path (Join-Path $Dest 'dxcompiler.dll')) -and (Test-Path (Join-Path $Dest 'dxil.dll')) -and (Test-Path (Join-Path $Dest 'dxc.version'))
 	if ($have -and (Get-Content (Join-Path $Dest 'dxc.version')) -eq $Dxc.Sha256) {
 		Write-Host "DXC: ${Dest} is as pinned"
