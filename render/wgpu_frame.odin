@@ -96,6 +96,8 @@ Submit :: struct {
 	bg0:    wgpu.BindGroup,
 	groups: [dynamic]wgpu.BindGroup,   // texture bind groups of this submit, released after it
 	views:  [dynamic]wgpu.TextureView, // temporary views (mip levels)
+	timed:  bool,                      // GPU time is measured (wgpu_profile.odin)
+	pass_kind: Gpu_Step,               // what the open pass is, for the profile
 	replay_off: [dynamic]u32,          // arena offset of each replay's constants (index 0: immediate instances); ~0 = not yet written
 }
 
@@ -161,6 +163,7 @@ end_pass :: proc(s: ^Submit) {
 	wgpu.RenderPassEncoderEnd(s.pass)
 	wgpu.RenderPassEncoderRelease(s.pass)
 	s.pass = nil
+	if s.timed { wprof_step(s.r, s.enc, s.pass_kind, 0, 0, 0, 0) }
 }
 
 @(private)
@@ -176,7 +179,9 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		delete(s.groups); delete(s.views); delete(s.replay_off)
 	}
 	s.enc = wgpu.DeviceCreateCommandEncoder(g.device)
+	if GPU_TIMING || r.gpu_timing || r.prof.on { wprof_begin(r, s.enc); s.timed = g.pf.slot >= 0 }
 	wgpu_generate_mips(r, &s)
+	if s.timed { wprof_step(r, s.enc, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst)) }
 
 	upload_table(g, &g.xforms, raw_data(f.xforms), len(f.xforms), size_of(Xform_Data))
 	upload_table(g, &g.clips, raw_data(f.clips), len(f.clips), size_of(Clip_Data))
@@ -295,10 +300,12 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		wgpu.RenderPassEncoderDraw(s.pass, 4, u32(b.count), 0, u32(b.first))
 	}
 	end_pass(&s)
+	if s.timed { wprof_end(r, s.enc) }
 	cb := wgpu.CommandEncoderFinish(s.enc)
 	wgpu.QueueSubmit(g.queue, {cb})
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(s.enc)
+	if s.timed { wprof_submitted(r) }
 	for bg in s.groups { wgpu.BindGroupRelease(bg) }
 	for v in s.views { wgpu.TextureViewRelease(v) }
 }
@@ -351,6 +358,7 @@ wgpu_begin_target :: proc(r: ^Renderer, s: ^Submit, f: ^Frame_Data, target: int)
 		g.clear_pending = false
 	}
 	s.pass = wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
+	s.pass_kind = target == 0 ? .Draw_Frame : .Draw_Layer
 	wgpu.RenderPassEncoderSetViewport(s.pass, 0, 0, f32(size.x), f32(size.y), 0, 1)
 	return true, size, origin, format, g_off
 }
@@ -368,6 +376,7 @@ wgpu_run_op :: proc(r: ^Renderer, s: ^Submit, op: ^Op) {
 		p := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
 		wgpu.RenderPassEncoderEnd(p)
 		wgpu.RenderPassEncoderRelease(p)
+		if s.timed { td := r.textures[int(op.dst)]; wprof_step(r, s.enc, .Clear, td.w, td.h, td.w * td.h, td.w * td.h * texture_bpp(r, op.dst)) }
 	case .Copy:
 		if !valid(r, op.dst) { return }
 		src := g.frame_tex
@@ -387,6 +396,7 @@ wgpu_run_op :: proc(r: ^Renderer, s: ^Submit, op: ^Op) {
 			&{texture = src, mipLevel = 0, origin = {u32(x0), u32(y0), 0}, aspect = .All},
 			&{texture = d.wtex, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
 			&{u32(x1 - x0), u32(y1 - y0), 1})
+		if s.timed { px := int(x1 - x0) * int(y1 - y0); wprof_step(r, s.enc, .Copy, int(x1 - x0), int(y1 - y0), px, px * 2 * max(texture_bpp(r, op.dst), 4)) }
 	case .Pass:
 		wgpu_run_pass(r, s, &op.pass)
 	}
@@ -443,6 +453,20 @@ wgpu_run_pass :: proc(r: ^Renderer, s: ^Submit, p: ^Pass) {
 	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
 	wgpu.RenderPassEncoderEnd(pass)
 	wgpu.RenderPassEncoderRelease(pass)
+	if s.timed {
+		kind: Gpu_Step
+		switch p.mode {
+		case .Color: kind = .Color
+		case .Blur: kind = .Blur
+		case .Downsample: kind = .Downsample
+		case .Shadow: kind = .Shadow
+		case .Mask: kind = .Mask
+		}
+		px := w * h
+		bytes := px * texture_bpp(r, p.dst.tex) + p.src.size.x * p.src.size.y * texture_bpp(r, p.src.tex)
+		if p.src2.tex != 0 { bytes += p.src2.size.x * p.src2.size.y * texture_bpp(r, p.src2.tex) }
+		wprof_step(r, s.enc, kind, w, h, px, bytes)
+	}
 }
 
 ////////////////////////////////

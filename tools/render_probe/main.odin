@@ -46,7 +46,8 @@ run :: proc() {
 	draw.init(&dc, &r, &fonts)
 	id, ok, _ := font.load_system_or_embedded(&fonts, "C:/Windows/Fonts/segoeui.ttf", font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("probe: font"); os.exit(1) }
-	for i in 0 ..< 3 {
+	render.set_gpu_profile(&r, true)
+	for i in 0 ..< 12 {
 		t1 := time.tick_now()
 		fmt.eprintln("-- frame", i)
 		draw.begin_frame(&dc, {f32(size.x), f32(size.y)})
@@ -65,6 +66,7 @@ run :: proc() {
 		render.frame_end(&r)
 		fmt.printfln("frame %d: %.2f ms", i, time.duration_milliseconds(time.tick_since(t1)))
 	}
+	if prof, have := render.gpu_profile(&r); have { fmt.printfln("gpu %.4f ms (profile frame %d): draw %.4f, upload %.4f, copy %.4f", render.gpu_ms(&r), prof.frame, prof.steps[.Draw_Frame].ms, prof.steps[.Upload].ms, prof.steps[.Copy].ms) } else { fmt.println("no gpu profile") }
 	when render.USE_WGPU { d, m, p, n := render.wgpu_costs(&r); fmt.printfln("wgpu costs: device %.1f ms, modules %.1f ms, %d pipelines %.1f ms", d, m, n, p) }
 	px := render.read_pixels(&r)
 	sb: strings.Builder
