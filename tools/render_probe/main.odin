@@ -65,6 +65,7 @@ run :: proc() {
 		render.frame_end(&r)
 		fmt.printfln("frame %d: %.2f ms", i, time.duration_milliseconds(time.tick_since(t1)))
 	}
+	when render.USE_WGPU { d, m, p, n := render.wgpu_costs(&r); fmt.printfln("wgpu costs: device %.1f ms, modules %.1f ms, %d pipelines %.1f ms", d, m, n, p) }
 	px := render.read_pixels(&r)
 	sb: strings.Builder
 	fmt.sbprintf(&sb, "P6\n%d %d\n255\n", size.x, size.y)
