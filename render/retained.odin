@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:mem"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
+import "vendor:wgpu"
 
 // Retained data: the instances and tables of pictures (draw.Picture) live in five GPU heaps that persist from frame
 // to frame. A picture owns a range of each; it is written once when recorded (or again when re-recorded), its
@@ -31,6 +32,7 @@ Slot_Data :: struct {
 #assert(size_of(Slot_Data) == 64)
 
 Heap :: struct {
+	wbuf: wgpu.Buffer,                   // TOOLKIT_RENDER=wgpu: the buffer (vertex or storage)
 	buf:  ^d3d11.IBuffer,
 	view: ^d3d11.IShaderResourceView,   // structured heaps
 	cap:  int,                           // elements
@@ -94,7 +96,7 @@ insert_free :: proc(h: ^Heap, offset, n: int) {
 }
 
 // Writes `n` elements at `offset` (elements) of heap `kind`.
-heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: int) {
+d3d_heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: int) {
 	h := &r.heaps[kind]
 	if n <= 0 || h.buf == nil || offset < 0 || offset + n > h.cap { return }
 	stride := HEAP_STRIDE[kind]
@@ -103,7 +105,7 @@ heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: 
 }
 
 @(private)
-heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
+d3d_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 	h := &r.heaps[kind]
 	stride := HEAP_STRIDE[kind]
 	ncap := max(h.cap * 2, h.cap + need, HEAP_MIN)
@@ -156,7 +158,7 @@ heaps_reset :: proc(r: ^Renderer) {
 }
 
 @(private)
-heaps_destroy :: proc(r: ^Renderer) {
+d3d_heaps_destroy :: proc(r: ^Renderer) {
 	for &h in r.heaps {
 		if h.view != nil { h.view->Release() }
 		if h.buf != nil { h.buf->Release() }
@@ -186,7 +188,7 @@ device_lost :: proc(r: ^Renderer) -> bool { return r.lost }
 // their contents are gone: `device_generation` changes, owners upload their images again (draw.begin_frame resets
 // the glyph atlas). Pooled targets are dropped; the retained heaps are emptied (pictures upload again). Returns false
 // when no device can be had yet (try again later; until then frames draw nothing).
-recover :: proc(r: ^Renderer) -> bool {
+d3d_recover :: proc(r: ^Renderer) -> bool {
 	// the new device first: if there is none, the old (removed) one stays, its calls are harmless no-ops
 	old_device, old_ctx := r.device, r.ctx
 	r.device, r.ctx = nil, nil

@@ -10,6 +10,7 @@ import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
 import "vendor:directx/dxgi"
+import "vendor:wgpu"
 
 // LOW_LATENCY (default on): at most one frame in flight + a waitable swap chain. The app waits for the GPU *before*
 // reading input, so what is drawn is based on the freshest mouse position. With DXGI's default (3 frames queued) a
@@ -309,6 +310,11 @@ Texture_Data :: struct {
 	mips_dirty: bool,
 	space: Blend_Space,   // RGBA: how texels are stored (see create_texture_rgba)
 	unorm: bool,          // Target: 8 bits per channel (else fp16)
+	wtex:  wgpu.Texture,       // TOOLKIT_RENDER=wgpu: the texture,
+	wview: wgpu.TextureView,   // its view for sampling (every mip level; a snapshot: in the frame's blend space),
+	wrtv:  wgpu.TextureView,   // and for rendering into (Target only)
+	wformat: wgpu.TextureFormat,
+	mip_count: int,
 }
 
 Renderer :: struct {
@@ -385,12 +391,13 @@ Renderer :: struct {
 	dcomp_visual: ^IDCompositionVisual,
 	offscreen:   ^d3d11.ITexture2D,      // init_offscreen: the frame target instead of a swap chain
 	warp:        bool,                   // the device is WARP (software)
+	wg:          Wgpu_State,             // TOOLKIT_RENDER=wgpu (wgpu_*.odin); zero otherwise
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
 // Clear to {0, 0, 0, 0} and draw translucent colours; the output is premultiplied, which is what blending onto a
 // transparent clear produces anyway. `space`: what the frame blends in (set_blend_space changes it later).
-init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+d3d_init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
 	r.hwnd = hwnd
 	r.size = size
 	r.transparent = transparent
@@ -458,7 +465,7 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 
 // Releases every GPU object and the renderer's memory (textures still alive included). The renderer can be
 // initialized again afterwards.
-destroy :: proc(r: ^Renderer) {
+d3d_destroy :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
 	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
@@ -480,7 +487,7 @@ destroy :: proc(r: ^Renderer) {
 
 // A renderer without a window: frames are drawn into an offscreen B8G8R8A8 (sRGB) image of `size` that
 // `read_pixels` returns. For tests and image export. `warp`: the software rasterizer (deterministic, no GPU needed).
-init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
+d3d_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
 	r.size = size
 	r.space = space
 	r.warp = warp
@@ -517,7 +524,7 @@ create_offscreen_view :: proc(r: ^Renderer) -> bool {
 // (text_rendering_default; call set_text_rendering afterwards to keep your own). Pooled targets are released (snapshots
 // of the frame are read in its space). Existing RGBA textures keep the space they were stored in and are converted
 // when drawn; layers keep their own. Call it between frames.
-set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
+d3d_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	if space == r.space { return }
 	previous := r.space
 	r.space = space
@@ -565,7 +572,7 @@ text_rendering :: proc(r: ^Renderer) -> Text_Rendering { return r.text }
 
 // The offscreen image (init_offscreen) after the last frame: RGBA8, sRGB, `size.x * size.y * 4` bytes (whatever the
 // blend space: in Linear the view encodes, in Srgb the values are stored as they are).
-read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
+d3d_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	if r.offscreen == nil { return nil }
 	staging: ^d3d11.ITexture2D
 	r.device->CreateTexture2D(&{
@@ -773,7 +780,7 @@ create_target :: proc(r: ^Renderer) {
 // a window dragged to a new size reallocates once per `slack` pixels crossed instead of at every step. The buffers are
 // made smaller again once they hold more than twice the pixels shown. Without SetSourceSize (or with a slack of 0)
 // the buffers follow the size exactly.
-resize :: proc(r: ^Renderer, size: [2]int) {
+d3d_resize :: proc(r: ^Renderer, size: [2]int) {
 	if size.x <= 0 || size.y <= 0 || size == r.size || r.swapchain == nil { return }
 	r.size = size
 	slack := resize_slack(r)
@@ -825,7 +832,7 @@ set_source_size :: proc(r: ^Renderer, size: [2]int) -> bool {
 }
 
 // A single-channel (coverage) texture, used for the glyph atlas.
-create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
+d3d_create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
 	td := Texture_Data{size = size, w = size, h = size, kind = .R8}
 	if !texture_objects(r, &td) { return 0 }
 	return add_texture(r, td)
@@ -857,7 +864,7 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	return true
 }
 
-update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
+d3d_update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
 	td := r.textures[int(t)]
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
@@ -875,7 +882,7 @@ add_texture :: proc(r: ^Renderer, td: Texture_Data) -> Texture {
 }
 
 // Largest width / height `create_texture_rgba` accepts (from the device's feature level).
-max_texture_size :: proc(r: ^Renderer) -> int {
+d3d_max_texture_size :: proc(r: ^Renderer) -> int {
 	#partial switch r.device->GetFeatureLevel() {
 	case ._9_1, ._9_2: return 2048
 	case ._9_3: return 4096
@@ -903,7 +910,7 @@ texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int {
 // - Srgb: R8G8B8A8_UNORM holding sRGB values premultiplied as they are: filtering and mips average sRGB values, as
 //   browsers do.
 // Drawn into a target of the other space, texels are converted by the shader.
-create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
+d3d_create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
 	limit := max_texture_size(r)
 	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
 	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = r.space}
@@ -919,12 +926,21 @@ create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
 // the web produce); `stride` = bytes per row (0: w * 4). Converted on the CPU to premultiplied alpha in the texture's
 // space: in linear light, re-encoded as sRGB for storage (Linear), or on the sRGB values (Srgb). Opaque pixels go
 // through unchanged.
-update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
+d3d_update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
 	if td.kind != .RGBA || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
 	pitch := stride > 0 ? stride : w * 4
 	if len(pixels) < pitch * (h - 1) + w * 4 { return }
+	premultiply_upload(r, td, w, h, pixels, pitch)
+	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
+	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.scratch), u32(w * 4), 0)
+	if td.mips { td.mips_dirty = true }
+}
+
+// Converts a w x h block of straight sRGB RGBA8 to the texture's storage (see create_texture_rgba) into r.scratch.
+@(private)
+premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: []u8, pitch: int) {
 	srgb_tables_init()
 	runtime.resize(&r.scratch, w * h * 4)
 	for row in 0 ..< h {
@@ -949,9 +965,6 @@ update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: [
 			}
 		}
 	}
-	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
-	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.scratch), u32(w * 4), 0)
-	if td.mips { td.mips_dirty = true }
 }
 
 // How an RGBA texture stores its texels (the renderer's blend space when it was created).
@@ -961,7 +974,7 @@ texture_space :: proc(r: ^Renderer, t: Texture) -> Blend_Space {
 }
 
 // Frees the GPU texture; the handle may be reused by a later create. Drawing a destroyed texture draws nothing.
-destroy_texture :: proc(r: ^Renderer, t: Texture) {
+d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
 	if td.kind == .None { return }
@@ -1072,6 +1085,12 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false) 
 	aw := min((w + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
 	ah := min((h + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
 	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = snapshot ? .Snapshot : .Target, unorm = unorm && !snapshot}
+	when USE_WGPU {
+		if !wgpu_target_objects(r, &td) { return 0 }
+		t := add_texture(r, td)
+		append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, used = true})
+		return t
+	} else {
 	desc := d3d11.TEXTURE2D_DESC{
 		Width = u32(aw), Height = u32(ah), MipLevels = 1, ArraySize = 1, Format = unorm ? .R8G8B8A8_UNORM : .R16G16B16A16_FLOAT,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE, .RENDER_TARGET},
@@ -1093,6 +1112,7 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false) 
 	t := add_texture(r, td)
 	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, used = true})
 	return t
+	}
 }
 
 // Ends the frame's use of the layer targets; releases the ones idle for long.
@@ -1157,7 +1177,7 @@ set_corner_smoothing :: proc(r: ^Renderer, smoothing: f32) { r.corner_smoothing 
 // Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
 // polling input and building the UI: then the frame you build is the next one shown.
 // (platform.wait_handle on frame_waitable does the same while taking the window's input as it arrives.)
-wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
+d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
 	if r.latency_handle == nil { return true }
 	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
 }
@@ -1169,7 +1189,7 @@ mark_input :: proc(r: ^Renderer) {
 }
 
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
-frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
+d3d_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	if r.lost && !recover(r) { return }
 	c := clear
 	if r.space == .Srgb && c.a > 0 {
@@ -1212,7 +1232,7 @@ Texture_Memory :: struct { glyphs, images, targets, count: int }
 
 texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 	for td, i in r.textures {
-		if i == 0 || td.tex == nil { continue }
+		if i == 0 || (td.tex == nil && td.wtex == nil) { continue }
 		m.count += 1
 		switch td.kind {
 		case .None:
@@ -1286,7 +1306,7 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 }
 
 // Presents the frame: `vsync` false presents at once (with tearing where supported) whatever set_present_mode says.
-frame_end :: proc(r: ^Renderer, vsync := true) {
+d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 	if r.swapchain == nil { r.ctx->Flush(); return }   // offscreen
 	if hr := present_frame(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
 		r.lost = true
