@@ -335,7 +335,7 @@ wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 	g.present_mode = cfg.presentMode
 	t_conf := time.tick_now()
 	wgpu.SurfaceConfigure(g.surface, &cfg)
-	if wgpu_trace() { fmt.eprintfln("wgpu: configure %dx%d: drain %.2f ms, SurfaceConfigure %.2f ms", r.size.x, r.size.y, time.duration_milliseconds(time.tick_diff(t_start, t_drain)), time.duration_milliseconds(time.tick_since(t_conf))) }
+	if wgpu_trace() { fmt.eprintfln("wgpu: configure %dx%d: present %v (tearing mode asked: %v), drain %.2f ms, SurfaceConfigure %.2f ms", r.size.x, r.size.y, cfg.presentMode, r.present.mode, time.duration_milliseconds(time.tick_diff(t_start, t_drain)), time.duration_milliseconds(time.tick_since(t_conf))) }
 	g.configured = true
 	r.buffer_size, r.source_size = r.size, r.size
 	wgpu_latency_start(r)
