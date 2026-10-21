@@ -62,7 +62,7 @@ blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {
 
 // Draws one frame: every batch in the order it was recorded (draw calls into the frame or a layer, clears, copies,
 // filter passes). Pooled targets are handed back to the pool afterwards.
-frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
+d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
 	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
 	timed := GPU_TIMING || r.gpu_timing || r.prof.on
