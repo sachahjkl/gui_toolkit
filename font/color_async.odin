@@ -111,7 +111,7 @@ color_worker :: proc(data: rawptr) {
 	for {
 		sync.mutex_lock(&q.mu)
 		for len(q.jobs) == 0 && !q.stop { sync.cond_wait(&q.cv, &q.mu) }
-		if q.stop { sync.mutex_unlock(&q.mu); return }
+		if q.stop { sync.mutex_unlock(&q.mu); colr_thread_done(); return }
 		job := q.jobs[0]
 		ordered_remove(&q.jobs, 0)
 		q.busy = job.face
@@ -148,13 +148,18 @@ color_job_run :: proc(s: ^State, job: Color_Job) {
 	run: DWRITE_GLYPH_RUN
 	bm: Colr_Bitmap
 	built: bool
-	if f != nil && colr_draws(s, f, job.gid) { bm, built = colr_draw(s, job.face, f, job.gid, job.size, job.x, job.fg) }
-	if f != nil && !built {
+	refused := false   // the interpreter drew nothing: the glyph is not drawn in color
+	if f != nil {
 		run = DWRITE_GLYPH_RUN{fontFace = f.dw, fontEmSize = job.size, glyphCount = 1, glyphIndices = &ids[0], glyphAdvances = &advs[0], glyphOffsets = &offs[0]}
-		_, paint := color_caps(s)
-		text_color: bool
-		fmts, text_color = glyph_formats(s, &run, paint)
-		if fmts != 0 { px, w, h, origin, uses_fg, drawn = color_render(s, f, &run, job.x, job.fg, !job.known_fg, fmts, text_color) }
+		if colr_draws(s, f, job.gid) {
+			bm, built = colr_draw(s, job.face, f, job.gid, job.size, job.x, job.fg)
+			refused = !built
+		} else {
+			_, paint := color_caps(s)
+			text_color: bool
+			fmts, text_color = glyph_formats(s, &run, paint)
+			if fmts != 0 { px, w, h, origin, uses_fg, drawn = color_render(s, f, &run, job.x, job.fg, !job.known_fg, fmts, text_color) }
+		}
 	}
 	atlas_lock(a)
 	defer atlas_unlock(a)
@@ -168,6 +173,8 @@ color_job_run :: proc(s: ^State, job: Color_Job) {
 	switch {
 	case built:
 		g, uses_fg = colr_put(s, bm), bm.uses_fg
+	case refused:
+		g, _ = rasterize_outline(s, f, &run, job.x)
 	case drawn:
 		g = color_bitmap_put(s, px, w, h, origin)
 	case fmts & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0:

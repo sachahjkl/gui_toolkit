@@ -112,7 +112,7 @@ DEFAULT_SETTINGS :: Settings{
 	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
-	color_engine = .System, colr_samples = 16, colr_cache_kb = 8192,
+	color_engine = .System, colr_samples = 8, colr_cache_kb = 8192,
 }
 
 @(private) CHUNK :: 256
@@ -169,6 +169,7 @@ State :: struct {
 	color_raster: Color_Raster,      // Direct2D drawing of color glyphs (color.odin)
 	color_queue:  Color_Queue,       // the color glyph thread (color_async.odin)
 	generation: int,                 // bumps when faces are unloaded
+	emoji:        Emoji_Source,      // the built-in emoji font (emoji.odin)
 	colr_drawn:   int,               // glyphs the COLR interpreter drew (atomic), and those it refused (a graph it cannot read)
 	colr_refused: int,
 }
@@ -271,6 +272,7 @@ destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
 	color_queue_destroy(s)
+	colr_thread_done()
 	color_raster_destroy(&s.color_raster)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
@@ -278,6 +280,7 @@ destroy :: proc(s: ^State) {
 	for c in s.chunks { if c != nil { free(c) } }
 	for k in s.keys { delete(k) }
 	delete(s.keys)
+	delete(s.emoji.path)
 	if s.factory != nil {
 		sync.mutex_lock(&loader_mu)
 		loader_users -= 1

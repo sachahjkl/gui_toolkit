@@ -222,6 +222,36 @@ Colr_Params :: struct {
 	samples: int,         // vertical samples per pixel row of the scan conversion
 }
 
+// The scratch memory of a render (surfaces, masks, gradient stops) comes from one arena per thread, reused from one glyph to the next:
+// a glyph is drawn in a few hundred microseconds, the reserve and release of fresh pages would be a good part of that. An arena that a
+// large canvas made grow is given back at once, and colr_thread_done gives back the one of a thread that stops drawing.
+COLR_ARENA_KEEP :: 4 << 20
+
+@(private, thread_local) tls_arena: virtual.Arena
+@(private, thread_local) tls_arena_ok: bool
+
+@(private)
+render_arena :: proc() -> ^virtual.Arena {
+	if !tls_arena_ok {
+		if virtual.arena_init_growing(&tls_arena) != nil { return nil }
+		tls_arena_ok = true
+	}
+	return &tls_arena
+}
+
+@(private)
+render_arena_done :: proc(a: ^virtual.Arena) {
+	if a.total_reserved > COLR_ARENA_KEEP { colr_thread_done() } else { virtual.arena_free_all(a) }
+}
+
+// Gives back the calling thread's scratch memory (call before a thread that drew color glyphs ends).
+colr_thread_done :: proc() {
+	if tls_arena_ok {
+		virtual.arena_destroy(&tls_arena)
+		tls_arena_ok = false
+	}
+}
+
 @(private)
 Walk :: struct {
 	src:       Colr_Source,
@@ -248,11 +278,11 @@ colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runti
 	c := src.colr
 	at, kind := colr_find(c, gid)
 	if kind == .None || src.upem <= 0 || p.size <= 0 { return {}, false }
-	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return {}, false }
-	defer virtual.arena_destroy(&arena)
+	arena := render_arena()
+	if arena == nil { return {}, false }
+	defer render_arena_done(arena)
 	w := Walk{
-		src = src, rd = Rd{d = c.colr}, alloc = virtual.arena_allocator(&arena), arena = &arena, budget = COLR_MAX_PAINTS,
+		src = src, rd = Rd{d = c.colr}, alloc = virtual.arena_allocator(arena), arena = arena, budget = COLR_MAX_PAINTS,
 		fg = {f32(p.fg[0]) / 255, f32(p.fg[1]) / 255, f32(p.fg[2]) / 255}, samples = clamp(p.samples, 1, 64),
 		m = MAT_IDENTITY, lo = {max(f32), max(f32)}, hi = {-max(f32), -max(f32)},
 	}
