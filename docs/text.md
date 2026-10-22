@@ -135,6 +135,38 @@ Positions: the pen is not rounded across; the baseline is put on a whole pixel (
 scale and a translation, as the bitmaps do). There is no hinting: horizontal stems are as the outline says (the Slug
 README suggests sizes whose cap height is a whole number of pixels).
 
+## Color glyphs: the COLR interpreter, built-in emoji
+
+`Settings.color_engine` says who draws COLR / CPAL color glyphs (`System`, the default: Direct2D, as before; `Builtin`:
+this package).
+
+**The interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in them, so Linux gets the same
+emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
+the glyph at the requested pixel size on the CPU:
+
+- COLR v0 layers and v1 paint graphs: `PaintColrLayers`, `PaintSolid`, linear / radial / sweep gradients (the three extend
+  modes, the stop rules of the specification, the sweep angle bias), `PaintGlyph` (a clip: coverage is multiplied down the
+  graph), `PaintColrGlyph` (its own clip box applies), every `PaintTransform` / `Translate` / `Scale` / `Rotate` / `Skew`
+  with and without a center, `PaintComposite` with the 28 modes (Porter-Duff and the separable and HSL blend modes, in
+  isolated groups), `ClipList` boxes. Palette 0; entry 0xFFFF is the text color (the glyph is then kept once per text color).
+  Variable COLR is read as its default instance.
+- Shapes are the glyph outlines of the Slug outline provider (`Outline_Provider`), kept per face in a cache of
+  `Settings.colr_cache_kb`; scan conversion is exact horizontally and `Settings.colr_samples` times per pixel row vertically.
+  The bitmaps go to the same Color pages, async queue and `uses_fg` handling as Direct2D's.
+- Untrusted input: every offset is checked, a graph with a cycle or more than `COLR_MAX_PAINTS` nodes is refused (the glyph is
+  then its plain outline), canvases are limited to `COLR_CANVAS_LIMIT`. `tests/colr` mutates a COLR table 400 times.
+- Against Direct2D on the color-fonts test glyphs the mean difference is 0.7 / 255; against Chrome / Edge on 115 emoji of
+  Noto Color Emoji (`tools\emoji_board.ps1`) it is 0.3 to 0.7 / 255 at 16 to 64 px and 100 % to 175 %.
+
+**Built-in emoji** (`font/emoji.odin`): `set_emoji_source(s, path)` or `set_emoji_source(s, data = ...)` hands the package an
+emoji font (Wren ships Noto Color Emoji, `tools\fetch_emoji.ps1`). It loads on the first emoji that needs it. In shaping it
+takes the characters drawn as emoji by default (`Emoji_Presentation`, regional indicators), any emoji followed by U+FE0F or
+U+20E3 even when a face of the cascade has a text glyph, and it replaces the system's own color emoji font when a font
+stack names one; ZWJ sequences, modifiers, flags, keycaps and tag sequences stay in one face. U+FE0E asks for text, and
+a text-presentation emoji nothing else draws falls back to the emoji font before .notdef. Tag sequences (England, Scotland,
+Wales) go through the face's GSUB `ccmp` ligatures (`gsub_ligate`), which DirectWrite does not apply to tag characters.
+All 3 963 fully qualified sequences of Unicode 18's `emoji-test.txt` shape to one glyph (`tests/colr`).
+
 ## Limits
 
 - Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),

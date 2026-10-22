@@ -59,6 +59,15 @@ Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas)
 - `font/data/Inconsolata-Regular.ttf`: Inconsolata, copyright (c) 2006-2012 Raph Levien, copyright (c) 2011-2012
   Cyreal, SIL Open Font License 1.1 (`font/data/Inconsolata-OFL.txt`).
 
+## Emoji (optional, `font.set_emoji_source`)
+
+- Noto Color Emoji (COLR v1), copyright Google, SIL Open Font License 1.1 (`font/data/NotoColorEmoji-OFL.txt`), is not part of
+  this repository: `tools\fetch_emoji.ps1` fetches it (Google Fonts' build, pinned by commit and SHA-256) for programs that
+  ship it. The COLR interpreter itself reads any COLR font.
+- `font/emoji_data.odin` is generated from Unicode's `emoji-data.txt` (Unicode 18.0.0, Unicode License v3,
+  <https://www.unicode.org/license.txt>).
+- The color glyph test fonts of `tests/color_glyphs/data` keep their own licenses (see `data/README.txt`).
+
 ## WebGPU backend (optional, `-define:TOOLKIT_RENDER=wgpu`)
 
 - [wgpu-native](https://github.com/gfx-rs/wgpu-native) (wgpu and naga), MIT or Apache-2.0, linked through Odin's `vendor:wgpu`; `wgpu_native.dll` ships with programs built with `WGPU_SHARED=true`.

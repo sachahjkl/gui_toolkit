@@ -54,16 +54,25 @@ jobs:
           odin run tools/shaders -vet -out:build/shaders_tool.exe -- -check
           if ($LASTEXITCODE) { exit 1 }
 
+      - name: "Emoji font (Noto Color Emoji COLR v1 and Unicode's emoji data, pinned by SHA-256, for tests/colr)"
+        shell: pwsh
+        run: |
+          ./tools/fetch_emoji.ps1 -Unicode
+          if ($LASTEXITCODE) { exit 1 }
+
       - name: Tests (no window; pixel tests on WARP)
         shell: pwsh
         run: |
           $failed = 0
-          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'shaders', 'slug') {
+          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'shaders', 'slug', 'colr') {
             # @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
             $extra = @(if ($t -in 'keyboard', 'status', 'states') { '-define:ODIN_TEST_THREADS=1' })
             $o = odin test "tests/$t" -vet @extra -out:"build/${t}_test.exe" 2>&1 | Out-String
             if ($o -match 'All tests were successful') { "PASS $t" } else { "FAIL $t"; $o; $failed++ }
           }
+          # the color glyph tests again with the COLR interpreter in place of Direct2D
+          $o = odin test tests/color_glyphs -vet -define:COLR_ENGINE=builtin -out:build/color_glyphs_builtin_test.exe 2>&1 | Out-String
+          if ($o -match 'All tests were successful') { 'PASS color_glyphs (builtin)' } else { 'FAIL color_glyphs (builtin)'; $o; $failed++ }
           if ($failed) { exit 1 }
 
       - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
