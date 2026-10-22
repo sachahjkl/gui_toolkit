@@ -169,6 +169,8 @@ struct PSIn {
 	@location(9) @interpolate(flat) p0: float4,
 	@location(10) @interpolate(flat) p1: float4,
 	@location(11) @interpolate(flat) p2: float4,
+	@location(12) @interpolate(flat) ca: float4,
+	@location(13) @interpolate(flat) cb: float4,
 };
 
 struct Mat {
@@ -243,7 +245,19 @@ fn lerp_space(flags: u32) -> u32 {
 // maps layer texels (x, y, 1) to homogeneous screen pixels (X, Y, W). The vertex position is written homogeneous
 // (X, Y, W scaled to clip space, with the same W), so the rasterizer clips against W > 0 and interpolates the varyings with
 // perspective correction: the layer's texel position (uv) and the local position the edge is antialiased from (rect_pos) are exact.
-// colors[0] is the tint (alpha included); colors[1].x is the most taps of the anisotropic filter.
+// Instance fields of a projected quad (the geometry is `dst`, a rect of the layer's plane space, texel units):
+//   src        the texels of the layer's texture that dst covers (uv = mix(src.xy, src.zw, t))
+//   colors[0]  tint (alpha included)
+//   colors[1]  x: most taps of the anisotropic filter; y: number of cuts (at most MAX_CUTS); z: 1 when the texture has mips
+//   colors[2]  the frame rect (x0 y0 x1 y1, plane space): the antialiased edge is the frame's, not dst's, so a quad that is
+//              one piece of a larger plane (a tile of a plane too large for one texture) has no edge of its own on the sides
+//              it shares with its neighbours (z <= x: the frame is dst)
+//   colors[3]  the valid texels of the texture, reads stay inside (a tile has a gutter beyond src)
+// The transform table holds, after the two entries of H, ceil(cuts / 2) entries of cuts: half-planes a x + b y + c >= 0 of the
+// plane space (3 floats each, two to an entry) that keep a piece of a plane cut by other planes (BSP, see plane.odin). They are
+// tested per pixel on the interpolated plane position: no seam between the pieces.
+const MAX_CUTS: u32 = 6u;
+
 fn vs_project(i: VSIn) -> PSIn {
 	let corner = float2(f32(i.vid >> 1u), f32(i.vid & 1u));
 	let e0 = xforms[i.extra.x];
@@ -252,6 +266,8 @@ fn vs_project(i: VSIn) -> PSIn {
 	let r1 = float3(e0.abcd.w, e0.ef.x, e0.ef.y);
 	let r2 = e1.abcd.xyz;
 	let size = i.dst.zw - i.dst.xy;
+	var frame = i.c2;
+	if (frame.z <= frame.x || frame.w <= frame.y) { frame = i.dst; }
 	// local margin that is 1 px on screen at this corner, from the Jacobian of the projection there
 	let p0 = float3(i.dst.xy + corner * size, 1.0);
 	let w0 = max(dot(r2, p0), 1e-3);
@@ -261,7 +277,14 @@ fn vs_project(i: VSIn) -> PSIn {
 	let det = jx.x * jy.y - jx.y * jy.x;
 	var grow = float2(0.0);
 	if (abs(det) > 1e-12) { grow = min(float2(length(jy), length(jx)) / abs(det), float2(64.0)); }
-	let t = corner + (corner * 2.0 - 1.0) * grow / max(abs(size), float2(1e-6));
+	// only the sides on the frame's edge grow (the antialiased ones)
+	let on_l = abs(i.dst.x - frame.x) < 0.01;
+	let on_r = abs(i.dst.z - frame.z) < 0.01;
+	let on_t = abs(i.dst.y - frame.y) < 0.01;
+	let on_b = abs(i.dst.w - frame.w) < 0.01;
+	let gx = select(select(0.0, grow.x, on_r), select(0.0, grow.x, on_l), corner.x < 0.5);
+	let gy = select(select(0.0, grow.y, on_b), select(0.0, grow.y, on_t), corner.y < 0.5);
+	let t = corner + (corner * 2.0 - 1.0) * float2(gx, gy) / max(abs(size), float2(1e-6));
 	let lp = i.dst.xy + t * size;
 	let p = float3(lp, 1.0);
 	let hx = dot(r0, p);
@@ -272,22 +295,49 @@ fn vs_project(i: VSIn) -> PSIn {
 		(hx - hw * g.target_origin.x) / g.viewport_size.x * 2.0 - hw,
 		hw - (hy - hw * g.target_origin.y) / g.viewport_size.y * 2.0,
 		0.5 * hw, hw);
-	o.rect_pos = (t - 0.5) * size;
-	o.half_size = size * 0.5;
+	o.rect_pos = lp - (frame.xy + frame.zw) * 0.5;
+	o.half_size = (frame.zw - frame.xy) * 0.5;
 	o.lpos = lp;
 	o.uv = mix(i.src.xy, i.src.zw, t);
-	o.src = i.src;
+	o.src = i.c3;
 	var c = i.c0;
 	c.a = c.a * rp.m1.z;
 	if (lerp_space(i.extra.z) == SPACE_SRGB) { c = float4(srgb_encode(c.rgb), c.a); }
 	o.color = float4(c.rgb * c.a, c.a);
-	o.radii = float4(0.0);
 	o.style = float4(0.0, 1.0, i.style.z, 1.0);
 	o.extra = uint4(1u, i.extra.y, i.extra.z, i.extra.w);
 	o.p0 = i.c1;
-	o.p1 = i.c2;
-	o.p2 = i.c3;
+	// the cuts, 3 floats each, packed one after the other in the flat varyings p1 p2 radii ca cb
+	var packed: array<float4, 5>;
+	let n = min(u32(i.c1.y + 0.5), MAX_CUTS);
+	for (var k = 0u; k < n; k++) {
+		let e = xforms[i.extra.x + 2u + k / 2u];
+		var v = e.abcd.xyz;
+		if ((k & 1u) == 1u) { v = float3(e.abcd.w, e.ef.x, e.ef.y); }
+		for (var q = 0u; q < 3u; q++) {
+			let at = k * 3u + q;
+			packed[at >> 2u][at & 3u] = v[q];
+		}
+	}
+	o.p1 = packed[0];
+	o.p2 = packed[1];
+	o.radii = packed[2];
+	o.ca = packed[3];
+	o.cb = packed[4];
 	return o;
+}
+
+// The cuts of a projected quad: is the pixel on the kept side of every one?
+fn inside_cuts(i: PSIn) -> bool {
+	let n = min(u32(i.p0.y + 0.5), MAX_CUTS);
+	if (n == 0u) { return true; }
+	var packed = array<float4, 5>(i.p1, i.p2, i.radii, i.ca, i.cb);
+	for (var k = 0u; k < n; k++) {
+		let at = k * 3u;
+		let c = float3(packed[at >> 2u][at & 3u], packed[(at + 1u) >> 2u][(at + 1u) & 3u], packed[(at + 2u) >> 2u][(at + 2u) & 3u]);
+		if (c.x * i.lpos.x + c.y * i.lpos.y + c.z < 0.0) { return false; }
+	}
+	return true;
 }
 
 @vertex
@@ -894,24 +944,47 @@ fn layer_texel(i: PSIn, screen: float2, space0: u32) -> Texel {
 	return Texel(t, space);
 }
 
-// A texel of a layer drawn through a homography (FLAG_PROJECT), filtered along the long axis of the pixel's footprint in the
-// layer (anisotropic: taps one texel apart, up to p0.x of them) so a plane seen at a slant stays sharp without shimmering.
-// Reads stay inside the layer's valid texels (src), so nothing leaks in from the pooled texture around it.
+// A texel of a layer drawn through a homography (FLAG_PROJECT): the pixel's footprint in the layer is an ellipse, the image of the
+// pixel's square through the Jacobian (duvx, duvy) of the layer position. Anisotropic filtering: taps along the ellipse's long axis
+// (at most p0.x of them), each one trilinear at the mip level of the rest of the footprint, so a plane seen at a slant is sharp
+// across and smooth along, and a plane that is far or small is not aliased. Without mips (p0.z = 0) the level is 0 and the taps
+// are one texel apart. Reads stay inside the valid texels (src, the varying holding colors[3]) by the margin the level needs, so
+// nothing leaks in from the pooled texture around the layer.
 fn proj_texel(i: PSIn, duvx: float2, duvy: float2) -> float4 {
-	let dim = float2(textureDimensions(image));
-	let lo = i.src.xy + 0.5;
-	let hi = max(i.src.zw - 0.5, lo);
-	var major = duvx;
-	var lmaj = length(duvx);
-	let ly = length(duvy);
-	if (ly > lmaj) { major = duvy; lmaj = ly; }
-	let n = u32(clamp(ceil(lmaj - 0.05), 1.0, max(i.p0.x, 1.0)));
-	var acc = float4(0.0);
-	for (var k = 0u; k < n; k++) {
-		let o = (f32(k) + 0.5) / f32(n) - 0.5;
-		acc += textureSampleLevel(image, samp_img, clamp(i.uv + major * o, lo, hi) / dim, 0.0);
+	let dim = float2(textureDimensions(image, 0));
+	let a = dot(duvx, duvx);
+	let b = dot(duvx, duvy);
+	let c = dot(duvy, duvy);
+	let half_tr = 0.5 * (a + c);
+	let disc = sqrt(max(half_tr * half_tr - (a * c - b * b), 0.0));
+	let lmaj = sqrt(half_tr + disc);
+	let lmin = sqrt(max(half_tr - disc, 0.0));
+	// the long axis in layer space: the eigenvector of the Jacobian's Gram matrix for the larger eigenvalue, as a combination of
+	// the two derivatives
+	var ev = float2(1.0, 0.0);
+	if (abs(b) > 1e-12 * (a + c)) { ev = float2(b, half_tr + disc - a); } else if (c > a) { ev = float2(0.0, 1.0); }
+	ev = ev / max(length(ev), 1e-12);
+	var major = ev.x * duvx + ev.y * duvy;
+	let major_len = max(length(major), 1e-12);
+	major = major / major_len * lmaj;
+	var level = 0.0;
+	var n = 1.0;
+	if (i.p0.z > 0.5) {
+		n = clamp(ceil(lmaj / max(lmin, 1e-3) - 0.05), 1.0, max(i.p0.x, 1.0));
+		level = clamp(log2(max(max(lmaj / n, lmin), 1.0)), 0.0, 15.0);
+	} else {
+		n = clamp(ceil(lmaj - 0.05), 1.0, max(i.p0.x, 1.0));
 	}
-	return acc / f32(n);
+	let m = 0.5 * exp2(ceil(level));
+	let lo = i.src.xy + m;
+	let hi = max(i.src.zw - m, lo);
+	var acc = float4(0.0);
+	let cnt = u32(n);
+	for (var k = 0u; k < cnt; k++) {
+		let o = (f32(k) + 0.5) / n - 0.5;
+		acc += textureSampleLevel(image, samp_img, clamp(i.uv + major * o, lo, hi) / dim, level);
+	}
+	return acc / n;
 }
 
 @fragment
@@ -935,6 +1008,8 @@ fn ps_main(i: PSIn) -> @location(0) float4 {
 	if ((i.extra.z & FLAG_TEX_SRGB) != 0u) { tex_space = SPACE_SRGB; }
 	let screen = i.pos.xy + g.target_origin;
 	let clipped = i.extra.y != 0u || rp.misc.y != 0u;
+	let project = (i.extra.z & FLAG_PROJECT) != 0u;
+	if (project && !inside_cuts(i)) { discard; }
 	if ((i.extra.z & FLAG_BLEND) != 0u) {
 		// the layer's texel and what lay under it; the batch writes the result (no hardware blending)
 		let lt = layer_texel(i, screen, tex_space);
@@ -1004,7 +1079,8 @@ fn ps_main(i: PSIn) -> @location(0) float4 {
 			if (texel.a > 0.0) { straight = texel.rgb / texel.a; }
 			color = float4(color.rgb * convert_space(straight, tex_space, g.target_space), color.a * texel.a);
 		}
-		let r = corner_radius(p, i.radii);
+		var r = 0.0;
+		if (!project) { r = corner_radius(p, i.radii); }
 		let border = i.style.x;
 		let soft = i.style.y;
 		var coverage: f32;

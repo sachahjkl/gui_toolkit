@@ -294,6 +294,9 @@ run_op :: proc(r: ^Renderer, f: Frame_Data, op: ^Op) -> bool {
 	case .Pass:
 		run_pass(r, &op.pass)
 		return true
+	case .Mips:
+		if !valid(r, op.dst) || r.textures[int(op.dst)].view == nil || !r.textures[int(op.dst)].mips { return false }
+		r.ctx->GenerateMips(r.textures[int(op.dst)].view)
 	}
 	return false
 }
