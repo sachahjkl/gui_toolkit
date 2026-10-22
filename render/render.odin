@@ -405,6 +405,8 @@ Renderer :: struct {
 	buffer_size: [2]int,                  // the swap chain's buffers: `size` or larger (resize, set_resize_slack)
 	source_size: [2]int,                  // the region of the buffers presented (SetSourceSize)
 	resize_slack: int,                    // set_resize_slack: 0 = DEFAULT_RESIZE_SLACK, < 0 = buffers of the exact size
+	fixed_surface: bool,                  // set_fixed_surface: the buffers keep one size while the window resizes
+	surface_max: [2]int,                  // that size
 	hwnd:        win.HWND,
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
 	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
@@ -576,7 +578,7 @@ d3d_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	create_target(r)
 	if r.transparent {
 		r.source_size = r.buffer_size   // ResizeBuffers presents the whole buffers again
-		if r.size != r.buffer_size && !set_source_size(r, r.size) { resize_buffers(r, r.size) }
+		if !r.fixed_surface && r.size != r.buffer_size && !set_source_size(r, r.size) { resize_buffers(r, r.size) }
 	}
 }
 
@@ -814,6 +816,16 @@ create_target :: proc(r: ^Renderer) {
 // the buffers follow the size exactly.
 d3d_resize :: proc(r: ^Renderer, size: [2]int) {
 	if size.x <= 0 || size.y <= 0 || size == r.size || r.swapchain == nil { return }
+	if r.fixed_surface {
+		// The surface keeps its size: the window shows its top-left `size` pixels, 1:1, clipped by the client area (see
+		// set_fixed_surface). Grown beyond the surface, the buffers follow (one step shown scaled by the system).
+		r.size = size
+		if size.x > r.surface_max.x || size.y > r.surface_max.y {
+			r.surface_max = size
+			resize_buffers(r, size)
+		}
+		return
+	}
 	r.size = size
 	slack := resize_slack(r)
 	b := r.buffer_size
@@ -833,6 +845,19 @@ DEFAULT_RESIZE_SLACK :: 256
 // Room the swap chain's buffers keep to grow during a resize, in pixels per axis (see resize; 0 = buffers of the exact
 // size). Default DEFAULT_RESIZE_SLACK. Takes effect at the next resize.
 set_resize_slack :: proc(r: ^Renderer, px: int) { r.resize_slack = px > 0 ? px : -1 }
+
+// Keeps the swap chain's buffers at one size while the window is resized: the window then shows the top-left part of
+// that surface, 1:1, clipped by the client area, and is never scaled (a frame made for the old size is cut, not
+// stretched). Only with a composition swap chain (render.init's `transparent`): an HWND swap chain maps its buffers
+// onto the client area. A window grown beyond `max_size` resizes the buffers to it. False: no composition swap chain.
+d3d_set_fixed_surface :: proc(r: ^Renderer, max_size: [2]int) -> bool {
+	if !r.transparent || r.swapchain == nil || max_size.x <= 0 || max_size.y <= 0 { return false }
+	r.fixed_surface = true
+	r.surface_max = max_size
+	resize_buffers(r, max_size)
+	r.source_size = r.buffer_size
+	return true
+}
 
 @(private)
 resize_slack :: proc(r: ^Renderer) -> int { return r.resize_slack == 0 ? DEFAULT_RESIZE_SLACK : max(r.resize_slack, 0) }

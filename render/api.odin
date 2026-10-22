@@ -50,6 +50,11 @@ set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 	when USE_WGPU { return wgpu_set_max_frame_latency(r, n) } else { return d3d_set_max_frame_latency(r, n) }
 }
 
+// One surface size while the window resizes (see d3d set_fixed_surface): never scaled, clipped by the window.
+set_fixed_surface :: proc(r: ^Renderer, max_size: [2]int) -> bool {
+	when USE_WGPU { return false } else { return d3d_set_fixed_surface(r, max_size) }
+}
+
 create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
 	when USE_WGPU { return wgpu_create_texture_r8(r, size) } else { return d3d_create_texture_r8(r, size) }
 }
