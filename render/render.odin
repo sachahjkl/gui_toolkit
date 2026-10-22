@@ -393,6 +393,7 @@ Renderer :: struct {
 	gpu_last_frame: int,                  // 1 + the timed submit `gpu_last_ms` belongs to (0: none yet)
 	gpu_timing:  bool,                    // set_gpu_timing: measure without -define:GPU_TIMING
 	prof:        Gpu_Profiler,            // set_gpu_profile: GPU time of each step (gpu_profile.odin)
+	video:       Video_Pipeline,          // video.odin: decoded pictures to RGBA textures
 	targets_gen: u64,                     // targets_generation
 	filter_format: Target_Format,         // set_filter_precision
 	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
@@ -494,6 +495,7 @@ d3d_destroy :: proc(r: ^Renderer) {
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	profile_destroy(r)
+	video_pipeline_destroy(r)
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
@@ -625,9 +627,16 @@ create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
 	feature_levels := [?]d3d11.FEATURE_LEVEL{._11_0}
 	base_device: ^d3d11.IDevice
 	base_ctx: ^d3d11.IDeviceContext
-	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT}
+	// VIDEO_SUPPORT: hardware decoders (Media Foundation / DXVA) work on this device and hand their pictures to it as textures
+	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT, .VIDEO_SUPPORT}
 	when D3D_DEBUG { flags += {.DEBUG} }
-	if hr := d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx); win.FAILED(hr) {
+	hr := d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
+	if win.FAILED(hr) && .VIDEO_SUPPORT in flags {
+		// (the software rasterizer has no video support: no hardware decoding there anyway)
+		flags -= {.VIDEO_SUPPORT}
+		hr = d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
+	}
+	if win.FAILED(hr) {
 		fmt.eprintln("render: CreateDevice failed", hr)
 		return false
 	}
