@@ -169,7 +169,9 @@ paint_uses_text_color :: proc(f: ^Font, gid: u16) -> (uses, ok: bool) {
 // take those characters from another face (the system emoji font) than show outlines. True for faces without color.
 color_renderable :: proc(s: ^State, id: Font_Id) -> bool {
 	f := face_ptr(s, id)
-	if f == nil || !f.color || f.dw4 == nil { return true }
+	if f == nil || !f.color { return true }
+	if f.colr != nil && s.settings.color_engine == .Builtin { return true }
+	if f.dw4 == nil { return true }
 	fmts := f.dw4->GetGlyphImageFormats() & COLOR_FORMATS
 	d2d, paint := color_caps(s)
 	if paint { return true }

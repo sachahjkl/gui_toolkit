@@ -71,9 +71,18 @@ Fx :: struct {
 	colr, sbix, svg, svgz, cbdt: font.Font_Id,
 }
 
+// -define:COLR_ENGINE=builtin runs these tests with the package's COLR interpreter in place of Direct2D (tests/colr compares them).
+ENGINE :: #config(COLR_ENGINE, "system")
+#assert(ENGINE == "system" || ENGINE == "builtin", "COLR_ENGINE is system or builtin")
+
 @(private = "file")
 open :: proc(t: ^testing.T, f: ^Fx) -> bool {
 	font.init(&f.s)
+	when ENGINE == "builtin" {
+		st := f.s.settings
+		st.color_engine = .Builtin
+		font.set_settings(&f.s, st)
+	}
 	ok1, ok2, ok3, ok4, ok5: bool
 	f.colr, ok1 = font.load_embedded(&f.s, COLRV1)
 	f.sbix, ok2 = font.load_embedded(&f.s, SBIX)
