@@ -53,6 +53,8 @@ mat4_from_affine :: proc(a: Affine) -> Mat4 {
 Plane_Fx :: struct {
 	cache_id:  u64,   // 0: not kept
 	cache_key: u64,   // a signature of everything drawn in the plane (its size and raster scale are added)
+	mips:      bool,  // build the layer's mip levels (minification by perspective is filtered by them); needs device support,
+	                  // else the layer has none (Plane_Layer.mips says)
 }
 
 // What pop_plane hands back: the layer and where it lies in the plane frame. Draw it with draw_plane (which gives its texture
@@ -99,7 +101,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	tex: render.Texture
 	if c.rec == nil && w > 0 && h > 0 && !(sz.x != sz.x) {
 		if fx.cache_id != 0 && c.layer_cache.budget > 0 {
-			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space)), u64(render.filter_precision(c.renderer)))
+			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(fx.mips) << 8), u64(render.filter_precision(c.renderer)))
 			key = hash_f32(hash_f32(key, o.x), o.y)
 			ask := cache_ask(c, fx.cache_id, key, {}, Rect{{0, 0}, {f32(w), f32(h)}})
 			op.cache = ask
@@ -110,6 +112,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 				op.pl.img.scale = 1
 				op.pl.img.size = {w, h}
 				op.pl.kept = true
+				op.pl.mips = fx.mips
 				append(&c.planes, op)
 				close_batch(c)
 				append(&c.clips, Clip{})   // an empty clip: what the caller draws anyway goes nowhere
@@ -118,7 +121,8 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 				return false
 			}
 		}
-		tex = render.acquire_target(c.renderer, w, h)
+		if fx.mips { tex = render.acquire_target_mips(c.renderer, w, h); op.pl.mips = tex != 0 }
+		if tex == 0 { tex = render.acquire_target(c.renderer, w, h) }
 	}
 	if tex == 0 {
 		op.pl.direct = true
@@ -159,10 +163,20 @@ pop_plane :: proc(c: ^Context) -> Plane_Layer {
 	c.target = op.parent
 	start_batch(c)
 	pl := op.pl
+	if pl.mips { add_op(c, render.Op{kind = .Mips, dst = pl.img.tex}) }
 	if op.cache.store { pl.kept = cache_store(c, op.cache, pl.img, pl.size, Rect{{0, 0}, {f32(pl.size.x), f32(pl.size.y)}}) }
 	return pl
 }
 
+// The frame of the plane being drawn (the innermost open one): the plane frame position of texel (0, 0) and the texels per plane
+// frame unit. What is drawn meanwhile goes through the transform stack and then texels = (frame - origin) * scale. ok = false:
+// no plane is open, or its content is drawn directly (no layer: nothing projects it).
+open_plane_frame :: proc(c: ^Context) -> (origin: Vec2, scale: f32, ok: bool) {
+	if len(c.planes) == 0 { return }
+	op := c.planes[len(c.planes) - 1]
+	if op.pl.direct { return }
+	return op.pl.origin, op.pl.scale, true
+}
 // Gives the texture of a plane that will not be drawn back to the pool.
 discard_plane :: proc(c: ^Context, pl: Plane_Layer) {
 	if pl.img.tex != 0 && !pl.kept { render.release_target(c.renderer, pl.img.tex) }

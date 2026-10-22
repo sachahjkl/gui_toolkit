@@ -136,26 +136,32 @@ tex_view :: proc(r: ^Renderer, t: Texture, dummy: wgpu.TextureView) -> wgpu.Text
 
 @(private)
 wgpu_generate_mips :: proc(r: ^Renderer, s: ^Submit) {
-	g := &r.wg
 	for &td in r.textures {
 		if !td.mips_dirty || td.wtex == nil { continue }
 		td.mips_dirty = false
-		pipe := wgpu_mip_pipeline(r, td.wformat)
-		for lvl in 1 ..< td.mip_count {
-			src := wgpu.TextureCreateView(td.wtex, &{format = td.wformat, dimension = ._2D, baseMipLevel = u32(lvl - 1), mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
-			dst := wgpu.TextureCreateView(td.wtex, &{format = td.wformat, dimension = ._2D, baseMipLevel = u32(lvl), mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
-			append(&s.views, src, dst)
-			e := [2]wgpu.BindGroupEntry{{binding = 0, textureView = src}, {binding = 1, sampler = g.s_mip}}
-			bg := wgpu.DeviceCreateBindGroup(g.device, &{layout = g.bgl_mip, entryCount = 2, entries = raw_data(e[:])})
-			append(&s.groups, bg)
-			att := wgpu.RenderPassColorAttachment{view = dst, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store}
-			p := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
-			wgpu.RenderPassEncoderSetPipeline(p, pipe)
-			wgpu.RenderPassEncoderSetBindGroup(p, 0, bg)
-			wgpu.RenderPassEncoderDraw(p, 3, 1, 0, 0)
-			wgpu.RenderPassEncoderEnd(p)
-			wgpu.RenderPassEncoderRelease(p)
-		}
+		wgpu_fill_mips(r, s, &td)
+	}
+}
+
+// Draws level k of a texture from level k - 1, for every level.
+@(private)
+wgpu_fill_mips :: proc(r: ^Renderer, s: ^Submit, td: ^Texture_Data) {
+	g := &r.wg
+	pipe := wgpu_mip_pipeline(r, td.wformat)
+	for lvl in 1 ..< td.mip_count {
+		src := wgpu.TextureCreateView(td.wtex, &{format = td.wformat, dimension = ._2D, baseMipLevel = u32(lvl - 1), mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
+		dst := wgpu.TextureCreateView(td.wtex, &{format = td.wformat, dimension = ._2D, baseMipLevel = u32(lvl), mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
+		append(&s.views, src, dst)
+		e := [2]wgpu.BindGroupEntry{{binding = 0, textureView = src}, {binding = 1, sampler = g.s_mip}}
+		bg := wgpu.DeviceCreateBindGroup(g.device, &{layout = g.bgl_mip, entryCount = 2, entries = raw_data(e[:])})
+		append(&s.groups, bg)
+		att := wgpu.RenderPassColorAttachment{view = dst, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store}
+		p := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
+		wgpu.RenderPassEncoderSetPipeline(p, pipe)
+		wgpu.RenderPassEncoderSetBindGroup(p, 0, bg)
+		wgpu.RenderPassEncoderDraw(p, 3, 1, 0, 0)
+		wgpu.RenderPassEncoderEnd(p)
+		wgpu.RenderPassEncoderRelease(p)
 	}
 }
 
@@ -441,6 +447,9 @@ wgpu_run_op :: proc(r: ^Renderer, s: ^Submit, op: ^Op) {
 		if s.timed { px := int(x1 - x0) * int(y1 - y0); wprof_step(r, s.enc, .Copy, int(x1 - x0), int(y1 - y0), px, px * 2 * max(texture_bpp(r, op.dst), 4)) }
 	case .Pass:
 		wgpu_run_pass(r, s, &op.pass)
+	case .Mips:
+		if !valid(r, op.dst) || !r.textures[int(op.dst)].mips { return }
+		wgpu_fill_mips(r, s, &r.textures[int(op.dst)])
 	}
 }
 
