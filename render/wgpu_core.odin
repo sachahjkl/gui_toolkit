@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:math/bits"
+import "core:sync"
 import "core:thread"
 import "core:time"
 import win "core:sys/windows"
@@ -34,6 +35,10 @@ WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3
 
 @(private) ARENA_ALIGN :: 256           // minUniformBufferOffsetAlignment of every backend we use
 @(private) PASS_CONSTANTS_SIZE :: 1280  // size_of(Pass_Constants), a multiple of ARENA_ALIGN
+
+// DXC (dxcompiler.dll) crashes the process when several devices compile at the same moment (the pixel tests run in parallel, one device each):
+// shaders are compiled one at a time in the process.
+@(private) g_compile_lock: sync.Mutex
 
 @(private)
 Wgpu_Pipe :: struct {
@@ -95,6 +100,8 @@ Wgpu_State :: struct {
 	// latency (wgpu_present.odin)
 	latency:       Wgpu_Latency,
 	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
+	pipe_lock:     sync.Mutex,           // pipelines are made by the render thread and by the pre-warming thread
+	prewarm:       ^thread.Thread,
 	panel:         ^Panel,               // translucent window: the DirectComposition visual's swap chain panel (wgpu_dcomp.odin)
 	// start-up costs, milliseconds (wgpu_costs)
 	t_device, t_modules, t_pipelines: f64,
@@ -483,12 +490,15 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	g.dummy_r8, g.dummy_r8_view = dummy(g, .R8Unorm)
 	g.dummy_rgba, g.dummy_rgba_view = dummy(g, .RGBA8Unorm)
 
-	if len(r.textures) > 0 { return g.module_rect != nil }   // recover: the settings stay
-	append(&r.textures, Texture_Data{})   // dummy slot 0
-	r.corner_smoothing = 1
-	r.blur_sigma_limit = DEFAULT_BLUR_SIGMA_LIMIT
-	r.text = text_rendering_default(r.space)
-	return g.module_rect != nil && g.module_fx != nil && g.module_mip != nil
+	if len(r.textures) == 0 {
+		append(&r.textures, Texture_Data{})   // dummy slot 0
+		r.corner_smoothing = 1
+		r.blur_sigma_limit = DEFAULT_BLUR_SIGMA_LIMIT
+		r.text = text_rendering_default(r.space)
+	}
+	ok := g.module_rect != nil && g.module_fx != nil && g.module_mip != nil
+	if ok { wgpu_prewarm_start(r) }
+	return ok
 }
 
 @(private)
@@ -503,6 +513,7 @@ wgpu_blend :: proc() -> wgpu.BlendState {
 @(private)
 wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -> wgpu.RenderPipeline {
 	g := &r.wg
+	sync.mutex_guard(&g.pipe_lock)
 	for p in g.pipes { if p.format == format && p.replace == replace { return p.pipe } }
 	t0 := time.tick_now()
 	attrs := [?]wgpu.VertexAttribute{
@@ -520,6 +531,7 @@ wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -
 	blend := wgpu_blend()
 	target := wgpu.ColorTargetState{format = format, blend = replace ? nil : &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_rect, entryPoint = "ps_main", targetCount = 1, targets = &target}
+	sync.mutex_lock(&g_compile_lock)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "rect", layout = g.pl_main,
 		vertex = {module = g.module_rect, entryPoint = "vs_main", bufferCount = 1, buffers = &vb},
@@ -527,6 +539,7 @@ wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	append(&g.pipes, Wgpu_Pipe{format, replace, pipe})
 	return pipe
@@ -535,10 +548,12 @@ wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -
 @(private)
 wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.RenderPipeline {
 	g := &r.wg
+	sync.mutex_guard(&g.pipe_lock)
 	for p in g.fx_pipes { if p.format == format { return p.pipe } }
 	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_fx, entryPoint = "ps_fx", targetCount = 1, targets = &target}
+	sync.mutex_lock(&g_compile_lock)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "filter", layout = g.pl_fx,
 		vertex = {module = g.module_fx, entryPoint = "vs_fx"},
@@ -546,6 +561,7 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe})
 	return pipe
@@ -554,10 +570,12 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 @(private)
 wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.RenderPipeline {
 	g := &r.wg
+	sync.mutex_guard(&g.pipe_lock)
 	for p in g.mip_pipes { if p.format == format { return p.pipe } }
 	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_mip, entryPoint = "ps_mip", targetCount = 1, targets = &target}
+	sync.mutex_lock(&g_compile_lock)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "mip", layout = g.pl_mip,
 		vertex = {module = g.module_mip, entryPoint = "vs_mip"},
@@ -565,6 +583,7 @@ wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rend
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	append(&g.mip_pipes, Wgpu_Pipe{format, false, pipe})
 	return pipe
@@ -748,8 +767,36 @@ wgpu_heaps_destroy :: proc(r: ^Renderer) {
 ////////////////////////////////
 // Teardown and device loss
 
+// Compiling a shader into a pipeline takes 0.3 s and more (see wgpu_costs): the pipelines the renderer is going to need are made on
+// a thread of their own, the one for the frame first, while the program starts up; a pipeline the render thread needs before the
+// thread made it is made by the render thread (wgpu_pipeline holds the lock for each).
+@(private)
+wgpu_prewarm_start :: proc(r: ^Renderer) {
+	if r.wg.prewarm != nil || os.get_env("TOOLKIT_WGPU_PREWARM", context.temp_allocator) == "0" { return }
+	r.wg.prewarm = thread.create_and_start_with_data(r, proc(data: rawptr) {
+		r := (^Renderer)(data)
+		g := &r.wg
+		wgpu_pipeline(r, g.view_format, false)
+		wgpu_pipeline(r, .RGBA16Float, false)
+		wgpu_fx_pipeline(r, .RGBA16Float)
+		wgpu_fx_pipeline(r, .RGBA8Unorm)
+		wgpu_pipeline(r, g.view_format, true)
+		wgpu_pipeline(r, .RGBA16Float, true)
+		wgpu_mip_pipeline(r, r.space == .Srgb ? .RGBA8Unorm : .RGBA8UnormSrgb)
+	})
+}
+
+@(private)
+wgpu_prewarm_stop :: proc(g: ^Wgpu_State) {
+	if g.prewarm == nil { return }
+	thread.join(g.prewarm)
+	thread.destroy(g.prewarm)
+	g.prewarm = nil
+}
+
 @(private)
 wgpu_release_pipelines :: proc(g: ^Wgpu_State) {
+	wgpu_prewarm_stop(g)
 	for p in g.pipes { wgpu.RenderPipelineRelease(p.pipe) }
 	for p in g.fx_pipes { wgpu.RenderPipelineRelease(p.pipe) }
 	for p in g.mip_pipes { wgpu.RenderPipelineRelease(p.pipe) }
@@ -806,6 +853,7 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	for i in 1 ..< len(r.textures) { wgpu_destroy_texture(r, Texture(i)) }
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	wgpu_latency_stop(r)
+	wgpu_prewarm_stop(&r.wg)
 	wgpu_release_objects(r)
 	wgpu_heaps_destroy(r)
 	wgpu_release_device(r)
@@ -821,6 +869,7 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	hwnd := r.hwnd
 	was_offscreen := g.surface == nil
 	wgpu_latency_stop(r)
+	wgpu_prewarm_stop(g)
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
 	g.shared.lost = false
