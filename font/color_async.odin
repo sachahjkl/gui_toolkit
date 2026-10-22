@@ -93,6 +93,8 @@ color_enqueue :: proc(s: ^State, job: Color_Job) -> bool {
 // Whether glyph `gid` of color face `f` is drawn in color (not an outline of the face).
 @(private)
 is_color_glyph :: proc(s: ^State, f: ^Font, gid: u16, size: f32) -> bool {
+	if colr_draws(s, f, gid) { return true }
+	if f.dw4 == nil && f.dw2 == nil { return false }
 	ids := [1]u16{gid}
 	advs := [1]f32{0}
 	offs := [1]DWRITE_GLYPH_OFFSET{}
@@ -144,7 +146,10 @@ color_job_run :: proc(s: ^State, job: Color_Job) {
 	uses_fg, drawn: bool
 	fmts: DWRITE_GLYPH_IMAGE_FORMATS
 	run: DWRITE_GLYPH_RUN
-	if f != nil {
+	bm: Colr_Bitmap
+	built: bool
+	if f != nil && colr_draws(s, f, job.gid) { bm, built = colr_draw(s, job.face, f, job.gid, job.size, job.x, job.fg) }
+	if f != nil && !built {
 		run = DWRITE_GLYPH_RUN{fontFace = f.dw, fontEmSize = job.size, glyphCount = 1, glyphIndices = &ids[0], glyphAdvances = &advs[0], glyphOffsets = &offs[0]}
 		_, paint := color_caps(s)
 		text_color: bool
@@ -155,9 +160,14 @@ color_job_run :: proc(s: ^State, job: Color_Job) {
 	defer atlas_unlock(a)
 	fk := Fg_Key{job.key, job.fg}
 	if job.known_fg { delete_key(&a.fg_pending, fk) } else { delete_key(&a.pending, job.key) }
-	if f == nil || job.settings != a.settings_generation { return }   // unloaded, or made with other settings
+	if f == nil || job.settings != a.settings_generation {   // unloaded, or made with other settings
+		if built { delete(bm.px, runtime.heap_allocator()) }
+		return
+	}
 	g: Glyph_Image
 	switch {
+	case built:
+		g, uses_fg = colr_put(s, bm), bm.uses_fg
 	case drawn:
 		g = color_bitmap_put(s, px, w, h, origin)
 	case fmts & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0:
