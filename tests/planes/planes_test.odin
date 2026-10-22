@@ -215,3 +215,23 @@ kept_plane_is_not_drawn_again :: proc(t: ^testing.T) {
 	for i in 0 ..< len(direct) { worst = max(worst, abs(int(direct[i]) - int(var_imgs[3][i]))) }
 	testing.expectf(t, worst <= 1, "the kept plane differs from the drawn one by up to %d levels", worst)
 }
+
+// A plane opened inside another one, closed first and drawn only after the outer one was composited (the members of a
+// preserve-3d context): its pixels are not lost.
+@(test)
+nested_plane_drawn_after_its_parent :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	img := frame(&f, proc(dc: ^draw.Context) {
+		m := draw.mat4_from_affine(draw.affine_translate({10, 10}))
+		draw.push_plane(dc, {{0, 0}, {40, 40}}, 1)
+		draw.push_plane(dc, {{0, 0}, {40, 40}}, 1)
+		draw.rect(dc, {{0, 0}, {40, 40}}, RED)
+		inner := draw.pop_plane(dc)
+		outer_done := draw.pop_plane(dc)
+		draw.draw_plane(dc, inner, m)
+		draw.draw_plane(dc, outer_done, m)
+	})
+	testing.expectf(t, is_red(px(img, 30, 30)), "the inner plane shows: %v", px(img, 30, 30))
+}
