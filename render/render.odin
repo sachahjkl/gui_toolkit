@@ -368,7 +368,7 @@ Renderer :: struct {
 	fx_vs:       ^d3d11.IVertexShader,    // filter passes (filter.hlsl)
 	fx_ps:       ^d3d11.IPixelShader,
 	fx_constants: ^d3d11.IBuffer,
-	sampler_border: ^d3d11.ISamplerState, // filter passes: bilinear, transparent outside the texture
+	sampler_border: ^d3d11.ISamplerState, // filter passes: bilinear, clamp (the shader adds the transparent border)
 	frame_tex:   ^d3d11.ITexture2D,       // what `rtv` draws into (back buffer or offscreen image): snapshots copy it
 	frame_format: dxgi.FORMAT,            // its storage format
 	frame_view:  dxgi.FORMAT,             // how a copy of it is read: values in `space`, like the frame's render target view
@@ -644,20 +644,8 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 		return false
 	}
 
-	inst :: proc(name: cstring, idx: u32, off: u32) -> d3d11.INPUT_ELEMENT_DESC {
-		return {SemanticName = name, SemanticIndex = idx, Format = .R32G32B32A32_FLOAT, InputSlot = 0,
-		        AlignedByteOffset = off, InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1}
-	}
-	elems := [?]d3d11.INPUT_ELEMENT_DESC{
-		inst("DST", 0, 0), inst("SRC", 0, 16), inst("C", 0, 32), inst("C", 1, 48), inst("C", 2, 64), inst("C", 3, 80),
-		inst("RADII", 0, 96), inst("STYLE", 0, 112),
-		{SemanticName = "EXTRA", Format = .R32G32B32A32_UINT, AlignedByteOffset = 128, InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1},
-	}
-	// semantic names in the shader are C0..C3: D3D matches "C" + index, so the HLSL semantics C0..C3 are "C" 0..3
-	if hr := r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &r.layout); win.FAILED(hr) {
-		fmt.eprintln("render: CreateInputLayout failed", hr)
-		return false
-	}
+	r.layout = create_instance_layout(r, vs_code)
+	if r.layout == nil { return false }
 
 	r.device->CreateBuffer(&{ByteWidth = size_of(Globals), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
 	r.device->CreateBuffer(&{ByteWidth = size_of(Replay_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.replay_cb)
@@ -678,7 +666,8 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 
 	bd.RenderTarget[0] = {BlendEnable = false, RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL)}
 	r.device->CreateBlendState(&bd, &r.blend_replace)
-	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .BORDER, AddressV = .BORDER, AddressW = .BORDER, BorderColor = {0, 0, 0, 0}}, &r.sampler_border)
+	// filter passes and reduced layers: the shader makes the transparent border itself (sample_border: the same code runs on WebGPU)
+	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP}, &r.sampler_border)
 	fx_vs_code, fx_vs_blob := shader_code(.Filter_VS) or_return
 	defer shader_code_done(fx_vs_blob)
 	fx_ps_code, fx_ps_blob := shader_code(.Filter_PS) or_return
@@ -696,7 +685,26 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 	return true
 }
 
-// The constant buffer of rect.hlsl (register b0), per target.
+// The input layout of Rect_Inst for the vertex shaders (rect and Slug): nine attributes, naga's semantics (LOC0..LOC8, the
+// @location of the WGSL: eight float4 then the uint4 `extra`).
+@(private)
+create_instance_layout :: proc(r: ^Renderer, vs_code: []u8) -> ^d3d11.IInputLayout {
+	elem :: proc(loc: u32, format: dxgi.FORMAT) -> d3d11.INPUT_ELEMENT_DESC {
+		return {SemanticName = "LOC", SemanticIndex = loc, Format = format, InputSlot = 0, AlignedByteOffset = loc * 16,
+		        InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1}
+	}
+	elems: [9]d3d11.INPUT_ELEMENT_DESC
+	for i in 0 ..< 8 { elems[i] = elem(u32(i), .R32G32B32A32_FLOAT) }
+	elems[8] = elem(8, .R32G32B32A32_UINT)
+	layout: ^d3d11.IInputLayout
+	if hr := r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &layout); win.FAILED(hr) {
+		fmt.eprintln("render: CreateInputLayout failed", hr)
+		return nil
+	}
+	return layout
+}
+
+// The constant buffer of rect.wgsl (register b0), per target.
 @(private)
 Globals :: struct #packed {
 	viewport_size: [2]f32,
@@ -1307,7 +1315,19 @@ texture_view :: proc(r: ^Renderer, t: Texture) -> ^d3d11.IShaderResourceView {
 	return int(t) > 0 && int(t) < len(r.textures) ? r.textures[int(t)].view : nil
 }
 
-// (Re)creates a dynamic structured buffer and its view when `n` elements do not fit, then uploads `data`.
+// A raw view of `bytes` bytes of a buffer made with BUFFER_ALLOW_RAW_VIEWS: what a WGSL `var<storage, read>` array becomes in
+// naga's HLSL (a ByteAddressBuffer, read with Load / Load2 / Load4).
+@(private)
+raw_buffer_view :: proc(r: ^Renderer, buf: ^d3d11.IBuffer, bytes: int) -> ^d3d11.IShaderResourceView {
+	if buf == nil { return nil }
+	srv := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .R32_TYPELESS, ViewDimension = .BUFFEREX}
+	srv.BufferEx = {FirstElement = 0, NumElements = u32(bytes / 4), Flags = {.RAW}}
+	view: ^d3d11.IShaderResourceView
+	r.device->CreateShaderResourceView(buf, &srv, &view)
+	return view
+}
+
+// (Re)creates a dynamic raw buffer (the tables of the frame) and its view when `n` elements do not fit, then uploads `data`.
 @(private)
 upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.IShaderResourceView, cap: ^int, data: rawptr, n, stride: int) {
 	if buf^ == nil || n > cap^ {
@@ -1315,11 +1335,8 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 		if buf^ != nil { buf^->Release(); buf^ = nil }
 		cap^ = max(n, cap^ * 2, 64)
 		r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
-			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_STRUCTURED}, StructureByteStride = u32(stride)}, nil, buf)
-		srv := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .UNKNOWN, ViewDimension = .BUFFER}
-		srv.Buffer.FirstElement = 0
-		srv.Buffer.NumElements = u32(cap^)
-		r.device->CreateShaderResourceView(buf^, &srv, view)
+			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)
+		view^ = raw_buffer_view(r, buf^, cap^ * stride)
 	}
 	if n == 0 { return }
 	mapped: d3d11.MAPPED_SUBRESOURCE

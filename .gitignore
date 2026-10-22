@@ -3,3 +3,4 @@ build/
 *.pdb
 *.obj
 *.ilk
+tools/wgsl2hlsl/target/

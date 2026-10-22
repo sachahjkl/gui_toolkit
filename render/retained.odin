@@ -114,8 +114,7 @@ d3d_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 		desc.BindFlags = {.VERTEX_BUFFER}
 	} else {
 		desc.BindFlags = {.SHADER_RESOURCE}
-		desc.MiscFlags = {.BUFFER_STRUCTURED}
-		desc.StructureByteStride = u32(stride)
+		desc.MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}
 	}
 	buf: ^d3d11.IBuffer
 	if win.FAILED(r.device->CreateBuffer(&desc, nil, &buf)) || buf == nil {
@@ -124,10 +123,8 @@ d3d_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 	}
 	view: ^d3d11.IShaderResourceView
 	if kind != .Insts {
-		srv := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .UNKNOWN, ViewDimension = .BUFFER}
-		srv.Buffer.FirstElement = 0
-		srv.Buffer.NumElements = u32(ncap)
-		if win.FAILED(r.device->CreateShaderResourceView(buf, &srv, &view)) { buf->Release(); return false }
+		view = raw_buffer_view(r, buf, ncap * stride)
+		if view == nil { buf->Release(); return false }
 	}
 	if h.buf != nil {
 		box := d3d11.BOX{left = 0, right = u32(h.cap * stride), top = 0, bottom = 1, front = 0, back = 1}
