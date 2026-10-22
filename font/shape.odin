@@ -635,6 +635,15 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 				chosen = faces[i - 1]
 			}
 		}
+		// the built-in emoji font (emoji.odin): first when U+FE0F asks for the emoji presentation, else after the cascade
+		want, explicit := false, false
+		if chosen == 0 && search && emoji_may(r) {
+			next: rune
+			if i + n < len(w) { next, _ = decode16(w, i + n) }
+			want = emoji_wanted(r, next)
+			explicit = want && (next == 0xFE0F || next == 0x20E3)
+			if explicit { chosen = emoji_pick(s, r) }
+		}
 		if chosen == 0 && search {
 			for e in entries {
 				if !in_ranges(e.ranges, r) { continue }
@@ -642,6 +651,7 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 				if f != nil && face_has(f, r) { chosen = e.font; break }
 			}
 		}
+		if chosen == 0 && want && !explicit { chosen = emoji_pick(s, r) }
 		for k in 0 ..< n { faces[i + k] = chosen }
 		prev_r = r
 		i += n
@@ -654,7 +664,15 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 		j := i
 		for j < len(w) && faces[j] == 0 { j += 1 }
 		if use_system { system_fallback(s, first, w, i, j, faces) }
-		for k in i ..< j { if faces[k] == 0 { faces[k] = first } }
+		for k := i; k < j; {
+			if faces[k] != 0 { k += 1; continue }
+			// nothing has it: the emoji font if it does (a text-presentation emoji no other face draws), else the first face
+			r, n := decode16(w, k)
+			pick := first
+			if emoji_possible(r) { if p := emoji_pick(s, r); p != 0 { pick = p } }
+			for m in 0 ..< n { faces[k + m] = pick }
+			k += n
+		}
 		i = j
 	}
 	return faces
@@ -723,6 +741,13 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 			i = j
 		}
 	}
+	// the tag characters of a tag sequence (subdivision flags) belong to the piece of their flag, whatever the script analysis says
+	for i := len(pieces) - 1; i > 0; i -= 1 {
+		if pieces[i].face == pieces[i - 1].face && w[pieces[i].a] == 0xDB40 {
+			pieces[i - 1].b = pieces[i].b
+			ordered_remove(&pieces, i)
+		}
+	}
 	// features: the cascade's, minus optional ligatures under letter-spacing
 	feats := make([dynamic]DWRITE_FONT_FEATURE, 0, len(top.features) + 4, context.temp_allocator)
 	append(&feats, ..top.features)
@@ -776,6 +801,16 @@ shape_piece :: proc(s: ^State, face_id: Font_Id, size: f32, w: []u16, bytes: []i
 	f := face_ptr(s, face_id)
 	n := len(w)
 	if f == nil || n == 0 { return pen }
+	if f.colr != nil && has_tag_chars(w) && !rtl {
+		// cluster offsets of a piece are relative to its first character (the end of shape_piece makes them relative to the word)
+		g0, c0 := len(glyphs), len(clusters)
+		if np, ok := shape_tag_sequence(s, f, face_id, size, w, bytes, glyphs, clusters, pen); ok {
+			off := bytes[0]
+			for gi in g0 ..< len(glyphs) { glyphs[gi].cluster += off }
+			for ci in c0 ..< len(clusters) { clusters[ci].start += off; clusters[ci].end += off }
+			return np
+		}
+	}
 	cmap := make([]u16, n, context.temp_allocator)
 	tprops := make([]DWRITE_SHAPING_TEXT_PROPERTIES, n, context.temp_allocator)
 	maxg := 3 * n / 2 + 16

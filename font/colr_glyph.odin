@@ -15,6 +15,8 @@ Face_Colr :: struct {
 	c:        ^Colr,
 	colr_ctx: rawptr,
 	cpal_ctx: rawptr,
+	gsub:     []u8,               // for the sequences DirectWrite does not form (tag sequences), see colr_gsub.odin
+	gsub_ctx: rawptr,
 	mu:       sync.Mutex,
 	outlines: map[u16]^Outline,   // em units; emptied (between renders) when over the budget
 	bytes:    int,
@@ -44,6 +46,7 @@ face_colr_open :: proc(f: ^Font) -> ^Face_Colr {
 		free(fc)
 		return nil
 	}
+	fc.gsub, fc.gsub_ctx = read(f, "GSUB")
 	fc.outlines = make(map[u16]^Outline)
 	return fc
 }
@@ -60,6 +63,7 @@ face_colr_close :: proc(f: ^Font) {
 	if f.dw != nil {
 		f.dw->ReleaseFontTable(fc.colr_ctx)
 		if fc.cpal_ctx != nil { f.dw->ReleaseFontTable(fc.cpal_ctx) }
+		if fc.gsub_ctx != nil { f.dw->ReleaseFontTable(fc.gsub_ctx) }
 	}
 	free(fc)
 }
@@ -178,4 +182,37 @@ colr_of :: proc(s: ^State, id: Font_Id) -> ^Colr {
 	f := face_ptr(s, id)
 	if f == nil || f.colr == nil { return nil }
 	return f.colr.c
+}
+
+// Tag sequences (a flag emoji followed by tag characters U+E0020 .. U+E007F: England, Scotland, Wales): DirectWrite shapes
+// them as separate glyphs. For a face with COLR the sequence is looked up in its GSUB ccmp ligatures instead. Appends
+// the one glyph and its cluster and returns the new pen; ok = false when the sequence does not collapse into one glyph
+// (the caller then shapes it as usual).
+@(private)
+shape_tag_sequence :: proc(s: ^State, f: ^Font, face_id: Font_Id, size: f32, w: []u16, bytes: []i32, glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster, pen: f32) -> (new_pen: f32, ok: bool) {
+	fc := f.colr
+	if fc == nil || len(fc.gsub) == 0 { return pen, false }
+	cps := make([dynamic]u32, 0, len(w), context.temp_allocator)
+	for i := 0; i < len(w); {
+		r, n := decode16(w, i)
+		append(&cps, u32(r))
+		i += n
+	}
+	gids := make([]u16, len(cps), context.temp_allocator)
+	if f.dw->GetGlyphIndices(raw_data(cps), u32(len(cps)), raw_data(gids)) < 0 { return pen, false }
+	for g in gids { if g == 0 { return pen, false } }
+	out, found := gsub_ligate(fc.gsub, {'c', 'c', 'm', 'p'}, gids, context.temp_allocator)
+	if !found || len(out) != 1 { return pen, false }
+	gm: DWRITE_GLYPH_METRICS
+	if f.dw->GetDesignGlyphMetrics(&out[0], 1, &gm, false) < 0 { return pen, false }
+	adv := f32(gm.advanceWidth) * size / f.upem
+	append(glyphs, Glyph_Pos{face = face_id, id = out[0], x = pen, advance = adv, cluster = 0})
+	append(clusters, Cluster{start = 0, end = bytes[len(w)] - bytes[0], x0 = pen, x1 = pen + adv})
+	return pen + adv, true
+}
+
+@(private)
+has_tag_chars :: proc(w: []u16) -> bool {
+	for u in w { if u == 0xDB40 { return true } }   // the high surrogate of U+E0000 .. U+E0FFF
+	return false
 }

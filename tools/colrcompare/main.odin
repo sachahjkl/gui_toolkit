@@ -9,6 +9,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strconv"
+import "core:time"
 import "../../font"
 import stbi "vendor:stb/image"
 
@@ -51,6 +52,8 @@ place :: proc(b: Img, off: [2]int, origin: [2]int, cw, ch: int) -> [][3]f32 {
 	return out
 }
 
+sub_b: int
+d2d_time, own_time, again_time: time.Duration
 dump_glyph: rune = -1   // COLR_DUMP=<hex>: print the paint graph of that character's glyph
 
 Result :: struct {
@@ -72,6 +75,7 @@ main :: proc() {
 	if len(os.args) > 3 { v, _ := strconv.parse_f32(os.args[3]); size = v }
 	if len(os.args) > 4 { v, _ := strconv.parse_int(os.args[4], 16); first = rune(v) }
 	if len(os.args) > 5 { v, _ := strconv.parse_int(os.args[5], 16); last = rune(v) }
+	if v, ok := strconv.parse_int(os.get_env("COLR_SUB", context.temp_allocator), 10); ok { sub_b = v }
 	if v, ok := strconv.parse_int(os.get_env("COLR_DUMP", context.temp_allocator), 16); ok { dump_glyph = rune(v) }
 	data, rerr := os.read_entire_file(path, context.allocator)
 	if rerr != nil { fmt.println("cannot read", path); os.exit(2) }
@@ -85,7 +89,11 @@ main :: proc() {
 	font.init(&sb)
 	st.color_engine = os.get_env("COLR_B", context.temp_allocator) == "system" ? .System : .Builtin
 	font.set_settings(&sb, st)
-	fmt.println("engines:", sd.settings.color_engine, sb.settings.color_engine)
+	if v, ok := strconv.parse_int(os.get_env("COLR_SAMPLES", context.temp_allocator), 10); ok {
+		st.colr_samples = v
+		font.set_settings(&sb, st)
+	}
+	fmt.println("engines:", sd.settings.color_engine, sb.settings.color_engine, "samples", sb.settings.colr_samples)
 	fd, ok1 := font.load_embedded(&sd, data)
 	fb, ok2 := font.load_embedded(&sb, data)
 	if !ok1 || !ok2 { fmt.println("font did not load"); os.exit(2) }
@@ -106,8 +114,16 @@ main :: proc() {
 		if seen[gid] { continue }
 		seen[gid] = true
 		total += 1
+		t0 := time.tick_now()
 		id := font.glyph_image(&sd, fd, gid, size, 0, {0, 0, 0})
-		ib := font.glyph_image(&sb, fb, gid, size, 0, {0, 0, 0})
+		t1 := time.tick_now()
+		ib := font.glyph_image(&sb, fb, gid, size, sub_b, {0, 0, 0})
+		t2 := time.tick_now()
+		d2d_time += time.tick_diff(t0, t1)
+		own_time += time.tick_diff(t1, t2)
+		ia := font.glyph_image(&sb, fb, gid, size + 0.0625, 0, {0, 0, 0})   // outlines already known
+		again_time += time.tick_diff(t2, time.tick_now())
+		_ = ia
 		if !id.color { continue }
 		color_n += 1
 		if !ib.color { fail_n += 1; fmt.printf("U+%X glyph %d: interpreter did not draw it in color\n", r, gid); continue }
@@ -147,6 +163,8 @@ main :: proc() {
 		append(&results, res)
 	}
 	slice.sort_by(results[:], proc(a, b: Result) -> bool { return a.mean > b.mean })
+	fmt.printf("time per glyph: Direct2D %.3f ms, interpreter %.3f ms (%d glyphs)\n", time.duration_milliseconds(d2d_time) / f64(max(color_n, 1)), time.duration_milliseconds(own_time) / f64(max(color_n, 1)), color_n)
+	fmt.printf("interpreter again with its outlines known: %.3f ms\n", time.duration_milliseconds(again_time) / f64(max(color_n, 1)))
 	drawn, refused := font.colr_counts(&sb)
 	fmt.printf("%d glyphs, %d in color (Direct2D), %d not drawn by the interpreter; interpreter: %d drawn, %d refused\n", total, color_n, fail_n, drawn, refused)
 	mean_all, mean_max: f32

@@ -83,7 +83,7 @@ colr_cover :: proc(o: ^Outline, m: Mat, clip: [4]int, samples: int, alloc: runti
 		min(clip[2], int(math.ceil(clamp(hi.x, -1e6, 1e6)))), min(clip[3], int(math.ceil(clamp(hi.y, -1e6, 1e6)))),
 	}
 	if rect[2] <= rect[0] || rect[3] <= rect[1] { return }
-	edges := make([dynamic]Edge, 0, len(o.quads) * 4, alloc)
+	edges := make([dynamic]Edge, 0, len(o.quads) * 6, alloc)
 	for q in o.quads {
 		p0, p1, p2 := mat_apply(m, q.p[0]), mat_apply(m, q.p[1]), mat_apply(m, q.p[2])
 		d := p0 - p1 * 2 + p2
