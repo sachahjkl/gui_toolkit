@@ -29,9 +29,7 @@ WGPU_ADAPTER_LIMITS :: #config(TOOLKIT_WGPU_ADAPTER_LIMITS, false)   // ask for 
 WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12")   // "dx12" | "vulkan"
 WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/fetch_wgpu.ps1)
 
-@(private) WGPU_RECT_SOURCE :: #load("rect.wgsl", string)
-@(private) WGPU_FILTER_SOURCE :: #load("filter.wgsl", string)
-@(private) WGPU_MIP_SOURCE :: #load("mip.wgsl", string)
+@(private) WGPU_SLUG_SOURCE :: WGSL_RECT + "\n" + WGSL_SLUG   // as naga reads the Slug module (shaders.odin: MODULES)
 
 @(private) ARENA_ALIGN :: 256           // minUniformBufferOffsetAlignment of every backend we use
 @(private) PASS_CONSTANTS_SIZE :: 1280  // size_of(Pass_Constants), a multiple of ARENA_ALIGN
@@ -85,13 +83,13 @@ Wgpu_State :: struct {
 	clear_pending: bool,                 // the frame target still has to be cleared (first pass of the frame)
 	present_mode:  wgpu.PresentMode,
 	// shaders, layouts, pipelines
-	module_rect, module_fx, module_mip: wgpu.ShaderModule,
+	module_rect, module_fx, module_mip, module_slug: wgpu.ShaderModule,
 	bgl0, bgl1, bgl_fx, bgl_mip: wgpu.BindGroupLayout,
 	pl_main, pl_fx, pl_mip: wgpu.PipelineLayout,
-	pipes, fx_pipes, mip_pipes: [dynamic]Wgpu_Pipe,
+	pipes, fx_pipes, mip_pipes, slug_pipes: [dynamic]Wgpu_Pipe,
 	s_atlas, s_img, s_wrap, s_fx, s_mip: wgpu.Sampler,
-	dummy_r8, dummy_rgba: wgpu.Texture,
-	dummy_r8_view, dummy_rgba_view: wgpu.TextureView,
+	dummy_r8, dummy_rgba, dummy_curves, dummy_bands: wgpu.Texture,
+	dummy_r8_view, dummy_rgba_view, dummy_curves_view, dummy_bands_view: wgpu.TextureView,
 	// tables of the frame
 	inst, xforms, clips, points, grads: Wgpu_Table,
 	arena:         wgpu.Buffer,
@@ -433,9 +431,9 @@ bgl_sampler :: proc(binding: u32, vis: wgpu.ShaderStageFlags) -> wgpu.BindGroupL
 wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
 	t0 := time.tick_now()
-	g.module_rect = wgpu_module(g, "rect.wgsl", WGPU_RECT_SOURCE)
-	g.module_fx = wgpu_module(g, "filter.wgsl", WGPU_FILTER_SOURCE)
-	g.module_mip = wgpu_module(g, "mip.wgsl", WGPU_MIP_SOURCE)
+	g.module_rect = wgpu_module(g, "rect.wgsl", WGSL_RECT)
+	g.module_fx = wgpu_module(g, "filter.wgsl", WGSL_FILTER)
+	g.module_mip = wgpu_module(g, "mip.wgsl", WGSL_MIP)
 	g.t_modules = time.duration_milliseconds(time.tick_since(t0))
 	VF :: wgpu.ShaderStageFlags{.Vertex, .Fragment}
 	V :: wgpu.ShaderStageFlags{.Vertex}
@@ -454,7 +452,11 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 		bgl_sampler(10, F), bgl_sampler(11, F), bgl_sampler(12, F),
 	}
 	g.bgl0 = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "tables", entryCount = len(e0), entries = raw_data(e0[:])})
-	e1 := [?]wgpu.BindGroupLayoutEntry{bgl_texture(0, F), bgl_texture(1, F), bgl_texture(2, F)}
+	// the glyph atlas, images, the backdrop of a blend; the Slug curve and band textures (the rect shaders do not use the last two)
+	e1 := [?]wgpu.BindGroupLayoutEntry{
+		bgl_texture(0, F), bgl_texture(1, F), bgl_texture(2, F), bgl_texture(3, F),
+		{binding = 4, visibility = F, texture = {sampleType = .Uint, viewDimension = ._2D}},
+	}
 	g.bgl1 = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "textures", entryCount = len(e1), entries = raw_data(e1[:])})
 	efx := [?]wgpu.BindGroupLayoutEntry{
 		bgl_buffer(0, F, .Uniform, true, PASS_CONSTANTS_SIZE), bgl_texture(1, F), bgl_texture(2, F), bgl_sampler(3, F),
@@ -489,6 +491,8 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	}
 	g.dummy_r8, g.dummy_r8_view = dummy(g, .R8Unorm)
 	g.dummy_rgba, g.dummy_rgba_view = dummy(g, .RGBA8Unorm)
+	g.dummy_curves, g.dummy_curves_view = dummy(g, .RGBA16Float)
+	g.dummy_bands, g.dummy_bands_view = dummy(g, .RG16Uint)
 
 	if len(r.textures) == 0 {
 		append(&r.textures, Texture_Data{})   // dummy slot 0
@@ -512,9 +516,23 @@ wgpu_blend :: proc() -> wgpu.BlendState {
 // The instanced-quad pipeline for a target of `format`; `replace`: no blending (FLAG_BLEND composites write their result).
 @(private)
 wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -> wgpu.RenderPipeline {
+	return wgpu_instance_pipeline(r, format, replace, false)
+}
+
+// Slug text (slug.wgsl): the same instances and bindings, its own entry points.
+@(private)
+wgpu_slug_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -> wgpu.RenderPipeline {
+	return wgpu_instance_pipeline(r, format, replace, true)
+}
+
+@(private)
+wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool, slug: bool) -> wgpu.RenderPipeline {
 	g := &r.wg
 	sync.mutex_guard(&g.pipe_lock)
-	for p in g.pipes { if p.format == format && p.replace == replace { return p.pipe } }
+	list := slug ? &g.slug_pipes : &g.pipes
+	for p in list { if p.format == format && p.replace == replace { return p.pipe } }
+	if slug && g.module_slug == nil { g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE) }
+	module := slug ? g.module_slug : g.module_rect
 	t0 := time.tick_now()
 	attrs := [?]wgpu.VertexAttribute{
 		{format = .Float32x4, offset = 0, shaderLocation = 0},
@@ -530,18 +548,18 @@ wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -
 	vb := wgpu.VertexBufferLayout{stepMode = .Instance, arrayStride = size_of(Rect_Inst), attributeCount = len(attrs), attributes = raw_data(attrs[:])}
 	blend := wgpu_blend()
 	target := wgpu.ColorTargetState{format = format, blend = replace ? nil : &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
-	fs := wgpu.FragmentState{module = g.module_rect, entryPoint = "ps_main", targetCount = 1, targets = &target}
+	fs := wgpu.FragmentState{module = module, entryPoint = slug ? "ps_slug" : "ps_main", targetCount = 1, targets = &target}
 	sync.mutex_lock(&g_compile_lock)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
-		label = "rect", layout = g.pl_main,
-		vertex = {module = g.module_rect, entryPoint = "vs_main", bufferCount = 1, buffers = &vb},
+		label = slug ? "slug" : "rect", layout = g.pl_main,
+		vertex = {module = module, entryPoint = slug ? "vs_slug" : "vs_main", bufferCount = 1, buffers = &vb},
 		primitive = {topology = .TriangleStrip, frontFace = .CCW, cullMode = .None},
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(&g.pipes, Wgpu_Pipe{format, replace, pipe})
+	append(list, Wgpu_Pipe{format, replace, pipe})
 	return pipe
 }
 
@@ -613,10 +631,14 @@ wgpu_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 			usage += {.RenderAttachment}
 		}
 	}
+	#partial switch td.kind {
+	case .Slug_Curves: format = .RGBA16Float
+	case .Slug_Bands: format = .RG16Uint
+	}
 	td.wformat = format
 	td.mip_count = levels
 	td.wtex = wgpu.DeviceCreateTexture(g.device, &{
-		label = td.kind == .R8 ? "glyph atlas" : "image", usage = usage, dimension = ._2D,
+		label = td.kind == .R8 ? "glyph atlas" : (td.kind == .RGBA ? "image" : "slug data"), usage = usage, dimension = ._2D,
 		size = {u32(td.w), u32(td.h), 1}, format = format, mipLevelCount = u32(levels), sampleCount = 1,
 	})
 	if td.wtex == nil { return false }
@@ -777,6 +799,7 @@ wgpu_prewarm_start :: proc(r: ^Renderer) {
 		r := (^Renderer)(data)
 		g := &r.wg
 		wgpu_pipeline(r, g.view_format, false)
+		wgpu_slug_pipeline(r, g.view_format, false)
 		wgpu_pipeline(r, .RGBA16Float, false)
 		wgpu_fx_pipeline(r, .RGBA16Float)
 		wgpu_fx_pipeline(r, .RGBA8Unorm)
@@ -800,7 +823,8 @@ wgpu_release_pipelines :: proc(g: ^Wgpu_State) {
 	for p in g.pipes { wgpu.RenderPipelineRelease(p.pipe) }
 	for p in g.fx_pipes { wgpu.RenderPipelineRelease(p.pipe) }
 	for p in g.mip_pipes { wgpu.RenderPipelineRelease(p.pipe) }
-	clear(&g.pipes); clear(&g.fx_pipes); clear(&g.mip_pipes)
+	for p in g.slug_pipes { wgpu.RenderPipelineRelease(p.pipe) }
+	clear(&g.pipes); clear(&g.fx_pipes); clear(&g.mip_pipes); clear(&g.slug_pipes)
 }
 
 // Every object made on the device (not the device itself): what destroy releases, minus the CPU state.
@@ -826,13 +850,15 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	if g.arena != nil { wgpu.BufferRelease(g.arena); g.arena = nil }
 	g.arena_cap = 0
 	rel(&g.dummy_r8_view, wgpu.TextureViewRelease); rel(&g.dummy_rgba_view, wgpu.TextureViewRelease)
+	rel(&g.dummy_curves_view, wgpu.TextureViewRelease); rel(&g.dummy_bands_view, wgpu.TextureViewRelease)
 	rel(&g.dummy_r8, wgpu.TextureRelease); rel(&g.dummy_rgba, wgpu.TextureRelease)
+	rel(&g.dummy_curves, wgpu.TextureRelease); rel(&g.dummy_bands, wgpu.TextureRelease)
 	rel(&g.s_atlas, wgpu.SamplerRelease); rel(&g.s_img, wgpu.SamplerRelease); rel(&g.s_wrap, wgpu.SamplerRelease)
 	rel(&g.s_fx, wgpu.SamplerRelease); rel(&g.s_mip, wgpu.SamplerRelease)
 	rel(&g.pl_main, wgpu.PipelineLayoutRelease); rel(&g.pl_fx, wgpu.PipelineLayoutRelease); rel(&g.pl_mip, wgpu.PipelineLayoutRelease)
 	rel(&g.bgl0, wgpu.BindGroupLayoutRelease); rel(&g.bgl1, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl_fx, wgpu.BindGroupLayoutRelease); rel(&g.bgl_mip, wgpu.BindGroupLayoutRelease)
-	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease)
+	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease); rel(&g.module_slug, wgpu.ShaderModuleRelease)
 }
 
 // Surface, device, adapter, instance.
@@ -858,7 +884,7 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	wgpu_heaps_destroy(r)
 	wgpu_release_device(r)
 	present_destroy(r)
-	delete(r.wg.pipes); delete(r.wg.fx_pipes); delete(r.wg.mip_pipes)
+	delete(r.wg.pipes); delete(r.wg.fx_pipes); delete(r.wg.mip_pipes); delete(r.wg.slug_pipes)
 	if r.wg.shared != nil { free(r.wg.shared) }
 	r^ = {}
 }
@@ -880,7 +906,7 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	for i in 1 ..< len(r.textures) {
 		td := &r.textures[i]
 		#partial switch td.kind {
-		case .R8, .RGBA:
+		case .R8, .RGBA, .Slug_Curves, .Slug_Bands:
 			if !wgpu_texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td.kind = .None }
 		case:
 			if td.kind != .None { td^ = {}; append(&r.free_textures, Texture(i)) }
@@ -901,3 +927,29 @@ wgpu_costs :: proc(r: ^Renderer) -> (device, modules, pipelines: f64, count: int
 
 @(private)
 wgpu_trace :: proc() -> bool { return render_trace() }
+
+// The two glyph data textures of Slug text (slug.odin: create_slug_textures): `rows` rows each, one per glyph page.
+@(private)
+wgpu_create_slug_textures :: proc(r: ^Renderer, rows: int) -> (curves, bands: Texture) {
+	if rows <= 0 || rows > wgpu_max_texture_size(r) { return 0, 0 }
+	cd := Texture_Data{w = SLUG_TEXTURE_WIDTH, h = rows, size = SLUG_TEXTURE_WIDTH, kind = .Slug_Curves}
+	if !wgpu_texture_objects(r, &cd) { return 0, 0 }
+	bd := Texture_Data{w = SLUG_TEXTURE_WIDTH, h = rows, size = SLUG_TEXTURE_WIDTH, kind = .Slug_Bands}
+	if !wgpu_texture_objects(r, &bd) { wgpu_release_texture(&cd); return 0, 0 }
+	return add_texture(r, cd), add_texture(r, bd)
+}
+
+// Writes the used texels of glyph page `page` (row `page` of both textures).
+@(private)
+wgpu_update_slug_page :: proc(r: ^Renderer, curves, bands: Texture, page: int, c: [][4]f16, b: [][2]u16) {
+	put :: proc(r: ^Renderer, t: Texture, kind: Texture_Kind, page: int, data: rawptr, n, texel: int) {
+		if int(t) <= 0 || int(t) >= len(r.textures) || n <= 0 { return }
+		td := &r.textures[int(t)]
+		if td.kind != kind || td.wtex == nil || page < 0 || page >= td.h || n > td.w { return }
+		wgpu.QueueWriteTexture(r.wg.queue,
+			&{texture = td.wtex, mipLevel = 0, origin = {0, u32(page), 0}, aspect = .All},
+			data, uint(n * texel), &{offset = 0, bytesPerRow = u32(n * texel), rowsPerImage = 1}, &{u32(n), 1, 1})
+	}
+	put(r, curves, .Slug_Curves, page, raw_data(c), len(c), 8)
+	put(r, bands, .Slug_Bands, page, raw_data(b), len(b), 4)
+}

@@ -60,7 +60,7 @@ slug_destroy :: proc(r: ^Renderer) {
 
 // The two glyph data textures with `rows` rows each (one per glyph page, SLUG_TEXTURE_WIDTH texels wide): curves
 // (RGBA16F) and bands (RG16UI), contents zero. 0, 0 when the size is out of range or the device refuses.
-create_slug_textures :: proc(r: ^Renderer, rows: int) -> (curves, bands: Texture) {
+d3d_create_slug_textures :: proc(r: ^Renderer, rows: int) -> (curves, bands: Texture) {
 	if rows <= 0 || rows > max_texture_size(r) { return 0, 0 }
 	cd := Texture_Data{w = SLUG_TEXTURE_WIDTH, h = rows, size = SLUG_TEXTURE_WIDTH, kind = .Slug_Curves}
 	if !texture_objects(r, &cd) { return 0, 0 }
@@ -74,7 +74,7 @@ create_slug_textures :: proc(r: ^Renderer, rows: int) -> (curves, bands: Texture
 }
 
 // Writes the used texels of glyph page `page` (row `page` of both textures).
-update_slug_page :: proc(r: ^Renderer, curves, bands: Texture, page: int, c: [][4]f16, b: [][2]u16) {
+d3d_update_slug_page :: proc(r: ^Renderer, curves, bands: Texture, page: int, c: [][4]f16, b: [][2]u16) {
 	put :: proc(r: ^Renderer, t: Texture, kind: Texture_Kind, page: int, data: rawptr, n: int) {
 		if int(t) <= 0 || int(t) >= len(r.textures) || n <= 0 { return }
 		td := r.textures[int(t)]

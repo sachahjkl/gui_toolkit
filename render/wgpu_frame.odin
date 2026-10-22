@@ -233,6 +233,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	s.bg0 = wgpu.DeviceCreateBindGroup(g.device, &{label = "tables", layout = g.bgl0, entryCount = len(e0), entries = raw_data(e0[:])})
 	defer wgpu.BindGroupRelease(s.bg0)
 
+	has_slug := frame_has_slug(f)
 	cur := -1                       // the target of the open pass
 	cur_ok := false
 	cur_size: [2]int
@@ -284,24 +285,56 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 			wgpu.RenderPassEncoderSetBindGroup(s.pass, 0, s.bg0, offs[:])
 		}
 		replace := b.backdrop != 0
-		pipe := wgpu_pipeline(r, cur_format, replace)
-		if pipe != bound_pipe {
-			bound_pipe = pipe
-			wgpu.RenderPassEncoderSetPipeline(s.pass, pipe)
-		}
 		if b.tex != bound_tex || b.image != bound_image || b.backdrop != bound_backdrop {
-			e1 := [3]wgpu.BindGroupEntry{
+			e1 := [5]wgpu.BindGroupEntry{
 				{binding = 0, textureView = tex_view(r, b.tex, g.dummy_r8_view)},
 				{binding = 1, textureView = tex_view(r, b.image, g.dummy_rgba_view)},
 				{binding = 2, textureView = tex_view(r, b.backdrop, g.dummy_rgba_view)},
+				{binding = 3, textureView = tex_view(r, f.slug_curves, g.dummy_curves_view)},
+				{binding = 4, textureView = tex_view(r, f.slug_bands, g.dummy_bands_view)},
 			}
-			bg := wgpu.DeviceCreateBindGroup(g.device, &{label = "textures", layout = g.bgl1, entryCount = 3, entries = raw_data(e1[:])})
+			bg := wgpu.DeviceCreateBindGroup(g.device, &{label = "textures", layout = g.bgl1, entryCount = 5, entries = raw_data(e1[:])})
 			append(&s.groups, bg)
 			wgpu.RenderPassEncoderSetBindGroup(s.pass, 1, bg)
 			bound_tex, bound_image, bound_backdrop = b.tex, b.image, b.backdrop
 		}
 		wgpu.RenderPassEncoderSetScissorRect(s.pass, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1])
-		wgpu.RenderPassEncoderDraw(s.pass, 4, u32(b.count), 0, u32(b.first))
+		if !has_slug {
+			pipe := wgpu_pipeline(r, cur_format, replace)
+			if pipe != bound_pipe {
+				bound_pipe = pipe
+				wgpu.RenderPassEncoderSetPipeline(s.pass, pipe)
+			}
+			wgpu.RenderPassEncoderDraw(s.pass, 4, u32(b.count), 0, u32(b.first))
+			continue
+		}
+		// a batch with Slug text is drawn in pieces, in order: the Slug instances (slug_runs) by their pipeline, the others by the main one
+		runs := f.slug_runs
+		base := 0
+		if b.replay > 0 { rp := f.replays[b.replay - 1]; runs, base = rp.slug_runs, int(rp.insts) }
+		pos, end := b.first, b.first + b.count
+		lo, hi := 0, len(runs)
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if base + runs[mid][0] + runs[mid][1] <= pos { lo = mid + 1 } else { hi = mid }
+		}
+		draw := proc(r: ^Renderer, s: ^Submit, bound: ^wgpu.RenderPipeline, format: wgpu.TextureFormat, replace, slug_ok, slug: bool, first, count: int) {
+			if count <= 0 || (slug && !slug_ok) { return }
+			pipe := slug ? wgpu_slug_pipeline(r, format, replace) : wgpu_pipeline(r, format, replace)
+			if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
+			wgpu.RenderPassEncoderDraw(s.pass, 4, u32(count), 0, u32(first))
+		}
+		slug_ok := int(f.slug_curves) > 0 && int(f.slug_bands) > 0
+		for i := lo; i < len(runs) && pos < end; i += 1 {
+			rs := base + runs[i][0]
+			re := rs + runs[i][1]
+			if rs >= end { break }
+			if rs > pos { draw(r, &s, &bound_pipe, cur_format, replace, slug_ok, false, pos, rs - pos); pos = rs }
+			e := min(re, end)
+			draw(r, &s, &bound_pipe, cur_format, replace, slug_ok, true, pos, e - pos)
+			pos = e
+		}
+		draw(r, &s, &bound_pipe, cur_format, replace, slug_ok, false, pos, end - pos)
 	}
 	end_pass(&s)
 	if s.timed { wprof_end(r, s.enc) }
