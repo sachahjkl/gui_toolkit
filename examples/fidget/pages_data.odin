@@ -152,7 +152,7 @@ page_data :: proc(app: ^App) {
 build_tree :: proc(app: ^App, em: f32) {
 	nodes := [?]Tree_Node{
 		{"gui_toolkit", -1, true}, {"examples", 0, true}, {"fidget", 1, true}, {"main.odin", 2, false}, {"pages.odin", 2, false}, {"shell.odin", 2, false},
-		{"ui", 0, true}, {"state.odin", 6, false}, {"layout.odin", 6, false}, {"widgets.odin", 6, false}, {"render", 0, true}, {"render.odin", 10, false}, {"rect.hlsl", 10, false},
+		{"ui", 0, true}, {"state.odin", 6, false}, {"layout.odin", 6, false}, {"widgets.odin", 6, false}, {"render", 0, true}, {"render.odin", 10, false}, {"rect.wgsl", 10, false},
 		{"font", 0, true}, {"font.odin", 13, false}, {"draw", 0, true}, {"draw.odin", 15, false}, {"build.bat", 0, false}, {"README.md", 0, false},
 	}
 	if ui.tags("card") {

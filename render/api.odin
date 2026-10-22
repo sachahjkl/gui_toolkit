@@ -5,8 +5,8 @@ import "core:os"
 import win "core:sys/windows"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
-//   -define:TOOLKIT_RENDER=d3d11   Direct3D 11 (render.odin, frame.odin, rect.hlsl, filter.hlsl)   the default
-//   -define:TOOLKIT_RENDER=wgpu    WebGPU through wgpu-native (wgpu_*.odin, rect.wgsl, filter.wgsl)
+//   -define:TOOLKIT_RENDER=d3d11   Direct3D 11 (render.odin, frame.odin; the HLSL naga writes from the WGSL)   the default
+//   -define:TOOLKIT_RENDER=wgpu    WebGPU through wgpu-native (wgpu_*.odin; the WGSL as it is)
 // The procedures below are the ones whose work depends on the backend; each calls its d3d_* or wgpu_* implementation.
 // Only the chosen one is compiled into the program (`when` is resolved at compile time). Everything else in this
 // package (the frame description, texture pools, retained heap bookkeeping, presentation statistics, text rendering

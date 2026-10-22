@@ -3,7 +3,7 @@ package render
 import "core:fmt"
 import "vendor:directx/d3d11"
 
-// Slug text on the D3D11 renderer (the shaders are slug.hlsl, compiled after rect.hlsl; algorithm: Eric Lengyel's Slug,
+// Slug text on the D3D11 renderer (the shaders are slug.wgsl, written after rect.wgsl in one module; algorithm: Eric Lengyel's Slug,
 // font/slug_ref/PINNED.md). Glyphs are ordinary Rect_Inst instances of KIND_SLUG in the frame's list, so order, clips,
 // transforms, fades and pictures work as for every other primitive. Only the draw call differs: frame_submit cuts a batch
 // into the pieces that are Slug instances (Frame_Data.slug_runs, Replay.slug_runs) and the others, and switches the

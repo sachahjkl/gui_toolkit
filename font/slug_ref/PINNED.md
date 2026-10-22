@@ -15,5 +15,5 @@ the code is distributed: see `NOTICE.md` at the root of the toolkit.
 | SlugPixelShader.hlsl | 6EB2D77216AA6FD2BF92E0141A7FD54012340E6B3FDB4FFF2C3A033D01719CF0 |
 | SlugVertexShader.hlsl | E24271022B152D09C4A1C9BFC6A8DDCAE758C6CBE90D2A2276FC8B1F32976D11 |
 
-These files are kept as downloaded, for reference and review only: the renderer's `render/slug.hlsl` is derived from
+These files are kept as downloaded, for reference and review only: the renderer's `render/slug.wgsl` is derived from
 them (the coverage function `SlugRender` and the root solvers are the reference's, the dilation too).

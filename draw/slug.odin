@@ -6,7 +6,7 @@ import "../render"
 // Text drawn by the Slug algorithm (font.Text_Renderer.Slug): a glyph is one instance of KIND_SLUG whose shaders read the
 // glyph's curves and bands from two textures (the font package's glyph pages, one row each), so text is sharp under any
 // scale or transform with no bitmaps. The instances are in the frame's list like all others; `slug_runs` tells the
-// renderer which ones to draw with the Slug shaders. See render/slug.hlsl and font/slug_cache.odin.
+// renderer which ones to draw with the Slug shaders. See render/slug.wgsl and font/slug_cache.odin.
 
 // What a context keeps of the font's Slug pages: the two textures (a row per page, grown by doubling) and the version of
 // each page it uploaded.
