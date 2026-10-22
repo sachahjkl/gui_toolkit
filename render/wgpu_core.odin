@@ -24,6 +24,7 @@ import "vendor:wgpu"
 //   * No GenerateMips (mip.wgsl draws each level), no border sampler (done in the shaders), no frame statistics
 //     (presentation estimates, see wgpu_present.odin).
 
+WGPU_ADAPTER_LIMITS :: #config(TOOLKIT_WGPU_ADAPTER_LIMITS, false)   // ask for everything the adapter offers (more memory), else the defaults of WebGPU
 WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12")   // "dx12" | "vulkan"
 WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/fetch_wgpu.ps1)
 
@@ -94,9 +95,19 @@ Wgpu_State :: struct {
 	// latency (wgpu_present.odin)
 	latency:       Wgpu_Latency,
 	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
+	panel:         ^Panel,               // translucent window: the DirectComposition visual's swap chain panel (wgpu_dcomp.odin)
 	// start-up costs, milliseconds (wgpu_costs)
 	t_device, t_modules, t_pipelines: f64,
 	n_pipelines: int,
+	cpu: Wgpu_Cpu,
+}
+
+// Where the CPU time of a frame goes (TOOLKIT_WGPU_TRACE: averages printed once per second).
+@(private)
+Wgpu_Cpu :: struct {
+	frames: int,
+	begin, upload, encode, submit, present, acquire: f64,   // ms, summed
+	since: time.Tick,
 }
 
 @(private)
@@ -186,7 +197,14 @@ wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) ->
 	}
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
 	if g.instance == nil { fmt.eprintln("render: wgpu: no instance"); return false }
-	if hwnd != nil {
+	if hwnd != nil && r.transparent {
+		g.surface = wgpu_dcomp_surface(r, hwnd)
+		if g.surface == nil {
+			fmt.eprintln("render: wgpu: DirectComposition unavailable, the window is opaque")
+			r.transparent = false
+		}
+	}
+	if hwnd != nil && g.surface == nil {
 		src := wgpu.SurfaceSourceWindowsHWND{chain = {sType = .SurfaceSourceWindowsHWND}, hinstance = rawptr(win.GetModuleHandleW(nil)), hwnd = rawptr(hwnd)}
 		g.surface = wgpu.InstanceCreateSurface(g.instance, &{nextInChain = &src.chain})
 		if g.surface == nil { fmt.eprintln("render: wgpu: cannot create the surface"); return false }
@@ -224,7 +242,7 @@ wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) ->
 	dd := wgpu.DeviceDescriptor{
 		label = "gui_toolkit",
 		requiredFeatureCount = len(features), requiredFeatures = raw_data(features),
-		requiredLimits = &limits,
+		requiredLimits = WGPU_ADAPTER_LIMITS ? &limits : nil,
 		deviceLostCallbackInfo = {mode = .AllowSpontaneos, callback = device_lost_cb, userdata1 = g.shared},
 		uncapturedErrorCallbackInfo = {callback = uncaptured_error, userdata1 = g.shared},
 	}
@@ -312,7 +330,7 @@ wgpu_create_offscreen :: proc(r: ^Renderer) -> bool {
 
 @(private)
 wgpu_surface_alpha :: proc(r: ^Renderer) -> wgpu.CompositeAlphaMode {
-	return .Opaque
+	return r.transparent && r.wg.panel != nil ? .Premultiplied : .Opaque
 }
 
 // (Re)configures the surface for the current size, format, present mode and latency.
@@ -368,7 +386,9 @@ wgpu_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	release_targets(r)
 	wgpu_frame_formats(r)
 	if g.surface != nil {
+		wgpu_dcomp_color_space(r)
 		wgpu_configure_surface(r)
+		wgpu_dcomp_color_space(r)
 	} else if g.frame_tex != nil {
 		wgpu.TextureViewRelease(g.frame_rtv)
 		wgpu.TextureRelease(g.frame_tex)
@@ -773,6 +793,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 wgpu_release_device :: proc(r: ^Renderer) {
 	g := &r.wg
 	if g.surface != nil { wgpu.SurfaceUnconfigure(g.surface); wgpu.SurfaceRelease(g.surface); g.surface = nil }
+	wgpu_dcomp_destroy(r)
 	g.configured = false
 	if g.queue != nil { wgpu.QueueRelease(g.queue); g.queue = nil }
 	if g.device != nil { wgpu.DeviceDestroy(g.device); wgpu.DeviceRelease(g.device); g.device = nil }
@@ -829,10 +850,5 @@ wgpu_costs :: proc(r: ^Renderer) -> (device, modules, pipelines: f64, count: int
 	return r.wg.t_device, r.wg.t_modules, r.wg.t_pipelines, r.wg.n_pipelines
 }
 
-// TOOLKIT_WGPU_TRACE=1 in the environment: timings of the surface calls on stderr.
 @(private)
-wgpu_trace :: proc() -> bool {
-	@(static) state: int   // 0: unknown, 1: off, 2: on
-	if state == 0 { state = os.get_env("TOOLKIT_WGPU_TRACE", context.temp_allocator) != "" ? 2 : 1 }
-	return state == 2
-}
+wgpu_trace :: proc() -> bool { return render_trace() }

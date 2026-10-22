@@ -58,7 +58,9 @@ wgpu_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	g.clear = {f64(c.r), f64(c.g), f64(c.b), f64(c.a)}
 	g.clear_pending = true
 	if g.surface != nil && wgpu_pick_present_mode(r) != g.present_mode { wgpu_configure_surface(r) }
+	t0 := time.tick_now()
 	wgpu_ensure_frame(r)
+	g.cpu.begin += time.duration_milliseconds(time.tick_since(t0))
 }
 
 @(private)
@@ -178,6 +180,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer {
 		delete(s.groups); delete(s.views); delete(s.replay_off)
 	}
+	t_enter := time.tick_now()
 	s.enc = wgpu.DeviceCreateCommandEncoder(g.device)
 	if GPU_TIMING || r.gpu_timing || r.prof.on { wprof_begin(r, s.enc); s.timed = g.pf.slot >= 0 }
 	wgpu_generate_mips(r, &s)
@@ -194,6 +197,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	if len(f.insts) > 0 { wgpu.QueueWriteBuffer(g.queue, g.inst.buf, 0, raw_data(f.insts), uint(len(f.insts) * size_of(Rect_Inst))) }
 
+	t_uploaded := time.tick_now()
 	// uniform arena: the constants of every target bound, replay and filter pass of this submit, at their own offsets
 	passes := 0
 	for op in f.ops { if op.kind == .Pass { passes += 1 } }
@@ -301,8 +305,13 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	end_pass(&s)
 	if s.timed { wprof_end(r, s.enc) }
+	t_encoded := time.tick_now()
 	cb := wgpu.CommandEncoderFinish(s.enc)
 	wgpu.QueueSubmit(g.queue, {cb})
+	t_submitted := time.tick_now()
+	g.cpu.upload += time.duration_milliseconds(time.tick_diff(t_enter, t_uploaded))
+	g.cpu.encode += time.duration_milliseconds(time.tick_diff(t_uploaded, t_encoded))
+	g.cpu.submit += time.duration_milliseconds(time.tick_diff(t_encoded, t_submitted))
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(s.enc)
 	if s.timed { wprof_submitted(r) }

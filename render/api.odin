@@ -1,5 +1,7 @@
 package render
 
+import "core:fmt"
+import "core:os"
 import win "core:sys/windows"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
@@ -79,6 +81,25 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
 	when USE_WGPU { wgpu_frame_end(r, vsync) } else { d3d_frame_end(r, vsync) }
+	if !r.first_present_noted {
+		r.first_present_noted = true
+		if render_trace() {
+			created, exited, kernel, user: win.FILETIME
+			now: win.FILETIME
+			win.GetProcessTimes(win.GetCurrentProcess(), &created, &exited, &kernel, &user)
+			win.GetSystemTimeAsFileTime(&now)
+			ft :: proc(f: win.FILETIME) -> u64 { return u64(f.dwHighDateTime) << 32 | u64(f.dwLowDateTime) }
+			fmt.eprintfln("render: first present %.0f ms after the process started (backend %s)", f64(ft(now) - ft(created)) / 1e4, RENDER_BACKEND)
+		}
+	}
+}
+
+// TOOLKIT_RENDER_TRACE=1 (or TOOLKIT_WGPU_TRACE=1) in the environment: timings of the renderer on stderr.
+@(private)
+render_trace :: proc() -> bool {
+	@(static) state: int   // 0: unknown, 1: off, 2: on
+	if state == 0 { state = os.get_env("TOOLKIT_RENDER_TRACE", context.temp_allocator) != "" || os.get_env("TOOLKIT_WGPU_TRACE", context.temp_allocator) != "" ? 2 : 1 }
+	return state == 2
 }
 
 heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: int) {
