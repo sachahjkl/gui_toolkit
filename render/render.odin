@@ -82,6 +82,10 @@ FLAG_SCALED :: 0x10000 // the texture holds the image reduced (a large blur): sa
                        // the scale (texels per screen pixel), edges repeat
 FLAG_MATRIX :: 0x20000 // color matrices applied to the texel (straight sRGB values, each result clamped), as a Color
                        // pass would: `aux` is their entry in the frame's gradient table (see Color_Matrix_Entry)
+FLAG_PROJECT :: 0x40000 // image: a layer drawn through a homography (draw.composite_plane). `xform` is the first of two
+                        // entries of the transform table that hold the 3x3 matrix mapping layer texels to homogeneous screen
+                        // pixels (see project_entries); `src` the layer's valid texels (also `dst`); colors[1].x the most taps
+                        // of the anisotropic filter. Perspective-correct, antialiased at the edges, clipped at W <= 0
 
 // The space colors are combined in: alpha blending, antialiased edges, interpolation of corner colors, image
 // filtering, layer composites. Colors given to the renderer are always linear (draw.srgb / draw.hex convert); the

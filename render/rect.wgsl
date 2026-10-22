@@ -43,6 +43,7 @@ const FLAG_LERP_SRGB: u32 = 64u;
 const FLAG_LERP_LINEAR: u32 = 128u;
 const FLAG_SCALED: u32 = 0x10000u;
 const FLAG_MATRIX: u32 = 0x20000u;
+const FLAG_PROJECT: u32 = 0x40000u;
 const BLEND_SHIFT: u32 = 8u;
 const SPACE_LINEAR: u32 = 0u;
 const SPACE_SRGB: u32 = 1u;
@@ -237,8 +238,61 @@ fn lerp_space(flags: u32) -> u32 {
 	return g.target_space;
 }
 
+// A projected quad (FLAG_PROJECT, KIND_IMAGE): a layer drawn through a homography. The instance's `xform` is the first of two
+// entries of the transform table holding the 3x3 matrix H (rows r0 r1 r2, row-major: entry 0 = r0.xyz r1.xyz, entry 1 = r2.xyz) that
+// maps layer texels (x, y, 1) to homogeneous screen pixels (X, Y, W). The vertex position is written homogeneous
+// (X, Y, W scaled to clip space, with the same W), so the rasterizer clips against W > 0 and interpolates the varyings with
+// perspective correction: the layer's texel position (uv) and the local position the edge is antialiased from (rect_pos) are exact.
+// colors[0] is the tint (alpha included); colors[1].x is the most taps of the anisotropic filter.
+fn vs_project(i: VSIn) -> PSIn {
+	let corner = float2(f32(i.vid >> 1u), f32(i.vid & 1u));
+	let e0 = xforms[i.extra.x];
+	let e1 = xforms[i.extra.x + 1u];
+	let r0 = e0.abcd.xyz;
+	let r1 = float3(e0.abcd.w, e0.ef.x, e0.ef.y);
+	let r2 = e1.abcd.xyz;
+	let size = i.dst.zw - i.dst.xy;
+	// local margin that is 1 px on screen at this corner, from the Jacobian of the projection there
+	let p0 = float3(i.dst.xy + corner * size, 1.0);
+	let w0 = max(dot(r2, p0), 1e-3);
+	let s0 = float2(dot(r0, p0), dot(r1, p0)) / w0;
+	let jx = float2(r0.x - s0.x * r2.x, r1.x - s0.y * r2.x) / w0;
+	let jy = float2(r0.y - s0.x * r2.y, r1.y - s0.y * r2.y) / w0;
+	let det = jx.x * jy.y - jx.y * jy.x;
+	var grow = float2(0.0);
+	if (abs(det) > 1e-12) { grow = min(float2(length(jy), length(jx)) / abs(det), float2(64.0)); }
+	let t = corner + (corner * 2.0 - 1.0) * grow / max(abs(size), float2(1e-6));
+	let lp = i.dst.xy + t * size;
+	let p = float3(lp, 1.0);
+	let hx = dot(r0, p);
+	let hy = dot(r1, p);
+	let hw = dot(r2, p);
+	var o: PSIn;
+	o.pos = float4(
+		(hx - hw * g.target_origin.x) / g.viewport_size.x * 2.0 - hw,
+		hw - (hy - hw * g.target_origin.y) / g.viewport_size.y * 2.0,
+		0.5 * hw, hw);
+	o.rect_pos = (t - 0.5) * size;
+	o.half_size = size * 0.5;
+	o.lpos = lp;
+	o.uv = mix(i.src.xy, i.src.zw, t);
+	o.src = i.src;
+	var c = i.c0;
+	c.a = c.a * rp.m1.z;
+	if (lerp_space(i.extra.z) == SPACE_SRGB) { c = float4(srgb_encode(c.rgb), c.a); }
+	o.color = float4(c.rgb * c.a, c.a);
+	o.radii = float4(0.0);
+	o.style = float4(0.0, 1.0, i.style.z, 1.0);
+	o.extra = uint4(1u, i.extra.y, i.extra.z, i.extra.w);
+	o.p0 = i.c1;
+	o.p1 = i.c2;
+	o.p2 = i.c3;
+	return o;
+}
+
 @vertex
 fn vs_main(i: VSIn) -> PSIn {
+	if ((i.extra.z & FLAG_PROJECT) != 0u) { return vs_project(i); }
 	let corner = float2(f32(i.vid >> 1u), f32(i.vid & 1u));   // 0: (0,0) 1: (0,1) 2: (1,0) 3: (1,1) as a triangle strip
 	let kind = u32(i.style.z + 0.5);
 	var dst = i.dst;
@@ -840,6 +894,26 @@ fn layer_texel(i: PSIn, screen: float2, space0: u32) -> Texel {
 	return Texel(t, space);
 }
 
+// A texel of a layer drawn through a homography (FLAG_PROJECT), filtered along the long axis of the pixel's footprint in the
+// layer (anisotropic: taps one texel apart, up to p0.x of them) so a plane seen at a slant stays sharp without shimmering.
+// Reads stay inside the layer's valid texels (src), so nothing leaks in from the pooled texture around it.
+fn proj_texel(i: PSIn, duvx: float2, duvy: float2) -> float4 {
+	let dim = float2(textureDimensions(image));
+	let lo = i.src.xy + 0.5;
+	let hi = max(i.src.zw - 0.5, lo);
+	var major = duvx;
+	var lmaj = length(duvx);
+	let ly = length(duvy);
+	if (ly > lmaj) { major = duvy; lmaj = ly; }
+	let n = u32(clamp(ceil(lmaj - 0.05), 1.0, max(i.p0.x, 1.0)));
+	var acc = float4(0.0);
+	for (var k = 0u; k < n; k++) {
+		let o = (f32(k) + 0.5) / f32(n) - 0.5;
+		acc += textureSampleLevel(image, samp_img, clamp(i.uv + major * o, lo, hi) / dim, 0.0);
+	}
+	return acc / f32(n);
+}
+
 @fragment
 fn ps_main(i: PSIn) -> @location(0) float4 {
 	let p = i.rect_pos;
@@ -913,7 +987,9 @@ fn ps_main(i: PSIn) -> @location(0) float4 {
 			var texel: float4;
 			// a layer is composited pixel for pixel: fetch, never filter (filter weights would leak the transparent
 			// texels around its edges)
-			if ((i.extra.z & (FLAG_LAYER | FLAG_SCREEN)) != 0u) {
+			if ((i.extra.z & FLAG_PROJECT) != 0u) {
+				texel = proj_texel(i, duvx, duvy);
+			} else if ((i.extra.z & (FLAG_LAYER | FLAG_SCREEN)) != 0u) {
 				let lt = layer_texel(i, screen, tex_space);
 				texel = lt.t;
 				tex_space = lt.space;

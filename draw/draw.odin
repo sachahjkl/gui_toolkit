@@ -145,6 +145,7 @@ Context :: struct {
 	layers:   [dynamic]render.Layer,           // offscreen layers of this frame (push_layer), by id - 1
 	ops:      [dynamic]render.Op,              // clears, copies and filter passes of this frame, in order
 	open_layers: [dynamic]Open_Layer,
+	planes:   [dynamic]Open_Plane,             // planes being drawn (plane.odin)
 	filter_store: [dynamic]Filter,             // the filters of open layers (Open_Layer.filters indexes it)
 	target:   int,                             // where new batches draw: 0 = the frame, else a layer id
 	circular: bool,                            // set_circular_corners
@@ -197,7 +198,7 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 destroy :: proc(c: ^Context) {
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
-	delete(c.open_layers); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures); delete(c.slug_runs)
+	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures); delete(c.slug_runs)
 	saved_destroy(&c.saved)
 	slug_gpu_destroy(c)
 	text_destroy(c)
@@ -216,7 +217,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.slug_runs)
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
-	clear(&c.open_layers); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
+	clear(&c.open_layers); clear(&c.planes); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
 	c.frame_no += 1
 	cache_begin_frame(c)
 	c.raster_scale = 1
@@ -524,6 +525,7 @@ image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tin
 // Uploads new glyphs (text.odin), then draws the whole frame. Call once per frame after all primitives.
 end_frame :: proc(c: ^Context) {
 	if c.rec != nil { picture_end(c) }   // an unbalanced picture_begin: what was recorded is kept, not drawn
+	for len(c.planes) > 0 { discard_plane(c, pop_plane(c)) }   // unbalanced push_plane: dropped
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
 	text_upload(c)
