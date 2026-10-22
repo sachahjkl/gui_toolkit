@@ -46,6 +46,14 @@ jobs:
         run: |
           for %%e in (fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
 
+      - name: Shaders (WGSL is the source: naga writes the HLSL, which is compiled to the DXBC the exes embed)
+        shell: pwsh
+        run: |
+          ./tools/build_naga.ps1
+          if ($LASTEXITCODE) { exit 1 }
+          odin run tools/shaders -vet -out:build/shaders_tool.exe -- -check
+          if ($LASTEXITCODE) { exit 1 }
+
       - name: Tests (no window; pixel tests on WARP)
         shell: pwsh
         run: |

@@ -20,11 +20,25 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 | `render/wgpu_present.odin` | present modes, the frame latency object and the frame statistics (rebuilt from the compositor's timing) |
 | `render/wgpu_profile.odin` | `gpu_ms` and `gpu_profile`, from timestamp queries between passes |
 | `render/wgpu_dcomp.odin` | translucent windows: a DirectComposition visual fed through `SurfaceSourceSwapChainPanel` |
-| `render/rect.wgsl`, `filter.wgsl`, `mip.wgsl` | WGSL ports of `rect.hlsl` and `filter.hlsl`, and mip chain generation (WebGPU has no `GenerateMips`) |
+| `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
 
 The pixel tests run on both backends with the same expectations: `tools\test_backends.ps1 -Backend d3d11|wgpu` (the wgpu ones one
 test at a time: WARP's D3D12 crashes now and then when several devices work at once).
 `tools\render_probe` draws a few primitives on the offscreen renderer and writes a PPM; `tools\ppm_diff.ps1` compares two.
+
+## One source for the shaders
+
+Every shader is written once, in WGSL (`render/*.wgsl`). WebGPU compiles it as it is. Direct3D 11 embeds the HLSL that **naga** (the translator wgpu uses) writes from it, compiled ahead of time to DXBC as before (no shader compiles at start-up under D3D11):
+
+```
+render/*.wgsl --tools/wgsl2hlsl (naga 29.0.4)--> render/shaders/*.hlsl --D3DCompile--> render/shaders/*.dxbc (embedded)
+```
+
+* `odin run tools/shaders` does both steps (`-- -check` only compares). It builds the translator first (`tools\build_naga.ps1`: a small Rust program, `tools\wgsl2hlsl`; naga is pinned exactly in `Cargo.toml`, `Cargo.lock` carries the SHA-256 of every crate and the script pins `Cargo.lock` itself, builds with `--locked`; needs `cargo`).
+* The first line of each generated HLSL names the SHA-256 of the WGSL it came from: `tests/shaders` fails when a `.wgsl` file was edited and `tools/shaders` was not run, and when a blob is not what the embedded HLSL compiles to. CI also runs `tools/shaders -- -check` (naga writes the HLSL again and it must be identical).
+* A module is the WGSL files concatenated: `rect`, `filter`, and `slug` (= `rect.wgsl` + `slug.wgsl`, the text shaders reuse rect's transforms, clips and text correction). `render/shaders.odin` lists the modules and the Direct3D 11 slot of every resource (`RECT_BINDINGS`...: group.binding = register), which is what naga is told and what the backend binds.
+* What the translation needed on the D3D11 side: the instance layout uses naga's `LOC0..LOC8` semantics, the tables (transforms, clips, points, gradients, retained heaps) are raw buffers read as `ByteAddressBuffer`, filter passes use a plain clamp sampler (the shader adds the transparent border), and naga's sampler heaps (Direct3D 12) become plain `SamplerState`s (a few lines of text processing in the translator).
+* Cost: none at run time (same DXBC pipeline); the naga HLSL is a little bigger (pixel shader 110 KB, was 100 KB) and measures the same on the GPU (see the CHANGELOG).
 
 ## Dependencies
 

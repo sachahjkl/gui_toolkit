@@ -8,7 +8,7 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 ### Added
 - A WebGPU render backend (experimental), behind the same interface as the Direct3D 11 one: `-define:TOOLKIT_RENDER=wgpu` (default `d3d11`). wgpu-native over Direct3D 12 (or Vulkan with `-define:TOOLKIT_WGPU_BACKEND=vulkan`); the shaders ported to WGSL; translucent windows through a DirectComposition visual; GPU time per step. The pixel tests pass on both backends (`tools\test_backends.ps1`). See `docs/webgpu.md`.
 - `tools\fetch_wgpu.ps1` (wgpu-native and DXC pinned by SHA-256), `tools\render_probe`, `tools\ppm_diff.ps1`, `tools\window_shot.ps1`.
-- `render.backend_name()`, `render.adapter_description()`; `TOOLKIT_RENDER_TRACE=1` prints the time of the first present.
+- **Shaders written once, in WGSL**: `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl` (the Slug text shaders, ported), `mip.wgsl`. The HLSL of the Direct3D 11 backend is generated from them by naga (`tools/wgsl2hlsl`, naga pinned exactly, Cargo.lock pinned by SHA-256 in `tools\build_naga.ps1`), compiled to DXBC and embedded as before; `odin run tools/shaders` writes both; `tests/shaders` checks the SHA-256 of the sources in the header of each HLSL and the blobs; CI runs `tools/shaders -- -check`. `render/rect.hlsl`, `filter.hlsl`, `slug.hlsl` are gone (generated copies live in `render/shaders/`). D3D11 pixel tests unchanged, GPU time at a held clock and CPU per frame unchanged, first present +0 to +10 ms.`n- `render.backend_name()`, `render.adapter_description()`; `TOOLKIT_RENDER_TRACE=1` prints the time of the first present.
 
 ## [0.14.0] - 2026-10-22
 
