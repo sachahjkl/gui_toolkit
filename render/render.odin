@@ -1386,3 +1386,12 @@ d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 		r.lost = true
 	}
 }
+
+// Most frames the swap chain may queue (IDXGISwapChain2::SetMaximumFrameLatency; see api.set_max_frame_latency).
+d3d_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
+	if r.swapchain == nil { return false }
+	sc2: ^dxgi.ISwapChain2
+	if win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) || sc2 == nil { return false }
+	defer sc2->Release()
+	return win.SUCCEEDED(sc2->SetMaximumFrameLatency(u32(clamp(n, 1, 16))))
+}
