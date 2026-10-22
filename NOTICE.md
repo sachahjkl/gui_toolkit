@@ -32,3 +32,8 @@ Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas)
   (`font/data/Roboto-LICENSE.txt`).
 - `font/data/Inconsolata-Regular.ttf`: Inconsolata, copyright (c) 2006-2012 Raph Levien, copyright (c) 2011-2012
   Cyreal, SIL Open Font License 1.1 (`font/data/Inconsolata-OFL.txt`).
+
+## WebGPU backend (optional, `-define:TOOLKIT_RENDER=wgpu`)
+
+- [wgpu-native](https://github.com/gfx-rs/wgpu-native) (wgpu and naga), MIT or Apache-2.0, linked through Odin's `vendor:wgpu`; `wgpu_native.dll` ships with programs built with `WGPU_SHARED=true`.
+- [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) (`dxcompiler.dll`, `dxil.dll`), LLVM Release License (University of Illinois/NCSA), optional, next to the program.

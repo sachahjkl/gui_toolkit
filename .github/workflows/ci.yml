@@ -57,3 +57,12 @@ jobs:
             if ($o -match 'All tests were successful') { "PASS $t" } else { "FAIL $t"; $o; $failed++ }
           }
           if ($failed) { exit 1 }
+
+      - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
+        shell: pwsh
+        run: |
+          ./tools/fetch_wgpu.ps1 -NoDxc
+          odin build examples/smoke -vet -define:TOOLKIT_RENDER=wgpu -out:build/smoke_wgpu.exe -subsystem:windows
+          if () { exit 1 }
+          ./tools/test_backends.ps1 -Backend wgpu -TimeoutSec 900
+          if () { exit 1 }
