@@ -119,3 +119,12 @@ heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 heaps_destroy :: proc(r: ^Renderer) {
 	when USE_WGPU { wgpu_heaps_destroy(r) } else { d3d_heaps_destroy(r) }
 }
+
+// Slug text (slug.odin): the two glyph data textures a draw context fills, and a glyph page written into them.
+create_slug_textures :: proc(r: ^Renderer, rows: int) -> (curves, bands: Texture) {
+	when USE_WGPU { return wgpu_create_slug_textures(r, rows) } else { return d3d_create_slug_textures(r, rows) }
+}
+
+update_slug_page :: proc(r: ^Renderer, curves, bands: Texture, page: int, c: [][4]f16, b: [][2]u16) {
+	when USE_WGPU { wgpu_update_slug_page(r, curves, bands, page, c, b) } else { d3d_update_slug_page(r, curves, bands, page, c, b) }
+}
