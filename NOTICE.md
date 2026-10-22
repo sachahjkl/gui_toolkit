@@ -26,7 +26,7 @@ RAD Debugger is MIT licensed:
 
 ## Slug (text drawn from outlines)
 
-`render/slug.hlsl` is derived from the reference shaders of the Slug algorithm by Eric Lengyel
+`render/slug.wgsl` (and the HLSL naga writes from it) is derived from the reference shaders of the Slug algorithm by Eric Lengyel
 (<https://github.com/EricLengyel/Slug>, commit `be3c13eb7d63f9e8aa5c583e42d92c374cb91d98`; the originals are kept,
 with their licenses and SHA-256, in `font/slug_ref/`): the coverage function, the root solvers and the dynamic dilation
 are his, adapted to this renderer's instances and transforms. The algorithm is described in "GPU-Centered Font

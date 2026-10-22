@@ -1,4 +1,4 @@
-// Package render: Direct3D 11 backend. One instanced-quad pipeline draws everything (see rect.hlsl).
+// Package render: Direct3D 11 backend. One instanced-quad pipeline draws everything (see rect.wgsl).
 package render
 
 import "core:fmt"
@@ -58,7 +58,7 @@ KIND_GRADIENT :: 3
 // its corners, colors[0] the color; colors[1] the second rect (x0 y0 x1 y1), colors[2] its corners, colors[3].x the
 // standard deviation, colors[3].y SHADOW_* flags. All in the instance's units (local units under a transform).
 KIND_SHADOW :: 4
-// A glyph drawn from its outline by the Slug shaders (slug.hlsl, their own pipeline: the instance is drawn between
+// A glyph drawn from its outline by the Slug shaders (slug.wgsl, their own pipeline: the instance is drawn between
 // the others in order, see Frame_Data.slug_runs). dst: the glyph's box (instance units, y down); src: the same box in
 // em units (y up); colors[0]: the color; radii: band scale x y, offset x y; xform and clip as any instance;
 // flags: band max x | band max y << 8; aux: glyph location in the band texture, x | y << 16.
@@ -302,7 +302,7 @@ Frame_Data :: struct {
 	ops:     []Op,
 	grads:   [][4]f32,    // gradient table (KIND_GRADIENT of immediate instances)
 	replays: []Replay,    // pictures drawn this frame (Batch.replay)
-	// Slug text (slug.hlsl): the instances of KIND_SLUG are drawn by their own pipeline. `slug_runs` lists them as
+	// Slug text (slug.wgsl): the instances of KIND_SLUG are drawn by their own pipeline. `slug_runs` lists them as
 	// [first, count) of `insts`, ascending and not adjacent; a batch is drawn in pieces alternating between the two
 	// pipelines, in order. `slug_curves` / `slug_bands` are the glyph data textures (create_slug_textures).
 	slug_runs:   [][2]int,
@@ -365,7 +365,7 @@ Renderer :: struct {
 	device_generation: u64,               // bumps when the device was recreated (recover): texture contents were lost
 	lost:        bool,                    // the device was removed or reset: recover() before drawing again
 	blend_replace: ^d3d11.IBlendState,    // FLAG_BLEND composites write their result
-	fx_vs:       ^d3d11.IVertexShader,    // filter passes (filter.hlsl)
+	fx_vs:       ^d3d11.IVertexShader,    // filter passes (filter.wgsl)
 	fx_ps:       ^d3d11.IPixelShader,
 	fx_constants: ^d3d11.IBuffer,
 	sampler_border: ^d3d11.ISamplerState, // filter passes: bilinear, clamp (the shader adds the transparent border)
@@ -765,7 +765,7 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 is_transparent :: proc(r: ^Renderer) -> bool { return r.transparent }
 
 @(private)
-compile :: proc(src: string, entry, target: cstring, name: cstring = "rect.hlsl") -> (blob: ^d3d11.IBlob, ok: bool) {
+compile :: proc(src: string, entry, target: cstring, name: cstring = "shader.hlsl") -> (blob: ^d3d11.IBlob, ok: bool) {
 	errors: ^d3d11.IBlob
 	hr := d3d_compiler.Compile(raw_data(src), uint(len(src)), name, nil, nil, entry, target, 0, 0, &blob, &errors)
 	if win.FAILED(hr) {

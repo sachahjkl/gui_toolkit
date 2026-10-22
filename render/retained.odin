@@ -43,7 +43,7 @@ Heap :: struct {
 // Smallest heap created (elements); heaps grow by doubling from it.
 @(private) HEAP_MIN :: 1024
 
-// The constant buffer b2 of rect.hlsl.
+// The constant buffer b2 of rect.wgsl.
 @(private)
 Replay_Constants :: struct #packed {
 	m0:   [4]f32,    // a b c d

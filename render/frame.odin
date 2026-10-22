@@ -18,7 +18,7 @@ set_blur_sigma_limit :: proc(r: ^Renderer, sigma: f32) { r.blur_sigma_limit = cl
 set_filter_precision :: proc(r: ^Renderer, f: Target_Format) { r.filter_format = f }
 filter_precision :: proc(r: ^Renderer) -> Target_Format { return r.filter_format }
 
-// The constant buffer of filter.hlsl (register b1), laid out as HLSL packs it.
+// The constant buffer of filter.wgsl (register b1), laid out as HLSL packs it.
 @(private)
 Pass_Constants :: struct #packed {
 	src_origin:  [2]f32, src_scale: f32, mode: u32,
@@ -181,7 +181,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 }
 
-// Fixed state of the instanced-quad pipeline (rect.hlsl).
+// Fixed state of the instanced-quad pipeline (rect.wgsl).
 @(private)
 bind_main :: proc(r: ^Renderer) {
 	r.ctx->RSSetState(r.raster)

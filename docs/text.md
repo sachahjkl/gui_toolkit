@@ -120,12 +120,12 @@ The path, from the font to the screen:
    are kept, then the least recently used page that no current frame draws from is cleared (new epoch: pictures that
    drew from it are stale, `slug_pages_hold`), else one more is made. A glyph the provider has no outline for, a color
    glyph, or one that does not fit a row is drawn from the atlas (`Slug_Kind.Atlas`); a space is `Blank`.
-4. **Draw** (`draw/slug.odin`, `render/slug.hlsl`): a glyph is one `KIND_SLUG` instance in the ordinary instance list (so
+4. **Draw** (`draw/slug.odin`, `render/slug.wgsl`): a glyph is one `KIND_SLUG` instance in the ordinary instance list (so
    order, clips, fades, transforms and pictures are as for any primitive); `slug_runs` tells the renderer which ones, and
    `frame_submit` draws a batch in pieces, switching between the two pipelines in order. The vertex shader grows each
    glyph's box by half a pixel on screen whatever the transform (the reference's dynamic dilation); the pixel shader is
    the reference's, then the same text correction as the atlas path (`render.Text_Rendering`), the clip shapes and the
-   color. `slug.hlsl` is compiled after `rect.hlsl` (one source for the shared helpers); porting it to WGSL is a translation.
+   color. `slug.wgsl` is read after `rect.wgsl` (one module: the shared helpers are written once); WebGPU compiles it as it is, Direct3D 11 uses the HLSL naga writes from it.
 
 `-define:FONT_TEXT_RENDERER=slug` makes Slug the default of a build (the pixel tests of the other packages run with
 it: all pass except the ones that count atlas pages or compare 8-bit atlas coverage). `odin run tools/textcompare --
