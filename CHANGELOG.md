@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.16.0] - 2026-10-22
+
+### Added
+- **Planes**: layers drawn through a projective 4x4 transform (CSS Transforms 2: `perspective()`, `rotateX/Y`, `translateZ`, `preserve-3d`). `draw.push_plane` / `pop_plane` / `draw_plane` (`draw/plane.odin`): the content of a rectangle is drawn offscreen in its own frame at a chosen raster scale, then composited as a quad through a column-major 4x4 matrix (`draw.Mat4`, the order of CSS `matrix3d()`), with perspective-correct interpolation, antialiased edges, anisotropic filtering along the long axis of the pixel's footprint (`Plane_Draw.max_taps`), the clips and alpha stack of the moment, and `backface-visibility` (`Plane_Draw.cull_back`, `plane_faces_away`). `pop_plane` hands the layer back so several planes can be sorted before `draw_plane` (preserve-3d). A plane whose content did not change is kept between frames (`Plane_Fx.cache_id` / `cache_key`, the layer cache of `layer_cache.odin`): `push_plane` returns false and only the matrix changes.
+- Shader: `FLAG_PROJECT` in `rect.wgsl` (a `KIND_IMAGE` instance whose homography is in two entries of the transform table): the vertex shader writes homogeneous clip positions, so the rasterizer clips against w > 0 and interpolates with perspective. No new pipeline: D3D11 (naga's HLSL, regenerated) and wgpu share it. `tests/planes` (flat plane equals the plain rect, perspective correctness, backface, a plane crossing the eye, kept planes, nested planes), on both backends.
+
 ## [0.15.0] - 2026-10-22
 
 ### Added
