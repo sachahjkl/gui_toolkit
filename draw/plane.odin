@@ -53,6 +53,8 @@ mat4_from_affine :: proc(a: Affine) -> Mat4 {
 Plane_Fx :: struct {
 	cache_id:  u64,   // 0: not kept
 	cache_key: u64,   // a signature of everything drawn in the plane (its size and raster scale are added)
+	mips:      bool,  // build the layer's mip levels (minification by perspective is filtered by them); needs device support,
+	                  // else the layer has none (Plane_Layer.mips says)
 }
 
 // What pop_plane hands back: the layer and where it lies in the plane frame. Draw it with draw_plane (which gives its texture
@@ -64,6 +66,7 @@ Plane_Layer :: struct {
 	size:    [2]int,             // valid texels
 	kept:    bool,               // the texture stays with the cache
 	direct:  bool,               // no layer was made: the content was drawn directly in the enclosing space
+	mips:    bool,               // the texture has its mip levels (minification is filtered by them)
 }
 
 @(private)
@@ -95,10 +98,11 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	w, h := int(sz.x), int(sz.y)
 	op.pl = Plane_Layer{origin = o, scale = s, size = {w, h}}
 	space := blend_space(c)
+	mips := fx.mips && render.target_mips_supported(c.renderer)
 	tex: render.Texture
 	if c.rec == nil && w > 0 && h > 0 && !(sz.x != sz.x) {
 		if fx.cache_id != 0 && c.layer_cache.budget > 0 {
-			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space)), u64(render.filter_precision(c.renderer)))
+			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(mips) << 8), u64(render.filter_precision(c.renderer)))
 			key = hash_f32(hash_f32(key, o.x), o.y)
 			ask := cache_ask(c, fx.cache_id, key, {}, Rect{{0, 0}, {f32(w), f32(h)}})
 			op.cache = ask
@@ -109,6 +113,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 				op.pl.img.scale = 1
 				op.pl.img.size = {w, h}
 				op.pl.kept = true
+				op.pl.mips = mips
 				append(&c.planes, op)
 				close_batch(c)
 				append(&c.clips, Clip{})   // an empty clip: what the caller draws anyway goes nowhere
@@ -117,7 +122,8 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 				return false
 			}
 		}
-		tex = render.acquire_target(c.renderer, w, h)
+		if mips { tex = render.acquire_target_mips(c.renderer, w, h); op.pl.mips = tex != 0 }
+		if tex == 0 { tex = render.acquire_target(c.renderer, w, h) }
 	}
 	if tex == 0 {
 		op.pl.direct = true
@@ -158,18 +164,47 @@ pop_plane :: proc(c: ^Context) -> Plane_Layer {
 	c.target = op.parent
 	start_batch(c)
 	pl := op.pl
+	if pl.mips { add_op(c, render.Op{kind = .Mips, dst = pl.img.tex}) }
 	if op.cache.store { pl.kept = cache_store(c, op.cache, pl.img, pl.size, Rect{{0, 0}, {f32(pl.size.x), f32(pl.size.y)}}) }
 	return pl
 }
 
+// The frame of the plane being drawn (the innermost open one): the plane frame position of texel (0, 0) and the texels per plane
+// frame unit. What is drawn meanwhile goes through the transform stack and then texels = (frame - origin) * scale. ok = false:
+// no plane is open, or its content is drawn directly (no layer: nothing projects it).
+open_plane_frame :: proc(c: ^Context) -> (origin: Vec2, scale: f32, ok: bool) {
+	if len(c.planes) == 0 { return }
+	op := c.planes[len(c.planes) - 1]
+	if op.pl.direct { return }
+	return op.pl.origin, op.pl.scale, true
+}
 // Gives the texture of a plane that will not be drawn back to the pool.
 discard_plane :: proc(c: ^Context, pl: Plane_Layer) {
 	if pl.img.tex != 0 && !pl.kept { render.release_target(c.renderer, pl.img.tex) }
 }
 
+// A half-space of the space a plane is drawn into, after the perspective divide: n . (x / w, y / w, z / w) + d >= 0 (n of unit
+// length). The surfaces of planes are planes there (a projective map keeps them), and the function is affine in the plane's own
+// frame once multiplied by w, so a cut is exact in every layer whose matrix is known. See draw_planes.
+Plane_Cut :: struct {
+	n: [3]f32,
+	d: f32,
+}
+
+MAX_PLANE_CUTS :: 6   // render.MAX_CUTS in rect.wgsl
+
 Plane_Draw :: struct {
 	max_taps:   int,    // anisotropic filter taps (0: PLANE_MAX_TAPS_DEFAULT)
 	cull_back:  bool,   // backface-visibility: hidden: not drawn when seen from behind
+	cuts:       []Plane_Cut,   // only the part of the plane inside every cut is drawn (hard edges: pieces of one plane cut by
+	                           // others fit without a seam)
+	retain:     bool,   // the layer's texture is not given back: the caller draws it again (other pieces), then discard_plane
+	// Effects on the composite (the projected quad), CSS Compositing 1 and Filter Effects 2:
+	blend:      Blend_Mode,    // mix-blend-mode of the quad against what is under it
+	backdrop:   []Filter,      // backdrop-filter: what lies under the quad, filtered (screen space), shown through `shape`.
+	                           // Lengths (blur, shadow offsets) are in plane frame units: they follow the plane's scale at its middle
+	shape:      Plane_Layer,   // what the backdrop shows through: the alpha of this layer (same frame as the plane, drawn through
+	                           // the same matrix); tex 0: the alpha of the plane itself
 }
 
 // The projected corners of the plane's rect (top-left, top-right, bottom-right, bottom-left) in the current local space, as
@@ -210,52 +245,3 @@ plane_faces_away :: proc(pl: Plane_Layer, m: Mat4) -> bool {
 	return area < 0
 }
 
-// Composites a plane through `m` (plane frame -> current local space, see above) and hands its texture back (unless kept).
-draw_plane :: proc(c: ^Context, pl: Plane_Layer, m: Mat4, alpha := f32(1), o: Plane_Draw = {}) {
-	if pl.img.tex == 0 || pl.direct { return }
-	defer discard_plane(c, pl)
-	if c.rec != nil { return }
-	if o.cull_back && plane_faces_away(pl, m) { return }
-	xf, alpha_stack, shape := cur(c)
-	// texels -> plane frame -> m -> current transform
-	k := 1 / pl.scale
-	// H (3x3, row-major): rows of x, y, w of m applied to (ox + tx k, oy + ty k, 1)
-	hx := [3]f32{m[0] * k, m[4] * k, m[0] * pl.origin.x + m[4] * pl.origin.y + m[12]}
-	hy := [3]f32{m[1] * k, m[5] * k, m[1] * pl.origin.x + m[5] * pl.origin.y + m[13]}
-	hw := [3]f32{m[3] * k, m[7] * k, m[3] * pl.origin.x + m[7] * pl.origin.y + m[15]}
-	a := xf.m
-	r0, r1: [3]f32
-	for i in 0 ..< 3 {
-		r0[i] = a.a * hx[i] + a.c * hy[i] + a.e * hw[i]
-		r1[i] = a.b * hx[i] + a.d * hy[i] + a.f * hw[i]
-	}
-	r2 := hw
-	// (x, y) both rows hold the plane's tx, ty columns in [0], [1] and the constant in [2]
-	first := u32(len(c.xform_table))
-	append(&c.xform_table, render.Xform_Data{m = {r0[0], r0[1], r0[2], r1[0], r1[1], r1[2]}})
-	append(&c.xform_table, render.Xform_Data{m = {r2[0], r2[1], r2[2], 0, 0, 0}})
-	taps := f32(o.max_taps > 0 ? o.max_taps : PLANE_MAX_TAPS_DEFAULT)
-	al := alpha_stack * alpha
-	flags: u32 = render.FLAG_PROJECT | (pl.img.space == .Srgb ? render.FLAG_TEX_SRGB : 0)
-	w, h := f32(pl.size.x), f32(pl.size.y)
-	inst := render.Rect_Inst{
-		dst = {0, 0, w, h}, src = {0, 0, w, h},
-		colors = {{1, 1, 1, al}, {taps, 0, 0, 0}, {}, {}},
-		soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, xform = first, clip = shape, flags = flags,
-	}
-	b := &c.batches[len(c.batches) - 1]
-	if b.image != pl.img.tex {
-		if b.image != 0 && len(c.insts) > b.first {
-			close_batch(c)
-			start_batch(c)
-			b = &c.batches[len(c.batches) - 1]
-		}
-		b.image = pl.img.tex
-	}
-	append(&c.insts, inst)
-}
-
-// pop_plane + draw_plane.
-pop_plane_draw :: proc(c: ^Context, m: Mat4, alpha := f32(1), o: Plane_Draw = {}) {
-	draw_plane(c, pop_plane(c), m, alpha, o)
-}
