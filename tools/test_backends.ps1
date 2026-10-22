@@ -13,7 +13,8 @@ $all = 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 're
 $list = if ($Only) { $Only | ForEach-Object { $_ -split ',' } } else { $all }
 $failed = 0
 foreach ($t in $list) {
-	$extra = @(if ($t -in 'keyboard', 'status', 'states') { '-define:ODIN_TEST_THREADS=1' })
+	# wgpu: one test at a time. WARP's D3D12 (d3d10warp.dll) crashes (access violation) now and then when several devices are made and used at once
+	$extra = @(if ($t -in 'keyboard', 'status', 'states' -or $Backend -eq 'wgpu') { '-define:ODIN_TEST_THREADS=1' })
 	$log = "build\test_${Backend}_$t.log"
 	$exe = "build\${t}_${Backend}_test.exe"
 	$args = @('test', "tests/$t", '-vet', "-define:TOOLKIT_RENDER=$Backend", "-out:$exe") + $extra
