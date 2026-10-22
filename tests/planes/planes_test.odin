@@ -343,3 +343,99 @@ three_planes_in_a_star :: proc(t: ^testing.T) {
 	testing.expectf(t, checked > 150, "enough samples (%d)", checked)
 	testing.expectf(t, bad == 0, "%d of %d samples show the wrong plane", bad, checked)
 }
+
+@(private = "file")
+stripes :: proc(dc: ^draw.Context) {
+	for i in 0 ..< 24 {
+		if i % 2 == 0 { draw.rect(dc, {{f32(i * 4), 0}, {f32(i * 4 + 4), 96}}, draw.Color{0, 0, 0, 1}) }
+	}
+}
+
+// mix-blend-mode on a plane: a plane under a translation blends as the same rect in an ordinary layer does.
+@(test)
+blend_on_a_flat_plane_equals_blend_on_a_layer :: proc(t: ^testing.T) {
+	for space in render.Blend_Space {
+		f: Fx
+		if !open(&f, space) { testing.fail_now(t, "no D3D11 device (WARP)") }
+		defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+		plane := frame(&f, proc(dc: ^draw.Context) {
+			stripes(dc)
+			draw.rect(dc, {{0, 40}, {96, 60}}, RED)
+			draw.push_plane(dc, {{0, 0}, {60, 60}}, 1)
+			draw.rect(dc, {{0, 0}, {60, 60}}, draw.Color{0.5, 0.5, 0.5, 1})
+			draw.pop_plane_draw(dc, draw.mat4_from_affine(draw.affine_translate({10, 20})), 1, draw.Plane_Draw{blend = .Multiply})
+		})
+		layer := frame(&f, proc(dc: ^draw.Context) {
+			stripes(dc)
+			draw.rect(dc, {{0, 40}, {96, 60}}, RED)
+			draw.push_transform(dc, draw.affine_translate({10, 20}))
+			draw.push_effects(dc, {{0, 0}, {60, 60}}, draw.Layer_Effects{alpha = 1, blend = .Multiply})
+			draw.rect(dc, {{0, 0}, {60, 60}}, draw.Color{0.5, 0.5, 0.5, 1})
+			draw.pop_layer(dc)
+			draw.pop_transform(dc)
+		})
+		worst := 0
+		for i in 0 ..< len(layer) { worst = max(worst, abs(int(layer[i]) - int(plane[i]))) }
+		testing.expectf(t, worst <= 4, "%v: a blended plane differs from a blended layer by up to %d levels", space, worst)
+		// and it did blend: over a black stripe stays black, over the red band the green and blue stay 0
+		testing.expectf(t, px(plane, 42, 30)[0] < 6 && px(plane, 22, 30)[0] > 150 && px(plane, 22, 30)[0] < 230, "%v: multiply took the stripes: %v %v", space, px(plane, 22, 30), px(plane, 42, 30))
+	}
+}
+
+// mix-blend-mode on a plane turned in perspective: the quad blends with what lies under it, and only there.
+@(test)
+blend_on_a_turned_plane :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	@(static) mm: draw.Mat4
+	mm = turned({48, 48}, {30, 30}, 200, 45)
+	img := frame(&f, proc(dc: ^draw.Context) {
+		draw.rect(dc, {{0, 0}, {48, 96}}, draw.Color{1, 0, 0, 1})
+		draw.rect(dc, {{48, 0}, {96, 96}}, draw.Color{0, 1, 0, 1})
+		draw.push_plane(dc, {{0, 0}, {60, 60}}, 1)
+		draw.rect(dc, {{0, 0}, {60, 60}}, draw.Color{0.5, 0.5, 0.5, 1})
+		draw.pop_plane_draw(dc, mm, 1, draw.Plane_Draw{blend = .Multiply})
+	})
+	l, r := px(img, 40, 48), px(img, 56, 48)
+	testing.expectf(t, l[0] > 100 && l[1] < 6 && l[2] < 6, "multiply over red keeps only red: %v", l)
+	testing.expectf(t, r[1] > 100 && r[0] < 6 && r[2] < 6, "multiply over green keeps only green: %v", r)
+	testing.expectf(t, px(img, 4, 48)[0] > 250 && px(img, 90, 48)[1] > 250, "outside the quad nothing changed: %v %v", px(img, 4, 48), px(img, 90, 48))
+}
+
+// backdrop-filter on a turned plane: what lies under the projected quad is blurred, through the plane's silhouette only.
+@(test)
+backdrop_filter_on_a_turned_plane :: proc(t: ^testing.T) {
+	for space in render.Blend_Space {
+		f: Fx
+		if !open(&f, space) { testing.fail_now(t, "no D3D11 device (WARP)") }
+		defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+		@(static) mm: draw.Mat4
+		mm = turned({48, 48}, {30, 30}, 400, 35)
+		img := frame(&f, proc(dc: ^draw.Context) {
+			stripes(dc)
+			content := draw.push_plane(dc, {{0, 0}, {60, 60}}, 1)
+			_ = content
+			pl := draw.pop_plane(dc)   // nothing in it: a glass pane
+			shape := solid_plane(dc, {30, 60}, draw.Color{1, 1, 1, 1})   // the left half of the pane
+			draw.draw_plane(dc, pl, mm, 1, draw.Plane_Draw{backdrop = []draw.Filter{draw.filter_blur(5)}, shape = shape})
+		})
+		// stripes are 4 px, black and white: far from the pane they alternate; blurred they become one gray
+		a, b := px(img, 6, 48), px(img, 10, 48)
+		testing.expectf(t, abs(a[0] - b[0]) > 200, "%v: outside the pane the stripes stay: %v %v", space, a, b)
+		// the left half of the pane (x < the projected middle): blurred
+		mx := int(project(mm, {30, 30}).x)
+		lo, hi := 255, 0
+		for x in mx - 14 ..< mx - 5 {
+			v := px(img, x, 48)[0]
+			lo, hi = min(lo, v), max(hi, v)
+		}
+		testing.expectf(t, hi - lo < 90, "%v: the left half of the pane is blurred: levels %d..%d", space, lo, hi)
+		lo, hi = 255, 0
+		for x in mx + 6 ..< mx + 14 {
+			v := px(img, x, 48)[0]
+			lo, hi = min(lo, v), max(hi, v)
+		}
+		testing.expectf(t, hi - lo > 200, "%v: the right half (outside the silhouette) keeps its stripes: levels %d..%d", space, lo, hi)
+	}
+}
