@@ -3,7 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [0.16.0] - 2026-10-22
+## [Unreleased] (emoji)
+
+### Added
+- **A COLR / CPAL interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_glyph.odin`): `Settings.color_engine = .Builtin` draws COLR v0 and v1 color glyphs (gradients, transforms, the 28 composite modes, clip boxes, text-color paints) on the CPU from the face's own tables, the same on every platform, into the Color atlas pages (so also async, per text color, in pictures). Default `.System` (Direct2D), unchanged. `colr_samples`, `colr_cache_kb`, `colr_counts`, `colr_of`, `colr_dump`; `Colr` / `colr_open` / `colr_render` for the portable core. A graph it refuses (cycle, bad offset) shows the glyph's outline.
+- **Built-in emoji**: `font.set_emoji_source(s, path | data)`: an emoji font loaded on first need, used for emoji characters before the system fallback (`font/emoji.odin`, `emoji_data.odin` generated from Unicode 18 `emoji-data.txt` by `tools\gen_emoji_data.ps1`). Tag sequences are formed from the face's GSUB `ccmp` ligatures (`colr_gsub.odin`).
+- `tools\fetch_emoji.ps1` (Noto Color Emoji COLR v1, pinned by commit and SHA-256, OT-SVG table dropped: 4.9 MiB), `font/data/NotoColorEmoji-OFL.txt`, `tools/colrcompare` (interpreter against Direct2D), `tools/colrboard` + `tools\emoji_board.ps1` (against Chrome / Edge), `tools/emojiperf`, `tests/colr` (also `tests/color_glyphs -define:COLR_ENGINE=builtin`).
 
 ### Added
 - **Planes**: layers drawn through a projective 4x4 transform (CSS Transforms 2: `perspective()`, `rotateX/Y`, `translateZ`, `preserve-3d`). `draw.push_plane` / `pop_plane` / `draw_plane` (`draw/plane.odin`): the content of a rectangle is drawn offscreen in its own frame at a chosen raster scale, then composited as a quad through a column-major 4x4 matrix (`draw.Mat4`, the order of CSS `matrix3d()`), with perspective-correct interpolation, antialiased edges, anisotropic filtering along the long axis of the pixel's footprint (`Plane_Draw.max_taps`), the clips and alpha stack of the moment, and `backface-visibility` (`Plane_Draw.cull_back`, `plane_faces_away`). `pop_plane` hands the layer back so several planes can be sorted before `draw_plane` (preserve-3d). A plane whose content did not change is kept between frames (`Plane_Fx.cache_id` / `cache_key`, the layer cache of `layer_cache.odin`): `push_plane` returns false and only the matrix changes.

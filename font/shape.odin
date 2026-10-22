@@ -635,7 +635,8 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 				chosen = faces[i - 1]
 			}
 		}
-		// the built-in emoji font (emoji.odin): first when U+FE0F asks for the emoji presentation, else after the cascade
+		// the built-in emoji font (emoji.odin): first when U+FE0F asks for the emoji presentation, else after the cascade's
+		// faces of the page (web fonts, files); it also replaces the system's own emoji font a font-family list names
 		want, explicit := false, false
 		if chosen == 0 && search && emoji_may(r) {
 			next: rune
@@ -648,7 +649,13 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 			for e in entries {
 				if !in_ranges(e.ranges, r) { continue }
 				f := face_ptr(s, e.font)
-				if f != nil && face_has(f, r) { chosen = e.font; break }
+				if f != nil && face_has(f, r) {
+					chosen = e.font
+					if want && f.color && f.file == nil && f.memory == nil {
+						if p := emoji_pick(s, r); p != 0 { chosen = p }   // "Segoe UI Emoji" in a font stack: the built-in emoji font instead
+					}
+					break
+				}
 			}
 		}
 		if chosen == 0 && want && !explicit { chosen = emoji_pick(s, r) }
