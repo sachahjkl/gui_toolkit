@@ -1,0 +1,15 @@
+# wgsl2hlsl: the toolkit's shaders are written once, in WGSL (render/*.wgsl); this turns them into the HLSL the Direct3D 11
+# backend compiles to DXBC (odin run tools/shaders). naga is the translator wgpu itself uses; the version is pinned exactly here
+# and by Cargo.lock (SHA-256 of every crate, checked by tools\build_naga.ps1, which builds with --locked).
+[package]
+name = "wgsl2hlsl"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[dependencies]
+naga = { version = "=29.0.4", default-features = false, features = ["wgsl-in", "hlsl-out"] }
+
+[profile.release]
+opt-level = 2

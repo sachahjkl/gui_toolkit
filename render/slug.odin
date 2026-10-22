@@ -1,7 +1,6 @@
 package render
 
 import "core:fmt"
-import win "core:sys/windows"
 import "vendor:directx/d3d11"
 
 // Slug text on the D3D11 renderer (the shaders are slug.hlsl, compiled after rect.hlsl; algorithm: Eric Lengyel's Slug,
@@ -47,20 +46,8 @@ slug_pipeline_init :: proc(r: ^Renderer) -> bool {
 		fmt.eprintln("render: the Slug text shaders were refused by the device")
 		return false
 	}
-	inst :: proc(name: cstring, idx: u32, off: u32) -> d3d11.INPUT_ELEMENT_DESC {
-		return {SemanticName = name, SemanticIndex = idx, Format = .R32G32B32A32_FLOAT, InputSlot = 0,
-		        AlignedByteOffset = off, InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1}
-	}
-	elems := [?]d3d11.INPUT_ELEMENT_DESC{
-		inst("DST", 0, 0), inst("SRC", 0, 16), inst("C", 0, 32), inst("C", 1, 48), inst("C", 2, 64), inst("C", 3, 80),
-		inst("RADII", 0, 96), inst("STYLE", 0, 112),
-		{SemanticName = "EXTRA", Format = .R32G32B32A32_UINT, AlignedByteOffset = 128, InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1},
-	}
-	if hr := r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &r.slug.layout); win.FAILED(hr) {
-		fmt.eprintln("render: CreateInputLayout for the Slug text failed", hr)
-		return false
-	}
-	return true
+	r.slug.layout = create_instance_layout(r, vs_code)
+	return r.slug.layout != nil
 }
 
 @(private)

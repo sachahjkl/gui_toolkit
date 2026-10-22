@@ -1,10 +1,25 @@
 package tests_shaders
 
 import "core:slice"
+import "core:strings"
 import "core:testing"
 import "../../render"
 
-// The embedded blobs are what the sources compile to: an edited .hlsl needs `odin run tools/shaders`.
+// The shaders are written in WGSL (render/*.wgsl); the Direct3D 11 backend embeds the HLSL naga wrote from them and its DXBC.
+// After editing a .wgsl file, `odin run tools/shaders` writes both again (CI also runs it with -check, which has naga write the HLSL again).
+
+
+// The HLSL names the SHA-256 of the WGSL it was written from: an edited source whose HLSL was not written again fails here.
+@(test)
+hlsl_matches_wgsl :: proc(t: ^testing.T) {
+	for desc, m in render.MODULES {
+		want := render.module_header(m, context.temp_allocator)
+		testing.expectf(t, strings.has_prefix(desc.hlsl, want),
+			"render/shaders/%s is stale (it was not written from the current %v): run odin run tools/shaders", desc.file, desc.wgsl_files)
+	}
+}
+
+// The embedded blobs are what the embedded HLSL compiles to.
 @(test)
 blobs_match_sources :: proc(t: ^testing.T) {
 	for d, id in render.SHADERS {
