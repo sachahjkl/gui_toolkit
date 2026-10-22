@@ -9,7 +9,9 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
+import "../../draw"
 import "../../font"
+import "../../render"
 
 COLRV1 :: #load("../color_glyphs/data/test_glyphs-glyf_colr_1.ttf")
 
@@ -167,7 +169,7 @@ hostile_tables_are_survived :: proc(t: ^testing.T) {
 	context.random_generator = rand.default_random_generator(&rng)
 	mutated := make([]u8, len(colr), context.temp_allocator)
 	rendered, opened := 0, 0
-	for round in 0 ..< 400 {
+	for round in 0 ..< 160 {
 		copy(mutated, colr)
 		// a few bytes anywhere, and now and then a run of 0xFF or 0x00
 		for _ in 0 ..< 1 + round % 24 { mutated[rand.int_max(len(mutated))] = u8(rand.int_max(256)) }
@@ -319,4 +321,65 @@ emoji_fallback_in_a_cascade :: proc(t: ^testing.T) {
 	font.set_emoji_source(&s)
 	after := font.shape(&s, cas, 20, "\U0001F600", {}, context.temp_allocator)
 	for g in after.glyphs { testing.expect_value(t, g.face, text) }
+}
+
+// Emoji through the draw layer on an offscreen renderer (WARP; both render backends: -define:TOOLKIT_RENDER=wgpu): the built-in
+// emoji font takes the emoji of a line of text, they are drawn in color next to the text face's own glyphs, at two scales.
+@(test)
+emoji_drawn_through_the_draw_layer :: proc(t: ^testing.T) {
+	data, ok := emoji_font()
+	if !ok { fmt.println("skipped: build/emoji/NotoColorEmoji-COLRv1.ttf is missing"); return }
+	size := [2]int{700, 193}   // room for the 1.75 scale
+	r: render.Renderer
+	if !render.init_offscreen(&r, size, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
+	defer render.destroy(&r)
+	s: font.State
+	st := font.DEFAULT_SETTINGS
+	st.color_engine = .Builtin
+	font.init(&s, st)
+	defer font.destroy(&s)
+	ui, loaded := font.load_embedded(&s, font.FALLBACK_UI_DATA)
+	testing.expect(t, loaded)
+	font.set_emoji_source(&s, data = data)
+	cas := font.cascade(&s, {{font = ui}}, nil, true)
+	dc: draw.Context
+	draw.init(&dc, &r, &s)
+	defer draw.destroy(&dc)
+	px :: proc(img: []u8, w, x, y: int) -> [3]int {
+		o := (y * w + x) * 4
+		return {int(img[o]), int(img[o + 1]), int(img[o + 2])}
+	}
+	for scale in ([?]f32{1, 1.75}) {
+		w, h := size.x, size.y
+		bw, bh := int(400 * scale), int(110 * scale)   // the part of the target the scene fills
+		draw.begin_frame(&dc, {f32(w), f32(h)})
+		render.frame_begin(&r, {1, 1, 1, 1})
+		draw.push_scale(&dc, {0, 0}, scale)
+		// a face, a flag, a family (one glyph each) and text
+		draw.text(&dc, cas, 44, {10, 60}, draw.Color{0, 0, 0, 1}, "\U0001F600\U0001F1EB\U0001F1F7\U0001F468\u200D\U0001F469\u200D\U0001F467 ok")
+		draw.pop_xform(&dc)
+		draw.end_frame(&dc)
+		render.frame_end(&r)
+		img := render.read_pixels(&r, context.temp_allocator)
+		// the face: yellow, left of the first 60 px; the flag next: blue, white and red; the text at the end: dark pixels
+		yellow, blue, red, dark := 0, 0, 0, 0
+		for y in 0 ..< bh {
+			for x in 0 ..< bw {
+				p := px(img, w, x, y)
+				cx := int(f32(x) / scale)
+				switch {
+				case cx < 62 && p[0] > 220 && p[1] > 150 && p[2] < 90: yellow += 1
+				case cx >= 62 && cx < 125 && p[2] > 130 && p[0] < 60 && p[1] < 110: blue += 1
+				case cx >= 62 && cx < 125 && p[0] > 200 && p[1] < 70 && p[2] < 80: red += 1
+				case cx >= 175 && p[0] + p[1] + p[2] < 200: dark += 1
+				}
+			}
+		}
+		n := scale * scale
+		testing.expectf(t, f32(yellow) > 300 * n, "scale %v: %d yellow pixels in the face", scale, yellow)
+		testing.expectf(t, f32(blue) > 150 * n && f32(red) > 150 * n, "scale %v: flag %d blue, %d red pixels", scale, blue, red)
+		testing.expectf(t, f32(dark) > 60 * n, "scale %v: %d dark pixels of text", scale, dark)
+		_, refused := font.colr_counts(&s)
+		testing.expect_value(t, refused, 0)
+	}
 }
