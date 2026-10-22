@@ -120,12 +120,14 @@ wgpu_waitable :: proc(r: ^Renderer) -> rawptr { return rawptr(r.wg.latency.timer
 wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
 	t0 := time.tick_now()
 	st := wgpu.SurfaceGetCurrentTexture(r.wg.surface)
+	r.wg.cpu.acquire += time.duration_milliseconds(time.tick_since(t0))
 	// the texture came waited after the call: if that is long, the latency object was set too early (the app read its input
 	// and then waited for the swap chain): set it later next time; if it came at once, try a little earlier
 	l := &r.wg.latency
 	if l.timer != nil && (st.status == .SuccessOptimal || st.status == .SuccessSuboptimal) {
 		waited := f64(time.tick_since(t0))
-		if waited > 300_000 { l.lag_ns = min(l.lag_ns + waited, 2 * max(r.present.period_ns, 1e6)) } else { l.lag_ns = max(l.lag_ns - 50_000, 0) }
+		// (bounded: a long wait is a first frame or a hiccup, not a miscalibration; fades quickly)
+		if waited > 300_000 { l.lag_ns = min(l.lag_ns + 0.5 * waited, 3e6) } else { l.lag_ns *= 0.9 }
 	}
 	return st
 }
@@ -169,10 +171,23 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
 	}
 	if !g.frame_acquired { return }
 	if g.clear_pending { wgpu_clear_frame(r) }
+	t_pre := time.tick_now()
 	ps := profile_present_begin(r)
 	wgpu.SurfacePresent(g.surface)
 	profile_present_end(r, ps)
 	now := time.tick_now()
+	if wgpu_trace() {
+		c := &g.cpu
+		c.present += time.duration_milliseconds(time.tick_diff(t_pre, now))
+		c.frames += 1
+		if time.tick_diff(c.since, now) > time.Second {
+			if c.frames > 0 && c.since._nsec != 0 {
+				n := f64(c.frames)
+				fmt.eprintfln("wgpu: cpu per frame over %d frames: frame_begin %.3f ms, build tables %.3f, encode %.3f, QueueSubmit %.3f, acquire %.3f, SurfacePresent %.3f", c.frames, c.begin / n, c.upload / n, c.encode / n, c.submit / n, c.acquire / n, c.present / n)
+			}
+			c^ = {since = now}
+		}
+	}
 	wgpu_drop_frame(r)
 	wgpu_present_done(r, now, vsync)
 }

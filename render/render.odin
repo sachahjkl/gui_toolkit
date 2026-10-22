@@ -392,6 +392,7 @@ Renderer :: struct {
 	offscreen:   ^d3d11.ITexture2D,      // init_offscreen: the frame target instead of a swap chain
 	warp:        bool,                   // the device is WARP (software)
 	wg:          Wgpu_State,             // TOOLKIT_RENDER=wgpu (wgpu_*.odin); zero otherwise
+	first_present_noted: bool,
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
