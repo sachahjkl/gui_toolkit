@@ -98,10 +98,11 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	w, h := int(sz.x), int(sz.y)
 	op.pl = Plane_Layer{origin = o, scale = s, size = {w, h}}
 	space := blend_space(c)
+	mips := fx.mips && render.target_mips_supported(c.renderer)
 	tex: render.Texture
 	if c.rec == nil && w > 0 && h > 0 && !(sz.x != sz.x) {
 		if fx.cache_id != 0 && c.layer_cache.budget > 0 {
-			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(fx.mips) << 8), u64(render.filter_precision(c.renderer)))
+			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(mips) << 8), u64(render.filter_precision(c.renderer)))
 			key = hash_f32(hash_f32(key, o.x), o.y)
 			ask := cache_ask(c, fx.cache_id, key, {}, Rect{{0, 0}, {f32(w), f32(h)}})
 			op.cache = ask
@@ -112,7 +113,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 				op.pl.img.scale = 1
 				op.pl.img.size = {w, h}
 				op.pl.kept = true
-				op.pl.mips = fx.mips
+				op.pl.mips = mips
 				append(&c.planes, op)
 				close_batch(c)
 				append(&c.clips, Clip{})   // an empty clip: what the caller draws anyway goes nowhere
@@ -121,7 +122,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 				return false
 			}
 		}
-		if fx.mips { tex = render.acquire_target_mips(c.renderer, w, h); op.pl.mips = tex != 0 }
+		if mips { tex = render.acquire_target_mips(c.renderer, w, h); op.pl.mips = tex != 0 }
 		if tex == 0 { tex = render.acquire_target(c.renderer, w, h) }
 	}
 	if tex == 0 {

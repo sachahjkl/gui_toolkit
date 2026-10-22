@@ -3,6 +3,17 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.17.0] - 2026-10-22
+
+### Added
+- **Planes that cut through each other** (`draw/bsp.odin`): `draw.draw_planes(dc, items)` draws the planes of one 3D rendering context in the order they hide each other, and when planes cut through each other (or hide each other in a cycle) splits them along each other's planes by a BSP (as Chromium's `BspTree` / `DrawPolygon`), the pieces ordered back to front for a viewer in front. A piece is the plane's layer drawn again under `Plane_Draw.cuts` (`Plane_Cut`: half-spaces of the space after the perspective divide, at most `MAX_PLANE_CUTS`, tested per pixel on the interpolated plane position in `rect.wgsl`: no seams between pieces). `Plane_Item.parts`: several layers on one plane (a plane and what rides on it) are cut and ordered together.
+- **Effects on the composite of a plane**: `Plane_Draw.blend` (mix-blend-mode of the projected quad), `backdrop` + `shape` (backdrop-filter filtered in screen space, shown through the alpha of a layer projected like the plane).
+- **Sharp planes**: `Plane_Fx.mips` gives a plane's layer a mip chain (`render.acquire_target_mips`, `render.target_mips_supported`, `Op_Kind.Mips` on D3D11 and wgpu); the projected quad's filter is anisotropic along the long axis of the footprint at the mip level of the short axis (`proj_texel`). `FLAG_PROJECT` instances take a frame rect (the antialiased edge, for a quad that is one piece of a larger plane) and the valid texel range of the layer (`colors[2]`, `colors[3]`). `draw.open_plane_frame` (map a pointer back through a plane exactly).
+- `tests/planes`: planes crossing in an X (both orders of drawing give the same picture, with and without perspective), a star of three, blend on a flat and a turned plane, backdrop-filter through a silhouette, mip levels against aliasing; D3D11 and wgpu.
+
+### Changed
+- `rect.wgsl`: two more flat varyings (the cuts of a projected quad); HLSL regenerated. `ui.VERSION` and the version constants agree again (they said 0.16.0 and 0.15.0).
+
 ## [0.16.0] - 2026-10-22
 
 ### Added

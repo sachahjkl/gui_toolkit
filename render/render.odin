@@ -82,10 +82,14 @@ FLAG_SCALED :: 0x10000 // the texture holds the image reduced (a large blur): sa
                        // the scale (texels per screen pixel), edges repeat
 FLAG_MATRIX :: 0x20000 // color matrices applied to the texel (straight sRGB values, each result clamped), as a Color
                        // pass would: `aux` is their entry in the frame's gradient table (see Color_Matrix_Entry)
-FLAG_PROJECT :: 0x40000 // image: a layer drawn through a homography (draw.composite_plane). `xform` is the first of two
+FLAG_PROJECT :: 0x40000 // image: a layer drawn through a homography (draw.draw_plane). `xform` is the first of two
                         // entries of the transform table that hold the 3x3 matrix mapping layer texels to homogeneous screen
-                        // pixels (see project_entries); `src` the layer's valid texels (also `dst`); colors[1].x the most taps
-                        // of the anisotropic filter. Perspective-correct, antialiased at the edges, clipped at W <= 0
+                        // pixels, then ceil(cuts / 2) entries of cuts (half-planes a x + b y + c >= 0 of the layer's texel space,
+                        // 3 floats each, kept per pixel: the pieces of a plane split by a BSP, MAX_CUTS in rect.wgsl).
+                        // `dst` the quad (layer texel space), `src` the texels of the texture it covers; colors[1]: x the most
+                        // taps of the anisotropic filter, y the number of cuts, z 1 when the texture has mip levels;
+                        // colors[2] the frame rect (x0 y0 x1 y1: the antialiased edge, z <= x: `dst`); colors[3] the valid
+                        // texels of the texture. Perspective-correct, antialiased at the frame's edge, clipped at W <= 0
 
 // The space colors are combined in: alpha blending, antialiased edges, interpolation of corner colors, image
 // filtering, layer composites. Colors given to the renderer are always linear (draw.srgb / draw.hex convert); the
@@ -1052,6 +1056,15 @@ acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pool
 // acquire_target with a full mip chain (fp16): drawn into at level 0, then filled by an Op_Kind.Mips recorded after the last
 // draw into it. 0 also when the device cannot generate mips for the format: the caller falls back to acquire_target.
 acquire_target_mips :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pooled(r, w, h, false, false, true) }
+
+// Can the device build the mip levels of fp16 render targets (acquire_target_mips)?
+target_mips_supported :: proc(r: ^Renderer) -> bool {
+	when USE_WGPU { return true } else {
+		support: u32
+		r.device->CheckFormatSupport(.R16G16B16A16_FLOAT, &support)
+		return support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0
+	}
+}
 
 // acquire_target in a chosen format.
 acquire_target_format :: proc(r: ^Renderer, w, h: int, format: Target_Format) -> Texture {
