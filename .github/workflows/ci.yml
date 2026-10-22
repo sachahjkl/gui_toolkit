@@ -46,7 +46,7 @@ jobs:
         run: |
           for %%e in (fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
 
-      - name: Shaders (WGSL is the source: naga writes the HLSL, which is compiled to the DXBC the exes embed)
+      - name: "Shaders (WGSL is the source; naga writes the HLSL, compiled to the DXBC the exes embed)"
         shell: pwsh
         run: |
           ./tools/build_naga.ps1
