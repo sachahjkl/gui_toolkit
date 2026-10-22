@@ -43,6 +43,13 @@ resize :: proc(r: ^Renderer, size: [2]int) {
 	when USE_WGPU { wgpu_resize(r, size) } else { d3d_resize(r, size) }
 }
 
+// Most frames the swap chain may queue: 1 (the default) keeps the time from input to screen at one frame; 2 or more let
+// a frame be presented while the previous one is still on its way to the screen (a resize, a burst of frames), at the
+// cost of input latency. False: the backend cannot (or has no window).
+set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
+	when USE_WGPU { return wgpu_set_max_frame_latency(r, n) } else { return d3d_set_max_frame_latency(r, n) }
+}
+
 create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
 	when USE_WGPU { return wgpu_create_texture_r8(r, size) } else { return d3d_create_texture_r8(r, size) }
 }

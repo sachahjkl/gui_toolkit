@@ -162,8 +162,7 @@ wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
 }
 
 @(private)
-wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
-	g := &r.wg
+wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
 	if g.shared != nil && g.shared.lost { r.lost = true }
 	if g.surface == nil {   // offscreen
 		if g.clear_pending { wgpu_clear_frame(r) }
@@ -191,6 +190,9 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
 	wgpu_drop_frame(r)
 	wgpu_present_done(r, now, vsync)
 }
+
+// Most frames the surface may queue (api.set_max_frame_latency): the wgpu backend has no equivalent here.
+wgpu_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool { return false }
 
 // A frame was presented at `now`: arm the latency object, note when it will be on screen.
 @(private)
