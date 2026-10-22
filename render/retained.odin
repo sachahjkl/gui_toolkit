@@ -208,7 +208,7 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	for i in 1 ..< len(r.textures) {
 		td := &r.textures[i]
 		#partial switch td.kind {
-		case .R8, .RGBA:
+		case .R8, .RGBA, .Slug_Curves, .Slug_Bands:
 			if !texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td.kind = .None }
 		case:
 			if td.kind != .None { td^ = {}; append(&r.free_textures, Texture(i)) }
@@ -243,6 +243,7 @@ release_device_objects :: proc(r: ^Renderer) {
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
+	slug_destroy(r)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 	heaps_destroy(r)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }

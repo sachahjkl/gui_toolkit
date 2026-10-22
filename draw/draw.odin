@@ -153,6 +153,8 @@ Context :: struct {
 	grads:    [dynamic][4]f32,                 // gradient table of this frame (or of the picture being recorded)
 	replays:  [dynamic]render.Replay,          // pictures drawn this frame
 	glyphs:   Glyph_Pages,                     // textures of the font atlas pages (text.odin)
+	slug_runs: [dynamic][2]int,                // instances of KIND_SLUG: [first, count) of `insts` (slug.odin)
+	slug:     Slug_GPU,                        // textures of the font's Slug glyph pages
 	// retained drawing (picture.odin)
 	rec:      ^Picture,                        // the picture being recorded, nil = drawing the frame
 	saved:    Saved_Frame,                     // the frame's lists while a picture is recorded
@@ -195,8 +197,9 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 destroy :: proc(c: ^Context) {
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
-	delete(c.open_layers); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures)
+	delete(c.open_layers); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures); delete(c.slug_runs)
 	saved_destroy(&c.saved)
+	slug_gpu_destroy(c)
 	text_destroy(c)
 	cache_destroy(c)
 }
@@ -208,7 +211,9 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	if c.renderer.device_generation != c.device_generation {
 		c.device_generation = c.renderer.device_generation
 		text_device_reset(c)
+		slug_gpu_device_reset(c)
 	}
+	clear(&c.slug_runs)
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
 	clear(&c.open_layers); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
@@ -522,11 +527,13 @@ end_frame :: proc(c: ^Context) {
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
 	text_upload(c)
+	slug_upload(c)
 	render.frame_submit(c.renderer, render.Frame_Data{
 		insts = c.insts[:], batches = c.batches[:],
 		xforms = len(c.xform_table) > 1 ? c.xform_table[:] : nil,
 		clips = len(c.clip_table) > 1 ? c.clip_table[:] : nil,
 		points = c.clip_points[:], layers = c.layers[:], ops = c.ops[:],
 		grads = c.grads[:], replays = c.replays[:],
+		slug_runs = c.slug_runs[:], slug_curves = c.slug.curves, slug_bands = c.slug.bands,
 	})
 }
