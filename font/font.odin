@@ -80,11 +80,30 @@ Settings :: struct {
 	max_gray_pages:  int,       // coverage pages kept before the least recently used one is reused
 	max_color_pages: int,
 	word_cache:      int,       // shaped words kept (the measure cache), 0: no cache
+	text_renderer:   Text_Renderer,   // how glyph outlines reach the screen (slug_cache.odin for Slug)
+	slug_pages:      int,       // Slug glyph pages (rows of the two textures, 4096 texels each) kept before the least recently used one is reused
+	slug_tolerance:  f32,       // largest distance (em) between a cubic outline and the quadratics Slug draws instead
+}
+
+// What draws the glyph outlines: coverage bitmaps in the atlas (rasterized by DirectWrite, hinted, cached per size and
+// subpixel position), or the Slug algorithm (the curves on the GPU: sharp at any scale, rotation or perspective; no bitmaps).
+// Color glyphs (emoji) are always atlas images.
+Text_Renderer :: enum u8 { Atlas, Slug }
+
+// -define:FONT_TEXT_RENDERER=slug makes Slug the default renderer of a build (to run the pixel tests of the other
+// packages with it: `odin test tests/retained -define:FONT_TEXT_RENDERER=slug`).
+DEFAULT_TEXT_RENDERER :: #config(FONT_TEXT_RENDERER, "atlas")
+#assert(DEFAULT_TEXT_RENDERER == "atlas" || DEFAULT_TEXT_RENDERER == "slug", "FONT_TEXT_RENDERER is atlas or slug")
+when DEFAULT_TEXT_RENDERER == "slug" {
+	@(private) BUILD_TEXT_RENDERER :: Text_Renderer.Slug
+} else {
+	@(private) BUILD_TEXT_RENDERER :: Text_Renderer.Atlas
 }
 
 DEFAULT_SETTINGS :: Settings{
 	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
+	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
 }
 
 @(private) CHUNK :: 256
@@ -193,6 +212,8 @@ sanitize_settings :: proc(st: ^Settings) {
 	st.max_gray_pages = clamp(st.max_gray_pages, 1, 64)
 	st.max_color_pages = clamp(st.max_color_pages, 1, 64)
 	st.word_cache = max(st.word_cache, 0)
+	st.slug_pages = clamp(st.slug_pages, 1, SLUG_MAX_PAGES)
+	st.slug_tolerance = clamp(st.slug_tolerance, 1.0 / 65536, 1.0 / 64)
 }
 
 // Changes the settings. New rendering settings (subpixel steps, rendering mode, grid fitting, color glyphs) apply to
@@ -211,6 +232,14 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
 	s.settings.color_glyphs, s.settings.max_gray_pages, s.settings.max_color_pages = st.color_glyphs, st.max_gray_pages, st.max_color_pages
 	s.settings.color_async = st.color_async
+	// the renderer decides which glyphs are bitmaps: what was recorded with the other one is stale. A new tolerance
+	// changes the data itself.
+	if st.text_renderer != old.text_renderer { s.atlas.settings_generation += 1 }
+	if st.slug_tolerance != old.slug_tolerance {
+		slug_clear(&s.atlas.slug)
+		s.atlas.settings_generation += 1
+	}
+	s.settings.text_renderer, s.settings.slug_pages, s.settings.slug_tolerance = st.text_renderer, st.slug_pages, st.slug_tolerance
 	atlas_unlock(&s.atlas)
 	if st.system_fallback != s.settings.system_fallback {
 		s.settings.system_fallback = st.system_fallback

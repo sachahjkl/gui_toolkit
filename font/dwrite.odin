@@ -330,7 +330,7 @@ IDWriteFontFace_VTable :: struct {
 	GetGlyphIndices:              proc "system" (this: ^IDWriteFontFace, codepoints: [^]u32, count: u32, glyphs: [^]u16) -> HRESULT,
 	TryGetFontTable:              proc "system" (this: ^IDWriteFontFace, tag: u32, data: ^rawptr, size: ^u32, ctx: ^rawptr, exists: ^BOOL) -> HRESULT,
 	ReleaseFontTable:             proc "system" (this: ^IDWriteFontFace, ctx: rawptr),
-	GetGlyphRunOutline:           rawptr,
+	GetGlyphRunOutline:           proc "system" (this: ^IDWriteFontFace, em_size: f32, glyphs: [^]u16, advances: [^]f32, offsets: [^]DWRITE_GLYPH_OFFSET, count: u32, sideways, rtl: BOOL, sink: ^IDWriteGeometrySink) -> HRESULT,
 	GetRecommendedRenderingMode:  proc "system" (this: ^IDWriteFontFace, em_size, pixels_per_dip: f32, measuring: DWRITE_MEASURING_MODE, params: rawptr, mode: ^DWRITE_RENDERING_MODE) -> HRESULT,
 	GetGdiCompatibleMetrics:      rawptr,
 	GetGdiCompatibleGlyphMetrics: rawptr,

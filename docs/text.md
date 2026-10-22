@@ -94,6 +94,47 @@ The draw layer (`draw/text.odin`):
 The coverage is raw (linear) coverage, as DirectWrite gives it before Direct2D applies its gamma: the renderer's text
 correction (`render.Text_Rendering`, Skia's) applies to it as it did to stb_truetype's.
 
+## Slug: glyphs drawn from their outlines
+
+`Settings.text_renderer = .Slug` (default `.Atlas`) makes `draw.glyph_run` draw glyph outlines on the GPU with the Slug
+algorithm (Eric Lengyel; JCGT 6(2), 2017; the shaders are MIT, the patent is in the public domain; credit in
+NOTICE.md). No bitmap is made: the glyph's quadratic Bézier curves are in a texture and the pixel shader computes the
+coverage of each pixel from the curves of its band. The text is sharp at any size and under any rotation or skew, glyphs
+sit at their exact subpixel position, and a scale change (page zoom, a pinch, a press animation) costs no
+re-rasterization: a picture of Slug text stays valid at any scale. Color glyphs (emoji) stay atlas images.
+
+The path, from the font to the screen:
+
+1. **Outline** (`slug_outline.odin`, `slug_dwrite.odin`): `Outline` is closed contours of quadratics in em units (y up). A
+   provider (`Outline_Provider`, replaceable with `slug_set_provider`) fills it: on Windows DirectWrite's
+   `GetGlyphRunOutline` (variable instances and simulated bold / slant included). DirectWrite hands out cubics: those
+   that are degree-raised quadratics (every TrueType glyph) come back as the exact quadratic, true cubics (CFF) are cut
+   into pieces within `Settings.slug_tolerance` (em). A TrueType / CFF reader in Odin can replace the provider on other
+   platforms.
+2. **Glyph data** (`slug_build.odin`): curve texels (RGBA16F; a contour of n curves takes n+1 texels because a curve ends
+   where the next starts), and band texels (RG16UI): horizontal and vertical bands (the count per axis is chosen to
+   keep the fullest band small), each a list of the curves that touch it (with a 1/1024 em overlap, flat curves left out,
+   sorted by descending far coordinate so the shader stops early, identical neighbours sharing a list).
+3. **Store** (`slug_cache.odin`): `slug_glyph(s, face, gid)` builds on first use and caches per (face, glyph). Data lives in
+   pages of 4096 texels, a page being one row of each texture; a glyph's data is in one page. `Settings.slug_pages` pages
+   are kept, then the least recently used page that no current frame draws from is cleared (new epoch: pictures that
+   drew from it are stale, `slug_pages_hold`), else one more is made. A glyph the provider has no outline for, a color
+   glyph, or one that does not fit a row is drawn from the atlas (`Slug_Kind.Atlas`); a space is `Blank`.
+4. **Draw** (`draw/slug.odin`, `render/slug.hlsl`): a glyph is one `KIND_SLUG` instance in the ordinary instance list (so
+   order, clips, fades, transforms and pictures are as for any primitive); `slug_runs` tells the renderer which ones, and
+   `frame_submit` draws a batch in pieces, switching between the two pipelines in order. The vertex shader grows each
+   glyph's box by half a pixel on screen whatever the transform (the reference's dynamic dilation); the pixel shader is
+   the reference's, then the same text correction as the atlas path (`render.Text_Rendering`), the clip shapes and the
+   color. `slug.hlsl` is compiled after `rect.hlsl` (one source for the shared helpers); porting it to WGSL is a translation.
+
+`-define:FONT_TEXT_RENDERER=slug` makes Slug the default of a build (the pixel tests of the other packages run with
+it: all pass except the ones that count atlas pages or compare 8-bit atlas coverage). `odin run tools/textcompare --
+-sweep` measures a page zoom animation (every frame at a new scale: the atlas rasterizes again, Slug does not).
+
+Positions: the pen is not rounded across; the baseline is put on a whole pixel (of the screen when the transform is a
+scale and a translation, as the bitmaps do). There is no hinting: horizontal stems are as the outline says (the Slug
+README suggests sizes whose cap height is a whole number of pixels).
+
 ## Limits
 
 - Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),

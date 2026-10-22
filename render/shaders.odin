@@ -11,12 +11,16 @@ RENDER_COMPILE_SHADERS :: #config(RENDER_COMPILE_SHADERS, false)
 
 SHADER_SOURCE :: #load("rect.hlsl", string)
 FILTER_SOURCE :: #load("filter.hlsl", string)
+// The Slug text shaders use the helpers of rect.hlsl (transforms, clips, text correction): one source, rect.hlsl first.
+SLUG_SOURCE :: SHADER_SOURCE + "\n" + #load("slug.hlsl", string)
 
 Shader_Id :: enum u8 {
 	Rect_VS,
 	Rect_PS,
 	Filter_VS,
 	Filter_PS,
+	Slug_VS,
+	Slug_PS,
 }
 
 Shader_Desc :: struct {
@@ -33,6 +37,8 @@ SHADERS := [Shader_Id]Shader_Desc{
 	.Rect_PS   = {SHADER_SOURCE, "rect.hlsl", "ps_main", "ps_5_0", "rect_ps.dxbc", #load("shaders/rect_ps.dxbc")},
 	.Filter_VS = {FILTER_SOURCE, "filter.hlsl", "vs_fx", "vs_5_0", "filter_vs.dxbc", #load("shaders/filter_vs.dxbc")},
 	.Filter_PS = {FILTER_SOURCE, "filter.hlsl", "ps_fx", "ps_5_0", "filter_ps.dxbc", #load("shaders/filter_ps.dxbc")},
+	.Slug_VS   = {SLUG_SOURCE, "rect.hlsl+slug.hlsl", "vs_slug", "vs_5_0", "slug_vs.dxbc", #load("shaders/slug_vs.dxbc")},
+	.Slug_PS   = {SLUG_SOURCE, "rect.hlsl+slug.hlsl", "ps_slug", "ps_5_0", "slug_ps.dxbc", #load("shaders/slug_ps.dxbc")},
 }
 
 // Compiles a shader from its source (tools/shaders, tests/shaders, RENDER_COMPILE_SHADERS). The bytes are a copy in

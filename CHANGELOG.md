@@ -10,6 +10,15 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - `tools\fetch_wgpu.ps1` (wgpu-native and DXC pinned by SHA-256), `tools\render_probe`, `tools\ppm_diff.ps1`, `tools\window_shot.ps1`.
 - `render.backend_name()`, `render.adapter_description()`; `TOOLKIT_RENDER_TRACE=1` prints the time of the first present.
 
+## [0.14.0] - 2026-10-22
+
+### Added
+- Slug text: `font.Settings.text_renderer = .Slug` (default `.Atlas`, unchanged) draws glyphs on the GPU from their quadratic Bézier outlines (Eric Lengyel's Slug algorithm, MIT, patent in the public domain; shaders pinned in `font/slug_ref`, credit in NOTICE.md): sharp at any scale, rotation, skew or page zoom, exact subpixel positions, no bitmaps, nothing to re-rasterize when the scale changes (a picture of Slug text is never stale for its scale). Color glyphs (emoji) stay on the atlas path.
+  - `font`: outlines come from a provider (`font.Outline_Provider`, `slug_set_provider`; DirectWrite's `GetGlyphRunOutline` on Windows, cubics turned into quadratics within `Settings.slug_tolerance`), `slug_build` makes the curve texels (RGBA16F) and band texels (RG16UI), `slug_glyph` caches them per (face, glyph) in pages of the two textures (`Settings.slug_pages`, least recently used page reused, pictures that drew from it go stale), `slug_sync_page` / `slug_stats`.
+  - `render`: `slug.hlsl` (compiled after `rect.hlsl`, which it reuses for transforms, clips and the text correction), `KIND_SLUG` instances in the ordinary instance list drawn by their own pipeline (`Frame_Data.slug_runs`, `Replay.slug_runs`: a batch is drawn in pieces, in order), `create_slug_textures`, `update_slug_page`.
+  - `draw`: `glyph_run` uses it when the setting says so; pictures remember their Slug pages.
+  - `tools/textcompare`: atlas | Slug | difference images and measurements; `tests/slug`.
+
 ## [0.13.1] - 2026-10-21
 
 ### Added
