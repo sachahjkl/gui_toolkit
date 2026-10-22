@@ -83,7 +83,15 @@ Settings :: struct {
 	text_renderer:   Text_Renderer,   // how glyph outlines reach the screen (slug_cache.odin for Slug)
 	slug_pages:      int,       // Slug glyph pages (rows of the two textures, 4096 texels each) kept before the least recently used one is reused
 	slug_tolerance:  f32,       // largest distance (em) between a cubic outline and the quadratics Slug draws instead
+	color_engine:    Color_Engine,   // who draws COLR / CPAL color glyphs (colr.odin, or Direct2D)
+	colr_samples:    int,       // vertical samples per pixel row of the interpreter's scan conversion
+	colr_cache_kb:   int,       // glyph outlines the interpreter keeps per face (KiB) before it drops them all
 }
+
+// Who draws the COLR glyphs (v0 layers and v1 paint graphs) of a face: this package's interpreter, the same on every
+// platform and for every face whose tables it can read, or Direct2D (what Windows draws: system emoji, and no paint
+// graphs before Windows 11). Color glyphs of other formats (sbix, CBDT, SVG) are Direct2D's with both.
+Color_Engine :: enum u8 { System, Builtin }
 
 // What draws the glyph outlines: coverage bitmaps in the atlas (rasterized by DirectWrite, hinted, cached per size and
 // subpixel position), or the Slug algorithm (the curves on the GPU: sharp at any scale, rotation or perspective; no bitmaps).
@@ -104,6 +112,7 @@ DEFAULT_SETTINGS :: Settings{
 	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
+	color_engine = .System, colr_samples = 8, colr_cache_kb = 8192,
 }
 
 @(private) CHUNK :: 256
@@ -132,6 +141,7 @@ Font :: struct {
 	style:    DWRITE_FONT_STYLE,
 	color:    bool,                  // has color glyphs (COLR, sbix, CBDT, SVG)
 	cmap:     []u32,                 // BMP coverage, 2 bits per code point (known, present), filled lazily
+	colr:     ^Face_Colr,            // the COLR / CPAL tables of the face the interpreter reads (nil: none)
 	// Cascade (a face is its own one-entry cascade)
 	entries:  []Cascade_Entry,
 	features: []DWRITE_FONT_FEATURE,
@@ -159,6 +169,9 @@ State :: struct {
 	color_raster: Color_Raster,      // Direct2D drawing of color glyphs (color.odin)
 	color_queue:  Color_Queue,       // the color glyph thread (color_async.odin)
 	generation: int,                 // bumps when faces are unloaded
+	emoji:        Emoji_Source,      // the built-in emoji font (emoji.odin)
+	colr_drawn:   int,               // glyphs the COLR interpreter drew (atomic), and those it refused (a graph it cannot read)
+	colr_refused: int,
 }
 
 @(private)
@@ -214,6 +227,8 @@ sanitize_settings :: proc(st: ^Settings) {
 	st.word_cache = max(st.word_cache, 0)
 	st.slug_pages = clamp(st.slug_pages, 1, SLUG_MAX_PAGES)
 	st.slug_tolerance = clamp(st.slug_tolerance, 1.0 / 65536, 1.0 / 64)
+	st.colr_samples = clamp(st.colr_samples, 1, 64)
+	st.colr_cache_kb = clamp(st.colr_cache_kb, 64, 1 << 20)
 }
 
 // Changes the settings. New rendering settings (subpixel steps, rendering mode, grid fitting, color glyphs) apply to
@@ -224,7 +239,8 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	sanitize_settings(&st)
 	atlas_lock(&s.atlas)
 	old := s.settings
-	if st.subpixel_steps != old.subpixel_steps || st.rendering != old.rendering || st.grid_fit != old.grid_fit || st.color_glyphs != old.color_glyphs {
+	if st.subpixel_steps != old.subpixel_steps || st.rendering != old.rendering || st.grid_fit != old.grid_fit || st.color_glyphs != old.color_glyphs ||
+	   st.color_engine != old.color_engine || st.colr_samples != old.colr_samples {
 		clear(&s.atlas.glyphs)
 		clear(&s.atlas.fg_glyphs)
 		s.atlas.settings_generation += 1
@@ -232,6 +248,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
 	s.settings.color_glyphs, s.settings.max_gray_pages, s.settings.max_color_pages = st.color_glyphs, st.max_gray_pages, st.max_color_pages
 	s.settings.color_async = st.color_async
+	s.settings.color_engine, s.settings.colr_samples, s.settings.colr_cache_kb = st.color_engine, st.colr_samples, st.colr_cache_kb
 	// the renderer decides which glyphs are bitmaps: what was recorded with the other one is stale. A new tolerance
 	// changes the data itself.
 	if st.text_renderer != old.text_renderer { s.atlas.settings_generation += 1 }
@@ -255,6 +272,7 @@ destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
 	color_queue_destroy(s)
+	colr_thread_done()
 	color_raster_destroy(&s.color_raster)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
@@ -262,6 +280,7 @@ destroy :: proc(s: ^State) {
 	for c in s.chunks { if c != nil { free(c) } }
 	for k in s.keys { delete(k) }
 	delete(s.keys)
+	delete(s.emoji.path)
 	if s.factory != nil {
 		sync.mutex_lock(&loader_mu)
 		loader_users -= 1
@@ -282,6 +301,7 @@ destroy :: proc(s: ^State) {
 release_font :: proc(f: ^Font) {
 	context.allocator = runtime.heap_allocator()
 	if f == nil || f.kind == .None { return }
+	face_colr_close(f)   // before the face: its tables belong to it
 	com_release(f.dw7); com_release(f.dw5); com_release(f.dw4); com_release(f.dw2); com_release(f.dw)
 	com_release(f.file)
 	if f.memory != nil { memory_font_release(f.memory) }
@@ -339,6 +359,8 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	} else if f.dw2 != nil {
 		f.color = bool(f.dw2->IsColorFont())
 	}
+	f.colr = face_colr_open(&f)
+	if f.colr != nil { f.color = true }
 	f.family = to_wide(family)
 	f.cmap = make([]u32, 65536 * 2 / 32)
 	sync.mutex_lock(&s.mu)

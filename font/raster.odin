@@ -441,7 +441,12 @@ rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]
 	offs := [1]DWRITE_GLYPH_OFFSET{}
 	run := DWRITE_GLYPH_RUN{fontFace = f.dw, fontEmSize = size, glyphCount = 1, glyphIndices = &ids[0], glyphAdvances = &advs[0], glyphOffsets = &offs[0]}
 	if f.color && s.settings.color_glyphs {
-		if g, uses_fg, ok := rasterize_color(s, f, &run, x, fg, probe_fg); ok { return g, uses_fg }
+		if colr_draws(s, f, gid) {
+			// a graph the interpreter refuses (a cycle, offsets out of the table) is not drawn in color at all
+			if g, uses_fg, ok := rasterize_colr(s, face, f, gid, size, x, fg); ok { return g, uses_fg }
+		} else if g, uses_fg, ok := rasterize_color(s, f, &run, x, fg, probe_fg); ok {
+			return g, uses_fg
+		}
 	}
 	return rasterize_outline(s, f, &run, x)
 }
