@@ -70,6 +70,12 @@ it.
   samples the atlas bilinearly. Text is drawn from shaped glyph runs (`draw.glyph_run`; `draw.text` shapes then calls
   it).
 
+## Planes: projected layers (3D transforms)
+
+`draw.push_plane(dc, bounds, raster_scale, fx)` opens an offscreen layer over `bounds` (the *plane frame*: the current local space) and replaces the transform stack by the map from the plane frame to the layer's texels, so what is drawn until `pop_plane` is rasterized crisp at `raster_scale` texels per unit whatever happens to the plane later. `pop_plane` closes it and returns a `Plane_Layer`; `draw_plane(dc, layer, m, alpha, opts)` composites it through `m` (a `Mat4`, column-major like CSS `matrix3d()`: plane frame to the current local space, z dropped after the divide by w). `pop_plane_draw` does both. The quad is clipped against w > 0 by the rasterizer and sampled with perspective-correct interpolation (anisotropic along the long axis of the pixel's footprint), its edge antialiased from the plane's own coordinates; the clips and alpha stack of the moment apply.
+
+Preserve-3d: pop several planes, sort them, then `draw_plane` each (Wren sorts by the geometry of their planes, `browser/paint_planes.odin`). A plane whose content is unchanged is kept: give `Plane_Fx{cache_id, cache_key}` (the key signs what is drawn in the plane, not its matrix); `push_plane` returns false when the kept texture is still good and the caller skips its drawing; moving the plane then costs one instance. `Plane_Draw.cull_back` hides a plane seen from behind (the orientation of its projected rect). Not recorded in pictures; blend modes of a plane's composite are not supported (the content may use them inside).
+
 ## Clips
 
 - `push_clip(dc, r)`: as before, a scissor rect (free). Under rotation or skew it becomes the screen bounds of `r`
