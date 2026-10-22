@@ -235,6 +235,7 @@ release_device_objects :: proc(r: ^Renderer) {
 	r.targets_gen += 1
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	profile_destroy(r)
+	video_pipeline_destroy(r)
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
