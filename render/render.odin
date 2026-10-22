@@ -285,7 +285,7 @@ Pass :: struct {
 	factor: int,                 // Downsample: 2, 4 or 8 (box average of factor x factor source texels); 0 = 2
 }
 
-Op_Kind :: enum u8 { Clear, Copy, Pass }
+Op_Kind :: enum u8 { Clear, Copy, Pass, Mips }   // Mips: rebuild the mip levels of a render target (acquire_target_mips) from its level 0
 
 Op :: struct {
 	kind:   Op_Kind,
@@ -1026,6 +1026,7 @@ Pooled_Target :: struct {
 	w, h:  int,
 	snapshot: bool,       // a copy of the frame (its format, no render target view); else a render target
 	unorm: bool,          // render target in 8 bits per channel (filter results, sRGB-encoded); else fp16
+	mips:  bool,          // with a full mip chain (a plane's layer: Op_Kind.Mips fills it)
 	used:  bool,          // handed out for the frame being built
 	kept:  bool,          // keep_target: held across frames by its owner (a cached filter result), never handed out
 	idle:  int,           // frames since it was last used
@@ -1047,6 +1048,10 @@ Target_Format :: enum u8 {
 // writer uses): a layer, a filter pass. It belongs to the renderer and is handed back by frame_submit, or earlier by release_target. 0 when the size
 // is out of range or the device refuses (draw then falls back to per-primitive alpha).
 acquire_target :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pooled(r, w, h, false) }
+
+// acquire_target with a full mip chain (fp16): drawn into at level 0, then filled by an Op_Kind.Mips recorded after the last
+// draw into it. 0 also when the device cannot generate mips for the format: the caller falls back to acquire_target.
+acquire_target_mips :: proc(r: ^Renderer, w, h: int) -> Texture { return acquire_pooled(r, w, h, false, false, true) }
 
 // acquire_target in a chosen format.
 acquire_target_format :: proc(r: ^Renderer, w, h: int, format: Target_Format) -> Texture {
@@ -1103,11 +1108,19 @@ texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
 }
 
 @(private)
-acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false) -> Texture {
+acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false, mips := false) -> Texture {
 	if w <= 0 || h <= 0 || w > max_texture_size(r) || h > max_texture_size(r) { return 0 }
+	if mips && (snapshot || unorm || (w <= 1 && h <= 1)) { return 0 }
+	when !USE_WGPU {
+		if mips {
+			support: u32
+			r.device->CheckFormatSupport(.R16G16B16A16_FLOAT, &support)
+			if support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) == 0 { return 0 }
+		}
+	}
 	best := -1
 	for &p, i in r.targets {
-		if p.used || p.kept || p.snapshot != snapshot || p.unorm != unorm || p.w < w || p.h < h { continue }
+		if p.used || p.kept || p.snapshot != snapshot || p.unorm != unorm || p.mips != mips || p.w < w || p.h < h { continue }
 		if best < 0 || p.w * p.h < r.targets[best].w * r.targets[best].h { best = i }
 	}
 	if best >= 0 {
@@ -1117,17 +1130,18 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false) 
 	limit := max_texture_size(r)
 	aw := min((w + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
 	ah := min((h + TARGET_STEP - 1) / TARGET_STEP * TARGET_STEP, limit)
-	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = snapshot ? .Snapshot : .Target, unorm = unorm && !snapshot}
+	td := Texture_Data{w = aw, h = ah, size = max(aw, ah), kind = snapshot ? .Snapshot : .Target, unorm = unorm && !snapshot, mips = mips}
 	when USE_WGPU {
 		if !wgpu_target_objects(r, &td) { return 0 }
 		t := add_texture(r, td)
-		append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, used = true})
+		append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, mips = mips, used = true})
 		return t
 	} else {
 	desc := d3d11.TEXTURE2D_DESC{
 		Width = u32(aw), Height = u32(ah), MipLevels = 1, ArraySize = 1, Format = unorm ? .R8G8B8A8_UNORM : .R16G16B16A16_FLOAT,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE, .RENDER_TARGET},
 	}
+	if mips { desc.MipLevels, desc.MiscFlags = 0, {.GENERATE_MIPS} }
 	if snapshot {
 		// the frame's typeless storage, read through the view of its blend space: texels hold the values the frame
 		// blends with (linear decoded from sRGB, or sRGB as stored)
@@ -1143,7 +1157,7 @@ acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false) 
 		if win.FAILED(r.device->CreateRenderTargetView(td.tex, nil, &td.rtv)) { td.view->Release(); td.tex->Release(); return 0 }
 	}
 	t := add_texture(r, td)
-	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, used = true})
+	append(&r.targets, Pooled_Target{tex = t, w = aw, h = ah, snapshot = snapshot, unorm = td.unorm, mips = mips, used = true})
 	return t
 	}
 }
@@ -1173,7 +1187,10 @@ release_targets :: proc(r: ^Renderer) {
 // GPU memory held by the pooled layer targets, in bytes (kept ones included).
 targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
-	for p in r.targets { n += p.w * p.h * (p.snapshot || p.unorm ? 4 : 8) }
+	for p in r.targets {
+		b := p.w * p.h * (p.snapshot || p.unorm ? 4 : 8)
+		n += p.mips ? b * 4 / 3 : b
+	}
 	return n
 }
 

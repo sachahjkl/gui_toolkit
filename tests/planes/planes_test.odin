@@ -439,3 +439,32 @@ backdrop_filter_on_a_turned_plane :: proc(t: ^testing.T) {
 		testing.expectf(t, hi - lo > 200, "%v: the right half (outside the silhouette) keeps its stripes: levels %d..%d", space, lo, hi)
 	}
 }
+
+@(private = "file") minify_mips: bool
+
+@(private = "file")
+minified_stripes :: proc(f: ^Fx, mips: bool) -> []u8 {
+	minify_mips = mips
+	return frame(f, proc(dc: ^draw.Context) {
+		draw.push_plane(dc, {{0, 0}, {64, 64}}, 1, draw.Plane_Fx{mips = minify_mips})
+		for y := 0; y < 64; y += 2 { draw.rect(dc, {{0, f32(y)}, {64, f32(y + 1)}}, draw.Color{0, 0, 0, 1}) }
+		draw.pop_plane_draw(dc, draw.mat4_from_affine(draw.Affine{a = 0.25, d = 0.25, e = 20, f = 20.375}))
+	})
+}
+
+// A plane brought far smaller than its layer (a receding plane): lines one texel wide average to gray with mip levels; read
+// at level 0 they alias (each pixel lands on a black or a white line).
+@(test)
+minified_plane_is_filtered_by_its_mips :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	with := minified_stripes(&f, true)
+	without := minified_stripes(&f, false)
+	lo, hi := 255, 0
+	for y in 23 ..< 33 { for x in 23 ..< 33 { v := px(with, x, y)[0]; lo, hi = min(lo, v), max(hi, v) } }
+	testing.expectf(t, hi - lo <= 40 && lo > 90 && hi < 170, "with mips the stripes average to gray: %d..%d", lo, hi)
+	sum := 0
+	for y in 23 ..< 33 { for x in 23 ..< 33 { sum += px(without, x, y)[0] } }
+	testing.expectf(t, abs(sum / 100 - 128) > 60, "without them the lines alias (every pixel lands on a line: mean %d)", sum / 100)
+}

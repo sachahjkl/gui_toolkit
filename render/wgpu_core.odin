@@ -725,13 +725,18 @@ wgpu_target_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 		return td.wview != nil
 	}
 	td.wformat = td.unorm ? .RGBA8Unorm : .RGBA16Float
+	levels := u32(1)
+	if td.mips {
+		for s := max(td.w, td.h); s > 1; s /= 2 { levels += 1 }
+		td.mip_count = int(levels)
+	}
 	td.wtex = wgpu.DeviceCreateTexture(g.device, &{
 		label = "target", usage = {.TextureBinding, .RenderAttachment, .CopySrc, .CopyDst}, dimension = ._2D,
-		size = {u32(td.w), u32(td.h), 1}, format = td.wformat, mipLevelCount = 1, sampleCount = 1,
+		size = {u32(td.w), u32(td.h), 1}, format = td.wformat, mipLevelCount = levels, sampleCount = 1,
 	})
 	if td.wtex == nil { return false }
-	td.wview = wgpu.TextureCreateView(td.wtex, nil)
-	td.wrtv = wgpu.TextureCreateView(td.wtex, nil)
+	td.wview = wgpu.TextureCreateView(td.wtex, nil)   // every level
+	td.wrtv = wgpu.TextureCreateView(td.wtex, &{format = td.wformat, dimension = ._2D, baseMipLevel = 0, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
 	return td.wview != nil && td.wrtv != nil
 }
 
