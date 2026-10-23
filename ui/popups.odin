@@ -28,6 +28,26 @@ import "../platform"
 
 MENU_HOVER_MS :: 280.0
 
+// The height of a menu item, in em, unless `set_menu_item_height` says otherwise.
+MENU_ITEM_EM :: 2.2
+
+// Menus built from now on have items of `em` times the font size in height (0: back to MENU_ITEM_EM). A dense tool
+// panel sets it while it builds its menus, and resets it after.
+set_menu_item_height :: proc(em: f32) { g.menu_item_em = em }
+
+// A small weak title above a group of items (not an item: the keyboard skips it).
+menu_heading :: proc(text: string) {
+	lv, _ := menu_current()
+	em := font_size()
+	w := lv != nil ? lv.eff_width : em * 10
+	if lv != nil { lv.width = max(lv.width, text_width(top_style().font, em * 0.9, text) + em * 1.4) }
+	spacer(px(em * 0.2))
+	if tags("weak") {
+		next({width = px(w), height = px(dense(em * 1.5)), font_size = em * 0.9, text_pad = em * 0.7})
+		build_box({.Draw_Text}, fmt.tprintf("%s###mh_%s", text, hash_part(text)))
+	}
+}
+
 Menu_Item_Info :: struct {
 	enabled: bool,
 	submenu: bool,
@@ -347,7 +367,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			if highlight { push_tags("selected") }
 			set_next_axis(.X, .Center)
 			g.next_mod.width = px(width)
-			g.next_mod.height = px(dense(em * 2.2))
+			g.next_mod.height = px(dense(em * (s.menu_item_em > 0 ? s.menu_item_em : MENU_ITEM_EM)))
 			g.next_mod.radius = em * 0.35
 			if !highlight { g.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
 			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
@@ -401,7 +421,7 @@ menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 // One item of the menu being built. Tags used: "menu_item" (+ "selected" on the selected one). Closes the whole menu
 // when chosen (click, or Enter / Space on the selected item). A disabled item (`enabled` false, or inside a `disabled`
 // scope) is shown muted and skipped by the keyboard.
-menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", enabled := true) -> Signal {
+menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", enabled := true, keep_open := false) -> Signal {
 	s := g
 	lv, depth := menu_current()
 	if lv == nil {
@@ -416,7 +436,7 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 	if sig.hovering && len(s.menus) > depth + 1 && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
 	clicked := en && (sig.clicked || (idx == lv.sel && lv.activate))
 	sig.clicked = clicked
-	if clicked { ctx_menu_close() }
+	if clicked && !keep_open { ctx_menu_close() }
 	return sig
 }
 
@@ -483,6 +503,33 @@ tooltip :: proc() -> bool {
 	prev := s.boxes[key]
 	size := prev != nil ? prev.size : Vec2{em * 10, em * 3}
 	pos := clamp_popup(s.mouse + {em * 0.8, em * 1.4}, size, s.window_size)
+	push_parent(s.root)
+	push_tags("floating")
+	push_style_copy()
+	set_next_axis(.Y)
+	g.next_mod.fixed_x = pos.x
+	g.next_mod.fixed_y = pos.y
+	g.next_mod.width = children_sum()
+	g.next_mod.height = children_sum()
+	g.next_mod.radius = em * 0.4
+	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
+	push_parent(p)
+	append(&s.popup_stack, true)
+	return true
+}
+
+// `tooltip` beside the pointer instead of below it: to its right (to its left when there is no room), centered on it. For
+// the rows of a list or a table, where a tooltip below the pointer would cover the rows under the one it is about.
+@(deferred_none = tooltip_end)
+tooltip_beside :: proc() -> bool {
+	s := g
+	em := font_size()
+	key := key_from_string(s.root.key, "###tooltip")
+	prev := s.boxes[key]
+	size := prev != nil ? prev.size : Vec2{em * 10, em * 3}
+	pos := s.mouse + {em * 1.2, -size.y * 0.5}
+	if pos.x + size.x > s.window_size.x { pos.x = s.mouse.x - em * 1.2 - size.x }
+	pos = clamp_popup(pos, size, s.window_size)
 	push_parent(s.root)
 	push_tags("floating")
 	push_style_copy()

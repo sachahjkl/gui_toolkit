@@ -446,7 +446,7 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 	defer { factory->Release(); adapter->Release(); dxgi_device->Release() }
 
 	desc := dxgi.SWAP_CHAIN_DESC1{
-		Width       = 0, Height = 0,
+		Width       = surface_creating ? u32(size.x) : 0, Height = surface_creating ? u32(size.y) : 0,   // (a second window: its size, as the window has none yet at that point)
 		Format      = .B8G8R8A8_UNORM,
 		SampleDesc  = {Count = 1},
 		BufferUsage = {.RENDER_TARGET_OUTPUT},
