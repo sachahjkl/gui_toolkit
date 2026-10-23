@@ -227,7 +227,7 @@ fn shape_coverage(i: PSIn, pc: float2) -> f32 {
 	for (var k = 0u; k < n; k++) {
 		let e = edge_at(ebase, heap[list + (k >> 2u)][k & 3u]);
 		let xmax = max(e.x, e.z);
-		if (xmax < left) { break; }
+		if (xmax < left) { continue; }
 		let ymin = min(e.y, e.w);
 		let ymax = max(e.y, e.w);
 		if (ymax < q.y - hy || ymin > q.y + hy) { continue; }
@@ -253,7 +253,7 @@ fn shape_coverage(i: PSIn, pc: float2) -> f32 {
 	for (var k = 0u; k < n; k++) {
 		let e = edge_at(ebase, heap[list + (k >> 2u)][k & 3u]);
 		let xmax = max(e.x, e.z);
-		if (xmax < left) { break; }
+		if (xmax < left) { continue; }
 		let ymin = min(e.y, e.w);
 		let ymax = max(e.y, e.w);
 		if (ymax < q.y - hy || ymin > q.y + hy) { continue; }
