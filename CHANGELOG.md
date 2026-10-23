@@ -3,6 +3,15 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.18.0] - 2026-10-23
+
+### Added
+- **Video pictures as textures** (`render/video.odin`, `video.wgsl`, `shaders/video.hlsl`): `render.create_video_target(r, w, h)` makes an RGBA texture for a decoded picture and `render.video_convert(r, target, picture)` fills it. A `Video_Picture` is what a decoder hands over: NV12 and P010 surfaces of the device itself (the hardware decoders of Media Foundation / DXVA write into textures of the renderer's device, shared with no copy when the surface allows it), or I420 and 10-bit I420 planes in memory. It carries the crop rectangle, the rotation (0, 90, 180, 270), the matrix (BT.709, BT.601, BT.2020), the range, and the transfer function (SDR, PQ, HLG, tone-mapped to the display's white with `hdr_peak_nits` and `sdr_white_nits`). The result is an ordinary texture to draw with `draw` as any image.
+- D3D11 creates its device with `VIDEO_SUPPORT` (dropped again when the software rasterizer refuses it: there is no hardware decoding there anyway); the wgpu backend has the same entry points (`wgpu_video.odin`, `video.wgsl`).
+- `tests/video`: the conversion of each format against reference values (colour matrices, ranges, crops, rotations, 10 bits), on D3D11 and wgpu; `tools\test_backends.ps1` runs it.
+- `render.set_max_frame_latency(r, n)`: the most frames the swap chain may queue (`IDXGISwapChain2::SetMaximumFrameLatency`); 1 by default, more while a window is resized so a present does not wait behind the previous frame. The wgpu backend has no equivalent (returns false).
+- `render.set_fixed_surface(r, max_size)`: one surface size while the window resizes, shown 1:1 and clipped by the client area (composition swap chains only): a window being resized cuts the last frame instead of stretching it, and the newly shown strip stays the background until the next frame paints it. The blend-space change keeps the whole surface presented (`d3d_resize` skips the source region then).
+
 ## [0.17.0] - 2026-10-22
 
 ### Added
