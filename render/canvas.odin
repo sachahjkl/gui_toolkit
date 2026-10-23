@@ -851,8 +851,48 @@ exec_blur :: proc(x: ^Canvas_Exec, src, dst: Texture, sigma: f32) {
 	for l in 1 ..= levels { pool_release(r, chain[l]) }
 }
 
+// The whole canvas to one premultiplied color (a new canvas that is opaque black, reset()).
+canvas_clear :: proc(r: ^Renderer, t: Texture, color: [4]f32) {
+	when USE_WGPU { return } else {
+		if int(t) <= 0 || int(t) >= len(r.textures) || r.lost { return }
+		td := &r.textures[int(t)]
+		if td.canvas != 2 || td.rtv == nil { return }
+		c := color
+		r.ctx->ClearRenderTargetView(td.rtv, &c)
+		if td.mips { td.mips_dirty = true }
+	}
+}
+
 ////////////////////////////////
 // Read-back
+
+// The coverage (0..255, canvas size, rows packed) of clip mask `id` of a canvas, from the last submit that made it and not yet
+// freed. false: there is no such mask.
+canvas_read_mask :: proc(r: ^Renderer, t: Texture, id: i32, out: []u8) -> bool {
+	when USE_WGPU { return false } else {
+		if int(t) <= 0 || int(t) >= len(r.textures) || r.lost { return false }
+		s, ok := r.canvas.states[t]
+		if !ok { return false }
+		m, mok := s.masks[id]
+		if !mok { return false }
+		td := &r.textures[int(m)]
+		if len(out) < td.w * td.h { return false }
+		desc := d3d11.TEXTURE2D_DESC{Width = u32(td.w), Height = u32(td.h), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
+			SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ}}
+		st: ^d3d11.ITexture2D
+		if win.FAILED(r.device->CreateTexture2D(&desc, nil, &st)) { return false }
+		defer st->Release()
+		r.ctx->CopyResource(st, td.tex)
+		mapped: d3d11.MAPPED_SUBRESOURCE
+		if win.FAILED(r.ctx->Map(st, 0, .READ, {}, &mapped)) { return false }
+		defer r.ctx->Unmap(st, 0)
+		for row in 0 ..< td.h {
+			src := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(row) * uintptr(mapped.RowPitch)), td.w)
+			copy(out[row * td.w:][:td.w], src)
+		}
+		return true
+	}
+}
 
 // Premultiplied sRGB-encoded RGBA8 of a w x h block at (x, y) of a canvas texture into `out` (w * h * 4 bytes, rows packed);
 // what lies outside the texture reads as transparent. Waits for the GPU (a staging copy): the caller reads as late and as
