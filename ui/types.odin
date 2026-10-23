@@ -344,6 +344,7 @@ State :: struct {
 	clipboard_set: proc(text: string),
 
 	// popups
+	menu_item_em:    f32,                   // height of a menu item in em (0 = the default, MENU_ITEM_EM); set_menu_item_height
 	menus:           [dynamic]Menu_Level,   // the open menu and its open submenus, outermost first (menu.odin)
 	menu_build:      [dynamic]int,          // levels whose items are being built (innermost last)
 	menu_keys:       Events,                // key presses and text of this frame while a menu is open: the menu owns them

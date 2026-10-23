@@ -35,6 +35,10 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	tick_origin = time.tick_now()
 }
 
+// Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
+// state after building or drawing another's: begin_build, draw_tree and init select the state they are given).
+use :: proc(s: ^State) { g = s }
+
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
 	for _, b in s.boxes { free(b) }
