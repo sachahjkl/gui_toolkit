@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.17.1] - 2026-10-24
+
+### Fixed
+- **Direct2D crash on nested PaintGlyph**: Direct2D of Windows 11 24H2 as first released (`d2d1.dll` 10.0.26100.1, the image of GitHub's `windows-2025` runners; a patched 24H2 such as 10.0.26100.8875 draws them) dies with a null read inside `d2d1.dll`, an access violation nothing can catch, when it draws a COLR v1 glyph whose paint graph has a PaintGlyph inside the paint of another PaintGlyph (a clip inside a clip, directly or through transforms, layers, compositions and PaintColrGlyph). With `Color_Engine.System` such glyphs are now drawn by the COLR interpreter (`font.colr_nests_glyph` finds them in the font's own tables, once per glyph and face); every other glyph still goes to Direct2D. `font.colr_avoids_system(state, face, gid)` tells which. Found by the CI of Wren: `tests/colr` interpreter_agrees_with_direct2d died on U+F1400 .. U+F140F of the test font, 16 glyphs, and the process with it.
+- `tests/colr`: the comparison with Direct2D leaves out the glyphs Direct2D is no longer given; `nested_glyphs_stay_off_direct2d` checks, without depending on the machine's `d2d1.dll`, that exactly those 16 glyphs are kept off it and are drawn in color by the interpreter.
 ## [0.17.0] - 2026-10-22
 
 ### Added
