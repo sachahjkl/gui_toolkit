@@ -272,6 +272,72 @@ Walk :: struct {
 	m:         Mat,
 }
 
+// Whether the paint graph of `gid` has a PaintGlyph inside the paint of another PaintGlyph (a clip inside a clip, directly
+// or through transforms, layers, compositions and PaintColrGlyph). Direct2D of Windows 11 24H2 as first released
+// (d2d1.dll 10.0.26100.1, the image of GitHub's windows-2025 runners) crashes on such a graph, a null read inside
+// d2d1.dll with nothing a caller could catch, so a face that is drawn by the system is not given these glyphs
+// (`colr_draws`). The result is conservative: a graph that cannot be read to its end counts as not nested.
+colr_nests_glyph :: proc(c: ^Colr, gid: u16) -> bool {
+	at, kind := colr_find(c, gid)
+	if kind != .Graph { return false }
+	n := Nest{c = c, rd = Rd{d = c.colr}, budget = COLR_MAX_PAINTS}
+	n.stack[0], n.nstack = gid, 1
+	return nest_paint(&n, at, false) && !n.rd.bad
+}
+
+@(private)
+Nest :: struct {
+	c:      ^Colr,
+	rd:     Rd,
+	budget: int,
+	depth:  int,
+	stack:  [16]u16,   // glyphs being walked through PaintColrGlyph
+	nstack: int,
+}
+
+@(private)
+nest_paint :: proc(n: ^Nest, off: int, inside: bool) -> bool {
+	n.budget -= 1
+	n.depth += 1
+	defer n.depth -= 1
+	if n.rd.bad || n.budget <= 0 || n.depth > COLR_MAX_DEPTH { n.rd.bad = true; return false }
+	r := &n.rd
+	format := rd_u8(r, off)
+	sub :: #force_inline proc(r: ^Rd, off, at: int) -> int { return off + rd_u24(r, off + at) }
+	switch format {
+	case 1:   // PaintColrLayers
+		count, first := rd_u8(r, off + 1), rd_u32(r, off + 2)
+		if r.bad || first + count > n.c.n_layer_list { r.bad = true; return false }
+		for i in 0 ..< count {
+			po := rd_u32(r, n.c.layer_list + 4 + (first + i) * 4)
+			if r.bad { return false }
+			if nest_paint(n, n.c.layer_list + po, inside) { return true }
+		}
+	case 10:   // PaintGlyph
+		if inside { return true }
+		child := sub(r, off, 1)
+		if r.bad { return false }
+		return nest_paint(n, child, true)
+	case 11:   // PaintColrGlyph
+		gid := u16(rd_u16(r, off + 1))
+		if r.bad || n.nstack >= len(n.stack) || slice.contains(n.stack[:n.nstack], gid) { r.bad = true; return false }
+		at, kind := colr_find(n.c, gid)
+		if kind != .Graph { r.bad = true; return false }
+		n.stack[n.nstack] = gid
+		n.nstack += 1
+		defer n.nstack -= 1
+		return nest_paint(n, at, inside)
+	case 12 ..= 31:   // PaintTransform, PaintTranslate, PaintScale*, PaintRotate*, PaintSkew*: one child at offset 1
+		child := sub(r, off, 1)
+		if r.bad { return false }
+		return nest_paint(n, child, inside)
+	case 32:   // PaintComposite
+		source, backdrop := sub(r, off, 1), sub(r, off, 5)
+		if r.bad { return false }
+		return nest_paint(n, source, inside) || nest_paint(n, backdrop, inside)
+	}
+	return false
+}
 // Draws glyph `gid`. ok = false: the glyph has no color description, or its graph is invalid. A glyph with a valid
 // description that paints nothing returns ok with an empty bitmap (w = h = 0).
 colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runtime.Allocator) -> (bm: Colr_Bitmap, ok: bool) {

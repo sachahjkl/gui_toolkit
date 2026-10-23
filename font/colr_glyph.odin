@@ -8,7 +8,8 @@ import "core:sync"
 // system fonts, files and memory fonts alike), its glyph outlines from the Slug outline provider, kept per face in a
 // cache of limited size. Settings.color_engine = .Builtin makes these faces' color glyphs come from here instead of
 // Direct2D (color.odin); the bitmaps then go to the same Color pages, the same async queue and the same text-color
-// handling as the others.
+// handling as the others. With .System the glyphs whose paint graph nests a PaintGlyph in a PaintGlyph still come from here:
+// Direct2D of Windows 11 24H2 as first released crashes on them (colr_nests_glyph).
 
 @(private)
 Face_Colr :: struct {
@@ -21,6 +22,7 @@ Face_Colr :: struct {
 	outlines: map[u16]^Outline,   // em units; emptied (between renders) when over the budget
 	bytes:    int,
 	active:   int,                // renders in progress: their outlines must not be freed
+	nested:   map[u16]bool,       // colr_nests_glyph per glyph, once asked (under mu)
 }
 
 // Opens the tables of `f` (nil: no COLR table, or one that does not parse).
@@ -48,6 +50,7 @@ face_colr_open :: proc(f: ^Font) -> ^Face_Colr {
 	}
 	fc.gsub, fc.gsub_ctx = read(f, "GSUB")
 	fc.outlines = make(map[u16]^Outline)
+	fc.nested = make(map[u16]bool)
 	return fc
 }
 
@@ -59,6 +62,7 @@ face_colr_close :: proc(f: ^Font) {
 	f.colr = nil
 	for _, o in fc.outlines { outline_destroy(o); free(o) }
 	delete(fc.outlines)
+	delete(fc.nested)
 	colr_destroy(fc.c)
 	if f.dw != nil {
 		f.dw->ReleaseFontTable(fc.colr_ctx)
@@ -123,10 +127,34 @@ face_colr_end :: proc(fc: ^Face_Colr) {
 	sync.mutex_unlock(&fc.mu)
 }
 
-// Whether the interpreter draws glyph `gid` of `f` (it has a color description there).
+// Whether the interpreter draws glyph `gid` of `f` (it has a color description there): with Color_Engine.Builtin, every
+// glyph it can read; with .System, the glyphs Direct2D must not be given (`colr_avoids_system`).
 @(private)
 colr_draws :: proc(s: ^State, f: ^Font, gid: u16) -> bool {
-	return s.settings.color_engine == .Builtin && s.settings.color_glyphs && f.colr != nil && colr_has_glyph(f.colr.c, gid)
+	if !s.settings.color_glyphs || f.colr == nil || !colr_has_glyph(f.colr.c, gid) { return false }
+	return s.settings.color_engine == .Builtin || colr_nests_glyph_cached(f.colr, gid)
+}
+
+@(private)
+colr_nests_glyph_cached :: proc(fc: ^Face_Colr, gid: u16) -> bool {
+	sync.mutex_lock(&fc.mu)
+	nested, known := fc.nested[gid]
+	sync.mutex_unlock(&fc.mu)
+	if known { return nested }
+	nested = colr_nests_glyph(fc.c, gid)
+	sync.mutex_lock(&fc.mu)
+	fc.nested[gid] = nested
+	sync.mutex_unlock(&fc.mu)
+	return nested
+}
+
+// Whether glyph `gid` of face `id` is drawn by the interpreter even though Direct2D is the color engine: its paint graph
+// nests a PaintGlyph in another PaintGlyph (`colr_nests_glyph`), which Direct2D of Windows 11 24H2 as first released
+// (d2d1.dll 10.0.26100.1) crashes on. A test that compares the two engines leaves these glyphs out.
+colr_avoids_system :: proc(s: ^State, id: Font_Id, gid: u16) -> bool {
+	f := face_ptr(s, id)
+	if f == nil || f.colr == nil || !colr_has_glyph(f.colr.c, gid) { return false }
+	return colr_nests_glyph_cached(f.colr, gid)
 }
 
 // Draws the glyph (pen at subpixel x) with the interpreter. The bitmap is heap memory the caller frees (colr_put does).
