@@ -111,7 +111,7 @@ interpreter_agrees_with_direct2d :: proc(t: ^testing.T) {
 	if !font.color_renderable(&sd, fd) || font.colr_of(&sd, fd) == nil { fmt.println("skipped: Direct2D cannot draw COLR v1 paint graphs here"); return }
 	cd := font.cascade(&sd, {{font = fd}}, nil, true)
 	cb := font.cascade(&sb, {{font = fb}}, nil, true)
-	n, bad := 0, 0
+	n, bad, guarded := 0, 0, 0
 	sum, worst: f32
 	worst_cp: rune
 	for r := rune(0xF0000); r < 0xF2000; r += 1 {
@@ -119,6 +119,7 @@ interpreter_agrees_with_direct2d :: proc(t: ^testing.T) {
 		shd := font.shape(&sd, cd, 64, utf8(r), {}, context.temp_allocator)
 		shb := font.shape(&sb, cb, 64, utf8(r), {}, context.temp_allocator)
 		if len(shd.glyphs) != 1 || len(shb.glyphs) != 1 || shd.glyphs[0].id == 0 { continue }
+		if font.colr_avoids_system(&sd, fd, shd.glyphs[0].id) { guarded += 1; continue }   // never given to Direct2D (see nested_glyphs_stay_off_direct2d)
 		a := font.glyph_image(&sd, fd, shd.glyphs[0].id, 64, 0)
 		b := font.glyph_image(&sb, fb, shb.glyphs[0].id, 64, 0)
 		if !a.color { continue }
@@ -130,10 +131,46 @@ interpreter_agrees_with_direct2d :: proc(t: ^testing.T) {
 	}
 	drawn, refused := font.colr_counts(&sb)
 	fmt.printf("%d glyphs: mean difference %.3f /255, worst U+%X %.2f; interpreter %d drawn, %d refused, %d without color\n", n, sum / f32(max(n, 1)), worst_cp, worst, drawn, refused, bad)
+	testing.expectf(t, guarded == NESTED_GLYPHS, "%d glyphs kept off Direct2D", guarded)
 	testing.expect(t, n > 150)
 	testing.expectf(t, sum / f32(n) < 1.5, "mean difference %.3f", sum / f32(n))
 	testing.expectf(t, worst < 8, "worst glyph U+%X differs by %.2f", worst_cp, worst)
 	testing.expectf(t, refused <= 3, "%d glyphs refused", refused)
+}
+
+// U+F1400 .. U+F140F of the test font paint a glyph inside the paint of another glyph (PaintGlyph in PaintGlyph, through
+// translations, a rotation). Direct2D of Windows 11 24H2 as first released (d2d1.dll 10.0.26100.1: GitHub's windows-2025
+// runners) dies on them with a null read inside d2d1.dll, an exception nothing can catch. With Direct2D as the color
+// engine such glyphs are drawn by the interpreter instead; this test would crash on such a machine if one reached it.
+NESTED_GLYPHS :: 16
+
+@(test)
+nested_glyphs_stay_off_direct2d :: proc(t: ^testing.T) {
+	s: font.State
+	font.init(&s)
+	defer font.destroy(&s)
+	id, ok := font.load_embedded(&s, COLRV1)
+	testing.expect(t, ok)
+	testing.expect_value(t, s.settings.color_engine, font.Color_Engine.System)
+	cas := font.cascade(&s, {{font = id}}, nil, true)
+	avoided, drawn_in_color, others := 0, 0, 0
+	for r := rune(0xF0000); r < 0xF2000; r += 1 {
+		if r >= 0xF1100 && r < 0xF1200 { continue }
+		sh := font.shape(&s, cas, 64, utf8(r), {}, context.temp_allocator)
+		if len(sh.glyphs) != 1 || sh.glyphs[0].id == 0 { continue }
+		gid := sh.glyphs[0].id
+		nested := font.colr_avoids_system(&s, id, gid)
+		testing.expectf(t, nested == (r >= 0xF1400 && r <= 0xF140F), "U+%X: kept off Direct2D %v", r, nested)
+		if !nested { others += 1; continue }
+		avoided += 1
+		img := font.glyph_image(&s, id, gid, 64, 0)
+		if img.color && img.page >= 0 { drawn_in_color += 1 }
+	}
+	drawn, refused := font.colr_counts(&s)
+	testing.expect_value(t, avoided, NESTED_GLYPHS)
+	testing.expect_value(t, drawn_in_color, NESTED_GLYPHS)
+	testing.expectf(t, drawn == NESTED_GLYPHS && refused == 0, "interpreter: %d drawn, %d refused", drawn, refused)
+	testing.expect(t, others > 150)
 }
 
 // A glyph that is its own descendant (PaintColrGlyph) is refused, not drawn forever: the outline shows.

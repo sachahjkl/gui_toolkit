@@ -13,6 +13,7 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - `ui.use(state)`: selects the state the public procedures operate on, for programs that draw several windows with a state each.
 - `render.surface_create / surface_use / surface_destroy`: a second window drawn by the same renderer (same device, textures, fonts), as a surface swapped in for the frames drawn to it (Direct3D 11).
 - `ui.tooltip_beside()`: `tooltip` placed beside the pointer (its right, or its left when there is no room), centered on it, for the rows of a list or a table, where a tooltip below the pointer hides the rows under it.
+
 ## [0.18.0] - 2026-10-23
 
 ### Added
@@ -22,6 +23,11 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - `render.set_max_frame_latency(r, n)`: the most frames the swap chain may queue (`IDXGISwapChain2::SetMaximumFrameLatency`); 1 by default, more while a window is resized so a present does not wait behind the previous frame. The wgpu backend has no equivalent (returns false).
 - `render.set_fixed_surface(r, max_size)`: one surface size while the window resizes, shown 1:1 and clipped by the client area (composition swap chains only): a window being resized cuts the last frame instead of stretching it, and the newly shown strip stays the background until the next frame paints it. The blend-space change keeps the whole surface presented (`d3d_resize` skips the source region then).
 
+## [0.17.1] - 2026-10-24
+
+### Fixed
+- **Direct2D crash on nested PaintGlyph**: Direct2D of Windows 11 24H2 as first released (`d2d1.dll` 10.0.26100.1, the image of GitHub's `windows-2025` runners; a patched 24H2 such as 10.0.26100.8875 draws them) dies with a null read inside `d2d1.dll`, an access violation nothing can catch, when it draws a COLR v1 glyph whose paint graph has a PaintGlyph inside the paint of another PaintGlyph (a clip inside a clip, directly or through transforms, layers, compositions and PaintColrGlyph). With `Color_Engine.System` such glyphs are now drawn by the COLR interpreter (`font.colr_nests_glyph` finds them in the font's own tables, once per glyph and face); every other glyph still goes to Direct2D. `font.colr_avoids_system(state, face, gid)` tells which. Found by the CI of Wren: `tests/colr` interpreter_agrees_with_direct2d died on U+F1400 .. U+F140F of the test font, 16 glyphs, and the process with it.
+- `tests/colr`: the comparison with Direct2D leaves out the glyphs Direct2D is no longer given; `nested_glyphs_stay_off_direct2d` checks, without depending on the machine's `d2d1.dll`, that exactly those 16 glyphs are kept off it and are drawn in color by the interpreter.
 ## [0.17.0] - 2026-10-22
 
 ### Added
