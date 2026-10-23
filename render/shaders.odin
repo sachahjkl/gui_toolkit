@@ -20,6 +20,7 @@ WGSL_FILTER :: #load("filter.wgsl", string)
 WGSL_SLUG :: #load("slug.wgsl", string)
 WGSL_VIDEO :: #load("video.wgsl", string)
 WGSL_MIP :: #load("mip.wgsl", string)   // WebGPU only: Direct3D 11 has GenerateMips
+WGSL_CANVAS :: #load("canvas.wgsl", string)
 
 // The Direct3D 11 slots of the resources of the WGSL (group.binding = register): what naga is told when it writes the HLSL, and what
 // the backend binds (bind_main, run_pass, slug_bind_inputs). Samplers: s0 atlas (bilinear), s1 images (trilinear), s2 tiled images.
@@ -33,11 +34,17 @@ SLUG_BINDINGS :: []string{
 }
 FILTER_BINDINGS :: []string{"0.0=b1", "0.1=t0", "0.2=t1", "0.3=s0"}
 VIDEO_BINDINGS :: []string{"0.0=b0", "0.1=t0", "0.2=t1", "0.3=t2", "0.4=s0"}
+// canvas.wgsl: b0 target constants, t0 shape heap, t1 paints, t2 gradient stops, b1 filter pass; samplers point, linear (mips),
+// anisotropic, linear wrap, point wrap; t3 the paint's image (or the source of a filter pass), t4 the clip mask, t5 the backdrop
+CANVAS_BINDINGS :: []string{
+	"0.0=b0", "0.1=t0", "0.2=t1", "0.3=t2", "0.4=b1", "0.5=s0", "0.6=s1", "0.7=s2", "0.8=s3", "0.9=s4",
+	"1.0=t3", "1.1=t4", "1.2=t5",
+}
 
 NAGA_VERSION :: "29.0.4"
 
 // A shader module: the WGSL files that make it (concatenated, in order, a newline after each) and the HLSL written from them.
-Shader_Module :: enum u8 { Rect, Filter, Slug, Video }
+Shader_Module :: enum u8 { Rect, Filter, Slug, Video, Canvas }
 
 Module_Desc :: struct {
 	file:       string,     // render/shaders/<file>: the generated HLSL
@@ -53,6 +60,7 @@ MODULES := [Shader_Module]Module_Desc{
 	// the Slug text shaders use the helpers of rect.wgsl (transforms, clips, text correction): one module, rect.wgsl first
 	.Slug   = {"slug.hlsl", {"rect.wgsl", "slug.wgsl"}, {WGSL_RECT, WGSL_SLUG}, SLUG_BINDINGS, #load("shaders/slug.hlsl", string)},
 	.Video  = {"video.hlsl", {"video.wgsl"}, {WGSL_VIDEO}, VIDEO_BINDINGS, #load("shaders/video.hlsl", string)},
+	.Canvas = {"canvas.hlsl", {"canvas.wgsl"}, {WGSL_CANVAS}, CANVAS_BINDINGS, #load("shaders/canvas.hlsl", string)},
 }
 
 // The WGSL of a module as naga reads it (and as the SHA-256 below is taken).
@@ -86,6 +94,10 @@ Shader_Id :: enum u8 {
 	Slug_PS,
 	Video_VS,
 	Video_PS,
+	Canvas_VS,
+	Canvas_PS,
+	Canvas_Full_VS,
+	Canvas_Fx_PS,
 }
 
 Shader_Desc :: struct {
@@ -106,6 +118,10 @@ SHADERS := [Shader_Id]Shader_Desc{
 	.Slug_PS   = {.Slug, "slug.hlsl", "ps_slug", "ps_5_0", "slug_ps.dxbc", #load("shaders/slug_ps.dxbc")},
 	.Video_VS  = {.Video, "video.hlsl", "vs_video", "vs_5_0", "video_vs.dxbc", #load("shaders/video_vs.dxbc")},
 	.Video_PS  = {.Video, "video.hlsl", "ps_video", "ps_5_0", "video_ps.dxbc", #load("shaders/video_ps.dxbc")},
+	.Canvas_VS = {.Canvas, "canvas.hlsl", "vs_canvas", "vs_5_0", "canvas_vs.dxbc", #load("shaders/canvas_vs.dxbc")},
+	.Canvas_PS = {.Canvas, "canvas.hlsl", "ps_canvas", "ps_5_0", "canvas_ps.dxbc", #load("shaders/canvas_ps.dxbc")},
+	.Canvas_Full_VS = {.Canvas, "canvas.hlsl", "vs_full", "vs_5_0", "canvas_full_vs.dxbc", #load("shaders/canvas_full_vs.dxbc")},
+	.Canvas_Fx_PS = {.Canvas, "canvas.hlsl", "ps_fx", "ps_5_0", "canvas_fx_ps.dxbc", #load("shaders/canvas_fx_ps.dxbc")},
 }
 
 // Compiles HLSL text (tools/shaders for the HLSL it just wrote, tests/shaders). The bytes are a copy in `allocator`.
