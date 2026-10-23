@@ -18,6 +18,7 @@ RENDER_COMPILE_SHADERS :: #config(RENDER_COMPILE_SHADERS, false)
 WGSL_RECT :: #load("rect.wgsl", string)
 WGSL_FILTER :: #load("filter.wgsl", string)
 WGSL_SLUG :: #load("slug.wgsl", string)
+WGSL_VIDEO :: #load("video.wgsl", string)
 WGSL_MIP :: #load("mip.wgsl", string)   // WebGPU only: Direct3D 11 has GenerateMips
 
 // The Direct3D 11 slots of the resources of the WGSL (group.binding = register): what naga is told when it writes the HLSL, and what
@@ -31,11 +32,12 @@ SLUG_BINDINGS :: []string{
 	"0.10=s0", "0.11=s1", "0.12=s2", "1.0=t0", "1.1=t1", "1.2=t5", "1.3=t11", "1.4=t12",
 }
 FILTER_BINDINGS :: []string{"0.0=b1", "0.1=t0", "0.2=t1", "0.3=s0"}
+VIDEO_BINDINGS :: []string{"0.0=b0", "0.1=t0", "0.2=t1", "0.3=t2", "0.4=s0"}
 
 NAGA_VERSION :: "29.0.4"
 
 // A shader module: the WGSL files that make it (concatenated, in order, a newline after each) and the HLSL written from them.
-Shader_Module :: enum u8 { Rect, Filter, Slug }
+Shader_Module :: enum u8 { Rect, Filter, Slug, Video }
 
 Module_Desc :: struct {
 	file:       string,     // render/shaders/<file>: the generated HLSL
@@ -50,6 +52,7 @@ MODULES := [Shader_Module]Module_Desc{
 	.Filter = {"filter.hlsl", {"filter.wgsl"}, {WGSL_FILTER}, FILTER_BINDINGS, #load("shaders/filter.hlsl", string)},
 	// the Slug text shaders use the helpers of rect.wgsl (transforms, clips, text correction): one module, rect.wgsl first
 	.Slug   = {"slug.hlsl", {"rect.wgsl", "slug.wgsl"}, {WGSL_RECT, WGSL_SLUG}, SLUG_BINDINGS, #load("shaders/slug.hlsl", string)},
+	.Video  = {"video.hlsl", {"video.wgsl"}, {WGSL_VIDEO}, VIDEO_BINDINGS, #load("shaders/video.hlsl", string)},
 }
 
 // The WGSL of a module as naga reads it (and as the SHA-256 below is taken).
@@ -81,6 +84,8 @@ Shader_Id :: enum u8 {
 	Filter_PS,
 	Slug_VS,
 	Slug_PS,
+	Video_VS,
+	Video_PS,
 }
 
 Shader_Desc :: struct {
@@ -99,6 +104,8 @@ SHADERS := [Shader_Id]Shader_Desc{
 	.Filter_PS = {.Filter, "filter.hlsl", "ps_fx", "ps_5_0", "filter_ps.dxbc", #load("shaders/filter_ps.dxbc")},
 	.Slug_VS   = {.Slug, "slug.hlsl", "vs_slug", "vs_5_0", "slug_vs.dxbc", #load("shaders/slug_vs.dxbc")},
 	.Slug_PS   = {.Slug, "slug.hlsl", "ps_slug", "ps_5_0", "slug_ps.dxbc", #load("shaders/slug_ps.dxbc")},
+	.Video_VS  = {.Video, "video.hlsl", "vs_video", "vs_5_0", "video_vs.dxbc", #load("shaders/video_vs.dxbc")},
+	.Video_PS  = {.Video, "video.hlsl", "ps_video", "ps_5_0", "video_ps.dxbc", #load("shaders/video_ps.dxbc")},
 }
 
 // Compiles HLSL text (tools/shaders for the HLSL it just wrote, tests/shaders). The bytes are a copy in `allocator`.
