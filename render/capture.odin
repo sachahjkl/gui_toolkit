@@ -74,6 +74,7 @@ capture_copy :: proc(r: ^Renderer) {
 	c.pending = true
 }
 
+
 // The picture of a capture: RGBA8, straight rows, sRGB values, alpha forced to 255 (a window is opaque; a translucent
 // one keeps what the compositor would show over black). Pending until the GPU has finished the copy: this never waits.
 // The pixels are the caller's (allocated with `allocator`); `size` is the rectangle the copy holds.
@@ -92,7 +93,7 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 	for y in 0 ..< size.y {
 		row := ([^]u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch)))
 		out := pixels[y * size.x * 4:][:size.x * 4]
-		switch c.format {
+		#partial switch c.format {
 		case .R16G16B16A16_FLOAT:
 			// a translucent window in linear light: scRGB halves, encoded for the picture
 			src := ([^]u16)(row)
@@ -106,7 +107,7 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 			}
 		}
 	}
-	return
+	return pixels, size, .Ready
 }
 
 @(private)
