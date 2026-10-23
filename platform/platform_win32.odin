@@ -52,7 +52,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
 	icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
 	if !class_registered {
-		class_name = win.utf8_to_wstring("gui_toolkit_window")
+		class_name = win.L("gui_toolkit_window")   // (a literal: it must outlive whatever allocator the first window was made under, for the windows made later)
 		wc := win.WNDCLASSEXW{
 			cbSize        = size_of(win.WNDCLASSEXW),
 			style         = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_DBLCLKS,

@@ -3,6 +3,16 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.19.0] - 2026-10-23
+
+### Added
+- `ui.menu_item(..., keep_open = true)`: choosing the item does not close the menu, for the switches of a settings menu (the check mark changes, the menu stays for the next one).
+- `ui.set_menu_item_height(em)`: the height of the items of the menus built from then on, in em (default `MENU_ITEM_EM`, 2.2; 0 puts it back). A dense tool panel sets it while it builds its menus.
+- `ui.menu_heading(text)`: a small weak title above a group of items of a menu (not an item: the keyboard skips it).
+- Fixed: `platform.open_window` kept the window class name in the caller's allocator, so a window opened later (once that memory was reused) failed with "cannot find window class"; the name is a literal now.
+- `ui.use(state)`: selects the state the public procedures operate on, for programs that draw several windows with a state each.
+- `render.surface_create / surface_use / surface_destroy`: a second window drawn by the same renderer (same device, textures, fonts), as a surface swapped in for the frames drawn to it (Direct3D 11).
+- `ui.tooltip_beside()`: `tooltip` placed beside the pointer (its right, or its left when there is no room), centered on it, for the rows of a list or a table, where a tooltip below the pointer hides the rows under it.
 ## [0.18.0] - 2026-10-23
 
 ### Added
