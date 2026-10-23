@@ -26,6 +26,7 @@ Native_Window :: struct {
 	nc_tracking:    bool,           // TrackMouseEvent asked for WM_NCMOUSELEAVE
 	saved_style:    i32,            // before full screen
 	saved_place:    win.WINDOWPLACEMENT,
+	injected:       [dynamic]Event, // inject_event: synthetic input, handed out by the next poll_events after the system's own
 }
 
 @(private) os_build: u32   // Windows build number (RtlGetVersion), 0 until asked
@@ -304,6 +305,7 @@ destroy_window :: proc(w: ^Window) {
 	}
 	cursors_destroy(w)
 	delete(w.events)
+	delete(w.injected)
 	chrome_regions_destroy(&w.chrome)
 	free(w)
 }
@@ -318,7 +320,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	if !w.keep_events { clear(&w.events) }   // what wait_handle took is the start of this batch
 	w.keep_events = false
 	msg: win.MSG
-	if wait && len(w.events) == 0 && !win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) {
+	if wait && len(w.events) == 0 && len(w.injected) == 0 && !win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) {
 		// with a timeout, a timer message wakes the wait (caret blink, tooltip delay)
 		if timeout_ms > 0 { win.SetTimer(w.hwnd, 1, u32(timeout_ms), nil) }
 		win.WaitMessage()
@@ -333,7 +335,27 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 		win.TranslateMessage(&msg)
 		win.DispatchMessageW(&msg)
 	}
+	take_injected(w)
 	return w.events[:]
+}
+
+// Queues an event as if the system had delivered it: the next poll_events returns it (after the real events of that
+// batch), through the same path as any other, so hover, focus, shortcuts and text input behave as for a real device.
+// For tests, remote control and macros; call it from the thread that polls. `stamp` is set when the event is taken.
+// The caller wakes the loop (wake) when it may be waiting.
+inject_event :: proc(w: ^Window, e: Event) {
+	append(&w.injected, e)
+}
+
+@(private)
+take_injected :: proc(w: ^Window) {
+	if len(w.injected) == 0 { return }
+	now := time.tick_now()
+	for &e in w.injected {
+		e.stamp = now
+		append(&w.events, e)
+	}
+	clear(&w.injected)
 }
 
 // Blocks until a message is pending or `timeout_ms` elapsed (0 = no timeout). Does not consume anything: follow
