@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.22.0] - 2026-10-23
+
+### Added
+- **Synthetic input**: `platform.inject_event(w, event)` queues an event that the next `poll_events` returns after the system's own, through the same path (hover, focus, shortcuts, text input behave as for a real device). For tests, remote control and macros.
+- **Reading a frame back without the screen** (`render/capture.odin`): `render.capture_request(r, rect)` marks the next frame, `frame_end` copies that frame's render target (or a part of it) into a staging texture just before presenting, and `render.capture_poll(r)` returns RGBA8 pixels once the GPU is done (it never waits: `Pending` until then). The picture is what the renderer drew: it works with the window covered, off the screen or hidden, and does not depend on the monitor's scale. Nothing is paid until a capture is asked for. Direct3D 11 (swap chain and offscreen); the wgpu backend answers false.
+
 ## [0.18.0] - 2026-10-23
 
 ### Added

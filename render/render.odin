@@ -418,6 +418,7 @@ Renderer :: struct {
 	warp:        bool,                   // the device is WARP (software)
 	wg:          Wgpu_State,             // TOOLKIT_RENDER=wgpu (wgpu_*.odin); zero otherwise
 	first_present_noted: bool,
+	capture:     Capture_State,          // capture.odin: reading a frame back
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
@@ -505,6 +506,7 @@ d3d_destroy :: proc(r: ^Renderer) {
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	slug_destroy(r)
+	capture_destroy(r)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle) }
 	present_destroy(r)
