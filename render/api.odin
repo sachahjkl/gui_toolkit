@@ -2,6 +2,7 @@ package render
 
 import "core:fmt"
 import "core:os"
+import "core:sync"
 import win "core:sys/windows"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
@@ -20,15 +21,28 @@ USE_WGPU :: RENDER_BACKEND == "wgpu"
 backend_name :: proc() -> string { return RENDER_BACKEND }
 
 init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
-	when USE_WGPU { return wgpu_init(r, hwnd, size, transparent, space) } else { return d3d_init(r, hwnd, size, transparent, space) }
+	ok: bool
+	when USE_WGPU { ok = wgpu_init(r, hwnd, size, transparent, space) } else { ok = d3d_init(r, hwnd, size, transparent, space) }
+	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 }
+	return ok
 }
+
+@(private) renderer_ids: u64
+
+// A number no other renderer of this process has had (a renderer destroyed and made again at the same address is another one):
+// what caches of GPU objects keyed by renderer compare, together with `device_generation` (a device recovered keeps the id and
+// loses its textures' contents).
+renderer_id :: proc(r: ^Renderer) -> u64 { return r.id }
 
 destroy :: proc(r: ^Renderer) {
 	when USE_WGPU { wgpu_destroy(r) } else { d3d_destroy(r) }
 }
 
 init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
-	when USE_WGPU { return wgpu_init_offscreen(r, size, warp, space) } else { return d3d_init_offscreen(r, size, warp, space) }
+	ok: bool
+	when USE_WGPU { ok = wgpu_init_offscreen(r, size, warp, space) } else { ok = d3d_init_offscreen(r, size, warp, space) }
+	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 }
+	return ok
 }
 
 set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
