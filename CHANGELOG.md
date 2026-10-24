@@ -13,12 +13,21 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 
 0.24.0 is reserved for another branch; 0.25.0 follows 0.23.0 on purpose.
 
-## [Unreleased]
+## [0.26.0] - 2026-10-24
+
+Merge of three branches: the GPU 2D canvas engine, faster image uploads, the window border color. 0.20.0 and 0.21.0 (reserved below for the canvas engine and the uploads) were never released: their content is here.
 
 ### Added
-- `platform.set_border_color(w, rgb)`: the color of the 1-pixel border Windows 11 draws around the window
-  (`DWMWA_BORDER_COLOR`), or `nil` for the system's. With an integrated title bar the system's border is half
-  transparent along the top edge: a line of whatever lies behind the window showed above the app's tab strip.
+- **A 2D canvas engine on the GPU** (`render/canvas.odin`, `canvas_types.odin`, `canvas.wgsl`, module `Canvas` of `tools/shaders`, [docs/canvas.md](docs/canvas.md)), Direct3D 11: `render.canvas_texture_create(r, w, h, target, mips)` makes a canvas (a render target of premultiplied sRGB-encoded RGBA8, kept) or a source of pixels (`canvas_upload`); the owner records its drawing in a `render.Canvas_List` (instances with a geometry, a paint and an operator; commands for clip masks, layers, snapshots, `putImageData`) and `canvas_submit(r, target, &list)` replays it in runs of one draw call per operator / source / clip / scissor. Rectangles, rounded rectangles and ellipses have analytic coverage (exact box filter when axis-aligned), polygons 16 N-rook samples on boundary pixels only with the fill rule per sample (the pieces of a stroke never count twice); solid, linear / radial / conic gradients and images (four filters, wrap modes) as paints; the 11 Porter-Duff operators as blend states and the 15 blend modes from a copy of the backdrop; clip masks, layers with color-matrix and gaussian-blur passes (large blurs on reduced images). `canvas_read` (waits), `canvas_read_begin` / `canvas_read_ready` / `canvas_read_finish` / `canvas_read_cancel` (polled), `canvas_read_mask`, `canvas_clear`, `canvas_set_opaque`, `canvas_supported` (false on WebGPU), `canvas_stats`, `canvas_pool_bytes`. `tests/canvas` (12 pixel tests), in `tools\test_backends.ps1`.
+- `platform.set_border_color(w, rgb)`: the color of the 1-pixel border Windows 11 draws around the window (`DWMWA_BORDER_COLOR`), or `nil` for the system's. With an integrated title bar the system's border is half transparent along the top edge: a line of whatever lies behind the window showed above the app's tab strip.
+- `tests/textures` (both backends): an unwritten texture is transparent, an opaque upload with a wider stride shows exactly, a translucent one is premultiplied in both spaces, a partial update zeroes the rest, mips follow an opaque upload; `render/premultiply_test.odin` checks the word-at-a-time premultiplication against `(c * a + 127) / 255` for every value. Both in `tools\test_backends.ps1`.
+
+### Changed
+- **Faster image textures**: `create_texture_rgba` no longer zeroes a new texture with one `UpdateSubresource` per row (551 driver calls, 1 to 4 ms, for a 735 x 551 photo). The texture is marked unfilled; an update that covers it whole clears the mark, and one still unfilled when the frame is submitted (or hit by a partial update first) is zeroed with a few band-sized calls from one zero buffer (`Renderer.zeros`). Observable behavior is the same: a new texture is transparent. Data textures (`create_texture_data`) and video targets keep their own paths.
+- **Faster uploads**: `update_texture_rgba` checks whether the block is opaque (a vectorized AND of the words) and uploads opaque pixels, which is every JPEG and most PNG / WebP / AVIF, straight from the caller's buffer with its own pitch: no conversion pass and no scratch copy. Translucent blocks in the sRGB blend space are premultiplied a word at a time without branches or tables; the linear space keeps its table version. Both backends.
+
+### Fixed
+- Windows 11, integrated title bar: a line of what lay behind the window showed above the tab strip, because the system's border is half transparent there. An app now paints it opaque with `platform.set_border_color` (nothing changes until it does).
 
 ## [0.23.0] - 2026-10-24
 
@@ -36,7 +45,7 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - **Synthetic input**: `platform.inject_event(w, event)` queues an event that the next `poll_events` returns after the system's own, through the same path (hover, focus, shortcuts, text input behave as for a real device). For tests, remote control and macros.
 - **Reading a frame back without the screen** (`render/capture.odin`): `render.capture_request(r, rect)` marks the next frame, `frame_end` copies that frame's render target (or a part of it) into a staging texture just before presenting, and `render.capture_poll(r)` returns RGBA8 pixels once the GPU is done (it never waits: `Pending` until then). The picture is what the renderer drew: it works with the window covered, off the screen or hidden, and does not depend on the monitor's scale. Nothing is paid until a capture is asked for. Direct3D 11 (swap chain and offscreen); the wgpu backend answers false.
 
-0.20.0 and 0.21.0 are reserved (feat/canvas-gpu and feat/gpu-accel, not released yet); 0.22.0 follows 0.19.0 on purpose.
+0.20.0 and 0.21.0 were reserved (feat/canvas-gpu and feat/gpu-accel); they were merged into 0.26.0 instead, and those two numbers stay unused.
 
 ## [0.19.0] - 2026-10-23
 
