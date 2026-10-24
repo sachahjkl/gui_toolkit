@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Continue'
 Set-Location (Split-Path $PSScriptRoot)
 New-Item -ItemType Directory build -Force | Out-Null
-$all = 'affine', 'layers', 'planes', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'slug', 'shaders', 'appshaders', 'colr', 'video'
+$all = 'affine', 'layers', 'planes', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'slug', 'shaders', 'appshaders', 'colr', 'video', 'textures'
 $list = if ($Only) { $Only | ForEach-Object { $_ -split ',' } } else { $all }
 $failed = 0
 foreach ($t in $list) {

@@ -692,11 +692,11 @@ wgpu_update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixe
 	if td.kind != .RGBA || td.wtex == nil || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
 	pitch := stride > 0 ? stride : w * 4
 	if len(pixels) < pitch * (h - 1) + w * 4 { return }
-	premultiply_upload(r, td, w, h, pixels, pitch)
+	data, row, n := premultiply_upload(r, td, w, h, pixels, pitch)
 	wgpu.QueueWriteTexture(r.wg.queue,
 		&{texture = td.wtex, mipLevel = 0, origin = {u32(x), u32(y), 0}, aspect = .All},
-		raw_data(r.scratch), uint(w * h * 4),
-		&{offset = 0, bytesPerRow = u32(w * 4), rowsPerImage = u32(h)},
+		data, uint(n),
+		&{offset = 0, bytesPerRow = u32(row), rowsPerImage = u32(h)},
 		&{u32(w), u32(h), 1})
 	if td.mips { td.mips_dirty = true }
 }

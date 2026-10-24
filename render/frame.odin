@@ -70,6 +70,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer if timed { gpu_timing_end(r) }
 	// images updated since their last draw: rebuild their mip chains first
 	for &td in r.textures {
+		if td.unfilled { zero_unfilled(r, &td) }
 		if td.mips_dirty { r.ctx->GenerateMips(td.view); td.mips_dirty = false }
 	}
 	upload_structured(r, &r.xform_buf, &r.xform_view, &r.xform_cap, raw_data(f.xforms), len(f.xforms), size_of(Xform_Data))

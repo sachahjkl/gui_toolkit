@@ -373,6 +373,7 @@ d3d_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool 
 	r.ctx->PSSetShaderResources(0, 3, &none[0])
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	td.mips_dirty = td.mips
+	td.unfilled = false   // the conversion wrote every texel
 	return true
 }
 
