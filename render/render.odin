@@ -190,6 +190,7 @@ Batch :: struct {
 	op:    int,           // > 0: not a draw call: Frame_Data.ops[op - 1]
 	replay: int,          // > 0: draws retained instances (`first` indexes the retained instance heap) through
 	                      // Frame_Data.replays[replay - 1]
+	app:   int,           // > 0: one KIND_APP instance (`first`, count 1) drawn by Frame_Data.apps[app - 1]'s shader (app_shader.odin)
 	shape: u32,           // while a picture is recorded: its innermost clip (the scissor is computed at replay)
 }
 
@@ -316,9 +317,19 @@ Frame_Data :: struct {
 	slug_runs:   [][2]int,
 	slug_curves: Texture,
 	slug_bands:  Texture,
+	// Application shaders (app_shader.odin): the draws (Batch.app) and the vec4 parameters they read (an instance's `aux` is the
+	// first one of its draw)
+	apps:       []App_Draw,
+	app_params: [][4]f32,
 }
 
-Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot, Slug_Curves, Slug_Bands }
+Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot, Slug_Curves, Slug_Bands, Data }
+
+// The texels of a data texture (create_texture_data): raw 8-bit values, never color-converted.
+Data_Format :: enum u8 {
+	RGBA8,   // four channels (a normal map, a mask pack); sampled as 0..1 floats, no sRGB decoding, not premultiplied
+	R8,      // one channel (a height map, a mask)
+}
 
 Texture_Data :: struct {
 	tex:  ^d3d11.ITexture2D,
@@ -329,6 +340,7 @@ Texture_Data :: struct {
 	kind: Texture_Kind,
 	mips: bool,           // has a full mip chain (generated after updates, before the next draw)
 	mips_dirty: bool,
+	data_format: Data_Format,   // Data only
 	space: Blend_Space,   // RGBA: how texels are stored (see create_texture_rgba)
 	unorm: bool,          // Target: 8 bits per channel (else fp16)
 	wtex:  wgpu.Texture,       // TOOLKIT_RENDER=wgpu: the texture,
@@ -368,6 +380,13 @@ Renderer :: struct {
 	grads_view:  ^d3d11.IShaderResourceView,
 	grads_cap:   int,
 	replay_cb:   ^d3d11.IBuffer,          // constant buffer b2: the Replay of the batch being drawn
+	apps:        [dynamic]App_Shader_Data,   // application shaders (app_shader.odin); index 0 is a dummy
+	app_blend:   [App_Blend]^d3d11.IBlendState,
+	app_params_buf:  ^d3d11.IBuffer,      // the parameters of the frame's app draws (t13)
+	app_params_view: ^d3d11.IShaderResourceView,
+	app_params_cap:  int,
+	app_empty_tex:   ^d3d11.ITexture2D,   // 1 x 1 transparent: the textures a draw leaves empty
+	app_empty_view:  ^d3d11.IShaderResourceView,
 	heaps:       [Heap_Kind]Heap,         // retained data of pictures (retained.odin)
 	heap_generation: u64,                 // bumps when the heaps are emptied (device lost): pictures upload again
 	device_generation: u64,               // bumps when the device was recreated (recover): texture contents were lost
@@ -500,6 +519,8 @@ d3d_destroy :: proc(r: ^Renderer) {
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	profile_destroy(r)
 	video_pipeline_destroy(r)
+	d3d_app_objects_release(r)
+	app_shaders_destroy(r)
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
@@ -688,6 +709,8 @@ init_pipeline :: proc(r: ^Renderer) -> bool {
 
 	bd.RenderTarget[0] = {BlendEnable = false, RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL)}
 	r.device->CreateBlendState(&bd, &r.blend_replace)
+	d3d_app_blend_states(r)
+	d3d_app_empty_texture(r)
 	// filter passes and reduced layers: the shader makes the transparent border itself (sample_border: the same code runs on WebGPU)
 	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP}, &r.sampler_border)
 	fx_vs_code, fx_vs_blob := shader_code(.Filter_VS) or_return
@@ -921,6 +944,10 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 		texel = 4
 		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
 	}
+	if td.kind == .Data {
+		if td.data_format == .RGBA8 { desc.Format, texel = .R8G8B8A8_UNORM, 4 }
+		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
+	}
 	#partial switch td.kind {
 	case .Slug_Curves: desc.Format, texel = .R16G16B16A16_FLOAT, 8
 	case .Slug_Bands: desc.Format, texel = .R16G16_UINT, 4
@@ -1008,6 +1035,33 @@ d3d_update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixel
 	premultiply_upload(r, td, w, h, pixels, pitch)
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.scratch), u32(w * 4), 0)
+	if td.mips { td.mips_dirty = true }
+}
+
+// A data texture: raw 8-bit values the shaders of draw.app_shader read as they are (a normal map, a height map, a mask): no
+// sRGB decoding, no premultiplication, in either blend space. Contents start at zero. Same limits and mip behavior as
+// create_texture_rgba (`mips`: a full chain, rebuilt before the next frame after an update; a box filter, so normal maps
+// lose a little length in the small levels).
+d3d_create_texture_data :: proc(r: ^Renderer, w, h: int, format: Data_Format, mips: bool) -> Texture {
+	limit := max_texture_size(r)
+	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
+	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .Data, data_format = format}
+	support: u32
+	r.device->CheckFormatSupport(format == .R8 ? .R8_UNORM : .R8G8B8A8_UNORM, &support)
+	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
+	if !texture_objects(r, &td) { return 0 }
+	return add_texture(r, td)
+}
+
+d3d_update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride: int) {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return }
+	td := &r.textures[int(t)]
+	texel := td.data_format == .R8 ? 1 : 4
+	if td.kind != .Data || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
+	pitch := stride > 0 ? stride : w * texel
+	if len(pixels) < pitch * (h - 1) + w * texel { return }
+	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
+	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
 	if td.mips { td.mips_dirty = true }
 }
 
@@ -1150,6 +1204,7 @@ texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
 	switch r.textures[int(t)].kind {
 	case .None: return 0
 	case .R8: return 1
+	case .Data: return r.textures[int(t)].data_format == .R8 ? 1 : 4
 	case .RGBA, .Snapshot, .Slug_Bands: return 4
 	case .Target: return r.textures[int(t)].unorm ? 4 : 8
 	case .Slug_Curves: return 8
@@ -1339,6 +1394,9 @@ texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 		case .R8: m.glyphs += td.size * td.size
 		case .RGBA:
 			n := td.w * td.h * 4
+			m.images += td.mips ? n * 4 / 3 : n
+		case .Data:
+			n := td.w * td.h * (td.data_format == .R8 ? 1 : 4)
 			m.images += td.mips ? n * 4 / 3 : n
 		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : 8)
 		case .Slug_Curves: m.slug += td.w * td.h * 8

@@ -155,6 +155,8 @@ Context :: struct {
 	replays:  [dynamic]render.Replay,          // pictures drawn this frame
 	glyphs:   Glyph_Pages,                     // textures of the font atlas pages (text.odin)
 	slug_runs: [dynamic][2]int,                // instances of KIND_SLUG: [first, count) of `insts` (slug.odin)
+	apps:     [dynamic]render.App_Draw,        // application shader draws of this frame (app_shader.odin)
+	app_params: [dynamic][4]f32,               // their parameters
 	slug:     Slug_GPU,                        // textures of the font's Slug glyph pages
 	// retained drawing (picture.odin)
 	rec:      ^Picture,                        // the picture being recorded, nil = drawing the frame
@@ -199,6 +201,7 @@ destroy :: proc(c: ^Context) {
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
 	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures); delete(c.slug_runs)
+	delete(c.apps); delete(c.app_params)
 	saved_destroy(&c.saved)
 	slug_gpu_destroy(c)
 	text_destroy(c)
@@ -214,7 +217,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 		text_device_reset(c)
 		slug_gpu_device_reset(c)
 	}
-	clear(&c.slug_runs)
+	clear(&c.slug_runs); clear(&c.apps); clear(&c.app_params)
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
 	clear(&c.open_layers); clear(&c.planes); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
@@ -537,5 +540,6 @@ end_frame :: proc(c: ^Context) {
 		points = c.clip_points[:], layers = c.layers[:], ops = c.ops[:],
 		grads = c.grads[:], replays = c.replays[:],
 		slug_runs = c.slug_runs[:], slug_curves = c.slug.curves, slug_bands = c.slug.bands,
+		apps = c.apps[:], app_params = c.app_params[:],
 	})
 }

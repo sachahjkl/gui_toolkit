@@ -84,14 +84,14 @@ Wgpu_State :: struct {
 	present_mode:  wgpu.PresentMode,
 	// shaders, layouts, pipelines
 	module_rect, module_fx, module_mip, module_slug: wgpu.ShaderModule,
-	bgl0, bgl1, bgl_fx, bgl_mip: wgpu.BindGroupLayout,
-	pl_main, pl_fx, pl_mip: wgpu.PipelineLayout,
+	bgl0, bgl1, bgl_fx, bgl_mip, bgl_app: wgpu.BindGroupLayout,
+	pl_main, pl_fx, pl_mip, pl_app: wgpu.PipelineLayout,
 	pipes, fx_pipes, mip_pipes, slug_pipes: [dynamic]Wgpu_Pipe,
 	s_atlas, s_img, s_wrap, s_fx, s_mip: wgpu.Sampler,
 	dummy_r8, dummy_rgba, dummy_curves, dummy_bands: wgpu.Texture,
 	dummy_r8_view, dummy_rgba_view, dummy_curves_view, dummy_bands_view: wgpu.TextureView,
 	// tables of the frame
-	inst, xforms, clips, points, grads: Wgpu_Table,
+	inst, xforms, clips, points, grads, app_params: Wgpu_Table,
 	arena:         wgpu.Buffer,
 	arena_cap:     int,
 	arena_used:    int,
@@ -466,6 +466,13 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	g.bgl_mip = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "mip", entryCount = len(emip), entries = raw_data(emip[:])})
 	l_main := [2]wgpu.BindGroupLayout{g.bgl0, g.bgl1}
 	g.pl_main = wgpu.DeviceCreatePipelineLayout(g.device, &{label = "main", bindGroupLayoutCount = 2, bindGroupLayouts = raw_data(l_main[:])})
+	// application shaders (app.wgsl): group 2 = the draw's parameters and its four textures
+	eapp := [?]wgpu.BindGroupLayoutEntry{
+		bgl_buffer(0, F, .ReadOnlyStorage, false, 0), bgl_texture(1, F), bgl_texture(2, F), bgl_texture(3, F), bgl_texture(4, F),
+	}
+	g.bgl_app = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "app", entryCount = len(eapp), entries = raw_data(eapp[:])})
+	l_app := [3]wgpu.BindGroupLayout{g.bgl0, g.bgl1, g.bgl_app}
+	g.pl_app = wgpu.DeviceCreatePipelineLayout(g.device, &{label = "app", bindGroupLayoutCount = 3, bindGroupLayouts = raw_data(l_app[:])})
 	g.pl_fx = wgpu.DeviceCreatePipelineLayout(g.device, &{label = "filter", bindGroupLayoutCount = 1, bindGroupLayouts = &g.bgl_fx})
 	g.pl_mip = wgpu.DeviceCreatePipelineLayout(g.device, &{label = "mip", bindGroupLayoutCount = 1, bindGroupLayouts = &g.bgl_mip})
 
@@ -634,11 +641,17 @@ wgpu_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	#partial switch td.kind {
 	case .Slug_Curves: format = .RGBA16Float
 	case .Slug_Bands: format = .RG16Uint
+	case .Data:
+		format = td.data_format == .R8 ? .R8Unorm : .RGBA8Unorm
+		if td.mips {
+			levels = int(bits.log2(u32(max(td.w, td.h)))) + 1
+			usage += {.RenderAttachment}
+		}
 	}
 	td.wformat = format
 	td.mip_count = levels
 	td.wtex = wgpu.DeviceCreateTexture(g.device, &{
-		label = td.kind == .R8 ? "glyph atlas" : (td.kind == .RGBA ? "image" : "slug data"), usage = usage, dimension = ._2D,
+		label = td.kind == .R8 ? "glyph atlas" : (td.kind == .RGBA ? "image" : (td.kind == .Data ? "data" : "slug data")), usage = usage, dimension = ._2D,
 		size = {u32(td.w), u32(td.h), 1}, format = format, mipLevelCount = u32(levels), sampleCount = 1,
 	})
 	if td.wtex == nil { return false }
@@ -684,6 +697,32 @@ wgpu_update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixe
 		&{texture = td.wtex, mipLevel = 0, origin = {u32(x), u32(y), 0}, aspect = .All},
 		raw_data(r.scratch), uint(w * h * 4),
 		&{offset = 0, bytesPerRow = u32(w * 4), rowsPerImage = u32(h)},
+		&{u32(w), u32(h), 1})
+	if td.mips { td.mips_dirty = true }
+}
+
+@(private)
+wgpu_create_texture_data :: proc(r: ^Renderer, w, h: int, format: Data_Format, mips: bool) -> Texture {
+	limit := wgpu_max_texture_size(r)
+	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
+	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .Data, data_format = format}
+	td.mips = mips && (w > 1 || h > 1)
+	if !wgpu_texture_objects(r, &td) { return 0 }
+	return add_texture(r, td)
+}
+
+@(private)
+wgpu_update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride: int) {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return }
+	td := &r.textures[int(t)]
+	texel := td.data_format == .R8 ? 1 : 4
+	if td.kind != .Data || td.wtex == nil || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
+	pitch := stride > 0 ? stride : w * texel
+	if len(pixels) < pitch * (h - 1) + w * texel { return }
+	wgpu.QueueWriteTexture(r.wg.queue,
+		&{texture = td.wtex, mipLevel = 0, origin = {u32(x), u32(y), 0}, aspect = .All},
+		raw_data(pixels), uint(pitch * (h - 1) + w * texel),
+		&{offset = 0, bytesPerRow = u32(pitch), rowsPerImage = u32(h)},
 		&{u32(w), u32(h), 1})
 	if td.mips { td.mips_dirty = true }
 }
@@ -848,7 +887,8 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	}
 	wgpu_release_pipelines(g)
 	rel :: proc(p: ^$T, $f: proc "c" (T)) { if p^ != nil { f(p^); p^ = nil } }
-	for t in ([?]^Wgpu_Table{&g.inst, &g.xforms, &g.clips, &g.points, &g.grads}) {
+	for &d in r.apps { if d.live { wgpu_app_shader_release(r, &d) } }
+	for t in ([?]^Wgpu_Table{&g.inst, &g.xforms, &g.clips, &g.points, &g.grads, &g.app_params}) {
 		if t.buf != nil { wgpu.BufferRelease(t.buf) }
 		t^ = {}
 	}
@@ -861,6 +901,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	rel(&g.s_atlas, wgpu.SamplerRelease); rel(&g.s_img, wgpu.SamplerRelease); rel(&g.s_wrap, wgpu.SamplerRelease)
 	rel(&g.s_fx, wgpu.SamplerRelease); rel(&g.s_mip, wgpu.SamplerRelease)
 	rel(&g.pl_main, wgpu.PipelineLayoutRelease); rel(&g.pl_fx, wgpu.PipelineLayoutRelease); rel(&g.pl_mip, wgpu.PipelineLayoutRelease)
+	rel(&g.pl_app, wgpu.PipelineLayoutRelease); rel(&g.bgl_app, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl0, wgpu.BindGroupLayoutRelease); rel(&g.bgl1, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl_fx, wgpu.BindGroupLayoutRelease); rel(&g.bgl_mip, wgpu.BindGroupLayoutRelease)
 	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease); rel(&g.module_slug, wgpu.ShaderModuleRelease)
@@ -886,6 +927,7 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(&r.wg)
 	wgpu_release_objects(r)
+	app_shaders_destroy(r)
 	wgpu_heaps_destroy(r)
 	wgpu_release_device(r)
 	present_destroy(r)
@@ -908,10 +950,11 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	if ok { wgpu_frame_formats(r) }
 	ok = ok && (was_offscreen ? wgpu_create_offscreen(r) : wgpu_configure_surface(r))
 	ok = ok && wgpu_init_pipeline(r)
+	wgpu_app_shaders_recreate(r)
 	for i in 1 ..< len(r.textures) {
 		td := &r.textures[i]
 		#partial switch td.kind {
-		case .R8, .RGBA, .Slug_Curves, .Slug_Bands:
+		case .R8, .RGBA, .Slug_Curves, .Slug_Bands, .Data:
 			if !wgpu_texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td.kind = .None }
 		case:
 			if td.kind != .None { td^ = {}; append(&r.free_textures, Texture(i)) }

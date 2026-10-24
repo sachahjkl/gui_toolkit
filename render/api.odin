@@ -75,6 +75,18 @@ update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: [
 	when USE_WGPU { wgpu_update_texture_rgba(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_rgba(r, t, x, y, w, h, pixels, stride) }
 }
 
+// A texture of raw 8-bit data for the shaders of draw.app_shader (a normal map, a height map, a mask): sampled as 0..1 floats,
+// with no sRGB decoding and no premultiplication, whatever the blend space. Contents start at zero. 0: out of range or refused.
+create_texture_data :: proc(r: ^Renderer, w, h: int, format := Data_Format.RGBA8, mips := true) -> Texture {
+	when USE_WGPU { return wgpu_create_texture_data(r, w, h, format, mips) } else { return d3d_create_texture_data(r, w, h, format, mips) }
+}
+
+// Uploads a w x h block at (x, y) of a data texture: `pixels` are its texels as they are (4 bytes each for RGBA8, 1 for R8);
+// `stride` = bytes per row (0: tight).
+update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
+	when USE_WGPU { wgpu_update_texture_data(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_data(r, t, x, y, w, h, pixels, stride) }
+}
+
 destroy_texture :: proc(r: ^Renderer, t: Texture) {
 	when USE_WGPU { wgpu_destroy_texture(r, t) } else { d3d_destroy_texture(r, t) }
 }

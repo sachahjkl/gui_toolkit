@@ -196,6 +196,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	upload_table(g, &g.clips, raw_data(f.clips), len(f.clips), size_of(Clip_Data))
 	upload_table(g, &g.points, raw_data(f.points), len(f.points), size_of([2]f32))
 	upload_table(g, &g.grads, raw_data(f.grads), len(f.grads), size_of([4]f32))
+	if len(f.apps) > 0 { upload_table(g, &g.app_params, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
 	if g.inst.buf == nil || len(f.insts) > g.inst.cap {
 		if g.inst.buf != nil { wgpu.BufferRelease(g.inst.buf) }
 		g.inst.cap = max(len(f.insts), g.inst.cap * 2, 4096)
@@ -305,6 +306,10 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 			bound_tex, bound_image, bound_backdrop = b.tex, b.image, b.backdrop
 		}
 		wgpu.RenderPassEncoderSetScissorRect(s.pass, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1])
+		if b.app > 0 {
+			wgpu_draw_app(r, &s, b, cur_format, &bound_pipe)
+			continue
+		}
 		if !has_slug {
 			pipe := wgpu_pipeline(r, cur_format, replace)
 			if pipe != bound_pipe {

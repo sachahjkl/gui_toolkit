@@ -64,7 +64,7 @@ jobs:
         shell: pwsh
         run: |
           $failed = 0
-          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'shaders', 'slug', 'colr') {
+          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr') {
             # @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
             $extra = @(if ($t -in 'keyboard', 'status', 'states') { '-define:ODIN_TEST_THREADS=1' })
             $o = odin test "tests/$t" -vet @extra -out:"build/${t}_test.exe" 2>&1 | Out-String

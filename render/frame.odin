@@ -76,6 +76,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	upload_structured(r, &r.clip_buf, &r.clip_view, &r.clip_cap, raw_data(f.clips), len(f.clips), size_of(Clip_Data))
 	upload_structured(r, &r.points_buf, &r.points_view, &r.points_cap, raw_data(f.points), len(f.points), size_of([2]f32))
 	upload_structured(r, &r.grads_buf, &r.grads_view, &r.grads_cap, raw_data(f.grads), len(f.grads), size_of([4]f32))
+	if len(f.apps) > 0 { upload_structured(r, &r.app_params_buf, &r.app_params_view, &r.app_params_cap, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
 	if len(f.insts) > r.inst_cap {
 		if r.inst_buf != nil { r.inst_buf->Release() }
 		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, 4096))
@@ -159,7 +160,13 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		}
 		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
 		r.ctx->RSSetScissorRects(1, &rc)
-		if has_slug { draw_batch_split(r, f, b) } else { r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first)) }
+		if b.app > 0 {
+			d3d_draw_app(r, f, b)
+		} else if has_slug {
+			draw_batch_split(r, f, b)
+		} else {
+			r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))
+		}
 		drawing = true
 		if r.prof.detail && r.prof.cur != nil {
 			d := Gpu_Step_Rec{batch = i32(bi), insts = i32(b.count), scissor = {rc.left, rc.top, rc.right, rc.bottom}}
