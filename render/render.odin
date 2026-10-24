@@ -341,6 +341,7 @@ Texture_Data :: struct {
 	mips: bool,           // has a full mip chain (generated after updates, before the next draw)
 	mips_dirty: bool,
 	data_format: Data_Format,   // Data only
+	unfilled: bool,       // RGBA: nothing was ever written (D3D leaves DEFAULT textures undefined): zeroed before the first draw, unless an update covering the whole texture comes first
 	space: Blend_Space,   // RGBA: how texels are stored (see create_texture_rgba)
 	unorm: bool,          // Target: 8 bits per channel (else fp16)
 	wtex:  wgpu.Texture,       // TOOLKIT_RENDER=wgpu: the texture,
@@ -407,6 +408,7 @@ Renderer :: struct {
 	free_textures: [dynamic]Texture,      // destroyed slots, reused by the next create
 	targets:     [dynamic]Pooled_Target,  // layer render targets and snapshots, reused from frame to frame
 	scratch:     [dynamic]u8,             // RGBA upload conversion
+	zeros:       [dynamic]u8,             // zero_unfilled: a band of zero bytes
 	gpu_queries: [GPU_QUERY_FRAMES][3]^d3d11.IQuery,   // GPU_TIMING: disjoint, begin, end per frame slot
 	gpu_frame:   int,
 	gpu_last_ms: f32,
@@ -516,7 +518,7 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 d3d_destroy :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
 	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
-	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
+	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch); delete(r.zeros)
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	profile_destroy(r)
 	video_pipeline_destroy(r)
@@ -955,6 +957,14 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	}
 	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
 	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
+	if td.kind == .RGBA {
+		// an image is nearly always written whole right after (update_texture_rgba): the zeroing waits for the first
+		// frame that draws it (zero_unfilled), and not at all when the whole texture is written before that. Zeroing here
+		// took one driver call per row, 1 to 4 ms for a photo.
+		td.unfilled = true
+		td.mips_dirty = false
+		return true
+	}
 	zero := make([]u8, td.w * texel)
 	defer delete(zero)
 	for y in 0 ..< td.h {
@@ -963,6 +973,20 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	}
 	td.mips_dirty = td.mips
 	return true
+}
+
+// Writes zeros into an RGBA texture nothing was written to (see Texture_Data.unfilled): one UpdateSubresource of the
+// whole level 0 (its mips follow), through a zeroed buffer made once and kept.
+@(private)
+zero_unfilled :: proc(r: ^Renderer, td: ^Texture_Data) {
+	td.unfilled = false
+	rows := max(1, min(td.h, (1 << 20) / (td.w * 4)))
+	if len(r.zeros) < rows * td.w * 4 { runtime.resize(&r.zeros, rows * td.w * 4); mem.zero_slice(r.zeros[:]) }
+	for y := 0; y < td.h; y += rows {
+		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(min(y + rows, td.h)), back = 1}
+		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.zeros), u32(td.w * 4), 0)
+	}
+	td.mips_dirty = td.mips
 }
 
 d3d_update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
@@ -1033,9 +1057,12 @@ d3d_update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixel
 	if td.kind != .RGBA || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
 	pitch := stride > 0 ? stride : w * 4
 	if len(pixels) < pitch * (h - 1) + w * 4 { return }
-	premultiply_upload(r, td, w, h, pixels, pitch)
+	if td.unfilled {
+		if x == 0 && y == 0 && w == td.w && h == td.h { td.unfilled = false } else { zero_unfilled(r, td) }
+	}
+	data, row, _ := premultiply_upload(r, td, w, h, pixels, pitch)
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
-	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.scratch), u32(w * 4), 0)
+	r.ctx->UpdateSubresource(td.tex, 0, &box, data, u32(row), 0)
 	if td.mips { td.mips_dirty = true }
 }
 
@@ -1066,14 +1093,53 @@ d3d_update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixel
 	if td.mips { td.mips_dirty = true }
 }
 
-// Converts a w x h block of straight sRGB RGBA8 to the texture's storage (see create_texture_rgba) into r.scratch.
+// True when every pixel of the block has alpha 255 (RGBA8 rows `pitch` bytes apart): an opaque image needs no conversion.
+// A reduction of the words' AND, which the compiler vectorizes: memory speed, and a transparent image stops at its first
+// row with a translucent pixel.
 @(private)
-premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: []u8, pitch: int) {
-	srgb_tables_init()
-	runtime.resize(&r.scratch, w * h * 4)
+block_is_opaque :: proc(pixels: []u8, w, h, pitch: int) -> bool {
 	for row in 0 ..< h {
-		src := pixels[row * pitch:][:w * 4]
-		dst := r.scratch[row * w * 4:][:w * 4]
+		words := ([^]u32)(raw_data(pixels[row * pitch:]))[:w]
+		acc: u32 = 0xFFFF_FFFF
+		for v in words { acc &= v }
+		if acc >> 24 != 0xFF { return false }
+	}
+	return true
+}
+
+// One RGBA8 pixel (R in the low byte) premultiplied: each color channel c becomes round(c * a / 255) = (c * a + 127) / 255
+// (the division as the exact multiply-and-shift ((t + 128) * 257) >> 16 of t = c * a, two channels per multiply).
+@(private)
+premultiply_word :: #force_inline proc "contextless" (px: u32) -> u32 {
+	a := px >> 24
+	rb := (px & 0x00FF_00FF) * a + 0x0080_0080
+	rb = ((rb + ((rb >> 8) & 0x00FF_00FF)) >> 8) & 0x00FF_00FF
+	g := ((px >> 8) & 0xFF) * a + 128
+	g = (g + (g >> 8)) >> 8
+	return rb | (g & 0xFF) << 8 | a << 24
+}
+
+// Converts a w x h block of straight sRGB RGBA8 to the texture's storage (see create_texture_rgba) into r.scratch, and
+// returns what to upload: the converted copy, or the caller's own pixels when they are opaque (premultiplying changes
+// nothing: no pass over them, no copy; `row` = bytes between rows, `n` = bytes the upload reads).
+@(private)
+premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: []u8, pitch: int) -> (data: rawptr, row, n: int) {
+	if block_is_opaque(pixels, w, h, pitch) { return raw_data(pixels), pitch, pitch * (h - 1) + w * 4 }
+	runtime.resize(&r.scratch, w * h * 4)
+	if td.space == .Srgb {
+		// premultiplied on the sRGB values themselves: no tables and no branches, a word at a time (what the compiler
+		// vectorizes); alpha 255 and 0 come out right by themselves
+		for y in 0 ..< h {
+			src := ([^]u32)(raw_data(pixels[y * pitch:]))[:w]
+			dst := ([^]u32)(raw_data(r.scratch[y * w * 4:]))[:w]
+			for i in 0 ..< w { dst[i] = premultiply_word(src[i]) }
+		}
+		return raw_data(r.scratch), w * 4, w * h * 4
+	}
+	srgb_tables_init()
+	for y in 0 ..< h {
+		src := pixels[y * pitch:][:w * 4]
+		dst := r.scratch[y * w * 4:][:w * 4]
 		for i := 0; i < w * 4; i += 4 {
 			a := src[i + 3]
 			switch a {
@@ -1093,6 +1159,7 @@ premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: [
 			}
 		}
 	}
+	return raw_data(r.scratch), w * 4, w * h * 4
 }
 
 // How an RGBA texture stores its texels (the renderer's blend space when it was created).
