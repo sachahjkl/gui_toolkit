@@ -419,6 +419,7 @@ Renderer :: struct {
 	wg:          Wgpu_State,             // TOOLKIT_RENDER=wgpu (wgpu_*.odin); zero otherwise
 	first_present_noted: bool,
 	capture:     Capture_State,          // capture.odin: reading a frame back
+	teardown_wait_ms: int,               // set_teardown_wait
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
@@ -507,7 +508,7 @@ d3d_destroy :: proc(r: ^Renderer) {
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	slug_destroy(r)
 	capture_destroy(r)
-	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
+	release_presentation(r)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle) }
 	present_destroy(r)
 	if r.ctx != nil { r.ctx->ClearState() }
@@ -1431,3 +1432,57 @@ d3d_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 	defer sc2->Release()
 	return win.SUCCEEDED(sc2->SetMaximumFrameLatency(u32(clamp(n, 1, 16))))
 }
+
+// What presents the frame (the swap chain and, for a translucent window, its DirectComposition objects) is released. Releasing a
+// swap chain waits for the compositor to let go of the window's surface, and the compositor is another program: a machine whose
+// cores are all busy made that wait seconds. With `set_teardown_wait` the release runs on a thread of its own and `destroy` waits
+// for it that long at most: past it the release goes on by itself (the device stays alive until the last object is released, and a
+// program that is ending takes the rest with it).
+@(private)
+release_presentation :: proc(r: ^Renderer) {
+	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	if r.teardown_wait_ms <= 0 || r.swapchain == nil {
+		rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
+		return
+	}
+	a := new(Async_Release, runtime.heap_allocator())
+	a^ = {visual = r.dcomp_visual, target = r.dcomp_target, dcomp = r.dcomp, swapchain = r.swapchain}
+	r.dcomp_visual, r.dcomp_target, r.dcomp, r.swapchain = nil, nil, nil, nil
+	a.done = win.CreateEventW(nil, true, false, nil)
+	thread := win.CreateThread(nil, 0, async_release_main, a, 0, nil)
+	if thread == nil {
+		async_release_main(a)   // (no thread: here, and wait as before)
+		win.CloseHandle(a.done)
+		free(a, runtime.heap_allocator())
+		return
+	}
+	win.CloseHandle(thread)
+	if win.WaitForSingleObject(a.done, win.DWORD(r.teardown_wait_ms)) == win.WAIT_OBJECT_0 {
+		win.CloseHandle(a.done)
+		free(a, runtime.heap_allocator())
+	}   // else: the thread finishes alone (and keeps `a` and the event: a few bytes, in a program that is ending)
+}
+
+@(private)
+Async_Release :: struct {
+	visual:    ^IDCompositionVisual,
+	target:    ^IDCompositionTarget,
+	dcomp:     ^IDCompositionDevice,
+	swapchain: ^dxgi.ISwapChain1,
+	done:      win.HANDLE,
+}
+
+@(private)
+async_release_main :: proc "system" (p: rawptr) -> win.DWORD {
+	a := (^Async_Release)(p)
+	if a.visual != nil { a.visual->Release() }
+	if a.target != nil { a.target->Release() }
+	if a.dcomp != nil { a.dcomp->Release() }
+	if a.swapchain != nil { a.swapchain->Release() }
+	win.SetEvent(a.done)
+	return 0
+}
+
+// `destroy` waits at most `ms` milliseconds for the swap chain to be released (0: as long as it takes). A program that ends right
+// after `destroy` sets it, so that a compositor with no time to spare does not hold it up.
+set_teardown_wait :: proc(r: ^Renderer, ms: int) { r.teardown_wait_ms = max(ms, 0) }

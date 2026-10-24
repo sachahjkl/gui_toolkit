@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.22.1] - 2026-10-24
+
+### Added
+- `render.set_teardown_wait(r, ms)`: `destroy` waits at most that long for the swap chain (and a translucent window's DirectComposition objects) to be released, which happens on a thread of its own; past it the release goes on by itself. Releasing a swap chain waits for the system's compositor to let go of the window's surface, and on a machine whose cores are all busy that took seconds in a program that was closing. 0 (the default): `destroy` waits as long as it takes, as before.
+
 ## [0.22.0] - 2026-10-23
 
 ### Added
