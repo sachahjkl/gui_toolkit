@@ -56,19 +56,25 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 	r.dcomp_visual, s.dcomp_visual = s.dcomp_visual, r.dcomp_visual
 }
 
-// A swap chain for the window `hwnd` (opaque), on the renderer's device.
-surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int) -> (s: Surface, ok: bool) {
+// A swap chain for the window `hwnd`, on the renderer's device. By default an HWND swap chain (opaque): its buffers map onto the
+// client area, so a window being resized shows the last frame stretched until a frame of the new size arrives.
+// `transparent`: a composition swap chain, as render.init's (open the window with platform's `transparent` too, which gives it
+// no GDI surface); the blend space is the renderer's. With it, `fixed_size` (> 0) is what set_fixed_surface does for the
+// renderer's own window: the buffers keep that size (the monitor's, say) while the window is resized, shown 1:1 and clipped by the
+// client area, so nothing is ever stretched. Where DirectComposition is missing the surface is an opaque HWND chain, as render.init's.
+surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (s: Surface, ok: bool) {
 	when USE_WGPU {
 		fmt.eprintln("render: second windows need the Direct3D 11 backend")
 		return
 	} else {
 		s.hwnd, s.size = hwnd, size
 		exchange(r, &s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
-		r.transparent = false
+		r.transparent = transparent
 		r.fixed_surface = false
 		surface_creating = true
 		ok = create_swapchain(r)
 		surface_creating = false
+		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }
 		exchange(r, &s)
 		s.valid = ok
 		return
@@ -83,7 +89,7 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 		r.ctx->OMSetRenderTargets(0, nil, nil)
 		if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
 		if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
-		if r.swapchain != nil { r.swapchain->Release(); r.swapchain = nil }
+		release_presentation(r)   // the swap chain and a translucent window's DirectComposition objects (render.odin)
 		if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
 		present_destroy(r)
 		exchange(r, s)
