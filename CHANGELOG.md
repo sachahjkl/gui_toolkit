@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.23.0] - 2026-10-24
+
+### Changed
+- `render.surface_create(r, hwnd, size, transparent = false, fixed_size = {})`: a second window can have a composition swap chain (`transparent`, with the window opened with `platform.open_window(..., transparent = true)`) and a fixed surface (`fixed_size`, as `set_fixed_surface` does for the renderer's own window): resized, it shows its buffers 1:1 clipped by the client area, never stretched. The default stays an opaque HWND swap chain, which stretches the last frame while the window is resized. `surface_destroy` also releases a translucent surface's DirectComposition objects (and goes through `set_teardown_wait`).
+
 ## [0.22.1] - 2026-10-24
 
 ### Added
