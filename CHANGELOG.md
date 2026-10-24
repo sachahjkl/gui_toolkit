@@ -3,6 +3,15 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.25.0] - 2026-10-24
+
+### Added
+- **Application shaders** (`render/app_shader.odin`, `app.wgsl`, `wgpu_app.odin`, `draw/app_shader.odin`, [docs/shaders.md](docs/shaders.md)): `render.create_app_shader(r, {name, wgsl, dxbc, hash})` registers a fragment function the application wrote in WGSL (`fn app_shade(a: AppIn) -> vec4<f32>`, linear light, straight alpha; it reads `app_param(k)` and `app_tex0..3`), and `draw.app_shader(dc, shader, rect, params, textures, blend, radii, tint)` fills a rounded rectangle with it, in order with everything else, under the transform stack, clips, alpha stack, layers and planes (the vertex stage, corner shape and clip coverage are the renderer's). Up to 64 vec4 parameters and 4 textures per draw; blend modes `Normal`, `Add`, `Screen`, `Multiply`. Refuses (returns false, draws nothing) for shader 0, while a picture is recorded, and over the limits. Both backends: WebGPU compiles the module `rect.wgsl` + `app.wgsl` + the application's WGSL; Direct3D 11 embeds the pixel shader precompiled by `odin run tools/shaders -- app <name> <file.wgsl> <dir>` (naga + D3DCompile, `<name>.dxbc` and `<name>.sha256`; the hash of the module is checked when the shader is created, a stale blob is refused with a message).
+- **Data textures**: `render.create_texture_data(r, w, h, format = .RGBA8 | .R8, mips = true)` and `update_texture_data` make textures of raw 8-bit values (a normal map, a height map, a mask): no sRGB decoding, no premultiplication, in either blend space; mip chain by `GenerateMips` / `mip.wgsl`; recreated (empty) after a device loss like images.
+- `tests/appshaders` (both backends), added to `tools\test_backends.ps1` and CI.
+
+0.24.0 is reserved for another branch; 0.25.0 follows 0.23.0 on purpose.
+
 ## [0.23.0] - 2026-10-24
 
 ### Changed
