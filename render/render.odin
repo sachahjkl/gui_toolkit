@@ -351,6 +351,7 @@ Texture_Data :: struct {
 }
 
 Renderer :: struct {
+	id:          u64,                     // renderer_id
 	device:      ^d3d11.IDevice,
 	ctx:         ^d3d11.IDeviceContext,
 	swapchain:   ^dxgi.ISwapChain1,
