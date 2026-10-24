@@ -202,10 +202,11 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	r.device, r.ctx = new_device, new_ctx
 	ok := r.hwnd == nil ? create_offscreen_target(r) : create_swapchain(r)
 	ok = ok && init_pipeline(r)
+	d3d_app_shaders_recreate(r)
 	for i in 1 ..< len(r.textures) {
 		td := &r.textures[i]
 		#partial switch td.kind {
-		case .R8, .RGBA, .Slug_Curves, .Slug_Bands:
+		case .R8, .RGBA, .Slug_Curves, .Slug_Bands, .Data:
 			if !texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td.kind = .None }
 		case:
 			if td.kind != .None { td^ = {}; append(&r.free_textures, Texture(i)) }
@@ -236,6 +237,7 @@ release_device_objects :: proc(r: ^Renderer) {
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	profile_destroy(r)
 	video_pipeline_destroy(r)
+	d3d_app_objects_release(r)
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)

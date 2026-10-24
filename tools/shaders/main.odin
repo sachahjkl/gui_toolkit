@@ -19,17 +19,14 @@ import "../../render"
 NAGA_EXE :: "build/naga/wgsl2hlsl.exe"
 
 main :: proc() {
-	check := len(os.args) > 1 && os.args[1] == "-check"
-	joined, _ := filepath.join({filepath.dir(#file), "..", ".."}, context.temp_allocator)
-	root, _ := filepath.abs(joined, context.temp_allocator)
-	exe, _ := filepath.join({root, "build", "naga", "wgsl2hlsl.exe"}, context.temp_allocator)
-	if !os.exists(exe) {
-		fmt.println("building naga (tools\\build_naga.ps1)...")
-		if libc.system(strings.clone_to_cstring(fmt.tprintf("powershell -NoProfile -ExecutionPolicy Bypass -File \"%s\\tools\\build_naga.ps1\"", root), context.temp_allocator)) != 0 {
-			fmt.eprintln("shaders: building naga failed")
-			os.exit(1)
-		}
+	// odin run tools/shaders -- app <name> <file.wgsl> <dir> [-check]: the Direct3D 11 pixel shader of an application shader
+	// (render.create_app_shader), from the toolkit's rect.wgsl + app.wgsl + the application's file
+	if len(os.args) > 1 && os.args[1] == "app" {
+		app_main()
+		return
 	}
+	check := len(os.args) > 1 && os.args[1] == "-check"
+	root, exe := toolchain()
 	shaders_dir, _ := filepath.join({root, "render", "shaders"}, context.temp_allocator)
 	tmp_dir, _ := filepath.join({root, "build", "tmp"}, context.temp_allocator)
 	build_dir, _ := filepath.join({root, "build"}, context.temp_allocator)
