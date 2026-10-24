@@ -349,6 +349,7 @@ Texture_Data :: struct {
 	wrtv:  wgpu.TextureView,   // and for rendering into (Target only)
 	wformat: wgpu.TextureFormat,
 	mip_count: int,
+	canvas: u8,           // RGBA, canvas.odin: 1 a source of canvas pixels, 2 a canvas (render target, kept), 3 a R8 clip mask / layer (see canvas_texture_objects)
 }
 
 Renderer :: struct {
@@ -416,6 +417,7 @@ Renderer :: struct {
 	gpu_timing:  bool,                    // set_gpu_timing: measure without -define:GPU_TIMING
 	prof:        Gpu_Profiler,            // set_gpu_profile: GPU time of each step (gpu_profile.odin)
 	video:       Video_Pipeline,          // video.odin: decoded pictures to RGBA textures
+	canvas:      Canvas_Pipeline,         // canvas.odin: 2D canvas drawing
 	targets_gen: u64,                     // targets_generation
 	filter_format: Target_Format,         // set_filter_precision
 	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
@@ -517,7 +519,9 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 // initialized again afterwards.
 d3d_destroy :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	canvas_pipeline_release(r)
 	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
+	canvas_pipeline_free(r)
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch); delete(r.zeros)
 	for &q in r.gpu_queries { for &x in q { rel(&x) } }
 	profile_destroy(r)
@@ -937,6 +941,7 @@ d3d_create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
 // (D3D leaves DEFAULT textures undefined). Used by the create procs and to recreate textures after a device loss.
 @(private)
 texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
+	if td.canvas != 0 { return canvas_texture_objects(r, td) }
 	desc := d3d11.TEXTURE2D_DESC{
 		Width = u32(td.w), Height = u32(td.h), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
@@ -1173,6 +1178,8 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
 	if td.kind == .None { return }
+	if td.canvas == 2 { canvas_state_free(r, t) }
+	td = &r.textures[int(t)]
 	if td.rtv != nil { td.rtv->Release() }
 	if td.view != nil { td.view->Release() }
 	if td.tex != nil { td.tex->Release() }
