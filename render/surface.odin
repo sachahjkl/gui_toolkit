@@ -29,6 +29,9 @@ Surface :: struct {
 	dcomp:          ^IDCompositionDevice,
 	dcomp_target:   ^IDCompositionTarget,
 	dcomp_visual:   ^IDCompositionVisual,
+	capture:        Capture_State,   // a capture is of one window: the next frame_end of this surface
+	gen:            u64,             // Renderer.swap_gen and swap_space, while the surface is set aside:
+	space_epoch:    u64,             // what it was made on and in
 	valid:          bool,
 }
 
@@ -54,6 +57,45 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 	r.dcomp, s.dcomp = s.dcomp, r.dcomp
 	r.dcomp_target, s.dcomp_target = s.dcomp_target, r.dcomp_target
 	r.dcomp_visual, s.dcomp_visual = s.dcomp_visual, r.dcomp_visual
+	r.capture, s.capture = s.capture, r.capture
+	r.swap_gen, s.gen = s.gen, r.swap_gen
+	r.swap_space, s.space_epoch = s.space_epoch, r.swap_space
+}
+
+// The window the renderer holds now was set aside while the device was recreated (recover: only the window in use is remade, with
+// everything else on the device) or the blend space changed: its swap chain and views belong to the old device, or to the old space.
+@(private)
+surface_refresh :: proc(r: ^Renderer) {
+	if r.swap_gen != r.device_generation {
+		rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+		old_device: ^d3d11.IDevice   // the device they were made on: they keep it alive
+		if r.swapchain != nil { r.swapchain->GetDevice(d3d11.IDevice_UUID, (^rawptr)(&old_device)) }
+		rel(&r.rtv); rel(&r.frame_tex)
+		if r.hwnd == nil { rel(&r.offscreen) }
+		release_presentation(r)
+		if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
+		capture_release_device_objects(&r.capture)
+		if old_device != nil {
+			// the old device destroys them when its context runs its queue; until then the old swap chain still owns the window
+			old_ctx: ^d3d11.IDeviceContext
+			old_device->GetImmediateContext(&old_ctx)
+			if old_ctx != nil { old_ctx->ClearState(); old_ctx->Flush(); old_ctx->Release() }
+			old_device->Release()
+		}
+		ok := true
+		if r.hwnd == nil {
+			ok = create_offscreen_target(r)
+		} else {
+			surface_creating = true   // the window may not have a size yet: the swap chain gets the one of the surface
+			ok = create_swapchain(r)
+			surface_creating = false
+		}
+		if !ok { fmt.eprintln("render: a window could not be remade after the device was recreated") }
+		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
+	} else if r.swap_space != r.space_epoch {
+		retarget(r)
+		r.swap_space = r.space_epoch
+	}
 }
 
 // A swap chain for the window `hwnd`, on the renderer's device. By default an HWND swap chain (opaque): its buffers map onto the
@@ -75,6 +117,8 @@ surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent :
 		ok = create_swapchain(r)
 		surface_creating = false
 		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }
+		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
+		r.capture = {}
 		exchange(r, &s)
 		s.valid = ok
 		return
@@ -91,6 +135,7 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 		if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
 		release_presentation(r)   // the swap chain and a translucent window's DirectComposition objects (render.odin)
 		if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
+		capture_destroy(r)
 		present_destroy(r)
 		exchange(r, s)
 		s^ = {}
@@ -98,6 +143,12 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 }
 
 // Makes `s` the window the renderer draws to (its own surface goes into `s`). Call again with the same `s` to go back.
-surface_use :: proc(r: ^Renderer, s: ^Surface) { exchange(r, s) }
+surface_use :: proc(r: ^Renderer, s: ^Surface) {
+	when !USE_WGPU {
+		if !s.valid { return }
+		exchange(r, s)
+		surface_refresh(r)
+	}
+}
 
 _ :: fmt

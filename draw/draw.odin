@@ -167,6 +167,7 @@ Context :: struct {
 	retained_budget: int,                      // bytes of retained heaps kept before evicting unused pictures, 0 = no limit
 	device_generation: u64,                    // render.Renderer.device_generation seen last
 	layer_cache: Layer_Cache,                  // filter results kept across frames (layer_cache.odin)
+	glyphs_pending: u64,                       // color glyphs met that were still being drawn (text.odin glyph_missing)
 }
 
 // A layer being drawn (push_layer / push_effects ... pop_layer).
@@ -186,6 +187,7 @@ Open_Layer :: struct {
 	coverage: render.Image_Ref,  // the mask layers drawn so far, composited (tex 0: none yet)
 	cache:   Cache_Ask, // Layer_Effects.cache_id: a kept result composited (cache.hit: nothing drawn), or one to keep
 	region:  Rect,      // screen region of the layer
+	pending0: u64,      // Context.glyphs_pending when it was opened
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
@@ -339,8 +341,12 @@ pop_clip :: proc(c: ^Context) {
 	start_batch(c)
 }
 
-// Current scissor rect (screen pixels).
-current_clip :: proc(c: ^Context) -> Rect { return c.clips[len(c.clips) - 1].rect }
+// Current scissor rect (screen pixels). While a picture is recorded the screen is not known: every clip is a shape of the picture,
+// and the scissor is as large as can be (it is worked out at replay).
+current_clip :: proc(c: ^Context) -> Rect {
+	if c.rec != nil { return Rect{{-1e9, -1e9}, {1e9, 1e9}} }
+	return c.clips[len(c.clips) - 1].rect
+}
 
 ////////////////////////////////
 // Alpha and transforms

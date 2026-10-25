@@ -32,6 +32,27 @@ Fixes from the review of `font`, `ui` and `platform` (0.26.0). 0.29.0 is the ver
 - `platform.config_dir` with `%APPDATA%` over 259 characters panicked; the clipboard is read up to the size of its block, freed when it cannot be given to the system, and `GlobalLock` is checked.
 - The wake-ups of the caret blink and of a tooltip delay no longer replace each other.
 
+## [0.29.0] - 2026-10-25
+
+Fixes found by the review of `render` and `draw` (branch `fix/render-draw`). 0.30.0 is the font / ui / platform review branch. Each fix has a test that failed before it (`tests/lifecycle` is new).
+
+### Fixed
+- **Plane pieces with more than 6 cuts** (`draw/bsp.odin`): a piece bounded by more than `MAX_PLANE_CUTS` cuts had the extra ones thrown away, so it was drawn over its siblings' region at its own rank and covered planes that had to be in front. It is now divided by a chord between two of its corners into convex halves (the chord is one more cut for each), as often as needed: no cut is lost, no limit. Hidden (`skip`) items no longer take part in the crossing tests.
+- **`draw.app_shader`** keeps `AppIn.pos`, `size` and `px` in local units under a uniform scale plus translation (DPI, zoom) as `docs/shaders.md` says (they were pixels: a scale was baked into the rectangle); any scale now goes through a transform entry. It returns false for a shader that is not `render.app_shader_ready`.
+- **Device loss with several windows** (Direct3D 11): a `Surface` set aside by `surface_use` kept its swap chain, views and capture copy from the old device (undefined behaviour, then a loop of recoveries); and `set_blend_space` gave the new view format to the current window only. The window state carries the device generation and the blend space it was made in, and `surface_use` remakes a stale one (`render.Renderer.swap_gen`, `swap_space`, `space_epoch`; `Surface.gen`, `space_epoch`). `d3d_recover` flushes the old context after releasing its objects (the old HWND swap chain used to keep the window, and `CreateSwapChainForHwnd` crashed). An offscreen renderer notices a device loss at `frame_end`.
+- **Captures** belong to their window (`Capture_State` is exchanged with the `Surface`: the next `frame_end` of that window takes it, not whichever window ends a frame first); the staging copy of an old device is released at recovery (a pending copy becomes `Failed`) instead of being used on the new device.
+- **`wgpu_destroy`** read the texture table after freeing it. **`wgpu_recover`** without a device (adapter gone) returns false at once instead of creating textures on a null device and dropping the textures and shaders for good. A refused app pipeline on wgpu (the module passed, the pipeline did not) gives the shader up instead of invalidating every frame.
+- **App shaders that cannot be remade** after a device loss keep their handle (and name) until `destroy_app_shader`; the handle used to be given to the next shader. `render.app_shader_ready(r, s)` says whether one can be drawn.
+- **Kept layers and planes** (`cache_id`) follow `set_text_rendering`, `set_corner_smoothing` and the font atlas settings (they are in the key now), and a result drawn while a color glyph was still pending (`Settings.color_async`) is not kept (the glyph never came in). A masked layer that lost a target is not kept as the masked result.
+- `push_plane` inside a recorded picture records nothing (it recorded the content flat, unprojected); `current_clip` is not empty while recording.
+- Slug text, when the device refuses the Slug shaders, is not drawn (it was one solid rounded rect per glyph); `d3d_update_texture_r8` checks the handle, the block and the pixels like the other uploads.
+
+### Docs
+- `docs/webgpu.md` lists the functions the WebGPU backend does not have; `docs/draw.md` no longer says 3D is unsupported (planes are); `docs/shaders.md`: `app_shader` and `app_shader_ready`.
+
+### Not fixed (reported)
+- `bsp` still splits the whole context when one pair crosses, with no limit on the number of pieces, and `Plane_Item.geom` is the texel-aligned rectangle (faces that touch look crossing; Wren works around it); a backdrop of a cut plane is captured once per piece; the hash of an app shader does not cover `APP_BINDINGS` (changing it makes every precompiled blob stale: to be done with the applications' blobs); `Surface` release on a thread, the DirectComposition `Panel` lifetime, canvas source textures never zeroed (to check).
+
 ## [0.28.0] - 2026-10-25
 
 0.27.0 is reserved for the fixes of the review branch.
