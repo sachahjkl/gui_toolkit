@@ -171,7 +171,9 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 // blend space of the renderer the theme draws with; translucent entries (tuned for linear light) get the alpha that
 // looks the same over the palette's background in it (draw.alpha_like_linear). Apply again when the space changes.
 apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
-	if len(t.patterns) == 0 {
+	if !t.palette_made || len(t.patterns) < t.palette_at + len(entries) + len(state_entries) {
+		// (entries the app added before are kept in front of these: for equal specificity the first one wins)
+		t.palette_at, t.palette_made = len(t.patterns), true
 		for e in entries { theme_add(t, e.tags, {}) }
 		for e in state_entries { theme_add(t, e.tags, {}) }
 	}
@@ -181,13 +183,14 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 		c := draw.hex(slot_color(p, e.slot))
 		c.a *= e.alpha
 		c.a = draw.alpha_like_linear(space, c, c.a, bg)
-		if t.patterns[i].color != c { t.patterns[i].color = c; changed = true }
+		k := t.palette_at + i
+		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
 	}
 	// state fills keep their fraction: it is converted where it is drawn, over the surface actually under it
 	for e, i in state_entries {
 		c := draw.hex(slot_color(p, e.slot))
 		c.a = e.alpha
-		k := len(entries) + i
+		k := t.palette_at + len(entries) + i
 		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
 	}
 	if t.finish != p.finish { t.finish = p.finish; changed = true }

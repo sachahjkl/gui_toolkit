@@ -205,8 +205,9 @@ Style_Mod :: struct {
 // Theme: (tags -> color) patterns. A pattern applies when its last tag equals the queried name and all its other tags
 // are on the tag stack; the pattern with the most tags wins, ties go to the first one in the list.
 Theme_Pattern :: struct {
-	tags:  []string,
-	color: Color,
+	tags:   []string,   // slices of `source`
+	color:  Color,
+	source: string,     // the text `tags` came from: a copy the theme owns
 }
 
 // How raised surfaces (buttons, bars, selected items) are painted.
@@ -222,6 +223,8 @@ Finish :: enum u8 {
 // cross-fades every colour for PALETTE_FADE_MS (apply_palette bumps `serial`).
 Theme :: struct {
 	patterns:      [dynamic]Theme_Pattern,
+	palette_at:    int,    // apply_palette: where its entries start in `patterns` (after any the app added before)
+	palette_made:  bool,
 	finish:        Finish,
 	transition_ms: f32,   // 0: states change at once (default)
 	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"

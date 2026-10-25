@@ -4,6 +4,7 @@
 //   odin test tests/window -vet
 package window_test
 
+import "core:strings"
 import "core:testing"
 import "core:time"
 import win "core:sys/windows"
@@ -59,6 +60,31 @@ polls_keep_the_events_of_other_windows :: proc(t: ^testing.T) {
 count_key :: proc(evs: []platform.Event, k: platform.Key) -> (n: int) {
 	for e in evs { if e.kind == .Key_Press && e.key == k { n += 1 } }
 	return
+}
+
+// A Close event handed to inject_event ends a loop that tests is_closed, as the system's does.
+@(test)
+injected_close_closes_the_window :: proc(t: ^testing.T) {
+	w := platform.open_window("inject", {200, 150})
+	defer platform.destroy_window(w)
+	testing.expect(t, !platform.is_closed(w))
+	platform.inject_event(w, {kind = .Close})
+	evs := platform.poll_events(w, false)
+	testing.expect_value(t, len(evs), 1)
+	testing.expect(t, platform.is_closed(w))
+}
+
+// %APPDATA% longer than MAX_PATH (a roaming profile on a deep UNC path) is read whole, not sliced out of bounds.
+@(test)
+config_dir_with_a_long_path :: proc(t: ^testing.T) {
+	name := win.utf8_to_wstring("APPDATA", context.temp_allocator)
+	old: [win.MAX_PATH]u16
+	n := win.GetEnvironmentVariableW(name, &old[0], len(old))
+	defer if n > 0 && int(n) < len(old) { win.SetEnvironmentVariableW(name, win.wstring(&old[0])) }
+	long := strings.concatenate({"C:\\", strings.repeat("a123456789\\", 30, context.temp_allocator)}, context.temp_allocator)   // 333 characters
+	win.SetEnvironmentVariableW(name, win.utf8_to_wstring(long, context.temp_allocator))
+	dir := platform.config_dir(context.temp_allocator)
+	testing.expect_value(t, dir, long)
 }
 
 Frames :: struct { n: int }

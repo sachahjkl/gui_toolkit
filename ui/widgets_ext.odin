@@ -339,6 +339,7 @@ Seg_Draw :: struct { t: f32, n: int, accent: Color, pad: f32 }
 seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Seg_Draw)(user)
 	r := b.rect
+	if d.n <= 0 { return }
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
 	x := r.min.x + d.pad + d.t * iw
 	paint_rect(dc, {{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
@@ -461,7 +462,8 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 		if parent(btn) {
 			spacer(px(em * 0.8))
 			next({width = fill(), height = pct(1)})
-			build_box({.Draw_Text}, fmt.tprintf("%s###cur", items[selected^]))
+			cur := selected^ >= 0 && selected^ < len(items) ? items[selected^] : ""   // none chosen, or the list changed
+			build_box({.Draw_Text}, fmt.tprintf("%s###cur", cur))
 			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
 		}
 	}
@@ -516,7 +518,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, righ
 		b.custom, b.custom_user = tab_draw, d
 		if parent(b) {
 			spacer(px(em))
-			if icons != nil { icon(icons[i], em * 1.6) }
+			if i < len(icons) { icon(icons[i], em * 1.6) }
 			next({width = text_size(), height = pct(1)})
 			build_box({.Draw_Text}, label)
 			spacer(px(em))
