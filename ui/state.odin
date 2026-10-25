@@ -32,7 +32,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.tag_sets = make(map[Key][]string)
 	s.color_memo = make(map[[2]u64]Color)
 	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
-	tick_origin = time.tick_now()
+	if tick_origin._nsec == 0 { tick_origin = time.tick_now() }   // (one clock for the process: a window opened later does not restart the others')
 }
 
 // Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
