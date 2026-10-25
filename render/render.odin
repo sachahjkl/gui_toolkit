@@ -1011,7 +1011,10 @@ zero_unfilled :: proc(r: ^Renderer, td: ^Texture_Data) {
 }
 
 d3d_update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
+	if int(t) <= 0 || int(t) >= len(r.textures) || w <= 0 || h <= 0 { return }
 	td := r.textures[int(t)]
+	// (as the other upload: a destroyed texture, a block outside it or pixels too short for it write nothing)
+	if td.tex == nil || x < 0 || y < 0 || x + w > td.w || y + h > td.h || len(pixels) < pitch * (h - 1) + w { return }
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
 }
