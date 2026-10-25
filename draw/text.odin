@@ -149,12 +149,17 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	// stretch of the 1x bitmap.
 	k: f32 = 1
 	if abs(sf - 1) > TEXT_RASTER_TOLERANCE { k = clamp(size * sf, 1, 4096) / size }
+	// a glyph's bitmap must fit an atlas page: bigger text gets a smaller bitmap, drawn stretched
+	capped := false
+	if lim := font.raster_size_limit(c.fonts); size * k > lim { k, capped = lim / size, true }
 	raster := size * k
 	// baked on the CPU: uniform scale + translation (in a picture only at its own scale: the screen is not known)
 	baked := xf.simple && (c.rec == nil || k == 1)
 	gpu: u32 = xf.simple ? 0 : gpu_xform(c, xf)
 	noted := false   // a picture knows this slot's text is made of bitmaps (picture_note_text)
 	sc, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
+	st: f32 = 1   // screen size / bitmap size, when the bitmap is smaller than the text (capped)
+	if capped { st = size * sc / raster }
 	slug := c.fonts.settings.text_renderer == .Slug
 	page_size := f32(c.fonts.settings.page_size)
 	// the text color as color glyphs with text-color layers are drawn in it (sRGB; the alpha is the image's tint)
@@ -200,9 +205,9 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 				ix, sub = font.subpixel(c.fonts, lx * sc + o.x)
 				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
 				if img.page < 0 { glyph_missing(c, img, ready); continue }
-				x0 := ix + img.offset.x
-				y0 := math.round(ly * sc + o.y) + img.offset.y
-				dst = {x0, y0, x0 + img.size.x, y0 + img.size.y}
+				x0 := ix + img.offset.x * st
+				y0 := math.round(ly * sc + o.y) + img.offset.y * st
+				dst = {x0, y0, x0 + img.size.x * st, y0 + img.size.y * st}
 			}
 		} else if k == 1 {
 			// local units snapped as when baked (a picture recorded at its own scale and replayed rotated draws

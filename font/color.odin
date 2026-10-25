@@ -40,8 +40,12 @@ Color_Raster :: struct {
 	cap:     [2]int,                // size of target and staging
 }
 
-// Largest side of the canvas a color glyph is drawn on (a glyph larger than an atlas page could not be kept anyway).
+// Largest side of the canvas a color glyph is drawn on. A canvas is bigger than its glyph (a pad of half an em on each side),
+// and a glyph that does not fit an atlas page is dropped when it is put there (atlas_alloc); the draw layer does not ask
+// for sizes that big (raster_size_limit).
 @(private) COLOR_CANVAS_MAX :: 4096
+// A canvas over this many pixels is given back once its glyph is drawn (the two bitmaps of 4096 x 4096 are 128 MB).
+@(private) COLOR_CANVAS_KEEP :: 1024 * 1024
 
 // Image formats that make a glyph a color glyph.
 @(private)
@@ -87,15 +91,22 @@ color_raster_destroy :: proc(cr: ^Color_Raster) {
 	cr^ = {}
 }
 
+@(private)
+color_canvas_free :: proc(cr: ^Color_Raster) {
+	if cr.dc != nil { cr.dc->SetTarget(nil) }
+	com_release(cr.staging); cr.staging = nil
+	com_release(cr.target); cr.target = nil
+	cr.cap = {}
+}
+
 // Target and read-back bitmaps of at least w x h.
 @(private)
 color_canvas :: proc(cr: ^Color_Raster, w, h: int) -> bool {
 	if cr.target != nil && cr.cap.x >= w && cr.cap.y >= h { return true }
-	cr.dc->SetTarget(nil)
-	com_release(cr.staging); cr.staging = nil
-	com_release(cr.target); cr.target = nil
-	cw := max(w, cr.cap.x, 64)
-	ch := max(h, cr.cap.y, 64)
+	prior := cr.cap
+	color_canvas_free(cr)
+	cw := max(w, prior.x, 64)
+	ch := max(h, prior.y, 64)
 	cw, ch = (cw + 63) &~ 63, (ch + 63) &~ 63
 	pf := D2D1_PIXEL_FORMAT{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}
 	tp := D2D1_BITMAP_PROPERTIES1{pixelFormat = pf, dpiX = 96, dpiY = 96, bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET}
@@ -318,6 +329,7 @@ color_render :: proc(s: ^State, f: ^Font, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3
 	cr := &s.color_raster
 	sync.mutex_lock(&cr.mu)
 	defer sync.mutex_unlock(&cr.mu)
+	defer if cr.cap.x * cr.cap.y > COLOR_CANVAS_KEEP { color_canvas_free(cr) }
 	px, w, h, origin, drawn = d2d_draw_glyph(s, f, run, x, fg)
 	if !drawn { return }
 	// text-color layers: COLR v0 runs in palette entry 0xFFFF, COLR v1 trees by their paint attributes; an SVG
@@ -432,7 +444,7 @@ rasterize_colr_layers :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]
 		u.right, u.bottom = max(u.right, l.bounds.right), max(u.bottom, l.bounds.bottom)
 	}
 	w, h := int(u.right - u.left), int(u.bottom - u.top)
-	if w <= 0 || h <= 0 { return Glyph_Image{page = -1, color = true}, uses_fg, true }
+	if w <= 0 || h <= 0 || w >= s.settings.page_size || h >= s.settings.page_size { return Glyph_Image{page = -1, color = true}, uses_fg, true }
 	acc := make([]f32, w * h * 4, context.temp_allocator)
 	for l in layers {
 		lw := int(l.bounds.right - l.bounds.left)
