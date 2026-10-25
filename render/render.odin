@@ -444,6 +444,9 @@ Renderer :: struct {
 	first_present_noted: bool,
 	capture:     Capture_State,          // capture.odin: reading a frame back
 	teardown_wait_ms: int,               // set_teardown_wait
+	swap_gen:    u64,                    // the device_generation the window's objects (swap chain, views, capture copy) were made on (exchanged with a Surface)
+	swap_space:  u64,                    // the space_epoch they were made in (idem)
+	space_epoch: u64,                    // bumps at each set_blend_space
 }
 
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
@@ -589,9 +592,19 @@ d3d_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	r.space = space
 	r.text = text_rendering_default(space)
 	release_targets(r)
+	r.space_epoch += 1
+	retarget(r, previous)
+	r.swap_space = r.space_epoch
+}
+
+// The window the renderer holds draws in `r.space`: its render target view (and, for a translucent window, its buffers' format) is
+// made again. For a window that was set aside (surface_use) while the space changed: surface_refresh, which has no space to go
+// back to. `previous` (set_blend_space): the space to stay in when the buffers cannot take the format.
+@(private)
+retarget :: proc(r: ^Renderer, previous: Maybe(Blend_Space) = nil) {
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
-	if r.offscreen != nil {
+	if r.swapchain == nil && r.offscreen != nil {
 		create_offscreen_view(r)
 		return
 	}
@@ -601,10 +614,13 @@ d3d_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 		// a translucent window's buffers change format: linear fp16 (scRGB) or 8-bit premultiplied sRGB
 		b := r.buffer_size
 		if b.x <= 0 || b.y <= 0 { b = r.size }
-		if hr := r.swapchain->ResizeBuffers(0, u32(max(b.x, 1)), u32(max(b.y, 1)), composition_format(space), r.swap_flags); win.FAILED(hr) {
-			fmt.eprintln("render: ResizeBuffers to the format of the blend space failed", hr, "- staying in", previous)
-			r.space = previous
-			r.text = text_rendering_default(previous)
+		if hr := r.swapchain->ResizeBuffers(0, u32(max(b.x, 1)), u32(max(b.y, 1)), composition_format(r.space), r.swap_flags); win.FAILED(hr) {
+			fmt.eprintln("render: ResizeBuffers to the format of the blend space failed", hr)
+			if prev, ok := previous.?; ok {
+				fmt.eprintln("render: staying in", prev)
+				r.space = prev
+				r.text = text_rendering_default(prev)
+			}
 		}
 		set_composition_color_space(r)
 	}
@@ -1551,7 +1567,11 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 
 // Presents the frame: `vsync` false presents at once (with tearing where supported) whatever set_present_mode says.
 d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
-	if r.swapchain == nil { r.ctx->Flush(); return }   // offscreen
+	if r.swapchain == nil {   // offscreen: no present to tell, ask
+		r.ctx->Flush()
+		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
+		return
+	}
 	if hr := present_frame(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
 		r.lost = true
 	}

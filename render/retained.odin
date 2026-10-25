@@ -197,7 +197,9 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	new_device, new_ctx := r.device, r.ctx
 	r.device, r.ctx = old_device, old_ctx
 	release_device_objects(r)
-	if r.ctx != nil { r.ctx->ClearState(); r.ctx->Release() }
+	// (the views and buffers released above are only destroyed when the context runs its queue: until then the old swap chain
+	// still owns the window, and a new one cannot be made for it)
+	if r.ctx != nil { r.ctx->ClearState(); r.ctx->Flush(); r.ctx->Release() }
 	if r.device != nil { r.device->Release() }
 	r.device, r.ctx = new_device, new_ctx
 	ok := r.hwnd == nil ? create_offscreen_target(r) : create_swapchain(r)
@@ -214,6 +216,7 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	}
 	r.heap_generation += 1
 	r.device_generation += 1
+	r.swap_gen, r.swap_space = r.device_generation, r.space_epoch   // (the window held now; the others of surface_use are remade when taken)
 	r.gpu_frame = 0
 	r.lost = !ok
 	return ok
@@ -246,6 +249,7 @@ release_device_objects :: proc(r: ^Renderer) {
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	slug_destroy(r)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
+	capture_release_device_objects(&r.capture)
 	heaps_destroy(r)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
 	r.inst_cap, r.xform_cap, r.clip_cap, r.points_cap, r.grads_cap = 0, 0, 0, 0, 0
