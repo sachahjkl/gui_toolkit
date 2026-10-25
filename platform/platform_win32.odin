@@ -610,14 +610,14 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 button_down :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
 	if win.GetCapture() != w.hwnd { win.SetCapture(w.hwnd) }
 	w.buttons_down += {b}
-	append(&w.events, Event{kind = .Mouse_Press, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated()})
+	append(&w.events, Event{kind = .Mouse_Press, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated(), pointer = mouse_emulated_by()})
 }
 
 @(private)
 button_up :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
 	w.buttons_down -= {b}
 	if w.buttons_down == {} { win.ReleaseCapture() }
-	append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated()})
+	append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated(), pointer = mouse_emulated_by()})
 }
 
 @(private)
@@ -840,7 +840,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 			win.TrackMouseEvent(&tme)
 			w.tracking_mouse = true
 		}
-		push(w, {kind = .Mouse_Move, pos = mouse_pos(lparam), mods = current_mods(), buttons = w.buttons_down, emulated = mouse_emulated()})
+		push(w, {kind = .Mouse_Move, pos = mouse_pos(lparam), mods = current_mods(), buttons = w.buttons_down, emulated = mouse_emulated(), pointer = mouse_emulated_by()})
 	case win.WM_MOUSELEAVE:
 		w.tracking_mouse = false
 		// into the app's own title bar or frame: WM_NCMOUSEMOVE goes on with the moves
