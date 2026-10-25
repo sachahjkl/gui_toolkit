@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.32.1] - 2026-10-25
+
+### Changed
+- **The selected row of a menu is a filled, rounded row with no outline** (`ui/theme_default.odin`: `menu_item selected background` accent at 0.30, `menu_item selected border` transparent): it was the generic "selected" look, an opaque accent ring around a row with a 22 % fill, which read as a focus box more than as a highlight (the fill was too faint to see beside the ring). Lists, fields and every other selected item keep their look.
+
 ## [0.32.0] - 2026-10-25
 
 ### Added
