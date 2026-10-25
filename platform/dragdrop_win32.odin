@@ -115,6 +115,12 @@ import win "core:sys/windows"
 	helper:     ^IDropTargetHelper,
 	sending:    bool,          // drag_start runs from this window
 	allocator:  runtime.Allocator,   // the app's, when the state was made: `data` lives in it (the system's callbacks have no context)
+	sync:       Drop_Sync,     // drop_sync_set: asked at once while drag_start runs from this window
+	sync_user:  rawptr,
+	script:     [dynamic]Drag_Step,   // drag_script: the next drag_start follows these steps instead of the mouse
+	image_size:   [2]int,      // what the system's drag image helper holds for the last drag_start (drag_image_held)
+	image_offset: [2]int,
+	image_held:   bool,
 }
 
 @(private) IID_IUnknown := win.GUID{0x00000000, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
@@ -162,8 +168,7 @@ foreign shell32_dnd {
 		d.over = true
 		d.effect = nil   // a new drag: nothing accepted until the app says so
 		pos := client_point(w, pt)
-		queue_drop(w, .Drop_Enter, pos, keys)
-		effect^ = answer(d)
+		effect^ = deliver(w, .Drop_Enter, pos, keys)
 		if d.helper != nil { p := win.POINT{pt.x, pt.y}; d.helper.vt.DragEnter(d.helper, w.hwnd, data, &p, effect^) }
 		return win.S_OK
 	},
@@ -172,8 +177,7 @@ foreign shell32_dnd {
 		w := this.w
 		d := w.dnd
 		d.allowed = effects_from_win(effect^)
-		queue_drop(w, .Drop_Over, client_point(w, pt), keys)
-		effect^ = answer(d)
+		effect^ = deliver(w, .Drop_Over, client_point(w, pt), keys)
 		if d.helper != nil { p := win.POINT{pt.x, pt.y}; d.helper.vt.DragOver(d.helper, &p, effect^) }
 		return win.S_OK
 	},
@@ -182,7 +186,7 @@ foreign shell32_dnd {
 		w := this.w
 		d := w.dnd
 		d.over = false
-		queue_drop(w, .Drop_Leave, {}, 0)
+		deliver(w, .Drop_Leave, {}, 0)
 		if d.helper != nil { d.helper.vt.DragLeave(d.helper) }
 		return win.S_OK
 	},
@@ -195,8 +199,7 @@ foreign shell32_dnd {
 		if !drag_data_empty(fresh) { drag_data_destroy(&d.data); d.data = fresh } else { drag_data_destroy(&fresh) }
 		d.allowed = effects_from_win(effect^)
 		d.over = false
-		queue_drop(w, .Drop, client_point(w, pt), keys)
-		effect^ = answer(d)
+		effect^ = deliver(w, .Drop, client_point(w, pt), keys)
 		if d.helper != nil { p := win.POINT{pt.x, pt.y}; d.helper.vt.Drop(d.helper, data, &p, effect^) }
 		return win.S_OK
 	},
@@ -235,10 +238,22 @@ mods_from_keys :: proc(keys: u32) -> (m: Modifiers) {
 	return
 }
 
+// One callback of the system as an event: queued for the app's next poll (the app may be waiting in poll_events: the
+// event is queued inside its own message pump, which returns it), or, while drag_start runs from this window and the
+// app asked for it (drop_sync_set), handed to the app at once. Returns the effect to give the system.
 @(private)
-queue_drop :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, keys: u32) {
-	append(&w.events, Event{kind = kind, pos = pos, mods = mods_from_keys(keys), drop_allowed = w.dnd.allowed, stamp = time.tick_now()})
-	// (the app may be waiting in poll_events: the event is queued inside its own message pump, which returns it)
+deliver :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, keys: u32) -> u32 {
+	d := w.dnd
+	ev := Event{kind = kind, pos = pos, mods = mods_from_keys(keys), drop_allowed = d.allowed, stamp = time.tick_now()}
+	if d.sending && d.sync != nil {
+		e := d.sync(d.sync_user, w, ev)
+		if kind == .Drop_Leave { return 0 }
+		d.effect = e
+		if v, ok := e.?; ok && v in d.allowed { return effects_to_win({v}) }
+		return 0
+	}
+	append(&w.events, ev)
+	return kind == .Drop_Leave ? 0 : answer(d)
 }
 
 @(private)
@@ -454,6 +469,11 @@ drop_target_enable :: proc(w: ^Window, on: bool) -> bool {
 
 drop_target_enabled :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.registered }
 
+// Prepares the calling thread (the interface's) for drag and drop. On Windows: OLE in a single-threaded apartment,
+// which must come before any library puts the thread in the multithreaded one (a decoder's CoInitializeEx), or no drop
+// target can be registered and no drag started. Call it first thing; false when it is too late.
+dragdrop_thread_init :: proc() -> bool { return OleInitialize(nil) >= 0 }
+
 // What the drag over the window carries (from Drop_Enter; the last one dropped stays until the next enters), nil
 // when no drag came yet.
 drop_data :: proc(w: ^Window) -> ^Drag_Data {
@@ -495,25 +515,27 @@ drop_inject :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, data: ^Drag_Data 
 	return true
 }
 
-// A picture for a drag (drag_start): straight RGBA pixels, `size` in pixels, `offset` = where the pointer is in it.
-Drag_Image :: struct {
-	rgba:   []u8,
-	size:   [2]int,
-	offset: [2]int,
-}
-
 // Runs a drag of the system from the window with `data` until it is dropped (the effect the target chose) or given up
 // (nil). Blocks while the user drags. ok = false when the system could not start it (no OLE on this thread, no data).
+// `image` follows the pointer, over every application, with its hot spot under the pointer (none: the system's
+// default picture of the data).
 drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	if drag_data_empty(data) || allowed == {} { return nil, false }
 	if OleInitialize(nil) < 0 { return nil, false }
 	obj := make_data_object(data)
 	if obj == nil { return nil, false }
 	defer obj.vt.Release(obj)
-	if img, has := image.?; has { set_drag_image(obj, img) }
 	d := dnd_state(w)
+	d.image_held, d.image_size, d.image_offset = false, {}, {}
+	if img, has := image.?; has && set_drag_image(obj, img) { read_drag_image(d, obj) }
 	d.sending = true
 	defer d.sending = false
+	if len(d.script) > 0 {
+		steps := d.script
+		d.script = {}
+		defer delete(steps)
+		return run_script(w, obj, steps[:], allowed), true
+	}
 	// the system's loop pumps the thread's messages: a repaint meanwhile is asked for (take_paint_request), never run
 	// as a frame inside the app's own frame that called drag_start
 	pumping += 1
@@ -529,24 +551,102 @@ drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Ma
 	return nil, true
 }
 
-// The shell's drag image from straight RGBA pixels (a premultiplied BGRA bitmap the helper takes over).
+// The shell's drag image from straight RGBA pixels (a premultiplied BGRA bitmap the helper takes over). False when the
+// helper refused it.
 @(private)
-set_drag_image :: proc(obj: ^IDataObject, img: Drag_Image) {
-	if img.size.x <= 0 || img.size.y <= 0 || len(img.rgba) < img.size.x * img.size.y * 4 { return }
+set_drag_image :: proc(obj: ^IDataObject, img: Drag_Image) -> bool {
+	if !drag_image_valid(img) { return false }
 	helper: ^IDragSourceHelper
-	if win.CoCreateInstance(&CLSID_DragDropHelper, nil, win.CLSCTX_INPROC_SERVER, &IID_IDragSourceHelper, cast(^rawptr)&helper) < 0 || helper == nil { return }
+	if win.CoCreateInstance(&CLSID_DragDropHelper, nil, win.CLSCTX_INPROC_SERVER, &IID_IDragSourceHelper, cast(^rawptr)&helper) < 0 || helper == nil { return false }
 	defer helper.vt.Release(helper)
 	bi := win.BITMAPINFO{bmiHeader = {biSize = size_of(win.BITMAPINFOHEADER), biWidth = i32(img.size.x), biHeight = -i32(img.size.y), biPlanes = 1, biBitCount = 32, biCompression = win.BI_RGB}}
 	bits: rawptr
 	bmp := win.CreateDIBSection(nil, &bi, win.DIB_RGB_COLORS, &bits, nil, 0)
-	if bmp == nil || bits == nil { return }
+	if bmp == nil || bits == nil { return false }
 	dst := ([^]u8)(bits)
 	for i in 0 ..< img.size.x * img.size.y {
 		r, g, b, a := u32(img.rgba[i * 4]), u32(img.rgba[i * 4 + 1]), u32(img.rgba[i * 4 + 2]), u32(img.rgba[i * 4 + 3])
 		dst[i * 4], dst[i * 4 + 1], dst[i * 4 + 2], dst[i * 4 + 3] = u8(b * a / 255), u8(g * a / 255), u8(r * a / 255), u8(a)
 	}
 	sdi := SHDRAGIMAGE{sizeDragImage = {i32(img.size.x), i32(img.size.y)}, ptOffset = {i32(img.offset.x), i32(img.offset.y)}, hbmpDragImage = bmp, crColorKey = 0xFFFF_FFFF}
-	if helper.vt.InitializeFromBitmap(helper, &sdi, obj) < 0 { win.DeleteObject(win.HGDIOBJ(bmp)) }   // on success the helper owns it
+	if helper.vt.InitializeFromBitmap(helper, &sdi, obj) < 0 { win.DeleteObject(win.HGDIOBJ(bmp)); return false }   // on success the helper owns it
+	return true
+}
+
+// What the helper stored in the data object ("DragImageBits": the picture's size and hot spot, then its bits), which
+// is what the shell draws during the drag, over this window and others.
+@(private)
+read_drag_image :: proc(d: ^Dnd_State, obj: ^IDataObject) {
+	b := get_bytes(obj, registered_format("DragImageBits"), context.temp_allocator)
+	if len(b) < 16 { return }
+	i32_at :: proc(b: []u8, at: int) -> int { return int(cast(i32)(u32(b[at]) | u32(b[at + 1]) << 8 | u32(b[at + 2]) << 16 | u32(b[at + 3]) << 24)) }
+	d.image_size = {i32_at(b, 0), i32_at(b, 4)}
+	d.image_offset = {i32_at(b, 8), i32_at(b, 12)}
+	d.image_held = true
+}
+
+// The scripted drag (drag_script): the window's own drop target is called along the steps as the system would, with
+// the data object drag_start made; the effect of the drop (nil when released outside the window or refused).
+@(private)
+run_script :: proc(w: ^Window, obj: ^IDataObject, steps: []Drag_Step, allowed: Drop_Effects) -> Maybe(Drop_Effect) {
+	d := dnd_state(w)
+	inside := false
+	result: Maybe(Drop_Effect)
+	for s, i in steps {
+		now := s.pos.x >= 0 && s.pos.y >= 0 && s.pos.x < f32(w.size.x) && s.pos.y < f32(w.size.y)
+		sp := win.POINT{i32(s.pos.x), i32(s.pos.y)}
+		win.ClientToScreen(w.hwnd, &sp)
+		pt := POINTL{sp.x, sp.y}
+		keys := keys_from_mods(s.mods) | MK_LBUTTON
+		first, second := drag_script_calls(inside, now, i == len(steps) - 1)
+		for call in ([]Drag_Script_Call{first, second}) {
+			e := effects_to_win(allowed)
+			switch call {
+			case .None, .Cancel:
+			case .Enter: d.target.vt.DragEnter(&d.target, obj, keys, pt, &e)
+			case .Over: d.target.vt.DragOver(&d.target, keys, pt, &e)
+			case .Leave: d.target.vt.DragLeave(&d.target)
+			case .Drop:
+				d.target.vt.Drop(&d.target, obj, keys &~ MK_LBUTTON, pt, &e)
+				for v in Drop_Effect { if effects_to_win({v}) & e != 0 { result = v; break } }
+			}
+		}
+		inside = now
+	}
+	return result
+}
+
+@(private)
+keys_from_mods :: proc(m: Modifiers) -> (keys: u32) {
+	if .Ctrl in m { keys |= MK_CONTROL }
+	if .Shift in m { keys |= MK_SHIFT }
+	if .Alt in m { keys |= MK_ALT }
+	return
+}
+
+// Asks the window's app at once, while drag_start runs from it, what a drop would do (Drop_Sync); nil: the events are
+// queued as for any drag (the app then sees its own drag only after drag_start returns).
+drop_sync_set :: proc(w: ^Window, handler: Drop_Sync, user: rawptr) {
+	d := dnd_state(w)
+	d.sync, d.sync_user = handler, user
+}
+
+// Tests and remote control: the next drag_start from the window does not follow the mouse but `steps` (copied), with
+// the same data object, drag image and drop target calls as a drag of the system that comes back over the window. True
+// when this system can do it.
+drag_script :: proc(w: ^Window, steps: []Drag_Step) -> bool {
+	d := dnd_state(w)
+	context.allocator = d.allocator
+	clear(&d.script)
+	append(&d.script, ..steps)
+	return true
+}
+
+// The picture the system holds for the last drag_start from the window (read back from the system after the app gave
+// it): its size and hot spot; ok = false when there was none or the system refused it.
+drag_image_held :: proc(w: ^Window) -> (size, offset: [2]int, ok: bool) {
+	if w.dnd == nil || !w.dnd.image_held { return }
+	return w.dnd.image_size, w.dnd.image_offset, true
 }
 
 // How far the pointer moves with a button held before a press becomes a drag (the system's setting), in pixels.
@@ -565,6 +665,7 @@ dnd_destroy :: proc(w: ^Window) {
 	if d.helper != nil { d.helper.vt.Release(d.helper) }
 	context.allocator = d.allocator
 	drag_data_destroy(&d.data)
+	delete(d.script)
 	free(d)
 	w.dnd = nil
 }

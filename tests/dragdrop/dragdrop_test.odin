@@ -160,6 +160,161 @@ round_trip_through_the_system :: proc(t: ^testing.T) {
 }
 
 @(test)
+drag_images :: proc(t: ^testing.T) {
+	px := []u8{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 10, 20, 30, 200}
+	img := platform.Drag_Image{px, {2, 2}, {1, 1}}
+	testing.expect(t, platform.drag_image_valid(img))
+	testing.expect(t, !platform.drag_image_valid(platform.Drag_Image{px[:8], {2, 2}, {}}))
+	half := platform.drag_image_fit(img, {100, 100})
+	defer delete(half.rgba)
+	testing.expect_value(t, half.size, [2]int{2, 2})   // fits: a copy
+	platform.drag_image_fade(half, 0.5)
+	testing.expect_value(t, half.rgba[3], u8(128))
+	testing.expect_value(t, half.rgba[7], u8(64))
+	testing.expect_value(t, px[3], u8(255))   // the original untouched
+	one := platform.drag_image_fit(img, {1, 1})
+	defer delete(one.rgba)
+	testing.expect_value(t, one.size, [2]int{1, 1})
+	testing.expect_value(t, one.offset, [2]int{0, 0})
+	// average of the alphas; the colour weighted by alpha (the transparent blue pixel does not tint it)
+	testing.expect_value(t, one.rgba[3], u8((255 + 128 + 0 + 200) / 4))
+	testing.expect(t, one.rgba[2] < 40)
+	testing.expect(t, !platform.drag_image_valid(platform.drag_image_fit(platform.Drag_Image{}, {4, 4})))
+}
+
+@(test)
+script_calls :: proc(t: ^testing.T) {
+	a, b := platform.drag_script_calls(false, false, false)
+	testing.expect(t, a == .None && b == .None)
+	a, b = platform.drag_script_calls(false, true, false)
+	testing.expect(t, a == .Enter && b == .None)
+	a, b = platform.drag_script_calls(true, true, true)
+	testing.expect(t, a == .Over && b == .Drop)
+	a, b = platform.drag_script_calls(true, false, false)
+	testing.expect(t, a == .Leave && b == .None)
+	a, b = platform.drag_script_calls(false, false, true)
+	testing.expect(t, a == .None && b == .Cancel)
+}
+
+@(test)
+input_device_rules :: proc(t: ^testing.T) {
+	acc, hover := platform.primary_pointer({mouse = true, touch_points = 10})
+	testing.expect(t, acc == .Fine && hover)
+	acc, hover = platform.primary_pointer({touch_points = 5})
+	testing.expect(t, acc == .Coarse && !hover)
+	acc, hover = platform.primary_pointer({})
+	testing.expect(t, acc == .None && !hover)
+	fine, coarse, any_hover := platform.any_pointer({mouse = true, touch_points = 2})
+	testing.expect(t, fine && coarse && any_hover)
+	fine, coarse, any_hover = platform.any_pointer({mouse = true})
+	testing.expect(t, fine && !coarse && any_hover)
+	d := platform.input_devices()
+	testing.expect(t, d.touch_points >= 0 && platform.touch_max_points() == d.touch_points)
+}
+
+@(test)
+touch_gestures :: proc(t: ^testing.T) {
+	g: platform.Touch_Gesture
+	platform.touch_gesture_init(&g)
+	// a tap: down and up without moving past the slop
+	platform.touch_gesture_down(&g, 1, {100, 100}, 0)
+	testing.expect_value(t, platform.touch_gesture_move(&g, 1, {104, 103}, 10).kind, platform.Touch_Gesture_Kind.None)
+	testing.expect_value(t, platform.touch_gesture_up(&g, 1, {104, 103}, 50).kind, platform.Touch_Gesture_Kind.Tap)
+	testing.expect(t, !platform.touch_gesture_active(&g))
+	// a pan: the content follows the finger, then a fling at the speed of the last 100 ms
+	platform.touch_gesture_down(&g, 2, {100, 300}, 1000)
+	e := platform.touch_gesture_move(&g, 2, {100, 280}, 1010)
+	testing.expect(t, e.kind == .Pan && e.first && e.pan == {0, -20})
+	e = platform.touch_gesture_move(&g, 2, {100, 260}, 1020)
+	testing.expect(t, e.kind == .Pan && !e.first && e.pan == {0, -20})
+	e = platform.touch_gesture_up(&g, 2, {100, 240}, 1030)
+	testing.expect_value(t, e.kind, platform.Touch_Gesture_Kind.Fling)
+	testing.expect(t, abs(e.velocity.y + 2000) < 1, "60 px in 30 ms")
+	// a slow release: no fling
+	platform.touch_gesture_down(&g, 3, {0, 0}, 2000)
+	platform.touch_gesture_move(&g, 3, {0, 30}, 2010)
+	platform.touch_gesture_move(&g, 3, {0, 31}, 2300)
+	testing.expect_value(t, platform.touch_gesture_up(&g, 3, {0, 31}, 2500).kind, platform.Touch_Gesture_Kind.End)
+	// a pinch: two fingers apart twice as far, about their middle
+	platform.touch_gesture_down(&g, 4, {100, 100}, 3000)
+	platform.touch_gesture_down(&g, 5, {200, 100}, 3005)
+	e = platform.touch_gesture_move(&g, 5, {300, 100}, 3020)
+	testing.expect(t, e.kind == .Pinch && abs(e.scale - 2) < 0.001 && e.pos == {200, 100} && e.pan == {50, 0})
+	platform.touch_gesture_up(&g, 5, {300, 100}, 3030)
+	e = platform.touch_gesture_move(&g, 4, {100, 120}, 3040)
+	testing.expect(t, e.kind == .Pan && e.pan == {0, 20}, "one finger left: it pans on without a jump")
+	platform.touch_gesture_up(&g, 4, {100, 120}, 3050)
+	// a long press: still for long_press_ms
+	platform.touch_gesture_down(&g, 6, {50, 50}, 4000)
+	due, pending := platform.touch_gesture_long_press_due(&g)
+	testing.expect(t, pending && due == 4500)
+	testing.expect_value(t, platform.touch_gesture_tick(&g, 4400).kind, platform.Touch_Gesture_Kind.None)
+	testing.expect_value(t, platform.touch_gesture_tick(&g, 4500).kind, platform.Touch_Gesture_Kind.Long_Press)
+	testing.expect_value(t, platform.touch_gesture_tick(&g, 4600).kind, platform.Touch_Gesture_Kind.None)
+	testing.expect_value(t, platform.touch_gesture_move(&g, 6, {90, 90}, 4700).kind, platform.Touch_Gesture_Kind.None)
+	testing.expect_value(t, platform.touch_gesture_up(&g, 6, {90, 90}, 4800).kind, platform.Touch_Gesture_Kind.End)
+	testing.expect_value(t, platform.touch_gesture_cancel(&g).kind, platform.Touch_Gesture_Kind.None)
+	// the fling's glide
+	dist, ms := platform.touch_fling({0, -2000}, 4)
+	testing.expect(t, dist == {0, -500} && ms > 0)
+}
+
+// A drag the app starts that comes back over its own window while drag_start blocks: with drop_sync_set, the app is
+// asked at once (enter, over, drop) before drag_start returns, and the effect it chose is the drag's. The drag image
+// given goes to the system's helper, which holds it with its hot spot.
+@(test)
+own_drag_back_over_the_window :: proc(t: ^testing.T) {
+	when ODIN_OS != .Windows { return }
+	w := platform.open_window("dragdrop sync", {200, 150})
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	testing.expect(t, platform.drop_target_enable(w, true))
+	defer platform.drop_target_enable(w, false)
+	Seen :: struct { kinds: [dynamic]platform.Event_Kind, text: string }
+	seen: Seen
+	defer delete(seen.kinds)
+	platform.drop_sync_set(w, proc(user: rawptr, w: ^platform.Window, ev: platform.Event) -> Maybe(platform.Drop_Effect) {
+		s := (^Seen)(user)
+		append(&s.kinds, ev.kind)
+		if ev.kind == .Drop { s.text = platform.drop_data(w).text }
+		return .Move
+	}, &seen)
+	defer platform.drop_sync_set(w, nil, nil)
+	steps := []platform.Drag_Step{{pos = {-10, 40}}, {pos = {50, 40}}, {pos = {60, 45}}}
+	testing.expect(t, platform.drag_script(w, steps))
+	d: platform.Drag_Data
+	d.text = "back"
+	px := make([]u8, 8 * 6 * 4)
+	defer delete(px)
+	for i in 0 ..< 8 * 6 { px[i * 4 + 3] = 200 }
+	effect, ok := platform.drag_start(w, d, {.Copy, .Move}, platform.Drag_Image{px, {8, 6}, {3, 2}})
+	testing.expect(t, ok)
+	testing.expect_value(t, effect, platform.Drop_Effect.Move)
+	testing.expect_value(t, len(seen.kinds), 3)
+	if len(seen.kinds) == 3 {
+		testing.expect_value(t, seen.kinds[0], platform.Event_Kind.Drop_Enter)
+		testing.expect_value(t, seen.kinds[1], platform.Event_Kind.Drop_Over)
+		testing.expect_value(t, seen.kinds[2], platform.Event_Kind.Drop)
+	}
+	testing.expect_value(t, seen.text, "back")
+	size, offset, held := platform.drag_image_held(w)
+	testing.expect(t, held, "the system's helper took the picture")
+	testing.expect_value(t, size, [2]int{8, 6})
+	testing.expect_value(t, offset, [2]int{3, 2})
+	// nothing was queued for the next poll: the app already handled it
+	n := 0
+	for e in platform.poll_events(w, false) { if e.kind >= .Drop_Enter { n += 1 } }
+	testing.expect_value(t, n, 0)
+	// without the handler, released outside the window: no effect
+	platform.drop_sync_set(w, nil, nil)
+	platform.drag_script(w, []platform.Drag_Step{{pos = {20, 20}}, {pos = {-5, -5}}})
+	effect, ok = platform.drag_start(w, d, {.Copy})
+	_, has := effect.?
+	testing.expect(t, ok && !has)
+	platform.drop_data_release(w)
+}
+
+@(test)
 injected_drops :: proc(t: ^testing.T) {
 	when ODIN_OS != .Windows { return }
 	w := platform.open_window("dragdrop inject", {200, 150})

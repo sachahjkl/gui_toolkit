@@ -31,6 +31,30 @@ mouse_emulated :: proc() -> bool {
 	return u64(uint(win.GetMessageExtraInfo())) & 0xFFFF_FF00 == 0xFF51_5700
 }
 
+// GetSystemMetrics: SM_MAXIMUMTOUCHES (touches the digitizers take), SM_MOUSEPRESENT, SM_DIGITIZER (NID_INTEGRATED_PEN,
+// NID_EXTERNAL_PEN).
+@(private)
+input_devices_query :: proc() -> Input_Devices {
+	SM_MOUSEPRESENT :: 19
+	SM_DIGITIZER :: 94
+	SM_MAXIMUMTOUCHES :: 95
+	dig := u32(win.GetSystemMetrics(SM_DIGITIZER))
+	return Input_Devices{
+		mouse = win.GetSystemMetrics(SM_MOUSEPRESENT) != 0,
+		pen = dig & (0x04 | 0x08) != 0,
+		touch_points = max(int(win.GetSystemMetrics(SM_MAXIMUMTOUCHES)), 0),
+	}
+}
+
+// The device the system emulates the mouse for (bit 0x80 of the signature: a touch, else a pen); Mouse when it is the
+// mouse itself.
+@(private)
+mouse_emulated_by :: proc() -> Pointer_Info {
+	x := u64(uint(win.GetMessageExtraInfo()))
+	if x & 0xFFFF_FF00 != 0xFF51_5700 { return {} }
+	return Pointer_Info{kind = x & 0x80 != 0 ? .Touch : .Pen}
+}
+
 @(private)
 pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 	id := u32(win.LOWORD(u32(wparam)))

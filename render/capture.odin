@@ -41,6 +41,13 @@ capture_request :: proc(r: ^Renderer, rect := [4]int{}) -> bool {
 	}
 }
 
+// Forgets a capture asked for (not yet copied, or copied and not yet read): the next capture_request is free to start.
+capture_cancel :: proc(r: ^Renderer) {
+	when !USE_WGPU {
+		r.capture.requested, r.capture.pending, r.capture.failed = false, false, false
+	}
+}
+
 // A capture is waiting for a frame or for the GPU.
 capture_pending :: proc(r: ^Renderer) -> bool { return r.capture.requested || r.capture.pending }
 

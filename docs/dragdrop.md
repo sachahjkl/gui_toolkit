@@ -45,7 +45,27 @@ the drag was given up. Call it between frames, from the press-and-move that star
 in-window drags without the system's loop handles those itself and calls `drag_start` when the pointer leaves the
 window. `drag_threshold(win)` is the distance the system uses before a press becomes a drag.
 
+Call `dragdrop_thread_init()` first thing on the interface thread (Windows: OLE needs a single-threaded apartment,
+which a decoder library joining the multithreaded one first would make impossible).
+
+### The drag image
+
+`Drag_Image{rgba, size, offset}`: straight RGBA, the hot spot (`offset`) is where the pointer is in the picture.
+`drag_image_fade(img, 0.7)` makes the usual translucent ghost, `drag_image_fit(img, {480, 480})` a copy that fits.
+After `drag_start`, `drag_image_held(win)` gives the size and hot spot the system holds (what it draws over every
+application).
+
+### The app's own drag coming back
+
+`drag_start` blocks: an app that drags in its own window then hands the drag to the system when the pointer leaves
+cannot run a frame when it comes back. `drop_sync_set(win, handler, user)` makes the window ask `handler` at once for
+each `Drop_*` (it returns the effect, and handles the `Drop` inside the call), so the drop is handled before
+`drag_start` returns.
+
 ## Tests and remote control
+
+- `drag_script(win, steps)`: the next `drag_start` follows `steps` (client points; outside the client area = over
+  another application; the last one is the release) through the window's own drop target, never the real mouse.
 
 - `drop_inject(win, kind, pos, &data)`: the same events with data of the app's choice, through `inject_event`.
 - `drop_self_test(win, data, pos, allowed)` (Windows): the data object `drag_start` would build goes through the window's
@@ -57,4 +77,15 @@ window. `drag_threshold(win)` is the distance the system uses before a press bec
 touch or pen, `primary`, `pressure` 0..1, pen `tilt` / `twist` / `barrel` / `eraser`, touch `contact` size). The mouse
 keeps `Mouse_*`, which now also carry `buttons` (the buttons held after the event). The system's emulation of the mouse
 for a finger or a pen still arrives, marked `emulated`: an app that only knows the mouse works unchanged, one that
-follows pointers skips those. `pointer_buttons` and `pointer_pressure` give the Pointer Events values.
+follows pointers skips those (`Event.pointer.kind` says whether a finger or a pen is emulated). `pointer_buttons` and
+`pointer_pressure` give the Pointer Events values.
+
+`input_devices()` (mouse, pen, touch points), `touch_max_points()`, `primary_pointer` / `any_pointer`: what the
+computer has, as the CSS media features `pointer` / `any-pointer` / `hover` / `any-hover` describe it.
+
+### Gestures
+
+`Touch_Gesture` (pure: give it positions and times): `touch_gesture_down / move / up / cancel` and, every frame while a
+finger is down, `touch_gesture_tick` return `Tap`, `Pan` (`pan`: how far the content follows), `Pinch` (`scale` about
+`pos`, plus `pan`), `Long_Press`, `Fling` (`velocity`, px/s) or `End`. `touch_fling(velocity, friction)` gives where
+a fling glides to and for how long.

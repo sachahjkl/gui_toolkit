@@ -3,6 +3,19 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.35.1] - 2026-10-25
+
+### Added
+- **Drag images**: `Drag_Image` is now in `platform/dragdrop.odin` (independent of the system), with `drag_image_valid`, `drag_image_fade` (the translucent ghost of a dragged element) and `drag_image_fit` (scaled down to a size, its hot spot following). `drag_image_held` says what the system's drag image helper holds after `drag_start` (Windows: read back from the data object's `DragImageBits`).
+- **The app's own drag back over its window** (`drop_sync_set`, `Drop_Sync`): while `drag_start` blocks, the window asks the app at once for each `Drop_*` instead of queueing them, so the app can handle the drop before `drag_start` returns (a browser fires `drop` before `dragend`).
+- **Scripted drags** (`drag_script`, `Drag_Step`, `drag_script_calls`): the next `drag_start` follows given points through the window's own drop target, with the same data object and drag image, never the real mouse (tests, remote control).
+- `dragdrop_thread_init`: OLE in a single-threaded apartment on the interface thread, before any library puts it in the multithreaded one (which made `drop_target_enable` and `drag_start` fail).
+- **Pointing devices** (`platform/input_devices.odin`): `input_devices` (mouse, pen, touch points; Windows: `GetSystemMetrics`), `touch_max_points`, and the rules of the primary pointer / every pointer (`primary_pointer`, `any_pointer`) as the CSS media features `pointer`, `any-pointer`, `hover`, `any-hover` see them.
+- **Touch gestures** (`platform/touch_gesture.odin`, pure): `Touch_Gesture` turns the fingers' positions and times into tap, pan, pinch (scale about the fingers' middle), long press and fling (release speed); `touch_fling` gives the glide's distance and time under exponential friction.
+- `Event.pointer.kind` of an emulated `Mouse_*` event says which device the system emulates (touch or pen).
+- `render.capture_cancel`: forgets a capture asked for and not read.
+- `tests/dragdrop`: drag images, the scripted drag back over the window with `drop_sync_set` (enter, over, drop answered at once, the image held by the system), gestures, device rules.
+
 ## [0.35.0] - 2026-10-25
 
 ### Added

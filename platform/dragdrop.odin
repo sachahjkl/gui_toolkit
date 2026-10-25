@@ -76,6 +76,96 @@ clone_string :: proc(s: string, allocator := context.allocator) -> string {
 	return string(b)
 }
 
+// A picture for a drag (drag_start): straight (not premultiplied) RGBA pixels, `size` in pixels, `offset` = where the
+// pointer is in it (its hot spot; may lie outside the picture, as a web page's setDragImage allows).
+Drag_Image :: struct {
+	rgba:   []u8,
+	size:   [2]int,
+	offset: [2]int,
+}
+
+// The picture is usable: a size and enough pixels for it.
+drag_image_valid :: proc(img: Drag_Image) -> bool {
+	return img.size.x > 0 && img.size.y > 0 && len(img.rgba) >= img.size.x * img.size.y * 4
+}
+
+// Multiplies the picture's alpha by `opacity` (0..1), in place: the translucent "ghost" of a dragged element.
+drag_image_fade :: proc(img: Drag_Image, opacity: f32) {
+	if !drag_image_valid(img) { return }
+	k := clamp(opacity, 0, 1)
+	if k >= 1 { return }
+	for i in 0 ..< img.size.x * img.size.y {
+		a := &img.rgba[i * 4 + 3]
+		a^ = u8(f32(a^) * k + 0.5)
+	}
+}
+
+// The picture made to fit `max_size` (pixels): scaled down by averaging, its hot spot following; a copy (allocator)
+// whether or not it shrank, so the caller always owns the result (delete(result.rgba)). Systems cap their drag images
+// (Windows draws at most a few hundred pixels well); an invalid picture gives an empty one.
+drag_image_fit :: proc(img: Drag_Image, max_size: [2]int, allocator := context.allocator) -> Drag_Image {
+	if !drag_image_valid(img) { return {} }
+	w, h := img.size.x, img.size.y
+	k := min(f32(1), f32(max(max_size.x, 1)) / f32(w), f32(max(max_size.y, 1)) / f32(h))
+	if k >= 1 {
+		out := make([]u8, w * h * 4, allocator)
+		copy(out, img.rgba[:w * h * 4])
+		return Drag_Image{out, img.size, img.offset}
+	}
+	nw, nh := max(int(f32(w) * k), 1), max(int(f32(h) * k), 1)
+	out := make([]u8, nw * nh * 4, allocator)
+	for y in 0 ..< nh {
+		y0 := y * h / nh
+		y1 := max((y + 1) * h / nh, y0 + 1)
+		for x in 0 ..< nw {
+			x0 := x * w / nw
+			x1 := max((x + 1) * w / nw, x0 + 1)
+			// premultiplied average, so transparent pixels do not darken the edges
+			sum: [4]u32
+			for yy in y0 ..< y1 {
+				for xx in x0 ..< x1 {
+					p := img.rgba[(yy * w + xx) * 4:][:4]
+					a := u32(p[3])
+					sum += {u32(p[0]) * a, u32(p[1]) * a, u32(p[2]) * a, a}
+				}
+			}
+			n := u32((y1 - y0) * (x1 - x0))
+			o := out[(y * nw + x) * 4:][:4]
+			if sum[3] > 0 { for c in 0 ..< 3 { o[c] = u8(sum[c] / sum[3]) } }
+			o[3] = u8(sum[3] / n)
+		}
+	}
+	return Drag_Image{out, {nw, nh}, {int(f32(img.offset.x) * k), int(f32(img.offset.y) * k)}}
+}
+
+// Answers the system synchronously while drag_start blocks (drop_sync_set): the drag the app started came back over
+// its own window, the app's frame cannot run until the drag ends, so the window asks the app at once instead of
+// queueing Drop_* events. `ev` is the Drop_Enter / Drop_Over / Drop_Leave / Drop that would have been queued
+// (drop_data(w) holds the data); the result is the effect a drop would have here (nil: refused; ignored for Drop_Leave).
+// The app handles the drop inside the call for a Drop, so it sees it before drag_start returns.
+Drop_Sync :: #type proc(user: rawptr, w: ^Window, ev: Event) -> Maybe(Drop_Effect)
+
+// One step of a scripted drag (drag_script): the pointer at `pos` (client pixels, outside the client area = over
+// another application) with `mods` held. The last step is where the button is released.
+Drag_Step :: struct {
+	pos:  [2]f32,
+	mods: Modifiers,
+}
+
+// What a scripted drag does at each step, from where the pointer was (`was_inside`) and is (`inside`): the drop
+// target's callbacks a system would call. Pure, shared by every system.
+Drag_Script_Call :: enum u8 { None, Enter, Over, Leave, Drop, Cancel }
+
+drag_script_calls :: proc(was_inside, inside, last: bool) -> (first, second: Drag_Script_Call) {
+	switch {
+	case inside && !was_inside: first = .Enter
+	case inside: first = .Over
+	case was_inside: first = .Leave
+	}
+	if last { second = inside ? .Drop : .Cancel }
+	return
+}
+
 // The MIME types a drag offers, in the order a web page lists them (HTML "drag data store item list"): the app's own
 // formats, then text/plain, text/uri-list, text/html, and "Files" when there are files. Temporary allocator.
 drag_data_types :: proc(d: Drag_Data, allocator := context.temp_allocator) -> []string {
