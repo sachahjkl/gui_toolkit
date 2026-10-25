@@ -3,6 +3,13 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.36.2] - 2026-10-25
+
+### Added
+- **`platform.Frame_Slots` / `frame_slot_wait`** (`platform/frame_slots.odin`, pure): the app's own cap on the cadence of its frames, a grid of slots one period apart that no frame starts before. The swap chain's latency object paces an app only where the system holds frames back until a refresh; on a variable or dynamic refresh display (G-Sync, FreeSync, Windows 11's dynamic refresh rate) it is released at once, and an app woken by a mouse at 1 kHz makes and presents a frame per move (270 to 915 a second measured on a 180 Hz G-Sync monitor). `strict` makes the grid the period itself; a loose one (0.9 of it) is a net a screen that paces the app never reaches, and tightens by itself after 8 delayed frames in a row. A frame that starts an answer to input (`immediate`) is not delayed. Test: `tests/frame_slots` (a loop woken every millisecond on a screen that paces nothing: at most one frame per period).
+- **`Display_Info.max_hz`**: the highest rate of the monitor's modes at the current size and orientation. With a dynamic refresh rate the mode and the display path say 60 Hz all the time while the screen is at 180 Hz when something moves; `platform.refresh_is_variable(hz, max_hz)` tells when to aim above `hz`.
+- **`platform.display_live_hz(w)` / `display_live_reset(w)`**: the compositor's refresh rate measured (`DwmGetCompositionTimingInfo` with the window: refreshes counted between two calls), what the screen is at now.
+
 ## [0.36.1] - 2026-10-25
 
 ### Added
