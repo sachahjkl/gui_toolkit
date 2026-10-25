@@ -3,6 +3,14 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.35.0] - 2026-10-25
+
+### Added
+- **Drag and drop between applications** (`platform/dragdrop.odin`, `dragdrop_win32.odin`, `dragdrop_stub.odin`, `docs/dragdrop.md`): the API is independent of the system; Windows implements it with OLE, other systems answer "not supported". A window becomes a drop target with `drop_target_enable`; a drag over it queues `Drop_Enter` / `Drop_Over` / `Drop_Leave` / `Drop` (position, modifiers, `Event.drop_allowed`) with the data in `drop_data` (`Drag_Data`: files, text, HTML fragment, URL and its title, PNG image, the app's own MIME types); the app answers with `drop_set_effect` (the system is given the last answer). `drag_start` runs a drag of the system with a `Drag_Data` and an optional `Drag_Image`, and returns the effect the target chose. `drop_effect_for` (the Ctrl / Shift / Alt convention), `drag_data_types`, `drag_threshold`, `drop_inject` (tests, remote control), `drop_self_test` (the round trip through the window's own drop target, no mouse). Pure helpers: `drag_custom_encode` / `decode`, `uri_list_first`, `html_format_wrap` / `html_format_fragment` (CF_HTML).
+- **Fingers and pens** (`platform/pointer.odin`, `pointer_win32.odin`): `Pointer_Down` / `Pointer_Move` / `Pointer_Up` / `Pointer_Cancel` events with `Event.pointer` (`Pointer_Info`: identifier, touch or pen, primary, pressure, tilt, twist, barrel, eraser, contact size) from `WM_POINTER`. The system's mouse emulation still comes, marked `Event.emulated`. `pointer_buttons`, `pointer_pressure`, `Pointer_State`.
+- `Mouse_*` events carry `Event.buttons` (`Mouse_Buttons`: the buttons held after the event), so a move during a drag says which button is held.
+- `tests/dragdrop`: the pure helpers, the pointer details, the round trip of every format through the system (hidden window), injected drops.
+
 ## [0.33.0] - 2026-10-25
 
 ### Fixed
