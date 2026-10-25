@@ -211,7 +211,15 @@ collect_holes :: proc(s: ^State, b: ^Box, clip: Rect, c: ^platform.Chrome_Region
 	if .Clickable in b.flags && !is_caption_button_key(s, b.key) {
 		for cap in c.caption {
 			o := clip_rect(r, Rect{cap.min, cap.max})
-			if o.max.x > o.min.x && o.max.y > o.min.y { append(&c.holes, platform.Region{r.min, r.max}); break }
+			if o.max.x > o.min.x && o.max.y > o.min.y {
+				// a leaning box keeps its shape unless a clip cut it (then its rect is what is left of it)
+				if b.slant != {} && r == b.rect {
+					append(&c.slanted, platform.Slanted_Region{b.rect.min, b.rect.max, b.slant})
+				} else {
+					append(&c.holes, platform.Region{r.min, r.max})
+				}
+				break
+			}
 		}
 	}
 	inner := .Clip in b.flags ? r : clip

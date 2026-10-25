@@ -3,6 +3,13 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.28.0] - 2026-10-25
+
+0.27.0 is reserved for the fixes of the review branch.
+
+### Added
+- **Boxes with leaning sides** (`ui.Box.slant`, `platform.Slant`): a clickable box can say that its left and right edges lean (how far each is moved inwards at its top and at its bottom). Only that trapezoid is hit (`ui.box_contains`; the topmost box under the pointer still wins), and over an integrated title bar it is a *slanted hole* (`platform.Chrome_Regions.slanted`, `platform.Slanted_Region`, `platform.slanted_contains`; `hit_test_chrome` answers `.Client` inside it), so that the corners a trapezoid tab does not cover keep dragging the window. For tab strips drawn with sloped sides. Tests in `tests/chrome`.
+
 ## [0.25.0] - 2026-10-24
 
 ### Added

@@ -120,8 +120,14 @@ hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 	for c := b.last; c != nil; c = c.prev {
 		if k := hit_test_box(c, p, child_clip); k != 0 { return k }
 	}
-	if .Clickable in b.flags && .Disabled not_in b.flags && contains(b.rect, p) { return b.key }
+	if .Clickable in b.flags && .Disabled not_in b.flags && box_contains(b, p) { return b.key }
 	return 0
+}
+
+// Whether `p` is on the box's shape: its rect, or the trapezoid `slant` makes of it.
+box_contains :: proc(b: ^Box, p: Vec2) -> bool {
+	if b.slant == {} { return contains(b.rect, p) }
+	return platform.slanted_contains({b.rect.min, b.rect.max, b.slant}, p)
 }
 
 @(private)
