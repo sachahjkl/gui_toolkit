@@ -1,8 +1,8 @@
 package ui
 
 // Scrollbars for every vertical scroll region (boxes with .View_Scroll_Y whose content is taller than the box),
-// and corner rounding control. Scrollbars are drawn over the content at the right edge, can be dragged, and a
-// press on the track jumps there.
+// and corner rounding control. Scrollbars are drawn over the content at the right edge (the left one with
+// .Scrollbar_Left), can be dragged, and a press on the track jumps there.
 
 import "core:math"
 import "../draw"
@@ -26,6 +26,7 @@ scrollbar_geom :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) {
 	w := max(6, math.round(b.font_size * 0.5))
 	m := math.round(w * 0.35)
 	track = {{b.rect.max.x - w - m, b.rect.min.y + m}, {b.rect.max.x - m, b.rect.max.y - m}}
+	if .Scrollbar_Left in b.flags { track.min.x, track.max.x = b.rect.min.x + m, b.rect.min.x + m + w }
 	th_avail := track.max.y - track.min.y
 	th := max(b.font_size * 1.6, th_avail * view / content)
 	maxoff := content - view

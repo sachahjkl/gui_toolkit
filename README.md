@@ -84,7 +84,8 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 ## Features
 
 - **Layout**: pixels / text / percent / children-sum sizes with strictness, floating boxes, cross-axis alignment,
-  wrapping rows (`flow`), borders kept out of the content (border-box), scrolling with overlay scrollbars.
+  wrapping rows (`flow`), borders kept out of the content (border-box), scrolling with overlay scrollbars
+  (at the right edge, or at the left one with `.Scrollbar_Left`).
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
 - **Theme**: `(tags -> color)` patterns, `apply_palette` expands an 11-color palette (dark and light included);
