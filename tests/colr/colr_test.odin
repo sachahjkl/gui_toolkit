@@ -269,6 +269,43 @@ emoji_sequences_shape_to_one_glyph :: proc(t: ^testing.T) {
 	testing.expectf(t, bad == 0, "%d of %d emoji sequences are not one glyph", bad, len(seqs))
 }
 
+// Subdivision flags (tag sequences) glued to each other or to other emoji are each one glyph: England and Scotland side
+// by side, a flag between two faces.
+@(test)
+adjacent_tag_sequences_shape_to_their_own_glyphs :: proc(t: ^testing.T) {
+	data, ok := emoji_font()
+	if !ok { fmt.println("skipped: build/emoji/NotoColorEmoji-COLRv1.ttf is missing (tools\\fetch_emoji.ps1)"); return }
+	s: font.State
+	font.init(&s)
+	defer font.destroy(&s)
+	id, loaded := font.load_embedded(&s, data)
+	testing.expect(t, loaded)
+	cas := font.cascade(&s, {{font = id}}, nil, true)
+	england := "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F"
+	scotland := "\U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F"
+	wales := "\U0001F3F4\U000E0067\U000E0062\U000E0077\U000E006C\U000E0073\U000E007F"
+	Case :: struct { text: string, glyphs: int }
+	cases := [?]Case{
+		{england, 1}, {strings.concatenate({england, scotland}, context.temp_allocator), 2},
+		{strings.concatenate({england, scotland, wales}, context.temp_allocator), 3},
+		{strings.concatenate({"\U0001F600", england, "\U0001F600"}, context.temp_allocator), 3},
+		{strings.concatenate({england, "\U0001F600", wales}, context.temp_allocator), 3},
+	}
+	for c in cases {
+		sh := font.shape(&s, cas, 32, c.text, {}, context.temp_allocator)
+		testing.expectf(t, len(sh.glyphs) == c.glyphs, "%d glyphs, want %d", len(sh.glyphs), c.glyphs)
+		for g in sh.glyphs { testing.expect(t, g.id != 0) }
+		// the clusters tile the text
+		pos := 0
+		for cl in sh.clusters {
+			if int(cl.start) < pos { continue }
+			testing.expectf(t, int(cl.start) == pos, "a gap in the clusters at %d", pos)
+			pos = int(cl.end)
+		}
+		testing.expect_value(t, pos, len(c.text))
+	}
+}
+
 // Noto Color Emoji drawn by both engines at a few sizes: the same pictures (the tools\colrboard board holds the
 // interpreter to Chrome's, to 0.8 / 255).
 @(test)

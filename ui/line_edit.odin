@@ -243,9 +243,9 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 	lo, hi := min(d.cursor, d.mark), max(d.cursor, d.mark)
 	if lo != hi && d.focused {
-		xa := x0 + font.x_from_index(s.fonts, b.font, b.font_size, d.text, lo)
-		xb := x0 + font.x_from_index(s.fonts, b.font, b.font_size, d.text, hi)
-		draw.rect(dc, {{xa, cy - m.line_height * 0.5}, {xb, cy + m.line_height * 0.5}}, d.selection)
+		for sp in font.x_spans_of_range(s.fonts, b.font, b.font_size, d.text, lo, hi) {   // (several in bidirectional text)
+			draw.rect(dc, {{x0 + sp[0], cy - m.line_height * 0.5}, {x0 + sp[1], cy + m.line_height * 0.5}}, d.selection)
+		}
 	}
 	draw.text(dc, b.font, b.font_size, {x0, baseline}, b.text_color, d.text)
 	if d.focused && d.caret_on {

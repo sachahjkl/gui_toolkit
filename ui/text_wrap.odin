@@ -23,16 +23,26 @@ wrap_lines :: proc(f: font.Font_Id, size: f32, text: string, width: f32, allocat
 			for start < para_end && text[start] == ' ' && start > para_start { start += 1 }
 			if start >= para_end { if start == para_start { append(&lines, [2]int{start, start}) }; break }
 			// longest prefix that fits, ending at a space if there is one
+			// (by grapheme cluster: an emoji sequence or a letter with its marks is measured whole and never cut)
 			x: f32
 			i := start
 			last_space := -1
-			for i < para_end {
-				r, n := utf8.decode_rune_in_string(text[i:])
-				adv := font.glyph(g.fonts, f, size, r).advance
-				if x + adv > w && i > start { break }
-				if r == ' ' { last_space = i }
+			it := utf8.decode_grapheme_iterator_make(text[start:para_end])
+			for {
+				cl, gr, more := utf8.decode_grapheme_iterate(&it)
+				if !more { break }
+				at := start + gr.byte_index
+				adv: f32
+				if len(cl) == 1 {
+					r, _ := utf8.decode_rune_in_string(cl)
+					adv = font.glyph(g.fonts, f, size, r).advance
+				} else {
+					adv = font.text_width(g.fonts, f, size, cl)
+				}
+				if x + adv > w && at > start { i = at; break }
+				if cl == " " { last_space = at }
 				x += adv
-				i += n
+				i = at + len(cl)
 			}
 			if i >= para_end { append(&lines, [2]int{start, trim_end(text, start, para_end)}); break }
 			cut := last_space > start ? last_space : i

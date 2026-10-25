@@ -59,6 +59,32 @@ grapheme_walk :: proc(t: ^testing.T) {
 	}
 }
 
+// Selecting "c " and the first two letters of a Hebrew word in "abc <word> def" colours two stretches: the Latin end of the
+// line, and the right end of the (right-to-left) word. The letters between them are not selected.
+@(test)
+selection_in_bidirectional_text :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	ui := sys(t, s, "Segoe UI")
+	text := "abc \u05e9\u05dc\u05d5\u05dd def"
+	sh := font.shape(s, ui, 32, text, {}, context.temp_allocator)
+	spans := font.selection_spans(sh, text, 2, 8)   // "c " and the first two letters
+	testing.expect_value(t, len(spans), 2)
+	if len(spans) == 2 {
+		gap := spans[1][0] - spans[0][1]
+		testing.expectf(t, gap > 8, "the unselected letters lie between the stretches (gap %.1f)", gap)
+		testing.expect(t, spans[0][1] - spans[0][0] > 4 && spans[1][1] - spans[1][0] > 4)
+	}
+	// one direction: one stretch, and a partial ligature is shared out
+	plain := "office"
+	sh2 := font.shape(s, ui, 32, plain, {}, context.temp_allocator)
+	one := font.selection_spans(sh2, plain, 1, 4)
+	testing.expect_value(t, len(one), 1)
+	all := font.selection_spans(sh2, plain, 0, len(plain))
+	testing.expect(t, len(all) == 1 && abs(all[0][1] - sh2.width) < 0.5 && abs(all[0][0]) < 0.5)
+	testing.expect_value(t, len(font.selection_spans(sh2, plain, 3, 3)), 0)
+}
+
 // The caret and a click work on whole clusters: a click on an emoji family lands before or after it, and the caret
 // positions of a cluster of several code points are its two edges.
 @(test)
