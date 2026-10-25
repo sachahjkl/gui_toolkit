@@ -29,7 +29,18 @@ Native_Window :: struct {
 	injected:       [dynamic]Event, // inject_event: synthetic input, handed out by the next poll_events after the system's own
 	border_color:   u32,            // set_border_color: the COLORREF given to the compositor
 	border_color_set: bool,
+	buttons_down:   bit_set[Mouse_Button],   // pressed in this window and not yet released: the mouse stays captured until none is
+	returned:       int,            // events the last poll_events handed out: dropped at the next one (those that came since are kept)
 }
+
+// Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
+// another window of the thread is left to the app's own loop (see WM_PAINT).
+@(private, thread_local) pumping: int
+
+@(private)
+TIMER_MODAL_FRAME :: 2   // (id 1 is poll_events' wait timeout)
+@(private)
+MODAL_FRAME_MS :: 16
 
 @(private) os_build: u32   // Windows build number (RtlGetVersion), 0 until asked
 
@@ -330,12 +341,18 @@ destroy_window :: proc(w: ^Window) {
 
 // Collects pending OS events. With `wait` the call blocks until at least one message arrives (idle = 0 % CPU),\n// or until `timeout_ms` elapsed when it is > 0.
 // The returned slice is valid until the next call. Re-entrant calls return nil.
+// The messages of every window of the thread are taken (each window procedure queues the events of its own window): with
+// several windows, each one's events wait in `events` for its own poll_events, which drops only what it returned before.
 poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	if w.in_poll { return nil }
 	w.in_poll = true
-	defer w.in_poll = false
+	pumping += 1
+	defer {
+		w.in_poll = false
+		pumping -= 1
+	}
 
-	if !w.keep_events { clear(&w.events) }   // what wait_handle took is the start of this batch
+	if !w.keep_events { drop_returned(w) }   // what wait_handle took is the start of this batch
 	w.keep_events = false
 	msg: win.MSG
 	if wait && len(w.events) == 0 && len(w.injected) == 0 && !win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) {
@@ -354,7 +371,18 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 		win.DispatchMessageW(&msg)
 	}
 	take_injected(w)
+	w.returned = len(w.events)
 	return w.events[:]
+}
+
+// Removes the events the last poll_events handed out (they have been read); the ones queued since stay.
+@(private)
+drop_returned :: proc(w: ^Window) {
+	n := min(w.returned, len(w.events))
+	w.returned = 0
+	if n == 0 { return }
+	copy(w.events[:], w.events[n:])
+	resize(&w.events, len(w.events) - n)
 }
 
 // Queues an event as if the system had delivered it: the next poll_events returns it (after the real events of that
@@ -550,6 +578,20 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 }
 
 @(private)
+button_down :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
+	if win.GetCapture() != w.hwnd { win.SetCapture(w.hwnd) }
+	w.buttons_down += {b}
+	append(&w.events, Event{kind = .Mouse_Press, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now()})
+}
+
+@(private)
+button_up :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
+	w.buttons_down -= {b}
+	if w.buttons_down == {} { win.ReleaseCapture() }
+	append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now()})
+}
+
+@(private)
 window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lparam: win.LPARAM) -> win.LRESULT {
 	context = runtime.default_context()
 	w: ^Window
@@ -639,8 +681,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		if w.integrated && pointer_hit(w) != win.HTCLIENT { push(w, {kind = .Mouse_Leave}) }
 	case win.WM_NCLBUTTONDOWN, win.WM_NCLBUTTONDBLCLK:
 		if w.integrated && is_caption_button(wparam) {
-			win.SetCapture(hwnd)
-			push(w, {kind = .Mouse_Press, button = .Left, pos = screen_to_client(hwnd, lparam), mods = current_mods()})
+			button_down(w, .Left, screen_to_client(hwnd, lparam))
 			return 0
 		}
 	case win.WM_NCLBUTTONUP, win.WM_NCRBUTTONDOWN, win.WM_NCRBUTTONUP, win.WM_NCRBUTTONDBLCLK:
@@ -668,10 +709,34 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_DISPLAYCHANGE:
 		w.display_stale = true   // a mode (resolution, refresh rate) or the monitor layout changed
 
-	case win.WM_ENTERSIZEMOVE, win.WM_ENTERMENULOOP: w.modal += 1
+	case win.WM_ENTERSIZEMOVE, win.WM_ENTERMENULOOP:
+		w.modal += 1
+		// a move without a resize, or a menu, makes no WM_PAINT of its own (the compositor moves the window): a timer
+		// asks for a repaint, which the loop of the system delivers, so that animations, video and the caret go on
+		if w.modal == 1 { win.SetTimer(hwnd, TIMER_MODAL_FRAME, MODAL_FRAME_MS, nil) }
 	case win.WM_EXITSIZEMOVE, win.WM_EXITMENULOOP:
 		w.modal = max(w.modal - 1, 0)
+		if w.modal == 0 { win.KillTimer(hwnd, TIMER_MODAL_FRAME) }
 		w.display_stale = true   // a move may have landed on another monitor
+
+	case win.WM_TIMER:
+		if wparam == TIMER_MODAL_FRAME {
+			if w.modal > 0 { win.InvalidateRect(hwnd, nil, false) } else { win.KillTimer(hwnd, TIMER_MODAL_FRAME) }
+			return 0
+		}
+
+	case win.WM_CAPTURECHANGED:
+		// the capture went elsewhere (Alt+Tab, a dialog, another window grabbed it) with a button down: the release
+		// will not come to this window, so it is made here, or the widget under the press stays pressed for good
+		// (lParam: the window that took it; this window taking it again for a second button is no loss)
+		if w.buttons_down != {} && win.HWND(uintptr(lparam)) != hwnd {
+			pt: win.POINT
+			win.GetCursorPos(&pt)
+			win.ScreenToClient(hwnd, &pt)
+			down := w.buttons_down
+			w.buttons_down = {}
+			for b in down { push(w, {kind = .Mouse_Release, button = b, pos = {f32(pt.x), f32(pt.y)}, mods = current_mods()}) }
+		}
 
 	case win.WM_DPICHANGED:
 		w.display_stale = true
@@ -696,7 +761,9 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		win.EndPaint(hwnd, &ps)
 		// from the app's own poll the frame being built repaints anyway: a nested one would present twice in one turn
 		// and wait twice for the swap chain. Only a loop of the system (live resize, menu) needs the frame from here.
-		if w.in_poll && w.modal == 0 { w.paint_requested = true; return 0 }
+		// That goes for every window of the thread: the poll of one pumps the messages of the others (a window that is
+		// not polled, such as a detached panel, takes its repaint from take_paint_request).
+		if (w.in_poll || pumping > 0) && w.modal == 0 { w.paint_requested = true; return 0 }
 		if w.on_frame != nil && w.size.x > 0 && w.size.y > 0 { w.on_frame(w.user) }
 		return 0
 
@@ -734,12 +801,14 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		// into the app's own title bar or frame: WM_NCMOUSEMOVE goes on with the moves
 		if !(w.integrated && pointer_hit(w) >= 0) { push(w, {kind = .Mouse_Leave}) }
 
-	case win.WM_LBUTTONDOWN, win.WM_LBUTTONDBLCLK: win.SetCapture(hwnd); push(w, {kind = .Mouse_Press, button = .Left, pos = mouse_pos(lparam), mods = current_mods()})
-	case win.WM_RBUTTONDOWN, win.WM_RBUTTONDBLCLK: win.SetCapture(hwnd); push(w, {kind = .Mouse_Press, button = .Right, pos = mouse_pos(lparam), mods = current_mods()})
-	case win.WM_MBUTTONDOWN, win.WM_MBUTTONDBLCLK: win.SetCapture(hwnd); push(w, {kind = .Mouse_Press, button = .Middle, pos = mouse_pos(lparam), mods = current_mods()})
-	case win.WM_LBUTTONUP: win.ReleaseCapture(); push(w, {kind = .Mouse_Release, button = .Left, pos = mouse_pos(lparam), mods = current_mods()})
-	case win.WM_RBUTTONUP: win.ReleaseCapture(); push(w, {kind = .Mouse_Release, button = .Right, pos = mouse_pos(lparam), mods = current_mods()})
-	case win.WM_MBUTTONUP: win.ReleaseCapture(); push(w, {kind = .Mouse_Release, button = .Middle, pos = mouse_pos(lparam), mods = current_mods()})
+	// the mouse is captured from the first button down to the last one up: releasing it at the first release would
+	// lose the release of the others when it happens outside the window
+	case win.WM_LBUTTONDOWN, win.WM_LBUTTONDBLCLK: button_down(w, .Left, mouse_pos(lparam))
+	case win.WM_RBUTTONDOWN, win.WM_RBUTTONDBLCLK: button_down(w, .Right, mouse_pos(lparam))
+	case win.WM_MBUTTONDOWN, win.WM_MBUTTONDBLCLK: button_down(w, .Middle, mouse_pos(lparam))
+	case win.WM_LBUTTONUP: button_up(w, .Left, mouse_pos(lparam))
+	case win.WM_RBUTTONUP: button_up(w, .Right, mouse_pos(lparam))
+	case win.WM_MBUTTONUP: button_up(w, .Middle, mouse_pos(lparam))
 
 	case win.WM_MOUSEWHEEL, win.WM_MOUSEHWHEEL:
 		notches := f32(i16(win.HIWORD(u32(wparam)))) / 120

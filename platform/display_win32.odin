@@ -189,8 +189,12 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
 	if handle == nil { return true }
 	if w.in_poll { return win.WaitForSingleObject(win.HANDLE(handle), timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE) == win.WAIT_OBJECT_0 }
 	w.in_poll = true   // a nested poll (a frame callback) takes nothing
-	defer w.in_poll = false
-	if !w.keep_events { clear(&w.events) }
+	pumping += 1
+	defer {
+		w.in_poll = false
+		pumping -= 1
+	}
+	if !w.keep_events { drop_returned(w) }
 	w.keep_events = true
 	start := time.tick_now()
 	h := win.HANDLE(handle)
