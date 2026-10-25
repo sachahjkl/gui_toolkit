@@ -158,6 +158,36 @@ stale_tables_are_emptied :: proc(t: ^testing.T) {
 	testing.expect(t, ui.Key(7) not_in f.s.sb_owner)
 }
 
+Wrap_Run :: struct { text: string, width: f32, lines: [][2]int }
+
+build_wrap :: proc(f: ^Fx, user: rawptr) {
+	r := (^Wrap_Run)(user)
+	r.lines = ui.wrap_lines(f.base_font, 15, r.text, r.width, context.allocator)
+}
+
+// A line is never cut inside an emoji sequence or between a letter and its combining mark, and a long run of them is
+// broken between clusters.
+@(test)
+wrapping_cuts_between_clusters :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	family := "\U0001F468\u200D\U0001F469\u200D\U0001F467"
+	fours := strings.repeat(family, 4)
+	defer delete(fours)
+	text := strings.concatenate({"ab ", family, family, family, "e\u0301e\u0301e\u0301e\u0301 ", fours})   // (not temp: frame() frees that)
+	defer delete(text)
+	for width in ([?]f32{10, 25, 40, 70, 120}) {
+		r := Wrap_Run{text = text, width = width}
+		frame(&f, nil, build_wrap, &r)
+		testing.expect(t, len(r.lines) > 1)
+		for l in r.lines {
+			testing.expectf(t, font.is_grapheme_boundary(text, l[0]) && font.is_grapheme_boundary(text, l[1]), "width %.0f: a line [%d, %d) cuts a cluster", width, l[0], l[1])
+		}
+		delete(r.lines)
+	}
+}
+
 @(test)
 wake_requests_keep_the_soonest :: proc(t: ^testing.T) {
 	s: ui.State

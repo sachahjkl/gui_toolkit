@@ -255,10 +255,15 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			if d.focused && lo != hi && lo <= line_end && hi >= line_start {
 				a := max(lo, line_start) - line_start
 				z := min(hi, line_end) - line_start
-				xa := text_x0 + font.x_from_index(s.fonts, b.font, b.font_size, line_text, a)
-				xb := text_x0 + font.x_from_index(s.fonts, b.font, b.font_size, line_text, z)
-				if hi > line_end { xb += b.font_size * 0.35 }   // the line break itself is selected
-				draw.rect(dc, {{xa, y}, {xb, y + lh}}, d.selection)
+				spans := font.x_spans_of_range(s.fonts, b.font, b.font_size, line_text, a, z)
+				for sp, k in spans {
+					xb := text_x0 + sp[1]
+					if hi > line_end && k == len(spans) - 1 { xb += b.font_size * 0.35 }   // the line break itself is selected
+					draw.rect(dc, {{text_x0 + sp[0], y}, {xb, y + lh}}, d.selection)
+				}
+				if len(spans) == 0 && hi > line_end {   // an empty line inside the selection: just its break
+					draw.rect(dc, {{text_x0, y}, {text_x0 + b.font_size * 0.35, y + lh}}, d.selection)
+				}
 			}
 			draw.text(dc, b.font, b.font_size, {math.round(text_x0), math.round(y + baseline_off)}, b.text_color, line_text)
 			// caret

@@ -194,6 +194,47 @@ hit_index :: proc(sh: Shaped, text: string, x: f32) -> int {
 	return best
 }
 
+// The stretches of the line, in pixels from the start of `text`, that the characters [lo, hi) occupy on screen, left to
+// right, touching ones joined. One for text in one direction; several when the range crosses a change of direction (the
+// part of a line of Hebrew that is selected is not the stretch between the carets of its two ends).
+selection_spans :: proc(sh: Shaped, text: string, lo, hi: int, allocator := context.temp_allocator) -> [][2]f32 {
+	spans := make([dynamic][2]f32, 0, 2, allocator)
+	for c in sh.clusters {
+		a, b := max(lo, int(c.start)), min(hi, int(c.end))
+		if a >= b { continue }
+		x0, x1 := c.x0, c.x1
+		if a > int(c.start) || b < int(c.end) {   // part of a cluster (a ligature): its share
+			pa := a > int(c.start) ? caret_x(sh, text, a) : (c.rtl ? c.x1 : c.x0)
+			pb := b < int(c.end) ? caret_x(sh, text, b) : (c.rtl ? c.x0 : c.x1)
+			x0, x1 = min(pa, pb), max(pa, pb)
+		}
+		append(&spans, [2]f32{x0, x1})
+	}
+	for i in 1 ..< len(spans) {   // by position (few of them)
+		v := spans[i]
+		j := i - 1
+		for j >= 0 && spans[j][0] > v[0] { spans[j + 1] = spans[j]; j -= 1 }
+		spans[j + 1] = v
+	}
+	n := 0
+	for i in 0 ..< len(spans) {
+		if n > 0 && spans[i][0] <= spans[n - 1][1] + 0.5 {
+			spans[n - 1][1] = max(spans[n - 1][1], spans[i][1])
+		} else {
+			spans[n] = spans[i]
+			n += 1
+		}
+	}
+	resize(&spans, n)
+	return spans[:]
+}
+
+// `selection_spans` of `text` shaped with font `id` at `size`.
+x_spans_of_range :: proc(s: ^State, id: Font_Id, size: f32, text: string, lo, hi: int, allocator := context.temp_allocator) -> [][2]f32 {
+	sh := shape(s, id, size, text, {}, context.temp_allocator)
+	return selection_spans(sh, text, lo, hi, allocator)
+}
+
 ////////////////////////////////
 // Runs and words
 
