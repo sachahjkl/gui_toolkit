@@ -295,7 +295,7 @@ IDWriteFontFile :: struct #raw_union {
 IDWriteFontFile_VTable :: struct {
 	using iunknown_vtable: IUnknown_VTable,
 	GetReferenceKey: proc "system" (this: ^IDWriteFontFile, key: ^rawptr, key_size: ^u32) -> HRESULT,
-	GetLoader:       rawptr,
+	GetLoader:       proc "system" (this: ^IDWriteFontFile, loader: ^^IDWriteFontFileLoader) -> HRESULT,
 	Analyze:         proc "system" (this: ^IDWriteFontFile, supported: ^BOOL, file_type: ^DWRITE_FONT_FILE_TYPE, face_type: ^DWRITE_FONT_FACE_TYPE, faces: ^u32) -> HRESULT,
 }
 
@@ -604,6 +604,19 @@ IDWriteFontFileLoader_VTable :: struct {
 	Release:             proc "system" (this: ^IDWriteFontFileLoader) -> u32,
 	CreateStreamFromKey: proc "system" (this: ^IDWriteFontFileLoader, key: rawptr, key_size: u32, stream: ^^IDWriteFontFileStream) -> HRESULT,
 }
+
+// The loader of fonts that are files on disk (system fonts, CreateFontFileReference): what gives their path.
+IDWriteLocalFontFileLoader :: struct {
+	using vtable: ^IDWriteLocalFontFileLoader_VTable,
+}
+IDWriteLocalFontFileLoader_VTable :: struct {
+	using loader_vtable:      IDWriteFontFileLoader_VTable,
+	GetFilePathLengthFromKey: proc "system" (this: ^IDWriteLocalFontFileLoader, key: rawptr, key_size: u32, length: ^u32) -> HRESULT,
+	GetFilePathFromKey:       proc "system" (this: ^IDWriteLocalFontFileLoader, key: rawptr, key_size: u32, path: [^]u16, size: u32) -> HRESULT,
+	GetLastWriteTimeFromKey:  rawptr,
+}
+
+IID_IDWriteLocalFontFileLoader := IID{0xb2d9f3ec, 0xc9fe, 0x4a11, {0xa2, 0xec, 0xd8, 0x62, 0x08, 0xf7, 0xc0, 0xa2}}
 
 IDWriteTextAnalysisSource :: struct {
 	vtable: ^IDWriteTextAnalysisSource_VTable,

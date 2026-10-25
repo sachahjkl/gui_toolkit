@@ -72,7 +72,7 @@ emoji_pick :: proc(s: ^State, r: rune) -> Font_Id {
 	id := emoji_face(s)
 	if id == 0 { return 0 }
 	f := face_ptr(s, id)
-	if f != nil && face_has(f, r) { return id }
+	if f != nil && face_has(s, f, r) { return id }
 	return 0
 }
 
