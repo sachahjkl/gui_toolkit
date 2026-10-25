@@ -110,6 +110,9 @@ entries := [?]Entry{
 	{"button background", .Panel2, 1}, {"button border", .Border, 1}, {"button sheen", .White, 1},
 	{"menu_item background", .Panel2, 0}, {"menu_item sheen", .White, 0},
 	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
+	// the selected row of a menu is a filled, rounded row (a tint of the accent, no outline): the outline of a selected
+	// item belongs to lists and fields, and a ring around a row with a faint fill reads as a focus box, not as a highlight
+	{"menu_item selected background", .Accent, 0.30}, {"menu_item selected border", .Accent, 0},
 	{"weak_selected background", .Accent, 0.09}, {"weak_selected border", .Accent, 0.35},
 	{"kbd sheen", .White, 0.7},
 	{"remove_button hot text", .Bad, 1},   // "hot": the box is under the pointer (build_box)
