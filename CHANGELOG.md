@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.32.0] - 2026-10-25
+
+### Added
+- **Input -> screen latency, stage by stage** (`render/latency.odin`, off by default): `render.set_latency_probe(r, true)` records, for each frame that reached the screen and was built from input, the time waiting for the frame (`wait`: event received -> frame began), building and drawing (`work`), `Present` (`present`) and scan-out (`scan`: Present returned -> the refresh that showed it), then `latency_summary(r)` gives p50 / p95 / max / mean of each, the total in refreshes of the monitor, the share of frames built from input and how many presents the swap chain's statistics count as not yet shown. `latency_reset`, `latency_summarize` (pure), `latency_sample_of`. The application tells when the frame read its input with `render.set_frame_read`. `Displayed_Frame` gained `read`, `drawn` and `call` (when `frame_end` and `Present` were called). Both backends feed it; nothing is recorded or allocated while the probe is off (`render/latency_test.odin`: arithmetic and ring, no clocks).
+
 ## [0.31.0] - 2026-10-25
 
 ### Fixed

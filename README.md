@@ -138,7 +138,9 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
 - **Frame pacing**: `platform.display_info` gives the exact refresh rate of the window's monitor (followed across
   monitors and mode changes); `render.set_present_mode` (vsync, or tearing for variable refresh), `set_sync_interval`;
   `render.take_displayed` reports every frame that reached the screen (vblank time, input latency, missed refreshes),
-  `measured_refresh_hz` and `vblank_grid` the measured vblank interval and phase.
+  `measured_refresh_hz` and `vblank_grid` the measured vblank interval and phase. `render.set_latency_probe(r, true)`
+  splits the input -> screen time into wait / work / Present / scan-out (`latency_summary`: p50 / p95 / max, in ms and
+  in refreshes); see `render/latency.odin`.
 
 - **Keyboard**: Tab / Shift+Tab focus navigation (trapped inside modals, scrolled into view, focus ring), arrow keys
   move the focus spatially, Enter / Space activate, arrows drive sliders, menus and dropdowns; an open menu owns the
