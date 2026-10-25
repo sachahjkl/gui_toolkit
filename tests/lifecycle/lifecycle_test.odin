@@ -181,6 +181,26 @@ capture_copy_does_not_outlive_the_device :: proc(t: ^testing.T) {
 	testing.expectf(t, ok && near(p, {0, 0, 255}), "a capture after the recovery: %v", p)
 }
 
+// An upload to a handle that is not a texture, to a destroyed one, outside the texture or from too few pixels writes nothing (and does
+// not crash).
+@(test)
+r8_upload_ignores_bad_arguments :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	tex := render.create_texture_r8(&f.r, 16)
+	testing.expect(t, tex != 0, "an R8 texture")
+	pixels := make([]u8, 16 * 16, context.temp_allocator)
+	render.update_texture_r8(&f.r, tex, 0, 0, 16, 16, pixels, 16)   // fine
+	render.update_texture_r8(&f.r, render.Texture(9999), 0, 0, 4, 4, pixels, 16)
+	render.update_texture_r8(&f.r, render.Texture(0), 0, 0, 4, 4, pixels, 16)
+	render.update_texture_r8(&f.r, tex, 10, 0, 10, 4, pixels, 16)   // outside
+	render.update_texture_r8(&f.r, tex, -1, 0, 4, 4, pixels, 16)
+	render.update_texture_r8(&f.r, tex, 0, 0, 16, 16, pixels[:100], 16)   // too short
+	render.destroy_texture(&f.r, tex)
+	render.update_texture_r8(&f.r, tex, 0, 0, 4, 4, pixels, 16)   // destroyed
+}
+
 // An allocator that fills what is freed with 0xAA first: a read of freed memory finds garbage handles (and crashes) instead of the old values.
 Poison :: struct { inner: mem.Allocator }
 
