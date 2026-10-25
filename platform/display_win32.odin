@@ -144,29 +144,16 @@ mode_max_rate :: proc(device: ^u16) -> (hz: f64) {
 	return
 }
 
-// The next display_live_hz starts a measure (the app rested: the rate over a long pause says nothing about the one while it moves).
-display_live_reset :: proc(w: ^Window) { w.live_reset = true }
-
-// The refresh rate the compositor is running at, measured: DWM's count of refreshes between two calls (at least a quarter of
-// a second apart; the first call, or one too soon, answers with what the last measure found, ok false before there is one).
-// With a dynamic or variable refresh rate this is the rate the screen is at now, which neither the mode nor the display
-// path says. The compositor counts the refreshes of the monitor the window is on.
+// The refresh rate the compositor says it runs at right now (DWM's `rateRefresh`): with a dynamic refresh rate it is the one
+// sensor that moves with the screen (the mode and the display path say 60 Hz for good); read it repeatedly while the app moves
+// and keep the highest. DWM answers for the PRIMARY monitor only, and only to a NULL window handle (with one the call fails
+// with E_INVALIDARG): for a window on another monitor there is no answer (ok false; `render.measured_refresh_hz`, the swap
+// chain's own statistics, is the window's). Its count of refreshes is no help: it counts the calls of the process.
 display_live_hz :: proc(w: ^Window) -> (hz: f64, ok: bool) {
-	if w.live_reset { w.live_reset, w.live_qpc = false, 0 }   // (the last measure stays until a new one replaces it)
+	if win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST) != win.MonitorFromPoint({0, 0}, .MONITOR_DEFAULTTOPRIMARY) { return 0, false }
 	ti := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
-	if win.FAILED(DwmGetCompositionTimingInfo(w.hwnd, &ti)) { return w.live_hz, w.live_hz > 0 }
-	freq: win.LARGE_INTEGER
-	win.QueryPerformanceFrequency(&freq)
-	if w.live_qpc == 0 {
-		w.live_count, w.live_qpc = ti.cRefresh, ti.qpcVBlank
-		return w.live_hz, w.live_hz > 0
-	}
-	dt := f64(ti.qpcVBlank - w.live_qpc) / f64(freq)
-	if dt >= 0.25 && ti.cRefresh >= w.live_count {
-		w.live_hz = f64(ti.cRefresh - w.live_count) / dt
-		w.live_count, w.live_qpc = ti.cRefresh, ti.qpcVBlank
-	}
-	return w.live_hz, w.live_hz > 0
+	if win.FAILED(DwmGetCompositionTimingInfo(nil, &ti)) || ti.rateRefresh[0] == 0 || ti.rateRefresh[1] == 0 { return 0, false }
+	return f64(ti.rateRefresh[0]) / f64(ti.rateRefresh[1]), true
 }
 
 @(private = "file")
