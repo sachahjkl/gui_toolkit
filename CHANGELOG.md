@@ -3,6 +3,35 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.30.0] - 2026-10-25
+
+Fixes from the review of `font`, `ui` and `platform` (0.26.0). 0.29.0 is the version of another branch (render and draw).
+
+### Added
+- **Grapheme clusters** (`font/grapheme.odin`): `font.grapheme_next`, `grapheme_prev`, `is_grapheme_boundary`, `grapheme_count` (UAX #29: ZWJ and modifier sequences, flags, tags, keycaps, Hangul, Indic conjuncts, CR LF), a boundary after or before any byte index.
+- `font.selection_spans` / `x_spans_of_range`: the stretches of a line that a range of characters occupies on screen (several in bidirectional text).
+- `font.raster_size_limit(s)`: the largest size glyphs are rasterized at (half an atlas page).
+- `Colr_Params.surface_limit` and `work_limit`, `COLR_MAX_COMPOSITES`, `COLR_SURFACE_LIMIT`, `COLR_WORK_*`: the bounds of the COLR interpreter's memory and work. `gsub_ligate` is bounded by `GSUB_BUDGET`.
+- `ui.wake_within(s, ms)`: asks for a wake within `ms`, keeping the soonest of all the requests. `ui.TIMER_KEEP_BUILDS`.
+- `tests/window` (windows and messages; needs a desktop, not in CI), `tests/ui_robust` (in CI), `tests/colr/hostile_test.odin` (COLR and GSUB tables built by hand), `tests/text/grapheme_test.odin`.
+
+### Changed
+- **`Font_Id` carries a generation** (slot index in the low 20 bits): the slot of an unloaded font is reused by the next one, so loading and unloading no longer runs out of ids at 65 536; the id of an unloaded font reaches nothing, even once its slot is taken. Ids of the first font in a slot are the same numbers as before. Code that stores `Font_Id` as an opaque number is not affected; code that computes with it (index into a table by id) must mask with `1 << 20 - 1`.
+- **Caret, arrows, Backspace, Delete, clicks (`hit_index`), the cut of a toast and the line breaks of `wrap_lines` work on grapheme clusters**, not on code points. Word movement keeps its code point steps.
+- `platform.poll_events` / `wait_handle` drop only the events they returned before (they used to clear the whole list, losing what a poll of another window had queued for its window).
+- `platform`: the mouse stays captured until the last button is up; a lost capture makes the missing `Mouse_Release`. A repaint of a window that is not itself polled, arriving while another window of the thread polls, no longer runs `on_frame` inside that poll: it sets `paint_requested` (`take_paint_request`). A move and a menu now get frames (a 16 ms timer, `WM_ENTERSIZEMOVE` .. `WM_EXITSIZEMOVE`) as the documentation said.
+- `platform.open_window` returns nil when the system cannot make the window; `inject_event` of a `Close` sets `is_closed`.
+- COLR: a glyph over a bound of memory or work is refused (drawn as its outline); `PaintComposite` nests at most 8 levels; the interpreter draws without the atlas lock. `colr_nests_glyph` answers "nested" for a graph it cannot read to its end (so that it goes to the interpreter, not to Direct2D), `colr_find` keeps a base glyph record whose offset is outside the table as an unreadable graph, `colr_open` accepts any offsets in a v0 header with no records and refuses a table whose base glyph list does not fit; a face with such a table is not drawn in color by Direct2D.
+- Atlas: a bitmap bigger than a page makes no page and evicts none; `draw.glyph_run` caps the rasterization size and stretches the bitmap (text over 1024 px per em was invisible). The Direct2D canvas over 1M pixels is given back after use. `Settings.page_size` is documented as read by `init` only.
+- `ui.menu_item` closes the menu when its block ends, not in the middle (the items after the chosen one were built as buttons for a frame). `ui.apply_palette` keeps the entries an application added to the theme first (`Theme.palette_at`); `theme_add` copies its tags. `ui.focus_step` keeps to the open modal; `focused_name` is empty for a box not built yet in this build.
+- `ui.fuzzy_find` returns positions in the text it was given (a dotted capital I made them one byte off).
+- Timers, scrollbar owners and a virtual list's measured heights of rows that are gone no longer grow without end.
+
+### Fixed
+- `ui.dropdown` with an empty list or a selection outside it, `ui.tabs` with fewer icons than labels, and `ui.segmented` with no label panicked or drew an infinite rectangle.
+- `platform.config_dir` with `%APPDATA%` over 259 characters panicked; the clipboard is read up to the size of its block, freed when it cannot be given to the system, and `GlobalLock` is checked.
+- The wake-ups of the caret blink and of a tooltip delay no longer replace each other.
+
 ## [0.28.0] - 2026-10-25
 
 0.27.0 is reserved for the fixes of the review branch.

@@ -15,7 +15,7 @@ comes from DirectWrite (the platform): no font file parsing, no shaping or bidi 
 | `with_simulations(s, face, bold, oblique)` | The same face with synthetic bold / slant (CSS `font-synthesis`). |
 | `axes(s, face)`, `with_variations(s, face, values)` | Variable fonts: the axes, and an instance at axis values (`font-variation-settings`, weight / width axes). Windows 10 1803+. |
 | `cascade(s, entries, features, no_system_fallback)` | A `Font_Id` that takes each character from the first entry whose `ranges` (CSS `unicode-range`) include it and whose face has it, then from the **system fallback** (`IDWriteFontFallback::MapCharacters`, based on the first face's family, weight and style), then from the first face (its .notdef). `features`: OpenType features for every face (`font-feature-settings`, `font-variant-*`, `font-kerning`). A face is its own one-entry cascade. |
-| `unload(s, id)` | Frees a font, the shaped words and the glyph bitmaps that use it. Not while anything else uses the state. |
+| `unload(s, id)` | Frees a font, the shaped words and the glyph bitmaps that use it. Not while anything else uses the state. Its slot is reused by a later font: a `Font_Id` is the slot (low 20 bits) and its generation, so the id of an unloaded font reaches nothing (`valid` is false, no glyph, no width) even once the slot is taken. A state holds up to 2^20 fonts at once; loading and unloading is unlimited. |
 | `metrics(s, id, size)` | Ascent, descent, line height, x-height, cap height, underline and strike-through offset / thickness (the first face's). |
 
 Combining marks, variation selectors, joiners and emoji modifiers stay in the face of their base; when the base goes to
@@ -41,9 +41,20 @@ advance, the byte index of its cluster, `rtl`. `Shaped.clusters` are in **logica
 visual extent `[x0, x1)` (spacing included), `rtl`. Carets and hit testing:
 
 - `caret_x(sh, text, index)`: x of the caret before byte `index` (in a right-to-left cluster, its right edge; inside a
-  ligature, the cluster shared out evenly between its characters).
-- `hit_index(sh, text, x)`: the byte index whose caret is nearest to `x`.
+  ligature, the cluster shared out evenly between its graphemes).
+- `hit_index(sh, text, x)`: the byte index whose caret is nearest to `x`; always a grapheme boundary.
 - `x_from_index`, `index_from_x`: the same from a string.
+- `selection_spans(sh, text, lo, hi)` (`x_spans_of_range` from a string): the stretches of the line, left to right,
+  that the characters `[lo, hi)` occupy on screen. One for text in one direction; several across a change of direction,
+  where the stretch between the two carets would cover letters that are not selected. `ui.line_edit` and `ui.text_edit` draw
+  one rectangle per stretch.
+
+**Grapheme clusters** (`font/grapheme.odin`, UAX #29 on `core:unicode/utf8`'s segmentation): what a reader calls one
+character, e.g. an emoji family (5 code points), a flag (2), a letter and its combining marks, a Hangul syllable, an Indic
+conjunct. `grapheme_next(s, i)` and `grapheme_prev(s, i)` give the boundary after / before any byte index (also one inside a
+code point or a cluster), `is_grapheme_boundary`, `grapheme_count`. The arrows, Backspace and Delete of `ui.line_edit` and
+`ui.text_edit`, clicks (`hit_index`), the cut of a toast and the line breaks of `ui.wrap_lines` work on clusters: nothing
+is ever left of a half emoji.
 
 `measure(s, id, size, text, opts)` is `shape(...).width` without building the glyph list: what a layout engine calls.
 `text_width(s, id, size, text)` is `measure` with default options.
@@ -73,6 +84,12 @@ the start of their frame (`atlas_begin_frame`); when every page of a kind is in 
 (`Settings.max_gray_pages` / `max_color_pages`), the least recently used page no current frame drew from is cleared,
 else one more page is made. (The stb_truetype atlas cleared itself in the middle of a frame when it was full: glyphs
 drawn earlier in that frame then showed whatever was rasterized over them.)
+
+**Big text.** A bitmap that does not fit a page (`Settings.page_size`, 2048) is never kept, and asking for one makes no
+page and evicts none. `draw.glyph_run` therefore rasterizes at most `raster_size_limit(s)` pixels per em (half a page,
+1024 by default) and draws the bitmap stretched: text of 1100 px at 200 % shows, a little soft, instead of vanishing.
+`Settings.page_size` is read by `init` only. The Direct2D canvas of a color glyph (up to 4096 x 4096) is given back after a
+glyph that needed more than 1M pixels.
 
 A cleared page starts a new **epoch** (`Glyph_Image.epoch`): retained drawing keeps `Page_Ref{page, epoch}` for the
 pages its glyphs are on and checks them before replaying (`atlas_pages_hold`, which also marks the pages used by the
@@ -154,7 +171,20 @@ the glyph at the requested pixel size on the CPU:
   `Settings.colr_cache_kb`; scan conversion is exact horizontally and `Settings.colr_samples` times per pixel row vertically.
   The bitmaps go to the same Color pages, async queue and `uses_fg` handling as Direct2D's.
 - Untrusted input: every offset is checked, a graph with a cycle or more than `COLR_MAX_PAINTS` nodes is refused (the glyph is
-  then its plain outline), canvases are limited to `COLR_CANVAS_LIMIT`. `tests/colr` mutates a COLR table 400 times.
+  then its plain outline), canvases are limited to `COLR_CANVAS_LIMIT`. `tests/colr` mutates a COLR table 400 times and
+  builds hostile tables by hand (`hostile_test.odin`). The work of a glyph is bounded: the surfaces alive at once to
+  `COLR_SURFACE_LIMIT` bytes (256 MiB; `Colr_Params.surface_limit`) and `COLR_MAX_COMPOSITES` (8) levels of `PaintComposite`
+  inside one another; the pixels visited (fills, gradients, clips, composites; 16 per outline curve) to 256 times the
+  canvas' area between `COLR_WORK_FLOOR` and `COLR_WORK_CEIL` (`Colr_Params.work_limit`). A glyph over a bound is refused
+  and drawn as its outline. The drawing runs without the atlas lock (the other threads that draw are not held up), and
+  two threads that draw the same glyph keep one bitmap.
+- **Which glyphs go to Direct2D** (`Color_Engine.System`): a graph that nests a `PaintGlyph` in a `PaintGlyph` crashes
+  Direct2D of Windows 11 24H2 as first released, so those are drawn here (`colr_nests_glyph`). The answer leans towards
+  the interpreter: a graph that cannot be read to its end (a cycle, an offset outside the table, an unknown format, more
+  than `COLR_MAX_PAINTS` paints) counts as nested, since it may hold the pattern further on; the interpreter refuses it and
+  the outline shows. A face whose COLR table cannot be read at all (a base glyph list that does not fit the table) is not
+  given to Direct2D either. The GSUB reader (`gsub_ligate`) is bounded too: one budget of steps, shared feature tables
+  read once, at most 256 lookups; over it, the sequence is shaped the usual way.
 - Against Direct2D on the color-fonts test glyphs the mean difference is 0.7 / 255; against Chrome / Edge on 115 emoji of
   Noto Color Emoji (`tools\emoji_board.ps1`) it is 0.3 to 0.7 / 255 at 16 to 64 px and 100 % to 175 %.
 

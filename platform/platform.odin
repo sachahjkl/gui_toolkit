@@ -2,9 +2,17 @@
 //
 // Design notes (mirrors the layering of raddebugger's window_manager, in Odin):
 //   * Events are collected by the window procedure and handed to the app by `poll_events`.
-//   * During a live resize or a modal menu loop Windows runs its own message loop and calls the window procedure
-//     directly. We call `window.on_frame` from there so the picture keeps updating. `poll_events` is
-//     re-entrancy safe: a nested call (made by that frame callback) returns no events and pumps nothing.
+//   * During a live resize, a move or a modal menu loop Windows runs its own message loop and calls the window procedure
+//     directly. We call `window.on_frame` from there so the picture keeps updating (a 16 ms timer asks for the repaints
+//     a move or a menu does not make by itself). `poll_events` is re-entrancy safe: a nested call (made by that frame
+//     callback) returns no events and pumps nothing.
+//   * Several windows on one thread: the poll of one window pumps the messages of all of them, each window procedure
+//     queues the events of its own window, and a poll drops only the events it returned before, never those that came
+//     for its window during another's poll. A repaint of a window while any window of the thread polls is not run as a
+//     frame from inside that poll (a frame within the app's frame): it is asked for with `take_paint_request`, whether
+//     or not that window polls itself. Only the system's own loops of the window (move, size, menu) call its `on_frame`.
+//   * The mouse is captured from the first button down to the last one up; a capture taken away with a button down
+//     (Alt+Tab, a dialog) queues the Mouse_Release that would never come.
 //   * Everything is in physical pixels. `window.dpi_scale` is dpi/96.
 package platform
 
