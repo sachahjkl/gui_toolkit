@@ -277,3 +277,19 @@ state_fills_are_visible_steps :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// A timed wake (caret blink, tooltip) counts from the build that asked for it: a loop woken earlier by a message waits
+// only what is left, and makes no frame for the interface before it is due.
+@(test)
+timed_wake_counts_from_its_build :: proc(t: ^testing.T) {
+	s: ui.State
+	testing.expect(t, !ui.wake_due(&s) && ui.wake_in_ms(&s) == 0, "no wake asked")
+	s.wake_ms = 500
+	s.time_ms = ui.now_ms()
+	testing.expect(t, !ui.wake_due(&s), "not due right after the build")
+	left := ui.wake_in_ms(&s)
+	testing.expect(t, left >= 1 && left <= 500, "what is left of it")
+	s.time_ms = ui.now_ms() - 600
+	testing.expect(t, ui.wake_due(&s), "due once its time passed")
+	testing.expect_value(t, ui.wake_in_ms(&s), 1)
+}
