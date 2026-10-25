@@ -76,7 +76,7 @@ Settings :: struct {
 	color_async:     bool,      // color glyphs are drawn on a thread of their own: pending until ready (color_async.odin;
 	                            // the application asks for a frame from set_color_ready_callback)
 	system_fallback: bool,      // characters no face of a cascade has come from the system fallback fonts
-	page_size:       int,       // texels on a side of an atlas page
+	page_size:       int,       // texels on a side of an atlas page (init only; set_settings keeps the first)
 	max_gray_pages:  int,       // coverage pages kept before the least recently used one is reused
 	max_color_pages: int,
 	word_cache:      int,       // shaped words kept (the measure cache), 0: no cache
@@ -234,6 +234,7 @@ sanitize_settings :: proc(st: ^Settings) {
 // Changes the settings. New rendering settings (subpixel steps, rendering mode, grid fitting, color glyphs) apply to
 // every glyph looked up from now on: cached bitmaps are forgotten (their pages are reused as usual, never under a
 // frame drawing from them) and the atlas' settings generation bumps (recorded text made with the old ones is stale).
+// `page_size` is read by `init` only: the draw layer gives every page the same texture size.
 set_settings :: proc(s: ^State, settings: Settings) {
 	st := settings
 	sanitize_settings(&st)

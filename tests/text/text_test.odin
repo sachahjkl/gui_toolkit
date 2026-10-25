@@ -287,6 +287,28 @@ atlas_stress :: proc(t: ^testing.T) {
 	fmt.printfln("atlas: %d pages, %d evictions", font.atlas_page_count(s), font.atlas_evictions(s))
 }
 
+// A glyph that cannot fit a page is not kept, and asking for it does not make a page (nor evict a valid one) each time.
+@(test)
+glyphs_bigger_than_a_page_make_no_page :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	ui := sys(t, s, "Segoe UI")
+	sh := font.shape(s, ui, 20, "W", {}, context.temp_allocator)
+	small := font.glyph_image(s, ui, sh.glyphs[0].id, 20, 0)
+	testing.expect(t, small.page >= 0)
+	pages, evictions := font.atlas_page_count(s), font.atlas_evictions(s)
+	// "I" is about 0.7 em tall: over 2047 px from 3000 px on
+	sh = font.shape(s, ui, 20, "I", {}, context.temp_allocator)
+	for size in ([?]f32{3000, 3200, 3500, 4000}) {
+		for sub in 0 ..< 4 {
+			img := font.glyph_image(s, ui, sh.glyphs[0].id, size, sub)
+			testing.expect(t, img.page < 0)
+		}
+	}
+	testing.expect_value(t, font.atlas_page_count(s), pages)
+	testing.expect_value(t, font.atlas_evictions(s), evictions)
+}
+
 // Measuring from many threads at once gives what one thread gets.
 @(test)
 concurrent_measure :: proc(t: ^testing.T) {

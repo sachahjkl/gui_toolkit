@@ -79,6 +79,22 @@ save_bmp :: proc(path: string, img: []u8) {
 	_ = os.write_entire_file(path, buf)
 }
 
+// Text bigger than an atlas page is rasterized smaller and drawn stretched, not left out.
+@(test)
+draw_huge_text_is_stretched :: proc(t: ^testing.T) {
+	f := new(Dfx)
+	defer free(f)
+	if !open(t, f) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
+	defer close(f)
+	img := frame(f, proc(f: ^Dfx) {
+		// the stems of "I" at 3200 px are about 290 px wide and 2250 tall (more than a page): some cover the 360 x 96 frame
+		for x := f32(-1200); x < 400; x += 150 { draw.text(&f.dc, f.ui, 3200, {x, 2000}, {0, 0, 0, 1}, "I") }
+	})
+	dark, _ := census(img, 0, 0, DSIZE.x, DSIZE.y)
+	testing.expectf(t, dark > DSIZE.x * DSIZE.y / 10, "huge text is not drawn (%d dark pixels)", dark)
+	testing.expect(t, font.atlas_page_count(&f.fonts) <= 2)
+}
+
 @(test)
 draw_text_fallback_emoji_bidi :: proc(t: ^testing.T) {
 	f := new(Dfx)

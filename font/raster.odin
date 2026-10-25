@@ -269,6 +269,8 @@ page_log :: proc(p: ^Page, x, y, w, h: int) {
 atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, ok: bool) {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
+	// a bitmap (with its pad) that is bigger than a page can never be placed: no eviction, no page made for nothing
+	if w + 1 > s.settings.page_size || h + 1 > s.settings.page_size { return 0, 0, 0, false }
 	n_kind := 0
 	for p, i in a.pages {
 		if p.kind != kind { continue }
@@ -302,6 +304,12 @@ atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, 
 	append(&a.pages, p)
 	if x, y, ok = page_alloc(p, w, h); ok { return len(a.pages) - 1, x, y, true }
 	return 0, 0, 0, false
+}
+
+// The largest size (px per em) a glyph is rasterized at: its bitmap, at most about twice the em on a side, then fits an
+// atlas page. Text above it is rasterized at this size and stretched by the draw layer (draw.glyph_run does).
+raster_size_limit :: proc(s: ^State) -> f32 {
+	return max(f32(s.settings.page_size) / 2, 64)
 }
 
 // Pages evicted so far (diagnostics, tests).
@@ -420,6 +428,7 @@ coverage :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x, y: f32) -> (bounds: RECT,
 	if analysis->GetAlphaTextureBounds(tt, &bounds) < 0 { return }
 	w, h := int(bounds.right - bounds.left), int(bounds.bottom - bounds.top)
 	if w <= 0 || h <= 0 { return bounds, nil, true }
+	if w >= s.settings.page_size || h >= s.settings.page_size { return bounds, nil, true }   // would not fit a page: nothing to keep
 	bpp := three ? 3 : 1
 	buf := make([]u8, w * h * bpp, context.temp_allocator)
 	if analysis->CreateAlphaTexture(tt, &bounds, raw_data(buf), u32(len(buf))) < 0 { return }
