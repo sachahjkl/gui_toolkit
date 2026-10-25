@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.35.2] - 2026-10-25
+
+### Added
+- `ui.wake_in_ms` (the timed wake the last build asked for, measured from now) and `ui.wake_due`. `wake_ms` counts from the build: a loop that used it as its wait timeout and as "a frame is wanted" made a frame at every early wake of any message. Measured with Wren's `tools\altdrag_sim.ps1` (AltSnap sends `WM_SIZING` before each step): the extra frame of each step was made for a caret blink not yet due (`Ui_Timer` 882 of 1544 frames of the run); with `wake_due` / `wake_in_ms`, 494 presents for 500 steps.
+
 ## [0.35.1] - 2026-10-25
 
 ### Added
