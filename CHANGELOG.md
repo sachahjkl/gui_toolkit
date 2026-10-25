@@ -3,6 +3,15 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.33.0] - 2026-10-25
+
+### Fixed
+- **A window moved by another program's drag tool is no longer taken for a window in the system's move / size loop** (`platform/size_move.odin`, `platform_win32.odin`): AltSnap (Alt + right button drag) and similar tools resize a window with `SetWindowPos` calls from their own process and POST it `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE`. The window took them for a loop of the system: it painted from `WM_PAINT` inside its own `poll_events` (a frame within the app's frame, two presents per turn) every 16 ms, while the tool waited at every step for its thread. Now the two messages open and close the modal mode only when they arrive inside the window procedure's `DefWindowProc` call, where the system's real loop runs (`size_move_step`, pure); from outside they are ignored and the size change arrives as `WM_SIZE`, drawn by the app's own loop like any other. `WM_ENTERMENULOOP` / `WM_EXITMENULOOP` are unchanged. A move that ended with `WM_EXITSIZEMOVE` from outside still refreshes the display information (another monitor's refresh rate).
+
+### Added
+- **`platform.pump_stats(window)`** (`Pump_Stats`): how many frames were made from the window procedure (`paint_frames`, a loop of the system), how many loops of the system were entered (`modal_loops`), how many `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` from outside were ignored (`ignored_size_moves`). For tests and diagnostics of the message loop.
+- `tests/size_move`: the decision `size_move_step` (messages inside / outside `DefWindowProc`, nesting, an exit with no loop open); `tests/window` checks that posted and sent `WM_ENTERSIZEMOVE` from outside open no modal mode (the frames-in-a-loop test now uses the menu loop, which a test can enter without the mouse).
+
 ## [0.32.1] - 2026-10-25
 
 ### Changed
