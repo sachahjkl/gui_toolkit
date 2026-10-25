@@ -23,6 +23,18 @@ COLR_MAX_PAINTS :: 1 << 16
 COLR_MAX_DEPTH :: 96
 // Largest side of a canvas, pixels.
 COLR_CANVAS_LIMIT :: 4096
+// Levels of PaintComposite inside one another that a glyph may have (each level keeps two canvas-sized surfaces alive).
+COLR_MAX_COMPOSITES :: 8
+// Bytes of float surfaces (the canvas and the layers of the composites) alive at once; a glyph over it is refused.
+COLR_SURFACE_LIMIT :: 256 << 20
+// Work a glyph may cost, in pixels visited: COLR_WORK_PER_PIXEL times the canvas' area, between the floor and the ceiling.
+// An outline costs COLR_QUAD_COST per curve to scan. A glyph over it is refused whole (drawn as its outline by the caller).
+COLR_WORK_PER_PIXEL :: 256
+COLR_WORK_FLOOR :: 1 << 22
+COLR_WORK_CEIL :: 1 << 26
+COLR_QUAD_COST :: 16
+// Work of the measuring pass (which only visits outlines).
+COLR_MEASURE_WORK :: 1 << 24
 
 Colr :: struct {
 	colr, cpal:     []u8,
@@ -52,6 +64,9 @@ colr_open :: proc(colr_table, cpal_table: []u8, allocator := context.allocator) 
 	c.base_v0 = rd_u32(&r, 4)
 	c.layers_v0 = rd_u32(&r, 8)
 	c.n_layers_v0 = rd_u16(&r, 12)
+	// the offsets of a part that has no records are not read (a font may leave them at any value)
+	if c.n_base_v0 == 0 { c.base_v0 = 0 }
+	if c.n_layers_v0 == 0 { c.layers_v0 = 0 }
 	if c.version > 1 || r.bad || c.base_v0 + c.n_base_v0 * 6 > len(colr_table) || c.layers_v0 + c.n_layers_v0 * 4 > len(colr_table) {
 		free(c, allocator)
 		return nil
@@ -59,9 +74,12 @@ colr_open :: proc(colr_table, cpal_table: []u8, allocator := context.allocator) 
 	if c.version == 1 {
 		bl, ll, cl := rd_u32(&r, 14), rd_u32(&r, 18), rd_u32(&r, 22)
 		if r.bad { free(c, allocator); return nil }
-		if bl != 0 && bl + 4 <= len(colr_table) {
+		if bl != 0 {
+			// a base glyph list that does not fit in the table is a table that cannot be trusted: its glyphs would be
+			// unknown here and left to the system, which is what the check of nested paints exists to avoid
+			if bl + 4 > len(colr_table) { free(c, allocator); return nil }
 			c.base_list, c.n_base_list = bl, rd_u32(&r, bl)
-			if bl + 4 + c.n_base_list * 6 > len(colr_table) { c.base_list, c.n_base_list = 0, 0 }
+			if bl + 4 + c.n_base_list * 6 > len(colr_table) { free(c, allocator); return nil }
 		}
 		if ll != 0 && ll + 4 <= len(colr_table) {
 			c.layer_list, c.n_layer_list = ll, rd_u32(&r, ll)
@@ -111,7 +129,9 @@ colr_find :: proc(c: ^Colr, gid: u16) -> (at: int, kind: Colr_Kind) {
 			case g > int(gid): hi = mid
 			case:
 				off := int(d[o + 2]) << 24 | int(d[o + 3]) << 16 | int(d[o + 4]) << 8 | int(d[o + 5])
-				if off <= 0 || c.base_list + off >= len(d) { return 0, .None }
+				// an offset outside the table is still a graph (an unreadable one: it is refused when read, and is
+				// not left to the system as a glyph without color description would be)
+				if off <= 0 || c.base_list + off >= len(d) { return len(d), .Graph }
 				return c.base_list + off, .Graph
 			}
 		}
@@ -220,6 +240,8 @@ Colr_Params :: struct {
 	x:       f32,         // horizontal offset of the pen inside its pixel
 	fg:      [3]u8,       // text color, sRGB
 	samples: int,         // vertical samples per pixel row of the scan conversion
+	surface_limit: int,   // bytes of surfaces alive at once; 0: COLR_SURFACE_LIMIT
+	work_limit:    int,   // pixels a glyph may visit; 0: from the canvas' area (COLR_WORK_PER_PIXEL, between COLR_WORK_FLOOR and COLR_WORK_CEIL)
 }
 
 // The scratch memory of a render (surfaces, masks, gradient stops) comes from one arena per thread, reused from one glyph to the next:
@@ -261,6 +283,10 @@ Walk :: struct {
 	fg:        [3]f32,
 	used_fg:   bool,
 	budget:    int,
+	work:      int,            // pixels (and curves, at a cost) that may still be visited
+	live:      int,            // bytes of surfaces alive
+	limit:     int,            // ... that may be
+	composites: int,           // PaintComposite levels being walked
 	depth:     int,
 	stack:     [COLR_MAX_DEPTH + 2]u16,   // glyphs being painted through PaintColrGlyph
 	nstack:    int,
@@ -276,13 +302,15 @@ Walk :: struct {
 // or through transforms, layers, compositions and PaintColrGlyph). Direct2D of Windows 11 24H2 as first released
 // (d2d1.dll 10.0.26100.1, the image of GitHub's windows-2025 runners) crashes on such a graph, a null read inside
 // d2d1.dll with nothing a caller could catch, so a face that is drawn by the system is not given these glyphs
-// (`colr_draws`). The result is conservative: a graph that cannot be read to its end counts as not nested.
+// (`colr_draws`). The result leans towards the interpreter: a graph that cannot be read to its end (a cycle, an offset
+// outside the table, a format this reader does not know, more paints than the budget) counts as nested, because it may
+// hold the pattern that kills Direct2D further on. The interpreter refuses such a graph and the glyph is drawn as its outline.
 colr_nests_glyph :: proc(c: ^Colr, gid: u16) -> bool {
 	at, kind := colr_find(c, gid)
 	if kind != .Graph { return false }
 	n := Nest{c = c, rd = Rd{d = c.colr}, budget = COLR_MAX_PAINTS}
 	n.stack[0], n.nstack = gid, 1
-	return nest_paint(&n, at, false) && !n.rd.bad
+	return nest_paint(&n, at, false) || n.rd.bad
 }
 
 @(private)
@@ -291,7 +319,7 @@ Nest :: struct {
 	rd:     Rd,
 	budget: int,
 	depth:  int,
-	stack:  [16]u16,   // glyphs being walked through PaintColrGlyph
+	stack:  [COLR_MAX_DEPTH + 2]u16,   // glyphs being walked through PaintColrGlyph (as many as the interpreter's)
 	nstack: int,
 }
 
@@ -335,9 +363,12 @@ nest_paint :: proc(n: ^Nest, off: int, inside: bool) -> bool {
 		source, backdrop := sub(r, off, 1), sub(r, off, 5)
 		if r.bad { return false }
 		return nest_paint(n, source, inside) || nest_paint(n, backdrop, inside)
+	case 2 ..= 9:   // PaintSolid, gradients: leaves
+	case: r.bad = true   // a format this reader does not know (the interpreter refuses it too)
 	}
 	return false
 }
+
 // Draws glyph `gid`. ok = false: the glyph has no color description, or its graph is invalid. A glyph with a valid
 // description that paints nothing returns ok with an empty bitmap (w = h = 0).
 colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runtime.Allocator) -> (bm: Colr_Bitmap, ok: bool) {
@@ -351,6 +382,7 @@ colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runti
 		src = src, rd = Rd{d = c.colr}, alloc = virtual.arena_allocator(arena), arena = arena, budget = COLR_MAX_PAINTS,
 		fg = {f32(p.fg[0]) / 255, f32(p.fg[1]) / 255, f32(p.fg[2]) / 255}, samples = clamp(p.samples, 1, 64),
 		m = MAT_IDENTITY, lo = {max(f32), max(f32)}, hi = {-max(f32), -max(f32)},
+		work = COLR_MEASURE_WORK, limit = p.surface_limit > 0 ? p.surface_limit : COLR_SURFACE_LIMIT,
 	}
 	w.stack[0], w.nstack = gid, 1
 
@@ -376,7 +408,9 @@ colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runti
 	y1 := int(math.ceil(-w.lo.y * k)) + 1
 	cw, ch := x1 - x0, y1 - y0
 	if cw <= 0 || ch <= 0 || cw > COLR_CANVAS_LIMIT || ch > COLR_CANVAS_LIMIT { return {}, false }
-	w.surf = surface_make(cw, ch, w.alloc)
+	w.work = p.work_limit > 0 ? p.work_limit : clamp(COLR_WORK_PER_PIXEL * cw * ch, COLR_WORK_FLOOR, COLR_WORK_CEIL)
+	w.surf = walk_surface(&w, cw, ch)
+	if w.surf == nil { return {}, false }
 	w.clip = Clip{r = {0, 0, cw, ch}}
 	w.m = {k, 0, 0, -k, f32(-x0) + p.x, f32(-y0)}
 	if has_box {
@@ -446,6 +480,8 @@ walk_glyph :: proc(w: ^Walk, at: int, kind: Colr_Kind) {
 		c := w.src.colr
 		if w.rd.bad || first + n > c.n_layers_v0 { w.rd.bad = true; return }
 		for i in 0 ..< n {
+			w.budget -= 1
+			if w.budget <= 0 || w.rd.bad { w.rd.bad = true; return }
 			o := c.layers_v0 + (first + i) * 4
 			gid := rd_u16(&w.rd, o)
 			col := palette_color(w, rd_u16(&w.rd, o + 2), 1)
@@ -633,20 +669,49 @@ composite_paints :: proc(w: ^Walk, source: int, mode: Composite_Mode, backdrop: 
 		walk_paint(w, source)
 		return
 	}
-	if !known { w.rd.bad = true; return }
-	temp := virtual.arena_temp_begin(w.arena)
-	defer virtual.arena_temp_end(temp)
+	if !known || w.composites >= COLR_MAX_COMPOSITES { w.rd.bad = true; return }
 	parent := w.surf
-	bd := surface_make(parent.w, parent.h, w.alloc)
+	// two surfaces cleared, composited and added to the parent
+	if !charge(w, 4 * parent.w * parent.h) { return }
+	temp := virtual.arena_temp_begin(w.arena)
+	live := w.live
+	defer {
+		w.live = live
+		virtual.arena_temp_end(temp)
+	}
+	w.composites += 1
+	defer w.composites -= 1
+	bd := walk_surface(w, parent.w, parent.h)
+	if bd == nil { return }
 	w.surf = bd
 	walk_paint(w, backdrop)
-	sc := surface_make(parent.w, parent.h, w.alloc)
+	sc := walk_surface(w, parent.w, parent.h)
+	if sc == nil { w.surf = parent; return }
 	w.surf = sc
 	walk_paint(w, source)
 	w.surf = parent
 	if w.rd.bad { return }
 	surface_composite(mode, sc, bd)
 	for i in 0 ..< len(bd.px) { over(&parent.px[i], bd.px[i]) }
+}
+
+// The work of a step, in pixels visited. False (and the glyph is refused) when the glyph's allowance is spent.
+@(private)
+charge :: proc(w: ^Walk, n: int) -> bool {
+	w.work -= n
+	if w.work < 0 { w.rd.bad = true; return false }
+	return true
+}
+
+// A surface of the size of the canvas, if the glyph may still have one (surfaces alive are counted until the caller restores `w.live`).
+@(private)
+walk_surface :: proc(w: ^Walk, cw, ch: int) -> ^Surface {
+	bytes := cw * ch * size_of([4]f32)
+	if cw <= 0 || ch <= 0 || bytes > w.limit - w.live { w.rd.bad = true; return nil }
+	s := surface_make(cw, ch, w.alloc)
+	if s == nil { w.rd.bad = true; return nil }
+	w.live += bytes
+	return s
 }
 
 ////////////////////////////////
@@ -657,6 +722,7 @@ composite_paints :: proc(w: ^Walk, source: int, mode: Composite_Mode, backdrop: 
 fill_glyph :: proc(w: ^Walk, gid: u16, body: proc(w: ^Walk, user: rawptr), user: rawptr) {
 	o := w.src.outline(w.src.user, gid)
 	om := mat_mul(w.m, mat_scale(w.src.upem, w.src.upem))   // outlines are in em units, paints in font units
+	if o != nil && !charge(w, len(o.quads) * COLR_QUAD_COST) { return }
 	if w.measuring {
 		if o != nil && len(o.quads) > 0 {
 			for q in o.quads {
@@ -675,15 +741,22 @@ fill_glyph :: proc(w: ^Walk, gid: u16, body: proc(w: ^Walk, user: rawptr), user:
 	defer virtual.arena_temp_end(temp)
 	rect, cov, ok := colr_cover(o, om, w.clip.r, w.samples, w.alloc)
 	if !ok { return }
+	if !charge(w, (rect[2] - rect[0]) * (rect[3] - rect[1])) { return }
 	saved := w.clip
 	w.clip = clip_and(&saved, rect, cov, w.alloc)
 	body(w, user)
 	w.clip = saved
 }
 
+// The area of the clip, which a fill visits.
+@(private)
+clip_area :: proc(w: ^Walk) -> int {
+	return max(w.clip.r[2] - w.clip.r[0], 0) * max(w.clip.r[3] - w.clip.r[1], 0)
+}
+
 @(private)
 fill_solid :: proc(w: ^Walk, col: [4]f32) {
-	if w.measuring { return }
+	if w.measuring || !charge(w, clip_area(w)) { return }
 	pm := [4]f32{col.r * col.a, col.g * col.a, col.b * col.a, col.a}
 	s := w.surf
 	for y in w.clip.r[1] ..< w.clip.r[3] {
@@ -771,7 +844,7 @@ gradient_color :: proc(g: ^Gradient, t: f32, first, last: f32) -> [4]f32 {
 fill_gradient :: proc(w: ^Walk, g: ^Gradient) {
 	if w.measuring || g.empty { return }
 	inv, ok := mat_invert(w.m)
-	if !ok { return }
+	if !ok || !charge(w, 4 * clip_area(w)) { return }
 	first, last := g.stops[0].t, g.stops[len(g.stops) - 1].t
 	s := w.surf
 	// geometry of the three kinds, in the gradient's own space
