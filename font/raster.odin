@@ -116,14 +116,16 @@ atlas_destroy :: proc(a: ^Atlas) {
 atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 	atlas_lock(a)
 	defer atlas_unlock(a)
+	// glyph keys hold the slot of a face (not its generation): what is kept for the slot goes with the font in it
+	slot := u64(int(face) & FONT_INDEX_MASK)
 	for k in a.glyphs {
-		if Font_Id(k >> 44) == face { delete_key(&a.glyphs, k) }
+		if k >> 44 == slot { delete_key(&a.glyphs, k) }
 	}
 	for k in a.fg_glyphs {
-		if Font_Id(k.key >> 44) == face { delete_key(&a.fg_glyphs, k) }
+		if k.key >> 44 == slot { delete_key(&a.fg_glyphs, k) }
 	}
-	for k in a.pending { if Font_Id(k >> 44) == face { delete_key(&a.pending, k) } }
-	for k in a.fg_pending { if Font_Id(k.key >> 44) == face { delete_key(&a.fg_pending, k) } }
+	for k in a.pending { if k >> 44 == slot { delete_key(&a.pending, k) } }
+	for k in a.fg_pending { if k.key >> 44 == slot { delete_key(&a.fg_pending, k) } }
 	slug_forget_face(&a.slug, face)
 }
 
@@ -322,7 +324,7 @@ atlas_evictions :: proc(s: ^State) -> int {
 @(private)
 glyph_key :: #force_inline proc(face: Font_Id, gid: u16, size: f32, sub: int) -> u64 {
 	sq := u64(clamp(math.round(size * 16), 1, (1 << 20) - 1))
-	return u64(face) << 44 | u64(gid) << 28 | sq << 8 | u64(sub)
+	return u64(int(face) & FONT_INDEX_MASK) << 44 | u64(gid) << 28 | sq << 8 | u64(sub)
 }
 
 // Subpixel position (0 ..< subpixel_steps) and whole pixel of a pen x on the screen.
@@ -340,6 +342,8 @@ subpixel :: proc(s: ^State, x: f32) -> (ix: f32, sub: int) {
 glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg: [3]u8 = {}) -> Glyph_Image {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
+	// the cache is keyed by the face's slot: the id of an unloaded font must not reach what the slot's next font has
+	if font_ptr(s, face) == nil { return Glyph_Image{page = -1} }
 	key := glyph_key(face, gid, size, sub)
 	atlas_lock(a)
 	defer atlas_unlock(a)
