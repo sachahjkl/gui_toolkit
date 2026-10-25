@@ -139,7 +139,8 @@ x_from_index :: proc(s: ^State, id: Font_Id, size: f32, text: string, index: int
 }
 
 // Caret x before byte `index` of the shaped `text` (`len(text)`: after the last character, logical end). Inside a
-// cluster of several characters (a ligature) the cluster is shared out evenly between its characters.
+// cluster of several characters (a ligature) the cluster is shared out evenly between its graphemes (a ZWJ emoji
+// sequence is one grapheme: its caret positions are its two edges).
 caret_x :: proc(sh: Shaped, text: string, index: int) -> f32 {
 	if len(sh.clusters) == 0 { return 0 }
 	i := i32(clamp(index, 0, len(text)))
@@ -152,9 +153,11 @@ caret_x :: proc(sh: Shaped, text: string, index: int) -> f32 {
 		if i < c.start || i >= c.end { continue }
 		if i == c.start { return c.rtl ? c.x1 : c.x0 }
 		n, k := 0, 0
-		for j in c.start ..< c.end {
-			if text[j] & 0xC0 == 0x80 { continue }
-			if j < i { k += 1 }
+		piece := text[c.start:min(int(c.end), len(text))]
+		marks := grapheme_marks(piece)
+		for j in 0 ..< len(piece) {
+			if !marks[j] { continue }
+			if int(c.start) + j < int(i) { k += 1 }
 			n += 1
 		}
 		t := n > 0 ? f32(k) / f32(n) : 0
@@ -163,26 +166,30 @@ caret_x :: proc(sh: Shaped, text: string, index: int) -> f32 {
 	return 0
 }
 
-// Byte index of the caret position nearest to `x` (a cluster boundary, or a character boundary inside a ligature).
+// Byte index of the caret position nearest to `x`: a grapheme boundary, which is a cluster boundary or the boundary
+// between the graphemes of a ligature ("fi"); never inside an emoji sequence, a flag or a letter with its marks.
 hit_index :: proc(sh: Shaped, text: string, x: f32) -> int {
 	if len(sh.clusters) == 0 { return 0 }
 	best, best_d := 0, max(f32)
-	try :: proc(best: ^int, best_d: ^f32, idx: int, cx, x: f32) {
+	marks := grapheme_marks(text)
+	try :: proc(best: ^int, best_d: ^f32, marks: []bool, idx: int, cx, x: f32) {
+		if idx < 0 || idx >= len(marks) || !marks[idx] { return }
 		if d := abs(cx - x); d < best_d^ { best^, best_d^ = idx, d }
 	}
 	for c in sh.clusters {
 		if x >= c.x0 && x < c.x1 {
-			// inside: the nearer side, or a character boundary in a multi-character cluster
+			// inside: the nearer side, or a grapheme boundary in a multi-grapheme cluster
 			for j := int(c.start); j <= int(c.end); j += 1 {
-				if j < len(text) && j < int(c.end) && text[j] & 0xC0 == 0x80 { continue }
-				try(&best, &best_d, j, caret_x(sh, text, j) if j < len(text) else (c.rtl ? c.x0 : c.x1), x)
+				try(&best, &best_d, marks, j, caret_x(sh, text, j) if j < len(text) else (c.rtl ? c.x0 : c.x1), x)
 			}
-			return best
+			if best_d < max(f32) { return best }
+			// no boundary in the cluster (it starts and ends inside a grapheme): the nearer boundary outside
+			break
 		}
 	}
 	for c in sh.clusters {
-		try(&best, &best_d, int(c.start), c.rtl ? c.x1 : c.x0, x)
-		try(&best, &best_d, int(c.end), c.rtl ? c.x0 : c.x1, x)
+		try(&best, &best_d, marks, int(c.start), c.rtl ? c.x1 : c.x0, x)
+		try(&best, &best_d, marks, int(c.end), c.rtl ? c.x0 : c.x1, x)
 	}
 	return best
 }
