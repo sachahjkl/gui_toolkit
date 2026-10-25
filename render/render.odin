@@ -290,13 +290,16 @@ Pass :: struct {
 	factor: int,                 // Downsample: 2, 4 or 8 (box average of factor x factor source texels); 0 = 2
 }
 
-Op_Kind :: enum u8 { Clear, Copy, Pass, Mips }   // Mips: rebuild the mip levels of a render target (acquire_target_mips) from its level 0
+// Mips: rebuild the mip levels of a render target (acquire_target_mips) from its level 0. Read: copy a box of a layer
+// for readback_poll (readback.odin).
+Op_Kind :: enum u8 { Clear, Copy, Pass, Mips, Read }
 
 Op :: struct {
 	kind:   Op_Kind,
 	dst:    Texture,      // Clear: the layer's texture; Copy: a snapshot (acquire_snapshot); Pass: pass.dst.tex
-	source: int,          // Copy: the target read, as Batch.target
-	box:    [4]i32,       // Copy: x0 y0 x1 y1 in the source target's texels, copied to texel (0, 0) of dst
+	source: int,          // Copy, Read: the target read, as Batch.target
+	box:    [4]i32,       // Copy, Read: x0 y0 x1 y1 in the source target's texels, copied to texel (0, 0) of dst
+	readback: Readback_Id,   // Read
 	pass:   Pass,
 }
 
@@ -1428,6 +1431,7 @@ set_corner_smoothing :: proc(r: ^Renderer, smoothing: f32) { r.corner_smoothing 
 // (platform.wait_handle on frame_waitable does the same while taking the window's input as it arrives.)
 d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
 	if r.latency_handle == nil { return true }
+	latency_drain(&r.present, r.latency_handle)
 	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
 }
 
@@ -1586,7 +1590,10 @@ d3d_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 	sc2: ^dxgi.ISwapChain2
 	if win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) || sc2 == nil { return false }
 	defer sc2->Release()
-	return win.SUCCEEDED(sc2->SetMaximumFrameLatency(u32(clamp(n, 1, 16))))
+	frames := clamp(n, 1, 16)
+	if win.FAILED(sc2->SetMaximumFrameLatency(u32(frames))) { return false }
+	latency_lowered(&r.present, frames)
+	return true
 }
 
 // What presents the frame (the swap chain and, for a translucent window, its DirectComposition objects) is released. Releasing a

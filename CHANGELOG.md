@@ -3,13 +3,49 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [0.34.0] - 2026-10-25
+
+## [0.36.0] - 2026-10-25
 
 ### Added
 - **Window placement, for apps with several windows or a saved layout** (`platform/placement.odin`, `placement_win32.odin`): `platform.get_placement(w)` / `set_placement(w, p)` (`Placement{rect, maximized}`: the outer rectangle in screen pixels where the window is restored to, and whether it is maximized; `set_placement` moves and sizes the window without showing it, on the monitor nearest to the rectangle and inside its work area, and `show_window` then shows it maximized if asked), the pure `fit_rect_to_work(rect, work)`, `outer_rect(w)`, `client_origin(w)` (where the client area starts on the screen: turns a pointer position of a window, captured outside it, into a screen position) and `move_window(w, x, y)`. `tests/placement`. A browser that moves tabs between windows used all of them.
 
 ### Fixed
 - **`ui.init` no longer restarts the toolkit's clock** (`ui/state.odin`): the origin of `ui.now_ms()` was reset by every `init`, so opening a second window (one `ui.State` each) made the time of the first one jump back. It is set by the first `init` only.
+
+
+## [0.35.2] - 2026-10-25
+
+### Added
+- **Offscreen drawing and readback** (`draw/offscreen.odin`, `render/readback.odin`, `docs/draw.md`): `draw.offscreen_begin` / `offscreen_end` draw into a transparent target of their own, never shown and not cut by the window; `render.readback_poll` gives its pixels after the frame (straight RGBA8, sRGB, alpha kept; an `Op_Kind.Read` copies the target where it was recorded). `render.straight_srgb`. Test: `tests/layers` offscreen_draw_and_read_back (both blend spaces, WARP).
+- `ui.wake_in_ms` (the timed wake the last build asked for, measured from now) and `ui.wake_due`. `wake_ms` counts from the build: a loop that used it as its wait timeout and as "a frame is wanted" made a frame at every early wake of any message. Measured with Wren's `tools\altdrag_sim.ps1` (AltSnap sends `WM_SIZING` before each step): the extra frame of each step was made for a caret blink not yet due (`Ui_Timer` 882 of 1544 frames of the run); with `wake_due` / `wake_in_ms`, 494 presents for 500 steps.
+
+## [0.35.1] - 2026-10-25
+
+### Added
+- **Drag images**: `Drag_Image` is now in `platform/dragdrop.odin` (independent of the system), with `drag_image_valid`, `drag_image_fade` (the translucent ghost of a dragged element) and `drag_image_fit` (scaled down to a size, its hot spot following). `drag_image_held` says what the system's drag image helper holds after `drag_start` (Windows: read back from the data object's `DragImageBits`).
+- **The app's own drag back over its window** (`drop_sync_set`, `Drop_Sync`): while `drag_start` blocks, the window asks the app at once for each `Drop_*` instead of queueing them, so the app can handle the drop before `drag_start` returns (a browser fires `drop` before `dragend`).
+- **Scripted drags** (`drag_script`, `Drag_Step`, `drag_script_calls`): the next `drag_start` follows given points through the window's own drop target, with the same data object and drag image, never the real mouse (tests, remote control).
+- `dragdrop_thread_init`: OLE in a single-threaded apartment on the interface thread, before any library puts it in the multithreaded one (which made `drop_target_enable` and `drag_start` fail).
+- **Pointing devices** (`platform/input_devices.odin`): `input_devices` (mouse, pen, touch points; Windows: `GetSystemMetrics`), `touch_max_points`, and the rules of the primary pointer / every pointer (`primary_pointer`, `any_pointer`) as the CSS media features `pointer`, `any-pointer`, `hover`, `any-hover` see them.
+- **Touch gestures** (`platform/touch_gesture.odin`, pure): `Touch_Gesture` turns the fingers' positions and times into tap, pan, pinch (scale about the fingers' middle), long press and fling (release speed); `touch_fling` gives the glide's distance and time under exponential friction.
+- `Event.pointer.kind` of an emulated `Mouse_*` event says which device the system emulates (touch or pen).
+- `render.capture_cancel`: forgets a capture asked for and not read.
+- `tests/dragdrop`: drag images, the scripted drag back over the window with `drop_sync_set` (enter, over, drop answered at once, the image held by the system), gestures, device rules.
+
+## [0.35.0] - 2026-10-25
+
+### Added
+- **Drag and drop between applications** (`platform/dragdrop.odin`, `dragdrop_win32.odin`, `dragdrop_stub.odin`, `docs/dragdrop.md`): the API is independent of the system; Windows implements it with OLE, other systems answer "not supported". A window becomes a drop target with `drop_target_enable`; a drag over it queues `Drop_Enter` / `Drop_Over` / `Drop_Leave` / `Drop` (position, modifiers, `Event.drop_allowed`) with the data in `drop_data` (`Drag_Data`: files, text, HTML fragment, URL and its title, PNG image, the app's own MIME types); the app answers with `drop_set_effect` (the system is given the last answer). `drag_start` runs a drag of the system with a `Drag_Data` and an optional `Drag_Image`, and returns the effect the target chose. `drop_effect_for` (the Ctrl / Shift / Alt convention), `drag_data_types`, `drag_threshold`, `drop_inject` (tests, remote control), `drop_self_test` (the round trip through the window's own drop target, no mouse). Pure helpers: `drag_custom_encode` / `decode`, `uri_list_first`, `html_format_wrap` / `html_format_fragment` (CF_HTML).
+- **Fingers and pens** (`platform/pointer.odin`, `pointer_win32.odin`): `Pointer_Down` / `Pointer_Move` / `Pointer_Up` / `Pointer_Cancel` events with `Event.pointer` (`Pointer_Info`: identifier, touch or pen, primary, pressure, tilt, twist, barrel, eraser, contact size) from `WM_POINTER`. The system's mouse emulation still comes, marked `Event.emulated`. `pointer_buttons`, `pointer_pressure`, `Pointer_State`.
+- `Mouse_*` events carry `Event.buttons` (`Mouse_Buttons`: the buttons held after the event), so a move during a drag says which button is held.
+- `tests/dragdrop`: the pure helpers, the pointer details, the round trip of every format through the system (hidden window), injected drops.
+## [0.34.0] - 2026-10-25
+
+### Fixed
+- **Raising then lowering `set_max_frame_latency` no longer leaves the swap chain with two frames in flight for good** (`render/present.odin`, `render/render.odin`, D3D11): the swap chain's frame latency object is a semaphore that the system raises when `MaximumFrameLatency` goes up and does not take back when it goes down. After a 1 -> 2 -> 1 (an app that allows a second frame for a resize step or an input frame, as Wren does) the object held one count more than a slot per round trip: every wait on `frame_waitable` returned at once, `Present` blocked for a whole refresh instead, and the frame on screen was one more frame behind the input, until the program restarted. The surplus is now remembered when the latency is lowered (`Present_State.latency_debt`) and consumed, without waiting, by `frame_waitable` / `wait_for_frame` as soon as the object has the counts to give. Measured on a 60 Hz window (a tab dragged at 1 kHz of pointer moves): wait for the slot 0.1 ms and `Present` 16 ms before, 16 ms and 0.6 ms after, and the time from input to the refresh that showed it, as the frame statistics give it, from 118 ms to 56 ms.
+
+### Added
+- `render/latency_object_test.odin`: the surplus of the latency object against a semaphore that stands for it (lowering, raising, taking without waiting, counts that come later).
 
 ## [0.33.0] - 2026-10-25
 

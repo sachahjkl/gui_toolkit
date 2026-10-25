@@ -60,7 +60,8 @@ resize :: proc(r: ^Renderer, size: [2]int) {
 
 // Most frames the swap chain may queue: 1 (the default) keeps the time from input to screen at one frame; 2 or more let
 // a frame be presented while the previous one is still on its way to the screen (a resize, a burst of frames), at the
-// cost of input latency. False: the backend cannot (or has no window).
+// cost of input latency. False: the backend cannot (or has no window). It can be raised and lowered again at will: the surplus
+// the system leaves in the latency object when it is lowered is taken back (frame_waitable, wait_for_frame).
 set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 	when USE_WGPU { return wgpu_set_max_frame_latency(r, n) } else { return d3d_set_max_frame_latency(r, n) }
 }
