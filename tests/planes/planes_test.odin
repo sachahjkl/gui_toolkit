@@ -236,6 +236,35 @@ nested_plane_drawn_after_its_parent :: proc(t: ^testing.T) {
 	testing.expectf(t, is_red(px(img, 30, 30)), "the inner plane shows: %v", px(img, 30, 30))
 }
 
+// What is kept of a plane follows the global settings that change its pixels (text rendering, the corner shape): after one changes the
+// plane is drawn again, though the caller's key is the same.
+@(test)
+kept_plane_follows_global_settings :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	frame_drawn :: proc(f: ^Fx) -> bool {
+		draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+		render.frame_begin(&f.r, {1, 1, 1, 1})
+		drawn := draw.push_plane(&f.dc, {{0, 0}, {60, 60}}, 1, draw.Plane_Fx{cache_id = 7, cache_key = 1234})
+		if drawn { draw.rect(&f.dc, {{0, 0}, {60, 60}}, RED, 10) }
+		draw.pop_plane_draw(&f.dc, draw.MAT4_IDENTITY)
+		draw.end_frame(&f.dc)
+		render.frame_end(&f.r)
+		return drawn
+	}
+	for _ in 0 ..< 3 { frame_drawn(&f) }
+	testing.expect(t, !frame_drawn(&f), "kept while nothing changes")
+	render.set_corner_smoothing(&f.r, 0)
+	testing.expect(t, frame_drawn(&f), "drawn again after the corner shape changed")
+	frame_drawn(&f)
+	testing.expect(t, !frame_drawn(&f), "kept again")
+	tr := render.text_rendering(&f.r)
+	tr.contrast = 0.5
+	render.set_text_rendering(&f.r, tr)
+	testing.expect(t, frame_drawn(&f), "drawn again after the text rendering changed")
+}
+
 // A plane laid in a frame of its own, as pop_plane gives it.
 @(private = "file")
 solid_plane :: proc(dc: ^draw.Context, size: [2]f32, color: draw.Color) -> draw.Plane_Layer {

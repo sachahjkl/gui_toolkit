@@ -190,7 +190,7 @@ open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, masked: bool) -
 	m := c.xforms[len(c.xforms) - 1].m
 	first := len(c.filter_store)
 	for f in fx.filters { if !filter_is_identity(f) { append(&c.filter_store, f) } }
-	ol := Open_Layer{alpha = fx.alpha, parent = c.target, filters = {first, len(c.filter_store)}, blend = fx.blend, xform = m, masked = masked}
+	ol := Open_Layer{alpha = fx.alpha, parent = c.target, filters = {first, len(c.filter_store)}, blend = fx.blend, xform = m, masked = masked, pending0 = c.glyphs_pending}
 	out := filters_outset(m, c.filter_store[first:])
 	visible := rect_intersect(c.clips[len(c.clips) - 1].rect, target_rect(c))
 	space := blend_space(c)
@@ -348,8 +348,10 @@ pop_layer :: proc(c: ^Context) {
 // for it (layer_cache.odin), else hands its texture back. Shared by pop_layer and pop_mask.
 @(private)
 composite_layer :: proc(c: ^Context, ol: Open_Layer, f: Filtered) {
-	kept := ol.cache.store && !ol.cache.result && cache_store(c, ol.cache, f.img, f.full, ol.region)
-	composite(c, f, ol.alpha, ol.blend, kept, ol.cache.result ? ol.cache : {})
+	// (a color glyph still being drawn is missing from the pixels: they are not kept, or the glyph would never come into them)
+	fresh := c.glyphs_pending == ol.pending0
+	kept := fresh && ol.cache.store && !ol.cache.result && cache_store(c, ol.cache, f.img, f.full, ol.region)
+	composite(c, f, ol.alpha, ol.blend, kept, fresh && ol.cache.result ? ol.cache : {})
 }
 
 // Composites a filter result into the current target with opacity `alpha` (times the alpha stack) and `blend`, cut by
