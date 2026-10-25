@@ -29,11 +29,13 @@ Native_Window :: struct {
 	injected:       [dynamic]Event, // inject_event: synthetic input, handed out by the next poll_events after the system's own
 	border_color:   u32,            // set_border_color: the COLORREF given to the compositor
 	border_color_set: bool,
-	buttons_down:   bit_set[Mouse_Button],   // pressed in this window and not yet released: the mouse stays captured until none is
+	buttons_down:   Mouse_Buttons,   // pressed in this window and not yet released: the mouse stays captured until none is
 	returned:       int,            // events the last poll_events handed out: dropped at the next one (those that came since are kept)
 	stats:          Pump_Stats,
 	in_def_proc:    int,            // depth of DefWindowProc calls of the window procedure: the system's loops run inside them (size_move.odin)
 	sizemove:       int,            // move / size loops of the system open (size_move_step)
+	dnd:            ^Dnd_State,     // drag and drop (dragdrop_win32.odin), made on first use
+	pointers:       Pointer_State,  // fingers and pens (pointer_win32.odin)
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
@@ -335,6 +337,8 @@ is_closed :: proc(w: ^Window) -> bool { return w.closed }
 // then frees `w`. A process that ends with its window open needs not call it.
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
+	dnd_destroy(w)   // (revoked while the window exists)
+	pointer_state_destroy(&w.pointers)
 	if w.hwnd != nil {
 		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
 		win.DestroyWindow(w.hwnd)
@@ -606,14 +610,14 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 button_down :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
 	if win.GetCapture() != w.hwnd { win.SetCapture(w.hwnd) }
 	w.buttons_down += {b}
-	append(&w.events, Event{kind = .Mouse_Press, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now()})
+	append(&w.events, Event{kind = .Mouse_Press, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated()})
 }
 
 @(private)
 button_up :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
 	w.buttons_down -= {b}
 	if w.buttons_down == {} { win.ReleaseCapture() }
-	append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now()})
+	append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated()})
 }
 
 @(private)
@@ -836,7 +840,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 			win.TrackMouseEvent(&tme)
 			w.tracking_mouse = true
 		}
-		push(w, {kind = .Mouse_Move, pos = mouse_pos(lparam), mods = current_mods()})
+		push(w, {kind = .Mouse_Move, pos = mouse_pos(lparam), mods = current_mods(), buttons = w.buttons_down, emulated = mouse_emulated()})
 	case win.WM_MOUSELEAVE:
 		w.tracking_mouse = false
 		// into the app's own title bar or frame: WM_NCMOUSEMOVE goes on with the moves
@@ -863,6 +867,10 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		e := Event{kind = .Scroll, pos = {f32(pt.x), f32(pt.y)}, mods = mods}
 		if msg == win.WM_MOUSEWHEEL { e.delta.y = -notches } else { e.delta.x = notches }
 		push(w, e)
+
+	// fingers and pens: their own events, then the system's mouse emulation (DefWindowProc) as before
+	case win.WM_POINTERDOWN, win.WM_POINTERUPDATE, win.WM_POINTERUP, win.WM_POINTERCAPTURECHANGED:
+		pointer_message(w, msg, wparam)
 	}
 	// the system's move / size loop (and its WM_ENTERSIZEMOVE) runs inside this call: size_move.odin
 	w.in_def_proc += 1
