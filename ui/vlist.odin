@@ -109,6 +109,14 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		r := box_from_key(vlist_row_key(b.key, st.prev_first + k))
 		if r != nil && r.last_build + 1 == s.build_index && r.size.y > 0 { st.measured[pid] = r.size.y }
 	}
+	// rows whose identity is gone (the data was replaced, filtered, rotated) are forgotten once they are the bulk
+	if len(st.measured) > 2 * n + 256 {
+		live := make(map[u64]struct{}, n, context.temp_allocator)
+		for id in ids { live[id] = {} }
+		gone := make([dynamic]u64, context.temp_allocator)
+		for id in st.measured { if id not_in live { append(&gone, id) } }
+		for id in gone { delete_key(&st.measured, id) }
+	}
 	if len(st.measured) > 0 {
 		sum: f32
 		for _, h in st.measured { sum += h }

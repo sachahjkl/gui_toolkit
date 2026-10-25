@@ -148,6 +148,56 @@ menu_keyboard :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.ctx_menu_any_open(), "closed after choosing")
 }
 
+Choose_Run :: struct {
+	key, other:    ui.Key,
+	open_after:    bool,   // the menu is still open right after the chosen item (the rest of the block is part of it)
+	open_other:    bool,   // answer the click by opening another menu
+	later_in_menu: int,    // items after the chosen one that were built as items of a menu
+}
+
+@(private = "file")
+build_choose :: proc(f: ^Fx, user: rawptr) {
+	r := (^Choose_Run)(user)
+	r.later_in_menu = 0
+	if ui.ctx_menu(r.key) {
+		if ui.menu_item("A").clicked {
+			r.open_after = ui.ctx_menu_any_open()
+			if r.open_other { ui.ctx_menu_open(r.other, {50, 50}) }
+		}
+		for label in ([?]string{"B", "C"}) {
+			ui.menu_item(label)
+			if ui.menu_depth() > 0 { r.later_in_menu += 1 }
+		}
+	}
+	if ui.ctx_menu(r.other) { ui.menu_item("Other") }
+}
+
+// Choosing an item closes the menu when its block ends, not in the middle of it: the items after the chosen one are still
+// built as menu items, and a menu opened in answer to the click is not closed with the first.
+@(test)
+menu_closes_at_the_end_of_its_block :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	for open_other in ([?]bool{false, true}) {
+		f: Fx
+		if !testing.expect(t, open(&f), "fonts") { return }
+		r := Choose_Run{key = ui.Key(0x1234), other = ui.Key(0x5678), open_other = open_other}
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Choose_Run)(user).key, {100, 100}, from_keyboard = true) }, &r)
+		frame(&f, nil, build_choose, &r)
+		frame(&f, nil, build_choose, &r)
+		frame(&f, {key(.Return)}, build_choose, &r)
+		testing.expect(t, r.open_after, "still open right after the chosen item")
+		testing.expect_value(t, r.later_in_menu, 2)
+		if open_other {
+			testing.expect(t, ui.ctx_menu_is_open(r.other), "the menu opened by the click stays")
+			testing.expect(t, !ui.ctx_menu_is_open(r.key))
+		} else {
+			testing.expect(t, !ui.ctx_menu_any_open(), "closed once the block ended")
+		}
+		close(&f)
+	}
+}
+
 @(test)
 menu_submenus :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)
