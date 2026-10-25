@@ -10,6 +10,13 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - **Fingers and pens** (`platform/pointer.odin`, `pointer_win32.odin`): `Pointer_Down` / `Pointer_Move` / `Pointer_Up` / `Pointer_Cancel` events with `Event.pointer` (`Pointer_Info`: identifier, touch or pen, primary, pressure, tilt, twist, barrel, eraser, contact size) from `WM_POINTER`. The system's mouse emulation still comes, marked `Event.emulated`. `pointer_buttons`, `pointer_pressure`, `Pointer_State`.
 - `Mouse_*` events carry `Event.buttons` (`Mouse_Buttons`: the buttons held after the event), so a move during a drag says which button is held.
 - `tests/dragdrop`: the pure helpers, the pointer details, the round trip of every format through the system (hidden window), injected drops.
+## [0.34.0] - 2026-10-25
+
+### Fixed
+- **Raising then lowering `set_max_frame_latency` no longer leaves the swap chain with two frames in flight for good** (`render/present.odin`, `render/render.odin`, D3D11): the swap chain's frame latency object is a semaphore that the system raises when `MaximumFrameLatency` goes up and does not take back when it goes down. After a 1 -> 2 -> 1 (an app that allows a second frame for a resize step or an input frame, as Wren does) the object held one count more than a slot per round trip: every wait on `frame_waitable` returned at once, `Present` blocked for a whole refresh instead, and the frame on screen was one more frame behind the input, until the program restarted. The surplus is now remembered when the latency is lowered (`Present_State.latency_debt`) and consumed, without waiting, by `frame_waitable` / `wait_for_frame` as soon as the object has the counts to give. Measured on a 60 Hz window (a tab dragged at 1 kHz of pointer moves): wait for the slot 0.1 ms and `Present` 16 ms before, 16 ms and 0.6 ms after, and the time from input to the refresh that showed it, as the frame statistics give it, from 118 ms to 56 ms.
+
+### Added
+- `render/latency_object_test.odin`: the surplus of the latency object against a semaphore that stands for it (lowering, raising, taking without waiting, counts that come later).
 
 ## [0.33.0] - 2026-10-25
 
