@@ -78,6 +78,7 @@ Menu_Level :: struct {
 // so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
 ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false) {
 	menu_pop_to(0)
+	g.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
 	append(&g.menus, Menu_Level{key = key, anchor = anchor, pos = pos, open_build = g.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard})
 }
 
@@ -318,6 +319,10 @@ menu_end :: proc() {
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] && len(s.menu_build) > 0 {
 		spacer(px(font_size() * 0.3))
 		pop(&s.menu_build)
+		if len(s.menu_build) == 0 && s.menu_close_pending {
+			s.menu_close_pending = false
+			ctx_menu_close()
+		}
 	}
 	ctx_menu_end()
 }
@@ -436,7 +441,9 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 	if sig.hovering && len(s.menus) > depth + 1 && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
 	clicked := en && (sig.clicked || (idx == lv.sel && lv.activate))
 	sig.clicked = clicked
-	if clicked && !keep_open { ctx_menu_close() }
+	// (closed when the menu's block ends: the items after this one are still part of the menu until then, and a menu
+	// the caller opens in answer to the click is not the one that closes)
+	if clicked && !keep_open { s.menu_close_pending = true }
 	return sig
 }
 

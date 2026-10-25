@@ -343,6 +343,27 @@ vlist_builds_only_what_is_seen :: proc(t: ^testing.T) {
 	}
 }
 
+// The measured heights of rows that no longer exist (the data was replaced again and again) do not pile up.
+@(test)
+vlist_forgets_rows_that_are_gone :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	r := new(Vl_Run)
+	defer free(r)
+	vl_setup(r)
+	defer vl_teardown(r)
+	for gen in 0 ..< 300 {
+		for i in 0 ..< ROWS { r.ids[i] = u64(gen * ROWS + i) * 0x9e3779b97f4a7c15 + 1 }
+		frame(f, nil, vl_body, r)
+	}
+	testing.expect(t, r.built > 5)
+	testing.expectf(t, len(r.vl.measured) < 2 * ROWS + 300, "%d heights kept", len(r.vl.measured))
+}
+
 @(test)
 vlist_keyboard_reaches_every_row :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)

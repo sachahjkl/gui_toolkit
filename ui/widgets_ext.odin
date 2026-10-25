@@ -47,7 +47,9 @@ hline :: proc(width: Size) {
 drag_store :: proc(v: [4]f32) { g.drag_payload = v }
 drag_load :: proc() -> [4]f32 { return g.drag_payload }
 
-// Persistent timers (hold-to-repeat, delays). `timer_due` is true once `next_ms` has passed.
+// Persistent timers (hold-to-repeat, delays). `timer_due` is true once `next_ms` has passed. A timer that nothing asked
+// about (timer_due) for TIMER_KEEP_BUILDS builds is forgotten.
+TIMER_KEEP_BUILDS :: 1200
 timer_set :: proc(key: Key, delay_ms: f64) { g.timers[key] = Timer{next_ms = g.time_ms + delay_ms, last_build = g.build_index} }
 timer_due :: proc(key: Key) -> bool {
 	t, ok := g.timers[key]

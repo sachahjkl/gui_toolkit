@@ -112,6 +112,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.anim_rate = p.animations ? 1 : 0
 	s.anim_busy = false
 	s.wake_ms = 0
+	s.menu_close_pending = false
 	s.boxes_built = 0
 	s.time_ms = now_ms()
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
@@ -183,6 +184,13 @@ end_build :: proc() {
 	clear(&dead)
 	for k, a in s.anims { if a.last_build + 1 < s.build_index { append(&dead, k) } }
 	for k in dead { delete_key(&s.anims, k) }
+	// timers nobody asked about for a long while (their widget is gone), and scrollbars of scroll boxes that are gone
+	clear(&dead)
+	for k, t in s.timers { if t.last_build + TIMER_KEEP_BUILDS < s.build_index { append(&dead, k) } }
+	for k in dead { delete_key(&s.timers, k) }
+	clear(&dead)
+	for k, owner in s.sb_owner { if owner not_in s.boxes { append(&dead, k) } }
+	for k in dead { delete_key(&s.sb_owner, k) }
 
 	// per-frame input state is consumed
 	s.scroll_delta = {}

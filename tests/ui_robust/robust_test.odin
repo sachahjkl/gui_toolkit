@@ -132,6 +132,32 @@ fuzzy_ranges_are_in_the_original_text :: proc(t: ^testing.T) {
 	if len(ranges) == 1 { testing.expect_value(t, summer[ranges[0][0]:ranges[0][1]], "\u00e9t\u00e9") }
 }
 
+build_timers :: proc(f: ^Fx, user: rawptr) {
+	first := (^bool)(user)^
+	if first {
+		ui.timer_set(ui.Key(1), 5)
+		ui.timer_set(ui.Key(2), 5)
+	}
+	_ = ui.timer_due(ui.Key(2))   // this one is asked about every build
+}
+
+// Timers nobody asks about and scrollbars whose scroll box is gone do not stay for ever.
+@(test)
+stale_tables_are_emptied :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	first := true
+	frame(&f, nil, build_timers, &first)
+	first = false
+	f.s.sb_owner[ui.Key(7)] = ui.Key(8)   // a scrollbar of a box that does not exist
+	testing.expect_value(t, len(f.s.timers), 2)
+	for _ in 0 ..< ui.TIMER_KEEP_BUILDS + 50 { frame(&f, nil, build_timers, &first) }
+	testing.expect_value(t, len(f.s.timers), 1)
+	testing.expect(t, ui.Key(2) in f.s.timers)
+	testing.expect(t, ui.Key(7) not_in f.s.sb_owner)
+}
+
 @(test)
 wake_requests_keep_the_soonest :: proc(t: ^testing.T) {
 	s: ui.State
