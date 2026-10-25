@@ -238,6 +238,22 @@ rotated_rect_gets_its_local_size_and_scale :: proc(t: ^testing.T) {
 	testing.expectf(t, near(px(img, 32, 32 + 20), {255, 255, 255}), "outside the turned rect (it is only 30 high): %v", px(img, 32, 32 + 20))
 }
 
+// A uniform scale and a translation (the usual transform: DPI, zoom) is baked into the rectangle; the shader still sees local units.
+@(test)
+scaled_rect_gets_its_local_size_and_scale :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no D3D11 device (WARP) or the app shader was refused") }
+	defer close(&f)
+	begin(&f)
+	draw.push_transform(&f.dc, draw.affine_mul(draw.affine_translate({4, 6}), draw.affine_scale({1.5, 1.5})))
+	draw.app_shader(&f.dc, f.shader, {{0, 0}, {20, 30}}, {{3, 0, 0, 0}})   // 20 x 30 local units, 1.5 pixels each
+	draw.pop_transform(&f.dc)
+	img := finish(&f)
+	want := [3]int{level(0.2, .Linear), level(0.3, .Linear), level(0.15, .Linear)}
+	testing.expectf(t, near(px(img, 4 + 15, 6 + 20), want, 3), "size and scale under a uniform scale: %v, want %v", px(img, 4 + 15, 6 + 20), want)
+	testing.expectf(t, near(px(img, 4 + 40, 6 + 20), {255, 255, 255}), "the rect is 30 pixels wide: %v", px(img, 4 + 40, 6 + 20))
+}
+
 @(test)
 inside_a_layer_and_a_plane :: proc(t: ^testing.T) {
 	for space in render.Blend_Space {

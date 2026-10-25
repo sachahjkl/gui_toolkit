@@ -28,10 +28,12 @@ app_shader :: proc(c: ^Context, shader: render.App_Shader, r: Rect, params: []Ve
 		src = {0, 0, 1, 1}, colors = {col, col, col, col}, soft = 1, use_tex = render.KIND_APP, tex_size = 1, clip = shape,
 		aux = u32(len(c.app_params)), flags = c.circular ? render.FLAG_CIRCLE : 0,
 	}
-	if xf.simple {
-		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
-		inst.dst = {r.min.x * s + o.x, r.min.y * s + o.y, r.max.x * s + o.x, r.max.y * s + o.y}
-		inst.radii = radii * s
+	if xf.simple && xf.m.a == 1 {
+		// a translation only: the rectangle's pixels are local units. Any scale goes through a transform, so that the shader's
+		// pos, size and px stay in local units (a scale baked into the rectangle would make them pixels).
+		o := Vec2{xf.m.e, xf.m.f}
+		inst.dst = {r.min.x + o.x, r.min.y + o.y, r.max.x + o.x, r.max.y + o.y}
+		inst.radii = radii
 	} else {
 		inst.dst = {r.min.x, r.min.y, r.max.x, r.max.y}
 		inst.radii = radii
