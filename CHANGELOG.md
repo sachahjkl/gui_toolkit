@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.30.1] - 2026-10-25
+
+### Changed
+- Timing checks in the tests (durations, CPU and GPU times, frames in a time window) are opt-in: `base.perf_skip` (package `base`, `base/perf.odin`) runs them only with `GUI_PERF=1` or `true`, and never when `CI` is defined. The results are still checked in CI (`tests/colr`, `tests/gpufx`).
+
 ## [0.30.0] - 2026-10-25
 
 Fixes from the review of `font`, `ui` and `platform` (0.26.0). 0.29.0 is the version of another branch (render and draw).

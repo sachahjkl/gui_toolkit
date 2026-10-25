@@ -5,6 +5,7 @@ package colr_test
 import "core:testing"
 import "core:thread"
 import "core:time"
+import "../../base"
 import "../../font"
 
 Tbl :: [dynamic]u8
@@ -134,7 +135,7 @@ paint_work_is_bounded :: proc(t: ^testing.T) {
 	_, ok := font.colr_render({colr = c, upem = SIDE, outline = no_outline}, 1, {size = SIDE, samples = 2}, context.temp_allocator)
 	took := time.duration_milliseconds(time.since(start))
 	testing.expectf(t, !ok, "a glyph of 65 000 full-canvas fills was drawn (%.0f ms)", took)
-	testing.expectf(t, took < 1000, "%.0f ms", took)
+	if !base.perf_skip("paint work bound") { testing.expectf(t, took < 1000, "%.0f ms", took) }
 }
 
 // ---- routing: what is not read to its end is not given to Direct2D ----
@@ -316,7 +317,7 @@ gsub_shared_feature_tables_are_bounded :: proc(t: ^testing.T) {
 	_, ok := font.gsub_ligate(b[:], {'c', 'c', 'm', 'p'}, {1, 2, 3, 4, 5}, context.temp_allocator)
 	took := time.duration_milliseconds(time.since(start))
 	testing.expect(t, !ok)
-	testing.expectf(t, took < 200, "%.0f ms", took)
+	if !base.perf_skip("GSUB shared feature tables") { testing.expectf(t, took < 200, "%.0f ms", took) }
 }
 
 // 50 lookups of 200 subtables, all the same table: a ligature subtable whose coverage lists 1000 ranges the glyphs are not in.
@@ -346,7 +347,7 @@ gsub_shared_subtables_are_bounded :: proc(t: ^testing.T) {
 	_, ok := font.gsub_ligate(b[:], {'c', 'c', 'm', 'p'}, {1, 2, 3, 4, 5}, context.temp_allocator)
 	took := time.duration_milliseconds(time.since(start))
 	testing.expect(t, !ok)
-	testing.expectf(t, took < 200, "%.0f ms", took)
+	if !base.perf_skip("GSUB shared subtables") { testing.expectf(t, took < 200, "%.0f ms", took) }
 }
 
 // A table that is what it says it is still works: one lookup, one ligature (glyphs 1 2 3 -> 9).

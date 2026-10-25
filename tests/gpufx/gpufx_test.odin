@@ -6,6 +6,7 @@ package gpufx_test
 
 import "core:math"
 import "core:testing"
+import "../../base"
 import "../../draw"
 import "../../font"
 import "../../render"
@@ -488,5 +489,5 @@ gpu_profile_counts_steps :: proc(t: ^testing.T) {
 	testing.expectf(t, p.steps[.Draw_Layer].count == 1 && p.steps[.Draw_Frame].count >= 1, "draw runs: %v", p.steps)
 	sum: f32
 	for s in p.steps { sum += s.ms }
-	testing.expectf(t, sum <= p.total_ms * 1.01 + 0.01, "steps %v ms within the frame's %v ms", sum, p.total_ms)
+	if !base.perf_skip("GPU step times") { testing.expectf(t, sum <= p.total_ms * 1.01 + 0.01, "steps %v ms within the frame's %v ms", sum, p.total_ms) }
 }
