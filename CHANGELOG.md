@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.31.0] - 2026-10-25
+
+### Fixed
+- Menus: the row under the pointer is drawn selected in the frame that sees the pointer on it, and the row it left is released in that same frame. The selection was decided while a row was built, so rows built before the hovered one (and the hovered row itself) showed the previous selection until the next frame: a pointer crossing a menu left two rows lit for a frame, and the new one a frame late (a refresh or two more once the frame had to wait for the screen). `Menu_Item_Info` gained `key` (the row's box): a level reads the hovered row from the previous frame's items when it begins (`tests/states`: `menu_hover_selects_in_the_same_frame`).
+
 ## [0.30.1] - 2026-10-25
 
 ### Changed

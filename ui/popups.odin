@@ -49,6 +49,7 @@ menu_heading :: proc(text: string) {
 }
 
 Menu_Item_Info :: struct {
+	key:     Key,      // the row's box (the next frame knows which item the pointer is on before it builds any)
 	enabled: bool,
 	submenu: bool,
 	first:   rune,     // first letter of the label, lower case (type-ahead)
@@ -243,6 +244,13 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	lv.built_build = s.build_index
 	lv.activate = false
 
+	// The pointer's item is the selected one in the frame that sees the pointer there: the rows are built in order, so
+	// a row built before the hovered one would otherwise still be drawn selected (and the hovered one not yet) until the
+	// next frame.
+	if s.hot_key != 0 && (s.mouse_moved || lv.sel < 0) {
+		for it, i in lv.prev { if it.enabled && it.key == s.hot_key { lv.sel = i; break } }
+	}
+
 	if depth == len(s.menus) - 1 {
 		// the innermost level takes the keys in the order they came, until one hands over (opens a submenu, chooses)
 		items := lv.prev[:]
@@ -377,6 +385,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			if !highlight { g.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
 			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
 			if highlight { pop_tags() }
+			if idx < len(lv.items) { lv.items[idx].key = b.key }
 			sig = signal(b)
 			if parent(b) {
 				spacer(px(em * 0.6))

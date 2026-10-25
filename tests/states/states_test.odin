@@ -159,6 +159,47 @@ hover_and_press_are_instant :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.cursor(&f.s), platform.Cursor.Hand)
 }
 
+Menu_Rows :: struct { rows: [3]^ui.Box }
+
+@(private = "file")
+menu_frame :: proc(f: ^Fx, m: ^Menu_Rows, events: []platform.Event) {
+	ui.begin_build(&f.s, {
+		window_size = WINDOW, events = events, dt = 1.0 / 60, animations = true, dpi_scale = 1,
+		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+	})
+	if ui.ctx_menu(ui.Key(0x4242)) {
+		for label, i in ([?]string{"First", "Second", "Third"}) { m.rows[i] = ui.menu_item(label).box }
+	}
+	ui.end_build()
+	free_all(context.temp_allocator)
+}
+
+// The row under the pointer is drawn selected in the frame that sees the pointer there, and the row it left is not: the
+// selection tags are decided when a row is built, and the rows before the hovered one are built first.
+@(test)
+menu_hover_selects_in_the_same_frame :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	m: Menu_Rows
+	menu_frame(&f, &m, {move(700, 500)})
+	ui.ctx_menu_open(ui.Key(0x4242), {100, 100})
+	for _ in 0 ..< 4 { menu_frame(&f, &m, nil) }
+	center :: proc(b: ^ui.Box) -> [2]f32 { return (b.rect.min + b.rect.max) * 0.5 }
+	selected :: proc(b, plain: ^ui.Box) -> bool { return b.tags_key != plain.tags_key }
+
+	menu_frame(&f, &m, {move(center(m.rows[0]).x, center(m.rows[0]).y)})
+	testing.expect(t, selected(m.rows[0], m.rows[2]), "the first row is selected in the frame the pointer reached it")
+	testing.expect(t, !selected(m.rows[1], m.rows[2]), "and the others are not")
+	// down to the last one: the first is released in the same frame, though it is built before the hovered row
+	menu_frame(&f, &m, {move(center(m.rows[2]).x, center(m.rows[2]).y)})
+	testing.expect(t, selected(m.rows[2], m.rows[1]), "the third row is selected in the frame the pointer reached it")
+	testing.expect(t, !selected(m.rows[0], m.rows[1]), "the first row is released in that same frame")
+	testing.expect(t, !ui.needs_frame(&f.s), "a hover change asks for no further frame")
+}
+
 @(test)
 transitions_when_the_theme_asks :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)
