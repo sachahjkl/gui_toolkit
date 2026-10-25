@@ -31,6 +31,9 @@ Native_Window :: struct {
 	border_color_set: bool,
 	buttons_down:   bit_set[Mouse_Button],   // pressed in this window and not yet released: the mouse stays captured until none is
 	returned:       int,            // events the last poll_events handed out: dropped at the next one (those that came since are kept)
+	stats:          Pump_Stats,
+	in_def_proc:    int,            // depth of DefWindowProc calls of the window procedure: the system's loops run inside them (size_move.odin)
+	sizemove:       int,            // move / size loops of the system open (size_move_step)
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
@@ -428,6 +431,8 @@ take_paint_request :: proc(w: ^Window) -> bool {
 	return r
 }
 
+pump_stats :: proc(w: ^Window) -> Pump_Stats { return w.stats }
+
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_NULL, 0, 0) }
 
@@ -730,14 +735,30 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		w.display_stale = true   // a mode (resolution, refresh rate) or the monitor layout changed
 
 	case win.WM_ENTERSIZEMOVE, win.WM_ENTERMENULOOP:
-		w.modal += 1
-		// a move without a resize, or a menu, makes no WM_PAINT of its own (the compositor moves the window): a timer
-		// asks for a repaint, which the loop of the system delivers, so that animations, video and the caret go on
-		if w.modal == 1 { win.SetTimer(hwnd, TIMER_MODAL_FRAME, MODAL_FRAME_MS, nil) }
+		// (size_move.odin: another program's drag tool sends WM_ENTERSIZEMOVE with no loop of the system behind it)
+		counted := true
+		if msg == win.WM_ENTERSIZEMOVE {
+			w.sizemove, counted = size_move_step(w.sizemove, .Enter, w.in_def_proc > 0)
+			if !counted { w.stats.ignored_size_moves += 1 }
+		}
+		if counted {
+			w.modal += 1
+			w.stats.modal_loops += 1
+			// a move without a resize, or a menu, makes no WM_PAINT of its own (the compositor moves the window): a timer
+			// asks for a repaint, which the loop of the system delivers, so that animations, video and the caret go on
+			if w.modal == 1 { win.SetTimer(hwnd, TIMER_MODAL_FRAME, MODAL_FRAME_MS, nil) }
+		}
 	case win.WM_EXITSIZEMOVE, win.WM_EXITMENULOOP:
-		w.modal = max(w.modal - 1, 0)
-		if w.modal == 0 { win.KillTimer(hwnd, TIMER_MODAL_FRAME) }
-		w.display_stale = true   // a move may have landed on another monitor
+		counted := true
+		if msg == win.WM_EXITSIZEMOVE {
+			w.sizemove, counted = size_move_step(w.sizemove, .Exit, w.in_def_proc > 0)
+			if !counted { w.stats.ignored_size_moves += 1 }
+		}
+		if counted {
+			w.modal = max(w.modal - 1, 0)
+			if w.modal == 0 { win.KillTimer(hwnd, TIMER_MODAL_FRAME) }
+		}
+		w.display_stale = true   // a move may have landed on another monitor (also one made by another program)
 
 	case win.WM_TIMER:
 		if wparam == TIMER_MODAL_FRAME {
@@ -784,7 +805,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		// That goes for every window of the thread: the poll of one pumps the messages of the others (a window that is
 		// not polled, such as a detached panel, takes its repaint from take_paint_request).
 		if (w.in_poll || pumping > 0) && w.modal == 0 { w.paint_requested = true; return 0 }
-		if w.on_frame != nil && w.size.x > 0 && w.size.y > 0 { w.on_frame(w.user) }
+		if w.on_frame != nil && w.size.x > 0 && w.size.y > 0 { w.stats.paint_frames += 1; w.on_frame(w.user) }
 		return 0
 
 	case win.WM_KEYDOWN, win.WM_SYSKEYDOWN:
@@ -843,5 +864,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		if msg == win.WM_MOUSEWHEEL { e.delta.y = -notches } else { e.delta.x = notches }
 		push(w, e)
 	}
+	// the system's move / size loop (and its WM_ENTERSIZEMOVE) runs inside this call: size_move.odin
+	w.in_def_proc += 1
+	defer w.in_def_proc -= 1
 	return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 }

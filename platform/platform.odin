@@ -5,7 +5,9 @@
 //   * During a live resize, a move or a modal menu loop Windows runs its own message loop and calls the window procedure
 //     directly. We call `window.on_frame` from there so the picture keeps updating (a 16 ms timer asks for the repaints
 //     a move or a menu does not make by itself). `poll_events` is re-entrancy safe: a nested call (made by that frame
-//     callback) returns no events and pumps nothing.
+//     callback) returns no events and pumps nothing. Only a loop of the system counts (inside DefWindowProc): the
+//     WM_ENTERSIZEMOVE another program posts around the moves it makes itself (AltSnap) is ignored (size_move.odin);
+//     those size changes come as WM_SIZE and the app's own loop draws them.
 //   * Several windows on one thread: the poll of one window pumps the messages of all of them, each window procedure
 //     queues the events of its own window, and a poll drops only the events it returned before, never those that came
 //     for its window during another's poll. A repaint of a window while any window of the thread polls is not run as a
@@ -139,6 +141,13 @@ Key :: enum u8 {
 	Shift, Ctrl, Alt,
 	Menu,                       // the context-menu (application) key
 	Num_Add, Num_Subtract,      // keypad + and - (keypad digits arrive as N0..N9)
+}
+
+// How the window's frames were asked for since it opened (pump_stats): for tests and diagnostics of the message loop.
+Pump_Stats :: struct {
+	paint_frames:       int,   // on_frame calls made from the window procedure (a loop of the system), not from the app's own loop
+	modal_loops:        int,   // loops of the system entered (move / size, menu)
+	ignored_size_moves: int,   // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE from outside a loop of the system (another program's drag tool): ignored
 }
 
 Window :: struct {

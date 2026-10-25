@@ -119,7 +119,32 @@ repaint_of_an_unpolled_window_waits_for_its_owner :: proc(t: ^testing.T) {
 	testing.expect(t, platform.take_paint_request(x), "the repaint is asked for")
 }
 
-// A move or a menu (the system's modal loop) makes no repaint of its own on a compositor: a timer keeps the frames coming.
+// WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE that do not come from a loop of the system (AltSnap posts them around the moves it
+// makes from its own process) open no modal mode: no timer, no frame from the window procedure. The decision itself is
+// tested in tests/size_move; a real loop needs the mouse (tools\resize_e2e.ps1).
+@(test)
+size_move_messages_from_outside_are_ignored :: proc(t: ^testing.T) {
+	fr: Frames
+	a := platform.open_window("a", {200, 150})
+	defer platform.destroy_window(a)
+	x := platform.open_window("x", {200, 150}, &fr, on_frame)
+	defer platform.destroy_window(x)
+	win.ShowWindow(x.hwnd, win.SW_SHOWNOACTIVATE)
+	pump(a, 50)
+	platform.take_paint_request(x)
+	fr.n = 0
+	win.PostMessageW(x.hwnd, win.WM_ENTERSIZEMOVE, 0, 0)
+	win.SendMessageW(x.hwnd, win.WM_ENTERSIZEMOVE, 0, 0)
+	pump(a, 100)
+	testing.expect_value(t, fr.n, 0)
+	win.PostMessageW(x.hwnd, win.WM_EXITSIZEMOVE, 0, 0)
+	pump(a, 20)
+	stats := platform.pump_stats(x)
+	testing.expect_value(t, stats.modal_loops, 0)
+	testing.expect_value(t, stats.ignored_size_moves, 3)
+}
+
+// A menu (the system's modal loop) makes no repaint of its own on a compositor: a timer keeps the frames coming.
 @(test)
 frames_come_during_a_modal_loop :: proc(t: ^testing.T) {
 	fr: Frames
@@ -131,10 +156,10 @@ frames_come_during_a_modal_loop :: proc(t: ^testing.T) {
 	pump(a, 50)
 	platform.take_paint_request(x)
 	fr.n = 0
-	win.SendMessageW(x.hwnd, win.WM_ENTERSIZEMOVE, 0, 0)
+	win.SendMessageW(x.hwnd, win.WM_ENTERMENULOOP, 0, 0)
 	pump(a, 200)
 	if !base.perf_skip("frames in a modal loop") { testing.expectf(t, fr.n >= 3, "%d frames in 200 ms of a modal loop", fr.n) }
-	win.SendMessageW(x.hwnd, win.WM_EXITSIZEMOVE, 0, 0)
+	win.SendMessageW(x.hwnd, win.WM_EXITMENULOOP, 0, 0)
 	n := fr.n
 	pump(a, 100)
 	testing.expect_value(t, fr.n, n)
