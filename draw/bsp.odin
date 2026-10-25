@@ -45,7 +45,10 @@ draw_planes :: proc(c: ^Context, items: []Plane_Item) {
 	if n == 0 { return }
 	if c.rec != nil { return }
 	geos := make([]Geo, n, context.temp_allocator)
-	for i in 0 ..< n { geos[i] = geo_of(items[i], i) }
+	for i in 0 ..< n {
+		geos[i] = geo_of(items[i], i)
+		if items[i].skip { geos[i].flat = true }   // hidden (backface-visibility): nothing of it is drawn, so it neither forces a split nor cuts the others
+	}
 	order := make([dynamic]int, 0, n, context.temp_allocator)
 	split := false
 	if n > 1 {
