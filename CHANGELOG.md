@@ -6,6 +6,7 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 ## [0.35.2] - 2026-10-25
 
 ### Added
+- **Offscreen drawing and readback** (`draw/offscreen.odin`, `render/readback.odin`, `docs/draw.md`): `draw.offscreen_begin` / `offscreen_end` draw into a transparent target of their own, never shown and not cut by the window; `render.readback_poll` gives its pixels after the frame (straight RGBA8, sRGB, alpha kept; an `Op_Kind.Read` copies the target where it was recorded). `render.straight_srgb`. Test: `tests/layers` offscreen_draw_and_read_back (both blend spaces, WARP).
 - `ui.wake_in_ms` (the timed wake the last build asked for, measured from now) and `ui.wake_due`. `wake_ms` counts from the build: a loop that used it as its wait timeout and as "a frame is wanted" made a frame at every early wake of any message. Measured with Wren's `tools\altdrag_sim.ps1` (AltSnap sends `WM_SIZING` before each step): the extra frame of each step was made for a caret blink not yet due (`Ui_Timer` 882 of 1544 frames of the run); with `wake_due` / `wake_in_ms`, 494 presents for 500 steps.
 
 ## [0.35.1] - 2026-10-25
