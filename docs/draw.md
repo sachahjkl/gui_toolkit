@@ -515,7 +515,7 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
   its bounds; more than 8 nested clip shapes are ignored (the outermost 8 apply).
 - Soft shapes (shadows, `soft > 1`) blur in local units: under a strong downscale the blur can drop below a pixel.
 - Rotated text is the glyph bitmap at its layout size, sampled bilinearly (slightly softer than axis-aligned text).
-- Perspective (3D) transforms are not supported (2D affine only).
+- The transform stack is 2D affine. Perspective (3D) is done with planes (`push_plane`, `draw_planes`, above), not with `push_transform`.
 - A layer costs one render target of its size and a full-screen-sized fill at most; dozens of large layers per
   frame are expensive (callers should fall back to `push_alpha` when the group holds a single primitive, which is
   exact).
