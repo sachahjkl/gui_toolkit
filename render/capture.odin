@@ -117,6 +117,15 @@ srgb_byte :: proc(v: f32) -> u8 {
 	return u8(clamp(e * 255 + 0.5, 0, 255))
 }
 
+// The device the copy was made on is gone: the staging texture goes with it (it must not be used on the next device), and a copy that
+// was waiting to be read is lost (capture_poll says Failed). A request not yet served stays.
+@(private)
+capture_release_device_objects :: proc(c: ^Capture_State) {
+	if c.staging != nil { c.staging->Release(); c.staging = nil }
+	c.staging_size, c.format = {}, .UNKNOWN
+	if c.pending { c.pending = false; c.failed = true }
+}
+
 @(private)
 capture_destroy :: proc(r: ^Renderer) {
 	if r.capture.staging != nil { r.capture.staging->Release() }
