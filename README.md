@@ -144,7 +144,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   in refreshes); see `render/latency.odin`.
   On a dynamic or variable refresh display the reported rate is the one the screen rests at: `Display_Info.max_hz` is the
   highest mode at the current size, `platform.refresh_is_variable(hz, max_hz)` says whether to aim above `hz`, and
-  `platform.display_live_hz(w)` measures the compositor's refreshes while the app moves. The swap chain's latency object
+  `platform.display_live_hz(w)` reads the rate the compositor runs at now (primary monitor only). The swap chain's latency object
   does not pace an app on such a screen (it is released at once): `platform.Frame_Slots` / `frame_slot_wait` is the app's
   own cap on its cadence (a grid of slots one period apart, pure: the caller gives the time and waits, taking input meanwhile
   with `wait_handle` on a timer), so that a mouse at 1 kHz makes a frame per period and not per move.
