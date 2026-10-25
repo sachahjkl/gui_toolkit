@@ -98,7 +98,9 @@ text_upload :: proc(c: ^Context) {
 // picture recorded without it is stale once it is ready.
 @(private)
 glyph_missing :: proc(c: ^Context, img: font.Glyph_Image, ready: u64) {
-	if !img.pending || c.rec == nil || c.rec.glyphs_pending { return }
+	if !img.pending { return }
+	c.glyphs_pending += 1   // (the layers and planes open now are not kept: layer_cache.odin)
+	if c.rec == nil || c.rec.glyphs_pending { return }
 	c.rec.glyphs_pending = true
 	c.rec.pending_ready = ready   // read before the lookups: a glyph finished since makes it differ
 }
