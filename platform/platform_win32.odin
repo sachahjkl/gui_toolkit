@@ -21,6 +21,10 @@ Native_Window :: struct {
 	modal:          int,            // inside a loop of the system (move / size, menu): it owns the messages, frames come from WM_PAINT
 	display:        Display_Info,   // display_info's cache
 	display_stale:  bool,
+	live_hz:        f64,            // display_live_hz's last measure
+	live_count:     u64,
+	live_qpc:       u64,
+	live_reset:     bool,
 	integrated:     bool,           // set_integrated_title: the client area covers the title bar
 	fullscreen:     bool,
 	nc_tracking:    bool,           // TrackMouseEvent asked for WM_NCMOUSELEAVE

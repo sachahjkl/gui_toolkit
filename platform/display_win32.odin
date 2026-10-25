@@ -99,7 +99,7 @@ display_info :: proc(w: ^Window) -> Display_Info {
 	if w.display_stale || rawptr(mon) != w.display.monitor {
 		w.display_stale = false
 		d := query_display(mon)
-		if d.hz != w.display.hz || d.source != w.display.source || d.monitor != w.display.monitor {
+		if d.hz != w.display.hz || d.max_hz != w.display.max_hz || d.source != w.display.source || d.monitor != w.display.monitor {
 			d.serial = w.display.serial + 1
 			w.display = d
 		}
@@ -115,12 +115,58 @@ query_display :: proc(mon: win.HMONITOR) -> (d: Display_Info) {
 	d.monitor = rawptr(mon)
 	mi: win.MONITORINFOEXW
 	mi.cbSize = size_of(win.MONITORINFOEXW)
-	if !win.GetMonitorInfoW(mon, (^win.MONITORINFO)(&mi)) { return fallback_rate(d, nil) }
-	if num, den, ok := display_config_rate(mi.szDevice[:]); ok {
-		d.numerator, d.denominator, d.hz, d.source = num, den, f64(num) / f64(den), .Display_Config
+	if !win.GetMonitorInfoW(mon, (^win.MONITORINFO)(&mi)) {
+		d = fallback_rate(d, nil)
+		d.max_hz = d.hz
 		return
 	}
-	return fallback_rate(d, &mi.szDevice[0])
+	if num, den, ok := display_config_rate(mi.szDevice[:]); ok {
+		d.numerator, d.denominator, d.hz, d.source = num, den, f64(num) / f64(den), .Display_Config
+	} else {
+		d = fallback_rate(d, &mi.szDevice[0])
+	}
+	d.max_hz = max(d.hz, mode_max_rate(&mi.szDevice[0]))
+	return
+}
+
+// The highest rate of the monitor's modes at its current size and orientation (EnumDisplaySettings: whole hertz). 0: unknown.
+@(private = "file")
+mode_max_rate :: proc(device: ^u16) -> (hz: f64) {
+	cur := win.DEVMODEW{dmSize = size_of(win.DEVMODEW)}
+	if !win.EnumDisplaySettingsW(win.wstring(device), win.ENUM_CURRENT_SETTINGS, &cur) { return 0 }
+	for i in 0 ..< u32(4096) {
+		dm := win.DEVMODEW{dmSize = size_of(win.DEVMODEW)}
+		if !win.EnumDisplaySettingsW(win.wstring(device), i, &dm) { break }
+		if dm.dmPelsWidth == cur.dmPelsWidth && dm.dmPelsHeight == cur.dmPelsHeight && dm.dmBitsPerPel == cur.dmBitsPerPel && dm.dmDisplayFrequency > 1 {
+			hz = max(hz, f64(dm.dmDisplayFrequency))
+		}
+	}
+	return
+}
+
+// The next display_live_hz starts a measure (the app rested: the rate over a long pause says nothing about the one while it moves).
+display_live_reset :: proc(w: ^Window) { w.live_reset = true }
+
+// The refresh rate the compositor is running at, measured: DWM's count of refreshes between two calls (at least a quarter of
+// a second apart; the first call, or one too soon, answers with what the last measure found, ok false before there is one).
+// With a dynamic or variable refresh rate this is the rate the screen is at now, which neither the mode nor the display
+// path says. The compositor counts the refreshes of the monitor the window is on.
+display_live_hz :: proc(w: ^Window) -> (hz: f64, ok: bool) {
+	if w.live_reset { w.live_reset, w.live_qpc = false, 0 }   // (the last measure stays until a new one replaces it)
+	ti := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
+	if win.FAILED(DwmGetCompositionTimingInfo(w.hwnd, &ti)) { return w.live_hz, w.live_hz > 0 }
+	freq: win.LARGE_INTEGER
+	win.QueryPerformanceFrequency(&freq)
+	if w.live_qpc == 0 {
+		w.live_count, w.live_qpc = ti.cRefresh, ti.qpcVBlank
+		return w.live_hz, w.live_hz > 0
+	}
+	dt := f64(ti.qpcVBlank - w.live_qpc) / f64(freq)
+	if dt >= 0.25 && ti.cRefresh >= w.live_count {
+		w.live_hz = f64(ti.cRefresh - w.live_count) / dt
+		w.live_count, w.live_qpc = ti.cRefresh, ti.qpcVBlank
+	}
+	return w.live_hz, w.live_hz > 0
 }
 
 @(private = "file")
