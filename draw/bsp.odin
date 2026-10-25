@@ -45,7 +45,10 @@ draw_planes :: proc(c: ^Context, items: []Plane_Item) {
 	if n == 0 { return }
 	if c.rec != nil { return }
 	geos := make([]Geo, n, context.temp_allocator)
-	for i in 0 ..< n { geos[i] = geo_of(items[i], i) }
+	for i in 0 ..< n {
+		geos[i] = geo_of(items[i], i)
+		if items[i].skip { geos[i].flat = true }   // hidden (backface-visibility): nothing of it is drawn, so it neither forces a split nor cuts the others
+	}
 	order := make([dynamic]int, 0, n, context.temp_allocator)
 	split := false
 	if n > 1 {
@@ -389,8 +392,75 @@ bsp_emit :: proc(g: []Geo, p: ^Bsp_Piece, out: ^[dynamic]Bsp_Piece) {
 			h := mat4_apply(gp.m, {q.x, q.y, 0})
 			if abs(dist_to(cut.n, cut.d, {h[0] / h[3], h[1] / h[3], h[2] / h[3]})) <= TOL_DIST { on_line += 1 }
 		}
-		if on_line >= 2 { append(&kept, cut) }
+		if on_line < 2 { continue }
+		same := false   // the same plane met twice (coplanar splitters)
+		for k in kept {
+			if k.n.x * cut.n.x + k.n.y * cut.n.y + k.n.z * cut.n.z > 0.99999 && abs(k.d - cut.d) <= TOL_DIST { same = true; break }
+		}
+		if !same { append(&kept, cut) }
 	}
-	if len(kept) > MAX_PLANE_CUTS { resize(&kept, MAX_PLANE_CUTS) }
+	if len(kept) > MAX_PLANE_CUTS && bsp_emit_halves(g, p, kept[:], out) { return }
+	if len(kept) > MAX_PLANE_CUTS { resize(&kept, MAX_PLANE_CUTS) }   // not reached: a convex polygon with that many sides can be halved
 	append(out, Bsp_Piece{item = p.item, pts = p.pts, cuts = kept})
+}
+
+// A draw tests MAX_PLANE_CUTS cuts per pixel at most: a piece bounded by more is divided by a chord between two of its vertices into two
+// convex pieces, the chord being one more cut for each (the plane through it, perpendicular to the plane of the piece), and each half is
+// recorded in turn (it keeps only the cuts that still bound it). The halves of one plane fit without a seam or an overlap, as the pieces do.
+@(private)
+bsp_emit_halves :: proc(g: []Geo, p: ^Bsp_Piece, kept: []Plane_Cut, out: ^[dynamic]Bsp_Piece) -> bool {
+	n := len(p.pts)
+	if n < 4 { return false }
+	gp := &g[p.item]
+	pos := make([][3]f32, n, context.temp_allocator)
+	for q, k in p.pts {
+		h := mat4_apply(gp.m, {q.x, q.y, 0})
+		pos[k] = {h[0] / h[3], h[1] / h[3], h[2] / h[3]}
+	}
+	on_cut := make([]bool, n, context.temp_allocator)   // the side from vertex k to the next lies on a cut
+	total := 0
+	for k in 0 ..< n {
+		for cut in kept {
+			if abs(dist_to(cut.n, cut.d, pos[k])) <= TOL_DIST && abs(dist_to(cut.n, cut.d, pos[(k + 1) % n])) <= TOL_DIST {
+				on_cut[k] = true
+				total += 1
+				break
+			}
+		}
+	}
+	// the chord (i, j) that leaves the fewest sides on cuts on its busier side
+	bi, bj, best := -1, -1, max(int)
+	for i in 0 ..< n - 2 {
+		sides := 0
+		for j in i + 1 ..< n {
+			if on_cut[j - 1] { sides += 1 }
+			if j - i < 2 || n - (j - i) < 2 { continue }
+			if w := max(sides, total - sides); w < best { bi, bj, best = i, j, w }
+		}
+	}
+	if bi < 0 || best + 1 >= len(kept) { return false }
+	ab := pos[bj] - pos[bi]
+	nc := [3]f32{gp.n.y * ab.z - gp.n.z * ab.y, gp.n.z * ab.x - gp.n.x * ab.z, gp.n.x * ab.y - gp.n.y * ab.x}
+	l := math.sqrt(nc.x * nc.x + nc.y * nc.y + nc.z * nc.z)
+	if !(l > 1e-9) { return false }
+	chord := Plane_Cut{n = nc / l}
+	chord.d = -(chord.n.x * pos[bi].x + chord.n.y * pos[bi].y + chord.n.z * pos[bi].z)
+	if dist_to(chord.n, chord.d, pos[bi + 1]) < 0 { chord = Plane_Cut{n = -chord.n, d = -chord.d} }
+	for half in 0 ..< 2 {
+		q := new(Bsp_Piece, context.temp_allocator)
+		q.item = p.item
+		q.pts = make([dynamic][2]f32, 0, n, context.temp_allocator)
+		q.cuts = make([dynamic]Plane_Cut, 0, len(kept) + 1, context.temp_allocator)
+		append(&q.cuts, ..kept)
+		if half == 0 {
+			append(&q.pts, ..p.pts[bi:bj + 1])
+			append(&q.cuts, chord)
+		} else {
+			append(&q.pts, ..p.pts[bj:])
+			append(&q.pts, ..p.pts[:bi + 1])
+			append(&q.cuts, Plane_Cut{n = -chord.n, d = -chord.d})
+		}
+		bsp_emit(g, q, out)
+	}
+	return true
 }

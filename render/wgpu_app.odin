@@ -37,7 +37,7 @@ wgpu_app_shader_release :: proc(r: ^Renderer, d: ^App_Shader_Data) {
 @(private)
 wgpu_app_shaders_recreate :: proc(r: ^Renderer) {
 	for &d in r.apps {
-		if d.live && !wgpu_app_shader_make(r, &d) { d.live = false }
+		if d.live { wgpu_app_shader_make(r, &d) }   // (a failure leaves it unready: its handle stays reserved, see app_shader_ready)
 	}
 }
 
@@ -78,6 +78,7 @@ wgpu_app_pipeline :: proc(r: ^Renderer, d: ^App_Shader_Data, format: wgpu.Textur
 	target := wgpu.ColorTargetState{format = format, blend = &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = d.module, entryPoint = APP_PS_ENTRY, targetCount = 1, targets = &target}
 	sync.mutex_lock(&g_compile_lock)
+	errors := g.shared.errors
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "app", layout = g.pl_app,
 		vertex = {module = d.module, entryPoint = "vs_main", bufferCount = 1, buffers = &vb},
@@ -85,8 +86,20 @@ wgpu_app_pipeline :: proc(r: ^Renderer, d: ^App_Shader_Data, format: wgpu.Textur
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
+	failed := pipe == nil || g.shared.errors != errors
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
+	if failed {
+		// the module passed (naga), the pipeline did not (the layout, the target, the device's compiler): a pipeline in error would make
+		// the encoder of the whole frame invalid. The shader is given up: it draws nothing, app_shader_ready says so.
+		fmt.eprintfln("render: app shader %s: the pipeline was refused, the shader is given up", d.name)
+		if pipe != nil { wgpu.RenderPipelineRelease(pipe) }
+		for p in d.pipes { wgpu.RenderPipelineRelease(p.pipe) }
+		clear(&d.pipes)
+		wgpu.ShaderModuleRelease(d.module)
+		d.module = nil
+		return nil
+	}
 	append(&d.pipes, App_Pipe{format, mode, pipe})
 	return pipe
 }

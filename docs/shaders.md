@@ -60,7 +60,7 @@ app_shader :: proc(c: ^Context, shader: render.App_Shader, r: Rect, params: []Ve
 
 Fills `r` (current local space), in order with everything else: under the current transform (a rotated rectangle keeps exact rounded corners and a 1 px antialiased edge), clips, alpha stack, inside layers and planes. Blend modes (`App_Blend`, fixed-function blending of the premultiplied result): `Normal` (over), `Add` (`dst + src`: a glow adds its light), `Screen`, `Multiply`.
 
-It returns **false and draws nothing** when the shader is 0 (it failed to build: the caller draws its fallback), when a picture is being recorded (`picture_begin`: an application shader is not recordable, its parameters change every frame; draw it around the replay), or when there are more than 64 parameters or 4 textures.
+It returns **false and draws nothing** when the shader is 0 (it failed to build: the caller draws its fallback), when it is not `render.app_shader_ready` (destroyed; or the device could not remake it after a loss, or on WebGPU refused its pipeline: the handle stays reserved until `destroy_app_shader`, so no other shader takes it), when a picture is being recorded (`picture_begin`: an application shader is not recordable, its parameters change every frame; draw it around the replay), or when there are more than 64 parameters or 4 textures.
 
 **Kept layers.** A plane or layer given a `cache_key` keeps its pixels, shader output included: an animated shader must make its time part of the key (or the layer is not kept), a still one costs nothing while the key holds. The pointer-tilt of a card that is only projected differently (`draw_plane`'s matrix changes, the plane's content does not) leaves the kept layer alone.
 

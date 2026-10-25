@@ -336,6 +336,47 @@ async_glyphs_in_pictures :: proc(t: ^testing.T) {
 	testing.expect_value(t, res2, draw.Replay_Result.Drawn)
 }
 
+// A kept plane (Plane_Fx.cache_id) that was drawn while a color glyph was pending is not kept as it is: the glyph shows once it is ready,
+// though the caller's key never changed.
+@(test)
+kept_plane_waits_for_async_glyphs :: proc(t: ^testing.T) {
+	r: render.Renderer
+	if !render.init_offscreen(&r, DSIZE, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
+	defer render.destroy(&r)
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
+	defer font.destroy(&f.s)
+	st := f.s.settings
+	st.color_async = true
+	font.set_settings(&f.s, st)
+	dc: draw.Context
+	draw.init(&dc, &r, &f.s)
+	defer draw.destroy(&dc)
+	colr := font.cascade(&f.s, {{font = f.colr}}, nil, true)
+	plane_frame :: proc(dc: ^draw.Context, r: ^render.Renderer, colr: font.Font_Id) -> (l: RGBA) {
+		draw.begin_frame(dc, {f32(DSIZE.x), f32(DSIZE.y)})
+		render.frame_begin(r, {1, 1, 1, 1})
+		if draw.push_plane(dc, {{0, 0}, {f32(DSIZE.x), f32(DSIZE.y)}}, 1, draw.Plane_Fx{cache_id = 5, cache_key = 99}) {
+			draw.text(dc, colr, 48, {10, 60}, draw.Color{0, 0, 0, 1}, "\U000F0100")
+		}
+		draw.pop_plane_draw(dc, draw.MAT4_IDENTITY)
+		draw.end_frame(dc)
+		render.frame_end(r)
+		img := render.read_pixels(r, context.temp_allocator)
+		o := (40 * DSIZE.x + 17) * 4
+		return {int(img[o]), int(img[o + 1]), int(img[o + 2]), int(img[o + 3])}
+	}
+	for _ in 0 ..< 3 { plane_frame(&dc, &r, colr) }   // (the glyph is queued: nothing to see yet)
+	font.color_wait(&f.s)
+	l: RGBA
+	for _ in 0 ..< 6 {
+		l = plane_frame(&dc, &r, colr)
+		if l[0] > 200 && l[2] < 60 { break }
+	}
+	testing.expectf(t, l[0] > 200 && l[2] < 60, "the glyph shows in the kept plane once it is ready: %v", l)
+}
+
 ////////////////////////////////
 // Through the draw layer
 

@@ -923,7 +923,6 @@ wgpu_release_device :: proc(r: ^Renderer) {
 @(private)
 wgpu_destroy :: proc(r: ^Renderer) {
 	for i in 1 ..< len(r.textures) { wgpu_destroy_texture(r, Texture(i)) }
-	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(&r.wg)
 	wgpu_release_objects(r)
@@ -931,6 +930,7 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	wgpu_heaps_destroy(r)
 	wgpu_release_device(r)
 	present_destroy(r)
+	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	delete(r.wg.pipes); delete(r.wg.fx_pipes); delete(r.wg.mip_pipes); delete(r.wg.slug_pipes)
 	if r.wg.shared != nil { free(r.wg.shared) }
 	r^ = {}
@@ -940,15 +940,21 @@ wgpu_destroy :: proc(r: ^Renderer) {
 wgpu_recover :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
 	hwnd := r.hwnd
-	was_offscreen := g.surface == nil
+	was_offscreen := hwnd == nil   // (not g.surface == nil: a recovery that found no device left it nil)
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(g)
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
 	g.shared.lost = false
 	ok := wgpu_create_device(r, hwnd, r.warp)
-	if ok { wgpu_frame_formats(r) }
-	ok = ok && (was_offscreen ? wgpu_create_offscreen(r) : wgpu_configure_surface(r))
+	if !ok {
+		// no device yet (the adapter is resetting or gone): nothing to remake textures or shaders on. They keep their kinds, so
+		// that the recovery that finds a device remakes them; until then frames draw nothing.
+		r.lost = true
+		return false
+	}
+	wgpu_frame_formats(r)
+	ok = (was_offscreen ? wgpu_create_offscreen(r) : wgpu_configure_surface(r))
 	ok = ok && wgpu_init_pipeline(r)
 	wgpu_app_shaders_recreate(r)
 	for i in 1 ..< len(r.textures) {

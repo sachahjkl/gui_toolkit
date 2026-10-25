@@ -1,6 +1,7 @@
 package draw
 
 import "core:math"
+import "../font"
 import "../render"
 
 // Filter results kept from frame to frame.
@@ -170,8 +171,20 @@ anchor_split :: proc(a: Vec2) -> (whole: Vec2, frac: Vec2) {
 	return whole, q - whole
 }
 
+// The global settings that change the pixels of what is drawn (text rendering, the corner shape, the font atlas settings), as a
+// number: a kept result made under other ones is not good any more.
+@(private)
+settings_key :: proc(c: ^Context) -> u64 {
+	t := c.renderer.text
+	h := hash_mix(0x73657474696e6773, u64(t.curve))
+	h = hash_f32(hash_f32(hash_f32(h, t.gamma), t.contrast), t.coverage_exponent)
+	h = hash_f32(h, c.renderer.corner_smoothing)
+	if c.fonts != nil { h = hash_mix(h, font.atlas_settings_generation(c.fonts)) }
+	return h
+}
+
 // What the toolkit adds to the caller's key: the filters run by passes, the transform's linear part, the anchor's
-// fraction, the bounds relative to the anchor, the space and the blur settings.
+// fraction, the bounds relative to the anchor, the space, the blur settings and the global drawing settings (settings_key).
 @(private)
 cache_full_key :: proc(c: ^Context, caller: u64, filters: []Filter, m: Affine, frac: Vec2, rel_bounds: Rect, space: render.Blend_Space) -> u64 {
 	h := hash_mix(0x6c61796572636163, caller)
@@ -189,6 +202,7 @@ cache_full_key :: proc(c: ^Context, caller: u64, filters: []Filter, m: Affine, f
 	h = hash_f32(hash_f32(h, quantize(rel_bounds.max.x)), quantize(rel_bounds.max.y))
 	h = hash_mix(h, u64(space) | u64(render.filter_precision(c.renderer)) << 8)
 	h = hash_f32(h, c.renderer.blur_sigma_limit)
+	h = hash_mix(h, settings_key(c))
 	return h
 }
 

@@ -56,6 +56,7 @@ mask_layer :: proc(c: ^Context, mode: Mask_Mode, op: Mask_Op) {
 	if tex == 0 {
 		// out of targets: this layer is lost (as if fully covering: the others still apply)
 		ol.mask = 0
+		ol.cache.store = false
 		close_batch(c)
 		c.target = ol.id
 		start_batch(c)
@@ -82,6 +83,7 @@ mask_fold :: proc(c: ^Context, ol: ^Open_Layer) {
 	start_batch(c)
 	if dst == 0 {
 		render.release_target(c.renderer, layer.tex)
+		ol.cache.store = false   // a mask layer is lost: the result is not the masked one, do not keep it
 		return
 	}
 	flags: u32 = ol.mask_mode == .Luminance ? render.PASS_MASK_LUMINANCE : 0
@@ -129,6 +131,8 @@ pop_mask :: proc(c: ^Context) {
 			add_op(c, render.Op{kind = .Pass, dst = dst, pass = render.Pass{mode = .Mask, flags = render.PASS_MASK_APPLY, src = f.img, src2 = ol.coverage, dst = out}})
 			render.release_target(c.renderer, f.img.tex)
 			f.img = out
+		} else {
+			ol.cache.store = false   // no target for the masked result: the content is composited unmasked, not kept as the masked one
 		}
 		render.release_target(c.renderer, ol.coverage.tex)
 	}

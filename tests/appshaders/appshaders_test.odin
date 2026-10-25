@@ -238,6 +238,22 @@ rotated_rect_gets_its_local_size_and_scale :: proc(t: ^testing.T) {
 	testing.expectf(t, near(px(img, 32, 32 + 20), {255, 255, 255}), "outside the turned rect (it is only 30 high): %v", px(img, 32, 32 + 20))
 }
 
+// A uniform scale and a translation (the usual transform: DPI, zoom) is baked into the rectangle; the shader still sees local units.
+@(test)
+scaled_rect_gets_its_local_size_and_scale :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no D3D11 device (WARP) or the app shader was refused") }
+	defer close(&f)
+	begin(&f)
+	draw.push_transform(&f.dc, draw.affine_mul(draw.affine_translate({4, 6}), draw.affine_scale({1.5, 1.5})))
+	draw.app_shader(&f.dc, f.shader, {{0, 0}, {20, 30}}, {{3, 0, 0, 0}})   // 20 x 30 local units, 1.5 pixels each
+	draw.pop_transform(&f.dc)
+	img := finish(&f)
+	want := [3]int{level(0.2, .Linear), level(0.3, .Linear), level(0.15, .Linear)}
+	testing.expectf(t, near(px(img, 4 + 15, 6 + 20), want, 3), "size and scale under a uniform scale: %v, want %v", px(img, 4 + 15, 6 + 20), want)
+	testing.expectf(t, near(px(img, 4 + 40, 6 + 20), {255, 255, 255}), "the rect is 30 pixels wide: %v", px(img, 4 + 40, 6 + 20))
+}
+
 @(test)
 inside_a_layer_and_a_plane :: proc(t: ^testing.T) {
 	for space in render.Blend_Space {
@@ -303,6 +319,53 @@ refusals :: proc(t: ^testing.T) {
 		testing.expect(t, bad == 0, "a stale blob is refused")
 		none := render.create_app_shader(&f.r, {name = "no blob", wgsl = TEST_WGSL, hash = TEST_HASH})
 		testing.expect(t, none == 0, "no blob")
+	}
+}
+
+// A shader the device cannot remake after a loss draws nothing, says so, and keeps its handle until it is destroyed: a new shader does
+// not take the slot (the old handle would draw it) and the name does not leak.
+@(test)
+shader_that_cannot_be_remade_keeps_its_handle :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no D3D11 device (WARP) or the app shader was refused") }
+	defer close(&f)
+	testing.expect(t, render.app_shader_ready(&f.r, f.shader), "ready when made")
+	f.r.apps[int(f.shader)].wgsl = "fn broken("   // the module of WebGPU and the pixel shader of Direct3D 11 cannot be made again
+	f.r.apps[int(f.shader)].dxbc = nil
+	render.simulate_device_loss(&f.r)
+	begin(&f)
+	testing.expect(t, !render.app_shader_ready(&f.r, f.shader), "not ready after the recovery")
+	testing.expect(t, !draw.app_shader(&f.dc, f.shader, BOX, {{0, 0, 0, 0}, {1, 0, 0, 1}}), "draw.app_shader says it did not draw")
+	finish(&f)
+	other := render.create_app_shader(&f.r, {name = "other", wgsl = TEST_WGSL, dxbc = TEST_DXBC, hash = TEST_HASH})
+	testing.expect(t, other != 0 && other != f.shader, "the reserved handle is not given to another shader")
+	render.destroy_app_shader(&f.r, f.shader)
+	render.destroy_app_shader(&f.r, other)
+}
+
+// WebGPU: a module that passes naga but whose pipeline the device refuses (a binding the pipeline layout does not have) no longer
+// makes the encoder of every frame invalid.
+@(test)
+refused_pipeline_gives_the_shader_up :: proc(t: ^testing.T) {
+	when render.RENDER_BACKEND == "wgpu" {
+		f: Fx
+		if !open(&f, .Linear) { testing.fail_now(t, "no device (WARP) or the app shader was refused") }
+		defer close(&f)
+		bad := render.create_app_shader(&f.r, {name = "bad pipeline", wgsl = `
+@group(2) @binding(7) var bogus: texture_2d<f32>;
+fn app_shade(a: AppIn) -> vec4<f32> { return textureLoad(bogus, vec2<i32>(0, 0), 0); }
+`})
+		testing.expect(t, bad != 0, "the module is accepted")
+		begin(&f)
+		draw.rect(&f.dc, {{0, 0}, {64, 64}}, draw.Color{1, 0, 0, 1})
+		draw.app_shader(&f.dc, bad, BOX, {{0, 0, 0, 0}})
+		img := finish(&f)
+		testing.expectf(t, near(px(img, 50, 50), {255, 0, 0}), "the rest of the frame is drawn: %v", px(img, 50, 50))
+		testing.expect(t, !render.app_shader_ready(&f.r, bad), "the shader is given up")
+		begin(&f)
+		testing.expect(t, !draw.app_shader(&f.dc, bad, BOX, {{0, 0, 0, 0}}), "draw.app_shader says it did not draw")
+		finish(&f)
+		render.destroy_app_shader(&f.r, bad)
 	}
 }
 

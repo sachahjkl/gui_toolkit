@@ -92,8 +92,10 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	profile_step(r, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst))
 
 	bind_main(r)
-	has_slug := frame_has_slug(f) && slug_pipeline_ensure(r)
+	slug_frame := frame_has_slug(f)
+	has_slug := slug_frame && slug_pipeline_ensure(r)
 	if has_slug { slug_bind_inputs(r, f) }
+	if slug_frame && !has_slug { r.slug.ready = false }   // no Slug shaders: its runs are skipped (draw_batch_split), the rest is drawn
 	write_replay(r, nil, false)
 	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil {
 		// first use of the back buffer, alone: the compositor may still hold it, and the draw that touches it first
@@ -163,7 +165,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		r.ctx->RSSetScissorRects(1, &rc)
 		if b.app > 0 {
 			d3d_draw_app(r, f, b)
-		} else if has_slug {
+		} else if slug_frame {
 			draw_batch_split(r, f, b)
 		} else {
 			r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))

@@ -87,6 +87,23 @@ slug_looks_like_the_atlas :: proc(t: ^testing.T) {
 	}
 }
 
+// When the device refuses the Slug shaders its text is not drawn (as on WebGPU): it used to come out as one solid rounded rect per glyph.
+@(test)
+slug_refused_by_the_device_draws_no_blocks :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f, .Slug) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
+	defer close(f)
+	f.r.slug.failed = true   // as slug_pipeline_ensure leaves it after a refusal
+	img := frame(f, proc(f: ^Fx) {
+		draw.rect(&f.dc, {{200, 4}, {230, 30}}, draw.Color{0, 0, 1, 1})
+		draw.text(&f.dc, f.ui, 28, {6, 40}, BLACK, "HHHH")
+	})
+	testing.expect_value(t, px(img, 215, 15), [3]int{0, 0, 255})
+	_, ink, _ := compare(img, img, 6, 12, 90, 44)
+	testing.expectf(t, ink < 1, "no glyph blocks: ink %.2f", ink)
+}
+
 // Rotated text: Slug draws it, in order with a rect drawn over a part of it, and a rounded clip cuts it.
 @(test)
 slug_order_clip_and_rotation :: proc(t: ^testing.T) {

@@ -76,6 +76,7 @@ Open_Plane :: struct {
 	hit:     bool,        // the kept texture stands for the content
 	cache:   Cache_Ask,
 	pl:      Plane_Layer,
+	pending0: u64,        // Context.glyphs_pending when it was opened
 }
 
 PLANE_MAX_TAPS_DEFAULT :: 8
@@ -84,7 +85,7 @@ PLANE_MAX_TAPS_DEFAULT :: 8
 // picks about the size the plane shows at on screen). Returns false when the kept texture of fx.cache_id is still good: the
 // caller skips drawing its content (anything drawn until pop_plane is discarded).
 push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = {}) -> (draw_content: bool) {
-	op := Open_Plane{parent = c.target}
+	op := Open_Plane{parent = c.target, pending0 = c.glyphs_pending}
 	s := raster_scale > 0 && !math.is_nan(raster_scale) ? raster_scale : 1
 	maxd := f32(render.max_texture_size(c.renderer))
 	// snapped to whole texels so a plane drawn flat is sampled texel for texel
@@ -100,10 +101,20 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	space := blend_space(c)
 	mips := fx.mips && render.target_mips_supported(c.renderer)
 	tex: render.Texture
-	if c.rec == nil && w > 0 && h > 0 && !(sz.x != sz.x) {
+	if c.rec != nil {
+		// planes are not recorded in pictures: nothing is drawn (what the caller draws anyway goes nowhere: an empty clip) and draw_plane
+		// of the result does nothing
+		op.hit = true
+		append(&c.planes, op)
+		push_clip(c, Rect{})
+		append(&c.alphas, 1)
+		return false
+	}
+	if w > 0 && h > 0 && !(sz.x != sz.x) {
 		if fx.cache_id != 0 && c.layer_cache.budget > 0 {
 			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(mips) << 8), u64(render.filter_precision(c.renderer)))
 			key = hash_f32(hash_f32(key, o.x), o.y)
+			key = hash_mix(key, settings_key(c))
 			ask := cache_ask(c, fx.cache_id, key, {}, Rect{{0, 0}, {f32(w), f32(h)}})
 			op.cache = ask
 			if ask.hit {
@@ -165,7 +176,7 @@ pop_plane :: proc(c: ^Context) -> Plane_Layer {
 	start_batch(c)
 	pl := op.pl
 	if pl.mips { add_op(c, render.Op{kind = .Mips, dst = pl.img.tex}) }
-	if op.cache.store { pl.kept = cache_store(c, op.cache, pl.img, pl.size, Rect{{0, 0}, {f32(pl.size.x), f32(pl.size.y)}}) }
+	if op.cache.store && c.glyphs_pending == op.pending0 { pl.kept = cache_store(c, op.cache, pl.img, pl.size, Rect{{0, 0}, {f32(pl.size.x), f32(pl.size.y)}}) }
 	return pl
 }
 
