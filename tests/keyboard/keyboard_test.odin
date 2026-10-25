@@ -330,6 +330,43 @@ line_edit_history :: proc(t: ^testing.T) {
 	testing.expect(t, ui.field_can_undo(&r.field), "paste is undoable")
 }
 
+// Arrows, Backspace and Delete work on grapheme clusters: an emoji family (5 code points), a letter and its combining
+// mark, a flag (2 regional indicators) are each one step.
+@(test)
+line_edit_clusters :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	FAMILY :: "\U0001F468\u200D\U0001F469\u200D\U0001F467"
+	frame(&f, nil, build_edit, &r)
+	ui.set_focus(ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###e")).key)
+	events := make([dynamic]platform.Event, context.temp_allocator)
+	for c in "a" + FAMILY + "e\u0301\U0001F1EB\U0001F1F7" { append(&events, typed(c)) }
+	frame(&f, events[:], build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "a" + FAMILY + "e\u0301\U0001F1EB\U0001F1F7")
+	frame(&f, {key(.Backspace)}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "a" + FAMILY + "e\u0301")
+	frame(&f, {key(.Backspace)}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "a" + FAMILY)
+	frame(&f, {key(.Backspace)}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "a")
+	// the arrows step over a family in one press, and Delete takes it whole
+	clear(&events)
+	for c in FAMILY + "y" { append(&events, typed(c)) }
+	frame(&f, events[:], build_edit, &r)
+	frame(&f, {key(.Left)}, build_edit, &r)
+	frame(&f, {key(.Left)}, build_edit, &r)
+	frame(&f, {key(.Delete)}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "ay")
+	frame(&f, {key(.Right)}, build_edit, &r)
+	frame(&f, {key(.Backspace)}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "a")
+}
+
 @(private = "file")
 build_para :: proc(f: ^Fx, user: rawptr) {
 	ui.next({width = ui.px(160)})

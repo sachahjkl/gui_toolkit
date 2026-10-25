@@ -152,20 +152,22 @@ Line_Edit_Draw :: struct {
 	pad:         f32,
 }
 
+// The caret position before / after the grapheme cluster at `i` (an emoji sequence, a flag, a letter with its marks
+// are one): arrows, Backspace and Delete move and remove whole clusters.
 @(private)
-prev_index :: proc(s: string, i: int) -> int {
+prev_index :: proc(s: string, i: int) -> int { return font.grapheme_prev(s, i) }
+
+@(private)
+next_index :: proc(s: string, i: int) -> int { return font.grapheme_next(s, i) }
+
+// The same by code point (word movement does not need clusters).
+@(private)
+prev_rune_index :: proc(s: string, i: int) -> int {
 	i := i
 	if i <= 0 { return 0 }
 	i -= 1
 	for i > 0 && (s[i] & 0xC0) == 0x80 { i -= 1 }
 	return i
-}
-
-@(private)
-next_index :: proc(s: string, i: int) -> int {
-	if i >= len(s) { return len(s) }
-	_, n := utf8.decode_rune_in_string(s[i:])
-	return i + max(n, 1)
 }
 
 @(private)
@@ -177,13 +179,13 @@ is_word_rune :: proc(r: rune) -> bool {
 word_left :: proc(s: string, i: int) -> int {
 	i := i
 	for i > 0 {
-		j := prev_index(s, i)
+		j := prev_rune_index(s, i)
 		r, _ := utf8.decode_rune_in_string(s[j:])
 		if is_word_rune(r) { break }
 		i = j
 	}
 	for i > 0 {
-		j := prev_index(s, i)
+		j := prev_rune_index(s, i)
 		r, _ := utf8.decode_rune_in_string(s[j:])
 		if !is_word_rune(r) { break }
 		i = j
