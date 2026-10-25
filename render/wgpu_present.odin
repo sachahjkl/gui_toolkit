@@ -171,6 +171,7 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
 	if !g.frame_acquired { return }
 	if g.clear_pending { wgpu_clear_frame(r) }
 	t_pre := time.tick_now()
+	r.present.call = t_pre
 	ps := profile_present_begin(r)
 	wgpu.SurfacePresent(g.surface)
 	profile_present_end(r, ps)
@@ -229,7 +230,7 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	wgpu_latency_arm(r, sync > 0 ? max(i64(time.tick_diff(now, shown) + time.Duration(l.lag_ns)) - 200_000, 0) : 0)
 	if sync > 0 && l.lag_ns >= 0.5 * p.period_ns { shown._nsec += i64(l.lag_ns / p.period_ns + 0.5) * i64(p.period_ns) }
 	if wgpu_trace() { fmt.eprintfln("wgpu: present done: shown in %.2f ms, interval %d, lag %.2f ms, period %.2f ms, dwm ok %v", f64(time.tick_diff(now, shown)) / 1e6, sync, l.lag_ns / 1e6, p.period_ns / 1e6, ok) }
-	d := Displayed_Frame{present = u32(p.presents), input = p.input, presented = now, shown = shown}
+	d := Displayed_Frame{present = u32(p.presents), input = p.input, read = p.read, drawn = p.drawn, call = p.call, presented = now, shown = shown}
 	if ok && sync > 0 && l.have_index && index > l.last_index && index - l.last_index < 240 && p.continuous {
 		d.refreshes = u32(index - l.last_index)
 		allowed := u32(p.expected > 0 ? p.expected + 0.999999 : f64(sync))
@@ -238,8 +239,7 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	l.last_index, l.have_index = index, ok && sync > 0
 	p.displayed += 1
 	p.missed += u64(d.missed)
-	p.input = {}
-	if len(p.out) >= 4 * PRESENT_RING { clear(&p.out) }
-	append(&p.out, d)
+	p.input, p.read = {}, {}
+	present_publish(p, d)
 	when RENDER_PROBE { present_probe(r, now) }
 }

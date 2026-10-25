@@ -3,6 +3,7 @@ package render
 import "core:fmt"
 import "core:os"
 import "core:sync"
+import "core:time"
 import win "core:sys/windows"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
@@ -118,6 +119,7 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 }
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
+	r.present.drawn = time.tick_now()
 	when !USE_WGPU { if r.capture.requested { capture_copy(r) } }   // before the present: a flip chain does not keep the frame
 	when USE_WGPU { wgpu_frame_end(r, vsync) } else { d3d_frame_end(r, vsync) }
 	if !r.first_present_noted {

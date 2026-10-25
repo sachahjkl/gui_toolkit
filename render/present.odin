@@ -23,6 +23,9 @@ Present_Mode :: enum u8 { Vsync, Tearing }
 Displayed_Frame :: struct {
 	present:   u32,         // the swap chain's present number
 	input:     time.Tick,   // earliest input the frame was built from (zero: none given)
+	read:      time.Tick,   // when the frame had read its input and began (set_frame_read; zero: not given)
+	drawn:     time.Tick,   // when frame_end was called: the frame is built and drawn
+	call:      time.Tick,   // when Present was called
 	presented: time.Tick,   // when Present returned
 	shown:     time.Tick,   // the vblank it reached the screen at
 	refreshes: u32,         // vblanks since the previous frame shown, in a continuous run (0: the run starts here)
@@ -35,6 +38,7 @@ Displayed_Frame :: struct {
 Present_Slot :: struct {
 	present:    u32,
 	input:      time.Tick,
+	read, drawn, call: time.Tick,
 	presented:  time.Tick,
 	continuous: bool,
 	interval:   u32,
@@ -49,6 +53,11 @@ Present_State :: struct {
 	tearing_ok:    bool,                   // the system can present with tearing
 	ring:          [PRESENT_RING]Present_Slot,
 	input:         time.Tick,              // set_frame_input for the next present
+	read:          time.Tick,              // set_frame_read for the next present
+	drawn:         time.Tick,              // frame_end's start (the frame being presented)
+	call:          time.Tick,              // the wgpu backend's Present call (d3d11 keeps it in present_frame)
+	last_id:       u32,                    // the swap chain's last present number
+	probe:         Latency_Probe,          // latency.odin
 	continuous:    bool,                   // set_frame_continuous for the next present
 	seen_present:  u32,                    // last present the statistics reported on screen
 	seen_refresh:  u32,
@@ -84,6 +93,9 @@ frame_waitable :: proc(r: ^Renderer) -> rawptr {
 
 // The earliest input the next frame is built from (its event time): Displayed_Frame.input, for input latency.
 set_frame_input :: proc(r: ^Renderer, t: time.Tick) { r.present.input = t }
+
+// When the next frame had read its input and began to be built (the end of the wait for it: latency_summary's `wait`).
+set_frame_read :: proc(r: ^Renderer, t: time.Tick) { r.present.read = t }
 
 // The next frame follows the previous one without a pause (an animation, scrolling): a refresh it misses is a missed
 // frame. A frame after idle time is not continuous (nothing was due in between).
@@ -140,7 +152,7 @@ present_reset :: proc(r: ^Renderer) {
 }
 
 @(private)
-present_destroy :: proc(r: ^Renderer) { delete(r.present.out) }
+present_destroy :: proc(r: ^Renderer) { delete(r.present.out); delete(r.present.probe.samples) }
 
 // Presents the frame (frame_end). Returns the HRESULT of Present.
 @(private)
@@ -151,6 +163,7 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	sync: u32 = vsync && !tearing ? p.interval : 0
 	flags: dxgi.PRESENT
 	if sync == 0 && .ALLOW_TEARING in r.swap_flags && p.tearing_ok { flags += {.ALLOW_TEARING} }
+	call := time.tick_now()
 	ps := profile_present_begin(r)
 	hr := r.swapchain->Present(sync, flags)
 	profile_present_end(r, ps)
@@ -159,9 +172,10 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	p.presents += 1
 	id: u32
 	if win.SUCCEEDED(r.swapchain->GetLastPresentCount(&id)) {
-		p.ring[id % PRESENT_RING] = Present_Slot{present = id, input = p.input, presented = now, continuous = p.continuous, interval = max(sync, 1), expected = p.expected > 0 ? p.expected : f64(max(sync, 1)), mode = tearing ? .Tearing : .Vsync}
+		p.last_id = id
+		p.ring[id % PRESENT_RING] = Present_Slot{present = id, input = p.input, read = p.read, drawn = p.drawn, call = call, presented = now, continuous = p.continuous, interval = max(sync, 1), expected = p.expected > 0 ? p.expected : f64(max(sync, 1)), mode = tearing ? .Tearing : .Vsync}
 	}
-	p.input = {}
+	p.input, p.read = {}, {}
 	present_collect(r)
 	when RENDER_PROBE { present_probe(r, now) }
 	return hr
@@ -178,6 +192,7 @@ present_collect :: proc(r: ^Renderer) {
 	if win.FAILED(hr) { p.stats_fails += 1; return }
 	p.stats_ok = true
 	p.stats_fails = 0
+	if p.probe.on && p.last_id >= st.PresentCount { latency_probe_depth(&p.probe, u64(p.last_id - st.PresentCount)) }
 	sync := qpc_to_tick(i64(st.SyncQPCTime))
 	// the vblank period from two (vblank number, time) samples
 	if p.sync_count != 0 && st.SyncRefreshCount > p.sync_count && st.SyncRefreshCount - p.sync_count < 1000 {
@@ -196,7 +211,7 @@ present_collect :: proc(r: ^Renderer) {
 	if p.period_ns > 0 && st.SyncRefreshCount >= st.PresentRefreshCount {
 		shown._nsec -= i64(f64(st.SyncRefreshCount - st.PresentRefreshCount) * p.period_ns)
 	}
-	d := Displayed_Frame{present = st.PresentCount, input = slot.input, presented = slot.presented, shown = shown}
+	d := Displayed_Frame{present = st.PresentCount, input = slot.input, read = slot.read, drawn = slot.drawn, call = slot.call, presented = slot.presented, shown = shown}
 	// counters that go back or jump far (the swap chain was out of view, the display mode changed): no run to compare to
 	run := p.have_seen && st.PresentCount > p.seen_present && st.PresentCount - p.seen_present < PRESENT_RING &&
 	       st.PresentRefreshCount > p.seen_refresh && st.PresentRefreshCount - p.seen_refresh <= (st.PresentCount - p.seen_present) * slot.interval + 240
@@ -215,8 +230,15 @@ present_collect :: proc(r: ^Renderer) {
 	p.seen_present, p.seen_refresh, p.have_seen = st.PresentCount, st.PresentRefreshCount, true
 	p.displayed += 1
 	p.missed += u64(d.missed)
+	present_publish(p, d)
+}
+
+// A frame that reached the screen: kept for take_displayed, and measured when the latency probe is on.
+@(private)
+present_publish :: proc(p: ^Present_State, d: Displayed_Frame) {
 	if len(p.out) >= 4 * PRESENT_RING { clear(&p.out) }   // nobody takes them: keep only recent ones
 	append(&p.out, d)
+	latency_probe_add(&p.probe, d)
 }
 
 // RENDER_PROBE: once per second, frames, misses, input -> screen latency and the measured refresh rate.
