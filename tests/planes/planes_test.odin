@@ -344,6 +344,67 @@ three_planes_in_a_star :: proc(t: ^testing.T) {
 	testing.expectf(t, bad == 0, "%d of %d samples show the wrong plane", bad, checked)
 }
 
+@(private = "file") ring: [9]draw.Mat4
+@(private = "file") ring_size: [9][2]f32
+@(private = "file") ring_color: [9]draw.Color
+
+// A big plane flat on the screen, and eight tilted ones around its middle, each crossing it along one side of an octagon: the piece
+// of the big plane inside the octagon is bounded by eight cuts (more than a draw can test per pixel). Every sample is compared
+// with the depth worked out from the matrices.
+@(test)
+many_cuts_bound_one_piece :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	ring[8] = draw.mat4_from_affine(draw.affine_translate({0, 0}))   // last: the splitters are looked for among the first eight
+	ring_size[8] = {96, 96}
+	ring_color[8] = draw.Color{1, 1, 0, 1}
+	colors := [8]draw.Color{{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}, {0, 1, 1, 1}, {1, 0, 1, 1}, {0, 0, 0, 1}, {1, 0.5, 0, 1}, {0.5, 0, 0.5, 1}}
+	for i in 0 ..< 8 {
+		a := f32(i) * 45
+		rad := a * math.PI / 180
+		c := [2]f32{48 + 24 * math.cos(rad), 48 + 24 * math.sin(rad)}
+		ring[i] = tilted(c, {20, 14}, a + 90, -40)
+		ring_size[i] = {40, 28}
+		ring_color[i] = colors[i]
+	}
+	img := frame(&f, proc(dc: ^draw.Context) {
+		items: [9]draw.Plane_Item
+		for i in 0 ..< 9 {
+			items[i] = draw.plane_item(solid_plane(dc, ring_size[i], ring_color[i]), ring[i])
+		}
+		draw.draw_planes(dc, items[:])
+	})
+	checked, bad := 0, 0
+	for y := 4; y < 92; y += 2 {
+		for x := 4; x < 92; x += 2 {
+			best, second := -f32(1e9), -f32(1e9)
+			who := -1
+			near_edge := false
+			for i in 0 ..< 9 {
+				m := ring[i]
+				det := m[0] * m[5] - m[4] * m[1]
+				dx, dy := f32(x) + 0.5 - m[12], f32(y) + 0.5 - m[13]
+				u := (dx * m[5] - dy * m[4]) / det
+				v := (m[0] * dy - m[1] * dx) / det
+				mg := min(min(u, ring_size[i].x - u), min(v, ring_size[i].y - v))
+				if abs(mg) < 2.5 { near_edge = true }
+				if mg < 0 { continue }
+				z := m[2] * u + m[6] * v + m[14]
+				if z > best { second = best; best = z; who = i } else if z > second { second = z }
+			}
+			if who < 0 || best - second < 2.5 || near_edge { continue }
+			checked += 1
+			p := px(img, x, y)
+			want := ring_color[who]
+			lvl :: proc(v: f32) -> int { return v == 0.5 ? 188 : int(v * 255 + 0.5) }   // the colors are linear: half is 188 in sRGB
+			if abs(p[0] - lvl(want.r)) > 10 || abs(p[1] - lvl(want.g)) > 10 || abs(p[2] - lvl(want.b)) > 10 { bad += 1 }
+		}
+	}
+	testing.expectf(t, checked > 400, "enough samples (%d)", checked)
+	testing.expectf(t, bad == 0, "%d of %d samples show the wrong plane", bad, checked)
+}
+
 @(private = "file")
 stripes :: proc(dc: ^draw.Context) {
 	for i in 0 ..< 24 {
