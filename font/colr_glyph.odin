@@ -201,11 +201,20 @@ colr_put :: proc(s: ^State, bm: Colr_Bitmap) -> Glyph_Image {
 // Caller holds the atlas lock. The drawing itself (bounded, but it can take a while) runs with the lock released, so
 // that the other threads that draw are not held up; the lock is taken again for the bitmap's place in a page.
 @(private)
-rasterize_colr :: proc(s: ^State, face: Font_Id, f: ^Font, gid: u16, size: f32, x: f32, fg: [3]u8) -> (g: Glyph_Image, uses_fg: bool, ok: bool) {
+rasterize_colr :: proc(s: ^State, face: Font_Id, f: ^Font, gid: u16, size: f32, x: f32, fg: [3]u8, key: u64) -> (g: Glyph_Image, uses_fg: bool, ok: bool) {
 	atlas_unlock(&s.atlas)
 	bm, drawn := colr_draw(s, face, f, gid, size, x, fg)
 	atlas_lock(&s.atlas)
 	if !drawn { return {}, false, false }
+	// another thread may have drawn the same glyph meanwhile and put it in a page: the one kept is the one every caller gets
+	if ex, found := s.atlas.glyphs[key]; found {
+		keep := ex
+		if ex.uses_fg { keep, found = s.atlas.fg_glyphs[Fg_Key{key, fg}] }
+		if found {
+			delete(bm.px, runtime.heap_allocator())
+			return keep, ex.uses_fg, true
+		}
+	}
 	return colr_put(s, bm), bm.uses_fg, true
 }
 

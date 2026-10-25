@@ -3,6 +3,7 @@
 package colr_test
 
 import "core:testing"
+import "core:thread"
 import "core:time"
 import "../../font"
 
@@ -245,6 +246,49 @@ header_checks :: proc(t: ^testing.T) {
 	b[34], b[35], b[36], b[37] = 0, 0, 0xFF, 0xFF   // 65 535 records of 6 bytes in a table of 60
 	c = font.colr_open(b[:], nil)
 	testing.expect(t, c == nil)
+}
+
+// The interpreter draws without the atlas lock: several threads asking for color glyphs (some of them the same) get
+// consistent, kept bitmaps, and a thread that only looks up a plain glyph is not held up behind the drawing.
+@(test)
+color_glyphs_from_several_threads :: proc(t: ^testing.T) {
+	s: font.State
+	st := font.DEFAULT_SETTINGS
+	st.color_engine = .Builtin
+	font.init(&s, st)
+	defer font.destroy(&s)
+	id, ok := font.load_embedded(&s, COLRV1)
+	testing.expect(t, ok)
+	cas := font.cascade(&s, {{font = id}}, nil, true)
+	gids := make([dynamic]u16, context.temp_allocator)
+	for r := rune(0xF0000); r < 0xF0A00 && len(gids) < 120; r += 1 {
+		sh := font.shape(&s, cas, 48, utf8(r), {}, context.temp_allocator)
+		if len(sh.glyphs) == 1 && sh.glyphs[0].id != 0 { append(&gids, sh.glyphs[0].id) }
+	}
+	testing.expect(t, len(gids) > 40)
+	Work :: struct { s: ^font.State, id: font.Font_Id, gids: []u16, from: int, bad: int }
+	work :: proc(w: ^Work) {
+		user := rawptr(w)
+		font.atlas_begin_frame(w.s, user)
+		defer font.atlas_remove_user(w.s, user)
+		for round in 0 ..< 3 {
+			for i in w.from ..< len(w.gids) {
+				a := font.glyph_image(w.s, w.id, w.gids[i], 40, round % 2)
+				b := font.glyph_image(w.s, w.id, w.gids[i], 40, round % 2)
+				if a != b { w.bad += 1 }
+			}
+		}
+	}
+	jobs: [3]Work
+	threads: [3]^thread.Thread
+	for i in 0 ..< 3 {
+		jobs[i] = Work{s = &s, id = id, gids = gids[:], from = i * 5}
+		threads[i] = thread.create_and_start_with_poly_data(&jobs[i], work)
+	}
+	for th in threads { thread.join(th); thread.destroy(th) }
+	for j in jobs { testing.expect_value(t, j.bad, 0) }
+	drawn, _ := font.colr_counts(&s)
+	testing.expect(t, drawn > 40)
 }
 
 // ---- GSUB ----
