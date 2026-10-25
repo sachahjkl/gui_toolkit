@@ -42,5 +42,8 @@ set_placement :: proc(w: ^Window, p: Placement) {
 	}
 	r := fit_rect_to_work(p.rect, work)
 	win.SetWindowPos(w.hwnd, nil, i32(r[0]), i32(r[1]), i32(r[2]), i32(r[3]), win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+	// a window that crossed to a monitor of another DPI is resized by the system for it (the size is scaled): asked again, now that it is there,
+	// the rectangle is the one wanted (a window opens on the monitor the user is on, which is rarely the one a saved layout names)
+	if now := outer_rect(w); now != r { win.SetWindowPos(w.hwnd, nil, i32(r[0]), i32(r[1]), i32(r[2]), i32(r[3]), win.SWP_NOZORDER | win.SWP_NOACTIVATE) }
 	w.want_maximized = p.maximized
 }
