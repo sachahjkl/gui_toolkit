@@ -96,9 +96,13 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.display_stale = true
 	w.integrated = integrated_title
 
+	// made on the monitor the user is on, so that it gets that monitor's DPI and refresh rate from the start: CW_USEDEFAULT puts it on the
+	// primary one whatever program launched it
+	at_x, at_y := i32(win.CW_USEDEFAULT), i32(win.CW_USEDEFAULT)
+	if start := start_monitor_work_area(); start.right > start.left { at_x, at_y = start.left + 48, start.top + 48 }
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
 	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
-		win.CW_USEDEFAULT, win.CW_USEDEFAULT, 640, 480, nil, nil, instance, w)
+		at_x, at_y, 640, 480, nil, nil, instance, w)
 	if w.hwnd == nil {   // out of resources (USER handles, memory): no window
 		free(w)
 		return nil
@@ -123,6 +127,24 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	win.SetWindowPos(w.hwnd, nil, i32(x), i32(y), i32(ow), i32(oh), win.SWP_NOZORDER | win.SWP_NOACTIVATE | win.SWP_FRAMECHANGED)
 	update_client_size(w)
 	return w
+}
+
+// The work area of the monitor a new window should open on: the one of the window the user is working in (the program that launched
+// this one is usually in front), else the one under the pointer. Empty when neither can be had (the system chooses then).
+@(private)
+start_monitor_work_area :: proc() -> win.RECT {
+	mon: win.HMONITOR
+	if fg := win.GetForegroundWindow(); fg != nil {
+		mon = win.MonitorFromWindow(fg, .MONITOR_DEFAULTTONULL)
+	}
+	if mon == nil {
+		pt: win.POINT
+		if win.GetCursorPos(&pt) { mon = win.MonitorFromPoint(pt, .MONITOR_DEFAULTTONEAREST) }
+	}
+	if mon == nil { return {} }
+	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
+	if !win.GetMonitorInfoW(mon, &mi) { return {} }
+	return mi.rcWork
 }
 
 // Outer size of a window whose client area is cw x ch: the frame around it (no top frame nor caption with an

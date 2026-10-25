@@ -13,6 +13,13 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - **`ui.init` no longer restarts the toolkit's clock** (`ui/state.odin`): the origin of `ui.now_ms()` was reset by every `init`, so opening a second window (one `ui.State` each) made the time of the first one jump back. It is set by the first `init` only.
 
 
+## [0.35.3] - 2026-10-25
+
+### Fixed
+- **A menu row that the pointer left for a disabled row stayed selected** (`ui/popups.odin`): a disabled row gets no signal, so the selection followed the pointer over enabled rows only and kept the last one while the pointer crossed disabled ones (the burger menu, the dropdown lists). A pointer that moves onto a disabled row now leaves nothing selected. Test: `tests/keyboard` menu_pointer_over_a_disabled_row_selects_nothing.
+- **A new window opened on the primary monitor** (`platform/platform_win32.odin`): `CW_USEDEFAULT` puts it there whatever program launched it, so a window started from a program on another monitor had that monitor's refresh rate and DPI wrong until it was dragged. It is now made on the monitor of the foreground window, else the one under the pointer.
+- `ui.VERSION` said 0.35.1 in the 0.35.2 release; it follows the changelog again.
+
 ## [0.35.2] - 2026-10-25
 
 ### Added
