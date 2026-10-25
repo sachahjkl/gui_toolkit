@@ -359,8 +359,10 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	} else if f.dw2 != nil {
 		f.color = bool(f.dw2->IsColorFont())
 	}
-	f.colr = face_colr_open(&f)
+	refused: bool
+	f.colr, refused = face_colr_open(&f)
 	if f.colr != nil { f.color = true }
+	if refused { f.color = false }   // a COLR table that cannot be read is not given to Direct2D (colr_nests_glyph): outlines
 	f.family = to_wide(family)
 	f.cmap = make([]u32, 65536 * 2 / 32)
 	sync.mutex_lock(&s.mu)

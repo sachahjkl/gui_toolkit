@@ -205,10 +205,14 @@ Surface :: struct {
 	px:   [][4]f32,
 }
 
+// nil when the memory cannot be had.
 surface_make :: proc(w, h: int, alloc: runtime.Allocator) -> ^Surface {
-	s := new(Surface, alloc)
+	if w <= 0 || h <= 0 { return nil }
+	s, err := new(Surface, alloc)
+	if err != nil { return nil }
+	s.px, err = make([][4]f32, w * h, alloc)
+	if err != nil { return nil }
 	s.w, s.h = w, h
-	s.px = make([][4]f32, w * h, alloc)
 	return s
 }
 

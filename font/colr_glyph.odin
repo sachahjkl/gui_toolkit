@@ -25,11 +25,12 @@ Face_Colr :: struct {
 	nested:   map[u16]bool,       // colr_nests_glyph per glyph, once asked (under mu)
 }
 
-// Opens the tables of `f` (nil: no COLR table, or one that does not parse).
+// Opens the tables of `f` (nil: no COLR table, or one that does not parse; `refused` tells the second: the face has a
+// COLR table nothing here can read, which the system is not given either).
 @(private)
-face_colr_open :: proc(f: ^Font) -> ^Face_Colr {
+face_colr_open :: proc(f: ^Font) -> (fc: ^Face_Colr, refused: bool) {
 	context.allocator = runtime.heap_allocator()
-	fc := new(Face_Colr)
+	fc = new(Face_Colr)
 	read :: proc(f: ^Font, tag: string) -> (data: []u8, ctx: rawptr) {
 		p: rawptr
 		n: u32
@@ -39,19 +40,19 @@ face_colr_open :: proc(f: ^Font) -> ^Face_Colr {
 	}
 	colr, cpal: []u8
 	colr, fc.colr_ctx = read(f, "COLR")
-	if colr == nil { free(fc); return nil }
+	if colr == nil { free(fc); return nil, false }
 	cpal, fc.cpal_ctx = read(f, "CPAL")
 	fc.c = colr_open(colr, cpal)
 	if fc.c == nil {
 		f.dw->ReleaseFontTable(fc.colr_ctx)
 		if fc.cpal_ctx != nil { f.dw->ReleaseFontTable(fc.cpal_ctx) }
 		free(fc)
-		return nil
+		return nil, true
 	}
 	fc.gsub, fc.gsub_ctx = read(f, "GSUB")
 	fc.outlines = make(map[u16]^Outline)
 	fc.nested = make(map[u16]bool)
-	return fc
+	return fc, false
 }
 
 @(private)
@@ -197,10 +198,13 @@ colr_put :: proc(s: ^State, bm: Colr_Bitmap) -> Glyph_Image {
 	}
 }
 
-// Caller holds the atlas lock.
+// Caller holds the atlas lock. The drawing itself (bounded, but it can take a while) runs with the lock released, so
+// that the other threads that draw are not held up; the lock is taken again for the bitmap's place in a page.
 @(private)
 rasterize_colr :: proc(s: ^State, face: Font_Id, f: ^Font, gid: u16, size: f32, x: f32, fg: [3]u8) -> (g: Glyph_Image, uses_fg: bool, ok: bool) {
+	atlas_unlock(&s.atlas)
 	bm, drawn := colr_draw(s, face, f, gid, size, x, fg)
+	atlas_lock(&s.atlas)
 	if !drawn { return {}, false, false }
 	return colr_put(s, bm), bm.uses_fg, true
 }
