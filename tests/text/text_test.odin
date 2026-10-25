@@ -309,6 +309,47 @@ glyphs_bigger_than_a_page_make_no_page :: proc(t: ^testing.T) {
 	testing.expect_value(t, font.atlas_evictions(s), evictions)
 }
 
+// Unloading a font frees its slot: loading and unloading more fonts than the table has slots (65 536 when slots were never
+// reused) goes on working, and the id of an unloaded font does not reach the font that took its slot.
+@(test)
+font_slots_are_reused :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	a, ok := font.load_embedded(s, font.FALLBACK_UI_DATA)
+	testing.expect(t, ok)
+	sh := font.shape(s, a, 20, "Hg", {}, context.temp_allocator)
+	img_a := font.glyph_image(s, a, sh.glyphs[0].id, 20, 0)
+	testing.expect(t, img_a.page >= 0)
+	font.unload(s, a)
+	testing.expect(t, !font.valid(s, a))
+	// the slot of `a` goes to the next font
+	b, ok_b := font.load_embedded(s, font.FALLBACK_MONO_DATA)
+	testing.expect(t, ok_b && b != a && font.valid(s, b))
+	testing.expect(t, !font.valid(s, a))
+	testing.expect_value(t, font.text_width(s, a, 20, "Hg"), 0)
+	testing.expect(t, font.text_width(s, b, 20, "Hg") > 0)
+	// ... and the glyph cache of that slot is not reached with the old id, nor does the old id leave anything in it
+	stale := font.glyph_image(s, a, sh.glyphs[0].id, 20, 0)
+	testing.expect(t, stale.page < 0)
+	img_b := font.glyph_image(s, b, sh.glyphs[0].id, 20, 0)
+	testing.expect(t, img_b.page >= 0)
+	testing.expect_value(t, font.glyph_image(s, b, sh.glyphs[0].id, 20, 0), img_b)
+	testing.expect(t, font.glyph_image(s, a, sh.glyphs[0].id, 20, 0).page < 0)
+	// more cascades made and unloaded than the table has slots: every one is made
+	failed := 0
+	last: font.Font_Id
+	for i in 0 ..< 70000 {
+		id := font.cascade(s, {{font = b}}, {{tag = {'s', 's', '0', '1'}, value = u32(i)}}, true)
+		if id == 0 { failed += 1; continue }
+		if last != 0 { font.unload(s, last) }
+		last = id
+		free_all(context.temp_allocator)
+	}
+	testing.expect_value(t, failed, 0)
+	testing.expect(t, font.valid(s, last) && last != a && last != b)
+	testing.expect(t, font.text_width(s, last, 20, "Hg") > 0)
+}
+
 // Measuring from many threads at once gives what one thread gets.
 @(test)
 concurrent_measure :: proc(t: ^testing.T) {

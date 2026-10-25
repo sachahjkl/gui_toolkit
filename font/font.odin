@@ -115,8 +115,13 @@ DEFAULT_SETTINGS :: Settings{
 	color_engine = .System, colr_samples = 8, colr_cache_kb = 8192,
 }
 
+// Fonts live in slots of chunks; an id is the slot's index (low 20 bits) and the slot's generation (above): the slot of
+// an unloaded font is reused, and the id of the font that was there no longer reaches the new one.
 @(private) CHUNK :: 256
-@(private) MAX_CHUNKS :: 256
+@(private) MAX_CHUNKS :: 4096
+@(private) FONT_INDEX_BITS :: 20
+@(private) FONT_INDEX_MASK :: 1 << FONT_INDEX_BITS - 1
+#assert(CHUNK * MAX_CHUNKS == 1 << FONT_INDEX_BITS)
 
 @(private)
 Font_Kind :: enum u8 { None, Face, Cascade }
@@ -125,6 +130,7 @@ Font_Kind :: enum u8 { None, Face, Cascade }
 Font :: struct {
 	kind:     Font_Kind,
 	dead:     bool,
+	gen:      int,                   // generation of the slot (atomic): the high part of the ids it has had
 	// Face
 	dw:       ^IDWriteFontFace,
 	dw2:      ^IDWriteFontFace2,     // nil before Windows 8.1
@@ -162,7 +168,8 @@ State :: struct {
 	latin_ok:   bool,
 	mu:         sync.Mutex,          // adding / removing fonts
 	chunks:     [MAX_CHUNKS]^[CHUNK]Font,
-	count:      int,                 // fonts published (atomic)
+	count:      int,                 // slots published (atomic)
+	free_slots: [dynamic]int,        // slots of unloaded fonts, to reuse (under mu)
 	keys:       map[string]Font_Id,  // what made each font, for sharing
 	words:      Word_Cache,
 	atlas:      Atlas,
@@ -277,8 +284,9 @@ destroy :: proc(s: ^State) {
 	color_raster_destroy(&s.color_raster)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
-	for i in 1 ..< n { release_font(font_ptr(s, Font_Id(i))) }
+	for i in 1 ..< n { release_font(slot_ptr(s, i)) }
 	for c in s.chunks { if c != nil { free(c) } }
+	delete(s.free_slots)
 	for k in s.keys { delete(k) }
 	delete(s.keys)
 	delete(s.emoji.path)
@@ -311,14 +319,22 @@ release_font :: proc(f: ^Font) {
 	for e in f.entries { delete(e.ranges) }
 	delete(f.entries)
 	delete(f.features)
-	f^ = Font{kind = .None, dead = true}
+	f^ = Font{kind = .None, dead = true, gen = f.gen}
 }
 
 @(private)
-font_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
-	i := int(id)
-	if i <= 0 || i >= sync.atomic_load(&s.count) { return nil }
+slot_ptr :: #force_inline proc "contextless" (s: ^State, i: int) -> ^Font {
 	return &s.chunks[i / CHUNK][i % CHUNK]
+}
+
+// The slot of `id`, nil for an id that no font has (0, one out of range, one of a slot since given to another font).
+@(private)
+font_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
+	i := int(id) & FONT_INDEX_MASK
+	if i <= 0 || i >= sync.atomic_load(&s.count) { return nil }
+	f := slot_ptr(s, i)
+	if sync.atomic_load(&f.gen) != int(id) >> FONT_INDEX_BITS { return nil }
+	return f
 }
 
 // The font, if it is a live face.
@@ -333,6 +349,17 @@ face_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
 @(private)
 add_font_locked :: proc(s: ^State, f: Font) -> Font_Id {
 	context.allocator = runtime.heap_allocator()
+	if len(s.free_slots) > 0 {
+		// the slot of an unloaded font: its generation moves first, so that the old ids stop reaching it before it is written
+		i := pop(&s.free_slots)
+		slot := slot_ptr(s, i)
+		gen := slot.gen + 1
+		sync.atomic_store(&slot.gen, gen)
+		nf := f
+		nf.gen = gen
+		slot^ = nf
+		return Font_Id(gen << FONT_INDEX_BITS | i)
+	}
 	n := s.count
 	if n >= CHUNK * MAX_CHUNKS { return 0 }
 	if s.chunks[n / CHUNK] == nil { s.chunks[n / CHUNK] = new([CHUNK]Font) }
@@ -376,7 +403,7 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	}
 	id := add_font_locked(s, f)
 	if id == 0 { release_font(&f); return 0 }
-	fp := &s.chunks[int(id) / CHUNK][int(id) % CHUNK]
+	fp := font_ptr(s, id)
 	fp.entries = make([]Cascade_Entry, 1)
 	fp.entries[0] = {font = id}
 	if key != "" { s.keys[strings.clone(key)] = id }
@@ -681,6 +708,7 @@ unload :: proc(s: ^State, id: Font_Id) {
 	for k, v in s.keys { if v == id { append(&dead, k) } }
 	for k in dead { delete_key(&s.keys, k); delete(k) }
 	release_font(f)
+	append(&s.free_slots, int(id) & FONT_INDEX_MASK)
 	s.generation += 1
 	sync.mutex_unlock(&s.mu)
 }
