@@ -365,7 +365,7 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 				return Glyph_Image{page = -1, color = true, pending = true}
 			}
 		}
-		fg_g, _ := rasterize(s, face, gid, size, x, fg, false)
+		fg_g, _ := rasterize(s, face, gid, size, x, fg, false, key)
 		fg_g.uses_fg = true
 		a.fg_glyphs[fk] = fg_g
 		if fg_g.page >= 0 { a.pages[fg_g.page].last_used = a.clock }
@@ -381,7 +381,7 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 			}
 		}
 	}
-	g, uses_fg := rasterize(s, face, gid, size, x, fg, true)
+	g, uses_fg := rasterize(s, face, gid, size, x, fg, true, key)
 	if uses_fg {
 		g.uses_fg = true
 		a.glyphs[key] = Glyph_Image{page = -1, color = true, uses_fg = true}
@@ -445,7 +445,7 @@ coverage :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x, y: f32) -> (bounds: RECT,
 
 // Caller holds the atlas lock.
 @(private)
-rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]u8, probe_fg: bool) -> (Glyph_Image, bool) {
+rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]u8, probe_fg: bool, key: u64) -> (Glyph_Image, bool) {
 	blank := Glyph_Image{page = -1}
 	f := face_ptr(s, face)
 	if f == nil || s.factory == nil || size <= 0 { return blank, false }
@@ -456,7 +456,7 @@ rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]
 	if f.color && s.settings.color_glyphs {
 		if colr_draws(s, f, gid) {
 			// a graph the interpreter refuses (a cycle, offsets out of the table) is not drawn in color at all
-			if g, uses_fg, ok := rasterize_colr(s, face, f, gid, size, x, fg); ok { return g, uses_fg }
+			if g, uses_fg, ok := rasterize_colr(s, face, f, gid, size, x, fg, key); ok { return g, uses_fg }
 		} else if g, uses_fg, ok := rasterize_color(s, f, &run, x, fg, probe_fg); ok {
 			return g, uses_fg
 		}
