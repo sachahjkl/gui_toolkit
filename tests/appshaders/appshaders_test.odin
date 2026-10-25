@@ -322,6 +322,53 @@ refusals :: proc(t: ^testing.T) {
 	}
 }
 
+// A shader the device cannot remake after a loss draws nothing, says so, and keeps its handle until it is destroyed: a new shader does
+// not take the slot (the old handle would draw it) and the name does not leak.
+@(test)
+shader_that_cannot_be_remade_keeps_its_handle :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no D3D11 device (WARP) or the app shader was refused") }
+	defer close(&f)
+	testing.expect(t, render.app_shader_ready(&f.r, f.shader), "ready when made")
+	f.r.apps[int(f.shader)].wgsl = "fn broken("   // the module of WebGPU and the pixel shader of Direct3D 11 cannot be made again
+	f.r.apps[int(f.shader)].dxbc = nil
+	render.simulate_device_loss(&f.r)
+	begin(&f)
+	testing.expect(t, !render.app_shader_ready(&f.r, f.shader), "not ready after the recovery")
+	testing.expect(t, !draw.app_shader(&f.dc, f.shader, BOX, {{0, 0, 0, 0}, {1, 0, 0, 1}}), "draw.app_shader says it did not draw")
+	finish(&f)
+	other := render.create_app_shader(&f.r, {name = "other", wgsl = TEST_WGSL, dxbc = TEST_DXBC, hash = TEST_HASH})
+	testing.expect(t, other != 0 && other != f.shader, "the reserved handle is not given to another shader")
+	render.destroy_app_shader(&f.r, f.shader)
+	render.destroy_app_shader(&f.r, other)
+}
+
+// WebGPU: a module that passes naga but whose pipeline the device refuses (a binding the pipeline layout does not have) no longer
+// makes the encoder of every frame invalid.
+@(test)
+refused_pipeline_gives_the_shader_up :: proc(t: ^testing.T) {
+	when render.RENDER_BACKEND == "wgpu" {
+		f: Fx
+		if !open(&f, .Linear) { testing.fail_now(t, "no device (WARP) or the app shader was refused") }
+		defer close(&f)
+		bad := render.create_app_shader(&f.r, {name = "bad pipeline", wgsl = `
+@group(2) @binding(7) var bogus: texture_2d<f32>;
+fn app_shade(a: AppIn) -> vec4<f32> { return textureLoad(bogus, vec2<i32>(0, 0), 0); }
+`})
+		testing.expect(t, bad != 0, "the module is accepted")
+		begin(&f)
+		draw.rect(&f.dc, {{0, 0}, {64, 64}}, draw.Color{1, 0, 0, 1})
+		draw.app_shader(&f.dc, bad, BOX, {{0, 0, 0, 0}})
+		img := finish(&f)
+		testing.expectf(t, near(px(img, 50, 50), {255, 0, 0}), "the rest of the frame is drawn: %v", px(img, 50, 50))
+		testing.expect(t, !render.app_shader_ready(&f.r, bad), "the shader is given up")
+		begin(&f)
+		testing.expect(t, !draw.app_shader(&f.dc, bad, BOX, {{0, 0, 0, 0}}), "draw.app_shader says it did not draw")
+		finish(&f)
+		render.destroy_app_shader(&f.r, bad)
+	}
+}
+
 @(test)
 shader_and_texture_survive_a_device_loss :: proc(t: ^testing.T) {
 	f: Fx
