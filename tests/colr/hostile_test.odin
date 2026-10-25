@@ -247,6 +247,86 @@ header_checks :: proc(t: ^testing.T) {
 	testing.expect(t, c == nil)
 }
 
+// ---- GSUB ----
+
+// A GSUB header (version 1.0, no script list) whose feature list is at 10; the lookup list offset is patched in later.
+gsub_header :: proc(b: ^Tbl) {
+	put16(b, 1); put16(b, 0); put16(b, 0); put16(b, 10); put16(b, 0)
+}
+
+patch16 :: proc(b: ^Tbl, at, v: int) { b[at], b[at + 1] = u8(v >> 8), u8(v) }
+
+// 2500 'ccmp' records sharing one feature table of 24 000 lookup indices: 60 million entries if each record were followed.
+@(test)
+gsub_shared_feature_tables_are_bounded :: proc(t: ^testing.T) {
+	b: Tbl
+	defer delete(b)
+	gsub_header(&b)
+	put16(&b, 2500)
+	for _ in 0 ..< 2500 { put8(&b, 'c'); put8(&b, 'c'); put8(&b, 'm'); put8(&b, 'p'); put16(&b, 2 + 2500 * 6) }
+	put16(&b, 0); put16(&b, 24000)
+	for i in 0 ..< 24000 { put16(&b, i) }
+	patch16(&b, 8, len(b))
+	put16(&b, 0)   // no lookups
+	start := time.now()
+	_, ok := font.gsub_ligate(b[:], {'c', 'c', 'm', 'p'}, {1, 2, 3, 4, 5}, context.temp_allocator)
+	took := time.duration_milliseconds(time.since(start))
+	testing.expect(t, !ok)
+	testing.expectf(t, took < 200, "%.0f ms", took)
+}
+
+// 50 lookups of 200 subtables, all the same table: a ligature subtable whose coverage lists 1000 ranges the glyphs are not in.
+@(test)
+gsub_shared_subtables_are_bounded :: proc(t: ^testing.T) {
+	b: Tbl
+	defer delete(b)
+	gsub_header(&b)
+	put16(&b, 1)
+	put8(&b, 'c'); put8(&b, 'c'); put8(&b, 'm'); put8(&b, 'p'); put16(&b, 8)
+	put16(&b, 0); put16(&b, 50)
+	for i in 0 ..< 50 { put16(&b, i) }
+	list := len(b)
+	patch16(&b, 8, list)
+	put16(&b, 50)
+	for _ in 0 ..< 50 { put16(&b, 2 + 50 * 2) }
+	lookup := len(b)
+	put16(&b, 4); put16(&b, 0); put16(&b, 200)
+	for _ in 0 ..< 200 { put16(&b, 6 + 200 * 2) }
+	sub := len(b)
+	put16(&b, 1); put16(&b, 8); put16(&b, 1); put16(&b, 8 + 4 + 1000 * 6)
+	put16(&b, 2); put16(&b, 1000)
+	for i in 0 ..< 1000 { put16(&b, 100 + 2 * i); put16(&b, 100 + 2 * i); put16(&b, i) }
+	put16(&b, 0)   // a ligature set with no ligature
+	_, _ = lookup, sub
+	start := time.now()
+	_, ok := font.gsub_ligate(b[:], {'c', 'c', 'm', 'p'}, {1, 2, 3, 4, 5}, context.temp_allocator)
+	took := time.duration_milliseconds(time.since(start))
+	testing.expect(t, !ok)
+	testing.expectf(t, took < 200, "%.0f ms", took)
+}
+
+// A table that is what it says it is still works: one lookup, one ligature (glyphs 1 2 3 -> 9).
+@(test)
+gsub_ligature_still_forms :: proc(t: ^testing.T) {
+	b: Tbl
+	defer delete(b)
+	gsub_header(&b)
+	put16(&b, 1)
+	put8(&b, 'c'); put8(&b, 'c'); put8(&b, 'm'); put8(&b, 'p'); put16(&b, 8)
+	put16(&b, 0); put16(&b, 1); put16(&b, 0)   // feature table: one lookup, index 0
+	patch16(&b, 8, len(b))
+	put16(&b, 1); put16(&b, 4)                 // lookup list: one lookup at +4
+	put16(&b, 4); put16(&b, 0); put16(&b, 1); put16(&b, 8)   // type 4, one subtable at +8
+	put16(&b, 1); put16(&b, 8); put16(&b, 1); put16(&b, 14)  // subtable: coverage at +8, one set at +14
+	put16(&b, 1); put16(&b, 1); put16(&b, 1)                  // coverage format 1: glyph 1
+	put16(&b, 1); put16(&b, 4)                                // ligature set: one ligature at +4
+	put16(&b, 9); put16(&b, 3); put16(&b, 2); put16(&b, 3)    // -> glyph 9 from 1 2 3
+	out, ok := font.gsub_ligate(b[:], {'c', 'c', 'm', 'p'}, {1, 2, 3, 4}, context.temp_allocator)
+	testing.expect(t, ok)
+	testing.expect_value(t, len(out), 2)
+	if len(out) == 2 { testing.expect(t, out[0] == 9 && out[1] == 4) }
+}
+
 @(test)
 dump_survives_hostile_graphs :: proc(t: ^testing.T) {
 	b := composite_chain(18, 100)
