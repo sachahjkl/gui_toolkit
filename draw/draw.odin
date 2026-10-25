@@ -188,6 +188,7 @@ Open_Layer :: struct {
 	cache:   Cache_Ask, // Layer_Effects.cache_id: a kept result composited (cache.hit: nothing drawn), or one to keep
 	region:  Rect,      // screen region of the layer
 	pending0: u64,      // Context.glyphs_pending when it was opened
+	offscreen: bool,    // offscreen_begin: closed by offscreen_end, never composited
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {

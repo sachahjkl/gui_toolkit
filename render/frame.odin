@@ -307,6 +307,10 @@ run_op :: proc(r: ^Renderer, f: Frame_Data, op: ^Op) -> bool {
 	case .Mips:
 		if !valid(r, op.dst) || r.textures[int(op.dst)].view == nil || !r.textures[int(op.dst)].mips { return false }
 		r.ctx->GenerateMips(r.textures[int(op.dst)].view)
+	case .Read:
+		if op.source <= 0 || op.source > len(f.layers) || !valid(r, f.layers[op.source - 1].tex) { readback_copy(r, u32(op.readback), nil, {}, .Linear); return false }
+		ly := f.layers[op.source - 1]
+		readback_copy(r, u32(op.readback), r.textures[int(ly.tex)].tex, op.box, ly.space)
 	}
 	return false
 }

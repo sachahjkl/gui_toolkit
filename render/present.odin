@@ -70,6 +70,8 @@ Present_State :: struct {
 	out:           [dynamic]Displayed_Frame,
 	presents, displayed, missed: u64,      // totals
 	probe_tick:    time.Tick,
+	max_latency:   int,                    // the swap chain's MaximumFrameLatency (0: not set yet = 1)
+	latency_debt:  int,                    // counts the latency object holds beyond max_latency since it was lowered (see latency_lowered)
 }
 
 // Vsync (default) or Tearing (see the package comment). Tearing without system support stays Vsync.
@@ -88,7 +90,10 @@ set_expected_refreshes :: proc(r: ^Renderer, refreshes: f64) { r.present.expecte
 
 // The swap chain's frame latency object (nil without LOW_LATENCY or offscreen). Signaled when a frame can be queued.
 frame_waitable :: proc(r: ^Renderer) -> rawptr {
-	when USE_WGPU { return wgpu_waitable(r) } else { return rawptr(r.latency_handle) }
+	when USE_WGPU { return wgpu_waitable(r) } else {
+		latency_drain(&r.present, r.latency_handle)
+		return rawptr(r.latency_handle)
+	}
 }
 
 // The earliest input the next frame is built from (its event time): Displayed_Frame.input, for input latency.
@@ -149,6 +154,23 @@ present_reset :: proc(r: ^Renderer) {
 	p.have_seen = false
 	p.sync_count, p.sync_tick = 0, {}
 	p.stats_ok, p.stats_fails = false, 0
+	p.max_latency, p.latency_debt = 1, 0   // (create_swapchain sets 1)
+}
+
+// The latency object is a semaphore the system raises by the difference when MaximumFrameLatency is raised and does NOT take
+// back when it is lowered: after 1 -> 2 -> 1 it holds one count more than a frame slot, every wait returns at once and the
+// swap chain queues two frames again (a Present that blocks for a refresh, a frame more between input and screen), for good.
+// The surplus is remembered when the latency is lowered and consumed, without waiting, as soon as the object has it to give.
+@(private)
+latency_lowered :: proc(p: ^Present_State, to: int) {
+	cur := max(p.max_latency, 1)
+	if to < cur { p.latency_debt += cur - to }
+	p.max_latency = to
+}
+
+@(private)
+latency_drain :: proc(p: ^Present_State, handle: win.HANDLE) {
+	for p.latency_debt > 0 && handle != nil && win.WaitForSingleObject(handle, 0) == win.WAIT_OBJECT_0 { p.latency_debt -= 1 }
 }
 
 @(private)

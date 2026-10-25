@@ -207,6 +207,18 @@ end_build :: proc() {
 needs_frame :: proc(s: ^State) -> bool { return s.anim_busy }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 
+// The timed wake the last build asked for, measured from now: ms left until it is due (at least 1), 0 when none was
+// asked. Use it as the loop's wait timeout: wake_ms counts from the build, and a loop woken early by a message (a
+// program resizing the window sends WM_SIZING at every step) would otherwise wait the whole delay again.
+wake_in_ms :: proc(s: ^State) -> int {
+	if s.wake_ms == 0 { return 0 }
+	return max(int(f64(s.wake_ms) - (now_ms() - s.time_ms) + 0.999), 1)
+}
+
+// Whether the timed wake the last build asked for is due now (a caret blink, a tooltip delay): a wake of the loop for
+// anything else before it (a message) has no frame to make for the interface.
+wake_due :: proc(s: ^State) -> bool { return s.wake_ms != 0 && now_ms() - s.time_ms >= f64(s.wake_ms) - 0.5 }
+
 // Asks for a wake within `ms` milliseconds (the soonest of all the requests of a build stands: a caret blink and a tooltip
 // delay both count).
 wake_within :: proc(s: ^State, ms: int) { s.wake_ms = s.wake_ms == 0 ? ms : min(s.wake_ms, ms) }
