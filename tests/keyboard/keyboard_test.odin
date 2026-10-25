@@ -148,6 +148,28 @@ menu_keyboard :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.ctx_menu_any_open(), "closed after choosing")
 }
 
+// A pointer that moves from an enabled row onto a disabled one leaves nothing selected: the disabled row gets no signal, and the
+// row the pointer left used to stay selected.
+@(test)
+menu_pointer_over_a_disabled_row_selects_nothing :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Menu_Run{key = ui.Key(0x4321)}
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Menu_Run)(user).key, {100, 100}, from_keyboard = true) }, &r)
+	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r) }
+	rect, sel, ok := ui.menu_rect(0)
+	testing.expect(t, ok)
+	testing.expect_value(t, sel, 1)   // "Forward", the first enabled row, from the keyboard
+	// the first row, "Back", is disabled
+	over := platform.Event{kind = .Mouse_Move, pos = {rect.min.x + 30, rect.min.y + 15}}
+	for _ in 0 ..< 3 { frame(&f, {over}, build_menu, &r); over.pos.x += 1 }
+	_, sel, _ = ui.menu_rect(0)
+	testing.expect_value(t, sel, -1)
+}
+
 Choose_Run :: struct {
 	key, other:    ui.Key,
 	open_after:    bool,   // the menu is still open right after the chosen item (the rest of the block is part of it)

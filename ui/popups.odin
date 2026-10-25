@@ -250,6 +250,13 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	if s.hot_key != 0 && (s.mouse_moved || lv.sel < 0) {
 		for it, i in lv.prev { if it.enabled && it.key == s.hot_key { lv.sel = i; break } }
 	}
+	// a disabled row gets no signal: a pointer that moved onto one leaves nothing selected, not the row it came from
+	if s.mouse_moved {
+		for it in lv.prev {
+			if it.enabled || it.key == 0 { continue }
+			if b := s.boxes[it.key]; b != nil && contains(b.rect, s.mouse) { lv.sel = -1; break }
+		}
+	}
 
 	if depth == len(s.menus) - 1 {
 		// the innermost level takes the keys in the order they came, until one hands over (opens a submenu, chooses)
@@ -417,6 +424,9 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 		if lv.hover_item != idx { lv.hover_item = idx; lv.hover_since = s.time_ms }
 	} else if lv.hover_item == idx {
 		lv.hover_item = -1
+	} else if !enabled && s.mouse_moved && sig.box != nil && contains(sig.box.rect, s.mouse) {
+		// the pointer moved onto a disabled row (it gets no signal): the row it left must not stay selected
+		lv.sel = -1
 	}
 	return sig
 }
