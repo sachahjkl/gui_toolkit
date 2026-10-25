@@ -923,7 +923,6 @@ wgpu_release_device :: proc(r: ^Renderer) {
 @(private)
 wgpu_destroy :: proc(r: ^Renderer) {
 	for i in 1 ..< len(r.textures) { wgpu_destroy_texture(r, Texture(i)) }
-	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(&r.wg)
 	wgpu_release_objects(r)
@@ -931,6 +930,7 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	wgpu_heaps_destroy(r)
 	wgpu_release_device(r)
 	present_destroy(r)
+	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
 	delete(r.wg.pipes); delete(r.wg.fx_pipes); delete(r.wg.mip_pipes); delete(r.wg.slug_pipes)
 	if r.wg.shared != nil { free(r.wg.shared) }
 	r^ = {}
