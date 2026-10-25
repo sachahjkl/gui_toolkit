@@ -100,7 +100,16 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	space := blend_space(c)
 	mips := fx.mips && render.target_mips_supported(c.renderer)
 	tex: render.Texture
-	if c.rec == nil && w > 0 && h > 0 && !(sz.x != sz.x) {
+	if c.rec != nil {
+		// planes are not recorded in pictures: nothing is drawn (what the caller draws anyway goes nowhere: an empty clip) and draw_plane
+		// of the result does nothing
+		op.hit = true
+		append(&c.planes, op)
+		push_clip(c, Rect{})
+		append(&c.alphas, 1)
+		return false
+	}
+	if w > 0 && h > 0 && !(sz.x != sz.x) {
 		if fx.cache_id != 0 && c.layer_cache.budget > 0 {
 			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(mips) << 8), u64(render.filter_precision(c.renderer)))
 			key = hash_f32(hash_f32(key, o.x), o.y)

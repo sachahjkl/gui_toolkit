@@ -344,6 +344,33 @@ three_planes_in_a_star :: proc(t: ^testing.T) {
 	testing.expectf(t, bad == 0, "%d of %d samples show the wrong plane", bad, checked)
 }
 
+// Planes are not recorded in pictures: push_plane says there is nothing to draw, what is drawn anyway goes nowhere, and replaying the
+// picture shows nothing of the plane (it used to be recorded flat, unprojected, where the plane frame says).
+@(test)
+plane_is_not_recorded_in_a_picture :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	pic: draw.Picture
+	defer draw.picture_destroy(&f.dc, &pic)
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.picture_begin(&f.dc, &pic)
+	drawn := draw.push_plane(&f.dc, {{0, 0}, {20, 20}}, 1)
+	draw.rect(&f.dc, {{0, 0}, {20, 20}}, RED)
+	pl := draw.pop_plane(&f.dc)
+	draw.draw_plane(&f.dc, pl, draw.mat4_from_affine(draw.affine_translate({30, 30})))
+	draw.rect(&f.dc, {{40, 0}, {60, 20}}, BLUE)   // the picture still records what is not a plane
+	draw.picture_end(&f.dc)
+	testing.expect(t, !drawn, "push_plane says there is nothing to draw")
+	draw.replay(&f.dc, &pic, draw.affine_translate({0, 0}))
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	img := render.read_pixels(&f.r, context.temp_allocator)
+	testing.expectf(t, is_white(px(img, 10, 10)) && is_white(px(img, 40, 40)), "no plane content: %v %v", px(img, 10, 10), px(img, 40, 40))
+	testing.expectf(t, is_blue(px(img, 50, 10)), "the rest of the picture: %v", px(img, 50, 10))
+}
+
 @(private = "file") ring: [9]draw.Mat4
 @(private = "file") ring_size: [9][2]f32
 @(private = "file") ring_color: [9]draw.Color
