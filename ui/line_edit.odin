@@ -328,7 +328,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			f.cursor = clamp(f.cursor, 0, len(f.buf))
 			f.mark = clamp(f.mark, 0, len(f.buf))
-			s.wake_ms = 265   // caret blink
+			wake_within(s, 265)   // caret blink
 		}
 		after_hash := hash_bytes(f.buf[:])
 		res.changed = before != len(f.buf) || before_hash != after_hash

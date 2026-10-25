@@ -61,6 +61,7 @@ is_windows_11 :: proc() -> bool {
 // and clamped to the monitor work area (CW_USEDEFAULT can pick a non-primary monitor with another DPI).
 // `transparent`: no GDI redirection surface, for a renderer that presents with alpha (render.init `transparent`).
 // `integrated_title`: the app draws the title bar (set_integrated_title); `size` is then the whole window's inside.
+// Returns nil when the system could not make the window.
 open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil, transparent := false, integrated_title := false) -> ^Window {
 	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
@@ -92,6 +93,10 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
 	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
 		win.CW_USEDEFAULT, win.CW_USEDEFAULT, 640, 480, nil, nil, instance, w)
+	if w.hwnd == nil {   // out of resources (USER handles, memory): no window
+		free(w)
+		return nil
+	}
 
 	dpi := win.GetDpiForWindow(w.hwnd)
 	w.dpi_scale = f32(dpi) / 96
@@ -399,6 +404,7 @@ take_injected :: proc(w: ^Window) {
 	now := time.tick_now()
 	for &e in w.injected {
 		e.stamp = now
+		if e.kind == .Close { w.closed = true }   // as WM_CLOSE: a loop that tests is_closed ends
 		append(&w.events, e)
 	}
 	clear(&w.injected)
@@ -433,8 +439,9 @@ get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
 	p := cast([^]u16)win.GlobalLock(win.HGLOBAL(h))
 	if p == nil { return "" }
 	defer win.GlobalUnlock(win.HGLOBAL(h))
+	limit := int(win.GlobalSize(win.HGLOBAL(h))) / size_of(u16)   // another program's text may lack its terminating zero
 	n := 0
-	for p[n] != 0 { n += 1 }
+	for n < limit && p[n] != 0 { n += 1 }
 	s, _ := win.utf16_to_utf8(p[:n], allocator)
 	return s
 }
@@ -448,10 +455,15 @@ set_clipboard :: proc(w: ^Window, text: string) {
 	mem := win.GlobalAlloc(win.GMEM_MOVEABLE, uint(bytes))
 	if mem == nil { return }
 	dst := cast([^]u16)win.GlobalLock(win.HGLOBAL(mem))
+	if dst == nil {
+		win.GlobalFree(win.HGLOBAL(mem))
+		return
+	}
 	copy(dst[:len(wide)], wide)
 	dst[len(wide)] = 0
 	win.GlobalUnlock(win.HGLOBAL(mem))
-	win.SetClipboardData(win.CF_UNICODETEXT, win.HANDLE(mem))
+	// the system owns the block once SetClipboardData succeeds; if it fails the block is still ours
+	if win.SetClipboardData(win.CF_UNICODETEXT, win.HANDLE(mem)) == nil { win.GlobalFree(win.HGLOBAL(mem)) }
 }
 
 // Windows "show animations" accessibility setting (Settings > Accessibility > Visual effects).
@@ -464,10 +476,18 @@ os_animations_enabled :: proc() -> bool {
 
 // Per-user config directory (%APPDATA%).
 config_dir :: proc(allocator := context.allocator) -> string {
+	name := win.utf8_to_wstring("APPDATA", context.temp_allocator)
 	buf: [win.MAX_PATH]u16
-	n := win.GetEnvironmentVariableW(win.utf8_to_wstring("APPDATA", context.temp_allocator), &buf[0], len(buf))
+	n := win.GetEnvironmentVariableW(name, &buf[0], len(buf))
 	if n == 0 { return "" }
-	s, _ := win.utf16_to_utf8(buf[:n], allocator)
+	wide := buf[:]
+	if int(n) >= len(buf) {
+		// longer than MAX_PATH: n is the size needed, with the terminating zero
+		wide = make([]u16, n, context.temp_allocator)
+		n = win.GetEnvironmentVariableW(name, &wide[0], u32(len(wide)))
+		if n == 0 || int(n) >= len(wide) { return "" }
+	}
+	s, _ := win.utf16_to_utf8(wide[:n], allocator)
 	return s
 }
 

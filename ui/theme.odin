@@ -2,10 +2,12 @@ package ui
 
 import "core:strings"
 
-// theme_add("card background", color): the last word is the queried name, the others are required tags.
+// theme_add("card background", color): the last word is the queried name, the others are required tags. `tags` is
+// copied (it may be a temporary string).
 theme_add :: proc(t: ^Theme, tags: string, color: Color) {
-	parts := strings.split(tags, " ", context.allocator)
-	append(&t.patterns, Theme_Pattern{tags = parts, color = color})
+	source := strings.clone(tags, context.allocator)
+	parts := strings.split(source, " ", context.allocator)
+	append(&t.patterns, Theme_Pattern{tags = parts, color = color, source = source})
 	t.serial += 1
 }
 
@@ -20,8 +22,12 @@ theme_set :: proc(t: ^Theme, tags: string, color: Color) {
 }
 
 theme_destroy :: proc(t: ^Theme) {
-	for p in t.patterns { delete(p.tags) }
+	for p in t.patterns {
+		delete(p.tags)
+		delete(p.source)
+	}
 	delete(t.patterns)
+	t.palette_made = false
 }
 
 // `name` may have several words ("focus border"): the last one is the color name, the others act as extra tags

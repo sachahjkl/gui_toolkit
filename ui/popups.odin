@@ -490,7 +490,7 @@ hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
 	if !sig.hovering { return false }
 	waited := s.time_ms - s.hover_since_ms
 	if waited >= f64(seconds) * 1000 { return true }
-	s.wake_ms = max(1, int(f64(seconds) * 1000 - waited) + 5)
+	wake_within(s, max(1, int(f64(seconds) * 1000 - waited) + 5))
 	return false
 }
 

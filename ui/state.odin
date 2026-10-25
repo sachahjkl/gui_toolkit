@@ -198,6 +198,10 @@ end_build :: proc() {
 // True while something is still animating or a timed wake is wanted: the app loop should keep rendering.
 needs_frame :: proc(s: ^State) -> bool { return s.anim_busy }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
+
+// Asks for a wake within `ms` milliseconds (the soonest of all the requests of a build stands: a caret blink and a tooltip
+// delay both count).
+wake_within :: proc(s: ^State, ms: int) { s.wake_ms = s.wake_ms == 0 ? ms : min(s.wake_ms, ms) }
 cursor :: proc(s: ^State) -> platform.Cursor { return s.cursor_request }
 boxes_built :: proc(s: ^State) -> int { return s.boxes_built }
 
@@ -588,10 +592,7 @@ handle_tab_navigation :: proc(s: ^State) {
 	dir := 0
 	if key_press(.Tab) { dir = 1 } else if key_press(.Tab, {.Shift}) { dir = -1 }
 	if dir == 0 || len(s.focus_order) == 0 { return }
-	trapped := false
-	for e in s.focus_order { if e.trapped { trapped = true; break } }
-	stops := make([dynamic]Key, 0, len(s.focus_order), context.temp_allocator)
-	for e in s.focus_order { if e.trapped == trapped { append(&stops, e.key) } }
+	stops := focus_stops(s)
 	if len(stops) == 0 { return }
 	cur := -1
 	for k, i in stops { if k == s.focus_key { cur = i; break } }
@@ -611,14 +612,25 @@ tab_direction :: proc(s: ^State) -> int { return s.tab_dir }
 // Moves the focus as Tab (dir > 0) or Shift+Tab would, from `from` (0: from the start or the end). For an app whose
 // own content passes the focus back to the toolkit's Tab order.
 focus_step :: proc(s: ^State, from: Key, dir: int) {
-	if len(s.focus_order) == 0 { return }
+	stops := focus_stops(s)
+	n := len(stops)
+	if n == 0 { return }
 	cur := -1
-	for e, i in s.focus_order { if e.key == from { cur = i; break } }
-	n := len(s.focus_order)
+	for k, i in stops { if k == from { cur = i; break } }
 	next: int
 	if cur < 0 { next = dir > 0 ? 0 : n - 1 } else { next = (cur + (dir > 0 ? 1 : -1) + n) % n }
-	s.focus_key = s.focus_order[next].key
+	s.focus_key = stops[next]
 	s.focus_visible = true
+}
+
+// The Tab stops of the last build, in order: those inside the open modal when there is one, else the others.
+@(private)
+focus_stops :: proc(s: ^State) -> [dynamic]Key {
+	trapped := false
+	for e in s.focus_order { if e.trapped { trapped = true; break } }
+	stops := make([dynamic]Key, 0, len(s.focus_order), context.temp_allocator)
+	for e in s.focus_order { if e.trapped == trapped { append(&stops, e.key) } }
+	return stops
 }
 
 @(private)
@@ -678,8 +690,10 @@ scroll_focus_into_view :: proc(s: ^State) {
 	}
 }
 
-// Hash part of the id of the focused box ("" if none): handy for tests and debugging.
+// Hash part of the id of the focused box ("" if none): handy for tests and debugging. A box that has not been built yet
+// in the build under way has none: its name lives in the arena of the build that made it, which is freed at the start of
+// the next one.
 focused_name :: proc() -> string {
-	if b, ok := g.boxes[g.focus_key]; ok { return b.name }
+	if b, ok := g.boxes[g.focus_key]; ok && b.last_build == g.build_index { return b.name }
 	return ""
 }

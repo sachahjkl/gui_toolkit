@@ -1,20 +1,41 @@
 package ui
 
 import "core:strings"
+import "core:unicode"
+import "core:unicode/utf8"
 import "../draw"
 import "../font"
 
 Fuzzy_Range :: [2]int   // byte offsets [start, end) in the haystack
+
+// `s` in lower case, rune by rune, with exactly the length of `s` in bytes (a rune whose lower case takes another number
+// of bytes, such as the dotted capital I, stays as it is): positions found in it are positions in `s`.
+@(private)
+fold_lower :: proc(s: string) -> string {
+	b := make([]u8, len(s), context.temp_allocator)
+	for i := 0; i < len(s); {
+		r, w := utf8.decode_rune_in_string(s[i:])
+		l := unicode.to_lower(r)
+		if (r == utf8.RUNE_ERROR && w == 1) || utf8.rune_size(l) != w {
+			copy(b[i:i + w], s[i:i + w])
+		} else {
+			e, n := utf8.encode_rune(l)
+			copy(b[i:i + n], e[:n])
+		}
+		i += w
+	}
+	return string(b)
+}
 
 // Every space-separated part of `needle` must occur (case-insensitively) in `hay`, outside the ranges already taken by
 // earlier parts. Returns the matched ranges. An empty needle matches everything with no ranges.
 fuzzy_find :: proc(needle, hay: string, allocator := context.temp_allocator) -> (ranges: []Fuzzy_Range, ok: bool) {
 	parts := strings.fields(needle, context.temp_allocator)
 	if len(parts) == 0 { return nil, true }
-	low_hay := strings.to_lower(hay, context.temp_allocator)
+	low_hay := fold_lower(hay)
 	out := make([dynamic]Fuzzy_Range, allocator)
 	for part in parts {
-		low := strings.to_lower(part, context.temp_allocator)
+		low := fold_lower(part)
 		pos := 0
 		found := false
 		for pos <= len(low_hay) - len(low) {

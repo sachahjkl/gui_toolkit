@@ -517,7 +517,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			a.cursor = clamp(a.cursor, 0, len(a.buf))
 			a.mark = clamp(a.mark, 0, len(a.buf))
-			s.wake_ms = 265   // caret blink
+			wake_within(s, 265)   // caret blink
 		}
 		text = area_string(a)
 		res.changed = hash_bytes(a.buf[:]) != before_hash
