@@ -290,13 +290,16 @@ Pass :: struct {
 	factor: int,                 // Downsample: 2, 4 or 8 (box average of factor x factor source texels); 0 = 2
 }
 
-Op_Kind :: enum u8 { Clear, Copy, Pass, Mips }   // Mips: rebuild the mip levels of a render target (acquire_target_mips) from its level 0
+// Mips: rebuild the mip levels of a render target (acquire_target_mips) from its level 0. Read: copy a box of a layer
+// for readback_poll (readback.odin).
+Op_Kind :: enum u8 { Clear, Copy, Pass, Mips, Read }
 
 Op :: struct {
 	kind:   Op_Kind,
 	dst:    Texture,      // Clear: the layer's texture; Copy: a snapshot (acquire_snapshot); Pass: pass.dst.tex
-	source: int,          // Copy: the target read, as Batch.target
-	box:    [4]i32,       // Copy: x0 y0 x1 y1 in the source target's texels, copied to texel (0, 0) of dst
+	source: int,          // Copy, Read: the target read, as Batch.target
+	box:    [4]i32,       // Copy, Read: x0 y0 x1 y1 in the source target's texels, copied to texel (0, 0) of dst
+	readback: Readback_Id,   // Read
 	pass:   Pass,
 }
 

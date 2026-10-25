@@ -184,3 +184,40 @@ empty_layer_falls_back :: proc(t: ^testing.T) {
 		testing.expectf(t, p[0] == 255 && abs(p[1] - half_over_white(space)) <= 2, "%v: faded with push_alpha: %v", space, p)
 	}
 }
+// What is drawn offscreen is never shown, is not cut by the frame (bigger than it, at negative coordinates of the
+// frame's scene), keeps its alpha, and reads back as straight sRGB RGBA (render.readback_poll), in both blend spaces.
+@(test)
+offscreen_draw_and_read_back :: proc(t: ^testing.T) {
+	for space in render.Blend_Space {
+		f: Fx
+		if !open(&f, space) { testing.fail_now(t, "no D3D11 device (WARP)") }
+		defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+		@(static) id: render.Readback_Id
+		img := frame(&f, proc(dc: ^draw.Context) {
+			testing_ok := draw.offscreen_begin(dc, {100, 40})
+			if !testing_ok { return }
+			draw.rect(dc, {{0, 0}, {50, 40}}, RED)
+			draw.rect(dc, {{50, 0}, {100, 40}}, {0, 0, 1, 0.5})
+			id = draw.offscreen_end(dc)
+		})
+		testing.expect(t, id != 0, "a readback was recorded")
+		testing.expect(t, close_px(px(img, 10, 10), {255, 255, 255, 255}), "nothing of it on the frame")
+		pixels: []u8
+		size: [2]int
+		st: render.Capture_Status
+		for _ in 0 ..< 200 {
+			pixels, size, st = render.readback_poll(&f.r, id, context.temp_allocator)
+			if st != .Pending { break }
+		}
+		testing.expect_value(t, st, render.Capture_Status.Ready)
+		testing.expect_value(t, size, [2]int{100, 40})
+		if st != .Ready { continue }
+		at :: proc(p: []u8, x, y: int) -> [4]int { o := (y * 100 + x) * 4; return {int(p[o]), int(p[o + 1]), int(p[o + 2]), int(p[o + 3])} }
+		testing.expect(t, close_px(at(pixels, 10, 10), {255, 0, 0, 255}), "opaque red, straight")
+		testing.expect(t, close_px(at(pixels, 80, 30), {0, 0, 255, 128}), "half blue: straight colour, its alpha")
+		_, _, again := render.readback_poll(&f.r, id, context.temp_allocator)
+		testing.expect_value(t, again, render.Capture_Status.Failed)   // taken once
+	}
+	r, g, b, a := render.straight_srgb({0.5, 0, 0, 0.5}, .Srgb)
+	testing.expect(t, r == 255 && g == 0 && b == 0 && a == 128)
+}
