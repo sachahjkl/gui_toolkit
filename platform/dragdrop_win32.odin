@@ -261,6 +261,9 @@ effects_to_win :: proc(e: Drop_Effects) -> (out: u32) {
 @(private)
 answer :: proc(d: ^Dnd_State) -> u32 {
 	if e, ok := d.effect.?; ok && e in d.allowed { return effects_to_win({e}) }
+	// the app's own drag came back over its window while drag_start blocks: the app cannot answer before the drop,
+	// which it receives as Drop events once drag_start returns
+	if d.sending { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
 	return 0
 }
 
@@ -511,6 +514,10 @@ drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Ma
 	d := dnd_state(w)
 	d.sending = true
 	defer d.sending = false
+	// the system's loop pumps the thread's messages: a repaint meanwhile is asked for (take_paint_request), never run
+	// as a frame inside the app's own frame that called drag_start
+	pumping += 1
+	defer pumping -= 1
 	// the capture of the press would keep the mouse's messages here: the system's loop takes them
 	if win.GetCapture() == w.hwnd { win.ReleaseCapture() }
 	w.buttons_down = {}
