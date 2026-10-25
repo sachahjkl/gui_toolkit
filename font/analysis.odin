@@ -1,6 +1,7 @@
 package font
 
-// Text analyses for layout: bidirectional levels (UAX #9) and line break opportunities (UAX #14), from DirectWrite.
+// Text analyses for layout: bidirectional levels (UAX #9) and line break opportunities (UAX #14), from the backend
+// (backend.odin).
 
 // A directional run of a paragraph: bytes [start, end) at an embedding level (odd: right to left).
 Bidi_Run :: struct {
@@ -16,21 +17,9 @@ bidi_levels :: proc(s: ^State, text: string, dir: Direction, allocator := contex
 	rtl := dir == .Rtl || (dir == .Auto && first_strong_rtl(text))
 	if len(text) == 0 { return levels }
 	if !rtl && !maybe_rtl(text) { return levels }
-	if s.analyzer == nil {
-		if rtl { for &l in levels { l = 1 } }
-		return levels
-	}
-	w, bytes := utf16_of(text)
-	an: Analysis
-	analysis_init(&an, w, rtl)
-	lv := make([]u8, len(w), context.temp_allocator)
-	base := u8(rtl ? 1 : 0)
-	for &l in lv { l = base }
-	an.levels = lv
-	s.analyzer->AnalyzeBidi(&an.source, 0, u32(len(w)), &an.sink)
-	for i in 0 ..< len(w) {
-		for b in bytes[i] ..< bytes[i + 1] { levels[b] = lv[i] }
-	}
+	if rtl { for &l in levels { l = 1 } }
+	if s.tb == nil { return levels }
+	s.tb.bidi(s, text, rtl, levels)
 	return levels
 }
 
@@ -90,26 +79,11 @@ Break_Opportunity :: struct {
 	mandatory: bool,   // a hard break (after a line separator...)
 }
 
-// Line break opportunities inside `text` (UAX #14 with DirectWrite's dictionaries for Thai, Lao, Khmer, Myanmar...),
+// Line break opportunities inside `text` (UAX #14 with dictionaries for Thai, Lao, Khmer, Myanmar...),
 // in order, excluding the start of the text.
 line_breaks :: proc(s: ^State, text: string, allocator := context.allocator) -> []Break_Opportunity {
 	out := make([dynamic]Break_Opportunity, 0, 8, allocator)
-	if s.analyzer == nil || len(text) == 0 { return out[:] }
-	w, bytes := utf16_of(text)
-	an: Analysis
-	analysis_init(&an, w, false)
-	bp := make([]DWRITE_LINE_BREAKPOINT, len(w), context.temp_allocator)
-	an.breaks = bp
-	if s.analyzer->AnalyzeLineBreakpoints(&an.source, 0, u32(len(w)), &an.sink) < 0 { return out[:] }
-	for i in 1 ..< len(w) {
-		if bytes[i] == bytes[i - 1] { continue }   // second unit of a surrogate pair
-		after := DWRITE_BREAK_CONDITION(u8(bp[i - 1]) >> 2 & 3)
-		before := DWRITE_BREAK_CONDITION(u8(bp[i]) & 3)
-		switch {
-		case after == .MUST_BREAK || before == .MUST_BREAK: append(&out, Break_Opportunity{int(bytes[i]), true})
-		case after == .MAY_NOT_BREAK || before == .MAY_NOT_BREAK:
-		case after == .CAN_BREAK || before == .CAN_BREAK: append(&out, Break_Opportunity{int(bytes[i]), false})
-		}
-	}
+	if s.tb == nil || len(text) == 0 { return out[:] }
+	if !s.tb.line_breaks(s, text, &out) { clear(&out) }
 	return out[:]
 }

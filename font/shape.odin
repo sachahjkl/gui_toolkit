@@ -7,13 +7,13 @@ import "core:unicode"
 
 // Shaping: UTF-8 text to positioned glyphs.
 //
-// A line is first split into directional runs (UAX #9, DirectWrite's bidi analysis, unless the caller says the text is
+// A line is first split into directional runs (UAX #9, the backend's bidi analysis, unless the caller says the text is
 // one run), then each run into words at U+0020; each word is shaped on its own (as Blink's word cache does) and cached:
-// a page measures the same words over and over, on several threads. A word is split by script (DirectWrite's script
+// a page measures the same words over and over, on several threads. A word is split by script (the backend's script
 // analysis) and by face: each character comes from the first entry of the cascade that has it (combining marks,
-// variation selectors, joiners and emoji modifiers stay with their base), then from the system fallback
-// (IDWriteFontFallback::MapCharacters), then from the first face (its .notdef). Each piece goes through GetGlyphs /
-// GetGlyphPlacements with the cascade's OpenType features.
+// variation selectors, joiners and emoji modifiers stay with their base), then from the platform's system fallback
+// (System_Fonts.fallback), then from the first face (its .notdef). Each piece is shaped by the backend
+// (Text_Backend.shape, backend.odin) with the cascade's OpenType features.
 //
 // Limits: no kerning or ligature across a space (words are shaped apart), no vertical text.
 
@@ -602,21 +602,17 @@ sticks :: proc(r: rune, prev: rune) -> bool {
 
 // Whether a face has a glyph for `r` (BMP answers cached in the face).
 @(private)
-face_has :: proc(f: ^Font, r: rune) -> bool {
+face_has :: proc(s: ^State, f: ^Font, r: rune) -> bool {
 	if r < 0x10000 && len(f.cmap) > 0 {
 		word := &f.cmap[int(r) * 2 / 32]
 		bit := u32(int(r) * 2 % 32)
 		v := sync.atomic_load_explicit(word, .Relaxed)
 		if v & (1 << bit) != 0 { return v & (2 << bit) != 0 }
-		cp := [1]u32{u32(r)}
-		gi := [1]u16{}
-		has := f.dw->GetGlyphIndices(&cp[0], 1, &gi[0]) >= 0 && gi[0] != 0
+		has := s.tb.has_glyph(s, f, r)
 		sync.atomic_or_explicit(word, (1 << bit) | (has ? 2 << bit : 0), .Relaxed)
 		return has
 	}
-	cp := [1]u32{u32(r)}
-	gi := [1]u16{}
-	return f.dw->GetGlyphIndices(&cp[0], 1, &gi[0]) >= 0 && gi[0] != 0
+	return s.tb.has_glyph(s, f, r)
 }
 
 @(private)
@@ -677,7 +673,7 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 			if faces[i - 1] == 0 {
 				// the base goes to the system fallback: so does the rest of its cluster (emoji ZWJ sequences, modifiers)
 				search = false
-			} else if pf := face_ptr(s, faces[i - 1]); pf != nil && (face_has(pf, r) || r == 0x200D || r == 0x200C ||
+			} else if pf := face_ptr(s, faces[i - 1]); pf != nil && (face_has(s, pf, r) || r == 0x200D || r == 0x200C ||
 				(r >= 0xFE00 && r <= 0xFE0F) || prev_r == 0x200D || (r >= 0xE0100 && r <= 0xE01EF) || (r >= 0xE0020 && r <= 0xE007F)) {
 				// a mark the base's face lacks may still come from elsewhere; joiners and selectors always stay
 				chosen = faces[i - 1]
@@ -697,7 +693,7 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 			for e in entries {
 				if !in_ranges(e.ranges, r) { continue }
 				f := face_ptr(s, e.font)
-				if f != nil && face_has(f, r) {
+				if f != nil && face_has(s, f, r) {
 					chosen = e.font
 					if want && f.color && f.file == nil && f.memory == nil {
 						if p := emoji_pick(s, r); p != 0 { chosen = p }   // "Segoe UI Emoji" in a font stack: the built-in emoji font instead
@@ -712,13 +708,13 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 		i += n
 	}
 	// what is left: the system fallback, span by span
-	use_system := s.fallback != nil && s.system != nil && s.settings.system_fallback && !top.no_system_fallback
+	use_system := s.system_fonts != nil && s.system_fonts.fallback != nil && s.settings.system_fallback && !top.no_system_fallback
 	i = 0
 	for i < len(w) {
 		if faces[i] != 0 { i += 1; continue }
 		j := i
 		for j < len(w) && faces[j] == 0 { j += 1 }
-		if use_system { system_fallback(s, first, w, i, j, faces) }
+		if use_system { s.system_fonts.fallback(s, first, w, i, j, faces) }
 		for k := i; k < j; {
 			if faces[k] != 0 { k += 1; continue }
 			// nothing has it: the emoji font if it does (a text-presentation emoji no other face draws), else the first face
@@ -733,36 +729,6 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 	return faces
 }
 
-// Maps w[a:b] through IDWriteFontFallback::MapCharacters, based on the first face's family, weight and style.
-@(private)
-system_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: []Font_Id) {
-	base := face_ptr(s, first)
-	family: [^]u16 = raw_data(EMPTY_LOCALE[:])
-	weight: DWRITE_FONT_WEIGHT = 400
-	stretch: DWRITE_FONT_STRETCH = 5
-	style := DWRITE_FONT_STYLE.NORMAL
-	if base != nil {
-		if len(base.family) > 0 { family = raw_data(base.family) }
-		weight, stretch, style = base.weight, base.stretch, base.style
-	}
-	an: Analysis
-	analysis_init(&an, w, false)
-	pos := a
-	for pos < b {
-		mapped: u32
-		dwf: ^IDWriteFont
-		scale: f32 = 1
-		hr := s.fallback->MapCharacters(&an.source, u32(pos), u32(b - pos), s.system, family, weight, style, stretch, &mapped, &dwf, &scale)
-		if hr < 0 || mapped == 0 { return }
-		if dwf != nil {
-			fid := face_from_dwrite_font(s, dwf)
-			com_release(dwf)
-			for k in pos ..< min(pos + int(mapped), b) { faces[k] = fid }
-		}
-		pos += int(mapped)
-	}
-}
-
 // Shapes `text` (one directional run) into glyphs in visual order, laid out from x = 0. Returns the width.
 @(private)
 shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool, glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster) -> f32 {
@@ -772,27 +738,26 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	w, bytes := utf16_of(text)
 	if len(w) == 0 { return 0 }
 	faces := itemize_faces(s, id, w)
-	scripts := make([dynamic]Script_Run, 0, 4, context.temp_allocator)
-	an: Analysis
-	analysis_init(&an, w, rtl)
-	an.scripts = &scripts
+	scripts := make([dynamic]Script_Item, 0, 4, context.temp_allocator)
 	ascii := s.latin_ok
 	if ascii { for u in w { if u >= 0x80 { ascii = false; break } } }
 	if ascii {
-		append(&scripts, Script_Run{0, u32(len(w)), s.latin})
-	} else if s.analyzer->AnalyzeScript(&an.source, 0, u32(len(w)), &an.sink) < 0 || len(scripts) == 0 {
+		it := s.latin
+		it.start, it.end = 0, u32(len(w))
+		append(&scripts, it)
+	} else if !s.tb.scripts(s, text, w, bytes, rtl, &scripts) || len(scripts) == 0 {
 		clear(&scripts)
-		append(&scripts, Script_Run{0, u32(len(w)), {}})
+		append(&scripts, Script_Item{start = 0, end = u32(len(w)), tag = {'Z', 'y', 'y', 'y'}})
 	}
 	// pieces: same script and same face, in logical order
-	Piece :: struct { a, b: int, face: Font_Id, sa: DWRITE_SCRIPT_ANALYSIS }
+	Piece :: struct { a, b: int, face: Font_Id, script: Script_Item }
 	pieces := make([dynamic]Piece, 0, 4, context.temp_allocator)
 	for sr in scripts {
 		i := int(sr.start)
 		for i < int(sr.end) {
 			j := i + 1
 			for j < int(sr.end) && faces[j] == faces[i] { j += 1 }
-			append(&pieces, Piece{i, j, faces[i], sr.sa})
+			append(&pieces, Piece{i, j, faces[i], sr})
 			i = j
 		}
 	}
@@ -804,19 +769,22 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 		}
 	}
 	// features: the cascade's, minus optional ligatures under letter-spacing
-	feats := make([dynamic]DWRITE_FONT_FEATURE, 0, len(top.features) + 4, context.temp_allocator)
+	feats := make([dynamic]Feature, 0, len(top.features) + 4, context.temp_allocator)
 	append(&feats, ..top.features)
 	if no_liga {
-		for t in ([]string{"liga", "clig", "dlig", "hlig"}) { append(&feats, DWRITE_FONT_FEATURE{nameTag = ot_tag(t), parameter = 0}) }
+		for t in ([]string{"liga", "clig", "dlig", "hlig"}) { append(&feats, Feature{tag = {t[0], t[1], t[2], t[3]}, value = 0}) }
 	}
-	tf := DWRITE_TYPOGRAPHIC_FEATURES{features = raw_data(feats), featureCount = u32(len(feats))}
 
 	pen: f32
 	outs := make([dynamic]Piece_Out, 0, len(pieces), context.temp_allocator)
 	for p in pieces {
 		g0, c0 := len(glyphs), len(clusters)
 		start := pen
-		pen = shape_piece(s, p.face, size, w[p.a:p.b], bytes[p.a:p.b + 1], rtl, p.sa, len(feats) > 0 ? &tf : nil, glyphs, clusters, pen)
+		req := Shape_Request{
+			face_id = p.face, face = face_ptr(s, p.face), size = size, text = text[bytes[p.a]:bytes[p.b]],
+			w = w[p.a:p.b], bytes = bytes[p.a:p.b + 1], rtl = rtl, script = p.script, features = feats[:],
+		}
+		pen = s.tb.shape(s, &req, glyphs, clusters, pen)
 		append(&outs, Piece_Out{g0, len(glyphs), c0, len(clusters), start, pen - start})
 	}
 	if rtl && len(outs) > 1 { mirror_pieces(glyphs, clusters[:], outs[:], pen) }
@@ -845,102 +813,6 @@ mirror_pieces :: proc(glyphs: ^[dynamic]Glyph_Pos, clusters: []Cluster, outs: []
 		for ci in o.c0 ..< o.c1 { clusters[ci].x0 += d; clusters[ci].x1 += d }
 	}
 	copy(glyphs[g_base:], tmp)
-}
-
-// GetGlyphs + GetGlyphPlacements of w (one face, one script, one direction), appended from `pen`, glyphs in visual
-// order. `bytes`: the byte index of each unit of `w`, plus one past the end.
-@(private)
-shape_piece :: proc(s: ^State, face_id: Font_Id, size: f32, w: []u16, bytes: []i32, rtl: bool, sa: DWRITE_SCRIPT_ANALYSIS,
-	tf: ^DWRITE_TYPOGRAPHIC_FEATURES, glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster, pen: f32) -> f32 {
-	sa := sa
-	f := face_ptr(s, face_id)
-	n := len(w)
-	if f == nil || n == 0 { return pen }
-	if f.colr != nil && has_tag_chars(w) && !rtl {
-		// cluster offsets of a piece are relative to its first character (the end of shape_piece makes them relative to the word)
-		g0, c0 := len(glyphs), len(clusters)
-		if np, ok := shape_tag_sequence(s, f, face_id, size, w, bytes, glyphs, clusters, pen); ok {
-			off := bytes[0]
-			for gi in g0 ..< len(glyphs) { glyphs[gi].cluster += off }
-			for ci in c0 ..< len(clusters) { clusters[ci].start += off; clusters[ci].end += off }
-			return np
-		}
-	}
-	cmap := make([]u16, n, context.temp_allocator)
-	tprops := make([]DWRITE_SHAPING_TEXT_PROPERTIES, n, context.temp_allocator)
-	maxg := 3 * n / 2 + 16
-	gids: []u16
-	gprops: []DWRITE_SHAPING_GLYPH_PROPERTIES
-	count: u32
-	tfs := [1]^DWRITE_TYPOGRAPHIC_FEATURES{tf}
-	range_len := [1]u32{u32(n)}
-	nfr := u32(tf != nil ? 1 : 0)
-	hr: HRESULT
-	for attempt in 0 ..< 4 {
-		gids = make([]u16, maxg, context.temp_allocator)
-		gprops = make([]DWRITE_SHAPING_GLYPH_PROPERTIES, maxg, context.temp_allocator)
-		hr = s.analyzer->GetGlyphs(raw_data(w), u32(n), f.dw, false, BOOL(rtl), &sa, nil, nil,
-			tf != nil ? &tfs[0] : nil, tf != nil ? &range_len[0] : nil, nfr, u32(maxg), raw_data(cmap), raw_data(tprops),
-			raw_data(gids), raw_data(gprops), &count)
-		if hr != E_NOT_SUFFICIENT_BUFFER { break }
-		maxg *= 2
-		_ = attempt
-	}
-	if hr < 0 || count == 0 { return pen }
-	adv := make([]f32, count, context.temp_allocator)
-	offs := make([]DWRITE_GLYPH_OFFSET, count, context.temp_allocator)
-	if s.analyzer->GetGlyphPlacements(raw_data(w), raw_data(cmap), raw_data(tprops), u32(n), raw_data(gids), raw_data(gprops), count, f.dw,
-		size, false, BOOL(rtl), &sa, nil, tf != nil ? &tfs[0] : nil, tf != nil ? &range_len[0] : nil, nfr, raw_data(adv), raw_data(offs)) < 0 {
-		// no placements: nominal advances
-		gm := make([]DWRITE_GLYPH_METRICS, count, context.temp_allocator)
-		f.dw->GetDesignGlyphMetrics(raw_data(gids), count, raw_data(gm), false)
-		for i in 0 ..< int(count) { adv[i] = f32(gm[i].advanceWidth) * size / f.upem; offs[i] = {} }
-	}
-	// clusters: runs of text units sharing a first glyph
-	total: f32
-	for a in adv { total += a }
-	Cl :: struct { t0, t1, g0, g1: int }
-	cls := make([dynamic]Cl, 0, n, context.temp_allocator)
-	t := 0
-	for t < n {
-		t1 := t + 1
-		for t1 < n && cmap[t1] == cmap[t] { t1 += 1 }
-		g0 := int(cmap[t])
-		g1 := t1 < n ? int(cmap[t1]) : int(count)
-		if g1 < g0 { g1 = g0 }   // defensive: cluster maps never go back for one direction
-		append(&cls, Cl{t, t1, g0, g1})
-		t = t1
-	}
-	// glyphs of a cluster with no glyph of its own (g0 == g1) share the previous cluster's
-	base_g := len(glyphs)
-	resize(glyphs, base_g + int(count))
-	if !rtl {
-		x := pen
-		for c in cls {
-			cx0 := x
-			for gi in c.g0 ..< c.g1 {
-				glyphs[base_g + gi] = Glyph_Pos{face = face_id, id = gids[gi], x = x + offs[gi].advanceOffset, y = -offs[gi].ascenderOffset, advance = adv[gi], cluster = bytes[c.t0] - bytes[0]}
-				x += adv[gi]
-			}
-			append(clusters, Cluster{start = bytes[c.t0] - bytes[0], end = bytes[c.t1] - bytes[0], x0 = cx0, x1 = x})
-		}
-	} else {
-		// glyph 0 is the rightmost: walk from the right edge, then store the glyphs left to right
-		x := pen + total
-		for c in cls {
-			cx1 := x
-			for gi in c.g0 ..< c.g1 {
-				x -= adv[gi]
-				glyphs[base_g + int(count) - 1 - gi] = Glyph_Pos{face = face_id, id = gids[gi], rtl = true, x = x - offs[gi].advanceOffset, y = -offs[gi].ascenderOffset, advance = adv[gi], cluster = bytes[c.t0] - bytes[0]}
-			}
-			append(clusters, Cluster{start = bytes[c.t0] - bytes[0], end = bytes[c.t1] - bytes[0], x0 = x, x1 = cx1, rtl = true})
-		}
-	}
-	// cluster byte offsets are relative to this piece: make them relative to the word
-	off := bytes[0]
-	for gi in base_g ..< len(glyphs) { glyphs[gi].cluster += off }
-	for ci := len(clusters) - len(cls); ci < len(clusters); ci += 1 { clusters[ci].start += off; clusters[ci].end += off }
-	return pen + total
 }
 
 ////////////////////////////////
