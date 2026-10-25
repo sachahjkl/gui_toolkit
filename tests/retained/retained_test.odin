@@ -132,6 +132,26 @@ record :: proc(f: ^Fx, pic: ^draw.Picture) {
 	draw.picture_end(&f.dc)
 }
 
+// While a picture is recorded the screen is not known: the scissor is as large as can be, not an empty rect that would cut everything.
+@(test)
+current_clip_is_not_empty_while_recording :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
+	defer close(&f)
+	pic: draw.Picture
+	defer draw.picture_destroy(&f.dc, &pic)
+	draw.begin_frame(&f.dc, {f32(N), f32(N)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.picture_begin(&f.dc, &pic)
+	draw.push_clip(&f.dc, {{10, 10}, {20, 20}})
+	c := draw.current_clip(&f.dc)
+	draw.pop_clip(&f.dc)
+	draw.picture_end(&f.dc)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	testing.expectf(t, c.max.x > c.min.x && c.max.y > c.min.y, "a clip inside a recording is not empty: %v", c)
+}
+
 @(test)
 replay_is_identical_to_direct_drawing :: proc(t: ^testing.T) {
 	for space in render.Blend_Space {

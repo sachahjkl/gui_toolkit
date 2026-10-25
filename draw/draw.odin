@@ -341,8 +341,12 @@ pop_clip :: proc(c: ^Context) {
 	start_batch(c)
 }
 
-// Current scissor rect (screen pixels).
-current_clip :: proc(c: ^Context) -> Rect { return c.clips[len(c.clips) - 1].rect }
+// Current scissor rect (screen pixels). While a picture is recorded the screen is not known: every clip is a shape of the picture,
+// and the scissor is as large as can be (it is worked out at replay).
+current_clip :: proc(c: ^Context) -> Rect {
+	if c.rec != nil { return Rect{{-1e9, -1e9}, {1e9, 1e9}} }
+	return c.clips[len(c.clips) - 1].rect
+}
 
 ////////////////////////////////
 // Alpha and transforms
