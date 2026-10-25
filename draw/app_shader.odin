@@ -19,6 +19,7 @@ import "../render"
 app_shader :: proc(c: ^Context, shader: render.App_Shader, r: Rect, params: []Vec4, textures: []render.Texture = nil,
                    blend := render.App_Blend.Normal, radii: [4]f32 = {}, tint: Color = WHITE) -> bool {
 	if shader == 0 || c.rec != nil || len(params) > render.MAX_APP_PARAMS || len(textures) > render.MAX_APP_TEXTURES { return false }
+	if !render.app_shader_ready(c.renderer, shader) { return false }
 	xf, alpha, shape := cur(c)
 	close_batch(c)
 	first := len(c.insts)

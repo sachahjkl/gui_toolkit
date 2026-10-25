@@ -125,6 +125,15 @@ create_app_shader :: proc(r: ^Renderer, desc: App_Shader_Desc) -> App_Shader {
 	return App_Shader(len(r.apps) - 1)
 }
 
+// Can the shader be drawn now? false for 0 and for a destroyed shader, and for one the device could not remake after a loss (or, on
+// WebGPU, whose pipeline the device refused): such a handle stays reserved, and draws nothing, until destroy_app_shader; the caller
+// draws its fallback (draw.app_shader says false).
+app_shader_ready :: proc(r: ^Renderer, s: App_Shader) -> bool {
+	d := app_shader_get(r, s)
+	if d == nil { return false }
+	when USE_WGPU { return d.module != nil } else { return d.ps != nil }
+}
+
 // Releases a shader of create_app_shader. The handle may be reused by a later one.
 destroy_app_shader :: proc(r: ^Renderer, s: App_Shader) {
 	if int(s) <= 0 || int(s) >= len(r.apps) || !r.apps[int(s)].live { return }
@@ -168,6 +177,10 @@ d3d_app_shader_make :: proc(r: ^Renderer, d: ^App_Shader_Data, hash: string) -> 
 
 @(private)
 d3d_app_ps_create :: proc(r: ^Renderer, d: ^App_Shader_Data) -> bool {
+	if len(d.dxbc) == 0 {
+		fmt.eprintfln("render: app shader %s: no pixel shader to make", d.name)
+		return false
+	}
 	if win.FAILED(r.device->CreatePixelShader(raw_data(d.dxbc), uint(len(d.dxbc)), nil, &d.ps)) || d.ps == nil {
 		fmt.eprintfln("render: app shader %s: the device refused the pixel shader", d.name)
 		d.ps = nil
@@ -185,7 +198,7 @@ d3d_app_shader_release :: proc(d: ^App_Shader_Data) {
 @(private)
 d3d_app_shaders_recreate :: proc(r: ^Renderer) {
 	for &d in r.apps {
-		if d.live && !d3d_app_ps_create(r, &d) { d.live = false }
+		if d.live { d3d_app_ps_create(r, &d) }   // (a failure leaves it unready: its handle stays reserved, see app_shader_ready)
 	}
 }
 
