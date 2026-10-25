@@ -34,6 +34,7 @@ Native_Window :: struct {
 	stats:          Pump_Stats,
 	in_def_proc:    int,            // depth of DefWindowProc calls of the window procedure: the system's loops run inside them (size_move.odin)
 	sizemove:       int,            // move / size loops of the system open (size_move_step)
+	want_maximized: bool,           // set_placement asked for it: show_window shows the window maximized
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
@@ -271,7 +272,8 @@ resize_border :: proc(w: ^Window) -> int {
 }
 
 show_window :: proc(w: ^Window) {
-	win.ShowWindow(w.hwnd, win.SW_SHOW)
+	win.ShowWindow(w.hwnd, w.want_maximized ? win.SW_SHOWMAXIMIZED : win.SW_SHOW)
+	w.want_maximized = false
 	win.SetForegroundWindow(w.hwnd)
 }
 
