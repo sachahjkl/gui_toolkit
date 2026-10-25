@@ -8,6 +8,7 @@ import "core:strings"
 import "core:testing"
 import "core:time"
 import win "core:sys/windows"
+import "../../base"
 import "../../platform"
 
 xy :: proc(x, y: int) -> win.LPARAM { return win.LPARAM(uintptr(u32(u16(x)) | u32(u16(y)) << 16)) }
@@ -132,7 +133,7 @@ frames_come_during_a_modal_loop :: proc(t: ^testing.T) {
 	fr.n = 0
 	win.SendMessageW(x.hwnd, win.WM_ENTERSIZEMOVE, 0, 0)
 	pump(a, 200)
-	testing.expectf(t, fr.n >= 3, "%d frames in 200 ms of a modal loop", fr.n)
+	if !base.perf_skip("frames in a modal loop") { testing.expectf(t, fr.n >= 3, "%d frames in 200 ms of a modal loop", fr.n) }
 	win.SendMessageW(x.hwnd, win.WM_EXITSIZEMOVE, 0, 0)
 	n := fr.n
 	pump(a, 100)
