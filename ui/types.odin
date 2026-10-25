@@ -122,6 +122,7 @@ Box :: struct {
 	tags_key:    Key,            // identifies the tag stack the box was built under (for theme lookups while drawing)
 	custom:      Custom_Draw,
 	custom_user: rawptr,
+	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
 
 	// colors: targets from the theme, and the animated values actually drawn
 	target_bg, target_border, target_text: Color,

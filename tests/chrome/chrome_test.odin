@@ -177,6 +177,72 @@ title_bar_regions :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.hit_test_chrome(c, {(mx.min.x + mx.max.x) / 2, 20}, size, 8, 16, {}), platform.Hit.Maximize)
 }
 
+// A trapezoid tab: wider at its foot than at its top. Its corners are not its own: over the title bar they drag the
+// window, and a click there is not on the tab.
+@(test)
+slanted_hole_and_hit :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	Run :: struct { clicks: int, other: int }
+	run: Run
+	body :: proc(f: ^Fx, user: rawptr) {
+		r := (^Run)(user)
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.title_bar("###tb") {
+			ui.next({fixed_x = 100, fixed_y = 0, width = ui.px(100), height = ui.pct(1)})
+			tab := ui.build_box({.Clickable}, "###tab")
+			tab.slant = {top = {20, 20}}
+			if ui.signal(tab).clicked { r.clicks += 1 }
+			ui.next({fixed_x = 200, fixed_y = 0, width = ui.px(100), height = ui.pct(1)})
+			behind := ui.build_box({.Clickable}, "###behind")   // a plain neighbour
+			if ui.signal(behind).clicked { r.other += 1 }
+		}
+	}
+	click :: proc(f: ^Fx, run: ^Run, x, y: f32) {
+		frame(f, {{kind = .Mouse_Move, pos = {x, y}}, {kind = .Mouse_Press, pos = {x, y}, button = .Left}}, body, run)
+		frame(f, {{kind = .Mouse_Release, pos = {x, y}, button = .Left}}, body, run)
+	}
+	for _ in 0 ..< 3 { frame(f, nil, body, &run) }
+	c := ui.chrome_regions(&f.s)
+	testing.expect_value(t, len(c.slanted), 1)
+	testing.expect_value(t, len(c.holes), 1)
+	size := [2]f32{WINDOW.x, WINDOW.y}
+	hit :: proc(c: ^platform.Chrome_Regions, size: [2]f32, x, y: f32) -> platform.Hit { return platform.hit_test_chrome(c, {x, y}, size, 8, 16, {}) }
+	testing.expect_value(t, hit(c, size, 150, 20), platform.Hit.Client)        // the middle of the tab
+	testing.expect_value(t, hit(c, size, 150, 2), platform.Hit.Client)         // its top edge, between the corners
+	testing.expect_value(t, hit(c, size, 102, 3), platform.Hit.Caption)        // above the left slope: the window's
+	testing.expect_value(t, hit(c, size, 198, 3), platform.Hit.Caption)
+	testing.expect_value(t, hit(c, size, 102, 38), platform.Hit.Client)        // at its foot the slope has reached the edge
+	click(f, &run, 150, 20)
+	testing.expect_value(t, run.clicks, 1)
+	click(f, &run, 102, 3)                                                      // not on the tab, not on anything
+	testing.expect_value(t, run.clicks, 1)
+	click(f, &run, 198, 3)
+	testing.expect_value(t, run.clicks, 1)
+	click(f, &run, 250, 20)
+	testing.expect_value(t, run.other, 1)
+}
+
+@(test)
+slanted_region_shape :: proc(t: ^testing.T) {
+	r := platform.Slanted_Region{{10, 0}, {110, 40}, {top = {20, 10}, bottom = {0, 0}}}
+	testing.expect(t, platform.slanted_contains(r, {60, 20}))
+	testing.expect(t, !platform.slanted_contains(r, {15, 0}))     // left of the top's left corner (x = 30)
+	testing.expect(t, platform.slanted_contains(r, {31, 0}))
+	testing.expect(t, !platform.slanted_contains(r, {105, 0}))    // right of the top's right corner (x = 100)
+	testing.expect(t, platform.slanted_contains(r, {99, 0}))
+	testing.expect(t, platform.slanted_contains(r, {11, 39.9}))   // the foot reaches the rect's side
+	testing.expect(t, !platform.slanted_contains(r, {10, 20}))    // halfway up the slope has moved 10 px in
+	testing.expect(t, platform.slanted_contains(r, {21, 20}))
+	testing.expect(t, !platform.slanted_contains(r, {60, 40}))    // the bottom edge is outside, as a rect's
+	z := platform.Slanted_Region{{0, 0}, {10, 10}, {}}
+	testing.expect(t, platform.slanted_contains(z, {0, 0}) && !platform.slanted_contains(z, {10, 5}))
+}
+
 @(test)
 caption_button_click :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)

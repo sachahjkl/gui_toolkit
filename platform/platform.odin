@@ -166,24 +166,46 @@ Region :: struct { min, max: [2]f32 }
 region_contains :: proc(r: Region, p: [2]f32) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
 region_empty :: proc(r: Region) -> bool { return r.max.x <= r.min.x || r.max.y <= r.min.y }
 
+// A trapezoid: the rectangle `min`..`max` whose left and right edges lean. `top` and `bottom` are how far the left and
+// the right edge (in that order) are moved inwards at the top and at the bottom of the rectangle; between, they run
+// straight. A tab with sloped sides (wider at its foot than at its top) is {top = {run, run}}; all zero is the rectangle.
+Slant :: struct { top, bottom: [2]f32 }
+
+Slanted_Region :: struct { min, max: [2]f32, slant: Slant }
+
+// Whether `p` is inside `r` (its edges leaning as `r.slant` says).
+slanted_contains :: proc(r: Slanted_Region, p: [2]f32) -> bool {
+	if p.y < r.min.y || p.y >= r.max.y || p.x < r.min.x || p.x >= r.max.x { return false }
+	h := r.max.y - r.min.y
+	t := h > 0 ? (p.y - r.min.y) / h : 0
+	l := r.min.x + r.slant.top[0] + (r.slant.bottom[0] - r.slant.top[0]) * t
+	rt := r.max.x - (r.slant.top[1] + (r.slant.bottom[1] - r.slant.top[1]) * t)
+	return p.x >= l && p.x < rt
+}
+
 // The title bar of the last frame, in client pixels. `caption`: areas that drag the window; `holes`: what is
-// interactive inside them (tabs, buttons, fields): those stay the app's; `buttons`: the caption buttons the app drew
-// (an empty region: none), answered as the system's own so that Snap Layouts opens over the maximize button.
+// interactive inside them (tabs, buttons, fields): those stay the app's; `slanted`: holes whose sides lean (the tabs of
+// a strip drawn with sloped sides: the free space between two of them still drags the window); `buttons`: the caption
+// buttons the app drew (an empty region: none), answered as the system's own so that Snap Layouts opens over the
+// maximize button.
 Chrome_Regions :: struct {
 	caption: [dynamic]Region,
 	holes:   [dynamic]Region,
+	slanted: [dynamic]Slanted_Region,
 	buttons: [Caption_Button]Region,
 }
 
 chrome_regions_clear :: proc(c: ^Chrome_Regions) {
 	clear(&c.caption)
 	clear(&c.holes)
+	clear(&c.slanted)
 	c.buttons = {}
 }
 
 chrome_regions_destroy :: proc(c: ^Chrome_Regions) {
 	delete(c.caption)
 	delete(c.holes)
+	delete(c.slanted)
 	c^ = {}
 }
 
@@ -224,6 +246,7 @@ hit_test_chrome :: proc(c: ^Chrome_Regions, p: [2]f32, size: [2]f32, border, cor
 		}
 	}
 	for h in c.holes { if region_contains(h, p) { return .Client } }
+	for h in c.slanted { if slanted_contains(h, p) { return .Client } }
 	for r in c.caption { if region_contains(r, p) { return .Caption } }
 	return .Client
 }

@@ -297,6 +297,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.cursor = st.cursor
 	b.custom = nil
 	b.custom_user = nil
+	b.slant = {}
 	if v, ok := fixed[0].?; ok { b.flags += {.Floating_X}; b.fixed_pos.x = v }
 	if v, ok := fixed[1].?; ok { b.flags += {.Floating_Y}; b.fixed_pos.y = v }
 	if v, ok := mod.fixed_w.?; ok && has_mod { b.pref[.X] = px(v) }
