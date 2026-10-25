@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.35.4] - 2026-10-25
+
+### Added
+- **`Box_Flag.Scrollbar_Left`** (`ui/scrollbar.odin`, `ui/events.odin`): the overlay scrollbar of a `.View_Scroll_Y` box sits at its left edge instead of its right one (drawn, hit and dragged there; its grab margin widens toward the content). A panel docked on the left whose right edge joins the content (a tab sidebar whose current tab flows into the page) keeps its scrollbar on the outside. Test: `tests/ui_robust` scrollbar_on_the_left.
+
 ## [0.35.3] - 2026-10-25
 
 ### Fixed

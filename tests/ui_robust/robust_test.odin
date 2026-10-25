@@ -158,6 +158,41 @@ stale_tables_are_emptied :: proc(t: ^testing.T) {
 	testing.expect(t, ui.Key(7) not_in f.s.sb_owner)
 }
 
+Scroll_Run :: struct { left: bool, box: ui.Key }
+
+build_scroll :: proc(f: ^Fx, user: rawptr) {
+	r := (^Scroll_Run)(user)
+	ui.next({fixed_x = 100, fixed_y = 50, width = ui.px(200), height = ui.px(300), axis = .Y})
+	flags := ui.Box_Flags{.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}
+	if r.left { flags += {.Scrollbar_Left} }
+	b := ui.build_box(flags, "###list")
+	r.box = b.key
+	if ui.parent(b) { ui.spacer(ui.px(1200), exact = true) }
+}
+
+// The scrollbar of a scroll box is at its right edge, or at its left one with .Scrollbar_Left: the pointer there is on
+// the scrollbar (the hot key is a scrollbar of that box), and on the other edge it is not.
+@(test)
+scrollbar_on_the_left :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	on_bar :: proc(f: ^Fx, r: ^Scroll_Run, x: f32) -> bool {
+		ev := [1]platform.Event{{kind = .Mouse_Move, pos = {x, 200}}}
+		frame(f, ev[:], build_scroll, r)
+		frame(f, ev[:], build_scroll, r)
+		owner, ok := f.s.sb_owner[f.s.hot_key]
+		return ok && owner == r.box
+	}
+	r := Scroll_Run{left = false}
+	frame(&f, nil, build_scroll, &r)
+	testing.expect(t, on_bar(&f, &r, 296), "right edge: the scrollbar")
+	testing.expect(t, !on_bar(&f, &r, 104), "left edge: the content")
+	r.left = true
+	testing.expect(t, on_bar(&f, &r, 104), "left edge: the scrollbar")
+	testing.expect(t, !on_bar(&f, &r, 296), "right edge: the content")
+}
+
 Wrap_Run :: struct { text: string, width: f32, lines: [][2]int }
 
 build_wrap :: proc(f: ^Fx, user: rawptr) {

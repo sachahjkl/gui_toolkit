@@ -81,6 +81,7 @@ Box_Flag :: enum u8 {
 	Text_Wrap,           // the text wraps onto lines at the box's width; a .Text height is that of all its lines (`paragraph`)
 	Window_Caption,      // part of an integrated title bar: where nothing clickable is over it, it drags the window (`title_bar`)
 	Hot_Within,          // hot (hot_t, its hover fill) also while the pointer is on a clickable box inside it (a row and its buttons)
+	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 

@@ -106,7 +106,8 @@ hit_test :: proc(s: ^State, p: Vec2) -> Key {
 hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
 	if track, _, ok := scrollbar_geom(b); ok {
-		grab := Rect{{track.min.x - 4, track.min.y}, {track.max.x + 2, track.max.y}}   // a little wider than it looks
+		grab := Rect{{track.min.x - 4, track.min.y}, {track.max.x + 2, track.max.y}}   // a little wider than it looks (toward the content)
+		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = track.min.x - 2, track.max.x + 4 }
 		if contains(grab, p) {
 			k := scrollbar_key(b)
 			g.sb_owner[k] = b.key
