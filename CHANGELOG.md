@@ -3,10 +3,20 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [0.35.4] - 2026-10-25
+## [0.36.1] - 2026-10-25
 
 ### Added
 - **`Box_Flag.Scrollbar_Left`** (`ui/scrollbar.odin`, `ui/events.odin`): the overlay scrollbar of a `.View_Scroll_Y` box sits at its left edge instead of its right one (drawn, hit and dragged there; its grab margin widens toward the content). A panel docked on the left whose right edge joins the content (a tab sidebar whose current tab flows into the page) keeps its scrollbar on the outside. Test: `tests/ui_robust` scrollbar_on_the_left.
+
+## [0.36.0] - 2026-10-25
+
+### Added
+- **Window placement, for apps with several windows or a saved layout** (`platform/placement.odin`, `placement_win32.odin`): `platform.get_placement(w)` / `set_placement(w, p)` (`Placement{rect, maximized}`: the outer rectangle in screen pixels where the window is restored to, and whether it is maximized; `set_placement` moves and sizes the window without showing it, on the monitor nearest to the rectangle and inside its work area, and `show_window` then shows it maximized if asked), the pure `fit_rect_to_work(rect, work)`, `outer_rect(w)`, `client_origin(w)` (where the client area starts on the screen: turns a pointer position of a window, captured outside it, into a screen position) and `move_window(w, x, y)`. `tests/placement`. A browser that moves tabs between windows used all of them.
+
+### Fixed
+- **`set_placement` asks twice when the window changed monitor**: a window that crosses to a monitor of another DPI is resized by the system for it (640 x 480 became 896 x 672); asked again, now that it is on that monitor, the rectangle is the one wanted. Windows now open on the monitor the user is on (0.35.3), so this is the common case.
+- **`ui.init` no longer restarts the toolkit's clock** (`ui/state.odin`): the origin of `ui.now_ms()` was reset by every `init`, so opening a second window (one `ui.State` each) made the time of the first one jump back. It is set by the first `init` only.
+
 
 ## [0.35.3] - 2026-10-25
 
