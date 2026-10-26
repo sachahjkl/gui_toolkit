@@ -1,4 +1,4 @@
-// The queue of calls posted from other threads (base.Post_Queue, ui.post): several producers, each one's order, a
+// The queue of calls posted from other threads (ui.Post_Queue, ui.post): several producers, each one's order, a
 // drain bounded per build, nothing lost when the ring is full (Block, Grow), Drop_Oldest and Fail, closing, the wake
 // asked once per drain, and ui.post run by begin_build.
 package post_test
@@ -7,7 +7,6 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../base"
 import "../../font"
 import "../../ui"
 
@@ -21,7 +20,7 @@ Seen :: struct {
 	total:   int,
 	errors:  int,
 	wakes:   int,   // atomic
-	q:       ^base.Post_Queue,
+	q:       ^ui.Post_Queue,
 }
 
 @(private = "file")
@@ -44,7 +43,7 @@ Producer :: struct {
 produce :: proc(t: ^thread.Thread) {
 	p := (^Producer)(t.data)
 	for i in 0 ..< p.count {
-		if !base.post_queue_push(p.seen.q, got, p.seen, p.index << 32 | u64(i)) { p.refused += 1 }
+		if !ui.post_queue_push(p.seen.q, got, p.seen, p.index << 32 | u64(i)) { p.refused += 1 }
 	}
 }
 
@@ -60,7 +59,7 @@ run_producers :: proc(t: ^testing.T, seen: ^Seen, budget: int) -> (ps: [PRODUCER
 	}
 	deadline := time.tick_now()
 	for seen.total < PRODUCERS * PER_PRODUCER {
-		ran, _ := base.post_queue_drain(seen.q, budget)
+		ran, _ := ui.post_queue_drain(seen.q, budget)
 		testing.expect(t, ran <= budget, "a drain runs at most its budget")
 		if ran == 0 { thread.yield() }
 		if time.tick_since(deadline) > 60 * time.Second { break }   // (a safety net, not a timing check)
@@ -76,16 +75,16 @@ count_wake :: proc(user: rawptr) { sync.atomic_add(&(^Seen)(user).wakes, 1) }
 block_many_producers_keeps_order :: proc(t: ^testing.T) {
 	seen := new(Seen)
 	defer free(seen)
-	q := new(base.Post_Queue)
+	q := new(ui.Post_Queue)
 	defer free(q)
-	base.post_queue_init(q, 64, .Block, count_wake, seen)
-	defer base.post_queue_destroy(q)
+	ui.post_queue_init(q, 64, .Block, count_wake, seen)
+	defer ui.post_queue_destroy(q)
 	seen.q = q
 	ps := run_producers(t, seen, 50)
 	testing.expect_value(t, seen.total, PRODUCERS * PER_PRODUCER)
 	testing.expect_value(t, seen.errors, 0)
 	for p in ps { testing.expect_value(t, p.refused, 0) }
-	st := base.post_queue_stats(q)
+	st := ui.post_queue_stats(q)
 	testing.expect_value(t, st.posted, u64(PRODUCERS * PER_PRODUCER))
 	testing.expect_value(t, st.dropped, u64(0))
 	testing.expect(t, sync.atomic_load(&seen.wakes) > 0, "the owner was woken")
@@ -97,14 +96,14 @@ block_many_producers_keeps_order :: proc(t: ^testing.T) {
 grow_many_producers_keeps_order :: proc(t: ^testing.T) {
 	for budget in ([]int{1000, 64, 7, 200, 63, 65, 1, 128}) {
 		seen := new(Seen)
-		q := new(base.Post_Queue)
-		base.post_queue_init(q, 8, .Grow)
+		q := new(ui.Post_Queue)
+		ui.post_queue_init(q, 8, .Grow)
 		seen.q = q
 		ps := run_producers(t, seen, budget)
 		testing.expect_value(t, seen.total, PRODUCERS * PER_PRODUCER)
 		testing.expect_value(t, seen.errors, 0)
 		for p in ps { testing.expect_value(t, p.refused, 0) }
-		base.post_queue_destroy(q)
+		ui.post_queue_destroy(q)
 		free(q)
 		free(seen)
 	}
@@ -118,48 +117,48 @@ grow_many_producers_keeps_order :: proc(t: ^testing.T) {
 
 @(test)
 drop_oldest_keeps_the_newest :: proc(t: ^testing.T) {
-	q: base.Post_Queue
-	base.post_queue_init(&q, 8, .Drop_Oldest, on_drop = note_drop)
-	defer base.post_queue_destroy(&q)
+	q: ui.Post_Queue
+	ui.post_queue_init(&q, 8, .Drop_Oldest, on_drop = note_drop)
+	defer ui.post_queue_destroy(&q)
 	defer { delete(dropped_words); delete(ran_words); dropped_words = nil; ran_words = nil }
-	for i in 0 ..< 20 { testing.expect(t, base.post_queue_push(&q, note_run, nil, u64(i))) }
-	ran, more := base.post_queue_drain(&q)
+	for i in 0 ..< 20 { testing.expect(t, ui.post_queue_push(&q, note_run, nil, u64(i))) }
+	ran, more := ui.post_queue_drain(&q)
 	testing.expect_value(t, ran, 8)
 	testing.expect(t, !more)
 	testing.expect_value(t, len(ran_words), 8)
 	for w, i in ran_words { testing.expect_value(t, w, u64(12 + i)) }
 	testing.expect_value(t, len(dropped_words), 12)
 	for w, i in dropped_words { testing.expect_value(t, w, u64(i)) }
-	testing.expect_value(t, base.post_queue_stats(&q).dropped, u64(12))
+	testing.expect_value(t, ui.post_queue_stats(&q).dropped, u64(12))
 }
 
 @(test)
 fail_refuses_when_full :: proc(t: ^testing.T) {
-	q: base.Post_Queue
-	base.post_queue_init(&q, 4, .Fail)
-	defer base.post_queue_destroy(&q)
+	q: ui.Post_Queue
+	ui.post_queue_init(&q, 4, .Fail)
+	defer ui.post_queue_destroy(&q)
 	defer { delete(ran_words); ran_words = nil }
 	ok := 0
-	for i in 0 ..< 6 { if base.post_queue_push(&q, note_run, nil, u64(i)) { ok += 1 } }
+	for i in 0 ..< 6 { if ui.post_queue_push(&q, note_run, nil, u64(i)) { ok += 1 } }
 	testing.expect_value(t, ok, 4)
-	testing.expect_value(t, base.post_queue_stats(&q).refused, u64(2))
-	base.post_queue_drain(&q)
+	testing.expect_value(t, ui.post_queue_stats(&q).refused, u64(2))
+	ui.post_queue_drain(&q)
 	testing.expect_value(t, len(ran_words), 4)
 }
 
 @(test)
 drain_is_bounded :: proc(t: ^testing.T) {
-	q: base.Post_Queue
-	base.post_queue_init(&q, 128, .Block)
-	defer base.post_queue_destroy(&q)
+	q: ui.Post_Queue
+	ui.post_queue_init(&q, 128, .Block)
+	defer ui.post_queue_destroy(&q)
 	defer { delete(ran_words); ran_words = nil }
-	for i in 0 ..< 100 { base.post_queue_push(&q, note_run, nil, u64(i)) }
-	ran, more := base.post_queue_drain(&q, 30)
+	for i in 0 ..< 100 { ui.post_queue_push(&q, note_run, nil, u64(i)) }
+	ran, more := ui.post_queue_drain(&q, 30)
 	testing.expect_value(t, ran, 30)
 	testing.expect(t, more, "70 left")
-	ran, more = base.post_queue_drain(&q, 0)
+	ran, more = ui.post_queue_drain(&q, 0)
 	testing.expect_value(t, ran, 0)
-	ran, more = base.post_queue_drain(&q, 100)
+	ran, more = ui.post_queue_drain(&q, 100)
 	testing.expect_value(t, ran, 70)
 	testing.expect(t, !more)
 	for w, i in ran_words { testing.expect_value(t, w, u64(i)) }
@@ -168,13 +167,13 @@ drain_is_bounded :: proc(t: ^testing.T) {
 // The owner's own push on a full Block ring cannot wait for itself: it spills, in order.
 @(test)
 block_from_owner_spills :: proc(t: ^testing.T) {
-	q: base.Post_Queue
-	base.post_queue_init(&q, 4, .Block)
-	defer base.post_queue_destroy(&q)
+	q: ui.Post_Queue
+	ui.post_queue_init(&q, 4, .Block)
+	defer ui.post_queue_destroy(&q)
 	defer { delete(ran_words); ran_words = nil }
-	for i in 0 ..< 10 { testing.expect(t, base.post_queue_push(&q, note_run, nil, u64(i))) }
-	testing.expect_value(t, base.post_queue_stats(&q).spilled, u64(6))
-	ran, _ := base.post_queue_drain(&q)
+	for i in 0 ..< 10 { testing.expect(t, ui.post_queue_push(&q, note_run, nil, u64(i))) }
+	testing.expect_value(t, ui.post_queue_stats(&q).spilled, u64(6))
+	ran, _ := ui.post_queue_drain(&q)
 	testing.expect_value(t, ran, 10)
 	for w, i in ran_words { testing.expect_value(t, w, u64(i)) }
 }
@@ -188,70 +187,70 @@ Wake_Count :: struct { n: int }
 @(test)
 wake_once_per_drain :: proc(t: ^testing.T) {
 	wc: Wake_Count
-	q: base.Post_Queue
-	base.post_queue_init(&q, 64, .Block, wake_inc, &wc)
-	defer base.post_queue_destroy(&q)
-	for _ in 0 ..< 10 { base.post_queue_push(&q, nothing) }
+	q: ui.Post_Queue
+	ui.post_queue_init(&q, 64, .Block, wake_inc, &wc)
+	defer ui.post_queue_destroy(&q)
+	for _ in 0 ..< 10 { ui.post_queue_push(&q, nothing) }
 	testing.expect_value(t, wc.n, 1)
-	base.post_queue_drain(&q)
-	base.post_queue_push(&q, nothing)
+	ui.post_queue_drain(&q)
+	ui.post_queue_push(&q, nothing)
 	testing.expect_value(t, wc.n, 2)
 }
 
 @(private = "file")
-Blocked :: struct { q: ^base.Post_Queue, result: bool, done: bool }
+Blocked :: struct { q: ^ui.Post_Queue, result: bool, done: bool }
 
 // A producer waiting on a full ring is released by close (its push fails); the messages left go to on_drop at destroy.
 @(test)
 close_releases_blocked_producers :: proc(t: ^testing.T) {
-	q := new(base.Post_Queue)
+	q := new(ui.Post_Queue)
 	defer free(q)
-	base.post_queue_init(q, 2, .Block, on_drop = note_drop)
+	ui.post_queue_init(q, 2, .Block, on_drop = note_drop)
 	defer { delete(dropped_words); dropped_words = nil }
-	base.post_queue_push(q, nothing)
-	base.post_queue_push(q, nothing)
+	ui.post_queue_push(q, nothing)
+	ui.post_queue_push(q, nothing)
 	b := Blocked{q = q, result = true}
 	th := thread.create(proc(th: ^thread.Thread) {
 		b := (^Blocked)(th.data)
-		b.result = base.post_queue_push(b.q, nothing)
+		b.result = ui.post_queue_push(b.q, nothing)
 		sync.atomic_store(&b.done, true)
 	})
 	th.data = &b
 	thread.start(th)
-	for base.post_queue_stats(q).blocked == 0 { thread.yield() }
+	for ui.post_queue_stats(q).blocked == 0 { thread.yield() }
 	testing.expect(t, !sync.atomic_load(&b.done), "waits while full")
-	base.post_queue_close(q)
+	ui.post_queue_close(q)
 	thread.join(th)
 	thread.destroy(th)
 	testing.expect(t, !b.result, "a closed queue refuses")
-	base.post_queue_destroy(q)
+	ui.post_queue_destroy(q)
 	testing.expect_value(t, len(dropped_words), 2)
 }
 
 // A producer waiting on a full ring goes in once the owner drains.
 @(test)
 block_resumes_after_drain :: proc(t: ^testing.T) {
-	q := new(base.Post_Queue)
+	q := new(ui.Post_Queue)
 	defer free(q)
 	wc: Wake_Count
-	base.post_queue_init(q, 2, .Block, wake_inc, &wc)
-	defer base.post_queue_destroy(q)
-	base.post_queue_push(q, nothing)
-	base.post_queue_push(q, nothing)
+	ui.post_queue_init(q, 2, .Block, wake_inc, &wc)
+	defer ui.post_queue_destroy(q)
+	ui.post_queue_push(q, nothing)
+	ui.post_queue_push(q, nothing)
 	b := Blocked{q = q}
 	th := thread.create(proc(th: ^thread.Thread) {
 		b := (^Blocked)(th.data)
-		b.result = base.post_queue_push(b.q, nothing)
+		b.result = ui.post_queue_push(b.q, nothing)
 		sync.atomic_store(&b.done, true)
 	})
 	th.data = &b
 	thread.start(th)
-	for base.post_queue_stats(q).blocked == 0 { thread.yield() }
-	base.post_queue_drain(q)
+	for ui.post_queue_stats(q).blocked == 0 { thread.yield() }
+	ui.post_queue_drain(q)
 	thread.join(th)
 	thread.destroy(th)
 	testing.expect(t, b.result)
-	ran, _ := base.post_queue_drain(q)
+	ran, _ := ui.post_queue_drain(q)
 	testing.expect_value(t, ran, 1)
 }
 
