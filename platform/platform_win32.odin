@@ -230,6 +230,8 @@ set_fullscreen :: proc(w: ^Window, on: bool) {
 
 // The system menu (Restore, Move, Size, Minimize, Maximize, Close) at `pos` (client pixels), as a right click on a
 // title bar of the system opens it. The chosen command runs as if it came from the system's title bar.
+// The menu's loop paints the window from WM_PAINT (on_frame) until it closes: call it outside the app's build and
+// drawing (after the frame), or its frame is made inside the one being built (ui.building tells).
 show_system_menu :: proc(w: ^Window, pos: [2]f32) {
 	menu := win.GetSystemMenu(w.hwnd, false)
 	if menu == nil { return }
