@@ -80,8 +80,12 @@ clusters and advances in 17 samples, the same bidi levels and the same design me
 - **Marks**: HarfBuzz composes a base and a mark the font has precomposed (a + U+0308 + U+0323: `ä` + dot below, 2
   glyphs), DirectWrite keeps the decomposed glyphs (3). Same width.
 - **Emoji with a skin tone**: HarfBuzz makes 👍🏽 one cluster (one grapheme, one caret stop), DirectWrite two.
-- **Hebrew (Segoe UI)**: two glyphs sit 20 and 50 font units apart (same ids and advances): a GPOS placement in a
-  right-to-left run that the two shapers apply differently. Not explained yet.
+- **Hebrew (Segoe UI)**: two glyphs sit 20 and 50 font units apart, same ids and advances. Segoe UI kerns right-to-left
+  pairs as OpenType wants them written: the first glyph gets XPlacement -k *and* XAdvance -k (ל before ם: -50; ז before
+  ה: -20), so that the glyph stays where it is and the gap after it closes. HarfBuzz applies both (`native/text/examples/
+  shape_dump`: `gid 2932 adv 1078 xoff -50`; with `-kern`: `adv 1128 xoff 0`); DirectWrite's GetGlyphPlacements
+  applies the advance but returns no offset for these glyphs (its advanceOffset is 0), so the glyph moves 50 units
+  toward the letter before it and the pair it should kern does not close. The native backend is the right one here.
 - **Line breaks in Thai, Lao, Khmer, Myanmar**: ICU4X's dictionaries and Windows' differ (one Thai word boundary);
   Windows finds no break at all inside Lao, Khmer and Myanmar text, ICU4X does.
 - DirectWrite simulates bold and oblique (`with_simulations`); Fontations does not: such faces shape with the regular
