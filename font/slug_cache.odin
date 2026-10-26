@@ -114,8 +114,8 @@ slug_make :: proc(s: ^State, face: Font_Id, gid: u16) -> Slug_Glyph {
 	atlas_fallback := Slug_Glyph{kind = .Atlas, page = -1}
 	st := &s.atlas.slug
 	f := face_ptr(s, face)
-	if f == nil || st.provider == nil || s.factory == nil { return atlas_fallback }
-	if f.color && s.settings.color_glyphs && is_color_glyph(s, f, gid, 32) { return atlas_fallback }
+	if f == nil || st.provider == nil || !s.ok { return atlas_fallback }
+	if f.color && s.settings.color_glyphs && platform_color_glyph(s, f, gid, 32) { return atlas_fallback }
 	o: Outline
 	defer outline_destroy(&o)
 	if !st.provider(s, face, gid, s.settings.slug_tolerance, &o) { return atlas_fallback }
