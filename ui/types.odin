@@ -123,6 +123,7 @@ Box :: struct {
 	tags_key:    Key,            // identifies the tag stack the box was built under (for theme lookups while drawing)
 	custom:      Custom_Draw,
 	custom_user: rawptr,
+	measure_y:   proc(b: ^Box) -> f32,   // a .Text height that depends on the width the X pass gave (rich_paragraph)
 	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
 
 	// colors: targets from the theme, and the animated values actually drawn
@@ -375,4 +376,8 @@ State :: struct {
 
 	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
 	wrap_cache:      map[Wrap_Key]Wrap_Entry,
+	// rich text: layouts by content, the faces of bold / italic runs, the link each focused paragraph is on (rich_text.odin)
+	rich_cache:      map[u64]Rich_Cache_Entry,
+	rich_faces:      map[font.Font_Id][4]font.Font_Id,
+	rich_link:       map[Key]int,
 }
