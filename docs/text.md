@@ -56,6 +56,17 @@ code point or a cluster), `is_grapheme_boundary`, `grapheme_count`. The arrows, 
 `ui.text_edit`, clicks (`hit_index`), the cut of a toast and the line breaks of `ui.wrap_lines` work on clusters: nothing
 is ever left of a half emoji.
 
+**Editing wrapped text** (`ui/text_lines.odin`, `ui/text_edit.odin`). `ui.text_visual_lines(fonts, font, size, text,
+width)` gives the visual lines of edited text: each paragraph ("\n") breaks at the backend's line break opportunities
+(`line_breaks` on the whole paragraph: spaces, hyphens, CJK, Thai / Lao / Khmer / Myanmar words), a word wider than the
+line between grapheme clusters; trailing spaces stay on their line. A wrapped line's end is also the next line's start:
+`visual_line_of(lines, index, upstream)` says which line the caret is on (`Text_Area.upstream`: after End, or a click
+past a line's end). `ui.text_edit(..., wrap = true, auto_height = true, min_lines, max_lines)`: lines wrap at the box's
+width (no horizontal scrolling; Up / Down / Home / End and the mouse follow visual lines; line numbers per paragraph), the
+box is as tall as its lines within the limits, then scrolls. `Edit_Result.caret` is the caret in box coordinates (this
+build); `ui.text_edit_caret_rect(a)` gives the caret and the selection's other end in window coordinates as last drawn
+(completion popovers, input method windows). Example: the composer of `examples/fidget`.
+
 `measure(s, id, size, text, opts)` is `shape(...).width` without building the glyph list: what a layout engine calls.
 `text_width(s, id, size, text)` is `measure` with default options.
 

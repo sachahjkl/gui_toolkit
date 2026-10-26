@@ -332,6 +332,17 @@ page_inputs :: proc(app: ^App) {
 							ui.label(fmt.tprintf("%d lines, %d chars", ui.area_line_count(&app.editor), len(app.editor.buf)))
 						}
 					}
+					// a chat composer: long lines wrap, the box grows with them up to 5 lines, then scrolls
+					ui.spacer(ui.px(em * 0.5))
+					ui.next({width = ui.fill()})
+					cres := ui.text_edit("###composer", &app.composer, "Message (wraps, grows to 5 lines)", wrap = true, auto_height = true, min_lines = 1, max_lines = 5)
+					if cres.committed { ui.toast(.Good, "Sent %d chars", len(app.composer.buf)); ui.area_set(&app.composer, "") }
+					if caret, _, ok := ui.text_edit_caret_rect(&app.composer); ok {
+						if ui.tags("weak") {
+							ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.8)), font_size = math.round(em * 0.85)})
+							ui.label(fmt.tprintf("caret at %.0f, %.0f (window)", caret.min.x, caret.min.y))
+						}
+					}
 				}
 				if ui.card("Tag input", ICON_PIN) {
 					ui.spacer(ui.px(em * 0.3))

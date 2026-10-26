@@ -206,6 +206,7 @@ App :: struct {
 	name, email, number, search, tag_input, bio, filter: ui.Text_Field,
 	editor:  ui.Text_Area,
 	editor_tab_indents: bool,
+	composer: ui.Text_Area,   // a chat composer: wraps, grows from 1 to 5 lines
 	state_title: bool,
 	integrated:  bool,   // --integrated: the menu bar is the window's title bar (ui.title_bar, ui.window_buttons)
 	tags:    [dynamic]string,
