@@ -41,7 +41,6 @@ Native_Window :: struct {
 	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
 	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
 	a11y:           rawptr,         // the accessibility adapter (a11y_accesskit.odin), nil when not compiled in
-	a11y_stale:     bool,           // the adapter's tree was left behind while nobody listened: the next one is whole
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of

@@ -82,18 +82,22 @@ run :: proc() -> int {
 
 	switch a.cmd {
 	case "dump":
-		// (the first question makes the application send its tree: wait for more than the placeholder)
+		// The first question makes the application send its tree (a placeholder answers until its next frame; the
+		// system's title bar is there from the start): read until the count holds for a while.
 		start := time.tick_now()
+		last, same := -1, 0
 		for {
 			els := uia.descendants(&c, root)
 			n := len(els)
-			if n > 1 || time.duration_milliseconds(time.tick_since(start)) > f64(a.timeout) {
+			if n == last { same += 1 } else { same = 0 }
+			last = n
+			if same >= 4 || time.duration_milliseconds(time.tick_since(start)) > f64(a.timeout) {
 				for e in els { fmt.println(uia.describe(e, context.temp_allocator)) }
 				uia.drop_all(els)
 				return 0
 			}
 			uia.drop_all(els)
-			time.sleep(30 * time.Millisecond)
+			time.sleep(60 * time.Millisecond)
 		}
 	case "find", "wait":
 		limit := a.cmd == "find" ? 2000 : a.timeout

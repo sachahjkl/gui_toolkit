@@ -85,12 +85,6 @@ foreign gt_a11y {
 	gt_a11y_take_action :: proc(a: ^Gt_Adapter, out: ^Gt_Action) -> i32 ---
 }
 
-foreign import uia "system:uiautomationcore.lib"
-@(default_calling_convention = "system", private)
-foreign uia {
-	UiaClientsAreListening :: proc() -> win.BOOL ---
-}
-
 @(private) a11y_abi_checked: int   // 0 not yet, 1 matches, -1 another ABI: the adapter stays off
 
 // Whether this build reads its windows to assistive technologies (the adapter is compiled in).
@@ -131,12 +125,10 @@ a11y_state :: proc(w: ^Window) -> A11y_State {
 	if w == nil || w.a11y == nil { return .Off }
 	switch gt_a11y_state((^Gt_Adapter)(w.a11y)) {
 	case 1:
-		w.a11y_stale = false
 		return .Full
 	case 2:
-		// no client of UI Automation left in the system: stop building; whoever comes next gets a whole tree
-		if !UiaClientsAreListening() { w.a11y_stale = true; return .Off }
-		if w.a11y_stale { w.a11y_stale = false; return .Full }
+		// (once a client asked, the tree is kept up to date: UiaClientsAreListening only tells of clients that subscribed
+		// to events, and one that only asks, such as Inspect or a test, would read a tree left behind)
 		return .Incremental
 	}
 	return .Off

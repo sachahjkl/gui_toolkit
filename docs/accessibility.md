@@ -25,8 +25,15 @@ Without the define, `platform.a11y_available()` is false and nothing is built.
 Nothing is built while no assistive technology reads the window. The first time one asks for the window's tree
 (`WM_GETOBJECT`), the adapter answers with a placeholder and wakes the loop (an `.Accessibility` event); the next build
 makes the whole tree. After that each build makes the tree again (it is an immediate-mode interface) but only the nodes
-that changed go to the adapter (`platform.A11y_Diff`: a hash per node). When no client of UI Automation is left in the
-system (`UiaClientsAreListening`), building stops; the next client gets a whole tree.
+that changed go to the adapter (`platform.A11y_Diff`: a hash per node). Once a client asked, the tree is kept up to date
+(`UiaClientsAreListening` only tells of clients subscribed to events: one that only asks, as Inspect or a test does,
+would read a tree left behind).
+
+The adapter makes each update safe for AccessKit before it sees it: the tree's structure is checked against a mirror
+(a node no parent reaches, a missing or duplicate child: refused, `.Invalid`, and the next build sends a whole tree), a
+text run always has a value and character lengths that cover it, a text selection that does not point into the node's
+runs is dropped. A panic inside AccessKit would leave the window unreadable for good (`.Failed`), never crash the
+program.
 
 ## What the tree is made of
 
