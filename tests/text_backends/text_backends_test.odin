@@ -40,6 +40,24 @@ backend_selection :: proc(t: ^testing.T) {
 	testing.expect(t, found, "Segoe UI is listed")
 }
 
+// Bold of a system family is its own bold face, not the regular one simulated (that is a 0.02 em stroke: hardly bolder).
+@(test)
+styled_face_takes_the_family_face :: proc(t: ^testing.T) {
+	s := make_state(.Dwrite)
+	defer free_state(s)
+	r, ok := font.load_system(s, "Segoe UI")
+	if !testing.expect(t, ok, "Segoe UI") { return }
+	b := font.styled_face(s, r, true, false)
+	sim := font.with_simulations(s, r, true, false)
+	real, _ := font.load_system(s, "Segoe UI", 700)
+	testing.expect_value(t, b, real)
+	testing.expect(t, b != sim, "not simulated")
+	testing.expect(t, font.text_width(s, b, 20, "Hamburgefonstiv") > font.text_width(s, sim, 20, "Hamburgefonstiv"), "wider than the simulation")
+	// a memory font (a web font family without its bold): simulated
+	m, _ := font.load_embedded(s, font.FALLBACK_UI_DATA)
+	testing.expect_value(t, font.styled_face(s, m, true, false), font.with_simulations(s, m, true, false))
+}
+
 when font.NATIVE_TEXT {
 
 // What the two backends must agree on exactly, sample by sample: the line break opportunities, the bidi levels, and

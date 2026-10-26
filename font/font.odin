@@ -385,6 +385,18 @@ Simulations :: bit_set[Simulation; u32]
 // The axes of a variable face: tag, minimum, maximum and default value. Empty for a static face.
 Axis :: struct { tag: [4]u8, min, max, default: f32 }
 
+// The face of the same family in bold and / or italic: the family's own face for a system font (Segoe UI Bold, not
+// Segoe UI made a little thicker), else simulated (with_simulations: a web font family without that face).
+styled_face :: proc(s: ^State, id: Font_Id, bold, italic: bool) -> Font_Id {
+	f := face_ptr(s, id)
+	if f == nil || (!bold && !italic) { return id }
+	if platform_system_face(f) && len(f.family) > 1 {
+		family := from_wide(f.family, context.temp_allocator)
+		if nid, ok := load_system(s, family, bold ? 700 : 400, italic ? .Italic : .Normal); ok && nid != id { return nid }
+	}
+	return with_simulations(s, id, bold, italic)
+}
+
 // Takes ownership of `data` (freed when the face is unloaded, or with the state).
 load_from_memory :: proc(s: ^State, data: []byte, index := 0) -> (id: Font_Id, ok: bool) {
 	return load_memory(s, data, true, index)
