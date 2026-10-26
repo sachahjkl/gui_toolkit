@@ -1,8 +1,8 @@
-package base
+package ui
 
 // A bounded multi-producer queue of calls to run on one thread (the interface's): any thread posts a procedure, a
-// pointer and a word; the owning thread runs them in order with post_queue_drain. ui.post is the interface's front end
-// (docs/post.md).
+// pointer and a word; the owning thread runs them in order with post_queue_drain. `post` is the State's front end
+// (post.odin, docs/post.md); a loop without a State uses a Post_Queue of its own.
 //
 //   * The ring is Dmitry Vyukov's bounded MPMC queue: a sequence number per slot, one compare-and-swap per push and per
 //     pop, no lock and no allocation on the hot path (a message is a procedure, a pointer and a word: it lives in its
@@ -107,11 +107,11 @@ post_queue_destroy :: proc(q: ^Post_Queue) {
 	if q.slots == nil { return }
 	post_queue_close(q)
 	for {
-		m, ok := pop(q)
+		m, ok := pq_pop(q)
 		if !ok { break }
-		drop(q, m)
+		pq_drop(q, m)
 	}
-	for m in q.spill { drop(q, m) }
+	for m in q.spill { pq_drop(q, m) }
 	delete(q.slots)
 	delete(q.spill)
 	q.slots = nil
@@ -125,32 +125,32 @@ post_queue_set_wake_user :: proc(q: ^Post_Queue, user: rawptr) { sync.atomic_sto
 // long as it takes (until a drain or post_queue_close).
 post_queue_push :: proc(q: ^Post_Queue, fn: Post_Proc, data: rawptr = nil, word: u64 = 0) -> bool {
 	m := Post_Message{fn, data, word}
-	if sync.atomic_load(&q.closed) { refuse(q); return false }
+	if sync.atomic_load(&q.closed) { pq_refuse(q); return false }
 	// once something spilled, every push spills until the owner took the list: a producer's later messages may not
 	// overtake its earlier ones by going into the ring
-	if sync.atomic_load(&q.spill_count) > 0 && spill(q, m) { accepted(q); return true }
-	if try_push(q, m) { accepted(q); return true }
+	if sync.atomic_load(&q.spill_count) > 0 && pq_spill(q, m) { pq_accepted(q); return true }
+	if pq_try_push(q, m) { pq_accepted(q); return true }
 	switch q.overflow {
 	case .Fail:
-		refuse(q)
+		pq_refuse(q)
 		return false
 	case .Grow:
-		spill(q, m)
-		accepted(q)
+		pq_spill(q, m)
+		pq_accepted(q)
 		return true
 	case .Drop_Oldest:
 		for {
-			if old, ok := pop(q); ok {
+			if old, ok := pq_pop(q); ok {
 				sync.atomic_add(&q.stats.dropped, 1)
 				if q.on_drop != nil { q.on_drop(old.data, old.word) }
 			}
-			if try_push(q, m) { accepted(q); return true }
-			if sync.atomic_load(&q.closed) { refuse(q); return false }
+			if pq_try_push(q, m) { pq_accepted(q); return true }
+			if sync.atomic_load(&q.closed) { pq_refuse(q); return false }
 		}
 	case .Block:
 		if sync.current_thread_id() == sync.atomic_load(&q.owner) {
-			spill(q, m)
-			accepted(q)
+			pq_spill(q, m)
+			pq_accepted(q)
 			return true
 		}
 		sync.atomic_add(&q.stats.blocked, 1)
@@ -158,9 +158,9 @@ post_queue_push :: proc(q: ^Post_Queue, fn: Post_Proc, data: rawptr = nil, word:
 		defer sync.atomic_sub(&q.waiting, 1)
 		for {
 			epoch := u32(sync.atomic_load(&q.space))
-			if try_push(q, m) { accepted(q); return true }
-			if sync.atomic_load(&q.closed) { refuse(q); return false }
-			ask_wake(q, true)   // the owner may have drained before the ring filled up: make sure it comes back
+			if pq_try_push(q, m) { pq_accepted(q); return true }
+			if sync.atomic_load(&q.closed) { pq_refuse(q); return false }
+			pq_ask_wake(q, true)   // the owner may have drained before the ring filled up: make sure it comes back
 			// (bounded slices: a wake the owner's loop lost is asked again)
 			sync.futex_wait_with_timeout(&q.space, epoch, 50 * time.Millisecond)
 		}
@@ -176,7 +176,7 @@ post_queue_drain :: proc(q: ^Post_Queue, budget := -1) -> (ran: int, more: bool)
 	sync.atomic_store(&q.wake_pending, false)   // (before popping: a push after the last pop wakes again)
 	limit := budget < 0 ? max(int) : budget
 	for ran < limit {
-		m, ok := pop(q)
+		m, ok := pq_pop(q)
 		if !ok { break }
 		ran += 1
 		m.fn(m.data, m.word)
@@ -189,6 +189,12 @@ post_queue_drain :: proc(q: ^Post_Queue, budget := -1) -> (ran: int, more: bool)
 		chunk: [64]Post_Message
 		for ran < limit {
 			sync.mutex_lock(&q.spill_lock)
+			// (checked again under the lock: a producer that read spill_count before the first spill may have pushed into
+			// the ring since, then spilled its next message; that one must wait behind the ring)
+			if sync.atomic_load(&q.head) != sync.atomic_load(&q.tail) {
+				sync.mutex_unlock(&q.spill_lock)
+				break
+			}
 			take := min(len(q.spill), limit - ran, len(chunk))
 			copy(chunk[:take], q.spill[:take])
 			remove_range(&q.spill, 0, take)
@@ -224,7 +230,7 @@ post_queue_stats :: proc(q: ^Post_Queue) -> Post_Stats {
 post_queue_capacity :: proc(q: ^Post_Queue) -> int { return len(q.slots) }
 
 @(private = "file")
-try_push :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
+pq_try_push :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
 	pos := sync.atomic_load_explicit(&q.head, .Relaxed)
 	for {
 		slot := &q.slots[pos & q.mask]
@@ -247,7 +253,7 @@ try_push :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
 }
 
 @(private = "file")
-pop :: proc(q: ^Post_Queue) -> (m: Post_Message, ok: bool) {
+pq_pop :: proc(q: ^Post_Queue) -> (m: Post_Message, ok: bool) {
 	pos := sync.atomic_load_explicit(&q.tail, .Relaxed)
 	for {
 		slot := &q.slots[pos & q.mask]
@@ -272,10 +278,10 @@ pop :: proc(q: ^Post_Queue) -> (m: Post_Message, ok: bool) {
 // Appends to the spill list; false when the owner emptied it meanwhile and the ring has room again (the caller pushes
 // into the ring then).
 @(private = "file")
-spill :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
+pq_spill :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
 	sync.mutex_lock(&q.spill_lock)
 	defer sync.mutex_unlock(&q.spill_lock)
-	if len(q.spill) == 0 && try_push(q, m) {
+	if len(q.spill) == 0 && pq_try_push(q, m) {
 		// (pushed into the ring under the lock: no spilled message of anyone is waiting, the order holds)
 		return true
 	}
@@ -286,13 +292,13 @@ spill :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
 }
 
 @(private = "file")
-accepted :: proc(q: ^Post_Queue) {
+pq_accepted :: proc(q: ^Post_Queue) {
 	sync.atomic_add(&q.stats.posted, 1)
-	ask_wake(q, false)
+	pq_ask_wake(q, false)
 }
 
 @(private = "file")
-ask_wake :: proc(q: ^Post_Queue, again: bool) {
+pq_ask_wake :: proc(q: ^Post_Queue, again: bool) {
 	if q.wake == nil { return }
 	if sync.atomic_exchange(&q.wake_pending, true) && !again { return }
 	user := sync.atomic_load(&q.wake_user)
@@ -302,10 +308,10 @@ ask_wake :: proc(q: ^Post_Queue, again: bool) {
 }
 
 @(private = "file")
-refuse :: proc(q: ^Post_Queue) { sync.atomic_add(&q.stats.refused, 1) }
+pq_refuse :: proc(q: ^Post_Queue) { sync.atomic_add(&q.stats.refused, 1) }
 
 @(private = "file")
-drop :: proc(q: ^Post_Queue, m: Post_Message) {
+pq_drop :: proc(q: ^Post_Queue, m: Post_Message) {
 	sync.atomic_add(&q.stats.dropped, 1)
 	if q.on_drop != nil { q.on_drop(m.data, m.word) }
 }

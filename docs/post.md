@@ -57,5 +57,5 @@ A `Block` push from the interface's own thread (a call that posts, on a full rin
 - Shutting down: `post_close`, join the threads that post, then `ui.destroy` (the calls left go to `on_drop`). Destroy
   the State before the window (the window forgets the State then).
 
-The queue itself is `base.Post_Queue` (`post_queue_init`, `post_queue_push`, `post_queue_drain`...), usable without
-`ui` by a loop of its own. Tests: `tests/post`.
+The queue itself is `ui.Post_Queue` (`post_queue_init`, `post_queue_push`, `post_queue_drain`...), usable without a
+State by a loop of its own. Tests: `tests/post`.
