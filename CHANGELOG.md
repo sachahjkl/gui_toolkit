@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.38.2] - 2026-10-26
+
+### Added
+- **`ui.text_edit` wraps and grows** (`wrap`, `auto_height`, `min_lines`, `max_lines`): long lines break at the box's width at the font backend's line break opportunities (a word wider than the box between grapheme clusters); Up / Down / Home / End, clicks and drags follow the visual lines, the caret at the end of a wrapped line stays there (`Text_Area.upstream`); the box is as tall as its lines within the limits, then scrolls. `ui.text_visual_lines`, `ui.visual_line_of`, `ui.Visual_Line` (`ui/text_lines.odin`). Tests: `tests/keyboard` (text_edit_wrap_test.odin). Example: the composer of `examples/fidget`.
+- **Caret rectangle**: `Edit_Result.caret` (box coordinates, this build) and `ui.text_edit_caret_rect(a)` (the caret and the selection's other end, window coordinates, as last drawn) for completion popovers and input method windows.
+
 ## [0.38.0] - 2026-10-26
 
 ### Added
