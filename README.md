@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.9.0-1d57ba" alt="version 0.9.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.42.2-1d57ba" alt="version 0.42.2"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -70,8 +70,10 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 ## Versioning
 
-The toolkit follows semantic versioning (`ui.VERSION`, currently `0.9.0`; while `0.x`, a minor bump may change the API).
-Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`.
+The toolkit follows semantic versioning (`ui.VERSION`; while `0.x`, a minor bump may change the API).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`. A change adds a fragment to
+[changelog.d/](changelog.d/README.md) and leaves the version alone: `tools/release.ps1` assembles the fragments and writes
+the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Layers (same layering as raddebugger, one Odin package each)
 
