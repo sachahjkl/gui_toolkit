@@ -1,0 +1,30 @@
+# The toolkit's native text backend (font/backend_native.odin), linked statically into applications built with
+# -define:FONT_BACKEND=native (tools\build_text.ps1 -> build\text\gt_text.lib). Fontations reads the faces, HarfRust
+# shapes, ICU4X segments lines and resolves bidi (through unicode-bidi, with ICU4X's property data). Versions are pinned
+# exactly here and by Cargo.lock (SHA-256 of every crate); the build runs with --locked. See docs\font-backend.md.
+[package]
+name = "gt_text"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+harfrust = "=0.15.0"
+icu_segmenter = { version = "=2.4.0", default-features = false, features = ["compiled_data", "auto"] }
+icu_properties = { version = "=2.4.0", default-features = false, features = ["compiled_data", "unicode_bidi"] }
+unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data"] }
+memmap2 = "=0.9.8"
+read-fonts = "=0.46.0"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = false
+panic = "unwind"   # every entry point catches panics: a font the library cannot read is a face without text, not a dead app
+incremental = false

@@ -695,7 +695,7 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 				f := face_ptr(s, e.font)
 				if f != nil && face_has(s, f, r) {
 					chosen = e.font
-					if want && f.color && f.file == nil && f.memory == nil {
+					if want && f.color && platform_system_face(f) {
 						if p := emoji_pick(s, r); p != 0 { chosen = p }   // "Segoe UI Emoji" in a font stack: the built-in emoji font instead
 					}
 					break
