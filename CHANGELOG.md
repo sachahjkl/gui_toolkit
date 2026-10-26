@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.40.2] - 2026-10-26
+
+### Fixed
+- **`font.glyph` gives the ink box where the ink is with the native text backend** (`native/text` `gt_glyph_box`): read-fonts 0.46 counts a glyph's extents height downward and never negative, and the bottom of the box was put a glyph's height above its top, so the box was twice as high and a glyph centred by it (Wren's tab icons, a chip's icon) was drawn a glyph lower than meant. Test: `tests/text_backends` native_glyph_box_matches_dwrite (`-define:FONT_BACKEND=native`).
+
 ## [0.40.1] - 2026-10-26
 
 ### Added
