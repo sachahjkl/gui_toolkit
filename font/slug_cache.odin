@@ -54,7 +54,7 @@ slug_key :: #force_inline proc(face: Font_Id, gid: u16) -> u64 { return u64(face
 slug_init :: proc(st: ^Slug_Store) {
 	context.allocator = runtime.heap_allocator()
 	st.glyphs = make(map[u64]Slug_Glyph)
-	when ODIN_OS == .Windows { st.provider = dwrite_outline_provider }
+	// the provider is the backend's (init sets it)
 }
 
 @(private)

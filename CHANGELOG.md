@@ -3,12 +3,20 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [0.36.3] - 2026-10-26
+## [0.38.1] - 2026-10-26
 
 ### Added
 - **File dialogs** (`platform/dialogs.odin`, Windows `dialogs_win32.odin`, stub elsewhere): `open_file_dialog`, `save_file_dialog` and `pick_folder_dialog` with a title, filters (`File_Filter`), an "All files" line, the starting folder (`start_dir`, or a `Known_Folder` default), a remembered folder per `remember_id`, the suggested name and default extension, several files, the overwrite question; `Dialog_Result` gives the paths and the type line chosen. Pure helpers: `filter_patterns`, `filter_matches`, `filters_from_accept` (a web page's accept list); `dialog_test_hook` stands for the real dialogs in tests. Doc: `docs/dialogs.md`. Test: `tests/dialogs`.
 - **Shell actions**: `open_url`, `open_path`, `reveal_in_folder` (`ShellExecuteExW`; the file manager with the file selected), `known_folder_path`.
-||||||| f4f8be4
+## [0.37.0] - 2026-10-25
+
+### Added
+- **Text backends** (`font/backend.odin`, `docs/font-backend.md`): the `font` package shapes, analyses (scripts, bidi, line breaks) and reads faces (coverage, metrics, glyph boxes, Slug outlines) through `Text_Backend`, a table of procedures, and finds the system's fonts (fallback, `font.system_families`) through `System_Fonts`, the platform's. DirectWrite is the `dwrite` backend (`font/backend_dwrite.odin`, the code moved, not changed: the corpus dump of `tools/text_dump` is byte-identical before and after); other platforms get an "unsupported" system stub (`font/system_other.odin`, TODO fontconfig / CoreText). `Settings.backend` (init only), `font.backend`, `font.backend_available`, `font.face_metrics`.
+- **`tools/text_corpus`, `tools/text_dump`**: a multilingual corpus (Latin with ligatures and kerning, Cyrillic, Greek, Arabic, Hebrew, Devanagari, Thai, Lao, Khmer, Myanmar, Chinese, Japanese, Korean, emoji sequences, a variable font, fallback) and a dump of everything the package says about it (glyphs, clusters, widths, metrics, bidi levels, line breaks), to diff two builds.
+
+### Changed
+- `Font.features` (cascade features) are `[]Feature` instead of DirectWrite's structure; the system fallback and the script analysis of ASCII text go through the backend.
+
 ## [0.36.2] - 2026-10-25
 
 ### Added
