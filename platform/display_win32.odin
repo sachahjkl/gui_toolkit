@@ -99,7 +99,7 @@ display_info :: proc(w: ^Window) -> Display_Info {
 	if w.display_stale || rawptr(mon) != w.display.monitor {
 		w.display_stale = false
 		d := query_display(mon)
-		if d.hz != w.display.hz || d.source != w.display.source || d.monitor != w.display.monitor {
+		if d.hz != w.display.hz || d.max_hz != w.display.max_hz || d.source != w.display.source || d.monitor != w.display.monitor {
 			d.serial = w.display.serial + 1
 			w.display = d
 		}
@@ -115,12 +115,45 @@ query_display :: proc(mon: win.HMONITOR) -> (d: Display_Info) {
 	d.monitor = rawptr(mon)
 	mi: win.MONITORINFOEXW
 	mi.cbSize = size_of(win.MONITORINFOEXW)
-	if !win.GetMonitorInfoW(mon, (^win.MONITORINFO)(&mi)) { return fallback_rate(d, nil) }
-	if num, den, ok := display_config_rate(mi.szDevice[:]); ok {
-		d.numerator, d.denominator, d.hz, d.source = num, den, f64(num) / f64(den), .Display_Config
+	if !win.GetMonitorInfoW(mon, (^win.MONITORINFO)(&mi)) {
+		d = fallback_rate(d, nil)
+		d.max_hz = d.hz
 		return
 	}
-	return fallback_rate(d, &mi.szDevice[0])
+	if num, den, ok := display_config_rate(mi.szDevice[:]); ok {
+		d.numerator, d.denominator, d.hz, d.source = num, den, f64(num) / f64(den), .Display_Config
+	} else {
+		d = fallback_rate(d, &mi.szDevice[0])
+	}
+	d.max_hz = max(d.hz, mode_max_rate(&mi.szDevice[0]))
+	return
+}
+
+// The highest rate of the monitor's modes at its current size and orientation (EnumDisplaySettings: whole hertz). 0: unknown.
+@(private = "file")
+mode_max_rate :: proc(device: ^u16) -> (hz: f64) {
+	cur := win.DEVMODEW{dmSize = size_of(win.DEVMODEW)}
+	if !win.EnumDisplaySettingsW(win.wstring(device), win.ENUM_CURRENT_SETTINGS, &cur) { return 0 }
+	for i in 0 ..< u32(4096) {
+		dm := win.DEVMODEW{dmSize = size_of(win.DEVMODEW)}
+		if !win.EnumDisplaySettingsW(win.wstring(device), i, &dm) { break }
+		if dm.dmPelsWidth == cur.dmPelsWidth && dm.dmPelsHeight == cur.dmPelsHeight && dm.dmBitsPerPel == cur.dmBitsPerPel && dm.dmDisplayFrequency > 1 {
+			hz = max(hz, f64(dm.dmDisplayFrequency))
+		}
+	}
+	return
+}
+
+// The refresh rate the compositor says it runs at right now (DWM's `rateRefresh`): with a dynamic refresh rate it is the one
+// sensor that moves with the screen (the mode and the display path say 60 Hz for good); read it repeatedly while the app moves
+// and keep the highest. DWM answers for the PRIMARY monitor only, and only to a NULL window handle (with one the call fails
+// with E_INVALIDARG): for a window on another monitor there is no answer (ok false; `render.measured_refresh_hz`, the swap
+// chain's own statistics, is the window's). Its count of refreshes is no help: it counts the calls of the process.
+display_live_hz :: proc(w: ^Window) -> (hz: f64, ok: bool) {
+	if win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST) != win.MonitorFromPoint({0, 0}, .MONITOR_DEFAULTTOPRIMARY) { return 0, false }
+	ti := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
+	if win.FAILED(DwmGetCompositionTimingInfo(nil, &ti)) || ti.rateRefresh[0] == 0 || ti.rateRefresh[1] == 0 { return 0, false }
+	return f64(ti.rateRefresh[0]) / f64(ti.rateRefresh[1]), true
 }
 
 @(private = "file")
