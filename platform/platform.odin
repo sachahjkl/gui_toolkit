@@ -95,7 +95,10 @@ Display_Source :: enum u8 {
 
 // The monitor a window is on, as far as frame pacing is concerned (display_info).
 Display_Info :: struct {
-	hz:          f64,      // refresh rate (59.94, 143.998, 180...)
+	hz:          f64,      // refresh rate (59.94, 143.998, 180...) the system reports for the mode now
+	max_hz:      f64,      // the highest rate of the modes the monitor offers at the current size (>= hz). With a dynamic refresh
+	                       // rate (Windows 11) or a variable one the system may run the screen above `hz` while it moves: hz alone
+	                       // is then what it rests at (refresh_is_variable)
 	numerator, denominator: u32,
 	source:      Display_Source,
 	monitor:     rawptr,   // HMONITOR
