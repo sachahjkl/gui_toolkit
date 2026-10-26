@@ -274,11 +274,13 @@ pub unsafe extern "C" fn gt_glyph_box(face: *const Face, gid: u32, out: *mut GtG
         let mut b = GtGlyphBox { advance: gm.h_advance(g), empty: 1, ..Default::default() };
         if let Some(e) = gm.extents(g) {
             if e.width != 0.0 && e.height != 0.0 {
-                // extents: y_bearing is the top, height negative downwards (HarfBuzz's convention)
+                // extents (read-fonts 0.46): y_bearing is the top above the baseline, height counts downward from it
+                // and is never negative (not HarfBuzz's negative height: adding it put the bottom a glyph's height
+                // above the top, and font.glyph's ink box twice as high as the ink)
                 b.x_min = e.x_bearing;
                 b.x_max = e.x_bearing + e.width;
                 b.y_max = e.y_bearing;
-                b.y_min = e.y_bearing + e.height;
+                b.y_min = e.y_bearing - e.height.abs();
                 if b.y_min > b.y_max { std::mem::swap(&mut b.y_min, &mut b.y_max); }
                 b.empty = 0;
             }
