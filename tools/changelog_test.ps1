@@ -116,3 +116,6 @@ try {
 }
 if ($failed) { "$failed failed"; exit 1 }
 'All changelog tests passed'
+# (an exit code of its own: the last native command of a test, made to fail, would otherwise be the script's $LASTEXITCODE
+# and fail the CI step that checks it)
+exit 0
