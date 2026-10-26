@@ -32,6 +32,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.tag_sets = make(map[Key][]string)
 	s.color_memo = make(map[[2]u64]Color)
 	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
+	post_init(s)
 	if tick_origin._nsec == 0 { tick_origin = time.tick_now() }   // (one clock for the process: a window opened later does not restart the others')
 }
 
@@ -41,6 +42,7 @@ use :: proc(s: ^State) { g = s }
 
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
+	post_destroy(s)   // (first: the threads still posting get false from now on)
 	for _, b in s.boxes { free(b) }
 	for b in s.free_boxes { free(b) }
 	delete(s.boxes)
@@ -131,6 +133,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.caption_keys = {}
 	s.caption_built = false
 
+	// calls posted from other threads change the app's data before the frame reads it (post.odin)
+	post_begin_build(s, p.window)
 	selection_begin(s)
 	process_events(s, p.events, !p.disable_zoom)
 	menu_capture_keys(s, p.events)
@@ -209,8 +213,9 @@ end_build :: proc() {
 	s.double_key = 0
 }
 
-// True while something is still animating or a timed wake is wanted: the app loop should keep rendering.
-needs_frame :: proc(s: ^State) -> bool { return s.anim_busy }
+// True while something is still animating, or posted calls wait beyond the last build's budget: the app loop should
+// keep rendering.
+needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 
 // The timed wake the last build asked for, measured from now: ms left until it is due (at least 1), 0 when none was
