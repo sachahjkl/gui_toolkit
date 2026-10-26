@@ -19,6 +19,7 @@ of CPU (`fidget --bench=300`).
     build.bat smoke      # renderer / font / draw smoke test (no UI layer)
     build.bat transforms # rotated / skewed / scaled shapes, text and images, rounded clips (draw layer only)
     build.bat stream     # a thread posting lines to the interface (ui.post)
+    build.bat panes      # splitters and accordions
     build.bat todo debug
 
 Needs the Odin compiler (tested with `dev-2026-10`) and Windows 10+ (Win32 + D3D11 only for now).
@@ -177,6 +178,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   others (grab, grabbing, zoom, cell, copy, alias...) drawn in the user's pointer scheme and size; custom cursors from
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
   also during a drag. Try `examples/cursors`.
+- **Panes**: splitters, accordions and lists reordered by dragging ([docs/panes.md](docs/panes.md)).
 - **Threads and the system**: `ui.post` runs calls posted from any thread at the next build (a lock-free ring,
   [docs/post.md](docs/post.md)); a notification area icon with menu and notifications ([docs/tray.md](docs/tray.md));
   the clipboard's images, HTML and files ([docs/clipboard.md](docs/clipboard.md)); file dialogs and shell actions
