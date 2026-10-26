@@ -23,7 +23,10 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 | `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
 
 The pixel tests run on both backends with the same expectations: `tools\test_backends.ps1 -Backend d3d11|wgpu` (the wgpu ones one
-test at a time: WARP's D3D12 crashes now and then when several devices work at once).
+test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools\fetch_wgpu.ps1` first: with DXC
+next to the test programs a package takes a third of the time it takes with FXC. The CI splits the packages in four groups, one per
+job (`-Group ci1` .. `ci4`, defined in the script, which checks that together they hold every package once); a pull request runs
+`-Group sample`; `-Define TOOLKIT_WGPU_DX12_COMPILER=fxc` runs a package with FXC.
 `tools\render_probe` draws a few primitives on the offscreen renderer and writes a PPM; `tools\ppm_diff.ps1` compares two.
 
 ## One source for the shaders
@@ -63,8 +66,10 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
 * No border address mode: the transparent border of reduced filter results is applied in the shader.
 * The detailed GPU profile (every draw call) is not available; the per-step one is.
 * Sync intervals above 1 (`set_sync_interval`) are not available (Fifo presents every refresh).
-* Not implemented, and they say so (`false`, 0 or an empty result): `capture_request` (`capture_poll` has nothing), the GPU canvas engine
-  (`canvas_*`, docs/canvas.md), `surface_create` (second windows), `video_convert`, `set_fixed_surface` and `set_max_frame_latency`.
-  Use the Direct3D 11 backend for those.
+* `video_convert` takes pictures in memory only (I420, NV12; P010 and 10-bit I420 when the adapter has `TextureFormat16bitNorm`): a
+  decoder's Direct3D 11 texture (`Video_Picture.gpu_texture`) is refused, wgpu-native cannot import it.
+* Not implemented, and they say so (`false`, 0 or an empty result): `capture_request` (`capture_poll` has nothing), offscreen
+  readbacks (`draw.offscreen_end` gives 0, `readback_poll` says `Failed`), the GPU canvas engine (`canvas_*`, docs/canvas.md),
+  `surface_create` (second windows), `set_fixed_surface` and `set_max_frame_latency`. Use the Direct3D 11 backend for those.
 
 Measurements and the recommendation: see the notes of the WebGPU prototype (Wren repository, `docs`), and `CHANGELOG.md`.

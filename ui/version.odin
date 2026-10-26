@@ -4,5 +4,5 @@ package ui
 // Written by tools/release.ps1 when a version is published, never by hand in a branch (CONTRIBUTING.md).
 VERSION_MAJOR :: 0
 VERSION_MINOR :: 42
-VERSION_PATCH :: 2
-VERSION :: "0.42.2"
+VERSION_PATCH :: 3
+VERSION :: "0.42.3"

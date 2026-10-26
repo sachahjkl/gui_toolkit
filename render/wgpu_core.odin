@@ -73,6 +73,7 @@ Wgpu_State :: struct {
 	cpu_adapter:   bool,
 	max_tex:       int,
 	can_timestamp: bool,                 // TimestampQuery (+ inside encoders)
+	can_norm16:    bool,                 // TextureFormat16bitNorm: R16Unorm / RG16Unorm planes (10-bit video, wgpu_video.odin)
 	surface_format: wgpu.TextureFormat,  // storage of the frame
 	view_format:   wgpu.TextureFormat,   // how the frame is drawn into and read
 	frame_tex:     wgpu.Texture,         // the surface texture of this frame, or the offscreen image
@@ -87,6 +88,7 @@ Wgpu_State :: struct {
 	bgl0, bgl1, bgl_fx, bgl_mip, bgl_app: wgpu.BindGroupLayout,
 	pl_main, pl_fx, pl_mip, pl_app: wgpu.PipelineLayout,
 	pipes, fx_pipes, mip_pipes, slug_pipes: [dynamic]Wgpu_Pipe,
+	video:         Wgpu_Video,           // wgpu_video.odin
 	s_atlas, s_img, s_wrap, s_fx, s_mip: wgpu.Sampler,
 	dummy_r8, dummy_rgba, dummy_curves, dummy_bands: wgpu.Texture,
 	dummy_r8_view, dummy_rgba_view, dummy_curves_view, dummy_bands_view: wgpu.TextureView,
@@ -244,6 +246,8 @@ wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) ->
 		append(&features, wgpu.FeatureName.TimestampQuery, wgpu.FeatureName.TimestampQueryInsideEncoders)
 		g.can_timestamp = true
 	} else { g.can_timestamp = false }
+	g.can_norm16 = bool(wgpu.AdapterHasFeature(g.adapter, .TextureFormat16bitNorm))
+	if g.can_norm16 { append(&features, wgpu.FeatureName.TextureFormat16bitNorm) }
 	dd := wgpu.DeviceDescriptor{
 		label = "gui_toolkit",
 		requiredFeatureCount = len(features), requiredFeatures = raw_data(features),
@@ -536,9 +540,18 @@ wgpu_slug_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bo
 wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool, slug: bool) -> wgpu.RenderPipeline {
 	g := &r.wg
 	sync.mutex_guard(&g.pipe_lock)
+	// r.slug.failed: the device refused the Slug module (or a test says it did): its runs are skipped, as on Direct3D 11
+	if slug && r.slug.failed { return nil }
 	list := slug ? &g.slug_pipes : &g.pipes
 	for p in list { if p.format == format && p.replace == replace { return p.pipe } }
-	if slug && g.module_slug == nil { g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE) }
+	if slug && g.module_slug == nil {
+		g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE)
+		if g.module_slug == nil {
+			fmt.eprintln("render: wgpu: the Slug text shaders were refused by the device")
+			r.slug.failed = true
+			return nil
+		}
+	}
 	module := slug ? g.module_slug : g.module_rect
 	t0 := time.tick_now()
 	attrs := [?]wgpu.VertexAttribute{
@@ -886,6 +899,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 		g.frame_tex, g.frame_rtv = nil, nil
 	}
 	wgpu_release_pipelines(g)
+	wgpu_video_release(g)
 	rel :: proc(p: ^$T, $f: proc "c" (T)) { if p^ != nil { f(p^); p^ = nil } }
 	for &d in r.apps { if d.live { wgpu_app_shader_release(r, &d) } }
 	for t in ([?]^Wgpu_Table{&g.inst, &g.xforms, &g.clips, &g.points, &g.grads, &g.app_params}) {
@@ -905,6 +919,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	rel(&g.bgl0, wgpu.BindGroupLayoutRelease); rel(&g.bgl1, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl_fx, wgpu.BindGroupLayoutRelease); rel(&g.bgl_mip, wgpu.BindGroupLayoutRelease)
 	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease); rel(&g.module_slug, wgpu.ShaderModuleRelease)
+	r.slug.failed = false   // a new device is asked again
 }
 
 // Surface, device, adapter, instance.
