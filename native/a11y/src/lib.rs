@@ -657,6 +657,7 @@ pub struct GtAdapter {
     sent_any: std::sync::atomic::AtomicBool,
     dead: std::sync::atomic::AtomicBool,
     last_value: Mutex<String>,
+    deferred_focus: Mutex<Option<(TreeId, u64)>>, // a focus on a graft node whose subtree was not there yet
 }
 
 fn guard<T>(dead: Option<&std::sync::atomic::AtomicBool>, fallback: T, f: impl FnOnce() -> T) -> T {
@@ -700,6 +701,7 @@ pub extern "C" fn gt_a11y_new(window: *mut c_void, focused: i32, wake: extern "C
             sent_any: std::sync::atomic::AtomicBool::new(false),
             dead: std::sync::atomic::AtomicBool::new(false),
             last_value: Mutex::new(String::new()),
+            deferred_focus: Mutex::new(None),
         }))
     })
 }
@@ -811,12 +813,31 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
         } else {
             None
         };
+        // the focus on a graft node whose subtree is not there yet (its first update comes after this one) is on the
+        // tree's root until then (AccessKit follows a focused graft into its subtree, and panics when there is none)
+        let mut focus = u.focus;
+        if let Ok(mut d) = a.deferred_focus.lock() {
+            if d.map_or(false, |(t, _)| t == tree_id) {
+                *d = None; // (this tree says where its focus is now)
+            }
+        }
         let checked = {
             let Ok(m) = a.mirror.lock() else { return GT_A11Y_DEAD };
-            m.check(tree_id, tree.as_ref().map(|t| t.root.0), u.focus, &shape)
+            let graft_of_focus = shape.iter().find(|s| s.0 == focus).map(|s| s.2).unwrap_or_else(|| {
+                m.trees.get(&tree_id).and_then(|t| t.grafts.get(&focus).copied())
+            });
+            if let Some(sub) = graft_of_focus {
+                if !m.trees.contains_key(&sub) {
+                    if let Ok(mut d) = a.deferred_focus.lock() {
+                        *d = Some((tree_id, focus));
+                    }
+                    focus = tree.as_ref().map(|t| t.root.0).or_else(|| m.trees.get(&tree_id).and_then(|t| t.root)).unwrap_or(focus);
+                }
+            }
+            m.check(tree_id, tree.as_ref().map(|t| t.root.0), focus, &shape)
         };
         let Some(next) = checked else { return GT_A11Y_INVALID };
-        let update = TreeUpdate { nodes, tree, tree_id, focus: NodeId(u.focus) };
+        let update = TreeUpdate { nodes, tree, tree_id, focus: NodeId(focus) };
         #[cfg(windows)]
         {
             let events = {
@@ -833,6 +854,28 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
             a.sent_any.store(true, std::sync::atomic::Ordering::SeqCst);
             if let Some(ev) = events {
                 ev.raise();
+            }
+            // a subtree just made: the focus its parent tree wanted on its graft node goes there now
+            if tree_id != TreeId::ROOT {
+                let pending = a.deferred_focus.lock().ok().and_then(|mut d| {
+                    let (parent, node) = (*d)?;
+                    let grafted = a.mirror.lock().ok()?.graft_of.get(&tree_id).copied()?;
+                    if grafted == (parent, node) {
+                        *d = None;
+                        Some((parent, node))
+                    } else {
+                        None
+                    }
+                });
+                if let Some((parent, node)) = pending {
+                    let events = {
+                        let Ok(mut ad) = a.adapter.lock() else { return GT_A11Y_APPLIED };
+                        ad.update_if_active(|| TreeUpdate { nodes: vec![], tree: None, tree_id: parent, focus: NodeId(node) })
+                    };
+                    if let Some(ev) = events {
+                        ev.raise();
+                    }
+                }
             }
             GT_A11Y_APPLIED
         }
