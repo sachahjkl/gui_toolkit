@@ -389,6 +389,9 @@ a11y_leaf_role :: proc(r: A11y_Role) -> bool {
 	return false
 }
 
+// The text box `b` shows that a screen reader reads ("" for none, or for a glyph of the icon font).
+a11y_box_text :: proc(b: ^Box) -> string { return a11y_text_shown(g, b) }
+
 @(private)
 a11y_text_shown :: proc(s: ^State, b: ^Box) -> string {
 	if b.text == "" || .Draw_Text not_in b.flags { return "" }
@@ -611,7 +614,7 @@ a11y_text_runs :: proc(s: ^State, u: ^platform.A11y_Update, b: ^Box, t: ^A11y_Te
 		platform.a11y_children(u, nil)
 		value := line
 		if t.password { value = strings.repeat("\u2022", n, context.temp_allocator) }
-		platform.a11y_str(u, .Value, value)
+		platform.a11y_str(u, .Value, value, keep_empty = true)
 		platform.a11y_bytes(u, .Character_Lengths, lens[:])
 		if !t.password {
 			platform.a11y_floats(u, .Character_Positions, pos[:])

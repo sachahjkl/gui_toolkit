@@ -173,8 +173,9 @@ a11y_prop :: proc(u: ^A11y_Update, p: A11y_Prop) {
 	u.nodes[len(u.nodes) - 1].props_len += 1
 }
 
-a11y_str :: proc(u: ^A11y_Update, kind: A11y_Prop_Kind, s: string) {
-	if s == "" { return }
+// A string property; an empty one is left out unless `keep_empty` (a text run's value, which must be there).
+a11y_str :: proc(u: ^A11y_Update, kind: A11y_Prop_Kind, s: string, keep_empty := false) {
+	if s == "" && !keep_empty { return }
 	off := len(u.bytes)
 	append(&u.bytes, s)
 	a11y_prop(u, {kind = kind, len = u32(len(s)), a = u64(off)})

@@ -457,6 +457,31 @@ fn make_node(v: &View, n: &GtNode) -> Option<Node> {
             _ => {} // a property this version does not know: ignored (a newer toolkit, an older library)
         }
     }
+    // A text run AccessKit can read: a value (empty if need be), and lengths that cover it exactly (its text code
+    // unwraps the one and indexes by the other). Lengths that do not add up are made again, one per character.
+    if node.role() == Role::TextRun {
+        let value = node.value().map(|v| v.to_string()).unwrap_or_default();
+        if node.value().is_none() {
+            node.set_value(String::new());
+        }
+        let sum: usize = node.character_lengths().iter().map(|&l| l as usize).sum();
+        if sum != value.len() || node.character_lengths().iter().any(|&l| l == 0) {
+            let lens: Vec<u8> = value.chars().map(|c| c.len_utf8() as u8).collect();
+            let n = lens.len();
+            node.set_character_lengths(lens);
+            if node.character_positions().map_or(false, |p| p.len() != n) {
+                node.clear_character_positions();
+            }
+            if node.character_widths().map_or(false, |w| w.len() != n) {
+                node.clear_character_widths();
+            }
+            node.clear_word_starts();
+        }
+        let n = node.character_lengths().len();
+        if node.word_starts().iter().any(|&w| w as usize >= n.max(1)) {
+            node.clear_word_starts();
+        }
+    }
     Some(node)
 }
 
@@ -760,6 +785,23 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
             let Some(node) = make_node(&v, n) else { return GT_A11Y_INVALID };
             shape.push((n.id, node.children().iter().map(|c| c.0).collect::<Vec<u64>>(), node.tree_id()));
             nodes.push((NodeId(n.id), node));
+        }
+        // a text selection points into the node's own text runs, within their characters (AccessKit's text code
+        // indexes by it when a screen reader asks); one that does not is dropped
+        let runs: HashMap<u64, usize> = nodes
+            .iter()
+            .filter(|(_, n)| n.role() == Role::TextRun)
+            .map(|(id, n)| (id.0, n.character_lengths().len()))
+            .collect();
+        for (_, node) in nodes.iter_mut() {
+            if let Some(sel) = node.text_selection().copied() {
+                let ok = |p: TextPosition| {
+                    node.children().contains(&p.node) && runs.get(&p.node.0).map_or(true, |&len| p.character_index <= len)
+                };
+                if !ok(sel.anchor) || !ok(sel.focus) {
+                    node.clear_text_selection();
+                }
+            }
         }
         let tree = if u.tree_info != 0 {
             let mut info = TreeInfo::new(NodeId(u.root));
