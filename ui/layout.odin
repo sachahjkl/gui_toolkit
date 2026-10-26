@@ -33,6 +33,8 @@ layout_standalone :: proc(b: ^Box, axis: Axis) {
 			// the X pass is done: the lines follow the width the box got
 			lines := wrap_lines_cached(b.font, b.font_size, b.text, b.size.x - 2 * b.text_pad)
 			b.text_dim.y = f32(max(len(lines), 1)) * line_height_of(b)
+		} else if axis == .Y && b.measure_y != nil {
+			b.text_dim.y = b.measure_y(b)
 		}
 		b.size[ai] = math.ceil(b.text_dim[ai] + 2 * (b.text_pad + b.pref[axis].value))   // value = extra padding on top of text_pad; ceil: rounding during placement must never trigger "..." truncation
 	case .None, .Percent, .Children_Sum:

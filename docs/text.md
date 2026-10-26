@@ -67,6 +67,19 @@ box is as tall as its lines within the limits, then scrolls. `Edit_Result.caret`
 build); `ui.text_edit_caret_rect(a)` gives the caret and the selection's other end in window coordinates as last drawn
 (completion popovers, input method windows). Example: the composer of `examples/fidget`.
 
+**Rich text** (`ui/rich_text.odin`). `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
+each run has its text and a `Rich_Style` (face, size, `bold`, `italic`, `code` (mono font, the theme's `code_bg`),
+colour, background, `underline`, `strike`, `link`). Lines break at the backend's opportunities computed on the whole
+text, so a word whose style changes in the middle is not broken there; "\n" always breaks; a word wider than the line is
+cut between grapheme clusters; `max_lines` ends the last line with "…"; the box's `text_align` aligns the lines. The box
+is full width and as tall as its lines (`Box.measure_y`: its height follows the width the layout gave it). Links: the
+result's `link_hovered`, `link_clicked`, `link` and `link_focused` (the paragraph is a Tab stop; Tab / Shift+Tab go
+through its links, Enter / Space choose one; the pointer is a hand over them). Bold and italic runs take the faces given
+by `ui.rich_set_faces(state, regular, bold, italic, bold_italic)`, else simulated ones. Layouts are kept by content
+(`rich_layout_cached`): thousands of runs are laid out once. The geometry is public for selection and custom drawing:
+`rich_layout`, `rich_text` (the whole text), `rich_index_at` (hit test), `rich_caret`, `rich_range_rects`,
+`rich_link_at`. Example: `examples/markdown`.
+
 `measure(s, id, size, text, opts)` is `shape(...).width` without building the glyph list: what a layout engine calls.
 `text_width(s, id, size, text)` is `measure` with default options.
 

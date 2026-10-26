@@ -99,6 +99,7 @@ entries := [?]Entry{
 	{"background", .Bg, 1}, {"text", .Text, 1}, {"border", .Border, 1}, {"hover", .Hover, 1},
 	{"drop_shadow", .Black, 0.6}, {"selection", .Accent, 0.35}, {"cursor", .Text, 1}, {"focus border", .Accent, 1},
 	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0},
+	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
 	{"bad border", .Bad, 1}, {"good border", .Good, 1}, {"warn border", .Warn, 1},

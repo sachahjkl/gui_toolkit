@@ -68,6 +68,7 @@ destroy :: proc(s: ^State) {
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
+	rich_cache_destroy(s)
 	virtual.arena_destroy(&s.arena)
 	if g == s { g = nil }
 	s^ = {}
@@ -170,6 +171,7 @@ end_build :: proc() {
 		chrome_collect(s)   // none any more (full screen bars hidden...): the window forgets the last ones
 	}
 	wrap_cache_trim(s)
+	rich_cache_trim(s)
 	menu_prune(s)
 	handle_tab_navigation(s)
 	update_animations(s)
@@ -321,6 +323,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.cursor = st.cursor
 	b.custom = nil
 	b.custom_user = nil
+	b.measure_y = nil
 	b.slant = {}
 	if v, ok := fixed[0].?; ok { b.flags += {.Floating_X}; b.fixed_pos.x = v }
 	if v, ok := fixed[1].?; ok { b.flags += {.Floating_Y}; b.fixed_pos.y = v }
