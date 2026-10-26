@@ -7,7 +7,14 @@ package font
 
 when NATIVE_TEXT {
 
-when ODIN_OS == .Windows {
+// A program links one Rust static library at most (each carries Rust's standard library: two collide). One that has
+// Rust code of its own builds gt_text into it (as a dependency: its gt_* functions stay exported) and builds with
+// -define:FONT_NATIVE_LINK=false: this package then links nothing of its own (Wren: native/media's `text` feature).
+FONT_NATIVE_LINK :: #config(FONT_NATIVE_LINK, true)
+
+when !FONT_NATIVE_LINK {
+	foreign import gt_text "system:kernel32.lib"   // the symbols come from the program's own Rust library
+} else when ODIN_OS == .Windows {
 	foreign import gt_text {
 		"../build/text/gt_text.lib",
 		"system:ntdll.lib",
