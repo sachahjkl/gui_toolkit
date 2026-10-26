@@ -3,11 +3,30 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
-## [0.38.1] - 2026-10-26
+## [0.38.3] - 2026-10-26
 
 ### Added
 - **File dialogs** (`platform/dialogs.odin`, Windows `dialogs_win32.odin`, stub elsewhere): `open_file_dialog`, `save_file_dialog` and `pick_folder_dialog` with a title, filters (`File_Filter`), an "All files" line, the starting folder (`start_dir`, or a `Known_Folder` default), a remembered folder per `remember_id`, the suggested name and default extension, several files, the overwrite question; `Dialog_Result` gives the paths and the type line chosen. Pure helpers: `filter_patterns`, `filter_matches`, `filters_from_accept` (a web page's accept list); `dialog_test_hook` stands for the real dialogs in tests. Doc: `docs/dialogs.md`. Test: `tests/dialogs`.
 - **Shell actions**: `open_url`, `open_path`, `reveal_in_folder` (`ShellExecuteExW`; the file manager with the file selected), `known_folder_path`.
+## [0.38.2] - 2026-10-26
+
+### Added
+- **`ui.text_edit` wraps and grows** (`wrap`, `auto_height`, `min_lines`, `max_lines`): long lines break at the box's width at the font backend's line break opportunities (a word wider than the box between grapheme clusters); Up / Down / Home / End, clicks and drags follow the visual lines, the caret at the end of a wrapped line stays there (`Text_Area.upstream`); the box is as tall as its lines within the limits, then scrolls. `ui.text_visual_lines`, `ui.visual_line_of`, `ui.Visual_Line` (`ui/text_lines.odin`). Tests: `tests/keyboard` (text_edit_wrap_test.odin). Example: the composer of `examples/fidget`.
+- **Caret rectangle**: `Edit_Result.caret` (box coordinates, this build) and `ui.text_edit_caret_rect(a)` (the caret and the selection's other end, window coordinates, as last drawn) for completion popovers and input method windows.
+
+## [0.38.0] - 2026-10-26
+
+### Added
+- **Native text backend** (`-define:FONT_BACKEND=native`, `font/backend_native.odin`, `native/text`, `tools/build_text.ps1`): Fontations (read-fonts' font model), HarfRust and ICU4X (line breaks with dictionaries, bidi through unicode-bidi) in a static Rust library behind a C ABI, built and pinned like Wren's image decoders. Shapes 2.6 times faster than DirectWrite on the corpus (2.0 µs a word against 5.2, without the word cache). Faces are still opened by the platform; `Settings.backend` picks either backend for one State. `font.native_table`, `font.native_coverage`, `font.native_outline_provider`. See `docs/font-backend.md`.
+- **`tools/text_bench`** and **`tests/text_backends`**: the two backends compared on the corpus (equivalence report and timings; logic checks in the tests).
+
+### Changed
+- **The `font` package compiles on Linux and macOS** (`odin check font -target:linux_amd64` / `darwin_arm64`): DirectWrite and Direct2D are behind `font_windows.odin`, `raster_windows.odin` and the color files; `font_other.odin` loads faces from files and memory through the native backend (no system fonts yet: TODO fontconfig / CoreText). `load_memory` takes `font.Simulations` (`{.Bold, .Oblique}`) instead of DirectWrite's flags.
+
+### Fixed
+- **Kerning under letter-spacing and font-feature-settings** (dwrite backend): an explicit feature list replaced DirectWrite's default features (kern, liga, clig, calt, rclt); they are now kept unless the list sets them.
+- `tests/retained` passes with `FONT_TEXT_RENDERER=slug` too (its atlas page assertions follow the renderer).
+
 ## [0.37.0] - 2026-10-25
 
 ### Added

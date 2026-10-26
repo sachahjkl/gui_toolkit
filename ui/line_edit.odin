@@ -137,6 +137,7 @@ Edit_Result :: struct {
 	changed:   bool,   // text was modified this frame
 	committed: bool,   // Enter pressed while focused
 	cancelled: bool,   // Escape pressed while focused
+	caret:     Rect,   // text_edit: the caret, in the box's coordinates (from this build's layout)
 }
 
 Line_Edit_Draw :: struct {
