@@ -3,6 +3,18 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.39.0] - 2026-10-26
+
+### Added
+- **Simulated bold and oblique in the native backend** (`font/simulate.odin`): as DirectWrite draws them (bold: +upem/50 per inked glyph and emboldened outlines; oblique: 0.33985 shear). `Font.sims` on every platform; `with_simulations` off Windows. Test: `tests/text_backends` simulations_test (widths to 0.01 px, Slug outline boxes).
+- **System fonts on Linux (fontconfig) and macOS (CoreText)** (`font/font_system_linux.odin`, `font/font_system_darwin.odin`): `load_system`, `has_system_family`, the per-character fallback and `system_families`; collection faces by PostScript name (`gt_face_postscript_name`, `gt_file_face_count`). Checked with `odin check`, not run on those systems yet.
+- `FONT_NATIVE_LINK=false`: a program that builds `native/text` into its own Rust library links no `gt_text.lib` (two Rust static libraries collide).
+- `native/text/examples/shape_dump`: HarfRust's shaping of a text, like `hb-shape`.
+- `tests/keyboard` text_edit_draw_test: `text_edit_caret_rect` against the drawn caret.
+
+### Changed
+- The Hebrew difference between the backends is explained (`docs/font-backend.md`): DirectWrite drops the XPlacement of right-to-left kerning pairs; the native backend applies it, as HarfBuzz does.
+
 ## [0.38.2] - 2026-10-26
 
 ### Added
