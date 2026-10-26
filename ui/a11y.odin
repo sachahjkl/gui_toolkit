@@ -102,7 +102,12 @@ A11y_Data :: struct {
 	values:    [dynamic]string,            // values of the requests (copies, freed at the next build)
 	updates, refused: int,
 	kids:      [dynamic]u64,               // scratch
+	focus_to:  Key,                        // a11y_focus_on: this build's focus for readers, over the toolkit's
 }
+
+// This build, screen readers are on box `key` whatever has the toolkit's focus: a view of the app's own that has the
+// keyboard (a web page under the chrome) and grafts a tree whose own focus then counts.
+a11y_focus_on :: proc(key: Key) { g.a11y.focus_to = key }
 
 // Gives the next box built its accessibility (merged over the widget's defaults: what is set here wins).
 a11y :: proc(info: A11y_Info) {
@@ -227,6 +232,7 @@ a11y_destroy :: proc(s: ^State) {
 a11y_begin_build :: proc(s: ^State, w: ^platform.Window) {
 	s.a11y.state = platform.a11y_state(w) if w != nil else .Off
 	s.a11y.wanted = s.a11y.state != .Off || s.a11y.capture
+	s.a11y.focus_to = 0
 	clear(&s.a11y.requests)
 	clear(&s.a11y.handled)
 	for v in s.a11y.values { delete(v) }
@@ -367,6 +373,9 @@ a11y_focus_box :: proc(s: ^State) -> Key {
 		if lv.sel >= 0 && lv.sel < len(lv.items) && lv.items[lv.sel].key != 0 { return lv.items[lv.sel].key }
 		if lv.panel != 0 { return lv.panel }
 	}
+	if k := s.a11y.focus_to; k != 0 {
+		if b := s.boxes[k]; b != nil && b.last_build == s.build_index { return k }
+	}
 	// a focused container on an item of its own (a list on its selected row): the item
 	if b := s.boxes[s.focus_key] if s.focus_key != 0 else nil; b != nil && b.last_build == s.build_index && b.a11y != nil {
 		if d := s.boxes[b.a11y.active_descendant] if b.a11y.active_descendant != 0 else nil; d != nil && d.last_build == s.build_index {
@@ -430,7 +439,7 @@ a11y_walk :: proc(s: ^State, u: ^platform.A11y_Update, b: ^Box, focus: Key, focu
 		}
 	}
 	if is_root { role = .Window }
-	is_node := role != .Unknown || name != ""
+	is_node := role != .Unknown || name != "" || (info != nil && info.graft != nil)   // (a graft node: a tree of the app's below)
 	if !is_node {
 		// (a focused box that is no node: the focus goes to the nearest node above it)
 		for c := b.first; c != nil; c = c.next { a11y_walk(s, u, c, focus, focus_node) }

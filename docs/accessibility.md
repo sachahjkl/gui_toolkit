@@ -119,6 +119,11 @@ that tree: the app sends the tree itself with `platform.a11y_send(window, &updat
 update of a tree states its root with `tree_info`). Requests for its nodes come with `request.tree` set, in
 `a11y_requests()`. A web browser grafts each page this way.
 
+Send the grafted tree after `end_build` (the graft node must reach the adapter first), only in a build that made the
+graft (else the adapter dropped the tree with its graft node: send it whole again). While the view has the keyboard,
+`ui.a11y_focus_on(box)` puts the readers' focus on the graft node, so that the grafted tree's own focus counts; until
+that tree's first update the adapter keeps the focus on the window's root, then moves it into the tree.
+
 ## The platform layer
 
 `platform/a11y.odin` is independent of the system: roles (`A11y_Role`, AccessKit's list), flags, actions, properties,

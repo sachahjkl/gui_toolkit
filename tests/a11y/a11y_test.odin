@@ -51,7 +51,7 @@ App :: struct {
 	open:     bool,
 	clicks:   int,
 	back:     int,
-	keys:     struct { back, save, wrap, volume, field, tabs, hello, list, row1, layout, accordion: ui.Key },
+	keys:     struct { back, save, wrap, volume, field, tabs, hello, list, row1, layout, accordion, graft: ui.Key },
 }
 
 app_destroy :: proc(a: ^App) {
@@ -98,6 +98,11 @@ body :: proc(a: ^App) {
 				if ui.parent(sig.box) { ui.label(names[i]) }
 			}
 		}
+		// a view of the app's own whose tree is grafted here (a document)
+		ui.next({width = ui.px(300), height = ui.px(40)})
+		gb := ui.build_box({.Focusable}, "###doc_view")
+		ui.a11y_set(gb, {graft = platform.A11y_Tree_Id{0 = 1, 1 = 2, 2 = 3}})
+		a.keys.graft = gb.key
 		ui.next({width = ui.px(300)})
 		if ui.accordion("###acc", "More", &a.open) {
 			ui.label("Inside")
@@ -237,6 +242,15 @@ tree_from_boxes :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.A11y_Role(r1.role), platform.A11y_Role.List_Box_Option)
 	testing.expect_value(t, platform.a11y_node_string(u, r1i, .Label), "Pears")
 	testing.expect_value(t, len(platform.a11y_node_children(u, r1i)), 0)
+
+	// a graft node: a node with no children of its own, naming its tree
+	_, gi := node(&f, a.keys.graft)
+	if testing.expect(t, gi >= 0, "the graft is a node") {
+		testing.expect_value(t, len(platform.a11y_node_children(u, gi)), 0)
+		has_tree := false
+		for p in platform.a11y_node_props(u, gi) { if p.kind == .Tree_Id { has_tree = true } }
+		testing.expect(t, has_tree, "it names its tree")
+	}
 
 	// every node has bounds; every child exists
 	ids := make(map[u64]bool, context.temp_allocator)
