@@ -104,13 +104,15 @@ surface_refresh :: proc(r: ^Renderer) {
 // no GDI surface); the blend space is the renderer's. With it, `fixed_size` (> 0) is what set_fixed_surface does for the
 // renderer's own window: the buffers keep that size (the monitor's, say) while the window is resized, shown 1:1 and clipped by the
 // client area, so nothing is ever stretched. Where DirectComposition is missing the surface is an opaque HWND chain, as render.init's.
-surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (s: Surface, ok: bool) {
+// `surface_init` makes it in the Surface `s` points to, where the program keeps it. Prefer it to `surface_create`.
+surface_init :: proc(r: ^Renderer, s: ^Surface, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (ok: bool) {
 	when USE_WGPU {
 		fmt.eprintln("render: second windows need the Direct3D 11 backend")
 		return
 	} else {
+		s^ = {}
 		s.hwnd, s.size = hwnd, size
-		exchange(r, &s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
+		exchange(r, s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
 		r.transparent = transparent
 		r.fixed_surface = false
 		surface_creating = true
@@ -119,10 +121,19 @@ surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent :
 		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }
 		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
 		r.capture = {}
-		exchange(r, &s)
+		exchange(r, s)
 		s.valid = ok
 		return
 	}
+}
+
+// `surface_init`, returning the Surface by value. A Surface is several kilobytes (Present_State's ring of 256 frames): held in a local and
+// copied into a field, an optimizing build with debug information (`-o:speed -debug`) splits it into thousands of values with a debug
+// record each, and LLVM spends more than ten minutes on the module (Wren's dev build did, until it called surface_init). New code calls
+// surface_init with the Surface where it lives.
+surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (s: Surface, ok: bool) {
+	ok = surface_init(r, &s, hwnd, size, transparent, fixed_size)
+	return
 }
 
 // Releases the surface (it must not be the one in use).

@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.42.1] - 2026-10-26
+
+### Added
+- **`render.surface_init(r, &s, hwnd, size, ...) -> ok`** makes a `Surface` in the one the program points to. `surface_create` (which returns it by value) is kept and calls it. A `Surface` is several kilobytes (`Present_State`'s ring of 256 frames): held in a local and copied into a record, `-o:speed -debug` split it into 12 612 values with a debug record each, and LLVM spent more than ten minutes on that module (Wren's development build and its CI did, until it called `surface_init`). The doc of `surface_create` says so.
+
 ## [0.42.0] - 2026-10-26
 
 ### Added
