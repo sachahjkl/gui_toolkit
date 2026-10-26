@@ -200,8 +200,16 @@ offscreen_draw_and_read_back :: proc(t: ^testing.T) {
 			draw.rect(dc, {{50, 0}, {100, 40}}, {0, 0, 1, 0.5})
 			id = draw.offscreen_end(dc)
 		})
-		testing.expect(t, id != 0, "a readback was recorded")
 		testing.expect(t, close_px(px(img, 10, 10), {255, 255, 255, 255}), "nothing of it on the frame")
+		when render.USE_WGPU {
+			// the WebGPU backend cannot read back yet (render/readback.odin): no id, and polling says Failed rather than
+			// Pending forever; what was drawn offscreen still stays off the frame (above)
+			testing.expect_value(t, id, render.Readback_Id(0))
+			_, _, none := render.readback_poll(&f.r, id, context.temp_allocator)
+			testing.expect_value(t, none, render.Capture_Status.Failed)
+			continue
+		}
+		testing.expect(t, id != 0, "a readback was recorded")
 		pixels: []u8
 		size: [2]int
 		st: render.Capture_Status

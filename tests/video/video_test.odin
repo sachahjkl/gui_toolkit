@@ -9,6 +9,9 @@ import "../../draw"
 import "../../font"
 import "../../render"
 
+_ :: d3d11   // (only the Direct3D 11 build uses them: nv12_texture_of_the_device)
+_ :: win
+
 W, H :: 64, 32
 
 Fx :: struct {
@@ -153,26 +156,44 @@ crop_and_rotation :: proc(t: ^testing.T) {
 	testing.expectf(t, near(px(&f, img, H / 4, W * 3 / 4), 255, 255, 255), "90: bottom left is white: %v", px(&f, img, H / 4, W * 3 / 4))
 }
 
+// A decoder's NV12 texture of the renderer's Direct3D 11 device, sampled where it is. The WebGPU backend has no Direct3D 11
+// device and wgpu-native cannot import such a texture: there, video_convert refuses a picture that names one (and leaves the
+// target as it was), and the same planes handed over in memory still convert.
 @(test)
 nv12_texture_of_the_device :: proc(t: ^testing.T) {
-	for space in render.Blend_Space {
+	when render.USE_WGPU {
 		f: Fx
-		if !open(&f, space, {W, H}) { testing.fail_now(t, "no D3D11 device (WARP)") }
+		if !open(&f, .Srgb, {W, H}) { testing.fail_now(t, "no device (WARP)") }
 		defer close(&f)
 		y, uv, _, _ := make_planes(W, H, 0.2126, 0.0722, false, true)
-		// one NV12 texture holding both planes (Y rows, then the UV rows)
-		data := make([]u8, len(y) + len(uv), context.temp_allocator)
-		copy(data, y)
-		copy(data[len(y):], uv)
-		desc := d3d11.TEXTURE2D_DESC{Width = W, Height = H, MipLevels = 1, ArraySize = 1, Format = .NV12, SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE}}
-		init := d3d11.SUBRESOURCE_DATA{pSysMem = raw_data(data), SysMemPitch = W}
-		tex: ^d3d11.ITexture2D
-		if win.FAILED(f.r.device->CreateTexture2D(&desc, &init, &tex)) || tex == nil {
-			testing.expectf(t, false, "%v: this device has no NV12 textures (WARP)", space)
-			continue
+		mem := render.Video_Picture{format = .NV12, size = {W, H}, crop_size = {W, H}, coeffs = .BT709, planes = {y, uv, nil}, strides = {W, W, 0}}
+		tex := render.create_video_target(&f.r, W, H)
+		if !testing.expect(t, tex != 0, "a video target") { return }
+		defer render.destroy_texture(&f.r, tex)
+		gpu := mem
+		gpu.gpu_texture = rawptr(uintptr(1))   // never dereferenced: refused before
+		testing.expect(t, !render.video_convert(&f.r, tex, gpu), "WebGPU: a decoder texture is refused")
+		expect_quad(t, &f, convert_and_draw(&f, mem), "NV12 in memory (WebGPU)")
+	} else {
+		for space in render.Blend_Space {
+			f: Fx
+			if !open(&f, space, {W, H}) { testing.fail_now(t, "no D3D11 device (WARP)") }
+			defer close(&f)
+			y, uv, _, _ := make_planes(W, H, 0.2126, 0.0722, false, true)
+			// one NV12 texture holding both planes (Y rows, then the UV rows)
+			data := make([]u8, len(y) + len(uv), context.temp_allocator)
+			copy(data, y)
+			copy(data[len(y):], uv)
+			desc := d3d11.TEXTURE2D_DESC{Width = W, Height = H, MipLevels = 1, ArraySize = 1, Format = .NV12, SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE}}
+			init := d3d11.SUBRESOURCE_DATA{pSysMem = raw_data(data), SysMemPitch = W}
+			tex: ^d3d11.ITexture2D
+			if win.FAILED(f.r.device->CreateTexture2D(&desc, &init, &tex)) || tex == nil {
+				testing.expectf(t, false, "%v: this device has no NV12 textures (WARP)", space)
+				continue
+			}
+			defer tex->Release()
+			p := render.Video_Picture{format = .NV12, size = {W, H}, crop_size = {W, H}, coeffs = .BT709, gpu_texture = tex}
+			expect_quad(t, &f, convert_and_draw(&f, p), "NV12 texture")
 		}
-		defer tex->Release()
-		p := render.Video_Picture{format = .NV12, size = {W, H}, crop_size = {W, H}, coeffs = .BT709, gpu_texture = tex}
-		expect_quad(t, &f, convert_and_draw(&f, p), "NV12 texture")
 	}
 }
