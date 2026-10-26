@@ -244,18 +244,21 @@ slanted_contains :: proc(r: Slanted_Region, p: [2]f32) -> bool {
 // interactive inside them (tabs, buttons, fields): those stay the app's; `slanted`: holes whose sides lean (the tabs of
 // a strip drawn with sloped sides: the free space between two of them still drags the window); `buttons`: the caption
 // buttons the app drew (an empty region: none), answered as the system's own so that Snap Layouts opens over the
-// maximize button.
+// maximize button; `overlays`: what the app shows over everything (an open menu): the app's wherever they are, even
+// along the edges where the window resizes (a menu that reaches the window's edge is not a resize band).
 Chrome_Regions :: struct {
-	caption: [dynamic]Region,
-	holes:   [dynamic]Region,
-	slanted: [dynamic]Slanted_Region,
-	buttons: [Caption_Button]Region,
+	caption:  [dynamic]Region,
+	holes:    [dynamic]Region,
+	slanted:  [dynamic]Slanted_Region,
+	buttons:  [Caption_Button]Region,
+	overlays: [dynamic]Region,
 }
 
 chrome_regions_clear :: proc(c: ^Chrome_Regions) {
 	clear(&c.caption)
 	clear(&c.holes)
 	clear(&c.slanted)
+	clear(&c.overlays)
 	c.buttons = {}
 }
 
@@ -263,6 +266,7 @@ chrome_regions_destroy :: proc(c: ^Chrome_Regions) {
 	delete(c.caption)
 	delete(c.holes)
 	delete(c.slanted)
+	delete(c.overlays)
 	c^ = {}
 }
 
@@ -271,9 +275,10 @@ Sides :: bit_set[Side; u8]
 
 // Hit test of a point `p` (client pixels) of a client area of `size`. `resize_sides`: the sides where the client area
 // reaches the window's edge, so a band of `border` pixels along them resizes (none when maximized or full screen);
-// `corner`: how far along an edge a resize corner reaches. Resize bands win over everything, then the caption buttons,
-// then the holes, then the caption; anything else is the client's.
+// `corner`: how far along an edge a resize corner reaches. The overlays (an open menu) win over everything, then the
+// resize bands, then the caption buttons, then the holes, then the caption; anything else is the client's.
 hit_test_chrome :: proc(c: ^Chrome_Regions, p: [2]f32, size: [2]f32, border, corner: f32, resize_sides: Sides) -> Hit {
+	for o in c.overlays { if region_contains(o, p) { return .Client } }
 	if border > 0 && resize_sides != {} {
 		left   := .Left in resize_sides && p.x < border
 		right  := .Right in resize_sides && p.x >= size.x - border

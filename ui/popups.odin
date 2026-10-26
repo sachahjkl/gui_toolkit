@@ -145,6 +145,23 @@ menu_capture_keys :: proc(s: ^State, events: []platform.Event) {
 	clear(&s.typed)
 }
 
+// The open menus go over whatever the root holds (end_build, before layout): a level is built where the app builds the
+// menu (a toolbar's button), and what the app builds at the root after it (notices, a panel, a dialog) would be drawn
+// over it and take its pointer. Levels keep their order (a submenu over its menu).
+@(private)
+menus_raise :: proc(s: ^State) {
+	for lv in s.menus {
+		b := s.boxes[lv.panel]
+		if b == nil || b.last_build != s.build_index || b.parent != s.root || s.root.last == b { continue }
+		p := b.parent
+		if b.prev != nil { b.prev.next = b.next } else { p.first = b.next }
+		if b.next != nil { b.next.prev = b.prev } else { p.last = b.prev }
+		b.prev, b.next = p.last, nil
+		if p.last != nil { p.last.next = b } else { p.first = b }
+		p.last = b
+	}
+}
+
 // Levels the app stopped building close (end_build).
 @(private)
 menu_prune :: proc(s: ^State) {

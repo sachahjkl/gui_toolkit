@@ -177,6 +177,69 @@ title_bar_regions :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.hit_test_chrome(c, {(mx.min.x + mx.max.x) / 2, 20}, size, 8, 16, {}), platform.Hit.Maximize)
 }
 
+// A menu opened from the title bar that reaches the window's right edge and bottom corner: the window answers that it is
+// the app's there (not a resize band: its cursor showed over the menu and the moves never reached it), and it is above
+// what the app builds at the root after it (a notice), for the pointer as for the eye.
+@(test)
+open_menu_over_resize_bands_and_later_boxes :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	Run :: struct { notice_clicks: int, item_clicks: int, hovered: int }
+	run: Run
+	MENU :: "###corner_menu"
+	body :: proc(f: ^Fx, user: rawptr) {
+		r := (^Run)(user)
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.title_bar("###tb") {
+			ui.spacer(ui.fill())
+			ui.next({width = ui.px(40), height = ui.pct(1)})
+			b := ui.button("=###burger")
+			if b.clicked { ui.ctx_menu_open_rect(ui.key_from_string(0, MENU), b.box.rect, b.box.key) }
+			_, _ = ui.window_buttons()
+		}
+		if ui.ctx_menu(ui.key_from_string(0, MENU), 300) {
+			for i in 0 ..< 40 {
+				s := ui.menu_item(fmt.tprintf("Item %d###it%d", i, i))
+				if s.clicked { r.item_clicks += 1 }
+				if s.hovering { r.hovered = i }
+			}
+		}
+		// a notice built at the root after the menu, where the menu is
+		ui.next({fixed_x = WINDOW.x - 250, fixed_y = 300, width = ui.px(240), height = ui.px(60)})
+		n := ui.build_box({.Clickable, .Draw_Background}, "###notice")
+		if ui.signal(n).clicked { r.notice_clicks += 1 }
+	}
+	for _ in 0 ..< 2 { frame(f, nil, body, &run) }
+	bx := WINDOW.x - 3 * ui.CAPTION_BUTTON_WIDTH - 20
+	frame(f, {{kind = .Mouse_Move, pos = {bx, 20}}, {kind = .Mouse_Press, pos = {bx, 20}, button = .Left}}, body, &run)
+	frame(f, {{kind = .Mouse_Release, pos = {bx, 20}, button = .Left}}, body, &run)
+	for _ in 0 ..< 3 { frame(f, nil, body, &run) }
+	if !testing.expect(t, ui.ctx_menu_any_open(), "the menu opened") { return }
+	r, _, _ := ui.menu_rect(0)
+	testing.expect(t, r.max.x >= WINDOW.x - 1 && r.max.y >= WINDOW.y - 1, "the menu reaches the window's right edge and bottom")
+	c := ui.chrome_regions(&f.s)
+	testing.expect_value(t, len(c.overlays), 1)
+	all := platform.Sides{.Left, .Top, .Right, .Bottom}
+	size := [2]f32{WINDOW.x, WINDOW.y}
+	testing.expect_value(t, platform.hit_test_chrome(c, {WINDOW.x - 2, WINDOW.y - 2}, size, 8, 16, all), platform.Hit.Client)
+	testing.expect_value(t, platform.hit_test_chrome(c, {WINDOW.x - 2, 300}, size, 8, 16, all), platform.Hit.Client)
+	testing.expect_value(t, platform.hit_test_chrome(c, {2, 300}, size, 8, 16, all), platform.Hit.Left)   // outside the menu: the band
+	// the pointer over the menu where the notice is: the menu's item, not the notice
+	p := ui.Vec2{WINDOW.x - 100, 330}
+	frame(f, {{kind = .Mouse_Move, pos = p}}, body, &run)
+	frame(f, nil, body, &run)
+	hovered := run.hovered
+	frame(f, {{kind = .Mouse_Press, pos = p, button = .Left}}, body, &run)
+	frame(f, {{kind = .Mouse_Release, pos = p, button = .Left}}, body, &run)
+	testing.expect_value(t, run.notice_clicks, 0)
+	testing.expect_value(t, run.item_clicks, 1)
+	testing.expect(t, hovered > 0, "an item under the pointer")
+}
+
 // A trapezoid tab: wider at its foot than at its top. Its corners are not its own: over the title bar they drag the
 // window, and a click there is not on the tab.
 @(test)

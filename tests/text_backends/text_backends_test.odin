@@ -66,6 +66,28 @@ when font.NATIVE_TEXT {
 EXACT :: []string{"latin", "latin-liga", "latin-kern", "cyrillic-greek", "arabic", "arabic-mixed", "hebrew", "devanagari",
 	"thai", "lao", "khmer", "myanmar", "cjk-zh", "cjk-ja", "korean", "variable", "fallback"}
 
+// A glyph's ink box (font.glyph) is where its ink is with either backend: the native one put the bottom of the box a
+// glyph's height above its top and centred icons a glyph lower than they are (read-fonts' extents count the height downward).
+@(test)
+native_glyph_box_matches_dwrite :: proc(t: ^testing.T) {
+	dw := make_state(.Dwrite)
+	nt := make_state(.Native)
+	defer { free_state(dw); free_state(nt) }
+	fa, oka := font.load_system(dw, "Segoe UI")
+	fb, okb := font.load_system(nt, "Segoe UI")
+	if !testing.expect(t, oka && okb, "Segoe UI") { return }
+	for r in ([]rune{'H', 'g', 'x', 'A', '.'}) {
+		for size in ([]f32{16, 26.4}) {
+			a := font.glyph(dw, fa, size, r)
+			b := font.glyph(nt, fb, size, r)
+			testing.expectf(t, abs(a.offset.y - b.offset.y) <= 1 && abs(a.size.y - b.size.y) <= 1 && abs(a.offset.x - b.offset.x) <= 1 && abs(a.size.x - b.size.x) <= 1,
+				"%c at %v: dwrite %v %v, native %v %v", r, size, a.offset, a.size, b.offset, b.size)
+		}
+	}
+	h := font.glyph(nt, fb, 20, 'H')
+	testing.expectf(t, h.offset.y < -10 && h.offset.y + h.size.y >= -1 && h.offset.y + h.size.y <= 1, "H stands on the baseline: %v %v", h.offset, h.size)
+}
+
 @(test)
 native_matches_dwrite :: proc(t: ^testing.T) {
 	dw := make_state(.Dwrite)
