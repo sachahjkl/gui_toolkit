@@ -165,7 +165,9 @@ replay_is_identical_to_direct_drawing :: proc(t: ^testing.T) {
 		record(&f, &pic)
 		color_batches := 0
 		for bb in pic.batch_bounds { if bb.color >= 0 { color_batches += 1 } }
-		testing.expect(t, color_batches > 0 && len(pic.pages) >= 2, "the picture holds glyphs of a gray and a color page")
+		// atlas text: a gray page and a color one; Slug text has no gray page (its outlines are Slug pages)
+		want_pages := f.fonts.settings.text_renderer == .Atlas ? 2 : 1
+		testing.expectf(t, color_batches > 0 && len(pic.pages) >= want_pages, "the picture holds glyphs of %d atlas pages (has %d)", want_pages, len(pic.pages))
 		cases := []struct { name: string, m: draw.Affine, alpha: f32, clip: bool, exact: bool }{
 			{"identity", draw.AFFINE_IDENTITY, 1, false, true},
 			{"integer translation", draw.affine_translate({7, -5}), 1, false, true},
@@ -227,6 +229,7 @@ page_reuse_makes_only_its_pictures_stale :: proc(t: ^testing.T) {
 	if !render.init_offscreen(&f.r, SIZE, warp = true) { testing.fail_now(t, "no D3D11 device (WARP)") }
 	st := font.DEFAULT_SETTINGS
 	st.page_size, st.max_gray_pages = 256, 2
+	st.text_renderer = .Atlas   // gray atlas pages are what this test reuses, whatever the build's default renderer
 	font.init(&f.fonts, st)
 	draw.init(&f.dc, &f.r, &f.fonts)
 	defer close(f)
