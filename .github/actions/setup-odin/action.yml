@@ -1,0 +1,29 @@
+name: Odin and MSVC
+description: Odin dev-2026-10 (pinned by SHA-256) on the PATH, and the MSVC x64 environment (link.exe, rc.exe)
+
+runs:
+  using: composite
+  steps:
+    - name: Odin dev-2026-10
+      shell: pwsh
+      env:
+        # odin version: dev-2026-10-nightly:84bc3fc (the tag dev-2026-10 is that commit)
+        ODIN_TAG: dev-2026-10
+        ODIN_SHA256: b6b2e426a8b6f147b74ec7e18bef8df27cf40fe16193159df7ca09a0cc0c2011
+      run: |
+        $zip = Join-Path $env:RUNNER_TEMP "odin-$env:ODIN_TAG.zip"
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest "https://github.com/odin-lang/Odin/releases/download/$env:ODIN_TAG/odin-windows-amd64-$env:ODIN_TAG.zip" -OutFile $zip
+        # (.NET, not Get-FileHash: the cmdlet was "not recognized" in a runner's step)
+        $h = [Security.Cryptography.SHA256]::Create()
+        $s = [IO.File]::OpenRead($zip)
+        try { $got = ([BitConverter]::ToString($h.ComputeHash($s)) -replace '-', '').ToLower() } finally { $s.Dispose(); $h.Dispose() }
+        if ($got -ne $env:ODIN_SHA256) { throw "Odin archive SHA-256 mismatch: $got" }
+        $dir = Join-Path $env:RUNNER_TEMP 'odin'
+        Expand-Archive $zip -DestinationPath $dir -Force
+        Add-Content $env:GITHUB_PATH (Join-Path $dir 'dist')
+        & (Join-Path $dir 'dist\odin.exe') version
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
