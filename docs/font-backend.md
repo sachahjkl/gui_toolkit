@@ -56,19 +56,39 @@ library's `rust_eh_personality` renamed so it links next to other Rust static li
 (it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend; Wren links it
 through the toolkit's `build/text`.
 
-## Known differences (see the bench report)
+## Platforms
 
-- DirectWrite simulates bold and oblique (`with_simulations`); Fontations does not: such faces shape with the
-  regular face's advances under `native`.
-- Script itemization: HarfBuzz-style (Common / Inherited characters join their neighbours), not DirectWrite's.
-- Metrics follow DirectWrite's rule (typo when USE_TYPO_METRICS, else win ascent / descent with hhea's line gap
-  adjusted); fonts whose tables disagree may differ by a unit.
+`odin check font -no-entry-point` passes for Windows, Linux and macOS, with either define. What only Windows has is in
+`*_windows.odin` (DirectWrite faces and analyzers, Direct2D color glyphs, the color glyph thread, gray glyph bitmaps).
+`font_other.odin` is the platform part elsewhere: faces from files and memory opened by the native backend, no system
+collection (`load_system` fails, TODO fontconfig / CoreText), no fallback, no bitmap rasterizer (text is drawn by Slug
+from the backend's outlines), no COLR color glyphs yet. On Linux and macOS `cargo build --release` in `native/text`
+gives `build/text/libgt_text.a` (the script is Windows-only).
+
+## Comparing the backends
+
+`tools/text_bench` (Markdown report, `-v` glyph by glyph, `-perf` timings) and `tests/text_backends` (logic only).
+On the corpus of `tools/text_corpus` (19 samples) both backends give the same widths everywhere, the same glyph ids,
+clusters and advances in 17 samples, the same bidi levels and the same design metrics. Known differences:
+
+- **Marks**: HarfBuzz composes a base and a mark the font has precomposed (a + U+0308 + U+0323: `ä` + dot below, 2
+  glyphs), DirectWrite keeps the decomposed glyphs (3). Same width.
+- **Emoji with a skin tone**: HarfBuzz makes 👍🏽 one cluster (one grapheme, one caret stop), DirectWrite two.
+- **Hebrew (Segoe UI)**: two glyphs sit 20 and 50 font units apart (same ids and advances): a GPOS placement in a
+  right-to-left run that the two shapers apply differently. Not explained yet.
+- **Line breaks in Thai, Lao, Khmer, Myanmar**: ICU4X's dictionaries and Windows' differ (one Thai word boundary);
+  Windows finds no break at all inside Lao, Khmer and Myanmar text, ICU4X does.
+- DirectWrite simulates bold and oblique (`with_simulations`); Fontations does not: such faces shape with the regular
+  face's advances under `native`.
 - Faces DirectWrite opens through a loader other than files and this package's memory loader cannot be read natively
   (none today).
 
+The comparison found a bug of the dwrite backend, fixed: an explicit feature list (letter-spacing, any
+font-feature-settings) replaced DirectWrite's default features, so kerning was lost.
+
 ## Not done yet
 
-- Linux / macOS: the package still uses DirectWrite types in `font.odin`, `raster.odin` and the color files; only the
-  backend and system interfaces are platform-neutral. Next: a native rasterizer for the atlas, fontconfig / CoreText.
+- A bitmap rasterizer and color glyphs (COLR from `gt_face_table`) for the platforms without Direct2D;
+  fontconfig / CoreText for system fonts and the fallback.
 - Path B (HarfBuzz in C++ with SheenBidi and libunibreak) is not built; `tools/text_bench` is the harness to compare it
   with the same corpus when it is.
