@@ -81,6 +81,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 			draw.rect(dc, r, h, radius)
 		}
 	}
+	if .Selectable in flags { draw_selection(s, dc, b) }
 	if .Draw_Text in flags && b.text != "" {
 		if .Text_Wrap in flags { draw_wrapped_text(s, dc, b) } else { draw_box_text(s, dc, b) }
 	}

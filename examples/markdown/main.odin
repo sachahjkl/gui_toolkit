@@ -105,11 +105,20 @@ build_ui :: proc(app: ^App) {
 				if strings.has_prefix(l, "- ") { append(&runs, ui.Rich_Run{text = "•  "}); l = l[2:] }
 				inline_runs(l, style, &runs)
 			}
-			ui.next({width = ui.fill(), font_size = size})
+			// selectable: a drag selects across the blocks, Ctrl+C copies, double / triple click: a word / a block
+			ui.next({width = ui.fill(), font_size = size, flags = {.Selectable}})
 			res := ui.rich_paragraph(fmt.tprintf("###b%d", n), runs[:])
 			if res.link_clicked >= 0 { ui.toast(.Info, "Link: %s", res.link) }
 			ui.spacer(ui.px(em * 0.6))
 			n += 1
+		}
+		// what an app reads of the selection (a chat's "quote" or "copy" action)
+		if ui.has_selection(&app.ui_state) {
+			sel := ui.selected_text(&app.ui_state, context.temp_allocator)
+			if ui.tags("weak") {
+				ui.next({width = ui.fill(), height = ui.px(em * 2)})
+				ui.label(fmt.tprintf("Selected: %d characters (Ctrl+C copies)", strings.rune_count(sel)))
+			}
 		}
 	}
 }

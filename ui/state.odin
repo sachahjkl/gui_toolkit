@@ -69,6 +69,8 @@ destroy :: proc(s: ^State) {
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
 	rich_cache_destroy(s)
+	selection_destroy(s)
+	delete(s.mouse_events)
 	virtual.arena_destroy(&s.arena)
 	if g == s { g = nil }
 	s^ = {}
@@ -129,6 +131,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.caption_keys = {}
 	s.caption_built = false
 
+	selection_begin(s)
 	process_events(s, p.events, !p.disable_zoom)
 	menu_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
@@ -173,6 +176,7 @@ end_build :: proc() {
 	wrap_cache_trim(s)
 	rich_cache_trim(s)
 	menu_prune(s)
+	selection_update(s)
 	handle_tab_navigation(s)
 	update_animations(s)
 
@@ -306,6 +310,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	if s.disabled_depth > 0 { b.flags += {.Disabled} }
 	if .Window_Caption in b.flags { s.caption_built = true }
 	if .Disabled in b.flags && s.focus_key == b.key { s.focus_key = 0 }
+	selection_note(s, b)
 	b.name = ""
 	if id != "" { b.name = fmt.aprint(hash_part(id), allocator = frame_allocator()) }
 	b.pref = st.pref
