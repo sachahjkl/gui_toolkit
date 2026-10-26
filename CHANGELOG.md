@@ -3,6 +3,19 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.38.0] - 2026-10-26
+
+### Added
+- **Native text backend** (`-define:FONT_BACKEND=native`, `font/backend_native.odin`, `native/text`, `tools/build_text.ps1`): Fontations (read-fonts' font model), HarfRust and ICU4X (line breaks with dictionaries, bidi through unicode-bidi) in a static Rust library behind a C ABI, built and pinned like Wren's image decoders. Shapes 2.6 times faster than DirectWrite on the corpus (2.0 µs a word against 5.2, without the word cache). Faces are still opened by the platform; `Settings.backend` picks either backend for one State. `font.native_table`, `font.native_coverage`, `font.native_outline_provider`. See `docs/font-backend.md`.
+- **`tools/text_bench`** and **`tests/text_backends`**: the two backends compared on the corpus (equivalence report and timings; logic checks in the tests).
+
+### Changed
+- **The `font` package compiles on Linux and macOS** (`odin check font -target:linux_amd64` / `darwin_arm64`): DirectWrite and Direct2D are behind `font_windows.odin`, `raster_windows.odin` and the color files; `font_other.odin` loads faces from files and memory through the native backend (no system fonts yet: TODO fontconfig / CoreText). `load_memory` takes `font.Simulations` (`{.Bold, .Oblique}`) instead of DirectWrite's flags.
+
+### Fixed
+- **Kerning under letter-spacing and font-feature-settings** (dwrite backend): an explicit feature list replaced DirectWrite's default features (kern, liga, clig, calt, rclt); they are now kept unless the list sets them.
+- `tests/retained` passes with `FONT_TEXT_RENDERER=slug` too (its atlas page assertions follow the renderer).
+
 ## [0.37.0] - 2026-10-25
 
 ### Added
