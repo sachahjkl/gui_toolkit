@@ -40,6 +40,8 @@ Native_Window :: struct {
 	trays:          [dynamic]^Tray, // icons of the notification area this window receives (tray_win32.odin)
 	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
 	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
+	a11y:           rawptr,         // the accessibility adapter (a11y_accesskit.odin), nil when not compiled in
+	a11y_stale:     bool,           // the adapter's tree was left behind while nobody listened: the next one is whole
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
@@ -129,6 +131,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	// (with an integrated title bar SWP_FRAMECHANGED makes the system ask WM_NCCALCSIZE again)
 	win.SetWindowPos(w.hwnd, nil, i32(x), i32(y), i32(ow), i32(oh), win.SWP_NOZORDER | win.SWP_NOACTIVATE | win.SWP_FRAMECHANGED)
 	update_client_size(w)
+	a11y_attach(w)   // (before the window is shown: never while WM_GETOBJECT is handled)
 	return w
 }
 
@@ -370,6 +373,7 @@ destroy_window :: proc(w: ^Window) {
 	tray_destroy_all(w)
 	if w.clip_watch { clipboard_watch(w, false) }
 	pointer_state_destroy(&w.pointers)
+	a11y_detach(w)
 	if w.hwnd != nil {
 		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
 		win.DestroyWindow(w.hwnd)
@@ -661,6 +665,10 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	}
 	w = cast(^Window)uintptr(win.GetWindowLongPtrW(hwnd, win.GWLP_USERDATA))
 	if w == nil { return win.DefWindowProcW(hwnd, msg, wparam, lparam) }
+	if msg == A11Y_MESSAGE {   // an assistive technology asked for the tree or for an action: the loop makes a frame
+		append(&w.events, Event{kind = .Accessibility, stamp = time.tick_now()})
+		return 0
+	}
 	if msg >= win.WM_APP && tray_window_message(w, msg, wparam, lparam) { return 0 }   // (TaskbarCreated is >= 0xC000)
 
 	push :: proc(w: ^Window, e: Event) {
@@ -689,8 +697,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_CLIPBOARDUPDATE:
 		return 0   // (the message woke the loop; clipboard_changed reads the sequence number)
 
-	case win.WM_SETFOCUS:  w.focused = true
-	case win.WM_KILLFOCUS: w.focused = false
+	case win.WM_SETFOCUS:  w.focused = true; a11y_window_focus(w, true)
+	case win.WM_KILLFOCUS: w.focused = false; a11y_window_focus(w, false)
+
+	case win.WM_GETOBJECT:
+		if r, ok := a11y_wm_getobject(w, wparam, lparam); ok { return r }
 
 	case win.WM_ACTIVATE:
 		active := win.LOWORD(u32(wparam)) != win.WA_INACTIVE

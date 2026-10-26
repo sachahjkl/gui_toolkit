@@ -106,6 +106,8 @@ icon_button :: proc(id: string, icon: string) -> Signal {
 			// the glyph is the displayed text, `id` alone decides the key (so changing the icon keeps the state)
 			b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc}, fmt.tprintf("%s###%s", icon, id))
 			b.text_align = .Center
+			// (a glyph says nothing to a screen reader: the id stands for a name until the app gives one with `a11y`)
+			a11y_default(b, {role = .Button, name = b.name})
 			return signal(b)
 		}
 	}

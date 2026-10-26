@@ -43,6 +43,9 @@ Event_Kind :: enum u8 {
 	Drop_Over,
 	Drop_Leave,
 	Drop,
+	// an assistive technology asked for the window's tree or for an action (a11y.odin): build a frame, which sends the
+	// tree and takes the requests (the ui package does both when Build_Params.window is set)
+	Accessibility,
 }
 
 Mouse_Button :: enum u8 { Left, Right, Middle }

@@ -385,6 +385,23 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		before_hash := hash_bytes(a.buf[:])
 		c0, m0 := a.cursor, a.mark
 		moved := false
+		// a screen reader sets the text, types over the selection, or moves the caret
+		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
+			begin_edit(a, .Other, now)
+			area_set(a, r.value)
+		}
+		if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
+			begin_edit(a, .Other, now)
+			insert(a, r.value)
+		}
+		if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
+			runs := a11y_text_lines(area_string(a), lines)
+			a.mark = a11y_run_byte(area_string(a), runs, b, r.sel[0], int(r.sel[1]))
+			a.cursor = a11y_run_byte(area_string(a), runs, b, r.sel[2], int(r.sel[3]))
+			a.upstream, a.has_pref = false, false
+			moved = true
+		}
+		if a.cursor != c0 || hash_bytes(a.buf[:]) != before_hash { lines = layout(a, b, wrap_w) }
 		ctrl := Mods{.Ctrl}
 		shift := Mods{.Shift}
 		cs := Mods{.Ctrl, .Shift}
@@ -637,7 +654,27 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		if d.bar_hot != 0 { s.cursor_request = .Arrow }
 		b.custom = text_edit_draw
 		b.custom_user = d
+		if s.a11y.wanted {
+			t := frame_new(A11y_Text)
+			t^ = {text = d.text, cursor = a.cursor, mark = a.mark, lines = a11y_text_lines(d.text, d.lines, frame_allocator()),
+				origin = {b.rect.min.x + gutter + pad, b.rect.min.y + pad}, line_height = lh, scroll = a.scroll, font = b.font, size = b.font_size}
+			a11y_default(b, {role = .Multiline_Text_Input, placeholder = placeholder, text = t})
+		} else {
+			a11y_default(b, {role = .Multiline_Text_Input, placeholder = placeholder})
+		}
 	}
 	return
+}
+
+// The text runs of an editor: its visual lines, each with the line break that ends it.
+@(private)
+a11y_text_lines :: proc(text: string, lines: []Visual_Line, allocator := context.temp_allocator) -> [][2]int {
+	out := make([][2]int, len(lines), allocator)
+	for l, i in lines {
+		end := l.end
+		if end < len(text) && text[end] == '\n' && (i + 1 == len(lines) || lines[i + 1].start > end) { end += 1 }
+		out[i] = {l.start, end}
+	}
+	return out
 }
 

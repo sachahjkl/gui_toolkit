@@ -179,6 +179,9 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
   also during a drag. Try `examples/cursors`.
 - **Panes**: splitters, accordions and lists reordered by dragging ([docs/panes.md](docs/panes.md)).
+- **Accessibility**: screen readers (NVDA, Narrator) read the windows through UI Automation (AccessKit): every widget
+  says its role, name, states and value, the focus follows, requests (invoke, set value, select, focus) arrive as input;
+  built only while a reader listens, sent incrementally ([docs/accessibility.md](docs/accessibility.md)).
 - **Threads and the system**: `ui.post` runs calls posted from any thread at the next build (a lock-free ring,
   [docs/post.md](docs/post.md)); a notification area icon with menu and notifications ([docs/tray.md](docs/tray.md));
   the clipboard's images, HTML and files ([docs/clipboard.md](docs/clipboard.md)); file dialogs and shell actions

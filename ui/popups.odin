@@ -316,6 +316,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	if first { g.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
 	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
 	p.cursor = .Arrow
+	a11y_default(p, {role = .Menu, orientation = .Y})
 	lv.panel = p.key
 	_ = signal(p)
 	push_parent(p)
@@ -394,6 +395,13 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			if highlight { pop_tags() }
 			if idx < len(lv.items) { lv.items[idx].key = b.key }
 			sig = signal(b)
+			if checked {
+				a11y_default(b, {role = .Menu_Item_Check_Box, name = label, shortcut = shortcut, toggled = .True, position = idx + 1})
+			} else {
+				info := A11y_Info{role = .Menu_Item, name = label, shortcut = shortcut, position = idx + 1}
+				if submenu { info.popup = .Menu; info.expanded = false }
+				a11y_default(b, info)
+			}
 			if parent(b) {
 				spacer(px(em * 0.6))
 				next({width = px(em * 1.5), height = px(em * 1.5)})
@@ -503,6 +511,7 @@ menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
 		append(&s.menus, Menu_Level{key = sub_key, around = rect, pos = rect.min, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = kb})
 		open = true
 	}
+	if sig.box != nil && sig.box.a11y != nil { sig.box.a11y.expanded = open }
 	if !open {
 		append(&s.popup_stack, false)
 		return false
@@ -539,6 +548,7 @@ tooltip :: proc() -> bool {
 	g.next_mod.height = children_sum()
 	g.next_mod.radius = em * 0.4
 	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
+	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
 	append(&s.popup_stack, true)
 	return true
@@ -566,6 +576,7 @@ tooltip_beside :: proc() -> bool {
 	g.next_mod.height = children_sum()
 	g.next_mod.radius = em * 0.4
 	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
+	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
 	append(&s.popup_stack, true)
 	return true

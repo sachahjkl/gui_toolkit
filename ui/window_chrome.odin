@@ -30,8 +30,18 @@ CAPTION_CLOSE_HOT    :: 0xc42b1cff   // the system's close button under the poin
 @(deferred_none = pop_parent)
 title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 	set_next_axis(.X, .Center)
-	push_parent(build_box(flags + {.Window_Caption}, id))
+	b := build_box(flags + {.Window_Caption}, id)
+	a11y_default(b, {role = .Title_Bar})
+	push_parent(b)
 	return true
+}
+
+// What screen readers call the caption buttons: minimize, maximize, restore, close (set_window_button_names
+// translates them; the strings must outlive the builds).
+@(private) window_button_names := [4]string{"Minimize", "Maximize", "Close", "Restore"}   // (Caption_Button's order, then restore)
+
+set_window_button_names :: proc(minimize, maximize, restore, close: string) {
+	window_button_names = {minimize, maximize, close, restore}
 }
 
 @(private)
@@ -73,6 +83,8 @@ window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 		d^ = {button = b, maxed = maxed, active = active, dark = dark, under = under, glyph_font = s.caption_font, dpi = dpi}
 		box.custom, box.custom_user = caption_draw, d
 		s.caption_keys[b] = box.key
+		names := window_button_names
+		a11y_default(box, {role = .Button, name = b == .Maximize && maxed ? names[3] : names[int(b)]})
 		if signal(box).clicked {
 			clicked, ok = b, true
 			if s.window != nil {

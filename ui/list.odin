@@ -152,6 +152,11 @@ list_end :: proc() {
 	b := parent_box()
 	pop_parent()
 	st.count = len(st.building)
+	a11y_default(b, {role = .List_Box, active_descendant = st.sel >= 0 ? key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel)) : 0})
+	// (a row clicked this frame changed the selection after the rows before it were built)
+	for c := b.first; c != nil; c = c.next {
+		if c.a11y != nil && c.a11y.role == .List_Box_Option { c.a11y.selected = c.a11y.position - 1 == st.sel; c.a11y.set_size = st.count }
+	}
 	if st.seek {
 		pick := st.seek_after >= 0 ? st.seek_after : st.seek_first
 		if pick >= 0 && pick != st.sel { st.sel = pick; st.changed = true; st.reveal = 3 }
@@ -213,5 +218,10 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> 
 		s.focus_visible = false
 	}
 	if selectable && sig.double_clicked { st.activated = true }
+	if selectable {
+		a11y_default(b, {role = .List_Box_Option, name = label, selected = i == st.sel, position = i + 1})
+	} else {
+		a11y_default(b, {role = .Group, name = label})
+	}
 	return sig
 }

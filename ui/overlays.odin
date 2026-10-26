@@ -5,6 +5,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import "../font"
 
 ////////////////////////////////
@@ -136,6 +137,9 @@ toasts_build :: proc() {
 		b := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Draw_Hot_Effects, .Clip}, id)
 		b.cursor = .Hand
 		if signal(b).clicked { t.alive = false }
+		// announced when it appears (a live region): a problem at once, the rest when the reader is free
+		urgent := t.kind == .Bad || t.kind == .Warn
+		a11y_default(b, {role = urgent ? .Alert : .Status, name = strings.clone(string(t.text[:t.len]), frame_allocator()), live = urgent ? .Assertive : .Polite, no_children = true})
 		push_parent(b)
 		spacer(px(em * 0.6))
 		icon(icons[t.kind], em * 1.8, tint)
@@ -166,13 +170,18 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	push_tags("floating")
 	push_style_copy()
 
+	// (what the app said with `a11y` is the panel's, not the scrim's)
+	app_a11y, had_a11y := s.a11y.next, s.a11y.has_next
+	s.a11y.has_next = false
 	// scrim first, panel second: the panel is later in the tree, so it is on top and takes its own clicks
 	push_tags("scrim")
 	next({fixed_x = 0, fixed_y = 0, fixed_w = s.window_size.x, fixed_h = s.window_size.y, bg = color("background")})
 	scrim := build_box({.Clickable, .Draw_Background}, fmt.tprintf("###modal_scrim_%s", id))
 	scrim.cursor = .Arrow
+	a11y_default(scrim, {ignore = true})
 	pop_tags()
 	if signal(scrim).pressed { open^ = false }
+	if had_a11y { a11y(app_a11y) }
 
 	set_next_axis(.Y)
 	g.next_mod.fixed_x = (s.window_size.x - width) * 0.5
@@ -183,6 +192,7 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	panel := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
 	_ = signal(panel)
+	a11y_default(panel, {role = .Dialog, modal = true})
 	push_parent(panel)
 	append(&s.popup_stack, true)
 	// keyboard: Tab cycles inside the dialog; the page widget that had the focus loses it when the dialog opens
@@ -217,6 +227,8 @@ menu_bar_button :: proc(id: string) -> Key {
 	next({width = px(font_text_width(id) + em * 1.6), height = px(dense(em * 1.9)), text_align = .Center, radius = em * 0.4})
 	b := build_box({.Clickable, .Draw_Text, .Draw_Hot_Effects, .Draw_Background}, id)
 	pop_tags()
+	a11y_default(parent_box(), {role = .Menu_Bar, orientation = .X})
+	a11y_default(b, {role = .Menu_Item, popup = .Menu, expanded = open})
 	sig := signal(b)
 	if sig.clicked {
 		if open { ctx_menu_close() } else { ctx_menu_open_rect(menu_key, b.rect, b.key) }
