@@ -38,6 +38,8 @@ Native_Window :: struct {
 	dnd:            ^Dnd_State,     // drag and drop (dragdrop_win32.odin), made on first use
 	pointers:       Pointer_State,  // fingers and pens (pointer_win32.odin)
 	trays:          [dynamic]^Tray, // icons of the notification area this window receives (tray_win32.odin)
+	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
+	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
@@ -364,6 +366,7 @@ destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
 	dnd_destroy(w)   // (revoked while the window exists)
 	tray_destroy_all(w)
+	if w.clip_watch { clipboard_watch(w, false) }
 	pointer_state_destroy(&w.pointers)
 	if w.hwnd != nil {
 		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
@@ -680,6 +683,9 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_DESTROY:
 		return 0
+
+	case win.WM_CLIPBOARDUPDATE:
+		return 0   // (the message woke the loop; clipboard_changed reads the sequence number)
 
 	case win.WM_SETFOCUS:  w.focused = true
 	case win.WM_KILLFOCUS: w.focused = false
