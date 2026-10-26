@@ -15,7 +15,6 @@ Platform_Face :: struct {
 	owned:   bool,     // data is the package's (heap): freed with the face
 	path:    string,   // a font file (heap)
 	index:   u32,
-	sims:    Simulations,
 }
 
 @(private)
@@ -54,7 +53,8 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 		return 0, false
 	}
 	f := Font{kind = .Face}
-	f.data, f.owned, f.index, f.sims = data, owned, u32(max(index, 0)), simulations
+	f.data, f.owned, f.index = data, owned, u32(max(index, 0))
+	f.sims = simulations
 	if owned {
 		f.data = make([]byte, len(data), runtime.heap_allocator())
 		copy(f.data, data)
@@ -71,7 +71,27 @@ load_system :: proc(s: ^State, family: string, weight := 400, style := Font_Styl
 
 has_system_family :: proc(s: ^State, family: string) -> bool { return false }
 
-with_simulations :: proc(s: ^State, id: Font_Id, bold, oblique: bool) -> Font_Id { return id }
+// The same face with simulated bold and / or slant (simulate.odin: the native backend draws and measures them).
+with_simulations :: proc(s: ^State, id: Font_Id, bold, oblique: bool) -> Font_Id {
+	f := face_ptr(s, id)
+	if f == nil { return id }
+	want := f.sims
+	if bold { want += {.Bold} }
+	if oblique { want += {.Oblique} }
+	if want == f.sims { return id }
+	key := strings.concatenate({"sim:", itoa(int(id)), "|", itoa(int(transmute(u32)want))}, context.temp_allocator)
+	if nid, ok := find_key(s, key); ok { return nid }
+	nf := Font{kind = .Face}
+	nf.index, nf.sims = f.index, want
+	if f.path != "" { nf.path = strings.clone(f.path, runtime.heap_allocator()) }
+	if len(f.data) > 0 {   // a copy: the faces are unloaded independently
+		nf.data = make([]byte, len(f.data), runtime.heap_allocator())
+		copy(nf.data, f.data)
+		nf.owned = true
+	}
+	nid := publish_face(s, key, nf, from_wide(f.family, context.temp_allocator))
+	return nid != 0 ? nid : id
+}
 
 // TODO: the axes and instances of variable faces through the native backend.
 axes :: proc(s: ^State, id: Font_Id, allocator := context.allocator) -> []Axis { return nil }
@@ -85,13 +105,12 @@ Native_Source :: struct {
 	data:      []byte,
 	index:     u32,
 	axes:      []Axis_Value,
-	simulated: bool,
 }
 
 @(private)
 native_source :: proc(f: ^Font) -> (src: Native_Source, ok: bool) {
 	if f == nil { return }
-	src = {path = f.path, data = f.data, index = f.index, simulated = f.sims != {}}
+	src = {path = f.path, data = f.data, index = f.index}
 	return src, f.path != "" || len(f.data) > 0
 }
 

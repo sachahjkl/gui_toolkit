@@ -118,6 +118,9 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	f.dw7 = com_query(dw, &IID_IDWriteFontFace7, IDWriteFontFace7)
 	dw->GetMetrics(&f.dm)
 	f.upem = f32(max(f.dm.designUnitsPerEm, 1))
+	ds := dw->GetSimulations()
+	if ds & DWRITE_FONT_SIMULATIONS_BOLD != 0 { f.sims += {.Bold} }
+	if ds & DWRITE_FONT_SIMULATIONS_OBLIQUE != 0 { f.sims += {.Oblique} }
 	if f.dw4 != nil {
 		formats := f.dw4->GetGlyphImageFormats()
 		f.color = formats & COLOR_FORMATS != 0
