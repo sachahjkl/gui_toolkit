@@ -21,7 +21,7 @@ import "../font"
 Rich_Style :: struct {
 	font:       font.Font_Id,   // 0: the box's
 	size:       f32,            // 0: the box's
-	bold:       bool,           // the bold face of `font` (rich_set_faces), else simulated
+	bold:       bool,           // the bold face of `font`: rich_set_faces, else the family's (font.styled_face), else simulated
 	italic:     bool,
 	code:       bool,           // inline code: the mono font, the theme's "code_bg" behind
 	color:      Color,          // alpha 0: the box's text colour (a link's: the theme's "link")
@@ -98,7 +98,7 @@ rich_face :: proc(c: Rich_Context, r: Rich_Style) -> (font.Font_Id, f32) {
 	if c.faces != nil {
 		if set, ok := c.faces[base]; ok && set[k] != 0 { return set[k], size }
 	}
-	return font.with_simulations(c.fonts, base, r.bold, r.italic), size
+	return font.styled_face(c.fonts, base, r.bold, r.italic), size
 }
 
 // Lays the runs out at `width` (<= 0: no wrapping, only "\n" breaks), at most `max_lines` lines (0: no limit; the last
