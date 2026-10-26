@@ -13,6 +13,13 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 - **`ui.accordion`**: a header with a turning chevron that folds the content built in its block, with an animated height (no frame at rest), Enter / Space; the content is not built once folded.
 - **`ui/reorder.odin`**: a list reordered by dragging along X or Y, from Wren's tab strip: `reorder_item_size`, `reorder_offset`, `reorder_slot`, `list_move`, `reorder_edge_scroll`, `reorder_moved`, and the drag's state `Reorder` (`reorder_frame`, `reorder_begin`, `reorder_dragging`, `reorder_item_pos`: items slide to their slots, the dragged one follows the pointer).
 - Example `examples/panes`; tests `tests/panes`.
+## [0.40.1] - 2026-10-26
+
+### Added
+- **`ui.building()`**: true between `begin_build` and `end_build` (on this thread, whatever the state). An app whose window procedure makes frames (`on_frame`, inside a loop of the system) asks it before building one.
+
+### Fixed
+- **A build begun inside another one is refused with a clear assertion** (`ui: begin_build inside another build`) instead of breaking the one in progress: `begin_build` emptied its parent stack, freed its frame arena and selected another state under it, and the outer build failed later at an unrelated place (Wren's crash of 2026-10-26: a bounds check in `ui.spacer`, after a `TrackPopupMenu` opened during the build painted the window from `WM_PAINT`). Test: `tests/ui_robust` nested_build_test.
 
 ## [0.40.0] - 2026-10-26
 
