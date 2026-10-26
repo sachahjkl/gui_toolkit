@@ -72,6 +72,7 @@ destroy :: proc(s: ^State) {
 	wrap_cache_destroy(s)
 	rich_cache_destroy(s)
 	selection_destroy(s)
+	a11y_destroy(s)
 	delete(s.mouse_events)
 	virtual.arena_destroy(&s.arena)
 	if g == s { g = nil }
@@ -148,6 +149,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	post_begin_build(s, p.window)
 	selection_begin(s)
 	process_events(s, p.events, !p.disable_zoom)
+	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	menu_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
 
@@ -195,6 +197,7 @@ end_build :: proc() {
 	selection_update(s)
 	handle_tab_navigation(s)
 	update_animations(s)
+	a11y_end_build(s)   // (after the focus moved and the rects are final)
 
 	// drop boxes and animations that were not touched this build
 	dead := make([dynamic]Key, context.temp_allocator)
@@ -347,6 +350,11 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.custom_user = nil
 	b.measure_y = nil
 	b.slant = {}
+	b.a11y = nil
+	if s.a11y.has_next {
+		b.a11y = new_clone(s.a11y.next, frame_allocator())
+		s.a11y.has_next = false
+	}
 	if v, ok := fixed[0].?; ok { b.flags += {.Floating_X}; b.fixed_pos.x = v }
 	if v, ok := fixed[1].?; ok { b.flags += {.Floating_Y}; b.fixed_pos.y = v }
 	if v, ok := mod.fixed_w.?; ok && has_mod { b.pref[.X] = px(v) }

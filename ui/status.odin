@@ -308,7 +308,9 @@ status_bar :: proc(id: string, height_em: f32 = 1.9, text_scale: f32 = 0.88) -> 
 	push_tags("bar")
 	next({width = fill(), height = px(dense(em * height_em)), radius = 0})
 	set_next_axis(.X, .Center)
-	push_parent(build_box({.Draw_Background, .Draw_Side_Top}, id))
+	bar := build_box({.Draw_Background, .Draw_Side_Top}, id)
+	a11y_default(bar, {role = .Status})
+	push_parent(bar)
 	st := top_style()^
 	st.font_size = math.round(em * text_scale)
 	append(&g.style_stack, st)

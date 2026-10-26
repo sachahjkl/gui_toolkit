@@ -64,9 +64,9 @@ jobs:
         shell: pwsh
         run: |
           $failed = 0
-          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends') {
+          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y') {
             # @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
-            $extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust') { '-define:ODIN_TEST_THREADS=1' })
+            $extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y') { '-define:ODIN_TEST_THREADS=1' })
             $o = odin test "tests/$t" -vet @extra -out:"build/${t}_test.exe" 2>&1 | Out-String
             if ($o -match 'All tests were successful') { "PASS $t" } else { "FAIL $t"; $o; $failed++ }
           }
@@ -75,6 +75,13 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           $o = odin test tests/text_backends -vet -define:FONT_BACKEND=native -out:build/text_backends_native_test.exe 2>&1 | Out-String
           if ($o -match 'All tests were successful') { 'PASS text_backends (native)' } else { 'FAIL text_backends (native)'; $o; $failed++ }
+          # accessibility: AccessKit's UI Automation adapter, a window read by a UI Automation client (no screen reader)
+          ./tools/build_a11y.ps1
+          if ($LASTEXITCODE) { exit 1 }
+          $o = odin test tests/a11y -vet -define:ODIN_TEST_THREADS=1 -define:A11Y_ACCESSKIT=true -out:build/a11y_uia_test.exe 2>&1 | Out-String
+          if ($o -match 'All tests were successful') { 'PASS a11y (UI Automation)' } else { 'FAIL a11y (UI Automation)'; $o; $failed++ }
+          odin build tools/uia_probe -vet -out:build/uia_probe.exe
+          if ($LASTEXITCODE) { 'FAIL uia_probe'; $failed++ }
           foreach ($tg in 'linux_amd64', 'darwin_arm64') {
             $o = odin check font -target:$tg -no-entry-point -vet 2>&1 | Out-String
             if ($LASTEXITCODE) { "FAIL font on $tg"; $o; $failed++ } else { "PASS font on $tg" }

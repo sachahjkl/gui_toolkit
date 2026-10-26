@@ -538,9 +538,42 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0) -> (res: Ri
 	}
 
 	res.signal = signal(b)
-	if !has_links { return }
+	if !has_links {
+		if s.a11y.wanted { a11y_default(b, {role = .Label, name = all}) }
+		return
+	}
 	// links: under the pointer (last frame's layout at the box's width), clicked, chosen with the keyboard
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, max_lines, b.text_align)
+	// to screen readers: the text between the links, and the links (whose clicks and focus they may ask for)
+	part_run: []int
+	parts: [dynamic]A11y_Part
+	if s.a11y.wanted {
+		parts = make([dynamic]A11y_Part, frame_allocator())
+		runs_of := make([dynamic]int, context.temp_allocator)
+		origin := b.rect.min + {b.text_pad, b.text_pad}
+		lo := 0
+		for i := 0; i < len(runs); {
+			j, hi := i, lo
+			for j < len(runs) && runs[j].link == runs[i].link { hi += len(runs[j].text); j += 1 }
+			bounds: Rect
+			for r, k in rich_range_rects(l, s.fonts, d.runs, lo, hi) {
+				bounds = k == 0 ? r : Rect{{min(bounds.min.x, r.min.x), min(bounds.min.y, r.min.y)}, {max(bounds.max.x, r.max.x), max(bounds.max.y, r.max.y)}}
+			}
+			bounds = {bounds.min + origin, bounds.max + origin}
+			if strings.trim_space(all[lo:hi]) != "" || runs[i].link != "" {
+				append(&parts, A11y_Part{id = a11y_part_id(b, len(parts)), role = runs[i].link != "" ? .Link : .Label, name = all[lo:hi],
+					url = d.runs[i].link, bounds = bounds, actions = runs[i].link != "" ? {.Focus} : {}})
+				append(&runs_of, i)
+			}
+			lo, i = hi, j
+		}
+		part_run = runs_of[:]
+		for p, k in parts {
+			if p.role != .Link { continue }
+			if _, ok := a11y_request(Key(p.id), .Click); ok { res.link_clicked = part_run[k] }
+			if _, ok := a11y_request(Key(p.id), .Focus); ok { s.focus_key = b.key; s.focus_visible = true; s.rich_link[b.key] = part_run[k] }
+		}
+	}
 	if res.hovering {
 		res.link_hovered = rich_link_at(l, d.runs, res.mouse - {b.text_pad, b.text_pad})
 		if res.link_hovered >= 0 { s.cursor_request = .Hand }
@@ -574,5 +607,9 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0) -> (res: Ri
 	if res.link_clicked >= 0 { res.link = runs[res.link_clicked].link }
 	d.hovered = res.link_hovered
 	d.focused = s.focus_visible ? res.link_focused : -1
+	if s.a11y.wanted {
+		for &p, k in parts { p.focused = p.role == .Link && part_run[k] == res.link_focused }
+		a11y_default(b, {role = .Paragraph, parts = parts[:]})
+	}
 	return
 }

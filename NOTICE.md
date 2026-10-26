@@ -68,6 +68,15 @@ Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas)
   <https://www.unicode.org/license.txt>).
 - The color glyph test fonts of `tests/color_glyphs/data` keep their own licenses (see `data/README.txt`).
 
+## Accessibility adapter (optional, `-define:A11Y_ACCESSKIT=true`)
+
+`native/a11y` (`gt_a11y.lib`, linked statically) is built on [AccessKit](https://github.com/AccessKit/accesskit)
+(`accesskit` 0.25.2, `accesskit_consumer` 0.39.2, `accesskit_windows` 0.35.2), MIT or Apache-2.0, and its dependencies:
+the [windows](https://github.com/microsoft/windows-rs) crates 0.62 (MIT or Apache-2.0), `hashbrown` and `uuid` (MIT or
+Apache-2.0), `foldhash` (Zlib), and the build-time crates `syn`, `quote`, `proc-macro2`, `static_assertions` (MIT or
+Apache-2.0) and `unicode-ident` ((MIT or Apache-2.0) and Unicode-3.0). Exact versions and SHA-256 in
+`native/a11y/Cargo.lock`.
+
 ## WebGPU backend (optional, `-define:TOOLKIT_RENDER=wgpu`)
 
 - [wgpu-native](https://github.com/gfx-rs/wgpu-native) (wgpu and naga), MIT or Apache-2.0, linked through Odin's `vendor:wgpu`; `wgpu_native.dll` ships with programs built with `WGPU_SHARED=true`.

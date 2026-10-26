@@ -272,6 +272,22 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 		pad := b.text_pad
 		text := field_string(f)
 
+		// a screen reader sets the text, types over the selection, or moves the caret
+		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
+			field_checkpoint(f, .Other)
+			field_set(f, r.value)
+		}
+		if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
+			field_checkpoint(f, .Other)
+			insert_text(f, r.value)
+		}
+		if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
+			f.mark = a11y_run_byte(text, nil, b, r.sel[0], int(r.sel[1]))
+			f.cursor = a11y_run_byte(text, nil, b, r.sel[2], int(r.sel[3]))
+			f.edited_ms = now
+		}
+		text = field_string(f)
+
 		// mouse: click places the caret, drag selects, double-click selects the word
 		if res.pressed || res.dragging {
 			x := res.mouse.x - pad + f.scroll_x
@@ -357,6 +373,15 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 		d.pad = pad
 		b.custom = line_edit_draw
 		b.custom_user = d
+		if s.a11y.wanted {
+			lh := font.metrics(s.fonts, b.font, b.font_size).line_height
+			t := frame_new(A11y_Text)
+			t^ = {text = d.text, cursor = f.cursor, mark = f.mark, font = b.font, size = b.font_size, line_height = lh,
+				origin = {b.rect.min.x + pad, (b.rect.min.y + b.rect.max.y - lh) * 0.5}, scroll = {f.scroll_x, 0}}
+			a11y_default(b, {role = .Text_Input, placeholder = placeholder, text = t})
+		} else {
+			a11y_default(b, {role = .Text_Input, placeholder = placeholder})
+		}
 	}
 	return
 }

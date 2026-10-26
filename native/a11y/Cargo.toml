@@ -1,0 +1,29 @@
+# The toolkit's accessibility adapter (platform/a11y_accesskit.odin): AccessKit turns the tree the toolkit builds from its
+# boxes into what screen readers read (UI Automation on Windows), behind a small C ABI (src/lib.rs). Linked statically
+# into applications built with -define:A11Y_ACCESSKIT=true (tools\build_a11y.ps1 -> build\a11y\gt_a11y.lib), or built
+# into an application's own Rust library (A11Y_NATIVE_LINK=false, as for gt_text). Versions are pinned exactly here and
+# by Cargo.lock (SHA-256 of every crate); the build runs with --locked. See docs\accessibility.md.
+[package]
+name = "gt_a11y"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+accesskit = "=0.25.2"
+
+[target.'cfg(windows)'.dependencies]
+accesskit_windows = "=0.35.2"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = false
+panic = "unwind"   # every entry point catches panics: a bug in the adapter is a window screen readers cannot read, not a dead app
+incremental = false

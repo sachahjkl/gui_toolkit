@@ -62,6 +62,10 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	res.sig = signal(b)
 	lo, hi := splitter_limits(min_size, max_size, opts)
 	before := size^
+	if v, ok := a11y_numeric_request(b.key, size^, opts.step > 0 ? opts.step : 10 * s.scale / unit); ok {
+		size^ = clamp(v, lo, hi)
+		res.finished = true
+	}
 
 	if res.sig.pressed { drag_store({size^, 0, 0, 0}) }
 	if res.sig.dragging {
@@ -100,6 +104,9 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	d.color = d.hot ? color("accent") : color("border")
 	d.line = max(math.round(s.scale), 1)
 	b.custom, b.custom_user = splitter_draw, d
+	// (a bar between side-by-side panes is vertical: its orientation is across `axis`)
+	a11y_default(b, {role = .Splitter, numeric = f64(size^), min = f64(lo), max = f64(hi), orientation = axis == .X ? Axis.Y : Axis.X,
+		actions = opts.no_keyboard ? {} : {.Increment, .Decrement, .Set_Value}})
 	return
 }
 
@@ -145,6 +152,7 @@ accordion :: proc(id: string, title: string, open: ^bool) -> bool {
 	header := build_box({.Clickable, .Focusable, .Draw_Hot_Effects, .Draw_Focus_Ring}, "###accordion_header")
 	sig := signal(header)
 	if sig.clicked { open^ = !open^ }
+	a11y_default(header, {role = .Button, expanded = open^})
 	t := anim(key_from_string(outer.key, "t"), open^ ? 1 : 0, ACCORDION_RATE, open^ ? 1 : 0)
 	if parent(header) {
 		spacer(px(em * 0.5))

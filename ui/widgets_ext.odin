@@ -6,6 +6,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:strconv"
 import "core:strings"
 import "../draw"
 import "../font"
@@ -100,6 +101,7 @@ mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 	em := font_size()
 	set_next_axis(.X, .Center)
 	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
+	a11y_default(row_box, {role = radio ? .Radio_Button : .Check_Box, toggled = on ? .True : .False})
 	sig := signal(row_box)
 	if parent(row_box) {
 		t := anim(key_from_string(row_box.key, "t"), on ? 1 : 0, 30)
@@ -124,14 +126,20 @@ mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 // Clickable row: animated check box + label. `value` is toggled on click.
 checkbox :: proc(id: string, text: string, value: ^bool) -> Signal {
 	sig := mark_row(id, text, value^, false)
-	if sig.clicked { value^ = !value^ }
+	if sig.clicked { value^ = !value^; a11y_state_toggled(sig.box, value^) }
 	return sig
 }
 
 radio :: proc(id: string, text: string, selected: ^int, index: int) -> Signal {
 	sig := mark_row(id, text, selected^ == index, true)
-	if sig.clicked { selected^ = index }
+	if sig.clicked { selected^ = index; a11y_state_toggled(sig.box, true) }
 	return sig
+}
+
+// The state screen readers read follows a change made after the box was built (the click of this frame).
+@(private)
+a11y_state_toggled :: proc(b: ^Box, on: bool) {
+	if b != nil && b.a11y != nil { b.a11y.toggled = on ? .True : .False }
 }
 
 ////////////////////////////////
@@ -160,6 +168,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
 	sig := signal(row_box)
 	if sig.clicked { value^ = !value^ }
+	a11y_default(row_box, {role = .Switch, toggled = value^ ? .True : .False})
 	if parent(row_box) {
 		spacer(px(em * 0.4))
 		next({width = fill(), height = pct(1)})
@@ -258,6 +267,10 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 		if step > 0 { v = math.round(v / step) * step }
 		value^ = clamp(v, lo, hi)
 	}
+	if v, ok := a11y_numeric_request(b.key, value^, step > 0 ? step : (hi - lo) / 100); ok {
+		if step > 0 { v = math.round(v / step) * step }
+		value^ = clamp(v, lo, hi)
+	}
 	d := frame_new(Slider_Draw)
 	t := clamp((value^ - lo) / (hi - lo), 0, 1)
 	d.t1 = anim(key_from_string(b.key, "t"), t, 60, t)
@@ -266,7 +279,22 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	d.value_text = strings.index_byte(format, '%') >= 0 ? fmt.aprintf(format, value^, allocator = frame_allocator()) : format
 	d.mono = mono_font()
 	b.custom, b.custom_user = slider_draw, d
+	a11y_default(b, {role = .Slider, numeric = f64(value^), min = f64(lo), max = f64(hi), step = step > 0 ? f64(step) : nil, value = d.value_text, orientation = .X})
 	return
+}
+
+// A request of a screen reader for a numeric widget `key` this build (set the value, increment, decrement by `step`):
+// the value it asks for.
+a11y_numeric_request :: proc(key: Key, value, step: f32) -> (f32, bool) {
+	if r, ok := a11y_request(key, .Set_Value); ok {
+		if r.data == .Numeric_Value { return f32(r.num), true }
+		if r.data == .Value {
+			if v, vok := strconv.parse_f32(strings.trim_space(r.value)); vok { return v, true }
+		}
+	}
+	if _, ok := a11y_request(key, .Increment); ok { return value + step, true }
+	if _, ok := a11y_request(key, .Decrement); ok { return value - step, true }
+	return value, false
 }
 
 // Two thumbs on one track: the one closest to the pointer moves.
@@ -295,6 +323,7 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 	d.value_text = fmt.aprintf("%.0f-%.0f", lo_v^, hi_v^, allocator = frame_allocator())
 	d.mono = mono_font()
 	b.custom, b.custom_user = slider_draw, d
+	a11y_default(b, {role = .Slider, value = d.value_text, min = f64(lo), max = f64(hi), orientation = .X})
 	return
 }
 
@@ -306,6 +335,12 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 	em := font_size()
 	set_next_axis(.X, .Center)
 	row_box := build_box({}, id)
+	if v, ok := a11y_numeric_request(row_box.key, f32(value^), 1); ok {
+		old := value^
+		value^ = clamp(int(math.round(v)), lo, hi)
+		changed = value^ != old
+	}
+	a11y_default(row_box, {role = .Spin_Button, numeric = f64(value^), min = f64(lo), max = f64(hi), step = 1})
 	if parent(row_box) {
 		for dir in ([2]int{-1, 1}) {
 			if dir == 1 {
@@ -361,6 +396,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 		d := frame_new(Seg_Draw)
 		d.t, d.n, d.accent, d.pad = t, len(labels), accent, em * 0.25
 		b.custom, b.custom_user = seg_draw, d
+		a11y_default(b, {role = .Radio_Group, orientation = .X})
 		if parent(b) {
 			spacer(px(em * 0.25))
 			for label, i in labels {
@@ -370,7 +406,10 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 				item := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects}, fmt.tprintf("%s###seg%d", label, i))
 				pop_tags()
 				if signal(item).clicked && i != selected^ { selected^ = i; changed = true }
+				a11y_default(item, {role = .Radio_Button, toggled = i == selected^ ? .True : .False, position = i + 1, set_size = len(labels)})
 			}
+			// (the item clicked this frame is the selected one: the earlier items said otherwise)
+			if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 		}
 	}
 	return
@@ -388,6 +427,7 @@ chips :: proc(id: string, labels: []string, mask: ^u32) {
 			b := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, fmt.tprintf("%s###%s_%d", label, id, i))
 			pop_tags()
 			if signal(b).clicked { mask^ ~= (1 << u32(i)) }
+			a11y_default(b, {role = .Button, toggled = mask^ & (1 << u32(i)) != 0 ? .True : .False})
 		}
 	}
 }
@@ -397,6 +437,8 @@ rating :: proc(id: string, value: ^int) {
 	em := font_size()
 	set_next_axis(.X)
 	box := build_box({}, id)
+	if v, ok := a11y_numeric_request(box.key, f32(value^), 1); ok { value^ = clamp(int(math.round(v)), 0, 5) }
+	defer a11y_default(box, {role = .Slider, numeric = f64(value^), min = 0, max = 5, step = 1, value = fmt.aprintf("%d / 5", value^, allocator = frame_allocator())})
 	if parent(box) {
 		for i in 0 ..< 5 {
 			cell_id := fmt.tprintf("%s_%d", id, i)
@@ -445,6 +487,12 @@ progress :: proc(id: string, t: f32, indeterminate := false) {
 	d.track, d.fill = color("track"), color("accent")
 	b.custom, b.custom_user = bar_draw, d
 	if indeterminate && g.anim_rate != 0 { g.anim_busy = true }
+	if indeterminate {
+		a11y_default(b, {role = .Progress_Indicator, busy = true})
+	} else {
+		a11y_default(b, {role = .Progress_Indicator, numeric = f64(clamp(t, 0, 1) * 100), min = 0, max = 100, read_only = true,
+			value = fmt.aprintf("%.0f %%", clamp(t, 0, 1) * 100, allocator = frame_allocator())})
+	}
 }
 
 ////////////////////////////////
@@ -461,10 +509,11 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 		set_next_axis(.X, .Center)
 		btn = build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, id)
 		sig = signal(btn)
+		cur := selected^ >= 0 && selected^ < len(items) ? items[selected^] : ""   // none chosen, or the list changed
+		a11y_default(btn, {role = .Combo_Box, value = display_part(cur), expanded = open, popup = .Listbox, read_only = true})
 		if parent(btn) {
 			spacer(px(em * 0.8))
 			next({width = fill(), height = pct(1)})
-			cur := selected^ >= 0 && selected^ < len(items) ? items[selected^] : ""   // none chosen, or the list changed
 			build_box({.Draw_Text}, fmt.tprintf("%s###cur", cur))
 			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
 		}
@@ -503,6 +552,8 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, righ
 	if right_clicked != nil { right_clicked^ = -1 }
 	if middle_clicked != nil { middle_clicked^ = -1 }
 	em := font_size()
+	a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
+	first_tab: ^Box
 	for label, i in labels {
 		on := selected^ == i
 		tab_id := fmt.tprintf("%s_%d", id, i)
@@ -530,6 +581,17 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, righ
 		if sig.clicked && !on { selected^ = i; changed = true }
 		if sig.right_clicked && right_clicked != nil { right_clicked^ = i }
 		if sig.middle_clicked && middle_clicked != nil { middle_clicked^ = i }
+		a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
+		if first_tab == nil { first_tab = b }
+	}
+	// (the tab clicked this frame is the selected one: the earlier tabs said otherwise)
+	if changed {
+		i := 0
+		for c := first_tab; c != nil && i < len(labels); c = c.next {
+			if c.a11y == nil || c.a11y.role != .Tab { continue }
+			c.a11y.selected = i == selected^
+			i += 1
+		}
 	}
 	return
 }
@@ -557,6 +619,7 @@ card :: proc(title: string, icon_glyph: string = "") -> bool {
 	g.next_mod.height = children_sum()
 	g.next_mod.radius = em * 0.6
 	c := build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###card_%s", title))
+	a11y_default(c, {role = .Group, name = title})
 	push_parent(c)
 	spacer(px(em * 0.9))
 	set_next_axis(.X)
@@ -573,7 +636,11 @@ card :: proc(title: string, icon_glyph: string = "") -> bool {
 		if row(.Center) {
 			if icon_glyph != "" { if tags("weak") { icon(icon_glyph, em * 1.8) } }
 			next({width = fill(), height = pct(1)})
-			if style({font_size = em * 1.1}) { build_box({.Draw_Text}, fmt.tprintf("%s###card_title", title)) }
+			if style({font_size = em * 1.1}) {
+				// (the card's name: not read a second time)
+				a11y({ignore = true})
+				build_box({.Draw_Text}, fmt.tprintf("%s###card_title", title))
+			}
 		}
 	}
 	return true
@@ -614,6 +681,12 @@ form_row :: proc(label_text: string) -> bool {
 @(private)
 form_row_end :: proc() {
 	pop(&g.style_stack)
+	// the row's label names its widget (the first box after it) unless the app named it
+	r := parent_box()
+	if lbl := r.first; lbl != nil && lbl.next != nil {
+		w := lbl.next
+		if w.a11y == nil || (w.a11y.name == "" && w.a11y.labelled_by == 0) { a11y_set(w, {labelled_by = lbl.key}) }
+	}
 	pop_parent()
 }
 
@@ -634,6 +707,7 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig:
 		b := build_box(flags, id)
 		b.squish = press_squish(b)
 		sig = signal(b)
+		a11y_default(b, {role = .Button})
 		if parent(b) {
 			spacer(px(em * 0.95))
 			if glyph != "" { icon(glyph, em * 1.5) }

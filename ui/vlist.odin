@@ -222,6 +222,12 @@ vlist_end :: proc(rows: Vlist_Rows, ok: bool) {
 	st := (^Virtual_List)(pop(&s.list_stack))
 	n := len(st.ids)
 	spacer(px(st.offsets[n] - st.offsets[st.last]), exact = true)
+	// (only the rows in view are built: the set's size tells a screen reader how many there are)
+	b := parent_box()
+	a11y_default(b, {role = .List_Box, active_descendant = st.sel >= 0 ? vlist_row_key(b.key, st.sel) : 0})
+	for c := b.first; c != nil; c = c.next {
+		if c.a11y != nil && c.a11y.role == .List_Box_Option { c.a11y.set_size = n; c.a11y.selected = c.a11y.position - 1 == st.sel }
+	}
 	pop_parent()
 	// the rows built, measured at the start of the next build
 	resize(&st.prev_ids, st.last - st.first)
