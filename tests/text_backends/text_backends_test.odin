@@ -83,8 +83,8 @@ native_matches_dwrite :: proc(t: ^testing.T) {
 		if len(sa.glyphs) != len(sb.glyphs) { continue }
 		for g, i in sa.glyphs {
 			h := sb.glyphs[i]
-			// x too, but in Hebrew: two glyphs of Segoe UI sit 20 and 50 font units apart (a GPOS placement in a
-			// right-to-left run, docs/font-backend.md)
+			// x too, but in right-to-left runs: DirectWrite drops the XPlacement of a kerning pair there (Segoe UI's
+			// Hebrew: 20 and 50 font units), HarfBuzz applies it (docs/font-backend.md)
 			testing.expectf(t, g.id == h.id && g.cluster == h.cluster && abs(g.advance - h.advance) < 0.01 && (g.rtl || abs(g.x - h.x) < 0.05),
 				"%s glyph %d: dwrite %v / native %v", sm.name, i, g, h)
 		}
