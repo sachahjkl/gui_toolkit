@@ -592,7 +592,12 @@ run_script :: proc(w: ^Window, obj: ^IDataObject, steps: []Drag_Step, allowed: D
 	d := dnd_state(w)
 	inside := false
 	result: Maybe(Drop_Effect)
+	// the system's loop pumps the thread's messages between the steps, and the drag picture moving over the window repaints
+	// it: so does the script, with the same rule (a repaint asked for, never a frame inside the app's own: frame_gate.odin)
+	pumping += 1
+	defer pumping -= 1
 	for s, i in steps {
+		if i > 0 { drag_script_pump(w) }
 		now := s.pos.x >= 0 && s.pos.y >= 0 && s.pos.x < f32(w.size.x) && s.pos.y < f32(w.size.y)
 		sp := win.POINT{i32(s.pos.x), i32(s.pos.y)}
 		win.ClientToScreen(w.hwnd, &sp)
@@ -614,6 +619,18 @@ run_script :: proc(w: ^Window, obj: ^IDataObject, steps: []Drag_Step, allowed: D
 		inside = now
 	}
 	return result
+}
+
+// One turn of the system's drag loop between two steps: the window is invalidated and the messages that wait are dispatched.
+@(private)
+drag_script_pump :: proc(w: ^Window) {
+	win.InvalidateRect(w.hwnd, nil, false)
+	msg: win.MSG
+	for win.PeekMessageW(&msg, nil, 0, 0, win.PM_REMOVE) {
+		if msg.message == win.WM_QUIT { win.PostQuitMessage(i32(msg.wParam)); break }
+		win.TranslateMessage(&msg)
+		win.DispatchMessageW(&msg)
+	}
 }
 
 @(private)
