@@ -66,9 +66,20 @@ through the toolkit's `build/text`.
 
 `odin check font -no-entry-point` passes for Windows, Linux and macOS, with either define. What only Windows has is in
 `*_windows.odin` (DirectWrite faces and analyzers, Direct2D color glyphs, the color glyph thread, gray glyph bitmaps).
-`font_other.odin` is the platform part elsewhere: faces from files and memory opened by the native backend, no system
-collection (`load_system` fails, TODO fontconfig / CoreText), no fallback, no bitmap rasterizer (text is drawn by Slug
-from the backend's outlines), no COLR color glyphs yet. On Linux and macOS `cargo build --release` in `native/text`
+`font_other.odin` is the platform part elsewhere: faces from files and memory opened by the native backend, the
+system's fonts from the platform's font service, no bitmap rasterizer (text is drawn by Slug from the backend's outlines),
+no COLR color glyphs yet.
+
+| Platform | Font service | `load_system` | fallback | `system_families` |
+|---|---|---|---|---|
+| Windows | DirectWrite | system collection | IDWriteFontFallback | collection |
+| Linux | fontconfig (`font_system_linux.odin`) | FcFontMatch after the configuration's substitutions (the family must match) | best match whose charset has the character | FcFontList |
+| macOS | CoreText (`font_system_darwin.odin`) | CTFontCreateWithName + symbolic traits (bold, italic) | CTFontCreateForString | CTFontManagerCopyAvailableFontFamilyNames |
+| others | none (`system_other.odin`) | fails | none | empty |
+
+The Linux and macOS services are written against the documented C APIs and pass `odin check`; they have not run on a
+Linux machine or a Mac yet. A face of a macOS collection (.ttc) is found by its PostScript name
+(`gt_face_postscript_name`, `gt_file_face_count`). On Linux and macOS `cargo build --release` in `native/text`
 gives `build/text/libgt_text.a` (the script is Windows-only).
 
 ## Comparing the backends

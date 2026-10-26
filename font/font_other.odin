@@ -5,9 +5,11 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 
-// The platform part of the package where there is no system font service it knows yet (Linux, macOS: TODO fontconfig,
-// CoreText). Faces come from files and memory only, opened by the text backend itself (the native one: Fontations);
-// there is no system collection, no fallback and no bitmap rasterizer (text is drawn by Slug from the outlines).
+// The platform part of the package off Windows. Faces come from files and memory, opened by the text backend itself
+// (the native one: Fontations). The system's fonts come from the platform's font service: fontconfig on Linux
+// (font_system_linux.odin), CoreText on macOS (font_system_darwin.odin), none elsewhere (system_other.odin): each gives
+// a font file for a family / weight / style, the file of a font that has a character (the fallback) and the families.
+// No bitmap rasterizer: text is drawn by Slug from the outlines.
 
 @(private)
 Platform_Face :: struct {
@@ -15,12 +17,21 @@ Platform_Face :: struct {
 	owned:   bool,     // data is the package's (heap): freed with the face
 	path:    string,   // a font file (heap)
 	index:   u32,
+	weight:  int,      // nominal weight and style: the base of the fallback
+	style:   Font_Style,
 }
 
 @(private)
 Platform_State :: struct {}
 
-@(private) platform_init :: proc(s: ^State) -> bool { s.system_fonts = &unsupported_system; return true }
+@(private)
+other_system := System_Fonts{
+	name     = SYSTEM_FONT_SERVICE,
+	fallback = other_fallback,
+	families = proc(s: ^State, allocator: runtime.Allocator) -> []string { return sys_families(allocator) },
+}
+
+@(private) platform_init :: proc(s: ^State) -> bool { s.system_fonts = &other_system; return true }
 @(private) platform_stop :: proc(s: ^State) { colr_thread_done() }
 @(private) platform_destroy :: proc(s: ^State) {}
 @(private) platform_forget_face :: proc(s: ^State, id: Font_Id) {}
@@ -34,13 +45,20 @@ platform_release_face :: proc(f: ^Font) {
 
 // A face of a font file (TrueType, OpenType, collections: `index` picks the face), opened by the backend.
 load_from_file :: proc(s: ^State, path: string, index := 0) -> (id: Font_Id, ok: bool) {
+	return load_file_face(s, path, index, "", 400, .Normal)
+}
+
+// A face of a file with what is known of it (a system font: its family, weight and style, the base of the fallback).
+@(private)
+load_file_face :: proc(s: ^State, path: string, index: int, family: string, weight: int, style: Font_Style) -> (id: Font_Id, ok: bool) {
 	key := strings.concatenate({"file:", path, "#", itoa(index)}, context.temp_allocator)
 	if id, ok = find_key(s, key); ok { return id, id != 0 }
 	if !os.exists(path) { return 0, false }
 	f := Font{kind = .Face}
 	f.path = strings.clone(path, runtime.heap_allocator())
 	f.index = u32(max(index, 0))
-	id = publish_face(s, key, f, "")
+	f.weight, f.style = weight, style
+	id = publish_face(s, key, f, family)
 	return id, id != 0
 }
 
@@ -54,7 +72,7 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 	}
 	f := Font{kind = .Face}
 	f.data, f.owned, f.index = data, owned, u32(max(index, 0))
-	f.sims = simulations
+	f.sims, f.weight, f.style = simulations, weight, style
 	if owned {
 		f.data = make([]byte, len(data), runtime.heap_allocator())
 		copy(f.data, data)
@@ -64,12 +82,46 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 	return id, id != 0
 }
 
-// No system collection here yet (TODO fontconfig / CoreText).
+// A system font nearest to weight / style / stretch (1..9, 5 = normal), from the platform's font service.
 load_system :: proc(s: ^State, family: string, weight := 400, style := Font_Style.Normal, stretch := 5) -> (id: Font_Id, ok: bool) {
-	return 0, false
+	if family == "" { return 0, false }
+	req := strings.concatenate({"sysreq:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
+	if id, ok = find_key(s, req); ok { return id, id != 0 }
+	path, index, found := sys_find(family, weight, style, stretch)
+	if !found { remember_key(s, req, 0); return 0, false }
+	id, ok = load_file_face(s, path, index, family, weight, style)
+	remember_key(s, req, id)
+	return id, ok
 }
 
-has_system_family :: proc(s: ^State, family: string) -> bool { return false }
+has_system_family :: proc(s: ^State, family: string) -> bool { return family != "" && sys_has_family(family) }
+
+// The fallback: for each character of w[a:b] no face has, the font the service picks for it near the first face's
+// family, weight and style (remembered per character and base family).
+@(private)
+other_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: []Font_Id) {
+	base := face_ptr(s, first)
+	family := base != nil ? from_wide(base.family, context.temp_allocator) : ""
+	weight := base != nil && base.weight > 0 ? base.weight : 400
+	style := base != nil ? base.style : Font_Style.Normal
+	i := a
+	for i < b {
+		r, n := decode16(w, i)
+		if faces[i] == 0 {
+			key := strings.concatenate({"fb:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(int(r))}, context.temp_allocator)
+			id, known := find_key(s, key)
+			if !known {
+				if path, index, ok := sys_find_for_char(family, weight, style, r); ok {
+					id, _ = load_from_file(s, path, index)
+					if f := face_ptr(s, id); f == nil || !face_has(s, f, r) { id = 0 }
+				}
+				remember_key(s, key, id)
+			}
+			if id != 0 { for k in 0 ..< n { faces[i + k] = id } }
+		}
+		i += n
+	}
+}
 
 // The same face with simulated bold and / or slant (simulate.odin: the native backend draws and measures them).
 with_simulations :: proc(s: ^State, id: Font_Id, bold, oblique: bool) -> Font_Id {

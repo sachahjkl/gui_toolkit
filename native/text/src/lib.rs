@@ -528,6 +528,42 @@ pub unsafe extern "C" fn gt_line_breaks(text_ptr: *const u8, text_len: usize, ou
     })
 }
 
+/// The PostScript name of a face (UTF-8) into `out`. Returns its length (more than `cap`: nothing written), 0: none.
+/// Used where the system names a font by its PostScript name and a file holds several faces (macOS' .ttc files).
+#[no_mangle]
+pub unsafe extern "C" fn gt_face_postscript_name(face: *const Face, out: *mut u8, cap: usize) -> usize {
+    guard(0, || {
+        let Some(face) = face.as_ref() else { return 0 };
+        let Ok(fr) = face.font_ref() else { return 0 };
+        let Ok(name) = fr.name() else { return 0 };
+        let data = name.string_data();
+        for rec in name.name_record() {
+            if rec.name_id() != read_fonts::types::NameId::POSTSCRIPT_NAME { continue; }
+            let Ok(s) = rec.string(data) else { continue };
+            let s: String = s.chars().collect();
+            if s.is_empty() { continue; }
+            if !out.is_null() && s.len() <= cap { std::ptr::copy_nonoverlapping(s.as_ptr(), out, s.len()); }
+            return s.len();
+        }
+        0
+    })
+}
+
+/// The number of faces in a font file (a collection: several; 0: not a font).
+#[no_mangle]
+pub unsafe extern "C" fn gt_file_face_count(path: *const u8, path_len: usize) -> u32 {
+    guard(0, || {
+        let Some(path) = text(path, path_len) else { return 0 };
+        let Ok(file) = std::fs::File::open(path) else { return 0 };
+        let Ok(map) = (unsafe { memmap2::Mmap::map(&file) }) else { return 0 };
+        match read_fonts::FileRef::new(&map) {
+            Ok(read_fonts::FileRef::Font(_)) => 1,
+            Ok(read_fonts::FileRef::Collection(c)) => c.len(),
+            Err(_) => 0,
+        }
+    })
+}
+
 /// Version of the library's API (the Odin side checks it at start).
 #[no_mangle]
 pub extern "C" fn gt_text_version() -> u32 {

@@ -97,6 +97,8 @@ foreign gt_text {
 	gt_face_table       :: proc(face: ^Gt_Face, tag: ^[4]u8, data: ^[^]u8, len: ^uint) -> i32 ---
 	gt_color_glyph      :: proc(face: ^Gt_Face, gid: u32) -> i32 ---
 	gt_palette          :: proc(face: ^Gt_Face, palette: u32, out: [^][4]u8, cap: uint) -> uint ---
+	gt_face_postscript_name :: proc(face: ^Gt_Face, out: [^]u8, cap: uint) -> uint ---
+	gt_file_face_count  :: proc(path: [^]u8, path_len: uint) -> u32 ---
 	gt_shape            :: proc(face: ^Gt_Face, text: [^]u8, text_len: uint, script: ^[4]u8, lang: [^]u8, lang_len: uint, rtl: i32,
 	                            feats: [^]Feature, n_feats: uint, with_ink: i32, out: [^]Gt_Glyph, cap: uint) -> int ---
 	gt_scripts          :: proc(text: [^]u8, text_len: uint, out: [^]Gt_Script_Run, cap: uint) -> uint ---
