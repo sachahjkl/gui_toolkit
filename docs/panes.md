@@ -19,8 +19,8 @@ if r.finished { save_settings(app) }
 - `size` is in logical pixels by default; `opts.unit` gives the frame pixels per unit (a pane's room in pixels makes
   `size` a fraction of it).
 - Limits: `min` and `max` for the pane; with `opts.total` (both panes, in units of `size`), the other pane keeps
-  `opts.min_other`. When the limits cross, the smaller one wins (`splitter_limits`). A size outside them (the window
-  shrank) is clamped.
+  `opts.min_other`. When the limits cross, the smaller one wins (`splitter_limits`). A size outside them at rest (the
+  window shrank) is left alone: the app draws the pane clamped, and the user's size comes back when there is room.
 - `opts.after`: the pane sized is after the handle (right of it, below it); dragging towards it shrinks it.
 - Double click, or Enter with the keyboard focus: back to `opts.default_size` (none when 0).
 - Keyboard: a Tab stop unless `opts.no_keyboard`; the arrow keys of its axis move it by `opts.step` (default 10 logical
