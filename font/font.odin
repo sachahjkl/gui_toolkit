@@ -86,6 +86,7 @@ Settings :: struct {
 	color_engine:    Color_Engine,   // who draws COLR / CPAL color glyphs (colr.odin, or Direct2D)
 	colr_samples:    int,       // vertical samples per pixel row of the interpreter's scan conversion
 	colr_cache_kb:   int,       // glyph outlines the interpreter keeps per face (KiB) before it drops them all
+	backend:         Backend,   // who shapes and analyses text (backend.odin; init only: set_settings keeps the first)
 }
 
 // Who draws the COLR glyphs (v0 layers and v1 paint graphs) of a face: this package's interpreter, the same on every
@@ -113,6 +114,7 @@ DEFAULT_SETTINGS :: Settings{
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
 	color_engine = .System, colr_samples = 8, colr_cache_kb = 8192,
+	backend = BUILD_BACKEND,
 }
 
 // Fonts live in slots of chunks; an id is the slot's index (low 20 bits) and the slot's generation (above): the slot of
@@ -148,9 +150,11 @@ Font :: struct {
 	color:    bool,                  // has color glyphs (COLR, sbix, CBDT, SVG)
 	cmap:     []u32,                 // BMP coverage, 2 bits per code point (known, present), filled lazily
 	colr:     ^Face_Colr,            // the COLR / CPAL tables of the face the interpreter reads (nil: none)
+	fm:       Face_Metrics,          // design metrics, from the backend
+	native:   rawptr,                // the native backend's face (backend_native.odin), nil with another backend
 	// Cascade (a face is its own one-entry cascade)
 	entries:  []Cascade_Entry,
-	features: []DWRITE_FONT_FEATURE,
+	features: []Feature,
 	no_system_fallback: bool,
 }
 
@@ -163,8 +167,12 @@ State :: struct {
 	system:     ^IDWriteFontCollection,
 	fallback:   ^IDWriteFontFallback,
 	analyzer:   ^IDWriteTextAnalyzer,
-	ok:         bool,                // DirectWrite is usable
-	latin:      DWRITE_SCRIPT_ANALYSIS,   // the script analysis of ASCII text (reused: no analysis per word)
+	ok:         bool,                // the backend is usable
+	backend:    Backend,
+	tb:         ^Text_Backend,       // its procedures (backend.odin)
+	system_fonts: ^System_Fonts,     // the platform's fonts: lists, fallback
+	native:     rawptr,              // what the native backend keeps per State
+	latin:      Script_Item,         // the script analysis of ASCII text (reused: no analysis per word)
 	latin_ok:   bool,
 	mu:         sync.Mutex,          // adding / removing fonts
 	chunks:     [MAX_CHUNKS]^[CHUNK]Font,
@@ -197,6 +205,8 @@ init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
 	sync.mutex_unlock(&s.mu)
 	words_init(&s.words, s.settings.word_cache)
 	atlas_init(&s.atlas)
+	s.tb = &none_backend
+	s.backend = s.settings.backend
 
 	f: rawptr
 	if DWriteCreateFactory(.SHARED, &IID_IDWriteFactory, &f) < 0 || f == nil { return }
@@ -213,15 +223,13 @@ init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
 	if loader_users == 0 { s.factory->RegisterFontFileLoader(&memory_loader.iface) }
 	loader_users += 1
 	sync.mutex_unlock(&loader_mu)
-	s.ok = s.analyzer != nil
-	if s.ok {
-		a := [1]u16{'a'}
-		scripts := make([dynamic]Script_Run, 0, 1, context.temp_allocator)
-		an: Analysis
-		analysis_init(&an, a[:], false)
-		an.scripts = &scripts
-		if s.analyzer->AnalyzeScript(&an.source, 0, 1, &an.sink) >= 0 && len(scripts) == 1 { s.latin, s.latin_ok = scripts[0].sa, true }
-	}
+	when ODIN_OS == .Windows { s.system_fonts = &dwrite_system } else { s.system_fonts = &unsupported_system }
+	b := s.settings.backend
+	if !backend_available(b) { b = BUILD_BACKEND }
+	s.backend = b
+	s.tb = backend_table(b)
+	s.ok = s.tb.start(s)
+	s.atlas.slug.provider = s.tb.outline
 }
 
 @(private)
@@ -279,6 +287,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
+	if s.tb != nil { s.tb.stop(s) }
 	color_queue_destroy(s)
 	colr_thread_done()
 	color_raster_destroy(&s.color_raster)
@@ -311,6 +320,7 @@ release_font :: proc(f: ^Font) {
 	context.allocator = runtime.heap_allocator()
 	if f == nil || f.kind == .None { return }
 	face_colr_close(f)   // before the face: its tables belong to it
+	when NATIVE_TEXT { native_face_release(f) }
 	com_release(f.dw7); com_release(f.dw5); com_release(f.dw4); com_release(f.dw2); com_release(f.dw)
 	com_release(f.file)
 	if f.memory != nil { memory_font_release(f.memory) }
@@ -393,6 +403,9 @@ add_face :: proc(s: ^State, key: string, dw: ^IDWriteFontFace, file: ^IDWriteFon
 	if refused { f.color = false }   // a COLR table that cannot be read is not given to Direct2D (colr_nests_glyph): outlines
 	f.family = to_wide(family)
 	f.cmap = make([]u32, 65536 * 2 / 32)
+	if !s.tb.face_open(s, &f) { release_font(&f); return 0 }
+	f.fm = s.tb.face_metrics(s, &f)
+	if f.fm.upem > 0 { f.upem = f32(f.fm.upem) }
 	sync.mutex_lock(&s.mu)
 	defer sync.mutex_unlock(&s.mu)
 	if key != "" {
@@ -680,8 +693,8 @@ cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, 
 		}
 	}
 	if len(features) > 0 {
-		f.features = make([]DWRITE_FONT_FEATURE, len(features))
-		for ft, i in features { f.features[i] = {nameTag = transmute(u32)ft.tag, parameter = ft.value} }
+		f.features = make([]Feature, len(features))
+		copy(f.features, features)
 	}
 	sync.mutex_lock(&s.mu)
 	defer sync.mutex_unlock(&s.mu)
@@ -753,14 +766,14 @@ metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 			underline_offset = size * 0.1, underline_thickness = t, strike_offset = size * 0.25, strike_thickness = t}
 	}
 	k := size / f.upem
-	dm := f.dm
+	fm := f.fm
 	m := Metrics{
-		ascent = f32(dm.ascent) * k, descent = f32(dm.descent) * k,
-		x_height = f32(dm.xHeight) * k, cap_height = f32(dm.capHeight) * k,
-		underline_offset = -f32(dm.underlinePosition) * k, underline_thickness = f32(dm.underlineThickness) * k,
-		strike_offset = f32(dm.strikethroughPosition) * k, strike_thickness = f32(dm.strikethroughThickness) * k,
+		ascent = f32(fm.ascent) * k, descent = f32(fm.descent) * k,
+		x_height = f32(fm.x_height) * k, cap_height = f32(fm.cap_height) * k,
+		underline_offset = -f32(fm.underline_position) * k, underline_thickness = f32(fm.underline_thickness) * k,
+		strike_offset = f32(fm.strike_position) * k, strike_thickness = f32(fm.strike_thickness) * k,
 	}
-	m.line_gap = f32(dm.lineGap) * k
+	m.line_gap = f32(fm.line_gap) * k
 	m.line_height = math.round(m.ascent + m.descent + m.line_gap)
 	if m.x_height <= 0 { m.x_height = size * 0.5 }
 	if m.cap_height <= 0 { m.cap_height = m.ascent * 0.7 }
@@ -780,14 +793,11 @@ glyph :: proc(s: ^State, id: Font_Id, size: f32, r: rune) -> Glyph {
 	gp := sh.glyphs[0]
 	f := face_ptr(s, gp.face)
 	if f == nil { return g }
-	gid := [1]u16{gp.id}
-	gm: DWRITE_GLYPH_METRICS
-	if f.dw->GetDesignGlyphMetrics(&gid[0], 1, &gm, false) < 0 { return g }
+	box, ok := s.tb.glyph_box(s, f, gp.id)
+	if !ok { return g }
 	k := size / f.upem
-	left := f32(gm.leftSideBearing) * k
-	right := (f32(gm.advanceWidth) - f32(gm.rightSideBearing)) * k
-	top := (f32(gm.verticalOriginY) - f32(gm.topSideBearing)) * k
-	bottom := (f32(gm.verticalOriginY) - (f32(gm.advanceHeight) - f32(gm.bottomSideBearing))) * k
+	left, right := box.x_min * k, box.x_max * k
+	top, bottom := box.y_max * k, box.y_min * k
 	if right > left && top > bottom {
 		g.offset = {math.floor(left), -math.ceil(top)}
 		g.size = {math.ceil(right) - math.floor(left), math.ceil(top) - math.floor(bottom)}
