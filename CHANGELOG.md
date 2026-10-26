@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.43.0] - 2026-10-26
+
+### Added
+- **`platform.Frame_Gate`: the frames of a thread as one state machine** (`platform/frame_gate.odin`, [docs/frame_gate.md](docs/frame_gate.md)): `Idle -> Polling -> Work -> Building -> Drawing -> Presenting`, Full and Light frames, `frame_gate_begin` / `frame_gate_stage` / `frame_gate_end`; a frame asked for where none may begin is deferred, never nested, and a move the machine does not have is counted (a panic with `strict`). The window procedure defers a `WM_PAINT` where no frame may begin; `drag_script` pumps the thread's messages between its steps as the system's drag loop does. Test: `tests/frame_gate`.
+
 ## [0.42.3] - 2026-10-26
 
 ### Fixed
