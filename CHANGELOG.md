@@ -3,6 +3,16 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.40.0] - 2026-10-26
+
+### Added
+- **`ui.rich_paragraph`** (`ui/rich_text.odin`): runs with their face, size, bold / italic, inline code, colour, background, underline, strike and links in one paragraph; lines break at the backend's opportunities on the whole text, "\n" breaks, long words are cut between clusters, `max_lines` ends with "…", `text_align` aligns; links answer hover, click and the keyboard (Tab through them, Enter); layouts are cached by content (thousands of runs laid out once). Geometry: `rich_layout`, `rich_text`, `rich_index_at`, `rich_caret`, `rich_range_rects`, `rich_link_at`; `rich_set_faces`. `Box.measure_y` (a .Text height that follows the width). Theme entries `link`, `code_bg`. Tests: `tests/keyboard` rich_text_test. Example: `examples/markdown`.
+- **Selecting text outside fields** (`ui/selection.odin`): `.Selectable` labels, paragraphs and rich paragraphs share one selection across boxes (drag, Shift+click, double / triple click, Shift+arrows, Ctrl+C, Ctrl+A); text cursor, the theme's selection colour; `selected_text`, `has_selection`, `selection_serial`, `selection_changed`, `clear_selection`, `select_box`. Test: `tests/keyboard` selection_test.
+- **`font.styled_face`**: the family's own bold / italic face of a system font, else simulated.
+
+### Fixed
+- Bold runs of a system font were the regular face with simulated bold (0.02 em: hardly bolder at 24 px): they take the family's bold face now.
+
 ## [0.39.0] - 2026-10-26
 
 ### Added
