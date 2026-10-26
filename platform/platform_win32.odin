@@ -37,6 +37,7 @@ Native_Window :: struct {
 	want_maximized: bool,           // set_placement asked for it: show_window shows the window maximized
 	dnd:            ^Dnd_State,     // drag and drop (dragdrop_win32.odin), made on first use
 	pointers:       Pointer_State,  // fingers and pens (pointer_win32.odin)
+	trays:          [dynamic]^Tray, // icons of the notification area this window receives (tray_win32.odin)
 }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
@@ -362,6 +363,7 @@ is_closed :: proc(w: ^Window) -> bool { return w.closed }
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
 	dnd_destroy(w)   // (revoked while the window exists)
+	tray_destroy_all(w)
 	pointer_state_destroy(&w.pointers)
 	if w.hwnd != nil {
 		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
@@ -654,6 +656,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	}
 	w = cast(^Window)uintptr(win.GetWindowLongPtrW(hwnd, win.GWLP_USERDATA))
 	if w == nil { return win.DefWindowProcW(hwnd, msg, wparam, lparam) }
+	if msg >= win.WM_APP && tray_window_message(w, msg, wparam, lparam) { return 0 }   // (TaskbarCreated is >= 0xC000)
 
 	push :: proc(w: ^Window, e: Event) {
 		e := e
