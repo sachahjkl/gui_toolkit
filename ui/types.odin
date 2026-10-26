@@ -384,4 +384,9 @@ State :: struct {
 	// selection of text outside fields (selection.odin), and this build's mouse presses / releases it reads
 	sel:             Selection,
 	mouse_events:    [dynamic]platform.Event,
+	// calls posted from other threads (post.odin)
+	posts:           Post_Queue,
+	post_budget:     int,                   // calls a build runs at most
+	posts_more:      bool,                  // the last drain left some: needs_frame
+	post_wake_own:   bool,                  // set_post_wake gave the app's own wake: Build_Params.window does not replace it
 }

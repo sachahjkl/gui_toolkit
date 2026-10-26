@@ -196,6 +196,7 @@ Window :: struct {
 	user:         rawptr,
 	on_frame:     proc(user: rawptr),   // called while Windows owns the message loop (resize, move, menus)
 	chrome:       Chrome_Regions,       // integrated title bar: what the app drew where (set_chrome_regions)
+	post_queue:   rawptr,               // atomic: the ^base.Post_Queue of the ui State built for this window (ui.post_window)
 }
 
 ////////////////////////////////
