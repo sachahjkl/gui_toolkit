@@ -14,6 +14,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	clear(&s.events.list)
 	clear(&s.events.consumed)
 	clear(&s.typed)
+	clear(&s.mouse_events)
 	left := platform.Mouse_Button.Left
 	s.mouse_moved = false
 
@@ -26,6 +27,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 		case .Mouse_Leave:
 			s.mouse_valid = false
 		case .Mouse_Press:
+			append(&s.mouse_events, e)
 			s.mouse = e.pos
 			s.mouse_valid = true
 			s.mods = e.mods
@@ -53,6 +55,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 				s.focus_visible = false
 			}
 		case .Mouse_Release:
+			append(&s.mouse_events, e)
 			s.mouse = e.pos
 			hot := hit_test(s, e.pos)
 			s.released_key[e.button] = s.active_key[e.button]

@@ -80,6 +80,18 @@ by `ui.rich_set_faces(state, regular, bold, italic, bold_italic)`, else simulate
 `rich_layout`, `rich_text` (the whole text), `rich_index_at` (hit test), `rich_caret`, `rich_range_rects`,
 `rich_link_at`. Example: `examples/markdown`.
 
+**Selecting text outside fields** (`ui/selection.odin`). Labels, paragraphs and rich paragraphs built with
+`.Selectable` (`next({flags = {.Selectable}})`, or `style({flags = {.Selectable}})` around a whole document: clickable
+boxes in it stay buttons) share one selection that runs across boxes in build order. Press and drag selects (into the
+nearest selectable box when the pointer leaves the text: above a box its start, below it its end), Shift+click
+extends, a double click selects a word, a triple click the box's paragraph (the drag then extends by words /
+paragraphs), Shift+Left / Right / Up / Down / Home / End move the moving end when no field has the keyboard, Ctrl+C
+copies (boxes joined by "\n"), Ctrl+A over a box selects it all, a press on nothing clickable clears (a press on a button
+keeps it: a Copy button reads it on release). A press on a link clicks the link. The pointer is the text cursor over
+selectable text, the selection is drawn in the theme's "selection" colour behind the text. For apps: `selected_text`,
+`has_selection`, `selection_serial` (moves with every change) and `selection_changed` (this build), `clear_selection`,
+`select_box`. Example: `examples/markdown`.
+
 `measure(s, id, size, text, opts)` is `shape(...).width` without building the glyph list: what a layout engine calls.
 `text_width(s, id, size, text)` is `measure` with default options.
 

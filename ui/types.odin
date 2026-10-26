@@ -82,6 +82,7 @@ Box_Flag :: enum u8 {
 	Window_Caption,      // part of an integrated title bar: where nothing clickable is over it, it drags the window (`title_bar`)
 	Hot_Within,          // hot (hot_t, its hover fill) also while the pointer is on a clickable box inside it (a row and its buttons)
 	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
+	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -380,4 +381,7 @@ State :: struct {
 	rich_cache:      map[u64]Rich_Cache_Entry,
 	rich_faces:      map[font.Font_Id][4]font.Font_Id,
 	rich_link:       map[Key]int,
+	// selection of text outside fields (selection.odin), and this build's mouse presses / releases it reads
+	sel:             Selection,
+	mouse_events:    [dynamic]platform.Event,
 }
