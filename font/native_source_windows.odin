@@ -10,14 +10,12 @@ Native_Source :: struct {
 	data:  []byte,           // a memory font's bytes (alive as long as the face)
 	index: u32,
 	axes:  []DWRITE_FONT_AXIS_VALUE,   // user-space values of a variable instance (temp memory)
-	simulated: bool,         // DirectWrite simulates bold or oblique on this face (the native backend cannot)
 }
 
 @(private)
 native_source :: proc(f: ^Font) -> (src: Native_Source, ok: bool) {
 	if f == nil || f.dw == nil { return }
 	src.index = f.dw->GetIndex()
-	src.simulated = f.dw->GetSimulations() != 0
 	if f.dw5 != nil && bool(f.dw5->HasVariations()) {
 		if n := f.dw5->GetFontAxisValueCount(); n > 0 && n <= 64 {
 			src.axes = make([]DWRITE_FONT_AXIS_VALUE, n, context.temp_allocator)

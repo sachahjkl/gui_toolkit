@@ -36,7 +36,7 @@ when !FONT_NATIVE_LINK {
 	}
 }
 
-@(private) NATIVE_API :: 1
+@(private) NATIVE_API :: 2
 
 @(private) Gt_Face :: struct {}
 
@@ -45,6 +45,7 @@ Gt_Glyph :: struct {
 	id, cluster:          u32,
 	x_advance, y_advance: f32,
 	x_offset, y_offset:   f32,
+	flags:                u32,   // bit 0: no ink (asked for with with_ink)
 }
 
 @(private)
@@ -97,7 +98,7 @@ foreign gt_text {
 	gt_color_glyph      :: proc(face: ^Gt_Face, gid: u32) -> i32 ---
 	gt_palette          :: proc(face: ^Gt_Face, palette: u32, out: [^][4]u8, cap: uint) -> uint ---
 	gt_shape            :: proc(face: ^Gt_Face, text: [^]u8, text_len: uint, script: ^[4]u8, lang: [^]u8, lang_len: uint, rtl: i32,
-	                            feats: [^]Feature, n_feats: uint, out: [^]Gt_Glyph, cap: uint) -> int ---
+	                            feats: [^]Feature, n_feats: uint, with_ink: i32, out: [^]Gt_Glyph, cap: uint) -> int ---
 	gt_scripts          :: proc(text: [^]u8, text_len: uint, out: [^]Gt_Script_Run, cap: uint) -> uint ---
 	gt_bidi_levels      :: proc(text: [^]u8, text_len: uint, base: u8, levels: [^]u8) -> i32 ---
 	gt_line_breaks      :: proc(text: [^]u8, text_len: uint, out: [^]u32, cap: uint) -> uint ---
@@ -175,7 +176,9 @@ native_face_metrics :: proc(s: ^State, f: ^Font) -> Face_Metrics {
 native_glyph_box :: proc(s: ^State, f: ^Font, gid: u16) -> (Glyph_Box, bool) {
 	b: Gt_Glyph_Box
 	if f.native == nil || gt_glyph_box(native_face(f), u32(gid), &b) == 0 { return {}, false }
-	return {advance = b.advance, x_min = b.x_min, y_min = b.y_min, x_max = b.x_max, y_max = b.y_max, empty = b.empty != 0}, true
+	box := Glyph_Box{advance = b.advance, x_min = b.x_min, y_min = b.y_min, x_max = b.x_max, y_max = b.y_max, empty = b.empty != 0}
+	sim_box(f, &box)
+	return box, true
 }
 
 @(private)
@@ -228,7 +231,7 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	out := make([]Gt_Glyph, cap, context.temp_allocator)
 	call :: proc(f: ^Font, req: ^Shape_Request, tag: ^[4]u8, out: []Gt_Glyph) -> int {
 		return gt_shape(native_face(f), raw_data(req.text), uint(len(req.text)), tag, nil, 0, req.rtl ? 1 : 0,
-			raw_data(req.features), uint(len(req.features)), raw_data(out), uint(len(out)))
+			raw_data(req.features), uint(len(req.features)), .Bold in f.sims ? 1 : 0, raw_data(out), uint(len(out)))
 	}
 	n := call(f, req, &tag, out)
 	if n > cap {
@@ -239,6 +242,9 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	out = out[:n]
 	k := req.size / f.upem
 	off := req.bytes[0]
+	if bold := sim_bold_advance(f); bold != 0 {   // simulated bold widens every spacing glyph, as DirectWrite does
+		for &g in out { if g.x_advance != 0 && g.flags & 1 == 0 { g.x_advance += bold } }
+	}
 	text_len := u32(len(req.text))
 	// the end of each cluster value: the next larger value, or the end of the text
 	values := make([]u32, n, context.temp_allocator)
@@ -322,6 +328,7 @@ native_outline_provider :: proc(s: ^State, face: Font_Id, gid: u16, tolerance: f
 	}
 	if open { outline_end(out, start, cur) }
 	outline_bounds(out)
+	sim_outline(f, out)
 	return true
 }
 

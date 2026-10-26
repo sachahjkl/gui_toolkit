@@ -61,6 +61,8 @@ pub struct GtGlyph {
     pub y_advance: f32,
     pub x_offset: f32,
     pub y_offset: f32,
+    /// bit 0: the glyph has no ink (a space): asked for with `with_ink` (simulated bold widens inked glyphs only)
+    pub flags: u32,
 }
 
 /// Font-wide metrics in font units (y up). `ascent` / `descent` / `line_gap` follow DirectWrite's rule (OS/2 typo
@@ -402,7 +404,7 @@ thread_local! {
 #[no_mangle]
 pub unsafe extern "C" fn gt_shape(
     face: *const Face, text_ptr: *const u8, text_len: usize, script: *const [u8; 4], lang_ptr: *const u8, lang_len: usize,
-    rtl: i32, feats: *const GtFeature, n_feats: usize, out: *mut GtGlyph, cap: usize,
+    rtl: i32, feats: *const GtFeature, n_feats: usize, with_ink: i32, out: *mut GtGlyph, cap: usize,
 ) -> isize {
     guard(-1, || {
         let Some(face) = face.as_ref() else { return -1 };
@@ -429,11 +431,16 @@ pub unsafe extern "C" fn gt_shape(
             let n = buf.len();
             if ok && !out.is_null() && n <= cap {
                 let out = std::slice::from_raw_parts_mut(out, n);
+                let gm = (with_ink != 0).then(|| face.font.glyph_metrics());
                 for ((o, i), p) in out.iter_mut().zip(buf.glyph_infos()).zip(buf.glyph_positions()) {
+                    let empty = gm.as_ref().map_or(false, |m| {
+                        m.extents(GlyphId::new(i.glyph_id)).map_or(true, |e| e.width == 0.0 || e.height == 0.0)
+                    });
                     *o = GtGlyph {
                         id: i.glyph_id, cluster: i.cluster,
                         x_advance: p.x_advance as f32, y_advance: p.y_advance as f32,
                         x_offset: p.x_offset as f32, y_offset: p.y_offset as f32,
+                        flags: empty as u32,
                     };
                 }
             }
@@ -524,5 +531,5 @@ pub unsafe extern "C" fn gt_line_breaks(text_ptr: *const u8, text_len: usize, ou
 /// Version of the library's API (the Odin side checks it at start).
 #[no_mangle]
 pub extern "C" fn gt_text_version() -> u32 {
-    1
+    2
 }

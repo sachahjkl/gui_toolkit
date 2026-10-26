@@ -140,6 +140,7 @@ Font :: struct {
 	cmap:     []u32,                 // BMP coverage, 2 bits per code point (known, present), filled lazily
 	colr:     ^Face_Colr,            // the COLR / CPAL tables of the face the interpreter reads (nil: none)
 	fm:       Face_Metrics,          // design metrics, from the backend
+	sims:     Simulations,           // simulated bold / oblique (the native backend applies them: simulate.odin)
 	native:   rawptr,                // the native backend's face (backend_native.odin), nil with another backend
 	// Cascade (a face is its own one-entry cascade)
 	entries:  []Cascade_Entry,
