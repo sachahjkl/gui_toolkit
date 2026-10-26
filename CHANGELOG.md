@@ -3,6 +3,13 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.41.0] - 2026-10-26
+
+### Added
+- **`ui.post`: calls posted from any thread** (`ui/post.odin`, `ui/post_queue.odin`, `docs/post.md`): `post(state or window, fn, data, word)` runs `fn(data, word)` on the interface's thread at the start of the next `begin_build` (or `drain_posts`), and wakes the window once per drain. `ui.Post_Queue` is a bounded lock-free ring (Vyukov's MPMC queue, no allocation per message); a full ring blocks (default, nothing lost), drops the oldest (`on_drop`), grows into a spill list or fails (`Post_Overflow`); each producer's order holds in every mode. `post_configure` (capacity, overflow, calls per build, `on_drop`), `drain_posts` (bounded; `needs_frame` while calls wait), `post_close`, `post_stats`, `set_post_wake`. Example: `examples/stream` (a thread posting simulated server-sent events). Test: `tests/post`.
+- **Notification area icon** (`platform/tray.odin`, Windows `tray_win32.odin` on `Shell_NotifyIconW` version 4, stub elsewhere, `docs/tray.md`): `tray_create`, `tray_set_icon` (PNG) / `tray_set_icon_rgba`, `tray_set_tooltip`, `tray_set_menu` (items, separators, check and radio marks, disabled and default items, submenus; opened by a right click or the menu key), `tray_show_menu`, `tray_notify` (title, body, icon, silent, quiet time), `tray_poll` (clicks, double clicks, right and middle clicks, menu items, notification shown / clicked / timed out / hidden, hover, `Recreated` after the shell restarted: the icons are added again on `TaskbarCreated`), `tray_destroy`; `destroy_window` removes the window's icons. `tray_test_hook` and `tray_inject` for tests. Test: `tests/tray`.
+- **Rich clipboard** (`platform/clipboard.odin`, Windows `clipboard_win32.odin`, stub elsewhere, `docs/clipboard.md`): `clipboard_set` (text, HTML with its source URL, image, files in one write), `clipboard_get_image` (PNG, CF_DIBV5, CF_DIB, CF_BITMAP), `clipboard_get_html` (fragment and source URL), `clipboard_get_files` (CF_HDROP), `clipboard_formats`, `clipboard_format_names`, `clipboard_sequence`, `clipboard_watch` / `clipboard_changed`; images are written as PNG + CF_DIBV5 (alpha) + CF_DIB (over white). Pure conversions: `dib_to_rgba` (every DIB header and depth), `rgba_to_dib`, `hdrop_encode` / `hdrop_decode`, `html_format_source_url`; `png_encode` / `png_decode`. Test: `tests/clipboard`.
+
 ## [0.40.0] - 2026-10-26
 
 ### Added
