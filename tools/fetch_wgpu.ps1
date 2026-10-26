@@ -32,13 +32,20 @@ $Dxc = @{
 	Sha256 = 'ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1'
 }
 
+# (not Get-FileHash: a CI build step, run from cmd after the MSVC environment was set, did not find the cmdlet: "not recognized")
+function Sha256Lower($path) {
+	$h = [Security.Cryptography.SHA256]::Create()
+	$s = [IO.File]::OpenRead($path)
+	try { return ([BitConverter]::ToString($h.ComputeHash($s)) -replace '-', '').ToLower() } finally { $s.Dispose(); $h.Dispose() }
+}
+
 function Get-Verified($spec, $name) {
 	$tmp = Join-Path ([IO.Path]::GetTempPath()) $name
-	if (-not (Test-Path $tmp) -or (Get-FileHash $tmp -Algorithm SHA256).Hash.ToLower() -ne $spec.Sha256) {
+	if (-not (Test-Path $tmp) -or (Sha256Lower $tmp) -ne $spec.Sha256) {
 		Write-Host "downloading $($spec.Url)"
 		Invoke-WebRequest $spec.Url -OutFile $tmp
 	}
-	$got = (Get-FileHash $tmp -Algorithm SHA256).Hash.ToLower()
+	$got = Sha256Lower $tmp
 	if ($got -ne $spec.Sha256) { Remove-Item $tmp -Force; throw "${name}: SHA-256 mismatch ($got, expected $($spec.Sha256))" }
 	$tmp
 }
@@ -50,7 +57,7 @@ $libDir = Join-Path $root 'vendor\wgpu\lib\wgpu-windows-x86_64-msvc-release\lib'
 $ok = $true
 foreach ($f in $WgpuFiles.Keys) {
 	$p = Join-Path $libDir $f
-	if (-not (Test-Path $p) -or (Get-FileHash $p -Algorithm SHA256).Hash.ToLower() -ne $WgpuFiles[$f]) { $ok = $false }
+	if (-not (Test-Path $p) -or (Sha256Lower $p) -ne $WgpuFiles[$f]) { $ok = $false }
 }
 if ($ok) {
 	Write-Host "wgpu-native ${WgpuVersion}: $libDir is as pinned"
@@ -63,7 +70,7 @@ if ($ok) {
 	foreach ($f in $WgpuFiles.Keys) {
 		$src = Get-ChildItem $tmpDir -Recurse -Filter $f | Select-Object -First 1
 		if (-not $src) { throw "$f is not in the wgpu-native archive" }
-		$got = (Get-FileHash $src.FullName -Algorithm SHA256).Hash.ToLower()
+		$got = Sha256Lower $src.FullName
 		if ($got -ne $WgpuFiles[$f]) { throw "$f from the archive does not match its pinned SHA-256 ($got)" }
 		Copy-Item $src.FullName (Join-Path $libDir $f) -Force
 	}

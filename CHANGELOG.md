@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.42.2] - 2026-10-26
+
+### Fixed
+- **`tools/fetch_emoji.ps1`, `build_naga.ps1` and `fetch_wgpu.ps1` hash their files the .NET way**, not with `Get-FileHash`: the build step of a CI run (cmd, after the MSVC environment was set) failed with "Get-FileHash is not recognized" as soon as the emoji font had to be fetched again.
+
 ## [0.42.1] - 2026-10-26
 
 ### Added

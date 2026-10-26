@@ -12,12 +12,19 @@ $stamp = Join-Path $out 'wgsl2hlsl.sources'
 # SHA-256 of Cargo.lock (naga 29.0.4 and its dependencies); update it with the lock file when naga is moved on purpose
 $LockSha256 = '04ee5ed81addbb30903d1b79ce3b1080d810f2a8465ed37fe7842fc3eb8a06ad'
 
+# (not Get-FileHash: a CI build step, run from cmd after the MSVC environment was set, did not find the cmdlet: "not recognized")
+function Sha256Of($path) {
+	$h = [Security.Cryptography.SHA256]::Create()
+	$s = [IO.File]::OpenRead($path)
+	try { return ([BitConverter]::ToString($h.ComputeHash($s)) -replace '-', '') } finally { $s.Dispose(); $h.Dispose() }   # upper case
+}
+
 $lock = Join-Path $dir 'Cargo.lock'
 if (-not (Test-Path $lock)) { throw 'tools\wgsl2hlsl\Cargo.lock is missing' }
-$got = (Get-FileHash $lock -Algorithm SHA256).Hash.ToLower()
+$got = (Sha256Of $lock).ToLower()
 if ($got -ne $LockSha256) { throw "tools\wgsl2hlsl\Cargo.lock does not match the pinned SHA-256 ($got); review the change, then update build_naga.ps1" }
 
-$sources = (Get-FileHash (Join-Path $dir 'Cargo.toml'), $lock, (Join-Path $dir 'src\main.rs') -Algorithm SHA256 | ForEach-Object Hash) -join ','
+$sources = (@((Join-Path $dir 'Cargo.toml'), $lock, (Join-Path $dir 'src\main.rs')) | ForEach-Object { Sha256Of $_ }) -join ','
 if ((Test-Path $exe) -and (Test-Path $stamp) -and ((Get-Content $stamp) -eq $sources)) { Write-Host "naga: $exe is up to date"; exit 0 }
 New-Item -ItemType Directory $out -Force | Out-Null
 Push-Location $dir

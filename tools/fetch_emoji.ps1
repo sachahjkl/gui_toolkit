@@ -27,7 +27,12 @@ $UnicodeFiles = @(
 	@{ Name = 'emoji-data.txt'; Url = 'https://www.unicode.org/Public/18.0.0/ucd/emoji/emoji-data.txt'; Sha256 = '80d00f8e616a0ef27fd6b8de3b758c06383b5d917e2977709578e68baf733bf1' }
 )
 
-function Sha256($path) { (Get-FileHash $path -Algorithm SHA256).Hash.ToLower() }
+# (not Get-FileHash: a CI build step, run from cmd after the MSVC environment was set, did not find the cmdlet: "not recognized")
+function Sha256($path) {
+	$h = [Security.Cryptography.SHA256]::Create()
+	$s = [IO.File]::OpenRead($path)
+	try { return ([BitConverter]::ToString($h.ComputeHash($s)) -replace '-', '').ToLower() } finally { $s.Dispose(); $h.Dispose() }
+}
 function Get-Verified($url, $path, $sha) {
 	if (-not (Test-Path $path) -or (Sha256 $path) -ne $sha) {
 		Write-Host "downloading $url"
