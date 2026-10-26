@@ -95,7 +95,18 @@ Build_Params :: struct {
 	                                    // scroll animations are sampled on it. 0: now_ms()
 }
 
+// A build is open on this thread (between begin_build and end_build), whatever its state.
+@(private, thread_local) build_open: bool
+
+// True between begin_build and end_build. An app whose window procedure makes frames (platform: on_frame, inside a
+// loop of the system) asks this before building one: a build begun inside another empties its parent stack, frees its
+// frame arena and selects another state under it.
+building :: proc() -> bool { return build_open }
+
 begin_build :: proc(s: ^State, p: Build_Params) {
+	// (a frame made from a message pumped during a build: a loop of the system such as TrackPopupMenu, a modal dialog)
+	assert(!build_open, "ui: begin_build inside another build")
+	build_open = true
 	g = s
 	s.build_index += 1
 	virtual.arena_free_all(&s.arena)
@@ -158,6 +169,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 
 end_build :: proc() {
 	s := g
+	build_open = false
 	pop(&s.parent_stack)
 	assert(len(s.parent_stack) == 0, "ui: unbalanced parent push/pop")
 	assert(len(s.tag_marks) == 0, "ui: unbalanced tags push/pop")

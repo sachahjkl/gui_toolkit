@@ -3,6 +3,14 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.40.1] - 2026-10-26
+
+### Added
+- **`ui.building()`**: true between `begin_build` and `end_build` (on this thread, whatever the state). An app whose window procedure makes frames (`on_frame`, inside a loop of the system) asks it before building one.
+
+### Fixed
+- **A build begun inside another one is refused with a clear assertion** (`ui: begin_build inside another build`) instead of breaking the one in progress: `begin_build` emptied its parent stack, freed its frame arena and selected another state under it, and the outer build failed later at an unrelated place (Wren's crash of 2026-10-26: a bounds check in `ui.spacer`, after a `TrackPopupMenu` opened during the build painted the window from `WM_PAINT`). Test: `tests/ui_robust` nested_build_test.
+
 ## [0.40.0] - 2026-10-26
 
 ### Added
