@@ -1,22 +1,30 @@
 name: CI
 
+# Three kinds of jobs, all in parallel (a push to master gives its verdict in about 6 minutes, 12 at most):
+#   build      CHANGELOG fragments, the examples, the shaders (HLSL from WGSL, DXBC)
+#   tests      the test packages that need no window of their own (D3D11 on WARP), native text, UI Automation
+#   wgpu       the WebGPU backend on WARP, one test at a time: every package on a push to master or a manual run, split in
+#              four groups of about 4 minutes (tools/test_backends.ps1 -Group ci1..ci4); a pull request runs the 'sample'
+#              group only (Slug text, video, filters and blends, layers), its full run comes with the merge into master.
 on:
   push:
     branches: [master]
   pull_request:
   workflow_dispatch:
 
+# a newer push to a pull request replaces its run; every push to master keeps its own run (a verdict per commit)
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  build:
+    name: Build (changelog, examples, shaders)
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -24,88 +32,142 @@ jobs:
       # the last published version (only tools/release.ps1 writes it); then the script's own tests
       - name: CHANGELOG fragments (tools/changelog.ps1 -Check)
         shell: pwsh
+        timeout-minutes: 3
         run: |
           ./tools/changelog.ps1 -Check
           if ($LASTEXITCODE) { exit 1 }
           ./tools/changelog_test.ps1
           if ($LASTEXITCODE) { exit 1 }
 
-      - name: Odin dev-2026-10
-        shell: pwsh
-        env:
-          # odin version: dev-2026-10-nightly:84bc3fc (the tag dev-2026-10 is that commit)
-          ODIN_TAG: dev-2026-10
-          ODIN_SHA256: b6b2e426a8b6f147b74ec7e18bef8df27cf40fe16193159df7ca09a0cc0c2011
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP "odin-$env:ODIN_TAG.zip"
-          $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest "https://github.com/odin-lang/Odin/releases/download/$env:ODIN_TAG/odin-windows-amd64-$env:ODIN_TAG.zip" -OutFile $zip
-          $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($got -ne $env:ODIN_SHA256) { throw "Odin archive SHA-256 mismatch: $got" }
-          $dir = Join-Path $env:RUNNER_TEMP 'odin'
-          Expand-Archive $zip -DestinationPath $dir -Force
-          Add-Content $env:GITHUB_PATH (Join-Path $dir 'dist')
-          & (Join-Path $dir 'dist\odin.exe') version
-
-      - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      - uses: ./.github/actions/setup-odin
 
       - name: Build the examples
         shell: cmd
+        timeout-minutes: 6
         run: |
           for %%e in (fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
 
+      # naga's translator is rebuilt only when its sources change (build_naga.ps1 compares its stamp)
+      - name: Cache the WGSL to HLSL translator
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/naga/wgsl2hlsl.exe
+            build/naga/wgsl2hlsl.sources
+          key: naga-${{ hashFiles('tools/wgsl2hlsl/Cargo.toml', 'tools/wgsl2hlsl/Cargo.lock', 'tools/wgsl2hlsl/src/**', 'tools/build_naga.ps1') }}
+
       - name: "Shaders (WGSL is the source; naga writes the HLSL, compiled to the DXBC the exes embed)"
         shell: pwsh
+        timeout-minutes: 8
         run: |
           ./tools/build_naga.ps1
           if ($LASTEXITCODE) { exit 1 }
           odin run tools/shaders -vet -out:build/shaders_tool.exe -- -check
           if ($LASTEXITCODE) { exit 1 }
 
+  tests:
+    name: Tests (no window; pixel tests on WARP)
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-odin
+
+      # the Rust static libraries (native text backend, AccessKit adapter): their build scripts skip the build when the
+      # STAMP next to the library matches the sources, so a stale restore only means a rebuild
+      - name: Cache the native libraries and the emoji font
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/text/gt_text.lib
+            build/text/STAMP
+            build/a11y/gt_a11y.lib
+            build/a11y/STAMP
+            build/emoji
+          key: native-${{ hashFiles('native/**', 'tools/build_text.ps1', 'tools/build_a11y.ps1', 'tools/fetch_emoji.ps1') }}
+          restore-keys: native-
+
       - name: "Emoji font (Noto Color Emoji COLR v1 and Unicode's emoji data, pinned by SHA-256, for tests/colr)"
         shell: pwsh
+        timeout-minutes: 3
         run: |
           ./tools/fetch_emoji.ps1 -Unicode
           if ($LASTEXITCODE) { exit 1 }
 
-      - name: Tests (no window; pixel tests on WARP)
+      - name: Tests
         shell: pwsh
+        timeout-minutes: 12
         run: |
-          $failed = 0
-          foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y') {
-            # @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
-            $extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y') { '-define:ODIN_TEST_THREADS=1' })
-            $o = odin test "tests/$t" -vet @extra -out:"build/${t}_test.exe" 2>&1 | Out-String
-            if ($o -match 'All tests were successful') { "PASS $t" } else { "FAIL $t"; $o; $failed++ }
-          }
-          # the native text backend (Fontations, HarfRust, ICU4X) against DirectWrite on the corpus
-          ./tools/build_text.ps1
+          ./tools/test_windowless.ps1
           if ($LASTEXITCODE) { exit 1 }
-          $o = odin test tests/text_backends -vet -define:FONT_BACKEND=native -out:build/text_backends_native_test.exe 2>&1 | Out-String
-          if ($o -match 'All tests were successful') { 'PASS text_backends (native)' } else { 'FAIL text_backends (native)'; $o; $failed++ }
-          # accessibility: AccessKit's UI Automation adapter, a window read by a UI Automation client (no screen reader)
-          ./tools/build_a11y.ps1
+
+  wgpu:
+    name: WebGPU (${{ matrix.group }})
+    runs-on: windows-2025
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(github.event_name == 'pull_request' && '["sample"]' || '["ci1", "ci2", "ci3", "ci4"]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-odin
+
+      # DXC next to the test programs: wgpu compiles the shaders with it in 0.3 s instead of FXC's 2.8 s (a third of the
+      # time of a package on WARP); FXC, the fallback when the DLLs are missing, is still run on two packages (ci4)
+      - name: Cache DXC
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/dxcompiler.dll
+            build/dxil.dll
+            build/dxc.version
+          key: dxc-${{ hashFiles('tools/fetch_wgpu.ps1') }}
+
+      - name: wgpu-native and DXC (tools/fetch_wgpu.ps1)
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          ./tools/fetch_wgpu.ps1
           if ($LASTEXITCODE) { exit 1 }
-          $o = odin test tests/a11y -vet -define:ODIN_TEST_THREADS=1 -define:A11Y_ACCESSKIT=true -out:build/a11y_uia_test.exe 2>&1 | Out-String
-          if ($o -match 'All tests were successful') { 'PASS a11y (UI Automation)' } else { 'FAIL a11y (UI Automation)'; $o; $failed++ }
-          odin build tools/uia_probe -vet -out:build/uia_probe.exe
-          if ($LASTEXITCODE) { 'FAIL uia_probe'; $failed++ }
-          foreach ($tg in 'linux_amd64', 'darwin_arm64') {
-            $o = odin check font -target:$tg -no-entry-point -vet 2>&1 | Out-String
-            if ($LASTEXITCODE) { "FAIL font on $tg"; $o; $failed++ } else { "PASS font on $tg" }
-          }
-          # the color glyph tests again with the COLR interpreter in place of Direct2D
-          $o = odin test tests/color_glyphs -vet -define:COLR_ENGINE=builtin -out:build/color_glyphs_builtin_test.exe 2>&1 | Out-String
-          if ($o -match 'All tests were successful') { 'PASS color_glyphs (builtin)' } else { 'FAIL color_glyphs (builtin)'; $o; $failed++ }
-          if ($failed) { exit 1 }
+
+      - name: Emoji font (for tests/colr)
+        if: matrix.group == 'ci1'
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          ./tools/fetch_emoji.ps1 -Unicode
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Build examples/smoke with the WebGPU backend
+        if: matrix.group == 'ci1' || matrix.group == 'sample'
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          odin build examples/smoke -vet -define:TOOLKIT_RENDER=wgpu -out:build/smoke_wgpu.exe -subsystem:windows
+          if ($LASTEXITCODE) { exit 1 }
 
       - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
         shell: pwsh
+        timeout-minutes: 11
         run: |
-          ./tools/fetch_wgpu.ps1 -NoDxc
-          odin build examples/smoke -vet -define:TOOLKIT_RENDER=wgpu -out:build/smoke_wgpu.exe -subsystem:windows
+          ./tools/test_backends.ps1 -Backend wgpu -Group ${{ matrix.group }} -TimeoutSec 420
           if ($LASTEXITCODE) { exit 1 }
-          ./tools/test_backends.ps1 -Backend wgpu -TimeoutSec 900
+
+      - name: Tests, WebGPU backend with FXC (no DXC)
+        if: matrix.group == 'ci4'
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          ./tools/test_backends.ps1 -Backend wgpu -Only text,shaders -Define TOOLKIT_WGPU_DX12_COMPILER=fxc -TimeoutSec 180
           if ($LASTEXITCODE) { exit 1 }
+
+      - name: Logs of the WebGPU tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wgpu-logs-${{ matrix.group }}
+          path: build/test_wgpu_*.log*
+          retention-days: 7

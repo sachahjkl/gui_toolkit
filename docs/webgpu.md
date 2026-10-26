@@ -23,7 +23,10 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 | `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
 
 The pixel tests run on both backends with the same expectations: `tools\test_backends.ps1 -Backend d3d11|wgpu` (the wgpu ones one
-test at a time: WARP's D3D12 crashes now and then when several devices work at once).
+test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools\fetch_wgpu.ps1` first: with DXC
+next to the test programs a package takes a third of the time it takes with FXC. The CI splits the packages in four groups, one per
+job (`-Group ci1` .. `ci4`, defined in the script, which checks that together they hold every package once); a pull request runs
+`-Group sample`; `-Define TOOLKIT_WGPU_DX12_COMPILER=fxc` runs a package with FXC.
 `tools\render_probe` draws a few primitives on the offscreen renderer and writes a PPM; `tools\ppm_diff.ps1` compares two.
 
 ## One source for the shaders
