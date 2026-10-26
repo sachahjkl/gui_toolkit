@@ -186,6 +186,14 @@ chrome_collect :: proc(s: ^State) {
 			c.buttons[b] = platform.Region{box.rect.min, box.rect.max}
 		}
 	}
+	// the open menus are the app's wherever they are: one that reaches the window's edge or corner takes the pointer
+	// there, not the resize band (whose cursor showed over the menu, and whose moves never reached it)
+	for lv in s.menus {
+		if box := s.boxes[lv.panel]; box != nil && box.last_build == s.build_index {
+			r := clip_rect(box.rect, s.root.rect)
+			if r.max.x > r.min.x && r.max.y > r.min.y { append(&c.overlays, platform.Region{r.min, r.max}) }
+		}
+	}
 	if s.window != nil && platform.is_integrated_title(s.window) { platform.set_chrome_regions(s.window, c) }
 }
 
