@@ -91,11 +91,12 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 		if key_press(.End) { size^ = hi; res.finished = true }
 		if enter && opts.default_size > 0 { size^ = clamp(opts.default_size, lo, hi); res.finished = true }
 	}
-	if !res.dragging && (size^ < lo || size^ > hi) { size^ = clamp(size^, lo, hi) }   // (the room shrank)
+	// (a size outside the limits at rest is left alone: the window shrank, the app draws the pane clamped and the user's
+	// size comes back when there is room again)
 	res.changed = size^ != before
 
 	d := frame_new(Splitter_Draw)
-	d.hot = b.hot_t > 0.5 || res.dragging || (res.sig.focused && s.focus_visible)
+	d.hot = res.sig.hovering || res.dragging || (res.sig.focused && s.focus_visible)
 	d.color = d.hot ? color("accent") : color("border")
 	d.line = max(math.round(s.scale), 1)
 	b.custom, b.custom_user = splitter_draw, d
