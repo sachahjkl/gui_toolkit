@@ -1,4 +1,4 @@
-# Splitter and accordion (`ui/split.odin`)
+# Splitter, accordion, reorderable lists (`ui/split.odin`, `ui/reorder.odin`)
 
 ## `ui.splitter`
 
@@ -44,5 +44,42 @@ still folding: the content is clipped to the animated height (`ACCORDION_RATE`, 
 are off), and nothing is built once it is folded. No frame at rest. The header is a Tab stop: Enter or Space toggle it.
 The open state is the app's (`open` is flipped on a click).
 
+## A list reordered by dragging (`ui/reorder.odin`)
+
+Tabs along a strip, rows in a sidebar, cards in a column: items `pitch` apart along X or Y, which the user drags to
+another place while the others slide out of the way. The geometry is pure and independent of the axis:
+
+| Procedure | |
+|---|---|
+| `reorder_item_size(avail, n, min, max)` | each item's size: an equal share between a minimum and a maximum (past the minimum the list scrolls) |
+| `reorder_offset(offset, n, pitch, view, current, follow)` | the scroll in range, moved just enough to show the current item when it changed |
+| `reorder_slot(pos, pitch, n)` | the slot a dragged item's middle is over |
+| `list_move(list, from, to, current)` | moves an element, returns where the current one went |
+| `reorder_edge_scroll(pos, size, view_off, view, limit, target)` | an item held past an edge of the view scrolls the list |
+| `reorder_moved(delta, axis, across)` | how far a press moved, along the axis (and across it when leaving the list is a gesture of its own) |
+
+The drag's state is a `Reorder` (the item, whether it moved past the threshold, where the pointer holds it):
+
+```odin
+ui.reorder_frame(&app.drag)   // the button went up: no drag
+for item, i in app.items {
+	slot := f32(i) * pitch - offset
+	x, dragging := ui.reorder_item_pos(&app.drag, key_of(item), item.id, slot, ui.mouse_pos().x - area.rect.min.x, -offset, f32(n - 1) * pitch - offset)
+	ui.next({fixed_x = x, width = ui.px(pitch), height = ui.pct(1)})
+	sig := ui.signal(ui.build_box({.Clickable}, id_of(item)))
+	if sig.dragging {
+		ui.reorder_begin(&app.drag, item.id, ui.reorder_moved(sig.drag_delta, .X, false), threshold, ui.mouse_pos().x - sig.drag_delta.x - area.rect.min.x, slot)
+		if ui.reorder_dragging(&app.drag, item.id) {
+			if to := ui.reorder_slot(x + offset, pitch, n); to != i { move_from, move_to = i, to }
+		}
+	}
+}
+if move_from >= 0 { app.current = ui.list_move(app.items[:], move_from, move_to, app.current) }
+```
+
+Items sit at their slot, animated when they move (`anim`, keyed by the item); the dragged one follows the pointer within
+`lo .. hi` and slides back from there when released. Wren's tab strip and tab sidebar use it.
+
 Example: `examples/panes` (`build.bat panes`). Tests: `tests/panes` (dragging within the limits, the pane after the
-handle, double click, keys, no Tab stop, the animated height, the keyboard, what is drawn).
+handle, double click, keys, no Tab stop, the animated height, the keyboard, what is drawn; the reorder geometry and a
+drag through a build).
