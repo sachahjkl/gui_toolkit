@@ -193,6 +193,7 @@ set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
 	append(&w.chrome.caption, ..c.caption[:])
 	append(&w.chrome.holes, ..c.holes[:])
 	append(&w.chrome.slanted, ..c.slanted[:])
+	append(&w.chrome.overlays, ..c.overlays[:])
 	w.chrome.buttons = c.buttons
 }
 
