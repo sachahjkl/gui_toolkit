@@ -854,7 +854,16 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		// and wait twice for the swap chain. Only a loop of the system (live resize, menu) needs the frame from here.
 		// That goes for every window of the thread: the poll of one pumps the messages of the others (a window that is
 		// not polled, such as a detached panel, takes its repaint from take_paint_request).
-		if (w.in_poll || pumping > 0) && w.modal == 0 { w.paint_requested = true; return 0 }
+		if (w.in_poll || pumping > 0) && w.modal == 0 {
+			// (from a loop the toolkit pumps, a drag or a wait: a frame asked for and deferred; from the poll: the frame that
+			// polls draws anyway)
+			if pumping > 0 && !w.in_poll && w.on_frame != nil { frame_gate_defer(frame_gate()) }
+			w.paint_requested = true
+			return 0
+		}
+		// the thread is building, drawing or presenting a frame (a loop of the system begun there): no frame may begin
+		// (frame_gate.odin); the window repaints at the next pass
+		if w.on_frame != nil && !frame_gate_admits_any(frame_gate()) { frame_gate_defer(frame_gate()); w.paint_requested = true; return 0 }
 		if w.on_frame != nil && w.size.x > 0 && w.size.y > 0 { w.stats.paint_frames += 1; w.on_frame(w.user) }
 		return 0
 
