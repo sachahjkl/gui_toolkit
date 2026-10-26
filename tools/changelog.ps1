@@ -249,7 +249,7 @@ if ($Migrate) {
 # ---------------------------------------------------------------------------------------------------------------- -Check
 if ($Check) {
     $c = Read-Changelog
-    $frags = Get-Fragments
+    $frags = @(Get-Fragments)
     if (Test-Path $Dir) {
         foreach ($f in Get-ChildItem $Dir -Force | Where-Object { $_.PSIsContainer }) { Fail "changelog.d\$($f.Name): a folder (fragments are files)" }
     }
@@ -287,7 +287,7 @@ if ($Check) {
 # ---------------------------------------------------------------------------------------------------------------- -Assemble
 if ($Assemble) {
     $c = Read-Changelog
-    $frags = Get-Fragments
+    $frags = @(Get-Fragments)
     foreach ($f in $frags) { foreach ($p in $f.Problems) { Fail "changelog.d\$($f.Name): $p" } }
     $def = if ($DefaultType) { Canonical-Type $DefaultType } else { '' }
     $items = New-Object Collections.Generic.List[object]

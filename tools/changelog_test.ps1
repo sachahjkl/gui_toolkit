@@ -49,6 +49,7 @@ try {
 
     # ---- well formed fragments, two of the same subject, LF and CRLF, sub-items
     Frag '20261026-100000-tabs.md' "type: Added`n`n**Tabs in a sidebar**: one.`n"
+    $r = Run '-Check'; Expect ($r.Code -eq 0 -and $r.Out -match ': 1 fragments') 'one fragment: -Check counts it' $r
     Frag '20261026-100001-tabs.md' "type: Fixed`r`n**Tabs** no longer flicker.`r`n"
     Frag '20261026-100002-workers.md' "type: changed`n- **Workers**:`n  - one;`n  - two.`n"
     $r = Run '-Check'; Expect ($r.Code -eq 0 -and $r.Out -match '3 fragments') 'three fragments, two of one subject: -Check passes' $r
