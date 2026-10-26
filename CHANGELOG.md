@@ -15,6 +15,11 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 ### Changed
 - The Hebrew difference between the backends is explained (`docs/font-backend.md`): DirectWrite drops the XPlacement of right-to-left kerning pairs; the native backend applies it, as HarfBuzz does.
 
+## [0.38.3] - 2026-10-26
+
+### Added
+- **File dialogs** (`platform/dialogs.odin`, Windows `dialogs_win32.odin`, stub elsewhere): `open_file_dialog`, `save_file_dialog` and `pick_folder_dialog` with a title, filters (`File_Filter`), an "All files" line, the starting folder (`start_dir`, or a `Known_Folder` default), a remembered folder per `remember_id`, the suggested name and default extension, several files, the overwrite question; `Dialog_Result` gives the paths and the type line chosen. Pure helpers: `filter_patterns`, `filter_matches`, `filters_from_accept` (a web page's accept list); `dialog_test_hook` stands for the real dialogs in tests. Doc: `docs/dialogs.md`. Test: `tests/dialogs`.
+- **Shell actions**: `open_url`, `open_path`, `reveal_in_folder` (`ShellExecuteExW`; the file manager with the file selected), `known_folder_path`.
 ## [0.38.2] - 2026-10-26
 
 ### Added
