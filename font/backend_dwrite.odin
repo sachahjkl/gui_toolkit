@@ -35,6 +35,10 @@ dwrite_system := System_Fonts{
 
 #assert(size_of(Feature) == size_of(DWRITE_FONT_FEATURE))
 
+// The horizontal features DirectWrite (and HarfBuzz) turn on by default, which an explicit feature list would drop.
+@(private)
+DWRITE_DEFAULT_FEATURES := [?][4]u8{{'k', 'e', 'r', 'n'}, {'l', 'i', 'g', 'a'}, {'c', 'l', 'i', 'g'}, {'c', 'a', 'l', 't'}, {'r', 'c', 'l', 't'}}
+
 @(private)
 dwrite_start :: proc(s: ^State) -> bool {
 	if s.analyzer == nil { return false }
@@ -207,7 +211,19 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	face_id, size, w, bytes, rtl := req.face_id, req.size, req.w, req.bytes, req.rtl
 	n := len(w)
 	if f == nil || n == 0 { return pen }
-	tf_value := DWRITE_TYPOGRAPHIC_FEATURES{features = (^DWRITE_FONT_FEATURE)(raw_data(req.features)), featureCount = u32(len(req.features))}
+	// a feature list replaces DirectWrite's defaults: they go first (kerning stays under letter-spacing and
+	// font-feature-settings, as CSS wants and as HarfBuzz does), each one the list does not set itself
+	feats := req.features
+	if len(feats) > 0 {
+		all := make([dynamic]Feature, 0, len(feats) + len(DWRITE_DEFAULT_FEATURES), context.temp_allocator)
+		outer: for d in DWRITE_DEFAULT_FEATURES {
+			for f in feats { if f.tag == d { continue outer } }
+			append(&all, Feature{tag = d, value = 1})
+		}
+		append(&all, ..feats)
+		feats = all[:]
+	}
+	tf_value := DWRITE_TYPOGRAPHIC_FEATURES{features = (^DWRITE_FONT_FEATURE)(raw_data(feats)), featureCount = u32(len(feats))}
 	tf: ^DWRITE_TYPOGRAPHIC_FEATURES = len(req.features) > 0 ? &tf_value : nil
 	if f.colr != nil && has_tag_chars(w) && !rtl {
 		// cluster offsets of a piece are relative to its first character (the end of this proc makes them relative to the word)
