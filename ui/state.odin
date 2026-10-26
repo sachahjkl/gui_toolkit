@@ -178,6 +178,7 @@ end_build :: proc() {
 	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 
+	menus_raise(s)
 	layout(s)
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {

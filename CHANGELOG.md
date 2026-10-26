@@ -5,7 +5,12 @@ All notable changes to gui_toolkit. The project follows [semantic versioning](ht
 
 ## [0.40.2] - 2026-10-26
 
+### Added
+- **`platform.Chrome_Regions.overlays`**: what the app shows over everything (the ui fills it with the open menus' panels). `hit_test_chrome` answers `Client` there before anything else, the resize bands included.
+
 ### Fixed
+- **An open menu that covers the integrated title bar's resize band takes the pointer there** (`ui` `chrome_collect`): a menu taller than the window starts at its top, and over the band the system showed the resize cursor (diagonal at the top right corner) and resized the window on a press.
+- **The open menus are above whatever the app builds at the root after them** (`menus_raise`, in `end_build` before layout): a menu is built where its button is, and a notice, panel or dialog built later at the root was drawn over it and took its pointer. Test: `tests/chrome` open_menu_over_resize_bands_and_later_boxes.
 - **`font.glyph` gives the ink box where the ink is with the native text backend** (`native/text` `gt_glyph_box`): read-fonts 0.46 counts a glyph's extents height downward and never negative, and the bottom of the box was put a glyph's height above its top, so the box was twice as high and a glyph centred by it (Wren's tab icons, a chip's icon) was drawn a glyph lower than meant. Test: `tests/text_backends` native_glyph_box_matches_dwrite (`-define:FONT_BACKEND=native`).
 
 ## [0.40.1] - 2026-10-26
