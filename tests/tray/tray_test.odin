@@ -143,6 +143,11 @@ icons_from_pixels :: proc(t: ^testing.T) {
 	for i := 0; i < len(px); i += 4 { px[i], px[i + 3] = 255, u8(i / 4 % 256) }
 	testing.expect(t, platform.tray_set_icon_rgba(tr, px, {24, 24}))
 	testing.expect(t, !platform.tray_set_icon_rgba(tr, px[:10], {24, 24}), "too few pixels")
+	png := platform.png_encode({px, {24, 24}})
+	defer delete(png)
+	testing.expect(t, platform.tray_set_icon(tr, png), "an icon from a PNG file")
+	testing.expect(t, !platform.tray_set_icon(tr, []u8{1, 2, 3, 4}), "not an image")
+	testing.expect(t, platform.tray_set_icon(tr, nil), "the exe's icon (or the system's)")
 }
 
 @(test)
