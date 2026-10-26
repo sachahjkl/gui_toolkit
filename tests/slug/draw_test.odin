@@ -87,7 +87,8 @@ slug_looks_like_the_atlas :: proc(t: ^testing.T) {
 	}
 }
 
-// When the device refuses the Slug shaders its text is not drawn (as on WebGPU): it used to come out as one solid rounded rect per glyph.
+// When the device refuses the Slug shaders its text is not drawn: it used to come out as one solid rounded rect per glyph.
+// Both backends: r.slug.failed is what a refusal leaves (Direct3D 11: slug_pipeline_ensure; WebGPU: wgpu_instance_pipeline).
 @(test)
 slug_refused_by_the_device_draws_no_blocks :: proc(t: ^testing.T) {
 	f := new(Fx)

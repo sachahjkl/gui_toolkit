@@ -332,10 +332,11 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		draw := proc(r: ^Renderer, s: ^Submit, bound: ^wgpu.RenderPipeline, format: wgpu.TextureFormat, replace, slug_ok, slug: bool, first, count: int) {
 			if count <= 0 || (slug && !slug_ok) { return }
 			pipe := slug ? wgpu_slug_pipeline(r, format, replace) : wgpu_pipeline(r, format, replace)
+			if pipe == nil { return }
 			if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
 			wgpu.RenderPassEncoderDraw(s.pass, 4, u32(count), 0, u32(first))
 		}
-		slug_ok := int(f.slug_curves) > 0 && int(f.slug_bands) > 0
+		slug_ok := int(f.slug_curves) > 0 && int(f.slug_bands) > 0 && !r.slug.failed
 		for i := lo; i < len(runs) && pos < end; i += 1 {
 			rs := base + runs[i][0]
 			re := rs + runs[i][1]

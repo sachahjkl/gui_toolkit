@@ -3,6 +3,13 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.42.3] - 2026-10-26
+
+### Fixed
+- **CI**: green again and about 6 minutes instead of 30 to 37. The CHANGELOG step failed on every push (`tools/changelog_test.ps1` ended with the exit code of a command it made fail on purpose; it now exits 0); a test package of a single test counted as failed (`text_backends` printed "The test was successful", not "All tests were successful"; both are accepted now). The jobs run in parallel: build (changelog, examples, shaders), the windowless tests (`tools/test_windowless.ps1`, the step's script moved there) and the WebGPU tests in four groups (`tools/test_backends.ps1 -Group ci1`..`ci4`, checked to hold every package once; `-Group sample` on pull requests) with DXC, a third of the time of FXC on WARP (FXC still runs two packages, `-Define TOOLKIT_WGPU_DX12_COMPILER=fxc`); each job and slow step has a timeout; the Rust libraries, naga's translator, the emoji font and DXC are cached; Odin is set up by `.github/actions/setup-odin`, its archive hashed with .NET rather than `Get-FileHash`. Every push to master keeps its own run (only pull requests cancel the previous one).
+- **WebGPU: `render.video_convert`** converts pictures in memory (I420, NV12; P010 and 10-bit I420 when the adapter has `TextureFormat16bitNorm`) with `video.wgsl`, crop, rotation, matrix and range included, as on Direct3D 11: it returned `false` for every picture (`render/wgpu_video.odin`). A decoder's Direct3D 11 texture (`gpu_texture`) is still refused on WebGPU (wgpu-native cannot import it); `tests/video` checks that refusal there instead of calling a Direct3D 11 device the backend does not have (it crashed).
+- **WebGPU: Slug text when the device refuses its shaders** draws nothing instead of passing a missing shader module to the pipeline: `r.slug.failed` is honoured by both backends (it was Direct3D 11 only), a refused `slug.wgsl` sets it, a recreated device asks again.
+
 ## [0.42.2] - 2026-10-26
 
 ### Fixed
