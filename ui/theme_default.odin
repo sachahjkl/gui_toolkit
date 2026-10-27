@@ -78,7 +78,7 @@ PALETTE_NAYSAYER :: Palette{
 
 // Solarized (Ethan Schoonover), the two modes of one set of sixteen colors
 PALETTE_SOLARIZED :: Palette{
-	bg = 0x002b36ff, panel = 0x073642ff, panel2 = 0x0b3e4aff, text = 0x93a1a1ff, weak = 0x768c93ff, border = 0x15505eff,
+	bg = 0x002b36ff, panel = 0x073642ff, panel2 = 0x0b3e4aff, text = 0xc0c5bbff, weak = 0x768c93ff, border = 0x15505eff,
 	accent = 0x268bd2ff, accent_text = 0x002b36ff, good = 0x859900ff, warn = 0xb58900ff, bad = 0xdc322fff, dark = true,
 }
 
