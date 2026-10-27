@@ -17,9 +17,6 @@ odin build examples/fidget -define:A11Y_ACCESSKIT=true ...
 A program that has a Rust static library of its own builds `native/a11y` into it (a dependency: its `gt_a11y_*`
 functions stay exported; one Rust library per program, as each carries Rust's standard library) and builds with
 `-define:A11Y_ACCESSKIT=true -define:A11Y_NATIVE_LINK=false` (Wren: the `a11y` feature of its assembly crate `native/wren_native`).
-The crate is an `rlib` in `Cargo.toml` for that; `tools\build_a11y.ps1` asks for the static library alone (`cargo rustc
---crate-type staticlib`), since rustc skips the profile's fat LTO whenever an `rlib` is among the crate types (4.8 MB
-with LTO, 16.9 MB without).
 
 Without the define, `platform.a11y_available()` is false and nothing is built.
 
