@@ -1,0 +1,3 @@
+type: Fixed
+
+**A drag inside the window is shown at the top rate of a variable refresh screen** (`platform.frame_decision`, `Cadence.variable`, `platform.cadence_adopt`): on a variable refresh screen (G-Sync, FreeSync, Windows' dynamic refresh rate, which reports 60 Hz at rest), a `Drag` frame (a splitter, a panel's handle, a tab) is presented at once with two frames queued, still one frame per slot of the top rate, instead of waiting for a refresh at the rate the screen rests at: a splitter dragged at 1 kHz went from 62 to 183 frames a second on a 180 Hz screen reported at 60 Hz. Fixed refresh screens and every other state are unchanged. `cadence_adopt(&c, plan)` takes the plan's slots and screen (instead of `c.slots = plan.slots`).
