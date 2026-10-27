@@ -535,5 +535,5 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
 (0, 0)..(w, h) of it, is never shown, and is not cut by the window (an element off the screen or under others paints
 whole). `offscreen_end` returns a `render.Readback_Id`; after the frame, `render.readback_poll(r, id)` gives the
 pixels (straight RGBA8, sRGB values, alpha kept) once the GPU copied them (`Pending` until then, `Ready` once,
-`Failed` on the wgpu backend or after a lost device); `render.readback_release` drops one no longer wanted. Uses:
+`Failed` after a lost device; the same on both backends: a staging texture under Direct3D 11, a mapped buffer under wgpu); `render.readback_release` drops one no longer wanted. Uses:
 drag images, captures of one element, `toBlob`-like exports.
