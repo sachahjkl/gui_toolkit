@@ -5,6 +5,7 @@ package color_glyphs_test
 
 import "base:intrinsics"
 import "core:testing"
+import "../unwatched"
 import "../../draw"
 import "../../font"
 import "../../render"
@@ -111,7 +112,7 @@ glyph_of :: proc(f: ^Fx, id: font.Font_Id, r: rune, size: f32, fg := [3]u8{0, 0,
 }
 
 @(test)
-colrv1_linear_gradient :: proc(t: ^testing.T) {
+colrv1_linear_gradient :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
@@ -128,10 +129,10 @@ colrv1_linear_gradient :: proc(t: ^testing.T) {
 	testing.expectf(t, near(mid, {128, 0, 128}, 40), "middle %v, want purple", mid)
 	// the clip box: 800 x 700 units of 1000 -> 51 x 45 px (the box is the glyph's ink)
 	testing.expectf(t, abs(b.w - 51) <= 2 && abs(b.h - 45) <= 2, "size %d x %d, want 51 x 45", b.w, b.h)
-}
+}) }
 
 @(test)
-colrv1_sweep_radial_composite_transform :: proc(t: ^testing.T) {
+colrv1_sweep_radial_composite_transform :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
@@ -166,13 +167,14 @@ colrv1_sweep_radial_composite_transform :: proc(t: ^testing.T) {
 		}
 		testing.expectf(t, b.img.color && orange > 5 && blue > 5, "glyph U+%X: %d orange, %d blue pixels", r, orange, blue)
 	}
-	// (not tested here: the PaintColrGlyph cycle U+F1100. DirectWrite detects it by throwing a C++ exception it
-	// catches itself, which the test runner's vectored exception handler takes for a crash; outside tests the glyph
-	// translates to DWRITE_E_NOCOLOR and is drawn as its outline.)
-}
+	// the PaintColrGlyph cycle U+F1100: DirectWrite says DWRITE_E_NOCOLOR (some versions find the cycle by throwing a
+	// C++ exception they catch themselves: one more reason to run unwatched), and the glyph is drawn as its outline
+	cyc := glyph_of(f, f.colr, 0xF1100, 48)
+	testing.expectf(t, cyc.img.page >= 0 && !cyc.img.color, "the PaintColrGlyph cycle: %v", cyc.img)
+}) }
 
 @(test)
-colrv1_text_color :: proc(t: ^testing.T) {
+colrv1_text_color :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
@@ -195,7 +197,7 @@ colrv1_text_color :: proc(t: ^testing.T) {
 	r1 := glyph_of(f, f.colr, 0xF0100, 40, {0, 0, 0})
 	r2 := glyph_of(f, f.colr, 0xF0100, 40, {255, 255, 255})
 	testing.expect(t, !r1.img.uses_fg && r1.img.uv == r2.img.uv)
-}
+}) }
 
 // Twemoji's smiling face: a yellow disc (#FFCC4D) with a dark brown mouth and eyes (#664500).
 @(private = "file")
@@ -209,7 +211,7 @@ check_smiley :: proc(t: ^testing.T, what: string, b: Bitmap) {
 }
 
 @(test)
-bitmap_and_svg_glyphs :: proc(t: ^testing.T) {
+bitmap_and_svg_glyphs :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
@@ -227,10 +229,10 @@ bitmap_and_svg_glyphs :: proc(t: ^testing.T) {
 	// bitmaps never use the text color
 	s2 := glyph_of(f, f.sbix, 0x1F603, 48, {255, 0, 0})
 	testing.expect(t, !s2.img.uses_fg)
-}
+}) }
 
 @(test)
-color_glyphs_off :: proc(t: ^testing.T) {
+color_glyphs_off :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
@@ -240,10 +242,10 @@ color_glyphs_off :: proc(t: ^testing.T) {
 	font.set_settings(&f.s, st)
 	b := glyph_of(f, f.colr, 0xF0100, 40)
 	testing.expect(t, !b.img.color, "with color glyphs off a COLR v1 glyph is its outline")
-}
+}) }
 
 @(test)
-async_color_glyphs :: proc(t: ^testing.T) {
+async_color_glyphs :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
@@ -280,7 +282,7 @@ async_color_glyphs :: proc(t: ^testing.T) {
 	_ = font.glyph_image(&f.s, f.sbix, 2, 30, 0)
 	font.unload(&f.s, f.sbix)
 	font.color_wait(&f.s)
-}
+}) }
 
 @(private = "file")
 sync_add :: proc(p: ^int) { intrinsics.atomic_add(p, 1) }
@@ -289,7 +291,7 @@ sync_load :: proc(p: ^int) -> int { return intrinsics.atomic_load(p) }
 
 // A picture recorded while a color glyph is pending is stale when it is ready, then replays with it.
 @(test)
-async_glyphs_in_pictures :: proc(t: ^testing.T) {
+async_glyphs_in_pictures :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: render.Renderer
 	if !render.init_offscreen(&r, DSIZE, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
 	defer render.destroy(&r)
@@ -334,12 +336,12 @@ async_glyphs_in_pictures :: proc(t: ^testing.T) {
 	testing.expectf(t, !pic.glyphs_pending && l[0] > 200 && l[2] < 60, "recorded again with the glyph: %v", l)
 	res2, _ := record_and_replay(&dc, &r, &pic, colr, false)
 	testing.expect_value(t, res2, draw.Replay_Result.Drawn)
-}
+}) }
 
 // A kept plane (Plane_Fx.cache_id) that was drawn while a color glyph was pending is not kept as it is: the glyph shows once it is ready,
 // though the caller's key never changed.
 @(test)
-kept_plane_waits_for_async_glyphs :: proc(t: ^testing.T) {
+kept_plane_waits_for_async_glyphs :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: render.Renderer
 	if !render.init_offscreen(&r, DSIZE, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
 	defer render.destroy(&r)
@@ -375,7 +377,7 @@ kept_plane_waits_for_async_glyphs :: proc(t: ^testing.T) {
 		if l[0] > 200 && l[2] < 60 { break }
 	}
 	testing.expectf(t, l[0] > 200 && l[2] < 60, "the glyph shows in the kept plane once it is ready: %v", l)
-}
+}) }
 
 ////////////////////////////////
 // Through the draw layer
@@ -383,7 +385,7 @@ kept_plane_waits_for_async_glyphs :: proc(t: ^testing.T) {
 DSIZE :: [2]int{320, 80}
 
 @(test)
-color_glyphs_drawn :: proc(t: ^testing.T) {
+color_glyphs_drawn :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: render.Renderer
 	if !render.init_offscreen(&r, DSIZE, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
 	defer render.destroy(&r)
@@ -416,4 +418,4 @@ color_glyphs_drawn :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(g[0] - 0) < 10 && abs(g[1] - 160) < 10 && abs(g[2] - 0) < 10, "text color glyph on screen %v", g)
 	y := px(img, 224, 30)
 	testing.expectf(t, y[0] > 220 && y[1] > 170 && y[2] < 120, "smiley on screen %v", y)
-}
+}) }
