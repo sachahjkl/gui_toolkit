@@ -55,6 +55,72 @@ PALETTE_BOOTSTRAP :: Palette{
 	finish = .Gradient,
 }
 
+// Editor and terminal palettes, each from its own scheme (the scheme's background, its line highlight as the second panel,
+// its foreground, its muted text lifted where it is under 4:1 on the background, its own accent), with the dark text of
+// the scheme on the accent.
+
+// Gruvbox (Pavel Pertsev): warm browns, cream text, orange accent
+PALETTE_GRUVBOX :: Palette{
+	bg = 0x282828ff, panel = 0x32302fff, panel2 = 0x3c3836ff, text = 0xebdbb2ff, weak = 0xa89984ff, border = 0x504945ff,
+	accent = 0xfe8019ff, accent_text = 0x282828ff, good = 0xb8bb26ff, warn = 0xfabd2fff, bad = 0xfb4934ff, dark = true,
+}
+
+PALETTE_GRUVBOX_LIGHT :: Palette{
+	bg = 0xfbf1c7ff, panel = 0xf9f5d7ff, panel2 = 0xebdbb2ff, text = 0x3c3836ff, weak = 0x7c6f64ff, border = 0xd5c4a1ff,
+	accent = 0xaf3a03ff, accent_text = 0xfbf1c7ff, good = 0x79740eff, warn = 0xb57614ff, bad = 0x9d0006ff, dark = false,
+}
+
+// Naysayer (the Emacs theme of Jonathan Blow's streams): a deep teal, tan text, the green of its strings
+PALETTE_NAYSAYER :: Palette{
+	bg = 0x062329ff, panel = 0x0a2d36ff, panel2 = 0x0c4754ff, text = 0xd1b897ff, weak = 0x86a09eff, border = 0x14505eff,
+	accent = 0x2ec09cff, accent_text = 0x062329ff, good = 0x44b340ff, warn = 0xe0b45aff, bad = 0xe5646aff, dark = true,
+}
+
+// Solarized (Ethan Schoonover), the two modes of one set of sixteen colors
+PALETTE_SOLARIZED :: Palette{
+	bg = 0x002b36ff, panel = 0x073642ff, panel2 = 0x0b3e4aff, text = 0x93a1a1ff, weak = 0x768c93ff, border = 0x15505eff,
+	accent = 0x268bd2ff, accent_text = 0x002b36ff, good = 0x859900ff, warn = 0xb58900ff, bad = 0xdc322fff, dark = true,
+}
+
+PALETTE_SOLARIZED_LIGHT :: Palette{
+	bg = 0xfdf6e3ff, panel = 0xf5efdcff, panel2 = 0xeee8d5ff, text = 0x586e75ff, weak = 0x657b83ff, border = 0xded8c4ff,
+	accent = 0x268bd2ff, accent_text = 0xfdf6e3ff, good = 0x859900ff, warn = 0xb58900ff, bad = 0xdc322fff, dark = false,
+}
+
+// Monokai (Wimer Hazenberg): the olive-black of Sublime Text, the green of its functions
+PALETTE_MONOKAI :: Palette{
+	bg = 0x272822ff, panel = 0x2d2e27ff, panel2 = 0x3e3d32ff, text = 0xf8f8f2ff, weak = 0x9b9780ff, border = 0x49483eff,
+	accent = 0xa6e22eff, accent_text = 0x272822ff, good = 0xa6e22eff, warn = 0xfd971fff, bad = 0xf92672ff, dark = true,
+}
+
+// Tokyo Night (enkia): indigo night, periwinkle accent
+PALETTE_TOKYO_NIGHT :: Palette{
+	bg = 0x1a1b26ff, panel = 0x1f2335ff, panel2 = 0x292e42ff, text = 0xc0caf5ff, weak = 0x8089b5ff, border = 0x3b4261ff,
+	accent = 0x7aa2f7ff, accent_text = 0x1a1b26ff, good = 0x9ece6aff, warn = 0xe0af68ff, bad = 0xf7768eff, dark = true,
+}
+
+// Catppuccin, Mocha (dark) and Latte (light)
+PALETTE_CATPPUCCIN :: Palette{
+	bg = 0x1e1e2eff, panel = 0x262637ff, panel2 = 0x313244ff, text = 0xcdd6f4ff, weak = 0xa6adc8ff, border = 0x45475aff,
+	accent = 0xcba6f7ff, accent_text = 0x1e1e2eff, good = 0xa6e3a1ff, warn = 0xf9e2afff, bad = 0xf38ba8ff, dark = true,
+}
+
+PALETTE_CATPPUCCIN_LATTE :: Palette{
+	bg = 0xeff1f5ff, panel = 0xf8f9fbff, panel2 = 0xe6e9efff, text = 0x4c4f69ff, weak = 0x6c6f85ff, border = 0xccd0daff,
+	accent = 0x8839efff, accent_text = 0xffffffff, good = 0x40a02bff, warn = 0xdf8e1dff, bad = 0xd20f39ff, dark = false,
+}
+
+// One Dark (Atom)
+PALETTE_ONE_DARK :: Palette{
+	bg = 0x282c34ff, panel = 0x2c313aff, panel2 = 0x353b45ff, text = 0xabb2bfff, weak = 0x8a93a2ff, border = 0x3e4451ff,
+	accent = 0x61afefff, accent_text = 0x21252bff, good = 0x98c379ff, warn = 0xe5c07bff, bad = 0xe06c75ff, dark = true,
+}
+
+// Everforest (sainnhe): a green-grey forest, soft contrast
+PALETTE_EVERFOREST :: Palette{
+	bg = 0x2d353bff, panel = 0x343f44ff, panel2 = 0x3d484dff, text = 0xd3c6aaff, weak = 0x9da9a0ff, border = 0x475258ff,
+	accent = 0xa7c080ff, accent_text = 0x2d353bff, good = 0xa7c080ff, warn = 0xdbbc7fff, bad = 0xe67e80ff, dark = true,
+}
 Named_Palette :: struct { name: string, palette: Palette }
 
 // The built-in palettes, for theme pickers and settings (names are what apps store).
@@ -67,6 +133,17 @@ NAMED_PALETTES := [?]Named_Palette{
 	{"Amber", PALETTE_AMBER},
 	{"Aero", PALETTE_AERO},
 	{"Bootstrap", PALETTE_BOOTSTRAP},
+	{"Gruvbox", PALETTE_GRUVBOX},
+	{"Gruvbox Light", PALETTE_GRUVBOX_LIGHT},
+	{"Naysayer", PALETTE_NAYSAYER},
+	{"Solarized", PALETTE_SOLARIZED},
+	{"Solarized Light", PALETTE_SOLARIZED_LIGHT},
+	{"Monokai", PALETTE_MONOKAI},
+	{"Tokyo Night", PALETTE_TOKYO_NIGHT},
+	{"Catppuccin", PALETTE_CATPPUCCIN},
+	{"Catppuccin Latte", PALETTE_CATPPUCCIN_LATTE},
+	{"One Dark", PALETTE_ONE_DARK},
+	{"Everforest", PALETTE_EVERFOREST},
 }
 
 // The built-in palette of that name (case-insensitive); ok = false when there is none.
