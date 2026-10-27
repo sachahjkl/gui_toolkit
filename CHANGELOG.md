@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.45.1] - 2026-10-27
+
+### Added
+- **Text and bounds in the UI Automation test client** (`uia.document_text`, `uia.text_selection`, `uia.select_text`, `uia.bounds`; `uia_probe text`, `uia_probe select-text --start A --end B`, `uia_probe bounds`): what a text pattern holds, its selection or caret, a selection made as a screen reader does, and where an element is, for end-to-end tests.
+
 ## [0.45.0] - 2026-10-27
 
 ### Added
