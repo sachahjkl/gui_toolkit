@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.48.0] - 2026-10-27
+
+### Added
+- **`ui.NAMED_PALETTES`**: eleven more palettes from well-known editor schemes, each with its own accent: Gruvbox and Gruvbox Light, Naysayer, Solarized and Solarized Light, Monokai, Tokyo Night, Catppuccin (Mocha) and Catppuccin Latte, One Dark and Everforest. `palette_named` finds them by name; a test checks that every named palette keeps its text legible on its background and panels and its `dark` flag in line with its background.
+
 ## [0.47.2] - 2026-10-27
 
 ### Changed
