@@ -68,6 +68,23 @@ Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas)
   <https://www.unicode.org/license.txt>).
 - The color glyph test fonts of `tests/color_glyphs/data` keep their own licenses (see `data/README.txt`).
 
+## Native text backend (optional, `-define:FONT_BACKEND=native`)
+
+`native/text` (`gt_text.lib`, linked statically; `font/backend_native.odin`) is the portable text backend used on
+every platform in place of DirectWrite. It is built on, under their own licenses:
+
+- [HarfRust](https://github.com/harfbuzz/harfrust) (`harfrust` 0.15.0), MIT, the shaper (a Rust port of HarfBuzz):
+  OpenType features, kerning, ligatures, marks, Arabic joining, Indic reordering, mirroring.
+- [Fontations](https://github.com/googlefonts/fontations) (`read-fonts` 0.46.0), MIT or Apache-2.0: reading faces,
+  glyph metrics, outlines, coverage, variation axes and COLR / CPAL tables.
+- [ICU4X](https://github.com/unicode-org/icu4x) (`icu_segmenter`, `icu_properties` 2.4.0), Unicode-3.0: UAX #14 line
+  breaking with the Thai / Lao / Khmer / Myanmar dictionaries, and the bidi character property data.
+- [unicode-bidi](https://github.com/servo/unicode-bidi) (`unicode-bidi` 0.3.18), MIT or Apache-2.0: the UAX #9
+  bidirectional algorithm (embedding levels).
+- [memmap2](https://github.com/RazrFalcon/memmap2-rs) (`memmap2` 0.9.8), MIT or Apache-2.0: memory-mapping font files.
+
+Exact versions and SHA-256 are in `native/text/Cargo.lock` (the build runs `--locked`). See `docs/font-backend.md`.
+
 ## Accessibility adapter (optional, `-define:A11Y_ACCESSKIT=true`)
 
 `native/a11y` (`gt_a11y.lib`, linked statically) is built on [AccessKit](https://github.com/AccessKit/accesskit)
