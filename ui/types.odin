@@ -349,6 +349,7 @@ State :: struct {
 	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)
 	rounding:     f32,               // corner rounding factor applied to every rounded shape (0 = square, 1 = default)
 	time_ms:      f64,
+	inactive:     bool,              // Build_Params.inactive: the window is not the user's: carets are hidden and still
 	cursor_request: platform.Cursor,
 	clipboard_get: proc() -> string,
 	clipboard_set: proc(text: string),

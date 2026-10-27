@@ -345,7 +345,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			f.cursor = clamp(f.cursor, 0, len(f.buf))
 			f.mark = clamp(f.mark, 0, len(f.buf))
-			wake_within(s, 265)   // caret blink
+			if !s.inactive { wake_within(s, 265) }   // caret blink (none in a window in the back)
 		}
 		after_hash := hash_bytes(f.buf[:])
 		res.changed = before != len(f.buf) || before_hash != after_hash
@@ -366,7 +366,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 		d.cursor, d.mark, d.scroll_x = f.cursor, f.mark, f.scroll_x
 		d.focused = focused
 		since := now - f.edited_ms
-		d.caret_on = since < 500 || (int(since) / 530) % 2 == 0
+		d.caret_on = !s.inactive && (since < 500 || (int(since) / 530) % 2 == 0)
 		d.selection = color("selection")
 		d.caret = color("cursor")
 		if tags("weak") { d.weak = color("text") }
