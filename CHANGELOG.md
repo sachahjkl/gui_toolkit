@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.46.0] - 2026-10-27
+
+### Added
+- **`platform.Event.injected`**: an event made by `inject_event` (a test, a remote control, a macro) says so; an application that reads the pointer's position from the system (a window dragged across the screen) uses the event's own position for these, as the real pointer is elsewhere.
+- **`Build_Params.inactive`, `ui.inactive`**: a window that is not the one the user is in is built with `inactive = true`: its focused line and text edits keep the focus but draw no caret and ask for no wake to blink it (an application with several windows no longer blinks a caret in each).
+
 ## [0.45.1] - 2026-10-27
 
 ### Added
