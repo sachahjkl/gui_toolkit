@@ -22,6 +22,7 @@ Dfx :: struct {
 	s:     ui.State,
 	ui_font: font.Font_Id,
 	area:  ui.Text_Area,
+	clock_ms: f64,
 }
 
 @(private = "file")
@@ -29,8 +30,12 @@ lock: sync.Mutex
 
 @(private = "file")
 frame :: proc(f: ^Dfx, events: []platform.Event) -> []u8 {
+	// the build's clock is the test's (16 ms a frame from 16 ms): the caret, solid for 500 ms after a move, is drawn in
+	// every frame whatever the time a frame takes (a slow WebGPU frame on a CI runner had blinked it off)
+	f.clock_ms += 16
 	ui.begin_build(&f.s, {
 		window_size = {f32(SIZE.x), f32(SIZE.y)}, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		time_ms = f.clock_ms,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.ui_font, font_size = 15, text_pad = 6},
 	})
 	ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(200)})

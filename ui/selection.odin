@@ -364,7 +364,7 @@ selection_update :: proc(s: ^State) {
 				sel.dragging = false
 				continue
 			}
-			now := now_ms()
+			now := s.time_ms
 			if now - sel.click_ms < 450 && abs(e.pos.x - sel.click_pos.x) < 4 && abs(e.pos.y - sel.click_pos.y) < 4 {
 				sel.clicks = sel.clicks % 3 + 1
 			} else {

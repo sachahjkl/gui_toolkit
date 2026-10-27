@@ -42,12 +42,12 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			s.pressed_any[e.button] = true
 			if e.button == .Left { scrollbar_press(s, hot, e.pos) }
 			if e.button == .Left {
-				if hot != 0 && hot == s.last_click_key && now_ms() - s.last_click_ms < 400 {
+				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < 400 {
 					s.double_key = hot
 					s.last_click_key = 0
 				} else {
 					s.last_click_key = hot
-					s.last_click_ms = now_ms()
+					s.last_click_ms = s.time_ms
 				}
 				// keyboard focus follows the click
 				b := s.boxes[hot] if hot != 0 else nil
@@ -95,7 +95,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	s.hot_key = (active == 0 || hit == active) ? hit : 0
 	scrollbar_drag(s)
 	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse) : 0
-	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = now_ms() }
+	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = s.time_ms }
 }
 
 // Topmost Clickable box at `p`: later siblings draw on top, so walk them last to first.

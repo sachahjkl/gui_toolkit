@@ -31,10 +31,15 @@ Sx :: struct {
 PARA :: "The paragraph wraps across several lines in this narrow box, so that a drag can end in its middle."
 RICH := []ui.Rich_Run{{text = "Rich "}, {text = "bold", style = {bold = true}}, {text = " and a "}, {text = "link", style = {link = "x"}}, {text = "."}}
 
+// the builds' clock, 16 ms a frame: a double click is two frames apart however slow the frames are
+@(private = "file", thread_local) clock_ms: f64
+
 @(private = "file")
 frame :: proc(f: ^Sx, events: []platform.Event = nil, draw_it := false) -> []u8 {
+	clock_ms += 16
 	ui.begin_build(&f.s, {
 		window_size = {f32(SIZE.x), f32(SIZE.y)}, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		time_ms = clock_ms,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.ui_font, font_size = 15, text_pad = 6},
 		clipboard_get = proc() -> string { return clip },
 		clipboard_set = proc(t: string) { delete(clip); clip = strings.clone(t) },

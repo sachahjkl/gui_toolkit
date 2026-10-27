@@ -7,6 +7,7 @@ package ui_robust_test
 
 import "base:runtime"
 import "core:testing"
+import "core:thread"
 import "../../ui"
 
 @(test)
@@ -29,21 +30,43 @@ building_is_true_between_begin_and_end :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.building(), "no build after the second state's")
 }
 
+// The assertion is caught on a thread of the test's own, whose assertion procedure records the message and ends that
+// thread. (Not testing.expect_assert_message: on Windows the runner's exception handler passes the exception on and
+// races the system's unhandled-exception path, which ended the whole test process without a word on a CI runner.)
+@(private="file") refused_message: string
+@(private="file") nested_reached_end: bool
+
+when ODIN_OS == .Windows {
+	foreign import kernel32 "system:Kernel32.lib"
+	@(default_calling_convention = "system", private = "file")
+	foreign kernel32 { ExitThread :: proc(code: u32) -> ! --- }
+}
+
 @(test)
 nested_build_is_refused :: proc(t: ^testing.T) {
-	// (the assertion ends the test where it stands: nothing it allocated is freed, so not from the tracked allocator)
-	context.allocator = runtime.heap_allocator()
-	f, inner: Fx
-	if !testing.expect(t, open(&f), "fonts") { return }
-	if !testing.expect(t, open(&inner), "fonts") { return }
-	testing.expect_assert_message(t, "ui: begin_build inside another build")
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) {
-		inner := (^Fx)(user)
-		if ui.row() {
-			// what a frame made from WM_PAINT inside TrackPopupMenu did, in the middle of the outer build
-			frame(inner, nil, proc(f: ^Fx, user: rawptr) { ui.spacer(ui.px(4)) })
-			ui.spacer(ui.px(6))   // (before: the parent stack was empty here, a bounds check failed in parent_box)
+	when ODIN_OS != .Windows { return }
+	refused_message, nested_reached_end = "", false
+	th := thread.create_and_start(proc() {
+		// (the assertion ends the thread where it stands: nothing it allocated is freed, so not the tracked allocator)
+		context.allocator = runtime.heap_allocator()
+		context.assertion_failure_proc = proc(prefix, message: string, loc: runtime.Source_Code_Location) -> ! {
+			refused_message = message
+			ExitThread(0)
 		}
-	}, &inner)
-	testing.fail_now(t, "the nested build was not refused")
+		f, inner: Fx
+		if !open(&f) || !open(&inner) { return }
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) {
+			inner := (^Fx)(user)
+			if ui.row() {
+				// what a frame made from WM_PAINT inside TrackPopupMenu did, in the middle of the outer build
+				frame(inner, nil, proc(f: ^Fx, user: rawptr) { ui.spacer(ui.px(4)) })
+				ui.spacer(ui.px(6))   // (before: the parent stack was empty here, a bounds check failed in parent_box)
+			}
+		}, &inner)
+		nested_reached_end = true
+	})
+	thread.destroy(th)   // (joins it)
+	testing.expect_value(t, refused_message, "ui: begin_build inside another build")
+	testing.expect(t, !nested_reached_end, "the nested build was not refused")
+	testing.expect(t, !ui.building(), "the test's own thread has no build open")
 }

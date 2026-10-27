@@ -45,7 +45,7 @@ toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
 	if t.len < len(msg) { t.len = font.grapheme_prev(msg, t.len + 1) }   // cut between clusters, not inside a character
 	copy(t.text[:], msg[:t.len])
 	s.toast_serial += 1
-	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, now_ms(), 3800, s.toast_serial
+	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_open ? s.time_ms : now_ms(), 3800, s.toast_serial
 }
 
 toasts_clear :: proc() { for &t in g.toasts { t.alive = false } }

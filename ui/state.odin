@@ -96,6 +96,9 @@ Build_Params :: struct {
 	window:         ^platform.Window,   // optional: with an integrated title bar, gets its regions after each build
 	frame_ms:       f64,                // optional: the frame's time in ms (a display clock: when it will be shown);
 	                                    // scroll animations are sampled on it. 0: now_ms()
+	time_ms:        f64,                // optional: the build's clock in ms (caret blink, double clicks, timers, toasts,
+	                                    // hover delays). 0: now_ms(). A test or a replay passes its own clock to be
+	                                    // deterministic (wake_ms and wake_due still compare it with now_ms())
 }
 
 // A build is open on this thread (between begin_build and end_build), whatever its state.
@@ -131,7 +134,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.wake_ms = 0
 	s.menu_close_pending = false
 	s.boxes_built = 0
-	s.time_ms = now_ms()
+	s.time_ms = p.time_ms > 0 ? p.time_ms : now_ms()
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
 	if s.theme != nil && s.theme.serial != s.theme_serial {
 		// another palette (not the first one): every colour cross-fades to it for a moment

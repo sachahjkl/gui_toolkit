@@ -958,6 +958,7 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	was_offscreen := hwnd == nil   // (not g.surface == nil: a recovery that found no device left it nil)
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(g)
+	readback_device_lost()   // (their buffers are of the device released here)
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
 	g.shared.lost = false

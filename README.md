@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.44.0-1d57ba" alt="version 0.44.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.45.0-1d57ba" alt="version 0.45.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
@@ -22,7 +22,9 @@ of CPU (`fidget --bench=300`).
     build.bat panes      # splitters and accordions
     build.bat todo debug
 
-Needs the Odin compiler (tested with `dev-2026-10`) and Windows 10+ (Win32 + D3D11 only for now).
+Needs the Odin compiler (`dev-2026-10`, pinned), MSVC (Visual Studio or its Build Tools) and Windows 10+ (Win32 + D3D11 only for now).
+**New project? Start with [docs/getting-started.md](docs/getting-started.md)**: the toolkit as a submodule, a window in a
+few lines (`examples/hello`), the backends and options, the tests, the versions, and the pitfalls.
 Prebuilt binaries are attached to the [GitHub releases](https://github.com/sachahjkl/gui_toolkit/releases).
 
 ## Screenshots
@@ -84,6 +86,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `font` | Text on DirectWrite: system / file / memory faces, cascades with per-character fallback (`unicode-range`, then the system fallback), shaping (OpenType features, ligatures, kerning, complex scripts) with a thread-safe word cache, bidi (UAX #9), line breaks (UAX #14), carets through clusters, grayscale glyph bitmaps at subpixel positions and color glyphs (emoji) in atlas pages, or (`Settings.text_renderer = .Slug`) glyphs drawn on the GPU from their outline curves with the [Slug](https://github.com/EricLengyel/Slug) algorithm (no bitmaps: sharp under any scale, rotation or skew). Embedded fallback fonts (Roboto, Inconsolata). See [docs/text.md](docs/text.md). |
 | `draw` | Rect / glyph run / image primitives; clips (scissor, rounded, ellipse, polygon; transformed), alpha and 2D affine transform stacks, layers with filters (blur, color matrices, drop shadow), blend modes and backdrops, gradients, box shadows, retained pictures (text included: shaped runs, color glyphs) over the renderer. See [docs/draw.md](docs/draw.md). |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
+| `flate` | DEFLATE / zlib / gzip as streams (any chunk size in, the output it allows out), dynamic Huffman codes; pure Odin, any platform. See [docs/flate.md](docs/flate.md). |
 
 ## Features
 
