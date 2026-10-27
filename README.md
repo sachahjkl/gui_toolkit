@@ -2,12 +2,10 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><b>My personal GUI toolkit in Odin: immediate-mode UI on Direct3D 11, with a widget gallery and a todo app.</b></p>
+<p align="center"><b>Native immediate-mode GUI toolkit for Odin, on Direct3D 11.<br>Rich widgets, live themes, sub-millisecond frames, 0 % CPU at idle.</b></p>
 
 <p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.47.1-1d57ba" alt="version 0.47.1"></a></p>
 
-This is my personal toolkit: I wrote it, it does not belong to any company, and it draws the window and chrome of
-[Wren](https://github.com/sachahjkl/wren). Anyone is free to use it (MIT).
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
 [RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
@@ -227,7 +225,8 @@ window width / image width, or clicks land a few percent off. Debug aids: `-defi
 
 ## License
 
-MIT (see LICENSE). The design and several algorithms follow the RAD Debugger (MIT, Epic Games Tools): see NOTICE.md.
+MIT (see LICENSE). A personal project by [sachahjkl](https://github.com/sachahjkl), not tied to any company; anyone is free
+to use it. The design and several algorithms follow the RAD Debugger (MIT, Epic Games Tools): see NOTICE.md.
 
 The optional Slug text renderer uses the shaders and the algorithm of [Slug](https://github.com/EricLengyel/Slug) by
 Eric Lengyel (MIT; the patent is in the public domain since 2026-03-17): credit and license text in NOTICE.md, the
