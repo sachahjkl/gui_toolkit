@@ -9,10 +9,25 @@ New-Item -ItemType Directory build -Force | Out-Null
 $failed = 0
 
 # (a package of one test says 'The test was successful', not 'All tests were successful': text_backends did, and failed the CI)
-function Test-Package([string]$name, [string[]]$odinArgs) {
+function Test-Package([string]$name, [string[]]$odinArgs, [int]$limit = 300) {
 	$sw = [Diagnostics.Stopwatch]::StartNew()
-	$o = & odin @odinArgs 2>&1 | Out-String
-	$code = $LASTEXITCODE
+	# a package that does not end is killed after $limit seconds and says which test it was in (a hang is a failure that names itself,
+	# not a step that the CI cuts off after twelve minutes with nothing in its log)
+	$log = Join-Path $PWD "build\tp_$name.log"
+	$all = @($odinArgs)
+	if ($all[0] -eq 'test') { $all += @('-define:ODIN_TEST_FANCY=false', '-define:ODIN_TEST_LOG_STATE_CHANGES=true') }
+	$p = Start-Process odin -ArgumentList $all -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+	$null = $p.Handle
+	if (-not $p.WaitForExit($limit * 1000)) {
+		& taskkill /T /F /PID $p.Id 2>&1 | Out-Null
+		$o = "TIMEOUT: $name did not end in $limit s`n" + ((Get-Content $log -Raw -ErrorAction SilentlyContinue)) + ((Get-Content "$log.err" -Raw -ErrorAction SilentlyContinue))
+		Write-Host ("FAIL $name (no end after $limit s)")
+		Write-Host (($o -split "`n" | Select-Object -Last 40) -join "`n")
+		return $false
+	}
+	$p.WaitForExit()
+	$o = ((Get-Content $log -Raw -ErrorAction SilentlyContinue)) + ((Get-Content "$log.err" -Raw -ErrorAction SilentlyContinue))
+	$code = $p.ExitCode
 	# (Write-Host: what a function writes to the pipeline would join its result)
 	if ($o -match 'All tests were successful|The test was successful') { Write-Host ("PASS $name ({0:N0} s)" -f $sw.Elapsed.TotalSeconds); return $true }
 	# the exit code says what a silent end was (0xC0000005 an access violation, 0xC000001D an assertion's trap that nothing
