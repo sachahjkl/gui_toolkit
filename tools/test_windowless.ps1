@@ -22,7 +22,7 @@ function Test-Package([string]$name, [string[]]$odinArgs) {
 	return $false
 }
 
-foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y', 'frame_gate') {
+foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y', 'frame_gate', 'flate') {
 	# @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
 	$extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y') { '-define:ODIN_TEST_THREADS=1' })
 	if (-not (Test-Package $t (@('test', "tests/$t", '-vet', "-out:build/${t}_test.exe") + $extra))) { $failed++ }
@@ -38,8 +38,10 @@ if (-not (Test-Package 'a11y (UI Automation)' @('test', 'tests/a11y', '-vet', '-
 odin build tools/uia_probe -vet -out:build/uia_probe.exe
 if ($LASTEXITCODE) { 'FAIL uia_probe'; $failed++ } else { 'PASS uia_probe' }
 foreach ($tg in 'linux_amd64', 'darwin_arm64') {
-	$o = odin check font -target:$tg -no-entry-point -vet 2>&1 | Out-String
-	if ($LASTEXITCODE) { "FAIL font on $tg"; $o; $failed++ } else { "PASS font on $tg" }
+	foreach ($pkg in 'font', 'flate') {
+		$o = odin check $pkg -target:$tg -no-entry-point -vet 2>&1 | Out-String
+		if ($LASTEXITCODE) { "FAIL $pkg on $tg"; $o; $failed++ } else { "PASS $pkg on $tg" }
+	}
 }
 # the color glyph tests again with the COLR interpreter in place of Direct2D
 if (-not (Test-Package 'color_glyphs (builtin)' @('test', 'tests/color_glyphs', '-vet', '-define:COLR_ENGINE=builtin', '-out:build/color_glyphs_builtin_test.exe'))) { $failed++ }
