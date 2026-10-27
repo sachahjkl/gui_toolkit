@@ -446,6 +446,7 @@ take_injected :: proc(w: ^Window) {
 	now := time.tick_now()
 	for &e in w.injected {
 		e.stamp = now
+		e.injected = true
 		if e.kind == .Close { w.closed = true }   // as WM_CLOSE: a loop that tests is_closed ends
 		append(&w.events, e)
 	}

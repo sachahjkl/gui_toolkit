@@ -68,6 +68,8 @@ each `Drop_*` (it returns the effect, and handles the `Drop` inside the call), s
   another application; the last one is the release) through the window's own drop target, never the real mouse.
 
 - `drop_inject(win, kind, pos, &data)`: the same events with data of the app's choice, through `inject_event`.
+- Every event made by `inject_event` has `Event.injected` set: an app that reads the pointer's screen position from the
+  system during a drag of its own (a window carried across the screen) takes the event's position for these instead.
 - `drop_self_test(win, data, pos, allowed)` (Windows): the data object `drag_start` would build goes through the window's
   own drop target, so both conversions and the events are tested without a mouse (`tests/dragdrop`).
 

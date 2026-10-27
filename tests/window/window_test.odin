@@ -73,6 +73,7 @@ injected_close_closes_the_window :: proc(t: ^testing.T) {
 	evs := platform.poll_events(w, false)
 	testing.expect_value(t, len(evs), 1)
 	testing.expect(t, platform.is_closed(w))
+	testing.expect(t, len(evs) == 1 && evs[0].injected, "an injected event says so (the real pointer is elsewhere)")
 }
 
 // %APPDATA% longer than MAX_PATH (a roaming profile on a deep UNC path) is read whole, not sliced out of bounds.

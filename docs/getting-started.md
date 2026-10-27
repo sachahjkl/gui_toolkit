@@ -129,6 +129,9 @@ the toolkit itself follows [CONTRIBUTING.md](../CONTRIBUTING.md): a fragment in 
   made from `WM_PAINT` while a menu's loop runs inside your build) asserts; check `ui.building()` at the top of the
   frame procedure (hello does). The `ui` package keeps the State being built in a global: two threads must not build
   interfaces at the same time (tests of interfaces run with `-define:ODIN_TEST_THREADS=1`, or behind a mutex).
+- **Several windows**: give each window a `ui.State` of its own and pass `Build_Params.inactive = true` when building a
+  window that is not the one the user is in: its focused text fields keep their focus but show no caret and ask for no
+  wake to blink it (`ui.inactive()` tells a widget of your own), as every desktop does.
 - **Keys**: widgets are found again from frame to frame by their id. `"Label"` alone uses the text as the id: two
   buttons labelled "OK" collide and a label whose text changes loses its state. Use `"Text###stable_id"` (the part after
   `###` is the key) for anything whose text changes, as hello does for the counter.

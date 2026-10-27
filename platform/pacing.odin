@@ -5,7 +5,7 @@ package platform
 // Frame_Slots (frame_slots.odin) is its clock; docs/pacing.md has the whole model.
 //
 //   plan := cadence_plan(display_info(w), {})            // once, and again when the monitor or its rate changes
-//   c.slots = plan.slots
+//   cadence_adopt(&c, plan)
 //   ...
 //   d := frame_decision(&c, {now_ns = now, idled = idled, input = input_waits, presented = shown_once, resized = size != last})
 //   wait d.wait_ns (taking input meanwhile); if d.wait_swap_chain, wait for the swap chain's latency object
@@ -24,9 +24,12 @@ package platform
 //                  (a program that resizes the window from outside, AltSnap, waits for the thread at every step: a frame
 //                  asleep in Present for a refresh would stall each step)
 //   Rest           the loop slept before this frame and no input woke it: a new run of slots starts with it
-//   Drag           a pointer drags something inside the window (a splitter, a panel's handle, a tab): paced as Continuous, one
-//                  frame per slot. Not a resize step: the window keeps its size (a step skips the slot, and a pointer at 1 kHz
-//                  made a frame a millisecond)
+//   Drag           a pointer drags something inside the window (a splitter, a panel's handle, a tab): one frame per slot, as
+//                  Continuous. Not a resize step: the window keeps its size (a step skips the slot, and a pointer at 1 kHz
+//                  made a frame a millisecond). On a variable refresh screen (Cadence.variable) shown at once, two frames
+//                  queued, as a resize's burst: a frame that waits for a refresh waits for the rate the system reports (60 Hz
+//                  at rest under a dynamic refresh rate), not for the screen's top one, and the hand follows at 60 Hz what
+//                  the window's own edge moves at 180
 //   Continuous     frames follow one another (an animation, the wheel, a pointer sweeping the window): one per slot, each after
 //                  the screen took the previous one
 //
@@ -64,7 +67,8 @@ Frame_Decision :: struct {
 
 // The model's memory of one window, from frame to frame.
 Cadence :: struct {
-	slots:        Frame_Slots,   // the clock: set from cadence_plan
+	slots:        Frame_Slots,   // the clock: set from cadence_plan (cadence_adopt)
+	variable:     bool,          // the screen shows frames above the rate it reports (Cadence_Plan.variable): a drag is shown at once
 	state:        Cadence_State, // the last frame's
 	input_answer: bool,          // the last frame answered input (also when it was a resize step)
 	resize_ns:    i64,           // the last size change seen (0: none)
@@ -99,7 +103,7 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	}
 	c.state, c.input_answer = d.state, answer
 	c.counts[d.state] += 1
-	d.present_at_once = step || burst || answer
+	d.present_at_once = cadence_at_once(c)
 	d.latency = d.present_at_once ? 2 : 1
 	d.wait_ns, d.slot_ns = frame_slot_wait(&c.slots, in_.now_ns, in_.idled, step || answer)
 	if step { d.wait_ns = 0 }
@@ -120,7 +124,13 @@ cadence_inner_frame :: proc(c: ^Cadence, resized, presented: bool) -> (at_once: 
 
 // Whether the last decided frame is shown at once.
 cadence_at_once :: proc(c: ^Cadence) -> bool {
-	return c.state == .Resize_Step || c.state == .Resize_Burst || c.input_answer
+	return c.state == .Resize_Step || c.state == .Resize_Burst || c.input_answer || (c.state == .Drag && c.variable)
+}
+
+// The plan's clock and screen taken by the cadence (once, and again when the monitor or its rate changes).
+cadence_adopt :: proc(c: ^Cadence, p: Cadence_Plan) {
+	c.slots = p.slots
+	c.variable = p.variable
 }
 
 // Whether the last decided frame belongs to a resize (its step or its burst).
