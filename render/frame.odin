@@ -64,7 +64,19 @@ blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {
 // filter passes). Pooled targets are handed back to the pool afterwards.
 d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
-	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
+	// Resolve this frame's damage region (damage.odin). A partial frame keeps the back buffer's content outside the
+	// region; the deferred clear (frame_begin) is done per rectangle below. A full frame clears the whole target now.
+	partial := damage_resolve(r, d3d_buffer_age(r))
+	if r.damage.have_clear && !partial {
+		r.damage.have_clear = false
+		c := r.damage.clear
+		r.ctx->ClearRenderTargetView(r.rtv, &c)
+	}
+	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) {
+		// a partial frame with a deferred clear and nothing to draw still clears its region (a caret turning off)
+		if partial && r.damage.have_clear { d3d_clear_region(r); r.damage.have_clear = false }
+		return
+	}
 	timed := GPU_TIMING || r.gpu_timing || r.prof.on
 	if timed { gpu_timing_begin(r) }
 	defer if timed { gpu_timing_end(r) }
@@ -97,13 +109,16 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if has_slug { slug_bind_inputs(r, f) }
 	if slug_frame && !has_slug { r.slug.ready = false }   // no Slug shaders: its runs are skipped (draw_batch_split), the rest is drawn
 	write_replay(r, nil, false)
-	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil {
+	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil && !partial {
 		// first use of the back buffer, alone: the compositor may still hold it, and the draw that touches it first
-		// would otherwise carry that wait. Every frame draws all of its pixels, so the clear changes nothing.
+		// would otherwise carry that wait. Every full frame draws all of its pixels, so the clear changes nothing.
+		// A partial frame keeps the back buffer's content, so this clear is skipped (it would erase it).
 		zero := [4]f32{}
 		r.ctx->ClearRenderTargetView(r.rtv, &zero)
 		profile_step(r, .Acquire, r.size.x, r.size.y, r.size.x * r.size.y, r.size.x * r.size.y * 4)
 	}
+	// a partial frame clears only its region, now that the pipeline is bound (D3D11 has no scissored ClearRenderTargetView)
+	if partial && r.damage.have_clear { r.damage.have_clear = false; d3d_clear_region(r) }
 	cur, cur_ok := -1, false
 	cur_size: [2]int
 	cur_origin: [2]f32
@@ -157,9 +172,18 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 			replacing = b.backdrop != 0
 			r.ctx->OMSetBlendState(replacing ? r.blend_replace : r.blend, nil, ~u32(0))
 		}
+		clip := b.clip
+		// partial redraw: a batch drawing into the frame target (cur == 0, screen pixels) is clipped to the damaged
+		// region, and skipped when it touches none of it. Layers (cur > 0, their own space) are not touched: they are
+		// intermediate images sampled back into the frame, and the composite that reads them is itself clipped.
+		if partial && cur == 0 {
+			dc, draw := damage_clip_batch(&r.damage, clip)
+			if !draw { continue }
+			clip = dc
+		}
 		rc := d3d11.RECT{
-			left   = i32(clamp(b.clip.x - cur_origin.x, 0, f32(cur_size.x))), top    = i32(clamp(b.clip.y - cur_origin.y, 0, f32(cur_size.y))),
-			right  = i32(clamp(b.clip.z - cur_origin.x, 0, f32(cur_size.x))), bottom = i32(clamp(b.clip.w - cur_origin.y, 0, f32(cur_size.y))),
+			left   = i32(clamp(clip.x - cur_origin.x, 0, f32(cur_size.x))), top    = i32(clamp(clip.y - cur_origin.y, 0, f32(cur_size.y))),
+			right  = i32(clamp(clip.z - cur_origin.x, 0, f32(cur_size.x))), bottom = i32(clamp(clip.w - cur_origin.y, 0, f32(cur_size.y))),
 		}
 		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
 		r.ctx->RSSetScissorRects(1, &rc)
@@ -189,6 +213,8 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		slug_unbind_inputs(r)
 	}
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
+	// render.damage.verify: recompose the whole frame into the reference and compare, while the layers are still alive
+	if partial && r.damage.have_region && r.damage.verify { d3d_damage_verify(r, f) }
 }
 
 // Fixed state of the instanced-quad pipeline (rect.wgsl).
