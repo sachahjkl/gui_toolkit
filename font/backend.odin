@@ -80,6 +80,7 @@ Shape_Request :: struct {
 	rtl:      bool,
 	script:   Script_Item,
 	features: []Feature, // the cascade's, then liga / clig / dlig / hlig off under letter-spacing
+	lang:     string,    // BCP 47 language of the cascade (locale forms, `locl`), "" none
 }
 
 // The procedures of a backend. Every one may run on any thread at once.
