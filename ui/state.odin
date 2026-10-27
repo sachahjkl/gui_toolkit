@@ -277,6 +277,8 @@ zoom :: proc(s: ^State) -> f32 { return s.zoom }
 set_zoom :: proc(s: ^State, z: f32) { s.zoom = clamp(z, ZOOM_MIN, ZOOM_MAX) }
 // dpi scale * zoom: multiply your own pixel constants by this (ui.font_size() and the base style already include it)
 scale :: proc() -> f32 { return g.scale }
+// Same, for a given state (an app with several windows, or one drawing outside a build: the autoscroll marker).
+scale_of :: proc(s: ^State) -> f32 { return s.scale }
 
 ////////////////////////////////
 // Boxes
