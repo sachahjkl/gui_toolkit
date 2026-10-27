@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.48.1] - 2026-10-27
+
+### Fixed
+- **`ui.NAMED_PALETTES`**: the text of the One Dark and Solarized palettes is lighter (One Dark's bright white `#c8ccd4`, a step between Solarized's `base1` and `base2`): their schemes' own foregrounds stood too close to the lit tab of a tab bar in Wren.
+
 ## [0.48.0] - 2026-10-27
 
 ### Added
