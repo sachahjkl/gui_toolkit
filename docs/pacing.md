@@ -32,7 +32,7 @@ Each frame is in the first state that applies:
 | `Input_Answer` | user input, and the window was at rest (the loop slept, or nothing presented for `CADENCE_INPUT_REST_PERIODS` = 1.5 periods) | no (the next slot is a period after it) | no | at once | 2 |
 | `Resize_Burst` | within `CADENCE_RESIZE_HOLD_NS` = 120 ms of a size change | yes | yes | at once | 2 |
 | `Rest` | the loop slept and no input woke it: a new run of slots starts | yes (now) | yes | at the refresh | 1 |
-| `Drag` | a pointer drags something inside the window (splitter, panel handle, tab) | yes | yes | at the refresh | 1 |
+| `Drag` | a pointer drags something inside the window (splitter, panel handle, tab) | yes | yes | at the refresh; **at once on a variable refresh screen** | 1; 2 at once |
 | `Continuous` | frames follow one another (animation, wheel, a pointer sweeping the window) | yes | yes | at the refresh | 1 |
 
 Nothing waits for the swap chain before the first present (a swap chain never shown releases nothing), nor when the frame
@@ -47,14 +47,21 @@ Why each one:
 - **Resize burst**: a program that resizes the window from outside (AltSnap) waits for the thread at every step; a frame
   asleep in Present for a refresh stalled each step.
 - **Drag**: a panel dragged inside the window keeps the window's size; as a resize step it would skip the slot, a frame a
-  millisecond under a 1 kHz mouse.
+  millisecond under a 1 kHz mouse. On a variable refresh screen (`Cadence.variable`, the plan's) its frames are shown at
+  once, two queued, as a resize's burst: there a frame that waits for a refresh waits for the rate the system reports, which
+  a dynamic refresh rate keeps at 60 Hz at rest, while a frame shown at once is on screen when it comes (G-Sync, FreeSync:
+  the screen follows the frames up to its top rate). The slot still paces them: one frame per period of the top rate,
+  whatever the mouse's rate. Measured on a 180 Hz G-Sync screen that Windows reports at 60 Hz (Wren's window not shown,
+  a 1 kHz pointer on a splitter): 62 frames a second, 16.6 ms apart, every one waiting for the 60 Hz refresh, before;
+  183 a second, 5.5 ms apart, after. On a fixed refresh screen a drag still waits for the refresh (at once, a frame would tear and
+  come no sooner). The other runs of frames (`Continuous`: an animation, the wheel) are not changed.
 - **Continuous**: one frame per slot, whatever the input rate: a mouse at 1 kHz makes one frame per period, not per move.
 
 ## Use
 
 ```odin
 plan := platform.cadence_plan(platform.display_info(w), {target_hz = 0, max_hz = 0, variable = .Auto, tearing = false})
-c.slots = plan.slots                       // (again when the monitor or its rate changes: Display_Info.serial)
+platform.cadence_adopt(&c, plan)           // its slots and its screen (again when the monitor or its rate changes: Display_Info.serial)
 
 d := platform.frame_decision(&c, {now_ns = now, idled = idled, input = input_waits, presented = shown_once,
                                   resized = size != last_size, dragging = dragging, slot_held = slot_held})
@@ -83,4 +90,5 @@ frame was timed for. Never before the previous frame's; `dt` is clamped to 0.5 .
 The application's choices are the target rate, the ceiling, `Variable_Refresh` and tearing. The rest follows from the
 screen and the model: there is no switch to turn a resize step or an input answer off, and the constants
 (`CADENCE_INPUT_REST_PERIODS`, `CADENCE_RESIZE_HOLD_NS`, `FRAME_SLOT_*`) are part of the model, tested by its simulations
-(`tests/pacing`: fixed refresh, variable refresh, tearing, a 1 kHz mouse, a resize, a panel dragged, AltSnap).
+(`tests/pacing`: fixed refresh, variable refresh, tearing, a 1 kHz mouse, a resize, a panel dragged, a splitter dragged on
+a variable screen that rests at 60 Hz, AltSnap).
