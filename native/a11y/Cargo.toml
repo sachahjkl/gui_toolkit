@@ -10,9 +10,8 @@ edition = "2021"
 publish = false
 license = "MIT"
 
-# An ordinary library (rlib), as for gt_text: tools\build_a11y.ps1 asks for the static library alone (cargo rustc
-# --crate-type staticlib), the only way rustc applies the profile's LTO.
 [lib]
+crate-type = ["staticlib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
