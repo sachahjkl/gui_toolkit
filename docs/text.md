@@ -14,7 +14,7 @@ comes from DirectWrite (the platform): no font file parsing, no shaping or bidi 
 | `load_memory(s, data, owned, index, simulations, family, weight, style)` | A face from memory (web fonts: the decoded sfnt). The bytes go through a custom `IDWriteFontFileLoader` whose keys are never reused. `load_from_memory` / `load_embedded`: shortcuts. |
 | `with_simulations(s, face, bold, oblique)` | The same face with synthetic bold / slant (CSS `font-synthesis`). |
 | `axes(s, face)`, `with_variations(s, face, values)` | Variable fonts: the axes, and an instance at axis values (`font-variation-settings`, weight / width axes). Windows 10 1803+. |
-| `cascade(s, entries, features, no_system_fallback)` | A `Font_Id` that takes each character from the first entry whose `ranges` (CSS `unicode-range`) include it and whose face has it, then from the **system fallback** (`IDWriteFontFallback::MapCharacters`, based on the first face's family, weight and style), then from the first face (its .notdef). `features`: OpenType features for every face (`font-feature-settings`, `font-variant-*`, `font-kerning`). A face is its own one-entry cascade. |
+| `cascade(s, entries, features, no_system_fallback, language)` | A `Font_Id` that takes each character from the first entry whose `ranges` (CSS `unicode-range`) include it and whose face has it, then from the **system fallback** (`IDWriteFontFallback::MapCharacters`, based on the first face's family, weight and style), then from the first face (its .notdef). `features`: OpenType features for every face (`font-feature-settings`, `font-variant-*`, `font-kerning`). `language`: the content's BCP 47 tag (CSS `lang`, e.g. `"sr"`, `"ja"`, `"zh-Hant"`), which selects a face's language-specific forms (`locl`: Serbian/Macedonian Cyrillic, Han unification of CJK, Romanian ș/ț...); empty when none. A face is its own one-entry cascade. |
 | `unload(s, id)` | Frees a font, the shaped words and the glyph bitmaps that use it. Not while anything else uses the state. Its slot is reused by a later font: a `Font_Id` is the slot (low 20 bits) and its generation, so the id of an unloaded font reaches nothing (`valid` is false, no glyph, no width) even once the slot is taken. A state holds up to 2^20 fonts at once; loading and unloading is unlimited. |
 | `metrics(s, id, size)` | Ascent, descent, line height, x-height, cap height, underline and strike-through offset / thickness (the first face's). |
 
@@ -32,7 +32,9 @@ the system fallback, the whole cluster goes with it (emoji ZWJ sequences: 👩�
 - **Words**: each run is cut into words at U+0020 and each word is shaped on its own and cached (as Blink's word
   cache): script analysis (`AnalyzeScript`; ASCII reuses one analysis), face itemization (above), then `GetGlyphs` /
   `GetGlyphPlacements` with the cascade's features (ligatures, kerning, contextual forms, mark positioning, Arabic
-  joining, Indic reordering, mirroring in right-to-left runs...).
+  joining, Indic reordering, mirroring in right-to-left runs...) and the cascade's `language` as the shaping locale
+  (the `locl` feature: Serbian / Macedonian Cyrillic, the Han unification of CJK, Romanian ș/ț). Two cascades that
+  differ only in language are distinct `Font_Id`s, so the word cache tells their shaped words apart.
 - **Spacing**: `letter_spacing` after each character (and optional ligatures off, as CSS wants), `word_spacing` after
   each U+0020 / U+00A0, `justify` after each U+0020.
 

@@ -1,0 +1,3 @@
+type: Added
+
+**`font.cascade` `language`**: a cascade now carries the content's BCP 47 language (`cascade(s, entries, features, no_system_fallback, language)`), and the shaper passes it to the backend as the shaping locale (DirectWrite's `GetGlyphs` / `GetGlyphPlacements` locale name, HarfRust's buffer language). Faces then apply their language-specific forms (`locl`): Serbian and Macedonian Cyrillic, Han unification of CJK ideographs, Romanian ș/ț, and so on. Empty keeps the previous default (no locale), and two cascades differing only in language are distinct `Font_Id`s, so the word cache tells them apart. See docs/text.md.
