@@ -451,6 +451,7 @@ make_data_object :: proc(data: Drag_Data) -> ^IDataObject {
 // Makes the window a drop target (or no longer one). False when the system refused: OLE could not start on this thread
 // (it is in a multithreaded apartment), or the process runs elevated and the drags of a normal desktop cannot reach it.
 drop_target_enable :: proc(w: ^Window, on: bool) -> bool {
+	if w.offscreen { return !on }   // no HWND to register a system drop target on; synthetic drops (drop_inject) still work
 	d := dnd_state(w)
 	if on == d.registered { return true }
 	if !on {
