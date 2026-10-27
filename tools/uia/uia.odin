@@ -139,6 +139,13 @@ has_focus :: proc(e: ^Element) -> bool { return get_i32(e, 26) != 0 }           
 focusable :: proc(e: ^Element) -> bool { return get_i32(e, 27) != 0 }                                            // get_CurrentIsKeyboardFocusable
 enabled :: proc(e: ^Element) -> bool { return get_i32(e, 28) != 0 }                                              // get_CurrentIsEnabled
 
+// Where the element is on the screen (physical pixels: left, top, right, bottom).
+bounds :: proc(e: ^Element) -> (r: [4]i32, ok: bool) {
+	rc: win.RECT
+	if (proc "system" (this: ^Element, out: ^win.RECT) -> win.HRESULT)(e.vtbl[43])(e, &rc) < 0 { return }   // get_CurrentBoundingRectangle
+	return {rc.left, rc.top, rc.right, rc.bottom}, true
+}
+
 set_focus :: proc(e: ^Element) -> bool { return (proc "system" (this: ^Element) -> win.HRESULT)(e.vtbl[3])(e) >= 0 }
 
 @(private)
