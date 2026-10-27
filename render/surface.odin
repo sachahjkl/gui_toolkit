@@ -32,6 +32,9 @@ Surface :: struct {
 	capture:        Capture_State,   // a capture is of one window: the next frame_end of this surface
 	gen:            u64,             // Renderer.swap_gen and swap_space, while the surface is set aside:
 	space_epoch:    u64,             // what it was made on and in
+	// On the WebGPU backend the fields above are unused; the per-window state lives here instead (a ^Wgpu_Surface,
+	// allocated by the wgpu surface_init). A single rawptr keeps this struct free of wgpu types so both backends build.
+	wgpu_backing:   rawptr,
 	valid:          bool,
 }
 
@@ -107,7 +110,13 @@ surface_refresh :: proc(r: ^Renderer) {
 // `surface_init` makes it in the Surface `s` points to, where the program keeps it. Prefer it to `surface_create`.
 surface_init :: proc(r: ^Renderer, s: ^Surface, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (ok: bool) {
 	when USE_WGPU {
-		fmt.eprintln("render: second windows need the Direct3D 11 backend")
+		// a second window on WebGPU: its own wgpu surface (and the latency / present state that go with it), swapped with the
+		// renderer's by surface_use, exactly as the Direct3D path swaps its swap chain. fixed_size is Direct3D's composition
+		// trick (buffers kept one size while the window resizes); wgpu reconfigures on resize, so it is ignored here.
+		s^ = {}
+		s.hwnd, s.size, s.transparent = hwnd, size, transparent
+		ok = wgpu_surface_init(r, s, hwnd, size, transparent)
+		s.valid = ok
 		return
 	} else {
 		s^ = {}
@@ -138,6 +147,12 @@ surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent :
 
 // Releases the surface (it must not be the one in use).
 surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
+	when USE_WGPU {
+		if !s.valid { return }
+		wgpu_surface_destroy(r, s)
+		s^ = {}
+		return
+	}
 	when !USE_WGPU {
 		if !s.valid { return }
 		exchange(r, s)
@@ -155,6 +170,11 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 
 // Makes `s` the window the renderer draws to (its own surface goes into `s`). Call again with the same `s` to go back.
 surface_use :: proc(r: ^Renderer, s: ^Surface) {
+	when USE_WGPU {
+		if !s.valid { return }
+		wgpu_surface_use(r, s)
+		return
+	}
 	when !USE_WGPU {
 		if !s.valid { return }
 		exchange(r, s)
