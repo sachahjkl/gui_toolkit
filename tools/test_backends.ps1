@@ -46,6 +46,7 @@ foreach ($t in $list) {
 	$args = @('test', "tests/$t", '-vet', "-define:TOOLKIT_RENDER=$Backend", "-out:$exe") + $extra + $defines
 	$sw = [Diagnostics.Stopwatch]::StartNew()
 	$p = Start-Process -FilePath odin -ArgumentList $args -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -NoNewWindow
+	$null = $p.Handle   # (kept open: without it ExitCode is empty once the process has ended)
 	if (-not $p.WaitForExit($TimeoutSec * 1000)) {
 		Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 		Get-Process -Name "${t}_${Backend}_test" -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -56,7 +57,7 @@ foreach ($t in $list) {
 	$name = if ($defines.Count) { "$t ($($Define -join ' '))" } else { $t }
 	# (a package of one test says 'The test was successful', not 'All tests were successful')
 	if ($o -match 'All tests were successful|The test was successful') { "PASS $name ({0:N0} s)" -f $sw.Elapsed.TotalSeconds }
-	else { "FAIL $name"; ($o -split "`n" | Select-String -Pattern 'Error|FATAL|failed|panick|expected' | Select-Object -First 8) | ForEach-Object { '   ' + $_.Line.Trim() }; $failed++ }
+	else { "FAIL $name (exit code 0x{0:X8})" -f $p.ExitCode; ($o -split "`n" | Select-String -Pattern 'Error|FATAL|failed|panick|expected' | Select-Object -First 8) | ForEach-Object { '   ' + $_.Line.Trim() }; $failed++ }
 }
 if ($failed) { exit 1 }
 exit 0

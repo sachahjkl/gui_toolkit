@@ -56,10 +56,15 @@ teardown :: proc(f: ^Fx) {
 	free(f)
 }
 
+// the builds' clock, 16 ms a frame: a double click is two frames apart however slow the frames are
+@(private = "file", thread_local) clock_ms: f64
+
 @(private = "file")
 frame :: proc(f: ^Fx, events: []platform.Event = nil) -> []u8 {
+	clock_ms += 16
 	ui.begin_build(&f.s, {
 		window_size = {f32(SIZE.x), f32(SIZE.y)}, events = events, dt = 1.0 / 60, animations = f.anim, dpi_scale = 1,
+		time_ms = clock_ms,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.ui_font, font_size = 15, text_pad = 6},
 	})
 	if f.accordion {
