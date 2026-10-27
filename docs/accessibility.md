@@ -29,6 +29,11 @@ that changed go to the adapter (`platform.A11y_Diff`: a hash per node). Once a c
 (`UiaClientsAreListening` only tells of clients subscribed to events: one that only asks, as Inspect or a test does,
 would read a tree left behind).
 
+At rest nothing happens: the adapter wakes the loop only when a reader asks for the tree or for an action, so a window
+a reader has read makes no frame and sends no update while nothing changes (`tests/a11y`, `two_windows_read_apart`).
+In a build that makes the tree, `ui.a11y_cost(s)` gives its nodes and the milliseconds spent making it, comparing it
+and sending the difference.
+
 The adapter makes each update safe for AccessKit before it sees it: the tree's structure is checked against a mirror
 (a node no parent reaches, a missing or duplicate child: refused, `.Invalid`, and the next build sends a whole tree), a
 text run always has a value and character lengths that cover it, a text selection that does not point into the node's
@@ -124,12 +129,43 @@ graft (else the adapter dropped the tree with its graft node: send it whole agai
 `ui.a11y_focus_on(box)` puts the readers' focus on the graft node, so that the grafted tree's own focus counts; until
 that tree's first update the adapter keeps the focus on the window's root, then moves it into the tree.
 
+### Node by node
+
+A document that knows what changed (a browser's DOM mutations) does not need to make its whole tree again:
+`platform.a11y_diff_patch(&diff, &changed)` takes only the nodes that are new or changed (each complete: all its
+properties and its children), sends those the adapter does not have as they are, and forgets the children a node lost
+with everything under them (a node moved under another one in the same patch is kept). The first update of a tree is a
+whole one (`a11y_diff`, or a patch holding the whole tree); `a11y_diff` and `a11y_diff_patch` can follow each other on
+one `A11y_Diff`.
+
+## Several windows
+
+Each window has its adapter (`platform.Window.a11y`), each `ui.State` its tree: give every window its own State and
+pass the window in `Build_Params.window`; each is read apart, and its requests come back to it. A State built for
+another window than its last one sends that window a whole tree. A tree of the app's own can be grafted in any window
+(the graft node and `a11y_send` of that window).
+
+## Known limits
+
+- **Linux and macOS**: stubs (`platform/a11y_stub.odin`); AccessKit has adapters for AT-SPI and NSAccessibility, the
+  ABI of `native/a11y` would take them.
+- **The toolkit's own tree is made again in each build that makes one** (an immediate-mode interface: there is no
+  record of what changed); the diff then sends only what changed. Its cost grows with the nodes of the window, not with
+  the changes (`a11y_cost`); a virtual list makes nodes for its visible rows only.
+- **Documents grafted by the app** (a web page) are the app's: the toolkit gives the graft, the patches and the
+  requests, not the content. What is not there yet in Wren's pages: iframes as subtrees of their own (a frame is a
+  node named by its `title`), the caret and the selection in the page's fields and text (no character positions: the
+  toolkit's `line_edit` and `text_edit` have them, through `A11y_Text`), the bounds of static text (its element's),
+  updates from the DOM's mutations (the page's tree is made again, then compared), and the page's tree in a second
+  window (it follows the main window's tab).
+- What a reader says (wording, order, browse mode, braille) is checked by a person only.
+
 ## The platform layer
 
 `platform/a11y.odin` is independent of the system: roles (`A11y_Role`, AccessKit's list), flags, actions, properties,
 and an update writer (`a11y_node`, `a11y_bounds`, `a11y_children`, `a11y_str`, `a11y_num`, `a11y_int`, `a11y_ids`,
 `a11y_bytes`, `a11y_floats`, `a11y_selection`, `a11y_graft`); `a11y_diff.odin` turns whole trees into incremental
-updates. `a11y_state(window)` (Off / Full / Incremental), `a11y_send`, `a11y_take_request`. The adapter
+updates, `a11y_diff_patch` node-by-node ones. `a11y_state(window)` (Off / Full / Incremental), `a11y_send`, `a11y_take_request`. The adapter
 (`a11y_accesskit.odin`) answers `WM_GETOBJECT`, follows the window's focus, and checks each update against a mirror of
 the tree before AccessKit sees it (an update that would break the tree is refused, `.Invalid`, instead of crashing).
 

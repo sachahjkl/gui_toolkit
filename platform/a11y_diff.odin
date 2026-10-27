@@ -2,27 +2,65 @@ package platform
 
 import "core:mem"
 
-// Incremental updates from whole trees: a program that rebuilds its whole tree each frame (an immediate-mode
-// interface) hands it to a11y_diff, which keeps a hash of every node the adapter has and writes into `out` only the
-// nodes that are new or changed. Nodes that went away need nothing: their parent changed (its children), and the
-// adapter drops what no parent reaches any more.
+// Incremental updates, two ways:
+//   a11y_diff        a program that rebuilds its whole tree each frame (an immediate-mode interface) hands it over;
+//                    the diff keeps a hash of every node the adapter has and writes only the nodes new or changed.
+//   a11y_diff_patch  a program that knows what changed (a document's mutations) hands over only those nodes, each
+//                    complete; nothing else of the tree is made again.
+// Nodes that went away need nothing: their parent changed (its children), and the adapter drops what no parent reaches
+// any more; the diff forgets them too (a node put back later is sent whole).
 A11y_Diff :: struct {
-	sent: map[u64]u64,   // node -> hash of what the adapter has
-	seen: map[u64]bool,  // scratch
+	sent: map[u64]u64,     // node -> hash of what the adapter has
+	kids: map[u64][]u64,   // node -> its children as the adapter has them (to forget what a patch takes away)
+	seen: map[u64]bool,    // scratch
 	out:  A11y_Update,
-	root: u64,           // the root of the last diff
-	nodes_sent: int,     // in the last diff (tests, statistics)
+	root: u64,             // the root of the last diff
+	nodes_sent: int,       // in the last diff (tests, statistics)
 }
 
 a11y_diff_destroy :: proc(d: ^A11y_Diff) {
 	delete(d.sent)
+	for _, k in d.kids { delete(k) }
+	delete(d.kids)
 	delete(d.seen)
 	a11y_update_destroy(&d.out)
 	d^ = {}
 }
 
 // Forgets what the adapter has: the next diff sends the whole tree (after a refused update, or when the adapter asks).
-a11y_diff_reset :: proc(d: ^A11y_Diff) { clear(&d.sent) }
+a11y_diff_reset :: proc(d: ^A11y_Diff) {
+	clear(&d.sent)
+	for _, k in d.kids { delete(k) }
+	clear(&d.kids)
+}
+
+// Whether the adapter has node `id` (as far as the diff knows).
+a11y_diff_has :: proc(d: ^A11y_Diff, id: u64) -> bool { return id in d.sent }
+
+@(private)
+diff_keep_kids :: proc(d: ^A11y_Diff, id: u64, children: []u64) {
+	if old, ok := d.kids[id]; ok {
+		if len(old) == len(children) { copy(old, children); return }
+		delete(old)
+	}
+	d.kids[id] = len(children) > 0 ? clone_ids(children) : nil
+}
+
+@(private)
+clone_ids :: proc(ids: []u64) -> []u64 {
+	c := make([]u64, len(ids))
+	copy(c, ids)
+	return c
+}
+
+@(private)
+diff_forget :: proc(d: ^A11y_Diff, id: u64) {
+	delete_key(&d.sent, id)
+	if k, ok := d.kids[id]; ok {
+		delete(k)
+		delete_key(&d.kids, id)
+	}
+}
 
 // Writes into d.out the nodes of `full` the adapter does not have as they are (all of them with `whole`, or when
 // nothing was sent before); returns d.out, which may hold no node (nothing changed: no need to send it, but the focus
@@ -30,7 +68,7 @@ a11y_diff_reset :: proc(d: ^A11y_Diff) { clear(&d.sent) }
 a11y_diff :: proc(d: ^A11y_Diff, full: ^A11y_Update, all := false) -> ^A11y_Update {
 	a11y_update_clear(&d.out)
 	whole := all || len(d.sent) == 0 || full.root != d.root   // (another root: a whole tree states it)
-	if whole { clear(&d.sent) }
+	if whole { a11y_diff_reset(d) }
 	d.root = full.root
 	d.out.root, d.out.focus, d.out.tree, d.out.tree_info = full.root, full.focus, full.tree, whole
 	clear(&d.seen)
@@ -43,13 +81,54 @@ a11y_diff :: proc(d: ^A11y_Diff, full: ^A11y_Update, all := false) -> ^A11y_Upda
 			if old, ok := d.sent[id]; ok && old == h { continue }
 		}
 		d.sent[id] = h
+		diff_keep_kids(d, id, a11y_node_children(full, i))
 		a11y_copy_node(&d.out, full, i)
 		d.nodes_sent += 1
 	}
 	if len(d.sent) > len(d.seen) {
 		gone := make([dynamic]u64, 0, len(d.sent) - len(d.seen), context.temp_allocator)
 		for id in d.sent { if id not_in d.seen { append(&gone, id) } }
-		for id in gone { delete_key(&d.sent, id) }
+		for id in gone { diff_forget(d, id) }
+	}
+	return &d.out
+}
+
+// Node by node: `changed` holds the nodes that are new or changed since the last update (each with all its properties
+// and children; a node whose children changed is sent with its new list), its root and focus those of the tree. Writes
+// into d.out those the adapter does not already have as they are; the children a node lost are forgotten with
+// everything under them (unless `changed` puts them under another node). The first update of a tree is a whole one:
+// without one before (or after a11y_diff_reset), the patch is sent as a whole tree and must then be the whole tree.
+a11y_diff_patch :: proc(d: ^A11y_Diff, changed: ^A11y_Update) -> ^A11y_Update {
+	a11y_update_clear(&d.out)
+	whole := len(d.sent) == 0 || changed.root != d.root
+	if whole { a11y_diff_reset(d) }
+	d.root = changed.root
+	d.out.root, d.out.focus, d.out.tree, d.out.tree_info = changed.root, changed.focus, changed.tree, whole
+	d.nodes_sent = 0
+	// the children every changed node has now: a child moved from one node to another is not forgotten
+	clear(&d.seen)
+	for i in 0 ..< len(changed.nodes) {
+		for c in a11y_node_children(changed, i) { d.seen[c] = true }
+	}
+	lost := make([dynamic]u64, context.temp_allocator)
+	for i in 0 ..< len(changed.nodes) {
+		id := changed.nodes[i].id
+		h := a11y_node_hash(changed, i)
+		if old, ok := d.sent[id]; ok && old == h && !whole { continue }
+		if old, ok := d.kids[id]; ok {
+			for c in old { if c not_in d.seen { append(&lost, c) } }
+		}
+		d.sent[id] = h
+		diff_keep_kids(d, id, a11y_node_children(changed, i))
+		a11y_copy_node(&d.out, changed, i)
+		d.nodes_sent += 1
+	}
+	// what no node reaches any more: the lost children and their subtrees
+	for len(lost) > 0 {
+		id := pop(&lost)
+		if id == d.root || id not_in d.sent { continue }
+		if k, ok := d.kids[id]; ok { append(&lost, ..k) }
+		diff_forget(d, id)
 	}
 	return &d.out
 }
