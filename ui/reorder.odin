@@ -5,7 +5,8 @@ package ui
 //   * reorder_item_size: an equal share of the room between a minimum and a maximum (past the minimum the list scrolls);
 //   * reorder_offset: the scroll kept in range, following the current item when it changes;
 //   * reorder_slot: where a dragged item belongs (the slot its middle is over); list_move moves it there;
-//   * reorder_edge_scroll: an item held past an edge of the view scrolls the list.
+//   * reorder_edge_scroll: an item held past an edge of the view scrolls the list;
+//   * reorder_visible: which items show (with a margin), so a long scrolling list builds only those.
 // Reorder is the drag's state (one per list or per family of lists that never drag at once): reorder_frame ends a
 // drag when the button went up, reorder_begin starts one past a threshold, reorder_item_pos gives each item its place
 // (its slot's, animated when items move; the dragged one follows the pointer).
@@ -36,6 +37,16 @@ reorder_offset :: proc(offset: f32, n: int, pitch, view: f32, current: int, foll
 		if lead + pitch > o + view { o = lead + pitch - view }
 	}
 	return clamp(o, 0, limit)
+}
+
+// The items of a list scrolled by `offset` that show in `view` (`pitch` apart, `n` of them), and `margin` more on
+// either side: the half-open range [first, last). A list that scrolls (more items than fit) builds only these, not all
+// `n`, so a frame's cost stays flat whatever the list's length.
+reorder_visible :: proc(offset, view, pitch: f32, n, margin: int) -> (first, last: int) {
+	if n <= 0 || pitch <= 0 { return 0, 0 }
+	first = clamp(int(math.floor(offset / pitch)) - margin, 0, n)
+	last = clamp(int(math.ceil((offset + view) / pitch)) + margin, first, n)
+	return
 }
 
 // The slot of an item whose leading edge is at `pos` (list coordinates, scroll included): the one its middle is over.
