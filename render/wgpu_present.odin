@@ -166,10 +166,13 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
 	if g.shared != nil && g.shared.lost { r.lost = true }
 	if g.surface == nil {   // offscreen
 		if g.clear_pending { wgpu_clear_frame(r) }
+		if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
 		return
 	}
 	if !g.frame_acquired { return }
 	if g.clear_pending { wgpu_clear_frame(r) }
+	// the capture copies the frame target before the present consumes the surface texture (one more command on the queue)
+	if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
 	t_pre := time.tick_now()
 	r.present.call = t_pre
 	ps := profile_present_begin(r)
