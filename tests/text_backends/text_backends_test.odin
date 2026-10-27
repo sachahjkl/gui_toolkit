@@ -5,6 +5,7 @@
 package text_backends_test
 
 import "core:testing"
+import "../unwatched"
 import "../../font"
 import corpus "../../tools/text_corpus"
 
@@ -21,7 +22,7 @@ make_state :: proc(b: font.Backend) -> ^font.State {
 free_state :: proc(s: ^font.State) { font.destroy(s); free(s) }
 
 @(test)
-backend_selection :: proc(t: ^testing.T) {
+backend_selection :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := make_state(.Dwrite)
 	defer free_state(s)
 	testing.expect(t, s.ok)
@@ -38,11 +39,11 @@ backend_selection :: proc(t: ^testing.T) {
 	found := false
 	for f in fams { if f == "Segoe UI" { found = true } }
 	testing.expect(t, found, "Segoe UI is listed")
-}
+}) }
 
 // Bold of a system family is its own bold face, not the regular one simulated (that is a 0.02 em stroke: hardly bolder).
 @(test)
-styled_face_takes_the_family_face :: proc(t: ^testing.T) {
+styled_face_takes_the_family_face :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := make_state(.Dwrite)
 	defer free_state(s)
 	r, ok := font.load_system(s, "Segoe UI")
@@ -56,7 +57,7 @@ styled_face_takes_the_family_face :: proc(t: ^testing.T) {
 	// a memory font (a web font family without its bold): simulated
 	m, _ := font.load_embedded(s, font.FALLBACK_UI_DATA)
 	testing.expect_value(t, font.styled_face(s, m, true, false), font.with_simulations(s, m, true, false))
-}
+}) }
 
 when font.NATIVE_TEXT {
 
@@ -69,7 +70,7 @@ EXACT :: []string{"latin", "latin-liga", "latin-kern", "cyrillic-greek", "arabic
 // A glyph's ink box (font.glyph) is where its ink is with either backend: the native one put the bottom of the box a
 // glyph's height above its top and centred icons a glyph lower than they are (read-fonts' extents count the height downward).
 @(test)
-native_glyph_box_matches_dwrite :: proc(t: ^testing.T) {
+native_glyph_box_matches_dwrite :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	dw := make_state(.Dwrite)
 	nt := make_state(.Native)
 	defer { free_state(dw); free_state(nt) }
@@ -86,10 +87,10 @@ native_glyph_box_matches_dwrite :: proc(t: ^testing.T) {
 	}
 	h := font.glyph(nt, fb, 20, 'H')
 	testing.expectf(t, h.offset.y < -10 && h.offset.y + h.size.y >= -1 && h.offset.y + h.size.y <= 1, "H stands on the baseline: %v %v", h.offset, h.size)
-}
+}) }
 
 @(test)
-native_matches_dwrite :: proc(t: ^testing.T) {
+native_matches_dwrite :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	dw := make_state(.Dwrite)
 	nt := make_state(.Native)
 	defer { free_state(dw); free_state(nt) }
@@ -130,11 +131,11 @@ native_matches_dwrite :: proc(t: ^testing.T) {
 		}
 		testing.expectf(t, font.face_metrics(dw, a) == font.face_metrics(nt, b), "%s: metrics %v / %v", sm.name, font.face_metrics(dw, a), font.face_metrics(nt, b))
 	}
-}
+}) }
 
 // A memory face (a web font) and the Slug outlines of both backends.
 @(test)
-native_memory_face_and_outlines :: proc(t: ^testing.T) {
+native_memory_face_and_outlines :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	dw := make_state(.Dwrite)
 	nt := make_state(.Native)
 	defer { free_state(dw); free_state(nt) }
@@ -155,6 +156,6 @@ native_memory_face_and_outlines :: proc(t: ^testing.T) {
 	// a font the library cannot read is refused, not a crash
 	_, bad := font.load_from_memory(nt, nil)
 	testing.expect(t, !bad)
-}
+}) }
 
 }

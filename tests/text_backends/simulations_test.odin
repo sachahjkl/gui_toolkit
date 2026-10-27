@@ -1,16 +1,18 @@
 package text_backends_test
 
 import "core:testing"
+import "../unwatched"
 import "../../font"
 
 _ :: testing   // the test needs the native backend
+_ :: unwatched
 
 when font.NATIVE_TEXT {
 
 // Simulated bold and oblique (a web font family without its bold or italic face): the native backend draws and measures
 // them as DirectWrite does (font/simulate.odin): the same widths, the same outline boxes for Slug.
 @(test)
-native_simulations_match_dwrite :: proc(t: ^testing.T) {
+native_simulations_match_dwrite :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	dw := make_state(.Dwrite)
 	nt := make_state(.Native)
 	defer { free_state(dw); free_state(nt) }
@@ -37,6 +39,6 @@ native_simulations_match_dwrite :: proc(t: ^testing.T) {
 			font.outline_destroy(&oa); font.outline_destroy(&ob)
 		}
 	}
-}
+}) }
 
 }
