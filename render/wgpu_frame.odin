@@ -456,7 +456,14 @@ wgpu_run_op :: proc(r: ^Renderer, s: ^Submit, op: ^Op) {
 	case .Mips:
 		if !valid(r, op.dst) || !r.textures[int(op.dst)].mips { return }
 		wgpu_fill_mips(r, s, &r.textures[int(op.dst)])
-	case .Read:   // (no readback on this backend: readback_new gives 0, readback_poll says Failed)
+	case .Read:
+		if op.source <= 0 || op.source > len(f.layers) || !valid(r, f.layers[op.source - 1].tex) {
+			readback_copy_wgpu(r, nil, u32(op.readback), nil, .Undefined, {}, .Linear)
+			return
+		}
+		ly := f.layers[op.source - 1]
+		td := r.textures[int(ly.tex)]
+		readback_copy_wgpu(r, s.enc, u32(op.readback), td.wtex, td.wformat, op.box, ly.space)
 	}
 }
 

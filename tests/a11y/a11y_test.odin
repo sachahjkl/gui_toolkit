@@ -416,3 +416,70 @@ requests_act_like_input :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, frame_keep(&f, &a), 1)
 }
+
+// Node by node (a document that knows its mutations): only the nodes handed over go, a child taken away is forgotten
+// with its subtree (put back, it goes whole), a child moved to another node is kept.
+@(test)
+patches_carry_only_their_nodes :: proc(t: ^testing.T) {
+	tree :: proc(u: ^platform.A11y_Update, nodes: []struct { id: u64, kids: []u64, name: string }) {
+		platform.a11y_update_clear(u)
+		for n in nodes {
+			platform.a11y_node(u, n.id, .Group if len(n.kids) > 0 else .Label)
+			platform.a11y_children(u, n.kids)
+			platform.a11y_str(u, .Label, n.name)
+		}
+		u.root, u.focus = 1, 1
+	}
+	u: platform.A11y_Update
+	defer platform.a11y_update_destroy(&u)
+	d: platform.A11y_Diff
+	defer platform.a11y_diff_destroy(&d)
+	tree(&u, {{1, {2, 3}, "root"}, {2, nil, "two"}, {3, {4}, "three"}, {4, nil, "four"}})
+	out := platform.a11y_diff_patch(&d, &u)
+	testing.expect(t, out.tree_info && len(out.nodes) == 4, "the first patch is the whole tree")
+
+	tree(&u, {{2, nil, "two, renamed"}})
+	out = platform.a11y_diff_patch(&d, &u)
+	testing.expect(t, !out.tree_info && len(out.nodes) == 1 && out.nodes[0].id == 2, "one node changed: one node sent")
+	out = platform.a11y_diff_patch(&d, &u)
+	testing.expect_value(t, len(out.nodes), 0)   // the same again: nothing
+
+	tree(&u, {{1, {2}, "root"}})   // three (and four under it) taken away
+	out = platform.a11y_diff_patch(&d, &u)
+	testing.expect_value(t, len(out.nodes), 1)
+	testing.expect(t, !platform.a11y_diff_has(&d, 3) && !platform.a11y_diff_has(&d, 4), "the subtree is forgotten")
+	testing.expect(t, platform.a11y_diff_has(&d, 2), "the rest is kept")
+
+	tree(&u, {{1, {2, 3}, "root"}, {3, {4}, "three"}, {4, nil, "four"}})   // put back as it was
+	out = platform.a11y_diff_patch(&d, &u)
+	testing.expect_value(t, len(out.nodes), 3)   // (not skipped as "unchanged": the adapter dropped them)
+
+	tree(&u, {{2, {4}, "two, renamed"}, {3, nil, "three"}})   // four moves from three to two
+	out = platform.a11y_diff_patch(&d, &u)
+	testing.expect_value(t, len(out.nodes), 2)
+	testing.expect(t, platform.a11y_diff_has(&d, 4), "a moved node is kept")
+
+	// a whole tree after patches: what the patches left is what a diff compares with
+	tree(&u, {{1, {2, 3}, "root"}, {2, {4}, "two, renamed"}, {3, nil, "three"}, {4, nil, "four"}})
+	out = platform.a11y_diff(&d, &u)
+	testing.expect_value(t, len(out.nodes), 0)
+}
+
+// The tree's cost is measured, and nothing is made while no one reads the window (no adapter, no capture).
+@(test)
+tree_cost_is_measured :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	a: App
+	defer app_destroy(&a)
+	frame(&f, &a)
+	n, ms := ui.a11y_cost(&f.s)
+	testing.expect(t, n == 0 && ms == 0 && !ui.a11y_active(&f.s), "no reader: no tree, no cost")
+	ui.a11y_capture(&f.s, true)
+	frame(&f, &a)
+	n, ms = ui.a11y_cost(&f.s)
+	testing.expectf(t, n > 10 && ms > 0, "%d nodes in %.3f ms", n, ms)
+}

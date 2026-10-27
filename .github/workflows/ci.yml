@@ -45,7 +45,7 @@ jobs:
         shell: cmd
         timeout-minutes: 6
         run: |
-          for %%e in (fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
+          for %%e in (hello fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
 
       # naga's translator is rebuilt only when its sources change (build_naga.ps1 compares its stamp)
       - name: Cache the WGSL to HLSL translator

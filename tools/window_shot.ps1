@@ -31,8 +31,10 @@ try {
 	$w = $r.R - $r.L; $hh = $r.B - $r.T
 	$bmp = New-Object Drawing.Bitmap $w, $hh
 	[Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
-	New-Item -ItemType Directory -Force (Split-Path -Parent (Join-Path (Get-Location) $Out)) | Out-Null
-	$bmp.Save((Join-Path (Get-Location) $Out), [Drawing.Imaging.ImageFormat]::Png)
+	# (an absolute -Out stays as it is; a relative one is under the current directory)
+	$full = [IO.Path]::Combine((Get-Location).Path, $Out)
+	[IO.Directory]::CreateDirectory((Split-Path -Parent $full)) | Out-Null
+	$bmp.Save($full, [Drawing.Imaging.ImageFormat]::Png)
 	"{0}x{1} -> {2}" -f $w, $hh, $Out
 } finally {
 	if (-not $p.HasExited) { $p.Kill() }

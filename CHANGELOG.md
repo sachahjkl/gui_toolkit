@@ -3,6 +3,18 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.45.0] - 2026-10-27
+
+### Added
+- **Accessibility, node by node and several windows**: `platform.a11y_diff_patch` sends a tree's changes from only the nodes that changed (a document that knows its mutations no longer makes its whole tree again); the children a node lost are forgotten with their subtrees, so a node put back goes whole. `ui.a11y_cost(s)` gives the nodes and the milliseconds of the last tree. A `ui.State` built for another window than its last one sends that window a whole tree. `tests/a11y` reads two windows apart through UI Automation and checks that a window a reader has read stays quiet at rest (no wake, no update). docs/accessibility.md lists the known limits (Linux and macOS, the toolkit's tree made again in each build, what grafted documents such as Wren's pages lack: iframes, caret and selection, text bounds, a second window).
+- **docs/getting-started.md** and **`examples/hello`**: a new project with the toolkit as a submodule (prerequisites with the pinned Odin, MSVC, the optional Rust libraries; a window in a few lines built with `-collection:gt=...`; the render and text backends, accessibility, tests, versions) and the pitfalls met so far (the output folder, `odin test` deleting its exe, a `render.Surface` in a local, nested builds, keys, `expect_assert` on Windows). `hello --frames=N` runs without showing its window. Checked on a clean clone; `tools/window_shot.ps1` accepts an absolute `-Out`.
+- **`flate`**: DEFLATE, zlib and gzip as streams (`Inflater` / `Deflater`: input in chunks of any size, each push gives the output it allows; `inflate` / `deflate` for whole buffers), pure Odin for any platform. Checksums and sizes checked, a bound on the output (`limit`, `Too_Large`). The deflater writes each block in the cheapest of stored, fixed and dynamic Huffman codes (about 17 % smaller than fixed codes on text). Ported from Wren's `src/flate` (same API); docs/flate.md, `tests/flate`.
+- **Offscreen readback on the WebGPU backend**: `draw.offscreen_end` gives a `render.Readback_Id` and `render.readback_poll` the picture (straight RGBA8, sRGB values, alpha kept) as under Direct3D 11: the frame copies the target into a buffer, the poll maps it without waiting (`Pending` until the GPU is done). `tests/layers` checks the pixels on both backends.
+- **`ui.Build_Params.time_ms`**: the build's clock (caret blink, double and triple clicks, hover delays, timers, toasts), `now_ms()` when 0. A test or a replay passes its own to be deterministic; double clicks and the text selection's clicks now read the build's clock instead of the wall clock.
+
+### Fixed
+- **CI**: two tests that failed now and then are deterministic. `tests/ui_robust` (`nested_build_is_refused`) checked an assertion through `testing.expect_assert_message`, whose exception handler on Windows races the system's end of the process: the whole test program ended without a message. The assertion is now caught on a thread of the test's own. `tests/keyboard` (`caret_rect_is_where_the_caret_is_drawn`) depended on the caret's blink phase, i.e. on how long the program had run (a slow WebGPU start blinked it off); it and the double-click tests (`selection`, `panes`) now pass `time_ms`. `tools/test_windowless.ps1` and `tools/test_backends.ps1` print the exit code of a failed package (an access violation, a trap nothing caught).
+
 ## [0.44.0] - 2026-10-27
 
 ### Added
