@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.44.0] - 2026-10-27
+
+### Added
+- **`platform.frame_decision`: the cadence model** (`platform/pacing.odin`, [docs/pacing.md](docs/pacing.md)): a plan from the screen and the application's choices (`cadence_plan`: the top useful rate of a variable refresh screen, `Frame_Slots` strict or loose), a state per frame (`Rest`, `Continuous`, `Drag`, `Input_Answer`, `Resize_Step`, `Resize_Burst`) and one pure decision (`Frame_Decision`: the wait for its slot, whether it waits for the swap chain, whether it is presented at once, the swap chain's latency), plus `cadence_inner_frame`, `cadence_echo` and the frame clock (`frame_clock_advance`, `vblank_at_or_before`). Test: `tests/pacing` (states, transitions, and simulated runs on fixed and variable refresh screens, tearing, a 1 kHz mouse, a resize, a panel dragged, AltSnap); `tests/frame_slots` and `tests/pacing` join the windowless tests of the CI.
+
 ## [0.43.0] - 2026-10-26
 
 ### Added
