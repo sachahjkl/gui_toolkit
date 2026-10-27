@@ -232,7 +232,8 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	cap := len(req.text) + 16
 	out := make([]Gt_Glyph, cap, context.temp_allocator)
 	call :: proc(f: ^Font, req: ^Shape_Request, tag: ^[4]u8, out: []Gt_Glyph) -> int {
-		return gt_shape(native_face(f), raw_data(req.text), uint(len(req.text)), tag, nil, 0, req.rtl ? 1 : 0,
+		lang := req.lang
+		return gt_shape(native_face(f), raw_data(req.text), uint(len(req.text)), tag, raw_data(lang), uint(len(lang)), req.rtl ? 1 : 0,
 			raw_data(req.features), uint(len(req.features)), .Bold in f.sims ? 1 : 0, raw_data(out), uint(len(out)))
 	}
 	n := call(f, req, &tag, out)

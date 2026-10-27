@@ -225,6 +225,14 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	}
 	tf_value := DWRITE_TYPOGRAPHIC_FEATURES{features = (^DWRITE_FONT_FEATURE)(raw_data(feats)), featureCount = u32(len(feats))}
 	tf: ^DWRITE_TYPOGRAPHIC_FEATURES = len(req.features) > 0 ? &tf_value : nil
+	// locale name for the `locl` feature (BCP 47, ASCII): a NUL-terminated UTF-16 string, nil when none
+	locale: [^]u16
+	if len(req.lang) > 0 && len(req.lang) < 96 {
+		buf := make([]u16, len(req.lang) + 1, context.temp_allocator)
+		for i in 0 ..< len(req.lang) { buf[i] = u16(req.lang[i]) }
+		buf[len(req.lang)] = 0
+		locale = raw_data(buf)
+	}
 	if f.colr != nil && has_tag_chars(w) && !rtl {
 		// cluster offsets of a piece are relative to its first character (the end of this proc makes them relative to the word)
 		g0, c0 := len(glyphs), len(clusters)
@@ -248,7 +256,7 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	for attempt in 0 ..< 4 {
 		gids = make([]u16, maxg, context.temp_allocator)
 		gprops = make([]DWRITE_SHAPING_GLYPH_PROPERTIES, maxg, context.temp_allocator)
-		hr = s.analyzer->GetGlyphs(raw_data(w), u32(n), f.dw, false, BOOL(rtl), &sa, nil, nil,
+		hr = s.analyzer->GetGlyphs(raw_data(w), u32(n), f.dw, false, BOOL(rtl), &sa, locale, nil,
 			tf != nil ? &tfs[0] : nil, tf != nil ? &range_len[0] : nil, nfr, u32(maxg), raw_data(cmap), raw_data(tprops),
 			raw_data(gids), raw_data(gprops), &count)
 		if hr != E_NOT_SUFFICIENT_BUFFER { break }
@@ -259,7 +267,7 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	adv := make([]f32, count, context.temp_allocator)
 	offs := make([]DWRITE_GLYPH_OFFSET, count, context.temp_allocator)
 	if s.analyzer->GetGlyphPlacements(raw_data(w), raw_data(cmap), raw_data(tprops), u32(n), raw_data(gids), raw_data(gprops), count, f.dw,
-		size, false, BOOL(rtl), &sa, nil, tf != nil ? &tfs[0] : nil, tf != nil ? &range_len[0] : nil, nfr, raw_data(adv), raw_data(offs)) < 0 {
+		size, false, BOOL(rtl), &sa, locale, tf != nil ? &tfs[0] : nil, tf != nil ? &range_len[0] : nil, nfr, raw_data(adv), raw_data(offs)) < 0 {
 		// no placements: nominal advances
 		gm := make([]DWRITE_GLYPH_METRICS, count, context.temp_allocator)
 		f.dw->GetDesignGlyphMetrics(raw_data(gids), count, raw_data(gm), false)
