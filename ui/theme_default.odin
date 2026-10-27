@@ -112,7 +112,7 @@ PALETTE_CATPPUCCIN_LATTE :: Palette{
 
 // One Dark (Atom)
 PALETTE_ONE_DARK :: Palette{
-	bg = 0x282c34ff, panel = 0x2c313aff, panel2 = 0x353b45ff, text = 0xabb2bfff, weak = 0x8a93a2ff, border = 0x3e4451ff,
+	bg = 0x282c34ff, panel = 0x2c313aff, panel2 = 0x353b45ff, text = 0xc8ccd4ff, weak = 0x8a93a2ff, border = 0x3e4451ff,
 	accent = 0x61afefff, accent_text = 0x21252bff, good = 0x98c379ff, warn = 0xe5c07bff, bad = 0xe06c75ff, dark = true,
 }
 
