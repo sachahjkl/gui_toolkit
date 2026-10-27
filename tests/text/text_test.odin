@@ -5,6 +5,7 @@ package text_test
 import "core:fmt"
 import "core:sync"
 import "core:testing"
+import "../unwatched"
 import "core:thread"
 import "../../font"
 
@@ -27,7 +28,7 @@ sys :: proc(t: ^testing.T, s: ^font.State, family: string, weight := 400, style 
 }
 
 @(test)
-system_faces_and_metrics :: proc(t: ^testing.T) {
+system_faces_and_metrics :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	a := sys(t, s, "Segoe UI")
@@ -47,10 +48,10 @@ system_faces_and_metrics :: proc(t: ^testing.T) {
 	// widths add up word by word, spaces included
 	ww := font.text_width(s, a, 20, "Hello world")
 	testing.expect(t, abs(ww - (w + font.text_width(s, a, 20, " ") + font.text_width(s, a, 20, "world"))) < 0.01)
-}
+}) }
 
 @(test)
-memory_faces :: proc(t: ^testing.T) {
+memory_faces :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	id, ok := font.load_embedded(s, font.FALLBACK_UI_DATA)
@@ -67,15 +68,18 @@ memory_faces :: proc(t: ^testing.T) {
 	font.unload(s, mono)
 	font.unload(s, bold)
 	testing.expect(t, !font.valid(s, mono))
-	// (malformed data is refused too, but DirectWrite throws and catches a C++ exception meanwhile, which the test
-	// runner's exception handler takes for a crash)
 	_, bad := font.load_from_memory(s, nil)
 	testing.expect(t, !bad)
-}
+	// malformed data is refused too: a font cut short (DirectWrite throws a C++ exception and catches it meanwhile)
+	cut := make([]byte, 2048)
+	copy(cut, font.FALLBACK_MONO_DATA)
+	_, bad = font.load_from_memory(s, cut)
+	testing.expect(t, !bad)
+}) }
 
 // U+2190 in a font without arrows comes from a system font.
 @(test)
-fallback_per_character :: proc(t: ^testing.T) {
+fallback_per_character :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	latin, ok := font.load_embedded(s, font.FALLBACK_MONO_DATA)
@@ -100,10 +104,10 @@ fallback_per_character :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(sh2.glyphs), 2)
 	testing.expect_value(t, sh2.glyphs[0].face, ui)
 	testing.expect_value(t, sh2.glyphs[1].face, latin)
-}
+}) }
 
 @(test)
-ligatures_and_kerning :: proc(t: ^testing.T) {
+ligatures_and_kerning :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	cal := sys(t, s, "Calibri")
@@ -125,10 +129,10 @@ ligatures_and_kerning :: proc(t: ^testing.T) {
 	testing.expectf(t, av < apart - 0.5, "AV is not kerned: %v vs %v", av, apart)
 	nokern := font.cascade(s, {{font = arial}}, {{tag = {'k', 'e', 'r', 'n'}, value = 0}})
 	testing.expect(t, abs(font.text_width(s, nokern, 40, "AV") - apart) < 0.01)
-}
+}) }
 
 @(test)
-complex_scripts :: proc(t: ^testing.T) {
+complex_scripts :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -154,10 +158,10 @@ complex_scripts :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(shd.clusters), 1)   // one cluster: the caret never splits it
 	kssa := font.shape(s, ui, 24, "\u0915\u094d\u0937", {}, context.temp_allocator)
 	testing.expect(t, len(kssa.glyphs) < 3, "no conjunct")
-}
+}) }
 
 @(test)
-bidi_mixed :: proc(t: ^testing.T) {
+bidi_mixed :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -192,10 +196,10 @@ bidi_mixed :: proc(t: ^testing.T) {
 	order := font.reorder({0, 1, 1, 2, 2, 1, 0}, context.temp_allocator)
 	want := [?]int{0, 5, 3, 4, 2, 1, 6}
 	for v, i in want { testing.expect_value(t, order[i], v) }
-}
+}) }
 
 @(test)
-line_break_opportunities :: proc(t: ^testing.T) {
+line_break_opportunities :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	b := font.line_breaks(s, "hello world-wide", context.temp_allocator)
@@ -213,10 +217,10 @@ line_break_opportunities :: proc(t: ^testing.T) {
 	// CJK: between ideographs
 	bc := font.line_breaks(s, "\u4e2d\u6587\u5b57", context.temp_allocator)
 	testing.expect(t, len(bc) == 2)
-}
+}) }
 
 @(test)
-color_emoji :: proc(t: ^testing.T) {
+color_emoji :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -248,12 +252,12 @@ color_emoji :: proc(t: ^testing.T) {
 	font.clear_atlas(s)
 	img2 := font.glyph_image(s, g.face, g.id, 32, 0)
 	testing.expect(t, !img2.color)
-}
+}) }
 
 // Many sizes and faces through a tiny atlas: pages are reused, never while a frame still draws from them, and every
 // glyph a frame got stays where it was until the frame ends.
 @(test)
-atlas_stress :: proc(t: ^testing.T) {
+atlas_stress :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	st := font.DEFAULT_SETTINGS
 	st.page_size = 256
 	st.max_gray_pages = 2
@@ -285,11 +289,11 @@ atlas_stress :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, font.atlas_evictions(s) > 0, "the atlas never filled")
 	fmt.printfln("atlas: %d pages, %d evictions", font.atlas_page_count(s), font.atlas_evictions(s))
-}
+}) }
 
 // A glyph that cannot fit a page is not kept, and asking for it does not make a page (nor evict a valid one) each time.
 @(test)
-glyphs_bigger_than_a_page_make_no_page :: proc(t: ^testing.T) {
+glyphs_bigger_than_a_page_make_no_page :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -307,12 +311,12 @@ glyphs_bigger_than_a_page_make_no_page :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, font.atlas_page_count(s), pages)
 	testing.expect_value(t, font.atlas_evictions(s), evictions)
-}
+}) }
 
 // Unloading a font frees its slot: loading and unloading more fonts than the table has slots (65 536 when slots were never
 // reused) goes on working, and the id of an unloaded font does not reach the font that took its slot.
 @(test)
-font_slots_are_reused :: proc(t: ^testing.T) {
+font_slots_are_reused :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	a, ok := font.load_embedded(s, font.FALLBACK_UI_DATA)
@@ -348,11 +352,11 @@ font_slots_are_reused :: proc(t: ^testing.T) {
 	testing.expect_value(t, failed, 0)
 	testing.expect(t, font.valid(s, last) && last != a && last != b)
 	testing.expect(t, font.text_width(s, last, 20, "Hg") > 0)
-}
+}) }
 
 // Measuring from many threads at once gives what one thread gets.
 @(test)
-concurrent_measure :: proc(t: ^testing.T) {
+concurrent_measure :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -379,13 +383,13 @@ concurrent_measure :: proc(t: ^testing.T) {
 	}
 	for th in threads { thread.join(th); thread.destroy(th) }
 	testing.expect_value(t, bad, 0)
-}
+}) }
 
 // The threads of an application measure with some fonts while its main thread loads and unloads others and clears the
 // word cache (a browser's page thread lays a page out while its interface thread opens and closes a font preview):
 // what the threads measure does not change, and nothing they read is freed under them (run under -sanitize:address).
 @(test)
-concurrent_measure_while_unloading :: proc(t: ^testing.T) {
+concurrent_measure_while_unloading :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -411,8 +415,8 @@ concurrent_measure_while_unloading :: proc(t: ^testing.T) {
 			}
 		})
 	}
-	// (the loading runs on a thread too: DirectWrite throws C++ exceptions it catches itself, and the test runner takes
-	// any exception on the test's own thread for a crash)
+	// (the loading fills DirectWrite's cache with faces: when an entry does not fit, DirectWrite throws a C++ exception
+	// and catches it, on whichever thread adds that entry, this test's or another's: why the tests run unwatched)
 	loader := thread.create_and_start_with_data(job, proc(data: rawptr) {
 		j := (^Job)(data)
 		s := j.s
@@ -440,4 +444,4 @@ concurrent_measure_while_unloading :: proc(t: ^testing.T) {
 	testing.expect_value(t, job.loads, 300)
 	testing.expect_value(t, job.preview_bad, 0)
 	testing.expect_value(t, job.bad, 0)
-}
+}) }
