@@ -16,7 +16,7 @@ odin build examples/fidget -define:A11Y_ACCESSKIT=true ...
 
 A program that has a Rust static library of its own builds `native/a11y` into it (a dependency: its `gt_a11y_*`
 functions stay exported; one Rust library per program, as each carries Rust's standard library) and builds with
-`-define:A11Y_ACCESSKIT=true -define:A11Y_NATIVE_LINK=false` (Wren: the `a11y` feature of `native/media`).
+`-define:A11Y_ACCESSKIT=true -define:A11Y_NATIVE_LINK=false` (Wren: the `a11y` feature of its assembly crate `native/wren_native`).
 
 Without the define, `platform.a11y_available()` is false and nothing is built.
 
