@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.45.1-1d57ba" alt="version 0.45.1"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.46.0-1d57ba" alt="version 0.46.0"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
