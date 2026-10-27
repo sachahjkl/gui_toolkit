@@ -41,7 +41,19 @@ Native_Window :: struct {
 	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
 	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
 	a11y:           rawptr,         // the accessibility adapter (a11y_accesskit.odin), nil when not compiled in
+	// Offscreen window (open_window_offscreen): no HWND at all, so it runs where there is no desktop session (a service,
+	// an SSH login, a CI runner). It renders to an offscreen target the app resizes; input comes only through
+	// inject_event; the window state (size, place, state) is emulated. `off_event` is an auto-reset event the loop waits
+	// on (wait_event) and that wake / inject_event signal, in place of the message queue a real window has.
+	offscreen:      bool,
+	off_event:      win.HANDLE,
+	off_state:      Off_State,      // emulated window state (normal / minimized / maximized / fullscreen)
+	off_place:      [4]int,         // emulated outer rectangle (left, top, width, height): what getBounds reports
+	off_visible:    bool,           // show_window was called (a headless window is shown only to a remote client's eye)
 }
+
+// The emulated state of an offscreen window.
+Off_State :: enum u8 { Normal, Minimized, Maximized, Fullscreen }
 
 // Windows of this thread inside poll_events / wait_handle: while a window pumps the thread's messages, a repaint of
 // another window of the thread is left to the app's own loop (see WM_PAINT).
@@ -134,6 +146,32 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	return w
 }
 
+// A window with no HWND: it renders to an offscreen target and never appears on any desktop, so it runs where there is
+// no desktop session at all (a Windows service in session 0, an SSH login, a CI runner). `size` is the client area in
+// physical pixels (not scaled: the caller sets the scale with `dpi_scale`, as a headless browser emulates a display);
+// `dpi_scale` is dpi/96 (1 for 96 dpi). Input reaches it only through inject_event; its state (size, place, window
+// state) is emulated. The caller drives the frames itself (there is no WM_PAINT): build, submit, and read the frame
+// back with render.capture_* (which works offscreen on both backends). Returns nil only when the wake event cannot be
+// made. Pair with render.init_offscreen for the renderer. Free with destroy_window as a real window.
+open_window_offscreen :: proc(title: string, size: [2]int, dpi_scale: f32 = 1, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
+	_ = title
+	ev := win.CreateEventW(nil, false, false, nil)   // auto-reset: wait_event waits on it, wake / inject_event signal it
+	if ev == nil { return nil }
+	w := new(Window)
+	w.user = user
+	w.on_frame = on_frame
+	w.offscreen = true
+	w.off_event = ev
+	w.dpi_scale = dpi_scale > 0 ? dpi_scale : 1
+	w.focused = true
+	w.active = true
+	w.size = {max(size.x, 1), max(size.y, 1)}
+	w.off_state = .Normal
+	// an emulated place: a sensible top-left and the client size (getBounds reports it; a remote client reads it)
+	w.off_place = {0, 0, w.size.x, w.size.y}
+	return w
+}
+
 // The work area of the monitor a new window should open on: the one of the window the user is working in (the program that launched
 // this one is usually in front), else the one under the pointer. Empty when neither can be had (the system chooses then).
 @(private)
@@ -164,6 +202,12 @@ outer_size :: proc(w: ^Window, cw, ch: int, dpi: u32) -> (int, int) {
 
 // Resize the window so its client area is `size` logical pixels (scaled by the window's DPI).
 set_size :: proc(w: ^Window, size: [2]int) {
+	if w.offscreen {
+		// no window to resize: set the client size the app renders at (already in physical pixels for the offscreen path)
+		w.size = {max(size.x, 1), max(size.y, 1)}
+		w.off_place[2], w.off_place[3] = w.size.x, w.size.y
+		return
+	}
 	dpi := win.GetDpiForWindow(w.hwnd)
 	ow, oh := outer_size(w, int(f32(size.x) * w.dpi_scale), int(f32(size.y) * w.dpi_scale), dpi)
 	win.SetWindowPos(w.hwnd, nil, 0, 0, i32(ow), i32(oh), win.SWP_NOMOVE | win.SWP_NOZORDER | win.SWP_NOACTIVATE)
@@ -181,6 +225,7 @@ set_integrated_title :: proc(w: ^Window, on: bool) {
 	if w.integrated == on { return }
 	w.integrated = on
 	chrome_regions_clear(&w.chrome)
+	if w.offscreen { return }
 	win.SetWindowPos(w.hwnd, nil, 0, 0, 0, 0, win.SWP_NOMOVE | win.SWP_NOSIZE | win.SWP_NOZORDER | win.SWP_NOACTIVATE | win.SWP_FRAMECHANGED)
 	update_client_size(w)
 }
@@ -197,22 +242,30 @@ set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
 	w.chrome.buttons = c.buttons
 }
 
-is_maximized :: proc(w: ^Window) -> bool { return bool(win.IsZoomed(w.hwnd)) }
-is_minimized :: proc(w: ^Window) -> bool { return bool(win.IsIconic(w.hwnd)) }
-is_fullscreen :: proc(w: ^Window) -> bool { return w.fullscreen }
+is_maximized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Maximized : bool(win.IsZoomed(w.hwnd)) }
+is_minimized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Minimized : bool(win.IsIconic(w.hwnd)) }
+is_fullscreen :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Fullscreen : w.fullscreen }
 
-minimize :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.SC_MINIMIZE, 0) }
+minimize :: proc(w: ^Window) {
+	if w.offscreen { w.off_state = .Minimized; return }
+	win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.SC_MINIMIZE, 0)
+}
 
 // Maximizes, or restores a maximized window (the maximize / restore caption button, a double click on the title bar).
 toggle_maximize :: proc(w: ^Window) {
+	if w.offscreen { w.off_state = w.off_state == .Maximized ? .Normal : .Maximized; return }
 	win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, is_maximized(w) ? win.SC_RESTORE : win.SC_MAXIMIZE, 0)
 }
 
 // Asks the window to close as the close button of the system does (the app sees a .Close event).
-request_close :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.SC_CLOSE, 0) }
+request_close :: proc(w: ^Window) {
+	if w.offscreen { inject_event(w, Event{kind = .Close}); win.SetEvent(w.off_event); return }
+	win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.SC_CLOSE, 0)
+}
 
 // Full screen: the window covers its monitor, without frame nor title bar (F11). Off: back to where it was, maximized or not.
 set_fullscreen :: proc(w: ^Window, on: bool) {
+	if w.offscreen { w.off_state = on ? .Fullscreen : .Normal; return }
 	if w.fullscreen == on { return }
 	if on {
 		w.saved_place = {length = size_of(win.WINDOWPLACEMENT)}
@@ -299,17 +352,25 @@ app_icon_rgba :: proc(size: int, allocator := context.allocator) -> (pixels: []u
 
 // Thickness of the resize band along the top of an integrated title bar, and of the system's frame (physical pixels).
 resize_border :: proc(w: ^Window) -> int {
+	if w.offscreen { return int(8 * w.dpi_scale) }   // a plausible frame band at the emulated scale (no window to resize)
 	dpi := win.GetDpiForWindow(w.hwnd)
 	return int(win.GetSystemMetricsForDpi(win.SM_CYFRAME, dpi) + win.GetSystemMetricsForDpi(win.SM_CXPADDEDBORDER, dpi))
 }
 
 show_window :: proc(w: ^Window) {
+	if w.offscreen {
+		// nothing to show: a headless window is only ever seen through a remote capture
+		w.off_visible = true
+		if w.want_maximized { w.off_state = .Maximized; w.want_maximized = false }
+		return
+	}
 	win.ShowWindow(w.hwnd, w.want_maximized ? win.SW_SHOWMAXIMIZED : win.SW_SHOW)
 	w.want_maximized = false
 	win.SetForegroundWindow(w.hwnd)
 }
 
 set_title :: proc(w: ^Window, title: string) {
+	if w.offscreen { return }
 	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title, context.temp_allocator))
 }
 
@@ -328,6 +389,7 @@ system_font_path :: proc(file: string, allocator := context.temp_allocator) -> s
 // Translucent window: the OS backdrop (acrylic: blurred desktop, Windows 11 22H2+) shows wherever the app draws with
 // alpha < 1. The renderer must clear to transparent black. Returns false when the OS does not support it.
 set_backdrop :: proc(w: ^Window, on: bool) -> bool {
+	if w.offscreen { return false }
 	m := on ? win.MARGINS{-1, -1, -1, -1} : win.MARGINS{}
 	win.DwmExtendFrameIntoClientArea(w.hwnd, &m)
 	kind: i32 = on ? 3 : 1   // DWMSBT_TRANSIENTWINDOW (acrylic) : DWMSBT_NONE
@@ -337,6 +399,7 @@ set_backdrop :: proc(w: ^Window, on: bool) -> bool {
 
 // Windows 11 rounds window corners; `square` turns that off (no effect on Windows 10, which never rounds them).
 set_square_corners :: proc(w: ^Window, square: bool) {
+	if w.offscreen { return }
 	pref: i32 = square ? 1 : 0   // DWMWCP_DONOTROUND : DWMWCP_DEFAULT
 	win.DwmSetWindowAttribute(w.hwnd, 33, &pref, size_of(pref))   // DWMWA_WINDOW_CORNER_PREFERENCE
 }
@@ -346,7 +409,7 @@ set_square_corners :: proc(w: ^Window, square: bool) {
 // the app's tab strip: a line of whatever lies behind the window shows there (a console's text). An app that draws its
 // title bar gives the color of its edge. No effect on Windows 10 (no such border). Cheap to call every frame.
 set_border_color :: proc(w: ^Window, rgb: Maybe(u32)) {
-	if !is_windows_11() { return }
+	if w.offscreen || !is_windows_11() { return }
 	DWMWA_BORDER_COLOR :: 34
 	DWMWA_COLOR_DEFAULT :: 0xFFFFFFFF
 	v: u32 = DWMWA_COLOR_DEFAULT
@@ -357,6 +420,7 @@ set_border_color :: proc(w: ^Window, rgb: Maybe(u32)) {
 }
 
 set_dark_title :: proc(w: ^Window, dark: bool) {
+	if w.offscreen { return }
 	if w.dark_title == dark { return }
 	w.dark_title = dark
 	v := win.BOOL(dark)
@@ -364,6 +428,26 @@ set_dark_title :: proc(w: ^Window, dark: bool) {
 }
 
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
+
+// Whether the window has no HWND (open_window_offscreen): a headless window that renders to an offscreen target.
+is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
+
+// Sets an offscreen window's emulated scale (dpi/96) and resizes its client area to keep the same logical size, as a
+// real window changing monitor would (a headless `window --dpi`, a remote setDeviceMetricsOverride). The caller then
+// resizes the renderer to the new `w.size`. A no-op for a real window (use the DPI the system gives it).
+set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
+	if !w.offscreen || dpi <= 0 { return }
+	old := max(w.dpi_scale, 0.0625)
+	k := (f32(dpi) / 96) / old
+	w.dpi_scale = f32(dpi) / 96
+	w.size = {max(int(f32(w.size.x) * k + 0.5), 1), max(int(f32(w.size.y) * k + 0.5), 1)}
+	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
+}
+
+// The auto-reset event an offscreen window waits on in wait_event / poll_events, for a thread that wants to wake the loop
+// (host.post from a server thread): SetEvent(it). nil for a window with a message queue (wake it with `wake`). Reading
+// it is thread-safe (the handle does not change for the life of the window); SetEvent is thread-safe.
+wake_handle :: proc(w: ^Window) -> win.HANDLE { return w != nil && w.offscreen ? w.off_event : nil }
 
 // Destroys the window and what it holds (its cursors, drawn and custom; its event list; its title bar's regions),
 // then frees `w`. A process that ends with its window open needs not call it.
@@ -379,6 +463,7 @@ destroy_window :: proc(w: ^Window) {
 		win.DestroyWindow(w.hwnd)
 		w.hwnd = nil
 	}
+	if w.off_event != nil { win.CloseHandle(w.off_event); w.off_event = nil }
 	cursors_destroy(w)
 	delete(w.events)
 	delete(w.injected)
@@ -397,6 +482,18 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	defer {
 		w.in_poll = false
 		pumping -= 1
+	}
+
+	if w.offscreen {
+		// no message queue: injected events are the only input, handed out in order of arrival
+		if !w.keep_events { drop_returned(w) }
+		w.keep_events = false
+		if wait && len(w.events) == 0 && len(w.injected) == 0 {
+			win.WaitForSingleObject(w.off_event, timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE)
+		}
+		take_injected(w)
+		w.returned = len(w.events)
+		return w.events[:]
 	}
 
 	if !w.keep_events { drop_returned(w) }   // what wait_handle took is the start of this batch
@@ -438,6 +535,7 @@ drop_returned :: proc(w: ^Window) {
 // The caller wakes the loop (wake) when it may be waiting.
 inject_event :: proc(w: ^Window, e: Event) {
 	append(&w.injected, e)
+	if w.offscreen && w.off_event != nil { win.SetEvent(w.off_event) }   // wake an offscreen loop waiting in wait_event
 }
 
 @(private)
@@ -456,6 +554,11 @@ take_injected :: proc(w: ^Window) {
 // Blocks until a message is pending or `timeout_ms` elapsed (0 = no timeout). Does not consume anything: follow
 // with render.wait_for_frame, then poll_events(w, false), so the frame is built from the freshest input.
 wait_event :: proc(w: ^Window, timeout_ms := 0) {
+	if w.offscreen {
+		if len(w.injected) > 0 || len(w.events) > 0 { return }
+		win.WaitForSingleObject(w.off_event, timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE)
+		return
+	}
 	msg: win.MSG
 	if win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) { return }
 	if timeout_ms > 0 { win.SetTimer(w.hwnd, 1, u32(timeout_ms), nil) }
@@ -474,10 +577,13 @@ take_paint_request :: proc(w: ^Window) -> bool {
 pump_stats :: proc(w: ^Window) -> Pump_Stats { return w.stats }
 
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
-wake :: proc(w: ^Window) { win.PostMessageW(w.hwnd, win.WM_NULL, 0, 0) }
+wake :: proc(w: ^Window) {
+	if w.offscreen { if w.off_event != nil { win.SetEvent(w.off_event) }; return }
+	win.PostMessageW(w.hwnd, win.WM_NULL, 0, 0)
+}
 
 get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
-	if !win.OpenClipboard(w.hwnd) { return "" }
+	if !win.OpenClipboard(w.offscreen ? nil : w.hwnd) { return "" }
 	defer win.CloseClipboard()
 	h := win.GetClipboardData(win.CF_UNICODETEXT)
 	if h == nil { return "" }
@@ -492,7 +598,7 @@ get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
 }
 
 set_clipboard :: proc(w: ^Window, text: string) {
-	if !win.OpenClipboard(w.hwnd) { return }
+	if !win.OpenClipboard(w.offscreen ? nil : w.hwnd) { return }
 	defer win.CloseClipboard()
 	win.EmptyClipboard()
 	wide := win.utf8_to_utf16(text, context.temp_allocator)
