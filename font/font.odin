@@ -145,6 +145,7 @@ Font :: struct {
 	// Cascade (a face is its own one-entry cascade)
 	entries:  []Cascade_Entry,
 	features: []Feature,
+	lang:     string,                // BCP 47 language of the content (CSS `lang`), for locale forms (`locl`), "" none
 	no_system_fallback: bool,
 }
 
@@ -275,6 +276,7 @@ release_font :: proc(f: ^Font) {
 	for e in f.entries { delete(e.ranges) }
 	delete(f.entries)
 	delete(f.features)
+	delete(f.lang)
 	f^ = Font{kind = .None, dead = true, gen = f.gen}
 }
 
@@ -409,11 +411,12 @@ load_embedded :: proc(s: ^State, data: []byte) -> (id: Font_Id, ok: bool) {
 
 // A cascade: characters are taken from the first entry whose ranges include them and whose face has them, then from
 // the system fallback (unless `no_system_fallback`). `features` apply to every face (CSS font-feature-settings,
-// font-variant-*, font-kerning). Shared with an identical cascade made before. A cascade's metrics are its first
-// live entry's.
-cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, no_system_fallback := false) -> Font_Id {
+// font-variant-*, font-kerning). `language` (BCP 47, e.g. "sr", "ja", "zh-Hant") selects the language-specific forms
+// a face has (`locl`: Serbian Cyrillic, Han unification...) and is empty when the content has none. Shared with an
+// identical cascade made before. A cascade's metrics are its first live entry's.
+cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, no_system_fallback := false, language := "") -> Font_Id {
 	if len(entries) == 0 { return 0 }
-	if len(entries) == 1 && len(entries[0].ranges) == 0 && len(features) == 0 && !no_system_fallback { return entries[0].font }
+	if len(entries) == 1 && len(entries[0].ranges) == 0 && len(features) == 0 && !no_system_fallback && language == "" { return entries[0].font }
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_string(&sb, "cas:")
 	for e in entries {
@@ -423,6 +426,7 @@ cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, 
 	}
 	for f in features { tag := f.tag; strings.write_byte(&sb, '|'); strings.write_string(&sb, string(tag[:])); strings.write_int(&sb, int(f.value)) }
 	if no_system_fallback { strings.write_string(&sb, "|nosys") }
+	if language != "" { strings.write_byte(&sb, '@'); strings.write_string(&sb, language) }
 	key := strings.to_string(sb)
 	if id, ok := find_key(s, key); ok { return id }
 	context.allocator = runtime.heap_allocator()
@@ -439,6 +443,7 @@ cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, 
 		f.features = make([]Feature, len(features))
 		copy(f.features, features)
 	}
+	if language != "" { f.lang = strings.clone(language) }
 	sync.mutex_lock(&s.mu)
 	defer sync.mutex_unlock(&s.mu)
 	if id, ok := s.keys[key]; ok { release_font(&f); return id }

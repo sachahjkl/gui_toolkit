@@ -782,7 +782,7 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 		start := pen
 		req := Shape_Request{
 			face_id = p.face, face = face_ptr(s, p.face), size = size, text = text[bytes[p.a]:bytes[p.b]],
-			w = w[p.a:p.b], bytes = bytes[p.a:p.b + 1], rtl = rtl, script = p.script, features = feats[:],
+			w = w[p.a:p.b], bytes = bytes[p.a:p.b + 1], rtl = rtl, script = p.script, features = feats[:], lang = top.lang,
 		}
 		pen = s.tb.shape(s, &req, glyphs, clusters, pen)
 		append(&outs, Piece_Out{g0, len(glyphs), c0, len(clusters), start, pen - start})
