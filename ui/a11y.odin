@@ -1,6 +1,7 @@
 package ui
 
 import "core:strings"
+import "core:time"
 import "../font"
 import "../platform"
 
@@ -103,6 +104,8 @@ A11y_Data :: struct {
 	updates, refused: int,
 	kids:      [dynamic]u64,               // scratch
 	focus_to:  Key,                        // a11y_focus_on: this build's focus for readers, over the toolkit's
+	diff_window: ^platform.Window,         // the window the diff's nodes went to (another one: a whole tree)
+	cost_ms:   f64,                        // the last build's tree: making it, the diff and the send
 }
 
 // This build, screen readers are on box `key` whatever has the toolkit's focus: a view of the app's own that has the
@@ -194,6 +197,10 @@ a11y_find :: proc(s: ^State, key: Key) -> int {
 
 // Updates sent to the adapter, refused by it, and the nodes the last one carried (tests, statistics).
 a11y_stats :: proc(s: ^State) -> (updates, refused, last_nodes: int) { return s.a11y.updates, s.a11y.refused, s.a11y.diff.nodes_sent }
+
+// What the tree cost the last build that made it: its nodes, and the milliseconds spent making it, comparing it with
+// what the adapter has and sending the difference (0 when the build made no tree).
+a11y_cost :: proc(s: ^State) -> (nodes: int, ms: f64) { return len(s.a11y.full.nodes), s.a11y.cost_ms }
 
 // The requests of this build the toolkit did not answer itself: those for the trees of the app (a document view), and
 // actions on its boxes no widget took. Valid until the next build.
@@ -340,7 +347,9 @@ scroll_into_view :: proc(b: ^Box) {
 a11y_end_build :: proc(s: ^State) {
 	s.a11y.built = false
 	state := s.a11y.state
-	if !s.a11y.wanted { return }
+	if !s.a11y.wanted { s.a11y.cost_ms = 0; return }
+	start := time.tick_now()
+	defer s.a11y.cost_ms = time.duration_milliseconds(time.tick_since(start))
 	u := &s.a11y.full
 	platform.a11y_update_clear(u)
 	focus := a11y_focus_box(s)
@@ -351,6 +360,11 @@ a11y_end_build :: proc(s: ^State) {
 	u.tree_info = true
 	s.a11y.built = true
 	if state == .Off { return }
+	if s.window != s.a11y.diff_window {
+		// (one State built for another window: what the diff knows is the other adapter's)
+		platform.a11y_diff_reset(&s.a11y.diff)
+		s.a11y.diff_window, s.a11y.sent_focus = s.window, 0
+	}
 	out := platform.a11y_diff(&s.a11y.diff, u, state == .Full)
 	if len(out.nodes) == 0 && out.focus == s.a11y.sent_focus { return }
 	switch platform.a11y_send(s.window, out, "gui_toolkit", VERSION) {
