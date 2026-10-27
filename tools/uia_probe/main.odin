@@ -9,6 +9,7 @@
 //   uia_probe set-value (--pid N | --hwnd H) --name S [--type T] --value V
 //   uia_probe text      (--pid N | --hwnd H) --name S [--type T]  its text (text pattern): `text="..." selection="..."`
 //   uia_probe select-text (--pid N | --hwnd H) --name S [--type T] --start A --end B   select characters [A, B)
+//   uia_probe bounds    (--pid N | --hwnd H) --name S [--type T]  its rectangle on the screen: `x y width height`
 //   uia_probe focused                                             the element that has the keyboard focus
 //
 // --type is the control type as dump prints it (button, checkbox, edit, tab, menuitem...). --prefix: the name starts
@@ -39,7 +40,7 @@ main :: proc() {
 }
 
 usage :: proc() -> int {
-	fmt.eprintln("usage: uia_probe dump|find|wait|invoke|toggle|select|expand|collapse|focus|set-value|text|select-text|focused (--pid N | --hwnd H) [--name S] [--type T] [--prefix] [--index K] [--value V] [--start A --end B] [--timeout MS] [--class C]")
+	fmt.eprintln("usage: uia_probe dump|find|wait|invoke|toggle|select|expand|collapse|focus|set-value|text|select-text|bounds|focused (--pid N | --hwnd H) [--name S] [--type T] [--prefix] [--index K] [--value V] [--start A --end B] [--timeout MS] [--class C]")
 	return 2
 }
 
@@ -126,6 +127,14 @@ run :: proc() -> int {
 		fmt.printf("text=\"%s\"", t)
 		if has_sel { fmt.printf(" selection=\"%s\"", s) }
 		fmt.println()
+		return 0
+	case "bounds":
+		e := find_wait(&c, root, a)
+		if e == nil { fmt.eprintln("uia_probe: not found"); return 1 }
+		defer uia.drop(e)
+		r, has := uia.bounds(e)
+		if !has { return 1 }
+		fmt.printfln("%d %d %d %d", r[0], r[1], r[2] - r[0], r[3] - r[1])
 		return 0
 	case "select-text":
 		e := find_wait(&c, root, a)
