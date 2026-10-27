@@ -3,6 +3,16 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.47.2] - 2026-10-27
+
+### Changed
+- **The native libraries are built without fat LTO again** (`tools/build_text.ps1`, `tools/build_a11y.ps1`): with it (`gt_text.lib` 6.4 MB instead of 33 MB) the `text` tests crashed on the CI runner at their first test (`atlas_stress`, a signal) while they pass on a development machine; the cause is not found, and the size is not worth a crashing test run. Wren builds these crates into its own library and is not affected.
+
+### Fixed
+- **The text tests no longer fail now and then on a CI runner** (`text_test.atlas_stress`, "Signal caught: Unknown", sometimes a runner that never ended): DirectWrite throws C++ exceptions and catches them itself when an entry of its process-wide cache does not fit, and the Windows test runner of `core:testing` takes any exception on a test's thread for a crash and kills that thread. The tests of `tests/text`, `tests/color_glyphs` and `tests/text_backends` now run their body on a thread of their own (`tests/unwatched`), where a caught C++ exception is ignored and any other exception still fails the test. The `text` package runs on several threads again in `tools/test_windowless.ps1`. Outside the test runner nothing changes: DirectWrite catches these exceptions itself.
+- **A test package that does not end names itself** (	ools/test_windowless.ps1): each package is killed after 300 s, with its log (the state changes of its tests) in the CI's, instead of the CI cutting the whole step off after twelve minutes with nothing to read.
+- **The CI's cold build of the Rust libraries has room to end** (.github/workflows/ci.yml): with fat LTO it is slower than the step's 12 minutes, so the cache was never saved and every run was cold; the build is a step of its own with a 30 minute limit, and the cache fills at the first success.
+
 ## [0.47.1] - 2026-10-27
 
 ### Fixed
