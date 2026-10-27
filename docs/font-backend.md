@@ -55,9 +55,9 @@ Faces are immutable and shared by threads; shape plans are cached per face (32),
 in one program collide at link time (`std::panicking::EMPTY_PANIC` multiply defined). A program with Rust code of its own
 builds `native/text` into its library as a dependency (the `gt_*` functions stay exported) and builds with
 `-define:FONT_NATIVE_LINK=false`: the `font` package then links nothing itself. Wren does this with the `text` feature
-of `native/media` (`WREN_TEXT=native build.bat release` gives `build\wren_native.exe`).
+of its assembly crate `native/wren_native` (one Cargo workspace, one static library).
 
-Built like Wren's `native/media`: exact versions and `Cargo.lock` (`--locked`), fat LTO, one codegen unit, the
+Built like Wren's `native/` workspace: exact versions and `Cargo.lock` (`--locked`), fat LTO, one codegen unit, the
 library's `rust_eh_personality` renamed so it links next to other Rust static libraries. The toolkit builds it itself
 (it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend; Wren links it
 through the toolkit's `build/text`.
