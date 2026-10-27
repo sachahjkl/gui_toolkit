@@ -86,6 +86,8 @@ Event :: struct {
 	                    // pointer.kind says which: an app that pans with fingers drops the touch ones, keeps the pen's)
 	pointer: Pointer_Info,    // Pointer_*: the finger or pen
 	drop_allowed: Drop_Effects,   // Drop_*: what the source allows
+	injected: bool,     // made by inject_event (a test, a remote control, a macro), not by the system: the real pointer is
+	                    // elsewhere (an app that reads the cursor's position from the system uses `pos` for these)
 }
 
 // Where Display_Info.hz comes from, most exact first.
