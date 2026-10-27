@@ -68,8 +68,11 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
 * Sync intervals above 1 (`set_sync_interval`) are not available (Fifo presents every refresh).
 * `video_convert` takes pictures in memory only (I420, NV12; P010 and 10-bit I420 when the adapter has `TextureFormat16bitNorm`): a
   decoder's Direct3D 11 texture (`Video_Picture.gpu_texture`) is refused, wgpu-native cannot import it.
-* Not implemented, and they say so (`false`, 0 or an empty result): `capture_request` (`capture_poll` has nothing; offscreen
-  readbacks, `draw.offscreen_end` + `readback_poll`, work), the GPU canvas engine (`canvas_*`, docs/canvas.md),
+* Frame capture (`capture_request` / `capture_poll`) works on both backends: the frame target (surface or offscreen) is
+  copied into a mappable buffer before the present, mapped without waiting, and read back as straight RGBA8 with sRGB values
+  and alpha forced to 255 (a window is opaque), the same picture the Direct3D 11 path gives. It costs nothing until a capture
+  is asked for. Offscreen readbacks (`draw.offscreen_end` + `readback_poll`) also work on both.
+* Not implemented, and they say so (`false`, 0 or an empty result): the GPU canvas engine (`canvas_*`, docs/canvas.md),
   `surface_create` (second windows), `set_fixed_surface` and `set_max_frame_latency`. Use the Direct3D 11 backend for those.
 
 Measurements and the recommendation: see the notes of the WebGPU prototype (Wren repository, `docs`), and `CHANGELOG.md`.

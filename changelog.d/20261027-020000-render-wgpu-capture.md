@@ -1,0 +1,3 @@
+type: Added
+
+**Frame capture on WebGPU** (`render.capture_request` / `render.capture_poll`): reading a frame back without the screen now works with the WebGPU backend, not only Direct3D 11. Before the present, `frame_end` copies the frame target (surface or offscreen, in whole or in part) into a mappable buffer; `capture_poll` maps it without waiting (`Pending` until the GPU is done) and returns straight RGBA8 with sRGB values and alpha forced to 255, the same picture the Direct3D path gives. It costs nothing until a capture is asked for, and works with the window covered, off the screen, hidden or minimized (`render/capture.odin`).
