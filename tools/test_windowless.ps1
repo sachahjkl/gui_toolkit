@@ -12,9 +12,12 @@ $failed = 0
 function Test-Package([string]$name, [string[]]$odinArgs) {
 	$sw = [Diagnostics.Stopwatch]::StartNew()
 	$o = & odin @odinArgs 2>&1 | Out-String
+	$code = $LASTEXITCODE
 	# (Write-Host: what a function writes to the pipeline would join its result)
 	if ($o -match 'All tests were successful|The test was successful') { Write-Host ("PASS $name ({0:N0} s)" -f $sw.Elapsed.TotalSeconds); return $true }
-	Write-Host "FAIL $name"
+	# the exit code says what a silent end was (0xC0000005 an access violation, 0xC000001D an assertion's trap that nothing
+	# caught, 0xC00000FD a stack overflow)
+	Write-Host ("FAIL $name (exit code 0x{0:X8})" -f $code)
 	Write-Host $o
 	return $false
 }
