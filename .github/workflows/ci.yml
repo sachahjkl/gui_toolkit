@@ -68,7 +68,7 @@ jobs:
   tests:
     name: Tests (no window; pixel tests on WARP)
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +93,17 @@ jobs:
         timeout-minutes: 3
         run: |
           ./tools/fetch_emoji.ps1 -Unicode
+          if ($LASTEXITCODE) { exit 1 }
+
+      # fat LTO makes a cold build of the two Rust libraries slow (the cache is saved only when the job succeeds: this step has its
+      # own, long limit so that a cold run can end and fill it; with the cache the step takes seconds)
+      - name: Native libraries (text backend, AccessKit adapter)
+        shell: pwsh
+        timeout-minutes: 30
+        run: |
+          ./tools/build_text.ps1
+          if ($LASTEXITCODE) { exit 1 }
+          ./tools/build_a11y.ps1
           if ($LASTEXITCODE) { exit 1 }
 
       - name: Tests
