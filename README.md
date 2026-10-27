@@ -6,8 +6,8 @@
 
 <p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.47.1-1d57ba" alt="version 0.47.1"></a></p>
 
-This is my own toolkit, built for my own projects (it draws the window and chrome of [Wren](https://github.com/sachahjkl/wren)).
-It is public, but it is not a product: no support, and the API changes whenever I need it to.
+This is my personal toolkit: I wrote it, it does not belong to any company, and it draws the window and chrome of
+[Wren](https://github.com/sachahjkl/wren). Anyone is free to use it (MIT).
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
 [RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
