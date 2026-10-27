@@ -446,6 +446,11 @@ Renderer :: struct {
 	wg:          Wgpu_State,             // TOOLKIT_RENDER=wgpu (wgpu_*.odin); zero otherwise
 	first_present_noted: bool,
 	capture:     Capture_State,          // capture.odin: reading a frame back
+	damage:      Damage_State,           // damage.odin: partial redraw (dirty rectangles)
+	damage_clear_vb: ^d3d11.IBuffer,     // solid quads that clear the damaged region (D3D11 has no scissored clear)
+	damage_clear_cap: int,
+	damage_verify_ref: ^d3d11.ITexture2D, // render.damage.verify: the full frame rendered for comparison
+	damage_verify_rtv: ^d3d11.IRenderTargetView,
 	teardown_wait_ms: int,               // set_teardown_wait
 	swap_gen:    u64,                    // the device_generation the window's objects (swap chain, views, capture copy) were made on (exchanged with a Surface)
 	swap_space:  u64,                    // the space_epoch they were made in (idem)
@@ -537,6 +542,7 @@ d3d_destroy :: proc(r: ^Renderer) {
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
+	rel(&r.damage_clear_vb); rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
 	heaps_destroy(r)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
@@ -1448,6 +1454,15 @@ d3d_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	if r.space == .Srgb && c.a > 0 {
 		for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a }
 	}
+	// A partial frame does not clear the whole back buffer: the kept content outside the region must survive (the
+	// region is cleared per rectangle in d3d_frame_submit, inside the scissor). The decision waits for frame_submit
+	// (damage_resolve may still fall back to a full frame); frame_begin only remembers the colour.
+	if r.damage.mode == .On && r.damage.building {
+		r.damage.clear = c
+		r.damage.have_clear = true
+		return
+	}
+	r.damage.have_clear = false
 	r.ctx->ClearRenderTargetView(r.rtv, &c)
 }
 
@@ -1579,7 +1594,7 @@ d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
 		return
 	}
-	if hr := present_frame(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
+	if hr := d3d_present_partial(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
 		r.lost = true
 	}
 }
