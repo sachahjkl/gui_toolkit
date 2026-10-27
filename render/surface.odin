@@ -30,6 +30,7 @@ Surface :: struct {
 	dcomp_target:   ^IDCompositionTarget,
 	dcomp_visual:   ^IDCompositionVisual,
 	capture:        Capture_State,   // a capture is of one window: the next frame_end of this surface
+	damage:         Damage_State,    // partial redraw state of this window (swapped with surface_use)
 	gen:            u64,             // Renderer.swap_gen and swap_space, while the surface is set aside:
 	space_epoch:    u64,             // what it was made on and in
 	// On the WebGPU backend the fields above are unused; the per-window state lives here instead (a ^Wgpu_Surface,
@@ -61,6 +62,7 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 	r.dcomp_target, s.dcomp_target = s.dcomp_target, r.dcomp_target
 	r.dcomp_visual, s.dcomp_visual = s.dcomp_visual, r.dcomp_visual
 	r.capture, s.capture = s.capture, r.capture
+	r.damage, s.damage = s.damage, r.damage
 	r.swap_gen, s.gen = s.gen, r.swap_gen
 	r.swap_space, s.space_epoch = s.space_epoch, r.swap_space
 }

@@ -537,3 +537,28 @@ whole). `offscreen_end` returns a `render.Readback_Id`; after the frame, `render
 pixels (straight RGBA8, sRGB values, alpha kept) once the GPU copied them (`Pending` until then, `Ready` once,
 `Failed` after a lost device; the same on both backends: a staging texture under Direct3D 11, a mapped buffer under wgpu); `render.readback_release` drops one no longer wanted. Uses:
 drag images, captures of one element, `toBlob`-like exports.
+
+## Partial redraw (damage regions)
+
+When only a small part of the window changed since the last frame (a caret, a hovered control, a progress bar, a video,
+a local animation), the renderer can repaint and present only the changed rectangles instead of the whole window. The
+application marks the changed boxes each frame; `draw` forwards them to the renderer (`render/damage.odin`):
+
+```odin
+draw.set_partial_redraw(dc, true)        // turn it on (off: the whole window every frame, the default)
+...
+draw.begin_frame(dc, size)
+draw.damage_begin(dc)                     // open the region, once; nothing marked = draw and present nothing
+draw.damage(dc, box)                      // a changed box (context coordinates, screen pixels)
+draw.damage_padded(dc, box, pad)          // grown by `pad` (a shadow, a glow, a focus ring that bleeds past the box)
+draw.damage_scrolled(dc, rect, delta)     // a scrolled view (block copy where the backend can)
+... draw everything ...
+draw.end_frame(dc)
+```
+
+The region is the union of the boxes, with near ones merged so it stays bounded. The renderer draws only the batches
+that touch it and presents only those rectangles (Direct3D 11 `Present1`) or a kept target copied whole (WebGPU); see
+docs/webgpu.md "Partial redraw". A box must be grown by the reach of any effect that paints past it (`damage_padded`),
+or the region will clip the fringe. Correctness is checked by `draw.set_damage_verify(dc, true)` (or
+`TOOLKIT_DAMAGE_VERIFY=1`): every frame is rendered in full too and the first differing pixel is reported.
+`draw.damage_stats(dc)` returns the rectangles added and kept and the pixels covered, for diagnostics.
