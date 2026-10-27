@@ -3,6 +3,14 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.49.0] - 2026-10-27
+
+### Added
+- **`ui.text_edit` syntax colouring** (`ui.Text_Highlight`, `ui.Text_Span`): a `highlight` parameter draws coloured runs the caller classifies per visible paragraph (`spans`), underlines paragraphs a caller's validator rejects (`error_line`), and reports the paragraph under the pointer (`Edit_Result.hover_line`) for a per-line tooltip. The editor knows no language; the cost is only the visible lines'.
+- **Middle-click autoscroll** (`ui.set_autoscroll_enabled`, `ui.Autoscroll`): a press of the wheel on a scroll region drops an anchor and the pointer's distance from it scrolls, the farther the faster, along a tunable acceleration curve (dead zone, power shape, speed cap), as Chrome and Firefox do it on Windows. Hold mode (keep the button down) and toggle mode (a quick tap latches it until the next click) are both live; a direction cursor and an anchor marker show while it runs. Off by default; `scroll_y`, `list` and `vlist` get it once an app opts in. The curve and state machine are a pure, frame-rate-independent core (`ui.autoscroll_axis_speed`, `ui.autoscroll_velocity`) an application can reuse for its own view; see docs/autoscroll.md.
+- **`ui.reorder_visible`**: the half-open range of items a scrolling reorderable list shows (scroll, view and pitch, with a margin on either side), so a long list builds only the rows in view and a frame's cost stays flat whatever the list's length.
+- **`fsx`**: a platform-neutral package of file helpers with the guarantees a persistent store relies on, on every system (`fsx_windows.odin`, `fsx_unix.odin`): `write_atomic` (write through a `.tmp` renamed over the file, a reader sees old or new), `read_all` / `write_parts` / `replace` / `read_at` / `stat` / `delete_file`, `make_dirs` / `list_files`, `path_kind` (links never followed), `remove_tree` (one entry at a time, not through the Windows shell) and `temp_dir`. No Windows or POSIX type crosses the boundary. See docs/fsx.md.
+
 ## [0.48.1] - 2026-10-27
 
 ### Fixed
