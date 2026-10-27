@@ -379,6 +379,15 @@ State :: struct {
 	scroll_cfg_set:  bool,
 	frame_ms:        f64,                   // the frame's time (Build_Params.frame_ms, else now_ms)
 
+	// middle-click autoscroll of scroll regions (autoscroll.odin): the one active session, the area it drives, its
+	// settings, and whether it is enabled at all. `auto_box` is the scroll box the session scrolls (0 when none).
+	auto:            Autoscroll,
+	auto_box:        Key,
+	auto_cfg:        Autoscroll_Settings,
+	auto_cfg_set:    bool,
+	auto_enabled:    bool,       // set_autoscroll_enabled; off by default (an app opts in, so nothing changes silently)
+	auto_pressed:    bool,       // a middle press this frame started (or could start) a session: set in process_events
+
 	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
 	wrap_cache:      map[Wrap_Key]Wrap_Entry,
 	// rich text: layouts by content, the faces of bold / italic runs, the link each focused paragraph is on (rich_text.odin)

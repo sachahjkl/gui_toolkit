@@ -96,6 +96,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	scrollbar_drag(s)
 	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse) : 0
 	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = s.time_ms }
+	autoscroll_handle_input(s)   // middle-click autoscroll (autoscroll_region.odin): after hit tests, may swallow clicks
 }
 
 // Topmost Clickable box at `p`: later siblings draw on top, so walk them last to first.
