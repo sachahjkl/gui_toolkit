@@ -22,7 +22,9 @@ of CPU (`fidget --bench=300`).
     build.bat panes      # splitters and accordions
     build.bat todo debug
 
-Needs the Odin compiler (tested with `dev-2026-10`) and Windows 10+ (Win32 + D3D11 only for now).
+Needs the Odin compiler (`dev-2026-10`, pinned), MSVC (Visual Studio or its Build Tools) and Windows 10+ (Win32 + D3D11 only for now).
+**New project? Start with [docs/getting-started.md](docs/getting-started.md)**: the toolkit as a submodule, a window in a
+few lines (`examples/hello`), the backends and options, the tests, the versions, and the pitfalls.
 Prebuilt binaries are attached to the [GitHub releases](https://github.com/sachahjkl/gui_toolkit/releases).
 
 ## Screenshots
