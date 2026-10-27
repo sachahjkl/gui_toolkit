@@ -1,6 +1,7 @@
 package text_test
 
 import "core:testing"
+import "../unwatched"
 import "../../font"
 
 FAMILY :: "\U0001F468\u200D\U0001F469\u200D\U0001F467"
@@ -62,7 +63,7 @@ grapheme_walk :: proc(t: ^testing.T) {
 // Selecting "c " and the first two letters of a Hebrew word in "abc <word> def" colours two stretches: the Latin end of the
 // line, and the right end of the (right-to-left) word. The letters between them are not selected.
 @(test)
-selection_in_bidirectional_text :: proc(t: ^testing.T) {
+selection_in_bidirectional_text :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -83,12 +84,12 @@ selection_in_bidirectional_text :: proc(t: ^testing.T) {
 	all := font.selection_spans(sh2, plain, 0, len(plain))
 	testing.expect(t, len(all) == 1 && abs(all[0][1] - sh2.width) < 0.5 && abs(all[0][0]) < 0.5)
 	testing.expect_value(t, len(font.selection_spans(sh2, plain, 3, 3)), 0)
-}
+}) }
 
 // The caret and a click work on whole clusters: a click on an emoji family lands before or after it, and the caret
 // positions of a cluster of several code points are its two edges.
 @(test)
-caret_and_hit_follow_clusters :: proc(t: ^testing.T) {
+caret_and_hit_follow_clusters :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
 	defer teardown(s)
 	ui := sys(t, s, "Segoe UI")
@@ -103,4 +104,4 @@ caret_and_hit_follow_clusters :: proc(t: ^testing.T) {
 	end_family := 1 + len(FAMILY)
 	xa, xb := font.caret_x(sh, text, end_a), font.caret_x(sh, text, end_family)
 	testing.expect(t, xb > xa)
-}
+}) }

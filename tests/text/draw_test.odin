@@ -2,6 +2,7 @@ package text_test
 
 import "core:os"
 import "core:testing"
+import "../unwatched"
 import "../../draw"
 import "../../font"
 import "../../render"
@@ -81,7 +82,7 @@ save_bmp :: proc(path: string, img: []u8) {
 
 // Text bigger than an atlas page is rasterized smaller and drawn stretched, not left out.
 @(test)
-draw_huge_text_is_stretched :: proc(t: ^testing.T) {
+draw_huge_text_is_stretched :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Dfx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
@@ -93,10 +94,10 @@ draw_huge_text_is_stretched :: proc(t: ^testing.T) {
 	dark, _ := census(img, 0, 0, DSIZE.x, DSIZE.y)
 	testing.expectf(t, dark > DSIZE.x * DSIZE.y / 10, "huge text is not drawn (%d dark pixels)", dark)
 	testing.expect(t, font.atlas_page_count(&f.fonts) <= 2)
-}
+}) }
 
 @(test)
-draw_text_fallback_emoji_bidi :: proc(t: ^testing.T) {
+draw_text_fallback_emoji_bidi :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	f := new(Dfx)
 	defer free(f)
 	if !open(t, f) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
@@ -117,4 +118,4 @@ draw_text_fallback_emoji_bidi :: proc(t: ^testing.T) {
 	testing.expect(t, dark_rtl > 50)
 	dark_cjk, _ := census(img, 4, 72, 300, 95)
 	testing.expect(t, dark_cjk > 50)
-}
+}) }
