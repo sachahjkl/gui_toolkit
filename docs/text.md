@@ -243,6 +243,17 @@ a text-presentation emoji nothing else draws falls back to the emoji font before
 Wales) go through the face's GSUB `ccmp` ligatures (`gsub_ligate`), which DirectWrite does not apply to tag characters.
 All 3 963 fully qualified sequences of Unicode 18's `emoji-test.txt` shape to one glyph (`tests/colr`).
 
+**One color glyph as pixels** (`font/color_canvas.odin`): `color_glyph_rgba(s, face, gid, size, fg)` rasterizes a single
+color glyph to a straight-alpha RGBA `Color_Glyph{px, w, h, ox, oy}` at an exact em size, with `(ox, oy)` the offset from
+the pen (baseline origin, y down) to the bitmap's top-left corner; `glyph_is_color(s, face, gid, size)` says whether a
+glyph is drawn in color. Unlike `glyph_image`, nothing goes through the atlas or the draw layer: the caller owns the
+pixels and composites them itself. This is the path a 2D canvas uses for emoji in `fillText` / `strokeText`: the glyph is
+drawn as an image, so it takes the canvas transform, alpha, shadow and clip like any `drawImage`. The COLR interpreter
+draws the glyphs it owns (`color_engine = .Builtin`, or the glyphs Direct2D must not be given); Direct2D draws the rest.
+`fg` (sRGB) colors foreground / text-color layers. The pixels are on the allocator passed in (a temp allocator by
+default). The signature is platform-neutral; off Windows (no color-glyph rasterizer yet) both functions compile and
+report no color glyph, so a caller falls back to the outline.
+
 ## Limits
 
 - Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),
