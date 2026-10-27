@@ -58,9 +58,13 @@ builds `native/text` into its library as a dependency (the `gt_*` functions stay
 of its assembly crate `native/wren_native` (one Cargo workspace, one static library).
 
 Built like Wren's `native/` workspace: exact versions and `Cargo.lock` (`--locked`), fat LTO, one codegen unit, the
-library's `rust_eh_personality` renamed so it links next to other Rust static libraries. The toolkit builds it itself
-(it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend; Wren links it
-through the toolkit's `build/text`.
+library's `rust_eh_personality` renamed so it links next to other Rust static libraries. The crate is an ordinary
+library (`rlib`) in `Cargo.toml`, so that an application's Rust library can depend on it; `tools/build_text.ps1` asks
+for the static library alone (`cargo rustc --crate-type staticlib`): rustc skips LTO whenever the crate types include an
+`rlib`, and a `["staticlib", "rlib"]` crate came out without any cross-crate optimization, every dependency a separate
+object (33.2 MB instead of 6.4 MB; `native/a11y` the same: 16.9 MB instead of 4.8 MB). The toolkit builds it itself
+(it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend; Wren builds the
+crate into its own library instead (above).
 
 ## Platforms
 
