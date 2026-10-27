@@ -1,5 +1,5 @@
 name: "gui_toolkit"
-description: "Toolkit GUI immediate-mode pour Odin, sur Direct3D 11."
+description: "Toolkit GUI natif, rapide, en mode immédiat."
 topics:
   - "odin"
   - "gui"
