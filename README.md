@@ -195,7 +195,9 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   ([docs/dialogs.md](docs/dialogs.md)); drag and drop ([docs/dragdrop.md](docs/dragdrop.md)).
 - **Long lists**: `vlist` builds only the rows in view (rows of any height, measured and cached; keyboard and type-ahead
   over all rows); wrapped paragraphs are cached between frames; scroll regions glide along an impulse or ease-out curve
-  on the app's frame clock (`set_scroll_settings`).
+  on the app's frame clock (`set_scroll_settings`). Middle-click autoscroll (as Chrome and Firefox do it): a press of
+  the wheel drops an anchor and the pointer's distance from it scrolls, the farther the faster, along a tunable
+  acceleration curve; hold or toggle modes, a direction cursor and an anchor marker ([docs/autoscroll.md](docs/autoscroll.md)).
 
 Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
 

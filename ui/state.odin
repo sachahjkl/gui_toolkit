@@ -597,6 +597,7 @@ update_animations :: proc(s: ^State) {
 		cur^ += d * rate
 		busy^ = true
 	}
+	autoscroll_apply(s)   // middle-click autoscroll sets its box's view_target before the ease below (autoscroll_region.odin)
 	// the hot box and its ancestors (for .Hot_Within boxes)
 	chain: [48]Key
 	n := 0
