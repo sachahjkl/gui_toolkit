@@ -478,3 +478,7 @@ retained_bytes :: proc(c: ^Context) -> (used, capacity: int) { return render.hea
 
 // Number of instances recorded in the picture.
 picture_size :: proc(pic: ^Picture) -> int { return len(pic.insts) }
+
+// A number that bumps every time the picture is recorded again (picture_end): a damage tracker folds it to know when a
+// chunk's content changed (browser compositor, partial redraw).
+picture_version :: proc(pic: ^Picture) -> u64 { return pic.version }
