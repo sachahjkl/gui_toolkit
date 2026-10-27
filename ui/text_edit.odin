@@ -587,7 +587,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			a.cursor = clamp(a.cursor, 0, len(a.buf))
 			a.mark = clamp(a.mark, 0, len(a.buf))
-			wake_within(s, 265)   // caret blink
+			if !s.inactive { wake_within(s, 265) }   // caret blink (none in a window in the back)
 		}
 		text = area_string(a)
 		res.changed = hash_bytes(a.buf[:]) != before_hash
@@ -634,7 +634,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		d.cursor, d.mark, d.upstream, d.scroll = a.cursor, a.mark, a.upstream, a.scroll
 		d.focused = res.focused
 		since := now - a.edited_ms
-		d.caret_on = since < 500 || (int(since) / 530) % 2 == 0
+		d.caret_on = !s.inactive && (since < 500 || (int(since) / 530) % 2 == 0)
 		d.gutter, d.pad, d.line_h = gutter, pad, lh
 		d.selection = color("selection")
 		d.caret = color("cursor")

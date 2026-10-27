@@ -375,6 +375,36 @@ build_edit :: proc(f: ^Fx, user: rawptr) {
 	ui.line_edit("###e", &r.field)
 }
 
+// A window that is not the user's (Build_Params.inactive: an application with several windows) shows no caret in its
+// focused field and asks for no wake to blink it; the field keeps the focus and comes back blinking with the window.
+@(test)
+line_edit_caret_only_in_the_users_window :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	frame(&f, nil, build_edit, &r)
+	k := ui.key_from_string(ui.key_from_string(0, "root"), "###e")
+	ui.set_focus(k)
+	frame(&f, {typed('a')}, build_edit, &r)
+	testing.expect_value(t, ui.wake_ms(&f.s), 265)
+	for inactive in ([2]bool{true, false}) {
+		ui.begin_build(&f.s, {
+			window_size = WINDOW, dt = 1.0 / 60, dpi_scale = 1, inactive = inactive,
+			base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+		})
+		testing.expect_value(t, ui.inactive(), inactive)
+		build_edit(&f, &r)
+		ui.end_build()
+		free_all(context.temp_allocator)
+		testing.expect_value(t, ui.wake_ms(&f.s), inactive ? 0 : 265)
+		testing.expect_value(t, ui.focus_key(), k)
+	}
+}
+
 @(test)
 line_edit_history :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)

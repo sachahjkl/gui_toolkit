@@ -99,6 +99,8 @@ Build_Params :: struct {
 	time_ms:        f64,                // optional: the build's clock in ms (caret blink, double clicks, timers, toasts,
 	                                    // hover delays). 0: now_ms(). A test or a replay passes its own clock to be
 	                                    // deterministic (wake_ms and wake_due still compare it with now_ms())
+	inactive:       bool,               // the window is not the one the user is in (an application with several windows):
+	                                    // the caret of a focused text field is not drawn and does not blink (inactive())
 }
 
 // A build is open on this thread (between begin_build and end_build), whatever its state.
@@ -108,6 +110,10 @@ Build_Params :: struct {
 // loop of the system) asks this before building one: a build begun inside another empties its parent stack, frees its
 // frame arena and selects another state under it.
 building :: proc() -> bool { return build_open }
+
+// The window being built is not the one the user is in (Build_Params.inactive): a widget that shows a caret or a focus
+// highlight that only the user's window shows reads this.
+inactive :: proc() -> bool { return g != nil && g.inactive }
 
 begin_build :: proc(s: ^State, p: Build_Params) {
 	// (a frame made from a message pumped during a build: a loop of the system such as TrackPopupMenu, a modal dialog)
@@ -135,6 +141,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.menu_close_pending = false
 	s.boxes_built = 0
 	s.time_ms = p.time_ms > 0 ? p.time_ms : now_ms()
+	s.inactive = p.inactive
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
 	if s.theme != nil && s.theme.serial != s.theme_serial {
 		// another palette (not the first one): every colour cross-fades to it for a moment
