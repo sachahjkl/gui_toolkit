@@ -9,8 +9,10 @@ edition = "2021"
 publish = false
 license = "MIT"
 
+# An ordinary library (rlib): an application's own Rust library takes it as a dependency (Wren's native/ workspace).
+# tools\build_text.ps1 asks for the static library alone (cargo rustc --crate-type staticlib): rustc skips LTO when the
+# crate types include an rlib, which left every crate unoptimized across crates and the library 5 times larger.
 [lib]
-crate-type = ["staticlib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]

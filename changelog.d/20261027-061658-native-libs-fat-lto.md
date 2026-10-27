@@ -1,0 +1,3 @@
+type: Fixed
+
+**The native text backend and the accessibility adapter are built with fat LTO** (`native/text`, `native/a11y`, `tools/build_text.ps1`, `tools/build_a11y.ps1`): their crate types listed `rlib` next to `staticlib`, and rustc skips LTO whenever an `rlib` is among them: every dependency stayed a separate unoptimized object (`gt_text.lib` 33.2 MB, now 6.4 MB; `gt_a11y.lib` 16.9 MB, now 4.8 MB). The crates are now plain libraries (an application's Rust library still depends on them) and the scripts ask for the static library alone (`cargo rustc --crate-type staticlib`); they fail if an object of another crate is left in the archive.

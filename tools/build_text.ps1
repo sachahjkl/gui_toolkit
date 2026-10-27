@@ -26,7 +26,9 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw 'cargo not f
 $target = Join-Path $out 'target'
 $t0 = Get-Date
 $ErrorActionPreference = 'Continue'   # cargo writes its progress to stderr
-& cargo build --release --locked --lib --manifest-path (Join-Path $crate 'Cargo.toml') --target-dir $target 2>&1 | ForEach-Object { "$_" }
+# The crate is an rlib in Cargo.toml (an application's Rust library depends on it); the static library alone is asked
+# for here: with an rlib among the crate types, rustc ignores the profile's fat LTO.
+& cargo rustc --release --locked --lib --crate-type staticlib --manifest-path (Join-Path $crate 'Cargo.toml') --target-dir $target 2>&1 | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 if ($code -ne 0) { throw "cargo build failed ($code)" }
@@ -47,8 +49,13 @@ $objcopy = Join-Path $bin 'llvm-objcopy.exe'
 $work = Join-Path $out 'rename'
 if (Test-Path $work) { [IO.Directory]::Delete($work, $true) }
 New-Item -ItemType Directory -Force $work | Out-Null
-$member = (& $ar t $lib) | Where-Object { $_ -like 'gt_text-*.rcgu.o' } | Select-Object -First 1
+$members = @(& $ar t $lib)
+$member = $members | Where-Object { $_ -like 'gt_text-*.rcgu.o' } | Select-Object -First 1
 if (-not $member) { throw 'gt_text.lib: the crate object was not found' }
+# Fat LTO leaves the crate's object and compiler_builtins (never part of LTO): an object of another crate means LTO
+# did not run (an rlib among the crate types) and the library is several times larger and slower.
+$unmerged = @($members | Where-Object { $_ -like '*.rcgu.o' -and $_ -notlike 'gt_text-*' -and $_ -notlike 'compiler_builtins-*' })
+if ($unmerged.Count) { throw "gt_text.lib was not built with fat LTO ($($unmerged.Count) objects of other crates, $($unmerged[0]))" }
 Push-Location $work
 try {
     & $ar x $lib $member
