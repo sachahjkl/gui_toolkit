@@ -67,6 +67,16 @@ box is as tall as its lines within the limits, then scrolls. `Edit_Result.caret`
 build); `ui.text_edit_caret_rect(a)` gives the caret and the selection's other end in window coordinates as last drawn
 (completion popovers, input method windows). Example: the composer of `examples/fidget`.
 
+**Syntax colouring** (`ui/text_edit.odin`). `ui.text_edit(..., highlight = &hl)` with a `ui.Text_Highlight` draws coloured
+runs the caller classifies; the editor itself knows no language. `hl.spans(user, line_text, para, &out)` is called per
+*visible* paragraph (never the whole document) and appends `ui.Text_Span{start, end, color}` byte ranges into `line_text`
+(in order, non-overlapping); a byte no span covers uses the box's text colour, and a zero colour `{0,0,0,0}` falls back to
+it too. Colouring a wrapped editor works: a span is drawn where it falls on each visual line. `hl.error_line(user, para)`
+underlines a paragraph in `hl.error` (a zero colour falls back to a theme red) — for a line the caller's own validator
+rejects. `Edit_Result.hover_line` is the paragraph under the pointer (or -1): show a `ui.tooltip()` with its message. The
+cost is only the visible lines'. Example: the "My filters" editor of Wren's content-blocker dashboard colours Adblock
+syntax and underlines lines its engine would drop.
+
 **Rich text** (`ui/rich_text.odin`). `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
 each run has its text and a `Rich_Style` (face, size, `bold`, `italic`, `code` (mono font, the theme's `code_bg`),
 colour, background, `underline`, `strike`, `link`). Lines break at the backend's opportunities computed on the whole

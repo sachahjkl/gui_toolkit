@@ -138,6 +138,7 @@ Edit_Result :: struct {
 	committed: bool,   // Enter pressed while focused
 	cancelled: bool,   // Escape pressed while focused
 	caret:     Rect,   // text_edit: the caret, in the box's coordinates (from this build's layout)
+	hover_line: int,   // text_edit: the paragraph under the pointer (for a per-line tooltip), or -1
 }
 
 Line_Edit_Draw :: struct {

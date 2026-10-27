@@ -48,6 +48,25 @@ text_edit_caret_rect :: proc(a: ^Text_Area) -> (caret, mark: Rect, ok: bool) {
 	return a.caret_rect, a.mark_rect, a.rects_ok
 }
 
+// Syntax colouring for text_edit. A classifier the caller provides, called per visible paragraph: the editor never knows a
+// language, it only draws the coloured runs the classifier returns. It costs only what the visible lines cost (the editor
+// calls `spans` for the lines it draws, not the whole document).
+Text_Span :: struct {
+	start, end: int,   // byte range within the paragraph's text (line_text)
+	color:      Color, // the run's colour (a zero colour {0,0,0,0} falls back to the box's text colour)
+}
+
+Text_Highlight :: struct {
+	user:  rawptr,
+	// The coloured runs of one paragraph. `line_text` is its text (no trailing "\n"), `para` its number. Append spans
+	// (byte ranges into line_text, in order, non-overlapping) to `out`; uncovered bytes use the text colour. Leave `out`
+	// empty for a plain line.
+	spans: proc(user: rawptr, line_text: string, para: int, out: ^[dynamic]Text_Span),
+	// Whether the paragraph has a syntax error: it is underlined in `error`. nil: no line is marked.
+	error_line: proc(user: rawptr, para: int) -> bool,
+	error: Color,   // the underline colour (a zero colour falls back to a theme red)
+}
+
 // Scrollbar geometry of the editor (screen space). The bars overlay the text at the right / bottom edges.
 @(private="file")
 Editor_Bars :: struct {
@@ -239,6 +258,8 @@ Text_Edit_Draw :: struct {
 	bars:        Editor_Bars,
 	bar_color:   Color,
 	bar_hot:     u8,        // 1 vertical, 2 horizontal: hovered or held
+	highlight:   ^Text_Highlight,   // nil: plain text in b.text_color
+	error_color: Color,
 }
 
 @(private="file")
@@ -298,7 +319,11 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 				draw.rect(dc, {{text_x0, y}, {text_x0 + b.font_size * 0.35, y + lh}}, d.selection)
 			}
 		}
-		draw.text(dc, b.font, b.font_size, {math.round(text_x0), math.round(y + baseline_off)}, b.text_color, line_text)
+		if d.highlight != nil {
+			draw_highlighted_line(dc, d, b, s, l, line_text, text_x0, y, baseline_off, lh)
+		} else {
+			draw.text(dc, b.font, b.font_size, {math.round(text_x0), math.round(y + baseline_off)}, b.text_color, line_text)
+		}
 	}
 	if d.focused && d.caret_on { draw.rect(dc, caret_rect, d.caret) }
 	draw.pop_clip(dc)
@@ -334,6 +359,48 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
+// One visual line with syntax colouring. The classifier works per paragraph; this draws the part of its coloured runs that
+// falls on the visual line (so wrapping keeps working), then an error underline for a flagged paragraph.
+@(private="file")
+draw_highlighted_line :: proc(dc: ^draw.Context, d: ^Text_Edit_Draw, b: ^Box, s: ^State, l: Visual_Line, line_text: string, text_x0, y, baseline_off, lh: f32) {
+	hl := d.highlight
+	// the paragraph's text and its start offset in d.text
+	para_start := strings.last_index_byte(d.text[:l.start], '\n') + 1
+	pe := strings.index_byte(d.text[para_start:], '\n')
+	para_end := pe < 0 ? len(d.text) : para_start + pe
+	para_text := d.text[para_start:para_end]
+
+	spans := make([dynamic]Text_Span, 0, 16, frame_allocator())
+	if hl.spans != nil { hl.spans(hl.user, para_text, l.para, &spans) }
+
+	// one left-to-right pass over the visual line: each byte that a span covers is drawn in the span's colour, the rest in
+	// the text colour. Each run is positioned at the x of its first byte (caret_x_on keeps glyph advances exact), so this
+	// is pixel-identical to the plain draw where no span applies, and it never overwrites the selection highlight.
+	pos := l.start
+	draw_run :: proc(dc: ^draw.Context, d: ^Text_Edit_Draw, b: ^Box, l: Visual_Line, text_x0, y, baseline_off: f32, lo, hi: int, col: Color) {
+		if hi <= lo { return }
+		x := text_x0 + caret_x_on(d.text, l, b, lo)
+		draw.text(dc, b.font, b.font_size, {math.round(x), math.round(y + baseline_off)}, col, d.text[lo:hi])
+	}
+	for sp in spans {
+		ds := clamp(para_start + sp.start, l.start, l.end)
+		de := clamp(para_start + sp.end, l.start, l.end)
+		if de <= ds { continue }
+		if ds > pos { draw_run(dc, d, b, l, text_x0, y, baseline_off, pos, ds, b.text_color) }   // gap before the span
+		col := sp.color == {} ? b.text_color : sp.color
+		draw_run(dc, d, b, l, text_x0, y, baseline_off, ds, de, col)
+		pos = de
+	}
+	if pos < l.end { draw_run(dc, d, b, l, text_x0, y, baseline_off, pos, l.end, b.text_color) }
+	_ = line_text
+	if hl.error_line != nil && l.first && hl.error_line(hl.user, l.para) {
+		col := hl.error == {} ? d.error_color : hl.error
+		x1 := text_x0 + font.text_width(s.fonts, b.font, b.font_size, line_text)
+		uy := y + lh - max(1, math.round(b.font_size / 12))
+		draw.rect(dc, {{text_x0, uy}, {max(x1, text_x0 + b.font_size * 0.4), uy + max(1, math.round(b.font_size / 12))}}, col)
+	}
+}
+
 @(private="file")
 fmt_int :: proc(v: int) -> string {
 	buf := make([]u8, 12, frame_allocator())
@@ -356,13 +423,14 @@ fmt_int :: proc(v: int) -> string {
 //                limit); past that it scrolls. (A wrapped editor lays out at the width it had in the last frame.)
 // The caret's rectangle is in the result (`caret`, box coordinates) and, as drawn, from text_edit_caret_rect.
 text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := false, tab_indents := false,
-	wrap := false, auto_height := false, min_lines := 1, max_lines := 0) -> (res: Edit_Result) {
+	wrap := false, auto_height := false, min_lines := 1, max_lines := 0, highlight: ^Text_Highlight = nil) -> (res: Edit_Result) {
 	s := g
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
 		b.cursor = .Text
 		b.text = ""
 		res.signal = signal(b)
+		res.hover_line = -1
 		now := s.time_ms
 		pad := b.text_pad
 		mono := s.mono_font != 0 ? s.mono_font : b.font
@@ -644,6 +712,12 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		d.gutter_bg = tuned(d.gutter_bg)
 		d.gutter_line = color("border")
 		d.mono = mono
+		d.highlight = highlight
+		d.error_color = tuned(Color{0.85, 0.25, 0.25, 1})
+		if highlight != nil && res.hovering && a.sb_drag == 0 {
+			li := int((res.mouse.y - pad + a.scroll.y) / lh)
+			if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
+		}
 		d.bars = editor_bars(b.rect, gutter, pad, b.font_size, {content_w, content_h}, a.scroll)
 		d.bar_color = color("text")
 		mpos := b.rect.min + res.mouse
