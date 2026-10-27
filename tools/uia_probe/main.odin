@@ -7,6 +7,8 @@
 //   uia_probe wait      (--pid N | --hwnd H) --name S [--type T] [--timeout MS]
 //   uia_probe invoke | toggle | select | expand | collapse | focus  (--pid N | --hwnd H) --name S [--type T]
 //   uia_probe set-value (--pid N | --hwnd H) --name S [--type T] --value V
+//   uia_probe text      (--pid N | --hwnd H) --name S [--type T]  its text (text pattern): `text="..." selection="..."`
+//   uia_probe select-text (--pid N | --hwnd H) --name S [--type T] --start A --end B   select characters [A, B)
 //   uia_probe focused                                             the element that has the keyboard focus
 //
 // --type is the control type as dump prints it (button, checkbox, edit, tab, menuitem...). --prefix: the name starts
@@ -29,6 +31,7 @@ Args :: struct {
 	timeout: int,
 	prefix:  bool,
 	index:   int,
+	start, end: int,
 }
 
 main :: proc() {
@@ -36,7 +39,7 @@ main :: proc() {
 }
 
 usage :: proc() -> int {
-	fmt.eprintln("usage: uia_probe dump|find|wait|invoke|toggle|select|expand|collapse|focus|set-value|focused (--pid N | --hwnd H) [--name S] [--type T] [--prefix] [--index K] [--value V] [--timeout MS] [--class C]")
+	fmt.eprintln("usage: uia_probe dump|find|wait|invoke|toggle|select|expand|collapse|focus|set-value|text|select-text|focused (--pid N | --hwnd H) [--name S] [--type T] [--prefix] [--index K] [--value V] [--start A --end B] [--timeout MS] [--class C]")
 	return 2
 }
 
@@ -59,6 +62,8 @@ run :: proc() -> int {
 		case "--class":   a.class = v
 		case "--timeout": a.timeout, _ = strconv.parse_int(v)
 		case "--index":   a.index, _ = strconv.parse_int(v)
+		case "--start":   a.start, _ = strconv.parse_int(v)
+		case "--end":     a.end, _ = strconv.parse_int(v)
 		case: return usage()
 		}
 	}
@@ -111,6 +116,22 @@ run :: proc() -> int {
 			if time.duration_milliseconds(time.tick_since(start)) > f64(limit) { return 1 }
 			time.sleep(30 * time.Millisecond)
 		}
+	case "text":
+		e := find_wait(&c, root, a)
+		if e == nil { fmt.eprintln("uia_probe: not found"); return 1 }
+		defer uia.drop(e)
+		t, has_text := uia.document_text(e, context.temp_allocator)
+		if !has_text { fmt.eprintln("uia_probe: no text pattern"); return 1 }
+		s, has_sel := uia.text_selection(e, context.temp_allocator)
+		fmt.printf("text=\"%s\"", t)
+		if has_sel { fmt.printf(" selection=\"%s\"", s) }
+		fmt.println()
+		return 0
+	case "select-text":
+		e := find_wait(&c, root, a)
+		if e == nil { fmt.eprintln("uia_probe: not found"); return 1 }
+		defer uia.drop(e)
+		return uia.select_text(e, a.start, a.end) ? 0 : 1
 	case "invoke", "toggle", "select", "expand", "collapse", "focus", "set-value":
 		e: ^uia.Element
 		start := time.tick_now()
@@ -133,6 +154,16 @@ run :: proc() -> int {
 		return done ? 0 : 1
 	}
 	return usage()
+}
+
+// find, retried until --timeout.
+find_wait :: proc(c: ^uia.Client, root: ^uia.Element, a: Args) -> ^uia.Element {
+	start := time.tick_now()
+	for {
+		if e := find(c, root, a); e != nil { return e }
+		if time.duration_milliseconds(time.tick_since(start)) > f64(a.timeout) { return nil }
+		time.sleep(30 * time.Millisecond)
+	}
 }
 
 find :: proc(c: ^uia.Client, root: ^uia.Element, a: Args) -> ^uia.Element {

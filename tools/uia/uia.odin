@@ -233,6 +233,70 @@ set_range_value :: proc(e: ^Element, v: f64) -> bool {
 	return (proc "system" (this: rawptr, v: f64) -> win.HRESULT)(u.vtbl[3])(u, v) >= 0
 }
 
+// Text (the text pattern, IUIAutomationTextPattern / IUIAutomationTextRange): what a screen reader reads character by
+// character and word by word, and the caret.
+
+@(private) Range :: struct { vtbl: ^[32]rawptr }
+
+@(private)
+range_text :: proc(r: ^Range, allocator := context.allocator) -> string {
+	b: [^]u16
+	if (proc "system" (this: rawptr, max: i32, out: ^[^]u16) -> win.HRESULT)(r.vtbl[12])(r, -1, &b) < 0 { return "" }   // GetText
+	return bstr(b, allocator)
+}
+
+@(private)
+document_range :: proc(e: ^Element) -> ^Range {
+	u := pattern(e, .Text)
+	if u == nil { return nil }
+	defer release(u)
+	r: rawptr
+	if (proc "system" (this: rawptr, out: ^rawptr) -> win.HRESULT)(u.vtbl[7])(u, &r) < 0 { return nil }   // get_DocumentRange
+	return (^Range)(r)
+}
+
+// All the text of an element's text pattern; ok false: it has none.
+document_text :: proc(e: ^Element, allocator := context.allocator) -> (string, bool) {
+	r := document_range(e)
+	if r == nil { return "", false }
+	defer release(r)
+	return range_text(r, allocator), true
+}
+
+// The text selected in an element's text pattern ("" for a caret); ok false: no text pattern, or no selection.
+text_selection :: proc(e: ^Element, allocator := context.allocator) -> (string, bool) {
+	u := pattern(e, .Text)
+	if u == nil { return "", false }
+	defer release(u)
+	arr: rawptr
+	if (proc "system" (this: rawptr, out: ^rawptr) -> win.HRESULT)(u.vtbl[5])(u, &arr) < 0 || arr == nil { return "", false }   // GetSelection
+	defer release(arr)
+	a := (^Array)(arr)
+	n: i32
+	(proc "system" (this: ^Array, out: ^i32) -> win.HRESULT)(a.vtbl[3])(a, &n)
+	if n < 1 { return "", false }
+	r: rawptr
+	(proc "system" (this: ^Array, i: i32, out: ^rawptr) -> win.HRESULT)(a.vtbl[4])(a, 0, &r)
+	if r == nil { return "", false }
+	defer release(r)
+	return range_text((^Range)(r), allocator), true
+}
+
+// Selects characters [start, end) of an element's text pattern (start = end: the caret there).
+select_text :: proc(e: ^Element, start, end: int) -> bool {
+	r := document_range(e)
+	if r == nil { return false }
+	defer release(r)
+	move_by_range := (proc "system" (this: rawptr, src: i32, other: rawptr, target: i32) -> win.HRESULT)(r.vtbl[15])
+	move_by_unit := (proc "system" (this: rawptr, endpoint: i32, unit: i32, count: i32, moved: ^i32) -> win.HRESULT)(r.vtbl[14])
+	moved: i32
+	// (endpoints: 0 start, 1 end; unit 0: character) the range collapsed at the start, then its end and its start moved
+	if move_by_range(r, 1, r, 0) < 0 { return false }
+	if end > 0 && move_by_unit(r, 1, 0, i32(end), &moved) < 0 { return false }
+	if start > 0 && move_by_unit(r, 0, 0, i32(start), &moved) < 0 { return false }
+	return (proc "system" (this: rawptr) -> win.HRESULT)(r.vtbl[16])(r) >= 0   // Select
+}
+
 // One line per element: control type, name, and what it says of itself (for logs and the probe).
 describe :: proc(e: ^Element, allocator := context.allocator) -> string {
 	sb := strings.builder_make(allocator)
