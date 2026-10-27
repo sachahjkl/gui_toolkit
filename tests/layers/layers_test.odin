@@ -3,6 +3,7 @@
 package layers_test
 
 import "core:testing"
+import "core:time"
 import "../../draw"
 import "../../font"
 import "../../render"
@@ -201,21 +202,14 @@ offscreen_draw_and_read_back :: proc(t: ^testing.T) {
 			id = draw.offscreen_end(dc)
 		})
 		testing.expect(t, close_px(px(img, 10, 10), {255, 255, 255, 255}), "nothing of it on the frame")
-		when render.USE_WGPU {
-			// the WebGPU backend cannot read back yet (render/readback.odin): no id, and polling says Failed rather than
-			// Pending forever; what was drawn offscreen still stays off the frame (above)
-			testing.expect_value(t, id, render.Readback_Id(0))
-			_, _, none := render.readback_poll(&f.r, id, context.temp_allocator)
-			testing.expect_value(t, none, render.Capture_Status.Failed)
-			continue
-		}
 		testing.expect(t, id != 0, "a readback was recorded")
 		pixels: []u8
 		size: [2]int
 		st: render.Capture_Status
-		for _ in 0 ..< 200 {
+		for _ in 0 ..< 2000 {   // (2 s at most: the copy is usually ready at the first poll)
 			pixels, size, st = render.readback_poll(&f.r, id, context.temp_allocator)
 			if st != .Pending { break }
+			time.sleep(time.Millisecond)
 		}
 		testing.expect_value(t, st, render.Capture_Status.Ready)
 		testing.expect_value(t, size, [2]int{100, 40})

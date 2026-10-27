@@ -37,8 +37,8 @@ offscreen_begin :: proc(c: ^Context, size: [2]int) -> bool {
 	return true
 }
 
-// Closes the offscreen target opened last: its copy for readback is recorded, the target goes back to the pool. 0:
-// this renderer cannot read back (wgpu); what was drawn is dropped.
+// Closes the offscreen target opened last: its copy for readback is recorded, the target goes back to the pool. 0: no
+// offscreen target is open.
 offscreen_end :: proc(c: ^Context) -> render.Readback_Id {
 	if len(c.open_layers) == 0 || !c.open_layers[len(c.open_layers) - 1].offscreen { return 0 }
 	ol := pop(&c.open_layers)
