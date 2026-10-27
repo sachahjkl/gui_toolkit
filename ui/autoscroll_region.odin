@@ -138,36 +138,36 @@ autoscroll_apply :: proc(s: ^State) {
 ////////////////////////////////
 // Marker
 
-// The anchor marker a browser draws: a soft round plate with a thin ring, and small chevrons pointing in the
-// directions the area can scroll. Drawn over the whole tree (after draw_box) so nothing hides it.
+// The anchor marker over the whole tree (after draw_box) so nothing hides it, using the theme's colours.
 @(private)
 autoscroll_draw :: proc(s: ^State, dc: ^draw.Context) {
 	if !s.auto.active { return }
-	c := s.auto.anchor
-	r := math.round(13 * s.scale)
-	plate := color_from_tags(s, 0, "background")
-	ring := color_from_tags(s, 0, "text")
-	// plate: a filled disc with a soft edge, then the ring on top
+	autoscroll_draw_marker(dc, s.auto.anchor, s.auto.axes, s.scale, color_from_tags(s, 0, "background"), color_from_tags(s, 0, "text"))
+}
+
+// Draws the autoscroll anchor marker at `center` (host pixels): a soft round plate with a thin ring, a centre dot and
+// chevrons for the directions `axes` scrolls. Public so an application that runs its own session (a document view not
+// in the box tree, e.g. a web page) draws the same marker. `plate` is the fill colour, `ring` the ink; `scale` scales
+// every measurement (dpi * zoom). Colours are passed opaque; this proc sets their alpha.
+autoscroll_draw_marker :: proc(dc: ^draw.Context, center: Vec2, axes: Autoscroll_Axes, scale: f32, plate, ring: Color) {
+	c := center
+	r := math.round(13 * scale)
 	disc := plate; disc.a = 0.9
-	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, tuned(disc), r, 0, 1.5 * s.scale)
+	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, disc, r, 0, 1.5 * scale)
 	rc := ring; rc.a = 0.5
-	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, tuned(rc), r, max(1, math.round(1.5 * s.scale)))
-	// a dot at the centre
+	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, rc, r, max(1, math.round(1.5 * scale)))
 	dot := ring; dot.a = 0.55
-	dr := max(1.5, math.round(2 * s.scale))
-	draw.rect(dc, {{c.x - dr, c.y - dr}, {c.x + dr, c.y + dr}}, tuned(dot), dr)
-	// chevrons for the available directions
+	dr := max(1.5, math.round(2 * scale))
+	draw.rect(dc, {{c.x - dr, c.y - dr}, {c.x + dr, c.y + dr}}, dot, dr)
 	arrow := ring; arrow.a = 0.75
-	ac := tuned(arrow)
-	gap := math.round(6 * s.scale)
-	axes := s.auto.axes
+	gap := math.round(6 * scale)
 	if axes == .Y || axes == .Both {
-		autoscroll_chevron(dc, {c.x, c.y - gap}, .Up, s.scale, ac)
-		autoscroll_chevron(dc, {c.x, c.y + gap}, .Down, s.scale, ac)
+		autoscroll_chevron(dc, {c.x, c.y - gap}, .Up, scale, arrow)
+		autoscroll_chevron(dc, {c.x, c.y + gap}, .Down, scale, arrow)
 	}
 	if axes == .X || axes == .Both {
-		autoscroll_chevron(dc, {c.x - gap, c.y}, .Left, s.scale, ac)
-		autoscroll_chevron(dc, {c.x + gap, c.y}, .Right, s.scale, ac)
+		autoscroll_chevron(dc, {c.x - gap, c.y}, .Left, scale, arrow)
+		autoscroll_chevron(dc, {c.x + gap, c.y}, .Right, scale, arrow)
 	}
 }
 
