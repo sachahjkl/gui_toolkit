@@ -277,6 +277,8 @@ zoom :: proc(s: ^State) -> f32 { return s.zoom }
 set_zoom :: proc(s: ^State, z: f32) { s.zoom = clamp(z, ZOOM_MIN, ZOOM_MAX) }
 // dpi scale * zoom: multiply your own pixel constants by this (ui.font_size() and the base style already include it)
 scale :: proc() -> f32 { return g.scale }
+// Same, for a given state (an app with several windows, or one drawing outside a build: the autoscroll marker).
+scale_of :: proc(s: ^State) -> f32 { return s.scale }
 
 ////////////////////////////////
 // Boxes
@@ -597,6 +599,7 @@ update_animations :: proc(s: ^State) {
 		cur^ += d * rate
 		busy^ = true
 	}
+	autoscroll_apply(s)   // middle-click autoscroll sets its box's view_target before the ease below (autoscroll_region.odin)
 	// the hot box and its ancestors (for .Hot_Within boxes)
 	chain: [48]Key
 	n := 0
