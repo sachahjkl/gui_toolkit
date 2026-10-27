@@ -107,6 +107,16 @@ Wgpu_State :: struct {
 	t_device, t_modules, t_pipelines: f64,
 	n_pipelines: int,
 	cpu: Wgpu_Cpu,
+	// partial redraw (damage_wgpu.odin): wgpu-native has no present-with-damage in the pinned version, so a partial
+	// frame draws into a persistent target (kept across frames, scissored to the region) and the whole target is then
+	// copied to the surface and presented. `damage_target` holds the last full composite; `damage_size` its size.
+	damage_target: wgpu.Texture,
+	damage_view:   wgpu.TextureView,   // render into it (view_format)
+	damage_sample: wgpu.TextureView,   // sample it when copying to the surface
+	damage_size:   [2]int,
+	damage_ready:  bool,               // the persistent target holds a valid full frame (else the next frame is full)
+	damage_ref:    wgpu.Texture,       // render.damage.verify: a full composite for comparison
+	damage_ref_view: wgpu.TextureView,
 }
 
 // Where the CPU time of a frame goes (TOOLKIT_WGPU_TRACE: averages printed once per second).
@@ -393,6 +403,7 @@ wgpu_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	r.space = space
 	r.text = text_rendering_default(space)
 	release_targets(r)
+	wgpu_damage_release_target(r)   // its format follows the blend space: made again on the next partial frame
 	wgpu_frame_formats(r)
 	if g.surface != nil {
 		wgpu_dcomp_color_space(r)
@@ -898,6 +909,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 		wgpu.TextureRelease(g.frame_tex)
 		g.frame_tex, g.frame_rtv = nil, nil
 	}
+	wgpu_damage_release_target(r)
 	wgpu_release_pipelines(g)
 	wgpu_video_release(g)
 	rel :: proc(p: ^$T, $f: proc "c" (T)) { if p^ != nil { f(p^); p^ = nil } }

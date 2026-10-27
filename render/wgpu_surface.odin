@@ -30,8 +30,17 @@ Wgpu_Surface :: struct {
 	present_mode:   wgpu.PresentMode,
 	latency:        Wgpu_Latency,
 	panel:          ^Panel,
+	// partial redraw: the persistent target and verify reference belong to one window (damage_wgpu.odin)
+	damage_target:  wgpu.Texture,
+	damage_view:    wgpu.TextureView,
+	damage_sample:  wgpu.TextureView,
+	damage_size:    [2]int,
+	damage_ready:   bool,
+	damage_ref:     wgpu.Texture,
+	damage_ref_view: wgpu.TextureView,
 	// the renderer-level per-window state
 	present:        Present_State,
+	damage:         Damage_State,
 	size:           [2]int,
 	buffer_size:    [2]int,
 	source_size:    [2]int,
@@ -55,7 +64,15 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 	g.present_mode, b.present_mode = b.present_mode, g.present_mode
 	g.latency, b.latency = b.latency, g.latency
 	g.panel, b.panel = b.panel, g.panel
+	g.damage_target, b.damage_target = b.damage_target, g.damage_target
+	g.damage_view, b.damage_view = b.damage_view, g.damage_view
+	g.damage_sample, b.damage_sample = b.damage_sample, g.damage_sample
+	g.damage_size, b.damage_size = b.damage_size, g.damage_size
+	g.damage_ready, b.damage_ready = b.damage_ready, g.damage_ready
+	g.damage_ref, b.damage_ref = b.damage_ref, g.damage_ref
+	g.damage_ref_view, b.damage_ref_view = b.damage_ref_view, g.damage_ref_view
 	r.present, b.present = b.present, r.present
+	r.damage, b.damage = b.damage, r.damage
 	r.size, b.size = b.size, r.size
 	r.buffer_size, b.buffer_size = b.buffer_size, r.buffer_size
 	r.source_size, b.source_size = b.source_size, r.source_size
@@ -123,6 +140,7 @@ wgpu_surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 	g := &r.wg
 	wgpu_latency_stop(r)
 	wgpu_drop_frame(r)
+	wgpu_damage_release_target(r)   // the second window's persistent target and verify reference (damage_wgpu.odin)
 	if g.surface != nil { wgpu.SurfaceUnconfigure(g.surface); wgpu.SurfaceRelease(g.surface); g.surface = nil }
 	wgpu_dcomp_destroy(r)   // frees the translucent window's DirectComposition panel, if any (wgpu_dcomp.odin)
 	wgpu_surface_exchange(r, b)

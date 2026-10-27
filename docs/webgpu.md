@@ -73,3 +73,53 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
   `surface_create` (second windows), `set_fixed_surface` and `set_max_frame_latency`. Use the Direct3D 11 backend for those.
 
 Measurements and the recommendation: see the notes of the WebGPU prototype (Wren repository, `docs`), and `CHANGELOG.md`.
+
+## Partial redraw (damage regions)
+
+When only a small part of the window changed since the last frame (a blinking caret, a hovered control, a progress bar,
+a video, a local CSS animation), the renderer can rasterize and present only the changed rectangles instead of the whole
+window. The application marks the changed boxes between `frame_begin` and `frame_submit` (`render/damage.odin`):
+
+```
+render.set_partial_redraw(r, true)         // or draw.set_partial_redraw(c, true)
+...
+render.frame_begin(r, clear)
+render.damage_begin(r)                      // open a region (once; nothing marked = draw nothing)
+render.damage_add(r, {x0, y0, x1, y1})      // each changed rectangle, screen pixels, as many as needed
+render.damage_scroll(r, rect, dx, dy)       // a scrolled view (presented as a block copy where the backend can)
+... draw ...
+render.frame_submit(r, frame)
+render.frame_end(r)
+```
+
+The region is the union of the rectangles, with near ones merged so the list stays bounded (`MAX_DAMAGE_RECTS`). The
+renderer clips every frame-target batch to the region (a batch that touches none of it is skipped) and clears only the
+region; layers and filter passes run whole (they are intermediate images composed back into the frame). A frame that
+opens a region and marks nothing draws and presents nothing. Not calling `damage_begin` means the whole frame is
+damaged, exactly as before: the default is lossless.
+
+Correctness is checked by `render.damage.verify` (`set_damage_verify`, or the environment variable
+`TOOLKIT_DAMAGE_VERIFY=1`): every frame is also rendered in full and compared; the first differing pixel and the
+rectangle it lies in are printed. For development only (it costs a full extra frame and read-backs).
+
+Counters for `wren ctl stats` / diagnostics: `damage_stats(r)` returns the rectangles added and kept, the pixels the
+region covers and the pixels of the whole frame, and whether a region is in effect.
+
+### How each backend presents a partial frame
+
+* **Direct3D 11 / DXGI** (`render/damage_d3d.odin`): `Present1` with `DXGI_PRESENT_PARAMETERS` carries the dirty
+  rectangles (`pDirtyRects`) and, for a scrolled view, the moved block (`pScrollRect` / `pScrollOffset`). A flip swap
+  chain (`FLIP_DISCARD` / `FLIP_SEQUENTIAL`) does **not** keep the back buffer's content between frames: the back buffer
+  just acquired holds some earlier frame, how old depending on the buffer count. So a partial frame redraws not only
+  this frame's region but the **union of the regions of the last `buffer_age` frames** (the buffer-age scheme), so the
+  back buffer holds the same pixels a fully kept buffer would. The age is the swap chain's buffer count (2 or 3); until
+  that many partial frames have been presented, a partial frame falls back to a full one. Tearing presents
+  (`ALLOW_TEARING`) forbid dirty rectangles, so they present in full.
+* **WebGPU / wgpu-native**: the pinned version (29.0.1.1) exposes only `SurfacePresent`, **not** a present-with-damage
+  entry point, and a surface texture does not keep its content between frames either. So the renderer composes every
+  frame into a **persistent render target** kept across frames (`render/damage_wgpu.odin`): a full frame clears it and
+  draws everything; a partial frame loads it (`LoadOp::Load`, keeping the content) and draws only the scissored
+  rectangles. The whole target is then copied to the surface texture and presented in full. **The rasterization is
+  partial (the win: fewer pixels shaded, fewer pictures replayed); the present is full** — the documented limit of this
+  backend until wgpu-native gains present-with-damage. When that lands, the full copy can be replaced by presenting the
+  dirty rectangles, as on Direct3D 11.
