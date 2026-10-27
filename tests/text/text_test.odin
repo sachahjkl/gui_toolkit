@@ -380,3 +380,64 @@ concurrent_measure :: proc(t: ^testing.T) {
 	for th in threads { thread.join(th); thread.destroy(th) }
 	testing.expect_value(t, bad, 0)
 }
+
+// The threads of an application measure with some fonts while its main thread loads and unloads others and clears the
+// word cache (a browser's page thread lays a page out while its interface thread opens and closes a font preview):
+// what the threads measure does not change, and nothing they read is freed under them (run under -sanitize:address).
+@(test)
+concurrent_measure_while_unloading :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	ui := sys(t, s, "Segoe UI")
+	mono, mono_ok := font.load_embedded(s, font.FALLBACK_MONO_DATA)
+	testing.expect(t, mono_ok)
+	cas := font.cascade(s, {{font = mono, ranges = {{'0', '9'}}}, {font = ui}})
+	TEXTS :: [?]string{"Hello world", "caf\u00e9 12 cr\u00e8me", "\u0633\u0644\u0627\u0645 abc", "fi fl ffi 0042", "\u4e2d\u6587"}
+	Job :: struct { s: ^font.State, ui: font.Font_Id, ids: [2]font.Font_Id, want: [2][len(TEXTS)]f32, bad, stop, loads, preview_bad: int }
+	job := new(Job)
+	defer free(job)
+	job^ = Job{s = s, ui = ui, ids = {ui, cas}}
+	for txt, i in TEXTS { job.want[0][i], job.want[1][i] = font.text_width(s, ui, 15, txt), font.text_width(s, cas, 15, txt) }
+	threads: [6]^thread.Thread
+	for &th in threads {
+		th = thread.create_and_start_with_data(job, proc(data: rawptr) {
+			j := (^Job)(data)
+			texts := TEXTS
+			for sync.atomic_load(&j.stop) == 0 {
+				for k in 0 ..< 2 {
+					for txt, i in texts { if font.text_width(j.s, j.ids[k], 15, txt) != j.want[k][i] { sync.atomic_add(&j.bad, 1) } }
+				}
+				free_all(context.temp_allocator)
+			}
+		})
+	}
+	// (the loading runs on a thread too: DirectWrite throws C++ exceptions it catches itself, and the test runner takes
+	// any exception on the test's own thread for a crash)
+	loader := thread.create_and_start_with_data(job, proc(data: rawptr) {
+		j := (^Job)(data)
+		s := j.s
+		want := font.text_width(s, j.ui, 13, "preview 0123")
+		for _ in 0 ..< 300 {
+			bytes := make([]byte, len(font.FALLBACK_UI_DATA))
+			copy(bytes, font.FALLBACK_UI_DATA)
+			id, ok := font.load_from_memory(s, bytes)   // (takes `bytes`)
+			if !ok { continue }
+			j.loads += 1
+			other := font.cascade(s, {{font = id}, {font = j.ui}}, nil, true)
+			// Roboto, not the interface font: measured with its own advances
+			if font.text_width(s, other, 13, "preview 0123") <= 0 || font.text_width(s, id, 13, "preview 0123") == want { j.preview_bad += 1 }
+			if font.text_width(s, id, 13, "preview 0123") <= 0 { j.preview_bad += 1 }
+			font.unload(s, other)
+			font.unload(s, id)
+			if j.loads % 10 == 0 { font.clear_word_cache(s) }
+			free_all(context.temp_allocator)
+		}
+	})
+	thread.join(loader)
+	thread.destroy(loader)
+	sync.atomic_store(&job.stop, 1)
+	for th in threads { thread.join(th); thread.destroy(th) }
+	testing.expect_value(t, job.loads, 300)
+	testing.expect_value(t, job.preview_bad, 0)
+	testing.expect_value(t, job.bad, 0)
+}
