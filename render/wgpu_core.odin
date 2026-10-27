@@ -386,6 +386,18 @@ wgpu_resize :: proc(r: ^Renderer, size: [2]int) {
 	wgpu_configure_surface(r)
 }
 
+// Remake the offscreen target at `size` (a headless window that resized). False (the old one is kept): no device.
+@(private)
+wgpu_resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
+	g := &r.wg
+	if g.surface != nil || g.device == nil { return false }   // a windowed renderer: resize is the one to call
+	if g.frame_rtv != nil { wgpu.TextureViewRelease(g.frame_rtv); g.frame_rtv = nil }
+	if g.frame_tex != nil { wgpu.TextureRelease(g.frame_tex); g.frame_tex = nil }
+	g.frame_acquired = false
+	r.size = size
+	return wgpu_create_offscreen(r)
+}
+
 @(private)
 wgpu_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	if space == r.space { return }
@@ -959,6 +971,7 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(g)
 	readback_device_lost()   // (their buffers are of the device released here)
+	capture_release_device_objects(&r.capture)   // a capture buffer is of the device released here too
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
 	g.shared.lost = false
