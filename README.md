@@ -84,6 +84,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `font` | Text on DirectWrite: system / file / memory faces, cascades with per-character fallback (`unicode-range`, then the system fallback), shaping (OpenType features, ligatures, kerning, complex scripts) with a thread-safe word cache, bidi (UAX #9), line breaks (UAX #14), carets through clusters, grayscale glyph bitmaps at subpixel positions and color glyphs (emoji) in atlas pages, or (`Settings.text_renderer = .Slug`) glyphs drawn on the GPU from their outline curves with the [Slug](https://github.com/EricLengyel/Slug) algorithm (no bitmaps: sharp under any scale, rotation or skew). Embedded fallback fonts (Roboto, Inconsolata). See [docs/text.md](docs/text.md). |
 | `draw` | Rect / glyph run / image primitives; clips (scissor, rounded, ellipse, polygon; transformed), alpha and 2D affine transform stacks, layers with filters (blur, color matrices, drop shadow), blend modes and backdrops, gradients, box shadows, retained pictures (text included: shaped runs, color glyphs) over the renderer. See [docs/draw.md](docs/draw.md). |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
+| `flate` | DEFLATE / zlib / gzip as streams (any chunk size in, the output it allows out), dynamic Huffman codes; pure Odin, any platform. See [docs/flate.md](docs/flate.md). |
 
 ## Features
 
