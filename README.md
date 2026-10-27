@@ -2,7 +2,7 @@
 
 <h1 align="center">gui_toolkit</h1>
 
-<p align="center"><b>Immediate-mode GUI toolkit for Odin, on Direct3D 11.</b></p>
+<p align="center"><b>A fast, native, immediate-mode GUI toolkit.</b></p>
 
 <p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.47.1-1d57ba" alt="version 0.47.1"></a></p>
 
