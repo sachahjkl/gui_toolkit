@@ -95,6 +95,12 @@ foreign dwmapi_display {
 
 // The refresh rate of the window's monitor (cached: cheap to call every frame). `serial` changes when it does.
 display_info :: proc(w: ^Window) -> Display_Info {
+	if w.offscreen {
+		// an emulated display: 60 Hz, no monitor. The headless browser paces its own frames; this only feeds the rate
+		// a page reads (screen.refresh).
+		if w.display.serial == 0 { w.display = {hz = 60, max_hz = 60, source = .Default, serial = 1} }
+		return w.display
+	}
 	mon := win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST)
 	if w.display_stale || rawptr(mon) != w.display.monitor {
 		w.display_stale = false
@@ -150,6 +156,7 @@ mode_max_rate :: proc(device: ^u16) -> (hz: f64) {
 // with E_INVALIDARG): for a window on another monitor there is no answer (ok false; `render.measured_refresh_hz`, the swap
 // chain's own statistics, is the window's). Its count of refreshes is no help: it counts the calls of the process.
 display_live_hz :: proc(w: ^Window) -> (hz: f64, ok: bool) {
+	if w.offscreen { return 0, false }
 	if win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST) != win.MonitorFromPoint({0, 0}, .MONITOR_DEFAULTTOPRIMARY) { return 0, false }
 	ti := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
 	if win.FAILED(DwmGetCompositionTimingInfo(nil, &ti)) || ti.rateRefresh[0] == 0 || ti.rateRefresh[1] == 0 { return 0, false }

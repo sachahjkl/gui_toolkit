@@ -54,8 +54,25 @@ read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	when USE_WGPU { return wgpu_read_pixels(r, allocator) } else { return d3d_read_pixels(r, allocator) }
 }
 
+// Resize the renderer to `size`. For a windowed renderer this resizes the swap chain (Direct3D) or reconfigures the
+// surface (wgpu); for an offscreen renderer (init_offscreen, a headless window) it remakes the offscreen target, so the
+// same call serves both and a headless app resizes its window the usual way.
 resize :: proc(r: ^Renderer, size: [2]int) {
+	if size.x <= 0 || size.y <= 0 || size == r.size { return }
+	if is_offscreen(r) { _ = resize_offscreen(r, size); return }
 	when USE_WGPU { wgpu_resize(r, size) } else { d3d_resize(r, size) }
+}
+
+// Resize an offscreen renderer (init_offscreen): the target is remade at `size`, whatever the backend. A no-op for a
+// renderer with a window (use `resize`). False: the new target could not be made (the old one is kept).
+resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
+	if size.x <= 0 || size.y <= 0 || size == r.size { return size == r.size }
+	when USE_WGPU { return wgpu_resize_offscreen(r, size) } else { return d3d_resize_offscreen(r, size) }
+}
+
+// Whether the renderer draws into an offscreen target (init_offscreen), not a window's swap chain or surface.
+is_offscreen :: proc(r: ^Renderer) -> bool {
+	when USE_WGPU { return r.wg.surface == nil && r.wg.device != nil } else { return r.swapchain == nil && r.offscreen != nil }
 }
 
 // Most frames the swap chain may queue: 1 (the default) keeps the time from input to screen at one frame; 2 or more let

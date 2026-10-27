@@ -591,6 +591,29 @@ create_offscreen_view :: proc(r: ^Renderer) -> bool {
 	return r.rtv != nil
 }
 
+// Remake the offscreen target at `size` (a headless window that resized). The old target, its view and the frame
+// texture are released first. False (the old one is kept): no device, or the new target could not be made.
+@(private)
+d3d_resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
+	if r.offscreen == nil || r.device == nil { return false }
+	r.ctx->OMSetRenderTargets(0, nil, nil)
+	old_tex, old_rtv, old_off := r.frame_tex, r.rtv, r.offscreen
+	prev := r.size
+	r.size = size
+	r.rtv, r.frame_tex, r.offscreen = nil, nil, nil
+	if !create_offscreen_target(r) {
+		// put the old target back: the renderer stays usable
+		r.size = prev
+		r.offscreen, r.frame_tex, r.rtv = old_off, old_tex, old_rtv
+		return false
+	}
+	r.buffer_size, r.source_size = size, size
+	if old_rtv != nil { old_rtv->Release() }
+	if old_tex != nil { old_tex->Release() }
+	if old_off != nil { old_off->Release() }
+	return true
+}
+
 // Changes what the frame blends in (see Blend_Space) and resets the text rendering to that space's default
 // (text_rendering_default; call set_text_rendering afterwards to keep your own). Pooled targets are released (snapshots
 // of the frame are read in its space). Existing RGBA textures keep the space they were stored in and are converted
