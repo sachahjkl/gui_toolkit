@@ -275,6 +275,16 @@ x11_show :: proc(w: ^Window) {
 }
 
 @(private)
+x11_raise :: proc(w: ^Window) {
+	// EWMH _NET_ACTIVE_WINDOW: a ClientMessage to the root asking the window manager to activate this window (source 1 =
+	// an application). Window managers that honour it raise and focus the window; those that do not leave it be.
+	st := x11_state(w)
+	if st == nil { return }
+	x11_send_root_message(x11c.net_active_window, st.id, {1, 0, 0, 0, 0})
+	xcb.flush(x11c.c)
+}
+
+@(private)
 x11_minimize :: proc(w: ^Window) {
 	// WM_CHANGE_STATE to IconicState (3): a ClientMessage to the root window
 	st := x11_state(w)
