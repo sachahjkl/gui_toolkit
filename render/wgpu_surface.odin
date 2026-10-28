@@ -1,11 +1,11 @@
-#+build windows
 package render
 
 // A second window drawn by the same WebGPU renderer (same device, queue, pipelines, textures and fonts): its own wgpu
 // surface with the present and latency state that goes with it. The device objects are shared, so only the surface and
 // the small amount of renderer state that is per-window are swapped by surface_use, mirroring the Direct3D path in
 // surface.odin. Direct3D keeps a swap chain in the Surface struct; here the per-window state is a ^Wgpu_Surface held in
-// Surface.wgpu_backing, so surface.odin stays free of wgpu types.
+// Surface.wgpu_backing, so surface.odin stays free of wgpu types. Neutral: the surface is made from the window's native
+// handles by wgpu_make_surface (HWND + DirectComposition on Windows, Wayland / XCB on Linux).
 //
 // What is per-window (swapped in and out):
 //   * r.wg: surface, surface_format, view_format, frame_tex, frame_rtv, frame_acquired, configured, present_mode,
@@ -16,6 +16,7 @@ package render
 import "core:fmt"
 import win "core:sys/windows"
 import "vendor:wgpu"
+import "toolkit:platform"
 
 @(private)
 Wgpu_Surface :: struct {
@@ -45,6 +46,7 @@ Wgpu_Surface :: struct {
 	buffer_size:    [2]int,
 	source_size:    [2]int,
 	hwnd:           win.HWND,
+	handles:        platform.Surface_Handles,
 	transparent:    bool,
 	space_epoch:    u64,
 }
@@ -77,34 +79,29 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 	r.buffer_size, b.buffer_size = b.buffer_size, r.buffer_size
 	r.source_size, b.source_size = b.source_size, r.source_size
 	r.hwnd, b.hwnd = b.hwnd, r.hwnd
+	r.surface_handles, b.handles = b.handles, r.surface_handles
 	r.transparent, b.transparent = b.transparent, r.transparent
 	r.swap_space, b.space_epoch = b.space_epoch, r.swap_space
 }
 
-// Creates the wgpu surface for `hwnd` on the renderer's device and configures it, leaving the renderer pointed back at
-// its own window. `s.wgpu_backing` then holds the new window's state, ready for surface_use.
+// Creates the wgpu surface for the native handles on the renderer's device and configures it, leaving the renderer
+// pointed back at its own window. `s.wgpu_backing` then holds the new window's state, ready for surface_use.
 @(private)
-wgpu_surface_init :: proc(r: ^Renderer, s: ^Surface, hwnd: win.HWND, size: [2]int, transparent: bool) -> bool {
+wgpu_surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent: bool) -> bool {
 	g := &r.wg
 	if g.device == nil { fmt.eprintln("render: wgpu: no device for a second window"); return false }
 	b := new(Wgpu_Surface)
-	// the renderer's window steps aside while we build the second window's surface on it (create uses r.hwnd / r.transparent,
-	// and configure reads r.size and the formats), then steps back; the second window's state stays in `b`.
+	// the renderer's window steps aside while we build the second window's surface on it (wgpu_make_surface reads
+	// r.transparent, and configure reads r.size and the formats), then steps back; the second window's state stays in `b`.
 	wgpu_surface_exchange(r, b)
-	r.size, r.hwnd, r.transparent, r.swap_space = size, hwnd, transparent, r.space_epoch
+	r.size, r.surface_handles, r.transparent, r.swap_space = size, handles, transparent, r.space_epoch
+	when ODIN_OS == .Windows { r.hwnd = win.HWND(handles.hwnd) }
 	r.present = {}
 	g.surface, g.panel, g.configured, g.frame_acquired = nil, nil, false, false
 	g.latency = {}
 	ok := true
-	if hwnd != nil && r.transparent {
-		g.surface = wgpu_dcomp_surface(r, hwnd)
-		if g.surface == nil { r.transparent = false }   // no DirectComposition: an opaque surface instead
-	}
-	if hwnd != nil && g.surface == nil {
-		src := wgpu.SurfaceSourceWindowsHWND{chain = {sType = .SurfaceSourceWindowsHWND}, hinstance = rawptr(win.GetModuleHandleW(nil)), hwnd = rawptr(hwnd)}
-		g.surface = wgpu.InstanceCreateSurface(g.instance, &{nextInChain = &src.chain})
-		if g.surface == nil { fmt.eprintln("render: wgpu: cannot create the second window's surface"); ok = false }
-	}
+	g.surface = wgpu_make_surface(r, handles)
+	if handles.backend != .None && g.surface == nil { fmt.eprintln("render: wgpu: cannot create the second window's surface"); ok = false }
 	if ok {
 		wgpu_frame_formats(r)   // sets g.surface_format / g.view_format for this surface's transparency and the blend space
 		ok = wgpu_configure_surface(r)

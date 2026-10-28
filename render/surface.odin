@@ -4,6 +4,7 @@ import "core:fmt"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
+import "toolkit:platform"
 
 // A second window drawn by the same renderer (same device, textures, fonts and pipelines): a Surface is a swap chain of its
 // own with the state that goes with it. `surface_use` exchanges it with the renderer's own, so that the calls that follow
@@ -69,8 +70,10 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 
 // The window the renderer holds now was set aside while the device was recreated (recover: only the window in use is remade, with
 // everything else on the device) or the blend space changed: its swap chain and views belong to the old device, or to the old space.
+// Direct3D only (the wgpu surface path refreshes in wgpu_surface_use).
 @(private)
 surface_refresh :: proc(r: ^Renderer) {
+	when !USE_WGPU {
 	if r.swap_gen != r.device_generation {
 		rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
 		old_device: ^d3d11.IDevice   // the device they were made on: they keep it alive
@@ -101,6 +104,7 @@ surface_refresh :: proc(r: ^Renderer) {
 		retarget(r)
 		r.swap_space = r.space_epoch
 	}
+	}
 }
 
 // A swap chain for the window `hwnd`, on the renderer's device. By default an HWND swap chain (opaque): its buffers map onto the
@@ -110,19 +114,20 @@ surface_refresh :: proc(r: ^Renderer) {
 // renderer's own window: the buffers keep that size (the monitor's, say) while the window is resized, shown 1:1 and clipped by the
 // client area, so nothing is ever stretched. Where DirectComposition is missing the surface is an opaque HWND chain, as render.init's.
 // `surface_init` makes it in the Surface `s` points to, where the program keeps it. Prefer it to `surface_create`.
-surface_init :: proc(r: ^Renderer, s: ^Surface, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (ok: bool) {
+surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (ok: bool) {
 	when USE_WGPU {
 		// a second window on WebGPU: its own wgpu surface (and the latency / present state that go with it), swapped with the
 		// renderer's by surface_use, exactly as the Direct3D path swaps its swap chain. fixed_size is Direct3D's composition
 		// trick (buffers kept one size while the window resizes); wgpu reconfigures on resize, so it is ignored here.
 		s^ = {}
-		s.hwnd, s.size, s.transparent = hwnd, size, transparent
-		ok = wgpu_surface_init(r, s, hwnd, size, transparent)
+		when ODIN_OS == .Windows { s.hwnd = win.HWND(handles.hwnd) }
+		s.size, s.transparent = size, transparent
+		ok = wgpu_surface_init(r, s, handles, size, transparent)
 		s.valid = ok
 		return
 	} else {
 		s^ = {}
-		s.hwnd, s.size = hwnd, size
+		s.hwnd, s.size = win.HWND(handles.hwnd), size
 		exchange(r, s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
 		r.transparent = transparent
 		r.fixed_surface = false
@@ -142,8 +147,8 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, hwnd: win.HWND, size: [2]int, tr
 // copied into a field, an optimizing build with debug information (`-o:speed -debug`) splits it into thousands of values with a debug
 // record each, and LLVM spends more than ten minutes on the module (Wren's dev build did, until it called surface_init). New code calls
 // surface_init with the Surface where it lives.
-surface_create :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (s: Surface, ok: bool) {
-	ok = surface_init(r, &s, hwnd, size, transparent, fixed_size)
+surface_create :: proc(r: ^Renderer, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (s: Surface, ok: bool) {
+	ok = surface_init(r, &s, handles, size, transparent, fixed_size)
 	return
 }
 

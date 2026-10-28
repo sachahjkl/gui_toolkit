@@ -1,5 +1,6 @@
 package render
 
+import "core:fmt"
 import "core:os"
 import "core:slice"
 
@@ -276,6 +277,29 @@ damage_verify_env :: proc(d: ^Damage_State) {
 	@(static) state: int   // 0 unknown, 1 off, 2 on
 	if state == 0 { state = os.get_env("TOOLKIT_DAMAGE_VERIFY", context.temp_allocator) != "" ? 2 : 1 }
 	if state == 2 { d.verify = true }
+}
+
+// Compares two BGRA8 frames and, on the first differing pixel, prints it and the damage rectangle it belongs to (or
+// that it lies outside the region: a dirty rectangle is missing). Backend independent (both verify paths call it).
+@(private)
+damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int) {
+	n := min(len(full), len(partial))
+	for i := 0; i + 3 < n; i += 4 {
+		if full[i] == partial[i] && full[i + 1] == partial[i + 1] && full[i + 2] == partial[i + 2] && full[i + 3] == partial[i + 3] { continue }
+		px := i / 4
+		x, y := px % size.x, px / size.x
+		in_region := false
+		which := -1
+		for k in 0 ..< d.render_count {
+			rr := d.render_rects[k]
+			if i32(x) >= rr.x0 && i32(x) < rr.x1 && i32(y) >= rr.y0 && i32(y) < rr.y1 { in_region, which = true, k; break }
+		}
+		fmt.eprintfln(
+			"render.damage.verify: first difference at pixel (%d, %d): full BGRA %v, partial BGRA %v | %s",
+			x, y, full[i:i + 4], partial[i:i + 4],
+			in_region ? fmt.tprintf("inside damage rect %d %v", which, d.render_rects[which]) : "OUTSIDE every damage rectangle (a dirty rectangle is missing)")
+		return
+	}
 }
 
 // True when a batch whose scissor is `clip` (screen pixels x0 y0 x1 y1) touches the damaged region: it must be drawn.

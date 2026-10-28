@@ -1,16 +1,23 @@
-// Package render: Direct3D 11 backend. One instanced-quad pipeline draws everything (see rect.wgsl).
+// Package render: a 2D GPU painter. One instanced-quad pipeline (rect.wgsl) draws everything, through one of two
+// backends chosen at build time: Direct3D 11 (render_d3d.odin, frame.odin, Windows only) or WebGPU (wgpu_*.odin, every
+// system). This file holds the shared types (Rect_Inst, the frame description, the Renderer and Texture_Data structs)
+// and the backend-agnostic procedures (texture bookkeeping, pooled targets, the sRGB conversions, the GPU-timing and
+// presentation accessors). The backend-specific work is dispatched from api.odin by `when USE_WGPU`.
+//
+// The Renderer and Texture_Data structs name Direct3D and DXGI types in some of their fields. Those types and the
+// Win32 types alongside them still compile on every system (the vendor bindings check everywhere; only linking to
+// d3d11.dll is Windows-only), so the structs are shared as they are; the code that calls into Direct3D lives behind
+// `when !USE_WGPU` / in the Windows-only files and is never built elsewhere.
 package render
 
-import "core:fmt"
 import "core:math"
-import "core:mem"
 import "base:runtime"
 import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
-import "vendor:directx/d3d_compiler"
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
+import "toolkit:platform"
 
 // LOW_LATENCY (default on): at most one frame in flight + a waitable swap chain. The app waits for the GPU *before*
 // reading input, so what is drawn is based on the freshest mouse position. With DXGI's default (3 frames queued) a
@@ -436,6 +443,7 @@ Renderer :: struct {
 	fixed_surface: bool,                  // set_fixed_surface: the buffers keep one size while the window resizes
 	surface_max: [2]int,                  // that size
 	hwnd:        win.HWND,
+	surface_handles: platform.Surface_Handles,   // the neutral native handles init was given (wgpu backend; the surface is made from them)
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
 	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
 	dcomp:        ^IDCompositionDevice,
@@ -443,7 +451,7 @@ Renderer :: struct {
 	dcomp_visual: ^IDCompositionVisual,
 	offscreen:   ^d3d11.ITexture2D,      // init_offscreen: the frame target instead of a swap chain
 	warp:        bool,                   // the device is WARP (software)
-	wg:          Wgpu_State,             // TOOLKIT_RENDER=wgpu (wgpu_*.odin); zero otherwise
+	wg:          Wgpu_State,             // the wgpu backend (wgpu_*.odin); zero on the Direct3D backend
 	first_present_noted: bool,
 	capture:     Capture_State,          // capture.odin: reading a frame back
 	damage:      Damage_State,           // damage.odin: partial redraw (dirty rectangles)
@@ -457,213 +465,10 @@ Renderer :: struct {
 	space_epoch: u64,                    // bumps at each set_blend_space
 }
 
-// `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
-// Clear to {0, 0, 0, 0} and draw translucent colours; the output is premultiplied, which is what blending onto a
-// transparent clear produces anyway. `space`: what the frame blends in (set_blend_space changes it later).
-d3d_init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
-	r.hwnd = hwnd
-	r.size = size
-	r.transparent = transparent
-	r.space = space
-	create_device(r, .HARDWARE) or_return
-	create_swapchain(r) or_return
-	return init_pipeline(r)
-}
-
-// The swap chain of the window (a composition one when translucent), its waitable object and the frame's view.
-@(private)
-create_swapchain :: proc(r: ^Renderer) -> bool {
-	hwnd, size, transparent := r.hwnd, r.size, r.transparent
-	dxgi_device: ^dxgi.IDevice
-	r.device->QueryInterface(dxgi.IDevice_UUID, (^rawptr)(&dxgi_device))
-	adapter: ^dxgi.IAdapter
-	dxgi_device->GetAdapter(&adapter)
-	factory: ^dxgi.IFactory2
-	adapter->GetParent(dxgi.IFactory2_UUID, (^rawptr)(&factory))
-	defer { factory->Release(); adapter->Release(); dxgi_device->Release() }
-
-	desc := dxgi.SWAP_CHAIN_DESC1{
-		Width       = surface_creating ? u32(size.x) : 0, Height = surface_creating ? u32(size.y) : 0,   // (a second window: its size, as the window has none yet at that point)
-		Format      = .B8G8R8A8_UNORM,
-		SampleDesc  = {Count = 1},
-		BufferUsage = {.RENDER_TARGET_OUTPUT},
-		BufferCount = u32(clamp(r.swap_buffers, 2, 16) if r.swap_buffers > 0 else 2),
-		// STRETCH: the presented region (SetSourceSize, see resize) maps onto the client area 1:1 when it has the
-		// window's size. (With NONE, DWM drew a source region smaller than the buffers magnified.) A frame that
-		// comes after the window changed size is stretched for the refresh it is shown in.
-		Scaling     = .STRETCH,
-		SwapEffect  = .FLIP_DISCARD,
-		AlphaMode   = .UNSPECIFIED,
-	}
-	when LOW_LATENCY { desc.Flags = {.FRAME_LATENCY_WAITABLE_OBJECT} }
-	// tearing presents (variable refresh) need the flag from creation on; a composition swap chain cannot tear
-	r.present.tearing_ok = !transparent && check_tearing(factory)
-	if r.present.tearing_ok { desc.Flags += {.ALLOW_TEARING} }
-	r.swap_flags = desc.Flags
-	present_reset(r)
-	// translucent: through DirectComposition; where that is missing (Wine, old systems) fall back to an opaque window
-	if transparent && !init_composition(r, factory, dxgi_device, hwnd, desc, size) {
-		fmt.eprintln("render: DirectComposition unavailable, the window is opaque")
-		r.transparent = false
-	}
-	if !r.transparent {
-		if hr := factory->CreateSwapChainForHwnd(r.device, hwnd, &desc, nil, nil, &r.swapchain); win.FAILED(hr) {
-			fmt.eprintln("render: CreateSwapChainForHwnd failed", hr)
-			return false
-		}
-	}
-	factory->MakeWindowAssociation(hwnd, {.NO_ALT_ENTER})
-	when LOW_LATENCY {
-		sc2: ^dxgi.ISwapChain2
-		if win.SUCCEEDED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) {
-			sc2->SetMaximumFrameLatency(1)
-			r.latency_handle = sc2->GetFrameLatencyWaitableObject()
-			sc2->Release()
-		}
-	}
-	create_target(r)
-	r.source_size = r.buffer_size
-	return true
-}
-
-// Releases every GPU object and the renderer's memory (textures still alive included). The renderer can be
-// initialized again afterwards.
-d3d_destroy :: proc(r: ^Renderer) {
-	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
-	canvas_pipeline_release(r)
-	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
-	canvas_pipeline_free(r)
-	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch); delete(r.zeros)
-	for &q in r.gpu_queries { for &x in q { rel(&x) } }
-	profile_destroy(r)
-	video_pipeline_destroy(r)
-	d3d_app_objects_release(r)
-	app_shaders_destroy(r)
-	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
-	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
-	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
-	rel(&r.damage_clear_vb); rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
-	heaps_destroy(r)
-	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
-	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
-	slug_destroy(r)
-	capture_destroy(r)
-	release_presentation(r)
-	if r.latency_handle != nil { win.CloseHandle(r.latency_handle) }
-	present_destroy(r)
-	if r.ctx != nil { r.ctx->ClearState() }
-	rel(&r.ctx); rel(&r.device)
-	r^ = {}
-}
-
-// A renderer without a window: frames are drawn into an offscreen B8G8R8A8 (sRGB) image of `size` that
-// `read_pixels` returns. For tests and image export. `warp`: the software rasterizer (deterministic, no GPU needed).
-d3d_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
-	r.size = size
-	r.space = space
-	r.warp = warp
-	if !create_device(r, warp ? .WARP : .HARDWARE) {
-		if warp || !create_device(r, .WARP) { return false }
-		r.warp = true
-	}
-	create_offscreen_target(r) or_return
-	return init_pipeline(r)
-}
-
-@(private)
-create_offscreen_target :: proc(r: ^Renderer) -> bool {
-	r.device->CreateTexture2D(&{
-		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
-		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.RENDER_TARGET},
-	}, nil, &r.offscreen)
-	if r.offscreen == nil { return false }
-	r.frame_tex = r.offscreen
-	r.frame_tex->AddRef()
-	// typeless storage: the view is chosen by the blend space (like the swap chain's), the readback copies raw bytes
-	return create_offscreen_view(r)
-}
-
-@(private)
-create_offscreen_view :: proc(r: ^Renderer) -> bool {
-	r.frame_format = .B8G8R8A8_TYPELESS
-	r.frame_view = r.space == .Srgb ? .B8G8R8A8_UNORM : .B8G8R8A8_UNORM_SRGB
-	r.device->CreateRenderTargetView(r.offscreen, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
-	return r.rtv != nil
-}
-
-// Remake the offscreen target at `size` (a headless window that resized). The old target, its view and the frame
-// texture are released first. False (the old one is kept): no device, or the new target could not be made.
-@(private)
-d3d_resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
-	if r.offscreen == nil || r.device == nil { return false }
-	r.ctx->OMSetRenderTargets(0, nil, nil)
-	old_tex, old_rtv, old_off := r.frame_tex, r.rtv, r.offscreen
-	prev := r.size
-	r.size = size
-	r.rtv, r.frame_tex, r.offscreen = nil, nil, nil
-	if !create_offscreen_target(r) {
-		// put the old target back: the renderer stays usable
-		r.size = prev
-		r.offscreen, r.frame_tex, r.rtv = old_off, old_tex, old_rtv
-		return false
-	}
-	r.buffer_size, r.source_size = size, size
-	if old_rtv != nil { old_rtv->Release() }
-	if old_tex != nil { old_tex->Release() }
-	if old_off != nil { old_off->Release() }
-	return true
-}
-
-// Changes what the frame blends in (see Blend_Space) and resets the text rendering to that space's default
-// (text_rendering_default; call set_text_rendering afterwards to keep your own). Pooled targets are released (snapshots
-// of the frame are read in its space). Existing RGBA textures keep the space they were stored in and are converted
-// when drawn; layers keep their own. Call it between frames.
-d3d_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
-	if space == r.space { return }
-	previous := r.space
-	r.space = space
-	r.text = text_rendering_default(space)
-	release_targets(r)
-	r.space_epoch += 1
-	retarget(r, previous)
-	r.swap_space = r.space_epoch
-}
-
-// The window the renderer holds draws in `r.space`: its render target view (and, for a translucent window, its buffers' format) is
-// made again. For a window that was set aside (surface_use) while the space changed: surface_refresh, which has no space to go
-// back to. `previous` (set_blend_space): the space to stay in when the buffers cannot take the format.
-@(private)
-retarget :: proc(r: ^Renderer, previous: Maybe(Blend_Space) = nil) {
-	r.ctx->OMSetRenderTargets(0, nil, nil)
-	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
-	if r.swapchain == nil && r.offscreen != nil {
-		create_offscreen_view(r)
-		return
-	}
-	if r.swapchain == nil { return }
-	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
-	if r.transparent {
-		// a translucent window's buffers change format: linear fp16 (scRGB) or 8-bit premultiplied sRGB
-		b := r.buffer_size
-		if b.x <= 0 || b.y <= 0 { b = r.size }
-		if hr := r.swapchain->ResizeBuffers(0, u32(max(b.x, 1)), u32(max(b.y, 1)), composition_format(r.space), r.swap_flags); win.FAILED(hr) {
-			fmt.eprintln("render: ResizeBuffers to the format of the blend space failed", hr)
-			if prev, ok := previous.?; ok {
-				fmt.eprintln("render: staying in", prev)
-				r.space = prev
-				r.text = text_rendering_default(prev)
-			}
-		}
-		set_composition_color_space(r)
-	}
-	create_target(r)
-	if r.transparent {
-		r.source_size = r.buffer_size   // ResizeBuffers presents the whole buffers again
-		if !r.fixed_surface && r.size != r.buffer_size && !set_source_size(r, r.size) { resize_buffers(r, r.size) }
-	}
-}
-
 blend_space :: proc(r: ^Renderer) -> Blend_Space { return r.space }
+
+// True when the window shows through pixels with alpha < 1 (init asked for it and the system supports it).
+is_transparent :: proc(r: ^Renderer) -> bool { return r.transparent }
 
 // Glyph coverage to alpha (see Text_Rendering). Applies to the whole frame, from the next frame_submit.
 set_text_rendering :: proc(r: ^Renderer, t: Text_Rendering) {
@@ -677,258 +482,28 @@ set_text_rendering :: proc(r: ^Renderer, t: Text_Rendering) {
 
 text_rendering :: proc(r: ^Renderer) -> Text_Rendering { return r.text }
 
-// The offscreen image (init_offscreen) after the last frame: RGBA8, sRGB, `size.x * size.y * 4` bytes (whatever the
-// blend space: in Linear the view encodes, in Srgb the values are stored as they are).
-d3d_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
-	if r.offscreen == nil { return nil }
-	staging: ^d3d11.ITexture2D
-	r.device->CreateTexture2D(&{
-		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
-		SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ},
-	}, nil, &staging)
-	if staging == nil { return nil }
-	defer staging->Release()
-	r.ctx->CopyResource(staging, r.offscreen)
-	mapped: d3d11.MAPPED_SUBRESOURCE
-	if win.FAILED(r.ctx->Map(staging, 0, .READ, {}, &mapped)) { return nil }
-	defer r.ctx->Unmap(staging, 0)
-	out := make([]u8, r.size.x * r.size.y * 4, allocator)
-	for y in 0 ..< r.size.y {
-		row := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))), r.size.x * 4)
-		for x in 0 ..< r.size.x {
-			o := (y * r.size.x + x) * 4
-			out[o], out[o + 1], out[o + 2], out[o + 3] = row[x * 4 + 2], row[x * 4 + 1], row[x * 4], row[x * 4 + 3]
-		}
-	}
-	return out
+// Corner shape for every rounded rect: 0 = circular arcs, 1 = squircle (superellipse corners, continuous curvature).
+set_corner_smoothing :: proc(r: ^Renderer, smoothing: f32) { r.corner_smoothing = clamp(smoothing, 0, 1) }
+
+// Call right after reading input: the next present is credited with this time (Displayed_Frame.input), unless
+// set_frame_input gave an earlier one (the time the input arrived).
+mark_input :: proc(r: ^Renderer) {
+	if r.present.input._nsec == 0 { r.present.input = time.tick_now() }
 }
 
-@(private)
-create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
-	feature_levels := [?]d3d11.FEATURE_LEVEL{._11_0}
-	base_device: ^d3d11.IDevice
-	base_ctx: ^d3d11.IDeviceContext
-	// VIDEO_SUPPORT: hardware decoders (Media Foundation / DXVA) work on this device and hand their pictures to it as textures
-	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT, .VIDEO_SUPPORT}
-	when D3D_DEBUG { flags += {.DEBUG} }
-	hr := d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
-	if win.FAILED(hr) && .VIDEO_SUPPORT in flags {
-		// (the software rasterizer has no video support: no hardware decoding there anyway)
-		flags -= {.VIDEO_SUPPORT}
-		hr = d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
-	}
-	if win.FAILED(hr) {
-		fmt.eprintln("render: CreateDevice failed", hr)
-		return false
-	}
-	base_device->QueryInterface(d3d11.IDevice_UUID, (^rawptr)(&r.device))
-	base_ctx->QueryInterface(d3d11.IDeviceContext_UUID, (^rawptr)(&r.ctx))
-	base_device->Release()
-	base_ctx->Release()
-	return true
+// The sRGB transfer functions (IEC 61966-2-1), on one channel in 0..1.
+linear_to_srgb :: proc(l: f32) -> f32 {
+	x := clamp(l, 0, 1)
+	return x <= 0.0031308 ? x * 12.92 : 1.055 * math.pow(x, 1 / 2.4) - 0.055
 }
 
-// Shaders, input layout, constant buffer and fixed states: everything after the device and the frame target.
-@(private)
-init_pipeline :: proc(r: ^Renderer) -> bool {
-	vs_code, vs_blob := shader_code(.Rect_VS) or_return
-	defer shader_code_done(vs_blob)
-	ps_code, ps_blob := shader_code(.Rect_PS) or_return
-	defer shader_code_done(ps_blob)
-	r.device->CreateVertexShader(raw_data(vs_code), uint(len(vs_code)), nil, &r.vs)
-	r.device->CreatePixelShader(raw_data(ps_code), uint(len(ps_code)), nil, &r.ps)
-	if r.vs == nil || r.ps == nil {
-		fmt.eprintln("render: the instanced-quad shaders were refused by the device")
-		return false
-	}
-
-	r.layout = create_instance_layout(r, vs_code)
-	if r.layout == nil { return false }
-
-	r.device->CreateBuffer(&{ByteWidth = size_of(Globals), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.globals)
-	r.device->CreateBuffer(&{ByteWidth = size_of(Replay_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.replay_cb)
-	if r.globals == nil || r.replay_cb == nil { return false }
-
-	bd := d3d11.BLEND_DESC{}
-	bd.RenderTarget[0] = {
-		BlendEnable = true,
-		SrcBlend = .SRC_ALPHA, DestBlend = .INV_SRC_ALPHA, BlendOp = .ADD,
-		SrcBlendAlpha = .ONE, DestBlendAlpha = .INV_SRC_ALPHA, BlendOpAlpha = .ADD,
-		RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL),
-	}
-	r.device->CreateBlendState(&bd, &r.blend)
-	r.device->CreateRasterizerState(&{FillMode = .SOLID, CullMode = .NONE, ScissorEnable = true}, &r.raster)
-	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP}, &r.sampler)
-	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP, MaxLOD = max(f32)}, &r.sampler_img)
-	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .WRAP, AddressV = .WRAP, AddressW = .CLAMP, MaxLOD = max(f32)}, &r.sampler_wrap)
-
-	bd.RenderTarget[0] = {BlendEnable = false, RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL)}
-	r.device->CreateBlendState(&bd, &r.blend_replace)
-	d3d_app_blend_states(r)
-	d3d_app_empty_texture(r)
-	// filter passes and reduced layers: the shader makes the transparent border itself (sample_border: the same code runs on WebGPU)
-	r.device->CreateSamplerState(&{Filter = .MIN_MAG_MIP_LINEAR, AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP}, &r.sampler_border)
-	fx_vs_code, fx_vs_blob := shader_code(.Filter_VS) or_return
-	defer shader_code_done(fx_vs_blob)
-	fx_ps_code, fx_ps_blob := shader_code(.Filter_PS) or_return
-	defer shader_code_done(fx_ps_blob)
-	r.device->CreateVertexShader(raw_data(fx_vs_code), uint(len(fx_vs_code)), nil, &r.fx_vs)
-	r.device->CreatePixelShader(raw_data(fx_ps_code), uint(len(fx_ps_code)), nil, &r.fx_ps)
-	r.device->CreateBuffer(&{ByteWidth = size_of(Pass_Constants), Usage = .DYNAMIC, BindFlags = {.CONSTANT_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.fx_constants)
-	if r.fx_vs == nil || r.fx_ps == nil || r.fx_constants == nil || r.blend_replace == nil || r.sampler_border == nil { return false }
-
-	if len(r.textures) > 0 { return true }   // recover: the settings stay
-	append(&r.textures, Texture_Data{})   // dummy slot 0
-	r.corner_smoothing = 1
-	r.blur_sigma_limit = DEFAULT_BLUR_SIGMA_LIMIT
-	r.text = text_rendering_default(r.space)
-	return true
+srgb_to_linear :: proc(s: f32) -> f32 {
+	x := clamp(s, 0, 1)
+	return x <= 0.04045 ? x / 12.92 : math.pow((x + 0.055) / 1.055, 2.4)
 }
 
-// The input layout of Rect_Inst for the vertex shaders (rect and Slug): nine attributes, naga's semantics (LOC0..LOC8, the
-// @location of the WGSL: eight float4 then the uint4 `extra`).
-@(private)
-create_instance_layout :: proc(r: ^Renderer, vs_code: []u8) -> ^d3d11.IInputLayout {
-	elem :: proc(loc: u32, format: dxgi.FORMAT) -> d3d11.INPUT_ELEMENT_DESC {
-		return {SemanticName = "LOC", SemanticIndex = loc, Format = format, InputSlot = 0, AlignedByteOffset = loc * 16,
-		        InputSlotClass = .INSTANCE_DATA, InstanceDataStepRate = 1}
-	}
-	elems: [9]d3d11.INPUT_ELEMENT_DESC
-	for i in 0 ..< 8 { elems[i] = elem(u32(i), .R32G32B32A32_FLOAT) }
-	elems[8] = elem(8, .R32G32B32A32_UINT)
-	layout: ^d3d11.IInputLayout
-	if hr := r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &layout); win.FAILED(hr) {
-		fmt.eprintln("render: CreateInputLayout failed", hr)
-		return nil
-	}
-	return layout
-}
-
-// The constant buffer of rect.wgsl (register b0), per target.
-@(private)
-Globals :: struct #packed {
-	viewport_size: [2]f32,
-	corner_n, corner_boost: f32,
-	target_origin: [2]f32,
-	target_space: u32,       // Blend_Space of the target being drawn
-	text_gamma: f32,         // 0: no correction; < 0: the sRGB curve; > 0: a power curve
-	text_contrast, text_exponent: f32,
-	_: [2]f32,
-}
-#assert(size_of(Globals) == 48)
-
-// Swap chain format of a translucent window: DWM composes scRGB (linear fp16) in linear light, and 8-bit buffers as
-// premultiplied sRGB values, which is exactly what each blend space produces.
-@(private)
-composition_format :: proc(space: Blend_Space) -> dxgi.FORMAT {
-	return space == .Srgb ? .B8G8R8A8_UNORM : .R16G16B16A16_FLOAT
-}
-
-// Tells DWM how to read a translucent window's buffers: a swap chain keeps its color space through ResizeBuffers, so an
-// fp16 chain switched to 8 bits would still be read as linear (and look washed out).
-@(private)
-set_composition_color_space :: proc(r: ^Renderer) {
-	sc3: ^dxgi.ISwapChain3
-	if r.swapchain == nil || win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain3_UUID, (^rawptr)(&sc3))) { return }
-	sc3->SetColorSpace1(r.space == .Srgb ? .RGB_FULL_G22_NONE_P709 : .RGB_FULL_G10_NONE_P709)
-	sc3->Release()
-}
-
-@(private)
-init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^dxgi.IDevice, hwnd: win.HWND, base: dxgi.SWAP_CHAIN_DESC1, size: [2]int) -> bool {
-	desc := base
-	desc.Width, desc.Height = u32(max(size.x, 1)), u32(max(size.y, 1))
-	desc.Scaling = .STRETCH
-	desc.AlphaMode = .PREMULTIPLIED
-	// Linear: scRGB (linear fp16), composed by DWM in linear light like our blending. Srgb: 8-bit, which DWM takes as
-	// premultiplied sRGB values, our output in that space (a linear output there would look washed out).
-	desc.Format = composition_format(r.space)
-	if win.FAILED(factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain)) { return false }
-	set_composition_color_space(r)
-	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)))
-	ok = ok && win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(hwnd, true, &r.dcomp_target))
-	ok = ok && win.SUCCEEDED(r.dcomp->CreateVisual(&r.dcomp_visual))
-	ok = ok && win.SUCCEEDED(r.dcomp_visual->SetContent((^win.IUnknown)(r.swapchain)))
-	ok = ok && win.SUCCEEDED(r.dcomp_target->SetRoot(r.dcomp_visual))
-	ok = ok && win.SUCCEEDED(r.dcomp->Commit())
-	if !ok {
-		if r.dcomp_visual != nil { r.dcomp_visual->Release(); r.dcomp_visual = nil }
-		if r.dcomp_target != nil { r.dcomp_target->Release(); r.dcomp_target = nil }
-		if r.dcomp != nil { r.dcomp->Release(); r.dcomp = nil }
-		r.swapchain->Release()
-		r.swapchain = nil
-	}
-	return ok
-}
-
-// True when the window shows through pixels with alpha < 1 (init asked for it and the system supports it).
-is_transparent :: proc(r: ^Renderer) -> bool { return r.transparent }
-
-@(private)
-compile :: proc(src: string, entry, target: cstring, name: cstring = "shader.hlsl") -> (blob: ^d3d11.IBlob, ok: bool) {
-	errors: ^d3d11.IBlob
-	hr := d3d_compiler.Compile(raw_data(src), uint(len(src)), name, nil, nil, entry, target, 0, 0, &blob, &errors)
-	if win.FAILED(hr) {
-		if errors != nil {
-			fmt.eprintln("render: shader error:", string(mem.slice_ptr(cast([^]u8)errors->GetBufferPointer(), int(errors->GetBufferSize()))))
-			errors->Release()
-		}
-		return nil, false
-	}
-	return blob, true
-}
-
-@(private)
-create_target :: proc(r: ^Renderer) {
-	backbuffer: ^d3d11.ITexture2D
-	r.swapchain->GetBuffer(0, d3d11.ITexture2D_UUID, (^rawptr)(&backbuffer))
-	// Linear: an sRGB view over a UNORM buffer: the shader writes linear colors, the hardware encodes (and blends in
-	// linear light). Srgb: a UNORM view: the shader writes sRGB values, blended as they are.
-	fp16 := r.transparent && r.space == .Linear
-	r.frame_format = fp16 ? .R16G16B16A16_FLOAT : .B8G8R8A8_UNORM
-	r.frame_view = fp16 ? .R16G16B16A16_FLOAT : (r.space == .Srgb ? .B8G8R8A8_UNORM : .B8G8R8A8_UNORM_SRGB)
-	r.device->CreateRenderTargetView(backbuffer, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
-	// kept for snapshots (backdrop filters, blend modes); with flip swap chains buffer 0 is always the one drawn
-	r.frame_tex = backbuffer
-	// the buffers' own size (resize may keep them larger than what is shown)
-	if backbuffer != nil {
-		desc: d3d11.TEXTURE2D_DESC
-		backbuffer->GetDesc(&desc)
-		r.buffer_size = {int(desc.Width), int(desc.Height)}
-	}
-}
-
-// The window's client area is now `size`. ResizeBuffers is costly (1.6 to 3.5 ms a call: DXGI enumerates the outputs
-// each time), so with a resize slack (set_resize_slack) the buffers are allocated with room to grow and a size that
-// fits in them is only a new source region of the swap chain (IDXGISwapChain2::SetSourceSize, a few microseconds):
-// a window dragged to a new size reallocates once per `slack` pixels crossed instead of at every step. The buffers are
-// made smaller again once they hold more than twice the pixels shown. Without SetSourceSize (or with a slack of 0)
-// the buffers follow the size exactly.
-d3d_resize :: proc(r: ^Renderer, size: [2]int) {
-	if size.x <= 0 || size.y <= 0 || size == r.size || r.swapchain == nil { return }
-	if r.fixed_surface {
-		// The surface keeps its size: the window shows its top-left `size` pixels, 1:1, clipped by the client area (see
-		// set_fixed_surface). Grown beyond the surface, the buffers follow (one step shown scaled by the system).
-		r.size = size
-		if size.x > r.surface_max.x || size.y > r.surface_max.y {
-			r.surface_max = size
-			resize_buffers(r, size)
-		}
-		return
-	}
-	r.size = size
-	slack := resize_slack(r)
-	b := r.buffer_size
-	fits := size.x <= b.x && size.y <= b.y && b.x * b.y <= 2 * size.x * size.y
-	if slack > 0 && fits && set_source_size(r, size) { return }
-	want := size
-	if slack > 0 { want = {(size.x + slack - 1) / slack * slack, (size.y + slack - 1) / slack * slack} }
-	resize_buffers(r, want)
-	if want != size && !set_source_size(r, size) {
-		resize_buffers(r, size)   // no source region here: buffers of the exact size, as without a slack
-		r.resize_slack = -1
-	}
-}
+////////////////////////////////
+// Resize bookkeeping (shared). The swap-chain / surface work itself is per backend (d3d_resize, wgpu_resize).
 
 DEFAULT_RESIZE_SLACK :: 256
 
@@ -936,120 +511,18 @@ DEFAULT_RESIZE_SLACK :: 256
 // size). Default DEFAULT_RESIZE_SLACK. Takes effect at the next resize.
 set_resize_slack :: proc(r: ^Renderer, px: int) { r.resize_slack = px > 0 ? px : -1 }
 
-// Keeps the swap chain's buffers at one size while the window is resized: the window then shows the top-left part of
-// that surface, 1:1, clipped by the client area, and is never scaled (a frame made for the old size is cut, not
-// stretched). Only with a composition swap chain (render.init's `transparent`): an HWND swap chain maps its buffers
-// onto the client area. A window grown beyond `max_size` resizes the buffers to it. False: no composition swap chain.
-d3d_set_fixed_surface :: proc(r: ^Renderer, max_size: [2]int) -> bool {
-	if !r.transparent || r.swapchain == nil || max_size.x <= 0 || max_size.y <= 0 { return false }
-	r.fixed_surface = true
-	r.surface_max = max_size
-	resize_buffers(r, max_size)
-	r.source_size = r.buffer_size
-	return true
-}
-
 @(private)
 resize_slack :: proc(r: ^Renderer) -> int { return r.resize_slack == 0 ? DEFAULT_RESIZE_SLACK : max(r.resize_slack, 0) }
 
 // The size of the swap chain's buffers (at least the presented size; see resize).
 buffer_size :: proc(r: ^Renderer) -> [2]int { return r.buffer_size }
 
-@(private)
-resize_buffers :: proc(r: ^Renderer, size: [2]int) {
-	r.ctx->OMSetRenderTargets(0, nil, nil)
-	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
-	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
-	r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, r.swap_flags)   // flags must match creation
-	create_target(r)
-	r.source_size = r.buffer_size   // ResizeBuffers presents the whole buffers again
-}
+// `destroy` waits at most `ms` milliseconds for the swap chain to be released (0: as long as it takes). A program that ends right
+// after `destroy` sets it, so that a compositor with no time to spare does not hold it up.
+set_teardown_wait :: proc(r: ^Renderer, ms: int) { r.teardown_wait_ms = max(ms, 0) }
 
-// Presents only the region [0, size) of the buffers. false: not available (the buffers must be the size shown).
-@(private)
-set_source_size :: proc(r: ^Renderer, size: [2]int) -> bool {
-	if size == r.source_size { return true }
-	if size.x > r.buffer_size.x || size.y > r.buffer_size.y { return false }
-	sc2: ^dxgi.ISwapChain2
-	if win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) || sc2 == nil { return false }
-	defer sc2->Release()
-	if win.FAILED(sc2->SetSourceSize(u32(size.x), u32(size.y))) { return false }
-	r.source_size = size
-	return true
-}
-
-// A single-channel (coverage) texture, used for the glyph atlas.
-d3d_create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
-	td := Texture_Data{size = size, w = size, h = size, kind = .R8}
-	if !texture_objects(r, &td) { return 0 }
-	return add_texture(r, td)
-}
-
-// The GPU texture and view of an R8 or RGBA texture described by `td` (kind, size, mips, space), contents zeroed
-// (D3D leaves DEFAULT textures undefined). Used by the create procs and to recreate textures after a device loss.
-@(private)
-texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
-	if td.canvas != 0 { return canvas_texture_objects(r, td) }
-	desc := d3d11.TEXTURE2D_DESC{
-		Width = u32(td.w), Height = u32(td.h), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
-		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
-	}
-	texel := 1
-	if td.kind == .RGBA {
-		desc.Format = td.space == .Srgb ? .R8G8B8A8_UNORM : .R8G8B8A8_UNORM_SRGB
-		texel = 4
-		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
-	}
-	if td.kind == .Data {
-		if td.data_format == .RGBA8 { desc.Format, texel = .R8G8B8A8_UNORM, 4 }
-		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
-	}
-	#partial switch td.kind {
-	case .Slug_Curves: desc.Format, texel = .R16G16B16A16_FLOAT, 8
-	case .Slug_Bands: desc.Format, texel = .R16G16_UINT, 4
-	}
-	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
-	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
-	if td.kind == .RGBA {
-		// an image is nearly always written whole right after (update_texture_rgba): the zeroing waits for the first
-		// frame that draws it (zero_unfilled), and not at all when the whole texture is written before that. Zeroing here
-		// took one driver call per row, 1 to 4 ms for a photo.
-		td.unfilled = true
-		td.mips_dirty = false
-		return true
-	}
-	zero := make([]u8, td.w * texel)
-	defer delete(zero)
-	for y in 0 ..< td.h {
-		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(y + 1), back = 1}
-		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(zero), u32(td.w * texel), 0)
-	}
-	td.mips_dirty = td.mips
-	return true
-}
-
-// Writes zeros into an RGBA texture nothing was written to (see Texture_Data.unfilled): one UpdateSubresource of the
-// whole level 0 (its mips follow), through a zeroed buffer made once and kept.
-@(private)
-zero_unfilled :: proc(r: ^Renderer, td: ^Texture_Data) {
-	td.unfilled = false
-	rows := max(1, min(td.h, (1 << 20) / (td.w * 4)))
-	if len(r.zeros) < rows * td.w * 4 { runtime.resize(&r.zeros, rows * td.w * 4); mem.zero_slice(r.zeros[:]) }
-	for y := 0; y < td.h; y += rows {
-		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(min(y + rows, td.h)), back = 1}
-		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.zeros), u32(td.w * 4), 0)
-	}
-	td.mips_dirty = td.mips
-}
-
-d3d_update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
-	if int(t) <= 0 || int(t) >= len(r.textures) || w <= 0 || h <= 0 { return }
-	td := r.textures[int(t)]
-	// (as the other upload: a destroyed texture, a block outside it or pixels too short for it write nothing)
-	if td.tex == nil || x < 0 || y < 0 || x + w > td.w || y + h > td.h || len(pixels) < pitch * (h - 1) + w { return }
-	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
-	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
-}
+////////////////////////////////
+// Textures (bookkeeping shared by both backends; the GPU objects are per backend)
 
 @(private)
 add_texture :: proc(r: ^Renderer, td: Texture_Data) -> Texture {
@@ -1062,16 +535,6 @@ add_texture :: proc(r: ^Renderer, td: Texture_Data) -> Texture {
 	return Texture(len(r.textures) - 1)
 }
 
-// Largest width / height `create_texture_rgba` accepts (from the device's feature level).
-d3d_max_texture_size :: proc(r: ^Renderer) -> int {
-	#partial switch r.device->GetFeatureLevel() {
-	case ._9_1, ._9_2: return 2048
-	case ._9_3: return 4096
-	case ._10_0, ._10_1: return 8192
-	}
-	return d3d11.REQ_TEXTURE2D_U_OR_V_DIMENSION
-}
-
 // Size in texels (0, 0 for an invalid or destroyed texture).
 texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return {} }
@@ -1079,74 +542,24 @@ texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int {
 	return {td.w, td.h}
 }
 
-// A color image for `draw.image`. Contents start transparent; fill it with `update_texture_rgba`.
-// `mips`: allocate a full mip chain, regenerated (GenerateMips) before the next frame that follows an update, so
-// images drawn smaller than their size stay smooth instead of shimmering. Returns 0 when the size is out of range or
-// the device refuses the texture.
-//
-// The texture is stored in the renderer's blend space at creation (texture_space), always with PREMULTIPLIED colors
-// (see update_texture_rgba), so filtering never darkens the edges of transparent areas:
-// - Linear: R8G8B8A8_UNORM_SRGB holding colors premultiplied in linear light: the sampler decodes sRGB to linear
-//   before filtering, so bilinear filtering and mip averaging happen in linear light.
-// - Srgb: R8G8B8A8_UNORM holding sRGB values premultiplied as they are: filtering and mips average sRGB values, as
-//   browsers do.
-// Drawn into a target of the other space, texels are converted by the shader.
-d3d_create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
-	limit := max_texture_size(r)
-	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
-	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = r.space}
-	format: dxgi.FORMAT = td.space == .Srgb ? .R8G8B8A8_UNORM : .R8G8B8A8_UNORM_SRGB
-	support: u32
-	r.device->CheckFormatSupport(format, &support)
-	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
-	if !texture_objects(r, &td) { return 0 }   // starts transparent
-	return add_texture(r, td)
+// How an RGBA texture stores its texels (the renderer's blend space when it was created).
+texture_space :: proc(r: ^Renderer, t: Texture) -> Blend_Space {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return .Linear }
+	return r.textures[int(t)].space
 }
 
-// Uploads a w x h block at (x, y). `pixels`: RGBA8, sRGB encoded, NOT premultiplied (what PNG / JPEG decoders and
-// the web produce); `stride` = bytes per row (0: w * 4). Converted on the CPU to premultiplied alpha in the texture's
-// space: in linear light, re-encoded as sRGB for storage (Linear), or on the sRGB values (Srgb). Opaque pixels go
-// through unchanged.
-d3d_update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
-	if int(t) <= 0 || int(t) >= len(r.textures) { return }
-	td := &r.textures[int(t)]
-	if td.kind != .RGBA || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
-	pitch := stride > 0 ? stride : w * 4
-	if len(pixels) < pitch * (h - 1) + w * 4 { return }
-	if td.unfilled {
-		if x == 0 && y == 0 && w == td.w && h == td.h { td.unfilled = false } else { zero_unfilled(r, td) }
+// Bytes per texel of a texture (render targets and images; 0 for none).
+texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return 0 }
+	switch r.textures[int(t)].kind {
+	case .None: return 0
+	case .R8: return 1
+	case .Data: return r.textures[int(t)].data_format == .R8 ? 1 : 4
+	case .RGBA, .Snapshot, .Slug_Bands: return 4
+	case .Target: return r.textures[int(t)].unorm ? 4 : 8
+	case .Slug_Curves: return 8
 	}
-	data, row, _ := premultiply_upload(r, td, w, h, pixels, pitch)
-	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
-	r.ctx->UpdateSubresource(td.tex, 0, &box, data, u32(row), 0)
-	if td.mips { td.mips_dirty = true }
-}
-
-// A data texture: raw 8-bit values the shaders of draw.app_shader read as they are (a normal map, a height map, a mask): no
-// sRGB decoding, no premultiplication, in either blend space. Contents start at zero. Same limits and mip behavior as
-// create_texture_rgba (`mips`: a full chain, rebuilt before the next frame after an update; a box filter, so normal maps
-// lose a little length in the small levels).
-d3d_create_texture_data :: proc(r: ^Renderer, w, h: int, format: Data_Format, mips: bool) -> Texture {
-	limit := max_texture_size(r)
-	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
-	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .Data, data_format = format}
-	support: u32
-	r.device->CheckFormatSupport(format == .R8 ? .R8_UNORM : .R8G8B8A8_UNORM, &support)
-	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
-	if !texture_objects(r, &td) { return 0 }
-	return add_texture(r, td)
-}
-
-d3d_update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride: int) {
-	if int(t) <= 0 || int(t) >= len(r.textures) { return }
-	td := &r.textures[int(t)]
-	texel := td.data_format == .R8 ? 1 : 4
-	if td.kind != .Data || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
-	pitch := stride > 0 ? stride : w * texel
-	if len(pixels) < pitch * (h - 1) + w * texel { return }
-	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
-	r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(pixels), u32(pitch), 0)
-	if td.mips { td.mips_dirty = true }
+	return 0
 }
 
 // True when every pixel of the block has alpha 255 (RGBA8 rows `pitch` bytes apart): an opaque image needs no conversion.
@@ -1218,28 +631,52 @@ premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: [
 	return raw_data(r.scratch), w * 4, w * h * 4
 }
 
-// How an RGBA texture stores its texels (the renderer's blend space when it was created).
-texture_space :: proc(r: ^Renderer, t: Texture) -> Blend_Space {
-	if int(t) <= 0 || int(t) >= len(r.textures) { return .Linear }
-	return r.textures[int(t)].space
+@(private) LINEAR_STEPS :: 4096
+@(private) srgb_to_linear_table: [256]f32
+@(private) linear_to_srgb_table: [LINEAR_STEPS]u8
+@(private) srgb_tables_ready: bool
+
+@(private)
+srgb_tables_init :: proc() {
+	if srgb_tables_ready { return }
+	for i in 0 ..< 256 {
+		c := f32(i) / 255
+		srgb_to_linear_table[i] = c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4)
+	}
+	for i in 0 ..< LINEAR_STEPS {
+		l := f32(i) / (LINEAR_STEPS - 1)
+		s := l <= 0.0031308 ? l * 12.92 : 1.055 * math.pow(l, 1 / 2.4) - 0.055
+		linear_to_srgb_table[i] = u8(clamp(s * 255 + 0.5, 0, 255))
+	}
+	srgb_tables_ready = true
 }
 
-// Frees the GPU texture; the handle may be reused by a later create. Drawing a destroyed texture draws nothing.
-d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
-	if int(t) <= 0 || int(t) >= len(r.textures) { return }
-	td := &r.textures[int(t)]
-	if td.kind == .None { return }
-	if td.canvas == 2 { canvas_state_free(r, t) }
-	td = &r.textures[int(t)]
-	if td.rtv != nil { td.rtv->Release() }
-	if td.view != nil { td.view->Release() }
-	if td.tex != nil { td.tex->Release() }
-	td^ = {}
-	append(&r.free_textures, t)
+// GPU memory of the textures the renderer made, by kind, in bytes (mip chains included).
+Texture_Memory :: struct { glyphs, images, targets, count: int, slug: int }
+
+texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
+	for td, i in r.textures {
+		if i == 0 || (td.tex == nil && td.wtex == nil) { continue }
+		m.count += 1
+		switch td.kind {
+		case .None:
+		case .R8: m.glyphs += td.size * td.size
+		case .RGBA:
+			n := td.w * td.h * 4
+			m.images += td.mips ? n * 4 / 3 : n
+		case .Data:
+			n := td.w * td.h * (td.data_format == .R8 ? 1 : 4)
+			m.images += td.mips ? n * 4 / 3 : n
+		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : 8)
+		case .Slug_Curves: m.slug += td.w * td.h * 8
+		case .Slug_Bands: m.slug += td.w * td.h * 4
+		}
+	}
+	return
 }
 
 ////////////////////////////////
-// Layer targets
+// Layer targets (pool shared by both backends; the GPU objects are made per backend)
 
 @(private)
 Pooled_Target :: struct {
@@ -1323,20 +760,6 @@ unkeep_target :: proc(r: ^Renderer, t: Texture) {
 // Changes whenever pooled textures were destroyed wholesale (release_targets, device recovery): kept textures of an
 // older generation are gone.
 targets_generation :: proc(r: ^Renderer) -> u64 { return r.targets_gen }
-
-// Bytes per texel of a texture (render targets and images; 0 for none).
-texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
-	if int(t) <= 0 || int(t) >= len(r.textures) { return 0 }
-	switch r.textures[int(t)].kind {
-	case .None: return 0
-	case .R8: return 1
-	case .Data: return r.textures[int(t)].data_format == .R8 ? 1 : 4
-	case .RGBA, .Snapshot, .Slug_Bands: return 4
-	case .Target: return r.textures[int(t)].unorm ? 4 : 8
-	case .Slug_Curves: return 8
-	}
-	return 0
-}
 
 @(private)
 acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false, mips := false) -> Texture {
@@ -1432,73 +855,8 @@ kept_targets_bytes :: proc(r: ^Renderer) -> int {
 	return n
 }
 
-@(private) LINEAR_STEPS :: 4096
-@(private) srgb_to_linear_table: [256]f32
-@(private) linear_to_srgb_table: [LINEAR_STEPS]u8
-@(private) srgb_tables_ready: bool
-
-@(private)
-srgb_tables_init :: proc() {
-	if srgb_tables_ready { return }
-	for i in 0 ..< 256 {
-		c := f32(i) / 255
-		srgb_to_linear_table[i] = c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4)
-	}
-	for i in 0 ..< LINEAR_STEPS {
-		l := f32(i) / (LINEAR_STEPS - 1)
-		s := l <= 0.0031308 ? l * 12.92 : 1.055 * math.pow(l, 1 / 2.4) - 0.055
-		linear_to_srgb_table[i] = u8(clamp(s * 255 + 0.5, 0, 255))
-	}
-	srgb_tables_ready = true
-}
-
-// Corner shape for every rounded rect: 0 = circular arcs, 1 = squircle (superellipse corners, continuous curvature).
-set_corner_smoothing :: proc(r: ^Renderer, smoothing: f32) { r.corner_smoothing = clamp(smoothing, 0, 1) }
-
-// Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
-// polling input and building the UI: then the frame you build is the next one shown.
-// (platform.wait_handle on frame_waitable does the same while taking the window's input as it arrives.)
-d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
-	if r.latency_handle == nil { return true }
-	latency_drain(&r.present, r.latency_handle)
-	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
-}
-
-// Call right after reading input: the next present is credited with this time (Displayed_Frame.input), unless
-// set_frame_input gave an earlier one (the time the input arrived).
-mark_input :: proc(r: ^Renderer) {
-	if r.present.input._nsec == 0 { r.present.input = time.tick_now() }
-}
-
-// Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
-d3d_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
-	if r.lost && !recover(r) { return }
-	c := clear
-	if r.space == .Srgb && c.a > 0 {
-		for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a }
-	}
-	// A partial frame does not clear the whole back buffer: the kept content outside the region must survive (the
-	// region is cleared per rectangle in d3d_frame_submit, inside the scissor). The decision waits for frame_submit
-	// (damage_resolve may still fall back to a full frame); frame_begin only remembers the colour.
-	if r.damage.mode == .On && r.damage.building {
-		r.damage.clear = c
-		r.damage.have_clear = true
-		return
-	}
-	r.damage.have_clear = false
-	r.ctx->ClearRenderTargetView(r.rtv, &c)
-}
-
-// The sRGB transfer functions (IEC 61966-2-1), on one channel in 0..1.
-linear_to_srgb :: proc(l: f32) -> f32 {
-	x := clamp(l, 0, 1)
-	return x <= 0.0031308 ? x * 12.92 : 1.055 * math.pow(x, 1 / 2.4) - 0.055
-}
-
-srgb_to_linear :: proc(s: f32) -> f32 {
-	x := clamp(s, 0, 1)
-	return x <= 0.04045 ? x / 12.92 : math.pow((x + 0.055) / 1.055, 2.4)
-}
+////////////////////////////////
+// GPU timing accessors (shared; the measurement itself is per backend)
 
 // GPU time of frame_submit (milliseconds) for a frame a few frames back; 0 when nothing is measured (neither
 // -define:GPU_TIMING=true nor set_gpu_timing).
@@ -1518,172 +876,15 @@ gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
 	return r.gpu_last_ms, r.gpu_last_frame - 1, true
 }
 
-// GPU memory of the textures the renderer made, by kind, in bytes (mip chains included).
-Texture_Memory :: struct { glyphs, images, targets, count: int, slug: int }
-
-texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
-	for td, i in r.textures {
-		if i == 0 || (td.tex == nil && td.wtex == nil) { continue }
-		m.count += 1
-		switch td.kind {
-		case .None:
-		case .R8: m.glyphs += td.size * td.size
-		case .RGBA:
-			n := td.w * td.h * 4
-			m.images += td.mips ? n * 4 / 3 : n
-		case .Data:
-			n := td.w * td.h * (td.data_format == .R8 ? 1 : 4)
-			m.images += td.mips ? n * 4 / 3 : n
-		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : 8)
-		case .Slug_Curves: m.slug += td.w * td.h * 8
-		case .Slug_Bands: m.slug += td.w * td.h * 4
-		}
-	}
-	return
-}
-
+// The constant buffer of rect.wgsl (register b0), per target. Shared: both backends fill it (frame.odin, wgpu_frame.odin).
 @(private)
-gpu_timing_begin :: proc(r: ^Renderer) {
-	q := &r.gpu_queries[r.gpu_frame % GPU_QUERY_FRAMES]
-	if q[0] == nil {
-		r.device->CreateQuery(&{Query = .TIMESTAMP_DISJOINT}, &q[0])
-		r.device->CreateQuery(&{Query = .TIMESTAMP}, &q[1])
-		r.device->CreateQuery(&{Query = .TIMESTAMP}, &q[2])
-	} else if r.gpu_frame >= GPU_QUERY_FRAMES {
-		// this slot was issued GPU_QUERY_FRAMES frames ago: its results are (almost always) ready
-		dj: d3d11.QUERY_DATA_TIMESTAMP_DISJOINT
-		t0, t1: u64
-		if r.ctx->GetData((^d3d11.IAsynchronous)(q[0]), &dj, size_of(dj), 0) == 0 &&
-		   r.ctx->GetData((^d3d11.IAsynchronous)(q[1]), &t0, size_of(t0), 0) == 0 &&
-		   r.ctx->GetData((^d3d11.IAsynchronous)(q[2]), &t1, size_of(t1), 0) == 0 && !bool(dj.Disjoint) && dj.Frequency > 0 {
-			r.gpu_last_ms = f32(f64(t1 - t0) * 1000 / f64(dj.Frequency))
-			r.gpu_last_frame = r.gpu_frame - GPU_QUERY_FRAMES + 1
-			profile_collect(r, r.gpu_frame % GPU_QUERY_FRAMES, r.gpu_frame - GPU_QUERY_FRAMES, t0, dj.Frequency, r.gpu_last_ms)
-		}
-	}
-	r.ctx->Begin((^d3d11.IAsynchronous)(q[0]))
-	r.ctx->End((^d3d11.IAsynchronous)(q[1]))
-	profile_begin(r, r.gpu_frame % GPU_QUERY_FRAMES)
+Globals :: struct #packed {
+	viewport_size: [2]f32,
+	corner_n, corner_boost: f32,
+	target_origin: [2]f32,
+	target_space: u32,       // Blend_Space of the target being drawn
+	text_gamma: f32,         // 0: no correction; < 0: the sRGB curve; > 0: a power curve
+	text_contrast, text_exponent: f32,
+	_: [2]f32,
 }
-
-@(private)
-gpu_timing_end :: proc(r: ^Renderer) {
-	profile_end(r)
-	q := &r.gpu_queries[r.gpu_frame % GPU_QUERY_FRAMES]
-	r.ctx->End((^d3d11.IAsynchronous)(q[2]))
-	r.ctx->End((^d3d11.IAsynchronous)(q[0]))
-	r.gpu_frame += 1
-}
-
-@(private)
-texture_view :: proc(r: ^Renderer, t: Texture) -> ^d3d11.IShaderResourceView {
-	return int(t) > 0 && int(t) < len(r.textures) ? r.textures[int(t)].view : nil
-}
-
-// A raw view of `bytes` bytes of a buffer made with BUFFER_ALLOW_RAW_VIEWS: what a WGSL `var<storage, read>` array becomes in
-// naga's HLSL (a ByteAddressBuffer, read with Load / Load2 / Load4).
-@(private)
-raw_buffer_view :: proc(r: ^Renderer, buf: ^d3d11.IBuffer, bytes: int) -> ^d3d11.IShaderResourceView {
-	if buf == nil { return nil }
-	srv := d3d11.SHADER_RESOURCE_VIEW_DESC{Format = .R32_TYPELESS, ViewDimension = .BUFFEREX}
-	srv.BufferEx = {FirstElement = 0, NumElements = u32(bytes / 4), Flags = {.RAW}}
-	view: ^d3d11.IShaderResourceView
-	r.device->CreateShaderResourceView(buf, &srv, &view)
-	return view
-}
-
-// (Re)creates a dynamic raw buffer (the tables of the frame) and its view when `n` elements do not fit, then uploads `data`.
-@(private)
-upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.IShaderResourceView, cap: ^int, data: rawptr, n, stride: int) {
-	if buf^ == nil || n > cap^ {
-		if view^ != nil { view^->Release(); view^ = nil }
-		if buf^ != nil { buf^->Release(); buf^ = nil }
-		cap^ = max(n, cap^ * 2, 64)
-		r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
-			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)
-		view^ = raw_buffer_view(r, buf^, cap^ * stride)
-	}
-	if n == 0 { return }
-	mapped: d3d11.MAPPED_SUBRESOURCE
-	r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)
-	mem.copy(mapped.pData, data, n * stride)
-	r.ctx->Unmap(buf^, 0)
-}
-
-// Presents the frame: `vsync` false presents at once (with tearing where supported) whatever set_present_mode says.
-d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
-	if r.swapchain == nil {   // offscreen: no present to tell, ask
-		r.ctx->Flush()
-		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
-		return
-	}
-	if hr := d3d_present_partial(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
-		r.lost = true
-	}
-}
-
-// Most frames the swap chain may queue (IDXGISwapChain2::SetMaximumFrameLatency; see api.set_max_frame_latency).
-d3d_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
-	if r.swapchain == nil { return false }
-	sc2: ^dxgi.ISwapChain2
-	if win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) || sc2 == nil { return false }
-	defer sc2->Release()
-	frames := clamp(n, 1, 16)
-	if win.FAILED(sc2->SetMaximumFrameLatency(u32(frames))) { return false }
-	latency_lowered(&r.present, frames)
-	return true
-}
-
-// What presents the frame (the swap chain and, for a translucent window, its DirectComposition objects) is released. Releasing a
-// swap chain waits for the compositor to let go of the window's surface, and the compositor is another program: a machine whose
-// cores are all busy made that wait seconds. With `set_teardown_wait` the release runs on a thread of its own and `destroy` waits
-// for it that long at most: past it the release goes on by itself (the device stays alive until the last object is released, and a
-// program that is ending takes the rest with it).
-@(private)
-release_presentation :: proc(r: ^Renderer) {
-	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
-	if r.teardown_wait_ms <= 0 || r.swapchain == nil {
-		rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
-		return
-	}
-	a := new(Async_Release, runtime.heap_allocator())
-	a^ = {visual = r.dcomp_visual, target = r.dcomp_target, dcomp = r.dcomp, swapchain = r.swapchain}
-	r.dcomp_visual, r.dcomp_target, r.dcomp, r.swapchain = nil, nil, nil, nil
-	a.done = win.CreateEventW(nil, true, false, nil)
-	thread := win.CreateThread(nil, 0, async_release_main, a, 0, nil)
-	if thread == nil {
-		async_release_main(a)   // (no thread: here, and wait as before)
-		win.CloseHandle(a.done)
-		free(a, runtime.heap_allocator())
-		return
-	}
-	win.CloseHandle(thread)
-	if win.WaitForSingleObject(a.done, win.DWORD(r.teardown_wait_ms)) == win.WAIT_OBJECT_0 {
-		win.CloseHandle(a.done)
-		free(a, runtime.heap_allocator())
-	}   // else: the thread finishes alone (and keeps `a` and the event: a few bytes, in a program that is ending)
-}
-
-@(private)
-Async_Release :: struct {
-	visual:    ^IDCompositionVisual,
-	target:    ^IDCompositionTarget,
-	dcomp:     ^IDCompositionDevice,
-	swapchain: ^dxgi.ISwapChain1,
-	done:      win.HANDLE,
-}
-
-@(private)
-async_release_main :: proc "system" (p: rawptr) -> win.DWORD {
-	a := (^Async_Release)(p)
-	if a.visual != nil { a.visual->Release() }
-	if a.target != nil { a.target->Release() }
-	if a.dcomp != nil { a.dcomp->Release() }
-	if a.swapchain != nil { a.swapchain->Release() }
-	win.SetEvent(a.done)
-	return 0
-}
-
-// `destroy` waits at most `ms` milliseconds for the swap chain to be released (0: as long as it takes). A program that ends right
-// after `destroy` sets it, so that a compositor with no time to spare does not hold it up.
-set_teardown_wait :: proc(r: ^Renderer, ms: int) { r.teardown_wait_ms = max(ms, 0) }
+#assert(size_of(Globals) == 48)

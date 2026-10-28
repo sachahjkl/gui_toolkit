@@ -94,7 +94,7 @@ main :: proc() {
 	app.win = platform.open_window("Hello, gui_toolkit", {640, 400})
 	if app.win == nil { fmt.eprintln("hello: no window"); os.exit(1) }
 	defer platform.destroy_window(app.win)
-	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("hello: no renderer"); os.exit(1) }
+	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("hello: no renderer"); os.exit(1) }
 	defer render.destroy(&app.r)
 	ok: bool
 	app.font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
