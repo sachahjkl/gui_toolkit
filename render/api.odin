@@ -4,28 +4,43 @@ import "core:fmt"
 import "core:os"
 import "core:sync"
 import "core:time"
-import win "core:sys/windows"
+import "toolkit:platform"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
-//   -define:TOOLKIT_RENDER=d3d11   Direct3D 11 (render.odin, frame.odin; the HLSL naga writes from the WGSL)   the default
+//   -define:TOOLKIT_RENDER=d3d11   Direct3D 11 (render.odin, frame.odin; the HLSL naga writes from the WGSL)   the default on Windows
 //   -define:TOOLKIT_RENDER=wgpu    WebGPU through wgpu-native (wgpu_*.odin; the WGSL as it is)
 // The procedures below are the ones whose work depends on the backend; each calls its d3d_* or wgpu_* implementation.
 // Only the chosen one is compiled into the program (`when` is resolved at compile time). Everything else in this
 // package (the frame description, texture pools, retained heap bookkeeping, presentation statistics, text rendering
 // settings) is shared.
+//
+// Direct3D 11 is a Windows-only backend (render.odin and the files it needs are built #+build windows). On every other
+// system the only backend is wgpu, so TOOLKIT_RENDER is ignored there and USE_WGPU is forced on: a program compiled for
+// Linux renders through wgpu-native (Vulkan) from the neutral surface handles the platform package hands over
+// (platform.Surface_Handles), with no Direct3D, DXGI or Win32 type in the public API.
 
-RENDER_BACKEND :: #config(TOOLKIT_RENDER, "d3d11")
+RENDER_BACKEND :: #config(TOOLKIT_RENDER, "d3d11") when ODIN_OS == .Windows else "wgpu"
 USE_WGPU :: RENDER_BACKEND == "wgpu"
 #assert(RENDER_BACKEND == "d3d11" || RENDER_BACKEND == "wgpu", "TOOLKIT_RENDER must be d3d11 or wgpu")
+#assert(ODIN_OS == .Windows || USE_WGPU, "the Direct3D 11 backend is Windows only; other systems use wgpu")
 
 // The backend this program was built with: "d3d11" or "wgpu".
 backend_name :: proc() -> string { return RENDER_BACKEND }
 
-init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+// Opens the renderer on a window from the neutral native handles the platform package fills (platform.Surface_Handles,
+// from platform.native_surface_handles(window)): the HWND on Windows, the Wayland or XCB handles on Linux. An offscreen
+// window has no handles (backend .None): use init_offscreen instead. `transparent`: the window shows through where the
+// frame has alpha < 1 (open the window translucent too). `space`: what the frame blends in.
+init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
 	ok: bool
-	when USE_WGPU { ok = wgpu_init(r, hwnd, size, transparent, space) } else { ok = d3d_init(r, hwnd, size, transparent, space) }
+	when USE_WGPU { ok = wgpu_init(r, surface, size, transparent, space) } else { ok = d3d_init(r, surface, size, transparent, space) }
 	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 }
 	return ok
+}
+
+// init from a window directly: the common case, equivalent to init(r, platform.native_surface_handles(w), ...).
+init_window :: proc(r: ^Renderer, w: ^platform.Window, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+	return init(r, platform.native_surface_handles(w), size, transparent, space)
 }
 
 @(private) renderer_ids: u64
@@ -143,12 +158,9 @@ frame_end :: proc(r: ^Renderer, vsync := true) {
 	if !r.first_present_noted {
 		r.first_present_noted = true
 		if render_trace() {
-			created, exited, kernel, user: win.FILETIME
-			now: win.FILETIME
-			win.GetProcessTimes(win.GetCurrentProcess(), &created, &exited, &kernel, &user)
-			win.GetSystemTimeAsFileTime(&now)
-			ft :: proc(f: win.FILETIME) -> u64 { return u64(f.dwHighDateTime) << 32 | u64(f.dwLowDateTime) }
-			fmt.eprintfln("render: first present %.0f ms after the process started (backend %s)", f64(ft(now) - ft(created)) / 1e4, RENDER_BACKEND)
+			if ms := process_uptime_ms(); ms >= 0 {
+				fmt.eprintfln("render: first present %.0f ms after the process started (backend %s)", ms, RENDER_BACKEND)
+			}
 		}
 	}
 }

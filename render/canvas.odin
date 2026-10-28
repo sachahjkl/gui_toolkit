@@ -99,6 +99,10 @@ canvas_texture_create :: proc(r: ^Renderer, w, h: int, target: bool, mips := tru
 	when USE_WGPU { return 0 } else { return d3d_canvas_texture_create(r, w, h, target, mips) }
 }
 
+// Everything below is the Direct3D 11 implementation (the wgpu backend has no 2D canvas yet: the public procedures
+// above answer "not supported"). It is built on Windows only, behind `when !USE_WGPU`.
+when !USE_WGPU {
+
 d3d_canvas_texture_create :: proc(r: ^Renderer, w, h: int, target, mips: bool) -> Texture {
 	if r.device == nil || r.lost { return 0 }
 	limit := max_texture_size(r)
@@ -121,11 +125,11 @@ canvas_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	if td.canvas >= 2 || td.mips { desc.BindFlags += {.RENDER_TARGET} }
 	if td.mips { desc.MiscFlags = {.GENERATE_MIPS} }
 	td.tex, td.view, td.rtv = nil, nil, nil
-	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
-	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
+	if hr_failed(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
+	if hr_failed(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
 	if .RENDER_TARGET in desc.BindFlags {
 		rd := d3d11.RENDER_TARGET_VIEW_DESC{Format = desc.Format, ViewDimension = .TEXTURE2D}
-		if win.FAILED(r.device->CreateRenderTargetView(td.tex, &rd, &td.rtv)) {
+		if hr_failed(r.device->CreateRenderTargetView(td.tex, &rd, &td.rtv)) {
 			td.view->Release(); td.tex->Release()
 			td.tex, td.view, td.rtv = nil, nil, nil
 			return false
@@ -137,6 +141,8 @@ canvas_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	return true
 }
 
+}   // when !USE_WGPU
+
 canvas_texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int { return texture_size(r, t) }
 
 // Replaces a w x h block at (x, y) of a canvas texture with premultiplied sRGB-encoded RGBA8 `pixels` (rows of `stride` bytes,
@@ -145,6 +151,7 @@ canvas_upload :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, s
 	when USE_WGPU { return false } else { return d3d_canvas_upload(r, t, x, y, w, h, pixels, stride) }
 }
 
+when !USE_WGPU {
 d3d_canvas_upload :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride: int) -> bool {
 	if int(t) <= 0 || int(t) >= len(r.textures) || r.lost { return false }
 	td := &r.textures[int(t)]
@@ -158,6 +165,7 @@ d3d_canvas_upload :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u
 	r.canvas.stats.upload_bytes += w * h * 4
 	return true
 }
+}   // when !USE_WGPU
 
 // Marks a texture whose level 0 changed so its mip levels are rebuilt before it is sampled (a source filled by canvas_upload
 // does it itself).
@@ -172,11 +180,14 @@ canvas_supported :: proc(r: ^Renderer) -> bool {
 
 // Declares that a canvas texture has no alpha channel (getContext("2d", { alpha: false })): draws leave alpha alone.
 canvas_set_opaque :: proc(r: ^Renderer, t: Texture, opaque: bool) {
-	if int(t) <= 0 || int(t) >= len(r.textures) { return }
-	s := canvas_state(r, t)
-	s.opaque = opaque
+	when !USE_WGPU {
+		if int(t) <= 0 || int(t) >= len(r.textures) { return }
+		s := canvas_state(r, t)
+		s.opaque = opaque
+	}
 }
 
+when !USE_WGPU {
 @(private)
 canvas_state :: proc(r: ^Renderer, t: Texture) -> ^Canvas_State {
 	cp := &r.canvas
@@ -238,7 +249,7 @@ canvas_pipeline_init :: proc(r: ^Renderer) -> bool {
 	elems: [6]d3d11.INPUT_ELEMENT_DESC
 	for i in 0 ..< 5 { elems[i] = elem(u32(i), .R32G32B32A32_FLOAT) }
 	elems[5] = elem(5, .R32G32B32A32_UINT)
-	if win.FAILED(r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &cp.layout)) {
+	if hr_failed(r.device->CreateInputLayout(&elems[0], len(elems), raw_data(vs_code), uint(len(vs_code)), &cp.layout)) {
 		fmt.eprintln("render: CreateInputLayout failed (canvas)")
 		return false
 	}
@@ -354,12 +365,12 @@ canvas_buf_upload :: proc(r: ^Renderer, b: ^Canvas_Buf, data: rawptr, bytes: int
 		b.cap = (b.cap + 15) / 16 * 16
 		desc := d3d11.BUFFER_DESC{ByteWidth = u32(b.cap), Usage = .DYNAMIC, CPUAccessFlags = {.WRITE}}
 		if vertex { desc.BindFlags = {.VERTEX_BUFFER} } else { desc.BindFlags, desc.MiscFlags = {.SHADER_RESOURCE}, {.BUFFER_ALLOW_RAW_VIEWS} }
-		if win.FAILED(r.device->CreateBuffer(&desc, nil, &b.buf)) { b.buf, b.cap = nil, 0; return false }
+		if hr_failed(r.device->CreateBuffer(&desc, nil, &b.buf)) { b.buf, b.cap = nil, 0; return false }
 		if !vertex { b.view = raw_buffer_view(r, b.buf, b.cap) }
 	}
 	if bytes <= 0 { return true }
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if win.FAILED(r.ctx->Map(b.buf, 0, .WRITE_DISCARD, {}, &mapped)) { return false }
+	if hr_failed(r.ctx->Map(b.buf, 0, .WRITE_DISCARD, {}, &mapped)) { return false }
 	mem.copy(mapped.pData, data, bytes)
 	r.ctx->Unmap(b.buf, 0)
 	return true
@@ -398,6 +409,7 @@ pool_recycle :: proc(r: ^Renderer) {
 		}
 	}
 }
+}   // when !USE_WGPU
 
 // Bytes the canvas renderer's pooled textures hold.
 canvas_pool_bytes :: proc(r: ^Renderer) -> int {
@@ -416,6 +428,10 @@ canvas_stats_reset :: proc(r: ^Renderer) { r.canvas.stats = {} }
 canvas_submit :: proc(r: ^Renderer, target: Texture, list: ^Canvas_List) -> bool {
 	when USE_WGPU { return false } else { return d3d_canvas_submit(r, target, list) }
 }
+
+// The Direct3D 11 canvas execution (Canvas_Exec, d3d_canvas_submit and its exec_* helpers, the staging read) is built
+// on Windows only. The public read / clear / mask procedures that follow it keep their own `when USE_WGPU` guards.
+when !USE_WGPU {
 
 @(private)
 Canvas_Exec :: struct {
@@ -530,7 +546,7 @@ exec_bind_target :: proc(x: ^Canvas_Exec, tex: Texture, origin: [2]i32, main: bo
 	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
 	r.ctx->RSSetViewports(1, &vp)
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if win.SUCCEEDED(r.ctx->Map(cp.globals, 0, .WRITE_DISCARD, {}, &mapped)) {
+	if hr_ok(r.ctx->Map(cp.globals, 0, .WRITE_DISCARD, {}, &mapped)) {
 		bd := [2]f32{f32(r.textures[int(x.target)].w), f32(r.textures[int(x.target)].h)}
 		(^Canvas_Globals)(mapped.pData)^ = Canvas_Globals{viewport = {f32(size.x), f32(size.y)}, origin = {f32(origin.x), f32(origin.y)}, back_dim = bd}
 		r.ctx->Unmap(cp.globals, 0)
@@ -750,7 +766,7 @@ exec_fx_pass :: proc(x: ^Canvas_Exec, src, dst: Texture, mode: u32, dir: [2]f32,
 		fc.m[4] = {m[4], m[9], m[14], m[19]}
 	}
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if win.FAILED(r.ctx->Map(cp.fxcb, 0, .WRITE_DISCARD, {}, &mapped)) { return }
+	if hr_failed(r.ctx->Map(cp.fxcb, 0, .WRITE_DISCARD, {}, &mapped)) { return }
 	(^Canvas_Fx_Constants)(mapped.pData)^ = fc
 	r.ctx->Unmap(cp.fxcb, 0)
 	none := [3]^d3d11.IShaderResourceView{}
@@ -762,7 +778,7 @@ exec_fx_pass :: proc(x: ^Canvas_Exec, src, dst: Texture, mode: u32, dir: [2]f32,
 	rc := d3d11.RECT{0, 0, i32(dd.w), i32(dd.h)}
 	r.ctx->RSSetScissorRects(1, &rc)
 	mapped2: d3d11.MAPPED_SUBRESOURCE
-	if win.SUCCEEDED(r.ctx->Map(cp.globals, 0, .WRITE_DISCARD, {}, &mapped2)) {
+	if hr_ok(r.ctx->Map(cp.globals, 0, .WRITE_DISCARD, {}, &mapped2)) {
 		(^Canvas_Globals)(mapped2.pData)^ = Canvas_Globals{viewport = {f32(dd.w), f32(dd.h)}}
 		r.ctx->Unmap(cp.globals, 0)
 	}
@@ -851,6 +867,8 @@ exec_blur :: proc(x: ^Canvas_Exec, src, dst: Texture, sigma: f32) {
 	for l in 1 ..= levels { pool_release(r, chain[l]) }
 }
 
+}   // when !USE_WGPU
+
 // The whole canvas to one premultiplied color (a new canvas that is opaque black, reset()).
 canvas_clear :: proc(r: ^Renderer, t: Texture, color: [4]f32) {
 	when USE_WGPU { return } else {
@@ -880,11 +898,11 @@ canvas_read_mask :: proc(r: ^Renderer, t: Texture, id: i32, out: []u8) -> bool {
 		desc := d3d11.TEXTURE2D_DESC{Width = u32(td.w), Height = u32(td.h), MipLevels = 1, ArraySize = 1, Format = .R8_UNORM,
 			SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ}}
 		st: ^d3d11.ITexture2D
-		if win.FAILED(r.device->CreateTexture2D(&desc, nil, &st)) { return false }
+		if hr_failed(r.device->CreateTexture2D(&desc, nil, &st)) { return false }
 		defer st->Release()
 		r.ctx->CopyResource(st, td.tex)
 		mapped: d3d11.MAPPED_SUBRESOURCE
-		if win.FAILED(r.ctx->Map(st, 0, .READ, {}, &mapped)) { return false }
+		if hr_failed(r.ctx->Map(st, 0, .READ, {}, &mapped)) { return false }
 		defer r.ctx->Unmap(st, 0)
 		for row in 0 ..< td.h {
 			src := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(row) * uintptr(mapped.RowPitch)), td.w)
@@ -901,6 +919,7 @@ canvas_read :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, out: []u8) -> boo
 	when USE_WGPU { return false } else { return d3d_canvas_read(r, t, x, y, w, h, out) }
 }
 
+when !USE_WGPU {
 @(private)
 canvas_staging :: proc(r: ^Renderer, w, h: int) -> ^d3d11.ITexture2D {
 	cp := &r.canvas
@@ -909,7 +928,7 @@ canvas_staging :: proc(r: ^Renderer, w, h: int) -> ^d3d11.ITexture2D {
 	nw, nh := max(w, cp.staging_w), max(h, cp.staging_h)
 	desc := d3d11.TEXTURE2D_DESC{Width = u32(nw), Height = u32(nh), MipLevels = 1, ArraySize = 1, Format = .R8G8B8A8_UNORM,
 		SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ}}
-	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &cp.staging)) { cp.staging = nil; return nil }
+	if hr_failed(r.device->CreateTexture2D(&desc, nil, &cp.staging)) { cp.staging = nil; return nil }
 	cp.staging_w, cp.staging_h = nw, nh
 	return cp.staging
 }
@@ -928,7 +947,7 @@ d3d_canvas_read :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, out: []u8) ->
 	box := d3d11.BOX{left = u32(x0), top = u32(y0), front = 0, right = u32(x1), bottom = u32(y1), back = 1}
 	r.ctx->CopySubresourceRegion(st, 0, 0, 0, 0, td.tex, 0, &box)
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if win.FAILED(r.ctx->Map(st, 0, .READ, {}, &mapped)) { return false }
+	if hr_failed(r.ctx->Map(st, 0, .READ, {}, &mapped)) { return false }
 	defer r.ctx->Unmap(st, 0)
 	bw := (x1 - x0) * 4
 	for row in y0 ..< y1 {
@@ -939,6 +958,7 @@ d3d_canvas_read :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, out: []u8) ->
 	r.canvas.stats.read_bytes += (x1 - x0) * (y1 - y0) * 4
 	return true
 }
+}   // when !USE_WGPU
 
 // An asynchronous read-back (toBlob and the like): canvas_read_begin copies the block into a staging texture of its own and
 // returns at once; canvas_read_ready says whether the GPU is done; canvas_read_finish copies the pixels out and frees it.
@@ -956,10 +976,10 @@ canvas_read_begin :: proc(r: ^Renderer, t: Texture, x, y, w, h: int) -> (rd: Can
 		if x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
 		desc := d3d11.TEXTURE2D_DESC{Width = u32(w), Height = u32(h), MipLevels = 1, ArraySize = 1, Format = .R8G8B8A8_UNORM,
 			SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ}}
-		if win.FAILED(r.device->CreateTexture2D(&desc, nil, &rd.tex)) { return {}, false }
+		if hr_failed(r.device->CreateTexture2D(&desc, nil, &rd.tex)) { return {}, false }
 		box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
 		r.ctx->CopySubresourceRegion(rd.tex, 0, 0, 0, 0, td.tex, 0, &box)
-		if win.FAILED(r.device->CreateQuery(&{Query = .EVENT}, &rd.query)) { rd.query = nil }
+		if hr_failed(r.device->CreateQuery(&{Query = .EVENT}, &rd.query)) { rd.query = nil }
 		else { r.ctx->End((^d3d11.IAsynchronous)(rd.query)) }
 		rd.w, rd.h = w, h
 		return rd, true
@@ -983,7 +1003,7 @@ canvas_read_finish :: proc(r: ^Renderer, rd: ^Canvas_Read, out: []u8) -> bool {
 		}
 		if rd.tex == nil || len(out) < rd.w * rd.h * 4 { return false }
 		mapped: d3d11.MAPPED_SUBRESOURCE
-		if win.FAILED(r.ctx->Map(rd.tex, 0, .READ, {}, &mapped)) { return false }
+		if hr_failed(r.ctx->Map(rd.tex, 0, .READ, {}, &mapped)) { return false }
 		defer r.ctx->Unmap(rd.tex, 0)
 		for row in 0 ..< rd.h {
 			src := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(row) * uintptr(mapped.RowPitch)), rd.w * 4)

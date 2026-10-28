@@ -72,7 +72,7 @@ panel_set_swap_chain :: proc "system" (this: ^Panel, swap_chain: ^win.IUnknown) 
 	if swap_chain == nil { this.hr = this.visual->SetContent(nil); return this.hr }
 	// an fp16 swap chain holds scRGB (linear light), an 8-bit one premultiplied sRGB values: tell the compositor which
 	sc3: ^dxgi.ISwapChain3
-	if win.SUCCEEDED(swap_chain->QueryInterface(dxgi.ISwapChain3_UUID, (^rawptr)(&sc3))) && sc3 != nil {
+	if hr_ok(swap_chain->QueryInterface(dxgi.ISwapChain3_UUID, (^rawptr)(&sc3))) && sc3 != nil {
 		sc3->SetColorSpace1(this.color_space)
 		sc3->Release()
 	}
@@ -80,7 +80,7 @@ panel_set_swap_chain :: proc "system" (this: ^Panel, swap_chain: ^win.IUnknown) 
 	swap_chain->AddRef()
 	this.swap_chain = swap_chain
 	hr := this.visual->SetContent(swap_chain)
-	if win.SUCCEEDED(hr) { hr = this.dcomp->Commit() }
+	if hr_ok(hr) { hr = this.dcomp->Commit() }
 	this.hr = hr
 	return hr
 }
@@ -93,10 +93,10 @@ wgpu_dcomp_surface :: proc(r: ^Renderer, hwnd: win.HWND) -> wgpu.Surface {
 	p.vtable = &panel_vtable
 	p.refs = 1
 	p.color_space = r.space == .Srgb ? .RGB_FULL_G22_NONE_P709 : .RGB_FULL_G10_NONE_P709
-	ok := win.SUCCEEDED(DCompositionCreateDevice(nil, IDCompositionDevice_UUID, (^rawptr)(&p.dcomp)))
-	ok = ok && win.SUCCEEDED(p.dcomp->CreateTargetForHwnd(hwnd, true, &p.target))
-	ok = ok && win.SUCCEEDED(p.dcomp->CreateVisual(&p.visual))
-	ok = ok && win.SUCCEEDED(p.target->SetRoot(p.visual))
+	ok := hr_ok(DCompositionCreateDevice(nil, IDCompositionDevice_UUID, (^rawptr)(&p.dcomp)))
+	ok = ok && hr_ok(p.dcomp->CreateTargetForHwnd(hwnd, true, &p.target))
+	ok = ok && hr_ok(p.dcomp->CreateVisual(&p.visual))
+	ok = ok && hr_ok(p.target->SetRoot(p.visual))
 	if !ok { panel_free(p); return nil }
 	src := wgpu.SurfaceSourceSwapChainPanel{chain = {sType = .SurfaceSourceSwapChainPanel}, panelNative = p}
 	surface := wgpu.InstanceCreateSurface(g.instance, &{nextInChain = &src.chain, label = "window (DirectComposition)"})
@@ -126,7 +126,7 @@ wgpu_dcomp_color_space :: proc(r: ^Renderer) {
 	if p == nil { return }
 	p.color_space = r.space == .Srgb ? .RGB_FULL_G22_NONE_P709 : .RGB_FULL_G10_NONE_P709
 	sc3: ^dxgi.ISwapChain3
-	if p.swap_chain != nil && win.SUCCEEDED(p.swap_chain->QueryInterface(dxgi.ISwapChain3_UUID, (^rawptr)(&sc3))) && sc3 != nil {
+	if p.swap_chain != nil && hr_ok(p.swap_chain->QueryInterface(dxgi.ISwapChain3_UUID, (^rawptr)(&sc3))) && sc3 != nil {
 		sc3->SetColorSpace1(p.color_space)
 		sc3->Release()
 	}

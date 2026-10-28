@@ -88,28 +88,36 @@ wgpu_frame_latency :: proc(r: ^Renderer) -> u32 {
 
 @(private)
 wgpu_latency_start :: proc(r: ^Renderer) {
-	l := &r.wg.latency
 	when !LOW_LATENCY { return }
-	if r.wg.surface == nil || l.timer != nil { return }
-	CREATE_WAITABLE_TIMER_HIGH_RESOLUTION :: 0x2
-	l.timer = win.CreateWaitableTimerExW(nil, nil, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, win.TIMER_ALL_ACCESS)
-	if l.timer == nil { l.timer = win.CreateWaitableTimerExW(nil, nil, 0, win.TIMER_ALL_ACCESS) }
-	wgpu_latency_arm(r, 0)   // nothing queued yet: the first frame is not held back
+	when ODIN_OS == .Windows {
+		l := &r.wg.latency
+		if r.wg.surface == nil || l.timer != nil { return }
+		CREATE_WAITABLE_TIMER_HIGH_RESOLUTION :: 0x2
+		l.timer = win.CreateWaitableTimerExW(nil, nil, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, win.TIMER_ALL_ACCESS)
+		if l.timer == nil { l.timer = win.CreateWaitableTimerExW(nil, nil, 0, win.TIMER_ALL_ACCESS) }
+		wgpu_latency_arm(r, 0)   // nothing queued yet: the first frame is not held back
+	}
+	// On Linux there is no frame-latency waitable: the present mode (FIFO by default) paces the frames at the vblank,
+	// and platform.wait_handle(w, wgpu_waitable(r) == nil) returns at once (see wgpu_waitable).
 }
 
 @(private)
 wgpu_latency_stop :: proc(r: ^Renderer) {
-	l := &r.wg.latency
-	if l.timer != nil { win.CloseHandle(l.timer); l.timer = nil }
+	when ODIN_OS == .Windows {
+		l := &r.wg.latency
+		if l.timer != nil { win.CloseHandle(l.timer); l.timer = nil }
+	}
 }
 
-// Signals the frame latency object in `ns` nanoseconds (0: at once).
+// Signals the frame latency object in `ns` nanoseconds (0: at once). Windows only (the waitable timer).
 @(private)
 wgpu_latency_arm :: proc(r: ^Renderer, ns: i64) {
-	l := &r.wg.latency
-	if l.timer == nil { return }
-	due := win.LARGE_INTEGER(ns > 100 ? -(ns / 100) : -1)   // relative, in 100 ns units
-	win.SetWaitableTimerEx(l.timer, &due, 0, nil, nil, nil, 0)
+	when ODIN_OS == .Windows {
+		l := &r.wg.latency
+		if l.timer == nil { return }
+		due := win.LARGE_INTEGER(ns > 100 ? -(ns / 100) : -1)   // relative, in 100 ns units
+		win.SetWaitableTimerEx(l.timer, &due, 0, nil, nil, nil, 0)
+	}
 }
 
 // The frame latency object (nil without LOW_LATENCY or offscreen).
@@ -132,11 +140,14 @@ wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
 	return st
 }
 
-// wait_for_frame: the frame latency object, then the texture of the frame (which waits for the real object).
+// wait_for_frame: the frame latency object, then the texture of the frame (which waits for the real object). On Linux
+// there is no latency object; the FIFO present paces instead, and this just acquires the frame.
 @(private)
 wgpu_wait_frame :: proc(r: ^Renderer, timeout_ms: int) -> bool {
-	l := &r.wg.latency
-	if l.timer != nil && win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) != win.WAIT_OBJECT_0 { return false }
+	when ODIN_OS == .Windows {
+		l := &r.wg.latency
+		if l.timer != nil && win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) != win.WAIT_OBJECT_0 { return false }
+	}
 	return wgpu_ensure_frame(r)
 }
 
@@ -207,16 +218,21 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	if p.interval == 0 { p.interval = 1 }
 	tearing := present_mode(r) == .Tearing
 	sync: u32 = vsync && !tearing ? p.interval : 0
-	// the compositor's timing: the last vblank (QPC, refresh counter) and the period
+	// the compositor's timing: the last vblank (QPC, refresh counter) and the period. DWM is Windows only; on Linux
+	// there is no portable per-present timing here, so the frame statistics (shown / missed refreshes) stay off and
+	// the FIFO present paces the frames.
 	info := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
-	ok := win.SUCCEEDED(DwmGetCompositionTimingInfo(nil, &info)) && info.qpcRefreshPeriod > 0
-	if ok {
-		p.stats_ok = true
-		freq: win.LARGE_INTEGER
-		win.QueryPerformanceFrequency(&freq)
-		p.period_ns = f64(info.qpcRefreshPeriod) * 1e9 / f64(freq)
-		p.sync_tick = qpc_to_tick(i64(info.qpcVBlank))
-		p.sync_count = u32(info.cRefresh)
+	ok := false
+	when ODIN_OS == .Windows {
+		ok = hr_ok(DwmGetCompositionTimingInfo(nil, &info)) && info.qpcRefreshPeriod > 0
+		if ok {
+			p.stats_ok = true
+			freq: win.LARGE_INTEGER
+			win.QueryPerformanceFrequency(&freq)
+			p.period_ns = f64(info.qpcRefreshPeriod) * 1e9 / f64(freq)
+			p.sync_tick = qpc_to_tick(i64(info.qpcVBlank))
+			p.sync_count = u32(info.cRefresh)
+		}
 	}
 	shown := now
 	index: u64

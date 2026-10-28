@@ -45,7 +45,8 @@ no-ops with a sane return, never an error.
 
 **Placement** — `outer_rect`, `client_origin`, `move_window`, `get_placement`, `set_placement`.
 
-**Display** — `display_info`, `display_invalidate`, `display_live_hz`.
+**Display** — `display_info`, `display_invalidate`, `display_live_hz`, `monitor_size` (the window's monitor in pixels,
+for a screen-sized fixed surface).
 
 **Cursors** — `set_cursor`, `set_cursor_custom`, `cursor_info`, `cursor_source`, `cursor_scheme`, `cursor_size_px`,
 `cursor_render`, `shown_cursor`, `cursor_handle_of`, `custom_cursor_create` / `_release` / `_valid` / `_stats` /

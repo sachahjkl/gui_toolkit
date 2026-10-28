@@ -53,7 +53,7 @@ main :: proc() {
 	app := new(App)
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit smoke", {900, 600}, app)
-	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("renderer init failed"); return }
+	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("renderer init failed"); return }
 	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id

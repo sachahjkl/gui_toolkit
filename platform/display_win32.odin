@@ -116,6 +116,16 @@ display_info :: proc(w: ^Window) -> Display_Info {
 // Reads the rate again at the next display_info (e.g. after the user changed it in the display settings).
 display_invalidate :: proc(w: ^Window) { w.display_stale = true }
 
+// The pixel size of the monitor the window is on (the whole screen, not the work area). {0, 0} for an offscreen window
+// or when it cannot be read. Used for a fixed surface the size of the screen (render.set_fixed_surface).
+monitor_size :: proc(w: ^Window) -> [2]int {
+	if w == nil || w.offscreen { return {} }
+	mon := win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST)
+	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
+	if !win.GetMonitorInfoW(mon, &mi) { return {} }
+	return {int(mi.rcMonitor.right - mi.rcMonitor.left), int(mi.rcMonitor.bottom - mi.rcMonitor.top)}
+}
+
 @(private = "file")
 query_display :: proc(mon: win.HMONITOR) -> (d: Display_Info) {
 	d.monitor = rawptr(mon)

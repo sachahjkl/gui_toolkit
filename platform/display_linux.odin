@@ -28,6 +28,25 @@ display_info :: proc(w: ^Window) -> Display_Info {
 
 display_invalidate :: proc(w: ^Window) { w.display_stale = true }
 
+// The pixel size of the monitor the window is on. Wayland reports the wl_output mode's size; X11 the root screen's
+// (a single-head heuristic). {0, 0} for an offscreen window or when nothing is known. Used for a fixed surface the
+// size of the screen (render.set_fixed_surface).
+monitor_size :: proc(w: ^Window) -> [2]int {
+	if w == nil || w.offscreen { return {} }
+	switch w.backend {
+	case .Wayland:
+		if wlc.output_px.x > 0 && wlc.output_px.y > 0 {
+			// wl_output reports physical pixels; the surface works in logical pixels (divided by the integer scale)
+			s := max(wlc.output_scale, 1)
+			return {int(wlc.output_px.x / s), int(wlc.output_px.y / s)}
+		}
+	case .X11:
+		if x11c.screen != nil { return {int(x11c.screen.width_in_pixels), int(x11c.screen.height_in_pixels)} }
+	case .None:
+	}
+	return {}
+}
+
 // The rate the compositor runs at right now (a dynamic-refresh screen): there is no portable live query without the
 // presentation-time protocol (Wayland) or the Present extension (X11), which the pacer reads through the renderer
 // instead. Report "unknown" so the pacer uses display_info and render.measured_refresh_hz, as it does on a window the

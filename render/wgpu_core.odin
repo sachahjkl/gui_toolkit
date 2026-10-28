@@ -11,6 +11,7 @@ import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
+import "toolkit:platform"
 
 // WebGPU backend (TOOLKIT_RENDER=wgpu): wgpu-native over Direct3D 12 (or Vulkan). The same frame description as the
 // Direct3D 11 backend (Frame_Data), the same shader logic ported to WGSL (rect.wgsl, filter.wgsl, mip.wgsl).
@@ -159,25 +160,36 @@ Request :: struct {
 wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 	for tries := 0; !req.done && tries < 5000; tries += 1 {
 		wgpu.InstanceProcessEvents(g.instance)
-		if !req.done { win.Sleep(1) }
+		if !req.done { thread_sleep_1ms() }
 	}
 	return req.done && req.ok
 }
 
+// A one-millisecond sleep while polling for a wgpu request (Windows has win.Sleep; elsewhere core:time's nanosleep).
+@(private)
+thread_sleep_1ms :: proc() {
+	when ODIN_OS == .Windows { win.Sleep(1) } else { time.sleep(time.Millisecond) }
+}
+
 // The path of dxcompiler.dll when it and dxil.dll sit next to the program ("" otherwise: FXC compiles the shaders).
+// Windows and the DX12 backend only; other systems use Vulkan and have no HLSL compiler to choose.
 @(private)
 find_dxc :: proc() -> string {
-	buf: [win.MAX_PATH_WIDE]u16
-	n := win.GetModuleFileNameW(nil, raw_data(buf[:]), len(buf))
-	if n == 0 { return "" }
-	dir, err := win.utf16_to_utf8(buf[:n], context.temp_allocator)
-	if err != nil { return "" }
-	slash := strings.last_index_byte(dir, '\\')
-	if slash < 0 { return "" }
-	dll := fmt.tprintf("%s\\dxcompiler.dll", dir[:slash])
-	il := fmt.tprintf("%s\\dxil.dll", dir[:slash])
-	if !os.exists(dll) || !os.exists(il) { return "" }
-	return dll
+	when ODIN_OS == .Windows {
+		buf: [win.MAX_PATH_WIDE]u16
+		n := win.GetModuleFileNameW(nil, raw_data(buf[:]), len(buf))
+		if n == 0 { return "" }
+		dir, err := win.utf16_to_utf8(buf[:n], context.temp_allocator)
+		if err != nil { return "" }
+		slash := strings.last_index_byte(dir, '\\')
+		if slash < 0 { return "" }
+		dll := fmt.tprintf("%s\\dxcompiler.dll", dir[:slash])
+		il := fmt.tprintf("%s\\dxil.dll", dir[:slash])
+		if !os.exists(dll) || !os.exists(il) { return "" }
+		return dll
+	} else {
+		return ""
+	}
 }
 
 // Instance, (surface), adapter, device and queue. `hwnd` nil: no surface (offscreen). `fallback`: the software adapter.
@@ -185,16 +197,39 @@ find_dxc :: proc() -> string {
 // Run on a thread of its own: Direct3D 12 and DXGI raise and catch C++ exceptions (0xE06D7363) while they probe adapters,
 // and a vectored exception handler that treats every exception as fatal (the one of Odin's test runner, debuggers' `break
 // on first chance` options) would stop the process on them. Only the thread that makes the calls sees them.
+// Makes the wgpu surface for the native handles the platform package filled. `.None`: an offscreen window, no surface.
+// On Windows a translucent window goes through DirectComposition (wgpu_dcomp.odin); on Linux the Wayland / XCB handles
+// go through wgpu_surface_from_handles (wgpu_surface_linux.odin). The renderer's device, present, resize and capture are
+// the same code afterwards, whatever made the surface.
 @(private)
-wgpu_create_device :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool {
-	Job :: struct { r: ^Renderer, hwnd: win.HWND, fallback, ok: bool }
+wgpu_make_surface :: proc(r: ^Renderer, h: platform.Surface_Handles) -> wgpu.Surface {
+	if h.backend == .None { return nil }
+	when ODIN_OS == .Windows {
+		hwnd := win.HWND(h.hwnd)
+		if hwnd == nil { return nil }
+		if r.transparent {
+			s := wgpu_dcomp_surface(r, hwnd)
+			if s != nil { return s }
+			fmt.eprintln("render: wgpu: DirectComposition unavailable, the window is opaque")
+			r.transparent = false
+		}
+		src := wgpu.SurfaceSourceWindowsHWND{chain = {sType = .SurfaceSourceWindowsHWND}, hinstance = h.hinstance != nil ? h.hinstance : rawptr(win.GetModuleHandleW(nil)), hwnd = rawptr(hwnd)}
+		return wgpu.InstanceCreateSurface(r.wg.instance, &{nextInChain = &src.chain})
+	} else {
+		return wgpu_surface_from_handles(r.wg.instance, h)
+	}
+}
+
+@(private)
+wgpu_create_device :: proc(r: ^Renderer, surface: platform.Surface_Handles, fallback: bool) -> bool {
+	Job :: struct { r: ^Renderer, surface: platform.Surface_Handles, fallback, ok: bool }
 	if r.wg.shared == nil { r.wg.shared = new(Wgpu_Shared) }   // with the caller's allocator (a thread's default one differs under a tracking allocator)
-	job := Job{r, hwnd, fallback, false}
+	job := Job{r, surface, fallback, false}
 	t0 := time.tick_now()
 	defer r.wg.t_device = time.duration_milliseconds(time.tick_since(t0))
 	th := thread.create_and_start_with_data(&job, proc(data: rawptr) {
 		j := (^Job)(data)
-		j.ok = wgpu_create_device_here(j.r, j.hwnd, j.fallback)
+		j.ok = wgpu_create_device_here(j.r, j.surface, j.fallback)
 	})
 	thread.join(th)
 	thread.destroy(th)
@@ -202,7 +237,7 @@ wgpu_create_device :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool
 }
 
 @(private)
-wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) -> bool {
+wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles, fallback: bool) -> bool {
 	g := &r.wg
 	dxc_path := WGPU_DX12_COMPILER != "fxc" ? find_dxc() : ""
 	extras := wgpu.InstanceExtras{
@@ -214,18 +249,8 @@ wgpu_create_device_here :: proc(r: ^Renderer, hwnd: win.HWND, fallback: bool) ->
 	}
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
 	if g.instance == nil { fmt.eprintln("render: wgpu: no instance"); return false }
-	if hwnd != nil && r.transparent {
-		g.surface = wgpu_dcomp_surface(r, hwnd)
-		if g.surface == nil {
-			fmt.eprintln("render: wgpu: DirectComposition unavailable, the window is opaque")
-			r.transparent = false
-		}
-	}
-	if hwnd != nil && g.surface == nil {
-		src := wgpu.SurfaceSourceWindowsHWND{chain = {sType = .SurfaceSourceWindowsHWND}, hinstance = rawptr(win.GetModuleHandleW(nil)), hwnd = rawptr(hwnd)}
-		g.surface = wgpu.InstanceCreateSurface(g.instance, &{nextInChain = &src.chain})
-		if g.surface == nil { fmt.eprintln("render: wgpu: cannot create the surface"); return false }
-	}
+	g.surface = wgpu_make_surface(r, surface)
+	if surface.backend != .None && g.surface == nil { fmt.eprintln("render: wgpu: cannot create the surface"); return false }
 	req: Request
 	adapter_cb :: proc "c" (status: wgpu.RequestAdapterStatus, adapter: wgpu.Adapter, message: wgpu.StringView, u1, u2: rawptr) {
 		req := (^Request)(u1)
@@ -301,12 +326,13 @@ wgpu_frame_formats :: proc(r: ^Renderer) {
 }
 
 @(private)
-wgpu_init :: proc(r: ^Renderer, hwnd: win.HWND, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
-	r.hwnd = hwnd
+wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+	when ODIN_OS == .Windows { r.hwnd = win.HWND(surface.hwnd) }
+	r.surface_handles = surface
 	r.size = size
 	r.transparent = transparent
 	r.space = space
-	wgpu_create_device(r, hwnd, false) or_return
+	wgpu_create_device(r, surface, false) or_return
 	wgpu_frame_formats(r)
 	wgpu_configure_surface(r) or_return
 	wgpu_init_pipeline(r) or_return
@@ -318,9 +344,9 @@ wgpu_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := 
 	r.size = size
 	r.space = space
 	r.warp = warp
-	if !wgpu_create_device(r, nil, warp) {
+	if !wgpu_create_device(r, {}, warp) {
 		wgpu_release_device(r)
-		if warp || !wgpu_create_device(r, nil, true) { return false }
+		if warp || !wgpu_create_device(r, {}, true) { return false }
 		r.warp = true
 	}
 	wgpu_frame_formats(r)
@@ -978,8 +1004,8 @@ wgpu_destroy :: proc(r: ^Renderer) {
 @(private)
 wgpu_recover :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
-	hwnd := r.hwnd
-	was_offscreen := hwnd == nil   // (not g.surface == nil: a recovery that found no device left it nil)
+	handles := r.surface_handles
+	was_offscreen := handles.backend == .None   // (not g.surface == nil: a recovery that found no device left it nil)
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(g)
 	readback_device_lost()   // (their buffers are of the device released here)
@@ -987,7 +1013,7 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
 	g.shared.lost = false
-	ok := wgpu_create_device(r, hwnd, r.warp)
+	ok := wgpu_create_device(r, handles, r.warp)
 	if !ok {
 		// no device yet (the adapter is resetting or gone): nothing to remake textures or shaders on. They keep their kinds, so
 		// that the recovery that finds a device remakes them; until then frames draw nothing.

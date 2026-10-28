@@ -8,6 +8,7 @@ import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "../../draw"
 import "../../font"
+import "../../platform"
 import "../../render"
 
 SIZE :: [2]int{64, 64}
@@ -26,8 +27,9 @@ open :: proc(f: ^Fx) -> bool {
 }
 
 @(private = "file")
-make_window :: proc() -> win.HWND {
-	return win.CreateWindowExW(0, win.L("Static"), win.L("lifecycle"), win.WS_OVERLAPPEDWINDOW, 0, 0, 200, 200, nil, nil, nil, nil)
+make_window :: proc() -> platform.Surface_Handles {
+	hwnd := win.CreateWindowExW(0, win.L("Static"), win.L("lifecycle"), win.WS_OVERLAPPEDWINDOW, 0, 0, 200, 200, nil, nil, nil, nil)
+	return {backend = .Windows, hwnd = rawptr(hwnd)}
 }
 
 // One frame of a solid color on the window the renderer holds, captured: the pixel in the middle.
