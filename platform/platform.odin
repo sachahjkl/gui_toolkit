@@ -204,6 +204,21 @@ Window :: struct {
 	post_queue:   rawptr,               // atomic: the ^base.Post_Queue of the ui State built for this window (ui.post_window)
 }
 
+// The native handles a renderer needs to make a surface for a window, neutral across systems. The renderer reads the
+// kind and the handles that go with it and builds the right wgpu surface descriptor (SurfaceSourceWindowsHWND,
+// SurfaceSourceWaylandSurface, SurfaceSourceXCBWindow). `native_surface_handles(w)` fills it; an offscreen window has
+// no surface (kind = .None), and the renderer uses render.init_offscreen instead.
+Surface_Backend :: enum u8 { None, Windows, Wayland, X11 }
+
+Surface_Handles :: struct {
+	backend:    Surface_Backend,
+	hwnd:       rawptr,   // Windows: the HWND
+	hinstance:  rawptr,   // Windows: the module handle
+	display:    rawptr,   // Wayland: wl_display; X11: the xcb_connection
+	surface:    rawptr,   // Wayland: wl_surface
+	window:     u64,      // X11: the xcb_window id
+}
+
 ////////////////////////////////
 // Integrated title bar (set_integrated_title): the client area covers the whole window, the app draws the title bar and
 // says each frame where it is (Chrome_Regions); the window procedure answers the system's hit tests from that, so that

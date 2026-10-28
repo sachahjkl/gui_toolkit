@@ -432,6 +432,12 @@ is_closed :: proc(w: ^Window) -> bool { return w.closed }
 // Whether the window has no HWND (open_window_offscreen): a headless window that renders to an offscreen target.
 is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 
+// The native handles a renderer makes a surface from (neutral; see Surface_Handles). An offscreen window has none.
+native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
+	if w == nil || w.offscreen || w.hwnd == nil { return {} }
+	return {backend = .Windows, hwnd = rawptr(w.hwnd), hinstance = rawptr(win.GetModuleHandleW(nil))}
+}
+
 // Sets an offscreen window's emulated scale (dpi/96) and resizes its client area to keep the same logical size, as a
 // real window changing monitor would (a headless `window --dpi`, a remote setDeviceMetricsOverride). The caller then
 // resizes the renderer to the new `w.size`. A no-op for a real window (use the DPI the system gives it).
@@ -444,10 +450,14 @@ set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
 	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
 }
 
-// The auto-reset event an offscreen window waits on in wait_event / poll_events, for a thread that wants to wake the loop
-// (host.post from a server thread): SetEvent(it). nil for a window with a message queue (wake it with `wake`). Reading
-// it is thread-safe (the handle does not change for the life of the window); SetEvent is thread-safe.
-wake_handle :: proc(w: ^Window) -> win.HANDLE { return w != nil && w.offscreen ? w.off_event : nil }
+// An opaque wake handle an offscreen window waits on in wait_event / poll_events, for a thread that wants to wake the loop
+// (host.post from a server thread): wake_signal(it). nil for a window with a message queue (wake it with `wake`). Reading
+// it is thread-safe (the handle does not change for the life of the window); wake_signal is thread-safe. The handle is
+// the system's own (a Win32 auto-reset event here, an eventfd on Linux): pass it back to wake_signal, do not cast it.
+wake_handle :: proc(w: ^Window) -> rawptr { return w != nil && w.offscreen ? rawptr(w.off_event) : nil }
+
+// Signals a wake handle got from wake_handle, waking the window's loop (thread-safe). The neutral form of SetEvent.
+wake_signal :: proc(h: rawptr) { if h != nil { win.SetEvent(win.HANDLE(h)) } }
 
 // Destroys the window and what it holds (its cursors, drawn and custom; its event list; its title bar's regions),
 // then frees `w`. A process that ends with its window open needs not call it.

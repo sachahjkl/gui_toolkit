@@ -1,8 +1,10 @@
 #+build !windows
+#+build !linux
 package platform
 
 // The file dialogs and shell actions on the systems that have no implementation yet (dialogs.odin has the API): every
-// call answers "not supported" (a dialog test hook still answers), so an app written for them builds and runs.
+// call answers "not supported" (a dialog test hook still answers), so an app written for them builds and runs. Linux
+// has its own (dialogs_linux.odin: the FileChooser portal, zenity / kdialog, xdg-open).
 
 open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
 	if dialog_test_hook != nil { return dialog_test_hook(0, d, allocator) }
