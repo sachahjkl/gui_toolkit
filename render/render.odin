@@ -17,7 +17,7 @@ import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
-import "toolkit:platform"
+import "../platform"
 
 // LOW_LATENCY (default on): at most one frame in flight + a waitable swap chain. The app waits for the GPU *before*
 // reading input, so what is drawn is based on the freshest mouse position. With DXGI's default (3 frames queued) a

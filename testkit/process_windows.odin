@@ -21,15 +21,15 @@ Basic_Info :: struct {
 
 @(default_calling_convention = "system", private)
 foreign kernel32_tk {
-	tk_GetProcessHandleCount :: proc(process: win.HANDLE, count: ^u32) -> win.BOOL ---
-	tk_GetProcessHeaps       :: proc(n: u32, heaps: [^]win.HANDLE) -> u32 ---
-	tk_HeapSummary           :: proc(heap: win.HANDLE, flags: u32, s: ^Heap_Summary) -> win.BOOL ---
-	tk_VirtualQuery          :: proc(address: uintptr, info: ^Basic_Info, length: uint) -> uint ---
+	@(link_name = "GetProcessHandleCount") tk_GetProcessHandleCount :: proc(process: win.HANDLE, count: ^u32) -> win.BOOL ---
+	@(link_name = "GetProcessHeaps") tk_GetProcessHeaps       :: proc(n: u32, heaps: [^]win.HANDLE) -> u32 ---
+	@(link_name = "HeapSummary") tk_HeapSummary           :: proc(heap: win.HANDLE, flags: u32, s: ^Heap_Summary) -> win.BOOL ---
+	@(link_name = "VirtualQuery") tk_VirtualQuery          :: proc(address: uintptr, info: ^Basic_Info, length: uint) -> uint ---
 }
 
 @(default_calling_convention = "system", private)
 foreign user32_tk {
-	tk_GetGuiResources :: proc(process: win.HANDLE, flags: u32) -> u32 ---
+	@(link_name = "GetGuiResources") tk_GetGuiResources :: proc(process: win.HANDLE, flags: u32) -> u32 ---
 }
 
 @(private = "file") MEM_COMMIT  :: 0x1000

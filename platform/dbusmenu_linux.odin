@@ -8,7 +8,7 @@ package platform
 //
 // dbusmenu ids are integers of our own (0 is the root); tray.menu_ids maps them to the app's Tray_Menu_Item.id.
 
-import "toolkit:dbus"
+import "../dbus"
 
 @(private)
 dbusmenu_handler :: proc(user: rawptr, c: ^dbus.Conn, msg: ^dbus.Message) -> bool {

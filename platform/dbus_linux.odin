@@ -10,7 +10,7 @@ package platform
 // service degrades gracefully (the tray reports no icon, the portal falls back to zenity, the theme reads the GTK
 // files).
 
-import "toolkit:dbus"
+import "../dbus"
 
 @(private) session_conn: ^dbus.Conn
 @(private) session_tried: bool

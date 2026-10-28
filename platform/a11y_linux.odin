@@ -16,7 +16,7 @@ package platform
 
 import "base:runtime"
 import "core:strings"
-import "toolkit:dbus"
+import "../dbus"
 
 @(private) ATSPI_BUS_NAME :: "org.a11y.Bus"
 @(private) ATSPI_BUS_PATH :: "/org/a11y/bus"

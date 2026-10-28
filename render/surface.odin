@@ -4,7 +4,7 @@ import "core:fmt"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
-import "toolkit:platform"
+import "../platform"
 
 // A second window drawn by the same renderer (same device, textures, fonts and pipelines): a Surface is a swap chain of its
 // own with the state that goes with it. `surface_use` exchanges it with the renderer's own, so that the calls that follow

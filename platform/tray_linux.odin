@@ -19,7 +19,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:sys/posix"
-import "toolkit:dbus"
+import "../dbus"
 
 @(private) SNI_WATCHER :: "org.kde.StatusNotifierWatcher"
 @(private) SNI_WATCHER_PATH :: "/StatusNotifierWatcher"

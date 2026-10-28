@@ -11,7 +11,7 @@ import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
-import "toolkit:platform"
+import "../platform"
 
 // WebGPU backend (TOOLKIT_RENDER=wgpu): wgpu-native over Direct3D 12 (or Vulkan). The same frame description as the
 // Direct3D 11 backend (Frame_Data), the same shader logic ported to WGSL (rect.wgsl, filter.wgsl, mip.wgsl).
