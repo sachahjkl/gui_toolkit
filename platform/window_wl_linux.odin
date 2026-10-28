@@ -55,6 +55,39 @@ Wl_Conn :: struct {
 	clip_text:  string,
 	have_offer: bool,
 	offer:      Wl_Proxy,
+	// the keyboard-enter serial: a wl_data_device.set_selection needs a recent input serial (clipboard owner)
+	kbd_serial: u32,
+	// the clipboard selection owner we run, and the MIME types the current selection offer advertises
+	data_source:   Wl_Proxy,      // our wl_data_source while we own CLIPBOARD, nil otherwise
+	offer_mimes:   [dynamic]string,   // the MIME types wlc.offer advertises (filled by the offer's `offer` events)
+	// the primary (middle-click) selection, over zwp_primary_selection_v1 when the compositor has it
+	primary_manager: Wl_Proxy,
+	primary_device:  Wl_Proxy,
+	primary_source:  Wl_Proxy,
+	primary_offer:   Wl_Proxy,
+	primary_mimes:   [dynamic]string,
+	have_primary_offer: bool,
+	// drag and drop (dragdrop_wl_linux.odin): the data-device drag state lives here so its listeners reach it
+	dnd_offer:     Wl_Proxy,      // the offer of a drag now over a window
+	dnd_mimes:     [dynamic]string,
+	dnd_window:    ^Window,
+	dnd_enter_serial: u32,
+	dnd_x, dnd_y:  f32,
+	dnd_source:    Wl_Proxy,      // our wl_data_source while we drag from this app
+	dnd_sending:   bool,
+	// IME (ime_wl_linux.odin): the text-input manager and the per-seat text-input object
+	ti_manager:    Wl_Proxy,
+	text_input:    Wl_Proxy,
+	ti_enabled:    bool,
+	ti_window:     ^Window,       // the window the text-input is enabled for
+	preedit:       string,        // the uncommitted preedit string being built this commit cycle
+	preedit_cursor: int,
+	preedit_dirty: bool,
+	pending_preedit: string,      // the preedit from preedit_string, applied on `done`
+	pending_commit:  string,      // the committed string from commit_string, applied on `done`
+	// cursor shapes (cursors_wl_linux.odin): the compositor draws them from a named shape (wp_cursor_shape_v1)
+	cursor_shape_manager: Wl_Proxy,
+	cursor_shape_device:  Wl_Proxy,
 }
 
 @(private) wlc: Wl_Conn
@@ -87,6 +120,9 @@ wl_connect :: proc() -> bool {
 	l := wayland_lib()
 	if !l.ok { return false }
 	xdg_build_tables()
+	zwp_build_tables()
+	zwp_ti_build_tables()
+	wp_cursor_shape_build_tables()
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
 	wlc.fd = l.display_get_fd(wlc.display)
@@ -103,6 +139,16 @@ wl_connect :: proc() -> bool {
 		wlc.data_device = wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_GET_DATA_DEVICE,
 			wl.data_device_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil, wlc.seat)
 		if wlc.data_device != nil { l.proxy_add_listener(wlc.data_device, &data_device_listener, nil) }
+	}
+	if wlc.primary_manager != nil && wlc.seat != nil {
+		wlc.primary_device = wl.proxy_marshal_flags(wlc.primary_manager, ZWP_PRIMARY_DEVICE_MANAGER_GET_DEVICE,
+			&zwp_primary_device_iface, wl.proxy_get_version(wlc.primary_manager), 0, nil, wlc.seat)
+		if wlc.primary_device != nil { l.proxy_add_listener(wlc.primary_device, &primary_device_listener, nil) }
+	}
+	if wlc.ti_manager != nil && wlc.seat != nil {
+		wlc.text_input = wl.proxy_marshal_flags(wlc.ti_manager, ZWP_TI_MANAGER_GET_TEXT_INPUT,
+			&zwp_ti_iface, wl.proxy_get_version(wlc.ti_manager), 0, nil, wlc.seat)
+		if wlc.text_input != nil { l.proxy_add_listener(wlc.text_input, &text_input_listener, nil) }
 	}
 	return wlc.xdg_wm_base != nil && wlc.compositor != nil
 }
@@ -145,6 +191,9 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "wl_data_device_manager": wlc.data_device_manager = bind(name, wl.data_device_manager_interface, 3, version)
 	case "xdg_wm_base":   wlc.xdg_wm_base = bind(name, &xdg_wm_base_iface, 4, version)
 	case "zxdg_decoration_manager_v1": wlc.decoration_manager = bind(name, &zxdg_decoration_manager_iface, 1, version)
+	case "zwp_primary_selection_device_manager_v1": wlc.primary_manager = bind(name, &zwp_primary_device_manager_iface, 1, version)
+	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
+	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
 	}
 }
 
@@ -243,6 +292,7 @@ ptr_enter :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy
 	wl_enter_serial = serial
 }
 @(private) wl_enter_serial: u32
+@(private) wl_button_serial: u32   // the last pointer button serial (for a drag start / selection)
 @(private)
 ptr_leave :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy) {
 	context = wl_ctx_real()
@@ -260,6 +310,7 @@ ptr_motion :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, sx, sy: Wl_Fixed) 
 @(private)
 ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: u32) {
 	context = wl_ctx_real()
+	wl_button_serial = serial
 	w := wlc.pointer_focus
 	if w == nil { return }
 	// Linux input-event-codes: BTN_LEFT 0x110, BTN_RIGHT 0x111, BTN_MIDDLE 0x112
@@ -322,6 +373,7 @@ kb_keymap :: proc "c" (data: rawptr, kb: Wl_Proxy, format: u32, fd: i32, size: u
 @(private)
 kb_enter :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy, keys: ^Wl_Array) {
 	context = wl_ctx_real()
+	wlc.kbd_serial = serial
 	wlc.keyboard_focus = window_of_surface(surface)
 	if w := wlc.keyboard_focus; w != nil { w.focused = true; w.active = true; wl_push(w, {kind = .Activate}) }
 }
@@ -334,6 +386,7 @@ kb_leave :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy
 @(private)
 kb_key :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, time, key, state: u32) {
 	context = wl_ctx_real()
+	wlc.kbd_serial = serial
 	w := wlc.keyboard_focus
 	if w == nil { return }
 	k := xkb_lib()
@@ -570,12 +623,13 @@ wl_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	l.display_dispatch_pending(wlc.display)
 	l.display_flush(wlc.display)
 	if wait && len(w.events) == 0 {
-		if poll_fd_wait(wlc.fd, timeout_ms > 0 ? timeout_ms : -1) > 0 {
-			l.display_dispatch(wlc.display)
-		}
+		r := poll_two(wlc.fd, dbus_fd(), timeout_ms > 0 ? timeout_ms : -1)
+		if r.rendered { l.display_dispatch(wlc.display) }
+		if r.readable { dbus_pump() }
 	} else {
 		l.display_dispatch_pending(wlc.display)
 	}
+	dbus_pump()
 	l.display_flush(wlc.display)
 }
 
@@ -606,33 +660,30 @@ Data_Device_Listener :: struct {
 	selection:    proc "c" (data: rawptr, dd: Wl_Proxy, offer: Wl_Proxy),
 }
 @(private) data_device_listener := Data_Device_Listener{dd_data_offer, dd_enter, dd_leave, dd_motion, dd_drop, dd_selection}
-@(private) dd_data_offer :: proc "c" (data: rawptr, dd: Wl_Proxy, offer: Wl_Proxy) {}
-@(private) dd_enter :: proc "c" (data: rawptr, dd: Wl_Proxy, serial: u32, surface: Wl_Proxy, x, y: Wl_Fixed, offer: Wl_Proxy) {}
-@(private) dd_leave :: proc "c" (data: rawptr, dd: Wl_Proxy) {}
-@(private) dd_motion :: proc "c" (data: rawptr, dd: Wl_Proxy, time: u32, x, y: Wl_Fixed) {}
-@(private) dd_drop :: proc "c" (data: rawptr, dd: Wl_Proxy) {}
+// The data_device callbacks route to the clipboard / drag-and-drop code (clipboard_wl_linux.odin, dragdrop_wl_linux.odin).
+@(private)
+dd_data_offer :: proc "c" (data: rawptr, dd: Wl_Proxy, offer: Wl_Proxy) {
+	context = wl_ctx_real()
+	wl_offer_new(offer)
+}
+@(private)
+dd_enter :: proc "c" (data: rawptr, dd: Wl_Proxy, serial: u32, surface: Wl_Proxy, x, y: Wl_Fixed, offer: Wl_Proxy) {
+	context = wl_ctx_real()
+	wl_dnd_enter(serial, surface, f32(wl_fixed_to_f64(x)), f32(wl_fixed_to_f64(y)), offer)
+}
+@(private)
+dd_leave :: proc "c" (data: rawptr, dd: Wl_Proxy) { context = wl_ctx_real(); wl_dnd_leave() }
+@(private)
+dd_motion :: proc "c" (data: rawptr, dd: Wl_Proxy, time: u32, x, y: Wl_Fixed) {
+	context = wl_ctx_real()
+	wl_dnd_motion(f32(wl_fixed_to_f64(x)), f32(wl_fixed_to_f64(y)))
+}
+@(private)
+dd_drop :: proc "c" (data: rawptr, dd: Wl_Proxy) { context = wl_ctx_real(); wl_dnd_drop() }
 @(private)
 dd_selection :: proc "c" (data: rawptr, dd: Wl_Proxy, offer: Wl_Proxy) {
-	wlc.offer = offer
-	wlc.have_offer = offer != nil
-}
-
-@(private)
-wl_clipboard_set_text :: proc(w: ^Window, text: string) {
-	// Owning a Wayland selection needs a wl_data_source with a serial from a recent input event, and the read side runs
-	// on the data-source's send callback over a pipe. The full owner is in clipboard_linux.odin (clipboard_set); plain
-	// text goes through the same owner. Here we keep the text so a same-process get returns it.
-	delete(wlc.clip_text)
-	wlc.clip_text = strings.clone(text)
-	wl_clipboard_offer_text(w, text)
-}
-
-@(private)
-wl_clipboard_get_text :: proc(w: ^Window, allocator := context.allocator) -> string {
-	if !wlc.have_offer || wlc.offer == nil {
-		return strings.clone(wlc.clip_text, allocator)   // our own, or nothing
-	}
-	return wl_offer_receive(wlc.offer, "text/plain;charset=utf-8", allocator)
+	context = wl_ctx_real()
+	wl_selection_set(offer)
 }
 
 @(private)
