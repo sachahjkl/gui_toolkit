@@ -49,8 +49,15 @@ known_folder_path :: proc(k: Known_Folder, allocator := context.allocator) -> st
 	return strings.concatenate({home, "/", sub}, allocator)
 }
 
-open_url :: proc(url: string) -> bool { return spawn_detached({"xdg-open", url}) }
-open_path :: proc(path: string) -> bool { return spawn_detached({"xdg-open", path}) }
+open_url :: proc(url: string) -> bool {
+	if portal_open_uri(url) { return true }   // the portal (OpenURI) first; xdg-open otherwise
+	return spawn_detached({"xdg-open", url})
+}
+open_path :: proc(path: string) -> bool {
+	uri := strings.concatenate({"file://", path}, context.temp_allocator)
+	if portal_open_uri(uri) { return true }
+	return spawn_detached({"xdg-open", path})
+}
 
 // Reveal a file in the file manager with it selected: the GTK file managers answer the D-Bus
 // org.freedesktop.FileManager1.ShowItems; without a D-Bus client here, open the containing folder (xdg-open on the
@@ -66,6 +73,8 @@ reveal_in_folder :: proc(path: string) -> bool {
 
 @(private)
 file_dialog_spawn :: proc(kind: int, d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+	// the portal first (it works under a sandbox and matches the desktop); zenity / kdialog when it is absent
+	if r := portal_file_dialog(kind, d, allocator); r.status != .Unsupported { return r }
 	if have_program("zenity") { return zenity_dialog(kind, d, allocator) }
 	if have_program("kdialog") { return kdialog_dialog(kind, d, allocator) }
 	return {status = .Unsupported}

@@ -51,6 +51,12 @@ Native_Window :: struct {
 	off_state:    Off_State,
 	off_place:    [4]int,
 	off_visible:  bool,
+	// drag and drop (dragdrop_wl_linux.odin / dragdrop_x11_linux.odin), made on first use
+	dnd:          ^Dnd_State,
+	// icons of the notification area this window owns (tray_linux.odin)
+	trays:        [dynamic]^Tray,
+	// the accessibility adapter / tree (a11y_linux.odin), nil until an assistive technology connects
+	a11y:         rawptr,
 }
 
 // The emulated state of an offscreen window (mirrors Win32).
@@ -133,6 +139,9 @@ report_missing :: proc(what: string) {
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
 	clipboard_watch(w, false)
+	tray_destroy_all(w)
+	dnd_destroy(w)
+	a11y_detach(w)
 	switch w.backend {
 	case .Wayland: wl_destroy(w)
 	case .X11:     x11_destroy(w)
