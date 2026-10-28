@@ -12,7 +12,7 @@ package render
 // wgpu.Surface (nil when the handles are empty — an offscreen window renders with init_offscreen instead).
 
 import "vendor:wgpu"
-import "toolkit:platform"
+import "../platform"
 
 wgpu_surface_from_handles :: proc(instance: wgpu.Instance, h: platform.Surface_Handles) -> wgpu.Surface {
 	switch h.backend {

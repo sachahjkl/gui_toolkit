@@ -8,7 +8,7 @@ package platform
 import "core:os"
 import "core:strings"
 import "core:time"
-import "toolkit:dbus"
+import "../dbus"
 
 @(private) SCREENSAVER_SERVICE :: "org.freedesktop.ScreenSaver"
 @(private) SCREENSAVER_PATH :: "/org/freedesktop/ScreenSaver"

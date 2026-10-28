@@ -14,7 +14,7 @@ import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
 import "vendor:directx/dxgi"
-import "toolkit:platform"
+import "../platform"
 
 // This whole file is the Direct3D 11 backend: it builds only when the renderer uses it (`!USE_WGPU`), which on Windows
 // is the default and never the case on another system. `#+build windows` keeps it off non-Windows targets; `when

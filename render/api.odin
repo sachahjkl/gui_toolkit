@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:sync"
 import "core:time"
-import "toolkit:platform"
+import "../platform"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
 //   -define:TOOLKIT_RENDER=d3d11   Direct3D 11 (render.odin, frame.odin; the HLSL naga writes from the WGSL)   the default on Windows

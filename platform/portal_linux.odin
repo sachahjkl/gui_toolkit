@@ -13,7 +13,7 @@ package platform
 // request path arrives.
 
 import "core:strings"
-import "toolkit:dbus"
+import "../dbus"
 
 @(private) PORTAL_SERVICE :: "org.freedesktop.portal.Desktop"
 @(private) PORTAL_PATH :: "/org/freedesktop/portal/desktop"

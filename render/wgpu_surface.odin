@@ -16,7 +16,7 @@ package render
 import "core:fmt"
 import win "core:sys/windows"
 import "vendor:wgpu"
-import "toolkit:platform"
+import "../platform"
 
 @(private)
 Wgpu_Surface :: struct {
