@@ -90,6 +90,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
 | `flate` | DEFLATE / zlib / gzip as streams (any chunk size in, the output it allows out), dynamic Huffman codes; pure Odin, any platform. See [docs/flate.md](docs/flate.md). |
 | `fsx` | File helpers with the guarantees a persistent store relies on, on every system (`fsx_<os>.odin`): atomic write (`.tmp` renamed over the file), positional reads, directory listing and creation, recursive delete that avoids the Windows shell, `path_kind` (links never followed), `temp_dir`. Platform-neutral interface (no Windows or POSIX type crosses it). See [docs/fsx.md](docs/fsx.md). |
+| `i18n` | The text an application shows, in one place (`i18n.tr`): a procedure group with a plain, a translator-context and a count-dependent form; the English literal is the key, a call is free (same bytes, no lookup), and a language can later swap in one flat table. Pure Odin, any target. See [docs/i18n.md](docs/i18n.md). |
 
 ## Features
 
