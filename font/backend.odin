@@ -127,6 +127,14 @@ system_families :: proc(s: ^State, allocator := context.allocator) -> []string {
 	return s.system_fonts.families(s, allocator)
 }
 
+// The outline of glyph `gid` of face `face` (the backend's provider, DirectWrite or the native Fontations backend),
+// filled into `out` in font units up to `tolerance`; false when the backend has none (an application that draws glyph
+// paths, such as a 2D canvas, calls this instead of a backend's own provider). The same shape on every system.
+glyph_outline :: proc(s: ^State, face: Font_Id, gid: u16, tolerance: f32, out: ^Outline) -> bool {
+	if s == nil || s.tb.outline == nil { return false }
+	return s.tb.outline(s, face, gid, tolerance, out)
+}
+
 // The design metrics a face's backend reads (zero for an id that is not a live face).
 face_metrics :: proc(s: ^State, id: Font_Id) -> Face_Metrics {
 	f := face_ptr(s, primary_face(s, id))

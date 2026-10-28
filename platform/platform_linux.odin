@@ -196,6 +196,23 @@ show_window :: proc(w: ^Window) {
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
 is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 
+// Brings an already-shown window to the front (the user asked to switch to it). X11 asks the window manager
+// (_NET_ACTIVE_WINDOW); Wayland does not let a client raise itself (the compositor decides), so it is a no-op there.
+raise_window :: proc(w: ^Window) {
+	if w == nil || w.offscreen { return }
+	switch w.backend {
+	case .X11:     x11_raise(w)
+	case .Wayland: // the compositor owns focus / stacking; a client cannot raise itself
+	case .None:
+	}
+}
+
+// Whether the window is on screen (mapped and not minimized). An offscreen window is never "visible" in this sense.
+is_window_visible :: proc(w: ^Window) -> bool {
+	if w == nil || w.offscreen { return false }
+	return !w.closed && !w.minimized
+}
+
 // The native handles a renderer makes a wgpu surface from (neutral; see Surface_Handles). An offscreen window has none.
 native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
 	if w == nil || w.offscreen { return {} }
