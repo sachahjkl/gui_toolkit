@@ -29,7 +29,12 @@ X11_Conn :: struct {
 	wm_protocols, wm_delete_window, net_wm_name, utf8_string, net_wm_state,
 	net_wm_state_fullscreen, net_wm_state_maximized_horz, net_wm_state_maximized_vert,
 	net_wm_state_hidden, motif_wm_hints, clipboard, primary, targets, wren_selection,
-	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager: Xcb_Atom,
+	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager,
+	// the rich-clipboard target atoms (clipboard_x11_linux.odin): the MIME types and the protocol atoms
+	mime_text_html, mime_image_png, mime_uri_list, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
+	// the XDND atoms (dragdrop_x11_linux.odin)
+	xdnd_aware, xdnd_enter, xdnd_position, xdnd_status, xdnd_leave, xdnd_drop, xdnd_finished,
+	xdnd_type_list, xdnd_selection, xdnd_action_copy, xdnd_action_move, xdnd_action_link, xdnd_proxy: Xcb_Atom,
 	// the window that owns CLIPBOARD now (this process), and what it holds
 	clip_owner:  Xcb_Window,
 	clip_text:   string,
@@ -45,9 +50,11 @@ X11_Window_State :: struct {
 	transparent: bool,
 	title:    string,
 	mapped:   bool,
-	// the text another client offered through a selection request, read in during a paste
+	// the bytes another client offered through a selection request, read in during a paste; paste_incr while an INCR
+	// transfer streams in (clipboard_x11_linux.odin)
 	paste_buf: [dynamic]u8,
 	paste_got: bool,
+	paste_incr: bool,
 }
 
 @(private)
@@ -112,6 +119,15 @@ x11_intern_atoms :: proc() {
 	x11c.net_wm_window_type_normal = x11_atom("_NET_WM_WINDOW_TYPE_NORMAL")
 	x11c.net_active_window = x11_atom("_NET_ACTIVE_WINDOW")
 	x11c.resource_manager = x11_atom("RESOURCE_MANAGER")
+	x11c.mime_text_html = x11_atom("text/html")
+	x11c.mime_image_png = x11_atom("image/png")
+	x11c.mime_uri_list = x11_atom("text/uri-list")
+	x11c.atom_incr = x11_atom("INCR")
+	x11c.atom_multiple = x11_atom("MULTIPLE")
+	x11c.atom_timestamp = x11_atom("TIMESTAMP")
+	x11c.atom_text = x11_atom("TEXT")
+	x11c.atom_pair = x11_atom("ATOM_PAIR")
+	x11_dnd_intern_atoms()
 }
 
 @(private)
@@ -179,6 +195,7 @@ x11_init_xkb :: proc() {
 @(private) XCB_SELECTION_CLEAR :: 29
 @(private) XCB_SELECTION_REQUEST :: 30
 @(private) XCB_SELECTION_NOTIFY :: 31
+@(private) XCB_PROPERTY_NOTIFY :: 28
 
 @(private)
 x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> bool {
@@ -383,7 +400,7 @@ x11_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	x := &xcb
 	if wait && len(w.events) == 0 {
 		x.flush(x11c.c)
-		poll_fd_wait(x11c.fd, timeout_ms > 0 ? timeout_ms : -1)
+		poll_two(x11c.fd, dbus_fd(), timeout_ms > 0 ? timeout_ms : -1)
 	}
 	for {
 		ev := x.poll_for_event(x11c.c)
@@ -391,6 +408,7 @@ x11_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 		x11_handle_event(w, ev)
 		posix.free(ev)
 	}
+	dbus_pump()
 	x.flush(x11c.c)
 }
 
@@ -490,6 +508,8 @@ x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
 		if mtype == x11c.wm_protocols && d0 == x11c.wm_delete_window {
 			w.closed = true
 			x11_push(w, {kind = .Close})
+		} else {
+			x11_dnd_client_message(w, mtype, b)
 		}
 	case XCB_SELECTION_REQUEST:
 		x11_handle_selection_request(w, b)
@@ -497,6 +517,16 @@ x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
 		x11_handle_selection_notify(w, b)
 	case XCB_SELECTION_CLEAR:
 		if x11c.clip_owner == st.id { x11c.clip_owner = 0 }
+	case XCB_PROPERTY_NOTIFY:
+		// xcb_property_notify_event_t: window[4], atom[8], state[12] (0 NewValue, 1 Deleted)
+		pwin := Xcb_Window(get_u32(b[4:]))
+		patom := Xcb_Atom(get_u32(b[8:]))
+		pstate := b[12]
+		if pstate == 1 {   // Deleted: a requestor consumed an INCR chunk, send the next
+			x11_incr_on_property_delete(pwin, patom)
+		} else if pwin == st.id && st.paste_incr && patom == x11c.wren_selection {
+			x11_incr_receive_chunk(w)
+		}
 	}
 }
 
@@ -539,13 +569,7 @@ x11_key :: proc(w: ^Window, keycode: u32, state: u16, press: bool) {
 
 @(private)
 x11_clipboard_set_text :: proc(w: ^Window, text: string) {
-	st := x11_state(w)
-	delete(x11c.clip_text)
-	x11c.clip_text = strings.clone(text)
-	x11c.clip_owner = st.id
-	// become the owner of CLIPBOARD; xcb_set_selection_owner
-	x11_set_selection_owner(x11c.clipboard, st.id)
-	xcb.flush(x11c.c)
+	x11_clipboard_own_rich(w, text)
 }
 
 @(private)
@@ -575,33 +599,11 @@ x11_convert_selection :: proc(requestor: Xcb_Window, selection, target, property
 }
 @(private) x11_conv_sel: proc "c" (c: Xcb_Connection, requestor: Xcb_Window, selection, target, property: Xcb_Atom, time: u32) -> Xcb_Void_Cookie
 
-// Answer a SelectionRequest: another client wants our CLIPBOARD text.
+// Answer a SelectionRequest: another client wants a flavour of our CLIPBOARD / PRIMARY. The rich logic (TARGETS,
+// MULTIPLE, the MIME targets, INCR for big data) is in clipboard_x11_linux.odin.
 @(private)
 x11_handle_selection_request :: proc(w: ^Window, b: [^]u8) {
-	// xcb_selection_request_event_t: requestor[16], selection[20], target[24], property[28]
-	requestor := Xcb_Window(get_u32(b[16:]))
-	selection := Xcb_Atom(get_u32(b[20:]))
-	target := Xcb_Atom(get_u32(b[24:]))
-	property := Xcb_Atom(get_u32(b[28:]))
-	ok_prop := property
-	if target == x11c.targets {
-		list := [2]Xcb_Atom{x11c.utf8_string, XCB_ATOM_STRING}
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, XCB_ATOM_ATOM, 32, 2, &list[0])
-	} else if target == x11c.utf8_string || target == XCB_ATOM_STRING {
-		c := strings.clone_to_cstring(x11c.clip_text, context.temp_allocator)
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, 8, u32(len(x11c.clip_text)), rawptr(c))
-	} else {
-		ok_prop = 0   // refuse
-	}
-	// SelectionNotify back to the requestor
-	ev: [32]u8
-	ev[0] = XCB_SELECTION_NOTIFY
-	put_u32(ev[8:], u32(requestor))
-	put_u32(ev[12:], u32(selection))
-	put_u32(ev[16:], u32(target))
-	put_u32(ev[20:], u32(ok_prop))
-	xcb.send_event(x11c.c, 0, requestor, 0, &ev[0])
-	xcb.flush(x11c.c)
+	x11_serve_selection_request(w, b)
 }
 
 @(private)
@@ -609,18 +611,53 @@ x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 	st := x11_state(w)
 	property := Xcb_Atom(get_u32(b[24:]))
 	if property == 0 { st.paste_got = true; return }
-	cookie := xcb.get_property(x11c.c, 1, st.id, property, 0, 0, 1 << 20)
+	// read the property without deleting it first, so we can tell an INCR hand-off (type = INCR) from real data
+	cookie := xcb.get_property(x11c.c, 0, st.id, property, 0, 0, 1 << 20)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
-	if reply != nil {
-		n := int(xcb.get_property_value_length(reply))
-		if n > 0 {
-			data := ([^]u8)(xcb.get_property_value(reply))
-			clear(&st.paste_buf)
-			append(&st.paste_buf, ..data[:n])
-		}
+	if reply == nil { st.paste_got = true; return }
+	// xcb_get_property_reply_t: type at [8]
+	ptype := Xcb_Atom(get_u32(([^]u8)(reply)[8:]))
+	n := int(xcb.get_property_value_length(reply))
+	if ptype == x11c.atom_incr {
+		// the real data streams in: delete the property to ask for the first chunk, then read on each PropertyNotify
 		posix.free(reply)
+		st.paste_incr = true
+		clear(&st.paste_buf)
+		xcb.delete_property(x11c.c, st.id, property)
+		xcb.flush(x11c.c)
+		return
 	}
+	if n > 0 {
+		data := ([^]u8)(xcb.get_property_value(reply))
+		clear(&st.paste_buf)
+		append(&st.paste_buf, ..data[:n])
+	}
+	posix.free(reply)
 	st.paste_got = true
+}
+
+// One INCR chunk arrived on our scratch property (PropertyNotify NewValue while paste_incr): append it, delete the
+// property to ask for the next. A zero-length chunk ends the transfer.
+@(private)
+x11_incr_receive_chunk :: proc(w: ^Window) {
+	st := x11_state(w)
+	cookie := xcb.get_property(x11c.c, 0, st.id, x11c.wren_selection, 0, 0, 1 << 20)
+	reply := xcb.get_property_reply(x11c.c, cookie, nil)
+	if reply == nil { return }
+	n := int(xcb.get_property_value_length(reply))
+	if n > 0 {
+		data := ([^]u8)(xcb.get_property_value(reply))
+		append(&st.paste_buf, ..data[:n])
+		posix.free(reply)
+		xcb.delete_property(x11c.c, st.id, x11c.wren_selection)   // ask for the next chunk
+		xcb.flush(x11c.c)
+	} else {
+		posix.free(reply)
+		st.paste_incr = false   // the empty terminator: done
+		st.paste_got = true
+		xcb.delete_property(x11c.c, st.id, x11c.wren_selection)
+		xcb.flush(x11c.c)
+	}
 }
 
 @(private)
