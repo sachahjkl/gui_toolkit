@@ -1,0 +1,3 @@
+type: Added
+
+**Linux desktop services (`platform`)**: file dialogs (`open_file_dialog` / `save_file_dialog` / `pick_folder_dialog`) through zenity or kdialog; `open_url` / `open_path` / `reveal_in_folder` through xdg-open; `known_folder_path` from the XDG user directories; light / dark (`dark_mode_preferred`) and reduce-motion (`os_animations_enabled`) from the GTK settings; the rich clipboard (`clipboard_set` / `clipboard_get_*`) with text carried over the X11 CLIPBOARD selection and the Wayland `wl_data_device`, and HTML / image / files kept by the owner. `render/wgpu_surface_linux.odin` builds the wgpu surface from `Surface_Handles` (Wayland / XCB) for the renderer's Linux path.
