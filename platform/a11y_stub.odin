@@ -1,8 +1,10 @@
 #+build !windows
+#+build !linux
 package platform
 
 // Accessibility on the systems that have no adapter yet (a11y.odin has the API; AccessKit has adapters for AT-SPI and
-// macOS that native/a11y can wrap): nobody reads the windows, nothing is built.
+// macOS that native/a11y can wrap): nobody reads the windows, nothing is built. Windows (a11y_accesskit.odin) and
+// Linux (a11y_linux.odin) have their own.
 
 a11y_available :: proc() -> bool { return false }
 a11y_state :: proc(w: ^Window) -> A11y_State { return .Off }

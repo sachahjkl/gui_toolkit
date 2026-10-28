@@ -1,8 +1,10 @@
 #+build !windows
+#+build !linux
 package platform
 
 // The notification area on the systems that have no implementation yet (tray.odin has the API): no icon is made
-// (tray_create returns nil); every other call accepts nil and does nothing.
+// (tray_create returns nil); every other call accepts nil and does nothing. Windows (tray_win32.odin) and Linux
+// (tray_linux.odin) have their own.
 
 Native_Tray :: struct {}
 

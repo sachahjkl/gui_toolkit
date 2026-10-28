@@ -97,3 +97,69 @@ The platform package exposes these handles for the renderer through `native_surf
 integration notes); `render.init` takes a neutral handle instead of a `win.HWND` so the same call opens the renderer on
 every system. The present mode (`FIFO` / `Mailbox`), resize, fractional DPI and capture (`render/capture.odin`) are the
 same code as the Windows wgpu path (`wgpu_surface.odin`), which the Linux surface slots into.
+
+## Linux desktop services
+
+Beyond the window, input and plain-text clipboard, the Linux backend now carries the full desktop services, behind the
+same neutral API as Windows. Most ride a small D-Bus client (the `dbus` package — see `docs/dbus.md`), whose socket is
+folded into the window loop's `poll(2)` so the bus is drained on the UI thread each pump. Every service degrades to a
+sane fallback (or a no-op) when its desktop piece is absent, so a bare session still runs.
+
+### Rich clipboard (cross-process)
+
+The clipboard owner is complete on both backends. **Wayland** (`clipboard_wl_linux.odin`): a full `wl_data_source`
+offers every flavour the store holds (text, HTML, PNG, `text/uri-list`), its `send` callback writes the bytes to the
+fd the compositor hands over, `cancelled` releases it, and `set_selection` uses the last input serial; reading a
+flavour another client owns dups a pipe, calls `wl_data_offer.receive`, and reads it. The **primary** (middle-click)
+selection rides `zwp_primary_selection_v1`. **X11** (`clipboard_x11_linux.odin`): `SelectionRequest` serves `TARGETS`,
+`TIMESTAMP`, `MULTIPLE` and the MIME targets, with **INCR** for a payload too large for one property (a pasted image);
+reading follows an INCR hand-off. `clipboard_set` / `clipboard_get_image` / `_get_html` / `_get_files` read a foreign
+owner over the selection transport.
+
+### Drag and drop
+
+`dragdrop_linux.odin` keeps the window's `Dnd_State` and the API; the transports are **Wayland `wl_data_device`**
+(`dragdrop_wl_linux.odin`: enter / motion / drop, the offered MIME types, `set_actions`, and a `wl_data_source` for the
+source side) and **X11 XDND v5** (`dragdrop_x11_linux.odin`: `XdndAware`, the Enter / Position / Status / Drop / Leave
+/ Finished client messages, the data read over `XdndSelection`). The public API is the Win32 one: `drop_target_enable`,
+`drop_data`, `drop_set_effect`, `drag_start`, `drop_inject`, `drag_script`.
+
+### Tray icon and notifications
+
+`tray_linux.odin` implements the **StatusNotifierItem** specification over D-Bus: it exports an item object, serves its
+properties (icon as an ARGB pixmap, title, tooltip, menu), registers with the `StatusNotifierWatcher`, and turns the
+host's Activate / SecondaryActivate / ContextMenu into `Tray_Event`s. The menu is a **`com.canonical.dbusmenu`** tree
+(`dbusmenu_linux.odin`: `GetLayout`, `Event`). `tray_notify` calls **`org.freedesktop.Notifications`**; its
+`ActionInvoked` / `NotificationClosed` signals become `Notify_*` events. Same public API as `tray_win32.odin`.
+
+### Dialogs, shell and live theme
+
+`portal_linux.odin` adds the **XDG portals**: `org.freedesktop.portal.FileChooser` (OpenFile / SaveFile / a folder,
+filters, multiple, suggested name; the result arrives on a `Response` signal), `org.freedesktop.portal.OpenURI`
+(`open_url` / `open_path`), and `org.freedesktop.portal.Settings` for **live light / dark** — `dark_mode_preferred`
+reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fires `cb` on the `SettingChanged` signal.
+`dialogs_linux.odin` tries the portal first, then zenity / kdialog; `theme_linux.odin` falls back to the GTK settings.
+
+### Accessibility, IME, and the smaller services
+
+- **Accessibility** (`a11y_linux.odin`): a minimal **AT-SPI 2** bridge over D-Bus (the a11y bus address from
+  `org.a11y.Bus.GetAddress`), exposing the window's tree (roles, names, states, bounds) and the `Action` interface's
+  Invoke / Focus from the toolkit's neutral `A11y_Update`. Nothing is built while no assistive technology connects.
+- **IME** (`ime.odin` + `ime_wl_linux.odin`): **Wayland `zwp_text_input_v3`** commits text as `.Text` events (the same
+  path as a typed key) and exposes the preedit through `ime_preedit`; `ime_set_cursor_rect` places the candidate
+  window. On **X11**, libxkbcommon already composes dead keys and Compose sequences inline, so committed text arrives
+  as `.Text` with no extra work.
+- **Smaller services** (`services_linux.odin`): `idle_inhibit` / `idle_uninhibit` keep the screen awake through
+  `org.freedesktop.ScreenSaver`; `add_recent_file` appends to the freedesktop `recently-used.xbel`.
+- **Cursors** (`cursors_wl_linux.odin`): Wayland names a shape to the compositor through `wp_cursor_shape_v1`, so the
+  pointer matches the user's theme with no pixel upload.
+
+### Known gaps (the lead's first checks)
+
+- The **X11 drag source** (`x11_drag_start`) sends XDND to the toplevel under the pointer, but `x11_window_at` does not
+  yet walk the window tree to find an XDND-aware toplevel (it returns 0), so cross-application X11 drags *out* of the
+  window are the piece to try under a real WM; drops *into* the window, and all Wayland drags, are complete.
+- The **X11 cursor** still uses the compositor default (no Xcursor upload yet); Wayland cursor shapes are live.
+- **AT-SPI** is a minimal bridge (root tree, names, DoAction); the full surface (Text ranges, Collection, per-node
+  objects at their own paths) is the AccessKit `accesskit_unix` alternative discussed in the night's report.
+

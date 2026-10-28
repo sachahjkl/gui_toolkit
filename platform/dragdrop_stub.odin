@@ -1,8 +1,10 @@
 #+build !windows
+#+build !linux
 package platform
 
 // Drag and drop on the systems that have no implementation yet (dragdrop.odin has the API): every call answers "not
-// supported", so an app written for it builds and runs, without drops.
+// supported", so an app written for it builds and runs, without drops. Windows (dragdrop_win32.odin) and Linux
+// (dragdrop_linux.odin) have their own.
 
 drop_target_enable :: proc(w: ^Window, on: bool) -> bool { return !on }
 drop_target_enabled :: proc(w: ^Window) -> bool { return false }

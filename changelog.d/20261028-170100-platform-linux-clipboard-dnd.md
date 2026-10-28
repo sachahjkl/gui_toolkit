@@ -1,0 +1,3 @@
+type: Added
+
+**Linux cross-process clipboard and drag-and-drop** (`platform`): the clipboard owner is now complete on both backends — a full Wayland `wl_data_source` offering text / HTML / PNG / `text/uri-list` (and reading a foreign owner over `wl_data_offer.receive`), the `zwp_primary_selection_v1` primary selection, and an X11 `SelectionRequest` server with `TARGETS` / `TIMESTAMP` / `MULTIPLE` and INCR for large images; `clipboard_get_image` / `_get_html` / `_get_files` read whatever another process owns. Drag and drop works both ways with the same API as Windows (`drop_target_enable`, `drop_data`, `drag_start`, `drop_inject`): Wayland `wl_data_device` and X11 XDND version 5.
