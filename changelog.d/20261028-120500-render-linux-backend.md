@@ -1,3 +1,0 @@
-type: Added
-
-**wgpu is the renderer's Linux backend**: on a non-Windows target `render` builds the WebGPU backend only (`TOOLKIT_RENDER` is ignored there and `USE_WGPU` is forced on). The Direct3D 11 backend (`render_d3d.odin`, `frame.odin`, the canvas, slug, video, app-shader and damage files) is now built only for the Direct3D backend (`when !USE_WGPU`, Windows); the shared types (`Renderer`, `Texture_Data`, the frame description) and the backend-agnostic procedures build on every system. The wgpu surface comes from `platform.Surface_Handles` (Wayland `wl_display` + `wl_surface`, or XCB connection + window); present pacing on Linux is the FIFO vblank (there is no DWM timing or waitable-timer latency object). wgpu-native must be built for Linux (`libwgpu_native.a`).
