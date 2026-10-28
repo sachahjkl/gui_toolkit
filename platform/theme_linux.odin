@@ -18,9 +18,11 @@ reduce_motion_preferred :: proc() -> bool {
 	return false
 }
 
-// Whether the user prefers a dark theme. Read from the GTK theme name (a "-dark" suffix, or gtk-application-prefer-dark-theme),
-// else from $GTK_THEME, else false. An app that calls set_dark_title follows this.
+// Whether the user prefers a dark theme. The XDG appearance portal is authoritative (org.freedesktop.appearance
+// color-scheme) and gives a live value; the GTK settings are the fallback when the portal is absent. An app that calls
+// set_dark_title follows this, and watch_color_scheme (portal_linux.odin) tells it when the user flips it at run time.
 dark_mode_preferred :: proc() -> bool {
+	if dark, ok := portal_dark_mode(); ok { return dark }
 	if v, ok := gtk_setting("gtk-application-prefer-dark-theme"); ok && (v == "1" || v == "true") { return true }
 	if t := posix.getenv("GTK_THEME"); t != nil && strings.contains(string(t), "dark") { return true }
 	if v, ok := gtk_setting("gtk-theme-name"); ok && strings.contains(strings.to_lower(v, context.temp_allocator), "dark") { return true }
