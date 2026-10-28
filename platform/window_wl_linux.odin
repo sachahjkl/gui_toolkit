@@ -44,6 +44,7 @@ Wl_Conn :: struct {
 	touch:      Wl_Proxy,
 	fd:         i32,
 	output_scale: i32,            // integer buffer scale from wl_output (1, 2...)
+	output_px:  [2]i32,           // the current output mode's pixel size (wl_output mode; 0 until one arrives)
 	xkb_ctx:    Xkb_Context,
 	xkb_keymap: Xkb_Keymap,
 	xkb_state:  Xkb_State,
@@ -177,7 +178,7 @@ Output_Listener :: struct {
 @(private)
 output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: i32, make, model: cstring, transform: i32) {}
 @(private)
-output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { output_refresh_mhz = refresh } }
+output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { output_refresh_mhz = refresh; wlc.output_px = {w, h} } }
 @(private)
 output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {}
 @(private)
