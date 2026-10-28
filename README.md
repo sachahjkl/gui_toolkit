@@ -92,6 +92,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `fsx` | File helpers with the guarantees a persistent store relies on, on every system (`fsx_<os>.odin`): atomic write (`.tmp` renamed over the file), positional reads, directory listing and creation, recursive delete that avoids the Windows shell, `path_kind` (links never followed), `temp_dir`. Platform-neutral interface (no Windows or POSIX type crosses it). See [docs/fsx.md](docs/fsx.md). |
 | `i18n` | The text an application shows, in one place (`i18n.tr`): a procedure group with a plain, a translator-context and a count-dependent form; the English literal is the key, a call is free (same bytes, no lookup), and a language can later swap in one flat table. Pure Odin, any target. See [docs/i18n.md](docs/i18n.md). |
 | `config` | A typed preference registry — an about:config for any application (`config.Prefs`): named, typed, documented, bounded preferences with four layers (default < user < command line < policy, policy locks), prefix observers, atomic save of user changes only, snapshots, and titles / summary / search for a settings UI. Pure Odin, any target. See [docs/config.md](docs/config.md). |
+| `arena` | Lifetime and ownership primitives: a `Scope` tree (a growing virtual-memory arena plus reverse-order cleanups, closing a scope closes its children) and a generational `Pool` (fixed-address slots addressed by a `Handle` that can never dangle). Pure Odin, any target. See [docs/arena.md](docs/arena.md). |
 
 ## Features
 
