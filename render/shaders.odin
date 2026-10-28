@@ -3,8 +3,6 @@ package render
 import "core:crypto/hash"
 import "core:encoding/hex"
 import "core:fmt"
-import "core:mem"
-import "vendor:directx/d3d11"
 
 // The shaders are written once, in WGSL (render/*.wgsl): the WebGPU backend compiles them as they are (wgpu / naga), the Direct3D 11
 // backend uses the HLSL that naga writes from them (render/shaders/*.hlsl, generated: tools/wgsl2hlsl, naga pinned exactly and by
@@ -124,37 +122,6 @@ SHADERS := [Shader_Id]Shader_Desc{
 	.Canvas_Fx_PS = {.Canvas, "canvas.hlsl", "ps_fx", "ps_5_0", "canvas_fx_ps.dxbc", #load("shaders/canvas_fx_ps.dxbc")},
 }
 
-// Compiles HLSL text (tools/shaders for the HLSL it just wrote, tests/shaders). The bytes are a copy in `allocator`.
-compile_hlsl :: proc(source: string, id: Shader_Id, allocator := context.allocator) -> (code: []u8, ok: bool) {
-	d := SHADERS[id]
-	blob := compile(source, d.entry, d.target, d.name) or_return
-	defer blob->Release()
-	src := mem.slice_ptr(cast([^]u8)blob->GetBufferPointer(), int(blob->GetBufferSize()))
-	code = make([]u8, len(src), allocator)
-	copy(code, src)
-	return code, true
-}
-
-// Compiles a shader from the embedded HLSL (tests/shaders).
-shader_compile :: proc(id: Shader_Id, allocator := context.allocator) -> (code: []u8, ok: bool) {
-	return compile_hlsl(MODULES[SHADERS[id].module].hlsl, id, allocator)
-}
-
-// The code of a shader for the device: the embedded blob, or the HLSL compiled now (RENDER_COMPILE_SHADERS).
-// Release the blob with shader_code_done.
-@(private)
-shader_code :: proc(id: Shader_Id) -> (code: []u8, blob: ^d3d11.IBlob, ok: bool) {
-	when RENDER_COMPILE_SHADERS {
-		d := SHADERS[id]
-		blob = compile(MODULES[d.module].hlsl, d.entry, d.target, d.name) or_return
-		return mem.slice_ptr(cast([^]u8)blob->GetBufferPointer(), int(blob->GetBufferSize())), blob, true
-	} else {
-		code = SHADERS[id].blob
-		return code, nil, len(code) > 0
-	}
-}
-
-@(private)
-shader_code_done :: proc(blob: ^d3d11.IBlob) {
-	if blob != nil { blob->Release() }
-}
+// The Direct3D compilation of these shaders (compile_hlsl, shader_compile, shader_code, shader_code_done) lives in
+// shaders_d3d.odin: it names d3d11.IBlob and is built on Windows only. The WGSL sources and the module / shader tables
+// above are shared (the wgpu backend, tools/shaders and tests/shaders read them).

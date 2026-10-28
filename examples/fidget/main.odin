@@ -179,7 +179,7 @@ main :: proc() {
 	// transparent: some palettes (Aero) let the OS backdrop show through the page background
 	app.integrated = slice.contains(os.args, "--integrated")
 	app.win = platform.open_window("gui_toolkit fidget", {1180, 780}, transparent = true, integrated_title = app.integrated)
-	if !render.init(&app.r, app.win.hwnd, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
+	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
 	ok: bool
 	// system fonts when present, else the fallbacks compiled into the exe (Wine, trimmed installs);
 	// --embedded_fonts forces the fallbacks

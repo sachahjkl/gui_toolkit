@@ -1,3 +1,4 @@
+#+build windows
 package render
 
 import "core:mem"
@@ -5,6 +6,8 @@ import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
+
+when !USE_WGPU {
 
 // Partial redraw on the Direct3D 11 / DXGI backend: clearing only the damaged region, and presenting it with
 // Present1 + DXGI_PRESENT_PARAMETERS (dirty rectangles and a scroll rectangle). See damage.odin for the region.
@@ -141,3 +144,5 @@ d3d_present_partial :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	damage_push_history(d)
 	return hr
 }
+
+}   // when !USE_WGPU

@@ -158,6 +158,10 @@ Video_Pipeline :: struct {
 
 @(private) MAX_VIDEO_VIEWS :: 40
 
+// The Direct3D 11 video conversion below builds on Windows only; the wgpu counterpart is wgpu_video.odin. The types
+// and the public dispatchers above are shared.
+when !USE_WGPU {
+
 @(private)
 video_pipeline_init :: proc(r: ^Renderer) -> bool {
 	v := &r.video
@@ -376,6 +380,8 @@ d3d_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool 
 	td.unfilled = false   // the conversion wrote every texel
 	return true
 }
+
+}   // when !USE_WGPU
 
 // Texture bytes the picture handling holds (statistics).
 video_gpu_bytes :: proc(r: ^Renderer) -> int {

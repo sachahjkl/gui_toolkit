@@ -95,6 +95,11 @@ insert_free :: proc(h: ^Heap, offset, n: int) {
 	}
 }
 
+// The Direct3D heap, recovery and replay procedures below build on Windows only (they call the Direct3D device helpers
+// in render_d3d.odin); the wgpu counterparts are in wgpu_core.odin. The heap bookkeeping above (heap_alloc, heap_free,
+// insert_free) and the device-loss helpers further down are backend independent.
+when !USE_WGPU {
+
 // Writes `n` elements at `offset` (elements) of heap `kind`.
 d3d_heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: int) {
 	h := &r.heaps[kind]
@@ -138,6 +143,8 @@ d3d_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 	return true
 }
 
+}   // when !USE_WGPU
+
 // Bytes allocated in the heaps (what pictures hold), and their total capacity.
 heap_bytes :: proc(r: ^Renderer) -> (used, capacity: int) {
 	for h, k in r.heaps {
@@ -154,6 +161,7 @@ heaps_reset :: proc(r: ^Renderer) {
 	r.heap_generation += 1
 }
 
+when !USE_WGPU {
 @(private)
 d3d_heaps_destroy :: proc(r: ^Renderer) {
 	for &h in r.heaps {
@@ -163,6 +171,7 @@ d3d_heaps_destroy :: proc(r: ^Renderer) {
 		h = {}
 	}
 }
+}   // when !USE_WGPU
 
 ////////////////////////////////
 // Device loss
@@ -185,6 +194,7 @@ device_lost :: proc(r: ^Renderer) -> bool { return r.lost }
 // their contents are gone: `device_generation` changes, owners upload their images again (draw.begin_frame resets
 // the glyph atlas). Pooled targets are dropped; the retained heaps are emptied (pictures upload again). Returns false
 // when no device can be had yet (try again later; until then frames draw nothing).
+when !USE_WGPU {
 d3d_recover :: proc(r: ^Renderer) -> bool {
 	// the new device first: if there is none, the old (removed) one stays, its calls are harmless no-ops
 	old_device, old_ctx := r.device, r.ctx
@@ -221,11 +231,13 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	r.lost = !ok
 	return ok
 }
+}   // when !USE_WGPU
 
 // For tests: behaves as if the device had just been lost (the next frame_begin recovers).
 simulate_device_loss :: proc(r: ^Renderer) { r.lost = true }
 
 // Every object made on the device (not the device and context): what destroy releases, minus the CPU state.
+when !USE_WGPU {
 @(private)
 release_device_objects :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
@@ -272,3 +284,4 @@ write_replay :: proc(r: ^Renderer, rp: ^Replay, retained: bool) {
 	mem.copy(mapped.pData, &c, size_of(c))
 	r.ctx->Unmap(r.replay_cb, 0)
 }
+}   // when !USE_WGPU
