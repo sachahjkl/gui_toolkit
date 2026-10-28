@@ -1,8 +1,9 @@
 #+build !windows
+#+build !linux
 package platform
 
 // The rich clipboard on the systems that have no implementation yet (clipboard.odin has the API and the conversions):
-// nothing is there, nothing can be written.
+// nothing is there, nothing can be written. Linux has its own (clipboard_linux.odin).
 
 clipboard_sequence :: proc() -> u32 { return 0 }
 clipboard_formats :: proc() -> Clipboard_Formats { return {} }
