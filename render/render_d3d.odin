@@ -8,7 +8,6 @@ package render
 // referenced on Linux; it names Win32, DXGI and DirectComposition freely.
 
 import "core:fmt"
-import "core:math"
 import "core:mem"
 import "base:runtime"
 import win "core:sys/windows"
