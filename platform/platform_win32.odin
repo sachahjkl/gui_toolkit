@@ -369,6 +369,19 @@ show_window :: proc(w: ^Window) {
 	win.SetForegroundWindow(w.hwnd)
 }
 
+// Brings an already-shown window to the front and gives it the keyboard focus (the user asked to switch to it). A no-op
+// for an offscreen window. On Wayland a client cannot raise itself, so there it is best effort (the Linux backend).
+raise_window :: proc(w: ^Window) {
+	if w == nil || w.offscreen { return }
+	win.SetForegroundWindow(w.hwnd)
+}
+
+// Whether the window is on screen (mapped and not minimized). An offscreen window is never "visible" in this sense.
+is_window_visible :: proc(w: ^Window) -> bool {
+	if w == nil || w.offscreen { return false }
+	return bool(win.IsWindowVisible(w.hwnd))
+}
+
 set_title :: proc(w: ^Window, title: string) {
 	if w.offscreen { return }
 	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title, context.temp_allocator))
