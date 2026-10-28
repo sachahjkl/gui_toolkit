@@ -130,8 +130,11 @@ vblank_grid :: proc(r: ^Renderer) -> (last: time.Tick, period_ns: f64, ok: bool)
 // The QueryPerformanceCounter value `qpc` on core:time's tick scale (what time.tick_now returns on Windows).
 qpc_to_tick :: proc(qpc: i64) -> time.Tick {
 	@(static) freq: win.LARGE_INTEGER
-	if freq == 0 { win.QueryPerformanceFrequency(&freq) }
+	when ODIN_OS == .Windows {
+		if freq == 0 { win.QueryPerformanceFrequency(&freq) }
+	}
 	f := i64(freq)
+	if f == 0 { return {} }
 	return time.Tick{_nsec = (qpc / f) * 1e9 + (qpc % f) * 1e9 / f}
 }
 
@@ -139,10 +142,10 @@ qpc_to_tick :: proc(qpc: i64) -> time.Tick {
 @(private)
 check_tearing :: proc(factory: ^dxgi.IFactory2) -> bool {
 	f5: ^dxgi.IFactory5
-	if win.FAILED(factory->QueryInterface(dxgi.IFactory5_UUID, (^rawptr)(&f5))) || f5 == nil { return false }
+	if hr_failed(factory->QueryInterface(dxgi.IFactory5_UUID, (^rawptr)(&f5))) || f5 == nil { return false }
 	defer f5->Release()
 	allow: win.BOOL
-	if win.FAILED(f5->CheckFeatureSupport(.PRESENT_ALLOW_TEARING, &allow, size_of(allow))) { return false }
+	if hr_failed(f5->CheckFeatureSupport(.PRESENT_ALLOW_TEARING, &allow, size_of(allow))) { return false }
 	return bool(allow)
 }
 
@@ -170,7 +173,9 @@ latency_lowered :: proc(p: ^Present_State, to: int) {
 
 @(private)
 latency_drain :: proc(p: ^Present_State, handle: win.HANDLE) {
-	for p.latency_debt > 0 && handle != nil && win.WaitForSingleObject(handle, 0) == win.WAIT_OBJECT_0 { p.latency_debt -= 1 }
+	when ODIN_OS == .Windows {
+		for p.latency_debt > 0 && handle != nil && win.WaitForSingleObject(handle, 0) == win.WAIT_OBJECT_0 { p.latency_debt -= 1 }
+	}
 }
 
 @(private)
@@ -190,10 +195,10 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	hr := r.swapchain->Present(sync, flags)
 	profile_present_end(r, ps)
 	now := time.tick_now()
-	if win.FAILED(hr) { return hr }
+	if hr_failed(hr) { return hr }
 	p.presents += 1
 	id: u32
-	if win.SUCCEEDED(r.swapchain->GetLastPresentCount(&id)) {
+	if hr_ok(r.swapchain->GetLastPresentCount(&id)) {
 		p.last_id = id
 		p.ring[id % PRESENT_RING] = Present_Slot{present = id, input = p.input, read = p.read, drawn = p.drawn, call = call, presented = now, continuous = p.continuous, interval = max(sync, 1), expected = p.expected > 0 ? p.expected : f64(max(sync, 1)), mode = tearing ? .Tearing : .Vsync}
 	}
@@ -211,7 +216,7 @@ present_collect :: proc(r: ^Renderer) {
 	st: dxgi.FRAME_STATISTICS
 	hr := r.swapchain->GetFrameStatistics(&st)
 	if hr == dxgi.ERROR_FRAME_STATISTICS_DISJOINT { p.have_seen = false; p.sync_count = 0; return }
-	if win.FAILED(hr) { p.stats_fails += 1; return }
+	if hr_failed(hr) { p.stats_fails += 1; return }
 	p.stats_ok = true
 	p.stats_fails = 0
 	if p.probe.on && p.last_id >= st.PresentCount { latency_probe_depth(&p.probe, u64(p.last_id - st.PresentCount)) }

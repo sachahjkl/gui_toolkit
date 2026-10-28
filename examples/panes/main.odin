@@ -100,7 +100,7 @@ main :: proc() {
 	app := new(App)
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit panes", {900, 600})
-	if !render.init(&app.r, app.win.hwnd, app.win.size) { fmt.eprintln("renderer init failed"); return }
+	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("renderer init failed"); return }
 	ok: bool
 	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("cannot load a UI font"); return }

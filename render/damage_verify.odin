@@ -1,6 +1,6 @@
+#+build windows
 package render
 
-import "core:fmt"
 import "core:mem"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
@@ -11,6 +11,8 @@ import "vendor:directx/dxgi"
 // draws the whole frame a second time into a persistent reference texture, reads the reference and the partial back
 // buffer back, and reports the first pixel that differs and the damage rectangle it is in (or that it is outside the
 // region, which means a rectangle is missing). It costs a full extra frame and two read-backs: for development only.
+// Direct3D only; the backend-independent comparison (damage_compare) lives in damage.odin, shared with the wgpu path.
+when !USE_WGPU {
 
 @(private)
 d3d_verify_ensure_ref :: proc(r: ^Renderer) -> bool {
@@ -135,25 +137,4 @@ d3d_read_texture :: proc(r: ^Renderer, tex: ^d3d11.ITexture2D) -> []u8 {
 	return out
 }
 
-// Compares two BGRA8 frames and, on the first differing pixel, prints it and the damage rectangle it belongs to (or
-// that it lies outside the region: a dirty rectangle is missing). Backend independent.
-@(private)
-damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int) {
-	n := min(len(full), len(partial))
-	for i := 0; i + 3 < n; i += 4 {
-		if full[i] == partial[i] && full[i + 1] == partial[i + 1] && full[i + 2] == partial[i + 2] && full[i + 3] == partial[i + 3] { continue }
-		px := i / 4
-		x, y := px % size.x, px / size.x
-		in_region := false
-		which := -1
-		for k in 0 ..< d.render_count {
-			rr := d.render_rects[k]
-			if i32(x) >= rr.x0 && i32(x) < rr.x1 && i32(y) >= rr.y0 && i32(y) < rr.y1 { in_region, which = true, k; break }
-		}
-		fmt.eprintfln(
-			"render.damage.verify: first difference at pixel (%d, %d): full BGRA %v, partial BGRA %v | %s",
-			x, y, full[i:i + 4], partial[i:i + 4],
-			in_region ? fmt.tprintf("inside damage rect %d %v", which, d.render_rects[which]) : "OUTSIDE every damage rectangle (a dirty rectangle is missing)")
-		return
-	}
-}
+}   // when !USE_WGPU

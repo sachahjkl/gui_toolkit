@@ -376,7 +376,7 @@ main :: proc() {
 	}
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit transforms", {1280, 820}, app)
-	if !render.init(&app.r, app.win.hwnd, app.win.size, space = app.space) { fmt.eprintln("renderer init failed"); return }
+	if !render.init_window(&app.r, app.win, app.win.size, space = app.space) { fmt.eprintln("renderer init failed"); return }
 	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id
