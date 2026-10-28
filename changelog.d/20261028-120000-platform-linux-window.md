@@ -1,3 +1,0 @@
-type: Added
-
-**Linux window backend (`platform`)**: `platform.open_window` and the whole window / input API now run on Linux, over **Wayland** (xdg-shell, `wl_seat` with an xkbcommon keymap, `wl_output` scale for DPI, zxdg-decoration or a client-side title bar) and **X11** (XCB, xkbcommon, `Xft.dpi`, `_NET_WM_STATE`, Motif hints), chosen at open from `WAYLAND_DISPLAY` / `DISPLAY`. Every window library is loaded with `dlopen` (libwayland-client, libxcb, libxkbcommon), so a binary starts on a system missing one and names it; nothing is hard-linked. The same `Window`, `Event`, `Key`, `Cursor`, `Placement` types as the Win32 backend — an application written against `platform` does not change.

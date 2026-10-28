@@ -1,3 +1,0 @@
-type: Added
-
-**Linux accessibility, IME and smaller desktop services** (`platform`): a minimal AT-SPI 2 accessibility bridge over D-Bus (`a11y_send` / `a11y_state` / `a11y_take_request` expose the toolkit's neutral tree — roles, names, states, bounds, Invoke / Focus — to screen readers when one connects); input-method composition through Wayland `zwp_text_input_v3` (`ime_set_enabled`, `ime_set_cursor_rect`, `ime_preedit`; committed text arrives as `.Text` events, and X11 composes dead keys through libxkbcommon); keeping the screen awake (`idle_inhibit` / `idle_uninhibit` through `org.freedesktop.ScreenSaver`); the recent-files list (`add_recent_file` to the freedesktop `recently-used.xbel`); and Wayland cursor shapes drawn by the compositor through `wp_cursor_shape_v1`.
