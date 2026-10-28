@@ -76,9 +76,8 @@ apply_cursor :: proc(w: ^Window) {
 	}
 }
 
-// Backend apply points. The full themed-cursor upload (a wl_buffer from the theme, or an Xcursor handle) is the
-// remaining visual work; these keep the window's choice and are where it is sent.
-@(private) wl_apply_cursor :: proc(w: ^Window) {}
+// Backend apply points. Wayland names a shape to the compositor through wp_cursor_shape_v1 (cursors_wl_linux.odin);
+// the X11 Xcursor upload is the remaining visual work (the choice is kept and sent where the protocol is bound).
 @(private) x11_apply_cursor :: proc(w: ^Window) {}
 
 @(private)
