@@ -96,9 +96,25 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
+// A width for a row of controls whose text is a child of it (check boxes, radios, switches): as wide as its children
+// unless `next` gave one. (From the style it took the text size of its own text, which is empty: the clickable row was
+// a sliver at the left of its mark and label.) Returns whether it fits its children.
+@(private)
+fit_row_width :: proc() -> bool {
+	if g.has_next {
+		if _, given := g.next_mod.width.?; given { return false }
+	} else {
+		g.next_mod = {}
+		g.has_next = true
+	}
+	g.next_mod.width = children_sum()
+	return true
+}
+
 @(private)
 mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 	em := font_size()
+	fit := fit_row_width()
 	set_next_axis(.X, .Center)
 	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
 	a11y_default(row_box, {role = radio ? .Radio_Button : .Check_Box, toggled = on ? .True : .False})
@@ -117,7 +133,7 @@ mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 		d.radio = radio
 		custom("mark", mark_draw, d)
 		spacer(px(em * 0.6))
-		next({width = fill(), height = pct(1)})
+		next({width = fit ? text_size() : fill(), height = pct(1)})
 		build_box({.Draw_Text}, text)
 	}
 	return sig
@@ -164,6 +180,7 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Switch (named `toggle` because `switch` is an Odin keyword).
 toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 	em := font_size()
+	fit := fit_row_width()
 	set_next_axis(.X, .Center)
 	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
 	sig := signal(row_box)
@@ -171,7 +188,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 	a11y_default(row_box, {role = .Switch, toggled = value^ ? .True : .False})
 	if parent(row_box) {
 		spacer(px(em * 0.4))
-		next({width = fill(), height = pct(1)})
+		next({width = fit ? text_size() : fill(), height = pct(1)})
 		build_box({.Draw_Text}, text)
 		next({width = px(em * 2.6), height = px(em * 1.4)})
 		d := frame_new(Toggle_Draw)
