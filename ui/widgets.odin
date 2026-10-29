@@ -7,11 +7,13 @@ import "core:math"
 ////////////////////////////////
 // Layout helpers
 
+// The child axis of the next box, and its cross alignment. A `cross` left at its default (.Start) does not replace one
+// that a `next` gave first: `next({cross = .Center}); if row() {...}` centres its children, as it reads.
 @(private)
 set_next_axis :: proc(a: Axis, cross := Cross_Align.Start) {
 	if !g.has_next { g.next_mod = {} }
 	g.next_mod.axis = a
-	g.next_mod.cross = cross
+	if _, given := g.next_mod.cross.?; !given || cross != .Start { g.next_mod.cross = cross }
 	g.has_next = true
 }
 
