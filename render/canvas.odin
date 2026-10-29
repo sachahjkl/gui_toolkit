@@ -1,10 +1,10 @@
 package render
 
-import "core:fmt"
-import "core:mem"
-import win "core:sys/windows"
+@(require) import "core:fmt"
+@(require) import "core:mem"
+@(require) import win "core:sys/windows"
 import "vendor:directx/d3d11"
-import "vendor:directx/dxgi"
+@(require) import "vendor:directx/dxgi"
 
 // 2D canvas drawing on the GPU, Direct3D 11 (canvas.wgsl has the shaders and the design; canvas_types.odin the data).
 //

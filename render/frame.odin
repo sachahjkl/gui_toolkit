@@ -1,8 +1,8 @@
 #+build windows
 package render
 
-import "core:mem"
-import "vendor:directx/d3d11"
+@(require) import "core:mem"
+@(require) import "vendor:directx/d3d11"
 
 // Direct3D 11 frame submission (d3d_frame_submit) and the bind / target / op / pass helpers it uses. Built only for the
 // Direct3D backend (`!USE_WGPU`, Windows); the shared filter data (Pass_Constants, blur_taps, the precision setters)

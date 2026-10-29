@@ -1,10 +1,10 @@
 #+build windows
 package render
 
-import "core:mem"
-import win "core:sys/windows"
-import "vendor:directx/d3d11"
-import "vendor:directx/dxgi"
+@(require) import "core:mem"
+@(require) import win "core:sys/windows"
+@(require) import "vendor:directx/d3d11"
+@(require) import "vendor:directx/dxgi"
 
 // render.damage.verify (set_damage_verify, or the environment variable TOOLKIT_DAMAGE_VERIFY): a development check that
 // a partial frame is byte-for-byte identical to a full render of the same frame. On each verified frame the renderer

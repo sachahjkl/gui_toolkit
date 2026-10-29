@@ -1,11 +1,11 @@
 #+build windows
 package render
 
-import "core:fmt"
-import "core:mem"
-import "core:strings"
-import win "core:sys/windows"
-import "vendor:directx/d3d11"
+@(require) import "core:fmt"
+@(require) import "core:mem"
+@(require) import "core:strings"
+@(require) import win "core:sys/windows"
+@(require) import "vendor:directx/d3d11"
 
 // Direct3D 11 side of application shaders (app_shader.odin has the shared types and the create / destroy bookkeeping):
 // compiling the HLSL naga wrote, the pixel shaders, the per-mode blend states, the draw and the empty texture. Built
