@@ -26,7 +26,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # a few seconds: every fragment of changelog.d is well formed and none was already released, ui/version.odin is
       # the last published version (only tools/release.ps1 writes it); then the script's own tests
@@ -49,7 +49,7 @@ jobs:
 
       # naga's translator is rebuilt only when its sources change (build_naga.ps1 compares its stamp)
       - name: Cache the WGSL to HLSL translator
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/naga/wgsl2hlsl.exe
@@ -70,14 +70,14 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-odin
 
       # the Rust static libraries (native text backend, AccessKit adapter): their build scripts skip the build when the
       # STAMP next to the library matches the sources, so a stale restore only means a rebuild
       - name: Cache the native libraries and the emoji font
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/text/gt_text.lib
@@ -122,14 +122,14 @@ jobs:
       matrix:
         group: ${{ fromJSON(github.event_name == 'pull_request' && '["sample"]' || '["ci1", "ci2", "ci3", "ci4"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-odin
 
       # DXC next to the test programs: wgpu compiles the shaders with it in 0.3 s instead of FXC's 2.8 s (a third of the
       # time of a package on WARP); FXC, the fallback when the DLLs are missing, is still run on two packages (ci4)
       - name: Cache DXC
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/dxcompiler.dll
@@ -177,7 +177,7 @@ jobs:
 
       - name: Logs of the WebGPU tests
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wgpu-logs-${{ matrix.group }}
           path: build/test_wgpu_*.log*

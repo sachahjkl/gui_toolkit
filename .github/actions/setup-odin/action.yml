@@ -24,6 +24,31 @@ runs:
         Add-Content $env:GITHUB_PATH (Join-Path $dir 'dist')
         & (Join-Path $dir 'dist\odin.exe') version
 
-    - uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
+    # The MSVC x64 environment (link.exe, rc.exe, the Windows SDK) for the steps after this one: vcvars64.bat of the newest
+    # Visual Studio with the C++ tools (vswhere), its environment written to GITHUB_ENV / GITHUB_PATH. (Done here rather
+    # than with ilammy/msvc-dev-cmd, whose releases still run on Node 20, which the runners deprecate.)
+    - name: MSVC x64 environment
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $vs) { throw 'no Visual Studio with the C++ x64 tools' }
+        $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+        $before = @{}
+        Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+        $lines = cmd /c "`"$vcvars`" >nul && set"
+        if ($LASTEXITCODE) { throw "vcvars64.bat failed ($LASTEXITCODE)" }
+        foreach ($l in $lines) {
+          $i = $l.IndexOf('=')
+          if ($i -le 0) { continue }
+          $name, $value = $l.Substring(0, $i), $l.Substring($i + 1)
+          if ($before[$name] -eq $value) { continue }
+          if ($name -eq 'Path') {
+            # only the folders vcvars put in front
+            $old = $before['Path'] -split ';'
+            $value -split ';' | Where-Object { $_ -and $old -notcontains $_ } | ForEach-Object { Add-Content $env:GITHUB_PATH $_ }
+          } else {
+            "$name<<__VCVARS_EOF__`n$value`n__VCVARS_EOF__" | Add-Content $env:GITHUB_ENV
+          }
+        }
+        Write-Host "MSVC from $vs"
