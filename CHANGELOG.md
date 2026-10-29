@@ -3,6 +3,43 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.51.0] - 2026-10-29
+
+### Added
+- **A site** on GitHub Pages ([sachahjkl.github.io/gui_toolkit](https://sachahjkl.github.io/gui_toolkit/)): `site/`, published by
+`.github/workflows/pages.yml`; the README tells about Linux.
+- **A Linux job in the CI** (`tools/linux_ci.sh`, also for a local check in WSL): `odin check -vet` of every package for
+Linux, the examples built with the native text backend and Vulkan, the tests that need no window. `examples/smoke`
+printed the window's HWND, a field Windows only has.
+- **`tools/fetch_wgpu.sh`**: wgpu-native's Linux static library, pinned by SHA-256, into Odin's `vendor/wgpu/lib` (Odin's
+Linux release does not ship it).
+- **`ui.fuzzy_score`**: subsequence matching for pickers and palettes ("cs5" finds "claude-sonnet-5"), the tightest window,
+a score that ranks runs and word starts first, and the matched runs to highlight. **`ui.mouse_pressed`**: whether a
+press happened in this frame, wherever it landed (a popover closed by a press outside it).
+- **`ui.line_edit(..., secret = true)`**: a password field. Bullets are shown in place of the characters (the caret, the
+selection and the clicks follow them character by character), a double click selects all of it, Ctrl+C / Ctrl+X do
+nothing, and screen readers are told it is a password.
+
+### Changed
+- **Middle-click autoscroll** (`ui.autoscroll_axis_speed`): the speed grows geometrically with the distance from the anchor, `V * (2^(x/D) - 1) / (2^(F/D) - 1)` (`x` past the dead zone, `D` = the new `Autoscroll_Settings.doubling`, `F` = `full_dist`, `V` = `max_speed`): it doubles every `D` px and reaches `max_speed` at `full_dist`. `exponent` (a power curve) is gone.
+
+### Fixed
+- **`-vet` failed on the Linux code**: dbus casts, unused loop variables in the X11 backend, imports used on Windows only.
+- **`-define:FONT_NATIVE_LINK=false` linked `kernel32.lib`** as its stand-in on every system: libc off Windows.
+- **Linux: the text renderer defaulted to the atlas**, which nothing fills off Windows (no bitmap rasterizer): Slug there
+(`FONT_TEXT_RENDERER`).
+- **Linux: a translucent window asked for a half-float surface** that Vulkan on X11 / Wayland does not offer (BGRA8 only):
+the surface's formats are checked, 8 bits a channel otherwise.
+- **Linux: the WebGPU backend defaulted to Direct3D 12** on every system: Vulkan off Windows (`TOOLKIT_WGPU_BACKEND`). Found
+by building opencode native for Linux, like the fixes below.
+- **`ui.text_edit(wrap = true)`** could show a horizontal scrollbar: a wrapped text's width is the one of the last layout,
+and when the box became half a pixel narrower the bar appeared, though wrapped text never scrolls sideways.
+- **`ui.row` / `ui.column`** keep a cross alignment given by `next`: `next({cross = .Center}); if row() { ... }` centred
+nothing, the scope's default (`.Start`) replaced it. An explicit `cross` argument other than `.Start` still wins.
+- **`ui.checkbox`, `ui.radio`, `ui.toggle`** given no width are as wide as their mark (or switch) and their label: the row took
+the text size of its own text, which is empty, so the clickable part was a sliver at the left of the mark (a click on the
+label did nothing). A width given by `next` is kept, the label filling it as before.
+
 ## [0.50.0] - 2026-10-28
 
 ### Added
