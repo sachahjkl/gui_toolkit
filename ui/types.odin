@@ -83,6 +83,7 @@ Box_Flag :: enum u8 {
 	Hot_Within,          // hot (hot_t, its hover fill) also while the pointer is on a clickable box inside it (a row and its buttons)
 	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
 	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
+	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
