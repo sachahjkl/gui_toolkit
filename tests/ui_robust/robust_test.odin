@@ -132,6 +132,32 @@ fuzzy_ranges_are_in_the_original_text :: proc(t: ^testing.T) {
 	if len(ranges) == 1 { testing.expect_value(t, summer[ranges[0][0]:ranges[0][1]], "\u00e9t\u00e9") }
 }
 
+@(test)
+fuzzy_score_subsequences :: proc(t: ^testing.T) {
+	// in order, not side by side; the runs come back merged
+	_, ranges, ok := ui.fuzzy_score("cs5", "claude-sonnet-5")
+	testing.expect(t, ok)
+	testing.expect_value(t, len(ranges), 3)
+	_, ranges, ok = ui.fuzzy_score("son", "claude-sonnet-5")
+	testing.expect(t, ok && len(ranges) == 1)
+	cs := "claude-sonnet-5"
+	if len(ranges) == 1 { testing.expect_value(t, cs[ranges[0][0]:ranges[0][1]], "son") }
+	_, _, ok = ui.fuzzy_score("5c", "claude-sonnet-5")
+	testing.expect(t, !ok, "out of order")
+	// a run and word starts rank above scattered letters; the tightest window is taken
+	a, _, _ := ui.fuzzy_score("gpt", "gpt-5")
+	b, _, _ := ui.fuzzy_score("gpt", "gemini-pro-turbo")
+	testing.expect(t, a > b, "a run first")
+	_, ranges, _ = ui.fuzzy_score("ab", "a-x-ab")
+	testing.expect(t, len(ranges) == 1 && ranges[0] == {4, 6}, "the tightest window")
+	// case folding keeps the original's offsets
+	hay := "İstanbul Stan"
+	_, ranges, ok = ui.fuzzy_score("stan", hay)
+	testing.expect(t, ok && len(ranges) == 1 && hay[ranges[0][0]:ranges[0][1]] == "stan")
+	s, r, ok2 := ui.fuzzy_score("  ", "anything")
+	testing.expect(t, ok2 && s == 0 && r == nil, "an empty needle matches everything")
+}
+
 build_timers :: proc(f: ^Fx, user: rawptr) {
 	first := (^bool)(user)^
 	if first {

@@ -177,6 +177,8 @@ key_pressed_peek :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bo
 }
 
 mouse_pos :: proc() -> Vec2 { return g.mouse }
+// A press of `button` happened in this frame, on anything or on nothing (a popup the app closes on a press outside it).
+mouse_pressed :: proc(button := platform.Mouse_Button.Left) -> bool { return g.pressed_any[button] }
 hot_key :: proc() -> Key { return g.hot_key }
 
 // Is the pointer on box `key` or on a clickable box inside it (by the last frame's tree)? For a row that shows its
