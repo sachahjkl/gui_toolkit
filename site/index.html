@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gui_toolkit</title>
+<meta name="description" content="A fast, native, immediate-mode GUI toolkit in Odin: Direct3D 11 and WebGPU, Windows and Linux.">
+<link rel="icon" href="img/logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#"><img src="img/logo.png" alt="" width="28" height="28">gui_toolkit</a>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#start">Start</a>
+    <a href="https://github.com/sachahjkl/gui_toolkit/releases">Releases</a>
+    <a href="https://github.com/sachahjkl/gui_toolkit">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <img class="mark" src="img/logo.png" alt="gui_toolkit logo" width="112" height="112">
+    <h1>gui_toolkit</h1>
+    <p class="lead">A fast, native, immediate-mode GUI toolkit in <a href="https://odin-lang.org">Odin</a>. A retained-state
+      immediate-mode UI over its own renderer: Direct3D 11, or WebGPU (Direct3D 12 on Windows, Vulkan on Linux).</p>
+    <div class="actions">
+      <a class="btn accent" href="https://github.com/sachahjkl/gui_toolkit/blob/master/docs/getting-started.md">Get started</a>
+      <a class="btn" href="https://github.com/sachahjkl/gui_toolkit">Source on GitHub</a>
+    </div>
+    <p class="small">Windows 10+ &nbsp;·&nbsp; Linux (X11, Wayland) &nbsp;·&nbsp; MIT</p>
+  </section>
+
+  <figure class="shot wide">
+    <img src="img/controls.png" alt="fidget, the widget gallery" loading="lazy">
+    <figcaption>fidget, the widget gallery: 1.3 MB, a frame in under a millisecond of CPU, 0 % at rest.</figcaption>
+  </figure>
+
+  <section id="features" class="grid">
+    <article class="card">
+      <h3>Immediate mode, retained state</h3>
+      <p>Build the interface every frame with plain procedures; boxes keep their state by key: animations, scroll,
+        focus, text fields. Size kinds, signals and tag-based themes, after the RAD Debugger's UI layers.</p>
+    </article>
+    <article class="card">
+      <h3>Its own renderer</h3>
+      <p>Rounded rects, shadows, gradients, blurs and backdrops, masks, layers, transforms, Slug text from outlines, video;
+        Direct3D 11 or WebGPU, damage tracking and a frame pacing model that never stretches a resize.</p>
+    </article>
+    <article class="card">
+      <h3>Text done properly</h3>
+      <p>DirectWrite on Windows, or the native backend everywhere (Fontations, HarfRust, ICU4X): shaping, bidi, grapheme
+        clusters, line breaking, colour emoji (COLR v1), fallback fonts.</p>
+    </article>
+    <article class="card">
+      <h3>Widgets</h3>
+      <p>Fields and editors (wrapped, highlighted, secret), menus, pickers with fuzzy matching, virtualized tables and
+        trees, splitters, tabs, dialogs, toasts, popovers, charts, drag and drop.</p>
+    </article>
+    <article class="card">
+      <h3>The platform</h3>
+      <p>Integrated title bars with snap layouts, DPI, IME, clipboard, file dialogs, tray icons, single instance,
+        accessibility through AccessKit; X11 and Wayland on Linux.</p>
+    </article>
+    <article class="card">
+      <h3>Tested</h3>
+      <p>Windowless tests with pixel comparisons on WARP, every package through the WebGPU backend, a Linux job; pinned
+        dependencies (Odin, crates, wgpu-native) by SHA-256.</p>
+    </article>
+  </section>
+
+  <section class="gallery">
+    <figure class="shot"><img src="img/inputs.png" alt="Inputs" loading="lazy"><figcaption>Inputs: validation, editor, fuzzy search, tags</figcaption></figure>
+    <figure class="shot"><img src="img/data.png" alt="Data" loading="lazy"><figcaption>A 20,000-row virtualized table and a tree</figcaption></figure>
+    <figure class="shot"><img src="img/palette.png" alt="Command palette" loading="lazy"><figcaption>A command palette with fuzzy matches</figcaption></figure>
+    <figure class="shot"><img src="img/effects.png" alt="Effects" loading="lazy"><figcaption>Effects: blurs, backdrops, shadows, masks</figcaption></figure>
+    <figure class="shot"><img src="img/playground.png" alt="Playground" loading="lazy"><figcaption>Playground: physics, a live accent picker</figcaption></figure>
+    <figure class="shot"><img src="img/light.png" alt="Light theme" loading="lazy"><figcaption>Eight themes, cross-fading</figcaption></figure>
+  </section>
+
+  <section id="start" class="download">
+    <h2>Start</h2>
+    <div class="cols">
+      <div class="well">
+        <h3>As a submodule</h3>
+        <p>Add it to your project and point a collection at it; <code>examples/hello</code> is a window in a few lines.</p>
+        <code>odin build src -collection:gt=ext/gui_toolkit</code>
+      </div>
+      <div class="well">
+        <h3>Built with it</h3>
+        <p><a href="https://sachahjkl.github.io/opencode_native/">opencode native</a>, a desktop client for opencode
+          (Windows and Linux), and <a href="https://sachahjkl.github.io/wren/">Wren</a>, a web browser.</p>
+      </div>
+    </div>
+    <p><a class="btn accent" href="https://github.com/sachahjkl/gui_toolkit/blob/master/docs/getting-started.md">Getting started</a></p>
+  </section>
+</main>
+
+<footer>
+  <p>gui_toolkit, MIT licence. The design of its UI layers follows the <a href="https://github.com/EpicGamesExt/raddebugger">RAD Debugger</a>'s;
+    this project is the toolkit and the apps built on it, not a port of the debugger.</p>
+</footer>
+</body>
+</html>
