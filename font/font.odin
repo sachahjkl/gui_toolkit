@@ -100,7 +100,7 @@ Text_Renderer :: enum u8 { Atlas, Slug }
 
 // -define:FONT_TEXT_RENDERER=slug makes Slug the default renderer of a build (to run the pixel tests of the other
 // packages with it: `odin test tests/retained -define:FONT_TEXT_RENDERER=slug`).
-DEFAULT_TEXT_RENDERER :: #config(FONT_TEXT_RENDERER, "atlas")
+DEFAULT_TEXT_RENDERER :: #config(FONT_TEXT_RENDERER, "atlas" when ODIN_OS == .Windows else "slug")   // (no bitmap rasterizer off Windows)
 #assert(DEFAULT_TEXT_RENDERER == "atlas" || DEFAULT_TEXT_RENDERER == "slug", "FONT_TEXT_RENDERER is atlas or slug")
 when DEFAULT_TEXT_RENDERER == "slug" {
 	@(private) BUILD_TEXT_RENDERER :: Text_Renderer.Slug

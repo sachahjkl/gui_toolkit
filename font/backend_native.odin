@@ -13,7 +13,8 @@ when NATIVE_TEXT {
 FONT_NATIVE_LINK :: #config(FONT_NATIVE_LINK, true)
 
 when !FONT_NATIVE_LINK {
-	foreign import gt_text "system:kernel32.lib"   // the symbols come from the program's own Rust library
+	// the symbols come from the program's own Rust library (a library every program links already stands in)
+	when ODIN_OS == .Windows { foreign import gt_text "system:kernel32.lib" } else { foreign import gt_text "system:c" }
 } else when ODIN_OS == .Windows {
 	foreign import gt_text {
 		"../build/text/gt_text.lib",

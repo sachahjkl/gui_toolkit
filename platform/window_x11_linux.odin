@@ -72,7 +72,7 @@ x11_connect :: proc() -> bool {
 	x11c.fd = x.get_file_descriptor(x11c.c)
 	setup := x.get_setup(x11c.c)
 	it := x.setup_roots_iterator(setup)
-	for i in i32(0) ..< scr { if it.rem > 1 { it.data = mem_offset_screen(it.data); it.rem -= 1; it.index += 1 } }
+	for _ in i32(0) ..< scr { if it.rem > 1 { it.data = mem_offset_screen(it.data); it.rem -= 1; it.index += 1 } }
 	x11c.screen = it.data
 	x11_intern_atoms()
 	x11_init_xkb()
@@ -680,7 +680,7 @@ x11_clipboard_get_text :: proc(w: ^Window, allocator := context.allocator) -> st
 	xcb.flush(x11c.c)
 	// pump until the SelectionNotify arrives (bounded): a synchronous read the callers expect
 	deadline := time.tick_now()
-	for i in 0 ..< 200 {
+	for _ in 0 ..< 200 {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev != nil { x11_handle_event(w, ev); posix.free(ev); if st.paste_got { break }; continue }
 		if st.paste_got { break }
