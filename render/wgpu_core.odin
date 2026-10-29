@@ -9,6 +9,9 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import win "core:sys/windows"
+
+_ :: win       // (used on Windows only)
+_ :: strings
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
 import "../platform"
@@ -27,7 +30,7 @@ import "../platform"
 //     (presentation estimates, see wgpu_present.odin).
 
 WGPU_ADAPTER_LIMITS :: #config(TOOLKIT_WGPU_ADAPTER_LIMITS, false)   // ask for everything the adapter offers (more memory), else the defaults of WebGPU
-WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12")   // "dx12" | "vulkan"
+WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12" when ODIN_OS == .Windows else "vulkan")   // "dx12" | "vulkan" (no DX12 off Windows)
 WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/fetch_wgpu.ps1)
 
 @(private) WGPU_SLUG_SOURCE :: WGSL_RECT + "\n" + WGSL_SLUG   // as naga reads the Slug module (shaders.odin: MODULES)
@@ -320,6 +323,15 @@ adapter_description :: proc(r: ^Renderer) -> string {
 wgpu_frame_formats :: proc(r: ^Renderer) {
 	g := &r.wg
 	fp16 := r.transparent && r.space == .Linear
+	if fp16 && g.surface != nil && g.adapter != nil {
+		// a surface that takes no half floats (Vulkan on X11 / Wayland: BGRA8 only): 8 bits a channel, as an opaque window
+		caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter)
+		defer wgpu.SurfaceCapabilitiesFreeMembers(caps)
+		if st == .Success {
+			fp16 = false
+			for i in 0 ..< caps.formatCount { if caps.formats[i] == .RGBA16Float { fp16 = true } }
+		}
+	}
 	g.surface_format = fp16 ? .RGBA16Float : .BGRA8Unorm
 	g.view_format = fp16 ? .RGBA16Float : (r.space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
 	r.frame_format = fp16 ? dxgi.FORMAT.R16G16B16A16_FLOAT : dxgi.FORMAT.B8G8R8A8_UNORM

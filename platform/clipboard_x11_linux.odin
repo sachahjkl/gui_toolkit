@@ -202,7 +202,7 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 	x11_convert_selection(st.id, selection, target, x11c.wren_selection)
 	xcb.flush(x11c.c)
 	deadline := time.tick_now()
-	for i in 0 ..< 2000 {
+	for _ in 0 ..< 2000 {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev != nil { x11_handle_event(w, ev); posix.free(ev); if st.paste_got && !st.paste_incr { break }; continue }
 		if st.paste_got && !st.paste_incr { break }

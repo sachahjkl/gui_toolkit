@@ -31,11 +31,11 @@ w_align :: proc(w: ^Writer, a: int) {
 
 w_u8  :: proc(w: ^Writer, v: u8)  { append(&w.buf, v) }
 w_u16 :: proc(w: ^Writer, v: u16) { w_align(w, 2); b := transmute([2]u8)v; append(&w.buf, ..b[:]) }
-w_i16 :: proc(w: ^Writer, v: i16) { w_u16(w, transmute(u16)v) }
+w_i16 :: proc(w: ^Writer, v: i16) { w_u16(w, cast(u16)v) }
 w_u32 :: proc(w: ^Writer, v: u32) { w_align(w, 4); b := transmute([4]u8)v; append(&w.buf, ..b[:]) }
-w_i32 :: proc(w: ^Writer, v: i32) { w_u32(w, transmute(u32)v) }
+w_i32 :: proc(w: ^Writer, v: i32) { w_u32(w, cast(u32)v) }
 w_u64 :: proc(w: ^Writer, v: u64) { w_align(w, 8); b := transmute([8]u8)v; append(&w.buf, ..b[:]) }
-w_i64 :: proc(w: ^Writer, v: i64) { w_u64(w, transmute(u64)v) }
+w_i64 :: proc(w: ^Writer, v: i64) { w_u64(w, cast(u64)v) }
 w_f64 :: proc(w: ^Writer, v: f64) { w_u64(w, transmute(u64)v) }
 w_bool :: proc(w: ^Writer, v: bool) { w_u32(w, v ? 1 : 0) }
 
@@ -129,14 +129,14 @@ r_u16 :: proc(r: ^Reader) -> u16 {
 	b := [2]u8{r.buf[r.pos], r.buf[r.pos + 1]}; r.pos += 2
 	return r.big ? (u16(b[0]) << 8 | u16(b[1])) : transmute(u16)b
 }
-r_i16 :: proc(r: ^Reader) -> i16 { return transmute(i16)r_u16(r) }
+r_i16 :: proc(r: ^Reader) -> i16 { return cast(i16)r_u16(r) }
 r_u32 :: proc(r: ^Reader) -> u32 {
 	r_align(r, 4); if !r_need(r, 4) { return 0 }
 	b := [4]u8{r.buf[r.pos], r.buf[r.pos + 1], r.buf[r.pos + 2], r.buf[r.pos + 3]}; r.pos += 4
 	if r.big { return u32(b[0]) << 24 | u32(b[1]) << 16 | u32(b[2]) << 8 | u32(b[3]) }
 	return transmute(u32)b
 }
-r_i32 :: proc(r: ^Reader) -> i32 { return transmute(i32)r_u32(r) }
+r_i32 :: proc(r: ^Reader) -> i32 { return cast(i32)r_u32(r) }
 r_u64 :: proc(r: ^Reader) -> u64 {
 	r_align(r, 8); if !r_need(r, 8) { return 0 }
 	b: [8]u8
@@ -149,7 +149,7 @@ r_u64 :: proc(r: ^Reader) -> u64 {
 	}
 	return transmute(u64)b
 }
-r_i64 :: proc(r: ^Reader) -> i64 { return transmute(i64)r_u64(r) }
+r_i64 :: proc(r: ^Reader) -> i64 { return cast(i64)r_u64(r) }
 r_f64 :: proc(r: ^Reader) -> f64 { return transmute(f64)r_u64(r) }
 r_bool :: proc(r: ^Reader) -> bool { return r_u32(r) != 0 }
 
