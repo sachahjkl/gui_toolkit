@@ -59,7 +59,7 @@ main :: proc() {
 	app.ui = id
 	draw.init(&app.dc, &app.r, &app.fonts)
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }   // only once everything is initialized
-	fmt.println("hwnd", app.win.hwnd, "size", app.win.size, "dpi", app.win.dpi_scale)
+	fmt.println("size", app.win.size, "dpi", app.win.dpi_scale)
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) {
