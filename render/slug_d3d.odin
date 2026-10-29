@@ -1,8 +1,8 @@
 #+build windows
 package render
 
-import "core:fmt"
-import "vendor:directx/d3d11"
+@(require) import "core:fmt"
+@(require) import "vendor:directx/d3d11"
 
 // The Direct3D 11 side of Slug text (slug.odin has the shared type and frame_has_slug): the pipeline, binding the glyph
 // data textures, switching shaders and splitting a batch into Slug and non-Slug runs, and the glyph textures. Built

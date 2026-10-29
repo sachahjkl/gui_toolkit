@@ -1,8 +1,8 @@
 #+build windows
 package render
 
-import "core:mem"
-import "vendor:directx/d3d11"
+@(require) import "core:mem"
+@(require) import "vendor:directx/d3d11"
 
 // Direct3D compilation of the embedded HLSL (shaders.odin has the WGSL sources and the tables). Built only for the
 // Direct3D backend (`!USE_WGPU`): the wgpu backend compiles the WGSL as it is (wgpu_module).

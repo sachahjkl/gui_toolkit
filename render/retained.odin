@@ -1,7 +1,7 @@
 package render
 
-import "core:fmt"
-import "core:mem"
+@(require) import "core:fmt"
+@(require) import "core:mem"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:wgpu"

@@ -1,6 +1,6 @@
 package render
 
-import win "core:sys/windows"
+@(require) import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
 

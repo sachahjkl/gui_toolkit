@@ -7,14 +7,14 @@ package render
 // wgpu backend is compiled. Everything here is reached through api.odin's `when !USE_WGPU` dispatch, so it is never
 // referenced on Linux; it names Win32, DXGI and DirectComposition freely.
 
-import "core:fmt"
-import "core:mem"
-import "base:runtime"
-import win "core:sys/windows"
-import "vendor:directx/d3d11"
-import "vendor:directx/d3d_compiler"
-import "vendor:directx/dxgi"
-import "../platform"
+@(require) import "core:fmt"
+@(require) import "core:mem"
+@(require) import "base:runtime"
+@(require) import win "core:sys/windows"
+@(require) import "vendor:directx/d3d11"
+@(require) import "vendor:directx/d3d_compiler"
+@(require) import "vendor:directx/dxgi"
+@(require) import "../platform"
 
 // This whole file is the Direct3D 11 backend: it builds only when the renderer uses it (`!USE_WGPU`), which on Windows
 // is the default and never the case on another system. `#+build windows` keeps it off non-Windows targets; `when

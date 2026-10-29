@@ -1,11 +1,11 @@
 #+build windows
 package render
 
-import "core:mem"
-import "core:time"
-import win "core:sys/windows"
-import "vendor:directx/d3d11"
-import "vendor:directx/dxgi"
+@(require) import "core:mem"
+@(require) import "core:time"
+@(require) import win "core:sys/windows"
+@(require) import "vendor:directx/d3d11"
+@(require) import "vendor:directx/dxgi"
 
 when !USE_WGPU {
 
