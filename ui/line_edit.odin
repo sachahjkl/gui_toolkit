@@ -259,7 +259,8 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Single-line editor. Tags used: "input" (+ whatever the caller pushed, e.g. "bad" for an invalid value).
 // Supports: typing, selection (shift, mouse drag, double-click word), Home/End, ctrl+arrows (words),
 // Backspace/Delete (ctrl = word), ctrl+A/C/X/V, Enter (committed), Escape (cancelled, drops focus).
-line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_Result) {
+// `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut.
+line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false) -> (res: Edit_Result) {
 	s := g
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
@@ -292,14 +293,19 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 		// mouse: click places the caret, drag selects, double-click selects the word
 		if res.pressed || res.dragging {
 			x := res.mouse.x - pad + f.scroll_x
-			idx := font.index_from_x(s.fonts, b.font, b.font_size, text, x)
+			idx := font.index_from_x(s.fonts, b.font, b.font_size, secret ? secret_mask(text) : text, x)
+			if secret { idx = secret_unmask_index(text, idx) }
 			f.cursor = idx
 			if res.pressed && .Shift not_in res.mods { f.mark = idx }
 			f.edited_ms = now
 		}
 		if res.double_clicked {
-			f.mark = word_left(text, min(f.cursor + 1, len(text)))
-			f.cursor = word_right(text, f.mark)
+			if secret {   // (its words are not shown: all of it)
+				f.mark, f.cursor = 0, len(text)
+			} else {
+				f.mark = word_left(text, min(f.cursor + 1, len(text)))
+				f.cursor = word_right(text, f.mark)
+			}
 		}
 
 		if focused {
@@ -337,8 +343,8 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 			if key_press(.Backspace, ctrl) && deleting(f) { if !delete_selection(f) { lo := word_left(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
 			if key_press(.Delete, ctrl) && deleting(f)    { if !delete_selection(f) { hi := word_right(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
 			if key_press(.A, ctrl) { field_select_all(f) }
-			if key_press(.C, ctrl) || key_press(.Insert, ctrl) { field_copy(f) }
-			if key_press(.X, ctrl) || key_press(.Delete, shift) { field_cut(f) }
+			if !secret && (key_press(.C, ctrl) || key_press(.Insert, ctrl)) { field_copy(f) }
+			if !secret && (key_press(.X, ctrl) || key_press(.Delete, shift)) { field_cut(f) }
 			if key_press(.V, ctrl) || key_press(.Insert, shift) { field_paste(f) }
 			if key_press(.Z, ctrl) { field_undo(f) }
 			if key_press(.Y, ctrl) || key_press(.Z, cs) { field_redo(f) }
@@ -352,19 +358,22 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 		res.changed = before != len(f.buf) || before_hash != after_hash
 		if res.changed { f.edited_ms = now }
 		text = field_string(f)
+		// what is shown, and where the caret and the selection's end are in it
+		shown, cursor, mark := text, f.cursor, f.mark
+		if secret { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
 
 		// keep the caret visible
 		inner := max(8, (b.rect.max.x - b.rect.min.x) - 2 * pad)
-		cx := font.x_from_index(s.fonts, b.font, b.font_size, text, f.cursor)
-		total := font.text_width(s.fonts, b.font, b.font_size, text)
+		cx := font.x_from_index(s.fonts, b.font, b.font_size, shown, cursor)
+		total := font.text_width(s.fonts, b.font, b.font_size, shown)
 		if cx - f.scroll_x > inner { f.scroll_x = cx - inner }
 		if cx - f.scroll_x < 0 { f.scroll_x = cx }
 		f.scroll_x = clamp(f.scroll_x, 0, max(0, total - inner + 2))
 
 		d := frame_new(Line_Edit_Draw)
-		d.text = strings.clone(text, frame_allocator())
+		d.text = strings.clone(shown, frame_allocator())
 		d.placeholder = placeholder
-		d.cursor, d.mark, d.scroll_x = f.cursor, f.mark, f.scroll_x
+		d.cursor, d.mark, d.scroll_x = cursor, mark, f.scroll_x
 		d.focused = focused
 		since := now - f.edited_ms
 		d.caret_on = !s.inactive && (since < 500 || (int(since) / 530) % 2 == 0)
@@ -377,14 +386,39 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "") -> (res: Edit_R
 		if s.a11y.wanted {
 			lh := font.metrics(s.fonts, b.font, b.font_size).line_height
 			t := frame_new(A11y_Text)
-			t^ = {text = d.text, cursor = f.cursor, mark = f.mark, font = b.font, size = b.font_size, line_height = lh,
-				origin = {b.rect.min.x + pad, (b.rect.min.y + b.rect.max.y - lh) * 0.5}, scroll = {f.scroll_x, 0}}
+			t^ = {text = d.text, cursor = cursor, mark = mark, font = b.font, size = b.font_size, line_height = lh,
+				origin = {b.rect.min.x + pad, (b.rect.min.y + b.rect.max.y - lh) * 0.5}, scroll = {f.scroll_x, 0}, password = secret}
 			a11y_default(b, {role = .Text_Input, placeholder = placeholder, text = t})
 		} else {
 			a11y_default(b, {role = .Text_Input, placeholder = placeholder})
 		}
 	}
 	return
+}
+
+SECRET_BULLET :: "•"
+
+// A secret field's text as shown: a bullet per character.
+@(private)
+secret_mask :: proc(text: string) -> string {
+	return strings.repeat(SECRET_BULLET, utf8.rune_count_in_string(text), context.temp_allocator)
+}
+
+// The byte index in the shown bullets of byte index `i` of the text, and back.
+@(private)
+secret_index :: proc(text: string, i: int) -> int {
+	return utf8.rune_count_in_string(text[:clamp(i, 0, len(text))]) * len(SECRET_BULLET)
+}
+
+@(private)
+secret_unmask_index :: proc(text: string, shown_i: int) -> int {
+	n := shown_i / len(SECRET_BULLET)
+	k := 0
+	for _, i in text {
+		if k == n { return i }
+		k += 1
+	}
+	return len(text)
 }
 
 @(private)
