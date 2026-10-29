@@ -21,7 +21,7 @@ Off by default, so adding the toolkit never changes an app's middle-click behavi
 ui.set_autoscroll_enabled(&s, true)
 // optional: tune the curve
 ui.set_autoscroll_settings(&s, ui.Autoscroll_Settings{
-	dead_zone = 12, max_speed = 2800, full_dist = 420, exponent = 2,
+	dead_zone = 12, max_speed = 2800, full_dist = 420, doubling = 80,
 	toggle = true, tap_ms = 250, tap_slop = 4,
 })
 ```
@@ -47,9 +47,17 @@ Pure and fully parameterised. For a pointer offset `off` (px) from the anchor on
 units per second:
 
 - **Dead zone**: `|off| <= dead_zone` → `0` (a disc of stillness around the anchor).
-- past it, the speed rises with the distance: `t = (|off| - dead_zone) / full_dist`, clamped to `0..1`, then
-  `speed = t^exponent * max_speed`. `exponent = 1` is linear; `> 1` eases in near the anchor and climbs steeply far out;
-  `< 1` is the opposite.
+- past it, the speed grows **geometrically** with the distance. With `x = clamp(|off| - dead_zone, 0, full_dist)`, `D = doubling`,
+  `F = full_dist` and `V = max_speed`:
+
+  ```
+  speed(x) = V * (2^(x/D) - 1) / (2^(F/D) - 1)
+  ```
+
+  Every `D` px farther from the anchor multiplies the speed by 2 (exactly: `speed + c` doubles, `c = V / (2^(F/D) - 1)`; the
+  `- 1` only makes the curve start at 0). Near the anchor it is gentle, far out it climbs by a constant factor per distance.
+  With the defaults (`D = 80`, `F = 420`, `V = 2800`), x px past the dead zone: 76 px/s at 80, 227 at 160, 529 at 240, 1134 at 320, 2800 at 420 (`F`). A `doubling` much larger than `full_dist` tends to the straight line
+  `x / F * V`.
 - **capped** at `max_speed`, reached `full_dist` px past the dead zone.
 - **symmetric**: `f(-off) == -f(off)`.
 

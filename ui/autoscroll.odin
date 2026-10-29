@@ -28,7 +28,7 @@ Autoscroll_Settings :: struct {
 	dead_zone:  f32,   // no scroll while the pointer is within this many px of the anchor (a disc)
 	max_speed:  f32,   // speed cap, scroll units per second, reached at `full_dist` from the edge of the dead zone
 	full_dist:  f32,   // distance past the dead zone at which the speed reaches `max_speed`
-	exponent:   f32,   // curve shape: 1 = linear, > 1 = gentle near the anchor and steep far out (power curve)
+	doubling:   f32,   // geometric growth: the speed doubles for every `doubling` px of distance past the dead zone (see autoscroll_axis_speed)
 	toggle:     bool,  // a quick tap latches the mode on (toggle mode); always paired with hold here
 	tap_ms:     f32,   // a press shorter than this, with little movement, is a tap: it latches toggle mode
 	tap_slop:   f32,   // a press that moved more than this many px before release is a drag, never a tap
@@ -38,7 +38,7 @@ DEFAULT_AUTOSCROLL :: Autoscroll_Settings{
 	dead_zone = 12,
 	max_speed = 2800,
 	full_dist = 420,
-	exponent  = 2,
+	doubling  = 80,
 	toggle    = true,
 	tap_ms    = 250,
 	tap_slop  = 4,
@@ -61,21 +61,29 @@ Autoscroll :: struct {
 }
 
 // The velocity, in scroll units per second, the pointer offset from the anchor asks for on one axis. Pure: a dead zone
-// around the anchor (|off| <= dead_zone -> 0), then a curve that rises with the distance, is clamped to max_speed, and
-// is symmetric about the anchor (f(-x) == -f(x)). With exponent 1 it is linear; above 1 it eases in near the dead zone
-// and climbs faster far out. Independent of frame rate: it is a speed, integrated by the caller against its own dt.
+// around the anchor (|off| <= dead_zone -> 0), then a geometric curve of the distance, capped at max_speed, symmetric about
+// the anchor (f(-x) == -f(x)). Independent of frame rate: it is a speed, integrated by the caller against its own dt.
+//
+// With x = clamp(|off| - dead_zone, 0, full_dist), D = doubling, F = full_dist and V = max_speed:
+//
+//     speed(x) = V * (2^(x/D) - 1) / (2^(F/D) - 1)
+//
+// It is 0 at the edge of the dead zone and V at x = F. Every D px farther out multiplies the speed by 2 (more exactly,
+// speed + c doubles, c = V / (2^(F/D) - 1): the "- 1" only makes it start from 0). So the speed is gentle close to the anchor
+// and climbs by a constant factor per distance, where a power curve would climb by a constant exponent. With D much larger
+// than F it tends to the straight line x / F * V.
 autoscroll_axis_speed :: proc(off: f32, cfg: Autoscroll_Settings) -> f32 {
 	dead := max(cfg.dead_zone, 0)
 	mag := abs(off)
 	if mag <= dead { return 0 }
 	full := max(cfg.full_dist, 1)
-	t := clamp((mag - dead) / full, 0, 1)
-	exp := max(cfg.exponent, 0.01)
-	shaped := math.pow(t, exp)
+	x := clamp(mag - dead, 0, full)
+	d := max(cfg.doubling, 0.01)
+	span := math.pow(2, full / d) - 1               // the growth between the dead zone and the cap
+	shaped := span > 1e-4 ? (math.pow(2, x / d) - 1) / span : x / full
 	speed := shaped * cfg.max_speed
 	return off < 0 ? -speed : speed
 }
-
 // The velocity vector (scroll units per second) for a pointer at `pointer`, given the anchor and the axes the area
 // offers. The returned vector is zero on an axis the area does not scroll.
 autoscroll_velocity :: proc(a: ^Autoscroll, cfg: Autoscroll_Settings) -> Vec2 {

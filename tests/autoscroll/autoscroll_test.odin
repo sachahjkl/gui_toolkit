@@ -48,19 +48,33 @@ symmetric :: proc(t: ^testing.T) {
 }
 
 @(test)
-exponent_shapes :: proc(t: ^testing.T) {
-	// at the midpoint of the ramp, exponent 2 is below linear (eases in), a low exponent is above it
-	mid := CFG.dead_zone + CFG.full_dist * 0.5
-	lin := CFG;   lin.exponent = 1
-	soft := CFG;  soft.exponent = 2
-	hard := CFG;  hard.exponent = 0.5
-	vl := ui.autoscroll_axis_speed(mid, lin)
-	vs := ui.autoscroll_axis_speed(mid, soft)
-	vh := ui.autoscroll_axis_speed(mid, hard)
-	testing.expect(t, vs < vl)
-	testing.expect(t, vh > vl)
+geometric_growth :: proc(t: ^testing.T) {
+	// speed(x) = V * (2^(x/D) - 1) / (2^(F/D) - 1): D px farther out doubles speed + c, c = V / (2^(F/D) - 1)
+	d := CFG.doubling
+	c := CFG.max_speed / (math.pow(2, CFG.full_dist / d) - 1)
+	for x in ([]f32{10, 60, 150, 300}) {
+		v0 := ui.autoscroll_axis_speed(CFG.dead_zone + x, CFG)
+		v1 := ui.autoscroll_axis_speed(CFG.dead_zone + x + d, CFG)
+		testing.expectf(t, abs((v1 + c) - 2 * (v0 + c)) < 0.01 * (v1 + c), "not geometric at %v: %v then %v", x, v0, v1)
+	}
+	// reaches the cap exactly at full_dist past the dead zone
+	testing.expect(t, abs(ui.autoscroll_axis_speed(CFG.dead_zone + CFG.full_dist, CFG) - CFG.max_speed) < 1e-2)
 }
 
+@(test)
+doubling_shapes :: proc(t: ^testing.T) {
+	// at the midpoint of the ramp, a short doubling distance is gentler near the anchor (below the line), a very long one
+	// tends to the straight line
+	mid := CFG.dead_zone + CFG.full_dist * 0.5
+	fast := CFG;  fast.doubling = 30
+	slow := CFG;  slow.doubling = 120
+	line := CFG;  line.doubling = 1e6
+	vf := ui.autoscroll_axis_speed(mid, fast)
+	vs := ui.autoscroll_axis_speed(mid, slow)
+	vl := ui.autoscroll_axis_speed(mid, line)
+	testing.expect(t, abs(vl - CFG.max_speed * 0.5) < 1)
+	testing.expect(t, vf < vs && vs < vl)
+}
 ////////////////////////////////
 // Velocity vector and axes
 
