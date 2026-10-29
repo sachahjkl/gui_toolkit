@@ -86,3 +86,57 @@ label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 	}
 	return signal(b)
 }
+
+// Subsequence matching, as in a picker or a command palette: the characters of `needle` (spaces ignored) occur in `hay`
+// in that order, case-insensitively, not necessarily side by side ("cs5" finds "claude-sonnet-5"). The match is the
+// tightest window ending where the leftmost one ends (fzf's first algorithm). `score` ranks matches, higher first:
+// characters side by side, at the start of the text or of a word (after a separator, or a capital after a small letter)
+// count more, gaps and a long text less. `ranges` are the matched runs, to highlight (label_fuzzy). An empty needle
+// matches everything with score 0 and no ranges.
+fuzzy_score :: proc(needle, hay: string, allocator := context.temp_allocator) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	want := make([dynamic]rune, context.temp_allocator)
+	for r in fold_lower(needle) { if !unicode.is_space(r) { append(&want, r) } }
+	if len(want) == 0 { return 0, nil, true }
+	low := fold_lower(hay)
+	pos := make([]int, len(want), context.temp_allocator)
+	// forward: where the leftmost match ends
+	k := 0
+	end := -1
+	for r, i in low {
+		if r == want[k] {
+			k += 1
+			if k == len(want) { end = i; break }
+		}
+	}
+	if end < 0 { return 0, nil, false }
+	// backward from there: the latest start, so the window is the tightest
+	k = len(want) - 1
+	for i := end + utf8.rune_size(want[k]); i > 0 && k >= 0; {
+		r, w := utf8.decode_last_rune_in_string(low[:i])
+		i -= w
+		if r == want[k] { pos[k] = i; k -= 1 }
+	}
+	out := make([dynamic]Fuzzy_Range, allocator)
+	for p, j in pos {
+		w := utf8.rune_size(want[j])
+		score += 16
+		if p == 0 {
+			score += 20
+		} else {
+			prev, _ := utf8.decode_last_rune_in_string(hay[:p])
+			cur, _ := utf8.decode_rune_in_string(hay[p:])
+			if !unicode.is_letter(prev) && !unicode.is_digit(prev) {
+				score += 18
+			} else if unicode.is_lower(prev) && unicode.is_upper(cur) {
+				score += 14
+			}
+		}
+		if j > 0 {
+			gap := p - (pos[j - 1] + utf8.rune_size(want[j - 1]))
+			if gap == 0 { score += 24 } else { score -= min(gap, 12) }
+		}
+		if n := len(out); n > 0 && out[n - 1][1] == p { out[n - 1][1] = p + w } else { append(&out, Fuzzy_Range{p, p + w}) }
+	}
+	score -= len(hay) / 8
+	return score, out[:], true
+}
