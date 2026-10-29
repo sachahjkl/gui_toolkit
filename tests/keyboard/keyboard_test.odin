@@ -432,6 +432,38 @@ line_edit_history :: proc(t: ^testing.T) {
 	testing.expect(t, ui.field_can_undo(&r.field), "paste is undoable")
 }
 
+@(private = "file")
+build_secret :: proc(f: ^Fx, user: rawptr) {
+	r := (^Edit_Run)(user)
+	ui.next({width = ui.px(300), height = ui.px(30)})
+	ui.line_edit("###e", &r.field, secret = true)
+}
+
+// A secret field takes what is typed, is never copied or cut, and its caret moves by characters (not by the bytes of the
+// bullets it shows).
+@(test)
+line_edit_secret :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	frame(&f, nil, build_secret, &r)
+	ui.set_focus(ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###e")).key)
+	frame(&f, {typed('p'), typed('é'), typed('w')}, build_secret, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "péw")
+	f.clip = ""
+	frame(&f, {key(.A, {.Ctrl}), key(.C, {.Ctrl}), key(.X, {.Ctrl})}, build_secret, &r)
+	testing.expect_value(t, f.clip, "")
+	testing.expect_value(t, ui.field_string(&r.field), "péw")   // not cut
+	frame(&f, {key(.End)}, build_secret, &r)   // (one key a frame: a frame applies its keys in the widget's order)
+	frame(&f, {key(.Left)}, build_secret, &r)
+	frame(&f, {key(.Backspace)}, build_secret, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "pw")
+}
+
 // Arrows, Backspace and Delete work on grapheme clusters: an emoji family (5 code points), a letter and its combining
 // mark, a flag (2 regional indicators) are each one step.
 @(test)

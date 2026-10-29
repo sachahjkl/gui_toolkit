@@ -75,10 +75,10 @@ Editor_Bars :: struct {
 }
 
 @(private="file")
-editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll: Vec2) -> (e: Editor_Bars) {
+editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
 	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
 	e.has_v = content.y > view.y + 0.5
-	e.has_h = content.x + 4 > view.x + 0.5
+	e.has_h = !wrapped && content.x + 4 > view.x + 0.5   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
 	w := max(6, math.round(font_size * 0.5))
 	m := math.round(w * 0.35)
 	if e.has_v {
@@ -484,7 +484,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			return i, l.soft && i >= l.end
 		}
 		// scrollbars: press on a thumb grabs it, press on a track jumps there; while held they own the drag
-		bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, lines, wrap_w), a.scroll)
+		bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, lines, wrap_w), a.scroll, wrap_w > 0)
 		mp := b.rect.min + res.mouse
 		if res.pressed {
 			a.sb_drag = 0
@@ -718,7 +718,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			li := int((res.mouse.y - pad + a.scroll.y) / lh)
 			if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
 		}
-		d.bars = editor_bars(b.rect, gutter, pad, b.font_size, {content_w, content_h}, a.scroll)
+		d.bars = editor_bars(b.rect, gutter, pad, b.font_size, {content_w, content_h}, a.scroll, wrap_w > 0)
 		d.bar_color = color("text")
 		mpos := b.rect.min + res.mouse
 		if a.sb_drag != 0 { d.bar_hot = a.sb_drag } else if res.hovering {
