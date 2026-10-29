@@ -4,9 +4,11 @@
 
 <p align="center"><b>A fast, native, immediate-mode GUI toolkit.</b></p>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.50.0-1d57ba" alt="version 0.50.0"></a></p>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.50.0-1d57ba" alt="version 0.50.0"></a>
+<a href="https://sachahjkl.github.io/gui_toolkit/"><img src="https://img.shields.io/badge/site-github.io-56b6c2" alt="site"></a></p>
 
-A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer.
+A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer on Windows
+and a WebGPU one (wgpu-native: Direct3D 12 on Windows, Vulkan on Linux).
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
 [RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
 
@@ -24,7 +26,10 @@ of CPU (`fidget --bench=300`).
     build.bat panes      # splitters and accordions
     build.bat todo debug
 
-Needs the Odin compiler (`dev-2026-10`, pinned), MSVC (Visual Studio or its Build Tools) and Windows 10+ (Win32 + D3D11 only for now).
+Needs the Odin compiler (`dev-2026-10`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
+(X11 and Wayland, Vulkan through wgpu-native, text by the native backend: Fontations, HarfRust, ICU4X, fonts from
+fontconfig): `tools/fetch_wgpu.sh` puts wgpu-native beside Odin, `tools/linux_ci.sh` checks every package, builds the
+examples and runs the windowless tests; [opencode native](https://github.com/sachahjkl/opencode_native) ships a Linux build.
 **New project? Start with [docs/getting-started.md](docs/getting-started.md)**: the toolkit as a submodule, a window in a
 few lines (`examples/hello`), the backends and options, the tests, the versions, and the pitfalls.
 Prebuilt binaries are attached to the [GitHub releases](https://github.com/sachahjkl/gui_toolkit/releases).
@@ -205,7 +210,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   the wheel drops an anchor and the pointer's distance from it scrolls, the farther the faster, along a tunable
   acceleration curve; hold or toggle modes, a direction cursor and an anchor marker ([docs/autoscroll.md](docs/autoscroll.md)).
 
-Not there yet: word wrap in the editor, IME composition, drag-and-drop files, Linux/macOS backends.
+Not there yet: a macOS backend; on Linux, pixel tests and a windowed CI.
 
 ## Testing
 
