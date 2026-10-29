@@ -1,8 +1,9 @@
 name: CI
 
-# Three kinds of jobs, all in parallel (a push to master gives its verdict in about 6 minutes, 12 at most):
+# Four kinds of jobs, all in parallel (a push to master gives its verdict in about 6 minutes, 12 at most):
 #   build      CHANGELOG fragments, the examples, the shaders (HLSL from WGSL, DXBC)
 #   tests      the test packages that need no window of their own (D3D11 on WARP), native text, UI Automation
+#   linux      odin check of every package for Linux, the examples built, the windowless tests (tools/linux_ci.sh)
 #   wgpu       the WebGPU backend on WARP, one test at a time: every package on a push to master or a manual run, split in
 #              four groups of about 4 minutes (tools/test_backends.ps1 -Group ci1..ci4); a pull request runs the 'sample'
 #              group only (Slug text, video, filters and blends, layers), its full run comes with the merge into master.
@@ -112,6 +113,40 @@ jobs:
         run: |
           ./tools/test_windowless.ps1
           if ($LASTEXITCODE) { exit 1 }
+
+  # Linux: odin check -vet of every package, the examples built (native text, Vulkan through wgpu-native), the tests that
+  # need no window (tools/linux_ci.sh). Odin and wgpu-native pinned by SHA-256, crates by Cargo.lock.
+  linux:
+    name: Linux (check, examples, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Odin dev-2026-10, clang, fontconfig
+        env:
+          ODIN_TAG: dev-2026-10
+          ODIN_SHA256: c3c8b095621fd0c75f7f73e3a0829f1b4d45324225f20ba11ed8dc4da310a8ab
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld libfontconfig-dev unzip
+          curl -fsSL -o "$RUNNER_TEMP/odin.tar.gz" "https://github.com/odin-lang/Odin/releases/download/$ODIN_TAG/odin-linux-amd64-$ODIN_TAG.tar.gz"
+          echo "$ODIN_SHA256  $RUNNER_TEMP/odin.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/odin" && tar -xzf "$RUNNER_TEMP/odin.tar.gz" -C "$RUNNER_TEMP/odin"
+          dirname "$(find "$RUNNER_TEMP/odin" -maxdepth 3 -name odin -type f | head -1)" >> "$GITHUB_PATH"
+
+      - name: wgpu-native (tools/fetch_wgpu.sh)
+        run: tools/fetch_wgpu.sh odin
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            build/text
+            ~/.cargo/registry
+          key: text-linux-${{ hashFiles('native/text/**') }}
+
+      - name: Check, examples, tests (tools/linux_ci.sh)
+        run: tools/linux_ci.sh odin
 
   wgpu:
     name: WebGPU (${{ matrix.group }})
