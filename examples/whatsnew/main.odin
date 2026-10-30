@@ -88,6 +88,7 @@ gap :: proc(em: f32, k: f32 = 1) { ui.spacer(ui.px(em * k)) }
 build :: proc(app: ^App) {
 	em := ui.font_size()
 	app.n = 0
+	if app.page != .Find { ui.find("") }   // (the find page sets its needle each build; elsewhere none)
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
 	if ui.row(id = "###main") {
 		// the pages
@@ -141,24 +142,23 @@ build :: proc(app: ^App) {
 
 page_pacing :: proc(app: ^App, em: f32) {
 	heading("Frame pacing, ready-made", em)
-	para("render.pace_frame and render.paced_present run the toolkit's cadence model for a window: the screen's plan, the swap chain's slot, its latency. This window uses them. Input after a rest is answered at once (platform.input_pending reads the queue without taking it): no wait for the next refresh.")
+	para("render.pace_frame and render.paced_present run the toolkit's cadence model for a window: the screen's plan, the swap chain's slot, its latency. This window uses them; so does opencode native (its own pacing code is gone).")
 	gap(em)
-	para("A frame shown at once never waited on the swap chain's latency object, which then held a count too many: every later wait returned at once and frames queued behind a blocking Present (82 ms instead of 36 in opencode native). The renderer now counts that debt and takes it back.")
+	para("A frame less between input and screen (Direct3D 11): the renderer takes one of the swap chain latency object's counts for good, so a frame starts when the last one is on screen instead of queueing behind it. Measured in opencode native, a fast hand over a list, six runs each: 49 ms from input to screen before, 34 after, at 60 frames a second.")
+	gap(em)
+	para("And one thing measured and left out: showing input after a rest at once (no wait for the refresh) left the swap chain a frame deeper for the rest of the session (45 to 60 ms). The pacer does not do it.")
 	gap(em)
 	p := &app.pacer
 	lines := [?]string{
 		fmt.tprintf("frames presented        %d", app.frames),
 		fmt.tprintf("  after a rest          %d", app.after_rest),
-		fmt.tprintf("  shown at once         %d", app.at_once),
+		fmt.tprintf("  shown at once         %d   (a resize step)", app.at_once),
 		fmt.tprintf("swap chain latency      %d", p.latency),
-		fmt.tprintf("latency owed            %d", app.r.present.latency_debt),
 	}
 	for l, i in lines {
 		ui.next({width = ui.fill(), height = ui.text_size(), font = ui.mono_font()})
 		ui.label(fmt.tprintf("%s###l%d", l, i))
 	}
-	gap(em)
-	para("Leave the mouse still a moment, then move it or press a key: \"after a rest\" and \"shown at once\" go up together, and the debt goes back to 0.", true)
 }
 
 LAZY_COUNT :: 5000

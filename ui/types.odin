@@ -316,7 +316,8 @@ State :: struct {
 	layout_warned:   map[Key]string,   // the layout warnings given, by box (owned messages)
 	// lazy columns (lazy.odin): the heights items had when last built, the width each column was measured at
 	lazy_heights:    map[Key]Lazy_Height,
-	lazy_widths:     map[Key]f32,
+	lazy_columns:    map[Key]Lazy_Column,
+	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)
 	dt:           f32,
 	window_size:  Vec2,
 	boxes_built:  int,

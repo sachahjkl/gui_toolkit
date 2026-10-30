@@ -75,7 +75,8 @@ destroy :: proc(s: ^State) {
 	for _, m in s.layout_warned { delete(m) }
 	delete(s.layout_warned)
 	delete(s.lazy_heights)
-	delete(s.lazy_widths)
+	delete(s.lazy_columns)
+	delete(s.lazy_frame)
 	find_destroy(s)
 	selection_destroy(s)
 	a11y_destroy(s)
@@ -204,6 +205,7 @@ end_build :: proc() {
 
 	menus_raise(s)
 	layout(s)
+	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {
 		chrome_collect(s)

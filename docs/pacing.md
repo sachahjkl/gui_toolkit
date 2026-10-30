@@ -60,8 +60,7 @@ Why each one:
 ## Use
 
 The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display changes, the swap chain's
-slot waited for, its latency set, and the input after a rest answered at once (`platform.input_pending` reads the queue
-without taking it):
+slot waited for, its latency set:
 
 ```odin
 at_once := render.pace_frame(&pacer, &r, win, idled = slept, dragging = ui.active_key() != 0)
@@ -71,9 +70,10 @@ render.frame_end(&r, !at_once)
 render.paced_present(&pacer)
 ```
 
-A frame presented without a wait on the swap chain's latency object (one shown at once) leaves the object a count beyond
-its slots: the renderer owes it and takes it back at the next waits (`latency_presented`), else every later wait would
-return at once and frames would queue behind a blocking Present (twice the latency, measured).
+It does not show input after a rest at once (`input = false`): measured in opencode native (RENDER_PROBE, a fast hand
+over a list, six runs each way), presenting that one frame without a wait for the refresh left the swap chain a frame
+deeper for the rest of the session: 45 to 60 ms from input to screen instead of 29 to 30. (`platform.input_pending`
+says whether input waits, for an application that measures otherwise.)
 
 By hand:
 
