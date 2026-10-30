@@ -199,7 +199,7 @@ conn_loop :: proc(c: ^Conn) {
 				sync.lock(&srv.lock)
 				append(&srv.inbox, Message{conn = c, text = strings.clone(string(msg[:]), runtime.heap_allocator())})
 				sync.unlock(&srv.lock)
-				platform.wake(srv.win)
+				if sync.atomic_load(&srv.cast_dirty) || !strings.contains(string(msg[:]), "Page.screencastFrameAck") { platform.wake(srv.win) }   // (cast.odin)
 				clear(&msg)
 			}
 		}

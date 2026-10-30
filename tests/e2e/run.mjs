@@ -13,8 +13,9 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { connect, pressKey } from '../../tools/cdp_client.mjs'
-import { compare, decodePng, encodePng } from './png.mjs'
+import { act, connect, pressKey, words } from '../../tools/cdp_client.mjs'
+import { compare, decodePng, encodePng } from '../../tools/png.mjs'
+import { playTimeline, recordTimeline } from '../../tools/timeline.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const flag = (name, def) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? def : process.argv[i + 1] }
@@ -49,7 +50,7 @@ let dead = false
 ended.then((e) => { dead = true; if (e.code !== 0 && !closing) console.log(`the program ended early: ${JSON.stringify(e)}`) })
 let closing = false
 
-const { send, close } = await connect(port, { retryMs: 20000 })
+const { send, on, close } = await connect(port, { retryMs: 20000 })
 const idle = async () => {
   const r = await send('Toolkit.waitIdle', { timeout: 10000 })
   if (!r.idle) fail('still moving after 10 s')
@@ -122,6 +123,79 @@ try {
   const { lines } = await send('Toolkit.stopRecording')
   if (lines[0] !== 'click --name "nav5"') fail(`recorder: ${JSON.stringify(lines)}`)
   else pass(`recorder: ${lines.join(' ; ')}`)
+
+  // what the recorder wrote does the same again
+  await send('Toolkit.click', { name: 'nav0' })
+  await idle()
+  for (const l of lines) await act(send, ...((w) => [w[0], w.slice(1)])(words(l)))
+  await idle()
+  const again = compare(decodePng(readFileSync(join(baseline, 'merge.png'))), decodePng(await shot()), PIXEL_DELTA)
+  if (again.share > MAX_SHARE) fail(`the recorder's script, played: ${(again.share * 100).toFixed(2)}% differ`)
+  else pass("the recorder's script, played")
+
+  // a timeline: its files, a run like it passes, a run that went elsewhere does not
+  const SCRIPT = join(out, 'script.txt')
+  writeFileSync(SCRIPT, 'click --name "nav0"\nidle\nclick --name "nav5"\nidle\n')
+  const a = await playTimeline(send, { source: SCRIPT, dir: join(out, 'timeline-a') })
+  if (a.steps !== 3 || a.failed) fail(`timeline: ${JSON.stringify(a)}`)
+  const page = readFileSync(join(out, 'timeline-a', 'index.html'), 'utf8')
+  const trace = JSON.parse(readFileSync(join(out, 'timeline-a', 'trace.json'), 'utf8'))
+  const saved = JSON.parse(readFileSync(join(out, 'timeline-a', 'timeline.json'), 'utf8'))
+  if (!page.includes('data:image/png;base64,')) fail('timeline: no picture in its page')
+  if (!trace.traceEvents.some((e) => e.ph === 'X') || trace.traceEvents.filter((e) => e.ph === 'i').length !== 3) fail('timeline: its trace')
+  if (saved.steps.length !== 3 || !saved.frames.length) fail('timeline: its json')
+  const same = await playTimeline(send, { source: join(out, 'timeline-a', 'timeline.json'), dir: join(out, 'timeline-b') })
+  if (same.failed) fail(`timeline: played again, ${same.failed} step(s) differ`)
+  writeFileSync(SCRIPT, 'click --name "nav0"\nidle\nclick --name "nav3"\nidle\n')
+  const other = await playTimeline(send, { source: SCRIPT, dir: join(out, 'timeline-c'), against: join(out, 'timeline-a') })
+  if (other.failed !== 1) fail(`timeline: another page seen as ${other.failed} step(s) differing`)
+  else pass('timeline: files, played again, a difference found')
+
+  // the screencast: frames while something changes, none at rest
+  let frames = 0, lastFrame
+  on('Page.screencastFrame', (f) => {
+    frames++
+    lastFrame = decodePng(Buffer.from(f.data, 'base64'))
+    send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {})
+  })
+  await send('Page.startScreencast', { format: 'png', minIntervalMs: 50 })
+  await send('Toolkit.click', { name: 'nav1' })
+  await idle()
+  await new Promise((r) => setTimeout(r, 300))
+  const moving = frames
+  await new Promise((r) => setTimeout(r, 600))
+  await send('Page.stopScreencast')
+  if (moving < 1) fail('screencast: no frame')
+  else if (frames > moving + 1) fail(`screencast: ${frames - moving} frames at rest`)
+  else if (compare(decodePng(readFileSync(join(baseline, 'lazy.png'))), lastFrame, PIXEL_DELTA).share > 0.02) fail('screencast: the last frame is not what the window shows')
+  else pass(`screencast: ${frames} frames, the last one what the window shows, none at rest`)
+
+  // recording a timeline: a picture per action, what a person types gathered, and it plays back the same
+  let stopRecording
+  const stop = new Promise((r) => { stopRecording = r })
+  const rec = recordTimeline(send, { dir: join(out, 'timeline-r'), stop, injected: true })
+  await new Promise((r) => setTimeout(r, 400))
+  await send('Toolkit.click', { name: 'nav7' })
+  await idle()
+  await new Promise((r) => setTimeout(r, 400))
+  await send('Input.insertText', { text: ' odin' })
+  await new Promise((r) => setTimeout(r, 900))
+  await send('Toolkit.click', { name: 'nav0' })
+  await idle()
+  await new Promise((r) => setTimeout(r, 400))
+  stopRecording()
+  const recorded = await rec
+  const wanted = ['click --name "nav7"', 'type " odin"', 'click --name "nav0"']
+  if (JSON.stringify(recorded.lines) !== JSON.stringify(wanted)) fail(`timeline recorded: ${JSON.stringify(recorded.lines)}`)
+  else {
+    const t = JSON.parse(readFileSync(join(out, 'timeline-r', 'timeline.json'), 'utf8')).steps.map((s) => s.t)
+    if (!t.every((x, i) => i === 0 || x > t[i - 1])) fail(`timeline recorded: times ${t}`)
+    const back = await playTimeline(send, { source: join(out, 'timeline-r', 'timeline.json'), dir: join(out, 'timeline-s'), realtime: true })
+    // (the needle now has " odin" twice over: only the field's step and the page differ, the last step is back on the first page)
+    const st = JSON.parse(readFileSync(join(out, 'timeline-s', 'timeline.json'), 'utf8')).steps
+    if (st.length !== 4 || st[3].differs) fail(`timeline recorded, played: ${JSON.stringify(back)}`)
+    else pass(`timeline recorded and played: ${wanted.length} actions at ${t.map((x) => Math.round(x)).join(', ')} ms`)
+  }
 
   // a crash waits here: ends by itself, exit code 0
   closing = true

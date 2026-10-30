@@ -1,4 +1,4 @@
-// PNG for the reference images: 8-bit RGBA, no package.
+// PNG for tests/e2e and timelines: 8-bit RGBA, no package.
 import { deflateSync, inflateSync } from 'node:zlib'
 
 export function decodePng(buf) {

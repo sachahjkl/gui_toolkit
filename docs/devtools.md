@@ -58,6 +58,7 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Accessibility.queryAXTree` | the nodes with a `role` and an `accessibleName` (contained, case ignored; `exact` for all of it). |
 | `Browser.getVersion`, `Target.*`, `Page.getFrameTree` | discovery, and attaching in sessions (`Target.attachToTarget`, `setAutoAttach`, the browser's endpoint): what Puppeteer and Playwright use. |
 | `Browser.close` | closes the window, as its close button. |
+| `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and encoded on the UI thread: it costs what it films. |
 | `*.enable`, `*.disable`, `*.set*` | accepted, nothing to do (what clients send on attaching). |
 | `Runtime.evaluate` | refused: there is no JavaScript. |
 
@@ -72,10 +73,11 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 | `Toolkit.waitFor` `{name? text? gone? timeout?}` | answers when such a box is there (its nodes), or gone; an error after `timeout` ms (5000). It counts from two builds on, so input sent before it has been seen. |
 | `Toolkit.waitIdle` `{timeout?}` | answers when three builds in a row had nothing moving: `{idle: true}`, or `{idle: false}` at the timeout (a page animating for good). Before a screenshot, in place of a sleep. |
 | `Toolkit.metrics` `{reset?}` | the last 240 frames: `buildMs`, `layoutMs`, `totalMs`, `frameMs` (p50, p95, max), `boxes`, `lazyBuilt`, `animating`, `axNodes`, `axMs`; `latencyMs` input to screen in a build with `-define:RENDER_PROBE=true` (null otherwise). `frameMs` counts rests: a program at rest draws nothing. |
+| `Toolkit.frames` `{after?}` | the same frames one by one, after build `after`: `build`, `t`, `frameMs`, `buildMs`, `layoutMs`, `totalMs`; `now` on the same clock as `t` (`ui.now_ms`). |
 | `Toolkit.warnings` | the layout's warnings of this build (`ui.set_layout_warnings`). |
 | `Toolkit.axAction` `{role? name? exact? index? nodeId? action? value?}` | an action on an accessible node, as a screen reader asks it (`ui.a11y_inject`): `Click` by default, `Focus`, `Set_Value`, `Increment`, `Scroll_Into_View`... (`platform.A11y_Action`). An error if the node does not offer it. |
 | `Toolkit.axAudit` | `unnamed`: the enabled controls with no name, no text in them and no placeholder (`ui.a11y_unnamed`). A clickable box without one is not even a node: a reader does not know it exists. |
-| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is. `injected`: the protocol's events too. |
+| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is. `injected`: the protocol's events too. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). |
 
 ## tools/cdp.mjs
 
@@ -90,9 +92,39 @@ node tools/cdp.mjs press "Send" --role button
 node tools/cdp.mjs audit
 node tools/cdp.mjs metrics --reset , click "Lazy column" , idle , metrics
 node tools/cdp.mjs record steps.txt      # until Enter; then: node tools/cdp.mjs play steps.txt
+node tools/cdp.mjs cast frames/          # the window's frames as PNGs, until Enter
 ```
 
 `tools/cdp_client.mjs` is the same as a module, for a script of your own; `tests/e2e/run.mjs` is an example of one.
+
+## Timelines
+
+A timeline is a run kept whole: each action with when it happened, a picture of the window after it, the time of every
+frame in between.
+
+```
+node tools/cdp.mjs record --timeline run1            # what a person does, until Enter
+node tools/cdp.mjs play run1/timeline.json --timeline run2                # again; each picture compared with run1's
+node tools/cdp.mjs play run1/timeline.json --timeline run2 --realtime     # with the recorded pauses
+node tools/cdp.mjs play steps.txt --timeline run3 --against run1          # a script against a run
+```
+
+A folder per run:
+
+- `index.html`: one file, the pictures in it. The steps, a strip of the frames' times (slow ones in red), the picture of
+  each step (arrow keys, Play), what differs from the reference.
+- `timeline.json`: the steps and frames, what `play` reads.
+- `trace.json`: Chrome's trace format, for `chrome://tracing` or https://ui.perfetto.dev: a slice per build and layout, a
+  mark per step, a counter of the frame time.
+- `steps.txt`, `step-NNN.png`, `step-NNN.diff.png`.
+
+`play` exits with code 1 if a step differs: over 0.4 % of its pixels by more than 32 of 255 (`--max-diff` for the share),
+which lets numbers shown live pass. Each step waits for the window to rest (1.5 s at most; the page says when it was
+still moving), and a picture is taken per action, not per frame, so what the frames cost stays what the program costs.
+`tools/timeline.mjs` is the same as a module (`recordTimeline`, `playTimeline`).
+
+**What was on screen and what was typed are in the folder as they were**: a run on real data is not to be shared as it
+stands, and typed passwords are recorded like any other text.
 
 ## Puppeteer and Playwright
 
@@ -109,6 +141,8 @@ Both attach (checked with puppeteer-core and playwright-core: `puppeteer.connect
 ## Limits
 
 - One window per server (a program with several windows starts one server each, on different ports).
+- A timeline's frames come from a ring of 240: a busy program pulled every 250 ms keeps them all; a step that takes longer
+  loses the oldest.
 - Input arrives as events, not as system input: what reads the system's cursor or key state directly does not see it
   (`Event.injected` says which events these are).
 - A screenshot is the next presented frame: a window that is not drawing is woken for it.
