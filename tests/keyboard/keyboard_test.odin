@@ -4,6 +4,7 @@
 package keyboard_test
 
 import "core:sync"
+import "core:fmt"
 import "core:testing"
 import "../../font"
 import "../../platform"
@@ -560,4 +561,56 @@ find_in_page :: proc(t: ^testing.T) {
 	frame(f, nil, proc(f: ^Fx, user: rawptr) { ui.find("", 0) }, nil)
 	frame(f, nil, nothing, nil)
 	testing.expect_value(t, ui.find_count(), 0)
+}
+
+@(private = "file")
+the_scroller: ^ui.Box
+
+@(private = "file")
+build_scroller :: proc(f: ^Fx, user: rawptr) {
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	if ui.scroll_y("###sc") {
+		for i in 0 ..< 40 {
+			ui.next({width = ui.px(300), height = ui.px(30)})
+			ui.label(fmt.tprintf("row %d###r%d", i, i))
+		}
+	}
+	the_scroller = ui.prev_box("###sc")
+}
+
+// The view offset of the scroller after a wheel notch and one more frame, with animations off and the given glide.
+@(private = "file")
+scroll_after_notch :: proc(f: ^Fx, smooth: ui.Smooth_Scroll) -> (off, target: f32, busy: bool) {
+	one :: proc(f: ^Fx, events: []platform.Event, smooth: ui.Smooth_Scroll) {
+		ui.begin_build(&f.s, {
+			window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, smooth_scroll = smooth, dpi_scale = 1,
+			base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+		})
+		build_scroller(f, nil)
+		ui.end_build()
+		free_all(context.temp_allocator)
+	}
+	one(f, nil, smooth)
+	one(f, {{kind = .Mouse_Move, pos = {100, 100}}}, smooth)
+	one(f, {{kind = .Scroll, pos = {100, 100}, delta = {0, 1}}}, smooth)
+	b := the_scroller
+	return b.view_off.y, b.view_target.y, ui.needs_frame(&f.s)
+}
+
+// Smooth scrolling is its own setting: with the interface's animations off, a wheel notch still glides when the
+// application says so (smooth_scroll = .On), and jumps when it follows the animations.
+@(test)
+smooth_scroll_without_animations :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	off, target, busy := scroll_after_notch(f, .On)
+	testing.expectf(t, target > 0 && off > 0 && off < target, "a glide: %v of %v", off, target)
+	testing.expect(t, busy, "frames keep coming while it glides")
+	close(f)
+	f^ = {}
+	if !testing.expect(t, open(f)) { return }
+	off, target, busy = scroll_after_notch(f, .Follow)
+	testing.expectf(t, target > 0 && off == target, "a jump: %v of %v", off, target)
 }
