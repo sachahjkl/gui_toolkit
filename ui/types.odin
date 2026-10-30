@@ -311,6 +311,7 @@ State :: struct {
 	has_next:     bool,
 	overlay_root: ^Box,
 	anim_rate:    f32,                // exponential rate multiplier: 0 disables animation (values jump)
+	scroll_smooth: bool,              // scrolling glides (Build_Params.smooth_scroll)
 	dt:           f32,
 	window_size:  Vec2,
 	boxes_built:  int,
