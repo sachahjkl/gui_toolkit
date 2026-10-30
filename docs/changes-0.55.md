@@ -6,11 +6,14 @@ differently, what to change. `examples/whatsnew` shows each item live (`odin bui
 
 ## Changes that need nothing, but show
 
-- **Latency object debt (Direct3D 11).** A frame presented without a wait on the swap chain's latency object (one shown
-  at once: a resize step, input after a rest) used to leave the object one count too many; every later wait returned at
-  once and frames queued behind a blocking Present. Measured in opencode native: 82 ms input to screen instead of 36.
-  The renderer now counts it (`latency_presented`, `Present_State.latency_debt`) and takes it back. Nothing to change;
-  an application that had disabled "answer input at once" because of that regression can turn it back on.
+- **A frame less between input and screen (Direct3D 11).** The renderer takes one of the swap chain latency object's
+  counts for good at creation: a frame starts when the last one is on screen instead of queueing behind it. Measured in
+  opencode native (RENDER_PROBE, a fast hand over a list, six runs each): 49 ms input to screen before, 34 after, still
+  60 frames a second. The price: a frame that takes longer than a refresh waits for the next one (keep frames light: a
+  lazy column for long content).
+- **Do not show input after a rest at once.** Presenting that frame without a wait for the refresh (and latency 2) left
+  the swap chain a frame deeper for the rest of the session: 45 to 60 ms instead of 30, every run. `render.pace_frame`
+  does not do it; an application with its own pacing should not either.
 - **Emboss direction (Gradient finish themes only).** The engraving of a button's text is chosen by the text against
   what is under it (its background, else the nearest opaque one up, else the theme's `background`), not by the text
   alone. Screenshots of Bootstrap-like themes may change by a pixel on grey text.
@@ -42,7 +45,7 @@ render.paced_present(&pacer)
 
 `inner = true` for a frame made from a loop of the system (`on_frame` during a live resize). It replaces the hand-written
 `display_info` / `cadence_adopt` / `frame_decision` / `wait_for_frame` / `set_max_frame_latency` / `cadence_presented`
-sequence; opencode native's `pace()` is now one call. Input after a rest is detected with:
+sequence; opencode native's `pace()` is now one call. Also new, for an application that measures otherwise:
 
 - `platform.input_pending(w) -> bool`: input waits in the queue (polls, keeps the events for the next `poll_events`).
 - `platform.event_is_input(kind) -> bool`.
@@ -65,8 +68,11 @@ if ui.scroll_y("###list") {
 ```
 
 Only items near the view (a screen above and below) are built; a run of skipped items is one space of their last
-measured heights. All items are built when the column's width changed, when `all = true` (find in page needs the
-text), and before an item was ever built. `always`: an item that grows (streaming) or holds the focus.
+measured heights. An item never built stands as the mean height of those that were; one built at another width keeps
+its old height until it comes near the view. When a height changes above the view, the view follows (after the layout,
+in the same frame): the first item visible keeps its place on screen. `all = true` builds every item (find in page needs
+the text). `always`: an item that grows (streaming) or holds the focus. 5000 wrapped paragraphs: a first frame of 12 ms
+(1.4 s when everything was built), 3 ms a frame after, a resize no longer rebuilds them all.
 
 **The trap**: like `row()`, the item is the block of the `if` (`@(deferred_out)`). `if !ui.lazy_item(...) { continue }`
 closes the item immediately: it stays empty (height 0), its content lands in the column, and nothing is ever skipped.
@@ -101,6 +107,12 @@ tools, overlays that need a rect from outside a build.
 
 The messages given so far (temp memory), for a tool or a test.
 
+## Fixed
+
+- **Find in page with a scope no longer built** (a page left while the needle stays) read the freed frame memory of
+  that subtree and crashed at the next layout. Such a scope now finds nothing. Still: call `ui.find("")` when the
+  search goes away.
+
 ## Tests
 
 `tests/{keyboard,status,states,ui_robust,a11y}` now fail to compile without `-define:ODIN_TEST_THREADS=1` (a
@@ -113,7 +125,7 @@ or hung. An application test package that uses `ui` state the same way can copy 
 
 ## Docs
 
-- docs/pacing.md: the pacer, and the latency debt.
+- docs/pacing.md: the pacer, and why it does not show input after a rest at once.
 - docs/font-backend.md: one Rust standard library per program — build `native/text` (and `native/a11y`) into your own
   crate, `-define:FONT_NATIVE_LINK=false`; wgpu-native is prebuilt and cannot join it (Linux:
   `--allow-multiple-definition`; Windows: use Direct3D 11 or build wgpu-native in your workspace).

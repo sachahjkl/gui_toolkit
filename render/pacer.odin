@@ -12,9 +12,11 @@ import "../platform"
 //   render.frame_end(&r, !at_once)
 //   render.paced_present(&pacer)
 //
-// `idled`: the loop slept before this frame (nothing was due). The window's input after a rest is answered at once
-// (platform.input_pending): shown without a wait for a refresh. A frame of a loop of the system (on_frame from the
-// window procedure, a modal move or size) passes `inner = true`.
+// `idled`: the loop slept before this frame (nothing was due). A frame of a loop of the system (on_frame from the window
+// procedure, a modal move or size) passes `inner = true`.
+//
+// Input after a rest is not shown at once (no wait for the refresh): measured in opencode native, that one frame left the
+// swap chain a frame deeper for the rest of the session (input to screen 45 to 60 ms instead of 30, every run).
 
 Pacer :: struct {
 	cadence:        platform.Cadence,
@@ -40,7 +42,7 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 		if at_once { latency = 2 } else if !p.slot_held { p.slot_held = wait_for_frame(r) }
 	} else {
 		d := platform.frame_decision(&p.cadence, {
-			now_ns = time.tick_now()._nsec, idled = idled, input = idled && platform.input_pending(w),
+			now_ns = time.tick_now()._nsec, idled = idled, input = false,
 			presented = p.presented, resized = resized, slot_held = p.slot_held, dragging = dragging,
 		})
 		at_once, latency = d.present_at_once, d.latency

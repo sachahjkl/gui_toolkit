@@ -99,7 +99,8 @@ find_collect :: proc(s: ^State) {
 	top := s.root
 	if f.scope != 0 {
 		top = s.boxes[f.scope] or_else nil
-		if top == nil { return }
+		// a scope not built this build (a page left while the needle stays): its subtree points into freed frame memory
+		if top == nil || top.last_build != s.build_index { return }
 	}
 	hits := make([dynamic][2]int, context.temp_allocator)
 	add :: proc(f: ^Find_State, b: ^Box, r: Rect, same: bool) {

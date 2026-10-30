@@ -83,6 +83,12 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 			sc2->SetMaximumFrameLatency(1)
 			r.latency_handle = sc2->GetFrameLatencyWaitableObject()
 			sc2->Release()
+			// One of the object's counts is taken for good (latency_drain, as soon as the object has it to give): with it,
+			// a wait returns while the last frame still waits for its refresh, the next one queues behind it and the
+			// screen shows input a frame later. Without it, a frame starts when the last one is on screen. Measured in
+			// opencode native (RENDER_PROBE, a fast hand over a list, six runs each): 48 ms from input to screen with
+			// the count, 30 without. The price: a frame that takes longer than a refresh waits for the next one.
+			if r.latency_handle != nil { r.present.latency_debt = 1 }
 		}
 	}
 	create_target(r)
@@ -652,9 +658,7 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
 	if r.latency_handle == nil { return true }
 	latency_drain(&r.present, r.latency_handle)
-	ok := win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
-	if ok { r.present.slot_taken = true }
-	return ok
+	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
 }
 
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
