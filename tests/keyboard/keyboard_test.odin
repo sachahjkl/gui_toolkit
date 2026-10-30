@@ -883,3 +883,25 @@ find_with_a_scope_no_longer_built :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.find_count(), 0)
 	ui.find("")
 }
+
+// A wheel's big jump: the frame that applies it shows items, not the spaces of the items built around the old place.
+@(test)
+lazy_column_after_a_jump_shows_items :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	lz2_w, lz2_h = 300, 40
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy2, nil) }
+	sb := lz2_scroller
+	mid := [2]f32{(sb.rect.min.x + sb.rect.max.x) * 0.5, (sb.rect.min.y + sb.rect.max.y) * 0.5}
+	jump := []platform.Event{{kind = .Mouse_Move, pos = mid}, {kind = .Scroll, pos = mid, delta = {0, 60}}}
+	frame(f, jump, build_lazy2, nil)
+	testing.expectf(t, lz2_scroller.view_off.y > 1000, "the view jumped: %v", lz2_scroller.view_off.y)
+	col := ui.box_at("###lz", "###col")
+	shown := 0
+	for c := col.first; c != nil; c = c.next {
+		if c.first != nil && c.rect.max.y > sb.rect.min.y && c.rect.min.y < sb.rect.max.y { shown += 1 }
+	}
+	testing.expectf(t, shown >= 3, "items in the view in the very frame of the jump: %d", shown)
+}
