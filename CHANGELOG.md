@@ -3,6 +3,14 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.56.1] - 2026-10-30
+
+### Added
+- **`flate.deflate_runs`**: compression at a high rate for what repeats in known ways, such as the rows of a picture: runs and matches a row above, in one block of the fixed Huffman codes.
+
+### Fixed
+- **A screenshot of a real window took two seconds and froze it**: the wake asked for its next frame was consumed by the frame already starting, so the window slept until its next timer (about 1.2 s); reading a translucent window's fp16 target back ran `pow` on every channel (now a table); the PNG was encoded on the UI thread (now `flate.deflate_runs`, made for rate, on a thread of its own). A timeline keeps its pictures in memory and compresses, compares and writes them when it ends. An offscreen window keeps its wakes, so the end-to-end run never saw the first one.
+
 ## [0.56.0] - 2026-10-30
 
 ### Added
