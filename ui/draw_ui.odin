@@ -135,6 +135,15 @@ text_origin :: proc(s: ^State, b: ^Box, dim: Vec2) -> Vec2 {
 	return {math.round(x), math.round(cy + (m.ascent - m.descent) * 0.5)}
 }
 
+// The colour under a box's text: its own background or the nearest opaque one of its ancestors, else the theme's.
+@(private)
+backdrop_under :: proc(s: ^State, b: ^Box) -> Color {
+	for a := b; a != nil; a = a.parent {
+		if .Draw_Background in a.flags && a.bg.a >= 0.5 { return a.bg }
+	}
+	return color_from_tags(s, b.tags_key, "background")
+}
+
 @(private)
 draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	text := b.text
@@ -146,9 +155,11 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	pos := text_origin(s, b, {width, b.text_dim.y})
 	if s.theme != nil && s.theme.finish != .Flat {
 		if k := box_sheen(s, b); k > 0.001 {
-			// light text sits in a groove (dark shadow above), dark text is lit from below
+			// text lighter than what is under it sits in a groove (a dark shadow above); darker text is lit from below. (By
+			// the contrast, not the text alone: grey text on a dark panel took a light edge under it, a pixel low to the eye.)
 			tc := b.text_color
-			light := 0.2126 * tc.r + 0.7152 * tc.g + 0.0722 * tc.b > 0.5
+			lum :: proc(c: Color) -> f32 { return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b }
+			light := lum(tc) > lum(backdrop_under(s, b))
 			sc := tuned(light ? Color{0, 0, 0, 0.35 * k * tc.a} : Color{1, 1, 1, 0.75 * k * tc.a}, Color{b.bg.r, b.bg.g, b.bg.b, 1})
 			draw.text(dc, b.font, b.font_size, pos + {0, light ? -1 : 1}, sc, text)
 		}

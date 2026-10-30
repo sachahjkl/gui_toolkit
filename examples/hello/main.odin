@@ -25,6 +25,8 @@ App :: struct {
 	font:   font.Font_Id,
 	name:   ui.Text_Field,
 	clicks: int,
+	pacer:  render.Pacer,   // frame pacing (render/pacer.odin)
+	slept:  bool,           // the loop slept before this frame
 }
 
 // The interface, built again each frame: the state that must last (the field's text, the clicks) is the app's.
@@ -59,7 +61,8 @@ the_app: ^App   // (for the clipboard procedures, which take no argument)
 
 frame :: proc(app: ^App) {
 	if ui.building() { return }   // (a frame asked for from a loop of the system while one is being built: skip it)
-	render.wait_for_frame(&app.r)
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0)
+	app.slept = false
 	events := platform.poll_events(app.win, false)
 	render.resize(&app.r, app.win.size)
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
@@ -77,7 +80,8 @@ frame :: proc(app: ^App) {
 	render.frame_begin(&app.r, ui.theme_lookup(&app.theme, {}, "background"))   // the palette's window colour
 	ui.draw_tree(&app.s, &app.dc)
 	draw.end_frame(&app.dc)
-	render.frame_end(&app.r)
+	render.frame_end(&app.r, !at_once)
+	render.paced_present(&app.pacer)
 	free_all(context.temp_allocator)
 }
 
@@ -119,7 +123,7 @@ main :: proc() {
 	platform.show_window(app.win)
 	for !platform.is_closed(app.win) {
 		// 0 % CPU at rest: sleep until input, or until the interface's next timed wake (caret blink, tooltip)
-		if !ui.needs_frame(&app.s) { platform.wait_event(app.win, ui.wake_in_ms(&app.s)) }
+		if !ui.needs_frame(&app.s) { platform.wait_event(app.win, ui.wake_in_ms(&app.s)); app.slept = true }
 		frame(app)
 	}
 }

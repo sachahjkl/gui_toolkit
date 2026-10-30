@@ -312,6 +312,11 @@ State :: struct {
 	overlay_root: ^Box,
 	anim_rate:    f32,                // exponential rate multiplier: 0 disables animation (values jump)
 	scroll_smooth: bool,              // scrolling glides (Build_Params.smooth_scroll)
+	layout_warnings: bool,            // print the layout mistakes it can see (layout_warn); default: debug builds
+	layout_warned:   map[Key]string,   // the layout warnings given, by box (owned messages)
+	// lazy columns (lazy.odin): the heights items had when last built, the width each column was measured at
+	lazy_heights:    map[Key]Lazy_Height,
+	lazy_widths:     map[Key]f32,
 	dt:           f32,
 	window_size:  Vec2,
 	boxes_built:  int,

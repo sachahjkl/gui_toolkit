@@ -57,6 +57,25 @@ builds `native/text` into its library as a dependency (the `gt_*` functions stay
 `-define:FONT_NATIVE_LINK=false`: the `font` package then links nothing itself. Wren does this with the `text` feature
 of its assembly crate `native/wren_native` (one Cargo workspace, one static library).
 
+The recipe, for an application with a crate of its own (opencode native does it for Linux):
+
+```toml
+# your crate's Cargo.toml
+[dependencies]
+gt_text = { path = "../../ext/gui_toolkit/native/text" }
+```
+```rust
+// its lib.rs: the gt_* functions are exported from your library
+pub extern crate gt_text;
+```
+and build the program with `-define:FONT_BACKEND=native -define:FONT_NATIVE_LINK=false`.
+
+**WebGPU's wgpu-native is a Rust static library too**, prebuilt: it cannot join your workspace. Its few unmangled symbols
+of Rust's standard library (`rust_eh_personality`) collide with yours. On Linux they are the same code: link with
+`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (tools/linux_ci.sh, opencode native's build.sh). On Windows the
+linker refuses the duplicate: use Direct3D 11 there (the default backend), or build wgpu-native from source in your
+workspace.
+
 Built like Wren's `native/` workspace: exact versions and `Cargo.lock` (`--locked`), fat LTO, one codegen unit, the
 library's `rust_eh_personality` renamed so it links next to other Rust static libraries. The toolkit builds it itself
 (it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend; Wren links it

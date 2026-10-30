@@ -652,7 +652,9 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
 	if r.latency_handle == nil { return true }
 	latency_drain(&r.present, r.latency_handle)
-	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
+	ok := win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
+	if ok { r.present.slot_taken = true }
+	return ok
 }
 
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.

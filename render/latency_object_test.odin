@@ -65,3 +65,20 @@ nothing_owed_takes_nothing :: proc(t: ^testing.T) {
 	latency_drain(&p, h)
 	testing.expect_value(t, count_of(h), 1)
 }
+
+// A frame presented without a wait on the object leaves its count there when it reaches the screen: it is owed, and the
+// next waits take it back without blocking (else frames queue, a refresh more between input and screen each time).
+@(test)
+a_present_without_a_wait_is_owed :: proc(t: ^testing.T) {
+	h := win.CreateSemaphoreW(nil, 1, 8, nil)   // max latency 1: one slot
+	defer win.CloseHandle(h)
+	p := Present_State{max_latency = 1}
+	latency_presented(&p, true)
+	testing.expect_value(t, p.latency_debt, 0)
+	latency_presented(&p, false)                 // shown at once, no wait: the slot it used comes back as well
+	testing.expect_value(t, p.latency_debt, 1)
+	win.ReleaseSemaphore(h, 1, nil)              // that frame reached the screen: two counts, one slot
+	latency_drain(&p, h)
+	testing.expect_value(t, p.latency_debt, 0)
+	testing.expect_value(t, count_of(h), 1)
+}

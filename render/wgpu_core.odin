@@ -86,6 +86,8 @@ Wgpu_State :: struct {
 	configured:    bool,
 	clear:         [4]f64,
 	clear_pending: bool,                 // the frame target still has to be cleared (first pass of the frame)
+	fxc:           bool,                 // Direct3D 12 compiles the shaders with FXC (slow: seconds for the first frame's pipelines)
+	first_shown:   bool,                 // a frame of the window was presented (the first one shows the background before compiling)
 	present_mode:  wgpu.PresentMode,
 	// shaders, layouts, pipelines
 	module_rect, module_fx, module_mip, module_slug: wgpu.ShaderModule,
@@ -250,6 +252,7 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 		dxcPath = dxc_path,
 		dcxMaxShaderModel = .V6_0,
 	}
+	g.fxc = ODIN_OS == .Windows && WGPU_BACKEND != "vulkan" && dxc_path == ""
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
 	if g.instance == nil { fmt.eprintln("render: wgpu: no instance"); return false }
 	g.surface = wgpu_make_surface(r, surface)

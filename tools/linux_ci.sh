@@ -21,7 +21,7 @@ for p in base config dbus draw flate font fsx i18n instance platform render ui; 
     echo "check FAIL $p"; echo "$out" | grep -E "Error" | head -15; fail=1
   fi
 done
-for e in hello smoke todo markdown panes; do
+for e in hello smoke todo markdown panes whatsnew; do
   if out=$("$ODIN" build "examples/$e" -vet "${NATIVE[@]}" -out:"build/linux/$e" 2>&1); then
     echo "build ok   examples/$e"
   else
