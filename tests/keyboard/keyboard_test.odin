@@ -590,8 +590,7 @@ scroll_after_notch :: proc(f: ^Fx, smooth: ui.Smooth_Scroll) -> (off, target: f3
 		ui.end_build()
 		free_all(context.temp_allocator)
 	}
-	one(f, nil, smooth)
-	one(f, {{kind = .Mouse_Move, pos = {100, 100}}}, smooth)
+	for _ in 0 ..< 2 { one(f, nil, smooth) }   // (no pointer move before the notch: the wheel is where its event says)
 	one(f, {{kind = .Scroll, pos = {100, 100}, delta = {0, 1}}}, smooth)
 	b := the_scroller
 	return b.view_off.y, b.view_target.y, ui.needs_frame(&f.s)
@@ -613,4 +612,176 @@ smooth_scroll_without_animations :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(f)) { return }
 	off, target, busy = scroll_after_notch(f, .Follow)
 	testing.expectf(t, target > 0 && off == target, "a jump: %v of %v", off, target)
+}
+
+// The layout warns of the percentage that goes past a box sized by its children (a label stretching its row to the
+// window's height), once per box.
+@(test)
+layout_warns_of_a_percentage_past_a_box_sized_by_its_children :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	ui.set_layout_warnings(&f.s, true)
+	for _ in 0 ..< 3 {
+		frame(f, nil, proc(f: ^Fx, user: rawptr) {
+			ui.next({width = ui.px(300), height = ui.children_sum(), axis = .X})
+			if ui.row(id = "###stretched") {
+				ui.next({width = ui.px(80), height = ui.pct(1)})
+				ui.label("tall###lbl")
+			}
+		}, nil)
+	}
+	testing.expect_value(t, len(f.s.layout_warned), 1)
+}
+
+// rich_paragraph's version names its content: the same version finds the layout made for it without hashing the runs
+// (the text that changed under the same version is not seen: the caller's promise), a new version lays out again.
+@(test)
+rich_paragraph_version_finds_its_layout :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	Case :: struct { text: string, version: u64 }
+	height_of :: proc(f: ^Fx, c: Case) -> f32 {
+		@(static) cur: Case
+		cur = c
+		for _ in 0 ..< 2 {
+			frame(f, nil, proc(f: ^Fx, user: rawptr) {
+				ui.next({width = ui.px(120)})
+				ui.rich_paragraph("###p", {{text = cur.text}}, version = cur.version)
+				the_para = ui.prev_box("###p")
+			}, nil)
+		}
+		return the_para.size.y
+	}
+	short := height_of(f, {"short", 7})
+	same := height_of(f, {"a much longer text that wraps over several lines of a narrow box", 7})
+	testing.expect_value(t, same, short)   // the same version: the layout of "short"
+	longer := height_of(f, {"a much longer text that wraps over several lines of a narrow box", 8})
+	testing.expect(t, longer > short, "a new version lays the text out again")
+}
+
+@(private = "file")
+the_para: ^ui.Box
+
+@(private = "file")
+lazy_built: int
+@(private = "file")
+lazy_scroller: ^ui.Box
+
+@(private = "file")
+build_lazy :: proc(f: ^Fx, user: rawptr) {
+	lazy_built = 0
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	if ui.scroll_y("###lz") {
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###col") {
+			lz := ui.lazy_begin()
+			for i in 0 ..< 50 {
+				if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+					lazy_built += 1
+					ui.next({width = ui.fill(), height = ui.px(40)})
+					ui.label(fmt.tprintf("item %d###l", i))
+				}
+			}
+		}
+	}
+	lazy_scroller = ui.prev_box("###lz")
+}
+
+// A lazy column builds the items near the view only, keeps the content's height, and builds the others when the view
+// reaches them.
+@(test)
+lazy_column_builds_what_is_near_the_view :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy, nil) }
+	testing.expectf(t, lazy_built > 0 && lazy_built <= 16, "a screen and a margin built, not 50: %d", lazy_built)
+	testing.expect_value(t, lazy_scroller.view_bounds.y, 2000)   // all 50 items' height
+	lazy_scroller.view_target.y = 1800
+	lazy_scroller.view_off.y = 1800
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy, nil) }
+	b := ui.box_from_key(lazy_scroller.first.key)   // the column
+	last := b.last
+	testing.expect(t, last != nil && last.first != nil, "the last item is built at the bottom")
+	testing.expectf(t, lazy_built <= 16, "still a screen's worth: %d", lazy_built)
+}
+
+@(private = "file")
+merged_box: ^ui.Box
+
+// next_merge completes the pending next: a helper sizes its box, the caller's position stays.
+@(test)
+next_merge_keeps_what_the_caller_set :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	for _ in 0 ..< 2 {
+		frame(f, nil, proc(f: ^Fx, user: rawptr) {
+			ui.next({fixed_x = 50, fixed_y = 30})                   // the caller places it
+			ui.next_merge({width = ui.px(20), height = ui.px(10)})  // the helper sizes it
+			merged_box = ui.build_box({}, "###merged")
+		}, nil)
+	}
+	r := merged_box.rect
+	testing.expect_value(t, [4]f32{r.min.x, r.min.y, r.max.x - r.min.x, r.max.y - r.min.y}, [4]f32{50, 30, 20, 10})
+}
+
+// box_at finds a box of the last build from its path of ids, from outside the build.
+@(test)
+box_at_finds_a_box_by_its_ids :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	frame(f, nil, build_lazy, nil)
+	frame(f, nil, build_lazy, nil)
+	sc := ui.box_at("###lz")
+	testing.expect(t, sc != nil && sc == lazy_scroller, "the scroll box")
+	testing.expect(t, ui.box_at("###lz", "###col") != nil, "the column inside it")
+	testing.expect(t, ui.box_at("###nothing") == nil, "none")
+}
+
+// A lazy column whose items all close before their content (`if !lazy_item(...) { continue }`) is said; one of empty
+// items among full ones is not.
+@(test)
+lazy_items_left_empty_are_warned_of :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	ui.set_layout_warnings(&f.s, true)
+	@(static) wrong: bool
+	build :: proc(f: ^Fx, user: rawptr) {
+		ui.next({width = ui.px(300), height = ui.px(200)})
+		if ui.scroll_y("###lz") {
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column(id = "###col") {
+				lz := ui.lazy_begin()
+				for i in 0 ..< 10 {
+					if wrong {
+						if !ui.lazy_item(lz, fmt.tprintf("###it%d", i)) { continue }
+						ui.next({width = ui.fill(), height = ui.px(40)})
+						ui.label(fmt.tprintf("item %d###l", i))
+					} else if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+						if i != 3 {   // (item 3 stays empty)
+							ui.next({width = ui.fill(), height = ui.px(40)})
+							ui.label(fmt.tprintf("item %d###l", i))
+						}
+					}
+				}
+			}
+		}
+	}
+	wrong = false
+	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
+	testing.expect_value(t, len(f.s.layout_warned), 0)
+	wrong = true
+	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
+	testing.expect_value(t, len(f.s.layout_warned), 1)
 }

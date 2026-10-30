@@ -186,6 +186,25 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	partial := damage_resolve(r, 1)
 	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
 	if !wgpu_ensure_frame(r) { return }
+	// The window's first frame: its pipelines are compiled now (with FXC, seconds). Show the background first rather than
+	// the white of a window that has never been drawn, then make the frame.
+	t_first: time.Tick
+	if !g.first_shown && g.surface != nil {
+		g.first_shown = true
+		t_first = time.tick_now()
+		if len(g.pipes) == 0 {
+			wgpu_clear_frame(r)
+			wgpu.SurfacePresent(g.surface)
+			wgpu_drop_frame(r)
+			if !wgpu_ensure_frame(r) { return }
+			g.clear_pending = true
+		}
+	}
+	defer if t_first._nsec != 0 {
+		if ms := time.duration_milliseconds(time.tick_since(t_first)); ms > 1000 && g.fxc {
+			fmt.eprintfln("render: wgpu: the first frame took %.0f ms, its shaders compiled by FXC: put dxcompiler.dll and dxil.dll next to the program (tools/fetch_wgpu.ps1) and Direct3D 12 compiles them with DXC, in a fraction of that", ms)
+		}
+	}
 	frame := f
 	s := Submit{r = r, f = &frame}
 	s.use_target, s.do_partial = wgpu_damage_setup(r, partial)

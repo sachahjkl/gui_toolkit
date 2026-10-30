@@ -375,11 +375,21 @@ rich_hash :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines: int,
 	return h
 }
 
+@(private)
+rich_hash_version :: proc(version: u64, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) -> u64 {
+	h: u64 = 0x84222325cbf29ce4 ~ version
+	tail := struct { w: f32, n: int, a: Text_Align, f: font.Font_Id, s: f32, m: font.Font_Id }{width, max_lines, align, c.base_font, c.base_size, c.mono}
+	for b in ([^]u8)(&tail)[:size_of(tail)] { h = (h ~ u64(b)) * 0x100000001b3 }
+	return h
+}
+
 // The layout of `runs` from the cache (laid out and kept the first time). Valid until the cache drops it: unused for
 // RICH_CACHE_KEEP builds.
-rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 0, align := Text_Align.Left) -> ^Rich_Layout {
+// `version` (not 0): the caller's name for this content (rich_paragraph's: the box and its version), looked up instead of
+// a hash of every run's text and style each time.
+rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 0, align := Text_Align.Left, version: u64 = 0) -> ^Rich_Layout {
 	s := g
-	k := rich_hash(runs, c, width, max_lines, align)
+	k := version != 0 ? rich_hash_version(version, c, width, max_lines, align) : rich_hash(runs, c, width, max_lines, align)
 	if e, ok := &s.rich_cache[k]; ok {
 		e.last_build = s.build_index
 		return e.layout
@@ -433,6 +443,7 @@ Rich_Draw :: struct {
 	max_lines: int,
 	hovered, focused: int,
 	link_color, code_bg: Color,
+	version:  u64,          // the layout cache's key for these runs (0: their hash): rich_paragraph's `version`
 }
 
 @(private)
@@ -443,7 +454,7 @@ rich_ctx :: proc(b: ^Box) -> Rich_Context {
 @(private)
 rich_measure_y :: proc(b: ^Box) -> f32 {
 	d := (^Rich_Draw)(b.custom_user)
-	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align)
+	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
 	return l.size.y
 }
 
@@ -451,7 +462,7 @@ rich_measure_y :: proc(b: ^Box) -> f32 {
 rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Rich_Draw)(user)
 	s := g
-	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align)
+	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
 	o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
 	clip := draw.current_clip(dc)
 	for li in l.lines {
@@ -492,7 +503,9 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // (0: all; then "…"). Links answer hover and click (the pointer is a hand on them) and the keyboard: the paragraph is a
 // Tab stop when it has links, Tab / Shift+Tab move through them before leaving it, Enter chooses one.
 // `runs` (and their strings) need only live through the build: the box keeps a copy for drawing.
-rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0) -> (res: Rich_Result) {
+// `version` (not 0): the runs are the same as at an earlier build with the same version (an application's counter of a
+// message's text, say): the layout is found by it, not by hashing every run (what a long document did at each frame).
+rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u64 = 0) -> (res: Rich_Result) {
 	s := g
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
@@ -522,6 +535,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0) -> (res: Ri
 	}
 	d.ctx = rich_ctx(b)
 	d.max_lines = max_lines
+	if version != 0 { d.version = ((u64(b.key) * 0x9e3779b97f4a7c15) ~ version) | 1 }
 	d.link_color = color("link")
 	d.code_bg = color("code_bg")
 	d.colors = make([]Color, len(runs), frame_allocator())
@@ -534,7 +548,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0) -> (res: Ri
 	b.custom, b.custom_user, b.measure_y = rich_draw, d, rich_measure_y
 	// width when sized to its text: the longest line without wrapping
 	if b.pref[.X].kind == .Text {
-		b.text_dim.x = rich_layout_cached(d.runs, d.ctx, 0, max_lines, .Left).size.x
+		b.text_dim.x = rich_layout_cached(d.runs, d.ctx, 0, max_lines, .Left, d.version).size.x
 	}
 
 	res.signal = signal(b)
@@ -543,7 +557,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0) -> (res: Ri
 		return
 	}
 	// links: under the pointer (last frame's layout at the box's width), clicked, chosen with the keyboard
-	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, max_lines, b.text_align)
+	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, max_lines, b.text_align, d.version)
 	// to screen readers: the text between the links, and the links (whose clicks and focus they may ask for)
 	part_run: []int
 	parts: [dynamic]A11y_Part

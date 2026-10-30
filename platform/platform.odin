@@ -329,3 +329,25 @@ hit_test_chrome :: proc(c: ^Chrome_Regions, p: [2]f32, size: [2]f32, border, cor
 	for r in c.caption { if region_contains(r, p) { return .Caption } }
 	return .Client
 }
+
+// Whether an event of the user's input (keys, typed text, the pointer, the wheel, touch and pen), not a window or a
+// system event.
+event_is_input :: proc(k: Event_Kind) -> bool {
+	#partial switch k {
+	case .Key_Press, .Key_Release, .Text, .Mouse_Move, .Mouse_Press, .Mouse_Release, .Scroll,
+	     .Pointer_Down, .Pointer_Move, .Pointer_Up:
+		return true
+	}
+	return false
+}
+
+// Whether the user's input waits, without taking it: what arrived is read (without waiting) and kept for the next
+// poll_events, which hands it out with what came since. For frame pacing: a frame that answers input after a rest is shown
+// at once (frame_decision's `input`).
+input_pending :: proc(w: ^Window) -> bool {
+	if w == nil { return false }
+	pending := false
+	for e in poll_events(w, false) { if event_is_input(e.kind) { pending = true } }
+	w.keep_events = true
+	return pending
+}

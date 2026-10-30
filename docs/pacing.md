@@ -59,6 +59,24 @@ Why each one:
 
 ## Use
 
+The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display changes, the swap chain's
+slot waited for, its latency set, and the input after a rest answered at once (`platform.input_pending` reads the queue
+without taking it):
+
+```odin
+at_once := render.pace_frame(&pacer, &r, win, idled = slept, dragging = ui.active_key() != 0)
+events := platform.poll_events(win, false)
+// ... build, draw ...
+render.frame_end(&r, !at_once)
+render.paced_present(&pacer)
+```
+
+A frame presented without a wait on the swap chain's latency object (one shown at once) leaves the object a count beyond
+its slots: the renderer owes it and takes it back at the next waits (`latency_presented`), else every later wait would
+return at once and frames would queue behind a blocking Present (twice the latency, measured).
+
+By hand:
+
 ```odin
 plan := platform.cadence_plan(platform.display_info(w), {target_hz = 0, max_hz = 0, variable = .Auto, tearing = false})
 platform.cadence_adopt(&c, plan)           // its slots and its screen (again when the monitor or its rate changes: Display_Info.serial)

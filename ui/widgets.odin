@@ -57,12 +57,37 @@ spacer :: proc(size: Size, exact := false) {
 	build_box({})
 }
 
-@(private)
+// `a` with what it leaves unset taken from `b` (every field; flags are added together).
 merge_mod :: proc(a, b: Style_Mod) -> Style_Mod {
 	r := a
-	if r.width == nil  { r.width = b.width }
+	if r.width == nil { r.width = b.width }
 	if r.height == nil { r.height = b.height }
+	if r.font == nil { r.font = b.font }
+	if r.font_size == nil { r.font_size = b.font_size }
+	if r.text_pad == nil { r.text_pad = b.text_pad }
+	if r.text_align == nil { r.text_align = b.text_align }
+	if r.radius == nil { r.radius = b.radius }
+	if r.transparency == nil { r.transparency = b.transparency }
+	if r.squish == nil { r.squish = b.squish }
+	if r.cursor == nil { r.cursor = b.cursor }
+	if r.axis == nil { r.axis = b.axis }
+	if r.cross == nil { r.cross = b.cross }
+	if r.gap == nil { r.gap = b.gap }
+	if r.fixed_x == nil { r.fixed_x = b.fixed_x }
+	if r.fixed_y == nil { r.fixed_y = b.fixed_y }
+	if r.fixed_w == nil { r.fixed_w = b.fixed_w }
+	if r.fixed_h == nil { r.fixed_h = b.fixed_h }
+	if r.bg == nil { r.bg = b.bg }
+	if r.border == nil { r.border = b.border }
+	if r.fg == nil { r.fg = b.fg }
+	r.flags += b.flags
 	return r
+}
+
+// Like `next`, but on top of a `next` already given for the same box: what `m` sets wins, what it leaves unset keeps the
+// earlier value. For a helper that sizes its own box while its caller placed it (`next({fixed_x = ...})`, then the helper).
+next_merge :: proc(m: Style_Mod) {
+	if g.has_next { next(merge_mod(m, g.next_mod)) } else { next(m) }
 }
 
 // A box that draws itself via `draw_fn` (user data must live in the frame arena: see `frame_new`).

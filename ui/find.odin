@@ -112,7 +112,7 @@ find_collect :: proc(s: ^State) {
 		first := len(f.matches)
 		if b.custom == rich_draw {
 			d := (^Rich_Draw)(b.custom_user)
-			l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align)
+			l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
 			text := rich_text(d.runs)
 			clear(&hits)
 			find_in(text, f.needle, &hits)
