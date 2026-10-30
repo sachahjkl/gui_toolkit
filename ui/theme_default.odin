@@ -186,6 +186,9 @@ entries := [?]Entry{
 	{"icon_button background", .Panel, 0}, {"icon_button sheen", .White, 0},
 	{"accent_button sheen", .White, 1}, {"danger_button sheen", .White, 1},
 	{"button background", .Panel2, 1}, {"button border", .Border, 1}, {"button sheen", .White, 1},
+	// a segmented control's labels: half sit on the sliding pill, half on the track; an engraving (lit below on the pill,
+	// shadowed above on the track) set them a pixel apart to the eye
+	{"button segment sheen", .White, 0},
 	{"menu_item background", .Panel2, 0}, {"menu_item sheen", .White, 0},
 	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
 	// the selected row of a menu is a filled, rounded row (a tint of the accent, no outline): the outline of a selected
