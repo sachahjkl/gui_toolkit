@@ -4,8 +4,9 @@ import "core:hash"
 import "../flate"
 
 // RGBA8 rows to a PNG (8 bits, colour type 6): each row filtered with Sub (neighbouring pixels of an interface are often
-// equal: runs of zeros the deflater packs), one IDAT.
-png_encode :: proc(pixels: []u8, w, h: int, allocator := context.allocator) -> []u8 {
+// equal: runs of zeros), one IDAT. flate.deflate_runs, for the rate: a picture is taken while the program runs, and the size
+// matters little on 127.0.0.1 (a timeline compresses its pictures again when it ends).
+png_encode :: proc(pixels: []u8, w, h: int, allocator := context.allocator) -> []u8 #no_bounds_check {
 	stride := w * 4
 	raw := make([]u8, (stride + 1) * h, context.temp_allocator)
 	for y in 0 ..< h {
@@ -14,7 +15,7 @@ png_encode :: proc(pixels: []u8, w, h: int, allocator := context.allocator) -> [
 		out[0] = 1   // Sub
 		for x in 0 ..< stride { out[1 + x] = row[x] - (x >= 4 ? row[x - 4] : 0) }
 	}
-	z := flate.deflate(.Zlib, raw, context.temp_allocator)
+	z := flate.deflate_runs(.Zlib, raw, stride + 1, context.temp_allocator)
 	buf := make([dynamic]u8, 0, len(z) + 64, allocator)
 	append(&buf, 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A)
 	ihdr: [13]u8

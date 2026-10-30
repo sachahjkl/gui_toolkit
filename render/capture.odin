@@ -180,6 +180,7 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 		src := wgpu.BufferGetConstMappedRange(c.wbuf, 0, uint(c.wrow * size.y))
 		if src == nil { c.pending = false; capture_free_wgpu(c); return nil, {}, .Failed }
 		pixels = make([]u8, size.x * size.y * 4, allocator)
+		table := srgb_table()
 		// The frame target stores sRGB-encoded bytes whatever the blend space (surface_format is BGRA8Unorm: in the sRGB
 		// space the shader writes sRGB values, in the linear space the sRGB view encodes them on store), so an 8-bit
 		// format is copied straight as the Direct3D path does. Only the fp16 target (a translucent window in linear light)
@@ -191,7 +192,7 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 			case .RGBA16Float:
 				hp := ([^]u16)(raw_data(rowb))
 				for px in 0 ..< size.x {
-					for k in 0 ..< 3 { out[px * 4 + k] = srgb_byte(f32(transmute(f16)hp[px * 4 + k])) }
+					for k in 0 ..< 3 { out[px * 4 + k] = table[hp[px * 4 + k]] }
 					out[px * 4 + 3] = 255
 				}
 			case .RGBA8Unorm, .RGBA8UnormSrgb:
@@ -215,6 +216,7 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 	defer { r.ctx->Unmap(c.staging, 0); c.pending = false }
 	size = {c.got[2], c.got[3]}
 	pixels = make([]u8, size.x * size.y * 4, allocator)
+	table := srgb_table()
 	for y in 0 ..< size.y {
 		row := ([^]u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch)))
 		out := pixels[y * size.x * 4:][:size.x * 4]
@@ -223,7 +225,7 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 			// a translucent window in linear light: scRGB halves, encoded for the picture
 			src := ([^]u16)(row)
 			for x in 0 ..< size.x {
-				for k in 0 ..< 3 { out[x * 4 + k] = srgb_byte(f32(transmute(f16)src[x * 4 + k])) }
+				for k in 0 ..< 3 { out[x * 4 + k] = table[src[x * 4 + k]] }
 				out[x * 4 + 3] = 255
 			}
 		case:
@@ -234,6 +236,18 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 	}
 	return pixels, size, .Ready
 	}
+}
+
+// A half's sRGB byte, by its bits: a window of millions of pixels through pow takes a good part of a second, on the UI thread.
+@(private)
+srgb_table :: proc() -> ^[65536]u8 {
+	@(static) table: [65536]u8
+	@(static) ready: bool
+	if !ready {
+		for i in 0 ..< 65536 { table[i] = srgb_byte(f32(transmute(f16)u16(i))) }
+		ready = true
+	}
+	return &table
 }
 
 @(private)

@@ -1,17 +1,15 @@
 package devtools
 
-import "core:encoding/base64"
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:hash"
-import "core:strings"
-import "../platform"
 import "../render"
 import "../ui"
 
 // Page.startScreencast: the window's frames as events, as Chrome sends a page's. One frame at a time (the next waits for
-// Page.screencastFrameAck) and no faster than `minIntervalMs` (200: each is read back and encoded as a PNG on the UI
-// thread, which a recording of what the program costs would otherwise measure). A window at rest sends nothing, even one
+// Page.screencastFrameAck) and no faster than `minIntervalMs` (200: each is read back, compared on the UI thread and
+// encoded on its own, which takes a core while the program is measured). A window at rest sends nothing, even one
 // that shows a counter of its own frames: an ack wakes the window only if something changed since the frame it answers
 // (Server.cast_dirty, read by the connection's thread), or each frame sent would make the next.
 
@@ -33,7 +31,7 @@ Cast :: struct {
 cast_start :: proc(srv: ^Server, to: Reply_To, p: json.Object) {
 	cast_stop(srv)
 	srv.screencast = Cast{on = true, to = hold(to), min_ms = num(p["minIntervalMs"], 200)}
-	platform.wake(srv.win)   // (the first frame, at once)
+	srv.screencast.owed = true   // (the first frame, at once)
 }
 
 @(private)
@@ -65,17 +63,17 @@ cast_frame :: proc(srv: ^Server, s: ^ui.State, pixels: []u8, size: [2]int) {
 	c := &srv.screencast
 	c.pending = false
 	c.last_build = s.build_index + 1   // (the frame that reads the capture back, about to be built, is no change of the program's)
-	h := hash.fnv64a(pixels)
-	if c.id > 0 && h == c.last_hash { return }
+	h := u64(hash.crc32(pixels))
+	if c.id > 0 && h == c.last_hash {
+		delete(pixels, runtime.heap_allocator())
+		return
+	}
 	c.last_hash = h
 	c.id += 1
 	c.unacked = true
-	png := png_encode(pixels, size.x, size.y, context.temp_allocator)
-	data := base64.encode(png, allocator = context.temp_allocator)
-	sb := strings.builder_make(context.temp_allocator)
 	d := dpi(srv)
-	fmt.sbprintf(&sb, `{{"data":"%s","sessionId":%d,"metadata":{{"offsetTop":0,"pageScaleFactor":1,"deviceWidth":%.0f,"deviceHeight":%.0f,"scrollOffsetX":0,"scrollOffsetY":0,"timestamp":%.3f}}}}`, data, c.id, f64(size.x) / d, f64(size.y) / d, ui.now_ms() / 1000)
-	event(c.to.conn, c.to.session, "Page.screencastFrame", strings.to_string(sb))
+	meta := fmt.aprintf(`"sessionId":%d,"metadata":{{"offsetTop":0,"pageScaleFactor":1,"deviceWidth":%.0f,"deviceHeight":%.0f,"scrollOffsetX":0,"scrollOffsetY":0,"timestamp":%.3f}}`, c.id, f64(size.x) / d, f64(size.y) / d, ui.now_ms() / 1000, allocator = runtime.heap_allocator())
+	encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, frame = true, to = hold(c.to), meta = meta})
 }
 
 // The client took the last frame: what changed in the meantime goes now.

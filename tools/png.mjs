@@ -1,5 +1,8 @@
 // PNG for tests/e2e and timelines: 8-bit RGBA, no package.
-import { deflateSync, inflateSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { deflate, deflateSync, inflateSync } from 'node:zlib'
+
+const deflateAsync = promisify(deflate)
 
 export function decodePng(buf) {
   let p = 8, width = 0, height = 0
@@ -54,15 +57,29 @@ function chunk(type, data) {
   return Buffer.concat([head, data, tail])
 }
 
-export function encodePng(px, width, height) {
+// Each row filtered with Sub: an interface's flat areas become zeros.
+function filtered(px, width, height) {
   const stride = width * 4
   const raw = Buffer.alloc((stride + 1) * height)
-  for (let y = 0; y < height; y++) px.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride)
+  for (let y = 0; y < height; y++) {
+    const o = y * (stride + 1), s = y * stride
+    raw[o] = 1
+    for (let x = 0; x < stride; x++) raw[o + 1 + x] = px[s + x] - (x >= 4 ? px[s + x - 4] : 0)
+  }
+  return raw
+}
+
+function wrap(z, width, height) {
   const ihdr = Buffer.alloc(13)
   ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4)
   ihdr[8] = 8; ihdr[9] = 6
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', z), chunk('IEND', Buffer.alloc(0))])
 }
+
+export function encodePng(px, width, height) { return wrap(deflateSync(filtered(px, width, height)), width, height) }
+
+// On the threads of Node's pool: several pictures at once.
+export async function encodePngAsync(px, width, height) { return wrap(await deflateAsync(filtered(px, width, height), { level: 9 }), width, height) }
 
 // The share of the pixels that differ by more than `delta` on a channel, and an image of where (red).
 export function compare(a, b, delta) {

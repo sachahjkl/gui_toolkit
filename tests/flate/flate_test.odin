@@ -146,3 +146,31 @@ stored_blocks_for_noise :: proc(t: ^testing.T) {
 	_, err := flate.inflate(.Raw, flate.deflate(.Raw, noise, context.temp_allocator), limit = 1000)
 	testing.expect_value(t, err, flate.Error.Too_Large)
 }
+
+// deflate_runs reads back in each wrapping: runs, matches a row above, the longest match and one past it, what does not
+// compress, nothing at all.
+@(test)
+deflate_runs_round_trip :: proc(t: ^testing.T) {
+	cases := make([dynamic][]u8, context.temp_allocator)
+	append(&cases, []u8{}, []u8{7}, make([]u8, 257, context.temp_allocator), make([]u8, 258, context.temp_allocator), make([]u8, 259, context.temp_allocator), make([]u8, 100_000, context.temp_allocator))
+	noise := make([]u8, 70_000, context.temp_allocator)
+	seed: u32 = 1
+	for &b in noise { seed = seed * 1664525 + 1013904223; b = u8(seed >> 24) }
+	append(&cases, noise)
+	rows := make([]u8, 1000 * 40, context.temp_allocator)
+	for &b, i in rows { b = u8((i % 1000) * 7 % 251) }
+	append(&cases, rows)
+	for data in cases {
+		for format in ([?]flate.Format{.Zlib, .Gzip, .Raw}) {
+			z := flate.deflate_runs(format, data, 1000, context.temp_allocator)
+			back, err := flate.inflate(format, z, 0, context.temp_allocator)
+			testing.expect_value(t, err, flate.Error.None)
+			testing.expectf(t, bytes.equal(back, data), "%v, %d bytes", format, len(data))
+		}
+	}
+	// (a row past the window is ignored, and the runs still work)
+	z := flate.deflate_runs(.Zlib, rows, 40_000, context.temp_allocator)
+	back, err := flate.inflate(.Zlib, z, 0, context.temp_allocator)
+	testing.expect_value(t, err, flate.Error.None)
+	testing.expect(t, bytes.equal(back, rows))
+}
