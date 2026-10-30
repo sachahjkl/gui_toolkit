@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.53.0] - 2026-10-30
+
+### Added
+- **Find in page** (`ui.find`, `ui.find_matches`, `ui.find_count`, `ui.find_set_current`): the occurrences of a needle in the text the interface shows (labels, wrapped paragraphs, rich text, a match across the runs of a paragraph), found after each layout in reading order with their rectangles whether on screen or scrolled away, painted behind the text (theme entries "find_match background", "find_current background"); case ignored. The application owns the field and the navigation.
+
 ## [0.52.0] - 2026-10-30
 
 ### Added
