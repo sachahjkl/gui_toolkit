@@ -52,13 +52,13 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Input.dispatchMouseEvent` | `mouseMoved`, `mousePressed`, `mouseReleased` (`button`: left, right, middle), `mouseWheel` (`deltaY` in CSS pixels, 100 a notch, positive scrolls the content down). `x`, `y` in CSS pixels (the window's pixels / its DPI scale). |
 | `Input.dispatchKeyEvent` | `keyDown` / `rawKeyDown` / `keyUp` with the DOM's `key` ("Enter", "ArrowDown", "a", "F3") or `code`; `keyDown` with `text` also types it; `modifiers`: Alt 1, Ctrl 2, Shift 8. |
 | `Input.insertText` | text, as typed. |
-| `Page.captureScreenshot` | PNG of the window's pixels (`clip` in CSS pixels), from the renderer's capture: the frame as presented. |
+| `Page.captureScreenshot` | PNG of the window's pixels (`clip` in CSS pixels), from the renderer's capture: the frame as presented. Encoded on a thread of its own: the window goes on meanwhile. |
 | `Page.getLayoutMetrics` | the window's size in CSS pixels, its DPI scale as the visual viewport's zoom. |
 | `Accessibility.getFullAXTree` | the tree a screen reader gets (`ui.a11y_tree`, built while the server runs): role in Chrome's vocabulary (button, textbox, StaticText, checkbox...), name, value, properties (focused, disabled, expanded, selected, checked...), children; and, beyond the protocol, `bounds` in CSS pixels and `actions`. |
 | `Accessibility.queryAXTree` | the nodes with a `role` and an `accessibleName` (contained, case ignored; `exact` for all of it). |
 | `Browser.getVersion`, `Target.*`, `Page.getFrameTree` | discovery, and attaching in sessions (`Target.attachToTarget`, `setAutoAttach`, the browser's endpoint): what Puppeteer and Playwright use. |
 | `Browser.close` | closes the window, as its close button. |
-| `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and encoded on the UI thread: it costs what it films. |
+| `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and compared on the UI thread and encoded on a thread of its own, which takes a core while it runs. |
 | `*.enable`, `*.disable`, `*.set*` | accepted, nothing to do (what clients send on attaching). |
 | `Runtime.evaluate` | refused: there is no JavaScript. |
 
@@ -120,7 +120,8 @@ A folder per run:
 
 `play` exits with code 1 if a step differs: over 0.4 % of its pixels by more than 32 of 255 (`--max-diff` for the share),
 which lets numbers shown live pass. Each step waits for the window to rest (1.5 s at most; the page says when it was
-still moving), and a picture is taken per action, not per frame, so what the frames cost stays what the program costs.
+still moving), and a picture is taken per action, not per frame. The window's encoder is built for rate, on a thread of its own, so the window
+does not freeze for it; pictures stay in memory during the run, and are compressed, compared and written when it ends.
 `tools/timeline.mjs` is the same as a module (`recordTimeline`, `playTimeline`).
 
 **What was on screen and what was typed are in the folder as they were**: a run on real data is not to be shared as it

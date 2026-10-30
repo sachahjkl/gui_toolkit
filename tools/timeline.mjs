@@ -7,12 +7,16 @@
 //   step-NNN.png   the pictures
 //
 // What was on screen and what was typed is in there as is: a run on real data is not to be shared as it stands.
+//
+// While it runs a step only takes its picture, as the window's encoder made it (fast, large) and keeps it in memory. Small
+// pictures, comparisons and files all come at the end: a run does not wait for them, and what they cost does not show in
+// the frames it measures.
 // tools/cdp.mjs is the command line; this module is for scripts (tests/e2e).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { act, words } from './cdp_client.mjs'
-import { compare, decodePng, encodePng } from './png.mjs'
+import { compare, decodePng, encodePng, encodePngAsync } from './png.mjs'
 
 // A pixel counts as different over this (of 255 on any channel); a step may differ on this share of its pixels (numbers
 // shown live, a caret).
@@ -46,7 +50,7 @@ class Run {
     this.againstDir = against
     this.maxDiff = maxDiff ?? MAX_SHARE
     this.failed = 0
-    this.size = null
+    this.pictures = []
     mkdirSync(dir, { recursive: true })
   }
 
@@ -71,35 +75,40 @@ class Run {
   async step(line, at) {
     const idle = await this.send('Toolkit.waitIdle', { timeout: SETTLE_MS })
     const png = Buffer.from((await this.send('Page.captureScreenshot', { format: 'png' })).data, 'base64')
-    const n = this.steps.length
-    const image = `step-${String(n).padStart(3, '0')}.png`
-    writeFileSync(join(this.dir, image), png)
-    const s = { t: at - this.base, line, image, settled: idle.idle }
+    const image = `step-${String(this.steps.length).padStart(3, '0')}.png`
+    this.pictures.push(png)
+    this.steps.push({ t: at - this.base, line, image, settled: idle.idle })
+    await this.pull()
+  }
+
+  // A step's picture made small, written, and compared with the reference.
+  async settle(s, n) {
+    const pic = decodePng(this.pictures[n])
+    this.pictures[n] = null
+    writeFileSync(join(this.dir, s.image), await encodePngAsync(pic.px, pic.width, pic.height))
     const other = this.against?.[n]
     if (other) {
       s.against = other.line
-      const r = compare(decodePng(readFileSync(join(this.againstDir, other.image))), decodePng(png), PIXEL_DELTA)
+      const r = compare(decodePng(readFileSync(join(this.againstDir, other.image))), pic, PIXEL_DELTA)
       if (r.sizeDiffers) {
         s.share = 1
       } else {
         s.share = r.share
         if (r.share > this.maxDiff) {
-          s.diff = `step-${String(n).padStart(3, '0')}.diff.png`
+          s.diff = s.image.replace('.png', '.diff.png')
           writeFileSync(join(this.dir, s.diff), encodePng(r.diff, r.width, r.height))
         }
       }
       s.differs = s.share > this.maxDiff
-      if (s.differs) this.failed++
     } else if (this.against) {
       s.differs = true
       s.against = null
-      this.failed++
     }
-    this.steps.push(s)
-    await this.pull()
+    if (s.differs) this.failed++
   }
 
-  finish(error) {
+  async finish(error) {
+    await Promise.all(this.steps.map((s, n) => this.settle(s, n)))
     if (this.against && this.against.length > this.steps.length && !error) this.failed += this.against.length - this.steps.length
     const end = this.steps.length ? Math.max(this.steps[this.steps.length - 1].t, this.frames.at(-1)?.t ?? 0) : 0
     const data = { kind: this.kind, when: new Date().toISOString(), durationMs: end, failed: this.failed, error: error || undefined, steps: this.steps, frames: this.frames }
@@ -133,7 +142,7 @@ export async function recordTimeline(send, { dir, stop, injected = false }) {
     error = e.message
     console.log(`the recording ended: ${e.message}`)
   }
-  return run.finish(error)
+  return await run.finish(error)
 }
 
 // A script or a timeline.json run again, a picture after each action. Compared with `against`, or the timeline it plays.
@@ -161,7 +170,7 @@ export async function playTimeline(send, { source, dir, against, realtime = fals
     run.failed++
     console.log(`the run ended: ${e.message}`)
   }
-  return run.finish(error)
+  return await run.finish(error)
 }
 
 // Chrome's trace format: a slice per build and its layout, a mark per step.

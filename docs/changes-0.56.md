@@ -1,5 +1,11 @@
 # What changed in gui_toolkit 0.56
 
+**0.56.1: screenshots are fast on a real window.** Tried on opencode native (2310x1505), a screenshot took about two seconds
+and held the window. A wake asked for from `devtools.service` was consumed by the frame already starting, reading a
+translucent window's fp16 target ran `pow` per channel, and the PNG was encoded on the UI thread. All three are fixed; a
+screenshot's PNG is larger than before (`flate.deflate_runs`), and a timeline compresses its pictures when it ends. No code
+to change.
+
 For an application on the toolkit (Wren first). 0.55's report is docs/changes-0.55.md. **Nothing breaks and nothing is
 required**: the `ui` API does not change, and an application that already calls `devtools.start_from_env` and
 `devtools.service` has all of this with no change of code. It only needs the toolkit at 0.56 and Node 22+ on the machine
@@ -41,8 +47,8 @@ any password typed into them. Record on a test profile, not on real browsing, an
 `Page.startScreencast` sends the window's frames as `Page.screencastFrame` events, and `node tools/cdp.mjs cast <dir>`
 writes them as PNGs until Enter. One frame at a time (the next waits for `Page.screencastFrameAck`), no faster than
 `minIntervalMs` (200), none while nothing changes. PNG only: `format`, `quality` and `maxWidth` are ignored. Each frame is
-read back and encoded on the UI thread, so it costs what it films: do not read frame times from a run being filmed. A
-timeline takes one picture per action for that reason.
+read back and compared on the UI thread and encoded on a thread of its own, which takes a core while it runs: be wary of
+frame times read from a run being filmed. A timeline takes one picture per action for that reason.
 
 ## New commands
 
@@ -63,6 +69,7 @@ timeline takes one picture per action for that reason.
 - `index.html` was opened in Edge once by hand (its controls, 390 px wide, no error). The CI only checks that the pictures
   are in the file.
 - Recording was tested with events sent over the protocol, not a real mouse. The code path is the same.
+- A timeline was played and played again on opencode native (13 steps, the settings, scrolling, find: none differed).
 - `trace.json` was checked for its structure, and not yet opened in Perfetto or `chrome://tracing`.
 
 ## Limits
