@@ -690,3 +690,27 @@ a11y_text_selection :: proc(u: ^platform.A11y_Update, b: ^Box, t: ^A11y_Text) {
 	fnode, fi := at(t, lines, b, t.cursor)
 	platform.a11y_selection(u, an, ai, fnode, fi)
 }
+
+// What a reader cannot name: boxes to click or type in, enabled, with no accessible name and no text in them. In a11y_walk
+// a clickable box with neither is no node at all, so a screen reader does not know the control exists. (A box that says
+// a11y({ignore = true}) chose that.) Temp memory.
+a11y_unnamed :: proc(s: ^State) -> []^Box {
+	out := make([dynamic]^Box, context.temp_allocator)
+	walk :: proc(s: ^State, b: ^Box, out: ^[dynamic]^Box) {
+		if b.last_build != s.build_index { return }
+		info := b.a11y
+		if info != nil && (info.ignore || info.hidden) { return }
+		if b.flags & {.Clickable, .Text_Input} != {} && .Disabled not_in b.flags && b.rect.max.x > b.rect.min.x && b.rect.max.y > b.rect.min.y {
+			named := info != nil && (info.name != "" || info.placeholder != "")   // (a placeholder names a field last, as in HTML)
+			if !named {
+				sb := strings.builder_make(context.temp_allocator)
+				a11y_subtree_text(s, b, &sb)
+				named = strings.builder_len(sb) > 0 || box_text(b) != ""
+			}
+			if !named { append(out, b) }
+		}
+		for c := b.first; c != nil; c = c.next { walk(s, c, out) }
+	}
+	if s.root != nil { walk(s, s.root, &out) }
+	return out[:]
+}

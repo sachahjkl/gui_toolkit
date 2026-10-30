@@ -8,12 +8,15 @@
 //
 // Standard domains: Input.dispatchMouseEvent / dispatchKeyEvent / insertText (injected into the window's queue),
 // Page.captureScreenshot (the renderer's capture, PNG), Page.getLayoutMetrics, Accessibility.getFullAXTree, Browser /
-// Target discovery. The Toolkit domain reads the box tree: Toolkit.getTree, Toolkit.find, Toolkit.click. Listens on
-// 127.0.0.1 only; anything that can reach it drives the window, so it is opt-in.
+// Target discovery. The Toolkit domain reads the box tree and waits on it: Toolkit.getTree, find, click, waitFor,
+// waitIdle, metrics, axAction, axAudit, startRecording. Listens on 127.0.0.1 only and refuses browsers' pages (server.odin);
+// what runs as this user can still reach it and drive the window, so it is opt-in.
 package devtools
 
 import "base:runtime"
 import "core:encoding/base64"
+import "core:crypto"
+import "core:encoding/hex"
 import "core:encoding/json"
 import "core:fmt"
 import "core:math"
@@ -23,6 +26,7 @@ import "core:strconv"
 import "core:strings"
 import "core:sync"
 import "core:thread"
+import "core:time"
 import "core:unicode/utf8"
 import "../platform"
 import "../render"
@@ -36,19 +40,53 @@ Server :: struct {
 	title:    string,
 	id:       string,
 	listener: net.TCP_Socket,
-	thread:   ^thread.Thread,
+	accepter: ^thread.Thread,
 	lock:     sync.Mutex,
 	inbox:    [dynamic]Message,   // commands from the connections (under lock)
 	conns:    [dynamic]^Conn,     // (under lock)
 	stopping: bool,
+	ticking:  ^thread.Thread,
+	waiting:  int,                // len(waits), for the ticker (atomic)
 	// the UI thread's own
-	captures: [dynamic]Waiting,   // screenshots asked for, answered when the capture is ready
+	captures: [dynamic]Reply_To,  // screenshots asked for, answered when the capture is ready
 	later:    [dynamic]platform.Event,   // events for the next frame (a click's release)
+	waits:    [dynamic]Wait,      // Toolkit.waitFor, waitIdle
+	rec:      Recorder,           // Toolkit.startRecording
+	samples:  [METRIC_RING]Metric_Sample,   // the last frames (Toolkit.metrics)
+	sampled:  int,
+	sample_build: u64,
+	sample_at: time.Tick,
 	shots:    int,
+	sessions: int,
+	captured: bool,               // the accessibility tree is asked of the ui (ui.a11y_capture)
+}
+
+// Where an answer goes: the connection, the command's id, its session (a client attached with Target.attachToTarget).
+@(private)
+Reply_To :: struct { conn: ^Conn, id: i64, session: string }
+
+// To keep it past the command (a capture, a wait): the session is the command's text until then.
+@(private)
+hold :: proc(to: Reply_To) -> Reply_To {
+	t := to
+	t.session = strings.clone(to.session, runtime.heap_allocator())
+	return t
 }
 
 @(private)
-Waiting :: struct { conn: ^Conn, id: i64 }
+release :: proc(to: Reply_To) { delete(to.session, runtime.heap_allocator()) }
+
+@(private)
+reply :: proc(to: Reply_To, result: string) {
+	if to.session == "" {
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"result":%s}}`, to.id, result))
+	} else {
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"sessionId":%s,"result":%s}}`, to.id, json_quote(to.session), result))
+	}
+}
+
+@(private)
+conn_gone :: proc(c: ^Conn) -> bool { return sync.atomic_load(&c.done) }
 
 // Listens on 127.0.0.1:port. nil when the port cannot be had.
 start :: proc(win: ^platform.Window, port: int, title := "") -> ^Server {
@@ -57,8 +95,12 @@ start :: proc(win: ^platform.Window, port: int, title := "") -> ^Server {
 	srv := new(Server)
 	srv.port, srv.win, srv.listener = port, win, l
 	srv.title = strings.clone(title != "" ? title : "gui_toolkit window")
-	srv.id = fmt.aprintf("%08X", u32(uintptr(win)) ~ u32(port) * 2654435761)
-	srv.thread = thread.create_and_start_with_poly_data(srv, accept_loop)
+	// (not to be guessed: the WebSocket's path needs it, and what serves it to a browser's page is refused)
+	raw: [16]u8
+	crypto.rand_bytes(raw[:])
+	srv.id = string(hex.encode(raw[:]))
+	srv.accepter = thread.create_and_start_with_poly_data(srv, accept_loop)
+	srv.ticking = thread.create_and_start_with_poly_data(srv, ticker)
 	fmt.eprintfln("devtools: listening on ws://127.0.0.1:%d/devtools/page/%s (http://127.0.0.1:%d/json/list)", port, srv.id, port)
 	return srv
 }
@@ -78,18 +120,29 @@ stop :: proc(srv: ^Server) {
 	net.close(srv.listener)
 	// (accept may not return on a closed socket everywhere: a connection to ourselves unblocks it)
 	if s, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = srv.port}); err == nil { net.close(s) }
-	thread.join(srv.thread)
-	thread.destroy(srv.thread)
+	thread.join(srv.accepter)
+	thread.destroy(srv.accepter)
+	thread.join(srv.ticking)
+	thread.destroy(srv.ticking)
 	sync.lock(&srv.lock)
 	conns := srv.conns[:]
 	sync.unlock(&srv.lock)
-	for c in conns { net.close(c.sock) }
+	// (shut down, not closed: the thread reading it closes it, and a closed socket's number can be another's by now)
+	for c in conns {
+		sync.lock(&c.write)
+		if !c.closed { net.shutdown(c.sock, .Both) }
+		sync.unlock(&c.write)
+	}
 	for c in conns { thread.join(c.thread); thread.destroy(c.thread); free(c, runtime.heap_allocator()) }
 	delete(srv.conns)
 	for m in srv.inbox { delete(m.text, runtime.heap_allocator()) }
 	delete(srv.inbox)
+	for w in srv.captures { release(w) }
 	delete(srv.captures)
+	for w in srv.waits { wait_free(w) }
+	delete(srv.waits)
 	delete(srv.later)
+	rec_destroy(&srv.rec)
 	delete(srv.title)
 	delete(srv.id)
 	free(srv)
@@ -102,6 +155,12 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	for e in srv.later { platform.inject_event(srv.win, e) }
 	clear(&srv.later)
 	screenshots_poll(srv, r)
+	if s != nil {
+		if !srv.captured { ui.a11y_capture(s, true); srv.captured = true }
+		metrics_sample(srv, s)
+		rec_poll(srv, s)
+		waits_poll(srv, s)
+	}
 	sync.lock(&srv.lock)
 	msgs := srv.inbox
 	srv.inbox = {}
@@ -112,6 +171,25 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		delete(m.text, runtime.heap_allocator())
 	}
 	if len(srv.later) > 0 || len(srv.captures) > 0 { platform.wake(srv.win) }   // (the next frame carries them on)
+	conns_reap(srv)
+}
+
+// Connections that ended, once nothing is left to answer on them. (Each tool's run is a connection or two, for as long
+// as the program lives.)
+@(private)
+conns_reap :: proc(srv: ^Server) {
+	sync.lock(&srv.lock)
+	defer sync.unlock(&srv.lock)
+	outer: #reverse for c, i in srv.conns {
+		if !conn_gone(c) { continue }
+		for m in srv.inbox { if m.conn == c { continue outer } }
+		for w in srv.captures { if w.conn == c { continue outer } }
+		for w in srv.waits { if w.to.conn == c { continue outer } }
+		thread.join(c.thread)
+		thread.destroy(c.thread)
+		free(c, runtime.heap_allocator())
+		unordered_remove(&srv.conns, i)
+	}
 }
 
 ////////////////////////////////
@@ -122,7 +200,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	v, err := json.parse_string(m.text, parse_integers = true, allocator = context.temp_allocator)
 	if err != nil { return }
 	o, _ := v.(json.Object)
-	id := i64(num(o["id"]))
+	to := Reply_To{conn = m.conn, id = i64(num(o["id"])), session = str(o["sessionId"])}
 	method := str(o["method"])
 	p, _ := o["params"].(json.Object)
 	sb := strings.builder_make(context.temp_allocator)
@@ -131,9 +209,43 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Browser.getVersion":
 		fmt.sbprintf(&sb, `{{"protocolVersion":"1.3","product":"gui_toolkit/%s","revision":"","userAgent":"gui_toolkit","jsVersion":""}}`, VERSION)
 	case "Target.getTargets":
-		fmt.sbprintf(&sb, `{{"targetInfos":[{{"targetId":"%s","type":"page","title":%s,"url":"toolkit://window","attached":true}}]}}`, srv.id, json_quote(srv.title))
+		fmt.sbprintf(&sb, `{{"targetInfos":[%s]}}`, target_info(srv))
 	case "Target.getTargetInfo":
-		fmt.sbprintf(&sb, `{{"targetInfo":{{"targetId":"%s","type":"page","title":%s,"url":"toolkit://window","attached":true}}}}`, srv.id, json_quote(srv.title))
+		fmt.sbprintf(&sb, `{{"targetInfo":%s}}`, target_info(srv))
+	case "Target.setDiscoverTargets":
+		strings.write_string(&sb, "{}")
+		reply(to, strings.to_string(sb))
+		if bool_of(p["discover"]) { event(to.conn, "", "Target.targetCreated", fmt.tprintf(`{{"targetInfo":%s}}`, target_info(srv))) }
+		return
+	case "Target.setAutoAttach":
+		strings.write_string(&sb, "{}")
+		reply(to, strings.to_string(sb))
+		// (a connection to the browser's endpoint gets the page; the page's own session has nothing under it)
+		if to.session == "" && bool_of(p["autoAttach"]) { attached(srv, to, new_session(srv)) }
+		return
+	case "Target.attachToTarget":
+		session := new_session(srv)
+		attached(srv, to, session)   // (before the answer, as Chrome: a client makes the session on the event)
+		fmt.sbprintf(&sb, `{{"sessionId":"%s"}}`, session)
+	case "Target.attachToBrowserTarget":
+		fmt.sbprintf(&sb, `{{"sessionId":"%s"}}`, new_session(srv))
+	case "Target.getBrowserContexts":
+		strings.write_string(&sb, `{"browserContextIds":[]}`)
+	case "Target.detachFromTarget", "Target.activateTarget", "Target.closeTarget":
+		strings.write_string(&sb, "{}")
+	case "Browser.getWindowForTarget":
+		fmt.sbprintf(&sb, `{{"windowId":1,"bounds":{{"left":0,"top":0,"width":%d,"height":%d,"windowState":"normal"}}}}`, srv.win.size.x, srv.win.size.y)
+	case "Page.getNavigationHistory":
+		strings.write_string(&sb, `{"currentIndex":0,"entries":[{"id":1,"url":"toolkit://window","userTypedURL":"toolkit://window","title":"","transitionType":"other"}]}`)
+	case "Page.addScriptToEvaluateOnNewDocument":
+		strings.write_string(&sb, `{"identifier":"1"}`)   // (there is no document: it never runs)
+	case "Page.createIsolatedWorld":
+		strings.write_string(&sb, `{"executionContextId":2}`)
+	case "Runtime.enable":
+		strings.write_string(&sb, "{}")
+		reply(to, strings.to_string(sb))
+		event(to.conn, to.session, "Runtime.executionContextCreated", fmt.tprintf(`{{"context":{{"id":1,"origin":"toolkit://window","name":"","auxData":{{"isDefault":true,"type":"default","frameId":"%s"}}}}}}`, srv.id))
+		return
 	case "Input.dispatchMouseEvent":
 		mouse_event(srv, p)
 		strings.write_string(&sb, "{}")
@@ -144,15 +256,45 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		insert_text(srv, str(p["text"]))
 		strings.write_string(&sb, "{}")
 	case "Page.captureScreenshot":
-		if screenshot_ask(srv, r, m.conn, id, p) { return }   // answered when the capture is ready
-		error_reply(m.conn, id, -32000, "the renderer cannot capture now")
+		if screenshot_ask(srv, r, to, p) { return }   // answered when the capture is ready
+		error_reply(to, -32000, "the renderer cannot capture now")
 		return
 	case "Page.getLayoutMetrics":
 		d := dpi(srv)
 		w, h := f64(srv.win.size.x) / d, f64(srv.win.size.y) / d
 		fmt.sbprintf(&sb, `{{"layoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"visualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":%g}},"contentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}},"cssLayoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"cssVisualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":1}},"cssContentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}}}}`, w, h, w, h, d, w, h, w, h, w, h, w, h)
 	case "Accessibility.getFullAXTree":
-		ax_tree(&sb, srv, s)
+		ax_write_nodes(&sb, srv, ui.a11y_tree(s), nil, true)
+	case "Accessibility.queryAXTree":
+		ax_write_nodes(&sb, srv, ui.a11y_tree(s), ax_matches(ui.a11y_tree(s), p)[:], false)
+	case "Toolkit.axAction":
+		if e := ax_action(&sb, srv, s, p); e != "" { error_reply(to, -32000, e); return }
+	case "Toolkit.axAudit":
+		ax_audit(&sb, srv, s)
+	case "Toolkit.waitFor":
+		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, -32602, "waitFor: a name or a text"); return }
+		wait_add(srv, s, to, .Box, p)
+		return
+	case "Toolkit.waitIdle":
+		wait_add(srv, s, to, .Idle, p)
+		return
+	case "Toolkit.metrics":
+		metrics_write(&sb, srv, s, r, p)
+	case "Toolkit.warnings":
+		strings.write_string(&sb, `{"layout":[`)
+		for w, i in ui.layout_warnings() {
+			if i > 0 { strings.write_byte(&sb, ',') }
+			strings.write_string(&sb, json_quote(w))
+		}
+		strings.write_string(&sb, "]}")
+	case "Toolkit.startRecording":
+		rec_start(srv, s, p)
+		strings.write_string(&sb, "{}")
+	case "Toolkit.stopRecording":
+		rec_stop(srv, &sb)
+	case "Browser.close":
+		platform.inject_event(srv.win, platform.Event{kind = .Close})
+		strings.write_string(&sb, "{}")
 	case "Toolkit.getTree":
 		strings.write_string(&sb, `{"root":`)
 		write_node(&sb, srv, s, s.root, bool_of(p["all"]), true)
@@ -161,14 +303,14 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		find(&sb, srv, s, p)
 	case "Toolkit.click":
 		b := find_one(s, p)
-		if b == nil { error_reply(m.conn, id, -32000, "no box with that name or text"); return }
+		if b == nil { error_reply(to, -32000, "no box with that name or text"); return }
 		x, y := click(srv, b, p)
 		fmt.sbprintf(&sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
 	case "Toolkit.state":
 		d := dpi(srv)
 		fmt.sbprintf(&sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d)
 	case "Runtime.evaluate", "Runtime.callFunctionOn":
-		error_reply(m.conn, id, -32000, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
+		error_reply(to, -32000, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
 		return
 	case:
 		// what a client turns on before it starts (Page.enable, Runtime.enable, Target.setAutoAttach...): nothing to do
@@ -181,13 +323,45 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 			ok = false
 		}
 	}
-	if !ok { error_reply(m.conn, id, -32601, fmt.tprintf("'%s' wasn't found", method)); return }
-	send_text(m.conn, fmt.tprintf(`{{"id":%d,"result":%s}}`, id, strings.to_string(sb)))
+	if !ok { error_reply(to, -32601, fmt.tprintf("'%s' wasn't found", method)); return }
+	reply(to, strings.to_string(sb))
+}
+
+// A client attached to the window (the browser's endpoint, as Playwright and Puppeteer use). A session is only a name
+// to answer under: they all see the one window.
+@(private)
+new_session :: proc(srv: ^Server) -> string {
+	srv.sessions += 1
+	return fmt.tprintf("session-%d", srv.sessions)
 }
 
 @(private)
-error_reply :: proc(c: ^Conn, id: i64, code: int, msg: string) {
-	send_text(c, fmt.tprintf(`{{"id":%d,"error":{{"code":%d,"message":%s}}}}`, id, code, json_quote(msg)))
+target_info :: proc(srv: ^Server) -> string {
+	return fmt.tprintf(`{{"targetId":"%s","type":"page","title":%s,"url":"toolkit://window","attached":true,"canAccessOpener":false,"browserContextId":"default"}}`, srv.id, json_quote(srv.title))
+}
+
+@(private)
+attached :: proc(srv: ^Server, to: Reply_To, session: string) {
+	event(to.conn, to.session, "Target.attachedToTarget", fmt.tprintf(`{{"sessionId":"%s","targetInfo":%s,"waitingForDebugger":false}}`, session, target_info(srv)))
+}
+
+// An event of the protocol (no id), to a session or to the connection.
+@(private)
+event :: proc(c: ^Conn, session, method, params: string) {
+	if session == "" {
+		send_text(c, fmt.tprintf(`{{"method":"%s","params":%s}}`, method, params))
+	} else {
+		send_text(c, fmt.tprintf(`{{"sessionId":%s,"method":"%s","params":%s}}`, json_quote(session), method, params))
+	}
+}
+
+@(private)
+error_reply :: proc(to: Reply_To, code: int, msg: string) {
+	if to.session == "" {
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"error":{{"code":%d,"message":%s}}}}`, to.id, code, json_quote(msg)))
+	} else {
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"sessionId":%s,"error":{{"code":%d,"message":%s}}}}`, to.id, json_quote(to.session), code, json_quote(msg)))
+	}
 }
 
 @(private)
@@ -384,9 +558,11 @@ worth :: proc(s: ^ui.State, b: ^ui.Box) -> bool {
 
 // Boxes whose name is `name` (exactly) or whose text contains `text` (ignoring case), in tree order.
 @(private)
-matches :: proc(s: ^ui.State, p: json.Object) -> [dynamic]^ui.Box {
+matches :: proc(s: ^ui.State, p: json.Object) -> [dynamic]^ui.Box { return matches_of(s, str(p["name"]), str(p["text"])) }
+
+@(private)
+matches_of :: proc(s: ^ui.State, name, text: string) -> [dynamic]^ui.Box {
 	out := make([dynamic]^ui.Box, context.temp_allocator)
-	name, text := str(p["name"]), str(p["text"])
 	if name == "" && text == "" { return out }
 	ltext := strings.to_lower(text, context.temp_allocator)
 	walk :: proc(s: ^ui.State, b: ^ui.Box, name, ltext: string, out: ^[dynamic]^ui.Box) {
@@ -406,15 +582,23 @@ find_one :: proc(s: ^ui.State, p: json.Object) -> ^ui.Box {
 	ms := matches(s, p)
 	idx := int(num(p["index"]))
 	if idx < 0 || idx >= len(ms) { return nil }
-	b := ms[idx]
+	return act_on(ms[idx])
+}
+
+// The box a match stands for: the deepest clickable box around it (a label's button), else itself.
+@(private)
+act_on :: proc(b: ^ui.Box) -> ^ui.Box {
 	for a := b; a != nil; a = a.parent { if .Clickable in a.flags || .Text_Input in a.flags { return a } }
 	return b
 }
 
 @(private)
-find :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, p: json.Object) {
+find :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, p: json.Object) { write_matches(sb, srv, matches(s, p)) }
+
+@(private)
+write_matches :: proc(sb: ^strings.Builder, srv: ^Server, ms: [dynamic]^ui.Box) {
 	strings.write_string(sb, `{"nodes":[`)
-	for b, i in matches(s, p) {
+	for b, i in ms {
 		if i > 0 { strings.write_byte(sb, ',') }
 		d := f32(dpi(srv))
 		fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,"x":%.1f,"y":%.1f,"w":%.1f,"h":%.1f}}`, u64(b.key), json_quote(b.name), json_quote(ui.box_text(b)),
@@ -423,68 +607,11 @@ find :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, p: json.Object) {
 	strings.write_string(sb, "]}")
 }
 
-// Accessibility.getFullAXTree: the boxes a reader would meet (a role, a name, something to click or type in, text),
-// each the child of the nearest such box above it.
-@(private)
-ax_tree :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State) {
-	strings.write_string(sb, `{"nodes":[`)
-	count := 0
-	node :: proc(sb: ^strings.Builder, s: ^ui.State, b: ^ui.Box, parent: ui.Key, count: ^int) {
-		if !ui.box_current(s, b) { return }
-		text := ui.box_text(b)
-		role := ""
-		name := text
-		if b.a11y != nil && b.a11y.role != .Unknown { role = fmt.tprintf("%v", b.a11y.role) }
-		if b.a11y != nil && b.a11y.name != "" { name = b.a11y.name }
-		if role == "" {
-			switch {
-			case .Text_Input in b.flags: role = "textbox"
-			case .Clickable in b.flags:  role = "button"
-			case .View_Scroll_Y in b.flags: role = "scrollable"
-			case text != "": role = "StaticText"
-			}
-		}
-		me := parent
-		if role != "" || b == s.root {
-			if b == s.root { role, name = "RootWebArea", "" }
-			if count^ > 0 { strings.write_byte(sb, ',') }
-			count^ += 1
-			fmt.sbprintf(sb, `{{"nodeId":"%x","ignored":false,"role":{{"type":"role","value":%s}},"name":{{"type":"computedString","value":%s}},"backendDOMNodeId":%d`, u64(b.key), json_quote(role), json_quote(name), count^)
-			if parent != 0 { fmt.sbprintf(sb, `,"parentId":"%x"`, u64(parent)) }
-			strings.write_string(sb, `,"childIds":[`)
-			first := true
-			kids :: proc(sb: ^strings.Builder, s: ^ui.State, b: ^ui.Box, first: ^bool) {
-				for c := b.first; c != nil; c = c.next {
-					if !ui.box_current(s, c) { continue }
-					if is_ax(s, c) {
-						if !first^ { strings.write_byte(sb, ',') }
-						first^ = false
-						fmt.sbprintf(sb, `"%x"`, u64(c.key))
-					} else {
-						kids(sb, s, c, first)
-					}
-				}
-			}
-			kids(sb, s, b, &first)
-			strings.write_string(sb, "]}")
-			me = b.key
-		}
-		for c := b.first; c != nil; c = c.next { node(sb, s, c, me, count) }
-	}
-	node(sb, s, s.root, 0, &count)
-	strings.write_string(sb, "]}")
-}
-
-@(private)
-is_ax :: proc(s: ^ui.State, b: ^ui.Box) -> bool {
-	return (b.a11y != nil && b.a11y.role != .Unknown) || b.flags & {.Text_Input, .Clickable, .View_Scroll_Y} != {} || ui.box_text(b) != ""
-}
-
 ////////////////////////////////
 // screenshots
 
 @(private)
-screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, c: ^Conn, id: i64, p: json.Object) -> bool {
+screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.Object) -> bool {
 	if len(srv.captures) == 0 {
 		rect: [4]int
 		if clip, ok := p["clip"].(json.Object); ok {
@@ -493,7 +620,7 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, c: ^Conn, id: i64, p: 
 		}
 		if !render.capture_request(r, rect) { return false }
 	}
-	append(&srv.captures, Waiting{conn = c, id = id})
+	append(&srv.captures, hold(to))
 	platform.wake(srv.win)
 	return true
 }
@@ -508,11 +635,12 @@ screenshots_poll :: proc(srv: ^Server, r: ^render.Renderer) {
 	case .Ready:
 		png := png_encode(pixels, size.x, size.y, context.temp_allocator)
 		data := base64.encode(png, allocator = context.temp_allocator)
-		for w in srv.captures { send_text(w.conn, fmt.tprintf(`{{"id":%d,"result":{{"data":"%s"}}}}`, w.id, data)) }
+		for w in srv.captures { reply(w, fmt.tprintf(`{{"data":"%s"}}`, data)) }
 		srv.shots += 1
 	case .None, .Failed:
-		for w in srv.captures { error_reply(w.conn, w.id, -32000, "the capture failed") }
+		for w in srv.captures { error_reply(w, -32000, "the capture failed") }
 	}
+	for w in srv.captures { release(w) }
 	clear(&srv.captures)
 }
 
@@ -558,3 +686,6 @@ json_quote :: proc(s: string, allocator := context.temp_allocator) -> string {
 	strings.write_byte(&sb, '"')
 	return strings.to_string(sb)
 }
+
+@(private)
+encode_rune :: proc(r: rune) -> ([4]u8, int) { return utf8.encode_rune(r) }

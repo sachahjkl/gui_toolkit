@@ -1,7 +1,8 @@
 # The test packages that need no window of their own (pixel tests draw on WARP, the Direct3D 11 backend), then the native
 # text backend against DirectWrite, the UI Automation adapter, the font package on other targets and the COLR interpreter.
 # Run by the CI ("tests" job of .github/workflows/ci.yml) after tools\fetch_emoji.ps1 -Unicode; needs cargo for the
-# native libraries (tools\build_text.ps1, tools\build_a11y.ps1: skipped when their STAMP is current).
+# native libraries (tools\build_text.ps1, tools\build_a11y.ps1: skipped when their STAMP is current), and Node 22+ for the
+# end-to-end run (tests/e2e: examples/whatsnew with no window, driven over the devtools protocol).
 #   powershell -NoProfile -File tools\test_windowless.ps1
 $ErrorActionPreference = 'Continue'
 Set-Location (Split-Path $PSScriptRoot)
@@ -60,5 +61,11 @@ foreach ($tg in 'linux_amd64', 'darwin_arm64') {
 }
 # the color glyph tests again with the COLR interpreter in place of Direct2D
 if (-not (Test-Package 'color_glyphs (builtin)' @('test', 'tests/color_glyphs', '-vet', '-define:COLR_ENGINE=builtin', '-out:build/color_glyphs_builtin_test.exe'))) { $failed++ }
+# end to end: a program as a whole, over the devtools protocol
+odin build examples/whatsnew -vet -out:build/whatsnew.exe
+if ($LASTEXITCODE) { 'FAIL build whatsnew'; $failed++ } else {
+	node tests/e2e/run.mjs
+	if ($LASTEXITCODE) { 'FAIL e2e'; $failed++ } else { 'PASS e2e' }
+}
 if ($failed) { "$failed failed"; exit 1 }
 exit 0

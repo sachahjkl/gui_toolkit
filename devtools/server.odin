@@ -8,11 +8,17 @@ import "core:net"
 import "core:strings"
 import "core:sync"
 import "core:thread"
+import "core:time"
 import "../platform"
 
 // The network side: a listener on 127.0.0.1, one thread per connection. HTTP for the discovery endpoints (/json/version,
 // /json/list) and the upgrade to a WebSocket; then each text message (a command) goes to the inbox and wakes the window.
 // The UI thread takes the inbox in `service` and answers on the connection (send_text, under its write lock).
+//
+// 127.0.0.1 is not a wall against the browsers of the machine: a WebSocket is not bound by the same-origin policy, so any
+// page could connect here and drive the window, and a name made to resolve to 127.0.0.1 could read the HTTP endpoints. So
+// a request with an Origin (what a browser's page sends and a tool's client does not), a Host that is not this address,
+// or a WebSocket path without the target's id is refused.
 
 @(private)
 Conn :: struct {
@@ -20,8 +26,16 @@ Conn :: struct {
 	sock:   net.TCP_Socket,
 	thread: ^thread.Thread,
 	write:  sync.Mutex,
-	closed: bool,
+	closed: bool,   // (under write)
+	done:   bool,   // the thread is at its end (atomic): `service` joins and frees it
 }
+
+// A command is small: a message over this ends the connection.
+@(private)
+MAX_MESSAGE :: 16 * 1024 * 1024
+// A client that stops reading must not hold the UI thread, which answers on its socket.
+@(private)
+SEND_TIMEOUT :: 5 * time.Second
 
 @(private)
 Message :: struct {
@@ -37,6 +51,7 @@ accept_loop :: proc(srv: ^Server) {
 		if err != nil { continue }
 		c := new(Conn, runtime.heap_allocator())   // (what crosses threads comes from the heap and goes back to it)
 		c.srv, c.sock = srv, sock
+		net.set_option(sock, .Send_Timeout, SEND_TIMEOUT)
 		sync.lock(&srv.lock)
 		append(&srv.conns, c)
 		sync.unlock(&srv.lock)
@@ -70,7 +85,14 @@ read_exact :: proc(r: ^Reader, n: int, out: ^[dynamic]u8) -> bool {
 
 @(private)
 conn_loop :: proc(c: ^Conn) {
-	defer { c.closed = true; net.close(c.sock) }
+	defer {
+		sync.lock(&c.write)
+		c.closed = true
+		net.close(c.sock)
+		sync.unlock(&c.write)
+		sync.atomic_store(&c.done, true)
+		platform.wake(c.srv.win)   // (the UI thread frees it)
+	}
 	r := Reader{sock = c.sock}
 	defer delete(r.buf)
 	// the request's headers
@@ -90,11 +112,21 @@ conn_loop :: proc(c: ^Conn) {
 	defer delete(parts)
 	if len(parts) < 2 || parts[0] != "GET" { http_reply(c, "405 Method Not Allowed", "text/plain", "GET only"); return }
 	path := parts[1]
-	key := ""
+	key, host, origin := "", "", ""
 	for l in lines[1:] {
 		i := strings.index_byte(l, ':')
 		if i < 0 { continue }
-		if strings.equal_fold(strings.trim_space(l[:i]), "Sec-WebSocket-Key") { key = strings.trim_space(l[i + 1:]) }
+		h, v := strings.trim_space(l[:i]), strings.trim_space(l[i + 1:])
+		switch {
+		case strings.equal_fold(h, "Sec-WebSocket-Key"): key = v
+		case strings.equal_fold(h, "Host"):              host = v
+		case strings.equal_fold(h, "Origin"):            origin = v
+		}
+	}
+	if origin != "" || !host_allowed(host, c.srv.port) {
+		http_reply(c, "403 Forbidden", "text/plain", "devtools: refused (a request from a browser's page, or for another host)")
+		free_all(context.temp_allocator)
+		return
 	}
 	if key == "" {
 		srv := c.srv
@@ -106,6 +138,11 @@ conn_loop :: proc(c: ^Conn) {
 		case:
 			http_reply(c, "404 Not Found", "text/plain", "not found: /json/version, /json/list, or a WebSocket on /devtools/page/<id>")
 		}
+		free_all(context.temp_allocator)
+		return
+	}
+	if !target_path(path, c.srv.id) {
+		http_reply(c, "404 Not Found", "text/plain", "no such target: see /json/list")
 		free_all(context.temp_allocator)
 		return
 	}
@@ -129,8 +166,9 @@ conn_loop :: proc(c: ^Conn) {
 		if !read_exact(&r, 2, &frame) { return }
 		fin := frame[0] & 0x80 != 0
 		op := frame[0] & 0x0f
-		masked := frame[1] & 0x80 != 0
+		if frame[1] & 0x80 == 0 { return }   // (a client must mask its frames)
 		n := u64(frame[1] & 0x7f)
+		if op >= 0x8 && (n > 125 || !fin) { return }   // (a control frame is short and whole)
 		if n >= 126 {
 			clear(&frame)
 			k := n == 126 ? 2 : 8
@@ -138,16 +176,14 @@ conn_loop :: proc(c: ^Conn) {
 			n = 0
 			for b in frame[:k] { n = n << 8 | u64(b) }
 		}
+		if n > MAX_MESSAGE { return }
 		mask: [4]u8
-		if masked {
-			clear(&frame)
-			if !read_exact(&r, 4, &frame) { return }
-			copy(mask[:], frame[:4])
-		}
-		if n > 256 * 1024 * 1024 { return }
+		clear(&frame)
+		if !read_exact(&r, 4, &frame) { return }
+		copy(mask[:], frame[:4])
 		clear(&frame)
 		if !read_exact(&r, int(n), &frame) { return }
-		if masked { for &b, i in frame { b ~= mask[i % 4] } }
+		for &b, i in frame { b ~= mask[i % 4] }
 		switch op {
 		case 0x8:   // close
 			send_frame(c, 0x8, frame[:min(len(frame), 2)])
@@ -156,6 +192,7 @@ conn_loop :: proc(c: ^Conn) {
 			send_frame(c, 0xA, frame[:])
 		case 0xA:   // pong
 		case 0x0, 0x1, 0x2:
+			if len(msg) + len(frame) > MAX_MESSAGE { return }   // (the frames of one message add up)
 			append(&msg, ..frame[:])
 			if fin {
 				srv := c.srv
@@ -167,6 +204,23 @@ conn_loop :: proc(c: ^Conn) {
 			}
 		}
 	}
+}
+
+// A Host naming this address and port. (Not a name that merely resolves here: that is how a page reaches the endpoints.)
+@(private)
+host_allowed :: proc(host: string, port: int) -> bool {
+	for name in ([?]string{"127.0.0.1", "localhost", "[::1]"}) {
+		if strings.equal_fold(host, fmt.tprintf("%s:%d", name, port)) { return true }
+	}
+	return false
+}
+
+@(private)
+target_path :: proc(path, id: string) -> bool {
+	for prefix in ([?]string{"/devtools/page/", "/devtools/browser/"}) {
+		if strings.has_prefix(path, prefix) && path[len(prefix):] == id { return true }
+	}
+	return false
 }
 
 @(private)
@@ -206,7 +260,9 @@ send_frame :: proc(c: ^Conn, op: u8, payload: []u8) -> bool {
 		for i in 0 ..< 8 { head[2 + i] = u8(u64(n) >> uint(56 - 8 * i)) }
 		k = 10
 	}
-	return send_all(c, head[:k]) && send_all(c, payload)
+	if send_all(c, head[:k]) && send_all(c, payload) { return true }
+	net.shutdown(c.sock, .Both)   // (half a frame was sent, or the client stopped reading: the connection is over)
+	return false
 }
 
 @(private)

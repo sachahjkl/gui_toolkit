@@ -151,6 +151,7 @@ lazy_settle :: proc(s: ^State) {
 	s.lazy_more = false
 	content_top :: proc(sb, b: ^Box) -> f32 { return b.rect.min.y - sb.rect.min.y + sb.view_off.y }
 	for lz in s.lazy_frame {
+		s.metrics.lazy_built += len(lz.items)
 		sb := lz.scroll
 		c, ok := &s.lazy_columns[lz.column]
 		if !ok || sb == nil || sb.last_build != s.build_index { continue }

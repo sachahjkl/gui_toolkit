@@ -107,12 +107,25 @@ jobs:
           ./tools/build_a11y.ps1
           if ($LASTEXITCODE) { exit 1 }
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Tests
         shell: pwsh
-        timeout-minutes: 12
+        timeout-minutes: 14
         run: |
           ./tools/test_windowless.ps1
           if ($LASTEXITCODE) { exit 1 }
+
+      # what the end-to-end run saw when a page differs from its reference image
+      - name: Keep the images of a failed end-to-end run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-images
+          path: build/e2e
+          if-no-files-found: ignore
 
   # Linux: odin check -vet of every package, the examples built (native text, Vulkan through wgpu-native), the tests that
   # need no window (tools/linux_ci.sh). Odin and wgpu-native pinned by SHA-256, crates by Cargo.lock.

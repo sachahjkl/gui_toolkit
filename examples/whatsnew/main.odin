@@ -3,6 +3,7 @@
 //   build\whatsnew.exe                  the window
 //   build\whatsnew.exe --page=lazy      open on a page (its name in lower case, or its number)
 //   build\whatsnew.exe --frames=3       three frames without showing the window, then exit (a check that it runs)
+//   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tests/e2e, over devtools
 package whatsnew
 
 import "core:fmt"
@@ -458,6 +459,7 @@ frame :: proc(app: ^App) {
 
 main :: proc() {
 	frames := -1
+	headless := false
 	app := new(App)
 	defer free(app)
 	the_app = app
@@ -465,6 +467,7 @@ main :: proc() {
 	for a in os.args[1:] {
 		if strings.has_prefix(a, "--frames=") { frames, _ = strconv.parse_int(a[len("--frames="):]) }
 		if a == "--mistake" { app.mistake = true }
+		if a == "--headless" { headless = true }
 		if strings.has_prefix(a, "--page=") {
 			v := a[len("--page="):]
 			if n, ok := strconv.parse_int(v); ok && n >= 1 && n <= len(Page) { app.page = Page(n - 1) }
@@ -473,10 +476,10 @@ main :: proc() {
 	}
 	font.init(&app.fonts)
 	defer font.destroy(&app.fonts)
-	app.win = platform.open_window("What's new in gui_toolkit 0.55", {1100, 720})
+	app.win = headless ? platform.open_window_offscreen("What's new in gui_toolkit 0.55", {1100, 720}) : platform.open_window("What's new in gui_toolkit 0.55", {1100, 720})
 	if app.win == nil { fmt.eprintln("whatsnew: no window"); os.exit(1) }
 	defer platform.destroy_window(app.win)
-	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("whatsnew: no renderer"); os.exit(1) }
+	if !(headless ? render.init_offscreen(&app.r, app.win.size, warp = true) : render.init_window(&app.r, app.win, app.win.size)) { fmt.eprintln("whatsnew: no renderer"); os.exit(1) }
 	defer render.destroy(&app.r)
 	ok: bool
 	app.font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
