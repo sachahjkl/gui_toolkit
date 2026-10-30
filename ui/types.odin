@@ -395,6 +395,8 @@ State :: struct {
 	rich_cache:      map[u64]Rich_Cache_Entry,
 	rich_faces:      map[font.Font_Id][4]font.Font_Id,
 	rich_link:       map[Key]int,
+	// find in page: the needle, the matches of the last layout (find.odin)
+	find:            Find_State,
 	// selection of text outside fields (selection.odin), and this build's mouse presses / releases it reads
 	sel:             Selection,
 	mouse_events:    [dynamic]platform.Event,
