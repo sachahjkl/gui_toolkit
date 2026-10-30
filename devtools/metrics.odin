@@ -17,7 +17,11 @@ import "../ui"
 METRIC_RING :: 240
 
 @(private)
-Metric_Sample :: struct { frame, build, layout, total: f32 }
+Metric_Sample :: struct {
+	frame, build, layout, total: f32,
+	at:          f64,   // ui.now_ms, when the frame after this build began
+	build_index: u64,
+}
 
 // Each frame: the last build's numbers, once.
 @(private)
@@ -28,7 +32,7 @@ metrics_sample :: proc(srv: ^Server, s: ^ui.State) {
 	m := ui.build_metrics(s)
 	frame := srv.sample_at != {} ? f32(time.duration_milliseconds(time.tick_diff(srv.sample_at, now))) : 0
 	srv.sample_at = now
-	srv.samples[srv.sampled % METRIC_RING] = {frame, f32(m.build_ms), f32(m.layout_ms), f32(m.total_ms)}
+	srv.samples[srv.sampled % METRIC_RING] = {frame, f32(m.build_ms), f32(m.layout_ms), f32(m.total_ms), ui.now_ms(), s.build_index}
 	srv.sampled += 1
 }
 
@@ -71,4 +75,21 @@ metrics_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, r: ^rend
 		srv.sample_at = {}
 		when render.RENDER_PROBE { if r != nil { render.latency_reset(r) } }
 	}
+}
+
+// Toolkit.frames {after?}: the frames still in the ring, one by one, after build `after`; `now` on the same clock as their
+// `t` and the recorder's. A timeline pulls these while it records: the ring holds a few seconds of a busy program.
+@(private)
+frames_write :: proc(sb: ^strings.Builder, srv: ^Server, p: json.Object) {
+	after := u64(num(p["after"]))
+	fmt.sbprintf(sb, `{{"now":%.3f,"frames":[`, ui.now_ms())
+	first := true
+	for i in max(srv.sampled - METRIC_RING, 0) ..< srv.sampled {
+		x := srv.samples[i % METRIC_RING]
+		if x.build_index <= after { continue }
+		if !first { strings.write_byte(sb, ',') }
+		first = false
+		fmt.sbprintf(sb, `{{"build":%d,"t":%.3f,"frameMs":%.3f,"buildMs":%.3f,"layoutMs":%.3f,"totalMs":%.3f}}`, x.build_index, x.at, x.frame, x.build, x.layout, x.total)
+	}
+	strings.write_string(sb, "]}")
 }
