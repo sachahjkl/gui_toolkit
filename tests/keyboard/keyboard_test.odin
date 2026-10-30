@@ -524,3 +524,40 @@ paragraph_wraps :: proc(t: ^testing.T) {
 	testing.expect(t, len(lines) >= 3, "wrapped")
 	for l in lines { testing.expect(t, font.text_width(&f.fonts, f.base_font, 15, text[l[0]:l[1]]) <= 160 - 12 + 1, "each line fits") }
 }
+
+@(private = "file")
+build_find :: proc(f: ^Fx, user: rawptr) {
+	ui.find("fox", 0)
+	ui.next({width = ui.px(300)})
+	ui.label("The Fox and the fox###a")
+	runs := []ui.Rich_Run{{text = "a quick "}, {text = "fo", bold = true}, {text = "x jumps, FOX"}}
+	ui.next({width = ui.px(300)})
+	ui.rich_paragraph("###r", runs)
+	ui.next({width = ui.px(300)})
+	ui.label("no match here###b")
+}
+
+// Find in page: occurrences in labels and rich paragraphs, case ignored, a match across runs, in reading order, each
+// with a rectangle inside its box.
+@(test)
+find_in_page :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	for _ in 0 ..< 2 { frame(f, nil, build_find, nil) }
+	testing.expect_value(t, ui.find_count(), 4)
+	ms := ui.find_matches()
+	a := ui.box_from_key(ms[0].box)
+	r := ui.box_from_key(ms[len(ms) - 1].box)
+	testing.expect(t, a != nil && r != nil && a != r, "matches in the label, then in the paragraph")
+	for m in ms {
+		b := ui.box_from_key(m.box)
+		testing.expect(t, m.rect.max.x > m.rect.min.x && m.rect.max.y > m.rect.min.y, "a rectangle")
+		testing.expect(t, m.rect.min.y >= b.rect.min.y - 1 && m.rect.max.y <= b.rect.max.y + 1, "inside its box")
+	}
+	testing.expect(t, ms[0].rect.min.x < ms[1].rect.min.x, "reading order")
+	frame(f, nil, proc(f: ^Fx, user: rawptr) { ui.find("", 0) }, nil)
+	frame(f, nil, nothing, nil)
+	testing.expect_value(t, ui.find_count(), 0)
+}

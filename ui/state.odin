@@ -71,6 +71,7 @@ destroy :: proc(s: ^State) {
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
 	rich_cache_destroy(s)
+	find_destroy(s)
 	selection_destroy(s)
 	a11y_destroy(s)
 	delete(s.mouse_events)
@@ -208,6 +209,7 @@ end_build :: proc() {
 	selection_update(s)
 	handle_tab_navigation(s)
 	update_animations(s)
+	find_collect(s)     // (the rects are final)
 	a11y_end_build(s)   // (after the focus moved and the rects are final)
 
 	// drop boxes and animations that were not touched this build
