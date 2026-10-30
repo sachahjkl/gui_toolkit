@@ -4,7 +4,7 @@
 
 <p align="center"><b>A fast, native, immediate-mode GUI toolkit.</b></p>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.52.0-1d57ba" alt="version 0.52.0"></a>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.53.0-1d57ba" alt="version 0.53.0"></a>
 <a href="https://sachahjkl.github.io/gui_toolkit/"><img src="https://img.shields.io/badge/site-github.io-56b6c2" alt="site"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org): a retained-state immediate-mode UI with a Direct3D 11 renderer on Windows
