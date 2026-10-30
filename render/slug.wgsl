@@ -87,10 +87,11 @@ fn CalcCoverage(xcov: f32, ycov: f32, xwgt: f32, ywgt: f32) -> f32 {
 	return saturate(coverage);
 }
 
-fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>) -> f32 {
-	// The pixel dimensions of the em square, per axis, from the derivatives of the em-space coordinate.
-	let emsPerPixel = fwidth(renderCoord);
-	let pixelsPerEm = 1.0 / emsPerPixel;
+// pixelsPerEm: the pixel dimensions of the em square, per axis (from the derivatives of the em-space coordinate, taken by
+// the caller: a sample of a supersampled pixel passes twice as many, its own half-pixel box). dk: stem darkening, the
+// pixels every edge moves outwards, signed by the outline's winding (+ for clockwise outer contours, y up): for those a
+// horizontal ray's + root is a right edge and its - root a left one, a vertical ray's + root a top edge.
+fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>, pixelsPerEm: float2, dk: f32) -> f32 {
 
 	var bandMax = glyphData.zw;
 	bandMax.y &= 0x00FF;
@@ -114,20 +115,20 @@ fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>) 
 		let p3 = textureLoad(slug_curves, vec2<i32>(curveLoc.x + 1, curveLoc.y), 0).xy - renderCoord;
 
 		// The curves are sorted by descending largest x: once one lies left of the pixel, so do the rest.
-		if (max(max(p12.x, p12.z), p3.x) * pixelsPerEm.x < -0.5) { break; }
+		if (max(max(p12.x, p12.z), p3.x) * pixelsPerEm.x < -0.5 - abs(dk)) { break; }
 
 		let code = CalcRootCode(p12.y, p12.w, p3.y);
 		if (code != 0u) {
 			let r = SolveHorizPoly(p12, p3) * pixelsPerEm.x;
 
 			if ((code & 1u) != 0u) {
-				xcov += saturate(r.x + 0.5);
-				xwgt = max(xwgt, saturate(1.0 - abs(r.x) * 2.0));
+				xcov += saturate(r.x + 0.5 + dk);
+				xwgt = max(xwgt, saturate(1.0 - abs(r.x + dk) * 2.0));
 			}
 
 			if (code > 1u) {
-				xcov -= saturate(r.y + 0.5);
-				xwgt = max(xwgt, saturate(1.0 - abs(r.y) * 2.0));
+				xcov -= saturate(r.y + 0.5 - dk);
+				xwgt = max(xwgt, saturate(1.0 - abs(r.y - dk) * 2.0));
 			}
 		}
 	}
@@ -145,20 +146,20 @@ fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>) 
 		let p3 = textureLoad(slug_curves, vec2<i32>(curveLoc.x + 1, curveLoc.y), 0).xy - renderCoord;
 
 		// sorted by descending largest y
-		if (max(max(p12.y, p12.w), p3.y) * pixelsPerEm.y < -0.5) { break; }
+		if (max(max(p12.y, p12.w), p3.y) * pixelsPerEm.y < -0.5 - abs(dk)) { break; }
 
 		let code = CalcRootCode(p12.x, p12.z, p3.x);
 		if (code != 0u) {
 			let r = SolveVertPoly(p12, p3) * pixelsPerEm.y;
 
 			if ((code & 1u) != 0u) {
-				ycov -= saturate(r.x + 0.5);
-				ywgt = max(ywgt, saturate(1.0 - abs(r.x) * 2.0));
+				ycov -= saturate(r.x + 0.5 - dk);
+				ywgt = max(ywgt, saturate(1.0 - abs(r.x - dk) * 2.0));
 			}
 
 			if (code > 1u) {
-				ycov += saturate(r.y + 0.5);
-				ywgt = max(ywgt, saturate(1.0 - abs(r.y) * 2.0));
+				ycov += saturate(r.y + 0.5 + dk);
+				ywgt = max(ywgt, saturate(1.0 - abs(r.y + dk) * 2.0));
 			}
 		}
 	}
@@ -196,6 +197,7 @@ struct SlugPS {
 	@location(4) @interpolate(flat) clip: u32,
 	@location(5) @interpolate(flat) corr: float4,             // text correction: ls, ld, bd, 1 / (bs - bd)
 	@location(6) @interpolate(flat) corr_meta: float2,        // contrast * ld, enabled
+	@location(7) @interpolate(flat) small: float2,            // stem darkening (pixels, signed), 1: four samples per pixel
 };
 
 @vertex
@@ -236,6 +238,7 @@ fn vs_slug(i: VSIn) -> SlugPS {
 	o.banding = i.radii;
 	o.glyph = vec4<i32>(i32(i.extra.w & 0xFFFFu), i32(i.extra.w >> 16u), i32(i.extra.z & 0xFFu), i32((i.extra.z >> 8u) & 0xFFu));
 	o.clip = i.extra.y;
+	o.small = i.c1.xy;
 
 	var c = i.c0;
 	c.a = c.a * rp.m1.z;   // the replay's alpha (1 for immediate instances)
@@ -276,7 +279,20 @@ fn slug_text_coverage(a0: f32, i: SlugPS) -> f32 {
 @fragment
 fn ps_slug(i: SlugPS) -> @location(0) float4 {
 	// derivatives first, before anything that can branch away
-	let cov = SlugRender(i.tex, i.banding, i.glyph);
+	let emsPerPixel = fwidth(i.tex);
+	let ppe = 1.0 / emsPerPixel;
+	var cov: f32;
+	if (i.small.y > 0.5) {
+		// four samples on a rotated grid, each over its own half-pixel box: the coverage of thin stems and tight curves
+		// is measured rather than estimated from the two rays of one sample
+		let e = emsPerPixel;
+		cov = 0.25 * (SlugRender(i.tex + float2(-0.125, -0.375) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
+		              SlugRender(i.tex + float2( 0.375, -0.125) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
+		              SlugRender(i.tex + float2( 0.125,  0.375) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
+		              SlugRender(i.tex + float2(-0.375,  0.125) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0));
+	} else {
+		cov = SlugRender(i.tex, i.banding, i.glyph, ppe, i.small.x);
+	}
 	var color = i.color;
 	color.a = color.a * slug_text_coverage(cov, i);
 	if (i.clip != 0u || rp.misc.y != 0u) { color.a = color.a * any_clip_coverage(i.pos.xy + g.target_origin, i.clip); }

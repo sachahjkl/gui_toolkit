@@ -15,6 +15,9 @@ use read_fonts::model::glyph::outline::{DrawMemory, DrawOptions, PathSink};
 use read_fonts::model::Font;
 use read_fonts::types::GlyphId;
 use read_fonts::{FontRef, TableProvider};
+use skrifa::instance::{LocationRef, Size};
+use skrifa::outline::{DrawSettings, Engine, HintingInstance, HintingOptions, SmoothMode, Target};
+use skrifa::MetadataProvider;
 
 /// Bytes a face reads: a memory-mapped file or memory the caller keeps alive until gt_face_close.
 struct Borrowed {
@@ -31,12 +34,14 @@ impl AsRef<[u8]> for Borrowed {
 }
 
 const MAX_PLANS: usize = 32;
+const MAX_HINTERS: usize = 16;   // hinting instances kept per face (one per size), the oldest dropped first
 
 pub struct Face {
     data: Arc<dyn AsRef<[u8]> + Send + Sync>,
     index: u32,
     font: Font,
     plans: Mutex<Vec<Arc<ShapePlan>>>,
+    hinters: Mutex<Vec<(u32, Arc<HintingInstance>)>>,   // (ppem in 1/64 px, instance)
 }
 
 #[repr(C)]
@@ -143,7 +148,7 @@ fn make_face(data: Arc<dyn AsRef<[u8]> + Send + Sync>, index: u32, axes: &[GtAxi
         let vars: Vec<(Tag, f32)> = axes.iter().map(|a| (Tag::new(&a.tag), a.value)).collect();
         base.instance_builder().variations(vars).build()
     };
-    Some(Box::new(Face { data, index, font, plans: Mutex::new(Vec::new()) }))
+    Some(Box::new(Face { data, index, font, plans: Mutex::new(Vec::new()), hinters: Mutex::new(Vec::new()) }))
 }
 
 /// A face of font data the caller keeps alive (and unchanged) until gt_face_close. `axes`: user-space variation
@@ -322,6 +327,42 @@ pub unsafe extern "C" fn gt_glyph_outline(face: *const Face, gid: u32, out: *mut
         let Some(g) = glyphs.get(GlyphId::new(gid)) else { return -1 };
         let mut sink = PathOut { els: Vec::new() };
         if g.draw(&DrawOptions::default(), DrawMemory::Scratch, &mut sink).is_err() { return -1; }
+        if !out.is_null() && sink.els.len() <= cap {
+            std::ptr::copy_nonoverlapping(sink.els.as_ptr(), out, sink.els.len());
+        }
+        sink.els.len() as isize
+    })
+}
+
+/// The outline of a glyph hinted for `ppem` pixels per em, in pixels (y up), into `out`: the auto-hinter in its light
+/// mode (vertical only: the baseline, the x-height and horizontal stems land on whole pixels, the horizontal shapes and
+/// advances stay as designed), the same whatever the font's own instructions. Returns as gt_glyph_outline does.
+#[no_mangle]
+pub unsafe extern "C" fn gt_glyph_outline_hinted(face: *const Face, gid: u32, ppem: f32, out: *mut GtPathEl, cap: usize) -> isize {
+    guard(-1, || {
+        let Some(face) = face.as_ref() else { return -1 };
+        if !(ppem > 0.0) { return -1; }
+        let Ok(fr) = face.font_ref() else { return -1 };
+        let glyphs = fr.outline_glyphs();
+        let Some(g) = glyphs.get(GlyphId::new(gid)) else { return -1 };
+        let key = (ppem * 64.0).round() as u32;
+        let cached = face.hinters.lock().ok().and_then(|h| h.iter().find(|(k, _)| *k == key).map(|(_, i)| i.clone()));
+        let inst = match cached {
+            Some(i) => i,
+            None => {
+                let coords = face.font.normalized_coords();
+                let target = Target::Smooth { mode: SmoothMode::Light, symmetric_rendering: true, preserve_linear_metrics: true };
+                let Ok(i) = HintingInstance::new(&glyphs, Size::new(ppem), LocationRef::new(coords), HintingOptions { engine: Engine::Auto(None), target }) else { return -1 };
+                let i = Arc::new(i);
+                if let Ok(mut h) = face.hinters.lock() {
+                    if h.len() >= MAX_HINTERS { h.remove(0); }
+                    h.push((key, i.clone()));
+                }
+                i
+            }
+        };
+        let mut sink = PathOut { els: Vec::new() };
+        if g.draw(DrawSettings::hinted(&inst, false), &mut sink).is_err() { return -1; }
         if !out.is_null() && sink.els.len() <= cap {
             std::ptr::copy_nonoverlapping(sink.els.as_ptr(), out, sink.els.len());
         }

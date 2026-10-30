@@ -95,6 +95,7 @@ foreign gt_text {
 	gt_face_coverage    :: proc(face: ^Gt_Face, out: [^][2]u32, cap: uint) -> uint ---
 	gt_glyph_box        :: proc(face: ^Gt_Face, gid: u32, out: ^Gt_Glyph_Box) -> i32 ---
 	gt_glyph_outline    :: proc(face: ^Gt_Face, gid: u32, out: [^]Gt_Path_El, cap: uint) -> int ---
+	gt_glyph_outline_hinted :: proc(face: ^Gt_Face, gid: u32, ppem: f32, out: [^]Gt_Path_El, cap: uint) -> int ---
 	gt_face_table       :: proc(face: ^Gt_Face, tag: ^[4]u8, data: ^[^]u8, len: ^uint) -> i32 ---
 	gt_color_glyph      :: proc(face: ^Gt_Face, gid: u32) -> i32 ---
 	gt_palette          :: proc(face: ^Gt_Face, palette: u32, out: [^][4]u8, cap: uint) -> uint ---
@@ -122,6 +123,7 @@ native_backend := Text_Backend{
 	bidi         = native_bidi,
 	line_breaks  = native_line_breaks,
 	outline      = native_outline_provider,
+	outline_hinted = native_outline_hinted,
 }
 
 @(private)
@@ -294,16 +296,31 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 
 // Outline_Provider of the native backend: the face's outline in em units, y up.
 native_outline_provider :: proc(s: ^State, face: Font_Id, gid: u16, tolerance: f32, out: ^Outline) -> bool {
+	return native_outline_at(s, face, gid, 0, tolerance, out)
+}
+
+// The outline hinted for `ppem` pixels per em (the auto-hinter's light mode, vertical only), in em units of that size.
+native_outline_hinted :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, tolerance: f32, out: ^Outline) -> bool {
+	return native_outline_at(s, face, gid, ppem, tolerance, out)
+}
+
+// ppem 0: the unhinted outline (font units); else hinted for that size (pixels).
+@(private)
+native_outline_at :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, tolerance: f32, out: ^Outline) -> bool {
 	f := face_ptr(s, face)
 	if f == nil || f.native == nil { return false }
+	get :: proc(f: ^Font, gid: u16, ppem: f32, buf: []Gt_Path_El) -> int {
+		if ppem > 0 { return gt_glyph_outline_hinted(native_face(f), u32(gid), ppem, raw_data(buf), uint(len(buf))) }
+		return gt_glyph_outline(native_face(f), u32(gid), raw_data(buf), uint(len(buf)))
+	}
 	buf := make([]Gt_Path_El, 64, context.temp_allocator)
-	n := gt_glyph_outline(native_face(f), u32(gid), raw_data(buf), uint(len(buf)))
+	n := get(f, gid, ppem, buf)
 	if n > len(buf) {
 		buf = make([]Gt_Path_El, n, context.temp_allocator)
-		n = gt_glyph_outline(native_face(f), u32(gid), raw_data(buf), uint(len(buf)))
+		n = get(f, gid, ppem, buf)
 	}
 	if n < 0 { return false }
-	sc := 1 / f.upem
+	sc := ppem > 0 ? 1 / ppem : 1 / f.upem
 	start, cur: [2]f32
 	open := false
 	for e in buf[:n] {

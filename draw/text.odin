@@ -173,14 +173,15 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 		if slug {
 			// The outline is drawn as it is: at any scale or transform, the pen unrounded across, the baseline on a
 			// whole pixel (of the screen when baked, else of the local space at the 1:1 scale) as the bitmaps' is.
-			if sg := font.slug_glyph(c.fonts, g.face, g.id); sg.kind != .Atlas {
+			// screen-aligned text says its size on the screen: small sizes may get outlines hinted for it
+			if sg := font.slug_glyph(c.fonts, g.face, g.id, xf.simple ? size * sc : 0); sg.kind != .Atlas {
 				if sg.kind == .Curves {
 					if c.rec != nil { picture_note_slug(c.rec, sg) }
 					if xf.simple {
 						oy := ly * sc + o.y
-						slug_inst(c, sg, lx * sc + o.x, math.round(oy), size * sc, col, 0, shape)
+						slug_inst(c, sg, lx * sc + o.x, math.round(oy), size * sc, col, 0, shape, size * sc)
 					} else {
-						slug_inst(c, sg, lx, k == 1 ? math.round(ly) : ly, size, col, gpu, shape)
+						slug_inst(c, sg, lx, k == 1 ? math.round(ly) : ly, size, col, gpu, shape, size * sc)
 					}
 				}
 				continue
