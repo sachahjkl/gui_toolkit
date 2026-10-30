@@ -253,7 +253,7 @@ end_build :: proc() {
 
 // True while something is still animating, or posted calls wait beyond the last build's budget: the app loop should
 // keep rendering.
-needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more }
+needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more || s.lazy_more }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 
 // The timed wake the last build asked for, measured from now: ms left until it is due (at least 1), 0 when none was

@@ -25,6 +25,7 @@ import "core:fmt"
 
 Lazy :: struct {
 	lo, hi:  f32,    // the content's band that is built (the view and a screen each side), in the scroll box's content
+	tlo, thi: f32,   // the same around where the view is heading (a wheel's jump, a scroll to a match): built too
 	y:       f32,    // where the next item starts in the content (from the heights known)
 	on:      bool,   // items may be skipped
 	column:  Key,
@@ -73,6 +74,8 @@ lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
 	view := sb.size.y > 0 ? sb.size.y : s.window_size.y   // (the first frame: no layout yet)
 	lz.lo = sb.view_off.y - view * LAZY_MARGIN
 	lz.hi = sb.view_off.y + view * (1 + LAZY_MARGIN)
+	lz.tlo = sb.view_target.y - view * LAZY_MARGIN
+	lz.thi = sb.view_target.y + view * (1 + LAZY_MARGIN)
 	// the column's top in the content, from the last layout
 	lz.y = col.rect.min.y - sb.rect.min.y + sb.view_off.y
 	return
@@ -93,7 +96,7 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	if h > 0 { lz.known_h += h; lz.known_n += 1 } else { h = lz.est }
 	top := lz.y
 	lz.y += h
-	if lz.on && !always && (top + h < lz.lo || top > lz.hi) {
+	if lz.on && !always && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
 		lz.skip += h
 		return false
 	}
@@ -145,6 +148,7 @@ lazy_end :: proc(lz: ^Lazy) {
 @(private)
 lazy_settle :: proc(s: ^State) {
 	defer clear(&s.lazy_frame)
+	s.lazy_more = false
 	content_top :: proc(sb, b: ^Box) -> f32 { return b.rect.min.y - sb.rect.min.y + sb.view_off.y }
 	for lz in s.lazy_frame {
 		sb := lz.scroll
@@ -164,6 +168,13 @@ lazy_settle :: proc(s: ^State) {
 				}
 				break
 			}
+		}
+		// what is shown now beyond what was built (the view went further than its target said: a scroll bar dragged, a
+		// clamp): the spaces show this frame, the next one builds what stands there
+		if lz.on {
+			top, bottom := sb.view_off.y, sb.view_off.y + sb.size.y
+			covered := (top >= lz.lo && bottom <= lz.hi) || (top >= lz.tlo && bottom <= lz.thi)
+			if !covered { s.lazy_more = true }
 		}
 		// the next anchor: the first item whose bottom is below the view's top
 		c.anchor = 0
