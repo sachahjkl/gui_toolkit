@@ -21,6 +21,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:math"
 import "core:net"
+import "core:slice"
 import "core:os"
 import "core:strconv"
 import "core:strings"
@@ -48,6 +49,7 @@ Server :: struct {
 	ticking:  ^thread.Thread,
 	waiting:  int,                // len(waits), for the ticker (atomic)
 	cast_dirty: bool,             // the window changed since the last frame of the screencast (atomic)
+	encoding: int,                // pictures being encoded on their own threads (atomic)
 	// the UI thread's own
 	captures: [dynamic]Reply_To,  // screenshots asked for, answered when the capture is ready
 	later:    [dynamic]platform.Event,   // events for the next frame (a click's release)
@@ -129,6 +131,7 @@ stop :: proc(srv: ^Server) {
 	sync.lock(&srv.lock)
 	conns := srv.conns[:]
 	sync.unlock(&srv.lock)
+	for sync.atomic_load(&srv.encoding) > 0 { time.sleep(time.Millisecond) }   // (they answer on the connections)
 	// (shut down, not closed: the thread reading it closes it, and a closed socket's number can be another's by now)
 	for c in conns {
 		sync.lock(&c.write)
@@ -175,8 +178,9 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		handle(srv, s, r, m)
 		delete(m.text, runtime.heap_allocator())
 	}
-	if len(srv.later) > 0 || len(srv.captures) > 0 || srv.screencast.pending { platform.wake(srv.win) }   // (the next frame carries them on)
-	sync.atomic_store(&srv.waiting, len(srv.waits) + (srv.screencast.owed ? 1 : 0))
+	// What needs another frame. Through the ticker: a wake sent from here is taken by the poll_events of the frame about to be
+	// built, and the window would then sleep until its next timer (a real window's; an offscreen one keeps it).
+	sync.atomic_store(&srv.waiting, len(srv.waits) + len(srv.later) + len(srv.captures) + (srv.screencast.owed || srv.screencast.pending ? 1 : 0))
 	sync.atomic_store(&srv.cast_dirty, s != nil && srv.screencast.on && s.build_index + 1 != srv.screencast.last_build)
 	conns_reap(srv)
 }
@@ -185,6 +189,7 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 // as the program lives.)
 @(private)
 conns_reap :: proc(srv: ^Server) {
+	if sync.atomic_load(&srv.encoding) > 0 { return }   // (a picture on its way answers on one of them)
 	sync.lock(&srv.lock)
 	defer sync.unlock(&srv.lock)
 	outer: #reverse for c, i in srv.conns {
@@ -649,14 +654,13 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.
 		if !render.capture_request(r, rect) { return false }
 	}
 	append(&srv.captures, hold(to))
-	platform.wake(srv.win)
 	return true
 }
 
 @(private)
 screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv.screencast.pending {
-		pixels, size, status := render.capture_poll(r, context.temp_allocator)
+		pixels, size, status := render.capture_poll(r, runtime.heap_allocator())
 		#partial switch status {
 		case .Ready: cast_frame(srv, s, pixels, size)
 		case .None, .Failed: srv.screencast.pending = false
@@ -664,19 +668,19 @@ screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		return
 	}
 	if len(srv.captures) == 0 { return }
-	pixels, size, status := render.capture_poll(r, context.temp_allocator)
+	pixels, size, status := render.capture_poll(r, runtime.heap_allocator())
 	switch status {
 	case .Pending:
 		return
 	case .Ready:
-		png := png_encode(pixels, size.x, size.y, context.temp_allocator)
-		data := base64.encode(png, allocator = context.temp_allocator)
-		for w in srv.captures { reply(w, fmt.tprintf(`{{"data":"%s"}}`, data)) }
 		srv.shots += 1
+		encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, replies = slice.clone(srv.captures[:], runtime.heap_allocator())})
 	case .None, .Failed:
-		for w in srv.captures { error_reply(w, -32000, "the capture failed") }
+		for w in srv.captures {
+			error_reply(w, -32000, "the capture failed")
+			release(w)
+		}
 	}
-	for w in srv.captures { release(w) }
 	clear(&srv.captures)
 }
 
@@ -721,6 +725,50 @@ json_quote :: proc(s: string, allocator := context.temp_allocator) -> string {
 	}
 	strings.write_byte(&sb, '"')
 	return strings.to_string(sb)
+}
+
+// A picture read back goes to a thread of its own: even at a high rate, encoding the pixels of a large window is more than
+// a frame, which on the UI thread would show in the frame times being measured.
+@(private)
+Encode_Job :: struct {
+	srv:     ^Server,
+	pixels:  []u8,         // (the heap's: the job's now)
+	size:    [2]int,
+	replies: []Reply_To,   // (held: the job's now)
+	frame:   bool,         // a frame of the screencast: an event to `to`, with this text after its data
+	to:      Reply_To,     // (held)
+	meta:    string,       // (the heap's)
+}
+
+@(private)
+encode_start :: proc(j: Encode_Job) {
+	job := new_clone(j, runtime.heap_allocator())
+	sync.atomic_add(&j.srv.encoding, 1)
+	thread.create_and_start_with_poly_data(job, encode_run, self_cleanup = true)
+}
+
+@(private)
+encode_run :: proc(j: ^Encode_Job) {
+	h := runtime.heap_allocator()
+	png := png_encode(j.pixels, j.size.x, j.size.y, h)
+	data := base64.encode(png, allocator = h)
+	if j.frame {
+		event(j.to.conn, j.to.session, "Page.screencastFrame", fmt.tprintf(`{{"data":"%s",%s}}`, data, j.meta))
+		release(j.to)
+		delete(j.meta, h)
+	}
+	for w in j.replies {
+		reply(w, fmt.tprintf(`{{"data":"%s"}}`, data))
+		release(w)
+	}
+	delete(j.replies, h)
+	delete(data, h)
+	delete(png, h)
+	delete(j.pixels, h)
+	srv := j.srv
+	free(j, h)
+	free_all(context.temp_allocator)
+	sync.atomic_sub(&srv.encoding, 1)
 }
 
 @(private)

@@ -49,8 +49,6 @@ wait_add :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, kind: Wait_Kind, p: j
 		first = s.build_index + WAIT_BUILDS, seen = s.build_index, timeout = ms,
 		deadline = time.tick_add(time.tick_now(), time.Duration(ms * f64(time.Millisecond))),
 	})
-	sync.atomic_store(&srv.waiting, len(srv.waits))
-	platform.wake(srv.win)
 }
 
 @(private)
@@ -89,7 +87,6 @@ waits_poll :: proc(srv: ^Server, s: ^ui.State) {
 			ordered_remove(&srv.waits, i)
 		}
 	}
-	sync.atomic_store(&srv.waiting, len(srv.waits))
 }
 
 @(private)
@@ -123,7 +120,7 @@ wait_idle :: proc(srv: ^Server, s: ^ui.State, w: ^Wait) -> bool {
 @(private)
 ticker :: proc(srv: ^Server) {
 	for !sync.atomic_load(&srv.stopping) {
-		time.sleep(20 * time.Millisecond)
+		time.sleep(8 * time.Millisecond)
 		if sync.atomic_load(&srv.waiting) > 0 { platform.wake(srv.win) }
 	}
 }

@@ -11,6 +11,8 @@
 // of at most BLOCK_SYMBOLS symbols, each in the cheapest of the three block types (stored, fixed Huffman codes, dynamic
 // Huffman codes made for that block), so its output is never held back beyond the last few bits of a byte. An empty
 // final block and the trailer come at the end.
+//
+// deflate_runs: a whole buffer at a high rate, for what repeats in known ways (the rows of a picture): flate_runs.odin.
 package flate
 
 import "core:hash"
