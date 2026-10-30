@@ -11,7 +11,8 @@
 <body>
 <header class="bar">
   <a class="brand" href="#"><img src="img/logo.png" alt="" width="28" height="28">gui_toolkit</a>
-  <nav>
+  <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+  <nav id="nav">
     <a href="#features">Features</a>
     <a href="#start">Start</a>
     <a href="https://github.com/sachahjkl/gui_toolkit/releases">Releases</a>
@@ -101,5 +102,14 @@
   <p>gui_toolkit, MIT licence. The design of its UI layers follows the <a href="https://github.com/EpicGamesExt/raddebugger">RAD Debugger</a>'s;
     this project is the toolkit and the apps built on it, not a port of the debugger.</p>
 </footer>
+<script>
+  // the bar's menu on narrow screens: the button opens it, a link or a click elsewhere closes it
+  const bar = document.querySelector('.bar'), burger = bar.querySelector('.burger');
+  const shut = () => { bar.classList.remove('open'); burger.setAttribute('aria-expanded', 'false'); };
+  burger.addEventListener('click', e => { e.stopPropagation(); burger.setAttribute('aria-expanded', String(bar.classList.toggle('open'))); });
+  bar.querySelectorAll('nav a').forEach(a => a.addEventListener('click', shut));
+  document.addEventListener('click', e => { if (!bar.contains(e.target)) shut(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') shut(); });
+</script>
 </body>
 </html>
