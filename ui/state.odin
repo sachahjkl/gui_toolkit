@@ -89,6 +89,7 @@ Build_Params :: struct {
 	events:         []platform.Event,
 	dt:             f32,       // seconds since the previous frame
 	animations:     bool,      // false = every transition jumps to its end value
+	smooth_scroll:  Smooth_Scroll,   // whether scrolling glides (Follow: as `animations` says)
 	dpi_scale:      f32,       // OS scale (dpi / 96); 0 is treated as 1
 	base:           Style,     // root style in LOGICAL pixels: font_size, text_pad, radius and pixel sizes are multiplied by dpi_scale * zoom
 	disable_zoom:   bool,      // true: ignore Ctrl+wheel and Ctrl +/-/0
@@ -137,6 +138,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.window_size = p.window_size
 	s.dt = p.dt
 	s.anim_rate = p.animations ? 1 : 0
+	s.scroll_smooth = p.smooth_scroll == .On || (p.smooth_scroll == .Follow && p.animations)
 	s.anim_busy = false
 	s.wake_ms = 0
 	s.menu_close_pending = false

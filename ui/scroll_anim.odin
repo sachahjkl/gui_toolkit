@@ -9,9 +9,15 @@ import "core:math"
 //     with zero speed and never overshoot. Exponential: the toolkit's former easing (halves the distance every 1/60 s).
 //   * A new target while moving keeps the speed it has when that is faster than the curve's own start (notches add up
 //     into a glide, they do not brake it).
-//   * Dragging a scroll bar's thumb moves at once. No animation when animations are off (Build_Params.animations).
+//   * Dragging a scroll bar's thumb moves at once. No glide when Build_Params.smooth_scroll says so (by default: when
+//     animations are off).
 
 Scroll_Curve :: enum u8 { Impulse, Ease_Out, Exponential }
+
+// Whether scrolling glides: as the interface's animations (Follow), or always / never whatever they are. A system that
+// turns animations off (Windows' "Animation effects") need not make every wheel notch a jump: an application may keep
+// the glide as its own setting.
+Smooth_Scroll :: enum u8 { Follow, On, Off }
 
 Scroll_Settings :: struct {
 	curve:       Scroll_Curve,
@@ -76,11 +82,11 @@ scroll_step :: proc(s: ^State, b: ^Box, ai: int) {
 	cfg := scroll_settings(s)
 	target := b.view_target[ai]
 	a := &b.view_anim[ai]
-	if s.anim_rate == 0 || cfg.curve == .Exponential || cfg.duration_ms <= 0 {
+	if !s.scroll_smooth || cfg.curve == .Exponential || cfg.duration_ms <= 0 {
 		a.active = false
 		cur := b.view_off[ai]
 		d := target - cur
-		if abs(d) < 0.003 || s.anim_rate == 0 || cfg.duration_ms <= 0 { b.view_off[ai] = target; return }
+		if abs(d) < 0.003 || !s.scroll_smooth || cfg.duration_ms <= 0 { b.view_off[ai] = target; return }
 		b.view_off[ai] = cur + d * f32(1 - math.pow(2, -60 * f64(s.dt)))
 		s.anim_busy = true
 		return
