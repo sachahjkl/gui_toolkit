@@ -20,6 +20,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.fonts = fonts
 	s.theme = theme
 	s.zoom = 1
+	s.layout_warnings = ODIN_DEBUG
 	s.scale = 1
 	s.toast_pos = .Top_Right
 	s.rounding = 1
@@ -71,6 +72,10 @@ destroy :: proc(s: ^State) {
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
 	rich_cache_destroy(s)
+	for _, m in s.layout_warned { delete(m) }
+	delete(s.layout_warned)
+	delete(s.lazy_heights)
+	delete(s.lazy_widths)
 	find_destroy(s)
 	selection_destroy(s)
 	a11y_destroy(s)
@@ -207,6 +212,7 @@ end_build :: proc() {
 	}
 	wrap_cache_trim(s)
 	rich_cache_trim(s)
+	lazy_trim(s)
 	menu_prune(s)
 	selection_update(s)
 	handle_tab_navigation(s)
@@ -305,6 +311,15 @@ touch_box :: proc(s: ^State, key: Key) -> ^Box {
 box_from_key :: proc(key: Key) -> ^Box {
 	if b, ok := g.boxes[key]; ok { return b }
 	return nil
+}
+
+// The box of the last build at this path of ids from the root (each id as it was given to build_box, a scroll box or a
+// row: "###chat", "###col", ...), nil when there is none. For tests and tools: a box found from outside a build.
+box_at :: proc(ids: ..string) -> ^Box {
+	if g == nil || g.root == nil { return nil }
+	k := g.root.key
+	for id in ids { k = key_from_string(k, id) }
+	return box_from_key(k)
 }
 
 parent_box :: proc() -> ^Box { return g.parent_stack[len(g.parent_stack) - 1] }

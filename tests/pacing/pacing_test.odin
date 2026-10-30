@@ -411,3 +411,26 @@ altsnap_steps_from_outside_are_shown_at_once_and_their_echoes_are_skipped :: pro
 	testing.expectf(t, r.at_once >= r.frames - 2, "%d of %d", r.at_once, r.frames)
 	testing.expect(t, r.counts[.Resize_Burst] >= 400)
 }
+
+////////////////////////////////
+// input_pending: the user's input is seen without being taken
+
+@(test)
+input_pending_sees_input_and_keeps_it :: proc(t: ^testing.T) {
+	w := platform.open_window_offscreen("pending", {200, 100})
+	if !testing.expect(t, w != nil) { return }
+	defer platform.destroy_window(w)
+	testing.expect(t, !platform.input_pending(w), "nothing yet")
+	_ = platform.poll_events(w, false)
+	platform.inject_event(w, {kind = .Activate})
+	testing.expect(t, !platform.input_pending(w), "a window event is not the user's input")
+	platform.inject_event(w, {kind = .Mouse_Move, pos = {10, 20}})
+	testing.expect(t, platform.input_pending(w), "the pointer moved")
+	evs := platform.poll_events(w, false)
+	testing.expect_value(t, len(evs), 2)   // both handed out again, nothing lost
+	if len(evs) == 2 {
+		testing.expect_value(t, evs[0].kind, platform.Event_Kind.Activate)
+		testing.expect_value(t, evs[1].kind, platform.Event_Kind.Mouse_Move)
+	}
+	testing.expect(t, !platform.input_pending(w), "taken")
+}

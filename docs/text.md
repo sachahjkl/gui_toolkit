@@ -256,6 +256,24 @@ draws the glyphs it owns (`color_engine = .Builtin`, or the glyphs Direct2D must
 default). The signature is platform-neutral; off Windows (no color-glyph rasterizer yet) both functions compile and
 report no color glyph, so a caller falls back to the outline.
 
+## Find in page
+
+`ui/find.odin` finds a needle in the text the interface shows (labels, wrapped paragraphs, rich paragraphs) after each
+layout, in reading order, with the rectangles of each match whether on screen or scrolled away, and paints them behind
+the text. The application owns the search field and the navigation:
+
+```odin
+ui.find(needle, scope)        // every build while searching ("" stops); scope: the box whose subtree is searched (0: all)
+ms := ui.find_matches()       // the last layout's matches (window coordinates); Find_Match.index counts occurrences
+n  := ui.find_count()
+ui.find_set_current(i)        // the occurrence painted as current (-1: none)
+```
+
+Theme entries: `find_match background` (every match), `find_current background` (the current one). Matching ignores
+case (simple folding, rune by rune). Limits: a match may span the runs of one rich paragraph but not two boxes; text the
+build did not make is not searched (a part folded away, the items a lazy column skipped: build them all while searching,
+`lazy_begin(all = true)`); the matches are those of the last layout, so a new needle has its matches one frame later.
+
 ## Limits
 
 - Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),

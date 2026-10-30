@@ -40,7 +40,7 @@ $defines = @($Define | Where-Object { $_ } | ForEach-Object { "-define:$_" })
 $failed = 0
 foreach ($t in $list) {
 	# wgpu: one test at a time. WARP's D3D12 (d3d10warp.dll) crashes (access violation) now and then when several devices are made and used at once
-	$extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust' -or $Backend -eq 'wgpu') { '-define:ODIN_TEST_THREADS=1' })
+	$extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y' -or $Backend -eq 'wgpu') { '-define:ODIN_TEST_THREADS=1' })
 	$log = "build\test_${Backend}_$t.log"
 	$exe = "build\${t}_${Backend}_test.exe"
 	$args = @('test', "tests/$t", '-vet', "-define:TOOLKIT_RENDER=$Backend", "-out:$exe") + $extra + $defines

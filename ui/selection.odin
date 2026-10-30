@@ -187,7 +187,7 @@ plain_lines :: proc(s: ^State, b: ^Box, allocator := context.temp_allocator) -> 
 @(private)
 rich_of :: proc(b: ^Box) -> (^Rich_Draw, ^Rich_Layout, Vec2) {
 	d := (^Rich_Draw)(b.custom_user)
-	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align)
+	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
 	return d, l, b.rect.min + {b.text_pad, b.text_pad}
 }
 
