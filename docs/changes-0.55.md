@@ -113,6 +113,22 @@ The messages given so far (temp memory), for a tool or a test.
   that subtree and crashed at the next layout. Such a scope now finds nothing. Still: call `ui.find("")` when the
   search goes away.
 
+## Driving a window over the Chrome DevTools Protocol: `devtools`
+
+New package (docs/devtools.md). Two calls in the application:
+
+```odin
+srv := devtools.start_from_env(win, "Wren")              // TOOLKIT_DEVTOOLS=<port>, else nil: nothing runs
+devtools.service(srv, &ui_state, &renderer)            // each frame, before poll_events and begin_build
+```
+
+Then any CDP client drives the window on 127.0.0.1:<port>: `Input.dispatchMouseEvent` / `dispatchKeyEvent` /
+`insertText` (injected into the window's queue: no real mouse, no focus needed), `Page.captureScreenshot` (PNG of the
+presented frame), `Accessibility.getFullAXTree`, and the `Toolkit` domain: `getTree`, `find`, `click` by box name or
+text, `state`. `tools/cdp.mjs` is a command-line client (`node tools/cdp.mjs click "Settings" , wait 200 , shot a.png`).
+For Wren, whose pages are browser pages: this drives Wren's own interface (its chrome, its panels), not the web content;
+a page's DOM stays Wren's own business. `ui.box_text(b)` and `ui.box_current(s, b)` read a box from outside a build.
+
 ## Tests
 
 `tests/{keyboard,status,states,ui_robust,a11y}` now fail to compile without `-define:ODIN_TEST_THREADS=1` (a

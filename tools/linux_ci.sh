@@ -14,7 +14,7 @@ fail=0
 mkdir -p build/text build/linux
 cp build/text/target/release/libgt_text.a build/text/libgt_text.a
 NATIVE=(-define:FONT_BACKEND=native -extra-linker-flags:"-Wl,--allow-multiple-definition")
-for p in base config dbus draw flate font fsx i18n instance platform render ui; do
+for p in base config dbus devtools draw flate font fsx i18n instance platform render ui; do
   if out=$("$ODIN" check "$p" -no-entry-point -vet -target:linux_amd64 "${NATIVE[@]:0:1}" 2>&1); then
     echo "check ok   $p"
   else

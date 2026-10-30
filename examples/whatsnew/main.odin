@@ -10,6 +10,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import "../../devtools"
 import "../../draw"
 import "../../font"
 import "../../platform"
@@ -43,6 +44,7 @@ App :: struct {
 	mono:    font.Font_Id,
 	font:    font.Font_Id,
 	pacer:   render.Pacer,
+	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol
 	slept:   bool,
 	page:    Page,
 	palette: Maybe(Page),   // the page the palette was applied for (Emboss has its own)
@@ -55,6 +57,7 @@ App :: struct {
 	lazy_built: [2]int,   // items built: this build, the last one (shown)
 	mistake:    bool,
 	warnings:   int,   // layout warnings shown
+	found:      int,   // find in page matches shown
 	versions:   bool,
 	needle:     ui.Text_Field,
 	smooth:     int,
@@ -167,7 +170,7 @@ page_lazy :: proc(app: ^App, em: f32) {
 	heading("A lazy column", em)
 	para("ui.lazy_begin and ui.lazy_item: in a scroll box, only the items near the view are built; the others stand as a space of the height they had when last built. 5000 items of different heights here.")
 	gap(em * 0.6)
-	ui.next({width = ui.fill(), height = ui.text_size(), axis = .X, cross = .Center})
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(id = "###bar") {
 		ui.toggle("###all", "Build every item (as before)", &app.lazy_all)
 		gap(em * 2)
@@ -257,7 +260,7 @@ page_rich :: proc(app: ^App, em: f32) {
 	heading("Rich text versions", em)
 	para("rich_paragraph(id, runs, version = v): with a version, the layout cache finds the paragraph by (box, version) instead of hashing all of its text at every frame. The application changes the version when the text changes (opencode native: where the Markdown block lies in the message).")
 	gap(em * 0.6)
-	ui.next({width = ui.fill(), height = ui.text_size(), axis = .X, cross = .Center})
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(id = "###bar") {
 		ui.toggle("###v", "Pass versions", &app.versions)
 		gap(em * 2)
@@ -413,6 +416,7 @@ frame :: proc(app: ^App) {
 	if app.slept { app.after_rest += 1 }
 	if at_once { app.at_once += 1 }
 	app.slept = false
+	devtools.service(app.devtools, &app.s, &app.r)
 	events := platform.poll_events(app.win, false)
 	render.resize(&app.r, app.win.size)
 	// the Emboss page shows a theme with a Gradient finish
@@ -436,7 +440,8 @@ frame :: proc(app: ^App) {
 	build(app)
 	ui.end_build()
 	ms := time.duration_milliseconds(time.tick_since(t0))
-	app.again = app.lazy_built[1] != app.lazy_built[0] || app.under[1] != app.under[0] || len(ui.layout_warnings()) != app.warnings
+	app.again = app.lazy_built[1] != app.lazy_built[0] || app.under[1] != app.under[0] || len(ui.layout_warnings()) != app.warnings || ui.find_count() != app.found
+	app.found = ui.find_count()
 	app.warnings = len(ui.layout_warnings())
 	app.build_ms = ms
 	app.lazy_built[1] = app.lazy_built[0]
@@ -487,6 +492,8 @@ main :: proc() {
 	defer ui.field_destroy(&app.needle)
 	ui.field_set(&app.needle, "the")
 	platform.set_dark_title(app.win, true)
+	app.devtools = devtools.start_from_env(app.win, "What's new in gui_toolkit")
+	defer devtools.stop(app.devtools)
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
 

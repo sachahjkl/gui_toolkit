@@ -318,6 +318,7 @@ State :: struct {
 	lazy_heights:    map[Key]Lazy_Height,
 	lazy_columns:    map[Key]Lazy_Column,
 	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)
+	lazy_more:       bool,             // a lazy column showed spaces where items stand: one more frame (needs_frame)
 	dt:           f32,
 	window_size:  Vec2,
 	boxes_built:  int,
