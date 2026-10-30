@@ -1,6 +1,7 @@
 package font
 
 import "base:runtime"
+import "core:math"
 
 // The Slug glyph store: per (face, glyph) the curve and band texels of slug_build, kept in pages that mirror the two GPU
 // textures (curves RGBA16F, bands RG16UI, both SLUG_TEXTURE_WIDTH wide; page k is row k of each). A glyph's data lies
@@ -24,6 +25,8 @@ Slug_Glyph :: struct {
 	band_max:  [2]u8,      // vertical bands - 1, horizontal bands - 1
 	transform: [4]f32,     // band scale x, y, offset x, y
 	bbox:      [4]f32,     // em units, y up
+	orient:    i8,         // +1: outer contours clockwise (y up, TrueType), -1: counter-clockwise (CFF); the side stem darkening pushes
+	hinted:    bool,       // its outline was hinted for one size (slug_glyph's ppem)
 }
 
 @(private)
@@ -48,7 +51,7 @@ Slug_Store :: struct {
 }
 
 @(private)
-slug_key :: #force_inline proc(face: Font_Id, gid: u16) -> u64 { return u64(face) << 16 | u64(gid) }
+slug_key :: #force_inline proc(face: Font_Id, gid: u16, ppem_q: u16 = 0) -> u64 { return u64(ppem_q) << 48 | (u64(face) & 0xffffffff) << 16 | u64(gid) }
 
 @(private)
 slug_init :: proc(st: ^Slug_Store) {
@@ -67,7 +70,7 @@ slug_destroy :: proc(st: ^Slug_Store) {
 
 @(private)
 slug_forget_face :: proc(st: ^Slug_Store, face: Font_Id) {
-	for k in st.glyphs { if Font_Id(k >> 16) == face { delete_key(&st.glyphs, k) } }
+	for k in st.glyphs { if Font_Id((k >> 16) & 0xffffffff) == face { delete_key(&st.glyphs, k) } }
 }
 
 // Forgets every glyph and clears every page (settings that shape the data changed).
@@ -92,25 +95,29 @@ slug_set_provider :: proc(s: ^State, p: Outline_Provider) {
 }
 
 // The glyph data of `gid` of `face`, built on first use. Call from the threads that draw (the atlas lock is taken).
-slug_glyph :: proc(s: ^State, face: Font_Id, gid: u16) -> Slug_Glyph {
+// `ppem`: the size the glyph is drawn at on the screen (pixels per em, 0: unknown or transformed); at Settings.slug_hint_ppem
+// or less, and when the backend has a hinter, the glyph of that size is hinted (a glyph per size, sizes in quarter pixels).
+slug_glyph :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Glyph {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	atlas_lock(a)
 	defer atlas_unlock(a)
 	st := &a.slug
-	key := slug_key(face, gid)
+	ppem_q: u16 = 0
+	if ppem > 0 && ppem <= s.settings.slug_hint_ppem && s.tb.outline_hinted != nil { ppem_q = u16(clamp(math.round(ppem * 4), 1, 65535)) }
+	key := slug_key(face, gid, ppem_q)
 	if g, ok := st.glyphs[key]; ok {
 		if g.kind == .Curves { st.pages[g.page].last_used = a.clock }
 		return g
 	}
-	g := slug_make(s, face, gid)
+	g := slug_make(s, face, gid, f32(ppem_q) / 4)
 	st.glyphs[key] = g
 	return g
 }
 
 // Caller holds the atlas lock.
 @(private)
-slug_make :: proc(s: ^State, face: Font_Id, gid: u16) -> Slug_Glyph {
+slug_make :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Glyph {
 	atlas_fallback := Slug_Glyph{kind = .Atlas, page = -1}
 	st := &s.atlas.slug
 	f := face_ptr(s, face)
@@ -118,7 +125,9 @@ slug_make :: proc(s: ^State, face: Font_Id, gid: u16) -> Slug_Glyph {
 	if f.color && s.settings.color_glyphs && platform_color_glyph(s, f, gid, 32) { return atlas_fallback }
 	o: Outline
 	defer outline_destroy(&o)
-	if !st.provider(s, face, gid, s.settings.slug_tolerance, &o) { return atlas_fallback }
+	if ppem > 0 {
+		if !s.tb.outline_hinted(s, face, gid, ppem, s.settings.slug_tolerance, &o) { return atlas_fallback }
+	} else if !st.provider(s, face, gid, s.settings.slug_tolerance, &o) { return atlas_fallback }
 	if len(o.quads) == 0 { st.blanks += 1; return Slug_Glyph{kind = .Blank, page = -1} }
 	b: Slug_Built
 	defer slug_built_destroy(&b)
@@ -139,6 +148,7 @@ slug_make :: proc(s: ^State, face: Font_Id, gid: u16) -> Slug_Glyph {
 	return Slug_Glyph{
 		kind = .Curves, page = i32(pi), epoch = p.epoch, loc = {u16(bx), u16(pi)},
 		band_max = {u8(b.n_v - 1), u8(b.n_h - 1)}, transform = b.transform, bbox = b.bbox,
+		orient = outline_orient(&o), hinted = ppem > 0,
 	}
 }
 
@@ -235,4 +245,13 @@ slug_stats :: proc(s: ^State) -> (r: Slug_Stats) {
 		r.used_bytes += p.cu * size_of([4]f16) + p.bu * size_of([2]u16)
 	}
 	return
+}
+
+// +1 when the outline's contours are wound clockwise overall (y up: TrueType's outer contours), -1 counter-clockwise
+// (CFF): the signed area of the endpoints of its curves.
+@(private)
+outline_orient :: proc(o: ^Outline) -> i8 {
+	area: f32
+	for q in o.quads { area += q.p[0].x * q.p[2].y - q.p[2].x * q.p[0].y }
+	return area <= 0 ? 1 : -1
 }

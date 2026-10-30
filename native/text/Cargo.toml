@@ -20,6 +20,7 @@ icu_properties = { version = "=2.4.0", default-features = false, features = ["co
 unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data"] }
 memmap2 = "=0.9.8"
 read-fonts = "=0.46.0"
+skrifa = { version = "=0.49.0", default-features = false, features = ["std"] }   # the auto-hinter (Slug's hinted outlines)
 
 [profile.release]
 opt-level = 3

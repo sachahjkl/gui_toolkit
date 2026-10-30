@@ -274,3 +274,32 @@ cache_pages_and_eviction :: proc(t: ^testing.T) {
 	refs := []font.Page_Ref{{page = g.page, epoch = g.epoch}}
 	testing.expect(t, !font.slug_pages_hold(s, refs))
 }
+
+// Small text: with the native backend, a glyph drawn at slug_hint_ppem or less gets its own outline hinted for that size
+// (the light auto-hinter: the x-height and the baseline on whole pixels); bigger, or of unknown size, it keeps the
+// design outline. Without a hinter (DirectWrite's backend) the setting changes nothing.
+@(test)
+hinted_glyphs_per_size :: proc(t: ^testing.T) {
+	st := font.DEFAULT_SETTINGS
+	st.slug_hint_ppem = 24
+	s := setup(t, st)
+	defer teardown(s)
+	face, ok := font.load_system(s, "Segoe UI")
+	testing.expect(t, ok)
+	x := glyph_of(s, face, 'x')
+	plain := font.slug_glyph(s, face, x)
+	big := font.slug_glyph(s, face, x, 40)
+	testing.expect(t, !plain.hinted && !big.hinted, "unknown and big sizes keep the design outline")
+	testing.expect_value(t, big.bbox, plain.bbox)
+	small := font.slug_glyph(s, face, x, 13)
+	when font.NATIVE_TEXT {
+		testing.expect(t, small.hinted, "13 px per em is hinted")
+		testing.expect_value(t, font.slug_glyph(s, face, x, 13), small)   // cached per size
+		top, bottom := small.bbox[3] * 13, small.bbox[1] * 13
+		testing.expectf(t, abs(top - math.round(top)) < 0.02, "the x-height lands on a pixel: %v", top)
+		testing.expectf(t, abs(bottom) < 0.02, "the baseline stays at 0: %v", bottom)
+		testing.expect(t, small.orient == plain.orient)
+	} else {
+		testing.expect(t, !small.hinted, "no hinter, no hinting")
+	}
+}

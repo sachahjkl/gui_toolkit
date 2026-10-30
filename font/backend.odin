@@ -109,6 +109,9 @@ Text_Backend :: struct {
 	line_breaks:  proc(s: ^State, text: string, out: ^[dynamic]Break_Opportunity) -> bool,
 	// Glyph outlines for Slug (Outline_Provider).
 	outline:      Outline_Provider,
+	// The outline hinted for a size in pixels per em (em units of that size), for Slug's small text; nil: the backend
+	// has no hinter (Settings.slug_hint_ppem then has no effect).
+	outline_hinted: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, tolerance: f32, out: ^Outline) -> bool,
 }
 
 // The system's fonts: what the platform finds, whatever the backend.

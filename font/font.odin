@@ -82,6 +82,12 @@ Settings :: struct {
 	text_renderer:   Text_Renderer,   // how glyph outlines reach the screen (slug_cache.odin for Slug)
 	slug_pages:      int,       // Slug glyph pages (rows of the two textures, 4096 texels each) kept before the least recently used one is reused
 	slug_tolerance:  f32,       // largest distance (em) between a cubic outline and the quadratics Slug draws instead
+	// Slug's small text (see docs/slug-small-text.md):
+	slug_hint_ppem:  f32,       // glyphs drawn at most this many pixels per em (screen-aligned) use outlines hinted for their size
+	                            // (the backend's light auto-hinter, vertical only; cached per size); 0: never
+	slug_darken:     f32,       // stem darkening: edges pushed out by this many pixels at 12 px per em and less, fading out by
+	                            // 36; 0: none
+	slug_supersample_ppem: f32, // glyphs at most this many pixels per em take four coverage samples per pixel; 0: never
 	color_engine:    Color_Engine,   // who draws COLR / CPAL color glyphs (colr.odin, or Direct2D)
 	colr_samples:    int,       // vertical samples per pixel row of the interpreter's scan conversion
 	colr_cache_kb:   int,       // glyph outlines the interpreter keeps per face (KiB) before it drops them all
@@ -112,6 +118,7 @@ DEFAULT_SETTINGS :: Settings{
 	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
+	slug_hint_ppem = 0, slug_darken = 0, slug_supersample_ppem = 0,
 	color_engine = .System, colr_samples = 8, colr_cache_kb = 8192,
 	backend = BUILD_BACKEND,
 }
@@ -205,6 +212,9 @@ sanitize_settings :: proc(st: ^Settings) {
 	st.word_cache = max(st.word_cache, 0)
 	st.slug_pages = clamp(st.slug_pages, 1, SLUG_MAX_PAGES)
 	st.slug_tolerance = clamp(st.slug_tolerance, 1.0 / 65536, 1.0 / 64)
+	st.slug_hint_ppem = clamp(st.slug_hint_ppem, 0, 256)
+	st.slug_darken = clamp(st.slug_darken, 0, 1)
+	st.slug_supersample_ppem = clamp(st.slug_supersample_ppem, 0, 256)
 	st.colr_samples = clamp(st.colr_samples, 1, 64)
 	st.colr_cache_kb = clamp(st.colr_cache_kb, 64, 1 << 20)
 }
@@ -235,7 +245,11 @@ set_settings :: proc(s: ^State, settings: Settings) {
 		slug_clear(&s.atlas.slug)
 		s.atlas.settings_generation += 1
 	}
+	// hinting changes which outline a glyph of a size uses: what was recorded with the other one is stale
+	if st.slug_hint_ppem != old.slug_hint_ppem { s.atlas.settings_generation += 1 }
+	if st.slug_darken != old.slug_darken || st.slug_supersample_ppem != old.slug_supersample_ppem { s.atlas.settings_generation += 1 }
 	s.settings.text_renderer, s.settings.slug_pages, s.settings.slug_tolerance = st.text_renderer, st.slug_pages, st.slug_tolerance
+	s.settings.slug_hint_ppem, s.settings.slug_darken, s.settings.slug_supersample_ppem = st.slug_hint_ppem, st.slug_darken, st.slug_supersample_ppem
 	atlas_unlock(&s.atlas)
 	if st.system_fallback != s.settings.system_fallback {
 		s.settings.system_fallback = st.system_fallback
