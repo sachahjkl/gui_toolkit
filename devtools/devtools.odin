@@ -47,11 +47,13 @@ Server :: struct {
 	stopping: bool,
 	ticking:  ^thread.Thread,
 	waiting:  int,                // len(waits), for the ticker (atomic)
+	cast_dirty: bool,             // the window changed since the last frame of the screencast (atomic)
 	// the UI thread's own
 	captures: [dynamic]Reply_To,  // screenshots asked for, answered when the capture is ready
 	later:    [dynamic]platform.Event,   // events for the next frame (a click's release)
 	waits:    [dynamic]Wait,      // Toolkit.waitFor, waitIdle
 	rec:      Recorder,           // Toolkit.startRecording
+	screencast: Cast,               // Page.startScreencast
 	samples:  [METRIC_RING]Metric_Sample,   // the last frames (Toolkit.metrics)
 	sampled:  int,
 	sample_build: u64,
@@ -141,6 +143,7 @@ stop :: proc(srv: ^Server) {
 	delete(srv.captures)
 	for w in srv.waits { wait_free(w) }
 	delete(srv.waits)
+	cast_stop(srv)
 	delete(srv.later)
 	rec_destroy(&srv.rec)
 	delete(srv.title)
@@ -152,10 +155,12 @@ stop :: proc(srv: ^Server) {
 // commands that came in are carried out, input injected into the window's queue for this frame.
 service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv == nil { return }
+	if len(srv.later) > 0 { cast_touch(srv) }
 	for e in srv.later { platform.inject_event(srv.win, e) }
 	clear(&srv.later)
-	screenshots_poll(srv, r)
+	screenshots_poll(srv, s, r)
 	if s != nil {
+		cast_poll(srv, s, r)
 		if !srv.captured { ui.a11y_capture(s, true); srv.captured = true }
 		metrics_sample(srv, s)
 		rec_poll(srv, s)
@@ -170,7 +175,9 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		handle(srv, s, r, m)
 		delete(m.text, runtime.heap_allocator())
 	}
-	if len(srv.later) > 0 || len(srv.captures) > 0 { platform.wake(srv.win) }   // (the next frame carries them on)
+	if len(srv.later) > 0 || len(srv.captures) > 0 || srv.screencast.pending { platform.wake(srv.win) }   // (the next frame carries them on)
+	sync.atomic_store(&srv.waiting, len(srv.waits) + (srv.screencast.owed ? 1 : 0))
+	sync.atomic_store(&srv.cast_dirty, s != nil && srv.screencast.on && s.build_index + 1 != srv.screencast.last_build)
 	conns_reap(srv)
 }
 
@@ -185,6 +192,7 @@ conns_reap :: proc(srv: ^Server) {
 		for m in srv.inbox { if m.conn == c { continue outer } }
 		for w in srv.captures { if w.conn == c { continue outer } }
 		for w in srv.waits { if w.to.conn == c { continue outer } }
+		if srv.screencast.on && srv.screencast.to.conn == c { continue }
 		thread.join(c.thread)
 		thread.destroy(c.thread)
 		free(c, runtime.heap_allocator())
@@ -247,12 +255,15 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		event(to.conn, to.session, "Runtime.executionContextCreated", fmt.tprintf(`{{"context":{{"id":1,"origin":"toolkit://window","name":"","auxData":{{"isDefault":true,"type":"default","frameId":"%s"}}}}}}`, srv.id))
 		return
 	case "Input.dispatchMouseEvent":
+		cast_touch(srv)
 		mouse_event(srv, p)
 		strings.write_string(&sb, "{}")
 	case "Input.dispatchKeyEvent":
+		cast_touch(srv)
 		key_event(srv, p)
 		strings.write_string(&sb, "{}")
 	case "Input.insertText":
+		cast_touch(srv)
 		insert_text(srv, str(p["text"]))
 		strings.write_string(&sb, "{}")
 	case "Page.captureScreenshot":
@@ -269,6 +280,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		ax_write_nodes(&sb, srv, ui.a11y_tree(s), ax_matches(ui.a11y_tree(s), p)[:], false)
 	case "Toolkit.axAction":
 		if e := ax_action(&sb, srv, s, p); e != "" { error_reply(to, -32000, e); return }
+		cast_touch(srv)
 	case "Toolkit.axAudit":
 		ax_audit(&sb, srv, s)
 	case "Toolkit.waitFor":
@@ -287,11 +299,24 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 			strings.write_string(&sb, json_quote(w))
 		}
 		strings.write_string(&sb, "]}")
+	case "Toolkit.frames":
+		frames_write(&sb, srv, p)
 	case "Toolkit.startRecording":
 		rec_start(srv, s, p)
-		strings.write_string(&sb, "{}")
+		fmt.sbprintf(&sb, `{{"now":%.3f}}`, ui.now_ms())
+	case "Toolkit.pollRecording":
+		rec_take(srv, &sb)
 	case "Toolkit.stopRecording":
 		rec_stop(srv, &sb)
+	case "Page.startScreencast":
+		cast_start(srv, to, p)
+		strings.write_string(&sb, "{}")
+	case "Page.stopScreencast":
+		cast_stop(srv)
+		strings.write_string(&sb, "{}")
+	case "Page.screencastFrameAck":
+		cast_ack(srv, s)
+		strings.write_string(&sb, "{}")
 	case "Browser.close":
 		platform.inject_event(srv.win, platform.Event{kind = .Close})
 		strings.write_string(&sb, "{}")
@@ -304,6 +329,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Toolkit.click":
 		b := find_one(s, p)
 		if b == nil { error_reply(to, -32000, "no box with that name or text"); return }
+		cast_touch(srv)
 		x, y := click(srv, b, p)
 		fmt.sbprintf(&sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
 	case "Toolkit.state":
@@ -613,6 +639,8 @@ write_matches :: proc(sb: ^strings.Builder, srv: ^Server, ms: [dynamic]^ui.Box) 
 @(private)
 screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.Object) -> bool {
 	if len(srv.captures) == 0 {
+		// (a frame of the screencast on its way gives way: it asks again; this one may want a part of the window)
+		if srv.screencast.pending { render.capture_cancel(r); srv.screencast.pending = false }
 		rect: [4]int
 		if clip, ok := p["clip"].(json.Object); ok {
 			d := dpi(srv)
@@ -626,7 +654,15 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.
 }
 
 @(private)
-screenshots_poll :: proc(srv: ^Server, r: ^render.Renderer) {
+screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
+	if srv.screencast.pending {
+		pixels, size, status := render.capture_poll(r, context.temp_allocator)
+		#partial switch status {
+		case .Ready: cast_frame(srv, s, pixels, size)
+		case .None, .Failed: srv.screencast.pending = false
+		}
+		return
+	}
 	if len(srv.captures) == 0 { return }
 	pixels, size, status := render.capture_poll(r, context.temp_allocator)
 	switch status {

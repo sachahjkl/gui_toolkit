@@ -17,9 +17,13 @@ Recorder :: struct {
 	on:       bool,
 	injected: bool,               // the events of the protocol too (a test of the recorder)
 	seen:     u64,                // the last build read
-	lines:    [dynamic]string,    // (the server's heap)
+	lines:    [dynamic]Rec_Line,  // (the server's heap)
+	taken:    int,                // lines Toolkit.pollRecording has given
 	text:     [dynamic]u8,        // characters typed, not yet a line
+	text_at:  f64,
 	scroll:   [2]f32,             // wheel notches, not yet a line
+	scroll_ms: f64,
+	touched:  f64,                // the last character or notch: a pause ends them
 	scroll_at: [2]f32,
 	press:    [2]f32,             // the press under way (its release makes it a click, or a drag)
 	pressing: bool,
@@ -28,6 +32,13 @@ Recorder :: struct {
 	dragged:  bool,
 }
 
+@(private)
+Rec_Line :: struct { text: string, at: f64 }   // at: ui.now_ms
+
+// A pause this long ends the characters or wheel notches being gathered (Toolkit.pollRecording).
+@(private)
+REC_PAUSE_MS :: 400
+
 // Further than this between press and release: a drag.
 @(private)
 DRAG_PX :: 4
@@ -35,18 +46,18 @@ DRAG_PX :: 4
 @(private)
 rec_line :: proc(r: ^Recorder, line: string) {
 	rec_flush(r)
-	append(&r.lines, strings.clone(line, runtime.heap_allocator()))
+	append(&r.lines, Rec_Line{strings.clone(line, runtime.heap_allocator()), ui.now_ms()})
 }
 
 // What was accumulating (text, wheel notches) becomes its line.
 @(private)
 rec_flush :: proc(r: ^Recorder) {
 	if len(r.text) > 0 {
-		append(&r.lines, fmt.aprintf("type %s", json_quote(string(r.text[:])), allocator = runtime.heap_allocator()))
+		append(&r.lines, Rec_Line{fmt.aprintf("type %s", json_quote(string(r.text[:])), allocator = runtime.heap_allocator()), r.text_at})
 		clear(&r.text)
 	}
 	if r.scroll.y != 0 {
-		append(&r.lines, fmt.aprintf("wheel %.0f %.0f %g", r.scroll_at.x, r.scroll_at.y, r.scroll.y, allocator = runtime.heap_allocator()))
+		append(&r.lines, Rec_Line{fmt.aprintf("wheel %.0f %.0f %g", r.scroll_at.x, r.scroll_at.y, r.scroll.y, allocator = runtime.heap_allocator()), r.scroll_ms})
 		r.scroll = {}
 	}
 }
@@ -61,8 +72,9 @@ rec_start :: proc(srv: ^Server, s: ^ui.State, p: json.Object) {
 @(private)
 rec_clear :: proc(r: ^Recorder) {
 	h := runtime.heap_allocator()
-	for l in r.lines { delete(l, h) }
+	for l in r.lines { delete(l.text, h) }
 	clear(&r.lines)
+	r.taken = 0
 	clear(&r.text)
 	r.scroll = {}
 }
@@ -84,10 +96,25 @@ rec_stop :: proc(srv: ^Server, sb: ^strings.Builder) {
 	strings.write_string(sb, `{"lines":[`)
 	for l, i in r.lines {
 		if i > 0 { strings.write_byte(sb, ',') }
-		strings.write_string(sb, json_quote(l))
+		strings.write_string(sb, json_quote(l.text))
 	}
 	strings.write_string(sb, "]}")
 	rec_clear(r)
+}
+
+// Toolkit.pollRecording: the lines since the last time, with when they happened. (What a timeline reads while it
+// records, to take a picture after each.)
+@(private)
+rec_take :: proc(srv: ^Server, sb: ^strings.Builder) {
+	r := &srv.rec
+	if ui.now_ms() - r.touched > REC_PAUSE_MS { rec_flush(r) }
+	fmt.sbprintf(sb, `{{"now":%.3f,"lines":[`, ui.now_ms())
+	for l, i in r.lines[r.taken:] {
+		if i > 0 { strings.write_byte(sb, ',') }
+		fmt.sbprintf(sb, `{{"line":%s,"t":%.3f}}`, json_quote(l.text), l.at)
+	}
+	strings.write_string(sb, "]}")
+	r.taken = len(r.lines)
 }
 
 // Each frame: the input the last build took. Its tree is the one the press was made on (the click acts at the release).
@@ -129,10 +156,14 @@ rec_poll :: proc(srv: ^Server, s: ^ui.State) {
 			}
 		case .Scroll:
 			if len(r.text) > 0 { rec_flush(r) }
+			if r.scroll.y == 0 { r.scroll_ms = ui.now_ms() }
+			r.touched = ui.now_ms()
 			r.scroll += e.delta
 			r.scroll_at = {e.pos.x / d, e.pos.y / d}
 		case .Text:
 			if r.scroll.y != 0 { rec_flush(r) }
+			if len(r.text) == 0 { r.text_at = ui.now_ms() }
+			r.touched = ui.now_ms()
 			buf, n := encode_rune(e.text)
 			append(&r.text, ..buf[:n])
 		case .Key_Press:
