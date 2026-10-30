@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.56.0] - 2026-10-30
+
+### Added
+- **Timelines**: `tools/cdp.mjs record --timeline <dir>` keeps a run whole (each action with when it happened, a picture after it, every frame's time), as a page that stands alone, a `timeline.json` and a Chrome trace; `play <timeline.json> --timeline <dir>` runs it again, `--realtime` with its pauses, and fails if a picture differs. `tools/timeline.mjs` for scripts. `Toolkit.frames` and `Toolkit.pollRecording` feed it.
+- **`Page.startScreencast`**: the window's frames as events, one at a time, limited in rate, none at rest; `tools/cdp.mjs cast <dir>`.
+
 ## [0.55.0] - 2026-10-30
 
 ### Added
