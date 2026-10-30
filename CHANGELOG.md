@@ -3,6 +3,17 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.52.0] - 2026-10-30
+
+### Added
+- **`tools/slugsmall`**: DirectWrite's bitmaps against Slug with each combination of its small-text settings, stacked in one PNG per scene and scale with a 3x enlargement (`odin run tools/slugsmall -define:FONT_BACKEND=native`).
+- **Slug: four coverage samples per pixel** (`font.Settings.slug_supersample_ppem`) for glyphs at that size or less, on a rotated grid, each over its own half-pixel box. Off by default.
+- **Slug: stem darkening** (`font.Settings.slug_darken`): every edge of small glyphs moves outwards by that many pixels at 12 px per em and less, fading out by 36, on the side the glyph's winding says (`Slug_Glyph.orient`). Off by default.
+- **Slug: hinted outlines for small text** (`font.Settings.slug_hint_ppem`): screen-aligned glyphs at that size or less use an outline hinted for their size by the native backend's light auto-hinter (skrifa: vertical only, the baseline and x-height on whole pixels), cached per quarter pixel; `gt_glyph_outline_hinted`, `Text_Backend.outline_hinted`. Off by default.
+
+### Fixed
+- **Segmented controls**: the labels are no longer engraved (`button segment sheen` 0): lit below on the pill and shadowed above on the track, the selected and the other labels looked a pixel apart.
+
 ## [0.51.0] - 2026-10-29
 
 ### Added
