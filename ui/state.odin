@@ -129,6 +129,9 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	build_open = true
 	g = s
 	s.build_index += 1
+	s.build_start = now_ms()
+	s.last_events = p.events
+	s.metrics.lazy_built = 0
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)
@@ -204,8 +207,11 @@ end_build :: proc() {
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 
 	menus_raise(s)
+	t_layout := now_ms()
+	s.metrics.build_ms = t_layout - s.build_start
 	layout(s)
 	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
+	s.metrics.layout_ms = now_ms() - t_layout
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {
 		chrome_collect(s)
@@ -249,6 +255,7 @@ end_build :: proc() {
 		s.clicked_key[b] = 0
 	}
 	s.double_key = 0
+	s.metrics.total_ms = now_ms() - s.build_start
 }
 
 // True while something is still animating, or posted calls wait beyond the last build's budget: the app loop should

@@ -483,3 +483,29 @@ tree_cost_is_measured :: proc(t: ^testing.T) {
 	n, ms = ui.a11y_cost(&f.s)
 	testing.expectf(t, n > 10 && ms > 0, "%d nodes in %.3f ms", n, ms)
 }
+
+// What a reader cannot name is told: a click target with nothing to say, not one with a text, a name, or set aside.
+@(test)
+controls_without_a_name_are_found :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	ui.begin_build(&f.s, {
+		window_size = WINDOW, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+	})
+	ui.next({width = ui.px(40), height = ui.px(40)})
+	ui.build_box({.Clickable}, "###mute")
+	ui.next({width = ui.px(40), height = ui.px(40)})
+	ui.a11y({name = "Named"})
+	ui.build_box({.Clickable}, "###named")
+	ui.button("Has a text###text")
+	ui.next({width = ui.px(40), height = ui.px(40)})
+	ui.a11y({ignore = true})
+	ui.build_box({.Clickable}, "###aside")
+	ui.end_build()
+	got := ui.a11y_unnamed(&f.s)
+	if testing.expect_value(t, len(got), 1) { testing.expect_value(t, got[0].name, "mute") }
+}

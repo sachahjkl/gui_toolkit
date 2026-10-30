@@ -322,6 +322,9 @@ State :: struct {
 	dt:           f32,
 	window_size:  Vec2,
 	boxes_built:  int,
+	metrics:      Build_Metrics,
+	build_start:  f64,                // (now_ms)
+	last_events:  []platform.Event,   // the last build's input (build_events)
 	anim_busy:    bool,
 	wake_ms:      int,                // ask the app loop for a timed wake (caret blink)
 	theme_serial: u64,                // Theme.serial seen by the last build
