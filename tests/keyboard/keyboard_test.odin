@@ -785,3 +785,101 @@ lazy_items_left_empty_are_warned_of :: proc(t: ^testing.T) {
 	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
 	testing.expect_value(t, len(f.s.layout_warned), 1)
 }
+
+// A long lazy column never builds every item: not at its first frame (items never built stand as an estimate), not when
+// its width changes (the old heights stand until the items come near the view).
+@(private = "file") lz2_w: f32 = 300
+@(private = "file") lz2_h: f32 = 40
+@(private = "file") lz2_built: int
+@(private = "file") lz2_scroller: ^ui.Box
+
+@(private = "file")
+build_lazy2 :: proc(f: ^Fx, user: rawptr) {
+	lz2_built = 0
+	ui.next({width = ui.px(lz2_w), height = ui.px(200)})
+	if ui.scroll_y("###lz") {
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###col") {
+			lz := ui.lazy_begin()
+			for i in 0 ..< 2000 {
+				if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+					lz2_built += 1
+					ui.next({width = ui.fill(), height = ui.px(lz2_h)})
+					ui.label(fmt.tprintf("item %d###l", i))
+				}
+			}
+		}
+	}
+	lz2_scroller = ui.prev_box("###lz")
+}
+
+@(test)
+lazy_column_never_builds_everything :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	lz2_w, lz2_h = 300, 40
+	frame(f, nil, build_lazy2, nil)
+	testing.expectf(t, lz2_built < 100, "the first frame builds a screen's worth, not 2000: %d", lz2_built)
+	for _ in 0 ..< 2 { frame(f, nil, build_lazy2, nil) }
+	testing.expectf(t, lz2_built <= 16, "then a screen and a margin: %d", lz2_built)
+	lz2_w = 400
+	frame(f, nil, build_lazy2, nil)
+	testing.expectf(t, lz2_built <= 16, "a new width rebuilds what is near the view only: %d", lz2_built)
+}
+
+// When the items near the view change height (built again at another width), the item the view was on keeps its place
+// on screen: in the very frame the heights change, not one frame later.
+@(test)
+lazy_column_keeps_the_view_on_its_item :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	lz2_w, lz2_h = 300, 40
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy2, nil) }
+	lz2_scroller.view_target.y = 20000
+	lz2_scroller.view_off.y = 20000
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy2, nil) }
+	at :: proc(id: string) -> f32 {
+		b := ui.box_at("###lz", "###col", id)
+		return b != nil ? b.rect.min.y : -1
+	}
+	before := at("###it500")
+	testing.expectf(t, before >= 0, "item 500 is on screen (view at 20000, 40 px items)")
+	lz2_h = 60   // every item built from now on is taller: those above the view in the band too
+	frame(f, nil, build_lazy2, nil)
+	testing.expect_value(t, at("###it500"), before)
+	frame(f, nil, build_lazy2, nil)
+	testing.expect_value(t, at("###it500"), before)
+}
+
+// A find whose scope is no longer built (a page left while the needle stays) finds nothing instead of reading the
+// freed frame memory of that subtree.
+@(test)
+find_with_a_scope_no_longer_built :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	@(static) show: bool
+	build :: proc(f: ^Fx, user: rawptr) {
+		if show {
+			ui.next({width = ui.px(300), height = ui.children_sum(), axis = .Y})
+			if ui.column(id = "###scope") {
+				runs := [?]ui.Rich_Run{{text = "find the needle here"}}
+				ui.next({width = ui.fill()})
+				ui.rich_paragraph("###rp", runs[:])
+			}
+			if b := ui.box_at("###scope"); b != nil { ui.find("needle", b.key) }
+		}
+	}
+	show = true
+	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
+	testing.expect_value(t, ui.find_count(), 1)
+	show = false
+	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
+	testing.expect_value(t, ui.find_count(), 0)
+	ui.find("")
+}

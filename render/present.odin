@@ -71,7 +71,6 @@ Present_State :: struct {
 	presents, displayed, missed: u64,      // totals
 	probe_tick:    time.Tick,
 	max_latency:   int,                    // the swap chain's MaximumFrameLatency (0: not set yet = 1)
-	slot_taken:    bool,                   // the latency object was waited on since the last present (latency_presented)
 	latency_debt:  int,                    // counts the latency object holds beyond max_latency since it was lowered (see latency_lowered)
 }
 
@@ -172,15 +171,6 @@ latency_lowered :: proc(p: ^Present_State, to: int) {
 	p.max_latency = to
 }
 
-// A present (frame_end). A frame presented without waiting on the latency object first (one shown at once, an inner
-// frame, an application that does not wait) still gives the object a count back when it reaches the screen: one count
-// more than the slots, for good, unless it is owed (every later wait would return at once and frames would queue behind a
-// blocking Present). `waited`: the object was waited on since the last present.
-@(private)
-latency_presented :: proc(p: ^Present_State, waited: bool) {
-	if !waited { p.latency_debt += 1 }
-}
-
 @(private)
 latency_drain :: proc(p: ^Present_State, handle: win.HANDLE) {
 	when ODIN_OS == .Windows {
@@ -203,8 +193,6 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	call := time.tick_now()
 	ps := profile_present_begin(r)
 	hr := r.swapchain->Present(sync, flags)
-	if r.latency_handle != nil && !hr_failed(hr) { latency_presented(p, p.slot_taken) }
-	p.slot_taken = false
 	profile_present_end(r, ps)
 	now := time.tick_now()
 	if hr_failed(hr) { return hr }
