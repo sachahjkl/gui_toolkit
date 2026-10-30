@@ -3,6 +3,35 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.55.0] - 2026-10-30
+
+### Added
+- **`tests/e2e`, in the CI**: `examples/whatsnew --headless` driven over the protocol: no layout warning, nothing a reader cannot name and the reference image on every page, the scenarios that broke before, exit code 0.
+- **`Toolkit.waitFor` and `Toolkit.waitIdle`**: a script says what it waits for (a box there or gone, nothing moving) instead of sleeping a guess; `wait-for` and `idle` in `tools/cdp.mjs`.
+- **A recorder**: `Toolkit.startRecording` / `stopRecording` (`tools/cdp.mjs record`, `play`) write what a person does as a script, clicks by what they hit rather than where.
+- **`Toolkit.metrics`**: build, layout and frame times (p50, p95, max) of the last 240 frames, boxes, lazy items built, the accessibility tree's cost, and the latency input to screen in a `RENDER_PROBE` build. `ui.build_metrics` reads the last build's from the program.
+- **Accessibility actions and audit over devtools**: `Toolkit.axAction` asks an action of a node by role and name as a screen reader does, `Toolkit.axAudit` (`ui.a11y_unnamed`) lists the controls a reader cannot name, which are not even nodes of the tree.
+- **`devtools`: a window driven over the Chrome DevTools Protocol**: `devtools.start_from_env(win)` (TOOLKIT_DEVTOOLS=<port>, 127.0.0.1 only) and `devtools.service` each frame. Input.dispatchMouseEvent / dispatchKeyEvent / insertText go into the window's queue (no mouse or keyboard of the machine, no focus needed), Page.captureScreenshot returns the presented frame as PNG, Accessibility.getFullAXTree and queryAXTree the tree a screen reader gets, and the Toolkit domain reads the box tree (getTree, find, click by name or text). A request from a browser's page (an `Origin` header), for another `Host` or without the target's random id is refused. Puppeteer and Playwright attach (docs/devtools.md says what works). `tools/cdp.mjs` drives it from the command line; docs/devtools.md. `ui.box_text` and `ui.box_current` read a box from outside a build.
+- **`examples/whatsnew`**: a page per change of this version, each shown live (frames presented at once, items a lazy column built, build times, the layout warning, the emboss, next_merge, find in page, box_at).
+- **`ui.box_at(ids..)`**: the box of the last build at a path of ids from the root, for a test, a tool or an overlay working from outside a build.
+- **`ui.next_merge(m)`**: adds to the pending `next` instead of replacing it, so a helper styles its box while its caller's width or position stay. `ui.merge_mod` is public and merges every field (flags added).
+- **A lazy column, `ui.lazy_begin` / `ui.lazy_item`**: inside a scroll box only the items near the view are built, the others stand as one space of the height they had when last built (5000 wrapped paragraphs: 3 ms a frame instead of 100, a first frame of 12 ms instead of 1.4 s). An item never built stands as the mean height; one built at another width keeps its old height until it comes near the view; the view stays on the item it showed when heights change (after the layout, in the same frame); it also builds around where the view is heading (a wheel's burst), and asks for one more frame when the view still shows spaces. `lazy_begin(all = true)` builds every item (find in page). Like `row()`, the item is the block of the `if`: a column whose items all close empty (`if !lazy_item(...) { continue }`) is warned of.
+- **`rich_paragraph(..., version = v)`**: with a version the layout cache finds the paragraph by its box and version instead of hashing all of its text at every frame; the caller changes the version when the text changes.
+- **Layout warnings**: a percentage inside a box sized by its children (it resolves against a distant ancestor, often the window) is said once per box on stderr when it grows past half the window. On in debug builds; `ui.set_layout_warnings(s, on)`, and `ui.layout_warnings()` returns the messages for a tool or a test.
+- **`platform.input_pending(w)`, `platform.event_is_input(kind)`**: whether input waits in the window's queue, read without taking it (the events stay for the next `poll_events`).
+- **`render.Pacer`, `render.pace_frame`, `render.paced_present`**: the cadence model executed for a window, as applications wrote it by hand: the screen's plan adopted when the display changes, the swap chain's slot waited for, its latency set. It does not show input after a rest at once: measured, that one frame left the swap chain a frame deeper for the rest of the session. `examples/hello` uses it; docs/pacing.md.
+
+### Changed
+- **docs**: font-backend.md shows how a program with a Rust crate of its own builds the text backend into it (one Rust standard library per program) and why the prebuilt wgpu-native cannot join it on Windows; text.md documents find in page and its limits.
+- **Tests that drive the global UI state refuse to run on several threads**: keyboard, status, states, ui_robust and a11y fail to compile without `-define:ODIN_TEST_THREADS=1`, with a message that says why (they failed with bad frees or never ended). `tools/test_backends.ps1` passes the define to a11y too.
+- **A frame less between input and screen** (Direct3D 11): the renderer takes one of the swap chain latency object's counts for good, so a frame starts when the last one is on screen instead of queueing behind it. Measured in opencode native (RENDER_PROBE, a fast hand over a list, six runs each): 49 ms from input to screen before, 34 after, still 60 frames a second. The price: a frame that takes longer than a refresh waits for the next one.
+
+### Fixed
+- **Find in page no longer reads freed memory** when its scope is not built any more (a page left while the needle stays): such a scope finds nothing. It crashed the next layout.
+- **WebGPU: no white window while the first frame compiles**: on Direct3D 12 with FXC the first frame's pipelines take seconds; the renderer presents the theme's background first, and says on stderr to put `dxcompiler.dll` and `dxil.dll` next to the program when that first frame took over a second.
+- **The wheel moves the hover**: rolling the wheel without moving the mouse makes the pointer's position valid again, so the highlight follows the row that came under it instead of staying on one scrolled away.
+- **Embossed text by contrast** (Gradient finish): the groove or the light edge comes from the text against what is under it (the box's own background or the nearest opaque one up), not from the text alone: grey text on a dark button no longer takes a light edge under it.
+
 ## [0.54.0] - 2026-10-30
 
 ### Added
