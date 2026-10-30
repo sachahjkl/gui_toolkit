@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.54.0] - 2026-10-30
+
+### Added
+- **`Build_Params.smooth_scroll`** (`Follow`, `On`, `Off`): whether scrolling glides, as the interface's animations say (the default) or always / never. An application can keep the wheel's glide when the system turns animations off (Windows' "Animation effects"), where every notch used to jump.
+
 ## [0.53.0] - 2026-10-30
 
 ### Added
