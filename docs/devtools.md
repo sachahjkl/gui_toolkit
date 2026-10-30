@@ -18,8 +18,22 @@ devtools.service(srv, &ui_state, &renderer)
 ```
 
 `start(win, port, title)` starts it on a port of your choosing. With nil (the variable unset) `service` and `stop` do
-nothing, so the calls stay in a release build. It listens on 127.0.0.1 only; whatever can reach that port drives the
-window, so keep it opt-in.
+nothing, so the calls stay in a release build.
+
+## Who can reach it
+
+It listens on 127.0.0.1 only, and 127.0.0.1 alone does not keep a browser out: a WebSocket is not bound by the
+same-origin policy, so any page open on the machine could connect and drive the window, and a name made to resolve to
+127.0.0.1 could read the endpoints. So these are refused:
+
+- a request with an `Origin` header (403): what a browser's page sends and a tool's client does not;
+- a `Host` other than `127.0.0.1:<port>`, `localhost:<port>`, `[::1]:<port>` (403);
+- a WebSocket on a path without the target's id (404), a random id given by `/json/list`.
+
+What runs on the machine as any user can still connect, as with Chrome's own `--remote-debugging-port`. In an
+application that acts on what it is told (an agent), that is running commands: keep it opt-in, and off for what you
+ship to people. A client that stops reading is dropped after 5 s (the answers are written on the UI thread), and a
+message over 16 MB ends its connection.
 
 `service` runs on the UI thread: it takes the commands the connection threads received, injects their input for the
 frame about to be built, reads the box tree of the last build, and answers. A command wakes the window
@@ -40,8 +54,10 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Input.insertText` | text, as typed. |
 | `Page.captureScreenshot` | PNG of the window's pixels (`clip` in CSS pixels), from the renderer's capture: the frame as presented. |
 | `Page.getLayoutMetrics` | the window's size in CSS pixels, its DPI scale as the visual viewport's zoom. |
-| `Accessibility.getFullAXTree` | the boxes a reader meets: their role (the widget's, or button, textbox, StaticText, scrollable), name, children. |
-| `Browser.getVersion`, `Target.getTargets`, `Target.getTargetInfo`, `Page.getFrameTree` | discovery. |
+| `Accessibility.getFullAXTree` | the tree a screen reader gets (`ui.a11y_tree`, built while the server runs): role in Chrome's vocabulary (button, textbox, StaticText, checkbox...), name, value, properties (focused, disabled, expanded, selected, checked...), children; and, beyond the protocol, `bounds` in CSS pixels and `actions`. |
+| `Accessibility.queryAXTree` | the nodes with a `role` and an `accessibleName` (contained, case ignored; `exact` for all of it). |
+| `Browser.getVersion`, `Target.*`, `Page.getFrameTree` | discovery, and attaching in sessions (`Target.attachToTarget`, `setAutoAttach`, the browser's endpoint): what Puppeteer and Playwright use. |
+| `Browser.close` | closes the window, as its close button. |
 | `*.enable`, `*.disable`, `*.set*` | accepted, nothing to do (what clients send on attaching). |
 | `Runtime.evaluate` | refused: there is no JavaScript. |
 
@@ -53,6 +69,13 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 | `Toolkit.find` `{name? text?}` | boxes named `name` exactly, or whose text contains `text` (ignoring case), in tree order. |
 | `Toolkit.click` `{name? text? index? count? button?}` | a click on the middle of the match (the nearest clickable box around it): a move and a press now, the release at the next frame; `count` 2 for a double click. |
 | `Toolkit.state` | the build counter, the focused and hovered keys, the size and DPI scale. |
+| `Toolkit.waitFor` `{name? text? gone? timeout?}` | answers when such a box is there (its nodes), or gone; an error after `timeout` ms (5000). It counts from two builds on, so input sent before it has been seen. |
+| `Toolkit.waitIdle` `{timeout?}` | answers when three builds in a row had nothing moving: `{idle: true}`, or `{idle: false}` at the timeout (a page animating for good). Before a screenshot, in place of a sleep. |
+| `Toolkit.metrics` `{reset?}` | the last 240 frames: `buildMs`, `layoutMs`, `totalMs`, `frameMs` (p50, p95, max), `boxes`, `lazyBuilt`, `animating`, `axNodes`, `axMs`; `latencyMs` input to screen in a build with `-define:RENDER_PROBE=true` (null otherwise). `frameMs` counts rests: a program at rest draws nothing. |
+| `Toolkit.warnings` | the layout's warnings of this build (`ui.set_layout_warnings`). |
+| `Toolkit.axAction` `{role? name? exact? index? nodeId? action? value?}` | an action on an accessible node, as a screen reader asks it (`ui.a11y_inject`): `Click` by default, `Focus`, `Set_Value`, `Increment`, `Scroll_Into_View`... (`platform.A11y_Action`). An error if the node does not offer it. |
+| `Toolkit.axAudit` | `unnamed`: the enabled controls with no name, no text in them and no placeholder (`ui.a11y_unnamed`). A clickable box without one is not even a node: a reader does not know it exists. |
+| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is. `injected`: the protocol's events too. |
 
 ## tools/cdp.mjs
 
@@ -61,13 +84,27 @@ A client for the command line (Node 22+, no package):
 ```
 TOOLKIT_DEVTOOLS=9222 build\whatsnew.exe
 node tools/cdp.mjs tree
-node tools/cdp.mjs click "Lazy column" , wait 200 , wheel 700 400 30 , wait 300 , shot out.png
-node tools/cdp.mjs key ctrl+f , type odin , key Enter
-node tools/cdp.mjs raw Accessibility.getFullAXTree
+node tools/cdp.mjs click "Lazy column" , idle , wheel 700 400 30 , idle , shot out.png
+node tools/cdp.mjs key ctrl+f , type odin , key Enter , wait-for "matches"
+node tools/cdp.mjs press "Send" --role button
+node tools/cdp.mjs audit
+node tools/cdp.mjs metrics --reset , click "Lazy column" , idle , metrics
+node tools/cdp.mjs record steps.txt      # until Enter; then: node tools/cdp.mjs play steps.txt
 ```
 
-Puppeteer and Playwright's CDP mode (`connectOverCDP`) attach to the target too; their page APIs that need a DOM or
-JavaScript do not apply, `page.mouse`, `page.keyboard` and `page.screenshot` go through the commands above.
+`tools/cdp_client.mjs` is the same as a module, for a script of your own; `tests/e2e/run.mjs` is an example of one.
+
+## Puppeteer and Playwright
+
+Both attach (checked with puppeteer-core and playwright-core: `puppeteer.connect({browserURL})`,
+`chromium.connectOverCDP(url)`). What goes through the commands above works, what needs a DOM or JavaScript does not:
+
+| | Puppeteer | Playwright |
+|---|---|---|
+| `page.mouse`, `page.keyboard` | yes | yes |
+| a CDP session (`Toolkit.*`, `Page.captureScreenshot`...) | `page.createCDPSession()` | `context.newCDPSession(page)` |
+| `page.screenshot()` | yes | no: it evaluates JavaScript first and times out. `Page.captureScreenshot` in a CDP session instead. |
+| `page.evaluate`, locators, selectors | no | no |
 
 ## Limits
 
@@ -75,3 +112,6 @@ JavaScript do not apply, `page.mouse`, `page.keyboard` and `page.screenshot` go 
 - Input arrives as events, not as system input: what reads the system's cursor or key state directly does not see it
   (`Event.injected` says which events these are).
 - A screenshot is the next presented frame: a window that is not drawing is woken for it.
+- `Toolkit.click` clicks where the box is: a box scrolled out of its view is clicked outside it. `Toolkit.axAction` does
+  not depend on where it is.
+- While the server runs the accessibility tree is built each frame (`axMs` in the metrics says what that costs).

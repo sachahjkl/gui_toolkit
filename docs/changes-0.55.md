@@ -124,8 +124,12 @@ devtools.service(srv, &ui_state, &renderer)            // each frame, before pol
 
 Then any CDP client drives the window on 127.0.0.1:<port>: `Input.dispatchMouseEvent` / `dispatchKeyEvent` /
 `insertText` (injected into the window's queue: no real mouse, no focus needed), `Page.captureScreenshot` (PNG of the
-presented frame), `Accessibility.getFullAXTree`, and the `Toolkit` domain: `getTree`, `find`, `click` by box name or
-text, `state`. `tools/cdp.mjs` is a command-line client (`node tools/cdp.mjs click "Settings" , wait 200 , shot a.png`).
+presented frame), `Accessibility.getFullAXTree` and `queryAXTree` (the tree a screen reader gets), and the `Toolkit`
+domain: `getTree`, `find`, `click`, `state`, `waitFor`, `waitIdle`, `metrics`, `warnings`, `axAction`, `axAudit`,
+`startRecording`. `tools/cdp.mjs` is a command-line client (`node tools/cdp.mjs click "Settings" , idle , shot a.png`).
+Puppeteer and Playwright attach too (their `page.mouse`, `page.keyboard`, a CDP session; see the table in docs/devtools.md).
+A request with an `Origin` header is refused, so a web page cannot drive the window; for Wren, which loads web pages,
+keep it off outside development all the same, since anything local can connect.
 For Wren, whose pages are browser pages: this drives Wren's own interface (its chrome, its panels), not the web content;
 a page's DOM stays Wren's own business. `ui.box_text(b)` and `ui.box_current(s, b)` read a box from outside a build.
 

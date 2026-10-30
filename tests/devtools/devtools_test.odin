@@ -31,13 +31,36 @@ png_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, bytes.equal(img.pixels.buf[:], px[:]), "same pixels")
 }
 
-PORT :: 9471
+PORT :: 9471   // (a port per test: they run at once)
+PORT_HTTP :: 9472
+PORT_FRAMES :: 9473
 
 @(private = "file")
 Client :: struct {
+	id:       string,   // the target's, in the path
 	done:     bool,
 	upgraded: bool,
 	reply:    string,
+}
+
+// What the server says to one HTTP request with these headers: its status line and the rest.
+@(private = "file")
+http_get :: proc(path, headers: string) -> string {
+	sock, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = PORT_HTTP})
+	if err != nil { return "" }
+	defer net.close(sock)
+	req := strings.concatenate({"GET ", path, " HTTP/1.1\r\n", headers, "\r\n"}, context.temp_allocator)
+	net.send_tcp(sock, transmute([]u8)req)
+	buf: [4096]u8
+	got := 0
+	for got < len(buf) {
+		n, e := net.recv_tcp(sock, buf[got:])
+		if e != nil || n <= 0 { break }
+		got += n
+		if strings.contains(string(buf[:got]), "\r\n\r\n") && !strings.contains(string(buf[:got]), "Content-Length") { break }
+		if strings.contains(string(buf[:got]), "101 Switching") { break }
+	}
+	return strings.clone(string(buf[:got]), context.temp_allocator)
 }
 
 // A WebSocket client as a tool would be: the upgrade, one command (masked, as clients must), its answer.
@@ -47,7 +70,7 @@ client :: proc(c: ^Client) {
 	sock, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = PORT})
 	if err != nil { return }
 	defer net.close(sock)
-	req := "GET /devtools/page/x HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+	req := strings.concatenate({"GET /devtools/page/", c.id, " HTTP/1.1\r\nHost: 127.0.0.1:9471\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"}, context.temp_allocator)
 	net.send_tcp(sock, transmute([]u8)req)
 	buf: [4096]u8
 	got := 0
@@ -92,6 +115,7 @@ a_command_over_a_websocket :: proc(t: ^testing.T) {
 	if !testing.expect(t, srv != nil, "listening") { return }
 	defer devtools.stop(srv)
 	c := new(Client)
+	c.id = srv.id
 	defer { delete(c.reply, runtime.heap_allocator()); free(c) }
 	th := thread.create_and_start_with_poly_data(c, client)
 	start := time.tick_now()
@@ -103,4 +127,75 @@ a_command_over_a_websocket :: proc(t: ^testing.T) {
 	thread.destroy(th)
 	testing.expect(t, c.upgraded, "the upgrade, with the RFC's accept key")
 	testing.expectf(t, strings.has_prefix(c.reply, `{"id":7,"result":{"protocolVersion":"1.3"`), "the answer: %s", c.reply)
+}
+
+// A browser's page may open a WebSocket to 127.0.0.1 whatever its own address: what it sends says so, and it is refused.
+// So is a name made to resolve here, and a path without the target's id, which is not to be guessed.
+@(test)
+what_a_browser_page_can_do_is_refused :: proc(t: ^testing.T) {
+	win := platform.open_window_offscreen("devtools test", {200, 100})
+	if !testing.expect(t, win != nil) { return }
+	defer platform.destroy_window(win)
+	srv := devtools.start(win, PORT_HTTP, "test")
+	if !testing.expect(t, srv != nil, "listening") { return }
+	defer devtools.stop(srv)
+	UPGRADE :: "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+	HOST :: "Host: 127.0.0.1:9472\r\n"
+	page := strings.concatenate({"/devtools/page/", srv.id}, context.temp_allocator)
+	status :: proc(reply: string) -> string { return reply[:min(len(reply), 12)] }
+
+	testing.expect_value(t, status(http_get(page, HOST + UPGRADE + "Origin: https://evil.example\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get(page, HOST + UPGRADE + "Origin: null\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get("/json/list", HOST + "Origin: https://evil.example\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get("/json/list", "Host: evil.example:9472\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get("/json/list", "")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get("/devtools/page/x", HOST + UPGRADE)), "HTTP/1.1 404")
+	// and a tool is served
+	testing.expect_value(t, status(http_get("/json/list", HOST)), "HTTP/1.1 200")
+	testing.expect_value(t, status(http_get("/json/list", "Host: localhost:9472\r\n")), "HTTP/1.1 200")
+	testing.expect_value(t, status(http_get(page, HOST + UPGRADE)), "HTTP/1.1 101")
+}
+
+// A frame without the mask a client must set ends the connection, and so does a message over the limit, in one frame or
+// spread over many: nothing is kept of them.
+@(test)
+a_bad_frame_ends_the_connection :: proc(t: ^testing.T) {
+	win := platform.open_window_offscreen("devtools test", {200, 100})
+	if !testing.expect(t, win != nil) { return }
+	defer platform.destroy_window(win)
+	srv := devtools.start(win, PORT_FRAMES, "test")
+	if !testing.expect(t, srv != nil, "listening") { return }
+	defer devtools.stop(srv)
+	open :: proc(id: string) -> (net.TCP_Socket, bool) {
+		sock, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = PORT_FRAMES})
+		if err != nil { return {}, false }
+		req := strings.concatenate({"GET /devtools/page/", id, " HTTP/1.1\r\nHost: 127.0.0.1:9473\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"}, context.temp_allocator)
+		net.send_tcp(sock, transmute([]u8)req)
+		buf: [1024]u8
+		n, _ := net.recv_tcp(sock, buf[:])
+		return sock, n > 0
+	}
+	// the server closes: a read ends with nothing
+	closed :: proc(sock: net.TCP_Socket) -> bool {
+		net.set_option(sock, .Receive_Timeout, 3 * time.Second)
+		buf: [64]u8
+		n, _ := net.recv_tcp(sock, buf[:])
+		return n <= 0
+	}
+	{
+		sock, ok := open(srv.id)
+		if !testing.expect(t, ok) { return }
+		defer net.close(sock)
+		frame := [?]u8{0x81, 2, 'h', 'i'}   // no mask
+		net.send_tcp(sock, frame[:])
+		testing.expect(t, closed(sock), "an unmasked frame")
+	}
+	{
+		sock, ok := open(srv.id)
+		if !testing.expect(t, ok) { return }
+		defer net.close(sock)
+		frame := [?]u8{0x81, 0x80 | 127, 0, 0, 0, 0, 0x40, 0, 0, 0}   // 1 GB announced
+		net.send_tcp(sock, frame[:])
+		testing.expect(t, closed(sock), "a frame over the limit")
+	}
 }

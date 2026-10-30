@@ -222,6 +222,8 @@ cache and the scroll curve; `tests/cursors` the cursors' CSS names, system or dr
 custom cursors on a hidden window. `tests/layers`, `tests/effects`,
 `tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` (text, color emoji and transformed glyphs included) are pixel tests on an offscreen WARP renderer (most in both blend spaces); `tests/text` covers faces, fallback, shaping, bidi, line breaks, carets, color glyphs and the atlas pages (`atlas_stress`); `tests/slug` the Slug text (outlines, bands against the exact winding number, the glyph store and its eviction, pixels against the atlas, order, clips, rotation, pictures, device loss). `odin run tools/textcompare -- -out <dir> -dpr 1.75` writes atlas | Slug | difference images of the same scenes and measures both (CPU, GPU, first paint, memory).
 
+`node tests/e2e/run.mjs` runs `examples/whatsnew` with no window (`--headless`, WARP) and drives it over the devtools protocol (docs/devtools.md), as the CI does: each page must show no layout warning, nothing a screen reader cannot name, and look like its reference image (`tests/e2e/baseline`, `--update` writes them); then a wheel burst in the lazy column, find with its scope gone, the recorder; and the program must end with exit code 0.
+
 Timing checks (durations, CPU or GPU times, frames in a time window) are opt-in: `base.perf_skip` skips them unless
 `GUI_PERF=1` (or `true`) is set and `CI` is not, and prints `perf: skipped (...)`. Run them by hand, never in CI:
 `GUI_PERF=1 odin test tests/colr -vet`, `GUI_PERF=1 odin test tests/window -vet`, `GUI_PERF=1 odin test tests/gpufx -vet`.

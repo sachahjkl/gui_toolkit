@@ -14,39 +14,31 @@
 //   type <text>                  text input
 //   shot <file.png> [x y w h]    a screenshot (the window's pixels)
 //   state                        the build counter, focus, hover, size
-//   wait <ms>
+//   wait <ms>                    a pause (better: wait-for, idle)
+//   wait-for <text> | --name <id> [--gone] [--timeout ms]    until the box is there (or gone); an error after the timeout
+//   idle [--timeout ms]          until nothing moves
+//   metrics [--reset]            what the frames cost: build, layout, frame times, boxes, latency in a probe build
+//   warnings                     the layout's warnings of this build
+//   ax [role] [--name text]      the accessibility tree a screen reader gets, or the nodes that answer
+//   press <name> [--role button] [--action Click] [--value v] [--index n]   an action as a screen reader asks it
+//   audit                        what a screen reader cannot name
+//   record <file>                records what a person does until Enter, as a script for `play`
+//   play <file>                  runs a script: a command per line, # for comments
+//   close                        closes the window (Browser.close)
 //   raw <Method.name> [json]     any command
 //
 // Commands separated by a lone "," run in order on one connection:
-//   node tools/cdp.mjs click "Lazy column" , wait 200 , wheel 600 500 10 , wait 300 , shot out.png
+//   node tools/cdp.mjs click "Lazy column" , idle , wheel 600 500 10 , idle , shot out.png
+
+import { readFileSync, writeFileSync } from 'node:fs'
+import { connect, pressKey } from './cdp_client.mjs'
 
 const args = process.argv.slice(2)
 let port = 9222
 if (args[0] === '--port') { port = +args[1]; args.splice(0, 2) }
 
-const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-const ws = new WebSocket(list[0].webSocketDebuggerUrl)
-await new Promise((ok, ko) => { ws.onopen = ok; ws.onerror = ko })
-let next = 1
-const waiting = new Map()
-ws.onmessage = (m) => {
-  const r = JSON.parse(m.data)
-  const w = waiting.get(r.id)
-  if (!w) return
-  waiting.delete(r.id)
-  r.error ? w.ko(new Error(`${r.error.message} (${r.error.code})`)) : w.ok(r.result)
-}
-const send = (method, params = {}) => new Promise((ok, ko) => {
-  const id = next++
-  waiting.set(id, { ok, ko })
-  ws.send(JSON.stringify({ id, method, params }))
-})
+const { send, close } = await connect(port)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-const MODS = { alt: 1, ctrl: 2, control: 2, meta: 4, shift: 8 }
-const NAMED = { enter: 'Enter', tab: 'Tab', escape: 'Escape', esc: 'Escape', backspace: 'Backspace', delete: 'Delete',
-  up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', home: 'Home', end: 'End',
-  pageup: 'PageUp', pagedown: 'PageDown', space: ' ' }
 
 function opts(a) {
   const o = { _: [] }
@@ -66,6 +58,24 @@ function printTree(n, depth = 0) {
   for (const c of n.children || []) printTree(c, depth + 1)
 }
 
+function printAx(nodes) {
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]))
+  const depth = (n) => { let d = 0; for (let p = byId.get(n.parentId); p; p = byId.get(p.parentId)) d++; return d }
+  for (const n of nodes) {
+    const props = (n.properties || []).map((p) => `${p.name}=${p.value.value}`).join(' ')
+    const value = n.value ? ` = "${n.value.value}"` : ''
+    console.log(`${'  '.repeat(depth(n))}${n.role.value} "${n.name.value}"${value}${props ? ' ' + props : ''}${n.actions?.length ? ' [' + n.actions.join(' ') + ']' : ''}`)
+  }
+}
+
+// A line of a script: words, with JSON's quoted strings (what the recorder writes).
+function words(line) {
+  const out = []
+  const re = /"(?:[^"\\]|\\.)*"|\S+/g
+  for (let m; (m = re.exec(line));) out.push(m[0][0] === '"' ? JSON.parse(m[0]) : m[0])
+  return out
+}
+
 async function run(cmd, a) {
   const o = opts(a)
   const query = () => (o.name ? { name: o.name } : { text: o._.join(' ') })
@@ -80,27 +90,62 @@ async function run(cmd, a) {
     case 'down': await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: +o._[0], y: +o._[1], button: 'left', buttons: 1, clickCount: 1 }); break
     case 'up': await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: +o._[0], y: +o._[1], button: 'left', buttons: 0, clickCount: 1 }); break
     case 'wheel': await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: +o._[0], y: +o._[1], deltaX: 0, deltaY: +o._[2] * 100 }); break
-    case 'key': {
-      const parts = o._[0].split('+'); let mods = 0
-      for (const p of parts.slice(0, -1)) mods |= MODS[p.toLowerCase()] || 0
-      const last = parts[parts.length - 1]
-      const key = NAMED[last.toLowerCase()] || last
-      const text = key.length === 1 && !(mods & 2) ? key : ''
-      await send('Input.dispatchKeyEvent', { type: 'keyDown', key, text, modifiers: mods })
-      await send('Input.dispatchKeyEvent', { type: 'keyUp', key, modifiers: mods })
-      break
-    }
+    case 'key': await pressKey(send, o._[0]); break
     case 'type': await send('Input.insertText', { text: o._.join(' ') }); break
     case 'shot': {
       const p = {}
       if (o._.length >= 5) p.clip = { x: +o._[1], y: +o._[2], width: +o._[3], height: +o._[4], scale: 1 }
       const r = await send('Page.captureScreenshot', { format: 'png', ...p })
-      const { writeFileSync } = await import('node:fs')
       writeFileSync(o._[0], Buffer.from(r.data, 'base64'))
       console.log(`saved ${o._[0]}`); break
     }
     case 'state': console.log(JSON.stringify(await send('Toolkit.state'))); break
     case 'wait': await sleep(+o._[0]); break
+    case 'wait-for': await send('Toolkit.waitFor', { ...query(), gone: !!o.gone, ...(o.timeout ? { timeout: +o.timeout } : {}) }); break
+    case 'idle': {
+      const r = await send('Toolkit.waitIdle', o.timeout ? { timeout: +o.timeout } : {})
+      if (!r.idle) console.log('still moving at the timeout')
+      break
+    }
+    case 'metrics': console.log(JSON.stringify(await send('Toolkit.metrics', { reset: !!o.reset }), null, 2)); break
+    case 'warnings': for (const w of (await send('Toolkit.warnings')).layout) console.log(w); break
+    case 'ax': {
+      const q = {}
+      if (o._[0]) q.role = o._[0]
+      if (o.name) q.accessibleName = o.name
+      printAx((await send(o._[0] || o.name ? 'Accessibility.queryAXTree' : 'Accessibility.getFullAXTree', q)).nodes)
+      break
+    }
+    case 'press': {
+      const p = { name: o._.join(' '), action: o.action || 'Click', index: +(o.index || 0) }
+      if (o.role) p.role = o.role
+      if (o.value !== undefined) p.value = o.value
+      await send('Toolkit.axAction', p); break
+    }
+    case 'audit': {
+      const { unnamed } = await send('Toolkit.axAudit')
+      for (const b of unnamed) console.log(`${b.name || '·'} ${b.key} @${b.x},${b.y} ${b.w}x${b.h}`)
+      console.log(`${unnamed.length} without a name`)
+      break
+    }
+    case 'record': {
+      await send('Toolkit.startRecording')
+      console.log('recording what is done in the window: Enter here to stop')
+      await new Promise((r) => process.stdin.once('data', r))
+      process.stdin.pause()
+      const { lines } = await send('Toolkit.stopRecording')
+      writeFileSync(o._[0], lines.join('\n') + '\n')
+      console.log(`${lines.length} lines in ${o._[0]}`)
+      break
+    }
+    case 'play':
+      for (const line of readFileSync(o._[0], 'utf8').split(/\r?\n/)) {
+        if (!line.trim() || line.startsWith('#')) continue
+        const w = words(line)
+        await run(w[0], w.slice(1))
+      }
+      break
+    case 'close': await send('Browser.close'); break
     case 'raw': console.log(JSON.stringify(await send(o._[0], o._[1] ? JSON.parse(o._[1]) : {}), null, 2)); break
     default: throw new Error(`unknown command: ${cmd}`)
   }
@@ -111,4 +156,4 @@ for (const a of args) a === ',' ? cmds.push([]) : cmds[cmds.length - 1].push(a)
 try {
   for (const c of cmds) if (c.length) await run(c[0], c.slice(1))
 } catch (e) { console.error(e.message); process.exitCode = 1 }
-ws.close()
+close()
