@@ -13,6 +13,7 @@ import "core:time"
 
 @(private) DND_SOURCE_WAIT_MS :: 60000   // a drag from the window gives up after this long without an end
 @(private = "file") DRAG_THRESHOLD_PX :: 4
+@(private) DRAG_IMAGE_MAX_PX :: 512
 
 // What a window keeps for drag and drop (Native_Window.dnd, made on first use). Mirrors the Win32 Dnd_State fields the
 // shared logic uses; the backend-specific handles live in the per-backend conn state (wlc / x11 dnd fields).
@@ -101,6 +102,18 @@ drop_self_test :: proc(w: ^Window, data: Drag_Data, pos: [2]f32, allowed: Drop_E
 	return true
 }
 
+// The picture of a drag at the size it is shown, as the servers take it: premultiplied BGRA (temporary allocator).
+@(private)
+drag_image_bgra :: proc(img: Drag_Image) -> (fit: Drag_Image, bgra: []u8) {
+	fit = drag_image_fit(img, {DRAG_IMAGE_MAX_PX, DRAG_IMAGE_MAX_PX}, context.temp_allocator)
+	bgra = make([]u8, fit.size.x * fit.size.y * 4, context.temp_allocator)
+	for i in 0 ..< fit.size.x * fit.size.y {
+		r, g, b, a := u32(fit.rgba[i * 4]), u32(fit.rgba[i * 4 + 1]), u32(fit.rgba[i * 4 + 2]), u32(fit.rgba[i * 4 + 3])
+		bgra[i * 4], bgra[i * 4 + 1], bgra[i * 4 + 2], bgra[i * 4 + 3] = u8(b * a / 255), u8(g * a / 255), u8(r * a / 255), u8(a)
+	}
+	return
+}
+
 ////////////////////////////////
 // shared event delivery (the backends call this with the data already read into d.data)
 
@@ -121,14 +134,15 @@ deliver_drop :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, mods: Modifiers 
 	return kind == .Drop_Leave ? nil : d.effect
 }
 
-// The app's last answer, when the source allows it. The app's own drag back over its window, with no drop_sync_set: the
-// app cannot answer before the drop, the convention does.
+// The app's last answer, when the source allows it. A drag of this very process (over the window it started from or
+// another of its windows), with no drop_sync_set: the thread is in drag_start and cannot answer before the drop, the
+// convention does.
 @(private)
 dnd_answer :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 	d := w.dnd
 	if d == nil { return nil }
 	if e, ok := d.effect.?; ok && e in d.allowed { return e }
-	if d.sending && d.sync == nil { return drop_effect_for(d.allowed, {}) }
+	if (d.sending && d.sync == nil) || (!d.sending && (x11_dnd_src.active || wlc.dnd_sending)) { return drop_effect_for(d.allowed, {}) }
 	return nil
 }
 

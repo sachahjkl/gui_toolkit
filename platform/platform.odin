@@ -212,6 +212,16 @@ Window :: struct {
 	on_frame:     proc(user: rawptr),   // called while Windows owns the message loop (resize, move, menus)
 	chrome:       Chrome_Regions,       // integrated title bar: what the app drew where (set_chrome_regions)
 	post_queue:   rawptr,               // atomic: the ^base.Post_Queue of the ui State built for this window (ui.post_window)
+	destroy_hook: proc(w: ^Window, user: rawptr),   // window_on_destroy
+	destroy_hook_user: rawptr,
+}
+
+// `fn(w, user)` runs when `w` is destroyed, before it is freed (nil: nothing). One per window: returns what was there. For
+// what keeps a pointer to a window and may outlive it (a ui State).
+window_on_destroy :: proc(w: ^Window, fn: proc(w: ^Window, user: rawptr), user: rawptr) -> (prev: proc(w: ^Window, user: rawptr), prev_user: rawptr) {
+	prev, prev_user = w.destroy_hook, w.destroy_hook_user
+	w.destroy_hook, w.destroy_hook_user = fn, user
+	return
 }
 
 // The native handles a renderer needs to make a surface for a window, neutral across systems. The renderer reads the

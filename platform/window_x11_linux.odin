@@ -10,6 +10,7 @@ package platform
 //
 // This backend is written to the XCB request ABI directly (no Xlib), so the binary needs only libxcb at run time.
 
+import "base:runtime"
 import "core:time"
 import "core:strings"
 import "core:unicode/utf8"
@@ -29,7 +30,7 @@ X11_Conn :: struct {
 	wm_protocols, wm_delete_window, net_wm_name, utf8_string, net_wm_state,
 	net_wm_state_fullscreen, net_wm_state_maximized_horz, net_wm_state_maximized_vert,
 	net_wm_state_hidden, motif_wm_hints, clipboard, primary, targets, wren_selection,
-	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager,
+	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager, net_frame_extents,
 	// the rich-clipboard target atoms (clipboard_x11_linux.odin): the MIME types and the protocol atoms
 	mime_text_html, mime_image_png, mime_uri_list, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
 	// the XDND atoms (dragdrop_x11_linux.odin)
@@ -38,7 +39,8 @@ X11_Conn :: struct {
 	// the window that owns CLIPBOARD now (this process), and what it holds
 	clip_owner:  Xcb_Window,
 	clip_text:   string,
-	first_window: ^Window,   // a window to read another client's selection with, outside any window's call
+	windows:     [dynamic]^Window,   // this process's windows: an event goes to the one it names
+	xfixes_event, randr_event: u8,   // the extension's first event (x11_ext_linux.odin), 0 without it
 }
 
 @(private) x11c: X11_Conn
@@ -68,6 +70,7 @@ x11_connect :: proc() -> bool {
 	x := xcb_lib()
 	if !x.ok { return false }
 	scr: i32
+	x11c.windows.allocator = runtime.heap_allocator()   // (outlives whatever allocator the first window was made under)
 	x11c.c = x.connect(nil, &scr)
 	if x11c.c == nil || x.connection_has_error(x11c.c) != 0 { x11c.c = nil; return false }
 	x11c.fd = x.get_file_descriptor(x11c.c)
@@ -76,6 +79,7 @@ x11_connect :: proc() -> bool {
 	for _ in i32(0) ..< scr { if it.rem > 1 { it.data = mem_offset_screen(it.data); it.rem -= 1; it.index += 1 } }
 	x11c.screen = it.data
 	x11_intern_atoms()
+	x11_extensions_init()
 	x11_init_xkb()
 	return true
 }
@@ -120,6 +124,7 @@ x11_intern_atoms :: proc() {
 	x11c.net_wm_window_type_normal = x11_atom("_NET_WM_WINDOW_TYPE_NORMAL")
 	x11c.net_active_window = x11_atom("_NET_ACTIVE_WINDOW")
 	x11c.resource_manager = x11_atom("RESOURCE_MANAGER")
+	x11c.net_frame_extents = x11_atom("_NET_FRAME_EXTENTS")
 	x11c.mime_text_html = x11_atom("text/html")
 	x11c.mime_image_png = x11_atom("image/png")
 	x11c.mime_uri_list = x11_atom("text/uri-list")
@@ -213,6 +218,7 @@ x11_init_xkb :: proc() {
 @(private = "file") X11_SELECTION_PROP_MAX_WORDS :: 1 << 20   // one read of the scratch property (a chunk or a whole answer)
 @(private) X11_TEXT_READ_WAIT_MS :: 500                   // silence of the owner that gives up a read of the text clipboard
 @(private = "file") X11_WM_STATE_MAX_WORDS :: 32
+@(private = "file") X11_FRAME_EXTENTS_WORDS :: 4
 
 @(private)
 x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> bool {
@@ -222,7 +228,7 @@ x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> 
 	st.transparent = transparent
 	st.title = strings.clone(title)
 	w.x11 = st
-	if x11c.first_window == nil { x11c.first_window = w }
+	append(&x11c.windows, w)
 	w.dpi_scale = x11_dpi_scale()
 
 	id := Xcb_Window(x.generate_id(x11c.c))
@@ -248,6 +254,7 @@ x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> 
 	nt := x11c.net_wm_window_type_normal
 	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, x11c.net_wm_window_type, XCB_ATOM_ATOM, X11_FORMAT_32, 1, &nt)
 	if w.integrated { x11_set_decorations(w, false) }
+	x11_extensions_select(id)
 	x.flush(x11c.c)
 	return true
 }
@@ -256,7 +263,7 @@ x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> 
 x11_destroy :: proc(w: ^Window) {
 	st := x11_state(w)
 	if st == nil { return }
-	if x11c.first_window == w { x11c.first_window = nil }
+	for x, i in x11c.windows { if x == w { ordered_remove(&x11c.windows, i); break } }
 	if x11c.clip_owner == st.id { x11c.clip_owner = 0; delete(x11c.clip_text); x11c.clip_text = "" }
 	xcb.destroy_window(x11c.c, st.id)
 	xcb.flush(x11c.c)
@@ -370,11 +377,32 @@ x11_move :: proc(w: ^Window, x, y: int) {
 	xcb.flush(x11c.c)
 }
 
-// The window's outer rectangle: only the client size is known (no position: 0,0), which is enough to restore a layout's
-// size and maximized state.
+// Where the client area starts on the screen.
+@(private)
+x11_client_origin :: proc(w: ^Window) -> [2]int {
+	st := x11_state(w)
+	if st == nil { return {} }
+	p, _, _ := x11_translate(st.id, x11c.screen.root, 0, 0)
+	return p
+}
+
+// The window's outer rectangle: its corner is the frame's (what a move sets, under a window manager), the frame read from
+// _NET_FRAME_EXTENTS (left, right, top, bottom); its size is the client area's, what x11_set_size takes.
 @(private)
 x11_outer_rect :: proc(w: ^Window) -> [4]int {
-	return {0, 0, w.size.x, w.size.y}
+	p := x11_client_origin(w)
+	if st := x11_state(w); st != nil {
+		reply := xcb.get_property_reply(x11c.c, xcb.get_property(x11c.c, 0, st.id, x11c.net_frame_extents, XCB_ATOM_CARDINAL, 0, X11_FRAME_EXTENTS_WORDS), nil)
+		if reply != nil {
+			defer posix.free(reply)
+			if xcb.get_property_value_length(reply) >= X11_FRAME_EXTENTS_WORDS * size_of(u32) {
+				e := ([^]u32)(xcb.get_property_value(reply))
+				p.x -= int(e[0])
+				p.y -= int(e[2])
+			}
+		}
+	}
+	return {p.x, p.y, w.size.x, w.size.y}
 }
 
 // DPI from Xft.dpi in the X resources, else 96. Read fresh (cheap) only when stale.
@@ -417,23 +445,33 @@ x11_xft_dpi :: proc() -> int {
 @(private)
 x11_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	x := &xcb
-	if wait && len(w.events) == 0 {
+	// first what xcb has read already (behind the reply of a request): poll(2) on the socket would not see it
+	any := x11_drain(w)
+	if wait && !any && len(w.events) == 0 {
 		x.flush(x11c.c)
 		poll_two(x11c.fd, dbus_fd(), timeout_ms > 0 ? timeout_ms : -1, wake_fd(w))
-	}
-	for {
-		ev := x.poll_for_event(x11c.c)
-		if ev == nil { break }
-		x11_handle_event(w, ev)
-		posix.free(ev)
+		x11_drain(w)
 	}
 	dbus_pump()
 	x.flush(x11c.c)
 }
 
+// Handles every event there is, without waiting; whether there was one.
+@(private)
+x11_drain :: proc(w: ^Window) -> (any: bool) {
+	for {
+		ev := xcb.poll_for_event(x11c.c)
+		if ev == nil { return }
+		any = true
+		x11_handle_event(w, ev)
+		posix.free(ev)
+	}
+}
+
 @(private)
 x11_wait :: proc(w: ^Window, timeout_ms: int) {
-	if len(w.events) > 0 || len(w.injected) > 0 { return }
+	x11_drain(w)   // (what xcb has read already: poll(2) would not see it; kept for the next poll_events)
+	if len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested { return }
 	xcb.flush(x11c.c)
 	poll_two(x11c.fd, -1, timeout_ms > 0 ? timeout_ms : -1, wake_fd(w))
 }
@@ -442,14 +480,8 @@ x11_wait :: proc(w: ^Window, timeout_ms: int) {
 @(private)
 x11_take_input :: proc(w: ^Window) {
 	// XCB has no per-category peek, so take everything and let poll_events return it next; the time stamp is set here.
-	x := &xcb
-	x.flush(x11c.c)
-	for {
-		ev := x.poll_for_event(x11c.c)
-		if ev == nil { break }
-		x11_handle_event(w, ev)
-		posix.free(ev)
-	}
+	xcb.flush(x11c.c)
+	x11_drain(w)
 }
 
 @(private)
@@ -459,11 +491,43 @@ x11_push :: proc(w: ^Window, e: Event) {
 	append(&w.events, e)
 }
 
+// The window an event is for: one connection brings the events of all of them, whichever window polls.
 @(private)
-x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
+x11_event_target :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) -> ^Window {
+	b := ([^]u8)(raw)
+	id: Xcb_Window
+	switch raw.response_type & X11_RESPONSE_TYPE_MASK {
+	case XCB_KEY_PRESS, XCB_KEY_RELEASE, XCB_BUTTON_PRESS, XCB_BUTTON_RELEASE, XCB_MOTION_NOTIFY, XCB_ENTER_NOTIFY, XCB_LEAVE_NOTIFY:
+		id = Xcb_Window(get_u32(b[12:]))
+	case XCB_FOCUS_IN, XCB_FOCUS_OUT, XCB_EXPOSE, XCB_CONFIGURE_NOTIFY, XCB_MAP_NOTIFY, XCB_UNMAP_NOTIFY, XCB_CLIENT_MESSAGE, XCB_PROPERTY_NOTIFY:
+		id = Xcb_Window(get_u32(b[4:]))
+	case XCB_SELECTION_REQUEST, XCB_SELECTION_CLEAR, XCB_SELECTION_NOTIFY:
+		id = Xcb_Window(get_u32(b[8:]))
+	case:
+		return polling
+	}
+	for x in x11c.windows { if x11_state(x).id == id { return x } }
+	return polling
+}
+
+@(private)
+x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
+	w := x11_event_target(polling, raw)
 	st := x11_state(w)
 	b := ([^]u8)(raw)
 	type := raw.response_type & X11_RESPONSE_TYPE_MASK
+	if x11c.xfixes_event != 0 && type == x11c.xfixes_event {
+		// xcb_xfixes_selection_notify_event_t: owner at [8], selection at [12]. This program's own writes count themselves
+		owner := Xcb_Window(get_u32(b[8:]))
+		ours := false
+		for x in x11c.windows { if x11_state(x).id == owner { ours = true } }
+		if Xcb_Atom(get_u32(b[12:])) == x11c.clipboard && !ours { clip_note_changed() }
+		return
+	}
+	if x11c.randr_event != 0 && type == x11c.randr_event {
+		for x in x11c.windows { x.display_stale = true }
+		return
+	}
 	switch type {
 	case XCB_KEY_PRESS, XCB_KEY_RELEASE:
 		// xcb_key_press_event_t: detail(1)=keycode at [1]; state at [28]; event window at [12]
@@ -524,6 +588,7 @@ x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
 			w.size = {nw, nh}
 			w.paint_requested = true
 		}
+		w.display_stale = true   // (it may have moved to another monitor)
 	case XCB_CLIENT_MESSAGE:
 		// data.data32[0] at [12]
 		d0 := Xcb_Atom(get_u32(b[12:]))
@@ -542,13 +607,13 @@ x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
 		// xcb_selection_clear_event_t: selection at [12] (losing PRIMARY or XdndSelection is not losing the clipboard)
 		if Xcb_Atom(get_u32(b[12:])) == x11c.clipboard && x11c.clip_owner == st.id {
 			x11c.clip_owner = 0
-			clip_note_changed()
+			if x11c.xfixes_event == 0 { clip_note_changed() }
 		}
 	case XCB_PROPERTY_NOTIFY:
-		// xcb_property_notify_event_t: window[4], atom[8], state[12] (0 NewValue, 1 Deleted)
+		// xcb_property_notify_event_t: window[4], atom[8], time[12], state[16] (0 NewValue, 1 Deleted)
 		pwin := Xcb_Window(get_u32(b[4:]))
 		patom := Xcb_Atom(get_u32(b[8:]))
-		pstate := b[12]
+		pstate := b[16]
 		if pwin == st.id && patom == x11c.net_wm_state {
 			x11_read_wm_state(w)
 		} else if pstate == 1 {   // Deleted: a requestor consumed an INCR chunk, send the next
@@ -661,15 +726,15 @@ x11_convert_selection :: proc(requestor: Xcb_Window, selection, target, property
 // MULTIPLE, the MIME targets, INCR for big data) is in clipboard_x11_linux.odin.
 @(private)
 x11_handle_selection_request :: proc(w: ^Window, b: [^]u8) {
-	// xcb_selection_request_event_t: selection at [20]
-	if x11_dnd_src.active && Xcb_Atom(get_u32(b[20:])) == x11c.xdnd_selection { x11_dnd_serve_source_request(b); return }
+	// xcb_selection_request_event_t: selection at [16]
+	if x11_dnd_src.active && Xcb_Atom(get_u32(b[16:])) == x11c.xdnd_selection { x11_dnd_serve_source_request(b); return }
 	x11_serve_selection_request(w, b)
 }
 
 @(private)
 x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 	st := x11_state(w)
-	property := Xcb_Atom(get_u32(b[24:]))
+	property := Xcb_Atom(get_u32(b[20:]))   // xcb_selection_notify_event_t: requestor at [8], selection, target, property
 	if property == 0 { st.paste_got = true; return }
 	// read the property without deleting it first, so we can tell an INCR hand-off (type = INCR) from real data
 	cookie := xcb.get_property(x11c.c, 0, st.id, property, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
@@ -731,3 +796,7 @@ x11_clipboard_get_text :: proc(w: ^Window, allocator := context.allocator) -> st
 put_u32 :: proc(b: []u8, v: u32) { b[0], b[1], b[2], b[3] = u8(v), u8(v >> 8), u8(v >> 16), u8(v >> 24) }
 @(private)
 get_u32 :: proc(b: [^]u8) -> u32 { return u32(b[0]) | u32(b[1]) << 8 | u32(b[2]) << 16 | u32(b[3]) << 24 }
+
+// Frees what xcb allocated (a reply).
+@(private)
+free_c :: proc(p: rawptr) { posix.free(p) }

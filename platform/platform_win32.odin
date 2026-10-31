@@ -468,6 +468,7 @@ wake_signal :: proc(h: rawptr) { if h != nil { win.SetEvent(win.HANDLE(h)) } }
 // then frees `w`. A process that ends with its window open needs not call it.
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
+	if w.destroy_hook != nil { w.destroy_hook(w, w.destroy_hook_user) }
 	dnd_destroy(w)   // (revoked while the window exists)
 	tray_destroy_all(w)
 	if w.clip_watch { clipboard_watch(w, false) }
@@ -506,6 +507,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 		if wait && len(w.events) == 0 && len(w.injected) == 0 {
 			win.WaitForSingleObject(w.off_event, timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE)
 		}
+		win.WaitForSingleObject(w.off_event, 0)   // (the signal of what is taken here: the next wait is for what comes after)
 		take_injected(w)
 		w.returned = len(w.events)
 		return w.events[:]
@@ -547,7 +549,7 @@ inject_event :: proc(w: ^Window, e: Event) {
 // with render.wait_for_frame, then poll_events(w, false), so the frame is built from the freshest input.
 wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	if w.offscreen {
-		if len(w.injected) > 0 || len(w.events) > 0 { return }
+		if len(w.injected) > 0 || len(w.events) > w.returned { return }   // (what the last poll handed out is read)
 		win.WaitForSingleObject(w.off_event, timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE)
 		return
 	}

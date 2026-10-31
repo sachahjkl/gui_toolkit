@@ -9,9 +9,8 @@ package platform
 // an image is offered as its raw bytes only when the app already holds PNG. This keeps the toolkit free of an image
 // codec while letting a browser (which has one) carry pictures.
 //
-// clipboard_changed tells a window once when this process wrote the clipboard or lost it to another program, and on
-// Wayland whenever the selection moves. X11 has no change signal here (XFIXES is not used): a program that takes the
-// clipboard from another program is not seen. clipboard_watch has nothing to do.
+// clipboard_changed tells a window once when the clipboard changes hands: through wl_data_device on Wayland, XFIXES on
+// X11. An X server without XFIXES only tells this process when it loses the clipboard.
 
 import "core:strings"
 import "core:sync"
@@ -46,7 +45,7 @@ clipboard_formats :: proc() -> Clipboard_Formats {
 		if wlc.have_offer && wlc.offer != nil { return clipboard_formats_from_mimes(wlc.offer_mimes[:]) }
 		return {}
 	}
-	if x11c.c != nil && x11c.clip_owner == 0 && x11c.first_window != nil { return x11_foreign_formats(x11c.first_window) }
+	if x11c.c != nil && x11c.clip_owner == 0 && len(x11c.windows) > 0 { return x11_foreign_formats(x11c.windows[0]) }
 	return clip_store_formats()
 }
 
