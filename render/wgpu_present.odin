@@ -159,7 +159,7 @@ wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
 wgpu_wait_frame :: proc(r: ^Renderer, timeout_ms: int) -> bool {
 	when ODIN_OS == .Windows {
 		l := &r.wg.latency
-		if l.timer != nil && win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) != win.WAIT_OBJECT_0 { return false }
+		if l.timer != nil && !r.present.slot_unused && win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) != win.WAIT_OBJECT_0 { return false }
 	}
 	return wgpu_ensure_frame(r)
 }
@@ -189,14 +189,18 @@ wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
 wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
 	if g.shared != nil && g.shared.lost { r.lost = true }
 	if g.surface == nil {   // offscreen
-		if g.clear_pending { wgpu_clear_frame(r) }
+		if g.clear_pending { wgpu_clear_frame(r); g.damage_ready = false }
 		if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
 		return
 	}
 	if !g.frame_acquired { return }
-	if g.clear_pending { wgpu_clear_frame(r) }
+	if g.clear_pending { wgpu_clear_frame(r); g.damage_ready = false }
 	// the capture copies the frame target before the present consumes the surface texture (one more command on the queue)
 	if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
+	if r.damage.skip_present {   // a region of nothing: the window keeps what it shows, and the texture stays acquired
+		r.present.slot_unused = true
+		return
+	}
 	t_pre := time.tick_now()
 	r.present.call = t_pre
 	ps := profile_present_begin(r)
@@ -227,6 +231,7 @@ wgpu_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool { return false 
 wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	p := &r.present
 	l := &r.wg.latency
+	p.slot_unused = false
 	p.presents += 1
 	if p.interval == 0 { p.interval = 1 }
 	tearing := present_mode(r) == .Tearing

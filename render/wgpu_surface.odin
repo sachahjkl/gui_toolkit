@@ -39,6 +39,9 @@ Wgpu_Surface :: struct {
 	damage_ready:   bool,
 	damage_ref:     wgpu.Texture,
 	damage_ref_view: wgpu.TextureView,
+	damage_clear:   wgpu.Texture,
+	damage_clear_view: wgpu.TextureView,
+	damage_clear_size: [2]int,
 	// the renderer-level per-window state
 	present:        Present_State,
 	damage:         Damage_State,
@@ -73,6 +76,9 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 	g.damage_ready, b.damage_ready = b.damage_ready, g.damage_ready
 	g.damage_ref, b.damage_ref = b.damage_ref, g.damage_ref
 	g.damage_ref_view, b.damage_ref_view = b.damage_ref_view, g.damage_ref_view
+	g.damage_clear, b.damage_clear = b.damage_clear, g.damage_clear
+	g.damage_clear_view, b.damage_clear_view = b.damage_clear_view, g.damage_clear_view
+	g.damage_clear_size, b.damage_clear_size = b.damage_clear_size, g.damage_clear_size
 	r.present, b.present = b.present, r.present
 	r.damage, b.damage = b.damage, r.damage
 	r.size, b.size = b.size, r.size

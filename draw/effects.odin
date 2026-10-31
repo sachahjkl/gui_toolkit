@@ -619,14 +619,10 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 			d, ok := chain_target(&ch, cur.scale, cur.origin)
 			if !ok { failed = true; break }
 			col := f.color
-			enc :: proc(v: f32) -> f32 {
-				x := clamp(v, 0, 1)
-				return x <= 0.0031308 ? x * 12.92 : 1.055 * math.pow(x, 1 / 2.4) - 0.055
-			}
 			append(&ch.passes, render.Pass{
 				mode = .Shadow, flags = base | (cur_linear ? render.PASS_SRC2_LINEAR : 0),
 				src = blurred, src2 = src, dst = d,
-				offset = affine_apply_vector(m, f.offset), color = {enc(col.r), enc(col.g), enc(col.b), clamp(col.a, 0, 1)},
+				offset = affine_apply_vector(m, f.offset), color = {render.linear_to_srgb(col.r), render.linear_to_srgb(col.g), render.linear_to_srgb(col.b), clamp(col.a, 0, 1)},
 			})
 			cur, cur_linear = d, false
 		}

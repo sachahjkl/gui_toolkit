@@ -13,9 +13,22 @@ when !USE_WGPU {
 // filter passes). Pooled targets are handed back to the pool afterwards.
 d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
-	// Resolve this frame's damage region (damage.odin). A partial frame keeps the back buffer's content outside the
-	// region; the deferred clear (frame_begin) is done per rectangle below. A full frame clears the whole target now.
-	partial := damage_resolve(r, d3d_buffer_age(r))
+	// Resolve this frame's damage region (damage.odin, damage_d3d.odin). A frame with a region composes into the kept target,
+	// which is then copied to the frame's own. A partial frame keeps the target's content outside the region; the deferred
+	// clear (frame_begin) is done per rectangle below. A full frame clears the whole target now.
+	region := damage_resolve(r)
+	composing := region && d3d_damage_ensure_target(r)
+	partial := composing && r.damage.target_ready
+	if !composing { r.damage.target_ready = false }   // what is drawn goes past it
+	r.damage.have_region = partial
+	r.damage.skip_present = partial && r.damage.count == 0
+	frame_rtv, frame_tex := r.rtv, r.frame_tex
+	if composing { r.rtv, r.frame_tex = r.damage.target_rtv, r.damage.target }
+	defer if composing {
+		r.rtv, r.frame_tex = frame_rtv, frame_tex
+		d3d_damage_show(r, frame_tex)
+		r.damage.target_ready = true
+	}
 	if r.damage.have_clear && !partial {
 		r.damage.have_clear = false
 		c := r.damage.clear
@@ -42,11 +55,15 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if len(f.insts) > r.inst_cap {
 		if r.inst_buf != nil { r.inst_buf->Release() }
 		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, INST_CAP_MIN))
-		r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)
+		r.inst_buf = nil
+		if hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)) {
+			r.inst_buf, r.inst_cap = nil, 0
+			return
+		}
 	}
 	if len(f.insts) > 0 {
 		mapped: d3d11.MAPPED_SUBRESOURCE
-		r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)
+		if hr_failed(r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
 		mem.copy(mapped.pData, raw_data(f.insts), len(f.insts) * size_of(Rect_Inst))
 		r.ctx->Unmap(r.inst_buf, 0)
 	}
@@ -58,15 +75,13 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if has_slug { slug_bind_inputs(r, f) }
 	if slug_frame && !has_slug { r.slug.ready = false }   // no Slug shaders: its runs are skipped (draw_batch_split), the rest is drawn
 	write_replay(r, nil, false)
-	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil && !partial {
+	if r.prof.cur != nil && r.rtv != nil && r.swapchain != nil && !composing {
 		// first use of the back buffer, alone: the compositor may still hold it, and the draw that touches it first
-		// would otherwise carry that wait. Every full frame draws all of its pixels, so the clear changes nothing.
-		// A partial frame keeps the back buffer's content, so this clear is skipped (it would erase it).
-		zero := [4]f32{}
-		r.ctx->ClearRenderTargetView(r.rtv, &zero)
+		// would otherwise carry that wait. The frame's own clear color again: it changes nothing.
+		r.ctx->ClearRenderTargetView(r.rtv, &r.damage.clear)
 		profile_step(r, .Acquire, r.size.x, r.size.y, r.size.x * r.size.y, r.size.x * r.size.y * 4)
 	}
-	// a partial frame clears only its region, now that the pipeline is bound (D3D11 has no scissored ClearRenderTargetView)
+	// a partial frame clears only its region
 	if partial && r.damage.have_clear { r.damage.have_clear = false; d3d_clear_region(r) }
 	cur, cur_ok := -1, false
 	cur_size: [2]int
@@ -85,6 +100,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 				bind_main(r)
 				if has_slug { slug_bind_inputs(r, f) }
 				retained_vb = false
+				replacing = false
 				cur = -1
 			}
 			continue
@@ -223,21 +239,8 @@ bind_target :: proc(r: ^Renderer, f: Frame_Data, target: int) -> (ok: bool, size
 	}
 	unbind_inputs(r)
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)
-	sm := clamp(r.corner_smoothing, 0, 1)
-	// n = 2.6 softens the arc-to-edge junction without turning capsules into rounded boxes; the radius is enlarged
-	// a bit so the corners do not look tighter than circular ones
-	text_gamma: f32
-	switch r.text.curve {
-	case .None: text_gamma = 0
-	case .Srgb: text_gamma = -1
-	case .Power: text_gamma = max(r.text.gamma, TEXT_GAMMA_MIN)
-	}
-	(^Globals)(mapped.pData)^ = Globals{
-		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + CORNER_N_SMOOTHING * sm, corner_boost = 1 + CORNER_BOOST_SMOOTHING * sm,
-		target_origin = origin, target_space = u32(space),
-		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN),
-	}
+	if hr_failed(r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)) { return false, {}, {} }   // (a device gone: frame_end finds out)
+	(^Globals)(mapped.pData)^ = target_globals(r, size, origin, space)
 	r.ctx->Unmap(r.globals, 0)
 	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
 	r.ctx->RSSetViewports(1, &vp)
@@ -308,29 +311,9 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 	rc := d3d11.RECT{0, 0, i32(w), i32(h)}
 	r.ctx->RSSetScissorRects(1, &rc)
 
-	dim :: proc(r: ^Renderer, t: Texture) -> [2]f32 {
-		if int(t) <= 0 || int(t) >= len(r.textures) { return {1, 1} }
-		return {f32(max(r.textures[int(t)].w, 1)), f32(max(r.textures[int(t)].h, 1))}
-	}
-	pc := Pass_Constants{
-		src_origin = p.src.origin, src_scale = p.src.scale, mode = u32(p.mode),
-		src_size = {f32(p.src.size.x), f32(p.src.size.y)}, src_dim = dim(r, p.src.tex),
-		dst_origin = p.dst.origin, dst_scale = p.dst.scale, flags = p.flags,
-		src2_origin = p.src2.origin, src2_scale = p.src2.scale,
-		src2_size = {f32(p.src2.size.x), f32(p.src2.size.y)}, src2_dim = dim(r, p.src2.tex),
-		dir = p.dir, offset = p.offset, color = p.color,
-		matrix_count = u32(clamp(p.matrix_count, 0, MAX_COLOR_MATRICES)),
-		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, DOWNSAMPLE_FACTOR_MAX)),
-	}
-	if p.mode == .Blur { pc.taps = u32(blur_taps(p.sigma, &pc.tap)) }
-	for k in 0 ..< int(pc.matrix_count) {
-		m := p.matrices[k]
-		for row in 0 ..< 4 { pc.m[k * 5 + row] = {m[row * 5], m[row * 5 + 1], m[row * 5 + 2], m[row * 5 + 3]} }
-		pc.m[k * 5 + 4] = {m[4], m[9], m[14], m[19]}
-	}
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	r.ctx->Map(r.fx_constants, 0, .WRITE_DISCARD, {}, &mapped)
-	(^Pass_Constants)(mapped.pData)^ = pc
+	if hr_failed(r.ctx->Map(r.fx_constants, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
+	(^Pass_Constants)(mapped.pData)^ = pass_constants(r, p)
 	r.ctx->Unmap(r.fx_constants, 0)
 
 	r.ctx->OMSetBlendState(r.blend_replace, nil, ~u32(0))

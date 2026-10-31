@@ -83,6 +83,7 @@ surface_refresh :: proc(r: ^Renderer) {
 		release_presentation(r)
 		if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
 		capture_release_device_objects(&r.capture)
+		d3d_damage_release(&r.damage)
 		if old_device != nil {
 			// the old device destroys them when its context runs its queue; until then the old swap chain still owns the window
 			old_ctx: ^d3d11.IDeviceContext
@@ -169,6 +170,7 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 		release_presentation(r)   // the swap chain and a translucent window's DirectComposition objects (render.odin)
 		if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
 		capture_destroy(r)
+		d3d_damage_release(&r.damage)
 		present_destroy(r)
 		exchange(r, s)
 		s^ = {}

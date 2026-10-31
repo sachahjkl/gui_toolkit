@@ -6,12 +6,12 @@ import "../render"
 // Partial redraw from the drawing layer. An application that knows which boxes of its UI changed between two frames
 // (a caret, a hovered control, a progress bar, a video, a local animation) marks them here, in the context's drawing
 // coordinates (screen pixels; the transform / alpha stacks do not apply: damage is about the final frame). The
-// renderer then rasterizes only the batches that touch them and presents only those rectangles (render/damage.odin).
+// renderer then rasterizes only the batches that touch them (render/damage.odin).
 //
 // Usage, each frame between begin_frame and end_frame:
-//   draw.damage_begin(c)                 (once, right after begin_frame, when the app tracks damage)
+//   draw.damage_begin(c)                 (once, when the app tracks damage)
 //   draw.damage(c, some_rect)            as many changed boxes as needed
-//   draw.damage_scrolled(c, rect, d)     content of `rect` moved by `d` since the last frame (a scrolled view)
+//   draw.damage_scrolled(c, rect, d)     content of `rect` moved by `d` since the last frame: redrawn where it was and is
 //   ... normal drawing ...
 //   end_frame(c)
 // A frame that begins damage and marks nothing redraws and presents nothing. Not calling damage_begin means the whole
@@ -19,7 +19,7 @@ import "../render"
 
 // Turns partial redraw on or off for the context's renderer (render.set_partial_redraw). Off: every frame is drawn and
 // presented whole (the behaviour before this feature). On: a region marked with damage_begin / damage is the only part
-// redrawn. Backends that cannot present partially right now fall back to a whole frame on their own.
+// redrawn.
 set_partial_redraw :: proc(c: ^Context, on: bool) { render.set_partial_redraw(c.renderer, on) }
 partial_redraw :: proc(c: ^Context) -> bool { return render.partial_redraw(c.renderer) }
 
@@ -43,9 +43,8 @@ damage_padded :: proc(c: ^Context, r: Rect, pad: f32) {
 	render.damage_add(c.renderer, rect_to_damage(rect_pad(r, pad)))
 }
 
-// The content of `rect` moved by `delta` screen pixels since the last frame (a scrolled view): presented as a block
-// copy where the backend can, so the moved pixels are not repainted. The newly exposed band must still be marked with
-// damage. One scroll per frame.
+// The content of `rect` moved by `delta` screen pixels since the last frame (a scrolled view): where it was and where it
+// is now are redrawn.
 damage_scrolled :: proc(c: ^Context, rect: Rect, delta: Vec2) {
 	render.damage_scroll(c.renderer, rect_to_damage(rect), i32(delta.x), i32(delta.y))
 }

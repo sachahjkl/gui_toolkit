@@ -7,7 +7,7 @@ package render
 // waits: poll after the frame, again later while it says Pending. Both backends give the same picture.
 
 import "base:runtime"
-import "core:math"
+import "core:sync"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
@@ -21,6 +21,7 @@ _ :: runtime   // (the WebGPU backend only)
 @(private)
 Readback_Slot :: struct {
 	id:      u32,
+	renderer: u64,        // renderer_id of the one it is on
 	asked:   bool,        // the Op is recorded, not run yet
 	copied:  bool,        // the copy is issued
 	failed:  bool,
@@ -40,12 +41,20 @@ Readback_Map :: enum u8 { None, Asked, Mapped, Failed }
 
 @(private) readback_slots: map[u32]^Readback_Slot   // by id (unique in the process: every renderer of it shares the table)
 @(private) readback_next: u32
+@(private) readback_lock: sync.Mutex                // the table: renderers may live on several threads
+
+@(private)
+readback_slot :: proc(id: u32) -> ^Readback_Slot {
+	sync.mutex_guard(&readback_lock)
+	return readback_slots[id]
+}
 
 // A new readback for the frame being built (draw.offscreen_end records its Op).
 readback_new :: proc(r: ^Renderer) -> Readback_Id {
+	sync.mutex_guard(&readback_lock)
 	readback_next += 1
 	s := new(Readback_Slot)
-	s.id, s.asked = readback_next, true
+	s.id, s.renderer, s.asked = readback_next, r.id, true
 	readback_slots[s.id] = s
 	return Readback_Id(s.id)
 }
@@ -54,7 +63,7 @@ readback_new :: proc(r: ^Renderer) -> Readback_Id {
 @(private)
 readback_copy :: proc(r: ^Renderer, id: u32, src: ^d3d11.ITexture2D, box: [4]i32, space: Blend_Space) {
 	when !USE_WGPU {
-		s := readback_slots[id]
+		s := readback_slot(id)
 		if s == nil { return }
 		s.asked = false
 		w, h := int(box[2] - box[0]), int(box[3] - box[1])
@@ -74,7 +83,7 @@ readback_copy :: proc(r: ^Renderer, id: u32, src: ^d3d11.ITexture2D, box: [4]i32
 // The WebGPU step of a Read: the box of `src` (a target texture of `format`) into a buffer, in the frame's encoder.
 @(private)
 readback_copy_wgpu :: proc(r: ^Renderer, enc: wgpu.CommandEncoder, id: u32, src: wgpu.Texture, format: wgpu.TextureFormat, box: [4]i32, space: Blend_Space) {
-	s := readback_slots[id]
+	s := readback_slot(id)
 	if s == nil { return }
 	s.asked = false
 	w, h := int(box[2] - box[0]), int(box[3] - box[1])
@@ -97,7 +106,7 @@ readback_copy_wgpu :: proc(r: ^Renderer, enc: wgpu.CommandEncoder, id: u32, src:
 // The picture of a readback: straight RGBA8, sRGB values, alpha kept. Pending until the frame ran and the GPU copied;
 // Ready once (the readback is then forgotten); Failed when the device was lost or the id is unknown.
 readback_poll :: proc(r: ^Renderer, id: Readback_Id, allocator := context.allocator) -> (pixels: []u8, size: [2]int, status: Capture_Status) {
-	s := readback_slots[u32(id)]
+	s := readback_slot(u32(id))
 	if s == nil { return nil, {}, .Failed }
 	if s.failed { readback_release(r, id); return nil, {}, .Failed }
 	if !s.copied { return nil, {}, .Pending }
@@ -108,7 +117,7 @@ readback_poll :: proc(r: ^Renderer, id: Readback_Id, allocator := context.alloca
 			// the map finishes is then simply not found)
 			on_map :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, u1, u2: rawptr) {
 				context = runtime.default_context()
-				if s := readback_slots[u32(uintptr(u1))]; s != nil { s.wmap = status == .Success ? .Mapped : .Failed }
+				if s := readback_slot(u32(uintptr(u1))); s != nil { s.wmap = status == .Success ? .Mapped : .Failed }
 			}
 			s.wmap = .Asked
 			wgpu.BufferMapAsync(s.wbuf, {.Read}, 0, uint(s.wrow * s.size.y), {mode = .AllowProcessEvents, callback = on_map, userdata1 = rawptr(uintptr(s.id))})
@@ -185,7 +194,7 @@ straight_srgb :: proc(px: [4]f32, space: Blend_Space) -> (u8, u8, u8, u8) {
 	c: [3]f32
 	for k in 0 ..< 3 {
 		v := clamp(px[k] / a, 0, 1)
-		if space == .Linear { v = v <= 0.0031308 ? v * 12.92 : 1.055 * math.pow(v, 1.0 / 2.4) - 0.055 }
+		if space == .Linear { v = linear_to_srgb(v) }
 		c[k] = v
 	}
 	return byte_of(c[0]), byte_of(c[1]), byte_of(c[2]), byte_of(a)
@@ -193,6 +202,7 @@ straight_srgb :: proc(px: [4]f32, space: Blend_Space) -> (u8, u8, u8, u8) {
 
 // Forgets a readback (its picture is no longer wanted, or was taken).
 readback_release :: proc(r: ^Renderer, id: Readback_Id) {
+	sync.mutex_guard(&readback_lock)
 	s := readback_slots[u32(id)]
 	if s == nil { return }
 	readback_free_objects(s)
@@ -214,10 +224,12 @@ readback_free_objects :: proc(s: ^Readback_Slot) {
 	}
 }
 
-// The device is gone: copies waiting to be read are lost (their poll says Failed).
+// The device of `r` is gone: its copies waiting to be read are lost (their poll says Failed).
 @(private)
-readback_device_lost :: proc() {
+readback_device_lost :: proc(r: ^Renderer) {
+	sync.mutex_guard(&readback_lock)
 	for _, s in readback_slots {
+		if s.renderer != r.id { continue }
 		readback_free_objects(s)
 		if s.copied || s.asked { s.failed = true }
 	}

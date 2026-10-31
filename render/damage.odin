@@ -2,18 +2,18 @@ package render
 
 import "core:fmt"
 import "core:os"
-import "core:slice"
+import "vendor:directx/d3d11"
 
 // Partial redraw (damage regions). When only a small part of the window changed between two frames (a blinking text
 // caret, a hovered button, a progress bar, a <video> in a corner, a local CSS animation), repainting and presenting
 // the whole window wastes GPU power and bandwidth. Damage lets the application tell the renderer which rectangles
-// changed; the renderer then rasterizes only the elements that touch them (per-batch scissor) and presents only those
-// rectangles (DXGI Present1 with dirty rects, or a persistent render target on WebGPU).
+// changed; the renderer then rasterizes only the elements that touch them (per-batch scissor), into a target kept across
+// frames that is copied whole to the swap chain and presented (damage_d3d.odin, damage_wgpu.odin).
 //
-// The flow, set between frame_begin and frame_submit:
-//   * damage_begin(r)                 clears the region built for this frame (call once after frame_begin)
+// The flow, set before frame_submit:
+//   * damage_begin(r)                 clears the region built for this frame (once a frame)
 //   * damage_add(r, {x0, y0, x1, y1}) adds a dirty rectangle, in screen pixels (y down); as many as the app wants
-//   * damage_scroll(r, rect, dx, dy)  the content of `rect` moved by (dx, dy) since the last frame (one per frame)
+//   * damage_scroll(r, rect, dx, dy)  the content of `rect` moved by (dx, dy) since the last frame
 //   * frame_submit / frame_end        use the region
 // A frame that calls damage_begin and adds nothing is a frame with no damage: the renderer draws nothing and does not
 // present (the window keeps what it had). Without damage_begin the renderer treats the whole frame as damaged, exactly
@@ -21,15 +21,15 @@ import "core:slice"
 //
 // The region is the union of the rectangles, with near rectangles merged so the list stays bounded (MAX_DAMAGE_RECTS):
 // over the budget, or when two rectangles are close enough that covering both separately would redraw more than their
-// union, they are fused. This bounds both the scissor work and the dirty-rect array Present1 takes.
+// union, they are fused. This bounds the scissor work.
 //
 // Correctness is not negotiable: a partial frame must be byte-for-byte identical to the full frame. The diagnostic flag
 // `render.damage.verify` (set_damage_verify) renders every frame BOTH ways and compares; the first differing pixel and
 // the rectangle it is in are reported, so a missing damage rectangle (a filter that reads outside its box, an
 // overshooting shadow) is caught at once.
 
-// Most rectangles a damage region keeps before it starts fusing them. Present1 is given at most this many dirty rects;
-// the scissor loop in frame_submit tests each batch against each rectangle, so a small, bounded count matters.
+// Most rectangles a damage region keeps before it starts fusing them: the scissor loop in frame_submit tests each batch
+// against each rectangle, so a small, bounded count matters.
 MAX_DAMAGE_RECTS :: 16
 
 // A rectangle in screen pixels, half-open: covers columns [x0, x1) and rows [y0, y1). Empty when x1 <= x0 or y1 <= y0.
@@ -47,36 +47,25 @@ Damage_State :: struct {
 	mode:        Damage_Mode,     // set_partial_redraw: Off (always full) or On (use the region when one was built)
 	building:    bool,            // damage_begin was called this frame: a region is being built
 	have_region: bool,            // the built region is in effect for this frame (frame_submit / frame_end read it)
-	rects:       [MAX_DAMAGE_RECTS]Damage_Rect,   // what changed this frame (Present1 dirty rects)
+	rects:       [MAX_DAMAGE_RECTS]Damage_Rect,   // what changed this frame: what is cleared and rasterized
 	count:       int,
-	render_rects: [MAX_DAMAGE_RECTS]Damage_Rect,  // what to actually clear and rasterize (this frame + buffer-age history)
-	render_count: int,
-	scroll:      Damage_Rect,     // damage_scroll: the region whose content moved (empty: none)
-	scroll_dx:   i32,
-	scroll_dy:   i32,
-	have_scroll: bool,
 	verify:      bool,            // set_damage_verify / render.damage.verify: render full too and compare
-	clear:       [4]f32,          // the frame's clear colour (frame_begin kept it; a partial frame clears per rectangle)
+	clear:       [4]f32,          // the frame's clear colour, in the target's values (frame_begin kept it)
 	have_clear:  bool,            // frame_begin deferred the clear to frame_submit (a possible partial frame)
+	skip_present: bool,           // a region of nothing, on top of a good target: frame_end does not present
 	// counters (damage_stats): reset by damage_begin
 	rects_in:    int,             // rectangles the app added this frame (before fusion)
 	px_raster:   int,             // pixels inside the region (what partial rendering rasterized)
 	px_full:     int,             // pixels of the whole frame (what a full frame would rasterize)
-	// buffer age for flip models that do not keep content (d3d_present_partial): how many of the last frames' regions
-	// a present must also redraw. Entry [k] is the region presented k frames ago; a present with a buffer `age` old
-	// must have drawn the union of the last `age` regions into it.
-	history:     [MAX_BUFFER_AGE]History_Region,
-	history_len: int,
-}
-
-// The damaged region of one past frame, kept for the buffer-age logic of flip swap chains (see d3d_present_partial).
-@(private)
-MAX_BUFFER_AGE :: 4
-
-@(private)
-History_Region :: struct {
-	rects: [MAX_DAMAGE_RECTS]Damage_Rect,
-	count: int,
+	verify_differences: int,      // frames render.damage.verify found different (damage_verify_differences)
+	// Direct3D 11 (damage_d3d.odin; WebGPU keeps its own in Wgpu_State). One window's, so it goes with the state in surface_use.
+	target:       ^d3d11.ITexture2D,          // the kept target: what the next region starts from
+	target_rtv:   ^d3d11.IRenderTargetView,
+	target_size:  [2]int,
+	target_ready: bool,                       // it holds the last frame
+	clear_tex:    ^d3d11.ITexture2D,          // a texture of the clear color, copied into the region
+	clear_rtv:    ^d3d11.IRenderTargetView,
+	clear_size:   [2]int,
 }
 
 // Off (the renderer always draws and presents the whole frame, the behaviour before this feature) or On (a region built
@@ -90,15 +79,16 @@ partial_redraw :: proc(r: ^Renderer) -> bool { return r.damage.mode == .On }
 set_damage_verify :: proc(r: ^Renderer, on: bool) { r.damage.verify = on }
 damage_verify :: proc(r: ^Renderer) -> bool { return r.damage.verify }
 
-// Begins a new damage region for this frame (clearing the one built before). Call once, after frame_begin, when the
+// Frames render.damage.verify found different from a full render since the renderer was made.
+damage_verify_differences :: proc(r: ^Renderer) -> int { return r.damage.verify_differences }
+
+// Begins a new damage region for this frame (clearing the one built before). Call once, before frame_submit, when the
 // application tracks damage; then damage_add / damage_scroll. A frame that begins a region and adds nothing redraws and
 // presents nothing. Not calling it means the whole frame is damaged (lossless default).
 damage_begin :: proc(r: ^Renderer) {
 	d := &r.damage
 	d.building = true
 	d.count = 0
-	d.scroll = {}
-	d.scroll_dx, d.scroll_dy, d.have_scroll = 0, 0, false
 	d.rects_in = 0
 	d.px_raster, d.px_full = 0, 0
 }
@@ -115,15 +105,16 @@ damage_add :: proc(r: ^Renderer, rect: Damage_Rect) {
 	region_add(&d.rects, &d.count, nr)
 }
 
-// The content of `rect` moved by (dx, dy) screen pixels since the last frame (a scrolled view): presented as a block
-// copy (Present1 pScrollRect) when the backend can, so the moved pixels are not redrawn. The newly exposed band must
-// still be added with damage_add. One scroll per frame; a second replaces the first.
+// The content of `rect` moved by (dx, dy) screen pixels since the last frame (a scrolled view). No backend moves pixels
+// by a block copy today: where it was and where it is now are redrawn, like damage_add.
 damage_scroll :: proc(r: ^Renderer, rect: Damage_Rect, dx, dy: i32) {
 	d := &r.damage
 	if !d.building { return }
 	nr := clamp_rect(rect, r.size)
 	if rect_empty(nr) || (dx == 0 && dy == 0) { return }
-	d.scroll, d.scroll_dx, d.scroll_dy, d.have_scroll = nr, dx, dy, true
+	moved := clamp_rect({rect.x0 + dx, rect.y0 + dy, rect.x1 + dx, rect.y1 + dy}, r.size)
+	damage_add(r, nr)
+	damage_add(r, moved)
 }
 
 // The damage of this frame: how many rectangles were added, how many remain after fusion, the pixels the region covers
@@ -239,34 +230,19 @@ region_pad :: proc(d: ^Damage_State, size: [2]int, pad: i32) {
 ////////////////////////////////
 // Frame hooks (called by frame.odin / wgpu_frame.odin / present.odin)
 
-// At frame_submit, after the region was built this frame: decides whether a partial frame is possible, fills the
-// render region (this frame plus the history a back buffer of `buffer_age` frames needs: a flip buffer does not keep
-// its content, so a partial frame must repaint everything that changed while that buffer was off screen), and records
-// the counters. Returns false to draw the whole frame (no damage tracking, mode Off, or the buffer age is unknown or
-// older than the history kept). `buffer_age`: how many frames old the back buffer being drawn is (flip buffer count);
-// 1 or less means the buffer still holds the previous frame (nothing extra to redraw beyond this frame's region).
+// At frame_submit: whether a region was built this frame, and its counters. False: the frame is whole (no damage tracking,
+// mode Off). The backend still decides whether the kept target allows a partial frame (have_region says it did).
 @(private)
-damage_resolve :: proc(r: ^Renderer, buffer_age: int) -> bool {
+damage_resolve :: proc(r: ^Renderer) -> bool {
 	d := &r.damage
 	d.have_region = false
-	d.render_count = 0
 	if d.mode != .On || !d.building { return false }
 	d.building = false
 	// the environment flag mirrors the pref, read once: render.damage.verify
 	damage_verify_env(d)
 	d.px_full = r.size.x * r.size.y
-	// the render region: this frame's rectangles plus the regions of the frames this buffer missed (buffer_age <= 1:
-	// just this frame). When the history is too short for the age, there is no safe partial frame: fall back to full.
-	if buffer_age > 1 {
-		cnt, ok := damage_history_union(d, buffer_age, &d.render_rects)
-		if !ok { return false }
-		d.render_count = cnt
-	} else {
-		for i in 0 ..< d.count { d.render_rects[i] = d.rects[i] }
-		d.render_count = d.count
-	}
 	px := 0
-	for i in 0 ..< d.render_count { px += rect_area(d.render_rects[i]) }
+	for i in 0 ..< d.count { px += rect_area(d.rects[i]) }
 	d.px_raster = px
 	d.have_region = true
 	return true
@@ -286,18 +262,19 @@ damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int) {
 	n := min(len(full), len(partial))
 	for i := 0; i + 3 < n; i += 4 {
 		if full[i] == partial[i] && full[i + 1] == partial[i + 1] && full[i + 2] == partial[i + 2] && full[i + 3] == partial[i + 3] { continue }
+		d.verify_differences += 1
 		px := i / 4
 		x, y := px % size.x, px / size.x
 		in_region := false
 		which := -1
-		for k in 0 ..< d.render_count {
-			rr := d.render_rects[k]
+		for k in 0 ..< d.count {
+			rr := d.rects[k]
 			if i32(x) >= rr.x0 && i32(x) < rr.x1 && i32(y) >= rr.y0 && i32(y) < rr.y1 { in_region, which = true, k; break }
 		}
 		fmt.eprintfln(
 			"render.damage.verify: first difference at pixel (%d, %d): full BGRA %v, partial BGRA %v | %s",
 			x, y, full[i:i + 4], partial[i:i + 4],
-			in_region ? fmt.tprintf("inside damage rect %d %v", which, d.render_rects[which]) : "OUTSIDE every damage rectangle (a dirty rectangle is missing)")
+			in_region ? fmt.tprintf("inside damage rect %d %v", which, d.rects[which]) : "OUTSIDE every damage rectangle (a dirty rectangle is missing)")
 		return
 	}
 }
@@ -311,8 +288,8 @@ damage_clip_batch :: proc(d: ^Damage_State, clip: [4]f32) -> (out: [4]f32, draw:
 	bx0, by0, bx1, by1 := f32(clip[0]), f32(clip[1]), f32(clip[2]), f32(clip[3])
 	hit := false
 	ux0, uy0, ux1, uy1: f32
-	for i in 0 ..< d.render_count {
-		rr := d.render_rects[i]
+	for i in 0 ..< d.count {
+		rr := d.rects[i]
 		ix0, iy0 := max(bx0, f32(rr.x0)), max(by0, f32(rr.y0))
 		ix1, iy1 := min(bx1, f32(rr.x1)), min(by1, f32(rr.y1))
 		if ix1 <= ix0 || iy1 <= iy0 { continue }
@@ -323,32 +300,3 @@ damage_clip_batch :: proc(d: ^Damage_State, clip: [4]f32) -> (out: [4]f32, draw:
 	return {ux0, uy0, ux1, uy1}, true
 }
 
-// Records the region of the frame being presented into the history ring, so a later flip present can tell, from the
-// buffer's age, how many frames it must redraw into the back buffer (see d3d_present_partial).
-@(private)
-damage_push_history :: proc(d: ^Damage_State) {
-	for k := min(d.history_len, MAX_BUFFER_AGE - 1); k > 0; k -= 1 { d.history[k] = d.history[k - 1] }
-	h := &d.history[0]
-	h.count = d.count
-	for i in 0 ..< d.count { h.rects[i] = d.rects[i] }
-	d.history_len = min(d.history_len + 1, MAX_BUFFER_AGE)
-}
-
-// The union of the regions of the last `age` presented frames, as a list of rectangles (the area a flip back buffer of
-// that age must have redrawn so that it holds the same pixels as a fully kept buffer). `age` 0 or 1: this frame's
-// region. `age` >= MAX_BUFFER_AGE or history too short: nil, meaning the whole frame must be redrawn.
-@(private)
-damage_history_union :: proc(d: ^Damage_State, age: int, out: ^[MAX_DAMAGE_RECTS]Damage_Rect) -> (count: int, ok: bool) {
-	back := max(age - 1, 0)   // age 1 means "the buffer holds the frame before this one": redraw this frame's region only
-	if back >= d.history_len || back >= MAX_BUFFER_AGE { return 0, false }
-	count = 0
-	// this frame's region first
-	for i in 0 ..< d.count { region_add(out, &count, d.rects[i]) }
-	for k in 0 ..< back {
-		h := d.history[k]
-		for i in 0 ..< h.count { region_add(out, &count, h.rects[i]) }
-	}
-	return count, true
-}
-
-_ :: slice

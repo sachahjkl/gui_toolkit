@@ -262,7 +262,9 @@ release_device_objects :: proc(r: ^Renderer) {
 	slug_destroy(r)
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 	capture_release_device_objects(&r.capture)
-	readback_device_lost()
+	d3d_damage_release(&r.damage)
+	rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
+	readback_device_lost(r)
 	heaps_destroy(r)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
 	r.inst_cap, r.xform_cap, r.clip_cap, r.points_cap, r.grads_cap = 0, 0, 0, 0, 0

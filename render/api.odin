@@ -140,6 +140,7 @@ destroy_texture :: proc(r: ^Renderer, t: Texture) {
 }
 
 frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
+	r.damage.have_region = false
 	when USE_WGPU { wgpu_frame_begin(r, clear) } else { d3d_frame_begin(r, clear) }
 }
 
@@ -156,8 +157,12 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
 	r.present.drawn = time.tick_now()
-	when !USE_WGPU { if r.capture.requested { capture_copy(r) } }   // before the present: a flip chain does not keep the frame
+	when !USE_WGPU {
+		d3d_damage_finish_clear(r)
+		if r.capture.requested { capture_copy(r) }   // before the present: a flip chain does not keep the frame
+	}
 	when USE_WGPU { wgpu_frame_end(r, vsync) } else { d3d_frame_end(r, vsync) }
+	r.damage.building, r.damage.skip_present = false, false
 	if !r.first_present_noted {
 		r.first_present_noted = true
 		if render_trace() {

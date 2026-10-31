@@ -462,8 +462,6 @@ Renderer :: struct {
 	first_present_noted: bool,
 	capture:     Capture_State,          // capture.odin: reading a frame back
 	damage:      Damage_State,           // damage.odin: partial redraw (dirty rectangles)
-	damage_clear_vb: ^d3d11.IBuffer,     // solid quads that clear the damaged region (D3D11 has no scissored clear)
-	damage_clear_cap: int,
 	damage_verify_ref: ^d3d11.ITexture2D, // render.damage.verify: the full frame rendered for comparison
 	damage_verify_rtv: ^d3d11.IRenderTargetView,
 	teardown_wait_ms: int,               // set_teardown_wait
@@ -503,14 +501,18 @@ mark_input :: proc(r: ^Renderer) {
 	if r.present.input._nsec == 0 { r.present.input = time.tick_now() }
 }
 
-// The sRGB transfer functions (IEC 61966-2-1), on one channel in 0..1.
+// The sRGB transfer functions (IEC 61966-2-1), on one channel in 0..1. srgb_decode does not clamp: a color authored out of 0..1
+// stays out of it.
 linear_to_srgb :: proc(l: f32) -> f32 {
 	x := clamp(l, 0, 1)
 	return x <= 0.0031308 ? x * 12.92 : 1.055 * math.pow(x, 1 / 2.4) - 0.055
 }
 
 srgb_to_linear :: proc(s: f32) -> f32 {
-	x := clamp(s, 0, 1)
+	return srgb_decode(clamp(s, 0, 1))
+}
+
+srgb_decode :: proc(x: f32) -> f32 {
 	return x <= 0.04045 ? x / 12.92 : math.pow((x + 0.055) / 1.055, 2.4)
 }
 
@@ -630,14 +632,10 @@ premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: [
 			case 255: dst[i], dst[i + 1], dst[i + 2], dst[i + 3] = src[i], src[i + 1], src[i + 2], 255
 			case 0:   dst[i], dst[i + 1], dst[i + 2], dst[i + 3] = 0, 0, 0, 0
 			case:
-				if td.space == .Srgb {
-					for k in 0 ..< 3 { dst[i + k] = u8((u32(src[i + k]) * u32(a) + 127) / 255) }
-				} else {
-					af := f32(a) / 255
-					for k in 0 ..< 3 {
-						lin := srgb_to_linear_table[src[i + k]] * af
-						dst[i + k] = linear_to_srgb_table[int(lin * (LINEAR_STEPS - 1) + 0.5)]
-					}
+				af := f32(a) / 255
+				for k in 0 ..< 3 {
+					lin := srgb_to_linear_table[src[i + k]] * af
+					dst[i + k] = linear_to_srgb_table[int(lin * (LINEAR_STEPS - 1) + 0.5)]
 				}
 				dst[i + 3] = a
 			}
@@ -655,12 +653,10 @@ premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: [
 srgb_tables_init :: proc() {
 	if srgb_tables_ready { return }
 	for i in 0 ..< 256 {
-		c := f32(i) / 255
-		srgb_to_linear_table[i] = c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4)
+		srgb_to_linear_table[i] = srgb_to_linear(f32(i) / 255)
 	}
 	for i in 0 ..< LINEAR_STEPS {
-		l := f32(i) / (LINEAR_STEPS - 1)
-		s := l <= 0.0031308 ? l * 12.92 : 1.055 * math.pow(l, 1 / 2.4) - 0.055
+		s := linear_to_srgb(f32(i) / (LINEAR_STEPS - 1))
 		linear_to_srgb_table[i] = u8(clamp(s * 255 + 0.5, 0, 255))
 	}
 	srgb_tables_ready = true
@@ -853,20 +849,23 @@ release_targets :: proc(r: ^Renderer) {
 	r.targets_gen += 1
 }
 
+@(private)
+pooled_target_bytes :: proc(p: Pooled_Target) -> int {
+	b := p.w * p.h * (p.snapshot || p.unorm ? 4 : TEXEL_BYTES_FP16)
+	return p.mips ? b * 4 / 3 : b
+}
+
 // GPU memory held by the pooled layer targets, in bytes (kept ones included).
 targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
-	for p in r.targets {
-		b := p.w * p.h * (p.snapshot || p.unorm ? 4 : TEXEL_BYTES_FP16)
-		n += p.mips ? b * 4 / 3 : b
-	}
+	for p in r.targets { n += pooled_target_bytes(p) }
 	return n
 }
 
 // GPU memory of the kept targets (keep_target), in bytes.
 kept_targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
-	for p in r.targets { if p.kept { n += p.w * p.h * (p.unorm ? 4 : TEXEL_BYTES_FP16) } }
+	for p in r.targets { if p.kept { n += pooled_target_bytes(p) } }
 	return n
 }
 
@@ -897,7 +896,8 @@ gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
 // The vertices of one draw: a quad as a triangle strip, a full-screen triangle (the shaders make them from the vertex index).
 @(private) QUAD_VERTICES :: 4
 @(private) FULLSCREEN_VERTICES :: 3
-// What full corner smoothing adds to the superellipse exponent (2: a circle) and to the radius.
+// What full corner smoothing adds to the superellipse exponent (2: a circle; 2.6 softens the arc-to-edge junction without turning
+// capsules into rounded boxes) and to the radius (so the corners do not look tighter than circular ones).
 @(private) CORNER_N_SMOOTHING :: 0.6
 @(private) CORNER_BOOST_SMOOTHING :: 0.25
 
@@ -913,3 +913,20 @@ Globals :: struct #packed {
 	_: [2]f32,
 }
 #assert(size_of(Globals) == 48)
+
+// The constants of a target: its viewport, origin and blend space, the corner shape and the text rendering.
+@(private)
+target_globals :: proc(r: ^Renderer, size: [2]int, origin: [2]f32, space: Blend_Space) -> Globals {
+	sm := clamp(r.corner_smoothing, 0, 1)
+	text_gamma: f32
+	switch r.text.curve {
+	case .None: text_gamma = 0
+	case .Srgb: text_gamma = -1
+	case .Power: text_gamma = max(r.text.gamma, TEXT_GAMMA_MIN)
+	}
+	return Globals{
+		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + CORNER_N_SMOOTHING * sm, corner_boost = 1 + CORNER_BOOST_SMOOTHING * sm,
+		target_origin = origin, target_space = u32(space),
+		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN),
+	}
+}
