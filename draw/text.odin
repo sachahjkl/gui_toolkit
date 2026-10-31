@@ -33,6 +33,7 @@ text_destroy :: proc(c: ^Context) {
 	for p in c.glyphs.pages {
 		if p.tex != 0 && p.tex != c.atlas { render.destroy_texture(c.renderer, p.tex) }
 	}
+	if c.atlas != 0 { render.destroy_texture(c.renderer, c.atlas) }
 	delete(c.glyphs.pages)
 }
 

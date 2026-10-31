@@ -719,6 +719,12 @@ exec_clip_make :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	zero := [4]f32{}
 	r.ctx->ClearRenderTargetView(r.textures[int(m)].rtv, &zero)
 	if cmd.count <= 0 { return }
+	// what was bound comes back for what follows: the canvas (bound again by its next draw) or an open layer
+	was, was_origin, was_main := x.cur, x.cur_origin, x.cur_main
+	defer {
+		x.cur, x.cur_main = 0, true
+		if !was_main { exec_bind_target(x, was, was_origin, false) }
+	}
 	exec_bind_target(x, m, {0, 0}, false)
 	rc, ok := exec_scissor(x, cmd.box)
 	if !ok { return }
@@ -729,8 +735,6 @@ exec_clip_make :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	exec_bind_inputs(x, 0, parent)
 	r.ctx->DrawInstanced(QUAD_VERTICES, u32(cmd.count), 0, u32(cmd.first))
 	cp.stats.draws += 1
-	// the canvas is the target again for what follows
-	x.cur, x.cur_main = 0, true
 }
 
 @(private)

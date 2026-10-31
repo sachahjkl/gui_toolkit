@@ -1,6 +1,5 @@
 package render
 
-import "core:fmt"
 import "vendor:wgpu"
 
 // Partial redraw on the WebGPU backend. wgpu-native (the pinned version in this repository) exposes only
@@ -14,8 +13,9 @@ import "vendor:wgpu"
 // presented in full. The rasterization is partial (the win: fewer pixels shaded, fewer pictures replayed); the present
 // is full (the documented limit of this backend until wgpu-native gains present-with-damage).
 //
-// Because the persistent target always holds the last full composite, a partial frame is exact: the pixels it does not
-// touch are the ones the previous frame left, which is what a lossless partial frame must show.
+// While the persistent target holds the last frame, a partial frame is exact: the pixels it does not touch are the ones the
+// previous frame left, which is what a lossless partial frame must show. A frame without a region goes straight to the surface:
+// the target is behind it then, and the next region composes a whole frame.
 
 // Makes or resizes the persistent damage target for the current size and view format. Returns false when it could not
 // be made (then the frame is drawn in full straight into the surface, as without partial redraw).
@@ -29,13 +29,13 @@ wgpu_damage_ensure_target :: proc(r: ^Renderer) -> bool {
 	if r.size.x <= 0 || r.size.y <= 0 { return false }
 	vf := [1]wgpu.TextureFormat{g.view_format}
 	g.damage_target = wgpu.DeviceCreateTexture(g.device, &{
-		label = "damage target", usage = {.RenderAttachment, .CopySrc, .TextureBinding}, dimension = ._2D,
+		label = "damage target", usage = {.RenderAttachment, .CopySrc, .CopyDst, .TextureBinding}, dimension = ._2D,
 		size = {u32(r.size.x), u32(r.size.y), 1}, format = g.surface_format, mipLevelCount = 1, sampleCount = 1,
 		viewFormatCount = g.view_format != g.surface_format ? 1 : 0, viewFormats = raw_data(vf[:]),
 	})
 	if g.damage_target == nil { return false }
 	g.damage_view = wgpu.TextureCreateView(g.damage_target, &{format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
-	g.damage_sample = wgpu.TextureCreateView(g.damage_target, &{format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
+	g.damage_sample = wgpu.TextureCreateView(g.damage_target, &{format = g.surface_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
 	g.damage_size = r.size
 	g.damage_ready = false   // nothing composed into it yet: the first frame using it must be full
 	return g.damage_view != nil && g.damage_sample != nil
@@ -49,26 +49,67 @@ wgpu_damage_release_target :: proc(r: ^Renderer) {
 	if g.damage_target != nil { wgpu.TextureRelease(g.damage_target); g.damage_target = nil }
 	if g.damage_ref_view != nil { wgpu.TextureViewRelease(g.damage_ref_view); g.damage_ref_view = nil }
 	if g.damage_ref != nil { wgpu.TextureRelease(g.damage_ref); g.damage_ref = nil }
+	if g.damage_clear_view != nil { wgpu.TextureViewRelease(g.damage_clear_view); g.damage_clear_view = nil }
+	if g.damage_clear != nil { wgpu.TextureRelease(g.damage_clear); g.damage_clear = nil }
+	g.damage_clear_size = {}
 	g.damage_size = {}
 	g.damage_ready = false
 }
 
-// Whether this frame is drawn into the persistent target (a partial frame, or a full frame that keeps it current for
+// Whether this frame is drawn into the persistent target (a partial frame, or a full frame that makes it current for
 // the partial frames to come). Sets up the target and, when nothing valid is kept yet, forces a full composite.
 // Returns (use_target, partial): use_target true to render target 0 into damage_view, partial true to load and
 // scissor (else clear and draw whole). Called at the top of wgpu_frame_submit after damage_resolve.
 @(private)
-wgpu_damage_setup :: proc(r: ^Renderer, partial: bool) -> (use_target, do_partial: bool) {
+wgpu_damage_setup :: proc(r: ^Renderer, region: bool) -> (use_target, do_partial: bool) {
 	g := &r.wg
-	if g.surface == nil { return false, false }   // offscreen: no persistent target, no partial present
 	// only when a region is in effect this frame (the app called damage_begin for this window and mode is On): a frame
 	// with no region is drawn straight to the surface, exactly as without partial redraw. This also keeps a second
 	// window that does not track damage off the persistent target entirely.
-	if !partial { return false, false }
-	if !wgpu_damage_ensure_target(r) { return false, false }
-	// a partial frame is only safe when the target already holds a full composite; otherwise compose a full one now
-	do_partial = g.damage_ready
-	return true, do_partial
+	use_target = region && wgpu_damage_ensure_target(r)
+	if !use_target { g.damage_ready = false }   // what is drawn goes past it
+	// a partial frame is only safe when the target already holds the last frame; otherwise compose a full one now
+	do_partial = use_target && g.damage_ready
+	r.damage.have_region = do_partial
+	r.damage.skip_present = do_partial && r.damage.count == 0
+	return
+}
+
+// Clears every rectangle of the region to the frame's clear color: to the byte what a pass's clear does to a whole frame (WebGPU
+// has no scissored clear): a texture of that color, copied.
+@(private)
+wgpu_damage_clear_region :: proc(r: ^Renderer, s: ^Submit) {
+	g := &r.wg
+	d := &r.damage
+	g.clear_pending = false
+	if d.count == 0 { return }
+	need := g.damage_clear_size
+	for rc in d.rects[:d.count] { need = {max(need.x, int(rc.x1 - rc.x0)), max(need.y, int(rc.y1 - rc.y0))} }
+	if g.damage_clear == nil || need != g.damage_clear_size {
+		if g.damage_clear_view != nil { wgpu.TextureViewRelease(g.damage_clear_view); g.damage_clear_view = nil }
+		if g.damage_clear != nil { wgpu.TextureRelease(g.damage_clear); g.damage_clear = nil }
+		g.damage_clear_size = {}
+		vf := [1]wgpu.TextureFormat{g.view_format}
+		g.damage_clear = wgpu.DeviceCreateTexture(g.device, &{
+			label = "damage clear", usage = {.RenderAttachment, .CopySrc}, dimension = ._2D,
+			size = {u32(need.x), u32(need.y), 1}, format = g.surface_format, mipLevelCount = 1, sampleCount = 1,
+			viewFormatCount = g.view_format != g.surface_format ? 1 : 0, viewFormats = raw_data(vf[:]),
+		})
+		if g.damage_clear == nil { return }
+		g.damage_clear_view = wgpu.TextureCreateView(g.damage_clear, &{format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
+		if g.damage_clear_view == nil { return }
+		g.damage_clear_size = need
+	}
+	att := wgpu.RenderPassColorAttachment{view = g.damage_clear_view, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store, clearValue = g.clear}
+	pass := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
+	wgpu.RenderPassEncoderEnd(pass)
+	wgpu.RenderPassEncoderRelease(pass)
+	for rc in d.rects[:d.count] {
+		wgpu.CommandEncoderCopyTextureToTexture(s.enc,
+			&{texture = g.damage_clear, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
+			&{texture = g.damage_target, mipLevel = 0, origin = {u32(rc.x0), u32(rc.y0), 0}, aspect = .All},
+			&{u32(rc.x1 - rc.x0), u32(rc.y1 - rc.y0), 1})
+	}
 }
 
 // render.damage.verify on WebGPU: makes (or resizes) the reference texture, a full composite is drawn into it and
@@ -140,17 +181,24 @@ wgpu_damage_compare :: proc(r: ^Renderer) {
 	damage_compare(&r.damage, full, got, r.size)
 }
 
-// Copies the whole persistent target to the current surface texture, so SurfacePresent shows the full composite.
-// Called after the batch loop, before SurfacePresent.
+// Copies the whole persistent target to the current surface texture, so SurfacePresent shows the full composite: by a draw, a
+// surface usually takes no CopyDst. Both views are of the storage format: the bytes go across as they are. Called after the
+// batch loop, before SurfacePresent.
 @(private)
-wgpu_damage_blit_to_surface :: proc(r: ^Renderer, enc: wgpu.CommandEncoder) {
+wgpu_damage_blit_to_surface :: proc(r: ^Renderer, s: ^Submit) {
 	g := &r.wg
-	if g.damage_target == nil || g.frame_tex == nil { return }
-	wgpu.CommandEncoderCopyTextureToTexture(enc,
-		&{texture = g.damage_target, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
-		&{texture = g.frame_tex, mipLevel = 0, origin = {0, 0, 0}, aspect = .All},
-		&{u32(r.size.x), u32(r.size.y), 1})
+	if g.damage_sample == nil || g.frame_tex == nil { return }
+	dst := wgpu.TextureCreateView(g.frame_tex, &{format = g.surface_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
+	append(&s.views, dst)
+	e := [2]wgpu.BindGroupEntry{{binding = 0, textureView = g.damage_sample}, {binding = 1, sampler = g.s_mip}}
+	bg := wgpu.DeviceCreateBindGroup(g.device, &{layout = g.bgl_mip, entryCount = 2, entries = raw_data(e[:])})
+	append(&s.groups, bg)
+	att := wgpu.RenderPassColorAttachment{view = dst, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store}
+	p := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
+	wgpu.RenderPassEncoderSetPipeline(p, wgpu_mip_pipeline(r, g.surface_format, true))
+	wgpu.RenderPassEncoderSetBindGroup(p, 0, bg)
+	wgpu.RenderPassEncoderDraw(p, FULLSCREEN_VERTICES, 1, 0, 0)
+	wgpu.RenderPassEncoderEnd(p)
+	wgpu.RenderPassEncoderRelease(p)
 	g.damage_ready = true
 }
-
-_ :: fmt

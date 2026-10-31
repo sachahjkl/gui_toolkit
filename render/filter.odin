@@ -41,6 +41,32 @@ Pass_Constants :: struct #packed {
 }
 #assert(size_of(Pass_Constants) % 16 == 0)
 
+// The constants of a filter pass.
+@(private)
+pass_constants :: proc(r: ^Renderer, p: ^Pass) -> Pass_Constants {
+	dim :: proc(r: ^Renderer, t: Texture) -> [2]f32 {
+		if int(t) <= 0 || int(t) >= len(r.textures) { return {1, 1} }
+		return {f32(max(r.textures[int(t)].w, 1)), f32(max(r.textures[int(t)].h, 1))}
+	}
+	pc := Pass_Constants{
+		src_origin = p.src.origin, src_scale = p.src.scale, mode = u32(p.mode),
+		src_size = {f32(p.src.size.x), f32(p.src.size.y)}, src_dim = dim(r, p.src.tex),
+		dst_origin = p.dst.origin, dst_scale = p.dst.scale, flags = p.flags,
+		src2_origin = p.src2.origin, src2_scale = p.src2.scale,
+		src2_size = {f32(p.src2.size.x), f32(p.src2.size.y)}, src2_dim = dim(r, p.src2.tex),
+		dir = p.dir, offset = p.offset, color = p.color,
+		matrix_count = u32(clamp(p.matrix_count, 0, MAX_COLOR_MATRICES)),
+		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, DOWNSAMPLE_FACTOR_MAX)),
+	}
+	if p.mode == .Blur { pc.taps = u32(blur_taps(p.sigma, &pc.tap)) }
+	for k in 0 ..< int(pc.matrix_count) {
+		m := p.matrices[k]
+		for row in 0 ..< 4 { pc.m[k * 5 + row] = {m[row * 5], m[row * 5 + 1], m[row * 5 + 2], m[row * 5 + 3]} }
+		pc.m[k * 5 + 4] = {m[4], m[9], m[14], m[19]}
+	}
+	return pc
+}
+
 // Gaussian taps for a standard deviation in texels, folded in bilinear pairs: tap 0 is the center, each other tap k
 // samples at +-offset (between two texels, the filter mixing them with the right weights). Returns the tap count.
 blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {

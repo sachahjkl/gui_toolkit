@@ -89,6 +89,7 @@ Present_State :: struct {
 	probe_tick:    time.Tick,
 	max_latency:   int,                    // the swap chain's MaximumFrameLatency (0: not set yet = 1)
 	latency_debt:  int,                    // counts the latency object holds beyond max_latency since it was lowered (see latency_lowered)
+	slot_unused:   bool,                   // the last frame presented nothing (a region of nothing): the next wait does not take another count
 }
 
 // Vsync (default) or Tearing (see the package comment). Tearing without system support stays Vsync.
@@ -175,6 +176,7 @@ present_reset :: proc(r: ^Renderer) {
 	p.sync_count, p.sync_tick = 0, {}
 	p.stats_ok, p.stats_fails = false, 0
 	p.max_latency, p.latency_debt = 1, 0   // (create_swapchain sets 1)
+	p.slot_unused = false
 }
 
 // The latency object is a semaphore the system raises by the difference when MaximumFrameLatency is raised and does NOT take
@@ -213,6 +215,7 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	profile_present_end(r, ps)
 	now := time.tick_now()
 	if hr_failed(hr) { return hr }
+	p.slot_unused = false
 	p.presents += 1
 	id: u32
 	if hr_ok(r.swapchain->GetLastPresentCount(&id)) {

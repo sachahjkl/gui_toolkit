@@ -7,7 +7,6 @@ package render
 // anything until a capture is asked for (the copy is one GPU command in that one frame; the map never waits).
 
 import "base:runtime"
-import "core:math"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
@@ -35,15 +34,24 @@ Capture_State :: struct {
 	staging_size: [2]int,
 	format:    dxgi.FORMAT,
 	// WebGPU: the frame target is copied into a mappable buffer (rows of `wrow` bytes, a multiple of 256), mapped
-	// asynchronously by capture_poll. `wmap` tracks the async map; `wformat` says how the buffer's texels read back.
+	// asynchronously by capture_poll. `wmap` tracks the async map (nil: not asked yet); `wformat` says how the buffer's
+	// texels read back.
 	wbuf:      wgpu.Buffer,
 	wrow:      int,
 	wformat:   wgpu.TextureFormat,
-	wmap:      Capture_Map,
+	wmap:      ^Capture_Map,
+}
+
+// What the map's callback writes. The heap's, not the state's: a Capture_State moves (surface_use), and a map cancelled still
+// calls back when the buffer goes: it must not write on the next capture. `abandoned`: the callback frees it.
+@(private)
+Capture_Map :: struct {
+	state:     Capture_Map_State,
+	abandoned: bool,
 }
 
 @(private)
-Capture_Map :: enum u8 { None, Asked, Mapped, Failed }
+Capture_Map_State :: enum u8 { Asked, Mapped, Failed }
 
 // Asks for a copy of the next frame (`rect`: x, y, w, h in the frame's pixels; zeros: the whole frame). False: a capture
 // is already waiting to be taken. Both backends read their frame back.
@@ -132,18 +140,22 @@ capture_copy_wgpu :: proc(r: ^Renderer, src: wgpu.Texture, format: wgpu.TextureF
 	wgpu.QueueSubmit(g.queue, {cb})
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(enc)
-	c.wformat, c.wrow, c.wmap = format, row, .None
+	c.wformat, c.wrow = format, row
 	c.pending = true
 }
 
 @(private)
 capture_free_wgpu :: proc(c: ^Capture_State) {
+	mapped := c.wmap != nil && c.wmap.state == .Mapped
+	if c.wmap != nil {
+		if c.wmap.state == .Asked { c.wmap.abandoned = true } else { free(c.wmap, runtime.heap_allocator()) }
+		c.wmap = nil
+	}
 	if c.wbuf != nil {
-		if c.wmap == .Mapped { wgpu.BufferUnmap(c.wbuf) }
+		if mapped { wgpu.BufferUnmap(c.wbuf) }
 		wgpu.BufferRelease(c.wbuf)
 		c.wbuf = nil
 	}
-	c.wmap = .None
 }
 
 // The picture of a capture: RGBA8, straight rows, sRGB values, alpha forced to 255 (a window is opaque; a translucent
@@ -157,22 +169,22 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 	when USE_WGPU {
 		g := &r.wg
 		if c.wbuf == nil { c.pending = false; return nil, {}, .Failed }
-		if c.wmap == .None {
-			// the id (not the slot) travels to the callback is not needed here: one capture at a time, c lives in the renderer
+		if c.wmap == nil {
 			on_map :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, u1, u2: rawptr) {
 				context = runtime.default_context()
-				st := (^Capture_Map)(u1)
-				if st != nil { st^ = status == .Success ? .Mapped : .Failed }
+				m := (^Capture_Map)(u1)
+				if m.abandoned { free(m, runtime.heap_allocator()); return }
+				m.state = status == .Success ? .Mapped : .Failed
 			}
-			c.wmap = .Asked
-			wgpu.BufferMapAsync(c.wbuf, {.Read}, 0, uint(c.wrow * c.got[3]), {mode = .AllowProcessEvents, callback = on_map, userdata1 = &c.wmap})
+			c.wmap = new(Capture_Map, runtime.heap_allocator())
+			wgpu.BufferMapAsync(c.wbuf, {.Read}, 0, uint(c.wrow * c.got[3]), {mode = .AllowProcessEvents, callback = on_map, userdata1 = c.wmap})
 		}
-		if c.wmap == .Asked {
+		if c.wmap.state == .Asked {
 			wgpu.DevicePoll(g.device, false)
 			wgpu.InstanceProcessEvents(g.instance)
 		}
-		switch c.wmap {
-		case .None, .Asked: return nil, {}, .Pending
+		switch c.wmap.state {
+		case .Asked: return nil, {}, .Pending
 		case .Failed: c.pending = false; capture_free_wgpu(c); return nil, {}, .Failed
 		case .Mapped:
 		}
@@ -255,9 +267,7 @@ srgb_table :: proc() -> ^[HALF_BIT_PATTERNS]u8 {
 
 @(private)
 srgb_byte :: proc(v: f32) -> u8 {
-	x := clamp(v, 0, 1)
-	e := x <= 0.0031308 ? x * 12.92 : 1.055 * math.pow(x, 1.0 / 2.4) - 0.055
-	return u8(clamp(e * 255 + 0.5, 0, 255))
+	return u8(clamp(linear_to_srgb(v) * 255 + 0.5, 0, 255))
 }
 
 // The device the copy was made on is gone: the staging texture or buffer goes with it (it must not be used on the next

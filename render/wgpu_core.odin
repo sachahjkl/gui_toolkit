@@ -128,6 +128,9 @@ Wgpu_State :: struct {
 	damage_ready:  bool,               // the persistent target holds a valid full frame (else the next frame is full)
 	damage_ref:    wgpu.Texture,       // render.damage.verify: a full composite for comparison
 	damage_ref_view: wgpu.TextureView,
+	damage_clear:  wgpu.Texture,       // a texture of the clear color, copied into the region
+	damage_clear_view: wgpu.TextureView,
+	damage_clear_size: [2]int,
 }
 
 // Where the CPU time of a frame goes (TOOLKIT_WGPU_TRACE: averages printed once per second).
@@ -675,13 +678,13 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 }
 
 @(private)
-wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.RenderPipeline {
+wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, copy := false) -> wgpu.RenderPipeline {
 	g := &r.wg
 	sync.mutex_guard(&g.pipe_lock)
-	for p in g.mip_pipes { if p.format == format { return p.pipe } }
+	for p in g.mip_pipes { if p.format == format && p.replace == copy { return p.pipe } }
 	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
-	fs := wgpu.FragmentState{module = g.module_mip, entryPoint = "ps_mip", targetCount = 1, targets = &target}
+	fs := wgpu.FragmentState{module = g.module_mip, entryPoint = copy ? "ps_copy" : "ps_mip", targetCount = 1, targets = &target}
 	sync.mutex_lock(&g_compile_lock)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "mip", layout = g.pl_mip,
@@ -692,7 +695,7 @@ wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rend
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(&g.mip_pipes, Wgpu_Pipe{format, false, pipe})
+	append(&g.mip_pipes, Wgpu_Pipe{format, copy, pipe})
 	return pipe
 }
 
@@ -1028,7 +1031,7 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	was_offscreen := handles.backend == .None   // (not g.surface == nil: a recovery that found no device left it nil)
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(g)
-	readback_device_lost()   // (their buffers are of the device released here)
+	readback_device_lost(r)   // (their buffers are of the device released here)
 	capture_release_device_objects(&r.capture)   // a capture buffer is of the device released here too
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
