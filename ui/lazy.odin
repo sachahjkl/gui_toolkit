@@ -40,7 +40,7 @@ Lazy :: struct {
 }
 
 @(private)
-Lazy_Height :: struct { h: f32, seen: u64 }
+Lazy_Height :: struct { h: f32, seen: u64, known: bool }   // (known: built once; an item that shows nothing has a height, 0)
 
 // What a column keeps between frames: the estimate, and the item the view was on.
 @(private)
@@ -89,11 +89,12 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	e := s.lazy_heights[key] or_else {}
 	if b := s.boxes[key]; b != nil && b.last_build + 1 == s.build_index {
 		e.h = b.size.y   // built at the last build: its height then
+		e.known = true
 	}
 	e.seen = s.build_index
 	s.lazy_heights[key] = e
 	h := e.h
-	if h > 0 { lz.known_h += h; lz.known_n += 1 } else { h = lz.est }
+	if !e.known { h = lz.est } else if h > 0 { lz.known_h += h; lz.known_n += 1 }
 	top := lz.y
 	lz.y += h
 	if lz.on && !always && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {

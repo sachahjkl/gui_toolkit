@@ -1,5 +1,10 @@
 # What changed in gui_toolkit 0.56
 
+**0.56.2: a lazy column keeps its height.** An item that showed nothing counted as not measured yet: a space of the mean height
+when skipped, nothing when built. With several of them near the end of a scroll box that follows its bottom, the content's
+height changed at every frame and the scroll bar jumped without end (found on opencode native: events of a conversation
+that draw nothing). No code to change. Wren: an item may now be empty at no cost.
+
 **0.56.1: screenshots are fast on a real window.** Tried on opencode native (2310x1505), a screenshot took about two seconds
 and held the window. A wake asked for from `devtools.service` was consumed by the frame already starting, reading a
 translucent window's fp16 target ran `pow` per channel, and the PNG was encoded on the UI thread. All three are fixed; a

@@ -712,6 +712,51 @@ lazy_column_builds_what_is_near_the_view :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
+lazy_empty: int
+
+// A scroll box that follows its bottom, as a conversation does, whose last items but one show nothing.
+@(private = "file")
+build_lazy_empty :: proc(f: ^Fx, user: rawptr) {
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	id := fmt.tprintf("###lze%d", lazy_empty)
+	if sb := ui.prev_box(id); sb != nil { sb.view_target.y = max(0, sb.view_bounds.y - sb.size.y) }
+	if ui.scroll_y(id) {
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###col") {
+			lz := ui.lazy_begin()
+			for i in 0 ..< 50 {
+				if ui.lazy_item(lz, fmt.tprintf("###it%d", i), always = i == 49) {
+					if i >= 49 - lazy_empty && i < 49 { continue }
+					ui.next({width = ui.fill(), height = ui.px(40)})
+					ui.label(fmt.tprintf("item %d###l", i))
+				}
+			}
+		}
+	}
+	lazy_scroller = ui.prev_box(id)
+}
+
+// An item that shows nothing has a height, 0, not an unknown one. Standing for the mean of the others it put what follows
+// further down than it is, out of what is built; there it stood as a space, the content grew, the view followed and built it
+// again: a content's height changing at each frame, a conversation's scroll bar jumping at its bottom.
+@(test)
+lazy_items_of_no_height_stay_so :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	for k in 1 ..< 40 {
+		lazy_empty = k
+		for _ in 0 ..< 12 { frame(f, nil, build_lazy_empty, nil) }
+		h := lazy_scroller.view_bounds.y
+		for _ in 0 ..< 6 {
+			frame(f, nil, build_lazy_empty, nil)
+			testing.expectf(t, lazy_scroller.view_bounds.y == h, "%d items of no height: the content goes from %v to %v", k, h, lazy_scroller.view_bounds.y)
+		}
+	}
+}
+
+@(private = "file")
 merged_box: ^ui.Box
 
 // next_merge completes the pending next: a helper sizes its box, the caller's position stays.
