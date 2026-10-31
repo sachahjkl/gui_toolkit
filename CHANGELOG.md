@@ -1,7 +1,9 @@
 # Changelog
 
-All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
-`0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
+All notable changes to gui_toolkit. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
+project follows [semantic versioning](https://semver.org); while the version is `0.x`, a minor bump may change the API. The version
+is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
+conflict on this file.
 
 ## [0.57.0] - 2026-10-31
 
@@ -259,6 +261,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`ui.accordion`**: a header with a turning chevron that folds the content built in its block, with an animated height (no frame at rest), Enter / Space; the content is not built once folded.
 - **`ui/reorder.odin`**: a list reordered by dragging along X or Y, from Wren's tab strip: `reorder_item_size`, `reorder_offset`, `reorder_slot`, `list_move`, `reorder_edge_scroll`, `reorder_moved`, and the drag's state `Reorder` (`reorder_frame`, `reorder_begin`, `reorder_dragging`, `reorder_item_pos`: items slide to their slots, the dragged one follows the pointer).
 - Example `examples/panes`; tests `tests/panes`.
+
 ## [0.40.1] - 2026-10-26
 
 ### Added
@@ -294,6 +297,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Added
 - **File dialogs** (`platform/dialogs.odin`, Windows `dialogs_win32.odin`, stub elsewhere): `open_file_dialog`, `save_file_dialog` and `pick_folder_dialog` with a title, filters (`File_Filter`), an "All files" line, the starting folder (`start_dir`, or a `Known_Folder` default), a remembered folder per `remember_id`, the suggested name and default extension, several files, the overwrite question; `Dialog_Result` gives the paths and the type line chosen. Pure helpers: `filter_patterns`, `filter_matches`, `filters_from_accept` (a web page's accept list); `dialog_test_hook` stands for the real dialogs in tests. Doc: `docs/dialogs.md`. Test: `tests/dialogs`.
 - **Shell actions**: `open_url`, `open_path`, `reveal_in_folder` (`ShellExecuteExW`; the file manager with the file selected), `known_folder_path`.
+
 ## [0.38.2] - 2026-10-26
 
 ### Added
@@ -343,7 +347,6 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`set_placement` asks twice when the window changed monitor**: a window that crosses to a monitor of another DPI is resized by the system for it (640 x 480 became 896 x 672); asked again, now that it is on that monitor, the rectangle is the one wanted. Windows now open on the monitor the user is on (0.35.3), so this is the common case.
 - **`ui.init` no longer restarts the toolkit's clock** (`ui/state.odin`): the origin of `ui.now_ms()` was reset by every `init`, so opening a second window (one `ui.State` each) made the time of the first one jump back. It is set by the first `init` only.
 
-
 ## [0.35.3] - 2026-10-25
 
 ### Fixed
@@ -377,6 +380,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **Fingers and pens** (`platform/pointer.odin`, `pointer_win32.odin`): `Pointer_Down` / `Pointer_Move` / `Pointer_Up` / `Pointer_Cancel` events with `Event.pointer` (`Pointer_Info`: identifier, touch or pen, primary, pressure, tilt, twist, barrel, eraser, contact size) from `WM_POINTER`. The system's mouse emulation still comes, marked `Event.emulated`. `pointer_buttons`, `pointer_pressure`, `Pointer_State`.
 - `Mouse_*` events carry `Event.buttons` (`Mouse_Buttons`: the buttons held after the event), so a move during a drag says which button is held.
 - `tests/dragdrop`: the pure helpers, the pointer details, the round trip of every format through the system (hidden window), injected drops.
+
 ## [0.34.0] - 2026-10-25
 
 ### Fixed
@@ -447,7 +451,13 @@ Fixes from the review of `font`, `ui` and `platform` (0.26.0). 0.29.0 is the ver
 
 Fixes found by the review of `render` and `draw` (branch `fix/render-draw`). 0.30.0 is the font / ui / platform review branch. Each fix has a test that failed before it (`tests/lifecycle` is new).
 
+### Changed
+
+- `docs/webgpu.md` lists the functions the WebGPU backend does not have; `docs/draw.md` no longer says 3D is unsupported (planes are); `docs/shaders.md`: `app_shader` and `app_shader_ready`.
+- Not fixed (reported): `bsp` still splits the whole context when one pair crosses, with no limit on the number of pieces, and `Plane_Item.geom` is the texel-aligned rectangle (faces that touch look crossing; Wren works around it); a backdrop of a cut plane is captured once per piece; the hash of an app shader does not cover `APP_BINDINGS` (changing it makes every precompiled blob stale: to be done with the applications' blobs); `Surface` release on a thread, the DirectComposition `Panel` lifetime, canvas source textures never zeroed (to check).
+
 ### Fixed
+
 - **Plane pieces with more than 6 cuts** (`draw/bsp.odin`): a piece bounded by more than `MAX_PLANE_CUTS` cuts had the extra ones thrown away, so it was drawn over its siblings' region at its own rank and covered planes that had to be in front. It is now divided by a chord between two of its corners into convex halves (the chord is one more cut for each), as often as needed: no cut is lost, no limit. Hidden (`skip`) items no longer take part in the crossing tests.
 - **`draw.app_shader`** keeps `AppIn.pos`, `size` and `px` in local units under a uniform scale plus translation (DPI, zoom) as `docs/shaders.md` says (they were pixels: a scale was baked into the rectangle); any scale now goes through a transform entry. It returns false for a shader that is not `render.app_shader_ready`.
 - **Device loss with several windows** (Direct3D 11): a `Surface` set aside by `surface_use` kept its swap chain, views and capture copy from the old device (undefined behaviour, then a loop of recoveries); and `set_blend_space` gave the new view format to the current window only. The window state carries the device generation and the blend space it was made in, and `surface_use` remakes a stale one (`render.Renderer.swap_gen`, `swap_space`, `space_epoch`; `Surface.gen`, `space_epoch`). `d3d_recover` flushes the old context after releasing its objects (the old HWND swap chain used to keep the window, and `CreateSwapChainForHwnd` crashed). An offscreen renderer notices a device loss at `frame_end`.
@@ -458,28 +468,12 @@ Fixes found by the review of `render` and `draw` (branch `fix/render-draw`). 0.3
 - `push_plane` inside a recorded picture records nothing (it recorded the content flat, unprojected); `current_clip` is not empty while recording.
 - Slug text, when the device refuses the Slug shaders, is not drawn (it was one solid rounded rect per glyph); `d3d_update_texture_r8` checks the handle, the block and the pixels like the other uploads.
 
-### Docs
-- `docs/webgpu.md` lists the functions the WebGPU backend does not have; `docs/draw.md` no longer says 3D is unsupported (planes are); `docs/shaders.md`: `app_shader` and `app_shader_ready`.
-
-### Not fixed (reported)
-- `bsp` still splits the whole context when one pair crosses, with no limit on the number of pieces, and `Plane_Item.geom` is the texel-aligned rectangle (faces that touch look crossing; Wren works around it); a backdrop of a cut plane is captured once per piece; the hash of an app shader does not cover `APP_BINDINGS` (changing it makes every precompiled blob stale: to be done with the applications' blobs); `Surface` release on a thread, the DirectComposition `Panel` lifetime, canvas source textures never zeroed (to check).
-
 ## [0.28.0] - 2026-10-25
 
 0.27.0 is reserved for the fixes of the review branch.
 
 ### Added
 - **Boxes with leaning sides** (`ui.Box.slant`, `platform.Slant`): a clickable box can say that its left and right edges lean (how far each is moved inwards at its top and at its bottom). Only that trapezoid is hit (`ui.box_contains`; the topmost box under the pointer still wins), and over an integrated title bar it is a *slanted hole* (`platform.Chrome_Regions.slanted`, `platform.Slanted_Region`, `platform.slanted_contains`; `hit_test_chrome` answers `.Client` inside it), so that the corners a trapezoid tab does not cover keep dragging the window. For tab strips drawn with sloped sides. Tests in `tests/chrome`.
-
-## [0.25.0] - 2026-10-24
-
-### Added
-- **Application shaders** (`render/app_shader.odin`, `app.wgsl`, `wgpu_app.odin`, `draw/app_shader.odin`, [docs/shaders.md](docs/shaders.md)): `render.create_app_shader(r, {name, wgsl, dxbc, hash})` registers a fragment function the application wrote in WGSL (`fn app_shade(a: AppIn) -> vec4<f32>`, linear light, straight alpha; it reads `app_param(k)` and `app_tex0..3`), and `draw.app_shader(dc, shader, rect, params, textures, blend, radii, tint)` fills a rounded rectangle with it, in order with everything else, under the transform stack, clips, alpha stack, layers and planes (the vertex stage, corner shape and clip coverage are the renderer's). Up to 64 vec4 parameters and 4 textures per draw; blend modes `Normal`, `Add`, `Screen`, `Multiply`. Refuses (returns false, draws nothing) for shader 0, while a picture is recorded, and over the limits. Both backends: WebGPU compiles the module `rect.wgsl` + `app.wgsl` + the application's WGSL; Direct3D 11 embeds the pixel shader precompiled by `odin run tools/shaders -- app <name> <file.wgsl> <dir>` (naga + D3DCompile, `<name>.dxbc` and `<name>.sha256`; the hash of the module is checked when the shader is created, a stale blob is refused with a message).
-- **Data textures**: `render.create_texture_data(r, w, h, format = .RGBA8 | .R8, mips = true)` and `update_texture_data` make textures of raw 8-bit values (a normal map, a height map, a mask): no sRGB decoding, no premultiplication, in either blend space; mip chain by `GenerateMips` / `mip.wgsl`; recreated (empty) after a device loss like images.
-- `render.renderer_id(r)`: a number no other renderer of the process has had (a renderer destroyed and made again at the same address is another one), for caches of GPU objects keyed by renderer (with `device_generation`).
-- `tests/appshaders` (both backends), added to `tools\test_backends.ps1` and CI.
-
-0.24.0 is reserved for another branch; 0.25.0 follows 0.23.0 on purpose.
 
 ## [0.26.0] - 2026-10-24
 
@@ -496,6 +490,16 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 
 ### Fixed
 - Windows 11, integrated title bar: a line of what lay behind the window showed above the tab strip, because the system's border is half transparent there. An app now paints it opaque with `platform.set_border_color` (nothing changes until it does).
+
+## [0.25.0] - 2026-10-24
+
+### Added
+- **Application shaders** (`render/app_shader.odin`, `app.wgsl`, `wgpu_app.odin`, `draw/app_shader.odin`, [docs/shaders.md](docs/shaders.md)): `render.create_app_shader(r, {name, wgsl, dxbc, hash})` registers a fragment function the application wrote in WGSL (`fn app_shade(a: AppIn) -> vec4<f32>`, linear light, straight alpha; it reads `app_param(k)` and `app_tex0..3`), and `draw.app_shader(dc, shader, rect, params, textures, blend, radii, tint)` fills a rounded rectangle with it, in order with everything else, under the transform stack, clips, alpha stack, layers and planes (the vertex stage, corner shape and clip coverage are the renderer's). Up to 64 vec4 parameters and 4 textures per draw; blend modes `Normal`, `Add`, `Screen`, `Multiply`. Refuses (returns false, draws nothing) for shader 0, while a picture is recorded, and over the limits. Both backends: WebGPU compiles the module `rect.wgsl` + `app.wgsl` + the application's WGSL; Direct3D 11 embeds the pixel shader precompiled by `odin run tools/shaders -- app <name> <file.wgsl> <dir>` (naga + D3DCompile, `<name>.dxbc` and `<name>.sha256`; the hash of the module is checked when the shader is created, a stale blob is refused with a message).
+- **Data textures**: `render.create_texture_data(r, w, h, format = .RGBA8 | .R8, mips = true)` and `update_texture_data` make textures of raw 8-bit values (a normal map, a height map, a mask): no sRGB decoding, no premultiplication, in either blend space; mip chain by `GenerateMips` / `mip.wgsl`; recreated (empty) after a device loss like images.
+- `render.renderer_id(r)`: a number no other renderer of the process has had (a renderer destroyed and made again at the same address is another one), for caches of GPU objects keyed by renderer (with `device_generation`).
+- `tests/appshaders` (both backends), added to `tools\test_backends.ps1` and CI.
+
+0.24.0 is reserved for another branch; 0.25.0 follows 0.23.0 on purpose.
 
 ## [0.23.0] - 2026-10-24
 
@@ -540,6 +544,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 ### Fixed
 - **Direct2D crash on nested PaintGlyph**: Direct2D of Windows 11 24H2 as first released (`d2d1.dll` 10.0.26100.1, the image of GitHub's `windows-2025` runners; a patched 24H2 such as 10.0.26100.8875 draws them) dies with a null read inside `d2d1.dll`, an access violation nothing can catch, when it draws a COLR v1 glyph whose paint graph has a PaintGlyph inside the paint of another PaintGlyph (a clip inside a clip, directly or through transforms, layers, compositions and PaintColrGlyph). With `Color_Engine.System` such glyphs are now drawn by the COLR interpreter (`font.colr_nests_glyph` finds them in the font's own tables, once per glyph and face); every other glyph still goes to Direct2D. `font.colr_avoids_system(state, face, gid)` tells which. Found by the CI of Wren: `tests/colr` interpreter_agrees_with_direct2d died on U+F1400 .. U+F140F of the test font, 16 glyphs, and the process with it.
 - `tests/colr`: the comparison with Direct2D leaves out the glyphs Direct2D is no longer given; `nested_glyphs_stay_off_direct2d` checks, without depending on the machine's `d2d1.dll`, that exactly those 16 glyphs are kept off it and are drawn in color by the interpreter.
+
 ## [0.17.0] - 2026-10-22
 
 ### Added
@@ -598,6 +603,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - `ui.state_fill(box, name, under)`, `ui.box_under(box)`, `ui.srgb_step(a, b, t)`: the theme's state steps for custom draw procs.
 - `draw.alpha_like_srgb`: the inverse of `alpha_like_linear` (the alpha that looks in a blend space as a given alpha blended in sRGB values).
 - `tests/states`: instant states, transitions on demand, palette cross-fade, the size of the steps in both blend spaces.
+
 ## [0.12.0] - 2026-10-21
 
 ### Added
@@ -667,6 +673,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 ## [0.10.0] - 2026-10-19
 
 ### Added
+
 - **Kept filter results** (`draw/layer_cache.odin`): `Layer_Effects.cache_id`, `cache_key`, `cache_anchor` keep a
   layer's filtered texture from frame to frame (stored once the same key came two frames in a row); while the caller's
   key, the filters run by passes, the transform's linear part, the anchor's fraction and the bounds relative to the
@@ -737,6 +744,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
   virtualized list (rows built, measured heights, keyboard over unbuilt rows, view anchoring), wrap cache, scroll curve.
 
 ### Changed
+
 - `list`: the keyboard handling and type-ahead are shared with `vlist` (`List_State.virtual`); no change for `list`.
 - Wrapped text is drawn at the width layout wrapped it at (`Box.size`), not the rounded rect's.
 - Color matrices ending a filter chain are applied by the composite (one pass and one target fewer; a layer with only
@@ -749,13 +757,12 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - `Backdrop` holds the chain's trailing matrices and whether its texture is kept.
 - A masked layer whose filters end with a large blur applies its mask at scale 1 over the reduced result (sampled back
   bilinearly, as the composite would).
-
-### Tests
 - `tests/chrome` and `tests/keyboard` take a lock around each test (they drive the global UI state): they no longer need `-define:ODIN_TEST_THREADS=1`, without which `tests/chrome` used to hang the test runner.
 
 ## [0.9.3] - 2026-10-19
 
-### Color glyphs in every format
+### Added
+
 - **Direct2D draws color glyphs** (`font/color.odin`, bindings in `font/d2d.odin`): COLR v1 paint trees (linear,
   radial and sweep gradients with their extend modes, transforms, PaintComposite modes, clip boxes, PaintColrGlyph),
   COLR v0 layers, sbix / CBDT / PNG bitmaps and OT-SVG (plain or gzip) are drawn on a private WARP device into a
@@ -782,8 +789,6 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - `tests/color_glyphs`: Google's COLR v1 test glyphs (gradient ends and middle, sweep quadrants, radial, composite,
   rotate / skew / transform, foreground paints in two text colors), Twemoji sbix / OT-SVG / OT-SVGZ smileys, the
   ChromaCheck CBDT glyph, color glyphs off, and the same glyphs drawn through the draw layer (WARP).
-
-### Masks
 - `draw.push_mask(dc, bounds, fx)`, `draw.mask_layer(dc, mode, op)`, `draw.pop_mask(dc)` (`draw/mask.odin`): content
   drawn into a layer, multiplied by the coverage of mask layers drawn after it, each by its alpha or its luminance
   (`Mask_Mode`), composited with the layers below it by `Mask_Op` (add, subtract, intersect, exclude: CSS
@@ -831,13 +836,16 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 
 ## [0.9.1] - 2026-10-19
 
-Merge of 0.9.0 (DirectWrite text, retained glyph runs) with 0.8.1 (status bar, frame graph) and 0.8.2 (named palettes).
+### Changed
+
+- Merge of 0.9.0 (DirectWrite text, retained glyph runs) with 0.8.1 (status bar, frame graph) and 0.8.2 (named palettes).
 
 ## [0.9.0] - 2026-10-19
 
 Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged with retained drawing (0.7.0).
 
-### Retained text
+### Added
+
 - **Glyph runs record into pictures**: `draw.glyph_run` (and `text` / `text_ex` on top of it) records shaped glyphs
   (positions from the shaper, subpixel positions, color glyphs) like direct drawing; text is rasterized for the
   picture's `raster_scale` times the slot's scale (within `TEXT_RASTER_TOLERANCE` the bitmap is stretched), baked only
@@ -854,35 +862,6 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   with an emoji; a page reuse with tiny pages makes only the picture on it stale while a picture drawn every frame
   keeps its page and replays exactly; new rendering settings and `clear_atlas` make a picture stale; after a device
   loss a picture with text replays identically without recording.
-
-### Changed (retained text)
-- `font.set_settings` with new rendering settings (subpixel steps, rendering mode, grid fit, color glyphs) forgets the
-  cached bitmaps (they were made with the old settings; with other subpixel steps their keys meant other positions)
-  and bumps the settings generation.
-- Text under a GPU transform at its layout size (rotation, skew) is placed at subpixel positions in local units, as
-  text at a uniform scale: a picture recorded at its own scale and replayed rotated draws what direct drawing draws.
-- `Picture.atlas_generation` and `font.reset_atlas` are gone (`font.clear_atlas` clears the pages: pictures on them go
-  stale).
-
-### Fixed (merge)
-- `font.shape` of one right-to-left run of several words (`one_run`, a layout fragment) left its clusters in visual
-  word order: the caret of the logical end and hit testing landed inside the text. Clusters are sorted back to logical
-  order (`O(n log n)`).
-
-### Changed
-- **`font` is rebuilt on DirectWrite** (stb_truetype is gone): faces from the system collection
-  (`font.load_system`, `font.has_system_family`), files (`load_from_file`) and memory (`load_memory`,
-  `load_from_memory`, `load_embedded`: a custom font file loader, keys never reused). Same `Font_Id`, `metrics`,
-  `text_width`, `x_from_index`, `index_from_x`, `glyph` (now outline metrics) and `kern` (a pair shaped together minus
-  apart) as before, so existing callers get fallback and shaping unchanged. See [docs/text.md](docs/text.md).
-- `font.Metrics` gains `x_height`, `cap_height`, `underline_offset` / `_thickness`, `strike_offset` / `_thickness`.
-- `draw.text` shapes (fallback, ligatures, kerning, bidi in the string's direction) and draws through `draw.glyph_run`;
-  it moved to `draw/text.odin` with `TEXT_RASTER_TOLERANCE`. `draw.Context.glyphs` holds the textures of the atlas
-  pages; `draw.init` / `begin_frame` / `end_frame` / `destroy` call into it (text.odin).
-- `font.State` no longer has `pending` / `pending_pixels` / `glyphs` / `fonts`: the atlas is in pages uploaded per
-  draw context (`font.atlas_sync_page`).
-
-### Added
 - **Cascades**: `font.cascade(entries, features, no_system_fallback)`: per-character fallback through the entries
   (`ranges` = CSS `unicode-range`), then the **system fallback** (`IDWriteFontFallback::MapCharacters`); clusters stay
   in one face (marks, selectors, ZWJ emoji sequences). OpenType `features` on every face.
@@ -904,7 +883,32 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   Devanagari, bidi, line breaks, color emoji pixels, atlas stress with a tiny atlas, measuring from 8 threads, and a
   WARP pixel test of drawn text.
 
+### Changed
+
+- `font.set_settings` with new rendering settings (subpixel steps, rendering mode, grid fit, color glyphs) forgets the
+  cached bitmaps (they were made with the old settings; with other subpixel steps their keys meant other positions)
+  and bumps the settings generation.
+- Text under a GPU transform at its layout size (rotation, skew) is placed at subpixel positions in local units, as
+  text at a uniform scale: a picture recorded at its own scale and replayed rotated draws what direct drawing draws.
+- `Picture.atlas_generation` and `font.reset_atlas` are gone (`font.clear_atlas` clears the pages: pictures on them go
+  stale).
+- **`font` is rebuilt on DirectWrite** (stb_truetype is gone): faces from the system collection
+  (`font.load_system`, `font.has_system_family`), files (`load_from_file`) and memory (`load_memory`,
+  `load_from_memory`, `load_embedded`: a custom font file loader, keys never reused). Same `Font_Id`, `metrics`,
+  `text_width`, `x_from_index`, `index_from_x`, `glyph` (now outline metrics) and `kern` (a pair shaped together minus
+  apart) as before, so existing callers get fallback and shaping unchanged. See [docs/text.md](docs/text.md).
+- `font.Metrics` gains `x_height`, `cap_height`, `underline_offset` / `_thickness`, `strike_offset` / `_thickness`.
+- `draw.text` shapes (fallback, ligatures, kerning, bidi in the string's direction) and draws through `draw.glyph_run`;
+  it moved to `draw/text.odin` with `TEXT_RASTER_TOLERANCE`. `draw.Context.glyphs` holds the textures of the atlas
+  pages; `draw.init` / `begin_frame` / `end_frame` / `destroy` call into it (text.odin).
+- `font.State` no longer has `pending` / `pending_pixels` / `glyphs` / `fonts`: the atlas is in pages uploaded per
+  draw context (`font.atlas_sync_page`).
+
 ### Fixed
+
+- `font.shape` of one right-to-left run of several words (`one_run`, a layout fragment) left its clusters in visual
+  word order: the caret of the logical end and hit testing landed inside the text. Clusters are sorted back to logical
+  order (`O(n log n)`).
 - A full atlas no longer resets in the middle of a frame (glyphs drawn earlier in the frame showed the glyphs
   rasterized over them: "20 ☒ 7 minutes").
 
@@ -1013,6 +1017,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   `create_offscreen_target`) so that `recover` can rebuild them.
 - `push_effects` / `push_layer` while recording fall back to the alpha (a picture holds no offscreen layer);
   `backdrop_capture` returns nothing.
+
 ## [0.6.0] - 2026-10-19
 
 ### Added
@@ -1135,6 +1140,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   `CreateSwapChainForComposition`; it now falls back to an opaque window (`render.is_transparent` tells which).
 - fidget: removing one of the initial tags crashed (it deleted a string literal).
 - fidget: a clicked or dragged sticky note went to the back instead of the front.
+
 ## [0.3.1] - 2026-10-15
 
 ### Changed
@@ -1144,6 +1150,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   are missing (Wine, trimmed installs) the exe falls back to Roboto and Inconsolata compiled into it
   (`font.load_system_or_embedded`, `font.FALLBACK_UI_DATA`, `font.FALLBACK_MONO_DATA`). fidget: `--embedded_fonts`
   forces the fallbacks.
+
 ## [0.3.0] - 2026-10-15
 
 ### Added
@@ -1186,6 +1193,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - Rects ignored the alpha stack (`draw.push_alpha`): only text faded.
 - The page and the menu bar inherited the default radius, leaving dark pixels in the window corners.
 - The sort arrow and resize lines of the table header were not aligned with the column separators.
+
 ## [0.2.0] - 2026-10-15
 
 ### Added
@@ -1213,7 +1221,8 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 
 First release.
 
-### Toolkit
+### Added
+
 - **platform** (Win32): per-monitor DPI aware window sized from the monitor DPI, events (keys, text with UTF-16
   surrogates, mouse, wheel with modifiers), clipboard, cursors, dark title bar, OS "show animations" setting,
   `wait_event` / `poll_events` (re-entrancy safe during live resize), app icon from resource id 1.
@@ -1231,16 +1240,97 @@ First release.
   segmented control, chips, rating, progress (determinate / indeterminate), dropdown, tabs, key caps, cards, form rows,
   single-line text field (selection, word moves, clipboard, mouse), scroll region, context menu, menu bar, tooltips,
   toasts (8 positions), modal dialogs, color pickers, fuzzy matching with highlighted labels, custom-draw boxes.
-
-### Examples
 - **fidget**: widget gallery (Controls, Inputs, Data with a 20,000-row virtualized table, Playground), command
   palette, menu bar, Settings and About dialogs, six themes, persisted settings.
 - **todo**: a todo app with persistence, filters, search, context menu, light / dark theme.
 - **smoke**: renderer, font and draw layers without the UI.
-
-### Tooling
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.57.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.0
+[0.56.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.56.2
+[0.56.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.56.1
+[0.56.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.56.0
+[0.55.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.55.0
+[0.54.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.54.0
+[0.53.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.53.0
+[0.52.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.52.0
+[0.51.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.51.0
+[0.50.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.50.0
+[0.49.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.49.0
+[0.48.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.48.1
+[0.48.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.48.0
+[0.47.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.47.2
+[0.47.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.47.1
+[0.47.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.47.0
+[0.46.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.46.0
+[0.45.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.45.1
+[0.45.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.45.0
+[0.44.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.44.0
+[0.43.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.43.0
+[0.42.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.42.3
+[0.42.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.42.2
+[0.42.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.42.1
+[0.42.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.42.0
+[0.41.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.41.1
+[0.41.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.41.0
+[0.40.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.40.1
+[0.40.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.40.0
+[0.39.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.39.0
+[0.38.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.38.3
+[0.38.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.38.2
+[0.38.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.38.0
+[0.37.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.37.0
+[0.36.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.36.2
+[0.36.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.36.1
+[0.36.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.36.0
+[0.35.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.35.3
+[0.35.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.35.2
+[0.35.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.35.1
+[0.35.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.35.0
+[0.34.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.34.0
+[0.33.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.33.0
+[0.32.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.32.1
+[0.32.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.32.0
+[0.31.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.31.0
+[0.30.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.30.1
+[0.30.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.30.0
+[0.29.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.29.0
+[0.28.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.28.0
+[0.26.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.26.0
+[0.25.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.25.0
+[0.23.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.23.0
+[0.22.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.22.1
+[0.22.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.22.0
+[0.19.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.19.0
+[0.18.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.18.0
+[0.17.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.17.1
+[0.17.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.17.0
+[0.16.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.16.0
+[0.15.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.15.0
+[0.14.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.14.0
+[0.13.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.13.1
+[0.13.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.13.0
+[0.12.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.12.0
+[0.11.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.11.1
+[0.11.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.11.0
+[0.10.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.10.1
+[0.10.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.10.0
+[0.9.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.9.3
+[0.9.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.9.2
+[0.9.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.9.1
+[0.9.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.9.0
+[0.8.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.8.2
+[0.8.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.8.1
+[0.8.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.8.0
+[0.7.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.7.0
+[0.6.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.6.0
+[0.5.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.5.0
+[0.4.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.4.2
+[0.4.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.4.1
+[0.4.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.4.0
+[0.3.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.3.2
+[0.3.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.3.1
+[0.3.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.1.0

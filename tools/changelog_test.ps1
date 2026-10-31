@@ -95,6 +95,7 @@ try {
     Expect (-not ($cl -replace "`r`n", '').Contains("`n")) 'the CHANGELOG keeps its CRLF'
     $r = Run '-Check', '-Release', '9.9.9'; Expect ($r.Code -eq 0) '-Check -Release passes after it' $r
     $r = Run '-Check'; Expect ($r.Code -eq 0) '-Check passes after it' $r
+    Expect ($cl -match '(?m)^\[9\.9\.9\]: https://') 'the version gets its link at the end of the file'
     $r = Run '-Section', '-Version', '9.9.9'; Expect ($r.Code -eq 0 -and $r.Out -match '### Removed' -and $r.Out -notmatch [regex]::Escape($base)) '-Section gives that section only' $r
     $r = Run '-Assemble', '-Version', '9.9.9'; Expect ($r.Code -ne 0) 'a version is not assembled twice' $r
 
