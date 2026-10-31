@@ -40,6 +40,8 @@ dwrite_system := System_Fonts{
 // GetGlyphs: the buffer starts at 3 n / 2 + the slack (what the documentation of the call advises), doubling at each attempt.
 @(private) DWRITE_GLYPHS_SLACK :: 16
 @(private) DWRITE_GLYPHS_ATTEMPTS :: 4
+// Families of the system's fonts, first guess.
+@(private) DWRITE_FAMILIES_HINT :: 64
 
 // The horizontal features DirectWrite (and HarfBuzz) turn on by default, which an explicit feature list would drop.
 @(private)
@@ -101,7 +103,7 @@ dwrite_glyph_box :: proc(s: ^State, f: ^Font, gid: u16) -> (Glyph_Box, bool) {
 @(private)
 dwrite_scripts :: proc(s: ^State, text: string, w: []u16, bytes: []i32, rtl: bool, out: ^[dynamic]Script_Item) -> bool {
 	if s.analyzer == nil { return false }
-	runs := make([dynamic]Script_Run, 0, 4, context.temp_allocator)
+	runs := make([dynamic]Script_Run, 0, SCRIPT_RUNS_HINT, context.temp_allocator)
 	an: Analysis
 	analysis_init(&an, w, rtl)
 	an.scripts = &runs
@@ -120,7 +122,7 @@ dwrite_bidi :: proc(s: ^State, text: string, rtl: bool, levels: []u8) -> bool {
 	base := u8(rtl ? 1 : 0)
 	for &l in lv { l = base }
 	an.levels = lv
-	if s.analyzer->AnalyzeBidi(&an.source, 0, u32(len(w)), &an.sink) < 0 { return false }
+	if failing(.Bidi) || s.analyzer->AnalyzeBidi(&an.source, 0, u32(len(w)), &an.sink) < 0 { return false }
 	for i in 0 ..< len(w) {
 		for b in bytes[i] ..< bytes[i + 1] { levels[b] = lv[i] }
 	}
@@ -183,7 +185,7 @@ dwrite_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: [
 @(private)
 dwrite_families :: proc(s: ^State, allocator: runtime.Allocator) -> []string {
 	if s.system == nil { return nil }
-	out := make([dynamic]string, 0, 64, allocator)
+	out := make([dynamic]string, 0, DWRITE_FAMILIES_HINT, allocator)
 	n := s.system->GetFontFamilyCount()
 	for i in 0 ..< n {
 		fam: ^IDWriteFontFamily

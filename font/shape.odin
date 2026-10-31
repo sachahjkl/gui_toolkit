@@ -39,6 +39,13 @@ import "core:unicode"
 // U+00A0 in UTF-8.
 @(private) NBSP_LEAD :: 0xC2
 @(private) NBSP_TRAIL :: 0xA0
+// First guesses: selection spans of a range, words of a run, script runs of a word (DirectWrite's analysis too), pieces of
+// one script and face, glyphs of a word beyond one per byte.
+@(private) SPANS_HINT :: 2
+@(private) RUN_WORDS_HINT :: 16
+@(private) SCRIPT_RUNS_HINT :: 4
+@(private) WORD_PIECES_HINT :: 4
+@(private) WORD_GLYPHS_SLACK :: 4
 // Selection spans at most this far apart (pixels) are joined.
 @(private) SPAN_JOIN_GAP_PX :: 0.5
 
@@ -223,7 +230,7 @@ hit_index :: proc(sh: Shaped, text: string, x: f32) -> int {
 // right, touching ones joined. One for text in one direction; several when the range crosses a change of direction (the
 // part of a line of Hebrew that is selected is not the stretch between the carets of its two ends).
 selection_spans :: proc(sh: Shaped, text: string, lo, hi: int, allocator := context.temp_allocator) -> [][2]f32 {
-	spans := make([dynamic][2]f32, 0, 2, allocator)
+	spans := make([dynamic][2]f32, 0, SPANS_HINT, allocator)
 	for c in sh.clusters {
 		a, b := max(lo, int(c.start)), min(hi, int(c.end))
 		if a >= b { continue }
@@ -270,7 +277,7 @@ shape_run :: proc(s: ^State, id: Font_Id, size: f32, text: string, start, end: i
 	no_liga := opts.letter_spacing != 0
 	// words in logical order
 	Piece :: struct { a, b: int }
-	pieces := make([dynamic]Piece, 0, 16, context.temp_allocator)
+	pieces := make([dynamic]Piece, 0, RUN_WORDS_HINT, context.temp_allocator)
 	i := start
 	for i < end {
 		j := i
@@ -366,6 +373,7 @@ sort_clusters :: proc(cs: []Cluster) {
 @(private) SHARDS :: 64
 // Words per shard generation, however small the total asked for.
 @(private) WORD_SHARD_CAP_MIN :: 16
+@(private) WORD_SHARD_PAD_BYTES :: 32
 // word_hash: FNV-1a of the text, the font mixed in by the golden ratio.
 @(private) FNV64_OFFSET :: 0xcbf29ce484222325
 @(private) FNV64_PRIME :: 0x100000001b3
@@ -390,7 +398,7 @@ Word_Shard :: struct {
 	mu:       sync.Mutex,
 	cur, old: map[u64]^Word,
 	cur_n:    int,
-	_:        [32]u8,        // keeps shards on separate cache lines
+	_:        [WORD_SHARD_PAD_BYTES]u8,   // keeps shards on separate cache lines
 }
 
 @(private)
@@ -608,10 +616,11 @@ word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga:
 // Shapes `text` as one directional run into a Word allocated in one block (free(w) frees everything). nil: no memory for it.
 @(private)
 shape_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool, allocator: runtime.Allocator) -> ^Word {
-	glyphs := make([dynamic]Glyph_Pos, 0, len(text) + 4, context.temp_allocator)
-	clusters := make([dynamic]Cluster, 0, len(text) + 4, context.temp_allocator)
+	glyphs := make([dynamic]Glyph_Pos, 0, len(text) + WORD_GLYPHS_SLACK, context.temp_allocator)
+	clusters := make([dynamic]Cluster, 0, len(text) + WORD_GLYPHS_SLACK, context.temp_allocator)
 	width := shape_text(s, id, size, text, rtl, no_liga, &glyphs, &clusters)
 	ng, nc := len(glyphs), len(clusters)
+	if failing(.Word_Alloc) { return nil }
 	block, err := runtime.mem_alloc(size_of(Word) + ng * size_of(Glyph_Pos) + nc * size_of(Cluster) + len(text), align_of(Word), allocator)
 	if err != nil { return nil }
 	base := uintptr(raw_data(block))
@@ -778,7 +787,7 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	w, bytes := utf16_of(text)
 	if len(w) == 0 { return 0 }
 	faces := itemize_faces(s, id, w)
-	scripts := make([dynamic]Script_Item, 0, 4, context.temp_allocator)
+	scripts := make([dynamic]Script_Item, 0, SCRIPT_RUNS_HINT, context.temp_allocator)
 	ascii := s.latin_ok
 	if ascii { for u in w { if u >= 0x80 { ascii = false; break } } }
 	if ascii {
@@ -791,7 +800,7 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	}
 	// pieces: same script and same face, in logical order
 	Piece :: struct { a, b: int, face: Font_Id, script: Script_Item }
-	pieces := make([dynamic]Piece, 0, 4, context.temp_allocator)
+	pieces := make([dynamic]Piece, 0, WORD_PIECES_HINT, context.temp_allocator)
 	for sr in scripts {
 		i := int(sr.start)
 		for i < int(sr.end) {

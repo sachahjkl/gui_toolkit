@@ -62,6 +62,9 @@ COLR_MEASURE_WORK :: 1 << 24
 @(private) CPAL_COLOR_BYTES :: 4
 @(private) COLOR_STOP_BYTES :: 6
 @(private) VAR_COLOR_STOP_BYTES :: 10
+@(private) COLOR_LINE_HEADER_BYTES :: 3
+// The sides of a clip box, as curves.
+@(private) COLR_BOX_QUADS :: 4
 
 Colr :: struct {
 	colr, cpal:     []u8,
@@ -357,41 +360,35 @@ nest_paint :: proc(n: ^Nest, off: int, inside: bool) -> bool {
 	defer n.depth -= 1
 	if n.rd.bad || n.budget <= 0 || n.depth > COLR_MAX_DEPTH { n.rd.bad = true; return false }
 	r := &n.rd
-	format := rd_u8(r, off)
-	sub :: #force_inline proc(r: ^Rd, off, at: int) -> int { return off + rd_u24(r, off + at) }
-	switch format {
-	case 1:   // PaintColrLayers
-		count, first := rd_u8(r, off + 1), rd_u32(r, off + 2)
-		if r.bad || first + count > n.c.n_layer_list { r.bad = true; return false }
-		for i in 0 ..< count {
-			po := rd_u32(r, n.c.layer_list + COLR_LIST_COUNT_BYTES + (first + i) * COLR_LAYER_PAINT_BYTES)
+	p := decode_paint(r, off)
+	switch p.kind {
+	case .Layers:
+		if r.bad || p.first + p.count > n.c.n_layer_list { r.bad = true; return false }
+		for i in 0 ..< p.count {
+			po := rd_u32(r, n.c.layer_list + COLR_LIST_COUNT_BYTES + (p.first + i) * COLR_LAYER_PAINT_BYTES)
 			if r.bad { return false }
 			if nest_paint(n, n.c.layer_list + po, inside) { return true }
 		}
-	case 10:   // PaintGlyph
+	case .Glyph:
 		if inside { return true }
-		child := sub(r, off, 1)
 		if r.bad { return false }
-		return nest_paint(n, child, true)
-	case 11:   // PaintColrGlyph
-		gid := u16(rd_u16(r, off + 1))
-		if r.bad || n.nstack >= len(n.stack) || slice.contains(n.stack[:n.nstack], gid) { r.bad = true; return false }
-		at, kind := colr_find(n.c, gid)
+		return nest_paint(n, p.child, true)
+	case .Colr_Glyph:
+		if r.bad || n.nstack >= len(n.stack) || slice.contains(n.stack[:n.nstack], p.gid) { r.bad = true; return false }
+		at, kind := colr_find(n.c, p.gid)
 		if kind != .Graph { r.bad = true; return false }
-		n.stack[n.nstack] = gid
+		n.stack[n.nstack] = p.gid
 		n.nstack += 1
 		defer n.nstack -= 1
 		return nest_paint(n, at, inside)
-	case 12 ..= 31:   // PaintTransform, PaintTranslate, PaintScale*, PaintRotate*, PaintSkew*: one child at offset 1
-		child := sub(r, off, 1)
+	case .Transform:
 		if r.bad { return false }
-		return nest_paint(n, child, inside)
-	case 32:   // PaintComposite
-		source, backdrop := sub(r, off, 1), sub(r, off, 5)
+		return nest_paint(n, p.child, inside)
+	case .Composite:
 		if r.bad { return false }
-		return nest_paint(n, source, inside) || nest_paint(n, backdrop, inside)
-	case 2 ..= 9:   // PaintSolid, gradients: leaves
-	case: r.bad = true   // a format this reader does not know (the interpreter refuses it too)
+		return nest_paint(n, p.child, inside) || nest_paint(n, p.backdrop, inside)
+	case .Solid, .Gradient:   // leaves
+	case .Unknown: r.bad = true   // a format this reader does not know (the interpreter refuses it too)
 	}
 	return false
 }
@@ -457,7 +454,7 @@ colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runti
 @(private)
 rect_clip :: proc(m: Mat, box: [4]f32, within: [4]int, samples: int, alloc: runtime.Allocator) -> Clip {
 	o: Outline
-	o.quads = make([dynamic]Quad, 0, 4, alloc)
+	o.quads = make([dynamic]Quad, 0, COLR_BOX_QUADS, alloc)
 	pts := [4][2]f32{{box[0], box[1]}, {box[2], box[1]}, {box[2], box[3]}, {box[0], box[3]}}
 	for i in 0 ..< 4 {
 		a, b := pts[i], pts[(i + 1) % 4]
@@ -530,6 +527,95 @@ palette_color :: proc(w: ^Walk, index: int, alpha: f32) -> [4]f32 {
 	return col
 }
 
+// What the readers of a paint graph (the interpreter, colr_nests_glyph, colr_dump) do with a paint.
+@(private)
+Paint_Kind :: enum u8 { Unknown, Layers, Solid, Gradient, Glyph, Colr_Glyph, Transform, Composite }
+
+// A paint table's fields (offsets absolute in COLR). A read outside the table leaves 0 and marks the reader bad.
+@(private)
+Paint :: struct {
+	kind:         Paint_Kind,
+	format:       int,
+	child:        int,        // Glyph, Transform: the paint below; Composite: the source
+	backdrop:     int,        // Composite
+	mode:         int,        // Composite, as read (it may be past Composite_Mode's last)
+	count, first: int,        // Layers: in the layer list
+	gid:          u16,        // Glyph, Colr_Glyph
+	palette:      int,        // Solid
+	alpha:        f32,        // Solid
+	line:         int,        // Gradient: its color line
+	var:          bool,       // Gradient: a variable format (the stops are longer)
+	gradient:     Gradient,   // Gradient: its geometry, no stops yet
+	m:            Mat,        // Transform (translate, scale, rotate, skew, around a center or not)
+}
+
+// Reads the paint at `off`: every format's fields are read here, and only here.
+@(private)
+decode_paint :: proc(r: ^Rd, off: int) -> (p: Paint) {
+	sub :: #force_inline proc(r: ^Rd, off, at: int) -> int { return off + rd_u24(r, off + at) }
+	point :: #force_inline proc(r: ^Rd, at: int) -> [2]f32 { return {f32(rd_i16(r, at)), f32(rd_i16(r, at + 2))} }
+	p.format = rd_u8(r, off)
+	switch p.format {
+	case 1:   // PaintColrLayers
+		p.kind = .Layers
+		p.count, p.first = rd_u8(r, off + 1), rd_u32(r, off + 2)
+	case 2, 3:   // PaintSolid
+		p.kind = .Solid
+		p.palette, p.alpha = rd_u16(r, off + 1), rd_f2(r, off + 3)
+	case 4, 5:   // PaintLinearGradient
+		p.kind, p.line, p.var = .Gradient, sub(r, off, 1), p.format == 5
+		p.gradient = Gradient{kind = .Linear, p0 = point(r, off + 4), p1 = point(r, off + 8), p2 = point(r, off + 12)}
+	case 6, 7:   // PaintRadialGradient
+		p.kind, p.line, p.var = .Gradient, sub(r, off, 1), p.format == 7
+		p.gradient = Gradient{kind = .Radial, p0 = point(r, off + 4), r0 = f32(rd_u16(r, off + 8)), p1 = point(r, off + 10), r1 = f32(rd_u16(r, off + 14))}
+	case 8, 9:   // PaintSweepGradient
+		p.kind, p.line, p.var = .Gradient, sub(r, off, 1), p.format == 9
+		// sweep angles carry a bias of 1.0 (+180 degrees), so that +360 can be written
+		p.gradient = Gradient{kind = .Sweep, p0 = point(r, off + 4), a0 = (rd_f2(r, off + 8) + 1) * 180, a1 = (rd_f2(r, off + 10) + 1) * 180}
+	case 10:   // PaintGlyph
+		p.kind, p.child, p.gid = .Glyph, sub(r, off, 1), u16(rd_u16(r, off + 4))
+	case 11:   // PaintColrGlyph
+		p.kind, p.gid = .Colr_Glyph, u16(rd_u16(r, off + 1))
+	case 12 ..= 31:
+		p.kind, p.child = .Transform, sub(r, off, 1)
+		switch p.format {
+		case 12, 13:   // PaintTransform
+			tm := sub(r, off, 4)
+			p.m = {rd_fixed(r, tm), rd_fixed(r, tm + 4), rd_fixed(r, tm + 8), rd_fixed(r, tm + 12), rd_fixed(r, tm + 16), rd_fixed(r, tm + 20)}
+		case 14, 15:   // PaintTranslate
+			p.m = mat_translate(f32(rd_i16(r, off + 4)), f32(rd_i16(r, off + 6)))
+		case 16, 17:   // PaintScale
+			p.m = mat_scale(rd_f2(r, off + 4), rd_f2(r, off + 6))
+		case 18, 19:   // PaintScaleAroundCenter
+			p.m = mat_around(mat_scale(rd_f2(r, off + 4), rd_f2(r, off + 6)), point(r, off + 8))
+		case 20, 21:   // PaintScaleUniform
+			s := rd_f2(r, off + 4)
+			p.m = mat_scale(s, s)
+		case 22, 23:   // PaintScaleUniformAroundCenter
+			s := rd_f2(r, off + 4)
+			p.m = mat_around(mat_scale(s, s), point(r, off + 6))
+		case 24, 25:   // PaintRotate
+			p.m = rotation(rd_f2(r, off + 4))
+		case 26, 27:   // PaintRotateAroundCenter
+			p.m = mat_around(rotation(rd_f2(r, off + 4)), point(r, off + 6))
+		case 28, 29:   // PaintSkew
+			p.m = skew(rd_f2(r, off + 4), rd_f2(r, off + 6))
+		case 30, 31:   // PaintSkewAroundCenter
+			p.m = mat_around(skew(rd_f2(r, off + 4), rd_f2(r, off + 6)), point(r, off + 8))
+		}
+	case 32:   // PaintComposite
+		p.kind, p.child, p.mode, p.backdrop = .Composite, sub(r, off, 1), rd_u8(r, off + 4), sub(r, off, 5)
+	}
+	return
+}
+
+// Stop `i` of the color line at `line`.
+@(private)
+color_stop :: #force_inline proc(r: ^Rd, line, i: int, var: bool) -> (t: f32, palette: int, alpha: f32) {
+	o := line + COLOR_LINE_HEADER_BYTES + i * (var ? VAR_COLOR_STOP_BYTES : COLOR_STOP_BYTES)
+	return rd_f2(r, o), rd_u16(r, o + 2), rd_f2(r, o + 4)
+}
+
 // Paint table at `off` (absolute in COLR).
 @(private)
 walk_paint :: proc(w: ^Walk, off: int) {
@@ -539,108 +625,49 @@ walk_paint :: proc(w: ^Walk, off: int) {
 	defer w.depth -= 1
 	if w.budget <= 0 || w.depth > COLR_MAX_DEPTH { w.rd.bad = true; return }
 	r := &w.rd
-	format := rd_u8(r, off)
-	child :: #force_inline proc(r: ^Rd, off, at: int) -> int { return off + rd_u24(r, off + at) }
-	switch format {
-	case 1:   // PaintColrLayers
-		n, first := rd_u8(r, off + 1), rd_u32(r, off + 2)
+	p := decode_paint(r, off)
+	switch p.kind {
+	case .Layers:
 		c := w.src.colr
-		if r.bad || first + n > c.n_layer_list { r.bad = true; return }
-		for i in 0 ..< n {
-			po := rd_u32(r, c.layer_list + COLR_LIST_COUNT_BYTES + (first + i) * COLR_LAYER_PAINT_BYTES)
+		if r.bad || p.first + p.count > c.n_layer_list { r.bad = true; return }
+		for i in 0 ..< p.count {
+			po := rd_u32(r, c.layer_list + COLR_LIST_COUNT_BYTES + (p.first + i) * COLR_LAYER_PAINT_BYTES)
 			if r.bad { return }
 			walk_paint(w, c.layer_list + po)
 		}
-	case 2, 3:   // PaintSolid
-		col := palette_color(w, rd_u16(r, off + 1), rd_f2(r, off + 3))
+	case .Solid:
+		col := palette_color(w, p.palette, p.alpha)
 		if r.bad { return }
 		fill_solid(w, col)
-	case 4, 5:   // PaintLinearGradient
-		g := Gradient{kind = .Linear}
-		line := child(r, off, 1)
-		g.p0 = {f32(rd_i16(r, off + 4)), f32(rd_i16(r, off + 6))}
-		g.p1 = {f32(rd_i16(r, off + 8)), f32(rd_i16(r, off + 10))}
-		g.p2 = {f32(rd_i16(r, off + 12)), f32(rd_i16(r, off + 14))}
-		if r.bad || !read_color_line(w, &g, line, format == 5) { return }
+	case .Gradient:
+		g := p.gradient
+		if r.bad || !read_color_line(w, &g, p.line, p.var) { return }
 		fill_gradient(w, &g)
-	case 6, 7:   // PaintRadialGradient
-		g := Gradient{kind = .Radial}
-		line := child(r, off, 1)
-		g.p0 = {f32(rd_i16(r, off + 4)), f32(rd_i16(r, off + 6))}
-		g.r0 = f32(rd_u16(r, off + 8))
-		g.p1 = {f32(rd_i16(r, off + 10)), f32(rd_i16(r, off + 12))}
-		g.r1 = f32(rd_u16(r, off + 14))
-		if r.bad || !read_color_line(w, &g, line, format == 7) { return }
-		fill_gradient(w, &g)
-	case 8, 9:   // PaintSweepGradient
-		g := Gradient{kind = .Sweep}
-		line := child(r, off, 1)
-		g.p0 = {f32(rd_i16(r, off + 4)), f32(rd_i16(r, off + 6))}
-		// sweep angles carry a bias of 1.0 (+180 degrees), so that +360 can be written
-		g.a0 = (rd_f2(r, off + 8) + 1) * 180
-		g.a1 = (rd_f2(r, off + 10) + 1) * 180
-		if r.bad || !read_color_line(w, &g, line, format == 9) { return }
-		fill_gradient(w, &g)
-	case 10:   // PaintGlyph
-		sub := child(r, off, 1)
-		gid := rd_u16(r, off + 4)
+	case .Glyph:
 		if r.bad { return }
 		Ctx :: struct { w: ^Walk, sub: int }
-		ctx := Ctx{w, sub}
-		fill_glyph(w, u16(gid), proc(w: ^Walk, user: rawptr) { walk_paint(w, (^Ctx)(user).sub) }, &ctx)
-	case 11:   // PaintColrGlyph
-		gid := u16(rd_u16(r, off + 1))
+		ctx := Ctx{w, p.child}
+		fill_glyph(w, p.gid, proc(w: ^Walk, user: rawptr) { walk_paint(w, (^Ctx)(user).sub) }, &ctx)
+	case .Colr_Glyph:
 		if r.bad { return }
-		if slice.contains(w.stack[:w.nstack], gid) || w.nstack >= len(w.stack) { r.bad = true; return }   // a cycle
-		at, kind := colr_find(w.src.colr, gid)
+		if slice.contains(w.stack[:w.nstack], p.gid) || w.nstack >= len(w.stack) { r.bad = true; return }   // a cycle
+		at, kind := colr_find(w.src.colr, p.gid)
 		if kind != .Graph { r.bad = true; return }
-		w.stack[w.nstack] = gid
+		w.stack[w.nstack] = p.gid
 		w.nstack += 1
 		// the referenced glyph's own clip box bounds what it paints (what Direct2D does with it)
-		if box, has := colr_clip_box(w.src.colr, gid); has {
+		if box, has := colr_clip_box(w.src.colr, p.gid); has {
 			clip_box_scope(w, box, at)
 		} else {
 			walk_paint(w, at)
 		}
 		w.nstack -= 1
-	case 12, 13:   // PaintTransform
-		sub, tm := child(r, off, 1), child(r, off, 4)
-		m := Mat{rd_fixed(r, tm), rd_fixed(r, tm + 4), rd_fixed(r, tm + 8), rd_fixed(r, tm + 12), rd_fixed(r, tm + 16), rd_fixed(r, tm + 20)}
-		with_matrix(w, sub, m)
-	case 14, 15:   // PaintTranslate
-		sub := child(r, off, 1)
-		with_matrix(w, sub, mat_translate(f32(rd_i16(r, off + 4)), f32(rd_i16(r, off + 6))))
-	case 16, 17:   // PaintScale
-		sub := child(r, off, 1)
-		with_matrix(w, sub, mat_scale(rd_f2(r, off + 4), rd_f2(r, off + 6)))
-	case 18, 19:   // PaintScaleAroundCenter
-		sub := child(r, off, 1)
-		with_matrix(w, sub, mat_around(mat_scale(rd_f2(r, off + 4), rd_f2(r, off + 6)), {f32(rd_i16(r, off + 8)), f32(rd_i16(r, off + 10))}))
-	case 20, 21:   // PaintScaleUniform
-		sub := child(r, off, 1)
-		s := rd_f2(r, off + 4)
-		with_matrix(w, sub, mat_scale(s, s))
-	case 22, 23:   // PaintScaleUniformAroundCenter
-		sub := child(r, off, 1)
-		s := rd_f2(r, off + 4)
-		with_matrix(w, sub, mat_around(mat_scale(s, s), {f32(rd_i16(r, off + 6)), f32(rd_i16(r, off + 8))}))
-	case 24, 25:   // PaintRotate
-		sub := child(r, off, 1)
-		with_matrix(w, sub, rotation(rd_f2(r, off + 4)))
-	case 26, 27:   // PaintRotateAroundCenter
-		sub := child(r, off, 1)
-		with_matrix(w, sub, mat_around(rotation(rd_f2(r, off + 4)), {f32(rd_i16(r, off + 6)), f32(rd_i16(r, off + 8))}))
-	case 28, 29:   // PaintSkew
-		sub := child(r, off, 1)
-		with_matrix(w, sub, skew(rd_f2(r, off + 4), rd_f2(r, off + 6)))
-	case 30, 31:   // PaintSkewAroundCenter
-		sub := child(r, off, 1)
-		with_matrix(w, sub, mat_around(skew(rd_f2(r, off + 4), rd_f2(r, off + 6)), {f32(rd_i16(r, off + 8)), f32(rd_i16(r, off + 10))}))
-	case 32:   // PaintComposite
-		source, mode, backdrop := child(r, off, 1), rd_u8(r, off + 4), child(r, off, 5)
+	case .Transform:
+		with_matrix(w, p.child, p.m)
+	case .Composite:
 		if r.bad { return }
-		composite_paints(w, source, Composite_Mode(mode), backdrop, mode <= int(Composite_Mode.Hsl_Luminosity))
-	case:
+		composite_paints(w, p.child, Composite_Mode(p.mode), p.backdrop, p.mode <= int(Composite_Mode.Hsl_Luminosity))
+	case .Unknown:
 		r.bad = true   // a format this reader does not know: refuse the glyph rather than draw it wrong
 	}
 }
@@ -821,16 +848,16 @@ read_color_line :: proc(w: ^Walk, g: ^Gradient, off: int, var: bool) -> bool {
 	g.extend = rd_u8(r, off)
 	n := rd_u16(r, off + 1)
 	stride := var ? VAR_COLOR_STOP_BYTES : COLOR_STOP_BYTES
-	if r.bad || n == 0 || off + 3 + n * stride > len(r.d) { r.bad = true; return false }
+	if r.bad || n == 0 || off + COLOR_LINE_HEADER_BYTES + n * stride > len(r.d) { r.bad = true; return false }
 	if g.extend > 2 { g.extend = 0 }
 	if !charge(w, n * COLR_STOP_COST) { return false }
+	if failing(.Colr_Stops) { r.bad = true; return false }
 	stops, err := make([dynamic]Stop, 0, n, w.alloc)
 	if err != nil { r.bad = true; return false }
 	g.stops = stops
 	for i in 0 ..< n {
-		o := off + 3 + i * stride
-		col := palette_color(w, rd_u16(r, o + 2), rd_f2(r, o + 4))
-		append(&g.stops, Stop{rd_f2(r, o), col})
+		t, palette, alpha := color_stop(r, off, i, var)
+		append(&g.stops, Stop{t, palette_color(w, palette, alpha)})
 	}
 	slice.stable_sort_by(g.stops[:], proc(a, b: Stop) -> bool { return a.t < b.t })
 	// every stop at one offset: with repeat or reflect the line is ill-formed and nothing is painted (pad: a step)

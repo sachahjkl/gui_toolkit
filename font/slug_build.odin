@@ -23,6 +23,8 @@ import "core:slice"
 BAND_EPSILON :: f32(1.0 / 1024)
 MAX_BANDS :: 32            // per axis (the shaders take up to 256)
 SLUG_TEXTURE_WIDTH :: 4096 // both textures: a glyph's data lies in one row
+// Curves of a band, first guess.
+@(private) BAND_CURVES_HINT :: 8
 // The least extent (em) given to a glyph's box: it divides.
 @(private) SLUG_BOX_SPAN_MIN_EM :: 1e-6
 
@@ -121,7 +123,7 @@ slug_build :: proc(o: ^Outline, b: ^Slug_Built) -> bool {
 @(private)
 band_list :: proc(curves: []Band_Curve, axis: int, a, z: f32) -> []int {
 	other := 1 - axis
-	picked := make([dynamic]int, 0, 8, context.temp_allocator)
+	picked := make([dynamic]int, 0, BAND_CURVES_HINT, context.temp_allocator)
 	for c, i in curves {
 		if c.flat[axis == 1 ? 0 : 1] { continue }   // parallel to the rays of this band
 		if c.hi[axis] < a || c.lo[axis] > z { continue }

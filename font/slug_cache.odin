@@ -171,12 +171,7 @@ slug_alloc :: proc(s: ^State, nc, nb: int) -> int {
 		if p.cu + nc <= SLUG_TEXTURE_WIDTH && p.bu + nb <= SLUG_TEXTURE_WIDTH { return i }
 	}
 	if len(st.pages) >= s.settings.slug_pages {
-		oldest := atlas_oldest_frame(a)
-		victim := -1
-		for p, i in st.pages {
-			if p.last_used >= oldest { continue }
-			if victim < 0 || p.last_used < st.pages[victim].last_used { victim = i }
-		}
+		victim := atlas_victim(a, st.pages[:])
 		if victim >= 0 {
 			for k, g in st.glyphs { if g.kind == .Curves && int(g.page) == victim { delete_key(&st.glyphs, k) } }
 			slug_page_reset(st.pages[victim])

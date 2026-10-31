@@ -27,6 +27,37 @@ sys :: proc(t: ^testing.T, s: ^font.State, family: string, weight := 400, style 
 	return id
 }
 
+// No memory for a shaped word (forced, font/failures.odin): it measures 0 and has no glyphs, cached or not, and is not kept;
+// a failed bidi analysis leaves the base level.
+@(test)
+forced_failures_of_shaping :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for cache in ([]int{font.DEFAULT_SETTINGS.word_cache, 0}) {
+		st := font.DEFAULT_SETTINGS
+		st.word_cache = cache
+		s := setup(t, st)
+		defer teardown(s)
+		a := sys(t, s, "Segoe UI")
+		font.forced_failures = {.Word_Alloc}
+		testing.expect_value(t, font.text_width(s, a, 20, "Hello"), 0)
+		testing.expect(t, font.forced_failures == {}, "measuring: the path did not run")
+		font.forced_failures = {.Word_Alloc}
+		sh := font.shape(s, a, 20, "World", {}, context.temp_allocator)
+		testing.expect(t, font.forced_failures == {}, "shaping: the path did not run")
+		testing.expect(t, len(sh.glyphs) == 0 && sh.width == 0)
+		testing.expect(t, font.text_width(s, a, 20, "Hello") > 0, "measured again")
+		testing.expect_value(t, len(font.shape(s, a, 20, "World", {}, context.temp_allocator).glyphs), 5)
+		when font.FONT_BACKEND == "dwrite" {
+			text := "abc \u05D0\u05D1"
+			font.forced_failures = {.Bidi}
+			levels := font.bidi_levels(s, text, .Ltr, context.temp_allocator)
+			testing.expect(t, font.forced_failures == {}, "bidi: the path did not run")
+			for l in levels { testing.expect_value(t, l, 0) }
+			levels = font.bidi_levels(s, text, .Ltr, context.temp_allocator)
+			testing.expect_value(t, levels[len(levels) - 1], 1)
+		}
+	}
+}) }
+
 @(test)
 system_faces_and_metrics :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := setup(t)
