@@ -177,6 +177,9 @@ what_a_browser_page_can_do_is_refused :: proc(t: ^testing.T) {
 
 	testing.expect_value(t, status(http_get(page, HOST + UPGRADE + "Origin: https://evil.example\r\n")), "HTTP/1.1 403")
 	testing.expect_value(t, status(http_get(page, HOST + UPGRADE + "Origin: null\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get(page, HOST + UPGRADE + "Origin: devtools://devtools.evil.example\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get(page, HOST + UPGRADE + "Origin: devtools://devtools\r\n")), "HTTP/1.1 101")   // Chrome's own DevTools, the WebSocket only
+	testing.expect_value(t, status(http_get("/json/list", HOST + "Origin: devtools://devtools\r\n")), "HTTP/1.1 403")
 	testing.expect_value(t, status(http_get("/json/list", HOST + "Origin: https://evil.example\r\n")), "HTTP/1.1 403")
 	testing.expect_value(t, status(http_get("/json/list", "Host: evil.example:9472\r\n")), "HTTP/1.1 403")
 	testing.expect_value(t, status(http_get("/json/list", "")), "HTTP/1.1 403")

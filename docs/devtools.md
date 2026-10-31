@@ -26,7 +26,8 @@ It listens on 127.0.0.1 only, and 127.0.0.1 alone does not keep a browser out: a
 same-origin policy, so any page open on the machine could connect and drive the window, and a name made to resolve to
 127.0.0.1 could read the endpoints. So these are refused:
 
-- a request with an `Origin` header (403): what a browser's page sends and a tool's client does not;
+- a request with an `Origin` header (403): what a browser's page sends and a tool's client does not. One is taken, on the
+  WebSocket only: `devtools://devtools`, Chrome's own DevTools, which a page cannot send;
 - a `Host` other than `127.0.0.1:<port>`, `localhost:<port>`, `[::1]:<port>` (403);
 - a WebSocket on a path without the target's id (404), a random id given by `/json/list`.
 
@@ -126,6 +127,24 @@ does not freeze for it; pictures stay in memory during the run, and are compress
 
 **What was on screen and what was typed are in the folder as they were**: a run on real data is not to be shared as it
 stands, and typed passwords are recorded like any other text.
+
+## Chrome's DevTools
+
+`node tools/cdp.mjs inspect` prints the address to paste in Chrome or Edge. The box tree stands for the DOM:
+
+- **Elements**: the boxes worth showing, followed as the window changes. The tag says what a box does (`button`, `input`,
+  `scroll`, `text`, `box`), its name is its `id`, its flags its `class`, `role` and `aria-label` what a reader gets. Search
+  (Ctrl+F) by name, text or tag. Hovering a node lights its box in the window; the picker works in DevTools' picture of the window.
+- **Styles, Computed, Layout**: the box's rect and what it is drawn with, colours in sRGB, as on the screen. In Styles the inline
+  style can be edited, live: `background-color`, `border-color`, `color`, `opacity`, `width`, `height`, `font-size`, `padding`,
+  `border-radius`, with the colour picker and the tick boxes; what comes from the layout is read only, under it. A box that paints
+  itself (`custom`) does not follow its colours.
+- **Editing**: double-click a text to change it, Delete removes a box. An edit lasts as long as DevTools is attached: closing it
+  gives back the window as its program builds it. No undo (Ctrl+Z).
+- **Accessibility** tab: what a screen reader gets for the box.
+- DevTools' picture of the window takes clicks and the wheel.
+
+There is no JavaScript and no network: Console and Network stay empty. Attributes cannot be edited.
 
 ## Puppeteer and Playwright
 

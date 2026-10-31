@@ -28,6 +28,7 @@
 //   play <script or timeline.json> --timeline <dir> [--against <dir>] [--realtime] [--max-diff 0.004]
 //                                the same with a picture after each action, compared with another run (by default, the
 //                                timeline.json it plays); exit code 1 if one differs. --realtime keeps the recorded pauses
+//   inspect                      the address that opens Chrome's DevTools on this window (paste it in Chrome or Edge)
 //   cast <dir> [--every ms]      the window's frames as PNGs until Enter (Page.startScreencast)
 //   close                        closes the window (Browser.close)
 //   raw <Method.name> [json]     any command
@@ -147,6 +148,7 @@ async function run(cmd, a) {
       console.log(`${n} frames in ${o._[0]}`)
       break
     }
+    case 'inspect': console.log((await (await fetch(`http://127.0.0.1:${port}/json/list`)).json())[0].devtoolsFrontendUrl); break
     case 'close': await send('Browser.close'); break
     case 'raw': console.log(JSON.stringify(await send(o._[0], o._[1] ? JSON.parse(o._[1]) : {}), null, 2)); break
     default: if (!(await act(send, cmd, a))) throw new Error(`unknown command: ${cmd}`)

@@ -43,6 +43,8 @@ use :: proc(s: ^State) { g = s }
 
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
+	box_edits_clear(s)
+	delete(s.edits)
 	post_destroy(s)   // (first: the threads still posting get false from now on)
 	for _, b in s.boxes { free(b) }
 	for b in s.free_boxes { free(b) }
@@ -207,6 +209,7 @@ end_build :: proc() {
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 
 	menus_raise(s)
+	if len(s.edits) > 0 { box_edits_apply(s) }
 	t_layout := now_ms()
 	s.metrics.build_ms = t_layout - s.build_start
 	layout(s)
