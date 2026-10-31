@@ -13,6 +13,8 @@ import "core:strings"
 import "core:time"
 import "core:sys/posix"
 
+@(private = "file") WL_DND_ACTIONS_SINCE :: 3   // the version of the data device that has actions
+
 // What this process is dragging now (drag_start), so the shared data-source send callback can feed it.
 @(private)
 Wl_Drag_Store :: struct {
@@ -47,7 +49,7 @@ wl_dnd_enter :: proc(serial: u32, surface: Wl_Proxy, x, y: f32, offer: Wl_Proxy)
 			c := strings.clone_to_cstring(wlc.dnd_mimes[0], context.temp_allocator)
 			wl.proxy_marshal_flags(offer, WL_DATA_OFFER_ACCEPT, nil, wl.proxy_get_version(offer), 0, serial, c)
 		}
-		if wl.proxy_get_version(offer) >= 3 {
+		if wl.proxy_get_version(offer) >= WL_DND_ACTIONS_SINCE {
 			wl.proxy_marshal_flags(offer, WL_DATA_OFFER_SET_ACTIONS, nil, wl.proxy_get_version(offer), 0,
 				u32(WL_DND_ACTION_COPY | WL_DND_ACTION_MOVE), u32(WL_DND_ACTION_COPY))
 		}
@@ -95,7 +97,7 @@ wl_dnd_drop :: proc() {
 	// read each flavour the offer advertised into the Drag_Data
 	drag_data_destroy(&d.data)
 	d.data = wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
-	if wlc.dnd_offer != nil && wl.proxy_get_version(wlc.dnd_offer) >= 3 {
+	if wlc.dnd_offer != nil && wl.proxy_get_version(wlc.dnd_offer) >= WL_DND_ACTIONS_SINCE {
 		wl.proxy_marshal_flags(wlc.dnd_offer, WL_DATA_OFFER_FINISH, nil, wl.proxy_get_version(wlc.dnd_offer), 0)
 	}
 	d.over = false
@@ -190,7 +192,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	wlc.dnd_sending = true
 	wl.proxy_add_listener(src, &data_source_listener, nil)
 	for m in drag_data_mimes(data) { wl_source_offer(src, m) }
-	if wl.proxy_get_version(src) >= 3 {
+	if wl.proxy_get_version(src) >= WL_DND_ACTIONS_SINCE {
 		act: u32 = 0
 		if .Copy in allowed { act |= WL_DND_ACTION_COPY }
 		if .Move in allowed { act |= WL_DND_ACTION_MOVE }
@@ -204,7 +206,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	deadline := time.tick_now()
 	for wlc.dnd_source != nil {
 		l.display_dispatch(wlc.display)
-		if time.duration_milliseconds(time.tick_since(deadline)) > 60000 { break }
+		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS { break }
 	}
 	wlc.dnd_sending = false
 	wl_drag.active = false

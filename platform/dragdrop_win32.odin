@@ -42,6 +42,9 @@ import win "core:sys/windows"
 @(private) MK_SHIFT :: 0x4
 @(private) MK_CONTROL :: 0x8
 @(private) MK_ALT :: 0x20
+@(private) DRAG_QUERY_FILE_COUNT :: 0xFFFF_FFFF   // as the index of DragQueryFileW: asks how many files
+@(private = "file") CLR_NONE :: 0xFFFF_FFFF       // SHDRAGIMAGE: no colour key
+@(private = "file") DRAG_IMAGE_BITS_HEADER_BYTES :: 16   // "DragImageBits": its size and hot spot, before the bits
 
 @(private) IDataObject_VTable :: struct {
 	QueryInterface:        proc "system" (this: ^IDataObject, riid: ^win.GUID, ppv: ^rawptr) -> win.HRESULT,
@@ -343,7 +346,7 @@ read_files :: proc(obj: ^IDataObject, out: ^Drag_Data) {
 	defer ReleaseStgMedium(&m)
 	if m.tymed != TYMED_HGLOBAL || m.hGlobal == nil { return }
 	hdrop := win.HDROP(m.hGlobal)
-	count := win.DragQueryFileW(hdrop, 0xFFFF_FFFF, nil, 0)
+	count := win.DragQueryFileW(hdrop, DRAG_QUERY_FILE_COUNT, nil, 0)
 	for i in 0 ..< count {
 		n := win.DragQueryFileW(hdrop, i, nil, 0)
 		if n == 0 { continue }
@@ -424,10 +427,10 @@ make_data_object :: proc(data: Drag_Data) -> ^IDataObject {
 			append(&list, 0)
 		}
 		append(&list, 0)
-		header := [5]u32{20, 0, 0, 0, 1}   // pFiles, pt.x, pt.y, fNC, fWide
-		bytes := make([]u8, 20 + len(list) * 2, context.temp_allocator)
-		copy(bytes, ([^]u8)(&header)[:20])
-		copy(bytes[20:], ([^]u8)(raw_data(list))[:len(list) * 2])
+		header := [5]u32{DROPFILES_BYTES, 0, 0, 0, 1}   // pFiles, pt.x, pt.y, fNC, fWide
+		bytes := make([]u8, DROPFILES_BYTES + len(list) * 2, context.temp_allocator)
+		copy(bytes, ([^]u8)(&header)[:DROPFILES_BYTES])
+		copy(bytes[DROPFILES_BYTES:], ([^]u8)(raw_data(list))[:len(list) * 2])
 		set_global(obj, CF_HDROP, global_of(bytes))
 	}
 	text := data.text != "" ? data.text : data.url
@@ -569,7 +572,7 @@ set_drag_image :: proc(obj: ^IDataObject, img: Drag_Image) -> bool {
 		r, g, b, a := u32(img.rgba[i * 4]), u32(img.rgba[i * 4 + 1]), u32(img.rgba[i * 4 + 2]), u32(img.rgba[i * 4 + 3])
 		dst[i * 4], dst[i * 4 + 1], dst[i * 4 + 2], dst[i * 4 + 3] = u8(b * a / 255), u8(g * a / 255), u8(r * a / 255), u8(a)
 	}
-	sdi := SHDRAGIMAGE{sizeDragImage = {i32(img.size.x), i32(img.size.y)}, ptOffset = {i32(img.offset.x), i32(img.offset.y)}, hbmpDragImage = bmp, crColorKey = 0xFFFF_FFFF}
+	sdi := SHDRAGIMAGE{sizeDragImage = {i32(img.size.x), i32(img.size.y)}, ptOffset = {i32(img.offset.x), i32(img.offset.y)}, hbmpDragImage = bmp, crColorKey = CLR_NONE}
 	if helper.vt.InitializeFromBitmap(helper, &sdi, obj) < 0 { win.DeleteObject(win.HGDIOBJ(bmp)); return false }   // on success the helper owns it
 	return true
 }
@@ -579,7 +582,7 @@ set_drag_image :: proc(obj: ^IDataObject, img: Drag_Image) -> bool {
 @(private)
 read_drag_image :: proc(d: ^Dnd_State, obj: ^IDataObject) {
 	b := get_bytes(obj, registered_format("DragImageBits"), context.temp_allocator)
-	if len(b) < 16 { return }
+	if len(b) < DRAG_IMAGE_BITS_HEADER_BYTES { return }
 	i32_at :: proc(b: []u8, at: int) -> int { return int(cast(i32)(u32(b[at]) | u32(b[at + 1]) << 8 | u32(b[at + 2]) << 16 | u32(b[at + 3]) << 24)) }
 	d.image_size = {i32_at(b, 0), i32_at(b, 4)}
 	d.image_offset = {i32_at(b, 8), i32_at(b, 12)}

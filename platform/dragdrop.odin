@@ -17,6 +17,10 @@ package platform
 //
 // Tests and remote control: drop_inject queues the same events with data of the app's choice, through the same path.
 
+@(private = "file") DRAG_ENTRY_LEN_BYTES :: 4         // the length before each string of drag_custom_encode
+@(private = "file") HTML_FORMAT_OFFSET_DIGITS :: 10   // the fixed width of the header's offsets
+@(private = "file") HTML_FORMAT_OFFSET_MAX :: 1 << 30 // an offset beyond this is malformed (and never overflows the parse)
+
 Drop_Effect :: enum u8 { Copy, Move, Link }
 Drop_Effects :: bit_set[Drop_Effect; u8]
 
@@ -198,13 +202,13 @@ drop_effect_for :: proc(allowed: Drop_Effects, mods: Modifiers, preferred: Drop_
 // endian), the type, the data's length, the data. Pure, so it can be tested and shared by every system.
 drag_custom_encode :: proc(entries: []Drag_Entry, allocator := context.allocator) -> []u8 {
 	n := 0
-	for e in entries { n += 8 + len(e.mime) + len(e.data) }
+	for e in entries { n += 2 * DRAG_ENTRY_LEN_BYTES + len(e.mime) + len(e.data) }
 	out := make([]u8, n, allocator)
 	at := 0
 	put :: proc(out: []u8, at: ^int, s: string) {
 		l := u32(len(s))
 		out[at^], out[at^ + 1], out[at^ + 2], out[at^ + 3] = u8(l), u8(l >> 8), u8(l >> 16), u8(l >> 24)
-		at^ += 4
+		at^ += DRAG_ENTRY_LEN_BYTES
 		copy(out[at^:], s)
 		at^ += len(s)
 	}
@@ -217,9 +221,9 @@ drag_custom_decode :: proc(b: []u8, allocator := context.allocator) -> (entries:
 	entries = make([dynamic]Drag_Entry, allocator)
 	at := 0
 	get :: proc(b: []u8, at: ^int) -> (string, bool) {
-		if len(b) - at^ < 4 { return "", false }
+		if len(b) - at^ < DRAG_ENTRY_LEN_BYTES { return "", false }
 		l := int(u32(b[at^]) | u32(b[at^ + 1]) << 8 | u32(b[at^ + 2]) << 16 | u32(b[at^ + 3]) << 24)
-		at^ += 4
+		at^ += DRAG_ENTRY_LEN_BYTES
 		if l < 0 || l > len(b) - at^ { return "", false }
 		s := string(b[at^:at^ + l])
 		at^ += l
@@ -271,7 +275,7 @@ html_format_wrap :: proc(fragment: string, source_url := "", allocator := contex
 	start_frag := start_html + len(PRE)
 	end_frag := start_frag + len(fragment)
 	end_html := end_frag + len(POST)
-	b1, b2, b3, b4: [10]u8
+	b1, b2, b3, b4: [HTML_FORMAT_OFFSET_DIGITS]u8
 	parts := [?]string{
 		"Version:0.9\r\nStartHTML:", digits(b1[:], start_html), "\r\nEndHTML:", digits(b2[:], end_html),
 		"\r\nStartFragment:", digits(b3[:], start_frag), "\r\nEndFragment:", digits(b4[:], end_frag), "\r\n",
@@ -297,7 +301,7 @@ html_format_fragment :: proc(s: string) -> string {
 		i := index_of(s, key)
 		if i < 0 { return -1 }
 		v, any := 0, false
-		for j := i + len(key); j < len(s) && s[j] >= '0' && s[j] <= '9'; j += 1 { v = v * 10 + int(s[j] - '0'); any = true; if v > 1 << 30 { return -1 } }
+		for j := i + len(key); j < len(s) && s[j] >= '0' && s[j] <= '9'; j += 1 { v = v * 10 + int(s[j] - '0'); any = true; if v > HTML_FORMAT_OFFSET_MAX { return -1 } }
 		return any ? v : -1
 	}
 	a, b := num(s, "StartFragment:"), num(s, "EndFragment:")

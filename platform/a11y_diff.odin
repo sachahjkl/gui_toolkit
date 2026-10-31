@@ -162,10 +162,13 @@ prop_storage :: proc(k: A11y_Prop_Kind) -> Prop_Storage {
 	return .Inline
 }
 
+@(private = "file") FNV64_OFFSET_BASIS :: 0xcbf29ce484222325
+@(private = "file") FNV64_PRIME :: 0x100000001b3
+
 // A hash of everything node `i` says (not where its data sits in the update).
 a11y_node_hash :: proc(u: ^A11y_Update, i: int) -> u64 {
-	h: u64 = 0xcbf29ce484222325
-	mix :: proc(h: ^u64, b: []u8) { for c in b { h^ = (h^ ~ u64(c)) * 0x100000001b3 } }
+	h: u64 = FNV64_OFFSET_BASIS
+	mix :: proc(h: ^u64, b: []u8) { for c in b { h^ = (h^ ~ u64(c)) * FNV64_PRIME } }
 	n := u.nodes[i]
 	head := [4]u64{n.id, u64(n.role), u64(transmute(u32)n.flags), u64(transmute(u32)n.actions)}
 	mix(&h, mem.slice_to_bytes(head[:]))

@@ -122,7 +122,8 @@ A11y_Prop :: struct {
 
 // A tree identifier: the zero one is the window's own tree; a subtree (a web page) has its own, grafted under a node
 // whose Tree_Id property names it.
-A11y_Tree_Id :: distinct [16]u8
+@(private) A11Y_TREE_ID_BYTES :: 16
+A11y_Tree_Id :: distinct [A11Y_TREE_ID_BYTES]u8
 
 // An update being written: a11y_node starts a node (the props and children written next belong to it).
 A11y_Update :: struct {

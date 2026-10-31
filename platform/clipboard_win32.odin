@@ -11,6 +11,11 @@ import "core:strings"
 import win "core:sys/windows"
 import stbi "vendor:stb/image"
 
+@(private = "file") CLIPBOARD_FORMAT_NAME_MAX_CHARS :: 256
+@(private = "file") PNG_ENCODE_HEADROOM_BYTES :: 64   // on top of a first guess of one byte per pixel
+@(private = "file") PNG_SIGNATURE_BYTES :: 8          // anything shorter is no PNG
+@(private = "file") CLIPBOARD_OPEN_ATTEMPTS :: 5
+
 // Changes whenever a program (this one too) writes the clipboard.
 clipboard_sequence :: proc() -> u32 { return u32(win.GetClipboardSequenceNumber()) }
 
@@ -32,7 +37,7 @@ clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []
 	STANDARD := [?]string{"", "CF_TEXT", "CF_BITMAP", "CF_METAFILEPICT", "CF_SYLK", "CF_DIF", "CF_TIFF", "CF_OEMTEXT", "CF_DIB", "CF_PALETTE", "CF_PENDATA", "CF_RIFF", "CF_WAVE", "CF_UNICODETEXT", "CF_ENHMETAFILE", "CF_HDROP", "CF_LOCALE", "CF_DIBV5"}
 	for f := win.EnumClipboardFormats(0); f != 0; f = win.EnumClipboardFormats(f) {
 		if int(f) < len(STANDARD) { append(&out, strings.clone(STANDARD[f], allocator)); continue }
-		buf: [256]u16
+		buf: [CLIPBOARD_FORMAT_NAME_MAX_CHARS]u16
 		n := win.GetClipboardFormatNameW(f, &buf[0], len(buf))
 		if n > 0 {
 			s, _ := win.utf16_to_utf8(buf[:n], allocator)
@@ -81,7 +86,7 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 	h := win.HDROP(win.GetClipboardData(win.CF_HDROP))
 	if h == nil { return }
 	out := make([dynamic]string, allocator)
-	count := win.DragQueryFileW(h, 0xFFFF_FFFF, nil, 0)
+	count := win.DragQueryFileW(h, DRAG_QUERY_FILE_COUNT, nil, 0)
 	for i in 0 ..< count {
 		n := win.DragQueryFileW(h, i, nil, 0)
 		if n == 0 { continue }
@@ -167,7 +172,7 @@ clipboard_changed :: proc(w: ^Window) -> bool {
 png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8 {
 	w, h := img.size.x, img.size.y
 	if w <= 0 || h <= 0 || len(img.rgba) < w * h * 4 { return nil }
-	out := make([dynamic]u8, 0, w * h + 64, allocator)
+	out := make([dynamic]u8, 0, w * h + PNG_ENCODE_HEADROOM_BYTES, allocator)
 	sink :: proc "c" (ctx: rawptr, data: rawptr, size: i32) {
 		context = runtime.default_context()
 		append((^[dynamic]u8)(ctx), ..([^]u8)(data)[:size])
@@ -181,7 +186,7 @@ png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8
 
 // The pixels of a PNG file's bytes (stb_image), as straight RGBA.
 png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
-	if len(b) < 8 { return }
+	if len(b) < PNG_SIGNATURE_BYTES { return }
 	w, h, n: i32
 	p := stbi.load_from_memory(raw_data(b), i32(len(b)), &w, &h, &n, 4)
 	if p == nil { return }
@@ -199,7 +204,7 @@ png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_I
 @(private = "file")
 open_clipboard :: proc(w: ^Window) -> bool {
 	hwnd := w != nil ? w.hwnd : nil
-	for _ in 0 ..< 5 {
+	for _ in 0 ..< CLIPBOARD_OPEN_ATTEMPTS {
 		if win.OpenClipboard(hwnd) { return true }
 		win.Sleep(2)
 	}

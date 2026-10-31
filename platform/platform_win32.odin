@@ -64,6 +64,20 @@ TIMER_MODAL_FRAME :: 2   // (id 1 is poll_events' wait timeout)
 @(private)
 MODAL_FRAME_MS :: 16
 
+@(private = "file") WINDOWS_11_FIRST_BUILD :: 22000
+@(private = "file") WINDOW_START_OFFSET_PX :: 48     // from the corner of the work area, before the window is centred
+@(private = "file") WINDOW_FIRST_WIDTH_PX :: 640     // only until the dpi is known: open_window sizes it right after
+@(private = "file") WINDOW_FIRST_HEIGHT_PX :: 480
+@(private = "file") WINDOW_MAX_WORK_WIDTH :: 0.94    // of the work area: the client area leaves room for the frame
+@(private = "file") WINDOW_MAX_WORK_HEIGHT :: 0.92   // and for the title bar
+@(private = "file") WINDOW_MIN_WIDTH_PX :: 320       // at a scale of 1
+@(private = "file") WINDOW_MIN_HEIGHT_PX :: 240
+@(private = "file") WHEEL_NOTCH_UNITS :: 120         // WHEEL_DELTA
+@(private = "file") KEYDOWN_WAS_DOWN_BIT :: 1 << 30  // lParam of WM_KEYDOWN: the key was already down (auto-repeat)
+@(private = "file") SURROGATE_HIGH_FIRST :: 0xD800
+@(private = "file") SURROGATE_LOW_FIRST :: 0xDC00
+@(private = "file") SURROGATE_LOW_END :: 0xE000
+
 @(private) os_build: u32   // Windows build number (RtlGetVersion), 0 until asked
 
 // Windows 11 (build 22000 or later): rounded corners, Snap Layouts, a frame drawn by the compositor around the window.
@@ -73,7 +87,7 @@ is_windows_11 :: proc() -> bool {
 		win.RtlGetVersion(&vi)
 		os_build = max(vi.dwBuildNumber, 1)
 	}
-	return os_build >= 22000
+	return os_build >= WINDOWS_11_FIRST_BUILD
 }
 
 @(private) class_name: win.wstring
@@ -115,17 +129,17 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	// made on the monitor the user is on, so that it gets that monitor's DPI and refresh rate from the start: CW_USEDEFAULT puts it on the
 	// primary one whatever program launched it
 	at_x, at_y := i32(win.CW_USEDEFAULT), i32(win.CW_USEDEFAULT)
-	if start := start_monitor_work_area(); start.right > start.left { at_x, at_y = start.left + 48, start.top + 48 }
+	if start := start_monitor_work_area(); start.right > start.left { at_x, at_y = start.left + WINDOW_START_OFFSET_PX, start.top + WINDOW_START_OFFSET_PX }
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
 	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
-		at_x, at_y, 640, 480, nil, nil, instance, w)
+		at_x, at_y, WINDOW_FIRST_WIDTH_PX, WINDOW_FIRST_HEIGHT_PX, nil, nil, instance, w)
 	if w.hwnd == nil {   // out of resources (USER handles, memory): no window
 		free(w)
 		return nil
 	}
 
 	dpi := win.GetDpiForWindow(w.hwnd)
-	w.dpi_scale = f32(dpi) / 96
+	w.dpi_scale = f32(dpi) / DPI_BASE
 	if dpi == 0 { w.dpi_scale = 1 }
 
 	// size the *outer* window from the desired client size, clamped to the work area
@@ -134,8 +148,8 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	win.GetMonitorInfoW(mon, &mi)
 	work_w := int(mi.rcWork.right - mi.rcWork.left)
 	work_h := int(mi.rcWork.bottom - mi.rcWork.top)
-	cw := min(int(f32(size.x) * w.dpi_scale), int(f32(work_w) * 0.94))
-	ch := min(int(f32(size.y) * w.dpi_scale), int(f32(work_h) * 0.92))
+	cw := min(int(f32(size.x) * w.dpi_scale), int(f32(work_w) * WINDOW_MAX_WORK_WIDTH))
+	ch := min(int(f32(size.y) * w.dpi_scale), int(f32(work_h) * WINDOW_MAX_WORK_HEIGHT))
 	ow, oh := outer_size(w, cw, ch, dpi)
 	x := int(mi.rcWork.left) + (work_w - ow) / 2
 	y := int(mi.rcWork.top) + (work_h - oh) / 2
@@ -352,7 +366,7 @@ app_icon_rgba :: proc(size: int, allocator := context.allocator) -> (pixels: []u
 
 // Thickness of the resize band along the top of an integrated title bar, and of the system's frame (physical pixels).
 resize_border :: proc(w: ^Window) -> int {
-	if w.offscreen { return int(8 * w.dpi_scale) }   // a plausible frame band at the emulated scale (no window to resize)
+	if w.offscreen { return int(RESIZE_BAND_PX * w.dpi_scale) }   // a plausible frame band at the emulated scale (no window to resize)
 	dpi := win.GetDpiForWindow(w.hwnd)
 	return int(win.GetSystemMetricsForDpi(win.SM_CYFRAME, dpi) + win.GetSystemMetricsForDpi(win.SM_CXPADDEDBORDER, dpi))
 }
@@ -456,9 +470,9 @@ native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
 // resizes the renderer to the new `w.size`. A no-op for a real window (use the DPI the system gives it).
 set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
 	if !w.offscreen || dpi <= 0 { return }
-	old := max(w.dpi_scale, 0.0625)
-	k := (f32(dpi) / 96) / old
-	w.dpi_scale = f32(dpi) / 96
+	old := max(w.dpi_scale, DPI_SCALE_MIN)
+	k := (f32(dpi) / DPI_BASE) / old
+	w.dpi_scale = f32(dpi) / DPI_BASE
 	w.size = {max(int(f32(w.size.x) * k + 0.5), 1), max(int(f32(w.size.y) * k + 0.5), 1)}
 	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
 }
@@ -908,7 +922,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_GETMINMAXINFO:
 		mmi := cast(^win.MINMAXINFO)uintptr(lparam)
-		mmi.ptMinTrackSize = {i32(320 * w.dpi_scale), i32(240 * w.dpi_scale)}
+		mmi.ptMinTrackSize = {i32(WINDOW_MIN_WIDTH_PX * w.dpi_scale), i32(WINDOW_MIN_HEIGHT_PX * w.dpi_scale)}
 		return 0
 
 	case win.WM_DISPLAYCHANGE:
@@ -961,7 +975,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_DPICHANGED:
 		w.display_stale = true
-		w.dpi_scale = f32(win.HIWORD(u32(wparam))) / 96
+		w.dpi_scale = f32(win.HIWORD(u32(wparam))) / DPI_BASE
 		r := cast(^win.RECT)uintptr(lparam)
 		win.SetWindowPos(hwnd, nil, r.left, r.top, r.right - r.left, r.bottom - r.top, win.SWP_NOZORDER | win.SWP_NOACTIVATE)
 		cursor_on_dpi_change(w)   // drawn cursors at the new monitor's size
@@ -999,7 +1013,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_KEYDOWN, win.WM_SYSKEYDOWN:
 		key := key_from_vk(wparam)
-		if key != .None { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & (1 << 30)) != 0}) }
+		if key != .None { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & KEYDOWN_WAS_DOWN_BIT) != 0}) }
 		// no menu-bar beep on Alt+key; Alt+F4 closes, Alt+Space opens the system menu
 		if msg == win.WM_SYSKEYDOWN && key != .None && wparam != win.VK_F4 && wparam != win.VK_SPACE { return 0 }
 	case win.WM_KEYUP, win.WM_SYSKEYUP:
@@ -1008,15 +1022,15 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_CHAR:
 		c := u16(wparam)
-		if c >= 0xD800 && c < 0xDC00 { w.high_surrogate = c; return 0 }
+		if c >= SURROGATE_HIGH_FIRST && c < SURROGATE_LOW_FIRST { w.high_surrogate = c; return 0 }
 		r: rune = rune(c)
-		if c >= 0xDC00 && c < 0xE000 {
+		if c >= SURROGATE_LOW_FIRST && c < SURROGATE_LOW_END {
 			pair := [2]u16{w.high_surrogate, c}
 			out: [2]rune
 			if utf16.decode(out[:], pair[:]) > 0 { r = out[0] }
 			w.high_surrogate = 0
 		}
-		if r >= 32 && r != 127 { push(w, {kind = .Text, text = r, mods = current_mods()}) }
+		if r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { push(w, {kind = .Text, text = r, mods = current_mods()}) }
 		return 0
 
 	case win.WM_MOUSEMOVE:
@@ -1041,13 +1055,13 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_MBUTTONUP: button_up(w, .Middle, mouse_pos(lparam))
 
 	case win.WM_MOUSEWHEEL, win.WM_MOUSEHWHEEL:
-		notches := f32(i16(win.HIWORD(u32(wparam)))) / 120
+		notches := f32(i16(win.HIWORD(u32(wparam)))) / WHEEL_NOTCH_UNITS
 		pt := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
 		win.ScreenToClient(hwnd, &pt)
 		// modifiers as they were when the wheel moved (the MK_* flags travel with the message)
 		mods: Modifiers
-		if (wparam & 0x0008) != 0 { mods += {.Ctrl} }
-		if (wparam & 0x0004) != 0 { mods += {.Shift} }
+		if (wparam & MK_CONTROL) != 0 { mods += {.Ctrl} }
+		if (wparam & MK_SHIFT) != 0 { mods += {.Shift} }
 		if win.GetKeyState(win.VK_MENU) < 0 { mods += {.Alt} }
 		e := Event{kind = .Scroll, pos = {f32(pt.x), f32(pt.y)}, mods = mods}
 		if msg == win.WM_MOUSEWHEEL { e.delta.y = -notches } else { e.delta.x = notches }

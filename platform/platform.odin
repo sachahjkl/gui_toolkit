@@ -20,6 +20,16 @@ package platform
 
 import "core:time"
 
+@(private) DPI_BASE :: 96                  // dpi of a scale of 1 (dpi_scale is dpi / 96)
+@(private) DPI_SCALE_MIN :: 0.0625         // floor of the old scale a resize of an offscreen window divides by
+@(private) DISPLAY_FALLBACK_HZ :: 60       // the rate when nothing answers (Display_Source.Default)
+@(private) RESIZE_BAND_PX :: 8             // resize band at a scale of 1 where the system gives no frame metric
+@(private) RUNE_FIRST_PRINTABLE :: 32      // typed text below this is a control character, not text
+@(private) RUNE_DEL :: 127                 // the one control character above it
+@(private) WAIT_CEIL_MS :: 0.999           // added to a fractional wait before truncating: rounds up, a wait never ends early
+@(private) CURSOR_CSS_NAME_MAX_BYTES :: 32 // longer than any keyword of cursor_from_css
+@(private) CSS_WEBKIT_PREFIX_BYTES :: 8    // len("-webkit-")
+
 Event_Kind :: enum u8 {
 	None,
 	Key_Press,
@@ -141,16 +151,16 @@ cursor_css_name :: proc(c: Cursor) -> string { return CURSOR_CSS_NAMES[c] }
 // -webkit-zoom-out too). `auto` is not a cursor: it depends on what is under the pointer (ok = false, as for any other
 // word).
 cursor_from_css :: proc(name: string) -> (Cursor, bool) {
-	buf: [32]u8
+	buf: [CURSOR_CSS_NAME_MAX_BYTES]u8
 	if len(name) > len(buf) { return .Arrow, false }
 	for i in 0 ..< len(name) {
 		ch := name[i]
 		buf[i] = ch >= 'A' && ch <= 'Z' ? ch + 32 : ch
 	}
 	s := string(buf[:len(name)])
-	if len(s) > 8 && s[:8] == "-webkit-" {
-		switch s[8:] {
-		case "grab", "grabbing", "zoom-in", "zoom-out": s = s[8:]
+	if len(s) > CSS_WEBKIT_PREFIX_BYTES && s[:CSS_WEBKIT_PREFIX_BYTES] == "-webkit-" {
+		switch s[CSS_WEBKIT_PREFIX_BYTES:] {
+		case "grab", "grabbing", "zoom-in", "zoom-out": s = s[CSS_WEBKIT_PREFIX_BYTES:]
 		}
 	}
 	for c in Cursor { if CURSOR_CSS_NAMES[c] == s { return c, true } }

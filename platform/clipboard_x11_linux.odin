@@ -15,6 +15,10 @@ import "core:sys/posix"
 
 // The largest property we write in one go before switching to INCR (well under the server's maximum request length).
 @(private) X11_INCR_THRESHOLD :: 128 * 1024
+@(private = "file") X11_MULTIPLE_MAX_WORDS :: 1 << 16     // read of a MULTIPLE request's pairs
+@(private = "file") X11_SELECTION_READ_TURNS :: 2000      // bounds of a synchronous read of a selection
+@(private = "file") X11_SELECTION_READ_WAIT_MS :: 3000
+@(private) X11_SELECTION_POLL_MS :: 20                    // between two looks at the connection during such a read
 
 // An in-progress INCR transfer we are sending to a requestor: the bytes left and the property / window to post on.
 @(private)
@@ -87,7 +91,7 @@ x11_serve_selection_request :: proc(w: ^Window, b: [^]u8) {
 	property := Xcb_Atom(get_u32(b[28:]))
 	if property == 0 { property = target }   // obsolete clients leave property None: use the target atom
 	ok := x11_answer_target(requestor, target, property)
-	ev: [32]u8
+	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_SELECTION_NOTIFY
 	put_u32(ev[8:], u32(requestor))
 	put_u32(ev[12:], u32(selection))
@@ -102,12 +106,12 @@ x11_serve_selection_request :: proc(w: ^Window, b: [^]u8) {
 x11_answer_target :: proc(requestor: Xcb_Window, target, property: Xcb_Atom) -> bool {
 	if target == x11c.targets {
 		list := x11_offer_targets()
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, XCB_ATOM_ATOM, 32, u32(len(list)), raw_data(list))
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(list)), raw_data(list))
 		return true
 	}
 	if target == x11c.atom_timestamp {
 		t: u32 = 0
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_timestamp, 32, 1, &t)
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_timestamp, X11_FORMAT_32, 1, &t)
 		return true
 	}
 	if target == x11c.atom_multiple {
@@ -119,7 +123,7 @@ x11_answer_target :: proc(requestor: Xcb_Window, target, property: Xcb_Atom) -> 
 		x11_start_incr(requestor, property, target, data)
 		return true
 	}
-	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, 8, u32(len(data)), len(data) > 0 ? raw_data(data) : nil)
+	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, X11_FORMAT_8, u32(len(data)), len(data) > 0 ? raw_data(data) : nil)
 	return true
 }
 
@@ -127,7 +131,7 @@ x11_answer_target :: proc(requestor: Xcb_Window, target, property: Xcb_Atom) -> 
 // 0 into the pairs we refuse.
 @(private)
 x11_answer_multiple :: proc(requestor: Xcb_Window, property: Xcb_Atom) -> bool {
-	cookie := xcb.get_property(x11c.c, 0, requestor, property, x11c.atom_pair, 0, 1 << 16)
+	cookie := xcb.get_property(x11c.c, 0, requestor, property, x11c.atom_pair, 0, X11_MULTIPLE_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
 	if reply == nil { return false }
 	defer posix.free(reply)
@@ -142,7 +146,7 @@ x11_answer_multiple :: proc(requestor: Xcb_Window, property: Xcb_Atom) -> bool {
 		if !x11_answer_target(requestor, t, p) { atoms[i + 1] = 0; changed = true }
 	}
 	if changed {
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_pair, 32, u32(n), atoms)
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_pair, X11_FORMAT_32, u32(n), atoms)
 	}
 	return true
 }
@@ -157,7 +161,7 @@ x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: 
 	xcb.configure_window(x11c.c, requestor, 0, nil)   // no-op to keep XCB sequence ordering simple
 	x11_change_window_attrs_event_mask(requestor, XCB_EVENT_MASK_PROPERTY_CHANGE)
 	size := u32(len(data))
-	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_incr, 32, 1, &size)
+	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_incr, X11_FORMAT_32, 1, &size)
 	// keep a copy that outlives the temp allocator
 	buf := make([]u8, len(data))
 	copy(buf, data)
@@ -174,7 +178,7 @@ x11_incr_on_property_delete :: proc(window: Xcb_Window, property: Xcb_Atom) {
 		if !s.active || s.requestor != window || s.property != property { continue }
 		remaining := len(s.data) - s.offset
 		chunk := min(remaining, X11_INCR_THRESHOLD)
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, window, property, s.target, 8, u32(chunk), chunk > 0 ? raw_data(s.data[s.offset:]) : nil)
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, window, property, s.target, X11_FORMAT_8, u32(chunk), chunk > 0 ? raw_data(s.data[s.offset:]) : nil)
 		s.offset += chunk
 		xcb.flush(x11c.c)
 		if chunk == 0 {   // the terminating empty property: transfer done
@@ -202,12 +206,12 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 	x11_convert_selection(st.id, selection, target, x11c.wren_selection)
 	xcb.flush(x11c.c)
 	deadline := time.tick_now()
-	for _ in 0 ..< 2000 {
+	for _ in 0 ..< X11_SELECTION_READ_TURNS {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev != nil { x11_handle_event(w, ev); posix.free(ev); if st.paste_got && !st.paste_incr { break }; continue }
 		if st.paste_got && !st.paste_incr { break }
-		if time.duration_milliseconds(time.tick_since(deadline)) > 3000 { break }
-		poll_fd_wait(x11c.fd, 20)
+		if time.duration_milliseconds(time.tick_since(deadline)) > X11_SELECTION_READ_WAIT_MS { break }
+		poll_fd_wait(x11c.fd, X11_SELECTION_POLL_MS)
 	}
 	if len(st.paste_buf) == 0 { return nil }
 	out := make([]u8, len(st.paste_buf), allocator)

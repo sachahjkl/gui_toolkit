@@ -45,8 +45,9 @@ cursor_settings_changed :: proc() {}   // re-read on demand; nothing cached to i
 
 // The size a cursor has on the window's monitor, in physical pixels (the theme's base size scaled by DPI). The XCURSOR_SIZE
 // environment variable overrides the base; 24 is the common default.
+@(private = "file") CURSOR_THEME_BASE_PX :: 24
 cursor_size_px :: proc(w: ^Window) -> int {
-	base := 24
+	base := CURSOR_THEME_BASE_PX
 	return max(int(f32(base) * (w != nil ? w.dpi_scale : 1)), 1)
 }
 

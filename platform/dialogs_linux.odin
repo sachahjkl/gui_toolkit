@@ -198,7 +198,8 @@ spawn_detached :: proc(args: []string) -> bool {
 
 // The posix_spawn file-action helpers core:sys/posix does not wrap. The actions object is opaque; a byte buffer large
 // enough for glibc / musl stands in (both are well under 128 bytes).
-@(private) Spawn_File_Actions :: struct { _: [128]u8 }
+@(private = "file") SPAWN_FILE_ACTIONS_BYTES :: 128
+@(private) Spawn_File_Actions :: struct { _: [SPAWN_FILE_ACTIONS_BYTES]u8 }
 foreign import spawnlib "system:c"
 @(default_calling_convention = "c", private)
 foreign spawnlib {
@@ -207,6 +208,8 @@ foreign spawnlib {
 	posix_spawn_file_actions_adddup2 :: proc(fa: ^Spawn_File_Actions, fd, newfd: i32) -> i32 ---
 	posix_spawn_file_actions_addclose:: proc(fa: ^Spawn_File_Actions, fd: i32) -> i32 ---
 }
+
+@(private = "file") RUN_CAPTURE_CHUNK_BYTES :: 4096
 
 // Runs args[0], captures its stdout to EOF, waits, and returns the text and the exit code. A pipe is set as the
 // child's fd 1 through posix_spawn file actions.
@@ -227,7 +230,7 @@ run_capture :: proc(args: []string) -> (out: string, code: int) {
 	posix.close(write_fd)
 	if rc != .NONE { posix.close(read_fd); return "", 1 }
 	// read the child's stdout
-	buf: [4096]u8
+	buf: [RUN_CAPTURE_CHUNK_BYTES]u8
 	b := make([dynamic]u8, context.temp_allocator)
 	for {
 		n := posix.read(read_fd, &buf[0], len(buf))
