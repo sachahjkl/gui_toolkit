@@ -24,6 +24,7 @@ Cast :: struct {
 	pending:    bool,       // a capture of ours is on its way
 	unacked:    bool,
 	owed:       bool,       // something changed, too soon to send: the ticker wakes the window for it
+	touched:    bool,       // input was sent since the last capture came back
 	id:         int,
 }
 
@@ -62,7 +63,10 @@ cast_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 cast_frame :: proc(srv: ^Server, s: ^ui.State, pixels: []u8, size: [2]int) {
 	c := &srv.screencast
 	c.pending = false
-	c.last_build = s.build_index + 1   // (the frame that reads the capture back, about to be built, is no change of the program's)
+	// The frame that reads the capture back, about to be built, is no change of the program's. Unless it is: input sent
+	// before this came back shows in it, as does the next step of what moves, and that would be the last frame lost.
+	c.last_build = c.touched || ui.needs_frame(s) ? 0 : s.build_index + 1
+	c.touched = false
 	h := u64(hash.crc32(pixels))
 	if c.id > 0 && h == c.last_hash {
 		delete(pixels, runtime.heap_allocator())
@@ -86,4 +90,4 @@ cast_ack :: proc(srv: ^Server, s: ^ui.State) {
 
 // Input sent now shows after the frame that may be reading the last capture back: that frame is a change after all.
 @(private)
-cast_touch :: proc(srv: ^Server) { srv.screencast.last_build = 0 }
+cast_touch :: proc(srv: ^Server) { srv.screencast.last_build = 0; srv.screencast.touched = true }

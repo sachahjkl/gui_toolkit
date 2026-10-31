@@ -1,5 +1,9 @@
 # What changed in gui_toolkit 0.57
 
+**0.57.1: closing DevTools is safe.** In 0.57.0 the connection could be freed while the DOM side still held it: the edits could
+stay, and the program could hang. Only a program driven by DevTools is concerned. The screencast could also miss its last frame.
+No code to change: take 0.57.1 rather than 0.57.0.
+
 For an application on the toolkit (Wren first). **Nothing breaks and nothing is required**: an application that already calls
 `devtools.start_from_env` and `devtools.service` has all of this with no change of code.
 

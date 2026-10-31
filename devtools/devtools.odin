@@ -201,6 +201,7 @@ conns_reap :: proc(srv: ^Server) {
 		for w in srv.captures { if w.conn == c { continue outer } }
 		for w in srv.waits { if w.to.conn == c { continue outer } }
 		if srv.screencast.on && srv.screencast.to.conn == c { continue }
+		if srv.dom.to.conn == c { continue }   // (dom_sync sees it gone, and takes its edits back)
 		thread.join(c.thread)
 		thread.destroy(c.thread)
 		free(c, runtime.heap_allocator())
