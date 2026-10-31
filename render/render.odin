@@ -125,11 +125,16 @@ Text_Rendering :: struct {
 	coverage_exponent: f32,   // 1: none
 }
 
+// Exponent the Power curve starts from (what Chromium uses on Linux).
+TEXT_GAMMA_DEFAULT :: 1.2
+// Coverage exponent of the Linear defaults: thickens text blended in linear light.
+TEXT_COVERAGE_EXPONENT_LINEAR :: 0.8
+
 // The renderer's defaults: Linear keeps the toolkit's historical look (linear blending thickened by 0.8); Srgb is what
 // Chromium does on Windows (Skia built with SK_GAMMA_SRGB and SK_GAMMA_CONTRAST=1.0, see chromium/src skia/BUILD.gn).
 // (`gamma` 1.2, unused by these curves, is what a switch to Power starts from.)
-TEXT_RENDERING_LINEAR :: Text_Rendering{curve = .None, gamma = 1.2, contrast = 0, coverage_exponent = 0.8}
-TEXT_RENDERING_SRGB :: Text_Rendering{curve = .Srgb, gamma = 1.2, contrast = 1, coverage_exponent = 1}
+TEXT_RENDERING_LINEAR :: Text_Rendering{curve = .None, gamma = TEXT_GAMMA_DEFAULT, contrast = 0, coverage_exponent = TEXT_COVERAGE_EXPONENT_LINEAR}
+TEXT_RENDERING_SRGB :: Text_Rendering{curve = .Srgb, gamma = TEXT_GAMMA_DEFAULT, contrast = 1, coverage_exponent = 1}
 
 text_rendering_default :: proc(space: Blend_Space) -> Text_Rendering {
 	return space == .Srgb ? TEXT_RENDERING_SRGB : TEXT_RENDERING_LINEAR
@@ -255,6 +260,8 @@ Image_Ref :: struct {
 }
 
 MAX_COLOR_MATRICES :: 8
+// Largest Downsample pass: one pass reduces by 2, 4 or 8.
+DOWNSAMPLE_FACTOR_MAX :: 8
 // Taps of one blur pass (bilinear pairs, center included): a standard deviation up to MAX_BLUR_SIGMA texels.
 MAX_BLUR_TAPS :: 64
 MAX_BLUR_SIGMA :: 40
@@ -359,7 +366,7 @@ Texture_Data :: struct {
 	wrtv:  wgpu.TextureView,   // and for rendering into (Target only)
 	wformat: wgpu.TextureFormat,
 	mip_count: int,
-	canvas: u8,           // RGBA, canvas.odin: 1 a source of canvas pixels, 2 a canvas (render target, kept), 3 a R8 clip mask / layer (see canvas_texture_objects)
+	canvas: u8,           // RGBA, canvas.odin: 0 not a canvas texture, else a CANVAS_TEX_* (see canvas_texture_objects)
 }
 
 Renderer :: struct {
@@ -470,13 +477,18 @@ blend_space :: proc(r: ^Renderer) -> Blend_Space { return r.space }
 // True when the window shows through pixels with alpha < 1 (init asked for it and the system supports it).
 is_transparent :: proc(r: ^Renderer) -> bool { return r.transparent }
 
+@(private) TEXT_GAMMA_MIN :: 0.25
+@(private) TEXT_GAMMA_MAX :: 4
+@(private) TEXT_COVERAGE_EXPONENT_MIN :: 0.1
+@(private) TEXT_COVERAGE_EXPONENT_MAX :: 4
+
 // Glyph coverage to alpha (see Text_Rendering). Applies to the whole frame, from the next frame_submit.
 set_text_rendering :: proc(r: ^Renderer, t: Text_Rendering) {
 	r.text = Text_Rendering{
 		curve = t.curve,
-		gamma = clamp(t.gamma, 0.25, 4),
+		gamma = clamp(t.gamma, TEXT_GAMMA_MIN, TEXT_GAMMA_MAX),
 		contrast = clamp(t.contrast, 0, 1),
-		coverage_exponent = clamp(t.coverage_exponent, 0.1, 4),
+		coverage_exponent = clamp(t.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN, TEXT_COVERAGE_EXPONENT_MAX),
 	}
 }
 
@@ -548,6 +560,9 @@ texture_space :: proc(r: ^Renderer, t: Texture) -> Blend_Space {
 	return r.textures[int(t)].space
 }
 
+// An RGBA16F texel (fp16 targets, Slug curves).
+@(private) TEXEL_BYTES_FP16 :: 8
+
 // Bytes per texel of a texture (render targets and images; 0 for none).
 texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return 0 }
@@ -556,8 +571,8 @@ texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
 	case .R8: return 1
 	case .Data: return r.textures[int(t)].data_format == .R8 ? 1 : 4
 	case .RGBA, .Snapshot, .Slug_Bands: return 4
-	case .Target: return r.textures[int(t)].unorm ? 4 : 8
-	case .Slug_Curves: return 8
+	case .Target: return r.textures[int(t)].unorm ? 4 : TEXEL_BYTES_FP16
+	case .Slug_Curves: return TEXEL_BYTES_FP16
 	}
 	return 0
 }
@@ -667,8 +682,8 @@ texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 		case .Data:
 			n := td.w * td.h * (td.data_format == .R8 ? 1 : 4)
 			m.images += td.mips ? n * 4 / 3 : n
-		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : 8)
-		case .Slug_Curves: m.slug += td.w * td.h * 8
+		case .Target, .Snapshot: m.targets += td.w * td.h * (td.kind == .Snapshot || td.unorm ? 4 : TEXEL_BYTES_FP16)
+		case .Slug_Curves: m.slug += td.w * td.h * TEXEL_BYTES_FP16
 		case .Slug_Bands: m.slug += td.w * td.h * 4
 		}
 	}
@@ -842,7 +857,7 @@ release_targets :: proc(r: ^Renderer) {
 targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
 	for p in r.targets {
-		b := p.w * p.h * (p.snapshot || p.unorm ? 4 : 8)
+		b := p.w * p.h * (p.snapshot || p.unorm ? 4 : TEXEL_BYTES_FP16)
 		n += p.mips ? b * 4 / 3 : b
 	}
 	return n
@@ -851,7 +866,7 @@ targets_bytes :: proc(r: ^Renderer) -> int {
 // GPU memory of the kept targets (keep_target), in bytes.
 kept_targets_bytes :: proc(r: ^Renderer) -> int {
 	n := 0
-	for p in r.targets { if p.kept { n += p.w * p.h * (p.unorm ? 4 : 8) } }
+	for p in r.targets { if p.kept { n += p.w * p.h * (p.unorm ? 4 : TEXEL_BYTES_FP16) } }
 	return n
 }
 
@@ -875,6 +890,16 @@ gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
 	if r.gpu_last_frame == 0 { return 0, -1, false }
 	return r.gpu_last_ms, r.gpu_last_frame - 1, true
 }
+
+// Smallest instance buffer (instances) and frame table (elements) made: both grow by doubling from there.
+@(private) INST_CAP_MIN :: 4096
+@(private) TABLE_CAP_MIN :: 64
+// The vertices of one draw: a quad as a triangle strip, a full-screen triangle (the shaders make them from the vertex index).
+@(private) QUAD_VERTICES :: 4
+@(private) FULLSCREEN_VERTICES :: 3
+// What full corner smoothing adds to the superellipse exponent (2: a circle) and to the radius.
+@(private) CORNER_N_SMOOTHING :: 0.6
+@(private) CORNER_BOOST_SMOOTHING :: 0.25
 
 // The constant buffer of rect.wgsl (register b0), per target. Shared: both backends fill it (frame.odin, wgpu_frame.odin).
 @(private)

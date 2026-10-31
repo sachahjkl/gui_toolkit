@@ -17,6 +17,9 @@ Slug_GPU :: struct {
 }
 
 SLUG_MIN_ROWS :: 16
+// Stem darkening fades out between these sizes (pixels per em): whole at or under the first, none at or over the second.
+@(private) SLUG_DARKEN_FULL_PPEM :: 12
+@(private) SLUG_DARKEN_NONE_PPEM :: 36
 
 @(private)
 slug_gpu_destroy :: proc(c: ^Context) {
@@ -101,7 +104,7 @@ slug_inst :: proc(c: ^Context, g: font.Slug_Glyph, ox, oy, size: f32, col: Color
 	inst.colors[1] = {}   // (the shader reads it: not the color here)
 	px := screen_px > 0 ? screen_px : size
 	if st.slug_darken > 0 {
-		inst.colors[1].x = st.slug_darken * clamp((36 - px) / (36 - 12), 0, 1) * f32(g.orient)
+		inst.colors[1].x = st.slug_darken * clamp((SLUG_DARKEN_NONE_PPEM - px) / (SLUG_DARKEN_NONE_PPEM - SLUG_DARKEN_FULL_PPEM), 0, 1) * f32(g.orient)
 	}
 	if st.slug_supersample_ppem > 0 && px <= st.slug_supersample_ppem { inst.colors[1].y = 1 }
 	append(&c.insts, inst)

@@ -51,7 +51,7 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 		Format      = .B8G8R8A8_UNORM,
 		SampleDesc  = {Count = 1},
 		BufferUsage = {.RENDER_TARGET_OUTPUT},
-		BufferCount = u32(clamp(r.swap_buffers, 2, 16) if r.swap_buffers > 0 else 2),
+		BufferCount = u32(clamp(r.swap_buffers, 2, SWAP_BUFFERS_MAX) if r.swap_buffers > 0 else 2),
 		// STRETCH: the presented region (SetSourceSize, see resize) maps onto the client area 1:1 when it has the
 		// window's size. (With NONE, DWM drew a source region smaller than the buffers magnified.) A frame that
 		// comes after the window changed size is stretched for the refresh it is shown in.
@@ -530,7 +530,7 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 		if td.mips { desc.MipLevels = 0; desc.BindFlags += {.RENDER_TARGET}; desc.MiscFlags = {.GENERATE_MIPS} }
 	}
 	#partial switch td.kind {
-	case .Slug_Curves: desc.Format, texel = .R16G16B16A16_FLOAT, 8
+	case .Slug_Curves: desc.Format, texel = .R16G16B16A16_FLOAT, TEXEL_BYTES_FP16
 	case .Slug_Bands: desc.Format, texel = .R16G16_UINT, 4
 	}
 	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
@@ -553,12 +553,15 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	return true
 }
 
+// The band of zeros zero_unfilled uploads at a time.
+@(private) ZERO_BAND_BYTES :: 1 << 20
+
 // Writes zeros into an RGBA texture nothing was written to (see Texture_Data.unfilled): one UpdateSubresource of the
 // whole level 0 (its mips follow), through a zeroed buffer made once and kept.
 @(private)
 zero_unfilled :: proc(r: ^Renderer, td: ^Texture_Data) {
 	td.unfilled = false
-	rows := max(1, min(td.h, (1 << 20) / (td.w * 4)))
+	rows := max(1, min(td.h, ZERO_BAND_BYTES / (td.w * 4)))
 	if len(r.zeros) < rows * td.w * 4 { runtime.resize(&r.zeros, rows * td.w * 4); mem.zero_slice(r.zeros[:]) }
 	for y := 0; y < td.h; y += rows {
 		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(min(y + rows, td.h)), back = 1}
@@ -644,7 +647,7 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
 	if td.kind == .None { return }
-	if td.canvas == 2 { canvas_state_free(r, t) }
+	if td.canvas == CANVAS_TEX_TARGET { canvas_state_free(r, t) }
 	td = &r.textures[int(t)]
 	if td.rtv != nil { td.rtv->Release() }
 	if td.view != nil { td.view->Release() }
@@ -655,7 +658,7 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 
 // Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
 // polling input and building the UI: then the frame you build is the next one shown.
-d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
+d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
 	if r.latency_handle == nil { return true }
 	latency_drain(&r.present, r.latency_handle)
 	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
@@ -735,7 +738,7 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 	if buf^ == nil || n > cap^ {
 		if view^ != nil { view^->Release(); view^ = nil }
 		if buf^ != nil { buf^->Release(); buf^ = nil }
-		cap^ = max(n, cap^ * 2, 64)
+		cap^ = max(n, cap^ * 2, TABLE_CAP_MIN)
 		r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
 			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)
 		view^ = raw_buffer_view(r, buf^, cap^ * stride)
@@ -759,13 +762,17 @@ d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 	}
 }
 
+// DXGI's limits: back buffers of a swap chain, MaximumFrameLatency.
+@(private) SWAP_BUFFERS_MAX :: 16
+@(private) FRAME_LATENCY_MAX :: 16
+
 // Most frames the swap chain may queue (IDXGISwapChain2::SetMaximumFrameLatency; see api.set_max_frame_latency).
 d3d_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 	if r.swapchain == nil { return false }
 	sc2: ^dxgi.ISwapChain2
 	if win.FAILED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) || sc2 == nil { return false }
 	defer sc2->Release()
-	frames := clamp(n, 1, 16)
+	frames := clamp(n, 1, FRAME_LATENCY_MAX)
 	if win.FAILED(sc2->SetMaximumFrameLatency(u32(frames))) { return false }
 	latency_lowered(&r.present, frames)
 	return true

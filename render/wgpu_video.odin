@@ -168,7 +168,7 @@ wgpu_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool
 		crop = {f32(p.crop_origin.x), f32(p.crop_origin.y), f32(p.crop_origin.x + p.crop_size.x), f32(p.crop_origin.y + p.crop_size.y)},
 		dim = {f32(max(w, 1)), f32(max(h, 1))},
 		rotation = u32(rot), flags = flags, offset = co.offset, scale = co.scale, m = co.m,
-		hdr = {p.sdr_white_nits > 0 ? p.sdr_white_nits : 203, p.hdr_peak_nits > 0 ? p.hdr_peak_nits : 1000, 0, 0},
+		hdr = {p.sdr_white_nits > 0 ? p.sdr_white_nits : VIDEO_SDR_WHITE_NITS, p.hdr_peak_nits > 0 ? p.hdr_peak_nits : VIDEO_HDR_PEAK_NITS, 0, 0},
 	}
 	wgpu.QueueWriteBuffer(g.queue, v.params, 0, &vc, size_of(vc))
 
@@ -193,7 +193,7 @@ wgpu_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool
 	pass := wgpu.CommandEncoderBeginRenderPass(enc, &{label = "video", colorAttachmentCount = 1, colorAttachments = &att})
 	wgpu.RenderPassEncoderSetPipeline(pass, pipe)
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, bg)
-	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
+	wgpu.RenderPassEncoderDraw(pass, FULLSCREEN_VERTICES, 1, 0, 0)
 	wgpu.RenderPassEncoderEnd(pass)
 	wgpu.RenderPassEncoderRelease(pass)
 	cb := wgpu.CommandEncoderFinish(enc)

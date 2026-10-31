@@ -33,6 +33,23 @@ Displayed_Frame :: struct {
 }
 
 @(private) PRESENT_RING :: 256
+// Displayed frames nobody took before they are dropped.
+@(private) DISPLAYED_KEPT_MAX :: 4 * PRESENT_RING
+// DXGI's limit on the sync interval of Present.
+@(private) SYNC_INTERVAL_MAX :: 4
+// GetFrameStatistics failures in a row before it is not asked again (some remote sessions do not support it).
+@(private) STATS_FAILS_MAX :: 64
+// Two vblank samples further apart than this many refreshes do not measure the period.
+@(private) VBLANK_SAMPLE_MAX_REFRESHES :: 1000
+// A measured period out of this range is noise (10 .. 1000 Hz).
+@(private) VBLANK_PERIOD_MIN_NS :: 1e6
+@(private) VBLANK_PERIOD_MAX_NS :: 1e8
+// Weight of a new measure in the running period.
+@(private) VBLANK_PERIOD_SMOOTHING :: 0.1
+// Refreshes beyond what the frames explain: past this the counters jumped, there is no run to compare to.
+@(private) RUN_MAX_REFRESH_JUMP :: 240
+// So that n * expected a hair over a whole number by rounding does not allow one refresh more.
+@(private) ALLOWED_REFRESHES_EPSILON :: 1e-6
 
 @(private)
 Present_Slot :: struct {
@@ -82,7 +99,7 @@ present_mode :: proc(r: ^Renderer) -> Present_Mode { return r.present.mode == .T
 tearing_supported :: proc(r: ^Renderer) -> bool { return r.present.tearing_ok }
 
 // Refreshes each frame stays on screen with Vsync: 1 = every refresh, 2 = every other one (half the rate)... up to 4.
-set_sync_interval :: proc(r: ^Renderer, n: int) { r.present.interval = u32(clamp(n, 1, 4)) }
+set_sync_interval :: proc(r: ^Renderer, n: int) { r.present.interval = u32(clamp(n, 1, SYNC_INTERVAL_MAX)) }
 
 // Refreshes each frame is expected to stay on screen when the app times its frames itself (e.g. 1.33 for 45 frames per
 // second on a 60 Hz display): a frame that stays longer missed refreshes. 0 = the sync interval.
@@ -212,7 +229,7 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 @(private)
 present_collect :: proc(r: ^Renderer) {
 	p := &r.present
-	if p.stats_fails > 64 { return }   // not supported here (some remote sessions): stop asking
+	if p.stats_fails > STATS_FAILS_MAX { return }   // not supported here (some remote sessions): stop asking
 	st: dxgi.FRAME_STATISTICS
 	hr := r.swapchain->GetFrameStatistics(&st)
 	if hr == dxgi.ERROR_FRAME_STATISTICS_DISJOINT { p.have_seen = false; p.sync_count = 0; return }
@@ -222,10 +239,10 @@ present_collect :: proc(r: ^Renderer) {
 	if p.probe.on && p.last_id >= st.PresentCount { latency_probe_depth(&p.probe, u64(p.last_id - st.PresentCount)) }
 	sync := qpc_to_tick(i64(st.SyncQPCTime))
 	// the vblank period from two (vblank number, time) samples
-	if p.sync_count != 0 && st.SyncRefreshCount > p.sync_count && st.SyncRefreshCount - p.sync_count < 1000 {
+	if p.sync_count != 0 && st.SyncRefreshCount > p.sync_count && st.SyncRefreshCount - p.sync_count < VBLANK_SAMPLE_MAX_REFRESHES {
 		per := f64(sync._nsec - p.sync_tick._nsec) / f64(st.SyncRefreshCount - p.sync_count)
-		if per > 1e6 && per < 1e8 {   // 10 .. 1000 Hz
-			p.period_ns = p.period_ns == 0 ? per : p.period_ns + (per - p.period_ns) * 0.1
+		if per > VBLANK_PERIOD_MIN_NS && per < VBLANK_PERIOD_MAX_NS {
+			p.period_ns = p.period_ns == 0 ? per : p.period_ns + (per - p.period_ns) * VBLANK_PERIOD_SMOOTHING
 		}
 	}
 	if st.SyncRefreshCount != p.sync_count { p.sync_count, p.sync_tick = st.SyncRefreshCount, sync }
@@ -241,7 +258,7 @@ present_collect :: proc(r: ^Renderer) {
 	d := Displayed_Frame{present = st.PresentCount, input = slot.input, read = slot.read, drawn = slot.drawn, call = slot.call, presented = slot.presented, shown = shown}
 	// counters that go back or jump far (the swap chain was out of view, the display mode changed): no run to compare to
 	run := p.have_seen && st.PresentCount > p.seen_present && st.PresentCount - p.seen_present < PRESENT_RING &&
-	       st.PresentRefreshCount > p.seen_refresh && st.PresentRefreshCount - p.seen_refresh <= (st.PresentCount - p.seen_present) * slot.interval + 240
+	       st.PresentRefreshCount > p.seen_refresh && st.PresentRefreshCount - p.seen_refresh <= (st.PresentCount - p.seen_present) * slot.interval + RUN_MAX_REFRESH_JUMP
 	// every frame since the last one seen followed its previous one without a pause
 	for id := p.seen_present + 1; run && id <= st.PresentCount; id += 1 {
 		s := p.ring[id % PRESENT_RING]
@@ -251,7 +268,7 @@ present_collect :: proc(r: ^Renderer) {
 		frames := st.PresentCount - p.seen_present
 		d.refreshes = st.PresentRefreshCount - p.seen_refresh
 		// app-timed frames land on whole refreshes: n frames span at most ceil(n * expected) of them
-		allowed := u32(math.ceil(f64(frames) * max(slot.expected, 1) - 1e-6))
+		allowed := u32(math.ceil(f64(frames) * max(slot.expected, 1) - ALLOWED_REFRESHES_EPSILON))
 		if slot.mode == .Vsync && d.refreshes > allowed { d.missed = d.refreshes - allowed }
 	}
 	p.seen_present, p.seen_refresh, p.have_seen = st.PresentCount, st.PresentRefreshCount, true
@@ -263,7 +280,7 @@ present_collect :: proc(r: ^Renderer) {
 // A frame that reached the screen: kept for take_displayed, and measured when the latency probe is on.
 @(private)
 present_publish :: proc(p: ^Present_State, d: Displayed_Frame) {
-	if len(p.out) >= 4 * PRESENT_RING { clear(&p.out) }   // nobody takes them: keep only recent ones
+	if len(p.out) >= DISPLAYED_KEPT_MAX { clear(&p.out) }   // nobody takes them: keep only recent ones
 	append(&p.out, d)
 	latency_probe_add(&p.probe, d)
 }

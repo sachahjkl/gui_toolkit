@@ -9,6 +9,13 @@ import "../render"
 // rect like `rect` (so clips and corners work as for any shape). And box shadows: the exact gaussian blur of a rounded
 // rect (CSS box-shadow), outer or inset.
 
+// What counts as nothing: a repeating period, and by color space the chroma or gray range where a hue is powerless.
+@(private) GRADIENT_ZERO_PERIOD :: 1e-6
+@(private) OKLCH_ACHROMATIC_CHROMA :: 2e-4
+@(private) LCH_ACHROMATIC_CHROMA :: 0.015
+@(private) HWB_GRAY_EPSILON :: 1e-5
+@(private) HSL_GRAY_EPSILON :: 1e-6
+
 Gradient_Kind :: enum u8 { Linear, Radial, Conic }
 
 // Where stop colors are interpolated (CSS Color 4 §12: `in <colorspace>`). Srgb is the CSS default for legacy colors.
@@ -67,7 +74,7 @@ gradient :: proc(c: ^Context, r: Rect, g: Gradient, radii: [4]f32 = {}, tint: Co
 	stops := g.stops[:n]
 	// a repeating gradient whose period is zero is its average color (CSS Images 4 §3.6)
 	t0, t1 := stops[0].pos, stops[n - 1].pos
-	average := g.repeating && t1 - t0 <= 1e-6
+	average := g.repeating && t1 - t0 <= GRADIENT_ZERO_PERIOD
 	header := [4]u32{flags, u32(g.space), u32(g.hue), average ? 1 : u32(n)}
 	append(&c.grads, transmute([4]f32)header)
 	geom: [4]f32
@@ -136,15 +143,15 @@ to_space :: proc(col: Color, space: Gradient_Space) -> [4]f32 {
 	case .Srgb: v = {render.linear_to_srgb(lin.x), render.linear_to_srgb(lin.y), render.linear_to_srgb(lin.z)}
 	case .Linear: v = lin
 	case .Oklab: v = linear_to_oklab(lin)
-	case .Oklch: v = to_polar(linear_to_oklab(lin), 2e-4)
+	case .Oklch: v = to_polar(linear_to_oklab(lin), OKLCH_ACHROMATIC_CHROMA)
 	case .Lab: v = linear_to_lab(lin)
-	case .Lch: v = to_polar(linear_to_lab(lin), 0.015)
+	case .Lch: v = to_polar(linear_to_lab(lin), LCH_ACHROMATIC_CHROMA)
 	case .Hsl: v = srgb_to_hsl({render.linear_to_srgb(lin.x), render.linear_to_srgb(lin.y), render.linear_to_srgb(lin.z)})
 	case .Hwb:
 		sv := [3]f32{render.linear_to_srgb(lin.x), render.linear_to_srgb(lin.y), render.linear_to_srgb(lin.z)}
 		h := srgb_to_hsl(sv)
 		v = {h.x, min(sv.x, sv.y, sv.z), 1 - max(sv.x, sv.y, sv.z)}
-		if v.y + v.z >= 1 - 1e-5 { v.x = math.nan_f32() }   // gray: powerless hue
+		if v.y + v.z >= 1 - HWB_GRAY_EPSILON { v.x = math.nan_f32() }   // gray: powerless hue
 	}
 	hi := hue_index(space)
 	out := [4]f32{v.x * a, v.y * a, v.z * a, a}
@@ -237,7 +244,7 @@ srgb_to_hsl :: proc(c: [3]f32) -> [3]f32 {
 	mx, mn := max(c.x, c.y, c.z), min(c.x, c.y, c.z)
 	l := (mx + mn) * 0.5
 	d := mx - mn
-	if d < 1e-6 { return {math.nan_f32(), 0, l} }
+	if d < HSL_GRAY_EPSILON { return {math.nan_f32(), 0, l} }
 	s := (l == 0 || l == 1) ? 0 : (mx - l) / min(l, 1 - l)
 	h: f32
 	switch mx {
@@ -257,7 +264,7 @@ srgb_to_hsl :: proc(c: [3]f32) -> [3]f32 {
 // Exact (analytic) at any size and blur, under any transform, in pictures and clips.
 box_shadow :: proc(c: ^Context, shape: Rect, radii: [4]f32, sigma: f32, color: Color, hole: Rect = {}, hole_radii: [4]f32 = {}) {
 	if color.a <= 0 || rect_empty(shape) { return }
-	reach := 3 * max(sigma, 0) + 1
+	reach := render.GAUSSIAN_REACH_SIGMAS * max(sigma, 0) + 1
 	flags: f32 = rect_empty(hole) ? 0 : render.SHADOW_HOLE
 	shadow_inst(c, rect_pad(shape, reach), shape, radii, sigma, color, hole, hole_radii, flags)
 }

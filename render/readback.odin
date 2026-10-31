@@ -81,10 +81,10 @@ readback_copy_wgpu :: proc(r: ^Renderer, enc: wgpu.CommandEncoder, id: u32, src:
 	bpp := 0
 	#partial switch format {
 	case .RGBA8Unorm, .BGRA8Unorm, .RGBA8UnormSrgb, .BGRA8UnormSrgb: bpp = 4
-	case .RGBA16Float: bpp = 8
+	case .RGBA16Float: bpp = TEXEL_BYTES_FP16
 	}
 	if src == nil || enc == nil || w <= 0 || h <= 0 || bpp == 0 || r.lost { s.failed = true; return }
-	row := align_up(w * bpp, 256)   // (bytesPerRow of a texture to buffer copy: a multiple of 256)
+	row := align_up(w * bpp, COPY_ROW_ALIGN_BYTES)
 	s.wbuf = wgpu.DeviceCreateBuffer(r.wg.device, &{label = "offscreen readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
 	if s.wbuf == nil { s.failed = true; return }
 	wgpu.CommandEncoderCopyTextureToBuffer(enc,

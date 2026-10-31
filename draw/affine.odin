@@ -2,6 +2,9 @@ package draw
 
 import "core:math"
 
+// A determinant below this has no usable inverse.
+@(private) AFFINE_SINGULAR_DET :: 1e-12
+
 // A 2D affine transform. Column-vector convention, the same as CSS `matrix(a, b, c, d, e, f)`, canvas
 // `setTransform(a, b, c, d, e, f)` and SVG:
 //
@@ -49,7 +52,7 @@ affine_determinant :: proc(m: Affine) -> f32 { return m.a * m.d - m.b * m.c }
 // the identity is returned.
 affine_inverse :: proc(m: Affine) -> (inv: Affine, ok: bool) {
 	det := affine_determinant(m)
-	if abs(det) < 1e-12 { return AFFINE_IDENTITY, false }
+	if abs(det) < AFFINE_SINGULAR_DET { return AFFINE_IDENTITY, false }
 	k := 1 / det
 	inv.a, inv.b, inv.c, inv.d = m.d * k, -m.b * k, -m.c * k, m.a * k
 	inv.e = -(inv.a * m.e + inv.c * m.f)

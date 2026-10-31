@@ -80,6 +80,10 @@ Open_Plane :: struct {
 }
 
 PLANE_MAX_TAPS_DEFAULT :: 8
+// A plane too large for a texture is scaled to a little under the limit: the ceil of its size stays inside.
+@(private) PLANE_TEXTURE_FIT :: 0.999
+// A homogeneous w at or below this is behind the eye.
+@(private) PLANE_W_MIN :: 1e-6
 
 // Opens a plane over `bounds` (plane frame). `raster_scale`: texels per plane frame unit the content is drawn at (the caller
 // picks about the size the plane shows at on screen). Returns false when the kept texture of fx.cache_id is still good: the
@@ -92,7 +96,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	o := Vec2{math.floor(bounds.min.x * s) / s, math.floor(bounds.min.y * s) / s}
 	sz := Vec2{math.ceil((bounds.max.x - o.x) * s), math.ceil((bounds.max.y - o.y) * s)}
 	if sz.x > maxd || sz.y > maxd {
-		s *= min(maxd / sz.x, maxd / sz.y) * 0.999
+		s *= min(maxd / sz.x, maxd / sz.y) * PLANE_TEXTURE_FIT
 		o = {math.floor(bounds.min.x * s) / s, math.floor(bounds.min.y * s) / s}
 		sz = {math.ceil((bounds.max.x - o.x) * s), math.ceil((bounds.max.y - o.y) * s)}
 	}
@@ -112,7 +116,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	}
 	if w > 0 && h > 0 && !(sz.x != sz.x) {
 		if fx.cache_id != 0 && c.layer_cache.budget > 0 {
-			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(0x706c616e65, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(mips) << 8), u64(render.filter_precision(c.renderer)))
+			key := hash_mix(hash_mix(hash_mix(hash_mix(hash_f32(CACHE_SALT_PLANE, s), fx.cache_key), u64(w) | u64(h) << 24), u64(space) | u64(mips) << 8), u64(render.filter_precision(c.renderer)))
 			key = hash_f32(hash_f32(key, o.x), o.y)
 			key = hash_mix(key, settings_key(c))
 			ask := cache_ask(c, fx.cache_id, key, {}, Rect{{0, 0}, {f32(w), f32(h)}})
@@ -237,10 +241,10 @@ plane_faces_away :: proc(pl: Plane_Layer, m: Mat4) -> bool {
 	pts := make([dynamic][2]f32, 0, 6, context.temp_allocator)
 	for k in 0 ..< 4 {
 		a, b := q[k], q[(k + 1) % 4]
-		if a.w > 1e-6 { append(&pts, [2]f32{a.x / a.w, a.y / a.w}) }
-		if (a.w > 1e-6) != (b.w > 1e-6) {
-			t := (1e-6 - a.w) / (b.w - a.w)
-			x, y, w := a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, f32(1e-6)
+		if a.w > PLANE_W_MIN { append(&pts, [2]f32{a.x / a.w, a.y / a.w}) }
+		if (a.w > PLANE_W_MIN) != (b.w > PLANE_W_MIN) {
+			t := (PLANE_W_MIN - a.w) / (b.w - a.w)
+			x, y, w := a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, f32(PLANE_W_MIN)
 			append(&pts, [2]f32{x / w, y / w})
 		}
 	}

@@ -20,6 +20,9 @@ Rect :: struct { min, max: Vec2 }
 
 WHITE :: Color{1, 1, 1, 1}
 
+// A coordinate beyond any screen: the bounds of what has no clip yet.
+@(private) RECT_UNBOUNDED :: 1e9
+
 rect_size :: proc(r: Rect) -> Vec2 { return r.max - r.min }
 rect_center :: proc(r: Rect) -> Vec2 { return (r.min + r.max) * 0.5 }
 rect_contains :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
@@ -99,6 +102,9 @@ alpha_like_linear :: proc(space: Blend_Space, color: Color, alpha: f32, over: Co
 	return clamp((want - sb) / (sc - sb), 0, 1)
 }
 
+// Luminances closer than this have no step to scale.
+@(private) LUMINANCE_EPSILON :: 1e-6
+
 // The alpha that makes `color` over `over` look, blended in `space`, as it does at `alpha` blended in sRGB values (a
 // perceptual step: the theme's hover and press fills are fractions of the way to a tint in sRGB values, so they read
 // as the same step over dark and light surfaces). Identity in Srgb, or when color and backdrop have the same luminance.
@@ -106,7 +112,7 @@ alpha_like_srgb :: proc(space: Blend_Space, color: Color, alpha: f32, over: Colo
 	if space == .Srgb || alpha <= 0 || alpha >= 1 { return alpha }
 	y :: proc(c: Color) -> f32 { return clamp(0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, 0, 1) }
 	yc, yb := y(color), y(over)
-	if abs(yc - yb) < 1e-6 { return alpha }
+	if abs(yc - yb) < LUMINANCE_EPSILON { return alpha }
 	sc, sb := render.linear_to_srgb(yc), render.linear_to_srgb(yb)
 	want := render.srgb_to_linear(sb + alpha * (sc - sb))
 	return clamp((want - yb) / (yc - yb), 0, 1)
@@ -345,7 +351,7 @@ pop_clip :: proc(c: ^Context) {
 // Current scissor rect (screen pixels). While a picture is recorded the screen is not known: every clip is a shape of the picture,
 // and the scissor is as large as can be (it is worked out at replay).
 current_clip :: proc(c: ^Context) -> Rect {
-	if c.rec != nil { return Rect{{-1e9, -1e9}, {1e9, 1e9}} }
+	if c.rec != nil { return Rect{{-RECT_UNBOUNDED, -RECT_UNBOUNDED}, {RECT_UNBOUNDED, RECT_UNBOUNDED}} }
 	return c.clips[len(c.clips) - 1].rect
 }
 
