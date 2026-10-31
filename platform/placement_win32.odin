@@ -36,7 +36,13 @@ get_placement :: proc(w: ^Window) -> Placement {
 	wp := win.WINDOWPLACEMENT{length = size_of(win.WINDOWPLACEMENT)}
 	win.GetWindowPlacement(w.hwnd, &wp)
 	r := wp.rcNormalPosition
-	return {{int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)}, wp.showCmd == u32(win.SW_SHOWMAXIMIZED) || is_maximized(w)}
+	rect := [4]int{int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)}
+	// (set_placement takes screen coordinates: read as they come, a saved window moves by the taskbar at each restore)
+	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
+	if win.GetMonitorInfoW(win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST), &mi) {
+		rect = placement_workspace_to_screen(rect, {int(mi.rcMonitor.left), int(mi.rcMonitor.top)}, {int(mi.rcWork.left), int(mi.rcWork.top)})
+	}
+	return {rect, wp.showCmd == u32(win.SW_SHOWMAXIMIZED) || is_maximized(w)}
 }
 
 // Puts the window where `p` says, on the monitor nearest to the rectangle and inside its work area (a layout saved with a monitor

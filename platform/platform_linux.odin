@@ -39,6 +39,7 @@ Native_Window :: struct {
 	keep_events:  bool,
 	paint_requested: bool,
 	stats:        Pump_Stats,
+	clip_seen:    u32,              // clipboard_changed: the count last told, plus one (0: not asked yet)
 	buttons_down: Mouse_Buttons,
 	// cursor state shared by both backends (cursors_linux.odin)
 	custom_cursors: [dynamic]Custom_Entry,
@@ -47,7 +48,7 @@ Native_Window :: struct {
 	// offscreen window (open_window_offscreen): no surface at all, so it runs with no display server (a service, an SSH
 	// login, a CI runner). Input comes only through inject_event; an eventfd stands in for the message queue.
 	offscreen:    bool,
-	off_event:    posix.FD,         // eventfd: wait_event waits on it, wake / inject_event write to it
+	off_event:    posix.FD,         // eventfd: the loop waits on it, wake (any window) and inject_event (offscreen) write to it
 	off_state:    Off_State,
 	off_place:    [4]int,
 	off_visible:  bool,
@@ -94,6 +95,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.display_stale = true
 	w.integrated = integrated_title
 	w.backend = kind
+	if fd := eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK); fd > 0 { w.off_event = posix.FD(fd) }
 	ok := false
 	switch kind {
 	case .Wayland: ok = wl_open(w, title, size, transparent)
@@ -101,6 +103,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	case .None:
 	}
 	if !ok {
+		if w.off_event > 0 { posix.close(w.off_event) }
 		delete(w.events)
 		delete(w.injected)
 		free(w)
@@ -283,16 +286,6 @@ set_integrated_title :: proc(w: ^Window, on: bool) {
 	}
 }
 
-// The title bar the app drew this frame (client pixels): copied, the caller keeps its regions.
-set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
-	chrome_regions_clear(&w.chrome)
-	append(&w.chrome.caption, ..c.caption[:])
-	append(&w.chrome.holes, ..c.holes[:])
-	append(&w.chrome.slanted, ..c.slanted[:])
-	append(&w.chrome.overlays, ..c.overlays[:])
-	w.chrome.buttons = c.buttons
-}
-
 // The system menu at `pos`: Wayland asks the compositor (xdg_toplevel.show_window_menu), X11 has none, so nothing shows
 // there. An app with an integrated title bar draws its own menu where this does nothing.
 show_system_menu :: proc(w: ^Window, pos: [2]f32) {
@@ -332,17 +325,6 @@ set_dark_title :: proc(w: ^Window, dark: bool) {
 	if w.backend == .Wayland { wl_set_dark(w, dark) }
 }
 
-// Sets an offscreen window's emulated scale (dpi/96) and resizes its client area to keep the same logical size
-// (mirrors Win32). A no-op for a real window.
-set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
-	if !w.offscreen || dpi <= 0 { return }
-	old := max(w.dpi_scale, DPI_SCALE_MIN)
-	k := (f32(dpi) / DPI_BASE) / old
-	w.dpi_scale = f32(dpi) / DPI_BASE
-	w.size = {max(int(f32(w.size.x) * k + 0.5), 1), max(int(f32(w.size.y) * k + 0.5), 1)}
-	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
-}
-
 ////////////////////////////////
 // Event loop
 
@@ -357,19 +339,16 @@ wake_signal :: proc(h: rawptr) {
 	sys_write(i32(uintptr(h)), &one, size_of(one))
 }
 
-// Requests a wake-up for the loop (a timer, an animation): write the eventfd, or make the backend send a no-op event.
+// Requests a wake-up for the loop (a timer, an animation, another thread): the loop polls this fd with its connection.
 wake :: proc(w: ^Window) {
-	if w.offscreen {
-		one: u64 = 1
-		sys_write(i32(w.off_event), &one, size_of(one))
-		return
-	}
-	switch w.backend {
-	case .Wayland: wl_wake(w)
-	case .X11:     x11_wake(w)
-	case .None:
-	}
+	if w.off_event <= 0 { return }
+	one: u64 = 1
+	sys_write(i32(w.off_event), &one, size_of(one))
 }
+
+// The fd a backend's loop polls for wake (-1 when the eventfd could not be made).
+@(private)
+wake_fd :: proc(w: ^Window) -> i32 { return w.off_event > 0 ? i32(w.off_event) : -1 }
 
 // Collects pending events. With `wait` the call blocks until at least one arrives (idle = 0 % CPU) or `timeout_ms`
 // elapsed (> 0). The returned slice is valid until the next call. Re-entrant calls return nil.
@@ -395,6 +374,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	case .X11:     x11_pump(w, wait, timeout_ms)
 	case .None:
 	}
+	if w.off_event > 0 { off_drain(w) }
 	take_injected(w)
 	w.returned = len(w.events)
 	return w.events[:]
@@ -423,7 +403,7 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
 	if handle == nil { return true }
 	if w.in_poll {
 		// a nested call (a frame callback): just wait on the handle, take no input
-		return poll_fd_wait(i32(uintptr(handle)), timeout_ms) > 0
+		return poll_fd_wait(i32(uintptr(handle)), timeout_ms > 0 ? timeout_ms : -1) > 0
 	}
 	w.in_poll = true
 	pumping += 1
@@ -463,14 +443,15 @@ poll_fd_wait :: proc(fd: i32, timeout_ms: int) -> int {
 	return int(poll(&pfd, 1, i32(timeout_ms)))
 }
 
-// poll(2) on the render fd and the connection fd together.
+// poll(2) on the render fd, the connection fd and the window's wake fd (-1: none) together. A wake only ends the wait.
 @(private)
-poll_two :: proc(render_fd, conn_fd: i32, timeout_ms: int) -> (res: Poll_Result) {
-	fds: [2]Pollfd
+poll_two :: proc(render_fd, conn_fd: i32, timeout_ms: int, wake_event: i32 = -1) -> (res: Poll_Result) {
+	fds: [3]Pollfd
 	n: uint = 0
 	ri, ci := -1, -1
 	if render_fd >= 0 { fds[n] = {fd = render_fd, events = POLLIN}; ri = int(n); n += 1 }
 	if conn_fd >= 0 { fds[n] = {fd = conn_fd, events = POLLIN}; ci = int(n); n += 1 }
+	if wake_event >= 0 { fds[n] = {fd = wake_event, events = POLLIN}; n += 1 }
 	if n == 0 { res.timed_out = true; return }
 	r := poll(&fds[0], n, i32(timeout_ms))
 	if r == 0 { res.timed_out = true; return }
@@ -487,41 +468,10 @@ foreign libc {
 	poll :: proc(fds: ^Pollfd, nfds: uint, timeout: i32) -> i32 ---
 }
 
-// True once after the backend asked for a repaint (the surface was resized or revealed) while the app polled.
-take_paint_request :: proc(w: ^Window) -> bool {
-	r := w.paint_requested
-	w.paint_requested = false
-	return r
-}
-
-pump_stats :: proc(w: ^Window) -> Pump_Stats { return w.stats }
-
 // Queues an event as if the system had delivered it (tests, remote control, macros). Call from the thread that polls.
 inject_event :: proc(w: ^Window, e: Event) {
 	append(&w.injected, e)
 	if w.offscreen { one: u64 = 1; sys_write(i32(w.off_event), &one, size_of(one)) }
-}
-
-@(private)
-take_injected :: proc(w: ^Window) {
-	if len(w.injected) == 0 { return }
-	now := time.tick_now()
-	for &e in w.injected {
-		e.stamp = now
-		e.injected = true
-		if e.kind == .Close { w.closed = true }
-		append(&w.events, e)
-	}
-	clear(&w.injected)
-}
-
-@(private)
-drop_returned :: proc(w: ^Window) {
-	n := min(w.returned, len(w.events))
-	w.returned = 0
-	if n == 0 { return }
-	copy(w.events[:], w.events[n:])
-	resize(&w.events, len(w.events) - n)
 }
 
 @(private)
@@ -550,11 +500,7 @@ get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
 
 set_clipboard :: proc(w: ^Window, text: string) {
 	if w == nil || w.offscreen { return }
-	switch w.backend {
-	case .Wayland: wl_clipboard_set_text(w, text)
-	case .X11:     x11_clipboard_set_text(w, text)
-	case .None:
-	}
+	clipboard_set(w, {text = text})   // (the store is what a selection owner offers)
 }
 
 ////////////////////////////////

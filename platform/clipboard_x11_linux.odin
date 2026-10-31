@@ -16,8 +16,8 @@ import "core:sys/posix"
 // The largest property we write in one go before switching to INCR (well under the server's maximum request length).
 @(private) X11_INCR_THRESHOLD :: 128 * 1024
 @(private = "file") X11_MULTIPLE_MAX_WORDS :: 1 << 16     // read of a MULTIPLE request's pairs
-@(private = "file") X11_SELECTION_READ_TURNS :: 2000      // bounds of a synchronous read of a selection
-@(private = "file") X11_SELECTION_READ_WAIT_MS :: 3000
+@(private = "file") X11_SELECTION_READ_WAIT_MS :: 3000    // silence of the owner that gives up a synchronous read of a selection
+@(private = "file") X11_FORMATS_CACHE_MS :: 500           // clipboard_formats asks the owner no more often (a Paste item asks every frame)
 @(private) X11_SELECTION_POLL_MS :: 20                    // between two looks at the connection during such a read
 
 // An in-progress INCR transfer we are sending to a requestor: the bytes left and the property / window to post on.
@@ -50,7 +50,7 @@ x11_clipboard_own_rich :: proc(w: ^Window, text: string) {
 // The list of target atoms we offer, from the store's current formats.
 @(private)
 x11_offer_targets :: proc() -> []Xcb_Atom {
-	fmts := clipboard_formats()
+	fmts := clip_store_formats()
 	list := make([dynamic]Xcb_Atom, context.temp_allocator)
 	append(&list, x11c.targets, x11c.atom_timestamp, x11c.atom_multiple)
 	if .Text in fmts { append(&list, x11c.utf8_string, XCB_ATOM_STRING, x11c.atom_text) }
@@ -157,8 +157,6 @@ x11_answer_multiple :: proc(requestor: Xcb_Window, property: Xcb_Atom) -> bool {
 @(private)
 x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: []u8) {
 	// listen for the requestor's property deletes
-	mask := [1]u32{XCB_EVENT_MASK_PROPERTY_CHANGE}
-	xcb.configure_window(x11c.c, requestor, 0, nil)   // no-op to keep XCB sequence ordering simple
 	x11_change_window_attrs_event_mask(requestor, XCB_EVENT_MASK_PROPERTY_CHANGE)
 	size := u32(len(data))
 	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_incr, X11_FORMAT_32, 1, &size)
@@ -167,7 +165,6 @@ x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: 
 	copy(buf, data)
 	append(&x11_incr_sends, X11_Incr_Send{requestor = requestor, property = property, target = target, data = buf, offset = 0, active = true})
 	xcb.flush(x11c.c)
-	_ = mask
 }
 
 // The requestor deleted the INCR property: send the next chunk (an empty one ends the transfer). Called from the event
@@ -192,10 +189,11 @@ x11_incr_on_property_delete :: proc(window: Xcb_Window, property: Xcb_Atom) {
 ////////////////////////////////
 // reading a flavour another client owns
 
-// Reads `target` (a MIME atom or UTF8_STRING) from `selection` (CLIPBOARD / PRIMARY) into bytes, following INCR. The
-// window pumps its connection until the data arrives (bounded); the callers expect a synchronous read.
+// Reads `target` (a MIME atom, UTF8_STRING or TARGETS) from `selection` (CLIPBOARD / PRIMARY) into bytes, following INCR. The
+// window pumps its connection until the data arrives; the callers expect a synchronous read. nil when the owner stays
+// silent for `wait_ms` (a slow transfer goes on as long as chunks come): no partial data.
 @(private)
-x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, allocator := context.allocator) -> []u8 {
+x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, allocator := context.allocator, wait_ms: f64 = X11_SELECTION_READ_WAIT_MS) -> []u8 {
 	st := x11_state(w)
 	if st == nil { return nil }
 	target := x11_target_for_mime(mime)
@@ -205,18 +203,47 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 	st.paste_incr = false
 	x11_convert_selection(st.id, selection, target, x11c.wren_selection)
 	xcb.flush(x11c.c)
-	deadline := time.tick_now()
-	for _ in 0 ..< X11_SELECTION_READ_TURNS {
-		ev := xcb.poll_for_event(x11c.c)
-		if ev != nil { x11_handle_event(w, ev); posix.free(ev); if st.paste_got && !st.paste_incr { break }; continue }
-		if st.paste_got && !st.paste_incr { break }
-		if time.duration_milliseconds(time.tick_since(deadline)) > X11_SELECTION_READ_WAIT_MS { break }
-		poll_fd_wait(x11c.fd, X11_SELECTION_POLL_MS)
+	last := time.tick_now()
+	size := 0
+	for !st.paste_got || st.paste_incr {
+		if ev := xcb.poll_for_event(x11c.c); ev != nil {
+			x11_handle_event(w, ev)
+			posix.free(ev)
+		} else {
+			poll_fd_wait(x11c.fd, X11_SELECTION_POLL_MS)
+		}
+		if len(st.paste_buf) != size { size = len(st.paste_buf); last = time.tick_now() }
+		if !st.paste_got && time.duration_milliseconds(time.tick_since(last)) > wait_ms {
+			st.paste_incr = false
+			clear(&st.paste_buf)
+			return nil
+		}
 	}
 	if len(st.paste_buf) == 0 { return nil }
 	out := make([]u8, len(st.paste_buf), allocator)
 	copy(out, st.paste_buf[:])
 	return out
+}
+
+// What another client's CLIPBOARD offers (its TARGETS), read at most once per X11_FORMATS_CACHE_MS.
+@(private)
+x11_foreign_formats :: proc(w: ^Window) -> Clipboard_Formats {
+	@(static) cached: Clipboard_Formats
+	@(static) at: time.Tick
+	@(static) read: bool
+	if read && time.duration_milliseconds(time.tick_since(at)) < X11_FORMATS_CACHE_MS { return cached }
+	b := x11_selection_read(w, x11c.clipboard, "TARGETS", context.temp_allocator, X11_TEXT_READ_WAIT_MS)
+	names := make([dynamic]string, context.temp_allocator)
+	for i in 0 ..< len(b) / size_of(u32) {
+		switch Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):]))) {
+		case x11c.utf8_string, XCB_ATOM_STRING, x11c.atom_text: append(&names, "UTF8_STRING")
+		case x11c.mime_text_html: append(&names, "text/html")
+		case x11c.mime_image_png: append(&names, "image/png")
+		case x11c.mime_uri_list:  append(&names, "text/uri-list")
+		}
+	}
+	cached, at, read = clipboard_formats_from_mimes(names[:]), time.tick_now(), true
+	return cached
 }
 
 @(private)
@@ -226,6 +253,7 @@ x11_target_for_mime :: proc(mime: string) -> Xcb_Atom {
 	case "text/html":     return x11c.mime_text_html
 	case "image/png":     return x11c.mime_image_png
 	case "text/uri-list": return x11c.mime_uri_list
+	case "TARGETS":       return x11c.targets
 	}
 	return x11c.utf8_string
 }

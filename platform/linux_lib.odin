@@ -176,6 +176,7 @@ Xkb_Lib :: struct {
 	keymap_new_from_string: proc "c" (ctx: Xkb_Context, s: cstring, format: i32, flags: i32) -> Xkb_Keymap,
 	keymap_new_from_names: proc "c" (ctx: Xkb_Context, names: rawptr, flags: i32) -> Xkb_Keymap,
 	keymap_unref:      proc "c" (m: Xkb_Keymap),
+	keymap_key_repeats: proc "c" (m: Xkb_Keymap, key: u32) -> i32,   // (optional)
 	state_new:         proc "c" (m: Xkb_Keymap) -> Xkb_State,
 	state_unref:       proc "c" (s: Xkb_State),
 	state_update_mask: proc "c" (s: Xkb_State, depressed, latched, locked, dg, lg, eg: u32) -> i32,
@@ -205,6 +206,7 @@ xkb_lib :: proc() -> ^Xkb_Lib {
 		xkb.keymap_new_from_string = auto_cast lib_sym(h, "xkb_keymap_new_from_string")
 		xkb.keymap_new_from_names = auto_cast lib_sym(h, "xkb_keymap_new_from_names")
 		xkb.keymap_unref       = auto_cast lib_sym(h, "xkb_keymap_unref")
+		xkb.keymap_key_repeats = auto_cast lib_sym(h, "xkb_keymap_key_repeats")
 		xkb.state_new          = auto_cast lib_sym(h, "xkb_state_new")
 		xkb.state_unref        = auto_cast lib_sym(h, "xkb_state_unref")
 		xkb.state_update_mask  = auto_cast lib_sym(h, "xkb_state_update_mask")

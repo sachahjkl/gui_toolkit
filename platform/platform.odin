@@ -361,3 +361,58 @@ input_pending :: proc(w: ^Window) -> bool {
 	w.keep_events = true
 	return pending
 }
+
+// The title bar the app drew this frame (client pixels): copied, the caller keeps its regions.
+set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
+	chrome_regions_clear(&w.chrome)
+	append(&w.chrome.caption, ..c.caption[:])
+	append(&w.chrome.holes, ..c.holes[:])
+	append(&w.chrome.slanted, ..c.slanted[:])
+	append(&w.chrome.overlays, ..c.overlays[:])
+	w.chrome.buttons = c.buttons
+}
+
+// Sets an offscreen window's emulated scale (dpi/96) and resizes its client area to keep the same logical size, as a
+// real window changing monitor would (a headless `window --dpi`, a remote setDeviceMetricsOverride). The caller then
+// resizes the renderer to the new `w.size`. A no-op for a real window (use the DPI the system gives it).
+set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
+	if !w.offscreen || dpi <= 0 { return }
+	old := max(w.dpi_scale, DPI_SCALE_MIN)
+	k := (f32(dpi) / DPI_BASE) / old
+	w.dpi_scale = f32(dpi) / DPI_BASE
+	w.size = {max(int(f32(w.size.x) * k + 0.5), 1), max(int(f32(w.size.y) * k + 0.5), 1)}
+	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
+}
+
+// True once after the system asked for a repaint (uncovered, resized) while the app polled: draw a frame. (Inside a
+// loop of the system the window calls on_frame itself.)
+take_paint_request :: proc(w: ^Window) -> bool {
+	r := w.paint_requested
+	w.paint_requested = false
+	return r
+}
+
+pump_stats :: proc(w: ^Window) -> Pump_Stats { return w.stats }
+
+// Removes the events the last poll_events handed out (they have been read); the ones queued since stay.
+@(private)
+drop_returned :: proc(w: ^Window) {
+	n := min(w.returned, len(w.events))
+	w.returned = 0
+	if n == 0 { return }
+	copy(w.events[:], w.events[n:])
+	resize(&w.events, len(w.events) - n)
+}
+
+@(private)
+take_injected :: proc(w: ^Window) {
+	if len(w.injected) == 0 { return }
+	now := time.tick_now()
+	for &e in w.injected {
+		e.stamp = now
+		e.injected = true
+		if e.kind == .Close { w.closed = true }   // as WM_CLOSE: a loop that tests is_closed ends
+		append(&w.events, e)
+	}
+	clear(&w.injected)
+}
