@@ -297,3 +297,131 @@ wrap_cache_outlives_the_callers_allocator :: proc(t: ^testing.T) {
 	}, &r)
 	testing.expect(t, len(r.lines) > 1 && r.lines[0][0] == 0, "the lines are still there")
 }
+
+@(private = "file")
+Tip_Run :: struct { beside: bool }
+
+@(private = "file")
+build_tip :: proc(f: ^Fx, user: rawptr) {
+	if (^Tip_Run)(user).beside {
+		if ui.tooltip_beside() { ui.label("A tooltip") }
+	} else {
+		if ui.tooltip() { ui.label("A tooltip") }
+	}
+}
+
+// Where tooltips go: below and right of the pointer, or beside it, centered on it; flipped or clamped into the window.
+@(test)
+tooltip_places :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	at :: proc(f: ^Fx, r: ^Tip_Run, p: ui.Vec2) -> ui.Rect {
+		ev := [1]platform.Event{{kind = .Mouse_Move, pos = p}}
+		for _ in 0 ..< 3 { frame(f, ev[:], build_tip, r) }
+		return ui.box_at("###tooltip").rect
+	}
+	r := Tip_Run{}
+	b := at(&f, &r, {100, 100})
+	size := b.max - b.min
+	testing.expect(t, size.x > 30 && size.y >= 30, "as large as its content")
+	testing.expect_value(t, b.min, ui.Vec2{100 + 15 * 0.8, 100 + 15 * 1.4})
+	b = at(&f, &r, {795, 595})
+	testing.expect_value(t, b.max, ui.Vec2{800, 600})
+	r.beside = true
+	b = at(&f, &r, {100, 100})
+	testing.expect_value(t, b.min.x, 100 + 15 * 1.2)
+	testing.expect(t, abs((b.min.y + b.max.y) * 0.5 - 100) <= 1, "centered on the pointer")
+	b = at(&f, &r, {790, 100})
+	testing.expect_value(t, b.max.x, 790 - 15 * 1.2)
+	b = at(&f, &r, {100, 2})
+	testing.expect_value(t, b.min.y, 0)
+}
+
+// The bar of a scroll box: its size from the font, its margin, its thumb's length and place.
+@(test)
+scrollbar_geometry :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Scroll_Run{}
+	for _ in 0 ..< 2 { frame(&f, nil, build_scroll, &r) }
+	b := ui.box_at("###list")
+	track, thumb, ok := ui.scrollbar_rects(b)
+	testing.expect(t, ok, "a bar")
+	testing.expect_value(t, track, ui.Rect{{289, 53}, {297, 347}})
+	testing.expect_value(t, thumb, ui.Rect{{289, 53}, {297, 53 + 73.5}})   // 294 * 300 / 1200 long
+	b.view_off.y = 450
+	_, thumb, _ = ui.scrollbar_rects(b)
+	testing.expect_value(t, thumb.min.y, 53 + 0.5 * (294 - 73.5))
+	b.view_off.y = 900
+	_, thumb, _ = ui.scrollbar_rects(b)
+	testing.expect_value(t, thumb.max.y, 347)
+	b.view_off.y = 0
+	r.left = true
+	for _ in 0 ..< 2 { frame(&f, nil, build_scroll, &r) }
+	track, _, _ = ui.scrollbar_rects(ui.box_at("###list"))
+	testing.expect_value(t, track.min.x, 103)
+	testing.expect_value(t, track.max.x, 111)
+}
+
+// At 200 % the bar is twice as wide, and so is what takes the press beyond it.
+@(test)
+scrollbar_follows_the_scale :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Scroll_Run
+	one :: proc(f: ^Fx, r: ^Scroll_Run, events: []platform.Event) {
+		ui.begin_build(&f.s, {
+			window_size = {800, 600}, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 2,
+			base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+		})
+		build_scroll(f, r)
+		ui.end_build()
+		free_all(context.temp_allocator)
+	}
+	for _ in 0 ..< 2 { one(&f, &r, nil) }
+	track, _, _ := ui.scrollbar_rects(ui.box_at("###list"))
+	testing.expect_value(t, track.max.x - track.min.x, 15)
+	on_bar :: proc(f: ^Fx, r: ^Scroll_Run, x: f32) -> bool {
+		ev := [1]platform.Event{{kind = .Mouse_Move, pos = {x, 200}}}
+		for _ in 0 ..< 2 { one(f, r, ev[:]) }
+		owner, ok := f.s.sb_owner[f.s.hot_key]
+		return ok && owner == r.box
+	}
+	testing.expect(t, on_bar(&f, &r, track.min.x - 7), "8 pixels toward the content")
+	testing.expect(t, !on_bar(&f, &r, track.min.x - 9), "and no more")
+}
+
+@(private = "file")
+Deep_Run :: struct { outer: ^ui.Box, depth: int }
+
+@(private = "file")
+build_deep :: proc(f: ^Fx, user: rawptr) {
+	r := (^Deep_Run)(user)
+	ui.next({width = ui.px(300), height = ui.px(300)})
+	r.outer = ui.build_box({.Clickable, .Hot_Within}, "###outer")
+	ui.push_parent(r.outer)
+	for _ in 0 ..< r.depth {
+		ui.next({width = ui.fill(), height = ui.fill()})
+		ui.push_parent(ui.build_box({}))
+	}
+	ui.next({width = ui.fill(), height = ui.fill()})
+	ui.build_box({.Clickable}, "###deep")
+	for _ in 0 ..< r.depth { ui.pop_parent() }
+	ui.pop_parent()
+}
+
+// .Hot_Within and hot_within see as far up the tree: the outer box of a row counts while the pointer is deep inside it.
+@(test)
+hot_within_looks_as_far_as_its_flag :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Deep_Run{depth = 55}
+	ev := [1]platform.Event{{kind = .Mouse_Move, pos = {100, 100}}}
+	for _ in 0 ..< 3 { frame(&f, ev[:], build_deep, &r) }
+	testing.expect(t, ui.hot_within(r.outer.key), "hot_within")
+	testing.expect_value(t, r.outer.hot_t, 1)
+}

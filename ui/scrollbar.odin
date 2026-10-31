@@ -21,9 +21,9 @@ rad :: proc(r: f32) -> f32 { return r * g.rounding }
 @(private) SCROLLBAR_THUMB_MIN_EM :: 1.6
 @(private) SCROLLBAR_FIT_SLACK_PX :: 0.5   // content this much larger than the view still fits
 @(private = "file") SCROLLBAR_VIEW_MIN_PX :: 8   // a view smaller than this shows no bar
-// What takes the press beyond the bar's track: toward the content, and away from it.
-@(private) SCROLLBAR_GRAB_IN_PX :: 4
-@(private) SCROLLBAR_GRAB_OUT_PX :: 2
+// What takes the press beyond the bar's track: toward the content, and away from it (scrollbar_grab).
+@(private = "file") SCROLLBAR_GRAB_IN_PX :: 4
+@(private = "file") SCROLLBAR_GRAB_OUT_PX :: 2
 @(private) SCROLLBAR_TRACK_HOT_ALPHA :: 0.06
 @(private) SCROLLBAR_THUMB_REST_ALPHA :: 0.22
 @(private = "file") SCROLLBAR_THUMB_HOT_ALPHA :: 0.4
@@ -33,10 +33,14 @@ rad :: proc(r: f32) -> f32 { return r * g.rounding }
 @(private)
 scrollbar_key :: proc(b: ^Box) -> Key { return key_from_u64(b.key, SCROLLBAR_KEY_SALT) }
 
+// What takes the press beyond a bar's track: toward the content, and away from it.
+@(private)
+scrollbar_grab :: proc() -> (toward, away: f32) { return SCROLLBAR_GRAB_IN_PX * g.scale, SCROLLBAR_GRAB_OUT_PX * g.scale }
+
 // A bar's width and its margin from the edges of its box.
 @(private)
 scrollbar_size :: proc(font_size: f32) -> (w, m: f32) {
-	w = max(SCROLLBAR_WIDTH_MIN_PX, math.round(font_size * SCROLLBAR_WIDTH_EM))
+	w = max(SCROLLBAR_WIDTH_MIN_PX * g.scale, math.round(font_size * SCROLLBAR_WIDTH_EM))
 	m = math.round(w * SCROLLBAR_MARGIN_FRACTION)
 	return
 }
@@ -54,7 +58,7 @@ scrollbar_thumb :: proc(font_size, avail, view, content, t: f32) -> (at, length:
 scrollbar_geom :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) {
 	view := b.size.y
 	content := b.view_bounds.y
-	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX { return }
+	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * g.scale { return }
 	w, m := scrollbar_size(b.font_size)
 	track = {{b.rect.max.x - w - m, b.rect.min.y + m}, {b.rect.max.x - m, b.rect.max.y - m}}
 	if .Scrollbar_Left in b.flags { track.min.x, track.max.x = b.rect.min.x + m, b.rect.min.x + m + w }
@@ -66,6 +70,9 @@ scrollbar_geom :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) {
 	ok = true
 	return
 }
+
+// The track and the thumb a scroll box shows (ok = false: everything fits, no bar), window pixels. For tests and tools.
+scrollbar_rects :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) { return scrollbar_geom(b) }
 
 // Press on a scrollbar: remember where the thumb was grabbed (a press on the track centres the thumb there).
 @(private)

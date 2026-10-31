@@ -645,8 +645,6 @@ state_rate :: proc(s: ^State) -> f32 {
 
 // A state value (hot_t, focus_t...) this close to its target jumps there.
 @(private = "file") STATE_SETTLED_EPS :: 0.003
-// How many ancestors of the hot box light up as .Hot_Within.
-@(private = "file") HOT_CHAIN_MAX_DEPTH :: 48
 
 @(private)
 update_animations :: proc(s: ^State) {
@@ -661,7 +659,7 @@ update_animations :: proc(s: ^State) {
 	}
 	autoscroll_apply(s)   // middle-click autoscroll sets its box's view_target before the ease below (autoscroll_region.odin)
 	// the hot box and its ancestors (for .Hot_Within boxes)
-	chain: [HOT_CHAIN_MAX_DEPTH]Key
+	chain: [HOT_ANCESTORS_MAX]Key
 	n := 0
 	if hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil; hb != nil && hb.last_build == s.build_index {
 		for p := hb; p != nil && n < len(chain); p = p.parent { chain[n] = p.key; n += 1 }

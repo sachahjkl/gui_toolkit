@@ -289,7 +289,7 @@ State :: struct {
 	icon_font:   font.Font_Id,
 	mono_font:   font.Font_Id,           // optional: used by sliders, kbd chips and tables (falls back to the UI font)
 	timers:      map[Key]Timer,
-	drag_payload: [4]f32,               // data stored at press time for the active drag (see drag_store / drag_load)
+	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)
 	toasts:      [TOAST_SLOTS]Toast,
 	toast_pos:   Toast_Position,
 	toast_serial: u64,

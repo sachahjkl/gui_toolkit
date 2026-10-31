@@ -25,6 +25,7 @@ TEXT_UNDO_MAX :: 200
 @(private="file") TEXT_EDIT_GUTTER_FONT_SCALE :: 0.85
 // Room kept past the longest line, so the caret at its end is seen.
 @(private="file") TEXT_EDIT_END_SLACK_PX :: 4
+@(private="file") end_slack :: proc() -> f32 { return TEXT_EDIT_END_SLACK_PX * g.scale }
 // What the selection shows of a line break.
 @(private="file") TEXT_EDIT_BREAK_SELECTION_EM :: 0.35
 @(private="file") TEXT_EDIT_THUMB_HOT_ALPHA :: 0.45
@@ -32,6 +33,9 @@ TEXT_UNDO_MAX :: 200
 @(private="file") TEXT_EDIT_ERROR_COLOR :: Color{0.85, 0.25, 0.25, 1}
 @(private="file") TEXT_EDIT_ERROR_LINE_DIVISOR :: 12   // the error underline's thickness: font size over this
 @(private="file") LINE_NUMBER_MAX_BYTES :: 12
+
+// A scrollbar of a text_edit, or none.
+Text_Scrollbar :: enum u8 { None, Vertical, Horizontal }
 
 Text_Area :: struct {
 	buf:        [dynamic]u8,
@@ -41,10 +45,10 @@ Text_Area :: struct {
 	pref_x:     f32,       // column kept by Up / Down (valid when has_pref)
 	has_pref:   bool,
 	edited_ms:  f64,
-	undo, redo: [dynamic]Text_Snapshot,
+	undo, redo: [dynamic]Edit_Snapshot,
 	group:      Edit_Kind, // consecutive edits of one kind within a second form one undo step
 	group_ms:   f64,
-	sb_drag:    u8,        // 0 none, 1 vertical scrollbar held, 2 horizontal
+	sb_drag:    Text_Scrollbar,   // the scrollbar held
 	sb_grab:    f32,
 	ext_key:    u64,       // content size cache (measuring every line each frame is the editor's main cost)
 	ext:        Vec2,
@@ -90,7 +94,7 @@ Editor_Bars :: struct {
 editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
 	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
 	e.has_v = content.y > view.y + SCROLLBAR_FIT_SLACK_PX
-	e.has_h = !wrapped && content.x + TEXT_EDIT_END_SLACK_PX > view.x + SCROLLBAR_FIT_SLACK_PX   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
+	e.has_h = !wrapped && content.x + end_slack() > view.x + SCROLLBAR_FIT_SLACK_PX   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
 	w, m := scrollbar_size(font_size)
 	if e.has_v {
 		e.vtrack = {{r.max.x - w - m, r.min.y + m}, {r.max.x - m, r.max.y - m - (e.has_h ? w + m : 0)}}
@@ -102,7 +106,7 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 	if e.has_h {
 		e.htrack = {{r.min.x + gutter + m, r.max.y - w - m}, {r.max.x - m - (e.has_v ? w + m : 0), r.max.y - m}}
 		len_ := e.htrack.max.x - e.htrack.min.x
-		at, tw := scrollbar_thumb(font_size, len_, view.x, content.x + TEXT_EDIT_END_SLACK_PX, clamp(scroll.x / max(1, content.x + TEXT_EDIT_END_SLACK_PX - view.x), 0, 1))
+		at, tw := scrollbar_thumb(font_size, len_, view.x, content.x + end_slack(), clamp(scroll.x / max(1, content.x + end_slack() - view.x), 0, 1))
 		x := e.htrack.min.x + at
 		e.hthumb = {{x, e.htrack.min.y}, {x + tw, e.htrack.max.y}}
 	}
@@ -111,7 +115,7 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 
 @(private="file")
 content_extent :: proc(a: ^Text_Area, text: string, b: ^Box, lh: f32, lines: []Visual_Line, wrap_w: f32) -> Vec2 {
-	if wrap_w > 0 { return {wrap_w - TEXT_EDIT_END_SLACK_PX, f32(len(lines)) * lh} }   // wrapped: no horizontal scrolling
+	if wrap_w > 0 { return {wrap_w - end_slack(), f32(len(lines)) * lh} }   // wrapped: no horizontal scrolling
 	key := hash_bytes(transmute([]u8)text) ~ (u64(transmute(u32)b.font_size) << 20) ~ u64(b.font) ~ u64(transmute(u32)lh)
 	if key != a.ext_key || key == 0 {
 		a.ext = content_extent_measure(text, b, lh)
@@ -136,10 +140,7 @@ content_extent_measure :: proc(text: string, b: ^Box, lh: f32) -> Vec2 {
 	return {w, f32(lines) * lh}
 }
 
-Text_Snapshot :: struct {
-	text:           string,   // heap copy
-	cursor, mark:   int,
-}
+Text_Snapshot :: Edit_Snapshot
 
 Edit_Kind :: enum u8 { None, Insert, Delete, Other }
 
@@ -153,9 +154,7 @@ area_set :: proc(a: ^Text_Area, text: string) {
 }
 
 area_clear_history :: proc(a: ^Text_Area) {
-	for s in a.undo { delete(s.text) }
-	for s in a.redo { delete(s.text) }
-	clear(&a.undo); clear(&a.redo)
+	edit_history_forget(&a.undo, &a.redo)
 	a.group = .None
 }
 
@@ -169,43 +168,22 @@ area_line_count :: proc(a: ^Text_Area) -> int { return strings.count(area_string
 ////////////////////////////////
 // editing primitives
 
-@(private="file")
-snapshot :: proc(a: ^Text_Area) -> Text_Snapshot {
-	return {text = strings.clone(area_string(a)), cursor = a.cursor, mark = a.mark}
-}
-
-@(private="file")
-restore :: proc(a: ^Text_Area, s: Text_Snapshot) {
-	clear(&a.buf)
-	append(&a.buf, s.text)
-	a.cursor, a.mark = clamp(s.cursor, 0, len(a.buf)), clamp(s.mark, 0, len(a.buf))
-	delete(s.text)
-}
-
 // Records an undo step before an edit (grouping same-kind edits made within a second of each other).
 @(private="file")
 begin_edit :: proc(a: ^Text_Area, kind: Edit_Kind, now: f64) {
-	if kind != a.group || kind == .Other || now - a.group_ms > TEXT_UNDO_GROUP_MS {
-		if len(a.undo) >= TEXT_UNDO_MAX { delete(a.undo[0].text); ordered_remove(&a.undo, 0) }
-		append(&a.undo, snapshot(a))
-	}
-	for s in a.redo { delete(s.text) }
-	clear(&a.redo)
+	merge := kind == a.group && kind != .Other && now - a.group_ms <= TEXT_UNDO_GROUP_MS
+	edit_history_record(&a.undo, &a.redo, a.buf[:], a.cursor, a.mark, TEXT_UNDO_MAX, merge)
 	a.group, a.group_ms = kind, now
 }
 
 area_undo :: proc(a: ^Text_Area) -> bool {
-	if len(a.undo) == 0 { return false }
-	append(&a.redo, snapshot(a))
-	restore(a, pop(&a.undo))
+	if !edit_history_step(&a.undo, &a.redo, &a.buf, &a.cursor, &a.mark) { return false }
 	a.group = .None
 	return true
 }
 
 area_redo :: proc(a: ^Text_Area) -> bool {
-	if len(a.redo) == 0 { return false }
-	append(&a.undo, snapshot(a))
-	restore(a, pop(&a.redo))
+	if !edit_history_step(&a.redo, &a.undo, &a.buf, &a.cursor, &a.mark) { return false }
 	a.group = .None
 	return true
 }
@@ -266,7 +244,7 @@ Text_Edit_Draw :: struct {
 	mono:        font.Font_Id,
 	bars:        Editor_Bars,
 	bar_color:   Color,
-	bar_hot:     u8,        // 1 vertical, 2 horizontal: hovered or held
+	bar_hot:     Text_Scrollbar,   // hovered or held
 	highlight:   ^Text_Highlight,   // nil: plain text in b.text_color
 	error_color: Color,
 }
@@ -338,14 +316,14 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.pop_clip(dc)
 
 	// scrollbars
-	for which in 1 ..= 2 {
-		has := which == 1 ? d.bars.has_v : d.bars.has_h
+	for which in ([2]Text_Scrollbar{.Vertical, .Horizontal}) {
+		has := which == .Vertical ? d.bars.has_v : d.bars.has_h
 		if !has { continue }
-		track := which == 1 ? d.bars.vtrack : d.bars.htrack
-		thumb := which == 1 ? d.bars.vthumb : d.bars.hthumb
-		w := which == 1 ? track.max.x - track.min.x : track.max.y - track.min.y
+		track := which == .Vertical ? d.bars.vtrack : d.bars.htrack
+		thumb := which == .Vertical ? d.bars.vthumb : d.bars.hthumb
+		w := which == .Vertical ? track.max.x - track.min.x : track.max.y - track.min.y
 		c := d.bar_color
-		hot := d.bar_hot == u8(which)
+		hot := d.bar_hot == which
 		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
 		c.a = hot ? TEXT_EDIT_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA
 		draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
@@ -440,315 +418,389 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		b.text = ""
 		res.signal = signal(b)
 		res.hover_line = -1
-		now := s.time_ms
 		pad := b.text_pad
 		mono := s.mono_font != 0 ? s.mono_font : b.font
 		m := font.metrics(s.fonts, b.font, b.font_size)
-		lh := math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)
-		gutter: f32 = 0
+		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)}
 		if line_numbers {
 			digits := len(fmt_int(area_line_count(a)))
-			gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)
+			e.gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)
 		}
 		// the width lines wrap at: the box's from the last layout (none yet in its first frame: one more frame)
-		wrap_w: f32 = 0
 		if wrap {
-			if b.size.x > 0 { wrap_w = max(TEXT_VIEW_MIN_PX, b.size.x - gutter - 2 * pad) } else { wake_within(s, 1) }
+			if b.size.x > 0 { e.wrap_w = max(TEXT_VIEW_MIN_PX * s.scale, b.size.x - e.gutter - 2 * pad) } else { wake_within(s, 1) }
 		}
-		layout :: proc(a: ^Text_Area, b: ^Box, wrap_w: f32) -> []Visual_Line {
-			return text_visual_lines(g.fonts, b.font, b.font_size, area_string(a), wrap_w, context.temp_allocator)
-		}
-		lines := layout(a, b, wrap_w)
+		e.lines = edit_lines(&e)
 		before_hash := hash_bytes(a.buf[:])
 		c0, m0 := a.cursor, a.mark
-		moved := false
-		// a screen reader sets the text, types over the selection, or moves the caret
-		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
-			begin_edit(a, .Other, now)
-			a.mark, a.cursor = 0, len(a.buf)
-			insert(a, r.value)
-			a.has_pref = false
-		}
-		if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
-			begin_edit(a, .Other, now)
-			insert(a, r.value)
-		}
-		if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
-			runs := a11y_text_lines(area_string(a), layout(a, b, wrap_w))
-			a.mark = a11y_run_byte(area_string(a), runs, b, r.sel[0], int(r.sel[1]))
-			a.cursor = a11y_run_byte(area_string(a), runs, b, r.sel[2], int(r.sel[3]))
-			a.upstream, a.has_pref = false, false
-			moved = true
-		}
-		if a.cursor != c0 || hash_bytes(a.buf[:]) != before_hash { lines = layout(a, b, wrap_w) }
-		ctrl := Mods{.Ctrl}
-		shift := Mods{.Shift}
-		cs := Mods{.Ctrl, .Shift}
-		text := area_string(a)
-
-		// mouse: the visual line under the point, the nearest caret position on it (past a wrapped line's end: that end)
-		point_to_index :: proc(a: ^Text_Area, b: ^Box, lines: []Visual_Line, p: Vec2, gutter, pad, lh: f32) -> (int, bool) {
-			text := area_string(a)
-			li := clamp(int((p.y - pad + a.scroll.y) / lh), 0, len(lines) - 1)
-			l := lines[li]
-			i := l.start + font.index_from_x(g.fonts, b.font, b.font_size, text[l.start:l.end], p.x - gutter - pad + a.scroll.x)
-			return i, l.soft && i >= l.end
-		}
-		// scrollbars: press on a thumb grabs it, press on a track jumps there; while held they own the drag
-		bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, lines, wrap_w), a.scroll, wrap_w > 0)
-		mp := b.rect.min + res.mouse
-		if res.pressed {
-			a.sb_drag = 0
-			vgrab := Rect{{bars.vtrack.min.x - SCROLLBAR_GRAB_IN_PX, bars.vtrack.min.y}, {bars.vtrack.max.x + SCROLLBAR_GRAB_OUT_PX, bars.vtrack.max.y}}
-			hgrab := Rect{{bars.htrack.min.x, bars.htrack.min.y - SCROLLBAR_GRAB_IN_PX}, {bars.htrack.max.x, bars.htrack.max.y + SCROLLBAR_GRAB_OUT_PX}}
-			if bars.has_v && contains(vgrab, mp) {
-				a.sb_drag = 1
-				a.sb_grab = (mp.y >= bars.vthumb.min.y && mp.y < bars.vthumb.max.y) ? mp.y - bars.vthumb.min.y : (bars.vthumb.max.y - bars.vthumb.min.y) * 0.5
-			} else if bars.has_h && contains(hgrab, mp) {
-				a.sb_drag = 2
-				a.sb_grab = (mp.x >= bars.hthumb.min.x && mp.x < bars.hthumb.max.x) ? mp.x - bars.hthumb.min.x : (bars.hthumb.max.x - bars.hthumb.min.x) * 0.5
-			}
-		}
-		if !res.dragging && !res.pressed { a.sb_drag = 0 }
-		if a.sb_drag != 0 && (res.pressed || res.dragging) {
-			content := content_extent(a, text, b, lh, lines, wrap_w)
-			view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
-			if a.sb_drag == 1 {
-				span := (bars.vtrack.max.y - bars.vtrack.min.y) - (bars.vthumb.max.y - bars.vthumb.min.y)
-				if span > 0 { a.scroll.y = clamp((mp.y - a.sb_grab - bars.vtrack.min.y) / span, 0, 1) * (content.y - view.y) }
-			} else {
-				span := (bars.htrack.max.x - bars.htrack.min.x) - (bars.hthumb.max.x - bars.hthumb.min.x)
-				if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + TEXT_EDIT_END_SLACK_PX - view.x) }
-			}
-		} else if res.pressed || res.dragging {
-			idx, up := point_to_index(a, b, lines, res.mouse, gutter, pad, lh)
-			a.cursor, a.upstream = idx, up
-			if res.pressed && .Shift not_in res.mods { a.mark = idx }
-			a.has_pref = false
-			moved = true
-		}
-		if res.double_clicked && a.sb_drag == 0 {
-			a.mark = word_left(text, min(a.cursor + 1, len(text)))
-			a.cursor = word_right(text, a.mark)
-		}
-		if res.scrolled != {} {
-			a.scroll.y += res.scrolled.y * lh * TEXT_EDIT_WHEEL_LINES
-			if wrap_w <= 0 { a.scroll.x += res.scrolled.x * lh * TEXT_EDIT_WHEEL_LINES }
-		}
-
+		edit_requests(&e)
+		if a.cursor != c0 || hash_bytes(a.buf[:]) != before_hash { e.lines = edit_lines(&e) }
+		edit_pointer(&e)
 		if res.focused {
-			move :: proc(a: ^Text_Area, to: int, extend: bool, upstream := false) {
-				a.cursor = to
-				a.upstream = upstream
-				if !extend { a.mark = to }
-			}
-			// Up / Down by visual lines, keeping the column
-			vertical :: proc(a: ^Text_Area, b: ^Box, wrap_w: f32, lines: int, extend: bool) {
-				text := area_string(a)
-				vl := text_visual_lines(g.fonts, b.font, b.font_size, text, wrap_w, context.temp_allocator)
-				li := visual_line_of(vl, a.cursor, a.upstream)
-				x := a.pref_x
-				if !a.has_pref { x = caret_x_on(text, vl[li], b, a.cursor) }
-				target := li + lines
-				idx: int
-				up := false
-				switch {
-				case target < 0:            idx = 0
-				case target >= len(vl):     idx = len(text)
-				case:
-					l := vl[target]
-					idx = l.start + font.index_from_x(g.fonts, b.font, b.font_size, text[l.start:l.end], x)
-					up = l.soft && idx >= l.end
-				}
-				move(a, idx, extend, up)
-				a.pref_x, a.has_pref = x, true
-			}
-			page := max(1, int((b.rect.max.y - b.rect.min.y - 2 * pad) / lh) - 1)
-
-			// typing
-			if len(s.typed) > 0 {
-				begin_edit(a, .Insert, now)
-				for r in s.typed { insert(a, utf8.runes_to_string({r}, context.temp_allocator)) }
-				a.has_pref, a.upstream = false, false
-			}
-			if key_press(.Return) {
-				begin_edit(a, .Other, now)
-				// keep the indentation of the current line
-				ls, _ := line_bounds(area_string(a), a.cursor)
-				indent := 0
-				for ls + indent < len(a.buf) && a.buf[ls + indent] == ' ' && ls + indent < a.cursor { indent += 1 }
-				insert(a, "\n")
-				if indent > 0 { insert(a, strings.repeat(" ", indent, context.temp_allocator)) }
-				a.has_pref, a.upstream = false, false
-			}
-			if key_press(.Return, ctrl) { res.committed = true }
-			if tab_indents && key_press(.Tab) { begin_edit(a, .Insert, now); insert(a, "    "); a.has_pref = false }
-			for mods in ([?]Mods{{}, shift}) {
-				ext := mods == shift
-				t := area_string(a)
-				lo, hi := sel(a)
-				if key_press(.Left, mods)  { move(a, (lo != hi && !ext) ? lo : prev_index(t, a.cursor), ext); a.has_pref = false }
-				if key_press(.Right, mods) { move(a, (lo != hi && !ext) ? hi : next_index(t, a.cursor), ext); a.has_pref = false }
-				if key_press(.Up, mods)    { vertical(a, b, wrap_w, -1, ext) }
-				if key_press(.Down, mods)  { vertical(a, b, wrap_w, 1, ext) }
-				if key_press(.Page_Up, mods)   { vertical(a, b, wrap_w, -page, ext) }
-				if key_press(.Page_Down, mods) { vertical(a, b, wrap_w, page, ext) }
-				home, end := key_press(.Home, mods), key_press(.End, mods)   // (a key_press takes its event)
-				if home || end {
-					// the visual line's ends; Home on a paragraph's first line: its first non-blank character, then its start
-					vl := text_visual_lines(s.fonts, b.font, b.font_size, t, wrap_w, context.temp_allocator)
-					l := vl[visual_line_of(vl, a.cursor, a.upstream)]
-					if home {
-						nb := l.start
-						if l.first { for nb < l.end && t[nb] == ' ' { nb += 1 } }
-						move(a, a.cursor == nb ? l.start : nb, ext)
-					} else {
-						move(a, l.end, ext, l.soft)
-					}
-					a.has_pref = false
-				}
-			}
-			for mods in ([?]Mods{ctrl, cs}) {
-				ext := mods == cs
-				t := area_string(a)
-				if key_press(.Left, mods)  { move(a, word_left(t, a.cursor), ext); a.has_pref = false }
-				if key_press(.Right, mods) { move(a, word_right(t, a.cursor), ext); a.has_pref = false }
-				if key_press(.Home, mods)  { move(a, 0, ext); a.has_pref = false }
-				if key_press(.End, mods)   { move(a, len(a.buf), ext); a.has_pref = false }
-			}
-			if (key_press(.Backspace) || key_press(.Backspace, shift)) && (a.cursor != a.mark || a.cursor > 0) {
-				lo, hi := sel(a)
-				begin_edit(a, .Delete, now)
-				if lo != hi { delete_range(a, lo, hi) } else { p := prev_index(area_string(a), a.cursor); delete_range(a, p, a.cursor) }
-				a.has_pref, a.upstream = false, false
-			}
-			if key_press(.Delete) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
-				lo, hi := sel(a)
-				begin_edit(a, .Delete, now)
-				if lo != hi { delete_range(a, lo, hi) } else { n := next_index(area_string(a), a.cursor); delete_range(a, a.cursor, n) }
-				a.has_pref, a.upstream = false, false
-			}
-			if key_press(.Backspace, ctrl) && (a.cursor != a.mark || a.cursor > 0) {
-				lo, hi := sel(a)
-				begin_edit(a, .Other, now)
-				if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, word_left(area_string(a), a.cursor), a.cursor) }
-				a.upstream = false
-			}
-			if key_press(.Delete, ctrl) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
-				lo, hi := sel(a)
-				begin_edit(a, .Other, now)
-				if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, a.cursor, word_right(area_string(a), a.cursor)) }
-				a.upstream = false
-			}
-			if key_press(.A, ctrl) { a.mark = 0; a.cursor = len(a.buf); a.upstream = false }
-			if key_press(.C, ctrl) {
-				lo, hi := sel(a)
-				if lo != hi && s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
-			}
-			if key_press(.X, ctrl) {
-				lo, hi := sel(a)
-				if lo != hi {
-					if s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
-					begin_edit(a, .Other, now)
-					delete_range(a, lo, hi)
-					a.upstream = false
-				}
-			}
-			if key_press(.V, ctrl) && s.clipboard_get != nil {
-				clip := s.clipboard_get()
-				clean, _ := strings.replace_all(clip, "\r\n", "\n", context.temp_allocator)
-				clean, _ = strings.replace_all(clean, "\r", "\n", context.temp_allocator)
-				clean, _ = strings.replace_all(clean, "\t", "    ", context.temp_allocator)
-				if clean != "" { begin_edit(a, .Other, now); insert(a, clean); a.upstream = false }
-			}
-			if key_press(.Z, ctrl) { area_undo(a); a.upstream = false }
-			if key_press(.Y, ctrl) || key_press(.Z, cs) { area_redo(a); a.upstream = false }
+			edit_keys_typing(&e, tab_indents)
+			edit_keys_moves(&e)
+			edit_keys_deleting(&e)
+			edit_keys_clipboard(&e)
+			if key_press(.Z, {.Ctrl}) { area_undo(a); a.upstream = false }
+			if key_press(.Y, {.Ctrl}) || key_press(.Z, {.Ctrl, .Shift}) { area_redo(a); a.upstream = false }
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			a.cursor = clamp(a.cursor, 0, len(a.buf))
 			a.mark = clamp(a.mark, 0, len(a.buf))
 			if !s.inactive { wake_within(s, CARET_WAKE_MS) }   // caret blink (none in a window in the back)
 		}
-		text = area_string(a)
 		res.changed = hash_bytes(a.buf[:]) != before_hash
-		cursor_moved := moved || res.changed || a.cursor != c0 || a.mark != m0
-		if cursor_moved { a.edited_ms = now }
-		if res.changed || cursor_moved { lines = layout(a, b, wrap_w) }
-		cur_line := visual_line_of(lines, a.cursor, a.upstream)
-		if !(lines[cur_line].soft && lines[cur_line].end == a.cursor) { a.upstream = false }   // only the end of a wrapped line has two places
+		cursor_moved := e.moved || res.changed || a.cursor != c0 || a.mark != m0
+		if cursor_moved { a.edited_ms = e.now }
+		if res.changed || cursor_moved { e.lines = edit_lines(&e) }
 
 		// height: as tall as the lines, within the limits (the next layout uses it)
 		if auto_height {
-			n := len(lines)
+			n := len(e.lines)
 			n = max(n, max(min_lines, 1))
 			if max_lines > 0 { n = min(n, max_lines) }
-			b.pref[.Y] = px(f32(n) * lh + 2 * pad)
+			b.pref[.Y] = px(f32(n) * e.lh + 2 * pad)
 		}
-
-		// content size and scrolling
-		view_w := max(TEXT_VIEW_MIN_PX, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
-		view_h := max(TEXT_VIEW_MIN_PX, (b.rect.max.y - b.rect.min.y) - 2 * pad)
-		if auto_height { view_h = max(TEXT_VIEW_MIN_PX, b.pref[.Y].value - 2 * pad) }   // the height this build asks for, not last frame's
-		ext := content_extent(a, text, b, lh, lines, wrap_w)
-		content_w, content_h := ext.x, ext.y
-		cx := caret_x_on(text, lines[cur_line], b, a.cursor)
-		cy := f32(cur_line) * lh
-		res.caret = {{gutter + pad + cx - a.scroll.x, pad + cy - a.scroll.y}, {gutter + pad + cx - a.scroll.x + 1, pad + cy - a.scroll.y + lh}}
-		if cursor_moved {
-			if wrap_w <= 0 {
-				if cx - a.scroll.x > view_w - TEXT_EDIT_END_SLACK_PX { a.scroll.x = cx - view_w + TEXT_EDIT_END_SLACK_PX }
-				if cx - a.scroll.x < 0 { a.scroll.x = cx }
-			}
-			if cy - a.scroll.y < 0 { a.scroll.y = cy }
-			if cy + lh - a.scroll.y > view_h { a.scroll.y = cy + lh - view_h }
-		}
-		a.scroll.x = wrap_w > 0 ? 0 : clamp(a.scroll.x, 0, max(0, content_w + TEXT_EDIT_END_SLACK_PX - view_w))
-		a.scroll.y = clamp(a.scroll.y, 0, max(0, content_h - view_h))
-
-		d := frame_new(Text_Edit_Draw)
-		d.area = a
-		d.text = strings.clone(text, frame_allocator())
-		d.lines = make([]Visual_Line, len(lines), frame_allocator())
-		copy(d.lines, lines)
-		d.placeholder = placeholder
-		d.cursor, d.mark, d.upstream, d.scroll = a.cursor, a.mark, a.upstream, a.scroll
-		d.focused = res.focused
-		since := now - a.edited_ms
-		d.caret_on = !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
-		d.gutter, d.pad, d.line_h = gutter, pad, lh
-		d.selection = color("selection")
-		d.caret = color("cursor")
-		if tags("weak") { d.weak = color("text") }
-		d.gutter_bg = color("background")
-		d.gutter_bg.a *= TEXT_EDIT_GUTTER_BG_ALPHA_FACTOR
-		d.gutter_bg = tuned(d.gutter_bg)
-		d.gutter_line = color("border")
-		d.mono = mono
-		d.highlight = highlight
-		d.error_color = tuned(TEXT_EDIT_ERROR_COLOR)
-		if highlight != nil && res.hovering && a.sb_drag == 0 {
-			li := int((res.mouse.y - pad + a.scroll.y) / lh)
-			if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
-		}
-		d.bars = editor_bars(b.rect, gutter, pad, b.font_size, {content_w, content_h}, a.scroll, wrap_w > 0)
-		d.bar_color = color("text")
-		mpos := b.rect.min + res.mouse
-		if a.sb_drag != 0 { d.bar_hot = a.sb_drag } else if res.hovering {
-			if d.bars.has_v && contains(Rect{{d.bars.vtrack.min.x - SCROLLBAR_GRAB_IN_PX, d.bars.vtrack.min.y}, d.bars.vtrack.max}, mpos) { d.bar_hot = 1 }
-			if d.bars.has_h && contains(Rect{{d.bars.htrack.min.x, d.bars.htrack.min.y - SCROLLBAR_GRAB_IN_PX}, d.bars.htrack.max}, mpos) { d.bar_hot = 2 }
-		}
-		if d.bar_hot != 0 { s.cursor_request = .Arrow }
-		b.custom = text_edit_draw
-		b.custom_user = d
-		if s.a11y.wanted {
-			t := frame_new(A11y_Text)
-			t^ = {text = d.text, cursor = a.cursor, mark = a.mark, lines = a11y_text_lines(d.text, d.lines, frame_allocator()),
-				origin = {b.rect.min.x + gutter + pad, b.rect.min.y + pad}, line_height = lh, scroll = a.scroll, font = b.font, size = b.font_size}
-			a11y_default(b, {role = .Multiline_Text_Input, placeholder = placeholder, text = t})
-		} else {
-			a11y_default(b, {role = .Multiline_Text_Input, placeholder = placeholder})
-		}
+		content := edit_follow_caret(&e, auto_height, cursor_moved)
+		edit_fill_draw(&e, content, placeholder, mono, highlight)
 	}
 	return
+}
+
+// What the parts of text_edit share in a build.
+@(private="file")
+Edit_Build :: struct {
+	s:      ^State,
+	a:      ^Text_Area,
+	b:      ^Box,
+	res:    ^Edit_Result,
+	now:    f64,
+	pad, lh, gutter: f32,
+	wrap_w: f32,               // the width lines wrap at (0: they do not)
+	lines:  []Visual_Line,
+	moved:  bool,              // the caret was placed, even where it was
+}
+
+@(private="file")
+edit_lines :: proc(e: ^Edit_Build) -> []Visual_Line {
+	return text_visual_lines(g.fonts, e.b.font, e.b.font_size, area_string(e.a), e.wrap_w, context.temp_allocator)
+}
+
+// A screen reader sets the text, types over the selection, or moves the caret.
+@(private="file")
+edit_requests :: proc(e: ^Edit_Build) {
+	a, b := e.a, e.b
+	if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
+		begin_edit(a, .Other, e.now)
+		a.mark, a.cursor = 0, len(a.buf)
+		insert(a, r.value)
+		a.has_pref = false
+	}
+	if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
+		begin_edit(a, .Other, e.now)
+		insert(a, r.value)
+	}
+	if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
+		runs := a11y_text_lines(area_string(a), edit_lines(e))
+		a.mark = a11y_run_byte(area_string(a), runs, b, r.sel[0], int(r.sel[1]))
+		a.cursor = a11y_run_byte(area_string(a), runs, b, r.sel[2], int(r.sel[3]))
+		a.upstream, a.has_pref = false, false
+		e.moved = true
+	}
+}
+
+// The visual line under the point, the nearest caret position on it (past a wrapped line's end: that end).
+@(private="file")
+edit_point_to_index :: proc(e: ^Edit_Build, p: Vec2) -> (int, bool) {
+	a, b := e.a, e.b
+	text := area_string(a)
+	li := clamp(int((p.y - e.pad + a.scroll.y) / e.lh), 0, len(e.lines) - 1)
+	l := e.lines[li]
+	i := l.start + font.index_from_x(g.fonts, b.font, b.font_size, text[l.start:l.end], p.x - e.gutter - e.pad + a.scroll.x)
+	return i, l.soft && i >= l.end
+}
+
+// Clicks, drags (the scrollbars own theirs: a press on a thumb grabs it, a press on a track jumps there), the wheel.
+@(private="file")
+edit_pointer :: proc(e: ^Edit_Build) {
+	a, b, res := e.a, e.b, e.res
+	gutter, pad, lh, wrap_w := e.gutter, e.pad, e.lh, e.wrap_w
+	text := area_string(a)
+	bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, e.lines, wrap_w), a.scroll, wrap_w > 0)
+	mp := b.rect.min + res.mouse
+	if res.pressed {
+		a.sb_drag = .None
+		toward, away := scrollbar_grab()
+		vgrab := Rect{{bars.vtrack.min.x - toward, bars.vtrack.min.y}, {bars.vtrack.max.x + away, bars.vtrack.max.y}}
+		hgrab := Rect{{bars.htrack.min.x, bars.htrack.min.y - toward}, {bars.htrack.max.x, bars.htrack.max.y + away}}
+		if bars.has_v && contains(vgrab, mp) {
+			a.sb_drag = .Vertical
+			a.sb_grab = (mp.y >= bars.vthumb.min.y && mp.y < bars.vthumb.max.y) ? mp.y - bars.vthumb.min.y : (bars.vthumb.max.y - bars.vthumb.min.y) * 0.5
+		} else if bars.has_h && contains(hgrab, mp) {
+			a.sb_drag = .Horizontal
+			a.sb_grab = (mp.x >= bars.hthumb.min.x && mp.x < bars.hthumb.max.x) ? mp.x - bars.hthumb.min.x : (bars.hthumb.max.x - bars.hthumb.min.x) * 0.5
+		}
+	}
+	if !res.dragging && !res.pressed { a.sb_drag = .None }
+	if a.sb_drag != .None && (res.pressed || res.dragging) {
+		content := content_extent(a, text, b, lh, e.lines, wrap_w)
+		view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
+		if a.sb_drag == .Vertical {
+			span := (bars.vtrack.max.y - bars.vtrack.min.y) - (bars.vthumb.max.y - bars.vthumb.min.y)
+			if span > 0 { a.scroll.y = clamp((mp.y - a.sb_grab - bars.vtrack.min.y) / span, 0, 1) * (content.y - view.y) }
+		} else {
+			span := (bars.htrack.max.x - bars.htrack.min.x) - (bars.hthumb.max.x - bars.hthumb.min.x)
+			if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + end_slack() - view.x) }
+		}
+	} else if res.pressed || res.dragging {
+		idx, up := edit_point_to_index(e, res.mouse)
+		a.cursor, a.upstream = idx, up
+		if res.pressed && .Shift not_in res.mods { a.mark = idx }
+		a.has_pref = false
+		e.moved = true
+	}
+	if res.double_clicked && a.sb_drag == .None {
+		a.mark = word_left(text, min(a.cursor + 1, len(text)))
+		a.cursor = word_right(text, a.mark)
+	}
+	if res.scrolled != {} {
+		a.scroll.y += res.scrolled.y * lh * TEXT_EDIT_WHEEL_LINES
+		if wrap_w <= 0 { a.scroll.x += res.scrolled.x * lh * TEXT_EDIT_WHEEL_LINES }
+	}
+}
+
+// Typing, Enter (the indentation stays), Ctrl+Enter, Tab.
+@(private="file")
+edit_keys_typing :: proc(e: ^Edit_Build, tab_indents: bool) {
+	s, a := e.s, e.a
+	if len(s.typed) > 0 {
+		begin_edit(a, .Insert, e.now)
+		for r in s.typed { insert(a, utf8.runes_to_string({r}, context.temp_allocator)) }
+		a.has_pref, a.upstream = false, false
+	}
+	if key_press(.Return) {
+		begin_edit(a, .Other, e.now)
+		// keep the indentation of the current line
+		ls, _ := line_bounds(area_string(a), a.cursor)
+		indent := 0
+		for ls + indent < len(a.buf) && a.buf[ls + indent] == ' ' && ls + indent < a.cursor { indent += 1 }
+		insert(a, "\n")
+		if indent > 0 { insert(a, strings.repeat(" ", indent, context.temp_allocator)) }
+		a.has_pref, a.upstream = false, false
+	}
+	if key_press(.Return, {.Ctrl}) { e.res.committed = true }
+	if tab_indents && key_press(.Tab) { begin_edit(a, .Insert, e.now); insert(a, "    "); a.has_pref = false }
+}
+
+@(private="file")
+edit_move :: proc(a: ^Text_Area, to: int, extend: bool, upstream := false) {
+	a.cursor = to
+	a.upstream = upstream
+	if !extend { a.mark = to }
+}
+
+// Up / Down by visual lines, keeping the column.
+@(private="file")
+edit_vertical :: proc(e: ^Edit_Build, lines: int, extend: bool) {
+	a, b := e.a, e.b
+	text := area_string(a)
+	vl := edit_lines(e)
+	li := visual_line_of(vl, a.cursor, a.upstream)
+	x := a.pref_x
+	if !a.has_pref { x = caret_x_on(text, vl[li], b, a.cursor) }
+	target := li + lines
+	idx: int
+	up := false
+	switch {
+	case target < 0:            idx = 0
+	case target >= len(vl):     idx = len(text)
+	case:
+		l := vl[target]
+		idx = l.start + font.index_from_x(g.fonts, b.font, b.font_size, text[l.start:l.end], x)
+		up = l.soft && idx >= l.end
+	}
+	edit_move(a, idx, extend, up)
+	a.pref_x, a.has_pref = x, true
+}
+
+// The moves: arrows, pages, the line's ends (with Shift they select), words and the document's ends (Ctrl).
+@(private="file")
+edit_keys_moves :: proc(e: ^Edit_Build) {
+	a, b := e.a, e.b
+	page := max(1, int((b.rect.max.y - b.rect.min.y - 2 * e.pad) / e.lh) - 1)
+	shift := Mods{.Shift}
+	for mods in ([?]Mods{{}, shift}) {
+		ext := mods == shift
+		t := area_string(a)
+		lo, hi := sel(a)
+		if key_press(.Left, mods)  { edit_move(a, (lo != hi && !ext) ? lo : prev_index(t, a.cursor), ext); a.has_pref = false }
+		if key_press(.Right, mods) { edit_move(a, (lo != hi && !ext) ? hi : next_index(t, a.cursor), ext); a.has_pref = false }
+		if key_press(.Up, mods)    { edit_vertical(e, -1, ext) }
+		if key_press(.Down, mods)  { edit_vertical(e, 1, ext) }
+		if key_press(.Page_Up, mods)   { edit_vertical(e, -page, ext) }
+		if key_press(.Page_Down, mods) { edit_vertical(e, page, ext) }
+		home, end := key_press(.Home, mods), key_press(.End, mods)   // (a key_press takes its event)
+		if home || end {
+			// the visual line's ends; Home on a paragraph's first line: its first non-blank character, then its start
+			vl := edit_lines(e)
+			l := vl[visual_line_of(vl, a.cursor, a.upstream)]
+			if home {
+				nb := l.start
+				if l.first { for nb < l.end && t[nb] == ' ' { nb += 1 } }
+				edit_move(a, a.cursor == nb ? l.start : nb, ext)
+			} else {
+				edit_move(a, l.end, ext, l.soft)
+			}
+			a.has_pref = false
+		}
+	}
+	cs := Mods{.Ctrl, .Shift}
+	for mods in ([?]Mods{{.Ctrl}, cs}) {
+		ext := mods == cs
+		t := area_string(a)
+		if key_press(.Left, mods)  { edit_move(a, word_left(t, a.cursor), ext); a.has_pref = false }
+		if key_press(.Right, mods) { edit_move(a, word_right(t, a.cursor), ext); a.has_pref = false }
+		if key_press(.Home, mods)  { edit_move(a, 0, ext); a.has_pref = false }
+		if key_press(.End, mods)   { edit_move(a, len(a.buf), ext); a.has_pref = false }
+	}
+}
+
+// Backspace and Delete: the selection, else a cluster, or a word with Ctrl. Nothing to delete is no edit.
+@(private="file")
+edit_keys_deleting :: proc(e: ^Edit_Build) {
+	a := e.a
+	if (key_press(.Backspace) || key_press(.Backspace, {.Shift})) && (a.cursor != a.mark || a.cursor > 0) {
+		lo, hi := sel(a)
+		begin_edit(a, .Delete, e.now)
+		if lo != hi { delete_range(a, lo, hi) } else { p := prev_index(area_string(a), a.cursor); delete_range(a, p, a.cursor) }
+		a.has_pref, a.upstream = false, false
+	}
+	if key_press(.Delete) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
+		lo, hi := sel(a)
+		begin_edit(a, .Delete, e.now)
+		if lo != hi { delete_range(a, lo, hi) } else { n := next_index(area_string(a), a.cursor); delete_range(a, a.cursor, n) }
+		a.has_pref, a.upstream = false, false
+	}
+	if key_press(.Backspace, {.Ctrl}) && (a.cursor != a.mark || a.cursor > 0) {
+		lo, hi := sel(a)
+		begin_edit(a, .Other, e.now)
+		if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, word_left(area_string(a), a.cursor), a.cursor) }
+		a.upstream = false
+	}
+	if key_press(.Delete, {.Ctrl}) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
+		lo, hi := sel(a)
+		begin_edit(a, .Other, e.now)
+		if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, a.cursor, word_right(area_string(a), a.cursor)) }
+		a.upstream = false
+	}
+}
+
+// Select all, copy, cut, paste (line ends and tabs made the editor's).
+@(private="file")
+edit_keys_clipboard :: proc(e: ^Edit_Build) {
+	s, a := e.s, e.a
+	ctrl := Mods{.Ctrl}
+	if key_press(.A, ctrl) { a.mark = 0; a.cursor = len(a.buf); a.upstream = false }
+	if key_press(.C, ctrl) {
+		lo, hi := sel(a)
+		if lo != hi && s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
+	}
+	if key_press(.X, ctrl) {
+		lo, hi := sel(a)
+		if lo != hi {
+			if s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
+			begin_edit(a, .Other, e.now)
+			delete_range(a, lo, hi)
+			a.upstream = false
+		}
+	}
+	if key_press(.V, ctrl) && s.clipboard_get != nil {
+		clip := s.clipboard_get()
+		clean, _ := strings.replace_all(clip, "\r\n", "\n", context.temp_allocator)
+		clean, _ = strings.replace_all(clean, "\r", "\n", context.temp_allocator)
+		clean, _ = strings.replace_all(clean, "\t", "    ", context.temp_allocator)
+		if clean != "" { begin_edit(a, .Other, e.now); insert(a, clean); a.upstream = false }
+	}
+}
+
+// The caret's rectangle, the scroll that keeps it in view, the scroll in range. Returns the content's size.
+@(private="file")
+edit_follow_caret :: proc(e: ^Edit_Build, auto_height, cursor_moved: bool) -> Vec2 {
+	a, b, s := e.a, e.b, e.s
+	gutter, pad, lh, wrap_w := e.gutter, e.pad, e.lh, e.wrap_w
+	lines := e.lines
+	text := area_string(a)
+	cur_line := visual_line_of(lines, a.cursor, a.upstream)
+	if !(lines[cur_line].soft && lines[cur_line].end == a.cursor) { a.upstream = false }   // only the end of a wrapped line has two places
+	view_w := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
+	view_h := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.y - b.rect.min.y) - 2 * pad)
+	if auto_height { view_h = max(TEXT_VIEW_MIN_PX * s.scale, b.pref[.Y].value - 2 * pad) }   // the height this build asks for, not last frame's
+	ext := content_extent(a, text, b, lh, lines, wrap_w)
+	cx := caret_x_on(text, lines[cur_line], b, a.cursor)
+	cy := f32(cur_line) * lh
+	e.res.caret = {{gutter + pad + cx - a.scroll.x, pad + cy - a.scroll.y}, {gutter + pad + cx - a.scroll.x + 1, pad + cy - a.scroll.y + lh}}
+	if cursor_moved {
+		if wrap_w <= 0 {
+			if cx - a.scroll.x > view_w - end_slack() { a.scroll.x = cx - view_w + end_slack() }
+			if cx - a.scroll.x < 0 { a.scroll.x = cx }
+		}
+		if cy - a.scroll.y < 0 { a.scroll.y = cy }
+		if cy + lh - a.scroll.y > view_h { a.scroll.y = cy + lh - view_h }
+	}
+	a.scroll.x = wrap_w > 0 ? 0 : clamp(a.scroll.x, 0, max(0, ext.x + end_slack() - view_w))
+	a.scroll.y = clamp(a.scroll.y, 0, max(0, ext.y - view_h))
+	return ext
+}
+
+// What text_edit_draw reads, the paragraph under the pointer, what screen readers read.
+@(private="file")
+edit_fill_draw :: proc(e: ^Edit_Build, content: Vec2, placeholder: string, mono: font.Font_Id, highlight: ^Text_Highlight) {
+	s, a, b, res := e.s, e.a, e.b, e.res
+	gutter, pad, lh := e.gutter, e.pad, e.lh
+	lines := e.lines
+	d := frame_new(Text_Edit_Draw)
+	d.area = a
+	d.text = strings.clone(area_string(a), frame_allocator())
+	d.lines = make([]Visual_Line, len(lines), frame_allocator())
+	copy(d.lines, lines)
+	d.placeholder = placeholder
+	d.cursor, d.mark, d.upstream, d.scroll = a.cursor, a.mark, a.upstream, a.scroll
+	d.focused = res.focused
+	since := e.now - a.edited_ms
+	d.caret_on = !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
+	d.gutter, d.pad, d.line_h = gutter, pad, lh
+	d.selection = color("selection")
+	d.caret = color("cursor")
+	if tags("weak") { d.weak = color("text") }
+	d.gutter_bg = color("background")
+	d.gutter_bg.a *= TEXT_EDIT_GUTTER_BG_ALPHA_FACTOR
+	d.gutter_bg = tuned(d.gutter_bg)
+	d.gutter_line = color("border")
+	d.mono = mono
+	d.highlight = highlight
+	d.error_color = tuned(TEXT_EDIT_ERROR_COLOR)
+	if highlight != nil && res.hovering && a.sb_drag == .None {
+		li := int((res.mouse.y - pad + a.scroll.y) / lh)
+		if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
+	}
+	d.bars = editor_bars(b.rect, gutter, pad, b.font_size, content, a.scroll, e.wrap_w > 0)
+	d.bar_color = color("text")
+	mpos := b.rect.min + res.mouse
+	if a.sb_drag != .None { d.bar_hot = a.sb_drag } else if res.hovering {
+		toward, _ := scrollbar_grab()
+		if d.bars.has_v && contains(Rect{{d.bars.vtrack.min.x - toward, d.bars.vtrack.min.y}, d.bars.vtrack.max}, mpos) { d.bar_hot = .Vertical }
+		if d.bars.has_h && contains(Rect{{d.bars.htrack.min.x, d.bars.htrack.min.y - toward}, d.bars.htrack.max}, mpos) { d.bar_hot = .Horizontal }
+	}
+	if d.bar_hot != .None { s.cursor_request = .Arrow }
+	b.custom = text_edit_draw
+	b.custom_user = d
+	if s.a11y.wanted {
+		t := frame_new(A11y_Text)
+		t^ = {text = d.text, cursor = a.cursor, mark = a.mark, lines = a11y_text_lines(d.text, d.lines, frame_allocator()),
+			origin = {b.rect.min.x + gutter + pad, b.rect.min.y + pad}, line_height = lh, scroll = a.scroll, font = b.font, size = b.font_size}
+		a11y_default(b, {role = .Multiline_Text_Input, placeholder = placeholder, text = t})
+	} else {
+		a11y_default(b, {role = .Multiline_Text_Input, placeholder = placeholder})
+	}
 }
 
 // The text runs of an editor: its visual lines, each with the line break that ends it.

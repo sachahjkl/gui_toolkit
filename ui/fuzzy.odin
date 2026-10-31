@@ -67,7 +67,7 @@ fuzzy_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		x0 := origin.x + font.text_width(s.fonts, b.font, b.font_size, d.text[:r[0]])
 		x1 := origin.x + font.text_width(s.fonts, b.font, b.font_size, d.text[:r[1]])
 		cy := (b.rect.min.y + b.rect.max.y) * 0.5
-		draw.rect(dc, {{x0, cy - m.line_height * 0.5}, {x1, cy + m.line_height * 0.5}}, d.color, 2)
+		draw.rect(dc, {{x0, cy - m.line_height * 0.5}, {x1, cy + m.line_height * 0.5}}, d.color, 2 * s.scale)
 	}
 }
 
