@@ -26,6 +26,13 @@ import "base:runtime"
 import "core:mem/virtual"
 import "core:sync"
 
+// How long a method call waits for its reply unless told otherwise (the reference client's default).
+@(private)
+DEFAULT_CALL_TIMEOUT_MS :: 25000
+// A call to the bus itself (Hello, RequestName): it answers at once or not at all.
+@(private)
+BUS_CALL_TIMEOUT_MS :: 5000
+
 // A well-known bus.
 Bus_Kind :: enum u8 { Session, System }
 

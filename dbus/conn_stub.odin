@@ -24,8 +24,8 @@ conn_alive :: proc(c: ^Conn) -> bool { return false }
 conn_close :: proc(c: ^Conn) {}
 dispatch   :: proc(c: ^Conn) {}
 
-call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := 25000) -> (msg: Message, ok: bool) { return {}, false }
-call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := 25000) -> bool { return false }
+call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) { return {}, false }
+call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := DEFAULT_CALL_TIMEOUT_MS) -> bool { return false }
 call_noreply :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8) -> bool { return false }
 emit_signal :: proc(c: ^Conn, path, iface, member, signature: string, body: []u8) -> bool { return false }
 reply_return :: proc(c: ^Conn, to: ^Message, signature: string, body: []u8) -> bool { return false }

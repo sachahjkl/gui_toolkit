@@ -34,6 +34,10 @@ foreign user32_tk {
 
 @(private = "file") MEM_COMMIT  :: 0x1000
 @(private = "file") MEM_PRIVATE :: 0x20000
+// PAGE_EXECUTE and its variants: a page holding code.
+@(private = "file") PAGE_EXECUTE_ANY :: 0xF0
+// The process's heaps counted: past this they are ignored.
+@(private = "file") MAX_HEAPS :: 64
 
 @(private)
 native_process_state :: proc() -> (s: Process_State) {
@@ -52,7 +56,7 @@ native_process_state :: proc() -> (s: Process_State) {
 
 @(private)
 native_memory_split :: proc() -> (m: Memory_Split) {
-	heaps: [64]win.HANDLE
+	heaps: [MAX_HEAPS]win.HANDLE
 	n := min(int(tk_GetProcessHeaps(len(heaps), &heaps[0])), len(heaps))
 	for i in 0 ..< n {
 		s := Heap_Summary{cb = size_of(Heap_Summary)}
@@ -62,7 +66,7 @@ native_memory_split :: proc() -> (m: Memory_Split) {
 	addr: uintptr
 	for tk_VirtualQuery(addr, &mbi, size_of(mbi)) != 0 {
 		if mbi.state == MEM_COMMIT && mbi.kind == MEM_PRIVATE {
-			if mbi.protect & 0xF0 != 0 { m.vm_exec += i64(mbi.region_size) } else { m.vm_rw += i64(mbi.region_size) }
+			if mbi.protect & PAGE_EXECUTE_ANY != 0 { m.vm_exec += i64(mbi.region_size) } else { m.vm_rw += i64(mbi.region_size) }
 		}
 		next := mbi.base + uintptr(mbi.region_size)
 		if next <= addr { break }

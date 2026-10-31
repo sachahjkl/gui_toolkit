@@ -24,6 +24,18 @@ package tk_instance
 import "core:path/filepath"
 import "core:strings"
 
+// FNV-1a, 64 bits.
+@(private = "file") FNV_OFFSET_BASIS :: 0xcbf29ce484222325
+@(private = "file") FNV_PRIME :: 0x100000001b3
+@(private = "file") KEY_HEX_DIGITS :: 16
+
+// A length on the wire: a u32.
+@(private) LENGTH_PREFIX_BYTES :: 4
+// However late it is, the owner gets this long to answer: what `wait_ms` left may be nothing.
+@(private) FORWARD_MIN_MS :: 200
+// Between two attempts of `acquire` while the owner is starting or closing.
+@(private) ACQUIRE_RETRY_MS :: 40
+
 // What `acquire` came to.
 Outcome :: enum u8 {
 	First,            // this process owns the name (Owner is set): carry on, and call owner_start once a loop exists
@@ -54,11 +66,11 @@ key :: proc(prefix, path: string, allocator := context.temp_allocator) -> string
 	p, _ = strings.replace_all(p, "\\", "/", context.temp_allocator)
 	p = strings.trim_right(p, "/")
 	when ODIN_OS == .Windows { p = strings.to_lower(p, context.temp_allocator) }
-	h: u64 = 0xcbf29ce484222325   // FNV-1a
-	for c in transmute([]u8)p { h = (h ~ u64(c)) * 0x100000001b3 }
+	h: u64 = FNV_OFFSET_BASIS
+	for c in transmute([]u8)p { h = (h ~ u64(c)) * FNV_PRIME }
 	hex := "0123456789abcdef"
-	digits: [16]u8
-	for i in 0 ..< 16 { digits[15 - i] = hex[h & 0xf]; h >>= 4 }
+	digits: [KEY_HEX_DIGITS]u8
+	for i in 0 ..< KEY_HEX_DIGITS { digits[KEY_HEX_DIGITS - 1 - i] = hex[h & 0xf]; h >>= 4 }
 	return strings.concatenate({prefix, ".", string(digits[:])}, allocator)
 }
 
@@ -68,22 +80,22 @@ ENVELOPE_MAX :: 1 << 20   // a message larger than this is not one (both backend
 
 @(private)
 encode :: proc(identity: string, message: []byte, allocator := context.temp_allocator) -> []byte {
-	n := 4 + len(identity) + len(message)
+	n := LENGTH_PREFIX_BYTES + len(identity) + len(message)
 	out := make([]byte, n, allocator)
 	id_len := u32(len(identity))
 	out[0] = u8(id_len); out[1] = u8(id_len >> 8); out[2] = u8(id_len >> 16); out[3] = u8(id_len >> 24)
-	copy(out[4:], transmute([]byte)identity)
-	copy(out[4 + len(identity):], message)
+	copy(out[LENGTH_PREFIX_BYTES:], transmute([]byte)identity)
+	copy(out[LENGTH_PREFIX_BYTES + len(identity):], message)
 	return out
 }
 
 // The identity and the message those bytes carry (both point into `data`). ok = false for anything that is not an envelope.
 @(private)
 decode :: proc(data: []byte) -> (identity: string, message: []byte, ok: bool) {
-	if len(data) < 4 { return "", nil, false }
+	if len(data) < LENGTH_PREFIX_BYTES { return "", nil, false }
 	id_len := int(data[0]) | int(data[1]) << 8 | int(data[2]) << 16 | int(data[3]) << 24
-	if id_len < 0 || 4 + id_len > len(data) { return "", nil, false }
-	return string(data[4:4 + id_len]), data[4 + id_len:], true
+	if id_len < 0 || LENGTH_PREFIX_BYTES + id_len > len(data) { return "", nil, false }
+	return string(data[LENGTH_PREFIX_BYTES:LENGTH_PREFIX_BYTES + id_len]), data[LENGTH_PREFIX_BYTES + id_len:], true
 }
 
 // The same identity? An empty owner identity trusts any sender; otherwise an exact match is required. On Windows the case

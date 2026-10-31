@@ -17,7 +17,7 @@ arg_variant_object :: proc(w: ^Writer, s: string)  { w_signature(w, "o"); w_stri
 
 // Writes an a{sv} dictionary header and returns the bookkeeping for arg_dict_end. Each entry: arg_dict_entry then a
 // variant value.
-arg_dict_begin :: proc(w: ^Writer) -> (len_at, content_at: int) { return w_array_begin(w, 8) }
+arg_dict_begin :: proc(w: ^Writer) -> (len_at, content_at: int) { return w_array_begin(w, STRUCT_ALIGN) }
 arg_dict_end   :: proc(w: ^Writer, len_at, content_at: int)     { w_array_end(w, len_at, content_at) }
 arg_dict_entry :: proc(w: ^Writer, key: string) { w_struct(w); w_string(w, key) }
 
@@ -78,7 +78,7 @@ read_variant_skip :: proc(r: ^Reader) {
 	r_skip(r, vs)
 }
 
-// Aligns the reader to a dict-entry / struct boundary (8), before reading an entry inside an a{..} loop.
-r_align_entry :: proc(r: ^Reader) { r_align(r, 8) }
+// Aligns the reader to a dict-entry / struct boundary, before reading an entry inside an a{..} loop.
+r_align_entry :: proc(r: ^Reader) { r_align(r, STRUCT_ALIGN) }
 
 _ :: runtime

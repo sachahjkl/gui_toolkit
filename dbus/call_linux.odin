@@ -9,15 +9,18 @@ import "core:mem/virtual"
 import "core:strings"
 import "core:time"
 
+@(private = "file") NS_PER_MS :: 1_000_000
+@(private = "file") RECV_CHUNK_BYTES :: 8192
+
 // Sends a method call and waits for its reply (bounded by timeout_ms, 0 = a default). The returned Message is valid
 // until the next call / dispatch on this connection (its body lives in the connection's message arena). ok = false on
 // timeout or disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
-call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := 25000) -> (msg: Message, ok: bool) {
+call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) {
 	if !conn_alive_or_connecting(c) { return {}, false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return {}, false }
 	deadline := time.tick_now()
-	limit := timeout_ms > 0 ? timeout_ms : 25000
+	limit := timeout_ms > 0 ? timeout_ms : DEFAULT_CALL_TIMEOUT_MS
 	c.wait_serial = serial
 	c.wait_reply = nil
 	c.wait_status = .Timeout
@@ -36,12 +39,12 @@ call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body
 
 // Sends a method call and returns at once; `handler` runs from dispatch() when the reply arrives (or on timeout /
 // disconnect with a nil message). deadline_ms: 0 = no deadline (the handler is kept until a reply comes).
-call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := 25000) -> bool {
+call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := DEFAULT_CALL_TIMEOUT_MS) -> bool {
 	if !conn_alive_or_connecting(c) { return false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return false }
 	dl: i64 = 0
-	if deadline_ms > 0 { dl = time.tick_now()._nsec + i64(deadline_ms) * 1_000_000 }
+	if deadline_ms > 0 { dl = time.tick_now()._nsec + i64(deadline_ms) * NS_PER_MS }
 	append(&c.pending, Pending{serial = serial, handler = handler, user = user, deadline = dl})
 	return true
 }
@@ -110,7 +113,7 @@ pump :: proc(c: ^Conn, timeout_ms: int) {
 
 @(private)
 drain_socket :: proc(c: ^Conn) {
-	buf: [8192]u8
+	buf: [RECV_CHUNK_BYTES]u8
 	for {
 		n := recv(c.fd, &buf[0], len(buf), 0)
 		if n > 0 {
@@ -125,7 +128,7 @@ drain_socket :: proc(c: ^Conn) {
 
 @(private)
 route_buffered :: proc(c: ^Conn) {
-	for len(c.in_buf) >= 16 {
+	for len(c.in_buf) >= MIN_MESSAGE_BYTES {
 		virtual.arena_free_all(&c.msg_arena)
 		msg, total, ok := parse_message(c.in_buf[:], mem_arena_allocator(c))
 		if !ok { break }

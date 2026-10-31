@@ -13,6 +13,18 @@ import "core:strconv"
 import "core:strings"
 import "core:sync"
 
+// One past the last port there is.
+@(private = "file") PORT_END :: 65536
+// The default bases `url` can rewrite: four digits, the block within them.
+@(private = "file") PREFIX_BASE_MIN :: 1000
+@(private = "file") PREFIX_BASE_MAX :: 9990
+// ":876": the colon and the three digits a block shares.
+@(private = "file") PORT_PREFIX_BYTES :: 4
+// ":8765" as written in an address.
+@(private = "file") PORT_TEXT_BYTES :: 5
+// A rewritten address is about as long as the original: room for what a longer port adds, and more.
+@(private = "file") REWRITE_SLACK_BYTES :: 16
+
 // A block of consecutive ports for the end-to-end tools. Every origin the tests use is a fixed offset from one base port
 // (the default below), so the tools write the default ports and pass every address through `url`, which moves them to the
 // run's block (and changes nothing on the default one). A run gets its own block through `base_env` so several worktrees
@@ -41,7 +53,7 @@ base_port :: proc(p: ^Ports) -> int {
 	b := p.default_base
 	if p.base_env != "" {
 		if v := os.get_env(p.base_env, context.temp_allocator); v != "" {
-			if n, ok := strconv.parse_int(v, 10); ok && n > 0 && n + p.span <= 65536 { b = n }
+			if n, ok := strconv.parse_int(v, 10); ok && n > 0 && n + p.span <= PORT_END { b = n }
 		}
 	}
 	p.cached = b
@@ -71,9 +83,9 @@ url :: proc(p: ^Ports, s: string) -> string {
 // simple scheme covers (1000 ..= 9990): an application should keep ports whose block shares the first three digits.
 @(private)
 port_prefix :: proc(default_base: int) -> string {
-	if default_base < 1000 || default_base > 9990 { return "" }
+	if default_base < PREFIX_BASE_MIN || default_base > PREFIX_BASE_MAX { return "" }
 	n := default_base / 10
-	buf: [4]u8
+	buf: [PORT_PREFIX_BYTES]u8
 	buf[0] = ':'
 	buf[1] = u8('0' + (n / 100) % 10)
 	buf[2] = u8('0' + (n / 10) % 10)
@@ -84,12 +96,12 @@ port_prefix :: proc(default_base: int) -> string {
 @(private)
 rewrite :: proc(p: ^Ports, s: string, b: int) -> string {
 	last := p.default_base % 10
-	out := strings.builder_make(0, len(s) + 16)
+	out := strings.builder_make(0, len(s) + REWRITE_SLACK_BYTES)
 	for i := 0; i < len(s); {
 		if d, ok := default_port_at(p, s, i); ok {
 			strings.write_byte(&out, ':')
 			strings.write_int(&out, b + (d - last))
-			i += 5
+			i += PORT_TEXT_BYTES
 			continue
 		}
 		strings.write_byte(&out, s[i])

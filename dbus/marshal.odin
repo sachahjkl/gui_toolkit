@@ -11,6 +11,10 @@ package dbus
 import "base:runtime"
 import "core:mem"
 
+// A struct and a dict entry start on this boundary, whatever they hold.
+@(private)
+STRUCT_ALIGN :: 8
+
 // A growing little-endian writer with D-Bus alignment. `base` is the offset the alignment is measured from (0 for a
 // body; for a header the whole message starts at 0 so base stays 0).
 Writer :: struct {
@@ -74,8 +78,8 @@ w_array_end :: proc(w: ^Writer, len_at, content_at: int) {
 	copy(w.buf[len_at:len_at + 4], b[:])
 }
 
-// Aligns to a struct / dict-entry boundary (8).
-w_struct :: proc(w: ^Writer) { w_align(w, 8) }
+// Aligns to a struct / dict-entry boundary.
+w_struct :: proc(w: ^Writer) { w_align(w, STRUCT_ALIGN) }
 
 // The alignment of the first element of a signature (for arrays). Pure.
 sig_alignment :: proc(sig: string) -> int {
@@ -201,14 +205,14 @@ r_skip :: proc(r: ^Reader, sig: string) -> int {
 		r.pos = min(end, len(r.buf))
 		return 1 + used
 	case '(':
-		r_align(r, 8)
+		r_align(r, STRUCT_ALIGN)
 		used := 1
 		for used < len(sig) && sig[used] != ')' {
 			used += r_skip(r, sig[used:])
 		}
 		return used + 1   // past the ')'
 	case '{':
-		r_align(r, 8)
+		r_align(r, STRUCT_ALIGN)
 		used := 1
 		for used < len(sig) && sig[used] != '}' {
 			used += r_skip(r, sig[used:])
