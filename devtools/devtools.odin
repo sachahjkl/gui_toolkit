@@ -74,7 +74,7 @@ Server :: struct {
 	cast_dirty: bool,             // the window changed since the last frame of the screencast (atomic)
 	encoding: int,                // pictures being encoded on their own threads (atomic)
 	// the UI thread's own
-	captures: [dynamic]Reply_To,  // screenshots asked for, answered when the capture is ready
+	captures: [dynamic]Capture_Ask,   // screenshots asked for, answered when a capture of their part is ready
 	later:    [dynamic]platform.Event,   // events for the next frame (a click's release)
 	waits:    [dynamic]Wait,      // Toolkit.waitFor, waitIdle
 	rec:      Recorder,           // Toolkit.startRecording
@@ -92,6 +92,10 @@ Server :: struct {
 // Where an answer goes: the connection, the command's id, its session (a client attached with Target.attachToTarget).
 @(private)
 Reply_To :: struct { conn: ^Conn, id: i64, session: string }
+
+// A screenshot asked for. rect: the part of the window, in frame pixels (all zero: all of it).
+@(private)
+Capture_Ask :: struct { to: Reply_To, rect: [4]int }
 
 // To keep it past the command (a capture, a wait): the session is the command's text until then.
 @(private)
@@ -166,7 +170,7 @@ stop :: proc(srv: ^Server) {
 	delete(srv.conns)
 	for m in srv.inbox { delete(m.text, runtime.heap_allocator()) }
 	delete(srv.inbox)
-	for w in srv.captures { release(w) }
+	for w in srv.captures { release(w.to) }
 	delete(srv.captures)
 	for w in srv.waits { wait_free(w) }
 	delete(srv.waits)
@@ -221,7 +225,7 @@ conns_reap :: proc(srv: ^Server) {
 	outer: #reverse for c, i in srv.conns {
 		if !conn_gone(c) { continue }
 		for m in srv.inbox { if m.conn == c { continue outer } }
-		for w in srv.captures { if w.conn == c { continue outer } }
+		for w in srv.captures { if w.to.conn == c { continue outer } }
 		for w in srv.waits { if w.to.conn == c { continue outer } }
 		if srv.screencast.on && srv.screencast.to.conn == c { continue }
 		if srv.dom.to.conn == c { continue }   // (dom_sync sees it gone, and takes its edits back)
@@ -342,10 +346,10 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Toolkit.stopRecording":
 		rec_stop(srv, &sb)
 	case "Page.startScreencast":
-		cast_start(srv, to, p)
+		cast_start(srv, r, to, p)
 		strings.write_string(&sb, "{}")
 	case "Page.stopScreencast":
-		cast_stop(srv)
+		cast_stop(srv, r)
 		strings.write_string(&sb, "{}")
 	case "Page.screencastFrameAck":
 		cast_ack(srv, s)
@@ -381,7 +385,9 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		error_reply(to, CDP_ERROR_SERVER, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
 		return
 	case:
-		// what a client turns on before it starts (Page.enable, Runtime.enable, Target.setAutoAttach...): nothing to do
+		// an edit that cannot be done says so: the client would show it as done
+		if edit_refused(method) { error_reply(to, CDP_ERROR_SERVER, fmt.tprintf("'%s': a toolkit window cannot do this", method)); return }
+		// what a client turns on before it starts (Page.enable, Emulation.setFocusEmulationEnabled...): nothing to do
 		dot := strings.index_byte(method, '.')
 		name := dot >= 0 ? method[dot + 1:] : method
 		if strings.has_prefix(name, "enable") || strings.has_prefix(name, "disable") || strings.has_prefix(name, "set") ||
@@ -393,6 +399,21 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	}
 	if !ok { error_reply(to, CDP_ERROR_METHOD_NOT_FOUND, fmt.tprintf("'%s' wasn't found", method)); return }
 	reply(to, strings.to_string(sb))
+}
+
+// What would change the document, the styles or stored data if it did anything. What clients send on attaching and what
+// configures a client's own session stays out of it: Chrome's frontend (DOM.setInspectedNode on each selection,
+// DOM.setNodeStackTracesEnabled, CSS.setLocalFontsEnabled), and Target.set*, Page.set*, Network.set*, Emulation.set* of
+// Puppeteer and Playwright.
+@(private)
+edit_refused :: proc(method: string) -> bool {
+	switch method {
+	case "DOM.setInspectedNode", "DOM.setNodeStackTracesEnabled", "CSS.setLocalFontsEnabled":
+		return false
+	case "Page.setDocumentContent", "Network.setCookie", "Network.setCookies", "Storage.setCookies", "DOMStorage.setDOMStorageItem":
+		return true
+	}
+	return strings.has_prefix(method, "DOM.set") || strings.has_prefix(method, "CSS.set")
 }
 
 // A client attached to the window (the browser's endpoint, as Playwright and Puppeteer use). A session is only a name
@@ -582,20 +603,28 @@ click :: proc(srv: ^Server, b: ^ui.Box, p: json.Object) -> (x, y: f64) {
 ////////////////////////////////
 // the box tree
 
+// The flags a tree shows of a box.
+@(private)
+SHOWN_FLAGS :: [?]ui.Box_Flag{.Clickable, .Focusable, .Text_Input, .View_Scroll_Y, .View_Scroll_X, .Disabled, .Selectable}
+
+// A box's rect in CSS pixels, as the Toolkit domain writes it.
+@(private)
+rect_json :: proc(b: ^ui.Box, d: f32) -> string {
+	return fmt.tprintf(`"x":%.1f,"y":%.1f,"w":%.1f,"h":%.1f`, b.rect.min.x / d, b.rect.min.y / d, (b.rect.max.x - b.rect.min.x) / d, (b.rect.max.y - b.rect.min.y) / d)
+}
+
 @(private)
 write_node :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, b: ^ui.Box, all: bool, top := false) -> bool {
 	if b == nil || !ui.box_current(s, b) { if top { strings.write_string(sb, "null") }; return false }
 	text := ui.box_text(b)
 	d := f32(dpi(srv))
-	fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,"x":%.1f,"y":%.1f,"w":%.1f,"h":%.1f`, u64(b.key), json_quote(b.name), json_quote(text),
-		b.rect.min.x / d, b.rect.min.y / d, (b.rect.max.x - b.rect.min.x) / d, (b.rect.max.y - b.rect.min.y) / d)
+	fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,%s`, u64(b.key), json_quote(b.name), json_quote(text), rect_json(b, d))
 	if b.a11y != nil && b.a11y.role != .Unknown { fmt.sbprintf(sb, `,"role":"%v"`, b.a11y.role) }
 	if b.a11y != nil && b.a11y.name != "" { fmt.sbprintf(sb, `,"label":%s`, json_quote(b.a11y.name)) }
 	if b.key == ui.focus_key_of(s) { strings.write_string(sb, `,"focused":true`) }
 	if b.key == ui.hot_key_of(s) { strings.write_string(sb, `,"hot":true`) }
-	flags := [?]ui.Box_Flag{.Clickable, .Focusable, .Text_Input, .View_Scroll_Y, .View_Scroll_X, .Disabled, .Selectable}
 	n := 0
-	for f in flags {
+	for f in SHOWN_FLAGS {
 		if f not_in b.flags { continue }
 		strings.write_string(sb, n == 0 ? `,"flags":["` : `","`)
 		fmt.sbprintf(sb, "%v", f)
@@ -669,8 +698,7 @@ write_matches :: proc(sb: ^strings.Builder, srv: ^Server, ms: [dynamic]^ui.Box) 
 	for b, i in ms {
 		if i > 0 { strings.write_byte(sb, ',') }
 		d := f32(dpi(srv))
-		fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,"x":%.1f,"y":%.1f,"w":%.1f,"h":%.1f}}`, u64(b.key), json_quote(b.name), json_quote(ui.box_text(b)),
-			b.rect.min.x / d, b.rect.min.y / d, (b.rect.max.x - b.rect.min.x) / d, (b.rect.max.y - b.rect.min.y) / d)
+		fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,%s}}`, u64(b.key), json_quote(b.name), json_quote(ui.box_text(b)), rect_json(b, d))
 	}
 	strings.write_string(sb, "]}")
 }
@@ -680,17 +708,17 @@ write_matches :: proc(sb: ^strings.Builder, srv: ^Server, ms: [dynamic]^ui.Box) 
 
 @(private)
 screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.Object) -> bool {
+	rect: [4]int
+	if clip, ok := p["clip"].(json.Object); ok {
+		d := dpi(srv)
+		rect = {int(num(clip["x"]) * d), int(num(clip["y"]) * d), int(num(clip["width"]) * d), int(num(clip["height"]) * d)}
+	}
 	if len(srv.captures) == 0 {
 		// (a frame of the screencast on its way gives way: it asks again; this one may want a part of the window)
 		if srv.screencast.pending { render.capture_cancel(r); srv.screencast.pending = false }
-		rect: [4]int
-		if clip, ok := p["clip"].(json.Object); ok {
-			d := dpi(srv)
-			rect = {int(num(clip["x"]) * d), int(num(clip["y"]) * d), int(num(clip["width"]) * d), int(num(clip["height"]) * d)}
-		}
 		if !render.capture_request(r, rect) { return false }
 	}
-	append(&srv.captures, hold(to))
+	append(&srv.captures, Capture_Ask{hold(to), rect})
 	return true
 }
 
@@ -711,12 +739,23 @@ screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		return
 	case .Ready:
 		srv.shots += 1
-		encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, replies = slice.clone(srv.captures[:], runtime.heap_allocator())})
-	case .None, .Failed:
+		// those who asked for this part of the window; the others get their own capture next
+		done := srv.captures[0].rect
+		replies := make([dynamic]Reply_To, context.temp_allocator)
+		left := 0
 		for w in srv.captures {
-			error_reply(w, CDP_ERROR_SERVER, "the capture failed")
-			release(w)
+			if w.rect == done { append(&replies, w.to); continue }
+			srv.captures[left] = w
+			left += 1
 		}
+		resize(&srv.captures, left)
+		encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, replies = slice.clone(replies[:], runtime.heap_allocator())})
+		if left == 0 || render.capture_request(r, srv.captures[0].rect) { return }
+	case .None, .Failed:
+	}
+	for w in srv.captures {
+		error_reply(w.to, CDP_ERROR_SERVER, "the capture failed")
+		release(w.to)
 	}
 	clear(&srv.captures)
 }

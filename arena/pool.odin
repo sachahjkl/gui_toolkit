@@ -1,8 +1,8 @@
 package arena
 
 // Generational handles. A Handle is what an application hands across a boundary (to a script, a serialized reference, a
-// foreign API): it can never dangle. Removing an object bumps the slot's generation, so any copy of the old handle fails
-// to resolve instead of silently reaching whatever reused the slot.
+// foreign API): it can never dangle. A removed object's slot is no longer live, and reusing it bumps its generation, so any
+// copy of the old handle fails to resolve instead of silently reaching whatever reused the slot.
 //
 //     bits 63..32  generation (never 0)
 //     bits 31..0   slot index
@@ -96,7 +96,7 @@ pool_handle_at :: proc(p: ^Pool($T), index: u32) -> Handle {
 	return handle_make(index, slot.gen)
 }
 
-// Iterates live objects: `it := 0; for h, v in pool_next(&p, &it) { ... }`. Removing the current object is allowed.
+// Iterates live objects: `it: u32; for h, v in pool_next(&p, &it) { ... }`. Removing the current object is allowed.
 pool_next :: proc(p: ^Pool($T), it: ^u32) -> (h: Handle, value: ^T, ok: bool) {
 	for it^ < p.used {
 		index := it^

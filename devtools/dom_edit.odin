@@ -94,6 +94,14 @@ css_write_style :: proc(sb: ^strings.Builder, id: int, text: string) {
 	strings.write_byte(sb, '}')
 }
 
+// A number of CSS: finite (strconv also reads "inf" and "nan", and a layout is not to get them).
+@(private)
+css_number :: proc(text: string) -> (v: f32, ok: bool) {
+	v, ok = strconv.parse_f32(text)
+	if !ok || math.is_nan(v) || math.is_inf(v) { return 0, false }
+	return
+}
+
 // A CSS colour as the toolkit's: linear light from sRGB. #rgb #rgba #rrggbb #rrggbbaa rgb() rgba() hsl() hsla() and a few names.
 @(private)
 css_color :: proc(value: string) -> (c: ui.Color, ok: bool) {
@@ -136,7 +144,7 @@ css_color :: proc(value: string) -> (c: ui.Color, ok: bool) {
 			if t == "" { continue }
 			if count == 4 { return }
 			if strings.has_suffix(t, "%") { percent[count] = true; t = t[:len(t) - 1] }
-			f, f_ok := strconv.parse_f32(t)
+			f, f_ok := css_number(t)
 			if !f_ok { return }
 			nums[count] = f
 			count += 1
@@ -172,7 +180,7 @@ css_color :: proc(value: string) -> (c: ui.Color, ok: bool) {
 // A length in CSS pixels: "12px", "12".
 @(private)
 css_length :: proc(value: string) -> (v: f32, ok: bool) {
-	return strconv.parse_f32(strings.trim_space(strings.trim_suffix(strings.trim_space(value), "px")))
+	return css_number(strings.trim_space(strings.trim_suffix(strings.trim_space(value), "px")))
 }
 
 @(private)
@@ -185,7 +193,7 @@ css_impose :: proc(e: ^ui.Box_Edit, name, value: string, d: f32) {
 	case "color":
 		if c, ok := css_color(value); ok { e.text_color = c; e.set += {.Text_Color} }
 	case "opacity":
-		if v, ok := strconv.parse_f32(strings.trim_space(value)); ok { e.opacity = clamp(v, 0, 1); e.set += {.Opacity} }
+		if v, ok := css_number(strings.trim_space(value)); ok { e.opacity = clamp(v, 0, 1); e.set += {.Opacity} }
 	case "border-radius":
 		if v, ok := css_length(value); ok { e.radius = max(v, 0) * d; e.set += {.Radius} }
 	case "font-size":
