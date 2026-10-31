@@ -3,6 +3,12 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.56.2] - 2026-10-31
+
+### Fixed
+- **`examples/whatsnew` no longer stretches while it is resized**: a composition swap chain with a fixed surface, as opencode native, and `inner = true` for the frames of a live resize. The other examples keep the ordinary swap chain, which stretches.
+- **A lazy column's height changed at every frame** when an item showed nothing: its height of 0 counted as not known yet, so it stood for the mean of the others as a space and for nothing when built. A scroll box following its bottom had its scroll bar jump, without end.
+
 ## [0.56.1] - 2026-10-30
 
 ### Added
