@@ -2,7 +2,7 @@
 # published. Branches never touch CHANGELOG.md nor the version, so two merges never conflict on them.
 #
 # A fragment is changelog.d\<yyyyMMdd-HHmmss>-<subject>.md (subject: lowercase letters, digits and '-'):
-#     type: Added                       (Added | Changed | Fixed | Removed)
+#     type: Added                       (Added | Changed | Deprecated | Removed | Fixed | Security)
 #                                       (a blank line, optional)
 #     **What changed**: the one entry, as it will read in the list (no leading "- "); indented "  - " lines are sub-items.
 #
@@ -38,6 +38,7 @@ $Repo = @{
     Heading       = '## [{0}] - {1}'                    # a released version's heading: version, date
     HeadingMatch  = '^## \[(\d+\.\d+\.\d+[^\]]*)\]'     # finds a released version's heading
     Unreleased    = ''                                  # no "## Unreleased": what is not released is in changelog.d\
+    Link          = 'https://github.com/sachahjkl/gui_toolkit/releases/tag/v{0}'   # "[x.y.z]: url" at the end of the file
     CheckVersion  = $true                               # -Check: ui\version.odin must say the last released version
 }
 function Read-SourceVersion {
@@ -65,7 +66,7 @@ function Write-SourceVersion([string]$v) {
 }
 # ---- end of the repository's part
 
-$TypeNames = 'Added', 'Changed', 'Removed', 'Fixed'   # the order of the subsections of a version
+$TypeNames = 'Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security'   # Keep a Changelog's, in the order of a version's subsections
 $Dir = Join-Path $Root 'changelog.d'
 $ChangelogPath = Join-Path $Root 'CHANGELOG.md'
 $NamePattern = '^\d{8}-\d{6}-[a-z0-9]+(-[a-z0-9]+)*\.md$'
@@ -91,9 +92,9 @@ function Read-Fragment([IO.FileInfo]$f) {
     while ($i -lt $lines.Count -and $lines[$i].Trim() -eq '') { $i++ }
     if ($i -ge $lines.Count) { $r.Problems.Add('it is empty'); return $r }
     $m = [regex]::Match($lines[$i], '^\s*type\s*:\s*(\S*)\s*$', 'IgnoreCase')
-    if (-not $m.Success) { $r.Problems.Add("its first line is not 'type: Added|Changed|Fixed|Removed'"); return $r }
+    if (-not $m.Success) { $r.Problems.Add("its first line is not 'type: Added|Changed|Deprecated|Removed|Fixed|Security'"); return $r }
     $r.Type = Canonical-Type $m.Groups[1].Value
-    if (-not $r.Type) { $r.Problems.Add("unknown type '$($m.Groups[1].Value)' (Added, Changed, Fixed or Removed)") }
+    if (-not $r.Type) { $r.Problems.Add("unknown type '$($m.Groups[1].Value)' (Added, Changed, Deprecated, Removed, Fixed or Security)") }
     $body = @($lines[($i + 1)..($lines.Count - 1)] | ForEach-Object { $_.TrimEnd() })
     if ($i + 1 -ge $lines.Count) { $body = @() }
     while ($body.Count -gt 0 -and $body[0] -eq '') { $body = @($body | Select-Object -Skip 1) }
@@ -323,7 +324,16 @@ if ($Assemble) {
         $before = @($c.Lines | Select-Object -SkipLast 0); while ($before.Count -and $before[-1] -eq '') { $before = @($before | Select-Object -SkipLast 1) }; $before += ''
         $after = @('')
     }
-    Write-Text $ChangelogPath ((@($before) + $released + @($after)) -join $c.NL)
+    $all = New-Object Collections.Generic.List[string]
+    foreach ($l in (@($before) + $released + @($after))) { $all.Add([string]$l) }
+    $ref = '[{0}]: {1}' -f $Version, ($Repo.Link -f $Version)
+    $at = -1
+    for ($i = 0; $i -lt $all.Count; $i++) { if ($all[$i] -match '^\[\d+\.\d+\.\d+[^\]]*\]: ') { $at = $i; break } }
+    if ($at -ge 0) { $all.Insert($at, $ref) } else {
+        while ($all.Count -and $all[$all.Count - 1] -eq '') { $all.RemoveAt($all.Count - 1) }
+        $all.Add(''); $all.Add($ref); $all.Add('')
+    }
+    Write-Text $ChangelogPath ($all -join $c.NL)
     "CHANGELOG.md: section $Version ($($items.Count) entries)"
     Write-SourceVersion $Version
     foreach ($f in $frags) { Remove-Item -LiteralPath $f.Path }

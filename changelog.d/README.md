@@ -11,7 +11,7 @@ type: Added
 **`ui.thing`**: what it does, in one entry (no leading "- ").
 ```
 
-- `type` is `Added`, `Changed`, `Fixed` or `Removed`: it picks the subsection.
+- `type` is `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or `Security` ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)): it picks the subsection.
 - The text is one entry of the list, as it will read there. It may span lines; sub-items are indented `  - ` lines;
   no blank line, no heading.
 - One change, one fragment. Two fragments may share a subject (the time keeps them apart).
