@@ -73,6 +73,14 @@ Pending :: struct {
 	deadline: i64,            // monotonic ns; 0 = no deadline
 }
 
+// A synchronous call waiting for its reply (by serial).
+@(private)
+Waiter :: struct {
+	serial: u32,
+	done:   bool,
+	msg:    Message,
+}
+
 // A connection to a bus. Opaque to callers; its fd is given out through conn_fd.
 Conn :: struct {
 	bus:         Bus_Kind,
@@ -81,12 +89,10 @@ Conn :: struct {
 	serial:      u32,         // the next outgoing serial
 	// an incoming-byte buffer: whole messages are parsed out of it, a partial message stays until the rest arrives
 	in_buf:      [dynamic]u8,
-	// matching outgoing serials to callers waiting synchronously: the reply is copied here (its memory: reply_arena, until
-	// the next reply), as messages may follow it in the same read
-	wait_serial: u32,
-	wait_reply:  ^Message,
-	wait_msg:    Message,
-	reply_arena: virtual.Arena,
+	// the callers waiting synchronously, the innermost last (a handler may call while another call waits)
+	waiters:     [dynamic]Waiter,
+	// a reply's memory, one per depth: valid until the next call at that depth (msg_arena's goes back once a message is routed)
+	reply_arenas: [dynamic]^virtual.Arena,
 	subs:        [dynamic]Subscription,
 	next_sub_id: u32,
 	pending:     [dynamic]Pending,

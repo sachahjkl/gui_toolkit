@@ -88,7 +88,6 @@ connect_bus_address :: proc(addr: string, allocator := context.allocator) -> ^Co
 	c.subs = make([dynamic]Subscription, allocator)
 	c.pending = make([dynamic]Pending, allocator)
 	_ = virtual.arena_init_growing(&c.msg_arena)
-	_ = virtual.arena_init_growing(&c.reply_arena)
 	if !auth_external(c) { conn_close(c); return nil }
 	// now non-blocking for the dispatch loop
 	set_nonblocking(fd)
@@ -114,7 +113,9 @@ conn_close :: proc(c: ^Conn) {
 	delete(c.in_buf)
 	delete(c.unique_name)
 	virtual.arena_destroy(&c.msg_arena)
-	virtual.arena_destroy(&c.reply_arena)
+	delete(c.waiters)
+	for a in c.reply_arenas { virtual.arena_destroy(a); free(a) }
+	delete(c.reply_arenas)
 	free(c)
 }
 

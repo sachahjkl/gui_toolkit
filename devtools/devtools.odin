@@ -19,6 +19,7 @@ import "core:crypto"
 import "core:encoding/hex"
 import "core:encoding/json"
 import "core:fmt"
+import "core:hash"
 import "core:math"
 import "core:net"
 import "core:slice"
@@ -187,6 +188,8 @@ stop :: proc(srv: ^Server) {
 // commands that came in are carried out, input injected into the window's queue for this frame.
 service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv == nil { return }
+	// (first: the time between frames is the program's rhythm, and a frame that reads a capture back is not late for it)
+	if s != nil { metrics_sample(srv, s) }
 	if len(srv.later) > 0 { cast_touch(srv) }
 	for e in srv.later { platform.inject_event(srv.win, e) }
 	clear(&srv.later)
@@ -194,7 +197,6 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if s != nil {
 		cast_poll(srv, s, r)
 		if !srv.captured { ui.a11y_capture(s, true); srv.captured = true }
-		metrics_sample(srv, s)
 		rec_poll(srv, s)
 		waits_poll(srv, s)
 		dom_sync(srv, s)
@@ -239,166 +241,277 @@ conns_reap :: proc(srv: ^Server) {
 ////////////////////////////////
 // commands
 
+// A command being carried out: each domain has its procedure (handle chooses), which answers with what it did.
+@(private)
+Cmd :: struct {
+	srv:    ^Server,
+	s:      ^ui.State,          // (nil: a program that serves no tree)
+	r:      ^render.Renderer,   // (nil: none)
+	to:     Reply_To,
+	method: string,
+	p:      json.Object,
+	sb:     strings.Builder,    // the result
+}
+
+@(private)
+Answer :: enum {
+	Unknown,   // not a command of this domain
+	Reply,     // the result is in sb: it goes now
+	Sent,      // answered, refused, or to be answered later
+}
+
 @(private)
 handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	v, err := json.parse_string(m.text, parse_integers = true, allocator = context.temp_allocator)
 	if err != nil { return }
 	o, _ := v.(json.Object)
-	to := Reply_To{conn = m.conn, id = i64(num(o["id"])), session = str(o["sessionId"])}
-	method := str(o["method"])
-	p, _ := o["params"].(json.Object)
-	if s != nil && dom_handle(srv, s, to, method, p) { return }
-	sb := strings.builder_make(context.temp_allocator)
-	ok := true
-	switch method {
+	c := Cmd{srv = srv, s = s, r = r, method = str(o["method"]), sb = strings.builder_make(context.temp_allocator)}
+	c.to = Reply_To{conn = m.conn, id = i64(num(o["id"])), session = str(o["sessionId"])}
+	c.p, _ = o["params"].(json.Object)
+	dot := strings.index_byte(c.method, '.')
+	answer := Answer.Unknown
+	switch dot >= 0 ? c.method[:dot] : "" {
+	case "Browser":       answer = cmd_browser(&c)
+	case "Target":        answer = cmd_target(&c)
+	case "Page":          answer = cmd_page(&c)
+	case "Runtime":       answer = cmd_runtime(&c)
+	case "Input":         answer = cmd_input(&c)
+	case "Log", "Network": answer = cmd_stubs(&c)
+	case "Storage":       answer = cmd_storage(&c)
+	case "DOM":           if s != nil { answer = cmd_dom(&c) }
+	case "CSS":           if s != nil { answer = cmd_css(&c) }
+	case "Overlay":       if s != nil { answer = cmd_overlay(&c) }
+	case "Accessibility": if s != nil { answer = cmd_accessibility(&c) }
+	case "Toolkit":       if s != nil { answer = cmd_toolkit(&c) }
+	}
+	switch answer {
+	case .Sent:
+	case .Reply:
+		reply(c.to, strings.to_string(c.sb))
+	case .Unknown:
+		// an edit that cannot be done says so: the client would show it as done
+		if edit_refused(c.method) { error_reply(c.to, CDP_ERROR_SERVER, fmt.tprintf("'%s': a toolkit window cannot do this", c.method)); return }
+		// what a client turns on before it starts (Page.enable, Emulation.setFocusEmulationEnabled...): nothing to do
+		name := dot >= 0 ? c.method[dot + 1:] : c.method
+		if strings.has_prefix(name, "enable") || strings.has_prefix(name, "disable") || strings.has_prefix(name, "set") {
+			reply(c.to, "{}")
+		} else {
+			error_reply(c.to, CDP_ERROR_METHOD_NOT_FOUND, fmt.tprintf("'%s' wasn't found", c.method))
+		}
+	}
+}
+
+@(private)
+cmd_browser :: proc(c: ^Cmd) -> Answer {
+	switch c.method {
 	case "Browser.getVersion":
-		fmt.sbprintf(&sb, `{{"protocolVersion":"1.3","product":"gui_toolkit/%s","revision":"","userAgent":"gui_toolkit","jsVersion":""}}`, VERSION)
+		fmt.sbprintf(&c.sb, `{{"protocolVersion":"1.3","product":"gui_toolkit/%s","revision":"","userAgent":"gui_toolkit","jsVersion":""}}`, VERSION)
+	case "Browser.getWindowForTarget":
+		fmt.sbprintf(&c.sb, `{{"windowId":1,"bounds":{{"left":0,"top":0,"width":%d,"height":%d,"windowState":"normal"}}}}`, c.srv.win.size.x, c.srv.win.size.y)
+	case "Browser.close":
+		platform.inject_event(c.srv.win, platform.Event{kind = .Close})
+		strings.write_string(&c.sb, "{}")
+	case:
+		return .Unknown
+	}
+	return .Reply
+}
+
+@(private)
+cmd_target :: proc(c: ^Cmd) -> Answer {
+	srv, to := c.srv, c.to
+	switch c.method {
 	case "Target.getTargets":
-		fmt.sbprintf(&sb, `{{"targetInfos":[%s]}}`, target_info(srv))
+		fmt.sbprintf(&c.sb, `{{"targetInfos":[%s]}}`, target_info(srv))
 	case "Target.getTargetInfo":
-		fmt.sbprintf(&sb, `{{"targetInfo":%s}}`, target_info(srv))
+		fmt.sbprintf(&c.sb, `{{"targetInfo":%s}}`, target_info(srv))
 	case "Target.setDiscoverTargets":
-		strings.write_string(&sb, "{}")
-		reply(to, strings.to_string(sb))
-		if bool_of(p["discover"]) { event(to.conn, "", "Target.targetCreated", fmt.tprintf(`{{"targetInfo":%s}}`, target_info(srv))) }
-		return
+		reply(to, "{}")
+		if bool_of(c.p["discover"]) { event(to.conn, "", "Target.targetCreated", fmt.tprintf(`{{"targetInfo":%s}}`, target_info(srv))) }
+		return .Sent
 	case "Target.setAutoAttach":
-		strings.write_string(&sb, "{}")
-		reply(to, strings.to_string(sb))
+		reply(to, "{}")
 		// (a connection to the browser's endpoint gets the page; the page, on its own endpoint or in its session, has nothing under it)
-		if to.session == "" && !to.conn.page && bool_of(p["autoAttach"]) { attached(srv, to, new_session(srv)) }
-		return
+		if to.session == "" && !to.conn.page && bool_of(c.p["autoAttach"]) { attached(srv, to, new_session(srv)) }
+		return .Sent
 	case "Target.attachToTarget":
 		session := new_session(srv)
 		attached(srv, to, session)   // (before the answer, as Chrome: a client makes the session on the event)
-		fmt.sbprintf(&sb, `{{"sessionId":"%s"}}`, session)
+		fmt.sbprintf(&c.sb, `{{"sessionId":"%s"}}`, session)
 	case "Target.attachToBrowserTarget":
-		fmt.sbprintf(&sb, `{{"sessionId":"%s"}}`, new_session(srv))
+		fmt.sbprintf(&c.sb, `{{"sessionId":"%s"}}`, new_session(srv))
 	case "Target.getBrowserContexts":
-		strings.write_string(&sb, `{"browserContextIds":[]}`)
+		strings.write_string(&c.sb, `{"browserContextIds":[]}`)
 	case "Target.detachFromTarget", "Target.activateTarget", "Target.closeTarget":
-		strings.write_string(&sb, "{}")
-	case "Browser.getWindowForTarget":
-		fmt.sbprintf(&sb, `{{"windowId":1,"bounds":{{"left":0,"top":0,"width":%d,"height":%d,"windowState":"normal"}}}}`, srv.win.size.x, srv.win.size.y)
+		strings.write_string(&c.sb, "{}")
+	case:
+		return .Unknown
+	}
+	return .Reply
+}
+
+@(private)
+cmd_page :: proc(c: ^Cmd) -> Answer {
+	srv, s, r, to, p := c.srv, c.s, c.r, c.to, c.p
+	switch c.method {
 	case "Page.getNavigationHistory":
-		strings.write_string(&sb, `{"currentIndex":0,"entries":[{"id":1,"url":"toolkit://window","userTypedURL":"toolkit://window","title":"","transitionType":"other"}]}`)
+		strings.write_string(&c.sb, `{"currentIndex":0,"entries":[{"id":1,"url":"toolkit://window","userTypedURL":"toolkit://window","title":"","transitionType":"other"}]}`)
 	case "Page.addScriptToEvaluateOnNewDocument":
-		strings.write_string(&sb, `{"identifier":"1"}`)   // (there is no document: it never runs)
+		strings.write_string(&c.sb, `{"identifier":"1"}`)   // (there is no document: it never runs)
 	case "Page.createIsolatedWorld":
-		strings.write_string(&sb, `{"executionContextId":2}`)
-	case "Runtime.enable":
-		strings.write_string(&sb, "{}")
-		reply(to, strings.to_string(sb))
-		event(to.conn, to.session, "Runtime.executionContextCreated", fmt.tprintf(`{{"context":{{"id":1,"origin":"toolkit://window","name":"","auxData":{{"isDefault":true,"type":"default","frameId":"%s"}}}}}}`, srv.id))
-		return
-	case "Input.dispatchMouseEvent", "Input.emulateTouchFromMouseEvent":   // (the second: DevTools' picture of the window, clicked)
-		cast_touch(srv)
-		mouse_event(srv, p)
-		strings.write_string(&sb, "{}")
-	case "Input.dispatchKeyEvent":
-		cast_touch(srv)
-		key_event(srv, p)
-		strings.write_string(&sb, "{}")
-	case "Input.insertText":
-		cast_touch(srv)
-		insert_text(srv, str(p["text"]))
-		strings.write_string(&sb, "{}")
+		strings.write_string(&c.sb, `{"executionContextId":2}`)
 	case "Page.captureScreenshot":
-		if screenshot_ask(srv, r, to, p) { return }   // answered when the capture is ready
+		if screenshot_ask(srv, r, to, p) { return .Sent }   // answered when the capture is ready
 		error_reply(to, CDP_ERROR_SERVER, "the renderer cannot capture now")
-		return
+		return .Sent
 	case "Page.getLayoutMetrics":
 		d := dpi(srv)
 		w, h := f64(srv.win.size.x) / d, f64(srv.win.size.y) / d
-		fmt.sbprintf(&sb, `{{"layoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"visualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":%g}},"contentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}},"cssLayoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"cssVisualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":1}},"cssContentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}}}}`, w, h, w, h, d, w, h, w, h, w, h, w, h)
-	case "Accessibility.getFullAXTree":
-		ax_write_nodes(&sb, srv, ui.a11y_tree(s), nil, true)
-	case "Accessibility.queryAXTree":
-		ax_write_nodes(&sb, srv, ui.a11y_tree(s), ax_matches(ui.a11y_tree(s), p)[:], false)
-	case "Toolkit.axAction":
-		if e := ax_action(&sb, srv, s, p); e != "" { error_reply(to, CDP_ERROR_SERVER, e); return }
-		cast_touch(srv)
-	case "Toolkit.axAudit":
-		ax_audit(&sb, srv, s)
-	case "Toolkit.waitFor":
-		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, "waitFor: a name or a text"); return }
-		wait_add(srv, s, to, .Box, p)
-		return
-	case "Toolkit.waitIdle":
-		wait_add(srv, s, to, .Idle, p)
-		return
-	case "Toolkit.metrics":
-		metrics_write(&sb, srv, s, r, p)
-	case "Toolkit.warnings":
-		strings.write_string(&sb, `{"layout":[`)
-		for w, i in ui.layout_warnings() {
-			if i > 0 { strings.write_byte(&sb, ',') }
-			strings.write_string(&sb, json_quote(w))
-		}
-		strings.write_string(&sb, "]}")
-	case "Toolkit.frames":
-		frames_write(&sb, srv, p)
-	case "Toolkit.startRecording":
-		rec_start(srv, s, p)
-		fmt.sbprintf(&sb, `{{"now":%.3f}}`, ui.now_ms())
-	case "Toolkit.pollRecording":
-		rec_take(srv, &sb)
-	case "Toolkit.stopRecording":
-		rec_stop(srv, &sb)
+		fmt.sbprintf(&c.sb, `{{"layoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"visualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":%g}},"contentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}},"cssLayoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"cssVisualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":1}},"cssContentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}}}}`, w, h, w, h, d, w, h, w, h, w, h, w, h)
 	case "Page.startScreencast":
 		cast_start(srv, r, to, p)
-		strings.write_string(&sb, "{}")
+		strings.write_string(&c.sb, "{}")
 	case "Page.stopScreencast":
 		cast_stop(srv, r)
-		strings.write_string(&sb, "{}")
+		strings.write_string(&c.sb, "{}")
 	case "Page.screencastFrameAck":
 		cast_ack(srv, s)
-		strings.write_string(&sb, "{}")
-	case "Browser.close":
-		platform.inject_event(srv.win, platform.Event{kind = .Close})
-		strings.write_string(&sb, "{}")
-	case "Toolkit.getTree":
-		strings.write_string(&sb, `{"root":`)
-		write_node(&sb, srv, s, s.root, bool_of(p["all"]), true)
-		strings.write_string(&sb, "}")
-	case "Toolkit.find":
-		find(&sb, srv, s, p)
-	case "Toolkit.click":
-		b := find_one(s, p)
-		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box with that name or text"); return }
-		cast_touch(srv)
-		x, y := click(srv, b, p)
-		fmt.sbprintf(&sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
-	case "Toolkit.state":
-		d := dpi(srv)
-		fmt.sbprintf(&sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d)
+		strings.write_string(&c.sb, "{}")
 	// (what Chrome's DevTools asks on attaching and cannot do without; there is nothing behind them)
 	case "Page.getResourceTree":
-		fmt.sbprintf(&sb, `{{"frameTree":{{"frame":{{"id":"%s","loaderId":"","url":"toolkit://window","securityOrigin":"toolkit://window","mimeType":"text/html"}},"resources":[]}}}}`, srv.id)
-	case "Runtime.getIsolateId":
-		strings.write_string(&sb, `{"id":"toolkit"}`)
-	case "Log.startViolationsReport", "Network.configureDurableMessages", "Network.overrideNetworkState", "Runtime.addBinding", "Runtime.releaseObject", "Runtime.releaseObjectGroup":
-		strings.write_string(&sb, "{}")
-	case "Network.emulateNetworkConditionsByRule":
-		strings.write_string(&sb, `{"ruleIds":[]}`)
-	case "Runtime.evaluate", "Runtime.callFunctionOn":
-		error_reply(to, CDP_ERROR_SERVER, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
-		return
+		fmt.sbprintf(&c.sb, `{{"frameTree":{{"frame":{{"id":"%s","loaderId":"","url":"toolkit://window","securityOrigin":"toolkit://window","mimeType":"text/html"}},"resources":[]}}}}`, srv.id)
+	case "Page.getFrameTree":
+		fmt.sbprintf(&c.sb, `{{"frameTree":{{"frame":{{"id":"%s","loaderId":"","url":"toolkit://window","securityOrigin":"","mimeType":"text/html"}}}}}}`, srv.id)
 	case:
-		// an edit that cannot be done says so: the client would show it as done
-		if edit_refused(method) { error_reply(to, CDP_ERROR_SERVER, fmt.tprintf("'%s': a toolkit window cannot do this", method)); return }
-		// what a client turns on before it starts (Page.enable, Emulation.setFocusEmulationEnabled...): nothing to do
-		dot := strings.index_byte(method, '.')
-		name := dot >= 0 ? method[dot + 1:] : method
-		if strings.has_prefix(name, "enable") || strings.has_prefix(name, "disable") || strings.has_prefix(name, "set") ||
-		   method == "Runtime.runIfWaitingForDebugger" || method == "Page.getFrameTree" {
-			strings.write_string(&sb, method == "Page.getFrameTree" ? fmt.tprintf(`{{"frameTree":{{"frame":{{"id":"%s","loaderId":"","url":"toolkit://window","securityOrigin":"","mimeType":"text/html"}}}}}}`, srv.id) : "{}")
-		} else {
-			ok = false
-		}
+		return .Unknown
 	}
-	if !ok { error_reply(to, CDP_ERROR_METHOD_NOT_FOUND, fmt.tprintf("'%s' wasn't found", method)); return }
-	reply(to, strings.to_string(sb))
+	return .Reply
+}
+
+@(private)
+NO_JAVASCRIPT :: "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)"
+
+@(private)
+cmd_runtime :: proc(c: ^Cmd) -> Answer {
+	to := c.to
+	switch c.method {
+	case "Runtime.enable":
+		reply(to, "{}")
+		event(to.conn, to.session, "Runtime.executionContextCreated", fmt.tprintf(`{{"context":{{"id":1,"origin":"toolkit://window","name":"","auxData":{{"isDefault":true,"type":"default","frameId":"%s"}}}}}}`, c.srv.id))
+		return .Sent
+	case "Runtime.getIsolateId":
+		strings.write_string(&c.sb, `{"id":"toolkit"}`)
+	case "Runtime.addBinding", "Runtime.releaseObject", "Runtime.releaseObjectGroup", "Runtime.runIfWaitingForDebugger":
+		strings.write_string(&c.sb, "{}")
+	case "Runtime.callFunctionOn":
+		// (Chrome's Elements asks it of each node it selects: a box is no custom element. Anything else is JavaScript.)
+		if !strings.contains(str(c.p["functionDeclaration"]), "formAssociated") { error_reply(to, CDP_ERROR_SERVER, NO_JAVASCRIPT); return .Sent }
+		strings.write_string(&c.sb, `{"result":{"type":"boolean","value":false}}`)
+	case "Runtime.evaluate":
+		error_reply(to, CDP_ERROR_SERVER, NO_JAVASCRIPT)
+		return .Sent
+	case:
+		return .Unknown
+	}
+	return .Reply
+}
+
+@(private)
+cmd_input :: proc(c: ^Cmd) -> Answer {
+	srv, p := c.srv, c.p
+	switch c.method {
+	case "Input.dispatchMouseEvent", "Input.emulateTouchFromMouseEvent":   // (the second: DevTools' picture of the window, clicked)
+		cast_touch(srv)
+		mouse_event(srv, p)
+	case "Input.dispatchKeyEvent":
+		cast_touch(srv)
+		key_event(srv, p)
+	case "Input.insertText":
+		cast_touch(srv)
+		insert_text(srv, str(p["text"]))
+	case:
+		return .Unknown
+	}
+	strings.write_string(&c.sb, "{}")
+	return .Reply
+}
+
+// What Chrome's DevTools asks of what is not here, and cannot do without.
+@(private)
+cmd_stubs :: proc(c: ^Cmd) -> Answer {
+	switch c.method {
+	case "Log.startViolationsReport", "Network.configureDurableMessages", "Network.overrideNetworkState":
+		strings.write_string(&c.sb, "{}")
+	case "Network.emulateNetworkConditionsByRule":
+		strings.write_string(&c.sb, `{"ruleIds":[]}`)
+	case:
+		return .Unknown
+	}
+	return .Reply
+}
+
+// The frontend asks each frame's key to list what is stored there: a window stores nothing, under the one key it has.
+@(private)
+cmd_storage :: proc(c: ^Cmd) -> Answer {
+	if c.method != "Storage.getStorageKey" { return .Unknown }
+	strings.write_string(&c.sb, `{"storageKey":"toolkit://window/"}`)
+	return .Reply
+}
+
+@(private)
+cmd_toolkit :: proc(c: ^Cmd) -> Answer {
+	srv, s, r, to, p := c.srv, c.s, c.r, c.to, c.p
+	sb := &c.sb
+	switch c.method {
+	case "Toolkit.axAction":
+		if e := ax_action(sb, srv, s, p); e != "" { error_reply(to, CDP_ERROR_SERVER, e); return .Sent }
+		cast_touch(srv)
+	case "Toolkit.axAudit":
+		ax_audit(sb, srv, s)
+	case "Toolkit.waitFor":
+		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, "waitFor: a name or a text"); return .Sent }
+		wait_add(srv, s, to, .Box, p)
+		return .Sent
+	case "Toolkit.waitIdle":
+		wait_add(srv, s, to, .Idle, p)
+		return .Sent
+	case "Toolkit.metrics":
+		metrics_write(sb, srv, s, r, p)
+	case "Toolkit.warnings":
+		strings.write_string(sb, `{"layout":[`)
+		for w, i in ui.layout_warnings() {
+			if i > 0 { strings.write_byte(sb, ',') }
+			strings.write_string(sb, json_quote(w))
+		}
+		strings.write_string(sb, "]}")
+	case "Toolkit.frames":
+		frames_write(sb, srv, p)
+	case "Toolkit.startRecording":
+		rec_start(srv, s, p)
+		fmt.sbprintf(sb, `{{"now":%.3f}}`, ui.now_ms())
+	case "Toolkit.pollRecording":
+		rec_take(srv, sb)
+	case "Toolkit.stopRecording":
+		rec_stop(srv, sb)
+	case "Toolkit.getTree":
+		strings.write_string(sb, `{"root":`)
+		write_node(sb, srv, s, s.root, bool_of(p["all"]), true)
+		strings.write_string(sb, "}")
+	case "Toolkit.find":
+		find(sb, srv, s, p)
+	case "Toolkit.click":
+		b := find_one(s, p)
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box with that name or text"); return .Sent }
+		cast_touch(srv)
+		x, y := click(srv, b, p)
+		fmt.sbprintf(sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
+	case "Toolkit.state":
+		d := dpi(srv)
+		fmt.sbprintf(sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d)
+	case:
+		return .Unknown
+	}
+	return .Reply
 }
 
 // What would change the document, the styles or stored data if it did anything. What clients send on attaching and what
@@ -713,6 +826,7 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.
 		d := dpi(srv)
 		rect = {int(num(clip["x"]) * d), int(num(clip["y"]) * d), int(num(clip["width"]) * d), int(num(clip["height"]) * d)}
 	}
+	if r == nil { return false }
 	if len(srv.captures) == 0 {
 		// (a frame of the screencast on its way gives way: it asks again; this one may want a part of the window)
 		if srv.screencast.pending { render.capture_cancel(r); srv.screencast.pending = false }
@@ -725,15 +839,15 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.
 @(private)
 screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv.screencast.pending {
-		pixels, size, status := render.capture_poll(r, runtime.heap_allocator())
+		raw, status := render.capture_poll_raw(r, runtime.heap_allocator())
 		#partial switch status {
-		case .Ready: cast_frame(srv, s, pixels, size)
+		case .Ready: cast_frame(srv, s, raw)
 		case .None, .Failed: srv.screencast.pending = false
 		}
 		return
 	}
 	if len(srv.captures) == 0 { return }
-	pixels, size, status := render.capture_poll(r, runtime.heap_allocator())
+	raw, status := render.capture_poll_raw(r, runtime.heap_allocator())
 	switch status {
 	case .Pending:
 		return
@@ -749,7 +863,7 @@ screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 			left += 1
 		}
 		resize(&srv.captures, left)
-		encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, replies = slice.clone(replies[:], runtime.heap_allocator())})
+		encode_start(Encode_Job{srv = srv, raw = raw, replies = slice.clone(replies[:], runtime.heap_allocator())})
 		if left == 0 || render.capture_request(r, srv.captures[0].rect) { return }
 	case .None, .Failed:
 	}
@@ -808,10 +922,10 @@ json_quote :: proc(s: string, allocator := context.temp_allocator) -> string {
 @(private)
 Encode_Job :: struct {
 	srv:     ^Server,
-	pixels:  []u8,         // (the heap's: the job's now)
-	size:    [2]int,
+	raw:     render.Capture_Raw,   // (the heap's: the job's now; made a picture on the job's thread)
 	replies: []Reply_To,   // (held: the job's now)
 	frame:   bool,         // a frame of the screencast: an event to `to`, with this text after its data
+	first:   bool,         // the screencast's first: it goes out, whatever the picture
 	to:      Reply_To,     // (held)
 	meta:    string,       // (the heap's)
 }
@@ -826,22 +940,36 @@ encode_start :: proc(j: Encode_Job) {
 @(private)
 encode_run :: proc(j: ^Encode_Job) {
 	h := runtime.heap_allocator()
-	png := png_encode(j.pixels, j.size.x, j.size.y, h)
-	data := base64.encode(png, allocator = h)
+	srv := j.srv
+	same := false
 	if j.frame {
-		event(j.to.conn, j.to.session, "Page.screencastFrame", fmt.tprintf(`{{"data":"%s",%s}}`, data, j.meta))
+		c := &srv.screencast
+		crc := u64(hash.crc32(j.raw.pixels))
+		same = !j.first && crc == sync.atomic_load(&c.last_hash)
+		sync.atomic_store(&c.last_hash, crc)
+	}
+	if same {
 		release(j.to)
 		delete(j.meta, h)
-	}
-	for w in j.replies {
-		reply(w, fmt.tprintf(`{{"data":"%s"}}`, data))
-		release(w)
+		sync.atomic_store(&srv.screencast.same, true)
+		platform.wake(srv.win)
+	} else {
+		png := png_encode(render.capture_raw_finish(j.raw), j.raw.size.x, j.raw.size.y, h)
+		data := base64.encode(png, allocator = h)
+		if j.frame {
+			event(j.to.conn, j.to.session, "Page.screencastFrame", fmt.tprintf(`{{"data":"%s",%s}}`, data, j.meta))
+			release(j.to)
+			delete(j.meta, h)
+		}
+		for w in j.replies {
+			reply(w, fmt.tprintf(`{{"data":"%s"}}`, data))
+			release(w)
+		}
+		delete(data, h)
+		delete(png, h)
 	}
 	delete(j.replies, h)
-	delete(data, h)
-	delete(png, h)
-	delete(j.pixels, h)
-	srv := j.srv
+	delete(j.raw.pixels, h)
 	free(j, h)
 	free_all(context.temp_allocator)
 	sync.atomic_sub(&srv.encoding, 1)

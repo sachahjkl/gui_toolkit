@@ -7,34 +7,39 @@ package dbus
 
 import "core:mem/virtual"
 import "core:strings"
+import "core:sys/posix"
 import "core:time"
 
 @(private = "file") NS_PER_MS :: 1_000_000
 @(private = "file") RECV_CHUNK_BYTES :: 8192
 
 // Sends a method call and waits for its reply (bounded by timeout_ms, 0 = a default). The returned Message is valid
-// until the next call on this connection (it lives in the connection's reply arena). ok = false on timeout or
+// until the next call on this connection (it lives in a reply arena of the connection). ok = false on timeout or
 // disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
-// A handler may call this, but a reply to an outer call that arrives during it is lost: the outer call times out.
+// A handler may call this while another call waits: each gets its own reply, in whatever order they come.
 call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) {
 	if !conn_alive_or_connecting(c) { return {}, false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return {}, false }
 	deadline := time.tick_now()
 	limit := timeout_ms > 0 ? timeout_ms : DEFAULT_CALL_TIMEOUT_MS
-	outer := c.wait_serial
-	defer c.wait_serial = outer
-	c.wait_serial = serial
-	c.wait_reply = nil
+	depth := len(c.waiters)
+	if depth == len(c.reply_arenas) {
+		a := new(virtual.Arena)
+		_ = virtual.arena_init_growing(a)
+		append(&c.reply_arenas, a)
+	}
+	virtual.arena_free_all(c.reply_arenas[depth])
+	append(&c.waiters, Waiter{serial = serial})
+	defer pop(&c.waiters)
 	for {
-		pump(c, remaining_ms(deadline, limit))
-		if c.wait_reply != nil {
-			m := c.wait_reply^
-			c.wait_reply = nil
-			return m, m.type == .Method_Return
-		}
+		// (what an outer call read and had not routed yet, when this is a call in a handler: the socket has nothing more to say)
+		route_buffered(c)
+		// (an index: a call in a handler may have moved the list)
+		if w := c.waiters[depth]; w.done { return w.msg, w.msg.type == .Method_Return }
 		if c.disconnected { return {}, false }
 		if remaining_ms(deadline, limit) <= 0 { return {}, false }
+		pump(c, remaining_ms(deadline, limit))
 	}
 }
 
@@ -123,7 +128,14 @@ drain_socket :: proc(c: ^Conn) {
 			continue
 		}
 		if n == 0 { c.disconnected = true; break }
-		break   // EAGAIN / EWOULDBLOCK on the non-blocking socket: nothing more right now
+		#partial switch posix.errno() {
+		case .EINTR:
+			continue
+		case .EAGAIN:   // on the non-blocking socket: nothing more right now
+		case:           // (ECONNRESET: the bus went away with something of ours unread)
+			c.disconnected = true
+		}
+		break
 	}
 }
 
@@ -151,11 +163,11 @@ route_buffered :: proc(c: ^Conn) {
 route_one :: proc(c: ^Conn, msg: ^Message) {
 	#partial switch msg.type {
 	case .Method_Return, .Error:
-		if c.wait_serial != 0 && msg.reply_serial == c.wait_serial {
-			// hand it to the synchronous waiter: a copy of its own (msg's memory goes back when it is routed)
-			virtual.arena_free_all(&c.reply_arena)
-			c.wait_msg = message_clone(msg^, virtual.arena_allocator(&c.reply_arena))
-			c.wait_reply = &c.wait_msg
+		for &w, i in c.waiters {
+			if w.done || w.serial != msg.reply_serial { continue }
+			// a copy of its own (msg's memory goes back when it is routed)
+			w.msg = message_clone(msg^, virtual.arena_allocator(c.reply_arenas[i]))
+			w.done = true
 			return
 		}
 		for &p, i in c.pending {
