@@ -61,60 +61,7 @@ drop_target_enabled :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.e
 // Prepares the calling thread for drag and drop. Nothing to do on Linux (no apartment model); always true.
 dragdrop_thread_init :: proc() -> bool { return true }
 
-drop_data :: proc(w: ^Window) -> ^Drag_Data {
-	if w.dnd == nil { return nil }
-	return &w.dnd.data
-}
-
-drop_active :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.over }
-
-drop_set_effect :: proc(w: ^Window, effect: Maybe(Drop_Effect)) { dnd_state(w).effect = effect }
-
-drop_data_release :: proc(w: ^Window) {
-	if w.dnd == nil || w.dnd.over { return }
-	context.allocator = w.dnd.allocator
-	drag_data_destroy(&w.dnd.data)
-}
-
-drop_inject :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, data: ^Drag_Data = nil, allowed: Drop_Effects = {.Copy, .Move, .Link}, mods: Modifiers = {}) -> bool {
-	#partial switch kind {
-	case .Drop_Enter, .Drop_Over, .Drop_Leave, .Drop:
-	case: return false
-	}
-	d := dnd_state(w)
-	if kind == .Drop_Enter {
-		context.allocator = d.allocator
-		drag_data_destroy(&d.data)
-		if data != nil { d.data = drag_data_clone(data^) }
-		d.effect = nil
-	}
-	d.allowed = allowed
-	d.over = kind == .Drop_Enter || kind == .Drop_Over
-	inject_event(w, Event{kind = kind, pos = pos, mods = mods, drop_allowed = allowed})
-	return true
-}
-
-drop_sync_set :: proc(w: ^Window, handler: Drop_Sync, user: rawptr) {
-	d := dnd_state(w)
-	d.sync, d.sync_user = handler, user
-}
-
-drag_script :: proc(w: ^Window, steps: []Drag_Step) -> bool {
-	d := dnd_state(w)
-	context.allocator = d.allocator
-	clear(&d.script)
-	append(&d.script, ..steps)
-	return true
-}
-
-drag_image_held :: proc(w: ^Window) -> (size, offset: [2]int, ok: bool) {
-	if w.dnd == nil || !w.dnd.image_held { return }
-	return w.dnd.image_size, w.dnd.image_offset, true
-}
-
 drag_threshold :: proc(w: ^Window) -> [2]f32 { return {DRAG_THRESHOLD_PX, DRAG_THRESHOLD_PX} }   // no system setting we read; the common default
-
-drag_sending :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.sending }
 
 // Runs a drag of the system from the window. Wayland: wl_data_device.start_drag with a wl_data_source; X11: the XDND
 // source loop. Blocks until the drop or cancel; returns the chosen effect. ok = false when the backend could not start
@@ -174,14 +121,15 @@ deliver_drop :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, mods: Modifiers 
 	return kind == .Drop_Leave ? nil : d.effect
 }
 
-// The effect the app last chose, filtered to what the source allows; falls back to the convention when the app has not
-// answered (the common case while a drag hovers).
+// The app's last answer, when the source allows it. The app's own drag back over its window, with no drop_sync_set: the
+// app cannot answer before the drop, the convention does.
 @(private)
-dnd_answer :: proc(w: ^Window, mods: Modifiers) -> Maybe(Drop_Effect) {
+dnd_answer :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 	d := w.dnd
 	if d == nil { return nil }
 	if e, ok := d.effect.?; ok && e in d.allowed { return e }
-	return drop_effect_for(d.allowed, mods)
+	if d.sending && d.sync == nil { return drop_effect_for(d.allowed, {}) }
+	return nil
 }
 
 // A scripted drag (drag_script): feed the window's own drop target along the steps, as a drag that came back over it.

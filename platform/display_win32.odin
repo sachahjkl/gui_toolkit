@@ -199,7 +199,7 @@ fallback_rate :: proc(d: Display_Info, device: ^u16) -> Display_Info {
 // The rate of the active path whose source is the GDI device `device` (\\.\DISPLAYn).
 @(private = "file")
 display_config_rate :: proc(device: []u16) -> (num, den: u32, ok: bool) {
-	for attempt in 0 ..< DISPLAY_CONFIG_ATTEMPTS {
+	for _ in 0 ..< DISPLAY_CONFIG_ATTEMPTS {
 		np, nm: u32
 		if GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &np, &nm) != 0 || np == 0 { return }
 		paths := make([]DISPLAYCONFIG_PATH_INFO, np, context.temp_allocator)
@@ -207,7 +207,6 @@ display_config_rate :: proc(device: []u16) -> (num, den: u32, ok: bool) {
 		res := QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &np, raw_data(paths), &nm, raw_data(modes), nil)
 		if res == 122 { continue }   // ERROR_INSUFFICIENT_BUFFER: the topology changed in between
 		if res != 0 { return }
-		_ = attempt
 		for p in paths[:np] {
 			name := DISPLAYCONFIG_SOURCE_DEVICE_NAME{type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, size = size_of(DISPLAYCONFIG_SOURCE_DEVICE_NAME), adapter = p.source_adapter, id = p.source_id}
 			if DisplayConfigGetDeviceInfo(&name) != 0 || !wide_equal(name.gdi_name[:], device) { continue }

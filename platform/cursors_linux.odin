@@ -43,8 +43,8 @@ cursor_scheme :: proc() -> Cursor_Scheme { return dark_mode_preferred() ? .Dark 
 
 cursor_settings_changed :: proc() {}   // re-read on demand; nothing cached to invalidate here
 
-// The size a cursor has on the window's monitor, in physical pixels (the theme's base size scaled by DPI). The XCURSOR_SIZE
-// environment variable overrides the base; 24 is the common default.
+// The size a cursor has on the window's monitor, in physical pixels (a base size scaled by DPI: 24, the
+// common default; XCURSOR_SIZE is not read).
 @(private = "file") CURSOR_THEME_BASE_PX :: 24
 cursor_size_px :: proc(w: ^Window) -> int {
 	base := CURSOR_THEME_BASE_PX

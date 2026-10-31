@@ -51,6 +51,7 @@ Wl_Conn :: struct {
 	// the seat's focus: which window the pointer / keyboard are over now (for routing input)
 	pointer_focus:  ^Window,
 	keyboard_focus: ^Window,
+	key_repeat:     Key_Repeat,   // the compositor leaves the repeat of a held key to the client
 	pointer_pos:    [2]f32,
 	// the clipboard text another client offered, and the fd/offer plumbing (clipboard_linux.odin uses the richer parts)
 	clip_text:  string,
@@ -128,6 +129,7 @@ wl_connect :: proc() -> bool {
 	if wlc.display == nil { return false }
 	wlc.fd = l.display_get_fd(wlc.display)
 	wlc.output_scale = 1
+	wlc.key_repeat.rate, wlc.key_repeat.delay_ms = KEY_REPEAT_DEFAULT_RATE, KEY_REPEAT_DEFAULT_DELAY_MS
 	// the registry, and bind the globals it advertises
 	wlc.registry = l.proxy_marshal_flags(Wl_Proxy(wlc.display), 1 /*get_registry*/, l.registry_interface, l.proxy_get_version(Wl_Proxy(wlc.display)), 0, nil)
 	if wlc.registry == nil { return false }
@@ -296,7 +298,8 @@ window_of_surface :: proc "contextless" (surface: Wl_Proxy) -> ^Window {
 @(private)
 ptr_enter :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy, sx, sy: Wl_Fixed) {
 	wlc.pointer_focus = window_of_surface(surface)
-	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)), f32(wl_fixed_to_f64(sy))}
+	scale: f32 = wlc.pointer_focus != nil ? wlc.pointer_focus.dpi_scale : 1   // (as ptr_motion: a click before any motion lands here)
+	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)) * scale, f32(wl_fixed_to_f64(sy)) * scale}
 	wl_enter_serial = serial
 }
 @(private) wl_enter_serial: u32
@@ -389,6 +392,7 @@ kb_enter :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy
 kb_leave :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy) {
 	context = wl_ctx_real()
 	if w := wlc.keyboard_focus; w != nil { w.focused = false; w.active = false; wl_push(w, {kind = .Activate}) }
+	wlc.key_repeat.held = false
 	wlc.keyboard_focus = nil
 }
 @(private)
@@ -400,23 +404,70 @@ kb_key :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, time, key, state: u32) {
 	k := xkb_lib()
 	if !k.ok || wlc.xkb_state == nil { return }
 	keycode := key + 8   // evdev to xkb
+	press := state == 1
+	wl_key_emit(w, keycode, press, false)
+	if !press {
+		key_repeat_release(&wlc.key_repeat, keycode)
+	} else if wl_key_repeats(keycode) {
+		key_repeat_press(&wlc.key_repeat, keycode, wl_now_ms())
+	}
+}
+
+// A key's events: its Key_Press or Key_Release, and the text it types.
+@(private)
+wl_key_emit :: proc(w: ^Window, keycode: u32, press, repeat: bool) {
+	k := xkb_lib()
 	sym := k.state_key_get_one_sym(wlc.xkb_state, keycode)
 	kk := key_from_keysym(sym)
-	press := state == 1
 	mods := wl_mods()
-	if kk != .None { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods}) }
+	if kk != .None { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat}) }
 	if press && .Ctrl not_in mods && .Alt not_in mods {
 		buf: [8]u8
 		n := k.state_key_get_utf8(wlc.xkb_state, keycode, &buf[0], size_of(buf))
 		if n > 0 { if r, sz := utf8.decode_rune(string(buf[:n])); sz > 0 && r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { wl_push(w, {kind = .Text, text = r, mods = mods}) } }
 	}
 }
+
+// Whether a key repeats in the keymap (the modifiers do not, and xkb knows the rest).
+@(private)
+wl_key_repeats :: proc(keycode: u32) -> bool {
+	k := xkb_lib()
+	#partial switch key_from_keysym(k.state_key_get_one_sym(wlc.xkb_state, keycode)) {
+	case .Shift, .Ctrl, .Alt: return false
+	}
+	return k.keymap_key_repeats == nil || k.keymap_key_repeats(wlc.xkb_keymap, keycode) != 0
+}
+
+@(private)
+wl_now_ms :: proc() -> f64 { return f64(time.tick_now()._nsec) / 1e6 }
+
+// The repeats that are due go to the window that has the keyboard.
+@(private)
+wl_key_repeat_tick :: proc() {
+	w := wlc.keyboard_focus
+	if w == nil || wlc.xkb_state == nil { return }
+	now := wl_now_ms()
+	for key_repeat_take(&wlc.key_repeat, now) { wl_key_emit(w, wlc.key_repeat.code, true, true) }
+}
+
+// The wait of a poll: `timeout_ms` (0: none), shortened to the next repeat of a held key.
+@(private)
+wl_poll_timeout :: proc(timeout_ms: int) -> int {
+	t := timeout_ms > 0 ? timeout_ms : -1
+	if r := key_repeat_wait_ms(&wlc.key_repeat, wl_now_ms()); r >= 0 && (t < 0 || r < t) { t = r }
+	return t
+}
+
 @(private)
 kb_modifiers :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, dep, latched, locked, group: u32) {
 	k := &xkb
 	if k.ok && wlc.xkb_state != nil { k.state_update_mask(wlc.xkb_state, dep, latched, locked, 0, 0, group) }
 }
-@(private) kb_repeat :: proc "c" (data: rawptr, kb: Wl_Proxy, rate, delay: i32) {}
+@(private)
+kb_repeat :: proc "c" (data: rawptr, kb: Wl_Proxy, rate, delay: i32) {
+	wlc.key_repeat.rate, wlc.key_repeat.delay_ms = int(rate), int(delay)
+	if rate <= 0 { wlc.key_repeat.held = false }
+}
 
 @(private)
 wl_mods :: proc "contextless" () -> (m: Modifiers) {
@@ -612,7 +663,6 @@ wl_show_window_menu :: proc(w: ^Window, pos: [2]f32) {
 	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SHOW_WINDOW_MENU, nil, wl.proxy_get_version(st.xdg_toplevel), 0, wlc.seat, wl_enter_serial, i32(pos.x), i32(pos.y))
 	wl.display_flush(wlc.display)
 }
-@(private) wl_wake :: proc(w: ^Window) { wl.display_flush(wlc.display) }
 
 ////////////////////////////////
 // pump
@@ -624,6 +674,16 @@ wl_push :: proc(w: ^Window, e: Event) {
 	append(&w.events, e)
 }
 
+// Reads what the socket holds, without waiting, and dispatches it (wl_display_dispatch_pending alone never reads).
+@(private)
+wl_read_available :: proc() {
+	l := wayland_lib()
+	for l.display_prepare_read(wlc.display) != 0 { l.display_dispatch_pending(wlc.display) }
+	l.display_flush(wlc.display)
+	if poll_fd_wait(wlc.fd, 0) > 0 { l.display_read_events(wlc.display) } else { l.display_cancel_read(wlc.display) }
+	l.display_dispatch_pending(wlc.display)
+}
+
 @(private)
 wl_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	l := wayland_lib()
@@ -631,12 +691,11 @@ wl_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	l.display_dispatch_pending(wlc.display)
 	l.display_flush(wlc.display)
 	if wait && len(w.events) == 0 {
-		r := poll_two(wlc.fd, dbus_fd(), timeout_ms > 0 ? timeout_ms : -1)
-		if r.rendered { l.display_dispatch(wlc.display) }
+		r := poll_two(wlc.fd, dbus_fd(), wl_poll_timeout(timeout_ms), wake_fd(w))
 		if r.readable { dbus_pump() }
-	} else {
-		l.display_dispatch_pending(wlc.display)
 	}
+	wl_read_available()
+	wl_key_repeat_tick()
 	dbus_pump()
 	l.display_flush(wlc.display)
 }
@@ -645,14 +704,13 @@ wl_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 wl_wait :: proc(w: ^Window, timeout_ms: int) {
 	if len(w.events) > 0 || len(w.injected) > 0 { return }
 	wl.display_flush(wlc.display)
-	poll_fd_wait(wlc.fd, timeout_ms > 0 ? timeout_ms : -1)
+	poll_two(wlc.fd, -1, wl_poll_timeout(timeout_ms), wake_fd(w))
 }
 
 @(private)
 wl_take_input :: proc(w: ^Window) {
-	l := wayland_lib()
-	l.display_dispatch_pending(wlc.display)
-	l.display_flush(wlc.display)
+	wl_read_available()
+	wl_key_repeat_tick()
 }
 
 ////////////////////////////////

@@ -125,15 +125,15 @@ drag_image_fit :: proc(img: Drag_Image, max_size: [2]int, allocator := context.a
 			x0 := x * w / nw
 			x1 := max((x + 1) * w / nw, x0 + 1)
 			// premultiplied average, so transparent pixels do not darken the edges
-			sum: [4]u32
+			sum: [4]u64   // (u32 overflows: 255 * 255 per source pixel, and a large picture brought down to a few pixels adds thousands)
 			for yy in y0 ..< y1 {
 				for xx in x0 ..< x1 {
 					p := img.rgba[(yy * w + xx) * 4:][:4]
-					a := u32(p[3])
-					sum += {u32(p[0]) * a, u32(p[1]) * a, u32(p[2]) * a, a}
+					a := u64(p[3])
+					sum += {u64(p[0]) * a, u64(p[1]) * a, u64(p[2]) * a, a}
 				}
 			}
-			n := u32((y1 - y0) * (x1 - x0))
+			n := u64((y1 - y0) * (x1 - x0))
 			o := out[(y * nw + x) * 4:][:4]
 			if sum[3] > 0 { for c in 0 ..< 3 { o[c] = u8(sum[c] / sum[3]) } }
 			o[3] = u8(sum[3] / n)

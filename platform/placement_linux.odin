@@ -2,7 +2,7 @@
 package platform
 
 // Where a window is on the screen (placement.odin has the shared types and fit_rect_to_work). On X11 the position is
-// read from and set on the window (xcb_get_geometry / xcb_configure_window); Wayland does not let a client know or set
+// set on the window (xcb_configure_window) but not read back; Wayland does not let a client know or set
 // its absolute position (the compositor places windows), so there a window reports {0,0} for its origin and move is a
 // no-op, which is correct for the protocol — an app saves and restores its *size* and maximized state, which both
 // backends support.

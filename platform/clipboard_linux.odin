@@ -9,9 +9,9 @@ package platform
 // an image is offered as its raw bytes only when the app already holds PNG. This keeps the toolkit free of an image
 // codec while letting a browser (which has one) carry pictures.
 //
-// clipboard_watch / clipboard_changed let a window learn when another program wrote the clipboard; on Linux this is
-// best effort (X11 has no change signal without XFIXES, which is probed when present), so it reports a change whenever
-// the selection owner is not this process.
+// clipboard_changed tells a window once when this process wrote the clipboard or lost it to another program, and on
+// Wayland whenever the selection moves. X11 has no change signal here (XFIXES is not used): a program that takes the
+// clipboard from another program is not seen. clipboard_watch has nothing to do.
 
 import "core:strings"
 import "core:sync"
@@ -38,20 +38,37 @@ png_decode_hook: proc(b: []u8, allocator := context.allocator) -> (Clipboard_Ima
 
 clipboard_sequence :: proc() -> u32 { return sync.atomic_load(&clip.seq) }
 
+// What the clipboard holds now: this process's store while it owns the selection, else what the owner offers. Without a
+// connection (no window yet, offscreen), the store.
 clipboard_formats :: proc() -> Clipboard_Formats {
+	if wlc.display != nil {
+		if wlc.data_source != nil { return clip_store_formats() }
+		if wlc.have_offer && wlc.offer != nil { return clipboard_formats_from_mimes(wlc.offer_mimes[:]) }
+		return {}
+	}
+	if x11c.c != nil && x11c.clip_owner == 0 && x11c.first_window != nil { return x11_foreign_formats(x11c.first_window) }
+	return clip_store_formats()
+}
+
+// What this process's store offers (the selection owner's answer to other clients).
+@(private)
+clip_store_formats :: proc() -> Clipboard_Formats {
 	sync.mutex_lock(&clip.mutex)
 	defer sync.mutex_unlock(&clip.mutex)
 	return clip.formats
 }
 
+// The selection moved without this process writing it.
+@(private)
+clip_note_changed :: proc() { sync.atomic_add(&clip.seq, 1) }
+
 clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []string {
-	sync.mutex_lock(&clip.mutex)
-	defer sync.mutex_unlock(&clip.mutex)
+	fmts := clipboard_formats()
 	out := make([dynamic]string, allocator)
-	if .Text in clip.formats { append(&out, strings.clone("text/plain", allocator)) }
-	if .Html in clip.formats { append(&out, strings.clone("text/html", allocator)) }
-	if .Image in clip.formats { append(&out, strings.clone("image/png", allocator)) }
-	if .Files in clip.formats { append(&out, strings.clone("text/uri-list", allocator)) }
+	if .Text in fmts { append(&out, strings.clone("text/plain", allocator)) }
+	if .Html in fmts { append(&out, strings.clone("text/html", allocator)) }
+	if .Image in fmts { append(&out, strings.clone("image/png", allocator)) }
+	if .Files in fmts { append(&out, strings.clone("text/uri-list", allocator)) }
 	return out[:]
 }
 
@@ -117,57 +134,13 @@ clip_read_foreign :: proc(w: ^Window, mime: string, allocator := context.allocat
 	if w == nil || w.offscreen { return nil }
 	switch w.backend {
 	case .Wayland:
-		if wlc.offer == nil { return nil }
+		if wlc.offer == nil || wlc.data_source != nil { return nil }   // (our own offer: this thread would have to answer itself)
 		return wl_offer_read(wlc.offer, mime, allocator)
 	case .X11:
 		return x11_selection_read(w, x11c.clipboard, mime, allocator)
 	case .None:
 	}
 	return nil
-}
-
-// The file:// URIs of a text/uri-list turned into filesystem paths (percent-decoded, "file://host/path" -> "/path").
-@(private)
-uri_list_to_paths :: proc(list: string, allocator := context.allocator) -> []string {
-	out := make([dynamic]string, allocator)
-	rest := list
-	for line in strings.split_lines_iterator(&rest) {
-		l := strings.trim_space(line)
-		if l == "" || l[0] == '#' { continue }
-		if strings.has_prefix(l, "file://") {
-			p := l[len("file://"):]
-			// strip an authority (host) before the path
-			if slash := strings.index_byte(p, '/'); slash > 0 { p = p[slash:] } else if slash < 0 { continue }
-			append(&out, percent_decode(p, allocator))
-		} else if strings.has_prefix(l, "/") {
-			append(&out, strings.clone(l, allocator))
-		}
-	}
-	return out[:]
-}
-
-@(private)
-percent_decode :: proc(s: string, allocator := context.allocator) -> string {
-	b := strings.builder_make(allocator)
-	i := 0
-	for i < len(s) {
-		if s[i] == '%' && i + 2 < len(s) {
-			hi, lo := hex_val(s[i + 1]), hex_val(s[i + 2])
-			if hi >= 0 && lo >= 0 { strings.write_byte(&b, u8(hi * 16 + lo)); i += 3; continue }
-		}
-		strings.write_byte(&b, s[i]); i += 1
-	}
-	return strings.to_string(b)
-}
-
-@(private)
-hex_val :: proc(c: u8) -> int {
-	switch c {
-	case '0' ..= '9': return int(c - '0')
-	case 'a' ..= 'f': return int(c - 'a' + 10)
-	case 'A' ..= 'F': return int(c - 'A' + 10)
-	}
-	return -1
 }
 
 clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
@@ -189,7 +162,7 @@ clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
 		for p, i in c.files { clip.files[i] = strings.clone(p) }
 		clip.formats += {.Files}
 	}
-	clip.seq += 1
+	clip_note_changed()
 	txt := strings.clone(c.text != "" ? c.text : "", context.temp_allocator)
 	sync.mutex_unlock(&clip.mutex)
 	// own the selection and offer every flavour the store holds (text, HTML, PNG, files)
@@ -212,17 +185,15 @@ clipboard_set_html :: proc(w: ^Window, html: string, text := "", source_url := "
 clipboard_set_image :: proc(w: ^Window, img: Clipboard_Image) -> bool { return clipboard_set(w, {image = img}) }
 clipboard_set_files :: proc(w: ^Window, paths: []string) -> bool { return clipboard_set(w, {files = paths}) }
 
-clipboard_watch :: proc(w: ^Window, on: bool) -> bool { return true }   // X11/Wayland carry no cheap change signal; clipboard_changed polls the owner
+clipboard_watch :: proc(w: ^Window, on: bool) -> bool { return true }   // clipboard_changed reads a count the events keep
 
+// True once after the clipboard changed (compared with the last call for this window; the first call says true).
 clipboard_changed :: proc(w: ^Window) -> bool {
-	// true when the selection is not ours: another program wrote since we last held it. Conservative but cheap.
-	if w == nil || w.offscreen { return false }
-	switch w.backend {
-	case .Wayland: return wlc.have_offer && wlc.offer != nil
-	case .X11:     return x11c.clip_owner == 0 || x11c.clip_owner != x11_state(w).id
-	case .None:
-	}
-	return false
+	if w == nil { return false }
+	seen := clipboard_sequence() + 1   // (never 0 at first: the zero of clip_seen is "not asked yet")
+	if seen == w.clip_seen { return false }
+	w.clip_seen = seen
+	return true
 }
 
 // PNG without an app codec: not available in the toolkit itself. An app that wants pictures on the clipboard wires
@@ -255,15 +226,14 @@ clip_clear_locked :: proc() {
 @(private) clip_html_locked :: proc() -> string { return clip.html }
 @(private) clip_png_locked  :: proc() -> []u8   { return clip.image_png }
 
-// The clipboard files as a text/uri-list (RFC 2483: one file:// URI per line, CRLF). Built on the temp allocator while
+// The clipboard files as a text/uri-list (RFC 2483: one percent-encoded file:// URI per line, CRLF). Built on the temp allocator while
 // the lock is held; the send callback writes it straight out.
 @(private)
 clip_uris_locked :: proc() -> string {
 	if len(clip.files) == 0 { return "" }
 	b := strings.builder_make(context.temp_allocator)
 	for p in clip.files {
-		strings.write_string(&b, "file://")
-		strings.write_string(&b, p)
+		strings.write_string(&b, file_uri(p))
 		strings.write_string(&b, "\r\n")
 	}
 	return strings.to_string(b)
