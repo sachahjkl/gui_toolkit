@@ -17,7 +17,7 @@ native_source :: proc(f: ^Font) -> (src: Native_Source, ok: bool) {
 	if f == nil || f.dw == nil { return }
 	src.index = f.dw->GetIndex()
 	if f.dw5 != nil && bool(f.dw5->HasVariations()) {
-		if n := f.dw5->GetFontAxisValueCount(); n > 0 && n <= 64 {
+		if n := f.dw5->GetFontAxisValueCount(); n > 0 && n <= VARIATION_AXES_MAX {
 			src.axes = make([]DWRITE_FONT_AXIS_VALUE, n, context.temp_allocator)
 			if f.dw5->GetFontAxisValues(raw_data(src.axes), n) < 0 { src.axes = nil }
 		}

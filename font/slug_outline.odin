@@ -47,6 +47,13 @@ outline_quad :: proc(o: ^Outline, a, c, b: [2]f32) {
 	append(&o.quads, Quad{{a, c, b}})
 }
 
+// outline_cubic: a cubic is a raised quadratic when the two estimates of its control point differ, squared, by at most
+// this part of the tolerance squared. The pieces of a true cubic are at most CUBIC_PIECES_MAX, the tolerance at least
+// CUBIC_TOL_MIN_EM (it divides).
+@(private) CUBIC_IS_QUAD_TOL_SQ :: 0.01
+@(private) CUBIC_PIECES_MAX :: 32
+@(private) CUBIC_TOL_MIN_EM :: 1e-9
+
 // A cubic Bézier as quadratics within `tol` (em units). A cubic that is a quadratic raised in degree (what DirectWrite
 // hands out for TrueType glyphs) comes back as that same quadratic, exactly; a true cubic (CFF) is cut into as few
 // equal pieces as keep each piece's quadratic within `tol` of it (error bound sqrt(3)/36 * |p3 - 3 c2 + 3 c1 - p0| / n^3).
@@ -54,13 +61,13 @@ outline_cubic :: proc(o: ^Outline, p0, c1, c2, p3: [2]f32, tol: f32) {
 	q1 := p0 + (c1 - p0) * 1.5
 	q2 := p3 + (c2 - p3) * 1.5
 	d := q1 - q2
-	if d.x * d.x + d.y * d.y <= tol * tol * 0.01 {
+	if d.x * d.x + d.y * d.y <= tol * tol * CUBIC_IS_QUAD_TOL_SQ {
 		outline_quad(o, p0, (q1 + q2) * 0.5, p3)
 		return
 	}
 	third := p3 - c2 * 3 + c1 * 3 - p0
 	err := math.sqrt(third.x * third.x + third.y * third.y) * (math.sqrt(f32(3)) / 36)
-	n := clamp(int(math.ceil(math.pow(err / max(tol, 1e-9), 1.0 / 3.0))), 1, 32)
+	n := clamp(int(math.ceil(math.pow(err / max(tol, CUBIC_TOL_MIN_EM), 1.0 / 3.0))), 1, CUBIC_PIECES_MAX)
 	for i in 0 ..< n {
 		a := cubic_piece(p0, c1, c2, p3, f32(i) / f32(n), f32(i + 1) / f32(n))
 		outline_quad(o, a[0], (a[1] * 3 - a[0] + a[2] * 3 - a[3]) * 0.25, a[3])

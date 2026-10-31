@@ -45,7 +45,7 @@ platform_release_face :: proc(f: ^Font) {
 
 // A face of a font file (TrueType, OpenType, collections: `index` picks the face), opened by the backend.
 load_from_file :: proc(s: ^State, path: string, index := 0) -> (id: Font_Id, ok: bool) {
-	return load_file_face(s, path, index, "", 400, .Normal)
+	return load_file_face(s, path, index, "", FONT_WEIGHT_NORMAL, .Normal)
 }
 
 // A face of a file with what is known of it (a system font: its family, weight and style, the base of the fallback).
@@ -65,7 +65,7 @@ load_file_face :: proc(s: ^State, path: string, index: int, family: string, weig
 // A face from memory (see the Windows version: the family, weight and style are what CSS knows of it; simulated bold
 // and slant are kept but not drawn by the native backend). Takes ownership of `data` when `owned`.
 load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulations: Simulations = {}, family := "",
-	weight := 400, style := Font_Style.Normal) -> (id: Font_Id, ok: bool) {
+	weight := FONT_WEIGHT_NORMAL, style := Font_Style.Normal) -> (id: Font_Id, ok: bool) {
 	if len(data) == 0 {
 		if owned { delete(data) }
 		return 0, false
@@ -83,7 +83,7 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 }
 
 // A system font nearest to weight / style / stretch (1..9, 5 = normal), from the platform's font service.
-load_system :: proc(s: ^State, family: string, weight := 400, style := Font_Style.Normal, stretch := 5) -> (id: Font_Id, ok: bool) {
+load_system :: proc(s: ^State, family: string, weight := FONT_WEIGHT_NORMAL, style := Font_Style.Normal, stretch := FONT_STRETCH_NORMAL) -> (id: Font_Id, ok: bool) {
 	if family == "" { return 0, false }
 	req := strings.concatenate({"sysreq:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
 	if id, ok = find_key(s, req); ok { return id, id != 0 }
@@ -102,7 +102,7 @@ has_system_family :: proc(s: ^State, family: string) -> bool { return family != 
 other_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: []Font_Id) {
 	base := face_ptr(s, first)
 	family := base != nil ? from_wide(base.family, context.temp_allocator) : ""
-	weight := base != nil && base.weight > 0 ? base.weight : 400
+	weight := base != nil && base.weight > 0 ? base.weight : FONT_WEIGHT_NORMAL
 	style := base != nil ? base.style : Font_Style.Normal
 	i := a
 	for i < b {

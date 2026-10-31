@@ -254,6 +254,6 @@ shape_tag_sequence :: proc(s: ^State, f: ^Font, face_id: Font_Id, size: f32, w: 
 
 @(private)
 has_tag_chars :: proc(w: []u16) -> bool {
-	for u in w { if u == 0xDB40 { return true } }   // the high surrogate of U+E0000 .. U+E0FFF
+	for u in w { if u == TAG_HIGH_SURROGATE { return true } }
 	return false
 }

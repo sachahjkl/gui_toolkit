@@ -15,6 +15,9 @@ import "core:sync"
 // nothing or by U+FE0E, keeps its text presentation (from the cascade or the system fallback); the emoji font is its last
 // resort before .notdef. Sequences (ZWJ, modifiers, flags, tags, keycaps) stay in one face, as for any other emoji.
 
+// Up to here the emoji are text by default (the digits, # *, (c) and (r)): they only count with U+FE0F or a keycap.
+@(private) LATIN1_LAST :: 0xFF
+
 @(private)
 Emoji_Source :: struct {
 	mu:     sync.Mutex,
@@ -99,14 +102,14 @@ emoji_may :: #force_inline proc(r: rune) -> bool {
 // Whether `r` (followed by `next`, 0 at the end) is an emoji to draw with the emoji font.
 @(private)
 emoji_wanted :: proc(r, next: rune) -> bool {
-	if next == 0xFE0E { return false }                       // text presentation asked for
-	if r >= 0x1F1E6 && r <= 0x1F1FF { return true }          // regional indicators: flags
-	if next == 0xFE0F || next == 0x20E3 { return in_emoji_table(EMOJI_RANGES[:], r) }
-	return r > 0xFF && in_emoji_table(EMOJI_PRESENTATION_RANGES[:], r)
+	if next == CP_VS_TEXT { return false }                               // text presentation asked for
+	if r >= CP_REGIONAL_FIRST && r <= CP_REGIONAL_LAST { return true }   // regional indicators: flags
+	if next == CP_VS_EMOJI || next == CP_KEYCAP { return in_emoji_table(EMOJI_RANGES[:], r) }
+	return r > LATIN1_LAST && in_emoji_table(EMOJI_PRESENTATION_RANGES[:], r)
 }
 
 // Characters the emoji font is the last resort for: any emoji character.
 @(private)
 emoji_possible :: proc(r: rune) -> bool {
-	return r > 0xFF && (in_emoji_table(EMOJI_RANGES[:], r) || (r >= 0x1F1E6 && r <= 0x1F1FF))
+	return r > LATIN1_LAST && (in_emoji_table(EMOJI_RANGES[:], r) || (r >= CP_REGIONAL_FIRST && r <= CP_REGIONAL_LAST))
 }

@@ -17,6 +17,9 @@ import "core:thread"
 // are dropped when they finish. `unload` waits for the face's request in flight and drops the others; `destroy` stops
 // the thread.
 
+// The ready callback is called every this many requests of a long queue.
+@(private) COLOR_READY_NOTIFY_EVERY :: 16
+
 @(private)
 Color_Job :: struct {
 	key:      u64,
@@ -123,9 +126,9 @@ color_worker :: proc(data: rawptr) {
 		sync.mutex_lock(&q.mu)
 		q.busy = 0
 		n := sync.atomic_add(&q.ready, 1) + 1
-		// one call when the queue drains, and every 16 requests of a long one; under the lock, so that once
+		// one call when the queue drains, and every COLOR_READY_NOTIFY_EVERY requests of a long one; under the lock, so that once
 		// set_color_ready_callback returns the previous callback is never called again
-		if q.on_ready != nil && (len(q.jobs) == 0 || n % 16 == 0) { q.on_ready(q.user) }
+		if q.on_ready != nil && (len(q.jobs) == 0 || n % COLOR_READY_NOTIFY_EVERY == 0) { q.on_ready(q.user) }
 		sync.cond_broadcast(&q.cv)
 		sync.mutex_unlock(&q.mu)
 	}

@@ -35,6 +35,31 @@ COLR_WORK_CEIL :: 1 << 26
 COLR_QUAD_COST :: 16
 // Work of the measuring pass (which only visits outlines).
 COLR_MEASURE_WORK :: 1 << 24
+// The most vertical samples per pixel row (Colr_Params.samples, Settings.colr_samples).
+@(private) COLR_SAMPLES_MAX :: 64
+// Work per pixel of a PaintComposite (two surfaces cleared, composited and added to the parent) and of a gradient's fill.
+@(private) COLR_COMPOSITE_PIXEL_COST :: 4
+@(private) COLR_GRADIENT_PIXEL_COST :: 4
+// A radial gradient is taken as having no quadratic term under the first, and as giving no solution under the second.
+@(private) COLR_RADIAL_DEGENERATE_EPS :: 1e-9
+@(private) COLR_RADIAL_NO_ROOT_EPS :: 1e-12
+
+// The palette index of the text color.
+@(private) PALETTE_TEXT_COLOR :: 0xFFFF
+
+// The sizes of the tables and their records.
+@(private) COLR_HEADER_BYTES :: 14
+@(private) CPAL_HEADER_BYTES :: 14
+@(private) COLR_BASE_RECORD_BYTES :: 6         // BaseGlyphRecord
+@(private) COLR_LAYER_RECORD_BYTES :: 4        // LayerRecord
+@(private) COLR_LIST_COUNT_BYTES :: 4          // what BaseGlyphList and LayerList start with
+@(private) COLR_BASE_PAINT_RECORD_BYTES :: 6   // BaseGlyphPaintRecord
+@(private) COLR_LAYER_PAINT_BYTES :: 4         // an entry of LayerList
+@(private) COLR_CLIP_LIST_HEADER_BYTES :: 5
+@(private) COLR_CLIP_RECORD_BYTES :: 7
+@(private) CPAL_COLOR_BYTES :: 4
+@(private) COLOR_STOP_BYTES :: 6
+@(private) VAR_COLOR_STOP_BYTES :: 10
 
 Colr :: struct {
 	colr, cpal:     []u8,
@@ -56,7 +81,7 @@ Colr :: struct {
 // Reads the two tables (that stay valid and unchanged while the result is used). nil when there is no usable COLR.
 colr_open :: proc(colr_table, cpal_table: []u8, allocator := context.allocator) -> ^Colr {
 	r := Rd{d = colr_table}
-	if len(colr_table) < 14 { return nil }
+	if len(colr_table) < COLR_HEADER_BYTES { return nil }
 	c := new(Colr, allocator)
 	c.colr, c.cpal = colr_table, cpal_table
 	c.version = rd_u16(&r, 0)
@@ -67,7 +92,7 @@ colr_open :: proc(colr_table, cpal_table: []u8, allocator := context.allocator) 
 	// the offsets of a part that has no records are not read (a font may leave them at any value)
 	if c.n_base_v0 == 0 { c.base_v0 = 0 }
 	if c.n_layers_v0 == 0 { c.layers_v0 = 0 }
-	if c.version > 1 || r.bad || c.base_v0 + c.n_base_v0 * 6 > len(colr_table) || c.layers_v0 + c.n_layers_v0 * 4 > len(colr_table) {
+	if c.version > 1 || r.bad || c.base_v0 + c.n_base_v0 * COLR_BASE_RECORD_BYTES > len(colr_table) || c.layers_v0 + c.n_layers_v0 * COLR_LAYER_RECORD_BYTES > len(colr_table) {
 		free(c, allocator)
 		return nil
 	}
@@ -77,26 +102,26 @@ colr_open :: proc(colr_table, cpal_table: []u8, allocator := context.allocator) 
 		if bl != 0 {
 			// a base glyph list that does not fit in the table is a table that cannot be trusted: its glyphs would be
 			// unknown here and left to the system, which is what the check of nested paints exists to avoid
-			if bl + 4 > len(colr_table) { free(c, allocator); return nil }
+			if bl + COLR_LIST_COUNT_BYTES > len(colr_table) { free(c, allocator); return nil }
 			c.base_list, c.n_base_list = bl, rd_u32(&r, bl)
-			if bl + 4 + c.n_base_list * 6 > len(colr_table) { free(c, allocator); return nil }
+			if bl + COLR_LIST_COUNT_BYTES + c.n_base_list * COLR_BASE_PAINT_RECORD_BYTES > len(colr_table) { free(c, allocator); return nil }
 		}
-		if ll != 0 && ll + 4 <= len(colr_table) {
+		if ll != 0 && ll + COLR_LIST_COUNT_BYTES <= len(colr_table) {
 			c.layer_list, c.n_layer_list = ll, rd_u32(&r, ll)
-			if ll + 4 + c.n_layer_list * 4 > len(colr_table) { c.layer_list, c.n_layer_list = 0, 0 }
+			if ll + COLR_LIST_COUNT_BYTES + c.n_layer_list * COLR_LAYER_PAINT_BYTES > len(colr_table) { c.layer_list, c.n_layer_list = 0, 0 }
 		}
-		if cl != 0 && cl + 5 <= len(colr_table) && rd_u8(&r, cl) == 1 {
+		if cl != 0 && cl + COLR_CLIP_LIST_HEADER_BYTES <= len(colr_table) && rd_u8(&r, cl) == 1 {
 			c.clip_list, c.n_clips = cl, rd_u32(&r, cl + 1)
-			if cl + 5 + c.n_clips * 7 > len(colr_table) { c.clip_list, c.n_clips = 0, 0 }
+			if cl + COLR_CLIP_LIST_HEADER_BYTES + c.n_clips * COLR_CLIP_RECORD_BYTES > len(colr_table) { c.clip_list, c.n_clips = 0, 0 }
 		}
 	}
-	if len(cpal_table) >= 14 {
+	if len(cpal_table) >= CPAL_HEADER_BYTES {
 		p := Rd{d = cpal_table}
 		n_entries, n_palettes, n_records, first := rd_u16(&p, 2), rd_u16(&p, 4), rd_u16(&p, 6), rd_u32(&p, 8)
 		if !p.bad && n_palettes > 0 {
 			idx0 := rd_u16(&p, 12)   // first record of palette 0
-			if !p.bad && first + (idx0 + n_entries) * 4 <= len(cpal_table) && idx0 + n_entries <= n_records {
-				c.n_entries, c.colors = n_entries, first + idx0 * 4
+			if !p.bad && first + (idx0 + n_entries) * CPAL_COLOR_BYTES <= len(cpal_table) && idx0 + n_entries <= n_records {
+				c.n_entries, c.colors = n_entries, first + idx0 * CPAL_COLOR_BYTES
 			}
 		}
 	}
@@ -122,7 +147,7 @@ colr_find :: proc(c: ^Colr, gid: u16) -> (at: int, kind: Colr_Kind) {
 		lo, hi := 0, c.n_base_list
 		for lo < hi {
 			mid := (lo + hi) / 2
-			o := c.base_list + 4 + mid * 6
+			o := c.base_list + COLR_LIST_COUNT_BYTES + mid * COLR_BASE_PAINT_RECORD_BYTES
 			g := int(d[o]) << 8 | int(d[o + 1])
 			switch {
 			case g < int(gid): lo = mid + 1
@@ -139,7 +164,7 @@ colr_find :: proc(c: ^Colr, gid: u16) -> (at: int, kind: Colr_Kind) {
 	lo, hi := 0, c.n_base_v0
 	for lo < hi {
 		mid := (lo + hi) / 2
-		o := c.base_v0 + mid * 6
+		o := c.base_v0 + mid * COLR_BASE_RECORD_BYTES
 		g := int(d[o]) << 8 | int(d[o + 1])
 		switch {
 		case g < int(gid): lo = mid + 1
@@ -157,7 +182,7 @@ colr_clip_box :: proc(c: ^Colr, gid: u16) -> (box: [4]f32, ok: bool) {
 	lo, hi := 0, c.n_clips
 	for lo < hi {
 		mid := (lo + hi) / 2
-		o := c.clip_list + 5 + mid * 7
+		o := c.clip_list + COLR_CLIP_LIST_HEADER_BYTES + mid * COLR_CLIP_RECORD_BYTES
 		first, last := rd_u16(&r, o), rd_u16(&r, o + 2)
 		switch {
 		case int(gid) < first: hi = mid
@@ -212,7 +237,7 @@ rd_fixed :: #force_inline proc "contextless" (r: ^Rd, o: int) -> f32 { return f3
 // The CPAL color of an entry, straight RGBA in 0 ..= 1 (transparent when the palette has no such entry).
 colr_palette :: proc(c: ^Colr, index: int) -> [4]f32 {
 	if index < 0 || index >= c.n_entries { return {} }
-	o := c.colors + index * 4
+	o := c.colors + index * CPAL_COLOR_BYTES
 	return {f32(c.cpal[o + 2]) / 255, f32(c.cpal[o + 1]) / 255, f32(c.cpal[o]) / 255, f32(c.cpal[o + 3]) / 255}
 }
 
@@ -337,7 +362,7 @@ nest_paint :: proc(n: ^Nest, off: int, inside: bool) -> bool {
 		count, first := rd_u8(r, off + 1), rd_u32(r, off + 2)
 		if r.bad || first + count > n.c.n_layer_list { r.bad = true; return false }
 		for i in 0 ..< count {
-			po := rd_u32(r, n.c.layer_list + 4 + (first + i) * 4)
+			po := rd_u32(r, n.c.layer_list + COLR_LIST_COUNT_BYTES + (first + i) * COLR_LAYER_PAINT_BYTES)
 			if r.bad { return false }
 			if nest_paint(n, n.c.layer_list + po, inside) { return true }
 		}
@@ -380,7 +405,7 @@ colr_render :: proc(src: Colr_Source, gid: u16, p: Colr_Params, allocator: runti
 	defer render_arena_done(arena)
 	w := Walk{
 		src = src, rd = Rd{d = c.colr}, alloc = virtual.arena_allocator(arena), arena = arena, budget = COLR_MAX_PAINTS,
-		fg = {f32(p.fg[0]) / 255, f32(p.fg[1]) / 255, f32(p.fg[2]) / 255}, samples = clamp(p.samples, 1, 64),
+		fg = {f32(p.fg[0]) / 255, f32(p.fg[1]) / 255, f32(p.fg[2]) / 255}, samples = clamp(p.samples, 1, COLR_SAMPLES_MAX),
 		m = MAT_IDENTITY, lo = {max(f32), max(f32)}, hi = {-max(f32), -max(f32)},
 		work = COLR_MEASURE_WORK, limit = p.surface_limit > 0 ? p.surface_limit : COLR_SURFACE_LIMIT,
 	}
@@ -482,7 +507,7 @@ walk_glyph :: proc(w: ^Walk, at: int, kind: Colr_Kind) {
 		for i in 0 ..< n {
 			w.budget -= 1
 			if w.budget <= 0 || w.rd.bad { w.rd.bad = true; return }
-			o := c.layers_v0 + (first + i) * 4
+			o := c.layers_v0 + (first + i) * COLR_LAYER_RECORD_BYTES
 			gid := rd_u16(&w.rd, o)
 			col := palette_color(w, rd_u16(&w.rd, o + 2), 1)
 			fill_glyph(w, u16(gid), proc(w: ^Walk, user: rawptr) { fill_solid(w, (^[4]f32)(user)^) }, &col)
@@ -494,7 +519,7 @@ walk_glyph :: proc(w: ^Walk, at: int, kind: Colr_Kind) {
 // The palette entry as straight RGBA; 0xFFFF is the text color. `alpha` multiplies the color's own.
 @(private)
 palette_color :: proc(w: ^Walk, index: int, alpha: f32) -> [4]f32 {
-	if index == 0xFFFF {
+	if index == PALETTE_TEXT_COLOR {
 		w.used_fg = true
 		return {w.fg.r, w.fg.g, w.fg.b, clamp(alpha, 0, 1)}
 	}
@@ -520,7 +545,7 @@ walk_paint :: proc(w: ^Walk, off: int) {
 		c := w.src.colr
 		if r.bad || first + n > c.n_layer_list { r.bad = true; return }
 		for i in 0 ..< n {
-			po := rd_u32(r, c.layer_list + 4 + (first + i) * 4)
+			po := rd_u32(r, c.layer_list + COLR_LIST_COUNT_BYTES + (first + i) * COLR_LAYER_PAINT_BYTES)
 			if r.bad { return }
 			walk_paint(w, c.layer_list + po)
 		}
@@ -672,7 +697,7 @@ composite_paints :: proc(w: ^Walk, source: int, mode: Composite_Mode, backdrop: 
 	if !known || w.composites >= COLR_MAX_COMPOSITES { w.rd.bad = true; return }
 	parent := w.surf
 	// two surfaces cleared, composited and added to the parent
-	if !charge(w, 4 * parent.w * parent.h) { return }
+	if !charge(w, COLR_COMPOSITE_PIXEL_COST * parent.w * parent.h) { return }
 	temp := virtual.arena_temp_begin(w.arena)
 	live := w.live
 	defer {
@@ -792,7 +817,7 @@ read_color_line :: proc(w: ^Walk, g: ^Gradient, off: int, var: bool) -> bool {
 	r := &w.rd
 	g.extend = rd_u8(r, off)
 	n := rd_u16(r, off + 1)
-	stride := var ? 10 : 6
+	stride := var ? VAR_COLOR_STOP_BYTES : COLOR_STOP_BYTES
 	if r.bad || n == 0 || off + 3 + n * stride > len(r.d) { r.bad = true; return false }
 	if g.extend > 2 { g.extend = 0 }
 	g.stops = make([dynamic]Stop, 0, n, w.alloc)
@@ -844,7 +869,7 @@ gradient_color :: proc(g: ^Gradient, t: f32, first, last: f32) -> [4]f32 {
 fill_gradient :: proc(w: ^Walk, g: ^Gradient) {
 	if w.measuring || g.empty { return }
 	inv, ok := mat_invert(w.m)
-	if !ok || !charge(w, 4 * clip_area(w)) { return }
+	if !ok || !charge(w, COLR_GRADIENT_PIXEL_COST * clip_area(w)) { return }
 	first, last := g.stops[0].t, g.stops[len(g.stops) - 1].t
 	s := w.surf
 	// geometry of the three kinds, in the gradient's own space
@@ -886,8 +911,8 @@ fill_gradient :: proc(w: ^Walk, g: ^Gradient) {
 				b := pd.x * cd.x + pd.y * cd.y + g.r0 * dr
 				cc := pd.x * pd.x + pd.y * pd.y - g.r0 * g.r0
 				s0: f32
-				if abs(cdd) < 1e-9 {
-					if abs(b) < 1e-12 { continue }
+				if abs(cdd) < COLR_RADIAL_DEGENERATE_EPS {
+					if abs(b) < COLR_RADIAL_NO_ROOT_EPS { continue }
 					s0 = cc / (2 * b)
 					if g.r0 + s0 * dr < 0 { continue }
 				} else {

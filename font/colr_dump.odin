@@ -3,6 +3,12 @@ package font
 import "core:fmt"
 import "core:strings"
 
+// What a listing shows at most: paints, depth, bytes of a paint, stops of a color line.
+@(private = "file") DUMP_PAINTS_MAX :: 400
+@(private = "file") DUMP_DEPTH_MAX :: 40
+@(private = "file") DUMP_PAINT_BYTES :: 16
+@(private = "file") DUMP_STOPS_MAX :: 8
+
 // A readable listing of a glyph's paint graph (diagnostics: tools/colrcompare, tests).
 colr_dump :: proc(c: ^Colr, gid: u16, allocator := context.allocator) -> string {
 	sb := strings.builder_make(allocator)
@@ -24,11 +30,11 @@ colr_dump :: proc(c: ^Colr, gid: u16, allocator := context.allocator) -> string 
 @(private = "file")
 dump_paint :: proc(c: ^Colr, r: ^Rd, sb: ^strings.Builder, off, depth: int, lines: ^int) {
 	lines^ += 1
-	if lines^ > 400 || depth > 40 { fmt.sbprintf(sb, "%*s...\n", depth * 2, ""); return }
+	if lines^ > DUMP_PAINTS_MAX || depth > DUMP_DEPTH_MAX { fmt.sbprintf(sb, "%*s...\n", depth * 2, ""); return }
 	if off < 0 || off >= len(r.d) { fmt.sbprintf(sb, "%*s@%d: outside the table\n", depth * 2, "", off); return }
 	f := rd_u8(r, off)
 	pad := depth * 2
-	fmt.sbprintf(sb, "%*s@%d f%d: % x\n", pad, "", off, f, r.d[off:min(off + 16, len(r.d))])
+	fmt.sbprintf(sb, "%*s@%d f%d: % x\n", pad, "", off, f, r.d[off:min(off + DUMP_PAINT_BYTES, len(r.d))])
 	child := proc(r: ^Rd, off, at: int) -> int { return off + rd_u24(r, off + at) }
 	switch f {
 	case 1:
@@ -36,7 +42,7 @@ dump_paint :: proc(c: ^Colr, r: ^Rd, sb: ^strings.Builder, off, depth: int, line
 		fmt.sbprintf(sb, "%*sColrLayers %d from %d\n", pad, "", n, first)
 		for i in 0 ..< n {
 			if first + i >= c.n_layer_list { break }
-			dump_paint(c, r, sb, c.layer_list + rd_u32(r, c.layer_list + 4 + (first + i) * 4), depth + 1, lines)
+			dump_paint(c, r, sb, c.layer_list + rd_u32(r, c.layer_list + COLR_LIST_COUNT_BYTES + (first + i) * COLR_LAYER_PAINT_BYTES), depth + 1, lines)
 		}
 	case 2, 3: fmt.sbprintf(sb, "%*sSolid pal %d alpha %.3f\n", pad, "", rd_u16(r, off + 1), rd_f2(r, off + 3))
 	case 4, 5, 6, 7, 8, 9:
@@ -45,8 +51,8 @@ dump_paint :: proc(c: ^Colr, r: ^Rd, sb: ^strings.Builder, off, depth: int, line
 		ext, n := rd_u8(r, line), rd_u16(r, line + 1)
 		fmt.sbprintf(sb, "%*s%sGradient%s extend %d, %d stops:", pad, "", names[f - 4], f & 1 == 1 ? "(var)" : "", ext, n)
 		vs := f % 2 == 1   // odd formats: 5, 7, 9 are the variable ones
-		st := vs ? 10 : 6
-		for i in 0 ..< min(n, 8) {
+		st := vs ? VAR_COLOR_STOP_BYTES : COLOR_STOP_BYTES
+		for i in 0 ..< min(n, DUMP_STOPS_MAX) {
 			o := line + 3 + i * st
 			fmt.sbprintf(sb, " [%.2f pal %d a %.2f]", rd_f2(r, o), rd_u16(r, o + 2), rd_f2(r, o + 4))
 		}

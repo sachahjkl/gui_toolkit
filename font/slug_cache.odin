@@ -50,8 +50,17 @@ Slug_Store :: struct {
 	blanks:    int,
 }
 
+// A glyph key: the hinted size, the face, the glyph.
+@(private) SLUG_KEY_PPEM_SHIFT :: 48
+@(private) SLUG_KEY_FACE_SHIFT :: 16
+@(private) SLUG_KEY_FACE_MASK :: 0xffffffff
+// Hinted glyphs are kept per this fraction of a pixel per em.
+@(private) SLUG_PPEM_STEPS_PER_PX :: 4
+// The size a glyph is asked at to learn whether it is a color glyph.
+@(private) SLUG_COLOR_PROBE_SIZE_PX :: 32
+
 @(private)
-slug_key :: #force_inline proc(face: Font_Id, gid: u16, ppem_q: u16 = 0) -> u64 { return u64(ppem_q) << 48 | (u64(face) & 0xffffffff) << 16 | u64(gid) }
+slug_key :: #force_inline proc(face: Font_Id, gid: u16, ppem_q: u16 = 0) -> u64 { return u64(ppem_q) << SLUG_KEY_PPEM_SHIFT | (u64(face) & SLUG_KEY_FACE_MASK) << SLUG_KEY_FACE_SHIFT | u64(gid) }
 
 @(private)
 slug_init :: proc(st: ^Slug_Store) {
@@ -70,7 +79,7 @@ slug_destroy :: proc(st: ^Slug_Store) {
 
 @(private)
 slug_forget_face :: proc(st: ^Slug_Store, face: Font_Id) {
-	for k in st.glyphs { if Font_Id((k >> 16) & 0xffffffff) == face { delete_key(&st.glyphs, k) } }
+	for k in st.glyphs { if Font_Id((k >> SLUG_KEY_FACE_SHIFT) & SLUG_KEY_FACE_MASK) == face { delete_key(&st.glyphs, k) } }
 }
 
 // Forgets every glyph and clears every page (settings that shape the data changed).
@@ -104,13 +113,13 @@ slug_glyph :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Gl
 	defer atlas_unlock(a)
 	st := &a.slug
 	ppem_q: u16 = 0
-	if ppem > 0 && ppem <= s.settings.slug_hint_ppem && s.tb.outline_hinted != nil { ppem_q = u16(clamp(math.round(ppem * 4), 1, 65535)) }
+	if ppem > 0 && ppem <= s.settings.slug_hint_ppem && s.tb.outline_hinted != nil { ppem_q = u16(clamp(math.round(ppem * SLUG_PPEM_STEPS_PER_PX), 1, 65535)) }
 	key := slug_key(face, gid, ppem_q)
 	if g, ok := st.glyphs[key]; ok {
 		if g.kind == .Curves { st.pages[g.page].last_used = a.clock }
 		return g
 	}
-	g := slug_make(s, face, gid, f32(ppem_q) / 4)
+	g := slug_make(s, face, gid, f32(ppem_q) / SLUG_PPEM_STEPS_PER_PX)
 	st.glyphs[key] = g
 	return g
 }
@@ -122,7 +131,7 @@ slug_make :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Gly
 	st := &s.atlas.slug
 	f := face_ptr(s, face)
 	if f == nil || st.provider == nil || !s.ok { return atlas_fallback }
-	if f.color && s.settings.color_glyphs && platform_color_glyph(s, f, gid, 32) { return atlas_fallback }
+	if f.color && s.settings.color_glyphs && platform_color_glyph(s, f, gid, SLUG_COLOR_PROBE_SIZE_PX) { return atlas_fallback }
 	o: Outline
 	defer outline_destroy(&o)
 	if ppem > 0 {

@@ -13,6 +13,11 @@ GSUB_BUDGET :: 1 << 17
 // Distinct feature tables and lookups of the feature that are followed.
 GSUB_MAX_FEATURE_TABLES :: 16
 GSUB_MAX_LOOKUPS :: 256
+// Lookup references read from those feature tables (they may repeat a lookup).
+@(private) GSUB_MAX_LOOKUP_REFS :: GSUB_MAX_LOOKUPS * 4
+// The lookup types read.
+@(private) GSUB_LOOKUP_LIGATURE :: 4
+@(private) GSUB_LOOKUP_EXTENSION :: 7
 
 // The glyphs after applying every type 4 lookup of `feature` (a 4 byte tag, "ccmp") in lookup order. `out` is allocated
 // with `allocator`. ok = false: the table has no such feature, cannot be read, or asks for more work than GSUB_BUDGET.
@@ -41,7 +46,7 @@ gsub_ligate :: proc(gsub: []u8, feature: [4]u8, glyphs: []u16, allocator := cont
 		tables[ntables] = ft
 		ntables += 1
 		n := rd_u16(&r, ft + 2)
-		if r.bad || ft + 4 + n * 2 > len(gsub) || len(lookups) + n > GSUB_MAX_LOOKUPS * 4 { return nil, false }
+		if r.bad || ft + 4 + n * 2 > len(gsub) || len(lookups) + n > GSUB_MAX_LOOKUP_REFS { return nil, false }
 		for k in 0 ..< n { append(&lookups, rd_u16(&r, ft + 4 + k * 2)) }
 	}
 	if r.bad || !found { return nil, false }
@@ -71,13 +76,13 @@ gsub_ligate :: proc(gsub: []u8, feature: [4]u8, glyphs: []u16, allocator := cont
 			sub := lk + rd_u16(&r, lk + 6 + s * 2)
 			budget -= 1
 			st := typ
-			if typ == 7 {
+			if typ == GSUB_LOOKUP_EXTENSION {
 				if rd_u16(&r, sub) != 1 { continue }
 				st = rd_u16(&r, sub + 2)
 				sub += rd_u32(&r, sub + 4)
 			}
 			if r.bad { return nil, false }
-			if st == 4 { apply_ligatures(&r, sub, &seq, &budget) }
+			if st == GSUB_LOOKUP_LIGATURE { apply_ligatures(&r, sub, &seq, &budget) }
 			if budget < 0 { return nil, false }
 		}
 	}
