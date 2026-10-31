@@ -100,9 +100,11 @@ reorder_begin :: proc(r: ^Reorder, id: u64, moved, threshold, press, slot: f32) 
 	return true
 }
 
+REORDER_ANIM_RATE :: 30
+
 // The place of item `id` along the axis: its `slot`, animated (`key` keeps the animation; `rate` as `anim`), or, while
 // it is dragged, the pointer less the grab, within `lo` .. `hi` (the release then slides from there).
-reorder_item_pos :: proc(r: ^Reorder, key: Key, id: u64, slot, pointer, lo, hi: f32, rate: f32 = 30) -> (pos: f32, dragging: bool) {
+reorder_item_pos :: proc(r: ^Reorder, key: Key, id: u64, slot, pointer, lo, hi: f32, rate: f32 = REORDER_ANIM_RATE) -> (pos: f32, dragging: bool) {
 	if r.active && r.id == id {
 		pos = clamp(pointer - r.grab, lo, hi)
 		_ = anim(key, pos, rate, pos)

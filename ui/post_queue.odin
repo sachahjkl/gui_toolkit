@@ -19,6 +19,13 @@ package ui
 import "core:sync"
 import "core:time"
 
+// Keeps head, tail and what the producers wait on from sharing a cache line.
+@(private = "file") POST_CACHE_LINE_BYTES :: 64
+// A producer blocked on a full ring asks for the wake again after this (bounded slices, see post_queue_push).
+@(private = "file") POST_BLOCK_WAIT_SLICE :: 50 * time.Millisecond
+// Spilled messages taken under the lock at once, to run outside it.
+@(private = "file") POST_SPILL_CHUNK :: 64
+
 // What a message runs: `data` and `word` are what was posted.
 Post_Proc :: #type proc(data: rawptr, word: u64)
 
@@ -62,11 +69,11 @@ Post_Queue :: struct {
 	wake:      proc(user: rawptr),     // asks the owner to drain (set before producers start)
 	wake_user: rawptr,                 // atomic: post_queue_set_wake_user may change it while producers run
 	owner:     int,                    // atomic: the thread that drains (sync.current_thread_id)
-	_:         [64]u8,
+	_:         [POST_CACHE_LINE_BYTES]u8,
 	head:      uint,                   // atomic: next slot to push
-	_:         [64]u8,
+	_:         [POST_CACHE_LINE_BYTES]u8,
 	tail:      uint,                   // atomic: next slot to pop
-	_:         [64]u8,
+	_:         [POST_CACHE_LINE_BYTES]u8,
 	wake_pending: bool,                // atomic: a wake was asked since the last drain
 	closed:    bool,                   // atomic
 	space:     sync.Futex,             // bumped by drains that freed slots while producers wait (Block)
@@ -162,7 +169,7 @@ post_queue_push :: proc(q: ^Post_Queue, fn: Post_Proc, data: rawptr = nil, word:
 			if sync.atomic_load(&q.closed) { pq_refuse(q); return false }
 			pq_ask_wake(q, true)   // the owner may have drained before the ring filled up: make sure it comes back
 			// (bounded slices: a wake the owner's loop lost is asked again)
-			sync.futex_wait_with_timeout(&q.space, epoch, 50 * time.Millisecond)
+			sync.futex_wait_with_timeout(&q.space, epoch, POST_BLOCK_WAIT_SLICE)
 		}
 	}
 	return false
@@ -186,7 +193,7 @@ post_queue_drain :: proc(q: ^Post_Queue, budget := -1) -> (ran: int, more: bool)
 	if ran < limit && sync.atomic_load(&q.spill_count) > 0 && sync.atomic_load(&q.head) == sync.atomic_load(&q.tail) {
 		// taken in chunks and run outside the lock (a message may post, and spill, again). Once the list was empty the
 		// producers go back to the ring: what spills after that waits behind the ring, for the next drain
-		chunk: [64]Post_Message
+		chunk: [POST_SPILL_CHUNK]Post_Message
 		for ran < limit {
 			sync.mutex_lock(&q.spill_lock)
 			// (checked again under the lock: a producer that read spill_count before the first spill may have pushed into

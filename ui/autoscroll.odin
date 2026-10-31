@@ -60,6 +60,12 @@ Autoscroll :: struct {
 	held:      bool,     // the engaging button is still down (hold mode in progress)
 }
 
+// Below these the geometric curve is not computed: a doubling of nothing, a growth too small to divide by.
+@(private = "file") AUTOSCROLL_DOUBLING_MIN_PX :: 0.01
+@(private = "file") AUTOSCROLL_SPAN_EPS :: 1e-4
+// tan(22.5 deg): where a direction of the cursor turns into the next of the eight.
+@(private = "file") AUTOSCROLL_DIAGONAL_RATIO :: 0.41
+
 // The velocity, in scroll units per second, the pointer offset from the anchor asks for on one axis. Pure: a dead zone
 // around the anchor (|off| <= dead_zone -> 0), then a geometric curve of the distance, capped at max_speed, symmetric about
 // the anchor (f(-x) == -f(x)). Independent of frame rate: it is a speed, integrated by the caller against its own dt.
@@ -78,9 +84,9 @@ autoscroll_axis_speed :: proc(off: f32, cfg: Autoscroll_Settings) -> f32 {
 	if mag <= dead { return 0 }
 	full := max(cfg.full_dist, 1)
 	x := clamp(mag - dead, 0, full)
-	d := max(cfg.doubling, 0.01)
+	d := max(cfg.doubling, AUTOSCROLL_DOUBLING_MIN_PX)
 	span := math.pow(2, full / d) - 1               // the growth between the dead zone and the cap
-	shaped := span > 1e-4 ? (math.pow(2, x / d) - 1) / span : x / full
+	shaped := span > AUTOSCROLL_SPAN_EPS ? (math.pow(2, x / d) - 1) / span : x / full
 	speed := shaped * cfg.max_speed
 	return off < 0 ? -speed : speed
 }
@@ -167,7 +173,7 @@ autoscroll_cursor :: proc(a: ^Autoscroll, cfg: Autoscroll_Settings) -> platform.
 	if a.axes == .Y { return down ? .Resize_S : .Resize_N }
 	if a.axes == .X { return right ? .Resize_E : .Resize_W }
 	// both axes: diagonal when the two components are within ~2.4x of each other, else the dominant one
-	diag := ax > ay * 0.41 && ay > ax * 0.41
+	diag := ax > ay * AUTOSCROLL_DIAGONAL_RATIO && ay > ax * AUTOSCROLL_DIAGONAL_RATIO
 	switch {
 	case diag && up && right:   return .Resize_NE
 	case diag && up && left:    return .Resize_NW

@@ -11,6 +11,10 @@ import "core:math"
 import "../draw"
 import "../platform"
 
+@(private = "file") SPLITTER_THICKNESS_PX :: 5
+@(private = "file") SPLITTER_KEY_STEP_PX :: 10
+@(private = "file") SPLITTER_CTRL_STEP_DIVISOR :: 5
+
 Splitter_Options :: struct {
 	default_size: f32,    // a double click (or Enter) puts it back (0: no reset)
 	after:        bool,   // the pane sized is after the handle (right of it, below it): dragging towards it shrinks it
@@ -43,7 +47,7 @@ splitter_limits :: proc(min_size, max_size: f32, opts: Splitter_Options) -> (lo,
 splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, opts := Splitter_Options{}) -> (res: Splitter_Result) {
 	s := g
 	unit := opts.unit > 0 ? opts.unit : s.scale
-	grab := opts.thickness > 0 ? opts.thickness : math.round(5 * s.scale)
+	grab := opts.thickness > 0 ? opts.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale)
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if axis == .X {
 		m.width = px(grab)
@@ -62,7 +66,7 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	res.sig = signal(b)
 	lo, hi := splitter_limits(min_size, max_size, opts)
 	before := size^
-	if v, ok := a11y_numeric_request(b.key, size^, opts.step > 0 ? opts.step : 10 * s.scale / unit); ok {
+	if v, ok := a11y_numeric_request(b.key, size^, opts.step > 0 ? opts.step : SPLITTER_KEY_STEP_PX * s.scale / unit); ok {
 		size^ = clamp(v, lo, hi)
 		res.finished = true
 	}
@@ -81,11 +85,11 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 		res.finished = true
 	}
 	if res.sig.focused && !opts.no_keyboard {
-		step := opts.step > 0 ? opts.step : 10 * s.scale / unit
+		step := opts.step > 0 ? opts.step : SPLITTER_KEY_STEP_PX * s.scale / unit
 		dir: f32
 		back, fwd: platform.Key = axis == .X ? .Left : .Up, axis == .X ? .Right : .Down
 		for mods in ([]platform.Modifiers{{}, {.Ctrl}}) {
-			k := .Ctrl in mods ? step / 5 : step
+			k := .Ctrl in mods ? step / SPLITTER_CTRL_STEP_DIVISOR : step
 			if key_press(back, mods) { dir -= k }
 			if key_press(fwd, mods) { dir += k }
 		}
@@ -192,13 +196,16 @@ accordion_end :: proc(built: bool) {
 @(private)
 Chevron_Draw :: struct { t: f32, color: Color }
 
+@(private = "file") ACCORDION_CHEVRON_ARM_FRACTION :: 0.22   // of the box's width
+@(private = "file") ACCORDION_CHEVRON_STROKE_PX :: 1.5
+
 // ">" turning to "v" as the section opens (t: 0..1).
 @(private)
 chevron_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Chevron_Draw)(user)
 	c := draw.rect_center(b.rect)
-	a := (b.rect.max.x - b.rect.min.x) * 0.22
-	th := max(math.round(g.scale * 1.5), 1)
+	a := (b.rect.max.x - b.rect.min.x) * ACCORDION_CHEVRON_ARM_FRACTION
+	th := max(math.round(g.scale * ACCORDION_CHEVRON_STROKE_PX), 1)
 	draw.push_transform(dc, draw.affine_around(draw.affine_rotate(d.t * math.PI * 0.5), c))
 	bar :: proc(dc: ^draw.Context, p0, p1: Vec2, th: f32, col: Color) {
 		mid := (p0 + p1) * 0.5

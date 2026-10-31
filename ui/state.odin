@@ -266,17 +266,23 @@ end_build :: proc() {
 needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more || s.lazy_more }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 
+// wake_in_ms rounds up to whole milliseconds; wake_due counts a wake this close as due (a sleep rounds to whole ms).
+@(private) WAKE_ROUND_UP_MS :: 0.999
+@(private = "file") WAKE_DUE_SLACK_MS :: 0.5
+// Added to a delay when asking for a wake: one that came a little early would wait again.
+@(private) WAKE_MARGIN_MS :: 5
+
 // The timed wake the last build asked for, measured from now: ms left until it is due (at least 1), 0 when none was
 // asked. Use it as the loop's wait timeout: wake_ms counts from the build, and a loop woken early by a message (a
 // program resizing the window sends WM_SIZING at every step) would otherwise wait the whole delay again.
 wake_in_ms :: proc(s: ^State) -> int {
 	if s.wake_ms == 0 { return 0 }
-	return max(int(f64(s.wake_ms) - (now_ms() - s.time_ms) + 0.999), 1)
+	return max(int(f64(s.wake_ms) - (now_ms() - s.time_ms) + WAKE_ROUND_UP_MS), 1)
 }
 
 // Whether the timed wake the last build asked for is due now (a caret blink, a tooltip delay): a wake of the loop for
 // anything else before it (a message) has no frame to make for the interface.
-wake_due :: proc(s: ^State) -> bool { return s.wake_ms != 0 && now_ms() - s.time_ms >= f64(s.wake_ms) - 0.5 }
+wake_due :: proc(s: ^State) -> bool { return s.wake_ms != 0 && now_ms() - s.time_ms >= f64(s.wake_ms) - WAKE_DUE_SLACK_MS }
 
 // Asks for a wake within `ms` milliseconds (the soonest of all the requests of a build stands: a caret blink and a tooltip
 // delay both count).
@@ -287,8 +293,10 @@ boxes_built :: proc(s: ^State) -> int { return s.boxes_built }
 // Density: row heights and vertical gaps are multiplied by it (text keeps its size). Built-in widgets and
 // vertical spacers follow it; use `dense` for your own row heights.
 DENSITY_COMPACT :: 0.78
+DENSITY_MIN :: 0.6
+DENSITY_MAX :: 1.2
 density :: proc(s: ^State) -> f32 { return s.density }
-set_density :: proc(s: ^State, d: f32) { s.density = clamp(d, 0.6, 1.2) }
+set_density :: proc(s: ^State, d: f32) { s.density = clamp(d, DENSITY_MIN, DENSITY_MAX) }
 dense :: proc(v: f32) -> f32 { return math.round(v * g.density) }
 
 ZOOM_MIN :: 0.5
@@ -340,16 +348,23 @@ top_style :: proc() -> ^Style { return &g.style_stack[len(g.style_stack) - 1] }
 
 font_size :: proc() -> f32 { return top_style().font_size }
 
+// Mixed into a key that another box of this build already holds.
+@(private = "file") KEY_SIBLING_SALT :: 0xdeadbeef
+// A disabled box keeps a fill or a border this transparent as it is (a ghost button stays see-through).
+@(private = "file") DISABLED_NEUTRAL_MIN_ALPHA :: 0.01
+// A colour this close to its target (each channel) jumps there and the fade ends.
+@(private = "file") COLOR_SETTLED_EPS :: 0.002
+
 // Builds a box under the current parent. `id` follows the id-string rules in key.odin ("" = anonymous, keyed by position).
 build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	s := g
 	parent := parent_box()
 	key: Key
-	if id == "" { key = key_from_u64(parent.key, u64(parent.child_count) + 0x9e3779b97f4a7c15) } else { key = key_from_string(parent.key, id) }
+	if id == "" { key = key_from_u64(parent.key, u64(parent.child_count) + HASH_GOLDEN_RATIO_64) } else { key = key_from_string(parent.key, id) }
 	// two siblings with the same id would share state: keep going until the key is free for this build
 	for {
 		if existing, ok := s.boxes[key]; ok && existing.last_build == s.build_index {
-			key = key_from_u64(key, 0xdeadbeef)
+			key = key_from_u64(key, KEY_SIBLING_SALT)
 		} else { break }
 	}
 	b := touch_box(s, key)
@@ -431,8 +446,8 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	if .Disabled in b.flags {
 		// neutral look: an accent or danger fill would keep its colour while its text faded away
 		plain := []string{"button"}
-		if b.target_bg.a > 0.01 { b.target_bg = theme_lookup(s.theme, plain, "background") }
-		if b.target_border.a > 0.01 { b.target_border = theme_lookup(s.theme, plain, "border") }
+		if b.target_bg.a > DISABLED_NEUTRAL_MIN_ALPHA { b.target_bg = theme_lookup(s.theme, plain, "background") }
+		if b.target_border.a > DISABLED_NEUTRAL_MIN_ALPHA { b.target_border = theme_lookup(s.theme, plain, "border") }
 		b.target_text = theme_lookup(s.theme, nil, "weak text")
 	}
 	// colours jump to their targets (states show at once), except while a palette change cross-fades or when the theme
@@ -446,7 +461,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		approach :: proc(cur: ^Color, target: Color, rate: f32, busy: ^bool) {
 			d: f32
 			for i in 0 ..< 4 { d = max(d, abs(target[i] - cur[i])) }
-			if d < 0.002 { cur^ = target; return }
+			if d < COLOR_SETTLED_EPS { cur^ = target; return }
 			cur^ += (target - cur^) * rate
 			busy^ = true
 		}
@@ -587,8 +602,11 @@ muted :: proc() -> bool {
 ////////////////////////////////
 // Animation helper
 
+ANIM_RATE_DEFAULT :: 40
+@(private = "file") ANIM_SETTLED_EPS :: 0.001
+
 // Eases a persistent value toward `target`. `rate` is "halvings per second of distance" (higher = faster).
-anim :: proc(key: Key, target: f32, rate: f32 = 40, initial: Maybe(f32) = nil) -> f32 {
+anim :: proc(key: Key, target: f32, rate: f32 = ANIM_RATE_DEFAULT, initial: Maybe(f32) = nil) -> f32 {
 	s := g
 	a, found := s.anims[key]
 	if !found { a.value = initial.? or_else target }
@@ -597,7 +615,7 @@ anim :: proc(key: Key, target: f32, rate: f32 = 40, initial: Maybe(f32) = nil) -
 		a.value = target
 	} else {
 		d := target - a.value
-		if abs(d) < 0.001 { a.value = target } else {
+		if abs(d) < ANIM_SETTLED_EPS { a.value = target } else {
 			a.value += d * f32(1 - math.pow(2, -f64(rate) * f64(s.dt)))
 			s.anim_busy = true
 		}
@@ -609,15 +627,24 @@ anim :: proc(key: Key, target: f32, rate: f32 = 40, initial: Maybe(f32) = nil) -
 // How long a palette change cross-fades the colours of the boxes.
 PALETTE_FADE_MS :: 160.0
 
+// The cross-fade's halvings per second; log2(20): the halvings that cover 95 % of the way.
+@(private = "file") PALETTE_FADE_HALVINGS_PER_S :: 60
+@(private = "file") TRANSITION_HALVINGS :: 4.32
+
 // Per-frame approach rate of colours and state values: the theme's transition (about 95 % of the way in
 // transition_ms), else the cross-fade of a palette change; 1 (at once) with animations off.
 @(private)
 state_rate :: proc(s: ^State) -> f32 {
 	if s.anim_rate == 0 { return 1 }
-	halvings: f64 = 60
-	if s.theme != nil && s.theme.transition_ms > 0 { halvings = 4.32 * 1000 / f64(s.theme.transition_ms) }
+	halvings: f64 = PALETTE_FADE_HALVINGS_PER_S
+	if s.theme != nil && s.theme.transition_ms > 0 { halvings = TRANSITION_HALVINGS * 1000 / f64(s.theme.transition_ms) }
 	return f32(1 - math.pow(2, -halvings * f64(s.dt)))
 }
+
+// A state value (hot_t, focus_t...) this close to its target jumps there.
+@(private = "file") STATE_SETTLED_EPS :: 0.003
+// How many ancestors of the hot box light up as .Hot_Within.
+@(private = "file") HOT_CHAIN_MAX_DEPTH :: 48
 
 @(private)
 update_animations :: proc(s: ^State) {
@@ -626,13 +653,13 @@ update_animations :: proc(s: ^State) {
 	if s.theme != nil && s.theme.transition_ms > 0 { rate = state_rate(s) }
 	step :: proc(cur: ^f32, target: f32, rate: f32, busy: ^bool) {
 		d := target - cur^
-		if abs(d) < 0.003 || rate >= 1 { cur^ = target; return }
+		if abs(d) < STATE_SETTLED_EPS || rate >= 1 { cur^ = target; return }
 		cur^ += d * rate
 		busy^ = true
 	}
 	autoscroll_apply(s)   // middle-click autoscroll sets its box's view_target before the ease below (autoscroll_region.odin)
 	// the hot box and its ancestors (for .Hot_Within boxes)
-	chain: [48]Key
+	chain: [HOT_CHAIN_MAX_DEPTH]Key
 	n := 0
 	if hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil; hb != nil && hb.last_build == s.build_index {
 		for p := hb; p != nil && n < len(chain); p = p.parent { chain[n] = p.key; n += 1 }
@@ -731,6 +758,9 @@ focus_stops :: proc(s: ^State) -> [dynamic]Key {
 	return stops
 }
 
+// How much a pixel across the arrow's direction counts against a stop, next to a pixel along it.
+@(private = "file") ARROW_ACROSS_WEIGHT :: 4
+
 @(private)
 handle_arrow_navigation :: proc(s: ^State) -> bool {
 	if s.focus_key == 0 || len(s.menus) > 0 || len(s.focus_order) == 0 { return false }
@@ -766,7 +796,7 @@ handle_arrow_navigation :: proc(s: ^State) -> bool {
 			gap := max(b.rect.min.x - cur.rect.max.x, cur.rect.min.x - b.rect.max.x)
 			across = max(gap, 0)
 		}
-		score := along + across * 4
+		score := along + across * ARROW_ACROSS_WEIGHT
 		if score < best_score { best_score = score; best = e.key }
 	}
 	if best == 0 { return true }   // nothing that way: the key is still ours (do not scroll the page)

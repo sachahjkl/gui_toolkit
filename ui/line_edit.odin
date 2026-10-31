@@ -31,6 +31,15 @@ Field_Edit :: enum u8 { None, Typing, Deleting, Other }
 FIELD_UNDO_STEPS :: 100
 FIELD_UNDO_MERGE_MS :: 1000.0
 
+// The caret of fields: solid this long after an edit, then on and off; the wake comes twice per phase so that no flip is
+// late by more than half a phase. Its width is the font size over CARET_WIDTH_DIVISOR.
+@(private) CARET_SOLID_MS :: 500
+@(private) CARET_BLINK_MS :: 530
+@(private) CARET_WAKE_MS :: 265
+@(private) CARET_WIDTH_DIVISOR :: 12
+// A field's text area is at least this wide (and tall), whatever its box.
+@(private) TEXT_VIEW_MIN_PX :: 8
+
 field_destroy :: proc(f: ^Text_Field) {
 	delete(f.buf)
 	field_forget_history(f)
@@ -252,7 +261,7 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.text(dc, b.font, b.font_size, {x0, baseline}, b.text_color, d.text)
 	if d.focused && d.caret_on {
 		cx := math.round(x0 + font.x_from_index(s.fonts, b.font, b.font_size, d.text, d.cursor))
-		draw.rect(dc, {{cx, cy - m.line_height * 0.5}, {cx + max(1, math.round(b.font_size / 12)), cy + m.line_height * 0.5}}, d.caret)
+		draw.rect(dc, {{cx, cy - m.line_height * 0.5}, {cx + max(1, math.round(b.font_size / CARET_WIDTH_DIVISOR)), cy + m.line_height * 0.5}}, d.caret)
 	}
 }
 
@@ -352,7 +361,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			f.cursor = clamp(f.cursor, 0, len(f.buf))
 			f.mark = clamp(f.mark, 0, len(f.buf))
-			if !s.inactive { wake_within(s, 265) }   // caret blink (none in a window in the back)
+			if !s.inactive { wake_within(s, CARET_WAKE_MS) }   // caret blink (none in a window in the back)
 		}
 		after_hash := hash_bytes(f.buf[:])
 		res.changed = before != len(f.buf) || before_hash != after_hash
@@ -363,7 +372,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		if secret { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
 
 		// keep the caret visible
-		inner := max(8, (b.rect.max.x - b.rect.min.x) - 2 * pad)
+		inner := max(TEXT_VIEW_MIN_PX, (b.rect.max.x - b.rect.min.x) - 2 * pad)
 		cx := font.x_from_index(s.fonts, b.font, b.font_size, shown, cursor)
 		total := font.text_width(s.fonts, b.font, b.font_size, shown)
 		if cx - f.scroll_x > inner { f.scroll_x = cx - inner }
@@ -376,7 +385,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		d.cursor, d.mark, d.scroll_x = cursor, mark, f.scroll_x
 		d.focused = focused
 		since := now - f.edited_ms
-		d.caret_on = !s.inactive && (since < 500 || (int(since) / 530) % 2 == 0)
+		d.caret_on = !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
 		d.selection = color("selection")
 		d.caret = color("cursor")
 		if tags("weak") { d.weak = color("text") }
@@ -423,7 +432,7 @@ secret_unmask_index :: proc(text: string, shown_i: int) -> int {
 
 @(private)
 hash_bytes :: proc(b: []u8) -> u64 {
-	h: u64 = 0xcbf29ce484222325
-	for c in b { h = (h ~ u64(c)) * 0x100000001b3 }
+	h: u64 = FNV64_OFFSET_BASIS
+	for c in b { h = (h ~ u64(c)) * FNV64_PRIME }
 	return h
 }

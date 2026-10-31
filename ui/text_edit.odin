@@ -20,6 +20,19 @@ import "../platform"
 @(private="file") Mods :: platform.Modifiers
 
 TEXT_UNDO_MAX :: 200
+@(private="file") TEXT_UNDO_GROUP_MS :: 1000
+@(private="file") TEXT_EDIT_LINE_HEIGHT :: 1.15   // of the font's line height
+@(private="file") TEXT_EDIT_WHEEL_LINES :: 3
+@(private="file") TEXT_EDIT_GUTTER_FONT_SCALE :: 0.85
+// Room kept past the longest line, so the caret at its end is seen.
+@(private="file") TEXT_EDIT_END_SLACK_PX :: 4
+// What the selection shows of a line break.
+@(private="file") TEXT_EDIT_BREAK_SELECTION_EM :: 0.35
+@(private="file") TEXT_EDIT_THUMB_HOT_ALPHA :: 0.45
+@(private="file") TEXT_EDIT_GUTTER_BG_ALPHA_FACTOR :: 0.35
+@(private="file") TEXT_EDIT_ERROR_COLOR :: Color{0.85, 0.25, 0.25, 1}
+@(private="file") TEXT_EDIT_ERROR_LINE_DIVISOR :: 12   // the error underline's thickness: font size over this
+@(private="file") LINE_NUMBER_MAX_BYTES :: 12
 
 Text_Area :: struct {
 	buf:        [dynamic]u8,
@@ -77,14 +90,14 @@ Editor_Bars :: struct {
 @(private="file")
 editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
 	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
-	e.has_v = content.y > view.y + 0.5
-	e.has_h = !wrapped && content.x + 4 > view.x + 0.5   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
-	w := max(6, math.round(font_size * 0.5))
-	m := math.round(w * 0.35)
+	e.has_v = content.y > view.y + SCROLLBAR_FIT_SLACK_PX
+	e.has_h = !wrapped && content.x + TEXT_EDIT_END_SLACK_PX > view.x + SCROLLBAR_FIT_SLACK_PX   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
+	w := max(SCROLLBAR_WIDTH_MIN_PX, math.round(font_size * SCROLLBAR_WIDTH_EM))
+	m := math.round(w * SCROLLBAR_MARGIN_FRACTION)
 	if e.has_v {
 		e.vtrack = {{r.max.x - w - m, r.min.y + m}, {r.max.x - m, r.max.y - m - (e.has_h ? w + m : 0)}}
 		len_ := e.vtrack.max.y - e.vtrack.min.y
-		th := max(font_size * 1.6, len_ * view.y / content.y)
+		th := max(font_size * SCROLLBAR_THUMB_MIN_EM, len_ * view.y / content.y)
 		t := clamp(scroll.y / max(1, content.y - view.y), 0, 1)
 		y := e.vtrack.min.y + t * (len_ - th)
 		e.vthumb = {{e.vtrack.min.x, y}, {e.vtrack.max.x, y + th}}
@@ -92,8 +105,8 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 	if e.has_h {
 		e.htrack = {{r.min.x + gutter + m, r.max.y - w - m}, {r.max.x - m - (e.has_v ? w + m : 0), r.max.y - m}}
 		len_ := e.htrack.max.x - e.htrack.min.x
-		tw := max(font_size * 1.6, len_ * view.x / (content.x + 4))
-		t := clamp(scroll.x / max(1, content.x + 4 - view.x), 0, 1)
+		tw := max(font_size * SCROLLBAR_THUMB_MIN_EM, len_ * view.x / (content.x + TEXT_EDIT_END_SLACK_PX))
+		t := clamp(scroll.x / max(1, content.x + TEXT_EDIT_END_SLACK_PX - view.x), 0, 1)
 		x := e.htrack.min.x + t * (len_ - tw)
 		e.hthumb = {{x, e.htrack.min.y}, {x + tw, e.htrack.max.y}}
 	}
@@ -102,7 +115,7 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 
 @(private="file")
 content_extent :: proc(a: ^Text_Area, text: string, b: ^Box, lh: f32, lines: []Visual_Line, wrap_w: f32) -> Vec2 {
-	if wrap_w > 0 { return {wrap_w - 4, f32(len(lines)) * lh} }   // wrapped: no horizontal scrolling
+	if wrap_w > 0 { return {wrap_w - TEXT_EDIT_END_SLACK_PX, f32(len(lines)) * lh} }   // wrapped: no horizontal scrolling
 	key := hash.fnv64a(transmute([]u8)text) ~ (u64(transmute(u32)b.font_size) << 20) ~ u64(b.font) ~ u64(transmute(u32)lh)
 	if key != a.ext_key || key == 0 {
 		a.ext = content_extent_measure(text, b, lh)
@@ -176,7 +189,7 @@ restore :: proc(a: ^Text_Area, s: Text_Snapshot) {
 // Records an undo step before an edit (grouping same-kind edits made within a second of each other).
 @(private="file")
 begin_edit :: proc(a: ^Text_Area, kind: Edit_Kind, now: f64) {
-	if kind != a.group || kind == .Other || now - a.group_ms > 1000 {
+	if kind != a.group || kind == .Other || now - a.group_ms > TEXT_UNDO_GROUP_MS {
 		if len(a.undo) >= TEXT_UNDO_MAX { delete(a.undo[0].text); ordered_remove(&a.undo, 0) }
 		append(&a.undo, snapshot(a))
 	}
@@ -282,7 +295,7 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 
 	// where the caret and the selection's other end are, drawn or not (popovers, input methods)
-	caret_w := max(1, math.round(b.font_size / 12))
+	caret_w := max(1, math.round(b.font_size / CARET_WIDTH_DIVISOR))
 	end_rect :: proc(d: ^Text_Edit_Draw, b: ^Box, index: int, upstream: bool, x0, top, lh, w: f32) -> Rect {
 		li := visual_line_of(d.lines, index, upstream)
 		x := math.round(x0 + caret_x_on(d.text, d.lines[li], b, index))
@@ -312,11 +325,11 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			newline := !l.soft && hi > l.end   // the "\n" itself is selected (a wrap has no character of its own)
 			for sp, k in spans {
 				xb := text_x0 + sp[1]
-				if newline && k == len(spans) - 1 { xb += b.font_size * 0.35 }
+				if newline && k == len(spans) - 1 { xb += b.font_size * TEXT_EDIT_BREAK_SELECTION_EM }
 				draw.rect(dc, {{text_x0 + sp[0], y}, {xb, y + lh}}, d.selection)
 			}
 			if len(spans) == 0 && hi > l.end && !l.soft {   // an empty line inside the selection: just its break
-				draw.rect(dc, {{text_x0, y}, {text_x0 + b.font_size * 0.35, y + lh}}, d.selection)
+				draw.rect(dc, {{text_x0, y}, {text_x0 + b.font_size * TEXT_EDIT_BREAK_SELECTION_EM, y + lh}}, d.selection)
 			}
 		}
 		if d.highlight != nil {
@@ -337,14 +350,14 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		w := which == 1 ? track.max.x - track.min.x : track.max.y - track.min.y
 		c := d.bar_color
 		hot := d.bar_hot == u8(which)
-		if hot { tc := c; tc.a = 0.06; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
-		c.a = hot ? 0.45 : 0.22
+		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
+		c.a = hot ? TEXT_EDIT_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA
 		draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
 	}
 
 	// line numbers (not scrolled horizontally): one per paragraph, on its first visual line
 	if d.gutter > 0 {
-		size := math.round(b.font_size * 0.85)
+		size := math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE)
 		mm := font.metrics(s.fonts, d.mono, size)
 		cur_para := d.lines[visual_line_of(d.lines, d.cursor, d.upstream)].para
 		for li in first ..= last {
@@ -396,14 +409,14 @@ draw_highlighted_line :: proc(dc: ^draw.Context, d: ^Text_Edit_Draw, b: ^Box, s:
 	if hl.error_line != nil && l.first && hl.error_line(hl.user, l.para) {
 		col := hl.error == {} ? d.error_color : hl.error
 		x1 := text_x0 + font.text_width(s.fonts, b.font, b.font_size, line_text)
-		uy := y + lh - max(1, math.round(b.font_size / 12))
-		draw.rect(dc, {{text_x0, uy}, {max(x1, text_x0 + b.font_size * 0.4), uy + max(1, math.round(b.font_size / 12))}}, col)
+		uy := y + lh - max(1, math.round(b.font_size / TEXT_EDIT_ERROR_LINE_DIVISOR))
+		draw.rect(dc, {{text_x0, uy}, {max(x1, text_x0 + b.font_size * 0.4), uy + max(1, math.round(b.font_size / TEXT_EDIT_ERROR_LINE_DIVISOR))}}, col)
 	}
 }
 
 @(private="file")
 fmt_int :: proc(v: int) -> string {
-	buf := make([]u8, 12, frame_allocator())
+	buf := make([]u8, LINE_NUMBER_MAX_BYTES, frame_allocator())
 	n := v
 	i := len(buf)
 	for {
@@ -435,16 +448,16 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		pad := b.text_pad
 		mono := s.mono_font != 0 ? s.mono_font : b.font
 		m := font.metrics(s.fonts, b.font, b.font_size)
-		lh := math.round(m.line_height * 1.15)
+		lh := math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)
 		gutter: f32 = 0
 		if line_numbers {
 			digits := len(fmt_int(area_line_count(a)))
-			gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * 0.85), "0") * f32(max(digits, 2)) + pad * 1.8)
+			gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)
 		}
 		// the width lines wrap at: the box's from the last layout (none yet in its first frame: one more frame)
 		wrap_w: f32 = 0
 		if wrap {
-			if b.size.x > 0 { wrap_w = max(8, b.size.x - gutter - 2 * pad) } else { wake_within(s, 1) }
+			if b.size.x > 0 { wrap_w = max(TEXT_VIEW_MIN_PX, b.size.x - gutter - 2 * pad) } else { wake_within(s, 1) }
 		}
 		layout :: proc(a: ^Text_Area, b: ^Box, wrap_w: f32) -> []Visual_Line {
 			return text_visual_lines(g.fonts, b.font, b.font_size, area_string(a), wrap_w, context.temp_allocator)
@@ -488,8 +501,8 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		mp := b.rect.min + res.mouse
 		if res.pressed {
 			a.sb_drag = 0
-			vgrab := Rect{{bars.vtrack.min.x - 4, bars.vtrack.min.y}, {bars.vtrack.max.x + 2, bars.vtrack.max.y}}
-			hgrab := Rect{{bars.htrack.min.x, bars.htrack.min.y - 4}, {bars.htrack.max.x, bars.htrack.max.y + 2}}
+			vgrab := Rect{{bars.vtrack.min.x - SCROLLBAR_GRAB_IN_PX, bars.vtrack.min.y}, {bars.vtrack.max.x + SCROLLBAR_GRAB_OUT_PX, bars.vtrack.max.y}}
+			hgrab := Rect{{bars.htrack.min.x, bars.htrack.min.y - SCROLLBAR_GRAB_IN_PX}, {bars.htrack.max.x, bars.htrack.max.y + SCROLLBAR_GRAB_OUT_PX}}
 			if bars.has_v && contains(vgrab, mp) {
 				a.sb_drag = 1
 				a.sb_grab = (mp.y >= bars.vthumb.min.y && mp.y < bars.vthumb.max.y) ? mp.y - bars.vthumb.min.y : (bars.vthumb.max.y - bars.vthumb.min.y) * 0.5
@@ -507,7 +520,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 				if span > 0 { a.scroll.y = clamp((mp.y - a.sb_grab - bars.vtrack.min.y) / span, 0, 1) * (content.y - view.y) }
 			} else {
 				span := (bars.htrack.max.x - bars.htrack.min.x) - (bars.hthumb.max.x - bars.hthumb.min.x)
-				if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + 4 - view.x) }
+				if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + TEXT_EDIT_END_SLACK_PX - view.x) }
 			}
 		} else if res.pressed || res.dragging {
 			idx, up := point_to_index(a, b, lines, res.mouse, gutter, pad, lh)
@@ -521,8 +534,8 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			a.cursor = word_right(text, a.mark)
 		}
 		if res.scrolled != {} {
-			a.scroll.y += res.scrolled.y * lh * 3
-			if wrap_w <= 0 { a.scroll.x += res.scrolled.x * lh * 3 }
+			a.scroll.y += res.scrolled.y * lh * TEXT_EDIT_WHEEL_LINES
+			if wrap_w <= 0 { a.scroll.x += res.scrolled.x * lh * TEXT_EDIT_WHEEL_LINES }
 		}
 
 		if res.focused {
@@ -655,7 +668,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			a.cursor = clamp(a.cursor, 0, len(a.buf))
 			a.mark = clamp(a.mark, 0, len(a.buf))
-			if !s.inactive { wake_within(s, 265) }   // caret blink (none in a window in the back)
+			if !s.inactive { wake_within(s, CARET_WAKE_MS) }   // caret blink (none in a window in the back)
 		}
 		text = area_string(a)
 		res.changed = hash_bytes(a.buf[:]) != before_hash
@@ -674,9 +687,9 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		}
 
 		// content size and scrolling
-		view_w := max(8, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
-		view_h := max(8, (b.rect.max.y - b.rect.min.y) - 2 * pad)
-		if auto_height { view_h = max(8, b.pref[.Y].value - 2 * pad) }   // the height this build asks for, not last frame's
+		view_w := max(TEXT_VIEW_MIN_PX, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
+		view_h := max(TEXT_VIEW_MIN_PX, (b.rect.max.y - b.rect.min.y) - 2 * pad)
+		if auto_height { view_h = max(TEXT_VIEW_MIN_PX, b.pref[.Y].value - 2 * pad) }   // the height this build asks for, not last frame's
 		ext := content_extent(a, text, b, lh, lines, wrap_w)
 		content_w, content_h := ext.x, ext.y
 		cx := caret_x_on(text, lines[cur_line], b, a.cursor)
@@ -684,13 +697,13 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		res.caret = {{gutter + pad + cx - a.scroll.x, pad + cy - a.scroll.y}, {gutter + pad + cx - a.scroll.x + 1, pad + cy - a.scroll.y + lh}}
 		if cursor_moved {
 			if wrap_w <= 0 {
-				if cx - a.scroll.x > view_w - 4 { a.scroll.x = cx - view_w + 4 }
+				if cx - a.scroll.x > view_w - TEXT_EDIT_END_SLACK_PX { a.scroll.x = cx - view_w + TEXT_EDIT_END_SLACK_PX }
 				if cx - a.scroll.x < 0 { a.scroll.x = cx }
 			}
 			if cy - a.scroll.y < 0 { a.scroll.y = cy }
 			if cy + lh - a.scroll.y > view_h { a.scroll.y = cy + lh - view_h }
 		}
-		a.scroll.x = wrap_w > 0 ? 0 : clamp(a.scroll.x, 0, max(0, content_w + 4 - view_w))
+		a.scroll.x = wrap_w > 0 ? 0 : clamp(a.scroll.x, 0, max(0, content_w + TEXT_EDIT_END_SLACK_PX - view_w))
 		a.scroll.y = clamp(a.scroll.y, 0, max(0, content_h - view_h))
 
 		d := frame_new(Text_Edit_Draw)
@@ -702,18 +715,18 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		d.cursor, d.mark, d.upstream, d.scroll = a.cursor, a.mark, a.upstream, a.scroll
 		d.focused = res.focused
 		since := now - a.edited_ms
-		d.caret_on = !s.inactive && (since < 500 || (int(since) / 530) % 2 == 0)
+		d.caret_on = !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
 		d.gutter, d.pad, d.line_h = gutter, pad, lh
 		d.selection = color("selection")
 		d.caret = color("cursor")
 		if tags("weak") { d.weak = color("text") }
 		d.gutter_bg = color("background")
-		d.gutter_bg.a *= 0.35
+		d.gutter_bg.a *= TEXT_EDIT_GUTTER_BG_ALPHA_FACTOR
 		d.gutter_bg = tuned(d.gutter_bg)
 		d.gutter_line = color("border")
 		d.mono = mono
 		d.highlight = highlight
-		d.error_color = tuned(Color{0.85, 0.25, 0.25, 1})
+		d.error_color = tuned(TEXT_EDIT_ERROR_COLOR)
 		if highlight != nil && res.hovering && a.sb_drag == 0 {
 			li := int((res.mouse.y - pad + a.scroll.y) / lh)
 			if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
@@ -722,8 +735,8 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		d.bar_color = color("text")
 		mpos := b.rect.min + res.mouse
 		if a.sb_drag != 0 { d.bar_hot = a.sb_drag } else if res.hovering {
-			if d.bars.has_v && contains(Rect{{d.bars.vtrack.min.x - 4, d.bars.vtrack.min.y}, d.bars.vtrack.max}, mpos) { d.bar_hot = 1 }
-			if d.bars.has_h && contains(Rect{{d.bars.htrack.min.x, d.bars.htrack.min.y - 4}, d.bars.htrack.max}, mpos) { d.bar_hot = 2 }
+			if d.bars.has_v && contains(Rect{{d.bars.vtrack.min.x - SCROLLBAR_GRAB_IN_PX, d.bars.vtrack.min.y}, d.bars.vtrack.max}, mpos) { d.bar_hot = 1 }
+			if d.bars.has_h && contains(Rect{{d.bars.htrack.min.x, d.bars.htrack.min.y - SCROLLBAR_GRAB_IN_PX}, d.bars.htrack.max}, mpos) { d.bar_hot = 2 }
 		}
 		if d.bar_hot != 0 { s.cursor_request = .Arrow }
 		b.custom = text_edit_draw

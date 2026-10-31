@@ -25,6 +25,24 @@ import "../platform"
 CAPTION_BUTTON_WIDTH :: 46
 CAPTION_GLYPH_SIZE   :: 10
 CAPTION_CLOSE_HOT    :: 0xc42b1cff   // the system's close button under the pointer
+// Windows' caption buttons (WinUI: subtle fill secondary / tertiary), dark and light themes, in sRGB; how much a press
+// dims the close button and the glyphs; the glyph of an inactive window.
+@(private = "file") CAPTION_FILL_HOT_DARK :: 0.0605
+@(private = "file") CAPTION_FILL_PRESS_DARK :: 0.0419
+@(private = "file") CAPTION_FILL_HOT_LIGHT :: 0.0373
+@(private = "file") CAPTION_FILL_PRESS_LIGHT :: 0.0241
+@(private = "file") CAPTION_CLOSE_PRESS_DIM :: 0.1
+@(private = "file") CAPTION_CLOSE_GLYPH_PRESS_DIM :: 0.3
+@(private = "file") CAPTION_GLYPH_PRESS_DIM :: 0.2
+@(private = "file") CAPTION_GLYPH_INACTIVE_ALPHA :: 0.36
+@(private = "file") CAPTION_DRAWN_EPS :: 0.001    // hot + press under this: nothing to fill
+@(private = "file") CAPTION_STATE_EPS :: 0.01
+// Segoe Fluent Icons / Segoe MDL2 Assets.
+@(private = "file") CAPTION_GLYPH_MINIMIZE :: 0xE921
+@(private = "file") CAPTION_GLYPH_MAXIMIZE :: 0xE922
+@(private = "file") CAPTION_GLYPH_RESTORE :: 0xE923
+@(private = "file") CAPTION_GLYPH_CLOSE :: 0xE8BB
+@(private = "file") CAPTION_RESTORE_OFFSET :: 0.2   // the back square of the restore shape, of the glyph's size
 
 // `if title_bar(id) { ... }`: a row (size from `next` / the style) whose empty parts drag the window.
 @(deferred_none = pop_parent)
@@ -107,27 +125,27 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	// the system's fills (WinUI: subtle fill secondary / tertiary), mixed in sRGB over the title bar as it does
 	glyph := d.dark ? draw.Color{1, 1, 1, 1} : draw.Color{0, 0, 0, 1}
 	bg: Color
-	if d.button == .Close && hot + press > 0.001 {
+	if d.button == .Close && hot + press > CAPTION_DRAWN_EPS {
 		red := draw.hex(CAPTION_CLOSE_HOT)
-		bg = srgb_mix(d.under, red, math.min(hot + press, 1) * (1 - 0.1 * press))
+		bg = srgb_mix(d.under, red, math.min(hot + press, 1) * (1 - CAPTION_CLOSE_PRESS_DIM * press))
 		glyph = draw.mix(glyph, draw.Color{1, 1, 1, 1}, math.min(hot + press, 1))
-		glyph.a = 1 - 0.3 * press
+		glyph.a = 1 - CAPTION_CLOSE_GLYPH_PRESS_DIM * press
 	} else {
 		tint := d.dark ? draw.Color{1, 1, 1, 1} : draw.Color{0, 0, 0, 1}
-		k := d.dark ? 0.0605 * hot * (1 - press) + 0.0419 * press : 0.0373 * hot * (1 - press) + 0.0241 * press
+		k := d.dark ? CAPTION_FILL_HOT_DARK * hot * (1 - press) + CAPTION_FILL_PRESS_DARK * press : CAPTION_FILL_HOT_LIGHT * hot * (1 - press) + CAPTION_FILL_PRESS_LIGHT * press
 		bg = srgb_mix(d.under, tint, k)
-		if !d.active && hot < 0.01 { glyph.a = 0.36 }
-		else if press > 0.01 { glyph.a = 1 - 0.2 * press }
+		if !d.active && hot < CAPTION_STATE_EPS { glyph.a = CAPTION_GLYPH_INACTIVE_ALPHA }
+		else if press > CAPTION_STATE_EPS { glyph.a = 1 - CAPTION_GLYPH_PRESS_DIM * press }
 	}
-	if hot + press > 0.001 { draw.rect(dc, b.rect, bg) }
+	if hot + press > CAPTION_DRAWN_EPS { draw.rect(dc, b.rect, bg) }
 	glyph_size := math.round(CAPTION_GLYPH_SIZE * d.dpi)
 	c := draw.rect_center(b.rect)
 	if d.glyph_font != 0 {
 		cp: rune
 		switch d.button {
-		case .Minimize: cp = 0xE921
-		case .Maximize: cp = d.maxed ? 0xE923 : 0xE922
-		case .Close:    cp = 0xE8BB
+		case .Minimize: cp = CAPTION_GLYPH_MINIMIZE
+		case .Maximize: cp = d.maxed ? CAPTION_GLYPH_RESTORE : CAPTION_GLYPH_MAXIMIZE
+		case .Close:    cp = CAPTION_GLYPH_CLOSE
 		}
 		gl := font.glyph(g.fonts, d.glyph_font, glyph_size, cp)
 		if gl.size.x > 0 {
@@ -151,7 +169,7 @@ caption_shape :: proc(dc: ^draw.Context, d: ^Caption_Draw, c: Vec2, size: f32, c
 		draw.rect(dc, {{cx - half, cy}, {cx + half, cy + t}}, color)
 	case .Maximize:
 		if d.maxed {
-			o := math.round(size * 0.2)
+			o := math.round(size * CAPTION_RESTORE_OFFSET)
 			back := Rect{{cx - half + o, cy - half}, {cx + half, cy + half - o}}
 			front := Rect{{cx - half, cy - half + o}, {cx + half - o, cy + half}}
 			draw.rect(dc, {back.min, {back.max.x, back.min.y + t}}, color)
