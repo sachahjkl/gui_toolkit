@@ -38,6 +38,8 @@ WAIT_BUILDS :: 2
 IDLE_BUILDS :: 3
 @(private)
 WAIT_DEFAULT_MS :: 5000.0
+@(private)
+TICK_INTERVAL :: 8 * time.Millisecond
 
 @(private)
 wait_add :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, kind: Wait_Kind, p: json.Object) {
@@ -79,7 +81,7 @@ waits_poll :: proc(srv: ^Server, s: ^ui.State) {
 			if w.kind == .Idle {
 				reply(w.to, fmt.tprintf(`{{"idle":false,"build":%d}}`, s.build_index))   // (something moves for good: not an error)
 			} else {
-				error_reply(w.to, -32000, fmt.tprintf("waitFor: %s after %.0f ms", w.gone ? "still there" : "not there", w.timeout))
+				error_reply(w.to, CDP_ERROR_SERVER, fmt.tprintf("waitFor: %s after %.0f ms", w.gone ? "still there" : "not there", w.timeout))
 			}
 		}
 		if over {
@@ -120,7 +122,7 @@ wait_idle :: proc(srv: ^Server, s: ^ui.State, w: ^Wait) -> bool {
 @(private)
 ticker :: proc(srv: ^Server) {
 	for !sync.atomic_load(&srv.stopping) {
-		time.sleep(8 * time.Millisecond)
+		time.sleep(TICK_INTERVAL)
 		if sync.atomic_load(&srv.waiting) > 0 { platform.wake(srv.win) }
 	}
 }

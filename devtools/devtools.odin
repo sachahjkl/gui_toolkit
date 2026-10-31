@@ -35,6 +35,29 @@ import "../ui"
 
 VERSION :: ui.VERSION
 
+// The protocol's error codes (JSON-RPC's).
+@(private)
+CDP_ERROR_SERVER :: -32000
+@(private)
+CDP_ERROR_METHOD_NOT_FOUND :: -32601
+@(private)
+CDP_ERROR_INVALID_PARAMS :: -32602
+
+// TOOLKIT_DEVTOOLS holds something other than a port: the port Chrome's own debugging uses by default.
+@(private)
+DEFAULT_PORT :: 9222
+@(private)
+MAX_PORT :: 65535
+// Random bytes of the target's id (the hex of them is what the WebSocket's path must name).
+@(private)
+TARGET_ID_BYTES :: 16
+// Input.dispatchMouseEvent's wheel deltas: CSS pixels, this many a notch (Chrome's).
+@(private)
+WHEEL_NOTCH_PX :: 100
+// F1 ..= F12: the function keys the platform has.
+@(private)
+FUNCTION_KEYS :: 12
+
 Server :: struct {
 	port:     int,
 	win:      ^platform.Window,
@@ -101,7 +124,7 @@ start :: proc(win: ^platform.Window, port: int, title := "") -> ^Server {
 	srv.port, srv.win, srv.listener = port, win, l
 	srv.title = strings.clone(title != "" ? title : "gui_toolkit window")
 	// (not to be guessed: the WebSocket's path needs it, and what serves it to a browser's page is refused)
-	raw: [16]u8
+	raw: [TARGET_ID_BYTES]u8
 	crypto.rand_bytes(raw[:])
 	srv.id = string(hex.encode(raw[:]))
 	srv.accepter = thread.create_and_start_with_poly_data(srv, accept_loop)
@@ -115,7 +138,7 @@ start_from_env :: proc(win: ^platform.Window, title := "") -> ^Server {
 	v := os.get_env("TOOLKIT_DEVTOOLS", context.temp_allocator)
 	if v == "" { return nil }
 	port, ok := strconv.parse_int(v)
-	if !ok || port <= 0 || port > 65535 { port = 9222 }
+	if !ok || port <= 0 || port > MAX_PORT { port = DEFAULT_PORT }
 	return start(win, port, title)
 }
 
@@ -278,7 +301,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		strings.write_string(&sb, "{}")
 	case "Page.captureScreenshot":
 		if screenshot_ask(srv, r, to, p) { return }   // answered when the capture is ready
-		error_reply(to, -32000, "the renderer cannot capture now")
+		error_reply(to, CDP_ERROR_SERVER, "the renderer cannot capture now")
 		return
 	case "Page.getLayoutMetrics":
 		d := dpi(srv)
@@ -289,12 +312,12 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Accessibility.queryAXTree":
 		ax_write_nodes(&sb, srv, ui.a11y_tree(s), ax_matches(ui.a11y_tree(s), p)[:], false)
 	case "Toolkit.axAction":
-		if e := ax_action(&sb, srv, s, p); e != "" { error_reply(to, -32000, e); return }
+		if e := ax_action(&sb, srv, s, p); e != "" { error_reply(to, CDP_ERROR_SERVER, e); return }
 		cast_touch(srv)
 	case "Toolkit.axAudit":
 		ax_audit(&sb, srv, s)
 	case "Toolkit.waitFor":
-		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, -32602, "waitFor: a name or a text"); return }
+		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, "waitFor: a name or a text"); return }
 		wait_add(srv, s, to, .Box, p)
 		return
 	case "Toolkit.waitIdle":
@@ -338,7 +361,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		find(&sb, srv, s, p)
 	case "Toolkit.click":
 		b := find_one(s, p)
-		if b == nil { error_reply(to, -32000, "no box with that name or text"); return }
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box with that name or text"); return }
 		cast_touch(srv)
 		x, y := click(srv, b, p)
 		fmt.sbprintf(&sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
@@ -355,7 +378,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Network.emulateNetworkConditionsByRule":
 		strings.write_string(&sb, `{"ruleIds":[]}`)
 	case "Runtime.evaluate", "Runtime.callFunctionOn":
-		error_reply(to, -32000, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
+		error_reply(to, CDP_ERROR_SERVER, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
 		return
 	case:
 		// what a client turns on before it starts (Page.enable, Runtime.enable, Target.setAutoAttach...): nothing to do
@@ -368,7 +391,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 			ok = false
 		}
 	}
-	if !ok { error_reply(to, -32601, fmt.tprintf("'%s' wasn't found", method)); return }
+	if !ok { error_reply(to, CDP_ERROR_METHOD_NOT_FOUND, fmt.tprintf("'%s' wasn't found", method)); return }
 	reply(to, strings.to_string(sb))
 }
 
@@ -457,9 +480,9 @@ mouse_event :: proc(srv: ^Server, p: json.Object) {
 		e.kind, e.button = .Mouse_Release, b
 		e.buttons -= {b}
 	case "mouseWheel":
-		// CSS pixels, 100 a notch (Chrome's); positive y scrolls the content down, as Event.delta
+		// positive y scrolls the content down, as Event.delta
 		e.kind = .Scroll
-		e.delta = {f32(num(p["deltaX"])) / 100, f32(num(p["deltaY"])) / 100}
+		e.delta = {f32(num(p["deltaX"])) / WHEEL_NOTCH_PX, f32(num(p["deltaY"])) / WHEEL_NOTCH_PX}
 		platform.inject_event(srv.win, platform.Event{kind = .Mouse_Move, pos = e.pos, mods = e.mods})
 	case:
 		return
@@ -530,7 +553,7 @@ key_of :: proc(key, code: string) -> platform.Key {
 	case "ContextMenu": return .Menu
 	}
 	if len(key) >= 2 && key[0] == 'F' {
-		if n, ok := strconv.parse_int(key[1:]); ok && n >= 1 && n <= 12 { return platform.Key(int(platform.Key.F1) + n - 1) }
+		if n, ok := strconv.parse_int(key[1:]); ok && n >= 1 && n <= FUNCTION_KEYS { return platform.Key(int(platform.Key.F1) + n - 1) }
 	}
 	if strings.has_prefix(code, "Key") && len(code) == 4 { return key_of(code[3:], "") }
 	if strings.has_prefix(code, "Digit") && len(code) == 6 { return key_of(code[5:], "") }
@@ -691,7 +714,7 @@ screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, replies = slice.clone(srv.captures[:], runtime.heap_allocator())})
 	case .None, .Failed:
 		for w in srv.captures {
-			error_reply(w, -32000, "the capture failed")
+			error_reply(w, CDP_ERROR_SERVER, "the capture failed")
 			release(w)
 		}
 	}
