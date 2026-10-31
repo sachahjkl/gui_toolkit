@@ -103,9 +103,10 @@ animations_enabled :: proc(app: ^App) -> bool {
 ////////////////////////////////
 // Frame
 
-frame :: proc(app: ^App) {
+frame :: proc(app: ^App, inner := false) {
 	// wait for the GPU first, read input second: the picture we build is the next one on screen
-	render.wait_for_frame(&app.r)
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
+	app.slept = false
 	events := platform.poll_events(app.win, false)
 	render.mark_input(&app.r)   // returns nil when re-entered from a live resize
 	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
@@ -162,7 +163,8 @@ frame :: proc(app: ^App) {
 	ui.draw_tree(&app.ui_state, &app.dc)
 	draw.end_frame(&app.dc)
 	ms := f32(time.duration_milliseconds(time.tick_since(t_begin)))   // before present: vsync wait is not our cost
-	render.frame_end(&app.r)
+	render.frame_end(&app.r, !at_once)
+	render.paced_present(&app.pacer)
 
 	if app.bench_n > 0 { bench_frame(app, ms) }
 	app.ui_ms = math.lerp(app.ui_ms, ms, f32(0.25))
@@ -180,6 +182,7 @@ main :: proc() {
 	app.integrated = slice.contains(os.args, "--integrated")
 	app.win = platform.open_window("gui_toolkit fidget", {1180, 780}, transparent = true, integrated_title = app.integrated)
 	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
+	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
 	ok: bool
 	// system fonts when present, else the fallbacks compiled into the exe (Wine, trimmed installs);
 	// --embedded_fonts forces the fallbacks
@@ -242,13 +245,14 @@ main :: proc() {
 	app.last_tick = time.tick_now()
 	app.frames_requested = 4
 	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) && !app.want_quit {
 		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) {
 			when #config(LOOP_PROBE, false) { fmt.eprintln("loop: idle wait, frame", app.frame_index, "anim_mode", app.anim_mode, "enabled", animations_enabled(app), "os", platform.os_animations_enabled()) }
 			platform.wait_event(app.win, ui.wake_ms(&app.ui_state))
+			app.slept = true
 		}
 		frame(app)
 		if app.frames_requested > 0 { app.frames_requested -= 1 }
