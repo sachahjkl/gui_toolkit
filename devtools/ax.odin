@@ -104,10 +104,14 @@ ax_parents :: proc(u: ^platform.A11y_Update) -> map[u64]u64 {
 // The nodes that answer to a role and a name (case ignored; a name is contained in the node's, `exact` for all of it).
 @(private)
 ax_matches :: proc(u: ^platform.A11y_Update, p: json.Object) -> [dynamic]int {
+	return ax_matching(u, str(p["role"]), str(p["accessibleName"]) != "" ? str(p["accessibleName"]) : str(p["name"]), bool_of(p["exact"]))
+}
+
+@(private)
+ax_matching :: proc(u: ^platform.A11y_Update, role_of, name_of: string, exact: bool) -> [dynamic]int {
 	out := make([dynamic]int, context.temp_allocator)
-	role := strings.to_lower(str(p["role"]), context.temp_allocator)
-	name := strings.to_lower(str(p["accessibleName"]) != "" ? str(p["accessibleName"]) : str(p["name"]), context.temp_allocator)
-	exact := bool_of(p["exact"])
+	role := strings.to_lower(role_of, context.temp_allocator)
+	name := strings.to_lower(name_of, context.temp_allocator)
 	for n, i in u.nodes {
 		if role != "" && strings.to_lower(ax_role_name(platform.A11y_Role(n.role)), context.temp_allocator) != role { continue }
 		if name != "" {
@@ -174,6 +178,7 @@ ax_action :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, p: json.Obje
 	}
 	ui.a11y_inject(s, r)
 	platform.wake(srv.win)
+	rec_press(srv, u, node, action, p)
 	fmt.sbprintf(sb, `{{"nodeId":"%x","name":%s}}`, n.id, json_quote(ax_name_of(u, node)))
 	return ""
 }

@@ -31,7 +31,11 @@ Dom :: struct {
 	sent:   map[int][dynamic]int,    // the children the client knows of a node
 	texts:  map[int]string,          // the text nodes it knows, as it knows them
 	search: [dynamic]int,            // DOM.performSearch
+	counts: map[int]int,             // what it was told of a node's children, those it has not asked for
 	styles: map[int]Dom_Style,       // the styles it edited (dom_edit.odin)
+	history: [dynamic]Dom_Edit,      // its edits, for DOM.undo and DOM.redo
+	done:   int,                     // how many of them stand: those after are undone
+	mark:   int,                     // the edits since the last DOM.markUndoableState share this
 }
 
 @(private)
@@ -99,13 +103,13 @@ dom_remember :: proc(srv: ^Server, id: int, kids: []int) {
 }
 
 // A node of the protocol. depth: how far down its children go with it (-1: all); a box with only a text has it with it (what
-// Elements shows on one line).
+// Elements shows on one line). remember: the client's tree holds what is written (DOM.describeNode's answer stays out of it).
 @(private)
-dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: int) {
+dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: int, remember := true) {
 	if id == DOM_DOCUMENT {
 		kids := dom_children(srv, s, id)
 		fmt.sbprintf(sb, `{{"nodeId":1,"backendNodeId":1,"nodeType":9,"nodeName":"#document","localName":"","nodeValue":"","childNodeCount":%d,"documentURL":"toolkit://window","baseURL":"toolkit://window","xmlVersion":"","compatibilityMode":"NoQuirksMode"`, len(kids))
-		if depth != 0 { dom_write_children(sb, srv, s, id, kids[:], depth) }
+		if depth != 0 { dom_write_children(sb, srv, s, id, kids[:], depth, remember) }
 		strings.write_string(sb, "}")
 		return
 	}
@@ -113,7 +117,7 @@ dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: i
 	if id % 2 == 1 {
 		text := b != nil ? ui.box_text(b) : ""
 		fmt.sbprintf(sb, `{{"nodeId":%d,"backendNodeId":%d,"parentId":%d,"nodeType":3,"nodeName":"#text","localName":"","nodeValue":%s}}`, id, id, id - 1, json_quote(text))
-		dom_text_sent(srv, id, text)
+		if remember { dom_text_sent(srv, id, text) }
 		return
 	}
 	if b == nil {
@@ -124,24 +128,49 @@ dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: i
 	kids := dom_children(srv, s, id)
 	fmt.sbprintf(sb, `{{"nodeId":%d,"backendNodeId":%d,"nodeType":1,"nodeName":%s,"localName":%s,"nodeValue":"","childNodeCount":%d,"attributes":[`, id, id,
 		json_quote(strings.to_upper(tag, context.temp_allocator)), json_quote(tag), len(kids))
-	n := 0
-	attr :: proc(sb: ^strings.Builder, n: ^int, name, value: string) {
-		if value == "" { return }
-		fmt.sbprintf(sb, `%s"%s",%s`, n^ > 0 ? "," : "", name, json_quote(value))
-		n^ += 1
-	}
-	attr(sb, &n, "id", b.name)
-	if b.a11y != nil && b.a11y.role != .Unknown { attr(sb, &n, "role", ax_role_name(b.a11y.role)) }
-	if b.a11y != nil { attr(sb, &n, "aria-label", b.a11y.name) }
+	dom_write_attrs(sb, b)
+	strings.write_string(sb, "]")
+	only_text := len(kids) == 1 && kids[0] == id + 1
+	if depth != 0 || only_text { dom_write_children(sb, srv, s, id, kids[:], depth, remember) }
+	if remember { srv.dom.counts[id] = len(kids) }
+	strings.write_string(sb, "}")
+}
+
+// What a box says of itself, as attributes.
+@(private)
+dom_attrs :: proc(b: ^ui.Box) -> [dynamic][2]string {
+	out := make([dynamic][2]string, context.temp_allocator)
+	attr :: proc(out: ^[dynamic][2]string, name, value: string) { if value != "" { append(out, [2]string{name, value}) } }
+	attr(&out, "id", b.name)
+	if b.a11y != nil && b.a11y.role != .Unknown { attr(&out, "role", ax_role_name(b.a11y.role)) }
+	if b.a11y != nil { attr(&out, ATTR_LABEL, b.a11y.name) }
 	class := strings.builder_make(context.temp_allocator)
 	for f in SHOWN_FLAGS {
 		if f in b.flags { fmt.sbprintf(&class, "%s%v", strings.builder_len(class) > 0 ? " " : "", f) }
 	}
-	attr(sb, &n, "class", strings.to_string(class))
-	strings.write_string(sb, "]")
-	only_text := len(kids) == 1 && kids[0] == id + 1
-	if depth != 0 || only_text { dom_write_children(sb, srv, s, id, kids[:], depth) }
-	strings.write_string(sb, "}")
+	attr(&out, "class", strings.to_string(class))
+	return out
+}
+
+@(private)
+dom_write_attrs :: proc(sb: ^strings.Builder, b: ^ui.Box) {
+	for kv, i in dom_attrs(b) { fmt.sbprintf(sb, `%s"%s",%s`, i > 0 ? "," : "", kv[0], json_quote(kv[1])) }
+}
+
+// DOM.requestChildNodes: the children of a node the client does not have. Those it has are not sent again: each node of an
+// answer is a new object in Chrome's frontend, and the tree element it is unfolding would hold the old one, whose children
+// never come. (Blink's PushChildNodesToFrontend does the same.)
+@(private)
+dom_push_children :: proc(srv: ^Server, s: ^ui.State, id, depth: int) {
+	if srv.dom.to.conn == nil { return }
+	if known, ok := srv.dom.sent[id]; ok {
+		if depth == 1 { return }
+		for k in known { if k % 2 == 0 { dom_push_children(srv, s, k, depth > 0 ? depth - 1 : depth) } }
+		return
+	}
+	kids := dom_children(srv, s, id)
+	dom_remember(srv, id, kids[:])
+	dom_set_child_nodes(srv, s, id, kids[:], depth > 0 ? depth - 1 : depth)
 }
 
 // The children of a node, sent as an event; depth: how far down they go with it.
@@ -158,12 +187,12 @@ dom_set_child_nodes :: proc(srv: ^Server, s: ^ui.State, id: int, kids: []int, de
 }
 
 @(private)
-dom_write_children :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id: int, kids: []int, depth: int) {
-	dom_remember(srv, id, kids)
+dom_write_children :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id: int, kids: []int, depth: int, remember := true) {
+	if remember { dom_remember(srv, id, kids) }
 	strings.write_string(sb, `,"children":[`)
 	for k, i in kids {
 		if i > 0 { strings.write_byte(sb, ',') }
-		dom_write(sb, srv, s, k, depth > 0 ? depth - 1 : depth)
+		dom_write(sb, srv, s, k, depth > 0 ? depth - 1 : depth, remember)
 	}
 	strings.write_string(sb, "]")
 }
@@ -178,6 +207,7 @@ dom_text_sent :: proc(srv: ^Server, id: int, text: string) {
 @(private)
 dom_forget :: proc(srv: ^Server, id: int) {
 	if t, ok := srv.dom.texts[id]; ok { delete(t); delete_key(&srv.dom.texts, id) }
+	delete_key(&srv.dom.counts, id)
 	list, ok := srv.dom.sent[id]
 	if !ok { return }
 	for k in list { dom_forget(srv, k) }
@@ -190,10 +220,12 @@ dom_reset :: proc(srv: ^Server, s: ^ui.State, gone := false) {
 	if gone {   // (its edits go with it: the window is as its program builds it again)
 		for _, st in srv.dom.styles { delete(st.text); delete(st.base) }
 		clear(&srv.dom.styles)
+		dom_history_clear(&srv.dom)
 		if s != nil { ui.box_edits_clear(s) }
 	}
 	for _, list in srv.dom.sent { delete(list) }
 	clear(&srv.dom.sent)
+	clear(&srv.dom.counts)
 	for _, t in srv.dom.texts { delete(t) }
 	clear(&srv.dom.texts)
 	clear(&srv.dom.search)
@@ -206,6 +238,8 @@ dom_reset :: proc(srv: ^Server, s: ^ui.State, gone := false) {
 dom_destroy :: proc(srv: ^Server) {
 	dom_reset(srv, nil, gone = true)
 	delete(srv.dom.styles)
+	delete(srv.dom.history)
+	delete(srv.dom.counts)
 	delete(srv.dom.ids)
 	delete(srv.dom.keys)
 	delete(srv.dom.sent)
@@ -226,9 +260,16 @@ dom_sync :: proc(srv: ^Server, s: ^ui.State) {
 @(private)
 dom_sync_node :: proc(srv: ^Server, s: ^ui.State, id: int) {
 	old, known := srv.dom.sent[id]
-	if !known { return }
 	to := srv.dom.to
 	kids := dom_children(srv, s, id)
+	if !known {
+		// (it has not asked for them: it still says whether there is something to unfold)
+		if n, told := srv.dom.counts[id]; told && n != len(kids) {
+			srv.dom.counts[id] = len(kids)
+			event(to.conn, to.session, "DOM.childNodeCountUpdated", fmt.tprintf(`{{"nodeId":%d,"childNodeCount":%d}}`, id, len(kids)))
+		}
+		return
+	}
 	same := len(old) == len(kids)
 	if same { for k, i in kids { if old[i] != k { same = false; break } } }
 	if !same {
@@ -249,7 +290,7 @@ dom_sync_node :: proc(srv: ^Server, s: ^ui.State, id: int) {
 		for k in kids {
 			if !contains(kept[:], k) {
 				sb := strings.builder_make(context.temp_allocator)
-				dom_write(&sb, srv, s, k, -1)
+				dom_write(&sb, srv, s, k, 0)
 				event(to.conn, to.session, "DOM.childNodeInserted", fmt.tprintf(`{{"parentNodeId":%d,"previousNodeId":%d,"node":%s}}`, id, prev, strings.to_string(sb)))
 			}
 			prev = k
@@ -412,161 +453,219 @@ dom_take :: proc(srv: ^Server, s: ^ui.State, to: Reply_To) {
 	srv.dom.to = hold(to)
 }
 
-// The commands of DOM, CSS, Overlay and of the Accessibility tab. True: answered here.
+// The commands of DOM.
 @(private)
-dom_handle :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, method: string, p: json.Object) -> bool {
-	sb := strings.builder_make(context.temp_allocator)
+cmd_dom :: proc(c: ^Cmd) -> Answer {
+	srv, s, to, p := c.srv, c.s, c.to, c.p
+	sb := &c.sb
 	d := dpi(srv)
-	switch method {
+	switch c.method {
 	case "DOM.getDocument":
 		dom_take(srv, s, to)
-		// (all of it, whatever depth is asked: a window's boxes worth showing are few, and Elements then unfolds them at once)
-		strings.write_string(&sb, `{"root":`)
-		dom_write(&sb, srv, s, DOM_DOCUMENT, -1)
-		strings.write_string(&sb, "}")
+		strings.write_string(sb, `{"root":`)
+		dom_write(sb, srv, s, DOM_DOCUMENT, int(num(p["depth"], 1)))
+		strings.write_string(sb, "}")
 	case "DOM.requestChildNodes":
-		id := dom_param(p)
-		depth := int(num(p["depth"], 1))
-		kids := dom_children(srv, s, id)
-		dom_remember(srv, id, kids[:])
 		// (the event before the answer: on the answer the client reads the children it has)
-		if srv.dom.to.conn != nil { dom_set_child_nodes(srv, s, id, kids[:], depth > 0 ? depth - 1 : depth) }
-		strings.write_string(&sb, "{}")
+		dom_push_children(srv, s, dom_param(p), int(num(p["depth"], 1)))
+		strings.write_string(sb, "{}")
 	case "DOM.describeNode":
-		strings.write_string(&sb, `{"node":`)
-		dom_write(&sb, srv, s, dom_param(p), int(num(p["depth"], 0)))
-		strings.write_string(&sb, "}")
+		strings.write_string(sb, `{"node":`)
+		dom_write(sb, srv, s, dom_param(p), int(num(p["depth"], 0)), remember = false)
+		strings.write_string(sb, "}")
 	case "DOM.pushNodesByBackendIdsToFrontend":
 		ids, _ := p["backendNodeIds"].(json.Array)
-		strings.write_string(&sb, `{"nodeIds":[`)
+		strings.write_string(sb, `{"nodeIds":[`)
 		for v, i in ids {
 			dom_push(srv, s, int(num(v)))
-			fmt.sbprintf(&sb, "%s%d", i > 0 ? "," : "", int(num(v)))
+			fmt.sbprintf(sb, "%s%d", i > 0 ? "," : "", int(num(v)))
 		}
-		strings.write_string(&sb, "]}")
+		strings.write_string(sb, "]}")
 	case "DOM.getNodeForLocation":
 		f := f32(d)
 		b := dom_at(s, s.root, {f32(num(p["x"])) * f, f32(num(p["y"])) * f})
-		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box at this point"); return true }
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box at this point"); return .Sent }
 		id := dom_id(srv, b.key)
 		dom_push(srv, s, id)
-		fmt.sbprintf(&sb, `{{"backendNodeId":%d,"nodeId":%d,"frameId":"%s"}}`, id, id, srv.id)
+		fmt.sbprintf(sb, `{{"backendNodeId":%d,"nodeId":%d,"frameId":"%s"}}`, id, id, srv.id)
 	case "DOM.getBoxModel":
 		b := dom_box(srv, s, dom_param(p))
-		if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return true }
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return .Sent }
 		q := dom_quad(b, d)
-		fmt.sbprintf(&sb, `{{"model":{{"content":%s,"padding":%s,"border":%s,"margin":%s,"width":%.0f,"height":%.0f}}}}`, q, q, q, q, f64(b.rect.max.x) / d - f64(b.rect.min.x) / d, f64(b.rect.max.y) / d - f64(b.rect.min.y) / d)
+		fmt.sbprintf(sb, `{{"model":{{"content":%s,"padding":%s,"border":%s,"margin":%s,"width":%.0f,"height":%.0f}}}}`, q, q, q, q, f64(b.rect.max.x) / d - f64(b.rect.min.x) / d, f64(b.rect.max.y) / d - f64(b.rect.min.y) / d)
 	case "DOM.getContentQuads":
 		b := dom_box(srv, s, dom_param(p))
-		if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return true }
-		fmt.sbprintf(&sb, `{{"quads":[%s]}}`, dom_quad(b, d))
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return .Sent }
+		fmt.sbprintf(sb, `{{"quads":[%s]}}`, dom_quad(b, d))
 	case "DOM.performSearch":
 		clear(&srv.dom.search)
 		if s.root != nil { dom_search(srv, s, s.root, strings.to_lower(str(p["query"]), context.temp_allocator)) }
-		fmt.sbprintf(&sb, `{{"searchId":"1","resultCount":%d}}`, len(srv.dom.search))
+		fmt.sbprintf(sb, `{{"searchId":"1","resultCount":%d}}`, len(srv.dom.search))
 	case "DOM.getSearchResults":
 		lo, hi := clamp(int(num(p["fromIndex"])), 0, len(srv.dom.search)), clamp(int(num(p["toIndex"])), 0, len(srv.dom.search))
-		strings.write_string(&sb, `{"nodeIds":[`)
+		strings.write_string(sb, `{"nodeIds":[`)
 		for id, i in srv.dom.search[lo:max(lo, hi)] {
 			dom_push(srv, s, id)
-			fmt.sbprintf(&sb, "%s%d", i > 0 ? "," : "", id)
+			fmt.sbprintf(sb, "%s%d", i > 0 ? "," : "", id)
 		}
-		strings.write_string(&sb, "]}")
+		strings.write_string(sb, "]}")
 	case "DOM.discardSearchResults":
 		clear(&srv.dom.search)
-		strings.write_string(&sb, "{}")
-	case "Overlay.highlightNode":
-		b := dom_box(srv, s, dom_param(p))
-		ui.set_inspected(s, b != nil ? b.key : 0)
-		strings.write_string(&sb, "{}")
-	case "Overlay.hideHighlight", "DOM.hideHighlight":
+		strings.write_string(sb, "{}")
+	case "DOM.hideHighlight":
 		ui.set_inspected(s, 0)
-		strings.write_string(&sb, "{}")
+		strings.write_string(sb, "{}")
+	case "DOM.setNodeValue":
+		id := dom_param(p)
+		b := dom_box(srv, s, id)
+		if b == nil || id % 2 == 0 { error_reply(to, CDP_ERROR_SERVER, "not the text of a box in the window"); return .Sent }
+		if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
+		dom_text_edit(srv, s, id, b.key, str(p["value"]))
+		strings.write_string(sb, "{}")
+	case "DOM.removeNode":
+		b := dom_box(srv, s, dom_param(p))
+		if b == nil || b == s.root || dom_param(p) % 2 == 1 { error_reply(to, CDP_ERROR_SERVER, "this node cannot be removed"); return .Sent }
+		if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
+		dom_remove_edit(srv, s, dom_param(p), b.key)
+		strings.write_string(sb, "{}")
+	case "DOM.getAttributes":
+		strings.write_string(sb, `{"attributes":[`)
+		if b := dom_box(srv, s, dom_param(p)); b != nil && dom_param(p) % 2 == 0 { dom_write_attrs(sb, b) }
+		strings.write_string(sb, "]}")
+	case "DOM.setAttributeValue":
+		if e := dom_attr_edit(srv, s, to, dom_param(p), [][2]string{{str(p["name"]), str(p["value"])}}, ""); e != "" { error_reply(to, CDP_ERROR_SERVER, e); return .Sent }
+		strings.write_string(sb, "{}")
+	case "DOM.setAttributesAsText":
+		if e := dom_attr_edit(srv, s, to, dom_param(p), attrs_parse(str(p["text"]))[:], str(p["name"])); e != "" { error_reply(to, CDP_ERROR_SERVER, e); return .Sent }
+		strings.write_string(sb, "{}")
+	case "DOM.removeAttribute":
+		if e := dom_attr_edit(srv, s, to, dom_param(p), nil, str(p["name"])); e != "" { error_reply(to, CDP_ERROR_SERVER, e); return .Sent }
+		strings.write_string(sb, "{}")
+	case "DOM.markUndoableState":
+		srv.dom.mark += 1
+		strings.write_string(sb, "{}")
+	case "DOM.undo":
+		dom_undo(srv, s)
+		strings.write_string(sb, "{}")
+	case "DOM.redo":
+		dom_redo(srv, s)
+		strings.write_string(sb, "{}")
+	case "DOM.getNodesForSubtreeByStyle":   // (the Layout tab's overlays of grids and flexboxes: there is no overlay to draw them)
+		strings.write_string(sb, `{"nodeIds":[]}`)
+	case "DOM.resolveNode":
+		b := dom_box(srv, s, dom_param(p))
+		tag := b != nil ? dom_tag(s, b) : "box"
+		fmt.sbprintf(sb, `{{"object":{{"type":"object","subtype":"node","className":"%s","description":"%s","objectId":"node:%d"}}}}`, tag, tag, dom_param(p))
+	case:
+		return .Unknown
+	}
+	return .Reply
+}
+
+// The commands of CSS.
+@(private)
+cmd_css :: proc(c: ^Cmd) -> Answer {
+	srv, s, to, p := c.srv, c.s, c.to, c.p
+	sb := &c.sb
+	switch c.method {
 	case "CSS.getComputedStyleForNode":
 		b := dom_box(srv, s, dom_param(p))
-		strings.write_string(&sb, `{"computedStyle":[`)
+		strings.write_string(sb, `{"computedStyle":[`)
 		if b != nil {
-			dom_write_props(&sb, dom_style_editable(srv, b))
-			strings.write_byte(&sb, ',')
-			dom_write_props(&sb, dom_style_fixed(srv, b))
+			dom_write_props(sb, dom_style_editable(srv, b))
+			strings.write_byte(sb, ',')
+			dom_write_props(sb, dom_style_fixed(srv, b))
 		}
-		strings.write_string(&sb, "]}")
+		strings.write_string(sb, "]}")
 	case "CSS.setStyleTexts":
 		edits, _ := p["edits"].(json.Array)
-		strings.write_string(&sb, `{"styles":[`)
+		strings.write_string(sb, `{"styles":[`)
 		for v, i in edits {
 			edit, _ := v.(json.Object)
 			id, _ := strconv.parse_int(strings.trim_prefix(str(edit["styleSheetId"]), "toolkit-"))
 			b := dom_box(srv, s, id)
-			if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return true }
+			if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return .Sent }
 			if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
 			dom_style_set(srv, s, id, b, str(edit["text"]))
-			if i > 0 { strings.write_byte(&sb, ',') }
-			css_write_style(&sb, id, str(edit["text"]))
+			if i > 0 { strings.write_byte(sb, ',') }
+			css_write_style(sb, id, str(edit["text"]))
 		}
-		strings.write_string(&sb, "]}")
-	case "DOM.setNodeValue":
-		id := dom_param(p)
-		b := dom_box(srv, s, id)
-		if b == nil || id % 2 == 0 { error_reply(to, CDP_ERROR_SERVER, "not the text of a box in the window"); return true }
-		if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
-		e := ui.box_edit(s, b.key)
-		delete(e.text)
-		e.text = strings.clone(str(p["value"]))
-		e.set += {.Text}
-		strings.write_string(&sb, "{}")
-	case "DOM.removeNode":
-		b := dom_box(srv, s, dom_param(p))
-		if b == nil || b == s.root || dom_param(p) % 2 == 1 { error_reply(to, CDP_ERROR_SERVER, "this node cannot be removed"); return true }
-		if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
-		ui.box_edit(s, b.key).set += {.Removed}
-		strings.write_string(&sb, "{}")
+		strings.write_string(sb, "]}")
 	case "CSS.getMatchedStylesForNode", "CSS.getInlineStylesForNode":
 		id := dom_param(p)
 		b := dom_box(srv, s, id)
-		strings.write_string(&sb, `{"attributesStyle":{"cssProperties":[`)
-		if b != nil { dom_write_props(&sb, dom_style_fixed(srv, b)) }
-		strings.write_string(&sb, `],"shorthandEntries":[]},"inlineStyle":`)
-		css_write_style(&sb, id, b != nil ? dom_style_text(srv, id, b) : "")
-		strings.write_string(&sb, `,"matchedCSSRules":[],"inherited":[],"inheritedPseudoElements":[],"pseudoElements":[],"cssKeyframesRules":[],"cssPositionTryRules":[],"cssPropertyRules":[],"cssPropertyRegistrations":[],"cssFunctionRules":[],"cssAtRules":[]}`)
-	case "DOM.resolveNode":
-		b := dom_box(srv, s, dom_param(p))
-		tag := b != nil ? dom_tag(s, b) : "box"
-		fmt.sbprintf(&sb, `{{"object":{{"type":"object","subtype":"node","className":"%s","description":"%s","objectId":"node:%d"}}}}`, tag, tag, dom_param(p))
-	case "CSS.getEnvironmentVariables", "CSS.trackComputedStyleUpdates", "CSS.trackComputedStyleUpdatesForNode", "DOM.markUndoableState":
-		strings.write_string(&sb, "{}")
+		strings.write_string(sb, `{"attributesStyle":{"cssProperties":[`)
+		if b != nil { dom_write_props(sb, dom_style_fixed(srv, b)) }
+		strings.write_string(sb, `],"shorthandEntries":[]},"inlineStyle":`)
+		css_write_style(sb, id, b != nil ? dom_style_text(srv, id, b) : "")
+		strings.write_string(sb, `,"matchedCSSRules":[],"inherited":[],"inheritedPseudoElements":[],"pseudoElements":[],"cssKeyframesRules":[],"cssPositionTryRules":[],"cssPropertyRules":[],"cssPropertyRegistrations":[],"cssFunctionRules":[],"cssAtRules":[]}`)
+	case "CSS.getEnvironmentVariables", "CSS.trackComputedStyleUpdates", "CSS.trackComputedStyleUpdatesForNode":
+		strings.write_string(sb, "{}")
+	case "CSS.takeComputedStyleUpdates":   // (the frontend asks again, at its own pace: the Styles panel is refreshed by the tree's events)
+		strings.write_string(sb, `{"nodeIds":[]}`)
 	case "CSS.getPlatformFontsForNode":
-		strings.write_string(&sb, `{"fonts":[]}`)
+		strings.write_string(sb, `{"fonts":[]}`)
 	case "CSS.getBackgroundColors":
-		strings.write_string(&sb, `{"backgroundColors":[]}`)
+		strings.write_string(sb, `{"backgroundColors":[]}`)
 	case "CSS.getAnimatedStylesForNode":
-		strings.write_string(&sb, `{"animationStyles":[]}`)
+		strings.write_string(sb, `{"animationStyles":[]}`)
+	case:
+		return .Unknown
+	}
+	return .Reply
+}
+
+// The commands of Overlay.
+@(private)
+cmd_overlay :: proc(c: ^Cmd) -> Answer {
+	switch c.method {
+	case "Overlay.highlightNode":
+		b := dom_box(c.srv, c.s, dom_param(c.p))
+		ui.set_inspected(c.s, b != nil ? b.key : 0)
+	case "Overlay.hideHighlight":
+		ui.set_inspected(c.s, 0)
+	case:
+		return .Unknown
+	}
+	strings.write_string(&c.sb, "{}")
+	return .Reply
+}
+
+// The commands of Accessibility: the Accessibility tab, and tools.
+@(private)
+cmd_accessibility :: proc(c: ^Cmd) -> Answer {
+	srv, s, p := c.srv, c.s, c.p
+	sb := &c.sb
+	switch c.method {
+	case "Accessibility.getFullAXTree":
+		ax_write_nodes(sb, srv, ui.a11y_tree(s), nil, true)
+	case "Accessibility.queryAXTree":
+		ax_write_nodes(sb, srv, ui.a11y_tree(s), ax_matches(ui.a11y_tree(s), p)[:], false)
 	case "Accessibility.getPartialAXTree":
-		dom_ax_partial(&sb, srv, s, dom_param(p), p["fetchRelatives"] == nil || bool_of(p["fetchRelatives"]))
+		dom_ax_partial(sb, srv, s, dom_param(p), p["fetchRelatives"] == nil || bool_of(p["fetchRelatives"]))
 	case "Accessibility.getAXNodeAndAncestors":
-		dom_ax_partial(&sb, srv, s, dom_param(p), true)
+		dom_ax_partial(sb, srv, s, dom_param(p), true)
 	case "Accessibility.getRootAXNode":
 		u := ui.a11y_tree(s)
 		parent := ax_parents(u)
-		strings.write_string(&sb, `{"node":`)
+		strings.write_string(sb, `{"node":`)
 		wrote := false
 		for n, i in u.nodes {
-			if n.id not_in parent { ax_write_node(&sb, srv, u, i, parent); wrote = true; break }
+			if n.id not_in parent { ax_write_node(sb, srv, u, i, parent); wrote = true; break }
 		}
-		if !wrote { strings.write_string(&sb, "null") }
-		strings.write_string(&sb, "}")
+		if !wrote { strings.write_string(sb, "null") }
+		strings.write_string(sb, "}")
 	case "Accessibility.getChildAXNodes":
 		u := ui.a11y_tree(s)
 		only := make([dynamic]int, context.temp_allocator)
 		if i := dom_ax_index(u, str(p["id"])); i >= 0 {
-			for c in platform.a11y_node_children(u, i) {
-				for n, k in u.nodes { if n.id == c { append(&only, k); break } }
+			for k in platform.a11y_node_children(u, i) {
+				for n, x in u.nodes { if n.id == k { append(&only, x); break } }
 			}
 		}
-		ax_write_nodes(&sb, srv, u, only[:], false)
+		ax_write_nodes(sb, srv, u, only[:], false)
 	case:
-		return false
+		return .Unknown
 	}
-	reply(to, strings.to_string(sb))
-	return true
+	return .Reply
 }
