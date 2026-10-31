@@ -48,6 +48,11 @@ Color_Raster :: struct {
 @(private) COLOR_CANVAS_KEEP :: 1024 * 1024
 // Canvases come in multiples of this, not to be remade for every glyph a little bigger than the last.
 @(private) COLOR_CANVAS_GRAIN_PX :: 64
+// Around a glyph on its canvas: this part of the em, plus these pixels.
+@(private) COLOR_CANVAS_PAD_EM :: 0.5
+@(private) COLOR_CANVAS_PAD_EXTRA_PX :: 2
+// Layers of a COLR v0 glyph, first guess.
+@(private) COLOR_LAYERS_HINT :: 8
 // Dots per inch of the bitmaps: Direct2D's device independent pixels are then pixels.
 @(private) D2D_PIXELS_DPI :: 96
 // A channel of the second drawing of a glyph is far from fg's: full if fg's is below this, else zero.
@@ -68,8 +73,8 @@ color_raster_init :: proc(cr: ^Color_Raster) -> bool {
 	cr.device, cr.dxgi = d3d_device_for_d2d(.WARP)
 	if cr.device == nil { return false }
 	props := D2D1_CREATION_PROPERTIES{threadingMode = 0}
-	if D2D1CreateDevice(cr.dxgi, &props, &cr.d2d) < 0 || cr.d2d == nil { color_raster_release(cr); return false }
-	if cr.d2d->CreateDeviceContext(0, &cr.dc) < 0 || cr.dc == nil { color_raster_release(cr); return false }
+	if failing(.D2d_Device) || D2D1CreateDevice(cr.dxgi, &props, &cr.d2d) < 0 || cr.d2d == nil { color_raster_release(cr); return false }
+	if failing(.D2d_Context) || cr.d2d->CreateDeviceContext(0, &cr.dc) < 0 || cr.dc == nil { color_raster_release(cr); return false }
 	cr.dc4 = com_query(cr.dc, &IID_ID2D1DeviceContext4, ID2D1DeviceContext)
 	cr.dc7 = com_query(cr.dc, &IID_ID2D1DeviceContext7, ID2D1DeviceContext)
 	if cr.dc7 != nil && cr.dc7->GetPaintFeatureLevel() < DWRITE_PAINT_FEATURE_LEVEL_COLR_V1 {
@@ -77,7 +82,7 @@ color_raster_init :: proc(cr: ^Color_Raster) -> bool {
 		cr.dc7 = nil
 	}
 	black := D2D1_COLOR_F{0, 0, 0, 1}
-	if cr.dc->CreateSolidColorBrush(&black, nil, &cr.brush) < 0 || cr.brush == nil { color_raster_release(cr); return false }
+	if failing(.D2d_Brush) || cr.dc->CreateSolidColorBrush(&black, nil, &cr.brush) < 0 || cr.brush == nil { color_raster_release(cr); return false }
 	cr.dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
 	return true
 }
@@ -242,7 +247,7 @@ d2d_draw_glyph :: proc(s: ^State, f: ^Font, run: ^DWRITE_GLYPH_RUN, x: f32, fg: 
 	k := size / f.upem
 	gm: DWRITE_GLYPH_METRICS
 	if f.dw->GetDesignGlyphMetrics(run.glyphIndices, 1, &gm, false) < 0 { return }
-	pad := int(math.ceil(size * 0.5)) + 2
+	pad := int(math.ceil(size * COLOR_CANVAS_PAD_EM)) + COLOR_CANVAS_PAD_EXTRA_PX
 	asc := int(math.ceil(f32(f.dm.ascent) * k))
 	desc := int(math.ceil(f32(f.dm.descent) * k))
 	adv := int(math.ceil(f32(gm.advanceWidth) * k))
@@ -418,7 +423,7 @@ Layer :: struct {
 rasterize_colr_layers :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]u8) -> (Glyph_Image, bool, bool) {
 	context.allocator = runtime.heap_allocator()
 	if s.factory2 == nil { return {}, false, false }
-	layers := make([dynamic]Layer, 0, 8, context.temp_allocator)
+	layers := make([dynamic]Layer, 0, COLOR_LAYERS_HINT, context.temp_allocator)
 	uses_fg := false
 	text := [4]f32{f32(fg[0]) / 255, f32(fg[1]) / 255, f32(fg[2]) / 255, 1}
 	collect :: proc(s: ^State, layers: ^[dynamic]Layer, cr: ^DWRITE_COLOR_GLYPH_RUN, text: [4]f32, uses_fg: ^bool) {

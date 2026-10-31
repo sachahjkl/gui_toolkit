@@ -91,6 +91,12 @@ Atlas :: struct {
 @(private) GLYPH_KEY_SIZE_MAX :: (1 << 20) - 1
 @(private) GLYPH_SIZE_STEPS_PER_PX :: 16
 
+// page_alloc: the texels between two bitmaps; a shelf takes a bitmap up to half as tall again as it plus the slack, and a new
+// shelf is a multiple of the grain.
+@(private) PAGE_PAD_PX :: 1
+@(private) SHELF_FIT_SLACK_PX :: 2
+@(private) SHELF_HEIGHT_GRAIN_PX :: 4
+
 // What raster_size_limit gives whatever the size of a page.
 @(private) RASTER_SIZE_MIN_PX :: 64
 
@@ -245,16 +251,15 @@ atlas_pages_hold :: proc(s: ^State, refs: []Page_Ref) -> bool {
 
 @(private)
 page_alloc :: proc(p: ^Page, w, h: int) -> (x, y: int, ok: bool) {
-	pad :: 1
-	pw, ph := w + pad, h + pad
+	pw, ph := w + PAGE_PAD_PX, h + PAGE_PAD_PX
 	if pw > p.size || ph > p.size { return 0, 0, false }
 	best := -1
 	for sh, i in p.shelves {
-		if sh.h < ph || sh.h > ph + ph / 2 + 2 || sh.x + pw > p.size { continue }
+		if sh.h < ph || sh.h > ph + ph / 2 + SHELF_FIT_SLACK_PX || sh.x + pw > p.size { continue }
 		if best < 0 || sh.h < p.shelves[best].h { best = i }
 	}
 	if best < 0 {
-		hh := (ph + 3) &~ 3
+		hh := (ph + SHELF_HEIGHT_GRAIN_PX - 1) &~ (SHELF_HEIGHT_GRAIN_PX - 1)
 		if p.bottom + hh > p.size { return 0, 0, false }
 		append(&p.shelves, Shelf{y = p.bottom, h = hh})
 		p.bottom += hh
@@ -277,13 +282,22 @@ page_log :: proc(p: ^Page, x, y, w, h: int) {
 	append(&p.log, Dirty{i32(x), i32(y), i32(w), i32(h), p.version})
 }
 
-// The clock of the oldest frame being drawn: a page last used before it is under no current frame. Caller holds the lock.
+// The least recently used of `pages` (atlas pages: of `kind`; Slug pages have no kinds) no current frame draws from, -1 when
+// each is under one. Caller holds the lock.
 @(private)
-atlas_oldest_frame :: proc(a: ^Atlas) -> u64 {
-	if len(a.users) == 0 { return a.clock }
-	oldest := max(u64)
-	for _, start in a.users { oldest = min(oldest, start) }
-	return oldest
+atlas_victim :: proc(a: ^Atlas, pages: []^$T, kind: Page_Kind = {}) -> int {
+	oldest := a.clock
+	if len(a.users) > 0 {
+		oldest = max(u64)
+		for _, start in a.users { oldest = min(oldest, start) }
+	}
+	victim := -1
+	for p, i in pages {
+		when T == Page { if p.kind != kind { continue } }
+		if p.last_used >= oldest { continue }
+		if victim < 0 || p.last_used < pages[victim].last_used { victim = i }
+	}
+	return victim
 }
 
 // Room for a w x h bitmap in a page of `kind`. Caller holds the lock.
@@ -292,7 +306,7 @@ atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, 
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	// a bitmap (with its pad) that is bigger than a page can never be placed: no eviction, no page made for nothing
-	if w + 1 > s.settings.page_size || h + 1 > s.settings.page_size { return 0, 0, 0, false }
+	if w + PAGE_PAD_PX > s.settings.page_size || h + PAGE_PAD_PX > s.settings.page_size { return 0, 0, 0, false }
 	n_kind := 0
 	for p, i in a.pages {
 		if p.kind != kind { continue }
@@ -301,13 +315,7 @@ atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, 
 	}
 	limit := kind == .Color ? s.settings.max_color_pages : s.settings.max_gray_pages
 	if n_kind >= limit {
-		// the least recently used page no current frame draws from
-		oldest := atlas_oldest_frame(a)
-		victim := -1
-		for p, i in a.pages {
-			if p.kind != kind || p.last_used >= oldest { continue }
-			if victim < 0 || p.last_used < a.pages[victim].last_used { victim = i }
-		}
+		victim := atlas_victim(a, a.pages[:], kind)
 		if victim >= 0 {
 			for k, g in a.glyphs { if int(g.page) == victim { delete_key(&a.glyphs, k) } }
 			for k, g in a.fg_glyphs { if int(g.page) == victim { delete_key(&a.fg_glyphs, k) } }

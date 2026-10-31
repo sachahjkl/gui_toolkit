@@ -3,6 +3,10 @@ package font
 // Text analyses for layout: bidirectional levels (UAX #9) and line break opportunities (UAX #14), from the backend
 // (backend.odin).
 
+// First guesses for the lists below.
+@(private) BIDI_RUNS_HINT :: 4
+@(private) LINE_BREAKS_HINT :: 8
+
 // A directional run of a paragraph: bytes [start, end) at an embedding level (odd: right to left).
 Bidi_Run :: struct {
 	start, end: int,
@@ -30,7 +34,7 @@ bidi_runs :: proc(s: ^State, text: string, dir: Direction, allocator := context.
 }
 
 runs_of_levels :: proc(levels: []u8, allocator := context.allocator) -> []Bidi_Run {
-	runs := make([dynamic]Bidi_Run, 0, 4, allocator)
+	runs := make([dynamic]Bidi_Run, 0, BIDI_RUNS_HINT, allocator)
 	i := 0
 	for i < len(levels) {
 		j := i + 1
@@ -82,7 +86,7 @@ Break_Opportunity :: struct {
 // Line break opportunities inside `text` (UAX #14 with dictionaries for Thai, Lao, Khmer, Myanmar...),
 // in order, excluding the start of the text.
 line_breaks :: proc(s: ^State, text: string, allocator := context.allocator) -> []Break_Opportunity {
-	out := make([dynamic]Break_Opportunity, 0, 8, allocator)
+	out := make([dynamic]Break_Opportunity, 0, LINE_BREAKS_HINT, allocator)
 	if s.tb == nil || len(text) == 0 { return out[:] }
 	if !s.tb.line_breaks(s, text, &out) { clear(&out) }
 	return out[:]

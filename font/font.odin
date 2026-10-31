@@ -39,6 +39,18 @@ ATLAS_SIZE :: 2048
 @(private) FALLBACK_UPEM :: 1000
 // A line's thickness where the face gives none: the em divided by this.
 @(private) FALLBACK_STROKE_DIVISOR :: 15
+// metrics() without a face: parts of the em.
+@(private) FALLBACK_ASCENT_EM :: 0.8
+@(private) FALLBACK_DESCENT_EM :: 0.2
+@(private) FALLBACK_LINE_HEIGHT_EM :: 1.2
+@(private) FALLBACK_LINE_GAP_EM :: 0.2
+@(private) FALLBACK_X_HEIGHT_EM :: 0.5           // (also for a face that gives none)
+@(private) FALLBACK_CAP_HEIGHT_EM :: 0.7
+@(private) FALLBACK_UNDERLINE_OFFSET_EM :: 0.1
+@(private) FALLBACK_STRIKE_OFFSET_EM :: 0.25
+// What a face that gives no cap height or strikethrough has: a part of its ascent, of its x height.
+@(private) FALLBACK_CAP_HEIGHT_OF_ASCENT :: 0.7
+@(private) FALLBACK_STRIKE_OF_X_HEIGHT :: 0.5
 
 // Font.cmap: the BMP, CMAP_BITS_PER_CHAR bits per code point, in words of CMAP_WORD_BITS.
 @(private) CMAP_BMP_CHARS :: 65536
@@ -557,8 +569,9 @@ metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 	f := face_ptr(s, primary_face(s, id))
 	if f == nil {
 		t := max(size / FALLBACK_STROKE_DIVISOR, 1)
-		return {ascent = size * 0.8, descent = size * 0.2, line_height = math.round(size * 1.2), line_gap = size * 0.2, x_height = size * 0.5, cap_height = size * 0.7,
-			underline_offset = size * 0.1, underline_thickness = t, strike_offset = size * 0.25, strike_thickness = t}
+		return {ascent = size * FALLBACK_ASCENT_EM, descent = size * FALLBACK_DESCENT_EM, line_height = math.round(size * FALLBACK_LINE_HEIGHT_EM),
+			line_gap = size * FALLBACK_LINE_GAP_EM, x_height = size * FALLBACK_X_HEIGHT_EM, cap_height = size * FALLBACK_CAP_HEIGHT_EM,
+			underline_offset = size * FALLBACK_UNDERLINE_OFFSET_EM, underline_thickness = t, strike_offset = size * FALLBACK_STRIKE_OFFSET_EM, strike_thickness = t}
 	}
 	k := size / f.upem
 	fm := f.fm
@@ -570,11 +583,11 @@ metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 	}
 	m.line_gap = f32(fm.line_gap) * k
 	m.line_height = math.round(m.ascent + m.descent + m.line_gap)
-	if m.x_height <= 0 { m.x_height = size * 0.5 }
-	if m.cap_height <= 0 { m.cap_height = m.ascent * 0.7 }
+	if m.x_height <= 0 { m.x_height = size * FALLBACK_X_HEIGHT_EM }
+	if m.cap_height <= 0 { m.cap_height = m.ascent * FALLBACK_CAP_HEIGHT_OF_ASCENT }
 	if m.underline_thickness <= 0 { m.underline_thickness = size / FALLBACK_STROKE_DIVISOR }
 	if m.strike_thickness <= 0 { m.strike_thickness = m.underline_thickness }
-	if m.strike_offset <= 0 { m.strike_offset = m.x_height * 0.5 }
+	if m.strike_offset <= 0 { m.strike_offset = m.x_height * FALLBACK_STRIKE_OF_X_HEIGHT }
 	return m
 }
 
