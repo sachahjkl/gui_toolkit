@@ -118,11 +118,13 @@ wait_idle :: proc(srv: ^Server, s: ^ui.State, w: ^Wait) -> bool {
 	return true
 }
 
-// Wakes the window while something waits (a program at rest draws nothing and would never look).
+// Wakes the window while something waits (a program at rest draws nothing and would never look). As long as it waits, not once:
+// a wake that comes between `service` and the frame's poll_events is taken by that poll, and the window would then sleep with the
+// command in its inbox, until anything else wakes it.
 @(private)
 ticker :: proc(srv: ^Server) {
 	for !sync.atomic_load(&srv.stopping) {
 		time.sleep(TICK_INTERVAL)
-		if sync.atomic_load(&srv.waiting) > 0 { platform.wake(srv.win) }
+		if sync.atomic_load(&srv.waiting) > 0 || sync.atomic_load(&srv.asked) || sync.atomic_load(&srv.ended) || sync.atomic_load(&srv.screencast.same) { platform.wake(srv.win) }
 	}
 }

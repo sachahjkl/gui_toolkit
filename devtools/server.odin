@@ -122,6 +122,7 @@ conn_loop :: proc(c: ^Conn) {
 		net.close(c.sock)
 		sync.unlock(&c.write)
 		sync.atomic_store(&c.done, true)
+		sync.atomic_store(&c.srv.ended, true)
 		platform.wake(c.srv.win)   // (the UI thread frees it)
 	}
 	r := Reader{sock = c.sock}
@@ -231,8 +232,10 @@ conn_loop :: proc(c: ^Conn) {
 				srv := c.srv
 				sync.lock(&srv.lock)
 				append(&srv.inbox, Message{conn = c, text = strings.clone(string(msg[:]), runtime.heap_allocator())})
+				wants := sync.atomic_load(&srv.cast_dirty) || !strings.contains(string(msg[:]), "Page.screencastFrameAck")   // (cast.odin)
+				if wants { sync.atomic_store(&srv.asked, true) }
 				sync.unlock(&srv.lock)
-				if sync.atomic_load(&srv.cast_dirty) || !strings.contains(string(msg[:]), "Page.screencastFrameAck") { platform.wake(srv.win) }   // (cast.odin)
+				if wants { platform.wake(srv.win) }
 				clear(&msg)
 			}
 		}
