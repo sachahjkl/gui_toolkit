@@ -263,7 +263,6 @@ release_device_objects :: proc(r: ^Renderer) {
 	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 	capture_release_device_objects(&r.capture)
 	d3d_damage_release(&r.damage)
-	rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
 	readback_device_lost(r)
 	heaps_destroy(r)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }

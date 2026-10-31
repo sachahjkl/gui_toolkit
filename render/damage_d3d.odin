@@ -1,6 +1,8 @@
 #+build windows
 package render
 
+@(require) import "core:mem"
+@(require) import win "core:sys/windows"
 @(require) import "vendor:directx/d3d11"
 @(require) import "vendor:directx/dxgi"
 
@@ -21,8 +23,9 @@ d3d_damage_release :: proc(d: ^Damage_State) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
 	rel(&d.target_rtv); rel(&d.target)
 	rel(&d.clear_rtv); rel(&d.clear_tex)
-	d.target_size, d.clear_size = {}, {}
-	d.target_ready = false
+	rel(&d.side_rtv); rel(&d.side_target)
+	d.target_size, d.clear_size, d.side_size = {}, {}, {}
+	d.target_ready, d.side_ready = false, false
 }
 
 // A texture the frame's pixels can be copied to and from, drawn into through the frame's view.
@@ -82,6 +85,39 @@ d3d_damage_show :: proc(r: ^Renderer, frame_tex: ^d3d11.ITexture2D) {
 	if r.swapchain != nil { size = {min(size.x, r.buffer_size.x), min(size.y, r.buffer_size.y)} }
 	box := d3d11.BOX{left = 0, top = 0, front = 0, right = u32(size.x), bottom = u32(size.y), back = 1}
 	r.ctx->CopySubresourceRegion(frame_tex, 0, 0, 0, 0, r.damage.target, 0, &box)
+}
+
+// Exchanges the kept target with the one a frame is drawn into on the side (damage.odin: verify).
+@(private)
+d3d_damage_side_swap :: proc(r: ^Renderer) {
+	d := &r.damage
+	d.target, d.side_target = d.side_target, d.target
+	d.target_rtv, d.side_rtv = d.side_rtv, d.target_rtv
+	d.target_size, d.side_size = d.side_size, d.target_size
+	d.target_ready, d.side_ready = d.side_ready, d.target_ready
+}
+
+// A BGRA8 read-back of a whole texture, tightly packed (size.x * size.y * 4 bytes). nil on failure.
+@(private)
+d3d_read_texture :: proc(r: ^Renderer, tex: ^d3d11.ITexture2D) -> []u8 {
+	if tex == nil { return nil }
+	staging: ^d3d11.ITexture2D
+	r.device->CreateTexture2D(&{
+		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
+		SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ},
+	}, nil, &staging)
+	if staging == nil { return nil }
+	defer staging->Release()
+	r.ctx->CopyResource(staging, tex)
+	mapped: d3d11.MAPPED_SUBRESOURCE
+	if win.FAILED(r.ctx->Map(staging, 0, .READ, {}, &mapped)) { return nil }
+	defer r.ctx->Unmap(staging, 0)
+	out := make([]u8, r.size.x * r.size.y * 4)
+	for y in 0 ..< r.size.y {
+		row := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))), r.size.x * 4)
+		copy(out[y * r.size.x * 4:], row)
+	}
+	return out
 }
 
 // A frame nothing was submitted for: the clear frame_begin deferred, and what the next region starts from is behind.

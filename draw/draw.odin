@@ -214,6 +214,7 @@ destroy :: proc(c: ^Context) {
 	slug_gpu_destroy(c)
 	text_destroy(c)
 	cache_destroy(c)
+	c^ = {}   // (init again on the same struct must not append to what was freed here)
 }
 
 begin_frame :: proc(c: ^Context, size: Vec2) {

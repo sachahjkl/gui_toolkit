@@ -7,6 +7,7 @@ package render
 // anything until a capture is asked for (the copy is one GPU command in that one frame; the map never waits).
 
 import "base:runtime"
+import "core:sync"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
@@ -158,111 +159,150 @@ capture_free_wgpu :: proc(c: ^Capture_State) {
 	}
 }
 
+@(private)
+capture_on_map :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, u1, u2: rawptr) {
+	context = runtime.default_context()
+	m := (^Capture_Map)(u1)
+	if m.abandoned { free(m, runtime.heap_allocator()); return }
+	m.state = status == .Success ? .Mapped : .Failed
+}
+
+// Fault Capture_Map_Late: the map held back (the callback that comes after its capture was cancelled).
+@(private, thread_local) capture_map_held: ^Capture_Map
+
+fault_capture_map_answer :: proc() {
+	if capture_map_held == nil { return }
+	m := capture_map_held
+	capture_map_held = nil
+	capture_on_map(.Aborted, {}, m, nil)
+}
+
 // The picture of a capture: RGBA8, straight rows, sRGB values, alpha forced to 255 (a window is opaque; a translucent
 // one keeps what the compositor would show over black). Pending until the GPU has finished the copy: this never waits.
 // The pixels are the caller's (allocated with `allocator`); `size` is the rectangle the copy holds.
 capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: []u8, size: [2]int, status: Capture_Status) {
+	raw: Capture_Raw
+	raw, status = capture_poll_raw(r, allocator)
+	if status != .Ready { return nil, {}, status }
+	return capture_raw_finish(raw), raw.size, .Ready
+}
+
+// What the texels of a capture are until capture_raw_finish.
+Capture_Raw_Format :: enum u8 { BGRA8, RGBA8, Half }
+
+// A capture as it came off the GPU: its rows copied, tightly packed, and nothing else done.
+Capture_Raw :: struct {
+	pixels: []u8,
+	size:   [2]int,
+	format: Capture_Raw_Format,
+}
+
+// capture_poll in two halves, so that a frame's thread only pays for the copy of the rows: capture_poll_raw there,
+// capture_raw_finish on any thread (it touches nothing of the renderer).
+capture_poll_raw :: proc(r: ^Renderer, allocator := context.allocator) -> (raw: Capture_Raw, status: Capture_Status) {
 	c := &r.capture
-	if c.failed { c.failed = false; return nil, {}, .Failed }
-	if c.requested { return nil, {}, .Pending }
-	if !c.pending { return nil, {}, .None }
+	if c.failed { c.failed = false; return {}, .Failed }
+	if c.requested { return {}, .Pending }
+	if !c.pending { return {}, .None }
 	when USE_WGPU {
 		g := &r.wg
-		if c.wbuf == nil { c.pending = false; return nil, {}, .Failed }
+		if c.wbuf == nil { c.pending = false; return {}, .Failed }
 		if c.wmap == nil {
-			on_map :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, u1, u2: rawptr) {
-				context = runtime.default_context()
-				m := (^Capture_Map)(u1)
-				if m.abandoned { free(m, runtime.heap_allocator()); return }
-				m.state = status == .Success ? .Mapped : .Failed
-			}
 			c.wmap = new(Capture_Map, runtime.heap_allocator())
-			wgpu.BufferMapAsync(c.wbuf, {.Read}, 0, uint(c.wrow * c.got[3]), {mode = .AllowProcessEvents, callback = on_map, userdata1 = c.wmap})
+			if fault_hit(.Capture_Map) {
+				capture_on_map(.Error, {}, c.wmap, nil)
+			} else if fault_hit(.Capture_Map_Late) {
+				capture_map_held = c.wmap
+			} else {
+				wgpu.BufferMapAsync(c.wbuf, {.Read}, 0, uint(c.wrow * c.got[3]), {mode = .AllowProcessEvents, callback = capture_on_map, userdata1 = c.wmap})
+			}
 		}
 		if c.wmap.state == .Asked {
 			wgpu.DevicePoll(g.device, false)
 			wgpu.InstanceProcessEvents(g.instance)
 		}
 		switch c.wmap.state {
-		case .Asked: return nil, {}, .Pending
-		case .Failed: c.pending = false; capture_free_wgpu(c); return nil, {}, .Failed
+		case .Asked: return {}, .Pending
+		case .Failed: c.pending = false; capture_free_wgpu(c); return {}, .Failed
 		case .Mapped:
 		}
-		size = {c.got[2], c.got[3]}
+		size := [2]int{c.got[2], c.got[3]}
 		src := wgpu.BufferGetConstMappedRange(c.wbuf, 0, uint(c.wrow * size.y))
-		if src == nil { c.pending = false; capture_free_wgpu(c); return nil, {}, .Failed }
-		pixels = make([]u8, size.x * size.y * 4, allocator)
-		table := srgb_table()
+		if src == nil { c.pending = false; capture_free_wgpu(c); return {}, .Failed }
 		// The frame target stores sRGB-encoded bytes whatever the blend space (surface_format is BGRA8Unorm: in the sRGB
 		// space the shader writes sRGB values, in the linear space the sRGB view encodes them on store), so an 8-bit
 		// format is copied straight as the Direct3D path does. Only the fp16 target (a translucent window in linear light)
-		// holds scRGB halves to encode. Alpha is forced to 255: a window is opaque.
-		for py in 0 ..< size.y {
-			rowb := src[py * c.wrow:]
-			out := pixels[py * size.x * 4:][:size.x * 4]
-			#partial switch c.wformat {
-			case .RGBA16Float:
-				hp := ([^]u16)(raw_data(rowb))
-				for px in 0 ..< size.x {
-					for k in 0 ..< 3 { out[px * 4 + k] = table[hp[px * 4 + k]] }
-					out[px * 4 + 3] = 255
-				}
-			case .RGBA8Unorm, .RGBA8UnormSrgb:
-				for px in 0 ..< size.x {
-					out[px * 4], out[px * 4 + 1], out[px * 4 + 2], out[px * 4 + 3] = rowb[px * 4], rowb[px * 4 + 1], rowb[px * 4 + 2], 255
-				}
-			case:   // BGRA8Unorm / BGRA8UnormSrgb (the usual surface format)
-				for px in 0 ..< size.x {
-					out[px * 4], out[px * 4 + 1], out[px * 4 + 2], out[px * 4 + 3] = rowb[px * 4 + 2], rowb[px * 4 + 1], rowb[px * 4], 255
-				}
-			}
+		// holds scRGB halves to encode.
+		format := Capture_Raw_Format.BGRA8
+		#partial switch c.wformat {
+		case .RGBA16Float: format = .Half
+		case .RGBA8Unorm, .RGBA8UnormSrgb: format = .RGBA8
 		}
+		raw = capture_raw_rows(raw_data(src), c.wrow, size, format, allocator)
 		c.pending = false
 		capture_free_wgpu(c)
-		return pixels, size, .Ready
+		return raw, .Ready
 	} else {
-	mapped: d3d11.MAPPED_SUBRESOURCE
-	hr := r.ctx->Map(c.staging, 0, .READ, {.DO_NOT_WAIT}, &mapped)
-	if hr == dxgi.ERROR_WAS_STILL_DRAWING { return nil, {}, .Pending }
-	if win.FAILED(hr) { c.pending = false; return nil, {}, .Failed }
-	defer { r.ctx->Unmap(c.staging, 0); c.pending = false }
-	size = {c.got[2], c.got[3]}
-	pixels = make([]u8, size.x * size.y * 4, allocator)
-	table := srgb_table()
-	for y in 0 ..< size.y {
-		row := ([^]u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch)))
-		out := pixels[y * size.x * 4:][:size.x * 4]
-		#partial switch c.format {
-		case .R16G16B16A16_FLOAT:
-			// a translucent window in linear light: scRGB halves, encoded for the picture
-			src := ([^]u16)(row)
-			for x in 0 ..< size.x {
-				for k in 0 ..< 3 { out[x * 4 + k] = table[src[x * 4 + k]] }
-				out[x * 4 + 3] = 255
-			}
-		case:
-			for x in 0 ..< size.x {
-				out[x * 4], out[x * 4 + 1], out[x * 4 + 2], out[x * 4 + 3] = row[x * 4 + 2], row[x * 4 + 1], row[x * 4], 255
-			}
+		mapped: d3d11.MAPPED_SUBRESOURCE
+		hr := r.ctx->Map(c.staging, 0, .READ, {.DO_NOT_WAIT}, &mapped)
+		if hr == dxgi.ERROR_WAS_STILL_DRAWING { return {}, .Pending }
+		if win.FAILED(hr) { c.pending = false; return {}, .Failed }
+		defer { r.ctx->Unmap(c.staging, 0); c.pending = false }
+		// (R16G16B16A16_FLOAT: a translucent window in linear light, scRGB halves)
+		raw = capture_raw_rows(([^]u8)(mapped.pData), int(mapped.RowPitch), {c.got[2], c.got[3]}, c.format == .R16G16B16A16_FLOAT ? .Half : .BGRA8, allocator)
+		return raw, .Ready
+	}
+}
+
+@(private)
+capture_raw_rows :: proc(src: [^]u8, pitch: int, size: [2]int, format: Capture_Raw_Format, allocator: runtime.Allocator) -> Capture_Raw {
+	row := size.x * (format == .Half ? TEXEL_BYTES_FP16 : 4)
+	pixels := make([]u8, row * size.y, allocator)
+	for y in 0 ..< size.y { runtime.mem_copy_non_overlapping(raw_data(pixels[y * row:]), src[y * pitch:], row) }
+	return {pixels, size, format}
+}
+
+// The rows of a capture into the picture capture_poll gives: in place, in the same memory (`raw.pixels` is freed as usual), which
+// is returned as long as the picture is.
+capture_raw_finish :: proc(raw: Capture_Raw) -> []u8 #no_bounds_check {
+	n := raw.size.x * raw.size.y
+	switch raw.format {
+	case .BGRA8:
+		// (a word at a time: on the little-endian word B G R A, A in the high byte)
+		words := ([^]u32)(raw_data(raw.pixels))
+		for i in 0 ..< n {
+			v := words[i]
+			words[i] = (v & 0x0000_FF00) | (v >> 16) & 0xFF | (v & 0xFF) << 16 | 0xFF00_0000
+		}
+	case .RGBA8:
+		words := ([^]u32)(raw_data(raw.pixels))
+		for i in 0 ..< n { words[i] |= 0xFF00_0000 }
+	case .Half:
+		table := srgb_table()
+		// (the bytes written lie behind the halves still to read)
+		halves := ([^]u16)(raw_data(raw.pixels))
+		out := raw_data(raw.pixels)
+		for i in 0 ..< n {
+			out[i * 4], out[i * 4 + 1], out[i * 4 + 2], out[i * 4 + 3] = table[halves[i * 4]], table[halves[i * 4 + 1]], table[halves[i * 4 + 2]], 255
 		}
 	}
-	return pixels, size, .Ready
-	}
+	return raw.pixels[:n * 4]
 }
 
 // The bit patterns of a half (f16).
 @(private) HALF_BIT_PATTERNS :: 65536
 
-// A half's sRGB byte, by its bits: a window of millions of pixels through pow takes a good part of a second, on the UI thread.
+@(private = "file") srgb_table_bytes: [HALF_BIT_PATTERNS]u8
+@(private = "file") srgb_table_once: sync.Once
+
+// A half's sRGB byte, by its bits: a window of millions of pixels through pow takes a good part of a second. Built the first time a
+// capture of an fp16 target is finished, on the thread that finishes it.
 @(private)
 srgb_table :: proc() -> ^[HALF_BIT_PATTERNS]u8 {
-	@(static) table: [HALF_BIT_PATTERNS]u8
-	@(static) ready: bool
-	if !ready {
-		for i in 0 ..< HALF_BIT_PATTERNS { table[i] = srgb_byte(f32(transmute(f16)u16(i))) }
-		ready = true
-	}
-	return &table
+	sync.once_do(&srgb_table_once, proc() {
+		for i in 0 ..< HALF_BIT_PATTERNS { srgb_table_bytes[i] = srgb_byte(f32(transmute(f16)u16(i))) }
+	})
+	return &srgb_table_bytes
 }
 
 @(private)

@@ -64,7 +64,7 @@ readback_new :: proc(r: ^Renderer) -> Readback_Id {
 readback_copy :: proc(r: ^Renderer, id: u32, src: ^d3d11.ITexture2D, box: [4]i32, space: Blend_Space) {
 	when !USE_WGPU {
 		s := readback_slot(id)
-		if s == nil { return }
+		if s == nil || s.copied { return }   // (copied: the frame's steps run again, for verify)
 		s.asked = false
 		w, h := int(box[2] - box[0]), int(box[3] - box[1])
 		if src == nil || w <= 0 || h <= 0 || r.lost { s.failed = true; return }
@@ -84,7 +84,7 @@ readback_copy :: proc(r: ^Renderer, id: u32, src: ^d3d11.ITexture2D, box: [4]i32
 @(private)
 readback_copy_wgpu :: proc(r: ^Renderer, enc: wgpu.CommandEncoder, id: u32, src: wgpu.Texture, format: wgpu.TextureFormat, box: [4]i32, space: Blend_Space) {
 	s := readback_slot(id)
-	if s == nil { return }
+	if s == nil || s.copied { return }   // (copied: the frame's steps run again, for verify)
 	s.asked = false
 	w, h := int(box[2] - box[0]), int(box[3] - box[1])
 	bpp := 0
