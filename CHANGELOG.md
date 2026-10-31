@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.57.1] - 2026-10-31
+
+### Fixed
+- **The screencast could miss its last frame**: input sent while a capture was coming back, or the last step of an animation, counted as nothing changed. Tests: the end-to-end run waits for the frames to stop instead of fixed delays, and what still depends on a machine's timing (a first frame, the last one) is said as FLAKY without failing it; frames that never stop still fail it.
+- **Closing Chrome's DevTools could leave a window on freed memory**: the connection was freed while the DOM side still held it, so the edits could stay and the program could hang. They now go with the client, every time.
+
 ## [0.57.0] - 2026-10-31
 
 ### Added
@@ -1247,6 +1253,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.57.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.1
 [0.57.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.0
 [0.56.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.56.2
 [0.56.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.56.1
