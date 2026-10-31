@@ -4,6 +4,8 @@
 package color_glyphs_test
 
 import "base:intrinsics"
+import "base:runtime"
+import "core:mem"
 import "core:testing"
 import "../unwatched"
 import "../../draw"
@@ -418,4 +420,34 @@ color_glyphs_drawn :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T)
 	testing.expectf(t, abs(g[0] - 0) < 10 && abs(g[1] - 160) < 10 && abs(g[2] - 0) < 10, "text color glyph on screen %v", g)
 	y := px(img, 224, 30)
 	testing.expectf(t, y[0] > 220 && y[1] > 170 && y[2] < 120, "smiley on screen %v", y)
+}) }
+
+// The interpreter's outline cache is heap memory whatever allocator the caller of color_glyph_rgba has: emptying it
+// (over its budget, at the start of a render) frees nothing with the caller's allocator.
+@(test)
+color_glyph_rgba_leaves_the_callers_allocator_alone :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	st := font.DEFAULT_SETTINGS
+	st.color_engine = .Builtin
+	st.colr_cache_kb = 64
+	font.init(s, st)
+	defer font.destroy(s)
+	// (a face with outlines enough to fill the cache: the test font's are too few)
+	id, ok := font.load_system(s, "Segoe UI Emoji")
+	if !ok { return }
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, runtime.heap_allocator())
+	defer mem.tracking_allocator_destroy(&track)
+	track.bad_free_callback = mem.tracking_allocator_bad_free_callback_add_to_array
+	drawn := 0
+	{
+		context.allocator = mem.tracking_allocator(&track)
+		for gid in 0 ..< 1500 {
+			if _, got := font.color_glyph_rgba(s, id, u16(gid), 16, {}, context.temp_allocator); got { drawn += 1 }
+			free_all(context.temp_allocator)
+		}
+	}
+	testing.expect(t, drawn > 100)
+	testing.expectf(t, len(track.bad_free_array) == 0, "%d frees of what the caller's allocator did not make", len(track.bad_free_array))
 }) }

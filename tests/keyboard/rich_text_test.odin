@@ -2,6 +2,7 @@
 // alignment), its geometry (hit test, carets, ranges, links), the cache, links by pointer and keyboard, and drawing.
 package keyboard_test
 
+import "core:mem"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -249,4 +250,44 @@ rich_links_pointer_keyboard_and_drawing :: proc(t: ^testing.T) {
 		best = max(best, row)
 	}
 	testing.expectf(t, best >= span * 9 / 10, "the link is underlined (best row %d of %d)", best, span)
+}
+
+// rich_set_faces changes what a bold run is drawn with: the layouts kept go. Two contexts with other faces do not share
+// a layout, and the padding bytes of a run's style are no part of its content.
+@(test)
+rich_cache_key_is_what_the_layout_depends_on :: proc(t: ^testing.T) {
+	sync.mutex_lock(&lock)
+	defer sync.mutex_unlock(&lock)
+	f := new(Rx)
+	defer free(f)
+	if !testing.expect(t, open(f), "WARP and fonts") { return }
+	defer close(f)
+	runs := []ui.Rich_Run{{text = "bold", style = {bold = true}}}
+	c := ctx(f)
+	c.faces = &f.s.rich_faces
+	before := ui.rich_layout_cached(runs, c, 300).frags[0].face
+	testing.expect(t, before != f.mono, "not the face set below")
+	ui.rich_set_faces(&f.s, f.ui_font, f.mono, f.mono, f.mono)
+	testing.expect_value(t, ui.rich_layout_cached(runs, c, 300).frags[0].face, f.mono)
+	n := ui.rich_cache_len(&f.s)
+	ui.rich_set_faces(&f.s, f.ui_font, f.mono, f.mono, f.mono)
+	testing.expect_value(t, ui.rich_cache_len(&f.s), n)   // (the same faces: nothing to lay out again)
+
+	other: map[font.Font_Id][4]font.Font_Id
+	defer delete(other)
+	o := ctx(f)
+	o.faces = &other
+	testing.expect(t, ui.rich_layout_cached(runs, o, 300).frags[0].face != f.mono, "other faces, another layout")
+
+	a, b: [1]ui.Rich_Run
+	mem.set(&a[0], 0x55, size_of(ui.Rich_Run))
+	mem.set(&b[0], 0xaa, size_of(ui.Rich_Run))
+	for r in ([]^ui.Rich_Run{&a[0], &b[0]}) {
+		r.text = "same"
+		r.font, r.size, r.bold, r.italic, r.code = 0, 0, false, false, false
+		r.color, r.background = {}, {}
+		r.underline, r.strike, r.link = false, false, ""
+	}
+	testing.expect(t, ui.rich_layout_cached(a[:], c, 300) == ui.rich_layout_cached(b[:], c, 300), "the same content, the same layout")
+	free_all(context.temp_allocator)
 }

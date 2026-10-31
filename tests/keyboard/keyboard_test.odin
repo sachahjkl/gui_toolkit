@@ -950,3 +950,345 @@ lazy_column_after_a_jump_shows_items :: proc(t: ^testing.T) {
 	}
 	testing.expectf(t, shown >= 3, "items in the view in the very frame of the jump: %d", shown)
 }
+
+////////////////////////////////
+// Selection read during a build, list_select ahead of the rows, Escape in dialogs
+
+@(private = "file")
+Sel_Run :: struct { label: ui.Key, read: string, copied: bool }
+
+@(private = "file")
+build_copy_above_text :: proc(f: ^Fx, user: rawptr) {
+	r := (^Sel_Run)(user)
+	ui.next({fixed_x = 300, fixed_y = 0, width = ui.px(100)})
+	if ui.button("Copy###copy").clicked {
+		r.read = ui.selected_text(&f.s)
+		r.copied = true
+	}
+	ui.next({fixed_x = 0, fixed_y = 100, width = ui.px(200), flags = {.Selectable}})
+	r.label = ui.label("Some text###text").box.key
+}
+
+// A Copy button in a toolbar is built before the text: the selection reads the same then, from the last build's boxes.
+@(test)
+selected_text_during_a_build_before_its_boxes :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Sel_Run
+	defer delete(r.read)
+	frame(&f, nil, build_copy_above_text, &r)
+	frame(&f, nil, build_copy_above_text, &r)
+	ui.select_box(&f.s, r.label)
+	frame(&f, {{kind = .Mouse_Move, pos = {350, 10}}}, build_copy_above_text, &r)
+	frame(&f, {{kind = .Mouse_Press, pos = {350, 10}, button = .Left}, {kind = .Mouse_Release, pos = {350, 10}, button = .Left}}, build_copy_above_text, &r)
+	testing.expect(t, r.copied, "the button clicked")
+	testing.expect_value(t, r.read, "Some text")
+}
+
+// list_select says which row is active before the rows are built: the first build of a list, a row added this frame.
+@(test)
+list_select_ahead_of_the_rows :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := List_Run{names = {"a", "b", "c"}}
+	defer ui.list_state_destroy(&r.st)
+	ui.list_select(&r.st, 2)
+	frame(&f, nil, build_list, &r)
+	testing.expect_value(t, r.st.sel, 2)
+	frame(&f, nil, build_list, &r)
+	testing.expect_value(t, r.st.sel, 2)
+	// past the rows that are built: the last one
+	ui.list_select(&r.st, 9)
+	frame(&f, nil, build_list, &r)
+	testing.expect_value(t, r.st.sel, 2)
+	// the rows went away: the active row with them
+	r.names = {"a"}
+	frame(&f, nil, build_list, &r)
+	frame(&f, nil, build_list, &r)
+	testing.expect_value(t, r.st.sel, 0)
+	// a list never told has no active row
+	z := List_Run{names = {"a", "b"}}
+	defer ui.list_state_destroy(&z.st)
+	frame(&f, nil, build_list, &z)
+	testing.expect_value(t, z.st.sel, -1)
+}
+
+@(private = "file")
+Modal_Run :: struct { outer, inner: bool, field: ui.Text_Field, res: ui.Edit_Result, with_field: bool }
+
+@(private = "file")
+build_nested_modals :: proc(f: ^Fx, user: rawptr) {
+	r := (^Modal_Run)(user)
+	if ui.modal("outer", 300, &r.outer) {
+		if r.with_field {
+			ui.next({width = ui.px(200), height = ui.px(30)})
+			r.res = ui.line_edit("###in_dialog", &r.field)
+		}
+		if ui.modal("inner", 200, &r.inner) { ui.label("inner") }
+	}
+}
+
+@(private = "file")
+build_stacked_modals :: proc(f: ^Fx, user: rawptr) {
+	r := (^Modal_Run)(user)
+	if ui.modal("first", 300, &r.outer) { ui.label("first") }
+	if ui.modal("second", 200, &r.inner) { ui.label("second") }
+}
+
+// Escape closes the dialog on top, and a widget inside a dialog has it first.
+@(test)
+modal_escape_goes_to_what_is_on_top :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Modal_Run{outer = true, inner = true}
+	defer ui.field_destroy(&r.field)
+	frame(&f, nil, build_nested_modals, &r)
+	frame(&f, nil, build_nested_modals, &r)
+	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	testing.expect(t, r.outer && !r.inner, "nested: the inner one closes")
+	frame(&f, nil, build_nested_modals, &r)
+	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	testing.expect(t, !r.outer, "then the outer one")
+
+	r.outer, r.inner = true, true
+	frame(&f, nil, build_stacked_modals, &r)
+	frame(&f, nil, build_stacked_modals, &r)
+	frame(&f, {key(.Escape)}, build_stacked_modals, &r)
+	testing.expect(t, r.outer && !r.inner, "stacked: the one built last closes")
+
+	r.outer, r.inner, r.with_field = true, false, true
+	frame(&f, nil, build_nested_modals, &r)
+	frame(&f, nil, build_nested_modals, &r)
+	ui.set_focus(r.res.box.key)
+	frame(&f, nil, build_nested_modals, &r)
+	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	testing.expect(t, r.res.cancelled && r.outer, "the field takes Escape, the dialog stays")
+	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	testing.expect(t, !r.outer, "with no field focused the dialog closes")
+}
+
+////////////////////////////////
+// Middle-click autoscroll in the box tree
+
+@(private = "file")
+build_auto :: proc(f: ^Fx, user: rawptr) {
+	build_scroller(f, nil)
+	r := (^Edit_Run)(user)
+	ui.next({fixed_x = 400, fixed_y = 0, width = ui.px(200), height = ui.px(30)})
+	ui.line_edit("###auto_e", &r.field)
+}
+
+@(private = "file") middle_tap :: proc(p: ui.Vec2) -> [2]platform.Event { return {{kind = .Mouse_Press, pos = p, button = .Middle}, {kind = .Mouse_Release, pos = p, button = .Middle}} }
+
+// The click that ends a latched session does nothing else: no focus moved, no scrollbar jumped to.
+@(test)
+autoscroll_ending_click_does_nothing_else :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	ui.set_autoscroll_enabled(&f.s, true)
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	frame(&f, nil, build_auto, &r)
+	frame(&f, nil, build_auto, &r)
+	field := ui.box_at("###auto_e")
+	ui.set_focus(field.key)
+	tap := middle_tap({100, 100})
+	frame(&f, tap[:], build_auto, &r)
+	testing.expect(t, ui.autoscroll_running(&f.s), "a tap latches")
+	frame(&f, {{kind = .Mouse_Press, pos = {700, 500}, button = .Left}, {kind = .Mouse_Release, pos = {700, 500}, button = .Left}}, build_auto, &r)
+	testing.expect(t, !ui.autoscroll_running(&f.s), "the click ends it")
+	testing.expect_value(t, ui.focus_key(), field.key)
+	frame(&f, tap[:], build_auto, &r)
+	testing.expect(t, ui.autoscroll_running(&f.s), "latched again")
+	frame(&f, {{kind = .Mouse_Press, pos = {293, 190}, button = .Left}}, build_auto, &r)   // on the scrollbar's track
+	testing.expect(t, !ui.autoscroll_running(&f.s), "the click ends it")
+	testing.expect_value(t, the_scroller.view_target.y, 0)
+	frame(&f, {{kind = .Mouse_Release, pos = {293, 190}, button = .Left}}, build_auto, &r)
+}
+
+@(private = "file")
+Auto_Edit_Run :: struct { area: ui.Text_Area, in_region: bool }
+
+@(private = "file")
+build_auto_edit :: proc(f: ^Fx, user: rawptr) {
+	r := (^Auto_Edit_Run)(user)
+	if r.in_region {
+		ui.next({width = ui.px(300), height = ui.px(200)})
+		if ui.scroll_y("###reg") {
+			ui.next({width = ui.px(280), height = ui.px(500)})
+			ui.text_edit("###te", &r.area)
+		}
+	} else {
+		ui.next({width = ui.px(300), height = ui.px(200)})
+		ui.text_edit("###te", &r.area)
+	}
+}
+
+// A text_edit scrolls itself and autoscroll cannot drive it: a middle press on one starts no session, unless it stands in a
+// scroll region, which is then what scrolls.
+@(test)
+autoscroll_starts_on_what_it_can_scroll :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	ui.set_autoscroll_enabled(&f.s, true)
+	r: Auto_Edit_Run
+	defer ui.area_destroy(&r.area)
+	frame(&f, nil, build_auto_edit, &r)
+	frame(&f, nil, build_auto_edit, &r)
+	press := []platform.Event{{kind = .Mouse_Press, pos = {100, 100}, button = .Middle}}
+	frame(&f, press, build_auto_edit, &r)
+	testing.expect(t, !ui.autoscroll_running(&f.s), "no session on a box that scrolls itself")
+	frame(&f, {{kind = .Mouse_Release, pos = {100, 100}, button = .Middle}}, build_auto_edit, &r)
+	r.in_region = true
+	frame(&f, nil, build_auto_edit, &r)
+	frame(&f, nil, build_auto_edit, &r)
+	frame(&f, press, build_auto_edit, &r)
+	testing.expect(t, ui.autoscroll_running(&f.s), "the region around it scrolls")
+}
+
+// The settings are in logical pixels: at 200 % the dead zone is 24 frame pixels, so the pointer moves inside the marker
+// without scrolling.
+@(test)
+autoscroll_distances_follow_the_scale :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	ui.set_autoscroll_enabled(&f.s, true)
+	one :: proc(f: ^Fx, events: []platform.Event) {
+		ui.begin_build(&f.s, {
+			window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 2,
+			base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+		})
+		build_scroller(f, nil)
+		ui.end_build()
+		free_all(context.temp_allocator)
+	}
+	one(&f, nil)
+	one(&f, nil)
+	one(&f, {{kind = .Mouse_Press, pos = {100, 100}, button = .Middle}})
+	one(&f, {{kind = .Mouse_Move, pos = {100, 118}}})
+	one(&f, nil)
+	testing.expect(t, ui.autoscroll_running(&f.s), "held")
+	testing.expect_value(t, the_scroller.view_target.y, 0)
+	one(&f, {{kind = .Mouse_Move, pos = {100, 190}}})
+	one(&f, nil)
+	testing.expect(t, the_scroller.view_target.y > 0, "past the dead zone it scrolls")
+}
+
+////////////////////////////////
+// Edit history
+
+// A Backspace or a Delete with nothing to delete is no edit: the redo history stays.
+@(test)
+line_edit_deleting_nothing_is_no_edit :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	f.clip = clone("x")
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	frame(&f, nil, build_edit, &r)
+	ui.set_focus(ui.box_at("###e").key)
+	frame(&f, {typed('a')}, build_edit, &r)
+	frame(&f, {key(.V, {.Ctrl})}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "ax")
+	frame(&f, {key(.Z, {.Ctrl})}, build_edit, &r)
+	frame(&f, {key(.End), key(.Delete)}, build_edit, &r)
+	frame(&f, {key(.Delete, {.Ctrl})}, build_edit, &r)
+	frame(&f, {key(.Home), key(.Backspace)}, build_edit, &r)
+	frame(&f, {key(.Backspace, {.Ctrl})}, build_edit, &r)
+	testing.expect(t, ui.field_can_redo(&r.field), "redo kept")
+	frame(&f, {key(.Y, {.Ctrl})}, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "ax")
+}
+
+@(private = "file")
+Area_Run :: struct { area: ui.Text_Area }
+
+@(private = "file")
+build_area :: proc(f: ^Fx, user: rawptr) {
+	r := (^Area_Run)(user)
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	ui.text_edit("###a", &r.area)
+}
+
+@(test)
+text_edit_deleting_nothing_is_no_edit :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	f.clip = clone("x")
+	r: Area_Run
+	defer ui.area_destroy(&r.area)
+	frame(&f, nil, build_area, &r)
+	ui.set_focus(ui.box_at("###a").key)
+	frame(&f, {typed('a')}, build_area, &r)
+	frame(&f, {key(.V, {.Ctrl})}, build_area, &r)
+	frame(&f, {key(.Z, {.Ctrl})}, build_area, &r)
+	frame(&f, {key(.End), key(.Delete)}, build_area, &r)
+	frame(&f, {key(.Delete, {.Ctrl})}, build_area, &r)
+	frame(&f, {key(.Home), key(.Backspace)}, build_area, &r)
+	frame(&f, {key(.Backspace, {.Ctrl})}, build_area, &r)
+	testing.expect(t, len(r.area.redo) == 1, "redo kept")
+	frame(&f, {key(.Y, {.Ctrl})}, build_area, &r)
+	testing.expect_value(t, ui.area_string(&r.area), "ax")
+}
+
+// What a screen reader sets can be undone; a selection asked in the same build is on the new text.
+@(test)
+a11y_edits_of_fields_are_edits :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	ui.field_set(&r.field, "ab")
+	frame(&f, nil, build_edit, &r)
+	b := ui.box_at("###e")
+	ui.a11y_inject(&f.s, {action = .Set_Value, data = .Value, value = "Grace Hopper", target = u64(b.key)})
+	run := ui.a11y_run_id(b, 0)
+	ui.a11y_inject(&f.s, {action = .Set_Text_Selection, data = .Text_Selection, sel = {run, 2, run, 5}, target = u64(b.key)})
+	frame(&f, nil, build_edit, &r)
+	testing.expect_value(t, ui.field_string(&r.field), "Grace Hopper")
+	testing.expect_value(t, r.field.mark, 2)
+	testing.expect_value(t, r.field.cursor, 5)
+	testing.expect(t, ui.field_undo(&r.field), "undoable")
+	testing.expect_value(t, ui.field_string(&r.field), "ab")
+
+	a: Area_Run
+	defer ui.area_destroy(&a.area)
+	ui.area_set(&a.area, "ab")
+	frame(&f, nil, build_area, &a)
+	ab := ui.box_at("###a")
+	ui.a11y_inject(&f.s, {action = .Set_Value, data = .Value, value = "Grace Hopper", target = u64(ab.key)})
+	arun := ui.a11y_run_id(ab, 0)
+	ui.a11y_inject(&f.s, {action = .Set_Text_Selection, data = .Text_Selection, sel = {arun, 2, arun, 5}, target = u64(ab.key)})
+	frame(&f, nil, build_area, &a)
+	testing.expect_value(t, ui.area_string(&a.area), "Grace Hopper")
+	testing.expect_value(t, a.area.cursor, 5)
+	testing.expect(t, ui.area_undo(&a.area), "undoable")
+	testing.expect_value(t, ui.area_string(&a.area), "ab")
+}

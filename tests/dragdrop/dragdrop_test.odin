@@ -333,3 +333,17 @@ injected_drops :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.drop_data(w).text, "x")
 	testing.expect(t, !platform.drop_active(w))
 }
+
+// A large picture brought down to a few pixels: the premultiplied sums pass 32 bits (1024 x 1024 white at full alpha
+// makes 262144 * 65025 per target pixel) and the colour must stay white.
+@(test)
+drag_image_fit_of_a_large_picture :: proc(t: ^testing.T) {
+	side := 1024
+	px := make([]u8, side * side * 4)
+	defer delete(px)
+	for i in 0 ..< len(px) { px[i] = 255 }
+	small := platform.drag_image_fit(platform.Drag_Image{px, {side, side}, {}}, {2, 2})
+	defer delete(small.rgba)
+	testing.expect_value(t, small.size, [2]int{2, 2})
+	for v in small.rgba { testing.expect_value(t, v, u8(255)) }
+}
