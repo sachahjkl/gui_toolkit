@@ -69,6 +69,7 @@ destroy :: proc(s: ^State) {
 	delete(s.typed)
 	delete(s.focus_order)
 	delete(s.popup_stack)
+	delete(s.modal_stack)
 	delete(s.list_stack)
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
@@ -134,6 +135,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.build_start = now_ms()
 	s.last_events = p.events
 	s.metrics.lazy_built = 0
+	selection_snapshot(s)
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)

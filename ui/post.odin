@@ -76,9 +76,10 @@ post_init :: proc(s: ^State) {
 
 @(private)
 post_destroy :: proc(s: ^State) {
-	if s.window != nil {
-		_ = sync.atomic_compare_exchange_strong(&s.window.post_queue, rawptr(&s.posts), nil)
+	for w in s.post_windows {
+		_ = sync.atomic_compare_exchange_strong(&w.post_queue, rawptr(&s.posts), nil)
 	}
+	delete(s.post_windows)
 	post_queue_destroy(&s.posts)
 }
 
@@ -86,6 +87,9 @@ post_destroy :: proc(s: ^State) {
 @(private)
 post_begin_build :: proc(s: ^State, w: ^platform.Window) {
 	if w != nil {
+		known := false
+		for k in s.post_windows { if k == w { known = true; break } }
+		if !known { append(&s.post_windows, w) }
 		sync.atomic_store(&w.post_queue, rawptr(&s.posts))
 		if !s.post_wake_own { post_queue_set_wake_user(&s.posts, w) }
 	}

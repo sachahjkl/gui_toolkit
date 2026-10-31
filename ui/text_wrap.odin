@@ -1,5 +1,6 @@
 package ui
 
+import "base:runtime"
 import "core:math"
 import "core:unicode/utf8"
 import "../draw"
@@ -70,7 +71,7 @@ Wrap_Key :: struct {
 }
 
 Wrap_Entry :: struct {
-	lines:      [][2]int,   // heap (the state's allocator)
+	lines:      [][2]int,   // heap
 	last_build: u64,
 }
 
@@ -78,14 +79,12 @@ Wrap_Entry :: struct {
 wrap_lines_cached :: proc(f: font.Font_Id, size: f32, text: string, width: f32) -> [][2]int {
 	s := g
 	if text == "" { return nil }
-	h: u64 = FNV64_OFFSET_BASIS
-	for c in transmute([]u8)text { h = (h ~ u64(c)) * FNV64_PRIME }
-	k := Wrap_Key{text_hash = h, text_len = len(text), font = f, size = size, width = max(width, 1)}
+	k := Wrap_Key{text_hash = hash_bytes(transmute([]u8)text), text_len = len(text), font = f, size = size, width = max(width, 1)}
 	if e, ok := &s.wrap_cache[k]; ok {
 		e.last_build = s.build_index
 		return e.lines
 	}
-	lines := wrap_lines(f, size, text, width, context.allocator)
+	lines := wrap_lines(f, size, text, width, runtime.heap_allocator())
 	s.wrap_cache[k] = {lines = lines, last_build = s.build_index}
 	return lines
 }
@@ -97,14 +96,14 @@ wrap_cache_trim :: proc(s: ^State) {
 	for k, e in s.wrap_cache { if e.last_build + WRAP_CACHE_KEEP < s.build_index { append(&dead, k) } }
 	for k in dead {
 		e := s.wrap_cache[k]
-		delete(e.lines)
+		delete(e.lines, runtime.heap_allocator())
 		delete_key(&s.wrap_cache, k)
 	}
 }
 
 @(private)
 wrap_cache_destroy :: proc(s: ^State) {
-	for _, e in s.wrap_cache { delete(e.lines) }
+	for _, e in s.wrap_cache { delete(e.lines, runtime.heap_allocator()) }
 	delete(s.wrap_cache)
 }
 

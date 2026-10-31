@@ -19,7 +19,6 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	clear(&s.events.consumed)
 	clear(&s.typed)
 	clear(&s.mouse_events)
-	left := platform.Mouse_Button.Left
 	s.mouse_moved = false
 
 	for e in events {
@@ -31,9 +30,11 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 		case .Mouse_Leave:
 			s.mouse_valid = false
 		case .Mouse_Press:
-			append(&s.mouse_events, e)
 			s.mouse = e.pos
 			s.mouse_valid = true
+			// the click that ends a latched autoscroll does nothing else
+			if s.auto_enabled && autoscroll_click(&s.auto) { s.auto_box = 0; continue }
+			append(&s.mouse_events, e)
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)
 			when #config(UI_PROBE, false) {
@@ -91,7 +92,6 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 		case:
 		}
 	}
-	_ = left
 
 	// hot box: the topmost clickable box under the mouse; while a button is held, only the pressed box can be hot
 	hit: Key

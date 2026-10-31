@@ -470,7 +470,7 @@ menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 	if lv.hover_item != idx { return false }
 	waited := s.time_ms - lv.hover_since
 	if waited >= MENU_HOVER_MS { return true }
-	s.wake_ms = s.wake_ms == 0 ? max(1, int(MENU_HOVER_MS - waited) + WAKE_MARGIN_MS) : min(s.wake_ms, max(1, int(MENU_HOVER_MS - waited) + WAKE_MARGIN_MS))
+	wake_within(s, max(1, int(MENU_HOVER_MS - waited) + WAKE_MARGIN_MS))
 	return false
 }
 
@@ -558,23 +558,7 @@ hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
 tooltip :: proc() -> bool {
 	s := g
 	em := font_size()
-	key := key_from_string(s.root.key, "###tooltip")
-	prev := s.boxes[key]
-	size := prev != nil ? prev.size : Vec2{em * TOOLTIP_FIRST_WIDTH_EM, em * TOOLTIP_FIRST_HEIGHT_EM}
-	pos := clamp_popup(s.mouse + {em * 0.8, em * 1.4}, size, s.window_size)
-	push_parent(s.root)
-	push_tags("floating")
-	push_style_copy()
-	set_next_axis(.Y)
-	g.next_mod.fixed_x = pos.x
-	g.next_mod.fixed_y = pos.y
-	g.next_mod.width = children_sum()
-	g.next_mod.height = children_sum()
-	g.next_mod.radius = em * 0.4
-	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
-	a11y_default(p, {role = .Tooltip})
-	push_parent(p)
-	append(&s.popup_stack, true)
+	tooltip_open(clamp_popup(s.mouse + {em * 0.8, em * 1.4}, tooltip_last_size(em), s.window_size), em)
 	return true
 }
 
@@ -584,12 +568,23 @@ tooltip :: proc() -> bool {
 tooltip_beside :: proc() -> bool {
 	s := g
 	em := font_size()
-	key := key_from_string(s.root.key, "###tooltip")
-	prev := s.boxes[key]
-	size := prev != nil ? prev.size : Vec2{em * TOOLTIP_FIRST_WIDTH_EM, em * TOOLTIP_FIRST_HEIGHT_EM}
+	size := tooltip_last_size(em)
 	pos := s.mouse + {em * 1.2, -size.y * 0.5}
 	if pos.x + size.x > s.window_size.x { pos.x = s.mouse.x - em * 1.2 - size.x }
-	pos = clamp_popup(pos, size, s.window_size)
+	tooltip_open(clamp_popup(pos, size, s.window_size), em)
+	return true
+}
+
+// The size the tooltip had in the last build.
+@(private)
+tooltip_last_size :: proc(em: f32) -> Vec2 {
+	prev := g.boxes[key_from_string(g.root.key, "###tooltip")]
+	return prev != nil ? prev.size : Vec2{em * TOOLTIP_FIRST_WIDTH_EM, em * TOOLTIP_FIRST_HEIGHT_EM}
+}
+
+@(private)
+tooltip_open :: proc(pos: Vec2, em: f32) {
+	s := g
 	push_parent(s.root)
 	push_tags("floating")
 	push_style_copy()
@@ -603,7 +598,6 @@ tooltip_beside :: proc() -> bool {
 	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
 	append(&s.popup_stack, true)
-	return true
 }
 
 @(private)

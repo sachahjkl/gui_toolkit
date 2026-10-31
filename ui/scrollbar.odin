@@ -33,21 +33,35 @@ rad :: proc(r: f32) -> f32 { return r * g.rounding }
 @(private)
 scrollbar_key :: proc(b: ^Box) -> Key { return key_from_u64(b.key, SCROLLBAR_KEY_SALT) }
 
+// A bar's width and its margin from the edges of its box.
+@(private)
+scrollbar_size :: proc(font_size: f32) -> (w, m: f32) {
+	w = max(SCROLLBAR_WIDTH_MIN_PX, math.round(font_size * SCROLLBAR_WIDTH_EM))
+	m = math.round(w * SCROLLBAR_MARGIN_FRACTION)
+	return
+}
+
+// Along a track `avail` long: where the thumb starts (`t`: how far the view is scrolled, 0..1) and how long it is.
+@(private)
+scrollbar_thumb :: proc(font_size, avail, view, content, t: f32) -> (at, length: f32) {
+	length = max(font_size * SCROLLBAR_THUMB_MIN_EM, avail * view / content)
+	at = t * (avail - length)
+	return
+}
+
 // Track and thumb rects of a scroll box, or ok = false when everything fits.
 @(private)
 scrollbar_geom :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) {
 	view := b.size.y
 	content := b.view_bounds.y
 	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX { return }
-	w := max(SCROLLBAR_WIDTH_MIN_PX, math.round(b.font_size * SCROLLBAR_WIDTH_EM))
-	m := math.round(w * SCROLLBAR_MARGIN_FRACTION)
+	w, m := scrollbar_size(b.font_size)
 	track = {{b.rect.max.x - w - m, b.rect.min.y + m}, {b.rect.max.x - m, b.rect.max.y - m}}
 	if .Scrollbar_Left in b.flags { track.min.x, track.max.x = b.rect.min.x + m, b.rect.min.x + m + w }
 	th_avail := track.max.y - track.min.y
-	th := max(b.font_size * SCROLLBAR_THUMB_MIN_EM, th_avail * view / content)
 	maxoff := content - view
-	t := clamp(b.view_off.y / maxoff, 0, 1)
-	y := track.min.y + t * (th_avail - th)
+	at, th := scrollbar_thumb(b.font_size, th_avail, view, content, clamp(b.view_off.y / maxoff, 0, 1))
+	y := track.min.y + at
 	thumb = {{track.min.x, y}, {track.max.x, y + th}}
 	ok = true
 	return

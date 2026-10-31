@@ -22,12 +22,15 @@ display_part :: proc(s: string) -> string {
 // 2^64 / the golden ratio: spreads small numbers (a child's position, a key) over 64 bits.
 @(private) HASH_GOLDEN_RATIO_64 :: 0x9e3779b97f4a7c15
 
+@(private)
+fnv64_mix :: #force_inline proc(h: ^u64, bytes: []u8) {
+	for b in bytes { h^ = (h^ ~ u64(b)) * FNV64_PRIME }
+}
+
 key_from_string :: proc(seed: Key, s: string) -> Key {
 	h := u64(seed)
 	if h == 0 { h = FNV64_OFFSET_BASIS }
-	for b in transmute([]u8)hash_part(s) {
-		h = (h ~ u64(b)) * FNV64_PRIME
-	}
+	fnv64_mix(&h, transmute([]u8)hash_part(s))
 	if h == 0 { h = 1 }
 	return Key(h)
 }

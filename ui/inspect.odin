@@ -1,5 +1,6 @@
 package ui
 
+import "core:strings"
 import "../font"
 import "../platform"
 
@@ -46,15 +47,18 @@ box_edits_apply :: proc(s: ^State) {
 		if .Font_Size in e.set { b.font_size = e.font_size }
 		if .Padding in e.set { b.text_pad = e.padding }
 		if .Text in e.set {
+			// (the frame's copy, as any box's text: the edit's own may be replaced or cleared before the next build, which a
+			// tool reading this one must not see)
+			text := strings.clone(e.text, frame_allocator())
 			if b.custom == rich_draw && b.custom_user != nil {
 				d := (^Rich_Draw)(b.custom_user)
 				if len(d.runs) > 0 {
 					d.runs = d.runs[:1]
-					d.runs[0].text = e.text
+					d.runs[0].text = text
 					d.version = 0   // (its hash: the text changed)
 				}
 			} else {
-				b.text = e.text
+				b.text = text
 			}
 		}
 		if e.set & {.Text, .Font_Size} != {} && b.text != "" {
