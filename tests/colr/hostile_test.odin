@@ -245,6 +245,75 @@ scan_conversion_is_charged :: proc(t: ^testing.T) {
 	testing.expect(t, drawn, "200 lines through every row")
 }
 
+// Glyph 1: a PaintGlyph of glyph 5 filled in the text color, with a clip box or not.
+ink_glyph_graph :: proc(side: int, box: bool) -> Tbl {
+	b: Tbl
+	header(&b)
+	patch32(&b, BASE_LIST_AT, len(b))
+	put32(&b, 1); put16(&b, 1); put32(&b, 10)
+	put8(&b, 10); put24(&b, 6); put16(&b, 5)
+	put8(&b, 2); put16(&b, 0xFFFF); put16(&b, 0x4000)
+	if box { clip_box(&b, side) }
+	return b
+}
+
+// When the memory runs out (forced, font/failures.odin) the glyph is refused or paints nothing, and the next render is whole.
+@(test)
+forced_failures_of_the_interpreter :: proc(t: ^testing.T) {
+	SIDE :: 64
+	line := gradient_glyph(1, 8, SIDE)
+	defer delete(line)
+	clip_box(&line, SIDE)
+	boxed, bare := ink_glyph_graph(SIDE, true), ink_glyph_graph(SIDE, false)
+	defer { delete(boxed); delete(bare) }
+	cl, cb, cn := font.colr_open(line[:], nil), font.colr_open(boxed[:], nil), font.colr_open(bare[:], nil)
+	defer { font.colr_destroy(cl); font.colr_destroy(cb); font.colr_destroy(cn) }
+	outline: font.Outline
+	defer font.outline_destroy(&outline)
+	square := [4][2]f32{{0.25, 0.25}, {0.75, 0.25}, {0.75, 0.75}, {0.25, 0.75}}
+	for i in 0 ..< 4 { font.outline_line(&outline, square[i], square[(i + 1) % 4]) }
+	append(&outline.ends, 4)
+	render :: proc(c: ^font.Colr, o: ^font.Outline) -> (font.Colr_Bitmap, bool) {
+		return font.colr_render({colr = c, upem = SIDE, outline = tall_lines, user = o}, 1, {size = SIDE, samples = 2, fg = {255, 255, 255}}, context.temp_allocator)
+	}
+	Case :: struct { fail: font.Forced_Failure, c: ^font.Colr, drawn: bool }
+	for k in ([]Case{{.Colr_Stops, cl, false}, {.Colr_Scan, cn, false}, {.Colr_Scan, cb, true}, {.Colr_Clip, cb, true}}) {
+		font.forced_failures = {k.fail}
+		bm, ok := render(k.c, &outline)
+		testing.expectf(t, font.forced_failures == {}, "%v: the path did not run", k.fail)
+		testing.expectf(t, ok == k.drawn, "%v: drawn %v", k.fail, ok)
+		testing.expectf(t, bm.w == 0, "%v: %d pixels wide", k.fail, bm.w)
+		font.forced_failures = {}
+		_, again := render(k.c, &outline)
+		testing.expectf(t, again, "%v: the next render", k.fail)
+	}
+	bm, ok := render(cb, &outline)
+	testing.expect(t, ok && bm.w > 0, "ink without a failure")
+}
+
+// Direct2D refusing its device, its context or its brush: the locks it was asked under stay good, color glyphs still answer.
+@(test)
+forced_failures_of_direct2d :: proc(t: ^testing.T) {
+	when ODIN_OS != .Windows { return }
+	for fail in ([]font.Forced_Failure{.D2d_Device, .D2d_Context, .D2d_Brush}) {
+		s := new(font.State)
+		defer free(s)
+		font.init(s)
+		defer font.destroy(s)
+		id, ok := font.load_embedded(s, COLRV1)
+		testing.expect(t, ok)
+		font.forced_failures = {fail}
+		font.color_renderable(s, id)
+		testing.expectf(t, font.forced_failures == {}, "%v: the path did not run", fail)
+		font.forced_failures = {}
+		for gid in 0 ..< 40 {
+			font.glyph_image(s, id, u16(gid), 32, 0)
+			font.color_glyph_rgba(s, id, u16(gid), 32, {}, context.temp_allocator)
+		}
+		font.color_renderable(s, id)
+	}
+}
+
 // ---- routing: what is not read to its end is not given to Direct2D ----
 
 // Glyphs 1 .. count, each one a PaintColrGlyph of the next; the last one a PaintGlyph inside a PaintGlyph.
@@ -503,6 +572,28 @@ dump_survives_hostile_graphs :: proc(t: ^testing.T) {
 	defer font.colr_destroy(c2)
 	s = font.colr_dump(c2, 1, context.temp_allocator)
 	testing.expect(t, len(s) > 0)
+}
+
+// Every kind of paint in a listing, from the one decoder: a transform of each format, gradients, a composite, a glyph.
+@(test)
+dump_lists_every_kind_of_paint :: proc(t: ^testing.T) {
+	b: Tbl
+	defer delete(b)
+	header(&b)
+	patch32(&b, BASE_LIST_AT, len(b))
+	put32(&b, 1); put16(&b, 1); put32(&b, 10)
+	put8(&b, 14); put24(&b, 8); put16(&b, 3); put16(&b, 4)    // PaintTranslate 3 4
+	put8(&b, 32); put24(&b, 8); put8(&b, 3); put24(&b, 8 + 6) // PaintComposite: the glyph below, then the gradient
+	put8(&b, 10); put24(&b, 6); put16(&b, 7)                  // PaintGlyph 7 of ...
+	put8(&b, 6); put24(&b, 16); put16(&b, 1); put16(&b, 2); put16(&b, 5); put16(&b, 3); put16(&b, 4); put16(&b, 6)   // a PaintRadialGradient
+	put8(&b, 0); put16(&b, 1); put16(&b, 0); put16(&b, 0); put16(&b, 0x4000)
+	c := font.colr_open(b[:], nil)
+	testing.expect(t, c != nil)
+	defer font.colr_destroy(c)
+	s := font.colr_dump(c, 1, context.temp_allocator)
+	for want in ([]string{"Translate (format 14) 1.000 0.000 0.000 1.000 3.0 4.0", "Composite mode Src_Over", "Glyph 7", "RadialGradient", "c0 (1,2) r0 5 c1 (3,4) r1 6"}) {
+		testing.expectf(t, strings.contains(s, want), "%q not in:\n%s", want, s)
+	}
 }
 
 // The angles a listing shows are those the interpreter draws: the format's value + 1 half turn.

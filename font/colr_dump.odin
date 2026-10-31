@@ -32,55 +32,47 @@ dump_paint :: proc(c: ^Colr, r: ^Rd, sb: ^strings.Builder, off, depth: int, line
 	lines^ += 1
 	if lines^ > DUMP_PAINTS_MAX || depth > DUMP_DEPTH_MAX { fmt.sbprintf(sb, "%*s...\n", depth * 2, ""); return }
 	if off < 0 || off >= len(r.d) { fmt.sbprintf(sb, "%*s@%d: outside the table\n", depth * 2, "", off); return }
-	f := rd_u8(r, off)
+	p := decode_paint(r, off)
+	f := p.format
 	pad := depth * 2
 	fmt.sbprintf(sb, "%*s@%d f%d: % x\n", pad, "", off, f, r.d[off:min(off + DUMP_PAINT_BYTES, len(r.d))])
-	child := proc(r: ^Rd, off, at: int) -> int { return off + rd_u24(r, off + at) }
-	switch f {
-	case 1:
-		n, first := rd_u8(r, off + 1), rd_u32(r, off + 2)
-		fmt.sbprintf(sb, "%*sColrLayers %d from %d\n", pad, "", n, first)
-		for i in 0 ..< n {
-			if first + i >= c.n_layer_list { break }
-			dump_paint(c, r, sb, c.layer_list + rd_u32(r, c.layer_list + COLR_LIST_COUNT_BYTES + (first + i) * COLR_LAYER_PAINT_BYTES), depth + 1, lines)
+	switch p.kind {
+	case .Layers:
+		fmt.sbprintf(sb, "%*sColrLayers %d from %d\n", pad, "", p.count, p.first)
+		for i in 0 ..< p.count {
+			if p.first + i >= c.n_layer_list { break }
+			dump_paint(c, r, sb, c.layer_list + rd_u32(r, c.layer_list + COLR_LIST_COUNT_BYTES + (p.first + i) * COLR_LAYER_PAINT_BYTES), depth + 1, lines)
 		}
-	case 2, 3: fmt.sbprintf(sb, "%*sSolid pal %d alpha %.3f\n", pad, "", rd_u16(r, off + 1), rd_f2(r, off + 3))
-	case 4, 5, 6, 7, 8, 9:
-		names := [?]string{"Linear", "Linear", "Radial", "Radial", "Sweep", "Sweep"}
-		line := child(r, off, 1)
-		ext, n := rd_u8(r, line), rd_u16(r, line + 1)
-		fmt.sbprintf(sb, "%*s%sGradient%s extend %d, %d stops:", pad, "", names[f - 4], f & 1 == 1 ? "(var)" : "", ext, n)
-		vs := f % 2 == 1   // odd formats: 5, 7, 9 are the variable ones
-		st := vs ? VAR_COLOR_STOP_BYTES : COLOR_STOP_BYTES
+	case .Solid: fmt.sbprintf(sb, "%*sSolid pal %d alpha %.3f\n", pad, "", p.palette, p.alpha)
+	case .Gradient:
+		g := p.gradient
+		ext, n := rd_u8(r, p.line), rd_u16(r, p.line + 1)
+		fmt.sbprintf(sb, "%*s%vGradient%s extend %d, %d stops:", pad, "", g.kind, p.var ? "(var)" : "", ext, n)
 		for i in 0 ..< min(n, DUMP_STOPS_MAX) {
-			o := line + 3 + i * st
-			fmt.sbprintf(sb, " [%.2f pal %d a %.2f]", rd_f2(r, o), rd_u16(r, o + 2), rd_f2(r, o + 4))
+			t, palette, alpha := color_stop(r, p.line, i, p.var)
+			fmt.sbprintf(sb, " [%.2f pal %d a %.2f]", t, palette, alpha)
 		}
-		switch f {
-		case 4, 5: fmt.sbprintf(sb, "  p0 (%d,%d) p1 (%d,%d) p2 (%d,%d)", rd_i16(r, off + 4), rd_i16(r, off + 6), rd_i16(r, off + 8), rd_i16(r, off + 10), rd_i16(r, off + 12), rd_i16(r, off + 14))
-		case 6, 7: fmt.sbprintf(sb, "  c0 (%d,%d) r0 %d c1 (%d,%d) r1 %d", rd_i16(r, off + 4), rd_i16(r, off + 6), rd_u16(r, off + 8), rd_i16(r, off + 10), rd_i16(r, off + 12), rd_u16(r, off + 14))
-		case 8, 9: fmt.sbprintf(sb, "  c (%d,%d) %.1f..%.1f", rd_i16(r, off + 4), rd_i16(r, off + 6), (rd_f2(r, off + 8) + 1) * 180, (rd_f2(r, off + 10) + 1) * 180)
+		switch g.kind {
+		case .Linear: fmt.sbprintf(sb, "  p0 (%.0f,%.0f) p1 (%.0f,%.0f) p2 (%.0f,%.0f)", g.p0.x, g.p0.y, g.p1.x, g.p1.y, g.p2.x, g.p2.y)
+		case .Radial: fmt.sbprintf(sb, "  c0 (%.0f,%.0f) r0 %.0f c1 (%.0f,%.0f) r1 %.0f", g.p0.x, g.p0.y, g.r0, g.p1.x, g.p1.y, g.r1)
+		case .Sweep: fmt.sbprintf(sb, "  c (%.0f,%.0f) %.1f..%.1f", g.p0.x, g.p0.y, g.a0, g.a1)
 		}
 		fmt.sbprintf(sb, "\n")
-	case 10:
-		fmt.sbprintf(sb, "%*sGlyph %d\n", pad, "", rd_u16(r, off + 4))
-		dump_paint(c, r, sb, child(r, off, 1), depth + 1, lines)
-	case 11:
-		fmt.sbprintf(sb, "%*sColrGlyph %d\n", pad, "", rd_u16(r, off + 1))
-	case 12, 13:
-		tm := child(r, off, 4)
-		fmt.sbprintf(sb, "%*sTransform %.3f %.3f %.3f %.3f %.1f %.1f\n", pad, "", rd_fixed(r, tm), rd_fixed(r, tm + 4), rd_fixed(r, tm + 8), rd_fixed(r, tm + 12), rd_fixed(r, tm + 16), rd_fixed(r, tm + 20))
-		dump_paint(c, r, sb, child(r, off, 1), depth + 1, lines)
-	case 14 ..= 31:
-		names := [?]string{"Translate", "Translate", "Scale", "Scale", "ScaleAroundCenter", "ScaleAroundCenter", "ScaleUniform", "ScaleUniform", "ScaleUniformAroundCenter", "ScaleUniformAroundCenter", "Rotate", "Rotate", "RotateAroundCenter", "RotateAroundCenter", "Skew", "Skew", "SkewAroundCenter", "SkewAroundCenter"}
-		fmt.sbprintf(sb, "%*s%s (format %d) args %d %d %d %d\n", pad, "", names[f - 14], f, rd_i16(r, off + 4), rd_i16(r, off + 6), rd_i16(r, off + 8), rd_i16(r, off + 10))
-		dump_paint(c, r, sb, child(r, off, 1), depth + 1, lines)
-	case 32:
-		fmt.sbprintf(sb, "%*sComposite mode %v\n", pad, "", Composite_Mode(rd_u8(r, off + 4)))
+	case .Glyph:
+		fmt.sbprintf(sb, "%*sGlyph %d\n", pad, "", p.gid)
+		dump_paint(c, r, sb, p.child, depth + 1, lines)
+	case .Colr_Glyph:
+		fmt.sbprintf(sb, "%*sColrGlyph %d\n", pad, "", p.gid)
+	case .Transform:
+		names := [?]string{"Transform", "Translate", "Scale", "ScaleAroundCenter", "ScaleUniform", "ScaleUniformAroundCenter", "Rotate", "RotateAroundCenter", "Skew", "SkewAroundCenter"}
+		fmt.sbprintf(sb, "%*s%s (format %d) %.3f %.3f %.3f %.3f %.1f %.1f\n", pad, "", names[(f - 12) / 2], f, p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5])
+		dump_paint(c, r, sb, p.child, depth + 1, lines)
+	case .Composite:
+		fmt.sbprintf(sb, "%*sComposite mode %v\n", pad, "", Composite_Mode(p.mode))
 		fmt.sbprintf(sb, "%*s source:\n", pad, "")
-		dump_paint(c, r, sb, child(r, off, 1), depth + 1, lines)
+		dump_paint(c, r, sb, p.child, depth + 1, lines)
 		fmt.sbprintf(sb, "%*s backdrop:\n", pad, "")
-		dump_paint(c, r, sb, child(r, off, 5), depth + 1, lines)
-	case: fmt.sbprintf(sb, "%*sformat %d?\n", pad, "", f)
+		dump_paint(c, r, sb, p.backdrop, depth + 1, lines)
+	case .Unknown: fmt.sbprintf(sb, "%*sformat %d?\n", pad, "", f)
 	}
 }

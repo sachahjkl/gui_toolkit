@@ -15,6 +15,8 @@ GSUB_MAX_FEATURE_TABLES :: 16
 GSUB_MAX_LOOKUPS :: 256
 // Lookup references read from those feature tables (they may repeat a lookup).
 @(private) GSUB_MAX_LOOKUP_REFS :: GSUB_MAX_LOOKUPS * 4
+// Lookups of a feature, first guess.
+@(private) GSUB_LOOKUPS_HINT :: 8
 // The lookup types read.
 @(private) GSUB_LOOKUP_LIGATURE :: 4
 @(private) GSUB_LOOKUP_EXTENSION :: 7
@@ -27,7 +29,7 @@ gsub_ligate :: proc(gsub: []u8, feature: [4]u8, glyphs: []u16, allocator := cont
 	flist, llist := rd_u16(&r, 6), rd_u16(&r, 8)
 	nf := rd_u16(&r, flist)
 	budget := GSUB_BUDGET
-	lookups := make([dynamic]int, 0, 8, context.temp_allocator)
+	lookups := make([dynamic]int, 0, GSUB_LOOKUPS_HINT, context.temp_allocator)
 	tables: [GSUB_MAX_FEATURE_TABLES]int   // feature tables already read (records share them)
 	ntables := 0
 	found := false
