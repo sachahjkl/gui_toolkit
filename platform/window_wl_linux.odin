@@ -604,7 +604,7 @@ wl_destroy :: proc(w: ^Window) {
 	if wlc.pointer_focus == w { wlc.pointer_focus = nil }
 	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil }
 	if st.frame_cb != nil { wl.proxy_destroy(st.frame_cb) }
-	if st.decoration != nil { wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_MODE_CLIENT_SIDE /*destroy op 0*/, nil, wl.proxy_get_version(st.decoration), WL_MARSHAL_FLAG_DESTROY) }
+	if st.decoration != nil { wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_DESTROY, nil, wl.proxy_get_version(st.decoration), WL_MARSHAL_FLAG_DESTROY) }
 	if st.xdg_toplevel != nil { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_DESTROY, nil, wl.proxy_get_version(st.xdg_toplevel), WL_MARSHAL_FLAG_DESTROY) }
 	if st.xdg_surface != nil { wl.proxy_marshal_flags(st.xdg_surface, XDG_SURFACE_DESTROY, nil, wl.proxy_get_version(st.xdg_surface), WL_MARSHAL_FLAG_DESTROY) }
 	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
@@ -702,7 +702,7 @@ wl_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 
 @(private)
 wl_wait :: proc(w: ^Window, timeout_ms: int) {
-	if len(w.events) > 0 || len(w.injected) > 0 { return }
+	if len(w.events) > w.returned || len(w.injected) > 0 { return }
 	wl.display_flush(wlc.display)
 	poll_two(wlc.fd, -1, wl_poll_timeout(timeout_ms), wake_fd(w))
 }
@@ -761,6 +761,51 @@ foreign import libc_wl "system:c"
 foreign libc_wl {
 	@(link_name="mmap")   raw_mmap   :: proc(addr: rawptr, length: uint, prot, flags, fd: i32, offset: int) -> rawptr ---
 	@(link_name="munmap") sys_munmap :: proc(addr: rawptr, length: uint) -> i32 ---
+}
+
+// A wl_buffer of `size` pixels in shared memory (ARGB8888, in memory BGRA), holding `bgra` when given. nil when the system refused.
+@(private)
+wl_shm_buffer :: proc(size: [2]int, bgra: []u8 = nil) -> Wl_Proxy {
+	if wlc.shm == nil { return nil }
+	stride, bytes := size.x * 4, size.x * size.y * 4
+	fd := memfd_create("gui_toolkit", 0)
+	if fd < 0 { return nil }
+	defer posix.close(posix.FD(fd))
+	if posix.ftruncate(posix.FD(fd), posix.off_t(bytes)) != .OK { return nil }
+	if len(bgra) >= bytes {
+		PROT_READ_WRITE :: 3
+		MAP_SHARED :: 1
+		mem := sys_mmap(nil, uint(bytes), PROT_READ_WRITE, MAP_SHARED, fd, 0)
+		if mem == nil || mem == rawptr(~uintptr(0)) { return nil }
+		copy(([^]u8)(mem)[:bytes], bgra[:bytes])
+		sys_munmap(mem, uint(bytes))
+	}
+	pool := wl.proxy_marshal_flags(wlc.shm, WL_SHM_CREATE_POOL, wl.shm_pool_interface, wl.proxy_get_version(wlc.shm), 0, nil, fd, i32(bytes))
+	if pool == nil { return nil }
+	buffer := wl.proxy_marshal_flags(pool, WL_SHM_POOL_CREATE_BUFFER, wl.buffer_interface, wl.proxy_get_version(pool), 0, nil, i32(0), i32(size.x), i32(size.y), i32(stride), u32(0))
+	wl.proxy_marshal_flags(pool, WL_SHM_POOL_DESTROY, nil, wl.proxy_get_version(pool), WL_MARSHAL_FLAG_DESTROY)
+	return buffer
+}
+
+// Shows the window with a plain picture: a surface without a buffer is not on the screen, gets no pointer nor keyboard. For
+// a test that has no renderer (tests/linux_desktop). No-op on X11, whose windows are on the screen once mapped.
+test_show_plain :: proc(w: ^Window) {
+	if w.backend != .Wayland { return }
+	st := wl_state(w)
+	if st == nil { return }
+	buffer := wl_shm_buffer({max(w.size.x, 1), max(w.size.y, 1)})
+	if buffer == nil { return }
+	wl.proxy_marshal_flags(st.surface, WL_SURFACE_ATTACH, nil, wl.proxy_get_version(st.surface), 0, buffer, i32(0), i32(0))
+	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
+	wl.display_roundtrip(wlc.display)
+}
+@(private = "file") WL_SHM_CREATE_POOL :: 0
+@(private = "file") WL_SHM_POOL_CREATE_BUFFER :: 0
+@(private = "file") WL_SHM_POOL_DESTROY :: 1
+foreign import libc_memfd "system:c"
+@(default_calling_convention = "c", private = "file")
+foreign libc_memfd {
+	memfd_create :: proc(name: cstring, flags: u32) -> i32 ---
 }
 
 _ :: mem

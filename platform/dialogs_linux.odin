@@ -183,16 +183,19 @@ have_program :: proc(name: string) -> bool {
 	return false
 }
 
-// Starts args[0] detached (fire and forget: xdg-open), returning whether the spawn itself succeeded.
+// Starts args[0] detached (fire and forget: xdg-open), returning whether the spawn itself succeeded. A shell in between
+// starts it in the background and ends at once: the program is the system's child from then on, and waiting for the shell
+// leaves no zombie. A program that is missing is told by have_program, not here.
 @(private)
 spawn_detached :: proc(args: []string) -> bool {
-	argv := make([]cstring, len(args) + 1, context.temp_allocator)
-	for a, i in args { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
+	SHELL_ARGS := [?]string{"sh", "-c", `"$@" >/dev/null 2>&1 </dev/null &`, "sh"}
+	argv := make([]cstring, len(SHELL_ARGS) + len(args) + 1, context.temp_allocator)
+	for a, i in SHELL_ARGS { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
+	for a, i in args { argv[len(SHELL_ARGS) + i] = strings.clone_to_cstring(a, context.temp_allocator) }
 	child: posix.pid_t
 	if posix.posix_spawnp(&child, argv[0], nil, nil, raw_data(argv), posix.environ) != .NONE { return false }
-	// reap without blocking later: detach by waiting non-blocking once (xdg-open forks and exits fast)
 	st: i32
-	posix.waitpid(child, &st, {.NOHANG})
+	posix.waitpid(child, &st, {})
 	return true
 }
 

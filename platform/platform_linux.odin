@@ -141,6 +141,7 @@ report_missing :: proc(what: string) {
 
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
+	if w.destroy_hook != nil { w.destroy_hook(w, w.destroy_hook_user) }
 	clipboard_watch(w, false)
 	tray_destroy_all(w)
 	dnd_destroy(w)
@@ -384,7 +385,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 // render.wait_for_frame then poll_events(w, false), as the Win32 path does).
 wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	if w.offscreen {
-		if len(w.injected) > 0 || len(w.events) > 0 { return }
+		if len(w.injected) > 0 || len(w.events) > w.returned { return }   // (what the last poll handed out is read)
 		off_wait(w, timeout_ms)
 		return
 	}

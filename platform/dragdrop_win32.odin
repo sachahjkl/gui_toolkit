@@ -107,6 +107,9 @@ import win "core:sys/windows"
 	w:    ^Window,
 }
 
+// drag_start runs on this thread, from whichever window.
+@(private = "file", thread_local) drag_running: bool
+
 // What a window keeps for drag and drop (Native_Window.dnd, made on first use).
 @(private) Dnd_State :: struct {
 	target:     Drop_Target,
@@ -279,9 +282,9 @@ effects_to_win :: proc(e: Drop_Effects) -> (out: u32) {
 @(private)
 answer :: proc(d: ^Dnd_State) -> u32 {
 	if e, ok := d.effect.?; ok && e in d.allowed { return effects_to_win({e}) }
-	// the app's own drag came back over its window while drag_start blocks: the app cannot answer before the drop,
+	// the app's own drag came over one of its windows while drag_start blocks: the app cannot answer before the drop,
 	// which it receives as Drop events once drag_start returns
-	if d.sending { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
+	if drag_running { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
 	return 0
 }
 
@@ -493,6 +496,8 @@ drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Ma
 	if img, has := image.?; has && set_drag_image(obj, img) { read_drag_image(d, obj) }
 	d.sending = true
 	defer d.sending = false
+	drag_running = true
+	defer drag_running = false
 	if len(d.script) > 0 {
 		steps := d.script
 		d.script = {}

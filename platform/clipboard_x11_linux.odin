@@ -17,7 +17,7 @@ import "core:sys/posix"
 @(private) X11_INCR_THRESHOLD :: 128 * 1024
 @(private = "file") X11_MULTIPLE_MAX_WORDS :: 1 << 16     // read of a MULTIPLE request's pairs
 @(private = "file") X11_SELECTION_READ_WAIT_MS :: 3000    // silence of the owner that gives up a synchronous read of a selection
-@(private = "file") X11_FORMATS_CACHE_MS :: 500           // clipboard_formats asks the owner no more often (a Paste item asks every frame)
+@(private = "file") X11_FORMATS_CACHE_MS :: 500           // without XFIXES clipboard_formats asks the owner no more often (a Paste item asks every frame)
 @(private) X11_SELECTION_POLL_MS :: 20                    // between two looks at the connection during such a read
 
 // An in-progress INCR transfer we are sending to a requestor: the bytes left and the property / window to post on.
@@ -85,10 +85,11 @@ x11_bytes_for_target :: proc(target: Xcb_Atom) -> (data: []u8, ok: bool) {
 // targets, and starts an INCR transfer for a large payload.
 @(private)
 x11_serve_selection_request :: proc(w: ^Window, b: [^]u8) {
-	requestor := Xcb_Window(get_u32(b[16:]))
-	selection := Xcb_Atom(get_u32(b[20:]))
-	target := Xcb_Atom(get_u32(b[24:]))
-	property := Xcb_Atom(get_u32(b[28:]))
+	// xcb_selection_request_event_t: time at [4], owner at [8], then these
+	requestor := Xcb_Window(get_u32(b[12:]))
+	selection := Xcb_Atom(get_u32(b[16:]))
+	target := Xcb_Atom(get_u32(b[20:]))
+	property := Xcb_Atom(get_u32(b[24:]))
 	if property == 0 { property = target }   // obsolete clients leave property None: use the target atom
 	ok := x11_answer_target(requestor, target, property)
 	ev: [X11_EVENT_BYTES]u8
@@ -225,24 +226,21 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 	return out
 }
 
-// What another client's CLIPBOARD offers (its TARGETS), read at most once per X11_FORMATS_CACHE_MS.
+// What another client's CLIPBOARD offers (its TARGETS): read again when the clipboard changed hands; without the notice of
+// XFIXES, at most once per X11_FORMATS_CACHE_MS.
 @(private)
 x11_foreign_formats :: proc(w: ^Window) -> Clipboard_Formats {
 	@(static) cached: Clipboard_Formats
 	@(static) at: time.Tick
+	@(static) seq: u32
 	@(static) read: bool
-	if read && time.duration_milliseconds(time.tick_since(at)) < X11_FORMATS_CACHE_MS { return cached }
+	if read && seq == clipboard_sequence() && (x11c.xfixes_event != 0 || time.duration_milliseconds(time.tick_since(at)) < X11_FORMATS_CACHE_MS) { return cached }
 	b := x11_selection_read(w, x11c.clipboard, "TARGETS", context.temp_allocator, X11_TEXT_READ_WAIT_MS)
 	names := make([dynamic]string, context.temp_allocator)
 	for i in 0 ..< len(b) / size_of(u32) {
-		switch Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):]))) {
-		case x11c.utf8_string, XCB_ATOM_STRING, x11c.atom_text: append(&names, "UTF8_STRING")
-		case x11c.mime_text_html: append(&names, "text/html")
-		case x11c.mime_image_png: append(&names, "image/png")
-		case x11c.mime_uri_list:  append(&names, "text/uri-list")
-		}
+		append(&names, x11_atom_name(Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):])))))
 	}
-	cached, at, read = clipboard_formats_from_mimes(names[:]), time.tick_now(), true
+	cached, at, seq, read = clipboard_formats_from_mimes(names[:]), time.tick_now(), clipboard_sequence(), true
 	return cached
 }
 
@@ -255,7 +253,7 @@ x11_target_for_mime :: proc(mime: string) -> Xcb_Atom {
 	case "text/uri-list": return x11c.mime_uri_list
 	case "TARGETS":       return x11c.targets
 	}
-	return x11c.utf8_string
+	return x11_atom(mime)   // a format of the app's own
 }
 
 // Changes a window's event mask (to hear a requestor's INCR property deletes). A thin wrapper over the XCB request.
