@@ -39,12 +39,20 @@ Selection :: struct {
 	click_pos:     Vec2,
 	order:         [dynamic]Key,  // selectable boxes of the build, in order
 	pos_of:        map[Key]int,
+	snapshot:      [dynamic]u8,   // the selected text when this build began: what selected_text answers during it
 }
 
-// The selected text (boxes joined by "\n"), "" for none.
+// The selected text (boxes joined by "\n"), "" for none. During a build, as the last build showed it: the boxes built so
+// far are not all of them (a Copy button above the text), and the others' text is in memory that is gone.
 selected_text :: proc(s: ^State, allocator := context.allocator) -> string {
+	if !s.sel.active { return "" }
+	if build_open && g == s { return strings.clone(string(s.sel.snapshot[:]), allocator) }
+	return selected_text_of_boxes(s, allocator)
+}
+
+@(private)
+selected_text_of_boxes :: proc(s: ^State, allocator: runtime.Allocator) -> string {
 	sel := &s.sel
-	if !sel.active { return "" }
 	a, b := sel_ordered(s)
 	if a.box == 0 { return "" }
 	sb := strings.builder_make(allocator)
@@ -88,7 +96,14 @@ select_box :: proc(s: ^State, key: Key) {
 sel_bump :: proc(s: ^State) { s.sel.serial += 1; s.sel.changed_build = s.build_index }
 
 @(private)
-selection_destroy :: proc(s: ^State) { delete(s.sel.order); delete(s.sel.pos_of) }
+selection_destroy :: proc(s: ^State) { delete(s.sel.order); delete(s.sel.pos_of); delete(s.sel.snapshot) }
+
+// begin_build, before the last build's memory goes: what selected_text answers during this build.
+@(private)
+selection_snapshot :: proc(s: ^State) {
+	clear(&s.sel.snapshot)
+	if has_selection(s) { append(&s.sel.snapshot, selected_text_of_boxes(s, context.temp_allocator)) }
+}
 
 // begin_build: last build's list goes.
 @(private)

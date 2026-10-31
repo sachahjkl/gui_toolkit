@@ -1,6 +1,5 @@
 package ui
 
-import "core:math"
 import "../draw"
 
 // Color pickers: a saturation/value square and a hue bar. They edit HSV values owned by the caller
@@ -85,5 +84,3 @@ hue_picker :: proc(id: string, hue: ^f32) -> (changed: bool) {
 	b.custom, b.custom_user = hue_draw, d
 	return
 }
-
-_ :: math

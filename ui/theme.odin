@@ -75,8 +75,4 @@ color :: proc(name: string) -> Color {
 }
 
 @(private)
-name_hash :: proc(s: string) -> u64 {
-	h: u64 = FNV64_OFFSET_BASIS
-	for c in transmute([]u8)s { h = (h ~ u64(c)) * FNV64_PRIME }
-	return h
-}
+name_hash :: proc(s: string) -> u64 { return hash_bytes(transmute([]u8)s) }

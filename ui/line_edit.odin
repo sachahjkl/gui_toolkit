@@ -281,23 +281,23 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		before := len(f.buf)
 		before_hash := hash_bytes(f.buf[:])
 		pad := b.text_pad
-		text := field_string(f)
 
 		// a screen reader sets the text, types over the selection, or moves the caret
 		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
 			field_checkpoint(f, .Other)
-			field_set(f, r.value)
+			field_select_all(f)
+			insert_text(f, r.value)
 		}
 		if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
 			field_checkpoint(f, .Other)
 			insert_text(f, r.value)
 		}
 		if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
-			f.mark = a11y_run_byte(text, nil, b, r.sel[0], int(r.sel[1]))
-			f.cursor = a11y_run_byte(text, nil, b, r.sel[2], int(r.sel[3]))
+			f.mark = a11y_run_byte(field_string(f), nil, b, r.sel[0], int(r.sel[1]))
+			f.cursor = a11y_run_byte(field_string(f), nil, b, r.sel[2], int(r.sel[3]))
 			f.edited_ms = now
 		}
-		text = field_string(f)
+		text := field_string(f)
 
 		// mouse: click places the caret, drag selects, double-click selects the word
 		if res.pressed || res.dragging {
@@ -342,15 +342,15 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 				if key_press(.Left, mods)  { move(f, word_left(field_string(f), f.cursor), ext) }
 				if key_press(.Right, mods) { move(f, word_right(field_string(f), f.cursor), ext) }
 			}
-			deleting :: proc(f: ^Text_Field) -> bool {
-				can := f.cursor != f.mark || len(f.buf) > 0
+			deleting :: proc(f: ^Text_Field, back: bool) -> bool {
+				can := f.cursor != f.mark || (back ? f.cursor > 0 : f.cursor < len(f.buf))
 				if can { field_checkpoint(f, .Deleting) }
 				return can
 			}
-			if key_press(.Backspace) && deleting(f) { if !delete_selection(f) { lo := prev_index(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
-			if key_press(.Delete) && deleting(f)    { if !delete_selection(f) { hi := next_index(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
-			if key_press(.Backspace, ctrl) && deleting(f) { if !delete_selection(f) { lo := word_left(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
-			if key_press(.Delete, ctrl) && deleting(f)    { if !delete_selection(f) { hi := word_right(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
+			if key_press(.Backspace) && deleting(f, true) { if !delete_selection(f) { lo := prev_index(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
+			if key_press(.Delete) && deleting(f, false)    { if !delete_selection(f) { hi := next_index(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
+			if key_press(.Backspace, ctrl) && deleting(f, true) { if !delete_selection(f) { lo := word_left(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
+			if key_press(.Delete, ctrl) && deleting(f, false)    { if !delete_selection(f) { hi := word_right(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
 			if key_press(.A, ctrl) { field_select_all(f) }
 			if !secret && (key_press(.C, ctrl) || key_press(.Insert, ctrl)) { field_copy(f) }
 			if !secret && (key_press(.X, ctrl) || key_press(.Delete, shift)) { field_cut(f) }
@@ -433,6 +433,6 @@ secret_unmask_index :: proc(text: string, shown_i: int) -> int {
 @(private)
 hash_bytes :: proc(b: []u8) -> u64 {
 	h: u64 = FNV64_OFFSET_BASIS
-	for c in b { h = (h ~ u64(c)) * FNV64_PRIME }
+	fnv64_mix(&h, b)
 	return h
 }

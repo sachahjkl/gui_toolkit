@@ -27,6 +27,18 @@ autoscroll_is_enabled :: proc(s: ^State) -> bool { return s.auto_enabled }
 set_autoscroll_settings :: proc(s: ^State, cfg: Autoscroll_Settings) { s.auto_cfg = cfg; s.auto_cfg_set = true }
 autoscroll_settings :: proc(s: ^State) -> Autoscroll_Settings { return s.auto_cfg_set ? s.auto_cfg : DEFAULT_AUTOSCROLL }
 
+// The settings in the units of the session's pointer, frame pixels (their distances and their speed are logical pixels).
+@(private)
+autoscroll_frame_settings :: proc(s: ^State) -> Autoscroll_Settings {
+	cfg := autoscroll_settings(s)
+	cfg.dead_zone *= s.scale
+	cfg.max_speed *= s.scale
+	cfg.full_dist *= s.scale
+	cfg.doubling *= s.scale
+	cfg.tap_slop *= s.scale
+	return cfg
+}
+
 // Whether a session is live (an app may want to suppress its own middle-click behaviour while one runs).
 autoscroll_running :: proc(s: ^State) -> bool { return s.auto.active }
 
@@ -39,28 +51,22 @@ autoscroll_handle_input :: proc(s: ^State) {
 		if s.auto.active { autoscroll_cancel(&s.auto); s.auto_box = 0 }
 		return
 	}
-	cfg := autoscroll_settings(s)
+	cfg := autoscroll_frame_settings(s)
 
-	// a wheel notch, Escape or a left/right press ends a live session; a left/right press while latched is also the
-	// click that latched sessions wait for (swallowed so it does nothing else).
+	// a wheel notch, Escape or a left/right press ends a live session (the click a latched one waits for never gets here:
+	// process_events swallowed it).
 	if s.auto.active {
 		if s.scroll_delta != {} { autoscroll_cancel(&s.auto); s.auto_box = 0; return }
 		if key_pressed_peek(.Escape) { _ = key_press(.Escape); autoscroll_cancel(&s.auto); s.auto_box = 0; return }
 		if !s.mouse_valid { autoscroll_cancel(&s.auto); s.auto_box = 0; return }
 	}
 
-	// resolve each mouse event in order: a press/release of the middle button engages or ends hold mode; any other
-	// click ends a latched session.
+	// resolve each mouse event in order: a press/release of the middle button engages or ends hold mode.
 	for e in s.mouse_events {
 		#partial switch e.kind {
 		case .Mouse_Press:
-			if s.auto.active && s.auto.latched {
-				// the click that ends a latched session: swallow it (clear the pressed/clicked keys of this button)
-				if autoscroll_click(&s.auto) { s.auto_box = 0; autoscroll_swallow(s, e.button) }
-				continue
-			}
 			if e.button == .Middle && !s.auto.active {
-				box := scroll_hit_test(s, e.pos)
+				box := autoscroll_box_at(s, e.pos)
 				if box != 0 && !middle_click_under(s.root, e.pos) {
 					b := s.boxes[box]
 					if b != nil {
@@ -87,6 +93,17 @@ autoscroll_handle_input :: proc(s: ^State) {
 			if b, ok := s.boxes[s.auto_box]; !ok || b == nil { autoscroll_cancel(&s.auto); s.auto_box = 0 }
 		}
 	}
+}
+
+// The scroll region under `p` a session drives, 0 for none: a box with a view offset. One that scrolls itself (.Scroll_Self,
+// a text_edit) has nothing to drive: the region around it moves.
+@(private)
+autoscroll_box_at :: proc(s: ^State, p: Vec2) -> Key {
+	k := scroll_hit_test(s, p)
+	for b := s.boxes[k] if k != 0 else nil; b != nil; b = b.parent {
+		if .View_Scroll_X in b.flags || .View_Scroll_Y in b.flags { return b.key }
+	}
+	return 0
 }
 
 // The axes a scroll box offers, for the marker and the velocity.
@@ -119,7 +136,7 @@ autoscroll_apply :: proc(s: ^State) {
 		autoscroll_cancel(&s.auto); s.auto_box = 0
 		return
 	}
-	cfg := autoscroll_settings(s)
+	cfg := autoscroll_frame_settings(s)
 	s.cursor_request = autoscroll_cursor(&s.auto, cfg)
 	vel := autoscroll_velocity(&s.auto, cfg)   // scroll units per second
 	if vel == {} {

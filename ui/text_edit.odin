@@ -9,7 +9,6 @@ package ui
 //   Tab moves the focus to the next widget, unless `tab_indents` (then Tab inserts 4 spaces, Ctrl+Tab... leaves).
 // Mouse: click places the caret, drag selects, Shift+click extends, double-click selects a word, wheel scrolls.
 
-import "core:hash"
 import "core:math"
 import "core:strings"
 import "core:unicode/utf8"
@@ -92,22 +91,19 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
 	e.has_v = content.y > view.y + SCROLLBAR_FIT_SLACK_PX
 	e.has_h = !wrapped && content.x + TEXT_EDIT_END_SLACK_PX > view.x + SCROLLBAR_FIT_SLACK_PX   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
-	w := max(SCROLLBAR_WIDTH_MIN_PX, math.round(font_size * SCROLLBAR_WIDTH_EM))
-	m := math.round(w * SCROLLBAR_MARGIN_FRACTION)
+	w, m := scrollbar_size(font_size)
 	if e.has_v {
 		e.vtrack = {{r.max.x - w - m, r.min.y + m}, {r.max.x - m, r.max.y - m - (e.has_h ? w + m : 0)}}
 		len_ := e.vtrack.max.y - e.vtrack.min.y
-		th := max(font_size * SCROLLBAR_THUMB_MIN_EM, len_ * view.y / content.y)
-		t := clamp(scroll.y / max(1, content.y - view.y), 0, 1)
-		y := e.vtrack.min.y + t * (len_ - th)
+		at, th := scrollbar_thumb(font_size, len_, view.y, content.y, clamp(scroll.y / max(1, content.y - view.y), 0, 1))
+		y := e.vtrack.min.y + at
 		e.vthumb = {{e.vtrack.min.x, y}, {e.vtrack.max.x, y + th}}
 	}
 	if e.has_h {
 		e.htrack = {{r.min.x + gutter + m, r.max.y - w - m}, {r.max.x - m - (e.has_v ? w + m : 0), r.max.y - m}}
 		len_ := e.htrack.max.x - e.htrack.min.x
-		tw := max(font_size * SCROLLBAR_THUMB_MIN_EM, len_ * view.x / (content.x + TEXT_EDIT_END_SLACK_PX))
-		t := clamp(scroll.x / max(1, content.x + TEXT_EDIT_END_SLACK_PX - view.x), 0, 1)
-		x := e.htrack.min.x + t * (len_ - tw)
+		at, tw := scrollbar_thumb(font_size, len_, view.x, content.x + TEXT_EDIT_END_SLACK_PX, clamp(scroll.x / max(1, content.x + TEXT_EDIT_END_SLACK_PX - view.x), 0, 1))
+		x := e.htrack.min.x + at
 		e.hthumb = {{x, e.htrack.min.y}, {x + tw, e.htrack.max.y}}
 	}
 	return
@@ -116,7 +112,7 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 @(private="file")
 content_extent :: proc(a: ^Text_Area, text: string, b: ^Box, lh: f32, lines: []Visual_Line, wrap_w: f32) -> Vec2 {
 	if wrap_w > 0 { return {wrap_w - TEXT_EDIT_END_SLACK_PX, f32(len(lines)) * lh} }   // wrapped: no horizontal scrolling
-	key := hash.fnv64a(transmute([]u8)text) ~ (u64(transmute(u32)b.font_size) << 20) ~ u64(b.font) ~ u64(transmute(u32)lh)
+	key := hash_bytes(transmute([]u8)text) ~ (u64(transmute(u32)b.font_size) << 20) ~ u64(b.font) ~ u64(transmute(u32)lh)
 	if key != a.ext_key || key == 0 {
 		a.ext = content_extent_measure(text, b, lh)
 		a.ext_key = key
@@ -469,14 +465,16 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		// a screen reader sets the text, types over the selection, or moves the caret
 		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
 			begin_edit(a, .Other, now)
-			area_set(a, r.value)
+			a.mark, a.cursor = 0, len(a.buf)
+			insert(a, r.value)
+			a.has_pref = false
 		}
 		if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
 			begin_edit(a, .Other, now)
 			insert(a, r.value)
 		}
 		if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
-			runs := a11y_text_lines(area_string(a), lines)
+			runs := a11y_text_lines(area_string(a), layout(a, b, wrap_w))
 			a.mark = a11y_run_byte(area_string(a), runs, b, r.sel[0], int(r.sel[1]))
 			a.cursor = a11y_run_byte(area_string(a), runs, b, r.sel[2], int(r.sel[3]))
 			a.upstream, a.has_pref = false, false
@@ -618,25 +616,25 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 				if key_press(.Home, mods)  { move(a, 0, ext); a.has_pref = false }
 				if key_press(.End, mods)   { move(a, len(a.buf), ext); a.has_pref = false }
 			}
-			if key_press(.Backspace) || key_press(.Backspace, shift) {
+			if (key_press(.Backspace) || key_press(.Backspace, shift)) && (a.cursor != a.mark || a.cursor > 0) {
 				lo, hi := sel(a)
 				begin_edit(a, .Delete, now)
 				if lo != hi { delete_range(a, lo, hi) } else { p := prev_index(area_string(a), a.cursor); delete_range(a, p, a.cursor) }
 				a.has_pref, a.upstream = false, false
 			}
-			if key_press(.Delete) {
+			if key_press(.Delete) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
 				lo, hi := sel(a)
 				begin_edit(a, .Delete, now)
 				if lo != hi { delete_range(a, lo, hi) } else { n := next_index(area_string(a), a.cursor); delete_range(a, a.cursor, n) }
 				a.has_pref, a.upstream = false, false
 			}
-			if key_press(.Backspace, ctrl) {
+			if key_press(.Backspace, ctrl) && (a.cursor != a.mark || a.cursor > 0) {
 				lo, hi := sel(a)
 				begin_edit(a, .Other, now)
 				if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, word_left(area_string(a), a.cursor), a.cursor) }
 				a.upstream = false
 			}
-			if key_press(.Delete, ctrl) {
+			if key_press(.Delete, ctrl) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
 				lo, hi := sel(a)
 				begin_edit(a, .Other, now)
 				if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, a.cursor, word_right(area_string(a), a.cursor)) }

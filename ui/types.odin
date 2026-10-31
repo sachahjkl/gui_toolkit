@@ -361,6 +361,7 @@ State :: struct {
 	tab_stops_off: [dynamic]bool,    // `tab_stops` scopes; tab_skip counts the ones that turned Tab stops off
 	tab_skip:     int,
 	modal_prev, modal_now: Key,      // modal open last frame / this frame (focus resets when a modal opens)
+	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
@@ -422,6 +423,7 @@ State :: struct {
 	post_budget:     int,                   // calls a build runs at most
 	posts_more:      bool,                  // the last drain left some: needs_frame
 	post_wake_own:   bool,                  // set_post_wake gave the app's own wake: Build_Params.window does not replace it
+	post_windows:    [dynamic]^platform.Window,   // the windows that hold the queue (they forget it at ui.destroy)
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)
 	a11y:            A11y_Data,
 }
