@@ -21,6 +21,12 @@ foreign import core_text "system:CoreText.framework"
 @(private) CF_STRING_ENCODING_UTF8 :: u32(0x08000100)
 @(private) CT_FONT_ITALIC_TRAIT :: u32(1 << 0)
 @(private) CT_FONT_BOLD_TRAIT :: u32(1 << 1)
+// The size a font is opened at to read its file, family and traits.
+@(private) CT_QUERY_SIZE :: 12
+// From this weight on the bold trait is asked for.
+@(private) CT_BOLD_WEIGHT_MIN :: 600
+@(private) CT_PATH_MAX_BYTES :: 4096
+@(private) CT_POSTSCRIPT_NAME_MAX_BYTES :: 256
 
 @(default_calling_convention = "c", private)
 foreign core_foundation {
@@ -67,7 +73,7 @@ ct_font_file :: proc(font: CF_Type) -> (path: string, index: int, ok: bool) {
 	url := CTFontCopyAttribute(font, kCTFontURLAttribute)
 	if url == nil { return }
 	defer CFRelease(url)
-	buf: [4096]u8
+	buf: [CT_PATH_MAX_BYTES]u8
 	if !CFURLGetFileSystemRepresentation(url, true, &buf[0], len(buf)) { return }
 	path = strings.clone(string(cstring(&buf[0])), context.temp_allocator)
 	ps := CTFontCopyPostScriptName(font)
@@ -84,7 +90,7 @@ ct_face_index :: proc(path, ps_name: string) -> int {
 		for i in 0 ..< n {
 			face := gt_face_open_file(raw_data(path), uint(len(path)), i, nil, 0)
 			if face == nil { continue }
-			buf: [256]u8
+			buf: [CT_POSTSCRIPT_NAME_MAX_BYTES]u8
 			l := gt_face_postscript_name(face, &buf[0], len(buf))
 			gt_face_close(face)
 			if l <= len(buf) && string(buf[:l]) == ps_name { return int(i) }
@@ -98,7 +104,7 @@ ct_font :: proc(family: string, weight: int, style: Font_Style) -> CF_Type {
 	name := cf_string(family)
 	if name == nil { return nil }
 	defer CFRelease(name)
-	font := CTFontCreateWithName(name, 12, nil)
+	font := CTFontCreateWithName(name, CT_QUERY_SIZE, nil)
 	if font == nil { return nil }
 	// CoreText answers a missing family with a default font: the family must be the one asked for
 	fam := CTFontCopyFamilyName(font)
@@ -106,10 +112,10 @@ ct_font :: proc(family: string, weight: int, style: Font_Style) -> CF_Type {
 	if fam != nil { CFRelease(fam) }
 	if !same { CFRelease(font); return nil }
 	traits: u32
-	if weight >= 600 { traits |= CT_FONT_BOLD_TRAIT }
+	if weight >= CT_BOLD_WEIGHT_MIN { traits |= CT_FONT_BOLD_TRAIT }
 	if style != .Normal { traits |= CT_FONT_ITALIC_TRAIT }
 	if traits != 0 {
-		if styled := CTFontCreateCopyWithSymbolicTraits(font, 12, nil, traits, traits); styled != nil {
+		if styled := CTFontCreateCopyWithSymbolicTraits(font, CT_QUERY_SIZE, nil, traits, traits); styled != nil {
 			CFRelease(font)
 			font = styled
 		}
@@ -159,7 +165,7 @@ sys_families :: proc(allocator: runtime.Allocator) -> []string {
 
 @(private)
 sys_has_family :: proc(family: string) -> bool {
-	font := ct_font(family, 400, .Normal)
+	font := ct_font(family, FONT_WEIGHT_NORMAL, .Normal)
 	if font == nil { return false }
 	CFRelease(font)
 	return true

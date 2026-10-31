@@ -35,6 +35,12 @@ dwrite_system := System_Fonts{
 
 #assert(size_of(Feature) == size_of(DWRITE_FONT_FEATURE))
 
+// A longer language tag is not passed on.
+@(private) DWRITE_LOCALE_CHARS_MAX :: 96
+// GetGlyphs: the buffer starts at 3 n / 2 + the slack (what the documentation of the call advises), doubling at each attempt.
+@(private) DWRITE_GLYPHS_SLACK :: 16
+@(private) DWRITE_GLYPHS_ATTEMPTS :: 4
+
 // The horizontal features DirectWrite (and HarfBuzz) turn on by default, which an explicit feature list would drop.
 @(private)
 DWRITE_DEFAULT_FEATURES := [?][4]u8{{'k', 'e', 'r', 'n'}, {'l', 'i', 'g', 'a'}, {'c', 'l', 'i', 'g'}, {'c', 'a', 'l', 't'}, {'r', 'c', 'l', 't'}}
@@ -149,8 +155,8 @@ dwrite_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: [
 	if s.fallback == nil || s.system == nil { return }
 	base := face_ptr(s, first)
 	family: [^]u16 = raw_data(EMPTY_LOCALE[:])
-	weight: DWRITE_FONT_WEIGHT = 400
-	stretch: DWRITE_FONT_STRETCH = 5
+	weight: DWRITE_FONT_WEIGHT = FONT_WEIGHT_NORMAL
+	stretch: DWRITE_FONT_STRETCH = FONT_STRETCH_NORMAL
 	style := DWRITE_FONT_STYLE.NORMAL
 	if base != nil {
 		if len(base.family) > 0 { family = raw_data(base.family) }
@@ -227,7 +233,7 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	tf: ^DWRITE_TYPOGRAPHIC_FEATURES = len(req.features) > 0 ? &tf_value : nil
 	// locale name for the `locl` feature (BCP 47, ASCII): a NUL-terminated UTF-16 string, nil when none
 	locale: [^]u16
-	if len(req.lang) > 0 && len(req.lang) < 96 {
+	if len(req.lang) > 0 && len(req.lang) < DWRITE_LOCALE_CHARS_MAX {
 		buf := make([]u16, len(req.lang) + 1, context.temp_allocator)
 		for i in 0 ..< len(req.lang) { buf[i] = u16(req.lang[i]) }
 		buf[len(req.lang)] = 0
@@ -245,7 +251,7 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	}
 	cmap := make([]u16, n, context.temp_allocator)
 	tprops := make([]DWRITE_SHAPING_TEXT_PROPERTIES, n, context.temp_allocator)
-	maxg := 3 * n / 2 + 16
+	maxg := 3 * n / 2 + DWRITE_GLYPHS_SLACK
 	gids: []u16
 	gprops: []DWRITE_SHAPING_GLYPH_PROPERTIES
 	count: u32
@@ -253,7 +259,7 @@ dwrite_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	range_len := [1]u32{u32(n)}
 	nfr := u32(tf != nil ? 1 : 0)
 	hr: HRESULT
-	for attempt in 0 ..< 4 {
+	for attempt in 0 ..< DWRITE_GLYPHS_ATTEMPTS {
 		gids = make([]u16, maxg, context.temp_allocator)
 		gprops = make([]DWRITE_SHAPING_GLYPH_PROPERTIES, maxg, context.temp_allocator)
 		hr = s.analyzer->GetGlyphs(raw_data(w), u32(n), f.dw, false, BOOL(rtl), &sa, locale, nil,

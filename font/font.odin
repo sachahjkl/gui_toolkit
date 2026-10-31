@@ -18,6 +18,39 @@ import "core:sync"
 // Default size of an atlas page (texels on a side); Settings.page_size overrides it.
 ATLAS_SIZE :: 2048
 
+// The bounds sanitize_settings keeps the settings in.
+@(private) SUBPIXEL_STEPS_MAX :: 4
+@(private) PAGE_SIZE_MIN :: 256
+@(private) PAGE_SIZE_MAX :: 8192
+@(private) KIND_PAGES_MAX :: 64          // atlas pages of one kind
+@(private) SLUG_TOLERANCE_MIN_EM :: 1.0 / 65536
+@(private) SLUG_TOLERANCE_MAX_EM :: 1.0 / 64
+@(private) SLUG_PPEM_SETTING_MAX :: 256  // slug_hint_ppem, slug_supersample_ppem
+@(private) COLR_CACHE_MIN_KB :: 64
+@(private) COLR_CACHE_MAX_KB :: 1 << 20
+
+// CSS font-weight and font-stretch (1..9).
+@(private) FONT_WEIGHT_NORMAL :: 400
+@(private) FONT_WEIGHT_BOLD :: 700
+@(private) FONT_STRETCH_NORMAL :: 5
+@(private) FONT_STRETCH_MAX :: 9
+
+// Units per em of a face that neither the platform nor the backend gives one for.
+@(private) FALLBACK_UPEM :: 1000
+// A line's thickness where the face gives none: the em divided by this.
+@(private) FALLBACK_STROKE_DIVISOR :: 15
+
+// Font.cmap: the BMP, CMAP_BITS_PER_CHAR bits per code point, in words of CMAP_WORD_BITS.
+@(private) CMAP_BMP_CHARS :: 65536
+@(private) CMAP_BITS_PER_CHAR :: 2
+@(private) CMAP_WORD_BITS :: 32
+
+// UTF-16: the first code point written as a surrogate pair, and the surrogates.
+@(private) UTF16_SUPPLEMENTARY_FIRST :: 0x10000
+@(private) UTF16_HIGH_SURROGATE_FIRST :: 0xD800
+@(private) UTF16_LOW_SURROGATE_FIRST :: 0xDC00
+@(private) UTF16_SURROGATES_END :: 0xE000
+
 Font_Id :: distinct int
 
 Metrics :: struct {
@@ -204,19 +237,19 @@ init :: proc(s: ^State, settings := DEFAULT_SETTINGS) {
 
 @(private)
 sanitize_settings :: proc(st: ^Settings) {
-	st.subpixel_steps = clamp(st.subpixel_steps, 1, 4)
+	st.subpixel_steps = clamp(st.subpixel_steps, 1, SUBPIXEL_STEPS_MAX)
 	if st.page_size <= 0 { st.page_size = ATLAS_SIZE }
-	st.page_size = clamp(st.page_size, 256, 8192)
-	st.max_gray_pages = clamp(st.max_gray_pages, 1, 64)
-	st.max_color_pages = clamp(st.max_color_pages, 1, 64)
+	st.page_size = clamp(st.page_size, PAGE_SIZE_MIN, PAGE_SIZE_MAX)
+	st.max_gray_pages = clamp(st.max_gray_pages, 1, KIND_PAGES_MAX)
+	st.max_color_pages = clamp(st.max_color_pages, 1, KIND_PAGES_MAX)
 	st.word_cache = max(st.word_cache, 0)
 	st.slug_pages = clamp(st.slug_pages, 1, SLUG_MAX_PAGES)
-	st.slug_tolerance = clamp(st.slug_tolerance, 1.0 / 65536, 1.0 / 64)
-	st.slug_hint_ppem = clamp(st.slug_hint_ppem, 0, 256)
+	st.slug_tolerance = clamp(st.slug_tolerance, SLUG_TOLERANCE_MIN_EM, SLUG_TOLERANCE_MAX_EM)
+	st.slug_hint_ppem = clamp(st.slug_hint_ppem, 0, SLUG_PPEM_SETTING_MAX)
 	st.slug_darken = clamp(st.slug_darken, 0, 1)
-	st.slug_supersample_ppem = clamp(st.slug_supersample_ppem, 0, 256)
-	st.colr_samples = clamp(st.colr_samples, 1, 64)
-	st.colr_cache_kb = clamp(st.colr_cache_kb, 64, 1 << 20)
+	st.slug_supersample_ppem = clamp(st.slug_supersample_ppem, 0, SLUG_PPEM_SETTING_MAX)
+	st.colr_samples = clamp(st.colr_samples, 1, COLR_SAMPLES_MAX)
+	st.colr_cache_kb = clamp(st.colr_cache_kb, COLR_CACHE_MIN_KB, COLR_CACHE_MAX_KB)
 }
 
 // Changes the settings. New rendering settings (subpixel steps, rendering mode, grid fitting, color glyphs) apply to
@@ -349,11 +382,11 @@ publish_face :: proc(s: ^State, key: string, f: Font, family: string) -> Font_Id
 	f := f
 	f.kind = .Face
 	f.family = to_wide(family)
-	f.cmap = make([]u32, 65536 * 2 / 32)
+	f.cmap = make([]u32, CMAP_BMP_CHARS * CMAP_BITS_PER_CHAR / CMAP_WORD_BITS)
 	if !s.tb.face_open(s, &f) { release_font(&f); return 0 }
 	f.fm = s.tb.face_metrics(s, &f)
 	if f.fm.upem > 0 { f.upem = f32(f.fm.upem) }
-	if f.upem <= 0 { f.upem = 1000 }   // neither the platform nor the backend said: no division by zero downstream
+	if f.upem <= 0 { f.upem = FALLBACK_UPEM }   // neither the platform nor the backend said: no division by zero downstream
 	sync.mutex_lock(&s.mu)
 	defer sync.mutex_unlock(&s.mu)
 	if key != "" {
@@ -408,7 +441,7 @@ styled_face :: proc(s: ^State, id: Font_Id, bold, italic: bool) -> Font_Id {
 	if f == nil || (!bold && !italic) { return id }
 	if platform_system_face(f) && len(f.family) > 1 {
 		family := from_wide(f.family, context.temp_allocator)
-		if nid, ok := load_system(s, family, bold ? 700 : 400, italic ? .Italic : .Normal); ok && nid != id { return nid }
+		if nid, ok := load_system(s, family, bold ? FONT_WEIGHT_BOLD : FONT_WEIGHT_NORMAL, italic ? .Italic : .Normal); ok && nid != id { return nid }
 	}
 	return with_simulations(s, id, bold, italic)
 }
@@ -523,7 +556,7 @@ load_system_or_embedded :: proc(s: ^State, path: string, fallback: []byte) -> (i
 metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 	f := face_ptr(s, primary_face(s, id))
 	if f == nil {
-		t := max(size / 15, 1)
+		t := max(size / FALLBACK_STROKE_DIVISOR, 1)
 		return {ascent = size * 0.8, descent = size * 0.2, line_height = math.round(size * 1.2), line_gap = size * 0.2, x_height = size * 0.5, cap_height = size * 0.7,
 			underline_offset = size * 0.1, underline_thickness = t, strike_offset = size * 0.25, strike_thickness = t}
 	}
@@ -539,7 +572,7 @@ metrics :: proc(s: ^State, id: Font_Id, size: f32) -> Metrics {
 	m.line_height = math.round(m.ascent + m.descent + m.line_gap)
 	if m.x_height <= 0 { m.x_height = size * 0.5 }
 	if m.cap_height <= 0 { m.cap_height = m.ascent * 0.7 }
-	if m.underline_thickness <= 0 { m.underline_thickness = size / 15 }
+	if m.underline_thickness <= 0 { m.underline_thickness = size / FALLBACK_STROKE_DIVISOR }
 	if m.strike_thickness <= 0 { m.strike_thickness = m.underline_thickness }
 	if m.strike_offset <= 0 { m.strike_offset = m.x_height * 0.5 }
 	return m
@@ -581,13 +614,13 @@ kern :: proc(s: ^State, id: Font_Id, size: f32, a, b: rune) -> f32 {
 @(private)
 to_wide :: proc(s: string, allocator := context.allocator) -> []u16 {
 	n := 0
-	for r in s { n += r >= 0x10000 ? 2 : 1 }
+	for r in s { n += r >= UTF16_SUPPLEMENTARY_FIRST ? 2 : 1 }
 	out := make([]u16, n + 1, allocator)
 	i := 0
 	for r in s {
-		if r >= 0x10000 {
-			v := u32(r) - 0x10000
-			out[i], out[i + 1] = u16(0xD800 + (v >> 10)), u16(0xDC00 + (v & 0x3FF))
+		if r >= UTF16_SUPPLEMENTARY_FIRST {
+			v := u32(r) - UTF16_SUPPLEMENTARY_FIRST
+			out[i], out[i + 1] = u16(UTF16_HIGH_SURROGATE_FIRST + (v >> 10)), u16(UTF16_LOW_SURROGATE_FIRST + (v & 0x3FF))
 			i += 2
 		} else {
 			out[i] = u16(r)
@@ -603,8 +636,8 @@ from_wide :: proc(w: []u16, allocator := context.allocator) -> string {
 	i := 0
 	for i < len(w) && w[i] != 0 {
 		c := rune(w[i])
-		if c >= 0xD800 && c < 0xDC00 && i + 1 < len(w) && w[i + 1] >= 0xDC00 && w[i + 1] < 0xE000 {
-			c = 0x10000 + (c - 0xD800) << 10 + (rune(w[i + 1]) - 0xDC00)
+		if c >= UTF16_HIGH_SURROGATE_FIRST && c < UTF16_LOW_SURROGATE_FIRST && i + 1 < len(w) && w[i + 1] >= UTF16_LOW_SURROGATE_FIRST && w[i + 1] < UTF16_SURROGATES_END {
+			c = UTF16_SUPPLEMENTARY_FIRST + (c - UTF16_HIGH_SURROGATE_FIRST) << 10 + (rune(w[i + 1]) - UTF16_LOW_SURROGATE_FIRST)
 			i += 1
 		}
 		strings.write_rune(&sb, c)

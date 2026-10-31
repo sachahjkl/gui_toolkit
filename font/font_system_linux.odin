@@ -26,6 +26,8 @@ foreign import fontconfig "system:fontconfig"
 @(private) FC_SLANT_ROMAN :: c.int(0)
 @(private) FC_SLANT_ITALIC :: c.int(100)
 @(private) FC_SLANT_OBLIQUE :: c.int(110)
+// What FcWeightFromOpenType takes at most.
+@(private) FC_OPENTYPE_WEIGHT_MAX :: 1000
 
 @(default_calling_convention = "c", private)
 foreign fontconfig {
@@ -68,7 +70,7 @@ fc_pattern :: proc(family: string, weight: int, style: Font_Style, stretch: int)
 	p := FcPatternCreate()
 	if p == nil { return nil }
 	if family != "" { FcPatternAddString(p, "family", strings.clone_to_cstring(family, context.temp_allocator)) }
-	FcPatternAddInteger(p, "weight", FcWeightFromOpenType(c.int(clamp(weight, 1, 1000))))
+	FcPatternAddInteger(p, "weight", FcWeightFromOpenType(c.int(clamp(weight, 1, FC_OPENTYPE_WEIGHT_MAX))))
 	slant := FC_SLANT_ROMAN
 	switch style {
 	case .Normal:  slant = FC_SLANT_ROMAN
@@ -77,8 +79,8 @@ fc_pattern :: proc(family: string, weight: int, style: Font_Style, stretch: int)
 	}
 	FcPatternAddInteger(p, "slant", slant)
 	// CSS stretch 1..9 to fontconfig's width (50 ultra-condensed .. 200 ultra-expanded)
-	widths := [9]c.int{50, 63, 75, 87, 100, 113, 125, 150, 200}
-	FcPatternAddInteger(p, "width", widths[clamp(stretch, 1, 9) - 1])
+	widths := [FONT_STRETCH_MAX]c.int{50, 63, 75, 87, 100, 113, 125, 150, 200}
+	FcPatternAddInteger(p, "width", widths[clamp(stretch, 1, FONT_STRETCH_MAX) - 1])
 	return p
 }
 
@@ -113,7 +115,7 @@ sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -
 @(private)
 sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune) -> (path: string, index: int, ok: bool) {
 	if !fc_init() { return }
-	p := fc_pattern(family, weight, style, 5)
+	p := fc_pattern(family, weight, style, FONT_STRETCH_NORMAL)
 	if p == nil { return }
 	defer FcPatternDestroy(p)
 	cs := FcCharSetCreate()
