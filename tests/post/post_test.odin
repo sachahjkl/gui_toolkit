@@ -323,3 +323,53 @@ ui_destroy_leaves_no_window_with_its_queue :: proc(t: ^testing.T) {
 	testing.expect(t, a.post_queue == nil && b.post_queue == nil, "both forgot it")
 	free_all(context.temp_allocator)
 }
+
+// A window destroyed before the State: the State points to it no more (ui.destroy, a post's wake). The other order, and
+// two States built for one window.
+@(test)
+ui_state_outlives_its_window :: proc(t: ^testing.T) {
+	fonts: font.State
+	font.init(&fonts)
+	defer font.destroy(&fonts)
+	ui_font, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
+	theme: ui.Theme
+	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	defer ui.theme_destroy(&theme)
+	s, other := new(ui.State), new(ui.State)
+	defer { free(s); free(other) }
+	ui.init(s, &fonts, &theme)
+	build :: proc(s: ^ui.State, f: font.Font_Id, w: ^platform.Window) {
+		ui.begin_build(s, {window_size = {200, 100}, dt = 1.0 / 60, dpi_scale = 1, window = w, base = ui.Style{font = f, font_size = 15}})
+		ui.end_build()
+	}
+	w := platform.open_window_offscreen("post", {200, 100})
+	if !testing.expect(t, w != nil, "a window") { return }
+	build(s, ui_font, w)
+	testing.expect_value(t, len(s.post_windows), 1)
+	platform.destroy_window(w)
+	testing.expect_value(t, len(s.post_windows), 0)
+	testing.expect(t, s.window == nil, "the State forgot it")
+	wakes := ui.post_stats(s).wakes
+	testing.expect(t, ui.post(s, proc(data: rawptr, word: u64) {}), "the queue still works")
+	testing.expect_value(t, ui.post_stats(s).wakes, wakes)   // (nothing to wake: not a freed window)
+	ui.drain_posts(s)
+
+	// the State first: the window has nothing to call
+	w = platform.open_window_offscreen("post", {200, 100})
+	build(s, ui_font, w)
+	ui.destroy(s)
+	testing.expect(t, w.destroy_hook == nil && w.post_queue == nil, "the window forgot it")
+	// two States: the last one built holds the window
+	ui.init(s, &fonts, &theme)
+	ui.init(other, &fonts, &theme)
+	build(s, ui_font, w)
+	build(other, ui_font, w)
+	testing.expect_value(t, len(s.post_windows), 0)
+	testing.expect_value(t, len(other.post_windows), 1)
+	ui.destroy(s)
+	testing.expect(t, w.post_queue == &other.posts, "the other State's queue stays")
+	platform.destroy_window(w)
+	testing.expect_value(t, len(other.post_windows), 0)
+	ui.destroy(other)
+	free_all(context.temp_allocator)
+}

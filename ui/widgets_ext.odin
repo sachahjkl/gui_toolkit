@@ -40,13 +40,14 @@ icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
 }
 
 hline :: proc(width: Size) {
-	next({width = width, height = px(1), bg = color("border")})
+	next({width = width, height = px(max(1, math.round(scale()))), bg = color("border")})
 	build_box({.Draw_Background}, "")
 }
 
 // Value stored at press time for the active drag (which thumb, column width at start, note position, ...).
-drag_store :: proc(v: [4]f32) { g.drag_payload = v }
-drag_load :: proc() -> [4]f32 { return g.drag_payload }
+Drag_Payload :: [4]f32
+drag_store :: proc(v: Drag_Payload) { g.drag_payload = v }
+drag_load :: proc() -> Drag_Payload { return g.drag_payload }
 
 // Persistent timers (hold-to-repeat, delays). `timer_due` is true once `next_ms` has passed. A timer that nothing asked
 // about (timer_due) for TIMER_KEEP_BUILDS builds is forgotten.
@@ -82,7 +83,7 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	w := r.max.x - r.min.x
 	if d.radio {
-		draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), w * 0.5, MARK_RING_PX)
+		draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), w * 0.5, MARK_RING_PX * scale())
 		dot := w * 0.5 * d.t
 		c := draw.rect_center(r)
 		a := d.accent
@@ -94,7 +95,7 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	fill := d.accent
 	fill.a *= min(1, d.t * MARK_FILL_FADE_SPEED)
 	paint_rect(dc, draw.rect_pad(r, -inset), fill, rad(w * MARK_BOX_RADIUS_FRACTION), d.t)
-	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * MARK_BOX_RADIUS_FRACTION), MARK_RING_PX)
+	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * MARK_BOX_RADIUS_FRACTION), MARK_RING_PX * scale())
 	if d.t > MARK_CHECK_MIN_T && g.icon_font != 0 {
 		size := d.size * d.t
 		m := font.metrics(g.fonts, g.icon_font, size)
@@ -189,7 +190,8 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	kd := h - 2 * pad
 	kw := kd * (1 + TOGGLE_KNOB_PRESS_STRETCH * d.active + TOGGLE_KNOB_HOT_STRETCH * d.hot)
 	x := math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t)
-	draw.rect(dc, {{x - 1, r.min.y + pad + 1}, {x + kw + 1, r.max.y - pad + 2}}, {0, 0, 0, TOGGLE_KNOB_SHADOW_ALPHA}, rad(kd * 0.5), 0, TOGGLE_KNOB_SHADOW_SOFT_PX)
+	sc := scale()
+	draw.rect(dc, {{x - sc, r.min.y + pad + sc}, {x + kw + sc, r.max.y - pad + 2 * sc}}, {0, 0, 0, TOGGLE_KNOB_SHADOW_ALPHA}, rad(kd * 0.5), 0, TOGGLE_KNOB_SHADOW_SOFT_PX * sc)
 	draw.rect(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, {1, 1, 1, 1}, rad(kd * 0.5))
 }
 
@@ -231,6 +233,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 @(private = "file") SLIDER_KNOB_EM :: 0.52               // its radius; what hover and a press add to it
 @(private = "file") SLIDER_KNOB_HOT_EM :: 0.12
 @(private = "file") SLIDER_KNOB_ACTIVE_EM :: 0.10
+@(private = "file") SLIDER_KNOB_RING_PX :: 2
 @(private = "file") SLIDER_KNOB_SHADOW_ALPHA :: 0.35
 @(private = "file") SLIDER_KNOB_SHADOW_SOFT_PX :: 4
 @(private = "file") SLIDER_KNOB_DOT_FRACTION :: 0.38
@@ -253,7 +256,7 @@ slider_geom :: proc(r: Rect, em: f32) -> (x0, x1: f32) {
 	pad := em * 0.75
 	x0 = r.min.x + pad
 	x1 = r.max.x - em * SLIDER_VALUE_ROOM_EM - pad
-	if x1 < x0 + SLIDER_TRACK_MIN_PX { x1 = x0 + SLIDER_TRACK_MIN_PX }
+	if x1 < x0 + SLIDER_TRACK_MIN_PX * scale() { x1 = x0 + SLIDER_TRACK_MIN_PX * scale() }
 	return
 }
 
@@ -271,17 +274,18 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect(dc, {{fx0, cy - th * 0.5}, {fx1, cy + th * 0.5}}, d.accent, rad(th * 0.5))
 	kr := em * (SLIDER_KNOB_EM + SLIDER_KNOB_HOT_EM * d.hot + SLIDER_KNOB_ACTIVE_EM * d.active)
 	knobs := [2]f32{math.lerp(x0, x1, d.t0), fx1}
+	sc := scale()
 	for i in (d.range ? 0 : 1) ..< 2 {
 		kx := knobs[i]
-		draw.rect(dc, {{kx - kr - 1, cy - kr + 1}, {kx + kr + 1, cy + kr + 3}}, {0, 0, 0, SLIDER_KNOB_SHADOW_ALPHA}, rad(kr), 0, SLIDER_KNOB_SHADOW_SOFT_PX)
+		draw.rect(dc, {{kx - kr - sc, cy - kr + sc}, {kx + kr + sc, cy + kr + 3 * sc}}, {0, 0, 0, SLIDER_KNOB_SHADOW_ALPHA}, rad(kr), 0, SLIDER_KNOB_SHADOW_SOFT_PX * sc)
 		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, {1, 1, 1, 1}, rad(kr))
-		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, d.accent, rad(kr), 2)
+		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, d.accent, rad(kr), SLIDER_KNOB_RING_PX * sc)
 		draw.rect(dc, {{kx - kr * SLIDER_KNOB_DOT_FRACTION, cy - kr * SLIDER_KNOB_DOT_FRACTION}, {kx + kr * SLIDER_KNOB_DOT_FRACTION, cy + kr * SLIDER_KNOB_DOT_FRACTION}}, d.accent, rad(kr))
 	}
 	size := em * SLIDER_VALUE_FONT_SCALE
 	m := font.metrics(g.fonts, d.mono, size)
 	w := font.text_width(g.fonts, d.mono, size, d.value_text)
-	draw.text(dc, d.mono, size, {math.round(r.max.x - w - 2), math.round(cy + (m.ascent - m.descent) * 0.5)}, d.text, d.value_text)
+	draw.text(dc, d.mono, size, {math.round(r.max.x - w - 2 * sc), math.round(cy + (m.ascent - m.descent) * 0.5)}, d.text, d.value_text)
 }
 
 @(private)
@@ -497,7 +501,7 @@ rating :: proc(id: string, value: ^int) {
 	set_next_axis(.X)
 	box := build_box({}, id)
 	if v, ok := a11y_numeric_request(box.key, f32(value^), 1); ok { value^ = clamp(int(math.round(v)), 0, RATING_MAX) }
-	defer a11y_default(box, {role = .Slider, numeric = f64(value^), min = 0, max = RATING_MAX, step = 1, value = fmt.aprintf("%d / 5", value^, allocator = frame_allocator())})
+	defer a11y_default(box, {role = .Slider, numeric = f64(value^), min = 0, max = RATING_MAX, step = 1, value = fmt.aprintf("%d / %d", value^, RATING_MAX, allocator = frame_allocator())})
 	if parent(box) {
 		for i in 0 ..< RATING_MAX {
 			cell_id := fmt.tprintf("%s_%d", id, i)
@@ -614,7 +618,7 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	w := (r.max.x - r.min.x) * d.t
 	cx := (r.min.x + r.max.x) * 0.5
-	draw.rect(dc, {{cx - w * 0.5, r.max.y - TAB_UNDERLINE_PX}, {cx + w * 0.5, r.max.y}}, d.accent, TAB_UNDERLINE_RADIUS_PX)
+	draw.rect(dc, {{cx - w * 0.5, r.max.y - math.round(TAB_UNDERLINE_PX * scale())}, {cx + w * 0.5, r.max.y}}, d.accent, TAB_UNDERLINE_RADIUS_PX * scale())
 }
 
 // Row of tabs with a growing underline. `icons` may be nil. Returns true when the selection changed.

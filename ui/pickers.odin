@@ -5,7 +5,7 @@ import "../draw"
 // Color pickers: a saturation/value square and a hue bar. They edit HSV values owned by the caller
 // (hue, sat, val all in 0..1) and return true when the user changed something.
 
-Picker_Draw :: struct { hue, sat, val: f32, ring: Color }
+Picker_Draw :: struct { hue, sat, val: f32 }
 
 @(private = "file") PICKER_MARKER_EM :: 0.55
 // Every marker: a dark ring with a white one over it.
@@ -28,8 +28,9 @@ sat_val_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	x := r.min.x + d.sat * (r.max.x - r.min.x)
 	y := r.min.y + (1 - d.val) * (r.max.y - r.min.y)
 	k := b.font_size * PICKER_MARKER_EM
-	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {0, 0, 0, 0.5}, k, PICKER_SHADOW_STROKE_PX)
-	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {1, 1, 1, 1}, k, PICKER_RING_STROKE_PX)
+	sc := scale()
+	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {0, 0, 0, 0.5}, k, PICKER_SHADOW_STROKE_PX * sc)
+	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {1, 1, 1, 1}, k, PICKER_RING_STROKE_PX * sc)
 }
 
 @(private)
@@ -46,8 +47,10 @@ hue_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.rect_corners(dc, {{r.min.x, y0}, {r.max.x, y1 + 0.5}}, {c0, c1, c0, c1}, radii)
 	}
 	y := r.min.y + d.hue * h
-	draw.rect(dc, {{r.min.x - 2, y - HUE_MARKER_HALF_HEIGHT_PX}, {r.max.x + 2, y + HUE_MARKER_HALF_HEIGHT_PX}}, {0, 0, 0, 0.5}, HUE_MARKER_HALF_HEIGHT_PX, PICKER_SHADOW_STROKE_PX)
-	draw.rect(dc, {{r.min.x - 2, y - HUE_MARKER_HALF_HEIGHT_PX}, {r.max.x + 2, y + HUE_MARKER_HALF_HEIGHT_PX}}, {1, 1, 1, 1}, HUE_MARKER_HALF_HEIGHT_PX, PICKER_RING_STROKE_PX)
+	sc := scale()
+	half := HUE_MARKER_HALF_HEIGHT_PX * sc
+	draw.rect(dc, {{r.min.x - 2 * sc, y - half}, {r.max.x + 2 * sc, y + half}}, {0, 0, 0, 0.5}, half, PICKER_SHADOW_STROKE_PX * sc)
+	draw.rect(dc, {{r.min.x - 2 * sc, y - half}, {r.max.x + 2 * sc, y + half}}, {1, 1, 1, 1}, half, PICKER_RING_STROKE_PX * sc)
 }
 
 sat_val_picker :: proc(id: string, hue: f32, sat, val: ^f32) -> (changed: bool) {

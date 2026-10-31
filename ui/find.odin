@@ -180,7 +180,7 @@ find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	cur := color_from_tags(s, b.tags_key, "find_current background")
 	rad := FIND_MATCH_RADIUS_PX * s.scale
 	for m in s.find.matches[span[0]:span[1]] {
-		r := Rect{{m.rect.min.x - 1, m.rect.min.y}, {m.rect.max.x + 1, m.rect.max.y}}
+		r := Rect{{m.rect.min.x - s.scale, m.rect.min.y}, {m.rect.max.x + s.scale, m.rect.max.y}}
 		draw.rect(dc, r, m.index == s.find.current ? cur : all, rad)
 	}
 }

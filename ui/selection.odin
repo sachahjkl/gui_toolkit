@@ -25,12 +25,16 @@ Sel_Pos :: struct {
 	index: int,     // byte index in the box's selectable text
 }
 
+// What a drag extends the selection by.
+@(private)
+Sel_Granularity :: enum u8 { Characters, Words, Paragraphs }
+
 @(private)
 Selection :: struct {
 	anchor, focus: Sel_Pos,
 	active:        bool,
 	dragging:      bool,
-	granularity:   int,           // 1 characters, 2 words, 3 paragraphs (the drag extends by that much)
+	granularity:   Sel_Granularity,
 	word_lo, word_hi: Sel_Pos,    // what the double / triple click selected (the drag keeps it)
 	serial:        u64,
 	changed_build: u64,
@@ -355,8 +359,7 @@ para_at :: proc(text: string, at: int) -> (lo, hi: int) {
 	return
 }
 
-// Presses this close in time and place count up (double, triple click).
-@(private = "file") SEL_MULTI_CLICK_MS :: 450
+// Presses this close in place (and in time: DOUBLE_CLICK_MS) count up: double, triple click.
 @(private = "file") SEL_MULTI_CLICK_SLOP_PX :: 4
 
 // end_build, after layout: the pointer and the keys act on the selection of this build's tree.
@@ -389,7 +392,7 @@ selection_update :: proc(s: ^State) {
 				continue
 			}
 			now := s.time_ms
-			if now - sel.click_ms < SEL_MULTI_CLICK_MS && abs(e.pos.x - sel.click_pos.x) < SEL_MULTI_CLICK_SLOP_PX && abs(e.pos.y - sel.click_pos.y) < SEL_MULTI_CLICK_SLOP_PX {
+			if now - sel.click_ms < DOUBLE_CLICK_MS && abs(e.pos.x - sel.click_pos.x) < SEL_MULTI_CLICK_SLOP_PX * s.scale && abs(e.pos.y - sel.click_pos.y) < SEL_MULTI_CLICK_SLOP_PX * s.scale {
 				sel.clicks = sel.clicks % 3 + 1
 			} else {
 				sel.clicks = 1
@@ -400,20 +403,20 @@ selection_update :: proc(s: ^State) {
 			switch {
 			case .Shift in e.mods && sel.active:
 				sel.focus = {k, idx}
-				sel.granularity = 1
+				sel.granularity = .Characters
 			case sel.clicks == 2:
 				lo, hi := word_at(text, idx)
 				sel.anchor, sel.focus = {k, lo}, {k, hi}
 				sel.word_lo, sel.word_hi = sel.anchor, sel.focus
-				sel.granularity = 2
+				sel.granularity = .Words
 			case sel.clicks == 3:
 				lo, hi := para_at(text, idx)
 				sel.anchor, sel.focus = {k, lo}, {k, hi}
 				sel.word_lo, sel.word_hi = sel.anchor, sel.focus
-				sel.granularity = 3
+				sel.granularity = .Paragraphs
 			case:
 				sel.anchor, sel.focus = {k, idx}, {k, idx}
-				sel.granularity = 1
+				sel.granularity = .Characters
 			}
 			sel.active = true
 			sel.dragging = true
@@ -427,13 +430,13 @@ selection_update :: proc(s: ^State) {
 		if k != 0 {
 			b := s.boxes[k]
 			idx := sel_index_at(s, b, q)
-			if sel.granularity == 1 {
+			if sel.granularity == .Characters {
 				sel.focus = {k, idx}
 			} else {
 				// by words / paragraphs: the clicked unit stays selected, the other end snaps to a unit's edge
 				text := sel_text(s, b, context.temp_allocator)
 				lo, hi := word_at(text, idx)
-				if sel.granularity == 3 { lo, hi = para_at(text, idx) }
+				if sel.granularity == .Paragraphs { lo, hi = para_at(text, idx) }
 				p := Sel_Pos{k, idx}
 				if sel_before(s, p, sel.word_lo) {
 					sel.anchor, sel.focus = sel.word_hi, {k, lo}
