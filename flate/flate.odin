@@ -52,17 +52,49 @@ deflate :: proc(format: Format, data: []u8, allocator := context.allocator) -> [
 ////////////////////////////////
 // Tables
 
-@(private, rodata) LEN_BASE := [29]u16{3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
-@(private, rodata) LEN_EXTRA := [29]u8{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
-@(private, rodata) DIST_BASE := [30]u16{1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577}
-@(private, rodata) DIST_EXTRA := [30]u8{0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13}
-@(private, rodata) CLEN_ORDER := [19]u8{16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
+// What RFC 1951 fixes: the alphabets and the codes.
+@(private) LIT_SYMBOLS :: 288        // literal / length alphabet, with the two symbols the fixed code has and no data uses
+@(private) LIT_SYMBOLS_USED :: 286
+@(private) END_OF_BLOCK :: 256
+@(private) LEN_SYMBOL_FIRST :: 257   // the symbol of LEN_BASE[0]
+@(private) LEN_CODES :: 29
+@(private) DIST_CODES :: 30
+@(private) CLEN_CODES :: 19          // code length alphabet
+@(private) MAX_CODE_BITS :: 15
+@(private) CLEN_MAX_CODE_BITS :: 7
+@(private) HLIT_MIN :: 257           // what HLIT counts from
+@(private) HCLEN_MIN :: 4            // what HCLEN counts from
+@(private) MATCH_MIN :: 3
+@(private) MATCH_MAX :: 258
+@(private) STORED_MAX_BYTES :: 65535
+// The first literal with a code of 9 bits, of 7 bits (the rest of the lengths), of 8 bits again; 5 bits for a distance.
+@(private) FIXED_9BIT_FIRST :: 144
+@(private) FIXED_7BIT_FIRST :: 256
+@(private) FIXED_8BIT_FIRST :: 280
+@(private) FIXED_DIST_BITS :: 5
+// The repeat symbols of the code length alphabet and the runs they stand for.
+@(private) CLEN_REPEAT_PREV :: 16
+@(private) CLEN_REPEAT_ZERO :: 17
+@(private) CLEN_REPEAT_ZERO_LONG :: 18
+@(private) REPEAT_MIN :: 3
+@(private) REPEAT_PREV_MAX :: 6
+@(private) REPEAT_ZERO_LONG_MIN :: 11
+@(private) REPEAT_ZERO_LONG_MAX :: 138
+@(private) GZIP_HEADER_BYTES :: 10
+// Room for the code lengths of one dynamic block (at most LIT_SYMBOLS_USED + DIST_CODES; the size puff.c has).
+@(private) CODE_LENGTHS_CAP :: 320
+
+@(private, rodata) LEN_BASE := [LEN_CODES]u16{3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
+@(private, rodata) LEN_EXTRA := [LEN_CODES]u8{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
+@(private, rodata) DIST_BASE := [DIST_CODES]u16{1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577}
+@(private, rodata) DIST_EXTRA := [DIST_CODES]u8{0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13}
+@(private, rodata) CLEN_ORDER := [CLEN_CODES]u8{16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
 // A canonical Huffman code (puff.c's representation): how many codes of each length, the symbols in code order.
 @(private)
 Huffman :: struct {
-	count:  [16]u16,
-	symbol: [288]u16,
+	count:  [MAX_CODE_BITS + 1]u16,
+	symbol: [LIT_SYMBOLS]u16,
 }
 
 // < 0: an over-subscribed set of lengths; > 0: an incomplete one (allowed for a single code only)
@@ -72,13 +104,13 @@ huffman_build :: proc "contextless" (h: ^Huffman, lengths: []u8) -> (left: int) 
 	for l in lengths { h.count[l] += 1 }
 	if int(h.count[0]) == len(lengths) { return 0 }
 	left = 1
-	for i in 1 ..< 16 {
+	for i in 1 ..< MAX_CODE_BITS + 1 {
 		left <<= 1
 		left -= int(h.count[i])
 		if left < 0 { return left }
 	}
-	offs: [16]u16
-	for i in 1 ..< 15 { offs[i + 1] = offs[i] + h.count[i] }
+	offs: [MAX_CODE_BITS + 1]u16
+	for i in 1 ..< MAX_CODE_BITS { offs[i + 1] = offs[i] + h.count[i] }
 	for l, sym in lengths {
 		if l != 0 { h.symbol[offs[l]] = u16(sym); offs[l] += 1 }
 	}
@@ -147,7 +179,7 @@ bits :: proc(b: ^Bits, n: int) -> u32 {
 @(private)
 decode :: proc(b: ^Bits, h: ^Huffman) -> int {
 	code, first, index := 0, 0, 0
-	for l in 1 ..< 16 {
+	for l in 1 ..< MAX_CODE_BITS + 1 {
 		if !need(b, 1) { return -1 }
 		code |= int((b.data[b.bit >> 3] >> uint(b.bit & 7)) & 1)
 		b.bit += 1
@@ -167,16 +199,16 @@ decode :: proc(b: ^Bits, h: ^Huffman) -> int {
 
 @(private, init)
 make_fixed_codes :: proc "contextless" () {
-	l: [288]u8
-	for i in 0 ..< 288 { l[i] = i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8 }
+	l: [LIT_SYMBOLS]u8
+	for i in 0 ..< LIT_SYMBOLS { l[i] = i < FIXED_9BIT_FIRST ? 8 : i < FIXED_7BIT_FIRST ? 9 : i < FIXED_8BIT_FIRST ? 7 : 8 }
 	huffman_build(&fixed_len, l[:])
-	d: [30]u8
-	for i in 0 ..< 30 { d[i] = 5 }
+	d: [DIST_CODES]u8
+	for i in 0 ..< DIST_CODES { d[i] = FIXED_DIST_BITS }
 	huffman_build(&fixed_dist, d[:])
 	fixed_lit_code.length = l
-	code_assign(&fixed_lit_code, 288)
-	for i in 0 ..< 30 { fixed_dist_code.length[i] = 5 }
-	code_assign(&fixed_dist_code, 30)
+	code_assign(&fixed_lit_code, LIT_SYMBOLS)
+	for i in 0 ..< DIST_CODES { fixed_dist_code.length[i] = FIXED_DIST_BITS }
+	code_assign(&fixed_dist_code, DIST_CODES)
 }
 
 @(private)
@@ -207,37 +239,37 @@ block :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8) -> (final: bool, err: E
 		lc, dc := fixed_codes()
 		return final, codes(b, z, out, lc, dc)
 	case 2:
-		nlen := int(bits(b, 5)) + 257
+		nlen := int(bits(b, 5)) + HLIT_MIN
 		ndist := int(bits(b, 5)) + 1
-		ncode := int(bits(b, 4)) + 4
+		ncode := int(bits(b, 4)) + HCLEN_MIN
 		if b.short { return }
-		if nlen > 286 || ndist > 30 { return final, .Bad_Data }
-		lengths: [320]u8
+		if nlen > LIT_SYMBOLS_USED || ndist > DIST_CODES { return final, .Bad_Data }
+		lengths: [CODE_LENGTHS_CAP]u8
 		for i in 0 ..< ncode { lengths[CLEN_ORDER[i]] = u8(bits(b, 3)) }
 		if b.short { return }
 		lencode, distcode: Huffman
-		if huffman_build(&lencode, lengths[:19]) != 0 { return final, .Bad_Data }
+		if huffman_build(&lencode, lengths[:CLEN_CODES]) != 0 { return final, .Bad_Data }
 		i := 0
 		for i < nlen + ndist {
 			sym := decode(b, &lencode)
 			if b.short { return }
 			if sym < 0 { return final, .Bad_Data }
-			if sym < 16 { lengths[i] = u8(sym); i += 1; continue }
+			if sym < CLEN_REPEAT_PREV { lengths[i] = u8(sym); i += 1; continue }
 			l: u8 = 0
 			rep := 0
 			switch sym {
-			case 16:
+			case CLEN_REPEAT_PREV:
 				if i == 0 { return final, .Bad_Data }
 				l = lengths[i - 1]
-				rep = 3 + int(bits(b, 2))
-			case 17: rep = 3 + int(bits(b, 3))
-			case: rep = 11 + int(bits(b, 7))
+				rep = REPEAT_MIN + int(bits(b, 2))
+			case CLEN_REPEAT_ZERO: rep = REPEAT_MIN + int(bits(b, 3))
+			case: rep = REPEAT_ZERO_LONG_MIN + int(bits(b, 7))
 			}
 			if b.short { return }
 			if i + rep > nlen + ndist { return final, .Bad_Data }
 			for _ in 0 ..< rep { lengths[i] = l; i += 1 }
 		}
-		if lengths[256] == 0 { return final, .Bad_Data }
+		if lengths[END_OF_BLOCK] == 0 { return final, .Bad_Data }
 		left := huffman_build(&lencode, lengths[:nlen])
 		if left < 0 || (left > 0 && nlen - int(lencode.count[0]) != 1) { return final, .Bad_Data }
 		left = huffman_build(&distcode, lengths[nlen:nlen + ndist])
@@ -254,18 +286,18 @@ codes :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8, lencode, distcode: ^Huf
 		sym := decode(b, lencode)
 		if b.short { return .None }
 		if sym < 0 { return .Bad_Data }
-		if sym < 256 {
+		if sym < END_OF_BLOCK {
 			append(out, u8(sym))
 			if z.limit > 0 && len(out) > z.limit { return .Too_Large }
 			continue
 		}
-		if sym == 256 { return .None }
-		sym -= 257
-		if sym >= 29 { return .Bad_Data }
+		if sym == END_OF_BLOCK { return .None }
+		sym -= LEN_SYMBOL_FIRST
+		if sym >= LEN_CODES { return .Bad_Data }
 		length := int(LEN_BASE[sym]) + int(bits(b, int(LEN_EXTRA[sym])))
 		ds := decode(b, distcode)
 		if b.short { return .None }
-		if ds < 0 || ds >= 30 { return .Bad_Data }
+		if ds < 0 || ds >= DIST_CODES { return .Bad_Data }
 		dist := int(DIST_BASE[ds]) + int(bits(b, int(DIST_EXTRA[ds])))
 		if b.short { return .None }
 		have := len(z.window) + len(out)
@@ -379,10 +411,10 @@ header :: proc(z: ^Inflater, b: ^Bits) -> (ok: bool, err: Error) {
 		b.bit = 16
 		return true, .None
 	case .Gzip:
-		if len(d) < 10 { return false, .None }
+		if len(d) < GZIP_HEADER_BYTES { return false, .None }
 		if d[0] != 0x1F || d[1] != 0x8B || d[2] != 8 || d[3] & 0xE0 != 0 { return false, .Bad_Data }
 		flags := d[3]
-		at := 10
+		at := GZIP_HEADER_BYTES
 		if flags & 4 != 0 {   // FEXTRA
 			if len(d) < at + 2 { return false, .None }
 			at += 2 + (int(d[at]) | int(d[at + 1]) << 8)
@@ -428,6 +460,14 @@ BLOCK_SYMBOLS :: 16 * 1024
 @(private) HASH_BITS :: 15
 @(private) MAX_CHAIN :: 64
 @(private) MATCH_BIT :: u32(1) << 31
+// A match symbol: MATCH_BIT, then its length, then its distance.
+@(private) SYM_LEN_SHIFT :: 16
+@(private) SYM_LEN_MASK :: 0x1FF
+@(private) SYM_DIST_MASK :: 0xFFFF
+// The multiplicative hash of Knuth: 2^32 / the golden ratio.
+@(private) HASH_MULTIPLIER :: 2654435761
+// How far inside the window a match must start (MIN_LOOKAHEAD of zlib: MATCH_MAX + MATCH_MIN + 1).
+@(private) MATCH_LOOKAHEAD :: 262
 
 deflater_init :: proc(d: ^Deflater, format: Format, allocator := context.allocator) {
 	d^ = Deflater{format = format, adler = 1}
@@ -466,7 +506,7 @@ put_code :: proc(d: ^Deflater, out: ^[dynamic]u8, code: u32, n: uint) {
 
 @(private)
 hash3 :: #force_inline proc(p: []u8, i: int) -> int {
-	return int(((u32(p[i]) << 16 | u32(p[i + 1]) << 8 | u32(p[i + 2])) * 2654435761) >> (32 - HASH_BITS))
+	return int(((u32(p[i]) << 16 | u32(p[i + 1]) << 8 | u32(p[i + 2])) * HASH_MULTIPLIER) >> (32 - HASH_BITS))
 }
 
 @(private)
@@ -483,14 +523,14 @@ start :: proc(d: ^Deflater, out: ^[dynamic]u8) {
 // The length and distance codes of a match (indices into LEN_BASE and DIST_BASE).
 @(private)
 len_index :: proc(length: int) -> int {
-	li := 28
+	li := LEN_CODES - 1
 	for li > 0 && int(LEN_BASE[li]) > length { li -= 1 }
 	return li
 }
 
 @(private)
 dist_index :: proc(dist: int) -> int {
-	di := 29
+	di := DIST_CODES - 1
 	for di > 0 && int(DIST_BASE[di]) > dist { di -= 1 }
 	return di
 }
@@ -513,23 +553,23 @@ deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 	i := from
 	for i < len(w) {
 		best_len, best_dist := 0, 0
-		if i + 3 <= len(w) {
+		if i + MATCH_MIN <= len(w) {
 			h := hash3(w, i)
 			cand := int(d.head[h]) - d.base
-			for chain := 0; chain < MAX_CHAIN && cand >= 0 && i - cand <= WINDOW - 262 && cand < i; chain += 1 {
+			for chain := 0; chain < MAX_CHAIN && cand >= 0 && i - cand <= WINDOW - MATCH_LOOKAHEAD && cand < i; chain += 1 {
 				l := 0
-				for l < 258 && i + l < len(w) && w[cand + l] == w[i + l] { l += 1 }
-				if l > best_len { best_len, best_dist = l, i - cand; if l == 258 { break } }
+				for l < MATCH_MAX && i + l < len(w) && w[cand + l] == w[i + l] { l += 1 }
+				if l > best_len { best_len, best_dist = l, i - cand; if l == MATCH_MAX { break } }
 				nxt := int(d.prev[(cand + d.base) % WINDOW]) - d.base
 				if nxt >= cand { break }
 				cand = nxt
 			}
 		}
-		n := best_len >= 3 ? best_len : 1
-		if best_len >= 3 { append(&d.syms, MATCH_BIT | u32(best_len) << 16 | u32(best_dist)) } else { append(&d.syms, u32(w[i])) }
+		n := best_len >= MATCH_MIN ? best_len : 1
+		if best_len >= MATCH_MIN { append(&d.syms, MATCH_BIT | u32(best_len) << SYM_LEN_SHIFT | u32(best_dist)) } else { append(&d.syms, u32(w[i])) }
 		for k in 0 ..< n {
 			p := i + k
-			if p + 3 <= len(w) {
+			if p + MATCH_MIN <= len(w) {
 				h := hash3(w, p)
 				d.prev[(p + d.base) % WINDOW] = d.head[h]
 				d.head[h] = i32(p + d.base)
@@ -573,18 +613,18 @@ deflate_finish :: proc(d: ^Deflater, out: ^[dynamic]u8) {
 // The code lengths and codes of one alphabet (canonical: RFC 1951 §3.2.2).
 @(private)
 Code :: struct {
-	length: [288]u8,
-	code:   [288]u16,
+	length: [LIT_SYMBOLS]u8,
+	code:   [LIT_SYMBOLS]u16,
 }
 
 @(private)
 code_assign :: proc "contextless" (c: ^Code, n: int) {
-	count: [16]int
+	count: [MAX_CODE_BITS + 1]int
 	for i in 0 ..< n { count[c.length[i]] += 1 }
 	count[0] = 0
-	next: [16]int
+	next: [MAX_CODE_BITS + 1]int
 	v := 0
-	for bits in 1 ..< 16 {
+	for bits in 1 ..< MAX_CODE_BITS + 1 {
 		v = (v + count[bits - 1]) << 1
 		next[bits] = v
 	}
@@ -642,33 +682,33 @@ huffman_lengths :: proc(freq: []u32, lengths: []u8, limit: int) {
 // One block of `syms` (the symbols of `raw`), in the cheapest of stored, fixed and dynamic codes.
 @(private)
 emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
-	lit_freq: [286]u32
-	dist_freq: [30]u32
+	lit_freq: [LIT_SYMBOLS_USED]u32
+	dist_freq: [DIST_CODES]u32
 	extra_bits := 0
 	for s in d.syms {
 		if s & MATCH_BIT == 0 { lit_freq[s] += 1; continue }
-		length, dist := int((s >> 16) & 0x1FF), int(s & 0xFFFF)
+		length, dist := int((s >> SYM_LEN_SHIFT) & SYM_LEN_MASK), int(s & SYM_DIST_MASK)
 		li, di := len_index(length), dist_index(dist)
-		lit_freq[257 + li] += 1
+		lit_freq[LEN_SYMBOL_FIRST + li] += 1
 		dist_freq[di] += 1
 		extra_bits += int(LEN_EXTRA[li]) + int(DIST_EXTRA[di])
 	}
-	lit_freq[256] = 1
+	lit_freq[END_OF_BLOCK] = 1
 
 	// dynamic: the codes, then the code lengths run-length coded with the code length alphabet
 	dyn_lit, dyn_dist: Code
-	huffman_lengths(lit_freq[:], dyn_lit.length[:286], 15)
-	huffman_lengths(dist_freq[:], dyn_dist.length[:30], 15)
-	code_assign(&dyn_lit, 286)
-	code_assign(&dyn_dist, 30)
-	hlit := 286
-	for hlit > 257 && dyn_lit.length[hlit - 1] == 0 { hlit -= 1 }
-	hdist := 30
+	huffman_lengths(lit_freq[:], dyn_lit.length[:LIT_SYMBOLS_USED], MAX_CODE_BITS)
+	huffman_lengths(dist_freq[:], dyn_dist.length[:DIST_CODES], MAX_CODE_BITS)
+	code_assign(&dyn_lit, LIT_SYMBOLS_USED)
+	code_assign(&dyn_dist, DIST_CODES)
+	hlit := LIT_SYMBOLS_USED
+	for hlit > HLIT_MIN && dyn_lit.length[hlit - 1] == 0 { hlit -= 1 }
+	hdist := DIST_CODES
 	for hdist > 1 && dyn_dist.length[hdist - 1] == 0 { hdist -= 1 }
-	all: [316]u8
+	all: [LIT_SYMBOLS_USED + DIST_CODES]u8
 	copy(all[:hlit], dyn_lit.length[:hlit])
 	copy(all[hlit:hlit + hdist], dyn_dist.length[:hdist])
-	runs: [316][2]u8   // (symbol of the code length alphabet, its extra bits' value)
+	runs: [LIT_SYMBOLS_USED + DIST_CODES][2]u8   // (symbol of the code length alphabet, its extra bits' value)
 	nruns := 0
 	for i := 0; i < hlit + hdist; {
 		l := all[i]
@@ -676,23 +716,23 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 		for i + r < hlit + hdist && all[i + r] == l { r += 1 }
 		i += r
 		if l == 0 {
-			for r >= 11 { k := min(r, 138); runs[nruns] = {18, u8(k - 11)}; nruns += 1; r -= k }
-			if r >= 3 { runs[nruns] = {17, u8(r - 3)}; nruns += 1; r = 0 }
+			for r >= REPEAT_ZERO_LONG_MIN { k := min(r, REPEAT_ZERO_LONG_MAX); runs[nruns] = {CLEN_REPEAT_ZERO_LONG, u8(k - REPEAT_ZERO_LONG_MIN)}; nruns += 1; r -= k }
+			if r >= REPEAT_MIN { runs[nruns] = {CLEN_REPEAT_ZERO, u8(r - REPEAT_MIN)}; nruns += 1; r = 0 }
 		} else {
 			runs[nruns] = {l, 0}; nruns += 1; r -= 1
-			for r >= 3 { k := min(r, 6); runs[nruns] = {16, u8(k - 3)}; nruns += 1; r -= k }
+			for r >= REPEAT_MIN { k := min(r, REPEAT_PREV_MAX); runs[nruns] = {CLEN_REPEAT_PREV, u8(k - REPEAT_MIN)}; nruns += 1; r -= k }
 		}
 		for _ in 0 ..< r { runs[nruns] = {l, 0}; nruns += 1 }
 	}
-	cl_freq: [19]u32
+	cl_freq: [CLEN_CODES]u32
 	for k in 0 ..< nruns { cl_freq[runs[k][0]] += 1 }
 	cl: Code
-	huffman_lengths(cl_freq[:], cl.length[:19], 7)
-	code_assign(&cl, 19)
-	hclen := 19
-	for hclen > 4 && cl.length[CLEN_ORDER[hclen - 1]] == 0 { hclen -= 1 }
+	huffman_lengths(cl_freq[:], cl.length[:CLEN_CODES], CLEN_MAX_CODE_BITS)
+	code_assign(&cl, CLEN_CODES)
+	hclen := CLEN_CODES
+	for hclen > HCLEN_MIN && cl.length[CLEN_ORDER[hclen - 1]] == 0 { hclen -= 1 }
 
-	RUN_EXTRA := [19]int{16 = 2, 17 = 3, 18 = 7}
+	RUN_EXTRA := [CLEN_CODES]int{CLEN_REPEAT_PREV = 2, CLEN_REPEAT_ZERO = 3, CLEN_REPEAT_ZERO_LONG = 7}
 	dyn_cost := 3 + 5 + 5 + 4 + 3 * hclen + extra_bits
 	for k in 0 ..< nruns { dyn_cost += int(cl.length[runs[k][0]]) + RUN_EXTRA[runs[k][0]] }
 	fix_lit, fix_dist := fixed_code()
@@ -703,14 +743,14 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 	}
 	for v, s in dist_freq {
 		dyn_cost += int(v) * int(dyn_dist.length[s])
-		fix_cost += int(v) * 5
+		fix_cost += int(v) * FIXED_DIST_BITS
 	}
-	stored_cost := (len(raw) + 65534) / 65535 * (3 + 7 + 32) + len(raw) * 8   // (at most: the padding to a byte)
+	stored_cost := (len(raw) + STORED_MAX_BYTES - 1) / STORED_MAX_BYTES * (3 + 7 + 32) + len(raw) * 8   // (at most: the padding to a byte)
 
 	switch {
 	case stored_cost < fix_cost && stored_cost < dyn_cost:
 		for at := 0; at < len(raw) || at == 0; {
-			n := min(len(raw) - at, 65535)
+			n := min(len(raw) - at, STORED_MAX_BYTES)
 			put(d, out, 0, 1)
 			put(d, out, 0, 2)
 			if d.nacc > 0 { put(d, out, 0, 8 - d.nacc) }
@@ -722,9 +762,9 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 	case dyn_cost < fix_cost:
 		put(d, out, 0, 1)
 		put(d, out, 2, 2)
-		put(d, out, u32(hlit - 257), 5)
+		put(d, out, u32(hlit - HLIT_MIN), 5)
 		put(d, out, u32(hdist - 1), 5)
-		put(d, out, u32(hclen - 4), 4)
+		put(d, out, u32(hclen - HCLEN_MIN), 4)
 		for k in 0 ..< hclen { put(d, out, u32(cl.length[CLEN_ORDER[k]]), 3) }
 		for k in 0 ..< nruns {
 			s := runs[k][0]
@@ -743,12 +783,12 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 emit_symbols :: proc(d: ^Deflater, out: ^[dynamic]u8, lit, dist: ^Code) {
 	for s in d.syms {
 		if s & MATCH_BIT == 0 { put_code(d, out, u32(lit.code[s]), uint(lit.length[s])); continue }
-		length, distance := int((s >> 16) & 0x1FF), int(s & 0xFFFF)
+		length, distance := int((s >> SYM_LEN_SHIFT) & SYM_LEN_MASK), int(s & SYM_DIST_MASK)
 		li, di := len_index(length), dist_index(distance)
-		put_code(d, out, u32(lit.code[257 + li]), uint(lit.length[257 + li]))
+		put_code(d, out, u32(lit.code[LEN_SYMBOL_FIRST + li]), uint(lit.length[LEN_SYMBOL_FIRST + li]))
 		put(d, out, u32(length - int(LEN_BASE[li])), uint(LEN_EXTRA[li]))
 		put_code(d, out, u32(dist.code[di]), uint(dist.length[di]))
 		put(d, out, u32(distance - int(DIST_BASE[di])), uint(DIST_EXTRA[di]))
 	}
-	put_code(d, out, u32(lit.code[256]), uint(lit.length[256]))
+	put_code(d, out, u32(lit.code[END_OF_BLOCK]), uint(lit.length[END_OF_BLOCK]))
 }
