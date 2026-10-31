@@ -29,7 +29,7 @@ idle_inhibit_linux :: proc(w: ^Window, reason: string) -> Idle_Inhibit {
 	wr := dbus.body_writer()
 	dbus.w_string(&wr, "gui_toolkit")
 	dbus.w_string(&wr, reason)
-	msg, ok := dbus.call(conn, SCREENSAVER_SERVICE, SCREENSAVER_PATH, SCREENSAVER_SERVICE, "Inhibit", "ss", wr.buf[:], 3000)
+	msg, ok := dbus.call(conn, SCREENSAVER_SERVICE, SCREENSAVER_PATH, SCREENSAVER_SERVICE, "Inhibit", "ss", wr.buf[:], DBUS_QUICK_CALL_MS)
 	if !ok || msg.type != .Method_Return { return 0 }
 	r := dbus.msg_reader(&msg)
 	cookie := dbus.r_u32(&r)

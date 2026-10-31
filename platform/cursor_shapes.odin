@@ -26,12 +26,19 @@ cursor_has_shape :: proc(c: Cursor) -> bool {
 	return false
 }
 
+@(private = "file") CURSOR_DESIGN_UNITS :: 32    // the design grid's side
+@(private = "file") PRIM_MAX_POINTS :: 8
+@(private = "file") OP_MAX_PRIMS :: 8
+@(private = "file") SHAPE_MAX_OPS :: 8
+@(private = "file") SDF_FAR :: 1e9               // further than any point of the grid
+@(private = "file") SDF_MIN_SEGMENT_SQ :: 1e-6   // keeps the division by a capsule's squared length finite
+
 @(private = "file") Prim_Kind :: enum u8 { Poly, Circle, Box, Capsule, Ring }
 
 @(private = "file")
 Prim :: struct {
 	kind: Prim_Kind,
-	pts:  [8][2]f32,   // Poly: the vertices; Box: center, half size; Capsule: the two ends; Circle / Ring: center
+	pts:  [PRIM_MAX_POINTS][2]f32,   // Poly: the vertices; Box: center, half size; Capsule: the two ends; Circle / Ring: center
 	n:    int,
 	r:    f32,         // Circle / Capsule / Ring: radius; Box: corner radius
 	w:    f32,         // Ring: thickness
@@ -43,13 +50,13 @@ Prim :: struct {
 @(private = "file")
 Op :: struct {
 	mode:  Op_Mode,
-	prims: [8]Prim,
+	prims: [OP_MAX_PRIMS]Prim,
 	n:     int,
 }
 
 @(private = "file")
 Shape :: struct {
-	ops: [8]Op,
+	ops: [SHAPE_MAX_OPS]Op,
 	n:   int,
 	hot: [2]f32,   // design units
 }
@@ -164,7 +171,7 @@ sdf :: proc(pr: ^Prim, p: [2]f32) -> f32 {
 	case .Ring:   return abs(length2(p - pr.pts[0]) - pr.r) - pr.w * 0.5
 	case .Capsule:
 		pa, ba := p - pr.pts[0], pr.pts[1] - pr.pts[0]
-		h := clamp(dot2(pa, ba) / max(dot2(ba, ba), 1e-6), 0, 1)
+		h := clamp(dot2(pa, ba) / max(dot2(ba, ba), SDF_MIN_SEGMENT_SQ), 0, 1)
 		return length2(pa - ba * h) - pr.r
 	case .Box:
 		q := [2]f32{abs(p.x - pr.pts[0].x), abs(p.y - pr.pts[0].y)} - pr.pts[1] + pr.r
@@ -182,7 +189,7 @@ sdf :: proc(pr: ^Prim, p: [2]f32) -> f32 {
 		}
 		return s * math.sqrt(d)
 	}
-	return 1e9
+	return SDF_FAR
 }
 
 // Draws cursor `c` at `size` x `size` pixels (the design grid is 32 units: size / 32 pixels per unit). ok = false
@@ -194,7 +201,7 @@ cursor_draw :: proc(c: Cursor, size: int, scheme := Cursor_Scheme.Light, allocat
 	if scheme == .Dark { fill, line = 0, 255 }
 	img.size = size
 	img.pixels = make([]u8, size * size * 4, allocator)
-	unit := 32 / f32(size)   // design units per pixel
+	unit := CURSOR_DESIGN_UNITS / f32(size)   // design units per pixel
 	SS :: 4
 	for y in 0 ..< size {
 		for x in 0 ..< size {
@@ -205,7 +212,7 @@ cursor_draw :: proc(c: Cursor, size: int, scheme := Cursor_Scheme.Light, allocat
 					color := -1   // -1 nothing, 0 fill, 1 line
 					for oi in 0 ..< s.n {
 						op := &s.ops[oi]
-						d := f32(1e9)
+						d := f32(SDF_FAR)
 						for pi in 0 ..< op.n { d = min(d, sdf(&op.prims[pi], p)) }
 						switch op.mode {
 						case .Body:

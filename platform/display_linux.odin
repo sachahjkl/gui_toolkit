@@ -7,9 +7,11 @@ package platform
 // the renderer's own statistics (render.measured_refresh_hz) as on Windows; this feeds the rate a page reads
 // (screen.refresh) and the pacer's starting point.
 
+@(private = "file") WL_MILLIHERTZ_PER_HZ :: 1000   // wl_output.mode
+
 display_info :: proc(w: ^Window) -> Display_Info {
 	if w.offscreen {
-		if w.display.serial == 0 { w.display = {hz = 60, max_hz = 60, source = .Default, serial = 1} }
+		if w.display.serial == 0 { w.display = {hz = DISPLAY_FALLBACK_HZ, max_hz = DISPLAY_FALLBACK_HZ, source = .Default, serial = 1} }
 		return w.display
 	}
 	if w.display_stale || w.display.serial == 0 {
@@ -56,14 +58,14 @@ display_live_hz :: proc(w: ^Window) -> (hz: f64, ok: bool) { return 0, false }
 @(private)
 query_display_linux :: proc(w: ^Window) -> (d: Display_Info) {
 	d.source = .Default
-	d.hz, d.max_hz = 60, 60
-	d.numerator, d.denominator = 60, 1
+	d.hz, d.max_hz = DISPLAY_FALLBACK_HZ, DISPLAY_FALLBACK_HZ
+	d.numerator, d.denominator = DISPLAY_FALLBACK_HZ, 1
 	switch w.backend {
 	case .Wayland:
-		if output_refresh_mhz > 1000 {
-			hz := f64(output_refresh_mhz) / 1000
+		if output_refresh_mhz > WL_MILLIHERTZ_PER_HZ {
+			hz := f64(output_refresh_mhz) / WL_MILLIHERTZ_PER_HZ
 			d.hz, d.max_hz, d.source = hz, hz, .Mode
-			d.numerator, d.denominator = u32(output_refresh_mhz), 1000
+			d.numerator, d.denominator = u32(output_refresh_mhz), WL_MILLIHERTZ_PER_HZ
 		}
 	case .X11:
 		if hz := x11_refresh_hz(); hz > 1 {

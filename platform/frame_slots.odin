@@ -20,6 +20,7 @@ package platform
 FRAME_SLOT_MIN_WAIT_NS :: 200_000   // a wait shorter than this is not made (the timer's own granularity)
 FRAME_SLOT_ESCALATE    :: 8         // consecutive delayed frames that make a loose grid strict
 FRAME_SLOT_LOOSE       :: 0.9       // a loose grid's period, as a part of the period
+@(private = "file") REFRESH_VARIABLE_MARGIN :: 1.05   // top mode above the rate by more than this factor: not a rounding of the same rate
 
 Frame_Slots :: struct {
 	period_ns: i64,    // the cadence aimed for (0: no cap)
@@ -69,4 +70,4 @@ frame_slot_wait :: proc(s: ^Frame_Slots, now_ns: i64, restart, immediate: bool) 
 // The refresh rate of a display can change under the app: the screen is called variable when its modes at the current size
 // go higher than the rate it runs at (a monitor with a dynamic refresh rate, or a variable one run below its top), so the
 // rate the system reports is not the one frames will be shown at. `hz` and `max_hz` are Display_Info's.
-refresh_is_variable :: proc(hz, max_hz: f64) -> bool { return hz > 0 && max_hz > hz * 1.05 }
+refresh_is_variable :: proc(hz, max_hz: f64) -> bool { return hz > 0 && max_hz > hz * REFRESH_VARIABLE_MARGIN }

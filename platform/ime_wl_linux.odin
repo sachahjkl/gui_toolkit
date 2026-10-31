@@ -63,7 +63,7 @@ ti_done :: proc "c" (data: rawptr, ti: Wl_Proxy, serial: u32) {
 	// apply the commit: push each rune as a .Text event (the same path as a typed character)
 	if wlc.pending_commit != "" && w != nil {
 		for r in wlc.pending_commit {
-			if r >= 32 && r != 127 { wl_push(w, {kind = .Text, text = r}) }
+			if r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { wl_push(w, {kind = .Text, text = r}) }
 		}
 	}
 	delete(wlc.pending_commit); wlc.pending_commit = ""

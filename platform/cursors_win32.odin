@@ -68,6 +68,14 @@ Custom_Entry :: struct {
 }
 
 @(private) CUSTOM_VARIANTS :: 4
+@(private = "file") CURSOR_DEFAULT_BASE_PX :: 32     // SM_CXCURSOR's usual answer at 96 dpi
+@(private = "file") CURSOR_MIN_PX :: 16              // an answer of SM_CXCURSOR outside these is ignored
+@(private = "file") CURSOR_BASE_MAX_PX :: 512        // at 96 dpi
+@(private = "file") CURSOR_MAX_PX :: 1024            // at the monitor's dpi
+@(private = "file") CURSOR_SCALE_MIN :: 0.5          // the scale drawn cursors follow when SM_CXCURSOR gives no size
+@(private = "file") CURSOR_DARK_BELOW :: 128         // mean brightness of the arrow's fill under which the scheme is dark
+@(private = "file") OCR_NORMAL :: 32512              // the system's arrow, as a resource id
+@(private = "file") CUSTOM_CURSOR_MAX_SLACK_CSS :: 0.001   // a size that is at the limit but for the rounding of its density
 
 // Per window (Native_Window.cursors).
 @(private)
@@ -109,8 +117,8 @@ settings_refresh :: proc() {
 	// (SM_CXCURSOR, the size of the cursors the system makes, rather than the pointer size of the accessibility settings
 	// in the registry (CursorBaseSize): with a larger pointer the system's cursor objects need not be larger, and the
 	// drawn ones must be as large as those they stand next to)
-	cursor_base_px = 32
-	if m := win.GetSystemMetricsForDpi(win.SM_CXCURSOR, 96); m >= 16 && m <= 512 { cursor_base_px = int(m) }
+	cursor_base_px = CURSOR_DEFAULT_BASE_PX
+	if m := win.GetSystemMetricsForDpi(win.SM_CXCURSOR, DPI_BASE); m >= CURSOR_MIN_PX && m <= CURSOR_BASE_MAX_PX { cursor_base_px = int(m) }
 	cursor_scheme_cached = detect_scheme()
 }
 
@@ -125,7 +133,7 @@ foreign user32_cursors {
 @(private)
 detect_scheme :: proc() -> Cursor_Scheme {
 	N :: 32
-	arrow := win.HCURSOR(win.LoadImageW(nil, transmute(win.LPCWSTR)uintptr(32512), win.IMAGE_CURSOR, N, N, win.LR_SHARED))
+	arrow := win.HCURSOR(win.LoadImageW(nil, transmute(win.LPCWSTR)uintptr(OCR_NORMAL), win.IMAGE_CURSOR, N, N, win.LR_SHARED))
 	if arrow == nil { return .Light }
 	dc := win.CreateCompatibleDC(nil)
 	if dc == nil { return .Light }
@@ -160,15 +168,15 @@ detect_scheme :: proc() -> Cursor_Scheme {
 		}
 	}
 	if count == 0 { return .Light }
-	return sum / count < 128 ? .Dark : .Light
+	return sum / count < CURSOR_DARK_BELOW ? .Dark : .Light
 }
 
 // The size drawn cursors have on window `w` (its monitor's dpi).
 cursor_size_px :: proc(w: ^Window) -> int {
 	if w.hwnd != nil {
-		if m := win.GetSystemMetricsForDpi(win.SM_CXCURSOR, win.GetDpiForWindow(w.hwnd)); m >= 16 && m <= 1024 { return int(m) }
+		if m := win.GetSystemMetricsForDpi(win.SM_CXCURSOR, win.GetDpiForWindow(w.hwnd)); m >= CURSOR_MIN_PX && m <= CURSOR_MAX_PX { return int(m) }
 	}
-	return max(int(math.round(f32(cursor_base_size()) * max(w.dpi_scale, 0.5))), 16)
+	return max(int(math.round(f32(cursor_base_size()) * max(w.dpi_scale, CURSOR_SCALE_MIN))), CURSOR_MIN_PX)
 }
 
 // A system cursor from RGBA8 pixels (straight alpha, top-down rows of `size.x` pixels). nil on failure.
@@ -384,7 +392,7 @@ custom_cursor_create :: proc(w: ^Window, rgba: []u8, size: [2]int, hot: [2]f32, 
 	}
 	if size.x <= 0 || size.y <= 0 || len(rgba) < size.x * size.y * 4 { return 0, .Bad_Size }
 	d := density > 0 ? density : 1
-	if f32(size.x) / d > f32(max_css) + 0.001 || f32(size.y) / d > f32(max_css) + 0.001 { return 0, .Too_Large }
+	if f32(size.x) / d > f32(max_css) + CUSTOM_CURSOR_MAX_SLACK_CSS || f32(size.y) / d > f32(max_css) + CUSTOM_CURSOR_MAX_SLACK_CSS { return 0, .Too_Large }
 	slot := -1
 	for e, i in cs.customs { if e.refs <= 0 { slot = i; break } }
 	if slot < 0 {

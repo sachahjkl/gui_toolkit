@@ -25,6 +25,7 @@ Native_Tray :: struct {
 @(private) NIN_BALLOONUSERCLICK :: 0x0405
 @(private) NIN_POPUPOPEN :: 0x0406
 @(private) NIN_POPUPCLOSE :: 0x0407
+@(private = "file") ICON_RESOURCE_VERSION :: 0x00030000   // CreateIconFromResourceEx: the format it reads
 
 @(private) taskbar_created_msg: u32
 @(private) tray_next_id: u32
@@ -246,12 +247,12 @@ tray_shell :: proc(op: Tray_Op, t: ^Tray) -> bool {
 @(private = "file")
 tray_load_icon :: proc(t: ^Tray, png: []u8) -> bool {
 	dpi := win.GetDpiForWindow(t.window.hwnd)
-	if dpi == 0 { dpi = 96 }
+	if dpi == 0 { dpi = DPI_BASE }
 	small := win.GetSystemMetricsForDpi(win.SM_CXSMICON, dpi)
 	large := win.GetSystemMetricsForDpi(win.SM_CXICON, dpi)
 	load :: proc(png: []u8, size: i32) -> win.HICON {
 		if len(png) > 0 {
-			return win.CreateIconFromResourceEx((^win.BYTE)(&png[0]), u32(len(png)), true, 0x00030000, size, size, win.LR_DEFAULTCOLOR)
+			return win.CreateIconFromResourceEx((^win.BYTE)(&png[0]), u32(len(png)), true, ICON_RESOURCE_VERSION, size, size, win.LR_DEFAULTCOLOR)
 		}
 		instance := win.HINSTANCE(win.GetModuleHandleW(nil))
 		if h := win.HICON(win.LoadImageW(instance, transmute(win.LPCWSTR)uintptr(1), win.IMAGE_ICON, size, size, win.LR_DEFAULTCOLOR)); h != nil { return h }

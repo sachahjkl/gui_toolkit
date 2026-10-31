@@ -18,6 +18,13 @@ import win "core:sys/windows"
 	pressure:     u32,   // 0..1024
 }
 
+@(private = "file") POINTER_PRESSURE_RANGE :: 1024    // the system's pressure is 0..1024
+@(private = "file") TOUCH_MASK_CONTACT :: 1           // POINTER_TOUCH_INFO.touchMask
+@(private = "file") TOUCH_MASK_PRESSURE :: 4
+@(private = "file") MI_WP_SIGNATURE_MASK :: 0xFFFF_FF00
+@(private = "file") MI_WP_SIGNATURE :: 0xFF51_5700
+@(private = "file") MI_WP_TOUCH_BIT :: 0x80
+
 foreign import user32_pointer "system:User32.lib"
 @(default_calling_convention = "system", private)
 foreign user32_pointer {
@@ -28,7 +35,7 @@ foreign user32_pointer {
 // The mouse message being handled was made by the system from a finger or a pen (MI_WP_SIGNATURE in its extra info).
 @(private)
 mouse_emulated :: proc() -> bool {
-	return u64(uint(win.GetMessageExtraInfo())) & 0xFFFF_FF00 == 0xFF51_5700
+	return u64(uint(win.GetMessageExtraInfo())) & MI_WP_SIGNATURE_MASK == MI_WP_SIGNATURE
 }
 
 // GetSystemMetrics: SM_MAXIMUMTOUCHES (touches the digitizers take), SM_MOUSEPRESENT, SM_DIGITIZER (NID_INTEGRATED_PEN,
@@ -38,10 +45,12 @@ input_devices_query :: proc() -> Input_Devices {
 	SM_MOUSEPRESENT :: 19
 	SM_DIGITIZER :: 94
 	SM_MAXIMUMTOUCHES :: 95
+	NID_INTEGRATED_PEN :: 0x04
+	NID_EXTERNAL_PEN :: 0x08
 	dig := u32(win.GetSystemMetrics(SM_DIGITIZER))
 	return Input_Devices{
 		mouse = win.GetSystemMetrics(SM_MOUSEPRESENT) != 0,
-		pen = dig & (0x04 | 0x08) != 0,
+		pen = dig & (NID_INTEGRATED_PEN | NID_EXTERNAL_PEN) != 0,
 		touch_points = max(int(win.GetSystemMetrics(SM_MAXIMUMTOUCHES)), 0),
 	}
 }
@@ -51,8 +60,8 @@ input_devices_query :: proc() -> Input_Devices {
 @(private)
 mouse_emulated_by :: proc() -> Pointer_Info {
 	x := u64(uint(win.GetMessageExtraInfo()))
-	if x & 0xFFFF_FF00 != 0xFF51_5700 { return {} }
-	return Pointer_Info{kind = x & 0x80 != 0 ? .Touch : .Pen}
+	if x & MI_WP_SIGNATURE_MASK != MI_WP_SIGNATURE { return {} }
+	return Pointer_Info{kind = x & MI_WP_TOUCH_BIT != 0 ? .Touch : .Pen}
 }
 
 @(private)
@@ -67,7 +76,7 @@ pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 		pen: win.POINTER_PEN_INFO
 		if !win.GetPointerPenInfo(id, &pen) { return }
 		info = pen.pointerInfo
-		if .pressure in pen.penMask { measured = f32(pen.pressure) / 1024 }
+		if .pressure in pen.penMask { measured = f32(pen.pressure) / POINTER_PRESSURE_RANGE }
 		if .tiltX in pen.penMask { pi.tilt.x = f32(pen.tiltX) }
 		if .tiltY in pen.penMask { pi.tilt.y = f32(pen.tiltY) }
 		if .rotation in pen.penMask { pi.twist = f32(pen.rotation) }
@@ -77,8 +86,8 @@ pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 		touch: POINTER_TOUCH_INFO
 		if !GetPointerTouchInfo(id, &touch) { return }
 		info = touch.pointerInfo
-		if touch.touchMask & 4 != 0 { measured = f32(touch.pressure) / 1024 }
-		if touch.touchMask & 1 != 0 { pi.contact = {f32(touch.rcContact.right - touch.rcContact.left), f32(touch.rcContact.bottom - touch.rcContact.top)} }
+		if touch.touchMask & TOUCH_MASK_PRESSURE != 0 { measured = f32(touch.pressure) / POINTER_PRESSURE_RANGE }
+		if touch.touchMask & TOUCH_MASK_CONTACT != 0 { pi.contact = {f32(touch.rcContact.right - touch.rcContact.left), f32(touch.rcContact.bottom - touch.rcContact.top)} }
 	}
 	pi.primary = .primary in info.pointerFlags
 	contact := .in_contact in info.pointerFlags

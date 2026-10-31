@@ -12,6 +12,10 @@ package platform
 
 import "../dbus"
 
+@(private) DBUS_QUICK_CALL_MS :: 3000   // a query the interface waits for: a missing service must not hold it long
+@(private) DBUS_ALIGN_STRUCT :: 8       // the elements of an array of structs or dict entries
+@(private) DBUS_ALIGN_STRING :: 4       // the elements of an array of strings
+
 @(private) session_conn: ^dbus.Conn
 @(private) session_tried: bool
 

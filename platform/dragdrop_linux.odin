@@ -11,6 +11,9 @@ package platform
 import "base:runtime"
 import "core:time"
 
+@(private) DND_SOURCE_WAIT_MS :: 60000   // a drag from the window gives up after this long without an end
+@(private = "file") DRAG_THRESHOLD_PX :: 4
+
 // What a window keeps for drag and drop (Native_Window.dnd, made on first use). Mirrors the Win32 Dnd_State fields the
 // shared logic uses; the backend-specific handles live in the per-backend conn state (wlc / x11 dnd fields).
 @(private)
@@ -109,7 +112,7 @@ drag_image_held :: proc(w: ^Window) -> (size, offset: [2]int, ok: bool) {
 	return w.dnd.image_size, w.dnd.image_offset, true
 }
 
-drag_threshold :: proc(w: ^Window) -> [2]f32 { return {4, 4} }   // no system setting we read; the common default
+drag_threshold :: proc(w: ^Window) -> [2]f32 { return {DRAG_THRESHOLD_PX, DRAG_THRESHOLD_PX} }   // no system setting we read; the common default
 
 drag_sending :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.sending }
 

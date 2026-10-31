@@ -172,6 +172,13 @@ Registry_Listener :: struct {
 }
 @(private) registry_listener := Registry_Listener{registry_global, registry_global_remove}
 
+// The versions asked for (no more than the compositor has).
+@(private = "file") WL_COMPOSITOR_VERSION :: 4
+@(private = "file") WL_SEAT_VERSION :: 5
+@(private = "file") WL_DATA_DEVICE_MANAGER_VERSION :: 3
+@(private = "file") XDG_WM_BASE_VERSION :: 4
+@(private = "file") WL_AXIS_UNITS_PER_NOTCH :: 10    // wl_pointer.axis: surface units of one notch of a wheel
+
 @(private)
 registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface: cstring, version: u32) {
 	context = wl_ctx_real()
@@ -181,16 +188,16 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 		return wl.proxy_marshal_flags(wlc.registry, WL_REGISTRY_BIND, iface, v, 0, name, iface.name, v, nil)
 	}
 	switch s {
-	case "wl_compositor": wlc.compositor = bind(name, wl.compositor_interface, 4, version)
+	case "wl_compositor": wlc.compositor = bind(name, wl.compositor_interface, WL_COMPOSITOR_VERSION, version)
 	case "wl_shm":        wlc.shm = bind(name, wl.shm_interface, 1, version)
 	case "wl_output":     if wlc.output == nil { wlc.output = bind(name, wl.output_interface, 2, version); wl.proxy_add_listener(wlc.output, &output_listener, nil) }
 	case "wl_seat":
 		if wlc.seat == nil {
-			wlc.seat = bind(name, wl.seat_interface, 5, version)
+			wlc.seat = bind(name, wl.seat_interface, WL_SEAT_VERSION, version)
 			wl.proxy_add_listener(wlc.seat, &seat_listener, nil)
 		}
-	case "wl_data_device_manager": wlc.data_device_manager = bind(name, wl.data_device_manager_interface, 3, version)
-	case "xdg_wm_base":   wlc.xdg_wm_base = bind(name, &xdg_wm_base_iface, 4, version)
+	case "wl_data_device_manager": wlc.data_device_manager = bind(name, wl.data_device_manager_interface, WL_DATA_DEVICE_MANAGER_VERSION, version)
+	case "xdg_wm_base":   wlc.xdg_wm_base = bind(name, &xdg_wm_base_iface, XDG_WM_BASE_VERSION, version)
 	case "zxdg_decoration_manager_v1": wlc.decoration_manager = bind(name, &zxdg_decoration_manager_iface, 1, version)
 	case "zwp_primary_selection_device_manager_v1": wlc.primary_manager = bind(name, &zwp_primary_device_manager_iface, 1, version)
 	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
@@ -332,7 +339,7 @@ ptr_axis :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, axis: u32, value: Wl
 	w := wlc.pointer_focus
 	if w == nil { return }
 	// axis 0 vertical, 1 horizontal; value is in surface units (a notch ~= 10). Our delta is in notches (+y = down).
-	v := f32(wl_fixed_to_f64(value)) / 10
+	v := f32(wl_fixed_to_f64(value)) / WL_AXIS_UNITS_PER_NOTCH
 	e := Event{kind = .Scroll, pos = wlc.pointer_pos, mods = wl_mods()}
 	if axis == 0 { e.delta.y = v } else { e.delta.x = v }
 	wl_push(w, e)
@@ -401,7 +408,7 @@ kb_key :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, time, key, state: u32) {
 	if press && .Ctrl not_in mods && .Alt not_in mods {
 		buf: [8]u8
 		n := k.state_key_get_utf8(wlc.xkb_state, keycode, &buf[0], size_of(buf))
-		if n > 0 { if r, sz := utf8.decode_rune(string(buf[:n])); sz > 0 && r >= 32 && r != 127 { wl_push(w, {kind = .Text, text = r, mods = mods}) } }
+		if n > 0 { if r, sz := utf8.decode_rune(string(buf[:n])); sz > 0 && r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { wl_push(w, {kind = .Text, text = r, mods = mods}) } }
 	}
 }
 @(private)
