@@ -52,6 +52,10 @@ Lazy_Column :: struct {
 }
 
 LAZY_MARGIN :: 1.0   // screens built above and below the view
+@(private = "file") LAZY_FIRST_ESTIMATE_EM :: 4   // an item's height before any was built
+@(private = "file") LAZY_ANCHOR_MOVED_PX :: 0.5   // the view follows its anchor when it moved more than this
+@(private = "file") LAZY_TRIM_INTERVAL_BUILDS :: 120
+@(private = "file") LAZY_KEEP_BUILDS :: 600
 
 // In the column the items go in. `all`: build every item this frame. (The space of the last items skipped is put in
 // when the block lazy_begin was called in ends: before the column closes.)
@@ -65,7 +69,7 @@ lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
 	c := s.lazy_columns[col.key] or_else {}
 	c.seen = s.build_index
 	s.lazy_columns[col.key] = c
-	lz.est = c.est > 0 ? c.est : font_size() * 4
+	lz.est = c.est > 0 ? c.est : font_size() * LAZY_FIRST_ESTIMATE_EM
 	sb := col.parent
 	for sb != nil && (Box_Flag.View_Scroll_Y not_in sb.flags) { sb = sb.parent }
 	lz.scroll = sb
@@ -161,7 +165,7 @@ lazy_settle :: proc(s: ^State) {
 			for b in lz.items {
 				if b.key != c.anchor { continue }
 				moved := content_top(sb, b) - c.anchor_top
-				if abs(moved) > 0.5 {
+				if abs(moved) > LAZY_ANCHOR_MOVED_PX {
 					limit := max(0, sb.view_bounds.y - sb.size.y)
 					sb.view_off.y = clamp(sb.view_off.y + moved, 0, limit)
 					sb.view_target.y = clamp(sb.view_target.y + moved, 0, limit)
@@ -193,11 +197,11 @@ lazy_settle :: proc(s: ^State) {
 // The heights of items not seen for a while are forgotten (end_build).
 @(private)
 lazy_trim :: proc(s: ^State) {
-	if s.build_index % 120 != 0 { return }
+	if s.build_index % LAZY_TRIM_INTERVAL_BUILDS != 0 { return }
 	dead := make([dynamic]Key, context.temp_allocator)
-	for k, e in s.lazy_heights { if s.build_index - e.seen > 600 { append(&dead, k) } }
+	for k, e in s.lazy_heights { if s.build_index - e.seen > LAZY_KEEP_BUILDS { append(&dead, k) } }
 	for k in dead { delete_key(&s.lazy_heights, k) }
 	clear(&dead)
-	for k, c in s.lazy_columns { if s.build_index - c.seen > 600 { append(&dead, k) } }
+	for k, c in s.lazy_columns { if s.build_index - c.seen > LAZY_KEEP_BUILDS { append(&dead, k) } }
 	for k in dead { delete_key(&s.lazy_columns, k) }
 }

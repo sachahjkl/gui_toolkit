@@ -23,6 +23,14 @@ import "core:math"
 // all the rows, built or not; the active row is scrolled into view at once. `labels` / `selectable` may be nil (no
 // type-ahead / every row selectable).
 
+@(private = "file") VLIST_FIRST_ESTIMATE_EM :: 2.4     // a row's height before any was measured
+// Measured rows that may be gone from the data before they are looked for, beyond twice the rows there are.
+@(private = "file") VLIST_MEASURED_SLACK :: 256
+@(private = "file") VLIST_ANCHOR_SEARCH_ROWS :: 64     // looked at around where the anchor should be, before all
+@(private = "file") VLIST_ANCHOR_MOVED_PX :: 0.01
+@(private = "file") VLIST_REVEAL_WAIT_MAX_BUILDS :: 600
+@(private = "file") VLIST_LONG_JUMP_SCREENS :: 3       // a move longer than this builds only what the view shows now
+
 Virtual_List :: struct {
 	using list:  List_State,
 	measured:    map[u64]f32,      // row identity -> height, at `layout_key`
@@ -110,7 +118,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		if r != nil && r.last_build + 1 == s.build_index && r.size.y > 0 { st.measured[pid] = r.size.y }
 	}
 	// rows whose identity is gone (the data was replaced, filtered, rotated) are forgotten once they are the bulk
-	if len(st.measured) > 2 * n + 256 {
+	if len(st.measured) > 2 * n + VLIST_MEASURED_SLACK {
 		live := make(map[u64]struct{}, n, context.temp_allocator)
 		for id in ids { live[id] = {} }
 		gone := make([dynamic]u64, context.temp_allocator)
@@ -122,7 +130,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		for _, h in st.measured { sum += h }
 		st.est = sum / f32(len(st.measured))
 	} else if st.est <= 0 {
-		st.est = math.round(b.font_size * 2.4)
+		st.est = math.round(b.font_size * VLIST_FIRST_ESTIMATE_EM)
 	}
 
 	// 2. this build's rows and where they are
@@ -143,11 +151,11 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	if st.has_anchor && !dragging && n > 0 {
 		at := -1
 		guess := vlist_row_at(st.offsets[:], b.view_off.y)
-		for k in max(guess - 64, 0) ..< min(guess + 64, n) { if ids[k] == st.anchor_id { at = k; break } }
+		for k in max(guess - VLIST_ANCHOR_SEARCH_ROWS, 0) ..< min(guess + VLIST_ANCHOR_SEARCH_ROWS, n) { if ids[k] == st.anchor_id { at = k; break } }
 		if at < 0 { for k in 0 ..< n { if ids[k] == st.anchor_id { at = k; break } } }
 		if at >= 0 {
 			moved := st.offsets[at] - st.anchor_top   // what the rows above it grew or shrank by
-			if abs(moved) > 0.01 && b.view_off.y > 0 {
+			if abs(moved) > VLIST_ANCHOR_MOVED_PX && b.view_off.y > 0 {
 				b.view_off.y += moved
 				if b.view_target.y > 0 { b.view_target.y += moved }   // (heading for the top: stays the top)
 			}
@@ -172,7 +180,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 			for i in 0 ..< n { if st.selectable[i] { list_seek_row(st, i, labels[i]) } }
 		}
 		pick := st.seek_after >= 0 ? st.seek_after : st.seek_first
-		if pick >= 0 { st.sel = pick; st.reveal = 3 }
+		if pick >= 0 { st.sel = pick; st.reveal = LIST_REVEAL_FRAMES }
 		st.seek = false
 	}
 	if st.sel != old { st.changed = true }
@@ -180,7 +188,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	// the rows around it get measured
 	if st.reveal > 0 && st.sel >= 0 && st.sel < n {
 		// (until the row itself has been laid out: its height was an estimate, the view may still be on its way)
-		if _, measured := st.measured[ids[st.sel]]; measured || st.reveal_wait > 600 {
+		if _, measured := st.measured[ids[st.sel]]; measured || st.reveal_wait > VLIST_REVEAL_WAIT_MAX_BUILDS {
 			st.reveal -= 1
 			st.reveal_wait = 0
 		} else {
@@ -197,7 +205,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	lo := min(b.view_off.y, b.view_target.y) - over
 	hi := max(b.view_off.y, b.view_target.y) + view_h + over
 	// a long animated jump only builds what the view shows now
-	if hi - lo > view_h * 3 + over * 2 { lo, hi = b.view_off.y - over, b.view_off.y + view_h + over }
+	if hi - lo > view_h * VLIST_LONG_JUMP_SCREENS + over * 2 { lo, hi = b.view_off.y - over, b.view_off.y + view_h + over }
 	st.first = n > 0 ? vlist_row_at(st.offsets[:], max(lo, 0)) : 0
 	st.last = st.first
 	for st.last < n && st.offsets[st.last] < hi { st.last += 1 }

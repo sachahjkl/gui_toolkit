@@ -36,13 +36,21 @@ Scroll_Anim :: struct {
 	active:     bool,
 }
 
+@(private = "file") SCROLL_IMPULSE_MIN :: 1e-2   // (the curve divides by it)
+// A move shorter than this is no move; a target that moved less than this keeps the animation under way.
+@(private = "file") SCROLL_ARRIVED_PX :: 1e-6
+@(private = "file") SCROLL_RETARGET_PX :: 0.01
+// Exponential curve: the distance left halves this many times per second, and ends this close to the target.
+@(private = "file") SCROLL_EXP_HALVINGS_PER_S :: 60
+@(private = "file") SCROLL_EXP_SETTLED_PX :: 0.003
+
 // Position along the curve (0..1) at `at` (0..1), and its slope.
 scroll_curve_eval :: proc(curve: Scroll_Curve, k, at: f64) -> (p, dp: f64) {
 	s := clamp(at, 0, 1)
 	switch curve {
 	case .Impulse:
 		// an exponential decay of the speed, less its value at the end, so the speed reaches 0 exactly there
-		kk := max(k, 1e-2)
+		kk := max(k, SCROLL_IMPULSE_MIN)
 		ek := math.exp(-kk)
 		den := 1 - ek * (1 + kk)
 		e := math.exp(-kk * s)
@@ -68,7 +76,7 @@ scroll_anim_sample :: proc(a: ^Scroll_Anim, cfg: Scroll_Settings, now: f64) -> (
 scroll_anim_retarget :: proc(a: ^Scroll_Anim, cfg: Scroll_Settings, pos, vel, to, now: f64) {
 	a.from, a.to, a.start, a.dur, a.active = pos, to, now, f64(cfg.duration_ms), true
 	dist := to - pos
-	if abs(dist) < 1e-6 || a.dur <= 0 { a.from, a.dur = to, 0; return }
+	if abs(dist) < SCROLL_ARRIVED_PX || a.dur <= 0 { a.from, a.dur = to, 0; return }
 	if vel * dist > 0 {
 		need := abs(vel) * a.dur / abs(dist)
 		_, natural := scroll_curve_eval(cfg.curve, f64(cfg.impulse), 0)
@@ -86,13 +94,13 @@ scroll_step :: proc(s: ^State, b: ^Box, ai: int) {
 		a.active = false
 		cur := b.view_off[ai]
 		d := target - cur
-		if abs(d) < 0.003 || !s.scroll_smooth || cfg.duration_ms <= 0 { b.view_off[ai] = target; return }
-		b.view_off[ai] = cur + d * f32(1 - math.pow(2, -60 * f64(s.dt)))
+		if abs(d) < SCROLL_EXP_SETTLED_PX || !s.scroll_smooth || cfg.duration_ms <= 0 { b.view_off[ai] = target; return }
+		b.view_off[ai] = cur + d * f32(1 - math.pow(2, -SCROLL_EXP_HALVINGS_PER_S * f64(s.dt)))
 		s.anim_busy = true
 		return
 	}
 	now := s.frame_ms
-	if abs(f64(target) - a.to) > 0.01 || (!a.active && b.view_off[ai] != target) {
+	if abs(f64(target) - a.to) > SCROLL_RETARGET_PX || (!a.active && b.view_off[ai] != target) {
 		vel: f64
 		if a.active { _, vel, _ = scroll_anim_sample(a, cfg, now) }
 		scroll_anim_retarget(a, cfg, f64(b.view_off[ai]), vel, f64(target), now)

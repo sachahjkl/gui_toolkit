@@ -30,6 +30,8 @@ theme_destroy :: proc(t: ^Theme) {
 	t.palette_made = false
 }
 
+@(private = "file") THEME_MISSING_COLOR :: Color{1, 0, 1, 1}   // magenta: no entry
+
 // `name` may have several words ("focus border"): the last one is the color name, the others act as extra tags
 // that count as present (like raddebugger's ui_color_from_tags_key_extras).
 theme_lookup :: proc(t: ^Theme, stack: []string, name: string) -> Color {
@@ -53,7 +55,7 @@ theme_lookup :: proc(t: ^Theme, stack: []string, name: string) -> Color {
 		}
 		if ok { best = i; best_n = n }
 	}
-	if best < 0 { return {1, 0, 1, 1} }   // magenta = missing theme entry
+	if best < 0 { return THEME_MISSING_COLOR }
 	return t.patterns[best].color
 }
 
@@ -74,7 +76,7 @@ color :: proc(name: string) -> Color {
 
 @(private)
 name_hash :: proc(s: string) -> u64 {
-	h: u64 = 0xcbf29ce484222325
-	for c in transmute([]u8)s { h = (h ~ u64(c)) * 0x100000001b3 }
+	h: u64 = FNV64_OFFSET_BASIS
+	for c in transmute([]u8)s { h = (h ~ u64(c)) * FNV64_PRIME }
 	return h
 }

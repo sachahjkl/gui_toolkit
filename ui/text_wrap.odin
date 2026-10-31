@@ -58,6 +58,8 @@ wrap_lines :: proc(f: font.Font_Id, size: f32, text: string, width: f32, allocat
 // Wrapped lines are kept between builds: a paragraph is wrapped once for a given text, font, size and width, then
 // only looked up (layout and drawing both ask, every frame). Entries not used for WRAP_CACHE_KEEP builds go.
 WRAP_CACHE_KEEP :: 120
+// How often the wrapped-text and the rich-text caches look for what to drop.
+@(private) CACHE_TRIM_INTERVAL_BUILDS :: 30
 
 Wrap_Key :: struct {
 	text_hash: u64,
@@ -76,8 +78,8 @@ Wrap_Entry :: struct {
 wrap_lines_cached :: proc(f: font.Font_Id, size: f32, text: string, width: f32) -> [][2]int {
 	s := g
 	if text == "" { return nil }
-	h: u64 = 0xcbf29ce484222325
-	for c in transmute([]u8)text { h = (h ~ u64(c)) * 0x100000001b3 }
+	h: u64 = FNV64_OFFSET_BASIS
+	for c in transmute([]u8)text { h = (h ~ u64(c)) * FNV64_PRIME }
 	k := Wrap_Key{text_hash = h, text_len = len(text), font = f, size = size, width = max(width, 1)}
 	if e, ok := &s.wrap_cache[k]; ok {
 		e.last_build = s.build_index
@@ -90,7 +92,7 @@ wrap_lines_cached :: proc(f: font.Font_Id, size: f32, text: string, width: f32) 
 
 @(private)
 wrap_cache_trim :: proc(s: ^State) {
-	if s.build_index % 30 != 0 { return }
+	if s.build_index % CACHE_TRIM_INTERVAL_BUILDS != 0 { return }
 	dead := make([dynamic]Wrap_Key, context.temp_allocator)
 	for k, e in s.wrap_cache { if e.last_build + WRAP_CACHE_KEEP < s.build_index { append(&dead, k) } }
 	for k in dead {

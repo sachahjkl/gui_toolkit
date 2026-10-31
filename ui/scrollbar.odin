@@ -14,21 +14,37 @@ rounding :: proc(s: ^State) -> f32 { return s.rounding }
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
 rad :: proc(r: f32) -> f32 { return r * g.rounding }
 
+// Scrollbars of scroll boxes and of text_edit. Width and thumb in em, the margin as a fraction of the width.
+@(private) SCROLLBAR_WIDTH_MIN_PX :: 6
+@(private) SCROLLBAR_WIDTH_EM :: 0.5
+@(private) SCROLLBAR_MARGIN_FRACTION :: 0.35
+@(private) SCROLLBAR_THUMB_MIN_EM :: 1.6
+@(private) SCROLLBAR_FIT_SLACK_PX :: 0.5   // content this much larger than the view still fits
+@(private = "file") SCROLLBAR_VIEW_MIN_PX :: 8   // a view smaller than this shows no bar
+// What takes the press beyond the bar's track: toward the content, and away from it.
+@(private) SCROLLBAR_GRAB_IN_PX :: 4
+@(private) SCROLLBAR_GRAB_OUT_PX :: 2
+@(private) SCROLLBAR_TRACK_HOT_ALPHA :: 0.06
+@(private) SCROLLBAR_THUMB_REST_ALPHA :: 0.22
+@(private = "file") SCROLLBAR_THUMB_HOT_ALPHA :: 0.4
+@(private = "file") SCROLLBAR_THUMB_HELD_ALPHA :: 0.55
+@(private = "file") SCROLLBAR_KEY_SALT :: 0x5c5c_5c5c
+
 @(private)
-scrollbar_key :: proc(b: ^Box) -> Key { return key_from_u64(b.key, 0x5c5c_5c5c) }
+scrollbar_key :: proc(b: ^Box) -> Key { return key_from_u64(b.key, SCROLLBAR_KEY_SALT) }
 
 // Track and thumb rects of a scroll box, or ok = false when everything fits.
 @(private)
 scrollbar_geom :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) {
 	view := b.size.y
 	content := b.view_bounds.y
-	if .View_Scroll_Y not_in b.flags || content <= view + 0.5 || view < 8 { return }
-	w := max(6, math.round(b.font_size * 0.5))
-	m := math.round(w * 0.35)
+	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX { return }
+	w := max(SCROLLBAR_WIDTH_MIN_PX, math.round(b.font_size * SCROLLBAR_WIDTH_EM))
+	m := math.round(w * SCROLLBAR_MARGIN_FRACTION)
 	track = {{b.rect.max.x - w - m, b.rect.min.y + m}, {b.rect.max.x - m, b.rect.max.y - m}}
 	if .Scrollbar_Left in b.flags { track.min.x, track.max.x = b.rect.min.x + m, b.rect.min.x + m + w }
 	th_avail := track.max.y - track.min.y
-	th := max(b.font_size * 1.6, th_avail * view / content)
+	th := max(b.font_size * SCROLLBAR_THUMB_MIN_EM, th_avail * view / content)
 	maxoff := content - view
 	t := clamp(b.view_off.y / maxoff, 0, 1)
 	y := track.min.y + t * (th_avail - th)
@@ -77,9 +93,9 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	c := color_from_tags(s, b.tags_key, "text")
 	w := track.max.x - track.min.x
 	if hot || active {
-		tc := c; tc.a = 0.06
+		tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA
 		draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding)
 	}
-	c.a = active ? 0.55 : (hot ? 0.4 : 0.22)
+	c.a = active ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)
 	draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
 }

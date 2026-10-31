@@ -8,6 +8,14 @@ import "../draw"
 
 Picker_Draw :: struct { hue, sat, val: f32, ring: Color }
 
+@(private = "file") PICKER_MARKER_EM :: 0.55
+// Every marker: a dark ring with a white one over it.
+@(private = "file") PICKER_SHADOW_STROKE_PX :: 3
+@(private = "file") PICKER_RING_STROKE_PX :: 2
+@(private = "file") HUE_BANDS :: 6                  // the hue circle's six sides, each a gradient
+@(private = "file") HUE_MARKER_HALF_HEIGHT_PX :: 3
+@(private = "file") HUE_MAX :: 0.9999               // hue 1 is hue 0: the bar's end stays the bar's end
+
 @(private)
 sat_val_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Picker_Draw)(user)
@@ -20,9 +28,9 @@ sat_val_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect_corners(dc, r, {clear_c, black, clear_c, black}, {rad, rad, rad, rad})
 	x := r.min.x + d.sat * (r.max.x - r.min.x)
 	y := r.min.y + (1 - d.val) * (r.max.y - r.min.y)
-	k := b.font_size * 0.55
-	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {0, 0, 0, 0.5}, k, 3)
-	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {1, 1, 1, 1}, k, 2)
+	k := b.font_size * PICKER_MARKER_EM
+	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {0, 0, 0, 0.5}, k, PICKER_SHADOW_STROKE_PX)
+	draw.rect(dc, {{x - k, y - k}, {x + k, y + k}}, {1, 1, 1, 1}, k, PICKER_RING_STROKE_PX)
 }
 
 @(private)
@@ -30,17 +38,17 @@ hue_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Picker_Draw)(user)
 	r := b.rect
 	h := r.max.y - r.min.y
-	for i in 0 ..< 6 {
-		y0 := r.min.y + h * f32(i) / 6
-		y1 := r.min.y + h * f32(i + 1) / 6
-		c0, c1 := draw.hsv(f32(i) / 6, 1, 1), draw.hsv(f32(i + 1) / 6, 1, 1)
+	for i in 0 ..< HUE_BANDS {
+		y0 := r.min.y + h * f32(i) / HUE_BANDS
+		y1 := r.min.y + h * f32(i + 1) / HUE_BANDS
+		c0, c1 := draw.hsv(f32(i) / HUE_BANDS, 1, 1), draw.hsv(f32(i + 1) / HUE_BANDS, 1, 1)
 		rr := b.radius
-		radii := [4]f32{i == 0 ? rr : 0, i == 5 ? rr : 0, i == 0 ? rr : 0, i == 5 ? rr : 0}
+		radii := [4]f32{i == 0 ? rr : 0, i == HUE_BANDS - 1 ? rr : 0, i == 0 ? rr : 0, i == HUE_BANDS - 1 ? rr : 0}
 		draw.rect_corners(dc, {{r.min.x, y0}, {r.max.x, y1 + 0.5}}, {c0, c1, c0, c1}, radii)
 	}
 	y := r.min.y + d.hue * h
-	draw.rect(dc, {{r.min.x - 2, y - 3}, {r.max.x + 2, y + 3}}, {0, 0, 0, 0.5}, 3, 3)
-	draw.rect(dc, {{r.min.x - 2, y - 3}, {r.max.x + 2, y + 3}}, {1, 1, 1, 1}, 3, 2)
+	draw.rect(dc, {{r.min.x - 2, y - HUE_MARKER_HALF_HEIGHT_PX}, {r.max.x + 2, y + HUE_MARKER_HALF_HEIGHT_PX}}, {0, 0, 0, 0.5}, HUE_MARKER_HALF_HEIGHT_PX, PICKER_SHADOW_STROKE_PX)
+	draw.rect(dc, {{r.min.x - 2, y - HUE_MARKER_HALF_HEIGHT_PX}, {r.max.x + 2, y + HUE_MARKER_HALF_HEIGHT_PX}}, {1, 1, 1, 1}, HUE_MARKER_HALF_HEIGHT_PX, PICKER_RING_STROKE_PX)
 }
 
 sat_val_picker :: proc(id: string, hue: f32, sat, val: ^f32) -> (changed: bool) {
@@ -68,7 +76,7 @@ hue_picker :: proc(id: string, hue: ^f32) -> (changed: bool) {
 	if sig.pressed || sig.dragging {
 		h := b.rect.max.y - b.rect.min.y
 		if h > 1 {
-			hue^ = clamp((g.mouse.y - b.rect.min.y) / h, 0, 0.9999)
+			hue^ = clamp((g.mouse.y - b.rect.min.y) / h, 0, HUE_MAX)
 			changed = true
 		}
 	}

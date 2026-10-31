@@ -9,6 +9,10 @@ _ :: fmt   // used by the UI_PROBE debug output only
 // Input is resolved once per frame, in begin_build, against LAST frame's layout (the tree is still intact at that
 // point): hot / active / pressed / clicked keys are plain lookups afterwards, so `signal` is just a comparison.
 
+@(private = "file") DOUBLE_CLICK_MS :: 400
+@(private = "file") WHEEL_NOTCH_EM :: 4           // what a notch of the wheel scrolls
+@(private = "file") HOT_WITHIN_MAX_DEPTH :: 64    // ancestors hot_within looks through
+
 @(private)
 process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	clear(&s.events.list)
@@ -42,7 +46,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			s.pressed_any[e.button] = true
 			if e.button == .Left { scrollbar_press(s, hot, e.pos) }
 			if e.button == .Left {
-				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < 400 {
+				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < DOUBLE_CLICK_MS {
 					s.double_key = hot
 					s.last_click_key = 0
 				} else {
@@ -111,8 +115,8 @@ hit_test :: proc(s: ^State, p: Vec2) -> Key {
 hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
 	if track, _, ok := scrollbar_geom(b); ok {
-		grab := Rect{{track.min.x - 4, track.min.y}, {track.max.x + 2, track.max.y}}   // a little wider than it looks (toward the content)
-		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = track.min.x - 2, track.max.x + 4 }
+		grab := Rect{{track.min.x - SCROLLBAR_GRAB_IN_PX, track.min.y}, {track.max.x + SCROLLBAR_GRAB_OUT_PX, track.max.y}}   // a little wider than it looks (toward the content)
+		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = track.min.x - SCROLLBAR_GRAB_OUT_PX, track.max.x + SCROLLBAR_GRAB_IN_PX }
 		if contains(grab, p) {
 			k := scrollbar_key(b)
 			g.sb_owner[k] = b.key
@@ -188,7 +192,7 @@ hot_within :: proc(key: Key) -> bool {
 	s := g
 	if s.hot_key == 0 || key == 0 { return false }
 	hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil
-	for p, depth := hb, 0; p != nil && depth < 64; p, depth = p.parent, depth + 1 {
+	for p, depth := hb, 0; p != nil && depth < HOT_WITHIN_MAX_DEPTH; p, depth = p.parent, depth + 1 {
 		if p.key == key { return true }
 		if p.last_build + 1 < s.build_index { break }
 	}
@@ -229,7 +233,7 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	}
 	if .Scroll_Self in b.flags && s.scroll_key == b.key { sig.scrolled = s.scroll_delta }
 	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && s.scroll_key == b.key {
-		step := b.font_size * 4
+		step := b.font_size * WHEEL_NOTCH_EM
 		d := s.scroll_delta
 		if .View_Scroll_X in b.flags { b.view_target.x += d.x * step; sig.scrolled.x = d.x }
 		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * step; sig.scrolled.y = d.y }

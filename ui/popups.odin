@@ -31,6 +31,13 @@ MENU_HOVER_MS :: 280.0
 // The height of a menu item, in em, unless `set_menu_item_height` says otherwise.
 MENU_ITEM_EM :: 2.2
 
+// A menu is at least this wide; a level not measured yet is taken to be this tall.
+@(private) MENU_MIN_WIDTH_EM :: 10
+@(private = "file") MENU_FIRST_HEIGHT_EM :: 10
+// A tooltip's size before it was measured.
+@(private = "file") TOOLTIP_FIRST_WIDTH_EM :: 10
+@(private = "file") TOOLTIP_FIRST_HEIGHT_EM :: 3
+
 // Menus built from now on have items of `em` times the font size in height (0: back to MENU_ITEM_EM). A dense tool
 // panel sets it while it builds its menus, and resets it after.
 set_menu_item_height :: proc(em: f32) { g.menu_item_em = em }
@@ -39,7 +46,7 @@ set_menu_item_height :: proc(em: f32) { g.menu_item_em = em }
 menu_heading :: proc(text: string) {
 	lv, _ := menu_current()
 	em := font_size()
-	w := lv != nil ? lv.eff_width : em * 10
+	w := lv != nil ? lv.eff_width : em * MENU_MIN_WIDTH_EM
 	if lv != nil { lv.width = max(lv.width, text_width(top_style().font, em * 0.9, text) + em * 1.4) }
 	spacer(px(em * 0.2))
 	if tags("weak") {
@@ -314,12 +321,12 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	}
 
 	em := font_size()
-	w := width > 0 ? width : max(lv.prev_width, em * 10)
+	w := width > 0 ? width : max(lv.prev_width, em * MENU_MIN_WIDTH_EM)
 	lv.eff_width = w
 	id := fmt.tprintf("###menu_%d", u64(lv.key))
 	panel := s.boxes[key_from_string(s.root.key, id)]
 	first := panel == nil
-	size := first ? Vec2{w, em * 10} : panel.size
+	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : panel.size
 	pos := menu_place(lv, depth, size, s.window_size, em)
 	push_parent(s.root)
 	push_tags("floating")
@@ -463,7 +470,7 @@ menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 	if lv.hover_item != idx { return false }
 	waited := s.time_ms - lv.hover_since
 	if waited >= MENU_HOVER_MS { return true }
-	s.wake_ms = s.wake_ms == 0 ? max(1, int(MENU_HOVER_MS - waited) + 5) : min(s.wake_ms, max(1, int(MENU_HOVER_MS - waited) + 5))
+	s.wake_ms = s.wake_ms == 0 ? max(1, int(MENU_HOVER_MS - waited) + WAKE_MARGIN_MS) : min(s.wake_ms, max(1, int(MENU_HOVER_MS - waited) + WAKE_MARGIN_MS))
 	return false
 }
 
@@ -495,7 +502,7 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 menu_separator :: proc() {
 	lv, _ := menu_current()
 	em := font_size()
-	w := lv != nil ? lv.eff_width : em * 10
+	w := lv != nil ? lv.eff_width : em * MENU_MIN_WIDTH_EM
 	spacer(px(em * 0.25))
 	hline(px(w))
 	spacer(px(em * 0.25))
@@ -542,7 +549,7 @@ hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
 	if !sig.hovering { return false }
 	waited := s.time_ms - s.hover_since_ms
 	if waited >= f64(seconds) * 1000 { return true }
-	wake_within(s, max(1, int(f64(seconds) * 1000 - waited) + 5))
+	wake_within(s, max(1, int(f64(seconds) * 1000 - waited) + WAKE_MARGIN_MS))
 	return false
 }
 
@@ -553,7 +560,7 @@ tooltip :: proc() -> bool {
 	em := font_size()
 	key := key_from_string(s.root.key, "###tooltip")
 	prev := s.boxes[key]
-	size := prev != nil ? prev.size : Vec2{em * 10, em * 3}
+	size := prev != nil ? prev.size : Vec2{em * TOOLTIP_FIRST_WIDTH_EM, em * TOOLTIP_FIRST_HEIGHT_EM}
 	pos := clamp_popup(s.mouse + {em * 0.8, em * 1.4}, size, s.window_size)
 	push_parent(s.root)
 	push_tags("floating")
@@ -579,7 +586,7 @@ tooltip_beside :: proc() -> bool {
 	em := font_size()
 	key := key_from_string(s.root.key, "###tooltip")
 	prev := s.boxes[key]
-	size := prev != nil ? prev.size : Vec2{em * 10, em * 3}
+	size := prev != nil ? prev.size : Vec2{em * TOOLTIP_FIRST_WIDTH_EM, em * TOOLTIP_FIRST_HEIGHT_EM}
 	pos := s.mouse + {em * 1.2, -size.y * 0.5}
 	if pos.x + size.x > s.window_size.x { pos.x = s.mouse.x - em * 1.2 - size.x }
 	pos = clamp_popup(pos, size, s.window_size)

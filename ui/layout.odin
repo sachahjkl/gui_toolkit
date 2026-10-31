@@ -130,6 +130,8 @@ wrap_height :: proc(b: ^Box) -> f32 {
 	return total + b.gap.y * f32(max(lines - 1, 0)) + 2 * border_inset(b)
 }
 
+@(private = "file") LAYOUT_VIOLATION_EPS_PX :: 0.01   // children over by less than this are left alone
+
 @(private)
 layout_violations :: proc(b: ^Box, axis: Axis) {
 	ai := int(axis)
@@ -151,7 +153,7 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 				budget += c.size[ai] * (1 - c.pref[axis].strictness)
 			}
 			violation := total - avail
-			if violation > 0.01 && budget > 0 {
+			if violation > LAYOUT_VIOLATION_EPS_PX && budget > 0 {
 				for c := b.first; c != nil; c = c.next {
 					if is_floating(c, axis) { continue }
 					share := c.size[ai] * (1 - c.pref[axis].strictness) / budget
