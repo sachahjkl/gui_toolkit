@@ -17,13 +17,20 @@ import "core:hash"
 Code :: struct { bits: u32, n: u32 }   // (bits first in, as the stream takes them)
 
 @(private = "file")
-lit_codes: [288]Code
+lit_codes: [LIT_SYMBOLS]Code
 @(private = "file")
-len_codes: [259]Code   // the code and extra bits of a match's length, as one
+len_codes: [MATCH_MAX + 1]Code   // the code and extra bits of a match's length, as one
 @(private = "file")
 RUNS_READY :: 1
 @(private = "file")
 runs_ready: i32
+
+// What the output of deflate_runs may take on top of 9 bits a byte: the header, the trailer, the last bits.
+@(private = "file")
+RUNS_SLACK_BYTES :: 64
+// The shortest match taken from the row above (a run takes MATCH_MIN).
+@(private = "file")
+ROW_MATCH_MIN :: 4
 
 @(private = "file")
 reverse :: proc "contextless" (v, n: u32) -> (r: u32) {
@@ -35,21 +42,21 @@ reverse :: proc "contextless" (v, n: u32) -> (r: u32) {
 runs_tables :: proc "contextless" () {
 	if intrinsics.atomic_load(&runs_ready) == RUNS_READY { return }
 	// (made the same by any thread that gets here at once: the last store changes nothing)
-	for i in 0 ..< 288 {
+	for i in 0 ..< LIT_SYMBOLS {
 		v := u32(i)
 		switch {
-		case i < 144: lit_codes[i] = {reverse(0x30 + v, 8), 8}
-		case i < 256: lit_codes[i] = {reverse(0x190 + v - 144, 9), 9}
-		case i < 280: lit_codes[i] = {reverse(v - 256, 7), 7}
-		case:         lit_codes[i] = {reverse(0xC0 + v - 280, 8), 8}
+		case i < FIXED_9BIT_FIRST: lit_codes[i] = {reverse(0x30 + v, 8), 8}
+		case i < FIXED_7BIT_FIRST: lit_codes[i] = {reverse(0x190 + v - FIXED_9BIT_FIRST, 9), 9}
+		case i < FIXED_8BIT_FIRST: lit_codes[i] = {reverse(v - FIXED_7BIT_FIRST, 7), 7}
+		case:         lit_codes[i] = {reverse(0xC0 + v - FIXED_8BIT_FIRST, 8), 8}
 		}
 	}
-	BASE := [29]u32{3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
-	EXTRA := [29]u32{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
-	for l in 3 ..= 258 {
-		k := 28
+	BASE := [LEN_CODES]u32{3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
+	EXTRA := [LEN_CODES]u32{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
+	for l in MATCH_MIN ..= MATCH_MAX {
+		k := LEN_CODES - 1
 		for BASE[k] > u32(l) { k -= 1 }
-		c := lit_codes[257 + k]
+		c := lit_codes[LEN_SYMBOL_FIRST + k]
 		len_codes[l] = {c.bits | (u32(l) - BASE[k]) << c.n, c.n + EXTRA[k]}
 	}
 	intrinsics.atomic_store(&runs_ready, RUNS_READY)
@@ -58,11 +65,11 @@ runs_tables :: proc "contextless" () {
 // A distance's code and extra bits, as one.
 @(private = "file")
 dist_code :: proc "contextless" (dist: u32) -> Code {
-	BASE := [30]u32{1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577}
-	EXTRA := [30]u32{0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13}
-	k := 29
+	BASE := [DIST_CODES]u32{1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577}
+	EXTRA := [DIST_CODES]u32{0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13}
+	k := DIST_CODES - 1
 	for BASE[k] > dist { k -= 1 }
-	return {reverse(u32(k), 5) | (dist - BASE[k]) << 5, 5 + EXTRA[k]}
+	return {reverse(u32(k), FIXED_DIST_BITS) | (dist - BASE[k]) << FIXED_DIST_BITS, FIXED_DIST_BITS + EXTRA[k]}
 }
 
 // How far p and q are the same, up to `limit` bytes.
@@ -82,16 +89,16 @@ same :: #force_inline proc "contextless" (p, q: [^]u8, limit: int) -> int {
 // Worst case 9 bits a byte, so the output never outgrows what is made here.
 deflate_runs :: proc(format: Format, data: []u8, row := 0, allocator := context.allocator) -> []u8 #no_bounds_check {
 	runs_tables()
-	out := make([]u8, len(data) + len(data) / 8 + 64, allocator)
+	out := make([]u8, len(data) + len(data) / 8 + RUNS_SLACK_BYTES, allocator)
 	o := 0
 	switch format {
 	case .Zlib:
 		out[0], out[1] = 0x78, 0x01
 		o = 2
 	case .Gzip:
-		h := [10]u8{0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 255}
+		h := [GZIP_HEADER_BYTES]u8{0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 255}
 		copy(out, h[:])
-		o = 10
+		o = GZIP_HEADER_BYTES
 	case .Raw:
 	}
 	acc: u64 = 0b011   // the last block; fixed codes
@@ -112,13 +119,13 @@ deflate_runs :: proc(format: Format, data: []u8, row := 0, allocator := context.
 	n := len(data)
 	i := 0
 	for i < n {
-		limit := min(n - i, 258)
+		limit := min(n - i, MATCH_MAX)
 		best, dist := 0, d1
 		if i >= 1 && p[i] == p[i - 1] { best = same(&p[i], &p[i - 1], limit) }
 		if use_row && i >= row && p[i] == p[i - row] && best < limit {
-			if m := same(&p[i], &p[i - row], limit); m > best && m >= 4 { best, dist = m, drow }
+			if m := same(&p[i], &p[i - row], limit); m > best && m >= ROW_MATCH_MIN { best, dist = m, drow }
 		}
-		if best >= 3 {
+		if best >= MATCH_MIN {
 			c := len_codes[best]
 			acc |= u64(c.bits) << nacc
 			nacc += c.n
@@ -133,7 +140,7 @@ deflate_runs :: proc(format: Format, data: []u8, row := 0, allocator := context.
 		}
 		flush(dst, &o, &acc, &nacc)
 	}
-	eob := lit_codes[256]
+	eob := lit_codes[END_OF_BLOCK]
 	acc |= u64(eob.bits) << nacc
 	nacc += eob.n
 	flush(dst, &o, &acc, &nacc)
