@@ -389,3 +389,43 @@ put_and_read :: proc(t: ^testing.T) {
 	testing.expect(t, render.canvas_read(&f.r, f.target, W - 2, H - 2, 2, 2, edge[:]) || true)
 	_ = math.PI
 }
+
+// A clip that lies off the canvas makes an empty mask, and what is drawn next still goes to the canvas (not into the mask).
+@(test)
+a_clip_off_the_canvas_keeps_the_target :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	e := identity_inst({0, 0, W, H}, render.CG_ELLIPSE, solid(&f, {1, 1, 1, 1}), 0, render.CF_MASK_OUT)
+	e.geom = {32, 24, 16, 16}
+	first := len(f.insts)
+	append(&f.insts, e)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Clip_Make, id = 1, box = {W + 10, H + 10, W + 20, H + 20}, first = first, count = 1})
+	first = len(f.insts)
+	append(&f.insts, rect_inst(0, 0, W, H, solid(&f, {1, 0, 0, 1})))
+	draw(&f, first)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Clip_Free, id = 1})
+	testing.expect(t, submit(&f))
+	testing.expect_value(t, pixel(&f, 5, 5), [4]u8{255, 0, 0, 255})
+}
+
+// A clip made while a layer is open: what is drawn next still goes into the layer.
+@(test)
+a_clip_made_in_a_layer_keeps_the_layer :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, W, H}})
+	e := identity_inst({0, 0, W, H}, render.CG_ELLIPSE, solid(&f, {1, 1, 1, 1}), 0, render.CF_MASK_OUT)
+	e.geom = {32, 24, 16, 16}
+	first := len(f.insts)
+	append(&f.insts, e)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Clip_Make, id = 1, box = {0, 0, W, H}, first = first, count = 1})
+	first = len(f.insts)
+	append(&f.insts, rect_inst(0, 0, W, H, solid(&f, {1, 0, 0, 1})))
+	draw(&f, first)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Clip_Free, id = 1})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 1})
+	testing.expect(t, submit(&f))
+	testing.expect_value(t, pixel(&f, 5, 5), [4]u8{0, 0, 0, 0})   // the layer was never composited
+}

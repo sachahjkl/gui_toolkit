@@ -4,12 +4,18 @@
 // (the native library first: powershell -File tools\build_text.ps1)
 package text_backends_test
 
+import "core:strings"
 import "core:testing"
+import "core:time"
 import "../unwatched"
+import "../../base"
 import "../../font"
 import corpus "../../tools/text_corpus"
 
 _ :: corpus   // used by the native tests only
+_ :: strings
+_ :: time
+_ :: base
 
 make_state :: proc(b: font.Backend) -> ^font.State {
 	st := font.DEFAULT_SETTINGS
@@ -156,6 +162,25 @@ native_memory_face_and_outlines :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 	// a font the library cannot read is refused, not a crash
 	_, bad := font.load_from_memory(nt, nil)
 	testing.expect(t, !bad)
+}) }
+
+// A word of 40 000 letters: each glyph finds its cluster without a walk along the others (timed with GUI_PERF=1 only), and
+// every cluster is the one it was.
+@(test)
+native_long_word :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	nt := make_state(.Native)
+	defer free_state(nt)
+	id, ok := font.load_embedded(nt, font.FALLBACK_UI_DATA)
+	testing.expect(t, ok)
+	word := strings.repeat("xz", 20_000, context.temp_allocator)
+	start := time.now()
+	sh := font.shape(nt, id, 16, word, {}, context.temp_allocator)
+	took := time.duration_milliseconds(time.since(start))
+	testing.expect_value(t, len(sh.clusters), len(word))
+	for c, i in sh.clusters {
+		if int(c.start) != i || int(c.end) != i + 1 || c.x1 <= c.x0 { testing.expectf(t, false, "cluster %d: %v", i, c); break }
+	}
+	if !base.perf_skip("a long word") { testing.expectf(t, took < 300, "%.0f ms", took) }
 }) }
 
 }

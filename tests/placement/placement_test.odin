@@ -62,3 +62,28 @@ a_window_is_shown_maximized_when_asked :: proc(t: ^testing.T) {
 	testing.expect(t, r[0] == 100 && r[1] == 100 && r[2] >= 500 && r[3] >= 400)
 	win.ShowWindow(w.hwnd, win.SW_HIDE)
 }
+
+// WINDOWPLACEMENT's rectangle is in workspace coordinates: with a taskbar along the left or top edge they are not those of
+// the screen, and a position saved from it moved by the taskbar at each restore.
+@(test)
+workspace_coordinates_become_screen_coordinates :: proc(t: ^testing.T) {
+	r := [4]int{52, 90, 640, 480}
+	testing.expect_value(t, platform.placement_workspace_to_screen(r, {0, 0}, {0, 0}), r)                       // taskbar at the bottom
+	testing.expect_value(t, platform.placement_workspace_to_screen(r, {0, 0}, {48, 0}), [4]int{100, 90, 640, 480})   // on the left
+	testing.expect_value(t, platform.placement_workspace_to_screen(r, {0, 0}, {0, 40}), [4]int{52, 130, 640, 480})   // on top
+	testing.expect_value(t, platform.placement_workspace_to_screen(r, {-1920, 0}, {-1872, 0}), [4]int{100, 90, 640, 480})   // a monitor on the left
+}
+
+// The saved rectangle is where the window is on the screen, wherever this machine's taskbar is, so saving and restoring
+// does not move it.
+@(test)
+a_placement_read_back_does_not_move_the_window :: proc(t: ^testing.T) {
+	w := platform.open_window("placement test 3", {300, 200})
+	defer platform.destroy_window(w)
+	platform.set_placement(w, {rect = {150, 120, 640, 480}})
+	before := platform.outer_rect(w)
+	p := platform.get_placement(w)
+	testing.expect_value(t, p.rect, before)
+	platform.set_placement(w, p)
+	testing.expect_value(t, platform.outer_rect(w), before)
+}

@@ -61,6 +61,7 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Browser.close` | closes the window, as its close button. |
 | `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and compared on the UI thread and encoded on a thread of its own, which takes a core while it runs. |
 | `*.enable`, `*.disable`, `*.set*` | accepted, nothing to do (what clients send on attaching). |
+| `DOM.set*`, `CSS.set*` (but the edits below, `DOM.setInspectedNode`, `DOM.setNodeStackTracesEnabled`, `CSS.setLocalFontsEnabled`), `Page.setDocumentContent`, cookies, DOM storage | refused with an error: they cannot be done, and a client would show them as done. |
 | `Runtime.evaluate` | refused: there is no JavaScript. |
 
 The `Toolkit` domain reads the box tree (rects in CSS pixels):
@@ -140,11 +141,12 @@ stands, and typed passwords are recorded like any other text.
   `border-radius`, with the colour picker and the tick boxes; what comes from the layout is read only, under it. A box that paints
   itself (`custom`) does not follow its colours.
 - **Editing**: double-click a text to change it, Delete removes a box. An edit lasts as long as DevTools is attached: closing it
-  gives back the window as its program builds it. No undo (Ctrl+Z).
+  gives back the window as its program builds it. No undo (Ctrl+Z). One client at a time: the last to ask for the document or to
+  edit gets the tree's events, and the edits of the one before it are undone.
 - **Accessibility** tab: what a screen reader gets for the box.
 - DevTools' picture of the window takes clicks and the wheel.
 
-There is no JavaScript and no network: Console and Network stay empty. Attributes cannot be edited.
+There is no JavaScript and no network: Console and Network stay empty. Attributes cannot be edited: DevTools shows the error.
 
 ## Puppeteer and Playwright
 

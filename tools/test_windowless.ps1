@@ -38,9 +38,9 @@ function Test-Package([string]$name, [string[]]$odinArgs, [int]$limit = 300) {
 	return $false
 }
 
-foreach ($t in 'affine', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y', 'frame_gate', 'frame_slots', 'pacing', 'autoscroll', 'flate', 'devtools') {
+foreach ($t in 'affine', 'post', 'lifecycle', 'canvas', 'key_repeat', 'placement', 'clipboard', 'dragdrop', 'instance', 'fsx', 'testkit', 'panes', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y', 'frame_gate', 'frame_slots', 'pacing', 'autoscroll', 'flate', 'devtools') {
 	# @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
-	$extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y') { '-define:ODIN_TEST_THREADS=1' })
+	$extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y', 'post', 'panes') { '-define:ODIN_TEST_THREADS=1' })
 	if (-not (Test-Package $t (@('test', "tests/$t", '-vet', "-out:build/${t}_test.exe") + $extra))) { $failed++ }
 }
 # the native text backend (Fontations, HarfRust, ICU4X) against DirectWrite on the corpus

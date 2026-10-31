@@ -232,3 +232,159 @@ destroy_does_not_read_the_freed_texture_table :: proc(t: ^testing.T) {
 	draw.destroy(&f.dc)
 	render.destroy(&f.r)
 }
+
+// Partial redraw on a window. A swap chain does not keep what was drawn: a frame of a region starts from what the last one composed.
+@(private = "file")
+Win_Fx :: struct {
+	using fx: Fx,
+	surface:  render.Surface,
+}
+
+@(private = "file")
+win_open :: proc(f: ^Win_Fx) -> bool {
+	if !open(&f.fx) { return false }
+	if !render.surface_init(&f.r, &f.surface, make_window(), SIZE) { return false }
+	render.surface_use(&f.r, &f.surface)
+	return true
+}
+
+@(private = "file")
+win_close :: proc(f: ^Win_Fx) {
+	render.surface_use(&f.r, &f.surface)
+	render.surface_destroy(&f.r, &f.surface)
+	draw.destroy(&f.dc)
+	render.destroy(&f.r)
+}
+
+// One frame on the window, captured: `box` nil is a frame without damage_begin, a zero rect marks nothing; the pixels at
+// (16, 16) and (40, 40).
+@(private = "file")
+win_frame :: proc(f: ^Win_Fx, box: Maybe(draw.Rect), color: Maybe(draw.Color), clear := [4]f32{1, 1, 1, 1}) -> (inside, outside: [3]int, ok: bool) {
+	render.capture_request(&f.r)
+	render.frame_begin(&f.r, clear)
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	if b, has := box.?; has {
+		draw.damage_begin(&f.dc)
+		if b != {} { draw.damage(&f.dc, b) }
+	}
+	if c, has := color.?; has { draw.rect(&f.dc, {{0, 0}, {f32(SIZE.x), f32(SIZE.y)}}, c) }
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	for _ in 0 ..< 400 {
+		pixels, size, status := render.capture_poll(&f.r, context.temp_allocator)
+		#partial switch status {
+		case .Ready:
+			read :: proc(p: []u8, w, x, y: int) -> [3]int { o := (y * w + x) * 4; return {int(p[o]), int(p[o + 1]), int(p[o + 2])} }
+			return read(pixels, size.x, 16, 16), read(pixels, size.x, 40, 40), true
+		case .Failed:
+			return
+		}
+		win.Sleep(5)
+	}
+	return
+}
+
+@(test)
+a_region_works_on_a_window :: proc(t: ^testing.T) {
+	f: Win_Fx
+	if !win_open(&f) { testing.fail_now(t, "no window") }
+	defer win_close(&f)
+	render.set_partial_redraw(&f.r, true)
+	BOX :: draw.Rect{{8, 8}, {24, 24}}
+	RED, GREEN, BLUE :: draw.Color{1, 0, 0, 1}, draw.Color{0, 1, 0, 1}, draw.Color{0, 0, 1, 1}
+	win_frame(&f, BOX, RED)
+	inside, outside, ok := win_frame(&f, BOX, GREEN)
+	testing.expect(t, ok)
+	_, _, _, _, active := draw.damage_stats(&f.dc)
+	testing.expect(t, active, "a region is in effect on a swap chain")
+	testing.expectf(t, near(outside, {255, 0, 0}), "outside the region the last frame stays: %v", outside)
+	testing.expectf(t, near(inside, {0, 255, 0}), "inside the new one: %v", inside)
+	// a frame without a region, then a region: it starts from that frame
+	win_frame(&f, nil, BLUE)
+	inside, outside, ok = win_frame(&f, BOX, GREEN)
+	testing.expect(t, ok)
+	testing.expectf(t, !near(outside, {255, 0, 0}), "a stale frame outside the region: %v", outside)
+	testing.expectf(t, near(inside, {0, 255, 0}), "inside the new one: %v", inside)
+	// the region starts from the clear color
+	win_frame(&f, BOX, RED)
+	inside, outside, ok = win_frame(&f, BOX, nil)
+	testing.expect(t, ok)
+	testing.expectf(t, near(inside, {255, 255, 255}), "the region is cleared: %v", inside)
+	testing.expectf(t, near(outside, {0, 255, 0}), "and only the region: %v", outside)
+}
+
+// Nothing marked: no present, and the slot of the swap chain is still there for the next frame.
+@(test)
+a_region_of_nothing_presents_nothing :: proc(t: ^testing.T) {
+	f: Win_Fx
+	if !win_open(&f) { testing.fail_now(t, "no window") }
+	defer win_close(&f)
+	render.set_partial_redraw(&f.r, true)
+	BOX :: draw.Rect{{8, 8}, {24, 24}}
+	RED, GREEN :: draw.Color{1, 0, 0, 1}, draw.Color{0, 1, 0, 1}
+	win_frame(&f, BOX, RED)
+	presents, _, _ := render.present_totals(&f.r)
+	render.wait_for_frame(&f.r)
+	inside, outside, ok := win_frame(&f, draw.Rect{}, GREEN)
+	testing.expect(t, ok)
+	testing.expectf(t, near(inside, {255, 0, 0}) && near(outside, {255, 0, 0}), "nothing changed: %v %v", inside, outside)
+	after, _, _ := render.present_totals(&f.r)
+	testing.expect_value(t, after, presents)
+	testing.expect(t, render.wait_for_frame(&f.r, 2000), "the slot waited for and not used")
+	win_frame(&f, BOX, GREEN)
+	final, _, _ := render.present_totals(&f.r)
+	testing.expect_value(t, final, presents + 1)
+}
+
+// The GPU profile's first touch of the back buffer leaves the frame's clear color where it was.
+@(test)
+the_gpu_profile_keeps_the_clear_color :: proc(t: ^testing.T) {
+	f: Win_Fx
+	if !win_open(&f) { testing.fail_now(t, "no window") }
+	defer win_close(&f)
+	render.set_gpu_profile(&f.r, true)
+	render.capture_request(&f.r)
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	draw.rect(&f.dc, {{0, 0}, {4, 4}}, {1, 0, 0, 1})
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	for _ in 0 ..< 400 {
+		pixels, size, status := render.capture_poll(&f.r, context.temp_allocator)
+		if status == .Ready {
+			o := (40 * size.x + 40) * 4
+			testing.expectf(t, near({int(pixels[o]), int(pixels[o + 1]), int(pixels[o + 2])}, {255, 255, 255}), "the clear color is gone: %v", pixels[o:o + 3])
+			return
+		}
+		win.Sleep(5)
+	}
+	testing.expect(t, false, "no capture")
+}
+
+// A capture cancelled while its buffer is being mapped says nothing about the next one.
+@(test)
+a_cancelled_capture_leaves_the_next_alone :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	one_frame :: proc(f: ^Fx) {
+		draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+		render.frame_begin(&f.r, {1, 0, 0, 1})
+		draw.end_frame(&f.dc)
+		render.frame_end(&f.r)
+	}
+	render.capture_request(&f.r)
+	one_frame(&f)
+	_, _, first := render.capture_poll(&f.r, context.temp_allocator)   // asks for the map
+	if first == .Ready { return }                                     // (the backend had it at once: nothing to cancel)
+	render.capture_cancel(&f.r)
+	render.capture_request(&f.r)
+	one_frame(&f)
+	for _ in 0 ..< 400 {
+		_, _, status := render.capture_poll(&f.r, context.temp_allocator)
+		testing.expect(t, status != .Failed, "the cancelled map failed the next capture")
+		if status != .Pending { return }
+		win.Sleep(5)
+	}
+	testing.expect(t, false, "no capture")
+}

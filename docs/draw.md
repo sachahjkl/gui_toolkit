@@ -551,13 +551,13 @@ draw.begin_frame(dc, size)
 draw.damage_begin(dc)                     // open the region, once; nothing marked = draw and present nothing
 draw.damage(dc, box)                      // a changed box (context coordinates, screen pixels)
 draw.damage_padded(dc, box, pad)          // grown by `pad` (a shadow, a glow, a focus ring that bleeds past the box)
-draw.damage_scrolled(dc, rect, delta)     // a scrolled view (block copy where the backend can)
+draw.damage_scrolled(dc, rect, delta)     // a scrolled view: redraws where the content was and where it is
 ... draw everything ...
 draw.end_frame(dc)
 ```
 
 The region is the union of the boxes, with near ones merged so it stays bounded. The renderer draws only the batches
-that touch it and presents only those rectangles (Direct3D 11 `Present1`) or a kept target copied whole (WebGPU); see
+that touch it into a kept target, which is then copied whole to the window: fewer pixels shaded, the same present. See
 docs/webgpu.md "Partial redraw". A box must be grown by the reach of any effect that paints past it (`damage_padded`),
 or the region will clip the fringe. Correctness is checked by `draw.set_damage_verify(dc, true)` (or
 `TOOLKIT_DAMAGE_VERIFY=1`): every frame is rendered in full too and the first differing pixel is reported.

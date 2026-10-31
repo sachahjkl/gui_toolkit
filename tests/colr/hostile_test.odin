@@ -2,6 +2,7 @@
 // to Direct2D (font.colr_nests_glyph) must not take for harmless. The tables are built here, byte by byte.
 package colr_test
 
+import "core:strings"
 import "core:testing"
 import "core:thread"
 import "core:time"
@@ -136,6 +137,112 @@ paint_work_is_bounded :: proc(t: ^testing.T) {
 	took := time.duration_milliseconds(time.since(start))
 	testing.expectf(t, !ok, "a glyph of 65 000 full-canvas fills was drawn (%.0f ms)", took)
 	if !base.perf_skip("paint work bound") { testing.expectf(t, took < 1000, "%.0f ms", took) }
+}
+
+// Glyph 1: `layers` layers that are all one PaintLinearGradient, whose color line has `stops` stops.
+gradient_glyph :: proc(layers, stops, side: int) -> Tbl {
+	b: Tbl
+	header(&b)
+	base := len(b)
+	patch32(&b, BASE_LIST_AT, base)
+	put32(&b, 1); put16(&b, 1)
+	root_at := len(b)
+	put32(&b, 0)
+	list := len(b)
+	patch32(&b, LAYER_LIST_AT, list)
+	put32(&b, layers)
+	for _ in 0 ..< layers { put32(&b, 4 + layers * 4 + 6) }   // the gradient comes after the root paint
+	patch32(&b, root_at, len(b) - base)
+	put8(&b, 1); put8(&b, layers); put32(&b, 0)
+	put8(&b, 4); put24(&b, 16); put16(&b, 0); put16(&b, 0); put16(&b, side); put16(&b, 0); put16(&b, 0); put16(&b, side)
+	put8(&b, 0); put16(&b, stops)
+	for i in 0 ..< stops { put16(&b, i * 0x4000 / stops); put16(&b, 0); put16(&b, 0x4000) }
+	return b
+}
+
+// 255 paints of one color line of 65 535 stops: 85 GB of stops if each paint were read for nothing, in the pass that measures
+// the glyph (no clip box) as in the one that draws it.
+@(test)
+gradient_stops_are_charged :: proc(t: ^testing.T) {
+	SIDE :: 64
+	b := gradient_glyph(255, 65535, SIDE)
+	defer delete(b)
+	c := font.colr_open(b[:], nil)
+	testing.expect(t, c != nil)
+	defer font.colr_destroy(c)
+	_, ok := font.colr_render({colr = c, upem = SIDE, outline = no_outline}, 1, {size = SIDE, samples = 2}, context.temp_allocator)
+	testing.expect(t, !ok, "measuring: a glyph of 16 million stops was read to its end")
+	clip_box(&b, SIDE)
+	boxed := font.colr_open(b[:], nil)
+	testing.expect(t, boxed != nil)
+	defer font.colr_destroy(boxed)
+	_, ok = font.colr_render({colr = boxed, upem = SIDE, outline = no_outline}, 1, {size = SIDE, samples = 2}, context.temp_allocator)
+	testing.expect(t, !ok, "drawing: a glyph of 16 million stops was read to its end")
+}
+
+// One color line of 65 535 stops on a canvas of 65 000 pixels: a stop is looked for once per pixel, it does not take a walk along them.
+@(test)
+one_long_color_line_is_drawn :: proc(t: ^testing.T) {
+	SIDE :: 256
+	b := gradient_glyph(1, 65535, SIDE)
+	defer delete(b)
+	clip_box(&b, SIDE)
+	c := font.colr_open(b[:], nil)
+	testing.expect(t, c != nil)
+	defer font.colr_destroy(c)
+	start := time.now()
+	_, ok := font.colr_render({colr = c, upem = SIDE, outline = no_outline}, 1, {size = SIDE, samples = 2}, context.temp_allocator)
+	took := time.duration_milliseconds(time.since(start))
+	testing.expect(t, ok)
+	if !base.perf_skip("a long color line") { testing.expectf(t, took < 500, "%.0f ms", took) }
+}
+
+// Lines the height of the em, each crossing the rows of the last ones, in the worst order for sorting their crossings.
+tall_lines :: proc(user: rawptr, gid: u16) -> ^font.Outline { return (^font.Outline)(user) }
+
+tall_lines_make :: proc(o: ^font.Outline, n: int) {
+	for i in 0 ..< n {
+		x := 1 - f32(i) / f32(n)
+		a, b := [2]f32{x, 0}, [2]f32{x, 1 - 0.01 * f32(i) / f32(n)}   // the rows start with the first line, then the next...
+		append(&o.quads, font.Quad{{a, (a + b) / 2, b}})              // (flat: one edge each)
+	}
+	append(&o.ends, n)
+	font.outline_bounds(o)
+}
+
+// Glyph 1: a PaintGlyph of glyph 5 filled with a PaintSolid, with a clip box.
+one_glyph_graph :: proc(side: int) -> Tbl {
+	b: Tbl
+	header(&b)
+	patch32(&b, BASE_LIST_AT, len(b))
+	put32(&b, 1); put16(&b, 1); put32(&b, 10)
+	put8(&b, 10); put24(&b, 6); put16(&b, 5)
+	paint_solid(&b)
+	clip_box(&b, side)
+	return b
+}
+
+// The crossings of an outline cost work: 4000 lines through every sample row are a billion steps for a glyph of 100 pixels.
+@(test)
+scan_conversion_is_charged :: proc(t: ^testing.T) {
+	SIDE :: 100
+	b := one_glyph_graph(SIDE)
+	defer delete(b)
+	c := font.colr_open(b[:], nil)
+	testing.expect(t, c != nil)
+	defer font.colr_destroy(c)
+	bomb, fine: font.Outline
+	defer { font.outline_destroy(&bomb); font.outline_destroy(&fine) }
+	tall_lines_make(&bomb, 4000)
+	tall_lines_make(&fine, 200)
+	start := time.now()
+	_, ok := font.colr_render({colr = c, upem = SIDE, outline = tall_lines, user = &bomb}, 1, {size = SIDE, samples = 2}, context.temp_allocator)
+	took := time.duration_milliseconds(time.since(start))
+	testing.expectf(t, !ok, "4000 lines through every row were drawn (%.0f ms)", took)
+	if !base.perf_skip("scan conversion work bound") { testing.expectf(t, took < 1000, "%.0f ms", took) }
+	// (what a detailed glyph may have)
+	_, drawn := font.colr_render({colr = c, upem = SIDE, outline = tall_lines, user = &fine}, 1, {size = SIDE, samples = 2}, context.temp_allocator)
+	testing.expect(t, drawn, "200 lines through every row")
 }
 
 // ---- routing: what is not read to its end is not given to Direct2D ----
@@ -396,4 +503,21 @@ dump_survives_hostile_graphs :: proc(t: ^testing.T) {
 	defer font.colr_destroy(c2)
 	s = font.colr_dump(c2, 1, context.temp_allocator)
 	testing.expect(t, len(s) > 0)
+}
+
+// The angles a listing shows are those the interpreter draws: the format's value + 1 half turn.
+@(test)
+dump_shows_sweep_angles :: proc(t: ^testing.T) {
+	b: Tbl
+	defer delete(b)
+	header(&b)
+	patch32(&b, BASE_LIST_AT, len(b))
+	put32(&b, 1); put16(&b, 1); put32(&b, 10)
+	put8(&b, 8); put24(&b, 12); put16(&b, 0); put16(&b, 0); put16(&b, 0); put16(&b, 0x4000)
+	put8(&b, 0); put16(&b, 1); put16(&b, 0); put16(&b, 0); put16(&b, 0x4000)
+	c := font.colr_open(b[:], nil)
+	testing.expect(t, c != nil)
+	defer font.colr_destroy(c)
+	s := font.colr_dump(c, 1, context.temp_allocator)
+	testing.expectf(t, strings.contains(s, "180.0..360.0"), "%s", s)
 }

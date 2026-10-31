@@ -378,3 +378,17 @@ alpha_like_linear_matches_the_linear_look :: proc(t: ^testing.T) {
 	testing.expect(t, draw.alpha_like_linear(.Linear, draw.WHITE, 0.3, bg) == 0.3)
 	testing.expect(t, draw.alpha_like_linear(.Srgb, draw.WHITE, 0.1, bg) > 0.1)
 }
+
+// The sRGB transfer functions: one formula, whoever calls it. draw.srgb does not clamp (colors out of 0..1 stay so); the
+// renderer's public pair does.
+@(test)
+srgb_functions_agree :: proc(t: ^testing.T) {
+	for i in -10 ..= 130 {
+		v := f32(i) / 100
+		d := v <= 0.04045 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4)
+		testing.expect_value(t, draw.srgb(v, v, v).r, d)
+		c := clamp(v, 0, 1)
+		testing.expect_value(t, render.srgb_to_linear(v), c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4))
+		testing.expect_value(t, render.linear_to_srgb(v), c <= 0.0031308 ? c * 12.92 : 1.055 * math.pow(c, 1 / 2.4) - 0.055)
+	}
+}

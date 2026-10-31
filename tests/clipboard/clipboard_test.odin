@@ -236,3 +236,43 @@ png_round_trip :: proc(t: ^testing.T) {
 	_, bad := platform.png_decode([]u8{0x89, 'P', 'N', 'G', 0, 0, 0, 0, 1})
 	testing.expect(t, !bad)
 }
+
+// What another client's selection offers, from its MIME types.
+@(test)
+formats_from_mimes :: proc(t: ^testing.T) {
+	testing.expect_value(t, platform.clipboard_formats_from_mimes(nil), platform.Clipboard_Formats{})
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"text/plain;charset=utf-8", "application/x-other"}), platform.Clipboard_Formats{.Text})
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"UTF8_STRING", "text/html", "image/png", "text/uri-list"}), platform.Clipboard_Formats{.Text, .Html, .Image, .Files})
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"image/jpeg"}), platform.Clipboard_Formats{})
+}
+
+// A path of the file list survives the round trip whatever it holds: a percent sign is not read as an escape.
+@(test)
+file_uris_round_trip :: proc(t: ^testing.T) {
+	testing.expect_value(t, platform.file_uri("/tmp/a b#c.txt"), "file:///tmp/a%20b%23c.txt")
+	for path in ([]string{"/tmp/a b#c.txt", "/tmp/a%20b", "/tmp/caf\u00e9/100%.png"}) {
+		paths := platform.uri_list_to_paths(strings.concatenate({platform.file_uri(path), "\r\n"}, context.temp_allocator), context.temp_allocator)
+		testing.expect_value(t, len(paths), 1)
+		if len(paths) == 1 { testing.expect_value(t, paths[0], path) }
+	}
+	hosted := platform.uri_list_to_paths("# a comment\nfile://host/x%20y\n/plain\n", context.temp_allocator)
+	testing.expect_value(t, len(hosted), 2)
+	testing.expect_value(t, hosted[0], "/x y")
+	testing.expect_value(t, hosted[1], "/plain")
+}
+
+// clipboard_changed tells once, not at every call. (Nothing is written: another program copying at this very moment is
+// the one thing that could make the second call true.)
+@(test)
+clipboard_changed_tells_once :: proc(t: ^testing.T) {
+	w := platform.open_window_offscreen("clipboard_changed", {16, 16})
+	defer platform.destroy_window(w)
+	testing.expect(t, platform.clipboard_changed(w), "the first call says true")
+	testing.expect(t, !platform.clipboard_changed(w))
+	testing.expect(t, !platform.clipboard_changed(w))
+	when ODIN_OS == .Linux {
+		platform.clipboard_set(w, {text = "x"})   // (an offscreen window keeps it in the process's store)
+		testing.expect(t, platform.clipboard_changed(w))
+		testing.expect(t, !platform.clipboard_changed(w))
+	}
+}

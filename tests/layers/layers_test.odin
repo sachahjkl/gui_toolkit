@@ -223,3 +223,84 @@ offscreen_draw_and_read_back :: proc(t: ^testing.T) {
 	r, g, b, a := render.straight_srgb({0.5, 0, 0, 0.5}, .Srgb)
 	testing.expect(t, r == 255 && g == 0 && b == 0 && a == 128)
 }
+// A composite in a blend mode replaces what it read (the batch draws without blending), also when a filter pass, which puts the
+// pipeline back to blending, came just before it with nothing drawn in between: translucent pixels under it keep their alpha.
+@(test)
+a_blend_composite_after_a_filter_pass_replaces :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	WHOLE :: draw.Rect{{0, 0}, {f32(SIZE.x), f32(SIZE.y)}}
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {0, 0, 0, 0})
+	draw.rect(&f.dc, WHOLE, {1, 1, 1, 0.5})
+	draw.push_effects(&f.dc, WHOLE, draw.Layer_Effects{alpha = 1, blend = .Multiply})
+	draw.pop_layer(&f.dc)
+	blur := [1]draw.Filter{draw.filter_blur(2)}
+	bd := draw.backdrop_capture(&f.dc, WHOLE, blur[:])   // a pass, and nothing of it drawn yet
+	draw.push_effects(&f.dc, WHOLE, draw.Layer_Effects{alpha = 1, blend = .Multiply})
+	draw.pop_layer(&f.dc)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	_ = bd
+	a := px(render.read_pixels(&f.r, context.temp_allocator), 32, 32).a
+	testing.expectf(t, abs(a - 128) <= 2, "the alpha under two empty composites stays: %d", a)
+}
+
+// A kept snapshot is 4 bytes a texel, as the pool counts it, not 8 (and kept mips count).
+@(test)
+kept_targets_count_as_the_pool_counts_them :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	s := render.acquire_snapshot(&f.r, 16, 16, 0)
+	m := render.acquire_target_mips(&f.r, 16, 16)
+	testing.expect(t, s != 0 && m != 0)
+	testing.expect(t, render.keep_target(&f.r, s) && render.keep_target(&f.r, m))
+	testing.expect_value(t, render.kept_targets_bytes(&f.r), render.targets_bytes(&f.r))
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	render.unkeep_target(&f.r, s)
+	render.unkeep_target(&f.r, m)
+}
+
+// A context gives back every texture it made: its atlas too.
+@(test)
+a_context_leaves_no_texture_behind :: proc(t: ^testing.T) {
+	r: render.Renderer
+	if !render.init_offscreen(&r, SIZE, warp = true) { testing.fail_now(t, "no device (WARP)") }
+	defer render.destroy(&r)
+	fonts: font.State
+	before := render.texture_memory(&r).count
+	dc: draw.Context
+	draw.init(&dc, &r, &fonts)
+	testing.expect(t, render.texture_memory(&r).count > before)
+	draw.destroy(&dc)
+	testing.expect_value(t, render.texture_memory(&r).count, before)
+}
+
+// A device lost is one renderer's: the read-back waiting on another still comes.
+@(test)
+a_device_loss_leaves_the_readbacks_of_another_renderer :: proc(t: ^testing.T) {
+	a, b: Fx
+	if !open(&a, .Linear) || !open(&b, .Linear) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&a.dc); render.destroy(&a.r); draw.destroy(&b.dc); render.destroy(&b.r) }
+	@(static) id: render.Readback_Id
+	frame(&a, proc(dc: ^draw.Context) {
+		if !draw.offscreen_begin(dc, {8, 8}) { return }
+		draw.rect(dc, {{0, 0}, {8, 8}}, {1, 0, 0, 1})
+		id = draw.offscreen_end(dc)
+	})
+	testing.expect(t, id != 0)
+	render.simulate_device_loss(&b.r)
+	testing.expect(t, render.recover(&b.r))
+	st: render.Capture_Status
+	for _ in 0 ..< 2000 {
+		_, _, st = render.readback_poll(&a.r, id, context.temp_allocator)
+		if st != .Pending { break }
+		time.sleep(time.Millisecond)
+	}
+	testing.expect_value(t, st, render.Capture_Status.Ready)
+}
