@@ -18,7 +18,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	// clear (frame_begin) is done per rectangle below. A full frame clears the whole target now.
 	region := damage_resolve(r)
 	composing := region && d3d_damage_ensure_target(r)
-	partial := composing && r.damage.target_ready
+	partial := composing && r.damage.target_ready && !damage_frame_reads_itself(f)
 	if !composing { r.damage.target_ready = false }   // what is drawn goes past it
 	r.damage.have_region = partial
 	r.damage.skip_present = partial && r.damage.count == 0
@@ -26,7 +26,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if composing { r.rtv, r.frame_tex = r.damage.target_rtv, r.damage.target }
 	defer if composing {
 		r.rtv, r.frame_tex = frame_rtv, frame_tex
-		d3d_damage_show(r, frame_tex)
+		if !r.damage.side { d3d_damage_show(r, frame_tex) }
 		r.damage.target_ready = true
 	}
 	if r.damage.have_clear && !partial {
@@ -56,14 +56,14 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		if r.inst_buf != nil { r.inst_buf->Release() }
 		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, INST_CAP_MIN))
 		r.inst_buf = nil
-		if hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)) {
+		if fault_hit(.Create_Buffer) || hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)) {
 			r.inst_buf, r.inst_cap = nil, 0
 			return
 		}
 	}
 	if len(f.insts) > 0 {
 		mapped: d3d11.MAPPED_SUBRESOURCE
-		if hr_failed(r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
+		if fault_hit(.Map) || hr_failed(r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
 		mem.copy(mapped.pData, raw_data(f.insts), len(f.insts) * size_of(Rect_Inst))
 		r.ctx->Unmap(r.inst_buf, 0)
 	}
@@ -83,103 +83,111 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	// a partial frame clears only its region
 	if partial && r.damage.have_clear { r.damage.have_clear = false; d3d_clear_region(r) }
-	cur, cur_ok := -1, false
-	cur_size: [2]int
-	cur_origin: [2]f32
-	bound, bound_image, bound_backdrop: Texture = -1, -1, -1
-	replacing := false
-	bound_replay := 0      // the Replay in b2 (0: immediate instances, identity)
-	retained_vb := false   // the retained instance heap is the bound vertex buffer
-	drawing := false       // profile: a run of draw calls into `cur` is open
-	for b, bi in f.batches {
-		if b.op > 0 {
-			if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0); drawing = false }
-			op := &f.ops[b.op - 1]
-			if run_op(r, f, op) {
-				// a filter pass replaced the pipeline and the target
-				bind_main(r)
-				if has_slug { slug_bind_inputs(r, f) }
-				retained_vb = false
-				replacing = false
-				cur = -1
-			}
-			continue
-		}
-		if b.count == 0 { continue }
-		if b.replay > len(f.replays) || (b.replay > 0 && r.heaps[.Insts].buf == nil) { continue }
-		if b.target != cur {
-			if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0); drawing = false }
-			cur = b.target
-			cur_ok, cur_size, cur_origin = bind_target(r, f, cur)
-			bound, bound_image, bound_backdrop = -1, -1, -1
-			profile_target_change(r)
-		}
-		if !cur_ok { continue }
-		if (b.replay > 0) != retained_vb {
-			retained_vb = b.replay > 0
-			stride := u32(size_of(Rect_Inst))
-			offset := u32(0)
-			vb := retained_vb ? r.heaps[.Insts].buf : r.inst_buf
-			r.ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset)
-		}
-		if b.replay != bound_replay {
-			bound_replay = b.replay
-			write_replay(r, b.replay > 0 ? &f.replays[b.replay - 1] : nil, b.replay > 0)
-		}
-		if b.tex != bound || b.image != bound_image || b.backdrop != bound_backdrop {
-			views := [2]^d3d11.IShaderResourceView{texture_view(r, b.tex), texture_view(r, b.image)}
-			r.ctx->PSSetShaderResources(0, 2, &views[0])
-			bd := texture_view(r, b.backdrop)
-			r.ctx->PSSetShaderResources(5, 1, &bd)
-			bound, bound_image, bound_backdrop = b.tex, b.image, b.backdrop
-		}
-		if (b.backdrop != 0) != replacing {
-			replacing = b.backdrop != 0
-			r.ctx->OMSetBlendState(replacing ? r.blend_replace : r.blend, nil, ~u32(0))
-		}
-		clip := b.clip
-		// partial redraw: a batch drawing into the frame target (cur == 0, screen pixels) is clipped to the damaged
-		// region, and skipped when it touches none of it. Layers (cur > 0, their own space) are not touched: they are
-		// intermediate images sampled back into the frame, and the composite that reads them is itself clipped.
-		if partial && cur == 0 {
-			dc, draw := damage_clip_batch(&r.damage, clip)
-			if !draw { continue }
-			clip = dc
-		}
-		rc := d3d11.RECT{
-			left   = i32(clamp(clip.x - cur_origin.x, 0, f32(cur_size.x))), top    = i32(clamp(clip.y - cur_origin.y, 0, f32(cur_size.y))),
-			right  = i32(clamp(clip.z - cur_origin.x, 0, f32(cur_size.x))), bottom = i32(clamp(clip.w - cur_origin.y, 0, f32(cur_size.y))),
-		}
-		if rc.right <= rc.left || rc.bottom <= rc.top { continue }
-		r.ctx->RSSetScissorRects(1, &rc)
-		if b.app > 0 {
-			d3d_draw_app(r, f, b)
-		} else if slug_frame {
-			draw_batch_split(r, f, b)
-		} else {
-			r.ctx->DrawInstanced(QUAD_VERTICES, u32(b.count), 0, u32(b.first))
-		}
-		drawing = true
-		if r.prof.detail && r.prof.cur != nil {
-			d := Gpu_Step_Rec{batch = i32(bi), insts = i32(b.count), scissor = {rc.left, rc.top, rc.right, rc.bottom}}
-			if b.replay > 0 {
-				d.kinds = GPU_KINDS_RETAINED
-			} else if b.first + b.count <= len(f.insts) {
-				for inst in f.insts[b.first:][:b.count] { d.kinds |= 1 << u32(inst.use_tex); d.flags |= inst.flags }
-			}
-			profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0, d)
-			drawing = false
-		}
-	}
-	if drawing { profile_step(r, cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0) }
+	s := D3d_Submit{cur = -1, has_slug = has_slug, bound = -1, bound_image = -1, bound_backdrop = -1}
+	frame_walk(r, &s, f, partial, slug_frame)
+	walk_flush(r, &s)
 	unbind_inputs(r)
 	if has_slug {
 		slug_select(r, false)
 		slug_unbind_inputs(r)
 	}
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
-	// render.damage.verify: recompose the whole frame into the reference and compare, while the layers are still alive
-	if partial && r.damage.have_region && r.damage.verify { d3d_damage_verify(r, f) }
+}
+
+// What is bound while a frame is drawn (frame_walk).
+@(private)
+D3d_Submit :: struct {
+	cur:         int,     // the target of the draw calls
+	drawing:     bool,    // profile: a run of draw calls into `cur` is open
+	has_slug:    bool,    // the Slug shaders are there and their inputs bound
+	bound, bound_image, bound_backdrop: Texture,
+	replacing:   bool,    // the blend state of FLAG_BLEND composites is bound
+	bound_replay: int,    // the Replay in b2 (0: immediate instances, identity)
+	retained_vb: bool,    // the retained instance heap is the bound vertex buffer
+}
+
+// profile: the run of draw calls into the target ends here.
+@(private)
+walk_flush :: proc(r: ^Renderer, s: ^D3d_Submit) {
+	if s.drawing { profile_step(r, s.cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0); s.drawing = false }
+}
+
+@(private)
+walk_heap_ready :: proc(r: ^Renderer) -> bool { return r.heaps[.Insts].buf != nil }
+
+@(private)
+walk_op :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, op: ^Op) -> (rebound: bool) {
+	walk_flush(r, s)
+	if !run_op(r, f, op) { return false }
+	// a filter pass replaced the pipeline and the target
+	bind_main(r)
+	if s.has_slug { slug_bind_inputs(r, f) }
+	s.retained_vb = false
+	s.replacing = false
+	return true
+}
+
+@(private)
+walk_target :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, target: int) -> (ok: bool, size: [2]int, origin: [2]f32) {
+	walk_flush(r, s)
+	s.cur = target
+	ok, size, origin = bind_target(r, f, target)
+	s.bound, s.bound_image, s.bound_backdrop = -1, -1, -1
+	profile_target_change(r)
+	return
+}
+
+@(private)
+walk_bind :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch, rc: [4]i32) {
+	if (b.replay > 0) != s.retained_vb {
+		s.retained_vb = b.replay > 0
+		stride := u32(size_of(Rect_Inst))
+		offset := u32(0)
+		vb := s.retained_vb ? r.heaps[.Insts].buf : r.inst_buf
+		r.ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset)
+	}
+	if b.replay != s.bound_replay {
+		s.bound_replay = b.replay
+		write_replay(r, b.replay > 0 ? &f.replays[b.replay - 1] : nil, b.replay > 0)
+	}
+	if b.tex != s.bound || b.image != s.bound_image || b.backdrop != s.bound_backdrop {
+		views := [2]^d3d11.IShaderResourceView{texture_view(r, b.tex), texture_view(r, b.image)}
+		r.ctx->PSSetShaderResources(0, 2, &views[0])
+		bd := texture_view(r, b.backdrop)
+		r.ctx->PSSetShaderResources(5, 1, &bd)
+		s.bound, s.bound_image, s.bound_backdrop = b.tex, b.image, b.backdrop
+	}
+	if (b.backdrop != 0) != s.replacing {
+		s.replacing = b.backdrop != 0
+		r.ctx->OMSetBlendState(s.replacing ? r.blend_replace : r.blend, nil, ~u32(0))
+	}
+	sc := d3d11.RECT{left = rc[0], top = rc[1], right = rc[2], bottom = rc[3]}
+	r.ctx->RSSetScissorRects(1, &sc)
+}
+
+@(private)
+walk_draw_app :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch) { d3d_draw_app(r, f, b) }
+
+// `slug`: with the Slug shaders (their runs are skipped when there are none).
+@(private)
+walk_draw :: proc(r: ^Renderer, s: ^D3d_Submit, slug: bool, first, count: int) {
+	if count <= 0 || (slug && !r.slug.ready) { return }
+	slug_select(r, slug)
+	r.ctx->DrawInstanced(QUAD_VERTICES, u32(count), 0, u32(first))
+}
+
+@(private)
+walk_drawn :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch, bi: int, rc: [4]i32) {
+	s.drawing = true
+	if !r.prof.detail || r.prof.cur == nil { return }
+	d := Gpu_Step_Rec{batch = i32(bi), insts = i32(b.count), scissor = rc}
+	if b.replay > 0 {
+		d.kinds = GPU_KINDS_RETAINED
+	} else if b.first + b.count <= len(f.insts) {
+		for inst in f.insts[b.first:][:b.count] { d.kinds |= 1 << u32(inst.use_tex); d.flags |= inst.flags }
+	}
+	profile_step(r, s.cur == 0 ? .Draw_Frame : .Draw_Layer, 0, 0, 0, 0, d)
+	s.drawing = false
 }
 
 // Fixed state of the instanced-quad pipeline (rect.wgsl).
@@ -239,7 +247,7 @@ bind_target :: proc(r: ^Renderer, f: Frame_Data, target: int) -> (ok: bool, size
 	}
 	unbind_inputs(r)
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if hr_failed(r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)) { return false, {}, {} }   // (a device gone: frame_end finds out)
+	if fault_hit(.Map) || hr_failed(r.ctx->Map(r.globals, 0, .WRITE_DISCARD, {}, &mapped)) { return false, {}, {} }   // (a device gone: frame_end finds out)
 	(^Globals)(mapped.pData)^ = target_globals(r, size, origin, space)
 	r.ctx->Unmap(r.globals, 0)
 	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
@@ -312,7 +320,7 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 	r.ctx->RSSetScissorRects(1, &rc)
 
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if hr_failed(r.ctx->Map(r.fx_constants, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
+	if fault_hit(.Map) || hr_failed(r.ctx->Map(r.fx_constants, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
 	(^Pass_Constants)(mapped.pData)^ = pass_constants(r, p)
 	r.ctx->Unmap(r.fx_constants, 0)
 

@@ -126,8 +126,11 @@ Wgpu_State :: struct {
 	damage_sample: wgpu.TextureView,   // sample it when copying to the surface
 	damage_size:   [2]int,
 	damage_ready:  bool,               // the persistent target holds a valid full frame (else the next frame is full)
-	damage_ref:    wgpu.Texture,       // render.damage.verify: a full composite for comparison
-	damage_ref_view: wgpu.TextureView,
+	damage_side:   wgpu.Texture,       // render.damage.verify: a whole frame for comparison (damage.odin)
+	damage_side_view: wgpu.TextureView,
+	damage_side_sample: wgpu.TextureView,
+	damage_side_size: [2]int,
+	damage_side_ready: bool,
 	damage_clear:  wgpu.Texture,       // a texture of the clear color, copied into the region
 	damage_clear_view: wgpu.TextureView,
 	damage_clear_size: [2]int,

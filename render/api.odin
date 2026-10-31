@@ -52,6 +52,7 @@ renderer_id :: proc(r: ^Renderer) -> u64 { return r.id }
 
 destroy :: proc(r: ^Renderer) {
 	when USE_WGPU { wgpu_destroy(r) } else { d3d_destroy(r) }
+	when DAMAGE_CHECK { damage_check_report() }
 }
 
 init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
@@ -141,6 +142,7 @@ destroy_texture :: proc(r: ^Renderer, t: Texture) {
 
 frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	r.damage.have_region = false
+	when DAMAGE_CHECK { r.damage.mode = .On }
 	when USE_WGPU { wgpu_frame_begin(r, clear) } else { d3d_frame_begin(r, clear) }
 }
 
@@ -152,7 +154,11 @@ wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> boo
 }
 
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
-	when USE_WGPU { wgpu_frame_submit(r, f) } else { d3d_frame_submit(r, f) }
+	when DAMAGE_CHECK {
+		if !r.damage.building { damage_check_submit(r, f); return }
+	}
+	damage_backend_submit(r, f)
+	if r.damage.have_region && r.damage.verify { damage_verify_frame(r, f) }
 }
 
 frame_end :: proc(r: ^Renderer, vsync := true) {

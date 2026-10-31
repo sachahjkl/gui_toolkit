@@ -2,6 +2,7 @@ package render
 
 import "core:fmt"
 import "core:os"
+import "core:sync"
 import "vendor:directx/d3d11"
 
 // Partial redraw (damage regions). When only a small part of the window changed between two frames (a blinking text
@@ -27,6 +28,10 @@ import "vendor:directx/d3d11"
 // `render.damage.verify` (set_damage_verify) renders every frame BOTH ways and compares; the first differing pixel and
 // the rectangle it is in are reported, so a missing damage rectangle (a filter that reads outside its box, an
 // overshooting shadow) is caught at once.
+//
+// -define:TOOLKIT_DAMAGE_CHECK=true proves it on a program's own content, which marks nothing: each frame is drawn whole on
+// the side, what differs from the last frame becomes its region, and the partial frame must come out the same to the byte.
+// Differences are printed, and a program that gets to render.destroy ends with exit code 1 (DAMAGE_CHECK below).
 
 // Most rectangles a damage region keeps before it starts fusing them: the scissor loop in frame_submit tests each batch
 // against each rectangle, so a small, bounded count matters.
@@ -53,6 +58,7 @@ Damage_State :: struct {
 	clear:       [4]f32,          // the frame's clear colour, in the target's values (frame_begin kept it)
 	have_clear:  bool,            // frame_begin deferred the clear to frame_submit (a possible partial frame)
 	skip_present: bool,           // a region of nothing, on top of a good target: frame_end does not present
+	side:         bool,           // this submit draws on the side (verify): the window does not get it
 	// counters (damage_stats): reset by damage_begin
 	rects_in:    int,             // rectangles the app added this frame (before fusion)
 	px_raster:   int,             // pixels inside the region (what partial rendering rasterized)
@@ -66,6 +72,10 @@ Damage_State :: struct {
 	clear_tex:    ^d3d11.ITexture2D,          // a texture of the clear color, copied into the region
 	clear_rtv:    ^d3d11.IRenderTargetView,
 	clear_size:   [2]int,
+	side_target:  ^d3d11.ITexture2D,          // a whole frame for comparison (verify): exchanged with `target` to draw it
+	side_rtv:     ^d3d11.IRenderTargetView,
+	side_size:    [2]int,
+	side_ready:   bool,
 }
 
 // Off (the renderer always draws and presents the whole frame, the behaviour before this feature) or On (a region built
@@ -162,7 +172,7 @@ clamp_rect :: proc(a: Damage_Rect, size: [2]int) -> Damage_Rect {
 // Adds `nr` to a bounded list of rectangles, fusing where it pays. Two rectangles are fused when they overlap, or when
 // their union redraws no more pixels than keeping them apart (near rectangles: the strip between them is cheaper to
 // repaint than two scissors and two dirty rects). Over the budget, the pair whose union wastes the fewest pixels is
-// fused first, so the final list never exceeds MAX_DAMAGE_RECTS.
+// fused first, so the final list never exceeds MAX_DAMAGE_RECTS. The rectangles never overlap: a batch is drawn once per rectangle.
 @(private)
 region_add :: proc(rects: ^[MAX_DAMAGE_RECTS]Damage_Rect, count: ^int, nr: Damage_Rect) {
 	cur := nr
@@ -193,7 +203,11 @@ region_add :: proc(rects: ^[MAX_DAMAGE_RECTS]Damage_Rect, count: ^int, nr: Damag
 		waste := rect_area(u) - rect_area(rects[i]) - rect_area(cur) + overlap_area(rects[i], cur)
 		if waste < best_waste { best, best_waste = i, waste }
 	}
-	if best >= 0 { rects[best] = rect_union_d(rects[best], cur) }
+	// (taken out and added again: what it grew into may overlap others, and the rectangles never overlap)
+	u := rect_union_d(rects[best], cur)
+	rects[best] = rects[count^ - 1]
+	count^ -= 1
+	region_add(rects, count, u)
 }
 
 // Whether merging the two rectangles into their bounding union is at least as cheap as keeping them apart: they
@@ -230,6 +244,14 @@ region_pad :: proc(d: ^Damage_State, size: [2]int, pad: i32) {
 ////////////////////////////////
 // Frame hooks (called by frame.odin / wgpu_frame.odin / present.odin)
 
+// A frame that copies its own target while it is drawn (a backdrop, a blend mode) reads pixels the region does not redraw, and they
+// are the last frame's finished ones, not what lies under the copy at this point: only a whole frame is exact.
+@(private)
+damage_frame_reads_itself :: proc(f: Frame_Data) -> bool {
+	for &op in f.ops { if op.kind == .Copy && op.source == 0 { return true } }
+	return false
+}
+
 // At frame_submit: whether a region was built this frame, and its counters. False: the frame is whole (no damage tracking,
 // mode Off). The backend still decides whether the kept target allows a partial frame (have_region says it did).
 @(private)
@@ -255,6 +277,110 @@ damage_verify_env :: proc(d: ^Damage_State) {
 	if state == 2 { d.verify = true }
 }
 
+// The frame `f` drawn whole on the side, read back (nil: it could not be): the target the frames compose into changes place with
+// another one for this submit, which runs the frame's steps again. Their pooled textures are all there until the next acquire.
+@(private)
+damage_side_frame :: proc(r: ^Renderer, f: Frame_Data) -> []u8 {
+	d := &r.damage
+	if r.frame_format == .R16G16B16A16_FLOAT { return nil }   // (the comparison reads BGRA8)
+	skip, in_effect := d.skip_present, d.have_region
+	defer d.skip_present, d.have_region = skip, in_effect
+	when USE_WGPU {
+		wgpu_damage_side_swap(r)
+		defer wgpu_damage_side_swap(r)
+		r.wg.damage_ready = false
+		r.wg.clear_pending = true
+		if !wgpu_damage_ensure_target(r) { return nil }
+	} else {
+		d3d_damage_side_swap(r)
+		defer d3d_damage_side_swap(r)
+		d.target_ready = false
+		d.have_clear = true
+		if !d3d_damage_ensure_target(r) { return nil }
+	}
+	d.side, d.building = true, true
+	defer d.side = false
+	damage_backend_submit(r, f)
+	return damage_read_target(r)
+}
+
+@(private)
+damage_backend_submit :: proc(r: ^Renderer, f: Frame_Data) {
+	when USE_WGPU { wgpu_frame_submit(r, f) } else { d3d_frame_submit(r, f) }
+}
+
+// What the kept target holds, BGRA8, tightly packed. nil: nothing.
+@(private)
+damage_read_target :: proc(r: ^Renderer) -> []u8 {
+	when USE_WGPU { return wgpu_damage_readback(r, r.wg.damage_target) } else { return d3d_read_texture(r, r.damage.target) }
+}
+
+// render.damage.verify: the partial frame just drawn against the frame drawn whole.
+@(private)
+damage_verify_frame :: proc(r: ^Renderer, f: Frame_Data) {
+	got := damage_read_target(r)
+	defer delete(got)
+	full := damage_side_frame(r, f)
+	defer delete(full)
+	if got != nil && full != nil { damage_compare(&r.damage, full, got, r.size) }
+}
+
+DAMAGE_CHECK :: #config(TOOLKIT_DAMAGE_CHECK, false)
+// What differs from the last frame is looked for in tiles of this many pixels: a region of what changes, not one box around all of it.
+@(private) DAMAGE_CHECK_TILE_PX :: 64
+@(private) damage_check_frames, damage_check_partial, damage_check_differences: int   // atomic: renderers may live on several threads
+
+// A frame of a program that marks nothing (see the top of this file). A region the program opened itself is left alone.
+@(private)
+damage_check_submit :: proc(r: ^Renderer, f: Frame_Data) {
+	d := &r.damage
+	full := damage_side_frame(r, f)
+	defer delete(full)
+	sync.atomic_add(&damage_check_frames, 1)
+	ready: bool
+	when USE_WGPU { ready = r.wg.damage_ready } else { ready = d.target_ready }
+	damage_begin(r)
+	if ready && full != nil {
+		last := damage_read_target(r)
+		defer delete(last)
+		if last != nil { damage_check_mark(r, full, last) }
+	}
+	when USE_WGPU { r.wg.clear_pending = true } else { d.have_clear = true }
+	damage_backend_submit(r, f)
+	if d.have_region { sync.atomic_add(&damage_check_partial, 1) }
+	if full == nil { return }
+	got := damage_read_target(r)
+	defer delete(got)
+	before := d.verify_differences
+	if got != nil { damage_compare(d, full, got, r.size) }
+	sync.atomic_add(&damage_check_differences, d.verify_differences - before)
+}
+
+@(private)
+damage_check_mark :: proc(r: ^Renderer, full, last: []u8) {
+	w, h := r.size.x, r.size.y
+	for ty := 0; ty < h; ty += DAMAGE_CHECK_TILE_PX {
+		for tx := 0; tx < w; tx += DAMAGE_CHECK_TILE_PX {
+			x1, y1 := min(tx + DAMAGE_CHECK_TILE_PX, w), min(ty + DAMAGE_CHECK_TILE_PX, h)
+			for y in ty ..< y1 {
+				a, b := full[(y * w + tx) * 4:(y * w + x1) * 4], last[(y * w + tx) * 4:(y * w + x1) * 4]
+				if string(a) != string(b) {
+					damage_add(r, {i32(tx), i32(ty), i32(x1), i32(y1)})
+					break
+				}
+			}
+		}
+	}
+}
+
+// At render.destroy: what the check found, and the exit code of a program that it failed.
+@(private)
+damage_check_report :: proc() {
+	n := sync.atomic_load(&damage_check_differences)
+	fmt.eprintfln("render.damage.check: %d frames, %d of them partial, %d different from the whole frame", sync.atomic_load(&damage_check_frames), sync.atomic_load(&damage_check_partial), n)
+	if n > 0 { os.exit(1) }
+}
+
 // Compares two BGRA8 frames and, on the first differing pixel, prints it and the damage rectangle it belongs to (or
 // that it lies outside the region: a dirty rectangle is missing). Backend independent (both verify paths call it).
 @(private)
@@ -277,26 +403,5 @@ damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int) {
 			in_region ? fmt.tprintf("inside damage rect %d %v", which, d.rects[which]) : "OUTSIDE every damage rectangle (a dirty rectangle is missing)")
 		return
 	}
-}
-
-// True when a batch whose scissor is `clip` (screen pixels x0 y0 x1 y1) touches the damaged region: it must be drawn.
-// With no region in effect every batch is drawn. The returned rectangle is the scissor intersected with the region's
-// bounding box, so a batch that straddles two far rectangles is still clipped to what changed.
-@(private)
-damage_clip_batch :: proc(d: ^Damage_State, clip: [4]f32) -> (out: [4]f32, draw: bool) {
-	if !d.have_region { return clip, true }
-	bx0, by0, bx1, by1 := f32(clip[0]), f32(clip[1]), f32(clip[2]), f32(clip[3])
-	hit := false
-	ux0, uy0, ux1, uy1: f32
-	for i in 0 ..< d.count {
-		rr := d.rects[i]
-		ix0, iy0 := max(bx0, f32(rr.x0)), max(by0, f32(rr.y0))
-		ix1, iy1 := min(bx1, f32(rr.x1)), min(by1, f32(rr.y1))
-		if ix1 <= ix0 || iy1 <= iy0 { continue }
-		if !hit { ux0, uy0, ux1, uy1, hit = ix0, iy0, ix1, iy1, true }
-		else { ux0, uy0, ux1, uy1 = min(ux0, ix0), min(uy0, iy0), max(ux1, ix1), max(uy1, iy1) }
-	}
-	if !hit { return clip, false }
-	return {ux0, uy0, ux1, uy1}, true
 }
 

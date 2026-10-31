@@ -462,8 +462,6 @@ Renderer :: struct {
 	first_present_noted: bool,
 	capture:     Capture_State,          // capture.odin: reading a frame back
 	damage:      Damage_State,           // damage.odin: partial redraw (dirty rectangles)
-	damage_verify_ref: ^d3d11.ITexture2D, // render.damage.verify: the full frame rendered for comparison
-	damage_verify_rtv: ^d3d11.IRenderTargetView,
 	teardown_wait_ms: int,               // set_teardown_wait
 	swap_gen:    u64,                    // the device_generation the window's objects (swap chain, views, capture copy) were made on (exchanged with a Surface)
 	swap_space:  u64,                    // the space_epoch they were made in (idem)

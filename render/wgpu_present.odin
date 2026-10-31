@@ -191,6 +191,7 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
 	if g.surface == nil {   // offscreen
 		if g.clear_pending { wgpu_clear_frame(r); g.damage_ready = false }
 		if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
+		wgpu.DevicePoll(g.device, true)   // (no present paces an offscreen frame: on a slow device they would pile up, and a read-back wait behind them)
 		return
 	}
 	if !g.frame_acquired { return }

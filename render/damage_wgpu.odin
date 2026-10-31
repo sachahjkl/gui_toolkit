@@ -25,7 +25,11 @@ wgpu_damage_ensure_target :: proc(r: ^Renderer) -> bool {
 	if g.damage_target != nil && g.damage_size == r.size {
 		return true
 	}
-	wgpu_damage_release_target(r)
+	if g.damage_sample != nil { wgpu.TextureViewRelease(g.damage_sample); g.damage_sample = nil }
+	if g.damage_view != nil { wgpu.TextureViewRelease(g.damage_view); g.damage_view = nil }
+	if g.damage_target != nil { wgpu.TextureRelease(g.damage_target); g.damage_target = nil }
+	g.damage_size = {}
+	g.damage_ready = false
 	if r.size.x <= 0 || r.size.y <= 0 { return false }
 	vf := [1]wgpu.TextureFormat{g.view_format}
 	g.damage_target = wgpu.DeviceCreateTexture(g.device, &{
@@ -47,13 +51,15 @@ wgpu_damage_release_target :: proc(r: ^Renderer) {
 	if g.damage_sample != nil { wgpu.TextureViewRelease(g.damage_sample); g.damage_sample = nil }
 	if g.damage_view != nil { wgpu.TextureViewRelease(g.damage_view); g.damage_view = nil }
 	if g.damage_target != nil { wgpu.TextureRelease(g.damage_target); g.damage_target = nil }
-	if g.damage_ref_view != nil { wgpu.TextureViewRelease(g.damage_ref_view); g.damage_ref_view = nil }
-	if g.damage_ref != nil { wgpu.TextureRelease(g.damage_ref); g.damage_ref = nil }
+	if g.damage_side_sample != nil { wgpu.TextureViewRelease(g.damage_side_sample); g.damage_side_sample = nil }
+	if g.damage_side_view != nil { wgpu.TextureViewRelease(g.damage_side_view); g.damage_side_view = nil }
+	if g.damage_side != nil { wgpu.TextureRelease(g.damage_side); g.damage_side = nil }
+	g.damage_side_size = {}
 	if g.damage_clear_view != nil { wgpu.TextureViewRelease(g.damage_clear_view); g.damage_clear_view = nil }
 	if g.damage_clear != nil { wgpu.TextureRelease(g.damage_clear); g.damage_clear = nil }
 	g.damage_clear_size = {}
 	g.damage_size = {}
-	g.damage_ready = false
+	g.damage_ready, g.damage_side_ready = false, false
 }
 
 // Whether this frame is drawn into the persistent target (a partial frame, or a full frame that makes it current for
@@ -61,7 +67,7 @@ wgpu_damage_release_target :: proc(r: ^Renderer) {
 // Returns (use_target, partial): use_target true to render target 0 into damage_view, partial true to load and
 // scissor (else clear and draw whole). Called at the top of wgpu_frame_submit after damage_resolve.
 @(private)
-wgpu_damage_setup :: proc(r: ^Renderer, region: bool) -> (use_target, do_partial: bool) {
+wgpu_damage_setup :: proc(r: ^Renderer, region: bool, f: Frame_Data) -> (use_target, do_partial: bool) {
 	g := &r.wg
 	// only when a region is in effect this frame (the app called damage_begin for this window and mode is On): a frame
 	// with no region is drawn straight to the surface, exactly as without partial redraw. This also keeps a second
@@ -69,7 +75,7 @@ wgpu_damage_setup :: proc(r: ^Renderer, region: bool) -> (use_target, do_partial
 	use_target = region && wgpu_damage_ensure_target(r)
 	if !use_target { g.damage_ready = false }   // what is drawn goes past it
 	// a partial frame is only safe when the target already holds the last frame; otherwise compose a full one now
-	do_partial = use_target && g.damage_ready
+	do_partial = use_target && g.damage_ready && !damage_frame_reads_itself(f)
 	r.damage.have_region = do_partial
 	r.damage.skip_present = do_partial && r.damage.count == 0
 	return
@@ -112,28 +118,21 @@ wgpu_damage_clear_region :: proc(r: ^Renderer, s: ^Submit) {
 	}
 }
 
-// render.damage.verify on WebGPU: makes (or resizes) the reference texture, a full composite is drawn into it and
-// compared with the persistent target (which holds the partial result). Returns false when the reference is missing.
+// Exchanges the kept target with the one a frame is drawn into on the side (damage.odin: verify).
 @(private)
-wgpu_damage_verify_ensure :: proc(r: ^Renderer) -> bool {
+wgpu_damage_side_swap :: proc(r: ^Renderer) {
 	g := &r.wg
-	if g.damage_ref != nil { return g.damage_ref_view != nil }
-	if r.size.x <= 0 || r.size.y <= 0 { return false }
-	vf := [1]wgpu.TextureFormat{g.view_format}
-	g.damage_ref = wgpu.DeviceCreateTexture(g.device, &{
-		label = "damage verify", usage = {.RenderAttachment, .CopySrc}, dimension = ._2D,
-		size = {u32(r.size.x), u32(r.size.y), 1}, format = g.surface_format, mipLevelCount = 1, sampleCount = 1,
-		viewFormatCount = g.view_format != g.surface_format ? 1 : 0, viewFormats = raw_data(vf[:]),
-	})
-	if g.damage_ref == nil { return false }
-	g.damage_ref_view = wgpu.TextureCreateView(g.damage_ref, &{format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
-	return g.damage_ref_view != nil
+	g.damage_target, g.damage_side = g.damage_side, g.damage_target
+	g.damage_view, g.damage_side_view = g.damage_side_view, g.damage_view
+	g.damage_sample, g.damage_side_sample = g.damage_side_sample, g.damage_sample
+	g.damage_size, g.damage_side_size = g.damage_side_size, g.damage_size
+	g.damage_ready, g.damage_side_ready = g.damage_side_ready, g.damage_ready
 }
 
-// Reads a whole BGRA8 texture back to CPU memory, tightly packed. nil on failure. (The partial verify path only; the
-// hot path never reads back.)
+// Reads a whole BGRA8 texture back to CPU memory, tightly packed. nil on failure. (Verify only; the hot path never reads back.)
 @(private)
 wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
+	if tex == nil { return nil }
 	g := &r.wg
 	w, h := r.size.x, r.size.y
 	row := align_up(w * 4, COPY_ROW_ALIGN_BYTES)
@@ -166,19 +165,6 @@ wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
 	for y in 0 ..< h { copy(out[y * w * 4:], src[y * row:][:w * 4]) }
 	wgpu.BufferUnmap(buf)
 	return out
-}
-
-// Compares the persistent target (the partial result) against the reference (the full composite drawn by the verify
-// pass) and reports the first differing pixel. Called after both have been composed and submitted.
-@(private)
-wgpu_damage_compare :: proc(r: ^Renderer) {
-	g := &r.wg
-	if g.damage_ref == nil || g.damage_target == nil { return }
-	full := wgpu_damage_readback(r, g.damage_ref)
-	got := wgpu_damage_readback(r, g.damage_target)
-	defer { delete(full); delete(got) }
-	if full == nil || got == nil { return }
-	damage_compare(&r.damage, full, got, r.size)
 }
 
 // Copies the whole persistent target to the current surface texture, so SurfacePresent shows the full composite: by a draw, a
