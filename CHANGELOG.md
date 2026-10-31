@@ -3,6 +3,11 @@
 All notable changes to gui_toolkit. The project follows [semantic versioning](https://semver.org); while the version is
 `0.x`, a minor bump may change the API. The version is also available in code as `ui.VERSION`.
 
+## [0.57.0] - 2026-10-31
+
+### Added
+- **Chrome's DevTools on a window**: the Elements panel shows the box tree and follows it, Styles, Computed and Layout a box's rect and colours in sRGB, Styles and the text editable live for as long as DevTools is attached, the Accessibility tab what a reader gets, hovering a node lights its box. `tools/cdp.mjs inspect` prints the address; the `devtools://devtools` Origin is taken on the WebSocket only.
+
 ## [0.56.2] - 2026-10-31
 
 ### Fixed
