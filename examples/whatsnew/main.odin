@@ -410,9 +410,9 @@ page_tests :: proc(app: ^App, em: f32) {
 
 ////////////////////////////////
 
-frame :: proc(app: ^App) {
+frame :: proc(app: ^App, inner := false) {
 	if ui.building() { return }
-	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0)
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
 	app.frames += 1   // (this one, counted before it is shown)
 	if app.slept { app.after_rest += 1 }
 	if at_once { app.at_once += 1 }
@@ -476,10 +476,13 @@ main :: proc() {
 	}
 	font.init(&app.fonts)
 	defer font.destroy(&app.fonts)
-	app.win = headless ? platform.open_window_offscreen("What's new in gui_toolkit 0.55", {1100, 720}) : platform.open_window("What's new in gui_toolkit 0.55", {1100, 720})
+	// a composition swap chain whose buffers keep the monitor's size while the window is resized: a frame of the old size is
+	// clipped by the window, never stretched over the new one (an ordinary swap chain stretches it). As opencode native.
+	app.win = headless ? platform.open_window_offscreen("What's new in gui_toolkit 0.55", {1100, 720}) : platform.open_window("What's new in gui_toolkit 0.55", {1100, 720}, transparent = true)
 	if app.win == nil { fmt.eprintln("whatsnew: no window"); os.exit(1) }
 	defer platform.destroy_window(app.win)
-	if !(headless ? render.init_offscreen(&app.r, app.win.size, warp = true) : render.init_window(&app.r, app.win, app.win.size)) { fmt.eprintln("whatsnew: no renderer"); os.exit(1) }
+	if !(headless ? render.init_offscreen(&app.r, app.win.size, warp = true) : render.init_window(&app.r, app.win, app.win.size, transparent = true)) { fmt.eprintln("whatsnew: no renderer"); os.exit(1) }
+	if !headless { render.set_fixed_surface(&app.r, platform.monitor_size(app.win)) }
 	defer render.destroy(&app.r)
 	ok: bool
 	app.font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
@@ -498,7 +501,7 @@ main :: proc() {
 	app.devtools = devtools.start_from_env(app.win, "What's new in gui_toolkit")
 	defer devtools.stop(app.devtools)
 	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 
 	if frames >= 0 {
 		for _ in 0 ..< frames { frame(app) }
