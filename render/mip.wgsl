@@ -1,5 +1,6 @@
 // Mip chain generation (WebGPU has no GenerateMips): each level is the bilinear reduction of the one above, drawn
-// by a full-screen triangle into a view of that level.
+// by a full-screen triangle into a view of that level. The same triangle copies a texture 1:1 where a copy is not allowed (a
+// surface usually takes no CopyDst: damage_wgpu.odin).
 
 @group(0) @binding(0) var mip_src: texture_2d<f32>;
 @group(0) @binding(1) var mip_samp: sampler;
@@ -15,4 +16,9 @@ fn ps_mip(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 	let dim = vec2<f32>(textureDimensions(mip_src));
 	// the destination texel covers 2 x 2 source texels: sample at their shared corner
 	return textureSampleLevel(mip_src, mip_samp, pos.xy * 2.0 / dim, 0.0);
+}
+
+@fragment
+fn ps_copy(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+	return textureLoad(mip_src, vec2<i32>(pos.xy), 0);
 }

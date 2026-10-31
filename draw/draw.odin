@@ -34,8 +34,7 @@ rect_intersect :: proc(a, b: Rect) -> Rect {
 
 // sRGB (0..1) to the linear color the renderer expects
 srgb :: proc(r, g, b: f32, a: f32 = 1) -> Color {
-	lin :: proc(c: f32) -> f32 { return c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4) }
-	return {lin(r), lin(g), lin(b), a}
+	return {render.srgb_decode(r), render.srgb_decode(g), render.srgb_decode(b), a}
 }
 
 // HSV (all 0..1, hue wraps) to a linear color

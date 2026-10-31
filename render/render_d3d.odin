@@ -112,7 +112,7 @@ d3d_destroy :: proc(r: ^Renderer) {
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
-	rel(&r.damage_clear_vb); rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
+	d3d_damage_release(&r.damage); rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
 	heaps_destroy(r)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
@@ -206,6 +206,10 @@ d3d_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 retarget :: proc(r: ^Renderer, previous: Maybe(Blend_Space) = nil) {
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
+	// (their views and formats follow the space)
+	d3d_damage_release(&r.damage)
+	if r.damage_verify_rtv != nil { r.damage_verify_rtv->Release(); r.damage_verify_rtv = nil }
+	if r.damage_verify_ref != nil { r.damage_verify_ref->Release(); r.damage_verify_ref = nil }
 	if r.swapchain == nil && r.offscreen != nil {
 		create_offscreen_view(r)
 		return
@@ -659,7 +663,7 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 // Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
 // polling input and building the UI: then the frame you build is the next one shown.
 d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
-	if r.latency_handle == nil { return true }
+	if r.latency_handle == nil || r.present.slot_unused { return true }
 	latency_drain(&r.present, r.latency_handle)
 	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
 }
@@ -671,10 +675,9 @@ d3d_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	if r.space == .Srgb && c.a > 0 {
 		for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a }
 	}
-	// A partial frame does not clear the whole back buffer (the kept content outside the region must survive): the
-	// region is cleared per rectangle in d3d_frame_submit, inside the scissor.
-	if r.damage.mode == .On && r.damage.building {
-		r.damage.clear = c
+	r.damage.clear = c
+	// A frame that may be partial decides at d3d_frame_submit, once its region is known: whole, or per rectangle.
+	if r.damage.mode == .On {
 		r.damage.have_clear = true
 		return
 	}
@@ -733,19 +736,23 @@ raw_buffer_view :: proc(r: ^Renderer, buf: ^d3d11.IBuffer, bytes: int) -> ^d3d11
 }
 
 // (Re)creates a dynamic raw buffer (the tables of the frame) and its view when `n` elements do not fit, then uploads `data`.
+// A buffer refused or not mapped uploads nothing: its table reads as zeros, and frame_end finds a device gone.
 @(private)
 upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.IShaderResourceView, cap: ^int, data: rawptr, n, stride: int) {
 	if buf^ == nil || n > cap^ {
 		if view^ != nil { view^->Release(); view^ = nil }
 		if buf^ != nil { buf^->Release(); buf^ = nil }
 		cap^ = max(n, cap^ * 2, TABLE_CAP_MIN)
-		r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
-			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)
+		if hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
+			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)) {
+			buf^, cap^ = nil, 0
+			return
+		}
 		view^ = raw_buffer_view(r, buf^, cap^ * stride)
 	}
 	if n == 0 { return }
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)
+	if hr_failed(r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)) { return }
 	mem.copy(mapped.pData, data, n * stride)
 	r.ctx->Unmap(buf^, 0)
 }
@@ -757,7 +764,12 @@ d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
 		return
 	}
-	if hr := d3d_present_partial(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
+	if r.damage.skip_present {   // a region of nothing: the window keeps what it shows, and the slot waited for stays free
+		r.present.slot_unused = true
+		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
+		return
+	}
+	if hr := present_frame(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
 		r.lost = true
 	}
 }

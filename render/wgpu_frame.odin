@@ -193,8 +193,9 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	g := &r.wg
 	if g.shared.lost { r.lost = true }
 	// resolve this frame's damage region; a partial frame composes into the persistent target (damage_wgpu.odin)
-	partial := damage_resolve(r, 1)
-	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) { return }
+	region := damage_resolve(r)
+	// (nothing to draw in a frame of a region still changes the target: it is cleared)
+	if r.lost || (!region && (len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0))) { return }
 	if !wgpu_ensure_frame(r) { return }
 	// The window's first frame: its pipelines are compiled now (with FXC, seconds). Show the background first rather than
 	// the white of a window that has never been drawn, then make the frame.
@@ -217,7 +218,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	frame := f
 	s := Submit{r = r, f = &frame}
-	s.use_target, s.do_partial = wgpu_damage_setup(r, partial)
+	s.use_target, s.do_partial = wgpu_damage_setup(r, region)
 	defer {
 		delete(s.groups); delete(s.views); delete(s.replay_off)
 	}
@@ -274,6 +275,14 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	s.bg0 = wgpu.DeviceCreateBindGroup(g.device, &{label = "tables", layout = g.bgl0, entryCount = len(e0), entries = raw_data(e0[:])})
 	defer wgpu.BindGroupRelease(s.bg0)
+
+	// the persistent target starts from the clear color, in the region or whole, whatever draws into it
+	if s.do_partial {
+		wgpu_damage_clear_region(r, &s)
+	} else if s.use_target {
+		wgpu_begin_target(r, &s, &frame, 0)
+		end_pass(&s)
+	}
 
 	has_slug := frame_has_slug(f)
 	cur := -1                       // the target of the open pass
@@ -362,41 +371,14 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 			wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(b.count), 0, u32(b.first))
 			continue
 		}
-		// a batch with Slug text is drawn in pieces, in order: the Slug instances (slug_runs) by their pipeline, the others by the main one
-		runs := f.slug_runs
-		base := 0
-		if b.replay > 0 { rp := f.replays[b.replay - 1]; runs, base = rp.slug_runs, int(rp.insts) }
-		pos, end := b.first, b.first + b.count
-		lo, hi := 0, len(runs)
-		for lo < hi {
-			mid := (lo + hi) / 2
-			if base + runs[mid][0] + runs[mid][1] <= pos { lo = mid + 1 } else { hi = mid }
-		}
-		draw := proc(r: ^Renderer, s: ^Submit, bound: ^wgpu.RenderPipeline, format: wgpu.TextureFormat, replace, slug_ok, slug: bool, first, count: int) {
-			if count <= 0 || (slug && !slug_ok) { return }
-			pipe := slug ? wgpu_slug_pipeline(r, format, replace) : wgpu_pipeline(r, format, replace)
-			if pipe == nil { return }
-			if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
-			wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(count), 0, u32(first))
-		}
-		slug_ok := int(f.slug_curves) > 0 && int(f.slug_bands) > 0 && !r.slug.failed
-		for i := lo; i < len(runs) && pos < end; i += 1 {
-			rs := base + runs[i][0]
-			re := rs + runs[i][1]
-			if rs >= end { break }
-			if rs > pos { draw(r, &s, &bound_pipe, cur_format, replace, slug_ok, false, pos, rs - pos); pos = rs }
-			e := min(re, end)
-			draw(r, &s, &bound_pipe, cur_format, replace, slug_ok, true, pos, e - pos)
-			pos = e
-		}
-		draw(r, &s, &bound_pipe, cur_format, replace, slug_ok, false, pos, end - pos)
+		wgpu_draw_batch_split(r, &s, f, b, cur_format, replace, &bound_pipe)
 	}
 	end_pass(&s)
 	// render.damage.verify: recompose the whole frame into the reference (same encoder), compared after the submit
-	verifying := s.do_partial && r.damage.verify && wgpu_damage_verify_ensure(r)
+	verifying := s.do_partial && r.damage.verify && g.surface_format != .RGBA16Float && wgpu_damage_verify_ensure(r)   // (the comparison reads BGRA8)
 	if verifying { wgpu_verify_pass(r, &s, &frame) }
 	// partial redraw: the frame was composed into the persistent target; copy it whole to the surface for a full present
-	if s.use_target { wgpu_damage_blit_to_surface(r, s.enc) }
+	if s.use_target { wgpu_damage_blit_to_surface(r, &s) }
 	if s.timed { wprof_end(r, s.enc) }
 	t_encoded := time.tick_now()
 	cb := wgpu.CommandEncoderFinish(s.enc)
@@ -413,6 +395,38 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if verifying { wgpu_damage_compare(r) }
 }
 
+// A batch with Slug text is drawn in pieces, in order: the Slug instances (slug_runs) by their pipeline, the others by the main one.
+@(private)
+wgpu_draw_batch_split :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, b: Batch, format: wgpu.TextureFormat, replace: bool, bound: ^wgpu.RenderPipeline) {
+	runs := f.slug_runs
+	base := 0
+	if b.replay > 0 { rp := f.replays[b.replay - 1]; runs, base = rp.slug_runs, int(rp.insts) }
+	pos, end := b.first, b.first + b.count
+	lo, hi := 0, len(runs)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if base + runs[mid][0] + runs[mid][1] <= pos { lo = mid + 1 } else { hi = mid }
+	}
+	draw := proc(r: ^Renderer, s: ^Submit, bound: ^wgpu.RenderPipeline, format: wgpu.TextureFormat, replace, slug_ok, slug: bool, first, count: int) {
+		if count <= 0 || (slug && !slug_ok) { return }
+		pipe := slug ? wgpu_slug_pipeline(r, format, replace) : wgpu_pipeline(r, format, replace)
+		if pipe == nil { return }
+		if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
+		wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(count), 0, u32(first))
+	}
+	slug_ok := int(f.slug_curves) > 0 && int(f.slug_bands) > 0 && !r.slug.failed
+	for i := lo; i < len(runs) && pos < end; i += 1 {
+		rs := base + runs[i][0]
+		re := rs + runs[i][1]
+		if rs >= end { break }
+		if rs > pos { draw(r, s, bound, format, replace, slug_ok, false, pos, rs - pos); pos = rs }
+		e := min(re, end)
+		draw(r, s, bound, format, replace, slug_ok, true, pos, e - pos)
+		pos = e
+	}
+	draw(r, s, bound, format, replace, slug_ok, false, pos, end - pos)
+}
+
 // render.damage.verify: draws the frame-target batches whole (no scissor) into the reference texture, reusing the
 // frame's bind groups and arena constants. The layers and ops already ran into their pooled targets in the partial
 // pass and are still bound, so the composite reproduces the full frame; only target 0 is re-emitted.
@@ -422,9 +436,11 @@ wgpu_verify_pass :: proc(r: ^Renderer, s: ^Submit, f: ^Frame_Data) {
 	if g.damage_ref_view == nil { return }
 	att := wgpu.RenderPassColorAttachment{view = g.damage_ref_view, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store, clearValue = g.clear}
 	pass := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
+	s.pass = pass   // (what wgpu_draw_app and wgpu_draw_batch_split draw into)
+	defer s.pass = nil
 	wgpu.RenderPassEncoderSetViewport(pass, 0, 0, f32(r.size.x), f32(r.size.y), 0, 1)
 	has_slug := frame_has_slug(f^)
-	gl := wgpu_globals(r, r.size, {0, 0}, r.space)   // target 0: the frame's own space
+	gl := target_globals(r, r.size, {0, 0}, r.space)   // target 0: the frame's own space
 	g_off := arena_write(g, &gl, size_of(gl))
 	bound_replay := -1
 	bound_pipe: wgpu.RenderPipeline
@@ -470,16 +486,12 @@ wgpu_verify_pass :: proc(r: ^Renderer, s: ^Submit, f: ^Frame_Data) {
 		}
 		wgpu.RenderPassEncoderSetScissorRect(pass, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1])
 		if b.app > 0 { wgpu_draw_app(r, s, b, g.view_format, &bound_pipe); continue }
-		pipe := has_slug ? bound_pipe : wgpu_pipeline(r, g.view_format, replace)
-		if !has_slug {
+		if has_slug {
+			wgpu_draw_batch_split(r, s, f^, b, g.view_format, replace, &bound_pipe)
+		} else {
+			pipe := wgpu_pipeline(r, g.view_format, replace)
 			if pipe != bound_pipe { bound_pipe = pipe; wgpu.RenderPassEncoderSetPipeline(pass, pipe) }
 			wgpu.RenderPassEncoderDraw(pass, QUAD_VERTICES, u32(b.count), 0, u32(b.first))
-		} else {
-			// slug frames: draw the whole batch with the slug-aware pipeline split is complex to replay; the common
-			// case (no Slug text) is covered. A slug batch is drawn with the rect pipeline here as a close approximation
-			// for the diagnostic; the exact split lives in the main loop.
-			p := wgpu_pipeline(r, g.view_format, replace)
-			if p != nil { if p != bound_pipe { bound_pipe = p; wgpu.RenderPassEncoderSetPipeline(pass, p) }; wgpu.RenderPassEncoderDraw(pass, QUAD_VERTICES, u32(b.count), 0, u32(b.first)) }
 		}
 	}
 	wgpu.RenderPassEncoderEnd(pass)
@@ -517,7 +529,7 @@ wgpu_begin_target :: proc(r: ^Renderer, s: ^Submit, f: ^Frame_Data, target: int)
 		td := &r.textures[int(ly.tex)]
 		view, size, origin, space, format = td.wrtv, ly.size, ly.origin, ly.space, td.wformat
 	}
-	gl := wgpu_globals(r, size, origin, space)
+	gl := target_globals(r, size, origin, space)
 	g_off = arena_write(g, &gl, size_of(gl))
 	att := wgpu.RenderPassColorAttachment{view = view, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Load, storeOp = .Store}
 	if target == 0 {
@@ -534,24 +546,6 @@ wgpu_begin_target :: proc(r: ^Renderer, s: ^Submit, f: ^Frame_Data, target: int)
 	s.pass_kind = target == 0 ? .Draw_Frame : .Draw_Layer
 	wgpu.RenderPassEncoderSetViewport(s.pass, 0, 0, f32(size.x), f32(size.y), 0, 1)
 	return true, size, origin, format, g_off
-}
-
-// The Globals constants for a target (viewport, origin, blend space, text rendering), shared by wgpu_begin_target and
-// the verify pass.
-@(private)
-wgpu_globals :: proc(r: ^Renderer, size: [2]int, origin: [2]f32, space: Blend_Space) -> Globals {
-	sm := clamp(r.corner_smoothing, 0, 1)
-	text_gamma: f32
-	switch r.text.curve {
-	case .None: text_gamma = 0
-	case .Srgb: text_gamma = -1
-	case .Power: text_gamma = max(r.text.gamma, TEXT_GAMMA_MIN)
-	}
-	return Globals{
-		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + CORNER_N_SMOOTHING * sm, corner_boost = 1 + CORNER_BOOST_SMOOTHING * sm,
-		target_origin = origin, target_space = u32(space),
-		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN),
-	}
 }
 
 // A non-draw step: clear a layer, copy what a target holds, run a filter pass. No pass is open when it is called.
@@ -615,26 +609,7 @@ wgpu_run_pass :: proc(r: ^Renderer, s: ^Submit, p: ^Pass) {
 	dtd := &r.textures[t]
 	w, h := min(p.dst.size.x + 1, dtd.w), min(p.dst.size.y + 1, dtd.h)
 
-	dim :: proc(r: ^Renderer, t: Texture) -> [2]f32 {
-		if int(t) <= 0 || int(t) >= len(r.textures) { return {1, 1} }
-		return {f32(max(r.textures[int(t)].w, 1)), f32(max(r.textures[int(t)].h, 1))}
-	}
-	pc := Pass_Constants{
-		src_origin = p.src.origin, src_scale = p.src.scale, mode = u32(p.mode),
-		src_size = {f32(p.src.size.x), f32(p.src.size.y)}, src_dim = dim(r, p.src.tex),
-		dst_origin = p.dst.origin, dst_scale = p.dst.scale, flags = p.flags,
-		src2_origin = p.src2.origin, src2_scale = p.src2.scale,
-		src2_size = {f32(p.src2.size.x), f32(p.src2.size.y)}, src2_dim = dim(r, p.src2.tex),
-		dir = p.dir, offset = p.offset, color = p.color,
-		matrix_count = u32(clamp(p.matrix_count, 0, MAX_COLOR_MATRICES)),
-		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, DOWNSAMPLE_FACTOR_MAX)),
-	}
-	if p.mode == .Blur { pc.taps = u32(blur_taps(p.sigma, &pc.tap)) }
-	for k in 0 ..< int(pc.matrix_count) {
-		m := p.matrices[k]
-		for row in 0 ..< 4 { pc.m[k * 5 + row] = {m[row * 5], m[row * 5 + 1], m[row * 5 + 2], m[row * 5 + 3]} }
-		pc.m[k * 5 + 4] = {m[4], m[9], m[14], m[19]}
-	}
+	pc := pass_constants(r, p)
 	off := arena_write(g, &pc, size_of(pc))
 
 	e := [4]wgpu.BindGroupEntry{

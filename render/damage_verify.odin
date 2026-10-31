@@ -4,12 +4,11 @@ package render
 @(require) import "core:mem"
 @(require) import win "core:sys/windows"
 @(require) import "vendor:directx/d3d11"
-@(require) import "vendor:directx/dxgi"
 
 // render.damage.verify (set_damage_verify, or the environment variable TOOLKIT_DAMAGE_VERIFY): a development check that
 // a partial frame is byte-for-byte identical to a full render of the same frame. On each verified frame the renderer
-// draws the whole frame a second time into a persistent reference texture, reads the reference and the partial back
-// buffer back, and reports the first pixel that differs and the damage rectangle it is in (or that it is outside the
+// draws the whole frame a second time into a persistent reference texture, reads the reference and the kept target
+// (damage_d3d.odin) back, and reports the first pixel that differs and the damage rectangle it is in (or that it is outside the
 // region, which means a rectangle is missing). It costs a full extra frame and two read-backs: for development only.
 // Direct3D only; the backend-independent comparison (damage_compare) lives in damage.odin, shared with the wgpu path.
 when !USE_WGPU {
@@ -28,19 +27,18 @@ d3d_verify_ensure_ref :: proc(r: ^Renderer) -> bool {
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.RENDER_TARGET},
 	}, nil, &r.damage_verify_ref)
 	if r.damage_verify_ref == nil { return false }
-	view := r.space == .Srgb ? dxgi.FORMAT.B8G8R8A8_UNORM : dxgi.FORMAT.B8G8R8A8_UNORM_SRGB
-	r.device->CreateRenderTargetView(r.damage_verify_ref, &{Format = view, ViewDimension = .TEXTURE2D}, &r.damage_verify_rtv)
+	r.device->CreateRenderTargetView(r.damage_verify_ref, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.damage_verify_rtv)
 	return r.damage_verify_rtv != nil
 }
 
-// Renders the whole frame once more into the reference texture and compares it with the partial back buffer. Called at
-// the end of d3d_frame_submit, while the layer textures the frame used are still alive (before recycle_targets) and the
-// back buffer holds the partial result. Only the frame-target batches are replayed: the offscreen layers and the ops
+// Renders the whole frame once more into the reference texture and compares it with the kept target. Called at the end of
+// d3d_frame_submit, while the layer textures the frame used are still alive (before recycle_targets) and the target (it is
+// `frame_tex` then) holds the partial result. Only the frame-target batches are replayed: the offscreen layers and the ops
 // (filter passes, copies) already ran in the partial pass and their results are still bound, so the composite into the
 // reference reproduces the full frame exactly, without running the ops a second time.
 @(private)
 d3d_damage_verify :: proc(r: ^Renderer, f: Frame_Data) {
-	if r.swapchain == nil || r.frame_tex == nil { return }
+	if r.frame_tex == nil || r.frame_format == .R16G16B16A16_FLOAT { return }   // (the comparison reads BGRA8)
 	if !d3d_verify_ensure_ref(r) { return }
 
 	// full composite into the reference, with no damage region (every frame-target batch drawn whole)
@@ -49,9 +47,7 @@ d3d_damage_verify :: proc(r: ^Renderer, f: Frame_Data) {
 	r.rtv = r.damage_verify_rtv
 	r.damage.have_region = false
 	defer { r.rtv = saved_rtv; r.damage.have_region = saved_have }
-	c := r.damage.clear
-	if r.space == .Srgb && c.a > 0 { for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a } }
-	r.ctx->ClearRenderTargetView(r.damage_verify_rtv, &c)
+	r.ctx->ClearRenderTargetView(r.damage_verify_rtv, &r.damage.clear)
 	bind_main(r)
 	slug_frame := frame_has_slug(f)
 	has_slug := slug_frame && r.slug.ready
