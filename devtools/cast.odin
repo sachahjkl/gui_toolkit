@@ -14,6 +14,9 @@ import "../ui"
 // (Server.cast_dirty, read by the connection's thread), or each frame sent would make the next.
 
 @(private)
+CAST_MIN_INTERVAL_MS :: 200
+
+@(private)
 Cast :: struct {
 	on:         bool,
 	to:         Reply_To,   // (held)
@@ -31,7 +34,7 @@ Cast :: struct {
 @(private)
 cast_start :: proc(srv: ^Server, to: Reply_To, p: json.Object) {
 	cast_stop(srv)
-	srv.screencast = Cast{on = true, to = hold(to), min_ms = num(p["minIntervalMs"], 200)}
+	srv.screencast = Cast{on = true, to = hold(to), min_ms = num(p["minIntervalMs"], CAST_MIN_INTERVAL_MS)}
 	srv.screencast.owed = true   // (the first frame, at once)
 }
 

@@ -37,6 +37,32 @@ MAX_MESSAGE :: 16 * 1024 * 1024
 // A client that stops reading must not hold the UI thread, which answers on its socket.
 @(private)
 SEND_TIMEOUT :: 5 * time.Second
+@(private)
+READ_CHUNK_BYTES :: 16 * 1024
+// An HTTP request whose headers go past this ends the connection.
+@(private)
+MAX_HEADERS_BYTES :: 64 * 1024
+@(private)
+HTTP_HEAD_END :: "\r\n\r\n"
+
+// RFC 6455: the opcodes (from WS_OP_CONTROL on, control frames, whole and at most WS_MAX_CONTROL_PAYLOAD long).
+@(private) WS_OP_CONTINUATION :: 0x0
+@(private) WS_OP_TEXT :: 0x1
+@(private) WS_OP_BINARY :: 0x2
+@(private) WS_OP_CONTROL :: 0x8
+@(private) WS_OP_CLOSE :: 0x8
+@(private) WS_OP_PING :: 0x9
+@(private) WS_OP_PONG :: 0xA
+@(private) WS_MAX_CONTROL_PAYLOAD :: 125
+// The header's length field: below WS_LEN_16, the length itself; these two say a longer field follows.
+@(private) WS_LEN_16 :: 126
+@(private) WS_LEN_64 :: 127
+// Lengths from here on need the 64-bit field.
+@(private) WS_LEN_16_LIMIT :: 65536
+// A server frame's header: with the 16-bit length, with the 64-bit one.
+@(private) WS_HEAD_16_BYTES :: 4
+@(private) WS_HEAD_64_BYTES :: 10
+@(private) WS_MASK_BYTES :: 4
 
 @(private)
 Message :: struct {
@@ -69,7 +95,7 @@ Reader :: struct {
 
 @(private)
 read_more :: proc(r: ^Reader) -> bool {
-	tmp: [16 * 1024]u8
+	tmp: [READ_CHUNK_BYTES]u8
 	n, err := net.recv_tcp(r.sock, tmp[:])
 	if err != nil || n <= 0 { return false }
 	append(&r.buf, ..tmp[:n])
@@ -100,12 +126,12 @@ conn_loop :: proc(c: ^Conn) {
 	end := -1
 	for end < 0 {
 		if !read_more(&r) { return }
-		end = strings.index(string(r.buf[:]), "\r\n\r\n")
-		if len(r.buf) > 64 * 1024 { return }
+		end = strings.index(string(r.buf[:]), HTTP_HEAD_END)
+		if len(r.buf) > MAX_HEADERS_BYTES { return }
 	}
 	head := strings.clone(string(r.buf[:end]))
 	defer delete(head)
-	remove_range(&r.buf, 0, end + 4)
+	remove_range(&r.buf, 0, end + len(HTTP_HEAD_END))
 	lines := strings.split_lines(head)
 	defer delete(lines)
 	if len(lines) == 0 { return }
@@ -171,30 +197,30 @@ conn_loop :: proc(c: ^Conn) {
 		op := frame[0] & 0x0f
 		if frame[1] & 0x80 == 0 { return }   // (a client must mask its frames)
 		n := u64(frame[1] & 0x7f)
-		if op >= 0x8 && (n > 125 || !fin) { return }   // (a control frame is short and whole)
-		if n >= 126 {
+		if op >= WS_OP_CONTROL && (n > WS_MAX_CONTROL_PAYLOAD || !fin) { return }   // (a control frame is short and whole)
+		if n >= WS_LEN_16 {
 			clear(&frame)
-			k := n == 126 ? 2 : 8
+			k := n == WS_LEN_16 ? 2 : 8
 			if !read_exact(&r, k, &frame) { return }
 			n = 0
 			for b in frame[:k] { n = n << 8 | u64(b) }
 		}
 		if n > MAX_MESSAGE { return }
-		mask: [4]u8
+		mask: [WS_MASK_BYTES]u8
 		clear(&frame)
-		if !read_exact(&r, 4, &frame) { return }
-		copy(mask[:], frame[:4])
+		if !read_exact(&r, WS_MASK_BYTES, &frame) { return }
+		copy(mask[:], frame[:WS_MASK_BYTES])
 		clear(&frame)
 		if !read_exact(&r, int(n), &frame) { return }
-		for &b, i in frame { b ~= mask[i % 4] }
+		for &b, i in frame { b ~= mask[i % WS_MASK_BYTES] }
 		switch op {
-		case 0x8:   // close
-			send_frame(c, 0x8, frame[:min(len(frame), 2)])
+		case WS_OP_CLOSE:
+			send_frame(c, WS_OP_CLOSE, frame[:min(len(frame), 2)])
 			return
-		case 0x9:   // ping
-			send_frame(c, 0xA, frame[:])
-		case 0xA:   // pong
-		case 0x0, 0x1, 0x2:
+		case WS_OP_PING:
+			send_frame(c, WS_OP_PONG, frame[:])
+		case WS_OP_PONG:
+		case WS_OP_CONTINUATION, WS_OP_TEXT, WS_OP_BINARY:
 			if len(msg) + len(frame) > MAX_MESSAGE { return }   // (the frames of one message add up)
 			append(&msg, ..frame[:])
 			if fin {
@@ -247,21 +273,21 @@ send_frame :: proc(c: ^Conn, op: u8, payload: []u8) -> bool {
 	sync.lock(&c.write)
 	defer sync.unlock(&c.write)
 	if c.closed { return false }
-	head: [10]u8
+	head: [WS_HEAD_64_BYTES]u8
 	head[0] = 0x80 | op
 	k := 2
 	n := len(payload)
 	switch {
-	case n < 126:
+	case n < WS_LEN_16:
 		head[1] = u8(n)
-	case n < 65536:
-		head[1] = 126
+	case n < WS_LEN_16_LIMIT:
+		head[1] = WS_LEN_16
 		head[2], head[3] = u8(n >> 8), u8(n)
-		k = 4
+		k = WS_HEAD_16_BYTES
 	case:
-		head[1] = 127
+		head[1] = WS_LEN_64
 		for i in 0 ..< 8 { head[2 + i] = u8(u64(n) >> uint(56 - 8 * i)) }
-		k = 10
+		k = WS_HEAD_64_BYTES
 	}
 	if send_all(c, head[:k]) && send_all(c, payload) { return true }
 	net.shutdown(c.sock, .Both)   // (half a frame was sent, or the client stopped reading: the connection is over)
@@ -269,4 +295,4 @@ send_frame :: proc(c: ^Conn, op: u8, payload: []u8) -> bool {
 }
 
 @(private)
-send_text :: proc(c: ^Conn, text: string) -> bool { return send_frame(c, 0x1, transmute([]u8)text) }
+send_text :: proc(c: ^Conn, text: string) -> bool { return send_frame(c, WS_OP_TEXT, transmute([]u8)text) }
