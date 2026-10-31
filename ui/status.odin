@@ -83,8 +83,10 @@ history_at :: proc(h: ^Frame_History, i: int) -> ^History_Sample {
 
 history_last :: proc(h: ^Frame_History) -> ^History_Sample { return history_at(h, h.count - 1) }
 
+HISTORY_TAG_LOOKBACK :: 16
+
 // The most recent sample with this tag, looking back at most `within` samples (nil: none).
-history_find_tag :: proc(h: ^Frame_History, tag: u64, within := 16) -> ^History_Sample {
+history_find_tag :: proc(h: ^Frame_History, tag: u64, within := HISTORY_TAG_LOOKBACK) -> ^History_Sample {
 	for k in 0 ..< min(within, h.count) {
 		s := history_at(h, h.count - 1 - k)
 		if s.tag == tag { return s }
@@ -190,6 +192,13 @@ graph_slots :: proc(h: ^Frame_History, opts: Frame_Graph_Opts, width: f32) -> (s
 	return
 }
 
+// graph_scale: the quantile of the bars that sets the scale and the room above it; a tallest bar within SPIKE_RATIO of
+// that is shown whole, with TOP_MARGIN above it.
+@(private = "file") GRAPH_SCALE_QUANTILE :: 0.9
+@(private = "file") GRAPH_SCALE_HEADROOM :: 1.25
+@(private = "file") GRAPH_SPIKE_RATIO :: 1.5
+@(private = "file") GRAPH_TOP_MARGIN :: 1.08
+
 // Height the graph's top stands for: at least `scale` (else the budget), enough for most bars shown (90 % of them
 // with some room); a rare spike far above them is cut and marked rather than flattening every other bar. At most
 // `max_scale`.
@@ -202,8 +211,8 @@ graph_scale :: proc(h: ^Frame_History, opts: Frame_Graph_Opts) -> f32 {
 		for k in 0 ..< n { totals[k] = sample_total(history_at(h, h.count - n + k), series) }
 		slice.sort(totals)
 		tallest := totals[n - 1]
-		most := totals[clamp(int(math.ceil(0.9 * f32(n))) - 1, 0, n - 1)] * 1.25
-		top = max(top, tallest <= most * 1.5 ? tallest * 1.08 : most)
+		most := totals[clamp(int(math.ceil(GRAPH_SCALE_QUANTILE * f32(n))) - 1, 0, n - 1)] * GRAPH_SCALE_HEADROOM
+		top = max(top, tallest <= most * GRAPH_SPIKE_RATIO ? tallest * GRAPH_TOP_MARGIN : most)
 	}
 	if opts.max_scale > 0 { top = min(top, opts.max_scale) }
 	return top > 0 ? top : 1
@@ -238,18 +247,30 @@ frame_graph :: proc(id: string, h: ^Frame_History, opts: Frame_Graph_Opts) -> (r
 	return
 }
 
+@(private = "file") GRAPH_TRACK_ALPHA_FACTOR :: 0.55
+@(private = "file") GRAPH_BUDGET_ALPHA_FACTOR :: 0.85
+@(private = "file") GRAPH_HOVER_ALPHA :: 0.12
+@(private = "file") GRAPH_GAP_MIN_BAR_PX :: 3         // narrower bars have no gap between them
+@(private = "file") GRAPH_MIN_SEGMENT_PX :: 0.25      // a part of a bar thinner than this is not drawn
+@(private = "file") GRAPH_CAP_PX :: 1.5
+@(private = "file") GRAPH_DASH_PX :: 4
+@(private = "file") GRAPH_DASH_GAP_PX :: 3
+// A highlighted bar: its colour * gain + lift.
+@(private = "file") GRAPH_LIT_GAIN :: 1.25
+@(private = "file") GRAPH_LIT_LIFT :: 0.08
+
 @(private)
 graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Graph_Draw)(user)
 	h := &d.h
 	r := b.rect
 	sc := scale()
-	draw.rect(dc, r, tuned(Color{d.track.r, d.track.g, d.track.b, d.track.a * 0.55}), rad(b.font_size * 0.2))
+	draw.rect(dc, r, tuned(Color{d.track.r, d.track.g, d.track.b, d.track.a * GRAPH_TRACK_ALPHA_FACTOR}), rad(b.font_size * 0.2))
 	height := r.max.y - r.min.y
 	slots, w, first := graph_slots(h, d.opts, r.max.x - r.min.x)
-	gap: f32 = w >= 3 * sc ? max(1, math.floor(sc)) : 0
+	gap: f32 = w >= GRAPH_GAP_MIN_BAR_PX * sc ? max(1, math.floor(sc)) : 0
 	y_of :: proc(v, top, height: f32, bottom: f32) -> f32 { return bottom - clamp(v / top, 0, 1) * height }
-	cap_h := max(1, math.round(1.5 * sc))
+	cap_h := max(1, math.round(GRAPH_CAP_PX * sc))
 	for k in 0 ..< slots {
 		i := first + k
 		if i < 0 || i >= h.count { continue }
@@ -267,9 +288,9 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			y0 := y_of(acc + v, d.scale, height, r.max.y)
 			y1 := y_of(acc, d.scale, height, r.max.y)
 			acc += v
-			if y1 - y0 < 0.25 { continue }
+			if y1 - y0 < GRAPH_MIN_SEGMENT_PX { continue }
 			col := d.colors[c]
-			if lit { col = draw.Color{min(col.r * 1.25 + 0.08, 1), min(col.g * 1.25 + 0.08, 1), min(col.b * 1.25 + 0.08, 1), col.a} }
+			if lit { col = draw.Color{min(col.r * GRAPH_LIT_GAIN + GRAPH_LIT_LIFT, 1), min(col.g * GRAPH_LIT_GAIN + GRAPH_LIT_LIFT, 1), min(col.b * GRAPH_LIT_GAIN + GRAPH_LIT_LIFT, 1), col.a} }
 			draw.rect(dc, {{x0, y0}, {x1, y1}}, col)
 		}
 		// over a threshold (the history's own series), or past the top: a cap mark
@@ -281,16 +302,16 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			draw.rect(dc, {{x0, top}, {x1, min(top + cap_h, r.max.y)}}, mark)
 		}
 		if i == d.hovered {
-			draw.rect(dc, {{x0, r.min.y}, {x1, r.max.y}}, tuned(Color{d.hover_c.r, d.hover_c.g, d.hover_c.b, 0.12}))
+			draw.rect(dc, {{x0, r.min.y}, {x1, r.max.y}}, tuned(Color{d.hover_c.r, d.hover_c.g, d.hover_c.b, GRAPH_HOVER_ALPHA}))
 		}
 	}
 	// the budget: a dashed line
 	if d.opts.budget > 0 && d.opts.budget < d.scale {
 		y := math.round(y_of(d.opts.budget, d.scale, height, r.max.y))
-		dash, space := 4 * sc, 3 * sc
+		dash, space := GRAPH_DASH_PX * sc, GRAPH_DASH_GAP_PX * sc
 		lw := max(1, math.round(sc))
 		c := d.budget_c
-		c.a *= 0.85
+		c.a *= GRAPH_BUDGET_ALPHA_FACTOR
 		for x := r.min.x; x < r.max.x; x += dash + space {
 			draw.rect(dc, {{x, y - lw * 0.5}, {min(x + dash, r.max.x), y + lw * 0.5}}, c)
 		}
@@ -415,6 +436,9 @@ stat_heading :: proc(id, text: string, width: f32) {
 ////////////////////////////////
 // Popover
 
+// A popover's height before it was measured.
+@(private = "file") POPOVER_FIRST_HEIGHT_EM :: 12
+
 Popover_Side :: enum u8 { Above, Below }
 
 // `if popover("###stats", anchor_rect, width, .Above) { ... }`: a floating panel next to `anchor` (above or below it,
@@ -427,7 +451,7 @@ popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above
 	em := font_size()
 	key := key_from_string(s.root.key, id)
 	prev := s.boxes[key]
-	size := prev != nil ? prev.size : Vec2{width, em * 12}
+	size := prev != nil ? prev.size : Vec2{width, em * POPOVER_FIRST_HEIGHT_EM}
 	gap := em * 0.35
 	x := align_right ? anchor.max.x - size.x : anchor.min.x
 	y := side == .Above ? anchor.min.y - gap - size.y : anchor.max.y + gap

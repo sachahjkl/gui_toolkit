@@ -14,6 +14,14 @@ import "../platform"
 DISABLED_KEEP_DARK :: 0.4
 DISABLED_KEEP_LIGHT :: 0.65
 
+// Rec. 709 luma of a colour.
+@(private = "file") LUMA_R :: 0.2126
+@(private = "file") LUMA_G :: 0.7152
+@(private = "file") LUMA_B :: 0.0722
+// A box lit by set_inspected.
+@(private = "file") INSPECTED_FILL_COLOR :: Color{0.24, 0.55, 1, 0.28}
+@(private = "file") INSPECTED_EDGE_COLOR :: Color{0.24, 0.55, 1, 0.9}
+
 // The UI's translucent colors (hover tints, glows, sheens, scrollbars, theme entries with an alpha) are tuned for
 // blending in linear light. Drawn into an sRGB target (render.Blend_Space.Srgb, a web browser's choice), `tuned`
 // changes their alpha so they look the same over the theme's background (or `over`); corner gradients of the UI are
@@ -31,7 +39,7 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	bg := color_from_tags(s, 0, "background")
 	s.space = draw.blend_space(dc)
 	s.backdrop = {bg.r, bg.g, bg.b, 1}
-	lum := clamp(0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b, 0, 1)
+	lum := clamp(LUMA_R * bg.r + LUMA_G * bg.g + LUMA_B * bg.b, 0, 1)
 	s.disabled_keep = math.lerp(f32(DISABLED_KEEP_DARK), f32(DISABLED_KEEP_LIGHT), lum)
 	if s.space != .Linear {
 		s.disabled_keep = tuned(color_from_tags(s, 0, "text") * {1, 1, 1, 0} + {0, 0, 0, s.disabled_keep}).a
@@ -40,11 +48,23 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	draw_box(s, dc, s.root, s.scale)
 	autoscroll_draw(s, dc)   // the autoscroll anchor marker, over everything (autoscroll_region.odin)
 	if b := s.boxes[s.inspected]; s.inspected != 0 && box_current(s, b) {
-		draw.rect(dc, b.rect, {0.24, 0.55, 1, 0.28})
-		draw.rect(dc, b.rect, {0.24, 0.55, 1, 0.9}, 0, 1)
+		draw.rect(dc, b.rect, INSPECTED_FILL_COLOR)
+		draw.rect(dc, b.rect, INSPECTED_EDGE_COLOR, 0, 1)
 	}
 	draw.set_interpolation(dc, interp)
 }
+
+// Below these a state value or an alpha draws nothing.
+@(private = "file") DRAW_INVISIBLE_EPS :: 0.001
+@(private = "file") DISABLED_FADE_EPS :: 0.005
+@(private = "file") FOCUS_T_EPS :: 0.01
+@(private = "file") BORDER_ALPHA_EPS :: 0.002
+@(private = "file") DROP_SHADOW_SPREAD_PX :: 8
+@(private = "file") DROP_SHADOW_OFFSET_PX :: 4
+@(private = "file") DROP_SHADOW_SOFT_PX :: 8
+@(private = "file") FOCUS_GLOW_PX :: 5
+@(private = "file") FOCUS_GLOW_ALPHA :: 0.55
+@(private = "file") FOCUS_RING_PX :: 1.5
 
 @(private)
 draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
@@ -53,35 +73,35 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	flags := b.flags
 	if b.transparency != 0 { draw.push_alpha(dc, 1 - b.transparency) }
 	// disabled: the outermost disabled box fades itself and its subtree (nested disabled boxes do not compound)
-	fade := b.disabled_t > 0.005 && (b.parent == nil || b.parent.disabled_t <= 0.005)
+	fade := b.disabled_t > DISABLED_FADE_EPS && (b.parent == nil || b.parent.disabled_t <= DISABLED_FADE_EPS)
 	if fade { draw.push_alpha(dc, math.lerp(f32(1), s.disabled_keep, b.disabled_t)) }
-	squished := b.squish > 0.001
+	squished := b.squish > DRAW_INVISIBLE_EPS
 	if squished { draw.push_scale(dc, draw.rect_center(r), 1 - b.squish) }
 
 	if .Draw_Shadow in flags {
 		sc := tuned(color_from_tags(s, b.tags_key, "drop_shadow"))
-		draw.rect(dc, draw.rect_shift(draw.rect_pad(r, 8 * scale), {4 * scale, 4 * scale}), sc, radius, 0, 8 * scale)
+		draw.rect(dc, draw.rect_shift(draw.rect_pad(r, DROP_SHADOW_SPREAD_PX * scale), {DROP_SHADOW_OFFSET_PX * scale, DROP_SHADOW_OFFSET_PX * scale}), sc, radius, 0, DROP_SHADOW_SOFT_PX * scale)
 	}
 	keyboard_focus := s.focus_visible && b.key == s.focus_key
-	focus_ring := (.Draw_Focus_Ring in flags && b.focus_t > 0.01) || keyboard_focus
+	focus_ring := (.Draw_Focus_Ring in flags && b.focus_t > FOCUS_T_EPS) || keyboard_focus
 	if focus_ring && s.theme != nil && s.theme.finish != .Flat {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
-		c.a *= (keyboard_focus ? 1 : b.focus_t) * 0.55
-		glow := 5 * scale
+		c.a *= (keyboard_focus ? 1 : b.focus_t) * FOCUS_GLOW_ALPHA
+		glow := FOCUS_GLOW_PX * scale
 		draw.rect(dc, draw.rect_pad(r, glow), tuned(c), radius + glow, 0, glow)
 	}
 	if .Draw_Background in flags {
 		paint_rect(dc, r, b.bg, radius, box_sheen(s, b))
 	}
-	if .Draw_Hot_Effects in flags && b.hot_t > 0.001 {
+	if .Draw_Hot_Effects in flags && b.hot_t > DRAW_INVISIBLE_EPS {
 		// the theme's step toward its tint, over what is actually under the box (theme_default.odin: state_entries)
 		hover := color_from_tags(s, b.tags_key, "hover_fill")
 		press := color_from_tags(s, b.tags_key, "press_fill")
 		held := b.active_t * b.hot_t   // pressed, and the pointer still on it
 		h := draw.mix(hover, press, held)
 		h.a = math.lerp(hover.a * b.hot_t, press.a, held)
-		if h.a > 0.001 {
+		if h.a > DRAW_INVISIBLE_EPS {
 			h.a = draw.alpha_like_srgb(s.space, h, h.a, box_under(b))
 			draw.rect(dc, r, h, radius)
 		}
@@ -98,10 +118,10 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .Clip in flags { draw.pop_clip(dc) }
 	if .View_Scroll_Y in flags { draw_scrollbar(s, dc, b) }
 
-	if .Draw_Border in flags && b.border.a > 0.002 {
+	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS {
 		border := b.border
-		if b.hot_t > 0.001 && b.focus_t < 0.5 && .Clickable in flags {
-			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > 0.001 { border = srgb_step(border, k, k.a * b.hot_t) }
+		if b.hot_t > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && .Clickable in flags {
+			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > DRAW_INVISIBLE_EPS { border = srgb_step(border, k, k.a * b.hot_t) }
 		}
 		draw.rect(dc, r, border, radius, max(1, math.round(scale)))
 	}
@@ -119,7 +139,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if focus_ring {
 		c := color_from_tags(s, b.tags_key, "focus border")
 		if !keyboard_focus { c.a *= b.focus_t }
-		draw.rect(dc, r, c, radius, 1.5 * scale)
+		draw.rect(dc, r, c, radius, FOCUS_RING_PX * scale)
 	}
 	if squished { draw.pop_xform(dc) }
 	if fade { draw.pop_alpha(dc) }
@@ -148,6 +168,10 @@ backdrop_under :: proc(s: ^State, b: ^Box) -> Color {
 	return color_from_tags(s, b.tags_key, "background")
 }
 
+// The engraving of text on a raised surface: a dark shadow over light text, a light edge under dark text.
+@(private = "file") ENGRAVE_SHADOW_ALPHA :: 0.35
+@(private = "file") ENGRAVE_LIGHT_ALPHA :: 0.75
+
 @(private)
 draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	text := b.text
@@ -158,13 +182,13 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	}
 	pos := text_origin(s, b, {width, b.text_dim.y})
 	if s.theme != nil && s.theme.finish != .Flat {
-		if k := box_sheen(s, b); k > 0.001 {
+		if k := box_sheen(s, b); k > DRAW_INVISIBLE_EPS {
 			// text lighter than what is under it sits in a groove (a dark shadow above); darker text is lit from below. (By
 			// the contrast, not the text alone: grey text on a dark panel took a light edge under it, a pixel low to the eye.)
 			tc := b.text_color
-			lum :: proc(c: Color) -> f32 { return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b }
+			lum :: proc(c: Color) -> f32 { return LUMA_R * c.r + LUMA_G * c.g + LUMA_B * c.b }
 			light := lum(tc) > lum(backdrop_under(s, b))
-			sc := tuned(light ? Color{0, 0, 0, 0.35 * k * tc.a} : Color{1, 1, 1, 0.75 * k * tc.a}, Color{b.bg.r, b.bg.g, b.bg.b, 1})
+			sc := tuned(light ? Color{0, 0, 0, ENGRAVE_SHADOW_ALPHA * k * tc.a} : Color{1, 1, 1, ENGRAVE_LIGHT_ALPHA * k * tc.a}, Color{b.bg.r, b.bg.g, b.bg.b, 1})
 			draw.text(dc, b.font, b.font_size, pos + {0, light ? -1 : 1}, sc, text)
 		}
 	}
@@ -202,11 +226,25 @@ len_utf8 :: proc(r: rune) -> int {
 ////////////////////////////////
 // Finishes
 
+// .Gradient: how far the top goes toward white and the bottom toward black; the highlight line's inset (of the radius) and alpha.
+@(private = "file") GRADIENT_TOP_WHITE :: 0.50
+@(private = "file") GRADIENT_BOTTOM_BLACK :: 0.14
+@(private = "file") GRADIENT_HIGHLIGHT_INSET :: 0.7
+@(private = "file") GRADIENT_HIGHLIGHT_ALPHA :: 0.30
+// .Glass: the gloss of a saturated (not bright) fill; the four stops of the two halves, top to bottom; the inner rim's alpha.
+@(private = "file") GLASS_BRIGHT_LUM :: 0.6
+@(private = "file") GLASS_SATURATED_GLOSS :: 0.6
+@(private = "file") GLASS_TOP_WHITE :: 0.75
+@(private = "file") GLASS_MID_WHITE :: 0.35
+@(private = "file") GLASS_LOWER_BLACK :: 0.06
+@(private = "file") GLASS_BOTTOM_WHITE :: 0.22
+@(private = "file") GLASS_RIM_ALPHA :: 0.55
+
 // Fills a raised surface with the theme's finish (see `Finish`). `k` (0..1) is how strongly: 0 is a plain fill.
 // Custom draw procs use it for their accent fills so they match the buttons.
 paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1) {
 	finish := g.theme != nil ? g.theme.finish : .Flat
-	if finish == .Flat || k <= 0.001 || c.a <= 0.001 || r.max.y - r.min.y < 2 {
+	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
 		draw.rect(dc, r, c, radius)
 		return
 	}
@@ -216,24 +254,24 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 	switch finish {
 	case .Flat:
 	case .Gradient:
-		top := draw.mix(c, white, 0.50 * k)
-		bot := draw.mix(c, black, 0.14 * k)
+		top := draw.mix(c, white, GRADIENT_TOP_WHITE * k)
+		bot := draw.mix(c, black, GRADIENT_BOTTOM_BLACK * k)
 		draw.rect_corners(dc, r, {top, bot, top, bot}, {radius, radius, radius, radius})
-		inset := min(radius, (r.max.x - r.min.x) * 0.5) * 0.7
-		draw.rect(dc, {{r.min.x + inset, r.min.y + px}, {r.max.x - inset, r.min.y + 2 * px}}, tuned({1, 1, 1, 0.30 * k * c.a}, top))
+		inset := min(radius, (r.max.x - r.min.x) * 0.5) * GRADIENT_HIGHLIGHT_INSET
+		draw.rect(dc, {{r.min.x + inset, r.min.y + px}, {r.max.x - inset, r.min.y + 2 * px}}, tuned({1, 1, 1, GRADIENT_HIGHLIGHT_ALPHA * k * c.a}, top))
 	case .Glass:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
 		// saturated fills keep more of their colour so white text stays readable on them
-		lum := 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
-		gloss := k * (lum > 0.6 ? 1 : 0.6)
-		t0 := draw.mix(c, white, 0.75 * gloss)
-		t1 := draw.mix(c, white, 0.35 * gloss)
-		b0 := draw.mix(c, black, 0.06 * gloss)
-		b1 := draw.mix(c, white, 0.22 * gloss)
+		lum := LUMA_R * c.r + LUMA_G * c.g + LUMA_B * c.b
+		gloss := k * (lum > GLASS_BRIGHT_LUM ? 1 : GLASS_SATURATED_GLOSS)
+		t0 := draw.mix(c, white, GLASS_TOP_WHITE * gloss)
+		t1 := draw.mix(c, white, GLASS_MID_WHITE * gloss)
+		b0 := draw.mix(c, black, GLASS_LOWER_BLACK * gloss)
+		b1 := draw.mix(c, white, GLASS_BOTTOM_WHITE * gloss)
 		rr := min(radius, (r.max.y - r.min.y) * 0.5, (r.max.x - r.min.x) * 0.5)
 		draw.rect_corners(dc, {r.min, {r.max.x, mid}}, {t0, t1, t0, t1}, {rr, 0, rr, 0})
 		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr, 0, rr})
-		draw.rect(dc, draw.rect_pad(r, -px), tuned({1, 1, 1, 0.55 * k * c.a}, Color{c.r, c.g, c.b, 1}), max(0, rr - px), px)
+		draw.rect(dc, draw.rect_pad(r, -px), tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1}), max(0, rr - px), px)
 	}
 }
 

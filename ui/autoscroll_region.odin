@@ -145,22 +145,36 @@ autoscroll_draw :: proc(s: ^State, dc: ^draw.Context) {
 	autoscroll_draw_marker(dc, s.auto.anchor, s.auto.axes, s.scale, color_from_tags(s, 0, "background"), color_from_tags(s, 0, "text"))
 }
 
+// The marker, in logical pixels.
+@(private = "file") AUTOSCROLL_MARKER_RADIUS_PX :: 13
+@(private = "file") AUTOSCROLL_MARKER_PLATE_ALPHA :: 0.9
+@(private = "file") AUTOSCROLL_MARKER_PLATE_SOFT_PX :: 1.5
+@(private = "file") AUTOSCROLL_MARKER_RING_ALPHA :: 0.5
+@(private = "file") AUTOSCROLL_MARKER_RING_PX :: 1.5
+@(private = "file") AUTOSCROLL_MARKER_DOT_ALPHA :: 0.55
+@(private = "file") AUTOSCROLL_MARKER_DOT_RADIUS_PX :: 2
+@(private = "file") AUTOSCROLL_MARKER_DOT_MIN_RADIUS_PX :: 1.5
+@(private = "file") AUTOSCROLL_MARKER_ARROW_ALPHA :: 0.75
+@(private = "file") AUTOSCROLL_MARKER_ARROW_GAP_PX :: 6
+@(private = "file") AUTOSCROLL_CHEVRON_LENGTH_PX :: 4
+@(private = "file") AUTOSCROLL_CHEVRON_STROKE_PX :: 1.5
+
 // Draws the autoscroll anchor marker at `center` (host pixels): a soft round plate with a thin ring, a centre dot and
 // chevrons for the directions `axes` scrolls. Public so an application that runs its own session (a document view not
 // in the box tree, e.g. a web page) draws the same marker. `plate` is the fill colour, `ring` the ink; `scale` scales
 // every measurement (dpi * zoom). Colours are passed opaque; this proc sets their alpha.
 autoscroll_draw_marker :: proc(dc: ^draw.Context, center: Vec2, axes: Autoscroll_Axes, scale: f32, plate, ring: Color) {
 	c := center
-	r := math.round(13 * scale)
-	disc := plate; disc.a = 0.9
-	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, disc, r, 0, 1.5 * scale)
-	rc := ring; rc.a = 0.5
-	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, rc, r, max(1, math.round(1.5 * scale)))
-	dot := ring; dot.a = 0.55
-	dr := max(1.5, math.round(2 * scale))
+	r := math.round(AUTOSCROLL_MARKER_RADIUS_PX * scale)
+	disc := plate; disc.a = AUTOSCROLL_MARKER_PLATE_ALPHA
+	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, disc, r, 0, AUTOSCROLL_MARKER_PLATE_SOFT_PX * scale)
+	rc := ring; rc.a = AUTOSCROLL_MARKER_RING_ALPHA
+	draw.rect(dc, {{c.x - r, c.y - r}, {c.x + r, c.y + r}}, rc, r, max(1, math.round(AUTOSCROLL_MARKER_RING_PX * scale)))
+	dot := ring; dot.a = AUTOSCROLL_MARKER_DOT_ALPHA
+	dr := max(AUTOSCROLL_MARKER_DOT_MIN_RADIUS_PX, math.round(AUTOSCROLL_MARKER_DOT_RADIUS_PX * scale))
 	draw.rect(dc, {{c.x - dr, c.y - dr}, {c.x + dr, c.y + dr}}, dot, dr)
-	arrow := ring; arrow.a = 0.75
-	gap := math.round(6 * scale)
+	arrow := ring; arrow.a = AUTOSCROLL_MARKER_ARROW_ALPHA
+	gap := math.round(AUTOSCROLL_MARKER_ARROW_GAP_PX * scale)
 	if axes == .Y || axes == .Both {
 		autoscroll_chevron(dc, {c.x, c.y - gap}, .Up, scale, arrow)
 		autoscroll_chevron(dc, {c.x, c.y + gap}, .Down, scale, arrow)
@@ -177,8 +191,8 @@ autoscroll_draw_marker :: proc(dc: ^draw.Context, center: Vec2, axes: Autoscroll
 // primitive, so two thin bars meeting at the point make the arrowhead.
 @(private)
 autoscroll_chevron :: proc(dc: ^draw.Context, tip: Vec2, dir: Chevron_Dir, scale: f32, c: Color) {
-	l := math.round(4 * scale)     // half-length of each stroke
-	t := max(1, math.round(1.5 * scale))   // stroke thickness
+	l := math.round(AUTOSCROLL_CHEVRON_LENGTH_PX * scale)     // half-length of each stroke
+	t := max(1, math.round(AUTOSCROLL_CHEVRON_STROKE_PX * scale))   // stroke thickness
 	// two dots stepping back from the tip make a compact arrowhead that reads at any size
 	step :: proc(tip: Vec2, dir: Chevron_Dir, i: f32, l: f32) -> (a, b: Vec2) {
 		d := l * i

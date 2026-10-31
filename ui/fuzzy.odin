@@ -71,6 +71,8 @@ fuzzy_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
+@(private = "file") FUZZY_HIGHLIGHT_ALPHA :: 0.30
+
 // A label whose matched ranges (from `fuzzy_find`) are highlighted with the accent color.
 label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 	b := build_box({.Draw_Text}, text)
@@ -80,12 +82,21 @@ label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 		copy(d.ranges, ranges)
 		d.text = b.text
 		d.color = color("accent")
-		d.color.a *= 0.30
+		d.color.a *= FUZZY_HIGHLIGHT_ALPHA
 		d.color = tuned(d.color)
 		b.custom, b.custom_user = fuzzy_draw, d
 	}
 	return signal(b)
 }
+
+// fuzzy_score: what a matched character earns, by where it is; what a gap (capped) and the text's length cost.
+@(private = "file") FUZZY_SCORE_CHAR :: 16
+@(private = "file") FUZZY_SCORE_TEXT_START :: 20
+@(private = "file") FUZZY_SCORE_WORD_START :: 18
+@(private = "file") FUZZY_SCORE_CAMEL_START :: 14
+@(private = "file") FUZZY_SCORE_ADJACENT :: 24
+@(private = "file") FUZZY_GAP_PENALTY_MAX :: 12
+@(private = "file") FUZZY_BYTES_PER_LENGTH_POINT :: 8
 
 // Subsequence matching, as in a picker or a command palette: the characters of `needle` (spaces ignored) occur in `hay`
 // in that order, case-insensitively, not necessarily side by side ("cs5" finds "claude-sonnet-5"). The match is the
@@ -119,24 +130,24 @@ fuzzy_score :: proc(needle, hay: string, allocator := context.temp_allocator) ->
 	out := make([dynamic]Fuzzy_Range, allocator)
 	for p, j in pos {
 		w := utf8.rune_size(want[j])
-		score += 16
+		score += FUZZY_SCORE_CHAR
 		if p == 0 {
-			score += 20
+			score += FUZZY_SCORE_TEXT_START
 		} else {
 			prev, _ := utf8.decode_last_rune_in_string(hay[:p])
 			cur, _ := utf8.decode_rune_in_string(hay[p:])
 			if !unicode.is_letter(prev) && !unicode.is_digit(prev) {
-				score += 18
+				score += FUZZY_SCORE_WORD_START
 			} else if unicode.is_lower(prev) && unicode.is_upper(cur) {
-				score += 14
+				score += FUZZY_SCORE_CAMEL_START
 			}
 		}
 		if j > 0 {
 			gap := p - (pos[j - 1] + utf8.rune_size(want[j - 1]))
-			if gap == 0 { score += 24 } else { score -= min(gap, 12) }
+			if gap == 0 { score += FUZZY_SCORE_ADJACENT } else { score -= min(gap, FUZZY_GAP_PENALTY_MAX) }
 		}
 		if n := len(out); n > 0 && out[n - 1][1] == p { out[n - 1][1] = p + w } else { append(&out, Fuzzy_Range{p, p + w}) }
 	}
-	score -= len(hay) / 8
+	score -= len(hay) / FUZZY_BYTES_PER_LENGTH_POINT
 	return score, out[:], true
 }

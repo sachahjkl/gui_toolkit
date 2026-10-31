@@ -69,8 +69,15 @@ A11y_Part :: struct {
 	focused: bool,                     // the focus is on it (the box's focus goes to it)
 }
 
+// Mixed into a box's key for the ids of its parts and of its text runs.
+@(private = "file") A11Y_PART_ID_SALT :: 0xa11f_0000
+@(private = "file") A11Y_RUN_ID_SALT :: 0xa11e_0000
+// A screen reader's scroll request: by a page or by a line.
+@(private = "file") A11Y_SCROLL_PAGE_FRACTION :: 0.9
+@(private = "file") A11Y_SCROLL_LINE_EM :: 3
+
 // The id of part `i` of box `b` (stable while the box and the part's place are).
-a11y_part_id :: proc(b: ^Box, i: int) -> u64 { return u64(key_from_u64(b.key, 0xa11f_0000 + u64(i))) }
+a11y_part_id :: proc(b: ^Box, i: int) -> u64 { return u64(key_from_u64(b.key, A11Y_PART_ID_SALT + u64(i))) }
 
 // The text of an editable box, for reading by character, word and line (text runs, one per visual line).
 A11y_Text :: struct {
@@ -305,8 +312,8 @@ a11y_route :: proc(s: ^State, r: platform.A11y_Request) {
 	case .Scroll_Up, .Scroll_Down, .Scroll_Left, .Scroll_Right:
 		if .View_Scroll_X in b.flags || .View_Scroll_Y in b.flags {
 			page := r.data == .Scroll_Unit && r.num == 1
-			sy := page ? b.size.y * 0.9 : b.font_size * 3
-			sx := page ? b.size.x * 0.9 : b.font_size * 3
+			sy := page ? b.size.y * A11Y_SCROLL_PAGE_FRACTION : b.font_size * A11Y_SCROLL_LINE_EM
+			sx := page ? b.size.x * A11Y_SCROLL_PAGE_FRACTION : b.font_size * A11Y_SCROLL_LINE_EM
 			#partial switch r.action {
 			case .Scroll_Up:    b.view_target.y -= sy
 			case .Scroll_Down:  b.view_target.y += sy
@@ -594,7 +601,7 @@ a11y_walk :: proc(s: ^State, u: ^platform.A11y_Update, b: ^Box, focus: Key, focu
 }
 
 // The id of text run `i` of box `b`.
-a11y_run_id :: proc(b: ^Box, i: int) -> u64 { return u64(key_from_u64(b.key, 0xa11e_0000 + u64(i))) }
+a11y_run_id :: proc(b: ^Box, i: int) -> u64 { return u64(key_from_u64(b.key, A11Y_RUN_ID_SALT + u64(i))) }
 
 // Text runs (one per visual line) under an editable text's node: their ids go to s.a11y.kids.
 @(private)

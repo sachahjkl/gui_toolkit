@@ -23,6 +23,13 @@ import "core:unicode/utf8"
 // the keyboard; the active row is drawn with the "selected" tags (strong while the list is focused).
 
 LIST_TYPEAHEAD_MS :: 900.0
+@(private) LIST_TYPED_MAX_BYTES :: 32
+// Frames the active row keeps being scrolled into view (its rect is the last frame's).
+@(private) LIST_REVEAL_FRAMES :: 3
+// Rows measured for the average height behind Page Up / Page Down.
+@(private = "file") LIST_PAGE_SAMPLE_ROWS :: 64
+// Bytes of a label lowered per byte of the prefix (a rune's lower case may take another number of bytes).
+@(private = "file") LIST_LOWER_BYTES_FACTOR :: 4
 
 List_State :: struct {
 	sel:         int,     // active row (-1: none)
@@ -34,7 +41,7 @@ List_State :: struct {
 	count:       int,     // rows built last frame
 	selectable:  [dynamic]bool,   // last frame, per row
 	building:    [dynamic]bool,   // this frame
-	typed:       [32]u8,
+	typed:       [LIST_TYPED_MAX_BYTES]u8,
 	typed_len:   int,
 	typed_ms:    f64,
 	seek:        bool,    // type-ahead pending: resolved while the rows are built
@@ -62,7 +69,7 @@ list_seek_row :: proc(st: ^List_State, i: int, label: string) {
 	for r in typed { if r != first_r { same = false; break } }
 	prefix := same ? typed[:first_n] : typed
 	if len(label) < len(prefix) { return }
-	if strings.has_prefix(strings.to_lower(label[:min(len(label), len(prefix) * 4)], context.temp_allocator), prefix) {
+	if strings.has_prefix(strings.to_lower(label[:min(len(label), len(prefix) * LIST_LOWER_BYTES_FACTOR)], context.temp_allocator), prefix) {
 		if st.seek_first < 0 { st.seek_first = i }
 		after := same ? i > st.sel : i >= st.sel
 		if after && st.seek_after < 0 { st.seek_after = i }
@@ -88,7 +95,7 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 		case .Escape:    st.cancelled = true
 		case:            used = false
 		}
-		if used { s.events.consumed[i] = true; st.reveal = 3 }
+		if used { s.events.consumed[i] = true; st.reveal = LIST_REVEAL_FRAMES }
 	}
 	if len(s.typed) > 0 {
 		if s.time_ms - st.typed_ms > LIST_TYPEAHEAD_MS { st.typed_len = 0 }
@@ -106,7 +113,7 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 // Makes row `i` active and scrolls it into view (e.g. to restore a position).
 list_select :: proc(st: ^List_State, i: int) {
 	st.sel = i
-	st.reveal = 3
+	st.reveal = LIST_REVEAL_FRAMES
 }
 
 @(private)
@@ -159,13 +166,13 @@ list_end :: proc() {
 	}
 	if st.seek {
 		pick := st.seek_after >= 0 ? st.seek_after : st.seek_first
-		if pick >= 0 && pick != st.sel { st.sel = pick; st.changed = true; st.reveal = 3 }
+		if pick >= 0 && pick != st.sel { st.sel = pick; st.changed = true; st.reveal = LIST_REVEAL_FRAMES }
 		st.seek = false
 	}
 	// rows that fit, from the rows of the previous frame (for Page Up / Page Down)
 	if st.count > 0 && b.size.y > 0 {
 		total, n: f32
-		for i in 0 ..< min(st.count, 64) {
+		for i in 0 ..< min(st.count, LIST_PAGE_SAMPLE_ROWS) {
 			if r := box_from_key(key_from_string(b.key, fmt.tprintf("###lrow_%d", i))); r != nil { total += r.size.y; n += 1 }
 		}
 		if n > 0 { st.page_rows = max(int(b.size.y / (total / n)), 1) }

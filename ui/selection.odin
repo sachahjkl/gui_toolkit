@@ -274,6 +274,11 @@ sel_box_at :: proc(s: ^State, p: Vec2) -> Key {
 	return 0
 }
 
+// Vertical distance counts this much more than horizontal (rows first); a point this far past a box's edge is past any
+// of its text.
+@(private = "file") SEL_ROW_WEIGHT :: 4
+@(private = "file") SEL_PAST_EDGE_PX :: 1000
+
 // The selectable box nearest to `p` (a drag that left the text), and the point clamped into it.
 @(private)
 sel_nearest :: proc(s: ^State, p: Vec2) -> (Key, Vec2) {
@@ -285,14 +290,14 @@ sel_nearest :: proc(s: ^State, p: Vec2) -> (Key, Vec2) {
 		if b == nil || sel_kind(b) == .None { continue }
 		r := visible_rect(b)
 		c := Vec2{clamp(p.x, r.min.x, r.max.x - 0.5), clamp(p.y, r.min.y, r.max.y - 0.5)}
-		d := (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y) * 4   // rows first
+		d := (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y) * SEL_ROW_WEIGHT   // rows first
 		if d < best_d { best, best_d, q = k, d, c }
 	}
 	// above a box: its start; below it: its end (what dragging past a paragraph means)
 	if best != 0 {
 		r := visible_rect(s.boxes[best])
-		if p.y < r.min.y { q = {r.min.x - 1000, r.min.y} }
-		if p.y >= r.max.y { q = {r.max.x + 1000, r.max.y - 0.5} }
+		if p.y < r.min.y { q = {r.min.x - SEL_PAST_EDGE_PX, r.min.y} }
+		if p.y >= r.max.y { q = {r.max.x + SEL_PAST_EDGE_PX, r.max.y - 0.5} }
 	}
 	return best, q
 }
@@ -335,6 +340,10 @@ para_at :: proc(text: string, at: int) -> (lo, hi: int) {
 	return
 }
 
+// Presses this close in time and place count up (double, triple click).
+@(private = "file") SEL_MULTI_CLICK_MS :: 450
+@(private = "file") SEL_MULTI_CLICK_SLOP_PX :: 4
+
 // end_build, after layout: the pointer and the keys act on the selection of this build's tree.
 @(private)
 selection_update :: proc(s: ^State) {
@@ -365,7 +374,7 @@ selection_update :: proc(s: ^State) {
 				continue
 			}
 			now := s.time_ms
-			if now - sel.click_ms < 450 && abs(e.pos.x - sel.click_pos.x) < 4 && abs(e.pos.y - sel.click_pos.y) < 4 {
+			if now - sel.click_ms < SEL_MULTI_CLICK_MS && abs(e.pos.x - sel.click_pos.x) < SEL_MULTI_CLICK_SLOP_PX && abs(e.pos.y - sel.click_pos.y) < SEL_MULTI_CLICK_SLOP_PX {
 				sel.clicks = sel.clicks % 3 + 1
 			} else {
 				sel.clicks = 1

@@ -169,6 +169,8 @@ find_collect :: proc(s: ^State) {
 	}
 }
 
+@(private = "file") FIND_MATCH_RADIUS_PX :: 2
+
 // Behind the text of a box: its matches.
 @(private)
 find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
@@ -176,7 +178,7 @@ find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	if !ok { return }
 	all := color_from_tags(s, b.tags_key, "find_match background")
 	cur := color_from_tags(s, b.tags_key, "find_current background")
-	rad := 2 * s.scale
+	rad := FIND_MATCH_RADIUS_PX * s.scale
 	for m in s.find.matches[span[0]:span[1]] {
 		r := Rect{{m.rect.min.x - 1, m.rect.min.y}, {m.rect.max.x + 1, m.rect.max.y}}
 		draw.rect(dc, r, m.index == s.find.current ? cur : all, rad)

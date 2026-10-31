@@ -27,6 +27,11 @@ toast_position :: proc(s: ^State) -> Toast_Position { return s.toast_pos }
 // Call it every frame before `toasts_build`; the default is the whole window.
 set_toast_area :: proc(r: Rect) { g.toast_area = r; g.toast_area_set = true }
 
+@(private = "file") TOAST_LIFE_MS :: 3800
+@(private = "file") TOAST_FADE_IN_S :: 0.25
+@(private = "file") TOAST_FADE_OUT_S :: 0.35
+@(private = "file") TOAST_GLIDE_RATE :: 40
+
 // Queue a message. Toasts fade in, stay ~3.8 s, fade out; click to dismiss. Oldest is replaced when all slots are used.
 toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
 	s := g
@@ -45,7 +50,7 @@ toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
 	if t.len < len(msg) { t.len = font.grapheme_prev(msg, t.len + 1) }   // cut between clusters, not inside a character
 	copy(t.text[:], msg[:t.len])
 	s.toast_serial += 1
-	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_open ? s.time_ms : now_ms(), 3800, s.toast_serial
+	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_open ? s.time_ms : now_ms(), TOAST_LIFE_MS, s.toast_serial
 }
 
 toasts_clear :: proc() { for &t in g.toasts { t.alive = false } }
@@ -93,13 +98,13 @@ toasts_build :: proc() {
 		life := f32(t.life_ms) / 1000
 		ease, alpha: f32 = 1, 1
 		if s.anim_rate != 0 {
-			in_t := clamp(age / 0.25, 0, 1)
+			in_t := clamp(age / TOAST_FADE_IN_S, 0, 1)
 			ease = 1 - (1 - in_t) * (1 - in_t) * (1 - in_t)
-			alpha = min(ease, clamp((life - age) / 0.35, 0, 1))
+			alpha = min(ease, clamp((life - age) / TOAST_FADE_OUT_S, 0, 1))
 			s.anim_busy = true
 		} else {
 			// no animation: just wake up when the oldest one expires
-			left_ms := int((life - age) * 1000) + 5
+			left_ms := int((life - age) * 1000) + WAKE_MARGIN_MS
 			s.wake_ms = s.wake_ms == 0 ? left_ms : min(s.wake_ms, left_ms)
 		}
 		target_y: f32
@@ -110,7 +115,7 @@ toasts_build :: proc() {
 		}
 		id := fmt.tprintf("###toast_%d", t.serial)
 		key := key_from_string(s.root.key, id)
-		y := anim(key_from_string(key, "y"), target_y, 40, target_y)
+		y := anim(key_from_string(key, "y"), target_y, TOAST_GLIDE_RATE, target_y)
 		when #config(TOAST_PROBE, false) { fmt.eprintf("build %d toast serial=%d slot=%d target=%.0f y=%.0f alpha=%.2f age=%.2f\n", s.build_index, t.serial, slot, target_y, y, alpha, age) }
 		// slide in from the anchored edge
 		slide := (1 - ease) * em * 3
@@ -211,13 +216,15 @@ modal_end :: proc() {
 ////////////////////////////////
 // Menu bar
 
+@(private = "file") MENU_BAR_KEY_SALT :: 0xbabe
+
 // A menu bar entry. Returns the key to pass to `ctx_menu`. Clicking toggles the menu; while another bar menu is open,
 // hovering switches to this one.
 menu_bar_button :: proc(id: string) -> Key {
 	s := g
 	em := font_size()
 	key := key_from_string(parent_box().key, id)
-	menu_key := key_from_u64(key, 0xbabe)
+	menu_key := key_from_u64(key, MENU_BAR_KEY_SALT)
 	append(&s.bar_keys, menu_key)
 	open := ctx_menu_is_open(menu_key)
 	bar_active := false

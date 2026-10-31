@@ -101,6 +101,9 @@ rich_face :: proc(c: Rich_Context, r: Rich_Style) -> (font.Font_Id, f32) {
 	return font.styled_face(c.fonts, base, r.bold, r.italic), size
 }
 
+// An ellipsis at the very start of a line: ellipsis_x > 0 is what marks one.
+@(private = "file") RICH_ELLIPSIS_AT_START_X :: 0.001
+
 // Lays the runs out at `width` (<= 0: no wrapping, only "\n" breaks), at most `max_lines` lines (0: no limit; the last
 // one ends with "…" when the text goes on), aligned. Everything is in `allocator`.
 rich_layout :: proc(c: Rich_Context, runs: []Rich_Run, width: f32, max_lines := 0, align := Text_Align.Left, allocator := context.allocator) -> Rich_Layout {
@@ -247,7 +250,7 @@ rich_layout :: proc(c: Rich_Context, runs: []Rich_Run, width: f32, max_lines := 
 		li.end = li.count > 0 ? run_start[last.run] + last.end : li.start
 		li.width = li.ellipsis_x + ew
 		li.ellipsis_face, li.ellipsis_size = ef, es
-		if li.ellipsis_x == 0 { li.ellipsis_x = 0.001 }   // > 0 marks the ellipsis
+		if li.ellipsis_x == 0 { li.ellipsis_x = RICH_ELLIPSIS_AT_START_X }   // > 0 marks the ellipsis
 	}
 	// size and alignment
 	for &li in lines { l.size.x = max(l.size.x, li.width) }
@@ -351,6 +354,8 @@ rich_set_faces :: proc(s: ^State, regular, bold, italic, bold_italic: font.Font_
 // Layouts kept by content
 
 RICH_CACHE_KEEP :: 120
+// (The basis of the FNV hash with its halves swapped: a version's key does not meet a content hash.)
+@(private = "file") RICH_VERSION_HASH_SEED :: 0x84222325cbf29ce4
 
 @(private)
 Rich_Cache_Entry :: struct {
@@ -360,15 +365,15 @@ Rich_Cache_Entry :: struct {
 
 @(private)
 rich_hash :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) -> u64 {
-	h: u64 = 0xcbf29ce484222325
-	mix :: #force_inline proc(h: ^u64, bytes: []u8) { for b in bytes { h^ = (h^ ~ u64(b)) * 0x100000001b3 } }
+	h: u64 = FNV64_OFFSET_BASIS
+	mix :: #force_inline proc(h: ^u64, bytes: []u8) { for b in bytes { h^ = (h^ ~ u64(b)) * FNV64_PRIME } }
 	for r in runs {
 		mix(&h, transmute([]u8)r.text)
 		st := r.style
 		st.link = ""
 		mix(&h, ([^]u8)(&st)[:size_of(Rich_Style)])
 		mix(&h, transmute([]u8)r.link)
-		h = (h ~ 0xff) * 0x100000001b3   // run boundary
+		h = (h ~ 0xff) * FNV64_PRIME   // run boundary
 	}
 	tail := struct { w: f32, n: int, a: Text_Align, f: font.Font_Id, s: f32, m: font.Font_Id }{width, max_lines, align, c.base_font, c.base_size, c.mono}
 	mix(&h, ([^]u8)(&tail)[:size_of(tail)])
@@ -377,9 +382,9 @@ rich_hash :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines: int,
 
 @(private)
 rich_hash_version :: proc(version: u64, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) -> u64 {
-	h: u64 = 0x84222325cbf29ce4 ~ version
+	h: u64 = RICH_VERSION_HASH_SEED ~ version
 	tail := struct { w: f32, n: int, a: Text_Align, f: font.Font_Id, s: f32, m: font.Font_Id }{width, max_lines, align, c.base_font, c.base_size, c.mono}
-	for b in ([^]u8)(&tail)[:size_of(tail)] { h = (h ~ u64(b)) * 0x100000001b3 }
+	for b in ([^]u8)(&tail)[:size_of(tail)] { h = (h ~ u64(b)) * FNV64_PRIME }
 	return h
 }
 
@@ -402,7 +407,7 @@ rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_li
 
 @(private)
 rich_cache_trim :: proc(s: ^State) {
-	if s.build_index % 30 != 0 { return }
+	if s.build_index % CACHE_TRIM_INTERVAL_BUILDS != 0 { return }
 	dead := make([dynamic]u64, context.temp_allocator)
 	for k, e in s.rich_cache { if e.last_build + RICH_CACHE_KEEP < s.build_index { append(&dead, k) } }
 	for k in dead {
@@ -458,6 +463,10 @@ rich_measure_y :: proc(b: ^Box) -> f32 {
 	return l.size.y
 }
 
+@(private = "file") RICH_CODE_RADIUS_PX :: 3
+@(private = "file") RICH_LINK_RING_RADIUS_PX :: 3
+@(private = "file") RICH_LINK_RING_PX :: 1.5
+
 @(private)
 rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Rich_Draw)(user)
@@ -474,7 +483,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			x0, x1 := o.x + f.x, o.x + f.x + f.width
 			bg := r.background
 			if r.code && bg.a == 0 { bg = d.code_bg }
-			if bg.a > 0 { draw.rect(dc, {{x0, o.y + li.y}, {x1, o.y + li.y + li.height}}, bg, r.code ? 3 * s.scale : 0) }
+			if bg.a > 0 { draw.rect(dc, {{x0, o.y + li.y}, {x1, o.y + li.y + li.height}}, bg, r.code ? RICH_CODE_RADIUS_PX * s.scale : 0) }
 			col := d.colors[f.run]
 			if col.a == 0 { col = b.text_color }
 			base := Vec2{math.round(x0), o.y + li.baseline}
@@ -490,7 +499,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 				draw.rect(dc, {{x0, sy}, {x1, sy + max(1, math.round(m.strike_thickness))}}, col)
 			}
 			if f.run == d.focused {
-				draw.rect(dc, {{x0 - 2, o.y + li.y}, {x1 + 2, o.y + li.y + li.height}}, color_from_tags(s, b.tags_key, "focus border"), 3 * s.scale, max(1, math.round(1.5 * s.scale)))
+				draw.rect(dc, {{x0 - 2, o.y + li.y}, {x1 + 2, o.y + li.y + li.height}}, color_from_tags(s, b.tags_key, "focus border"), RICH_LINK_RING_RADIUS_PX * s.scale, max(1, math.round(RICH_LINK_RING_PX * s.scale)))
 			}
 		}
 		if li.ellipsis_x > 0 {
@@ -535,7 +544,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 	}
 	d.ctx = rich_ctx(b)
 	d.max_lines = max_lines
-	if version != 0 { d.version = ((u64(b.key) * 0x9e3779b97f4a7c15) ~ version) | 1 }
+	if version != 0 { d.version = ((u64(b.key) * HASH_GOLDEN_RATIO_64) ~ version) | 1 }
 	d.link_color = color("link")
 	d.code_bg = color("code_bg")
 	d.colors = make([]Color, len(runs), frame_allocator())

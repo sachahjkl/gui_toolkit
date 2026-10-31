@@ -243,13 +243,17 @@ Timer :: struct {
 	last_build: u64,
 }
 
+// Toasts shown at once (the oldest gives way), and the bytes of a toast's text that are kept.
+@(private) TOAST_SLOTS :: 8
+@(private) TOAST_TEXT_MAX_BYTES :: 112
+
 Toast_Kind :: enum u8 { Info, Good, Warn, Bad }
 
 Toast :: struct {
 	alive:   bool,
 	serial:  u64,      // unique per toast: keys its position animation (birth times can be equal)
 	kind:    Toast_Kind,
-	text:    [112]u8,
+	text:    [TOAST_TEXT_MAX_BYTES]u8,
 	len:     int,
 	born_ms: f64,
 	life_ms: f64,
@@ -286,7 +290,7 @@ State :: struct {
 	mono_font:   font.Font_Id,           // optional: used by sliders, kbd chips and tables (falls back to the UI font)
 	timers:      map[Key]Timer,
 	drag_payload: [4]f32,               // data stored at press time for the active drag (see drag_store / drag_load)
-	toasts:      [8]Toast,
+	toasts:      [TOAST_SLOTS]Toast,
 	toast_pos:   Toast_Position,
 	toast_serial: u64,
 	toast_area:  Rect,
