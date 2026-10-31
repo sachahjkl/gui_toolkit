@@ -80,7 +80,7 @@ export async function act(send, cmd, a) {
     case 'move': await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: +o._[0], y: +o._[1] }); break
     case 'down': await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: +o._[0], y: +o._[1], button: 'left', buttons: 1, clickCount: 1 }); break
     case 'up': await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: +o._[0], y: +o._[1], button: 'left', buttons: 0, clickCount: 1 }); break
-    case 'wheel': await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: +o._[0], y: +o._[1], deltaX: 0, deltaY: +o._[2] * 100 }); break
+    case 'wheel': await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: +o._[0], y: +o._[1], deltaX: +(o._[3] || 0) * 100, deltaY: +o._[2] * 100 }); break
     case 'key': await pressKey(send, o._[0]); break
     case 'type': await send('Input.insertText', { text: o._.join(' ') }); break
     case 'wait': await sleep(+o._[0]); break
@@ -94,6 +94,7 @@ export async function act(send, cmd, a) {
       const p = { name: o._.join(' '), action: o.action || 'Click', index: +(o.index || 0) }
       if (o.role) p.role = o.role
       if (o.value !== undefined) p.value = o.value
+      if (o.number !== undefined) p.value = +o.number
       await send('Toolkit.axAction', p); break
     }
     default: return false

@@ -24,6 +24,7 @@ Fx :: struct {
 open :: proc(f: ^Fx) -> bool {
 	if !render.init_offscreen(&f.r, {W, H}, warp = true) { return false }
 	f.target = render.canvas_texture_create(&f.r, W, H, true)
+	if f.target == 0 { render.destroy(&f.r) }   // (the wgpu backend has no 2D canvas)
 	return f.target != 0
 }
 

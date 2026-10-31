@@ -3,6 +3,7 @@
 //   odin test tests/placement -vet
 package placement_test
 
+import "core:os"
 import "core:testing"
 import win "core:sys/windows"
 import "../../platform"
@@ -86,4 +87,43 @@ a_placement_read_back_does_not_move_the_window :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.rect, before)
 	platform.set_placement(w, p)
 	testing.expect_value(t, platform.outer_rect(w), before)
+}
+
+// A real offset between the workspace and the screen, as a taskbar on the left and on top makes: the work area of the
+// primary monitor is moved for the time of the test, as a program may (SPI_SETWORKAREA, with no notice sent) and put back.
+// The windows of the desktop feel it (maximized ones are resized), so only where nobody works: on CI, or asked with
+// GUI_TEST_WORKAREA.
+@(test)
+a_side_taskbar_does_not_move_a_saved_window :: proc(t: ^testing.T) {
+	if os.get_env("CI", context.temp_allocator) == "" && os.get_env("GUI_TEST_WORKAREA", context.temp_allocator) == "" { return }
+	SPI_SETWORKAREA :: 0x002F
+	SPI_GETWORKAREA :: 0x0030
+	// (the window first: it makes the process dpi aware, and the rectangle read must be the one written back)
+	w := platform.open_window("placement workarea", {300, 200})
+	defer platform.destroy_window(w)
+	before: win.RECT
+	testing.expect(t, bool(win.SystemParametersInfoW(SPI_GETWORKAREA, 0, &before, 0)))
+	moved := before
+	moved.left += 96
+	moved.top += 40
+	if !win.SystemParametersInfoW(SPI_SETWORKAREA, 0, &moved, 0) { return }   // (a session that refuses it: nothing to prove here)
+	defer win.SystemParametersInfoW(SPI_SETWORKAREA, 0, &before, 0)
+
+	want := [4]int{int(moved.left) + 200, int(moved.top) + 150, 640, 480}
+	platform.set_placement(w, {rect = want})
+	testing.expect_value(t, platform.outer_rect(w), want)
+
+	// what the system stores is relative to the work area: this is what made a saved window move
+	wp := win.WINDOWPLACEMENT{length = size_of(win.WINDOWPLACEMENT)}
+	win.GetWindowPlacement(w.hwnd, &wp)
+	testing.expect_value(t, int(wp.rcNormalPosition.left), want[0] - 96)
+	testing.expect_value(t, int(wp.rcNormalPosition.top), want[1] - 40)
+
+	// saved and restored three times: it stays
+	for _ in 0 ..< 3 {
+		p := platform.get_placement(w)
+		testing.expect_value(t, p.rect, want)
+		platform.set_placement(w, p)
+		testing.expect_value(t, platform.outer_rect(w), want)
+	}
 }

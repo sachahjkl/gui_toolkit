@@ -38,7 +38,7 @@ function Test-Package([string]$name, [string[]]$odinArgs, [int]$limit = 300) {
 	return $false
 }
 
-foreach ($t in 'affine', 'post', 'lifecycle', 'canvas', 'key_repeat', 'placement', 'clipboard', 'dragdrop', 'instance', 'fsx', 'testkit', 'panes', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y', 'frame_gate', 'frame_slots', 'pacing', 'autoscroll', 'flate', 'devtools') {
+foreach ($t in 'affine', 'post', 'lifecycle', 'canvas', 'key_repeat', 'placement', 'clipboard', 'clipboard_station', 'dragdrop', 'instance', 'fsx', 'testkit', 'panes', 'layers', 'effects', 'blend_space', 'gradients', 'shadows', 'retained', 'text', 'color_glyphs', 'masks', 'keyboard', 'status', 'states', 'chrome', 'ui_robust', 'gpufx', 'shaders', 'appshaders', 'slug', 'colr', 'text_backends', 'a11y', 'frame_gate', 'frame_slots', 'pacing', 'autoscroll', 'flate', 'devtools') {
 	# @( ) around the if: a statement unwraps a one-element array to a string, and @extra would splat its characters
 	$extra = @(if ($t -in 'keyboard', 'status', 'states', 'ui_robust', 'a11y', 'post', 'panes') { '-define:ODIN_TEST_THREADS=1' })
 	if (-not (Test-Package $t (@('test', "tests/$t", '-vet', "-out:build/${t}_test.exe") + $extra))) { $failed++ }
@@ -66,6 +66,14 @@ odin build examples/whatsnew -vet -out:build/whatsnew.exe
 if ($LASTEXITCODE) { 'FAIL build whatsnew'; $failed++ } else {
 	node tests/e2e/run.mjs
 	if ($LASTEXITCODE) { 'FAIL e2e'; $failed++ } else { 'PASS e2e' }
+}
+# the failures of a frame's GPU calls, forced one by one
+if (-not (Test-Package 'lifecycle (faults)' @('test', 'tests/lifecycle', '-vet', '-define:TOOLKIT_RENDER_FAULTS=true', '-out:build/lifecycle_faults_test.exe'))) { $failed++ }
+# the same run with each frame also drawn whole on the side: a partial frame must match it byte for byte
+odin build examples/whatsnew -vet -define:TOOLKIT_DAMAGE_CHECK=true -out:build/whatsnew_damage.exe
+if ($LASTEXITCODE) { 'FAIL build whatsnew (damage check)'; $failed++ } else {
+	node tests/e2e/run.mjs --exe build/whatsnew_damage.exe --port 9478 --out build/e2e_damage
+	if ($LASTEXITCODE) { 'FAIL e2e (damage check)'; $failed++ } else { 'PASS e2e (damage check)' }
 }
 if ($failed) { "$failed failed"; exit 1 }
 exit 0

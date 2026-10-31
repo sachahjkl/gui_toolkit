@@ -224,6 +224,7 @@ html_format_offsets :: proc(t: ^testing.T) {
 
 @(test)
 png_round_trip :: proc(t: ^testing.T) {
+	when ODIN_OS != .Windows { return }   // (elsewhere the toolkit has no PNG codec: png_encode_hook is the app's)
 	src := []u8{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255}
 	png := platform.png_encode({src, {2, 2}})
 	defer delete(png)
