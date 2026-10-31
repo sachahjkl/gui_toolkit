@@ -37,6 +37,11 @@ WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3
 
 @(private) ARENA_ALIGN :: 256           // minUniformBufferOffsetAlignment of every backend we use
 @(private) PASS_CONSTANTS_SIZE :: 1280  // size_of(Pass_Constants), a multiple of ARENA_ALIGN
+@(private) WGPU_LAST_MSG_BYTES :: 256
+@(private) WGPU_ADAPTER_NAME_BYTES :: 128
+@(private) WAIT_REQUEST_MAX_TRIES :: 5000   // about 1 ms each (wait_request)
+@(private) SAMPLER_LOD_MAX_CLAMP :: 32
+@(private) WGPU_MAX_TEXTURE_SIZE_DEFAULT :: 8192   // until the device has said its limit
 
 // DXC (dxcompiler.dll) crashes the process when several devices compile at the same moment (the pixel tests run in parallel, one device each):
 // shaders are compiled one at a time in the process.
@@ -60,7 +65,7 @@ Wgpu_Table :: struct {
 Wgpu_Shared :: struct {
 	lost:     bool,
 	errors:   int,
-	last_msg: [256]u8,
+	last_msg: [WGPU_LAST_MSG_BYTES]u8,
 	last_len: int,
 }
 
@@ -72,7 +77,7 @@ Wgpu_State :: struct {
 	queue:         wgpu.Queue,
 	surface:       wgpu.Surface,
 	backend_type:  wgpu.BackendType,
-	adapter_name:  [128]u8,
+	adapter_name:  [WGPU_ADAPTER_NAME_BYTES]u8,
 	adapter_name_len: int,
 	cpu_adapter:   bool,
 	max_tex:       int,
@@ -163,7 +168,7 @@ Request :: struct {
 
 @(private)
 wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
-	for tries := 0; !req.done && tries < 5000; tries += 1 {
+	for tries := 0; !req.done && tries < WAIT_REQUEST_MAX_TRIES; tries += 1 {
 		wgpu.InstanceProcessEvents(g.instance)
 		if !req.done { thread_sleep_1ms() }
 	}
@@ -547,7 +552,7 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	sampler :: proc(g: ^Wgpu_State, mode: wgpu.AddressMode) -> wgpu.Sampler {
 		return wgpu.DeviceCreateSampler(g.device, &{
 			addressModeU = mode, addressModeV = mode, addressModeW = .ClampToEdge,
-			magFilter = .Linear, minFilter = .Linear, mipmapFilter = .Linear, lodMinClamp = 0, lodMaxClamp = 32, maxAnisotropy = 1,
+			magFilter = .Linear, minFilter = .Linear, mipmapFilter = .Linear, lodMinClamp = 0, lodMaxClamp = SAMPLER_LOD_MAX_CLAMP, maxAnisotropy = 1,
 		})
 	}
 	g.s_atlas = sampler(g, .ClampToEdge)
@@ -750,7 +755,7 @@ wgpu_update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels
 }
 
 @(private)
-wgpu_max_texture_size :: proc(r: ^Renderer) -> int { return r.wg.max_tex > 0 ? r.wg.max_tex : 8192 }
+wgpu_max_texture_size :: proc(r: ^Renderer) -> int { return r.wg.max_tex > 0 ? r.wg.max_tex : WGPU_MAX_TEXTURE_SIZE_DEFAULT }
 
 @(private)
 wgpu_create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
@@ -1086,6 +1091,6 @@ wgpu_update_slug_page :: proc(r: ^Renderer, curves, bands: Texture, page: int, c
 			&{texture = td.wtex, mipLevel = 0, origin = {0, u32(page), 0}, aspect = .All},
 			data, uint(n * texel), &{offset = 0, bytesPerRow = u32(n * texel), rowsPerImage = 1}, &{u32(n), 1, 1})
 	}
-	put(r, curves, .Slug_Curves, page, raw_data(c), len(c), 8)
+	put(r, curves, .Slug_Curves, page, raw_data(c), len(c), TEXEL_BYTES_FP16)
 	put(r, bands, .Slug_Bands, page, raw_data(b), len(b), 4)
 }

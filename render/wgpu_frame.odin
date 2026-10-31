@@ -10,6 +10,16 @@ import "vendor:wgpu"
 @(private)
 align_up :: proc(n, a: int) -> int { return (n + a - 1) / a * a }
 
+// bytesPerRow of a texture to buffer copy is a multiple of this.
+@(private) COPY_ROW_ALIGN_BYTES :: 256
+// Polls for a buffer map that a blocking read waits for, before it gives up.
+@(private) READBACK_WAIT_MAX_TRIES :: 10000
+// A first frame longer than this is reported when FXC compiled its shaders.
+@(private) FXC_SLOW_FIRST_FRAME_MS :: 1000
+// Entries of the constants arena beyond one per batch and replay.
+@(private) ARENA_SPARE_ENTRIES :: 4
+@(private) ARENA_MIN_BYTES :: 64 << 10
+
 // The frame target for this frame: the next texture of the swap chain (blocks until the presentation engine has one, which
 // is what bounds the frame latency). false: there is none now (window hidden, surface lost); skip the frame.
 @(private)
@@ -64,7 +74,7 @@ wgpu_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 }
 
 @(private)
-wgpu_wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
+wgpu_wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
 	return wgpu_wait_frame(r, timeout_ms)
 }
 
@@ -118,7 +128,7 @@ arena_write :: proc(g: ^Wgpu_State, data: rawptr, size: int) -> u32 {
 upload_table :: proc(g: ^Wgpu_State, t: ^Wgpu_Table, data: rawptr, n, stride: int) {
 	if t.buf == nil || n > t.cap {
 		if t.buf != nil { wgpu.BufferRelease(t.buf) }
-		t.cap = max(n, t.cap * 2, 64)
+		t.cap = max(n, t.cap * 2, TABLE_CAP_MIN)
 		t.buf = wgpu.DeviceCreateBuffer(g.device, &{label = "table", usage = {.Storage, .CopyDst}, size = u64(t.cap * stride)})
 	}
 	if n > 0 { wgpu.QueueWriteBuffer(g.queue, t.buf, 0, data, uint(n * stride)) }
@@ -162,7 +172,7 @@ wgpu_fill_mips :: proc(r: ^Renderer, s: ^Submit, td: ^Texture_Data) {
 		p := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
 		wgpu.RenderPassEncoderSetPipeline(p, pipe)
 		wgpu.RenderPassEncoderSetBindGroup(p, 0, bg)
-		wgpu.RenderPassEncoderDraw(p, 3, 1, 0, 0)
+		wgpu.RenderPassEncoderDraw(p, FULLSCREEN_VERTICES, 1, 0, 0)
 		wgpu.RenderPassEncoderEnd(p)
 		wgpu.RenderPassEncoderRelease(p)
 	}
@@ -201,7 +211,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		}
 	}
 	defer if t_first._nsec != 0 {
-		if ms := time.duration_milliseconds(time.tick_since(t_first)); ms > 1000 && g.fxc {
+		if ms := time.duration_milliseconds(time.tick_since(t_first)); ms > FXC_SLOW_FIRST_FRAME_MS && g.fxc {
 			fmt.eprintfln("render: wgpu: the first frame took %.0f ms, its shaders compiled by FXC: put dxcompiler.dll and dxil.dll next to the program (tools/fetch_wgpu.ps1) and Direct3D 12 compiles them with DXC, in a fraction of that", ms)
 		}
 	}
@@ -224,7 +234,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if len(f.apps) > 0 { upload_table(g, &g.app_params, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
 	if g.inst.buf == nil || len(f.insts) > g.inst.cap {
 		if g.inst.buf != nil { wgpu.BufferRelease(g.inst.buf) }
-		g.inst.cap = max(len(f.insts), g.inst.cap * 2, 4096)
+		g.inst.cap = max(len(f.insts), g.inst.cap * 2, INST_CAP_MIN)
 		g.inst.buf = wgpu.DeviceCreateBuffer(g.device, &{label = "instances", usage = {.Vertex, .CopyDst}, size = u64(g.inst.cap * size_of(Rect_Inst))})
 	}
 	if len(f.insts) > 0 { wgpu.QueueWriteBuffer(g.queue, g.inst.buf, 0, raw_data(f.insts), uint(len(f.insts) * size_of(Rect_Inst))) }
@@ -233,10 +243,10 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	// uniform arena: the constants of every target bound, replay and filter pass of this submit, at their own offsets
 	passes := 0
 	for op in f.ops { if op.kind == .Pass { passes += 1 } }
-	need := (len(f.batches) + len(f.replays) + 4) * ARENA_ALIGN + passes * PASS_CONSTANTS_SIZE
+	need := (len(f.batches) + len(f.replays) + ARENA_SPARE_ENTRIES) * ARENA_ALIGN + passes * PASS_CONSTANTS_SIZE
 	if g.arena == nil || need > g.arena_cap {
 		if g.arena != nil { wgpu.BufferRelease(g.arena) }
-		g.arena_cap = max(need, g.arena_cap * 2, 64 << 10)
+		g.arena_cap = max(need, g.arena_cap * 2, ARENA_MIN_BYTES)
 		g.arena = wgpu.DeviceCreateBuffer(g.device, &{label = "constants", usage = {.Uniform, .CopyDst}, size = u64(g.arena_cap)})
 	}
 	g.arena_used = 0
@@ -349,7 +359,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 				bound_pipe = pipe
 				wgpu.RenderPassEncoderSetPipeline(s.pass, pipe)
 			}
-			wgpu.RenderPassEncoderDraw(s.pass, 4, u32(b.count), 0, u32(b.first))
+			wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(b.count), 0, u32(b.first))
 			continue
 		}
 		// a batch with Slug text is drawn in pieces, in order: the Slug instances (slug_runs) by their pipeline, the others by the main one
@@ -367,7 +377,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 			pipe := slug ? wgpu_slug_pipeline(r, format, replace) : wgpu_pipeline(r, format, replace)
 			if pipe == nil { return }
 			if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
-			wgpu.RenderPassEncoderDraw(s.pass, 4, u32(count), 0, u32(first))
+			wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(count), 0, u32(first))
 		}
 		slug_ok := int(f.slug_curves) > 0 && int(f.slug_bands) > 0 && !r.slug.failed
 		for i := lo; i < len(runs) && pos < end; i += 1 {
@@ -463,13 +473,13 @@ wgpu_verify_pass :: proc(r: ^Renderer, s: ^Submit, f: ^Frame_Data) {
 		pipe := has_slug ? bound_pipe : wgpu_pipeline(r, g.view_format, replace)
 		if !has_slug {
 			if pipe != bound_pipe { bound_pipe = pipe; wgpu.RenderPassEncoderSetPipeline(pass, pipe) }
-			wgpu.RenderPassEncoderDraw(pass, 4, u32(b.count), 0, u32(b.first))
+			wgpu.RenderPassEncoderDraw(pass, QUAD_VERTICES, u32(b.count), 0, u32(b.first))
 		} else {
 			// slug frames: draw the whole batch with the slug-aware pipeline split is complex to replay; the common
 			// case (no Slug text) is covered. A slug batch is drawn with the rect pipeline here as a close approximation
 			// for the diagnostic; the exact split lives in the main loop.
 			p := wgpu_pipeline(r, g.view_format, replace)
-			if p != nil { if p != bound_pipe { bound_pipe = p; wgpu.RenderPassEncoderSetPipeline(pass, p) }; wgpu.RenderPassEncoderDraw(pass, 4, u32(b.count), 0, u32(b.first)) }
+			if p != nil { if p != bound_pipe { bound_pipe = p; wgpu.RenderPassEncoderSetPipeline(pass, p) }; wgpu.RenderPassEncoderDraw(pass, QUAD_VERTICES, u32(b.count), 0, u32(b.first)) }
 		}
 	}
 	wgpu.RenderPassEncoderEnd(pass)
@@ -535,12 +545,12 @@ wgpu_globals :: proc(r: ^Renderer, size: [2]int, origin: [2]f32, space: Blend_Sp
 	switch r.text.curve {
 	case .None: text_gamma = 0
 	case .Srgb: text_gamma = -1
-	case .Power: text_gamma = max(r.text.gamma, 0.25)
+	case .Power: text_gamma = max(r.text.gamma, TEXT_GAMMA_MIN)
 	}
 	return Globals{
-		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + 0.6 * sm, corner_boost = 1 + 0.25 * sm,
+		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + CORNER_N_SMOOTHING * sm, corner_boost = 1 + CORNER_BOOST_SMOOTHING * sm,
 		target_origin = origin, target_space = u32(space),
-		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, 0.1),
+		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN),
 	}
 }
 
@@ -617,7 +627,7 @@ wgpu_run_pass :: proc(r: ^Renderer, s: ^Submit, p: ^Pass) {
 		src2_size = {f32(p.src2.size.x), f32(p.src2.size.y)}, src2_dim = dim(r, p.src2.tex),
 		dir = p.dir, offset = p.offset, color = p.color,
 		matrix_count = u32(clamp(p.matrix_count, 0, MAX_COLOR_MATRICES)),
-		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, 8)),
+		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, DOWNSAMPLE_FACTOR_MAX)),
 	}
 	if p.mode == .Blur { pc.taps = u32(blur_taps(p.sigma, &pc.tap)) }
 	for k in 0 ..< int(pc.matrix_count) {
@@ -642,7 +652,7 @@ wgpu_run_pass :: proc(r: ^Renderer, s: ^Submit, p: ^Pass) {
 	wgpu.RenderPassEncoderSetPipeline(pass, wgpu_fx_pipeline(r, dtd.wformat))
 	offs := [1]u32{off}
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, bg, offs[:])
-	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
+	wgpu.RenderPassEncoderDraw(pass, FULLSCREEN_VERTICES, 1, 0, 0)
 	wgpu.RenderPassEncoderEnd(pass)
 	wgpu.RenderPassEncoderRelease(pass)
 	if s.timed {
@@ -669,7 +679,7 @@ wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	g := &r.wg
 	if g.surface != nil || g.frame_tex == nil { return nil }
 	w, h := r.size.x, r.size.y
-	row := align_up(w * 4, 256)
+	row := align_up(w * 4, COPY_ROW_ALIGN_BYTES)
 	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
 	if buf == nil { return nil }
 	defer wgpu.BufferRelease(buf)
@@ -691,7 +701,7 @@ wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 		m.done^, m.ok^ = true, status == .Success
 	}
 	wgpu.BufferMapAsync(buf, {.Read}, 0, uint(row * h), {mode = .AllowSpontaneos, callback = cb_map, userdata1 = &m})
-	for tries := 0; !done && tries < 10000; tries += 1 {
+	for tries := 0; !done && tries < READBACK_WAIT_MAX_TRIES; tries += 1 {
 		wgpu.DevicePoll(g.device, true)
 		if !done { wgpu.InstanceProcessEvents(g.instance) }
 	}

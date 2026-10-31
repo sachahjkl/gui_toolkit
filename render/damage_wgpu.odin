@@ -95,7 +95,7 @@ wgpu_damage_verify_ensure :: proc(r: ^Renderer) -> bool {
 wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
 	g := &r.wg
 	w, h := r.size.x, r.size.y
-	row := align_up(w * 4, 256)
+	row := align_up(w * 4, COPY_ROW_ALIGN_BYTES)
 	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "verify readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
 	if buf == nil { return nil }
 	defer wgpu.BufferRelease(buf)
@@ -115,7 +115,7 @@ wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
 		m := (^M)(u1); m.done^, m.ok^ = true, status == .Success
 	}
 	wgpu.BufferMapAsync(buf, {.Read}, 0, uint(row * h), {mode = .AllowSpontaneos, callback = cb_map, userdata1 = &m})
-	for tries := 0; !done && tries < 10000; tries += 1 {
+	for tries := 0; !done && tries < READBACK_WAIT_MAX_TRIES; tries += 1 {
 		wgpu.DevicePoll(g.device, true)
 		if !done { wgpu.InstanceProcessEvents(g.instance) }
 	}

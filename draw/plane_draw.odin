@@ -93,9 +93,13 @@ cut_in_texels :: proc(cut: Plane_Cut, pl: Plane_Layer, m: Mat4) -> [3]f32 {
 	a, b := fx / s, fy / s
 	c := fx * pl.origin.x + fy * pl.origin.y + f0
 	l := math.sqrt(a * a + b * b)
-	if l < 1e-20 { return {0, 0, c >= 0 ? 1 : -1} }
+	if l < PLANE_CUT_MIN_GRADIENT { return {0, 0, c >= 0 ? 1 : -1} }
 	return {a / l, b / l, c / l}
 }
+
+// Below it a cut's gradient or a plane's scale is degenerate.
+@(private) PLANE_CUT_MIN_GRADIENT :: 1e-20
+@(private) PLANE_DENSITY_MIN :: 1e-6
 
 // The plane's scale at its middle: screen units per plane frame unit (the square root of the area of the projected unit square).
 @(private)
@@ -105,12 +109,12 @@ plane_density :: proc(pl: Plane_Layer, m: Mat4) -> f32 {
 	for i in 0 ..< 3 {
 		q := mid + (i == 1 ? Vec2{1, 0} : (i == 2 ? Vec2{0, 1} : Vec2{}))
 		h := mat4_apply(m, {q.x, q.y, 0})
-		if !(h[3] > 1e-6) { return 1 }
+		if !(h[3] > PLANE_W_MIN) { return 1 }
 		p[i] = {h[0] / h[3], h[1] / h[3]}
 	}
 	a, b := p[1] - p[0], p[2] - p[0]
 	s := math.sqrt(abs(a.x * b.y - a.y * b.x))
-	return s > 1e-6 ? s : 1
+	return s > PLANE_DENSITY_MIN ? s : 1
 }
 
 // A plane with effects on its composite: the screen area of the projected quad becomes an ordinary layer (blend mode against
@@ -122,7 +126,7 @@ draw_plane_fx :: proc(c: ^Context, pl: Plane_Layer, m: Mat4, alpha: f32, o: Plan
 	q := plane_corners(pl, m)
 	region: Rect
 	all_front := true
-	for k in 0 ..< 4 { if !(q[k][3] > 1e-6) { all_front = false } }
+	for k in 0 ..< 4 { if !(q[k][3] > PLANE_W_MIN) { all_front = false } }
 	if all_front {
 		region = Rect{{q[0][0] / q[0][3], q[0][1] / q[0][3]}, {q[0][0] / q[0][3], q[0][1] / q[0][3]}}
 		for k in 1 ..< 4 {

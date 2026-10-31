@@ -37,10 +37,13 @@ Gpu_Step_Rec :: struct {
 	// detailed profile (set_gpu_profile(detail = true)): each draw call is a step
 	batch: i32,    // index in Frame_Data.batches (-1: not a single draw call)
 	insts: i32,    // instances drawn
-	kinds: u32,    // bit k: an instance of KIND k (immediate instances), bit 31: retained (a picture's replay)
+	kinds: u32,    // bit k: an instance of KIND k (immediate instances), or GPU_KINDS_RETAINED
 	flags: u32,    // FLAG_* of its instances, together
 	scissor: [4]i32,
 }
+
+// Gpu_Step_Rec.kinds: the step is a picture's replay.
+GPU_KINDS_RETAINED :: 1 << 31
 
 GPU_PROFILE_SLOWEST :: 16
 // Steps timed per frame; past it the remaining steps are counted in the last one.

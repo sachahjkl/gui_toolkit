@@ -3,6 +3,8 @@ package render
 
 import win "core:sys/windows"
 
+@(private = "file") FILETIME_TICKS_PER_MS :: 1e4   // a FILETIME counts 100 ns
+
 // Milliseconds since this process started (render trace, first-present timing). Windows reads the process creation time.
 @(private)
 process_uptime_ms :: proc() -> f64 {
@@ -11,5 +13,5 @@ process_uptime_ms :: proc() -> f64 {
 	win.GetProcessTimes(win.GetCurrentProcess(), &created, &exited, &kernel, &user)
 	win.GetSystemTimeAsFileTime(&now)
 	ft :: proc(f: win.FILETIME) -> u64 { return u64(f.dwHighDateTime) << 32 | u64(f.dwLowDateTime) }
-	return f64(ft(now) - ft(created)) / 1e4
+	return f64(ft(now) - ft(created)) / FILETIME_TICKS_PER_MS
 }

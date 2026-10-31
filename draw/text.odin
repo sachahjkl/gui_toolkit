@@ -11,6 +11,8 @@ import "../render"
 // Glyphs are re-rasterized at the on-screen size when the transform scales text by more than this (either way);
 // within it the bitmap is stretched (press "squish" animations must not fill the atlas with in-between sizes).
 TEXT_RASTER_TOLERANCE :: 0.1
+// Largest size text is rasterized at when scaled (font.raster_size_limit may cap it further).
+@(private) TEXT_RASTER_SIZE_MAX :: 4096
 
 @(private)
 Glyph_Tex :: struct {
@@ -150,7 +152,7 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	// k: raster size / layout size. Scaled text gets bitmaps at its screen size: sharp, not a blurred or aliased
 	// stretch of the 1x bitmap.
 	k: f32 = 1
-	if abs(sf - 1) > TEXT_RASTER_TOLERANCE { k = clamp(size * sf, 1, 4096) / size }
+	if abs(sf - 1) > TEXT_RASTER_TOLERANCE { k = clamp(size * sf, 1, TEXT_RASTER_SIZE_MAX) / size }
 	// a glyph's bitmap must fit an atlas page: bigger text gets a smaller bitmap, drawn stretched
 	capped := false
 	if lim := font.raster_size_limit(c.fonts); size * k > lim { k, capped = lim / size, true }

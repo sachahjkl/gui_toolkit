@@ -119,7 +119,7 @@ draw_batch_split :: proc(r: ^Renderer, f: Frame_Data, b: Batch) {
 	draw :: proc(r: ^Renderer, slug: bool, first, count: int) {
 		if count <= 0 || (slug && !r.slug.ready) { return }
 		slug_select(r, slug)
-		r.ctx->DrawInstanced(4, u32(count), 0, u32(first))
+		r.ctx->DrawInstanced(QUAD_VERTICES, u32(count), 0, u32(first))
 	}
 	for i := lo; i < len(runs) && pos < end; i += 1 {
 		rs := base + runs[i][0]

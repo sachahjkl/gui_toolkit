@@ -86,6 +86,14 @@ draw_item :: proc(c: ^Context, it: Plane_Item, cuts: []Plane_Cut) {
 
 @(private)
 TOL_DIST :: 0.02   // planes closer than this (in the units of the space after the divide: pixels) are the same plane
+@(private) BSP_W_MIN :: 1e-9            // a homogeneous w at or below it: not in front of the eye
+@(private) BSP_W_NEAR_RATIO :: 1e-3     // a plane is cut where w falls under this share of its largest w
+@(private) BSP_NORMAL_MIN_LEN :: 1e-20  // the plane's equation has no normal
+@(private) BSP_EDGE_ON_NZ :: 1e-4       // a normal with less z than this: the plane is seen edge-on
+@(private) BSP_SPLITTER_CANDIDATES :: 8 // how many planes are tried as the next splitter
+@(private) BSP_MIN_AREA :: 1e-3         // a piece smaller than this (plane frame units) is not drawn
+@(private) BSP_SAME_NORMAL_COS :: 0.99999   // the cosine above which two normals are one
+@(private) BSP_CHORD_MIN_LEN :: 1e-9    // a chord shorter than this has no direction
 
 @(private)
 Geo :: struct {
@@ -119,8 +127,8 @@ geo_of :: proc(it: Plane_Item, seq: int) -> Geo {
 		hs[k] = mat4_apply(g.m, {corners[k].x, corners[k].y, 0})
 		wmax = max(wmax, hs[k][3])
 	}
-	if !(wmax > 1e-9) { g.flat = true; return g }
-	wmin := max(wmax * 1e-3, 1e-9)
+	if !(wmax > BSP_W_MIN) { g.flat = true; return g }
+	wmin := max(wmax * BSP_W_NEAR_RATIO, BSP_W_MIN)
 	g.pts = make([dynamic][2]f32, 0, 6, context.temp_allocator)
 	g.v = make([dynamic][3]f32, 0, 6, context.temp_allocator)
 	// the rect cut by w >= wmin (an affine function of the frame position: edges stay straight)
@@ -154,11 +162,11 @@ geo_of :: proc(it: Plane_Item, seq: int) -> Geo {
 		l[k] = k % 2 == 0 ? det : -det
 	}
 	ln := math.sqrt(l[0] * l[0] + l[1] * l[1] + l[2] * l[2])
-	if ln < 1e-20 { g.flat = true; return g }
+	if ln < BSP_NORMAL_MIN_LEN { g.flat = true; return g }
 	l /= ln
 	if l[2] < 0 { l = -l }
 	g.n, g.d = {l[0], l[1], l[2]}, l[3]
-	if abs(g.n.z) < 1e-4 { g.flat = true }
+	if abs(g.n.z) < BSP_EDGE_ON_NZ { g.flat = true }
 	for p in g.v { g.z += p.z }
 	g.z /= f32(len(g.v))
 	return g
@@ -340,7 +348,7 @@ bsp_walk :: proc(g: []Geo, polys: [dynamic]^Bsp_Piece, out: ^[dynamic]Bsp_Piece)
 	if len(polys) == 0 { return }
 	// the splitter: among the first few, the one that cuts the fewest others (then the earliest)
 	best, best_cuts := 0, max(int)
-	for i in 0 ..< min(len(polys), 8) {
+	for i in 0 ..< min(len(polys), BSP_SPLITTER_CANDIDATES) {
 		s := &g[polys[i].item]
 		cuts := 0
 		for q, j in polys {
@@ -383,7 +391,7 @@ bsp_emit :: proc(g: []Geo, p: ^Bsp_Piece, out: ^[dynamic]Bsp_Piece) {
 		a, b := p.pts[k], p.pts[(k + 1) % len(p.pts)]
 		area += a.x * b.y - b.x * a.y
 	}
-	if abs(area) < 1e-3 { return }
+	if abs(area) < BSP_MIN_AREA { return }
 	gp := &g[p.item]
 	kept := make([dynamic]Plane_Cut, 0, len(p.cuts), context.temp_allocator)
 	for cut in p.cuts {
@@ -395,7 +403,7 @@ bsp_emit :: proc(g: []Geo, p: ^Bsp_Piece, out: ^[dynamic]Bsp_Piece) {
 		if on_line < 2 { continue }
 		same := false   // the same plane met twice (coplanar splitters)
 		for k in kept {
-			if k.n.x * cut.n.x + k.n.y * cut.n.y + k.n.z * cut.n.z > 0.99999 && abs(k.d - cut.d) <= TOL_DIST { same = true; break }
+			if k.n.x * cut.n.x + k.n.y * cut.n.y + k.n.z * cut.n.z > BSP_SAME_NORMAL_COS && abs(k.d - cut.d) <= TOL_DIST { same = true; break }
 		}
 		if !same { append(&kept, cut) }
 	}
@@ -442,7 +450,7 @@ bsp_emit_halves :: proc(g: []Geo, p: ^Bsp_Piece, kept: []Plane_Cut, out: ^[dynam
 	ab := pos[bj] - pos[bi]
 	nc := [3]f32{gp.n.y * ab.z - gp.n.z * ab.y, gp.n.z * ab.x - gp.n.x * ab.z, gp.n.x * ab.y - gp.n.y * ab.x}
 	l := math.sqrt(nc.x * nc.x + nc.y * nc.y + nc.z * nc.z)
-	if !(l > 1e-9) { return false }
+	if !(l > BSP_CHORD_MIN_LEN) { return false }
 	chord := Plane_Cut{n = nc / l}
 	chord.d = -(chord.n.x * pos[bi].x + chord.n.y * pos[bi].y + chord.n.z * pos[bi].z)
 	if dist_to(chord.n, chord.d, pos[bi + 1]) < 0 { chord = Plane_Cut{n = -chord.n, d = -chord.d} }
