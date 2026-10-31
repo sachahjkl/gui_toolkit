@@ -7,6 +7,8 @@ import "core:path/filepath"
 import "core:strings"
 import "core:sys/posix"
 
+@(private = "file") NS_PER_SECOND :: 1_000_000_000
+
 @(private = "file")
 cpath :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
 
@@ -25,7 +27,7 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool) -> bool {
 	for p in parts {
 		at := 0
 		for at < len(p) && ok {
-			n := posix.write(fd, raw_data(p[at:]), uint(min(len(p) - at, 1 << 30)))
+			n := posix.write(fd, raw_data(p[at:]), uint(min(len(p) - at, IO_CHUNK_MAX_BYTES)))
 			if n < 0 && posix.errno() == .EINTR { continue }
 			if n <= 0 { ok = false; break }
 			at += int(n)
@@ -59,7 +61,7 @@ delete_file :: proc(path: string) -> bool {
 stat :: proc(path: string) -> (size: i64, stamp: i64, ok: bool) {
 	st: posix.stat_t
 	if posix.stat(cpath(path), &st) != .OK || !posix.S_ISREG(st.st_mode) { return 0, 0, false }
-	return i64(st.st_size), i64(st.st_mtim.tv_sec) * 1_000_000_000 + i64(st.st_mtim.tv_nsec), true
+	return i64(st.st_size), i64(st.st_mtim.tv_sec) * NS_PER_SECOND + i64(st.st_mtim.tv_nsec), true
 }
 
 read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {
@@ -67,7 +69,7 @@ read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {
 	if fd < 0 { return 0, false }
 	defer posix.close(fd)
 	for n < len(buf) {
-		got := posix.pread(fd, raw_data(buf[n:]), uint(min(len(buf) - n, 1 << 30)), posix.off_t(offset + i64(n)))
+		got := posix.pread(fd, raw_data(buf[n:]), uint(min(len(buf) - n, IO_CHUNK_MAX_BYTES)), posix.off_t(offset + i64(n)))
 		if got < 0 && posix.errno() == .EINTR { continue }
 		if got < 0 { return n, false }
 		if got == 0 { break }

@@ -14,7 +14,7 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool) -> bool {
 		at := 0
 		for at < len(p) && ok {
 			n: win.DWORD
-			chunk := win.DWORD(min(len(p) - at, 1 << 30))
+			chunk := win.DWORD(min(len(p) - at, IO_CHUNK_MAX_BYTES))
 			if !win.WriteFile(h, raw_data(p[at:]), chunk, &n, nil) || n == 0 { ok = false; break }
 			at += int(n)
 		}
@@ -56,7 +56,7 @@ read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {
 		ov.Offset = win.DWORD(o & 0xFFFF_FFFF)
 		ov.OffsetHigh = win.DWORD(o >> 32)
 		got: win.DWORD
-		chunk := win.DWORD(min(len(buf) - n, 1 << 30))
+		chunk := win.DWORD(min(len(buf) - n, IO_CHUNK_MAX_BYTES))
 		if !win.ReadFile(h, raw_data(buf[n:]), chunk, &got, &ov) {
 			if win.GetLastError() == win.ERROR_HANDLE_EOF { break }
 			return n, false

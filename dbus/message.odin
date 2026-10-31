@@ -25,6 +25,11 @@ Msg_Type :: enum u8 { Invalid, Method_Call, Method_Return, Error, Signal }
 // Flags.
 @(private) FLAG_NO_REPLY_EXPECTED :: 1
 
+// The fixed header and the length of the fields array: less than this cannot be a message yet.
+@(private) MIN_MESSAGE_BYTES :: 16
+// The body starts on this boundary after the header.
+@(private) BODY_ALIGN :: 8
+
 // One message, in or out. On the way out, the caller sets type, destination, path, iface, member and writes the body
 // into `body` with its `signature`. On the way in, parse_message fills the fields and a Reader positioned at the body.
 Message :: struct {
@@ -63,7 +68,7 @@ build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, membe
 	w_u32(&w, u32(len(body)))
 	w_u32(&w, serial)
 	// header fields: array of (y v) structs
-	len_at, content_at := w_array_begin(&w, 8)   // struct alignment 8
+	len_at, content_at := w_array_begin(&w, STRUCT_ALIGN)
 	put_field_string :: proc(w: ^Writer, code: u8, type_sig: string, s: string) {
 		w_struct(w)
 		w_u8(w, code)
@@ -84,8 +89,7 @@ build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, membe
 	if destination != "" { put_field_string(&w, FIELD_DESTINATION, "s", destination) }
 	if signature != ""   { put_field_string(&w, FIELD_SIGNATURE, "g", signature) }
 	w_array_end(&w, len_at, content_at)
-	// the body starts 8-aligned after the header
-	w_align(&w, 8)
+	w_align(&w, BODY_ALIGN)
 	append(&w.buf, ..body)
 	return w.buf[:]
 }
@@ -94,7 +98,7 @@ build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, membe
 // many bytes the whole message took; ok = false (and total 0) when the buffer does not yet hold a complete message.
 @(private)
 parse_message :: proc(buf: []u8, allocator := context.allocator) -> (msg: Message, total: int, ok: bool) {
-	if len(buf) < 16 { return {}, 0, false }
+	if len(buf) < MIN_MESSAGE_BYTES { return {}, 0, false }
 	big := buf[0] == 'B'
 	r := reader_make(buf, big)
 	r_u8(&r)                       // endianness
@@ -110,7 +114,7 @@ parse_message :: proc(buf: []u8, allocator := context.allocator) -> (msg: Messag
 	fields_end := fields_start + fields_len
 	if fields_end > len(buf) { return {}, 0, false }
 	for r.pos < fields_end && !r.err {
-		r_align(&r, 8)
+		r_align(&r, STRUCT_ALIGN)
 		if r.pos >= fields_end { break }
 		code := r_u8(&r)
 		vsig := r_signature(&r)
@@ -128,9 +132,8 @@ parse_message :: proc(buf: []u8, allocator := context.allocator) -> (msg: Messag
 		}
 	}
 	if r.err { return {}, 0, false }
-	// the body starts 8-aligned after the fields
 	r.pos = fields_end
-	r_align(&r, 8)
+	r_align(&r, BODY_ALIGN)
 	body_start := r.pos
 	total = body_start + body_len
 	if total > len(buf) { return {}, 0, false }   // the body has not all arrived
