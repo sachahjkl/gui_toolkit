@@ -11,6 +11,10 @@ import "../ui"
 // lasts as long as the client: when it goes the window is as its program builds it. Only what differs from what the box had when
 // first edited is imposed, so what was left alone goes on following the program (a hover's colour).
 
+// 128 / 255: the channel of CSS's named colours "green" and "gray".
+@(private)
+CSS_CHANNEL_128 :: 0.502
+
 @(private)
 Dom_Style :: struct {
 	text: string,   // the style as the client wrote it (comments are the properties it unticked)
@@ -100,10 +104,10 @@ css_color :: proc(value: string) -> (c: ui.Color, ok: bool) {
 	case "black":       return linear(0, 0, 0, 1), true
 	case "white":       return linear(1, 1, 1, 1), true
 	case "red":         return linear(1, 0, 0, 1), true
-	case "green":       return linear(0, 0.502, 0, 1), true
+	case "green":       return linear(0, CSS_CHANNEL_128, 0, 1), true
 	case "blue":        return linear(0, 0, 1, 1), true
 	case "yellow":      return linear(1, 1, 0, 1), true
-	case "gray", "grey": return linear(0.502, 0.502, 0.502, 1), true
+	case "gray", "grey": return linear(CSS_CHANNEL_128, CSS_CHANNEL_128, CSS_CHANNEL_128, 1), true
 	}
 	if strings.has_prefix(v, "#") {
 		h := v[1:]

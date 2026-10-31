@@ -17,6 +17,10 @@ import "../ui"
 @(private)
 DOM_DOCUMENT :: 1
 
+// From this alpha on, a colour is written rgb(), not rgba().
+@(private)
+OPAQUE_ALPHA :: 0.999
+
 @(private)
 Dom :: struct {
 	to:     Reply_To,                // who gets the events (conn nil: nobody has asked)
@@ -302,7 +306,7 @@ dom_style_editable :: proc(srv: ^Server, b: ^ui.Box) -> [dynamic][2]string {
 	px :: proc(v: f32) -> string { return fmt.tprintf("%.1fpx", v) }
 	color :: proc(c: ui.Color) -> string {
 		ch :: proc(v: f32) -> int { return int(render.linear_to_srgb(v) * 255 + 0.5) }
-		if c.a >= 0.999 { return fmt.tprintf("rgb(%d, %d, %d)", ch(c.r), ch(c.g), ch(c.b)) }
+		if c.a >= OPAQUE_ALPHA { return fmt.tprintf("rgb(%d, %d, %d)", ch(c.r), ch(c.g), ch(c.b)) }
 		return fmt.tprintf("rgba(%d, %d, %d, %.2f)", ch(c.r), ch(c.g), ch(c.b), c.a)
 	}
 	if .Draw_Background in b.flags { append(&out, [2]string{"background-color", color(b.bg)}) }
@@ -428,19 +432,19 @@ dom_handle :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, method: string, p: 
 	case "DOM.getNodeForLocation":
 		f := f32(d)
 		b := dom_at(s, s.root, {f32(num(p["x"])) * f, f32(num(p["y"])) * f})
-		if b == nil { error_reply(to, -32000, "no box at this point"); return true }
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box at this point"); return true }
 		id := dom_id(srv, b.key)
 		dom_push(srv, s, id)
 		fmt.sbprintf(&sb, `{{"backendNodeId":%d,"nodeId":%d,"frameId":"%s"}}`, id, id, srv.id)
 	case "DOM.getBoxModel":
 		b := dom_box(srv, s, dom_param(p))
-		if b == nil { error_reply(to, -32000, "this box is not in the window any more"); return true }
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return true }
 		x0, y0, x1, y1 := f64(b.rect.min.x) / d, f64(b.rect.min.y) / d, f64(b.rect.max.x) / d, f64(b.rect.max.y) / d
 		q := fmt.tprintf("[%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f]", x0, y0, x1, y0, x1, y1, x0, y1)
 		fmt.sbprintf(&sb, `{{"model":{{"content":%s,"padding":%s,"border":%s,"margin":%s,"width":%.0f,"height":%.0f}}}}`, q, q, q, q, x1 - x0, y1 - y0)
 	case "DOM.getContentQuads":
 		b := dom_box(srv, s, dom_param(p))
-		if b == nil { error_reply(to, -32000, "this box is not in the window any more"); return true }
+		if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return true }
 		x0, y0, x1, y1 := f64(b.rect.min.x) / d, f64(b.rect.min.y) / d, f64(b.rect.max.x) / d, f64(b.rect.max.y) / d
 		fmt.sbprintf(&sb, `{{"quads":[[%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f]]}}`, x0, y0, x1, y0, x1, y1, x0, y1)
 	case "DOM.performSearch":
@@ -481,7 +485,7 @@ dom_handle :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, method: string, p: 
 			edit, _ := v.(json.Object)
 			id, _ := strconv.parse_int(strings.trim_prefix(str(edit["styleSheetId"]), "toolkit-"))
 			b := dom_box(srv, s, id)
-			if b == nil { error_reply(to, -32000, "this box is not in the window any more"); return true }
+			if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return true }
 			dom_style_set(srv, s, id, b, str(edit["text"]))
 			if i > 0 { strings.write_byte(&sb, ',') }
 			css_write_style(&sb, id, str(edit["text"]))
@@ -490,7 +494,7 @@ dom_handle :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, method: string, p: 
 	case "DOM.setNodeValue":
 		id := dom_param(p)
 		b := dom_box(srv, s, id)
-		if b == nil || id % 2 == 0 { error_reply(to, -32000, "not the text of a box in the window"); return true }
+		if b == nil || id % 2 == 0 { error_reply(to, CDP_ERROR_SERVER, "not the text of a box in the window"); return true }
 		e := ui.box_edit(s, b.key)
 		delete(e.text)
 		e.text = strings.clone(str(p["value"]))
@@ -498,7 +502,7 @@ dom_handle :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, method: string, p: 
 		strings.write_string(&sb, "{}")
 	case "DOM.removeNode":
 		b := dom_box(srv, s, dom_param(p))
-		if b == nil || b == s.root || dom_param(p) % 2 == 1 { error_reply(to, -32000, "this node cannot be removed"); return true }
+		if b == nil || b == s.root || dom_param(p) % 2 == 1 { error_reply(to, CDP_ERROR_SERVER, "this node cannot be removed"); return true }
 		ui.box_edit(s, b.key).set += {.Removed}
 		strings.write_string(&sb, "{}")
 	case "CSS.getMatchedStylesForNode", "CSS.getInlineStylesForNode":
