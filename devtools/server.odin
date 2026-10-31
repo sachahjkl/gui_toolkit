@@ -28,6 +28,7 @@ Conn :: struct {
 	write:  sync.Mutex,
 	closed: bool,   // (under write)
 	done:   bool,   // the thread is at its end (atomic): `service` joins and frees it
+	page:   bool,   // on the page's endpoint, not the browser's
 }
 
 // A command is small: a message over this ends the connection.
@@ -123,7 +124,8 @@ conn_loop :: proc(c: ^Conn) {
 		case strings.equal_fold(h, "Origin"):            origin = v
 		}
 	}
-	if origin != "" || !host_allowed(host, c.srv.port) {
+	// (the one Origin taken: Chrome's own DevTools, on the WebSocket only. A page cannot send it, its browser writes its own.)
+	if (origin != "" && !(key != "" && origin == "devtools://devtools")) || !host_allowed(host, c.srv.port) {
 		http_reply(c, "403 Forbidden", "text/plain", "devtools: refused (a request from a browser's page, or for another host)")
 		free_all(context.temp_allocator)
 		return
@@ -134,7 +136,7 @@ conn_loop :: proc(c: ^Conn) {
 		case strings.has_prefix(path, "/json/version"):
 			http_reply(c, "200 OK", "application/json", fmt.tprintf(`{{"Browser":"gui_toolkit/%s","Protocol-Version":"1.3","User-Agent":"gui_toolkit","webSocketDebuggerUrl":"ws://127.0.0.1:%d/devtools/browser/%s"}}`, VERSION, srv.port, srv.id))
 		case path == "/json" || strings.has_prefix(path, "/json/list"):
-			http_reply(c, "200 OK", "application/json", fmt.tprintf(`[{{"description":"","devtoolsFrontendUrl":"","id":"%s","title":%s,"type":"page","url":"toolkit://window","webSocketDebuggerUrl":"ws://127.0.0.1:%d/devtools/page/%s"}}]`, srv.id, json_quote(srv.title, context.temp_allocator), srv.port, srv.id))
+			http_reply(c, "200 OK", "application/json", fmt.tprintf(`[{{"description":"","devtoolsFrontendUrl":"devtools://devtools/bundled/inspector.html?ws=127.0.0.1:%d/devtools/page/%s","id":"%s","title":%s,"type":"page","url":"toolkit://window","webSocketDebuggerUrl":"ws://127.0.0.1:%d/devtools/page/%s"}}]`, srv.port, srv.id, srv.id, json_quote(srv.title, context.temp_allocator), srv.port, srv.id))
 		case:
 			http_reply(c, "404 Not Found", "text/plain", "not found: /json/version, /json/list, or a WebSocket on /devtools/page/<id>")
 		}
@@ -146,6 +148,7 @@ conn_loop :: proc(c: ^Conn) {
 		free_all(context.temp_allocator)
 		return
 	}
+	c.page = strings.has_prefix(path, "/devtools/page/")
 	// the upgrade (RFC 6455): the accept key is base64(sha1(key + the protocol's GUID))
 	h: sha1.Context
 	sha1.init(&h)
