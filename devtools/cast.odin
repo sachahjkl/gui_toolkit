@@ -3,7 +3,7 @@ package devtools
 import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
-import "core:hash"
+import "core:sync"
 import "../render"
 import "../ui"
 
@@ -28,6 +28,8 @@ Cast :: struct {
 	unacked:    bool,
 	owed:       bool,       // something changed, too soon to send: the ticker wakes the window for it
 	touched:    bool,       // input was sent since the last capture came back
+	settling:   bool,       // this capture is the one more that follows a change (cast_frame)
+	same:       bool,       // the encoder's thread found the picture unchanged: nothing goes out, no ack comes (atomic)
 	id:         int,
 }
 
@@ -53,6 +55,7 @@ cast_stop :: proc(srv: ^Server, r: ^render.Renderer = nil) {
 @(private)
 cast_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	c := &srv.screencast
+	if sync.atomic_exchange(&c.same, false) { c.unacked = false }
 	if !c.on { return }
 	if conn_gone(c.to.conn) { cast_stop(srv, r); return }
 	c.owed = false
@@ -66,24 +69,29 @@ cast_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 
 // The capture came back.
 @(private)
-cast_frame :: proc(srv: ^Server, s: ^ui.State, pixels: []u8, size: [2]int) {
+cast_frame :: proc(srv: ^Server, s: ^ui.State, raw: render.Capture_Raw) {
 	c := &srv.screencast
 	c.pending = false
 	// The frame that reads the capture back, about to be built, is no change of the program's. Unless it is: input sent
-	// before this came back shows in it, as does the next step of what moves, and that would be the last frame lost.
-	c.last_build = c.touched || ui.needs_frame(s) ? 0 : s.build_index + 1
-	c.touched = false
-	h := u64(hash.crc32(pixels))
-	if c.id > 0 && h == c.last_hash {
-		delete(pixels, runtime.heap_allocator())
-		return
+	// before this came back shows in it, as does the next step of what moves, and that would be the last frame lost. So may
+	// what the program does in answer to the frame just shown, which nothing here can see: after a change one more capture is
+	// taken, and only that one's reading frame is ignored. (One more, not more: a window that shows a counter of its own frames
+	// must come to rest.)
+	switch {
+	case c.touched || ui.needs_frame(s):
+		c.last_build, c.settling = 0, false
+	case !c.settling:
+		c.last_build, c.settling = 0, true
+	case:
+		c.last_build, c.settling = s.build_index + 1, false
 	}
-	c.last_hash = h
+	c.touched = false
 	c.id += 1
 	c.unacked = true
 	d := dpi(srv)
-	meta := fmt.aprintf(`"sessionId":%d,"metadata":{{"offsetTop":0,"pageScaleFactor":1,"deviceWidth":%.0f,"deviceHeight":%.0f,"scrollOffsetX":0,"scrollOffsetY":0,"timestamp":%.3f}}`, c.id, f64(size.x) / d, f64(size.y) / d, ui.now_ms() / 1000, allocator = runtime.heap_allocator())
-	encode_start(Encode_Job{srv = srv, pixels = pixels, size = size, frame = true, to = hold(c.to), meta = meta})
+	meta := fmt.aprintf(`"sessionId":%d,"metadata":{{"offsetTop":0,"pageScaleFactor":1,"deviceWidth":%.0f,"deviceHeight":%.0f,"scrollOffsetX":0,"scrollOffsetY":0,"timestamp":%.3f}}`, c.id, f64(raw.size.x) / d, f64(raw.size.y) / d, ui.now_ms() / 1000, allocator = runtime.heap_allocator())
+	// (compared on the encoder's thread: a window's whole picture takes too long here)
+	encode_start(Encode_Job{srv = srv, raw = raw, frame = true, first = c.id == 1, to = hold(c.to), meta = meta})
 }
 
 // The client took the last frame: what changed in the meantime goes now.

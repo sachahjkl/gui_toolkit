@@ -56,8 +56,10 @@ rec_flush :: proc(r: ^Recorder) {
 		append(&r.lines, Rec_Line{fmt.aprintf("type %s", json_quote(string(r.text[:])), allocator = runtime.heap_allocator()), r.text_at})
 		clear(&r.text)
 	}
-	if r.scroll.y != 0 {
-		append(&r.lines, Rec_Line{fmt.aprintf("wheel %.0f %.0f %g", r.scroll_at.x, r.scroll_at.y, r.scroll.y, allocator = runtime.heap_allocator()), r.scroll_ms})
+	if r.scroll != {} {
+		h := runtime.heap_allocator()
+		line := r.scroll.x != 0 ? fmt.aprintf("wheel %.0f %.0f %g %g", r.scroll_at.x, r.scroll_at.y, r.scroll.y, r.scroll.x, allocator = h) : fmt.aprintf("wheel %.0f %.0f %g", r.scroll_at.x, r.scroll_at.y, r.scroll.y, allocator = h)
+		append(&r.lines, Rec_Line{line, r.scroll_ms})
 		r.scroll = {}
 	}
 }
@@ -156,12 +158,12 @@ rec_poll :: proc(srv: ^Server, s: ^ui.State) {
 			}
 		case .Scroll:
 			if len(r.text) > 0 { rec_flush(r) }
-			if r.scroll.y == 0 { r.scroll_ms = ui.now_ms() }
+			if r.scroll == {} { r.scroll_ms = ui.now_ms() }
 			r.touched = ui.now_ms()
 			r.scroll += e.delta
 			r.scroll_at = {e.pos.x / d, e.pos.y / d}
 		case .Text:
-			if r.scroll.y != 0 { rec_flush(r) }
+			if r.scroll != {} { rec_flush(r) }
 			if len(r.text) == 0 { r.text_at = ui.now_ms() }
 			r.touched = ui.now_ms()
 			buf, n := encode_rune(e.text)
@@ -173,6 +175,27 @@ rec_poll :: proc(srv: ^Server, s: ^ui.State) {
 			}
 		}
 	}
+}
+
+// An action sent by Toolkit.axAction, as the press that does it again: by the role and the name of its node, with the index when
+// others come first. (The recorder sees it here: it is no event of the window's.)
+@(private)
+rec_press :: proc(srv: ^Server, u: ^platform.A11y_Update, node: int, action: platform.A11y_Action, p: json.Object) {
+	r := &srv.rec
+	if !r.on || !r.injected { return }
+	role, name := ax_role_name(platform.A11y_Role(u.nodes[node].role)), ax_name_of(u, node)
+	sb := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&sb, "press %s --role %s", json_quote(name), role)
+	if action != .Click { fmt.sbprintf(&sb, " --action %v", action) }
+	for m, i in ax_matching(u, role, name, false) { if m == node { if i > 0 { fmt.sbprintf(&sb, " --index %d", i) }; break } }
+	if v, has := p["value"]; has {
+		#partial switch x in v {
+		case json.String:           fmt.sbprintf(&sb, " --value %s", json_quote(x))
+		case json.Integer, json.Float: fmt.sbprintf(&sb, " --number %g", num(v))
+		}
+	}
+	rec_line(r, strings.to_string(sb))
+	rec_line(r, "idle")
 }
 
 // The words that find what is under the pointer: a name, else a text, with the index when others come first; "" when

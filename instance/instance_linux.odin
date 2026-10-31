@@ -53,10 +53,15 @@ runtime_dir :: proc() -> string {
 	}
 	cdir := strings.clone_to_cstring(dir, context.temp_allocator)
 	linux.mkdir(cdir, {.IRUSR, .IWUSR, .IXUSR})
+	return dir_is_ours(cdir) ? dir : ""
+}
+
+// A real directory, this user's, that no one else can reach.
+@(private)
+dir_is_ours :: proc(dir: cstring) -> bool {
 	st: linux.Stat
-	if linux.lstat(cdir, &st) != .NONE || !linux.S_ISDIR(st.mode) || st.uid != linux.getuid() { return "" }
-	if st.mode & {.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH} != {} { return "" }
-	return dir
+	if linux.lstat(dir, &st) != .NONE || !linux.S_ISDIR(st.mode) || st.uid != linux.getuid() { return false }
+	return st.mode & {.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH} == {}
 }
 
 // "" with no runtime directory: nothing to open or to connect to, the start carries on by itself.

@@ -21,6 +21,22 @@ Dom_Style :: struct {
 	base: string,   // as it was before the first edit
 }
 
+// An edit, for DOM.undo and DOM.redo: what it was, what it made it (owned). had, has: whether the edit stood.
+@(private)
+Dom_Edit_Kind :: enum { Style, Text, Removed, Aria_Label }
+@(private)
+Dom_Edit :: struct {
+	kind:          Dom_Edit_Kind,
+	id:            int,
+	mark:          int,
+	had, has:      bool,
+	before, after: string,
+}
+
+// The one attribute that can be edited: what a reader gets.
+@(private)
+ATTR_LABEL :: "aria-label"
+
 @(private)
 Css_Prop :: struct {
 	name, value: string,
@@ -222,13 +238,20 @@ dom_style_set :: proc(srv: ^Server, s: ^ui.State, id: int, b: ^ui.Box, text: str
 	st, known := &srv.dom.styles[id]
 	if !known {
 		base := strings.clone(dom_style_text(srv, id, b))
-		srv.dom.styles[id] = Dom_Style{base = base}
+		srv.dom.styles[id] = Dom_Style{base = base, text = strings.clone(base)}
 		st = &srv.dom.styles[id]
-	} else {
-		delete(st.text)
 	}
-	st.text = strings.clone(text)
-	e := ui.box_edit(s, b.key)
+	dom_history_add(srv, Dom_Edit{kind = .Style, id = id, had = true, before = strings.clone(st.text), has = true, after = strings.clone(text)})
+	dom_style_impose(srv, s, id, b.key, text)
+}
+
+@(private)
+dom_style_impose :: proc(srv: ^Server, s: ^ui.State, id: int, key: ui.Key, text: string) {
+	st := &srv.dom.styles[id]
+	copied := strings.clone(text)   // (text may be the entry's own)
+	delete(st.text)
+	st.text = copied
+	e := ui.box_edit(s, key)
 	e.set &~= {.Background, .Border, .Text_Color, .Opacity, .Radius, .Font_Size, .Padding, .Width, .Height}
 	base := css_parse(st.base)
 	for p in css_parse(st.text) {
@@ -237,4 +260,184 @@ dom_style_set :: proc(srv: ^Server, s: ^ui.State, id: int, b: ^ui.Box, text: str
 		for q in base { if q.name == p.name && q.value == p.value { same = true; break } }
 		if !same { css_impose(e, p.name, p.value, f32(dpi(srv))) }
 	}
+}
+
+// A text edited (DOM.setNodeValue).
+@(private)
+dom_text_edit :: proc(srv: ^Server, s: ^ui.State, id: int, key: ui.Key, value: string) {
+	e := ui.box_edit(s, key)
+	dom_history_add(srv, Dom_Edit{kind = .Text, id = id, had = .Text in e.set, before = strings.clone(e.text), has = true, after = strings.clone(value)})
+	dom_edit_text(s, key, true, value)
+}
+
+@(private)
+dom_edit_text :: proc(s: ^ui.State, key: ui.Key, has: bool, value: string) {
+	e := ui.box_edit(s, key)
+	copied := strings.clone(value)
+	delete(e.text)
+	e.text = copied
+	if has { e.set += {.Text} } else { e.set -= {.Text} }
+}
+
+// A box removed (DOM.removeNode).
+@(private)
+dom_remove_edit :: proc(srv: ^Server, s: ^ui.State, id: int, key: ui.Key) {
+	dom_history_add(srv, Dom_Edit{kind = .Removed, id = id, had = false, has = true})
+	ui.box_edit(s, key).set += {.Removed}
+}
+
+// The name a reader gets, edited: what `aria-label` is here.
+@(private)
+dom_aria_edit :: proc(srv: ^Server, s: ^ui.State, id: int, b: ^ui.Box, value: string) {
+	e := ui.box_edit(s, b.key)
+	had := .Aria_Label in e.set
+	before := had ? e.aria_label : (b.a11y != nil ? b.a11y.name : "")   // (what the program gives, for the undo to say)
+	dom_history_add(srv, Dom_Edit{kind = .Aria_Label, id = id, had = had, before = strings.clone(before), has = true, after = strings.clone(value)})
+	dom_edit_aria(srv, s, id, b.key, true, value)
+}
+
+// (Without an edit, what the program gives comes back at the next build: the client hears of what it shows now.)
+@(private)
+dom_edit_aria :: proc(srv: ^Server, s: ^ui.State, id: int, key: ui.Key, has: bool, value: string) {
+	e := ui.box_edit(s, key)
+	copied := strings.clone(value)
+	delete(e.aria_label)
+	e.aria_label = copied
+	if has { e.set += {.Aria_Label} } else { e.set -= {.Aria_Label} }
+	to := srv.dom.to
+	if to.conn == nil { return }
+	if value != "" {
+		event(to.conn, to.session, "DOM.attributeModified", fmt.tprintf(`{{"nodeId":%d,"name":"aria-label","value":%s}}`, id, json_quote(value)))
+	} else {
+		event(to.conn, to.session, "DOM.attributeRemoved", fmt.tprintf(`{{"nodeId":%d,"name":"aria-label"}}`, id))
+	}
+}
+
+// `name="value"` pairs, as an attribute is typed in Elements.
+@(private)
+attrs_parse :: proc(text: string) -> [dynamic][2]string {
+	out := make([dynamic][2]string, context.temp_allocator)
+	space :: proc(c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
+	i := 0
+	for i < len(text) {
+		if space(text[i]) { i += 1; continue }
+		start := i
+		for i < len(text) && !space(text[i]) && text[i] != '=' { i += 1 }
+		name := text[start:i]
+		value := ""
+		for i < len(text) && space(text[i]) { i += 1 }
+		if i < len(text) && text[i] == '=' {
+			i += 1
+			for i < len(text) && space(text[i]) { i += 1 }
+			if i < len(text) && (text[i] == '"' || text[i] == '\'') {
+				q := text[i]
+				i += 1
+				start = i
+				for i < len(text) && text[i] != q { i += 1 }
+				value = text[start:i]
+				if i < len(text) { i += 1 }
+			} else {
+				start = i
+				for i < len(text) && !space(text[i]) { i += 1 }
+				value = text[start:i]
+			}
+		}
+		if name != "" { append(&out, [2]string{name, value}) }
+	}
+	return out
+}
+
+// Attributes as asked: `pairs` to set, `name` the attribute they replace ("": they replace nothing). Only `aria-label` is the
+// client's to change: the others say what the box is in the program, and stay. An error's text, else "".
+@(private)
+dom_attr_edit :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, id: int, pairs: [][2]string, name: string) -> string {
+	b := dom_box(srv, s, id)
+	if b == nil || id % 2 == 1 { return "not a box in the window" }
+	current :: proc(b: ^ui.Box, name: string) -> (string, bool) {
+		for kv in dom_attrs(b) { if kv[0] == name { return kv[1], true } }
+		return "", false
+	}
+	refused :: proc(name: string) -> string { return fmt.tprintf("'%s' comes from the program: only aria-label can be edited", name) }
+	label, has_label := "", false
+	for kv in pairs {
+		if kv[0] == ATTR_LABEL { label, has_label = kv[1], true; continue }
+		// (Elements sends what it did not change along)
+		if v, ok := current(b, kv[0]); !ok || v != kv[1] { return refused(kv[0]) }
+	}
+	if name != "" && name != ATTR_LABEL {
+		v, ok := current(b, name)
+		kept := false
+		for kv in pairs { if kv[0] == name && ok && kv[1] == v { kept = true } }
+		if !kept { return refused(name) }
+	}
+	if !has_label && name != ATTR_LABEL { return "" }
+	if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
+	dom_aria_edit(srv, s, id, b, label)
+	return ""
+}
+
+// One step of the history, one way or the other.
+@(private)
+dom_history_apply :: proc(srv: ^Server, s: ^ui.State, h: Dom_Edit, forward: bool) {
+	has, value := forward ? h.has : h.had, forward ? h.after : h.before
+	key := srv.dom.keys[h.id / 2 - 1]
+	to := srv.dom.to
+	switch h.kind {
+	case .Style:
+		dom_style_impose(srv, s, h.id, key, value)
+		// (what makes the Styles panel read it again)
+		if to.conn != nil { event(to.conn, to.session, "CSS.styleSheetChanged", fmt.tprintf(`{{"styleSheetId":"toolkit-%d"}}`, h.id)) }
+	case .Text:
+		dom_edit_text(s, key, has, value)
+	case .Removed:
+		e := ui.box_edit(s, key)
+		if has { e.set += {.Removed} } else { e.set -= {.Removed} }
+	case .Aria_Label:
+		dom_edit_aria(srv, s, h.id, key, has, value)
+	}
+}
+
+// DOM.undo: back over the edits since the last mark (DOM.markUndoableState).
+@(private)
+dom_undo :: proc(srv: ^Server, s: ^ui.State) {
+	d := &srv.dom
+	if d.done == 0 { return }
+	mark := d.history[d.done - 1].mark
+	for d.done > 0 && d.history[d.done - 1].mark == mark {
+		d.done -= 1
+		dom_history_apply(srv, s, d.history[d.done], false)
+	}
+}
+
+// DOM.redo: what the last undo took back.
+@(private)
+dom_redo :: proc(srv: ^Server, s: ^ui.State) {
+	d := &srv.dom
+	if d.done == len(d.history) { return }
+	mark := d.history[d.done].mark
+	for d.done < len(d.history) && d.history[d.done].mark == mark {
+		dom_history_apply(srv, s, d.history[d.done], true)
+		d.done += 1
+	}
+}
+
+// An edit done: it replaces what had been undone.
+@(private)
+dom_history_add :: proc(srv: ^Server, h: Dom_Edit) {
+	d := &srv.dom
+	for len(d.history) > d.done { dom_edit_free(pop(&d.history)) }
+	h := h
+	h.mark = d.mark
+	append(&d.history, h)
+	d.done = len(d.history)
+}
+
+@(private)
+dom_edit_free :: proc(h: Dom_Edit) { delete(h.before); delete(h.after) }
+
+@(private)
+dom_history_clear :: proc(d: ^Dom) {
+	for h in d.history { dom_edit_free(h) }
+	clear(&d.history)
+	d.done = 0
 }
