@@ -72,6 +72,8 @@ Server :: struct {
 	stopping: bool,
 	ticking:  ^thread.Thread,
 	waiting:  int,                // len(waits), for the ticker (atomic)
+	asked:    bool,               // a command in the inbox wants a frame (under lock; the ticker reads it, atomic)
+	ended:    bool,               // a connection ended since the last frame (atomic)
 	cast_dirty: bool,             // the window changed since the last frame of the screencast (atomic)
 	encoding: int,                // pictures being encoded on their own threads (atomic)
 	// the UI thread's own
@@ -188,6 +190,7 @@ stop :: proc(srv: ^Server) {
 // commands that came in are carried out, input injected into the window's queue for this frame.
 service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv == nil { return }
+	sync.atomic_store(&srv.ended, false)   // (before anything looks at the connections: one that ends after this is seen next time)
 	// (first: the time between frames is the program's rhythm, and a frame that reads a capture back is not late for it)
 	if s != nil { metrics_sample(srv, s) }
 	if len(srv.later) > 0 { cast_touch(srv) }
@@ -204,6 +207,7 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	sync.lock(&srv.lock)
 	msgs := srv.inbox
 	srv.inbox = {}
+	sync.atomic_store(&srv.asked, false)
 	sync.unlock(&srv.lock)
 	defer delete(msgs)
 	for m in msgs {
