@@ -42,6 +42,7 @@ Reply :: enum u8 { No_Window, Accepted, Other_Instance, Refused, Timeout }
 @(private = "file") owners_mu: sync.Mutex
 @(private = "file") owners: [dynamic]^Owner
 
+// "" when it is not this user's alone: /tmp is everyone's, and who made the directory first would get the messages.
 @(private = "file")
 runtime_dir :: proc() -> string {
 	dir := ""
@@ -50,16 +51,24 @@ runtime_dir :: proc() -> string {
 	} else {
 		dir = fmt.tprintf("/tmp/tk_instance-%d", linux.getuid())
 	}
-	linux.mkdir(strings.clone_to_cstring(dir, context.temp_allocator), {.IRUSR, .IWUSR, .IXUSR})
+	cdir := strings.clone_to_cstring(dir, context.temp_allocator)
+	linux.mkdir(cdir, {.IRUSR, .IWUSR, .IXUSR})
+	st: linux.Stat
+	if linux.lstat(cdir, &st) != .NONE || !linux.S_ISDIR(st.mode) || st.uid != linux.getuid() { return "" }
+	if st.mode & {.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH} != {} { return "" }
 	return dir
 }
 
+// "" with no runtime directory: nothing to open or to connect to, the start carries on by itself.
 @(private = "file")
-path_of :: proc(name, ext: string) -> string { return strings.concatenate({runtime_dir(), "/", name, ext}, context.temp_allocator) }
+path_of :: proc(name, ext: string) -> string {
+	dir := runtime_dir()
+	return dir == "" ? "" : strings.concatenate({dir, "/", name, ext}, context.temp_allocator)
+}
 
 @(private = "file")
 address_of :: proc(path: string) -> (addr: linux.Sock_Addr_Un, ok: bool) {
-	if len(path) >= len(addr.sun_path) { return {}, false }
+	if path == "" || len(path) >= len(addr.sun_path) { return {}, false }
 	addr.sun_family = .UNIX
 	copy(addr.sun_path[:], path)
 	return addr, true

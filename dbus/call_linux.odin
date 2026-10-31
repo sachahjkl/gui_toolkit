@@ -13,32 +13,33 @@ import "core:time"
 @(private = "file") RECV_CHUNK_BYTES :: 8192
 
 // Sends a method call and waits for its reply (bounded by timeout_ms, 0 = a default). The returned Message is valid
-// until the next call / dispatch on this connection (its body lives in the connection's message arena). ok = false on
-// timeout or disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
+// until the next call on this connection (it lives in the connection's reply arena). ok = false on timeout or
+// disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
+// A handler may call this, but a reply to an outer call that arrives during it is lost: the outer call times out.
 call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) {
 	if !conn_alive_or_connecting(c) { return {}, false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return {}, false }
 	deadline := time.tick_now()
 	limit := timeout_ms > 0 ? timeout_ms : DEFAULT_CALL_TIMEOUT_MS
+	outer := c.wait_serial
+	defer c.wait_serial = outer
 	c.wait_serial = serial
 	c.wait_reply = nil
-	c.wait_status = .Timeout
 	for {
 		pump(c, remaining_ms(deadline, limit))
 		if c.wait_reply != nil {
 			m := c.wait_reply^
-			c.wait_serial = 0
 			c.wait_reply = nil
 			return m, m.type == .Method_Return
 		}
-		if c.disconnected { c.wait_serial = 0; return {}, false }
-		if remaining_ms(deadline, limit) <= 0 { c.wait_serial = 0; return {}, false }
+		if c.disconnected { return {}, false }
+		if remaining_ms(deadline, limit) <= 0 { return {}, false }
 	}
 }
 
-// Sends a method call and returns at once; `handler` runs from dispatch() when the reply arrives (or on timeout /
-// disconnect with a nil message). deadline_ms: 0 = no deadline (the handler is kept until a reply comes).
+// Sends a method call and returns at once; `handler` runs from dispatch() when the reply arrives, or with a nil message
+// on timeout or when the bus goes away. deadline_ms: 0 = no deadline. conn_close runs none of them.
 call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := DEFAULT_CALL_TIMEOUT_MS) -> bool {
 	if !conn_alive_or_connecting(c) { return false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
@@ -129,13 +130,20 @@ drain_socket :: proc(c: ^Conn) {
 @(private)
 route_buffered :: proc(c: ^Conn) {
 	for len(c.in_buf) >= MIN_MESSAGE_BYTES {
-		virtual.arena_free_all(&c.msg_arena)
+		// (back to where it was, not emptied: a handler that calls comes here again under its own message)
+		temp := virtual.arena_temp_begin(&c.msg_arena)
 		msg, total, ok := parse_message(c.in_buf[:], mem_arena_allocator(c))
-		if !ok { break }
-		route_one(c, &msg)
-		// drop the consumed bytes
+		if !ok {
+			virtual.arena_temp_end(temp)
+			// no message can be told from the next in what follows: the connection is over
+			if total < 0 { c.disconnected = true; clear(&c.in_buf) }
+			break
+		}
+		// the consumed bytes go first: the message is a copy, and a handler that calls must not meet it again
 		copy(c.in_buf[:], c.in_buf[total:])
 		resize(&c.in_buf, len(c.in_buf) - total)
+		route_one(c, &msg)
+		virtual.arena_temp_end(temp)
 	}
 }
 
@@ -144,11 +152,10 @@ route_one :: proc(c: ^Conn, msg: ^Message) {
 	#partial switch msg.type {
 	case .Method_Return, .Error:
 		if c.wait_serial != 0 && msg.reply_serial == c.wait_serial {
-			// hand it to the synchronous waiter: copy into a stable slot (the arena is reset on the next parse)
-			@(static) held: Message
-			held = msg^
-			c.wait_reply = &held
-			c.wait_status = msg.type == .Method_Return ? .Ok : .Error
+			// hand it to the synchronous waiter: a copy of its own (msg's memory goes back when it is routed)
+			virtual.arena_free_all(&c.reply_arena)
+			c.wait_msg = message_clone(msg^, virtual.arena_allocator(&c.reply_arena))
+			c.wait_reply = &c.wait_msg
 			return
 		}
 		for &p, i in c.pending {
@@ -176,7 +183,7 @@ expire_pending :: proc(c: ^Conn) {
 	now := time.tick_now()._nsec
 	for i := len(c.pending) - 1; i >= 0; i -= 1 {
 		p := c.pending[i]
-		if p.deadline != 0 && now >= p.deadline {
+		if c.disconnected || p.deadline != 0 && now >= p.deadline {
 			unordered_remove(&c.pending, i)
 			if p.handler != nil { p.handler(p.user, c.disconnected ? .Disconnected : .Timeout, nil) }
 		}

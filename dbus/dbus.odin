@@ -24,7 +24,6 @@ package dbus
 
 import "base:runtime"
 import "core:mem/virtual"
-import "core:sync"
 
 // How long a method call waits for its reply unless told otherwise (the reference client's default).
 @(private)
@@ -82,21 +81,22 @@ Conn :: struct {
 	serial:      u32,         // the next outgoing serial
 	// an incoming-byte buffer: whole messages are parsed out of it, a partial message stays until the rest arrives
 	in_buf:      [dynamic]u8,
-	// matching outgoing serials to callers waiting synchronously: the parsed reply is dropped here
+	// matching outgoing serials to callers waiting synchronously: the reply is copied here (its memory: reply_arena, until
+	// the next reply), as messages may follow it in the same read
 	wait_serial: u32,
 	wait_reply:  ^Message,
-	wait_status: Call_Status,
+	wait_msg:    Message,
+	reply_arena: virtual.Arena,
 	subs:        [dynamic]Subscription,
 	next_sub_id: u32,
 	pending:     [dynamic]Pending,
-	// a scratch allocator for parsing one message (reset between messages), so a signal handler's reads do not leak
+	// a scratch allocator for parsing one message (its memory goes back once it is routed), so a signal handler's reads do not leak
 	msg_arena:   virtual.Arena,
 	exports:     ^[dynamic]Exported,   // objects we serve (export_object), nil until the first
 	connected:   bool,
-	mutex:       sync.Mutex,  // guards send() so call_async from a worker that shares the conn is at least atomic on the wire
 	disconnected: bool,
 }
 
-// The connection's per-message scratch allocator (reset before each message is parsed).
+// The connection's per-message scratch allocator.
 @(private)
 mem_arena_allocator :: proc(c: ^Conn) -> runtime.Allocator { return virtual.arena_allocator(&c.msg_arena) }

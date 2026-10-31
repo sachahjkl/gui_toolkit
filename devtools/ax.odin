@@ -185,7 +185,7 @@ ax_audit :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State) {
 	d := f32(dpi(srv))
 	for b, i in ui.a11y_unnamed(s) {
 		if i > 0 { strings.write_byte(sb, ',') }
-		fmt.sbprintf(sb, `{{"key":"%x","name":%s,"x":%.1f,"y":%.1f,"w":%.1f,"h":%.1f}}`, u64(b.key), json_quote(b.name), b.rect.min.x / d, b.rect.min.y / d, (b.rect.max.x - b.rect.min.x) / d, (b.rect.max.y - b.rect.min.y) / d)
+		fmt.sbprintf(sb, `{{"key":"%x","name":%s,%s}}`, u64(b.key), json_quote(b.name), rect_json(b, d))
 	}
 	strings.write_string(sb, "]}")
 }

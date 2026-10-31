@@ -49,6 +49,7 @@ Ports :: struct {
 
 // The base port of this run: `base_env` from the environment if it is a usable port, else `default_base`.
 base_port :: proc(p: ^Ports) -> int {
+	sync.guard(&p.lock)
 	if p.cached != 0 { return p.cached }
 	b := p.default_base
 	if p.base_env != "" {
