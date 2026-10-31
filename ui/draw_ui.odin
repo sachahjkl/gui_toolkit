@@ -39,6 +39,10 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	interp := draw.set_interpolation(dc, .Linear)
 	draw_box(s, dc, s.root, s.scale)
 	autoscroll_draw(s, dc)   // the autoscroll anchor marker, over everything (autoscroll_region.odin)
+	if b := s.boxes[s.inspected]; s.inspected != 0 && box_current(s, b) {
+		draw.rect(dc, b.rect, {0.24, 0.55, 1, 0.28})
+		draw.rect(dc, b.rect, {0.24, 0.55, 1, 0.9}, 0, 1)
+	}
 	draw.set_interpolation(dc, interp)
 }
 

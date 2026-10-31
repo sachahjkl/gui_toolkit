@@ -56,6 +56,7 @@ Server :: struct {
 	waits:    [dynamic]Wait,      // Toolkit.waitFor, waitIdle
 	rec:      Recorder,           // Toolkit.startRecording
 	screencast: Cast,               // Page.startScreencast
+	dom:      Dom,                // the box tree as Chrome's DevTools sees it (dom.odin)
 	samples:  [METRIC_RING]Metric_Sample,   // the last frames (Toolkit.metrics)
 	sampled:  int,
 	sample_build: u64,
@@ -149,6 +150,7 @@ stop :: proc(srv: ^Server) {
 	cast_stop(srv)
 	delete(srv.later)
 	rec_destroy(&srv.rec)
+	dom_destroy(srv)
 	delete(srv.title)
 	delete(srv.id)
 	free(srv)
@@ -168,6 +170,7 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		metrics_sample(srv, s)
 		rec_poll(srv, s)
 		waits_poll(srv, s)
+		dom_sync(srv, s)
 	}
 	sync.lock(&srv.lock)
 	msgs := srv.inbox
@@ -216,6 +219,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	to := Reply_To{conn = m.conn, id = i64(num(o["id"])), session = str(o["sessionId"])}
 	method := str(o["method"])
 	p, _ := o["params"].(json.Object)
+	if s != nil && dom_handle(srv, s, to, method, p) { return }
 	sb := strings.builder_make(context.temp_allocator)
 	ok := true
 	switch method {
@@ -233,8 +237,8 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Target.setAutoAttach":
 		strings.write_string(&sb, "{}")
 		reply(to, strings.to_string(sb))
-		// (a connection to the browser's endpoint gets the page; the page's own session has nothing under it)
-		if to.session == "" && bool_of(p["autoAttach"]) { attached(srv, to, new_session(srv)) }
+		// (a connection to the browser's endpoint gets the page; the page, on its own endpoint or in its session, has nothing under it)
+		if to.session == "" && !to.conn.page && bool_of(p["autoAttach"]) { attached(srv, to, new_session(srv)) }
 		return
 	case "Target.attachToTarget":
 		session := new_session(srv)
@@ -259,7 +263,7 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 		reply(to, strings.to_string(sb))
 		event(to.conn, to.session, "Runtime.executionContextCreated", fmt.tprintf(`{{"context":{{"id":1,"origin":"toolkit://window","name":"","auxData":{{"isDefault":true,"type":"default","frameId":"%s"}}}}}}`, srv.id))
 		return
-	case "Input.dispatchMouseEvent":
+	case "Input.dispatchMouseEvent", "Input.emulateTouchFromMouseEvent":   // (the second: DevTools' picture of the window, clicked)
 		cast_touch(srv)
 		mouse_event(srv, p)
 		strings.write_string(&sb, "{}")
@@ -340,6 +344,15 @@ handle :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer, m: Message) {
 	case "Toolkit.state":
 		d := dpi(srv)
 		fmt.sbprintf(&sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d)
+	// (what Chrome's DevTools asks on attaching and cannot do without; there is nothing behind them)
+	case "Page.getResourceTree":
+		fmt.sbprintf(&sb, `{{"frameTree":{{"frame":{{"id":"%s","loaderId":"","url":"toolkit://window","securityOrigin":"toolkit://window","mimeType":"text/html"}},"resources":[]}}}}`, srv.id)
+	case "Runtime.getIsolateId":
+		strings.write_string(&sb, `{"id":"toolkit"}`)
+	case "Log.startViolationsReport", "Network.configureDurableMessages", "Network.overrideNetworkState", "Runtime.addBinding", "Runtime.releaseObject", "Runtime.releaseObjectGroup":
+		strings.write_string(&sb, "{}")
+	case "Network.emulateNetworkConditionsByRule":
+		strings.write_string(&sb, `{"ruleIds":[]}`)
 	case "Runtime.evaluate", "Runtime.callFunctionOn":
 		error_reply(to, -32000, "no JavaScript in a toolkit window: use the Toolkit domain (getTree, find, click)")
 		return

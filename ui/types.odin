@@ -348,6 +348,8 @@ State :: struct {
 	scroll_key:   Key,
 	last_click_key:  Key,
 	last_click_ms:   f64,
+	inspected:    Key,               // set_inspected: the box lit over everything
+	edits:        map[Key]Box_Edit,  // box_edit: what a tool imposes on boxes, build after build
 	focus_key:    Key,
 	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box
 	focus_order:  [dynamic]Focus_Entry,  // Tab stops in build order (this frame)

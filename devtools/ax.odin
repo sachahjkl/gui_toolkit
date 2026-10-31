@@ -40,7 +40,7 @@ ax_name_of :: proc(u: ^platform.A11y_Update, i: int) -> string {
 ax_write_node :: proc(sb: ^strings.Builder, srv: ^Server, u: ^platform.A11y_Update, i: int, parent: map[u64]u64) {
 	n := u.nodes[i]
 	role := platform.A11y_Role(n.role)
-	fmt.sbprintf(sb, `{{"nodeId":"%x","ignored":false,"role":{{"type":"role","value":%s}},"name":{{"type":"computedString","value":%s}},"backendDOMNodeId":%d`, n.id, json_quote(ax_role_name(role)), json_quote(ax_name_of(u, i)), i + 1)
+	fmt.sbprintf(sb, `{{"nodeId":"%x","ignored":false,"role":{{"type":"role","value":%s}},"name":{{"type":"computedString","value":%s}},"backendDOMNodeId":%d`, n.id, json_quote(ax_role_name(role)), json_quote(ax_name_of(u, i)), dom_id(srv, ui.Key(n.id)))
 	if role != .Label {
 		if v := platform.a11y_node_string(u, i, .Value); v != "" { fmt.sbprintf(sb, `,"value":{{"type":"string","value":%s}}`, json_quote(v)) }
 	}

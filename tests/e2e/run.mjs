@@ -170,6 +170,87 @@ try {
   else if (compare(decodePng(readFileSync(join(baseline, 'lazy.png'))), lastFrame, PIXEL_DELTA).share > 0.02) fail('screencast: the last frame is not what the window shows')
   else pass(`screencast: ${frames} frames, the last one what the window shows, none at rest`)
 
+  // the box tree as Chrome's DevTools asks for it
+  {
+    const seen = []
+    const off = ['DOM.childNodeRemoved', 'DOM.childNodeInserted'].map((m) => on(m, () => seen.push(m)))
+    const attrs = (n) => { const o = {}; for (let i = 0; i + 1 < (n.attributes || []).length; i += 2) o[n.attributes[i]] = n.attributes[i + 1]; return o }
+    const search = (n, f) => { if (f(n)) return n; for (const c of n.children || []) { const r = search(c, f); if (r) return r } return null }
+    const root = (await send('DOM.getDocument', { depth: -1 })).root
+    const button = search(root, (n) => n.localName === 'button' && attrs(n).id === 'nav0')
+    if (root.children?.[0]?.localName !== 'html' || !button) fail('DOM: the tree')
+    else {
+      const text = search(button, (n) => n.nodeType === 3)
+      const model = (await send('DOM.getBoxModel', { nodeId: button.nodeId })).model
+      const style = (await send('CSS.getComputedStyleForNode', { nodeId: button.nodeId })).computedStyle
+      const ax = (await send('Accessibility.getPartialAXTree', { nodeId: button.nodeId })).nodes[0]
+      const at = await send('DOM.getNodeForLocation', { x: model.content[0] + 20, y: model.content[1] + 5 })
+      if (!text?.nodeValue || !(model.width > 0) || !style.some((c) => c.name === 'width')) fail('DOM: a box, its text, its model, its style')
+      else if (ax.role?.value !== 'button' || ax.backendDOMNodeId !== button.nodeId) fail('DOM: its accessible node')
+      else if (!search(button, (n) => n.nodeId === at.nodeId)) fail('DOM: the node at a point')
+      else {
+        await send('Overlay.highlightNode', { nodeId: button.nodeId, highlightConfig: {} })
+        await send('Overlay.hideHighlight')
+        await send('Toolkit.click', { name: 'nav2' })
+        await idle()
+        if (!seen.includes('DOM.childNodeInserted') || !seen.includes('DOM.childNodeRemoved')) fail('DOM: a change of page sends no event')
+        else pass(`DOM: ${button.nodeId}, its text "${text.nodeValue}", followed through a change of page`)
+      }
+    }
+    await send('Toolkit.click', { name: 'nav1' })
+    await idle()
+  }
+
+  // editing from DevTools: live, in sRGB, and gone with the client
+  {
+    const dt = await connect(port, { retryMs: 2000 })
+    const attrs = (n) => { const o = {}; for (let i = 0; i + 1 < (n.attributes || []).length; i += 2) o[n.attributes[i]] = n.attributes[i + 1]; return o }
+    const search = (n, f) => { if (f(n)) return n; for (const c of n.children || []) { const r = search(c, f); if (r) return r } return null }
+    const root = (await dt.send('DOM.getDocument', { depth: -1 })).root
+    const button = search(root, (n) => attrs(n).id === 'nav3')
+    const m = (await dt.send('DOM.getBoxModel', { nodeId: button.nodeId })).model.content
+    const dpr = (await dt.send('Toolkit.state')).dpi
+    const pixel = async () => {
+      const p = decodePng(await shot())
+      const i = (Math.round((m[1] + 3) * dpr) * p.width + Math.round((m[0] + 4) * dpr)) * 4
+      return [p.px[i], p.px[i + 1], p.px[i + 2]]
+    }
+    const near = (a, b) => a.every((v, k) => Math.abs(v - b[k]) <= 3)
+    const rgb = (v) => v.match(/[\d.]+/g).slice(0, 3).map(Number)
+    const styleOf = async () => (await dt.send('CSS.getMatchedStylesForNode', { nodeId: button.nodeId })).inlineStyle
+    const before = await pixel()
+    const style = await styleOf()
+    const shown = style.cssProperties.find((p) => p.name === 'background-color')
+    if (!shown || !near(rgb(shown.value), before)) fail(`DevTools' colour is not the screen's: ${shown?.value} and ${before}`)
+    else {
+      const text = style.cssText.replace(shown.value, '#ff0000')
+      await dt.send('CSS.setStyleTexts', { edits: [{ styleSheetId: style.styleSheetId, range: style.range, text }] })
+      await idle()
+      const red = await pixel()
+      const label = search(button, (n) => n.nodeType === 3)
+      await dt.send('DOM.setNodeValue', { nodeId: label.nodeId, value: 'Edited' })
+      await idle()
+      const found = (await send('Toolkit.find', { text: 'Edited' })).nodes.length
+      await dt.send('DOM.removeNode', { nodeId: search(root, (n) => attrs(n).id === 'nav4').nodeId })
+      await idle()
+      const removed = (await send('Toolkit.find', { name: 'nav4' })).nodes.length
+      if (!near(red, [255, 0, 0])) fail(`a style edited: the box is ${red}`)
+      else if (found !== 1) fail('a text edited')
+      else if (removed !== 0) fail('a box removed')
+      else {
+        dt.close()
+        await new Promise((r) => setTimeout(r, 150))
+        await send('Toolkit.state')
+        await idle()
+        const back = await pixel()
+        const again = (await send('Toolkit.find', { name: 'nav4' })).nodes.length
+        if (!near(back, before) || again !== 1) fail(`edits still there without their client: ${back}, ${again}`)
+        else pass('DevTools: a colour as on screen, a style, a text and a box edited, gone with the client')
+      }
+    }
+    dt.close()
+  }
+
   // recording a timeline: a picture per action, what a person types gathered, and it plays back the same
   let stopRecording
   const stop = new Promise((r) => { stopRecording = r })
