@@ -41,7 +41,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if len(f.apps) > 0 { upload_structured(r, &r.app_params_buf, &r.app_params_view, &r.app_params_cap, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
 	if len(f.insts) > r.inst_cap {
 		if r.inst_buf != nil { r.inst_buf->Release() }
-		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, 4096))
+		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, INST_CAP_MIN))
 		r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)
 	}
 	if len(f.insts) > 0 {
@@ -141,13 +141,13 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		} else if slug_frame {
 			draw_batch_split(r, f, b)
 		} else {
-			r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first))
+			r.ctx->DrawInstanced(QUAD_VERTICES, u32(b.count), 0, u32(b.first))
 		}
 		drawing = true
 		if r.prof.detail && r.prof.cur != nil {
 			d := Gpu_Step_Rec{batch = i32(bi), insts = i32(b.count), scissor = {rc.left, rc.top, rc.right, rc.bottom}}
 			if b.replay > 0 {
-				d.kinds = 1 << 31
+				d.kinds = GPU_KINDS_RETAINED
 			} else if b.first + b.count <= len(f.insts) {
 				for inst in f.insts[b.first:][:b.count] { d.kinds |= 1 << u32(inst.use_tex); d.flags |= inst.flags }
 			}
@@ -231,12 +231,12 @@ bind_target :: proc(r: ^Renderer, f: Frame_Data, target: int) -> (ok: bool, size
 	switch r.text.curve {
 	case .None: text_gamma = 0
 	case .Srgb: text_gamma = -1
-	case .Power: text_gamma = max(r.text.gamma, 0.25)
+	case .Power: text_gamma = max(r.text.gamma, TEXT_GAMMA_MIN)
 	}
 	(^Globals)(mapped.pData)^ = Globals{
-		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + 0.6 * sm, corner_boost = 1 + 0.25 * sm,
+		viewport_size = {f32(size.x), f32(size.y)}, corner_n = 2 + CORNER_N_SMOOTHING * sm, corner_boost = 1 + CORNER_BOOST_SMOOTHING * sm,
 		target_origin = origin, target_space = u32(space),
-		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, 0.1),
+		text_gamma = text_gamma, text_contrast = r.text.contrast, text_exponent = max(r.text.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN),
 	}
 	r.ctx->Unmap(r.globals, 0)
 	vp := d3d11.VIEWPORT{0, 0, f32(size.x), f32(size.y), 0, 1}
@@ -320,7 +320,7 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 		src2_size = {f32(p.src2.size.x), f32(p.src2.size.y)}, src2_dim = dim(r, p.src2.tex),
 		dir = p.dir, offset = p.offset, color = p.color,
 		matrix_count = u32(clamp(p.matrix_count, 0, MAX_COLOR_MATRICES)),
-		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, 8)),
+		dst_size = {f32(p.dst.size.x), f32(p.dst.size.y)}, factor = f32(clamp(p.factor, 2, DOWNSAMPLE_FACTOR_MAX)),
 	}
 	if p.mode == .Blur { pc.taps = u32(blur_taps(p.sigma, &pc.tap)) }
 	for k in 0 ..< int(pc.matrix_count) {
@@ -342,7 +342,7 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 	r.ctx->PSSetSamplers(0, 1, &r.sampler_border)
 	views := [2]^d3d11.IShaderResourceView{texture_view(r, p.src.tex), texture_view(r, p.src2.tex)}
 	r.ctx->PSSetShaderResources(0, 2, &views[0])
-	r.ctx->Draw(3, 0)
+	r.ctx->Draw(FULLSCREEN_VERTICES, 0)
 	unbind_inputs(r)
 	if r.prof.cur != nil {
 		kind: Gpu_Step

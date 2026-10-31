@@ -122,5 +122,5 @@ wgpu_draw_app :: proc(r: ^Renderer, s: ^Submit, b: Batch, format: wgpu.TextureFo
 	append(&s.groups, bg)
 	if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
 	wgpu.RenderPassEncoderSetBindGroup(s.pass, 2, bg)
-	wgpu.RenderPassEncoderDraw(s.pass, 4, 1, 0, u32(b.first))
+	wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, 1, 0, u32(b.first))
 }

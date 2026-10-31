@@ -143,7 +143,10 @@ frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	when USE_WGPU { wgpu_frame_begin(r, clear) } else { d3d_frame_begin(r, clear) }
 }
 
-wait_for_frame :: proc(r: ^Renderer, timeout_ms := 100) -> bool {
+// What wait_for_frame waits at most, by default.
+FRAME_WAIT_TIMEOUT_MS :: 100
+
+wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
 	when USE_WGPU { return wgpu_wait_for_frame(r, timeout_ms) } else { return d3d_wait_for_frame(r, timeout_ms) }
 }
 

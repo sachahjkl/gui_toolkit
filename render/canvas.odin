@@ -17,6 +17,26 @@ import "vendor:directx/d3d11"
 CANVAS_MIN_BUFFER :: 4096
 CANVAS_POOL_IDLE :: 240        // submits an unused pooled texture survives
 CANVAS_BLUR_DIRECT_SIGMA :: 24 // a blur above this runs on an image reduced by 2, 4, 8...
+@(private) CANVAS_BLUR_MAX_REDUCTIONS :: 4
+@(private) CANVAS_BLUR_MIN_SIGMA :: 0.01   // at or below it a blur is a copy
+@(private) CANVAS_BUF_ALIGN :: 16          // bytes: a vec4 of the raw buffers
+@(private) CANVAS_MAX_ANISOTROPY :: 16
+// The Composite_Op of the canvas2d package: Source_Over = 0 .. Xor = 10 are blend states; from 11 on the blend modes read
+// the backdrop and the shader writes the result.
+@(private) CANVAS_COMPOSITE_OPS :: 26
+@(private) CANVAS_PORTER_DUFF_LAST :: 10
+@(private) CANVAS_BLEND_MODE_FIRST :: 11
+// Instances of a blend-mode batch that share one copy of the backdrop, and how far back each is tested for an overlap.
+@(private) CANVAS_BACKDROP_GROUP_MAX :: 32
+// Canvas_Fx_Constants.mode: FX_* in canvas.wgsl.
+@(private) CANVAS_FX_MATRIX :: 0
+@(private) CANVAS_FX_BLUR :: 1
+@(private) CANVAS_FX_DOWN :: 2
+// Texture_Data.canvas
+@(private) CANVAS_TEX_SOURCE :: 1    // a source of canvas pixels
+@(private) CANVAS_TEX_TARGET :: 2    // a canvas (render target, kept)
+@(private) CANVAS_TEX_MASK :: 3      // a R8 clip mask / layer
+@(private) CANVAS_TEX_SCRATCH :: 4   // an RGBA scratch target (not a canvas: no state)
 
 @(private)
 Canvas_Buf :: struct {
@@ -74,7 +94,7 @@ Canvas_Pipeline :: struct {
 	globals, fxcb: ^d3d11.IBuffer,
 	raster:       ^d3d11.IRasterizerState,
 	samplers:     [5]^d3d11.ISamplerState,
-	blend:        [2][26]^d3d11.IBlendState,   // [rgb only (an opaque canvas)][Composite_Op]
+	blend:        [2][CANVAS_COMPOSITE_OPS]^d3d11.IBlendState,   // [rgb only (an opaque canvas)][Composite_Op]
 	blend_mask:   ^d3d11.IBlendState,          // replace (clip masks, filter passes)
 	blend_over:   ^d3d11.IBlendState,          // source-over on every channel (layers)
 	insts, heap, paints, stops: Canvas_Buf,
@@ -107,7 +127,7 @@ d3d_canvas_texture_create :: proc(r: ^Renderer, w, h: int, target, mips: bool) -
 	if r.device == nil || r.lost { return 0 }
 	limit := max_texture_size(r)
 	if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
-	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = .Srgb, canvas = target ? 2 : 1}
+	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = .Srgb, canvas = target ? CANVAS_TEX_TARGET : CANVAS_TEX_SOURCE}
 	support: u32
 	r.device->CheckFormatSupport(.R8G8B8A8_UNORM, &support)
 	td.mips = mips && support & u32(d3d11.FORMAT_SUPPORT.MIP_AUTOGEN) != 0 && (w > 1 || h > 1)
@@ -120,9 +140,9 @@ d3d_canvas_texture_create :: proc(r: ^Renderer, w, h: int, target, mips: bool) -
 canvas_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	desc := d3d11.TEXTURE2D_DESC{
 		Width = u32(td.w), Height = u32(td.h), MipLevels = td.mips ? 0 : 1, ArraySize = 1,
-		Format = td.canvas == 3 ? .R8_UNORM : .R8G8B8A8_UNORM, SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
+		Format = td.canvas == CANVAS_TEX_MASK ? .R8_UNORM : .R8G8B8A8_UNORM, SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.SHADER_RESOURCE},
 	}
-	if td.canvas >= 2 || td.mips { desc.BindFlags += {.RENDER_TARGET} }
+	if td.canvas >= CANVAS_TEX_TARGET || td.mips { desc.BindFlags += {.RENDER_TARGET} }
 	if td.mips { desc.MiscFlags = {.GENERATE_MIPS} }
 	td.tex, td.view, td.rtv = nil, nil, nil
 	if hr_failed(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
@@ -155,7 +175,7 @@ when !USE_WGPU {
 d3d_canvas_upload :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride: int) -> bool {
 	if int(t) <= 0 || int(t) >= len(r.textures) || r.lost { return false }
 	td := &r.textures[int(t)]
-	if td.canvas == 0 || td.canvas == 3 || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return false }
+	if td.canvas == 0 || td.canvas == CANVAS_TEX_MASK || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > td.w || y + h > td.h { return false }
 	pitch := stride > 0 ? stride : w * 4
 	if len(pixels) < pitch * (h - 1) + w * 4 { return false }
 	box := d3d11.BOX{left = u32(x), top = u32(y), front = 0, right = u32(x + w), bottom = u32(y + h), back = 1}
@@ -258,7 +278,7 @@ canvas_pipeline_init :: proc(r: ^Renderer) -> bool {
 	r.device->CreateRasterizerState(&{FillMode = .SOLID, CullMode = .NONE, ScissorEnable = true}, &cp.raster)
 	if cp.globals == nil || cp.fxcb == nil || cp.raster == nil { return false }
 
-	sd := d3d11.SAMPLER_DESC{AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP, MaxLOD = max(f32), MaxAnisotropy = 16, ComparisonFunc = .NEVER}
+	sd := d3d11.SAMPLER_DESC{AddressU = .CLAMP, AddressV = .CLAMP, AddressW = .CLAMP, MaxLOD = max(f32), MaxAnisotropy = CANVAS_MAX_ANISOTROPY, ComparisonFunc = .NEVER}
 	sd.Filter = .MIN_MAG_MIP_POINT
 	r.device->CreateSamplerState(&sd, &cp.samplers[0])
 	sd.Filter = .MIN_MAG_MIP_LINEAR
@@ -273,7 +293,7 @@ canvas_pipeline_init :: proc(r: ^Renderer) -> bool {
 
 	// the Porter-Duff operators as blend states: color and alpha take the same factors (the formulas are on premultiplied values)
 	Factors :: struct { src, dst: d3d11.BLEND }
-	f := [26]Factors{}
+	f := [CANVAS_COMPOSITE_OPS]Factors{}
 	f[0] = {.ONE, .INV_SRC_ALPHA}                // source-over
 	f[1] = {.DEST_ALPHA, .ZERO}                  // source-in
 	f[2] = {.INV_DEST_ALPHA, .ZERO}              // source-out
@@ -286,10 +306,10 @@ canvas_pipeline_init :: proc(r: ^Renderer) -> bool {
 	f[9] = {.ONE, .ZERO}                         // copy
 	f[10] = {.INV_DEST_ALPHA, .INV_SRC_ALPHA}    // xor
 	for rgb_only in 0 ..< 2 {
-		for op in 0 ..< 26 {
+		for op in 0 ..< CANVAS_COMPOSITE_OPS {
 			bd := d3d11.BLEND_DESC{}
 			mask := rgb_only == 1 ? d3d11.COLOR_WRITE_ENABLE_MASK{.RED, .GREEN, .BLUE} : d3d11.COLOR_WRITE_ENABLE_ALL
-			if op <= 10 {
+			if op <= CANVAS_PORTER_DUFF_LAST {
 				bd.RenderTarget[0] = {BlendEnable = true, SrcBlend = f[op].src, DestBlend = f[op].dst, BlendOp = .ADD,
 					SrcBlendAlpha = f[op].src, DestBlendAlpha = f[op].dst, BlendOpAlpha = .ADD, RenderTargetWriteMask = u8(transmute(u32)mask)}
 			} else {
@@ -357,12 +377,12 @@ canvas_pipeline_free :: proc(r: ^Renderer) {
 
 @(private)
 canvas_buf_upload :: proc(r: ^Renderer, b: ^Canvas_Buf, data: rawptr, bytes: int, vertex: bool) -> bool {
-	need := max(bytes, 16)
+	need := max(bytes, CANVAS_BUF_ALIGN)
 	if b.buf == nil || need > b.cap {
 		if b.view != nil { b.view->Release(); b.view = nil }
 		if b.buf != nil { b.buf->Release(); b.buf = nil }
 		b.cap = max(need, b.cap * 2, CANVAS_MIN_BUFFER)
-		b.cap = (b.cap + 15) / 16 * 16
+		b.cap = (b.cap + CANVAS_BUF_ALIGN - 1) / CANVAS_BUF_ALIGN * CANVAS_BUF_ALIGN
 		desc := d3d11.BUFFER_DESC{ByteWidth = u32(b.cap), Usage = .DYNAMIC, CPUAccessFlags = {.WRITE}}
 		if vertex { desc.BindFlags = {.VERTEX_BUFFER} } else { desc.BindFlags, desc.MiscFlags = {.SHADER_RESOURCE}, {.BUFFER_ALLOW_RAW_VIEWS} }
 		if hr_failed(r.device->CreateBuffer(&desc, nil, &b.buf)) { b.buf, b.cap = nil, 0; return false }
@@ -383,8 +403,8 @@ pool_acquire :: proc(r: ^Renderer, w, h: int, r8: bool) -> Texture {
 	for &p in cp.pool {
 		if !p.used && p.w == w && p.h == h && p.r8 == r8 { p.used, p.idle = true, 0; return p.tex }
 	}
-	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = .Srgb, canvas = r8 ? 3 : 2 + 0}
-	if !r8 { td.canvas = 3 + 1 }   // 4: an RGBA scratch target (not a canvas: no state)
+	td := Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = .Srgb, canvas = r8 ? CANVAS_TEX_MASK : CANVAS_TEX_TARGET}
+	if !r8 { td.canvas = CANVAS_TEX_SCRATCH }
 	if !canvas_texture_objects(r, &td) { return 0 }
 	t := add_texture(r, td)
 	append(&cp.pool, Canvas_Pool_Tex{tex = t, w = w, h = h, r8 = r8, used = true})
@@ -454,7 +474,7 @@ Canvas_Exec :: struct {
 @(private)
 d3d_canvas_submit :: proc(r: ^Renderer, target: Texture, list: ^Canvas_List) -> bool {
 	if int(target) <= 0 || int(target) >= len(r.textures) || r.lost || r.device == nil { return false }
-	if r.textures[int(target)].canvas != 2 || r.textures[int(target)].rtv == nil { return false }
+	if r.textures[int(target)].canvas != CANVAS_TEX_TARGET || r.textures[int(target)].rtv == nil { return false }
 	if !canvas_pipeline_ensure(r) { return false }
 	cp := &r.canvas
 	cp.submits += 1
@@ -631,7 +651,7 @@ exec_copy_region :: proc(x: ^Canvas_Exec, dst: Texture, box: [4]i32) {
 exec_back_draw :: proc(x: ^Canvas_Exec, from, to: int, ub: [4]i32) {
 	if to <= from || ub[2] <= ub[0] || ub[3] <= ub[1] { return }
 	exec_copy_region(x, x.back, ub)
-	x.r.ctx->DrawInstanced(4, u32(to - from), 0, u32(from))
+	x.r.ctx->DrawInstanced(QUAD_VERTICES, u32(to - from), 0, u32(from))
 	x.cp.stats.draws += 1
 }
 
@@ -646,11 +666,11 @@ exec_draw :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	src := exec_source(x, cmd.source)
 	clip: Texture
 	if cmd.clip != 0 { clip = x.state.masks[cmd.clip] }
-	op := min(int(cmd.op), 25)
+	op := min(int(cmd.op), CANVAS_COMPOSITE_OPS - 1)
 	bs := cp.blend[x.cur_main && x.state.opaque ? 1 : 0][op]
 	if !x.cur_main && op == 0 { bs = cp.blend_over }
 	if bs != x.bound_blend { r.ctx->OMSetBlendState(bs, nil, ~u32(0)); x.bound_blend = bs }
-	if op >= 11 && x.cur_main {
+	if op >= CANVAS_BLEND_MODE_FIRST && x.cur_main {
 		// a blend mode reads the backdrop: a copy of what the draw covers, taken again when an instance overlaps an earlier
 		// one of the group (the later one must see the earlier one's result)
 		if !exec_scratch(x, &x.back) { return }
@@ -667,11 +687,11 @@ exec_draw :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 			ib := [4]i32{i32(b[0]), i32(b[1]), i32(b[2]) + 1, i32(b[3]) + 1}
 			ib = {max(ib[0], rc.left + x.cur_origin.x), max(ib[1], rc.top + x.cur_origin.y), min(ib[2], rc.right + x.cur_origin.x), min(ib[3], rc.bottom + x.cur_origin.y)}
 			overlap := false
-			for m in max(from, k - 32) ..< k {
+			for m in max(from, k - CANVAS_BACKDROP_GROUP_MAX) ..< k {
 				mb := insts[m].box
 				if mb[0] < b[2] + 1 && b[0] < mb[2] + 1 && mb[1] < b[3] + 1 && b[1] < mb[3] + 1 { overlap = true; break }
 			}
-			if overlap || k - from >= 32 {
+			if overlap || k - from >= CANVAS_BACKDROP_GROUP_MAX {
 				exec_back_draw(x, from, k, ub)
 				from, ub = k, empty
 			}
@@ -683,7 +703,7 @@ exec_draw :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 		return
 	}
 	exec_bind_inputs(x, src, clip)
-	r.ctx->DrawInstanced(4, u32(cmd.count), 0, u32(cmd.first))
+	r.ctx->DrawInstanced(QUAD_VERTICES, u32(cmd.count), 0, u32(cmd.first))
 	cp.stats.draws += 1
 }
 
@@ -707,7 +727,7 @@ exec_clip_make :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	parent: Texture
 	if cmd.clip != 0 { parent = x.state.masks[cmd.clip] }
 	exec_bind_inputs(x, 0, parent)
-	r.ctx->DrawInstanced(4, u32(cmd.count), 0, u32(cmd.first))
+	r.ctx->DrawInstanced(QUAD_VERTICES, u32(cmd.count), 0, u32(cmd.first))
 	cp.stats.draws += 1
 	// the canvas is the target again for what follows
 	x.cur, x.cur_main = 0, true
@@ -790,7 +810,7 @@ exec_fx_pass :: proc(x: ^Canvas_Exec, src, dst: Texture, mode: u32, dir: [2]f32,
 	r.ctx->PSSetConstantBuffers(1, 1, &cp.fxcb)
 	v := sd.view
 	r.ctx->PSSetShaderResources(3, 1, &v)
-	r.ctx->Draw(3, 0)
+	r.ctx->Draw(FULLSCREEN_VERTICES, 0)
 	none1 := [1]^d3d11.IShaderResourceView{}
 	r.ctx->PSSetShaderResources(3, 1, &none1[0])
 	cp.stats.draws += 1
@@ -809,10 +829,10 @@ exec_layer_fx :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	switch cmd.fx {
 	case .Copy:
 		m: [20]f32
-		exec_fx_pass(x, src.tex, dst_tex, 2, {}, nil, 0, &m)
+		exec_fx_pass(x, src.tex, dst_tex, CANVAS_FX_DOWN, {}, nil, 0, &m)
 	case .Matrix:
 		m := cmd.color_matrix
-		exec_fx_pass(x, src.tex, dst_tex, 0, {}, nil, 0, &m)
+		exec_fx_pass(x, src.tex, dst_tex, CANVAS_FX_MATRIX, {}, nil, 0, &m)
 	case .Blur:
 		exec_blur(x, src.tex, dst_tex, cmd.sigma)
 	}
@@ -830,22 +850,22 @@ exec_blur :: proc(x: ^Canvas_Exec, src, dst: Texture, sigma: f32) {
 	r := x.r
 	w, h := r.textures[int(src)].w, r.textures[int(src)].h
 	m: [20]f32
-	if sigma <= 0.01 { exec_fx_pass(x, src, dst, 2, {}, nil, 0, &m); return }
+	if sigma <= CANVAS_BLUR_MIN_SIGMA { exec_fx_pass(x, src, dst, CANVAS_FX_DOWN, {}, nil, 0, &m); return }
 	levels := 0
 	s := sigma
-	for s > CANVAS_BLUR_DIRECT_SIGMA && levels < 4 { s *= 0.5; levels += 1 }
-	chain: [5]Texture   // chain[l]: the image reduced l times (chain[0] is the source)
-	sizes: [5][2]int
+	for s > CANVAS_BLUR_DIRECT_SIGMA && levels < CANVAS_BLUR_MAX_REDUCTIONS { s *= 0.5; levels += 1 }
+	chain: [CANVAS_BLUR_MAX_REDUCTIONS + 1]Texture   // chain[l]: the image reduced l times (chain[0] is the source)
+	sizes: [CANVAS_BLUR_MAX_REDUCTIONS + 1][2]int
 	chain[0], sizes[0] = src, {w, h}
 	for l in 1 ..= levels {
 		sizes[l] = {max((sizes[l - 1].x + 1) / 2, 1), max((sizes[l - 1].y + 1) / 2, 1)}
 		chain[l] = pool_acquire(r, sizes[l].x, sizes[l].y, false)
 		if chain[l] == 0 {
 			for k in 1 ..< l { pool_release(r, chain[k]) }
-			exec_fx_pass(x, src, dst, 2, {}, nil, 0, &m)
+			exec_fx_pass(x, src, dst, CANVAS_FX_DOWN, {}, nil, 0, &m)
 			return
 		}
-		exec_fx_pass(x, chain[l - 1], chain[l], 2, {}, nil, 0, &m)
+		exec_fx_pass(x, chain[l - 1], chain[l], CANVAS_FX_DOWN, {}, nil, 0, &m)
 	}
 	cw, ch := sizes[levels].x, sizes[levels].y
 	taps: [MAX_BLUR_TAPS / 2][4]f32
@@ -853,16 +873,16 @@ exec_blur :: proc(x: ^Canvas_Exec, src, dst: Texture, sigma: f32) {
 	tmp := pool_acquire(r, cw, ch, false)
 	if tmp == 0 {
 		for k in 1 ..= levels { pool_release(r, chain[k]) }
-		exec_fx_pass(x, src, dst, 2, {}, nil, 0, &m)
+		exec_fx_pass(x, src, dst, CANVAS_FX_DOWN, {}, nil, 0, &m)
 		return
 	}
 	last := levels == 0 ? dst : chain[levels]
-	exec_fx_pass(x, chain[levels], tmp, 1, {1 / f32(cw), 0}, &taps, n, nil)
-	exec_fx_pass(x, tmp, last, 1, {0, 1 / f32(ch)}, &taps, n, nil)
+	exec_fx_pass(x, chain[levels], tmp, CANVAS_FX_BLUR, {1 / f32(cw), 0}, &taps, n, nil)
+	exec_fx_pass(x, tmp, last, CANVAS_FX_BLUR, {0, 1 / f32(ch)}, &taps, n, nil)
 	pool_release(r, tmp)
 	for l := levels; l >= 1; l -= 1 {
 		next := l > 1 ? chain[l - 1] : dst
-		exec_fx_pass(x, chain[l], next, 2, {}, nil, 0, &m)
+		exec_fx_pass(x, chain[l], next, CANVAS_FX_DOWN, {}, nil, 0, &m)
 	}
 	for l in 1 ..= levels { pool_release(r, chain[l]) }
 }
@@ -874,7 +894,7 @@ canvas_clear :: proc(r: ^Renderer, t: Texture, color: [4]f32) {
 	when USE_WGPU { return } else {
 		if int(t) <= 0 || int(t) >= len(r.textures) || r.lost { return }
 		td := &r.textures[int(t)]
-		if td.canvas != 2 || td.rtv == nil { return }
+		if td.canvas != CANVAS_TEX_TARGET || td.rtv == nil { return }
 		c := color
 		r.ctx->ClearRenderTargetView(td.rtv, &c)
 		if td.mips { td.mips_dirty = true }
@@ -937,7 +957,7 @@ canvas_staging :: proc(r: ^Renderer, w, h: int) -> ^d3d11.ITexture2D {
 d3d_canvas_read :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, out: []u8) -> bool {
 	if int(t) <= 0 || int(t) >= len(r.textures) || r.lost || w <= 0 || h <= 0 || len(out) < w * h * 4 { return false }
 	td := &r.textures[int(t)]
-	if td.canvas == 0 || td.canvas == 3 { return false }
+	if td.canvas == 0 || td.canvas == CANVAS_TEX_MASK { return false }
 	for i in 0 ..< w * h * 4 { out[i] = 0 }
 	x0, y0 := max(x, 0), max(y, 0)
 	x1, y1 := min(x + w, td.w), min(y + h, td.h)
@@ -972,7 +992,7 @@ canvas_read_begin :: proc(r: ^Renderer, t: Texture, x, y, w, h: int) -> (rd: Can
 	when USE_WGPU { return {}, false } else {
 		if int(t) <= 0 || int(t) >= len(r.textures) || r.lost || w <= 0 || h <= 0 { return }
 		td := &r.textures[int(t)]
-		if td.canvas == 0 || td.canvas == 3 { return }
+		if td.canvas == 0 || td.canvas == CANVAS_TEX_MASK { return }
 		if x < 0 || y < 0 || x + w > td.w || y + h > td.h { return }
 		desc := d3d11.TEXTURE2D_DESC{Width = u32(w), Height = u32(h), MipLevels = 1, ArraySize = 1, Format = .R8G8B8A8_UNORM,
 			SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ}}

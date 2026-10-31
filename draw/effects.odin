@@ -135,9 +135,8 @@ filters_outset :: proc(m: Affine, filters: []Filter) -> [4]f32 {
 	return o
 }
 
-// A gaussian reaches about 3 standard deviations.
 @(private)
-blur_extent :: proc(sigma: f32) -> f32 { return sigma <= 0 ? 0 : math.ceil(3 * sigma) }
+blur_extent :: proc(sigma: f32) -> f32 { return sigma <= 0 ? 0 : math.ceil(render.GAUSSIAN_REACH_SIGMAS * sigma) }
 
 ////////////////////////////////
 // Layers
@@ -208,7 +207,7 @@ open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, masked: bool) -
 		whole, frac := anchor_split(fx.cache_anchor)
 		// a masked layer's result has its mask in it: the caller's key covers the mask layers (drawn in it), and the
 		// same key unmasked is another result
-		caller := masked ? hash_mix(fx.cache_key, 0x6d61736b) : fx.cache_key
+		caller := masked ? hash_mix(fx.cache_key, CACHE_SALT_MASKED) : fx.cache_key
 		key := cache_full_key(c, caller, core, m, frac, Rect{full.min - whole, full.max - whole}, space)
 		needed := snap_rect(r)
 		// the blended result kept: it depends on what is under, the opacity, the matrices and the clips around too
@@ -520,6 +519,16 @@ set_tail :: proc(f: ^Filtered, tail: []Filter) {
 	for t, i in tail { f.tail[i] = t.cm }
 }
 
+// A large blur is reduced at most to this scale.
+@(private) BLUR_MIN_SCALE :: 1.0 / 64
+// A reduction is short of its target scale, or reaches it, within these factors (the scales are powers of two).
+@(private) BLUR_SCALE_ABOVE :: 1.01
+@(private) BLUR_SCALE_BELOW :: 0.99
+// What is left of a gaussian after the reductions is at least a standard deviation of 0.3 texels (this is its square).
+@(private) BLUR_MIN_VARIANCE_TEXELS :: 0.09
+// A drop shadow blurred less than this (screen pixels) uses the input's alpha as it is.
+@(private) DROP_SHADOW_MIN_BLUR_PX :: 0.1
+
 @(private)
 Chain :: struct {
 	c:      ^Context,
@@ -555,14 +564,14 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 	// by up to 8), two separable passes at that scale; the result stays reduced
 	blur :: proc(ch: ^Chain, src: render.Image_Ref, src_linear: bool, sigma, limit: f32, base: u32) -> (out: render.Image_Ref, ok: bool) {
 		scale: f32 = 1
-		for sigma * scale > limit && scale > 1.0 / 64 { scale *= 0.5 }
+		for sigma * scale > limit && scale > BLUR_MIN_SCALE { scale *= 0.5 }
 		scale = min(scale, src.scale)
 		s := src
 		lin := src_linear
 		variance: f32   // added by the reductions and the resampling, screen px^2
-		for s.scale > scale * 1.01 {
+		for s.scale > scale * BLUR_SCALE_ABOVE {
 			f := 2
-			for f < 8 && s.scale / f32(f * 2) >= scale * 0.99 { f *= 2 }
+			for f < render.DOWNSAMPLE_FACTOR_MAX && s.scale / f32(f * 2) >= scale * BLUR_SCALE_BELOW { f *= 2 }
 			d := chain_target(ch, s.scale / f32(f), s.origin) or_return
 			append(&ch.passes, render.Pass{mode = .Downsample, factor = f, flags = base | (lin ? render.PASS_IN_LINEAR : 0), src = s, dst = d})
 			variance += f32(f * f - 1) / 12 / (s.scale * s.scale)
@@ -570,7 +579,7 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 		}
 		// reading the reduced result back at full size (bilinear: a tent of one reduced texel) blurs a little more
 		if s.scale < 1 { variance += 1.0 / 6 / (s.scale * s.scale) }
-		eff := math.sqrt(max(sigma * sigma - variance, 0.09 / (s.scale * s.scale)))
+		eff := math.sqrt(max(sigma * sigma - variance, BLUR_MIN_VARIANCE_TEXELS / (s.scale * s.scale)))
 		h := chain_target(ch, s.scale, s.origin) or_return
 		append(&ch.passes, render.Pass{mode = .Blur, flags = base | (lin ? render.PASS_IN_LINEAR : 0), src = s, dst = h, dir = {1, 0}, sigma = eff * s.scale})
 		v := chain_target(ch, s.scale, s.origin) or_return
@@ -602,7 +611,7 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 		case .Drop_Shadow:
 			src := cur
 			blurred := cur
-			if f.sigma * k > 0.1 {
+			if f.sigma * k > DROP_SHADOW_MIN_BLUR_PX {
 				out, ok := blur(&ch, cur, cur_linear, f.sigma * k, limit, base)
 				if !ok { failed = true; break }
 				blurred = out
@@ -675,7 +684,7 @@ backdrop_capture :: proc(c: ^Context, r: Rect, filters: []Filter, cache_id: u64 
 	region := Rect{{x0, y0}, {x1, y1}}
 	if cache_id != 0 {
 		whole, frac := anchor_split(cache_anchor)
-		key := cache_full_key(c, hash_mix(cache_key, 0x62), core, m, frac, Rect{region.min - whole, region.max - whole}, blend_space(c))
+		key := cache_full_key(c, hash_mix(cache_key, CACHE_SALT_BACKDROP_KEY), core, m, frac, Rect{region.min - whole, region.max - whole}, blend_space(c))
 		ask = cache_ask(c, backdrop_cache_id(cache_id), key, whole, region)
 		if ask.hit {
 			bd = Backdrop{image = ask.img, full = ask.full, kept = true}

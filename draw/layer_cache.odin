@@ -54,6 +54,17 @@ LAYER_CACHE_DEFAULT_BUDGET :: 64 << 20
 LAYER_CACHE_DEFAULT_MAX_PX :: 4 << 20
 LAYER_CACHE_DEFAULT_IDLE :: 600
 
+// Each kind of key starts from its own number (its name in ASCII), so that keys of different kinds do not meet.
+@(private) CACHE_SALT_LAYER :: 0x6c61796572636163      // "layercac"
+@(private) CACHE_SALT_MASKED :: 0x6d61736b             // "mask"
+@(private) CACHE_SALT_BACKDROP_ID :: 0x6261636b64726f70   // "backdrop"
+@(private) CACHE_SALT_BACKDROP_KEY :: 0x62             // "b"
+@(private) CACHE_SALT_SETTINGS :: 0x73657474696e6773   // "settings"
+@(private) CACHE_SALT_PLANE :: 0x706c616e65            // "plane"
+@(private) HASH_FNV_PRIME :: 0x100000001B3
+// A position is compared to 1 / this of a pixel.
+@(private) CACHE_POSITION_STEPS :: 64
+
 // Budget of kept filter results in bytes (0 turns keeping off and lets everything go), the largest layer (pixels)
 // drawn whole to be kept, and how many frames an unused result stays.
 set_layer_cache :: proc(c: ^Context, budget_bytes: int, max_layer_px: int = LAYER_CACHE_DEFAULT_MAX_PX, idle_frames: int = LAYER_CACHE_DEFAULT_IDLE) {
@@ -91,7 +102,7 @@ layer_cache_forget :: proc(c: ^Context, id: u64) {
 }
 
 @(private)
-backdrop_cache_id :: proc(id: u64) -> u64 { return id == 0 ? 0 : hash_mix(id, 0x6261636b64726f70) }
+backdrop_cache_id :: proc(id: u64) -> u64 { return id == 0 ? 0 : hash_mix(id, CACHE_SALT_BACKDROP_ID) }
 
 @(private)
 cache_drop :: proc(c: ^Context, e: ^Kept_Image) {
@@ -152,7 +163,7 @@ cache_trim :: proc(c: ^Context, want: int, between_frames := false) -> bool {
 
 @(private)
 hash_mix :: #force_inline proc(h, v: u64) -> u64 {
-	x := (h ~ v) * 0x100000001B3
+	x := (h ~ v) * HASH_FNV_PRIME
 	return x ~ (x >> 29)
 }
 
@@ -161,7 +172,7 @@ hash_f32 :: #force_inline proc(h: u64, v: f32) -> u64 { return hash_mix(h, u64(t
 
 // A position to 1/64 pixel.
 @(private)
-quantize :: #force_inline proc(v: f32) -> f32 { return math.round(v * 64) / 64 }
+quantize :: #force_inline proc(v: f32) -> f32 { return math.round(v * CACHE_POSITION_STEPS) / CACHE_POSITION_STEPS }
 
 // The whole pixels of an anchor, and its fraction (to 1/64 pixel).
 @(private)
@@ -176,7 +187,7 @@ anchor_split :: proc(a: Vec2) -> (whole: Vec2, frac: Vec2) {
 @(private)
 settings_key :: proc(c: ^Context) -> u64 {
 	t := c.renderer.text
-	h := hash_mix(0x73657474696e6773, u64(t.curve))
+	h := hash_mix(CACHE_SALT_SETTINGS, u64(t.curve))
 	h = hash_f32(hash_f32(hash_f32(h, t.gamma), t.contrast), t.coverage_exponent)
 	h = hash_f32(h, c.renderer.corner_smoothing)
 	if c.fonts != nil { h = hash_mix(h, font.atlas_settings_generation(c.fonts)) }
@@ -187,7 +198,7 @@ settings_key :: proc(c: ^Context) -> u64 {
 // fraction, the bounds relative to the anchor, the space, the blur settings and the global drawing settings (settings_key).
 @(private)
 cache_full_key :: proc(c: ^Context, caller: u64, filters: []Filter, m: Affine, frac: Vec2, rel_bounds: Rect, space: render.Blend_Space) -> u64 {
-	h := hash_mix(0x6c61796572636163, caller)
+	h := hash_mix(CACHE_SALT_LAYER, caller)
 	h = hash_mix(h, u64(len(filters)))
 	for f in filters {
 		h = hash_mix(h, u64(f.kind))

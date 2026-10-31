@@ -81,9 +81,22 @@ foreign dwmapi_present {
 	DwmGetCompositionTimingInfo :: proc(hwnd: win.HWND, info: ^DWM_TIMING_INFO) -> win.HRESULT ---
 }
 
+// Frames the surface may queue without LOW_LATENCY.
+@(private) WGPU_FRAME_LATENCY_DEFAULT :: 3
+// An acquire that waited longer than this says the latency object was set too early; else the lag fades by LAG_DECAY.
+@(private) LAG_WAIT_MIN_NS :: 300_000
+@(private) LAG_MAX_NS :: 3e6
+@(private) LAG_DECAY :: 0.9
+// A little margin for the GPU: a present this close before a vblank does not make it.
+@(private) PRESENT_GPU_MARGIN_NS :: 500_000
+// The latency object is signaled this much before the vblank that shows the frame.
+@(private) LATENCY_ARM_EARLY_NS :: 200_000
+// Added before truncating: the ceil of the expected refreshes.
+@(private) EXPECTED_REFRESHES_CEIL :: 0.999999
+
 @(private)
 wgpu_frame_latency :: proc(r: ^Renderer) -> u32 {
-	when LOW_LATENCY { return 1 } else { return 3 }
+	when LOW_LATENCY { return 1 } else { return WGPU_FRAME_LATENCY_DEFAULT }
 }
 
 @(private)
@@ -135,7 +148,7 @@ wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
 	if l.timer != nil && (st.status == .SuccessOptimal || st.status == .SuccessSuboptimal) {
 		waited := f64(time.tick_since(t0))
 		// (bounded: a long wait is a first frame or a hiccup, not a miscalibration; fades quickly)
-		if waited > 300_000 { l.lag_ns = min(l.lag_ns + 0.5 * waited, 3e6) } else { l.lag_ns *= 0.9 }
+		if waited > LAG_WAIT_MIN_NS { l.lag_ns = min(l.lag_ns + 0.5 * waited, LAG_MAX_NS) } else { l.lag_ns *= LAG_DECAY }
 	}
 	return st
 }
@@ -238,7 +251,7 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	index: u64
 	if ok && sync > 0 && p.period_ns > 0 {
 		// the first vblank after the present (a little margin for the GPU), then `interval - 1` more of them
-		since := f64(time.tick_diff(p.sync_tick, now)) + 500_000
+		since := f64(time.tick_diff(p.sync_tick, now)) + PRESENT_GPU_MARGIN_NS
 		k := since <= 0 ? 0 : u64(since / p.period_ns) + 1
 		shown._nsec = p.sync_tick._nsec + i64(f64(k + u64(sync - 1)) * p.period_ns)
 		index = info.cRefresh + k + u64(sync - 1)
@@ -246,13 +259,13 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 		index = info.cRefresh + u64(max(f64(time.tick_diff(p.sync_tick, now)), 0) / max(p.period_ns, 1))
 	}
 	// the latency object: the screen has taken the frame when it reaches that vblank (plus the lag learned so far)
-	wgpu_latency_arm(r, sync > 0 ? max(i64(time.tick_diff(now, shown) + time.Duration(l.lag_ns)) - 200_000, 0) : 0)
+	wgpu_latency_arm(r, sync > 0 ? max(i64(time.tick_diff(now, shown) + time.Duration(l.lag_ns)) - LATENCY_ARM_EARLY_NS, 0) : 0)
 	if sync > 0 && l.lag_ns >= 0.5 * p.period_ns { shown._nsec += i64(l.lag_ns / p.period_ns + 0.5) * i64(p.period_ns) }
 	if wgpu_trace() { fmt.eprintfln("wgpu: present done: shown in %.2f ms, interval %d, lag %.2f ms, period %.2f ms, dwm ok %v", f64(time.tick_diff(now, shown)) / 1e6, sync, l.lag_ns / 1e6, p.period_ns / 1e6, ok) }
 	d := Displayed_Frame{present = u32(p.presents), input = p.input, read = p.read, drawn = p.drawn, call = p.call, presented = now, shown = shown}
-	if ok && sync > 0 && l.have_index && index > l.last_index && index - l.last_index < 240 && p.continuous {
+	if ok && sync > 0 && l.have_index && index > l.last_index && index - l.last_index < RUN_MAX_REFRESH_JUMP && p.continuous {
 		d.refreshes = u32(index - l.last_index)
-		allowed := u32(p.expected > 0 ? p.expected + 0.999999 : f64(sync))
+		allowed := u32(p.expected > 0 ? p.expected + EXPECTED_REFRESHES_CEIL : f64(sync))
 		if d.refreshes > max(allowed, 1) { d.missed = d.refreshes - max(allowed, 1) }
 	}
 	l.last_index, l.have_index = index, ok && sync > 0

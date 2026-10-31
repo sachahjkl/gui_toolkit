@@ -113,12 +113,12 @@ capture_copy_wgpu :: proc(r: ^Renderer, src: wgpu.Texture, format: wgpu.TextureF
 	bpp := 0
 	#partial switch format {
 	case .RGBA8Unorm, .BGRA8Unorm, .RGBA8UnormSrgb, .BGRA8UnormSrgb: bpp = 4
-	case .RGBA16Float: bpp = 8
+	case .RGBA16Float: bpp = TEXEL_BYTES_FP16
 	}
 	if src == nil || r.lost || x1 <= x0 || y1 <= y0 || bpp == 0 { c.failed = true; return }
 	c.got = {x0, y0, x1 - x0, y1 - y0}
 	gw, gh := c.got[2], c.got[3]
-	row := align_up(gw * bpp, 256)   // (bytesPerRow of a texture to buffer copy: a multiple of 256)
+	row := align_up(gw * bpp, COPY_ROW_ALIGN_BYTES)
 	g := &r.wg
 	capture_free_wgpu(c)
 	c.wbuf = wgpu.DeviceCreateBuffer(g.device, &{label = "capture readback", usage = {.CopyDst, .MapRead}, size = u64(row * gh)})
@@ -238,13 +238,16 @@ capture_poll :: proc(r: ^Renderer, allocator := context.allocator) -> (pixels: [
 	}
 }
 
+// The bit patterns of a half (f16).
+@(private) HALF_BIT_PATTERNS :: 65536
+
 // A half's sRGB byte, by its bits: a window of millions of pixels through pow takes a good part of a second, on the UI thread.
 @(private)
-srgb_table :: proc() -> ^[65536]u8 {
-	@(static) table: [65536]u8
+srgb_table :: proc() -> ^[HALF_BIT_PATTERNS]u8 {
+	@(static) table: [HALF_BIT_PATTERNS]u8
 	@(static) ready: bool
 	if !ready {
-		for i in 0 ..< 65536 { table[i] = srgb_byte(f32(transmute(f16)u16(i))) }
+		for i in 0 ..< HALF_BIT_PATTERNS { table[i] = srgb_byte(f32(transmute(f16)u16(i))) }
 		ready = true
 	}
 	return &table

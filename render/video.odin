@@ -21,6 +21,9 @@ Video_Format :: enum u8 {
 Video_Matrix :: enum u8 { BT709, BT601, BT2020 }
 Video_Transfer :: enum u8 { SDR, PQ, HLG }
 
+VIDEO_HDR_PEAK_NITS :: 1000
+VIDEO_SDR_WHITE_NITS :: 203
+
 // A picture to convert. `size` is the size of the luma plane (the surface the decoder allocated); the visible picture is the
 // `crop_size` rectangle at `crop_origin` of it.
 Video_Picture :: struct {
@@ -32,8 +35,8 @@ Video_Picture :: struct {
 	coeffs:      Video_Matrix,
 	full_range:  bool,
 	transfer:    Video_Transfer,
-	hdr_peak_nits: f32,        // PQ / HLG: the brightest the content gets (0: 1000)
-	sdr_white_nits: f32,       // what white is on the display (0: 203)
+	hdr_peak_nits: f32,        // PQ / HLG: the brightest the content gets (0: VIDEO_HDR_PEAK_NITS)
+	sdr_white_nits: f32,       // what white is on the display (0: VIDEO_SDR_WHITE_NITS)
 	// in the renderer's device: an NV12 / P010 texture (an ID3D11Texture2D) and the slice of it
 	gpu_texture: rawptr,
 	gpu_index:   u32,
@@ -350,7 +353,7 @@ d3d_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool 
 		crop = {f32(p.crop_origin.x), f32(p.crop_origin.y), f32(p.crop_origin.x + p.crop_size.x), f32(p.crop_origin.y + p.crop_size.y)},
 		dim = {f32(max(p.size.x, 1)), f32(max(p.size.y, 1))},
 		rotation = u32(rot), flags = flags, offset = co.offset, scale = co.scale, m = co.m,
-		hdr = {p.sdr_white_nits > 0 ? p.sdr_white_nits : 203, p.hdr_peak_nits > 0 ? p.hdr_peak_nits : 1000, 0, 0},
+		hdr = {p.sdr_white_nits > 0 ? p.sdr_white_nits : VIDEO_SDR_WHITE_NITS, p.hdr_peak_nits > 0 ? p.hdr_peak_nits : VIDEO_HDR_PEAK_NITS, 0, 0},
 	}
 	mapped: d3d11.MAPPED_SUBRESOURCE
 	if win.FAILED(r.ctx->Map(v.cb, 0, .WRITE_DISCARD, {}, &mapped)) { return false }
@@ -372,7 +375,7 @@ d3d_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool 
 	r.ctx->PSSetSamplers(0, 1, &r.sampler)
 	r.ctx->PSSetShaderResources(0, 3, &views[0])
 	// (the instanced-quad shader reads the same slots: b0 is its own constant buffer, bound again by the next frame)
-	r.ctx->Draw(3, 0)
+	r.ctx->Draw(FULLSCREEN_VERTICES, 0)
 	none: [3]^d3d11.IShaderResourceView
 	r.ctx->PSSetShaderResources(0, 3, &none[0])
 	r.ctx->OMSetRenderTargets(0, nil, nil)

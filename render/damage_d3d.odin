@@ -28,7 +28,7 @@ when !USE_WGPU {
 @(private)
 d3d_buffer_age :: proc(r: ^Renderer) -> int {
 	if r.swapchain == nil { return 1 }
-	return clamp(r.swap_buffers, 2, 16) if r.swap_buffers > 0 else 2
+	return clamp(r.swap_buffers, 2, SWAP_BUFFERS_MAX) if r.swap_buffers > 0 else 2
 }
 
 // Clears every rectangle of the damaged region to the frame's clear colour, scissored. The frame target and the main
@@ -74,7 +74,7 @@ d3d_clear_region :: proc(r: ^Renderer) {
 	stride, offset := u32(size_of(Rect_Inst)), u32(0)
 	r.ctx->IASetVertexBuffers(0, 1, &r.damage_clear_vb, &stride, &offset)
 	write_replay(r, nil, false)
-	r.ctx->DrawInstanced(4, u32(d.render_count), 0, 0)
+	r.ctx->DrawInstanced(QUAD_VERTICES, u32(d.render_count), 0, 0)
 	// restore the frame's blend and vertex buffer for the batch loop that follows
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 	r.ctx->IASetVertexBuffers(0, 1, &r.inst_buf, &stride, &offset)

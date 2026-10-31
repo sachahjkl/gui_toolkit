@@ -128,8 +128,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	s.slug_runs, c.slug_runs, pic.slug_runs = c.slug_runs, pic.slug_runs, {}
 	c.clips, c.alphas, c.xforms, c.open_layers = s.spare_clips, s.spare_alphas, s.spare_xforms, s.spare_open
 	clear(&c.clips); clear(&c.alphas); clear(&c.xforms); clear(&c.open_layers)
-	BIG :: 1e9
-	append(&c.clips, Clip{rect = {{-BIG, -BIG}, {BIG, BIG}}})
+	append(&c.clips, Clip{rect = {{-RECT_UNBOUNDED, -RECT_UNBOUNDED}, {RECT_UNBOUNDED, RECT_UNBOUNDED}}})
 	append(&c.alphas, 1)
 	append(&c.xforms, Transform{m = AFFINE_IDENTITY, simple = true})
 	c.target = 0
@@ -273,6 +272,9 @@ picture_bounds :: proc(c: ^Context, pic: ^Picture, m: Affine) -> (r: Rect, ok: b
 	return picture_bounds_l(pic, affine_mul(top_transform(c), m))
 }
 
+// Glyph scales closer than this (relative) are the same raster size.
+@(private) PICTURE_GLYPH_SCALE_TOLERANCE :: 1e-3
+
 // Whether text of the picture would be rasterized at another size under `m`, an atlas page its glyphs are on was
 // reused, or the text rendering settings changed: record it again (replay returns .Stale then). When it is not stale,
 // its pages count as used by the current frame (they are not reused before it is drawn).
@@ -290,7 +292,7 @@ picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 		if sl.glyph_scale <= 0 { continue }
 		now := class(ls * affine_scale_factor(sl.eff))
 		was := class(sl.glyph_scale)
-		if abs(now - was) > 1e-3 * max(was, 1) { return true }
+		if abs(now - was) > PICTURE_GLYPH_SCALE_TOLERANCE * max(was, 1) { return true }
 	}
 	return false
 }
@@ -355,8 +357,7 @@ picture_bounds_l :: proc(pic: ^Picture, l: Affine) -> (r: Rect, ok: bool) {
 // directly.
 @(private)
 batch_scissor :: proc(pic: ^Picture, shape: u32, l: Affine) -> Rect {
-	BIG :: 1e9
-	r := Rect{{-BIG, -BIG}, {BIG, BIG}}
+	r := Rect{{-RECT_UNBOUNDED, -RECT_UNBOUNDED}, {RECT_UNBOUNDED, RECT_UNBOUNDED}}
 	for k := shape; k != 0 && int(k) < len(pic.clips); k = pic.clips[k].parent {
 		cl := pic.clips[k]
 		m := affine_mul(l, pic.slots[cl.xform].eff)

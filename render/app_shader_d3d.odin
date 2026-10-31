@@ -98,7 +98,7 @@ d3d_draw_app :: proc(r: ^Renderer, f: Frame_Data, b: Batch) {
 	r.ctx->PSSetShaderResources(APP_PARAMS_REGISTER, u32(len(views)), &views[0])
 	r.ctx->PSSetShader(d.ps, nil, 0)
 	r.ctx->OMSetBlendState(r.app_blend[a.blend], nil, ~u32(0))
-	r.ctx->DrawInstanced(4, 1, 0, u32(b.first))
+	r.ctx->DrawInstanced(QUAD_VERTICES, 1, 0, u32(b.first))
 	none: [1 + MAX_APP_TEXTURES]^d3d11.IShaderResourceView
 	r.ctx->PSSetShaderResources(APP_PARAMS_REGISTER, u32(len(none)), &none[0])
 	r.ctx->PSSetShader(r.ps, nil, 0)

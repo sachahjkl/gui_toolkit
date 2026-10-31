@@ -108,7 +108,7 @@ d3d_draw_frame_batches :: proc(r: ^Renderer, f: Frame_Data, slug_frame, has_slug
 		r.ctx->RSSetScissorRects(1, &rc)
 		if b.app > 0 { d3d_draw_app(r, f, b) }
 		else if slug_frame { draw_batch_split(r, f, b) }
-		else { r.ctx->DrawInstanced(4, u32(b.count), 0, u32(b.first)) }
+		else { r.ctx->DrawInstanced(QUAD_VERTICES, u32(b.count), 0, u32(b.first)) }
 	}
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 	unbind_inputs(r)

@@ -8,6 +8,7 @@ import "vendor:wgpu"
 // A step is a pass (a run of draw calls into a target, a clear, a filter pass) or a copy; the detailed profile (every draw
 // call) is not available here: timestamps inside passes would need TimestampQueryInsidePasses.
 
+@(private) WPROF_TIMESTAMP_BYTES :: 8
 @(private) WPROF_QUERIES :: 1024   // per slot (a query set holds 4096): the submit's start, then one after each step; later steps are counted in the last
 
 @(private)
@@ -30,9 +31,9 @@ wprof_init :: proc(r: ^Renderer) -> bool {
 	if g.pf.qs != nil { return true }
 	g.pf.slot = -1
 	g.pf.qs = wgpu.DeviceCreateQuerySet(g.device, &{label = "gpu time", type = .Timestamp, count = GPU_QUERY_FRAMES * WPROF_QUERIES})
-	g.pf.resolve = wgpu.DeviceCreateBuffer(g.device, &{label = "gpu time", usage = {.QueryResolve, .CopySrc}, size = GPU_QUERY_FRAMES * WPROF_QUERIES * 8})
+	g.pf.resolve = wgpu.DeviceCreateBuffer(g.device, &{label = "gpu time", usage = {.QueryResolve, .CopySrc}, size = GPU_QUERY_FRAMES * WPROF_QUERIES * WPROF_TIMESTAMP_BYTES})
 	for i in 0 ..< GPU_QUERY_FRAMES {
-		g.pf.read[i] = wgpu.DeviceCreateBuffer(g.device, &{label = "gpu time read", usage = {.MapRead, .CopyDst}, size = WPROF_QUERIES * 8})
+		g.pf.read[i] = wgpu.DeviceCreateBuffer(g.device, &{label = "gpu time read", usage = {.MapRead, .CopyDst}, size = WPROF_QUERIES * WPROF_TIMESTAMP_BYTES})
 	}
 	g.pf.period = wgpu.QueueGetTimestampPeriod(g.queue)
 	return g.pf.qs != nil && g.pf.resolve != nil
@@ -162,8 +163,8 @@ wprof_end :: proc(r: ^Renderer, enc: wgpu.CommandEncoder) {
 		g.pf.count[slot] = 2
 	}
 	base := u32(slot * WPROF_QUERIES)
-	wgpu.CommandEncoderResolveQuerySet(enc, g.pf.qs, base, u32(g.pf.count[slot]), g.pf.resolve, u64(slot * WPROF_QUERIES * 8))
-	wgpu.CommandEncoderCopyBufferToBuffer(enc, g.pf.resolve, u64(slot * WPROF_QUERIES * 8), g.pf.read[slot], 0, u64(g.pf.count[slot] * 8))
+	wgpu.CommandEncoderResolveQuerySet(enc, g.pf.qs, base, u32(g.pf.count[slot]), g.pf.resolve, u64(slot * WPROF_QUERIES * WPROF_TIMESTAMP_BYTES))
+	wgpu.CommandEncoderCopyBufferToBuffer(enc, g.pf.resolve, u64(slot * WPROF_QUERIES * WPROF_TIMESTAMP_BYTES), g.pf.read[slot], 0, u64(g.pf.count[slot] * WPROF_TIMESTAMP_BYTES))
 }
 
 // After the submit: ask for the results (the map completes when the GPU is done with them).
@@ -173,7 +174,7 @@ wprof_submitted :: proc(r: ^Renderer) {
 	slot := g.pf.slot
 	if slot < 0 { return }
 	g.pf.state[slot] = 1
-	wgpu.BufferMapAsync(g.pf.read[slot], {.Read}, 0, uint(g.pf.count[slot] * 8), {mode = .AllowSpontaneos, callback = wprof_map_done, userdata1 = &g.pf.state[slot]})
+	wgpu.BufferMapAsync(g.pf.read[slot], {.Read}, 0, uint(g.pf.count[slot] * WPROF_TIMESTAMP_BYTES), {mode = .AllowSpontaneos, callback = wprof_map_done, userdata1 = &g.pf.state[slot]})
 	g.pf.slot = -1
 	r.gpu_frame += 1
 }

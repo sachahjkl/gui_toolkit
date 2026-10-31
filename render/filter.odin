@@ -6,6 +6,11 @@ import "core:math"
 // buffer layout, and the gaussian tap computation. Both backends fill Pass_Constants and call blur_taps; the Direct3D
 // frame submission that runs the passes is in frame.odin (Windows only), the wgpu one in wgpu_frame.odin.
 
+// A gaussian reaches about this many standard deviations.
+GAUSSIAN_REACH_SIGMAS :: 3
+// The smallest standard deviation blur_taps computes.
+@(private) BLUR_TAPS_MIN_SIGMA :: 0.05
+
 // Blurs with a larger standard deviation (screen pixels) run on images reduced by powers of two (see
 // set_blur_sigma_limit).
 DEFAULT_BLUR_SIGMA_LIMIT :: 8
@@ -39,8 +44,8 @@ Pass_Constants :: struct #packed {
 // Gaussian taps for a standard deviation in texels, folded in bilinear pairs: tap 0 is the center, each other tap k
 // samples at +-offset (between two texels, the filter mixing them with the right weights). Returns the tap count.
 blur_taps :: proc(sigma: f32, out: ^[MAX_BLUR_TAPS / 2][4]f32) -> int {
-	s := clamp(sigma, 0.05, MAX_BLUR_SIGMA)
-	radius := min(int(math.ceil(3 * s)), 2 * (MAX_BLUR_TAPS - 1))
+	s := clamp(sigma, BLUR_TAPS_MIN_SIGMA, MAX_BLUR_SIGMA)
+	radius := min(int(math.ceil(GAUSSIAN_REACH_SIGMAS * s)), 2 * (MAX_BLUR_TAPS - 1))
 	w := make([]f32, radius + 2, context.temp_allocator)
 	total: f32
 	for i in 0 ..= radius {
