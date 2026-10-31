@@ -99,38 +99,4 @@ slug_select :: proc(r: ^Renderer, on: bool) {
 	r.ctx->PSSetShader(on ? r.slug.ps : r.ps, nil, 0)
 }
 
-// Draws the instances [b.first, b.first + b.count) of the bound instance buffer: the Slug runs with the Slug shaders,
-// the rest with the main ones, in order. `rp` is the replay the batch belongs to, nil for the frame's own instances.
-@(private)
-draw_batch_split :: proc(r: ^Renderer, f: Frame_Data, b: Batch) {
-	runs := f.slug_runs
-	base := 0
-	if b.replay > 0 {
-		rp := f.replays[b.replay - 1]
-		runs, base = rp.slug_runs, int(rp.insts)
-	}
-	pos, end := b.first, b.first + b.count
-	// the first run that ends after pos (runs are ascending)
-	lo, hi := 0, len(runs)
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if base + runs[mid][0] + runs[mid][1] <= pos { lo = mid + 1 } else { hi = mid }
-	}
-	draw :: proc(r: ^Renderer, slug: bool, first, count: int) {
-		if count <= 0 || (slug && !r.slug.ready) { return }
-		slug_select(r, slug)
-		r.ctx->DrawInstanced(QUAD_VERTICES, u32(count), 0, u32(first))
-	}
-	for i := lo; i < len(runs) && pos < end; i += 1 {
-		rs := base + runs[i][0]
-		re := rs + runs[i][1]
-		if rs >= end { break }
-		if rs > pos { draw(r, false, pos, rs - pos); pos = rs }
-		e := min(re, end)
-		draw(r, true, pos, e - pos)
-		pos = e
-	}
-	draw(r, false, pos, end - pos)
-}
-
 }   // when !USE_WGPU

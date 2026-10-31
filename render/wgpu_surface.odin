@@ -37,8 +37,11 @@ Wgpu_Surface :: struct {
 	damage_sample:  wgpu.TextureView,
 	damage_size:    [2]int,
 	damage_ready:   bool,
-	damage_ref:     wgpu.Texture,
-	damage_ref_view: wgpu.TextureView,
+	damage_side:    wgpu.Texture,
+	damage_side_view: wgpu.TextureView,
+	damage_side_sample: wgpu.TextureView,
+	damage_side_size: [2]int,
+	damage_side_ready: bool,
 	damage_clear:   wgpu.Texture,
 	damage_clear_view: wgpu.TextureView,
 	damage_clear_size: [2]int,
@@ -74,8 +77,11 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 	g.damage_sample, b.damage_sample = b.damage_sample, g.damage_sample
 	g.damage_size, b.damage_size = b.damage_size, g.damage_size
 	g.damage_ready, b.damage_ready = b.damage_ready, g.damage_ready
-	g.damage_ref, b.damage_ref = b.damage_ref, g.damage_ref
-	g.damage_ref_view, b.damage_ref_view = b.damage_ref_view, g.damage_ref_view
+	g.damage_side, b.damage_side = b.damage_side, g.damage_side
+	g.damage_side_view, b.damage_side_view = b.damage_side_view, g.damage_side_view
+	g.damage_side_sample, b.damage_side_sample = b.damage_side_sample, g.damage_side_sample
+	g.damage_side_size, b.damage_side_size = b.damage_side_size, g.damage_side_size
+	g.damage_side_ready, b.damage_side_ready = b.damage_side_ready, g.damage_side_ready
 	g.damage_clear, b.damage_clear = b.damage_clear, g.damage_clear
 	g.damage_clear_view, b.damage_clear_view = b.damage_clear_view, g.damage_clear_view
 	g.damage_clear_size, b.damage_clear_size = b.damage_clear_size, g.damage_clear_size

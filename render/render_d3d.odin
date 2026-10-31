@@ -112,7 +112,7 @@ d3d_destroy :: proc(r: ^Renderer) {
 	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
-	d3d_damage_release(&r.damage); rel(&r.damage_verify_rtv); rel(&r.damage_verify_ref)
+	d3d_damage_release(&r.damage)
 	heaps_destroy(r)
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
@@ -208,8 +208,6 @@ retarget :: proc(r: ^Renderer, previous: Maybe(Blend_Space) = nil) {
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
 	// (their views and formats follow the space)
 	d3d_damage_release(&r.damage)
-	if r.damage_verify_rtv != nil { r.damage_verify_rtv->Release(); r.damage_verify_rtv = nil }
-	if r.damage_verify_ref != nil { r.damage_verify_ref->Release(); r.damage_verify_ref = nil }
 	if r.swapchain == nil && r.offscreen != nil {
 		create_offscreen_view(r)
 		return
@@ -743,7 +741,7 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 		if view^ != nil { view^->Release(); view^ = nil }
 		if buf^ != nil { buf^->Release(); buf^ = nil }
 		cap^ = max(n, cap^ * 2, TABLE_CAP_MIN)
-		if hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
+		if fault_hit(.Create_Buffer) || hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
 			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)) {
 			buf^, cap^ = nil, 0
 			return
@@ -752,7 +750,7 @@ upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.ISha
 	}
 	if n == 0 { return }
 	mapped: d3d11.MAPPED_SUBRESOURCE
-	if hr_failed(r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)) { return }
+	if buf^ == nil || fault_hit(.Map) || hr_failed(r.ctx->Map(buf^, 0, .WRITE_DISCARD, {}, &mapped)) { return }
 	mem.copy(mapped.pData, data, n * stride)
 	r.ctx->Unmap(buf^, 0)
 }
