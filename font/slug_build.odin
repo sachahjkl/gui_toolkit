@@ -18,7 +18,7 @@ import "core:slice"
 //   share a list.
 //
 // The glyph is built with local coordinates: the curve locations in lists have x = index in the glyph's own curve texels
-// and y = 0; the cache adds where it put the curves (patch_lists).
+// and y = 0; the cache adds where it put the curves (slug_patch_lists).
 
 BAND_EPSILON :: f32(1.0 / 1024)
 MAX_BANDS :: 32            // per axis (the shaders take up to 256)

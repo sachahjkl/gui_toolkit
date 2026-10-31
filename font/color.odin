@@ -68,8 +68,8 @@ color_raster_init :: proc(cr: ^Color_Raster) -> bool {
 	cr.device, cr.dxgi = d3d_device_for_d2d(.WARP)
 	if cr.device == nil { return false }
 	props := D2D1_CREATION_PROPERTIES{threadingMode = 0}
-	if D2D1CreateDevice(cr.dxgi, &props, &cr.d2d) < 0 || cr.d2d == nil { color_raster_destroy(cr); cr.tried = true; return false }
-	if cr.d2d->CreateDeviceContext(0, &cr.dc) < 0 || cr.dc == nil { color_raster_destroy(cr); cr.tried = true; return false }
+	if D2D1CreateDevice(cr.dxgi, &props, &cr.d2d) < 0 || cr.d2d == nil { color_raster_release(cr); return false }
+	if cr.d2d->CreateDeviceContext(0, &cr.dc) < 0 || cr.dc == nil { color_raster_release(cr); return false }
 	cr.dc4 = com_query(cr.dc, &IID_ID2D1DeviceContext4, ID2D1DeviceContext)
 	cr.dc7 = com_query(cr.dc, &IID_ID2D1DeviceContext7, ID2D1DeviceContext)
 	if cr.dc7 != nil && cr.dc7->GetPaintFeatureLevel() < DWRITE_PAINT_FEATURE_LEVEL_COLR_V1 {
@@ -77,23 +77,30 @@ color_raster_init :: proc(cr: ^Color_Raster) -> bool {
 		cr.dc7 = nil
 	}
 	black := D2D1_COLOR_F{0, 0, 0, 1}
-	if cr.dc->CreateSolidColorBrush(&black, nil, &cr.brush) < 0 || cr.brush == nil { color_raster_destroy(cr); cr.tried = true; return false }
+	if cr.dc->CreateSolidColorBrush(&black, nil, &cr.brush) < 0 || cr.brush == nil { color_raster_release(cr); return false }
 	cr.dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
 	return true
 }
 
+// The Direct2D objects go, the locks stay (init fails under them).
+@(private)
+color_raster_release :: proc(cr: ^Color_Raster) {
+	if cr.dc != nil { cr.dc->SetTarget(nil) }
+	com_release(cr.staging); cr.staging = nil
+	com_release(cr.target); cr.target = nil
+	com_release(cr.brush); cr.brush = nil
+	com_release(cr.dc7); cr.dc7 = nil
+	com_release(cr.dc4); cr.dc4 = nil
+	com_release(cr.dc); cr.dc = nil
+	com_release(cr.d2d); cr.d2d = nil
+	if cr.dxgi != nil { com_release((^IUnknown)(cr.dxgi)); cr.dxgi = nil }
+	if cr.device != nil { cr.device->Release(); cr.device = nil }
+	cr.cap = {}
+}
+
 @(private)
 color_raster_destroy :: proc(cr: ^Color_Raster) {
-	if cr.dc != nil { cr.dc->SetTarget(nil) }
-	com_release(cr.staging)
-	com_release(cr.target)
-	com_release(cr.brush)
-	com_release(cr.dc7)
-	com_release(cr.dc4)
-	com_release(cr.dc)
-	com_release(cr.d2d)
-	if cr.dxgi != nil { com_release((^IUnknown)(cr.dxgi)) }
-	if cr.device != nil { cr.device->Release() }
+	color_raster_release(cr)
 	cr^ = {}
 }
 
@@ -212,6 +219,12 @@ color_caps :: proc(s: ^State) -> (d2d, paint: bool) {
 		}
 	}, s)
 	return cr.ok, cr.paint
+}
+
+// A channel of a premultiplied pixel (alpha `a`, not 0) back to straight alpha.
+@(private)
+unpremultiply :: #force_inline proc "contextless" (v, a: u8) -> u8 {
+	return u8(min((u32(v) * 255 + u32(a) / 2) / u32(a), 255))
 }
 
 // sRGB, straight alpha.
@@ -381,8 +394,7 @@ color_bitmap_put :: proc(s: ^State, px: []u8, w, h: int, origin: [2]int) -> Glyp
 		for col in 0 ..< gw {
 			b, gg, r, a := src[col * 4], src[col * 4 + 1], src[col * 4 + 2], src[col * 4 + 3]
 			if a == 0 { dst[col * 4], dst[col * 4 + 1], dst[col * 4 + 2], dst[col * 4 + 3] = 0, 0, 0, 0; continue }
-			un :: #force_inline proc(v, a: u8) -> u8 { return u8(min((u32(v) * 255 + u32(a) / 2) / u32(a), 255)) }
-			dst[col * 4], dst[col * 4 + 1], dst[col * 4 + 2], dst[col * 4 + 3] = un(r, a), un(gg, a), un(b, a), a
+			dst[col * 4], dst[col * 4 + 1], dst[col * 4 + 2], dst[col * 4 + 3] = unpremultiply(r, a), unpremultiply(gg, a), unpremultiply(b, a), a
 		}
 	}
 	page_log(p, ax, ay, gw, gh)

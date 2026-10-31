@@ -51,13 +51,11 @@ runs_tables :: proc "contextless" () {
 		case:         lit_codes[i] = {reverse(0xC0 + v - FIXED_8BIT_FIRST, 8), 8}
 		}
 	}
-	BASE := [LEN_CODES]u32{3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
-	EXTRA := [LEN_CODES]u32{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
 	for l in MATCH_MIN ..= MATCH_MAX {
 		k := LEN_CODES - 1
-		for BASE[k] > u32(l) { k -= 1 }
+		for int(LEN_BASE[k]) > l { k -= 1 }
 		c := lit_codes[LEN_SYMBOL_FIRST + k]
-		len_codes[l] = {c.bits | (u32(l) - BASE[k]) << c.n, c.n + EXTRA[k]}
+		len_codes[l] = {c.bits | (u32(l) - u32(LEN_BASE[k])) << c.n, c.n + u32(LEN_EXTRA[k])}
 	}
 	intrinsics.atomic_store(&runs_ready, RUNS_READY)
 }
@@ -65,11 +63,9 @@ runs_tables :: proc "contextless" () {
 // A distance's code and extra bits, as one.
 @(private = "file")
 dist_code :: proc "contextless" (dist: u32) -> Code {
-	BASE := [DIST_CODES]u32{1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577}
-	EXTRA := [DIST_CODES]u32{0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13}
 	k := DIST_CODES - 1
-	for BASE[k] > dist { k -= 1 }
-	return {reverse(u32(k), FIXED_DIST_BITS) | (dist - BASE[k]) << FIXED_DIST_BITS, FIXED_DIST_BITS + EXTRA[k]}
+	for u32(DIST_BASE[k]) > dist { k -= 1 }
+	return {reverse(u32(k), FIXED_DIST_BITS) | (dist - u32(DIST_BASE[k])) << FIXED_DIST_BITS, FIXED_DIST_BITS + u32(DIST_EXTRA[k])}
 }
 
 // How far p and q are the same, up to `limit` bytes.

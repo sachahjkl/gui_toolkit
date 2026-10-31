@@ -111,6 +111,7 @@ colr_outline :: proc(user: rawptr, gid: u16) -> ^Outline {
 
 @(private)
 face_colr_begin :: proc(s: ^State, fc: ^Face_Colr) {
+	context.allocator = runtime.heap_allocator()
 	sync.mutex_lock(&fc.mu)
 	defer sync.mutex_unlock(&fc.mu)
 	if fc.active == 0 && fc.bytes > s.settings.colr_cache_kb * 1024 {

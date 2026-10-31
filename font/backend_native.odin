@@ -1,5 +1,9 @@
 package font
 
+import "core:slice"
+
+_ :: slice   // (the code below is compiled with the native backend only)
+
 // The native backend (-define:FONT_BACKEND=native): Fontations reads the faces, HarfRust shapes, ICU4X breaks lines
 // and resolves bidi, in the static library of native/text (tools/build_text.ps1 builds build/text/gt_text.lib). Faces
 // still come from the platform (native_source_*.odin says where their bytes are); the platform also keeps the system
@@ -270,41 +274,27 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 		for &g in out { if g.x_advance != 0 && g.flags & GT_GLYPH_NO_INK == 0 { g.x_advance += bold } }
 	}
 	text_len := u32(len(req.text))
-	// the end of each cluster value: the next larger value, or the end of the text
+	// the distinct cluster values in logical order, one extent each: its end is the next value, or the end of the text
 	values := make([]u32, n, context.temp_allocator)
 	for g, i in out { values[i] = g.cluster }
-	sorted := make([]u32, n, context.temp_allocator)
-	copy(sorted, values)
-	for i in 1 ..< n {   // insertion sort: nearly sorted (reversed for right to left)
-		v := sorted[i]
-		j := i - 1
-		for j >= 0 && sorted[j] > v { sorted[j + 1] = sorted[j]; j -= 1 }
-		sorted[j + 1] = v
+	slice.sort(values)
+	nv := 0
+	for v in values {
+		if nv == 0 || values[nv - 1] != v { values[nv] = v; nv += 1 }
 	}
-	end_of :: proc(sorted: []u32, v, text_len: u32) -> u32 {
-		for x in sorted { if x > v { return x } }
-		return text_len
-	}
-	Ext :: struct { start, end: u32, x0, x1: f32 }
-	exts := make([dynamic]Ext, 0, n, context.temp_allocator)
+	values = values[:nv]
+	Ext :: struct { start, end: u32, x0, x1: f32, seen: bool }
+	exts := make([]Ext, nv, context.temp_allocator)
+	for v, i in values { exts[i] = {start = v, end = i + 1 < nv ? values[i + 1] : text_len} }
 	x := pen
 	for g in out {
 		gx := x + g.x_offset * k
 		adv := g.x_advance * k
 		append(glyphs, Glyph_Pos{face = req.face_id, id = u16(g.id), rtl = req.rtl, x = gx, y = -g.y_offset * k, advance = adv, cluster = i32(g.cluster) + off})
-		found := false
-		for &e in exts {
-			if e.start == g.cluster { e.x0 = min(e.x0, x); e.x1 = max(e.x1, x + adv); found = true; break }
-		}
-		if !found { append(&exts, Ext{start = g.cluster, end = end_of(sorted, g.cluster, text_len), x0 = x, x1 = x + adv}) }
+		at, _ := slice.binary_search(values, g.cluster)
+		e := &exts[at]
+		if e.seen { e.x0 = min(e.x0, x); e.x1 = max(e.x1, x + adv) } else { e.x0, e.x1, e.seen = x, x + adv, true }
 		x += adv
-	}
-	// logical order
-	for i in 1 ..< len(exts) {
-		v := exts[i]
-		j := i - 1
-		for j >= 0 && exts[j].start > v.start { exts[j + 1] = exts[j]; j -= 1 }
-		exts[j + 1] = v
 	}
 	for e in exts {
 		append(clusters, Cluster{start = i32(e.start) + off, end = i32(e.end) + off, x0 = e.x0, x1 = e.x1, rtl = req.rtl})

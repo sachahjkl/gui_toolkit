@@ -171,9 +171,7 @@ slug_alloc :: proc(s: ^State, nc, nb: int) -> int {
 		if p.cu + nc <= SLUG_TEXTURE_WIDTH && p.bu + nb <= SLUG_TEXTURE_WIDTH { return i }
 	}
 	if len(st.pages) >= s.settings.slug_pages {
-		oldest := max(u64)
-		for _, start in a.users { oldest = min(oldest, start) }
-		if len(a.users) == 0 { oldest = a.clock }
+		oldest := atlas_oldest_frame(a)
 		victim := -1
 		for p, i in st.pages {
 			if p.last_used >= oldest { continue }

@@ -33,6 +33,8 @@ COLR_WORK_PER_PIXEL :: 256
 COLR_WORK_FLOOR :: 1 << 22
 COLR_WORK_CEIL :: 1 << 26
 COLR_QUAD_COST :: 16
+// Work of a stop of a color line, read and sorted (in the measuring pass too): what bounds the memory of the stops.
+@(private) COLR_STOP_COST :: 16
 // Work of the measuring pass (which only visits outlines).
 COLR_MEASURE_WORK :: 1 << 24
 // The most vertical samples per pixel row (Colr_Params.samples, Settings.colr_samples).
@@ -764,7 +766,8 @@ fill_glyph :: proc(w: ^Walk, gid: u16, body: proc(w: ^Walk, user: rawptr), user:
 	if o == nil || len(o.quads) == 0 { return }
 	temp := virtual.arena_temp_begin(w.arena)
 	defer virtual.arena_temp_end(temp)
-	rect, cov, ok := colr_cover(o, om, w.clip.r, w.samples, w.alloc)
+	rect, cov, ok := colr_cover(o, om, w.clip.r, w.samples, w.alloc, &w.work)
+	if w.work < 0 { w.rd.bad = true; return }
 	if !ok { return }
 	if !charge(w, (rect[2] - rect[0]) * (rect[3] - rect[1])) { return }
 	saved := w.clip
@@ -820,7 +823,10 @@ read_color_line :: proc(w: ^Walk, g: ^Gradient, off: int, var: bool) -> bool {
 	stride := var ? VAR_COLOR_STOP_BYTES : COLOR_STOP_BYTES
 	if r.bad || n == 0 || off + 3 + n * stride > len(r.d) { r.bad = true; return false }
 	if g.extend > 2 { g.extend = 0 }
-	g.stops = make([dynamic]Stop, 0, n, w.alloc)
+	if !charge(w, n * COLR_STOP_COST) { return false }
+	stops, err := make([dynamic]Stop, 0, n, w.alloc)
+	if err != nil { r.bad = true; return false }
+	g.stops = stops
 	for i in 0 ..< n {
 		o := off + 3 + i * stride
 		col := palette_color(w, rd_u16(r, o + 2), rd_f2(r, o + 4))
@@ -856,8 +862,12 @@ gradient_color :: proc(g: ^Gradient, t: f32, first, last: f32) -> [4]f32 {
 	case u <= s[0].t: col = s[0].col
 	case u >= s[len(s) - 1].t: col = s[len(s) - 1].col
 	case:
-		i := 1
-		for i < len(s) - 1 && s[i].t < u { i += 1 }
+		// the first stop after s[0] at u or past it (a color line can have 65 535 of them)
+		i, hi := 1, len(s) - 1
+		for i < hi {
+			mid := (i + hi) / 2
+			if s[mid].t < u { i = mid + 1 } else { hi = mid }
+		}
 		a, b := s[i - 1], s[i]
 		f: f32 = b.t > a.t ? (u - a.t) / (b.t - a.t) : 1
 		col = a.col + (b.col - a.col) * f

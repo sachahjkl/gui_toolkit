@@ -157,7 +157,8 @@ atlas_remove_user :: proc(s: ^State, user: rawptr) {
 	delete_key(&a.users, user)
 }
 
-// Drops every glyph bitmap (rendering settings changed); pages are cleared as they are reused.
+// Drops every glyph bitmap and clears every page at once, a new epoch for each: unlike the reuse of a page it does not wait
+// for the frames that draw from them, so call it between frames.
 clear_atlas :: proc(s: ^State) {
 	a := &s.atlas
 	atlas_lock(a)
@@ -276,6 +277,15 @@ page_log :: proc(p: ^Page, x, y, w, h: int) {
 	append(&p.log, Dirty{i32(x), i32(y), i32(w), i32(h), p.version})
 }
 
+// The clock of the oldest frame being drawn: a page last used before it is under no current frame. Caller holds the lock.
+@(private)
+atlas_oldest_frame :: proc(a: ^Atlas) -> u64 {
+	if len(a.users) == 0 { return a.clock }
+	oldest := max(u64)
+	for _, start in a.users { oldest = min(oldest, start) }
+	return oldest
+}
+
 // Room for a w x h bitmap in a page of `kind`. Caller holds the lock.
 @(private)
 atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, ok: bool) {
@@ -292,9 +302,7 @@ atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, 
 	limit := kind == .Color ? s.settings.max_color_pages : s.settings.max_gray_pages
 	if n_kind >= limit {
 		// the least recently used page no current frame draws from
-		oldest := max(u64)
-		for _, start in a.users { oldest = min(oldest, start) }
-		if len(a.users) == 0 { oldest = a.clock }
+		oldest := atlas_oldest_frame(a)
 		victim := -1
 		for p, i in a.pages {
 			if p.kind != kind || p.last_used >= oldest { continue }
@@ -403,4 +411,4 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 	return g
 }
 
-// rasterize (a glyph into a page) and platform_color_glyph are the platform's: raster_windows.odin, raster_other.odin.
+// rasterize (a glyph into a page) and platform_color_glyph are the platform's: raster_windows.odin, font_other.odin.
