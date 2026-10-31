@@ -5,6 +5,117 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.58.0] - 2026-10-31
+
+### Added
+- **`ui.scrollbar_rects`**: the track and the thumb a scroll box shows, for tests and tools.
+- **`platform.window_on_destroy`**: a call when a window is destroyed, for what keeps a pointer to it and may outlive it.
+- **`devtools`**: Ctrl+Z and Ctrl+Y in Chrome's DevTools: `DOM.undo` and `DOM.redo` go over the edits of styles, texts, removed boxes and `aria-label`, from mark to mark.
+- **`devtools`**: `aria-label` can be edited from Chrome's DevTools (`DOM.setAttributeValue`, `DOM.setAttributesAsText`, `DOM.removeAttribute`): it changes what a reader gets. The other attributes are refused with a message that says why.
+
+### Changed
+- **`Text_Area.sb_drag`** and **`Text_Edit_Draw.bar_hot`** are a `ui.Text_Scrollbar`, not a number. `Field_Snapshot` and `Text_Snapshot` are one type, `ui.Edit_Snapshot`.
+- **Double click**: widgets and selected text share one time, 450 ms (widgets counted 400 ms, selected text 450 ms).
+
+### Removed
+- **`ui.Picker_Draw.ring`**: never read.
+
+### Fixed
+- **A command to the DevTools server could wait until something else woke the window**: its wake could be taken by the frame already starting, and the window slept with the command in its inbox. The ticker now wakes it for as long as a command waits.
+- **`examples/whatsnew`**: its title says the version it runs on, from `ui.VERSION`, and that its pages are the changes of 0.55 (it said "What's new in gui_toolkit 0.55" in every version).
+- **Examples**: a live resize no longer stretches the last frame in any example (composition swap chain, `render.set_fixed_surface`, `render.pace_frame`; `--bench` of `effects` and `transforms` keeps the ordinary swap chain its published figures are of). `examples/hello`, which a new program copies, has the three lines and `docs/getting-started.md` explains them; `tests/resize_probe` checks a program from outside.
+- **`font.colr_dump`**: every transform is listed with its matrix, read by the same decoder as the interpreter.
+- **`font.colr_nests_glyph`**: a paint whose fields run past the COLR table now counts as unreadable (the interpreter already refused it), instead of being left to Direct2D.
+- **`render.capture_poll_raw` and `render.capture_raw_finish`**: the two halves of `capture_poll`, so that a read-back only costs the copy of its rows on the thread of the frames; the devtools take the picture on the encoder thread. The table of an fp16 window is no longer built for an 8-bit one.
+- **WebGPU: a backdrop or a blend mode in a frame of a region reads the frame being composed**, not the surface texture, which was still empty.
+- **WebGPU: frames of an offscreen renderer wait for the device**: with no present to pace them they piled up on a slow device, and a read-back waited behind them for up to minutes.
+- **`render.damage.verify` compares with the frame really drawn whole**, all its steps run again on the side, instead of a recomposition that sampled pooled textures already reused. `-define:TOOLKIT_DAMAGE_CHECK=true` runs that proof on a program that marks nothing.
+- **`draw.destroy` leaves the context empty**: `draw.init` on the same struct appended to the lists it had freed, and frames drew garbage.
+- **Partial redraw: a frame with a backdrop or a blend mode into the frame is drawn whole**: outside the region it would have read the last frame's finished pixels, and a kept backdrop kept them.
+- **Partial redraw: a batch that reaches two rectangles of a region no longer draws what lies between them**, where translucent text and shapes piled up on the last frame; rectangles fused over the budget no longer overlap (drawn twice).
+- **`rich_paragraph`**: a `version` given again for shorter runs, or two contents with one hash, lays the runs out again instead of indexing past them.
+- **`ui.destroy` after `platform.destroy_window`** no longer writes to the freed window, and a post no longer wakes it: the State forgets a window when it is destroyed.
+- **`.Hot_Within`** sees as far up the tree as `hot_within`: 64 ancestors (it stopped at 48).
+- **Toolkit drawing at high DPI**: the tab underline, the rings of check boxes, radios and color pickers, the slider's ring and the shadows of sliders and switches, `hline`, what takes a press around a scrollbar and its least width follow the scale. At 100 % nothing changes.
+- **Linux, Wayland**: a clipboard or drag source and a selection offer given up are destroyed on the compositor too (only the client side was freed).
+- **Windows**: a drag of the app over another of its windows is taken as over the window it came from (the thread in `drag_start` cannot answer before the drop).
+- **`wait_event`** (offscreen window, Linux): events already handed out by the last poll no longer end the wait at once.
+- **Linux**: `open_url`, `open_path` and `reveal_in_folder` leave no zombie process.
+- **Linux, Wayland**: only a window made a drop target with `drop_target_enable` takes a drop, as its answer in `drop_set_effect` says; `drag_start` shows its picture; the press that began a drag gets its release when it ends.
+- **Linux, Wayland**: closing a window no longer ends the connection with a protocol error (a wrong request destroyed its decoration).
+- **Linux, X11**: `get_placement`, `outer_rect` and `client_origin` read the window's position (they said 0,0); a placement saved and restored under a frame does not move the window.
+- **Linux, X11**: a waiting poll no longer sleeps over events already read from the connection.
+- **Linux, X11**: `clipboard_changed` sees any program taking the clipboard, through XFIXES.
+- **Linux, X11**: `display_info` gives the rate of the monitor under the window, read from RandR, and follows it when the window moves or the mode changes; 60 Hz only without RandR.
+- **Linux, X11**: `drag_start` shows its picture (`Drag_Image`), carries the formats of the app's own (`Drag_Data.custom`) and follows `XdndProxy`.
+- **Linux, X11**: with several windows, each event goes to the window it names, not to the window that polls; drops report the pointer's position (it was always the corner of the screen).
+- **Linux, X11**: copy and paste with other programs work: requests and answers were read at the wrong offsets of their events, and the transfer of large data never advanced.
+- **`devtools`**: `frameMs` (`Toolkit.metrics`, `Toolkit.frames`, timelines) is taken before a capture is read back, and a capture's conversion to RGBA moved to the encoding thread: a frame that reads a picture back no longer reads as late, with the next one early, although no refresh was missed.
+- **`devtools`**: the screencast takes one more capture after a change, so what the program does in answer to the frame just shown is not lost as its last frame.
+- **`dbus`**: a bus that goes away with something of ours unread (ECONNRESET) is a lost connection: pending handlers run, as on an orderly end.
+- **`dbus.call`**: a call in a handler while another call waits: each gets its reply, whatever their order, where the outer one timed out; what an outer call had read no longer waits for the inner call's timeout.
+- **Recorder**: with `injected`, an action sent by `Toolkit.axAction` is recorded, as a `press` line that does it again.
+- **Recorder**: the horizontal wheel is recorded, and `wheel <x> <y> <notches> [<across>]` plays it (`tools/cdp.mjs`).
+- **`devtools`**: what Chrome's frontend asks as it goes is answered (`CSS.takeComputedStyleUpdates`, `Storage.getStorageKey`, `DOM.getNodesForSubtreeByStyle`, `DOM.getAttributes`, its check for form-associated elements) instead of filling its log with errors.
+- **`devtools`**: `DOM.getDocument` and `DOM.requestChildNodes` respect the depth asked. Children the client has are no longer sent again (Chrome's frontend made new nodes of them, and what it was unfolding stayed empty), and a node not unfolded says when its number of children changes (`DOM.childNodeCountUpdated`).
+- **`font`**: the native backend no longer takes quadratic time on a very long word without a space.
+- **`flate.deflate_push`**: a stream past 2 GiB no longer stops finding matches.
+- **`flate.inflate_push`**: a big block that arrives in many chunks is no longer decoded again from its start with each one (quadratic time): its output comes as its input arrives. Inflating and deflating no longer fill the temporary allocator.
+- **`font.color_glyph_rgba`**: emptying the outline cache of the COLR interpreter freed heap memory with the allocator of the caller: a caller with its own allocator got bad frees.
+- **`font`**: when Direct2D could not make its device for color glyphs, the locks held at that moment were zeroed under their owner: the failure now only gives back the Direct2D objects.
+- **`font`**: a hostile COLR font can no longer hang the drawing thread with an outline of many crossing edges: the scan conversion of a glyph counts against its work allowance, and a glyph over it is refused.
+- **`font`**: a hostile COLR font can no longer exhaust memory or hang through color lines: the stops of a gradient count against the work allowance of a glyph (a graph that reads too many is refused and shows its outline), and finding a stop no longer walks along them.
+- **A device lost on one renderer no longer fails the read-backs of another** (`draw.offscreen_end`, `render.readback_poll`), and the table of read-backs is safe when renderers live on several threads.
+- **A buffer refused or not mapped during a frame no longer writes through a null pointer** (Direct3D 11): the frame draws what it can and `frame_end` reports the lost device.
+- **`render.kept_targets_bytes` counts as `render.targets_bytes` does**: a kept snapshot is 4 bytes a texel, and mip chains count.
+- **`render.capture_cancel` on WebGPU no longer lets the map it cancelled write on the next capture**, and a capture being mapped survives `surface_use`.
+- **`draw.destroy` gives back the context's glyph atlas texture**: a context made and destroyed on a renderer that stays left it behind.
+- **A layer in a blend mode composited right after a filter pass replaces what it read, as any other** (Direct3D 11): with nothing drawn in between it blended over translucent pixels and changed their alpha.
+- **`render.set_gpu_profile` no longer erases the frame's clear color on a window** (Direct3D 11): what no draw covered turned black while profiling.
+- **2D canvas: a clip that lies off the canvas, or one made while a layer is open, no longer sends what is drawn next to the wrong target** (into the clip mask, or to the canvas instead of the layer).
+- **Partial redraw (`draw.damage_begin`, `render.set_partial_redraw`) works as documented on both backends**: on Direct3D 11 it never took effect on a window and wiped what lay outside the region offscreen; on WebGPU a window crashed on it, the region was not cleared first, and a frame without a region left the next one showing stale pixels.
+  - A frame with a region now composes into a kept target, copied whole to the swap chain (the swap chain cannot present rectangles). A region of nothing presents nothing. Frames without `damage_begin` are drawn as before.
+  - `damage_scroll` redraws where the content was and is: no backend moves pixels by a block copy.
+  - `render.damage_verify_differences` counts the frames `render.damage.verify` found different, and the check now runs on Direct3D 11 and draws Slug text and application shaders on WebGPU.
+- **Wrapped text**: the lines kept between builds no longer live in the allocator of the context at the first wrap (a program that changes `context.allocator` around a build freed them from another one).
+- **`ui.fuzzy_score`** no longer panics on a text with invalid UTF-8 that matches the needle, and its ranges stay in the text.
+- **`rich_paragraph`**: `rich_set_faces` applies to paragraphs already laid out, and the layout cache no longer depends on the padding bytes of a run's style.
+- **`ui.post` through a window**: after `ui.destroy` every window the State was built for returns false, not only the last one (the others used a queue that was gone).
+- **`line_edit`, `text_edit`**: a value set by a screen reader can be undone, and a selection it asks for in the same build lands on the new text.
+- **`line_edit`, `text_edit`**: Backspace at the start or Delete at the end of the text is no edit: it no longer empties the redo history nor adds an undo step.
+- **Autoscroll**: the distances and the speed of `Autoscroll_Settings` are logical pixels as documented: at 200 % the dead zone was half as large and smaller than the marker.
+- **Autoscroll**: a middle press on a box that scrolls itself (`text_edit`) no longer starts a session that scrolls nothing and swallows the press; the scroll region around it scrolls, if there is one.
+- **Autoscroll**: the click that ends a latched session does nothing else (it moved the focus, jumped a scrollbar and reached the selection).
+- **`ui.modal`**: Escape goes first to what is inside the dialog (a focused field gets `cancelled`), then to the dialog on top, not to the outermost one. The dialog closes at the end of its block.
+- **`ui.list_select`** before a list's first build, or for a row added in this frame, is no longer lost: the row is checked against the rows actually built.
+- **`ui.selected_text`** during a build no longer returns "" when the selected boxes are not built yet (a Copy button above the text): it answers with the text the last build showed.
+- **Linux**: `clipboard_changed` tells a change once (it said true at every call while another program owned the clipboard), `clipboard_formats` says what the owner offers, `set_clipboard` offers its text under the text targets, and file lists are percent-encoded URIs.
+- **Linux**: `wait_handle` with no limit called inside a frame callback waits for the handle (it returned at once).
+- **`drag_image_fit`**: the colours stay right when a large picture is brought down to a few pixels (the sums overflowed).
+- **Windows**: `get_placement` returns screen coordinates: with a taskbar on the left or top a saved window no longer moves at each restore.
+- **Linux, X11**: `is_minimized`, `is_maximized` and `is_fullscreen` follow the window manager (a restored window stayed minimized).
+- **Linux, X11**: a read of a selection returns the whole data or nothing, never a truncated part, and a slow owner's transfer goes on as long as chunks come.
+- **Linux, X11**: a drag no longer makes the app take itself for the clipboard's owner, and losing PRIMARY is no longer taken for losing the clipboard: paste reads what another program copied.
+- **Linux, X11**: `drag_start` talks XDND to the window under the pointer (it reached no window), reports the effect the target took, and no longer leaves the press stuck; drops report client positions and follow `drop_set_effect`.
+- **Linux, Wayland**: a click before any motion lands where the pointer is on a scaled screen (the position on entering the window was not scaled).
+- **Linux, Wayland**: `drag_start` returns no effect for a drag that was cancelled (it returned the effect of the one before or the action last hovered).
+- **Linux, Wayland**: reading another client's selection gives up when the peer stays silent instead of freezing the interface, and dropping the app's own drag on its own window no longer hangs it.
+- **Linux, Wayland**: a held key repeats, at the rate and delay of the compositor (`Event.repeat`).
+- **Linux**: `wake` wakes a real window's loop on Wayland (it did nothing) and no longer writes on X11 the property a paste reads, which could corrupt the pasted data.
+- **Linux, Wayland**: a loop that polls without waiting (an animation) now receives input and answers the compositor: `poll_events(w, false)` reads the socket; `wait_handle` no longer spins while input waits.
+- **`tk_instance`** (Linux): a runtime directory that is not this user's alone (`/tmp/tk_instance-<uid>` made first by someone else) is not used: the start carries on by itself.
+- **`dbus.call_async`**: the handler runs when the bus goes away whatever its deadline, as documented; a message that cannot be one ends the connection instead of stalling it while its buffer grows.
+- **`dbus`**: a full socket is waited for instead of being taken for a lost connection, so a burst or a large message no longer ends it.
+- **`dbus.call`**: a reply followed by another message in the same read (Hello and NameAcquired) is no longer wiped before the caller reads it, which could make `connect_bus` fail now and then. A handler that calls no longer meets its own message again.
+- **`tk_config.restore`**: bringing back a value over a saved user one marks the preferences dirty: the next start no longer gets back what the restore took away.
+- **`devtools`**: a connection ending at once can no longer be reaped before its thread is known, and `accept` failing for good no longer takes a core.
+- **`devtools`**: `inf` and `nan` are no longer taken as a CSS length, opacity or colour channel of an edited style.
+- **`devtools`**: two `Page.captureScreenshot` at once each get their own `clip`: the second used to get the picture of the first.
+- **`devtools`**: what cannot be edited (`DOM.setAttributesAsText`, `DOM.setOuterHTML`, other `DOM.set*` and `CSS.set*`, `Page.setDocumentContent`, cookies, DOM storage) answers an error instead of a false success; what clients send on attaching is still accepted.
+- **`devtools`**: an edit lasts as long as its client also when it never asked for the document, and a second client taking the tree undoes the edits of the first instead of inheriting them for good.
+- **`devtools`**: a text replaced from Chrome's DevTools, or edits taken back when it leaves, no longer leave the boxes of the last build pointing at freed memory (`ui.Box_Edit`'s text is copied into each frame).
+- **`devtools`**: `Page.stopScreencast` while a frame was being read back no longer leaves the renderer unable to capture: `Page.captureScreenshot` answered "the renderer cannot capture now" for good and a later screencast sent nothing.
+
 ## [0.57.1] - 2026-10-31
 
 ### Fixed
@@ -1253,6 +1364,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.58.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.58.0
 [0.57.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.1
 [0.57.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.0
 [0.56.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.56.2
