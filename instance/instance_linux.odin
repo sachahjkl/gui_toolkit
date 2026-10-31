@@ -21,6 +21,7 @@ import "core:time"
 
 // How long the owner waits for the bytes of a message once a start has connected (it writes them at once).
 @(private = "file") READ_MS :: 1000
+@(private = "file") LISTEN_BACKLOG :: 16
 
 Owner :: struct {
 	name:     string,        // owned
@@ -74,7 +75,7 @@ forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -
 	defer linux.close(s)
 	if linux.connect(s, &addr) != .NONE { return .No_Window }   // nobody listens (starting, closing) or no file
 	data := encode(identity, message)
-	head: [4]u8
+	head: [LENGTH_PREFIX_BYTES]u8
 	endian.put_u32(head[:], .Little, u32(len(data)))
 	if !send_all(s, head[:]) || !send_all(s, data) { return .No_Window }   // it closed while we asked
 	fds := []linux.Poll_Fd{{fd = s, events = {.IN}}}
@@ -104,7 +105,7 @@ send_all :: proc(s: linux.Fd, data: []u8) -> bool {
 
 // Hands `message` to the owner of `cfg.name` without trying to become the owner: a pure "ping the running copy".
 send :: proc(cfg: Config, message: []byte) -> Outcome {
-	switch forward_once(cfg.name, cfg.identity, message, max(cfg.wait_ms, 200)) {
+	switch forward_once(cfg.name, cfg.identity, message, max(cfg.wait_ms, FORWARD_MIN_MS)) {
 	case .Accepted:        return .Forwarded
 	case .Other_Instance:  return .Other_Instance
 	case .No_Window, .Refused, .Timeout: return .Unresponsive
@@ -125,14 +126,14 @@ acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
 		}
 		linux.close(fd)
 		left := int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
-		switch forward_once(cfg.name, cfg.identity, message, max(left, 200)) {
+		switch forward_once(cfg.name, cfg.identity, message, max(left, FORWARD_MIN_MS)) {
 		case .Accepted:        return .Forwarded, {}
 		case .Other_Instance:  return .Other_Instance, {}
 		case .Timeout:         return .Unresponsive, {}
 		case .No_Window, .Refused:
 		}
 		if left <= 0 { return .Unresponsive, {} }
-		time.sleep(40 * time.Millisecond)
+		time.sleep(ACQUIRE_RETRY_MS * time.Millisecond)
 	}
 }
 
@@ -147,7 +148,7 @@ owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
 	if err != .NONE { return false }
 	cpath := strings.clone_to_cstring(path, context.temp_allocator)
 	linux.unlink(cpath)   // a socket left by an owner that crashed: the lock says it is ours now
-	if linux.bind(s, &addr) != .NONE || linux.listen(s, 16) != .NONE { linux.close(s); return false }
+	if linux.bind(s, &addr) != .NONE || linux.listen(s, LISTEN_BACKLOG) != .NONE { linux.close(s); return false }
 	o.listen, o.sock, o.thread = s, strings.clone(path), sync.current_thread_id()
 	sync.mutex_lock(&owners_mu)
 	append(&owners, o)
@@ -209,7 +210,7 @@ pump_messages :: proc() {
 @(private = "file")
 serve :: proc(o: ^Owner, c: linux.Fd) -> u8 {
 	if o.closing || o.handler == nil { return 0 }
-	head: [4]u8
+	head: [LENGTH_PREFIX_BYTES]u8
 	if !read_full(c, head[:]) { return 0 }
 	n := int(endian.unchecked_get_u32le(head[:]))
 	if n == 0 || n > ENVELOPE_MAX { return 0 }

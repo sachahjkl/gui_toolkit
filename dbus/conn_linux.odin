@@ -34,11 +34,15 @@ foreign libc {
 @(private) O_NONBLOCK :: 0o4000
 @(private) MSG_NOSIGNAL :: 0x4000
 @(private) POLLIN_C :: i16(0x0001)
+@(private) UNIX_PATH_BYTES :: 108
+// The server's lines in the authentication are short.
+@(private) AUTH_LINE_BYTES :: 512
+@(private) U32_DECIMAL_DIGITS :: 10
 
 @(private)
 Sockaddr_Un :: struct {
 	family: u16,
-	path:   [108]u8,
+	path:   [UNIX_PATH_BYTES]u8,
 }
 
 @(private)
@@ -188,17 +192,17 @@ hex_digit :: proc(v: u8) -> u8 { return v < 10 ? '0' + v : 'a' + (v - 10) }
 @(private)
 u32_to_string :: proc(v: u32, allocator := context.allocator) -> string {
 	if v == 0 { return strings.clone("0", allocator) }
-	buf: [10]u8
+	buf: [U32_DECIMAL_DIGITS]u8
 	i := len(buf)
 	x := v
 	for x > 0 { i -= 1; buf[i] = '0' + u8(x % 10); x /= 10 }
 	return strings.clone(string(buf[i:]), allocator)
 }
 
-// Reads one CRLF line (blocking) during the auth handshake. Bounded to a small buffer: the server's lines are short.
+// Reads one CRLF line (blocking) during the auth handshake. Bounded to a small buffer.
 @(private)
 read_line :: proc(fd: i32) -> string {
-	@(static) buf: [512]u8
+	@(static) buf: [AUTH_LINE_BYTES]u8
 	n := 0
 	for n < len(buf) - 1 {
 		one: [1]u8
@@ -232,7 +236,7 @@ set_nonblocking :: proc(fd: i32) {
 
 @(private)
 hello :: proc(c: ^Conn) -> bool {
-	msg, ok := call(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "Hello", "", nil, 5000)
+	msg, ok := call(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "Hello", "", nil, BUS_CALL_TIMEOUT_MS)
 	if !ok || msg.type != .Method_Return { return false }
 	r := msg_reader(&msg)
 	name := r_string(&r)

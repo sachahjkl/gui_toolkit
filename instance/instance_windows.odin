@@ -29,6 +29,7 @@ foreign user32_inst {
 Flash_Info :: struct { size: win.UINT, hwnd: win.HWND, flags: win.DWORD, count: win.UINT, timeout: win.DWORD }
 @(private = "file") FLASHW_TRAY :: 0x2
 @(private = "file") FLASHW_TIMERNOFG :: 0xC
+@(private = "file") FLASH_COUNT :: 3
 
 @(private = "file") SMTO_ABORTIFHUNG :: 0x0002
 @(private = "file") SMTO_BLOCK       :: 0x0001
@@ -90,7 +91,7 @@ forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -
 // Hands `message` to the owner of `cfg.name` without trying to become the owner: a pure "ping the running copy". Returns
 // Forwarded (taken), Other_Instance, or Unresponsive (no owner, a different identity refused, or no answer).
 send :: proc(cfg: Config, message: []byte) -> Outcome {
-	switch forward_once(cfg.name, cfg.identity, message, max(cfg.wait_ms, 200)) {
+	switch forward_once(cfg.name, cfg.identity, message, max(cfg.wait_ms, FORWARD_MIN_MS)) {
 	case .Accepted:        return .Forwarded
 	case .Other_Instance:  return .Other_Instance
 	case .No_Window, .Refused, .Timeout: return .Unresponsive
@@ -108,14 +109,14 @@ acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
 		if !existing { return .First, Owner{name = strings.clone(cfg.name), mutex = mutex, identity = strings.clone(cfg.identity)} }
 		win.CloseHandle(mutex)
 		left := int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
-		switch forward_once(cfg.name, cfg.identity, message, max(left, 200)) {
+		switch forward_once(cfg.name, cfg.identity, message, max(left, FORWARD_MIN_MS)) {
 		case .Accepted:        return .Forwarded, {}
 		case .Other_Instance:  return .Other_Instance, {}
 		case .Timeout:         return .Unresponsive, {}
 		case .No_Window, .Refused:
 		}
 		if left <= 0 { return .Unresponsive, {} }
-		time.sleep(40 * time.Millisecond)
+		time.sleep(ACQUIRE_RETRY_MS * time.Millisecond)
 	}
 }
 
@@ -186,7 +187,7 @@ raise_window :: proc(handle: rawptr) {
 	if win.IsIconic(hwnd) { win.ShowWindow(hwnd, win.SW_RESTORE) }
 	win.BringWindowToTop(hwnd)
 	if !win.SetForegroundWindow(hwnd) {
-		flash := Flash_Info{size = size_of(Flash_Info), hwnd = hwnd, flags = FLASHW_TRAY | FLASHW_TIMERNOFG, count = 3}
+		flash := Flash_Info{size = size_of(Flash_Info), hwnd = hwnd, flags = FLASHW_TRAY | FLASHW_TIMERNOFG, count = FLASH_COUNT}
 		FlashWindowEx(&flash)
 	}
 }

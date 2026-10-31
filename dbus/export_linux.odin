@@ -10,6 +10,10 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 
+// The bus's answers to RequestName that mean the name is ours.
+@(private = "file") REQUEST_NAME_PRIMARY_OWNER :: 1
+@(private = "file") REQUEST_NAME_ALREADY_OWNER :: 4
+
 // A handler for a method call on an exported object. It returns true when it handled the call (sent a reply); false
 // lets the connection send the default "unknown method" error.
 Object_Handler :: #type proc(user: rawptr, c: ^Conn, msg: ^Message) -> bool
@@ -40,16 +44,16 @@ export_remove :: proc(c: ^Conn, path: string) {
 }
 
 // Requests a well-known name on the bus (RequestName). `flags`: the usual 0 (or the "replace existing" / "do not
-// queue" bits). Returns true when the bus granted it (reply code 1 primary owner, 4 already owner).
+// queue" bits). Returns true when the bus granted it.
 request_name :: proc(c: ^Conn, name: string, flags: u32 = 0) -> bool {
 	w := writer_make(context.temp_allocator)
 	w_string(&w, name)
 	w_u32(&w, flags)
-	msg, ok := call(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName", "su", w.buf[:], 5000)
+	msg, ok := call(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName", "su", w.buf[:], BUS_CALL_TIMEOUT_MS)
 	if !ok { return false }
 	r := msg_reader(&msg)
 	code := r_u32(&r)
-	return code == 1 || code == 4   // PRIMARY_OWNER or ALREADY_OWNER
+	return code == REQUEST_NAME_PRIMARY_OWNER || code == REQUEST_NAME_ALREADY_OWNER
 }
 
 @(private)

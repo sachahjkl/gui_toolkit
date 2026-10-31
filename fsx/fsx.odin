@@ -23,6 +23,12 @@ package fsx
 import "base:runtime"
 import "core:os"
 
+// The most one system call is asked to read or write: a larger request is split.
+@(private)
+IO_CHUNK_MAX_BYTES :: 1 << 30
+@(private)
+READ_ALL_MAX_BYTES :: 1 << 40
+
 // A plain file of a directory (list_files): its name (no path) and size.
 Dir_File :: struct {
 	name: string,
@@ -38,7 +44,7 @@ Path_Kind :: enum u8 {
 }
 
 // The whole file, at most `max_size` bytes (false when it is larger, missing or unreadable).
-read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = 1 << 40) -> ([]byte, bool) {
+read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = READ_ALL_MAX_BYTES) -> ([]byte, bool) {
 	size, _, ok := stat(path)
 	if !ok || size < 0 || size > max_size { return nil, false }
 	buf := make([]byte, int(size), allocator)
