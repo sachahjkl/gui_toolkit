@@ -26,6 +26,8 @@ App :: struct {
 	bottom:   f32,
 	open:     [4]bool,
 	saved:    int,       // splitter drags finished (where an app would write its settings)
+	pacer: render.Pacer,
+	slept: bool,
 }
 
 SECTIONS := [4]string{"Conversations", "Contacts", "Files", "Settings"}
@@ -70,8 +72,9 @@ build_ui :: proc(app: ^App) {
 	}
 }
 
-frame :: proc(app: ^App) {
-	render.wait_for_frame(&app.r)
+frame :: proc(app: ^App, inner := false) {
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
+	app.slept = false
 	events := platform.poll_events(app.win, false)
 	render.mark_input(&app.r)
 	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 2) }
@@ -92,15 +95,17 @@ frame :: proc(app: ^App) {
 	render.frame_begin(&app.r, {0, 0, 0, 1})
 	ui.draw_tree(&app.ui_state, &app.dc)
 	draw.end_frame(&app.dc)
-	render.frame_end(&app.r)
+	render.frame_end(&app.r, !at_once)
+	render.paced_present(&app.pacer)
 	free_all(context.temp_allocator)
 }
 
 main :: proc() {
 	app := new(App)
 	font.init(&app.fonts)
-	app.win = platform.open_window("gui_toolkit panes", {900, 600})
-	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("renderer init failed"); return }
+	app.win = platform.open_window("gui_toolkit panes", {900, 600}, transparent = true)
+	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
+	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
 	ok: bool
 	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("cannot load a UI font"); return }
@@ -113,10 +118,10 @@ main :: proc() {
 	app.last_tick = time.tick_now()
 	app.frames_requested = 2
 	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	platform.show_window(app.win)
 	for !platform.is_closed(app.win) {
-		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_in_ms(&app.ui_state)) }
+		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_in_ms(&app.ui_state)); app.slept = true }
 		frame(app)
 		if app.frames_requested > 0 { app.frames_requested -= 1 }
 	}
