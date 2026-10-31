@@ -258,6 +258,95 @@ try {
     dt.close()
   }
 
+  // a screencast stopped while its frame is being read back: pictures still come (nothing read that capture, none could start)
+  for (let i = 0; i < 12; i++) {
+    await send('Page.startScreencast', { format: 'png', minIntervalMs: 0 })
+    await send('Page.stopScreencast')
+    await send('Page.captureScreenshot', { format: 'png' })
+  }
+  pass('a screencast stopped at any moment, and pictures after it')
+
+  // two screenshots at once, each of its own part of the window
+  {
+    const dpr = (await send('Toolkit.state')).dpi
+    const clip = { x: 0, y: 0, width: 40, height: 20, scale: 1 }
+    const [a, b] = await Promise.all([send('Page.captureScreenshot', { clip }), send('Page.captureScreenshot', {})])
+    const [pa, pb] = [a, b].map((r) => decodePng(Buffer.from(r.data, 'base64')))
+    if (pa.width !== Math.round(40 * dpr) || pb.width <= pa.width) fail(`two screenshots at once: ${pa.width} and ${pb.width} wide`)
+    else pass('two screenshots at once')
+  }
+
+  // whose edits they are, and what an edit cannot do
+  {
+    const attrs = (n) => { const o = {}; for (let i = 0; i + 1 < (n.attributes || []).length; i += 2) o[n.attributes[i]] = n.attributes[i + 1]; return o }
+    const search = (n, f) => { if (f(n)) return n; for (const c of n.children || []) { const r = search(c, f); if (r) return r } return null }
+    const named = (root, id) => search(root, (n) => attrs(n).id === id)
+    const count = async (name) => { await idle(); return (await send('Toolkit.find', { name })).nodes.length }
+    const left = (c) => { c.close(); return new Promise((r) => setTimeout(r, 150)) }
+
+    // an edit by a client that never asked for the document goes with it
+    const id = named((await send('DOM.getDocument', { depth: -1 })).root, 'nav4').nodeId
+    const tool = await connect(port, { retryMs: 2000 })
+    await tool.send('DOM.removeNode', { nodeId: id })
+    const gone = await count('nav4')
+    await left(tool)
+    await send('Toolkit.state')
+    const backNoDoc = await count('nav4')
+    if (gone !== 0 || backNoDoc !== 1) fail(`an edit without the document: removed ${gone}, then ${backNoDoc}`)
+    else pass('an edit without the document goes with its client')
+
+    // the next client to take the tree takes it from the one before, whose edits go
+    const one = await connect(port, { retryMs: 2000 })
+    const r1 = (await one.send('DOM.getDocument', { depth: -1 })).root
+    await one.send('DOM.removeNode', { nodeId: named(r1, 'nav4').nodeId })
+    const removed = await count('nav4')
+    const two = await connect(port, { retryMs: 2000 })
+    await two.send('DOM.getDocument', { depth: -1 })
+    const undone = await count('nav4')
+    await left(two)
+    await left(one)
+    await send('Toolkit.state')
+    if (removed !== 0 || undone !== 1) fail(`two clients: removed ${removed}, then ${undone}`)
+    else pass('a second client takes the tree, the edits of the first go')
+
+    // the text of the last build stays readable after an edit replaces it, until the next build
+    const dt = await connect(port, { retryMs: 2000 })
+    const r2 = (await dt.send('DOM.getDocument', { depth: -1 })).root
+    const button = named(r2, 'nav3')
+    const label = search(button, (n) => n.nodeType === 3)
+    const [A, B] = ['A'.repeat(300), 'B'.repeat(300)]
+    await dt.send('DOM.setNodeValue', { nodeId: label.nodeId, value: A })
+    await idle()
+    let torn = null
+    for (let i = 0; i < 10 && !torn; i++) {
+      const [, d] = await Promise.all([
+        dt.send('DOM.setNodeValue', { nodeId: label.nodeId, value: i % 2 ? A : B }),
+        dt.send('DOM.describeNode', { nodeId: label.nodeId }),
+      ])
+      if (d.node.nodeValue !== A && d.node.nodeValue !== B) torn = d.node.nodeValue
+      await idle()
+    }
+    if (torn !== null) fail(`a text replaced, read in the same frame: ${JSON.stringify(torn.slice(0, 40))}`)
+    else pass('a text replaced, read in the same frame')
+
+    // what cannot be done says so
+    const refused = await dt.send('DOM.setAttributesAsText', { nodeId: button.nodeId, text: 'id="x"' }).then(() => false, () => true)
+    if (!refused) fail('an attribute edit: a false success')
+    else pass('an attribute edit is refused')
+
+    // a length that is no length is not imposed
+    const before = (await dt.send('DOM.getBoxModel', { nodeId: button.nodeId })).model.width
+    const style = (await dt.send('CSS.getMatchedStylesForNode', { nodeId: button.nodeId })).inlineStyle
+    await dt.send('CSS.setStyleTexts', { edits: [{ styleSheetId: style.styleSheetId, range: style.range, text: style.cssText.replace(/width: [^;]+;/, 'width: inf;') }] })
+    await idle()
+    const after = (await dt.send('DOM.getBoxModel', { nodeId: button.nodeId })).model.width
+    if (after !== before) fail(`width: inf: ${before} became ${after}`)
+    else pass('width: inf is not imposed')
+    await left(dt)
+    await send('Toolkit.state')
+    await idle()
+  }
+
   // recording a timeline: a picture per action, what a person types gathered, and it plays back the same
   let stopRecording
   const stop = new Promise((r) => { stopRecording = r })

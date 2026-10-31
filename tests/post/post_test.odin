@@ -8,6 +8,7 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 import "../../font"
+import "../../platform"
 import "../../ui"
 
 PRODUCERS :: 4
@@ -289,5 +290,36 @@ ui_post_runs_in_begin_build :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(d.lines), 25)
 	testing.expect(t, !ui.needs_frame(s))
 	for w, i in d.lines { testing.expect_value(t, w, u64(i)) }
+	free_all(context.temp_allocator)
+}
+
+// ui.destroy: every window the State was built for forgets it, not only the last one (ui.post through one would use a
+// queue that is gone).
+@(test)
+ui_destroy_leaves_no_window_with_its_queue :: proc(t: ^testing.T) {
+	fonts: font.State
+	font.init(&fonts)
+	defer font.destroy(&fonts)
+	ui_font, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
+	theme: ui.Theme
+	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	defer ui.theme_destroy(&theme)
+	s := new(ui.State)
+	defer free(s)
+	a, b := new(platform.Window), new(platform.Window)
+	defer { free(a); free(b) }
+	ui.init(s, &fonts, &theme)
+	build :: proc(s: ^ui.State, f: font.Font_Id, w: ^platform.Window) {
+		ui.begin_build(s, {window_size = {200, 100}, dt = 1.0 / 60, dpi_scale = 1, window = w, base = ui.Style{font = f, font_size = 15}})
+		ui.end_build()
+	}
+	build(s, ui_font, a)
+	build(s, ui_font, b)
+	build(s, ui_font, a)
+	build(s, ui_font, b)
+	build(s, ui_font, nil)
+	testing.expect(t, a.post_queue != nil && b.post_queue != nil, "both published")
+	ui.destroy(s)
+	testing.expect(t, a.post_queue == nil && b.post_queue == nil, "both forgot it")
 	free_all(context.temp_allocator)
 }

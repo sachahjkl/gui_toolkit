@@ -89,7 +89,7 @@ render.set_partial_redraw(r, true)         // or draw.set_partial_redraw(c, true
 render.frame_begin(r, clear)
 render.damage_begin(r)                      // open a region (once; nothing marked = draw nothing)
 render.damage_add(r, {x0, y0, x1, y1})      // each changed rectangle, screen pixels, as many as needed
-render.damage_scroll(r, rect, dx, dy)       // a scrolled view (presented as a block copy where the backend can)
+render.damage_scroll(r, rect, dx, dy)       // a scrolled view: redraws where the content was and where it is
 ... draw ...
 render.frame_submit(r, frame)
 render.frame_end(r)
@@ -110,19 +110,13 @@ region covers and the pixels of the whole frame, and whether a region is in effe
 
 ### How each backend presents a partial frame
 
-* **Direct3D 11 / DXGI** (`render/damage_d3d.odin`): `Present1` with `DXGI_PRESENT_PARAMETERS` carries the dirty
-  rectangles (`pDirtyRects`) and, for a scrolled view, the moved block (`pScrollRect` / `pScrollOffset`). A flip swap
-  chain (`FLIP_DISCARD` / `FLIP_SEQUENTIAL`) does **not** keep the back buffer's content between frames: the back buffer
-  just acquired holds some earlier frame, how old depending on the buffer count. So a partial frame redraws not only
-  this frame's region but the **union of the regions of the last `buffer_age` frames** (the buffer-age scheme), so the
-  back buffer holds the same pixels a fully kept buffer would. The age is the swap chain's buffer count (2 or 3); until
-  that many partial frames have been presented, a partial frame falls back to a full one. Tearing presents
-  (`ALLOW_TEARING`) forbid dirty rectangles, so they present in full.
+* **Direct3D 11 / DXGI** (`render/damage_d3d.odin`): a `FLIP_DISCARD` swap chain allows no dirty rectangles and does not keep
+  the back buffer's content between frames. So a frame with a region composes into a **target kept across frames**, and the
+  whole target is copied to the back buffer and presented. As on WebGPU, the rasterization is partial and the present full.
 * **WebGPU / wgpu-native**: the pinned version (29.0.1.1) exposes only `SurfacePresent`, **not** a present-with-damage
   entry point, and a surface texture does not keep its content between frames either. So the renderer composes every
   frame into a **persistent render target** kept across frames (`render/damage_wgpu.odin`): a full frame clears it and
   draws everything; a partial frame loads it (`LoadOp::Load`, keeping the content) and draws only the scissored
   rectangles. The whole target is then copied to the surface texture and presented in full. **The rasterization is
   partial (the win: fewer pixels shaded, fewer pictures replayed); the present is full** — the documented limit of this
-  backend until wgpu-native gains present-with-damage. When that lands, the full copy can be replaced by presenting the
-  dirty rectangles, as on Direct3D 11.
+  backend until wgpu-native gains present-with-damage.

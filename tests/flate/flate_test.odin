@@ -7,8 +7,11 @@ import "core:bytes"
 import "core:compress/zlib"
 import "core:fmt"
 import "core:math/rand"
+import "core:mem"
 import "core:strings"
 import "core:testing"
+import "core:time"
+import "../../base"
 import "../../flate"
 
 // gzip of the numbers (i * 7919) % 10007 for i in 0 ..< 300, joined by spaces, made by .NET's GZipStream (dynamic codes)
@@ -173,4 +176,101 @@ deflate_runs_round_trip :: proc(t: ^testing.T) {
 	back, err := flate.inflate(.Zlib, z, 0, context.temp_allocator)
 	testing.expect_value(t, err, flate.Error.None)
 	testing.expect(t, bytes.equal(back, rows))
+}
+
+@(private = "file")
+noise_of :: proc(n: int, allocator := context.allocator) -> []u8 {
+	noise := make([]u8, n, allocator)
+	seed: u32 = 1
+	for &b in noise { seed = seed * 1664525 + 1013904223; b = u8(seed >> 24) }
+	return noise
+}
+
+// One block of 1 MiB (deflate_runs makes one) in chunks: what has arrived is output as it arrives, and a chunk does not
+// decode the block again from its start.
+@(test)
+one_big_block_comes_out_as_it_arrives :: proc(t: ^testing.T) {
+	data := noise_of(1 << 20)
+	defer delete(data)
+	packed := flate.deflate_runs(.Zlib, data, 0)
+	defer delete(packed)
+	z: flate.Inflater
+	flate.inflater_init(&z, .Zlib)
+	defer flate.inflater_destroy(&z)
+	out := make([dynamic]u8)
+	defer delete(out)
+	half := len(packed) / 2
+	testing.expect_value(t, flate.inflate_push(&z, packed[:half], &out), flate.Error.None)
+	testing.expectf(t, len(out) > len(data) / 3, "half of the input gave %d bytes of %d", len(out), len(data))
+	start := time.now()
+	for i := half; i < len(packed); i += 1024 {
+		testing.expect_value(t, flate.inflate_push(&z, packed[i:min(i + 1024, len(packed))], &out), flate.Error.None)
+	}
+	took := time.duration_milliseconds(time.since(start))
+	testing.expect_value(t, flate.inflate_finish(&z), flate.Error.None)
+	testing.expect(t, bytes.equal(out[:], data), "round trip")
+	if !base.perf_skip("one big block in chunks") { testing.expectf(t, took < 200, "%.0f ms", took) }
+}
+
+// A stream cut in a block is still Truncated, and bad data after output is still Bad_Data, wherever the chunks end.
+@(test)
+errors_inside_a_block_that_came_in_chunks :: proc(t: ^testing.T) {
+	data := noise_of(100_000)
+	defer delete(data)
+	packed := flate.deflate_runs(.Zlib, data, 0)
+	defer delete(packed)
+	cut, err := inflate_all(.Zlib, packed[:len(packed) / 2], 100)
+	testing.expect_value(t, err, flate.Error.Truncated)
+	delete(cut)
+	bad := make([]u8, len(packed))
+	defer delete(bad)
+	copy(bad, packed)
+	bad[len(bad) - 1] ~= 0xFF   // the Adler-32
+	broken, err2 := inflate_all(.Zlib, bad, 100)
+	testing.expect_value(t, err2, flate.Error.Bad_Data)
+	delete(broken)
+	// the bound of one push holds when its block began in an earlier one
+	z: flate.Inflater
+	flate.inflater_init(&z, .Zlib, limit = 1000)
+	defer flate.inflater_destroy(&z)
+	out := make([dynamic]u8)
+	defer delete(out)
+	testing.expect_value(t, flate.inflate_push(&z, packed[:100], &out), flate.Error.None)
+	testing.expect_value(t, flate.inflate_push(&z, packed[100:], &out), flate.Error.Too_Large)
+}
+
+// Neither way leaves anything in the temporary allocator (a stream may run for long between two resets).
+@(test)
+streams_stay_out_of_the_temp_allocator :: proc(t: ^testing.T) {
+	text := strings.repeat(numbers(), 40, context.temp_allocator)
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	{
+		context.temp_allocator = mem.tracking_allocator(&track)
+		packed := flate.deflate(.Gzip, transmute([]u8)text)
+		defer delete(packed)
+		out, err := flate.inflate(.Gzip, packed)
+		defer delete(out)
+		testing.expect(t, err == .None && string(out) == text, "round trip")
+	}
+	testing.expect_value(t, track.total_memory_allocated, 0)
+}
+
+// A deflater that has taken 3 GiB (its position set, not to compress that much here) still finds matches.
+@(test)
+matches_past_two_gibibytes :: proc(t: ^testing.T) {
+	text := strings.repeat("Wren ", 20_000, context.temp_allocator)
+	d: flate.Deflater
+	flate.deflater_init(&d, .Raw)
+	defer flate.deflater_destroy(&d)
+	d.base = 3 << 30
+	packed := make([dynamic]u8)
+	defer delete(packed)
+	for i := 0; i < len(text); i += 1000 { flate.deflate_push(&d, transmute([]u8)text[i:min(i + 1000, len(text))], &packed) }
+	flate.deflate_finish(&d, &packed)
+	testing.expectf(t, len(packed) < 2000, "repetitive text compresses: %d bytes", len(packed))
+	out, err := inflate_all(.Raw, packed[:], 333)
+	defer delete(out)
+	testing.expect(t, err == .None && string(out[:]) == text, "round trip")
 }

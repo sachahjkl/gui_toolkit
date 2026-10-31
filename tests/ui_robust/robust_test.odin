@@ -5,6 +5,7 @@
 package ui_robust_test
 
 import "core:fmt"
+import "core:mem"
 import "core:strings"
 import "core:testing"
 import "../../font"
@@ -257,4 +258,42 @@ wake_requests_keep_the_soonest :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.wake_ms(&s), 265)
 	ui.wake_within(&s, 100)
 	testing.expect_value(t, ui.wake_ms(&s), 100)
+}
+
+// A byte that is no UTF-8 (a file name, say) matches as one byte wide, not as the three of U+FFFD.
+@(test)
+fuzzy_score_on_invalid_utf8 :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	_, ranges, ok := ui.fuzzy_score("\xff", "a\xff")
+	testing.expect(t, ok, "found")
+	if testing.expect_value(t, len(ranges), 1) { testing.expect_value(t, ranges[0], ui.Fuzzy_Range{1, 2}) }
+	_, ranges, ok = ui.fuzzy_score("\xffb", "\xff\xffb")
+	testing.expect(t, ok, "found")
+	if testing.expect_value(t, len(ranges), 1) { testing.expect_value(t, ranges[0], ui.Fuzzy_Range{1, 3}) }
+}
+
+@(private = "file")
+Wrap_Cache_Run :: struct { text: string, lines: [][2]int, arena: mem.Arena }
+
+// The wrapped lines kept between builds do not live in whatever allocator the context had at the first wrap.
+@(test)
+wrap_cache_outlives_the_callers_allocator :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Wrap_Cache_Run{text = "several words that wrap onto several lines"}
+	memory := make([]u8, 1 << 16)
+	defer delete(memory)
+	mem.arena_init(&r.arena, memory)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) {
+		r := (^Wrap_Cache_Run)(user)
+		context.allocator = mem.arena_allocator(&r.arena)
+		r.lines = ui.wrap_lines_cached(f.base_font, 15, r.text, 80)
+	}, &r)
+	for &b in memory { b = 0xee }
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) {
+		r := (^Wrap_Cache_Run)(user)
+		r.lines = ui.wrap_lines_cached(f.base_font, 15, r.text, 80)
+	}, &r)
+	testing.expect(t, len(r.lines) > 1 && r.lines[0][0] == 0, "the lines are still there")
 }

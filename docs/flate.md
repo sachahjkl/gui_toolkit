@@ -44,12 +44,9 @@ Errors: `Bad_Data` (a malformed header, block, code table, a distance before the
 
 ## How it works, and its limits
 
-- **Inflater**: puff-style canonical Huffman decoding, one block at a time from the bit where it starts. A block whose
-  input has not all arrived is decoded again from its start with the next chunk (its partial output is dropped), so a
-  push never waits for more than one block's input, and the state between pushes is only the unread input and the last
-  32 KiB of output. Cost: a block arriving in many small chunks is decoded once per chunk. With chunks of a few KiB
-  (network reads) this is negligible; feeding a large stream **byte by byte** is quadratic in the size of a block
-  (blocks are typically 16 to 100 KiB compressed). About 150 MB/s of output on text (`-o:speed`).
+- **Inflater**: puff-style canonical Huffman decoding. A block whose input has not all arrived resumes at its last complete
+  symbol with the next chunk, and what it has decoded comes out as the input arrives, so feeding a stream in small chunks
+  costs no second decoding. Nothing goes through the temporary allocator.
 - **Deflater**: LZ77 over a 32 KiB window kept across pushes (hash chains of 64 candidates, greedy: no lazy matching),
   blocks of at most `BLOCK_SYMBOLS` (16 Ki) symbols. Each block is written in the cheapest of the three types, by exact
   bit count: stored (incompressible data grows by 5 bytes per 64 KiB), fixed codes, or **dynamic Huffman codes** built

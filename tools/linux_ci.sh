@@ -28,7 +28,7 @@ for e in hello smoke todo markdown panes whatsnew; do
     echo "build FAIL examples/$e"; echo "$out" | grep -E "Error|error" | head -15; fail=1
   fi
 done
-for t in frame_slots pacing autoscroll flate; do
+for t in frame_slots pacing autoscroll flate key_repeat; do
   out=$("$ODIN" test "tests/$t" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"build/linux/${t}_test" 2>&1)
   if echo "$out" | grep -qE "All tests were successful|The test was successful"; then
     echo "test ok    tests/$t $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
