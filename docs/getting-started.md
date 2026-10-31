@@ -46,15 +46,34 @@ packages; they import each other by relative paths, so any collection name works
 
 What the loop of `examples/hello/main.odin` does, in order (every example has the same):
 
-1. `font.init`, `platform.open_window`, `render.init(&r, win.hwnd, win.size)`, a UI font
+1. `font.init`, `platform.open_window(..., transparent = true)`, `render.init_window(&r, win, win.size, transparent = true)`,
+   `render.set_fixed_surface(&r, platform.monitor_size(win))` (below: a resize never stretches a frame), a UI font
    (`font.load_system_or_embedded(..., platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)`),
    `draw.init`, `ui.apply_palette` + `ui.init`;
-2. `win.on_frame`: the frame procedure, also called from inside the system's loops (live resize, menus) by `WM_PAINT`;
-3. each frame: `render.wait_for_frame` -> `platform.poll_events` -> `render.resize` -> `ui.begin_build` ->
+2. `win.on_frame`: the frame procedure with `inner = true`, called from inside the system's loops (live resize, menus) by
+   `WM_PAINT`;
+3. each frame: `render.pace_frame` -> `platform.poll_events` -> `render.resize` -> `ui.begin_build` ->
    your widgets -> `ui.end_build` -> `draw.begin_frame` -> `render.frame_begin` -> `ui.draw_tree` -> `draw.end_frame` ->
-   `render.frame_end` -> `free_all(context.temp_allocator)`;
+   `render.frame_end(&r, !at_once)` -> `render.paced_present` -> `free_all(context.temp_allocator)` (`docs/pacing.md`);
 4. between frames: `platform.wait_event(win, ui.wake_in_ms(&s))` unless `ui.needs_frame(&s)` (an animation): 0 % CPU
    at rest, woken by input or by the interface's own timers (caret blink, tooltip).
+
+**A window that resizes without stretching.** An ordinary swap chain (`open_window` and `init_window` with their defaults)
+is scaled to the window by the system: while the window is resized, the last frame is shown stretched until one of the new
+size arrives. Three lines give a composition swap chain whose buffers keep the size of the screen, so that a frame of the old
+size is clipped by the window instead (`examples/hello` has them; a window grown past the screen is shown scaled once, the
+buffers then follow):
+
+```odin
+win := platform.open_window("My app", {640, 400}, transparent = true)        // when the window is made: too late afterwards
+render.init_window(&r, win, win.size, transparent = true)
+render.set_fixed_surface(&r, platform.monitor_size(win))
+```
+
+It stays opaque as long as the frame is (`render.frame_begin` with an alpha of 1). Colours in the linear blend space are
+then held in 16-bit floats, twice the memory of the ordinary swap chain, for buffers of the screen's size. WebGPU has no fixed
+surface (`set_fixed_surface` returns false), so the recipe does not help there ([webgpu.md](webgpu.md)).
+`tests/resize_probe` checks a program from outside: it resizes the window and reads where a column of fixed width ends.
 
 The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line_edit`, `if ui.row() { ... }`):
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.

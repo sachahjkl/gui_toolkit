@@ -59,9 +59,9 @@ build_column :: proc(app: ^App, em: f32) {
 
 the_app: ^App   // (for the clipboard procedures, which take no argument)
 
-frame :: proc(app: ^App) {
+frame :: proc(app: ^App, inner := false) {
 	if ui.building() { return }   // (a frame asked for from a loop of the system while one is being built: skip it)
-	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0)
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
 	app.slept = false
 	events := platform.poll_events(app.win, false)
 	render.resize(&app.r, app.win.size)
@@ -95,10 +95,13 @@ main :: proc() {
 	the_app = app
 	font.init(&app.fonts)
 	defer font.destroy(&app.fonts)
-	app.win = platform.open_window("Hello, gui_toolkit", {640, 400})
+	// transparent and a fixed surface: a composition swap chain whose buffers keep the screen's size while the window is resized.
+	// A frame of the old size is clipped by the window, never stretched over the new one as an ordinary swap chain does.
+	app.win = platform.open_window("Hello, gui_toolkit", {640, 400}, transparent = true)
 	if app.win == nil { fmt.eprintln("hello: no window"); os.exit(1) }
 	defer platform.destroy_window(app.win)
-	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("hello: no renderer"); os.exit(1) }
+	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("hello: no renderer"); os.exit(1) }
+	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))
 	defer render.destroy(&app.r)
 	ok: bool
 	app.font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
@@ -113,7 +116,7 @@ main :: proc() {
 	platform.set_dark_title(app.win, true)
 	// frames from inside the system's loops (live resize, a menu): WM_PAINT calls on_frame
 	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 
 	if frames >= 0 {
 		for _ in 0 ..< frames { frame(app) }

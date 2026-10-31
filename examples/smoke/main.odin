@@ -14,9 +14,11 @@ App :: struct {
 	dc:    draw.Context,
 	ui:    font.Font_Id,
 	frames: int,
+	pacer: render.Pacer,
 }
 
-frame :: proc(app: ^App) {
+frame :: proc(app: ^App, inner := false) {
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, inner = inner)
 	render.resize(&app.r, app.win.size)
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
 	draw.begin_frame(&app.dc, size)
@@ -45,20 +47,22 @@ frame :: proc(app: ^App) {
 	draw.pop_xform(&app.dc)
 
 	draw.end_frame(&app.dc)
-	render.frame_end(&app.r)
+	render.frame_end(&app.r, !at_once)
+	render.paced_present(&app.pacer)
 	app.frames += 1
 }
 
 main :: proc() {
 	app := new(App)
 	font.init(&app.fonts)
-	app.win = platform.open_window("gui_toolkit smoke", {900, 600}, app)
-	if !render.init_window(&app.r, app.win, app.win.size) { fmt.eprintln("renderer init failed"); return }
+	app.win = platform.open_window("gui_toolkit smoke", {900, 600}, app, transparent = true)
+	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
+	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
 	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id
 	draw.init(&app.dc, &app.r, &app.fonts)
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }   // only once everything is initialized
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }   // only once everything is initialized
 	fmt.println("size", app.win.size, "dpi", app.win.dpi_scale)
 	platform.show_window(app.win)
 

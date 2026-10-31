@@ -242,6 +242,8 @@ App :: struct {
 	note_order: [3]int,
 	note_counter: int,
 	spawn_next_ms: f64,
+	pacer: render.Pacer,
+	slept: bool,
 }
 
 Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom, rounding, smoothing, density: f32, blending: i32 }

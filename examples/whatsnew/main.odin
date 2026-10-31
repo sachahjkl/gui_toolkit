@@ -476,9 +476,11 @@ main :: proc() {
 	}
 	font.init(&app.fonts)
 	defer font.destroy(&app.fonts)
+	// the pages are 0.55's changes (they stay as they were); the program runs on this version of the toolkit
+	title := fmt.tprintf("gui_toolkit %s: what changed in 0.55", ui.VERSION)
 	// a composition swap chain whose buffers keep the monitor's size while the window is resized: a frame of the old size is
 	// clipped by the window, never stretched over the new one (an ordinary swap chain stretches it). As opencode native.
-	app.win = headless ? platform.open_window_offscreen("What's new in gui_toolkit 0.55", {1100, 720}) : platform.open_window("What's new in gui_toolkit 0.55", {1100, 720}, transparent = true)
+	app.win = headless ? platform.open_window_offscreen(title, {1100, 720}) : platform.open_window(title, {1100, 720}, transparent = true)
 	if app.win == nil { fmt.eprintln("whatsnew: no window"); os.exit(1) }
 	defer platform.destroy_window(app.win)
 	if !(headless ? render.init_offscreen(&app.r, app.win.size, warp = true) : render.init_window(&app.r, app.win, app.win.size, transparent = true)) { fmt.eprintln("whatsnew: no renderer"); os.exit(1) }
@@ -498,7 +500,7 @@ main :: proc() {
 	defer ui.field_destroy(&app.needle)
 	ui.field_set(&app.needle, "the")
 	platform.set_dark_title(app.win, true)
-	app.devtools = devtools.start_from_env(app.win, "What's new in gui_toolkit")
+	app.devtools = devtools.start_from_env(app.win, title)
 	defer devtools.stop(app.devtools)
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }

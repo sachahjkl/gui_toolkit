@@ -52,6 +52,7 @@ App :: struct {
 	slots:   [dynamic]u32,
 	pic_size: draw.Vec2,
 	pic_scale: f32,
+	pacer: render.Pacer,
 }
 
 ////////////////////////////////
@@ -329,7 +330,8 @@ stress_card :: proc(app: ^App, c: draw.Vec2, cw, ch, s: f32, i: int) {
 	draw.text(dc, app.ui, 11 * s, {r.min.x + ch * 0.5, c.y + 4 * s}, draw.hex(0xffffffff), fmt.tprintf("#%d", i))
 }
 
-frame :: proc(app: ^App) {
+frame :: proc(app: ^App, inner := false) {
+	at_once := render.pace_frame(&app.pacer, &app.r, app.win, inner = inner)
 	render.resize(&app.r, app.win.size)
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
 	s := app.win.dpi_scale
@@ -342,7 +344,8 @@ frame :: proc(app: ^App) {
 	t1 := time.tick_now()
 	draw.end_frame(&app.dc)
 	t2 := time.tick_now()
-	render.frame_end(&app.r)
+	render.frame_end(&app.r, !at_once)
+	render.paced_present(&app.pacer)
 	app.frames += 1
 
 	if app.bench_n > 0 && app.frames > 30 {
@@ -375,8 +378,12 @@ main :: proc() {
 		if a == "--srgb" { app.space = .Srgb }
 	}
 	font.init(&app.fonts)
-	app.win = platform.open_window("gui_toolkit transforms", {1280, 820}, app)
-	if !render.init_window(&app.r, app.win, app.win.size, space = app.space) { fmt.eprintln("renderer init failed"); return }
+	// a composition swap chain whose buffers keep the screen's size: a resize never stretches a frame. Not for --bench: the
+	// figures of docs/draw.md are of the ordinary 8-bit swap chain
+	fixed := app.bench_n == 0
+	app.win = platform.open_window("gui_toolkit transforms", {1280, 820}, app, transparent = fixed)
+	if !render.init_window(&app.r, app.win, app.win.size, transparent = fixed, space = app.space) { fmt.eprintln("renderer init failed"); return }
+	if fixed { render.set_fixed_surface(&app.r, platform.monitor_size(app.win)) }
 	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id
@@ -389,7 +396,7 @@ main :: proc() {
 	if app.logo == 0 { app.logo = app.sticker }
 	free_all(context.temp_allocator)
 	app.start = time.tick_now()
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user)) }
+	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) {
