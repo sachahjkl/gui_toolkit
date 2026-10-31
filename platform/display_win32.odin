@@ -66,6 +66,9 @@ DISPLAYCONFIG_SOURCE_DEVICE_NAME :: struct {
 @(private = "file") DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME :: 1
 @(private = "file") DISPLAYCONFIG_PATH_MODE_IDX_INVALID :: 0xffffffff
 
+@(private = "file") DISPLAY_MODES_MAX :: 4096        // bounds the enumeration of a monitor's modes
+@(private = "file") DISPLAY_CONFIG_ATTEMPTS :: 3     // the topology can change between the two calls of QueryDisplayConfig
+
 // DWM_TIMING_INFO (dwmapi.h, packed): only the rate is read here.
 @(private)
 DWM_TIMING_INFO :: struct #packed {
@@ -98,7 +101,7 @@ display_info :: proc(w: ^Window) -> Display_Info {
 	if w.offscreen {
 		// an emulated display: 60 Hz, no monitor. The headless browser paces its own frames; this only feeds the rate
 		// a page reads (screen.refresh).
-		if w.display.serial == 0 { w.display = {hz = 60, max_hz = 60, source = .Default, serial = 1} }
+		if w.display.serial == 0 { w.display = {hz = DISPLAY_FALLBACK_HZ, max_hz = DISPLAY_FALLBACK_HZ, source = .Default, serial = 1} }
 		return w.display
 	}
 	mon := win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST)
@@ -150,7 +153,7 @@ query_display :: proc(mon: win.HMONITOR) -> (d: Display_Info) {
 mode_max_rate :: proc(device: ^u16) -> (hz: f64) {
 	cur := win.DEVMODEW{dmSize = size_of(win.DEVMODEW)}
 	if !win.EnumDisplaySettingsW(win.wstring(device), win.ENUM_CURRENT_SETTINGS, &cur) { return 0 }
-	for i in 0 ..< u32(4096) {
+	for i in 0 ..< u32(DISPLAY_MODES_MAX) {
 		dm := win.DEVMODEW{dmSize = size_of(win.DEVMODEW)}
 		if !win.EnumDisplaySettingsW(win.wstring(device), i, &dm) { break }
 		if dm.dmPelsWidth == cur.dmPelsWidth && dm.dmPelsHeight == cur.dmPelsHeight && dm.dmBitsPerPel == cur.dmBitsPerPel && dm.dmDisplayFrequency > 1 {
@@ -189,14 +192,14 @@ fallback_rate :: proc(d: Display_Info, device: ^u16) -> Display_Info {
 		d.hz = f64(d.numerator) / f64(d.denominator)
 		return d
 	}
-	d.numerator, d.denominator, d.hz, d.source = 60, 1, 60, .Default
+	d.numerator, d.denominator, d.hz, d.source = DISPLAY_FALLBACK_HZ, 1, DISPLAY_FALLBACK_HZ, .Default
 	return d
 }
 
 // The rate of the active path whose source is the GDI device `device` (\\.\DISPLAYn).
 @(private = "file")
 display_config_rate :: proc(device: []u16) -> (num, den: u32, ok: bool) {
-	for attempt in 0 ..< 3 {
+	for attempt in 0 ..< DISPLAY_CONFIG_ATTEMPTS {
 		np, nm: u32
 		if GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &np, &nm) != 0 || np == 0 { return }
 		paths := make([]DISPLAYCONFIG_PATH_INFO, np, context.temp_allocator)
@@ -257,7 +260,7 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
 		if timeout_ms > 0 {
 			left := f64(timeout_ms) - time.duration_milliseconds(time.tick_since(start))
 			if left <= 0 { return win.WaitForSingleObject(h, 0) == win.WAIT_OBJECT_0 }
-			ms = u32(left + 0.999)
+			ms = u32(left + WAIT_CEIL_MS)
 		}
 		r := MsgWaitForMultipleObjectsEx(1, &h, ms, QS_WAKE, flags)
 		switch r {

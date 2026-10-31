@@ -66,7 +66,7 @@ portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.alloc
 	}
 	portal_write_filters(&w, d)
 	dbus.arg_dict_end(&w, ol, oc)
-	msg, ok := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, FILECHOOSER_IFACE, method, "ssa{sv}", w.buf[:], 8000)
+	msg, ok := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, FILECHOOSER_IFACE, method, "ssa{sv}", w.buf[:], PORTAL_DIALOG_CALL_MS)
 	if !ok { return {status = .Failed} }
 	r := dbus.msg_reader(&msg)
 	request_path := dbus.r_string(&r)
@@ -76,7 +76,7 @@ portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.alloc
 	for !pd.done {
 		dbus.dispatch(conn)
 		if !dbus.conn_alive(conn) { break }
-		portal_wait_fd(dbus.conn_fd(conn), 200)
+		portal_wait_fd(dbus.conn_fd(conn), PORTAL_DIALOG_POLL_MS)
 	}
 	dbus.unsubscribe(conn, sub)
 	if pd.code != 0 || len(pd.paths) == 0 {
@@ -91,17 +91,21 @@ portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.alloc
 	return {status = .Chosen, paths = out, filter = d.filter_index}
 }
 
+@(private = "file") PORTAL_DIALOG_CALL_MS :: 8000    // the request that opens the dialog, not the time the user takes
+@(private = "file") PORTAL_DIALOG_POLL_MS :: 200     // between two looks at the bus while the dialog is open
+@(private = "file") INT_TO_STR_MAX_DIGITS :: 20      // of a 64-bit integer
+
 // The portal filters option: a(sa(us)) — for each filter a name and a list of (type, pattern), type 0 = glob.
 @(private)
 portal_write_filters :: proc(w: ^dbus.Writer, d: File_Dialog) {
 	if len(d.filters) == 0 && !d.all_files { return }
 	dbus.arg_dict_entry(w, "filters")
 	dbus.w_signature(w, "a(sa(us))")
-	al, ac := dbus.w_array_begin(w, 8)
+	al, ac := dbus.w_array_begin(w, DBUS_ALIGN_STRUCT)
 	for f in d.filters {
 		dbus.w_struct(w)
 		dbus.w_string(w, f.name)
-		pl, pc := dbus.w_array_begin(w, 8)
+		pl, pc := dbus.w_array_begin(w, DBUS_ALIGN_STRUCT)
 		pats := filter_patterns(f, context.temp_allocator)
 		rest := pats
 		for p in strings.split_iterator(&rest, ";") {
@@ -114,7 +118,7 @@ portal_write_filters :: proc(w: ^dbus.Writer, d: File_Dialog) {
 	if d.all_files {
 		dbus.w_struct(w)
 		dbus.w_string(w, "All files")
-		pl, pc := dbus.w_array_begin(w, 8)
+		pl, pc := dbus.w_array_begin(w, DBUS_ALIGN_STRUCT)
 		dbus.w_struct(w); dbus.w_u32(w, 0); dbus.w_string(w, "*")
 		dbus.w_array_end(w, pl, pc)
 	}
@@ -183,7 +187,7 @@ portal_read_color_scheme :: proc(conn: ^dbus.Conn) -> (dark: bool, ok: bool) {
 	w := dbus.body_writer()
 	dbus.w_string(&w, "org.freedesktop.appearance")
 	dbus.w_string(&w, "color-scheme")
-	msg, got := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "ReadOne", "ss", w.buf[:], 3000)
+	msg, got := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "ReadOne", "ss", w.buf[:], DBUS_QUICK_CALL_MS)
 	if !got || msg.type != .Method_Return { return false, false }
 	r := dbus.msg_reader(&msg)
 	// the reply is a variant holding a u (some portals double-wrap it: v(v(u))); read one variant, then a u
@@ -235,7 +239,7 @@ portal_wait_fd :: proc(fd: i32, timeout_ms: int) {
 @(private)
 int_to_str :: proc(v: int) -> string {
 	if v == 0 { return "0" }
-	buf: [20]u8
+	buf: [INT_TO_STR_MAX_DIGITS]u8
 	i := len(buf)
 	x := v
 	for x > 0 { i -= 1; buf[i] = '0' + u8(x % 10); x /= 10 }

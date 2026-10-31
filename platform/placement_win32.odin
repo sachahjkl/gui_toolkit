@@ -3,6 +3,10 @@ package platform
 
 import win "core:sys/windows"
 
+// The work area taken when no monitor answers: larger than any desktop, so that nothing is moved.
+@(private = "file") PLACEMENT_NO_WORK_ORIGIN_PX :: -(1 << 20)
+@(private = "file") PLACEMENT_NO_WORK_SIZE_PX :: 1 << 21
+
 // The window's outer rectangle now (left, top, width, height).
 outer_rect :: proc(w: ^Window) -> [4]int {
 	if w.offscreen { return w.off_place }
@@ -40,7 +44,7 @@ get_placement :: proc(w: ^Window) -> Placement {
 set_placement :: proc(w: ^Window, p: Placement) {
 	if w.offscreen { w.off_place = p.rect; w.want_maximized = p.maximized; return }
 	rc := win.RECT{i32(p.rect[0]), i32(p.rect[1]), i32(p.rect[0] + p.rect[2]), i32(p.rect[1] + p.rect[3])}
-	work := [4]int{-(1 << 20), -(1 << 20), 1 << 21, 1 << 21}
+	work := [4]int{PLACEMENT_NO_WORK_ORIGIN_PX, PLACEMENT_NO_WORK_ORIGIN_PX, PLACEMENT_NO_WORK_SIZE_PX, PLACEMENT_NO_WORK_SIZE_PX}
 	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
 	if win.GetMonitorInfoW(win.MonitorFromRect(&rc, .MONITOR_DEFAULTTONEAREST), &mi) {
 		work = {int(mi.rcWork.left), int(mi.rcWork.top), int(mi.rcWork.right - mi.rcWork.left), int(mi.rcWork.bottom - mi.rcWork.top)}

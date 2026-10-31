@@ -40,6 +40,11 @@ import "core:math"
 
 CADENCE_INPUT_REST_PERIODS :: 1.5            // input after this many periods without a present starts an answer (shown at once)
 CADENCE_RESIZE_HOLD_NS     :: 120_000_000    // the frames this long after a size change are part of its burst
+@(private = "file") CADENCE_SYNC_FULL_RATE :: 0.99     // a rate this near the display's (as a part of it) is every refresh
+@(private = "file") CADENCE_SYNC_TOLERANCE :: 0.01     // how near a rate must be to display / n (as a part of the rate) to be every n-th refresh
+@(private = "file") CADENCE_SYNC_MAX_DIVIDER :: 4      // the slowest vsync interval tried; below that the application times the frames
+@(private = "file") FRAME_CLOCK_DT_MIN_S :: 0.0005     // an animation step is never shorter (seconds)
+@(private = "file") FRAME_CLOCK_DT_MAX_S :: 0.1        // nor longer: after a stall the animation does not jump
 
 Cadence_State :: enum u8 { Rest, Continuous, Drag, Input_Answer, Resize_Step, Resize_Burst }
 
@@ -194,7 +199,7 @@ cadence_variable :: proc(mode: Variable_Refresh, hz, max_hz: f64) -> bool {
 // The rate frames aim for: the target (0: the display's, or its top rate `top_hz` when it is variable), under the ceiling.
 cadence_target_rate :: proc(display_hz, target_hz, max_hz: f64, top_hz: f64 = 0) -> f64 {
 	hz := target_hz > 0 ? target_hz : (top_hz > display_hz ? top_hz : display_hz)
-	if hz <= 0 { hz = 60 }
+	if hz <= 0 { hz = DISPLAY_FALLBACK_HZ }
 	if max_hz > 0 { hz = min(hz, max_hz) }
 	return hz
 }
@@ -204,9 +209,9 @@ cadence_target_rate :: proc(display_hz, target_hz, max_hz: f64, top_hz: f64 = 0)
 // on a variable refresh screen. A rate above the display's cannot be shown with vsync: every refresh.
 cadence_sync :: proc(display_hz, hz: f64, tearing: bool, variable := false) -> (interval: int, timed: bool) {
 	if tearing || variable { return 1, true }
-	if display_hz <= 0 || hz >= display_hz * 0.99 { return 1, false }
-	for n in 1 ..= 4 {
-		if abs(display_hz / f64(n) - hz) <= hz * 0.01 { return n, false }
+	if display_hz <= 0 || hz >= display_hz * CADENCE_SYNC_FULL_RATE { return 1, false }
+	for n in 1 ..= CADENCE_SYNC_MAX_DIVIDER {
+		if abs(display_hz / f64(n) - hz) <= hz * CADENCE_SYNC_TOLERANCE { return n, false }
 	}
 	return 1, true
 }
@@ -243,6 +248,6 @@ frame_clock_advance :: proc(clk: ^Frame_Clock, now_ms, period_ms: f64, grid_last
 	if t <= clk.prev_ms { t = clk.prev_ms }
 	clk.dt = clk.prev_ms > 0 ? f32((t - clk.prev_ms) / 1000) : f32(period_ms / 1000)
 	if clk.dt <= 0 { clk.dt = f32(period_ms / 1000) }
-	clk.dt = clamp(clk.dt, 0.0005, 0.1)
+	clk.dt = clamp(clk.dt, FRAME_CLOCK_DT_MIN_S, FRAME_CLOCK_DT_MAX_S)
 	clk.prev_ms, clk.frame_ms = t, t
 }

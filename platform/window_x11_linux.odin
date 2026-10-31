@@ -196,6 +196,20 @@ x11_init_xkb :: proc() {
 @(private) XCB_SELECTION_REQUEST :: 30
 @(private) XCB_SELECTION_NOTIFY :: 31
 @(private) XCB_PROPERTY_NOTIFY :: 28
+@(private) X11_FORMAT_8 :: 8               // a property's or a client message's format: bits per item
+@(private) X11_FORMAT_32 :: 32
+@(private) X11_EVENT_BYTES :: 32
+@(private) X11_CLIENT_MESSAGE_WORDS :: 5   // data32 of a client message
+@(private) X11_RESPONSE_TYPE_MASK :: 0x7f  // without the bit that marks a sent event
+@(private = "file") X11_BUTTON_WHEEL_UP :: 4
+@(private = "file") X11_BUTTON_WHEEL_DOWN :: 5
+@(private = "file") X11_BUTTON_WHEEL_LEFT :: 6
+@(private = "file") X11_BUTTON_WHEEL_RIGHT :: 7
+@(private = "file") MWM_HINTS_WORDS :: 5
+@(private = "file") X11_RESOURCES_MAX_WORDS :: 1 << 16    // read of RESOURCE_MANAGER
+@(private = "file") X11_SELECTION_PROP_MAX_WORDS :: 1 << 20   // one read of the scratch property (a chunk or a whole answer)
+@(private = "file") X11_TEXT_READ_TURNS :: 200            // bounds of a synchronous read of the text clipboard
+@(private = "file") X11_TEXT_READ_WAIT_MS :: 500
 
 @(private)
 x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> bool {
@@ -225,10 +239,10 @@ x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> 
 	x11_set_title(w, title)
 	// close through WM_DELETE_WINDOW
 	dw := x11c.wm_delete_window
-	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, x11c.wm_protocols, XCB_ATOM_ATOM, 32, 1, &dw)
+	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, x11c.wm_protocols, XCB_ATOM_ATOM, X11_FORMAT_32, 1, &dw)
 	// normal window type
 	nt := x11c.net_wm_window_type_normal
-	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, x11c.net_wm_window_type, XCB_ATOM_ATOM, 32, 1, &nt)
+	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, x11c.net_wm_window_type, XCB_ATOM_ATOM, X11_FORMAT_32, 1, &nt)
 	if w.integrated { x11_set_decorations(w, false) }
 	x.flush(x11c.c)
 	return true
@@ -252,8 +266,8 @@ x11_set_title :: proc(w: ^Window, title: string) {
 	st := x11_state(w)
 	x := &xcb
 	c := strings.clone_to_cstring(title, context.temp_allocator)
-	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, u32(len(title)), rawptr(c))
-	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.net_wm_name, x11c.utf8_string, 8, u32(len(title)), rawptr(c))
+	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, X11_FORMAT_8, u32(len(title)), rawptr(c))
+	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.net_wm_name, x11c.utf8_string, X11_FORMAT_8, u32(len(title)), rawptr(c))
 	x.flush(x11c.c)
 	if title != st.title { delete(st.title); st.title = strings.clone(title) }
 }
@@ -309,18 +323,18 @@ x11_set_fullscreen :: proc(w: ^Window, on: bool) {
 // _NET_WM_STATE change: a ClientMessage to the root as the EWMH spec requires (action 1 add, 0 remove).
 @(private)
 x11_net_wm_state :: proc(id: Xcb_Window, add: bool, a1, a2: Xcb_Atom) {
-	data := [5]u32{add ? 1 : 0, u32(a1), u32(a2), 1, 0}
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{add ? 1 : 0, u32(a1), u32(a2), 1, 0}
 	x11_send_root_message(x11c.net_wm_state, id, data)
 }
 
 @(private)
-x11_send_root_message :: proc(type: Xcb_Atom, id: Xcb_Window, data: [5]u32) {
-	ev: [32]u8
+x11_send_root_message :: proc(type: Xcb_Atom, id: Xcb_Window, data: [X11_CLIENT_MESSAGE_WORDS]u32) {
+	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_CLIENT_MESSAGE
-	ev[1] = 32   // format
+	ev[1] = X11_FORMAT_32
 	put_u32(ev[4:], u32(id))
 	put_u32(ev[8:], u32(type))
-	for i in 0 ..< 5 { put_u32(ev[12 + i * 4:], data[i]) }
+	for i in 0 ..< X11_CLIENT_MESSAGE_WORDS { put_u32(ev[12 + i * 4:], data[i]) }
 	SUBSTRUCTURE_NOTIFY :: 1 << 19
 	SUBSTRUCTURE_REDIRECT :: 1 << 20
 	xcb.send_event(x11c.c, 0, x11c.screen.root, SUBSTRUCTURE_NOTIFY | SUBSTRUCTURE_REDIRECT, &ev[0])
@@ -332,8 +346,8 @@ x11_send_root_message :: proc(type: Xcb_Atom, id: Xcb_Window, data: [5]u32) {
 x11_set_decorations :: proc(w: ^Window, on: bool) {
 	st := x11_state(w)
 	// MwmHints: flags(1<<1 = decorations), functions, decorations, input_mode, status
-	hints := [5]u32{1 << 1, 0, on ? 1 : 0, 0, 0}
-	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.motif_wm_hints, x11c.motif_wm_hints, 32, 5, &hints[0])
+	hints := [MWM_HINTS_WORDS]u32{1 << 1, 0, on ? 1 : 0, 0, 0}
+	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.motif_wm_hints, x11c.motif_wm_hints, X11_FORMAT_32, MWM_HINTS_WORDS, &hints[0])
 	xcb.flush(x11c.c)
 }
 
@@ -364,7 +378,7 @@ x11_wake :: proc(w: ^Window) {
 	// a harmless property change on our own window wakes poll on the connection fd
 	st := x11_state(w)
 	v: u32 = 0
-	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.wren_selection, XCB_ATOM_CARDINAL, 32, 1, &v)
+	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.wren_selection, XCB_ATOM_CARDINAL, X11_FORMAT_32, 1, &v)
 	xcb.flush(x11c.c)
 }
 
@@ -372,14 +386,14 @@ x11_wake :: proc(w: ^Window) {
 @(private)
 x11_dpi_scale :: proc() -> f32 {
 	dpi := x11_xft_dpi()
-	return dpi > 0 ? f32(dpi) / 96 : 1
+	return dpi > 0 ? f32(dpi) / DPI_BASE : 1
 }
 
 @(private)
 x11_xft_dpi :: proc() -> int {
 	x := &xcb
 	// RESOURCE_MANAGER on the root is a text blob of X resources; find "Xft.dpi:"
-	cookie := x.get_property(x11c.c, 0, x11c.screen.root, x11c.resource_manager, XCB_ATOM_STRING, 0, 1 << 16)
+	cookie := x.get_property(x11c.c, 0, x11c.screen.root, x11c.resource_manager, XCB_ATOM_STRING, 0, X11_RESOURCES_MAX_WORDS)
 	reply := x.get_property_reply(x11c.c, cookie, nil)
 	if reply == nil { return 0 }
 	defer posix.free(reply)
@@ -454,7 +468,7 @@ x11_push :: proc(w: ^Window, e: Event) {
 x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
 	st := x11_state(w)
 	b := ([^]u8)(raw)
-	type := raw.response_type & 0x7f
+	type := raw.response_type & X11_RESPONSE_TYPE_MASK
 	switch type {
 	case XCB_KEY_PRESS, XCB_KEY_RELEASE:
 		// xcb_key_press_event_t: detail(1)=keycode at [1]; state at [28]; event window at [12]
@@ -474,14 +488,14 @@ x11_handle_event :: proc(w: ^Window, raw: ^Xcb_Generic_Event) {
 			btn: Mouse_Button = detail == 1 ? .Left : detail == 2 ? .Middle : .Right
 			if press { w.buttons_down += {btn} } else { w.buttons_down -= {btn} }
 			x11_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
-		case 4, 5, 6, 7:
+		case X11_BUTTON_WHEEL_UP, X11_BUTTON_WHEEL_DOWN, X11_BUTTON_WHEEL_LEFT, X11_BUTTON_WHEEL_RIGHT:
 			if press {
 				e := Event{kind = .Scroll, pos = pos, mods = mods}
 				switch detail {
-				case 4: e.delta.y = 1     // wheel up: content moves up (page down), as Win32 (+y = down)
-				case 5: e.delta.y = -1
-				case 6: e.delta.x = -1
-				case 7: e.delta.x = 1
+				case X11_BUTTON_WHEEL_UP: e.delta.y = 1     // wheel up: content moves up (page down), as Win32 (+y = down)
+				case X11_BUTTON_WHEEL_DOWN: e.delta.y = -1
+				case X11_BUTTON_WHEEL_LEFT: e.delta.x = -1
+				case X11_BUTTON_WHEEL_RIGHT: e.delta.x = 1
 				}
 				// our convention: +y scrolls content down. X button 4 is wheel-up = scroll content up = -y.
 				e.delta.y = -e.delta.y
@@ -561,7 +575,7 @@ x11_key :: proc(w: ^Window, keycode: u32, state: u16, press: bool) {
 			n := k.state_key_get_utf8(x11c.xkb_state, keycode, &buf[0], size_of(buf))
 			if n > 0 {
 				s := string(buf[:n])
-				if r, sz := utf8.decode_rune(s); sz > 0 && r >= 32 && r != 127 { text = r }
+				if r, sz := utf8.decode_rune(s); sz > 0 && r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { text = r }
 			}
 		}
 	}
@@ -622,7 +636,7 @@ x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 	property := Xcb_Atom(get_u32(b[24:]))
 	if property == 0 { st.paste_got = true; return }
 	// read the property without deleting it first, so we can tell an INCR hand-off (type = INCR) from real data
-	cookie := xcb.get_property(x11c.c, 0, st.id, property, 0, 0, 1 << 20)
+	cookie := xcb.get_property(x11c.c, 0, st.id, property, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
 	if reply == nil { st.paste_got = true; return }
 	// xcb_get_property_reply_t: type at [8]
@@ -651,7 +665,7 @@ x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 @(private)
 x11_incr_receive_chunk :: proc(w: ^Window) {
 	st := x11_state(w)
-	cookie := xcb.get_property(x11c.c, 0, st.id, x11c.wren_selection, 0, 0, 1 << 20)
+	cookie := xcb.get_property(x11c.c, 0, st.id, x11c.wren_selection, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
 	if reply == nil { return }
 	n := int(xcb.get_property_value_length(reply))
@@ -680,12 +694,12 @@ x11_clipboard_get_text :: proc(w: ^Window, allocator := context.allocator) -> st
 	xcb.flush(x11c.c)
 	// pump until the SelectionNotify arrives (bounded): a synchronous read the callers expect
 	deadline := time.tick_now()
-	for _ in 0 ..< 200 {
+	for _ in 0 ..< X11_TEXT_READ_TURNS {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev != nil { x11_handle_event(w, ev); posix.free(ev); if st.paste_got { break }; continue }
 		if st.paste_got { break }
-		if time.duration_milliseconds(time.tick_since(deadline)) > 500 { break }
-		poll_fd_wait(x11c.fd, 20)
+		if time.duration_milliseconds(time.tick_since(deadline)) > X11_TEXT_READ_WAIT_MS { break }
+		poll_fd_wait(x11c.fd, X11_SELECTION_POLL_MS)
 	}
 	if len(st.paste_buf) == 0 { return "" }
 	return strings.clone(string(st.paste_buf[:]), allocator)

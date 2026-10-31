@@ -122,6 +122,8 @@ tray_set_tooltip :: proc(t: ^Tray, text: string) -> bool {
 	return true
 }
 
+@(private = "file") TRAY_DBUS_CALL_MS :: 5000
+
 tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool {
 	if t == nil || t.conn == nil { return false }
 	w := dbus.body_writer()
@@ -131,7 +133,7 @@ tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool {
 	dbus.w_string(&w, n.title)                       // summary
 	dbus.w_string(&w, n.body)                        // body
 	// actions: as(); none unless the app wants them (kept empty here)
-	alen, acontent := dbus.w_array_begin(&w, 4)
+	alen, acontent := dbus.w_array_begin(&w, DBUS_ALIGN_STRING)
 	dbus.w_array_end(&w, alen, acontent)
 	// hints: a{sv}
 	hlen, hcontent := dbus.arg_dict_begin(&w)
@@ -147,7 +149,7 @@ tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool {
 	}
 	dbus.arg_dict_end(&w, hlen, hcontent)
 	dbus.w_i32(&w, -1)                               // expire_timeout: the server default
-	msg, ok := dbus.call(t.conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "Notify", "susssasa{sv}i", w.buf[:], 5000)
+	msg, ok := dbus.call(t.conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "Notify", "susssasa{sv}i", w.buf[:], TRAY_DBUS_CALL_MS)
 	if !ok { return false }
 	r := dbus.msg_reader(&msg)
 	t.last_notify = dbus.r_u32(&r)
@@ -222,7 +224,7 @@ tray_free_native :: proc(t: ^Tray) {
 sni_register :: proc(t: ^Tray) -> bool {
 	w := dbus.body_writer()
 	dbus.w_string(&w, t.bus_name)
-	_, ok := dbus.call(t.conn, SNI_WATCHER, SNI_WATCHER_PATH, SNI_WATCHER, "RegisterStatusNotifierItem", "s", w.buf[:], 5000)
+	_, ok := dbus.call(t.conn, SNI_WATCHER, SNI_WATCHER_PATH, SNI_WATCHER, "RegisterStatusNotifierItem", "s", w.buf[:], TRAY_DBUS_CALL_MS)
 	return ok
 }
 
@@ -308,7 +310,7 @@ sni_write_prop :: proc(t: ^Tray, w: ^dbus.Writer, name: string) -> bool {
 		dbus.w_signature(w, "(sa(iiay)ss)")
 		dbus.w_struct(w)
 		dbus.w_string(w, "")
-		al, ac := dbus.w_array_begin(w, 8)
+		al, ac := dbus.w_array_begin(w, DBUS_ALIGN_STRUCT)
 		dbus.w_array_end(w, al, ac)
 		dbus.w_string(w, t.title)
 		dbus.w_string(w, t.tooltip)
@@ -322,7 +324,7 @@ sni_write_prop :: proc(t: ^Tray, w: ^dbus.Writer, name: string) -> bool {
 @(private)
 sni_write_icon_pixmap :: proc(t: ^Tray, w: ^dbus.Writer) {
 	dbus.w_signature(w, "a(iiay)")
-	al, ac := dbus.w_array_begin(w, 8)
+	al, ac := dbus.w_array_begin(w, DBUS_ALIGN_STRUCT)
 	if len(t.icon_rgba) >= t.icon_size.x * t.icon_size.y * 4 && t.icon_size.x > 0 {
 		dbus.w_struct(w)
 		dbus.w_i32(w, i32(t.icon_size.x))

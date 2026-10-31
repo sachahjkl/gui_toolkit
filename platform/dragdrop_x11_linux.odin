@@ -14,6 +14,10 @@ import "core:time"
 import "core:sys/posix"
 
 @(private) XDND_VERSION :: 5
+@(private = "file") XDND_VERSION_SHIFT :: 24      // in the second word of XdndEnter
+@(private = "file") XDND_INLINE_TYPES :: 3        // what XdndEnter carries; more go in XdndTypeList
+@(private = "file") XDND_TYPE_LIST_MAX_WORDS :: 1 << 10
+@(private = "file") XDND_SOURCE_POLL_MS :: 15     // between two looks at the connection during a drag
 
 @(private)
 x11_dnd_intern_atoms :: proc() {
@@ -39,7 +43,7 @@ x11_dnd_set_aware :: proc(w: ^Window, on: bool) {
 	if st == nil { return }
 	if on {
 		v := u32(XDND_VERSION)
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_aware, XCB_ATOM_ATOM, 32, 1, &v)
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_aware, XCB_ATOM_ATOM, X11_FORMAT_32, 1, &v)
 	} else {
 		xcb.delete_property(x11c.c, st.id, x11c.xdnd_aware)
 	}
@@ -68,7 +72,7 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 	switch mtype {
 	case x11c.xdnd_enter:
 		x11_dnd_tgt.source = Xcb_Window(get_u32(b[12:]))
-		x11_dnd_tgt.version = int(d1 >> 24)
+		x11_dnd_tgt.version = int(d1 >> XDND_VERSION_SHIFT)
 		clear(&x11_dnd_tgt.types)
 		if d1 & 1 != 0 {
 			// more than three types: read the XdndTypeList property on the source
@@ -118,7 +122,7 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 
 @(private)
 x11_dnd_read_type_list :: proc(source: Xcb_Window) {
-	cookie := xcb.get_property(x11c.c, 0, source, x11c.xdnd_type_list, XCB_ATOM_ATOM, 0, 1 << 10)
+	cookie := xcb.get_property(x11c.c, 0, source, x11c.xdnd_type_list, XCB_ATOM_ATOM, 0, XDND_TYPE_LIST_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
 	if reply == nil { return }
 	defer posix.free(reply)
@@ -162,7 +166,7 @@ x11_dnd_read_all :: proc(w: ^Window, allocator := context.allocator) -> (out: Dr
 @(private)
 x11_send_xdnd_status :: proc(w: ^Window, source: Xcb_Window, accept: bool) {
 	st := x11_state(w)
-	data := [5]u32{
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{
 		u32(st.id),
 		accept ? 1 : 0,            // bit 0: accept
 		0, 0,                      // empty rectangle: send a status for every position
@@ -174,7 +178,7 @@ x11_send_xdnd_status :: proc(w: ^Window, source: Xcb_Window, accept: bool) {
 @(private)
 x11_send_xdnd_finished :: proc(w: ^Window, source: Xcb_Window) {
 	st := x11_state(w)
-	data := [5]u32{u32(st.id), 1, u32(x11c.xdnd_action_copy), 0, 0}
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(st.id), 1, u32(x11c.xdnd_action_copy), 0, 0}
 	x11_send_client_message(source, x11c.xdnd_finished, data)
 }
 
@@ -213,8 +217,8 @@ x11_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image
 	x11c.clip_owner = st.id   // the serve path reads the clip store; stash the drag data there is not right, so
 	x11_dnd_own_selection(st.id)
 	// publish the type list for more than three types
-	if len(x11_dnd_src.targets) > 3 {
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_type_list, XCB_ATOM_ATOM, 32, u32(len(x11_dnd_src.targets)), raw_data(x11_dnd_src.targets[:]))
+	if len(x11_dnd_src.targets) > XDND_INLINE_TYPES {
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_type_list, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(x11_dnd_src.targets)), raw_data(x11_dnd_src.targets[:]))
 	}
 	// the interactive loop: follow the pointer and talk XDND to whatever toplevel is under it. This needs a pointer
 	// grab and motion tracking; without a compositor-driven drag we poll the pointer each turn.
@@ -252,7 +256,7 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev != nil {
 			b := ([^]u8)(ev)
-			type := ev.response_type & 0x7f
+			type := ev.response_type & X11_RESPONSE_TYPE_MASK
 			switch type {
 			case XCB_MOTION_NOTIFY:
 				rootx := int(i16(u16(b[20]) | u16(b[21]) << 8))
@@ -290,8 +294,8 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 				break
 			}
 		}
-		if time.duration_milliseconds(time.tick_since(deadline)) > 60000 { break }
-		if ev == nil { poll_fd_wait(x11c.fd, 15) }
+		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS { break }
+		if ev == nil { poll_fd_wait(x11c.fd, XDND_SOURCE_POLL_MS) }
 	}
 	return x11_dnd_src.accepted ? Maybe(Drop_Effect)(.Copy) : nil
 }
@@ -307,9 +311,9 @@ x11_dnd_serve_source_request :: proc(b: [^]u8) {
 	data := x11_dnd_src_bytes(target)
 	ok := data != nil
 	if ok {
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, 8, u32(len(data)), len(data) > 0 ? raw_data(data) : nil)
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, X11_FORMAT_8, u32(len(data)), len(data) > 0 ? raw_data(data) : nil)
 	}
-	ev: [32]u8
+	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_SELECTION_NOTIFY
 	put_u32(ev[8:], u32(requestor))
 	put_u32(ev[12:], u32(selection))
@@ -340,10 +344,10 @@ x11_dnd_src_bytes :: proc(target: Xcb_Atom) -> []u8 {
 
 @(private)
 x11_send_source_enter :: proc(target: Xcb_Window) {
-	flags: u32 = u32(XDND_VERSION) << 24
+	flags: u32 = u32(XDND_VERSION) << XDND_VERSION_SHIFT
 	t := x11_dnd_src.targets
-	if len(t) > 3 { flags |= 1 }
-	data := [5]u32{
+	if len(t) > XDND_INLINE_TYPES { flags |= 1 }
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{
 		u32(x11_dnd_src.window), flags,
 		len(t) > 0 ? u32(t[0]) : 0, len(t) > 1 ? u32(t[1]) : 0, len(t) > 2 ? u32(t[2]) : 0,
 	}
@@ -352,31 +356,31 @@ x11_send_source_enter :: proc(target: Xcb_Window) {
 
 @(private)
 x11_send_source_position :: proc(target: Xcb_Window, rootx, rooty: int) {
-	data := [5]u32{u32(x11_dnd_src.window), 0, u32(u16(rootx)) << 16 | u32(u16(rooty)), 0, u32(x11_dnd_src.action)}
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(x11_dnd_src.window), 0, u32(u16(rootx)) << 16 | u32(u16(rooty)), 0, u32(x11_dnd_src.action)}
 	x11_send_client_message(target, x11c.xdnd_position, data)
 }
 
 @(private)
 x11_send_source_leave :: proc(target: Xcb_Window) {
-	data := [5]u32{u32(x11_dnd_src.window), 0, 0, 0, 0}
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(x11_dnd_src.window), 0, 0, 0, 0}
 	x11_send_client_message(target, x11c.xdnd_leave, data)
 	x11_dnd_src.accepted = false
 }
 
 @(private)
 x11_send_source_drop :: proc(target: Xcb_Window) {
-	data := [5]u32{u32(x11_dnd_src.window), 0, 0, 0, 0}
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(x11_dnd_src.window), 0, 0, 0, 0}
 	x11_send_client_message(target, x11c.xdnd_drop, data)
 }
 
 @(private)
-x11_send_client_message :: proc(dest: Xcb_Window, mtype: Xcb_Atom, data: [5]u32) {
-	ev: [32]u8
+x11_send_client_message :: proc(dest: Xcb_Window, mtype: Xcb_Atom, data: [X11_CLIENT_MESSAGE_WORDS]u32) {
+	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_CLIENT_MESSAGE
-	ev[1] = 32
+	ev[1] = X11_FORMAT_32
 	put_u32(ev[4:], u32(dest))
 	put_u32(ev[8:], u32(mtype))
-	for i in 0 ..< 5 { put_u32(ev[12 + i * 4:], data[i]) }
+	for i in 0 ..< X11_CLIENT_MESSAGE_WORDS { put_u32(ev[12 + i * 4:], data[i]) }
 	xcb.send_event(x11c.c, 0, dest, 0, &ev[0])
 	xcb.flush(x11c.c)
 }

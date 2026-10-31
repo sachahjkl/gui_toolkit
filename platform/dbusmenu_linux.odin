@@ -27,7 +27,7 @@ dbusmenu_handler :: proc(user: rawptr, c: ^dbus.Conn, msg: ^dbus.Message) -> boo
 	case "GetGroupProperties":
 		// a(ia{sv}): properties for a set of ids; an empty answer is acceptable (the host falls back to GetLayout)
 		w := dbus.body_writer()
-		al, ac := dbus.w_array_begin(&w, 8)
+		al, ac := dbus.w_array_begin(&w, DBUS_ALIGN_STRUCT)
 		dbus.w_array_end(&w, al, ac)
 		dbus.reply_return(c, msg, "a(ia{sv})", w.buf[:])
 		return true

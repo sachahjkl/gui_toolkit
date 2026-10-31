@@ -309,7 +309,7 @@ show_system_menu :: proc(w: ^Window, pos: [2]f32) {
 needs_top_border :: proc(w: ^Window) -> bool { return false }
 
 // Thickness of the resize band along the top of an integrated title bar (physical pixels).
-resize_border :: proc(w: ^Window) -> int { return max(int(8 * w.dpi_scale), 1) }
+resize_border :: proc(w: ^Window) -> int { return max(int(RESIZE_BAND_PX * w.dpi_scale), 1) }
 
 // Translucent window (acrylic on Windows): the compositor blends whatever the app leaves transparent when the surface
 // has an alpha channel (open the window with render.init transparent). There is no extra backdrop effect to turn on,
@@ -336,9 +336,9 @@ set_dark_title :: proc(w: ^Window, dark: bool) {
 // (mirrors Win32). A no-op for a real window.
 set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
 	if !w.offscreen || dpi <= 0 { return }
-	old := max(w.dpi_scale, 0.0625)
-	k := (f32(dpi) / 96) / old
-	w.dpi_scale = f32(dpi) / 96
+	old := max(w.dpi_scale, DPI_SCALE_MIN)
+	k := (f32(dpi) / DPI_BASE) / old
+	w.dpi_scale = f32(dpi) / DPI_BASE
 	w.size = {max(int(f32(w.size.x) * k + 0.5), 1), max(int(f32(w.size.y) * k + 0.5), 1)}
 	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
 }
@@ -442,7 +442,7 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
 		if timeout_ms > 0 {
 			rem := f64(timeout_ms) - time.duration_milliseconds(time.tick_since(start))
 			if rem <= 0 { return poll_fd_wait(fd, 0) > 0 }
-			left = int(rem + 0.999)
+			left = int(rem + WAIT_CEIL_MS)
 		}
 		// wait on both the render fd and the window's connection fd: whichever wakes first
 		conn := w.backend == .Wayland ? wl_fd(w) : x11_fd(w)

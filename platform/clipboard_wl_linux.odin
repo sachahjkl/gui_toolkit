@@ -22,6 +22,9 @@ import "core:time"
 @(private) WL_MIME_PNG   :: "image/png"
 @(private) WL_MIME_URIS  :: "text/uri-list"
 
+@(private = "file") WL_PIPE_CHUNK_BYTES :: 4096
+@(private = "file") WL_OFFER_READ_WAIT_MS :: 2000
+
 ////////////////////////////////
 // wl_data_source: we own the selection and feed other clients
 
@@ -196,14 +199,14 @@ wl_offer_read :: proc(offer: Wl_Proxy, mime: string, allocator := context.alloca
 	wl.display_flush(wlc.display)
 	posix.close(write_fd)   // the compositor keeps its own copy of the fd; our end must close so the read sees EOF
 	buf := make([dynamic]u8, allocator)
-	chunk: [4096]u8
+	chunk: [WL_PIPE_CHUNK_BYTES]u8
 	deadline := time.tick_now()
 	for {
 		n := sys_read(i32(read_fd), &chunk[0], size_of(chunk))
 		if n > 0 { append(&buf, ..chunk[:n]); continue }
 		if n == 0 { break }   // EOF
 		// EAGAIN: the pipe is non-blocking only if we set it; it is blocking by default, so n<0 is a real error
-		if time.duration_milliseconds(time.tick_since(deadline)) > 2000 { break }
+		if time.duration_milliseconds(time.tick_since(deadline)) > WL_OFFER_READ_WAIT_MS { break }
 		break
 	}
 	posix.close(read_fd)
@@ -301,7 +304,7 @@ wl_primary_get :: proc(allocator := context.allocator) -> string {
 	wl.display_flush(wlc.display)
 	posix.close(write_fd)
 	buf := make([dynamic]u8, context.temp_allocator)
-	chunk: [4096]u8
+	chunk: [WL_PIPE_CHUNK_BYTES]u8
 	for {
 		n := sys_read(i32(read_fd), &chunk[0], size_of(chunk))
 		if n <= 0 { break }

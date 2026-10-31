@@ -44,7 +44,7 @@ a11y_bus_address :: proc() -> string {
 	a11y_addr_tried = true
 	conn := session_bus()
 	if conn == nil { return "" }
-	msg, ok := dbus.call(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, ATSPI_BUS_NAME, "GetAddress", "", nil, 3000)
+	msg, ok := dbus.call(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, ATSPI_BUS_NAME, "GetAddress", "", nil, DBUS_QUICK_CALL_MS)
 	if !ok { return "" }
 	r := dbus.msg_reader(&msg)
 	addr := dbus.r_string(&r)
