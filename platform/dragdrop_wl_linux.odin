@@ -14,6 +14,7 @@ import "core:time"
 import "core:sys/posix"
 
 @(private = "file") WL_DND_ACTIONS_SINCE :: 3   // the version of the data device that has actions
+@(private = "file") WL_DND_POLL_MS :: 100       // between two checks of the limit of a drag
 
 // What this process is dragging now (drag_start), so the shared data-source send callback can feed it.
 @(private)
@@ -96,7 +97,8 @@ wl_dnd_drop :: proc() {
 	context.allocator = d.allocator
 	// read each flavour the offer advertised into the Drag_Data
 	drag_data_destroy(&d.data)
-	d.data = wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
+	// (the app's own drag: this thread would have to serve the pipe it reads)
+	d.data = wlc.dnd_sending ? drag_data_clone(wl_drag.data) : wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
 	if wlc.dnd_offer != nil && wl.proxy_get_version(wlc.dnd_offer) >= WL_DND_ACTIONS_SINCE {
 		wl.proxy_marshal_flags(wlc.dnd_offer, WL_DATA_OFFER_FINISH, nil, wl.proxy_get_version(wlc.dnd_offer), 0)
 	}
@@ -165,8 +167,7 @@ wl_write_drag_flavour :: proc(fd: i32, mime: string) {
 wl_drag_uris :: proc() -> string {
 	b := strings.builder_make(context.temp_allocator)
 	for p in wl_drag.data.files {
-		strings.write_string(&b, "file://")
-		strings.write_string(&b, p)
+		strings.write_string(&b, file_uri(p))
 		strings.write_string(&b, "\r\n")
 	}
 	if wl_drag.data.url != "" {
@@ -185,6 +186,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	drag_data_destroy(&wl_drag.data)
 	wl_drag.data = drag_data_clone(data)
 	wl_drag.active = true
+	wl_dnd_source_action = 0
 	src := wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE,
 		wl.data_source_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil)
 	if src == nil { return nil, false }
@@ -201,12 +203,17 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	wl.proxy_marshal_flags(wlc.data_device, WL_DATA_DEVICE_START_DRAG, nil, wl.proxy_get_version(wlc.data_device), 0,
 		src, st.surface, nil, wl_button_serial)
 	wl.display_flush(wlc.display)
-	// pump until the source is cancelled or finished (bounded; the compositor drives it)
-	l := wayland_lib()
+	// pump until the source is cancelled or finished (the compositor drives it); past the limit the drag is given up
 	deadline := time.tick_now()
 	for wlc.dnd_source != nil {
-		l.display_dispatch(wlc.display)
-		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS { break }
+		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS {
+			wl.proxy_destroy(wlc.dnd_source)
+			wlc.dnd_source = nil
+			wl_dnd_source_action = 0
+			break
+		}
+		poll_fd_wait(wlc.fd, WL_DND_POLL_MS)
+		wl_read_available()
 	}
 	wlc.dnd_sending = false
 	wl_drag.active = false

@@ -246,16 +246,6 @@ set_integrated_title :: proc(w: ^Window, on: bool) {
 
 is_integrated_title :: proc(w: ^Window) -> bool { return w.integrated }
 
-// The title bar the app drew this frame (client pixels): copied, the caller keeps its regions.
-set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
-	chrome_regions_clear(&w.chrome)
-	append(&w.chrome.caption, ..c.caption[:])
-	append(&w.chrome.holes, ..c.holes[:])
-	append(&w.chrome.slanted, ..c.slanted[:])
-	append(&w.chrome.overlays, ..c.overlays[:])
-	w.chrome.buttons = c.buttons
-}
-
 is_maximized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Maximized : bool(win.IsZoomed(w.hwnd)) }
 is_minimized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Minimized : bool(win.IsIconic(w.hwnd)) }
 is_fullscreen :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Fullscreen : w.fullscreen }
@@ -401,7 +391,6 @@ set_title :: proc(w: ^Window, title: string) {
 	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title, context.temp_allocator))
 }
 
-// Matches the OS title bar to a dark or light theme.
 // Path of a font in the Windows font folder (%WINDIR%\Fonts), e.g. system_font_path("segoeui.ttf").
 system_font_path :: proc(file: string, allocator := context.temp_allocator) -> string {
 	buf: [win.MAX_PATH]u16
@@ -446,6 +435,7 @@ set_border_color :: proc(w: ^Window, rgb: Maybe(u32)) {
 	win.DwmSetWindowAttribute(w.hwnd, DWMWA_BORDER_COLOR, &v, size_of(v))
 }
 
+// Matches the OS title bar to a dark or light theme.
 set_dark_title :: proc(w: ^Window, dark: bool) {
 	if w.offscreen { return }
 	if w.dark_title == dark { return }
@@ -463,18 +453,6 @@ is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
 	if w == nil || w.offscreen || w.hwnd == nil { return {} }
 	return {backend = .Windows, hwnd = rawptr(w.hwnd), hinstance = rawptr(win.GetModuleHandleW(nil))}
-}
-
-// Sets an offscreen window's emulated scale (dpi/96) and resizes its client area to keep the same logical size, as a
-// real window changing monitor would (a headless `window --dpi`, a remote setDeviceMetricsOverride). The caller then
-// resizes the renderer to the new `w.size`. A no-op for a real window (use the DPI the system gives it).
-set_offscreen_dpi :: proc(w: ^Window, dpi: int) {
-	if !w.offscreen || dpi <= 0 { return }
-	old := max(w.dpi_scale, DPI_SCALE_MIN)
-	k := (f32(dpi) / DPI_BASE) / old
-	w.dpi_scale = f32(dpi) / DPI_BASE
-	w.size = {max(int(f32(w.size.x) * k + 0.5), 1), max(int(f32(w.size.y) * k + 0.5), 1)}
-	w.off_place[2], w.off_place[3] = w.size.x, w.size.y
 }
 
 // An opaque wake handle an offscreen window waits on in wait_event / poll_events, for a thread that wants to wake the loop
@@ -556,16 +534,6 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	return w.events[:]
 }
 
-// Removes the events the last poll_events handed out (they have been read); the ones queued since stay.
-@(private)
-drop_returned :: proc(w: ^Window) {
-	n := min(w.returned, len(w.events))
-	w.returned = 0
-	if n == 0 { return }
-	copy(w.events[:], w.events[n:])
-	resize(&w.events, len(w.events) - n)
-}
-
 // Queues an event as if the system had delivered it: the next poll_events returns it (after the real events of that
 // batch), through the same path as any other, so hover, focus, shortcuts and text input behave as for a real device.
 // For tests, remote control and macros; call it from the thread that polls. `stamp` is set when the event is taken.
@@ -573,19 +541,6 @@ drop_returned :: proc(w: ^Window) {
 inject_event :: proc(w: ^Window, e: Event) {
 	append(&w.injected, e)
 	if w.offscreen && w.off_event != nil { win.SetEvent(w.off_event) }   // wake an offscreen loop waiting in wait_event
-}
-
-@(private)
-take_injected :: proc(w: ^Window) {
-	if len(w.injected) == 0 { return }
-	now := time.tick_now()
-	for &e in w.injected {
-		e.stamp = now
-		e.injected = true
-		if e.kind == .Close { w.closed = true }   // as WM_CLOSE: a loop that tests is_closed ends
-		append(&w.events, e)
-	}
-	clear(&w.injected)
 }
 
 // Blocks until a message is pending or `timeout_ms` elapsed (0 = no timeout). Does not consume anything: follow
@@ -602,16 +557,6 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	win.WaitMessage()
 	if timeout_ms > 0 { win.KillTimer(w.hwnd, 1) }
 }
-
-// True once after the system asked for a repaint (uncovered, resized) while the app polled: draw a frame. (Inside a
-// loop of the system the window calls on_frame itself.)
-take_paint_request :: proc(w: ^Window) -> bool {
-	r := w.paint_requested
-	w.paint_requested = false
-	return r
-}
-
-pump_stats :: proc(w: ^Window) -> Pump_Stats { return w.stats }
 
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) {

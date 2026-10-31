@@ -5,7 +5,8 @@ package platform
 // XdndEnter / XdndPosition / XdndDrop / XdndLeave client messages drive the Drop_* events, and the data is read with
 // ConvertSelection on XdndSelection (the clipboard read path, clipboard_x11_linux.odin). As a source: drag_start owns
 // XdndSelection, finds the window under the pointer, sends it XdndEnter / XdndPosition, reads XdndStatus for the effect
-// and the accept, and on release sends XdndDrop (or XdndLeave), pumping the X connection until XdndFinished.
+// and the accept, and on release sends XdndDrop (or XdndLeave), pumping the X connection until XdndFinished. The
+// source shows no drag image, offers no format of the app's own, and does not follow XdndProxy.
 //
 // The MIME targets are the same atoms as the clipboard (text/html, image/png, text/uri-list, UTF8_STRING).
 
@@ -18,6 +19,7 @@ import "core:sys/posix"
 @(private = "file") XDND_INLINE_TYPES :: 3        // what XdndEnter carries; more go in XdndTypeList
 @(private = "file") XDND_TYPE_LIST_MAX_WORDS :: 1 << 10
 @(private = "file") XDND_SOURCE_POLL_MS :: 15     // between two looks at the connection during a drag
+@(private = "file") XDND_WINDOW_DEPTH_MAX :: 16   // bounds the walk down the window tree under the pointer
 
 @(private)
 x11_dnd_intern_atoms :: proc() {
@@ -97,8 +99,9 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 		} else {
 			deliver_drop(w, .Drop_Over, p)
 		}
-		accept := x11_dnd_tgt.accepted != 0 && drop_effect_for(d.allowed, {}) != nil
-		x11_send_xdnd_status(w, x11_dnd_tgt.source, accept)
+		e := dnd_answer(w)
+		if x11_dnd_tgt.accepted == 0 { e = nil }
+		x11_send_xdnd_status(w, x11_dnd_tgt.source, e)
 		x11_push(w, {})
 	case x11c.xdnd_leave:
 		d := w.dnd
@@ -115,7 +118,9 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 		}
 		d.over = false
 		deliver_drop(w, .Drop, x11_dnd_tgt.pos)
-		x11_send_xdnd_finished(w, x11_dnd_tgt.source)
+		e := dnd_answer(w)
+		if x11_dnd_tgt.accepted == 0 { e = nil }
+		x11_send_xdnd_finished(w, x11_dnd_tgt.source, e)
 		x11_dnd_tgt.active = false
 	}
 }
@@ -163,22 +168,35 @@ x11_dnd_read_all :: proc(w: ^Window, allocator := context.allocator) -> (out: Dr
 	return
 }
 
+// The atom of an effect (0: none).
 @(private)
-x11_send_xdnd_status :: proc(w: ^Window, source: Xcb_Window, accept: bool) {
+x11_action_atom :: proc(e: Maybe(Drop_Effect)) -> Xcb_Atom {
+	v, ok := e.?
+	if !ok { return 0 }
+	switch v {
+	case .Copy: return x11c.xdnd_action_copy
+	case .Move: return x11c.xdnd_action_move
+	case .Link: return x11c.xdnd_action_link
+	}
+	return 0
+}
+
+@(private)
+x11_send_xdnd_status :: proc(w: ^Window, source: Xcb_Window, effect: Maybe(Drop_Effect)) {
 	st := x11_state(w)
 	data := [X11_CLIENT_MESSAGE_WORDS]u32{
 		u32(st.id),
-		accept ? 1 : 0,            // bit 0: accept
+		effect != nil ? 1 : 0,     // bit 0: accept
 		0, 0,                      // empty rectangle: send a status for every position
-		u32(accept ? x11c.xdnd_action_copy : 0),
+		u32(x11_action_atom(effect)),
 	}
 	x11_send_client_message(source, x11c.xdnd_status, data)
 }
 
 @(private)
-x11_send_xdnd_finished :: proc(w: ^Window, source: Xcb_Window) {
+x11_send_xdnd_finished :: proc(w: ^Window, source: Xcb_Window, effect: Maybe(Drop_Effect)) {
 	st := x11_state(w)
-	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(st.id), 1, u32(x11c.xdnd_action_copy), 0, 0}
+	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(st.id), effect != nil ? 1 : 0, u32(x11_action_atom(effect)), 0, 0}
 	x11_send_client_message(source, x11c.xdnd_finished, data)
 }
 
@@ -195,11 +213,12 @@ X11_Dnd_Source :: struct {
 	target:    Xcb_Window,     // the toplevel under the pointer we are talking to
 	accepted:  bool,
 	finished:  bool,
-	action:    Xcb_Atom,
+	action:    Xcb_Atom,       // the action asked of the target
+	answer:    Xcb_Atom,       // the action the target says it takes
 }
 @(private) x11_dnd_src: X11_Dnd_Source
 
-// Runs an XDND drag from `w`. Owns XdndSelection, grabs the pointer, and follows the pointer sending XdndEnter /
+// Runs an XDND drag from `w`. Owns XdndSelection and follows the pointer sending XdndEnter /
 // Position to the target under it, until the button is released (XdndDrop) or the drag is cancelled (XdndLeave).
 @(private)
 x11_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image)) -> (effect: Maybe(Drop_Effect), ok: bool) {
@@ -211,17 +230,14 @@ x11_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image
 	x11_dnd_src.allowed = allowed
 	x11_dnd_src.window = st.id
 	x11_dnd_src.active = true
-	x11_dnd_src.action = x11c.xdnd_action_copy
+	x11_dnd_src.action = x11_action_atom(drop_effect_for(allowed, {}))
 	x11_dnd_build_targets(data)
 	// own XdndSelection so the target can read our data (served by the same SelectionRequest handler)
-	x11c.clip_owner = st.id   // the serve path reads the clip store; stash the drag data there is not right, so
 	x11_dnd_own_selection(st.id)
 	// publish the type list for more than three types
 	if len(x11_dnd_src.targets) > XDND_INLINE_TYPES {
 		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_type_list, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(x11_dnd_src.targets)), raw_data(x11_dnd_src.targets[:]))
 	}
-	// the interactive loop: follow the pointer and talk XDND to whatever toplevel is under it. This needs a pointer
-	// grab and motion tracking; without a compositor-driven drag we poll the pointer each turn.
 	result := x11_dnd_source_loop(w)
 	drag_data_destroy(&x11_dnd_src.data)
 	delete(x11_dnd_src.targets)
@@ -245,12 +261,13 @@ x11_dnd_own_selection :: proc(owner: Xcb_Window) {
 }
 
 // The interactive source loop: pumps the X connection, tracks the pointer, and talks XDND to the toplevel under it.
-// Returns the effect the target accepted. A full implementation grabs the pointer; we rely on the button being held
-// (drag_start is called from a press-move) and read pointer motion from the normal event stream, ending on release.
+// Returns the effect the target took. drag_start comes from a press and a move: the button's implicit grab brings the
+// pointer's motion here wherever it goes, and the release, which goes on to the window as any other (the press would
+// otherwise stay pressed).
 @(private)
 x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 	deadline := time.tick_now()
-	released := false
+	released, dropped := false, false
 	last_target: Xcb_Window = 0
 	for !x11_dnd_src.finished {
 		ev := xcb.poll_for_event(x11c.c)
@@ -271,33 +288,43 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 				if tgt != 0 { x11_send_source_position(tgt, rootx, rooty) }
 			case XCB_BUTTON_RELEASE:
 				released = true
-			case XCB_SELECTION_REQUEST:
-				x11_dnd_serve_source_request(b)
+				x11_handle_event(w, ev)
 			case XCB_CLIENT_MESSAGE:
 				mtype := Xcb_Atom(get_u32(b[8:]))
 				if mtype == x11c.xdnd_status {
 					x11_dnd_src.accepted = get_u32(b[16:]) & 1 != 0
+					x11_dnd_src.answer = Xcb_Atom(get_u32(b[28:]))
 				} else if mtype == x11c.xdnd_finished {
+					x11_dnd_src.accepted = get_u32(b[16:]) & 1 != 0
+					if a := Xcb_Atom(get_u32(b[20:])); a != 0 { x11_dnd_src.answer = a }
 					x11_dnd_src.finished = true
+				} else {
+					x11_handle_event(w, ev)   // the drag over this app's own window: its drop target's messages
 				}
 			case:
-				x11_handle_event(w, ev)   // keep the window responsive (repaints, etc.)
+				x11_handle_event(w, ev)   // keep the window responsive (repaints, requests for the selection)
 			}
 			posix.free(ev)
 		}
 		if released {
+			released = false
 			if x11_dnd_src.target != 0 && x11_dnd_src.accepted {
 				x11_send_source_drop(x11_dnd_src.target)
-				released = false   // wait for XdndFinished
+				dropped = true   // wait for XdndFinished
 			} else {
-				if x11_dnd_src.target != 0 { x11_send_source_leave(x11_dnd_src.target) }
 				break
 			}
 		}
 		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS { break }
 		if ev == nil { poll_fd_wait(x11c.fd, XDND_SOURCE_POLL_MS) }
 	}
-	return x11_dnd_src.accepted ? Maybe(Drop_Effect)(.Copy) : nil
+	if !dropped && x11_dnd_src.target != 0 { x11_send_source_leave(x11_dnd_src.target) }
+	if !x11_dnd_src.finished || !x11_dnd_src.accepted { return nil }
+	switch x11_dnd_src.answer {
+	case x11c.xdnd_action_move: return .Move
+	case x11c.xdnd_action_link: return .Link
+	}
+	return .Copy
 }
 
 // Serves a SelectionRequest for XdndSelection while a drag is running: write the asked flavour of the drag data.
@@ -335,7 +362,7 @@ x11_dnd_src_bytes :: proc(target: Xcb_Atom) -> []u8 {
 		return d.image
 	case x11c.mime_uri_list:
 		b := strings.builder_make(context.temp_allocator)
-		for p in d.files { strings.write_string(&b, "file://"); strings.write_string(&b, p); strings.write_string(&b, "\r\n") }
+		for p in d.files { strings.write_string(&b, file_uri(p)); strings.write_string(&b, "\r\n") }
 		if d.url != "" { strings.write_string(&b, d.url); strings.write_string(&b, "\r\n") }
 		return transmute([]u8)strings.to_string(b)
 	}
@@ -385,19 +412,31 @@ x11_send_client_message :: proc(dest: Xcb_Window, mtype: Xcb_Atom, data: [X11_CL
 	xcb.flush(x11c.c)
 }
 
-// The XDND-aware toplevel under the root-space point (walks down from the root; returns 0 when none). Uses
-// xcb_query_tree / get XdndAware. Bound lazily.
+// The XDND-aware window under a point of the root: down from the root through the children under the point. 0: none.
 @(private)
 x11_window_at :: proc(rootx, rooty: int) -> Xcb_Window {
-	// a practical shortcut: the pointer is almost always over our own window during a self-test or same-app drag;
-	// querying every toplevel's XdndAware needs xcb_query_tree + translate, which is involved. Return 0 here and rely
-	// on the compositor/other window managers forwarding through XdndProxy; cross-app X11 drags are the lead's test.
+	cur := x11c.screen.root
+	for _ in 0 ..< XDND_WINDOW_DEPTH_MAX {
+		_, child, ok := x11_translate(x11c.screen.root, cur, rootx, rooty)
+		if !ok || child == 0 { return 0 }
+		if x11_is_xdnd_aware(child) { return child }
+		cur = child
+	}
 	return 0
 }
 
 @(private)
+x11_is_xdnd_aware :: proc(window: Xcb_Window) -> bool {
+	cookie := xcb.get_property(x11c.c, 0, window, x11c.xdnd_aware, XCB_ATOM_ATOM, 0, 1)
+	reply := xcb.get_property_reply(x11c.c, cookie, nil)
+	if reply == nil { return false }
+	defer posix.free(reply)
+	return xcb.get_property_value_length(reply) > 0
+}
+
+// A point of the root in the window's client pixels.
+@(private)
 x11_root_to_client :: proc(w: ^Window, rootx, rooty: int) -> [2]f32 {
-	// without xcb_translate_coordinates wired, approximate with the known client size (the window manager places us);
-	// good enough for the position inside the client area the app reacts to.
+	if p, _, ok := x11_translate(x11c.screen.root, x11_state(w).id, rootx, rooty); ok { return {f32(p.x), f32(p.y)} }
 	return {f32(rootx), f32(rooty)}
 }

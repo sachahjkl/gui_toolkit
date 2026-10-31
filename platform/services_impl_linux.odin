@@ -119,28 +119,6 @@ foreign libc_svc {
 }
 
 @(private)
-file_uri :: proc(path: string) -> string {
-	// file:// + percent-encode the reserved bytes of the path
-	b := strings.builder_make(context.temp_allocator)
-	strings.write_string(&b, "file://")
-	for i in 0 ..< len(path) {
-		c := path[i]
-		if c == '/' || c == '-' || c == '_' || c == '.' || c == '~' ||
-		   (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
-			strings.write_byte(&b, c)
-		} else {
-			strings.write_byte(&b, '%')
-			strings.write_byte(&b, hex_up(c >> 4))
-			strings.write_byte(&b, hex_up(c & 0xf))
-		}
-	}
-	return strings.to_string(b)
-}
-
-@(private)
-hex_up :: proc(v: u8) -> u8 { return v < 10 ? '0' + v : 'A' + (v - 10) }
-
-@(private)
 guess_mime :: proc(path: string) -> string {
 	ext := ""
 	if i := strings.last_index_byte(path, '.'); i >= 0 { ext = strings.to_lower(path[i:], context.temp_allocator) }

@@ -111,7 +111,6 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	d.present_at_once = cadence_at_once(c)
 	d.latency = d.present_at_once ? 2 : 1
 	d.wait_ns, d.slot_ns = frame_slot_wait(&c.slots, in_.now_ns, in_.idled, step || answer)
-	if step { d.wait_ns = 0 }
 	d.wait_until_ns = in_.now_ns + d.wait_ns
 	d.wait_swap_chain = !step && !answer && in_.presented && !in_.slot_held
 	return

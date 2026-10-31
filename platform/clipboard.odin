@@ -283,3 +283,79 @@ put32 :: proc(b: []u8, at: int, v: u32) { b[at], b[at + 1], b[at + 2], b[at + 3]
 get32 :: proc(b: []u8, at: int) -> u32 { return u32(b[at]) | u32(b[at + 1]) << 8 | u32(b[at + 2]) << 16 | u32(b[at + 3]) << 24 }
 @(private)
 get16 :: proc(b: []u8, at: int) -> u16 { return u16(b[at]) | u16(b[at + 1]) << 8 }
+
+// What a list of MIME types offers (another client's selection on Linux). Pure.
+clipboard_formats_from_mimes :: proc(mimes: []string) -> (out: Clipboard_Formats) {
+	for m in mimes {
+		switch {
+		case m == "UTF8_STRING", m == "STRING", m == "TEXT", strings.has_prefix(m, "text/plain"): out += {.Text}
+		case m == "text/html":     out += {.Html}
+		case m == "image/png":     out += {.Image}
+		case m == "text/uri-list": out += {.Files}
+		}
+	}
+	return
+}
+
+// The file:// URI of an absolute path: every byte but the unreserved ones and the slashes is percent-encoded (temporary
+// allocator by default). Pure; uri_list_to_paths reads it back.
+file_uri :: proc(path: string, allocator := context.temp_allocator) -> string {
+	hex :: proc(v: u8) -> u8 { return v < 10 ? '0' + v : 'A' + (v - 10) }
+	b := strings.builder_make(allocator)
+	strings.write_string(&b, "file://")
+	for i in 0 ..< len(path) {
+		c := path[i]
+		if c == '/' || c == '-' || c == '_' || c == '.' || c == '~' ||
+		   (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			strings.write_byte(&b, c)
+		} else {
+			strings.write_byte(&b, '%')
+			strings.write_byte(&b, hex(c >> 4))
+			strings.write_byte(&b, hex(c & 0xf))
+		}
+	}
+	return strings.to_string(b)
+}
+
+// The file:// URIs of a text/uri-list turned into filesystem paths (percent-decoded, "file://host/path" -> "/path"). Pure.
+uri_list_to_paths :: proc(list: string, allocator := context.allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	rest := list
+	for line in strings.split_lines_iterator(&rest) {
+		l := strings.trim_space(line)
+		if l == "" || l[0] == '#' { continue }
+		if strings.has_prefix(l, "file://") {
+			p := l[len("file://"):]
+			// strip an authority (host) before the path
+			if slash := strings.index_byte(p, '/'); slash > 0 { p = p[slash:] } else if slash < 0 { continue }
+			append(&out, percent_decode(p, allocator))
+		} else if strings.has_prefix(l, "/") {
+			append(&out, strings.clone(l, allocator))
+		}
+	}
+	return out[:]
+}
+
+@(private = "file")
+percent_decode :: proc(s: string, allocator := context.allocator) -> string {
+	b := strings.builder_make(allocator)
+	i := 0
+	for i < len(s) {
+		if s[i] == '%' && i + 2 < len(s) {
+			hi, lo := hex_val(s[i + 1]), hex_val(s[i + 2])
+			if hi >= 0 && lo >= 0 { strings.write_byte(&b, u8(hi * 16 + lo)); i += 3; continue }
+		}
+		strings.write_byte(&b, s[i]); i += 1
+	}
+	return strings.to_string(b)
+}
+
+@(private = "file")
+hex_val :: proc(c: u8) -> int {
+	switch c {
+	case '0' ..= '9': return int(c - '0')
+	case 'a' ..= 'f': return int(c - 'a' + 10)
+	case 'A' ..= 'F': return int(c - 'A' + 10)
+	}
+	return -1
+}

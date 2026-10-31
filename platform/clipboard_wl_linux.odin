@@ -12,7 +12,6 @@ package platform
 
 import "core:strings"
 import "core:sys/posix"
-import "core:time"
 
 // The MIME types the toolkit offers, in the order a paste target prefers them. Text has two aliases because clients
 // ask for either.
@@ -23,7 +22,7 @@ import "core:time"
 @(private) WL_MIME_URIS  :: "text/uri-list"
 
 @(private = "file") WL_PIPE_CHUNK_BYTES :: 4096
-@(private = "file") WL_OFFER_READ_WAIT_MS :: 2000
+@(private = "file") WL_OFFER_READ_WAIT_MS :: 2000   // silence of the peer that gives up a read
 
 ////////////////////////////////
 // wl_data_source: we own the selection and feed other clients
@@ -56,10 +55,12 @@ ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	if src == wlc.data_source {
 		wl.proxy_destroy(src)
 		wlc.data_source = nil
+		clip_note_changed()
 	} else if src == wlc.dnd_source {
 		wl.proxy_destroy(src)
 		wlc.dnd_source = nil
 		wlc.dnd_sending = false
+		wl_dnd_source_action = 0   // (the target it hovered may have chosen an action: nothing was dropped)
 	}
 }
 @(private) ds_dnd_drop :: proc "c" (data: rawptr, src: Wl_Proxy) {}
@@ -109,7 +110,7 @@ wl_clipboard_publish :: proc() {
 	if src == nil { return }
 	wlc.data_source = src
 	wl.proxy_add_listener(src, &data_source_listener, nil)
-	fmts := clipboard_formats()
+	fmts := clip_store_formats()
 	if .Text in fmts {
 		wl_source_offer(src, WL_MIME_TEXT)
 		wl_source_offer(src, WL_MIME_TEXT2)
@@ -172,6 +173,7 @@ wl_selection_set :: proc(offer: Wl_Proxy) {
 	}
 	wlc.offer = offer
 	wlc.have_offer = offer != nil
+	if wlc.data_source == nil { clip_note_changed() }
 	if offer != nil && offer == wl_pending_offer {
 		wl_free_mimes(&wlc.offer_mimes)
 		wlc.offer_mimes = wl_pending_offer_mimes
@@ -186,8 +188,9 @@ wl_free_mimes :: proc(list: ^[dynamic]string) {
 	clear(list)
 }
 
-// Reads a flavour another client offers: dup a pipe, call wl_data_offer.receive(mime, write_fd), flush, close the
-// write end, read the pipe to EOF. Bounded so a stuck peer cannot hang the loop.
+// Reads a flavour another client offers: a pipe, wl_data_offer.receive(mime, write_fd), flush, close the write end, read
+// the pipe to EOF. nil when the peer stays silent too long (this thread cannot serve its own offer, a client may hang):
+// no partial data.
 @(private)
 wl_offer_read :: proc(offer: Wl_Proxy, mime: string, allocator := context.allocator) -> []u8 {
 	if offer == nil { return nil }
@@ -198,19 +201,22 @@ wl_offer_read :: proc(offer: Wl_Proxy, mime: string, allocator := context.alloca
 	wl.proxy_marshal_flags(offer, WL_DATA_OFFER_RECEIVE, nil, wl.proxy_get_version(offer), 0, c, i32(write_fd))
 	wl.display_flush(wlc.display)
 	posix.close(write_fd)   // the compositor keeps its own copy of the fd; our end must close so the read sees EOF
+	return wl_pipe_read_all(read_fd, allocator)
+}
+
+// Reads the pipe to EOF and closes it; nil when no byte comes for WL_OFFER_READ_WAIT_MS, or on an error.
+@(private)
+wl_pipe_read_all :: proc(fd: posix.FD, allocator := context.allocator) -> []u8 {
+	defer posix.close(fd)
 	buf := make([dynamic]u8, allocator)
 	chunk: [WL_PIPE_CHUNK_BYTES]u8
-	deadline := time.tick_now()
 	for {
-		n := sys_read(i32(read_fd), &chunk[0], size_of(chunk))
-		if n > 0 { append(&buf, ..chunk[:n]); continue }
-		if n == 0 { break }   // EOF
-		// EAGAIN: the pipe is non-blocking only if we set it; it is blocking by default, so n<0 is a real error
-		if time.duration_milliseconds(time.tick_since(deadline)) > WL_OFFER_READ_WAIT_MS { break }
-		break
+		if poll_fd_wait(i32(fd), WL_OFFER_READ_WAIT_MS) <= 0 { delete(buf); return nil }
+		n := sys_read(i32(fd), &chunk[0], size_of(chunk))
+		if n < 0 { delete(buf); return nil }
+		if n == 0 { return buf[:] }
+		append(&buf, ..chunk[:n])
 	}
-	posix.close(read_fd)
-	return buf[:]
 }
 
 ////////////////////////////////
@@ -303,26 +309,11 @@ wl_primary_get :: proc(allocator := context.allocator) -> string {
 	wl.proxy_marshal_flags(wlc.primary_offer, ZWP_PRIMARY_OFFER_RECEIVE, nil, wl.proxy_get_version(wlc.primary_offer), 0, c, i32(write_fd))
 	wl.display_flush(wlc.display)
 	posix.close(write_fd)
-	buf := make([dynamic]u8, context.temp_allocator)
-	chunk: [WL_PIPE_CHUNK_BYTES]u8
-	for {
-		n := sys_read(i32(read_fd), &chunk[0], size_of(chunk))
-		if n <= 0 { break }
-		append(&buf, ..chunk[:n])
-	}
-	posix.close(read_fd)
-	return strings.clone(string(buf[:]), allocator)
+	return strings.clone(string(wl_pipe_read_all(read_fd, context.temp_allocator)), allocator)
 }
 
 ////////////////////////////////
 // the text clipboard entry points platform_linux.odin calls
-
-@(private)
-wl_clipboard_set_text :: proc(w: ^Window, text: string) {
-	delete(wlc.clip_text)
-	wlc.clip_text = strings.clone(text)
-	wl_clipboard_publish()
-}
 
 @(private)
 wl_clipboard_get_text :: proc(w: ^Window, allocator := context.allocator) -> string {
