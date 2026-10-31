@@ -59,7 +59,7 @@ dump_paint :: proc(c: ^Colr, r: ^Rd, sb: ^strings.Builder, off, depth: int, line
 		switch f {
 		case 4, 5: fmt.sbprintf(sb, "  p0 (%d,%d) p1 (%d,%d) p2 (%d,%d)", rd_i16(r, off + 4), rd_i16(r, off + 6), rd_i16(r, off + 8), rd_i16(r, off + 10), rd_i16(r, off + 12), rd_i16(r, off + 14))
 		case 6, 7: fmt.sbprintf(sb, "  c0 (%d,%d) r0 %d c1 (%d,%d) r1 %d", rd_i16(r, off + 4), rd_i16(r, off + 6), rd_u16(r, off + 8), rd_i16(r, off + 10), rd_i16(r, off + 12), rd_u16(r, off + 14))
-		case 8, 9: fmt.sbprintf(sb, "  c (%d,%d) %.1f..%.1f", rd_i16(r, off + 4), rd_i16(r, off + 6), rd_f2(r, off + 8) * 180, rd_f2(r, off + 10) * 180)
+		case 8, 9: fmt.sbprintf(sb, "  c (%d,%d) %.1f..%.1f", rd_i16(r, off + 4), rd_i16(r, off + 6), (rd_f2(r, off + 8) + 1) * 180, (rd_f2(r, off + 10) + 1) * 180)
 		}
 		fmt.sbprintf(sb, "\n")
 	case 10:

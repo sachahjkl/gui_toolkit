@@ -537,7 +537,7 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	context.allocator = runtime.heap_allocator()
 	if s.words.cap == 0 {
 		w := shape_word(s, id, size, text, rtl, no_liga, context.temp_allocator)
-		return w.width
+		return w != nil ? w.width : 0
 	}
 	h := word_hash(id, size, rtl, no_liga, text)
 	flags := u8(rtl) | u8(no_liga) << 1
@@ -559,6 +559,7 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	} else {
 		sync.mutex_unlock(&sh.mu)
 		nw := shape_word(s, id, size, text, rtl, no_liga, context.allocator)
+		if nw == nil { return 0 }
 		width = nw.width
 		sync.mutex_lock(&sh.mu)
 		if word_find(sh, h, id, size, rtl, no_liga, text) == nil { word_insert(&s.words, sh, h, nw) } else { free(nw) }
@@ -577,6 +578,7 @@ word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga:
 	context.allocator = runtime.heap_allocator()
 	if s.words.cap == 0 {
 		w := shape_word(s, id, size, text, rtl, no_liga, context.temp_allocator)
+		if w == nil { return 0 }
 		append(glyphs, ..w.glyphs)
 		append(clusters, ..w.clusters)
 		return w.width
@@ -588,6 +590,7 @@ word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga:
 	if w == nil {
 		sync.mutex_unlock(&sh.mu)
 		nw := shape_word(s, id, size, text, rtl, no_liga, context.allocator)
+		if nw == nil { return 0 }
 		sync.mutex_lock(&sh.mu)
 		w = word_find(sh, h, id, size, rtl, no_liga, text)
 		if w == nil { word_insert(&s.words, sh, h, nw); w = nw } else { free(nw) }
@@ -602,14 +605,15 @@ word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga:
 ////////////////////////////////
 // Shaping one word
 
-// Shapes `text` as one directional run into a Word allocated in one block (free(w) frees everything).
+// Shapes `text` as one directional run into a Word allocated in one block (free(w) frees everything). nil: no memory for it.
 @(private)
 shape_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool, allocator: runtime.Allocator) -> ^Word {
 	glyphs := make([dynamic]Glyph_Pos, 0, len(text) + 4, context.temp_allocator)
 	clusters := make([dynamic]Cluster, 0, len(text) + 4, context.temp_allocator)
 	width := shape_text(s, id, size, text, rtl, no_liga, &glyphs, &clusters)
 	ng, nc := len(glyphs), len(clusters)
-	block, _ := runtime.mem_alloc(size_of(Word) + ng * size_of(Glyph_Pos) + nc * size_of(Cluster) + len(text), align_of(Word), allocator)
+	block, err := runtime.mem_alloc(size_of(Word) + ng * size_of(Glyph_Pos) + nc * size_of(Cluster) + len(text), align_of(Word), allocator)
+	if err != nil { return nil }
 	base := uintptr(raw_data(block))
 	w := (^Word)(base)
 	gp := ([^]Glyph_Pos)(rawptr(base + size_of(Word)))
@@ -738,9 +742,15 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 		prev_r = r
 		i += n
 	}
-	// what is left: the system fallback, span by span
+	itemize_fallback(s, top, first, w, faces)
+	return faces
+}
+
+// What itemize_faces left at 0: the system fallback, span by span, then the emoji font or the first face.
+@(private)
+itemize_fallback :: proc(s: ^State, top: ^Font, first: Font_Id, w: []u16, faces: []Font_Id) {
 	use_system := s.system_fonts != nil && s.system_fonts.fallback != nil && s.settings.system_fallback && !top.no_system_fallback
-	i = 0
+	i := 0
 	for i < len(w) {
 		if faces[i] != 0 { i += 1; continue }
 		j := i
@@ -757,7 +767,6 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 		}
 		i = j
 	}
-	return faces
 }
 
 // Shapes `text` (one directional run) into glyphs in visual order, laid out from x = 0. Returns the width.

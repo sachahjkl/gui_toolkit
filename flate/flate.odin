@@ -2,10 +2,11 @@
 // streams: the input comes in chunks of any size, each push gives the output it allows at once. Pure Odin, no platform
 // code, no C library (Odin's core library only inflates whole buffers). See docs/flate.md.
 //
-// Inflater: the header, then one block at a time from the bit where it starts: a block whose input has not all arrived
-// is decoded again from its start with the next chunk (its partial output is not kept), so a push never waits for more
-// than one block's input. Back references read the last 32 KiB of output. The trailer's CRC-32 / Adler-32 and size are
-// checked; input after the end is an error. `limit` bounds what one push may make (a decompression bomb is refused).
+// Inflater: the header, then one block at a time: a part of a block's start whose input has not all arrived (its code
+// tables, a stored block) is read again from there with the next chunk; the symbols of its codes are output as they
+// arrive, one complete symbol at a time, and decoding goes on from the last one. Back references read the last 32 KiB of
+// output. The trailer's CRC-32 / Adler-32 and size are checked; input after the end is an error. `limit` bounds what one
+// push may make (a decompression bomb is refused).
 //
 // Deflater: LZ77 over a 32 KiB window kept across pushes (hash chains, no lazy matching). Each push is emitted as blocks
 // of at most BLOCK_SYMBOLS symbols, each in the cheapest of the three block types (stored, fixed Huffman codes, dynamic
@@ -121,7 +122,7 @@ huffman_build :: proc "contextless" (h: ^Huffman, lengths: []u8) -> (left: int) 
 // Inflating
 
 @(private)
-Inflate_State :: enum u8 { Header, Blocks, Trailer, Done }
+Inflate_State :: enum u8 { Header, Blocks, Codes, Trailer, Done }
 
 Inflater :: struct {
 	format:  Format,
@@ -133,17 +134,26 @@ Inflater :: struct {
 	adler:   u32,
 	size:    u32,            // output length, modulo 2^32 (gzip's ISIZE)
 	limit:   int,            // most output one push may make (0: no bound)
+	final:   bool,           // the current block is the last
+	lit:     Huffman,        // the codes of the current block
+	dist:    Huffman,
+	made:    [dynamic]u8,    // the output of the current step of a push
 }
+
+// The output of one step of a push, at most about this: what is kept between pushes, and the window catches up as it goes.
+@(private) INFLATE_STEP_BYTES :: 1 << 20
 
 inflater_init :: proc(z: ^Inflater, format: Format, limit := 0, allocator := context.allocator) {
 	z^ = Inflater{format = format, adler = 1, limit = limit}
 	z.input = make([dynamic]u8, allocator)
 	z.window = make([dynamic]u8, allocator)
+	z.made = make([dynamic]u8, allocator)
 }
 
 inflater_destroy :: proc(z: ^Inflater) {
 	delete(z.input)
 	delete(z.window)
+	delete(z.made)
 }
 
 // The bit reader of one attempt: `short` once it ran past the input (the attempt is dropped and tried again later).
@@ -211,13 +221,10 @@ make_fixed_codes :: proc "contextless" () {
 	code_assign(&fixed_dist_code, DIST_CODES)
 }
 
+// The start of a block: a stored block's bytes go to `out`; `coded`: its codes are ready for `codes`.
 @(private)
-fixed_codes :: proc() -> (^Huffman, ^Huffman) { return &fixed_len, &fixed_dist }
-
-// The output of one block, in `out` (with the window before it for back references).
-@(private)
-block :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8) -> (final: bool, err: Error) {
-	final = bits(b, 1) == 1
+block :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8) -> (coded: bool, err: Error) {
+	z.final = bits(b, 1) == 1
 	kind := bits(b, 2)
 	if b.short { return }
 	switch kind {
@@ -227,88 +234,102 @@ block :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8) -> (final: bool, err: E
 		at := b.bit >> 3
 		n := int(b.data[at]) | int(b.data[at + 1]) << 8
 		nn := int(b.data[at + 2]) | int(b.data[at + 3]) << 8
-		if n != (~nn & 0xFFFF) { return final, .Bad_Data }
+		if n != (~nn & 0xFFFF) { return false, .Bad_Data }
 		b.bit += 32
 		if !need(b, n * 8) { return }
 		at = b.bit >> 3
 		append(out, ..b.data[at:at + n])
 		b.bit += n * 8
-		if z.limit > 0 && len(out) > z.limit { return final, .Too_Large }
+		if z.limit > 0 && len(out) > z.limit { return false, .Too_Large }
 		return
 	case 1:
-		lc, dc := fixed_codes()
-		return final, codes(b, z, out, lc, dc)
+		z.lit, z.dist = fixed_len, fixed_dist
+		return true, .None
 	case 2:
 		nlen := int(bits(b, 5)) + HLIT_MIN
 		ndist := int(bits(b, 5)) + 1
 		ncode := int(bits(b, 4)) + HCLEN_MIN
 		if b.short { return }
-		if nlen > LIT_SYMBOLS_USED || ndist > DIST_CODES { return final, .Bad_Data }
+		if nlen > LIT_SYMBOLS_USED || ndist > DIST_CODES { return false, .Bad_Data }
 		lengths: [CODE_LENGTHS_CAP]u8
 		for i in 0 ..< ncode { lengths[CLEN_ORDER[i]] = u8(bits(b, 3)) }
 		if b.short { return }
-		lencode, distcode: Huffman
-		if huffman_build(&lencode, lengths[:CLEN_CODES]) != 0 { return final, .Bad_Data }
+		lencode: Huffman
+		if huffman_build(&lencode, lengths[:CLEN_CODES]) != 0 { return false, .Bad_Data }
 		i := 0
 		for i < nlen + ndist {
 			sym := decode(b, &lencode)
 			if b.short { return }
-			if sym < 0 { return final, .Bad_Data }
+			if sym < 0 { return false, .Bad_Data }
 			if sym < CLEN_REPEAT_PREV { lengths[i] = u8(sym); i += 1; continue }
 			l: u8 = 0
 			rep := 0
 			switch sym {
 			case CLEN_REPEAT_PREV:
-				if i == 0 { return final, .Bad_Data }
+				if i == 0 { return false, .Bad_Data }
 				l = lengths[i - 1]
 				rep = REPEAT_MIN + int(bits(b, 2))
 			case CLEN_REPEAT_ZERO: rep = REPEAT_MIN + int(bits(b, 3))
 			case: rep = REPEAT_ZERO_LONG_MIN + int(bits(b, 7))
 			}
 			if b.short { return }
-			if i + rep > nlen + ndist { return final, .Bad_Data }
+			if i + rep > nlen + ndist { return false, .Bad_Data }
 			for _ in 0 ..< rep { lengths[i] = l; i += 1 }
 		}
-		if lengths[END_OF_BLOCK] == 0 { return final, .Bad_Data }
-		left := huffman_build(&lencode, lengths[:nlen])
-		if left < 0 || (left > 0 && nlen - int(lencode.count[0]) != 1) { return final, .Bad_Data }
-		left = huffman_build(&distcode, lengths[nlen:nlen + ndist])
-		if left < 0 || (left > 0 && ndist - int(distcode.count[0]) != 1) { return final, .Bad_Data }
-		return final, codes(b, z, out, &lencode, &distcode)
+		if lengths[END_OF_BLOCK] == 0 { return false, .Bad_Data }
+		left := huffman_build(&z.lit, lengths[:nlen])
+		if left < 0 || (left > 0 && nlen - int(z.lit.count[0]) != 1) { return false, .Bad_Data }
+		left = huffman_build(&z.dist, lengths[nlen:nlen + ndist])
+		if left < 0 || (left > 0 && ndist - int(z.dist.count[0]) != 1) { return false, .Bad_Data }
+		return true, .None
 	case:
-		return final, .Bad_Data
+		return false, .Bad_Data
 	}
 }
 
+// The symbols of the current block, into `out` (the window before it for back references), up to about
+// INFLATE_STEP_BYTES. `done`: the end of the block came. When the input ends in a symbol, `b` stays at its start, short.
 @(private)
-codes :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8, lencode, distcode: ^Huffman) -> Error {
-	for {
-		sym := decode(b, lencode)
-		if b.short { return .None }
-		if sym < 0 { return .Bad_Data }
+codes :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8) -> (done: bool, err: Error) {
+	for len(out) < INFLATE_STEP_BYTES {
+		start := b.bit
+		sym := decode(b, &z.lit)
+		if b.short { b.bit = start; return false, .None }
+		if sym < 0 { return false, .Bad_Data }
 		if sym < END_OF_BLOCK {
 			append(out, u8(sym))
-			if z.limit > 0 && len(out) > z.limit { return .Too_Large }
+			if z.limit > 0 && len(out) > z.limit { return false, .Too_Large }
 			continue
 		}
-		if sym == END_OF_BLOCK { return .None }
+		if sym == END_OF_BLOCK { return true, .None }
 		sym -= LEN_SYMBOL_FIRST
-		if sym >= LEN_CODES { return .Bad_Data }
+		if sym >= LEN_CODES { return false, .Bad_Data }
 		length := int(LEN_BASE[sym]) + int(bits(b, int(LEN_EXTRA[sym])))
-		ds := decode(b, distcode)
-		if b.short { return .None }
-		if ds < 0 || ds >= DIST_CODES { return .Bad_Data }
+		ds := decode(b, &z.dist)
+		if b.short { b.bit = start; return false, .None }
+		if ds < 0 || ds >= DIST_CODES { return false, .Bad_Data }
 		dist := int(DIST_BASE[ds]) + int(bits(b, int(DIST_EXTRA[ds])))
-		if b.short { return .None }
+		if b.short { b.bit = start; return false, .None }
 		have := len(z.window) + len(out)
-		if dist > have { return .Bad_Data }
+		if dist > have { return false, .Bad_Data }
 		for _ in 0 ..< length {
 			// the byte `dist` back, in this block's output or in the window before it
 			back := len(out) - dist
 			c := back >= 0 ? out[back] : z.window[len(z.window) + back]
 			append(out, c)
 		}
-		if z.limit > 0 && len(out) > z.limit { return .Too_Large }
+		if z.limit > 0 && len(out) > z.limit { return false, .Too_Large }
+	}
+	return false, .None
+}
+
+// The end of the current block: the next one, or the trailer.
+@(private)
+block_end :: proc(z: ^Inflater) {
+	z.state = .Blocks
+	if z.final {
+		z.bit = (z.bit + 7) &~ 7
+		z.state = .Trailer
 	}
 }
 
@@ -326,18 +347,25 @@ inflate_push :: proc(z: ^Inflater, input: []u8, out: ^[dynamic]u8) -> Error {
 			z.bit = b.bit
 			z.state = .Blocks
 		case .Blocks:
-			produced := make([dynamic]u8, context.temp_allocator)
-			final, err := block(&b, z, &produced)
+			clear(&z.made)
+			coded, err := block(&b, z, &z.made)
 			if err != .None { return err }
 			if b.short { return compact(z) }
-			if z.limit > 0 && len(out) - start + len(produced) > z.limit { return .Too_Large }
-			append(out, ..produced[:])
-			keep(z, produced[:])
+			if z.limit > 0 && len(out) - start + len(z.made) > z.limit { return .Too_Large }
+			append(out, ..z.made[:])
+			keep(z, z.made[:])
 			z.bit = b.bit
-			if final {
-				z.bit = (z.bit + 7) &~ 7
-				z.state = .Trailer
-			}
+			if coded { z.state = .Codes } else { block_end(z) }
+		case .Codes:
+			clear(&z.made)
+			done, err := codes(&b, z, &z.made)
+			if err != .None { return err }
+			if z.limit > 0 && len(out) - start + len(z.made) > z.limit { return .Too_Large }
+			append(out, ..z.made[:])
+			keep(z, z.made[:])
+			z.bit = b.bit
+			if b.short { return compact(z) }
+			if done { block_end(z) }
 		case .Trailer:
 			at := z.bit >> 3
 			switch z.format {
@@ -442,8 +470,8 @@ Deflater :: struct {
 	format:  Format,
 	started: bool,
 	window:  [dynamic]u8,    // the last input (up to WINDOW bytes before each push)
-	head:    []i32,          // hash -> last position (in `window` coordinates + base)
-	prev:    []i32,          // position -> previous position with the same hash (modulo WINDOW)
+	head:    []i64,          // hash -> last position (in `window` coordinates + base)
+	prev:    []i64,          // position -> previous position with the same hash (modulo WINDOW)
 	base:    int,            // the absolute position of window[0]
 	acc:     u64,            // bits not yet written
 	nacc:    uint,
@@ -472,8 +500,8 @@ BLOCK_SYMBOLS :: 16 * 1024
 deflater_init :: proc(d: ^Deflater, format: Format, allocator := context.allocator) {
 	d^ = Deflater{format = format, adler = 1}
 	d.window = make([dynamic]u8, allocator)
-	d.head = make([]i32, 1 << HASH_BITS, allocator)
-	d.prev = make([]i32, WINDOW, allocator)
+	d.head = make([]i64, 1 << HASH_BITS, allocator)
+	d.prev = make([]i64, WINDOW, allocator)
 	d.syms = make([dynamic]u32, allocator)
 	for &h in d.head { h = -1 }
 }
@@ -572,7 +600,7 @@ deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 			if p + MATCH_MIN <= len(w) {
 				h := hash3(w, p)
 				d.prev[(p + d.base) % WINDOW] = d.head[h]
-				d.head[h] = i32(p + d.base)
+				d.head[h] = i64(p + d.base)
 			}
 		}
 		i += n
@@ -633,24 +661,22 @@ code_assign :: proc "contextless" (c: ^Code, n: int) {
 	}
 }
 
-@(private)
-fixed_code :: proc() -> (^Code, ^Code) { return &fixed_lit_code, &fixed_dist_code }
-
 // Huffman code lengths of `freq` (n symbols), none longer than `limit`: a Huffman tree, its frequencies halved (and
 // kept at least 1 where non-zero) while it is too deep. At least two symbols get a code (a single code is incomplete,
 // which some decoders refuse), symbol 0 and 1 taking the empty places.
 @(private)
 huffman_lengths :: proc(freq: []u32, lengths: []u8, limit: int) {
 	n := len(freq)
-	f := make([]u32, n, context.temp_allocator)
-	copy(f, freq)
+	assert(n <= LIT_SYMBOLS_USED)
+	f: [LIT_SYMBOLS_USED]u32
+	copy(f[:], freq)
 	used := 0
 	for v in f { if v != 0 { used += 1 } }
 	for k := 0; used < 2 && k < n; k += 1 { if f[k] == 0 { f[k] = 1; used += 1 } }
 	// nodes 0..n-1 the symbols, then the inner nodes
-	weight := make([]u64, 2 * n, context.temp_allocator)
-	parent := make([]int, 2 * n, context.temp_allocator)
-	alive := make([]bool, 2 * n, context.temp_allocator)
+	weight: [2 * LIT_SYMBOLS_USED]u64
+	parent: [2 * LIT_SYMBOLS_USED]int
+	alive: [2 * LIT_SYMBOLS_USED]bool
 	for {
 		nodes := n
 		for i in 0 ..< n { weight[i], alive[i], parent[i] = u64(f[i]), f[i] != 0, -1 }
@@ -676,6 +702,41 @@ huffman_lengths :: proc(freq: []u32, lengths: []u8, limit: int) {
 		}
 		if deepest <= limit { return }
 		for &v in f { if v != 0 { v = max(v / 2, 1) } }
+	}
+}
+
+// The code lengths `all` run-length coded with the code length alphabet: (symbol, its extra bits' value). Returns how many.
+@(private)
+clen_runs :: proc(all: []u8, runs: [][2]u8) -> (nruns: int) {
+	for i := 0; i < len(all); {
+		l := all[i]
+		r := 1
+		for i + r < len(all) && all[i + r] == l { r += 1 }
+		i += r
+		if l == 0 {
+			for r >= REPEAT_ZERO_LONG_MIN { k := min(r, REPEAT_ZERO_LONG_MAX); runs[nruns] = {CLEN_REPEAT_ZERO_LONG, u8(k - REPEAT_ZERO_LONG_MIN)}; nruns += 1; r -= k }
+			if r >= REPEAT_MIN { runs[nruns] = {CLEN_REPEAT_ZERO, u8(r - REPEAT_MIN)}; nruns += 1; r = 0 }
+		} else {
+			runs[nruns] = {l, 0}; nruns += 1; r -= 1
+			for r >= REPEAT_MIN { k := min(r, REPEAT_PREV_MAX); runs[nruns] = {CLEN_REPEAT_PREV, u8(k - REPEAT_MIN)}; nruns += 1; r -= k }
+		}
+		for _ in 0 ..< r { runs[nruns] = {l, 0}; nruns += 1 }
+	}
+	return
+}
+
+// `raw` as stored blocks.
+@(private)
+emit_stored :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
+	for at := 0; at < len(raw) || at == 0; {
+		n := min(len(raw) - at, STORED_MAX_BYTES)
+		put(d, out, 0, 1)
+		put(d, out, 0, 2)
+		if d.nacc > 0 { put(d, out, 0, 8 - d.nacc) }
+		append(out, u8(n), u8(n >> 8), u8(~n), u8(~n >> 8))
+		append(out, ..raw[at:at + n])
+		at += n
+		if n == 0 { break }
 	}
 }
 
@@ -708,22 +769,8 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 	all: [LIT_SYMBOLS_USED + DIST_CODES]u8
 	copy(all[:hlit], dyn_lit.length[:hlit])
 	copy(all[hlit:hlit + hdist], dyn_dist.length[:hdist])
-	runs: [LIT_SYMBOLS_USED + DIST_CODES][2]u8   // (symbol of the code length alphabet, its extra bits' value)
-	nruns := 0
-	for i := 0; i < hlit + hdist; {
-		l := all[i]
-		r := 1
-		for i + r < hlit + hdist && all[i + r] == l { r += 1 }
-		i += r
-		if l == 0 {
-			for r >= REPEAT_ZERO_LONG_MIN { k := min(r, REPEAT_ZERO_LONG_MAX); runs[nruns] = {CLEN_REPEAT_ZERO_LONG, u8(k - REPEAT_ZERO_LONG_MIN)}; nruns += 1; r -= k }
-			if r >= REPEAT_MIN { runs[nruns] = {CLEN_REPEAT_ZERO, u8(r - REPEAT_MIN)}; nruns += 1; r = 0 }
-		} else {
-			runs[nruns] = {l, 0}; nruns += 1; r -= 1
-			for r >= REPEAT_MIN { k := min(r, REPEAT_PREV_MAX); runs[nruns] = {CLEN_REPEAT_PREV, u8(k - REPEAT_MIN)}; nruns += 1; r -= k }
-		}
-		for _ in 0 ..< r { runs[nruns] = {l, 0}; nruns += 1 }
-	}
+	runs: [LIT_SYMBOLS_USED + DIST_CODES][2]u8
+	nruns := clen_runs(all[:hlit + hdist], runs[:])
 	cl_freq: [CLEN_CODES]u32
 	for k in 0 ..< nruns { cl_freq[runs[k][0]] += 1 }
 	cl: Code
@@ -735,7 +782,7 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 	RUN_EXTRA := [CLEN_CODES]int{CLEN_REPEAT_PREV = 2, CLEN_REPEAT_ZERO = 3, CLEN_REPEAT_ZERO_LONG = 7}
 	dyn_cost := 3 + 5 + 5 + 4 + 3 * hclen + extra_bits
 	for k in 0 ..< nruns { dyn_cost += int(cl.length[runs[k][0]]) + RUN_EXTRA[runs[k][0]] }
-	fix_lit, fix_dist := fixed_code()
+	fix_lit, fix_dist := &fixed_lit_code, &fixed_dist_code
 	fix_cost := 3 + extra_bits
 	for v, s in lit_freq {
 		dyn_cost += int(v) * int(dyn_lit.length[s])
@@ -749,16 +796,7 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 
 	switch {
 	case stored_cost < fix_cost && stored_cost < dyn_cost:
-		for at := 0; at < len(raw) || at == 0; {
-			n := min(len(raw) - at, STORED_MAX_BYTES)
-			put(d, out, 0, 1)
-			put(d, out, 0, 2)
-			if d.nacc > 0 { put(d, out, 0, 8 - d.nacc) }
-			append(out, u8(n), u8(n >> 8), u8(~n), u8(~n >> 8))
-			append(out, ..raw[at:at + n])
-			at += n
-			if n == 0 { break }
-		}
+		emit_stored(d, out, raw)
 	case dyn_cost < fix_cost:
 		put(d, out, 0, 1)
 		put(d, out, 2, 2)
