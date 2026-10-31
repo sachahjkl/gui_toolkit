@@ -43,6 +43,8 @@ restore :: proc(p: ^Prefs, s: []Pref_State) -> (changed: int) {
 		same_user := e.has_user == st.has_user && e.user_text == st.user_text
 		if same_value && e.source == st.source && same_user { continue }
 		changed += 1
+		// (what the profile file keeps changes too: assign says so only of a value that becomes the user's)
+		if e.source == .User { p.dirty = true }
 		assign(p, i, st.value, st.source)
 		if !same_user {
 			delete(e.user_text, p.allocator)

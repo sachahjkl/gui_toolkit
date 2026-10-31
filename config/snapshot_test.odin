@@ -48,6 +48,20 @@ restoring_a_snapshot_puts_every_layer_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, restore(&p, snap), 0)   // nothing left to put back
 }
 
+// What was saved must be saved again once restored, or the next start gets back what the restore took away.
+@(test)
+a_restore_over_a_saved_user_value_is_to_be_saved :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, SNAP_DEFS[:])
+	snap := snapshot(&p)   // (everything is a default)
+	defer snapshot_destroy(snap)
+	testing.expect_value(t, set_from_string(&p, "net.max_conns", "9", .User), Set_Error.None)
+	p.dirty = false   // (as save_user leaves it)
+	testing.expect_value(t, restore(&p, snap), 1)
+	testing.expect(t, p.dirty, "the profile file still has 9")
+}
+
 @(test)
 a_command_line_value_changed_by_the_run_comes_back_over_a_user_one :: proc(t: ^testing.T) {
 	p := prefs_make()

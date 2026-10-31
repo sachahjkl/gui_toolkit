@@ -7,6 +7,7 @@ package dbus
 // and the body signature + arguments written into a Writer) and send() frames it. On the way in, parse_message turns
 // the bytes back into a Message whose reader is positioned at the body.
 
+import "base:runtime"
 import "core:strings"
 
 Msg_Type :: enum u8 { Invalid, Method_Call, Method_Return, Error, Signal }
@@ -29,6 +30,8 @@ Msg_Type :: enum u8 { Invalid, Method_Call, Method_Return, Error, Signal }
 @(private) MIN_MESSAGE_BYTES :: 16
 // The body starts on this boundary after the header.
 @(private) BODY_ALIGN :: 8
+// The spec's limit on a whole message: 128 MiB.
+@(private) MAX_MESSAGE_BYTES :: 1 << 27
 
 // One message, in or out. On the way out, the caller sets type, destination, path, iface, member and writes the body
 // into `body` with its `signature`. On the way in, parse_message fills the fields and a Reader positioned at the body.
@@ -94,11 +97,29 @@ build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, membe
 	return w.buf[:]
 }
 
-// Parses one message out of `buf`, starting at offset 0. Returns the message (with body_bytes a view into buf) and how
-// many bytes the whole message took; ok = false (and total 0) when the buffer does not yet hold a complete message.
+// A copy with nothing shared with `m`.
+@(private)
+message_clone :: proc(m: Message, allocator: runtime.Allocator) -> Message {
+	out := m
+	out.path = strings.clone(m.path, allocator)
+	out.iface = strings.clone(m.iface, allocator)
+	out.member = strings.clone(m.member, allocator)
+	out.error_name = strings.clone(m.error_name, allocator)
+	out.destination = strings.clone(m.destination, allocator)
+	out.sender = strings.clone(m.sender, allocator)
+	out.signature = strings.clone(m.signature, allocator)
+	out.body_bytes = make([]u8, len(m.body_bytes), allocator)
+	copy(out.body_bytes, m.body_bytes)
+	return out
+}
+
+// Parses one message out of `buf`, starting at offset 0. Returns the message (its strings and body copied with
+// `allocator`) and how many bytes the whole message took; ok = false when there is none: total 0 when the buffer does not
+// yet hold a complete message, total -1 when what it holds cannot be one.
 @(private)
 parse_message :: proc(buf: []u8, allocator := context.allocator) -> (msg: Message, total: int, ok: bool) {
 	if len(buf) < MIN_MESSAGE_BYTES { return {}, 0, false }
+	if buf[0] != 'l' && buf[0] != 'B' { return {}, -1, false }
 	big := buf[0] == 'B'
 	r := reader_make(buf, big)
 	r_u8(&r)                       // endianness
@@ -112,6 +133,7 @@ parse_message :: proc(buf: []u8, allocator := context.allocator) -> (msg: Messag
 	fields_len := int(r_u32(&r))
 	fields_start := r.pos
 	fields_end := fields_start + fields_len
+	if fields_end + body_len > MAX_MESSAGE_BYTES { return {}, -1, false }
 	if fields_end > len(buf) { return {}, 0, false }
 	for r.pos < fields_end && !r.err {
 		r_align(&r, STRUCT_ALIGN)
@@ -131,9 +153,10 @@ parse_message :: proc(buf: []u8, allocator := context.allocator) -> (msg: Messag
 		case:                    r_skip(&r, vsig)   // a field we do not use
 		}
 	}
-	if r.err { return {}, 0, false }
+	if r.err { return {}, -1, false }   // (the fields are all there, and do not hold together)
 	r.pos = fields_end
 	r_align(&r, BODY_ALIGN)
+	if r.err { return {}, 0, false }   // (the padding has not all arrived)
 	body_start := r.pos
 	total = body_start + body_len
 	if total > len(buf) { return {}, 0, false }   // the body has not all arrived

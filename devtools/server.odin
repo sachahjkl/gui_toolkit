@@ -37,6 +37,9 @@ MAX_MESSAGE :: 16 * 1024 * 1024
 // A client that stops reading must not hold the UI thread, which answers on its socket.
 @(private)
 SEND_TIMEOUT :: 5 * time.Second
+// accept failing for good (no descriptor left, say) must not take a core.
+@(private)
+ACCEPT_RETRY :: 50 * time.Millisecond
 @(private)
 READ_CHUNK_BYTES :: 16 * 1024
 // An HTTP request whose headers go past this ends the connection.
@@ -75,14 +78,15 @@ accept_loop :: proc(srv: ^Server) {
 	for {
 		sock, _, err := net.accept_tcp(srv.listener)
 		if sync.atomic_load(&srv.stopping) { if err == nil { net.close(sock) }; return }
-		if err != nil { continue }
+		if err != nil { time.sleep(ACCEPT_RETRY); continue }
 		c := new(Conn, runtime.heap_allocator())   // (what crosses threads comes from the heap and goes back to it)
 		c.srv, c.sock = srv, sock
 		net.set_option(sock, .Send_Timeout, SEND_TIMEOUT)
+		// (its thread first: one that ends at once may be reaped as soon as it is in the list, which then joins it)
+		c.thread = thread.create_and_start_with_poly_data(c, conn_loop)
 		sync.lock(&srv.lock)
 		append(&srv.conns, c)
 		sync.unlock(&srv.lock)
-		c.thread = thread.create_and_start_with_poly_data(c, conn_loop)
 	}
 }
 

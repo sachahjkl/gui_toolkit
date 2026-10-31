@@ -46,7 +46,6 @@ Owner :: struct {
 	closing:  bool,          // set before the window goes: later messages are refused
 	handler:  Handler,
 	user:     rawptr,
-	class:    bool,          // the window class is registered
 }
 
 @(private = "file")
@@ -127,7 +126,7 @@ owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
 	inst := win.HINSTANCE(win.GetModuleHandleW(nil))
 	class := win.utf8_to_wstring(CLASS_NAME, context.temp_allocator)
 	wc := win.WNDCLASSEXW{cbSize = size_of(win.WNDCLASSEXW), lpfnWndProc = owner_proc, hInstance = inst, lpszClassName = class}
-	if win.RegisterClassExW(&wc) != 0 { o.class = true }
+	win.RegisterClassExW(&wc)   // (fails harmlessly when another owner of this process has registered it)
 	o.hwnd = win.CreateWindowExW(0, class, win.utf8_to_wstring(o.name, context.temp_allocator), 0, 0, 0, 0, 0, win.HWND_MESSAGE, nil, inst, nil)
 	if o.hwnd == nil { return false }
 	win.SetWindowLongPtrW(o.hwnd, win.GWLP_USERDATA, win.LONG_PTR(uintptr(o)))

@@ -34,6 +34,9 @@ foreign libc {
 @(private) O_NONBLOCK :: 0o4000
 @(private) MSG_NOSIGNAL :: 0x4000
 @(private) POLLIN_C :: i16(0x0001)
+@(private) POLLOUT_C :: i16(0x0004)
+// A full socket: how long the bus gets to make room before the connection is given up (half a message may have gone).
+@(private) SEND_STALL_MS :: 5000
 @(private) UNIX_PATH_BYTES :: 108
 // The server's lines in the authentication are short.
 @(private) AUTH_LINE_BYTES :: 512
@@ -85,6 +88,7 @@ connect_bus_address :: proc(addr: string, allocator := context.allocator) -> ^Co
 	c.subs = make([dynamic]Subscription, allocator)
 	c.pending = make([dynamic]Pending, allocator)
 	_ = virtual.arena_init_growing(&c.msg_arena)
+	_ = virtual.arena_init_growing(&c.reply_arena)
 	if !auth_external(c) { conn_close(c); return nil }
 	// now non-blocking for the dispatch loop
 	set_nonblocking(fd)
@@ -110,6 +114,7 @@ conn_close :: proc(c: ^Conn) {
 	delete(c.in_buf)
 	delete(c.unique_name)
 	virtual.arena_destroy(&c.msg_arena)
+	virtual.arena_destroy(&c.reply_arena)
 	free(c)
 }
 
@@ -165,7 +170,8 @@ auth_external :: proc(c: ^Conn) -> bool {
 	hex := uid_hex(uid, context.temp_allocator)
 	line := strings.concatenate({"AUTH EXTERNAL ", hex, "\r\n"}, context.temp_allocator)
 	if !send_all(c.fd, transmute([]u8)line) { return false }
-	resp := read_line(c.fd)
+	line_buf: [AUTH_LINE_BYTES]u8
+	resp := read_line(c.fd, line_buf[:])
 	if !strings.has_prefix(resp, "OK ") { return false }
 	// NEGOTIATE_UNIX_FD would go here if we needed to pass fds; the tray and notifications send icon bytes inline, so
 	// we skip it (BEGIN straight away).
@@ -201,8 +207,7 @@ u32_to_string :: proc(v: u32, allocator := context.allocator) -> string {
 
 // Reads one CRLF line (blocking) during the auth handshake. Bounded to a small buffer.
 @(private)
-read_line :: proc(fd: i32) -> string {
-	@(static) buf: [AUTH_LINE_BYTES]u8
+read_line :: proc(fd: i32, buf: []u8) -> string {
 	n := 0
 	for n < len(buf) - 1 {
 		one: [1]u8
@@ -219,8 +224,16 @@ send_all :: proc(fd: i32, data: []u8) -> bool {
 	off := 0
 	for off < len(data) {
 		n := send(fd, &data[off], uint(len(data)) - uint(off), MSG_NOSIGNAL)
-		if n <= 0 { return false }
-		off += int(n)
+		if n > 0 { off += int(n); continue }
+		if n == 0 { return false }
+		#partial switch posix.errno() {
+		case .EINTR:
+			continue
+		case .EAGAIN:   // (the socket is non-blocking once authenticated: a full one is no lost one)
+			pfd := Pollfd_C{fd = fd, events = POLLOUT_C}
+			if poll_c(&pfd, 1, SEND_STALL_MS) != 0 { continue }
+		}
+		return false
 	}
 	return true
 }

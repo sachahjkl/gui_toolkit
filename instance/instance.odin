@@ -9,7 +9,7 @@
 //
 // How (Windows, instance_windows.odin): a named mutex says who owns the name; the owner has a message-only window whose
 // title is the name; a second start finds it, allows it to take the foreground, and sends a WM_COPYDATA with the envelope
-// below. How (POSIX, instance_posix.odin): a lock file (flock) says who owns the name and a Unix socket in the user's
+// below. How (Linux, instance_linux.odin): a lock file (flock) says who owns the name and a Unix socket in the user's
 // runtime directory carries the envelope. The owner answers 1 (taken), 2 (another identity) or 0 (closing).
 //
 // What can go wrong, and what then: the owner has no window / socket yet (it is starting) or has just dropped it (it is

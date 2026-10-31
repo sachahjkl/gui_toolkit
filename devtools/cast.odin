@@ -32,16 +32,19 @@ Cast :: struct {
 }
 
 @(private)
-cast_start :: proc(srv: ^Server, to: Reply_To, p: json.Object) {
-	cast_stop(srv)
+cast_start :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.Object) {
+	cast_stop(srv, r)
 	srv.screencast = Cast{on = true, to = hold(to), min_ms = num(p["minIntervalMs"], CAST_MIN_INTERVAL_MS)}
 	srv.screencast.owed = true   // (the first frame, at once)
 }
 
+// A capture of ours on its way is cancelled: nothing would read it, and until it is read no other can start. (r nil: the
+// server is ending.)
 @(private)
-cast_stop :: proc(srv: ^Server) {
+cast_stop :: proc(srv: ^Server, r: ^render.Renderer = nil) {
 	c := &srv.screencast
 	if !c.on { return }
+	if c.pending && r != nil { render.capture_cancel(r) }
 	release(c.to)
 	c^ = {}
 }
@@ -51,7 +54,7 @@ cast_stop :: proc(srv: ^Server) {
 cast_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	c := &srv.screencast
 	if !c.on { return }
-	if conn_gone(c.to.conn) { if c.pending && r != nil { render.capture_cancel(r) }; cast_stop(srv); return }
+	if conn_gone(c.to.conn) { cast_stop(srv, r); return }
 	c.owed = false
 	if r == nil || c.pending || c.unacked || len(srv.captures) > 0 || s.build_index == c.last_build { return }
 	now := ui.now_ms()
