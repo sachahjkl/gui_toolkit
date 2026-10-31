@@ -2,7 +2,7 @@
 package platform
 
 // Where a window is on the screen (placement.odin has the shared types and fit_rect_to_work). On X11 the position is
-// set on the window (xcb_configure_window) but not read back; Wayland does not let a client know or set
+// read from the server and set on the window (xcb_configure_window); Wayland does not let a client know or set
 // its absolute position (the compositor places windows), so there a window reports {0,0} for its origin and move is a
 // no-op, which is correct for the protocol — an app saves and restores its *size* and maximized state, which both
 // backends support.
@@ -19,8 +19,8 @@ outer_rect :: proc(w: ^Window) -> [4]int {
 
 client_origin :: proc(w: ^Window) -> [2]int {
 	if w.offscreen { return {w.off_place[0], w.off_place[1]} }
-	r := outer_rect(w)
-	return {r[0], r[1]}
+	if w.backend == .X11 { return x11_client_origin(w) }
+	return {}   // Wayland: the compositor keeps it from the client
 }
 
 move_window :: proc(w: ^Window, x, y: int) {

@@ -38,6 +38,12 @@ Data_Source_Listener :: struct {
 }
 @(private) data_source_listener := Data_Source_Listener{ds_target, ds_send, ds_cancelled, ds_dnd_drop, ds_dnd_finished, ds_action}
 
+// wl_proxy_destroy alone frees the client's side: the compositor would keep the source, and the drag it belongs to.
+@(private)
+wl_data_source_destroy :: proc "contextless" (src: Wl_Proxy) {
+	wl.proxy_marshal_flags(src, WL_DATA_SOURCE_DESTROY, nil, wl.proxy_get_version(src), WL_MARSHAL_FLAG_DESTROY)
+}
+
 @(private) ds_target :: proc "c" (data: rawptr, src: Wl_Proxy, mime: cstring) {}
 @(private)
 ds_send :: proc "c" (data: rawptr, src: Wl_Proxy, mime: cstring, fd: i32) {
@@ -53,11 +59,11 @@ ds_send :: proc "c" (data: rawptr, src: Wl_Proxy, mime: cstring, fd: i32) {
 ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	context = wl_ctx_real()
 	if src == wlc.data_source {
-		wl.proxy_destroy(src)
+		wl_data_source_destroy(src)
 		wlc.data_source = nil
 		clip_note_changed()
 	} else if src == wlc.dnd_source {
-		wl.proxy_destroy(src)
+		wl_data_source_destroy(src)
 		wlc.dnd_source = nil
 		wlc.dnd_sending = false
 		wl_dnd_source_action = 0   // (the target it hovered may have chosen an action: nothing was dropped)
@@ -67,7 +73,7 @@ ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 @(private)
 ds_dnd_finished :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	context = wl_ctx_real()
-	if src == wlc.dnd_source { wl.proxy_destroy(src); wlc.dnd_source = nil; wlc.dnd_sending = false }
+	if src == wlc.dnd_source { wl_data_source_destroy(src); wlc.dnd_source = nil; wlc.dnd_sending = false }
 }
 @(private) ds_action :: proc "c" (data: rawptr, src: Wl_Proxy, action: u32) { wl_dnd_source_action = action }
 @(private) wl_dnd_source_action: u32
@@ -104,7 +110,7 @@ wl_fd_write_all :: proc(fd: i32, data: []u8) {
 @(private)
 wl_clipboard_publish :: proc() {
 	if wlc.data_device == nil || wlc.data_device_manager == nil { return }
-	if wlc.data_source != nil { wl.proxy_destroy(wlc.data_source); wlc.data_source = nil }
+	if wlc.data_source != nil { wl_data_source_destroy(wlc.data_source); wlc.data_source = nil }
 	src := wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE,
 		wl.data_source_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil)
 	if src == nil { return }
@@ -147,7 +153,7 @@ wl_offer_new :: proc(offer: Wl_Proxy) {
 	if offer == nil { return }
 	wl.proxy_add_listener(offer, &data_offer_listener, nil)
 	// the MIME list for this offer is gathered into a scratch list until the offer is bound to a role
-	clear(&wl_pending_offer_mimes)
+	wl_free_mimes(&wl_pending_offer_mimes)
 	wl_pending_offer = offer
 }
 @(private) wl_pending_offer: Wl_Proxy
@@ -168,7 +174,7 @@ off_offer :: proc "c" (data: rawptr, o: Wl_Proxy, mime: cstring) {
 @(private)
 wl_selection_set :: proc(offer: Wl_Proxy) {
 	if wlc.offer != nil && wlc.offer != offer {
-		wl.proxy_destroy(wlc.offer)
+		wl.proxy_marshal_flags(wlc.offer, WL_DATA_OFFER_DESTROY, nil, wl.proxy_get_version(wlc.offer), WL_MARSHAL_FLAG_DESTROY)
 		wl_free_mimes(&wlc.offer_mimes)
 	}
 	wlc.offer = offer

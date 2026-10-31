@@ -49,6 +49,7 @@ package platform
 @(private) WL_COMPOSITOR_CREATE_SURFACE :: 0
 @(private) WL_COMPOSITOR_CREATE_REGION :: 1
 @(private) WL_SURFACE_DESTROY :: 0
+@(private) ZXDG_TOPLEVEL_DECORATION_DESTROY :: 0
 @(private) WL_SURFACE_ATTACH :: 1
 @(private) WL_SURFACE_FRAME :: 3
 @(private) WL_SURFACE_SET_OPAQUE_REGION :: 4

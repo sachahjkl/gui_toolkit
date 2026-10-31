@@ -6,7 +6,8 @@ package platform
 // ConvertSelection on XdndSelection (the clipboard read path, clipboard_x11_linux.odin). As a source: drag_start owns
 // XdndSelection, finds the window under the pointer, sends it XdndEnter / XdndPosition, reads XdndStatus for the effect
 // and the accept, and on release sends XdndDrop (or XdndLeave), pumping the X connection until XdndFinished. The
-// source shows no drag image, offers no format of the app's own, and does not follow XdndProxy.
+// source draws its picture in a window of its own that follows the pointer, offers the formats of the app's own under
+// their MIME types, and follows XdndProxy.
 //
 // The MIME targets are the same atoms as the clipboard (text/html, image/png, text/uri-list, UTF8_STRING).
 
@@ -20,6 +21,13 @@ import "core:sys/posix"
 @(private = "file") XDND_TYPE_LIST_MAX_WORDS :: 1 << 10
 @(private = "file") XDND_SOURCE_POLL_MS :: 15     // between two looks at the connection during a drag
 @(private = "file") XDND_WINDOW_DEPTH_MAX :: 16   // bounds the walk down the window tree under the pointer
+@(private = "file") X11_PUT_IMAGE_ROWS :: 64      // rows per request: a large picture passes the request limit of a server without BIG-REQUESTS
+@(private = "file") XCB_IMAGE_FORMAT_Z_PIXMAP :: 2
+@(private = "file") XCB_CW_BACK_PIXMAP :: 1 << 0
+@(private = "file") XCB_CW_BORDER_PIXEL :: 1 << 3
+@(private = "file") XCB_CW_OVERRIDE_REDIRECT :: 1 << 9
+@(private = "file") XCB_VISUAL_CLASS_TRUE_COLOR :: 4
+@(private = "file") X11_ARGB_DEPTH :: 32
 
 @(private)
 x11_dnd_intern_atoms :: proc() {
@@ -85,7 +93,7 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 		x11_dnd_tgt.accepted = x11_dnd_pick_type()
 		x11_dnd_tgt.active = true
 	case x11c.xdnd_position:
-		rootx := i16(u16(d3 >> 16)); rooty := i16(u16(d3 & 0xffff))
+		rootx := i16(u16(d2 >> 16)); rooty := i16(u16(d2 & 0xffff))   // data32[2]
 		p := x11_root_to_client(w, int(rootx), int(rooty))
 		x11_dnd_tgt.pos = p
 		d := dnd_state(w)
@@ -153,6 +161,14 @@ x11_dnd_read_all :: proc(w: ^Window, allocator := context.allocator) -> (out: Dr
 		b := x11_selection_read(w, x11c.xdnd_selection, "text/uri-list", context.temp_allocator)
 		for p in uri_list_to_paths(string(b), allocator) { append(&out.files, p) }
 	}
+	// the formats of the app's own (of any program): every other MIME type
+	for t in x11_dnd_tgt.types {
+		if t == x11c.mime_uri_list || t == x11c.mime_text_html || t == x11c.mime_image_png || t == x11c.utf8_string || t == XCB_ATOM_STRING { continue }
+		name := x11_atom_name(t)
+		if strings.index_byte(name, '/') < 0 || strings.has_prefix(name, "text/plain") { continue }
+		b := x11_selection_read(w, x11c.xdnd_selection, name, context.temp_allocator)
+		if len(b) > 0 { append(&out.custom, Drag_Entry{clone_string(name), clone_string(string(b))}) }
+	}
 	if has(x11c.mime_text_html) {
 		b := x11_selection_read(w, x11c.xdnd_selection, "text/html", context.temp_allocator)
 		out.html = clone_string(string(b))
@@ -213,7 +229,9 @@ X11_Dnd_Source :: struct {
 	target:    Xcb_Window,     // the toplevel under the pointer we are talking to
 	accepted:  bool,
 	finished:  bool,
+	dest:      Xcb_Window,     // where the messages for it go: the target, or its XdndProxy
 	action:    Xcb_Atom,       // the action asked of the target
+	image:     X11_Drag_Image,
 	answer:    Xcb_Atom,       // the action the target says it takes
 }
 @(private) x11_dnd_src: X11_Dnd_Source
@@ -232,6 +250,7 @@ x11_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image
 	x11_dnd_src.active = true
 	x11_dnd_src.action = x11_action_atom(drop_effect_for(allowed, {}))
 	x11_dnd_build_targets(data)
+	if img, has := image.?; has { x11_drag_image_make(w, img) }
 	// own XdndSelection so the target can read our data (served by the same SelectionRequest handler)
 	x11_dnd_own_selection(st.id)
 	// publish the type list for more than three types
@@ -239,6 +258,7 @@ x11_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image
 		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_type_list, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(x11_dnd_src.targets)), raw_data(x11_dnd_src.targets[:]))
 	}
 	result := x11_dnd_source_loop(w)
+	x11_drag_image_free()
 	drag_data_destroy(&x11_dnd_src.data)
 	delete(x11_dnd_src.targets)
 	x11_dnd_src.active = false
@@ -252,6 +272,7 @@ x11_dnd_build_targets :: proc(d: Drag_Data) {
 	if d.text != "" || d.url != "" { append(&x11_dnd_src.targets, x11c.utf8_string, XCB_ATOM_STRING) }
 	if d.html != "" { append(&x11_dnd_src.targets, x11c.mime_text_html) }
 	if len(d.image) > 0 { append(&x11_dnd_src.targets, x11c.mime_image_png) }
+	for e in d.custom { append(&x11_dnd_src.targets, x11_atom(e.mime)) }
 }
 
 @(private)
@@ -278,9 +299,11 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 			case XCB_MOTION_NOTIFY:
 				rootx := int(i16(u16(b[20]) | u16(b[21]) << 8))
 				rooty := int(i16(u16(b[22]) | u16(b[23]) << 8))
-				tgt := x11_window_at(rootx, rooty)
+				x11_drag_image_move(rootx, rooty)
+				tgt, dest := x11_window_at(rootx, rooty)
 				if tgt != last_target {
 					if last_target != 0 { x11_send_source_leave(last_target) }
+					x11_dnd_src.dest = dest
 					if tgt != 0 { x11_send_source_enter(tgt) }
 					last_target = tgt
 					x11_dnd_src.target = tgt
@@ -330,10 +353,11 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 // Serves a SelectionRequest for XdndSelection while a drag is running: write the asked flavour of the drag data.
 @(private)
 x11_dnd_serve_source_request :: proc(b: [^]u8) {
-	requestor := Xcb_Window(get_u32(b[16:]))
-	selection := Xcb_Atom(get_u32(b[20:]))
-	target := Xcb_Atom(get_u32(b[24:]))
-	property := Xcb_Atom(get_u32(b[28:]))
+	// xcb_selection_request_event_t: time at [4], owner at [8], then these
+	requestor := Xcb_Window(get_u32(b[12:]))
+	selection := Xcb_Atom(get_u32(b[16:]))
+	target := Xcb_Atom(get_u32(b[20:]))
+	property := Xcb_Atom(get_u32(b[24:]))
 	if property == 0 { property = target }
 	data := x11_dnd_src_bytes(target)
 	ok := data != nil
@@ -366,6 +390,7 @@ x11_dnd_src_bytes :: proc(target: Xcb_Atom) -> []u8 {
 		if d.url != "" { strings.write_string(&b, d.url); strings.write_string(&b, "\r\n") }
 		return transmute([]u8)strings.to_string(b)
 	}
+	for e in d.custom { if x11_atom(e.mime) == target { return transmute([]u8)e.data } }
 	return nil
 }
 
@@ -378,52 +403,86 @@ x11_send_source_enter :: proc(target: Xcb_Window) {
 		u32(x11_dnd_src.window), flags,
 		len(t) > 0 ? u32(t[0]) : 0, len(t) > 1 ? u32(t[1]) : 0, len(t) > 2 ? u32(t[2]) : 0,
 	}
-	x11_send_client_message(target, x11c.xdnd_enter, data)
+	x11_send_client_message(x11_dnd_src.dest, x11c.xdnd_enter, data, target)
 }
 
 @(private)
 x11_send_source_position :: proc(target: Xcb_Window, rootx, rooty: int) {
 	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(x11_dnd_src.window), 0, u32(u16(rootx)) << 16 | u32(u16(rooty)), 0, u32(x11_dnd_src.action)}
-	x11_send_client_message(target, x11c.xdnd_position, data)
+	x11_send_client_message(x11_dnd_src.dest, x11c.xdnd_position, data, target)
 }
 
 @(private)
 x11_send_source_leave :: proc(target: Xcb_Window) {
 	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(x11_dnd_src.window), 0, 0, 0, 0}
-	x11_send_client_message(target, x11c.xdnd_leave, data)
+	x11_send_client_message(x11_dnd_src.dest, x11c.xdnd_leave, data, target)
 	x11_dnd_src.accepted = false
 }
 
 @(private)
 x11_send_source_drop :: proc(target: Xcb_Window) {
 	data := [X11_CLIENT_MESSAGE_WORDS]u32{u32(x11_dnd_src.window), 0, 0, 0, 0}
-	x11_send_client_message(target, x11c.xdnd_drop, data)
+	x11_send_client_message(x11_dnd_src.dest, x11c.xdnd_drop, data, target)
 }
 
 @(private)
-x11_send_client_message :: proc(dest: Xcb_Window, mtype: Xcb_Atom, data: [X11_CLIENT_MESSAGE_WORDS]u32) {
+x11_send_client_message :: proc(dest: Xcb_Window, mtype: Xcb_Atom, data: [X11_CLIENT_MESSAGE_WORDS]u32, window: Xcb_Window = 0) {
 	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_CLIENT_MESSAGE
 	ev[1] = X11_FORMAT_32
-	put_u32(ev[4:], u32(dest))
+	put_u32(ev[4:], u32(window != 0 ? window : dest))   // (through a proxy: sent to it, naming the target)
 	put_u32(ev[8:], u32(mtype))
 	for i in 0 ..< X11_CLIENT_MESSAGE_WORDS { put_u32(ev[12 + i * 4:], data[i]) }
 	xcb.send_event(x11c.c, 0, dest, 0, &ev[0])
 	xcb.flush(x11c.c)
 }
 
-// The XDND-aware window under a point of the root: down from the root through the children under the point. 0: none.
+// The XDND-aware window under a point of the root, down from the root through the children under the point, and where
+// its messages go: itself, or the window its XdndProxy names when that one says so too and is aware. 0: none.
 @(private)
-x11_window_at :: proc(rootx, rooty: int) -> Xcb_Window {
+x11_window_at :: proc(rootx, rooty: int) -> (target, dest: Xcb_Window) {
 	cur := x11c.screen.root
 	for _ in 0 ..< XDND_WINDOW_DEPTH_MAX {
 		_, child, ok := x11_translate(x11c.screen.root, cur, rootx, rooty)
-		if !ok || child == 0 { return 0 }
-		if x11_is_xdnd_aware(child) { return child }
+		if !ok || child == 0 { return 0, 0 }
+		if proxy := x11_window_prop(child, x11c.xdnd_proxy); proxy != 0 && x11_window_prop(proxy, x11c.xdnd_proxy) == proxy && x11_is_xdnd_aware(proxy) {
+			return child, proxy
+		}
+		if x11_is_xdnd_aware(child) { return child, child }
 		cur = child
 	}
-	return 0
+	return 0, 0
 }
+
+// A window property holding a window (0: none).
+@(private)
+x11_window_prop :: proc(window: Xcb_Window, prop: Xcb_Atom) -> Xcb_Window {
+	reply := xcb.get_property_reply(x11c.c, xcb.get_property(x11c.c, 0, window, prop, 0, 0, 1), nil)
+	if reply == nil { return 0 }
+	defer posix.free(reply)
+	if xcb.get_property_value_length(reply) < size_of(u32) { return 0 }
+	return (^Xcb_Window)(xcb.get_property_value(reply))^
+}
+
+// An atom's name (temporary allocator). xcb_get_atom_name, bound when first needed.
+@(private)
+x11_atom_name :: proc(atom: Xcb_Atom) -> string {
+	if x11_get_atom_name == nil {
+		x11_get_atom_name = auto_cast lib_sym(xcb.handle, "xcb_get_atom_name")
+		x11_get_atom_name_reply = auto_cast lib_sym(xcb.handle, "xcb_get_atom_name_reply")
+		x11_get_atom_name_name = auto_cast lib_sym(xcb.handle, "xcb_get_atom_name_name")
+		x11_get_atom_name_len = auto_cast lib_sym(xcb.handle, "xcb_get_atom_name_name_length")
+	}
+	if x11_get_atom_name == nil || x11_get_atom_name_reply == nil || x11_get_atom_name_name == nil || x11_get_atom_name_len == nil { return "" }
+	reply := x11_get_atom_name_reply(x11c.c, x11_get_atom_name(x11c.c, atom), nil)
+	if reply == nil { return "" }
+	defer posix.free(reply)
+	return strings.clone(string(x11_get_atom_name_name(reply)[:x11_get_atom_name_len(reply)]), context.temp_allocator)
+}
+@(private) x11_get_atom_name: proc "c" (c: Xcb_Connection, atom: Xcb_Atom) -> Xcb_Intern_Atom_Cookie
+@(private) x11_get_atom_name_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: rawptr) -> rawptr
+@(private) x11_get_atom_name_name: proc "c" (reply: rawptr) -> [^]u8
+@(private) x11_get_atom_name_len: proc "c" (reply: rawptr) -> i32
 
 @(private)
 x11_is_xdnd_aware :: proc(window: Xcb_Window) -> bool {
@@ -439,4 +498,120 @@ x11_is_xdnd_aware :: proc(window: Xcb_Window) -> bool {
 x11_root_to_client :: proc(w: ^Window, rootx, rooty: int) -> [2]f32 {
 	if p, _, ok := x11_translate(x11c.screen.root, x11_state(w).id, rootx, rooty); ok { return {f32(p.x), f32(p.y)} }
 	return {f32(rootx), f32(rooty)}
+}
+
+////////////////////////////////
+// the picture of a drag: X has no drag image of the system, the source shows a window of its own that follows the pointer
+
+@(private)
+X11_Drag_Image :: struct {
+	window:  Xcb_Window,
+	pixmap:  u32,
+	mapped:  bool,
+	through: bool,     // the pointer passes through it (XFIXES); else it is kept beside the pointer
+	size:    [2]int,
+	offset:  [2]int,
+}
+
+// Bindings the rest of the backend does not need.
+@(private = "file")
+X11_Image_Lib :: struct {
+	allowed_depths: proc "c" (s: ^Xcb_Screen) -> X11_Depth_Iterator,
+	depth_next:     proc "c" (it: ^X11_Depth_Iterator),
+	depth_visuals:  proc "c" (d: rawptr) -> [^]X11_Visual,
+	depth_visuals_len: proc "c" (d: rawptr) -> i32,
+	create_pixmap:  proc "c" (c: Xcb_Connection, depth: u8, pid: u32, drawable: Xcb_Window, w, h: u16) -> Xcb_Void_Cookie,
+	free_pixmap:    proc "c" (c: Xcb_Connection, pid: u32) -> Xcb_Void_Cookie,
+	create_gc:      proc "c" (c: Xcb_Connection, gc: u32, drawable: u32, mask: u32, values: rawptr) -> Xcb_Void_Cookie,
+	free_gc:        proc "c" (c: Xcb_Connection, gc: u32) -> Xcb_Void_Cookie,
+	put_image:      proc "c" (c: Xcb_Connection, format: u8, drawable: u32, gc: u32, w, h: u16, x, y: i16, left_pad, depth: u8, len: u32, data: rawptr) -> Xcb_Void_Cookie,
+}
+@(private = "file") X11_Depth_Iterator :: struct { data: rawptr, rem, index: i32 }
+@(private = "file") X11_Visual :: struct { id: u32, class, bits: u8, entries: u16, r, g, b: u32, pad: [4]u8 }
+@(private = "file") x11_image: X11_Image_Lib
+
+// The first visual of 32 bits (a compositor blends its alpha), 0 when the screen has none.
+@(private = "file")
+x11_argb_visual :: proc() -> u32 {
+	it := x11_image.allowed_depths(x11c.screen)
+	for it.rem > 0 {
+		if (^u8)(it.data)^ == X11_ARGB_DEPTH {
+			visuals := x11_image.depth_visuals(it.data)
+			for v in visuals[:x11_image.depth_visuals_len(it.data)] { if v.class == XCB_VISUAL_CLASS_TRUE_COLOR { return v.id } }
+		}
+		x11_image.depth_next(&it)
+	}
+	return 0
+}
+
+// Makes the window of the picture (premultiplied BGRA in a pixmap that is its background), not yet shown: it appears at
+// the first move. d.image_* says what the system shows, as drag_image_held does on Windows.
+@(private = "file")
+x11_drag_image_make :: proc(w: ^Window, img: Drag_Image) {
+	if !drag_image_valid(img) { return }
+	h := xcb.handle
+	x11_image.allowed_depths = auto_cast lib_sym(h, "xcb_screen_allowed_depths_iterator")
+	x11_image.depth_next     = auto_cast lib_sym(h, "xcb_depth_next")
+	x11_image.depth_visuals  = auto_cast lib_sym(h, "xcb_depth_visuals")
+	x11_image.depth_visuals_len = auto_cast lib_sym(h, "xcb_depth_visuals_length")
+	x11_image.create_pixmap  = auto_cast lib_sym(h, "xcb_create_pixmap")
+	x11_image.free_pixmap    = auto_cast lib_sym(h, "xcb_free_pixmap")
+	x11_image.create_gc      = auto_cast lib_sym(h, "xcb_create_gc")
+	x11_image.free_gc        = auto_cast lib_sym(h, "xcb_free_gc")
+	x11_image.put_image      = auto_cast lib_sym(h, "xcb_put_image")
+	if x11_image.allowed_depths == nil || x11_image.depth_next == nil || x11_image.depth_visuals == nil || x11_image.create_pixmap == nil || x11_image.create_gc == nil || x11_image.put_image == nil { return }
+
+	fit, px := drag_image_bgra(img)
+
+	root := x11c.screen.root
+	depth: u8 = x11c.screen.root_depth
+	visual := x11c.screen.root_visual
+	colormap := u32(x11c.screen.default_colormap)
+	if argb := x11_argb_visual(); argb != 0 {
+		depth, visual = X11_ARGB_DEPTH, argb
+		colormap = xcb.generate_id(x11c.c)
+		xcb.create_colormap(x11c.c, 0, Xcb_Colormap(colormap), root, visual)
+	}
+	pixmap := xcb.generate_id(x11c.c)
+	x11_image.create_pixmap(x11c.c, depth, pixmap, root, u16(fit.size.x), u16(fit.size.y))
+	gc := xcb.generate_id(x11c.c)
+	x11_image.create_gc(x11c.c, gc, pixmap, 0, nil)
+	stride := fit.size.x * 4
+	for y := 0; y < fit.size.y; y += X11_PUT_IMAGE_ROWS {
+		rows := min(X11_PUT_IMAGE_ROWS, fit.size.y - y)
+		x11_image.put_image(x11c.c, XCB_IMAGE_FORMAT_Z_PIXMAP, pixmap, gc, u16(fit.size.x), u16(rows), 0, i16(y), 0, depth, u32(rows * stride), raw_data(px[y * stride:]))
+	}
+	x11_image.free_gc(x11c.c, gc)
+
+	id := Xcb_Window(xcb.generate_id(x11c.c))
+	values := [4]u32{pixmap, 0, 1, colormap}   // in the order of their bits: background, border, override redirect, colormap
+	xcb.create_window(x11c.c, depth, id, root, 0, 0, u16(fit.size.x), u16(fit.size.y), 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, visual,
+		XCB_CW_BACK_PIXMAP | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP, &values[0])
+	x11_dnd_src.image = {window = id, pixmap = pixmap, through = x11_window_input_through(id), size = fit.size, offset = fit.offset}
+	xcb.flush(x11c.c)
+	d := dnd_state(w)
+	d.image_held, d.image_size, d.image_offset = true, fit.size, fit.offset
+}
+
+// The picture with its hot spot under the pointer (or just beside it, when the pointer cannot pass through it).
+@(private = "file")
+x11_drag_image_move :: proc(rootx, rooty: int) {
+	im := &x11_dnd_src.image
+	if im.window == 0 { return }
+	x, y := rootx - im.offset.x, rooty - im.offset.y
+	if !im.through && rootx >= x && rooty >= y && rootx < x + im.size.x && rooty < y + im.size.y { x, y = rootx + 1, rooty + 1 }
+	values := [2]i32{i32(x), i32(y)}
+	xcb.configure_window(x11c.c, im.window, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, &values[0])
+	if !im.mapped { xcb.map_window(x11c.c, im.window); im.mapped = true }
+	xcb.flush(x11c.c)
+}
+
+@(private = "file")
+x11_drag_image_free :: proc() {
+	im := &x11_dnd_src.image
+	if im.window == 0 { return }
+	xcb.destroy_window(x11c.c, im.window)
+	if x11_image.free_pixmap != nil { x11_image.free_pixmap(x11c.c, im.pixmap) }
+	xcb.flush(x11c.c)
+	im^ = {}
 }
