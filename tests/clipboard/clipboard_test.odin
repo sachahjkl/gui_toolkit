@@ -275,5 +275,6 @@ clipboard_changed_tells_once :: proc(t: ^testing.T) {
 		platform.clipboard_set(w, {text = "x"})   // (an offscreen window keeps it in the process's store)
 		testing.expect(t, platform.clipboard_changed(w))
 		testing.expect(t, !platform.clipboard_changed(w))
+		platform.clipboard_set(w, {})   // (the store outlives the test: leave it empty)
 	}
 }

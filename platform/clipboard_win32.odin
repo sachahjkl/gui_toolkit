@@ -162,7 +162,7 @@ clipboard_watch :: proc(w: ^Window, on: bool) -> bool {
 
 // True once after the clipboard changed (compared with the last call for this window; the first call says true).
 clipboard_changed :: proc(w: ^Window) -> bool {
-	seq := clipboard_sequence()
+	seq := clipboard_sequence() + 1   // (never 0 at first, on a session nothing was copied in: the zero of clip_seen is "not asked yet")
 	if seq == w.clip_seen { return false }
 	w.clip_seen = seq
 	return true
