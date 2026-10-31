@@ -69,11 +69,14 @@ COLR_FLATNESS :: 0.02
 @(private) COLR_CURVE_LINES_MAX :: 48
 // The bounds of an outline are clamped to this (pixels from the origin) before they are rounded.
 @(private) COLR_COVER_COORD_MAX_PX :: 1e6
+// Steps of the scan conversion (a crossing computed, a crossing moved when sorting) that count for one of work.
+@(private) COLR_SCAN_STEPS_PER_WORK :: 16
 
 // Nonzero-winding coverage of `o` under `m` (em units to canvas pixels) over the pixels of `clip` (x0 y0 x1 y1): the
 // rectangle it covers (inside `clip`) and one coverage value per pixel of it. Horizontal coverage is exact, vertical
-// coverage is sampled `samples` times per pixel row. ok = false: nothing is covered.
-colr_cover :: proc(o: ^Outline, m: Mat, clip: [4]int, samples: int, alloc: runtime.Allocator) -> (rect: [4]int, cov: []f32, ok: bool) {
+// coverage is sampled `samples` times per pixel row. ok = false: nothing is covered. `work`: what may still be spent, less
+// what this spends; below 0 when it was not enough or the memory could not be had (ok = false).
+colr_cover :: proc(o: ^Outline, m: Mat, clip: [4]int, samples: int, alloc: runtime.Allocator, work: ^int = nil) -> (rect: [4]int, cov: []f32, ok: bool) {
 	if len(o.quads) == 0 { return }
 	lo := [2]f32{max(f32), max(f32)}
 	hi := [2]f32{-max(f32), -max(f32)}
@@ -107,8 +110,8 @@ colr_cover :: proc(o: ^Outline, m: Mat, clip: [4]int, samples: int, alloc: runti
 		}
 	}
 	if len(edges) == 0 { return }
-	cov = scan_edges(edges[:], rect, samples, alloc)
-	return rect, cov, true
+	cov = scan_edges(edges[:], rect, samples, alloc, work)
+	return rect, cov, cov != nil
 }
 
 @(private)
@@ -125,11 +128,17 @@ add_edge :: proc(edges: ^[dynamic]Edge, a, b: [2]f32) {
 }
 
 @(private)
-scan_edges :: proc(edges: []Edge, rect: [4]int, samples: int, alloc: runtime.Allocator) -> []f32 {
+scan_edges :: proc(edges: []Edge, rect: [4]int, samples: int, alloc: runtime.Allocator, work: ^int) -> []f32 {
 	w, h := rect[2] - rect[0], rect[3] - rect[1]
 	cov := make([]f32, w * h, alloc)
 	area := make([]f32, w + 2, alloc)
 	diff := make([]f32, w + 2, alloc)
+	if cov == nil || area == nil || diff == nil {
+		if work != nil { work^ = -1 }
+		return nil
+	}
+	steps := 0
+	allowed := work != nil ? work^ * COLR_SCAN_STEPS_PER_WORK : max(int)
 	slice.sort_by(edges, proc(a, b: Edge) -> bool { return a.y0 < b.y0 })
 	active := make([dynamic]int, 0, 32, alloc)
 	xs := make([dynamic]Cross, 0, 32, alloc)
@@ -150,12 +159,13 @@ scan_edges :: proc(edges: []Edge, rect: [4]int, samples: int, alloc: runtime.All
 				if edges[active[i]].y1 <= y { unordered_remove(&active, i) } else { i += 1 }
 			}
 			if len(active) == 0 { continue }
+			steps += len(active)
 			clear(&xs)
 			for ei in active {
 				e := &edges[ei]
 				append(&xs, Cross{e.x0 + (y - e.y0) * e.slope, e.dir})
 			}
-			// insertion sort: a handful of crossings
+			// insertion sort: a handful of crossings in a real glyph, and a hostile one runs out of steps
 			for j in 1 ..< len(xs) {
 				c := xs[j]
 				k := j - 1
@@ -164,6 +174,11 @@ scan_edges :: proc(edges: []Edge, rect: [4]int, samples: int, alloc: runtime.All
 					k -= 1
 				}
 				xs[k + 1] = c
+				steps += j - k
+				if steps > allowed {
+					work^ = -1
+					return nil
+				}
 			}
 			wind: i32
 			start: f32
@@ -200,6 +215,7 @@ scan_edges :: proc(edges: []Edge, rect: [4]int, samples: int, alloc: runtime.All
 		}
 		area[w], area[w + 1], diff[w], diff[w + 1] = 0, 0, 0, 0
 	}
+	if work != nil { work^ -= steps / COLR_SCAN_STEPS_PER_WORK }
 	return cov
 }
 
@@ -238,7 +254,8 @@ clip_cov :: #force_inline proc "contextless" (c: ^Clip, x, y: int) -> f32 {
 clip_and :: proc(clip: ^Clip, rect: [4]int, cov: []f32, alloc: runtime.Allocator) -> Clip {
 	if clip.cov == nil { return Clip{rect, cov} }
 	w := rect[2] - rect[0]
-	out := make([]f32, len(cov), alloc)
+	out, err := make([]f32, len(cov), alloc)
+	if err != nil { return {} }
 	for y in rect[1] ..< rect[3] {
 		for x in rect[0] ..< rect[2] {
 			i := (y - rect[1]) * w + (x - rect[0])

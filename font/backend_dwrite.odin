@@ -120,7 +120,7 @@ dwrite_bidi :: proc(s: ^State, text: string, rtl: bool, levels: []u8) -> bool {
 	base := u8(rtl ? 1 : 0)
 	for &l in lv { l = base }
 	an.levels = lv
-	s.analyzer->AnalyzeBidi(&an.source, 0, u32(len(w)), &an.sink)
+	if s.analyzer->AnalyzeBidi(&an.source, 0, u32(len(w)), &an.sink) < 0 { return false }
 	for i in 0 ..< len(w) {
 		for b in bytes[i] ..< bytes[i + 1] { levels[b] = lv[i] }
 	}

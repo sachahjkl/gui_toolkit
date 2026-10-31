@@ -70,8 +70,7 @@ color_glyph_rgba :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, fg: [3]u
 		case 0:   d[0], d[1], d[2], d[3] = 0, 0, 0, 0
 		case 255: d[0], d[1], d[2], d[3] = r, g, b, 255
 		case:
-			un :: #force_inline proc "contextless" (v, a: u8) -> u8 { return u8(min((u32(v) * 255 + u32(a) / 2) / u32(a), 255)) }
-			d[0], d[1], d[2], d[3] = un(r, a), un(g, a), un(b, a), a
+			d[0], d[1], d[2], d[3] = unpremultiply(r, a), unpremultiply(g, a), unpremultiply(b, a), a
 		}
 	}
 	return Color_Glyph{px = px, w = w, h = h, ox = f32(-origin.x), oy = f32(-origin.y)}, true

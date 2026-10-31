@@ -5,7 +5,7 @@ import "core:math"
 // Glyph outlines for the Slug renderer: closed contours of quadratic Bézier curves in em units (1.0 = the font's em,
 // y up, the origin on the baseline at the pen). Where they come from is a provider (`Outline_Provider`): DirectWrite's
 // GetGlyphRunOutline on Windows (slug_dwrite.odin); a TrueType / CFF reader in Odin can replace it on other platforms
-// by setting `State.slug.provider`. Everything after this file (bands, texels, the cache, the shaders) only sees
+// by setting `State.atlas.slug.provider` (slug_set_provider). Everything after this file (bands, texels, the cache, the shaders) only sees
 // `Outline`.
 
 Quad :: struct {
