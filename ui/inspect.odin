@@ -14,14 +14,14 @@ box_text :: proc(b: ^Box) -> string {
 	return b.text
 }
 
-// Whether the box was built by the last build (a box kept from an older one is about to go: its memory is not to be read).
 // What a tool (Chrome's DevTools) imposes on a box, whatever the program builds: applied after each build, before the layout.
-Box_Edit_Field :: enum { Background, Border, Text_Color, Opacity, Radius, Font_Size, Padding, Width, Height, Text, Removed }
+Box_Edit_Field :: enum { Background, Border, Text_Color, Opacity, Radius, Font_Size, Padding, Width, Height, Text, Removed, Aria_Label }
 Box_Edit :: struct {
 	set:                   bit_set[Box_Edit_Field],
 	bg, border, text_color: Color,
 	opacity, radius, font_size, padding, width, height: f32,   // (frame pixels)
 	text:                  string,   // owned
+	aria_label:            string,   // owned: the name a reader gets
 }
 
 box_edit :: proc(s: ^State, key: Key) -> ^Box_Edit {
@@ -30,7 +30,7 @@ box_edit :: proc(s: ^State, key: Key) -> ^Box_Edit {
 }
 
 box_edits_clear :: proc(s: ^State) {
-	for _, e in s.edits { delete(e.text) }
+	for _, e in s.edits { delete(e.text); delete(e.aria_label) }
 	clear(&s.edits)
 }
 
@@ -65,6 +65,10 @@ box_edits_apply :: proc(s: ^State) {
 			m := font.metrics(s.fonts, b.font, b.font_size)
 			b.text_dim = {font.text_width(s.fonts, b.font, b.font_size, b.text), m.line_height}
 		}
+		if .Aria_Label in e.set {
+			if b.a11y == nil { b.a11y = new(A11y_Info, frame_allocator()) }
+			b.a11y.name = strings.clone(e.aria_label, frame_allocator())
+		}
 		if .Width in e.set { b.pref[.X] = px(e.width) }
 		if .Height in e.set { b.pref[.Y] = px(e.height) }
 		if .Removed in e.set && b.parent != nil {
@@ -80,6 +84,7 @@ box_edits_apply :: proc(s: ^State) {
 // A box lit over everything (Chrome's DevTools, hovering a node); 0: none. The next frame shows it.
 set_inspected :: proc(s: ^State, key: Key) { s.inspected = key }
 
+// Whether the box was built by the last build (a box kept from an older one is about to go: its memory is not to be read).
 box_current :: proc(s: ^State, b: ^Box) -> bool { return b != nil && b.last_build == s.build_index }
 
 // The box with the focus, the one under the pointer (last build).

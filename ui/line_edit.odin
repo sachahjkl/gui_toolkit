@@ -14,16 +14,12 @@ Text_Field :: struct {
 	mark:      int,           // other end of the selection (== cursor when nothing is selected)
 	scroll_x:  f32,           // horizontal scroll in pixels, keeps the caret visible
 	edited_ms: f64,           // time of the last edit/move (caret stays solid right after)
-	undo, redo: [dynamic]Field_Snapshot,   // edit history (Ctrl+Z / Ctrl+Y, field_undo / field_redo)
+	undo, redo: [dynamic]Edit_Snapshot,   // edit history (Ctrl+Z / Ctrl+Y, field_undo / field_redo)
 	last_edit:  Field_Edit,   // what the last recorded edit was: consecutive typing is one undo step
 	last_edit_ms: f64,
 }
 
-// The text and selection before an edit. `text` is owned by the field.
-Field_Snapshot :: struct {
-	text:         string,
-	cursor, mark: int,
-}
+Field_Snapshot :: Edit_Snapshot
 
 Field_Edit :: enum u8 { None, Typing, Deleting, Other }
 
@@ -61,10 +57,7 @@ field_clear :: proc(f: ^Text_Field) { field_set(f, "") }
 
 @(private)
 field_forget_history :: proc(f: ^Text_Field) {
-	for s in f.undo { delete(s.text) }
-	for s in f.redo { delete(s.text) }
-	clear(&f.undo)
-	clear(&f.redo)
+	edit_history_forget(&f.undo, &f.redo)
 	f.last_edit = .None
 }
 
@@ -74,22 +67,12 @@ field_checkpoint :: proc(f: ^Text_Field, kind: Field_Edit) {
 	now := now_ms()
 	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < FIELD_UNDO_MERGE_MS && len(f.undo) > 0
 	f.last_edit, f.last_edit_ms = kind, now
-	if merge { return }
-	if len(f.undo) >= FIELD_UNDO_STEPS { delete(f.undo[0].text); ordered_remove(&f.undo, 0) }
-	append(&f.undo, Field_Snapshot{text = strings.clone(string(f.buf[:])), cursor = f.cursor, mark = f.mark})
-	for s in f.redo { delete(s.text) }
-	clear(&f.redo)
+	edit_history_record(&f.undo, &f.redo, f.buf[:], f.cursor, f.mark, FIELD_UNDO_STEPS, merge)
 }
 
 @(private)
-field_restore :: proc(f: ^Text_Field, from, to: ^[dynamic]Field_Snapshot) -> bool {
-	if len(from) == 0 { return false }
-	snap := pop(from)
-	append(to, Field_Snapshot{text = strings.clone(string(f.buf[:])), cursor = f.cursor, mark = f.mark})
-	clear(&f.buf)
-	append(&f.buf, snap.text)
-	f.cursor, f.mark = clamp(snap.cursor, 0, len(f.buf)), clamp(snap.mark, 0, len(f.buf))
-	delete(snap.text)
+field_restore :: proc(f: ^Text_Field, from, to: ^[dynamic]Edit_Snapshot) -> bool {
+	if !edit_history_step(from, to, &f.buf, &f.cursor, &f.mark) { return false }
 	f.last_edit = .None
 	return true
 }
@@ -372,12 +355,12 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		if secret { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
 
 		// keep the caret visible
-		inner := max(TEXT_VIEW_MIN_PX, (b.rect.max.x - b.rect.min.x) - 2 * pad)
+		inner := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - 2 * pad)
 		cx := font.x_from_index(s.fonts, b.font, b.font_size, shown, cursor)
 		total := font.text_width(s.fonts, b.font, b.font_size, shown)
 		if cx - f.scroll_x > inner { f.scroll_x = cx - inner }
 		if cx - f.scroll_x < 0 { f.scroll_x = cx }
-		f.scroll_x = clamp(f.scroll_x, 0, max(0, total - inner + 2))
+		f.scroll_x = clamp(f.scroll_x, 0, max(0, total - inner + 2 * s.scale))
 
 		d := frame_new(Line_Edit_Draw)
 		d.text = strings.clone(shown, frame_allocator())

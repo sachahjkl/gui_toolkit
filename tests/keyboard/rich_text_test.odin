@@ -289,5 +289,17 @@ rich_cache_key_is_what_the_layout_depends_on :: proc(t: ^testing.T) {
 		r.underline, r.strike, r.link = false, false, ""
 	}
 	testing.expect(t, ui.rich_layout_cached(a[:], c, 300) == ui.rich_layout_cached(b[:], c, 300), "the same content, the same layout")
+
+	// a version (or a hash that collides) given for runs its layout does not fit: laid out again, its ranges in these runs
+	long := []ui.Rich_Run{{text = "one two "}, {text = "three"}}
+	short := []ui.Rich_Run{{text = "x"}}
+	ui.rich_layout_cached(long, c, 300, version = 77)
+	l := ui.rich_layout_cached(short, c, 300, version = 77)
+	testing.expect_value(t, l.text_len, 1)
+	for fr in l.frags { testing.expect(t, fr.run < len(short) && fr.end <= len(short[fr.run].text), "in range") }
+	shorter := []ui.Rich_Run{{text = "a"}, {text = "b"}}
+	ui.rich_layout_cached(long, c, 300, version = 78)
+	l = ui.rich_layout_cached(shorter, c, 300, version = 78)
+	for fr in l.frags { testing.expect(t, fr.end <= len(shorter[fr.run].text), "in range") }
 	free_all(context.temp_allocator)
 }

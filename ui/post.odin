@@ -78,9 +78,20 @@ post_init :: proc(s: ^State) {
 post_destroy :: proc(s: ^State) {
 	for w in s.post_windows {
 		_ = sync.atomic_compare_exchange_strong(&w.post_queue, rawptr(&s.posts), nil)
+		platform.window_on_destroy(w, nil, nil)
 	}
 	delete(s.post_windows)
 	post_queue_destroy(&s.posts)
+}
+
+// A window the State was built for is destroyed, or another State is built for it: nothing here points to it any more.
+@(private)
+post_window_gone :: proc(w: ^platform.Window, user: rawptr) {
+	s := (^State)(user)
+	for k, i in s.post_windows { if k == w { unordered_remove(&s.post_windows, i); break } }
+	_ = sync.atomic_compare_exchange_strong(&w.post_queue, rawptr(&s.posts), nil)
+	_ = sync.atomic_compare_exchange_strong(&s.posts.wake_user, rawptr(w), nil)
+	if s.window == w { s.window = nil }
 }
 
 // begin_build: the window to wake follows Build_Params.window, then the calls run.
@@ -89,7 +100,11 @@ post_begin_build :: proc(s: ^State, w: ^platform.Window) {
 	if w != nil {
 		known := false
 		for k in s.post_windows { if k == w { known = true; break } }
-		if !known { append(&s.post_windows, w) }
+		if !known {
+			append(&s.post_windows, w)
+			// (another State built for this window before: it no longer holds it)
+			if prev, prev_user := platform.window_on_destroy(w, post_window_gone, s); prev == post_window_gone { post_window_gone(w, prev_user) }
+		}
 		sync.atomic_store(&w.post_queue, rawptr(&s.posts))
 		if !s.post_wake_own { post_queue_set_wake_user(&s.posts, w) }
 	}

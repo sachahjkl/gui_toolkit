@@ -403,6 +403,14 @@ rich_hash_version :: proc(version: u64, c: Rich_Context, width: f32, max_lines: 
 	return h
 }
 
+// Whether the byte ranges of a layout are in `runs` (a text that grew under the same version still fits).
+@(private = "file")
+rich_layout_fits :: proc(l: ^Rich_Layout, runs: []Rich_Run) -> bool {
+	if len(l.run_start) != len(runs) + 1 { return false }
+	for r, i in runs { if l.run_start[i + 1] - l.run_start[i] > len(r.text) { return false } }
+	return true
+}
+
 // The layout of `runs` from the cache (laid out and kept the first time). Valid until the cache drops it: unused for
 // RICH_CACHE_KEEP builds.
 // `version` (not 0): the caller's name for this content (rich_paragraph's: the box and its version), looked up instead of
@@ -411,8 +419,14 @@ rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_li
 	s := g
 	k := version != 0 ? rich_hash_version(version, c, width, max_lines, align) : rich_hash(runs, c, width, max_lines, align)
 	if e, ok := &s.rich_cache[k]; ok {
-		e.last_build = s.build_index
-		return e.layout
+		if rich_layout_fits(e.layout, runs) {
+			e.last_build = s.build_index
+			return e.layout
+		}
+		// two contents with one hash, or a version given again for shorter runs: its ranges are not in these runs
+		rich_layout_destroy(e.layout)
+		free(e.layout, runtime.heap_allocator())
+		delete_key(&s.rich_cache, k)
 	}
 	l := new(Rich_Layout, runtime.heap_allocator())
 	l^ = rich_layout(c, runs, width, max_lines, align, runtime.heap_allocator())
@@ -520,7 +534,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 				draw.rect(dc, {{x0, sy}, {x1, sy + max(1, math.round(m.strike_thickness))}}, col)
 			}
 			if f.run == d.focused {
-				draw.rect(dc, {{x0 - 2, o.y + li.y}, {x1 + 2, o.y + li.y + li.height}}, color_from_tags(s, b.tags_key, "focus border"), RICH_LINK_RING_RADIUS_PX * s.scale, max(1, math.round(RICH_LINK_RING_PX * s.scale)))
+				draw.rect(dc, {{x0 - 2 * s.scale, o.y + li.y}, {x1 + 2 * s.scale, o.y + li.y + li.height}}, color_from_tags(s, b.tags_key, "focus border"), RICH_LINK_RING_RADIUS_PX * s.scale, max(1, math.round(RICH_LINK_RING_PX * s.scale)))
 			}
 		}
 		if li.ellipsis_x > 0 {
