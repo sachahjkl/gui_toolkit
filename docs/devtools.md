@@ -62,6 +62,9 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and compared on the UI thread and encoded on a thread of its own, which takes a core while it runs. |
 | `*.enable`, `*.disable`, `*.set*` | accepted, nothing to do (what clients send on attaching). |
 | `DOM.set*`, `CSS.set*` (but the edits below, `DOM.setInspectedNode`, `DOM.setNodeStackTracesEnabled`, `CSS.setLocalFontsEnabled`), `Page.setDocumentContent`, cookies, DOM storage | refused with an error: they cannot be done, and a client would show them as done. |
+| `DOM.getDocument` `{depth?}`, `DOM.requestChildNodes` `{nodeId, depth?}` | the tree as deep as it is asked (1 by default, -1 for all). What the client has is not sent again: in Chrome's frontend each node of an answer is a new object, and the one it is unfolding would never get its children. |
+| `DOM.setAttributeValue`, `DOM.setAttributesAsText`, `DOM.removeAttribute` | `aria-label` only: the name a reader gets. The others come from the program, and are refused with a message that says so. |
+| `DOM.undo`, `DOM.redo`, `DOM.markUndoableState` | back and forth over the edits (styles, texts, boxes removed, `aria-label`), from mark to mark. |
 | `Runtime.evaluate` | refused: there is no JavaScript. |
 
 The `Toolkit` domain reads the box tree (rects in CSS pixels):
@@ -79,7 +82,7 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 | `Toolkit.warnings` | the layout's warnings of this build (`ui.set_layout_warnings`). |
 | `Toolkit.axAction` `{role? name? exact? index? nodeId? action? value?}` | an action on an accessible node, as a screen reader asks it (`ui.a11y_inject`): `Click` by default, `Focus`, `Set_Value`, `Increment`, `Scroll_Into_View`... (`platform.A11y_Action`). An error if the node does not offer it. |
 | `Toolkit.axAudit` | `unnamed`: the enabled controls with no name, no text in them and no placeholder (`ui.a11y_unnamed`). A clickable box without one is not even a node: a reader does not know it exists. |
-| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is. `injected`: the protocol's events too. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). |
+| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is; the wheel both ways (`wheel x y notches across`). `injected`: the protocol's events too, and `Toolkit.axAction` as `press`. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). |
 
 ## tools/cdp.mjs
 
@@ -141,16 +144,18 @@ stands, and typed passwords are recorded like any other text.
   `border-radius`, with the colour picker and the tick boxes; what comes from the layout is read only, under it. A box that paints
   itself (`custom`) does not follow its colours.
 - **Editing**: double-click a text to change it, Delete removes a box. An edit lasts as long as DevTools is attached: closing it
-  gives back the window as its program builds it. No undo (Ctrl+Z). One client at a time: the last to ask for the document or to
+  gives back the window as its program builds it. Ctrl+Z and Ctrl+Y go back and forth over the edits. One client at a time: the last to ask for the document or to
   edit gets the tree's events, and the edits of the one before it are undone.
 - **Accessibility** tab: what a screen reader gets for the box.
 - DevTools' picture of the window takes clicks and the wheel.
 
-There is no JavaScript and no network: Console and Network stay empty. Attributes cannot be edited: DevTools shows the error.
+There is no JavaScript and no network: Console and Network stay empty. Of the attributes only `aria-label` can be edited (what a reader gets); for the others DevTools shows the error.
+
+`chrome://inspect` finds the window too: Configure, add `localhost:<port>`, then `inspect fallback` or `inspect`: its picture of the window, with the picker, comes with it (`remoteFrontend=true` in the address does the same).
 
 ## Puppeteer and Playwright
 
-Both attach (checked with puppeteer-core and playwright-core: `puppeteer.connect({browserURL})`,
+Both attach (run on examples/whatsnew with puppeteer-core 25.16 and playwright-core 1.64: `puppeteer.connect({browserURL})`,
 `chromium.connectOverCDP(url)`). What goes through the commands above works, what needs a DOM or JavaScript does not:
 
 | | Puppeteer | Playwright |

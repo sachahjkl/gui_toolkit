@@ -9,7 +9,7 @@
 //   click <text> | --name <id> [--index n] [--count 2] [--button right]
 //   move <x> <y>                 the pointer
 //   down <x> <y> | up <x> <y>    a press, a release (left)
-//   wheel <x> <y> <notches>      positive scrolls the content down
+//   wheel <x> <y> <notches> [<across>]   positive scrolls the content down (and to the right)
 //   key <name>                   Enter, Tab, Escape, ArrowDown, F3, a, ctrl+f, shift+Tab...
 //   type <text>                  text input
 //   shot <file.png> [x y w h]    a screenshot (the window's pixels)
@@ -20,7 +20,7 @@
 //   metrics [--reset]            what the frames cost: build, layout, frame times, boxes, latency in a probe build
 //   warnings                     the layout's warnings of this build
 //   ax [role] [--name text]      the accessibility tree a screen reader gets, or the nodes that answer
-//   press <name> [--role button] [--action Click] [--value v] [--index n]   an action as a screen reader asks it
+//   press <name> [--role button] [--action Click] [--value v | --number n] [--index n]   an action as a screen reader asks it
 //   audit                        what a screen reader cannot name
 //   record <file>                records what a person does until Enter, as a script for `play`
 //   record [<file>] --timeline <dir>   the same with a picture after each action: dir/index.html, timeline.json, trace.json

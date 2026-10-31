@@ -28,12 +28,21 @@ for e in hello smoke todo markdown panes whatsnew; do
     echo "build FAIL examples/$e"; echo "$out" | grep -E "Error|error" | head -15; fail=1
   fi
 done
-for t in frame_slots pacing autoscroll flate key_repeat; do
+for t in frame_slots pacing autoscroll flate key_repeat clipboard dragdrop; do
   out=$("$ODIN" test "tests/$t" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"build/linux/${t}_test" 2>&1)
   if echo "$out" | grep -qE "All tests were successful|The test was successful"; then
     echo "test ok    tests/$t $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
   else
     echo "test FAIL  tests/$t"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
+  fi
+done
+# the packages that test their private procedures from inside
+for p in config dbus instance; do
+  out=$("$ODIN" test "$p" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"build/linux/${p}_pkg_test" 2>&1)
+  if echo "$out" | grep -qE "All tests were successful|The test was successful"; then
+    echo "test ok    $p $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
+  else
+    echo "test FAIL  $p"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
   fi
 done
 exit $fail

@@ -268,3 +268,84 @@ a_region_after_a_resize_is_whole :: proc(t: ^testing.T) {
 	img := render.read_pixels(&f.r, context.temp_allocator)
 	testing.expect_value(t, at(img, OUTSIDE), [4]u8{0, 0, 255, 255})
 }
+
+// A batch that reaches across two far rectangles draws in them and not in what lies between: translucent text would thicken there.
+@(test)
+a_batch_across_two_rectangles_stays_in_them :: proc(t: ^testing.T) {
+	f, whole: Dfx
+	if !dopen(&f) || !dopen(&whole, partial = false) { testing.fail_now(t, "no device (WARP)") }
+	defer { dclose(&f); dclose(&whole) }
+	half_all :: proc(dc: ^draw.Context) { draw.rect(dc, WHOLE, {1, 0, 0, 0.5}) }
+	dframe(&f, BOX, half_all)
+	render.frame_begin(&f.r, WHITE)
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	draw.damage_begin(&f.dc)
+	draw.damage(&f.dc, {{0, 0}, {4, 4}})
+	draw.damage(&f.dc, {{60, 60}, {64, 64}})
+	half_all(&f.dc)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	got := render.read_pixels(&f.r, context.temp_allocator)
+	want := dframe(&whole, nil, half_all)
+	testing.expect(t, string(got) == string(want), "the same bytes as a whole frame")
+	_, kept, _, _, active := draw.damage_stats(&f.dc)
+	testing.expect(t, active && kept == 2, "two rectangles")
+}
+
+// More rectangles than a region keeps: they are fused and never overlap, or a translucent batch would be drawn twice where they do.
+@(test)
+a_region_full_of_rectangles_draws_each_pixel_once :: proc(t: ^testing.T) {
+	f, whole: Dfx
+	if !dopen(&f) || !dopen(&whole, partial = false) { testing.fail_now(t, "no device (WARP)") }
+	defer { dclose(&f); dclose(&whole) }
+	half_all :: proc(dc: ^draw.Context) { draw.rect(dc, WHOLE, {1, 0, 0, 0.5}) }
+	dframe(&f, BOX, half_all)
+	render.frame_begin(&f.r, WHITE)
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	draw.damage_begin(&f.dc)
+	for y in 0 ..< 6 {
+		for x in 0 ..< 6 {
+			px0, py0 := f32(x * 10 + (y % 2) * 3), f32(y * 10)
+			draw.damage(&f.dc, {{px0, py0}, {px0 + 2, py0 + 2}})
+		}
+	}
+	half_all(&f.dc)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	got := render.read_pixels(&f.r, context.temp_allocator)
+	want := dframe(&whole, nil, half_all)
+	testing.expect(t, string(got) == string(want), "the same bytes as a whole frame")
+}
+
+// A backdrop reads the frame while it is drawn: what lay on top of it in the last frame, outside the region, must not get in.
+@(test)
+a_frame_that_reads_itself_is_drawn_whole :: proc(t: ^testing.T) {
+	f, whole: Dfx
+	if !dopen(&f) || !dopen(&whole, partial = false) { testing.fail_now(t, "no device (WARP)") }
+	defer { dclose(&f); dclose(&whole) }
+	scene :: proc(dc: ^draw.Context) {
+		draw.rect(dc, WHOLE, {0, 0, 1, 1})
+		blur := [1]draw.Filter{draw.filter_blur(4)}
+		draw.backdrop(dc, {{10, 10}, {40, 40}}, {}, blur[:])
+		draw.rect(dc, {{20, 20}, {44, 44}}, {0, 1, 0, 1})   // on top of what the backdrop read
+	}
+	dframe(&f, BOX, scene)
+	got := dframe(&f, draw.Rect{{10, 10}, {14, 14}}, scene)
+	want := dframe(&whole, nil, scene)
+	testing.expect(t, string(got) == string(want), "the same bytes as a whole frame")
+	_, _, _, _, active := draw.damage_stats(&f.dc)
+	testing.expect(t, !active, "no region in effect: it was whole")
+}
+
+// A context destroyed can be made again in the same place: its lists do not point at what it freed.
+@(test)
+a_context_can_be_made_again_in_place :: proc(t: ^testing.T) {
+	f: Dfx
+	if !dopen(&f) { testing.fail_now(t, "no device (WARP)") }
+	defer dclose(&f)
+	dframe(&f, nil, all_red)
+	draw.destroy(&f.dc)
+	testing.expect(t, f.dc.batches == nil && f.dc.insts == nil, "nothing freed is left in it")
+	draw.init(&f.dc, &f.r, &f.fonts)
+	testing.expect_value(t, at(dframe(&f, nil, all_green), OUTSIDE), [4]u8{0, 255, 0, 255})
+}

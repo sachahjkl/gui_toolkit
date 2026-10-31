@@ -3,6 +3,7 @@
 package lifecycle_test
 
 import "core:mem"
+import "core:slice"
 import "core:testing"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
@@ -387,4 +388,19 @@ a_cancelled_capture_leaves_the_next_alone :: proc(t: ^testing.T) {
 		win.Sleep(5)
 	}
 	testing.expect(t, false, "no capture")
+}
+
+// The rows of a capture and the picture made of them later, on any thread: what capture_poll gives, byte for byte.
+@(test)
+capture_raw_finish_makes_the_picture :: proc(t: ^testing.T) {
+	bgra := [8]u8{10, 20, 30, 40, 50, 60, 70, 80}
+	out := render.capture_raw_finish({pixels = bgra[:], size = {2, 1}, format = .BGRA8})
+	testing.expectf(t, slice.equal(out, []u8{30, 20, 10, 255, 70, 60, 50, 255}), "BGRA: %v", out)
+	rgba := [8]u8{10, 20, 30, 40, 50, 60, 70, 80}
+	out = render.capture_raw_finish({pixels = rgba[:], size = {2, 1}, format = .RGBA8})
+	testing.expectf(t, slice.equal(out, []u8{10, 20, 30, 255, 50, 60, 70, 255}), "RGBA: %v", out)
+	// halves 1.0, 0.0, 0.5, then 0.5, 2.0 (clamped), -1.0 (clamped); their alpha does not count
+	halves := [8]f16{1, 0, 0.5, 0.25, 0.5, 2, -1, 0}
+	out = render.capture_raw_finish({pixels = mem.slice_to_bytes(halves[:]), size = {2, 1}, format = .Half})
+	testing.expectf(t, slice.equal(out, []u8{255, 0, 188, 255, 188, 255, 0, 255}), "halves: %v", out)
 }

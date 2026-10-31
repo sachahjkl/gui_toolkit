@@ -168,7 +168,8 @@ try {
   let seen = frames, since = Date.now(), quiet = false
   for (const until = Date.now() + 20000; Date.now() < until;) {
     if (frames !== seen) { seen = frames; since = Date.now() }
-    if (Date.now() - since >= QUIET_MS) { quiet = true; break }
+    // (before the first frame there is no rest to speak of: it is on its way)
+    if (frames > 0 && Date.now() - since >= QUIET_MS) { quiet = true; break }
     await new Promise((r) => setTimeout(r, 25))
   }
   await send('Page.stopScreencast')
@@ -258,6 +259,69 @@ try {
     dt.close()
   }
 
+  // the children as they are asked for: the depth asked, and none sent twice (each would be a new node in Chrome's frontend)
+  {
+    const c = await connect(port, { retryMs: 2000 })
+    const sets = []
+    const counts = []
+    c.on('DOM.setChildNodes', (e) => sets.push(e))
+    c.on('DOM.childNodeCountUpdated', (e) => counts.push(e))
+    const root = (await c.send('DOM.getDocument')).root
+    const html = root.children?.[0]
+    if (html?.localName !== 'html' || html.children) fail(`getDocument, depth 1 by default: ${JSON.stringify(root).slice(0, 200)}`)
+    await c.send('DOM.requestChildNodes', { nodeId: html.nodeId })
+    await c.send('DOM.requestChildNodes', { nodeId: html.nodeId })
+    await c.send('Toolkit.state')
+    if (sets.length !== 1 || sets[0].parentId !== html.nodeId) fail(`requestChildNodes twice: ${sets.length} answers`)
+    else pass('getDocument and requestChildNodes: the depth asked, nothing sent twice')
+    const main = sets[0].nodes[0]
+    await c.send('DOM.requestChildNodes', { nodeId: html.nodeId, depth: -1 })
+    await c.send('Toolkit.state')
+    if (sets.length < 2 || sets[1].parentId !== main.nodeId || !sets[1].nodes.some((n) => n.children)) fail(`requestChildNodes, depth -1: ${JSON.stringify(sets.slice(1)).slice(0, 200)}`)
+    else pass('requestChildNodes with a depth goes down from what the client has')
+    // what the frontend asks as it goes: answered, and what is JavaScript still refused
+    const asked = await Promise.all([
+      c.send('CSS.takeComputedStyleUpdates'), c.send('Storage.getStorageKey', { frameId: 'x' }), c.send('DOM.getNodesForSubtreeByStyle', { nodeId: 1, computedStyles: [{ name: 'display', value: 'grid' }] }),
+      c.send('DOM.getAttributes', { nodeId: main.nodeId }), c.send('Runtime.callFunctionOn', { objectId: `node:${main.nodeId}`, functionDeclaration: 'function u(){return"formAssociated"in this.constructor&&this.constructor.formAssociated===!0}' }),
+    ])
+    const js = await c.send('Runtime.callFunctionOn', { objectId: 'node:1', functionDeclaration: 'function(){return 1}' }).then(() => false, () => true)
+    if (!Array.isArray(asked[0].nodeIds) || !asked[1].storageKey || !Array.isArray(asked[2].nodeIds) || asked[3].attributes[0] !== 'id' || asked[4].result?.value !== false || !js) fail(`what the frontend asks: ${JSON.stringify(asked).slice(0, 300)}`)
+    else pass('what the frontend asks as it goes is answered')
+    c.close()
+    await new Promise((r) => setTimeout(r, 150))
+    await send('Toolkit.state')
+    await idle()
+  }
+
+  // the wheel across, recorded and played; an action sent as a reader's, recorded as a press and played
+  {
+    await send('Toolkit.startRecording', { injected: true })
+    await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 400, deltaX: 300, deltaY: 0 })
+    await new Promise((r) => setTimeout(r, 500))
+    await send('Toolkit.pollRecording')
+    await send('Toolkit.axAction', { role: 'button', name: '6  next_merge', action: 'Click' })
+    await idle()
+    const wheelLines = (await send('Toolkit.stopRecording')).lines
+    const across = wheelLines.find((l) => l.startsWith('wheel'))
+    const press = wheelLines.find((l) => l.startsWith('press'))
+    if (!/^wheel 700 400 0 3$/.test(across ?? '')) fail(`the wheel across, recorded: ${JSON.stringify(wheelLines)}`)
+    else if (press !== 'press "6  next_merge" --role button') fail(`a reader's action, recorded: ${JSON.stringify(wheelLines)}`)
+    else {
+      await send('Toolkit.click', { name: 'nav0' })
+      await idle()
+      await send('Toolkit.startRecording', { injected: true })
+      for (const l of [across, press]) { const w = words(l); await act(send, w[0], w.slice(1)) }
+      await idle()
+      const played = (await send('Toolkit.stopRecording')).lines
+      const page = compare(decodePng(readFileSync(join(baseline, 'merge.png'))), decodePng(await shot()), PIXEL_DELTA)
+      if (!played.includes(across) || !played.includes(press)) fail(`played: ${JSON.stringify(played)}`)
+      else if (page.share > MAX_SHARE) fail(`the press played: ${(page.share * 100).toFixed(2)}% differ`)
+      else pass(`recorded and played: ${across} ; ${press}`)
+    }
+    await send('Toolkit.click', { name: 'nav1' })
+    await idle()
+  }
+
   // a screencast stopped while its frame is being read back: pictures still come (nothing read that capture, none could start)
   for (let i = 0; i < 12; i++) {
     await send('Page.startScreencast', { format: 'png', minIntervalMs: 0 })
@@ -265,6 +329,20 @@ try {
     await send('Page.captureScreenshot', { format: 'png' })
   }
   pass('a screencast stopped at any moment, and pictures after it')
+
+  // the frame times, whichever way they are read: the same frames, the same numbers
+  {
+    await send('Toolkit.metrics', { reset: true })
+    const built = (await send('Toolkit.state')).build
+    for (let i = 0; i < 6; i++) { await send('Toolkit.click', { name: i % 2 ? 'nav1' : 'nav0' }); await send('Page.captureScreenshot', {}) }
+    await idle()
+    const m2 = await send('Toolkit.metrics')
+    const fr = (await send('Toolkit.frames', { after: built - 1 })).frames
+    const maxOf = Math.max(...fr.map((f) => f.frameMs))
+    const trace = fr.map((f) => f.frameMs).filter((v) => v > 0).length
+    if (m2.frames < 6 || Math.abs(fr.length - m2.frames) > 3 || Math.abs(maxOf - m2.frameMs.max) > 0.011 || !trace) fail(`Toolkit.metrics and Toolkit.frames: ${m2.frames} frames, max ${m2.frameMs.max}; ${fr.length} frames, max ${maxOf}`)
+    else pass(`Toolkit.metrics and Toolkit.frames agree: ${m2.frames} frames, ${m2.frameMs.max} ms at most`)
+  }
 
   // two screenshots at once, each of its own part of the window
   {
@@ -329,10 +407,65 @@ try {
     if (torn !== null) fail(`a text replaced, read in the same frame: ${JSON.stringify(torn.slice(0, 40))}`)
     else pass('a text replaced, read in the same frame')
 
-    // what cannot be done says so
-    const refused = await dt.send('DOM.setAttributesAsText', { nodeId: button.nodeId, text: 'id="x"' }).then(() => false, () => true)
-    if (!refused) fail('an attribute edit: a false success')
-    else pass('an attribute edit is refused')
+    // an attribute: only what a reader gets can be edited
+    const refused = await dt.send('DOM.setAttributesAsText', { nodeId: button.nodeId, text: 'id="x"' }).then(() => null, (e) => e.message)
+    if (!refused?.includes('aria-label')) fail(`an attribute edit: ${refused}`)
+    else pass('an attribute the program gives is refused, and says which can be edited')
+    const named2 = async (n) => (await send('Accessibility.queryAXTree', { accessibleName: n })).nodes.length
+    const was = attrs(button)['aria-label']
+    const heard = []
+    dt.on('DOM.attributeModified', (e) => heard.push(e))
+    await dt.send('DOM.setAttributeValue', { nodeId: button.nodeId, name: 'aria-label', value: 'Called otherwise' })
+    await dt.send('DOM.markUndoableState')
+    await idle()
+    const labelled = await named2('Called otherwise')
+    await dt.send('DOM.setAttributesAsText', { nodeId: button.nodeId, name: 'aria-label', text: 'aria-label="And again"' })
+    await dt.send('DOM.markUndoableState')
+    await idle()
+    const again2 = await named2('And again')
+    if (labelled !== 1 || again2 !== 1 || !heard.some((e) => e.name === 'aria-label' && e.value === 'And again')) fail(`aria-label: ${labelled}, ${again2}, ${JSON.stringify(heard)}`)
+    else pass('aria-label edited: what a reader gets, and the client hears of it')
+
+    // Ctrl+Z: back over the edits, mark by mark, and forward again
+    await dt.send('DOM.undo')
+    await idle()
+    const one1 = await named2('Called otherwise')
+    await dt.send('DOM.undo')
+    await idle()
+    const zero = await named2('Called otherwise')
+    const told = heard[heard.length - 1]
+    await dt.send('DOM.redo')
+    await idle()
+    const back1 = await named2('Called otherwise')
+    await dt.send('DOM.undo')
+    await idle()
+    if (one1 !== 1 || zero !== 0 || back1 !== 1) fail(`undo of aria-label: ${one1}, ${zero}, ${back1}`)
+    else if ((was ?? '') !== (told?.value ?? '') && told?.value !== 'Called otherwise') fail(`undo says ${JSON.stringify(told)}, the program's is ${was}`)
+    else pass('aria-label: undo and redo')
+    // the text set above, and a box removed, and a style
+    const textNow = async () => (await send('Toolkit.find', { name: 'nav3' })).nodes[0].text
+    const rm = named(r2, 'nav5').nodeId
+    await dt.send('DOM.removeNode', { nodeId: rm })
+    await dt.send('DOM.markUndoableState')
+    const noBox = await count('nav5')
+    await dt.send('DOM.undo')
+    const boxBack = await count('nav5')
+    await dt.send('DOM.redo')
+    const noBoxAgain = await count('nav5')
+    await dt.send('DOM.undo')
+    await idle()
+    if (noBox !== 0 || boxBack !== 1 || noBoxAgain !== 0) fail(`undo of a removal: ${noBox}, ${boxBack}, ${noBoxAgain}`)
+    else pass('a box removed: undo and redo')
+    const s0 = (await dt.send('CSS.getMatchedStylesForNode', { nodeId: button.nodeId })).inlineStyle
+    const col = async () => (await dt.send('CSS.getComputedStyleForNode', { nodeId: button.nodeId })).computedStyle.find((p) => p.name === 'background-color')?.value
+    const c0 = await col()
+    const changed = await new Promise((r) => { dt.on('CSS.styleSheetChanged', r); dt.send('CSS.setStyleTexts', { edits: [{ styleSheetId: s0.styleSheetId, range: s0.range, text: s0.cssText.replace(/background-color: [^;]+;/, 'background-color: #00ff00;') }] }).then(() => dt.send('DOM.markUndoableState')).then(idle).then(col).then((c1) => { if (!/0, 255, 0/.test(c1)) fail(`a style edited: ${c1}`) }).then(() => dt.send('DOM.undo')) })
+    await idle()
+    const c2 = await col()
+    const s2 = (await dt.send('CSS.getMatchedStylesForNode', { nodeId: button.nodeId })).inlineStyle
+    if (c2 !== c0 || s2.cssText !== s0.cssText || changed.styleSheetId !== s0.styleSheetId) fail(`undo of a style: ${c0} then ${c2}`)
+    else pass('a style: undo, and the panel told')
+    if (typeof (await textNow()) !== 'string') fail('the text after all this')
 
     // a length that is no length is not imposed
     const before = (await dt.send('DOM.getBoxModel', { nodeId: button.nodeId })).model.width
@@ -387,6 +520,7 @@ try {
 const timer = setTimeout(() => child.kill(), 15000)
 const end = await ended
 clearTimeout(timer)
+for (const l of stderr.split('\n')) { if (l.includes('render.damage.')) console.log(l) }   // (a program built with -define:TOOLKIT_DAMAGE_CHECK=true)
 if (end.code !== 0) { fail(`exit code ${end.code} ${end.signal || ''}`); console.log(stderr.split('\n').slice(-30).join('\n')) }
 else pass('ended with exit code 0')
 if (failed) { console.log(`${failed} failed`); process.exit(1) }

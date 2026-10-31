@@ -541,7 +541,7 @@ drag images, captures of one element, `toBlob`-like exports.
 ## Partial redraw (damage regions)
 
 When only a small part of the window changed since the last frame (a caret, a hovered control, a progress bar, a video,
-a local animation), the renderer can repaint and present only the changed rectangles instead of the whole window. The
+a local animation), the renderer can repaint only the changed rectangles instead of the whole window. The
 application marks the changed boxes each frame; `draw` forwards them to the renderer (`render/damage.odin`):
 
 ```odin
@@ -557,8 +557,10 @@ draw.end_frame(dc)
 ```
 
 The region is the union of the boxes, with near ones merged so it stays bounded. The renderer draws only the batches
-that touch it into a kept target, which is then copied whole to the window: fewer pixels shaded, the same present. See
-docs/webgpu.md "Partial redraw". A box must be grown by the reach of any effect that paints past it (`damage_padded`),
+that touch it into a kept target, which is then copied whole to the window: fewer pixels shaded, the same present. The
+first frame of a region, a frame after one without a region and a frame that reads itself (a backdrop, a blend mode into the
+frame) are drawn whole. See docs/webgpu.md "Partial redraw". A box must be grown by the reach of any effect that paints past it (`damage_padded`),
 or the region will clip the fringe. Correctness is checked by `draw.set_damage_verify(dc, true)` (or
-`TOOLKIT_DAMAGE_VERIFY=1`): every frame is rendered in full too and the first differing pixel is reported.
+`TOOLKIT_DAMAGE_VERIFY=1`): every frame with a region is rendered in full too and the first differing pixel is reported;
+`render.damage_verify_differences` counts the frames that differed.
 `draw.damage_stats(dc)` returns the rectangles added and kept and the pixels covered, for diagnostics.
