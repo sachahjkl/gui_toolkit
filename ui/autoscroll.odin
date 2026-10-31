@@ -9,7 +9,7 @@ package ui
 // This module is PURE and free of any platform or box dependency on its own: `Autoscroll` holds the state, and
 // `autoscroll_velocity` turns a pointer-to-anchor offset into a scroll velocity. A host (the toolkit's scroll regions,
 // or an application's document view) owns one `Autoscroll` per active session, feeds it pointer offsets and dt, and
-// applies the returned velocity to whatever it scrolls. See `autoscroll_state` in state.odin for the toolkit's own
+// applies the returned velocity to whatever it scrolls. See autoscroll_region.odin for the toolkit's own
 // wiring of the scroll regions, and the unit tests in tests/autoscroll.
 //
 // Two engagement modes, both of them live at once (like the browsers):

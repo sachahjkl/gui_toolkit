@@ -98,6 +98,13 @@ label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 @(private = "file") FUZZY_GAP_PENALTY_MAX :: 12
 @(private = "file") FUZZY_BYTES_PER_LENGTH_POINT :: 8
 
+// The bytes the rune at `i` takes in the text (an invalid byte matches U+FFFD, which would take three).
+@(private = "file")
+rune_width_at :: proc(s: string, i: int) -> int {
+	_, w := utf8.decode_rune_in_string(s[i:])
+	return w
+}
+
 // Subsequence matching, as in a picker or a command palette: the characters of `needle` (spaces ignored) occur in `hay`
 // in that order, case-insensitively, not necessarily side by side ("cs5" finds "claude-sonnet-5"). The match is the
 // tightest window ending where the leftmost one ends (fzf's first algorithm). `score` ranks matches, higher first:
@@ -122,14 +129,14 @@ fuzzy_score :: proc(needle, hay: string, allocator := context.temp_allocator) ->
 	if end < 0 { return 0, nil, false }
 	// backward from there: the latest start, so the window is the tightest
 	k = len(want) - 1
-	for i := end + utf8.rune_size(want[k]); i > 0 && k >= 0; {
+	for i := end + rune_width_at(low, end); i > 0 && k >= 0; {
 		r, w := utf8.decode_last_rune_in_string(low[:i])
 		i -= w
 		if r == want[k] { pos[k] = i; k -= 1 }
 	}
 	out := make([dynamic]Fuzzy_Range, allocator)
 	for p, j in pos {
-		w := utf8.rune_size(want[j])
+		w := rune_width_at(low, p)
 		score += FUZZY_SCORE_CHAR
 		if p == 0 {
 			score += FUZZY_SCORE_TEXT_START
@@ -143,7 +150,7 @@ fuzzy_score :: proc(needle, hay: string, allocator := context.temp_allocator) ->
 			}
 		}
 		if j > 0 {
-			gap := p - (pos[j - 1] + utf8.rune_size(want[j - 1]))
+			gap := p - (pos[j - 1] + rune_width_at(low, pos[j - 1]))
 			if gap == 0 { score += FUZZY_SCORE_ADJACENT } else { score -= min(gap, FUZZY_GAP_PENALTY_MAX) }
 		}
 		if n := len(out); n > 0 && out[n - 1][1] == p { out[n - 1][1] = p + w } else { append(&out, Fuzzy_Range{p, p + w}) }

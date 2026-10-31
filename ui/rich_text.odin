@@ -347,7 +347,10 @@ rich_link_at :: proc(l: ^Rich_Layout, runs: []Rich_Run, p: Vec2) -> int {
 
 // The faces of a family that bold / italic runs take: `regular` is the family's (the font a run names, or the box's).
 rich_set_faces :: proc(s: ^State, regular, bold, italic, bold_italic: font.Font_Id) {
-	s.rich_faces[regular] = {regular, bold, italic, bold_italic}
+	set := [4]font.Font_Id{regular, bold, italic, bold_italic}
+	if old, ok := s.rich_faces[regular]; ok && old == set { return }
+	s.rich_faces[regular] = set
+	rich_cache_clear(s)   // (laid out with the old faces)
 }
 
 ////////////////////////////////
@@ -366,25 +369,37 @@ Rich_Cache_Entry :: struct {
 @(private)
 rich_hash :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) -> u64 {
 	h: u64 = FNV64_OFFSET_BASIS
-	mix :: #force_inline proc(h: ^u64, bytes: []u8) { for b in bytes { h^ = (h^ ~ u64(b)) * FNV64_PRIME } }
 	for r in runs {
-		mix(&h, transmute([]u8)r.text)
-		st := r.style
-		st.link = ""
-		mix(&h, ([^]u8)(&st)[:size_of(Rich_Style)])
-		mix(&h, transmute([]u8)r.link)
+		fnv64_mix(&h, transmute([]u8)r.text)
+		rich_hash_value(&h, r.font); rich_hash_value(&h, r.size)
+		rich_hash_value(&h, r.bold); rich_hash_value(&h, r.italic); rich_hash_value(&h, r.code)
+		rich_hash_value(&h, r.color); rich_hash_value(&h, r.background)
+		rich_hash_value(&h, r.underline); rich_hash_value(&h, r.strike)
+		fnv64_mix(&h, transmute([]u8)r.link)
 		h = (h ~ 0xff) * FNV64_PRIME   // run boundary
 	}
-	tail := struct { w: f32, n: int, a: Text_Align, f: font.Font_Id, s: f32, m: font.Font_Id }{width, max_lines, align, c.base_font, c.base_size, c.mono}
-	mix(&h, ([^]u8)(&tail)[:size_of(tail)])
+	rich_hash_tail(&h, c, width, max_lines, align)
 	return h
+}
+
+// (Value by value: the padding bytes of a struct are no part of its content.)
+@(private = "file")
+rich_hash_value :: #force_inline proc(h: ^u64, v: $T) {
+	v := v
+	fnv64_mix(h, ([^]u8)(&v)[:size_of(T)])
+}
+
+// What a layout depends on besides the runs.
+@(private = "file")
+rich_hash_tail :: proc(h: ^u64, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) {
+	rich_hash_value(h, width); rich_hash_value(h, max_lines); rich_hash_value(h, align)
+	rich_hash_value(h, c.base_font); rich_hash_value(h, c.base_size); rich_hash_value(h, c.mono); rich_hash_value(h, c.faces)
 }
 
 @(private)
 rich_hash_version :: proc(version: u64, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) -> u64 {
 	h: u64 = RICH_VERSION_HASH_SEED ~ version
-	tail := struct { w: f32, n: int, a: Text_Align, f: font.Font_Id, s: f32, m: font.Font_Id }{width, max_lines, align, c.base_font, c.base_size, c.mono}
-	for b in ([^]u8)(&tail)[:size_of(tail)] { h = (h ~ u64(b)) * FNV64_PRIME }
+	rich_hash_tail(&h, c, width, max_lines, align)
 	return h
 }
 
@@ -418,9 +433,15 @@ rich_cache_trim :: proc(s: ^State) {
 	}
 }
 
+@(private = "file")
+rich_cache_clear :: proc(s: ^State) {
+	for _, e in s.rich_cache { rich_layout_destroy(e.layout); free(e.layout, runtime.heap_allocator()) }
+	clear(&s.rich_cache)
+}
+
 @(private)
 rich_cache_destroy :: proc(s: ^State) {
-	for _, e in s.rich_cache { rich_layout_destroy(e.layout); free(e.layout, runtime.heap_allocator()) }
+	rich_cache_clear(s)
 	delete(s.rich_cache)
 	delete(s.rich_faces)
 	delete(s.rich_link)
@@ -446,7 +467,7 @@ Rich_Draw :: struct {
 	colors:   []Color,      // per run: the colour drawn
 	ctx:      Rich_Context,
 	max_lines: int,
-	hovered, focused: int,
+	focused:  int,
 	link_color, code_bg: Color,
 	version:  u64,          // the layout cache's key for these runs (0: their hash): rich_paragraph's `version`
 }
@@ -553,7 +574,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		if c.a == 0 && r.link != "" { c = d.link_color }
 		d.colors[i] = c   // alpha 0: the box's text colour, when drawn
 	}
-	d.hovered, d.focused = -1, -1
+	d.focused = -1
 	b.custom, b.custom_user, b.measure_y = rich_draw, d, rich_measure_y
 	// width when sized to its text: the longest line without wrapping
 	if b.pref[.X].kind == .Text {
@@ -628,7 +649,6 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		delete_key(&s.rich_link, b.key)
 	}
 	if res.link_clicked >= 0 { res.link = runs[res.link_clicked].link }
-	d.hovered = res.link_hovered
 	d.focused = s.focus_visible ? res.link_focused : -1
 	if s.a11y.wanted {
 		for &p, k in parts { p.focused = p.role == .Link && part_run[k] == res.link_focused }

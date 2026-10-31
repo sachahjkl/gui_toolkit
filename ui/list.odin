@@ -142,7 +142,8 @@ list :: proc(id: string, st: ^List_State) -> bool {
 	st.focused = s.focus_key == b.key
 	st.selectable, st.building = st.building, st.selectable
 	clear(&st.building)
-	if st.sel >= st.count { st.sel = st.count - 1 }
+	// (a row list_select asked for may not be counted yet: the first build, a row added now. list_end checks it.)
+	if st.sel >= st.count && st.reveal == 0 { st.sel = st.count - 1 }
 	old := st.sel
 	st.seek = false
 	if st.focused { list_keys(s, st) }
@@ -159,6 +160,7 @@ list_end :: proc() {
 	b := parent_box()
 	pop_parent()
 	st.count = len(st.building)
+	if st.sel >= st.count { st.sel = st.count - 1 }
 	a11y_default(b, {role = .List_Box, active_descendant = st.sel >= 0 ? key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel)) : 0})
 	// (a row clicked this frame changed the selection after the rows before it were built)
 	for c := b.first; c != nil; c = c.next {

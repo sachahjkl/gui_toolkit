@@ -135,7 +135,7 @@ post_queue_push :: proc(q: ^Post_Queue, fn: Post_Proc, data: rawptr = nil, word:
 	if sync.atomic_load(&q.closed) { pq_refuse(q); return false }
 	// once something spilled, every push spills until the owner took the list: a producer's later messages may not
 	// overtake its earlier ones by going into the ring
-	if sync.atomic_load(&q.spill_count) > 0 && pq_spill(q, m) { pq_accepted(q); return true }
+	if sync.atomic_load(&q.spill_count) > 0 { pq_spill(q, m); pq_accepted(q); return true }
 	if pq_try_push(q, m) { pq_accepted(q); return true }
 	switch q.overflow {
 	case .Fail:
@@ -282,20 +282,18 @@ pq_pop :: proc(q: ^Post_Queue) -> (m: Post_Message, ok: bool) {
 	}
 }
 
-// Appends to the spill list; false when the owner emptied it meanwhile and the ring has room again (the caller pushes
-// into the ring then).
+// Appends to the spill list, or to the ring when the owner emptied the list meanwhile and the ring has room again.
 @(private = "file")
-pq_spill :: proc(q: ^Post_Queue, m: Post_Message) -> bool {
+pq_spill :: proc(q: ^Post_Queue, m: Post_Message) {
 	sync.mutex_lock(&q.spill_lock)
 	defer sync.mutex_unlock(&q.spill_lock)
 	if len(q.spill) == 0 && pq_try_push(q, m) {
 		// (pushed into the ring under the lock: no spilled message of anyone is waiting, the order holds)
-		return true
+		return
 	}
 	append(&q.spill, m)
 	sync.atomic_store(&q.spill_count, len(q.spill))
 	sync.atomic_add(&q.stats.spilled, 1)
-	return true
 }
 
 @(private = "file")

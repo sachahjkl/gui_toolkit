@@ -413,7 +413,7 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 				// a wake at the next repeat, not a frame at every refresh while the button is held
 				if t, ok := g.timers[key]; ok {
 					left := max(1, int(t.next_ms - g.time_ms + WAKE_ROUND_UP_MS))
-					g.wake_ms = g.wake_ms == 0 ? left : min(g.wake_ms, left)
+					wake_within(g, left)
 				}
 			}
 			value^ = clamp(value^, lo, hi)

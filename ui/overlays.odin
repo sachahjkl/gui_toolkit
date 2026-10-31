@@ -4,7 +4,6 @@ package ui
 // Build overlays AFTER the page content: later boxes draw on top and win hit testing.
 
 import "core:fmt"
-import "core:math"
 import "core:strings"
 import "../font"
 
@@ -105,7 +104,7 @@ toasts_build :: proc() {
 		} else {
 			// no animation: just wake up when the oldest one expires
 			left_ms := int((life - age) * 1000) + WAKE_MARGIN_MS
-			s.wake_ms = s.wake_ms == 0 ? left_ms : min(s.wake_ms, left_ms)
+			wake_within(s, left_ms)
 		}
 		target_y: f32
 		switch {
@@ -161,7 +160,11 @@ toasts_build :: proc() {
 ////////////////////////////////
 // Modal dialog
 
-// `if modal("confirm", width, &open) { ... }`: dims the page, centers a panel, closes on Escape or a click outside.
+// `if modal("confirm", width, &open) { ... }`: dims the page, centers a panel, closes on a click outside or on Escape:
+// what is inside it has Escape first (a focused field), and of several dialogs the one on top (opened last) takes it.
+@(private)
+Modal_Scope :: struct { panel: Key, open: ^bool }
+
 @(deferred_none = modal_end)
 modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
 	s := g
@@ -170,7 +173,6 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 		return false
 	}
 	em := font_size()
-	if len(s.menus) == 0 && key_press(.Escape) { open^ = false; append(&s.popup_stack, false); return false }
 	push_parent(s.root)
 	push_tags("floating")
 	push_style_copy()
@@ -200,6 +202,7 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	a11y_default(panel, {role = .Dialog, modal = true})
 	push_parent(panel)
 	append(&s.popup_stack, true)
+	append(&s.modal_stack, Modal_Scope{panel.key, open})
 	// keyboard: Tab cycles inside the dialog; the page widget that had the focus loses it when the dialog opens
 	s.trap_depth += 1
 	s.modal_now = panel.key
@@ -209,7 +212,11 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 
 @(private)
 modal_end :: proc() {
-	if len(g.popup_stack) > 0 && g.popup_stack[len(g.popup_stack) - 1] { g.trap_depth -= 1 }
+	if len(g.popup_stack) > 0 && g.popup_stack[len(g.popup_stack) - 1] {
+		g.trap_depth -= 1
+		m := pop(&g.modal_stack)
+		if m.panel == g.modal_prev && len(g.menus) == 0 && key_press(.Escape) { m.open^ = false }
+	}
 	ctx_menu_end()
 }
 
@@ -255,5 +262,3 @@ font_text_width :: proc(text_with_id: string) -> f32 {
 text_width :: proc(f: font.Font_Id, size: f32, text: string) -> f32 {
 	return font.text_width(g.fonts, f, size, text)
 }
-
-_ :: math
