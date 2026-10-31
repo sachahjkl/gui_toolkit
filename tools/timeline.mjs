@@ -187,7 +187,7 @@ function chromeTrace(d) {
     ev.push({ ph: 'X', pid: 1, tid: 1, name: 'layout', cat: 'ui', ts: us(ts + f.buildMs), dur: us(f.layoutMs) })
     ev.push({ ph: 'C', pid: 1, tid: 1, name: 'frame ms', ts: us(f.t), args: { frameMs: f.frameMs } })
   }
-  for (const s of d.steps) ev.push({ ph: 'i', pid: 1, tid: 1, s: 'g', name: s.line, cat: 'step', ts: us(s.t) })
+  for (const s of d.steps) ev.push({ ph: 'i', pid: 1, tid: 1, s: 't', name: s.line, cat: 'step', ts: us(s.t) })
   return { traceEvents: ev, displayTimeUnit: 'ms' }
 }
 

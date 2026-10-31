@@ -80,7 +80,7 @@ Measurements and the recommendation: see the notes of the WebGPU prototype (Wren
 ## Partial redraw (damage regions)
 
 When only a small part of the window changed since the last frame (a blinking caret, a hovered control, a progress bar,
-a video, a local CSS animation), the renderer can rasterize and present only the changed rectangles instead of the whole
+a video, a local CSS animation), the renderer can rasterize only the changed rectangles instead of the whole
 window. The application marks the changed boxes between `frame_begin` and `frame_submit` (`render/damage.odin`):
 
 ```
@@ -95,15 +95,27 @@ render.frame_submit(r, frame)
 render.frame_end(r)
 ```
 
-The region is the union of the rectangles, with near ones merged so the list stays bounded (`MAX_DAMAGE_RECTS`). The
-renderer clips every frame-target batch to the region (a batch that touches none of it is skipped) and clears only the
-region; layers and filter passes run whole (they are intermediate images composed back into the frame). A frame that
-opens a region and marks nothing draws and presents nothing. Not calling `damage_begin` means the whole frame is
+The region is the union of the rectangles, with near ones merged so the list stays bounded (`MAX_DAMAGE_RECTS`); they
+never overlap. The renderer draws every frame-target batch once per rectangle it touches (a batch that touches none is
+skipped) and clears only the region; layers and filter passes run whole (they are intermediate images composed back
+into the frame). A frame that opens a region and marks nothing presents nothing (`wait_for_frame` then does not wait again; a
+program that waits on `frame_waitable` itself sees no new signal). Not calling `damage_begin` means the whole frame is
 damaged, exactly as before: the default is lossless.
 
+Three frames with a region are drawn whole all the same: the first one, one after a frame without a region (or with nothing
+submitted, or a new size) since the kept target is behind then, and one that copies its own target while it is drawn (a
+backdrop, a blend mode into the frame): the pixels it would read outside the region are the last frame's finished ones.
+`damage_stats` says `active` false for those.
+
 Correctness is checked by `render.damage.verify` (`set_damage_verify`, or the environment variable
-`TOOLKIT_DAMAGE_VERIFY=1`): every frame is also rendered in full and compared; the first differing pixel and the
-rectangle it lies in are printed. For development only (it costs a full extra frame and read-backs).
+`TOOLKIT_DAMAGE_VERIFY=1`): every partial frame is also rendered in full, on the side with all its steps, and compared; the
+first differing pixel and the rectangle it lies in are printed, and `damage_verify_differences(r)` counts the frames. For
+development only (it costs a full extra frame and read-backs).
+
+`-define:TOOLKIT_DAMAGE_CHECK=true` proves it on a program that marks nothing (`examples/whatsnew` through `tests/e2e`, the pixel
+tests): each frame is drawn whole on the side, the tiles that differ from the last frame become its region, and the partial
+frame must come out the same to the byte. `render.destroy` prints the counts and ends the program with exit code 1 on a
+difference.
 
 Counters for `wren ctl stats` / diagnostics: `damage_stats(r)` returns the rectangles added and kept, the pixels the
 region covers and the pixels of the whole frame, and whether a region is in effect.
@@ -115,8 +127,9 @@ region covers and the pixels of the whole frame, and whether a region is in effe
   whole target is copied to the back buffer and presented. As on WebGPU, the rasterization is partial and the present full.
 * **WebGPU / wgpu-native**: the pinned version (29.0.1.1) exposes only `SurfacePresent`, **not** a present-with-damage
   entry point, and a surface texture does not keep its content between frames either. So the renderer composes every
-  frame into a **persistent render target** kept across frames (`render/damage_wgpu.odin`): a full frame clears it and
-  draws everything; a partial frame loads it (`LoadOp::Load`, keeping the content) and draws only the scissored
-  rectangles. The whole target is then copied to the surface texture and presented in full. **The rasterization is
+  frame with a region into a **persistent render target** kept across frames (`render/damage_wgpu.odin`): a whole frame clears
+  it and draws everything; a partial frame loads it (`LoadOp::Load`, keeping the content) and draws only the scissored
+  rectangles. The whole target is then drawn to the surface texture (a surface takes no `CopyDst`: `ps_copy` of `mip.wgsl`) and
+  presented in full. **The rasterization is
   partial (the win: fewer pixels shaded, fewer pictures replayed); the present is full** — the documented limit of this
   backend until wgpu-native gains present-with-damage.

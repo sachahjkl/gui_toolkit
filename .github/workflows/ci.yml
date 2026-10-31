@@ -3,7 +3,8 @@ name: CI
 # Four kinds of jobs, all in parallel (a push to master gives its verdict in about 6 minutes, 12 at most):
 #   build      CHANGELOG fragments, the examples, the shaders (HLSL from WGSL, DXBC)
 #   tests      the test packages that need no window of their own (D3D11 on WARP), native text, UI Automation
-#   linux      odin check of every package for Linux, the examples built, the windowless tests (tools/linux_ci.sh)
+#   linux      odin check of every package for Linux, the examples built, the windowless tests (tools/linux_ci.sh), the
+#              backends on a virtual desktop (tools/linux_desktop.sh)
 #   wgpu       the WebGPU backend on WARP, one test at a time: every package on a push to master or a manual run, split in
 #              four groups of about 4 minutes (tools/test_backends.ps1 -Group ci1..ci4); a pull request runs the 'sample'
 #              group only (Slug text, video, filters and blends, layers), its full run comes with the merge into master.
@@ -160,6 +161,16 @@ jobs:
 
       - name: Check, examples, tests (tools/linux_ci.sh)
         run: tools/linux_ci.sh odin
+
+      # the backends against real servers, no window seen by anyone: X11 under Xvfb and a window manager, RandR on Xorg's
+      # dummy driver, Wayland under a headless sway; the input from the servers' test devices
+      - name: A virtual desktop (tools/linux_desktop.sh)
+        timeout-minutes: 8
+        env:
+          XORG: sudo /usr/lib/xorg/Xorg
+        run: |
+          sudo apt-get install -y -qq xvfb openbox xdotool xclip x11-utils x11-xserver-utils xserver-xorg-core xserver-xorg-video-dummy sway wl-clipboard wtype libxcb-xfixes0 libxcb-randr0 libxkbcommon-x11-0 libwayland-client0
+          tools/linux_desktop.sh odin
 
   wgpu:
     name: WebGPU (${{ matrix.group }})

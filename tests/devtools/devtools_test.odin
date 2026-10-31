@@ -197,12 +197,15 @@ what_cannot_be_done_is_refused_what_attaching_sends_is_not :: proc(t: ^testing.T
 		"CSS.setLocalFontsEnabled", "Page.setLifecycleEventsEnabled", "Page.setAdBlockingEnabled", "Page.setBypassCSP", "Page.setFontFamilies",
 		"Network.setCacheDisabled", "Network.setAttachDebugStack", "Network.setExtraHTTPHeaders", "Network.setUserAgentOverride", "Network.setBlockedURLs",
 		"Emulation.setDeviceMetricsOverride", "Emulation.setEmulatedMedia", "Emulation.setFocusEmulationEnabled", "Emulation.setTouchEmulationEnabled",
-		"Browser.setDownloadBehavior", "Browser.setWindowBounds", "Runtime.setAsyncCallStackDepth", "Runtime.setCustomObjectFormatterEnabled",
+		"Autofill.setAddresses", "Emulation.setEmulatedVisionDeficiency", "Browser.setDownloadBehavior", "Browser.setWindowBounds", "Runtime.setAsyncCallStackDepth", "Runtime.setCustomObjectFormatterEnabled",
 		"Debugger.setAsyncCallStackDepth", "Debugger.setPauseOnExceptions", "Debugger.setBlackboxPatterns", "Overlay.setShowViewportSizeOnResize",
 		"Overlay.setInspectMode", "Security.setIgnoreCertificateErrors", "ServiceWorker.setForceUpdateOnPageLoad"}) {
 		r := ask(srv, m)
 		testing.expectf(t, strings.has_prefix(r, `{"id":7,"result":`), "%s: %s", m, r)
 	}
+	// asked by the frontend as it goes, answered as Chrome would
+	sk := ask(srv, "Storage.getStorageKey")
+	testing.expectf(t, strings.contains(sk, `"storageKey":`), "%s", sk)
 }
 
 // A browser's page may open a WebSocket to 127.0.0.1 whatever its own address: what it sends says so, and it is refused.
