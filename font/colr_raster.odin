@@ -13,6 +13,9 @@ Mat :: [6]f32
 
 MAT_IDENTITY :: Mat{1, 0, 0, 1, 0, 0}
 
+// A matrix with a smaller determinant is taken as singular.
+@(private) MAT_SINGULAR_DET :: 1e-20
+
 // m after n: (mat_mul(m, n))(p) = m(n(p)).
 mat_mul :: proc "contextless" (m, n: Mat) -> Mat {
 	return {
@@ -28,7 +31,7 @@ mat_apply :: #force_inline proc "contextless" (m: Mat, p: [2]f32) -> [2]f32 {
 
 mat_invert :: proc "contextless" (m: Mat) -> (r: Mat, ok: bool) {
 	det := m[0] * m[3] - m[1] * m[2]
-	if det == 0 || det != det || abs(det) < 1e-20 { return MAT_IDENTITY, false }
+	if det == 0 || det != det || abs(det) < MAT_SINGULAR_DET { return MAT_IDENTITY, false }
 	id := 1 / det
 	r = {m[3] * id, -m[1] * id, -m[2] * id, m[0] * id, 0, 0}
 	r[4] = -(r[0] * m[4] + r[2] * m[5])
@@ -62,6 +65,10 @@ Cross :: struct {
 
 // Flattening tolerance of the curves, pixels.
 COLR_FLATNESS :: 0.02
+// The most lines a curve is flattened to.
+@(private) COLR_CURVE_LINES_MAX :: 48
+// The bounds of an outline are clamped to this (pixels from the origin) before they are rounded.
+@(private) COLR_COVER_COORD_MAX_PX :: 1e6
 
 // Nonzero-winding coverage of `o` under `m` (em units to canvas pixels) over the pixels of `clip` (x0 y0 x1 y1): the
 // rectangle it covers (inside `clip`) and one coverage value per pixel of it. Horizontal coverage is exact, vertical
@@ -79,8 +86,8 @@ colr_cover :: proc(o: ^Outline, m: Mat, clip: [4]int, samples: int, alloc: runti
 	}
 	if !(lo.x == lo.x && lo.y == lo.y && hi.x == hi.x && hi.y == hi.y) { return }   // NaN
 	rect = {
-		max(clip[0], int(math.floor(clamp(lo.x, -1e6, 1e6)))), max(clip[1], int(math.floor(clamp(lo.y, -1e6, 1e6)))),
-		min(clip[2], int(math.ceil(clamp(hi.x, -1e6, 1e6)))), min(clip[3], int(math.ceil(clamp(hi.y, -1e6, 1e6)))),
+		max(clip[0], int(math.floor(clamp(lo.x, -COLR_COVER_COORD_MAX_PX, COLR_COVER_COORD_MAX_PX)))), max(clip[1], int(math.floor(clamp(lo.y, -COLR_COVER_COORD_MAX_PX, COLR_COVER_COORD_MAX_PX)))),
+		min(clip[2], int(math.ceil(clamp(hi.x, -COLR_COVER_COORD_MAX_PX, COLR_COVER_COORD_MAX_PX)))), min(clip[3], int(math.ceil(clamp(hi.y, -COLR_COVER_COORD_MAX_PX, COLR_COVER_COORD_MAX_PX)))),
 	}
 	if rect[2] <= rect[0] || rect[3] <= rect[1] { return }
 	edges := make([dynamic]Edge, 0, len(o.quads) * 6, alloc)
@@ -88,7 +95,7 @@ colr_cover :: proc(o: ^Outline, m: Mat, clip: [4]int, samples: int, alloc: runti
 		p0, p1, p2 := mat_apply(m, q.p[0]), mat_apply(m, q.p[1]), mat_apply(m, q.p[2])
 		d := p0 - p1 * 2 + p2
 		dev := math.sqrt(d.x * d.x + d.y * d.y)
-		n := clamp(int(math.ceil(math.sqrt(dev / (4 * COLR_FLATNESS)))), 1, 48)
+		n := clamp(int(math.ceil(math.sqrt(dev / (4 * COLR_FLATNESS)))), 1, COLR_CURVE_LINES_MAX)
 		prev := p0
 		for i in 1 ..= n {
 			t := f32(i) / f32(n)

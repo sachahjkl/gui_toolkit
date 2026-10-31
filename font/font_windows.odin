@@ -10,6 +10,14 @@ import "core:sync"
 // The platform part of the package on Windows: DirectWrite opens every face (system collection, files, memory) and
 // Direct2D draws color glyphs. The text backend (backend.odin) then works on the faces it opened.
 
+// The most DirectWrite accepts as a weight.
+@(private) DWRITE_WEIGHT_MAX :: 999
+// The most files of one face, and axes of one font, read from DirectWrite (with_simulations, axes, native_source).
+@(private) FACE_FILES_MAX :: 8
+@(private) VARIATION_AXES_MAX :: 64
+// An axis value in the key of a variable instance: thousandths.
+@(private) VARIATION_KEY_SCALE :: 1000
+
 @(private)
 Platform_Face :: struct {
 	dw:       ^IDWriteFontFace,
@@ -146,14 +154,14 @@ load_from_file :: proc(s: ^State, path: string, index := 0) -> (id: Font_Id, ok:
 	wpath := to_wide(path, context.temp_allocator)
 	file: ^IDWriteFontFile
 	if s.factory->CreateFontFileReference(raw_data(wpath), nil, &file) < 0 || file == nil { return 0, false }
-	return face_from_file(s, key, file, nil, index, 0, "", 400, 5, .NORMAL)
+	return face_from_file(s, key, file, nil, index, 0, "", FONT_WEIGHT_NORMAL, FONT_STRETCH_NORMAL, .NORMAL)
 }
 
 // A face from memory with what CSS knows of it: its family name and nominal weight / style (the base of the system
 // fallback for characters the face lacks), and simulated bold / slant (CSS font-synthesis). Takes ownership of `data`
 // when `owned`.
 load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulations: Simulations = {}, family := "",
-	weight := 400, style := Font_Style.Normal) -> (id: Font_Id, ok: bool) {
+	weight := FONT_WEIGHT_NORMAL, style := Font_Style.Normal) -> (id: Font_Id, ok: bool) {
 	if s.factory == nil || len(data) == 0 {
 		if owned { delete(data) }
 		return 0, false
@@ -173,7 +181,7 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 		memory_font_release(m)
 		return 0, false
 	}
-	return face_from_file(s, "", file, m, index, dw_simulations(simulations), family, DWRITE_FONT_WEIGHT(clamp(weight, 1, 999)), 5, dw_style(style))
+	return face_from_file(s, "", file, m, index, dw_simulations(simulations), family, DWRITE_FONT_WEIGHT(clamp(weight, 1, DWRITE_WEIGHT_MAX)), FONT_STRETCH_NORMAL, dw_style(style))
 }
 
 @(private)
@@ -210,7 +218,7 @@ face_from_file :: proc(s: ^State, key: string, file: ^IDWriteFontFile, memory: ^
 // A system font (DirectWrite's system collection, family names as in the Windows "font family" model: "Segoe UI",
 // "Segoe UI Semibold", "Arial Black"...) nearest to weight / style / stretch (1..9, 5 = normal). When the family has no
 // bold or no italic face, DirectWrite simulates them.
-load_system :: proc(s: ^State, family: string, weight := 400, style := Font_Style.Normal, stretch := 5) -> (id: Font_Id, ok: bool) {
+load_system :: proc(s: ^State, family: string, weight := FONT_WEIGHT_NORMAL, style := Font_Style.Normal, stretch := FONT_STRETCH_NORMAL) -> (id: Font_Id, ok: bool) {
 	if s.system == nil || family == "" { return 0, false }
 	req := strings.concatenate({"sysreq:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
 	if id, ok = find_key(s, req); ok { return id, id != 0 }
@@ -225,7 +233,7 @@ load_system :: proc(s: ^State, family: string, weight := 400, style := Font_Styl
 	if s.system->GetFontFamily(index, &fam) < 0 || fam == nil { return 0, false }
 	defer com_release(fam)
 	dwf: ^IDWriteFont
-	if fam->GetFirstMatchingFont(DWRITE_FONT_WEIGHT(clamp(weight, 1, 999)), DWRITE_FONT_STRETCH(clamp(stretch, 1, 9)), dw_style(style), &dwf) < 0 || dwf == nil {
+	if fam->GetFirstMatchingFont(DWRITE_FONT_WEIGHT(clamp(weight, 1, DWRITE_WEIGHT_MAX)), DWRITE_FONT_STRETCH(clamp(stretch, 1, FONT_STRETCH_MAX)), dw_style(style), &dwf) < 0 || dwf == nil {
 		return 0, false
 	}
 	defer com_release(dwf)
@@ -279,8 +287,8 @@ with_simulations :: proc(s: ^State, id: Font_Id, bold, oblique: bool) -> Font_Id
 	key := strings.concatenate({"sim:", itoa(int(id)), "|", itoa(int(want))}, context.temp_allocator)
 	if nid, ok := find_key(s, key); ok { return nid }
 	n: u32
-	if f.dw->GetFiles(&n, nil) < 0 || n == 0 || n > 8 { return id }
-	files: [8]^IDWriteFontFile
+	if f.dw->GetFiles(&n, nil) < 0 || n == 0 || n > FACE_FILES_MAX { return id }
+	files: [FACE_FILES_MAX]^IDWriteFontFile
 	if f.dw->GetFiles(&n, &files[0]) < 0 { return id }
 	defer for i in 0 ..< n { com_release(files[i]) }
 	dw: ^IDWriteFontFace
@@ -298,9 +306,9 @@ axes :: proc(s: ^State, id: Font_Id, allocator := context.allocator) -> []Axis {
 	if f.dw5->GetFontResource(&res) < 0 || res == nil { return nil }
 	defer com_release(res)
 	n := res->GetFontAxisCount()
-	if n == 0 || n > 64 { return nil }
-	ranges: [64]DWRITE_FONT_AXIS_RANGE
-	defs: [64]DWRITE_FONT_AXIS_VALUE
+	if n == 0 || n > VARIATION_AXES_MAX { return nil }
+	ranges: [VARIATION_AXES_MAX]DWRITE_FONT_AXIS_RANGE
+	defs: [VARIATION_AXES_MAX]DWRITE_FONT_AXIS_VALUE
 	if res->GetFontAxisRanges(&ranges[0], n) < 0 || res->GetDefaultFontAxisValues(&defs[0], n) < 0 { return nil }
 	out := make([]Axis, n, allocator)
 	for i in 0 ..< int(n) {
@@ -323,7 +331,7 @@ with_variations :: proc(s: ^State, id: Font_Id, values: []Axis_Value) -> Font_Id
 		strings.write_byte(&sb, '|')
 		strings.write_string(&sb, string(tag[:]))
 		strings.write_byte(&sb, '=')
-		strings.write_int(&sb, int(math.round(v.value * 1000)))
+		strings.write_int(&sb, int(math.round(v.value * VARIATION_KEY_SCALE)))
 	}
 	key := strings.to_string(sb)
 	if nid, ok := find_key(s, key); ok { return nid }

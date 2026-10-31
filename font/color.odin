@@ -46,6 +46,12 @@ Color_Raster :: struct {
 @(private) COLOR_CANVAS_MAX :: 4096
 // A canvas over this many pixels is given back once its glyph is drawn (the two bitmaps of 4096 x 4096 are 128 MB).
 @(private) COLOR_CANVAS_KEEP :: 1024 * 1024
+// Canvases come in multiples of this, not to be remade for every glyph a little bigger than the last.
+@(private) COLOR_CANVAS_GRAIN_PX :: 64
+// Dots per inch of the bitmaps: Direct2D's device independent pixels are then pixels.
+@(private) D2D_PIXELS_DPI :: 96
+// A channel of the second drawing of a glyph is far from fg's: full if fg's is below this, else zero.
+@(private) COLOR_PROBE_MID :: 128
 
 // Image formats that make a glyph a color glyph.
 @(private)
@@ -105,12 +111,12 @@ color_canvas :: proc(cr: ^Color_Raster, w, h: int) -> bool {
 	if cr.target != nil && cr.cap.x >= w && cr.cap.y >= h { return true }
 	prior := cr.cap
 	color_canvas_free(cr)
-	cw := max(w, prior.x, 64)
-	ch := max(h, prior.y, 64)
-	cw, ch = (cw + 63) &~ 63, (ch + 63) &~ 63
+	cw := max(w, prior.x, COLOR_CANVAS_GRAIN_PX)
+	ch := max(h, prior.y, COLOR_CANVAS_GRAIN_PX)
+	cw, ch = (cw + COLOR_CANVAS_GRAIN_PX - 1) &~ (COLOR_CANVAS_GRAIN_PX - 1), (ch + COLOR_CANVAS_GRAIN_PX - 1) &~ (COLOR_CANVAS_GRAIN_PX - 1)
 	pf := D2D1_PIXEL_FORMAT{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}
-	tp := D2D1_BITMAP_PROPERTIES1{pixelFormat = pf, dpiX = 96, dpiY = 96, bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET}
-	sp := D2D1_BITMAP_PROPERTIES1{pixelFormat = pf, dpiX = 96, dpiY = 96, bitmapOptions = D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW}
+	tp := D2D1_BITMAP_PROPERTIES1{pixelFormat = pf, dpiX = D2D_PIXELS_DPI, dpiY = D2D_PIXELS_DPI, bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET}
+	sp := D2D1_BITMAP_PROPERTIES1{pixelFormat = pf, dpiX = D2D_PIXELS_DPI, dpiY = D2D_PIXELS_DPI, bitmapOptions = D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW}
 	size := D2D1_SIZE_U{u32(cw), u32(ch)}
 	if cr.dc->CreateBitmap(size, nil, 0, &tp, &cr.target) < 0 || cr.target == nil { cr.cap = {}; return false }
 	if cr.dc->CreateBitmap(size, nil, 0, &sp, &cr.staging) < 0 || cr.staging == nil {
@@ -143,7 +149,7 @@ glyph_formats :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, paint: bool) -> (fmts: 
 			if e0->MoveNext(&has) < 0 || !has { break }
 			c: ^DWRITE_COLOR_GLYPH_RUN
 			if e0->GetCurrentRun(&c) < 0 || c == nil { break }
-			if c.paletteIndex == 0xFFFF { text_color = true }
+			if c.paletteIndex == PALETTE_TEXT_COLOR { text_color = true }
 		}
 		return DWRITE_GLYPH_IMAGE_FORMATS_COLR, text_color
 	case:
@@ -157,7 +163,7 @@ glyph_formats :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, paint: bool) -> (fmts: 
 		c: ^DWRITE_COLOR_GLYPH_RUN1
 		if e->GetCurrentRun1(&c) < 0 || c == nil { break }
 		fmts |= c.glyphImageFormat
-		if c.glyphImageFormat & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0 && c.paletteIndex == 0xFFFF { text_color = true }
+		if c.glyphImageFormat & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0 && c.paletteIndex == PALETTE_TEXT_COLOR { text_color = true }
 	}
 	return fmts & COLOR_FORMATS, text_color
 }
@@ -293,7 +299,7 @@ d2d_draw_runs :: proc(s: ^State, o: D2D1_POINT_2F, run: ^DWRITE_GLYPH_RUN, fg: [
 			cr.brush->SetColor(&fgc)
 			cr.dc->DrawGlyphRun(at, &c.glyphRun, cr.brush, c.measuringMode)
 		case f & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0:
-			col := c.paletteIndex == 0xFFFF ? fgc : D2D1_COLOR_F{c.runColor.r, c.runColor.g, c.runColor.b, c.runColor.a}
+			col := c.paletteIndex == PALETTE_TEXT_COLOR ? fgc : D2D1_COLOR_F{c.runColor.r, c.runColor.g, c.runColor.b, c.runColor.a}
 			cr.brush->SetColor(&col)
 			cr.dc->DrawGlyphRun(at, &c.glyphRun, cr.brush, c.measuringMode)
 		case f & DWRITE_GLYPH_IMAGE_FORMATS_SVG != 0:
@@ -344,7 +350,7 @@ color_render :: proc(s: ^State, f: ^Font, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3
 	}
 	if fmts & DWRITE_GLYPH_IMAGE_FORMATS_SVG != 0 { probe = true }
 	if probe && probe_fg && !uses_fg {
-		other := [3]u8{fg[0] < 128 ? 255 : 0, fg[1] < 128 ? 255 : 0, fg[2] < 128 ? 255 : 0}
+		other := [3]u8{fg[0] < COLOR_PROBE_MID ? 255 : 0, fg[1] < COLOR_PROBE_MID ? 255 : 0, fg[2] < COLOR_PROBE_MID ? 255 : 0}
 		if px2, w2, h2, _, again := d2d_draw_glyph(s, f, run, x, other); again && w2 == w && h2 == h {
 			for i in 0 ..< len(px) { if px[i] != px2[i] { uses_fg = true; break } }
 		}
@@ -407,7 +413,7 @@ rasterize_colr_layers :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]
 		b, px, ok := coverage(s, &cr.glyphRun, cr.baselineOriginX, cr.baselineOriginY)
 		if !ok || px == nil { return }
 		col := [4]f32{cr.runColor.r, cr.runColor.g, cr.runColor.b, cr.runColor.a}
-		if cr.paletteIndex == 0xFFFF { col = text; uses_fg^ = true }
+		if cr.paletteIndex == PALETTE_TEXT_COLOR { col = text; uses_fg^ = true }
 		append(layers, Layer{b, px, col})
 	}
 	if s.factory4 != nil {

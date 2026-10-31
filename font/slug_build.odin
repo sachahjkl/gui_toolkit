@@ -23,6 +23,8 @@ import "core:slice"
 BAND_EPSILON :: f32(1.0 / 1024)
 MAX_BANDS :: 32            // per axis (the shaders take up to 256)
 SLUG_TEXTURE_WIDTH :: 4096 // both textures: a glyph's data lies in one row
+// The least extent (em) given to a glyph's box: it divides.
+@(private) SLUG_BOX_SPAN_MIN_EM :: 1e-6
 
 Slug_Built :: struct {
 	curves:   [dynamic][4]f16,
@@ -79,7 +81,7 @@ slug_build :: proc(o: ^Outline, b: ^Slug_Built) -> bool {
 	if len(curves) == 0 || len(b.curves) > SLUG_TEXTURE_WIDTH { return false }
 
 	box := o.bbox
-	w, h := max(box[2] - box[0], 1e-6), max(box[3] - box[1], 1e-6)
+	w, h := max(box[2] - box[0], SLUG_BOX_SPAN_MIN_EM), max(box[3] - box[1], SLUG_BOX_SPAN_MIN_EM)
 	b.bbox = box
 	b.n_v = pick_band_count(curves[:], 0, box[0], box[2])
 	b.n_h = pick_band_count(curves[:], 1, box[1], box[3])
@@ -138,7 +140,7 @@ band_list :: proc(curves: []Band_Curve, axis: int, a, z: f32) -> []int {
 // The number of bands along `axis`: the smallest whose fullest band is within one curve of the best any count gives.
 @(private)
 pick_band_count :: proc(curves: []Band_Curve, axis: int, lo, hi: f32) -> int {
-	span := max(hi - lo, 1e-6)
+	span := max(hi - lo, SLUG_BOX_SPAN_MIN_EM)
 	candidates := [?]int{1, 2, 3, 4, 6, 8, 12, 16, 24, MAX_BANDS}
 	worst: [len(candidates)]int
 	best := max(int)

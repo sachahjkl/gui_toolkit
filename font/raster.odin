@@ -84,6 +84,16 @@ Atlas :: struct {
 
 @(private) LOG_MAX :: 4096
 
+// A glyph key (glyph_key): the slot of the face, the glyph, the size, the subpixel position (low bits).
+@(private) GLYPH_KEY_SLOT_SHIFT :: 44
+@(private) GLYPH_KEY_GID_SHIFT :: 28
+@(private) GLYPH_KEY_SIZE_SHIFT :: 8
+@(private) GLYPH_KEY_SIZE_MAX :: (1 << 20) - 1
+@(private) GLYPH_SIZE_STEPS_PER_PX :: 16
+
+// What raster_size_limit gives whatever the size of a page.
+@(private) RASTER_SIZE_MIN_PX :: 64
+
 @(private)
 atlas_init :: proc(a: ^Atlas) {
 	context.allocator = runtime.heap_allocator()
@@ -119,13 +129,13 @@ atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 	// glyph keys hold the slot of a face (not its generation): what is kept for the slot goes with the font in it
 	slot := u64(int(face) & FONT_INDEX_MASK)
 	for k in a.glyphs {
-		if k >> 44 == slot { delete_key(&a.glyphs, k) }
+		if k >> GLYPH_KEY_SLOT_SHIFT == slot { delete_key(&a.glyphs, k) }
 	}
 	for k in a.fg_glyphs {
-		if k.key >> 44 == slot { delete_key(&a.fg_glyphs, k) }
+		if k.key >> GLYPH_KEY_SLOT_SHIFT == slot { delete_key(&a.fg_glyphs, k) }
 	}
-	for k in a.pending { if k >> 44 == slot { delete_key(&a.pending, k) } }
-	for k in a.fg_pending { if k.key >> 44 == slot { delete_key(&a.fg_pending, k) } }
+	for k in a.pending { if k >> GLYPH_KEY_SLOT_SHIFT == slot { delete_key(&a.pending, k) } }
+	for k in a.fg_pending { if k.key >> GLYPH_KEY_SLOT_SHIFT == slot { delete_key(&a.fg_pending, k) } }
 	slug_forget_face(&a.slug, face)
 }
 
@@ -311,7 +321,7 @@ atlas_alloc :: proc(s: ^State, kind: Page_Kind, w, h: int) -> (page, x, y: int, 
 // The largest size (px per em) a glyph is rasterized at: its bitmap, at most about twice the em on a side, then fits an
 // atlas page. Text above it is rasterized at this size and stretched by the draw layer (draw.glyph_run does).
 raster_size_limit :: proc(s: ^State) -> f32 {
-	return max(f32(s.settings.page_size) / 2, 64)
+	return max(f32(s.settings.page_size) / 2, RASTER_SIZE_MIN_PX)
 }
 
 // Pages evicted so far (diagnostics, tests).
@@ -323,8 +333,8 @@ atlas_evictions :: proc(s: ^State) -> int {
 
 @(private)
 glyph_key :: #force_inline proc(face: Font_Id, gid: u16, size: f32, sub: int) -> u64 {
-	sq := u64(clamp(math.round(size * 16), 1, (1 << 20) - 1))
-	return u64(int(face) & FONT_INDEX_MASK) << 44 | u64(gid) << 28 | sq << 8 | u64(sub)
+	sq := u64(clamp(math.round(size * GLYPH_SIZE_STEPS_PER_PX), 1, GLYPH_KEY_SIZE_MAX))
+	return u64(int(face) & FONT_INDEX_MASK) << GLYPH_KEY_SLOT_SHIFT | u64(gid) << GLYPH_KEY_GID_SHIFT | sq << GLYPH_KEY_SIZE_SHIFT | u64(sub)
 }
 
 // Subpixel position (0 ..< subpixel_steps) and whole pixel of a pen x on the screen.

@@ -17,6 +17,31 @@ import "core:unicode"
 //
 // Limits: no kerning or ligature across a space (words are shaped apart), no vertical text.
 
+// Code points with a part in shaping: the joiners, the variation selectors (U+FE0E asks for text, U+FE0F for emoji),
+// the supplementary selectors, the tag characters, the keycap mark, the regional indicators.
+@(private) CP_ZWNJ :: 0x200C
+@(private) CP_ZWJ :: 0x200D
+@(private) CP_KEYCAP :: 0x20E3
+@(private) CP_VS_FIRST :: 0xFE00
+@(private) CP_VS_TEXT :: 0xFE0E
+@(private) CP_VS_EMOJI :: 0xFE0F
+@(private) CP_VS_LAST :: 0xFE0F
+@(private) CP_VS_SUPP_FIRST :: 0xE0100
+@(private) CP_VS_SUPP_LAST :: 0xE01EF
+@(private) CP_TAG_FIRST :: 0xE0020
+@(private) CP_TAG_LAST :: 0xE007F
+@(private) CP_REGIONAL_FIRST :: 0x1F1E6
+@(private) CP_REGIONAL_LAST :: 0x1F1FF
+// The high surrogate of U+E0000 .. U+E0FFF: of the tag characters.
+@(private) TAG_HIGH_SURROGATE :: 0xDB40
+// The lowest lead byte of a right-to-left character (U+0590) in UTF-8.
+@(private) UTF8_RTL_LEAD_MIN :: 0xD6
+// U+00A0 in UTF-8.
+@(private) NBSP_LEAD :: 0xC2
+@(private) NBSP_TRAIL :: 0xA0
+// Selection spans at most this far apart (pixels) are joined.
+@(private) SPAN_JOIN_GAP_PX :: 0.5
+
 Glyph_Pos :: struct {
 	face:    Font_Id,   // the face the glyph is from (after fallback)
 	id:      u16,       // glyph index in that face
@@ -96,7 +121,7 @@ measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Opt
 			hi = max(hi, b)
 		}
 		if single {
-			rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : (hi >= 0xD6 && first_strong_rtl(text))
+			rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : (hi >= UTF8_RTL_LEAD_MIN && first_strong_rtl(text))
 			return word_width(s, id, size, text, rtl, false)
 		}
 	}
@@ -115,7 +140,7 @@ measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Opt
 			b := text[k]
 			if b & 0xC0 != 0x80 { w += opts.letter_spacing }
 			if b == ' ' { w += opts.word_spacing + opts.justify }
-			if b == 0xC2 && k + 1 < len(text) && text[k + 1] == 0xA0 { w += opts.word_spacing }
+			if b == NBSP_LEAD && k + 1 < len(text) && text[k + 1] == NBSP_TRAIL { w += opts.word_spacing }
 		}
 	}
 	return w
@@ -218,7 +243,7 @@ selection_spans :: proc(sh: Shaped, text: string, lo, hi: int, allocator := cont
 	}
 	n := 0
 	for i in 0 ..< len(spans) {
-		if n > 0 && spans[i][0] <= spans[n - 1][1] + 0.5 {
+		if n > 0 && spans[i][0] <= spans[n - 1][1] + SPAN_JOIN_GAP_PX {
 			spans[n - 1][1] = max(spans[n - 1][1], spans[i][1])
 		} else {
 			spans[n] = spans[i]
@@ -284,7 +309,7 @@ place_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, a, b: int, r
 			ch := piece[j]
 			if ch & 0xC0 != 0x80 { sp[ci] += opts.letter_spacing }
 			if ch == ' ' { sp[ci] += opts.word_spacing + opts.justify }
-			if ch == 0xC2 && int(j) + 1 < len(piece) && piece[j + 1] == 0xA0 { sp[ci] += opts.word_spacing }
+			if ch == NBSP_LEAD && int(j) + 1 < len(piece) && piece[j + 1] == NBSP_TRAIL { sp[ci] += opts.word_spacing }
 		}
 		total += sp[ci]
 	}
@@ -339,6 +364,12 @@ sort_clusters :: proc(cs: []Cluster) {
 // Word cache
 
 @(private) SHARDS :: 64
+// Words per shard generation, however small the total asked for.
+@(private) WORD_SHARD_CAP_MIN :: 16
+// word_hash: FNV-1a of the text, the font mixed in by the golden ratio.
+@(private) FNV64_OFFSET :: 0xcbf29ce484222325
+@(private) FNV64_PRIME :: 0x100000001b3
+@(private) WORD_HASH_FONT_MIX :: 0x9E3779B97F4A7C15
 
 @(private)
 Word :: struct {
@@ -371,14 +402,14 @@ Word_Cache :: struct {
 
 @(private)
 words_init :: proc(c: ^Word_Cache, total: int) {
-	c.cap = total > 0 ? max(total / SHARDS, 16) : 0
+	c.cap = total > 0 ? max(total / SHARDS, WORD_SHARD_CAP_MIN) : 0
 	c.epoch = sync.atomic_add(&words_epochs, 1) + 1
 }
 
 @(private)
 words_resize :: proc(c: ^Word_Cache, total: int) {
 	words_clear(c)
-	c.cap = total > 0 ? max(total / SHARDS, 16) : 0
+	c.cap = total > 0 ? max(total / SHARDS, WORD_SHARD_CAP_MIN) : 0
 }
 
 @(private)
@@ -419,9 +450,9 @@ clear_word_cache :: proc(s: ^State) { words_clear(&s.words) }
 
 @(private)
 word_hash :: proc(id: Font_Id, size: f32, rtl, no_liga: bool, text: string) -> u64 {
-	h: u64 = 0xcbf29ce484222325
-	for i in 0 ..< len(text) { h = (h ~ u64(text[i])) * 0x100000001b3 }
-	h ~= u64(id) * 0x9E3779B97F4A7C15
+	h: u64 = FNV64_OFFSET
+	for i in 0 ..< len(text) { h = (h ~ u64(text[i])) * FNV64_PRIME }
+	h ~= u64(id) * WORD_HASH_FONT_MIX
 	h ~= u64(transmute(u32)size) << 17
 	h ~= (u64(rtl) | u64(no_liga) << 1) << 61
 	h ~= h >> 31
@@ -595,17 +626,17 @@ shape_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 // Characters that belong to the cluster of the character before them, whatever the faces have.
 @(private)
 sticks :: proc(r: rune, prev: rune) -> bool {
-	if prev == 0x200D { return true }   // after a zero width joiner (emoji ZWJ sequences)
-	return r == 0x200D || r == 0x200C || (r >= 0xFE00 && r <= 0xFE0F) || (r >= 0xE0100 && r <= 0xE01EF) ||
-		(r >= 0xE0020 && r <= 0xE007F) || unicode.is_emoji_modifier(r) || unicode.is_grapheme_extend(r) || r == 0x20E3
+	if prev == CP_ZWJ { return true }   // after a zero width joiner (emoji ZWJ sequences)
+	return r == CP_ZWJ || r == CP_ZWNJ || (r >= CP_VS_FIRST && r <= CP_VS_LAST) || (r >= CP_VS_SUPP_FIRST && r <= CP_VS_SUPP_LAST) ||
+		(r >= CP_TAG_FIRST && r <= CP_TAG_LAST) || unicode.is_emoji_modifier(r) || unicode.is_grapheme_extend(r) || r == CP_KEYCAP
 }
 
 // Whether a face has a glyph for `r` (BMP answers cached in the face).
 @(private)
 face_has :: proc(s: ^State, f: ^Font, r: rune) -> bool {
-	if r < 0x10000 && len(f.cmap) > 0 {
-		word := &f.cmap[int(r) * 2 / 32]
-		bit := u32(int(r) * 2 % 32)
+	if r < CMAP_BMP_CHARS && len(f.cmap) > 0 {
+		word := &f.cmap[int(r) * CMAP_BITS_PER_CHAR / CMAP_WORD_BITS]
+		bit := u32(int(r) * CMAP_BITS_PER_CHAR % CMAP_WORD_BITS)
 		v := sync.atomic_load_explicit(word, .Relaxed)
 		if v & (1 << bit) != 0 { return v & (2 << bit) != 0 }
 		has := s.tb.has_glyph(s, f, r)
@@ -626,15 +657,15 @@ in_ranges :: proc(ranges: []Range, r: rune) -> bool {
 @(private)
 utf16_of :: proc(text: string, allocator := context.temp_allocator) -> (w: []u16, bytes: []i32) {
 	n := 0
-	for r in text { n += r >= 0x10000 ? 2 : 1 }
+	for r in text { n += r >= UTF16_SUPPLEMENTARY_FIRST ? 2 : 1 }
 	w = make([]u16, n, allocator)
 	bytes = make([]i32, n + 1, allocator)
 	k := 0
 	for r, i in text {
 		bytes[k] = i32(i)
-		if r >= 0x10000 {
-			v := u32(r) - 0x10000
-			w[k], w[k + 1] = u16(0xD800 + (v >> 10)), u16(0xDC00 + (v & 0x3FF))
+		if r >= UTF16_SUPPLEMENTARY_FIRST {
+			v := u32(r) - UTF16_SUPPLEMENTARY_FIRST
+			w[k], w[k + 1] = u16(UTF16_HIGH_SURROGATE_FIRST + (v >> 10)), u16(UTF16_LOW_SURROGATE_FIRST + (v & 0x3FF))
 			bytes[k + 1] = i32(i)
 			k += 2
 		} else {
@@ -649,8 +680,8 @@ utf16_of :: proc(text: string, allocator := context.temp_allocator) -> (w: []u16
 @(private)
 decode16 :: #force_inline proc(w: []u16, i: int) -> (r: rune, n: int) {
 	c := rune(w[i])
-	if c >= 0xD800 && c < 0xDC00 && i + 1 < len(w) && w[i + 1] >= 0xDC00 && w[i + 1] < 0xE000 {
-		return 0x10000 + (c - 0xD800) << 10 + (rune(w[i + 1]) - 0xDC00), 2
+	if c >= UTF16_HIGH_SURROGATE_FIRST && c < UTF16_LOW_SURROGATE_FIRST && i + 1 < len(w) && w[i + 1] >= UTF16_LOW_SURROGATE_FIRST && w[i + 1] < UTF16_SURROGATES_END {
+		return UTF16_SUPPLEMENTARY_FIRST + (c - UTF16_HIGH_SURROGATE_FIRST) << 10 + (rune(w[i + 1]) - UTF16_LOW_SURROGATE_FIRST), 2
 	}
 	return c, 1
 }
@@ -673,8 +704,8 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 			if faces[i - 1] == 0 {
 				// the base goes to the system fallback: so does the rest of its cluster (emoji ZWJ sequences, modifiers)
 				search = false
-			} else if pf := face_ptr(s, faces[i - 1]); pf != nil && (face_has(s, pf, r) || r == 0x200D || r == 0x200C ||
-				(r >= 0xFE00 && r <= 0xFE0F) || prev_r == 0x200D || (r >= 0xE0100 && r <= 0xE01EF) || (r >= 0xE0020 && r <= 0xE007F)) {
+			} else if pf := face_ptr(s, faces[i - 1]); pf != nil && (face_has(s, pf, r) || r == CP_ZWJ || r == CP_ZWNJ ||
+				(r >= CP_VS_FIRST && r <= CP_VS_LAST) || prev_r == CP_ZWJ || (r >= CP_VS_SUPP_FIRST && r <= CP_VS_SUPP_LAST) || (r >= CP_TAG_FIRST && r <= CP_TAG_LAST)) {
 				// a mark the base's face lacks may still come from elsewhere; joiners and selectors always stay
 				chosen = faces[i - 1]
 			}
@@ -686,7 +717,7 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 			next: rune
 			if i + n < len(w) { next, _ = decode16(w, i + n) }
 			want = emoji_wanted(r, next)
-			explicit = want && (next == 0xFE0F || next == 0x20E3)
+			explicit = want && (next == CP_VS_EMOJI || next == CP_KEYCAP)
 			if explicit { chosen = emoji_pick(s, r) }
 		}
 		if chosen == 0 && search {
@@ -763,7 +794,7 @@ shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	}
 	// the tag characters of a tag sequence (subdivision flags) belong to the piece of their flag, whatever the script analysis says
 	for i := len(pieces) - 1; i > 0; i -= 1 {
-		if pieces[i].face == pieces[i - 1].face && w[pieces[i].a] == 0xDB40 {
+		if pieces[i].face == pieces[i - 1].face && w[pieces[i].a] == TAG_HIGH_SURROGATE {
 			pieces[i - 1].b = pieces[i].b
 			ordered_remove(&pieces, i)
 		}
@@ -823,7 +854,7 @@ mirror_pieces :: proc(glyphs: ^[dynamic]Glyph_Pos, clusters: []Cluster, outs: []
 maybe_rtl :: proc(text: string) -> bool {
 	for i := 0; i < len(text); i += 1 {
 		b := text[i]
-		if b < 0xD6 { continue }
+		if b < UTF8_RTL_LEAD_MIN { continue }
 		if b & 0xC0 == 0x80 { continue }
 		r := decode_at(text, i)
 		if is_rtl_char(r) || r == 0x200F || r == 0x202B || r == 0x202E || r == 0x2067 || r == 0x061C { return true }
@@ -852,7 +883,7 @@ is_rtl_char :: proc(r: rune) -> bool {
 // first_strong_rtl, answering ASCII text without decoding it.
 @(private)
 piece_rtl :: #force_inline proc(text: string) -> bool {
-	for i in 0 ..< len(text) { if text[i] >= 0xD6 { return first_strong_rtl(text) } }
+	for i in 0 ..< len(text) { if text[i] >= UTF8_RTL_LEAD_MIN { return first_strong_rtl(text) } }
 	return false
 }
 

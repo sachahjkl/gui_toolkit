@@ -9,18 +9,23 @@ import "core:math"
 //   oblique: the outline is sheared by OBLIQUE_SKEW (x += y * skew, about 18.8 degrees); advances do not change.
 
 OBLIQUE_SKEW :: 0.33985
+// Simulated bold: the upem divided by this (in design units), as in the comment above.
+@(private) SIM_BOLD_UPEM_DIVISOR :: 50
+// outline_embolden: the rule of FreeType for the turns a point moves along the miter of.
+@(private) EMBOLDEN_MITER_LIMIT :: 0.9375
+@(private) EMBOLDEN_EDGE_MIN_EM :: 1e-9
 
 // Extra advance of a glyph of a simulated bold face, in design units.
 sim_bold_advance :: proc(f: ^Font) -> f32 {
 	if .Bold not_in f.sims { return 0 }
-	return math.round(f.upem / 50)
+	return math.round(f.upem / SIM_BOLD_UPEM_DIVISOR)
 }
 
 // Applies the face's simulations to an outline in em units (y up).
 sim_outline :: proc(f: ^Font, o: ^Outline) {
 	if f.sims == {} || len(o.quads) == 0 { return }
 	if .Bold in f.sims {
-		outline_embolden(o, math.round(f.upem / 50) / f.upem, math.floor(f.upem / 50) / f.upem)
+		outline_embolden(o, math.round(f.upem / SIM_BOLD_UPEM_DIVISOR) / f.upem, math.floor(f.upem / SIM_BOLD_UPEM_DIVISOR) / f.upem)
 	}
 	if .Oblique in f.sims {
 		for &q in o.quads { for &p in q.p { p.x += p.y * OBLIQUE_SKEW } }
@@ -31,8 +36,8 @@ sim_outline :: proc(f: ^Font, o: ^Outline) {
 // Applies the face's simulations to a glyph's design box.
 sim_box :: proc(f: ^Font, b: ^Glyph_Box) {
 	if .Bold in f.sims {
-		b.advance += math.round(f.upem / 50)
-		if !b.empty { b.x_max += math.round(f.upem / 50); b.y_max += math.floor(f.upem / 50) }
+		b.advance += math.round(f.upem / SIM_BOLD_UPEM_DIVISOR)
+		if !b.empty { b.x_max += math.round(f.upem / SIM_BOLD_UPEM_DIVISOR); b.y_max += math.floor(f.upem / SIM_BOLD_UPEM_DIVISOR) }
 	}
 	if .Oblique in f.sims && !b.empty {
 		x0 := min(b.x_min + b.y_min * OBLIQUE_SKEW, b.x_min + b.y_max * OBLIQUE_SKEW)
@@ -56,7 +61,7 @@ outline_embolden :: proc(o: ^Outline, xs, ys: f32) {
 	cw := area < 0
 	outward :: proc(d: [2]f32, cw: bool) -> [2]f32 {
 		l := math.sqrt(d.x * d.x + d.y * d.y)
-		if l < 1e-9 { return {} }
+		if l < EMBOLDEN_EDGE_MIN_EM { return {} }
 		n := cw ? [2]f32{-d.y, d.x} : [2]f32{d.y, -d.x}
 		return n / l
 	}
@@ -88,7 +93,7 @@ outline_embolden :: proc(o: ^Outline, xs, ys: f32) {
 			n_out := outward(e_out, cw)
 			d := 1 + n_in.x * n_out.x + n_in.y * n_out.y
 			shift: [2]f32
-			if d > 1 - 0.9375 && l_in > 0 && l_out > 0 {   // a turn of less than about 160 degrees (FreeType's rule)
+			if d > 1 - EMBOLDEN_MITER_LIMIT && l_in > 0 && l_out > 0 {   // a turn of less than about 160 degrees (FreeType's rule)
 				sum := n_in + n_out
 				// the miter, but no longer than the shorter edge allows (collapsing segments)
 				u_in, u_out := e_in / l_in, e_out / l_out

@@ -39,6 +39,24 @@ when !FONT_NATIVE_LINK {
 
 @(private) NATIVE_API :: 2
 
+// What the buffers of the calls start at; a call asking for more is made again with what it asks.
+@(private) NATIVE_SCRIPT_RUNS_FIRST :: 8
+@(private) NATIVE_BREAKS_SLACK :: 8
+@(private) NATIVE_GLYPHS_SLACK :: 16
+@(private) NATIVE_PATH_ELS_FIRST :: 64
+
+// Gt_Glyph.flags
+@(private) GT_GLYPH_NO_INK :: 1
+// A line break from gt_line_breaks: the byte index, and the high bit when it is mandatory.
+@(private) GT_BREAK_INDEX_MASK :: 0x7FFF_FFFF
+@(private) GT_BREAK_MANDATORY :: 0x8000_0000
+// Gt_Path_El.verb
+@(private) GT_VERB_MOVE :: 0
+@(private) GT_VERB_LINE :: 1
+@(private) GT_VERB_QUAD :: 2
+@(private) GT_VERB_CUBIC :: 3
+@(private) GT_VERB_CLOSE :: 4
+
 @(private) Gt_Face :: struct {}
 
 @(private)
@@ -189,7 +207,7 @@ native_glyph_box :: proc(s: ^State, f: ^Font, gid: u16) -> (Glyph_Box, bool) {
 @(private)
 native_scripts :: proc(s: ^State, text: string, w: []u16, bytes: []i32, rtl: bool, out: ^[dynamic]Script_Item) -> bool {
 	if len(text) == 0 { return false }
-	runs := make([]Gt_Script_Run, 8, context.temp_allocator)
+	runs := make([]Gt_Script_Run, NATIVE_SCRIPT_RUNS_FIRST, context.temp_allocator)
 	n := gt_scripts(raw_data(text), uint(len(text)), raw_data(runs), uint(len(runs)))
 	if int(n) > len(runs) {
 		runs = make([]Gt_Script_Run, n, context.temp_allocator)
@@ -215,13 +233,13 @@ native_bidi :: proc(s: ^State, text: string, rtl: bool, levels: []u8) -> bool {
 
 @(private)
 native_line_breaks :: proc(s: ^State, text: string, out: ^[dynamic]Break_Opportunity) -> bool {
-	buf := make([]u32, len(text) / 2 + 8, context.temp_allocator)
+	buf := make([]u32, len(text) / 2 + NATIVE_BREAKS_SLACK, context.temp_allocator)
 	n := gt_line_breaks(raw_data(text), uint(len(text)), raw_data(buf), uint(len(buf)))
 	if int(n) > len(buf) {
 		buf = make([]u32, n, context.temp_allocator)
 		n = gt_line_breaks(raw_data(text), uint(len(text)), raw_data(buf), uint(len(buf)))
 	}
-	for v in buf[:n] { append(out, Break_Opportunity{int(v & 0x7FFF_FFFF), v & 0x8000_0000 != 0}) }
+	for v in buf[:n] { append(out, Break_Opportunity{int(v & GT_BREAK_INDEX_MASK), v & GT_BREAK_MANDATORY != 0}) }
 	return true
 }
 
@@ -232,7 +250,7 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	f := req.face
 	if f == nil || f.native == nil || len(req.text) == 0 { return pen }
 	tag := req.script.tag
-	cap := len(req.text) + 16
+	cap := len(req.text) + NATIVE_GLYPHS_SLACK
 	out := make([]Gt_Glyph, cap, context.temp_allocator)
 	call :: proc(f: ^Font, req: ^Shape_Request, tag: ^[4]u8, out: []Gt_Glyph) -> int {
 		lang := req.lang
@@ -249,7 +267,7 @@ native_shape :: proc(s: ^State, req: ^Shape_Request, glyphs: ^[dynamic]Glyph_Pos
 	k := req.size / f.upem
 	off := req.bytes[0]
 	if bold := sim_bold_advance(f); bold != 0 {   // simulated bold widens every spacing glyph, as DirectWrite does
-		for &g in out { if g.x_advance != 0 && g.flags & 1 == 0 { g.x_advance += bold } }
+		for &g in out { if g.x_advance != 0 && g.flags & GT_GLYPH_NO_INK == 0 { g.x_advance += bold } }
 	}
 	text_len := u32(len(req.text))
 	// the end of each cluster value: the next larger value, or the end of the text
@@ -313,7 +331,7 @@ native_outline_at :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, toleran
 		if ppem > 0 { return gt_glyph_outline_hinted(native_face(f), u32(gid), ppem, raw_data(buf), uint(len(buf))) }
 		return gt_glyph_outline(native_face(f), u32(gid), raw_data(buf), uint(len(buf)))
 	}
-	buf := make([]Gt_Path_El, 64, context.temp_allocator)
+	buf := make([]Gt_Path_El, NATIVE_PATH_ELS_FIRST, context.temp_allocator)
 	n := get(f, gid, ppem, buf)
 	if n > len(buf) {
 		buf = make([]Gt_Path_El, n, context.temp_allocator)
@@ -325,24 +343,24 @@ native_outline_at :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, toleran
 	open := false
 	for e in buf[:n] {
 		switch e.verb {
-		case 0:
+		case GT_VERB_MOVE:
 			if open { outline_end(out, start, cur) }
 			start = e.p[0] * sc
 			cur = start
 			open = true
-		case 1:
+		case GT_VERB_LINE:
 			p := e.p[0] * sc
 			outline_line(out, cur, p)
 			cur = p
-		case 2:
+		case GT_VERB_QUAD:
 			c, p := e.p[0] * sc, e.p[1] * sc
 			outline_quad(out, cur, c, p)
 			cur = p
-		case 3:
+		case GT_VERB_CUBIC:
 			c1, c2, p := e.p[0] * sc, e.p[1] * sc, e.p[2] * sc
 			outline_cubic(out, cur, c1, c2, p, tolerance)
 			cur = p
-		case 4:
+		case GT_VERB_CLOSE:
 			if open { outline_end(out, start, cur) }
 			open = false
 		}
