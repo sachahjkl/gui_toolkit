@@ -51,3 +51,20 @@ a_plain_face_has_no_color_glyphs :: proc(t: ^testing.T) {
 	if !testing.expect(t, ok) { return }
 	for g in 0 ..< GIDS_TRIED { testing.expect(t, !font.glyph_is_color(s, face, u16(g), 32)) }
 }
+
+// An emoji in plain text takes a color face where the system has one, though another font has the character without color.
+@(test)
+an_emoji_falls_back_to_color :: proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	font.init(s)
+	defer font.destroy(s)
+	if !font.has_system_family(s, "Noto Color Emoji") { return }   // (the CI installs it, beside DejaVu Sans)
+	ui, ok := font.load_embedded(s, font.FALLBACK_UI_DATA)
+	if !testing.expect(t, ok) { return }
+	for text in ([]string{"😀", "🚀"}) {
+		sh := font.shape(s, ui, 32, text, {}, context.temp_allocator)
+		if !testing.expectf(t, len(sh.glyphs) > 0, "%s is shaped", text) { continue }
+		testing.expectf(t, font.glyph_is_color(s, sh.glyphs[0].face, sh.glyphs[0].id, 32), "%s is in color", text)
+	}
+}
