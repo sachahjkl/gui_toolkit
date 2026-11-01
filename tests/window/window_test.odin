@@ -121,12 +121,14 @@ a_real_window_shows_its_frames :: proc(t: ^testing.T) {
 		testing.expect(t, render.capture_request(r), "a capture")
 		render.frame_begin(r, {1, 0, 0, 1})
 		render.frame_end(r, false)
+		last := render.Capture_Status.None
 		for _ in 0 ..< CAPTURE_POLLS {
 			got, sz, st := render.capture_poll(r, context.temp_allocator)
+			last = st
 			if st == .Ready { return got, sz }
 			if st != .Pending { break }
 		}
-		testing.expect(t, false, "the capture came back")
+		testing.expectf(t, false, "the capture came back (status %v, %s)", last, render.backend_name())
 		return
 	}
 	px, size := read(t, r)

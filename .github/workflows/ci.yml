@@ -40,7 +40,7 @@ jobs:
       # the last published version (only tools/release.ps1 writes it). (tests/changelog tests the tool, with the other packages.)
       - name: CHANGELOG fragments (tools/changelog)
         timeout-minutes: 3
-        run: odin run tools/changelog -vet -out:build/changelog.exe -- -check
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/changelog -vet -out:build/changelog.exe -- -check
 
       - name: Build the examples
         shell: cmd
@@ -109,7 +109,7 @@ jobs:
 
       - name: Tests (tools/run_tests)
         timeout-minutes: 14
-        run: odin run tools/run_tests -vet -out:build/run_tests.exe
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe
 
       - uses: actions/setup-node@v4
         with:
@@ -228,13 +228,13 @@ jobs:
       - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
         shell: pwsh
         timeout-minutes: 11
-        run: odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -group:${{ matrix.group }} -timeout:420
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -group:${{ matrix.group }} -timeout:420
 
       - name: Tests, WebGPU backend with FXC (no DXC)
         if: matrix.group == 'ci4'
         shell: pwsh
         timeout-minutes: 4
-        run: odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -define:TOOLKIT_WGPU_DX12_COMPILER=fxc -timeout:180 text shaders
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -define:TOOLKIT_WGPU_DX12_COMPILER=fxc -timeout:180 text shaders
 
       - name: Logs of the WebGPU tests
         if: failure()
