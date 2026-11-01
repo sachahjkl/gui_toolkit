@@ -402,8 +402,15 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 		for r, which in rects {
 			// its background: the top row, above the letters; its letters: the darkest pixel inside
 			bg := luma(px, (int(r.min.y + 1) * SIZE.x + int((r.min.x + r.max.x) * 0.5)) * 4)
-			dark := 1.0
-			for y in int(r.min.y) ..< int(r.max.y) { for x in int(r.min.x) ..< int(r.max.x) { dark = min(dark, luma(px, (y * SIZE.x + x) * 4)) } }
+			dark, bright := 1.0, 0.0
+			for y in int(r.min.y) + 3 ..< int(r.max.y) - 3 {   // (inside its rounded corners)
+				for x in int(r.min.x) + 3 ..< int(r.max.x) - 3 {
+					v := luma(px, (y * SIZE.x + x) * 4)
+					dark, bright = min(dark, v), max(bright, v)
+				}
+			}
+			// (the text's own colour under the dark letters would show at their edges)
+			testing.expectf(t, bright <= bg + 0.01, "palette %d: no halo: %.3f on a background of %.3f", n, bright, bg)
 			contrast := (bg + 0.05) / (dark + 0.05)
 			testing.expectf(t, contrast >= 4.5, "palette %d, %s match: contrast %.1f (background %.3f, letters %.3f)", n, which == 0 ? "current" : "other", contrast, bg, dark)
 		}

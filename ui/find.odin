@@ -1,6 +1,7 @@
 package ui
 
 import "core:math"
+import "core:slice"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -34,6 +35,7 @@ Find_State :: struct {
 	matches: [dynamic]Find_Match,
 	count:   int,                // occurrences (an occurrence may have several rects)
 	by_box:  map[Key][2]int,     // box -> [first, end) in matches
+	in_match: bool,              // find_paint_text: painting the letters of a match (a rich paragraph: every run in b.text_color)
 }
 
 find :: proc(needle: string, scope: Key = 0) {
@@ -191,38 +193,45 @@ find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	}
 }
 
-// Over the text of a box (the text drawn by `paint` with b.text_color): again in "find_text", clipped to each match.
+// The text of a box (`paint`, with b.text_color) around its matches, then in their rects in "find_text". Never both in one
+// place: the edges of light letters under dark ones would show as a halo.
 @(private)
-find_draw_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
+find_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
 	span, ok := s.find.by_box[b.key]
-	if !ok { return }
-	saved := b.text_color
-	defer b.text_color = saved
-	b.text_color = color_from_tags(s, b.tags_key, "find_text")
-	for m in s.find.matches[span[0]:span[1]] {
-		draw.push_clip(dc, find_match_rect(s, m))
+	if !ok { paint(s, dc, b); return }
+	clipped :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
+		if r.max.x <= r.min.x || r.max.y <= r.min.y { return }
+		draw.push_clip(dc, r)
 		paint(s, dc, b)
 		draw.pop_clip(dc)
 	}
-}
-
-// The same for a rich paragraph: every run in "find_text", whatever its colour, clipped to each match.
-@(private)
-find_draw_rich_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, l: ^Rich_Layout, runs: []Rich_Run, o: Vec2) {
-	span, ok := s.find.by_box[b.key]
-	if !ok { return }
-	col := color_from_tags(s, b.tags_key, "find_text")
-	for m in s.find.matches[span[0]:span[1]] {
-		r := find_match_rect(s, m)
-		draw.push_clip(dc, r)
-		for li in l.lines {
-			if o.y + li.y >= r.max.y || o.y + li.y + li.height <= r.min.y { continue }
-			for k in li.first ..< li.first + li.count {
-				f := l.frags[k]
-				if o.x + f.x >= r.max.x || o.x + f.x + f.width <= r.min.x { continue }
-				draw.text(dc, f.face, f.size, {math.round(o.x + f.x), o.y + li.baseline}, col, runs[f.run].text[f.start:f.end])
-			}
+	matches := s.find.matches[span[0]:span[1]]
+	// around them: the bands between their rows, and on each row the pieces between them (reading order: rows top down)
+	area := draw.current_clip(dc)
+	y := area.min.y
+	for i := 0; i < len(matches); {
+		top, bottom := matches[i].rect.min.y, matches[i].rect.max.y
+		j := i
+		for j < len(matches) && matches[j].rect.min.y == top { j += 1 }
+		clipped(s, dc, b, {{area.min.x, y}, {area.max.x, top}}, paint)
+		row := make([]Rect, j - i, context.temp_allocator)
+		for m, k in matches[i:j] { row[k] = find_match_rect(s, m) }
+		slice.sort_by(row, proc(p, q: Rect) -> bool { return p.min.x < q.min.x })
+		x := area.min.x
+		for r in row {
+			clipped(s, dc, b, {{x, top}, {r.min.x, bottom}}, paint)
+			x = max(x, r.max.x)
 		}
-		draw.pop_clip(dc)
+		clipped(s, dc, b, {{x, top}, {area.max.x, bottom}}, paint)
+		y = max(y, bottom)
+		i = j
 	}
+	clipped(s, dc, b, {{area.min.x, y}, area.max}, paint)
+	// in them
+	saved := b.text_color
+	defer b.text_color = saved
+	b.text_color = color_from_tags(s, b.tags_key, "find_text")
+	s.find.in_match = true
+	defer s.find.in_match = false
+	for m in matches { clipped(s, dc, b, find_match_rect(s, m), paint) }
 }
