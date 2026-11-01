@@ -23,6 +23,12 @@ an_offscreen_window_keeps_to_the_process_s_clipboard :: proc(t: ^testing.T) {
 	if station == nil { return }
 	testing.expect(t, bool(SetProcessWindowStation(station)))
 
+	// what the system's clipboard holds before: nobody else's, this station is the test's
+	testing.expect(t, bool(win.OpenClipboard(nil)), "the station's clipboard")
+	win.EmptyClipboard()
+	testing.expect(t, win.CloseClipboard() == true)
+	before := win.GetClipboardSequenceNumber()
+
 	w := platform.open_window_offscreen("clipboard", {16, 16})
 	testing.expect(t, w != nil)
 	if w == nil { return }
@@ -37,10 +43,7 @@ an_offscreen_window_keeps_to_the_process_s_clipboard :: proc(t: ^testing.T) {
 	html, _, ok := platform.clipboard_get_html(w, context.temp_allocator)
 	testing.expect(t, ok)
 	testing.expect_value(t, html, "<b>x</b>")
-	// and the system's has nothing of it
-	testing.expect(t, bool(win.OpenClipboard(nil)), "the station's clipboard")
-	defer win.CloseClipboard()
-	testing.expect(t, win.GetClipboardData(win.CF_UNICODETEXT) == nil, "no text")
-	testing.expect(t, win.EnumClipboardFormats(0) == 0, "no format at all")
+	// and the system's has seen nothing of it
+	testing.expect_value(t, win.GetClipboardSequenceNumber(), before)
 	platform.clipboard_set(w, {})   // (the process's store outlives the test)
 }
