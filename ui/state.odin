@@ -91,7 +91,16 @@ destroy :: proc(s: ^State) {
 
 frame_allocator :: proc() -> mem.Allocator { return virtual.arena_allocator(&g.arena) }
 
-now_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since(tick_origin)) }
+// The toolkit's clock (ms): the system's, or the one the current state was given (set_clock).
+now_ms :: proc() -> f64 { return g != nil ? clock_ms(g) : real_ms() }
+
+// The state's time goes by `clock` (ms, above 0), which its owner moves: every delay of the interface (caret blink, double
+// clicks, timers, toasts, tooltips, a scroll bar that hides) and every wake (wake_in_ms, wake_due) follows it. nil: the system's
+// clock. A test or a replay is then deterministic, and waits for no time.
+set_clock :: proc(s: ^State, clock: ^f64) { s.clock = clock }
+
+@(private) real_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since(tick_origin)) }
+@(private) clock_ms :: proc(s: ^State) -> f64 { return s.clock != nil ? s.clock^ : real_ms() }
 
 Build_Params :: struct {
 	window_size:    Vec2,
@@ -108,8 +117,7 @@ Build_Params :: struct {
 	frame_ms:       f64,                // optional: the frame's time in ms (a display clock: when it will be shown);
 	                                    // scroll animations are sampled on it. 0: now_ms()
 	time_ms:        f64,                // optional: the build's clock in ms (caret blink, double clicks, timers, toasts,
-	                                    // hover delays). 0: now_ms(). A test or a replay passes its own clock to be
-	                                    // deterministic (wake_ms and wake_due still compare it with now_ms())
+	                                    // hover delays). 0: the state's clock (set_clock, else the system's)
 	inactive:       bool,               // the window is not the one the user is in (an application with several windows):
 	                                    // the caret of a focused text field is not drawn and does not blink (inactive())
 }
@@ -132,7 +140,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	build_open = true
 	g = s
 	s.build_index += 1
-	s.build_start = now_ms()
+	s.build_start = real_ms()
 	s.last_events = p.events
 	s.metrics.lazy_built = 0
 	selection_snapshot(s)
@@ -156,7 +164,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.wake_ms = 0
 	s.menu_close_pending = false
 	s.boxes_built = 0
-	s.time_ms = p.time_ms > 0 ? p.time_ms : now_ms()
+	s.time_ms = p.time_ms > 0 ? p.time_ms : clock_ms(s)
 	s.inactive = p.inactive
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
 	if s.theme != nil && s.theme.serial != s.theme_serial {
@@ -212,11 +220,11 @@ end_build :: proc() {
 
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }
-	t_layout := now_ms()
+	t_layout := real_ms()
 	s.metrics.build_ms = t_layout - s.build_start
 	layout(s)
 	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
-	s.metrics.layout_ms = now_ms() - t_layout
+	s.metrics.layout_ms = real_ms() - t_layout
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {
 		chrome_collect(s)
@@ -260,7 +268,7 @@ end_build :: proc() {
 		s.clicked_key[b] = 0
 	}
 	s.double_key = 0
-	s.metrics.total_ms = now_ms() - s.build_start
+	s.metrics.total_ms = real_ms() - s.build_start
 }
 
 // True while something is still animating, or posted calls wait beyond the last build's budget: the app loop should
@@ -279,12 +287,12 @@ wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 // program resizing the window sends WM_SIZING at every step) would otherwise wait the whole delay again.
 wake_in_ms :: proc(s: ^State) -> int {
 	if s.wake_ms == 0 { return 0 }
-	return max(int(f64(s.wake_ms) - (now_ms() - s.time_ms) + WAKE_ROUND_UP_MS), 1)
+	return max(int(f64(s.wake_ms) - (clock_ms(s) - s.time_ms) + WAKE_ROUND_UP_MS), 1)
 }
 
 // Whether the timed wake the last build asked for is due now (a caret blink, a tooltip delay): a wake of the loop for
 // anything else before it (a message) has no frame to make for the interface.
-wake_due :: proc(s: ^State) -> bool { return s.wake_ms != 0 && now_ms() - s.time_ms >= f64(s.wake_ms) - WAKE_DUE_SLACK_MS }
+wake_due :: proc(s: ^State) -> bool { return s.wake_ms != 0 && clock_ms(s) - s.time_ms >= f64(s.wake_ms) - WAKE_DUE_SLACK_MS }
 
 // Asks for a wake within `ms` milliseconds (the soonest of all the requests of a build stands: a caret blink and a tooltip
 // delay both count).

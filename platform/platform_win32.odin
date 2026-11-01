@@ -184,6 +184,7 @@ open_window_offscreen :: proc(title: string, size: [2]int, dpi_scale: f32 = 1, u
 	w.off_state = .Normal
 	// an emulated place: a sensible top-left and the client size (getBounds reports it; a remote client reads it)
 	w.off_place = {0, 0, w.size.x, w.size.y}
+	offscreen_opened()
 	return w
 }
 
@@ -500,6 +501,7 @@ destroy_window :: proc(w: ^Window) {
 		w.hwnd = nil
 	}
 	if w.off_event != nil { win.CloseHandle(w.off_event); w.off_event = nil }
+	if w.offscreen { offscreen_closed() }
 	cursors_destroy(w)
 	delete(w.events)
 	delete(w.injected)
@@ -587,7 +589,8 @@ wake :: proc(w: ^Window) {
 }
 
 get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
-	if !win.OpenClipboard(w.offscreen ? nil : w.hwnd) { return "" }
+	if w.offscreen { return clip_store_text(allocator) }
+	if !win.OpenClipboard(w.hwnd) { return "" }
 	defer win.CloseClipboard()
 	h := win.GetClipboardData(win.CF_UNICODETEXT)
 	if h == nil { return "" }
@@ -602,7 +605,8 @@ get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
 }
 
 set_clipboard :: proc(w: ^Window, text: string) {
-	if !win.OpenClipboard(w.offscreen ? nil : w.hwnd) { return }
+	if w.offscreen { clip_store_put({text = text}); return }
+	if !win.OpenClipboard(w.hwnd) { return }
 	defer win.CloseClipboard()
 	win.EmptyClipboard()
 	wide := win.utf8_to_utf16(text, context.temp_allocator)

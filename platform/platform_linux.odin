@@ -130,6 +130,7 @@ open_window_offscreen :: proc(title: string, size: [2]int, dpi_scale: f32 = 1, u
 	w.size = {max(size.x, 1), max(size.y, 1)}
 	w.off_state = .Normal
 	w.off_place = {0, 0, w.size.x, w.size.y}
+	offscreen_opened()
 	return w
 }
 
@@ -153,6 +154,7 @@ destroy_window :: proc(w: ^Window) {
 	}
 	cursors_destroy(w)
 	if w.off_event > 0 { posix.close(w.off_event); w.off_event = 0 }
+	if w.offscreen { offscreen_closed() }
 	delete(w.events)
 	delete(w.injected)
 	chrome_regions_destroy(&w.chrome)

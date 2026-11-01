@@ -145,7 +145,7 @@ Box :: struct {
 	// animation (0..1)
 	hot_t, active_t, disabled_t, focus_t: f32,
 	bar_t:       f32,            // how much its scroll bar shows (set_scrollbar_autohide)
-	bar_until:   f64,            // scrollbar_reveal: shown until then (now_ms)
+	bar_until:   f64,            // scrollbar_reveal: shown until then (the build's clock)
 
 	// accessibility (a11y.odin): what it is to screen readers, set by its widget or the app (this build's arena)
 	a11y:        ^A11y_Info,
@@ -326,6 +326,7 @@ State :: struct {
 	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)
 	lazy_more:       bool,             // a lazy column showed spaces where items stand: one more frame (needs_frame)
 	dt:           f32,
+	clock:        ^f64,               // set_clock: the state's time, moved by its owner (nil: the system's)
 	window_size:  Vec2,
 	boxes_built:  int,
 	metrics:      Build_Metrics,
