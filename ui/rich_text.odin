@@ -520,6 +520,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
 	o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
 	clip := draw.current_clip(dc)
+	// the runs' backgrounds first: the selection and the matches go over them, under the text (draw_box leaves both to here)
 	for li in l.lines {
 		if o.y + li.y > clip.max.y { break }
 		if o.y + li.y + li.height < clip.min.y { continue }
@@ -530,6 +531,17 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			bg := r.background
 			if r.code && bg.a == 0 { bg = d.code_bg }
 			if bg.a > 0 { draw.rect(dc, {{x0, o.y + li.y}, {x1, o.y + li.y + li.height}}, bg, r.code ? RICH_CODE_RADIUS_PX * s.scale : 0) }
+		}
+	}
+	if .Selectable in b.flags { draw_selection(s, dc, b) }
+	if s.find.needle != "" { find_draw(s, dc, b) }
+	for li in l.lines {
+		if o.y + li.y > clip.max.y { break }
+		if o.y + li.y + li.height < clip.min.y { continue }
+		for k in li.first ..< li.first + li.count {
+			f := l.frags[k]
+			r := d.runs[f.run]
+			x0, x1 := o.x + f.x, o.x + f.x + f.width
 			col := d.colors[f.run]
 			if col.a == 0 { col = b.text_color }
 			base := Vec2{math.round(x0), o.y + li.baseline}
@@ -552,6 +564,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			draw.text(dc, li.ellipsis_face, li.ellipsis_size, {math.round(o.x + li.ellipsis_x), o.y + li.baseline}, b.text_color, "…")
 		}
 	}
+	if s.find.needle != "" { find_draw_rich_text(s, dc, b, l, d.runs, o) }
 }
 
 // A paragraph of rich text runs: full width (unless `next` says otherwise), as tall as its lines, at most `max_lines`
