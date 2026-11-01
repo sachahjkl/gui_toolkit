@@ -41,8 +41,3 @@ dbus_fd :: proc() -> i32 {
 	return session_conn != nil ? dbus.conn_fd(session_conn) : -1
 }
 
-@(private)
-dbus_shutdown :: proc() {
-	if session_conn != nil { dbus.conn_close(session_conn); session_conn = nil }
-	session_tried = false
-}

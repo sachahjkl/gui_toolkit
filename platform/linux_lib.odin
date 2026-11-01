@@ -56,7 +56,6 @@ Wl_Message :: struct {
 @(private) Wl_Fixed :: distinct i32
 
 @(private) wl_fixed_to_f64 :: proc "contextless" (f: Wl_Fixed) -> f64 { return f64(i32(f)) / 256 }
-@(private) wl_fixed_to_int :: proc "contextless" (f: Wl_Fixed) -> int { return int(i32(f) / 256) }
 
 // wl_proxy_marshal_flags' flag: the request destroys the proxy.
 @(private) WL_MARSHAL_FLAG_DESTROY :: 1 << 0

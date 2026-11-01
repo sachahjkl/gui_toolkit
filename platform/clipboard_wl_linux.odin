@@ -280,44 +280,6 @@ ps_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 }
 @(private) wl_primary_text: string   // the primary selection's text, while we own it
 
-// Sets the primary (middle-click) selection to `text`. The X11 counterpart is the PRIMARY selection (window backend).
-@(private)
-wl_primary_set :: proc(text: string) {
-	if wlc.primary_device == nil || wlc.primary_manager == nil { return }
-	delete(wl_primary_text)
-	wl_primary_text = strings.clone(text)
-	if wlc.primary_source != nil {
-		wl.proxy_marshal_flags(wlc.primary_source, ZWP_PRIMARY_SOURCE_DESTROY, nil, wl.proxy_get_version(wlc.primary_source), WL_MARSHAL_FLAG_DESTROY)
-		wlc.primary_source = nil
-	}
-	src := wl.proxy_marshal_flags(wlc.primary_manager, ZWP_PRIMARY_DEVICE_MANAGER_CREATE_SOURCE,
-		&zwp_primary_source_iface, wl.proxy_get_version(wlc.primary_manager), 0, nil)
-	if src == nil { return }
-	wlc.primary_source = src
-	wl.proxy_add_listener(src, &primary_source_listener, nil)
-	for mime in ([]string{WL_MIME_TEXT, WL_MIME_TEXT2}) {
-		c := strings.clone_to_cstring(mime, context.temp_allocator)
-		wl.proxy_marshal_flags(src, ZWP_PRIMARY_SOURCE_OFFER, nil, wl.proxy_get_version(src), 0, c)
-	}
-	serial := wlc.kbd_serial != 0 ? wlc.kbd_serial : wl_button_serial
-	wl.proxy_marshal_flags(wlc.primary_device, ZWP_PRIMARY_DEVICE_SET_SELECTION, nil, wl.proxy_get_version(wlc.primary_device), 0, src, serial)
-	wl.display_flush(wlc.display)
-}
-
-@(private)
-wl_primary_get :: proc(allocator := context.allocator) -> string {
-	if wlc.primary_source != nil { return strings.clone(wl_primary_text, allocator) }
-	if !wlc.have_primary_offer || wlc.primary_offer == nil { return strings.clone(wl_primary_text, allocator) }
-	fds: [2]posix.FD
-	if posix.pipe(&fds) != .OK { return "" }
-	read_fd, write_fd := fds[0], fds[1]
-	c := strings.clone_to_cstring(WL_MIME_TEXT, context.temp_allocator)
-	wl.proxy_marshal_flags(wlc.primary_offer, ZWP_PRIMARY_OFFER_RECEIVE, nil, wl.proxy_get_version(wlc.primary_offer), 0, c, i32(write_fd))
-	wl.display_flush(wlc.display)
-	posix.close(write_fd)
-	return strings.clone(string(wl_pipe_read_all(read_fd, context.temp_allocator)), allocator)
-}
-
 ////////////////////////////////
 // the text clipboard entry points platform_linux.odin calls
 
