@@ -492,7 +492,8 @@ off_drain :: proc(w: ^Window) {
 // Plain-text clipboard (the rich clipboard is in clipboard_linux.odin). Both backends own their selection.
 
 get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
-	if w == nil || w.offscreen { return "" }
+	if w == nil { return "" }
+	if w.offscreen { return clip_store_text(allocator) }
 	switch w.backend {
 	case .Wayland: return wl_clipboard_get_text(w, allocator)
 	case .X11:     return x11_clipboard_get_text(w, allocator)
@@ -502,7 +503,8 @@ get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
 }
 
 set_clipboard :: proc(w: ^Window, text: string) {
-	if w == nil || w.offscreen { return }
+	if w == nil { return }
+	if w.offscreen { clip_store_put({text = text}); return }
 	clipboard_set(w, {text = text})   // (the store is what a selection owner offers)
 }
 

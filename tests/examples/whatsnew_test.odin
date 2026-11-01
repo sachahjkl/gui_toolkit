@@ -18,6 +18,7 @@ import "core:strconv"
 import "core:strings"
 import "core:sync"
 import "core:testing"
+import "core:thread"
 import "core:time"
 import "../../devtools"
 import "../../examples/whatsnew"
@@ -487,14 +488,14 @@ devtools_screencast_comes_to_rest :: proc(t: ^testing.T) {
 	frames := 0
 	last: Picture
 	take :: proc(c: ^Client, frames: ^int, last: ^Picture) {
-		events := c.events
-		c.events = make([dynamic]Event, context.temp_allocator)   // (an answer's wait gathers more)
-		for e in events {
+		for e in c.events {
 			if e.method != "Page.screencastFrame" { continue }
 			frames^ += 1
 			last^ = decode_shot(c.rig.s, text_of(field(e.params, "data")))
-			send(c, "Page.screencastFrameAck", fmt.tprintf(`{{"sessionId":%d}}`, int(number(field(e.params, "sessionId")))))
+			// (no answer waited for: the frames that would make are what is measured here)
+			devtools.local_send(c.l, fmt.tprintf(`{{"id":0,"method":"Page.screencastFrameAck","params":{{"sessionId":%d}}}}`, int(number(field(e.params, "sessionId")))))
 		}
+		clear(&c.events)
 	}
 	// As a program's loop at rest: a frame only when the server asks for one, which is what wakes the window. It comes to rest within a few frames of
 	// nothing changing, even though the window shows a figure of its own build (what it still sends then is the last of what changed).
@@ -504,8 +505,8 @@ devtools_screencast_comes_to_rest :: proc(t: ^testing.T) {
 	end := time.tick_add(time.tick_now(), CALL_LIMIT)
 	for rest < CAST_REST_ROUNDS || frames == 0 {
 		if time.tick_diff(time.tick_now(), end) <= 0 { break }
-		asked := sync.atomic_load(&srv.cast_dirty) || sync.atomic_load(&srv.waiting) > 0
-		if asked { session.frame(r.s) } else { devtools.service(srv, &r.app.s, &r.app.r) }
+		asked := sync.atomic_load(&srv.asked) || sync.atomic_load(&srv.waiting) > 0 || sync.atomic_load(&srv.screencast.same)
+		if asked { session.frame(r.s) } else { thread.yield() }
 		busy := sync.atomic_load(&srv.encoding) > 0
 		for m in devtools.local_take(c.l, context.temp_allocator) {
 			v, _ := json.parse_string(m, parse_integers = true, allocator = context.temp_allocator)
