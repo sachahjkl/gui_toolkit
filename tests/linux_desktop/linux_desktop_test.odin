@@ -15,6 +15,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
+import "core:thread"
 import "core:time"
 import "../../platform"
 
@@ -57,14 +58,17 @@ open :: proc(title: string, size := [2]int{300, 200}) -> ^platform.Window {
 
 // The events of a pumped window, kept: each poll hands out a slice valid until the next.
 @(private = "file")
+// How long a pump waits for the server each time round.
+@(private = "file") PUMP_WAIT_MS :: 5
+@(private = "file") SERVER_SENDS_CLICK :: 200 * time.Millisecond
+
 Seen :: struct { events: [dynamic]platform.Event }
 
 @(private = "file")
 pump_for :: proc(w: ^platform.Window, ms: int, seen: ^Seen = nil) {
 	start := time.tick_now()
 	for time.duration_milliseconds(time.tick_since(start)) < f64(ms) {
-		for e in platform.poll_events(w, false) { if seen != nil { append(&seen.events, e) } }
-		time.sleep(5 * time.Millisecond)
+		for e in platform.poll_events(w, true, PUMP_WAIT_MS) { if seen != nil { append(&seen.events, e) } }
 	}
 }
 
@@ -73,9 +77,8 @@ pump_for :: proc(w: ^platform.Window, ms: int, seen: ^Seen = nil) {
 pump_until :: proc(w: ^platform.Window, ms: int, seen: ^Seen, data: rawptr, done: proc(s: ^Seen, data: rawptr) -> bool) -> bool {
 	start := time.tick_now()
 	for time.duration_milliseconds(time.tick_since(start)) < f64(ms) {
-		for e in platform.poll_events(w, false) { if seen != nil { append(&seen.events, e) } }
+		for e in platform.poll_events(w, true, PUMP_WAIT_MS) { if seen != nil { append(&seen.events, e) } }
 		if done(seen, data) { return true }
-		time.sleep(5 * time.Millisecond)
 	}
 	return false
 }
@@ -98,9 +101,8 @@ wait_kind :: proc(w: ^platform.Window, s: ^Seen, kind: platform.Event_Kind, ms :
 wait_file :: proc(w: ^platform.Window, path: string, ms := 8000) -> (string, bool) {
 	start := time.tick_now()
 	for time.duration_milliseconds(time.tick_since(start)) < f64(ms) {
-		platform.poll_events(w, false)
+		platform.poll_events(w, true, PUMP_WAIT_MS)
 		if data, err := os.read_entire_file(path, context.temp_allocator); err == nil { return string(data), true }
-		time.sleep(10 * time.Millisecond)
 	}
 	return "", false
 }
@@ -174,7 +176,7 @@ a_wait_does_not_sleep_over_what_xcb_read :: proc(t: ^testing.T) {
 	pump_for(w, 200)
 	id := window_id(w)
 	sh("xdotool windowactivate --sync ", id, " mousemove --window ", id, " 20 20 click 1")
-	time.sleep(200 * time.Millisecond)
+	time.sleep(SERVER_SENDS_CLICK)   // (real time: the click is on its way to the socket, and reading it is what this test is about)
 	platform.display_invalidate(w)
 	platform.display_info(w)   // (requests and replies: the click is read with them, and stays in xcb's queue)
 	start := time.tick_now()
@@ -480,9 +482,8 @@ a_drag_goes_from_one_window_to_another :: proc(t: ^testing.T) {
 	sh("rm -f /tmp/gt_tree; (sleep 0.8; xwininfo -root -tree > /tmp/gt_tree.tmp 2>/dev/null; mv /tmp/gt_tree.tmp /tmp/gt_tree) >/dev/null 2>&1 &")
 	r := drag_between(t, a, b, data, platform.Drag_Image{pixels, {16, 16}, {4, 4}}, press_in_a(a), drop_in_b(b))
 	if x11() {
-		time.sleep(500 * time.Millisecond)
-		tree, err := os.read_entire_file("/tmp/gt_tree", context.temp_allocator)
-		testing.expect(t, err == nil && strings.contains(string(tree), "16x16+"), "the picture's window was on the screen")
+		tree, got := wait_file(a, "/tmp/gt_tree")
+		testing.expect(t, got && strings.contains(tree, "16x16+"), "the picture's window was on the screen")
 	}
 	testing.expect(t, r.ok, "the drag ran")
 	testing.expect_value(t, r.effect, Maybe(platform.Drop_Effect)(.Copy))
@@ -644,7 +645,7 @@ open_url_leaves_no_zombie :: proc(t: ^testing.T) {
 	got := ""
 	for time.duration_milliseconds(time.tick_since(start)) < 3000 {
 		if data, err := os.read_entire_file("/tmp/gt_opened", context.temp_allocator); err == nil && len(data) > 0 { got = string(data); break }
-		time.sleep(20 * time.Millisecond)
+		thread.yield()
 	}
 	testing.expect_value(t, strings.trim_space(got), "https://example.org/a b")
 }

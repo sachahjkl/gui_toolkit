@@ -3,6 +3,7 @@
 package layers_test
 
 import "core:testing"
+import "core:thread"
 import "core:time"
 import "../../draw"
 import "../../font"
@@ -15,6 +16,9 @@ Fx :: struct {
 	fonts: font.State,
 	dc:    draw.Context,
 }
+
+// How long a readback may take: it only ends a failing run.
+@(private = "file") READBACK_LIMIT :: 10 * time.Second
 
 @(private = "file")
 open :: proc(f: ^Fx, space: render.Blend_Space) -> bool {
@@ -206,10 +210,11 @@ offscreen_draw_and_read_back :: proc(t: ^testing.T) {
 		pixels: []u8
 		size: [2]int
 		st: render.Capture_Status
-		for _ in 0 ..< 2000 {   // (2 s at most: the copy is usually ready at the first poll)
+		start := time.tick_now()
+		for time.tick_since(start) < READBACK_LIMIT {   // (the copy is usually ready at the first poll)
 			pixels, size, st = render.readback_poll(&f.r, id, context.temp_allocator)
 			if st != .Pending { break }
-			time.sleep(time.Millisecond)
+			thread.yield()
 		}
 		testing.expect_value(t, st, render.Capture_Status.Ready)
 		testing.expect_value(t, size, [2]int{100, 40})
@@ -297,10 +302,11 @@ a_device_loss_leaves_the_readbacks_of_another_renderer :: proc(t: ^testing.T) {
 	render.simulate_device_loss(&b.r)
 	testing.expect(t, render.recover(&b.r))
 	st: render.Capture_Status
-	for _ in 0 ..< 2000 {
+	start := time.tick_now()
+	for time.tick_since(start) < READBACK_LIMIT {
 		_, _, st = render.readback_poll(&a.r, id, context.temp_allocator)
 		if st != .Pending { break }
-		time.sleep(time.Millisecond)
+		thread.yield()
 	}
 	testing.expect_value(t, st, render.Capture_Status.Ready)
 }

@@ -11,6 +11,7 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 import inst "../../instance"
+import "../../testkit"
 
 @(private = "file") unique_counter: u64
 
@@ -41,6 +42,12 @@ instance_key_follows_prefix_and_path :: proc(t: ^testing.T) {
 	testing.expect_value(t, inst.key("app.release", `C:\Users\me\AppData\Roaming\App`), a)   // (and always the same)
 }
 
+// How often an owner that pumps looks at its messages.
+@(private = "file") OWNER_POLL :: 2 * time.Millisecond
+// A few of the second start's attempts (instance: ACQUIRE_RETRY_MS).
+@(private = "file") OWNER_STARTING_MS :: 150
+@(private = "file") OWNER_GOES_AFTER :: 150 * time.Millisecond
+
 ////////////////////////////////
 // The real exchange, in one process: a thread is the owner (it pumps its window), the test thread is the second start.
 
@@ -50,6 +57,8 @@ Owner_Thread :: struct {
 	ready:    sync.Sema,
 	stop:     bool,
 	closing:  bool,          // refuse messages from now on (as the owner does when it ends), keep pumping
+	closing_seen: bool,      // atomic: it does
+	wake:     sync.Sema,     // owner_end
 	pump:     bool,          // false: do not pump (a busy owner)
 	delay_ms: int,           // the window comes this long after the mutex (an owner that is starting)
 	got:      [dynamic]string,
@@ -73,12 +82,16 @@ owner_main :: proc(th: ^thread.Thread) {
 	outcome, owner := inst.acquire({name = d.name, identity = d.identity, wait_ms = 0}, nil)
 	d.started = outcome == .First
 	sync.sema_post(&d.ready)
+	// (real time: the second start tries again by the system's clock, and nothing shows that it has tried)
 	if d.delay_ms > 0 { time.sleep(time.Duration(d.delay_ms) * time.Millisecond) }
 	if d.started { inst.owner_start(&owner, owner_handler, d) }
 	for !d.stop {
-		if d.closing { owner.closing = true }
-		if d.pump { inst.pump_messages() } else { time.sleep(20 * time.Millisecond) }
-		time.sleep(2 * time.Millisecond)
+		if d.closing {
+			owner.closing = true
+			sync.atomic_store(&d.closing_seen, true)
+		}
+		if d.pump { inst.pump_messages() }
+		_ = sync.sema_wait_with_timeout(&d.wake, OWNER_POLL)
 	}
 	if d.started { inst.owner_stop(&owner) }
 }
@@ -98,6 +111,7 @@ owner_begin :: proc(name, identity: string, pump := true, delay_ms := 0) -> (^Ow
 @(private = "file")
 owner_end :: proc(d: ^Owner_Thread, th: ^thread.Thread) {
 	d.stop = true
+	sync.sema_post(&d.wake)
 	thread.join(th)
 	thread.destroy(th)
 	for g in d.got { delete(g, runtime.heap_allocator()) }
@@ -167,10 +181,11 @@ instance_a_closing_owner_is_waited_for :: proc(t: ^testing.T) {
 	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
 	d, th := owner_begin(name, `C:\a\app.exe`)
 	d.closing = true   // it refuses from now on
-	time.sleep(50 * time.Millisecond)
+	testing.expect(t, testkit.await(d, proc(d: ^Owner_Thread) -> bool { return sync.atomic_load(&d.closing_seen) }), "the owner closes")
 	// the owner goes away a moment later; the second start, which was refused meanwhile, becomes the owner
+	// (real time: the second start tries again by the system's clock, and nothing shows that it has been refused)
 	closer := thread.create_and_start_with_poly_data2(d, th, proc(d: ^Owner_Thread, th: ^thread.Thread) {
-		time.sleep(400 * time.Millisecond)
+		time.sleep(OWNER_GOES_AFTER)
 		owner_end(d, th)
 	})
 	outcome, owner := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 5000}, msg(false, {"about:config"}))
@@ -183,8 +198,8 @@ instance_a_closing_owner_is_waited_for :: proc(t: ^testing.T) {
 @(test)
 instance_a_start_that_finds_no_window_yet_waits_for_it :: proc(t: ^testing.T) {
 	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
-	// the owner holds the mutex (it is starting) and makes its window 400 ms later
-	d, th := owner_begin(name, `C:\a\app.exe`, delay_ms = 400)
+	// the owner holds the mutex (it is starting) and makes its window a moment later
+	d, th := owner_begin(name, `C:\a\app.exe`, delay_ms = OWNER_STARTING_MS)
 	defer owner_end(d, th)
 	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 5000}, msg(false, {"https://example.org/"}))
 	testing.expect_value(t, outcome, inst.Outcome.Forwarded)

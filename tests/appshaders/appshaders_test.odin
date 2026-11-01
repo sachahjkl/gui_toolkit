@@ -2,7 +2,7 @@
 // needed), in both blend spaces.   odin test tests/appshaders -vet
 // The shader is test.wgsl; its Direct3D 11 pixel shader (shaders/test.dxbc, shaders/test.sha256) is written by
 //   odin run tools/shaders -- app test tests/appshaders/test.wgsl tests/appshaders/shaders
-// (The same tests run on the WebGPU backend: tools\test_backends.ps1 -Backend wgpu -Only appshaders.)
+// (The same tests run on the WebGPU backend: odin run tools/run_tests -- -backend:wgpu appshaders.)
 package appshaders_test
 
 import "core:math"

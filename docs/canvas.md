@@ -41,4 +41,4 @@ Coverage is analytic for rectangles (exact box filter when axis-aligned), rounde
 
 ## Tests
 
-`tests/canvas` (`tools\test_backends.ps1 -Only canvas`, WARP): exact rectangle edges, alpha and source-over, ellipses and rounded rectangles, polygon coverage, even-odd and nonzero, gradients, the operators and blend modes against their formulas, clip masks, layers with blur and color matrix, image sampling, `Put` and read-back.
+`tests/canvas` (`odin run tools/run_tests -- canvas`, WARP): exact rectangle edges, alpha and source-over, ellipses and rounded rectangles, polygon coverage, even-odd and nonzero, gradients, the operators and blend modes against their formulas, clip masks, layers with blur and color matrix, image sampling, `Put` and read-back.

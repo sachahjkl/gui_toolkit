@@ -2,7 +2,7 @@
 // SetWindowPos (SWP_NOACTIVATE: no mouse, no focus), and reads one row of the screen with BitBlt to find where a column of
 // fixed width ends: at rest, and many times after each step. A frame stretched over the new size moves that end. Not a
 // test of the suite: it needs a screen with the window on top (made topmost for the run).
-//   odin build tests/resize_probe -vet -out:build/resize_probe.exe
+//   odin build tools/resize_probe -vet -out:build/resize_probe.exe
 //   build\resize_probe.exe build\hello.exe              the row of the text field of examples/hello, whose width is fixed
 //   build\resize_probe.exe build\whatsnew.exe --y=640   any row: the column is what comes before the first long run of background
 // Exit code 1: a sample's column ended elsewhere than at rest.
