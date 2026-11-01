@@ -10,8 +10,11 @@ import "core:time"
 import win "core:sys/windows"
 import "../../base"
 import "../../platform"
+import "../../render"
 
 // Long enough for a timer of a modal loop (16 ms) to fire, had it been set.
+WINDOW_SIZE :: [2]int{320, 240}
+CAPTURE_POLLS :: 100000
 NO_TIMER_MS :: 100
 MODAL_LOOP_MS :: 200
 PUMP_WAIT_MS :: 2
@@ -97,6 +100,46 @@ config_dir_with_a_long_path :: proc(t: ^testing.T) {
 Frames :: struct { n: int }
 
 on_frame :: proc(user: rawptr) { (^Frames)(user).n += 1 }
+
+// The path of a real window's frames, on its real swap chain: a composition one, with its surface of the monitor's size, a resize, what the frame is read back as.
+@(test)
+a_real_window_shows_its_frames :: proc(t: ^testing.T) {
+	w := platform.open_window("frames", WINDOW_SIZE, transparent = true)
+	defer platform.destroy_window(w)
+	r := new(render.Renderer)
+	defer free(r)
+	if !testing.expect(t, render.init_window(r, w, w.size, transparent = true), "a renderer on the window") { return }
+	defer render.destroy(r)
+	testing.expect(t, !render.is_offscreen(r), "a swap chain")
+	testing.expect(t, render.is_transparent(r), "a composition one")
+	testing.expect_value(t, render.backend_name(), render.RENDER_BACKEND)
+	testing.expect(t, render.renderer_id(r) != 0, "an id")
+	render.set_fixed_surface(r, platform.monitor_size(w))
+	win.ShowWindow(w.hwnd, win.SW_SHOWNOACTIVATE)
+	settle(w)
+	read :: proc(t: ^testing.T, r: ^render.Renderer) -> (px: []u8, size: [2]int) {
+		testing.expect(t, render.capture_request(r), "a capture")
+		render.frame_begin(r, {1, 0, 0, 1})
+		render.frame_end(r, false)
+		for _ in 0 ..< CAPTURE_POLLS {
+			got, sz, st := render.capture_poll(r, context.temp_allocator)
+			if st == .Ready { return got, sz }
+			if st != .Pending { break }
+		}
+		testing.expect(t, false, "the capture came back")
+		return
+	}
+	px, size := read(t, r)
+	testing.expect_value(t, size, w.size)
+	if len(px) >= 4 { testing.expect_value(t, [4]u8{px[0], px[1], px[2], px[3]}, [4]u8{255, 0, 0, 255}) }
+	// a resize: the frame is the window's new size, cut, never stretched
+	platform.set_size(w, WINDOW_SIZE * 2)
+	settle(w)
+	render.resize(r, w.size)
+	testing.expect_value(t, r.size, w.size)
+	_, size = read(t, r)
+	testing.expect_value(t, size, w.size)
+}
 
 // Every message there is has been handled (a repaint is one, as soon as nothing else is queued).
 settle :: proc(w: ^platform.Window) {

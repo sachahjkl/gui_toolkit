@@ -89,7 +89,7 @@ Client :: struct {
 @(private = "file")
 start_whatsnew :: proc(t: ^testing.T, loc := #caller_location) -> ^Rig {
 	context.allocator = runtime.heap_allocator()
-	app, _ := whatsnew.open({}, headless_default = true)
+	app := whatsnew.open({}, headless_default = true)
 	if !testing.expect(t, app != nil, "whatsnew opens", loc = loc) { session.stop_test(t, "no application", loc) }
 	testing.cleanup(t, proc(p: rawptr) {
 		context.allocator = runtime.heap_allocator()
