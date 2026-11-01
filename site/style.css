@@ -162,3 +162,22 @@ footer p { max-width: 760px; margin: 0 auto; }
   .hero { padding-top: 48px; }
   .gallery { grid-template-columns: 1fr; }
 }
+
+/* the viewer of the captures (gallery.js): one at a time, as large as the window allows */
+.shot a.frame { display: block; cursor: zoom-in; border-radius: 10px; }
+.lightbox {
+  position: fixed; top: 0; left: 0; z-index: 50;   /* above the sticky bar, also where a dialog's top layer does not lift it */
+  width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 16px; border: 0;
+  background: rgba(0, 0, 0, 0.92); color: var(--text);
+}
+.lightbox[open] { display: flex; flex-direction: column; gap: 12px; }
+.lightbox::backdrop { background: rgba(0, 0, 0, 0.92); }
+html.lightbox-open { overflow: hidden; }
+.lightbox-stage { position: relative; flex: 1 1 auto; min-height: 0; cursor: zoom-out; }
+.lightbox-stage img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; }
+.lightbox-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
+.lightbox-caption { flex: 1 1 320px; margin: 0; color: var(--weak); font-size: 0.9rem; line-height: 1.45; }
+.lightbox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lightbox-count { margin-right: 6px; color: var(--faint); font-family: var(--mono); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.lightbox .btn { font-family: inherit; font-size: 0.9rem; cursor: pointer; }
+.lightbox .btn:hover { text-decoration: none; }
