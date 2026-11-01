@@ -8,7 +8,7 @@
 <a href="https://sachahjkl.github.io/gui_toolkit/"><img src="https://img.shields.io/badge/site-github.io-56b6c2" alt="site"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org). You describe the interface in code on every frame; it keeps the state between
-frames and draws with its own renderer: Direct3D 11 on Windows, or WebGPU (wgpu-native: Direct3D 12 on Windows, Vulkan on Linux).
+frames and draws with its own renderer: Direct3D 11 on Windows, Vulkan on Linux (through WebGPU).
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
 [RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
 
