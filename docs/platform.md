@@ -11,8 +11,8 @@ Win32 or Wayland. It opens a window, polls events, draws, and asks for services,
 | Backend | Window / input | Clipboard | Dialogs | Cursors | DPI | Decorations |
 |---|---|---|---|---|---|---|
 | Windows (`*_win32.odin`) | Win32 messages | OLE + CF_* | IFileDialog | IDC_* / drawn | per-monitor v2 | DWM + integrated title |
-| Linux Wayland (`window_wl_linux.odin`) | xdg-shell + wl_seat (xkbcommon) | wl_data_device | portal / zenity / kdialog | wp_cursor_shape_v1 (else the compositor's default) | wl_output integer scale | zxdg-decoration, or the app's integrated title |
-| Linux X11 (`window_x11_linux.odin`) | XCB + xkbcommon | CLIPBOARD selection | portal / zenity / kdialog | none yet (the server's default pointer) | Xft.dpi | Motif hints |
+| Linux Wayland (`window_wl_linux.odin`) | xdg-shell + wl_seat (xkbcommon) | wl_data_device | portal / zenity / kdialog | wp_cursor_shape_v1, else libwayland-cursor | wp_fractional_scale_v1 with wp_viewporter, else the wl_output integer scale | zxdg-decoration, or the app's integrated title |
+| Linux X11 (`window_x11_linux.odin`) | XCB + xkbcommon | CLIPBOARD selection | portal / zenity / kdialog | libxcb-cursor, else the server's cursor font; custom images through RENDER | Xft.dpi | Motif hints |
 
 ## The neutral types (what a backend fills, what the app reads)
 
@@ -73,8 +73,8 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **Decorations.** Windows and KDE (zxdg-decoration) draw a server title bar; **GNOME draws none** — set an integrated
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
   frame as Windows). X11 asks the window manager for no decorations through Motif hints when integrated.
-- **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is the `wl_output` integer scale
-  (fractional scaling is not implemented). X11 reads `Xft.dpi`.
+- **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is `wp_fractional_scale_v1` with `wp_viewporter`:
+  the buffer has the scaled size, the surface the logical one; without them the `wl_output` integer scale. X11 reads `Xft.dpi`.
 - **Translucency.** `set_backdrop` is the Windows acrylic effect; on Linux a window is translucent when it was opened
   with an alpha surface (`render.init` `transparent`), which the compositor blends — there is no extra effect to turn
   on, so `set_backdrop` reports whether the window is translucent at all.
@@ -154,7 +154,6 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
 
 ### Known gaps
 
-- On **X11** `set_cursor` does nothing yet: the pointer stays the server's default. Wayland cursor shapes are live.
 - **AT-SPI** is a minimal bridge (root tree, names, DoAction); the full surface (Text ranges, Collection, per-node
   objects at their own paths) is what AccessKit's `accesskit_unix` adapter would give.
 
