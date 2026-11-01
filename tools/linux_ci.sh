@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Linux part of the CI (and a local check in WSL): the native text backend (cargo, native/text ->
 # build/text/libgt_text.a), odin check -vet of every package for Linux, the examples built (native text, Vulkan through
-# wgpu-native: tools/fetch_wgpu.sh first), and the tests that need no window.
+# wgpu-native: tools/fetch_wgpu.sh first), and the tests.
 #   tools/linux_ci.sh [odin]
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,27 +28,6 @@ for e in hello smoke todo markdown panes whatsnew; do
     echo "build FAIL examples/$e"; echo "$out" | grep -E "Error|error" | head -15; fail=1
   fi
 done
-for t in frame_slots pacing autoscroll flate key_repeat clipboard dragdrop; do
-  out=$("$ODIN" test "tests/$t" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"build/linux/${t}_test" 2>&1)
-  if echo "$out" | grep -qE "All tests were successful|The test was successful"; then
-    echo "test ok    tests/$t $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
-  else
-    echo "test FAIL  tests/$t"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
-  fi
-done
-# color glyphs with the native text backend
-if out=$("$ODIN" test tests/color_native -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true "${NATIVE[@]}" -out:build/linux/color_native_test 2>&1) && echo "$out" | grep -qE "All tests were successful|The test was successful"; then
-  echo "test ok    tests/color_native $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
-else
-  echo "test FAIL  tests/color_native"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
-fi
-# the packages that test their private procedures from inside
-for p in config dbus instance; do
-  out=$("$ODIN" test "$p" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"build/linux/${p}_pkg_test" 2>&1)
-  if echo "$out" | grep -qE "All tests were successful|The test was successful"; then
-    echo "test ok    $p $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
-  else
-    echo "test FAIL  $p"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
-  fi
-done
+# the tests (tools/run_tests: its list says which run on Linux). The pixels: Vulkan's software rasterizer (mesa-vulkan-drivers)
+"$ODIN" run tools/run_tests -vet -out:build/linux/run_tests || fail=1
 exit $fail

@@ -152,24 +152,30 @@ start_from_env :: proc(win: ^platform.Window, title := "") -> ^Server {
 stop :: proc(srv: ^Server) {
 	if srv == nil { return }
 	sync.atomic_store(&srv.stopping, true)
-	net.close(srv.listener)
-	// (accept may not return on a closed socket everywhere: a connection to ourselves unblocks it)
-	if s, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = srv.port}); err == nil { net.close(s) }
-	thread.join(srv.accepter)
-	thread.destroy(srv.accepter)
-	thread.join(srv.ticking)
-	thread.destroy(srv.ticking)
+	if srv.accepter != nil {   // (start_local has neither)
+		net.close(srv.listener)
+		// (accept may not return on a closed socket everywhere: a connection to ourselves unblocks it)
+		if s, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = srv.port}); err == nil { net.close(s) }
+		thread.join(srv.accepter)
+		thread.destroy(srv.accepter)
+		thread.join(srv.ticking)
+		thread.destroy(srv.ticking)
+	}
 	sync.lock(&srv.lock)
 	conns := srv.conns[:]
 	sync.unlock(&srv.lock)
 	for sync.atomic_load(&srv.encoding) > 0 { time.sleep(time.Millisecond) }   // (they answer on the connections)
 	// (shut down, not closed: the thread reading it closes it, and a closed socket's number can be another's by now)
 	for c in conns {
+		if c.local { continue }
 		sync.lock(&c.write)
 		if !c.closed { net.shutdown(c.sock, .Both) }
 		sync.unlock(&c.write)
 	}
-	for c in conns { thread.join(c.thread); thread.destroy(c.thread); free(c, runtime.heap_allocator()) }
+	for c in conns {
+		if c.local { local_free(c) } else { thread.join(c.thread); thread.destroy(c.thread) }
+		free(c, runtime.heap_allocator())
+	}
 	delete(srv.conns)
 	for m in srv.inbox { delete(m.text, runtime.heap_allocator()) }
 	delete(srv.inbox)
@@ -235,8 +241,7 @@ conns_reap :: proc(srv: ^Server) {
 		for w in srv.waits { if w.to.conn == c { continue outer } }
 		if srv.screencast.on && srv.screencast.to.conn == c { continue }
 		if srv.dom.to.conn == c { continue }   // (dom_sync sees it gone, and takes its edits back)
-		thread.join(c.thread)
-		thread.destroy(c.thread)
+		if c.local { local_free(c) } else { thread.join(c.thread); thread.destroy(c.thread) }
 		free(c, runtime.heap_allocator())
 		unordered_remove(&srv.conns, i)
 	}
@@ -511,7 +516,7 @@ cmd_toolkit :: proc(c: ^Cmd) -> Answer {
 		fmt.sbprintf(sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
 	case "Toolkit.state":
 		d := dpi(srv)
-		fmt.sbprintf(sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d)
+		fmt.sbprintf(sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g,"encoding":%d}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d, sync.atomic_load(&srv.encoding))
 	case:
 		return .Unknown
 	}

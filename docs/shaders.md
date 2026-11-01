@@ -70,4 +70,4 @@ One instance and one draw call per `app_shader`, with its bind group on WebGPU (
 
 ## Tests
 
-`tests/appshaders` (both backends; `tools\test_backends.ps1 -Backend wgpu -Only appshaders`): colors in either blend space, uv, raw data textures, two textures and empty slots, the four blend modes against their formulas in both spaces, alpha stack and tint, rounded corners and clips, a rotated and scaled rectangle (`size` and `px`), inside a layer and a plane, 8 draws with their own parameters, the refusals (shader 0, too many parameters or textures, recording, a stale blob, no blob), a device loss, and mip filtering of a data texture.
+`tests/appshaders` (both backends; `odin run tools/run_tests -- -backend:wgpu appshaders`): colors in either blend space, uv, raw data textures, two textures and empty slots, the four blend modes against their formulas in both spaces, alpha stack and tint, rounded corners and clips, a rotated and scaled rectangle (`size` and `px`), inside a layer and a plane, 8 draws with their own parameters, the refusals (shader 0, too many parameters or textures, recording, a stale blob, no blob), a device loss, and mip filtering of a data texture.

@@ -29,6 +29,67 @@ Conn :: struct {
 	closed: bool,   // (under write)
 	done:   bool,   // the thread is at its end (atomic): `service` joins and frees it
 	page:   bool,   // on the page's endpoint, not the browser's
+	local:  bool,   // a client of this process (Local_Client): no socket, what it is sent waits in `outbox`
+	outbox: [dynamic]string,   // (under write; the heap's)
+}
+
+// A client in this process, with no socket: the same commands, answers and events, without a port. What a program or a test drives itself with; the frames are
+// its own to make (`service` carries out what was sent).
+Local_Client :: struct { conn: ^Conn }
+
+// A server with no port, for Local_Clients only.
+start_local :: proc(win: ^platform.Window, title := "") -> ^Server {
+	srv := new(Server)
+	srv.win = win
+	srv.title = strings.clone(title != "" ? title : "gui_toolkit window")
+	srv.id = strings.clone("local")
+	return srv
+}
+
+local_connect :: proc(srv: ^Server) -> Local_Client {
+	c := new(Conn, runtime.heap_allocator())
+	c.srv, c.local, c.page = srv, true, true
+	c.outbox.allocator = runtime.heap_allocator()
+	sync.lock(&srv.lock)
+	append(&srv.conns, c)
+	sync.unlock(&srv.lock)
+	return {c}
+}
+
+// One command, as its JSON: carried out by the next frame.
+local_send :: proc(l: Local_Client, command: string) {
+	srv := l.conn.srv
+	sync.lock(&srv.lock)
+	append(&srv.inbox, Message{conn = l.conn, text = strings.clone(command, runtime.heap_allocator())})
+	sync.atomic_store(&srv.asked, true)
+	sync.unlock(&srv.lock)
+}
+
+// What came since the last call, answers and events, in order (`allocator`).
+local_take :: proc(l: Local_Client, allocator := context.allocator) -> []string {
+	c := l.conn
+	sync.lock(&c.write)
+	defer sync.unlock(&c.write)
+	out := make([]string, len(c.outbox), allocator)
+	for m, i in c.outbox {
+		out[i] = strings.clone(m, allocator)
+		delete(m, runtime.heap_allocator())
+	}
+	clear(&c.outbox)
+	return out
+}
+
+// The client goes, as a connection that ends: what it edited goes with it. The connection is freed by a later frame or by `stop`.
+local_close :: proc(l: Local_Client) {
+	sync.atomic_store(&l.conn.done, true)
+	sync.atomic_store(&l.conn.srv.ended, true)
+}
+
+@(private)
+local_free :: proc(c: ^Conn) {
+	h := runtime.heap_allocator()
+	for m in c.outbox { delete(m, h) }
+	delete(c.outbox)
 }
 
 // A command is small: a message over this ends the connection.
@@ -280,6 +341,10 @@ send_frame :: proc(c: ^Conn, op: u8, payload: []u8) -> bool {
 	sync.lock(&c.write)
 	defer sync.unlock(&c.write)
 	if c.closed { return false }
+	if c.local {
+		if op == WS_OP_TEXT && !sync.atomic_load(&c.done) { append(&c.outbox, strings.clone(string(payload), runtime.heap_allocator())) }
+		return true
+	}
 	head: [WS_HEAD_64_BYTES]u8
 	head[0] = 0x80 | op
 	k := 2

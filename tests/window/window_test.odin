@@ -11,6 +11,11 @@ import win "core:sys/windows"
 import "../../base"
 import "../../platform"
 
+// Long enough for a timer of a modal loop (16 ms) to fire, had it been set.
+NO_TIMER_MS :: 100
+MODAL_LOOP_MS :: 200
+PUMP_WAIT_MS :: 2
+
 xy :: proc(x, y: int) -> win.LPARAM { return win.LPARAM(uintptr(u32(u16(x)) | u32(u16(y)) << 16)) }
 
 // The mouse stays captured until the last button is up, and a capture lost with a button down makes its release.
@@ -93,11 +98,19 @@ Frames :: struct { n: int }
 
 on_frame :: proc(user: rawptr) { (^Frames)(user).n += 1 }
 
+// Every message there is has been handled (a repaint is one, as soon as nothing else is queued).
+settle :: proc(w: ^platform.Window) {
+	for {
+		platform.poll_events(w, false)
+		if win.HIWORD(win.GetQueueStatus(win.QS_ALLINPUT)) == 0 { return }
+	}
+}
+
+// This long of the real clock, messages handled: for what must come by a timer, and for what must not come at all.
 pump :: proc(w: ^platform.Window, ms: int) {
 	until := time.tick_add(time.tick_now(), time.Duration(ms) * time.Millisecond)
 	for time.tick_diff(time.tick_now(), until) > 0 {
-		platform.poll_events(w, false)
-		time.sleep(2 * time.Millisecond)
+		platform.poll_events(w, true, PUMP_WAIT_MS)
 	}
 }
 
@@ -111,11 +124,11 @@ repaint_of_an_unpolled_window_waits_for_its_owner :: proc(t: ^testing.T) {
 	x := platform.open_window("x", {200, 150}, &fr, on_frame)
 	defer platform.destroy_window(x)
 	win.ShowWindow(x.hwnd, win.SW_SHOWNOACTIVATE)
-	pump(a, 50)   // the first repaints
+	settle(a)   // the first repaints
 	platform.take_paint_request(x)
 	fr.n = 0
 	win.InvalidateRect(x.hwnd, nil, false)
-	pump(a, 50)
+	settle(a)
 	testing.expect_value(t, fr.n, 0)
 	testing.expect(t, platform.take_paint_request(x), "the repaint is asked for")
 }
@@ -131,15 +144,15 @@ size_move_messages_from_outside_are_ignored :: proc(t: ^testing.T) {
 	x := platform.open_window("x", {200, 150}, &fr, on_frame)
 	defer platform.destroy_window(x)
 	win.ShowWindow(x.hwnd, win.SW_SHOWNOACTIVATE)
-	pump(a, 50)
+	settle(a)
 	platform.take_paint_request(x)
 	fr.n = 0
 	win.PostMessageW(x.hwnd, win.WM_ENTERSIZEMOVE, 0, 0)
 	win.SendMessageW(x.hwnd, win.WM_ENTERSIZEMOVE, 0, 0)
-	pump(a, 100)
+	pump(a, NO_TIMER_MS)
 	testing.expect_value(t, fr.n, 0)
 	win.PostMessageW(x.hwnd, win.WM_EXITSIZEMOVE, 0, 0)
-	pump(a, 20)
+	settle(a)
 	stats := platform.pump_stats(x)
 	testing.expect_value(t, stats.modal_loops, 0)
 	testing.expect_value(t, stats.ignored_size_moves, 3)
@@ -154,14 +167,14 @@ frames_come_during_a_modal_loop :: proc(t: ^testing.T) {
 	x := platform.open_window("x", {200, 150}, &fr, on_frame)
 	defer platform.destroy_window(x)
 	win.ShowWindow(x.hwnd, win.SW_SHOWNOACTIVATE)
-	pump(a, 50)
+	settle(a)
 	platform.take_paint_request(x)
 	fr.n = 0
 	win.SendMessageW(x.hwnd, win.WM_ENTERMENULOOP, 0, 0)
-	pump(a, 200)
+	pump(a, MODAL_LOOP_MS)
 	if !base.perf_skip("frames in a modal loop") { testing.expectf(t, fr.n >= 3, "%d frames in 200 ms of a modal loop", fr.n) }
 	win.SendMessageW(x.hwnd, win.WM_EXITMENULOOP, 0, 0)
 	n := fr.n
-	pump(a, 100)
+	pump(a, NO_TIMER_MS)
 	testing.expect_value(t, fr.n, n)
 }

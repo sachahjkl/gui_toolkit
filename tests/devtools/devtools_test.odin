@@ -157,7 +157,7 @@ a_command_over_a_websocket :: proc(t: ^testing.T) {
 	start := time.tick_now()
 	for !sync.atomic_load(&c.done) && time.tick_since(start) < 3 * time.Second {
 		devtools.service(srv, nil, nil)   // (Browser.getVersion reads neither the tree nor the renderer)
-		time.sleep(2 * time.Millisecond)
+		thread.yield()
 	}
 	thread.join(th)
 	thread.destroy(th)
@@ -180,7 +180,7 @@ what_cannot_be_done_is_refused_what_attaching_sends_is_not :: proc(t: ^testing.T
 		start := time.tick_now()
 		for !sync.atomic_load(&c.done) && time.tick_since(start) < 3 * time.Second {
 			devtools.service(srv, nil, nil)
-			time.sleep(2 * time.Millisecond)
+			thread.yield()
 		}
 		thread.join(th)
 		thread.destroy(th)

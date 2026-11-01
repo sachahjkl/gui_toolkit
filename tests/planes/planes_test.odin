@@ -1,6 +1,6 @@
 // Pixel tests of planes (layers drawn through a 4x4 matrix: CSS 3D transforms) on an offscreen renderer (WARP, the software
 // rasterizer: no GPU or window needed), in both blend spaces.   odin test tests/planes -vet
-// (The same tests run on the WebGPU backend: tools\test_backends.ps1 -Backend wgpu.)
+// (The same tests run on the WebGPU backend: odin run tools/run_tests -- -backend:wgpu planes.)
 package planes_test
 
 import "core:math"
