@@ -144,6 +144,8 @@ Box :: struct {
 
 	// animation (0..1)
 	hot_t, active_t, disabled_t, focus_t: f32,
+	bar_t:       f32,            // how much its scroll bar shows (set_scrollbar_autohide)
+	bar_until:   f64,            // scrollbar_reveal: shown until then (now_ms)
 
 	// accessibility (a11y.odin): what it is to screen readers, set by its widget or the app (this build's arena)
 	a11y:        ^A11y_Info,
@@ -353,6 +355,7 @@ State :: struct {
 	last_click_key:  Key,
 	last_click_ms:   f64,
 	inspected:    Key,               // set_inspected: the box lit over everything
+	scrollbar_autohide: bool,        // set_scrollbar_autohide
 	edits:        map[Key]Box_Edit,  // box_edit: what a tool imposes on boxes, build after build
 	focus_key:    Key,
 	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box

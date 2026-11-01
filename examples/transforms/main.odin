@@ -22,6 +22,7 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import "../../devtools"
 import "../../draw"
 import "../../font"
 import "../../platform"
@@ -30,6 +31,7 @@ import "../../render"
 LOGO_PNG :: #load("../../.project/image.png")
 
 App :: struct {
+	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol
 	win:     ^platform.Window,
 	r:       render.Renderer,
 	fonts:   font.State,
@@ -397,9 +399,12 @@ main :: proc() {
 	free_all(context.temp_allocator)
 	app.start = time.tick_now()
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
+	app.devtools = devtools.start_from_env(app.win, "gui_toolkit transforms")
+	defer devtools.stop(app.devtools)
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) {
+		devtools.service(app.devtools, nil, &app.r)
 		platform.poll_events(app.win, wait = app.freeze >= 0 && app.frames > 2 && app.bench_n == 0)
 		frame(app)
 	}

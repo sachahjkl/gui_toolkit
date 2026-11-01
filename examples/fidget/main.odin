@@ -7,6 +7,7 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import "../../devtools"
 import "../../draw"
 import "../../font"
 import "../../platform"
@@ -107,6 +108,7 @@ frame :: proc(app: ^App, inner := false) {
 	// wait for the GPU first, read input second: the picture we build is the next one on screen
 	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
 	app.slept = false
+	devtools.service(app.devtools, &app.ui_state, &app.r)
 	events := platform.poll_events(app.win, false)
 	render.mark_input(&app.r)   // returns nil when re-entered from a live resize
 	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
@@ -246,6 +248,8 @@ main :: proc() {
 	app.frames_requested = 4
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
+	app.devtools = devtools.start_from_env(app.win, "gui_toolkit fidget")
+	defer devtools.stop(app.devtools)
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) && !app.want_quit {

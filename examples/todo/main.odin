@@ -7,6 +7,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import "../../devtools"
 import "../../draw"
 import "../../font"
 import "../../platform"
@@ -22,6 +23,7 @@ Task :: struct {
 }
 
 App :: struct {
+	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol
 	win:      ^platform.Window,
 	r:        render.Renderer,
 	fonts:    font.State,
@@ -308,6 +310,7 @@ clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
 frame :: proc(app: ^App, inner := false) {
 	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
 	app.slept = false
+	devtools.service(app.devtools, &app.ui_state, &app.r)
 	events := platform.poll_events(app.win, false)
 	render.mark_input(&app.r)
 	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
@@ -370,6 +373,8 @@ main :: proc() {
 	app.frames_requested = 4
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
+	app.devtools = devtools.start_from_env(app.win, "gui_toolkit todo")
+	defer devtools.stop(app.devtools)
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) {
