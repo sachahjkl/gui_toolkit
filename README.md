@@ -222,21 +222,15 @@ cache and the scroll curve; `tests/cursors` the cursors' CSS names, system or dr
 custom cursors on a hidden window. `tests/layers`, `tests/effects`,
 `tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` (text, color emoji and transformed glyphs included) are pixel tests on an offscreen WARP renderer (most in both blend spaces); `tests/text` covers faces, fallback, shaping, bidi, line breaks, carets, color glyphs and the atlas pages (`atlas_stress`); `tests/slug` the Slug text (outlines, bands against the exact winding number, the glyph store and its eviction, pixels against the atlas, order, clips, rotation, pictures, device loss). `odin run tools/textcompare -- -out <dir> -dpr 1.75` writes atlas | Slug | difference images of the same scenes and measures both (CPU, GPU, first paint, memory).
 
-`node tests/e2e/run.mjs` runs `examples/whatsnew` with no window (`--headless`, WARP) and drives it over the devtools protocol (docs/devtools.md), as the CI does: each page must show no layout warning, nothing a screen reader cannot name, and look like its reference image (`tests/e2e/baseline`, `--update` writes them); then a wheel burst in the lazy column, find with its scope gone, the recorder; and the program must end with exit code 0.
+`tests/examples/whatsnew_test.odin` runs `examples/whatsnew` in the test's process with no window and drives it over the devtools protocol (docs/devtools.md), with a client that needs no socket: each page must show no layout warning, nothing a screen reader cannot name, and look like its reference image (`tests/examples/baseline`, `TOOLKIT_TEST_UPDATE=1` writes them); then a wheel burst in the lazy column, find with its scope gone, the recorder, the screencast, Chrome's DevTools' way through the box tree. `node tests/e2e/timeline.mjs` tests the Node tool `tools/timeline.mjs` over a real socket.
 
 Timing checks (durations, CPU or GPU times, frames in a time window) are opt-in: `base.perf_skip` skips them unless
 `GUI_PERF=1` (or `true`) is set and `CI` is not, and prints `perf: skipped (...)`. Run them by hand, never in CI:
 `GUI_PERF=1 odin test tests/colr -vet`, `GUI_PERF=1 odin test tests/window -vet`, `GUI_PERF=1 odin test tests/gpufx -vet`.
 
-`tools\keyboard_test.ps1` sends real keystrokes with modifiers to `examples/fidget` (33 checks: clipboard, Tab and arrow
-focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a
-click outside) and reads the state from the
-window title (`--state_title`); keys are sent only while fidget is the foreground window.
-`tools\ui_test.ps1` drives `examples/todo` and `tools\fidget_test.ps1` drives `examples/fidget` with real clicks
-(typing, Enter, toggles, segmented, chips, dropdown, slider, tooltip, context menu, wheel scroll, command palette,
-theme switch) and check the title / saved files. They abort if another window covers the target point.
-Screenshot coordinates: image viewers often downscale captures (e.g. to 2000 px wide); scale click targets by
-window width / image width, or clicks land a few percent off. Debug aids: `-define:UI_PROBE=true` logs every press with the hit box's rect; `--dump` (fidget) prints oversized boxes.
+`tests/examples` drives `examples/fidget` and `examples/todo` in the test's process (`testkit/session`: no window of the system, no input of the machine):
+clipboard, Tab and arrow focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a click
+outside, toggles, segmented, chips, slider, tooltip, context menu, wheel scroll, theme, saved files. Debug aids: `-define:UI_PROBE=true` logs every press with the hit box's rect; `--dump` (fidget) prints oversized boxes.
 
 ## License
 

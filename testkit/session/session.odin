@@ -60,6 +60,8 @@ BASE_ROW_HEIGHT :: 30
 BASE_TEXT_PAD :: 6
 // Builds in a row with nothing moving that make "idle": an app may react to a frame with one more frame.
 IDLE_BUILDS :: 3
+// How far above a test program the repository is looked for.
+@(private) REPO_MAX_DEPTH :: 6
 // The folder of what a test leaves when it fails, under the build folder.
 OUT_DIR :: "session"
 FAILURE_CAPTURE :: "failure.png"
@@ -110,6 +112,8 @@ Session :: struct {
 	// an application of its own (attach)
 	app_frame: proc(user: rawptr),
 	app_user:  rawptr,
+	// what the next frame says has changed, for a test of partial redraw (draw.set_partial_redraw through draw_context): nil is the whole frame
+	damage:    Maybe(draw.Rect),
 }
 
 // What `start` makes.
@@ -243,7 +247,13 @@ repo_root :: proc(allocator := context.temp_allocator) -> string {
 	if r, ok := os.lookup_env("TOOLKIT_REPO", allocator); ok && r != "" { return r }
 	exe, err := os.get_executable_path(context.temp_allocator)
 	if err != nil { return strings.clone(".", allocator) }
-	return strings.clone(filepath.dir(filepath.dir(exe)), allocator)
+	// (the folder above the program's that has this package: a test program may be in build/ or build/tests/)
+	dir := filepath.dir(exe)
+	for _ in 0 ..< REPO_MAX_DEPTH {
+		if os.exists(fmt.tprintf("%s/testkit/session", dir)) { return strings.clone(dir, allocator) }
+		dir = filepath.dir(dir)
+	}
+	return strings.clone(".", allocator)
 }
 
 // A file of this test's folder (what is there stays only as long as the next run of the test).
@@ -315,8 +325,12 @@ own_frame :: proc(s: ^Session) {
 	ui.end_build()
 	platform.set_cursor(s.win, ui.cursor(s.state))
 	if s.renderer == nil { return }
-	draw.begin_frame(&own.dc, size)
 	render.frame_begin(s.renderer, ui.theme_lookup(&own.theme, {}, "background"))
+	draw.begin_frame(&own.dc, size)
+	if region, partial := s.damage.?; partial {
+		draw.damage_begin(&own.dc)
+		draw.damage(&own.dc, region)
+	}
 	ui.draw_tree(s.state, &own.dc)
 	draw.end_frame(&own.dc)
 	render.frame_end(s.renderer, false)
@@ -400,6 +414,9 @@ set_dpi :: proc(s: ^Session, dpi_scale: f32) {
 	frames(s, 2)
 }
 @(private) DPI_BASE :: 96   // dpi of a scale of 1
+
+// The drawing context of an application of `start`.
+draw_context :: proc(s: ^Session) -> ^draw.Context { return &s.own.dc }
 
 // The window becomes the one the user is in, or stops being it (another session's window takes it: `activate(b, true)` after `activate(a, false)`).
 activate :: proc(s: ^Session, on: bool) {

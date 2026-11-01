@@ -73,7 +73,7 @@ render.set_fixed_surface(&r, platform.monitor_size(win))
 It stays opaque as long as the frame is (`render.frame_begin` with an alpha of 1). Colours in the linear blend space are
 then held in 16-bit floats, twice the memory of the ordinary swap chain, for buffers of the screen's size. WebGPU has no fixed
 surface (`set_fixed_surface` returns false), so the recipe does not help there ([webgpu.md](webgpu.md)).
-`tests/resize_probe` checks a program from outside: it resizes the window and reads where a column of fixed width ends.
+`tools/resize_probe` checks a program from outside: it resizes the window and reads where a column of fixed width ends.
 
 The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line_edit`, `if ui.row() { ... }`):
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.
@@ -118,15 +118,15 @@ In the toolkit's folder (the CI runs the same: `.github/workflows/ci.yml`):
 ```powershell
 odin test tests/flate -vet                                         # one package
 odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1           # packages that build interfaces: one test at a time
-powershell -NoProfile -File tools\test_windowless.ps1              # every package that needs no window of its own (needs cargo)
-powershell -NoProfile -File tools\test_backends.ps1 -Backend wgpu  # the pixel tests on WebGPU (after fetch_wgpu.ps1)
+odin run tools/run_tests                                           # every package, on a desktop of its own (needs the native libraries)
+odin run tools/run_tests -- -backend:wgpu                          # the pixel tests on WebGPU (after fetch_wgpu.ps1)
 ```
 
 Pixel tests draw on an offscreen renderer on WARP (`render.init_offscreen(&r, size, warp = true)`: software, the same
 pixels on every machine, no window). Timing assertions only run with `GUI_PERF=1` and never in CI (`base.perf_skip`).
-A test of your own interface builds it with `ui.begin_build` and synthetic `platform.Event`s, no window needed (see
-`tests/keyboard`); give it `Build_Params.time_ms` (a clock of its own, e.g. 16 ms more each frame) so that the caret
-blink, double clicks and delays do not depend on how fast the machine runs.
+A test of your own interface uses `testkit/session` ([testing.md](testing.md)): an application with no window, input through the
+event path, real pixels, barriers on a state, and a clock of its own, so that the caret blink, double clicks and delays do not depend on how
+fast the machine runs.
 
 ## 6. Versions and changes
 

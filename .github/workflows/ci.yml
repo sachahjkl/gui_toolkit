@@ -2,11 +2,11 @@ name: CI
 
 # Four kinds of jobs, all in parallel (a push to master gives its verdict in about 6 minutes, 12 at most):
 #   build      CHANGELOG fragments, the examples, the shaders (HLSL from WGSL, DXBC)
-#   tests      the test packages that need no window of their own (D3D11 on WARP), native text, UI Automation
-#   linux      odin check of every package for Linux, the examples built, the windowless tests (tools/linux_ci.sh), the
+#   tests      every test package (tools/run_tests: D3D11 on WARP), native text, UI Automation, on a desktop of its own
+#   linux      odin check of every package for Linux, the examples built, the tests (tools/linux_ci.sh), the
 #              backends on a virtual desktop (tools/linux_desktop.sh)
 #   wgpu       the WebGPU backend on WARP, one test at a time: every package on a push to master or a manual run, split in
-#              four groups of about 4 minutes (tools/test_backends.ps1 -Group ci1..ci4); a pull request runs the 'sample'
+#              four groups of about 4 minutes (tools/run_tests -backend:wgpu -group:ci1..ci4); a pull request runs the 'sample'
 #              group only (Slug text, video, filters and blends, layers), its full run comes with the merge into master.
 on:
   push:
@@ -112,24 +112,31 @@ jobs:
           ./tools/build_a11y.ps1
           if ($LASTEXITCODE) { exit 1 }
 
+      - name: Tests (tools/run_tests)
+        timeout-minutes: 14
+        run: odin run tools/run_tests -vet -out:build/run_tests.exe
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Tests
+      # tools/timeline.mjs and tools/cdp_client.mjs are Node programs: they are tested as one, over a real socket
+      - name: The timeline tool (tests/e2e/timeline.mjs)
         shell: pwsh
-        timeout-minutes: 14
+        timeout-minutes: 3
         run: |
-          ./tools/test_windowless.ps1
+          odin build examples/whatsnew -vet -out:build/whatsnew.exe
+          if ($LASTEXITCODE) { exit 1 }
+          node tests/e2e/timeline.mjs
           if ($LASTEXITCODE) { exit 1 }
 
-      # what the end-to-end run saw when a page differs from its reference image
-      - name: Keep the images of a failed end-to-end run
+      # what a test leaves when it fails: the frame, the tree of boxes, a page that differs from its reference image
+      - name: Keep what failed tests left
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-images
-          path: build/e2e
+          name: session-images
+          path: build/session
           if-no-files-found: ignore
 
   # Linux: odin check -vet of every package, the examples built (native text, Vulkan through wgpu-native), the tests that
@@ -147,7 +154,7 @@ jobs:
           ODIN_SHA256: c3c8b095621fd0c75f7f73e3a0829f1b4d45324225f20ba11ed8dc4da310a8ab
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq clang lld libfontconfig-dev unzip fonts-noto-color-emoji fonts-dejavu-core
+          sudo apt-get install -y -qq clang lld libfontconfig-dev unzip fonts-noto-color-emoji fonts-dejavu-core mesa-vulkan-drivers
           curl -fsSL -o "$RUNNER_TEMP/odin.tar.gz" "https://github.com/odin-lang/Odin/releases/download/$ODIN_TAG/odin-linux-amd64-$ODIN_TAG.tar.gz"
           echo "$ODIN_SHA256  $RUNNER_TEMP/odin.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/odin" && tar -xzf "$RUNNER_TEMP/odin.tar.gz" -C "$RUNNER_TEMP/odin"
@@ -226,22 +233,18 @@ jobs:
       - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
         shell: pwsh
         timeout-minutes: 11
-        run: |
-          ./tools/test_backends.ps1 -Backend wgpu -Group ${{ matrix.group }} -TimeoutSec 420
-          if ($LASTEXITCODE) { exit 1 }
+        run: odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -group:${{ matrix.group }} -timeout:420
 
       - name: Tests, WebGPU backend with FXC (no DXC)
         if: matrix.group == 'ci4'
         shell: pwsh
         timeout-minutes: 4
-        run: |
-          ./tools/test_backends.ps1 -Backend wgpu -Only text,shaders -Define TOOLKIT_WGPU_DX12_COMPILER=fxc -TimeoutSec 180
-          if ($LASTEXITCODE) { exit 1 }
+        run: odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -define:TOOLKIT_WGPU_DX12_COMPILER=fxc -timeout:180 text shaders
 
       - name: Logs of the WebGPU tests
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: wgpu-logs-${{ matrix.group }}
-          path: build/test_wgpu_*.log*
+          path: build/test_logs
           retention-days: 7

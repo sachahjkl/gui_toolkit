@@ -14,10 +14,12 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 import "../../platform"
+import "../../testkit"
 import "../../tools/uia"
 import "../../ui"
 
 _ :: runtime
+_ :: testkit
 _ :: fmt
 _ :: strings
 _ :: sync
@@ -49,6 +51,9 @@ uia_body :: proc(a: ^Uia_App) {
 	ui.label(fmt.bprintf(a.label[:], "Clicks: %d###clicks", a.clicks))
 }
 
+// Frames in a row at rest: nothing may reach the client or the system in them.
+@(private = "file") REST_FRAMES :: 40
+
 @(private = "file")
 find :: proc(c: ^uia.Client, root: ^uia.Element, ct: uia.Control, name: string) -> ^uia.Element {
 	els := uia.descendants(c, root)
@@ -67,7 +72,7 @@ wait_for :: proc(c: ^uia.Client, root: ^uia.Element, cond: proc(c: ^uia.Client, 
 	start := time.tick_now()
 	for time.duration_seconds(time.tick_since(start)) < 10 {
 		if cond(c, root) { return true }
-		time.sleep(20 * time.Millisecond)
+		thread.yield()
 	}
 	return false
 }
@@ -249,6 +254,7 @@ Two_Shared :: struct {
 	hwnd:      [2]rawptr,
 	done:      bool,   // atomic
 	resting:   bool,   // atomic: the client asks nothing meanwhile
+	rest_frames: int,  // atomic: frames made while it rested
 	steps:     [dynamic]string,
 	allocator: runtime.Allocator,
 }
@@ -284,7 +290,7 @@ two_client :: proc(sh: ^Two_Shared) {
 		e: ^uia.Element
 		for e == nil && time.duration_seconds(time.tick_since(start)) < 10 {
 			e = find(&c, roots[k], .Button, names[k])
-			if e == nil { time.sleep(20 * time.Millisecond) }
+			if e == nil { thread.yield() }
 		}
 		step2(sh, e != nil, fmt.tprintf("window %d has its button %s", k + 1, names[k]))
 		uia.drop(e)
@@ -293,7 +299,7 @@ two_client :: proc(sh: ^Two_Shared) {
 		uia.drop(other)
 	}
 	sync.atomic_store(&sh.resting, true)
-	time.sleep(600 * time.Millisecond)
+	testkit.await(sh, proc(sh: ^Two_Shared) -> bool { return sync.atomic_load(&sh.rest_frames) >= REST_FRAMES })
 	sync.atomic_store(&sh.resting, false)
 	two := find(&c, roots[1], .Button, "Two")
 	defer uia.drop(two)
@@ -302,7 +308,7 @@ two_client :: proc(sh: ^Two_Shared) {
 	got: ^uia.Element
 	for got == nil && time.duration_seconds(time.tick_since(start)) < 10 {
 		got = find(&c, roots[1], .Text, "Two: 1")
-		if got == nil { time.sleep(20 * time.Millisecond) }
+		if got == nil { thread.yield() }
 	}
 	step2(sh, got != nil, "window 2 counted the click")
 	uia.drop(got)
@@ -333,7 +339,7 @@ two_windows_read_apart :: proc(t: ^testing.T) {
 	defer { for s in sh.steps { delete(s) }; delete(sh.steps) }
 	th := thread.create_and_start_with_poly_data(&sh, two_client)
 	start := time.tick_now()
-	rest_events, rest_updates, rest_frames := 0, 0, 0
+	rest_events, rest_updates := 0, 0
 	for !sync.atomic_load(&sh.done) && time.duration_seconds(time.tick_since(start)) < 60 {
 		resting := sync.atomic_load(&sh.resting)
 		for k in 0 ..< 2 {
@@ -348,7 +354,7 @@ two_windows_read_apart :: proc(t: ^testing.T) {
 			free_all(context.temp_allocator)
 			after, _, _ := ui.a11y_stats(&fx[k].s)
 			if resting && sync.atomic_load(&sh.resting) {
-				rest_frames += 1
+				sync.atomic_add(&sh.rest_frames, 1)
 				rest_events += len(events)
 				rest_updates += after - before
 			}
@@ -358,7 +364,7 @@ two_windows_read_apart :: proc(t: ^testing.T) {
 	thread.destroy(th)
 	testing.expect(t, len(sh.steps) > 0, "the client ran")
 	for s in sh.steps { testing.expectf(t, strings.has_prefix(s, "ok"), "%s", s) }
-	testing.expectf(t, rest_frames > 0 && rest_events == 0 && rest_updates == 0, "at rest: %d events, %d updates in %d frames", rest_events, rest_updates, rest_frames)
+	testing.expectf(t, sh.rest_frames >= REST_FRAMES && rest_events == 0 && rest_updates == 0, "at rest: %d events, %d updates in %d frames", rest_events, rest_updates, sh.rest_frames)
 	for k in 0 ..< 2 {
 		_, refused, _ := ui.a11y_stats(&fx[k].s)
 		testing.expect_value(t, refused, 0)
