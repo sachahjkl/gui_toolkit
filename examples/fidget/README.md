@@ -1,6 +1,6 @@
 # fidget (gui_toolkit example)
 
-The widget gallery: the Odin counterpart of `gui_fidget`'s demo app, built entirely on the `ui` package.
+The widget gallery, built entirely on the `ui` package.
 `build.bat fidget` at the repo root, then `build\fidget.exe`.
 
 - **Controls**: buttons (accent / secondary / danger / ghost; hover and press show at once), icon buttons with tooltips,
@@ -17,7 +17,7 @@ The widget gallery: the Odin counterpart of `gui_fidget`'s demo app, built entir
   (system / on / off), toast position (click a cell of a mini 3x3 screen), test toast, restore defaults.
   Persisted to `%APPDATA%\gui_toolkit_fidget\settings.txt`
 - **About dialog** (Help > About or F1)
-- 6 cross-fading themes
+- 19 cross-fading themes
 - Animations follow the Windows "show animations" setting by default (View menu: system / on / off)
 - Ctrl+wheel / Ctrl +/-/0 zoom the whole UI (toolkit feature)
 

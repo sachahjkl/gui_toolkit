@@ -1,6 +1,6 @@
 # instance: one running copy of an application per named resource
 
-`import "gui_toolkit/instance"` (or the relative path of the submodule). One running copy of an application per name (a
+`import "gt:instance"` (or the relative path of the submodule). One running copy of an application per name (a
 profile, a document set). The first process to start with a name owns it; a second start with the same name does not open a
 second copy on the same state: it hands an opaque message to the first one, which comes to the front, and ends.
 
@@ -9,7 +9,7 @@ package of its own by that name.
 
 The interface is platform-neutral: a name, an optional identity, an opaque message (`[]byte`: the package never looks inside
 it), and a handler the owner runs on the thread that pumps its messages. No window handle, no executable semantics and no
-Windows type cross the boundary. Under it: on Windows a named mutex and a message-only window with WM_COPYDATA; on POSIX a
+Windows type cross the boundary. Under it: on Windows a named mutex and a message-only window with WM_COPYDATA; on Linux a
 `flock` lock file and a Unix socket in `$XDG_RUNTIME_DIR` (`instance_windows.odin`, `instance_linux.odin`); other platforms
 let every start own its name (`instance_other.odin`).
 

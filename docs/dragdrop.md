@@ -1,9 +1,9 @@
 # Drag and drop, fingers and pens (`platform`)
 
 The API is the same on every system (`platform/dragdrop.odin`, `platform/pointer.odin`). Windows implements it
-(`dragdrop_win32.odin`: OLE; `pointer_win32.odin`: `WM_POINTER`). Other systems build with `dragdrop_stub.odin`, which
-answers "not supported" (`drop_target_enable` returns false, `drag_start` returns `ok = false`) and send no `Pointer_*`
-events.
+(`dragdrop_win32.odin`: OLE; `pointer_win32.odin`: `WM_POINTER`), Linux too (`dragdrop_linux.odin`: `wl_data_device`, XDND).
+Other systems build with `dragdrop_stub.odin`, which answers "not supported" (`drop_target_enable` returns false,
+`drag_start` returns `ok = false`). `Pointer_*` events come on Windows only.
 
 ## Receiving drops
 

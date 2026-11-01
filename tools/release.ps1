@@ -1,7 +1,8 @@
 # Publishes a version of gui_toolkit: assembles the fragments of changelog.d\ into a CHANGELOG.md section and writes the
 # version (ui/version.odin, the README's badge) with tools\changelog.ps1, commits that as "<version>: <summary>", tags the
 # commit (annotated, signed tags need -a), pushes master and the tag, and creates the GitHub release with the section as notes.
-# Branches never write the version nor CHANGELOG.md: only this script does (CONTRIBUTING.md).
+# Branches never write the version nor CHANGELOG.md: only this script does (CONTRIBUTING.md). The About picture shows the
+# version: it is retaken here, in that commit.
 #   powershell -File tools\release.ps1 0.43.0 ["one-line summary"] [-NoPush]
 # -NoPush stops after the tag (to look at the commit; `git tag -d v<version>` and `git reset --hard HEAD~1` undo it).
 param([Parameter(Mandatory)][string]$Version, [string]$Summary = "", [switch]$NoPush)
@@ -16,9 +17,13 @@ if ($LASTEXITCODE) { throw "changelog.d has fragments to fix first" }
 if ($LASTEXITCODE) { throw "assembling the CHANGELOG failed" }
 & powershell -NoProfile -ExecutionPolicy Bypass -File $changelog -Check -Release $Version
 if ($LASTEXITCODE) { throw "the release is not consistent" }
+& cmd /c ".\build.bat" fidget
+if ($LASTEXITCODE) { throw "building fidget failed" }
+& node tools/screenshots.mjs --only about
+if ($LASTEXITCODE) { throw "the About picture failed" }
 
 $title = if ($Summary) { "v${Version}: $Summary" } else { "v$Version" }
-git add -A -- CHANGELOG.md changelog.d ui/version.odin README.md
+git add -A -- CHANGELOG.md changelog.d ui/version.odin README.md docs/screenshots/about.png
 if ($LASTEXITCODE) { throw "git add failed" }
 git commit -q -m $(if ($Summary) { "${Version}: $Summary" } else { $Version })
 if ($LASTEXITCODE) { throw "git commit failed" }

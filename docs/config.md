@@ -1,11 +1,11 @@
 # config: a typed preference registry (an about:config for any application)
 
-`import "gui_toolkit/config"` (or the relative path of the submodule). Pure Odin (`core:` + `base:runtime`), any target.
+`import "gt:config"` (or the relative path of the submodule). Pure Odin (`core:` + `base:runtime`), any target.
 Every tunable is a named, typed, documented preference, so an application never hides a setting behind a magic constant.
 
 The package is named `tk_config` (the directory is `config`): an application that keeps a thin `config` alias package of its
 own needs the two names to differ, because Odin package names are unique within a build. With no such alias,
-`import "gui_toolkit/config"` binds it as `config` all the same.
+`import "gt:config"` binds it as `config` all the same.
 
 ## A preference
 

@@ -1,10 +1,12 @@
-# The WebGPU render backend (experimental)
+# The WebGPU render backend
+
+On Linux it is the only backend. On Windows it is an option and Direct3D 11 is the default.
 
 `render` has two backends behind one interface, chosen when the program is compiled:
 
 ```
 odin build examples/fidget -define:TOOLKIT_RENDER=d3d11   # Direct3D 11, the default
-odin build examples/fidget -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native) over Direct3D 12
+odin build examples/fidget -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native): Direct3D 12 on Windows, Vulkan on Linux
 ```
 
 The procedures of the interface (`render.init`, `frame_begin`, `frame_submit`, `frame_end`, textures, targets, retained heaps,
@@ -60,9 +62,9 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
 ## Differences to know about
 
 * No `SetSourceSize` in wgpu: a resize configures the surface again (2 to 3 ms), the resize slack is not used.
-* Frame statistics (`take_displayed`, `vblank_grid`) are estimated from `DwmGetCompositionTimingInfo`: a frame is "shown" at the first
+* On Windows, frame statistics (`take_displayed`, `vblank_grid`) are estimated from `DwmGetCompositionTimingInfo`: a frame is "shown" at the first
   vblank after its present; a frame the GPU finished late is not seen. The frame latency object (`frame_waitable`) is a waitable
-  timer armed on that vblank.
+  timer armed on that vblank. On Linux there are neither ([rendering.md](rendering.md)).
 * No border address mode: the transparent border of reduced filter results is applied in the shader.
 * The detailed GPU profile (every draw call) is not available; the per-step one is.
 * Sync intervals above 1 (`set_sync_interval`) are not available (Fifo presents every refresh).
@@ -73,9 +75,9 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
   and alpha forced to 255 (a window is opaque), the same picture the Direct3D 11 path gives. It costs nothing until a capture
   is asked for. Offscreen readbacks (`draw.offscreen_end` + `readback_poll`) also work on both.
 * Not implemented, and they say so (`false`, 0 or an empty result): the GPU canvas engine (`canvas_*`, docs/canvas.md),
-  `surface_create` (second windows), `set_fixed_surface` and `set_max_frame_latency`. Use the Direct3D 11 backend for those.
+  `set_fixed_surface` and `set_max_frame_latency`; `surface_init` ignores `fixed_size`. Use the Direct3D 11 backend for those.
 
-Measurements and the recommendation: see the notes of the WebGPU prototype (Wren repository, `docs`), and `CHANGELOG.md`.
+Measurements: `CHANGELOG.md`.
 
 ## Partial redraw (damage regions)
 
@@ -117,7 +119,7 @@ tests): each frame is drawn whole on the side, the tiles that differ from the la
 frame must come out the same to the byte. `render.destroy` prints the counts and ends the program with exit code 1 on a
 difference.
 
-Counters for `wren ctl stats` / diagnostics: `damage_stats(r)` returns the rectangles added and kept, the pixels the
+Counters for diagnostics: `damage_stats(r)` returns the rectangles added and kept, the pixels the
 region covers and the pixels of the whole frame, and whether a region is in effect.
 
 ### How each backend presents a partial frame

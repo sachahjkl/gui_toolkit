@@ -8,7 +8,7 @@ PowerShell 5.1).
 
 | What | Version | Needed for |
 |---|---|---|
-| Windows 10 or 11, x64 | | everything (Win32, Direct3D 11; no Linux or macOS backend yet) |
+| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/fetch_wgpu.sh`), Rust for the text library, `-define:FONT_BACKEND=native` (`tools/linux_ci.sh` builds that way). No macOS backend. |
 | [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-10) | **`dev-2026-10`** (`odin version` says `dev-2026-10-nightly:84bc3fc`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
 | MSVC: Visual Studio 2022 or its Build Tools, workload "Desktop development with C++" (MSVC x64 and a Windows 10/11 SDK) | | Odin links with `link.exe` and finds it by itself (no developer prompt needed); `rc.exe` for an exe icon (`-resource:`) |
 | PowerShell 5.1 or 7 | | the scripts of `tools\` |
@@ -89,9 +89,9 @@ when the example has an icon. It builds the examples only; your project calls `o
 | Define | Values | What it needs |
 |---|---|---|
 | `TOOLKIT_RENDER` | `d3d11` (default), `wgpu` | wgpu: `powershell -File libs\gui_toolkit\tools\fetch_wgpu.ps1 -Dest build` once (checks the `wgpu_native` library Odin ships, puts DXC's `dxcompiler.dll` + `dxil.dll` next to the exe; without them shaders compile with FXC, about 2.5 s more at start). Ship the DLLs of `build\` with the exe |
-| `FONT_BACKEND` | `dwrite` (default), `native` | native: `powershell -File libs\gui_toolkit\tools\build_text.ps1` (cargo, about 45 s the first time) -> `libs\gui_toolkit\build\text\gt_text.lib` |
+| `FONT_BACKEND` | `dwrite` (the default, Windows only), `native` (required on Linux: without it no text is shaped) | native: `powershell -File libs\gui_toolkit\tools\build_text.ps1` (cargo, about 45 s the first time) -> `libs\gui_toolkit\build\text\gt_text.lib` |
 | `A11Y_ACCESSKIT` | `false` (default), `true` | `powershell -File libs\gui_toolkit\tools\build_a11y.ps1` (cargo, about 20 s) -> `libs\gui_toolkit\build\a11y\gt_a11y.lib` |
-| `FONT_TEXT_RENDERER` | `atlas` (default), `slug` | nothing (Slug: glyphs drawn from their outlines on the GPU; also per `font.State` at run time) |
+| `FONT_TEXT_RENDERER` | `atlas` (default on Windows), `slug` (default elsewhere, the only one there) | nothing (Slug: glyphs drawn from their outlines on the GPU; also per `font.State` at run time) |
 | `TOOLKIT_WGPU_DX12_COMPILER` | `auto` (default), `dxc`, `fxc` | |
 
 The three scripts are independent (any order; each does nothing when its output is current: a `STAMP` file next to it).
@@ -99,14 +99,14 @@ They write into the toolkit's own `build\` folder, where its packages link them 
 "../build/text/gt_text.lib"`). `fetch_emoji.ps1` (the color emoji font of `tests/colr`) and `build_naga.ps1` (the WGSL
 to HLSL translator, for whoever edits the shaders) are for the toolkit's own work, not for an application.
 
-- **Render backend.** Direct3D 11 is the default and the complete one. wgpu (WebGPU over Direct3D 12) has the same
-  interface and passes the same pixel tests, but no second windows (`render.surface_create`), no GPU canvas engine, no
-  `capture_request`, no fixed surface nor frame latency setting: [webgpu.md](webgpu.md). Choose Direct3D 11 unless
+- **Render backend.** On Windows, Direct3D 11 is the default and the complete one. wgpu (WebGPU: Direct3D 12 on Windows, Vulkan on Linux, where it is
+  the only one) has the same interface and passes the same pixel tests, but no GPU canvas engine, no fixed surface and no frame
+  latency setting: [webgpu.md](webgpu.md). Choose Direct3D 11 unless
   you need WebGPU itself.
 - **Text backend.** DirectWrite is the default on Windows: system fonts, shaping, fallback. `native` (Fontations,
-  HarfRust, ICU4X in Rust) gives the same results without DirectWrite, for the platforms to come and for comparisons:
+  HarfRust, ICU4X in Rust) needs no DirectWrite: it is the backend on Linux, and an option on Windows:
   [font-backend.md](font-backend.md), [text.md](text.md).
-- **Accessibility.** Without `A11Y_ACCESSKIT=true` screen readers see an empty window. With it, every widget is read
+- **Accessibility.** On Windows, without `A11Y_ACCESSKIT=true` screen readers see an empty window (on Linux a small AT-SPI bridge is always there). With it, every widget is read
   through UI Automation, and the tree costs nothing until a reader asks: [accessibility.md](accessibility.md). A program
   with a Rust library of its own builds `native/a11y` (and `native/text`) into it instead and adds
   `-define:A11Y_NATIVE_LINK=false` (`FONT_NATIVE_LINK=false`): one Rust standard library per program.

@@ -5,8 +5,8 @@
 A thread draws its windows, and several things can ask for a frame while it is making one: a loop of the system that pumps
 the thread's messages and paints from `WM_PAINT` (live resize, a menu, Alt+Space, a modal dialog, a drag and drop:
 `on_frame`), the application's own preemption of long work (a frame of its interface between two steps of the work), another
-window's frame. A frame begun in the middle of another's build builds the interface inside the one being built: the outer
-build goes on with what the inner one left. The gate makes such a frame wait: **a frame asked for where none may begin is
+window's frame. If a second frame started while one is being built, it would rebuild the interface in the middle of the first, which
+would then go on with the wrong state. The gate makes such a frame wait: **a frame asked for where none may begin is
 deferred (the window repaints at the next pass), never nested.**
 
 ```

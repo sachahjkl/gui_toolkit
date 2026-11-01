@@ -78,7 +78,7 @@ Preserve-3d: pop several planes and give them to `draw_planes(dc, items)` (`plan
 
 Effects on the composite (`Plane_Draw`): `blend` (mix-blend-mode of the projected quad against what is under it: the quad's screen area becomes an ordinary layer, `push_effects`), `backdrop` (backdrop-filter: what lies under the quad is captured, filtered in screen space with lengths scaled by the plane's scale at its middle, and shown through the alpha of `shape`, a layer in the same plane frame, projected through the same matrix: the border box with its radii, clip-path and mask for CSS; without a `shape` the alpha of the plane itself). Both work on pieces of a split plane too.
 
-Sharpness: the caller picks `raster_scale`: the most screen pixels per plane unit its projection asks for where it shows (the Jacobian of the homography at the corners of the visible polygon; Wren, `plane_plan`), and the bounds it rasterizes (the part that shows when the whole would be too big). `Plane_Fx.mips` gives the layer a full mip chain (`render.acquire_target_mips`, rebuilt by an `Op_Kind.Mips` after the plane is drawn; D3D11 `GenerateMips`, wgpu `mip.wgsl`); the pixel shader reads `ceil(long axis / taps)` taps along the long axis of the pixel's footprint (the singular values of the Jacobian of the layer position), each trilinear at the level of the short axis, so a plane that perspective makes smaller than its layer is filtered, not aliased, and one seen at a slant stays sharp. `open_plane_frame(dc)` gives the frame of the open plane (to map a pointer back through its projection, exactly: the inverse of a homography).
+Sharpness: the caller picks `raster_scale`: the most screen pixels per plane unit its projection asks for where it shows (the Jacobian of the homography at the corners of the visible polygon; computed by the application), and the bounds it rasterizes (the part that shows when the whole would be too big). `Plane_Fx.mips` gives the layer a full mip chain (`render.acquire_target_mips`, rebuilt by an `Op_Kind.Mips` after the plane is drawn; D3D11 `GenerateMips`, wgpu `mip.wgsl`); the pixel shader reads `ceil(long axis / taps)` taps along the long axis of the pixel's footprint (the singular values of the Jacobian of the layer position), each trilinear at the level of the short axis, so a plane that perspective makes smaller than its layer is filtered, not aliased, and one seen at a slant stays sharp. `open_plane_frame(dc)` gives the frame of the open plane (to map a pointer back through its projection, exactly: the inverse of a homography).
 
 ## Clips
 
@@ -239,7 +239,7 @@ build):
 | 12 cards: frosted backdrop (blur 12) + drop shadow + sepia, full window | 12 | 108 | 11 (9.6 MB) | 0.06 ms | 2.2 ms |
 | 40 cards, same | 40 | 360 | 11 (5.0 MB) | 0.18 ms | 2.0 ms |
 
-Unreleased (`examples/effects --bench=300`, 2240 x 1400, GPU p50 under the per-step profile; the stress cards' content is
+With kept results (`examples/effects --bench=300`, 2240 x 1400, GPU p50 under the per-step profile; the stress cards' content is
 kept, their backdrops move): demo page 2.29 → 2.28 ms (21 layers, 11 passes instead of 28 and 20); 40 cards
 4.61 → 2.91 ms (0 layers drawn, 120 passes instead of 360), 4.21 ms without kept results.
 
@@ -260,7 +260,7 @@ image filtering and mips, layer composites.
 | text (default `Text_Rendering`) | coverage^0.8 blended in linear light (the toolkit's historical look) | Chromium on Windows: Skia's sRGB curve, contrast 1.0 |
 
 ```odin
-render.init(&r, hwnd, size, space = .Srgb)            // or render.init_offscreen(&r, size, space = .Srgb)
+render.init_window(&r, win, size, space = .Srgb)            // or render.init_offscreen(&r, size, space = .Srgb)
 render.set_blend_space(&r, .Linear)                    // later, between frames
 draw.push_effects(dc, bounds, {alpha = 1, space = .Srgb})   // a layer of its own space
 prev := draw.set_interpolation(dc, .Srgb)              // CSS gradients: sRGB whatever the frame's space
@@ -304,7 +304,7 @@ What Chromium does on Windows (chromium `skia/BUILD.gn`: `SK_GAMMA_SRGB`, `SK_GA
 ClearType tuner's registry values replace them when present): `TEXT_RENDERING_SRGB`, the default of the `Srgb` space.
 Measured against Edge on the same page (Segoe UI 15 px at 175 %): ink per pixel of text width within 2 % for black on
 white and for light on dark, where plain sRGB coverage is 4 % heavier and 17 % lighter respectively. Remaining
-differences come from the rasterizer: stb_truetype, unhinted, grayscale; Edge uses DirectWrite with ClearType.
+differences came from the rasterizer: at the time of this measurement stb_truetype, it is now DirectWrite in grayscale; Edge uses ClearType.
 Linux Chromium's values are `{curve = .Power, gamma = 1.2, contrast = 0.2}`.
 
 ### The UI in the sRGB space
