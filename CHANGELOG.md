@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.61.0] - 2026-11-01
+
+### Added
+- **Color glyphs off Windows**: the COLR interpreter gets its tables from the native backend, and CBDT bitmaps (Noto Color Emoji on most Linux systems) are drawn from their PNG images (`font/cbdt.odin`). `font.glyph_is_color` and `font.color_glyph_rgba` work there.
+- **Fractional scaling on Wayland**: `wp_fractional_scale_v1` with `wp_viewporter`, the buffer in physical pixels; a scale of 1.5 was drawn at 2 and scaled down by the compositor.
+- **Cursors on Linux**: on X11 from the theme (libxcb-cursor) or the server's cursor font, custom images through RENDER; on Wayland custom images through wl_shm and the theme (libwayland-cursor) where `wp_cursor_shape_v1` is missing, and the cursor is sent again on each pointer enter. `platform.cursor_on_screen` says what shows.
+- `tools/doc_check.mjs`, run by the CI: the files, flags, defines and package names the documentation cites must exist. `tools/release.ps1` retakes the About picture itself. The documentation no longer says Linux is missing where it exists, and says what it lacks (color glyphs, X11 cursors, Wayland fractional scaling).
+
 ## [0.60.2] - 2026-11-01
 
 ### Added
@@ -1394,6 +1402,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.61.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.61.0
 [0.60.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.2
 [0.60.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.1
 [0.60.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.0
