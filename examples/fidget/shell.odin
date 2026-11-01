@@ -277,6 +277,7 @@ build_palette :: proc(app: ^App) {
 				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 				field_ui := ui.line_edit("###pal_input", &app.palette_field, "Type a command...")
 				if field_ui.changed { app.palette_sel, app.palette_scroll = 0, 0 }
+				if field_ui.cancelled { app.palette_open = false }   // (its foot says it: Esc closes, the field has the first Esc)
 				if field_ui.committed && n > 0 { run = int(entries[app.palette_sel].cmd) }
 				if app.palette_focus { ui.set_focus(input_key); app.palette_focus = false }
 				ui.spacer(ui.px(em * 0.9))

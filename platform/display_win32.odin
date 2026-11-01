@@ -98,12 +98,7 @@ foreign dwmapi_display {
 
 // The refresh rate of the window's monitor (cached: cheap to call every frame). `serial` changes when it does.
 display_info :: proc(w: ^Window) -> Display_Info {
-	if w.offscreen {
-		// an emulated display: 60 Hz, no monitor. The headless browser paces its own frames; this only feeds the rate
-		// a page reads (screen.refresh).
-		if w.display.serial == 0 { w.display = {hz = DISPLAY_FALLBACK_HZ, max_hz = DISPLAY_FALLBACK_HZ, source = .Default, serial = 1} }
-		return w.display
-	}
+	if w.offscreen { return offscreen_display(w) }   // (virtual.odin; a headless browser paces its own frames: this only feeds the rate a page reads, screen.refresh)
 	mon := win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST)
 	if w.display_stale || rawptr(mon) != w.display.monitor {
 		w.display_stale = false
@@ -119,10 +114,11 @@ display_info :: proc(w: ^Window) -> Display_Info {
 // Reads the rate again at the next display_info (e.g. after the user changed it in the display settings).
 display_invalidate :: proc(w: ^Window) { w.display_stale = true }
 
-// The pixel size of the monitor the window is on (the whole screen, not the work area). {0, 0} for an offscreen window
-// or when it cannot be read. Used for a fixed surface the size of the screen (render.set_fixed_surface).
+// The pixel size of the monitor the window is on (the whole screen, not the work area); of the virtual screen for an
+// offscreen window. {0, 0} when it cannot be read. Used for a fixed surface the size of the screen (render.set_fixed_surface).
 monitor_size :: proc(w: ^Window) -> [2]int {
-	if w == nil || w.offscreen { return {} }
+	if w == nil { return {} }
+	if w.offscreen { return virtual_screen().size }
 	mon := win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST)
 	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
 	if !win.GetMonitorInfoW(mon, &mi) { return {} }

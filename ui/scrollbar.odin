@@ -18,7 +18,7 @@ set_scrollbar_autohide :: proc(s: ^State, on: bool) { s.scrollbar_autohide = on 
 // Scrolled by something other than the pointer (the keyboard): its bar shows for a moment, wherever the pointer is.
 scrollbar_reveal :: proc(b: ^Box) {
 	if b == nil { return }
-	b.bar_until = now_ms() + SCROLLBAR_REVEAL_MS
+	b.bar_until = g.time_ms + SCROLLBAR_REVEAL_MS
 }
 
 // How much a box's bar shows, 0..1.
@@ -29,7 +29,7 @@ scrollbar_opacity :: proc(s: ^State, b: ^Box) -> f32 { return s.scrollbar_autohi
 scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
 	inside := s.mouse_valid && s.mouse.x >= b.rect.min.x && s.mouse.x < b.rect.max.x && s.mouse.y >= b.rect.min.y && s.mouse.y < b.rect.max.y
 	if inside || s.active_key[.Left] == scrollbar_key(b) { return true }
-	left := b.bar_until - now_ms()
+	left := b.bar_until - s.time_ms
 	if left <= 0 { return false }
 	wake_within(s, int(left) + 1)
 	return true

@@ -8,6 +8,7 @@ package platform
 
 import "base:runtime"
 import "core:strings"
+import "core:sync"
 import win "core:sys/windows"
 import stbi "vendor:stb/image"
 
@@ -17,10 +18,11 @@ import stbi "vendor:stb/image"
 @(private = "file") CLIPBOARD_OPEN_ATTEMPTS :: 5
 
 // Changes whenever a program (this one too) writes the clipboard.
-clipboard_sequence :: proc() -> u32 { return u32(win.GetClipboardSequenceNumber()) }
+clipboard_sequence :: proc() -> u32 { return clip_is_virtual(nil) ? sync.atomic_load(&clip.seq) : u32(win.GetClipboardSequenceNumber()) }
 
 // What the clipboard holds, without opening it.
 clipboard_formats :: proc() -> (out: Clipboard_Formats) {
+	if clip_is_virtual(nil) { return clip_store_formats() }
 	has :: proc(f: u32) -> bool { return f != 0 && bool(win.IsClipboardFormatAvailable(f)) }
 	if has(win.CF_UNICODETEXT) || has(win.CF_TEXT) { out += {.Text} }
 	if has(u32(registered_format("HTML Format"))) { out += {.Html} }
@@ -32,6 +34,7 @@ clipboard_formats :: proc() -> (out: Clipboard_Formats) {
 // The names of every format on the clipboard (the system's own as CF_*, the registered ones by name), for diagnostics.
 clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []string {
 	out := make([dynamic]string, allocator)
+	if clip_is_virtual(w) { return out[:] }
 	if !open_clipboard(w) { return out[:] }
 	defer win.CloseClipboard()
 	STANDARD := [?]string{"", "CF_TEXT", "CF_BITMAP", "CF_METAFILEPICT", "CF_SYLK", "CF_DIF", "CF_TIFF", "CF_OEMTEXT", "CF_DIB", "CF_PALETTE", "CF_PENDATA", "CF_RIFF", "CF_WAVE", "CF_UNICODETEXT", "CF_ENHMETAFILE", "CF_HDROP", "CF_LOCALE", "CF_DIBV5"}
@@ -51,6 +54,7 @@ clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []
 
 // The clipboard's image, if any (allocator: the pixels; clipboard_image_destroy frees them).
 clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
+	if clip_is_virtual(w) { return clip_store_image(allocator) }
 	if !open_clipboard(w) { return }
 	defer win.CloseClipboard()
 	for name in ([]string{"PNG", "image/png"}) {
@@ -69,6 +73,7 @@ clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img:
 
 // The clipboard's HTML: the fragment (UTF-8 markup) and the page it came from (allocator).
 clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html, source_url: string, ok: bool) {
+	if clip_is_virtual(w) { return clip_store_html(allocator) }
 	if !open_clipboard(w) { return }
 	defer win.CloseClipboard()
 	b := clip_bytes(u32(registered_format("HTML Format")), context.temp_allocator)
@@ -81,6 +86,7 @@ clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html,
 
 // The files on the clipboard (copied in a file manager): absolute paths (allocator, each and the slice).
 clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (paths: []string, ok: bool) {
+	if clip_is_virtual(w) { return clip_store_files(allocator) }
 	if !open_clipboard(w) { return }
 	defer win.CloseClipboard()
 	h := win.HDROP(win.GetClipboardData(win.CF_HDROP))
@@ -100,6 +106,7 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 // Replaces the clipboard's contents by every flavour of `c` (one owner). False when the clipboard could not be had or
 // a flavour could not be written.
 clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
+	if clip_is_virtual(w) { clip_store_put(c); return true }
 	Item :: struct { format: u32, data: []u8 }
 	items := make([dynamic]Item, context.temp_allocator)
 	if c.text != "" {
@@ -154,6 +161,7 @@ clipboard_set_files :: proc(w: ^Window, paths: []string) -> bool { return clipbo
 // Makes the window wake whenever the clipboard changes (a Paste item to enable, a "paste the copied link?" offer):
 // WM_CLIPBOARDUPDATE wakes the loop; clipboard_changed tells it.
 clipboard_watch :: proc(w: ^Window, on: bool) -> bool {
+	if w.offscreen { return true }   // (clipboard_changed reads the store's count)
 	if w.clip_watch == on { return true }
 	ok := on ? bool(win.AddClipboardFormatListener(w.hwnd)) : bool(win.RemoveClipboardFormatListener(w.hwnd))
 	if ok { w.clip_watch = on }

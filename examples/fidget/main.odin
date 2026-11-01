@@ -23,6 +23,7 @@ clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
 // Settings (%APPDATA%\gui_toolkit_fidget\settings.txt)
 
 settings_dir :: proc() -> string {
+	if the_app.settings_in != "" { return the_app.settings_in }
 	return fmt.tprintf("%s/gui_toolkit_fidget", platform.config_dir(context.temp_allocator))
 }
 
@@ -151,11 +152,6 @@ frame :: proc(app: ^App, inner := false) {
 
 	// window title
 	title := fmt.tprintf("gui_toolkit fidget  |  %s  |  %s", page_names[int(app.page)], palettes[app.palette_idx].name)
-	if app.state_title {   // machine-readable state for scripted tests
-		title = fmt.tprintf("S zoom=%d page=%d name=%s bio=%s agree=%d sw1=%d vol=%.0f lang=%d focus=%s editor_lines=%d editor_len=%d pal=%d settings=%d theme=%d round=%d menu=%d",
-			int(math.round(ui.zoom(&app.ui_state) * 100)), int(app.page), ui.field_string(&app.name), ui.field_string(&app.bio), int(app.agree),
-			int(app.sw[1]), app.slider[0], app.dd[0], ui.focused_name(), ui.area_line_count(&app.editor), len(app.editor.buf), int(app.palette_open), int(app.settings_open), app.palette_idx, int(math.round(ui.rounding(&app.ui_state) * 100)), int(ui.ctx_menu_any_open()))
-	}
 	if title != app.title_cache { app.title_cache = strings.clone(title); platform.set_title(app.win, title) }
 
 	draw.begin_frame(&app.dc, size)
@@ -175,26 +171,42 @@ frame :: proc(app: ^App, inner := false) {
 	free_all(context.temp_allocator)
 }
 
-main :: proc() {
+// What `open` starts from.
+Open_Options :: struct {
+	args:         []string,   // the command line, without the program's name
+	headless:     bool,       // no window of the system: offscreen, on the software renderer, with the fonts compiled in
+	settings_dir: string,     // where settings.txt is ("": the user's folder)
+}
+
+WINDOW_SIZE :: [2]int{1180, 780}
+
+// The application, up to its first frame (the caller makes the frames: `frame`). nil: it cannot start, and has said why.
+open :: proc(o: Open_Options) -> ^App {
 	app := new(App)
 	the_app = app
-	rng_state ~= u64(time.tick_now()._nsec) * 0x9e3779b97f4a7c15
+	app.settings_in = o.settings_dir
+	if !o.headless { rng_state ~= u64(time.tick_now()._nsec) * 0x9e3779b97f4a7c15 }
 	font.init(&app.fonts)
 	// transparent: some palettes (Aero) let the OS backdrop show through the page background
-	app.integrated = slice.contains(os.args, "--integrated")
-	app.win = platform.open_window("gui_toolkit fidget", {1180, 780}, transparent = true, integrated_title = app.integrated)
-	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
-	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
+	app.integrated = slice.contains(o.args, "--integrated")
+	if o.headless {
+		app.win = platform.open_window_offscreen("gui_toolkit fidget", WINDOW_SIZE)
+		if !render.init_offscreen(&app.r, app.win.size, warp = true) { fmt.eprintln("renderer init failed"); return nil }
+	} else {
+		app.win = platform.open_window("gui_toolkit fidget", WINDOW_SIZE, transparent = true, integrated_title = app.integrated)
+		if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return nil }
+		render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
+	}
 	ok: bool
 	// system fonts when present, else the fallbacks compiled into the exe (Wine, trimmed installs);
 	// --embedded_fonts forces the fallbacks
-	use_system := !slice.contains(os.args, "--embedded_fonts")
+	use_system := !o.headless && !slice.contains(o.args, "--embedded_fonts")
 	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, use_system ? platform.system_font_path("segoeui.ttf") : "", font.FALLBACK_UI_DATA)
-	if !ok { fmt.eprintln("cannot load a UI font"); return }
+	if !ok { fmt.eprintln("cannot load a UI font"); return nil }
 	app.mono, ok, _ = font.load_system_or_embedded(&app.fonts, use_system ? platform.system_font_path("consola.ttf") : "", font.FALLBACK_MONO_DATA)
 	if !ok { app.mono = app.ui_font }
 	app.icons, ok = font.load_embedded(&app.fonts, ui.ICON_FONT_DATA)
-	if !ok { fmt.eprintln("cannot load the icon font"); return }
+	if !ok { fmt.eprintln("cannot load the icon font"); return nil }
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
 	app.ui_state.icon_font = app.icons
@@ -210,8 +222,7 @@ main :: proc() {
 	app.tree_open[0], app.tree_open[1], app.tree_open[6], app.tree_open[10] = true, true, true, true
 	app.tree_sel = 2
 	settings_load(app)
-	args := os.args
-	for a in args[1:] {   // test flags: --page=N --palette=N --anim=on|off
+	for a in o.args {   // flags to look at one thing: --page=N --palette=N --anim=on|off
 		if strings.has_prefix(a, "--page=") { if v, vok := strconv.parse_int(a[7:]); vok { app.page = Page(clamp(v, 0, len(Page) - 1)) } }
 		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
 		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
@@ -220,7 +231,6 @@ main :: proc() {
 		if a == "--about" { app.about_open = true }
 		if a == "--settings" { app.settings_open = true }
 		if a == "--toasts" { app.debug_toasts = true }
-		if a == "--state_title" { app.state_title = true }
 		if strings.has_prefix(a, "--size=") {
 			if x := strings.index_byte(a, 'x'); x > 7 {
 				sw, ok1 := strconv.parse_int(a[7:x]); sh, ok2 := strconv.parse_int(a[x + 1:])
@@ -249,7 +259,26 @@ main :: proc() {
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	app.devtools = devtools.start_from_env(app.win, "gui_toolkit fidget")
-	defer devtools.stop(app.devtools)
+	return app
+}
+
+// The end of what `open` made.
+close :: proc(app: ^App) {
+	devtools.stop(app.devtools)
+	ui.destroy(&app.ui_state)
+	ui.theme_destroy(&app.theme)
+	draw.destroy(&app.dc)
+	render.destroy(&app.r)
+	font.destroy(&app.fonts)
+	platform.destroy_window(app.win)
+	the_app = nil
+	free(app)
+}
+
+main :: proc() {
+	app := open({args = os.args[1:]})
+	if app == nil { return }
+	defer close(app)
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) && !app.want_quit {
