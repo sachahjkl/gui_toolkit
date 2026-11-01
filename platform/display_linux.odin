@@ -10,10 +10,7 @@ package platform
 @(private = "file") WL_MILLIHERTZ_PER_HZ :: 1000   // wl_output.mode
 
 display_info :: proc(w: ^Window) -> Display_Info {
-	if w.offscreen {
-		if w.display.serial == 0 { w.display = {hz = DISPLAY_FALLBACK_HZ, max_hz = DISPLAY_FALLBACK_HZ, source = .Default, serial = 1} }
-		return w.display
-	}
+	if w.offscreen { return offscreen_display(w) }   // (virtual.odin)
 	if w.display_stale || w.display.serial == 0 {
 		w.display_stale = false
 		d := query_display_linux(w)
@@ -31,10 +28,11 @@ display_info :: proc(w: ^Window) -> Display_Info {
 display_invalidate :: proc(w: ^Window) { w.display_stale = true }
 
 // The pixel size of the monitor the window is on. Wayland reports the wl_output mode's size; X11 the root screen's
-// (a single-head heuristic). {0, 0} for an offscreen window or when nothing is known. Used for a fixed surface the
+// (a single-head heuristic); the virtual screen's for an offscreen window. {0, 0} when nothing is known. Used for a fixed surface the
 // size of the screen (render.set_fixed_surface).
 monitor_size :: proc(w: ^Window) -> [2]int {
-	if w == nil || w.offscreen { return {} }
+	if w == nil { return {} }
+	if w.offscreen { return virtual_screen().size }
 	switch w.backend {
 	case .Wayland:
 		if wlc.output_px.x > 0 && wlc.output_px.y > 0 {

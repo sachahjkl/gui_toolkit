@@ -209,7 +209,7 @@ App :: struct {
 	editor:  ui.Text_Area,
 	editor_tab_indents: bool,
 	composer: ui.Text_Area,   // a chat composer: wraps, grows from 1 to 5 lines
-	state_title: bool,
+	settings_in: string,   // Open_Options.settings_dir
 	integrated:  bool,   // --integrated: the menu bar is the window's title bar (ui.title_bar, ui.window_buttons)
 	tags:    [dynamic]string,
 	agree:   bool,

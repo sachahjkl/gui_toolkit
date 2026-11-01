@@ -15,22 +15,6 @@ package platform
 import "core:strings"
 import "core:sync"
 
-// What this process put on the clipboard last (so a get returns every flavour, and the selection owner answers other
-// clients). Guarded by a mutex: clipboard_set runs on the UI thread, but a Wayland data-source send callback may read
-// it from the display dispatch.
-@(private)
-Clip_Store :: struct {
-	mutex:      sync.Mutex,
-	seq:        u32,
-	text:       string,
-	html:       string,
-	source_url: string,
-	image_png:  []u8,       // PNG bytes, when the app gave an image and png_encode_hook turned it into PNG
-	files:      []string,
-	formats:    Clipboard_Formats,
-}
-@(private) clip: Clip_Store
-
 // An app with an image codec (a browser) sets this so clipboard_set can offer pictures as PNG; nil without one.
 png_encode_hook: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8
 png_decode_hook: proc(b: []u8, allocator := context.allocator) -> (Clipboard_Image, bool)
@@ -48,18 +32,6 @@ clipboard_formats :: proc() -> Clipboard_Formats {
 	if x11c.c != nil && x11c.clip_owner == 0 && len(x11c.windows) > 0 { return x11_foreign_formats(x11c.windows[0]) }
 	return clip_store_formats()
 }
-
-// What this process's store offers (the selection owner's answer to other clients).
-@(private)
-clip_store_formats :: proc() -> Clipboard_Formats {
-	sync.mutex_lock(&clip.mutex)
-	defer sync.mutex_unlock(&clip.mutex)
-	return clip.formats
-}
-
-// The selection moved without this process writing it.
-@(private)
-clip_note_changed :: proc() { sync.atomic_add(&clip.seq, 1) }
 
 clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []string {
 	fmts := clipboard_formats()
@@ -143,27 +115,8 @@ clip_read_foreign :: proc(w: ^Window, mime: string, allocator := context.allocat
 }
 
 clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
-	sync.mutex_lock(&clip.mutex)
-	clip_clear_locked()
-	clip.text = strings.clone(c.text)
-	clip.html = strings.clone(c.html)
-	clip.source_url = strings.clone(c.source_url)
-	if c.text != "" { clip.formats += {.Text} }
-	if c.html != "" { clip.formats += {.Html} }
-	if img, ok := c.image.?; ok && img.size.x > 0 && img.size.y > 0 {
-		if png_encode_hook != nil {
-			clip.image_png = png_encode_hook(img)
-			if len(clip.image_png) > 0 { clip.formats += {.Image} }
-		}
-	}
-	if len(c.files) > 0 {
-		clip.files = make([]string, len(c.files))
-		for p, i in c.files { clip.files[i] = strings.clone(p) }
-		clip.formats += {.Files}
-	}
-	clip_note_changed()
-	txt := strings.clone(c.text != "" ? c.text : "", context.temp_allocator)
-	sync.mutex_unlock(&clip.mutex)
+	clip_store_put(c)
+	txt := strings.clone(c.text, context.temp_allocator)
 	// own the selection and offer every flavour the store holds (text, HTML, PNG, files)
 	if w != nil && !w.offscreen {
 		switch w.backend {
@@ -204,15 +157,6 @@ png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8
 png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
 	if png_decode_hook != nil { return png_decode_hook(b, allocator) }
 	return {}, false
-}
-
-@(private)
-clip_clear_locked :: proc() {
-	delete(clip.text); delete(clip.html); delete(clip.source_url); delete(clip.image_png)
-	for p in clip.files { delete(p) }
-	delete(clip.files)
-	clip.text, clip.html, clip.source_url, clip.image_png, clip.files = "", "", "", nil, nil
-	clip.formats = {}
 }
 
 ////////////////////////////////

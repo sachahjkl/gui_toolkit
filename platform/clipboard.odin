@@ -15,7 +15,9 @@ package platform
 // palettes, masks, bottom-up or top-down) to and from RGBA, the file list of CF_HDROP, and the "HTML Format" header
 // (html_format_wrap / html_format_fragment, dragdrop.odin).
 
+import "base:runtime"
 import "core:strings"
+import "core:sync"
 import "core:unicode/utf16"
 
 @(private = "file") DIB_CORE_HEADER_BYTES :: 12     // BITMAPCOREHEADER
@@ -55,6 +57,102 @@ Clipboard_Content :: struct {
 	source_url: string,          // the page the HTML comes from (resolves its relative links)
 	image:      Maybe(Clipboard_Image),
 	files:      []string,        // absolute paths
+}
+
+// The process's own store: what an offscreen window's clipboard is (virtual.odin), and on Linux what this process put on the
+// clipboard last (so a get returns every flavour, and the selection owner answers other clients). Guarded by a mutex:
+// clipboard_set runs on the UI thread, but a Wayland data-source send callback may read it from the display dispatch.
+@(private)
+Clip_Store :: struct {
+	mutex:      sync.Mutex,
+	seq:        u32,
+	text:       string,
+	html:       string,
+	source_url: string,
+	image_png:  []u8,       // PNG bytes, when an image was given and png_encode could make them
+	files:      []string,
+	formats:    Clipboard_Formats,
+}
+@(private) clip: Clip_Store
+
+// Replaces what the store holds by every flavour of `c`.
+@(private)
+clip_store_put :: proc(c: Clipboard_Content) {
+	context.allocator = runtime.heap_allocator()   // (it outlives whoever wrote it)
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	clip_clear_locked()
+	clip.text = strings.clone(c.text)
+	clip.html = strings.clone(c.html)
+	clip.source_url = strings.clone(c.source_url)
+	if c.text != "" { clip.formats += {.Text} }
+	if c.html != "" { clip.formats += {.Html} }
+	if img, ok := c.image.?; ok && img.size.x > 0 && img.size.y > 0 {
+		clip.image_png = png_encode(img)
+		if len(clip.image_png) > 0 { clip.formats += {.Image} }
+	}
+	if len(c.files) > 0 {
+		clip.files = make([]string, len(c.files))
+		for p, i in c.files { clip.files[i] = strings.clone(p) }
+		clip.formats += {.Files}
+	}
+	clip_note_changed()
+}
+
+@(private)
+clip_clear_locked :: proc() {
+	context.allocator = runtime.heap_allocator()
+	delete(clip.text); delete(clip.html); delete(clip.source_url); delete(clip.image_png)
+	for p in clip.files { delete(p) }
+	delete(clip.files)
+	clip.text, clip.html, clip.source_url, clip.image_png, clip.files = "", "", "", nil, nil
+	clip.formats = {}
+}
+
+// What the store offers (on Linux, the selection owner's answer to other clients).
+@(private)
+clip_store_formats :: proc() -> Clipboard_Formats {
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	return clip.formats
+}
+
+// The clipboard moved (on Linux, also without this process writing it).
+@(private)
+clip_note_changed :: proc() { sync.atomic_add(&clip.seq, 1) }
+
+// The store's text, HTML, image and files, each a copy for the caller.
+@(private)
+clip_store_text :: proc(allocator := context.allocator) -> string {
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	return strings.clone(clip.text, allocator)
+}
+
+@(private)
+clip_store_html :: proc(allocator := context.allocator) -> (html, source_url: string, ok: bool) {
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	if clip.html == "" { return }
+	return strings.clone(clip.html, allocator), strings.clone(clip.source_url, allocator), true
+}
+
+@(private)
+clip_store_image :: proc(allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	if len(clip.image_png) == 0 { return }
+	return png_decode(clip.image_png, allocator)
+}
+
+@(private)
+clip_store_files :: proc(allocator := context.allocator) -> (paths: []string, ok: bool) {
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	if len(clip.files) == 0 { return }
+	paths = make([]string, len(clip.files), allocator)
+	for p, i in clip.files { paths[i] = strings.clone(p, allocator) }
+	return paths, true
 }
 
 // How rgba_to_dib writes the pixels.

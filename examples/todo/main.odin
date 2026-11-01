@@ -48,6 +48,7 @@ App :: struct {
 	stats_boxes:      int,
 	pacer: render.Pacer,
 	slept: bool,
+	data_in: string,   // Open_Options.data_dir
 }
 
 the_app: ^App
@@ -58,6 +59,7 @@ ICON_PALETTE :: "E"
 ICON_X :: "x"
 
 data_dir :: proc() -> string {
+	if the_app.data_in != "" { return the_app.data_in }
 	return fmt.tprintf("%s/gui_toolkit_todo", platform.config_dir(context.temp_allocator))
 }
 
@@ -351,19 +353,34 @@ frame :: proc(app: ^App, inner := false) {
 	free_all(context.temp_allocator)
 }
 
-main :: proc() {
+// What `open` starts from.
+Open_Options :: struct {
+	headless: bool,     // no window of the system: offscreen, on the software renderer, with the font compiled in
+	data_dir: string,   // where todos.tsv is ("": the user's folder)
+}
+
+WINDOW_SIZE :: [2]int{640, 860}
+
+// The application, up to its first frame (the caller makes the frames: `frame`). nil: it cannot start, and has said why.
+open :: proc(o: Open_Options) -> ^App {
 	app := new(App)
 	the_app = app
+	app.data_in = o.data_dir
 	app.dark = true
 	font.init(&app.fonts)
-	app.win = platform.open_window("gui_toolkit todo", {640, 860}, transparent = true)
-	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
-	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
+	if o.headless {
+		app.win = platform.open_window_offscreen("gui_toolkit todo", WINDOW_SIZE)
+		if !render.init_offscreen(&app.r, app.win.size, warp = true) { fmt.eprintln("renderer init failed"); return nil }
+	} else {
+		app.win = platform.open_window("gui_toolkit todo", WINDOW_SIZE, transparent = true)
+		if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return nil }
+		render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
+	}
 	ok: bool
-	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
-	if !ok { fmt.eprintln("cannot load a UI font"); return }
+	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, o.headless ? "" : platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
+	if !ok { fmt.eprintln("cannot load a UI font"); return nil }
 	app.icons, ok = font.load_embedded(&app.fonts, ui.ICON_FONT_DATA)
-	if !ok { fmt.eprintln("cannot load the icon font"); return }
+	if !ok { fmt.eprintln("cannot load the icon font"); return nil }
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
 	app.ui_state.icon_font = app.icons
@@ -374,7 +391,30 @@ main :: proc() {
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	app.devtools = devtools.start_from_env(app.win, "gui_toolkit todo")
-	defer devtools.stop(app.devtools)
+	return app
+}
+
+// The end of what `open` made.
+close :: proc(app: ^App) {
+	devtools.stop(app.devtools)
+	for t in app.tasks { delete(t.title) }
+	delete(app.tasks)
+	ui.field_destroy(&app.input)
+	ui.field_destroy(&app.search)
+	ui.destroy(&app.ui_state)
+	ui.theme_destroy(&app.theme)
+	draw.destroy(&app.dc)
+	render.destroy(&app.r)
+	font.destroy(&app.fonts)
+	platform.destroy_window(app.win)
+	the_app = nil
+	free(app)
+}
+
+main :: proc() {
+	app := open({})
+	if app == nil { return }
+	defer close(app)
 	platform.show_window(app.win)
 
 	for !platform.is_closed(app.win) {
