@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.60.2] - 2026-11-01
+
+### Added
+- `tools/theme_shots.mjs`: a picture of a page of `examples/whatsnew` in every palette, with no window; `--palette=<name>` on that example.
+
+### Fixed
+- **Command line arguments keep every character on Windows**: `os.args` came through the C runtime's ANSI code page ("Łódź" became "L\xf3dz", "Привет" "??????"), in paths and passwords too. Any program that imports `platform` now gets them from the system, in UTF-8.
+
 ## [0.60.1] - 2026-11-01
 
 ### Changed
@@ -1386,6 +1394,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.60.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.2
 [0.60.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.1
 [0.60.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.0
 [0.59.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.59.0
