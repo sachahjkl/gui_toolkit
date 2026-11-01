@@ -1,5 +1,5 @@
 # Publishes a version of gui_toolkit: assembles the fragments of changelog.d\ into a CHANGELOG.md section and writes the
-# version (ui/version.odin, the README's badge) with tools\changelog.ps1, commits that as "<version>: <summary>", tags the
+# version (ui/version.odin, the README's badge) with tools/changelog, commits that as "<version>: <summary>", tags the
 # commit (annotated, signed tags need -a), pushes master and the tag, and creates the GitHub release with the section as notes.
 # Branches never write the version nor CHANGELOG.md: only this script does (CONTRIBUTING.md). The About picture shows the
 # version: it is retaken here, in that commit.
@@ -8,14 +8,16 @@
 param([Parameter(Mandatory)][string]$Version, [string]$Summary = "", [switch]$NoPush)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot)
-$changelog = Join-Path $PSScriptRoot 'changelog.ps1'
+$changelog = 'build\changelog.exe'
+odin build tools/changelog -out:$changelog
+if ($LASTEXITCODE) { throw "building tools/changelog failed" }
 
 if (git status --porcelain) { throw "the working tree is not clean" }
-& powershell -NoProfile -ExecutionPolicy Bypass -File $changelog -Check
+& $changelog -check
 if ($LASTEXITCODE) { throw "changelog.d has fragments to fix first" }
-& powershell -NoProfile -ExecutionPolicy Bypass -File $changelog -Assemble -Version $Version
+& $changelog -assemble -version:$Version
 if ($LASTEXITCODE) { throw "assembling the CHANGELOG failed" }
-& powershell -NoProfile -ExecutionPolicy Bypass -File $changelog -Check -Release $Version
+& $changelog -check -release:$Version
 if ($LASTEXITCODE) { throw "the release is not consistent" }
 & cmd /c ".\build.bat" fidget
 if ($LASTEXITCODE) { throw "building fidget failed" }
@@ -37,7 +39,7 @@ git push origin $tag
 if ($LASTEXITCODE) { throw "pushing the tag failed" }
 
 $notes = Join-Path $env:TEMP "gui_toolkit-$Version-notes.md"
-& powershell -NoProfile -ExecutionPolicy Bypass -File $changelog -Section -Version $Version -Out $notes
+& $changelog -section -version:$Version -out:$notes
 if ($LASTEXITCODE) { throw "reading the CHANGELOG section failed" }
 gh release create $tag --title "gui_toolkit $Version" --notes-file $notes --verify-tag --latest
 if ($LASTEXITCODE) { throw "gh release create failed" }

@@ -22,7 +22,7 @@ The widget gallery, built entirely on the `ui` package.
 - Ctrl+wheel / Ctrl +/-/0 zoom the whole UI (toolkit feature)
 
 Shortcuts: Ctrl+K, Ctrl+1..4, Ctrl+T theme, Ctrl+B status bar, Ctrl+J animations.
-Test flags: `--page=N --theme=N --palette --modal --about --settings --toasts --toast_pos=N --anim=on|off --blending=srgb|linear --dump`.
+Flags to look at one thing: `--page=N --theme=N --palette --modal --about --settings --toasts --toast_pos=N --anim=on|off --blending=srgb|linear --dump`.
 
 Files: `app.odin` (state, palettes, command table), `main.odin` (frame loop, settings), `shell.odin`
 (menu bar, tabs, status bar, palette, modal), `pages.odin` (Controls, Inputs), `pages_data.odin`,
