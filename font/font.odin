@@ -396,6 +396,7 @@ publish_face :: proc(s: ^State, key: string, f: Font, family: string) -> Font_Id
 	f.family = to_wide(family)
 	f.cmap = make([]u32, CMAP_BMP_CHARS * CMAP_BITS_PER_CHAR / CMAP_WORD_BITS)
 	if !s.tb.face_open(s, &f) { release_font(&f); return 0 }
+	platform_face_opened(s, &f)
 	f.fm = s.tb.face_metrics(s, &f)
 	if f.fm.upem > 0 { f.upem = f32(f.fm.upem) }
 	if f.upem <= 0 { f.upem = FALLBACK_UPEM }   // neither the platform nor the backend said: no division by zero downstream

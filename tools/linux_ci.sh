@@ -36,6 +36,12 @@ for t in frame_slots pacing autoscroll flate key_repeat clipboard dragdrop; do
     echo "test FAIL  tests/$t"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
   fi
 done
+# color glyphs with the native text backend
+if out=$("$ODIN" test tests/color_native -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true "${NATIVE[@]}" -out:build/linux/color_native_test 2>&1) && echo "$out" | grep -qE "All tests were successful|The test was successful"; then
+  echo "test ok    tests/color_native $(echo "$out" | grep -oE 'Finished [0-9]+ tests?')"
+else
+  echo "test FAIL  tests/color_native"; echo "$out" | grep -E "\[ERROR|Error|FAILED|undefined" | head -20; fail=1
+fi
 # the packages that test their private procedures from inside
 for p in config dbus instance; do
   out=$("$ODIN" test "$p" -vet -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"build/linux/${p}_pkg_test" 2>&1)

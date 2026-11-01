@@ -232,6 +232,44 @@ wp_cursor_shape_build_tables :: proc() {
 	wp_cursor_shape_device_iface = {"wp_cursor_shape_device_v1", 1, 2, &wp_csd_methods[0], 0, nil}
 }
 
+// wp_fractional_scale_v1 (the scale the compositor would like the surface drawn at, in 120ths) and wp_viewporter (the
+// surface's size on the output, whatever its buffer's).
+@(private) WP_FRACTIONAL_MANAGER_GET :: 1
+@(private) WP_VIEWPORTER_GET_VIEWPORT :: 1
+@(private) WP_FRACTIONAL_DESTROY :: 0
+@(private) WP_VIEWPORT_DESTROY :: 0
+@(private) WP_VIEWPORT_SET_DESTINATION :: 2
+@(private) wp_fractional_manager_iface: Wl_Interface
+@(private) wp_fractional_iface: Wl_Interface
+@(private) wp_viewporter_iface: Wl_Interface
+@(private) wp_viewport_iface: Wl_Interface
+@(private = "file") wp_fm_methods: [2]Wl_Message
+@(private = "file") wp_f_methods: [1]Wl_Message
+@(private = "file") wp_f_events: [1]Wl_Message
+@(private = "file") wp_vr_methods: [2]Wl_Message
+@(private = "file") wp_v_methods: [3]Wl_Message
+@(private = "file") t_fm_get: [2]^Wl_Interface
+@(private = "file") t_vr_get: [2]^Wl_Interface
+
+@(private)
+wp_scale_build_tables :: proc() {
+	wp_fm_methods[0] = {"destroy", "", nil}
+	t_fm_get[0], t_fm_get[1] = &wp_fractional_iface, wl.surface_interface
+	wp_fm_methods[1] = {"get_fractional_scale", "no", raw_types(t_fm_get[:])}
+	wp_fractional_manager_iface = {"wp_fractional_scale_manager_v1", 1, 2, &wp_fm_methods[0], 0, nil}
+	wp_f_methods[0] = {"destroy", "", nil}
+	wp_f_events[0] = {"preferred_scale", "u", nil}
+	wp_fractional_iface = {"wp_fractional_scale_v1", 1, 1, &wp_f_methods[0], 1, &wp_f_events[0]}
+	wp_vr_methods[0] = {"destroy", "", nil}
+	t_vr_get[0], t_vr_get[1] = &wp_viewport_iface, wl.surface_interface
+	wp_vr_methods[1] = {"get_viewport", "no", raw_types(t_vr_get[:])}
+	wp_viewporter_iface = {"wp_viewporter", 1, 2, &wp_vr_methods[0], 0, nil}
+	wp_v_methods[0] = {"destroy", "", nil}
+	wp_v_methods[1] = {"set_source", "ffff", nil}
+	wp_v_methods[2] = {"set_destination", "ii", nil}
+	wp_viewport_iface = {"wp_viewport", 1, 3, &wp_v_methods[0], 0, nil}
+}
+
 // The static interface tables for the protocols the library does not provide. They are built once (xdg_build_tables)
 // because the `types` arrays reference the library's own wl_surface_interface etc., known only at run time.
 @(private) xdg_wm_base_iface: Wl_Interface

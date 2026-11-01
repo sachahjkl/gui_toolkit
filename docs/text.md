@@ -204,7 +204,7 @@ README suggests sizes whose cap height is a whole number of pixels).
 `Settings.color_engine` says who draws COLR / CPAL color glyphs (`System`, the default: Direct2D, as before; `Builtin`:
 this package).
 
-**The interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in the drawing itself; but they get their tables from DirectWrite, so off Windows there are no color glyphs yet: emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
+**The interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in them: their tables come from DirectWrite on Windows and from the native backend elsewhere, so Linux gets the same emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
 the glyph at the requested pixel size on the CPU:
 
 - COLR v0 layers and v1 paint graphs: `PaintColrLayers`, `PaintSolid`, linear / radial / sweep gradients (the three extend
@@ -277,7 +277,7 @@ build did not make is not searched (a part folded away, the items a lazy column 
 - Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),
   which layers and translucent backgrounds do not give.
 - Color glyphs: on Windows 11 22H2 and later every format (COLR v0 and v1, bitmaps, SVG); from Windows 10 1607 no COLR v1
-  paint trees (their v0 layers, else the outline). Text-color layers take the text's color. Off Windows: none yet.
+  paint trees (their v0 layers, else the outline). Text-color layers take the text's color. Off Windows: COLR v0 and v1 through the interpreter, CBDT from its PNG images (`font/cbdt.odin`); no sbix or SVG.
 - No kerning or ligature across a space (words are shaped apart, as Blink does with its word cache).
 - Horizontal text only.
 - Before Windows 8.1 (no `IDWriteFactory2`): no system fallback, no color glyphs, ClearType analyses averaged to gray.

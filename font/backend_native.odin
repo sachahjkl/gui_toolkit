@@ -363,7 +363,11 @@ native_outline_at :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, toleran
 
 // The raw bytes of a table of a face the native backend opened (nil: none, or another backend).
 native_table :: proc(s: ^State, face: Font_Id, tag: [4]u8) -> []byte {
-	f := face_ptr(s, face)
+	return native_font_table(face_ptr(s, face), tag)
+}
+
+@(private)
+native_font_table :: proc(f: ^Font, tag: [4]u8) -> []byte {
 	if f == nil || f.native == nil { return nil }
 	t := tag
 	data: [^]u8

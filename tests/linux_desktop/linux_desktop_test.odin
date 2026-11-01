@@ -649,3 +649,66 @@ open_url_leaves_no_zombie :: proc(t: ^testing.T) {
 	testing.expect_value(t, strings.trim_space(got), "https://example.org/a b")
 }
 
+// A cursor reaches the server: each shows another image over the window, the theme's or the cursor font's, and a custom one.
+@(test)
+cursors_change_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("cursors")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	id := window_id(w)
+	sh("xdotool windowactivate --sync ", id, " mousemove --window ", id, " 50 40")
+	pump_for(w, 150)
+	shown :: proc(t: ^testing.T, w: ^platform.Window) -> u64 {
+		pump_for(w, 100)
+		s, ok := platform.cursor_on_screen(w)
+		testing.expect(t, ok, "the server says what it shows (XFIXES)")
+		return s
+	}
+	platform.set_cursor(w, .Hand)
+	hand := shown(t, w)
+	platform.set_cursor(w, .Text)
+	text := shown(t, w)
+	platform.set_cursor(w, .None)
+	none := shown(t, w)
+	testing.expect(t, hand != text, "a hand is not a text cursor")
+	testing.expect(t, none != text && none != hand, "hidden is another image")
+	platform.set_cursor(w, .Hand)
+	testing.expect_value(t, shown(t, w), hand)   // made once
+	pixels := make([]u8, 16 * 16 * 4)
+	defer delete(pixels)
+	for i := 0; i < len(pixels); i += 4 { pixels[i], pixels[i + 3] = 255, 255 }
+	cc, err := platform.custom_cursor_create(w, pixels, {16, 16}, {8, 8})
+	testing.expect_value(t, err, platform.Custom_Cursor_Error.None)
+	platform.set_cursor_custom(w, cc, .Arrow)
+	custom := shown(t, w)
+	testing.expect(t, custom != hand && custom != text && custom != none, "a custom cursor is its own image")
+	platform.custom_cursor_release(w, cc)
+}
+
+// A scale of 1.5: the surface asks for it (the wl_output integer would say 2), the buffer has that many pixels, and the
+// pointer lands at it.
+@(test)
+a_fractional_scale_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("fractional")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	sh("swaymsg -q 'output * scale 1.5'")
+	defer sh("swaymsg -q 'output * scale 1'")
+	for i := 0; i < 200 && w.dpi_scale != 1.5; i += 1 { pump_for(w, 10) }
+	testing.expect_value(t, w.dpi_scale, f32(1.5))
+	platform.test_show_plain(w)
+	pump_for(w, 200)
+	seen: Seen
+	defer delete(seen.events)
+	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.5; swaymsg -q seat seat0 cursor press button1; sleep 0.1; swaymsg -q seat seat0 cursor release button1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
+	for e in seen.events {
+		if e.kind == .Mouse_Press { testing.expectf(t, abs(e.pos.x - 90) <= 3 && abs(e.pos.y - 90) <= 3, "at the buffer's pixels: %v", e.pos) }
+	}
+}
