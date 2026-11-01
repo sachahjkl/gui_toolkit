@@ -22,16 +22,6 @@ import "../dbus"
 @(private) SETTINGS_IFACE :: "org.freedesktop.portal.Settings"
 @(private) REQUEST_IFACE :: "org.freedesktop.portal.Request"
 
-// Whether the desktop portal is present on the session bus.
-@(private)
-portal_available :: proc() -> bool {
-	conn := session_bus()
-	if conn == nil { return false }
-	// a cheap existence probe: Settings.ReadOne of the appearance color-scheme (present on every modern portal)
-	_, ok := portal_read_color_scheme(conn)
-	return ok
-}
-
 ////////////////////////////////
 // FileChooser
 

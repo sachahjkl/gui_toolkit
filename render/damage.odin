@@ -228,19 +228,6 @@ overlap_area :: proc(a, b: Damage_Rect) -> int {
 	return int(x1 - x0) * int(y1 - y0)
 }
 
-// Grows every rectangle of the region by `pad` pixels on each side, clamped to the frame. Backends that read outside a
-// damaged box (a backdrop-filter blur, a drop shadow) call this with the filter's reach so the region still bounds what
-// the frame reads. (The application is expected to add such boxes already grown; this is a safety net the verify flag
-// checks against.)
-@(private)
-region_pad :: proc(d: ^Damage_State, size: [2]int, pad: i32) {
-	if pad <= 0 { return }
-	for i in 0 ..< d.count {
-		r := d.rects[i]
-		d.rects[i] = clamp_rect({r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad}, size)
-	}
-}
-
 ////////////////////////////////
 // Frame hooks (called by frame.odin / wgpu_frame.odin / present.odin)
 
