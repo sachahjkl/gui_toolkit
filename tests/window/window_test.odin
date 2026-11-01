@@ -135,7 +135,7 @@ repaint_of_an_unpolled_window_waits_for_its_owner :: proc(t: ^testing.T) {
 
 // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE that do not come from a loop of the system (AltSnap posts them around the moves it
 // makes from its own process) open no modal mode: no timer, no frame from the window procedure. The decision itself is
-// tested in tests/size_move; a real loop needs the mouse (tools\resize_e2e.ps1).
+// tested in tests/size_move; a real loop needs the mouse.
 @(test)
 size_move_messages_from_outside_are_ignored :: proc(t: ^testing.T) {
 	fr: Frames
