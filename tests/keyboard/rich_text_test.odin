@@ -303,3 +303,37 @@ rich_cache_key_is_what_the_layout_depends_on :: proc(t: ^testing.T) {
 	for fr in l.frags { testing.expect(t, fr.end <= len(shorter[fr.run].text), "in range") }
 	free_all(context.temp_allocator)
 }
+
+// With a line height, every line is that tall and its baseline falls at the same place, whatever other face or size it holds.
+@(test)
+rich_line_height_is_even :: proc(t: ^testing.T) {
+	sync.mutex_lock(&lock)
+	defer sync.mutex_unlock(&lock)
+	f := new(Rx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	word := "word word word word word word word word word word "
+	runs := []ui.Rich_Run{
+		{text = word}, {text = word},
+		{text = "big code big code big code big code", style = {code = true, size = 30}},
+		{text = word}, {text = word},
+	}
+	natural := ui.rich_layout(ctx(f), runs, 200)
+	defer ui.rich_layout_destroy(&natural)
+	uneven := false
+	for li in natural.lines { if li.height != natural.lines[0].height { uneven = true } }
+	if !testing.expect(t, uneven, "the larger run makes its lines taller without a line height") { return }
+
+	c := ctx(f)
+	c.line_height = 22
+	even := ui.rich_layout(c, runs, 200)
+	defer ui.rich_layout_destroy(&even)
+	if !testing.expect(t, len(even.lines) > 3) { return }
+	for li, i in even.lines {
+		testing.expect_value(t, li.height, f32(22))
+		testing.expect_value(t, li.y, f32(i) * 22)
+		testing.expect_value(t, li.baseline - li.y, even.lines[0].baseline - even.lines[0].y)
+	}
+	testing.expect_value(t, even.size.y, f32(len(even.lines)) * 22)
+}
