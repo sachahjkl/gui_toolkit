@@ -228,13 +228,13 @@ jobs:
       - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
         shell: pwsh
         timeout-minutes: 11
-        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -group:${{ matrix.group }} -timeout:420
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/run_tests -vet -out:build/run_tests.exe; if ($LASTEXITCODE) { exit 1 }; .buildun_tests.exe -backend:wgpu -group:${{ matrix.group }} -timeout:420
 
       - name: Tests, WebGPU backend with FXC (no DXC)
         if: matrix.group == 'ci4'
         shell: pwsh
         timeout-minutes: 4
-        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe -- -backend:wgpu -define:TOOLKIT_WGPU_DX12_COMPILER=fxc -timeout:180 text shaders
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/run_tests -vet -out:build/run_tests.exe; if ($LASTEXITCODE) { exit 1 }; .buildun_tests.exe -backend:wgpu -define:TOOLKIT_WGPU_DX12_COMPILER=fxc -timeout:180 text shaders
 
       - name: Logs of the WebGPU tests
         if: failure()

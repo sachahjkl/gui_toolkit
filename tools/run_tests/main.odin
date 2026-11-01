@@ -2,7 +2,7 @@
 // what a test opens can take nobody's focus, mouse or keyboard.
 //   odin run tools/run_tests                                every test of this system
 //   odin run tools/run_tests -- text keyboard               those packages
-//   odin run tools/run_tests -- -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
+//   build/run_tests -backend:wgpu -group:ci1 (odin build it first: odin run drops flags with a colon)    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
 //   odin run tools/run_tests -- -list                       the names, and the groups
 // Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). Needs what the CI's steps build first: the native
 // libraries (tools\build_text.ps1, tools\build_a11y.ps1), the emoji font (tools\fetch_emoji.ps1), wgpu-native (tools\fetch_wgpu.ps1). A log of each step is
