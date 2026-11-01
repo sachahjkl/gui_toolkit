@@ -3,6 +3,6 @@ package ui
 // gui_toolkit version (semantic versioning: while 0.x, minor bumps may change the API). See CHANGELOG.md.
 // Written by tools/release.ps1 when a version is published, never by hand in a branch (CONTRIBUTING.md).
 VERSION_MAJOR :: 0
-VERSION_MINOR :: 59
+VERSION_MINOR :: 60
 VERSION_PATCH :: 0
-VERSION :: "0.59.0"
+VERSION :: "0.60.0"
