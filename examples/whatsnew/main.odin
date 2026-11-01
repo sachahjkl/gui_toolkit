@@ -3,7 +3,7 @@
 //   build\whatsnew.exe                  the window
 //   build\whatsnew.exe --page=lazy      open on a page (its name in lower case, or its number)
 //   build\whatsnew.exe --frames=3       three frames without showing the window, then exit (a check that it runs)
-//   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tests/e2e, over devtools
+//   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tests/e2e/timeline.mjs, over devtools
 package whatsnew
 
 import "core:fmt"

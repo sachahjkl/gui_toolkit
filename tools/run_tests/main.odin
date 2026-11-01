@@ -48,6 +48,7 @@ Step :: struct {
 	wgpu:    Wgpu_Group,        // on the WebGPU backend too, in this group
 	sample:  bool,              // ... and in a pull request's quick set
 	target:  string,            // Check: the system
+	text:    bool,              // needs fonts: on Linux that is the native text backend (no system text stack is linked there)
 }
 
 STEPS := []Step{
@@ -88,9 +89,9 @@ STEPS := []Step{
 	{name = "a11y_uia", path = "tests/a11y", one = true, defines = {"A11Y_ACCESSKIT=true"}, need = .A11y_Lib},
 	{name = "devtools"},
 	// the interface with real frames and input: testkit/session
-	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE},
-	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE},
-	{name = "examples", one = true, oses = EVERYWHERE},
+	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
+	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
+	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},
 	// real windows, hidden, on the runner's own desktop
@@ -121,7 +122,7 @@ STEPS := []Step{
 	{name = "colr", need = .Emoji, wgpu = .Ci1},
 	{name = "color_glyphs", wgpu = .Ci3},
 	{name = "color_glyphs_builtin", path = "tests/color_glyphs", defines = {"COLR_ENGINE=builtin"}},
-	{name = "color_native", oses = LINUX_ONLY, defines = {"FONT_BACKEND=native"}, need = .Text_Lib},
+	{name = "color_native", oses = LINUX_ONLY, text = true},
 	{name = "text_backends"},
 	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Text_Lib},
 	// what must keep compiling
@@ -277,7 +278,9 @@ missing_need :: proc(n: Need) -> string {
 run_step :: proc(s: ^Step, o: ^Options) -> Result {
 	began := time.tick_now()
 	r := Result{step = s}
-	if why := missing_need(s.need); why != "" {
+	need := s.need
+	if s.text && ODIN_OS == .Linux { need = .Text_Lib }
+	if why := missing_need(need); why != "" {
 		r.why = why
 	} else {
 		carry_out(s, o, &r)
@@ -303,7 +306,11 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 		append(&cmd, "-define:ODIN_TEST_FANCY=false", "-define:ODIN_TEST_LOG_STATE_CHANGES=true")
 		if s.one || o.backend == "wgpu" { append(&cmd, "-define:ODIN_TEST_THREADS=1") }
 		if o.backend != "" { append(&cmd, fmt.tprintf("-define:TOOLKIT_RENDER=%s", o.backend)) }
-		when ODIN_OS == .Linux { if !s.one { append(&cmd, "-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true") } }
+		when ODIN_OS == .Linux {
+			if !s.one { append(&cmd, "-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true") }
+			// (wgpu-native is the other Rust library in them: its few unmangled symbols of Rust's standard library are the same code)
+			if s.text { append(&cmd, "-define:FONT_BACKEND=native", "-extra-linker-flags:-Wl,--allow-multiple-definition") }
+		}
 	case .Build:
 		append(&cmd, "odin", "build", s.path, "-vet", fmt.tprintf("-out:%s", exe))
 	case .Check:

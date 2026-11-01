@@ -4,6 +4,8 @@
 not tied to any one application: a block of test-server ports, and a reader of the process's memory and handle counts.
 The package carries no product name — an application passes in its own environment variable and defaults.
 
+A test of an interface: `testkit/session`, in [testing.md](testing.md). It is a package of its own (`gt:testkit/session`), since it brings in the renderer and the widgets and this one brings in nothing.
+
 The package is named `tk_testkit` (the directory is `testkit`): import it as `testkit` unless the application keeps a
 package of its own by that name.
 
@@ -25,6 +27,10 @@ The block's ports share their first three digits and differ only in the last (87
 default block it returns its argument unchanged. Results are interned (kept for the life of the process), so the same
 address is rewritten once and may be handed to anything that keeps it. A test runner gives each run its base port through the
 environment; a test harness in another language writes the default ports and lets the running tool rewrite them.
+
+## Waiting for another thread, a folder for a test
+
+`testkit.await(data, ready)` waits until `ready(data)` says that the state another thread is reaching is there: a barrier, for code with no signal of its own. It gives its time slice away between looks, sleeps for no fixed time, and its limit only ends a failing run. `testkit.temp_folder(t, "what")` makes a folder that is gone at the end of the test.
 
 ## The process's state
 

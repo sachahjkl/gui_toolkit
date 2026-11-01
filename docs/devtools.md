@@ -100,7 +100,7 @@ node tools/cdp.mjs record steps.txt      # until Enter; then: node tools/cdp.mjs
 node tools/cdp.mjs cast frames/          # the window's frames as PNGs, until Enter
 ```
 
-`tools/cdp_client.mjs` is the same as a module, for a script of your own; `tests/e2e/run.mjs` is an example of one.
+`tools/cdp_client.mjs` is the same as a module, for a script of your own; `tests/e2e/timeline.mjs` is an example of one. In the program's own process, with no socket: `devtools.start_local` and `devtools.Local_Client` (`tests/examples/whatsnew_test.odin`).
 
 ## Timelines
 

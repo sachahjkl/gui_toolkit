@@ -10,8 +10,8 @@ import "../../testkit"
 import "../../testkit/session"
 import "../../ui"
 
-// examples/todo as a user meets it, what tools/ui_test.ps1 did with the machine's mouse: a task added, its box ticked, the filters, a tooltip, the context
-// menu, the theme, a deletion, each read back from the application and from the file it saves.
+// examples/todo as a user meets it: a task added, its box ticked, the filters, a tooltip, the context menu, the theme, a deletion, each read back from the
+// application and from the file it saves.
 
 // Longer than a hovered_for of the example (0.4 s).
 @(private = "file") TOOLTIP_WAIT_MS :: 600
