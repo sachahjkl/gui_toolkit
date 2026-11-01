@@ -5,6 +5,7 @@
 package window_test
 
 import "core:strings"
+import "core:thread"
 import "core:testing"
 import "core:time"
 import win "core:sys/windows"
@@ -14,7 +15,7 @@ import "../../render"
 
 // Long enough for a timer of a modal loop (16 ms) to fire, had it been set.
 WINDOW_SIZE :: [2]int{320, 240}
-CAPTURE_POLLS :: 100000
+CAPTURE_WAIT :: 60 * time.Second   // only ends a failing run: WARP on a CI runner takes its time
 NO_TIMER_MS :: 100
 MODAL_LOOP_MS :: 200
 PUMP_WAIT_MS :: 2
@@ -122,11 +123,13 @@ a_real_window_shows_its_frames :: proc(t: ^testing.T) {
 		render.frame_begin(r, {1, 0, 0, 1})
 		render.frame_end(r, false)
 		last := render.Capture_Status.None
-		for _ in 0 ..< CAPTURE_POLLS {
+		start := time.tick_now()
+		for time.tick_since(start) < CAPTURE_WAIT {
 			got, sz, st := render.capture_poll(r, context.temp_allocator)
 			last = st
 			if st == .Ready { return got, sz }
 			if st != .Pending { break }
+			thread.yield()
 		}
 		testing.expectf(t, false, "the capture came back (status %v, %s)", last, render.backend_name())
 		return
