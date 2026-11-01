@@ -534,7 +534,21 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 	}
 	if .Selectable in b.flags { draw_selection(s, dc, b) }
-	if s.find.needle != "" { find_draw(s, dc, b) }
+	if s.find.needle != "" {
+		find_draw(s, dc, b)
+		find_paint_text(s, dc, b, rich_paint_text)
+	} else {
+		rich_paint_text(s, dc, b)
+	}
+}
+
+// The text of a rich paragraph, what goes with it (its lines, the ring of the focused link).
+@(private = "file")
+rich_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
+	d := (^Rich_Draw)(b.custom_user)
+	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
+	o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
+	clip := draw.current_clip(dc)
 	for li in l.lines {
 		if o.y + li.y > clip.max.y { break }
 		if o.y + li.y + li.height < clip.min.y { continue }
@@ -543,7 +557,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			r := d.runs[f.run]
 			x0, x1 := o.x + f.x, o.x + f.x + f.width
 			col := d.colors[f.run]
-			if col.a == 0 { col = b.text_color }
+			if col.a == 0 || s.find.in_match { col = b.text_color }
 			base := Vec2{math.round(x0), o.y + li.baseline}
 			draw.text(dc, f.face, f.size, base, col, r.text[f.start:f.end])
 			m := font.metrics(s.fonts, f.face, f.size)
@@ -564,7 +578,6 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			draw.text(dc, li.ellipsis_face, li.ellipsis_size, {math.round(o.x + li.ellipsis_x), o.y + li.baseline}, b.text_color, "…")
 		}
 	}
-	if s.find.needle != "" { find_draw_rich_text(s, dc, b, l, d.runs, o) }
 }
 
 // A paragraph of rich text runs: full width (unless `next` says otherwise), as tall as its lines, at most `max_lines`
