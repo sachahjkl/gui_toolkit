@@ -2,7 +2,6 @@
 //   odin build examples/whatsnew -vet -out:build/whatsnew.exe -subsystem:windows
 //   build\whatsnew.exe                  the window
 //   build\whatsnew.exe --page=lazy      open on a page (its name in lower case, or its number)
-//   build\whatsnew.exe --frames=3       three frames without showing the window, then exit (a check that it runs)
 //   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tests/e2e/timeline.mjs, over devtools
 package whatsnew
 
@@ -463,15 +462,13 @@ frame :: proc(app: ^App, inner := false) {
 WINDOW_SIZE :: [2]int{1100, 720}
 
 // The application, up to its first frame (the caller makes the frames: `frame`). `args`: the command line, without the program's name. nil: it
-// cannot start, and has said why. `frames`: --frames=N.
-open :: proc(args: []string, headless_default := false) -> (app: ^App, frames: int) {
-	frames = -1
+// cannot start, and has said why.
+open :: proc(args: []string, headless_default := false) -> ^App {
 	headless := headless_default
-	app = new(App)
+	app := new(App)
 	the_app = app
 	app.under = {-1, -1}
 	for a in args {
-		if strings.has_prefix(a, "--frames=") { frames, _ = strconv.parse_int(a[len("--frames="):]) }
 		if a == "--mistake" { app.mistake = true }
 		if a == "--headless" { headless = true }
 		if strings.has_prefix(a, "--palette=") { app.forced = a[len("--palette="):] }
@@ -487,12 +484,12 @@ open :: proc(args: []string, headless_default := false) -> (app: ^App, frames: i
 	// a composition swap chain whose buffers keep the monitor's size while the window is resized: a frame of the old size is
 	// clipped by the window, never stretched over the new one (an ordinary swap chain stretches it). As opencode native.
 	app.win = headless ? platform.open_window_offscreen(title, WINDOW_SIZE) : platform.open_window(title, WINDOW_SIZE, transparent = true)
-	if app.win == nil { fmt.eprintln("whatsnew: no window"); return nil, frames }
-	if !(headless ? render.init_offscreen(&app.r, app.win.size, warp = true) : render.init_window(&app.r, app.win, app.win.size, transparent = true)) { fmt.eprintln("whatsnew: no renderer"); return nil, frames }
+	if app.win == nil { fmt.eprintln("whatsnew: no window"); return nil }
+	if !(headless ? render.init_offscreen(&app.r, app.win.size, warp = true) : render.init_window(&app.r, app.win, app.win.size, transparent = true)) { fmt.eprintln("whatsnew: no renderer"); return nil }
 	if !headless { render.set_fixed_surface(&app.r, platform.monitor_size(app.win)) }
 	ok: bool
 	app.font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
-	if !ok { fmt.eprintln("whatsnew: no UI font"); return nil, frames }
+	if !ok { fmt.eprintln("whatsnew: no UI font"); return nil }
 	if mono, mok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("consola.ttf"), font.FALLBACK_MONO_DATA); mok { app.mono = mono }
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.apply_palette(&app.theme, ui.PALETTE_MIDNIGHT, render.blend_space(&app.r))
@@ -503,7 +500,7 @@ open :: proc(args: []string, headless_default := false) -> (app: ^App, frames: i
 	app.devtools = devtools.start_from_env(app.win, title)
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
-	return app, frames
+	return app
 }
 
 // The end of what `open` made.
@@ -521,14 +518,9 @@ close :: proc(app: ^App) {
 }
 
 main :: proc() {
-	app, frames := open(os.args[1:])
+	app := open(os.args[1:])
 	if app == nil { os.exit(1) }
 	defer close(app)
-	if frames >= 0 {
-		for _ in 0 ..< frames { frame(app) }
-		fmt.printfln("whatsnew: %d frames, %d boxes, last build %.2f ms", frames, app.s.boxes_built, app.build_ms)
-		return
-	}
 	platform.show_window(app.win)
 	for !platform.is_closed(app.win) {
 		if !ui.needs_frame(&app.s) && !app.again { platform.wait_event(app.win, ui.wake_in_ms(&app.s)); app.slept = true }
