@@ -9,6 +9,8 @@ import "core:testing"
 import "../../font"
 import "../../platform"
 import "../../ui"
+n// A focused field's next wake right after an edit: the caret's flip (530 ms) and the margin of a wake.
+CARET_FLIP_WAKE_MS :: 535
 
 WINDOW :: ui.Vec2{800, 600}
 
@@ -391,7 +393,7 @@ line_edit_caret_only_in_the_users_window :: proc(t: ^testing.T) {
 	k := ui.key_from_string(ui.key_from_string(0, "root"), "###e")
 	ui.set_focus(k)
 	frame(&f, {typed('a')}, build_edit, &r)
-	testing.expect_value(t, ui.wake_ms(&f.s), 265)
+	testing.expect_value(t, ui.wake_ms(&f.s), CARET_FLIP_WAKE_MS)
 	for inactive in ([2]bool{true, false}) {
 		ui.begin_build(&f.s, {
 			window_size = WINDOW, dt = 1.0 / 60, dpi_scale = 1, inactive = inactive,
