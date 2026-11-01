@@ -1,7 +1,7 @@
 # Rich clipboard (`platform.clipboard_*`)
 
 Plain text stays `get_clipboard` / `set_clipboard`. The rest (`platform/clipboard.odin`; Windows in
-`clipboard_win32.odin`, other systems in `clipboard_stub.odin`: nothing there, nothing written):
+`clipboard_win32.odin`, Linux in `clipboard_linux.odin` (Wayland and X11), other systems in `clipboard_stub.odin`: nothing there, nothing written):
 
 ```odin
 // Copy a selection of a chat message: text and markup, one owner

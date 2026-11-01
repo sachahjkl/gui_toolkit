@@ -1,12 +1,12 @@
 # Rendering backends (`render` package)
 
-`render` is the toolkit's 2D GPU painter. One instanced-quad pipeline (`rect.wgsl`) draws everything — rounded rects,
-glyphs, images, gradients, shadows, Slug text, layers, filters — through one of two backends, chosen at build time:
+`render` draws the toolkit's frames on the GPU. Most things are instanced quads of one shader (`rect.wgsl`); Slug text, filters,
+mips and video have shaders of their own. It has two backends, chosen at build time:
 
 | Backend | `TOOLKIT_RENDER` | Systems | Files |
 |---|---|---|---|
-| Direct3D 11 | `d3d11` (default on Windows) | Windows | `render_d3d.odin`, `frame.odin`, `canvas.odin`, `slug_d3d.odin`, `video.odin`, `app_shader_d3d.odin`, `shaders_d3d.odin`, `damage_d3d.odin`, `damage_verify.odin`, `dcomp.odin` |
-| WebGPU (wgpu-native) | `wgpu` (forced on every non-Windows target) | Windows, Linux | `wgpu_*.odin` |
+| Direct3D 11 | `d3d11` (default on Windows) | Windows | `render_d3d.odin`, `frame.odin`, `canvas.odin`, `slug_d3d.odin`, `video.odin`, `app_shader_d3d.odin`, `shaders_d3d.odin`, `damage_d3d.odin`, `dcomp.odin` |
+| WebGPU (wgpu-native) | `wgpu` (forced on every non-Windows target) | Windows, Linux | `wgpu_*.odin`, `damage_wgpu.odin` |
 
 On a non-Windows target `TOOLKIT_RENDER` is ignored and the WebGPU backend is the only one compiled: the Direct3D files
 are built behind `when !USE_WGPU` (and `#+build windows`), so they contribute nothing to a Linux build.
@@ -17,8 +17,8 @@ A program never names Direct3D, DXGI or Win32 to the renderer. It opens the rend
 which the platform package fills:
 
 ```odin
-import "toolkit:platform"
-import "toolkit:render"
+import "gt:platform"
+import "gt:render"
 
 w := platform.open_window("App", {1280, 800})
 r: render.Renderer
@@ -42,15 +42,13 @@ render.surface_use(&r, &surface)   // the renderer now draws to the second windo
 ```
 
 Everything else — `frame_begin` / `frame_submit` / `frame_end`, textures, pooled targets, capture
-(`render/capture.odin`), the blend space, `set_max_frame_latency`, resize, fractional DPI — is the same call on every
+(`render/capture.odin`), the blend space, `set_max_frame_latency` (it returns false on wgpu), resize, DPI — is the same call on every
 system; each dispatches to its backend behind `when USE_WGPU`.
 
 ## What differs between the backends
 
 - **Present pacing.** Direct3D uses a DXGI waitable swap chain (a frame-latency object) and DWM timing for the frame
-  statistics (shown / missed refreshes). wgpu on Linux has neither: the FIFO present mode paces frames at the vblank,
-  `render.wait_for_frame` just acquires the next surface texture, and the per-frame statistics stay off. Mailbox /
-  tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it.
+  statistics (shown / missed refreshes). wgpu on Linux has neither: the FIFO present mode paces frames at the vblank,$1Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it.
 - **Translucency.** A translucent window (`transparent`) goes through DirectComposition on Windows (premultiplied
   alpha). On Linux the compositor blends the alpha surface directly — there is no extra effect to turn on.
 - **The 2D canvas** (`canvas.odin`) is Direct3D only for now; `render.canvas_supported` reports `false` on the wgpu

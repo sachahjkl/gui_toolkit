@@ -62,12 +62,10 @@ with `w_array_begin` / `w_array_end` at the element's alignment; raw array bytes
   `export_linux.odin` — exported objects, `request_name`, the generic Peer interface.
 - `conn_stub.odin` — the non-Linux stub (no bus).
 
-## Known limits (for the lead)
+## Known limits
 
 - **No Unix-fd passing.** Auth skips `NEGOTIATE_UNIX_FD`; the tray sends its icon inline as an ARGB pixmap, and the
   portals that would pass an fd are not used that way here. A service that needs `UnixFD` (some notification servers for
   large images) would need the fd-passing `sendmsg` path added.
-- **One match-rule granularity.** `subscribe` pre-filters on interface / member / path in the handler; the bus's own
-  `AddMatch` carries the same, so a very chatty bus still wakes us only for our rules.
 - The synchronous `call` keeps the reply in a single static slot for the duration of the return; do not hold a
   `Message` from `call` across another `call` / `dispatch`.

@@ -1,8 +1,9 @@
-# Text: `font` on DirectWrite, `draw.glyph_run`
+# Text: the `font` package, `draw.glyph_run`
 
 The `font` package is a text stack for applications that lay text out themselves (a web browser first): faces, font
-cascades with per-character fallback, shaping, bidi, line breaks, carets, and glyph bitmaps in an atlas. Everything
-comes from DirectWrite (the platform): no font file parsing, no shaping or bidi tables of our own.
+cascades with per-character fallback, shaping, bidi, line breaks, carets, and glyph bitmaps in an atlas. On Windows,
+by default, shaping and analysis come from DirectWrite; with the `native` backend, the only one on Linux, from a Rust
+library ([font-backend.md](font-backend.md)). This page describes the DirectWrite path where they differ.
 
 ## Faces and cascades
 
@@ -76,7 +77,7 @@ runs the caller classifies; the editor itself knows no language. `hl.spans(user,
 it too. Colouring a wrapped editor works: a span is drawn where it falls on each visual line. `hl.error_line(user, para)`
 underlines a paragraph in `hl.error` (a zero colour falls back to a theme red) — for a line the caller's own validator
 rejects. `Edit_Result.hover_line` is the paragraph under the pointer (or -1): show a `ui.tooltip()` with its message. The
-cost is only the visible lines'. Example: the "My filters" editor of Wren's content-blocker dashboard colours Adblock
+cost is only the visible lines'. Example: an editor of content-blocker filters colours Adblock
 syntax and underlines lines its engine would drop.
 
 **Rich text** (`ui/rich_text.odin`). `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
@@ -122,8 +123,7 @@ its own (no lock on a hit).
 
 `glyph_image(s, face, gid, size, subpixel)` rasterizes on first use (`IDWriteGlyphRunAnalysis`, grayscale antialiasing,
 `Settings.rendering` / `grid_fit`) at `Settings.subpixel_steps` horizontal positions per pixel (`subpixel(s, x)` splits
-a pen x). Color glyphs (COLR / CPAL: Segoe UI Emoji) are translated into layers (`TranslateColorGlyphRun`), each layer
-rasterized and composited "over" into a straight-alpha sRGB RGBA bitmap.
+a pen x). Color glyphs are drawn by Direct2D into a straight-alpha sRGB RGBA bitmap (see below for the versions of Windows).
 
 Bitmaps live in **atlas pages** kept on the CPU (gray: 1 byte per texel; color: 4). Each draw context uploads what
 changed since it last looked (`atlas_sync_page`), so several renderers can share one font state. A page is never
@@ -171,11 +171,10 @@ re-rasterization: a picture of Slug text stays valid at any scale. Color glyphs 
 The path, from the font to the screen:
 
 1. **Outline** (`slug_outline.odin`, `slug_dwrite.odin`): `Outline` is closed contours of quadratics in em units (y up). A
-   provider (`Outline_Provider`, replaceable with `slug_set_provider`) fills it: on Windows DirectWrite's
+   provider (`Outline_Provider`, replaceable with `slug_set_provider`) fills it: with the dwrite backend DirectWrite's
    `GetGlyphRunOutline` (variable instances and simulated bold / slant included). DirectWrite hands out cubics: those
    that are degree-raised quadratics (every TrueType glyph) come back as the exact quadratic, true cubics (CFF) are cut
-   into pieces within `Settings.slug_tolerance` (em). A TrueType / CFF reader in Odin can replace the provider on other
-   platforms.
+   into pieces within `Settings.slug_tolerance` (em). With the native backend, the Rust library's outlines.
 2. **Glyph data** (`slug_build.odin`): curve texels (RGBA16F; a contour of n curves takes n+1 texels because a curve ends
    where the next starts), and band texels (RG16UI): horizontal and vertical bands (the count per axis is chosen to
    keep the fullest band small), each a list of the curves that touch it (with a 1/1024 em overlap, flat curves left out,
@@ -197,7 +196,7 @@ it: all pass except the ones that count atlas pages or compare 8-bit atlas cover
 -sweep` measures a page zoom animation (every frame at a new scale: the atlas rasterizes again, Slug does not).
 
 Positions: the pen is not rounded across; the baseline is put on a whole pixel (of the screen when the transform is a
-scale and a translation, as the bitmaps do). There is no hinting: horizontal stems are as the outline says (the Slug
+scale and a translation, as the bitmaps do). By default there is no hinting (`Settings.slug_hint_ppem` asks for it with the native backend, [slug-small-text.md](slug-small-text.md)): horizontal stems are as the outline says (the Slug
 README suggests sizes whose cap height is a whole number of pixels).
 
 ## Color glyphs: the COLR interpreter, built-in emoji
@@ -205,8 +204,7 @@ README suggests sizes whose cap height is a whole number of pixels).
 `Settings.color_engine` says who draws COLR / CPAL color glyphs (`System`, the default: Direct2D, as before; `Builtin`:
 this package).
 
-**The interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in them, so Linux gets the same
-emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
+**The interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in the drawing itself; but they get their tables from DirectWrite, so off Windows there are no color glyphs yet: emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
 the glyph at the requested pixel size on the CPU:
 
 - COLR v0 layers and v1 paint graphs: `PaintColrLayers`, `PaintSolid`, linear / radial / sweep gradients (the three extend
@@ -278,9 +276,8 @@ build did not make is not searched (a part folded away, the items a lazy column 
 
 - Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),
   which layers and translucent backgrounds do not give.
-- Color glyphs: COLR v0 layers. Bitmap (sbix / CBDT / PNG) and SVG glyphs are drawn from their outline when they have
-  one (DirectWrite's `TranslateColorGlyphRun` is asked for outline formats only), COLR v1 paint trees from their v0
-  fallback layers (Segoe UI Emoji has both). "Text color" layers are black.
+- Color glyphs: on Windows 11 22H2 and later every format (COLR v0 and v1, bitmaps, SVG); from Windows 10 1607 no COLR v1
+  paint trees (their v0 layers, else the outline). Text-color layers take the text's color. Off Windows: none yet.
 - No kerning or ligature across a space (words are shaped apart, as Blink does with its word cache).
 - Horizontal text only.
 - Before Windows 8.1 (no `IDWriteFactory2`): no system fallback, no color glyphs, ClearType analyses averaged to gray.

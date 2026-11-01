@@ -1,6 +1,6 @@
 # flate: DEFLATE, zlib and gzip as streams
 
-`import "gui_toolkit/flate"` (or the relative path of the submodule). Pure Odin (`core:hash` only): no platform code,
+`import "gt:flate"` (or the relative path of the submodule). Pure Odin (`core:hash` only): no platform code,
 no C library, any target. Odin's `core:compress` inflates whole buffers only; this package compresses as well, and
 both directions take their input in chunks of any size (a network response, a `CompressionStream`).
 
@@ -55,8 +55,7 @@ Errors: `Bad_Data` (a malformed header, block, code table, a distance before the
   percent smaller still (lazy matching). No compression levels, no preset dictionary, no `SYNC_FLUSH`: a push's last
   bits (under a byte) wait for the next push or `deflate_finish`.
 - Positions are kept in `i32`: one Deflater compresses at most 2 GiB.
-- Allocations: `inflater_init` / `deflater_init` take an allocator (default `context.allocator`) for their buffers; an
-  inflate push also uses `context.temp_allocator` for the block being decoded.
+- Allocations: `inflater_init` / `deflater_init` take an allocator (default `context.allocator`) for their buffers.
 
 Tests: `odin test tests/flate -vet` (a .NET gzip with dynamic codes in chunks of 1, 7 and 100 bytes, cut, corrupted and
 followed by junk; round trips of every format in chunks; dynamic codes checked by `core:compress/zlib` too; stored

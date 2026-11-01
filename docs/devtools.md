@@ -8,7 +8,7 @@ go straight into its queue (`platform.inject_event`), as the system's would.
 ## In an application
 
 ```odin
-import "gui_toolkit/devtools"
+import "gt:devtools"
 
 srv := devtools.start_from_env(win, "My app")   // TOOLKIT_DEVTOOLS=9222 in the environment, else nil
 defer devtools.stop(srv)
@@ -89,7 +89,7 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 A client for the command line (Node 22+, no package):
 
 ```
-TOOLKIT_DEVTOOLS=9222 build\whatsnew.exe
+$env:TOOLKIT_DEVTOOLS=9222; build\whatsnew.exe   # PowerShell; in bash: TOOLKIT_DEVTOOLS=9222 build/whatsnew
 node tools/cdp.mjs tree
 node tools/cdp.mjs click "Lazy column" , idle , wheel 700 400 30 , idle , shot out.png
 node tools/cdp.mjs key ctrl+f , type odin , key Enter , wait-for "matches"

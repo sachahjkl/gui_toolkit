@@ -11,8 +11,8 @@ Win32 or Wayland. It opens a window, polls events, draws, and asks for services,
 | Backend | Window / input | Clipboard | Dialogs | Cursors | DPI | Decorations |
 |---|---|---|---|---|---|---|
 | Windows (`*_win32.odin`) | Win32 messages | OLE + CF_* | IFileDialog | IDC_* / drawn | per-monitor v2 | DWM + integrated title |
-| Linux Wayland (`window_wl_linux.odin`) | xdg-shell + wl_seat (xkbcommon) | wl_data_device | portal / zenity / kdialog | wp_cursor_shape / theme | wl_output scale, fractional-scale | zxdg-decoration or client-side |
-| Linux X11 (`window_x11_linux.odin`) | XCB + xkbcommon | CLIPBOARD selection | portal / zenity / kdialog | Xcursor theme | Xft.dpi | Motif hints |
+| Linux Wayland (`window_wl_linux.odin`) | xdg-shell + wl_seat (xkbcommon) | wl_data_device | portal / zenity / kdialog | wp_cursor_shape_v1 (else the compositor's default) | wl_output integer scale | zxdg-decoration, or the app's integrated title |
+| Linux X11 (`window_x11_linux.odin`) | XCB + xkbcommon | CLIPBOARD selection | portal / zenity / kdialog | none yet (the server's default pointer) | Xft.dpi | Motif hints |
 
 ## The neutral types (what a backend fills, what the app reads)
 
@@ -63,7 +63,7 @@ for a screen-sized fixed surface).
 **Devices** — `input_devices`, `touch_max_points`.
 
 **Drag and drop** (`dragdrop.odin`), **tray** (`tray.odin`), **accessibility** (`a11y.odin`): optional; a backend that
-has none keeps the shared `!windows` stubs, which answer "not supported".
+has none keeps the shared stubs (neither Windows nor Linux), which answer "not supported".
 
 ## Differences the app should know
 
@@ -74,16 +74,15 @@ has none keeps the shared `!windows` stubs, which answer "not supported".
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
   frame as Windows). X11 asks the window manager for no decorations through Motif hints when integrated.
 - **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is the `wl_output` integer scale
-  (fractional-scale refines it where the compositor offers `wp_fractional_scale_v1`). X11 reads `Xft.dpi`.
+  (fractional scaling is not implemented). X11 reads `Xft.dpi`.
 - **Translucency.** `set_backdrop` is the Windows acrylic effect; on Linux a window is translucent when it was opened
   with an alpha surface (`render.init` `transparent`), which the compositor blends — there is no extra effect to turn
   on, so `set_backdrop` reports whether the window is translucent at all.
-- **The clipboard change signal** is cheap on Windows (a sequence number). On Linux it is best effort: a window reports
-  a change whenever it does not own the selection.
+- **The clipboard change signal** is cheap on Windows (a sequence number). On Linux it comes from `wl_data_device` or XFIXES;
+  an X server without XFIXES only tells a program when it loses the clipboard.
 - **Libraries load at run time** (`dlopen`): a binary built for Linux starts on a machine missing libwayland-client or
   libxcb and prints which library is absent (it does not fail to link). The window backends needed:
-  libwayland-client + libxkbcommon (Wayland), libxcb + libxkbcommon (X11; libxkbcommon-x11 refines the keymap),
-  optionally libdecor for client-side decorations.
+  libwayland-client + libxkbcommon (Wayland), libxcb + libxkbcommon (X11; libxkbcommon-x11 refines the keymap).
 
 ## Rendering on Linux
 
@@ -91,12 +90,10 @@ has none keeps the shared `!windows` stubs, which answer "not supported".
 through wgpu's platform surface descriptors:
 
 - Wayland: `wgpu.SurfaceSourceWaylandSurface{ display = wl_display, surface = wl_surface }`.
-- X11 (XCB): `wgpu.SurfaceSourceXCBWindow{ connection = xcb_connection, window = xcb_window }`, or
-  `SurfaceSourceXlibWindow` with an Xlib display.
+- X11 (XCB): `wgpu.SurfaceSourceXCBWindow{ connection = xcb_connection, window = xcb_window }`.
 
-The platform package exposes these handles for the renderer through `native_surface_handles(w)` (see the report's
-integration notes); `render.init` takes a neutral handle instead of a `win.HWND` so the same call opens the renderer on
-every system. The present mode (`FIFO` / `Mailbox`), resize, fractional DPI and capture (`render/capture.odin`) are the
+The platform package exposes these handles for the renderer through `native_surface_handles(w)`; `render.init` takes a neutral handle instead of a `win.HWND` so the same call opens the renderer on
+every system. The present mode (`Vsync`: wgpu's Fifo; `Tearing`: its Immediate, where the surface offers it), resize, DPI and capture (`render/capture.odin`) are the
 same code as the Windows wgpu path (`wgpu_surface.odin`), which the Linux surface slots into.
 
 ## Linux desktop services
@@ -109,7 +106,7 @@ sane fallback (or a no-op) when its desktop piece is absent, so a bare session s
 ### Rich clipboard (cross-process)
 
 The clipboard owner is complete on both backends. **Wayland** (`clipboard_wl_linux.odin`): a full `wl_data_source`
-offers every flavour the store holds (text, HTML, PNG, `text/uri-list`), its `send` callback writes the bytes to the
+offers every flavour the store holds (text, HTML, `text/uri-list`, and PNG when the app sets `png_encode_hook` and `png_decode_hook`: the toolkit has no PNG codec on Linux), its `send` callback writes the bytes to the
 fd the compositor hands over, `cancelled` releases it, and `set_selection` uses the last input serial; reading a
 flavour another client owns dups a pipe, calls `wl_data_offer.receive`, and reads it. The **primary** (middle-click)
 selection rides `zwp_primary_selection_v1`. **X11** (`clipboard_x11_linux.odin`): `SelectionRequest` serves `TARGETS`,
@@ -155,12 +152,9 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
 - **Cursors** (`cursors_wl_linux.odin`): Wayland names a shape to the compositor through `wp_cursor_shape_v1`, so the
   pointer matches the user's theme with no pixel upload.
 
-### Known gaps (the lead's first checks)
+### Known gaps
 
-- The **X11 drag source** (`x11_drag_start`) sends XDND to the toplevel under the pointer, but `x11_window_at` does not
-  yet walk the window tree to find an XDND-aware toplevel (it returns 0), so cross-application X11 drags *out* of the
-  window are the piece to try under a real WM; drops *into* the window, and all Wayland drags, are complete.
-- The **X11 cursor** still uses the compositor default (no Xcursor upload yet); Wayland cursor shapes are live.
+- On **X11** `set_cursor` does nothing yet: the pointer stays the server's default. Wayland cursor shapes are live.
 - **AT-SPI** is a minimal bridge (root tree, names, DoAction); the full surface (Text ranges, Collection, per-node
-  objects at their own paths) is the AccessKit `accesskit_unix` alternative discussed in the night's report.
+  objects at their own paths) is what AccessKit's `accesskit_unix` adapter would give.
 

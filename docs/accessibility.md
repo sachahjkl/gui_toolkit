@@ -2,8 +2,8 @@
 
 The toolkit exposes its windows to assistive technologies (NVDA, Narrator, JAWS, Windows magnifier, voice control):
 each frame, the boxes of `ui` become an accessibility tree, and [AccessKit](https://github.com/AccessKit/accesskit)
-turns it into UI Automation on Windows. AT-SPI (Linux) and NSAccessibility (macOS) have AccessKit adapters too:
-`native/a11y` can wrap them later behind the same API (`platform/a11y_stub.odin` until then).
+turns it into UI Automation on Windows. On Linux a small AT-SPI 2 bridge over D-Bus serves it (`platform/a11y_linux.odin`:
+roles, names, states, bounds, Invoke and Focus). macOS has only a stub (`platform/a11y_stub.odin`).
 
 ## Turning it on
 
@@ -16,9 +16,9 @@ odin build examples/fidget -define:A11Y_ACCESSKIT=true ...
 
 A program that has a Rust static library of its own builds `native/a11y` into it (a dependency: its `gt_a11y_*`
 functions stay exported; one Rust library per program, as each carries Rust's standard library) and builds with
-`-define:A11Y_ACCESSKIT=true -define:A11Y_NATIVE_LINK=false` (Wren: the `a11y` feature of its assembly crate `native/wren_native`).
+`-define:A11Y_ACCESSKIT=true -define:A11Y_NATIVE_LINK=false`.
 
-Without the define, `platform.a11y_available()` is false and nothing is built.
+On Windows, without the define, `platform.a11y_available()` is false and nothing is built. On Linux the bridge is always compiled in and acts when an accessibility bus answers.
 
 ## Cost
 
@@ -126,7 +126,7 @@ update of a tree states its root with `tree_info`). Requests for its nodes come 
 
 Send the grafted tree after `end_build` (the graft node must reach the adapter first), only in a build that made the
 graft (else the adapter dropped the tree with its graft node: send it whole again). While the view has the keyboard,
-`ui.a11y_focus_on(box)` puts the readers' focus on the graft node, so that the grafted tree's own focus counts; until
+`ui.a11y_focus_on(key)` puts the readers' focus on the graft node, so that the grafted tree's own focus counts; until
 that tree's first update the adapter keeps the focus on the window's root, then moves it into the tree.
 
 ### Node by node
@@ -147,17 +147,12 @@ another window than its last one sends that window a whole tree. A tree of the a
 
 ## Known limits
 
-- **Linux and macOS**: stubs (`platform/a11y_stub.odin`); AccessKit has adapters for AT-SPI and NSAccessibility, the
-  ABI of `native/a11y` would take them.
+- **Linux**: the AT-SPI 2 bridge above, without text ranges or per-node objects. **macOS**: a stub (`platform/a11y_stub.odin`).
 - **The toolkit's own tree is made again in each build that makes one** (an immediate-mode interface: there is no
   record of what changed); the diff then sends only what changed. Its cost grows with the nodes of the window, not with
   the changes (`a11y_cost`); a virtual list makes nodes for its visible rows only.
 - **Documents grafted by the app** (a web page) are the app's: the toolkit gives the graft, the patches and the
-  requests, not the content. What is not there yet in Wren's pages: iframes as subtrees of their own (a frame is a
-  node named by its `title`), the caret and the selection in the page's fields and text (no character positions: the
-  toolkit's `line_edit` and `text_edit` have them, through `A11y_Text`), the bounds of static text (its element's),
-  updates from the DOM's mutations (the page's tree is made again, then compared), and the page's tree in a second
-  window (it follows the main window's tab).
+  requests, not the content.
 - What a reader says (wording, order, browse mode, braille) is checked by a person only.
 
 ## The platform layer

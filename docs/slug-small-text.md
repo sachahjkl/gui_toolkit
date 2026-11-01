@@ -17,7 +17,7 @@ the shader takes `fwidth` once at the top of `ps_slug` and passes it to each `Sl
 
 `odin run tools/slugsmall -define:FONT_BACKEND=native -- -out build/slugsmall [-dpr 1.5] [-darken 0.15] [-hint 24] [-ss 20]`
 renders an opencode-like dark interface and a light page (Segoe UI and Cascadia Mono, 11 to 16 px) with DirectWrite's
-bitmaps and with Slug in seven combinations, stacked in one PNG per scene and scale, plus a 3x enlargement of the first
+bitmaps and with Slug in six combinations, stacked in one PNG per scene and scale, plus a 3x enlargement of the first
 lines. Build the Rust library first (`tools\build_text.ps1`).
 
 Mean difference per pixel from DirectWrite (/255, green channel), with the defaults above:
