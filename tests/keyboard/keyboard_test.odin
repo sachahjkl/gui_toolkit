@@ -756,6 +756,30 @@ lazy_items_of_no_height_stay_so :: proc(t: ^testing.T) {
 	}
 }
 
+// Hidden while the pointer is elsewhere, shown over its box and for a moment when revealed; always shown when not asked for.
+@(test)
+scrollbar_autohide_follows_the_pointer :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	testing.expect(t, !f.s.scrollbar_autohide, "off by default")
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy, nil) }
+	testing.expect_value(t, ui.scrollbar_opacity(&f.s, lazy_scroller), 1)
+	ui.set_scrollbar_autohide(&f.s, true)
+	defer ui.set_scrollbar_autohide(&f.s, false)
+	away := []platform.Event{{kind = .Mouse_Move, pos = {600, 500}}}
+	for _ in 0 ..< 60 { frame(f, away, build_lazy, nil) }
+	testing.expect(t, ui.scrollbar_opacity(&f.s, lazy_scroller) < 0.02, "hidden with the pointer away")
+	over := []platform.Event{{kind = .Mouse_Move, pos = {100, 100}}}
+	for _ in 0 ..< 60 { frame(f, over, build_lazy, nil) }
+	testing.expect(t, ui.scrollbar_opacity(&f.s, lazy_scroller) > 0.98, "shown with the pointer over its box")
+	for _ in 0 ..< 60 { frame(f, away, build_lazy, nil) }
+	ui.scrollbar_reveal(lazy_scroller)
+	for _ in 0 ..< 30 { frame(f, nil, build_lazy, nil) }
+	testing.expect(t, ui.scrollbar_opacity(&f.s, lazy_scroller) > 0.5, "shown for a moment when revealed")
+}
+
 @(private = "file")
 merged_box: ^ui.Box
 

@@ -324,8 +324,10 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		w := which == .Vertical ? track.max.x - track.min.x : track.max.y - track.min.y
 		c := d.bar_color
 		hot := d.bar_hot == which
-		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
-		c.a = hot ? TEXT_EDIT_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA
+		shows := scrollbar_opacity(s, b)
+		if shows <= SCROLLBAR_HIDDEN_ALPHA { continue }
+		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
+		c.a = (hot ? TEXT_EDIT_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA) * shows
 		draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
 	}
 

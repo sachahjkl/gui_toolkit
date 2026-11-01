@@ -54,7 +54,7 @@ Prebuilt binaries are attached to the [GitHub releases](https://github.com/sacha
 ![examples/transforms: rotated, skewed and scaled shapes, text and images, rounded clips](docs/screenshots/transforms.png)
 <p align="center"><b>examples/transforms</b>: the draw layer's affine transforms, rounded clips and images</p>
 
-Screenshots are regenerated with `powershell -File tools/screenshots.ps1` (default settings, 175 % DPI).
+Screenshots are regenerated with `node tools/screenshots.mjs --build` (default settings, over the DevTools protocol: the mouse and the windows in front are left alone).
 
 ## What it looks like
 

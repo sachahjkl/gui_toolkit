@@ -89,3 +89,16 @@ scale_classification :: proc(t: ^testing.T) {
 	x := draw.Xform{scale = 1.5, offset = {10, 20}}
 	testing.expect(t, near(draw.affine_apply(draw.affine_from_xform(x), {2, 2}), {2 * 1.5 + 10, 2 * 1.5 + 20}))
 }
+
+// Filling a box without distorting: the part taken has the box's shape, centred, and is as large as the picture allows.
+@(test)
+cover_src_keeps_the_shape :: proc(t: ^testing.T) {
+	size := draw.Vec2{256, 160}
+	tall := draw.cover_src(size, {{10, 20}, {110, 220}})   // 1:2 in a picture wider than tall: the height is all used
+	testing.expect_value(t, tall, draw.Rect{{88, 0}, {168, 160}})
+	wide := draw.cover_src(size, {{0, 0}, {320, 100}})     // wider than the picture: the width is all used
+	testing.expect_value(t, wide, draw.Rect{{0, 40}, {256, 120}})
+	testing.expect_value(t, draw.cover_src(size, {{0, 0}, {512, 320}}), draw.Rect{{0, 0}, {256, 160}})
+	testing.expect_value(t, draw.cover_src({}, {{0, 0}, {10, 10}}), draw.Rect{})
+	testing.expect_value(t, draw.cover_src(size, {{5, 5}, {5, 5}}), draw.Rect{})
+}
