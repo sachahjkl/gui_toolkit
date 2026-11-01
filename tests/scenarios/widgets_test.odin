@@ -11,6 +11,8 @@ import "../../ui"
 @(private = "file") WINDOW :: [2]int{500, 400}
 // A toast's life is over by then (ui TOAST_LIFE_MS, its fade out).
 @(private = "file") TOAST_OVER_MS :: 10000
+// Three pixels into a gradient, in sRGB.
+@(private = "file") CORNER_TOLERANCE :: 48
 @(private = "file") PICKER_SIZE :: 200
 @(private = "file") HUE_WIDTH :: 20
 @(private = "file") LIST_ROWS :: 200
@@ -44,9 +46,9 @@ the_colour_pickers_take_a_press :: proc(t: ^testing.T) {
 	session.click_at(s, session.center(sv))
 	img := session.capture(s)
 	black := session.pixel(img, int(sv.rect.min.x) + 3, int(sv.rect.max.y) - 3)
-	testing.expect(t, session.near(black, {0, 0, 0, 255}, 16), "black at the bottom")
+	testing.expect(t, session.near(black, {0, 0, 0, 255}, CORNER_TOLERANCE), "black at the bottom")
 	white := session.pixel(img, int(sv.rect.min.x) + 3, int(sv.rect.min.y) + 3)
-	testing.expect(t, session.near(white, {255, 255, 255, 255}, 16), "white at the top left")
+	testing.expect(t, session.near(white, {255, 255, 255, 255}, CORNER_TOLERANCE), "white at the top left")
 }
 
 // A toast comes, in its place, says what it was given, and goes by the clock.

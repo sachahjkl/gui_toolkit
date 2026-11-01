@@ -58,11 +58,19 @@ local_connect :: proc(srv: ^Server) -> Local_Client {
 
 // One command, as its JSON: carried out by the next frame.
 local_send :: proc(l: Local_Client, command: string) {
-	srv := l.conn.srv
+	inbox_add(l.conn, command)
+}
+
+// A command for the next frame. True: it wants one (an ack only if something changed: cast.odin).
+@(private)
+inbox_add :: proc(c: ^Conn, command: string) -> (wants: bool) {
+	srv := c.srv
 	sync.lock(&srv.lock)
-	append(&srv.inbox, Message{conn = l.conn, text = strings.clone(command, runtime.heap_allocator())})
-	sync.atomic_store(&srv.asked, true)
-	sync.unlock(&srv.lock)
+	defer sync.unlock(&srv.lock)
+	append(&srv.inbox, Message{conn = c, text = strings.clone(command, runtime.heap_allocator())})
+	wants = sync.atomic_load(&srv.cast_dirty) || !strings.contains(command, "Page.screencastFrameAck")
+	if wants { sync.atomic_store(&srv.asked, true) }
+	return
 }
 
 // What came since the last call, answers and events, in order (`allocator`).
@@ -290,13 +298,7 @@ conn_loop :: proc(c: ^Conn) {
 			if len(msg) + len(frame) > MAX_MESSAGE { return }   // (the frames of one message add up)
 			append(&msg, ..frame[:])
 			if fin {
-				srv := c.srv
-				sync.lock(&srv.lock)
-				append(&srv.inbox, Message{conn = c, text = strings.clone(string(msg[:]), runtime.heap_allocator())})
-				wants := sync.atomic_load(&srv.cast_dirty) || !strings.contains(string(msg[:]), "Page.screencastFrameAck")   // (cast.odin)
-				if wants { sync.atomic_store(&srv.asked, true) }
-				sync.unlock(&srv.lock)
-				if wants { platform.wake(srv.win) }
+				if inbox_add(c, string(msg[:])) { platform.wake(c.srv.win) }
 				clear(&msg)
 			}
 		}
