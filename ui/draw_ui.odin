@@ -106,10 +106,15 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 			draw.rect(dc, r, h, radius)
 		}
 	}
-	if .Selectable in flags { draw_selection(s, dc, b) }
-	if s.find.needle != "" { find_draw(s, dc, b) }
+	// (a rich paragraph paints both itself, between its runs' backgrounds and its text)
+	if b.custom != rich_draw {
+		if .Selectable in flags { draw_selection(s, dc, b) }
+		if s.find.needle != "" { find_draw(s, dc, b) }
+	}
 	if .Draw_Text in flags && b.text != "" {
-		if .Text_Wrap in flags { draw_wrapped_text(s, dc, b) } else { draw_box_text(s, dc, b) }
+		paint := .Text_Wrap in flags ? draw_wrapped_text : draw_box_text
+		paint(s, dc, b)
+		if s.find.needle != "" { find_draw_text(s, dc, b, paint) }
 	}
 
 	if .Clip in flags { draw.push_clip(dc, r) }

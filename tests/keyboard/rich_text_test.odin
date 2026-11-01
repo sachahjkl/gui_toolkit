@@ -2,6 +2,7 @@
 // alignment), its geometry (hit test, carets, ranges, links), the cache, links by pointer and keyboard, and drawing.
 package keyboard_test
 
+import "core:math"
 import "core:mem"
 import "core:strings"
 import "core:sync"
@@ -20,6 +21,8 @@ Rx :: struct {
 	theme: ui.Theme,
 	s:     ui.State,
 	ui_font, mono: font.Font_Id,
+	needle: string,   // searched in the frame (ui.find)
+	clear: draw.Color,   // under everything (alpha 0: black)
 	runs:  []ui.Rich_Run,
 	res:   ui.Rich_Result,
 	width: f32,
@@ -60,11 +63,12 @@ frame :: proc(f: ^Rx, events: []platform.Event = nil, draw_it := false) -> []u8 
 	})
 	ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(f.width)})
 	f.res = ui.rich_paragraph("###rich", f.runs, f.max_lines)
+	ui.find(f.needle)
 	ui.end_build()
 	px: []u8
 	if draw_it {
 		draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
-		render.frame_begin(&f.r, {0, 0, 0, 1})
+		render.frame_begin(&f.r, f.clear.a > 0 ? f.clear : {0, 0, 0, 1})
 		ui.draw_tree(&f.s, &f.dc)
 		draw.end_frame(&f.dc)
 		render.frame_end(&f.r)
@@ -336,4 +340,72 @@ rich_line_height_is_even :: proc(t: ^testing.T) {
 		testing.expect_value(t, li.baseline - li.y, even.lines[0].baseline - even.lines[0].y)
 	}
 	testing.expect_value(t, even.size.y, f32(len(even.lines)) * 22)
+}
+
+// A match in inline code shows: over the code's background, not under it (only a pixel at each end showed).
+@(test)
+rich_find_shows_over_inline_code :: proc(t: ^testing.T) {
+	sync.mutex_lock(&lock)
+	defer sync.mutex_unlock(&lock)
+	f := new(Rx)
+	defer free(f)
+	if !testing.expect(t, open(f), "renderer and fonts") { close(f); return }
+	defer close(f)
+	f.width = 380
+	f.runs = {{text = "see "}, {text = "needle", style = {code = true}}, {text = " here"}}
+	// the top row of the code's background, in the middle of the word: above the letters
+	delete(frame(f))
+	f.needle = "needle"
+	delete(frame(f))
+	delete(frame(f))
+	ms := ui.find_matches()
+	if !testing.expect_value(t, len(ms), 1) { return }
+	m := ms[0].rect
+	at := (int(m.min.y + 1) * SIZE.x + int((m.min.x + m.max.x) * 0.5)) * 4
+	lit := frame(f, draw_it = true)
+	defer delete(lit)
+	f.needle = ""
+	delete(frame(f))
+	delete(frame(f))
+	plain := frame(f, draw_it = true)
+	defer delete(plain)
+	diff := abs(int(lit[at]) - int(plain[at])) + abs(int(lit[at + 1]) - int(plain[at + 1])) + abs(int(lit[at + 2]) - int(plain[at + 2]))
+	testing.expectf(t, diff > 20, "the match changes the code's background: %v against %v", lit[at:at + 3], plain[at:at + 3])
+}
+
+// The letters of a match read on it in every palette, on the current match and on the others: measured on what is drawn.
+@(test)
+rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
+	sync.mutex_lock(&lock)
+	defer sync.mutex_unlock(&lock)
+	f := new(Rx)
+	defer free(f)
+	if !testing.expect(t, open(f), "renderer and fonts") { close(f); return }
+	defer close(f)
+	linear :: proc(v: u8) -> f64 { c := f64(v) / 255; return c <= 0.03928 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4) }
+	luma :: proc(px: []u8, at: int) -> f64 { return 0.2126 * linear(px[at]) + 0.7152 * linear(px[at + 1]) + 0.0722 * linear(px[at + 2]) }
+	palettes := []ui.Palette{ui.PALETTE_MIDNIGHT, ui.PALETTE_DAYLIGHT, ui.PALETTE_GRAPHITE, ui.PALETTE_NORD, ui.PALETTE_DRACULA, ui.PALETTE_AMBER, ui.PALETTE_AERO, ui.PALETTE_BOOTSTRAP, ui.PALETTE_GRUVBOX, ui.PALETTE_GRUVBOX_LIGHT, ui.PALETTE_NAYSAYER, ui.PALETTE_SOLARIZED, ui.PALETTE_SOLARIZED_LIGHT}
+	f.width = 400
+	f.runs = {{text = "HH", style = {size = 48, color = {0.9, 0.75, 0.48, 1}}}, {text = " x "}, {text = "HH", style = {size = 48, color = {0.9, 0.75, 0.48, 1}}}}
+	f.needle = "HH"
+	for p, n in palettes {
+		ui.apply_palette(&f.theme, p)
+		f.clear = draw.hex(p.bg)   // what a window of this palette is painted with
+		delete(frame(f))
+		delete(frame(f))
+		ms := ui.find_matches()
+		if !testing.expect_value(t, len(ms), 2) { continue }
+		ui.find_set_current(0)
+		rects := [2]ui.Rect{ms[0].rect, ms[1].rect}
+		px := frame(f, draw_it = true)
+		defer delete(px)
+		for r, which in rects {
+			// its background: the top row, above the letters; its letters: the darkest pixel inside
+			bg := luma(px, (int(r.min.y + 1) * SIZE.x + int((r.min.x + r.max.x) * 0.5)) * 4)
+			dark := 1.0
+			for y in int(r.min.y) ..< int(r.max.y) { for x in int(r.min.x) ..< int(r.max.x) { dark = min(dark, luma(px, (y * SIZE.x + x) * 4)) } }
+			contrast := (bg + 0.05) / (dark + 0.05)
+			testing.expectf(t, contrast >= 4.5, "palette %d, %s match: contrast %.1f (background %.3f, letters %.3f)", n, which == 0 ? "current" : "other", contrast, bg, dark)
+		}
+	}
 }
