@@ -16,7 +16,7 @@ when ODIN_OS != .Windows && ODIN_OS != .Linux && ODIN_OS != .Darwin {
 sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -> (path: string, index: int, ok: bool) { return }
 
 @(private)
-sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune) -> (path: string, index: int, ok: bool) { return }
+sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune, emoji := false) -> (path: string, index: int, ok: bool) { return }
 
 @(private)
 sys_has_family :: proc(family: string) -> bool { return false }

@@ -133,7 +133,7 @@ sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -
 }
 
 @(private)
-sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune) -> (path: string, index: int, ok: bool) {
+sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune, emoji := false) -> (path: string, index: int, ok: bool) {
 	base := ct_font(family != "" ? family : "Helvetica", weight, style)
 	if base == nil { base = ct_font("Helvetica", weight, style) }
 	if base == nil { return }

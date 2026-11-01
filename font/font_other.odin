@@ -108,13 +108,21 @@ other_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: []
 	for i < b {
 		r, n := decode16(w, i)
 		if faces[i] == 0 {
-			key := strings.concatenate({"fb:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(int(r))}, context.temp_allocator)
+			next: rune
+			if i + n < b { next, _ = decode16(w, i + n) }
+			emoji := emoji_wanted(r, next)
+			key := strings.concatenate({emoji ? "fbe:" : "fb:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(int(r))}, context.temp_allocator)
 			id, known := find_key(s, key)
 			if !known {
-				if path, index, ok := sys_find_for_char(family, weight, style, r); ok {
-					id, _ = load_from_file(s, path, index)
-					if f := face_ptr(s, id); f == nil || !face_has(s, f, r) { id = 0 }
+				try :: proc(s: ^State, family: string, weight: int, style: Font_Style, r: rune, emoji: bool) -> (id: Font_Id) {
+					if path, index, ok := sys_find_for_char(family, weight, style, r, emoji); ok {
+						id, _ = load_from_file(s, path, index)
+						if f := face_ptr(s, id); f == nil || !face_has(s, f, r) { id = 0 }
+					}
+					return
 				}
+				id = emoji ? try(s, family, weight, style, r, true) : 0
+				if id == 0 { id = try(s, family, weight, style, r, false) }
 				remember_key(s, key, id)
 			}
 			if id != 0 { for k in 0 ..< n { faces[i + k] = id } }
