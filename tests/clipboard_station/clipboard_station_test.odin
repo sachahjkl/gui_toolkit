@@ -1,6 +1,6 @@
 #+build windows
-// The clipboard of a window with no HWND, in a window station of the test's own: a clipboard belongs to the station, so the
-// person's clipboard is not touched. (Its own package: a window station is the whole process's.)
+// The clipboard of a window with no HWND is the process's store: the system's stays as it was. Read in a window station of the test's own, whose
+// clipboard nobody else writes. (Its own package: a window station is the whole process's.)
 //   odin test tests/clipboard_station -vet
 package clipboard_station_test
 
@@ -17,7 +17,7 @@ foreign user32 {
 WINSTA_ALL_ACCESS :: 0x37F
 
 @(test)
-an_offscreen_window_writes_the_clipboard :: proc(t: ^testing.T) {
+an_offscreen_window_keeps_to_the_process_s_clipboard :: proc(t: ^testing.T) {
 	station := CreateWindowStationW(nil, 0, WINSTA_ALL_ACCESS, nil)
 	testing.expect(t, station != nil, "a window station of the test's own")
 	if station == nil { return }
@@ -37,4 +37,10 @@ an_offscreen_window_writes_the_clipboard :: proc(t: ^testing.T) {
 	html, _, ok := platform.clipboard_get_html(w, context.temp_allocator)
 	testing.expect(t, ok)
 	testing.expect_value(t, html, "<b>x</b>")
+	// and the system's has nothing of it
+	testing.expect(t, bool(win.OpenClipboard(nil)), "the station's clipboard")
+	defer win.CloseClipboard()
+	testing.expect(t, win.GetClipboardData(win.CF_UNICODETEXT) == nil, "no text")
+	testing.expect(t, win.EnumClipboardFormats(0) == 0, "no format at all")
+	platform.clipboard_set(w, {})   // (the process's store outlives the test)
 }

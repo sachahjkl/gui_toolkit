@@ -16,6 +16,7 @@ import "core:image/png"
 import "core:os"
 import "core:strconv"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "core:time"
 import "../../devtools"
@@ -45,8 +46,8 @@ import "../../testkit/session"
 @(private = "file") INSIDE_BUTTON :: [2]f64{4, 3}
 // Frames a client's end takes to be seen.
 @(private = "file") CLIENT_GONE_FRAMES :: 4
-// Frames a screencast is given to come to rest once nothing changes.
-@(private = "file") CAST_REST_FRAMES :: 40
+// Rounds of a loop in which nothing asks for a frame: at rest.
+@(private = "file") CAST_REST_ROUNDS :: 40
 // A long text, read while it is replaced: nothing of the old one or a mix of both.
 @(private = "file") LONG_TEXT_BYTES :: 300
 @(private = "file") LONG_TEXT_ROUNDS :: 10
@@ -495,21 +496,28 @@ devtools_screencast_comes_to_rest :: proc(t: ^testing.T) {
 			send(c, "Page.screencastFrameAck", fmt.tprintf(`{{"sessionId":%d}}`, int(number(field(e.params, "sessionId")))))
 		}
 	}
-	// it comes to rest within a few frames of nothing changing: what it still sends then is the last of what changed (a picture being encoded is on its way)
+	// As a program's loop at rest: a frame only when the server asks for one, which is what wakes the window. It comes to rest within a few frames of
+	// nothing changing, even though the window shows a figure of its own build (what it still sends then is the last of what changed).
 	take(c, &frames, &last)
-	seen := -1
+	srv := r.srv
 	rest := 0
 	end := time.tick_add(time.tick_now(), CALL_LIMIT)
-	for rest < CAST_REST_FRAMES || frames == 0 {
+	for rest < CAST_REST_ROUNDS || frames == 0 {
 		if time.tick_diff(time.tick_now(), end) <= 0 { break }
-		encoding := number(field(send(c, "Toolkit.state"), "encoding"))
+		asked := sync.atomic_load(&srv.cast_dirty) || sync.atomic_load(&srv.waiting) > 0
+		if asked { session.frame(r.s) } else { devtools.service(srv, &r.app.s, &r.app.r) }
+		busy := sync.atomic_load(&srv.encoding) > 0
+		for m in devtools.local_take(c.l, context.temp_allocator) {
+			v, _ := json.parse_string(m, parse_integers = true, allocator = context.temp_allocator)
+			o := v.(json.Object) or_continue
+			if name, ok := o["method"].(json.String); ok { append(&c.events, Event{string(name), o["params"]}); asked = true }
+		}
 		take(c, &frames, &last)
-		rest = frames == seen && encoding == 0 ? rest + 1 : 0
-		seen = frames
+		rest = asked || busy ? 0 : rest + 1
 	}
 	send(c, "Page.stopScreencast")
 	testing.expect(t, frames >= 1, "a frame came")
-	testing.expect(t, rest >= CAST_REST_FRAMES, "and it came to rest")
+	testing.expect(t, rest >= CAST_REST_ROUNDS, "and it came to rest")
 	if frames >= 1 {
 		share := f64(session.count_different(last, shot(c), PIXEL_DELTA)) / f64(last.width * last.height)
 		testing.expectf(t, share <= CAST_MAX_SHARE, "the last frame is what the window shows: %.2f%% differ", share * 100)

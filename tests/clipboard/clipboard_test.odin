@@ -262,8 +262,7 @@ file_uris_round_trip :: proc(t: ^testing.T) {
 	testing.expect_value(t, hosted[1], "/plain")
 }
 
-// clipboard_changed tells once, not at every call. (Nothing is written: another program copying at this very moment is
-// the one thing that could make the second call true.)
+// clipboard_changed tells once, not at every call.
 @(test)
 clipboard_changed_tells_once :: proc(t: ^testing.T) {
 	w := platform.open_window_offscreen("clipboard_changed", {16, 16})
@@ -271,10 +270,8 @@ clipboard_changed_tells_once :: proc(t: ^testing.T) {
 	testing.expect(t, platform.clipboard_changed(w), "the first call says true")
 	testing.expect(t, !platform.clipboard_changed(w))
 	testing.expect(t, !platform.clipboard_changed(w))
-	when ODIN_OS == .Linux {
-		platform.clipboard_set(w, {text = "x"})   // (an offscreen window keeps it in the process's store)
-		testing.expect(t, platform.clipboard_changed(w))
-		testing.expect(t, !platform.clipboard_changed(w))
-		platform.clipboard_set(w, {})   // (the store outlives the test: leave it empty)
-	}
+	platform.clipboard_set(w, {text = "x"})   // (an offscreen window keeps it in the process's store)
+	testing.expect(t, platform.clipboard_changed(w))
+	testing.expect(t, !platform.clipboard_changed(w))
+	platform.clipboard_set(w, {})   // (the store outlives the test: leave it empty)
 }

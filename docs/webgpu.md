@@ -114,7 +114,7 @@ Correctness is checked by `render.damage.verify` (`set_damage_verify`, or the en
 first differing pixel and the rectangle it lies in are printed, and `damage_verify_differences(r)` counts the frames. For
 development only (it costs a full extra frame and read-backs).
 
-`-define:TOOLKIT_DAMAGE_CHECK=true` proves it on a program that marks nothing (`examples/whatsnew` through `tests/e2e`, the pixel
+`-define:TOOLKIT_DAMAGE_CHECK=true` proves it on a program that marks nothing (`examples/whatsnew` through `tests/examples`, the pixel
 tests): each frame is drawn whole on the side, the tiles that differ from the last frame become its region, and the partial
 frame must come out the same to the byte. `render.destroy` prints the counts and ends the program with exit code 1 on a
 difference.

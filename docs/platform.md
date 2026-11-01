@@ -37,7 +37,9 @@ no-ops with a sane return, never an error.
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
 `is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `set_chrome_regions`, `show_system_menu`,
 `needs_top_border`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,
-`set_offscreen_dpi`.
+`set_offscreen_dpi`, `set_offscreen_active`.
+
+**An offscreen window's machine** (`virtual.odin`) — `virtual_screen_set`, `virtual_screen`: the screen `monitor_size` and `display_info` answer for it; its input comes through `inject_event`, its cursor is `w.cursor`, its clipboard the process's store: nothing of the machine it runs on is read or written.
 
 **Loop** — `poll_events` (re-entrancy safe; drops what the last call returned, keeps what came since), `wait_event`,
 `wait_handle` (waits on a render frame-latency handle while taking input), `take_paint_request`, `pump_stats`, `wake`,
