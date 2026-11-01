@@ -10,7 +10,8 @@ import "../font"
 // Find in page: the occurrences of a needle in the text the interface shows (labels, wrapped paragraphs, rich text),
 // found after each layout in tree order (reading order) with their rectangles, whether on screen or scrolled away, and
 // painted behind the text: every match in the theme's "find_match background", the current one in
-// "find_current background". The application owns the search field and the navigation:
+// "find_current background", and its letters in "find_text" (whatever colour the text around them has: amber code on a
+// match does not read). The application owns the search field and the navigation:
 //
 //   find(needle, scope)       every build while searching ("" stops); scope: the box whose subtree is searched (0: all)
 //   find_matches()            the matches of the last layout (window coordinates, the rects of that layout)
@@ -171,6 +172,12 @@ find_collect :: proc(s: ^State) {
 
 @(private = "file") FIND_MATCH_RADIUS_PX :: 2
 
+// What a match of a box covers (a pixel beyond its letters on each side).
+@(private = "file")
+find_match_rect :: proc(s: ^State, m: Find_Match) -> Rect {
+	return {{m.rect.min.x - s.scale, m.rect.min.y}, {m.rect.max.x + s.scale, m.rect.max.y}}
+}
+
 // Behind the text of a box: its matches.
 @(private)
 find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
@@ -180,7 +187,42 @@ find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	cur := color_from_tags(s, b.tags_key, "find_current background")
 	rad := FIND_MATCH_RADIUS_PX * s.scale
 	for m in s.find.matches[span[0]:span[1]] {
-		r := Rect{{m.rect.min.x - s.scale, m.rect.min.y}, {m.rect.max.x + s.scale, m.rect.max.y}}
-		draw.rect(dc, r, m.index == s.find.current ? cur : all, rad)
+		draw.rect(dc, find_match_rect(s, m), m.index == s.find.current ? cur : all, rad)
+	}
+}
+
+// Over the text of a box (the text drawn by `paint` with b.text_color): again in "find_text", clipped to each match.
+@(private)
+find_draw_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
+	span, ok := s.find.by_box[b.key]
+	if !ok { return }
+	saved := b.text_color
+	defer b.text_color = saved
+	b.text_color = color_from_tags(s, b.tags_key, "find_text")
+	for m in s.find.matches[span[0]:span[1]] {
+		draw.push_clip(dc, find_match_rect(s, m))
+		paint(s, dc, b)
+		draw.pop_clip(dc)
+	}
+}
+
+// The same for a rich paragraph: every run in "find_text", whatever its colour, clipped to each match.
+@(private)
+find_draw_rich_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, l: ^Rich_Layout, runs: []Rich_Run, o: Vec2) {
+	span, ok := s.find.by_box[b.key]
+	if !ok { return }
+	col := color_from_tags(s, b.tags_key, "find_text")
+	for m in s.find.matches[span[0]:span[1]] {
+		r := find_match_rect(s, m)
+		draw.push_clip(dc, r)
+		for li in l.lines {
+			if o.y + li.y >= r.max.y || o.y + li.y + li.height <= r.min.y { continue }
+			for k in li.first ..< li.first + li.count {
+				f := l.frags[k]
+				if o.x + f.x >= r.max.x || o.x + f.x + f.width <= r.min.x { continue }
+				draw.text(dc, f.face, f.size, {math.round(o.x + f.x), o.y + li.baseline}, col, runs[f.run].text[f.start:f.end])
+			}
+		}
+		draw.pop_clip(dc)
 	}
 }
