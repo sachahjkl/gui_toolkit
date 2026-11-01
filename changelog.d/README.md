@@ -16,7 +16,7 @@ type: Added
   no blank line, no heading.
 - One change, one fragment. Two fragments may share a subject (the time keeps them apart).
 
-`powershell -File tools\changelog.ps1 -New -Type Added -Subject thing -Text "**...**: ..."` writes one;
+`odin run tools/changelog -- -new -type:Added -subject:thing "-text:**...**: ..."` writes one;
 `-Check` (CI) says whether they are all well formed and none was already released; `-Assemble` prints what the next
 version brings. `tools\release.ps1 <version>` assembles them into a `## [<version>]` section, writes the version and
 deletes them.
