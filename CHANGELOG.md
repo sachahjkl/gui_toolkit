@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.60.1] - 2026-11-01
+
+### Changed
+- **The letters of a match are drawn dark**, in the theme's new `find_text`, on stronger `find_match` and `find_current` backgrounds: amber code and light text did not read on them (contrast 1.8 on the current match). At least 4.5 in every palette.
+
+### Fixed
+- **Find and selection show over inline code**: a rich paragraph painted its runs' backgrounds over them, leaving a pixel at each end of a match. They now lie between the backgrounds and the text.
+
 ## [0.60.0] - 2026-11-01
 
 ### Added
@@ -1378,6 +1386,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.60.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.1
 [0.60.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.0
 [0.59.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.59.0
 [0.58.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.58.0
