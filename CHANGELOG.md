@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.59.0] - 2026-11-01
+
+### Added
+- **`draw.image_cover`** and `draw.cover_src`: an image that fills a box cropped rather than distorted (CSS `object-fit: cover`). `examples/effects` uses it: its photo was stretched into every thumbnail.
+- **`ui.set_scrollbar_autohide`**: scroll bars show only while the pointer is over their box or one is held, and fade otherwise. `ui.scrollbar_reveal` shows one for a moment when something else scrolls it (the keyboard); `ui.scrollbar_opacity` says how much it shows. Off by default.
+
+### Changed
+- `tools/screenshots.mjs` replaces `tools/screenshots.ps1`: the pictures are the frames the examples render, over the DevTools protocol, with an empty settings folder; it no longer moves the mouse, raises windows or moves the user's settings aside. It also refreshes `site/img`. `fidget`, `todo`, `transforms` and `effects` answer to `TOOLKIT_DEVTOOLS`.
+
 ## [0.58.0] - 2026-10-31
 
 ### Added
@@ -1364,6 +1373,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.59.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.59.0
 [0.58.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.58.0
 [0.57.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.1
 [0.57.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.57.0
