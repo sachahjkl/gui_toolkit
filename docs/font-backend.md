@@ -125,4 +125,4 @@ font-feature-settings) replaced DirectWrite's default features, so kerning was l
 
 ## Not done yet
 
-- A bitmap rasterizer and color glyphs (COLR from `gt_face_table`) for the platforms without Direct2D.
+- sbix and SVG color glyphs off Windows (COLR and CBDT are drawn).

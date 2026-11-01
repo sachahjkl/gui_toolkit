@@ -192,7 +192,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   Layouts over the maximize button on Windows 11, system menu, resize along the top edge), maximized windows stay on
   their monitor (auto-hidden taskbars still come up). Caption buttons with the system's sizes, glyphs and colours.
   `platform.set_fullscreen`. Try `fidget --integrated`.
-- **Cursors**: every CSS cursor (`platform.Cursor`, `cursor_from_css`); on Windows the system's own when it has one, on Wayland the compositor's shapes (on X11 the pointer does not change yet), the
+- **Cursors**: every CSS cursor (`platform.Cursor`, `cursor_from_css`); on Windows the system's own when it has one, on Linux the user's theme (X11: libxcb-cursor, else the server's cursor font; Wayland: `wp_cursor_shape_v1`, else libwayland-cursor), the
   others (grab, grabbing, zoom, cell, copy, alias...) drawn in the user's pointer scheme and size; custom cursors from
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
   also during a drag. Try `examples/cursors`.
@@ -210,7 +210,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   the wheel drops an anchor and the pointer's distance from it scrolls, the farther the faster, along a tunable
   acceleration curve; hold or toggle modes, a direction cursor and an anchor marker ([docs/autoscroll.md](docs/autoscroll.md)).
 
-Not there yet: a macOS backend; off Windows, color glyphs; on X11, cursors; on Wayland, fractional scaling; on Linux, pixel tests (its CI runs the other tests, and the backends against real X11 and Wayland servers).
+Not there yet: a macOS backend; off Windows, color glyphs in SVG and sbix; on Linux, pixel tests (its CI runs the other tests, and the backends against real X11 and Wayland servers).
 
 ## Testing
 

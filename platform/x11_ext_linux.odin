@@ -1,6 +1,8 @@
 #+build linux
 package platform
 
+import "core:sys/posix"
+
 // The two X extensions the X11 backend asks of the server, by dlopen as the rest (each its own library, each optional):
 // XFIXES tells when any program takes the clipboard (and cuts a window out of the pointer's way, for a drag image); RandR
 // gives the refresh rate of the monitor a window is on. Without them: no change signal between two other programs, and
@@ -28,6 +30,8 @@ Xfixes_Lib :: struct {
 	create_region:       proc "c" (c: Xcb_Connection, region: u32, n: u32, rects: rawptr) -> Xcb_Void_Cookie,
 	destroy_region:      proc "c" (c: Xcb_Connection, region: u32) -> Xcb_Void_Cookie,
 	set_shape_region:    proc "c" (c: Xcb_Connection, dest: Xcb_Window, kind: u8, x, y: i16, region: u32) -> Xcb_Void_Cookie,
+	cursor_image:        proc "c" (c: Xcb_Connection) -> Xcb_Cookie,
+	cursor_image_reply:  proc "c" (c: Xcb_Connection, cookie: Xcb_Cookie, e: rawptr) -> rawptr,
 }
 @(private = "file") xfixes: Xfixes_Lib
 
@@ -84,6 +88,8 @@ x11_extensions_init :: proc() {
 		xfixes.create_region       = auto_cast lib_sym(h, "xcb_xfixes_create_region")
 		xfixes.destroy_region      = auto_cast lib_sym(h, "xcb_xfixes_destroy_region")
 		xfixes.set_shape_region    = auto_cast lib_sym(h, "xcb_xfixes_set_window_shape_region")
+		xfixes.cursor_image        = auto_cast lib_sym(h, "xcb_xfixes_get_cursor_image")
+		xfixes.cursor_image_reply  = auto_cast lib_sym(h, "xcb_xfixes_get_cursor_image_reply")
 		if xfixes.query_version != nil && xfixes.query_version_reply != nil && xfixes.select_selection != nil {
 			if ev := x11_extension_first_event(xfixes.id); ev != 0 {
 				// (the server answers an extension's requests only after this exchange)
@@ -214,4 +220,15 @@ x11_randr_rate :: proc(w: ^Window) -> (num, den: u32, top_hz: f64, ok: bool) {
 		}
 	}
 	return
+}
+
+// The server's serial of the pointer image shown now, to tell two cursors apart (cursor_on_screen).
+@(private)
+x11_pointer_image_serial :: proc() -> (serial: u64, ok: bool) {
+	if xfixes.cursor_image == nil || xfixes.cursor_image_reply == nil || x11c.xfixes_event == 0 { return }
+	reply := xfixes.cursor_image_reply(x11c.c, xfixes.cursor_image(x11c.c), nil)
+	if reply == nil { return }
+	defer posix.free(reply)
+	// xcb_xfixes_get_cursor_image_reply_t: cursor_serial at [20]
+	return u64((^u32)(uintptr(reply) + 20)^), true
 }

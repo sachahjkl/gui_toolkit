@@ -48,7 +48,8 @@ system; each dispatches to its backend behind `when USE_WGPU`.
 ## What differs between the backends
 
 - **Present pacing.** Direct3D uses a DXGI waitable swap chain (a frame-latency object) and DWM timing for the frame
-  statistics (shown / missed refreshes). wgpu on Linux has neither: the FIFO present mode paces frames at the vblank,$1Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it.
+  statistics (shown / missed refreshes). wgpu on Linux has neither: the FIFO present mode paces frames at the vblank,
+  `render.wait_for_frame` just acquires the next surface texture, and the per-frame statistics stay off. Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it.
 - **Translucency.** A translucent window (`transparent`) goes through DirectComposition on Windows (premultiplied
   alpha). On Linux the compositor blends the alpha surface directly — there is no extra effect to turn on.
 - **The 2D canvas** (`canvas.odin`) is Direct3D only for now; `render.canvas_supported` reports `false` on the wgpu

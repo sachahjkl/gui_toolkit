@@ -6,7 +6,7 @@ package platform
 // decorations are asked for through zxdg_decoration_manager_v1 when the compositor has it (KDE); where it does not
 // (GNOME), the window is undecorated and the app draws its own title bar (integrated title) — the toolkit already does
 // this on Windows, so the same frame works. Input comes from wl_seat (wl_pointer, wl_keyboard with its xkbcommon
-// keymap, wl_touch); DPI from the wl_output scale (and wp_fractional_scale when the compositor offers it). The
+// keymap, wl_touch); DPI from wp_fractional_scale with wp_viewporter when the compositor offers them, else the wl_output scale. The
 // CLIPBOARD comes from wl_data_device (clipboard_linux.odin adds the richer flavours and the drag and drop).
 //
 // All event handling is in C callbacks (listeners); they stash into the per-window / per-seat state and queue Events,
@@ -38,7 +38,8 @@ Wl_Conn :: struct {
 	data_device: Wl_Proxy,
 	xdg_wm_base: Wl_Proxy,
 	decoration_manager: Wl_Proxy,
-	fractional_manager: rawptr,   // wp_fractional_scale_manager_v1 (optional; name only, not marshalled here)
+	fractional_manager: Wl_Proxy, // wp_fractional_scale_manager_v1 (optional)
+	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
 	pointer:    Wl_Proxy,
 	keyboard:   Wl_Proxy,
 	touch:      Wl_Proxy,
@@ -106,6 +107,9 @@ Wl_Window_State :: struct {
 	title:       string,
 	configured:  bool,
 	pending_w, pending_h: int,     // the size the last xdg_toplevel.configure asked for (0 = app chooses)
+	fractional:  Wl_Proxy,         // wp_fractional_scale_v1 and wp_viewport: the buffer has w.size pixels, the surface
+	viewport:    Wl_Proxy,         // `logical` on the output (nil: an integer buffer scale)
+	logical:     [2]int,           // the surface's size, in the compositor's units
 	win:         ^Window,          // back pointer for the listeners
 }
 
@@ -125,6 +129,7 @@ wl_connect :: proc() -> bool {
 	zwp_build_tables()
 	zwp_ti_build_tables()
 	wp_cursor_shape_build_tables()
+	wp_scale_build_tables()
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
 	wlc.fd = l.display_get_fd(wlc.display)
@@ -204,6 +209,8 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "zwp_primary_selection_device_manager_v1": wlc.primary_manager = bind(name, &zwp_primary_device_manager_iface, 1, version)
 	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
 	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
+	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)
+	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
 	}
 }
 
@@ -297,10 +304,12 @@ window_of_surface :: proc "contextless" (surface: Wl_Proxy) -> ^Window {
 
 @(private)
 ptr_enter :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy, sx, sy: Wl_Fixed) {
+	context = wl_ctx_real()
 	wlc.pointer_focus = window_of_surface(surface)
 	scale: f32 = wlc.pointer_focus != nil ? wlc.pointer_focus.dpi_scale : 1   // (as ptr_motion: a click before any motion lands here)
 	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)) * scale, f32(wl_fixed_to_f64(sy)) * scale}
 	wl_enter_serial = serial
+	if wlc.pointer_focus != nil { wl_apply_cursor(wlc.pointer_focus) }   // (the compositor forgot it when the pointer left)
 }
 @(private) wl_enter_serial: u32
 @(private) wl_button_serial: u32   // the last pointer button serial (for a drag start / selection)
@@ -493,8 +502,8 @@ xdg_surface_configure :: proc "c" (data: rawptr, s: Wl_Proxy, serial: u32) {
 	if st == nil || st.win == nil { return }
 	w := st.win
 	if st.pending_w > 0 && st.pending_h > 0 {
-		pw, ph := int(f32(st.pending_w) * w.dpi_scale), int(f32(st.pending_h) * w.dpi_scale)
-		if pw != w.size.x || ph != w.size.y { w.size = {pw, ph} }
+		st.logical = {st.pending_w, st.pending_h}
+		wl_size_from_logical(w, st)
 	}
 	st.configured = true
 	w.paint_requested = true
@@ -553,6 +562,35 @@ frame_done :: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) {
 ////////////////////////////////
 // lifecycle
 
+// The buffer's size from the surface's and the scale, and the surface's size to the compositor.
+@(private)
+wl_size_from_logical :: proc(w: ^Window, st: ^Wl_Window_State) {
+	w.size = {max(int(f32(st.logical.x) * w.dpi_scale + 0.5), 1), max(int(f32(st.logical.y) * w.dpi_scale + 0.5), 1)}
+	if st.viewport != nil {
+		wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_SET_DESTINATION, nil, wl.proxy_get_version(st.viewport), 0, i32(max(st.logical.x, 1)), i32(max(st.logical.y, 1)))
+	}
+}
+
+@(private)
+Fractional_Listener :: struct { preferred_scale: proc "c" (data: rawptr, f: Wl_Proxy, scale: u32) }
+@(private) fractional_listener := Fractional_Listener{fractional_preferred}
+
+@(private = "file") FRACTIONAL_DENOMINATOR :: 120
+
+@(private)
+fractional_preferred :: proc "c" (data: rawptr, f: Wl_Proxy, scale: u32) {
+	context = wl_ctx_real()
+	st := (^Wl_Window_State)(data)
+	if st == nil || st.win == nil || scale == 0 { return }
+	w := st.win
+	k := f32(scale) / FRACTIONAL_DENOMINATOR
+	if k == w.dpi_scale { return }
+	w.dpi_scale = k
+	wl_size_from_logical(w, st)
+	w.paint_requested = true
+	apply_cursor(w)
+}
+
 @(private)
 wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> bool {
 	if !wl_connect() { report_missing("libwayland-client (or xdg-shell)"); return false }
@@ -566,6 +604,12 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
 	if st.surface == nil { free(st); w.wl = nil; return false }
 	wl.proxy_set_user_data(st.surface, st)
+	st.logical = {max(size.x, 1), max(size.y, 1)}
+	if wlc.fractional_manager != nil && wlc.viewporter != nil {
+		st.viewport = wl.proxy_marshal_flags(wlc.viewporter, WP_VIEWPORTER_GET_VIEWPORT, &wp_viewport_iface, wl.proxy_get_version(wlc.viewporter), 0, nil, st.surface)
+		st.fractional = wl.proxy_marshal_flags(wlc.fractional_manager, WP_FRACTIONAL_MANAGER_GET, &wp_fractional_iface, wl.proxy_get_version(wlc.fractional_manager), 0, nil, st.surface)
+		if st.fractional != nil { wl.proxy_add_listener(st.fractional, &fractional_listener, st) }
+	}
 
 	st.xdg_surface = wl.proxy_marshal_flags(wlc.xdg_wm_base, XDG_WM_BASE_GET_XDG_SURFACE, &xdg_surface_iface, wl.proxy_get_version(wlc.xdg_wm_base), 0, nil, st.surface)
 	wl.proxy_add_listener(st.xdg_surface, &xdg_surface_listener, st)
@@ -588,8 +632,8 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 		}
 	}
 
-	w.size = {max(int(f32(size.x) * w.dpi_scale), 1), max(int(f32(size.y) * w.dpi_scale), 1)}
-	if wlc.output_scale > 1 {
+	wl_size_from_logical(w, st)
+	if wlc.output_scale > 1 && st.viewport == nil {
 		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
 	}
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
@@ -604,6 +648,8 @@ wl_destroy :: proc(w: ^Window) {
 	if wlc.pointer_focus == w { wlc.pointer_focus = nil }
 	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil }
 	if st.frame_cb != nil { wl.proxy_destroy(st.frame_cb) }
+	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
+	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	if st.decoration != nil { wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_DESTROY, nil, wl.proxy_get_version(st.decoration), WL_MARSHAL_FLAG_DESTROY) }
 	if st.xdg_toplevel != nil { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_DESTROY, nil, wl.proxy_get_version(st.xdg_toplevel), WL_MARSHAL_FLAG_DESTROY) }
 	if st.xdg_surface != nil { wl.proxy_marshal_flags(st.xdg_surface, XDG_SURFACE_DESTROY, nil, wl.proxy_get_version(st.xdg_surface), WL_MARSHAL_FLAG_DESTROY) }
@@ -623,7 +669,16 @@ wl_set_title :: proc(w: ^Window, title: string) {
 	wl.display_flush(wlc.display)
 }
 
-@(private) wl_set_size :: proc(w: ^Window, px: [2]int) { w.size = px; w.paint_requested = true }   // the renderer reconfigures; the compositor does not set a client size
+@(private)
+wl_set_size :: proc(w: ^Window, px: [2]int) {
+	w.size = px
+	w.paint_requested = true
+	if st := wl_state(w); st != nil {
+		st.logical = {max(int(f32(px.x) / w.dpi_scale + 0.5), 1), max(int(f32(px.y) / w.dpi_scale + 0.5), 1)}
+		wl_size_from_logical(w, st)
+	}
+}
+//   // the renderer reconfigures; the compositor does not set a client size
 @(private)
 wl_show :: proc(w: ^Window) {
 	st := wl_state(w)

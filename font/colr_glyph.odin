@@ -1,15 +1,15 @@
-#+build windows
 package font
 
 import "base:runtime"
 import "core:sync"
 
-// The COLR interpreter (colr.odin) on a face: its COLR and CPAL tables come from DirectWrite (TryGetFontTable, so
-// system fonts, files and memory fonts alike), its glyph outlines from the Slug outline provider, kept per face in a
+// The COLR interpreter (colr.odin) on a face: its COLR and CPAL tables come from the platform (DirectWrite on Windows, the
+// native backend elsewhere: face_table_read), its glyph outlines from the Slug outline provider, kept per face in a
 // cache of limited size. Settings.color_engine = .Builtin makes these faces' color glyphs come from here instead of
 // Direct2D (color.odin); the bitmaps then go to the same Color pages, the same async queue and the same text-color
 // handling as the others. With .System the glyphs whose paint graph nests a PaintGlyph in a PaintGlyph still come from here:
-// Direct2D of Windows 11 24H2 as first released crashes on them (colr_nests_glyph).
+// Direct2D of Windows 11 24H2 as first released crashes on them (colr_nests_glyph). Off Windows there is no Direct2D: the
+// interpreter draws them all, and cbdt.odin the bitmap glyphs (cblc, cbdt below).
 
 @(private)
 Face_Colr :: struct {
@@ -17,6 +17,7 @@ Face_Colr :: struct {
 	colr_ctx: rawptr,
 	cpal_ctx: rawptr,
 	gsub:     []u8,               // for the sequences DirectWrite does not form (tag sequences), see colr_gsub.odin
+	cblc, cbdt: []u8,             // off Windows: the bitmap glyphs (c may then be nil)
 	gsub_ctx: rawptr,
 	mu:       sync.Mutex,
 	outlines: map[u16]^Outline,   // em units; emptied (between renders) when over the budget
@@ -31,25 +32,24 @@ Face_Colr :: struct {
 face_colr_open :: proc(f: ^Font) -> (fc: ^Face_Colr, refused: bool) {
 	context.allocator = runtime.heap_allocator()
 	fc = new(Face_Colr)
-	read :: proc(f: ^Font, tag: string) -> (data: []u8, ctx: rawptr) {
-		p: rawptr
-		n: u32
-		exists: BOOL
-		if f.dw->TryGetFontTable(ot_tag(tag), &p, &n, &ctx, &exists) < 0 || !exists || p == nil || n == 0 { return nil, nil }
-		return ([^]u8)(p)[:n], ctx
-	}
 	colr, cpal: []u8
-	colr, fc.colr_ctx = read(f, "COLR")
-	if colr == nil { free(fc); return nil, false }
-	cpal, fc.cpal_ctx = read(f, "CPAL")
-	fc.c = colr_open(colr, cpal)
-	if fc.c == nil {
-		f.dw->ReleaseFontTable(fc.colr_ctx)
-		if fc.cpal_ctx != nil { f.dw->ReleaseFontTable(fc.cpal_ctx) }
-		free(fc)
-		return nil, true
+	colr, fc.colr_ctx = face_table_read(f, "COLR")
+	when ODIN_OS != .Windows {
+		fc.cblc, _ = face_table_read(f, "CBLC")
+		fc.cbdt, _ = face_table_read(f, "CBDT")
 	}
-	fc.gsub, fc.gsub_ctx = read(f, "GSUB")
+	if colr == nil && len(fc.cbdt) == 0 { free(fc); return nil, false }
+	if colr != nil {
+		cpal, fc.cpal_ctx = face_table_read(f, "CPAL")
+		fc.c = colr_open(colr, cpal)
+		if fc.c == nil {
+			face_table_release(f, fc.colr_ctx)
+			face_table_release(f, fc.cpal_ctx)
+			free(fc)
+			return nil, true
+		}
+	}
+	fc.gsub, fc.gsub_ctx = face_table_read(f, "GSUB")
 	fc.outlines = make(map[u16]^Outline)
 	fc.nested = make(map[u16]bool)
 	return fc, false
@@ -64,12 +64,10 @@ face_colr_close :: proc(f: ^Font) {
 	for _, o in fc.outlines { outline_destroy(o); free(o) }
 	delete(fc.outlines)
 	delete(fc.nested)
-	colr_destroy(fc.c)
-	if f.dw != nil {
-		f.dw->ReleaseFontTable(fc.colr_ctx)
-		if fc.cpal_ctx != nil { f.dw->ReleaseFontTable(fc.cpal_ctx) }
-		if fc.gsub_ctx != nil { f.dw->ReleaseFontTable(fc.gsub_ctx) }
-	}
+	if fc.c != nil { colr_destroy(fc.c) }
+	face_table_release(f, fc.colr_ctx)
+	face_table_release(f, fc.cpal_ctx)
+	face_table_release(f, fc.gsub_ctx)
 	free(fc)
 }
 
@@ -133,8 +131,8 @@ face_colr_end :: proc(fc: ^Face_Colr) {
 // glyph it can read; with .System, the glyphs Direct2D must not be given (`colr_avoids_system`).
 @(private)
 colr_draws :: proc(s: ^State, f: ^Font, gid: u16) -> bool {
-	if !s.settings.color_glyphs || f.colr == nil || !colr_has_glyph(f.colr.c, gid) { return false }
-	return s.settings.color_engine == .Builtin || colr_nests_glyph_cached(f.colr, gid)
+	if !s.settings.color_glyphs || f.colr == nil || f.colr.c == nil || !colr_has_glyph(f.colr.c, gid) { return false }
+	when ODIN_OS != .Windows { return true } else { return s.settings.color_engine == .Builtin || colr_nests_glyph_cached(f.colr, gid) }
 }
 
 @(private)
@@ -155,7 +153,7 @@ colr_nests_glyph_cached :: proc(fc: ^Face_Colr, gid: u16) -> bool {
 // (d2d1.dll 10.0.26100.1) crashes on. A test that compares the two engines leaves these glyphs out.
 colr_avoids_system :: proc(s: ^State, id: Font_Id, gid: u16) -> bool {
 	f := face_ptr(s, id)
-	if f == nil || f.colr == nil || !colr_has_glyph(f.colr.c, gid) { return false }
+	if f == nil || f.colr == nil || f.colr.c == nil || !colr_has_glyph(f.colr.c, gid) { return false }
 	return colr_nests_glyph_cached(f.colr, gid)
 }
 
@@ -224,37 +222,4 @@ colr_of :: proc(s: ^State, id: Font_Id) -> ^Colr {
 	f := face_ptr(s, id)
 	if f == nil || f.colr == nil { return nil }
 	return f.colr.c
-}
-
-// Tag sequences (a flag emoji followed by tag characters U+E0020 .. U+E007F: England, Scotland, Wales): DirectWrite shapes
-// them as separate glyphs. For a face with COLR the sequence is looked up in its GSUB ccmp ligatures instead. Appends
-// the one glyph and its cluster and returns the new pen; ok = false when the sequence does not collapse into one glyph
-// (the caller then shapes it as usual).
-@(private)
-shape_tag_sequence :: proc(s: ^State, f: ^Font, face_id: Font_Id, size: f32, w: []u16, bytes: []i32, glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster, pen: f32) -> (new_pen: f32, ok: bool) {
-	fc := f.colr
-	if fc == nil || len(fc.gsub) == 0 { return pen, false }
-	cps := make([dynamic]u32, 0, len(w), context.temp_allocator)
-	for i := 0; i < len(w); {
-		r, n := decode16(w, i)
-		append(&cps, u32(r))
-		i += n
-	}
-	gids := make([]u16, len(cps), context.temp_allocator)
-	if f.dw->GetGlyphIndices(raw_data(cps), u32(len(cps)), raw_data(gids)) < 0 { return pen, false }
-	for g in gids { if g == 0 { return pen, false } }
-	out, found := gsub_ligate(fc.gsub, {'c', 'c', 'm', 'p'}, gids, context.temp_allocator)
-	if !found || len(out) != 1 { return pen, false }
-	gm: DWRITE_GLYPH_METRICS
-	if f.dw->GetDesignGlyphMetrics(&out[0], 1, &gm, false) < 0 { return pen, false }
-	adv := f32(gm.advanceWidth) * size / f.upem
-	append(glyphs, Glyph_Pos{face = face_id, id = out[0], x = pen, advance = adv, cluster = 0})
-	append(clusters, Cluster{start = 0, end = bytes[len(w)] - bytes[0], x0 = pen, x1 = pen + adv})
-	return pen + adv, true
-}
-
-@(private)
-has_tag_chars :: proc(w: []u16) -> bool {
-	for u in w { if u == TAG_HIGH_SURROGATE { return true } }
-	return false
 }

@@ -168,9 +168,20 @@ native_source :: proc(f: ^Font) -> (src: Native_Source, ok: bool) {
 
 @(private) platform_system_face :: proc(f: ^Font) -> bool { return false }
 
-// COLR tables of a face for the interpreter (colr_glyph.odin reads them through DirectWrite): none here yet.
-@(private) Face_Colr :: struct {}
-@(private) face_colr_close :: proc(f: ^Font) {}
+// The tables of a face from the native backend: they live as long as the face.
+@(private)
+face_table_read :: proc(f: ^Font, tag: string) -> (data: []u8, ctx: rawptr) {
+	when NATIVE_TEXT { return native_font_table(f, {tag[0], tag[1], tag[2], tag[3]}), nil } else { return nil, nil }
+}
+@(private) face_table_release :: proc(f: ^Font, ctx: rawptr) {}
+
+// A face just opened: its color tables, for the COLR interpreter and the bitmap glyphs.
+@(private)
+platform_face_opened :: proc(s: ^State, f: ^Font) {
+	fc, _ := face_colr_open(f)
+	f.colr = fc
+	f.color = fc != nil
+}
 
 // The color glyph thread is Windows' (color_async.odin): nothing is queued here.
 @(private)
@@ -186,12 +197,22 @@ Color_Job :: struct {
 }
 @(private) color_enqueue :: proc(s: ^State, j: Color_Job) -> bool { return false }
 
-// Color glyphs are drawn by the COLR interpreter only where there is no Direct2D: none here yet.
+// Off Windows every color glyph is the COLR interpreter's or a bitmap of the CBDT table.
 @(private)
-platform_color_glyph :: proc(s: ^State, f: ^Font, gid: u16, size: f32) -> bool { return false }
+platform_color_glyph :: proc(s: ^State, f: ^Font, gid: u16, size: f32) -> bool {
+	return s.settings.color_glyphs && f.colr != nil && (colr_draws(s, f, gid) || cbdt_has(f.colr, gid))
+}
 
-// No bitmap rasterizer here: text is drawn by Slug from the backend's outlines.
+// Only color glyphs here: other text is drawn by Slug from the backend's outlines.
 @(private)
 rasterize :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, x: f32, fg: [3]u8, probe_fg: bool, key: u64) -> (Glyph_Image, bool) {
+	f := face_ptr(s, face)
+	if f != nil && f.color && s.settings.color_glyphs && size > 0 {
+		if colr_draws(s, f, gid) {
+			if g, uses_fg, ok := rasterize_colr(s, face, f, gid, size, x, fg, key); ok { return g, uses_fg }
+		} else if bm, ok := cbdt_draw(f.colr, gid, size); ok {
+			return colr_put(s, bm), false
+		}
+	}
 	return Glyph_Image{page = -1}, false
 }
