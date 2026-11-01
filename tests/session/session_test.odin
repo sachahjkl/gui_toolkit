@@ -119,6 +119,37 @@ the_virtual_screen_answers_for_the_machine :: proc(t: ^testing.T) {
 }
 
 @(test)
+the_pointer_comes_and_leaves :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := session.start(t, {build = counter_app, user = &app, no_renderer = true})
+	session.hover(s, "add")
+	testing.expect_value(t, session.hot_name(s), "add")
+	session.leave(s)
+	testing.expect_value(t, session.hot_name(s), "")
+}
+
+// A frame against a reference image: what it is compared with is a file; a frame that differs fails (here: in its count of pixels).
+@(test)
+a_frame_looks_like_its_reference :: proc(t: ^testing.T) {
+	Run :: struct { other: bool }
+	r: Run
+	s := session.start(t, {user = &r, size = {100, 100}, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(50), height = ui.px(50), bg = r.other ? ui.Color{0, 1, 0, 1} : ui.Color{1, 0, 0, 1}})
+		ui.build_box({.Draw_Background}, "###box")
+	}})
+	session.save_png(s, "ref.png")
+	path := session.out_path(s, "ref.png")
+	session.expect_like(s, path)
+	want, ok := session.load_png(s, path)
+	testing.expect(t, ok && want.width == 100, "it reads back")
+	r.other = true
+	session.frames(s, 2)
+	testing.expect_value(t, session.count_different(session.capture(s), want), 50 * 50)
+}
+
+@(test)
 a_wait_ends_when_the_state_holds :: proc(t: ^testing.T) {
 	Later :: struct { show: bool }
 	st: Later

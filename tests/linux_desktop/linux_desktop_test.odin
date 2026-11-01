@@ -57,11 +57,11 @@ open :: proc(title: string, size := [2]int{300, 200}) -> ^platform.Window {
 @(private = "file") window_id :: proc(w: ^platform.Window) -> u64 { return platform.native_surface_handles(w).window }
 
 // The events of a pumped window, kept: each poll hands out a slice valid until the next.
-@(private = "file")
 // How long a pump waits for the server each time round.
 @(private = "file") PUMP_WAIT_MS :: 5
 @(private = "file") SERVER_SENDS_CLICK :: 200 * time.Millisecond
 
+@(private = "file")
 Seen :: struct { events: [dynamic]platform.Event }
 
 @(private = "file")
