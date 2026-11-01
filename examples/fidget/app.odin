@@ -3,6 +3,7 @@
 package fidget
 
 import "core:time"
+import "../../devtools"
 import "../../draw"
 import "../../font"
 import "../../platform"
@@ -136,6 +137,7 @@ Note :: struct { pos, size: [2]f32, title: string, kind: int }
 // App
 
 App :: struct {
+	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol
 	win:      ^platform.Window,
 	r:        render.Renderer,
 	fonts:    font.State,

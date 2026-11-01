@@ -481,6 +481,23 @@ image :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: Rect = {}, tint:
 	image_corners(c, tex, dst, src, tint, {radius, radius, radius, radius})
 }
 
+// The part of a picture of `size` that fills `dst` without distorting it, centred (CSS object-fit: cover).
+cover_src :: proc(size: Vec2, dst: Rect) -> Rect {
+	d := rect_size(dst)
+	if size.x <= 0 || size.y <= 0 || d.x <= 0 || d.y <= 0 { return {} }
+	k := min(size.x / d.x, size.y / d.y)   // texels per unit
+	part := d * k
+	at := (size - part) * 0.5
+	return {at, at + part}
+}
+
+// `image` filling `dst`, cropped rather than distorted (CSS object-fit: cover).
+image_cover :: proc(c: ^Context, tex: render.Texture, dst: Rect, tint: Color = WHITE, radius: f32 = 0) {
+	ts := render.texture_size(c.renderer, tex)
+	if ts.x == 0 { return }
+	image(c, tex, dst, cover_src({f32(ts.x), f32(ts.y)}, dst), tint, radius)
+}
+
 // `image` with per-corner radii (top-left, bottom-left, top-right, bottom-right).
 image_corners :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: Rect, tint: Color, radii: [4]f32) {
 	ts := render.texture_size(c.renderer, tex)

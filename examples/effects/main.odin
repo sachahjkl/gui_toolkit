@@ -18,12 +18,14 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import "../../devtools"
 import "../../draw"
 import "../../font"
 import "../../platform"
 import "../../render"
 
 App :: struct {
+	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol
 	win:     ^platform.Window,
 	r:       render.Renderer,
 	fonts:   font.State,
@@ -51,7 +53,8 @@ photo_pixel :: proc(x, y, w, h: int) -> [4]u8 {
 	// a few discs and a diagonal bar
 	for i in 0 ..< 7 {
 		cx, cy := f32(i * 37 % 100) / 100, f32(i * 61 % 100) / 100
-		if (u - cx) * (u - cx) + (v - cy) * (v - cy) < 0.012 { c = draw.hsv(f32(i) / 7, 0.8, 0.9) }
+		dx := (u - cx) * f32(w) / f32(h)   // (round in pixels, on a texture wider than tall)
+		if dx * dx + (v - cy) * (v - cy) < 0.012 { c = draw.hsv(f32(i) / 7, 0.8, 0.9) }
 	}
 	if abs(v - (1 - u)) < 0.02 { c = {0.02, 0.02, 0.05, 1} }
 	enc :: proc(l: f32) -> u8 { s := l <= 0.0031308 ? l * 12.92 : 1.055 * math.pow(l, 1 / 2.4) - 0.055; return u8(clamp(s, 0, 1) * 255 + 0.5) }
@@ -119,7 +122,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 			one := [1]draw.Filter{fs[i]}
 			// the photo does not change: its filtered result is kept (the animated blur's is not: its key changes)
 			if draw.push_effects(dc, box, draw.Layer_Effects{alpha = 1, filters = one[:], cache_id = u64(100 + i), cache_key = u64(app.photo), cache_anchor = box.min}) {
-				draw.image(dc, app.photo, box, {}, draw.WHITE, 8 * s)
+				draw.image_cover(dc, app.photo, box, draw.WHITE, 8 * s)
 			}
 			draw.pop_layer(dc)
 			draw.text(dc, app.ui, 12 * s, {p.x, box.max.y + 15 * s}, draw.hex(0x9aa3c7ff), names[i])
@@ -152,7 +155,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		for i in 0 ..< n {
 			p := r.min + {f32(i % cols2) * (tw + 6 * s), f32(i / cols2) * (th + 20 * s)}
 			box := draw.Rect{p, p + {tw, th}}
-			draw.image(dc, app.photo, box, {}, draw.WHITE, 6 * s)
+			draw.image_cover(dc, app.photo, box, draw.WHITE, 6 * s)
 			inner := draw.rect_pad(box, -6 * s)
 			draw.push_effects(dc, inner, draw.Layer_Effects{alpha = 1, blend = draw.Blend_Mode(i)})
 			a, b := draw.hex(0xff922bff), draw.hex(0x5c7cfaff)
@@ -192,7 +195,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 				}
 				draw.push_clip_polygon(dc, pts[:], k == 2)
 			}
-			draw.image(dc, app.photo, {c - rad, c + rad})
+			draw.image_cover(dc, app.photo, {c - rad, c + rad})
 			draw.pop_clip(dc)
 			draw.pop_transform(dc)
 			draw.text(dc, app.ui, 12 * s, {c.x - 30 * s, r.max.y - 4 * s}, draw.hex(0x9aa3c7ff), k == 0 ? "ellipse" : (k == 1 ? "nonzero" : "even-odd"))
@@ -323,8 +326,11 @@ main :: proc() {
 	free_all(context.temp_allocator)
 	app.start = time.tick_now()
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
+	app.devtools = devtools.start_from_env(app.win, "gui_toolkit effects")
+	defer devtools.stop(app.devtools)
 	platform.show_window(app.win)
 	for !platform.is_closed(app.win) {
+		devtools.service(app.devtools, nil, &app.r)
 		platform.poll_events(app.win, wait = app.freeze >= 0 && app.frames > 2 && app.bench_n == 0)
 		frame(app)
 	}

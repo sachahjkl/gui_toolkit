@@ -11,6 +11,30 @@ import "../draw"
 set_rounding :: proc(s: ^State, r: f32) { s.rounding = clamp(r, 0, 2) }
 rounding :: proc(s: ^State) -> f32 { return s.rounding }
 
+// Scroll bars that show only while the pointer is over their box, while one is held, and for a moment after
+// scrollbar_reveal. Off by default: a bar always shows. Still there to grab as soon as the pointer comes.
+set_scrollbar_autohide :: proc(s: ^State, on: bool) { s.scrollbar_autohide = on }
+
+// Scrolled by something other than the pointer (the keyboard): its bar shows for a moment, wherever the pointer is.
+scrollbar_reveal :: proc(b: ^Box) {
+	if b == nil { return }
+	b.bar_until = now_ms() + SCROLLBAR_REVEAL_MS
+}
+
+// How much a box's bar shows, 0..1.
+scrollbar_opacity :: proc(s: ^State, b: ^Box) -> f32 { return s.scrollbar_autohide ? b.bar_t : 1 }
+
+// Where a box's bar is heading, each build (update_animations).
+@(private)
+scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
+	inside := s.mouse_valid && s.mouse.x >= b.rect.min.x && s.mouse.x < b.rect.max.x && s.mouse.y >= b.rect.min.y && s.mouse.y < b.rect.max.y
+	if inside || s.active_key[.Left] == scrollbar_key(b) { return true }
+	left := b.bar_until - now_ms()
+	if left <= 0 { return false }
+	wake_within(s, int(left) + 1)
+	return true
+}
+
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
 rad :: proc(r: f32) -> f32 { return r * g.rounding }
 
@@ -29,6 +53,8 @@ rad :: proc(r: f32) -> f32 { return r * g.rounding }
 @(private = "file") SCROLLBAR_THUMB_HOT_ALPHA :: 0.4
 @(private = "file") SCROLLBAR_THUMB_HELD_ALPHA :: 0.55
 @(private = "file") SCROLLBAR_KEY_SALT :: 0x5c5c_5c5c
+@(private = "file") SCROLLBAR_REVEAL_MS :: 900
+@(private) SCROLLBAR_HIDDEN_ALPHA :: 0.01   // no more than this: not drawn
 
 @(private)
 scrollbar_key :: proc(b: ^Box) -> Key { return key_from_u64(b.key, SCROLLBAR_KEY_SALT) }
@@ -108,15 +134,17 @@ scrollbar_drag :: proc(s: ^State) {
 draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	track, thumb, ok := scrollbar_geom(b)
 	if !ok { return }
+	shows := scrollbar_opacity(s, b)
+	if shows <= SCROLLBAR_HIDDEN_ALPHA { return }
 	sbk := scrollbar_key(b)
 	hot := s.hot_key == sbk
 	active := s.active_key[.Left] == sbk
 	c := color_from_tags(s, b.tags_key, "text")
 	w := track.max.x - track.min.x
 	if hot || active {
-		tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA
+		tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows
 		draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding)
 	}
-	c.a = active ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)
+	c.a = (active ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
 	draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
 }
