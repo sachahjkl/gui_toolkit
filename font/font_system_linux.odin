@@ -37,6 +37,7 @@ foreign fontconfig {
 	FcPatternAddString    :: proc(p: ^Fc_Pattern, object: cstring, s: cstring) -> c.int ---
 	FcPatternAddInteger   :: proc(p: ^Fc_Pattern, object: cstring, i: c.int) -> c.int ---
 	FcPatternAddCharSet   :: proc(p: ^Fc_Pattern, object: cstring, cs: ^Fc_Char_Set) -> c.int ---
+	FcPatternAddBool      :: proc(p: ^Fc_Pattern, object: cstring, b: c.int) -> c.int ---
 	FcPatternGetString    :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, s: ^cstring) -> Fc_Result ---
 	FcPatternGetInteger   :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, i: ^c.int) -> Fc_Result ---
 	FcPatternGetCharSet   :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, cs: ^^Fc_Char_Set) -> Fc_Result ---
@@ -113,11 +114,13 @@ sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -
 }
 
 @(private)
-sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune) -> (path: string, index: int, ok: bool) {
+sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: rune, emoji := false) -> (path: string, index: int, ok: bool) {
 	if !fc_init() { return }
-	p := fc_pattern(family, weight, style, FONT_STRETCH_NORMAL)
+	// an emoji: a color font, before any other that has the character (DejaVu Sans has its own plain 😀)
+	p := fc_pattern(emoji ? "emoji" : family, weight, style, FONT_STRETCH_NORMAL)
 	if p == nil { return }
 	defer FcPatternDestroy(p)
+	if emoji { FcPatternAddBool(p, "color", 1) }
 	cs := FcCharSetCreate()
 	if cs == nil { return }
 	FcCharSetAddChar(cs, u32(r))
