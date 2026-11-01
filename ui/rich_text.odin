@@ -78,6 +78,8 @@ Rich_Context :: struct {
 	base_font: font.Font_Id,
 	base_size: f32,
 	mono:      font.Font_Id,   // inline code (0: the base font)
+	line_height: f32,          // frame pixels (0: each line as tall as its tallest run). Every line this tall, its baseline
+	                           // from the base font's metrics: a run in another face moves neither (CSS line-height)
 	faces:     ^map[font.Font_Id][4]font.Font_Id,   // rich_set_faces (may be nil)
 }
 
@@ -208,13 +210,22 @@ rich_layout :: proc(c: Rich_Context, runs: []Rich_Run, width: f32, max_lines := 
 		line.height = math.ceil(asc + desc + gap)
 		line.y = len(lines) > 0 ? lines[len(lines) - 1].y + lines[len(lines) - 1].height : 0
 		line.baseline = line.y + math.round(gap * 0.5 + asc)
+		if c.line_height > 0 {
+			m := font.metrics(c.fonts, c.base_font, c.base_size)
+			line.height = c.line_height
+			line.baseline = line.y + math.round((c.line_height - m.ascent - m.descent) * 0.5 + m.ascent)
+		}
 		append(&lines, line)
 		if le >= total { break }
 		ls = le
 	}
 	if len(lines) == 0 {
 		m := font.metrics(c.fonts, c.base_font, c.base_size)
-		append(&lines, Rich_Line{height = math.ceil(m.line_height), baseline = math.round(m.line_gap * 0.5 + m.ascent)})
+		if c.line_height > 0 {
+			append(&lines, Rich_Line{height = c.line_height, baseline = math.round((c.line_height - m.ascent - m.descent) * 0.5 + m.ascent)})
+		} else {
+			append(&lines, Rich_Line{height = math.ceil(m.line_height), baseline = math.round(m.line_gap * 0.5 + m.ascent)})
+		}
 	}
 	// "…" on the last line when the text went on: pieces cut back until it fits
 	if l.truncated {
@@ -393,7 +404,7 @@ rich_hash_value :: #force_inline proc(h: ^u64, v: $T) {
 @(private = "file")
 rich_hash_tail :: proc(h: ^u64, c: Rich_Context, width: f32, max_lines: int, align: Text_Align) {
 	rich_hash_value(h, width); rich_hash_value(h, max_lines); rich_hash_value(h, align)
-	rich_hash_value(h, c.base_font); rich_hash_value(h, c.base_size); rich_hash_value(h, c.mono); rich_hash_value(h, c.faces)
+	rich_hash_value(h, c.line_height); rich_hash_value(h, c.base_font); rich_hash_value(h, c.base_size); rich_hash_value(h, c.mono); rich_hash_value(h, c.faces)
 }
 
 @(private)
@@ -549,7 +560,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // `runs` (and their strings) need only live through the build: the box keeps a copy for drawing.
 // `version` (not 0): the runs are the same as at an earlier build with the same version (an application's counter of a
 // message's text, say): the layout is found by it, not by hashing every run (what a long document did at each frame).
-rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u64 = 0) -> (res: Rich_Result) {
+rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u64 = 0, line_height: f32 = 0) -> (res: Rich_Result) {
 	s := g
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
@@ -578,6 +589,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		if r.link != "" { d.runs[i].link = strings.clone(r.link, frame_allocator()) }
 	}
 	d.ctx = rich_ctx(b)
+	d.ctx.line_height = line_height
 	d.max_lines = max_lines
 	if version != 0 { d.version = ((u64(b.key) * HASH_GOLDEN_RATIO_64) ~ version) | 1 }
 	d.link_color = color("link")
