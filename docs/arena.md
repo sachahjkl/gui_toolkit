@@ -1,6 +1,6 @@
 # arena: lifetime and ownership primitives
 
-`import "gui_toolkit/arena"` (or the relative path of the submodule). Pure Odin (`core:mem`, `core:mem/virtual`), any
+`import "gt:arena"` (or the relative path of the submodule). Pure Odin (`core:mem`, `core:mem/virtual`), any
 target. Two primitives an application builds its object graph on: a scope tree and a generational handle pool.
 
 ## Scope: an arena and a cleanup list, in a tree

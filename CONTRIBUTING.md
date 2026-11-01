@@ -13,7 +13,7 @@
   **`ui.rich_paragraph`**: mixed faces, code and links in one wrapping paragraph.
   ```
 
-  `type` is `Added`, `Changed`, `Fixed` or `Removed`; the text is the one entry, as it will read in the list.
+  `type` is `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or `Security`; the text is the one entry, as it will read in the list.
   `powershell -File tools\changelog.ps1 -New -Type Added -Subject rich-paragraph -Text "..."` writes it;
   `tools\changelog.ps1 -Check` (run by the CI) checks every fragment.
 - **The version is not a branch's business**: `ui/version.odin` and the README's badge say the last published version

@@ -1,8 +1,8 @@
-# fsx: file helpers with the guarantees a store relies on
+# fsx: file helpers
 
-`import "gui_toolkit/fsx"` (or the relative path of the submodule). The whole-file and positional file operations a
-persistent store needs, with the durability and concurrency guarantees it relies on, on every system
-(`fsx_windows.odin`, `fsx_unix.odin`), plus the directory helpers an application needs to manage its own files.
+`import "gt:fsx"` (or the relative path of the submodule). For programs that keep data on disk: replacing a file atomically,
+reading part of a file while another thread replaces it, and managing directories, the same on Windows and POSIX
+(`fsx_windows.odin`, `fsx_unix.odin`).
 
 The interface is platform-neutral: paths are plain strings, data is `[]byte`, a directory entry is `Dir_File`, a path's
 kind is the opaque `Path_Kind`, and a file's modification time is an opaque `i64` stamp that is only ever compared to

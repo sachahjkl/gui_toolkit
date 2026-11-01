@@ -1,6 +1,6 @@
 # testkit: reusable building blocks for an application's tests
 
-`import "gui_toolkit/testkit"` (or the relative path of the submodule). The parts of a test harness that are pure Odin and
+`import "gt:testkit"` (or the relative path of the submodule). The parts of a test harness that are pure Odin and
 not tied to any one application: a block of test-server ports, and a reader of the process's memory and handle counts.
 The package carries no product name — an application passes in its own environment variable and defaults.
 
@@ -23,7 +23,7 @@ base := testkit.base_port(&PORTS)                         // MYAPP_TEST_BASE_POR
 The block's ports share their first three digits and differ only in the last (8765 ..< 8770): `url` scans for
 `":876<d>"` after a host character — not inside a longer number, not a path — and rewrites `d` to the run's block. On the
 default block it returns its argument unchanged. Results are interned (kept for the life of the process), so the same
-address is rewritten once and may be handed to anything that keeps it. `test_all` gives each run its base port through the
+address is rewritten once and may be handed to anything that keeps it. A test runner gives each run its base port through the
 environment; a test harness in another language writes the default ports and lets the running tool rewrite them.
 
 ## The process's state

@@ -30,6 +30,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # what the documentation names must exist
+      - name: Documentation (tools/doc_check.mjs)
+        run: node tools/doc_check.mjs
+
       # a few seconds: every fragment of changelog.d is well formed and none was already released, ui/version.odin is
       # the last published version (only tools/release.ps1 writes it); then the script's own tests
       - name: CHANGELOG fragments (tools/changelog.ps1 -Check)

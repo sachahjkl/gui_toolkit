@@ -1,19 +1,17 @@
 # Text backends (`font` package)
 
-The `font` package shapes text, analyses it (scripts, bidi, line breaks) and reads faces (coverage, metrics, outlines)
-through a **backend**, and finds the system's fonts through the **platform**. Everything else (cascades and
-`unicode-range`, the word cache, clusters and carets, letter / word spacing, the glyph atlas, Slug, the COLR
-interpreter, the emoji font) is the same code whatever the backend.
+The `font` package gets its shaping and font reading from a **backend**, either DirectWrite or a Rust library, and finds
+installed fonts through the **platform**. Everything else in the package is the same code whichever backend is used.
 
 | Backend  | What it is                                                                 | Build                               |
 |----------|----------------------------------------------------------------------------|-------------------------------------|
-| `dwrite` | DirectWrite: `IDWriteTextAnalyzer` (GetGlyphs / GetGlyphPlacements, AnalyzeScript, AnalyzeBidi, AnalyzeLineBreakpoints), `IDWriteFontFace` | default (Windows) |
+| `dwrite` | DirectWrite: `IDWriteTextAnalyzer` (GetGlyphs / GetGlyphPlacements, AnalyzeScript, AnalyzeBidi, AnalyzeLineBreakpoints), `IDWriteFontFace` | default, Windows only |
 | `native` | Fontations (`read-fonts` font model: faces, cmap, metrics, outlines, variations, COLR / CPAL), HarfRust (shaping), ICU4X (`icu_segmenter` line breaks with dictionaries, `icu_properties` data for `unicode-bidi`) in a static Rust library `native/text` | `-define:FONT_BACKEND=native` |
 
 `-define:FONT_BACKEND=native` links `build/text/gt_text.lib` (built by `tools/build_text.ps1`) and makes `native` the
 default; `Settings.backend` still picks either one for a `State` (read by `init` only), which is how the
 `text_backends` test and `tools/text_bench` compare them in one process. Without the define, asking for `native` gives
-`dwrite`. `font.backend(s)` tells which one a `State` uses; `font.backend_available(b)` whether this build has it.
+`dwrite`, and on Linux no text is shaped at all: its builds always pass the define. `font.backend(s)` tells which one a `State` uses; `font.backend_available(b)` whether this build has it.
 
 ## The interface (`font/backend.odin`)
 
@@ -34,7 +32,7 @@ default; `Settings.backend` still picks either one for a `State` (read by `init`
 
 `System_Fonts` is the platform's: `fallback` (faces for characters no cascade entry has) and `families` (installed
 families, `font.system_families`). On Windows it is DirectWrite whatever the backend (`IDWriteFontFallback`,
-the system collection); elsewhere it is a stub (`system_other.odin`, TODO fontconfig / CoreText).
+the system collection); on Linux fontconfig, on macOS CoreText, elsewhere nothing (`system_other.odin`).
 
 Faces are always opened by the platform first: DirectWrite's face is what the atlas rasterizes (hinted coverage) and
 Direct2D draws in color. The native backend then opens the same bytes (`native_source_windows.odin`: the memory of a
@@ -54,8 +52,8 @@ Faces are immutable and shared by threads; shape plans are cached per face (32),
 **One Rust static library per program.** Each Rust static library carries its own copy of Rust's standard library: two
 in one program collide at link time (`std::panicking::EMPTY_PANIC` multiply defined). A program with Rust code of its own
 builds `native/text` into its library as a dependency (the `gt_*` functions stay exported) and builds with
-`-define:FONT_NATIVE_LINK=false`: the `font` package then links nothing itself. Wren does this with the `text` feature
-of its assembly crate `native/wren_native` (one Cargo workspace, one static library).
+`-define:FONT_NATIVE_LINK=false`: the `font` package then links nothing itself. An application that links its own Rust library
+adds the crate to it this way.
 
 The recipe, for an application with a crate of its own (opencode native does it for Linux):
 
@@ -78,8 +76,7 @@ workspace.
 
 Built like Wren's `native/` workspace: exact versions and `Cargo.lock` (`--locked`), fat LTO, one codegen unit, the
 library's `rust_eh_personality` renamed so it links next to other Rust static libraries. The toolkit builds it itself
-(it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend; Wren links it
-through the toolkit's `build/text`.
+(it already builds Rust: naga for the shaders), so any application of the toolkit gets the backend.
 
 ## Platforms
 
@@ -96,10 +93,10 @@ no COLR color glyphs yet.
 | macOS | CoreText (`font_system_darwin.odin`) | CTFontCreateWithName + symbolic traits (bold, italic) | CTFontCreateForString | CTFontManagerCopyAvailableFontFamilyNames |
 | others | none (`system_other.odin`) | fails | none | empty |
 
-The Linux and macOS services are written against the documented C APIs and pass `odin check`; they have not run on a
-Linux machine or a Mac yet. A face of a macOS collection (.ttc) is found by its PostScript name
-(`gt_face_postscript_name`, `gt_file_face_count`). On Linux and macOS `cargo build --release` in `native/text`
-gives `build/text/libgt_text.a` (the script is Windows-only).
+The Linux service runs in the CI and on real desktops. The macOS one is written against the documented C API and has
+never run on a Mac. A face of a macOS collection (.ttc) is found by its PostScript name
+(`gt_face_postscript_name`, `gt_file_face_count`). On Linux and macOS `cargo build --release --locked --lib --target-dir ../../build/text/target`
+in `native/text`, then a copy of `libgt_text.a` to `build/text/` (`tools/linux_ci.sh` does it; the script is Windows-only).
 
 ## Comparing the backends
 
@@ -128,7 +125,4 @@ font-feature-settings) replaced DirectWrite's default features, so kerning was l
 
 ## Not done yet
 
-- A bitmap rasterizer and color glyphs (COLR from `gt_face_table`) for the platforms without Direct2D;
-  fontconfig / CoreText for system fonts and the fallback.
-- Path B (HarfBuzz in C++ with SheenBidi and libunibreak) is not built; `tools/text_bench` is the harness to compare it
-  with the same corpus when it is.
+- A bitmap rasterizer and color glyphs (COLR from `gt_face_table`) for the platforms without Direct2D.

@@ -14,9 +14,8 @@ The design (box tree, keyed persistence, size-kind layout, signals, tag-based th
 
 ![fidget, the widget gallery](docs/screenshots/controls.png)
 
-No dependencies beyond Odin's `core:` and `vendor:` (`directx/d3d11`) and the platform (DirectWrite for text). The exes are self-contained (icon font compiled in, fallback text fonts for Wine): the widget gallery is
-1.3 MB, the todo example 950 KB; windows show in ~0.25 s, idle at 0 % CPU, and a frame of the gallery takes under 1 ms
-of CPU (`fidget --bench=300`).
+On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the system (Direct3D 11, DirectWrite). On Linux, wgpu-native and a small Rust library for text are linked into the program. Programs are one file (icon font and fallback text fonts compiled in): the widget gallery is
+2.4 MB, the todo example 2 MB. They idle at 0 % CPU, and a frame of the gallery takes under 1 ms of CPU (`fidget --bench=300`).
 
     build.bat fidget     # the widget gallery           ->  build\fidget.exe
     build.bat todo       # a todo app                   ->  build\todo.exe
@@ -32,7 +31,6 @@ fontconfig): `tools/fetch_wgpu.sh` puts wgpu-native beside Odin, `tools/linux_ci
 examples and runs the windowless tests; [opencode native](https://github.com/sachahjkl/opencode_native) ships a Linux build.
 **New project? Start with [docs/getting-started.md](docs/getting-started.md)**: the toolkit as a submodule, a window in a
 few lines (`examples/hello`), the backends and options, the tests, the versions, and the pitfalls.
-Prebuilt binaries are attached to the [GitHub releases](https://github.com/sachahjkl/gui_toolkit/releases).
 
 ## Screenshots
 
@@ -45,7 +43,7 @@ Prebuilt binaries are attached to the [GitHub releases](https://github.com/sacha
 | ![Settings dialog](docs/screenshots/settings.png) | ![Toasts](docs/screenshots/toasts.png) |
 | **Settings**: theme, zoom, animations, toast position (click a cell) | **Toasts**: 8 anchor positions, border tinted by kind |
 | ![About dialog](docs/screenshots/about.png) | ![Light theme](docs/screenshots/light.png) |
-| **About** (F1), Dracula theme | **Daylight** theme (8 themes, cross-fading) |
+| **About** (F1), Dracula theme | **Daylight** theme (19 themes, cross-fading) |
 | ![Bootstrap theme](docs/screenshots/bootstrap.png) | ![Compact density](docs/screenshots/compact.png) |
 | **Bootstrap** theme: gradient finish, embossed text, focus glow | **Compact** density: more rows, same text size |
 
@@ -88,14 +86,16 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 | Package | Role |
 |---|---|
-| `platform` | Win32 window, DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
-| `render` | D3D11 (default) or WebGPU (`-define:TOOLKIT_RENDER=wgpu`, experimental: `docs/webgpu.md`; the shaders are written once, in WGSL). One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners), glyphs, RGBA images (mipmapped, premultiplied), gradients and analytic shadows, with an optional 2D affine transform and rounded clip per instance; retained instances replayed from persistent GPU heaps. Colors are given linear; a blend space chosen per renderer (and per layer) says where they mix: linear light, or sRGB values as web browsers do. Optional translucent window (DirectComposition: fp16 scRGB, or 8-bit sRGB). A separate 2D canvas engine (D3D11) replays recorded canvas drawing on the GPU: [docs/canvas.md](docs/canvas.md). |
-| `font` | Text on DirectWrite: system / file / memory faces, cascades with per-character fallback (`unicode-range`, then the system fallback), shaping (OpenType features, ligatures, kerning, complex scripts) with a thread-safe word cache, bidi (UAX #9), line breaks (UAX #14), carets through clusters, grayscale glyph bitmaps at subpixel positions and color glyphs (emoji) in atlas pages, or (`Settings.text_renderer = .Slug`) glyphs drawn on the GPU from their outline curves with the [Slug](https://github.com/EricLengyel/Slug) algorithm (no bitmaps: sharp under any scale, rotation or skew). Embedded fallback fonts (Roboto, Inconsolata). See [docs/text.md](docs/text.md). |
+| `platform` | The window on Win32, X11 and Wayland: DPI, events, clipboard, cursors, OS animation preference. Live-resize safe (`poll_events` is re-entrancy guarded). |
+| `render` | Direct3D 11 on Windows, WebGPU on Linux (`docs/webgpu.md`; `-define:TOOLKIT_RENDER=wgpu` tries it on Windows too; the shaders are written once, in WGSL). One instanced-quad pipeline draws rounded rects / borders / shadows (SDF, circular or squircle corners), glyphs, RGBA images (mipmapped, premultiplied), gradients and analytic shadows, with an optional 2D affine transform and rounded clip per instance; retained instances replayed from persistent GPU heaps. Colors are given linear; a blend space chosen per renderer (and per layer) says where they mix: linear light, or sRGB values as web browsers do. Optional translucent window (DirectComposition: fp16 scRGB, or 8-bit sRGB). A separate 2D canvas engine (D3D11) replays recorded canvas drawing on the GPU: [docs/canvas.md](docs/canvas.md). |
+| `font` | Text on DirectWrite on Windows, on a native backend (Fontations, HarfRust, ICU4X) on Linux: system / file / memory faces, cascades with per-character fallback (`unicode-range`, then the system fallback), shaping (OpenType features, ligatures, kerning, complex scripts) with a thread-safe word cache, bidi (UAX #9), line breaks (UAX #14), carets through clusters, grayscale glyph bitmaps at subpixel positions and color glyphs (emoji) in atlas pages, or (`Settings.text_renderer = .Slug`) glyphs drawn on the GPU from their outline curves with the [Slug](https://github.com/EricLengyel/Slug) algorithm (no bitmaps: sharp under any scale, rotation or skew). Embedded fallback fonts (Roboto, Inconsolata). See [docs/text.md](docs/text.md). |
 | `draw` | Rect / glyph run / image primitives; clips (scissor, rounded, ellipse, polygon; transformed), alpha and 2D affine transform stacks, layers with filters (blur, color matrices, drop shadow), blend modes and backdrops, gradients, box shadows, retained pictures (text included: shaped runs, color glyphs) over the renderer. See [docs/draw.md](docs/draw.md). |
 | `ui` | The toolkit: boxes, keys, layout, signals, theme, animation, widgets, popups, zoom. |
 | `flate` | DEFLATE / zlib / gzip as streams (any chunk size in, the output it allows out), dynamic Huffman codes; pure Odin, any platform. See [docs/flate.md](docs/flate.md). |
 | `fsx` | File helpers with the guarantees a persistent store relies on, on every system (`fsx_<os>.odin`): atomic write (`.tmp` renamed over the file), positional reads, directory listing and creation, recursive delete that avoids the Windows shell, `path_kind` (links never followed), `temp_dir`. Platform-neutral interface (no Windows or POSIX type crosses it). See [docs/fsx.md](docs/fsx.md). |
 | `i18n` | The text an application shows, in one place (`i18n.tr`): a procedure group with a plain, a translator-context and a count-dependent form; the English literal is the key, a call is free (same bytes, no lookup), and a language can later swap in one flat table. Pure Odin, any target. See [docs/i18n.md](docs/i18n.md). |
+| `devtools` | The Chrome DevTools Protocol on 127.0.0.1 (`TOOLKIT_DEVTOOLS=<port>`): a program driven by scripts and inspected in Chrome's DevTools. See [docs/devtools.md](docs/devtools.md). |
+| `dbus` | The D-Bus calls the Linux side needs. |
 | `config` | A typed preference registry — an about:config for any application (`config.Prefs`): named, typed, documented, bounded preferences with four layers (default < user < command line < policy, policy locks), prefix observers, atomic save of user changes only, snapshots, and titles / summary / search for a settings UI. Pure Odin, any target. See [docs/config.md](docs/config.md). |
 | `arena` | Lifetime and ownership primitives: a `Scope` tree (a growing virtual-memory arena plus reverse-order cleanups, closing a scope closes its children) and a generational `Pool` (fixed-address slots addressed by a `Handle` that can never dangle). Pure Odin, any target. See [docs/arena.md](docs/arena.md). |
 | `instance` | One running copy of an application per named resource: the first start owns a name, a second start hands an opaque message to it and comes forward instead of opening a second copy. Platform-neutral interface (a name, an identity token, `[]byte` messages, a handler); named mutex + message window on Windows, lock file + Unix socket on POSIX (`instance_<os>.odin`). See [docs/instance.md](docs/instance.md). |
@@ -105,7 +105,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 - **Layout**: pixels / text / percent / children-sum sizes with strictness, floating boxes, cross-axis alignment,
   wrapping rows (`flow`), borders kept out of the content (border-box), scrolling with overlay scrollbars
-  (at the right edge, or at the left one with `.Scrollbar_Left`).
+  (at the right edge, or at the left one with `.Scrollbar_Left`; `set_scrollbar_autohide` shows them only under the pointer).
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
 - **Theme**: `(tags -> color)` patterns, `apply_palette` expands an 11-color palette (dark and light included);
@@ -152,7 +152,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
-  Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms now (`-define:RENDER_PROBE=true` prints
+  Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms with this wait, and 34 ms from a key to the screen in opencode native (`-define:RENDER_PROBE=true` prints
   it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
   `platform.wait_handle(w, render.frame_waitable(&r))` waits the same way while taking input as it arrives (time-stamped:
   `Event.stamp`).
@@ -192,7 +192,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   Layouts over the maximize button on Windows 11, system menu, resize along the top edge), maximized windows stay on
   their monitor (auto-hidden taskbars still come up). Caption buttons with the system's sizes, glyphs and colours.
   `platform.set_fullscreen`. Try `fidget --integrated`.
-- **Cursors**: every CSS cursor (`platform.Cursor`, `cursor_from_css`); on Windows the system's own when it has one, the
+- **Cursors**: every CSS cursor (`platform.Cursor`, `cursor_from_css`); on Windows the system's own when it has one, on Wayland the compositor's shapes (on X11 the pointer does not change yet), the
   others (grab, grabbing, zoom, cell, copy, alias...) drawn in the user's pointer scheme and size; custom cursors from
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
   also during a drag. Try `examples/cursors`.
@@ -210,7 +210,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   the wheel drops an anchor and the pointer's distance from it scrolls, the farther the faster, along a tunable
   acceleration curve; hold or toggle modes, a direction cursor and an anchor marker ([docs/autoscroll.md](docs/autoscroll.md)).
 
-Not there yet: a macOS backend; on Linux, pixel tests and a windowed CI.
+Not there yet: a macOS backend; off Windows, color glyphs; on X11, cursors; on Wayland, fractional scaling; on Linux, pixel tests (its CI runs the other tests, and the backends against real X11 and Wayland servers).
 
 ## Testing
 
