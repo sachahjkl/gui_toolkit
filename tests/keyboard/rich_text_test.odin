@@ -384,11 +384,16 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 	defer close(f)
 	linear :: proc(v: u8) -> f64 { c := f64(v) / 255; return c <= 0.03928 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4) }
 	luma :: proc(px: []u8, at: int) -> f64 { return 0.2126 * linear(px[at]) + 0.7152 * linear(px[at + 1]) + 0.0722 * linear(px[at + 2]) }
-	palettes := []ui.Palette{ui.PALETTE_MIDNIGHT, ui.PALETTE_DAYLIGHT, ui.PALETTE_GRAPHITE, ui.PALETTE_NORD, ui.PALETTE_DRACULA, ui.PALETTE_AMBER, ui.PALETTE_AERO, ui.PALETTE_BOOTSTRAP, ui.PALETTE_GRUVBOX, ui.PALETTE_GRUVBOX_LIGHT, ui.PALETTE_NAYSAYER, ui.PALETTE_SOLARIZED, ui.PALETTE_SOLARIZED_LIGHT}
 	f.width = 400
-	f.runs = {{text = "HH", style = {size = 48, color = {0.9, 0.75, 0.48, 1}}}, {text = " x "}, {text = "HH", style = {size = 48, color = {0.9, 0.75, 0.48, 1}}}}
 	f.needle = "HH"
-	for p, n in palettes {
+	gold := draw.Color{0.9, 0.75, 0.48, 1}
+	// large letters reach their full colour; those of the text one reads are thin, and what counts
+	count := len(ui.NAMED_PALETTES)
+	for run in 0 ..< 2 * count {
+		np := ui.NAMED_PALETTES[run % count]
+		size: f32 = run < count ? 48 : 15
+		p, name := np.palette, np.name
+		f.runs = {{text = "HH", style = {size = size, color = gold}}, {text = " x "}, {text = "HH", style = {size = size, color = gold}}}
 		ui.apply_palette(&f.theme, p)
 		f.clear = draw.hex(p.bg)   // what a window of this palette is painted with
 		delete(frame(f))
@@ -410,9 +415,9 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 				}
 			}
 			// (the text's own colour under the dark letters would show at their edges)
-			testing.expectf(t, bright <= bg + 0.01, "palette %d: no halo: %.3f on a background of %.3f", n, bright, bg)
+			testing.expectf(t, bright <= bg + 0.01, "%s at %.0f: no halo: %.3f on a background of %.3f", name, size, bright, bg)
 			contrast := (bg + 0.05) / (dark + 0.05)
-			testing.expectf(t, contrast >= 4.5, "palette %d, %s match: contrast %.1f (background %.3f, letters %.3f)", n, which == 0 ? "current" : "other", contrast, bg, dark)
+			testing.expectf(t, contrast >= 4.5, "%s at %.0f, %s match: contrast %.1f (background %.3f, letters %.3f)", name, size, which == 0 ? "current" : "other", contrast, bg, dark)
 		}
 	}
 }
