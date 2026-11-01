@@ -2,6 +2,7 @@
 package platform
 
 import "base:runtime"
+import "core:os"
 import "core:strings"
 import "core:time"
 import "core:unicode/utf16"
@@ -215,6 +216,25 @@ outer_size :: proc(w: ^Window, cw, ch: int, dpi: u32) -> (int, int) {
 }
 
 // Resize the window so its client area is `size` logical pixels (scaled by the window's DPI).
+// A command line split as the system does, in UTF-8.
+args_from_command_line :: proc(line: win.wstring, allocator := context.allocator) -> []string {
+	n: i32
+	argv := win.CommandLineToArgvW(line, &n)
+	if argv == nil { return nil }
+	defer win.LocalFree(argv)
+	args := make([]string, int(n), allocator)
+	for i in 0 ..< int(n) { args[i], _ = win.wstring_to_utf8(argv[i], -1, allocator) }
+	return args
+}
+
+// os.args comes from the C runtime's main, whose arguments went through the ANSI code page: "Łódź" arrives as "L\xf3dz" and
+// "Привет" as "??????". Any program that opens a window gets them from the system instead, before its main.
+@(init, private = "file")
+args_utf8 :: proc "contextless" () {
+	context = runtime.default_context()
+	if args := args_from_command_line(win.GetCommandLineW()); len(args) > 0 { os.args = args }
+}
+
 set_size :: proc(w: ^Window, size: [2]int) {
 	if w.offscreen {
 		// no window to resize: set the client size the app renders at (already in physical pixels for the offscreen path)

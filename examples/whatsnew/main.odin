@@ -49,6 +49,7 @@ App :: struct {
 	slept:   bool,
 	page:    Page,
 	palette: Maybe(Page),   // the page the palette was applied for (Emboss has its own)
+	forced:  string,        // --palette=<name>: that one, on every page (tools/theme_shots.mjs)
 	n:       int,           // paragraphs of this build (their ids)
 	// measures
 	frames, at_once, after_rest: int,
@@ -424,8 +425,10 @@ frame :: proc(app: ^App, inner := false) {
 	want := app.page == .Emboss ? Page.Emboss : Page.Pacing
 	if app.palette != want {
 		app.palette = want
-		ui.apply_palette(&app.theme, want == .Emboss ? ui.PALETTE_BOOTSTRAP : ui.PALETTE_MIDNIGHT, render.blend_space(&app.r))
-		platform.set_dark_title(app.win, want != .Emboss)
+		pal := want == .Emboss ? ui.PALETTE_BOOTSTRAP : ui.PALETTE_MIDNIGHT
+		if p, ok := ui.palette_named(app.forced); ok && app.forced != "" { pal = p }
+		ui.apply_palette(&app.theme, pal, render.blend_space(&app.r))
+		platform.set_dark_title(app.win, pal.dark)
 	}
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
 	t0 := time.tick_now()
@@ -468,6 +471,7 @@ main :: proc() {
 		if strings.has_prefix(a, "--frames=") { frames, _ = strconv.parse_int(a[len("--frames="):]) }
 		if a == "--mistake" { app.mistake = true }
 		if a == "--headless" { headless = true }
+		if strings.has_prefix(a, "--palette=") { app.forced = a[len("--palette="):] }
 		if strings.has_prefix(a, "--page=") {
 			v := a[len("--page="):]
 			if n, ok := strconv.parse_int(v); ok && n >= 1 && n <= len(Page) { app.page = Page(n - 1) }
