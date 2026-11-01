@@ -448,11 +448,11 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			a.cursor = clamp(a.cursor, 0, len(a.buf))
 			a.mark = clamp(a.mark, 0, len(a.buf))
-			if !s.inactive { wake_within(s, CARET_WAKE_MS) }   // caret blink (none in a window in the back)
 		}
 		res.changed = hash_bytes(a.buf[:]) != before_hash
 		cursor_moved := e.moved || res.changed || a.cursor != c0 || a.mark != m0
 		if cursor_moved { a.edited_ms = e.now }
+		if res.focused { caret_wake(s, e.now - a.edited_ms) }
 		if res.changed || cursor_moved { e.lines = edit_lines(&e) }
 
 		// height: as tall as the lines, within the limits (the next layout uses it)

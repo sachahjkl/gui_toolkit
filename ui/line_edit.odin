@@ -27,12 +27,20 @@ Field_Edit :: enum u8 { None, Typing, Deleting, Other }
 FIELD_UNDO_STEPS :: 100
 FIELD_UNDO_MERGE_MS :: 1000.0
 
-// The caret of fields: solid this long after an edit, then on and off; the wake comes twice per phase so that no flip is
-// late by more than half a phase. Its width is the font size over CARET_WIDTH_DIVISOR.
+// The caret of fields: solid this long after an edit, then on and off, a wake at each flip and none between. Its width is the
+// font size over CARET_WIDTH_DIVISOR.
 @(private) CARET_SOLID_MS :: 500
 @(private) CARET_BLINK_MS :: 530
-@(private) CARET_WAKE_MS :: 265
 @(private) CARET_WIDTH_DIVISOR :: 12
+
+// Asks for the wake of the caret's next flip, `since` ms after its last edit (none in a window in the back). A wake at every half
+// phase drew each picture of the caret twice: 3.8 frames a second for 1.9 flips.
+@(private)
+caret_wake :: proc(s: ^State, since: f64) {
+	if s.inactive { return }
+	wake_within(s, CARET_BLINK_MS - int(since) % CARET_BLINK_MS + WAKE_MARGIN_MS)
+}
+
 // A field's text area is at least this wide (and tall), whatever its box.
 @(private) TEXT_VIEW_MIN_PX :: 8
 
@@ -344,11 +352,11 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			f.cursor = clamp(f.cursor, 0, len(f.buf))
 			f.mark = clamp(f.mark, 0, len(f.buf))
-			if !s.inactive { wake_within(s, CARET_WAKE_MS) }   // caret blink (none in a window in the back)
 		}
 		after_hash := hash_bytes(f.buf[:])
 		res.changed = before != len(f.buf) || before_hash != after_hash
 		if res.changed { f.edited_ms = now }
+		if focused { caret_wake(s, now - f.edited_ms) }
 		text = field_string(f)
 		// what is shown, and where the caret and the selection's end are in it
 		shown, cursor, mark := text, f.cursor, f.mark
