@@ -29,7 +29,7 @@ d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, 
 	r.size = size
 	r.transparent = transparent
 	r.space = space
-	create_device(r, .HARDWARE) or_return
+	if !take_preloaded_device(r, warp = false) { create_device(r, .HARDWARE) or_return }   // (device_preload.odin)
 	create_swapchain(r) or_return
 	return init_pipeline(r)
 }
@@ -132,7 +132,7 @@ d3d_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := B
 	r.size = size
 	r.space = space
 	r.warp = warp
-	if !create_device(r, warp ? .WARP : .HARDWARE) {
+	if !take_preloaded_device(r, warp) && !create_device(r, warp ? .WARP : .HARDWARE) {
 		if warp || !create_device(r, .WARP) { return false }
 		r.warp = true
 	}

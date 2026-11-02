@@ -34,6 +34,20 @@ offscreen renderer has no window:
 render.init_offscreen(&r, {w, h}, warp = true, space = .Srgb)   // tests, image export; WARP on Direct3D
 ```
 
+The device can be made before the window exists, on a thread of its own: the first device of a process loads the graphics
+driver, the longest step of a renderer's start. The init of the same kind (hardware, or WARP with `warp = true`) takes it,
+waiting for the thread if it has not finished, and makes only the swap chain or the offscreen target:
+
+```odin
+render.preload_device()                 // first thing: Not_Started -> Creating -> Ready (or Failed)
+// ... the window, the program's own start ...
+render.init_window(&r, w, w.size)       // takes it; render.device_preload_state() is Not_Started again
+```
+
+A device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device`
+lets an unused one go. On wgpu the adapter is chosen without a surface; init makes the window's surface on its instance and
+makes its own device when that adapter cannot present to it.
+
 Second windows (the developer tools, a detached panel) use the same neutral handles:
 
 ```odin
