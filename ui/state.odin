@@ -9,7 +9,7 @@ import "../font"
 import "../platform"
 
 // The state selected by the last `begin_build`. Public procs operate on it (like raddebugger's `ui_state`).
-@(private) g: ^State
+@(private, thread_local) g: ^State   // (of this thread: several apps of a process build their interfaces on threads of their own)
 
 @(private) tick_origin: time.Tick
 
