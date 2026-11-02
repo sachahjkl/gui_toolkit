@@ -10,8 +10,10 @@ import "../../font"
 import "../../platform"
 import "../../ui"
 
-// A focused field's next wake right after an edit: the caret's flip (530 ms) and the margin of a wake.
+// A focused field's next wake right after an edit: the caret's flip (530 ms) and the margin of a wake, at most: the real clock goes on between the edit and the look.
 CARET_FLIP_WAKE_MS :: 535
+
+caret_wake_due :: proc(ms: i64) -> bool { return ms > 0 && ms <= CARET_FLIP_WAKE_MS }
 
 WINDOW :: ui.Vec2{800, 600}
 
@@ -394,7 +396,7 @@ line_edit_caret_only_in_the_users_window :: proc(t: ^testing.T) {
 	k := ui.key_from_string(ui.key_from_string(0, "root"), "###e")
 	ui.set_focus(k)
 	frame(&f, {typed('a')}, build_edit, &r)
-	testing.expect_value(t, ui.wake_ms(&f.s), CARET_FLIP_WAKE_MS)
+	testing.expectf(t, caret_wake_due(i64(ui.wake_ms(&f.s))), "the caret's flip wakes the loop (%d ms)", ui.wake_ms(&f.s))
 	for inactive in ([2]bool{true, false}) {
 		ui.begin_build(&f.s, {
 			window_size = WINDOW, dt = 1.0 / 60, dpi_scale = 1, inactive = inactive,
@@ -404,7 +406,7 @@ line_edit_caret_only_in_the_users_window :: proc(t: ^testing.T) {
 		build_edit(&f, &r)
 		ui.end_build()
 		free_all(context.temp_allocator)
-		testing.expect_value(t, ui.wake_ms(&f.s), inactive ? 0 : CARET_FLIP_WAKE_MS)
+		if inactive { testing.expect_value(t, ui.wake_ms(&f.s), 0) } else { testing.expectf(t, caret_wake_due(i64(ui.wake_ms(&f.s))), "the caret's flip wakes the loop again (%d ms)", ui.wake_ms(&f.s)) }
 		testing.expect_value(t, ui.focus_key(), k)
 	}
 }
