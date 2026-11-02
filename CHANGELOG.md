@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.63.0] - 2026-11-02
+
+### Added
+- **`render.preload_device`**: the graphics device made early, on a thread of its own, while the program does the rest of its start; the next `render.init` / `init_window` / `init_offscreen` that asks for that kind of device (hardware or WARP) takes it, waiting for the thread if it has not finished, and makes only the swap chain or the offscreen target. The first device of a process loads the graphics driver, the longest step of a renderer's start. Its state is explicit (`render.device_preload_state`: `Not_Started`, `Creating`, `Ready`, `Failed`); a device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device` lets an unused one go. On wgpu the instance, adapter and device are made without a surface: init makes the window's surface on that instance and makes its own device when the adapter cannot present to it. `TOOLKIT_RENDER_TRACE` says how long init waited for it.
+
 ## [0.62.0] - 2026-11-02
 
 ### Added
@@ -1420,6 +1425,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.63.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.0
 [0.62.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.62.0
 [0.61.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.61.0
 [0.60.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.2
