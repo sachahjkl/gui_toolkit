@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.63.1] - 2026-11-02
+
+### Changed
+- **The interface state a build works on is the thread's**: `ui`'s current state (what `begin_build` selects and the public procs use) is thread-local, so several apps of one process build and draw their interfaces at once, each on a thread of its own; before, two threads building at once broke each other's parent stack.
+
 ## [0.63.0] - 2026-11-02
 
 ### Added
@@ -1425,6 +1430,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.63.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.1
 [0.63.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.0
 [0.62.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.62.0
 [0.61.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.61.0
