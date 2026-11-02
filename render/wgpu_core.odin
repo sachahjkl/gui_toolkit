@@ -323,6 +323,27 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	return g.queue != nil
 }
 
+// A window's renderer from the device made early (device_preload.odin): it was made without a surface, so the window's is
+// made here on its instance, and the adapter must be able to present to it. False: no device was made early, or that one
+// cannot serve this window (released): the caller makes its own.
+@(private)
+wgpu_take_preloaded_device :: proc(r: ^Renderer, surface: platform.Surface_Handles) -> bool {
+	if !take_preloaded_device(r, warp = false) { return false }
+	g := &r.wg
+	g.surface = wgpu_make_surface(r, surface)
+	fits := false
+	if g.surface != nil {
+		caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter)
+		fits = st == .Success && caps.formatCount > 0
+		wgpu.SurfaceCapabilitiesFreeMembers(caps)
+	}
+	if !fits {
+		fmt.eprintln("render: wgpu: the adapter made early cannot present to this window: another is asked for")
+		wgpu_release_device(r)
+	}
+	return fits
+}
+
 // The name of the adapter and the graphics API wgpu chose, for logs and reports ("NVIDIA GeForce RTX 4070 SUPER (D3D12)").
 adapter_description :: proc(r: ^Renderer) -> string {
 	when USE_WGPU {
@@ -358,7 +379,7 @@ wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int,
 	r.size = size
 	r.transparent = transparent
 	r.space = space
-	wgpu_create_device(r, surface, false) or_return
+	if !wgpu_take_preloaded_device(r, surface) { wgpu_create_device(r, surface, false) or_return }
 	wgpu_frame_formats(r)
 	wgpu_configure_surface(r) or_return
 	wgpu_init_pipeline(r) or_return
@@ -370,7 +391,7 @@ wgpu_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := 
 	r.size = size
 	r.space = space
 	r.warp = warp
-	if !wgpu_create_device(r, {}, warp) {
+	if !take_preloaded_device(r, warp) && !wgpu_create_device(r, {}, warp) {
 		wgpu_release_device(r)
 		if warp || !wgpu_create_device(r, {}, true) { return false }
 		r.warp = true
