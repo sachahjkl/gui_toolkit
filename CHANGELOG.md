@@ -5,6 +5,24 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.62.0] - 2026-11-02
+
+### Added
+- **`devtools.start_local`, `devtools.Local_Client`**: the protocol with no socket, for a program or a test that drives itself; `Toolkit.state` says how many pictures are being encoded.
+- **`ui.set_clock`**: a state's time goes by a clock its owner moves: every delay and wake of the interface follows it, `wake_in_ms` and `wake_due` included. `Build_Params.time_ms` stays for one build.
+- **`testkit/session`**: an `@(test)` procedure makes an application with no window of the system on the offscreen renderer, sends input through `platform.inject_event`, runs frames, reads widgets and real pixels, with barriers on a state (`wait_until`, `wait_idle`, `wait_box`) and a clock of its own (`advance`); `attach` drives an application that makes its own frames.
+
+### Changed
+- **`tools/changelog`** is an Odin program, tested by `tests/changelog`, in place of `tools/changelog.ps1` and `tools/changelog_test.ps1`; `-Migrate` (for an "## Unreleased" this repository does not have) is gone.
+- **The tests are Odin**: `odin run tools/run_tests` runs every package on Windows and Linux (on Windows on a desktop of its own, and nothing takes the focus of whoever is at the machine), in place of `tools/test_windowless.ps1`, `tools/test_backends.ps1` and the test part of `tools/linux_ci.sh`; ten packages that no CI ran now do (`window`, `cursors`, `tray`, `dialogs`, `clock`, `size_move`, `i18n`, `planes`, `video`, `textures`). `tests/e2e/run.mjs` is `tests/examples/whatsnew_test.odin`, in the test's process. Guide: `docs/testing.md`.
+- **`tests/examples`**: `examples/fidget` and `examples/todo` are tested in the test's process with no window and no input of the machine (`tools/keyboard_test.ps1`, `tools/fidget_test.ps1`, `tools/ui_test.ps1` are gone, so is fidget's `--state_title`); the examples have `open` and `close`, and a settings folder of their own for a test. Esc in fidget's command palette closes it, as its foot says, instead of only leaving its field.
+- **Offscreen windows have a machine of their own**: `platform.virtual_screen_set` gives the screen `monitor_size` and `display_info` answer for them (no more `{0, 0}`), `platform.set_offscreen_active` their activation, and their clipboard is the process's store on Windows as on Linux: a headless program no longer reads or writes the clipboard of the person at the machine.
+
+### Fixed
+- **The caret of `line_edit` and `text_edit` wakes the loop at its flips only**: the wake came at every half phase (265 ms), which drew each picture of the caret twice.
+- **The plain text clipboard of an offscreen window on Linux**: `get_clipboard` gave nothing and `set_clipboard` did nothing, while `clipboard_set` kept to the process's store: a headless program could not copy and paste its own text.
+- **One clock for the interface**: a scroll bar's reveal (`scrollbar_reveal`) and the merging of typing into one undo step in a line edit read the system's clock whatever `Build_Params.time_ms` said; a replay or a test with its own clock got other results.
+
 ## [0.61.0] - 2026-11-01
 
 ### Added
@@ -1402,6 +1420,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.62.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.62.0
 [0.61.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.61.0
 [0.60.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.2
 [0.60.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.60.1
