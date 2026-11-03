@@ -24,7 +24,8 @@ import "../platform"
 // with it. Pointer: hovering selects, resting on a submenu item opens it (and on another item closes it) after
 // MENU_HOVER_MS, clicking chooses; a press outside every open level closes the menu. A menu opens where asked and
 // stays on screen: it flips to the other side of the point (or of the anchor rect) when it does not fit, then is
-// clamped to the window.
+// clamped to the window. A level taller than the window is as tall as the window and scrolls (wheel, scroll bar; the
+// keyboard's selection is brought into view).
 //
 // A nested menu is a menu opened from inside an open one, at a point or under a rect (a row's context menu in a
 // drop-down panel), over it; the menu stays open behind it:
@@ -38,12 +39,16 @@ import "../platform"
 
 MENU_HOVER_MS :: 280.0
 
-// The height of a menu item, in em, unless `set_menu_item_height` says otherwise.
-MENU_ITEM_EM :: 2.2
+// The height of a menu item, in em, unless `set_menu_item_height` says otherwise (times the density): about the rows of
+// Windows 11's and Chrome's menus, 28 to 32 px for 14 to 15 px text.
+MENU_ITEM_EM :: 1.9
 
 // A menu is at least this wide; a level not measured yet is taken to be this tall.
 @(private) MENU_MIN_WIDTH_EM :: 10
 @(private = "file") MENU_FIRST_HEIGHT_EM :: 10
+// Space above the first item and below the last, and on each side of a separator's line.
+@(private = "file") MENU_PAD_EM :: 0.25
+@(private = "file") MENU_SEPARATOR_GAP_EM :: 0.2
 // A tooltip's size before it was measured.
 @(private = "file") TOOLTIP_FIRST_WIDTH_EM :: 10
 @(private = "file") TOOLTIP_FIRST_HEIGHT_EM :: 3
@@ -90,6 +95,8 @@ Menu_Level :: struct {
 	panel:        Key,
 	hover_item:   int,       // item under the pointer and since when (submenus open / close after a delay)
 	hover_since:  f64,
+	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
+	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
 }
 
 // Opens the menu `key` with its top-left corner at `pos` (window pixels), replacing any open menu.
@@ -113,7 +120,7 @@ ctx_menu_is_open :: proc(key: Key) -> bool { return key != 0 && len(gs().menus) 
 ctx_menu_any_open :: proc() -> bool { return len(gs().menus) > 0 }
 
 // Selects item `index` of the open menu (e.g. a dropdown's current value, so the keyboard starts from it).
-menu_select :: proc(index: int) { if len(gs().menus) > 0 { gs().menus[0].sel = index } }
+menu_select :: proc(index: int) { if len(gs().menus) > 0 { gs().menus[0].sel = index; gs().menus[0].reveal = true } }
 
 // Number of open levels (1 = the menu, 2 = one submenu open...).
 menu_depth :: proc() -> int { return len(gs().menus) }
@@ -126,6 +133,15 @@ menu_rect :: proc(depth: int) -> (r: Rect, sel: int, ok: bool) {
 	b := s.boxes[lv.panel]
 	if b == nil { return {}, lv.sel, false }
 	return b.rect, lv.sel, true
+}
+
+// Where item `idx` of level `depth` was laid out (last build): partly or wholly out of `menu_rect` in a level that scrolls.
+menu_item_rect :: proc(depth, idx: int) -> (r: Rect, ok: bool) {
+	s := gs()
+	if depth < 0 || depth >= len(s.menus) || idx < 0 || idx >= len(s.menus[depth].items) { return }
+	b := s.boxes[s.menus[depth].items[idx].key]
+	if b == nil { return }
+	return b.rect, true
 }
 
 @(private)
@@ -215,7 +231,7 @@ menu_place :: proc(lv: ^Menu_Level, depth: int, size, window: Vec2, em: f32) -> 
 			pos = {r.min.x, r.max.y + gap}
 			if pos.y + size.y > window.y && r.min.y - gap - size.y >= 0 { pos.y = r.min.y - gap - size.y }
 		} else {
-			pad := em * 0.3   // the first row lines up with the item that opened the submenu
+			pad := dense(em * MENU_PAD_EM)   // the first row lines up with the item that opened the submenu
 			pos = {r.max.x - 2, r.min.y - pad}
 			if pos.x + size.x > window.x && r.min.x - size.x + 2 >= 0 { pos.x = r.min.x - size.x + 2 }
 		}
@@ -269,6 +285,7 @@ menu_pressed_outside :: proc(s: ^State, from: int, anchor: Key) -> bool {
 	case:                       hit = s.pressed_key[.Middle]
 	}
 	if hit != 0 && hit == anchor { return false }
+	if owner, ok := s.sb_owner[hit]; ok { hit = owner }   // a level's scroll bar is part of it
 	hb := s.boxes[hit] if hit != 0 else nil
 	if hb == nil { return true }
 	for lv in s.menus[from:] {
@@ -349,11 +366,12 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 				want := unicode.to_lower(e.text)
 				for k in 1 ..= len(items) {
 					j := (lv.sel + k) %% max(len(items), 1)
-					if items[j].enabled && items[j].first == want { lv.sel = j; break }
+					if items[j].enabled && items[j].first == want { lv.sel = j; lv.reveal = true; break }
 				}
 				continue
 			}
 			if e.mods - {.Shift} != {} { continue }
+			#partial switch e.key { case .Down, .Up, .Home, .End, .Page_Up, .Page_Down: lv.reveal = true }
 			#partial switch e.key {
 			case .Escape, .Left:
 				if e.key == .Left && depth == 0 { continue }
@@ -376,12 +394,14 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	}
 
 	em := font_size()
-	w := width > 0 ? width : max(lv.prev_width, em * MENU_MIN_WIDTH_EM)
-	lv.eff_width = w
 	id := fmt.tprintf("###menu_%d", u64(lv.key))
 	panel := s.boxes[key_from_string(s.root.key, id)]
 	first := panel == nil
-	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : panel.size
+	// (its content's height: the last layout's; taller than the window, the rows leave room for the scroll bar)
+	lv.scrolls = !first && panel.view_bounds.y > s.window_size.y
+	w := (width > 0 ? width : max(lv.prev_width, em * MENU_MIN_WIDTH_EM)) + menu_bar_room(lv, em)
+	lv.eff_width = w
+	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : Vec2{panel.size.x, min(panel.view_bounds.y, s.window_size.y)}
 	pos := menu_place(lv, depth, size, s.window_size, em)
 	push_parent(s.root)
 	push_tags("floating")
@@ -390,19 +410,44 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	s.next_mod.fixed_x = pos.x
 	s.next_mod.fixed_y = pos.y
 	s.next_mod.width = children_sum()
-	s.next_mod.height = children_sum()
+	s.next_mod.height = lv.scrolls ? px(s.window_size.y) : children_sum()
 	s.next_mod.radius = em * 0.5
 	if first { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
-	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
+	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}, id)
 	p.cursor = .Arrow
+	if !lv.scrolls { p.view_off, p.view_target = {}, {} }
 	a11y_default(p, {role = .Menu, orientation = .Y})
 	lv.panel = p.key
 	_ = signal(p)
 	push_parent(p)
 	append(&s.popup_stack, true)
 	append(&s.menu_build, depth)
-	spacer(px(em * 0.3))
+	spacer(px(em * MENU_PAD_EM))
 	return true
+}
+
+// The room a level that scrolls leaves its scroll bar at the end of its rows (0 for one that fits).
+@(private = "file")
+menu_bar_room :: proc(lv: ^Menu_Level, em: f32) -> f32 {
+	if !lv.scrolls { return 0 }
+	w, m := scrollbar_size(em)
+	return w + 2 * m
+}
+
+// Scrolls a level that scrolls so that its row `b` (laid out in the last frame) is in view.
+@(private = "file")
+menu_reveal :: proc(lv: ^Menu_Level, b: ^Box) {
+	s := gs()
+	panel := s.boxes[lv.panel]
+	if !lv.scrolls || panel == nil || b.first_build == s.build_index { return }
+	top: f32
+	for q := b; q != nil && q != panel; q = q.parent { top += q.rel_pos.y }
+	y := panel.view_target.y
+	if top < y { y = top }
+	if top + b.size.y > y + panel.size.y { y = top + b.size.y - panel.size.y }
+	if y != panel.view_target.y { scrollbar_reveal(panel) }
+	panel.view_target.y, panel.view_off.y = y, y   // (a step of the keyboard jumps, as the system's menus do)
+	lv.reveal = false
 }
 
 @(private)
@@ -412,7 +457,7 @@ push_style_copy :: proc() { append(&gs().style_stack, top_style()^) }
 menu_end :: proc() {
 	s := gs()
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] && len(s.menu_build) > 0 {
-		spacer(px(font_size() * 0.3))
+		spacer(px(font_size() * MENU_PAD_EM))
 		pop(&s.menu_build)
 		if len(s.menu_build) == 0 && s.menu_close_pending {
 			s.menu_close_pending = false
@@ -473,6 +518,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
 			if highlight { pop_tags() }
 			if idx < len(lv.items) { lv.items[idx].key = b.key }
+			if idx == lv.sel && lv.reveal { menu_reveal(lv, b) }
 			sig = signal(b)
 			if checked {
 				a11y_default(b, {role = .Menu_Item_Check_Box, name = label, shortcut = shortcut, toggled = .True, position = idx + 1})
@@ -483,7 +529,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			}
 			if parent(b) {
 				spacer(px(em * 0.6))
-				next({width = px(em * 1.5), height = px(em * 1.5)})
+				next({width = px(em * 1.5), height = pct(1)})
 				if checked && s.icon_font != 0 {
 					if style({font = s.icon_font, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, "V###chk") }
 				} else if glyph != "" && s.icon_font != 0 {
@@ -502,7 +548,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 				if submenu && s.icon_font != 0 {
 					if tags("weak") { icon(">", em * 1.2) }
 				}
-				spacer(px(em * 0.5))
+				spacer(px(em * 0.5 + menu_bar_room(lv, em)))
 			}
 		}
 	}
@@ -558,9 +604,9 @@ menu_separator :: proc() {
 	lv, _ := menu_current()
 	em := font_size()
 	w := lv != nil ? lv.eff_width : em * MENU_MIN_WIDTH_EM
-	spacer(px(em * 0.25))
+	spacer(px(em * MENU_SEPARATOR_GAP_EM))
 	hline(px(w))
-	spacer(px(em * 0.25))
+	spacer(px(em * MENU_SEPARATOR_GAP_EM))
 }
 
 // `if menu_submenu("Label") { menu_item(...) }`: an item that opens a nested menu (to its right, or its left when there
