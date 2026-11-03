@@ -33,6 +33,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
+import "../cmdline"
 
 // What a stamp file ends with, as PowerShell's Set-Content wrote them (the ones already built stay valid).
 NEWLINE :: "\r\n" when ODIN_OS == .Windows else "\n"
@@ -71,7 +72,7 @@ Args :: struct {
 }
 
 main :: proc() {
-	a, why := parse(os.args[1:])
+	a, why := parse(cmdline.joined(os.args[1:]))
 	if why != "" {
 		fmt.eprintfln("tk: %s", why)
 		fmt.eprint("commands:")

@@ -1,6 +1,6 @@
 // tools/tk in process: its command line, ppm_diff on two small pictures, the font with a table dropped, the stamps that make a second
 // build nothing, a pinned file kept or fetched (from a file: URL, offline), font/emoji_data.odin from a small emoji-data.txt, the
-// board's list and cells, the .ico, and (Windows) the logo and the icon drawn by GDI+.
+// board's list and cells, the .ico, the command line PowerShell splits (tools/cmdline), and (Windows) the logo and the icon drawn by GDI+.
 //   odin test tests/tk -vet
 package tk_test
 
@@ -11,6 +11,7 @@ import "core:slice"
 import "core:strings"
 import "core:testing"
 import tk "../../tools/tk"
+import "../../tools/cmdline"
 import "../../testkit"
 
 @(private = "file") ABC_SHA256 :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -292,4 +293,17 @@ the_logo_and_its_icon :: proc(t: ^testing.T) {
 		delete(p)
 	}
 	delete(pngs)
+}
+
+// PowerShell 7 hands `-name:value` typed after `--` to a program as `-name:` and `value`: the tools join them again; what
+// another shell passes whole stays as it is.
+@(test)
+a_flag_split_at_its_colon_is_joined :: proc(t: ^testing.T) {
+	got := cmdline.joined({"-backend:", "wgpu", "-group:", "ci1", "text", "-list", "-define:A=b"}, context.temp_allocator)
+	testing.expect(t, slice.equal(got, []string{"-backend:wgpu", "-group:ci1", "text", "-list", "-define:A=b"}), fmt.tprint(got))
+	last := cmdline.joined({"text", "-group:"}, context.temp_allocator)   // (nothing after it: left as it is)
+	testing.expect(t, slice.equal(last, []string{"text", "-group:"}), fmt.tprint(last))
+	a, why := tk.parse(cmdline.joined({"fetch_wgpu", "-dest:", "build/x"}, context.temp_allocator))
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, len(a.flags), 1)
 }
