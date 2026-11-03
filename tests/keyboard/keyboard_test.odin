@@ -52,9 +52,9 @@ close :: proc(f: ^Fx) {
 }
 
 @(private = "file")
-frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr), user: rawptr) {
+frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr), user: rawptr, window := WINDOW) {
 	ui.begin_build(&f.s, {
-		window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		window_size = window, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
 		clipboard_get = proc() -> string { return the_clip^ },
 		clipboard_set = proc(t: string) { delete(the_clip^); the_clip^ = clone(t) },
@@ -367,6 +367,135 @@ menu_stays_on_screen :: proc(t: ^testing.T) {
 	frame(&f, {{kind = .Mouse_Press, button = .Left, pos = {10, 10}}, {kind = .Mouse_Release, button = .Left, pos = {10, 10}}}, build_menu, &r)
 	testing.expect(t, !ui.ctx_menu_any_open(), "closed by a press outside")
 	testing.expect_value(t, r.chosen, "")
+}
+
+// A long menu: rows "Row 0".."Row 38" and "Zebra" last.
+Long_Run :: struct {
+	key: ui.Key,
+}
+
+LONG_MENU_ROWS :: 40
+LAST_ROW :: LONG_MENU_ROWS - 1
+
+@(private = "file")
+build_long :: proc(f: ^Fx, user: rawptr) {
+	r := (^Long_Run)(user)
+	if ui.ctx_menu(r.key) {
+		for i in 0 ..< LONG_MENU_ROWS { ui.menu_item(i == LAST_ROW ? "Zebra###z" : fmt.tprintf("Row %d###r%d", i, i), "Ctrl+K") }
+	}
+}
+
+// Row `idx` of the open menu is wholly in view.
+@(private = "file")
+row_shown :: proc(idx: int) -> bool {
+	panel, _, _ := ui.menu_rect(0)
+	a, ok := ui.menu_item_rect(0, idx)
+	return ok && a.min.y >= panel.min.y && a.max.y <= panel.max.y
+}
+
+// Rows are MENU_ITEM_EM tall (29 px for 15 px text), times the density: 22 px compact, 34 px at the roomiest (DENSITY_MAX).
+@(test)
+menu_rows_follow_the_density :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Long_Run{key = ui.Key(0xd1)}
+	for c in ([?][2]f32{{1, 29}, {ui.DENSITY_COMPACT, 22}, {ui.DENSITY_MAX, 34}}) {
+		ui.set_density(&f.s, c[0])
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Long_Run)(user).key, {100, 100}) }, &r)
+		for _ in 0 ..< 2 { frame(&f, nil, build_long, &r) }
+		row, _ := ui.menu_item_rect(0, 0)
+		testing.expect_value(t, row.max.y - row.min.y, c[1])
+	}
+	ui.set_density(&f.s, 1)
+}
+
+// A menu taller than the window is as tall as the window and scrolls: the keyboard's selection comes into view (Down to the
+// last row, a typed letter of a hidden row, Home), the wheel scrolls it. A menu that then fits a taller window is whole.
+@(test)
+menu_taller_than_the_window_scrolls :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Long_Run{key = ui.Key(0xd2)}
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Long_Run)(user).key, {100, 100}, from_keyboard = true) }, &r)
+	for _ in 0 ..< 3 { frame(&f, nil, build_long, &r) }
+	panel, sel, ok := ui.menu_rect(0)
+	testing.expect(t, ok, "laid out")
+	testing.expect_value(t, sel, 0)
+	testing.expect_value(t, panel.min.y, 0)
+	testing.expect_value(t, panel.max.y, WINDOW.y)
+	testing.expect(t, row_shown(0) && !row_shown(LAST_ROW), "the last row is out of view")
+
+	downs: [LONG_MENU_ROWS - 1]platform.Event
+	for &e in downs { e = key(.Down) }
+	frame(&f, downs[:], build_long, &r)
+	frame(&f, nil, build_long, &r)
+	panel, sel, _ = ui.menu_rect(0)
+	testing.expect_value(t, sel, LAST_ROW)
+	testing.expect(t, row_shown(LAST_ROW), "Down to the last row scrolls it into view")
+
+	frame(&f, {key(.Home)}, build_long, &r)
+	frame(&f, nil, build_long, &r)
+	panel, sel, _ = ui.menu_rect(0)
+	testing.expect_value(t, sel, 0)
+	testing.expect(t, row_shown(0) && !row_shown(LAST_ROW), "Home scrolls back to the top")
+	frame(&f, {typed('z')}, build_long, &r)
+	frame(&f, nil, build_long, &r)
+	panel, sel, _ = ui.menu_rect(0)
+	testing.expect_value(t, sel, LAST_ROW)
+	testing.expect(t, row_shown(LAST_ROW), "type-ahead reaches a hidden row and shows it")
+
+	mid := [2]f32{(panel.min.x + panel.max.x) * 0.5, (panel.min.y + panel.max.y) * 0.5}
+	last, _ := ui.menu_item_rect(0, LAST_ROW)
+	before := last.min.y
+	frame(&f, {{kind = .Mouse_Move, pos = mid}, {kind = .Scroll, pos = mid, delta = {0, -3}}}, build_long, &r)
+	frame(&f, nil, build_long, &r)
+	last, _ = ui.menu_item_rect(0, LAST_ROW)
+	testing.expectf(t, last.min.y > before, "the wheel scrolls the menu: %v -> %v", before, last.min.y)
+	testing.expect(t, ui.ctx_menu_any_open(), "still open")
+
+	tall := [2]f32{800, 1400}
+	for _ in 0 ..< 3 { frame(&f, nil, build_long, &r, tall) }
+	panel, _, _ = ui.menu_rect(0)
+	testing.expect(t, panel.max.y - panel.min.y < tall.y && row_shown(0) && row_shown(LAST_ROW), "a window tall enough shows it whole")
+}
+
+// Under an anchor near the bottom, a menu opens above it; one with room on neither side shifts up to stay whole; a window
+// made shorter while it is open places it again.
+@(test)
+menu_near_the_bottom_flips_or_shifts :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Menu_Run{key = ui.Key(0xd3)}
+	@(static) anchor: ui.Rect
+	anchor = {{100, 550}, {140, 580}}
+	open_under :: proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open_rect((^Menu_Run)(user).key, anchor, 0) }
+	frame(&f, nil, open_under, &r)
+	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r) }
+	rect, _, ok := ui.menu_rect(0)
+	testing.expect(t, ok, "laid out")
+	testing.expectf(t, rect.max.y <= anchor.min.y && rect.min.y >= 0, "above the anchor: %v", rect)
+
+	short := [2]f32{800, 260}
+	anchor = {{100, 100}, {140, 130}}
+	frame(&f, nil, open_under, &r, short)
+	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r, short) }
+	rect, _, _ = ui.menu_rect(0)
+	h := rect.max.y - rect.min.y
+	testing.expectf(t, h < short.y && rect.max.y <= short.y && rect.min.y > 0 && rect.min.y < anchor.max.y, "shifted up, whole: %v", rect)
+
+	shorter := [2]f32{800, h - 40}
+	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r, shorter) }
+	rect, _, _ = ui.menu_rect(0)
+	testing.expectf(t, rect.min.y == 0 && rect.max.y == shorter.y, "capped at the shorter window: %v", rect)
 }
 
 ////////////////////////////////
