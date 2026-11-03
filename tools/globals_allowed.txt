@@ -1,0 +1,213 @@
+# The globals of the toolkit's packages and their class: tests/globals fails on one that is not here, on one listed that is gone,
+# and on a class that is not what the code says. "<dir>/<file> <name> <class>  # why" (a procedure's @(static): "<proc>.<name>").
+# The rule is docs/getting-started.md, "Where state lives". const: a table, written by the compiler or once before anything
+# reads it, then only read (any thread). process: a resource of the process, one whatever the number of apps (locked, atomic,
+# or bound to a thread the note names). thread: @(thread_local). test: a test's. There is no class for one window's or one
+# app's state: it is a field of the struct that owns it (the Window, the render device or Renderer, ui.State).
+# Rewrite it from the code (keeping the classes known): odin test tests/globals -define:GLOBALS_WRITE=true
+config/config_test.odin DEFS test
+config/snapshot_test.odin SNAP_DEFS test
+flate/flate.odin LEN_BASE const  # a table of RFC 1951
+flate/flate.odin LEN_EXTRA const  # a table of RFC 1951
+flate/flate.odin DIST_BASE const  # a table of RFC 1951
+flate/flate.odin DIST_EXTRA const  # a table of RFC 1951
+flate/flate.odin CLEN_ORDER const  # a table of RFC 1951
+flate/flate.odin fixed_len const  # the fixed Huffman codes, made at start-up (@(init))
+flate/flate.odin fixed_dist const  # the fixed Huffman codes, made at start-up (@(init))
+flate/flate.odin fixed_lit_code const  # the fixed Huffman codes, made at start-up (@(init))
+flate/flate.odin fixed_dist_code const  # the fixed Huffman codes, made at start-up (@(init))
+flate/flate_runs.odin lit_codes const  # the codes of deflate_runs, made at start-up (@(init))
+flate/flate_runs.odin len_codes const  # the codes of deflate_runs, made at start-up (@(init))
+font/backend.odin none_backend const  # a text backend's table of procedures
+font/backend_dwrite.odin dwrite_backend const  # a text backend's table of procedures
+font/backend_dwrite.odin dwrite_system const  # a system font service's table of procedures
+font/backend_dwrite.odin DWRITE_DEFAULT_FEATURES const  # a table
+font/backend_native.odin native_backend const  # a text backend's table of procedures
+font/colr.odin tls_arena thread  # the COLR interpreter's scratch arena, of the thread that draws
+font/colr.odin tls_arena_ok thread  # the COLR interpreter's scratch arena, of the thread that draws
+font/com.odin memory_mu process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
+font/com.odin memory_fonts process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
+font/com.odin memory_next process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
+font/com.odin memory_stream_vtable const  # a COM vtable (passed by address)
+font/com.odin memory_loader_vtable const  # a COM vtable (passed by address)
+font/com.odin memory_loader const  # the memory font loader's COM object: its vtable only (registered per font.State, loader_users)
+font/com.odin EMPTY_LOCALE const  # an empty locale name (passed by address)
+font/com.odin source_vtable const  # a COM vtable (passed by address)
+font/com.odin sink_vtable const  # a COM vtable (passed by address)
+font/d2d.odin IID_ID2D1DeviceContext4 const  # a COM interface id (passed by address)
+font/d2d.odin IID_ID2D1DeviceContext7 const  # a COM interface id (passed by address)
+font/d2d.odin IID_IDXGIDevice const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFactory const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFactory2 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFactory4 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFontFace2 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFontFace4 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFontFace5 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFontFileLoader const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFontFileStream const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteTextAnalysisSource const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteTextAnalysisSink const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteColorGlyphRunEnumerator1 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IUnknown const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFactory8 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFontFace7 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteLocalFontFileLoader const  # a COM interface id (passed by address)
+font/emoji_data.odin EMOJI_RANGES const  # a table
+font/emoji_data.odin EMOJI_PRESENTATION_RANGES const  # a table
+font/failures.odin forced_failures thread  # the failures a test forces, on its thread
+font/font_other.odin other_system const  # a system font service's table of procedures
+font/font_system_linux.odin fc_once process  # fontconfig's initialization, once for the process
+font/font_system_linux.odin fc_ok const  # written under fc_once, then only read
+font/font_windows.odin loader_mu process  # the memory font loader's registration with the shared factory (locked: loader_mu)
+font/font_windows.odin loader_users process  # the memory font loader's registration with the shared factory (locked: loader_mu)
+font/font_windows.odin IID_IDWriteFontFace const  # a COM interface id (passed by address)
+font/shape.odin words_epochs process  # the epochs of the word caches, unique in the process (atomic)
+font/shape.odin l1_words thread  # the thread's own cache of short words' widths
+font/slug_dwrite.odin outline_sink_vtable const  # a COM vtable (passed by address)
+font/slug_dwrite.odin IID_ID2D1SimplifiedGeometrySink const  # a COM interface id (passed by address)
+instance/instance_linux.odin owners_mu process  # the instance owners started in the process (locked: owners_mu)
+instance/instance_linux.odin owners process  # the instance owners started in the process (locked: owners_mu)
+platform/a11y_accesskit.odin a11y_abi_checked process  # whether the accessibility library's ABI matches (atomic)
+platform/clipboard.odin clip process  # the process's clipboard store (locked: Clip_Store.mutex)
+platform/clipboard_linux.odin png_encode_hook const  # the app's PNG codec, set once at start before any clipboard image
+platform/clipboard_linux.odin png_decode_hook const  # the app's PNG codec, set once at start before any clipboard image
+platform/clipboard_wl_linux.odin data_source_listener const  # a listener table (passed by address to libwayland)
+platform/clipboard_wl_linux.odin data_offer_listener const  # a listener table (passed by address to libwayland)
+platform/cursors_win32.odin system_cursors thread  # the system's cursors and pointer settings, dropped by this thread's windows on WM_SETTINGCHANGE
+platform/cursors_wl_linux.odin wlcl thread  # a library and what was made with it on this thread's connection
+platform/cursors_x11_linux.odin xc thread  # a library and what was made with it on this thread's connection
+platform/dbus_linux.odin session thread  # this thread's session bus and the services' state on it (a connection is driven by one thread)
+platform/dialogs.odin dialog_test_hook process  # a test's hook, set before the calls it answers and cleared after (not locked)
+platform/dialogs_win32.odin known_folder_id.ids const  # a table (its entries passed by address)
+platform/dragdrop_win32.odin dnd_thread thread  # OLE's initialization and the running drag, per thread
+platform/dragdrop_win32.odin IID_IUnknown const  # a COM interface id (passed by address)
+platform/dragdrop_win32.odin IID_IDropTarget const  # a COM interface id (passed by address)
+platform/dragdrop_win32.odin IID_IDataObject const  # a COM interface id (passed by address)
+platform/dragdrop_win32.odin CLSID_DragDropHelper const  # a COM interface id (passed by address)
+platform/dragdrop_win32.odin IID_IDropTargetHelper const  # a COM interface id (passed by address)
+platform/dragdrop_win32.odin IID_IDragSourceHelper const  # a COM interface id (passed by address)
+platform/dragdrop_win32.odin drop_target_vtable const  # a COM vtable (passed by address)
+platform/dragdrop_x11_linux.odin x11_image thread  # a library and what was made with it on this thread's connection
+platform/frame_gate.odin thread_gate thread  # the frame gate of the thread's loop
+platform/ime_wl_linux.odin text_input_listener const  # a listener table (passed by address to libwayland)
+platform/linux_lib.odin wl process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin wl_once process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin xkb process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin xkb_once process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin xcb process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin xcb_once process  # a library of the system, loaded once (sync.Once), then only read
+platform/platform.odin CURSOR_CSS_NAMES const  # a table
+platform/platform_linux.odin pumping thread  # the windows of this thread inside poll_events
+platform/platform_win32.odin pumping thread  # the windows of this thread inside poll_events
+platform/platform_win32.odin os_build process  # the Windows build number (atomic: every thread writes the same)
+platform/platform_win32.odin window_class process  # the window class, registered once for the process (sync.Once)
+platform/portal_linux.odin portal_token.counter process  # the portal request tokens, unique in the process (atomic)
+platform/tray.odin tray_test_hook process  # a test's hook, set before the calls it answers and cleared after (not locked)
+platform/tray_linux.odin tray_pid_counter process  # the icons' bus names, unique in the process (atomic)
+platform/tray_win32.odin taskbar_created_msg process  # the TaskbarCreated message number (atomic: every thread writes the same)
+platform/tray_win32.odin tray_next_id process  # the icons' ids, unique in the process (atomic)
+platform/virtual.odin machine process  # the virtual screen the offscreen windows share (locked: Virtual_Machine.mutex)
+platform/window_wl_linux.odin wlc thread  # this thread's Wayland connection: its events, its seat's focus and serials
+platform/window_wl_linux.odin registry_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin wm_base_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin output_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin seat_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin pointer_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin keyboard_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin xdg_surface_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin xdg_toplevel_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin decoration_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin frame_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin fractional_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin data_device_listener const  # a listener table (passed by address to libwayland)
+platform/window_x11_linux.odin x11c thread  # this thread's X11 connection: its events, its windows, its selections
+platform/wl_protocol_linux.odin zwp_ti_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zwp_ti_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zwp_ti_manager_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zwp_ti_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zwp_ti_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_ti_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_ti_surface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_cursor_shape_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_cursor_shape_device_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_csm_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_csd_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_csm_get_pointer const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_fractional_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_fractional_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_viewporter_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_viewport_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_fm_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_f_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_f_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_vr_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_v_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_fm_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_vr_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_wm_base_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_surface_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_toplevel_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_decoration_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_toplevel_decoration_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_positioner_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_wm_base_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_wm_base_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_surface_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_surface_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_toplevel_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_toplevel_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_decoration_manager_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_toplevel_decoration_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_toplevel_decoration_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_get_xdg_surface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_create_positioner const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_get_toplevel const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_get_popup const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_set_parent const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_tl_configure const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_get_toplevel_decoration const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_nil3 const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_seat1 const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_seat_move const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_seat_resize const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_output_opt const  # a protocol table, built once (wayland_lib), then read
+platform/x11_ext_linux.odin xfixes thread  # a library and what was made with it on this thread's connection
+platform/x11_ext_linux.odin randr thread  # a library and what was made with it on this thread's connection
+render/api.odin renderer_ids process  # the renderers' ids, unique in the process (atomic)
+render/api.odin render_trace.state process  # a switch of the environment, read once (atomic)
+render/capture.odin capture_map_held thread  # the capture mapped by this thread
+render/capture.odin srgb_table_bytes const  # a table, made once (srgb_table_once)
+render/capture.odin srgb_table_once process  # the once of a table
+render/damage.odin damage_verify_env.state process  # a switch of the environment, read once (atomic)
+render/damage.odin damage_check_frames process  # the damage check's counts over every renderer of the process (atomic)
+render/damage.odin damage_check_partial process  # the damage check's counts over every renderer of the process (atomic)
+render/damage.odin damage_check_differences process  # the damage check's counts over every renderer of the process (atomic)
+render/dcomp.odin IDCompositionDevice_UUID const  # a COM interface id (passed by address)
+render/device_preload.odin preload process  # the graphics device made early, one per process (locked: preload.lock)
+render/faults.odin fault_skip thread  # the faults a test injects, on its thread
+render/faults.odin fault_count thread  # the faults a test injects, on its thread
+render/faults.odin fault_fired_count thread  # the faults a test injects, on its thread
+render/readback.odin readback_slots process  # the readback table, ids unique in the process (locked: readback_lock)
+render/readback.odin readback_next process  # the readback table, ids unique in the process (locked: readback_lock)
+render/readback.odin readback_lock process  # the readback table, ids unique in the process (locked: readback_lock)
+render/render.odin srgb_to_linear_table const  # a table, made once (srgb_tables_once)
+render/render.odin linear_to_srgb_table const  # a table, made once (srgb_tables_once)
+render/render.odin srgb_tables_once process  # the once of a table
+render/retained.odin HEAP_STRIDE const  # a table
+render/shaders.odin MODULES const  # a table
+render/shaders.odin SHADERS const  # a table
+render/wgpu_core.odin g_compile_lock process  # the shader compiler, one at a time for the process (DXC crashes when devices compile at once)
+render/wgpu_dcomp.odin panel_vtable const  # a COM vtable (passed by address)
+render/wgpu_dcomp.odin IID_ISwapChainPanelNative const  # a COM interface id (passed by address)
+render/wgpu_dcomp.odin IID_IUnknown_ const  # a COM interface id (passed by address)
+testkit/folders.odin temp_folder.serial test  # the test folders' names (atomic)
+testkit/session/session.odin current test  # the session a test runs (one test at a time: owner_thread checks it)
+testkit/session/session.odin owner_thread test  # the session a test runs (one test at a time: owner_thread checks it)
+testkit/session/session.odin live_sessions test  # the session a test runs (one test at a time: owner_thread checks it)
+ui/overlays.odin toast_position_names const  # a table
+ui/state.odin current thread  # the State this thread builds
+ui/state.odin tick_origin process  # the clock of the interfaces, started by the first init (atomic)
+ui/state.odin build_open thread  # a build is open on this thread
+ui/theme_default.odin NAMED_PALETTES const  # a table
+ui/theme_default.odin entries const  # a table
+ui/theme_default.odin state_entries const  # a table
