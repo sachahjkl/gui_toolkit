@@ -154,13 +154,6 @@ heap_bytes :: proc(r: ^Renderer) -> (used, capacity: int) {
 	return
 }
 
-// Empties the heaps and frees their GPU memory: every picture uploads its data again at its next replay
-// (`heap_generation` changes).
-heaps_reset :: proc(r: ^Renderer) {
-	heaps_destroy(r)
-	r.heap_generation += 1
-}
-
 when !USE_WGPU {
 @(private)
 d3d_heaps_destroy :: proc(r: ^Renderer) {

@@ -247,29 +247,6 @@ pub unsafe extern "C" fn gt_face_glyphs(face: *const Face, cps: *const u32, coun
     })
 }
 
-/// The face's coverage as inclusive code point ranges [first, last] into `out` (2 per range). Returns the number of
-/// ranges (more than `cap`: nothing written past it, call again with that much room).
-#[no_mangle]
-pub unsafe extern "C" fn gt_face_coverage(face: *const Face, out: *mut [u32; 2], cap: usize) -> usize {
-    guard(0, || {
-        let Some(face) = face.as_ref() else { return 0 };
-        let mut cps: Vec<u32> = face.font.charmap().unicodes().filter(|(_, g)| g.to_u32() != 0).map(|(c, _)| c).collect();
-        cps.sort_unstable();
-        cps.dedup();
-        let mut ranges: Vec<[u32; 2]> = Vec::new();
-        for c in cps {
-            match ranges.last_mut() {
-                Some(r) if r[1] + 1 == c => r[1] = c,
-                _ => ranges.push([c, c]),
-            }
-        }
-        if !out.is_null() && ranges.len() <= cap {
-            std::ptr::copy_nonoverlapping(ranges.as_ptr(), out, ranges.len());
-        }
-        ranges.len()
-    })
-}
-
 #[no_mangle]
 pub unsafe extern "C" fn gt_glyph_box(face: *const Face, gid: u32, out: *mut GtGlyphBox) -> i32 {
     guard(0, || {

@@ -134,14 +134,6 @@ damage_stats :: proc(r: ^Renderer) -> (added, kept, px_region, px_frame: int, ac
 	return d.rects_in, d.count, d.px_raster, d.px_full, d.have_region
 }
 
-// The rectangles of the region in effect this frame (valid until the next damage_begin); empty when the whole frame is
-// drawn. For an application that wants to show or log them.
-damage_rects :: proc(r: ^Renderer) -> []Damage_Rect {
-	d := &r.damage
-	if !d.have_region { return nil }
-	return d.rects[:d.count]
-}
-
 ////////////////////////////////
 // Region arithmetic (pure, backend independent)
 

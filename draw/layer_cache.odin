@@ -91,16 +91,6 @@ layer_cache_clear :: proc(c: ^Context) {
 	clear(&c.layer_cache.entries)
 }
 
-// Lets the result kept under `id` go (an element that went away).
-layer_cache_forget :: proc(c: ^Context, id: u64) {
-	for k in ([2]u64{id, backdrop_cache_id(id)}) {
-		if e, ok := &c.layer_cache.entries[k]; ok {
-			cache_drop(c, e)
-			delete_key(&c.layer_cache.entries, k)
-		}
-	}
-}
-
 @(private)
 backdrop_cache_id :: proc(id: u64) -> u64 { return id == 0 ? 0 : hash_mix(id, CACHE_SALT_BACKDROP_ID) }
 

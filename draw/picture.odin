@@ -260,12 +260,6 @@ slots_update :: proc(pic: ^Picture) {
 	}
 }
 
-// The matrix of slot `k` relative to its parent.
-picture_slot :: proc(pic: ^Picture, k: u32) -> Affine {
-	if int(k) >= len(pic.slots) { return AFFINE_IDENTITY }
-	return pic.slots[k].local
-}
-
 // Screen bounds of what the picture draws under `m` (after the current transform), its slots where they are now.
 picture_bounds :: proc(c: ^Context, pic: ^Picture, m: Affine) -> (r: Rect, ok: bool) {
 	slots_update(pic)
@@ -480,6 +474,3 @@ retained_bytes :: proc(c: ^Context) -> (used, capacity: int) { return render.hea
 // Number of instances recorded in the picture.
 picture_size :: proc(pic: ^Picture) -> int { return len(pic.insts) }
 
-// A number that bumps every time the picture is recorded again (picture_end): a damage tracker folds it to know when a
-// chunk's content changed (browser compositor, partial redraw).
-picture_version :: proc(pic: ^Picture) -> u64 { return pic.version }
