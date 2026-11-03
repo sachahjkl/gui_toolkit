@@ -28,14 +28,14 @@ ICON_WARN :: "w"
 ICON_WARN_BIG :: "W"
 ICON_X :: "x"
 
-mono_font :: proc() -> font.Font_Id { return g.mono_font != 0 ? g.mono_font : top_style().font }
+mono_font :: proc() -> font.Font_Id { return gs().mono_font != 0 ? gs().mono_font : top_style().font }
 
 ////////////////////////////////
 // Small building blocks
 
 // Fixed-width icon cell (icon font), full height of the parent.
 icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
-	next({width = px(width), height = pct(1), font = g.icon_font, text_align = .Center, fg = fg})
+	next({width = px(width), height = pct(1), font = gs().icon_font, text_align = .Center, fg = fg})
 	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", glyph, parent_box().child_count))
 }
 
@@ -46,19 +46,20 @@ hline :: proc(width: Size) {
 
 // Value stored at press time for the active drag (which thumb, column width at start, note position, ...).
 Drag_Payload :: [4]f32
-drag_store :: proc(v: Drag_Payload) { g.drag_payload = v }
-drag_load :: proc() -> Drag_Payload { return g.drag_payload }
+drag_store :: proc(v: Drag_Payload) { gs().drag_payload = v }
+drag_load :: proc() -> Drag_Payload { return gs().drag_payload }
 
 // Persistent timers (hold-to-repeat, delays). `timer_due` is true once `next_ms` has passed. A timer that nothing asked
 // about (timer_due) for TIMER_KEEP_BUILDS builds is forgotten.
 TIMER_KEEP_BUILDS :: 1200
-timer_set :: proc(key: Key, delay_ms: f64) { g.timers[key] = Timer{next_ms = g.time_ms + delay_ms, last_build = g.build_index} }
+timer_set :: proc(key: Key, delay_ms: f64) { gs().timers[key] = Timer{next_ms = gs().time_ms + delay_ms, last_build = gs().build_index} }
 timer_due :: proc(key: Key) -> bool {
-	t, ok := g.timers[key]
+	s := gs()
+	t, ok := s.timers[key]
 	if !ok { return false }
-	t.last_build = g.build_index
-	g.timers[key] = t
-	return g.time_ms >= t.next_ms
+	t.last_build = s.build_index
+	s.timers[key] = t
+	return s.time_ms >= t.next_ms
 }
 
 // Last frame's box for an id under the current parent (its rect and size are valid, e.g. for scroll geometry).
@@ -79,6 +80,7 @@ Mark_Draw :: struct { t: f32, accent, ring: Color, size: f32, radio: bool }
 
 @(private)
 mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	s := gs()
 	d := (^Mark_Draw)(user)
 	r := b.rect
 	w := r.max.x - r.min.x
@@ -96,12 +98,12 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	fill.a *= min(1, d.t * MARK_FILL_FADE_SPEED)
 	paint_rect(dc, draw.rect_pad(r, -inset), fill, rad(w * MARK_BOX_RADIUS_FRACTION), d.t)
 	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * MARK_BOX_RADIUS_FRACTION), MARK_RING_PX * scale())
-	if d.t > MARK_CHECK_MIN_T && g.icon_font != 0 {
+	if d.t > MARK_CHECK_MIN_T && s.icon_font != 0 {
 		size := d.size * d.t
-		m := font.metrics(g.fonts, g.icon_font, size)
-		dim := font.text_width(g.fonts, g.icon_font, size, ICON_CHECK)
+		m := font.metrics(s.fonts, s.icon_font, size)
+		dim := font.text_width(s.fonts, s.icon_font, size, ICON_CHECK)
 		c := draw.rect_center(r)
-		draw.text(dc, g.icon_font, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
+		draw.text(dc, s.icon_font, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
 	}
 }
 
@@ -110,13 +112,14 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // a sliver at the left of its mark and label.) Returns whether it fits its children.
 @(private)
 fit_row_width :: proc() -> bool {
-	if g.has_next {
-		if _, given := g.next_mod.width.?; given { return false }
+	s := gs()
+	if s.has_next {
+		if _, given := s.next_mod.width.?; given { return false }
 	} else {
-		g.next_mod = {}
-		g.has_next = true
+		s.next_mod = {}
+		s.has_next = true
 	}
-	g.next_mod.width = children_sum()
+	s.next_mod.width = children_sum()
 	return true
 }
 
@@ -283,8 +286,8 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.rect(dc, {{kx - kr * SLIDER_KNOB_DOT_FRACTION, cy - kr * SLIDER_KNOB_DOT_FRACTION}, {kx + kr * SLIDER_KNOB_DOT_FRACTION, cy + kr * SLIDER_KNOB_DOT_FRACTION}}, d.accent, rad(kr))
 	}
 	size := em * SLIDER_VALUE_FONT_SCALE
-	m := font.metrics(g.fonts, d.mono, size)
-	w := font.text_width(g.fonts, d.mono, size, d.value_text)
+	m := font.metrics(gs().fonts, d.mono, size)
+	w := font.text_width(gs().fonts, d.mono, size, d.value_text)
 	draw.text(dc, d.mono, size, {math.round(r.max.x - w - 2 * sc), math.round(cy + (m.ascent - m.descent) * 0.5)}, d.text, d.value_text)
 }
 
@@ -292,7 +295,7 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 slider_pct :: proc(b: ^Box) -> f32 {
 	x0, x1 := slider_geom(b.rect, font_size())
 	if x1 - x0 < 1 { return 0 }
-	return clamp((g.mouse.x - x0) / (x1 - x0), 0, 1)
+	return clamp((gs().mouse.x - x0) / (x1 - x0), 0, 1)
 }
 
 // `format` is a printf format for the value text, e.g. "%.0f" or "%.1f C"; text without a % is shown as is
@@ -389,6 +392,7 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 
 // [-] value [+]: hold a button to repeat, Shift = x10. Returns true when the value changed.
 stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
+	s := gs()
 	em := font_size()
 	set_next_axis(.X, .Center)
 	row_box := build_box({}, id)
@@ -415,9 +419,9 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 			else if sig.dragging && timer_due(key) { value^ += dir * amount; timer_set(key, STEPPER_REPEAT_MS) }
 			if sig.dragging {
 				// a wake at the next repeat, not a frame at every refresh while the button is held
-				if t, ok := g.timers[key]; ok {
-					left := max(1, int(t.next_ms - g.time_ms + WAKE_ROUND_UP_MS))
-					wake_within(g, left)
+				if t, ok := s.timers[key]; ok {
+					left := max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))
+					wake_within(s, left)
 				}
 			}
 			value^ = clamp(value^, lo, hi)
@@ -509,7 +513,7 @@ rating :: proc(id: string, value: ^int) {
 			grow := anim(key_from_string(box.key, fmt.tprintf("%s_g", cell_id)), prev != nil ? prev.hot_t : 0, RATING_GROW_RATE)
 			lit := i < value^
 			if !lit { push_tags("weak") }
-			next({width = px(em * 2), height = pct(1), font = g.icon_font, font_size = em * (1 + RATING_GROW_SCALE * grow), text_align = .Center})
+			next({width = px(em * 2), height = pct(1), font = gs().icon_font, font_size = em * (1 + RATING_GROW_SCALE * grow), text_align = .Center})
 			b := build_box({.Clickable, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s", lit ? ICON_RADIO_ON : ICON_RADIO, cell_id))
 			if !lit { pop_tags() }
 			if signal(b).clicked { value^ = value^ == i + 1 ? 0 : i + 1 }
@@ -547,14 +551,15 @@ bar_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 
 // Determinate (t in 0..1) or indeterminate bar. Size from the style stack or `next`.
 progress :: proc(id: string, t: f32, indeterminate := false) {
+	s := gs()
 	b := build_box({}, id)
 	d := frame_new(Bar_Draw)
 	d.t = anim(key_from_string(b.key, "t"), t, PROGRESS_RATE, t)
 	d.indeterminate = indeterminate
-	d.phase = g.anim_rate != 0 ? f32(math.mod(g.time_ms, PROGRESS_SWEEP_MS)) / PROGRESS_SWEEP_MS : 0.5   // animations off: a still bar
+	d.phase = s.anim_rate != 0 ? f32(math.mod(s.time_ms, PROGRESS_SWEEP_MS)) / PROGRESS_SWEEP_MS : 0.5   // animations off: a still bar
 	d.track, d.fill = color("track"), color("accent")
 	b.custom, b.custom_user = bar_draw, d
-	if indeterminate && g.anim_rate != 0 { g.anim_busy = true }
+	if indeterminate && s.anim_rate != 0 { s.anim_busy = true }
 	if indeterminate {
 		a11y_default(b, {role = .Progress_Indicator, busy = true})
 	} else {
@@ -624,6 +629,7 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Row of tabs with a growing underline. `icons` may be nil. Returns true when the selection changed.
 // `right_clicked` / `middle_clicked` (optional) receive the index of a tab clicked with that button this frame (else -1).
 tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, right_clicked: ^int = nil, middle_clicked: ^int = nil) -> (changed: bool) {
+	s := gs()
 	if right_clicked != nil { right_clicked^ = -1 }
 	if middle_clicked != nil { middle_clicked^ = -1 }
 	em := font_size()
@@ -636,8 +642,8 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int, righ
 		t := anim(key_from_string(key, "t"), on ? 1 : 0, TAB_RATE)
 		if !on { push_tags("weak") }
 		set_next_axis(.X, .Center)
-		g.next_mod.width = children_sum()
-		g.next_mod.height = pct(1)
+		s.next_mod.width = children_sum()
+		s.next_mod.height = pct(1)
 		push_tags("tab")
 		b := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, tab_id)
 		pop_tags()
@@ -690,21 +696,21 @@ card :: proc(title: string, icon_glyph: string = "") -> bool {
 	em := font_size()
 	push_tags("card")
 	set_next_axis(.Y)
-	g.next_mod.width = fill()
-	g.next_mod.height = children_sum()
-	g.next_mod.radius = em * 0.6
+	gs().next_mod.width = fill()
+	gs().next_mod.height = children_sum()
+	gs().next_mod.radius = em * 0.6
 	c := build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###card_%s", title))
 	a11y_default(c, {role = .Group, name = title})
 	push_parent(c)
 	spacer(px(em * 0.9))
 	set_next_axis(.X)
-	g.next_mod.width = fill()
-	g.next_mod.height = children_sum()
+	gs().next_mod.width = fill()
+	gs().next_mod.height = children_sum()
 	push_parent(build_box({}, "###card_pad"))
 	spacer(px(em * 1.1))
 	set_next_axis(.Y)
-	g.next_mod.width = fill()
-	g.next_mod.height = children_sum()
+	gs().next_mod.width = fill()
+	gs().next_mod.height = children_sum()
 	push_parent(build_box({}, "###card_body"))
 	if title != "" {
 		next({width = fill(), height = px(dense(em * 2.2))})
@@ -740,8 +746,8 @@ form_row :: proc(label_text: string) -> bool {
 	em := font_size()
 	// as tall as its widget (at least one line): wrapped content such as chips grows the row
 	set_next_axis(.X, .Center)
-	g.next_mod.width = fill()
-	g.next_mod.height = children_sum()
+	gs().next_mod.width = fill()
+	gs().next_mod.height = children_sum()
 	r := build_box({}, fmt.tprintf("###frow_%s", label_text))
 	push_parent(r)
 	if tags("weak") {
@@ -755,7 +761,7 @@ form_row :: proc(label_text: string) -> bool {
 
 @(private)
 form_row_end :: proc() {
-	pop(&g.style_stack)
+	pop(&gs().style_stack)
 	// the row's label names its widget (the first box after it) unless the app named it
 	r := parent_box()
 	if lbl := r.first; lbl != nil && lbl.next != nil {
@@ -768,16 +774,17 @@ form_row_end :: proc() {
 
 // Button with an icon-font glyph and a label. Push a kind tag first ("accent_button", "danger_button", "ghost_button").
 button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig: Signal) {
+	s := gs()
 	em := font_size()
 	// a disabled scope, so the label and icon inside go neutral too
-	append(&g.disabled_stack, disabled)
-	if disabled { g.disabled_depth += 1 }
+	append(&s.disabled_stack, disabled)
+	if disabled { s.disabled_depth += 1 }
 	defer pop_disabled()
 	if tags("button") {
 		set_next_axis(.X, .Center)
-		g.next_mod.width = children_sum()
-		g.next_mod.height = px(dense(em * 2.2))
-		g.next_mod.radius = em * 0.45
+		s.next_mod.width = children_sum()
+		s.next_mod.height = px(dense(em * 2.2))
+		s.next_mod.radius = em * 0.45
 		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
 		b := build_box(flags, id)
 		b.squish = press_squish(b)

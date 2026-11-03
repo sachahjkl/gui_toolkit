@@ -117,12 +117,12 @@ A11y_Data :: struct {
 
 // This build, screen readers are on box `key` whatever has the toolkit's focus: a view of the app's own that has the
 // keyboard (a web page under the chrome) and grafts a tree whose own focus then counts.
-a11y_focus_on :: proc(key: Key) { g.a11y.focus_to = key }
+a11y_focus_on :: proc(key: Key) { gs().a11y.focus_to = key }
 
 // Gives the next box built its accessibility (merged over the widget's defaults: what is set here wins).
 a11y :: proc(info: A11y_Info) {
-	g.a11y.next = info
-	g.a11y.has_next = true
+	gs().a11y.next = info
+	gs().a11y.has_next = true
 }
 
 // Gives a built box its accessibility (over what it had: the fields set here win).
@@ -191,7 +191,7 @@ a11y_active :: proc(s: ^State) -> bool { return s.a11y.built }
 
 // During a build: whether this build makes the tree. An app with content of its own to describe (a document, the text
 // of a custom editor) does that work only then.
-a11y_wanted :: proc() -> bool { return g.a11y.wanted }
+a11y_wanted :: proc() -> bool { return gs().a11y.wanted }
 
 // The whole tree of the last build (empty when it was not built). Valid until the next build.
 a11y_tree :: proc(s: ^State) -> ^platform.A11y_Update { return &s.a11y.full }
@@ -211,11 +211,11 @@ a11y_cost :: proc(s: ^State) -> (nodes: int, ms: f64) { return len(s.a11y.full.n
 
 // The requests of this build the toolkit did not answer itself: those for the trees of the app (a document view), and
 // actions on its boxes no widget took. Valid until the next build.
-a11y_requests :: proc() -> []platform.A11y_Request { return g.a11y.requests[:] }
+a11y_requests :: proc() -> []platform.A11y_Request { return gs().a11y.requests[:] }
 
 // A request of this build for box `key` (a widget or the app answers it: set the value, increment, select text...).
 a11y_request :: proc(key: Key, action: platform.A11y_Action) -> (platform.A11y_Request, bool) {
-	for r in g.a11y.handled { if r.target == u64(key) && r.action == action { return r, true } }
+	for r in gs().a11y.handled { if r.target == u64(key) && r.action == action { return r, true } }
 	return {}, false
 }
 
@@ -420,7 +420,7 @@ a11y_leaf_role :: proc(r: A11y_Role) -> bool {
 }
 
 // The text box `b` shows that a screen reader reads ("" for none, or for a glyph of the icon font).
-a11y_box_text :: proc(b: ^Box) -> string { return a11y_text_shown(g, b) }
+a11y_box_text :: proc(b: ^Box) -> string { return a11y_text_shown(gs(), b) }
 
 @(private)
 a11y_text_shown :: proc(s: ^State, b: ^Box) -> string {

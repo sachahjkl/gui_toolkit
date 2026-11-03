@@ -11,14 +11,15 @@ import "core:math"
 // that a `next` gave first: `next({cross = .Center}); if row() {...}` centres its children, as it reads.
 @(private)
 set_next_axis :: proc(a: Axis, cross := Cross_Align.Start) {
-	if !g.has_next { g.next_mod = {} }
-	g.next_mod.axis = a
-	if _, given := g.next_mod.cross.?; !given || cross != .Start { g.next_mod.cross = cross }
-	g.has_next = true
+	s := gs()
+	if !s.has_next { s.next_mod = {} }
+	s.next_mod.axis = a
+	if _, given := s.next_mod.cross.?; !given || cross != .Start { s.next_mod.cross = cross }
+	s.has_next = true
 }
 
 // Manual parent scope (prefer if parent(box) { ... }; pair with pop_parent).
-push_parent :: proc(b: ^Box) { append(&g.parent_stack, b) }
+push_parent :: proc(b: ^Box) { append(&gs().parent_stack, b) }
 
 // A box whose children lay out left to right, centered (no scope; pair with `if parent(b)`).
 row_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
@@ -47,12 +48,13 @@ column :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "
 // cross-axis size of a children_sum parent (pct would resolve against a distant ancestor and explode it).
 // Vertical pixel gaps follow the density setting unless `exact` (e.g. the stand-ins for virtualized rows).
 spacer :: proc(size: Size, exact := false) {
+	s := gs()
 	p := parent_box()
 	size := size
-	if !exact && p.layout_axis == .Y && size.kind == .Pixels { size.value = math.round(size.value * g.density) }
+	if !exact && p.layout_axis == .Y && size.kind == .Pixels { size.value = math.round(size.value * s.density) }
 	m: Style_Mod
 	if p.layout_axis == .X { m.width = size; m.height = Size{} } else { m.height = size; m.width = Size{} }
-	if g.has_next { m = merge_mod(g.next_mod, m) }
+	if s.has_next { m = merge_mod(s.next_mod, m) }
 	next(m)
 	build_box({})
 }
@@ -87,7 +89,7 @@ merge_mod :: proc(a, b: Style_Mod) -> Style_Mod {
 // Like `next`, but on top of a `next` already given for the same box: what `m` sets wins, what it leaves unset keeps the
 // earlier value. For a helper that sizes its own box while its caller placed it (`next({fixed_x = ...})`, then the helper).
 next_merge :: proc(m: Style_Mod) {
-	if g.has_next { next(merge_mod(m, g.next_mod)) } else { next(m) }
+	if gs().has_next { next(merge_mod(m, gs().next_mod)) } else { next(m) }
 }
 
 // A box that draws itself via `draw_fn` (user data must live in the frame arena: see `frame_new`).
@@ -122,14 +124,15 @@ button :: proc(id: string) -> Signal {
 
 // How much a pressed button shrinks: the theme's press_squish while the left button is held on it (at once), else 0.
 press_squish :: proc(b: ^Box) -> f32 {
-	if g.theme == nil || g.theme.press_squish <= 0 { return 0 }
-	return g.active_key[.Left] == b.key && g.hot_key == b.key ? g.theme.press_squish : 0
+	s := gs()
+	if s.theme == nil || s.theme.press_squish <= 0 { return 0 }
+	return s.active_key[.Left] == b.key && s.hot_key == b.key ? s.theme.press_squish : 0
 }
 
 // Icon-font glyph as a clickable button without frame.
 icon_button :: proc(id: string, icon: string) -> Signal {
 	if tags("icon_button") {
-		if style({font = g.icon_font}) {
+		if style({font = gs().icon_font}) {
 			// the glyph is the displayed text, `id` alone decides the key (so changing the icon keeps the state)
 			b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc}, fmt.tprintf("%s###%s", icon, id))
 			b.text_align = .Center
@@ -158,13 +161,14 @@ scroll_y :: proc(id: string) -> bool {
 // narrow, instead of overflowing. Full width and as tall as its lines unless `next` says otherwise.
 @(deferred_none = pop_parent)
 flow :: proc(gap: Vec2 = {}, id: string = "") -> bool {
-	m := g.has_next ? g.next_mod : Style_Mod{}
+	s := gs()
+	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
 	m.axis = .X
 	m.gap = gap
-	g.next_mod = m
-	g.has_next = true
+	s.next_mod = m
+	s.has_next = true
 	push_parent(build_box({.Wrap}, id))
 	return true
 }

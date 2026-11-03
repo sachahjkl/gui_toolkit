@@ -24,7 +24,7 @@ toast_position :: proc(s: ^State) -> Toast_Position { return s.toast_pos }
 
 // Rectangle (window pixels) the toasts are placed in, e.g. the content area between a menu bar and a status bar.
 // Call it every frame before `toasts_build`; the default is the whole window.
-set_toast_area :: proc(r: Rect) { g.toast_area = r; g.toast_area_set = true }
+set_toast_area :: proc(r: Rect) { gs().toast_area = r; gs().toast_area_set = true }
 
 @(private = "file") TOAST_LIFE_MS :: 3800
 @(private = "file") TOAST_FADE_IN_S :: 0.25
@@ -33,7 +33,7 @@ set_toast_area :: proc(r: Rect) { g.toast_area = r; g.toast_area_set = true }
 
 // Queue a message. Toasts fade in, stay ~3.8 s, fade out; click to dismiss. Oldest is replaced when all slots are used.
 toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
-	s := g
+	s := gs()
 	slot := -1
 	oldest_ms := max(f64)
 	oldest := 0
@@ -52,13 +52,13 @@ toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
 	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_open ? s.time_ms : now_ms(), TOAST_LIFE_MS, s.toast_serial
 }
 
-toasts_clear :: proc() { for &t in g.toasts { t.alive = false } }
+toasts_clear :: proc() { for &t in gs().toasts { t.alive = false } }
 
 // Builds the toast stack. Look: panel background, a 1.5 px border all around tinted by the kind
 // (info = accent, good / warn / bad), the icon in the same tint. Newest toast is nearest to the anchored edge;
 // the others glide to their new place when one leaves.
 toasts_build :: proc() {
-	s := g
+	s := gs()
 	em := font_size()
 	area := s.toast_area_set ? s.toast_area : Rect{{0, 0}, s.window_size}
 	s.toast_area_set = false
@@ -133,11 +133,11 @@ toasts_build :: proc() {
 		tint := color(t.kind == .Info ? "accent" : "text")
 		pop_tags()
 		set_next_axis(.X, .Center)
-		g.next_mod.fixed_x, g.next_mod.fixed_y = x + dx, y + dy
-		g.next_mod.fixed_w, g.next_mod.fixed_h = w, h
-		g.next_mod.transparency = 1 - alpha
-		g.next_mod.radius = em * 0.6
-		g.next_mod.border = tint
+		s.next_mod.fixed_x, s.next_mod.fixed_y = x + dx, y + dy
+		s.next_mod.fixed_w, s.next_mod.fixed_h = w, h
+		s.next_mod.transparency = 1 - alpha
+		s.next_mod.radius = em * 0.6
+		s.next_mod.border = tint
 		b := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Draw_Hot_Effects, .Clip}, id)
 		b.cursor = .Hand
 		if signal(b).clicked { t.alive = false }
@@ -167,7 +167,7 @@ Modal_Scope :: struct { panel: Key, open: ^bool }
 
 @(deferred_none = modal_end)
 modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
-	s := g
+	s := gs()
 	if !open^ {
 		append(&s.popup_stack, false)
 		return false
@@ -191,11 +191,11 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	if had_a11y { a11y(app_a11y) }
 
 	set_next_axis(.Y)
-	g.next_mod.fixed_x = (s.window_size.x - width) * 0.5
-	g.next_mod.fixed_y = s.window_size.y * y_fraction
-	g.next_mod.width = px(width)
-	g.next_mod.height = children_sum()
-	g.next_mod.radius = em * 0.8
+	s.next_mod.fixed_x = (s.window_size.x - width) * 0.5
+	s.next_mod.fixed_y = s.window_size.y * y_fraction
+	s.next_mod.width = px(width)
+	s.next_mod.height = children_sum()
+	s.next_mod.radius = em * 0.8
 	panel := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
 	_ = signal(panel)
@@ -212,10 +212,11 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 
 @(private)
 modal_end :: proc() {
-	if len(g.popup_stack) > 0 && g.popup_stack[len(g.popup_stack) - 1] {
-		g.trap_depth -= 1
-		m := pop(&g.modal_stack)
-		if m.panel == g.modal_prev && len(g.menus) == 0 && key_press(.Escape) { m.open^ = false }
+	s := gs()
+	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
+		s.trap_depth -= 1
+		m := pop(&s.modal_stack)
+		if m.panel == s.modal_prev && len(s.menus) == 0 && key_press(.Escape) { m.open^ = false }
 	}
 	ctx_menu_end()
 }
@@ -228,7 +229,7 @@ modal_end :: proc() {
 // A menu bar entry. Returns the key to pass to `ctx_menu`. Clicking toggles the menu; while another bar menu is open,
 // hovering switches to this one.
 menu_bar_button :: proc(id: string) -> Key {
-	s := g
+	s := gs()
 	em := font_size()
 	key := key_from_string(parent_box().key, id)
 	menu_key := key_from_u64(key, MENU_BAR_KEY_SALT)
@@ -260,5 +261,5 @@ font_text_width :: proc(text_with_id: string) -> f32 {
 
 // Width in pixels of a string in the given font/size.
 text_width :: proc(f: font.Font_Id, size: f32, text: string) -> f32 {
-	return font.text_width(g.fonts, f, size, text)
+	return font.text_width(gs().fonts, f, size, text)
 }

@@ -77,7 +77,7 @@ Caption_Draw :: struct {
 // and with its colours (the close button red under the pointer; dimmed glyphs while the window is inactive). Clicks
 // act on Build_Params.window; the button clicked is returned too (`ok` false: none).
 window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
-	s := g
+	s := gs()
 	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale   // the system's size: the UI zoom does not apply
 	w := math.round(CAPTION_BUTTON_WIDTH * dpi)
 	maxed := s.window != nil && platform.is_maximized(s.window)
@@ -147,7 +147,7 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		case .Maximize: cp = d.maxed ? CAPTION_GLYPH_RESTORE : CAPTION_GLYPH_MAXIMIZE
 		case .Close:    cp = CAPTION_GLYPH_CLOSE
 		}
-		gl := font.glyph(g.fonts, d.glyph_font, glyph_size, cp)
+		gl := font.glyph(gs().fonts, d.glyph_font, glyph_size, cp)
 		if gl.size.x > 0 {
 			buf, n := utf8.encode_rune(cp)
 			pen := draw.Vec2{math.round(c.x - (gl.offset.x + gl.size.x * 0.5)), math.round(c.y - (gl.offset.y + gl.size.y * 0.5))}

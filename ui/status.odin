@@ -334,7 +334,7 @@ status_bar :: proc(id: string, height_em: f32 = 1.9, text_scale: f32 = 0.88) -> 
 	push_parent(bar)
 	st := top_style()^
 	st.font_size = math.round(em * text_scale)
-	append(&g.style_stack, st)
+	append(&gs().style_stack, st)
 	spacer(px(em * 0.6))
 	return true
 }
@@ -447,7 +447,7 @@ Popover_Side :: enum u8 { Above, Below }
 // It takes the clicks that land on it; `popover_rect` tells the app where it is (input it routes itself).
 @(deferred_none = popover_end)
 popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above, align_right := true) -> bool {
-	s := g
+	s := gs()
 	em := font_size()
 	key := key_from_string(s.root.key, id)
 	prev := s.boxes[key]
@@ -462,12 +462,12 @@ popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above
 	push_tags("floating")
 	push_style_copy()
 	set_next_axis(.Y)
-	g.next_mod.fixed_x = pos.x
-	g.next_mod.fixed_y = pos.y
-	g.next_mod.width = px(width)
-	g.next_mod.height = children_sum()
-	g.next_mod.radius = em * 0.5
-	if prev == nil { g.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
+	s.next_mod.fixed_x = pos.x
+	s.next_mod.fixed_y = pos.y
+	s.next_mod.width = px(width)
+	s.next_mod.height = children_sum()
+	s.next_mod.radius = em * 0.5
+	if prev == nil { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
 	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
 	p.cursor = .Arrow
 	_ = signal(p)
@@ -481,7 +481,8 @@ popover_end :: proc() { ctx_menu_end() }
 
 // Where the popover `id` was laid out last frame (ok false: it was not built).
 popover_rect :: proc(id: string) -> (r: Rect, ok: bool) {
-	b := g.boxes[key_from_string(g.root.key, id)]
-	if b == nil || b.last_build + 1 < g.build_index { return {}, false }
+	s := gs()
+	b := s.boxes[key_from_string(s.root.key, id)]
+	if b == nil || b.last_build + 1 < s.build_index { return {}, false }
 	return b.rect, true
 }
