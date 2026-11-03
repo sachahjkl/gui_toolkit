@@ -14,6 +14,9 @@ import "../../ui"
 // More than the time a bar stays once it was shown (ui SCROLLBAR_REVEAL_MS), and than its fade.
 @(private = "file") HIDE_WAIT_MS :: 2000
 @(private = "file") WHEEL_NOTCHES :: 3
+// An arrow held this long (past the delay before it repeats) scrolls at least this many steps.
+@(private = "file") ARROW_HOLD_MS :: 1000
+@(private = "file") ARROW_HOLD_STEPS_MIN :: 4
 
 @(private = "file")
 Scroller :: struct { rows: int, autohide: bool }
@@ -190,4 +193,42 @@ a_bar_follows_the_box_s_size :: proc(t: ^testing.T) {
 	_, _, ok := ui.scrollbar_rects(session.get(s, "view"))
 	testing.expect(t, !ok, "it all fits now")
 	testing.expect_value(t, session.get(s, "view").view_off.y, 0)
+}
+
+// Arrow buttons (set_scrollbar_arrows): none by default; on, they take the ends of the bar from its track; a click on one
+// scrolls a step, held it repeats by the clock and stops when let go.
+@(test)
+arrow_buttons_step_and_repeat :: proc(t: ^testing.T) {
+	sc := Scroller{rows = ROWS}
+	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
+	_, _, ok := ui.scrollbar_arrow_rects(session.get(s, "view"))
+	testing.expect(t, !ok, "no arrows by default")
+	plain, _, _ := ui.scrollbar_rects(session.get(s, "view"))
+	ui.set_scrollbar_arrows(s.state, true)
+	session.frames(s, 2)
+	start, end, has := ui.scrollbar_arrow_rects(session.get(s, "view"))
+	if !testing.expect(t, has, "a bar with arrows") { return }
+	track, _, _ := ui.scrollbar_rects(session.get(s, "view"))
+	testing.expect(t, start.min.y == plain.min.y && end.max.y == plain.max.y, "the arrows at the ends of the bar")
+	testing.expect(t, track.min.y == start.max.y && track.max.y == end.min.y, "the track between them")
+
+	down := (end.min + end.max) * 0.5
+	session.click_at(s, down)
+	session.wait_idle(s)
+	step := session.get(s, "view").view_off.y
+	testing.expect(t, step > 0 && step < max_scroll(s), "a click scrolls a step")
+
+	session.press(s, down)
+	session.advance(s, ARROW_HOLD_MS)
+	session.release(s, down)
+	session.wait_idle(s)
+	held := session.get(s, "view").view_off.y
+	testing.expectf(t, held >= step * ARROW_HOLD_STEPS_MIN, "held, it repeats: %v after a step of %v", held, step)
+	session.advance(s, ARROW_HOLD_MS)
+	session.wait_idle(s)
+	testing.expect_value(t, session.get(s, "view").view_off.y, held)
+
+	session.click_at(s, (start.min + start.max) * 0.5)
+	session.wait_idle(s)
+	testing.expect_value(t, session.get(s, "view").view_off.y, held - step)
 }

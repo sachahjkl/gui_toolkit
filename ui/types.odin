@@ -369,6 +369,9 @@ State :: struct {
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
+	scrollbar_arrows: bool,          // set_scrollbar_arrows
+	sb_arrow:     f32,               // the arrow button held: -1 toward the start, 1 toward the end, 0 none
+	sb_arrow_next_ms: f64,           // when the held arrow steps again
 	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)
 	rounding:     f32,               // corner rounding factor applied to every rounded shape (0 = square, 1 = default)
 	time_ms:      f64,

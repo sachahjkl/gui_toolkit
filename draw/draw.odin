@@ -446,6 +446,24 @@ rect :: proc(c: ^Context, r: Rect, color: Color, radius: f32 = 0, border: f32 = 
 	rect_corners(c, r, {color, color, color, color}, {radius, radius, radius, radius}, border, soft)
 }
 
+// Filled triangle, in one-pixel rows: each row spans where the triangle crosses the row's middle (a small glyph such as a
+// scroll bar's arrow: its top and bottom on whole pixels).
+triangle :: proc(c: ^Context, a, b, d: Vec2, color: Color) {
+	pts := [3]Vec2{a, b, d}
+	y_end := max(a.y, b.y, d.y)
+	for y := math.floor(min(a.y, b.y, d.y)); y < y_end; y += 1 {
+		mid := y + 0.5
+		lo, hi := max(f32), min(f32)
+		for i in 0 ..< 3 {
+			p, q := pts[i], pts[(i + 1) % 3]
+			if (p.y <= mid) == (q.y <= mid) { continue }
+			x := p.x + (mid - p.y) / (q.y - p.y) * (q.x - p.x)
+			lo, hi = min(lo, x), max(hi, x)
+		}
+		if hi > lo { rect(c, {{lo, y}, {hi, y + 1}}, color) }
+	}
+}
+
 // Per-corner colors (gradients) and radii; corner order: top-left, bottom-left, top-right, bottom-right. Colors are
 // interpolated premultiplied, in the space set_interpolation chooses.
 rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, border: f32 = 0, soft: f32 = 1) {
