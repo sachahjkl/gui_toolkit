@@ -119,7 +119,8 @@ targets while something is dragged, builds the menu, and calls `opts.on_save` wh
   space; floating); Float or Dock back; move the tab left or right; Close.
 - **The keyboard**: tabs are Tab stops; Left / Right / Home / End show another tab of the strip (and take the focus to it),
   Ctrl+Shift+Left / Right move the tab along the strip, Ctrl+Tab / Ctrl+Shift+Tab (the focus in a stack: a tab or its
-  panel) show the stack's next or previous panel.
+  panel) show the stack's next or previous panel. An app whose own shortcuts take Ctrl+Tab (a browser's next tab) calls
+  `dock_take_ctrl_tab(d)` before them: the dock has it where it has the focus (`dock_focus_leaf`, `dock_cycle`).
 
 ### Accessibility
 
