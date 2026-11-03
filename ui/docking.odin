@@ -314,34 +314,50 @@ dock_drop :: proc(d: ^Dock) {
 
 // Ctrl+Tab / Ctrl+Shift+Tab with the focus in a stack (one of its tabs, or in its panel): its next or previous panel.
 @(private)
-dock_keys :: proc(d: ^Dock) {
-	fk := focus_key()
-	if fk == 0 { return }
+dock_keys :: proc(d: ^Dock) { _ = dock_take_ctrl_tab(d) }
+
+// Ctrl+Tab / Ctrl+Shift+Tab of this frame for the dock when the focus is in one of its stacks: the stack's next or previous
+// panel, the key taken. For an app whose own shortcuts use Ctrl+Tab: called before them, the dock has it first where it has
+// the focus (dock_begin calls it too).
+dock_take_ctrl_tab :: proc(d: ^Dock) -> bool {
 	fwd := key_pressed_peek(.Tab, {.Ctrl})
-	back := key_pressed_peek(.Tab, {.Ctrl, .Shift})
-	if !fwd && !back { return }
+	if !fwd && !key_pressed_peek(.Tab, {.Ctrl, .Shift}) { return false }
+	leaf, on_tab := dock_focus_leaf(d)
+	if leaf == DOCK_NONE || dock_tab_count(d, leaf) < 2 { return false }
+	_ = key_press(.Tab, fwd ? {.Ctrl} : {.Ctrl, .Shift})
+	dock_cycle(d, leaf, fwd, on_tab)
+	return true
+}
+
+// The stack the keyboard focus is in (one of its tabs, or in its panel's content), by the last build; `on_tab`: on a tab.
+dock_focus_leaf :: proc(d: ^Dock) -> (leaf: i32, on_tab: bool) {
+	fk := focus_key()
+	if fk == 0 || len(d.nodes) == 0 { return DOCK_NONE, false }
 	child: ^Box
 	depth := 0
 	for b := box_from_key(fk); b != nil && depth < DOCK_FOCUS_DEPTH_MAX; b, depth = b.parent, depth + 1 {
 		if b.parent != nil && b.parent.key == d.space_key { child = b; break }
 	}
-	if child == nil { return }
+	if child == nil { return DOCK_NONE, false }
 	for l in dock_all_leaves(d) {
 		a := d.nodes[l].active
-		if a == DOCK_NO_PANEL || (child.key != key_from_string(d.space_key, dock_leaf_id(l)) && child.key != dock_body_key(d, a)) { continue }
-		tabs := dock_tabs(d, l)
-		if len(tabs) < 2 { return }
-		_ = key_press(.Tab, fwd ? {.Ctrl} : {.Ctrl, .Shift})
-		at := 0
-		for t, k in tabs { if t == a { at = k } }
-		next_tab := tabs[(at + (fwd ? 1 : len(tabs) - 1)) % len(tabs)]
-		on_tab := child.key == key_from_string(d.space_key, dock_leaf_id(l))
-		dock_activate(d, next_tab)
-		if on_tab { set_focus(dock_tab_key(d, l, next_tab)) }
-		return
+		if a == DOCK_NO_PANEL { continue }
+		if child.key == key_from_string(d.space_key, dock_leaf_id(l)) { return l, true }
+		if child.key == dock_body_key(d, a) { return l, false }
 	}
+	return DOCK_NONE, false
 }
 
+// The next (or previous) panel of the stack shown; the focus goes to its tab when it was on one.
+dock_cycle :: proc(d: ^Dock, leaf: i32, forward: bool, on_tab: bool) {
+	tabs := dock_tabs(d, leaf)
+	if len(tabs) < 2 { return }
+	at := 0
+	for t, k in tabs { if t == d.nodes[leaf].active { at = k } }
+	to := tabs[(at + (forward ? 1 : len(tabs) - 1)) % len(tabs)]
+	dock_activate(d, to)
+	if on_tab { set_focus(dock_tab_key(d, leaf, to)) }
+}
 ////////////////////////////////
 // The boxes
 
