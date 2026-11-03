@@ -1,7 +1,7 @@
 # Getting started: gui_toolkit in a new project
 
 From an empty folder to a window, then the choices a project makes (render backend, text backend, accessibility), the
-tests, the versions, and the pitfalls met so far. Every command below was run as written on a clean clone (Windows 11,
+tests, the versions, where state lives, and the pitfalls met so far. Every command below was run as written on a clean clone (Windows 11,
 PowerShell 5.1).
 
 ## 1. Prerequisites
@@ -135,7 +135,29 @@ the API (CHANGELOG.md says how). Pin the submodule to a tag and read the CHANGEL
 the toolkit itself follows [CONTRIBUTING.md](../CONTRIBUTING.md): a fragment in `changelog.d/`, never an edit of
 `CHANGELOG.md` or `ui/version.odin`.
 
-## 7. Pitfalls
+## 7. Where state lives
+
+What is one window's or one app's lives in the struct that owns it, so that several apps run in one process, each on a thread of
+its own: the window's in `platform.Window`, the device's in `render.Renderer`, the interface's in `ui.State` (the names of the
+caption buttons too: `ui.set_window_button_names` translates the current State's). A package-level variable is one of four
+classes, and only these:
+
+| Class | What | Example |
+|---|---|---|
+| `const` | a table, written by the compiler, or once (at start-up, a `sync.Once`) before anything reads it; then only read, by any thread | `ui.NAMED_PALETTES`, the Wayland protocol tables, the sRGB tables |
+| `process` | a resource of the process, one whatever the number of apps: locked, atomic, or bound to a thread its note names | the clipboard store, the device made early (`render.preload_device`), the window class, a library of the system |
+| `thread` | `@(thread_local)`: each thread its own | the State a thread builds, the frame gate, OLE on Windows, the display connection and session bus on Linux |
+| `test` | a test's own | |
+
+On Linux each thread that opens windows has its own connection to the display server (its events, its seat's focus) and its own
+session bus: a window's procedures are called on the thread that opened it, as on Windows, whose messages are the thread's.
+
+`tools/globals_allowed.txt` lists every global of the packages with its class and why; `tests/globals` (in `odin run tools/run_tests`)
+fails on a global that is not listed, on one listed that is gone, and on a class the code contradicts (`@(thread_local)` is
+`thread`, and only it). `odin test tests/globals -define:GLOBALS_WRITE=true` rewrites the list from the code, keeping the classes
+known; a new one gets `?` until it is classified, or moved into its struct.
+
+## 8. Pitfalls
 
 - **The output folder must exist**: `odin build ... -out:build/x.exe` fails with "Error(013): don't have access to write"
   when `build\` is missing.
