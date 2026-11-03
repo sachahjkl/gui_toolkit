@@ -5,6 +5,32 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.64.0] - 2026-11-03
+
+### Added
+- **`tests/globals`**: every package-level variable of the toolkit's packages (those of `when` blocks and the procedures' `@(static)` ones too) is in `tools/globals_allowed.txt` with its class (`const`, `process`, `thread`, `test`) and why; the test fails on one not listed, one listed that is gone, and a class the code contradicts (`@(thread_local)` is `thread`). It reads the sources next to it, not from the working directory; `-define:GLOBALS_WRITE=true` rewrites the list keeping the classes known. `docs/getting-started.md`, "Where state lives", says the rule; `CONTRIBUTING.md`: a new global needs a class.
+- **`tests/canvas`**: the asynchronous read-back (`canvas_read_begin` / `_ready` / `_finish`) gives the bytes drawn, the same as `canvas_read`; one cancelled gives nothing and keeps nothing (its staging texture and query released, a finish after it writes nothing); a block out of the canvas is refused at the start; a block read across the canvas's corner is transparent beyond it.
+- **`render.present_call`**: what a Present is asked for (the sync interval, the tearing flag, the mode the frame is presented in) from the mode asked, the tearing support, the interval and `frame_end`'s `vsync`; both backends take it from there (wgpu's `Immediate` or `Fifo`). `render/present_test.odin`: tearing only where allowed and never with a wait, the interval clamped to DXGI's limit, `vsync = false` at once.
+- **`platform.file_dialog_call`** (Windows): what the Common Item Dialog is told for a `File_Dialog` (options set and cleared, the type list and the line selected, file name, default extension, the GUID of `remember_id`, the folder and whether it is forced), computed apart from the dialog; `DIALOG_OPEN`, `DIALOG_SAVE`, `DIALOG_FOLDER` name the kinds of `dialog_test_hook`. `tests/dialogs` checks an open, a save and a folder dialog's call without opening one.
+- **`font.glyph_images`, `font.slug_glyphs`**: the bitmaps / Slug data of a whole run of glyphs, the atlas lock taken once, shared, for those already made: threads that draw at once look up side by side (8 threads: 17 ns per glyph instead of 120; 1 thread: 7 instead of 11). `draw.glyph_run` uses them. Every lock of the toolkit, what it guards and what was measured: docs/locks.md; `tools/text_bench -threads` times the locked paths.
+
+### Changed
+- **`ui.set_window_button_names`** translates the caption buttons of the current State only (each window's `ui.State` has its own names, English by default): call it after each `ui.init`. The interfaces' clock starts once for the process from any thread (atomic).
+- **platform: a thread's state is the thread's, the process's is locked or atomic.** On Linux each thread that opens windows has its own connection to the display server (Wayland or X11: its events, its seat's focus and serials, its selections and drags, the cursor libraries made on it) and its own session bus (the a11y bus address, the colour-scheme subscription, the idle inhibitions); the loose Wayland and X11 state is in the connection's struct, the XCB functions bound on first use are in the library's table, and the Wayland protocol tables are built once with the library. On Windows OLE is initialized once per thread (`dragdrop_thread_init`, `drop_target_enable` and `drag_start` no longer call `OleInitialize` each time), the system cursors and pointer settings are the thread's, and the window class is registered once (`sync.Once`). The virtual screen of the offscreen windows is locked; the build number, the tray's message and ids, the ABI check of the accessibility library are atomic.
+- **A public `ui` proc on a thread with no State** (no `init`, `use` or `begin_build` there) stops at once with `ui.NO_STATE_MESSAGE`, "ui: no begin_build on this thread", instead of crashing further on a nil State: one branch where the thread's State is read.
+- **GPU profile**: both backends fold a step's timestamp into the profile with one procedure (`profile_add`: summed by kind, the slowest kept longest first, a clock that went back counts 0). `render/gpu_profile_test.odin` checks it on made-up timestamps; `tests/gpufx` checks `set_gpu_timing`: off nothing is measured, on each submit is timed and `gpu_result` names one of them with a time above 0.
+- **`tools/tk`**: the PowerShell scripts of tools/ (build_text, build_a11y, build_naga, fetch_emoji, fetch_wgpu and the Linux fetch_wgpu.sh, gen_emoji_data, make_icon, make_logo, ppm_diff, emoji_board) are one Odin program, a command each with the same flags in Odin's spelling (`odin run tools/tk -- fetch_wgpu "-dest:build"`, `fetch_emoji -unicode`, `build_text -force`, `ppm_diff a.ppm b.ppm -tolerance:2`...), the same outputs, pins and stamps; `tools/shaders` builds naga in process. The static libraries of native/ are built once more after the change (their stamp now covers tools/tk/native.odin). Only tools/release.ps1 stays a script.
+- **Word cache**: a shard's lock is shared by the threads that find their word in its current generation (a page's threads shaping the same words: 190 ns per word with 8 threads instead of 440).
+
+### Removed
+- **Wayland: the primary-selection listeners**: the toolkit bound `zwp_primary_selection_device_manager_v1`, made a device and tracked its offers, but never read one nor offered a selection (no source was ever made): the protocol tables, the listeners and their state are gone. On X11 a copy still owns `PRIMARY`.
+
+### Fixed
+- **render, flate: no global raced on.** A second window's swap chain is sized by an argument of `create_swapchain` instead of a global flag two renderers on two threads shared; the sRGB tables of the capture are made once (`sync.Once`) instead of behind a plain flag; the environment switches (`TOOLKIT_RENDER_TRACE`, `TOOLKIT_DAMAGE_VERIFY`) are read once atomically; `qpc_to_tick` asks the system's counter frequency instead of keeping it. `flate.deflate_runs`' code tables are made at start-up (`@(init)`, as the fixed codes) instead of lazily.
+- **`odin run tools/run_tests -- -backend:wgpu -group:ci1`** from PowerShell selected no step: PowerShell 7 hands a `-name:value` typed after `--` to the program as `-name:` and `value` (odin passes on what it gets; from cmd or bash the flag arrives whole). `tools/cmdline` joins them again, for `run_tests`, `changelog` and `tk`; the docs say `odin run` again where they said to build the runner first.
+- **IME (Wayland)**: the preedit's caret and the text the input method replaces wait for the protocol's `done` like the rest (the caret moved at once, the Backspace presses went out before the `done`). The composition is `platform.Ime_Compose` (`ime_compose_preedit` / `_commit` / `_delete` / `_done` / `_reset`, pure), the caret's rectangle in the compositor's units `ime_cursor_rect_logical` (at least one unit high); `tests/ime` feeds them the protocol's events.
+- **Tray menus** (Windows): the default item of a menu is shown in bold (`AppendMenuW` ignored `MF_DEFAULT`: it is set with `SetMenuDefaultItem`). `platform.tray_menu_build` makes the native menu of a model without showing it; `tests/tray` reads it back with `GetMenuItemInfoW` (separators, check and radio marks, the default item, a disabled one, a submenu, each command's id).
+
 ## [0.63.1] - 2026-11-02
 
 ### Changed
@@ -1430,6 +1456,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.64.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.64.0
 [0.63.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.1
 [0.63.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.0
 [0.62.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.62.0
