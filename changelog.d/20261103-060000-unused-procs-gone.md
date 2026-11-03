@@ -1,3 +1,0 @@
-type: Removed
-
-**Public procedures nobody called** (neither the toolkit, nor Wren, nor opencode_gui_toolkit): `draw.damage_padded`, `layer_cache_forget` (an idle result goes after its frames anyway), `picture_slot`, `picture_version`; `dbus.arg_variant_u32`, `read_variant_string` / `_bool` / `_u32`, `w_i16`, `w_i64`; `font.native_coverage` (and the text backend's `gt_face_coverage`), `native_table`; `platform.a11y_prop_ids`; `render.canvas_pool_bytes`, `canvas_texture_changed`, `canvas_texture_size`, `damage_rects`, `heaps_reset`, `video_gpu_bytes`; `ui.autoscroll_is_enabled`, `post_queue_capacity`.
