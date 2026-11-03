@@ -46,6 +46,7 @@ Gpu_Step_Rec :: struct {
 GPU_KINDS_RETAINED :: 1 << 31
 
 GPU_PROFILE_SLOWEST :: 16
+@(private) MS_PER_SECOND :: 1000
 // Steps timed per frame; past it the remaining steps are counted in the last one.
 GPU_PROFILE_MAX_STEPS :: 2048
 
@@ -199,20 +200,7 @@ profile_collect :: proc(r: ^Renderer, slot: int, frame: int, t0: u64, freq: u64,
 	for rec, i in s.recs {
 		t: u64
 		if r.ctx->GetData((^d3d11.IAsynchronous)(s.queries[i]), &t, size_of(t), 0) != 0 { return }   // not ready: skip the frame
-		ms := t >= prev ? f32(f64(t - prev) * 1000 / f64(freq)) : 0
-		prev = max(prev, t)
-		st := &p.steps[rec.kind]
-		st.count += 1
-		st.ms += ms
-		st.pixels += rec.pixels
-		st.bytes += rec.bytes
-		// the slowest steps, longest first
-		k := p.n_slowest
-		if k < GPU_PROFILE_SLOWEST { p.n_slowest += 1 } else if ms <= p.slowest[k - 1].ms { continue } else { k -= 1 }
-		for k > 0 && p.slowest[k - 1].ms < ms { p.slowest[k] = p.slowest[k - 1]; k -= 1 }
-		d := rec.detail
-		d.kind, d.ms, d.w, d.h = rec.kind, ms, rec.w, rec.h
-		p.slowest[k] = d
+		profile_add(&p, rec, t, &prev, MS_PER_SECOND / f64(freq))
 	}
 	had_prev := r.prof.prev_ok && r.prof.prev_frame == frame - 1
 	r.prof.prev_ok = false
@@ -222,13 +210,32 @@ profile_collect :: proc(r: ^Renderer, slot: int, frame: int, t0: u64, freq: u64,
 		if r.ctx->GetData((^d3d11.IAsynchronous)(s.pq[0]), &dj, size_of(dj), 0) == 0 &&
 		   r.ctx->GetData((^d3d11.IAsynchronous)(s.pq[1]), &ta, size_of(ta), 0) == 0 &&
 		   r.ctx->GetData((^d3d11.IAsynchronous)(s.pq[2]), &tb, size_of(tb), 0) == 0 && !bool(dj.Disjoint) && dj.Frequency > 0 {
-			if tb >= ta { p.steps[.Present] = Gpu_Step_Stat{count = 1, ms = f32(f64(tb - ta) * 1000 / f64(dj.Frequency))} }
+			if tb >= ta { p.steps[.Present] = Gpu_Step_Stat{count = 1, ms = f32(f64(tb - ta) * MS_PER_SECOND / f64(dj.Frequency))} }
 			if had_prev && t0 >= r.prof.prev_tb {
-				p.steps[.Idle] = Gpu_Step_Stat{count = 1, ms = f32(f64(t0 - r.prof.prev_tb) * 1000 / f64(freq))}
+				p.steps[.Idle] = Gpu_Step_Stat{count = 1, ms = f32(f64(t0 - r.prof.prev_tb) * MS_PER_SECOND / f64(freq))}
 			}
 			r.prof.prev_tb, r.prof.prev_frame, r.prof.prev_ok = tb, frame, true
 		}
 	}
 	r.prof.last = p
 	r.prof.have = true
+}
+
+// A step whose timestamp after it is `t` (ticks; `prev`: the one before it, moved on), into the profile: summed by kind,
+// kept among the slowest (longest first) when it is one of them. A clock that went back counts 0. Shared (both backends).
+@(private)
+profile_add :: proc(p: ^Gpu_Profile, rec: Prof_Rec, t: u64, prev: ^u64, ms_per_tick: f64) {
+	ms := t >= prev^ ? f32(f64(t - prev^) * ms_per_tick) : 0
+	prev^ = max(prev^, t)
+	st := &p.steps[rec.kind]
+	st.count += 1
+	st.ms += ms
+	st.pixels += rec.pixels
+	st.bytes += rec.bytes
+	k := p.n_slowest
+	if k < GPU_PROFILE_SLOWEST { p.n_slowest += 1 } else if ms <= p.slowest[k - 1].ms { return } else { k -= 1 }
+	for k > 0 && p.slowest[k - 1].ms < ms { p.slowest[k] = p.slowest[k - 1]; k -= 1 }
+	d := rec.detail
+	d.kind, d.ms, d.w, d.h = rec.kind, ms, rec.w, rec.h
+	p.slowest[k] = d
 }
