@@ -16,7 +16,7 @@ import "../../font"
 import "../../platform"
 import "../../render"
 import "../../ui"
-import "../../base"
+import "../../ascii"
 
 Page :: enum { Pacing, Lazy, Warning, Emboss, Rich, Merge, Wheel, Find, Smooth, Box_At, Webgpu, Tests }
 
@@ -476,7 +476,7 @@ open :: proc(args: []string, headless_default := false) -> ^App {
 		if strings.has_prefix(a, "--page=") {
 			v := a[len("--page="):]
 			if n, ok := strconv.parse_int(v); ok && n >= 1 && n <= len(Page) { app.page = Page(n - 1) }
-			for p in Page { if base.ascii_equal_fold(v, fmt.tprintf("%v", p)) { app.page = p } }
+			for p in Page { if ascii.equal_fold(v, fmt.tprintf("%v", p)) { app.page = p } }
 		}
 	}
 	font.init(&app.fonts)

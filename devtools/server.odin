@@ -10,7 +10,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import "../platform"
-import "../base"
+import "../ascii"
 
 // The network side: a listener on 127.0.0.1, one thread per connection. HTTP for the discovery endpoints (/json/version,
 // /json/list) and the upgrade to a WebSocket; then each text message (a command) goes to the inbox and wakes the window.
@@ -220,9 +220,9 @@ conn_loop :: proc(c: ^Conn) {
 		if i < 0 { continue }
 		h, v := strings.trim_space(l[:i]), strings.trim_space(l[i + 1:])
 		switch {
-		case base.ascii_equal_fold(h, "Sec-WebSocket-Key"): key = v
-		case base.ascii_equal_fold(h, "Host"):              host = v
-		case base.ascii_equal_fold(h, "Origin"):            origin = v
+		case ascii.equal_fold(h, "Sec-WebSocket-Key"): key = v
+		case ascii.equal_fold(h, "Host"):              host = v
+		case ascii.equal_fold(h, "Origin"):            origin = v
 		}
 	}
 	// (the one Origin taken: Chrome's own DevTools, on the WebSocket only. A page cannot send it, its browser writes its own.)
@@ -310,7 +310,7 @@ conn_loop :: proc(c: ^Conn) {
 @(private)
 host_allowed :: proc(host: string, port: int) -> bool {
 	for name in ([?]string{"127.0.0.1", "localhost", "[::1]"}) {
-		if base.ascii_equal_fold(host, fmt.tprintf("%s:%d", name, port)) { return true }
+		if ascii.equal_fold(host, fmt.tprintf("%s:%d", name, port)) { return true }
 	}
 	return false
 }

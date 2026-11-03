@@ -7,7 +7,7 @@ import "core:strings"
 import "../platform"
 import "../render"
 import "../ui"
-import "../base"
+import "../ascii"
 
 // The box tree as a DOM, for Chrome's DevTools: the Elements panel shows the boxes (a tag from what the box does, its name as
 // its id, its text as a text node), Layout and Computed their rects and what they are drawn with, the Accessibility tab what
@@ -128,7 +128,7 @@ dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: i
 	tag := dom_tag(s, b)
 	kids := dom_children(srv, s, id)
 	fmt.sbprintf(sb, `{{"nodeId":%d,"backendNodeId":%d,"nodeType":1,"nodeName":%s,"localName":%s,"nodeValue":"","childNodeCount":%d,"attributes":[`, id, id,
-		json_quote(base.ascii_upper(tag)), json_quote(tag), len(kids))
+		json_quote(ascii.upper(tag)), json_quote(tag), len(kids))
 	dom_write_attrs(sb, b)
 	strings.write_string(sb, "]")
 	only_text := len(kids) == 1 && kids[0] == id + 1

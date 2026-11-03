@@ -22,7 +22,7 @@ import "core:slice"
 import "core:strings"
 import "../cmdline"
 import "core:time"
-import "../../base"
+import "../../ascii"
 
 // Keep a Changelog's, in the order of a version's subsections.
 TYPE_NAMES := [?]string{"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"}
@@ -45,7 +45,7 @@ Fragment :: struct {
 is_digit :: proc(c: u8) -> bool { return c >= '0' && c <= '9' }
 
 canonical_type :: proc(t: string) -> string {
-	for n in TYPE_NAMES { if base.ascii_equal_fold(n, strings.trim_space(t)) { return n } }
+	for n in TYPE_NAMES { if ascii.equal_fold(n, strings.trim_space(t)) { return n } }
 	return ""
 }
 
@@ -84,7 +84,7 @@ read_fragment :: proc(name, path: string) -> (f: Fragment) {
 	if i >= len(lines) { append(&f.problems, "it is empty"); return }
 	head := strings.trim_space(lines[i])
 	colon := strings.index_byte(head, ':')
-	if colon < 0 || !base.ascii_equal_fold(strings.trim_space(head[:colon]), "type") {
+	if colon < 0 || !ascii.equal_fold(strings.trim_space(head[:colon]), "type") {
 		append(&f.problems, "its first line is not 'type: Added|Changed|Deprecated|Removed|Fixed|Security'")
 		return
 	}
@@ -258,7 +258,7 @@ slug :: proc(s: string) -> string {
 	}
 	sb := strings.builder_make(context.temp_allocator)
 	dash := true   // (no dash at the start)
-	for c in transmute([]u8)base.ascii_lower(text) {
+	for c in transmute([]u8)ascii.lower(text) {
 		if is_digit(c) || (c >= 'a' && c <= 'z') {
 			strings.write_byte(&sb, c)
 			dash = false

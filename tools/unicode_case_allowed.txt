@@ -1,6 +1,6 @@
 # The calls of strings.to_lower, to_upper, equal_fold and unicode.to_lower, to_upper that are meant to fold by Unicode (the Kelvin
 # sign U+212A is 'k' to them, the long s U+017F 's'): tests/unicode_case fails on any other in the toolkit's .odin files (names and
-# protocols are ASCII: base.ascii_lower, ascii_equal_fold...) and on an entry here that matches no line.
+# protocols are ASCII: ascii.lower, ascii.equal_fold...) and on an entry here that matches no line.
 # "<path> <code>  # why": the line of <path> that holds <code>.
 config/titles.odin name := strings.to_lower(d.name  # user text: the settings' search
 config/titles.odin title := strings.to_lower(title_of(d)  # user text: the settings' search

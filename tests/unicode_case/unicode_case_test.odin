@@ -1,8 +1,8 @@
 // The calls that fold case by Unicode (strings.to_lower, to_upper, equal_fold; unicode.to_lower, to_upper: the Kelvin sign
 // U+212A is 'k' to them, the long s U+017F 's') in the toolkit's .odin files, against the list of those meant to
 // (tools/unicode_case_allowed.txt, one line each: "<path> <code>  # why", the line of <path> that holds <code>). Names and
-// protocols (header names, hosts, font family keys, keywords, enum names, extensions) are ASCII: base.ascii_lower,
-// ascii_equal_fold...; Unicode is for user text (a search, find in page, type-ahead), display text and Windows paths.
+// protocols (header names, hosts, font family keys, keywords, enum names, extensions) are ASCII: ascii.lower,
+// ascii.equal_fold...; Unicode is for user text (a search, find in page, type-ahead), display text and Windows paths.
 // A call the list does not name fails, and so does an entry that matches no line (the list follows the code).
 //   odin test tests/unicode_case -vet          (the sources are read relative to this file, not the cwd)
 package unicode_case_test
@@ -96,7 +96,7 @@ unicode_case_calls_are_listed :: proc(t: ^testing.T) {
 		for &e in entries {
 			if e.path == u.path && strings.contains(u.code, e.code) { e.used, listed = true, true }
 		}
-		testing.expectf(t, listed, "%s(%d): '%s' folds by Unicode; a name or a protocol wants base.ascii_lower, ascii_equal_fold...; user text goes in %s with why", u.path, u.line, u.code, LIST)
+		testing.expectf(t, listed, "%s(%d): '%s' folds by Unicode; a name or a protocol wants ascii.lower, ascii.equal_fold...; user text goes in %s with why", u.path, u.line, u.code, LIST)
 	}
 	for e in entries { testing.expectf(t, e.used, "%s: '%s %s' matches no line of the code: drop it", LIST, e.path, e.code) }
 }
@@ -107,7 +107,7 @@ a_call_is_code_alone :: proc(t: ^testing.T) {
 	src := "a := strings.to_lower(x)\n" +
 		"// strings.equal_fold(a, b)\n" +
 		"s := \"unicode.to_upper(r)\"; r := `strings.to_upper(s)`\n" +
-		"b := base.ascii_lower(x); c := my_strings.to_lower(x)\n" +
+		"b := ascii.lower(x); c := my_strings.to_lower(x)\n" +
 		"if strings.equal_fold(a, b) && unicode.to_upper(r) == 'K' { /* strings.to_lower(x) */ }\n"
 	lines := case_call_lines(src, context.temp_allocator)
 	testing.expect(t, slice.equal(lines, []int{1, 5}), fmt.tprint(lines))
