@@ -4,7 +4,7 @@ package font
 import "base:runtime"
 import "core:os"
 import "core:strings"
-import "../base"
+import "../ascii"
 
 // The platform part of the package off Windows. Faces come from files and memory, opened by the text backend itself
 // (the native one: Fontations). The system's fonts come from the platform's font service: fontconfig on Linux
@@ -86,7 +86,7 @@ load_memory :: proc(s: ^State, data: []byte, owned: bool, index := 0, simulation
 // A system font nearest to weight / style / stretch (1..9, 5 = normal), from the platform's font service.
 load_system :: proc(s: ^State, family: string, weight := FONT_WEIGHT_NORMAL, style := Font_Style.Normal, stretch := FONT_STRETCH_NORMAL) -> (id: Font_Id, ok: bool) {
 	if family == "" { return 0, false }
-	req := strings.concatenate({"sysreq:", base.ascii_lower(family), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
+	req := strings.concatenate({"sysreq:", ascii.lower(family), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
 	if id, ok = find_key(s, req); ok { return id, id != 0 }
 	path, index, found := sys_find(family, weight, style, stretch)
 	if !found { remember_key(s, req, 0); return 0, false }
@@ -112,7 +112,7 @@ other_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: []
 			next: rune
 			if i + n < b { next, _ = decode16(w, i + n) }
 			emoji := emoji_wanted(r, next)
-			key := strings.concatenate({emoji ? "fbe:" : "fb:", base.ascii_lower(family), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(int(r))}, context.temp_allocator)
+			key := strings.concatenate({emoji ? "fbe:" : "fb:", ascii.lower(family), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(int(r))}, context.temp_allocator)
 			id, known := find_key(s, key)
 			if !known {
 				try :: proc(s: ^State, family: string, weight: int, style: Font_Style, r: rune, emoji: bool) -> (id: Font_Id) {

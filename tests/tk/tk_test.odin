@@ -13,7 +13,7 @@ import "core:testing"
 import tk "../../tools/tk"
 import "../../tools/cmdline"
 import "../../testkit"
-import "../../base"
+import "../../ascii"
 
 @(private = "file") ABC_SHA256 :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 @(private = "file") PNG_SIGNATURE :: "\x89PNG\r\n\x1a\n"
@@ -169,7 +169,7 @@ the_stamps_of_the_builds :: proc(t: ^testing.T) {
 	parts := strings.split(sources, ",", context.temp_allocator)
 	testing.expect_value(t, len(parts), 3)
 	sum, _ := tk.sha256_file(fmt.tprintf("%s/Cargo.toml", crate))
-	testing.expect_value(t, parts[0], base.ascii_upper(sum))
+	testing.expect_value(t, parts[0], ascii.upper(sum))
 	// a stamp PowerShell's Set-Content wrote ends with a line end
 	write(stamp, transmute([]byte)fmt.tprintf("%s\r\n", sources))
 	testing.expect(t, tk.stamp_holds(lib, stamp, sources))
