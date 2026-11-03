@@ -76,11 +76,7 @@ Wl_Conn :: struct {
 	text_input:    Wl_Proxy,
 	ti_enabled:    bool,
 	ti_window:     ^Window,       // the window the text-input is enabled for
-	preedit:       string,        // the uncommitted preedit string being built this commit cycle
-	preedit_cursor: int,
-	preedit_dirty: bool,
-	pending_preedit: string,      // the preedit from preedit_string, applied on `done`
-	pending_commit:  string,      // the committed string from commit_string, applied on `done`
+	ime:           Ime_Compose,   // what the input method sent, applied on `done` (ime.odin)
 	// cursor shapes (cursors_wl_linux.odin): the compositor draws them from a named shape (wp_cursor_shape_v1)
 	cursor_shape_manager: Wl_Proxy,
 	cursor_shape_device:  Wl_Proxy,

@@ -151,7 +151,9 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
   Invoke / Focus from the toolkit's neutral `A11y_Update`. Nothing is built while no assistive technology connects.
 - **IME** (`ime.odin` + `ime_wl_linux.odin`): **Wayland `zwp_text_input_v3`** commits text as `.Text` events (the same
   path as a typed key) and exposes the preedit through `ime_preedit`; `ime_set_cursor_rect` places the candidate
-  window. On **X11**, libxkbcommon already composes dead keys and Compose sequences inline, so committed text arrives
+  window. What the protocol sends is pending until its `done`: `Ime_Compose` (`ime.odin`, pure: `tests/ime`) keeps it and makes
+  the events (Backspace presses for the text replaced, `.Text` for the text committed) and the preedit;
+  `ime_cursor_rect_logical` turns the caret's rectangle into the compositor's units. On **X11**, libxkbcommon already composes dead keys and Compose sequences inline, so committed text arrives
   as `.Text` with no extra work.
 - **Smaller services** (`services_linux.odin`): `idle_inhibit` / `idle_uninhibit` keep the screen awake through
   `org.freedesktop.ScreenSaver`; `add_recent_file` appends to the freedesktop `recently-used.xbel`.
