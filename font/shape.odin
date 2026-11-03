@@ -393,9 +393,12 @@ Word :: struct {
 	clusters: []Cluster,
 }
 
+// A shard's lock is shared by the threads that find a word in its current generation (they only read: a page's
+// threads shaping the same words run side by side); a word found in the old generation, a word added and a clear
+// take it alone.
 @(private)
 Word_Shard :: struct {
-	mu:       sync.Mutex,
+	mu:       sync.RW_Mutex,
 	cur, old: map[u64]^Word,
 	cur_n:    int,
 	_:        [WORD_SHARD_PAD_BYTES]u8,   // keeps shards on separate cache lines
@@ -437,10 +440,10 @@ free_words :: proc(m: ^map[u64]^Word) {
 words_clear :: proc(c: ^Word_Cache) {
 	sync.atomic_store(&c.epoch, sync.atomic_add(&words_epochs, 1) + 1)
 	for &sh in c.shards {
-		sync.mutex_lock(&sh.mu)
+		sync.rw_mutex_lock(&sh.mu)
 		free_words(&sh.cur); free_words(&sh.old)
 		sh.cur_n = 0
-		sync.mutex_unlock(&sh.mu)
+		sync.rw_mutex_unlock(&sh.mu)
 	}
 }
 
@@ -467,24 +470,50 @@ word_hash :: proc(id: Font_Id, size: f32, rtl, no_liga: bool, text: string) -> u
 	return h
 }
 
+// The word in generation `m` (read only: the shared lock is enough).
 @(private)
-word_find :: proc(sh: ^Word_Shard, h: u64, id: Font_Id, size: f32, rtl, no_liga: bool, text: string) -> ^Word {
-	match :: proc(w: ^Word, h: u64, id: Font_Id, size: f32, rtl, no_liga: bool, text: string) -> ^Word {
-		for n := w; n != nil; n = n.next {
-			if n.hash == h && n.font == id && n.size == size && n.rtl == rtl && n.no_liga == no_liga && n.text == text { return n }
-		}
-		return nil
-	}
-	if w, ok := sh.cur[h]; ok { if m := match(w, h, id, size, rtl, no_liga, text); m != nil { return m } }
-	if w, ok := sh.old[h]; ok {
-		if m := match(w, h, id, size, rtl, no_liga, text); m != nil {
-			// still in use: back to the current generation
-			unlink(&sh.old, h, m)
-			link(sh, h, m)
-			return m
-		}
+word_match :: proc(m: ^map[u64]^Word, h: u64, id: Font_Id, size: f32, rtl, no_liga: bool, text: string) -> ^Word {
+	for n := m[h] or_else nil; n != nil; n = n.next {
+		if n.hash == h && n.font == id && n.size == size && n.rtl == rtl && n.no_liga == no_liga && n.text == text { return n }
 	}
 	return nil
+}
+
+// The word in either generation (one found in the old one goes back to the current one). The lock held alone.
+@(private)
+word_find :: proc(sh: ^Word_Shard, h: u64, id: Font_Id, size: f32, rtl, no_liga: bool, text: string) -> ^Word {
+	if m := word_match(&sh.cur, h, id, size, rtl, no_liga, text); m != nil { return m }
+	m := word_match(&sh.old, h, id, size, rtl, no_liga, text)
+	if m != nil {
+		// still in use: back to the current generation
+		unlink(&sh.old, h, m)
+		link(sh, h, m)
+	}
+	return m
+}
+
+// The word, from the cache or shaped and added: the shard's lock is held, shared when `shared`, else alone; nil (the lock
+// held alone): no memory for it.
+@(private)
+word_get :: proc(s: ^State, sh: ^Word_Shard, h: u64, id: Font_Id, size: f32, text: string, rtl, no_liga: bool) -> (w: ^Word, shared: bool) {
+	sync.rw_mutex_shared_lock(&sh.mu)
+	if w = word_match(&sh.cur, h, id, size, rtl, no_liga, text); w != nil { return w, true }
+	sync.rw_mutex_shared_unlock(&sh.mu)
+	sync.rw_mutex_lock(&sh.mu)
+	if w = word_find(sh, h, id, size, rtl, no_liga, text); w != nil { return w, false }
+	sync.rw_mutex_unlock(&sh.mu)
+	nw := shape_word(s, id, size, text, rtl, no_liga, runtime.heap_allocator())
+	sync.rw_mutex_lock(&sh.mu)
+	if nw == nil { return nil, false }
+	// another thread may have added it meanwhile
+	if w = word_find(sh, h, id, size, rtl, no_liga, text); w != nil { free(nw, runtime.heap_allocator()); return w, false }
+	word_insert(&s.words, sh, h, nw)
+	return nw, false
+}
+
+@(private)
+word_release :: proc(sh: ^Word_Shard, shared: bool) {
+	if shared { sync.rw_mutex_shared_unlock(&sh.mu) } else { sync.rw_mutex_unlock(&sh.mu) }
 }
 
 @(private)
@@ -559,20 +588,10 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 		}
 	}
 	sh := &s.words.shards[h % SHARDS]
-	width: f32
-	sync.mutex_lock(&sh.mu)
-	if w := word_find(sh, h, id, size, rtl, no_liga, text); w != nil {
-		width = w.width
-		sync.mutex_unlock(&sh.mu)
-	} else {
-		sync.mutex_unlock(&sh.mu)
-		nw := shape_word(s, id, size, text, rtl, no_liga, context.allocator)
-		if nw == nil { return 0 }
-		width = nw.width
-		sync.mutex_lock(&sh.mu)
-		if word_find(sh, h, id, size, rtl, no_liga, text) == nil { word_insert(&s.words, sh, h, nw) } else { free(nw) }
-		sync.mutex_unlock(&sh.mu)
-	}
+	w, shared := word_get(s, sh, h, id, size, text, rtl, no_liga)
+	if w == nil { word_release(sh, shared); return 0 }
+	width := w.width
+	word_release(sh, shared)
 	if e != nil {
 		e^ = L1_Entry{state = s, hash = h, font = id, size = size, width = width, epoch = epoch, flags = flags, n = u8(len(text))}
 		copy(e.text[:], text)
@@ -593,21 +612,12 @@ word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga:
 	}
 	h := word_hash(id, size, rtl, no_liga, text)
 	sh := &s.words.shards[h % SHARDS]
-	sync.mutex_lock(&sh.mu)
-	w := word_find(sh, h, id, size, rtl, no_liga, text)
-	if w == nil {
-		sync.mutex_unlock(&sh.mu)
-		nw := shape_word(s, id, size, text, rtl, no_liga, context.allocator)
-		if nw == nil { return 0 }
-		sync.mutex_lock(&sh.mu)
-		w = word_find(sh, h, id, size, rtl, no_liga, text)
-		if w == nil { word_insert(&s.words, sh, h, nw); w = nw } else { free(nw) }
-	}
+	w, shared := word_get(s, sh, h, id, size, text, rtl, no_liga)
+	defer word_release(sh, shared)
+	if w == nil { return 0 }
 	append(glyphs, ..w.glyphs)
 	append(clusters, ..w.clusters)
-	width := w.width
-	sync.mutex_unlock(&sh.mu)
-	return width
+	return w.width
 }
 
 ////////////////////////////////
