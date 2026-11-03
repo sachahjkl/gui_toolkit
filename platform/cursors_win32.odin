@@ -89,37 +89,45 @@ Cursor_State :: struct {
 	clock:        u64,
 }
 
-@(private) system_handles: [Cursor]win.HCURSOR
-@(private) cursor_settings_ok: bool       // cursor_base_px and cursor_scheme are current
-@(private) cursor_base_px: int            // the pointer size at 96 dpi
-@(private) cursor_scheme_cached: Cursor_Scheme
+// The system's cursors and pointer settings as this thread knows them: every thread's windows hear WM_SETTINGCHANGE, which
+// drops the settings (cursor_settings_changed).
+@(private)
+System_Cursors :: struct {
+	handles:     [Cursor]win.HCURSOR,
+	settings_ok: bool,            // base_px and scheme are current
+	base_px:     int,             // the pointer size at 96 dpi
+	scheme:      Cursor_Scheme,
+}
+
+@(private, thread_local) system_cursors: System_Cursors
 
 // The size of the system's cursors at 96 dpi (SM_CXCURSOR: 32 by default).
 cursor_base_size :: proc() -> int {
 	settings_refresh()
-	return cursor_base_px
+	return system_cursors.base_px
 }
 
 // The colours of the user's pointer scheme, from the system's arrow: mostly dark pixels are a black pointer.
 cursor_scheme :: proc() -> Cursor_Scheme {
 	settings_refresh()
-	return cursor_scheme_cached
+	return system_cursors.scheme
 }
 
 // The cursor settings changed (WM_SETTINGCHANGE SPI_SETCURSORS, which the window handles itself): sizes and colours
 // are read again and drawn cursors are made again.
-cursor_settings_changed :: proc() { cursor_settings_ok = false }
+cursor_settings_changed :: proc() { system_cursors.settings_ok = false }
 
 @(private)
 settings_refresh :: proc() {
-	if cursor_settings_ok { return }
-	cursor_settings_ok = true
+	s := &system_cursors
+	if s.settings_ok { return }
+	s.settings_ok = true
 	// (SM_CXCURSOR, the size of the cursors the system makes, rather than the pointer size of the accessibility settings
 	// in the registry (CursorBaseSize): with a larger pointer the system's cursor objects need not be larger, and the
 	// drawn ones must be as large as those they stand next to)
-	cursor_base_px = CURSOR_DEFAULT_BASE_PX
-	if m := win.GetSystemMetricsForDpi(win.SM_CXCURSOR, DPI_BASE); m >= CURSOR_MIN_PX && m <= CURSOR_BASE_MAX_PX { cursor_base_px = int(m) }
-	cursor_scheme_cached = detect_scheme()
+	s.base_px = CURSOR_DEFAULT_BASE_PX
+	if m := win.GetSystemMetricsForDpi(win.SM_CXCURSOR, DPI_BASE); m >= CURSOR_MIN_PX && m <= CURSOR_BASE_MAX_PX { s.base_px = int(m) }
+	s.scheme = detect_scheme()
 }
 
 foreign import user32_cursors "system:User32.lib"
@@ -206,10 +214,11 @@ make_cursor :: proc(rgba: []u8, size: [2]int, hot: [2]int) -> win.HCURSOR {
 
 @(private)
 system_handle :: proc(c: Cursor) -> win.HCURSOR {
-	if system_handles[c] == nil {
-		if id, ok := cursor_system_id(c); ok { system_handles[c] = win.LoadCursorA(nil, id) }
+	h := &system_cursors.handles[c]
+	if h^ == nil {
+		if id, ok := cursor_system_id(c); ok { h^ = win.LoadCursorA(nil, id) }
 	}
-	return system_handles[c]
+	return h^
 }
 
 // The handle for `c` on `w`: nil for None (and for a drawn cursor that could not be made: the arrow then).

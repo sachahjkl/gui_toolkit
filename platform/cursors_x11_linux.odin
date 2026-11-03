@@ -55,11 +55,12 @@ X11_Cursor_Lib :: struct {
 	picture_cursor: proc "c" (c: Xcb_Connection, cid, source: u32, x, y: u16) -> Xcb_Void_Cookie,
 	free_picture: proc "c" (c: Xcb_Connection, pid: u32) -> Xcb_Void_Cookie,
 	argb_format:  u32,
-	// what was made, once each: the connection lives as long as the process
+	// what was made, once each: the thread's connection lives as long as the process
 	named:        [Cursor]u32,
 	font:         u32,
 }
-@(private = "file") xc: X11_Cursor_Lib
+// The cursor libraries and what was made with them on this thread's connection (x11c).
+@(private = "file", thread_local) xc: X11_Cursor_Lib
 
 @(private = "file")
 x11_cursor_lib :: proc() -> ^X11_Cursor_Lib {

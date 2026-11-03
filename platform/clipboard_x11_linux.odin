@@ -30,7 +30,15 @@ X11_Incr_Send :: struct {
 	offset:    int,
 	active:    bool,
 }
-@(private) x11_incr_sends: [dynamic]X11_Incr_Send
+
+// What another client's CLIPBOARD offers (its TARGETS), as last read (x11_foreign_formats).
+@(private)
+X11_Foreign_Formats :: struct {
+	formats: Clipboard_Formats,
+	at:      time.Tick,
+	seq:     u32,
+	read:    bool,
+}
 
 // Own CLIPBOARD and advertise the rich targets. The store's flavours (clipboard_linux.odin) are read at serve time, so
 // this only needs to claim ownership; `text` keeps the plain-text fast path working.
@@ -164,7 +172,7 @@ x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: 
 	// keep a copy that outlives the temp allocator
 	buf := make([]u8, len(data))
 	copy(buf, data)
-	append(&x11_incr_sends, X11_Incr_Send{requestor = requestor, property = property, target = target, data = buf, offset = 0, active = true})
+	append(&x11c.incr_sends, X11_Incr_Send{requestor = requestor, property = property, target = target, data = buf, offset = 0, active = true})
 	xcb.flush(x11c.c)
 }
 
@@ -172,7 +180,7 @@ x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: 
 // handler on a PropertyNotify (state delete) for a requestor we stream to.
 @(private)
 x11_incr_on_property_delete :: proc(window: Xcb_Window, property: Xcb_Atom) {
-	for &s, i in x11_incr_sends {
+	for &s, i in x11c.incr_sends {
 		if !s.active || s.requestor != window || s.property != property { continue }
 		remaining := len(s.data) - s.offset
 		chunk := min(remaining, X11_INCR_THRESHOLD)
@@ -181,7 +189,7 @@ x11_incr_on_property_delete :: proc(window: Xcb_Window, property: Xcb_Atom) {
 		xcb.flush(x11c.c)
 		if chunk == 0 {   // the terminating empty property: transfer done
 			delete(s.data)
-			unordered_remove(&x11_incr_sends, i)
+			unordered_remove(&x11c.incr_sends, i)
 		}
 		return
 	}
@@ -230,18 +238,15 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 // XFIXES, at most once per X11_FORMATS_CACHE_MS.
 @(private)
 x11_foreign_formats :: proc(w: ^Window) -> Clipboard_Formats {
-	@(static) cached: Clipboard_Formats
-	@(static) at: time.Tick
-	@(static) seq: u32
-	@(static) read: bool
-	if read && seq == clipboard_sequence() && (x11c.xfixes_event != 0 || time.duration_milliseconds(time.tick_since(at)) < X11_FORMATS_CACHE_MS) { return cached }
+	f := &x11c.foreign_formats
+	if f.read && f.seq == clipboard_sequence() && (x11c.xfixes_event != 0 || time.duration_milliseconds(time.tick_since(f.at)) < X11_FORMATS_CACHE_MS) { return f.formats }
 	b := x11_selection_read(w, x11c.clipboard, "TARGETS", context.temp_allocator, X11_TEXT_READ_WAIT_MS)
 	names := make([dynamic]string, context.temp_allocator)
 	for i in 0 ..< len(b) / size_of(u32) {
 		append(&names, x11_atom_name(Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):])))))
 	}
-	cached, at, seq, read = clipboard_formats_from_mimes(names[:]), time.tick_now(), clipboard_sequence(), true
-	return cached
+	f^ = {clipboard_formats_from_mimes(names[:]), time.tick_now(), clipboard_sequence(), true}
+	return f.formats
 }
 
 @(private)
@@ -259,10 +264,8 @@ x11_target_for_mime :: proc(mime: string) -> Xcb_Atom {
 // Changes a window's event mask (to hear a requestor's INCR property deletes). A thin wrapper over the XCB request.
 @(private)
 x11_change_window_attrs_event_mask :: proc(window: Xcb_Window, mask: u32) {
-	if x11_change_attrs == nil { x11_change_attrs = auto_cast lib_sym(xcb.handle, "xcb_change_window_attributes") }
-	if x11_change_attrs != nil {
+	if xcb.change_window_attributes != nil {
 		v := [1]u32{mask}
-		x11_change_attrs(x11c.c, window, XCB_CW_EVENT_MASK, &v[0])
+		xcb.change_window_attributes(x11c.c, window, XCB_CW_EVENT_MASK, &v[0])
 	}
 }
-@(private) x11_change_attrs: proc "c" (c: Xcb_Connection, window: Xcb_Window, value_mask: u32, value_list: rawptr) -> Xcb_Void_Cookie

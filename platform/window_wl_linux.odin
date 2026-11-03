@@ -1,8 +1,8 @@
 #+build linux
 package platform
 
-// The Wayland window backend, over libwayland-client (by dlopen). One wl_display per process, shared by every window of
-// the thread. A window is a wl_surface with an xdg_surface and xdg_toplevel (xdg-shell, wl_protocol_linux.odin). Server
+// The Wayland window backend, over libwayland-client (by dlopen). One wl_display per thread that opens windows, shared by
+// that thread's windows. A window is a wl_surface with an xdg_surface and xdg_toplevel (xdg-shell, wl_protocol_linux.odin). Server
 // decorations are asked for through zxdg_decoration_manager_v1 when the compositor has it (KDE); where it does not
 // (GNOME), the window is undecorated and the app draws its own title bar (integrated title) — the toolkit already does
 // this on Windows, so the same frame works. Input comes from wl_seat (wl_pointer, wl_keyboard with its xkbcommon
@@ -25,7 +25,7 @@ import "core:mem"
 @(private)
 wl_ctx_real :: proc "contextless" () -> runtime.Context { return runtime.default_context() }
 
-// Process-wide Wayland connection and the globals bound from the registry.
+// A thread's Wayland connection, the globals bound from the registry, and its seat's state.
 @(private)
 Wl_Conn :: struct {
 	display:    Wl_Display,
@@ -84,10 +84,23 @@ Wl_Conn :: struct {
 	// cursor shapes (cursors_wl_linux.odin): the compositor draws them from a named shape (wp_cursor_shape_v1)
 	cursor_shape_manager: Wl_Proxy,
 	cursor_shape_device:  Wl_Proxy,
+	cursor_sent:    u64,          // what was last sent (cursor_on_screen)
+	cursor_surface: Wl_Proxy,     // the surface our cursor images are on
+	// the serials the requests need: the pointer's last enter (set_cursor), its last button (a drag start, a selection)
+	enter_serial:  u32,
+	button_serial: u32,
+	output_refresh_mhz: i32,      // the wl_output mode's refresh
+	// an offer being described (its offer events) before data_offer / enter / selection say what it is for
+	pending_offer:       Wl_Proxy,
+	pending_offer_mimes: [dynamic]string,
+	dnd_source_action:   u32,     // the action the compositor chose for our drag (wl_data_source.action)
+	drag:          Wl_Drag_Store, // drag and drop (dragdrop_wl_linux.odin)
+	tried:         bool,          // wl_connect ran on this thread (display nil: it failed)
 }
 
-@(private) wlc: Wl_Conn
-@(private) wl_ready: bool
+// This thread's connection: each thread that opens windows has its own (its event queue, its seat's focus and serials), as its
+// windows' calls and the listeners all run on it.
+@(private, thread_local) wlc: Wl_Conn
 
 @(private)
 Wl_Window_State :: struct {
@@ -114,14 +127,10 @@ wl_state :: proc(w: ^Window) -> ^Wl_Window_State { return (^Wl_Window_State)(w.w
 
 @(private)
 wl_connect :: proc() -> bool {
-	if wl_ready { return wlc.display != nil }
-	wl_ready = true
+	if wlc.tried { return wlc.display != nil }
+	wlc.tried = true
 	l := wayland_lib()
 	if !l.ok { return false }
-	xdg_build_tables()
-	zwp_ti_build_tables()
-	wp_cursor_shape_build_tables()
-	wp_scale_build_tables()
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
 	wlc.fd = l.display_get_fd(wlc.display)
@@ -225,11 +234,10 @@ Output_Listener :: struct {
 	scale:    proc "c" (data: rawptr, o: Wl_Proxy, factor: i32),
 }
 @(private) output_listener := Output_Listener{output_geometry, output_mode, output_done, output_scale_ev}
-@(private) output_refresh_mhz: i32
 @(private)
 output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: i32, make, model: cstring, transform: i32) {}
 @(private)
-output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { output_refresh_mhz = refresh; wlc.output_px = {w, h} } }
+output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { wlc.output_refresh_mhz = refresh; wlc.output_px = {w, h} } }
 @(private)
 output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {}
 @(private)
@@ -294,11 +302,9 @@ ptr_enter :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy
 	wlc.pointer_focus = window_of_surface(surface)
 	scale: f32 = wlc.pointer_focus != nil ? wlc.pointer_focus.dpi_scale : 1   // (as ptr_motion: a click before any motion lands here)
 	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)) * scale, f32(wl_fixed_to_f64(sy)) * scale}
-	wl_enter_serial = serial
+	wlc.enter_serial = serial
 	if wlc.pointer_focus != nil { wl_apply_cursor(wlc.pointer_focus) }   // (the compositor forgot it when the pointer left)
 }
-@(private) wl_enter_serial: u32
-@(private) wl_button_serial: u32   // the last pointer button serial (for a drag start / selection)
 @(private)
 ptr_leave :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy) {
 	context = wl_ctx_real()
@@ -316,7 +322,7 @@ ptr_motion :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, sx, sy: Wl_Fixed) 
 @(private)
 ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: u32) {
 	context = wl_ctx_real()
-	wl_button_serial = serial
+	wlc.button_serial = serial
 	w := wlc.pointer_focus
 	if w == nil { return }
 	// Linux input-event-codes: BTN_LEFT 0x110, BTN_RIGHT 0x111, BTN_MIDDLE 0x112
@@ -701,7 +707,7 @@ wl_set_decorations :: proc(w: ^Window, on: bool) {
 wl_show_window_menu :: proc(w: ^Window, pos: [2]f32) {
 	st := wl_state(w)
 	if wlc.seat == nil { return }
-	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SHOW_WINDOW_MENU, nil, wl.proxy_get_version(st.xdg_toplevel), 0, wlc.seat, wl_enter_serial, i32(pos.x), i32(pos.y))
+	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SHOW_WINDOW_MENU, nil, wl.proxy_get_version(st.xdg_toplevel), 0, wlc.seat, wlc.enter_serial, i32(pos.x), i32(pos.y))
 	wl.display_flush(wlc.display)
 }
 

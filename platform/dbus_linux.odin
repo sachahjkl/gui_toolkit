@@ -1,9 +1,9 @@
 #+build linux
 package platform
 
-// The platform's shared session-bus connection, used by the tray, notifications, the file-chooser and appearance
-// portals, the ScreenSaver inhibitor and the AT-SPI accessibility bridge. One connection for the process, opened on
-// first use and folded into the window loop: its fd is poll(2)-ed alongside the window, and the loop calls
+// The platform's session-bus connection, used by the tray, notifications, the file-chooser and appearance portals, the
+// ScreenSaver inhibitor and the AT-SPI accessibility bridge. One connection per thread (a connection is driven by one thread,
+// dbus.odin), opened on its first use and folded into that thread's window loop: its fd is poll(2)-ed alongside the window, and the loop calls
 // dbus.dispatch to drain it (see platform_linux.odin's pump, which now watches the bus too).
 //
 // A service that needs the bus calls session_bus(); nil means there is no bus (a login without a session), and every
@@ -16,28 +16,40 @@ import "../dbus"
 @(private) DBUS_ALIGN_STRUCT :: 8       // the elements of an array of structs or dict entries
 @(private) DBUS_ALIGN_STRING :: 4       // the elements of an array of strings
 
-@(private) session_conn: ^dbus.Conn
-@(private) session_tried: bool
+// This thread's session bus and what the services keep on it.
+@(private)
+Session_Bus :: struct {
+	conn:          ^dbus.Conn,
+	tried:         bool,              // connect_bus ran (conn nil: there is no bus)
+	a11y_address:  string,            // the a11y bus's (a11y_bus_address), "" when there is none
+	a11y_asked:    bool,
+	theme_changed: proc(dark: bool),  // watch_color_scheme's callback
+	theme_sub:     u32,               // its subscription to SettingChanged
+	idle_records:  [dynamic]Idle_Record,   // the live inhibitions (idle_inhibit_linux)
+	idle_next:     u64,
+}
 
-// The process's session bus (nil when unreachable). Opened once.
+@(private, thread_local) session: Session_Bus
+
+// This thread's session bus (nil when unreachable). Opened once per thread.
 @(private)
 session_bus :: proc() -> ^dbus.Conn {
-	if session_tried { return session_conn }
-	session_tried = true
-	session_conn = dbus.connect_bus(.Session)
-	return session_conn
+	if session.tried { return session.conn }
+	session.tried = true
+	session.conn = dbus.connect_bus(.Session)
+	return session.conn
 }
 
 // Drains the bus if it is open (called from the window loop after poll said its fd is readable, and once per pump so
 // async replies and portal / theme signals are delivered promptly).
 @(private)
 dbus_pump :: proc() {
-	if session_conn != nil { dbus.dispatch(session_conn) }
+	if session.conn != nil { dbus.dispatch(session.conn) }
 }
 
 // The bus's socket fd for the window loop's poll set (-1 when there is no bus).
 @(private)
 dbus_fd :: proc() -> i32 {
-	return session_conn != nil ? dbus.conn_fd(session_conn) : -1
+	return session.conn != nil ? dbus.conn_fd(session.conn) : -1
 }
 

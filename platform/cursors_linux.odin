@@ -104,7 +104,7 @@ custom_cursor_bgra :: proc(e: ^Custom_Entry, scale: f32, allocator := context.al
 cursor_on_screen :: proc(w: ^Window) -> (id: u64, ok: bool) {
 	switch w.backend {
 	case .X11:     return x11_pointer_image_serial()
-	case .Wayland: return wl_cursor_sent, true
+	case .Wayland: return wlc.cursor_sent, true
 	case .None:
 	}
 	return

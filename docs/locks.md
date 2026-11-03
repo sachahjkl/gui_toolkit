@@ -29,6 +29,7 @@ held for a few nanoseconds per glyph, and won where a whole run of glyphs or a w
 | `preload.lock` (`render/device_preload.odin`) | the device made early | the starting thread, renderers' init | a few times per process | a thread join (the device creation) |
 | `Server.lock` (`devtools/devtools.odin`) | the inbox and the connections | the accept and connection threads, the interface thread | twice per frame while devtools runs, per message | an append, a swap, a join of an ended thread |
 | `Conn.write` (`devtools/server.odin`) | a connection's socket writes | the interface thread, the connection's thread, picture encoders | per message sent | a socket send (a screencast frame: a large one) |
+| `Virtual_Machine.mutex` (`platform/virtual.odin`) | the virtual screen of the offscreen windows | `virtual_screen_set`, `display_info` of an offscreen window | per frame of an offscreen window | a copy of the screen's size and rate |
 | `Clip_Store.mutex` (`platform/clipboard.odin`) | the process's clipboard contents | the interface thread; on Linux the Wayland / X11 transfer | per copy, paste or request | string copies; a PNG encode / decode; a pipe write (Wayland) |
 | `Post_Queue.spill_lock` (`ui/post_queue.odin`) | calls that did not fit the lock-free ring | posting threads, the interface thread draining | only while the ring is full | an append, a chunk copied out |
 | `owners_mu` (`instance/instance_linux.odin`) | the instance owners | the owner, its message pump | per pump | a scan of a short list |

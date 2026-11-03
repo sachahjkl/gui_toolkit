@@ -4,6 +4,7 @@ package platform
 import "base:runtime"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:time"
 import "core:unicode/utf16"
 import win "core:sys/windows"
@@ -79,20 +80,24 @@ MODAL_FRAME_MS :: 16
 @(private = "file") SURROGATE_LOW_FIRST :: 0xDC00
 @(private = "file") SURROGATE_LOW_END :: 0xE000
 
-@(private) os_build: u32   // Windows build number (RtlGetVersion), 0 until asked
+// The process's: Windows build number (RtlGetVersion), 0 until asked (atomic: any thread asks, all write the same number).
+@(private) os_build: u32
 
 // Windows 11 (build 22000 or later): rounded corners, Snap Layouts, a frame drawn by the compositor around the window.
 is_windows_11 :: proc() -> bool {
-	if os_build == 0 {
+	build := sync.atomic_load(&os_build)
+	if build == 0 {
 		vi := win.OSVERSIONINFOEXW{dwOSVersionInfoSize = size_of(win.OSVERSIONINFOEXW)}
 		win.RtlGetVersion(&vi)
-		os_build = max(vi.dwBuildNumber, 1)
+		build = max(vi.dwBuildNumber, 1)
+		sync.atomic_store(&os_build, build)
 	}
-	return os_build >= WINDOWS_11_FIRST_BUILD
+	return build >= WINDOWS_11_FIRST_BUILD
 }
 
-@(private) class_name: win.wstring
-@(private) class_registered: bool
+@(private = "file") WINDOW_CLASS_NAME :: "gui_toolkit_window"
+// The process's window class, registered by the first window of any thread.
+@(private) window_class: sync.Once
 
 // Open a window. `size` is in logical pixels (96 dpi): it is scaled by the DPI of the monitor the window lands on
 // and clamped to the monitor work area (CW_USEDEFAULT can pick a non-primary monitor with another DPI).
@@ -102,9 +107,9 @@ is_windows_11 :: proc() -> bool {
 open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil, transparent := false, integrated_title := false) -> ^Window {
 	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
-	icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
-	if !class_registered {
-		class_name = win.L("gui_toolkit_window")   // (a literal: it must outlive whatever allocator the first window was made under, for the windows made later)
+	sync.once_do(&window_class, proc() {
+		instance := win.HINSTANCE(win.GetModuleHandleW(nil))
+		icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
 		wc := win.WNDCLASSEXW{
 			cbSize        = size_of(win.WNDCLASSEXW),
 			style         = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_DBLCLKS,
@@ -112,11 +117,10 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 			hInstance     = instance,
 			hIcon         = win.LoadIconA(instance, cstring(icon_res)),   // resource id 1 = app icon when present
 			hCursor       = nil,
-			lpszClassName = class_name,
+			lpszClassName = win.L(WINDOW_CLASS_NAME),
 		}
 		win.RegisterClassExW(&wc)
-		class_registered = true
-	}
+	})
 
 	w := new(Window)
 	w.user = user
@@ -132,7 +136,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	at_x, at_y := i32(win.CW_USEDEFAULT), i32(win.CW_USEDEFAULT)
 	if start := start_monitor_work_area(); start.right > start.left { at_x, at_y = start.left + WINDOW_START_OFFSET_PX, start.top + WINDOW_START_OFFSET_PX }
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
-	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, class_name, wtitle, win.WS_OVERLAPPEDWINDOW,
+	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, win.L(WINDOW_CLASS_NAME), wtitle, win.WS_OVERLAPPEDWINDOW,
 		at_x, at_y, WINDOW_FIRST_WIDTH_PX, WINDOW_FIRST_HEIGHT_PX, nil, nil, instance, w)
 	if w.hwnd == nil {   // out of resources (USER handles, memory): no window
 		free(w)
