@@ -17,13 +17,12 @@ import "core:sys/posix"
 @(private = "file") WL_DND_POLL_MS :: 100       // between two checks of the limit of a drag
 @(private = "file") WL_BUFFER_DESTROY :: 0
 
-// What this process is dragging now (drag_start), so the shared data-source send callback can feed it.
+// What this thread's connection is dragging now (drag_start), so the shared data-source send callback can feed it.
 @(private)
 Wl_Drag_Store :: struct {
 	data:   Drag_Data,
 	active: bool,
 }
-@(private) wl_drag: Wl_Drag_Store
 
 ////////////////////////////////
 // receiving
@@ -38,12 +37,12 @@ wl_dnd_enter :: proc(serial: u32, surface: Wl_Proxy, x, y: f32, offer: Wl_Proxy)
 	wlc.dnd_window = w
 	wlc.dnd_enter_serial = serial
 	wlc.dnd_x, wlc.dnd_y = x * w.dpi_scale, y * w.dpi_scale
-	// take the MIME list the offer gathered (wl_pending_offer path)
-	if offer == wl_pending_offer {
+	// take the MIME list the offer gathered (wlc.pending_offer path)
+	if offer == wlc.pending_offer {
 		wl_free_mimes(&wlc.dnd_mimes)
-		wlc.dnd_mimes = wl_pending_offer_mimes
-		wl_pending_offer_mimes = nil
-		wl_pending_offer = nil
+		wlc.dnd_mimes = wlc.pending_offer_mimes
+		wlc.pending_offer_mimes = nil
+		wlc.pending_offer = nil
 	}
 	// a window that is no drop target takes nothing: the compositor needs an accepted type for a drop to happen here
 	if !wl_dnd_target(w) { return }
@@ -116,7 +115,7 @@ wl_dnd_drop :: proc() {
 	// read each flavour the offer advertised into the Drag_Data
 	drag_data_destroy(&d.data)
 	// (the app's own drag: this thread would have to serve the pipe it reads)
-	d.data = wlc.dnd_sending ? drag_data_clone(wl_drag.data) : wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
+	d.data = wlc.dnd_sending ? drag_data_clone(wlc.drag.data) : wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
 	if wlc.dnd_offer != nil && wl.proxy_get_version(wlc.dnd_offer) >= WL_DND_ACTIONS_SINCE {
 		wl.proxy_marshal_flags(wlc.dnd_offer, WL_DATA_OFFER_FINISH, nil, wl.proxy_get_version(wlc.dnd_offer), 0)
 	}
@@ -169,7 +168,7 @@ wl_read_drag_data :: proc(offer: Wl_Proxy, mimes: []string, allocator := context
 // Writes one flavour of the active drag to the pipe fd (the data-source send callback routes here for wlc.dnd_source).
 @(private)
 wl_write_drag_flavour :: proc(fd: i32, mime: string) {
-	d := &wl_drag.data
+	d := &wlc.drag.data
 	switch mime {
 	case WL_MIME_TEXT, WL_MIME_TEXT2: wl_fd_write_all(fd, transmute([]u8)d.text)
 	case WL_MIME_HTML:                wl_fd_write_all(fd, transmute([]u8)d.html)
@@ -184,12 +183,12 @@ wl_write_drag_flavour :: proc(fd: i32, mime: string) {
 @(private)
 wl_drag_uris :: proc() -> string {
 	b := strings.builder_make(context.temp_allocator)
-	for p in wl_drag.data.files {
+	for p in wlc.drag.data.files {
 		strings.write_string(&b, file_uri(p))
 		strings.write_string(&b, "\r\n")
 	}
-	if wl_drag.data.url != "" {
-		strings.write_string(&b, wl_drag.data.url)
+	if wlc.drag.data.url != "" {
+		strings.write_string(&b, wlc.drag.data.url)
 		strings.write_string(&b, "\r\n")
 	}
 	return strings.to_string(b)
@@ -201,10 +200,10 @@ wl_drag_uris :: proc() -> string {
 wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image)) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	st := wl_state(w)
 	if st == nil || wlc.data_device == nil || wlc.data_device_manager == nil { return nil, false }
-	drag_data_destroy(&wl_drag.data)
-	wl_drag.data = drag_data_clone(data)
-	wl_drag.active = true
-	wl_dnd_source_action = 0
+	drag_data_destroy(&wlc.drag.data)
+	wlc.drag.data = drag_data_clone(data)
+	wlc.drag.active = true
+	wlc.dnd_source_action = 0
 	src := wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE,
 		wl.data_source_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil)
 	if src == nil { return nil, false }
@@ -237,7 +236,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 		wl.display_flush(wlc.display)
 	}
 	wl.proxy_marshal_flags(wlc.data_device, WL_DATA_DEVICE_START_DRAG, nil, wl.proxy_get_version(wlc.data_device), 0,
-		src, st.surface, icon, wl_button_serial)
+		src, st.surface, icon, wlc.button_serial)
 	if icon != nil {
 		wl.proxy_marshal_flags(icon, WL_SURFACE_ATTACH, nil, wl.proxy_get_version(icon), 0, icon_buffer, i32(-icon_offset.x), i32(-icon_offset.y))
 		wl.proxy_marshal_flags(icon, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(icon), 0)
@@ -249,18 +248,18 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS {
 			wl_data_source_destroy(wlc.dnd_source)
 			wlc.dnd_source = nil
-			wl_dnd_source_action = 0
+			wlc.dnd_source_action = 0
 			break
 		}
 		poll_fd_wait(wlc.fd, WL_DND_POLL_MS)
 		wl_read_available()
 	}
 	wlc.dnd_sending = false
-	wl_drag.active = false
+	wlc.drag.active = false
 	// the compositor keeps the pointer during a drag: the release of the press that began it never comes to the window
 	for b in w.buttons_down { wl_push(w, {kind = .Mouse_Release, button = b, pos = wlc.pointer_pos, mods = wl_mods()}) }
 	w.buttons_down = {}
-	eff := wl_dnd_source_action
+	eff := wlc.dnd_source_action
 	if eff & WL_DND_ACTION_MOVE != 0 { return .Move, true }
 	if eff & WL_DND_ACTION_COPY != 0 { return .Copy, true }
 	return nil, true

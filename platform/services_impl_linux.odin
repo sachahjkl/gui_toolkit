@@ -19,8 +19,6 @@ Idle_Record :: struct {
 	handle: Idle_Inhibit,
 	cookie: u32,
 }
-@(private) idle_records: [dynamic]Idle_Record
-@(private) idle_next: u64
 
 @(private)
 idle_inhibit_linux :: proc(w: ^Window, reason: string) -> Idle_Inhibit {
@@ -33,9 +31,9 @@ idle_inhibit_linux :: proc(w: ^Window, reason: string) -> Idle_Inhibit {
 	if !ok || msg.type != .Method_Return { return 0 }
 	r := dbus.msg_reader(&msg)
 	cookie := dbus.r_u32(&r)
-	idle_next += 1
-	h := Idle_Inhibit(idle_next)
-	append(&idle_records, Idle_Record{handle = h, cookie = cookie})
+	session.idle_next += 1
+	h := Idle_Inhibit(session.idle_next)
+	append(&session.idle_records, Idle_Record{handle = h, cookie = cookie})
 	return h
 }
 
@@ -44,12 +42,12 @@ idle_uninhibit_linux :: proc(h: Idle_Inhibit) {
 	if h == 0 { return }
 	conn := session_bus()
 	if conn == nil { return }
-	for rec, i in idle_records {
+	for rec, i in session.idle_records {
 		if rec.handle != h { continue }
 		wr := dbus.body_writer()
 		dbus.w_u32(&wr, rec.cookie)
 		dbus.call_noreply(conn, SCREENSAVER_SERVICE, SCREENSAVER_PATH, SCREENSAVER_SERVICE, "UnInhibit", "u", wr.buf[:])
-		unordered_remove(&idle_records, i)
+		unordered_remove(&session.idle_records, i)
 		return
 	}
 }

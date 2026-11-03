@@ -1,6 +1,7 @@
 #+build windows
 package platform
 
+import "core:sync"
 import "core:unicode/utf16"
 import win "core:sys/windows"
 
@@ -27,6 +28,7 @@ Native_Tray :: struct {
 @(private) NIN_POPUPCLOSE :: 0x0407
 @(private = "file") ICON_RESOURCE_VERSION :: 0x00030000   // CreateIconFromResourceEx: the format it reads
 
+// The process's: the TaskbarCreated message (the same number for every caller: atomic), the last id an icon was given (atomic).
 @(private) taskbar_created_msg: u32
 @(private) tray_next_id: u32
 
@@ -59,15 +61,16 @@ tray_event_from_notify :: proc(code: u32) -> (kind: Tray_Event_Kind, keyboard: b
 // exe's icon). nil when the system refused it.
 tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 	if w == nil || w.hwnd == nil { return nil }
-	if taskbar_created_msg == 0 {
-		taskbar_created_msg = win.RegisterWindowMessageW(win.L("TaskbarCreated"))
+	created := sync.atomic_load(&taskbar_created_msg)
+	if created == 0 {
+		created = win.RegisterWindowMessageW(win.L("TaskbarCreated"))
+		sync.atomic_store(&taskbar_created_msg, created)
 	}
 	// an elevated process still hears the shell's restart
-	ChangeWindowMessageFilterEx(w.hwnd, taskbar_created_msg, 1, nil)   // MSGFLT_ALLOW
-	tray_next_id += 1
+	ChangeWindowMessageFilterEx(w.hwnd, created, 1, nil)   // MSGFLT_ALLOW
 	t := new(Tray)
 	t.window = w
-	t.id = tray_next_id
+	t.id = sync.atomic_add(&tray_next_id, 1) + 1
 	t.auto_menu = true
 	t.tooltip = clone_string(tooltip)
 	if !tray_load_icon(t, icon_png) || !tray_add(t) {
@@ -166,7 +169,7 @@ tray_inject :: proc(t: ^Tray, code: u32, pos: [2]i32 = {}) {
 
 // Sends the window the shell's "TaskbarCreated" (the shell restarted): tests.
 tray_inject_shell_restart :: proc(w: ^Window) {
-	if taskbar_created_msg != 0 { win.SendMessageW(w.hwnd, taskbar_created_msg, 0, 0) }
+	if created := sync.atomic_load(&taskbar_created_msg); created != 0 { win.SendMessageW(w.hwnd, created, 0, 0) }
 }
 
 ////////////////////////////////
@@ -188,7 +191,7 @@ tray_window_message :: proc(w: ^Window, msg: u32, wparam: win.WPARAM, lparam: wi
 		}
 		return true
 	}
-	if taskbar_created_msg != 0 && msg == taskbar_created_msg {
+	if created := sync.atomic_load(&taskbar_created_msg); created != 0 && msg == created {
 		for t in w.trays {
 			t.added = false
 			if tray_add(t) { tray_push(t, {kind = .Recreated}) }

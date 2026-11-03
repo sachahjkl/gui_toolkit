@@ -45,8 +45,9 @@ the drag was given up. Call it between frames, from the press-and-move that star
 in-window drags without the system's loop handles those itself and calls `drag_start` when the pointer leaves the
 window. `drag_threshold(win)` is the distance the system uses before a press becomes a drag.
 
-Call `dragdrop_thread_init()` first thing on the interface thread (Windows: OLE needs a single-threaded apartment,
-which a decoder library joining the multithreaded one first would make impossible).
+Call `dragdrop_thread_init()` first thing on each interface thread (Windows: OLE needs a single-threaded apartment,
+which a decoder library joining the multithreaded one first would make impossible). OLE is initialized once per thread:
+`drop_target_enable` and `drag_start` ask the same, and a thread in the multithreaded apartment does not stop another.
 
 ### The drag image
 

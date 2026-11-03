@@ -107,8 +107,24 @@ import win "core:sys/windows"
 	w:    ^Window,
 }
 
-// drag_start runs on this thread, from whichever window.
-@(private = "file", thread_local) drag_running: bool
+// OLE on a thread: OleInitialize is called once per thread (each call that succeeds is a reference the thread holds).
+@(private = "file") Ole_State :: enum u8 { Not_Tried, Ready, Failed }
+
+// What drag and drop keeps per thread: OLE is initialized per thread, and the system's drag loop runs on the thread of drag_start.
+@(private = "file")
+Dnd_Thread :: struct {
+	ole:          Ole_State,
+	drag_running: bool,   // drag_start runs on this thread, from whichever window
+}
+
+@(private = "file", thread_local) dnd_thread: Dnd_Thread
+
+// OLE in a single-threaded apartment on this thread: false when the thread is in the multithreaded one.
+@(private = "file")
+ole_ready :: proc() -> bool {
+	if dnd_thread.ole == .Not_Tried { dnd_thread.ole = OleInitialize(nil) >= 0 ? .Ready : .Failed }   // (S_FALSE: already initialized, fine)
+	return dnd_thread.ole == .Ready
+}
 
 // What a window keeps for drag and drop (Native_Window.dnd, made on first use).
 @(private) Dnd_State :: struct {
@@ -284,7 +300,7 @@ answer :: proc(d: ^Dnd_State) -> u32 {
 	if e, ok := d.effect.?; ok && e in d.allowed { return effects_to_win({e}) }
 	// the app's own drag came over one of its windows while drag_start blocks: the app cannot answer before the drop,
 	// which it receives as Drop events once drag_start returns
-	if drag_running { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
+	if dnd_thread.drag_running { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
 	return 0
 }
 
@@ -466,8 +482,7 @@ drop_target_enable :: proc(w: ^Window, on: bool) -> bool {
 		if d.helper != nil { d.helper.vt.Release(d.helper); d.helper = nil }
 		return true
 	}
-	hr := OleInitialize(nil)
-	if hr < 0 { return false }   // (S_FALSE: already initialized on this thread, fine)
+	if !ole_ready() { return false }
 	if RegisterDragDrop(w.hwnd, &d.target) < 0 { return false }
 	d.registered = true
 	if d.helper == nil { _ = win.CoCreateInstance(&CLSID_DragDropHelper, nil, win.CLSCTX_INPROC_SERVER, &IID_IDropTargetHelper, cast(^rawptr)&d.helper) }
@@ -479,7 +494,7 @@ drop_target_enabled :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.r
 // Prepares the calling thread (the interface's) for drag and drop. On Windows: OLE in a single-threaded apartment,
 // which must come before any library puts the thread in the multithreaded one (a decoder's CoInitializeEx), or no drop
 // target can be registered and no drag started. Call it first thing; false when it is too late.
-dragdrop_thread_init :: proc() -> bool { return OleInitialize(nil) >= 0 }
+dragdrop_thread_init :: proc() -> bool { return ole_ready() }
 
 // Runs a drag of the system from the window with `data` until it is dropped (the effect the target chose) or given up
 // (nil). Blocks while the user drags. ok = false when the system could not start it (no OLE on this thread, no data).
@@ -487,7 +502,7 @@ dragdrop_thread_init :: proc() -> bool { return OleInitialize(nil) >= 0 }
 // default picture of the data).
 drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	if drag_data_empty(data) || allowed == {} { return nil, false }
-	if OleInitialize(nil) < 0 { return nil, false }
+	if !ole_ready() { return nil, false }
 	obj := make_data_object(data)
 	if obj == nil { return nil, false }
 	defer obj.vt.Release(obj)
@@ -496,8 +511,8 @@ drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Ma
 	if img, has := image.?; has && set_drag_image(obj, img) { read_drag_image(d, obj) }
 	d.sending = true
 	defer d.sending = false
-	drag_running = true
-	defer drag_running = false
+	dnd_thread.drag_running = true
+	defer dnd_thread.drag_running = false
 	if len(d.script) > 0 {
 		steps := d.script
 		d.script = {}

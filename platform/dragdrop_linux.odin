@@ -142,7 +142,7 @@ dnd_answer :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 	d := w.dnd
 	if d == nil { return nil }
 	if e, ok := d.effect.?; ok && e in d.allowed { return e }
-	if (d.sending && d.sync == nil) || (!d.sending && (x11_dnd_src.active || wlc.dnd_sending)) { return drop_effect_for(d.allowed, {}) }
+	if (d.sending && d.sync == nil) || (!d.sending && (x11c.dnd_source.active || wlc.dnd_sending)) { return drop_effect_for(d.allowed, {}) }
 	return nil
 }
 

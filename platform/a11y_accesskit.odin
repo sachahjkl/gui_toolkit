@@ -6,6 +6,7 @@ package platform
 // its gt_a11y_* functions stay exported) and builds with -define:A11Y_NATIVE_LINK=false (as for the text backend).
 
 import "core:fmt"
+import "core:sync"
 import win "core:sys/windows"
 
 A11Y_ACCESSKIT :: #config(A11Y_ACCESSKIT, false)
@@ -85,7 +86,8 @@ foreign gt_a11y {
 	gt_a11y_take_action :: proc(a: ^Gt_Adapter, out: ^Gt_Action) -> i32 ---
 }
 
-@(private) a11y_abi_checked: int   // 0 not yet, 1 matches, -1 another ABI: the adapter stays off
+// The process's: 0 not yet, 1 the library's ABI matches, -1 another ABI: the adapter stays off (atomic: every caller writes the same).
+@(private) a11y_abi_checked: int
 
 // Whether this build reads its windows to assistive technologies (the adapter is compiled in).
 a11y_available :: proc() -> bool { return true }
@@ -97,8 +99,12 @@ a11y_wake :: proc "c" (user: rawptr) {
 
 @(private)
 a11y_attach :: proc(w: ^Window) {
-	if a11y_abi_checked == 0 { a11y_abi_checked = gt_a11y_abi() == GT_A11Y_ABI ? 1 : -1 }
-	if a11y_abi_checked < 0 { return }
+	abi := sync.atomic_load(&a11y_abi_checked)
+	if abi == 0 {
+		abi = gt_a11y_abi() == GT_A11Y_ABI ? 1 : -1
+		sync.atomic_store(&a11y_abi_checked, abi)
+	}
+	if abi < 0 { return }
 	w.a11y = gt_a11y_new(rawptr(w.hwnd), w.focused ? 1 : 0, a11y_wake, rawptr(w.hwnd))
 }
 
@@ -189,3 +195,4 @@ a11y_take_request :: proc(w: ^Window) -> (r: A11y_Request, ok: bool) { return }
 }
 
 _ :: fmt
+_ :: sync

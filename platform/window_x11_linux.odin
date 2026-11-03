@@ -1,8 +1,8 @@
 #+build linux
 package platform
 
-// The X11 window backend, over XCB (libxcb by dlopen). One connection per process, shared by every window of the
-// thread; each window is an xcb_window with its own event bookkeeping. Keyboard goes through libxkbcommon (the keymap
+// The X11 window backend, over XCB (libxcb by dlopen). One connection per thread that opens windows, shared by its
+// windows; each window is an xcb_window with its own event bookkeeping. Keyboard goes through libxkbcommon (the keymap
 // from the server when libxkbcommon-x11 is present, else a built-in us keymap), which gives both our Key enum and the
 // composed UTF-8 text. DPI comes from Xft.dpi in the X resources (the RESOURCE_MANAGER root property). Close is the
 // WM_DELETE_WINDOW protocol; state (maximize, fullscreen) is the _NET_WM_STATE EWMH protocol. The CLIPBOARD and PRIMARY
@@ -16,8 +16,8 @@ import "core:strings"
 import "core:unicode/utf8"
 import "core:sys/posix"
 
-// One X11 connection, made on first use and kept for the process. XCB is thread-compatible for one connection used by
-// one thread; the toolkit drives it from the UI thread only.
+// One X11 connection per thread that opens windows, made on its first window and kept. XCB is thread-compatible for one
+// connection used by one thread.
 @(private)
 X11_Conn :: struct {
 	c:          Xcb_Connection,
@@ -41,10 +41,16 @@ X11_Conn :: struct {
 	clip_text:   string,
 	windows:     [dynamic]^Window,   // this process's windows: an event goes to the one it names
 	xfixes_event, randr_event: u8,   // the extension's first event (x11_ext_linux.odin), 0 without it
+	incr_sends:  [dynamic]X11_Incr_Send,   // INCR transfers we are sending (clipboard_x11_linux.odin)
+	foreign_formats: X11_Foreign_Formats,      // what another client's CLIPBOARD offers, as last read
+	dnd_target:  X11_Dnd_Target,           // drag and drop (dragdrop_x11_linux.odin)
+	dnd_source:  X11_Dnd_Source,
+	tried:       bool,                     // x11_connect ran on this thread (c nil: it failed)
 }
 
-@(private) x11c: X11_Conn
-@(private) x11_ready: bool
+// This thread's connection: each thread that opens windows has its own (its events, its windows, its selections), as its
+// windows' calls run on it.
+@(private, thread_local) x11c: X11_Conn
 
 @(private)
 X11_Window_State :: struct {
@@ -65,8 +71,8 @@ x11_state :: proc(w: ^Window) -> ^X11_Window_State { return (^X11_Window_State)(
 
 @(private)
 x11_connect :: proc() -> bool {
-	if x11_ready { return x11c.c != nil }
-	x11_ready = true
+	if x11c.tried { return x11c.c != nil }
+	x11c.tried = true
 	x := xcb_lib()
 	if !x.ok { return false }
 	scr: i32
@@ -645,16 +651,11 @@ x11_read_wm_state :: proc(w: ^Window) {
 	w.minimized, w.maximized, w.fullscreen = hidden, horz && vert, full
 }
 
-// Where a point is in another window, and the child of `dst` under it (0: none). xcb_translate_coordinates, bound when
-// first needed.
+// Where a point is in another window, and the child of `dst` under it (0: none). xcb_translate_coordinates.
 @(private)
 x11_translate :: proc(src, dst: Xcb_Window, x, y: int) -> (p: [2]int, child: Xcb_Window, ok: bool) {
-	if x11_translate_req == nil {
-		x11_translate_req = auto_cast lib_sym(xcb.handle, "xcb_translate_coordinates")
-		x11_translate_reply = auto_cast lib_sym(xcb.handle, "xcb_translate_coordinates_reply")
-	}
-	if x11_translate_req == nil || x11_translate_reply == nil { return }
-	reply := x11_translate_reply(x11c.c, x11_translate_req(x11c.c, src, dst, i16(x), i16(y)), nil)
+	if xcb.translate_coordinates == nil || xcb.translate_coordinates_reply == nil { return }
+	reply := xcb.translate_coordinates_reply(x11c.c, xcb.translate_coordinates(x11c.c, src, dst, i16(x), i16(y)), nil)
 	if reply == nil { return }
 	defer posix.free(reply)
 	// xcb_translate_coordinates_reply_t: child at [8], dst_x at [12], dst_y at [14]
@@ -663,8 +664,6 @@ x11_translate :: proc(src, dst: Xcb_Window, x, y: int) -> (p: [2]int, child: Xcb
 	p = {int(i16(u16(b[12]) | u16(b[13]) << 8)), int(i16(u16(b[14]) | u16(b[15]) << 8))}
 	return p, child, true
 }
-@(private) x11_translate_req: proc "c" (c: Xcb_Connection, src, dst: Xcb_Window, x, y: i16) -> Xcb_Intern_Atom_Cookie
-@(private) x11_translate_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr
 
 @(private)
 x11_mods :: proc(state: u16) -> (m: Modifiers) {
@@ -703,31 +702,23 @@ x11_key :: proc(w: ^Window, keycode: u32, state: u16, press: bool) {
 ////////////////////////////////
 // Text clipboard (CLIPBOARD selection)
 
-// xcb_set_selection_owner, bound when first needed.
+// xcb_set_selection_owner.
 @(private)
 x11_set_selection_owner :: proc(selection: Xcb_Atom, owner: Xcb_Window) {
-	if x11_set_sel_owner == nil {
-		x11_set_sel_owner = auto_cast lib_sym(xcb.handle, "xcb_set_selection_owner")
-	}
-	if x11_set_sel_owner != nil { x11_set_sel_owner(x11c.c, owner, selection, 0) }
+	if xcb.set_selection_owner != nil { xcb.set_selection_owner(x11c.c, owner, selection, 0) }
 }
-@(private) x11_set_sel_owner: proc "c" (c: Xcb_Connection, owner: Xcb_Window, selection: Xcb_Atom, time: u32) -> Xcb_Void_Cookie
 
 @(private)
 x11_convert_selection :: proc(requestor: Xcb_Window, selection, target, property: Xcb_Atom) {
-	if x11_conv_sel == nil {
-		x11_conv_sel = auto_cast lib_sym(xcb.handle, "xcb_convert_selection")
-	}
-	if x11_conv_sel != nil { x11_conv_sel(x11c.c, requestor, selection, target, property, 0) }
+	if xcb.convert_selection != nil { xcb.convert_selection(x11c.c, requestor, selection, target, property, 0) }
 }
-@(private) x11_conv_sel: proc "c" (c: Xcb_Connection, requestor: Xcb_Window, selection, target, property: Xcb_Atom, time: u32) -> Xcb_Void_Cookie
 
 // Answer a SelectionRequest: another client wants a flavour of our CLIPBOARD / PRIMARY. The rich logic (TARGETS,
 // MULTIPLE, the MIME targets, INCR for big data) is in clipboard_x11_linux.odin.
 @(private)
 x11_handle_selection_request :: proc(w: ^Window, b: [^]u8) {
 	// xcb_selection_request_event_t: selection at [16]
-	if x11_dnd_src.active && Xcb_Atom(get_u32(b[16:])) == x11c.xdnd_selection { x11_dnd_serve_source_request(b); return }
+	if x11c.dnd_source.active && Xcb_Atom(get_u32(b[16:])) == x11c.xdnd_selection { x11_dnd_serve_source_request(b); return }
 	x11_serve_selection_request(w, b)
 }
 

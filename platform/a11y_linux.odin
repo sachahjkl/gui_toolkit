@@ -34,22 +34,19 @@ A11y_Bridge :: struct {
 // Whether this build can read its windows to assistive technologies. True on Linux when the a11y bus answers.
 a11y_available :: proc() -> bool { return a11y_bus_address() != "" }
 
-@(private) a11y_addr_cached: string
-@(private) a11y_addr_tried: bool
-
 // Asks the session bus for the a11y bus address (org.a11y.Bus.GetAddress). "" when there is no a11y bus.
 @(private)
 a11y_bus_address :: proc() -> string {
-	if a11y_addr_tried { return a11y_addr_cached }
-	a11y_addr_tried = true
+	if session.a11y_asked { return session.a11y_address }
+	session.a11y_asked = true
 	conn := session_bus()
 	if conn == nil { return "" }
 	msg, ok := dbus.call(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, ATSPI_BUS_NAME, "GetAddress", "", nil, DBUS_QUICK_CALL_MS)
 	if !ok { return "" }
 	r := dbus.msg_reader(&msg)
 	addr := dbus.r_string(&r)
-	a11y_addr_cached = strings.clone(addr)
-	return a11y_addr_cached
+	session.a11y_address = strings.clone(addr)
+	return session.a11y_address
 }
 
 @(private)

@@ -18,6 +18,7 @@ package platform
 import "base:runtime"
 import "core:fmt"
 import "core:strings"
+import "core:sync"
 import "core:sys/posix"
 import "../dbus"
 
@@ -45,7 +46,7 @@ Native_Tray :: struct {
 	last_notify: u32,         // the id Notify returned, to match its signals
 }
 
-@(private) tray_pid_counter: u32
+@(private) tray_pid_counter: u32   // the process's icons so far, for their bus names (atomic)
 
 tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 	if w == nil || w.offscreen { return nil }
@@ -58,8 +59,7 @@ tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 	t.conn = conn
 	t.title = clone_string(tooltip)
 	t.menu_ids = make(map[i32]int)
-	tray_pid_counter += 1
-	t.bus_name = fmt.aprintf("org.kde.StatusNotifierItem-%d-%d", int(posix.getpid()), tray_pid_counter)
+	t.bus_name = fmt.aprintf("org.kde.StatusNotifierItem-%d-%d", int(posix.getpid()), sync.atomic_add(&tray_pid_counter, 1) + 1)
 	if icon_png != nil { tray_set_icon(t, icon_png) }   // decodes to RGBA through the hook if present
 	// own our item name, export the object and the menu, register with the watcher
 	if !dbus.request_name(conn, t.bus_name) {

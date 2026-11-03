@@ -102,6 +102,7 @@ Wayland_Lib :: struct {
 	region_interface:       ^Wl_Interface,
 }
 
+// The process's libraries of the system: loaded once (sync.Once), then only read by any thread.
 @(private) wl: Wayland_Lib
 @(private) wl_once: sync.Once
 
@@ -146,6 +147,13 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 		wl.region_interface              = auto_cast lib_sym(h, "wl_region_interface")
 		wl.ok = wl.display_connect != nil && wl.proxy_marshal_flags != nil && wl.proxy_add_listener != nil &&
 			wl.registry_interface != nil && wl.compositor_interface != nil && wl.surface_interface != nil
+		if !wl.ok { return }
+		// the tables of the protocols the library does not provide (wl_protocol_linux.odin), which point at its interfaces: built
+		// once for the process, before any thread connects
+		xdg_build_tables()
+		zwp_ti_build_tables()
+		wp_cursor_shape_build_tables()
+		wp_scale_build_tables()
 	})
 	return &wl
 }
@@ -191,6 +199,7 @@ Xkb_Lib :: struct {
 	x11_state_new_from_device: proc "c" (m: Xkb_Keymap, conn: rawptr, device_id: i32) -> Xkb_State,
 }
 
+// (loaded once, as wl)
 @(private) xkb: Xkb_Lib
 @(private) xkb_once: sync.Once
 
@@ -289,11 +298,23 @@ Xcb_Lib :: struct {
 	send_event:         proc "c" (c: Xcb_Connection, propagate: u8, dest: Xcb_Window, mask: u32, ev: rawptr) -> Xcb_Void_Cookie,
 	set_input_focus:    proc "c" (c: Xcb_Connection, revert: u8, focus: Xcb_Window, time: u32) -> Xcb_Void_Cookie,
 	create_colormap:    proc "c" (c: Xcb_Connection, alloc: u8, mid: Xcb_Colormap, window: Xcb_Window, visual: u32) -> Xcb_Void_Cookie,
+	// optional: the callers check them
+	translate_coordinates: proc "c" (c: Xcb_Connection, src, dst: Xcb_Window, x, y: i16) -> Xcb_Intern_Atom_Cookie,
+	translate_coordinates_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr,
+	set_selection_owner: proc "c" (c: Xcb_Connection, owner: Xcb_Window, selection: Xcb_Atom, time: u32) -> Xcb_Void_Cookie,
+	convert_selection:  proc "c" (c: Xcb_Connection, requestor: Xcb_Window, selection, target, property: Xcb_Atom, time: u32) -> Xcb_Void_Cookie,
+	get_atom_name:      proc "c" (c: Xcb_Connection, atom: Xcb_Atom) -> Xcb_Intern_Atom_Cookie,
+	get_atom_name_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: rawptr) -> rawptr,
+	get_atom_name_name: proc "c" (reply: rawptr) -> [^]u8,
+	get_atom_name_name_length: proc "c" (reply: rawptr) -> i32,
+	get_extension_data: proc "c" (c: Xcb_Connection, id: rawptr) -> rawptr,   // ^xcb_query_extension_reply_t
+	change_window_attributes: proc "c" (c: Xcb_Connection, window: Xcb_Window, value_mask: u32, value_list: rawptr) -> Xcb_Void_Cookie,
 	// extension helpers (own .so files, optional)
 	ewmh_handle:        Lib,
 	keysyms_handle:     Lib,
 }
 
+// (loaded once, as wl)
 @(private) xcb: Xcb_Lib
 @(private) xcb_once: sync.Once
 
@@ -329,6 +350,16 @@ xcb_lib :: proc() -> ^Xcb_Lib {
 		xcb.send_event         = auto_cast lib_sym(h, "xcb_send_event")
 		xcb.set_input_focus    = auto_cast lib_sym(h, "xcb_set_input_focus")
 		xcb.create_colormap    = auto_cast lib_sym(h, "xcb_create_colormap")
+		xcb.translate_coordinates = auto_cast lib_sym(h, "xcb_translate_coordinates")
+		xcb.translate_coordinates_reply = auto_cast lib_sym(h, "xcb_translate_coordinates_reply")
+		xcb.set_selection_owner = auto_cast lib_sym(h, "xcb_set_selection_owner")
+		xcb.convert_selection  = auto_cast lib_sym(h, "xcb_convert_selection")
+		xcb.get_atom_name      = auto_cast lib_sym(h, "xcb_get_atom_name")
+		xcb.get_atom_name_reply = auto_cast lib_sym(h, "xcb_get_atom_name_reply")
+		xcb.get_atom_name_name = auto_cast lib_sym(h, "xcb_get_atom_name_name")
+		xcb.get_atom_name_name_length = auto_cast lib_sym(h, "xcb_get_atom_name_name_length")
+		xcb.get_extension_data = auto_cast lib_sym(h, "xcb_get_extension_data")
+		xcb.change_window_attributes = auto_cast lib_sym(h, "xcb_change_window_attributes")
 		xcb.ok = xcb.connect != nil && xcb.create_window != nil && xcb.map_window != nil &&
 			xcb.poll_for_event != nil && xcb.get_setup != nil && xcb.intern_atom != nil
 	})

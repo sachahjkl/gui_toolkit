@@ -60,10 +60,10 @@ query_display_linux :: proc(w: ^Window) -> (d: Display_Info) {
 	d.numerator, d.denominator = DISPLAY_FALLBACK_HZ, 1
 	switch w.backend {
 	case .Wayland:
-		if output_refresh_mhz > WL_MILLIHERTZ_PER_HZ {
-			hz := f64(output_refresh_mhz) / WL_MILLIHERTZ_PER_HZ
+		if wlc.output_refresh_mhz > WL_MILLIHERTZ_PER_HZ {
+			hz := f64(wlc.output_refresh_mhz) / WL_MILLIHERTZ_PER_HZ
 			d.hz, d.max_hz, d.source = hz, hz, .Mode
-			d.numerator, d.denominator = u32(output_refresh_mhz), WL_MILLIHERTZ_PER_HZ
+			d.numerator, d.denominator = u32(wlc.output_refresh_mhz), WL_MILLIHERTZ_PER_HZ
 		}
 	case .X11:
 		if num, den, top, ok := x11_randr_rate(w); ok {

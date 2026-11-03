@@ -108,12 +108,9 @@ package platform
 @(private) zwp_ti_methods: [8]Wl_Message
 @(private) zwp_ti_events: [6]Wl_Message
 @(private) t_ti_get: [2]^Wl_Interface
-@(private) zwp_ti_tables_built: bool
 
 @(private)
 zwp_ti_build_tables :: proc() {
-	if zwp_ti_tables_built { return }
-	zwp_ti_tables_built = true
 	zwp_ti_manager_methods[0] = {"destroy", "", nil}
 	t_ti_get[0] = &zwp_ti_iface
 	t_ti_get[1] = wl.seat_interface
@@ -153,12 +150,9 @@ t_ti_enter_types :: proc() -> []^Wl_Interface { t_ti_surface[0] = wl.surface_int
 @(private) wp_csm_methods: [2]Wl_Message
 @(private) wp_csd_methods: [2]Wl_Message
 @(private) t_csm_get_pointer: [2]^Wl_Interface
-@(private) wp_cs_tables_built: bool
 
 @(private)
 wp_cursor_shape_build_tables :: proc() {
-	if wp_cs_tables_built { return }
-	wp_cs_tables_built = true
 	wp_csm_methods[0] = {"destroy", "", nil}
 	t_csm_get_pointer[0] = &wp_cursor_shape_device_iface
 	t_csm_get_pointer[1] = wl.pointer_interface
@@ -207,7 +201,7 @@ wp_scale_build_tables :: proc() {
 	wp_viewport_iface = {"wp_viewport", 1, 3, &wp_v_methods[0], 0, nil}
 }
 
-// The static interface tables for the protocols the library does not provide. They are built once (xdg_build_tables)
+// The static interface tables for the protocols the library does not provide. They are built once (wayland_lib)
 // because the `types` arrays reference the library's own wl_surface_interface etc., known only at run time.
 @(private) xdg_wm_base_iface: Wl_Interface
 @(private) xdg_surface_iface: Wl_Interface
@@ -236,12 +230,9 @@ wp_scale_build_tables :: proc() {
 @(private) t_get_toplevel_decoration: [2]^Wl_Interface
 @(private) t_nil3: [3]^Wl_Interface
 
-@(private) xdg_tables_built: bool
 
 @(private)
 xdg_build_tables :: proc() {
-	if xdg_tables_built { return }
-	xdg_tables_built = true
 
 	// xdg_wm_base
 	xdg_wm_base_methods[0] = {"destroy", "", nil}

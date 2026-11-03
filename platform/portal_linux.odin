@@ -13,6 +13,7 @@ package platform
 // request path arrives.
 
 import "core:strings"
+import "core:sync"
 import "../dbus"
 
 @(private) PORTAL_SERVICE :: "org.freedesktop.portal.Desktop"
@@ -146,9 +147,8 @@ portal_response_signal :: proc(user: rawptr, msg: ^dbus.Message) {
 
 @(private)
 portal_token :: proc() -> string {
-	@(static) counter: int
-	counter += 1
-	return strings.concatenate({"gt", int_to_str(counter)}, context.temp_allocator)
+	@(static) counter: int   // (the process's: atomic)
+	return strings.concatenate({"gt", int_to_str(sync.atomic_add(&counter, 1) + 1)}, context.temp_allocator)
 }
 
 ////////////////////////////////
@@ -193,19 +193,16 @@ portal_dark_mode :: proc() -> (dark: bool, ok: bool) {
 	return portal_read_color_scheme(conn)
 }
 
-@(private) theme_change_cb: proc(dark: bool)
-@(private) theme_sub: u32
-
 // Subscribes to SettingChanged so an app learns when the user flips light / dark at run time. `cb` runs from the bus
 // dispatch (the UI thread, as the window loop pumps the bus). Call once; the toolkit's ui wires the repaint.
 watch_color_scheme :: proc(cb: proc(dark: bool)) -> bool {
 	conn := session_bus()
 	if conn == nil { return false }
-	theme_change_cb = cb
-	if theme_sub == 0 {
-		theme_sub = dbus.subscribe(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "SettingChanged", portal_setting_changed, nil)
+	session.theme_changed = cb
+	if session.theme_sub == 0 {
+		session.theme_sub = dbus.subscribe(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "SettingChanged", portal_setting_changed, nil)
 	}
-	return theme_sub != 0
+	return session.theme_sub != 0
 }
 
 @(private)
@@ -216,7 +213,7 @@ portal_setting_changed :: proc(user: rawptr, msg: ^dbus.Message) {
 	key := dbus.r_string(&r)
 	if ns == "org.freedesktop.appearance" && key == "color-scheme" {
 		scheme := dbus.read_variant_u32_nested(&r)
-		if theme_change_cb != nil { theme_change_cb(scheme == 1) }
+		if session.theme_changed != nil { session.theme_changed(scheme == 1) }
 	}
 }
 
