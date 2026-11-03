@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:strings"
 import "../platform"
 import "../ui"
+import "../base"
 
 // The accessibility side: the tree a screen reader gets (ui.a11y_tree, the toolkit's own nodes, not a guess from the
 // boxes), and its actions, sent as an assistive technology's would be (ui.a11y_inject). A script that says "press the
@@ -25,7 +26,7 @@ ax_role_name :: proc(role: platform.A11y_Role) -> string {
 	case .Generic_Container:                   return "generic"
 	}
 	s, _ := strings.remove_all(fmt.tprintf("%v", role), "_", context.temp_allocator)
-	return strings.to_lower(s, context.temp_allocator)
+	return base.ascii_lower(s)
 }
 
 // The name a reader says: its label, else the value of a text node, else a field's placeholder.
@@ -110,10 +111,9 @@ ax_matches :: proc(u: ^platform.A11y_Update, p: json.Object) -> [dynamic]int {
 @(private)
 ax_matching :: proc(u: ^platform.A11y_Update, role_of, name_of: string, exact: bool) -> [dynamic]int {
 	out := make([dynamic]int, context.temp_allocator)
-	role := strings.to_lower(role_of, context.temp_allocator)
 	name := strings.to_lower(name_of, context.temp_allocator)
 	for n, i in u.nodes {
-		if role != "" && strings.to_lower(ax_role_name(platform.A11y_Role(n.role)), context.temp_allocator) != role { continue }
+		if role_of != "" && !base.ascii_equal_fold(ax_role_name(platform.A11y_Role(n.role)), role_of) { continue }
 		if name != "" {
 			have := strings.to_lower(ax_name_of(u, i), context.temp_allocator)
 			if exact ? have != name : !strings.contains(have, name) { continue }
@@ -144,7 +144,7 @@ ax_write_nodes :: proc(sb: ^strings.Builder, srv: ^Server, u: ^platform.A11y_Upd
 @(private)
 ax_action_of :: proc(name: string) -> (platform.A11y_Action, bool) {
 	for a in platform.A11y_Action {
-		if strings.equal_fold(fmt.tprintf("%v", a), name) { return a, true }
+		if base.ascii_equal_fold(fmt.tprintf("%v", a), name) { return a, true }
 	}
 	return .Click, false
 }

@@ -6,6 +6,7 @@ import "core:strconv"
 import "core:strings"
 import "../render"
 import "../ui"
+import "../base"
 
 // What Chrome's DevTools edits, live: a box's style as inline CSS and its text (ui.Box_Edit, applied at each build). An edit
 // lasts as long as the client: when it goes the window is as its program builds it. Only what differs from what the box had when
@@ -121,7 +122,7 @@ css_number :: proc(text: string) -> (v: f32, ok: bool) {
 // A CSS colour as the toolkit's: linear light from sRGB. #rgb #rgba #rrggbb #rrggbbaa rgb() rgba() hsl() hsla() and a few names.
 @(private)
 css_color :: proc(value: string) -> (c: ui.Color, ok: bool) {
-	v := strings.to_lower(strings.trim_space(value), context.temp_allocator)
+	v := base.ascii_lower(strings.trim_space(value))
 	linear :: proc(r, g, b, a: f32) -> ui.Color { return {render.srgb_to_linear(r), render.srgb_to_linear(g), render.srgb_to_linear(b), clamp(a, 0, 1)} }
 	switch v {
 	case "transparent": return {}, true

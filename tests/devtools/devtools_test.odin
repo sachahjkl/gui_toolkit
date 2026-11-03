@@ -236,6 +236,11 @@ what_a_browser_page_can_do_is_refused :: proc(t: ^testing.T) {
 	testing.expect_value(t, status(http_get("/json/list", HOST)), "HTTP/1.1 200")
 	testing.expect_value(t, status(http_get("/json/list", "Host: localhost:9472\r\n")), "HTTP/1.1 200")
 	testing.expect_value(t, status(http_get(page, HOST + UPGRADE)), "HTTP/1.1 101")
+	// header names and the Host fold by ASCII alone: the Kelvin sign U+212A is no 'K', the long s U+017F no 's'
+	testing.expect_value(t, status(http_get("/json/list", "HOST: LOCALHOST:9472\r\n")), "HTTP/1.1 200")
+	testing.expect_value(t, status(http_get("/json/list", "Ho\u017Ft: 127.0.0.1:9472\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get("/json/list", "Host: localho\u017Ft:9472\r\n")), "HTTP/1.1 403")
+	testing.expect_value(t, status(http_get(page, HOST + "Sec-WebSocket-\u212Aey: dGhlIHNhbXBsZSBub25jZQ==\r\n")), "HTTP/1.1 404")   // no key: no WebSocket
 }
 
 // A frame without the mask a client must set ends the connection, and so does a message over the limit, in one frame or

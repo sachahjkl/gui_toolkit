@@ -13,6 +13,7 @@ import "../../font"
 import "../../platform"
 import "../../render"
 import "../../ui"
+import "../../base"
 
 the_app: ^App
 
@@ -59,7 +60,7 @@ settings_load :: proc(app: ^App) {
 		case "blending": render.set_blend_space(&app.r, val == "srgb" ? .Srgb : .Linear)
 		case "toasts":
 			for p in ui.Toast_Position {
-				name, _ := strings.replace_all(strings.to_lower(ui.toast_position_names[p], context.temp_allocator), " ", "_", context.temp_allocator)
+				name, _ := strings.replace_all(base.ascii_lower(ui.toast_position_names[p]), " ", "_", context.temp_allocator)
 				if name == val { ui.set_toast_position(&app.ui_state, p) }
 			}
 		}

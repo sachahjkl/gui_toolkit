@@ -9,6 +9,7 @@ import "core:os"
 import "core:strings"
 import "core:time"
 import "../dbus"
+import "../base"
 
 @(private) SCREENSAVER_SERVICE :: "org.freedesktop.ScreenSaver"
 @(private) SCREENSAVER_PATH :: "/org/freedesktop/ScreenSaver"
@@ -119,7 +120,7 @@ foreign libc_svc {
 @(private)
 guess_mime :: proc(path: string) -> string {
 	ext := ""
-	if i := strings.last_index_byte(path, '.'); i >= 0 { ext = strings.to_lower(path[i:], context.temp_allocator) }
+	if i := strings.last_index_byte(path, '.'); i >= 0 { ext = base.ascii_lower(path[i:]) }
 	switch ext {
 	case ".txt": return "text/plain"
 	case ".html", ".htm": return "text/html"
