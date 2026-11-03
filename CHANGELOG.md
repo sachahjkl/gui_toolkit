@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.73.0] - 2026-11-03
+
+### Fixed
+- **The ASCII case helpers are package `ascii`** (`ascii/ascii.odin`: `ascii.lower`, `upper`, `lower_byte` / `upper_byte`, `equal_fold`, `has_prefix_fold`, `contains_fold`), no longer `base`'s `ascii_*`: a package named `base`, which `font`, `devtools`, `platform` and `config` now import, clashed with an app's own package of that name (Odin wants one name per package in a program).
+
 ## [0.72.0] - 2026-11-03
 
 ### Fixed
@@ -1500,6 +1505,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.73.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.73.0
 [0.72.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.72.0
 [0.71.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.71.0
 [0.70.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.70.0
