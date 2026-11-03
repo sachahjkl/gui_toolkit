@@ -7,6 +7,9 @@ package panes_test
 import "core:testing"
 import "../../ui"
 
+// Frames of 16 ms past the toolkit's double click time (450 ms).
+@(private = "file") DOUBLE_CLICK_FRAMES :: 30
+
 @(private)
 frame_pane :: proc(f: ^Fx) {
 	ui.next({width = ui.fill(), height = ui.fill()})
@@ -97,11 +100,16 @@ pane_folds_and_comes_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.rect.max.x, 400)
 	testing.expect(t, row_box("pane") == nil, "nothing built for a folded pane")
 	sx := (b.rect.min.x + b.rect.max.x) * 0.5
+	for _ in 0 ..< DOUBLE_CLICK_FRAMES { frame(f) }   // (the drag's press is no first click of a double click)
 	frame(f, {press({sx, 50})})
 	frame(f, {release({sx, 50})})
 	testing.expect(t, !f.pane.collapsed && f.pres.toggled)
 	testing.expect_value(t, f.pres.size, 100)
 	testing.expect_value(t, f.saves, 2)
+	frame(f)
+	// a click on the bar right after the one on the strip is no double click: the pane stays open
+	frame(f, {press({x, 50}), release({x, 50})})
+	testing.expect(t, !f.pane.collapsed, "the strip's click and the bar's are no double click")
 	frame(f)
 
 	// a double click on the handle folds it; the release that follows is no click on the strip
