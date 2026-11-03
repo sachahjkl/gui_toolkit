@@ -1,11 +1,10 @@
 #+build linux
 package platform
 
-// The Wayland clipboard and primary-selection owner: a full wl_data_source that offers the toolkit's flavours (text,
+// The Wayland clipboard owner: a full wl_data_source that offers the toolkit's flavours (text,
 // HTML, PNG, text/uri-list) to other clients, answers wl_data_source.send by writing the bytes to the fd the
 // compositor hands over, and gives the selection up on cancelled; and the read side, wl_data_offer.receive over a
-// pipe, read without blocking the UI loop. The primary (middle-click) selection rides the same shapes over
-// zwp_primary_selection_v1 when the compositor offers it.
+// pipe, read without blocking the UI loop. There is no primary (middle-click) selection on Wayland.
 //
 // The clip store (clipboard_linux.odin) holds what this process put on the clipboard; here we expose it to the
 // compositor. A get of a flavour another client owns reads it back over the selection transport.
@@ -224,61 +223,6 @@ wl_pipe_read_all :: proc(fd: posix.FD, allocator := context.allocator) -> []u8 {
 		append(&buf, ..chunk[:n])
 	}
 }
-
-////////////////////////////////
-// primary selection (zwp_primary_selection_v1)
-
-@(private)
-Primary_Device_Listener :: struct {
-	data_offer: proc "c" (data: rawptr, dev: Wl_Proxy, offer: Wl_Proxy),
-	selection:  proc "c" (data: rawptr, dev: Wl_Proxy, offer: Wl_Proxy),
-}
-@(private) primary_device_listener := Primary_Device_Listener{pd_data_offer, pd_selection}
-
-@(private)
-Primary_Offer_Listener :: struct { offer: proc "c" (data: rawptr, o: Wl_Proxy, mime: cstring) }
-@(private) primary_offer_listener := Primary_Offer_Listener{po_offer}
-
-@(private)
-Primary_Source_Listener :: struct {
-	send:      proc "c" (data: rawptr, src: Wl_Proxy, mime: cstring, fd: i32),
-	cancelled: proc "c" (data: rawptr, src: Wl_Proxy),
-}
-@(private) primary_source_listener := Primary_Source_Listener{ps_send, ps_cancelled}
-
-@(private)
-pd_data_offer :: proc "c" (data: rawptr, dev: Wl_Proxy, offer: Wl_Proxy) {
-	context = wl_ctx_real()
-	if offer != nil { wl.proxy_add_listener(offer, &primary_offer_listener, nil) }
-	wl_pending_primary_offer = offer
-}
-@(private) wl_pending_primary_offer: Wl_Proxy
-@(private)
-po_offer :: proc "c" (data: rawptr, o: Wl_Proxy, mime: cstring) {}
-@(private)
-pd_selection :: proc "c" (data: rawptr, dev: Wl_Proxy, offer: Wl_Proxy) {
-	context = wl_ctx_real()
-	if wlc.primary_offer != nil && wlc.primary_offer != offer {
-		wl.proxy_marshal_flags(wlc.primary_offer, ZWP_PRIMARY_OFFER_DESTROY, nil, wl.proxy_get_version(wlc.primary_offer), WL_MARSHAL_FLAG_DESTROY)
-	}
-	wlc.primary_offer = offer
-	wlc.have_primary_offer = offer != nil
-}
-@(private)
-ps_send :: proc "c" (data: rawptr, src: Wl_Proxy, mime: cstring, fd: i32) {
-	context = wl_ctx_real()
-	defer posix.close(posix.FD(fd))
-	wl_fd_write_all(fd, transmute([]u8)wl_primary_text)
-}
-@(private)
-ps_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
-	context = wl_ctx_real()
-	if src == wlc.primary_source {
-		wl.proxy_marshal_flags(src, ZWP_PRIMARY_SOURCE_DESTROY, nil, wl.proxy_get_version(src), WL_MARSHAL_FLAG_DESTROY)
-		wlc.primary_source = nil
-	}
-}
-@(private) wl_primary_text: string   // the primary selection's text, while we own it
 
 ////////////////////////////////
 // the text clipboard entry points platform_linux.odin calls
