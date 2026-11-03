@@ -20,6 +20,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "../cmdline"
 import "core:time"
 
 // Keep a Changelog's, in the order of a version's subsections.
@@ -398,7 +399,7 @@ section :: proc(root, version: string) -> (body: string, ok: bool) {
 
 main :: proc() {
 	flag :: proc(name: string) -> (string, bool) {
-		for a in os.args[1:] {
+		for a in cmdline.joined(os.args[1:], context.temp_allocator) {
 			if a == name { return "", true }
 			if strings.has_prefix(a, name) && len(a) > len(name) && a[len(name)] == ':' { return a[len(name) + 1:], true }
 		}

@@ -2,9 +2,10 @@
 // what a test opens can take nobody's focus, mouse or keyboard.
 //   odin run tools/run_tests                                every test of this system
 //   odin run tools/run_tests -- text keyboard               those packages
-//   build/run_tests -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
+//   odin run tools/run_tests -- -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
 //   odin run tools/run_tests -- -list                       the names, and the groups
-// Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). Needs what the CI's steps build first: the native
+// Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). (PowerShell 7 splits a `-name:value` typed after
+// `--` into `-name:` and `value`: tools/cmdline joins them again.) Needs what the CI's steps build first: the native
 // libraries (tools/tk build_text, build_a11y), the emoji font (tools/tk fetch_emoji -unicode), wgpu-native and DXC (tools/tk fetch_wgpu). A log of each step
 // is left in build/test_logs/.
 package run_tests
@@ -14,6 +15,7 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
+import "../cmdline"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -179,7 +181,7 @@ main :: proc() {
 	code := 0
 	if on_own_desktop(&code) { os.exit(code) }
 	o := Options{limit = RUN_LIMIT_SECONDS}
-	for a in os.args[1:] {
+	for a in cmdline.joined(os.args[1:]) {
 		switch {
 		case a == "-list": o.list = true
 		case strings.has_prefix(a, "-backend:"): o.backend = a[len("-backend:"):]

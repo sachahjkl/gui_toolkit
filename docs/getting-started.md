@@ -119,7 +119,7 @@ In the toolkit's folder (the CI runs the same: `.github/workflows/ci.yml`):
 odin test tests/flate -vet                                         # one package
 odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1           # packages that build interfaces: one test at a time
 odin run tools/run_tests                                           # every package, on a desktop of its own (needs the native libraries)
-build/run_tests -backend:wgpu                          # the pixel tests on WebGPU (after tools/tk fetch_wgpu)
+odin run tools/run_tests -- -backend:wgpu              # the pixel tests on WebGPU (after tools/tk fetch_wgpu)
 ```
 
 Pixel tests draw on an offscreen renderer on WARP (`render.init_offscreen(&r, size, warp = true)`: software, the same
