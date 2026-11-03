@@ -1,0 +1,267 @@
+// Docking, the widgets (ui/docking.odin) through the test session's input: a tab dragged onto each drop target, along its
+// strip, out (floating) and back by a double click on the floating panel's title; Escape cancels a drag; the keyboard (the
+// arrows along a strip, Ctrl+Tab, the menu); a handle resized and folded; the roles screen readers get; the save.
+//   odin test tests/docking -vet -define:ODIN_TEST_THREADS=1
+package docking_test
+
+import "core:fmt"
+import "core:testing"
+import "../../platform"
+import "../../testkit/session"
+import "../../ui"
+
+@(private = "file")
+App :: struct {
+	dock:   ui.Dock,
+	built:  [6]bool,     // the panels whose content was built this frame
+	saves:  int,
+	result: ui.Dock_Result,
+}
+
+@(private = "file")
+TITLES := [?]string{"", "Alpha", "Beta", "Gamma", "Delta", "Epsilon"}
+
+@(private = "file")
+build :: proc(s: ^session.Session) {
+	app := (^App)(s.user)
+	ui.dock_begin(&app.dock, "###dock", {
+		title = proc(user: rawptr, id: u32) -> string { return TITLES[id] },
+		on_save = proc(user: rawptr, d: ^ui.Dock) { (^App)(user).saves += 1 },
+		user = app, close_buttons = true,
+	})
+	for p in u32(1) ..= 4 {
+		app.built[p] = false
+		if ui.dock_panel(&app.dock, p) {
+			app.built[p] = true
+			ui.label(fmt.tprintf("%s content###content", TITLES[p]))
+		}
+	}
+	app.result = ui.dock_end(&app.dock)
+}
+
+// a and b in one stack at the left, c at the right
+@(private = "file")
+setup :: proc(t: ^testing.T, app: ^App) -> ^session.Session {
+	ui.dock_init(&app.dock)
+	ok := ui.dock_parse(&app.dock, "dock1 x0.500([*a,b] [*c])", id_of, nil)
+	testing.expect(t, ok)
+	s := session.start(t, {build = build, user = app, no_renderer = true})
+	session.frames(s, 2)
+	return s
+}
+
+@(private = "file")
+layout :: proc(app: ^App) -> string { return ui.dock_format(&app.dock, name_of, nil) }
+
+@(private = "file")
+mid :: proc(r: ui.Rect) -> [2]f32 { return (r.min + r.max) * 0.5 }
+
+@(private = "file")
+tab :: proc(s: ^session.Session, name: string) -> [2]f32 { return session.center(session.get(s, name)) }
+
+@(test)
+a_tab_dragged_onto_each_target :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	testing.expect(t, app.built[1] && !app.built[2] && app.built[3], "the shown panels are built")
+	for k in ui.Dock_Marker {
+		testing.expect(t, ui.dock_parse(&app.dock, "dock1 x0.500([*a,b] [*c])", id_of, nil))
+		session.frames(s, 2)
+		right := ui.dock_leaf_of(&app.dock, 3)
+		target := mid(ui.dock_markers(app.dock.nodes[right].rect, app.dock.metrics)[k]) + app.dock.origin
+		saves := app.saves
+		session.drag(s, tab(s, "dock_tab_2"), target)
+		session.frames(s, 2)
+		got := layout(&app)
+		// (a stays where it was: the main tree is [a] then the split of the right stack)
+		switch k {
+		case .Center: testing.expect_value(t, got, "dock1 x0.500([*a] [c,*b])")
+		case .Left:   testing.expect_value(t, got, "dock1 x0.500([*a] x0.500([*b] [*c]))")
+		case .Right:  testing.expect_value(t, got, "dock1 x0.500([*a] x0.500([*c] [*b]))")
+		case .Top:    testing.expect_value(t, got, "dock1 x0.500([*a] y0.500([*b] [*c]))")
+		case .Bottom: testing.expect_value(t, got, "dock1 x0.500([*a] y0.500([*c] [*b]))")
+		}
+		testing.expect(t, app.saves > saves, "saved when dropped")
+	}
+}
+
+@(test)
+a_tab_dragged_to_the_edges_of_the_space :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+
+	for k in ([]ui.Dock_Marker{.Left, .Right, .Top, .Bottom}) {
+		testing.expect(t, ui.dock_parse(&app.dock, "dock1 x0.500([*a,b] [*c])", id_of, nil))
+		session.frames(s, 2)
+		target := mid(ui.dock_edge_markers(app.dock.size, app.dock.metrics)[k]) + app.dock.origin
+		session.drag(s, tab(s, "dock_tab_3"), target)
+		session.frames(s, 2)
+		got := layout(&app)
+		// c's stack goes; the rest of the tree is split at that edge
+		switch k {
+		case .Left:   testing.expect_value(t, got, "dock1 x0.250([*c] [*a,b])")
+		case .Right:  testing.expect_value(t, got, "dock1 x0.750([*a,b] [*c])")
+		case .Top:    testing.expect_value(t, got, "dock1 y0.250([*c] [*a,b])")
+		case .Bottom: testing.expect_value(t, got, "dock1 y0.750([*a,b] [*c])")
+		case .Center:
+		}
+	}
+}
+
+@(test)
+a_tab_moved_along_its_strip :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	ui.dock_add(&app.dock, 4, ui.dock_with(&app.dock, 1))   // [a,b,*d]
+	session.frames(s, 2)
+	d4 := session.get(s, "dock_tab_4")
+	to := [2]f32{d4.rect.max.x - 2, mid(d4.rect).y}
+	session.drag(s, tab(s, "dock_tab_1"), to)
+	testing.expect_value(t, layout(&app), "dock1 x0.500([b,d,*a] [*c])")
+	// into the other stack's strip, before its tab
+	c := session.get(s, "dock_tab_3")
+	session.drag(s, tab(s, "dock_tab_2"), {c.rect.min.x + 2, mid(c.rect).y})
+	testing.expect_value(t, layout(&app), "dock1 x0.500([*d,a] [*b,c])")
+}
+
+@(test)
+dropped_outside_it_floats_and_a_double_click_docks_it_back :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	// over the left stack's body but on no square: floating there
+	left := app.dock.nodes[ui.dock_leaf_of(&app.dock, 1)].rect
+	at := [2]f32{left.min.x + 120, left.min.y + 150} + app.dock.origin
+	session.drag(s, tab(s, "dock_tab_2"), at)
+	testing.expect_value(t, len(app.dock.floats), 1)
+	testing.expect(t, ui.dock_is_floating(&app.dock, ui.dock_leaf_of(&app.dock, 2)))
+	testing.expect(t, app.built[2], "the floating panel is built")
+	testing.expect(t, session.find(s, fmt.tprintf("dock_float_%d", app.dock.floats[0])) != nil)
+	// moved by the empty part of its strip
+	root := app.dock.floats[0]
+	before := app.dock.nodes[root].rect
+	grab := session.find(s, "dock_grab", 2)   // (the main tree's two stacks, then the floating one)
+	if !testing.expect(t, grab != nil) { return }
+	g := [2]f32{grab.rect.max.x - 10, mid(grab.rect).y}
+	session.drag(s, g, g + {30, 20})
+	after := app.dock.nodes[root].rect
+	testing.expect_value(t, after.min - before.min, ui.Vec2{30, 20})
+	// a double click on it: back into the stack it came from
+	session.click_at(s, g + {30, 20}, count = 2)
+	testing.expect_value(t, len(app.dock.floats), 0)
+	testing.expect_value(t, layout(&app), "dock1 x0.500([a,*b] [*c])")
+}
+
+@(test)
+escape_cancels_a_drag :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	session.click(s, "dock_tab_2")
+	before := layout(&app)
+	from := tab(s, "dock_tab_2")
+	right := ui.dock_leaf_of(&app.dock, 3)
+	target := mid(ui.dock_markers(app.dock.nodes[right].rect, app.dock.metrics)[.Left]) + app.dock.origin
+	session.press(s, from)
+	session.move(s, from + {20, 0})
+	session.move(s, target)
+	testing.expect(t, app.result.dragging, "dragging: the targets show")
+	testing.expect(t, session.find(s, "dock_overlay") != nil)
+	testing.expect_value(t, app.dock.drag.target.place, ui.Dock_Place.Left)
+	session.key(s, .Escape)
+	testing.expect(t, !app.result.dragging)
+	testing.expect(t, session.find(s, "dock_overlay") == nil)
+	session.release(s, target)
+	testing.expect_value(t, layout(&app), before)
+}
+
+@(test)
+the_preview_shows_where_it_lands :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	ui.dock_init(&app.dock)
+	testing.expect(t, ui.dock_parse(&app.dock, "dock1 x0.500([*a,b] [*c])", id_of, nil))
+	s := session.start(t, {build = build, user = &app})
+	session.frames(s, 2)
+	right := app.dock.nodes[ui.dock_leaf_of(&app.dock, 3)].rect
+	probe := [2]int{int(right.min.x) + 20, int(right.max.y) - 20}   // in the lower half of c's stack, on no square
+	high := int(right.min.y) + 60   // (the upper half, under the strip)
+	before := session.capture(s)
+	rest, rest_high := session.pixel(before, probe.x, probe.y), session.pixel(before, probe.x, high)
+	from := tab(s, "dock_tab_2")
+	session.press(s, from)
+	session.move(s, from + {20, 0})
+	session.move(s, mid(ui.dock_markers(right, app.dock.metrics)[.Bottom]) + app.dock.origin)
+	during := session.capture(s)
+	testing.expect(t, !session.near(rest, session.pixel(during, probe.x, probe.y)), "the lower half of the stack is tinted")
+	testing.expect(t, session.near(rest_high, session.pixel(during, probe.x, high)), "the upper half is not")
+	session.release(s, s.pointer)
+	testing.expect_value(t, layout(&app), "dock1 x0.500([*a] y0.500([*c] [*b]))")
+}
+
+@(test)
+the_keyboard_goes_along_the_strip_and_through_the_menu :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	session.click(s, "dock_tab_1")
+	testing.expect_value(t, session.focused_name(s), "dock_tab_1")
+	session.key(s, .Right)
+	testing.expect(t, ui.dock_shown(&app.dock, 2) && app.built[2])
+	testing.expect_value(t, session.focused_name(s), "dock_tab_2")
+	session.key(s, .Tab, {.Ctrl})
+	testing.expect(t, ui.dock_shown(&app.dock, 1), "Ctrl+Tab: the next panel of the stack")
+	testing.expect_value(t, session.focused_name(s), "dock_tab_1")
+	session.key(s, .Right, {.Ctrl, .Shift})
+	testing.expect_value(t, layout(&app), "dock1 x0.500([b,*a] [*c])")
+	// the menu: every target, from the keyboard
+	session.key(s, .Menu)
+	testing.expect(t, ui.ctx_menu_any_open())
+	session.click_text(s, "Float")
+	testing.expect_value(t, len(app.dock.floats), 1)
+	testing.expect(t, ui.dock_is_floating(&app.dock, ui.dock_leaf_of(&app.dock, 1)))
+	// roles: a tab list of tabs, each controlling its panel
+	strip := session.get(s, fmt.tprintf("dock_leaf_%d", ui.dock_leaf_of(&app.dock, 3)))
+	testing.expect(t, strip.a11y != nil && strip.a11y.role == .Tab_List)
+	tb := session.get(s, "dock_tab_3")
+	testing.expect(t, tb.a11y != nil && tb.a11y.role == .Tab && tb.a11y.selected.? == true)
+	body := session.get(s, "dock_body_3")
+	testing.expect(t, body.a11y != nil && body.a11y.role == .Tab_Panel)
+	testing.expect_value(t, tb.a11y.controls, body.key)
+}
+
+@(test)
+a_handle_resizes_and_folds :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	split := app.dock.main
+	h := session.get(s, fmt.tprintf("dock_split_%d", split))
+	testing.expect(t, h.a11y != nil && h.a11y.role == .Splitter)
+	c := session.center(h)
+	session.drag(s, c, c + {100, 0})
+	testing.expect(t, app.dock.nodes[split].ratio > 0.6 && app.dock.nodes[split].ratio < 0.65)
+	// a double click folds the second side
+	h = session.get(s, fmt.tprintf("dock_split_%d", split))
+	session.click_at(s, session.center(h), count = 2)
+	testing.expect(t, app.dock.nodes[split].fold)
+	testing.expect(t, !app.built[3], "folded: not built")
+	// showing it brings it back
+	ui.dock_activate(&app.dock, 3)
+	session.frames(s, 2)
+	testing.expect(t, app.built[3])
+}
+
+@(test)
+a_close_button_closes_the_panel :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	session.click_at(s, session.center(session.acts_on(session.find(s, "dock_close", 0))))
+	testing.expect_value(t, layout(&app), "dock1 x0.500([*b] [*c])")
+	session.click(s, "dock_tab_3", button = platform.Mouse_Button.Middle)
+	testing.expect_value(t, layout(&app), "dock1 [*b]")
+}

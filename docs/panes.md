@@ -86,6 +86,8 @@ drag through a build).
 
 ## Panes the user folds and places (`ui/panes.odin`)
 
+Panels the user drags into stacks of tabs, splits and floating panels: [docking.md](docking.md) (its splits use `pane_split`).
+
 A `Pane` is the app's: the pane's open size across each orientation (`size[.X]`, `size[.Y]`, logical pixels; 0: the
 default), whether it is folded and where it goes (`place`: `.Auto`, `.Side`, `.Below`). The app keeps one per split and
 saves it when `Pane_Options.on_save` is called (or the result says `finished`); `pane_format` / `pane_parse` make it one
