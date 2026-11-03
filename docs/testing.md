@@ -44,6 +44,7 @@ The rules:
 - **A whole application**: `session.attach(t, {win = app.win, state = &app.ui_state, renderer = &app.r, frame = ..., user = app})` drives one that makes its own window (offscreen) and frames (`tests/examples`). Something the application does not let a test see: add it to the application, not to the test.
 - **The devtools protocol without a port**: `devtools.start_local` and `devtools.Local_Client` (`tests/examples/whatsnew_test.odin`).
 - **Pictures**: `session.expect_like(s, path)` against a reference image, `TOOLKIT_TEST_UPDATE=1` writes them: review them like code. Prefer a colour at a point (`pixel`, `count_color`): it says what is wrong.
+- **The globals**: `tests/globals` reads the packages' sources (next to it, not from the working directory) and checks every package-level variable against `tools/globals_allowed.txt` (getting-started.md, "Where state lives").
 - **What needs a real window** stays in `tests/window`, `tests/cursors`, `tests/tray`: hidden windows, fed the system's messages, on the runner's desktop. **What needs a real server** on Linux: `tools/linux_desktop.sh`.
 
 Numbers in a test are named at the top of its file.

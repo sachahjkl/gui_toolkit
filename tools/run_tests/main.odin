@@ -71,6 +71,7 @@ STEPS := []Step{
 	{name = "frame_gate"},
 	{name = "frame_slots", oses = EVERYWHERE},
 	{name = "fsx"},
+	{name = "globals", oses = EVERYWHERE},
 	{name = "i18n", oses = EVERYWHERE},
 	{name = "instance"},
 	{name = "key_repeat", oses = EVERYWHERE},

@@ -3,6 +3,10 @@
 ## A change
 
 - Every new function has its documentation (`docs/`), its test (`tests/`, [docs/testing.md](docs/testing.md)) and a CHANGELOG fragment.
+- **A new global needs a class.** One window's or one app's state is a field of the struct that owns it (the Window, the
+  Renderer, `ui.State`); a package-level variable is a table (`const`), a resource of the process (`process`: locked, atomic or
+  bound to a thread the note names), a thread's (`thread`: `@(thread_local)`) or a test's (`test`), and gets its line in
+  `tools/globals_allowed.txt` with why: `tests/globals` fails otherwise ([docs/getting-started.md](docs/getting-started.md), "Where state lives").
 - **CHANGELOG: one fragment per change in [changelog.d/](changelog.d/README.md)**, never an edit of `CHANGELOG.md`:
 
   ```
