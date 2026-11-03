@@ -129,7 +129,7 @@ load_logo :: proc(r: ^render.Renderer) -> render.Texture {
 	}
 	defer png.destroy(img)
 	t := render.create_texture_rgba(r, img.width, img.height)
-	render.update_texture_rgba(r, t, 0, 0, img.width, img.height, img.pixels.buf[:])
+	render.update_texture_rgba(r, t, 0, 0, img.width, img.height, img.pixels[:])
 	return t
 }
 

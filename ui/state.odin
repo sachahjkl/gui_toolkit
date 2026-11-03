@@ -28,7 +28,7 @@ gs :: #force_inline proc() -> ^State {
 init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	// the state is current from here: an app may read it (scale, font_size, focus...) before its first build, e.g.
 	// routing the input of its first frame
-	current = s
+	use(s)
 	s.fonts = fonts
 	s.theme = theme
 	s.zoom = 1
@@ -51,8 +51,9 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 }
 
 // Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
-// state after building or drawing another's: begin_build, draw_tree and init select the state they are given).
-use :: proc(s: ^State) { current = s }
+// state after building or drawing another's: begin_build, draw_tree and init select the state they are given). The state
+// is the caller's and stays selected until `destroy` forgets it, wherever it lives (rawptr: kept on purpose).
+use :: proc(s: ^State) { current = (^State)(rawptr(s)) }
 
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
@@ -97,6 +98,7 @@ destroy :: proc(s: ^State) {
 	selection_destroy(s)
 	a11y_destroy(s)
 	delete(s.mouse_events)
+	delete(s.last_events)
 	virtual.arena_destroy(&s.arena)
 	if current == s { current = nil }
 	s^ = {}
@@ -151,10 +153,11 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	// (a frame made from a message pumped during a build: a loop of the system such as TrackPopupMenu, a modal dialog)
 	assert(!build_open, "ui: begin_build inside another build")
 	build_open = true
-	current = s
+	use(s)
 	s.build_index += 1
 	s.build_start = real_ms()
-	s.last_events = p.events
+	clear(&s.last_events)
+	append(&s.last_events, ..p.events)
 	s.metrics.lazy_built = 0
 	selection_snapshot(s)
 	virtual.arena_free_all(&s.arena)
@@ -713,7 +716,7 @@ update_animations :: proc(s: ^State) {
 
 // Prints every box taller than `limit` px (id text, size, pref kinds): layout debugging aid.
 debug_dump_tall :: proc(s: ^State, limit: f32) {
-	current = s
+	use(s)
 	walk :: proc(b: ^Box, depth: int, limit: f32) {
 		if b.size.y > limit {
 			fmt.printf("%*s text=%q size=%.0fx%.0f pref=(%v %.1f, %v %.1f) children=%d axis=%v\n",

@@ -172,7 +172,7 @@ cbdt_draw :: proc(fc: ^Face_Colr, gid: u16, size: f32) -> (bm: Colr_Bitmap, ok: 
 	k := size / f32(g.ppem)
 	w, h := max(int(math.round(f32(img.width) * k)), 1), max(int(math.round(f32(img.height) * k)), 1)
 	if w > CBDT_SCALED_MAX_PX || h > CBDT_SCALED_MAX_PX { return }
-	src := img.pixels.buf[:]
+	src := img.pixels[:]
 	if len(src) < img.width * img.height * 4 { return }
 	px := make([]u8, w * h * 4, heap)
 	// each pixel the average of what it covers, weighted by alpha so that transparent colors do not bleed in

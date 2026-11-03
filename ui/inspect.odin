@@ -100,8 +100,8 @@ Build_Metrics :: struct {
 
 build_metrics :: proc(s: ^State) -> Build_Metrics { return s.metrics }
 
-// The input the last build took (until the next poll_events).
-build_events :: proc(s: ^State) -> []platform.Event { return s.last_events }
+// The input the last build took (until the next build).
+build_events :: proc(s: ^State) -> []platform.Event { return s.last_events[:] }
 
 // The box of a key, if the last build made it.
 box_of :: proc(s: ^State, key: Key) -> ^Box {

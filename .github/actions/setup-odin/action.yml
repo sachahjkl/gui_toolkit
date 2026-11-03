@@ -1,15 +1,15 @@
 name: Odin and MSVC
-description: Odin dev-2026-10 (pinned by SHA-256) on the PATH, and the MSVC x64 environment (link.exe, rc.exe)
+description: Odin dev-2026-11 (pinned by SHA-256) on the PATH, and the MSVC x64 environment (link.exe, rc.exe)
 
 runs:
   using: composite
   steps:
-    - name: Odin dev-2026-10
+    - name: Odin dev-2026-11
       shell: pwsh
       env:
-        # odin version: dev-2026-10-nightly:84bc3fc (the tag dev-2026-10 is that commit)
-        ODIN_TAG: dev-2026-10
-        ODIN_SHA256: b6b2e426a8b6f147b74ec7e18bef8df27cf40fe16193159df7ca09a0cc0c2011
+        # odin version: dev-2026-11-nightly:9a69916 (the tag dev-2026-11 is that commit)
+        ODIN_TAG: dev-2026-11
+        ODIN_SHA256: 259effedf2997293c8fa4a5e497496f8ebce9f826652d9dd353a9dd2113c31fd
       run: |
         $zip = Join-Path $env:RUNNER_TEMP "odin-$env:ODIN_TAG.zip"
         $ProgressPreference = 'SilentlyContinue'

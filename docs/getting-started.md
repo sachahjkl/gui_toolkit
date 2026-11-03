@@ -9,7 +9,7 @@ PowerShell 5.1).
 | What | Version | Needed for |
 |---|---|---|
 | Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library, `-define:FONT_BACKEND=native` (`tools/linux_ci.sh` builds that way). No macOS backend. |
-| [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-10) | **`dev-2026-10`** (`odin version` says `dev-2026-10-nightly:84bc3fc`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
+| [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-11) | **`dev-2026-11`** (`odin version` says `dev-2026-11-nightly:9a69916`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
 | MSVC: Visual Studio 2022 or its Build Tools, workload "Desktop development with C++" (MSVC x64 and a Windows 10/11 SDK) | | Odin links with `link.exe` and finds it by itself (no developer prompt needed); `rc.exe` for an exe icon (`-resource:`) |
 | PowerShell 5.1 or 7 | | the scripts of `tools\` |
 | Rust, the stable toolchain of [rustup](https://rustup.rs) (`x86_64-pc-windows-msvc`) | stable | only for the two optional native libraries (section 4: native text, accessibility) |
