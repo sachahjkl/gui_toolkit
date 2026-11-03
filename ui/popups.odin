@@ -7,7 +7,7 @@ import "../platform"
 // Popups (menus, dropdowns, tooltips) are floating boxes appended to the ROOT, so they draw above everything built so
 // far and win hit testing. Their contents inherit the style of the call site.
 //
-// Menus. One menu is open at a time, with any depth of open submenus (`State.menus`, outermost first):
+// Menus. One menu is open at a time, with any depth of open submenus and nested menus (`State.menus`, outermost first):
 //
 //   if ui.ctx_menu(key) {                      // width 0: as wide as its widest item (measured on the previous frame)
 //       if ui.menu_item("Copy", "Ctrl+C").clicked { ... }
@@ -25,6 +25,16 @@ import "../platform"
 // MENU_HOVER_MS, clicking chooses; a press outside every open level closes the menu. A menu opens where asked and
 // stays on screen: it flips to the other side of the point (or of the anchor rect) when it does not fit, then is
 // clamped to the window.
+//
+// A nested menu is a menu opened from inside an open one, at a point or under a rect (a row's context menu in a
+// drop-down panel), over it; the menu stays open behind it:
+//
+//   if ui.ctx_menu(key) {
+//       if row_sig.right_clicked { ui.menu_nested_open(row_menu, ui.mouse_pos()) }
+//       if ui.menu_nested(row_menu) { if ui.menu_item("Open").clicked { ... } }
+//   }
+//
+// It closes like a submenu: a press outside it closes only it, Escape closes it, choosing an item closes the menu.
 
 MENU_HOVER_MS :: 280.0
 
@@ -66,7 +76,8 @@ Menu_Level :: struct {
 	key:          Key,
 	anchor:       Key,       // level 0: the widget that opened it (pressing it again is not a press "outside")
 	pos:          Vec2,      // where it was asked to open (top-left corner)
-	around:       Rect,      // not empty: open next to this rect (level 0: below, else above; submenus: right, else left)
+	around:       Rect,      // not empty: open next to this rect (level 0, nested: below, else above; submenus: right, else left)
+	nested:       bool,      // opened by menu_nested_open: placed like level 0, not closed by resting on its menu's items
 	open_build:   u64,
 	built_build:  u64,
 	sel:          int,       // selected item (-1: none)
@@ -199,7 +210,7 @@ menu_place :: proc(lv: ^Menu_Level, depth: int, size, window: Vec2, em: f32) -> 
 	r := lv.around
 	pos := lv.pos
 	if r.max.x > r.min.x || r.max.y > r.min.y {
-		if depth == 0 {
+		if depth == 0 || lv.nested {
 			gap := em * 0.25
 			pos = {r.min.x, r.max.y + gap}
 			if pos.y + size.y > window.y && r.min.y - gap - size.y >= 0 { pos.y = r.min.y - gap - size.y }
@@ -239,25 +250,67 @@ ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
 		return false
 	}
 	// a press outside every open level closes the whole menu
-	if (s.pressed_any[.Left] || s.pressed_any[.Right] || s.pressed_any[.Middle]) && s.build_index > s.menus[0].open_build {
-		hit: Key
-		switch {
-		case s.pressed_any[.Left]:  hit = s.pressed_key[.Left]
-		case s.pressed_any[.Right]: hit = s.pressed_key[.Right]
-		case:                       hit = s.pressed_key[.Middle]
-		}
-		hb := s.boxes[hit] if hit != 0 else nil
-		inside := hit != 0 && hit == s.menus[0].anchor
-		for lv in s.menus {
-			if p := s.boxes[lv.panel]; p != nil && hb != nil && is_descendant(hb, p) { inside = true }
-		}
-		if !inside {
-			ctx_menu_close()
-			append(&s.popup_stack, false)
-			return false
-		}
+	if s.build_index > s.menus[0].open_build && menu_pressed_outside(s, 0, s.menus[0].anchor) {
+		ctx_menu_close()
+		append(&s.popup_stack, false)
+		return false
 	}
 	return menu_level_begin(0, width)
+}
+
+// A press of this frame (any button) landed outside the open levels from `from` on, and not on `anchor`.
+@(private = "file")
+menu_pressed_outside :: proc(s: ^State, from: int, anchor: Key) -> bool {
+	if !s.pressed_any[.Left] && !s.pressed_any[.Right] && !s.pressed_any[.Middle] { return false }
+	hit: Key
+	switch {
+	case s.pressed_any[.Left]:  hit = s.pressed_key[.Left]
+	case s.pressed_any[.Right]: hit = s.pressed_key[.Right]
+	case:                       hit = s.pressed_key[.Middle]
+	}
+	if hit != 0 && hit == anchor { return false }
+	hb := s.boxes[hit] if hit != 0 else nil
+	if hb == nil { return true }
+	for lv in s.menus[from:] {
+		if p := s.boxes[lv.panel]; p != nil && is_descendant(hb, p) { return false }
+	}
+	return true
+}
+
+// Opens the nested menu `key` over the menu being built (call it in that menu's block), its top-left corner at `pos`,
+// in place of any submenu or nested menu that menu had open. Does nothing outside a menu's block.
+menu_nested_open :: proc(key: Key, pos: Vec2, from_keyboard := false) { menu_nested_push(key, pos, {}, from_keyboard) }
+
+// Opens the nested menu below `rect` (above it when there is no room below), e.g. under a row's menu button.
+menu_nested_open_rect :: proc(key: Key, rect: Rect, from_keyboard := false) { menu_nested_push(key, {rect.min.x, rect.max.y}, rect, from_keyboard) }
+
+@(private = "file")
+menu_nested_push :: proc(key: Key, pos: Vec2, around: Rect, from_keyboard: bool) {
+	s := gs()
+	_, depth := menu_current()
+	if depth < 0 { return }
+	menu_pop_to(depth + 1)
+	append(&s.menus, Menu_Level{key = key, pos = pos, around = around, nested = true, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard})
+}
+
+// `if menu_nested(key, width) { menu_item(...) }`, in the block of the menu that opened it: builds the nested menu
+// `key` while it is open. `width` 0 = as wide as the widest item. A press outside it (and the levels it opened) closes
+// only it.
+@(deferred_none = menu_end)
+menu_nested :: proc(key: Key, width: f32 = 0) -> bool {
+	s := gs()
+	_, depth := menu_current()
+	d := depth + 1
+	if depth < 0 || d >= len(s.menus) || s.menus[d].key != key || !s.menus[d].nested {
+		append(&s.popup_stack, false)
+		return false
+	}
+	if s.build_index > s.menus[d].open_build && menu_pressed_outside(s, d, 0) {
+		menu_pop_to(d)
+		append(&s.popup_stack, false)
+		return false
+	}
+	return menu_level_begin(d, width)
 }
 
 @(private)
@@ -490,8 +543,8 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, first = first_letter(display_part(text))})
 	sig := menu_row(lv, idx, text, shortcut, icon, checked, en, false, idx == lv.sel)
-	// resting on another item than the open submenu's closes that submenu
-	if sig.hovering && len(s.menus) > depth + 1 && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
+	// resting on another item than the open submenu's closes that submenu (a nested menu stays: a press closes it)
+	if sig.hovering && len(s.menus) > depth + 1 && !s.menus[depth + 1].nested && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
 	clicked := en && (sig.clicked || (idx == lv.sel && lv.activate))
 	sig.clicked = clicked
 	// (closed when the menu's block ends: the items after this one are still part of the menu until then, and a menu

@@ -268,6 +268,86 @@ menu_submenus :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.ctx_menu_any_open(), "the second Escape closes the menu")
 }
 
+Nested_Run :: struct {
+	key, nested:  ui.Key,
+	open_at:      [2]f32,   // not zero: open the nested menu there in this frame
+	row:          ^ui.Box,  // a plain row of the menu (not an item)
+	chosen:       string,
+}
+
+@(private = "file")
+build_nested :: proc(f: ^Fx, user: rawptr) {
+	r := (^Nested_Run)(user)
+	if ui.ctx_menu(r.key, 300) {
+		ui.next({width = ui.px(300), height = ui.px(30)})
+		r.row = ui.button("A row###row").box
+		ui.next({width = ui.px(300), height = ui.px(30)})
+		ui.button("Another row###row2")
+		if r.open_at != {} { ui.menu_nested_open(r.nested, r.open_at); r.open_at = {} }
+		if ui.menu_nested(r.nested) {
+			if ui.menu_item("Open").clicked { r.chosen = "open" }
+			if ui.menu_item("Remove").clicked { r.chosen = "remove" }
+		}
+	}
+}
+
+// A menu opened from inside an open one (a row's context menu in a drop-down panel): over it, the outer menu stays
+// open; a press outside the nested menu but inside the outer one closes only the nested one; Escape closes the top
+// level; choosing an item closes both.
+@(test)
+menu_nested_levels :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Nested_Run{key = ui.Key(0xa1), nested = ui.Key(0xa2)}
+	reopen :: proc(f: ^Fx, r: ^Nested_Run) {
+		r.open_at = {150, 120}
+		frame(f, nil, build_nested, r)
+		frame(f, nil, build_nested, r)
+	}
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Nested_Run)(user).key, {100, 100}) }, &r)
+	frame(&f, nil, build_nested, &r)
+	frame(&f, nil, build_nested, &r)
+	reopen(&f, &r)
+	testing.expect_value(t, ui.menu_depth(), 2)
+	outer, _, _ := ui.menu_rect(0)
+	inner, _, ok := ui.menu_rect(1)
+	testing.expect(t, ok && inner.min == {150, 120}, "the nested menu opens at its point")
+
+	// a press on the outer menu's row, outside the nested one: only the nested one closes
+	row := r.row.rect
+	p := [2]f32{row.min.x + 10, (row.min.y + row.max.y) * 0.5}
+	testing.expect(t, !(p.x >= inner.min.x && p.x < inner.max.x && p.y >= inner.min.y && p.y < inner.max.y), "the press point is outside the nested menu")
+	frame(&f, {{kind = .Mouse_Press, button = .Left, pos = p}, {kind = .Mouse_Release, button = .Left, pos = p}}, build_nested, &r)
+	frame(&f, nil, build_nested, &r)
+	testing.expect_value(t, ui.menu_depth(), 1)
+	testing.expect(t, ui.ctx_menu_is_open(r.key), "the outer menu stays open")
+
+	// Escape closes the nested menu, then the outer one
+	reopen(&f, &r)
+	testing.expect_value(t, ui.menu_depth(), 2)
+	frame(&f, {key(.Escape)}, build_nested, &r)
+	frame(&f, nil, build_nested, &r)
+	testing.expect_value(t, ui.menu_depth(), 1)
+	frame(&f, {key(.Escape)}, build_nested, &r)
+	testing.expect(t, !ui.ctx_menu_any_open(), "the second Escape closes the outer menu")
+
+	// a press outside both closes both; choosing an item closes both
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Nested_Run)(user).key, {100, 100}) }, &r)
+	frame(&f, nil, build_nested, &r)
+	reopen(&f, &r)
+	frame(&f, {{kind = .Mouse_Press, button = .Left, pos = {outer.max.x + 100, 10}}}, build_nested, &r)
+	testing.expect(t, !ui.ctx_menu_any_open(), "a press outside every level closes the menu")
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Nested_Run)(user).key, {100, 100}) }, &r)
+	frame(&f, nil, build_nested, &r)
+	reopen(&f, &r)
+	frame(&f, {key(.Down), key(.Down), key(.Return)}, build_nested, &r)
+	testing.expect_value(t, r.chosen, "remove")
+	testing.expect(t, !ui.ctx_menu_any_open(), "choosing in the nested menu closes the menu")
+}
+
 @(test)
 menu_stays_on_screen :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)
