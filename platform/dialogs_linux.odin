@@ -16,18 +16,18 @@ import "core:strings"
 import "core:sys/posix"
 
 open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
-	if dialog_test_hook != nil { return dialog_test_hook(0, d, allocator) }
-	return file_dialog_spawn(0, d, allocator)
+	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_OPEN, d, allocator) }
+	return file_dialog_spawn(DIALOG_OPEN, d, allocator)
 }
 
 save_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
-	if dialog_test_hook != nil { return dialog_test_hook(1, d, allocator) }
-	return file_dialog_spawn(1, d, allocator)
+	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_SAVE, d, allocator) }
+	return file_dialog_spawn(DIALOG_SAVE, d, allocator)
 }
 
 pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
-	if dialog_test_hook != nil { return dialog_test_hook(2, d, allocator) }
-	return file_dialog_spawn(2, d, allocator)
+	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_FOLDER, d, allocator) }
+	return file_dialog_spawn(DIALOG_FOLDER, d, allocator)
 }
 
 // The XDG user directories: $XDG_<NAME>_DIR (user-dirs.dirs), else $HOME/<Name>.
@@ -86,13 +86,13 @@ zenity_dialog :: proc(kind: int, d: File_Dialog, allocator := context.allocator)
 	append(&args, "zenity", "--file-selection")
 	if d.title != "" { append(&args, strings.concatenate({"--title=", d.title}, context.temp_allocator)) }
 	switch kind {
-	case 1: append(&args, "--save"); if d.overwrite_prompt { append(&args, "--confirm-overwrite") }
-	case 2: append(&args, "--directory")
+	case DIALOG_SAVE: append(&args, "--save"); if d.overwrite_prompt { append(&args, "--confirm-overwrite") }
+	case DIALOG_FOLDER: append(&args, "--directory")
 	}
-	if kind == 0 && d.multiple { append(&args, "--multiple", "--separator=\n") }
+	if kind == DIALOG_OPEN && d.multiple { append(&args, "--multiple", "--separator=\n") }
 	start := dialog_start_dir(d)
 	if start != "" {
-		name := kind == 1 && d.suggested_name != "" ? d.suggested_name : ""
+		name := kind == DIALOG_SAVE && d.suggested_name != "" ? d.suggested_name : ""
 		fn := name != "" ? strings.concatenate({start, "/", name}, context.temp_allocator) : start
 		append(&args, strings.concatenate({"--filename=", fn}, context.temp_allocator))
 	}
@@ -115,13 +115,13 @@ kdialog_dialog :: proc(kind: int, d: File_Dialog, allocator := context.allocator
 	if start == "" { start = "." }
 	filt := kdialog_filter(d)
 	switch kind {
-	case 0:
+	case DIALOG_OPEN:
 		append(&args, d.multiple ? "--getopenfilename" : "--getopenfilename", start, filt)
 		if d.multiple { append(&args, "--multiple", "--separate-output") }
-	case 1:
+	case DIALOG_SAVE:
 		name := d.suggested_name != "" ? strings.concatenate({start, "/", d.suggested_name}, context.temp_allocator) : start
 		append(&args, "--getsavefilename", name, filt)
-	case 2:
+	case DIALOG_FOLDER:
 		append(&args, "--getexistingdirectory", start)
 	}
 	if d.title != "" { append(&args, "--title", d.title) }

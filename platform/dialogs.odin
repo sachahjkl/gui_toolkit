@@ -133,6 +133,11 @@ filters_destroy :: proc(filters: []File_Filter, allocator := context.allocator) 
 	delete(filters, allocator)
 }
 
+// The kinds of dialog (dialog_test_hook's `kind`).
+DIALOG_OPEN :: 0
+DIALOG_SAVE :: 1
+DIALOG_FOLDER :: 2
+
 // Test hook: when set, the dialogs answer with it instead of showing anything (end-to-end tests of an app: the real
-// dialogs need a person). `kind`: 0 open, 1 save, 2 folder.
+// dialogs need a person). `kind`: DIALOG_OPEN, DIALOG_SAVE, DIALOG_FOLDER.
 dialog_test_hook: proc(kind: int, d: File_Dialog, allocator: runtime.Allocator) -> Dialog_Result
