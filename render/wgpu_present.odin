@@ -181,8 +181,7 @@ wgpu_query_tearing :: proc(r: ^Renderer) {
 
 @(private)
 wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
-	if r.present.mode == .Tearing && r.present.tearing_ok { return .Immediate }
-	return .Fifo
+	return present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode == .Tearing ? .Immediate : .Fifo
 }
 
 @(private)
@@ -235,8 +234,7 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	p.slot_unused = false
 	p.presents += 1
 	if p.interval == 0 { p.interval = 1 }
-	tearing := present_mode(r) == .Tearing
-	sync: u32 = vsync && !tearing ? p.interval : 0
+	sync := present_call(p.mode, p.tearing_ok, p.interval, vsync).sync
 	// the compositor's timing: the last vblank (QPC, refresh counter) and the period. DWM is Windows only; on Linux
 	// there is no portable per-present timing here, so the frame statistics (shown / missed refreshes) stay off and
 	// the FIFO present paces the frames.
