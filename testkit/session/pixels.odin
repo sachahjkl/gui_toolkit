@@ -1,6 +1,5 @@
 package tk_session
 
-import "core:bytes"
 import "core:fmt"
 import "core:image"
 import "core:image/png"
@@ -84,8 +83,8 @@ load_png :: proc(s: ^Session, path: string) -> (img: Image, ok: bool) {
 	if derr != nil { return }
 	defer image.destroy(decoded)
 	if decoded.channels != 4 || decoded.depth != 8 { return }
-	rgba := make([]u8, len(decoded.pixels.buf), s.test.temp_allocator)
-	copy(rgba, bytes.buffer_to_bytes(&decoded.pixels))
+	rgba := make([]u8, len(decoded.pixels), s.test.temp_allocator)
+	copy(rgba, decoded.pixels[:])
 	return {rgba, decoded.width, decoded.height}, true
 }
 

@@ -123,6 +123,7 @@ color_filters_match_the_spec :: proc(t: ^testing.T) {
 		}
 		// opacity() as a filter: half over white
 		current_filters = {draw.filter_opacity(0.5)}
+		defer current_filters = nil
 		img := frame(&f, proc(dc: ^draw.Context) {
 			draw.push_effects(dc, {{16, 16}, {112, 112}}, draw.Layer_Effects{alpha = 1, filters = current_filters})
 			draw.rect(dc, {{16, 16}, {112, 112}}, srgb8(0, 0, 0))
@@ -181,6 +182,7 @@ blur_conserves_energy_and_is_symmetric :: proc(t: ^testing.T) {
 		}
 		// a gaussian's profile: one sigma inside the edge of a large area, the standard values of erf
 		current_filters = {draw.filter_blur(4)}
+		defer current_filters = nil
 		img := frame(&f, proc(dc: ^draw.Context) {
 			draw.push_effects(dc, {{0, 0}, {64, 128}}, draw.Layer_Effects{alpha = 1, filters = current_filters})
 			draw.rect(dc, {{-40, -40}, {64, 168}}, draw.WHITE)
@@ -213,6 +215,7 @@ drop_shadow_is_the_blurred_alpha_under_the_content :: proc(t: ^testing.T) {
 
 		// blurred and translucent: the shadow's alpha is the color's times the blurred coverage
 		current_filters = {draw.filter_drop_shadow({0, 30}, 3, draw.Color{0, 0, 0, 0.5})}
+		defer current_filters = nil
 		img2 := frame(&f, proc(dc: ^draw.Context) {
 			draw.push_effects(dc, {{20, 20}, {108, 60}}, draw.Layer_Effects{alpha = 1, filters = current_filters})
 			draw.rect(dc, {{20, 20}, {108, 60}}, draw.Color{1, 0, 0, 1})
@@ -400,6 +403,7 @@ backdrops_filter_what_is_behind :: proc(t: ^testing.T) {
 		testing.expectf(t, close_rgb(px(img, 33, 33), {255, 0, 0, 255}, 0), "rounded corner: outside it the original shows")
 
 		current_filters = {draw.filter_grayscale(1)}
+		defer current_filters = nil
 		gray := frame(&f, proc(dc: ^draw.Context) {
 			scene(dc)
 			draw.backdrop(dc, {{32, 32}, {96, 96}}, {}, current_filters)
@@ -454,6 +458,7 @@ targets_are_reused_and_nothing_leaks :: proc(t: ^testing.T) {
 		testing.expectf(t, pooled <= 12, "targets reused within the frame: %d", pooled)
 		// identity filters make no layer pass
 		current_filters = {draw.filter_brightness(1), draw.filter_blur(0)}
+		defer current_filters = nil
 		_ = frame(&f, proc(dc: ^draw.Context) {
 			draw.push_effects(dc, {{0, 0}, {64, 64}}, draw.Layer_Effects{alpha = 1, filters = current_filters})
 			draw.rect(dc, {{0, 0}, {64, 64}}, draw.WHITE)

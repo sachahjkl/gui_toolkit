@@ -554,7 +554,7 @@ word_insert :: proc(c: ^Word_Cache, sh: ^Word_Shard, h: u64, w: ^Word) {
 
 @(private)
 L1_Entry :: struct {
-	state:   ^State,
+	state:   uintptr,   // the State's address: a key, never followed
 	hash:    u64,
 	font:    Font_Id,
 	size:    f32,
@@ -582,7 +582,7 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	e: ^L1_Entry
 	if len(text) <= L1_TEXT {
 		e = &l1_words[h & (L1_SIZE - 1)]
-		if e.hash == h && e.state == s && e.epoch == epoch && e.font == id && e.size == size && e.flags == flags &&
+		if e.hash == h && e.state == uintptr(s) && e.epoch == epoch && e.font == id && e.size == size && e.flags == flags &&
 		   int(e.n) == len(text) && string(e.text[:e.n]) == text {
 			return e.width
 		}
@@ -593,7 +593,7 @@ word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga
 	width := w.width
 	word_release(sh, shared)
 	if e != nil {
-		e^ = L1_Entry{state = s, hash = h, font = id, size = size, width = width, epoch = epoch, flags = flags, n = u8(len(text))}
+		e^ = L1_Entry{state = uintptr(s), hash = h, font = id, size = size, width = width, epoch = epoch, flags = flags, n = u8(len(text))}
 		copy(e.text[:], text)
 	}
 	return width

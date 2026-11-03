@@ -7,7 +7,6 @@ package examples_test
 // the reference images were made with the system's fonts, on WARP.)
 
 import "base:runtime"
-import "core:bytes"
 import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
@@ -195,7 +194,7 @@ decode_shot :: proc(s: ^session.Session, data: string, loc := #caller_location) 
 	if derr != nil { session.failed(s, "a picture that is not base64", loc) }
 	img, err := png.load_from_bytes(raw, {.alpha_add_if_missing}, context.temp_allocator)
 	if err != nil { session.failed(s, fmt.tprintf("a picture that is not a PNG: %v", err), loc) }
-	return {bytes.buffer_to_bytes(&img.pixels), img.width, img.height}
+	return {img.pixels[:], img.width, img.height}
 }
 
 ////////////////////////////////

@@ -37,6 +37,7 @@ close :: proc(f: ^Fx) { draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(
 @(private = "file")
 frame :: proc(f: ^Fx, body: proc(dc: ^draw.Context), clear := [4]f32{1, 1, 1, 1}) -> []u8 {
 	cur_fx = f
+	defer cur_fx = nil
 	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
 	render.frame_begin(&f.r, clear)
 	body(&f.dc)

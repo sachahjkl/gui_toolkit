@@ -35,7 +35,7 @@ tuned :: proc(c: Color, over: Maybe(Color) = nil) -> Color {
 }
 
 draw_tree :: proc(s: ^State, dc: ^draw.Context) {
-	current = s
+	use(s)
 	bg := color_from_tags(s, 0, "background")
 	s.space = draw.blend_space(dc)
 	s.backdrop = {bg.r, bg.g, bg.b, 1}
