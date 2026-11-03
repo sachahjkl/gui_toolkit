@@ -1,13 +1,20 @@
 // Pixel tests of the 2D canvas renderer (render.canvas_*): geometries, paints, operators, clip masks, layers with filters,
-// images and read-back, on the offscreen renderer (WARP).   odin test tests/canvas -vet
+// images and read-back (at once, and asynchronous: begun, polled, finished or cancelled), on the offscreen renderer (WARP).
+//   odin test tests/canvas -vet
 package canvas_test
 
-import "core:math"
 import "core:slice"
 import "core:testing"
+import "core:time"
 import "../../render"
 
 W, H :: 64, 48
+RED :: [4]u8{255, 0, 0, 255}
+// The side of a block read across the canvas's corner: half of it inside.
+EDGE :: 4
+// An asynchronous read-back is polled this long at most, a millisecond apart.
+READ_LIMIT :: 5 * time.Second
+READ_POLL :: time.Millisecond
 
 Fx :: struct {
 	r:      render.Renderer,
@@ -386,9 +393,91 @@ put_and_read :: proc(t: ^testing.T) {
 	testing.expect(t, render.canvas_read(&f.r, f.target, 10, 20, 4, 4, got[:]))
 	for i in 0 ..< len(got) { testing.expect_value(t, got[i], u8(i * 3)) }
 	// a block that sticks out of the canvas reads transparent beyond it
-	edge: [4 * 4]u8
-	testing.expect(t, render.canvas_read(&f.r, f.target, W - 2, H - 2, 2, 2, edge[:]) || true)
-	_ = math.PI
+	first := len(f.insts)
+	append(&f.insts, rect_inst(0, 0, W, H, solid(&f, {1, 0, 0, 1})))
+	draw(&f, first)
+	testing.expect(t, submit(&f))
+	edge: [EDGE * EDGE * 4]u8
+	testing.expect(t, render.canvas_read(&f.r, f.target, W - EDGE / 2, H - EDGE / 2, EDGE, EDGE, edge[:]))
+	for y in 0 ..< EDGE {
+		for x in 0 ..< EDGE {
+			want := x < EDGE / 2 && y < EDGE / 2 ? RED : [4]u8{}
+			o := (y * EDGE + x) * 4
+			got := [4]u8{edge[o], edge[o + 1], edge[o + 2], edge[o + 3]}
+			testing.expectf(t, got == want, "(%d, %d) of the block: %v", x, y, got)
+		}
+	}
+}
+
+// An asynchronous read-back (canvas_read_begin, polled with canvas_read_ready, canvas_read_finish) gives the bytes that
+// were drawn: the same as the read that waits, red inside the square, transparent around it.
+@(test)
+an_async_read_gives_what_was_drawn :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	first := len(f.insts)
+	append(&f.insts, rect_inst(10, 10, 30, 30, solid(&f, {1, 0, 0, 1})))
+	draw(&f, first)
+	testing.expect(t, submit(&f))
+	BX, BY, BW, BH :: 6, 8, 28, 26   // the square and a margin around it
+	rd, ok := render.canvas_read_begin(&f.r, f.target, BX, BY, BW, BH)
+	if !testing.expect(t, ok) { return }
+	start := time.tick_now()
+	for !render.canvas_read_ready(&f.r, rd) && time.tick_since(start) < READ_LIMIT { time.sleep(READ_POLL) }
+	testing.expect(t, render.canvas_read_ready(&f.r, rd), "the copy is done")
+	before := render.canvas_stats(&f.r).reads
+	got: [BW * BH * 4]u8
+	testing.expect(t, render.canvas_read_finish(&f.r, &rd, got[:]))
+	testing.expect(t, rd.tex == nil && rd.query == nil, "finished: its objects are released")
+	testing.expect_value(t, render.canvas_stats(&f.r).reads, before + 1)
+	want: [BW * BH * 4]u8
+	testing.expect(t, render.canvas_read(&f.r, f.target, BX, BY, BW, BH, want[:]))
+	testing.expect(t, got == want, "the same bytes as the read that waits")
+	at :: proc(px: []u8, x, y: int) -> [4]u8 { o := ((y - BY) * BW + (x - BX)) * 4; return {px[o], px[o + 1], px[o + 2], px[o + 3]} }
+	testing.expect_value(t, at(got[:], 20, 20), RED)
+	testing.expect_value(t, at(got[:], 10, 10), RED)
+	testing.expect_value(t, at(got[:], 9, 20), [4]u8{})
+	testing.expect_value(t, at(got[:], 30, 29), [4]u8{})
+}
+
+// A read-back started then cancelled gives nothing and keeps nothing: its staging texture and query are released (the
+// reference a test adds is then the last one), a finish after it writes nothing and counts no read.
+@(test)
+a_cancelled_read_gives_nothing_and_keeps_nothing :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	rd, ok := render.canvas_read_begin(&f.r, f.target, 0, 0, W, H)
+	if !testing.expect(t, ok && rd.tex != nil) { return }
+	tex, query := rd.tex, rd.query
+	testing.expect_value(t, tex->AddRef(), u32(2))
+	if query != nil { query->AddRef() }
+	render.canvas_read_cancel(&rd)
+	testing.expect(t, rd.tex == nil && rd.query == nil && rd.w == 0 && rd.h == 0, "cancelled: nothing left in it")
+	testing.expect_value(t, tex->Release(), u32(0))   // the cancel let go of its own reference
+	if query != nil { testing.expect_value(t, query->Release(), u32(0)) }
+	before := render.canvas_stats(&f.r).reads
+	out: [4]u8 = 7
+	testing.expect(t, !render.canvas_read_finish(&f.r, &rd, out[:]), "nothing to finish")
+	testing.expect_value(t, out, [4]u8{7, 7, 7, 7})
+	testing.expect_value(t, render.canvas_stats(&f.r).reads, before)
+	render.canvas_read_cancel(&rd)   // twice: harmless
+}
+
+// What cannot be read is refused at the start, with nothing made: a block out of the canvas, an empty one, no canvas.
+@(test)
+an_async_read_out_of_the_canvas_is_refused :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	cases := [][4]int{{W - 4, 0, 8, 8}, {-1, 0, 4, 4}, {0, H - 1, 1, 2}, {0, 0, 0, 4}}
+	for c in cases {
+		rd, ok := render.canvas_read_begin(&f.r, f.target, c[0], c[1], c[2], c[3])
+		testing.expectf(t, !ok && rd.tex == nil && rd.query == nil, "%v: refused", c)
+	}
+	rd, ok := render.canvas_read_begin(&f.r, 0, 0, 0, 1, 1)
+	testing.expect(t, !ok && rd.tex == nil, "no canvas")
 }
 
 // A clip that lies off the canvas makes an empty mask, and what is drawn next still goes to the canvas (not into the mask).
