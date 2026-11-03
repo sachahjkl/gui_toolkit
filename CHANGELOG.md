@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.67.0] - 2026-11-03
+
+### Added
+- **`ui.set_scrollbar_arrows`**: classic arrow buttons at both ends of the scroll bars of scroll boxes, off by default (the bars stay as they were): each as long as the bar is broad, taken from the track; a press scrolls a step (3 em, eased like the wheel), held it repeats after 250 ms every 50 ms while the pointer stays on it. `ui.scrollbar_arrow_rects` gives where they are; **`draw.triangle`** fills a triangle in one-pixel rows (the arrows' glyph). Test arrow_buttons_step_and_repeat
+
 ## [0.66.0] - 2026-11-03
 
 ### Added
@@ -1466,6 +1471,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.67.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.67.0
 [0.66.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.66.0
 [0.65.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.65.0
 [0.64.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.64.0
