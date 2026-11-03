@@ -259,9 +259,13 @@ damage_resolve :: proc(r: ^Renderer) -> bool {
 
 @(private)
 damage_verify_env :: proc(d: ^Damage_State) {
-	@(static) state: int   // 0 unknown, 1 off, 2 on
-	if state == 0 { state = os.get_env("TOOLKIT_DAMAGE_VERIFY", context.temp_allocator) != "" ? 2 : 1 }
-	if state == 2 { d.verify = true }
+	@(static) state: int   // 0 unknown, 1 off, 2 on (the process's: atomic, every thread reads the same environment)
+	s := sync.atomic_load(&state)
+	if s == 0 {
+		s = os.get_env("TOOLKIT_DAMAGE_VERIFY", context.temp_allocator) != "" ? 2 : 1
+		sync.atomic_store(&state, s)
+	}
+	if s == 2 { d.verify = true }
 }
 
 // The frame `f` drawn whole on the side, read back (nil: it could not be): the target the frames compose into changes place with

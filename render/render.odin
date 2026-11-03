@@ -12,6 +12,7 @@ package render
 
 import "core:math"
 import "base:runtime"
+import "core:sync"
 import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
@@ -645,19 +646,20 @@ premultiply_upload :: proc(r: ^Renderer, td: ^Texture_Data, w, h: int, pixels: [
 @(private) LINEAR_STEPS :: 4096
 @(private) srgb_to_linear_table: [256]f32
 @(private) linear_to_srgb_table: [LINEAR_STEPS]u8
-@(private) srgb_tables_ready: bool
+@(private) srgb_tables_once: sync.Once
 
+// The tables, made once for the process by the first renderer that needs them, from any thread.
 @(private)
 srgb_tables_init :: proc() {
-	if srgb_tables_ready { return }
-	for i in 0 ..< 256 {
-		srgb_to_linear_table[i] = srgb_to_linear(f32(i) / 255)
-	}
-	for i in 0 ..< LINEAR_STEPS {
-		s := linear_to_srgb(f32(i) / (LINEAR_STEPS - 1))
-		linear_to_srgb_table[i] = u8(clamp(s * 255 + 0.5, 0, 255))
-	}
-	srgb_tables_ready = true
+	sync.once_do(&srgb_tables_once, proc() {
+		for i in 0 ..< 256 {
+			srgb_to_linear_table[i] = srgb_to_linear(f32(i) / 255)
+		}
+		for i in 0 ..< LINEAR_STEPS {
+			s := linear_to_srgb(f32(i) / (LINEAR_STEPS - 1))
+			linear_to_srgb_table[i] = u8(clamp(s * 255 + 0.5, 0, 255))
+		}
+	})
 }
 
 // GPU memory of the textures the renderer made, by kind, in bytes (mip chains included).

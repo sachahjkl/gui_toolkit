@@ -182,9 +182,13 @@ frame_end :: proc(r: ^Renderer, vsync := true) {
 // TOOLKIT_RENDER_TRACE=1 (or TOOLKIT_WGPU_TRACE=1) in the environment: timings of the renderer on stderr.
 @(private)
 render_trace :: proc() -> bool {
-	@(static) state: int   // 0: unknown, 1: off, 2: on
-	if state == 0 { state = os.get_env("TOOLKIT_RENDER_TRACE", context.temp_allocator) != "" || os.get_env("TOOLKIT_WGPU_TRACE", context.temp_allocator) != "" ? 2 : 1 }
-	return state == 2
+	@(static) state: int   // 0: unknown, 1: off, 2: on (the process's: atomic, every thread reads the same environment)
+	s := sync.atomic_load(&state)
+	if s == 0 {
+		s = os.get_env("TOOLKIT_RENDER_TRACE", context.temp_allocator) != "" || os.get_env("TOOLKIT_WGPU_TRACE", context.temp_allocator) != "" ? 2 : 1
+		sync.atomic_store(&state, s)
+	}
+	return s == 2
 }
 
 heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: int) {
