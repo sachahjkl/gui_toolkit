@@ -1,5 +1,6 @@
-// Panes the user resizes (ui.splitter) and sections the user folds (ui.accordion): a sidebar of sections, a content
-// area and a bottom panel. Double-click a handle to put its default back; Tab to a handle and use the arrow keys.
+// Panes the user resizes, folds and places (ui.pane_split, ui.pane_toggle, ui.pane_place_menu) and sections the user
+// folds (ui.accordion): a sidebar of sections, a content area and a bottom panel (below or at the right). Double-click a
+// handle or press Enter on it to fold its pane; click the strip to bring it back; Tab to a handle and use the arrow keys.
 //   build.bat panes
 package panes
 
@@ -22,10 +23,10 @@ App :: struct {
 	icons:    font.Font_Id,
 	last_tick: time.Tick,
 	frames_requested: int,
-	sidebar:  f32,       // logical pixels
-	bottom:   f32,
+	sidebar:  ui.Pane,   // what an app saves (ui.pane_format)
+	bottom:   ui.Pane,
 	open:     [4]bool,
-	saved:    int,       // splitter drags finished (where an app would write its settings)
+	saved:    int,       // pane changes finished (where an app would write its settings: Pane_Options.on_save)
 	pacer: render.Pacer,
 	slept: bool,
 }
@@ -36,37 +37,50 @@ build_ui :: proc(app: ^App) {
 	em := ui.font_size()
 	sc := ui.scale()
 	room := [2]f32{f32(app.win.size.x), f32(app.win.size.y)} / sc
+	save := ui.Pane_Options{on_save = proc(user: rawptr, p: ^ui.Pane) { (^App)(user).saved += 1 }, user = app}
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.row() {
-		// sidebar
-		ui.next({width = ui.px(app.sidebar * sc), height = ui.fill()})
-		if ui.column(.Start, {.Draw_Background}, "###sidebar") {
-			for name, i in SECTIONS {
-				if ui.accordion(fmt.tprintf("###sec%d", i), name, &app.open[i]) {
-					for j in 0 ..< 3 + i {
-						ui.next({width = ui.fill(), height = ui.px(em * 1.8)})
-						ui.label(fmt.tprintf("    %s item %d###it%d", name, j + 1, j))
+		// sidebar: folds to a strip (double click, Enter, a drag under half its minimum, its chevron)
+		side := save
+		side.default_size, side.total, side.collapsible, side.title = 240, room.x, true, "Sidebar"
+		if w := ui.pane_extent(&app.sidebar, .X, side); w > 0 {
+			ui.next({width = ui.px(w * sc), height = ui.fill()})
+			if ui.column(.Start, {.Draw_Background}, "###sidebar") {
+				if ui.row() { ui.next({width = ui.fill()}); ui.label("  Sections"); ui.pane_toggle("###side_fold", .X, &app.sidebar, side) }
+				for name, i in SECTIONS {
+					if ui.accordion(fmt.tprintf("###sec%d", i), name, &app.open[i]) {
+						for j in 0 ..< 3 + i {
+							ui.next({width = ui.fill(), height = ui.px(em * 1.8)})
+							ui.label(fmt.tprintf("    %s item %d###it%d", name, j + 1, j))
+						}
 					}
 				}
 			}
 		}
-		r := ui.splitter("###side_split", .X, &app.sidebar, 140, 480, {default_size = 240, total = room.x, min_other = 240})
-		if r.finished { app.saved += 1 }
-		// content and bottom panel
-		ui.next({width = ui.fill(), height = ui.fill()})
-		if ui.column() {
+		ui.pane_split("###side_split", .X, &app.sidebar, side)
+		// content and the bottom panel (below, or at the right: its menu)
+		axis := ui.pane_axis(app.bottom.place, room.x)
+		bottom := save
+		bottom.side, bottom.default_size, bottom.collapsible, bottom.title = .After, 160, true, "Bottom panel"
+		bottom.total = axis == .Y ? room.y : room.x - ui.pane_extent(&app.sidebar, .X, side)
+		ui.next({width = ui.fill(), height = ui.fill(), axis = axis})
+		if ui.parent(ui.build_box({}, "###main")) {
 			ui.next({width = ui.fill(), height = ui.fill()})
 			if ui.column(.Center, {}, "###content") {
 				ui.spacer(ui.px(em))
 				ui.next({width = ui.text_size(), height = ui.px(em * 2)})
-				ui.label(fmt.tprintf("sidebar %.0f px, bottom panel %.0f px, %d sizes saved###info", app.sidebar, app.bottom, app.saved))
-			}
-			b := ui.splitter("###bottom_split", .Y, &app.bottom, 60, 600, {default_size = 160, after = true, total = room.y, min_other = 120})
-			if b.finished { app.saved += 1 }
-			ui.next({width = ui.fill(), height = ui.px(app.bottom * sc)})
-			if ui.column(.Start, {.Draw_Background}, "###bottom") {
+				ui.label(fmt.tprintf("sidebar %.0f px, bottom panel %.0f px, %d saves###info", ui.pane_extent(&app.sidebar, .X, side), ui.pane_extent(&app.bottom, axis, bottom), app.saved))
 				ui.next({width = ui.text_size(), height = ui.px(em * 2)})
-				ui.label("  Bottom panel")
+				if ui.button("Place the bottom panel###place").clicked { ui.ctx_menu_open(ui.key_from_string(0, "place_menu"), ui.mouse_pos()) }
+				if ui.ctx_menu(ui.key_from_string(0, "place_menu")) { ui.pane_place_menu(&app.bottom) }
+			}
+			r := ui.pane_split("###bottom_split", axis, &app.bottom, bottom)
+			if r.size > 0 {
+				if axis == .Y { ui.next({width = ui.fill(), height = ui.px(r.size * sc)}) } else { ui.next({width = ui.px(r.size * sc), height = ui.fill()}) }
+				if ui.column(.Start, {.Draw_Background}, "###bottom") {
+					ui.next({width = ui.text_size(), height = ui.px(em * 2)})
+					ui.label("  Bottom panel")
+				}
 			}
 		}
 	}
@@ -113,7 +127,7 @@ main :: proc() {
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
 	app.ui_state.icon_font = app.icons
-	app.sidebar, app.bottom = 240, 160
+	app.sidebar.size[.X], app.bottom.size = 240, {.X = 240, .Y = 160}
 	app.open = {true, false, true, false}
 	app.last_tick = time.tick_now()
 	app.frames_requested = 2
