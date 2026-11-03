@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.70.0] - 2026-11-03
+
+### Changed
+- **`ui.build_events`**: a copy of the last build's input, kept by the state until the next build (it was the caller's slice, valid until its next poll).
+- **Built with Odin dev-2026-11** (pinned by SHA-256 in the CI, `docs/getting-started.md`): `core:image`'s pixels are a `[dynamic]u8`, nothing keeps a reference to a stack past its procedure (the compiler's new escape analysis: the tests' globals are cleared, `ui.use` keeps the caller's state on purpose), `core:compress/deflate` checks `flate`'s streams in the tests and `docs/flate.md` compares both (`flate` stays for streams and `deflate_runs`). wgpu-native stays 29.0.1.1.
+
 ## [0.69.0] - 2026-11-03
 
 ### Added
@@ -1484,6 +1490,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.70.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.70.0
 [0.69.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.69.0
 [0.68.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.68.0
 [0.67.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.67.0
