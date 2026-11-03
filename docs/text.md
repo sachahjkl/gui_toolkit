@@ -110,8 +110,9 @@ selectable text, the selection is drawn in the theme's "selection" colour behind
 
 **Threads.** Loading faces, shaping, measuring and the analyses may run on any thread at once. The word cache is sharded
 (64 shards, each with two generations: a full generation is dropped when the next one fills, so it stays bounded:
-`Settings.word_cache` words), and each thread keeps the widths of the short words it measured last in a small cache of
-its own (no lock on a hit).
+`Settings.word_cache` words); a shard's lock is shared by the threads that find their word in its current generation,
+so the threads of a page shaping the same words read side by side. Each thread keeps the widths of the short words it
+measured last in a small cache of its own (no lock on a hit). Every lock, and what was measured: [locks.md](locks.md).
 
 ## Analyses
 
@@ -124,6 +125,9 @@ its own (no lock on a hit).
 `glyph_image(s, face, gid, size, subpixel)` rasterizes on first use (`IDWriteGlyphRunAnalysis`, grayscale antialiasing,
 `Settings.rendering` / `grid_fit`) at `Settings.subpixel_steps` horizontal positions per pixel (`subpixel(s, x)` splits
 a pen x). Color glyphs are drawn by Direct2D into a straight-alpha sRGB RGBA bitmap (see below for the versions of Windows).
+`glyph_images(s, size, reqs, out, fg)` does the same for a whole run (`Glyph_Request{face, id, sub}`; face 0: nothing to
+draw), and `slug_glyphs(s, glyphs, ppem, out)` for the Slug data: the atlas lock is taken once, shared, for what is
+already there (threads that draw at once look up side by side), then alone per glyph made. `draw.glyph_run` uses them.
 
 Bitmaps live in **atlas pages** kept on the CPU (gray: 1 byte per texel; color: 4). Each draw context uploads what
 changed since it last looked (`atlas_sync_page`), so several renderers can share one font state. A page is never

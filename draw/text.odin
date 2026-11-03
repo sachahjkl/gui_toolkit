@@ -171,13 +171,39 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	enc :: #force_inline proc(v: f32) -> u8 { return u8(clamp(render.linear_to_srgb(clamp(v, 0, 1)) * 255 + 0.5, 0, 255)) }
 	fg := [3]u8{enc(color.r), enc(color.g), enc(color.b)}
 	ready := font.color_ready_generation(c.fonts)
-	for g in glyphs {
+	// What each glyph is drawn from, looked up for the whole run (the atlas lock taken once, shared with the other threads
+	// that draw): its Slug data, else its bitmap at its subpixel position, `pens` the whole pixel its pen snaps to (when
+	// the bitmap is not stretched).
+	n := len(glyphs)
+	slugs: []font.Slug_Glyph
+	if slug {
+		// screen-aligned text says its size on the screen: small sizes may get outlines hinted for it
+		slugs = make([]font.Slug_Glyph, n, context.temp_allocator)
+		font.slug_glyphs(c.fonts, glyphs, xf.simple ? size * sc : 0, slugs)
+	}
+	reqs := make([]font.Glyph_Request, n, context.temp_allocator)   // face 0 (drawn by Slug): no bitmap
+	pens := make([]f32, n, context.temp_allocator)
+	for g, i in glyphs {
+		if slug && slugs[i].kind != .Atlas { continue }
+		lx := pos.x + g.x
+		sub := 0
+		if k == 1 {
+			// layout and raster sizes agree: snap in local units
+			pens[i], sub = font.subpixel(c.fonts, lx)
+		} else if baked {
+			// bitmap at screen size: snap the pen on the screen pixel grid
+			pens[i], sub = font.subpixel(c.fonts, lx * sc + o.x)
+		}
+		reqs[i] = {g.face, g.id, u8(sub)}
+	}
+	imgs := make([]font.Glyph_Image, n, context.temp_allocator)
+	font.glyph_images(c.fonts, raster, reqs, imgs, fg)
+	for g, i in glyphs {
 		lx, ly := pos.x + g.x, pos.y + g.y
 		if slug {
 			// The outline is drawn as it is: at any scale or transform, the pen unrounded across, the baseline on a
 			// whole pixel (of the screen when baked, else of the local space at the 1:1 scale) as the bitmaps' is.
-			// screen-aligned text says its size on the screen: small sizes may get outlines hinted for it
-			if sg := font.slug_glyph(c.fonts, g.face, g.id, xf.simple ? size * sc : 0); sg.kind != .Atlas {
+			if sg := slugs[i]; sg.kind != .Atlas {
 				if sg.kind == .Curves {
 					if c.rec != nil { picture_note_slug(c.rec, sg) }
 					if xf.simple {
@@ -193,24 +219,17 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 		if c.rec != nil && !noted { picture_note_text(c, xf.gpu, sf); noted = true }
 		// where the bitmap goes: screen pixels (baked) or local units (GPU transform, or a picture's slot)
 		dst: [4]f32
-		sub := 0
-		img: font.Glyph_Image
+		img := imgs[i]
+		if img.page < 0 { glyph_missing(c, img, ready); continue }
+		ix := pens[i]
 		if baked {
 			if k == 1 {
-				// layout and raster sizes agree: snap in local units, then scale (sc is within the tolerance of 1)
-				ix: f32
-				ix, sub = font.subpixel(c.fonts, lx)
-				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
-				if img.page < 0 { glyph_missing(c, img, ready); continue }
+				// layout and raster sizes agree: snapped in local units, then scaled (sc is within the tolerance of 1)
 				x0 := ix + img.offset.x
 				y0 := math.round(ly) + img.offset.y
 				dst = {x0 * sc + o.x, y0 * sc + o.y, (x0 + img.size.x) * sc + o.x, (y0 + img.size.y) * sc + o.y}
 			} else {
-				// bitmap at screen size: snap the pen on the screen pixel grid
-				ix: f32
-				ix, sub = font.subpixel(c.fonts, lx * sc + o.x)
-				img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
-				if img.page < 0 { glyph_missing(c, img, ready); continue }
+				// bitmap at screen size: the pen snapped on the screen pixel grid
 				x0 := ix + img.offset.x * st
 				y0 := math.round(ly * sc + o.y) + img.offset.y * st
 				dst = {x0, y0, x0 + img.size.x * st, y0 + img.size.y * st}
@@ -218,16 +237,10 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 		} else if k == 1 {
 			// local units snapped as when baked (a picture recorded at its own scale and replayed rotated draws
 			// what direct drawing draws)
-			ix: f32
-			ix, sub = font.subpixel(c.fonts, lx)
-			img = font.glyph_image(c.fonts, g.face, g.id, raster, sub, fg)
-			if img.page < 0 { glyph_missing(c, img, ready); continue }
 			x0 := ix + img.offset.x
 			y0 := math.round(ly) + img.offset.y
 			dst = {x0, y0, x0 + img.size.x, y0 + img.size.y}
 		} else {
-			img = font.glyph_image(c.fonts, g.face, g.id, raster, 0, fg)
-			if img.page < 0 { glyph_missing(c, img, ready); continue }
 			x0 := lx + img.offset.x / k
 			y0 := ly + img.offset.y / k
 			dst = {x0, y0, x0 + img.size.x / k, y0 + img.size.y / k}

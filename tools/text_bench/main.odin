@@ -3,6 +3,8 @@
 // with and without the word cache. Needs the native library:
 //   odin run tools/tk -- build_text
 //   odin run tools/text_bench -vet -define:FONT_BACKEND=native -o:speed -out:build/text_bench.exe -- [-perf] [-v]
+// -threads (any backend; nothing else runs) times the locked hot paths with 1 to 8 threads (threads.odin):
+//   odin run tools/text_bench -vet -o:speed -out:build/text_bench.exe -- -threads
 // Prints Markdown. Times are never checked by a test (machine dependent): they are printed for a person to read.
 package text_bench
 
@@ -18,13 +20,15 @@ ADV_TOLERANCE :: 0.01   // px: two advances closer than this are the same
 verbose: bool
 
 main :: proc() {
-	perf := false
+	perf, threads := false, false
 	for a in os.args[1:] {
 		switch a {
 		case "-perf": perf = true
 		case "-v": verbose = true
+		case "-threads": threads = true
 		}
 	}
+	if threads { threads_bench(); return }
 	when !font.NATIVE_TEXT {
 		fmt.eprintln("text_bench: build with -define:FONT_BACKEND=native (and tools/tk build_text first)")
 		os.exit(2)

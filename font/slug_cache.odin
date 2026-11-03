@@ -2,6 +2,7 @@ package font
 
 import "base:runtime"
 import "core:math"
+import "core:sync"
 
 // The Slug glyph store: per (face, glyph) the curve and band texels of slug_build, kept in pages that mirror the two GPU
 // textures (curves RGBA16F, bands RG16UI, both SLUG_TEXTURE_WIDTH wide; page k is row k of each). A glyph's data lies
@@ -111,17 +112,40 @@ slug_glyph :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Gl
 	a := &s.atlas
 	atlas_lock(a)
 	defer atlas_unlock(a)
-	st := &a.slug
-	ppem_q: u16 = 0
-	if ppem > 0 && ppem <= s.settings.slug_hint_ppem && s.tb.outline_hinted != nil { ppem_q = u16(clamp(math.round(ppem * SLUG_PPEM_STEPS_PER_PX), 1, 65535)) }
+	ppem_q := slug_ppem(s, ppem)
 	key := slug_key(face, gid, ppem_q)
-	if g, ok := st.glyphs[key]; ok {
-		if g.kind == .Curves { st.pages[g.page].last_used = a.clock }
-		return g
-	}
+	if g, ok := slug_cached(a, key); ok { return g }
 	g := slug_make(s, face, gid, f32(ppem_q) / SLUG_PPEM_STEPS_PER_PX)
-	st.glyphs[key] = g
+	a.slug.glyphs[key] = g
 	return g
+}
+
+// `slug_glyph` of each of `glyphs` (one ppem) into `out` (as long as `glyphs`): the atlas lock is taken once, shared, for
+// the data already built (threads that draw at once look up side by side), then alone once per glyph built.
+slug_glyphs :: proc(s: ^State, glyphs: []Glyph_Pos, ppem: f32, out: []Slug_Glyph) {
+	a := &s.atlas
+	ppem_q := slug_ppem(s, ppem)
+	found := make([]bool, len(glyphs), context.temp_allocator)
+	sync.rw_mutex_shared_lock(&a.mu)
+	for g, i in glyphs { out[i], found[i] = slug_cached(a, slug_key(g.face, g.id, ppem_q)) }
+	sync.rw_mutex_shared_unlock(&a.mu)
+	for g, i in glyphs { if !found[i] { out[i] = slug_glyph(s, g.face, g.id, ppem) } }
+}
+
+// The hinted size a glyph drawn at `ppem` is kept for (0: not hinted).
+@(private)
+slug_ppem :: #force_inline proc(s: ^State, ppem: f32) -> u16 {
+	if ppem <= 0 || ppem > s.settings.slug_hint_ppem || s.tb.outline_hinted == nil { return 0 }
+	return u16(clamp(math.round(ppem * SLUG_PPEM_STEPS_PER_PX), 1, f32(max(u16))))
+}
+
+// The data kept for `key`, its page marked as used by the current frames (see glyph_cached). Caller holds the atlas lock,
+// shared or alone.
+@(private)
+slug_cached :: #force_inline proc(a: ^Atlas, key: u64) -> (g: Slug_Glyph, ok: bool) {
+	g, ok = a.slug.glyphs[key]
+	if ok && g.kind == .Curves { page_touch(a, &a.slug.pages[g.page].last_used) }
+	return
 }
 
 // Caller holds the atlas lock.

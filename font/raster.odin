@@ -14,7 +14,7 @@ import "core:sync"
 // the least recently used page that no current frame has drawn from is cleared and reused, else one more page is made.
 //
 // Glyphs are cached per (face, glyph, size in 1/16 px, horizontal subpixel position). Rasterize from the threads that
-// draw only (one lock).
+// draw only (one lock, see Atlas).
 
 Page_Kind :: enum u8 { Gray, Color }
 
@@ -67,9 +67,12 @@ Page :: struct {
 	epoch:     u32,            // bumps when the page is cleared (its bitmaps are gone)
 }
 
+// The lock is taken alone by everything but the lookups of a whole run (glyph_images, slug_glyphs), which share it: they
+// only read, but for the clock of a page's use (page_touch). Shared per glyph it loses to a mutex (its few nanoseconds of
+// holding are less than what the lock's cache line costs to share: docs/locks.md).
 @(private)
 Atlas :: struct {
-	mu:     sync.Mutex,
+	mu:     sync.RW_Mutex,
 	pages:  [dynamic]^Page,
 	glyphs: map[u64]Glyph_Image,
 	fg_glyphs: map[Fg_Key]Glyph_Image,   // color glyphs that use the text color, per color (`glyphs` marks them)
@@ -125,8 +128,8 @@ atlas_destroy :: proc(a: ^Atlas) {
 	slug_destroy(&a.slug)
 }
 
-@(private) atlas_lock :: proc(a: ^Atlas) { sync.mutex_lock(&a.mu) }
-@(private) atlas_unlock :: proc(a: ^Atlas) { sync.mutex_unlock(&a.mu) }
+@(private) atlas_lock :: proc(a: ^Atlas) { sync.rw_mutex_lock(&a.mu) }
+@(private) atlas_unlock :: proc(a: ^Atlas) { sync.rw_mutex_unlock(&a.mu) }
 
 @(private)
 atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
@@ -373,17 +376,12 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 	key := glyph_key(face, gid, size, sub)
 	atlas_lock(a)
 	defer atlas_unlock(a)
+	g, found := glyph_cached(a, key, fg)
+	if found { return g }
 	x := f32(sub) / f32(s.settings.subpixel_steps)
-	if g, ok := a.glyphs[key]; ok {
-		if !g.uses_fg {
-			if g.page >= 0 { a.pages[g.page].last_used = a.clock }
-			return g
-		}
+	if key in a.glyphs {
+		// a color glyph in the text color, not yet in this one
 		fk := Fg_Key{key, fg}
-		if fg_g, found := a.fg_glyphs[fk]; found {
-			if fg_g.page >= 0 { a.pages[fg_g.page].last_used = a.clock }
-			return fg_g
-		}
 		if s.settings.color_async {
 			if fk in a.fg_pending { return Glyph_Image{page = -1, color = true, pending = true} }
 			if color_enqueue(s, Color_Job{key = key, fg = fg, known_fg = true, face = face, gid = gid, size = size, x = x, settings = a.settings_generation}) {
@@ -407,7 +405,8 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 			}
 		}
 	}
-	g, uses_fg := rasterize(s, face, gid, size, x, fg, true, key)
+	uses_fg: bool
+	g, uses_fg = rasterize(s, face, gid, size, x, fg, true, key)
 	if uses_fg {
 		g.uses_fg = true
 		a.glyphs[key] = Glyph_Image{page = -1, color = true, uses_fg = true}
@@ -417,6 +416,45 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 	}
 	if g.page >= 0 { a.pages[g.page].last_used = a.clock }
 	return g
+}
+
+// A glyph of a run for glyph_images: its face and index (as shaped), its subpixel position (see `subpixel`).
+Glyph_Request :: struct {
+	face: Font_Id,
+	id:   u16,
+	sub:  u8,
+}
+
+// `glyph_image` of each glyph of a run (one size, one text color) into `out` (as long as `reqs`; a request of face 0 gets
+// nothing to draw): the lock is taken once, shared, for the bitmaps already made (threads that draw at once look up side
+// by side), then alone once per glyph rasterized.
+glyph_images :: proc(s: ^State, size: f32, reqs: []Glyph_Request, out: []Glyph_Image, fg: [3]u8 = {}) {
+	a := &s.atlas
+	found := make([]bool, len(reqs), context.temp_allocator)
+	sync.rw_mutex_shared_lock(&a.mu)
+	for r, i in reqs {
+		if font_ptr(s, r.face) == nil { out[i], found[i] = Glyph_Image{page = -1}, true; continue }
+		out[i], found[i] = glyph_cached(a, glyph_key(r.face, r.id, size, int(r.sub)), fg)
+	}
+	sync.rw_mutex_shared_unlock(&a.mu)
+	for r, i in reqs { if !found[i] { out[i] = glyph_image(s, r.face, r.id, size, int(r.sub), fg) } }
+}
+
+// The bitmap kept for `key` (in the text color `fg` when it uses it), its page marked as used by the current frames.
+// Caller holds the lock, shared or alone.
+@(private)
+glyph_cached :: #force_inline proc(a: ^Atlas, key: u64, fg: [3]u8) -> (g: Glyph_Image, ok: bool) {
+	g, ok = a.glyphs[key]
+	if ok && g.uses_fg { g, ok = a.fg_glyphs[Fg_Key{key, fg}] }
+	if ok && g.page >= 0 { page_touch(a, &a.pages[g.page].last_used) }
+	return
+}
+
+// A page is used by the current frames. Written once a frame, not once a glyph: threads that draw from one page do not
+// take its cache line from one another (under the shared lock several may store the same clock at once).
+@(private)
+page_touch :: #force_inline proc(a: ^Atlas, last_used: ^u64) {
+	if sync.atomic_load_explicit(last_used, .Relaxed) != a.clock { sync.atomic_store_explicit(last_used, a.clock, .Relaxed) }
 }
 
 // rasterize (a glyph into a page) and platform_color_glyph are the platform's: raster_windows.odin, font_other.odin.
