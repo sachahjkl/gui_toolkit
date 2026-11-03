@@ -163,7 +163,6 @@ canvas_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 
 }   // when !USE_WGPU
 
-canvas_texture_size :: proc(r: ^Renderer, t: Texture) -> [2]int { return texture_size(r, t) }
 
 // Replaces a w x h block at (x, y) of a canvas texture with premultiplied sRGB-encoded RGBA8 `pixels` (rows of `stride` bytes,
 // 0: w * 4).
@@ -186,12 +185,6 @@ d3d_canvas_upload :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u
 	return true
 }
 }   // when !USE_WGPU
-
-// Marks a texture whose level 0 changed so its mip levels are rebuilt before it is sampled (a source filled by canvas_upload
-// does it itself).
-canvas_texture_changed :: proc(r: ^Renderer, t: Texture) {
-	if int(t) > 0 && int(t) < len(r.textures) && r.textures[int(t)].mips { r.textures[int(t)].mips_dirty = true }
-}
 
 // Is the canvas renderer available on this backend (and has it not failed)?
 canvas_supported :: proc(r: ^Renderer) -> bool {
@@ -430,13 +423,6 @@ pool_recycle :: proc(r: ^Renderer) {
 	}
 }
 }   // when !USE_WGPU
-
-// Bytes the canvas renderer's pooled textures hold.
-canvas_pool_bytes :: proc(r: ^Renderer) -> int {
-	n := 0
-	for p in r.canvas.pool { n += p.w * p.h * (p.r8 ? 1 : 4) }
-	return n
-}
 
 canvas_stats :: proc(r: ^Renderer) -> Canvas_Stats { return r.canvas.stats }
 canvas_stats_reset :: proc(r: ^Renderer) { r.canvas.stats = {} }

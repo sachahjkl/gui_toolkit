@@ -36,13 +36,6 @@ damage :: proc(c: ^Context, r: Rect) {
 	render.damage_add(c.renderer, rect_to_damage(r))
 }
 
-// Marks the bounding box of `boxes` grown by `pad` pixels (a drop shadow, a glow, a focus ring whose paint reaches
-// past the element). A convenience over damage: the renderer reads nothing outside the region, so effects that bleed
-// must widen it.
-damage_padded :: proc(c: ^Context, r: Rect, pad: f32) {
-	render.damage_add(c.renderer, rect_to_damage(rect_pad(r, pad)))
-}
-
 // The content of `rect` moved by `delta` screen pixels since the last frame (a scrolled view): where it was and where it
 // is now are redrawn.
 damage_scrolled :: proc(c: ^Context, rect: Rect, delta: Vec2) {

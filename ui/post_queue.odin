@@ -234,7 +234,6 @@ post_queue_stats :: proc(q: ^Post_Queue) -> Post_Stats {
 	}
 }
 
-post_queue_capacity :: proc(q: ^Post_Queue) -> int { return len(q.slots) }
 
 @(private = "file")
 pq_try_push :: proc(q: ^Post_Queue, m: Post_Message) -> bool {

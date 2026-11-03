@@ -386,9 +386,3 @@ d3d_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool 
 
 }   // when !USE_WGPU
 
-// Texture bytes the picture handling holds (statistics).
-video_gpu_bytes :: proc(r: ^Renderer) -> int {
-	n := 0
-	for pl in r.video.planes { n += pl.w * pl.h * 2 }
-	return n
-}
