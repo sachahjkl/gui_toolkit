@@ -20,10 +20,6 @@ Code :: struct { bits: u32, n: u32 }   // (bits first in, as the stream takes th
 lit_codes: [LIT_SYMBOLS]Code
 @(private = "file")
 len_codes: [MATCH_MAX + 1]Code   // the code and extra bits of a match's length, as one
-@(private = "file")
-RUNS_READY :: 1
-@(private = "file")
-runs_ready: i32
 
 // What the output of deflate_runs may take on top of 9 bits a byte: the header, the trailer, the last bits.
 @(private = "file")
@@ -38,10 +34,9 @@ reverse :: proc "contextless" (v, n: u32) -> (r: u32) {
 	return
 }
 
-@(private = "file")
+// The tables, made once at start-up (as the fixed codes: no lazy init to race on).
+@(private = "file", init)
 runs_tables :: proc "contextless" () {
-	if intrinsics.atomic_load(&runs_ready) == RUNS_READY { return }
-	// (made the same by any thread that gets here at once: the last store changes nothing)
 	for i in 0 ..< LIT_SYMBOLS {
 		v := u32(i)
 		switch {
@@ -57,7 +52,6 @@ runs_tables :: proc "contextless" () {
 		c := lit_codes[LEN_SYMBOL_FIRST + k]
 		len_codes[l] = {c.bits | (u32(l) - u32(LEN_BASE[k])) << c.n, c.n + u32(LEN_EXTRA[k])}
 	}
-	intrinsics.atomic_store(&runs_ready, RUNS_READY)
 }
 
 // A distance's code and extra bits, as one.
@@ -84,7 +78,6 @@ same :: #force_inline proc "contextless" (p, q: [^]u8, limit: int) -> int {
 
 // Worst case 9 bits a byte, so the output never outgrows what is made here.
 deflate_runs :: proc(format: Format, data: []u8, row := 0, allocator := context.allocator) -> []u8 #no_bounds_check {
-	runs_tables()
 	out := make([]u8, len(data) + len(data) / 8 + RUNS_SLACK_BYTES, allocator)
 	o := 0
 	switch format {

@@ -40,8 +40,6 @@ Surface :: struct {
 	valid:          bool,
 }
 
-@(private) surface_creating: bool
-
 @(private)
 exchange :: proc(r: ^Renderer, s: ^Surface) {
 	r.swapchain, s.swapchain = s.swapchain, r.swapchain
@@ -95,9 +93,7 @@ surface_refresh :: proc(r: ^Renderer) {
 		if r.hwnd == nil {
 			ok = create_offscreen_target(r)
 		} else {
-			surface_creating = true   // the window may not have a size yet: the swap chain gets the one of the surface
-			ok = create_swapchain(r)
-			surface_creating = false
+			ok = create_swapchain(r, sized_by_surface = true)   // the window may not have a size yet: the swap chain gets the one of the surface
 		}
 		if !ok { fmt.eprintln("render: a window could not be remade after the device was recreated") }
 		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
@@ -132,9 +128,7 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handle
 		exchange(r, s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
 		r.transparent = transparent
 		r.fixed_surface = false
-		surface_creating = true
-		ok = create_swapchain(r)
-		surface_creating = false
+		ok = create_swapchain(r, sized_by_surface = true)
 		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }
 		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
 		r.capture = {}

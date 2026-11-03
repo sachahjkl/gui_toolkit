@@ -36,7 +36,7 @@ d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, 
 
 // The swap chain of the window (a composition one when translucent), its waitable object and the frame's view.
 @(private)
-create_swapchain :: proc(r: ^Renderer) -> bool {
+create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 	hwnd, size, transparent := r.hwnd, r.size, r.transparent
 	dxgi_device: ^dxgi.IDevice
 	r.device->QueryInterface(dxgi.IDevice_UUID, (^rawptr)(&dxgi_device))
@@ -47,7 +47,7 @@ create_swapchain :: proc(r: ^Renderer) -> bool {
 	defer { factory->Release(); adapter->Release(); dxgi_device->Release() }
 
 	desc := dxgi.SWAP_CHAIN_DESC1{
-		Width       = surface_creating ? u32(size.x) : 0, Height = surface_creating ? u32(size.y) : 0,   // (a second window: its size, as the window has none yet at that point)
+		Width       = sized_by_surface ? u32(size.x) : 0, Height = sized_by_surface ? u32(size.y) : 0,   // (a second window: its size, as the window has none yet at that point)
 		Format      = .B8G8R8A8_UNORM,
 		SampleDesc  = {Count = 1},
 		BufferUsage = {.RENDER_TARGET_OUTPUT},
