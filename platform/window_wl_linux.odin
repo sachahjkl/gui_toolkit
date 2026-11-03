@@ -63,13 +63,6 @@ Wl_Conn :: struct {
 	// the clipboard selection owner we run, and the MIME types the current selection offer advertises
 	data_source:   Wl_Proxy,      // our wl_data_source while we own CLIPBOARD, nil otherwise
 	offer_mimes:   [dynamic]string,   // the MIME types wlc.offer advertises (filled by the offer's `offer` events)
-	// the primary (middle-click) selection, over zwp_primary_selection_v1 when the compositor has it
-	primary_manager: Wl_Proxy,
-	primary_device:  Wl_Proxy,
-	primary_source:  Wl_Proxy,
-	primary_offer:   Wl_Proxy,
-	primary_mimes:   [dynamic]string,
-	have_primary_offer: bool,
 	// drag and drop (dragdrop_wl_linux.odin): the data-device drag state lives here so its listeners reach it
 	dnd_offer:     Wl_Proxy,      // the offer of a drag now over a window
 	dnd_mimes:     [dynamic]string,
@@ -126,7 +119,6 @@ wl_connect :: proc() -> bool {
 	l := wayland_lib()
 	if !l.ok { return false }
 	xdg_build_tables()
-	zwp_build_tables()
 	zwp_ti_build_tables()
 	wp_cursor_shape_build_tables()
 	wp_scale_build_tables()
@@ -147,11 +139,6 @@ wl_connect :: proc() -> bool {
 		wlc.data_device = wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_GET_DATA_DEVICE,
 			wl.data_device_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil, wlc.seat)
 		if wlc.data_device != nil { l.proxy_add_listener(wlc.data_device, &data_device_listener, nil) }
-	}
-	if wlc.primary_manager != nil && wlc.seat != nil {
-		wlc.primary_device = wl.proxy_marshal_flags(wlc.primary_manager, ZWP_PRIMARY_DEVICE_MANAGER_GET_DEVICE,
-			&zwp_primary_device_iface, wl.proxy_get_version(wlc.primary_manager), 0, nil, wlc.seat)
-		if wlc.primary_device != nil { l.proxy_add_listener(wlc.primary_device, &primary_device_listener, nil) }
 	}
 	if wlc.ti_manager != nil && wlc.seat != nil {
 		wlc.text_input = wl.proxy_marshal_flags(wlc.ti_manager, ZWP_TI_MANAGER_GET_TEXT_INPUT,
@@ -206,7 +193,6 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "wl_data_device_manager": wlc.data_device_manager = bind(name, wl.data_device_manager_interface, WL_DATA_DEVICE_MANAGER_VERSION, version)
 	case "xdg_wm_base":   wlc.xdg_wm_base = bind(name, &xdg_wm_base_iface, XDG_WM_BASE_VERSION, version)
 	case "zxdg_decoration_manager_v1": wlc.decoration_manager = bind(name, &zxdg_decoration_manager_iface, 1, version)
-	case "zwp_primary_selection_device_manager_v1": wlc.primary_manager = bind(name, &zwp_primary_device_manager_iface, 1, version)
 	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
 	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
 	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)

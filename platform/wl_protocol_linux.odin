@@ -89,69 +89,6 @@ package platform
 @(private) ZXDG_TOPLEVEL_DECORATION_MODE_CLIENT_SIDE :: 1
 @(private) ZXDG_TOPLEVEL_DECORATION_MODE_SERVER_SIDE :: 2
 
-// zwp_primary_selection (the X11 "middle-click" selection on Wayland): the manager makes a device per seat and a
-// source; device.set_selection claims it, offer.receive reads it. The protocol is not shipped by libwayland-client, so
-// its interface tables are built by hand (zwp_build_tables), like xdg-shell.
-@(private) ZWP_PRIMARY_DEVICE_MANAGER_CREATE_SOURCE :: 0
-@(private) ZWP_PRIMARY_DEVICE_MANAGER_GET_DEVICE :: 1
-@(private) ZWP_PRIMARY_DEVICE_MANAGER_DESTROY :: 2
-@(private) ZWP_PRIMARY_DEVICE_SET_SELECTION :: 0
-@(private) ZWP_PRIMARY_DEVICE_DESTROY :: 1
-@(private) ZWP_PRIMARY_SOURCE_OFFER :: 0
-@(private) ZWP_PRIMARY_SOURCE_DESTROY :: 1
-@(private) ZWP_PRIMARY_OFFER_RECEIVE :: 0
-@(private) ZWP_PRIMARY_OFFER_DESTROY :: 1
-
-@(private) zwp_primary_device_manager_iface: Wl_Interface
-@(private) zwp_primary_device_iface: Wl_Interface
-@(private) zwp_primary_source_iface: Wl_Interface
-@(private) zwp_primary_offer_iface: Wl_Interface
-@(private) zwp_primary_device_manager_methods: [3]Wl_Message
-@(private) zwp_primary_device_methods: [2]Wl_Message
-@(private) zwp_primary_device_events: [2]Wl_Message
-@(private) zwp_primary_source_methods: [2]Wl_Message
-@(private) zwp_primary_source_events: [2]Wl_Message
-@(private) zwp_primary_offer_methods: [2]Wl_Message
-@(private) zwp_primary_offer_events: [1]Wl_Message
-@(private) t_pm_create_source: [1]^Wl_Interface
-@(private) t_pm_get_device: [2]^Wl_Interface
-@(private) t_pd_set_selection: [1]^Wl_Interface
-@(private) t_pd_data_offer: [1]^Wl_Interface
-@(private) t_pd_selection: [1]^Wl_Interface
-@(private) zwp_tables_built: bool
-
-// Builds the primary-selection interface tables. Called once from wl_connect; its types reference the library's own
-// seat interface. Safe when the compositor lacks the protocol; the tables simply never get used.
-@(private)
-zwp_build_tables :: proc() {
-	if zwp_tables_built { return }
-	zwp_tables_built = true
-	t_pm_create_source[0] = &zwp_primary_source_iface
-	zwp_primary_device_manager_methods[0] = {"create_source", "n", raw_types(t_pm_create_source[:])}
-	t_pm_get_device[0] = &zwp_primary_device_iface
-	t_pm_get_device[1] = wl.seat_interface
-	zwp_primary_device_manager_methods[1] = {"get_device", "no", raw_types(t_pm_get_device[:])}
-	zwp_primary_device_manager_methods[2] = {"destroy", "", nil}
-	zwp_primary_device_manager_iface = {"zwp_primary_selection_device_manager_v1", 1, 3, &zwp_primary_device_manager_methods[0], 0, nil}
-	t_pd_set_selection[0] = &zwp_primary_source_iface
-	zwp_primary_device_methods[0] = {"set_selection", "?ou", raw_types(t_pd_set_selection[:])}
-	zwp_primary_device_methods[1] = {"destroy", "", nil}
-	t_pd_data_offer[0] = &zwp_primary_offer_iface
-	zwp_primary_device_events[0] = {"data_offer", "n", raw_types(t_pd_data_offer[:])}
-	t_pd_selection[0] = &zwp_primary_offer_iface
-	zwp_primary_device_events[1] = {"selection", "?o", raw_types(t_pd_selection[:])}
-	zwp_primary_device_iface = {"zwp_primary_selection_device_v1", 1, 2, &zwp_primary_device_methods[0], 2, &zwp_primary_device_events[0]}
-	zwp_primary_source_methods[0] = {"offer", "s", nil}
-	zwp_primary_source_methods[1] = {"destroy", "", nil}
-	zwp_primary_source_events[0] = {"send", "sh", nil}
-	zwp_primary_source_events[1] = {"cancelled", "", nil}
-	zwp_primary_source_iface = {"zwp_primary_selection_source_v1", 1, 2, &zwp_primary_source_methods[0], 2, &zwp_primary_source_events[0]}
-	zwp_primary_offer_methods[0] = {"receive", "sh", nil}
-	zwp_primary_offer_methods[1] = {"destroy", "", nil}
-	zwp_primary_offer_events[0] = {"offer", "s", nil}
-	zwp_primary_offer_iface = {"zwp_primary_selection_offer_v1", 1, 2, &zwp_primary_offer_methods[0], 1, &zwp_primary_offer_events[0]}
-}
-
 // zwp_text_input_v3 (the IME protocol): the manager makes a text-input per seat; enable / set_cursor_rectangle /
 // commit are requests, preedit_string / commit_string / done are events. Not shipped by libwayland; tables by hand.
 @(private) ZWP_TI_MANAGER_DESTROY :: 0
