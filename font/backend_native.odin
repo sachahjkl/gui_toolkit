@@ -114,7 +114,6 @@ foreign gt_text {
 	gt_face_close       :: proc(face: ^Gt_Face) ---
 	gt_face_metrics     :: proc(face: ^Gt_Face, out: ^Gt_Metrics) -> i32 ---
 	gt_face_glyphs      :: proc(face: ^Gt_Face, cps: [^]u32, count: uint, out: [^]u32) -> i32 ---
-	gt_face_coverage    :: proc(face: ^Gt_Face, out: [^][2]u32, cap: uint) -> uint ---
 	gt_glyph_box        :: proc(face: ^Gt_Face, gid: u32, out: ^Gt_Glyph_Box) -> i32 ---
 	gt_glyph_outline    :: proc(face: ^Gt_Face, gid: u32, out: [^]Gt_Path_El, cap: uint) -> int ---
 	gt_glyph_outline_hinted :: proc(face: ^Gt_Face, gid: u32, ppem: f32, out: [^]Gt_Path_El, cap: uint) -> int ---
@@ -361,11 +360,6 @@ native_outline_at :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32, toleran
 	return true
 }
 
-// The raw bytes of a table of a face the native backend opened (nil: none, or another backend).
-native_table :: proc(s: ^State, face: Font_Id, tag: [4]u8) -> []byte {
-	return native_font_table(face_ptr(s, face), tag)
-}
-
 @(private)
 native_font_table :: proc(f: ^Font, tag: [4]u8) -> []byte {
 	if f == nil || f.native == nil { return nil }
@@ -374,18 +368,6 @@ native_font_table :: proc(f: ^Font, tag: [4]u8) -> []byte {
 	n: uint
 	if gt_face_table(native_face(f), &t, &data, &n) == 0 { return nil }
 	return data[:n]
-}
-
-// Code point coverage of a face (inclusive ranges) from the native backend.
-native_coverage :: proc(s: ^State, face: Font_Id, allocator := context.allocator) -> []Range {
-	f := face_ptr(s, face)
-	if f == nil || f.native == nil { return nil }
-	n := gt_face_coverage(native_face(f), nil, 0)
-	raw := make([][2]u32, n, context.temp_allocator)
-	n = gt_face_coverage(native_face(f), raw_data(raw), n)
-	out := make([]Range, len(raw), allocator)
-	for r, i in raw { out[i] = {rune(r[0]), rune(r[1])} }
-	return out
 }
 
 }

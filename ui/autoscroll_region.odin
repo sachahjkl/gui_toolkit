@@ -22,7 +22,6 @@ set_autoscroll_enabled :: proc(s: ^State, on: bool) {
 	if !on { autoscroll_cancel(&s.auto); s.auto_box = 0 }
 }
 
-autoscroll_is_enabled :: proc(s: ^State) -> bool { return s.auto_enabled }
 
 set_autoscroll_settings :: proc(s: ^State, cfg: Autoscroll_Settings) { s.auto_cfg = cfg; s.auto_cfg_set = true }
 autoscroll_settings :: proc(s: ^State) -> Autoscroll_Settings { return s.auto_cfg_set ? s.auto_cfg : DEFAULT_AUTOSCROLL }

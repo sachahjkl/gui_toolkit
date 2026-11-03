@@ -223,7 +223,6 @@ a11y_node_children :: proc(u: ^A11y_Update, i: int) -> []u64 {
 	return u.ids[n.children_off:][:n.children_len]
 }
 a11y_prop_string :: proc(u: ^A11y_Update, p: A11y_Prop) -> string { return string(u.bytes[p.a:][:p.len]) }
-a11y_prop_ids :: proc(u: ^A11y_Update, p: A11y_Prop) -> []u64 { return u.ids[p.a:][:p.len] }
 
 // A string property of node `i` ("" when it has none).
 a11y_node_string :: proc(u: ^A11y_Update, i: int, kind: A11y_Prop_Kind) -> string {
