@@ -72,6 +72,8 @@ What the widgets say:
 | toasts | Alert (warn, bad) / Status | live region: announced when they appear |
 | `modal` | Dialog | modal |
 | `splitter` | Splitter | size, min, max |
+| `pane_split` | Splitter | name, size, min, max, expanded (collapsible) |
+| `pane_toggle` | Button | name ("Hide Styles"), expanded |
 | `accordion` | Button | expanded |
 | `card`, `form_row` | Group (named by the title); a form row's label names its widget |
 | `title_bar`, `window_buttons` | TitleBar; Buttons (`set_window_button_names` translates the current State's: once per window) |

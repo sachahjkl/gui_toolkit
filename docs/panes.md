@@ -1,4 +1,4 @@
-# Splitter, accordion, reorderable lists (`ui/split.odin`, `ui/reorder.odin`)
+# Splitter, panes, accordion, reorderable lists (`ui/split.odin`, `ui/panes.odin`, `ui/reorder.odin`)
 
 ## `ui.splitter`
 
@@ -83,3 +83,50 @@ Items sit at their slot, animated when they move (`anim`, keyed by the item); th
 Example: `examples/panes` (`build.bat panes`). Tests: `tests/panes` (dragging within the limits, the pane after the
 handle, double click, keys, no Tab stop, the animated height, the keyboard, what is drawn; the reorder geometry and a
 drag through a build).
+
+## Panes the user folds and places (`ui/panes.odin`)
+
+A `Pane` is the app's: the pane's open size across each orientation (`size[.X]`, `size[.Y]`, logical pixels; 0: the
+default), whether it is folded and where it goes (`place`: `.Auto`, `.Side`, `.Below`). The app keeps one per split and
+saves it when `Pane_Options.on_save` is called (or the result says `finished`); `pane_format` / `pane_parse` make it one
+line of text ("320 180 0 auto").
+
+```odin
+opts := ui.Pane_Options{side = .After, total = room_w, collapsible = true, title = "Styles", on_save = save_pane, user = app}
+ui.next({width = ui.fill(), height = ui.fill()})
+if ui.column(.Start, {}, "###tree") { ... }
+r := ui.pane_split("###side_split", .X, &app.side, opts)
+if r.size > 0 {
+	ui.next({width = ui.px(r.size * ui.scale()), height = ui.fill()})
+	if ui.column(.Start, {}, "###side") { ui.pane_toggle("###side_fold", .X, &app.side, opts); ... }
+}
+```
+
+| Procedure | |
+|---|---|
+| `pane_split(id, axis, &pane, opts) -> Pane_Result` | the handle; folded, the strip |
+| `pane_extent(&pane, axis, opts)` | the size to lay the pane out (0: folded), for a pane built before its handle |
+| `pane_limits(opts)` | its smallest and largest size |
+| `pane_toggle(id, axis, &pane, opts)` | a chevron button that folds the pane and brings it back (for a header) |
+| `pane_axis(place, room_w, side_min)` | `.X` (at the side) or `.Y` (below); `.Auto`: at the side from `side_min` (default `PANE_SIDE_MIN_EM`) |
+| `pane_place_menu(&pane)` | menu items Auto / At the side / Below |
+| `menu_move_to(hosts, current)` | "Move to <host>" items for a tab that may go to another strip: the host chosen, or -1 |
+| `pane_format(pane)`, `pane_parse(text)` | the pane as text, and back |
+
+- Limits: from `opts.min_size` (default `PANE_MIN_EM`, 3 em) to the room (`opts.total`) less `opts.min_other` (3 em):
+  nearly all of it. Without `total`, no upper limit (`PANE_NO_LIMIT`).
+- `opts.side`: the pane is before the handle (left, top) or after it (right, bottom).
+- Folding (`opts.collapsible`): dragged under half its minimum (`PANE_SNAP_FRACTION`), a double click, Enter, the
+  button. It keeps its size; dragged back past half the minimum within the same drag, it opens at the pointer. Not
+  collapsible, a double click puts `opts.default_size` back.
+- Folded, the handle is a strip (`PANE_STRIP_EM`) along the edge with a chevron pointing where the pane comes from, and
+  `opts.title` as its tooltip: a click or Enter brings the pane back at its size, a drag pulls it out to the pointer.
+- Keyboard: a Tab stop unless `opts.no_keyboard`; the arrows of its axis move it by 10 logical pixels (Ctrl: 2), Home and
+  End go to the limits, Enter folds and unfolds.
+- Accessibility: a separator (`Splitter`) named `opts.title`, the size as its value with its limits, `expanded` when
+  collapsible; assistive technologies can set the value. The button is a Button named "Hide <title>" / "Show <title>".
+- No frame at rest: nothing animates.
+
+Example: `examples/panes`. Tests: `tests/panes/pane_split_test.odin` (from the minimum to all but the other side's,
+folding by a drag, a double click, Enter and the button, the strip's click and pull, the keyboard, the save callback,
+the text, the place, what the strip draws).
