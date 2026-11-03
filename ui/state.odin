@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:math"
 import "core:mem"
 import "core:mem/virtual"
+import "core:sync"
 import "core:time"
 import "../font"
 import "../platform"
@@ -21,6 +22,7 @@ gs :: #force_inline proc() -> ^State {
 	return current
 }
 
+// The process's clock: the first init starts it, from any thread (atomic), and no later State restarts it.
 @(private) tick_origin: time.Tick
 
 init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
@@ -33,6 +35,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.layout_warnings = ODIN_DEBUG
 	s.scale = 1
 	s.toast_pos = .Top_Right
+	s.caption_names = WINDOW_BUTTON_NAMES
 	s.rounding = 1
 	s.density = 1
 	s.sb_owner = make(map[Key]Key)
@@ -44,7 +47,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.color_memo = make(map[[2]u64]Color)
 	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
 	post_init(s)
-	if tick_origin._nsec == 0 { tick_origin = time.tick_now() }   // (one clock for the process: a window opened later does not restart the others')
+	_, _ = sync.atomic_compare_exchange_strong(&tick_origin._nsec, 0, time.tick_now()._nsec)
 }
 
 // Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
@@ -109,7 +112,7 @@ now_ms :: proc() -> f64 { return current != nil ? clock_ms(current) : real_ms() 
 // clock. A test or a replay is then deterministic, and waits for no time.
 set_clock :: proc(s: ^State, clock: ^f64) { s.clock = clock }
 
-@(private) real_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since(tick_origin)) }
+@(private) real_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since({sync.atomic_load(&tick_origin._nsec)})) }
 @(private) clock_ms :: proc(s: ^State) -> f64 { return s.clock != nil ? s.clock^ : real_ms() }
 
 Build_Params :: struct {

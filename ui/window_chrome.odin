@@ -54,12 +54,13 @@ title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 	return true
 }
 
-// What screen readers call the caption buttons: minimize, maximize, restore, close (set_window_button_names
-// translates them; the strings must outlive the builds).
-@(private) window_button_names := [4]string{"Minimize", "Maximize", "Close", "Restore"}   // (Caption_Button's order, then restore)
+// What screen readers call the caption buttons by default (Caption_Button's order, then restore).
+@(private) WINDOW_BUTTON_NAMES :: [4]string{"Minimize", "Maximize", "Close", "Restore"}
 
+// What screen readers call the current State's caption buttons: minimize, maximize, restore, close (the strings must outlive
+// the builds). Each window's State has its own: translate them after each `init`.
 set_window_button_names :: proc(minimize, maximize, restore, close: string) {
-	window_button_names = {minimize, maximize, close, restore}
+	gs().caption_names = {minimize, maximize, close, restore}
 }
 
 @(private)
@@ -101,7 +102,7 @@ window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 		d^ = {button = b, maxed = maxed, active = active, dark = dark, under = under, glyph_font = s.caption_font, dpi = dpi}
 		box.custom, box.custom_user = caption_draw, d
 		s.caption_keys[b] = box.key
-		names := window_button_names
+		names := s.caption_names
 		a11y_default(box, {role = .Button, name = b == .Maximize && maxed ? names[3] : names[int(b)]})
 		if signal(box).clicked {
 			clicked, ok = b, true
