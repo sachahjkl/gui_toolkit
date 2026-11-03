@@ -29,7 +29,7 @@ png_round_trip :: proc(t: ^testing.T) {
 	testing.expect_value(t, img.width, 3)
 	testing.expect_value(t, img.height, 2)
 	testing.expect_value(t, img.channels, 4)
-	testing.expect(t, bytes.equal(img.pixels.buf[:], px[:]), "same pixels")
+	testing.expect(t, bytes.equal(img.pixels[:], px[:]), "same pixels")
 }
 
 // A window's worth of what a picture holds: flat areas, rows like the last, gradients, noise. Pixel for pixel through the
@@ -59,7 +59,7 @@ png_of_a_large_picture :: proc(t: ^testing.T) {
 		img, err := png.load_from_bytes(data)
 		if !testing.expectf(t, err == nil, "%v decodes: %v", size, err) { return }
 		defer image.destroy(img)
-		testing.expect(t, bytes.equal(img.pixels.buf[:], px), "same pixels")
+		testing.expect(t, bytes.equal(img.pixels[:], px), "same pixels")
 	}
 }
 

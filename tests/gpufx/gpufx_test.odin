@@ -212,6 +212,7 @@ kept_layers_match_drawn_ones :: proc(t: ^testing.T) {
 
 		// with a blend mode: the kept result blends with what is under it this frame
 		scene_shift, scene_filters, scene_blend = {}, base, .Multiply
+		defer scene_filters = nil
 		scene_cache = false
 		want_blend := frame(f, card)
 		scene_cache = true
@@ -242,6 +243,7 @@ kept_layers_match_drawn_ones :: proc(t: ^testing.T) {
 kept_layers_are_drawn_whole :: proc(t: ^testing.T) {
 	each_config(t, proc(t: ^testing.T, f: ^Fx) {
 		scene_filters, scene_blend, scene_key, scene_cache = []draw.Filter{draw.filter_blur(3)}, .Normal, 1, true
+		defer scene_filters = nil
 		scene_shift = {-60, 0}   // the card half off the frame
 		for _ in 0 ..< 3 { _ = frame(f, card) }
 		scene_shift = {-20, 0}
@@ -417,6 +419,7 @@ kept_masked_layers_match_drawn_ones :: proc(t: ^testing.T) {
 
 		// a new mask: drawn again
 		scene_filters = []draw.Filter{draw.filter_blur(2)}
+		defer scene_filters = nil
 		for _ in 0 ..< 3 { _ = frame(f, masked_card) }
 		mask_key = 2
 		scene_cache = false

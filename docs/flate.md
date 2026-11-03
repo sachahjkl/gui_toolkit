@@ -1,8 +1,9 @@
 # flate: DEFLATE, zlib and gzip as streams
 
 `import "gt:flate"` (or the relative path of the submodule). Pure Odin (`core:hash` only): no platform code,
-no C library, any target. Odin's `core:compress` inflates whole buffers only; this package compresses as well, and
-both directions take their input in chunks of any size (a network response, a `CompressionStream`).
+no C library, any target. Both directions take their input in chunks of any size (a network response, a
+`CompressionStream`), which Odin's `core:compress/deflate` does not: it compresses and inflates whole buffers (faster:
+see [Against core:compress](#against-corecompress)).
 
 | Format | Wrapping |
 |---|---|
@@ -57,6 +58,32 @@ Errors: `Bad_Data` (a malformed header, block, code table, a distance before the
 - Positions are kept in `i32`: one Deflater compresses at most 2 GiB.
 - Allocations: `inflater_init` / `deflater_init` take an allocator (default `context.allocator`) for their buffers.
 
+## Against core:compress
+
+Odin dev-2026-11 rewrote `core:compress` (`core:compress/deflate`: Deflate at levels 1 to 10, a new Inflate). Measured
+on 2026-11-03 (`-o:speed`, best of 5, one thread of a desktop x64; zlib streams; every output read back by both
+decoders):
+
+| Input | `flate.deflate` | core level 1 | core level 6 | core level 10 |
+|---|---|---|---|---|
+| a 1400x925 screenshot, Sub-filtered rows (5.2 MB) | 6.0 %, 74 ms | 6.9 %, 7.9 ms | 6.0 %, 15.6 ms | 5.9 %, 191 ms |
+| a 1400x897 screenshot (5.0 MB) | 10.4 %, 83 ms | 11.8 %, 11.8 ms | 9.9 %, 29.8 ms | 9.7 %, 332 ms |
+| `CHANGELOG.md` (208 KB) | 37.8 %, 9.1 ms | 40.2 %, 1.6 ms | 36.6 %, 3.8 ms | 36.4 %, 7.2 ms |
+| an HTML page (123 KB) | 19.7 %, 5.8 ms | 24.4 %, 0.6 ms | 19.0 %, 2.8 ms | 17.7 %, 6.3 ms |
+| a JavaScript file (106 KB) | 24.3 %, 2.9 ms | 27.3 %, 0.5 ms | 23.4 %, 1.3 ms | 22.9 %, 3.9 ms |
+| Roboto-Regular.ttf (159 KB) | 48.8 %, 5.3 ms | 50.8 %, 1.2 ms | 48.7 %, 2.1 ms | 46.3 %, 5.7 ms |
+
+Inflating the same streams (core level 6), output rate: `flate.inflate` 130 to 445 MB/s (`inflate_push` in 16 KiB
+chunks the same), `core:compress/deflate` 400 to 1530 MB/s. A picture as `devtools.png_encode` makes it (Sub filter,
+`deflate_runs`): 609 KB in 3.0 ms and 957 KB in 5.1 ms for the two screenshots; `core:image/png`'s `save_to_buffer`
+at level 1 with the same filter 358 KB in 8.9 ms and 592 KB in 12.8 ms.
+
+So a whole buffer is better compressed or inflated by `core:compress/deflate` (level 6: 2 to 5 times as fast as
+`flate.deflate` for the same size or smaller). It stays here for what it lacks: streams in both directions (a chunk in,
+what it allows out at once, the bound per push), which Wren's `CompressionStream` and `DecompressionStream` need, and
+`deflate_runs` for pictures taken while a program runs (2.5 to 3.5 times as fast as core's level 1, for an output 1.6 to
+1.7 times its size).
+
 Tests: `odin test tests/flate -vet` (a .NET gzip with dynamic codes in chunks of 1, 7 and 100 bytes, cut, corrupted and
-followed by junk; round trips of every format in chunks; dynamic codes checked by `core:compress/zlib` too; stored
-blocks for noise; the output bound).
+followed by junk; round trips of every format in chunks; dynamic codes checked by `core:compress/deflate` too, and
+its streams at every level read here in chunks; stored blocks for noise; the output bound).

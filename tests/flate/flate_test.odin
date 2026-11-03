@@ -4,7 +4,7 @@
 package flate_test
 
 import "core:bytes"
-import "core:compress/zlib"
+import "core:compress/deflate"
 import "core:fmt"
 import "core:math/rand"
 import "core:mem"
@@ -106,7 +106,7 @@ bounded_output :: proc(t: ^testing.T) {
 }
 
 // The deflater's dynamic codes: smaller than the fixed ones on text (near .NET's gzip of the same numbers), its first block
-// a dynamic one, and read by another decoder (core:compress/zlib) as well as by this one.
+// a dynamic one, and read by another decoder (core:compress/deflate) as well as by this one.
 @(test)
 dynamic_codes_on_text :: proc(t: ^testing.T) {
 	text := transmute([]u8)numbers()
@@ -121,10 +121,25 @@ dynamic_codes_on_text :: proc(t: ^testing.T) {
 	big := strings.repeat(numbers(), 40, context.temp_allocator)   // several blocks of BLOCK_SYMBOLS
 	z := flate.deflate(.Zlib, transmute([]u8)big)
 	defer delete(z)
-	buf: bytes.Buffer
-	defer bytes.buffer_destroy(&buf)
-	zerr := zlib.inflate(z, &buf)
-	testing.expectf(t, zerr == nil && string(bytes.buffer_to_bytes(&buf)) == big, "core:compress/zlib: %v", zerr)
+	buf: [dynamic]u8
+	defer delete(buf)
+	zerr := deflate.inflate_zlib(&buf, z)
+	testing.expectf(t, zerr == nil && string(buf[:]) == big, "core:compress/deflate: %v", zerr)
+}
+
+// What another encoder makes (core:compress/deflate at each of its levels: stored, fixed and dynamic blocks, lazy
+// matches) inflates in chunks of 7 bytes.
+@(test)
+streams_of_core_compress :: proc(t: ^testing.T) {
+	big := transmute([]u8)strings.repeat(numbers(), 40, context.temp_allocator)
+	for level in deflate.Deflate_Level.Stored ..= deflate.Deflate_Level.Best {
+		packed: [dynamic]u8
+		defer delete(packed)
+		if !testing.expectf(t, deflate.deflate_zlib(&packed, big, level) == nil, "%v: deflates", level) { continue }
+		out, err := inflate_all(.Zlib, packed[:], 7)
+		defer delete(out)
+		testing.expectf(t, err == .None && bytes.equal(out[:], big), "%v: %v", level, err)
+	}
 }
 
 // Bytes that do not compress go into stored blocks: a few bytes more than the input, not 9 bits for 8.
@@ -142,9 +157,9 @@ stored_blocks_for_noise :: proc(t: ^testing.T) {
 		out, err := flate.inflate(format, packed)
 		defer delete(out)
 		testing.expect(t, err == .None && len(out) == len(noise) && string(out) == string(noise), "round trip")
-		buf: bytes.Buffer
-		defer bytes.buffer_destroy(&buf)
-		if format == .Zlib { testing.expect(t, zlib.inflate(packed, &buf) == nil && string(bytes.buffer_to_bytes(&buf)) == string(noise), "core:compress/zlib") }
+		buf: [dynamic]u8
+		defer delete(buf)
+		if format == .Zlib { testing.expect(t, deflate.inflate_zlib(&buf, packed) == nil && string(buf[:]) == string(noise), "core:compress/deflate") }
 	}
 	_, err := flate.inflate(.Raw, flate.deflate(.Raw, noise, context.temp_allocator), limit = 1000)
 	testing.expect_value(t, err, flate.Error.Too_Large)

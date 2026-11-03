@@ -348,7 +348,7 @@ run_to_log :: proc(cmd: []string, log: ^os.File, limit: int, r: ^Result) -> bool
 		if st.exited {
 			if st.exit_code != 0 {
 				// (0xC0000005 an access violation, 0xC000001D an assertion's trap that nothing caught, 0xC00000FD a stack overflow)
-				r.why = fmt.tprintf("exit code 0x%8X", u32(st.exit_code))
+				r.why = fmt.tprintf("exit code 0x%08X", u32(st.exit_code))
 				return false
 			}
 			return true
