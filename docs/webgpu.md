@@ -24,7 +24,7 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 | `render/wgpu_dcomp.odin` | translucent windows: a DirectComposition visual fed through `SurfaceSourceSwapChainPanel` |
 | `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
 
-The pixel tests run on both backends with the same expectations: `build/run_tests [-backend:wgpu]` (the wgpu ones one
+The pixel tests run on both backends with the same expectations: `odin run tools/run_tests [-- -backend:wgpu]` (the wgpu ones one
 test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools/tk fetch_wgpu` first: with DXC
 next to the test programs a package takes a third of the time it takes with FXC. The CI splits the packages in four groups, one per
 job (`-Group ci1` .. `ci4`, defined in the script, which checks that together they hold every package once); a pull request runs
