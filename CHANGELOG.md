@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.66.0] - 2026-11-03
+
+### Added
+- **`ui.menu_nested_open` / `ui.menu_nested_open_rect` / `ui.menu_nested`**: a menu opened from inside an open one, at a point or under a rect (a row's context menu in a drop-down panel), over it, the menu staying open behind it. It closes like a submenu: a press outside it closes only it, Escape closes it, choosing an item closes the menu.
+
 ## [0.65.0] - 2026-11-03
 
 ### Removed
@@ -1461,6 +1466,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.66.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.66.0
 [0.65.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.65.0
 [0.64.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.64.0
 [0.63.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.1
