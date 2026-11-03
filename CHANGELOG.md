@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.65.0] - 2026-11-03
+
+### Removed
+- **Public procedures nobody called** (neither the toolkit, nor Wren, nor opencode_gui_toolkit): `draw.damage_padded`, `layer_cache_forget` (an idle result goes after its frames anyway), `picture_slot`, `picture_version`; `dbus.arg_variant_u32`, `read_variant_string` / `_bool` / `_u32`, `w_i16`, `w_i64`; `font.native_coverage` (and the text backend's `gt_face_coverage`), `native_table`; `platform.a11y_prop_ids`; `render.canvas_pool_bytes`, `canvas_texture_changed`, `canvas_texture_size`, `damage_rects`, `heaps_reset`, `video_gpu_bytes`; `ui.autoscroll_is_enabled`, `post_queue_capacity`.
+
 ## [0.64.0] - 2026-11-03
 
 ### Added
@@ -1456,6 +1461,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.65.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.65.0
 [0.64.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.64.0
 [0.63.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.1
 [0.63.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.63.0
