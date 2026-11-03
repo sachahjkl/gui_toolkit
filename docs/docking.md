@@ -23,7 +23,9 @@ ui.dock_end(&app.dock)
 
 `dock_panel` is true while the panel is shown (the tab on top of its stack, the stack not folded away): the block builds
 its content in the stack's room, the box of that panel wherever it is docked (its content keeps its state, scroll and
-focus when it moves). `dock_panel_size` is that room in this frame's layout, before the layout runs.
+focus when it moves). `dock_panel_size` is that room in this frame's layout, before the layout runs. Like `parent`, it
+lets the box go at the end of the statement it is in: `if ui.dock_panel(d, p) { ... }`, not `if !ui.dock_panel(d, p) { continue }`
+(that one lets it go before the content is built, which then lands in the dock space's parent).
 
 ## The model
 
