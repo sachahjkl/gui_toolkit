@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.72.0] - 2026-11-03
+
+### Fixed
+- **ASCII case for names and protocols**: `strings.to_lower`, `to_upper` and `equal_fold` of Odin dev-2026-11 fold by Unicode (the Kelvin sign U+212A is `k` to them, the long s U+017F `s`), where names and protocols want ASCII. New in `base` (`base/text.odin`): `ascii_lower`, `ascii_upper`, `ascii_lower_byte` / `ascii_upper_byte`, `ascii_equal_fold`, `ascii_has_prefix_fold`, `ascii_contains_fold`. Switched to them: the DevTools server's header names and Host (`Ho\u017Ft:` is no Host, `localho\u017Ft` no localhost), CSS colour keywords, `nodeName`, the accessibility roles and actions; font family names as cache keys (Windows, Linux, macOS) and fontconfig's / Core Text's answer checked against the family asked for (`DejaVu San\u017F` no longer loads DejaVu Sans); preference booleans; the GTK theme name, file extensions for MIME types on Linux; the changelog tool's type and slugs, `tk`'s checksums and emoji version line, `run_tests`' groups, the examples' option names. Unicode stays for user text (find in page, fuzzy matching, type-ahead, the settings' and DevTools' searches, the test session's text lookups), display text and Windows paths. Lint `tests/unicode_case` (a step of `run_tests`): a call of `strings.to_lower` / `to_upper` / `equal_fold` or `unicode.to_lower` / `to_upper` in the toolkit's sources fails unless `tools/unicode_case_allowed.txt` lists its line with why; an entry that matches no line fails too.
+
 ## [0.71.0] - 2026-11-03
 
 ### Added
@@ -1495,6 +1500,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.72.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.72.0
 [0.71.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.71.0
 [0.70.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.70.0
 [0.69.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.69.0
