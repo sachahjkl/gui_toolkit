@@ -121,7 +121,7 @@ hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = track.min.x - away, track.max.x + toward }
 		if contains(grab, p) {
 			k := scrollbar_key(b)
-			g.sb_owner[k] = b.key
+			gs().sb_owner[k] = b.key
 			return k
 		}
 	}
@@ -167,7 +167,7 @@ contains :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.ma
 
 // Consuming keyboard query: true once if a matching key press (exact modifiers) is pending.
 key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
-	s := g
+	s := gs()
 	for e, i in s.events.list {
 		if s.events.consumed[i] || e.key != key || e.mods != mods { continue }
 		s.events.consumed[i] = true
@@ -178,20 +178,20 @@ key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 
 // Like key_press but does not consume (for global shortcuts that must not steal keys from a focused field).
 key_pressed_peek :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
-	s := g
+	s := gs()
 	for e, i in s.events.list { if !s.events.consumed[i] && e.key == key && e.mods == mods { return true } }
 	return false
 }
 
-mouse_pos :: proc() -> Vec2 { return g.mouse }
+mouse_pos :: proc() -> Vec2 { return gs().mouse }
 // A press of `button` happened in this frame, on anything or on nothing (a popup the app closes on a press outside it).
-mouse_pressed :: proc(button := platform.Mouse_Button.Left) -> bool { return g.pressed_any[button] }
-hot_key :: proc() -> Key { return g.hot_key }
+mouse_pressed :: proc(button := platform.Mouse_Button.Left) -> bool { return gs().pressed_any[button] }
+hot_key :: proc() -> Key { return gs().hot_key }
 
 // Is the pointer on box `key` or on a clickable box inside it (by the last frame's tree)? For a row that shows its
 // buttons while the pointer is anywhere on it.
 hot_within :: proc(key: Key) -> bool {
-	s := g
+	s := gs()
 	if s.hot_key == 0 || key == 0 { return false }
 	hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil
 	for p, depth := hb, 0; p != nil && depth < HOT_ANCESTORS_MAX; p, depth = p.parent, depth + 1 {
@@ -200,13 +200,13 @@ hot_within :: proc(key: Key) -> bool {
 	}
 	return false
 }
-active_key :: proc() -> Key { return g.active_key[.Left] }
-focus_key :: proc() -> Key { return g.focus_key }
-set_focus :: proc(k: Key) { g.focus_key = k }
+active_key :: proc() -> Key { return gs().active_key[.Left] }
+focus_key :: proc() -> Key { return gs().focus_key }
+set_focus :: proc(k: Key) { gs().focus_key = k }
 
 // The signal of a box (call after building it, usually through a widget).
 signal :: proc(b: ^Box) -> (sig: Signal) {
-	s := g
+	s := gs()
 	sig.box = b
 	sig.mouse = s.mouse - b.rect.min
 	sig.mods = s.mods

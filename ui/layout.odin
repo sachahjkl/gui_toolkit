@@ -52,7 +52,7 @@ layout_upward :: proc(b: ^Box, axis: Axis) {
 		b.size[ai] = a != nil ? max(0, a.size[ai] - 2 * border_inset(a)) * b.pref[axis].value : 0
 		// the classic mistake: a percentage inside a box sized by its children is of a distant ancestor (often the
 		// window): a label meant to fill its row's height stretches the row, a dialog, a list to the window's
-		if g.layout_warnings && a != b.parent && b.size[ai] > g.window_size[ai] * 0.5 { layout_warn(b, axis, a) }
+		if gs().layout_warnings && a != b.parent && b.size[ai] > gs().window_size[ai] * 0.5 { layout_warn(b, axis, a) }
 	}
 	for c := b.first; c != nil; c = c.next { layout_upward(c, axis) }
 }
@@ -60,25 +60,25 @@ layout_upward :: proc(b: ^Box, axis: Axis) {
 // One warning per box (by key) for the percentage that went past a box sized by its children (layout_upward).
 @(private)
 layout_warn :: proc(b: ^Box, axis: Axis, ancestor: ^Box) {
-	if b.key in g.layout_warned { return }
+	if b.key in gs().layout_warned { return }
 	name := b.name != "" ? b.name : "(unnamed)"
 	anc := ancestor != nil && ancestor.name != "" ? ancestor.name : "the window"
 	msg := fmt.aprintf("%s: its %s is %.0f%% of %s's (%.0f px): its parent %s is sized by its children, so the percentage went past it. Give it a size of its own (px, text_size) or give the parent one.",
 		name, axis == .X ? "width" : "height", b.pref[axis].value * 100, anc, b.size[int(axis)], b.parent != nil && b.parent.name != "" ? b.parent.name : "(unnamed)")
-	g.layout_warned[b.key] = msg
+	gs().layout_warned[b.key] = msg
 	fmt.eprintfln("ui: layout: %s", msg)
 }
 
 // The layout warnings given so far (each once), for a tool or a test to show them (temp memory).
 layout_warnings :: proc() -> []string {
-	out := make([dynamic]string, 0, len(g.layout_warned), context.temp_allocator)
-	for _, m in g.layout_warned { append(&out, m) }
+	out := make([dynamic]string, 0, len(gs().layout_warned), context.temp_allocator)
+	for _, m in gs().layout_warned { append(&out, m) }
 	return out[:]
 }
 
 @(private)
 border_inset :: proc(b: ^Box) -> f32 {
-	return .Draw_Border in b.flags ? max(1, math.round(g.scale)) : 0
+	return .Draw_Border in b.flags ? max(1, math.round(gs().scale)) : 0
 }
 
 @(private)

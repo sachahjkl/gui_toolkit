@@ -59,7 +59,7 @@ Fuzzy_Draw :: struct { ranges: []Fuzzy_Range, text: string, color: Color }
 @(private)
 fuzzy_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Fuzzy_Draw)(user)
-	s := g
+	s := gs()
 	dim := Vec2{b.text_dim.x, b.text_dim.y}
 	origin := text_origin(s, b, dim)
 	m := font.metrics(s.fonts, b.font, b.font_size)

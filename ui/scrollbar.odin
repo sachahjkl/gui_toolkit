@@ -18,7 +18,7 @@ set_scrollbar_autohide :: proc(s: ^State, on: bool) { s.scrollbar_autohide = on 
 // Scrolled by something other than the pointer (the keyboard): its bar shows for a moment, wherever the pointer is.
 scrollbar_reveal :: proc(b: ^Box) {
 	if b == nil { return }
-	b.bar_until = g.time_ms + SCROLLBAR_REVEAL_MS
+	b.bar_until = gs().time_ms + SCROLLBAR_REVEAL_MS
 }
 
 // How much a box's bar shows, 0..1.
@@ -36,7 +36,7 @@ scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
 }
 
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
-rad :: proc(r: f32) -> f32 { return r * g.rounding }
+rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 
 // Scrollbars of scroll boxes and of text_edit. Width and thumb in em, the margin as a fraction of the width.
 @(private) SCROLLBAR_WIDTH_MIN_PX :: 6
@@ -61,12 +61,12 @@ scrollbar_key :: proc(b: ^Box) -> Key { return key_from_u64(b.key, SCROLLBAR_KEY
 
 // What takes the press beyond a bar's track: toward the content, and away from it.
 @(private)
-scrollbar_grab :: proc() -> (toward, away: f32) { return SCROLLBAR_GRAB_IN_PX * g.scale, SCROLLBAR_GRAB_OUT_PX * g.scale }
+scrollbar_grab :: proc() -> (toward, away: f32) { return SCROLLBAR_GRAB_IN_PX * gs().scale, SCROLLBAR_GRAB_OUT_PX * gs().scale }
 
 // A bar's width and its margin from the edges of its box.
 @(private)
 scrollbar_size :: proc(font_size: f32) -> (w, m: f32) {
-	w = max(SCROLLBAR_WIDTH_MIN_PX * g.scale, math.round(font_size * SCROLLBAR_WIDTH_EM))
+	w = max(SCROLLBAR_WIDTH_MIN_PX * gs().scale, math.round(font_size * SCROLLBAR_WIDTH_EM))
 	m = math.round(w * SCROLLBAR_MARGIN_FRACTION)
 	return
 }
@@ -84,7 +84,7 @@ scrollbar_thumb :: proc(font_size, avail, view, content, t: f32) -> (at, length:
 scrollbar_geom :: proc(b: ^Box) -> (track, thumb: Rect, ok: bool) {
 	view := b.size.y
 	content := b.view_bounds.y
-	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * g.scale { return }
+	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
 	w, m := scrollbar_size(b.font_size)
 	track = {{b.rect.max.x - w - m, b.rect.min.y + m}, {b.rect.max.x - m, b.rect.max.y - m}}
 	if .Scrollbar_Left in b.flags { track.min.x, track.max.x = b.rect.min.x + m, b.rect.min.x + m + w }

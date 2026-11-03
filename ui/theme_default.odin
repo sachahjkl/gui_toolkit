@@ -286,9 +286,9 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 // opaque surface below it): its alpha is the one that gives the theme's sRGB step in the blend space of the frame.
 // For custom draw procs that paint their own hover (rows, nodes of a graph).
 state_fill :: proc(b: ^Box, name: string, under: Maybe(Color) = nil) -> Color {
-	c := color_from_tags(g, b.tags_key, name)
+	c := color_from_tags(gs(), b.tags_key, name)
 	o := under.? or_else box_under(b)
-	c.a = draw.alpha_like_srgb(g.space, c, c.a, o)
+	c.a = draw.alpha_like_srgb(gs().space, c, c.a, o)
 	return c
 }
 
@@ -297,7 +297,7 @@ box_under :: proc(b: ^Box) -> Color {
 	for p := b; p != nil; p = p.parent {
 		if .Draw_Background in p.flags && p.bg.a > 0.5 { return {p.bg.r, p.bg.g, p.bg.b, 1} }
 	}
-	return g.backdrop
+	return gs().backdrop
 }
 
 // Mixes `a` toward `b` by `t` in sRGB values (linear colours in and out): one step of the theme's state scale.

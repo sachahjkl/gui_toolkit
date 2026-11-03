@@ -97,7 +97,7 @@ vlist_row_at :: proc(offsets: []f32, y: f32) -> int {
 
 @(deferred_out = vlist_end)
 vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil, selectable: []bool = nil) -> (rows: Vlist_Rows, ok: bool) {
-	s := g
+	s := gs()
 	set_next_axis(.Y)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
 	b.cursor = .Arrow
@@ -226,7 +226,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 
 @(private)
 vlist_end :: proc(rows: Vlist_Rows, ok: bool) {
-	s := g
+	s := gs()
 	st := (^Virtual_List)(pop(&s.list_stack))
 	n := len(st.ids)
 	spacer(px(st.offsets[n] - st.offsets[st.last]), exact = true)

@@ -96,8 +96,8 @@ field_select_all :: proc(f: ^Text_Field) { f.mark, f.cursor = 0, len(f.buf) }
 
 // Edit commands for menus (they go through the edit history; the clipboard is the one given to begin_build).
 field_copy :: proc(f: ^Text_Field) -> bool {
-	if !field_has_selection(f) || g == nil || g.clipboard_set == nil { return false }
-	g.clipboard_set(field_selection(f))
+	if !field_has_selection(f) || current == nil || current.clipboard_set == nil { return false }
+	gs().clipboard_set(field_selection(f))
 	return true
 }
 
@@ -125,8 +125,8 @@ field_insert :: proc(f: ^Text_Field, text: string) {
 }
 
 field_paste :: proc(f: ^Text_Field) -> bool {
-	if g == nil || g.clipboard_get == nil { return false }
-	clip := g.clipboard_get()
+	if current == nil || current.clipboard_get == nil { return false }
+	clip := gs().clipboard_get()
 	if clip == "" { return false }
 	field_insert(f, clip)
 	return true
@@ -234,7 +234,7 @@ insert_text :: proc(f: ^Text_Field, text: string) {
 @(private)
 line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Line_Edit_Draw)(user)
-	s := g
+	s := gs()
 	m := font.metrics(s.fonts, b.font, b.font_size)
 	cy := (b.rect.min.y + b.rect.max.y) * 0.5
 	baseline := math.round(cy + (m.ascent - m.descent) * 0.5)
@@ -261,7 +261,7 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Backspace/Delete (ctrl = word), ctrl+A/C/X/V, Enter (committed), Escape (cancelled, drops focus).
 // `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut.
 line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false) -> (res: Edit_Result) {
-	s := g
+	s := gs()
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
 		b.cursor = .Text

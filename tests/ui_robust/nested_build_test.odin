@@ -70,3 +70,30 @@ nested_build_is_refused :: proc(t: ^testing.T) {
 	testing.expect(t, !nested_reached_end, "the nested build was not refused")
 	testing.expect(t, !ui.building(), "the test's own thread has no build open")
 }
+
+// A public proc on a thread where nothing selected a state (no init, use or begin_build) stops at once and says why, not on a
+// nil state somewhere further.
+@(private="file") no_state_message: string
+@(private="file") no_state_reached_end: bool
+
+@(test)
+no_state_on_this_thread_is_named :: proc(t: ^testing.T) {
+	when ODIN_OS != .Windows { return }
+	no_state_message, no_state_reached_end = "", false
+	th := thread.create_and_start(proc() {
+		context.allocator = runtime.heap_allocator()
+		context.assertion_failure_proc = proc(prefix, message: string, loc: runtime.Source_Code_Location) -> ! {
+			no_state_message = message
+			ExitThread(0)
+		}
+		_ = ui.focus_key()   // (a new thread: its state is nil)
+		no_state_reached_end = true
+	})
+	thread.destroy(th)
+	testing.expect_value(t, no_state_message, ui.NO_STATE_MESSAGE)
+	testing.expect_value(t, no_state_message, "ui: no begin_build on this thread")
+	testing.expect(t, !no_state_reached_end, "the call went on without a state")
+	// the procs that answer without one still do
+	testing.expect(t, !ui.building(), "building() needs no state")
+	testing.expect(t, ui.now_ms() >= 0, "now_ms() needs no state")
+}

@@ -71,7 +71,7 @@ color_from_tags :: proc(s: ^State, tags_key: Key, name: string) -> Color {
 
 // Color for `name` under the current tag stack while building.
 color :: proc(name: string) -> Color {
-	return color_from_tags(g, current_tags_key(g), name)
+	return color_from_tags(gs(), current_tags_key(gs()), name)
 }
 
 @(private)

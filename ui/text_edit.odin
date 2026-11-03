@@ -25,7 +25,7 @@ TEXT_UNDO_MAX :: 200
 @(private="file") TEXT_EDIT_GUTTER_FONT_SCALE :: 0.85
 // Room kept past the longest line, so the caret at its end is seen.
 @(private="file") TEXT_EDIT_END_SLACK_PX :: 4
-@(private="file") end_slack :: proc() -> f32 { return TEXT_EDIT_END_SLACK_PX * g.scale }
+@(private="file") end_slack :: proc() -> f32 { return TEXT_EDIT_END_SLACK_PX * gs().scale }
 // What the selection shows of a line break.
 @(private="file") TEXT_EDIT_BREAK_SELECTION_EM :: 0.35
 @(private="file") TEXT_EDIT_THUMB_HOT_ALPHA :: 0.45
@@ -132,7 +132,7 @@ content_extent_measure :: proc(text: string, b: ^Box, lh: f32) -> Vec2 {
 	for {
 		nl := strings.index_byte(text[start:], '\n')
 		end := nl < 0 ? len(text) : start + nl
-		w = max(w, font.text_width(g.fonts, b.font, b.font_size, text[start:end]))
+		w = max(w, font.text_width(gs().fonts, b.font, b.font_size, text[start:end]))
 		lines += 1
 		if nl < 0 { break }
 		start = end + 1
@@ -221,7 +221,7 @@ line_of :: proc(s: string, idx: int) -> int { return strings.count(s[:idx], "\n"
 // Caret x of byte `index` on visual line `l` (pixels from the line's start).
 @(private="file")
 caret_x_on :: proc(text: string, l: Visual_Line, b: ^Box, index: int) -> f32 {
-	return font.x_from_index(g.fonts, b.font, b.font_size, text[l.start:l.end], clamp(index, l.start, l.end) - l.start)
+	return font.x_from_index(gs().fonts, b.font, b.font_size, text[l.start:l.end], clamp(index, l.start, l.end) - l.start)
 }
 
 ////////////////////////////////
@@ -252,7 +252,7 @@ Text_Edit_Draw :: struct {
 @(private="file")
 text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Text_Edit_Draw)(user)
-	s := g
+	s := gs()
 	r := b.rect
 	m := font.metrics(s.fonts, b.font, b.font_size)
 	lh := d.line_h
@@ -413,7 +413,7 @@ fmt_int :: proc(v: int) -> string {
 // The caret's rectangle is in the result (`caret`, box coordinates) and, as drawn, from text_edit_caret_rect.
 text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := false, tab_indents := false,
 	wrap := false, auto_height := false, min_lines := 1, max_lines := 0, highlight: ^Text_Highlight = nil) -> (res: Edit_Result) {
-	s := g
+	s := gs()
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
 		b.cursor = .Text
@@ -484,7 +484,7 @@ Edit_Build :: struct {
 
 @(private="file")
 edit_lines :: proc(e: ^Edit_Build) -> []Visual_Line {
-	return text_visual_lines(g.fonts, e.b.font, e.b.font_size, area_string(e.a), e.wrap_w, context.temp_allocator)
+	return text_visual_lines(gs().fonts, e.b.font, e.b.font_size, area_string(e.a), e.wrap_w, context.temp_allocator)
 }
 
 // A screen reader sets the text, types over the selection, or moves the caret.
@@ -517,7 +517,7 @@ edit_point_to_index :: proc(e: ^Edit_Build, p: Vec2) -> (int, bool) {
 	text := area_string(a)
 	li := clamp(int((p.y - e.pad + a.scroll.y) / e.lh), 0, len(e.lines) - 1)
 	l := e.lines[li]
-	i := l.start + font.index_from_x(g.fonts, b.font, b.font_size, text[l.start:l.end], p.x - e.gutter - e.pad + a.scroll.x)
+	i := l.start + font.index_from_x(gs().fonts, b.font, b.font_size, text[l.start:l.end], p.x - e.gutter - e.pad + a.scroll.x)
 	return i, l.soft && i >= l.end
 }
 
@@ -617,7 +617,7 @@ edit_vertical :: proc(e: ^Edit_Build, lines: int, extend: bool) {
 	case target >= len(vl):     idx = len(text)
 	case:
 		l := vl[target]
-		idx = l.start + font.index_from_x(g.fonts, b.font, b.font_size, text[l.start:l.end], x)
+		idx = l.start + font.index_from_x(gs().fonts, b.font, b.font_size, text[l.start:l.end], x)
 		up = l.soft && idx >= l.end
 	}
 	edit_move(a, idx, extend, up)

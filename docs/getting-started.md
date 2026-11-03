@@ -144,10 +144,11 @@ the toolkit itself follows [CONTRIBUTING.md](../CONTRIBUTING.md): a fragment in 
 - **A `render.Surface` (second window) in a local variable**: it is several kilobytes; with `-o:speed -debug` LLVM spent
   more than ten minutes on the module that copied one. Make it where it lives: `render.surface_init(&r, &app.surface,
   hwnd, size)`, not `s, ok := render.surface_create(...)`.
-- **One interface build at a time per thread, one thread of interface**: `ui.begin_build` inside another build (a frame
-  made from `WM_PAINT` while a menu's loop runs inside your build) asserts; check `ui.building()` at the top of the
-  frame procedure (hello does). The `ui` package keeps the State being built in a global: two threads must not build
-  interfaces at the same time (tests of interfaces run with `-define:ODIN_TEST_THREADS=1`, or behind a mutex).
+- **One interface build at a time per thread**: `ui.begin_build` inside another build (a frame made from `WM_PAINT`
+  while a menu's loop runs inside your build) asserts; check `ui.building()` at the top of the frame procedure (hello
+  does). The `ui` package keeps the State being built per thread (`@(thread_local)`): each thread builds its own
+  interface, and a public `ui` proc called on a thread where no `init`, `use` or `begin_build` selected a State stops at
+  once with `ui.NO_STATE_MESSAGE` ("ui: no begin_build on this thread") instead of crashing further on.
 - **Several windows**: give each window a `ui.State` of its own and pass `Build_Params.inactive = true` when building a
   window that is not the one the user is in: its focused text fields keep their focus but show no caret and ask for no
   wake to blink it (`ui.inactive()` tells a widget of your own), as every desktop does.

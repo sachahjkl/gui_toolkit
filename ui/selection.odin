@@ -50,7 +50,7 @@ Selection :: struct {
 // far are not all of them (a Copy button above the text), and the others' text is in memory that is gone.
 selected_text :: proc(s: ^State, allocator := context.allocator) -> string {
 	if !s.sel.active { return "" }
-	if build_open && g == s { return strings.clone(string(s.sel.snapshot[:]), allocator) }
+	if build_open && current == s { return strings.clone(string(s.sel.snapshot[:]), allocator) }
 	return selected_text_of_boxes(s, allocator)
 }
 
