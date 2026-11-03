@@ -1,6 +1,6 @@
 @echo off
 :: Builds an example with the Odin compiler (https://odin-lang.org). Output: build\<example>.exe
-::   build.bat [hello|fidget|todo|smoke|transforms|effects|stream|panes|cursors|markdown] [debug]   (default: fidget, optimized)
+::   build.bat [hello|fidget|todo|smoke|transforms|effects|stream|panes|docking|cursors|markdown] [debug]   (default: fidget, optimized)
 :: Optimized: -o:speed; debug: -debug (D3D11 debug layer on). Both -vet -subsystem:windows (no console: start it from
 :: a console with "start /wait" or redirect its output to read what it prints).
 setlocal

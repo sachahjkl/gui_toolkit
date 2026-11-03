@@ -1,0 +1,744 @@
+package ui
+
+// Docking, the widgets (docs/docking.md): a dock space that lays out the app's `Dock` (dock_model.odin) and lets the user
+// rearrange it, in the build like any widget:
+//
+//   ui.dock_begin(&app.dock, "###dock", {title = panel_title, on_save = save_layout, user = app})
+//   if ui.dock_panel(&app.dock, PANEL_FILES) { files_view(app) }   // built only while shown, in its stack's room
+//   if ui.dock_panel(&app.dock, PANEL_LOG) { log_view(app) }
+//   ui.dock_end(&app.dock)
+//
+//   * Each stack has a strip of tabs (role tab list; each tab a Tab stop: the arrows go along the strip, Ctrl+Shift+arrows
+//     move the tab, the menu key or Shift+F10 opens its menu, a middle click closes it) and a body (tab panel) the panel's
+//     content goes into. Ctrl+Tab / Ctrl+Shift+Tab, with the focus in a stack, show its next or previous panel.
+//   * A tab dragged out (DOCK_DRAG_EM) shows the drop targets: five squares over the stack under the pointer (into it, or
+//     beside it at a side), four at the edges of the dock space, the strip itself (between two tabs: also how a tab is moved
+//     along its own strip), and a translucent preview of where it lands; let go elsewhere, it floats there. Escape cancels.
+//   * A floating panel is an overlay of the dock space with a frame and a shadow, moved by the empty part of its strip (the
+//     drop targets show: it docks where it is let go over one), resized by its corner, back into the dock by a double click
+//     on that part of its strip (the stack it came from) or its menu. A press on it brings it to the front.
+//   * Splits have the handle of pane_split (panes.odin): sides of at least DOCK_MIN_EM, the second side folds to a strip
+//     (a double click, Enter, a drag under half the minimum), the arrows resize it from the keyboard.
+//   * The stack's menu (its button at the end of the strip, the tab's context menu): its tabs, "Dock to" every target a
+//     drag can reach (for keyboard users), float, dock back, move along the strip, close.
+//
+// Floating panels stay inside the application's window (an overlay of the dock space): a panel in a window of the system
+// would need a ui.State of its own for that window, and the content of a panel is built in the one the app builds.
+
+import "core:fmt"
+import "core:math"
+import "core:strings"
+import "../draw"
+import "../platform"
+
+DOCK_TAB_EM :: 2             // a stack's strip of tabs (em)
+DOCK_TAB_PAD_EM :: 0.8       // around a tab's title (em)
+DOCK_CLOSE_EM :: 1.3         // a tab's close button (em, square)
+DOCK_CLOSE_GLYPH_FRACTION :: 0.7   // its cross, of the text's size
+DOCK_MENU_EM :: 1.7          // the stack's menu button (em, square)
+DOCK_DRAG_EM :: 0.5          // a press on a tab that moves this far drags it (em)
+DOCK_MIN_EM :: PANE_MIN_EM   // the least a side of a split keeps (em)
+DOCK_GRIP_EM :: 1.1          // a floating panel's resize grip (em, square)
+DOCK_GRIP_DOTS :: 3          // the grip's rows of dots
+DOCK_GRIP_DOT_PITCH_PX :: 3  // between them (logical px)
+DOCK_MENU_WIDTH_EM :: 15
+DOCK_INSERT_PX :: 2          // the line where a dragged tab goes in a strip (logical px)
+DOCK_PREVIEW_BORDER_PX :: 2  // the preview's outline (logical px)
+DOCK_MARKER_BORDER_PX :: 1
+DOCK_MARKER_RADIUS_EM :: 0.25
+DOCK_MARKER_INSET_FRACTION :: 0.2   // the drawing in a square: this far from its edges
+DOCK_MARKER_UNLIT_ALPHA :: 0.55     // ... in the squares the pointer is not on
+DOCK_GHOST_OFFSET_EM :: 0.8         // the dragged tab's title, this far right of and below the pointer
+DOCK_FOCUS_DEPTH_MAX :: 64          // boxes looked up from the focus for the stack it is in
+
+// What the menus say (Dock_Options.labels: nil is these).
+Dock_Labels :: struct {
+	dock_to, join, left, right, above, below: string,
+	edge_left, edge_right, edge_top, edge_bottom: string,
+	floating, dock_back, move_left, move_right, close, close_panel, menu, empty: string,
+}
+
+DOCK_LABELS :: Dock_Labels{
+	dock_to = "Dock %s to", join = "Into this stack", left = "At its left", right = "At its right", above = "Above it", below = "Below it",
+	edge_left = "At the left edge", edge_right = "At the right edge", edge_top = "At the top edge", edge_bottom = "At the bottom edge",
+	floating = "Float", dock_back = "Dock back", move_left = "Move the tab left", move_right = "Move the tab right",
+	close = "Close", close_panel = "Close %s", menu = "Stack menu", empty = "(empty)",
+}
+
+// A tab being built (Dock_Options.tab builds its content inside `box`, whose width is that of what it builds).
+Dock_Tab :: struct {
+	panel:   u32,
+	box:     ^Box,
+	active:  bool,      // shown in its stack
+	hot:     bool,      // under the pointer
+	focused: bool,
+	held:    bool,      // being dragged
+}
+
+Dock_Options :: struct {
+	title:       proc(user: rawptr, panel: u32) -> string,      // a panel's name (its tab, its menus, screen readers)
+	tab:         proc(user: rawptr, t: Dock_Tab),                // the content of a tab (nil: its title)
+	closable:    proc(user: rawptr, panel: u32) -> bool,         // nil: every panel can be closed
+	strip_begin: proc(user: rawptr, d: ^Dock, leaf: i32),        // boxes at the start of a stack's strip, before its tabs
+	strip_end:   proc(user: rawptr, d: ^Dock, leaf: i32),        // ... at its end, before its menu button (a toolbar)
+	strip_space: proc(user: rawptr, d: ^Dock, leaf: i32, b: ^Box),   // the empty part of a docked stack's strip, built (the app may make it Clickable: what moves its own window)
+	on_save:     proc(user: rawptr, d: ^Dock),                   // the user is done changing the layout: save it (dock_format)
+	user:        rawptr,
+	labels:      ^Dock_Labels,
+	size:        Vec2,   // the dock space (frame px; 0: its last layout's, the window's at first): where `next` gives it pixels, the same
+	tab_height:  f32,    // frame px (0: DOCK_TAB_EM)
+	handle:      f32,    // a split's handle across it (frame px; 0: the splitter's)
+	close_buttons: bool, // a close button on the tabs of the panels that can be closed
+}
+
+Dock_Result :: struct {
+	changed:  bool,      // the layout changed this frame
+	finished: bool,      // ... and the user is done (on_save was called)
+	dragging: bool,      // a tab or a floating panel is being dragged
+	closed:   u32,       // the panel the user closed this frame (DOCK_NO_PANEL: none)
+}
+
+@(private) dock_leaf_id :: proc(leaf: i32) -> string { return fmt.tprintf("###dock_leaf_%d", leaf) }
+@(private) dock_tab_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_tab_%d", panel) }
+@(private) dock_body_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_body_%d", panel) }
+@(private) dock_grip_id :: proc(root: i32) -> string { return fmt.tprintf("###dock_grip_%d", root) }
+
+@(private)
+dock_labels :: proc(d: ^Dock) -> Dock_Labels { return d.opts.labels != nil ? d.opts.labels^ : DOCK_LABELS }
+
+dock_title :: proc(d: ^Dock, panel: u32) -> string {
+	if d.opts.title == nil { return fmt.tprintf("%d", panel) }
+	return d.opts.title(d.opts.user, panel)
+}
+
+@(private)
+dock_closable :: proc(d: ^Dock, panel: u32) -> bool { return d.opts.closable == nil || d.opts.closable(d.opts.user, panel) }
+
+// The key of a tab's box (its stack's strip is its parent).
+dock_tab_key :: proc(d: ^Dock, leaf: i32, panel: u32) -> Key { return key_from_string(key_from_string(d.space_key, dock_leaf_id(leaf)), dock_tab_id(panel)) }
+// The key of the box a panel's content goes into.
+dock_body_key :: proc(d: ^Dock, panel: u32) -> Key { return key_from_string(d.space_key, dock_body_id(panel)) }
+
+// The dock space: lays out the dock, takes the user's drags, drops and keys, and builds the strips, the handles and the
+// floating panels' frames. The panels' content follows (dock_panel), then dock_end.
+dock_begin :: proc(d: ^Dock, id: string, opts := Dock_Options{}) {
+	s := gs()
+	dock_ready(d)
+	d.opts = opts
+	d.held = false
+	d.closed = DOCK_NO_PANEL
+	if d.saved == 0 { d.saved = d.serial }   // (the layout the app made or loaded is not a change of the user's)
+	d.begin_serial = d.serial
+	em := font_size()
+	d.space_key = key_from_string(parent_box().key, id)
+	size := opts.size
+	if prev := box_from_key(d.space_key); prev != nil {
+		d.origin = prev.rect.min
+		if size.x <= 0 || size.y <= 0 { size = prev.rect.max - prev.rect.min }
+	}
+	if size.x <= 0 || size.y <= 0 { size = s.window_size - d.origin }
+	m := Dock_Metrics{
+		strip  = opts.tab_height > 0 ? opts.tab_height : math.round(DOCK_TAB_EM * em),
+		handle = opts.handle > 0 ? opts.handle : math.round(SPLITTER_THICKNESS_PX * s.scale),
+		folded = math.round(PANE_STRIP_EM * em),
+		min    = DOCK_MIN_EM * em,
+		marker = math.round(DOCK_MARKER_EM * em),
+		gap    = math.round(DOCK_MARKER_GAP_EM * em),
+		border = max(math.round(s.scale), 1),
+		em     = em,
+		scale  = s.scale,
+	}
+	dock_layout(d, size, m)
+	dock_raise_pressed(d)
+	dock_grips(d)
+	dock_drag_frame(d)
+	dock_keys(d)
+	dock_layout(d, size, m)
+
+	mod := s.has_next ? s.next_mod : Style_Mod{width = fill(), height = fill()}
+	if mod.width == nil { mod.width = fill() }
+	if mod.height == nil { mod.height = fill() }
+	next(mod)
+	space := build_box({}, id)
+	push_parent(space)
+	defer pop_parent()
+	dock_build_tree(d, d.main)
+	floats := make([]i32, len(d.floats), context.temp_allocator)   // (a tab shown from the keyboard brings its panel to the front)
+	copy(floats, d.floats[:])
+	for f in floats { if dock_valid_node(d, f) { dock_build_float(d, f) } }
+}
+
+// The panel's content follows in the block, in its stack's room, while it is shown (its stack's tab on top, not folded).
+@(deferred_in_out = dock_panel_end)
+dock_panel :: proc(d: ^Dock, panel: u32) -> bool {
+	if !dock_shown(d, panel) { return false }
+	b := box_from_key(dock_body_key(d, panel))
+	if b == nil || b.last_build != gs().build_index { return false }
+	push_parent(b)
+	return true
+}
+
+@(private)
+dock_panel_end :: proc(d: ^Dock, panel: u32, ok: bool) { if ok { pop_parent() } }
+
+// The end of the dock space: the drop targets and the preview over it while something is dragged, the menu, and the save.
+dock_end :: proc(d: ^Dock) -> (res: Dock_Result) {
+	dock_do_pending(d)
+	space := box_from_key(d.space_key)
+	if space != nil && space.last_build == gs().build_index && d.drag.state == .Dragging {
+		push_parent(space)
+		dock_build_overlay(d)
+		pop_parent()
+	}
+	menu := key_from_string(d.space_key, "###dock_menu")
+	if ctx_menu(menu, font_size() * DOCK_MENU_WIDTH_EM) { dock_menu_items(d, d.menu_panel) }
+	dock_do_pending(d)   // (the menu's Close)
+	res.closed = d.closed
+	res.dragging = d.drag.state == .Dragging
+	res.changed = d.serial != d.begin_serial
+	if d.serial != d.saved && d.drag.state == .Idle && !d.held {
+		d.saved = d.serial
+		res.finished = true
+		if d.opts.on_save != nil { d.opts.on_save(d.opts.user, d) }
+	}
+	return
+}
+
+// Opens the stack's menu for `panel` (at `pos`, window px; `from_keyboard`: its first item is selected).
+dock_open_menu :: proc(d: ^Dock, panel: u32, pos: Vec2, from_keyboard := false) {
+	d.menu_panel = panel
+	ctx_menu_open(key_from_string(d.space_key, "###dock_menu"), pos, 0, from_keyboard)
+}
+
+////////////////////////////////
+// Input before the build
+
+// A press on a floating panel brings it to the front (before its boxes are built: in front this frame).
+@(private)
+dock_raise_pressed :: proc(d: ^Dock) {
+	if !mouse_pressed(.Left) { return }
+	p := mouse_pos() - d.origin
+	for k := len(d.floats) - 1; k >= 0; k -= 1 {
+		r := d.nodes[d.floats[k]].rect
+		if p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y { dock_raise(d, d.floats[k]); return }
+	}
+}
+
+// The floating panels' corners (their boxes of the last build): resized before the layout, so the frame follows at once.
+@(private)
+dock_grips :: proc(d: ^Dock) {
+	for f in d.floats {
+		gb := box_from_key(key_from_string(d.space_key, dock_grip_id(f)))
+		if gb == nil { continue }
+		sig := signal(gb)
+		sc := d.metrics.scale
+		if sig.pressed {
+			r := d.nodes[f].rect
+			drag_store({r.min.x / sc, r.min.y / sc, (r.max.x - r.min.x) / sc, (r.max.y - r.min.y) / sc})
+		}
+		if !sig.dragging { continue }
+		d.held = true
+		from := drag_load()
+		lo := DOCK_FLOAT_MIN_EM * d.metrics.em / sc
+		w := max(from[2] + sig.drag_delta.x / sc, lo.x)
+		h := max(from[3] + sig.drag_delta.y / sc, lo.y)
+		nr := Rect{{from[0], from[1]}, {from[0] + w, from[1] + h}}
+		if nr != d.nodes[f].float { d.nodes[f].float = nr; dock_changed(d) }
+	}
+}
+
+// The drag of a tab or a floating panel: past the threshold it drags, the target under the pointer, Escape, the drop when
+// the button goes up.
+@(private)
+dock_drag_frame :: proc(d: ^Dock) {
+	dr := &d.drag
+	if dr.state == .Idle { return }
+	if active_key() != dr.key {
+		// the button went up (or what was held is gone)
+		if dr.state == .Dragging { dock_drop(d) }
+		dr^ = {}
+		return
+	}
+	d.held = true
+	switch dr.state {
+	case .Idle, .Cancelled: return
+	case .Pressed:
+		dlt := mouse_pos() - dr.from
+		if math.sqrt(dlt.x * dlt.x + dlt.y * dlt.y) < DOCK_DRAG_EM * d.metrics.em { return }
+		dr.state = .Dragging
+	case .Dragging:
+	}
+	if key_press(.Escape) {
+		if dr.panel == DOCK_NO_PANEL && dock_valid_node(d, dr.node) { d.nodes[dr.node].float = dr.float_from }
+		dr.state = .Cancelled
+		return
+	}
+	local := mouse_pos() - d.origin
+	if dr.panel == DOCK_NO_PANEL && dock_valid_node(d, dr.node) {
+		// a floating panel follows the pointer
+		dlt := (mouse_pos() - dr.from) / d.metrics.scale
+		d.nodes[dr.node].float = {dr.float_from.min + dlt, dr.float_from.max + dlt}
+		layout_float(d, dr.node, d.metrics)
+	}
+	dr.target, dr.under = dock_target_at(d, local, dr.panel, dr.node, dr.grab)
+	dr.insert_x = -1
+	if dr.target.place == .Tab && dr.under == dr.target.node && local.y < dock_strip_rect(d, dr.under).max.y {
+		// over a strip: between the tabs the pointer is between (their boxes of the last build)
+		idx := 0
+		x := dock_strip_rect(d, dr.under).min.x
+		for q, k in dock_tabs(d, dr.under) {
+			b := box_from_key(dock_tab_key(d, dr.under, q))
+			if b == nil { continue }
+			if local.x > (b.rect.min.x + b.rect.max.x) * 0.5 - d.origin.x { idx, x = k + 1, b.rect.max.x - d.origin.x }
+		}
+		dr.target.index, dr.insert_x = idx, x
+	}
+}
+
+@(private)
+dock_drop :: proc(d: ^Dock) {
+	dr := d.drag
+	if dr.panel == DOCK_NO_PANEL {
+		if !dock_valid_node(d, dr.node) { return }
+		if dr.target.place == .Float { dock_changed(d); return }   // (moved already)
+		dock_move_node(d, dr.node, dr.target)
+		return
+	}
+	leaf := dock_leaf_of(d, dr.panel)
+	if dr.target.place == .Float && leaf != DOCK_NONE && d.nodes[leaf].parent == DOCK_NONE && leaf != d.main && dock_tab_count(d, leaf) == 1 {
+		dock_move_node(d, leaf, dr.target)   // (the one tab of a floating panel: the panel moves)
+		return
+	}
+	dock_move(d, dr.panel, dr.target)
+}
+
+// Ctrl+Tab / Ctrl+Shift+Tab with the focus in a stack (one of its tabs, or in its panel): its next or previous panel.
+@(private)
+dock_keys :: proc(d: ^Dock) {
+	fk := focus_key()
+	if fk == 0 { return }
+	fwd := key_pressed_peek(.Tab, {.Ctrl})
+	back := key_pressed_peek(.Tab, {.Ctrl, .Shift})
+	if !fwd && !back { return }
+	child: ^Box
+	depth := 0
+	for b := box_from_key(fk); b != nil && depth < DOCK_FOCUS_DEPTH_MAX; b, depth = b.parent, depth + 1 {
+		if b.parent != nil && b.parent.key == d.space_key { child = b; break }
+	}
+	if child == nil { return }
+	for l in dock_all_leaves(d) {
+		a := d.nodes[l].active
+		if a == DOCK_NO_PANEL || (child.key != key_from_string(d.space_key, dock_leaf_id(l)) && child.key != dock_body_key(d, a)) { continue }
+		tabs := dock_tabs(d, l)
+		if len(tabs) < 2 { return }
+		_ = key_press(.Tab, fwd ? {.Ctrl} : {.Ctrl, .Shift})
+		at := 0
+		for t, k in tabs { if t == a { at = k } }
+		next_tab := tabs[(at + (fwd ? 1 : len(tabs) - 1)) % len(tabs)]
+		on_tab := child.key == key_from_string(d.space_key, dock_leaf_id(l))
+		dock_activate(d, next_tab)
+		if on_tab { set_focus(dock_tab_key(d, l, next_tab)) }
+		return
+	}
+}
+
+////////////////////////////////
+// The boxes
+
+// A tree: its handles first (a drag moves the stacks of this frame), then its stacks.
+@(private)
+dock_build_tree :: proc(d: ^Dock, root: i32) {
+	Handle :: struct { split: i32, box: ^Box }
+	handles := make([dynamic]Handle, 0, len(d.nodes), context.temp_allocator)
+	serial := d.serial
+	walk :: proc(d: ^Dock, n: i32, out: ^[dynamic]Handle) {
+		if d.nodes[n].kind != .Split { return }
+		walk(d, d.nodes[n].a, out)
+		if !d.nodes[n].fold { walk(d, d.nodes[n].b, out) }
+		append(out, Handle{n, dock_handle(d, n)})
+	}
+	walk(d, root, &handles)
+	if d.serial != serial {
+		layout_node(d, root, d.nodes[root].rect, d.metrics)
+		for h in handles {
+			r := dock_handle_rect(d, h.split)
+			h.box.fixed_pos = r.min
+			h.box.pref = {.X = px(r.max.x - r.min.x), .Y = px(r.max.y - r.min.y)}
+		}
+	}
+	for l in dock_leaves(d, root) { if dock_node_visible(d, l) { dock_build_leaf(d, l) } }
+}
+
+// A split's handle: pane_split's, the second side the pane.
+@(private)
+dock_handle :: proc(d: ^Dock, split: i32) -> ^Box {
+	n := d.nodes[split]
+	m := d.metrics
+	sc := m.scale
+	hr := dock_handle_rect(d, split)
+	ax := n.axis
+	length := n.rect.max[int(ax)] - n.rect.min[int(ax)]
+	room := max(length - m.handle, 1)
+	p: Pane
+	p.collapsed = n.fold
+	p.size[ax] = (room - math.round(room * n.ratio)) / sc
+	name := fmt.tprintf("%s | %s", dock_stack_label(d, dock_leaves(d, n.a)[0]), dock_stack_label(d, dock_leaves(d, n.b)[0]))
+	opts := Pane_Options{side = .After, total = room / sc, min_size = m.min / sc, min_other = m.min / sc, collapsible = true, title = name, thickness = m.handle}
+	if ax == .X { next({fixed_x = hr.min.x, fixed_y = hr.min.y, height = px(hr.max.y - hr.min.y)}) } else { next({fixed_x = hr.min.x, fixed_y = hr.min.y, width = px(hr.max.x - hr.min.x)}) }
+	r := pane_split(fmt.tprintf("###dock_split_%d", split), ax, &p, opts)
+	if r.changed {
+		ratio := p.collapsed ? n.ratio : 1 - p.size[ax] * sc / room
+		dock_set_split(d, split, ratio, p.collapsed)
+	}
+	if r.dragging { d.held = true }
+	return r.sig.box
+}
+
+// The titles of a stack's panels, its shown one first ("(empty)" when it has none).
+dock_stack_label :: proc(d: ^Dock, leaf: i32) -> string {
+	if !dock_is_leaf(d, leaf) { return "" }
+	a := d.nodes[leaf].active
+	if a == DOCK_NO_PANEL { return dock_labels(d).empty }
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, dock_title(d, a))
+	for p in dock_tabs(d, leaf) {
+		if p == a { continue }
+		strings.write_string(&b, ", ")
+		strings.write_string(&b, dock_title(d, p))
+	}
+	return strings.to_string(b)
+}
+
+@(private)
+dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
+	tabs := dock_tabs(d, leaf)
+	if len(tabs) == 0 { return }   // (the empty main stack: nothing but its room, a drop target)
+	em := d.metrics.em
+	root := dock_root_of(d, leaf)
+	floating := root != d.main
+	sr := dock_strip_rect(d, leaf)
+	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
+	strip: ^Box
+	if tags("bar") { strip = build_box({.Clip, .Draw_Background}, dock_leaf_id(leaf)) }
+	a11y_set(strip, {role = .Tab_List, orientation = .X, name = dock_stack_label(d, leaf)})
+	if parent(strip) {
+		if d.opts.strip_begin != nil { d.opts.strip_begin(d.opts.user, d, leaf) }
+		for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
+		// the rest of the strip: a floating panel's title (moved by it, docked back by a double click)
+		next({width = fill(), height = pct(1), cursor = floating ? platform.Cursor.Move : platform.Cursor.Arrow})
+		grab := build_box(floating ? {.Clickable} : {}, "###dock_grab")
+		if floating {
+			gsig := signal(grab)
+			if gsig.pressed {
+				d.drag = {state = .Pressed, key = grab.key, panel = DOCK_NO_PANEL, node = root, from = mouse_pos(),
+					grab = mouse_pos() - d.origin - d.nodes[root].rect.min, float_from = d.nodes[root].float}
+			}
+			if gsig.double_clicked {
+				d.drag = {}
+				d.pending = {kind = .Redock, node = root}
+			}
+		} else if d.opts.strip_space != nil {
+			d.opts.strip_space(d.opts.user, d, leaf, grab)
+		}
+		if d.opts.strip_end != nil { d.opts.strip_end(d.opts.user, d, leaf) }
+		// the stack's menu
+		mw := math.round(DOCK_MENU_EM * em)
+		next({width = px(mw), height = px(mw), font = gs().icon_font, text_align = .Center, text_pad = 0})
+		mb: ^Box
+		if tags("icon_button") { mb = build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects, .Draw_Focus_Ring, .No_Text_Trunc}, fmt.tprintf("%s###dock_menu_btn", ICON_DOWN)) }
+		msig := signal(mb)
+		if msig.clicked { dock_open_menu(d, d.nodes[leaf].active, {mb.rect.min.x, mb.rect.max.y}, msig.focused && gs().focus_visible) }
+		a11y_default(mb, {role = .Button, name = dock_labels(d).menu, popup = .Menu})
+	}
+	// the body: keyed by the panel (its content keeps its state wherever it goes)
+	a := d.nodes[leaf].active
+	br := dock_body_rect(d, leaf)
+	next({fixed_x = br.min.x, fixed_y = br.min.y, width = px(br.max.x - br.min.x), height = px(br.max.y - br.min.y), axis = .Y})
+	body := build_box({.Clip}, dock_body_id(a))
+	a11y_set(body, {role = .Tab_Panel, name = dock_title(d, a), labelled_by = dock_tab_key(d, leaf, a)})
+}
+
+@(private)
+dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
+	em := d.metrics.em
+	title := dock_title(d, p)
+	active := d.nodes[leaf].active == p
+	push_tags("tab")
+	if !active { push_tags("weak") }
+	next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
+	tb := build_box({.Clickable, .Focusable, .Draw_Hot_Effects, .Hot_Within}, dock_tab_id(p))
+	if !active { pop_tags() }
+	pop_tags()
+	sig := signal(tb)
+	td := frame_new(Tab_Draw)
+	td.t, td.accent = active ? 1 : 0, color("accent")
+	tb.custom, tb.custom_user = tab_draw, td
+	held := d.drag.state == .Dragging && d.drag.panel == p
+	closable := dock_closable(d, p)
+	if parent(tb) {
+		if d.opts.tab != nil {
+			d.opts.tab(d.opts.user, {panel = p, box = tb, active = active, hot = sig.hovering || hot_within(tb.key), focused = sig.focused, held = held})
+		} else {
+			if !active { push_tags("weak") }
+			spacer(px(math.round(DOCK_TAB_PAD_EM * em)))
+			next({width = text_size(), height = pct(1)})
+			build_box({.Draw_Text}, fmt.tprintf("%s###dock_title", title))
+			spacer(px(math.round(DOCK_TAB_PAD_EM * em)))
+			if !active { pop_tags() }
+		}
+		if d.opts.close_buttons && closable {
+			// (shown on the tab on top and the one under the pointer; its room is kept on the others: no tab moves)
+			cw := math.round(DOCK_CLOSE_EM * em)
+			next({width = px(cw), height = px(cw), font = gs().icon_font, font_size = em * DOCK_CLOSE_GLYPH_FRACTION, text_align = .Center, text_pad = 0})
+			cb: ^Box
+			show := active || sig.hovering || hot_within(tb.key)
+			if tags("icon_button", "weak") { cb = build_box({.Clickable, .Draw_Hot_Effects, .No_Text_Trunc} + (show ? {.Draw_Text} : {}), fmt.tprintf("%s###dock_close", ICON_X)) }
+			if signal(cb).clicked { dock_user_close(d, p) }
+			a11y_default(cb, {role = .Button, name = fmt.tprintf(dock_labels(d).close_panel, title)})
+			spacer(px(math.round(DOCK_TAB_PAD_EM * em * 0.5)))
+		}
+	}
+	if sig.pressed {
+		if !active { d.nodes[leaf].active = p; dock_changed(d) }
+		d.drag = {state = .Pressed, key = tb.key, panel = p, node = DOCK_NONE, from = mouse_pos(), grab = mouse_pos() - tb.rect.min}
+	}
+	if sig.clicked && !active { dock_activate(d, p) }   // (Enter, Space)
+	if sig.middle_clicked && closable { dock_user_close(d, p) }
+	if sig.right_clicked { dock_open_menu(d, p, mouse_pos()) }
+	if sig.focused {
+		tabs := dock_tabs(d, leaf)
+		to := -1
+		if key_press(.Left) { to = (i + n - 1) % n }
+		if key_press(.Right) { to = (i + 1) % n }
+		if key_press(.Home) { to = 0 }
+		if key_press(.End) { to = n - 1 }
+		if to >= 0 && to < len(tabs) {
+			dock_activate(d, tabs[to])
+			set_focus(dock_tab_key(d, leaf, tabs[to]))
+		}
+		if key_press(.Left, {.Ctrl, .Shift}) && i > 0 { dock_move(d, p, {place = .Tab, node = leaf, index = i - 1}) }
+		if key_press(.Right, {.Ctrl, .Shift}) && i + 1 < n { dock_move(d, p, {place = .Tab, node = leaf, index = i + 2}) }
+		if key_press(.Menu) || key_press(.F10, {.Shift}) { dock_open_menu(d, p, {tb.rect.min.x, tb.rect.max.y}, true) }
+	}
+	info := A11y_Info{role = .Tab, name = title, selected = active, position = i + 1, set_size = n}
+	if active { info.controls = dock_body_key(d, p) }
+	a11y_set(tb, info)
+}
+
+// (in the build: done by dock_end)
+@(private)
+dock_user_close :: proc(d: ^Dock, p: u32) { d.pending = {kind = .Close, panel = p} }
+
+@(private)
+dock_do_pending :: proc(d: ^Dock) {
+	a := d.pending
+	d.pending = {}
+	switch a.kind {
+	case .None:
+	case .Close:  if dock_close(d, a.panel) { d.closed = a.panel }
+	case .Redock: if dock_valid_node(d, a.node) && dock_is_floating(d, a.node) { dock_redock(d, a.node) }
+	}
+}
+
+// A floating root: its frame, its handles and stacks, its grip.
+@(private)
+dock_build_float :: proc(d: ^Dock, root: i32) {
+	r := dock_float_rect(d, root, d.metrics)
+	em := d.metrics.em
+	next({fixed_x = r.min.x, fixed_y = r.min.y, width = px(r.max.x - r.min.x), height = px(r.max.y - r.min.y), cursor = platform.Cursor.Arrow})
+	frame: ^Box
+	if tags("floating") { frame = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###dock_float_%d", root)) }   // (Clickable: what is under it gets no press)
+	a11y_set(frame, {role = .Group, name = dock_stack_label(d, dock_leaves(d, root)[0]), role_description = "floating panel"})
+	dock_build_tree(d, root)
+	g := math.round(DOCK_GRIP_EM * em)
+	next({fixed_x = r.max.x - g, fixed_y = r.max.y - g, width = px(g), height = px(g), cursor = platform.Cursor.Resize_NWSE})
+	gb := build_box({.Clickable}, dock_grip_id(root))
+	gd := frame_new(Dock_Grip_Draw)
+	gd.color = signal(gb).hovering || signal(gb).dragging ? color("accent") : color("weak text")
+	gb.custom, gb.custom_user = dock_grip_draw, gd
+}
+
+@(private)
+Dock_Grip_Draw :: struct { color: Color }
+
+@(private)
+dock_grip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	gd := (^Dock_Grip_Draw)(user)
+	r := b.rect
+	s := max(math.round(scale()), 1)
+	pitch := DOCK_GRIP_DOT_PITCH_PX * s
+	for i in 0 ..< DOCK_GRIP_DOTS {
+		for j in 0 ..= i {
+			x := r.max.x - 2 * s - f32(j) * pitch
+			y := r.max.y - 2 * s - f32(i - j) * pitch
+			draw.rect(dc, {{x - s, y - s}, {x, y}}, gd.color)
+		}
+	}
+}
+
+////////////////////////////////
+// While dragging: the targets, the preview, the title under the pointer
+
+@(private)
+Dock_Overlay_Draw :: struct {
+	preview:   Rect,         // local (frame px from the space's top left)
+	markers:   [9]Rect,
+	kinds:     [9]Dock_Marker,
+	count:     int,
+	lit:       int,          // the marker of the target (-1: none)
+	insert:    Rect,         // the line where a tab goes (empty: none)
+	preview_bg, preview_border, marker_bg, marker_border, accent: Color,
+	radius, line, border: f32,
+}
+
+@(private)
+dock_build_overlay :: proc(d: ^Dock) {
+	dr := d.drag
+	m := d.metrics
+	sc := m.scale
+	o := frame_new(Dock_Overlay_Draw)
+	o.lit = -1
+	o.preview = dock_preview_rect(d, dr.target)
+	add :: proc(o: ^Dock_Overlay_Draw, r: Rect, k: Dock_Marker, lit: bool) {
+		if lit { o.lit = o.count }
+		o.markers[o.count], o.kinds[o.count] = r, k
+		o.count += 1
+	}
+	main_empty := dock_is_leaf(d, d.main) && dock_tab_count(d, d.main) == 0
+	if !main_empty && (dr.under == DOCK_NONE || !dock_is_floating(d, dr.under)) {
+		for r, k in dock_edge_markers(d.size, m) {
+			if k == .Center || !dock_target_valid(d, dr.panel, dr.node, {place = marker_edge(k)}) { continue }
+			add(o, r, k, dr.target.place == marker_edge(k))
+		}
+	}
+	if dr.under != DOCK_NONE {
+		in_strip := dr.insert_x >= 0
+		for r, k in dock_markers(d.nodes[dr.under].rect, m) {
+			t := Dock_Target{place = marker_side(k), node = dr.under, index = -1}
+			if !dock_target_valid(d, dr.panel, dr.node, t) { continue }
+			add(o, r, k, !in_strip && dr.target.node == dr.under && dr.target.place == t.place)
+		}
+	}
+	if dr.insert_x >= 0 {
+		sr := dock_strip_rect(d, dr.under)
+		w := math.round(DOCK_INSERT_PX * sc)
+		o.insert = {{dr.insert_x - w * 0.5, sr.min.y}, {dr.insert_x + w * 0.5, sr.max.y}}
+	}
+	if tags("dock_preview") { o.preview_bg, o.preview_border = color("background"), color("border") }
+	if tags("dock_marker") { o.marker_bg, o.marker_border = color("background"), color("border") }
+	o.accent = color("accent")
+	o.radius = DOCK_MARKER_RADIUS_EM * m.em
+	o.line = math.round(DOCK_PREVIEW_BORDER_PX * sc)
+	o.border = max(math.round(DOCK_MARKER_BORDER_PX * sc), 1)
+	next({fixed_x = 0, fixed_y = 0, width = px(d.size.x), height = px(d.size.y)})
+	ob := build_box({}, "###dock_overlay")
+	ob.custom, ob.custom_user = dock_overlay_draw, o
+	a11y_set(ob, {ignore = true})
+
+	// what is dragged, by the pointer
+	title := dr.panel != DOCK_NO_PANEL ? dock_title(d, dr.panel) : dock_stack_label(d, dock_leaves(d, dr.node)[0])
+	local := mouse_pos() - d.origin
+	off := DOCK_GHOST_OFFSET_EM * m.em
+	next({fixed_x = local.x + off, fixed_y = local.y + off, width = text_size(math.round(DOCK_TAB_PAD_EM * m.em)), height = px(m.strip)})
+	if tags("floating") {
+		gh := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow, .Draw_Text}, fmt.tprintf("%s###dock_ghost", title))
+		a11y_set(gh, {ignore = true})
+	}
+}
+
+@(private)
+dock_overlay_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	o := (^Dock_Overlay_Draw)(user)
+	at := b.rect.min
+	if o.preview.max.x > o.preview.min.x {
+		r := Rect{o.preview.min + at, o.preview.max + at}
+		draw.rect(dc, r, o.preview_bg)
+		draw.rect(dc, r, o.preview_border, 0, o.line)
+	}
+	if o.insert.max.x > o.insert.min.x { draw.rect(dc, {o.insert.min + at, o.insert.max + at}, o.accent) }
+	for i in 0 ..< o.count {
+		r := Rect{o.markers[i].min + at, o.markers[i].max + at}
+		draw.rect(dc, r, o.marker_bg, o.radius)
+		draw.rect(dc, r, i == o.lit ? o.accent : o.marker_border, o.radius, o.border)
+		// the drawing: the room it would take in the stack
+		w := r.max - r.min
+		inner := Rect{r.min + w * DOCK_MARKER_INSET_FRACTION, r.max - w * DOCK_MARKER_INSET_FRACTION}
+		iw := inner.max - inner.min
+		#partial switch o.kinds[i] {
+		case .Left:   inner.max.x = inner.min.x + iw.x * DOCK_DROP_SHARE
+		case .Right:  inner.min.x = inner.max.x - iw.x * DOCK_DROP_SHARE
+		case .Top:    inner.max.y = inner.min.y + iw.y * DOCK_DROP_SHARE
+		case .Bottom: inner.min.y = inner.max.y - iw.y * DOCK_DROP_SHARE
+		}
+		c := o.accent
+		if i != o.lit { c.a *= DOCK_MARKER_UNLIT_ALPHA }
+		draw.rect(dc, inner, c, o.radius * DOCK_MARKER_INSET_FRACTION)
+	}
+}
+
+////////////////////////////////
+// The menu: every target a drag can reach
+
+@(private)
+dock_menu_items :: proc(d: ^Dock, p: u32) {
+	leaf := dock_leaf_of(d, p)
+	if leaf == DOCK_NONE { return }
+	lb := dock_labels(d)
+	tabs := dock_tabs(d, leaf)
+	for q in tabs {
+		if menu_item(fmt.tprintf("%s###dock_m_tab_%d", dock_title(d, q), q), checked = d.nodes[leaf].active == q).clicked { dock_activate(d, q) }
+	}
+	menu_separator()
+	title := dock_title(d, p)
+	if menu_submenu(fmt.tprintf("%s###dock_m_to", fmt.tprintf(lb.dock_to, title))) { dock_to_items(d, p) }
+	root := dock_root_of(d, leaf)
+	if root != d.main {
+		if menu_item(fmt.tprintf("%s###dock_m_back", lb.dock_back)).clicked { dock_redock(d, root) }
+	} else if menu_item(fmt.tprintf("%s###dock_m_float", lb.floating)).clicked {
+		dock_float(d, p, dock_float_place(d))
+	}
+	at := 0
+	for q, k in tabs { if q == p { at = k } }
+	if len(tabs) > 1 {
+		if menu_item(fmt.tprintf("%s###dock_m_ml", lb.move_left), "Ctrl+Shift+Left", enabled = at > 0).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at - 1}) }
+		if menu_item(fmt.tprintf("%s###dock_m_mr", lb.move_right), "Ctrl+Shift+Right", enabled = at + 1 < len(tabs)).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at + 2}) }
+	}
+	if dock_closable(d, p) {
+		menu_separator()
+		if menu_item(fmt.tprintf("%s###dock_m_close", lb.close)).clicked { dock_user_close(d, p) }
+	}
+}
+
+// "Dock <panel> to": each stack (into it, at a side of it), each edge of the space, floating.
+@(private)
+dock_to_items :: proc(d: ^Dock, p: u32) {
+	lb := dock_labels(d)
+	own := dock_leaf_of(d, p)
+	sides := [5]Dock_Place{.Tab, .Left, .Right, .Top, .Bottom}
+	names := [5]string{lb.join, lb.left, lb.right, lb.above, lb.below}
+	for l in dock_all_leaves(d) {
+		if dock_tab_count(d, l) == 0 { continue }
+		any := false
+		for pl in sides {
+			if pl == .Tab && l == own { continue }
+			if dock_target_valid(d, p, DOCK_NONE, {place = pl, node = l}) { any = true }
+		}
+		if !any { continue }
+		if menu_submenu(fmt.tprintf("%s###dock_m_l%d", dock_stack_label(d, l), l)) {
+			for pl, k in sides {
+				t := Dock_Target{place = pl, node = l, index = -1}
+				if (pl == .Tab && l == own) || !dock_target_valid(d, p, DOCK_NONE, t) { continue }
+				if menu_item(fmt.tprintf("%s###dock_m_s%d", names[k], k)).clicked { dock_move(d, p, t) }
+			}
+		}
+	}
+	menu_separator()
+	edges := [4]Dock_Place{.Edge_Left, .Edge_Right, .Edge_Top, .Edge_Bottom}
+	edge_names := [4]string{lb.edge_left, lb.edge_right, lb.edge_top, lb.edge_bottom}
+	for pl, k in edges {
+		if menu_item(fmt.tprintf("%s###dock_m_e%d", edge_names[k], k)).clicked { dock_move(d, p, {place = pl}) }
+	}
+	if menu_item(fmt.tprintf("%s###dock_m_fl", lb.floating), enabled = !dock_is_floating(d, own) || dock_tab_count(d, own) > 1).clicked {
+		dock_float(d, p, dock_float_place(d))
+	}
+}
