@@ -74,7 +74,7 @@ What the widgets say:
 | `splitter` | Splitter | size, min, max |
 | `accordion` | Button | expanded |
 | `card`, `form_row` | Group (named by the title); a form row's label names its widget |
-| `title_bar`, `window_buttons` | TitleBar; Buttons (`set_window_button_names` translates them) |
+| `title_bar`, `window_buttons` | TitleBar; Buttons (`set_window_button_names` translates the current State's: once per window) |
 | `status_bar` | Status | |
 | `label`, `paragraph` | Label | the text |
 | `rich_paragraph` | Label, or Paragraph with Label and Link parts | links: click, focus, URL |

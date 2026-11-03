@@ -177,6 +177,31 @@ title_bar_regions :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.hit_test_chrome(c, {(mx.min.x + mx.max.x) / 2, 20}, size, 8, 16, {}), platform.Hit.Maximize)
 }
 
+// The caption buttons' names are a window's: translated in one State, the other window's keep theirs.
+@(test)
+caption_button_names_are_a_states :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	a, b := new(Fx), new(Fx)
+	defer { free(a); free(b) }
+	if !testing.expect(t, open(a)) { return }
+	defer close(a)
+	ui.set_window_button_names("Réduire", "Agrandir", "Restaurer", "Fermer")   // (a's State is current: open made it so)
+	if !testing.expect(t, open(b)) { return }
+	defer close(b)
+	body :: proc(f: ^Fx, user: rawptr) {
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.title_bar("###tb") { _, _ = ui.window_buttons() }
+	}
+	close_name :: proc(f: ^Fx) -> string {
+		frame(f, nil, body, nil)
+		box := ui.box_from_key(f.s.caption_keys[.Close])
+		return box != nil && box.a11y != nil ? box.a11y.name : ""
+	}
+	testing.expect_value(t, close_name(a), "Fermer")
+	testing.expect_value(t, close_name(b), "Close")
+}
+
 // A menu opened from the title bar that reaches the window's right edge and bottom corner: the window answers that it is
 // the app's there (not a resize band: its cursor showed over the menu and the moves never reached it), and it is above
 // what the app builds at the root after it (a notice), for the pointer as for the eye.

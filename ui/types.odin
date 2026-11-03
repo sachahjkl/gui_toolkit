@@ -396,6 +396,7 @@ State :: struct {
 	caption_built:   bool,                  // a box with .Window_Caption was built this build
 	caption_font:    font.Font_Id,
 	caption_font_tried: bool,
+	caption_names:   [4]string,             // what screen readers call the caption buttons (set_window_button_names)
 
 	// smooth scrolling of scroll regions (scroll_anim.odin)
 	scroll_cfg:      Scroll_Settings,
