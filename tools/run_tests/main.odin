@@ -73,6 +73,7 @@ STEPS := []Step{
 	{name = "fsx"},
 	{name = "globals", oses = EVERYWHERE},
 	{name = "i18n", oses = EVERYWHERE},
+	{name = "ime", oses = EVERYWHERE},
 	{name = "instance"},
 	{name = "key_repeat", oses = EVERYWHERE},
 	{name = "pacing", oses = EVERYWHERE},

@@ -3,11 +3,8 @@ package platform
 
 // Wayland input method through zwp_text_input_v3 (ime.odin has the neutral API). The text-input object is made per
 // seat (window_wl_linux.odin); enabling it tells the compositor this window wants composition. The compositor sends
-// preedit_string (the marked text) and commit_string (the text to insert) between a `done` that applies them: on
-// `done` we push the committed text as .Text events (rune by rune) and keep the preedit for the app to draw.
-
-import "core:strings"
-import "core:unicode/utf8"
+// preedit_string (the marked text), commit_string (the text to insert) and delete_surrounding_text between a `done` that
+// applies them: Ime_Compose (ime.odin) keeps them and makes the events; the listeners only feed it.
 
 @(private)
 Text_Input_Listener :: struct {
@@ -34,47 +31,27 @@ ti_leave :: proc "c" (data: rawptr, ti: Wl_Proxy, surface: Wl_Proxy) {
 @(private)
 ti_preedit :: proc "c" (data: rawptr, ti: Wl_Proxy, text: cstring, cursor_begin, cursor_end: i32) {
 	context = wl_ctx_real()
-	delete(wlc.pending_preedit)
-	wlc.pending_preedit = text != nil ? strings.clone(string(text)) : ""
-	wlc.preedit_cursor = int(cursor_begin < 0 ? 0 : cursor_begin)
+	ime_compose_preedit(&wlc.ime, text != nil ? string(text) : "", int(cursor_begin))
 }
 @(private)
 ti_commit :: proc "c" (data: rawptr, ti: Wl_Proxy, text: cstring) {
 	context = wl_ctx_real()
-	delete(wlc.pending_commit)
-	wlc.pending_commit = text != nil ? strings.clone(string(text)) : ""
+	ime_compose_commit(&wlc.ime, text != nil ? string(text) : "")
 }
 @(private)
 ti_delete :: proc "c" (data: rawptr, ti: Wl_Proxy, before, after: u32) {
-	// a backspace of surrounding text the IME asks for: send it as Backspace key presses (best effort). The app's text
-	// field handles the composition replacement when it draws the committed string.
 	context = wl_ctx_real()
-	w := wlc.ti_window
-	if w == nil { return }
-	for _ in 0 ..< before {
-		wl_push(w, {kind = .Key_Press, key = .Backspace})
-		wl_push(w, {kind = .Key_Release, key = .Backspace})
-	}
+	ime_compose_delete(&wlc.ime, int(before))
 }
 @(private)
 ti_done :: proc "c" (data: rawptr, ti: Wl_Proxy, serial: u32) {
 	context = wl_ctx_real()
+	evs := make([dynamic]Event, context.temp_allocator)
+	ime_compose_done(&wlc.ime, &evs)
 	w := wlc.ti_window
-	// apply the commit: push each rune as a .Text event (the same path as a typed character)
-	if wlc.pending_commit != "" && w != nil {
-		for r in wlc.pending_commit {
-			if r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { wl_push(w, {kind = .Text, text = r}) }
-		}
-	}
-	delete(wlc.pending_commit); wlc.pending_commit = ""
-	// apply the preedit for the app to draw
-	if wlc.preedit != wlc.pending_preedit {
-		delete(wlc.preedit)
-		wlc.preedit = strings.clone(wlc.pending_preedit)
-		wlc.preedit_dirty = true
-	}
-	delete(wlc.pending_preedit); wlc.pending_preedit = ""
-	if w != nil { w.paint_requested = true }
+	if w == nil { return }
+	for e in evs { wl_push(w, e) }
+	w.paint_requested = true
 }
 
 ////////////////////////////////
@@ -89,7 +66,7 @@ wl_ime_set_enabled :: proc(w: ^Window, on: bool) {
 	} else {
 		wl.proxy_marshal_flags(wlc.text_input, ZWP_TI_DISABLE, nil, wl.proxy_get_version(wlc.text_input), 0)
 		wl_ti_commit_state()
-		delete(wlc.preedit); wlc.preedit = ""; wlc.preedit_dirty = true
+		ime_compose_reset(&wlc.ime)
 	}
 }
 
@@ -113,22 +90,18 @@ wl_ti_commit_state :: proc() {
 wl_ime_set_cursor_rect :: proc(w: ^Window, x, y, width, height: int) {
 	if w == nil || wlc.text_input == nil || !wlc.ti_enabled { return }
 	// the compositor wants surface-local (logical) coordinates; our pixels are physical
-	s := w.dpi_scale > 0 ? w.dpi_scale : 1
-	wl.proxy_marshal_flags(wlc.text_input, ZWP_TI_SET_CURSOR_RECTANGLE, nil, wl.proxy_get_version(wlc.text_input), 0,
-		i32(f32(x) / s), i32(f32(y) / s), i32(f32(width) / s), i32(f32(max(height, 1)) / s))
+	r := ime_cursor_rect_logical(x, y, width, height, w.dpi_scale)
+	wl.proxy_marshal_flags(wlc.text_input, ZWP_TI_SET_CURSOR_RECTANGLE, nil, wl.proxy_get_version(wlc.text_input), 0, r[0], r[1], r[2], r[3])
 	wl_ti_commit_state()
 }
 
 @(private)
 wl_ime_preedit :: proc(w: ^Window) -> (text: string, cursor: int) {
-	return wlc.preedit, wlc.preedit_cursor
+	return wlc.ime.preedit, wlc.ime.cursor
 }
 
 @(private)
 wl_ime_preedit_changed :: proc(w: ^Window) -> bool {
-	r := wlc.preedit_dirty
-	wlc.preedit_dirty = false
-	return r
+	return ime_compose_take_changed(&wlc.ime)
 }
 
-_ :: utf8
