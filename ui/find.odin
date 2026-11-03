@@ -39,18 +39,18 @@ Find_State :: struct {
 }
 
 find :: proc(needle: string, scope: Key = 0) {
-	f := &g.find
+	f := &gs().find
 	f.scope = scope
 	if needle == f.needle { return }
 	delete(f.needle)
 	f.needle = strings.clone(needle)
 }
 
-find_set_current :: proc(i: int) { g.find.current = i }
+find_set_current :: proc(i: int) { gs().find.current = i }
 
 // The matches of the last layout, in reading order; Find_Match.index counts occurrences (find_count of them).
-find_matches :: proc() -> []Find_Match { return g.find.matches[:] }
-find_count :: proc() -> int { return g.find.count }
+find_matches :: proc() -> []Find_Match { return gs().find.matches[:] }
+find_count :: proc() -> int { return gs().find.count }
 
 @(private)
 find_destroy :: proc(s: ^State) {

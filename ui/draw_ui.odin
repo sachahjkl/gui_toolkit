@@ -28,14 +28,14 @@ DISABLED_KEEP_LIGHT :: 0.65
 // interpolated in linear light in both spaces. The tree therefore looks the same in both spaces, except for
 // antialiased edges and text, which follow the space.
 tuned :: proc(c: Color, over: Maybe(Color) = nil) -> Color {
-	if g == nil || g.space == .Linear { return c }
+	if current == nil || current.space == .Linear { return c }
 	o := c
-	o.a = draw.alpha_like_linear(g.space, c, c.a, over.? or_else g.backdrop)
+	o.a = draw.alpha_like_linear(gs().space, c, c.a, over.? or_else gs().backdrop)
 	return o
 }
 
 draw_tree :: proc(s: ^State, dc: ^draw.Context) {
-	g = s
+	current = s
 	bg := color_from_tags(s, 0, "background")
 	s.space = draw.blend_space(dc)
 	s.backdrop = {bg.r, bg.g, bg.b, 1}
@@ -247,14 +247,15 @@ len_utf8 :: proc(r: rune) -> int {
 // Fills a raised surface with the theme's finish (see `Finish`). `k` (0..1) is how strongly: 0 is a plain fill.
 // Custom draw procs use it for their accent fills so they match the buttons.
 paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1) {
-	finish := g.theme != nil ? g.theme.finish : .Flat
+	s := gs()
+	finish := s.theme != nil ? s.theme.finish : .Flat
 	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
 		draw.rect(dc, r, c, radius)
 		return
 	}
 	white := Color{1, 1, 1, c.a}
 	black := Color{0, 0, 0, c.a}
-	px := max(1, math.round(g.scale))
+	px := max(1, math.round(s.scale))
 	switch finish {
 	case .Flat:
 	case .Gradient:

@@ -131,7 +131,7 @@ list_next_selectable :: proc(st: ^List_State, from, dir: int) -> int {
 // `if list(id, &state) { list_row(...) ... }`: the list's scroll region (fills what `next` / the style give it).
 @(deferred_none = list_end)
 list :: proc(id: string, st: ^List_State) -> bool {
-	s := g
+	s := gs()
 	set_next_axis(.Y)
 	// .Text_Input: the list handles its own keys (no Enter / Space click, no arrow focus moves)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
@@ -155,7 +155,7 @@ list :: proc(id: string, st: ^List_State) -> bool {
 
 @(private)
 list_end :: proc() {
-	s := g
+	s := gs()
 	st := pop(&s.list_stack)
 	b := parent_box()
 	pop_parent()
@@ -196,7 +196,7 @@ list_end :: proc() {
 // Row `i` of the list being built: a box laid out along X (full width, as tall as its cells unless `next` says
 // otherwise). `label` is what type-ahead matches. Rows that are not `selectable` (headers) are skipped by the keys.
 list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> Signal {
-	s := g
+	s := gs()
 	if !st.virtual {
 		for len(st.building) <= i { append(&st.building, true) }
 		st.building[i] = selectable
@@ -204,12 +204,12 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> 
 	}
 	active := selectable && i == st.sel
 	if active { push_tags(st.focused ? "selected" : "weak_selected") }
-	m := g.has_next ? g.next_mod : Style_Mod{}
+	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
 	m.axis = .X
-	g.next_mod = m
-	g.has_next = true
+	s.next_mod = m
+	s.has_next = true
 	flags := Box_Flags{.Clickable}
 	if active { flags += {.Draw_Background} }
 	// rows that can be chosen light up under the pointer (theme: "list_row hover_fill"), headers do not

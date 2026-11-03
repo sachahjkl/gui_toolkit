@@ -45,7 +45,7 @@ splitter_limits :: proc(min_size, max_size: f32, opts: Splitter_Options) -> (lo,
 // that resizes the pane whose size is `size` (in logical pixels unless `opts.unit` says otherwise). Its length fills the
 // parent unless `next` sets it.
 splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, opts := Splitter_Options{}) -> (res: Splitter_Result) {
-	s := g
+	s := gs()
 	unit := opts.unit > 0 ? opts.unit : s.scale
 	grab := opts.thickness > 0 ? opts.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale)
 	m := s.has_next ? s.next_mod : Style_Mod{}
@@ -142,7 +142,7 @@ ACCORDION_RATE :: 28
 // block. The block runs while the section is open or still folding (the content is clipped to the animated height).
 @(deferred_out = accordion_end)
 accordion :: proc(id: string, title: string, open: ^bool) -> bool {
-	s := g
+	s := gs()
 	em := font_size()
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
@@ -205,7 +205,7 @@ chevron_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Chevron_Draw)(user)
 	c := draw.rect_center(b.rect)
 	a := (b.rect.max.x - b.rect.min.x) * ACCORDION_CHEVRON_ARM_FRACTION
-	th := max(math.round(g.scale * ACCORDION_CHEVRON_STROKE_PX), 1)
+	th := max(math.round(gs().scale * ACCORDION_CHEVRON_STROKE_PX), 1)
 	draw.push_transform(dc, draw.affine_around(draw.affine_rotate(d.t * math.PI * 0.5), c))
 	bar :: proc(dc: ^draw.Context, p0, p1: Vec2, th: f32, col: Color) {
 		mid := (p0 + p1) * 0.5

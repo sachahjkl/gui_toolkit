@@ -36,9 +36,9 @@ wrap_lines :: proc(f: font.Font_Id, size: f32, text: string, width: f32, allocat
 				adv: f32
 				if len(cl) == 1 {
 					r, _ := utf8.decode_rune_in_string(cl)
-					adv = font.glyph(g.fonts, f, size, r).advance
+					adv = font.glyph(gs().fonts, f, size, r).advance
 				} else {
-					adv = font.text_width(g.fonts, f, size, cl)
+					adv = font.text_width(gs().fonts, f, size, cl)
 				}
 				if x + adv > w && at > start { i = at; break }
 				if cl == " " { last_space = at }
@@ -77,7 +77,7 @@ Wrap_Entry :: struct {
 
 // Lines of `text` at `width` from the cache (wrapped and remembered the first time).
 wrap_lines_cached :: proc(f: font.Font_Id, size: f32, text: string, width: f32) -> [][2]int {
-	s := g
+	s := gs()
 	if text == "" { return nil }
 	k := Wrap_Key{text_hash = hash_bytes(transmute([]u8)text), text_len = len(text), font = f, size = size, width = max(width, 1)}
 	if e, ok := &s.wrap_cache[k]; ok {
@@ -119,7 +119,7 @@ trim_end :: proc(text: string, start, end: int) -> int {
 
 @(private)
 line_height_of :: proc(b: ^Box) -> f32 {
-	m := font.metrics(g.fonts, b.font, b.font_size)
+	m := font.metrics(gs().fonts, b.font, b.font_size)
 	return math.ceil(m.line_height)
 }
 
@@ -148,11 +148,12 @@ draw_wrapped_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 
 // Text that wraps at the width it is given (full width unless `next` says otherwise) and is as tall as its lines.
 paragraph :: proc(id: string) -> Signal {
-	m := g.has_next ? g.next_mod : Style_Mod{}
+	s := gs()
+	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = text_size() }
-	g.next_mod = m
-	g.has_next = true
+	s.next_mod = m
+	s.has_next = true
 	b := build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, id)
 	return signal(b)
 }

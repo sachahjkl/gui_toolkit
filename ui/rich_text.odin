@@ -427,7 +427,7 @@ rich_layout_fits :: proc(l: ^Rich_Layout, runs: []Rich_Run) -> bool {
 // `version` (not 0): the caller's name for this content (rich_paragraph's: the box and its version), looked up instead of
 // a hash of every run's text and style each time.
 rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 0, align := Text_Align.Left, version: u64 = 0) -> ^Rich_Layout {
-	s := g
+	s := gs()
 	k := version != 0 ? rich_hash_version(version, c, width, max_lines, align) : rich_hash(runs, c, width, max_lines, align)
 	if e, ok := &s.rich_cache[k]; ok {
 		if rich_layout_fits(e.layout, runs) {
@@ -499,7 +499,8 @@ Rich_Draw :: struct {
 
 @(private)
 rich_ctx :: proc(b: ^Box) -> Rich_Context {
-	return {fonts = g.fonts, base_font = b.font, base_size = b.font_size, mono = g.mono_font, faces = &g.rich_faces}
+	s := gs()
+	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = s.mono_font, faces = &s.rich_faces}
 }
 
 @(private)
@@ -516,7 +517,7 @@ rich_measure_y :: proc(b: ^Box) -> f32 {
 @(private)
 rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Rich_Draw)(user)
-	s := g
+	s := gs()
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
 	o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
 	clip := draw.current_clip(dc)
@@ -587,7 +588,7 @@ rich_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 // `version` (not 0): the runs are the same as at an earlier build with the same version (an application's counter of a
 // message's text, say): the layout is found by it, not by hashing every run (what a long document did at each frame).
 rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u64 = 0, line_height: f32 = 0) -> (res: Rich_Result) {
-	s := g
+	s := gs()
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = text_size() }

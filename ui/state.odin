@@ -8,15 +8,25 @@ import "core:time"
 import "../font"
 import "../platform"
 
-// The state selected by the last `begin_build`. Public procs operate on it (like raddebugger's `ui_state`).
-@(private, thread_local) g: ^State   // (of this thread: several apps of a process build their interfaces on threads of their own)
+// The state selected by the last `begin_build` (or `init`, `use`). Public procs operate on it (like raddebugger's `ui_state`), through `gs`.
+@(private, thread_local) current: ^State   // (of this thread: several apps of a process build their interfaces on threads of their own)
+
+NO_STATE_MESSAGE :: "ui: no begin_build on this thread"
+
+// The thread's current state. A public proc called on a thread where no begin_build (nor init, use) selected one stops here, saying so,
+// instead of crashing further on a nil state: one branch.
+@(private)
+gs :: #force_inline proc() -> ^State {
+	if current == nil { panic(NO_STATE_MESSAGE) }
+	return current
+}
 
 @(private) tick_origin: time.Tick
 
 init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	// the state is current from here: an app may read it (scale, font_size, focus...) before its first build, e.g.
 	// routing the input of its first frame
-	g = s
+	current = s
 	s.fonts = fonts
 	s.theme = theme
 	s.zoom = 1
@@ -39,7 +49,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 
 // Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
 // state after building or drawing another's: begin_build, draw_tree and init select the state they are given).
-use :: proc(s: ^State) { g = s }
+use :: proc(s: ^State) { current = s }
 
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
@@ -85,14 +95,14 @@ destroy :: proc(s: ^State) {
 	a11y_destroy(s)
 	delete(s.mouse_events)
 	virtual.arena_destroy(&s.arena)
-	if g == s { g = nil }
+	if current == s { current = nil }
 	s^ = {}
 }
 
-frame_allocator :: proc() -> mem.Allocator { return virtual.arena_allocator(&g.arena) }
+frame_allocator :: proc() -> mem.Allocator { return virtual.arena_allocator(&gs().arena) }
 
 // The toolkit's clock (ms): the system's, or the one the current state was given (set_clock).
-now_ms :: proc() -> f64 { return g != nil ? clock_ms(g) : real_ms() }
+now_ms :: proc() -> f64 { return current != nil ? clock_ms(current) : real_ms() }
 
 // The state's time goes by `clock` (ms, above 0), which its owner moves: every delay of the interface (caret blink, double
 // clicks, timers, toasts, tooltips, a scroll bar that hides) and every wake (wake_in_ms, wake_due) follows it. nil: the system's
@@ -132,13 +142,13 @@ building :: proc() -> bool { return build_open }
 
 // The window being built is not the one the user is in (Build_Params.inactive): a widget that shows a caret or a focus
 // highlight that only the user's window shows reads this.
-inactive :: proc() -> bool { return g != nil && g.inactive }
+inactive :: proc() -> bool { return current != nil && current.inactive }
 
 begin_build :: proc(s: ^State, p: Build_Params) {
 	// (a frame made from a message pumped during a build: a loop of the system such as TrackPopupMenu, a modal dialog)
 	assert(!build_open, "ui: begin_build inside another build")
 	build_open = true
-	g = s
+	current = s
 	s.build_index += 1
 	s.build_start = real_ms()
 	s.last_events = p.events
@@ -208,7 +218,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 }
 
 end_build :: proc() {
-	s := g
+	s := gs()
 	build_open = false
 	pop(&s.parent_stack)
 	assert(len(s.parent_stack) == 0, "ui: unbalanced parent push/pop")
@@ -307,7 +317,7 @@ DENSITY_MIN :: 0.6
 DENSITY_MAX :: 1.2
 density :: proc(s: ^State) -> f32 { return s.density }
 set_density :: proc(s: ^State, d: f32) { s.density = clamp(d, DENSITY_MIN, DENSITY_MAX) }
-dense :: proc(v: f32) -> f32 { return math.round(v * g.density) }
+dense :: proc(v: f32) -> f32 { return math.round(v * gs().density) }
 
 ZOOM_MIN :: 0.5
 ZOOM_MAX :: 3.0
@@ -316,7 +326,7 @@ ZOOM_STEP :: 1.1
 zoom :: proc(s: ^State) -> f32 { return s.zoom }
 set_zoom :: proc(s: ^State, z: f32) { s.zoom = clamp(z, ZOOM_MIN, ZOOM_MAX) }
 // dpi scale * zoom: multiply your own pixel constants by this (ui.font_size() and the base style already include it)
-scale :: proc() -> f32 { return g.scale }
+scale :: proc() -> f32 { return gs().scale }
 // Same, for a given state (an app with several windows, or one drawing outside a build: the autoscroll marker).
 scale_of :: proc(s: ^State) -> f32 { return s.scale }
 
@@ -339,22 +349,22 @@ touch_box :: proc(s: ^State, key: Key) -> ^Box {
 }
 
 box_from_key :: proc(key: Key) -> ^Box {
-	if b, ok := g.boxes[key]; ok { return b }
+	if b, ok := gs().boxes[key]; ok { return b }
 	return nil
 }
 
 // The box of the last build at this path of ids from the root (each id as it was given to build_box, a scroll box or a
 // row: "###chat", "###col", ...), nil when there is none. For tests and tools: a box found from outside a build.
 box_at :: proc(ids: ..string) -> ^Box {
-	if g == nil || g.root == nil { return nil }
-	k := g.root.key
+	if current == nil || current.root == nil { return nil }
+	k := gs().root.key
 	for id in ids { k = key_from_string(k, id) }
 	return box_from_key(k)
 }
 
-parent_box :: proc() -> ^Box { return g.parent_stack[len(g.parent_stack) - 1] }
+parent_box :: proc() -> ^Box { return gs().parent_stack[len(gs().parent_stack) - 1] }
 
-top_style :: proc() -> ^Style { return &g.style_stack[len(g.style_stack) - 1] }
+top_style :: proc() -> ^Style { return &gs().style_stack[len(gs().style_stack) - 1] }
 
 font_size :: proc() -> f32 { return top_style().font_size }
 
@@ -367,7 +377,7 @@ font_size :: proc() -> f32 { return top_style().font_size }
 
 // Builds a box under the current parent. `id` follows the id-string rules in key.odin ("" = anonymous, keyed by position).
 build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
-	s := g
+	s := gs()
 	parent := parent_box()
 	key: Key
 	if id == "" { key = key_from_u64(parent.key, u64(parent.child_count) + HASH_GOLDEN_RATIO_64) } else { key = key_from_string(parent.key, id) }
@@ -516,25 +526,25 @@ style :: proc(m: Style_Mod) -> bool {
 	st := top_style()^
 	apply_mod(&st, m)
 	if v, ok := m.cursor.?; ok { st.cursor = v }
-	append(&g.style_stack, st)
+	append(&gs().style_stack, st)
 	return true
 }
 
-pop_style :: proc() { pop(&g.style_stack) }
+pop_style :: proc() { pop(&gs().style_stack) }
 
 // Override the style for the next box only (also the only way to set `axis`, `fixed_*`, `bg`, `border`, `fg`).
 next :: proc(m: Style_Mod) {
-	g.next_mod = m
-	g.has_next = true
+	gs().next_mod = m
+	gs().has_next = true
 }
 
 @(deferred_none = pop_parent)
 parent :: proc(b: ^Box) -> bool {
-	append(&g.parent_stack, b)
+	append(&gs().parent_stack, b)
 	return true
 }
 
-pop_parent :: proc() { pop(&g.parent_stack) }
+pop_parent :: proc() { pop(&gs().parent_stack) }
 
 // `if tags("card", "accent") { ... }`: push theme tags for the block.
 @(deferred_none = pop_tags)
@@ -544,7 +554,7 @@ tags :: proc(names: ..string) -> bool {
 }
 
 push_tags :: proc(names: ..string) {
-	s := g
+	s := gs()
 	append(&s.tag_marks, len(s.tag_stack))
 	for n in names {
 		append(&s.tag_stack, n)
@@ -554,7 +564,7 @@ push_tags :: proc(names: ..string) {
 }
 
 pop_tags :: proc() {
-	s := g
+	s := gs()
 	mark := pop(&s.tag_marks)
 	resize(&s.tag_stack, mark)
 	resize(&s.tag_keys, mark)
@@ -579,13 +589,13 @@ push_tags_key :: proc(s: ^State) { _ = current_tags_key(s) }
 // no hover, no keyboard focus, and it fades to a muted look. Scopes nest; `disabled(false)` changes nothing.
 @(deferred_none = pop_disabled)
 disabled :: proc(cond := true) -> bool {
-	append(&g.disabled_stack, cond)
-	if cond { g.disabled_depth += 1 }
+	append(&gs().disabled_stack, cond)
+	if cond { gs().disabled_depth += 1 }
 	return true
 }
 
 pop_disabled :: proc() {
-	if pop(&g.disabled_stack) { g.disabled_depth -= 1 }
+	if pop(&gs().disabled_stack) { gs().disabled_depth -= 1 }
 }
 
 // `if tab_stops(false) { ... }`: the widgets built in the block are no Tab stops (Tab and the arrow keys skip them);
@@ -593,13 +603,13 @@ pop_disabled :: proc() {
 // should offer, and the like. Scopes nest; `tab_stops(true)` changes nothing.
 @(deferred_none = pop_tab_stops)
 tab_stops :: proc(on: bool) -> bool {
-	append(&g.tab_stops_off, !on)
-	if !on { g.tab_skip += 1 }
+	append(&gs().tab_stops_off, !on)
+	if !on { gs().tab_skip += 1 }
 	return true
 }
 
 pop_tab_stops :: proc() {
-	if pop(&g.tab_stops_off) { g.tab_skip -= 1 }
+	if pop(&gs().tab_stops_off) { gs().tab_skip -= 1 }
 }
 
 // `if muted() { ... }`: secondary content, drawn with the theme's weak text colour. Still interactive (see `disabled`).
@@ -617,7 +627,7 @@ ANIM_RATE_DEFAULT :: 40
 
 // Eases a persistent value toward `target`. `rate` is "halvings per second of distance" (higher = faster).
 anim :: proc(key: Key, target: f32, rate: f32 = ANIM_RATE_DEFAULT, initial: Maybe(f32) = nil) -> f32 {
-	s := g
+	s := gs()
 	a, found := s.anims[key]
 	if !found { a.value = initial.? or_else target }
 	a.last_build = s.build_index
@@ -700,7 +710,7 @@ update_animations :: proc(s: ^State) {
 
 // Prints every box taller than `limit` px (id text, size, pref kinds): layout debugging aid.
 debug_dump_tall :: proc(s: ^State, limit: f32) {
-	g = s
+	current = s
 	walk :: proc(b: ^Box, depth: int, limit: f32) {
 		if b.size.y > limit {
 			fmt.printf("%*s text=%q size=%.0fx%.0f pref=(%v %.1f, %v %.1f) children=%d axis=%v\n",
@@ -831,6 +841,7 @@ scroll_focus_into_view :: proc(s: ^State) {
 // in the build under way has none: its name lives in the arena of the build that made it, which is freed at the start of
 // the next one.
 focused_name :: proc() -> string {
-	if b, ok := g.boxes[g.focus_key]; ok && b.last_build == g.build_index { return b.name }
+	s := gs()
+	if b, ok := s.boxes[s.focus_key]; ok && b.last_build == s.build_index { return b.name }
 	return ""
 }

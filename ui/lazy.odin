@@ -61,7 +61,7 @@ LAZY_MARGIN :: 1.0   // screens built above and below the view
 // when the block lazy_begin was called in ends: before the column closes.)
 @(deferred_out = lazy_end)
 lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
-	s := g
+	s := gs()
 	lz = new(Lazy, frame_allocator())
 	lz.items.allocator = frame_allocator()
 	col := parent_box()
@@ -88,7 +88,7 @@ lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
 // One item: true when it is built now (its box is the parent until the block ends); false when a space stands for it.
 @(deferred_out = lazy_item_end)
 lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
-	s := g
+	s := gs()
 	key := key_from_string(parent_box().key, id)
 	e := s.lazy_heights[key] or_else {}
 	if b := s.boxes[key]; b != nil && b.last_build + 1 == s.build_index {
@@ -135,7 +135,7 @@ lazy_count :: proc(lz: ^Lazy) {
 lazy_end :: proc(lz: ^Lazy) {
 	lazy_flush(lz)
 	lazy_count(lz)
-	s := g
+	s := gs()
 	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = lz.known_h / f32(lz.known_n) }
 	if lz.scroll != nil { append(&s.lazy_frame, lz) }
 	// every item built and nothing in any: their content was built after each item closed

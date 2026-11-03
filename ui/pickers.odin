@@ -60,8 +60,8 @@ sat_val_picker :: proc(id: string, hue: f32, sat, val: ^f32) -> (changed: bool) 
 	if sig.pressed || sig.dragging {
 		w, h := b.rect.max.x - b.rect.min.x, b.rect.max.y - b.rect.min.y
 		if w > 1 && h > 1 {
-			sat^ = clamp((g.mouse.x - b.rect.min.x) / w, 0, 1)
-			val^ = 1 - clamp((g.mouse.y - b.rect.min.y) / h, 0, 1)
+			sat^ = clamp((gs().mouse.x - b.rect.min.x) / w, 0, 1)
+			val^ = 1 - clamp((gs().mouse.y - b.rect.min.y) / h, 0, 1)
 			changed = true
 		}
 	}
@@ -78,7 +78,7 @@ hue_picker :: proc(id: string, hue: ^f32) -> (changed: bool) {
 	if sig.pressed || sig.dragging {
 		h := b.rect.max.y - b.rect.min.y
 		if h > 1 {
-			hue^ = clamp((g.mouse.y - b.rect.min.y) / h, 0, HUE_MAX)
+			hue^ = clamp((gs().mouse.y - b.rect.min.y) / h, 0, HUE_MAX)
 			changed = true
 		}
 	}

@@ -40,7 +40,7 @@ MENU_ITEM_EM :: 2.2
 
 // Menus built from now on have items of `em` times the font size in height (0: back to MENU_ITEM_EM). A dense tool
 // panel sets it while it builds its menus, and resets it after.
-set_menu_item_height :: proc(em: f32) { g.menu_item_em = em }
+set_menu_item_height :: proc(em: f32) { gs().menu_item_em = em }
 
 // A small weak title above a group of items (not an item: the keyboard skips it).
 menu_heading :: proc(text: string) {
@@ -85,39 +85,41 @@ Menu_Level :: struct {
 // `anchor`: the box that opens the menu (dropdown button, menu bar entry): pressing it again is not a press "outside",
 // so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
 ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false) {
+	s := gs()
 	menu_pop_to(0)
-	g.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
-	append(&g.menus, Menu_Level{key = key, anchor = anchor, pos = pos, open_build = g.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard})
+	s.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
+	append(&s.menus, Menu_Level{key = key, anchor = anchor, pos = pos, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard})
 }
 
 // Opens the menu below `rect` (above it when there is no room below), e.g. under the button that opens it.
 ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard := false) {
 	ctx_menu_open(key, {rect.min.x, rect.max.y}, anchor, from_keyboard)
-	g.menus[0].around = rect
+	gs().menus[0].around = rect
 }
 
 ctx_menu_close :: proc() { menu_pop_to(0) }
-ctx_menu_is_open :: proc(key: Key) -> bool { return key != 0 && len(g.menus) > 0 && g.menus[0].key == key }
-ctx_menu_any_open :: proc() -> bool { return len(g.menus) > 0 }
+ctx_menu_is_open :: proc(key: Key) -> bool { return key != 0 && len(gs().menus) > 0 && gs().menus[0].key == key }
+ctx_menu_any_open :: proc() -> bool { return len(gs().menus) > 0 }
 
 // Selects item `index` of the open menu (e.g. a dropdown's current value, so the keyboard starts from it).
-menu_select :: proc(index: int) { if len(g.menus) > 0 { g.menus[0].sel = index } }
+menu_select :: proc(index: int) { if len(gs().menus) > 0 { gs().menus[0].sel = index } }
 
 // Number of open levels (1 = the menu, 2 = one submenu open...).
-menu_depth :: proc() -> int { return len(g.menus) }
+menu_depth :: proc() -> int { return len(gs().menus) }
 
 // Where level `depth` of the open menu was laid out (last build), and its selected item (-1: none).
 menu_rect :: proc(depth: int) -> (r: Rect, sel: int, ok: bool) {
-	if depth < 0 || depth >= len(g.menus) { return {}, -1, false }
-	lv := &g.menus[depth]
-	b := g.boxes[lv.panel]
+	s := gs()
+	if depth < 0 || depth >= len(s.menus) { return {}, -1, false }
+	lv := &s.menus[depth]
+	b := s.boxes[lv.panel]
 	if b == nil { return {}, lv.sel, false }
 	return b.rect, lv.sel, true
 }
 
 @(private)
 menu_pop_to :: proc(n: int) {
-	s := g
+	s := gs()
 	for len(s.menus) > n {
 		lv := pop(&s.menus)
 		delete(lv.items)
@@ -231,7 +233,7 @@ menu_step :: proc(items: []Menu_Item_Info, from, dir: int) -> int {
 // widest item. Closes on Escape, on a press outside every open level, or when an item is chosen.
 @(deferred_none = menu_end)
 ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
-	s := g
+	s := gs()
 	if !ctx_menu_is_open(key) {
 		append(&s.popup_stack, false)
 		return false
@@ -260,7 +262,7 @@ ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
 
 @(private)
 menu_level_begin :: proc(depth: int, width: f32) -> bool {
-	s := g
+	s := gs()
 	lv := &s.menus[depth]
 	lv.prev, lv.items = lv.items, lv.prev
 	clear(&lv.items)
@@ -332,12 +334,12 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	push_tags("floating")
 	push_style_copy()
 	set_next_axis(.Y)
-	g.next_mod.fixed_x = pos.x
-	g.next_mod.fixed_y = pos.y
-	g.next_mod.width = children_sum()
-	g.next_mod.height = children_sum()
-	g.next_mod.radius = em * 0.5
-	if first { g.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
+	s.next_mod.fixed_x = pos.x
+	s.next_mod.fixed_y = pos.y
+	s.next_mod.width = children_sum()
+	s.next_mod.height = children_sum()
+	s.next_mod.radius = em * 0.5
+	if first { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
 	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
 	p.cursor = .Arrow
 	a11y_default(p, {role = .Menu, orientation = .Y})
@@ -351,11 +353,11 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 }
 
 @(private)
-push_style_copy :: proc() { append(&g.style_stack, top_style()^) }
+push_style_copy :: proc() { append(&gs().style_stack, top_style()^) }
 
 @(private)
 menu_end :: proc() {
-	s := g
+	s := gs()
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] && len(s.menu_build) > 0 {
 		spacer(px(font_size() * 0.3))
 		pop(&s.menu_build)
@@ -369,7 +371,7 @@ menu_end :: proc() {
 
 @(private)
 ctx_menu_end :: proc() {
-	s := g
+	s := gs()
 	if pop(&s.popup_stack) {
 		pop_parent()     // panel
 		pop(&s.style_stack)
@@ -381,7 +383,7 @@ ctx_menu_end :: proc() {
 // The level whose items are being built (nil outside a menu).
 @(private)
 menu_current :: proc() -> (^Menu_Level, int) {
-	s := g
+	s := gs()
 	if len(s.menu_build) == 0 { return nil, -1 }
 	d := s.menu_build[len(s.menu_build) - 1]
 	if d >= len(s.menus) { return nil, -1 }
@@ -397,7 +399,7 @@ first_letter :: proc(label: string) -> rune {
 // One row: check mark or icon, label, shortcut (weak), submenu arrow. Returns the row's signal.
 @(private)
 menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, checked, enabled, submenu, highlight: bool) -> Signal {
-	s := g
+	s := gs()
 	em := font_size()
 	label := display_part(text)
 	// spacers, icon cell, label and its padding, borders (with a little room so the label never gets "...")
@@ -411,10 +413,10 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 		if tags("menu_item") {
 			if highlight { push_tags("selected") }
 			set_next_axis(.X, .Center)
-			g.next_mod.width = px(width)
-			g.next_mod.height = px(dense(em * (s.menu_item_em > 0 ? s.menu_item_em : MENU_ITEM_EM)))
-			g.next_mod.radius = em * 0.35
-			if !highlight { g.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
+			s.next_mod.width = px(width)
+			s.next_mod.height = px(dense(em * (s.menu_item_em > 0 ? s.menu_item_em : MENU_ITEM_EM)))
+			s.next_mod.radius = em * 0.35
+			if !highlight { s.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
 			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
 			if highlight { pop_tags() }
 			if idx < len(lv.items) { lv.items[idx].key = b.key }
@@ -466,7 +468,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 // The pointer has rested on item `idx` of `lv` for MENU_HOVER_MS (asks for a timed wake while waiting).
 @(private)
 menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
-	s := g
+	s := gs()
 	if lv.hover_item != idx { return false }
 	waited := s.time_ms - lv.hover_since
 	if waited >= MENU_HOVER_MS { return true }
@@ -478,7 +480,7 @@ menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 // when chosen (click, or Enter / Space on the selected item). A disabled item (`enabled` false, or inside a `disabled`
 // scope) is shown muted and skipped by the keyboard.
 menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", enabled := true, keep_open := false) -> Signal {
-	s := g
+	s := gs()
 	lv, depth := menu_current()
 	if lv == nil {
 		// outside a menu: a plain row (so menu bodies can be factored into procs and reused elsewhere)
@@ -513,7 +515,7 @@ menu_separator :: proc() {
 // submenu's items while it is open.
 @(deferred_none = menu_end)
 menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
-	s := g
+	s := gs()
 	lv, depth := menu_current()
 	if lv == nil { append(&s.popup_stack, false); return false }
 	en := enabled && s.disabled_depth == 0
@@ -545,7 +547,7 @@ menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
 
 // True once the pointer has rested on the box for `seconds` (asks the app loop for a timed wake while waiting).
 hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
-	s := g
+	s := gs()
 	if !sig.hovering { return false }
 	waited := s.time_ms - s.hover_since_ms
 	if waited >= f64(seconds) * 1000 { return true }
@@ -556,7 +558,7 @@ hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
 // `if tooltip() { label("...") }` near the pointer. Not clickable, so it never blocks the box below.
 @(deferred_none = tooltip_end)
 tooltip :: proc() -> bool {
-	s := g
+	s := gs()
 	em := font_size()
 	tooltip_open(clamp_popup(s.mouse + {em * 0.8, em * 1.4}, tooltip_last_size(em), s.window_size), em)
 	return true
@@ -566,7 +568,7 @@ tooltip :: proc() -> bool {
 // the rows of a list or a table, where a tooltip below the pointer would cover the rows under the one it is about.
 @(deferred_none = tooltip_end)
 tooltip_beside :: proc() -> bool {
-	s := g
+	s := gs()
 	em := font_size()
 	size := tooltip_last_size(em)
 	pos := s.mouse + {em * 1.2, -size.y * 0.5}
@@ -578,22 +580,22 @@ tooltip_beside :: proc() -> bool {
 // The size the tooltip had in the last build.
 @(private)
 tooltip_last_size :: proc(em: f32) -> Vec2 {
-	prev := g.boxes[key_from_string(g.root.key, "###tooltip")]
+	prev := gs().boxes[key_from_string(gs().root.key, "###tooltip")]
 	return prev != nil ? prev.size : Vec2{em * TOOLTIP_FIRST_WIDTH_EM, em * TOOLTIP_FIRST_HEIGHT_EM}
 }
 
 @(private)
 tooltip_open :: proc(pos: Vec2, em: f32) {
-	s := g
+	s := gs()
 	push_parent(s.root)
 	push_tags("floating")
 	push_style_copy()
 	set_next_axis(.Y)
-	g.next_mod.fixed_x = pos.x
-	g.next_mod.fixed_y = pos.y
-	g.next_mod.width = children_sum()
-	g.next_mod.height = children_sum()
-	g.next_mod.radius = em * 0.4
+	s.next_mod.fixed_x = pos.x
+	s.next_mod.fixed_y = pos.y
+	s.next_mod.width = children_sum()
+	s.next_mod.height = children_sum()
+	s.next_mod.radius = em * 0.4
 	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
 	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
