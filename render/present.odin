@@ -94,7 +94,7 @@ Present_State :: struct {
 
 // Vsync (default) or Tearing (see the package comment). Tearing without system support stays Vsync.
 set_present_mode :: proc(r: ^Renderer, mode: Present_Mode) { r.present.mode = mode }
-present_mode :: proc(r: ^Renderer) -> Present_Mode { return r.present.mode == .Tearing && r.present.tearing_ok ? .Tearing : .Vsync }
+present_mode :: proc(r: ^Renderer) -> Present_Mode { return present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode }
 
 // The system can present with tearing (Windows 10 1709+ with a driver that allows it): what variable refresh needs.
 tearing_supported :: proc(r: ^Renderer) -> bool { return r.present.tearing_ok }
@@ -154,6 +154,22 @@ qpc_to_tick :: proc(qpc: i64) -> time.Tick {
 	return time.Tick{_nsec = (qpc / f) * 1e9 + (qpc % f) * 1e9 / f}
 }
 
+// What one Present is asked for: `sync` refreshes to wait (0: at once), `allow_tearing` the tearing flag (DXGI allows it
+// only with sync 0, on a swap chain made for it), `mode` the mode the frame is presented in (wgpu: Immediate or Fifo).
+Present_Call :: struct {
+	sync:          u32,
+	allow_tearing: bool,
+	mode:          Present_Mode,
+}
+
+// The Present of a frame: the mode asked, whether the system and the swap chain can tear, the sync interval, and
+// frame_end's `vsync` (false: at once whatever the mode). Pure.
+present_call :: proc(asked: Present_Mode, tearing_ok: bool, interval: u32, vsync: bool) -> Present_Call {
+	mode: Present_Mode = asked == .Tearing && tearing_ok ? .Tearing : .Vsync
+	sync: u32 = vsync && mode == .Vsync ? clamp(interval, 1, SYNC_INTERVAL_MAX) : 0
+	return {sync = sync, allow_tearing = sync == 0 && tearing_ok, mode = mode}
+}
+
 // Whether tearing presents are possible on this system (IDXGIFactory5::CheckFeatureSupport).
 @(private)
 check_tearing :: proc(factory: ^dxgi.IFactory2) -> bool {
@@ -203,10 +219,10 @@ present_destroy :: proc(r: ^Renderer) { delete(r.present.out); delete(r.present.
 present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	p := &r.present
 	if p.interval == 0 { p.interval = 1 }
-	tearing := p.mode == .Tearing && p.tearing_ok && .ALLOW_TEARING in r.swap_flags
-	sync: u32 = vsync && !tearing ? p.interval : 0
+	pc := present_call(p.mode, p.tearing_ok && .ALLOW_TEARING in r.swap_flags, p.interval, vsync)
+	sync := pc.sync
 	flags: dxgi.PRESENT
-	if sync == 0 && .ALLOW_TEARING in r.swap_flags && p.tearing_ok { flags += {.ALLOW_TEARING} }
+	if pc.allow_tearing { flags += {.ALLOW_TEARING} }
 	call := time.tick_now()
 	ps := profile_present_begin(r)
 	hr := r.swapchain->Present(sync, flags)
@@ -218,7 +234,7 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	id: u32
 	if hr_ok(r.swapchain->GetLastPresentCount(&id)) {
 		p.last_id = id
-		p.ring[id % PRESENT_RING] = Present_Slot{present = id, input = p.input, read = p.read, drawn = p.drawn, call = call, presented = now, continuous = p.continuous, interval = max(sync, 1), expected = p.expected > 0 ? p.expected : f64(max(sync, 1)), mode = tearing ? .Tearing : .Vsync}
+		p.ring[id % PRESENT_RING] = Present_Slot{present = id, input = p.input, read = p.read, drawn = p.drawn, call = call, presented = now, continuous = p.continuous, interval = max(sync, 1), expected = p.expected > 0 ? p.expected : f64(max(sync, 1)), mode = pc.mode}
 	}
 	p.input, p.read = {}, {}
 	present_collect(r)
