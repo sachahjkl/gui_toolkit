@@ -65,7 +65,7 @@ ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 		wl_data_source_destroy(src)
 		wlc.dnd_source = nil
 		wlc.dnd_sending = false
-		wl_dnd_source_action = 0   // (the target it hovered may have chosen an action: nothing was dropped)
+		wlc.dnd_source_action = 0   // (the target it hovered may have chosen an action: nothing was dropped)
 	}
 }
 @(private) ds_dnd_drop :: proc "c" (data: rawptr, src: Wl_Proxy) {}
@@ -74,8 +74,7 @@ ds_dnd_finished :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	context = wl_ctx_real()
 	if src == wlc.dnd_source { wl_data_source_destroy(src); wlc.dnd_source = nil; wlc.dnd_sending = false }
 }
-@(private) ds_action :: proc "c" (data: rawptr, src: Wl_Proxy, action: u32) { wl_dnd_source_action = action }
-@(private) wl_dnd_source_action: u32
+@(private) ds_action :: proc "c" (data: rawptr, src: Wl_Proxy, action: u32) { wlc.dnd_source_action = action }
 
 // Writes one clipboard flavour to `fd` (the pipe the compositor gave) then closes it. A blocking write to a pipe the
 // peer reads is bounded by the pipe buffer; large flavours (a PNG) are written in a loop that tolerates short writes.
@@ -123,7 +122,7 @@ wl_clipboard_publish :: proc() {
 	if .Html in fmts { wl_source_offer(src, WL_MIME_HTML) }
 	if .Image in fmts { wl_source_offer(src, WL_MIME_PNG) }
 	if .Files in fmts { wl_source_offer(src, WL_MIME_URIS) }
-	serial := wlc.kbd_serial != 0 ? wlc.kbd_serial : wl_button_serial
+	serial := wlc.kbd_serial != 0 ? wlc.kbd_serial : wlc.button_serial
 	wl.proxy_marshal_flags(wlc.data_device, WL_DATA_DEVICE_SET_SELECTION, nil, wl.proxy_get_version(wlc.data_device), 0, src, serial)
 	wl.display_flush(wlc.display)
 }
@@ -152,17 +151,15 @@ wl_offer_new :: proc(offer: Wl_Proxy) {
 	if offer == nil { return }
 	wl.proxy_add_listener(offer, &data_offer_listener, nil)
 	// the MIME list for this offer is gathered into a scratch list until the offer is bound to a role
-	wl_free_mimes(&wl_pending_offer_mimes)
-	wl_pending_offer = offer
+	wl_free_mimes(&wlc.pending_offer_mimes)
+	wlc.pending_offer = offer
 }
-@(private) wl_pending_offer: Wl_Proxy
-@(private) wl_pending_offer_mimes: [dynamic]string
 
 @(private)
 off_offer :: proc "c" (data: rawptr, o: Wl_Proxy, mime: cstring) {
 	context = wl_ctx_real()
-	if o == wl_pending_offer {
-		append(&wl_pending_offer_mimes, strings.clone(string(mime)))
+	if o == wlc.pending_offer {
+		append(&wlc.pending_offer_mimes, strings.clone(string(mime)))
 	}
 }
 @(private) off_source_actions :: proc "c" (data: rawptr, o: Wl_Proxy, actions: u32) {}
@@ -179,11 +176,11 @@ wl_selection_set :: proc(offer: Wl_Proxy) {
 	wlc.offer = offer
 	wlc.have_offer = offer != nil
 	if wlc.data_source == nil { clip_note_changed() }
-	if offer != nil && offer == wl_pending_offer {
+	if offer != nil && offer == wlc.pending_offer {
 		wl_free_mimes(&wlc.offer_mimes)
-		wlc.offer_mimes = wl_pending_offer_mimes
-		wl_pending_offer_mimes = nil
-		wl_pending_offer = nil
+		wlc.offer_mimes = wlc.pending_offer_mimes
+		wlc.pending_offer_mimes = nil
+		wlc.pending_offer = nil
 	}
 }
 

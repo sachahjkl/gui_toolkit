@@ -69,6 +69,10 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 
 ## Differences the app should know
 
+- **Threads.** A window's procedures run on the thread that opened it. Windows' messages are the thread's; on Linux each
+  thread that opens windows has its own connection to the display server (its events, its seat's focus and serials) and its
+  own session bus, so several apps of a process each run on a thread of their own. The process's resources (the clipboard
+  store, the virtual screen of the offscreen windows, the window class) are locked or atomic (getting-started.md, "Where state lives").
 - **Window position.** X11 and Windows report and set the outer rectangle. **Wayland does not let a client know or set
   its absolute position** (the compositor places windows): `client_origin` is `{0,0}`, `move_window` is a no-op. Save
   and restore the **size** and the **maximized** state (both work everywhere), not the position, on Wayland.

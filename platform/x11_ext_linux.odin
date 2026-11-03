@@ -33,7 +33,8 @@ Xfixes_Lib :: struct {
 	cursor_image:        proc "c" (c: Xcb_Connection) -> Xcb_Cookie,
 	cursor_image_reply:  proc "c" (c: Xcb_Connection, cookie: Xcb_Cookie, e: rawptr) -> rawptr,
 }
-@(private = "file") xfixes: Xfixes_Lib
+// (of this thread: with its connection, x11c)
+@(private = "file", thread_local) xfixes: Xfixes_Lib
 
 // xcb_randr_mode_info_t
 @(private = "file")
@@ -65,17 +66,16 @@ Randr_Lib :: struct {
 	output_modes:        proc "c" (r: rawptr) -> [^]u32,
 	output_modes_len:    proc "c" (r: rawptr) -> i32,
 }
-@(private = "file") randr: Randr_Lib
+// (of this thread: with its connection, x11c)
+@(private = "file", thread_local) randr: Randr_Lib
 
 // The event an extension's id starts at, 0 when the server does not have it.
 @(private = "file")
 x11_extension_first_event :: proc(id: rawptr) -> u8 {
-	if x11_get_extension_data == nil { x11_get_extension_data = auto_cast lib_sym(xcb.handle, "xcb_get_extension_data") }
-	if x11_get_extension_data == nil || id == nil { return 0 }
-	r := x11_get_extension_data(x11c.c, id)
+	if xcb.get_extension_data == nil || id == nil { return 0 }
+	r := (^Xcb_Extension_Reply)(xcb.get_extension_data(x11c.c, id))
 	return r != nil && r.present != 0 ? r.first_event : 0
 }
-@(private = "file") x11_get_extension_data: proc "c" (c: Xcb_Connection, id: rawptr) -> ^Xcb_Extension_Reply
 
 // Binds both extensions (x11_connect). x11c.xfixes_event / randr_event stay 0 without them.
 @(private)

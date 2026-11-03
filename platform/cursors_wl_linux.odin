@@ -56,11 +56,9 @@ import "core:sys/posix"
 @(private = "file") WL_SURFACE_DAMAGE_REQUEST :: 2
 @(private = "file") WL_CURSOR_THEME_BASE_PX :: 24
 @(private = "file") WL_CURSOR_DAMAGE_ALL :: 0x7fffffff
-@(private = "file") WL_CURSOR_SENT_SURFACE :: 1 << 32   // wl_cursor_sent: an image of ours, plus which
+@(private = "file") WL_CURSOR_SENT_SURFACE :: 1 << 32   // wlc.cursor_sent: an image of ours, plus which
 @(private = "file") WL_CURSOR_SENT_HIDDEN :: 1 << 33
 
-@(private) wl_cursor_sent: u64   // what was last sent (cursor_on_screen)
-@(private = "file") wl_cursor_surface: Wl_Proxy
 
 @(private = "file") Wl_Cursor_Image :: struct { width, height, hotspot_x, hotspot_y, delay: u32 }
 @(private = "file") Wl_Cursor :: struct { image_count: u32, images: [^]^Wl_Cursor_Image, name: cstring }
@@ -73,22 +71,23 @@ Wl_Cursor_Lib :: struct {
 	theme: rawptr,
 	theme_scale: i32,
 }
-@(private = "file") wlcl: Wl_Cursor_Lib
+// libwayland-cursor and the theme loaded on this thread's connection (wlc.shm)
+@(private = "file", thread_local) wlcl: Wl_Cursor_Lib
 
 // An image on the pointer: the buffer on our cursor surface, at a whole scale.
 @(private = "file")
 wl_cursor_image :: proc(buffer: Wl_Proxy, hot: [2]int, scale: i32) {
 	if wlc.compositor == nil { return }
-	if wl_cursor_surface == nil {
-		wl_cursor_surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
-		if wl_cursor_surface == nil { return }
+	if wlc.cursor_surface == nil {
+		wlc.cursor_surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
+		if wlc.cursor_surface == nil { return }
 	}
-	v := wl.proxy_get_version(wl_cursor_surface)
-	wl.proxy_marshal_flags(wl_cursor_surface, WL_SURFACE_ATTACH, nil, v, 0, buffer, i32(0), i32(0))
-	wl.proxy_marshal_flags(wl_cursor_surface, WL_SURFACE_SET_BUFFER_SCALE, nil, v, 0, scale)
-	wl.proxy_marshal_flags(wl_cursor_surface, WL_SURFACE_DAMAGE_REQUEST, nil, v, 0, i32(0), i32(0), i32(WL_CURSOR_DAMAGE_ALL), i32(WL_CURSOR_DAMAGE_ALL))
-	wl.proxy_marshal_flags(wl_cursor_surface, WL_SURFACE_COMMIT, nil, v, 0)
-	wl.proxy_marshal_flags(wlc.pointer, WL_POINTER_SET_CURSOR, nil, wl.proxy_get_version(wlc.pointer), 0, wl_enter_serial, wl_cursor_surface, i32(hot.x) / scale, i32(hot.y) / scale)
+	v := wl.proxy_get_version(wlc.cursor_surface)
+	wl.proxy_marshal_flags(wlc.cursor_surface, WL_SURFACE_ATTACH, nil, v, 0, buffer, i32(0), i32(0))
+	wl.proxy_marshal_flags(wlc.cursor_surface, WL_SURFACE_SET_BUFFER_SCALE, nil, v, 0, scale)
+	wl.proxy_marshal_flags(wlc.cursor_surface, WL_SURFACE_DAMAGE_REQUEST, nil, v, 0, i32(0), i32(0), i32(WL_CURSOR_DAMAGE_ALL), i32(WL_CURSOR_DAMAGE_ALL))
+	wl.proxy_marshal_flags(wlc.cursor_surface, WL_SURFACE_COMMIT, nil, v, 0)
+	wl.proxy_marshal_flags(wlc.pointer, WL_POINTER_SET_CURSOR, nil, wl.proxy_get_version(wlc.pointer), 0, wlc.enter_serial, wlc.cursor_surface, i32(hot.x) / scale, i32(hot.y) / scale)
 	wl.display_flush(wlc.display)
 }
 
@@ -125,7 +124,7 @@ wl_theme_cursor :: proc(w: ^Window, c: Cursor) -> bool {
 	buffer := wlcl.image_buffer(image)
 	if buffer == nil { return false }
 	wl_cursor_image(buffer, {int(image.hotspot_x), int(image.hotspot_y)}, scale)
-	wl_cursor_sent = WL_CURSOR_SENT_SURFACE | u64(c)
+	wlc.cursor_sent = WL_CURSOR_SENT_SURFACE | u64(c)
 	return true
 }
 
@@ -147,7 +146,7 @@ wl_custom_cursor :: proc(w: ^Window, e: ^Custom_Entry) -> bool {
 	}
 	if e.wl_buffer == nil { return false }
 	wl_cursor_image(e.wl_buffer, hot, scale)
-	wl_cursor_sent = WL_CURSOR_SENT_SURFACE | u64(uintptr(e.wl_buffer))
+	wlc.cursor_sent = WL_CURSOR_SENT_SURFACE | u64(uintptr(e.wl_buffer))
 	return true
 }
 
@@ -161,9 +160,9 @@ wl_apply_cursor :: proc(w: ^Window) {
 	}
 	if c == .None {
 		// hide: set a null cursor surface at the enter serial
-		wl.proxy_marshal_flags(wlc.pointer, WL_POINTER_SET_CURSOR, nil, wl.proxy_get_version(wlc.pointer), 0, wl_enter_serial, nil, i32(0), i32(0))
+		wl.proxy_marshal_flags(wlc.pointer, WL_POINTER_SET_CURSOR, nil, wl.proxy_get_version(wlc.pointer), 0, wlc.enter_serial, nil, i32(0), i32(0))
 		wl.display_flush(wlc.display)
-		wl_cursor_sent = WL_CURSOR_SENT_HIDDEN
+		wlc.cursor_sent = WL_CURSOR_SENT_HIDDEN
 		return
 	}
 	if wlc.cursor_shape_manager == nil { wl_theme_cursor(w, c); return }
@@ -173,8 +172,8 @@ wl_apply_cursor :: proc(w: ^Window) {
 	}
 	if wlc.cursor_shape_device == nil { return }
 	shape := wl_shape_for_cursor(c)
-	wl.proxy_marshal_flags(wlc.cursor_shape_device, WP_CURSOR_SHAPE_DEVICE_SET_SHAPE, nil, wl.proxy_get_version(wlc.cursor_shape_device), 0, wl_enter_serial, u32(shape))
-	wl_cursor_sent = u64(shape)
+	wl.proxy_marshal_flags(wlc.cursor_shape_device, WP_CURSOR_SHAPE_DEVICE_SET_SHAPE, nil, wl.proxy_get_version(wlc.cursor_shape_device), 0, wlc.enter_serial, u32(shape))
+	wlc.cursor_sent = u64(shape)
 	wl.display_flush(wlc.display)
 }
 
