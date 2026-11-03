@@ -302,7 +302,7 @@ icon_from_rgba :: proc(rgba: []u8, size: [2]int) -> win.HICON {
 tray_menu_at :: proc(t: ^Tray, pos: [2]i32) -> (id: int, ok: bool) {
 	if t == nil || len(t.menu) == 0 { return 0, false }
 	ids := make([dynamic]int, context.temp_allocator)
-	menu := build_menu(t.menu[:], &ids)
+	menu := tray_menu_build(t.menu[:], &ids)
 	if menu == nil { return 0, false }
 	defer win.DestroyMenu(menu)
 	hwnd := t.window.hwnd
@@ -316,17 +316,17 @@ tray_menu_at :: proc(t: ^Tray, pos: [2]i32) -> (id: int, ok: bool) {
 	return ids[cmd - 1], true
 }
 
-@(private = "file")
-build_menu :: proc(items: []Tray_Menu_Item, ids: ^[dynamic]int) -> win.HMENU {
+// The native popup menu of `items` (the caller destroys it: DestroyMenu): command n of it is the item ids[n - 1].
+// tray_menu_at opens it; a test reads it (GetMenuItemInfoW) without showing it.
+tray_menu_build :: proc(items: []Tray_Menu_Item, ids: ^[dynamic]int) -> win.HMENU {
 	menu := win.CreatePopupMenu()
 	if menu == nil { return nil }
 	MFT_RADIOCHECK :: 0x200
-	MF_DEFAULT :: 0x1000
 	for it in items {
 		text := win.utf8_to_wstring(it.text, context.temp_allocator)
 		flags: u32 = it.disabled ? win.MF_GRAYED : win.MF_ENABLED
 		if len(it.children) > 0 {
-			sub := build_menu(it.children, ids)
+			sub := tray_menu_build(it.children, ids)
 			if sub == nil { continue }
 			win.AppendMenuW(menu, flags | win.MF_POPUP | win.MF_STRING, uintptr(sub), text)
 			continue
@@ -342,9 +342,10 @@ build_menu :: proc(items: []Tray_Menu_Item, ids: ^[dynamic]int) -> win.HMENU {
 			if it.checked { flags |= win.MF_CHECKED }
 		case .Item:
 		}
-		if it.default { flags |= MF_DEFAULT }
 		append(ids, it.id)
 		win.AppendMenuW(menu, flags | win.MF_STRING, uintptr(len(ids)), text)
+		// (AppendMenuW ignores MF_DEFAULT: the bold item is set apart, by its command)
+		if it.default { win.SetMenuDefaultItem(menu, u32(len(ids)), 0) }
 	}
 	return menu
 }

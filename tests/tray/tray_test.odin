@@ -6,7 +6,17 @@
 package tray_test
 
 import "core:testing"
+import win "core:sys/windows"
 import "../../platform"
+
+// Room for an item's text read back; the menu's flags core:sys/windows does not name.
+@(private = "file") TEXT_MAX :: 64
+@(private = "file") MFT_RADIOCHECK :: 0x200
+@(private = "file") MFT_SEPARATOR :: 0x800
+
+foreign import user32 "system:User32.lib"
+@(default_calling_convention = "system", private = "file")
+foreign user32 { GetMenuItemCount :: proc(menu: win.HMENU) -> i32 --- }
 
 @(private = "file") ops: [dynamic]platform.Tray_Op
 @(private = "file") refuse_add: bool
@@ -172,4 +182,60 @@ menu_copy_and_find :: proc(t: ^testing.T) {
 	testing.expect(t, platform.tray_menu_find(tr.menu[:], 0) == nil, "a separator is no item")
 	platform.tray_set_menu(tr, items[:1])
 	testing.expect_value(t, len(tr.menu), 1)
+}
+
+// The native menu made from a model: one entry per item, separators, check and radio marks, the default item, a
+// disabled one, a submenu; each command maps back to its item's id. Built, read with GetMenuItemInfoW, never shown.
+@(test)
+the_native_menu_of_a_model :: proc(t: ^testing.T) {
+	sub := []platform.Tray_Menu_Item{{id = 10, text = "Online", kind = .Radio, checked = true}, {id = 11, text = "Away", kind = .Radio}}
+	items := []platform.Tray_Menu_Item{
+		{id = 1, text = "Open", default = true},
+		{kind = .Separator},
+		{id = 2, text = "Mute", kind = .Check, checked = true},
+		{id = 4, text = "Spell check", kind = .Check},
+		{text = "Status", children = sub},
+		{id = 3, text = "Quit", disabled = true},
+	}
+	ids: [dynamic]int
+	defer delete(ids)
+	menu := platform.tray_menu_build(items, &ids)
+	if !testing.expect(t, menu != nil) { return }
+	defer win.DestroyMenu(menu)
+	testing.expect_value(t, GetMenuItemCount(menu), i32(len(items)))
+	testing.expect_value(t, len(ids), 6)   // the commands: every item but the separator and the submenu's own entry
+
+	Entry :: struct { ftype, state: u32, cmd: int, text: string, sub: win.HMENU }
+	entry :: proc(menu: win.HMENU, pos: int) -> (e: Entry) {
+		buf: [TEXT_MAX]u16
+		mi := win.MENUITEMINFOW{cbSize = size_of(win.MENUITEMINFOW), fMask = win.MIIM_FTYPE | win.MIIM_STATE | win.MIIM_ID | win.MIIM_SUBMENU | win.MIIM_STRING, dwTypeData = &buf[0], cch = TEXT_MAX}
+		if !win.GetMenuItemInfoW(menu, u32(pos), true, &mi) { return }
+		text, _ := win.utf16_to_utf8(buf[:mi.cch], context.temp_allocator)
+		return {mi.fType, mi.fState, int(mi.wID), text, mi.hSubMenu}
+	}
+	id_of :: proc(ids: []int, cmd: int) -> int { return cmd >= 1 && cmd <= len(ids) ? ids[cmd - 1] : -1 }
+
+	open := entry(menu, 0)
+	testing.expect_value(t, open.text, "Open")
+	testing.expect_value(t, id_of(ids[:], open.cmd), 1)
+	testing.expect(t, open.state & win.MFS_DEFAULT != 0, "the default item is marked")
+	testing.expect(t, open.state & (win.MFS_GRAYED | win.MFS_CHECKED) == 0)
+	testing.expect(t, entry(menu, 1).ftype & MFT_SEPARATOR != 0, "a separator")
+	mute := entry(menu, 2)
+	testing.expect_value(t, id_of(ids[:], mute.cmd), 2)
+	testing.expect(t, mute.state & win.MFS_CHECKED != 0 && mute.ftype & MFT_RADIOCHECK == 0, "a check mark, not a radio dot")
+	testing.expect(t, entry(menu, 3).state & win.MFS_CHECKED == 0, "an unchecked check item")
+	status := entry(menu, 4)
+	testing.expect_value(t, status.text, "Status")
+	if testing.expect(t, status.sub != nil, "a submenu") {
+		testing.expect_value(t, GetMenuItemCount(status.sub), i32(2))
+		online, away := entry(status.sub, 0), entry(status.sub, 1)
+		testing.expect_value(t, id_of(ids[:], online.cmd), 10)
+		testing.expect_value(t, id_of(ids[:], away.cmd), 11)
+		testing.expect(t, online.ftype & MFT_RADIOCHECK != 0 && online.state & win.MFS_CHECKED != 0, "the radio item chosen")
+		testing.expect(t, away.ftype & MFT_RADIOCHECK != 0 && away.state & win.MFS_CHECKED == 0, "the other radio item")
+	}
+	quit := entry(menu, 5)
+	testing.expect_value(t, id_of(ids[:], quit.cmd), 3)
+	testing.expect(t, quit.state & win.MFS_GRAYED != 0, "a disabled item is grayed")
 }

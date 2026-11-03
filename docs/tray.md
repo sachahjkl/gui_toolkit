@@ -48,5 +48,6 @@ No `NIF_GUID`: a GUID ties the icon to the exe's path for good (a moved or copie
 id per window identifies it.
 
 Tests: `tests/tray` (the translation of the notifications, the calls to the shell through `tray_test_hook`, two icons on
-one window, a shell restart, menus, icons from pixels): no icon appears, `tray_inject` sends the shell's notifications
-through the window procedure.
+one window, a shell restart, menus, the native menu of a model read back with `GetMenuItemInfoW`, icons from pixels): no icon appears, `tray_inject` sends the shell's notifications
+through the window procedure. `tray_menu_build(items, &ids)` makes the native popup menu of a model (Windows: the
+caller destroys it; command n is the item `ids[n - 1]`) without showing it.
