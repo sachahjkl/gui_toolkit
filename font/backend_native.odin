@@ -5,7 +5,7 @@ import "core:slice"
 _ :: slice   // (the code below is compiled with the native backend only)
 
 // The native backend (-define:FONT_BACKEND=native): Fontations reads the faces, HarfRust shapes, ICU4X breaks lines
-// and resolves bidi, in the static library of native/text (tools/build_text.ps1 builds build/text/gt_text.lib). Faces
+// and resolves bidi, in the static library of native/text (tools/tk build_text builds build/text/gt_text.lib). Faces
 // still come from the platform (native_source_*.odin says where their bytes are); the platform also keeps the system
 // fallback. See docs/font-backend.md.
 

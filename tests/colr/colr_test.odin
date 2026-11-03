@@ -1,5 +1,5 @@
 // Tests of the COLR interpreter: the color-fonts test glyphs against Direct2D, tables made hostile, Noto Color Emoji
-// (tools\fetch_emoji.ps1 puts it in build\emoji; the tests that need it are skipped without it) shaped, drawn and
+// (tools/tk fetch_emoji puts it in build/emoji; the tests that need it are skipped without it) shaped, drawn and
 // reached through the built-in emoji fallback.
 package colr_test
 
@@ -243,9 +243,9 @@ sfnt_table :: proc(data: []u8, tag: string) -> ([]u8, bool) {
 @(test)
 emoji_sequences_shape_to_one_glyph :: proc(t: ^testing.T) {
 	data, ok := emoji_font()
-	if !ok { fmt.println("skipped: build/emoji/NotoColorEmoji-COLRv1.ttf is missing (tools\\fetch_emoji.ps1)"); return }
+	if !ok { fmt.println("skipped: build/emoji/NotoColorEmoji-COLRv1.ttf is missing (tools/tk fetch_emoji)"); return }
 	seqs, ok2 := emoji_sequences()
-	if !ok2 { fmt.println("skipped: emoji-test.txt is missing (tools\\fetch_emoji.ps1 -Unicode)"); return }
+	if !ok2 { fmt.println("skipped: emoji-test.txt is missing (tools/tk fetch_emoji -unicode)"); return }
 	s: font.State
 	font.init(&s)
 	defer font.destroy(&s)
@@ -274,7 +274,7 @@ emoji_sequences_shape_to_one_glyph :: proc(t: ^testing.T) {
 @(test)
 adjacent_tag_sequences_shape_to_their_own_glyphs :: proc(t: ^testing.T) {
 	data, ok := emoji_font()
-	if !ok { fmt.println("skipped: build/emoji/NotoColorEmoji-COLRv1.ttf is missing (tools\\fetch_emoji.ps1)"); return }
+	if !ok { fmt.println("skipped: build/emoji/NotoColorEmoji-COLRv1.ttf is missing (tools/tk fetch_emoji)"); return }
 	s: font.State
 	font.init(&s)
 	defer font.destroy(&s)

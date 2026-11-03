@@ -8,7 +8,7 @@
 // text of <css size> px at <scale> device pixels per CSS pixel; the interpreter's glyph is shaped by the toolkit
 // (DirectWrite, the font as the only face) and drawn at the same device size. Tiles are compared after the best integer
 // shift in -4 ..= 4 pixels (where the browser puts the baseline is its own line layout); the shift is reported.
-// tools\emoji_board.ps1 runs the three steps.
+// tools/tk emoji_board runs the three steps.
 package main
 
 import "core:fmt"

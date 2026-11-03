@@ -1,7 +1,7 @@
 // The text backends against each other (no times: tools/text_bench measures them).
 //   odin test tests/text_backends -vet                              the dwrite backend alone (what any build has)
 //   odin test tests/text_backends -vet -define:FONT_BACKEND=native   native against DirectWrite on the corpus
-// (the native library first: powershell -File tools\build_text.ps1)
+// (the native library first: odin run tools/tk -- build_text)
 package text_backends_test
 
 import "core:strings"

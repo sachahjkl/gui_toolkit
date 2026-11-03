@@ -8,7 +8,7 @@ PowerShell 5.1).
 
 | What | Version | Needed for |
 |---|---|---|
-| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/fetch_wgpu.sh`), Rust for the text library, `-define:FONT_BACKEND=native` (`tools/linux_ci.sh` builds that way). No macOS backend. |
+| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library, `-define:FONT_BACKEND=native` (`tools/linux_ci.sh` builds that way). No macOS backend. |
 | [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-10) | **`dev-2026-10`** (`odin version` says `dev-2026-10-nightly:84bc3fc`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
 | MSVC: Visual Studio 2022 or its Build Tools, workload "Desktop development with C++" (MSVC x64 and a Windows 10/11 SDK) | | Odin links with `link.exe` and finds it by itself (no developer prompt needed); `rc.exe` for an exe icon (`-resource:`) |
 | PowerShell 5.1 or 7 | | the scripts of `tools\` |
@@ -88,15 +88,15 @@ when the example has an icon. It builds the examples only; your project calls `o
 
 | Define | Values | What it needs |
 |---|---|---|
-| `TOOLKIT_RENDER` | `d3d11` (default), `wgpu` | wgpu: `powershell -File libs\gui_toolkit\tools\fetch_wgpu.ps1 -Dest build` once (checks the `wgpu_native` library Odin ships, puts DXC's `dxcompiler.dll` + `dxil.dll` next to the exe; without them shaders compile with FXC, about 2.5 s more at start). Ship the DLLs of `build\` with the exe |
-| `FONT_BACKEND` | `dwrite` (the default, Windows only), `native` (required on Linux: without it no text is shaped) | native: `powershell -File libs\gui_toolkit\tools\build_text.ps1` (cargo, about 45 s the first time) -> `libs\gui_toolkit\build\text\gt_text.lib` |
-| `A11Y_ACCESSKIT` | `false` (default), `true` | `powershell -File libs\gui_toolkit\tools\build_a11y.ps1` (cargo, about 20 s) -> `libs\gui_toolkit\build\a11y\gt_a11y.lib` |
+| `TOOLKIT_RENDER` | `d3d11` (default), `wgpu` | wgpu: `odin run libs/gui_toolkit/tools/tk -- fetch_wgpu "-dest:build"` once (checks the `wgpu_native` library Odin ships, puts DXC's `dxcompiler.dll` + `dxil.dll` next to the exe; without them shaders compile with FXC, about 2.5 s more at start). Ship the DLLs of `build\` with the exe |
+| `FONT_BACKEND` | `dwrite` (the default, Windows only), `native` (required on Linux: without it no text is shaped) | native: `odin run libs/gui_toolkit/tools/tk -- build_text` (cargo, about 45 s the first time) -> `libs\gui_toolkit\build\text\gt_text.lib` |
+| `A11Y_ACCESSKIT` | `false` (default), `true` | `odin run libs/gui_toolkit/tools/tk -- build_a11y` (cargo, about 20 s) -> `libs\gui_toolkit\build\a11y\gt_a11y.lib` |
 | `FONT_TEXT_RENDERER` | `atlas` (default on Windows), `slug` (default elsewhere, the only one there) | nothing (Slug: glyphs drawn from their outlines on the GPU; also per `font.State` at run time) |
 | `TOOLKIT_WGPU_DX12_COMPILER` | `auto` (default), `dxc`, `fxc` | |
 
-The three scripts are independent (any order; each does nothing when its output is current: a `STAMP` file next to it).
+The three commands of `tools/tk` are independent (any order; each does nothing when its output is current: a `STAMP` file next to it).
 They write into the toolkit's own `build\` folder, where its packages link them from (`foreign import
-"../build/text/gt_text.lib"`). `fetch_emoji.ps1` (the color emoji font of `tests/colr`) and `build_naga.ps1` (the WGSL
+"../build/text/gt_text.lib"`). `fetch_emoji` (the color emoji font of `tests/colr`) and `build_naga` (the WGSL
 to HLSL translator, for whoever edits the shaders) are for the toolkit's own work, not for an application.
 
 - **Render backend.** On Windows, Direct3D 11 is the default and the complete one. wgpu (WebGPU: Direct3D 12 on Windows, Vulkan on Linux, where it is
@@ -119,7 +119,7 @@ In the toolkit's folder (the CI runs the same: `.github/workflows/ci.yml`):
 odin test tests/flate -vet                                         # one package
 odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1           # packages that build interfaces: one test at a time
 odin run tools/run_tests                                           # every package, on a desktop of its own (needs the native libraries)
-build/run_tests -backend:wgpu                          # the pixel tests on WebGPU (after fetch_wgpu.ps1)
+build/run_tests -backend:wgpu                          # the pixel tests on WebGPU (after tools/tk fetch_wgpu)
 ```
 
 Pixel tests draw on an offscreen renderer on WARP (`render.init_offscreen(&r, size, warp = true)`: software, the same
@@ -159,8 +159,8 @@ the toolkit itself follows [CONTRIBUTING.md](../CONTRIBUTING.md): a fragment in 
 - **`expect_assert` in tests**: on Windows the test runner's handling of an assertion races the system's end of the
   process; a test program can end without a word. Catch an expected assertion on a thread of your own
   (`tests/ui_robust/nested_build_test.odin`).
-- **wgpu at start-up**: without DXC's DLLs next to the exe, every shader compiles with FXC (seconds). `fetch_wgpu.ps1
-  -Dest <exe folder>` puts them there.
-- **Rust libraries out of date**: after updating the submodule, run `build_text.ps1` / `build_a11y.ps1` again (they
+- **wgpu at start-up**: without DXC's DLLs next to the exe, every shader compiles with FXC (seconds). `tools/tk
+  fetch_wgpu "-dest:<exe folder>"` puts them there.
+- **Rust libraries out of date**: after updating the submodule, run `tools/tk build_text` / `build_a11y` again (they
   rebuild only when the sources changed); an old `gt_a11y.lib` with new Odin code fails at link or at run time.
 - **Console output of a `-subsystem:windows` exe is lost**: redirect it, or build without the flag while developing.

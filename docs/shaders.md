@@ -45,7 +45,7 @@ odin run <toolkit>/tools/shaders -- app foil path\foil.wgsl path\shaders        
 odin run <toolkit>/tools/shaders -- app foil path\foil.wgsl path\shaders -check   # exit code 1 when stale
 ```
 
-and load the two files with `#load`. `create_app_shader` compares the SHA-256 of the module (`render.app_module_hash`) with the one in `foil.sha256`: a blob built from other sources is refused with a message, never drawn. The translator is `tools/wgsl2hlsl` (naga, pinned; `tools\build_naga.ps1` builds it, needs `cargo`); a program that only embeds blobs does not need it. The vertex shader of the D3D11 pipeline is the renderer's.
+and load the two files with `#load`. `create_app_shader` compares the SHA-256 of the module (`render.app_module_hash`) with the one in `foil.sha256`: a blob built from other sources is refused with a message, never drawn. The translator is `tools/wgsl2hlsl` (naga, pinned; `tools/tk build_naga` builds it, needs `cargo`); a program that only embeds blobs does not need it. The vertex shader of the D3D11 pipeline is the renderer's.
 
 ## Data textures
 
