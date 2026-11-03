@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.69.0] - 2026-11-03
+
+### Added
+- **Menus taller than the window scroll**: a level (menu, submenu, nested menu, dropdown list) whose content is taller than the window is as tall as the window, placed again at each frame (a window made shorter while it is open), and scrolls: the wheel, its scroll bar (a press on it is not a press outside; the rows leave it room), the keyboard's selection brought into view (Up / Down / Home / End / Page Up / Page Down, type-ahead to a hidden row, a dropdown's current value from `menu_select`). A menu that fits is placed as before (flipped to the other side of its anchor, else shifted to stay whole). `ui.menu_item_rect(depth, idx)`: where an item was laid out. Tests `menu_taller_than_the_window_scrolls`, `menu_near_the_bottom_flips_or_shifts`
+
+### Changed
+- **Menus are dense**: `MENU_ITEM_EM` is 1.9 (was 2.2): rows of 29 px for 15 px text, as Windows 11's and Chrome's menus (times the density: 22 px at `DENSITY_COMPACT`, 34 px at `DENSITY_MAX`); the padding above the first item and below the last is 0.25 em (was 0.3), a separator's gaps 0.2 em (were 0.25); the icon cell is as tall as the row. Test `menu_rows_follow_the_density`
+
 ## [0.68.0] - 2026-11-03
 
 ### Added
@@ -1476,6 +1484,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.69.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.69.0
 [0.68.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.68.0
 [0.67.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.67.0
 [0.66.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.66.0
