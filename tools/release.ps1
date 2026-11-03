@@ -33,10 +33,13 @@ $tag = "v$Version"
 git tag -a $tag -m $title
 if ($LASTEXITCODE) { throw "git tag failed" }
 if ($NoPush) { "committed and tagged $tag (not pushed)"; exit 0 }
-git push origin HEAD:master
+# (git writes its progress to stderr: under a redirected stderr PowerShell would take it for an error; the exit codes say)
+$ErrorActionPreference = 'Continue'
+git push -q origin HEAD:master
 if ($LASTEXITCODE) { throw "pushing master failed" }
-git push origin $tag
+git push -q origin $tag
 if ($LASTEXITCODE) { throw "pushing the tag failed" }
+$ErrorActionPreference = 'Stop'
 
 $notes = Join-Path $env:TEMP "gui_toolkit-$Version-notes.md"
 & $changelog -section -version:$Version -out:$notes
