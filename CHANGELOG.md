@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.71.0] - 2026-11-03
+
+### Added
+- **Docking** (`ui/dock_model.odin`, `ui/docking.odin`, `docs/docking.md`): the app's panels in stacks of tabs the user rearranges. The layout is the app's `ui.Dock`, flat data: a tree of nodes in one `#soa` array (leaves: a stack of panels and the one shown; splits: an axis, a ratio, the second side folded), floating roots at a place of their own, the panels (the app's `u32` ids) in tab order; `dock_add`, `dock_move` (into a stack at a tab, at a side of one, at an edge of the space, floating), `dock_move_node`, `dock_redock`, `dock_close`, `dock_activate`, `dock_set_split`, `dock_layout`, `dock_target_at`; one line of text (`dock_format` / `dock_parse`: unknown names dropped with the stacks they leave empty, the panels it does not name placed by the app, any other text refused with the dock left as it was). `dock_begin` / `dock_panel` / `dock_end` build it: a tab dragged out shows the drop targets (five squares over the stack under the pointer, four at the edges of the space, the strips between their tabs) and a translucent preview of where it lands; let go elsewhere it floats (an overlay of the window with a frame and a shadow, moved by its strip with the drop targets, resized by its corner, docked back by a double click); Escape cancels; the handles are `pane_split`'s (minimum sizes, fold); close buttons, a middle click; the stack's menu reaches every drop target from the keyboard; the arrows along a strip, Ctrl+Shift+arrows move a tab, Ctrl+Tab goes through a stack; roles tab list, tab (controls its panel), tab panel, separator. Theme entries `dock_preview` and `dock_marker`. Example `examples/docking`; tests `tests/docking` (the model and the text; the drags, the keyboard and the menu through the test session).
+
 ## [0.70.0] - 2026-11-03
 
 ### Changed
@@ -1490,6 +1495,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.71.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.71.0
 [0.70.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.70.0
 [0.69.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.69.0
 [0.68.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.68.0
