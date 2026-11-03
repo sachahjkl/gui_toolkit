@@ -40,4 +40,7 @@ makes filters from a web page's description of what it accepts (a description, a
 alone takes the extensions the app's table knows).
 
 **Tests.** `dialog_test_hook` answers instead of the system's dialogs (end-to-end tests of an app: a real dialog needs a
-person). `odin test tests/dialogs -vet`.
+person; its `kind` is `DIALOG_OPEN`, `DIALOG_SAVE` or `DIALOG_FOLDER`). On Windows `file_dialog_call(kind, d)` is what the
+Common Item Dialog is told (options set and cleared, the type list and the line selected, the file name, the default
+extension, the GUID of `remember_id`, the folder and whether it is forced), so a test reads it without opening one.
+`odin test tests/dialogs -vet`.

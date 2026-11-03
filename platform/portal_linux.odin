@@ -35,7 +35,7 @@ Portal_Dialog :: struct {
 	filter: int,
 }
 
-// Runs a FileChooser portal dialog of `kind` (0 open, 1 save, 2 folder). Returns the portal result, or status
+// Runs a FileChooser portal dialog of `kind` (DIALOG_OPEN, DIALOG_SAVE, DIALOG_FOLDER). Returns the portal result, or status
 // Unsupported when the portal is absent so the caller falls back to zenity / kdialog.
 @(private)
 portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
@@ -43,16 +43,16 @@ portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.alloc
 	if conn == nil { return {status = .Unsupported} }
 	defer dbus.conn_close(conn)
 	token := portal_token()
-	method := kind == 1 ? "SaveFile" : "OpenFile"
+	method := kind == DIALOG_SAVE ? "SaveFile" : "OpenFile"
 	w := dbus.body_writer()
 	dbus.w_string(&w, "")                               // parent_window (x11 "x11:<xid>" / wl handle; "" is fine)
-	dbus.w_string(&w, d.title != "" ? d.title : (kind == 1 ? "Save File" : "Open File"))
+	dbus.w_string(&w, d.title != "" ? d.title : (kind == DIALOG_SAVE ? "Save File" : "Open File"))
 	// options a{sv}
 	ol, oc := dbus.arg_dict_begin(&w)
 	dbus.arg_dict_entry(&w, "handle_token"); dbus.arg_variant_string(&w, token)
-	if kind == 0 && d.multiple { dbus.arg_dict_entry(&w, "multiple"); dbus.arg_variant_bool(&w, true) }
-	if kind == 2 { dbus.arg_dict_entry(&w, "directory"); dbus.arg_variant_bool(&w, true) }
-	if kind == 1 && d.suggested_name != "" {
+	if kind == DIALOG_OPEN && d.multiple { dbus.arg_dict_entry(&w, "multiple"); dbus.arg_variant_bool(&w, true) }
+	if kind == DIALOG_FOLDER { dbus.arg_dict_entry(&w, "directory"); dbus.arg_variant_bool(&w, true) }
+	if kind == DIALOG_SAVE && d.suggested_name != "" {
 		dbus.arg_dict_entry(&w, "current_name"); dbus.arg_variant_string(&w, d.suggested_name)
 	}
 	portal_write_filters(&w, d)
