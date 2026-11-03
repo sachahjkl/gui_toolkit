@@ -1,7 +1,7 @@
 // Pixel tests of the cost-saving paths of filters (WARP, both blend spaces, both filter precisions): blurs on reduced
 // images against the exact gaussian, kept filter results against drawn ones (hits, whole-pixel moves, invalidation),
 // color matrices applied by the composite, kept backdrops, pooled textures reused without clearing, the per-step GPU
-// profile.   odin test tests/gpufx -vet
+// profile, the GPU time of a frame (set_gpu_timing).   odin test tests/gpufx -vet
 package gpufx_test
 
 import "core:math"
@@ -490,4 +490,32 @@ gpu_profile_counts_steps :: proc(t: ^testing.T) {
 	sum: f32
 	for s in p.steps { sum += s.ms }
 	if !base.perf_skip("GPU step times") { testing.expectf(t, sum <= p.total_ms * 1.01 + 0.01, "steps %v ms within the frame's %v ms", sum, p.total_ms) }
+}
+
+// GPU timing (set_gpu_timing): off, nothing is measured; on, each frame_submit is timed and read back a few frames late,
+// with the index of the submit it measured.
+@(test)
+gpu_timing_measures_the_frames :: proc(t: ^testing.T) {
+	TIMED_FRAMES :: 8   // more than the ring of queries read back late
+	current_space, current_format = .Srgb, .Unorm8
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer close(&f)
+	body :: proc(dc: ^draw.Context) { draw.rect(dc, {{10, 10}, {150, 150}}, draw.WHITE) }
+	if !render.GPU_TIMING {
+		for _ in 0 ..< TIMED_FRAMES { _ = frame(&f, body) }
+		_, _, measured := render.gpu_result(&f.r)
+		testing.expect(t, !measured && render.gpu_ms(&f.r) == 0, "off: nothing measured")
+		testing.expect_value(t, render.gpu_next_frame(&f.r), 0)
+	}
+	render.set_gpu_timing(&f.r, true)
+	first := render.gpu_next_frame(&f.r)
+	for _ in 0 ..< TIMED_FRAMES { _ = frame(&f, body) }
+	next := render.gpu_next_frame(&f.r)
+	testing.expectf(t, next > first && next <= first + TIMED_FRAMES, "timed submits %v .. %v", first, next)
+	ms, index, ok := render.gpu_result(&f.r)
+	if render.USE_WGPU && !ok { return }   // (no timestamp queries on this adapter)
+	if !testing.expect(t, ok, "a frame measured") { return }
+	testing.expectf(t, index >= first && index < next, "the frame measured %v is one of %v .. %v", index, first, next)
+	testing.expectf(t, ms > 0 && ms == render.gpu_ms(&f.r), "its time %v ms", ms)
 }

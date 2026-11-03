@@ -9,6 +9,7 @@ import "vendor:wgpu"
 // call) is not available here: timestamps inside passes would need TimestampQueryInsidePasses.
 
 @(private) WPROF_TIMESTAMP_BYTES :: 8
+@(private) NS_PER_MS :: 1e6
 @(private) WPROF_QUERIES :: 1024   // per slot (a query set holds 4096): the submit's start, then one after each step; later steps are counted in the last
 
 @(private)
@@ -72,7 +73,7 @@ wprof_collect :: proc(r: ^Renderer) {
 		data := wgpu.BufferGetConstMappedRangeSlice(g.pf.read[slot], 0, uint(n), u64)
 		if n >= 2 && len(data) == n {
 			frame := g.pf.frame[slot]
-			ms := f32(f64(data[n - 1] - data[0]) * f64(g.pf.period) / 1e6)
+			ms := f32(f64(data[n - 1] - data[0]) * f64(g.pf.period) / NS_PER_MS)
 			if frame >= r.gpu_last_frame - 1 {
 				r.gpu_last_ms = ms
 				r.gpu_last_frame = frame + 1
@@ -91,21 +92,8 @@ wprof_fill :: proc(r: ^Renderer, slot, frame: int, total_ms: f32, data: []u64) {
 	prev := data[0]
 	for rec, i in g.pf.recs[slot] {
 		if i + 1 >= len(data) { break }
-		t := data[i + 1]
-		ms := t >= prev ? f32(f64(t - prev) * f64(g.pf.period) / 1e6) : 0
-		prev = max(prev, t)
-		st := &p.steps[rec.kind]
-		st.count += 1
-		st.ms += ms
-		st.pixels += rec.pixels
-		st.bytes += rec.bytes
 		if rec.kind == .Draw_Frame || rec.kind == .Draw_Layer { p.target_changes += 1 }
-		k := p.n_slowest
-		if k < GPU_PROFILE_SLOWEST { p.n_slowest += 1 } else if ms <= p.slowest[k - 1].ms { continue } else { k -= 1 }
-		for k > 0 && p.slowest[k - 1].ms < ms { p.slowest[k] = p.slowest[k - 1]; k -= 1 }
-		d := rec.detail
-		d.kind, d.ms, d.w, d.h = rec.kind, ms, rec.w, rec.h
-		p.slowest[k] = d
+		profile_add(&p, rec, data[i + 1], &prev, f64(g.pf.period) / NS_PER_MS)
 	}
 	r.prof.last = p
 	r.prof.have = true
