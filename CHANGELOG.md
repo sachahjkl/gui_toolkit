@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.68.0] - 2026-11-03
+
+### Added
+- **`ui.pane_split`, `ui.pane_toggle`, `ui.Pane`**: panes the user resizes from a few em (`PANE_MIN_EM`) to all the room but a few em for the other side, folds (a drag under half the minimum, a double click, Enter, a chevron button) to a strip that brings them back (a click, Enter, a pull), and places at the side or below (`pane_axis`, `pane_place_menu`); the app owns a `Pane` per split (sizes per orientation, folded, place) and saves it through `Pane_Options.on_save`; `pane_format` / `pane_parse` make it a line of text; `menu_move_to` lists "Move to" items for a tab that may go to another strip. Keyboard (arrows, Home, End, Enter) and accessible (a separator with its value, `expanded`). `examples/panes` uses them. Tests `tests/panes/pane_split_test.odin`
+
 ## [0.67.0] - 2026-11-03
 
 ### Added
@@ -1471,6 +1476,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.68.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.68.0
 [0.67.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.67.0
 [0.66.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.66.0
 [0.65.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.65.0
