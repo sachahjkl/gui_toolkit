@@ -124,6 +124,7 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	step: f32 = SPLITTER_KEY_STEP_PX
 
 	// a drag: from where it began, folded (0) or open
+	prev := drag_load()   // (the press before this one: a double click whose first click was on the strip is no double click on the bar)
 	if res.sig.pressed { drag_store({p.collapsed ? 0 : open, p.collapsed ? 1 : 0, 0, 0}) }
 	if res.sig.dragging && res.sig.drag_delta != {} {
 		s.cursor_request = cur
@@ -147,7 +148,7 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 		p.size[axis] = clamp(opts.default_size, lo, hi)
 	case res.sig.clicked && p.collapsed && drag_load()[1] == 1 && drag_load()[2] == 0:   // a click on the strip (not a drag out of it)
 		p.collapsed = false
-	case res.sig.double_clicked && !p.collapsed:
+	case res.sig.double_clicked && !p.collapsed && prev[1] == 0:
 		if opts.collapsible {
 			p.collapsed = true
 			drag_store({0, 1, 1, 0})   // (the button is still down: a move from here pulls the pane out again; its release is no click)
