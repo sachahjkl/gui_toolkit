@@ -222,7 +222,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	defer if t_first._nsec != 0 {
 		if ms := time.duration_milliseconds(time.tick_since(t_first)); ms > FXC_SLOW_FIRST_FRAME_MS && g.fxc {
-			fmt.eprintfln("render: wgpu: the first frame took %.0f ms, its shaders compiled by FXC: put dxcompiler.dll and dxil.dll next to the program (tools/fetch_wgpu.ps1) and Direct3D 12 compiles them with DXC, in a fraction of that", ms)
+			fmt.eprintfln("render: wgpu: the first frame took %.0f ms, its shaders compiled by FXC: put dxcompiler.dll and dxil.dll next to the program (tools/tk fetch_wgpu) and Direct3D 12 compiles them with DXC, in a fraction of that", ms)
 		}
 	}
 	frame := f

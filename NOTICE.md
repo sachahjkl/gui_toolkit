@@ -62,7 +62,7 @@ Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas)
 ## Emoji (optional, `font.set_emoji_source`)
 
 - Noto Color Emoji (COLR v1), copyright Google, SIL Open Font License 1.1 (`font/data/NotoColorEmoji-OFL.txt`), is not part of
-  this repository: `tools\fetch_emoji.ps1` fetches it (Google Fonts' build, pinned by commit and SHA-256) for programs that
+  this repository: `tools/tk fetch_emoji` fetches it (Google Fonts' build, pinned by commit and SHA-256) for programs that
   ship it. The COLR interpreter itself reads any COLR font.
 - `font/emoji_data.odin` is generated from Unicode's `emoji-data.txt` (Unicode 18.0.0, Unicode License v3,
   <https://www.unicode.org/license.txt>).

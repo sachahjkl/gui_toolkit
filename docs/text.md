@@ -232,10 +232,10 @@ the glyph at the requested pixel size on the CPU:
   given to Direct2D either. The GSUB reader (`gsub_ligate`) is bounded too: one budget of steps, shared feature tables
   read once, at most 256 lookups; over it, the sequence is shaped the usual way.
 - Against Direct2D on the color-fonts test glyphs the mean difference is 0.7 / 255; against Chrome / Edge on 115 emoji of
-  Noto Color Emoji (`tools\emoji_board.ps1`) it is 0.3 to 0.7 / 255 at 16 to 64 px and 100 % to 175 %.
+  Noto Color Emoji (`tools/tk emoji_board`) it is 0.3 to 0.7 / 255 at 16 to 64 px and 100 % to 175 %.
 
 **Built-in emoji** (`font/emoji.odin`): `set_emoji_source(s, path)` or `set_emoji_source(s, data = ...)` hands the package an
-emoji font (Wren ships Noto Color Emoji, `tools\fetch_emoji.ps1`). It loads on the first emoji that needs it. In shaping it
+emoji font (Wren ships Noto Color Emoji, `tools/tk fetch_emoji`). It loads on the first emoji that needs it. In shaping it
 takes the characters drawn as emoji by default (`Emoji_Presentation`, regional indicators), any emoji followed by U+FE0F or
 U+20E3 even when a face of the cascade has a text glyph, and it replaces the system's own color emoji font when a font
 stack names one; ZWJ sequences, modifiers, flags, keycaps and tag sequences stay in one face. U+FE0E asks for text, and

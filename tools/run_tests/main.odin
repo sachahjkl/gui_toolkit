@@ -5,8 +5,8 @@
 //   build/run_tests -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
 //   odin run tools/run_tests -- -list                       the names, and the groups
 // Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). Needs what the CI's steps build first: the native
-// libraries (tools\build_text.ps1, tools\build_a11y.ps1), the emoji font (tools\fetch_emoji.ps1), wgpu-native (tools\fetch_wgpu.ps1). A log of each step is
-// left in build/test_logs/.
+// libraries (tools/tk build_text, build_a11y), the emoji font (tools/tk fetch_emoji -unicode), wgpu-native and DXC (tools/tk fetch_wgpu). A log of each step
+// is left in build/test_logs/.
 package run_tests
 
 import "core:fmt"
@@ -76,6 +76,7 @@ STEPS := []Step{
 	{name = "placement"},
 	{name = "size_move"},
 	{name = "testkit"},
+	{name = "tk"},
 	{name = "autoscroll", oses = EVERYWHERE},
 	// the interface, with no window
 	{name = "post", one = true},
@@ -296,7 +297,7 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 
 	cmd := make([dynamic]string, context.temp_allocator)
 	suffix := o.backend != "" ? fmt.tprintf("_%s", o.backend) : ""
-	// (the WebGPU programs next to DXC's DLLs, which tools\fetch_wgpu.ps1 leaves in build/: without them wgpu falls back to FXC)
+	// (the WebGPU programs next to DXC's DLLs, which tools/tk fetch_wgpu leaves in build/: without them wgpu falls back to FXC)
 	exe := fmt.tprintf("%s/%s%s%s", o.backend == "wgpu" ? "build" : BUILD_DIR, s.name, suffix, EXE_SUFFIX)
 	here, _ := os.get_working_directory(context.temp_allocator)
 	exe_path := fmt.tprintf("%s/%s", here, exe)

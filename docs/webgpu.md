@@ -25,11 +25,11 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 | `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
 
 The pixel tests run on both backends with the same expectations: `build/run_tests [-backend:wgpu]` (the wgpu ones one
-test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools\fetch_wgpu.ps1` first: with DXC
+test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools/tk fetch_wgpu` first: with DXC
 next to the test programs a package takes a third of the time it takes with FXC. The CI splits the packages in four groups, one per
 job (`-Group ci1` .. `ci4`, defined in the script, which checks that together they hold every package once); a pull request runs
 `-Group sample`; `-Define TOOLKIT_WGPU_DX12_COMPILER=fxc` runs a package with FXC.
-`tools\render_probe` draws a few primitives on the offscreen renderer and writes a PPM; `tools\ppm_diff.ps1` compares two.
+`tools\render_probe` draws a few primitives on the offscreen renderer and writes a PPM; `tools/tk ppm_diff a.ppm b.ppm` compares two.
 
 ## One source for the shaders
 
@@ -39,7 +39,7 @@ Every shader is written once, in WGSL (`render/*.wgsl`). WebGPU compiles it as i
 render/*.wgsl --tools/wgsl2hlsl (naga 29.0.4)--> render/shaders/*.hlsl --D3DCompile--> render/shaders/*.dxbc (embedded)
 ```
 
-* `odin run tools/shaders` does both steps (`-- -check` only compares). It builds the translator first (`tools\build_naga.ps1`: a small Rust program, `tools\wgsl2hlsl`; naga is pinned exactly in `Cargo.toml`, `Cargo.lock` carries the SHA-256 of every crate and the script pins `Cargo.lock` itself, builds with `--locked`; needs `cargo`).
+* `odin run tools/shaders` does both steps (`-- -check` only compares). It builds the translator first (`tools/tk build_naga`: a small Rust program, `tools\wgsl2hlsl`; naga is pinned exactly in `Cargo.toml`, `Cargo.lock` carries the SHA-256 of every crate and `tools/tk` pins `Cargo.lock` itself, builds with `--locked`; needs `cargo`).
 * The first line of each generated HLSL names the SHA-256 of the WGSL it came from: `tests/shaders` fails when a `.wgsl` file was edited and `tools/shaders` was not run, and when a blob is not what the embedded HLSL compiles to. CI also runs `tools/shaders -- -check` (naga writes the HLSL again and it must be identical).
 * A module is the WGSL files concatenated: `rect`, `filter`, and `slug` (= `rect.wgsl` + `slug.wgsl`, the text shaders reuse rect's transforms, clips and text correction). `render/shaders.odin` lists the modules and the Direct3D 11 slot of every resource (`RECT_BINDINGS`...: group.binding = register), which is what naga is told and what the backend binds.
 * What the translation needed on the D3D11 side: the instance layout uses naga's `LOC0..LOC8` semantics, the tables (transforms, clips, points, gradients, retained heaps) are raw buffers read as `ByteAddressBuffer`, filter passes use a plain clamp sampler (the shader adds the transparent border), and naga's sampler heaps (Direct3D 12) become plain `SamplerState`s (a few lines of text processing in the translator).
@@ -47,7 +47,7 @@ render/*.wgsl --tools/wgsl2hlsl (naga 29.0.4)--> render/shaders/*.hlsl --D3DComp
 
 ## Dependencies
 
-`tools\fetch_wgpu.ps1` checks (or downloads) the pinned wgpu-native 29.0.1.1 that `vendor:wgpu` links (SHA-256) and puts
+`tools/tk fetch_wgpu` checks (or downloads) the pinned wgpu-native 29.0.1.1 that `vendor:wgpu` links (SHA-256) and puts
 `wgpu_native.dll` and DXC 1.9.2609 (`dxcompiler.dll`, `dxil.dll`, SHA-256) in a directory. By default `vendor:wgpu` links the static
 library; a program that already links another Rust static library must use `-define:WGPU_SHARED=true` (and ship `wgpu_native.dll`).
 

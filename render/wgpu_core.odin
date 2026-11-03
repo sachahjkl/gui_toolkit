@@ -31,7 +31,7 @@ import "../platform"
 
 WGPU_ADAPTER_LIMITS :: #config(TOOLKIT_WGPU_ADAPTER_LIMITS, false)   // ask for everything the adapter offers (more memory), else the defaults of WebGPU
 WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12" when ODIN_OS == .Windows else "vulkan")   // "dx12" | "vulkan" (no DX12 off Windows)
-WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/fetch_wgpu.ps1)
+WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/tk fetch_wgpu)
 
 @(private) WGPU_SLUG_SOURCE :: WGSL_RECT + "\n" + WGSL_SLUG   // as naga reads the Slug module (shaders.odin: MODULES)
 

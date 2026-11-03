@@ -7,6 +7,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "../../render"
+import tk "../tk"
 
 // The toolkit's root and the translator (built on first use).
 toolchain :: proc() -> (root, exe: string) {
@@ -14,9 +15,9 @@ toolchain :: proc() -> (root, exe: string) {
 	root, _ = filepath.abs(joined, context.temp_allocator)
 	exe, _ = filepath.join({root, "build", "naga", "wgsl2hlsl.exe"}, context.temp_allocator)
 	if !os.exists(exe) {
-		fmt.println("building naga (tools\\build_naga.ps1)...")
-		if libc.system(strings.clone_to_cstring(fmt.tprintf("powershell -NoProfile -ExecutionPolicy Bypass -File \"%s\\tools\\build_naga.ps1\"", root), context.temp_allocator)) != 0 {
-			fmt.eprintln("shaders: building naga failed")
+		fmt.println("building naga (tools/tk build_naga)...")
+		if why := tk.build_naga(root); why != "" {
+			fmt.eprintfln("shaders: building naga failed: %s", why)
 			os.exit(1)
 		}
 	}

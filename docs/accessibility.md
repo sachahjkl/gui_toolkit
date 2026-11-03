@@ -10,7 +10,7 @@ roles, names, states, bounds, Invoke and Focus). macOS has only a stub (`platfor
 The adapter is Rust (AccessKit), linked statically:
 
 ```
-powershell -NoProfile -File tools\build_a11y.ps1           # -> build\a11y\gt_a11y.lib (pinned crates, --locked)
+odin run tools/tk -- build_a11y                         # -> build/a11y/gt_a11y.lib (pinned crates, --locked)
 odin build examples/fidget -define:A11Y_ACCESSKIT=true ...
 ```
 

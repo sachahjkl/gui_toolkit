@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Linux part of the CI (and a local check in WSL): the native text backend (cargo, native/text ->
 # build/text/libgt_text.a), odin check -vet of every package for Linux, the examples built (native text, Vulkan through
-# wgpu-native: tools/fetch_wgpu.sh first), and the tests.
+# wgpu-native: tools/tk fetch_wgpu first), and the tests.
 #   tools/linux_ci.sh [odin]
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
