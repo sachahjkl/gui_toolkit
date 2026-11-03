@@ -7,17 +7,17 @@ package platform
 // has its own (dialogs_linux.odin: the FileChooser portal, zenity / kdialog, xdg-open).
 
 open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
-	if dialog_test_hook != nil { return dialog_test_hook(0, d, allocator) }
+	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_OPEN, d, allocator) }
 	return {status = .Unsupported}
 }
 
 save_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
-	if dialog_test_hook != nil { return dialog_test_hook(1, d, allocator) }
+	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_SAVE, d, allocator) }
 	return {status = .Unsupported}
 }
 
 pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
-	if dialog_test_hook != nil { return dialog_test_hook(2, d, allocator) }
+	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_FOLDER, d, allocator) }
 	return {status = .Unsupported}
 }
 
