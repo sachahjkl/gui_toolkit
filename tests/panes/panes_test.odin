@@ -11,9 +11,9 @@ import "../../platform"
 import "../../render"
 import "../../ui"
 
-@(private = "file") SIZE :: [2]int{400, 240}
+@(private) SIZE :: [2]int{400, 240}
 
-@(private = "file")
+@(private)
 Fx :: struct {
 	r:       render.Renderer,
 	drawing: bool,
@@ -30,9 +30,16 @@ Fx :: struct {
 	content_built: bool,
 	accordion: bool,
 	anim:    bool,
+	// pane_split (ui/panes.odin)
+	pane_mode: bool,
+	pane:    ui.Pane,
+	popts:   ui.Pane_Options,
+	pres:    ui.Pane_Result,
+	saves:   int,
+	toggle:  bool,
 }
 
-@(private = "file")
+@(private)
 setup :: proc(t: ^testing.T, drawing := false) -> ^Fx {
 	f := new(Fx)
 	f.drawing = drawing
@@ -46,7 +53,7 @@ setup :: proc(t: ^testing.T, drawing := false) -> ^Fx {
 	return f
 }
 
-@(private = "file")
+@(private)
 teardown :: proc(f: ^Fx) {
 	ui.destroy(&f.s)
 	ui.theme_destroy(&f.theme)
@@ -59,7 +66,7 @@ teardown :: proc(f: ^Fx) {
 // the builds' clock, 16 ms a frame: a double click is two frames apart however slow the frames are
 @(private = "file", thread_local) clock_ms: f64
 
-@(private = "file")
+@(private)
 frame :: proc(f: ^Fx, events: []platform.Event = nil) -> []u8 {
 	clock_ms += 16
 	ui.begin_build(&f.s, {
@@ -67,7 +74,9 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) -> []u8 {
 		time_ms = clock_ms,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.ui_font, font_size = 15, text_pad = 6},
 	})
-	if f.accordion {
+	if f.pane_mode {
+		frame_pane(f)
+	} else if f.accordion {
 		ui.next({width = ui.px(300)})
 		if ui.accordion("###acc", "Details", &f.open) {
 			f.content_built = true
@@ -101,12 +110,12 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) -> []u8 {
 	return px
 }
 
-@(private = "file") press :: proc(p: [2]f32) -> platform.Event { return {kind = .Mouse_Press, pos = p, button = .Left} }
-@(private = "file") release :: proc(p: [2]f32) -> platform.Event { return {kind = .Mouse_Release, pos = p, button = .Left} }
-@(private = "file") move :: proc(p: [2]f32) -> platform.Event { return {kind = .Mouse_Move, pos = p} }
-@(private = "file") key :: proc(k: platform.Key, mods: platform.Modifiers = {}) -> platform.Event { return {kind = .Key_Press, key = k, mods = mods} }
+@(private) press :: proc(p: [2]f32) -> platform.Event { return {kind = .Mouse_Press, pos = p, button = .Left} }
+@(private) release :: proc(p: [2]f32) -> platform.Event { return {kind = .Mouse_Release, pos = p, button = .Left} }
+@(private) move :: proc(p: [2]f32) -> platform.Event { return {kind = .Mouse_Move, pos = p} }
+@(private) key :: proc(k: platform.Key, mods: platform.Modifiers = {}) -> platform.Event { return {kind = .Key_Press, key = k, mods = mods} }
 
-@(private = "file")
+@(private)
 split_box :: proc() -> ^ui.Box {
 	root := ui.key_from_string(0, "root")
 	// (the row is anonymous: the splitter is found by walking the root's first child)
@@ -219,7 +228,7 @@ splitter_without_keyboard_is_no_tab_stop :: proc(t: ^testing.T) {
 	testing.expect_value(t, f.size, 100)
 }
 
-@(private = "file")
+@(private)
 acc_box :: proc(name: string) -> ^ui.Box {
 	k := ui.key_from_string(ui.key_from_string(0, "root"), "###acc")
 	switch name {
@@ -290,7 +299,7 @@ accordion_without_animation_jumps :: proc(t: ^testing.T) {
 	testing.expect(t, !f.content_built)
 }
 
-@(private = "file")
+@(private)
 pixel :: proc(px: []u8, x, y: int) -> [4]u8 {
 	p := px[(y * SIZE.x + x) * 4:]
 	return {p[0], p[1], p[2], p[3]}

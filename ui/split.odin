@@ -11,9 +11,9 @@ import "core:math"
 import "../draw"
 import "../platform"
 
-@(private = "file") SPLITTER_THICKNESS_PX :: 5
-@(private = "file") SPLITTER_KEY_STEP_PX :: 10
-@(private = "file") SPLITTER_CTRL_STEP_DIVISOR :: 5
+@(private) SPLITTER_THICKNESS_PX :: 5
+@(private) SPLITTER_KEY_STEP_PX :: 10
+@(private) SPLITTER_CTRL_STEP_DIVISOR :: 5
 
 Splitter_Options :: struct {
 	default_size: f32,    // a double click (or Enter) puts it back (0: no reset)
