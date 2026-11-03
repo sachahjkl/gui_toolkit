@@ -1,7 +1,7 @@
 // Compares the native text backend with DirectWrite on the corpus of tools/text_corpus: the same glyphs, clusters,
 // advances, metrics, bidi levels and line breaks (equivalence), and, with -perf, the cost of shaping a word and a run
 // with and without the word cache. Needs the native library:
-//   powershell -File tools\build_text.ps1
+//   odin run tools/tk -- build_text
 //   odin run tools/text_bench -vet -define:FONT_BACKEND=native -o:speed -out:build/text_bench.exe -- [-perf] [-v]
 // Prints Markdown. Times are never checked by a test (machine dependent): they are printed for a person to read.
 package text_bench
@@ -26,7 +26,7 @@ main :: proc() {
 		}
 	}
 	when !font.NATIVE_TEXT {
-		fmt.eprintln("text_bench: build with -define:FONT_BACKEND=native (and tools/build_text.ps1 first)")
+		fmt.eprintln("text_bench: build with -define:FONT_BACKEND=native (and tools/tk build_text first)")
 		os.exit(2)
 	} else {
 		dw := make_state(.Dwrite, 32768)

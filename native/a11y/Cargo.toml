@@ -1,6 +1,6 @@
 # The toolkit's accessibility adapter (platform/a11y_accesskit.odin): AccessKit turns the tree the toolkit builds from its
 # boxes into what screen readers read (UI Automation on Windows), behind a small C ABI (src/lib.rs). Linked statically
-# into applications built with -define:A11Y_ACCESSKIT=true (tools\build_a11y.ps1 -> build\a11y\gt_a11y.lib), or built
+# into applications built with -define:A11Y_ACCESSKIT=true (tools/tk build_a11y -> build/a11y/gt_a11y.lib), or built
 # into an application's own Rust library (A11Y_NATIVE_LINK=false, as for gt_text). Versions are pinned exactly here and
 # by Cargo.lock (SHA-256 of every crate); the build runs with --locked. See docs\accessibility.md.
 [package]

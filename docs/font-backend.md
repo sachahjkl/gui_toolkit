@@ -8,7 +8,7 @@ installed fonts through the **platform**. Everything else in the package is the 
 | `dwrite` | DirectWrite: `IDWriteTextAnalyzer` (GetGlyphs / GetGlyphPlacements, AnalyzeScript, AnalyzeBidi, AnalyzeLineBreakpoints), `IDWriteFontFace` | default, Windows only |
 | `native` | Fontations (`read-fonts` font model: faces, cmap, metrics, outlines, variations, COLR / CPAL), HarfRust (shaping), ICU4X (`icu_segmenter` line breaks with dictionaries, `icu_properties` data for `unicode-bidi`) in a static Rust library `native/text` | `-define:FONT_BACKEND=native` |
 
-`-define:FONT_BACKEND=native` links `build/text/gt_text.lib` (built by `tools/build_text.ps1`) and makes `native` the
+`-define:FONT_BACKEND=native` links `build/text/gt_text.lib` (built by `tools/tk build_text`) and makes `native` the
 default; `Settings.backend` still picks either one for a `State` (read by `init` only), which is how the
 `text_backends` test and `tools/text_bench` compare them in one process. Without the define, asking for `native` gives
 `dwrite`, and on Linux no text is shaped at all: its builds always pass the define. `font.backend(s)` tells which one a `State` uses; `font.backend_available(b)` whether this build has it.

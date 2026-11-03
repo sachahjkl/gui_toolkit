@@ -1,6 +1,6 @@
 // The accessibility tree the toolkit makes from its boxes, without a window nor a screen reader: roles, names, states
 // and focus of the widgets, layout boxes left out, the incremental updates, and the requests of assistive technologies
-// answered as clicks, focus and values. With -define:A11Y_ACCESSKIT=true (gt_a11y.lib built by tools\build_a11y.ps1),
+// answered as clicks, focus and values. With -define:A11Y_ACCESSKIT=true (gt_a11y.lib built by tools/tk build_a11y),
 // uia_test.odin also reads a real window through UI Automation, as a screen reader does.
 //   odin test tests/a11y -vet -define:ODIN_TEST_THREADS=1
 package a11y_test

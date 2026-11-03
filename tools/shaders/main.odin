@@ -1,5 +1,5 @@
 // The renderer's shaders are written once, in WGSL (render/*.wgsl). This writes what the Direct3D 11 backend embeds:
-//   1. the HLSL of each module (render/shaders/*.hlsl), by naga (tools/wgsl2hlsl, built by tools/build_naga.ps1);
+//   1. the HLSL of each module (render/shaders/*.hlsl), by naga (tools/wgsl2hlsl, built by tools/tk build_naga);
 //   2. the DXBC of each entry point (render/shaders/*.dxbc), by D3DCompile.
 //   odin run tools/shaders            write what differs from the sources
 //   odin run tools/shaders -- -check  only compare (exit code 1 when something is stale)

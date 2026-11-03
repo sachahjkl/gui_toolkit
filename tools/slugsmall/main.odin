@@ -1,7 +1,7 @@
 // Slug's small text against DirectWrite's bitmaps: the same scenes drawn by the atlas (DirectWrite, hinted bitmaps: the
 // reference) and by Slug with each combination of its small-text settings (hinted outlines, stem darkening, four samples
 // per pixel), stacked in one PNG per scene and scale, with a 3x enlargement of the first lines. Needs the native backend
-// for hinting (tools\build_text.ps1 first):
+// for hinting (tools/tk build_text first):
 //   odin run tools/slugsmall -define:FONT_BACKEND=native -- -out <dir> [-dpr 1.5] [-darken 0.15] [-hint 24] [-ss 20]
 package main
 

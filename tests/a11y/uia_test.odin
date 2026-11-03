@@ -2,7 +2,7 @@
 package a11y_test
 
 // A real window read through UI Automation, as a screen reader reads it (only with -define:A11Y_ACCESSKIT=true, after
-// tools\build_a11y.ps1): a client on a thread of its own finds the widgets by control type and name, reads their
+// tools/tk build_a11y): a client on a thread of its own finds the widgets by control type and name, reads their
 // states and values, then invokes, toggles, sets values, selects and focuses them, and sees the window answer. The
 // window is never shown.
 

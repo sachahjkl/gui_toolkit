@@ -48,20 +48,21 @@ jobs:
         run: |
           for %%e in (hello fidget todo smoke transforms effects) do (call build.bat %%e || exit /b 1)
 
-      # naga's translator is rebuilt only when its sources change (build_naga.ps1 compares its stamp)
+      # naga's translator is rebuilt only when its sources change (tools/tk build_naga compares its stamp)
       - name: Cache the WGSL to HLSL translator
         uses: actions/cache@v6
         with:
           path: |
             build/naga/wgsl2hlsl.exe
             build/naga/wgsl2hlsl.sources
-          key: naga-${{ hashFiles('tools/wgsl2hlsl/Cargo.toml', 'tools/wgsl2hlsl/Cargo.lock', 'tools/wgsl2hlsl/src/**', 'tools/build_naga.ps1') }}
+          key: naga-${{ hashFiles('tools/wgsl2hlsl/Cargo.toml', 'tools/wgsl2hlsl/Cargo.lock', 'tools/wgsl2hlsl/src/**', 'tools/tk/**') }}
 
       - name: "Shaders (WGSL is the source; naga writes the HLSL, compiled to the DXBC the exes embed)"
         shell: pwsh
         timeout-minutes: 8
         run: |
-          ./tools/build_naga.ps1
+          New-Item -ItemType Directory -Force build | Out-Null
+          odin run tools/tk -vet -out:build/tk.exe -- build_naga
           if ($LASTEXITCODE) { exit 1 }
           odin run tools/shaders -vet -out:build/shaders_tool.exe -- -check
           if ($LASTEXITCODE) { exit 1 }
@@ -86,14 +87,20 @@ jobs:
             build/a11y/gt_a11y.lib
             build/a11y/STAMP
             build/emoji
-          key: native-${{ hashFiles('native/**', 'tools/build_text.ps1', 'tools/build_a11y.ps1', 'tools/fetch_emoji.ps1') }}
+          key: native-${{ hashFiles('native/**', 'tools/tk/**') }}
           restore-keys: native-
+
+      # (tools/tk: the toolkit's build and fetch commands, one Odin program)
+      - name: tools/tk
+        shell: pwsh
+        timeout-minutes: 3
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/tk -vet -out:build/tk.exe
 
       - name: "Emoji font (Noto Color Emoji COLR v1 and Unicode's emoji data, pinned by SHA-256, for tests/colr)"
         shell: pwsh
         timeout-minutes: 3
         run: |
-          ./tools/fetch_emoji.ps1 -Unicode
+          ./build/tk.exe fetch_emoji -unicode
           if ($LASTEXITCODE) { exit 1 }
 
       # fat LTO makes a cold build of the two Rust libraries slow (the cache is saved only when the job succeeds: this step has its
@@ -102,9 +109,9 @@ jobs:
         shell: pwsh
         timeout-minutes: 30
         run: |
-          ./tools/build_text.ps1
+          ./build/tk.exe build_text
           if ($LASTEXITCODE) { exit 1 }
-          ./tools/build_a11y.ps1
+          ./build/tk.exe build_a11y
           if ($LASTEXITCODE) { exit 1 }
 
       - name: Tests (tools/run_tests)
@@ -155,8 +162,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/odin" && tar -xzf "$RUNNER_TEMP/odin.tar.gz" -C "$RUNNER_TEMP/odin"
           dirname "$(find "$RUNNER_TEMP/odin" -maxdepth 3 -name odin -type f | head -1)" >> "$GITHUB_PATH"
 
-      - name: wgpu-native (tools/fetch_wgpu.sh)
-        run: tools/fetch_wgpu.sh odin
+      - name: wgpu-native (tools/tk fetch_wgpu)
+        run: mkdir -p build && odin run tools/tk -vet -out:build/tk -- fetch_wgpu
 
       - uses: actions/cache@v6
         with:
@@ -200,13 +207,16 @@ jobs:
             build/dxcompiler.dll
             build/dxil.dll
             build/dxc.version
-          key: dxc-${{ hashFiles('tools/fetch_wgpu.ps1') }}
+          key: dxc-${{ hashFiles('tools/tk/**') }}
 
-      - name: wgpu-native and DXC (tools/fetch_wgpu.ps1)
+      - name: wgpu-native and DXC (tools/tk fetch_wgpu)
         shell: pwsh
         timeout-minutes: 4
         run: |
-          ./tools/fetch_wgpu.ps1
+          New-Item -ItemType Directory -Force build | Out-Null
+          odin build tools/tk -vet -out:build/tk.exe
+          if ($LASTEXITCODE) { exit 1 }
+          ./build/tk.exe fetch_wgpu
           if ($LASTEXITCODE) { exit 1 }
 
       - name: Emoji font (for tests/colr)
@@ -214,7 +224,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: |
-          ./tools/fetch_emoji.ps1 -Unicode
+          ./build/tk.exe fetch_emoji -unicode
           if ($LASTEXITCODE) { exit 1 }
 
       - name: Build examples/smoke with the WebGPU backend
