@@ -1,4 +1,5 @@
-// Color glyphs off Windows, with the native text backend: COLR through the interpreter, CBDT from its PNG images.
+// The native text backend off Windows: color glyphs (COLR through the interpreter, CBDT from its PNG images), the system's
+// family names.
 #+build !windows
 package color_native_test
 
@@ -67,4 +68,20 @@ an_emoji_falls_back_to_color :: proc(t: ^testing.T) {
 		if !testing.expectf(t, len(sh.glyphs) > 0, "%s is shaped", text) { continue }
 		testing.expectf(t, font.glyph_is_color(s, sh.glyphs[0].face, sh.glyphs[0].id, 32), "%s is in color", text)
 	}
+}
+
+// A family name folds by ASCII alone: fontconfig answers its default font for any name, which is the one asked for only when
+// the names differ by A-Z / a-z alone. The long s U+017F is no 's' (to strings.equal_fold "DejaVu San\u017F" is "DejaVu Sans").
+@(test)
+family_names_fold_ascii_alone :: proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	font.init(s)
+	defer font.destroy(s)
+	if !font.has_system_family(s, "DejaVu Sans") { return }   // (the CI installs it)
+	_, ok := font.load_system(s, "DEJAVU SANS")
+	testing.expect(t, ok)
+	_, ok = font.load_system(s, "DejaVu San\u017F")
+	testing.expect(t, !ok, "a name with the long s is no DejaVu Sans")
+	testing.expect(t, !font.has_system_family(s, "DejaVu San\u017F"))
 }
