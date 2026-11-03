@@ -19,7 +19,7 @@ import "../cmdline"
 import "core:sync"
 import "core:thread"
 import "core:time"
-import "../../base"
+import "../../ascii"
 
 // What a step does.
 Kind :: enum {
@@ -58,6 +58,7 @@ STEPS := []Step{
 	// no interface, no device
 	{name = "affine", wgpu = .Ci1},
 	{name = "arena", path = "arena"},
+	{name = "ascii", path = "ascii", oses = EVERYWHERE},
 	{name = "base", path = "base"},
 	{name = "config", path = "config", oses = EVERYWHERE},
 	{name = "dbus", path = "dbus", oses = LINUX_ONLY},
@@ -241,7 +242,7 @@ choose :: proc(o: ^Options) -> []^Step {
 			switch o.group {
 			case "":
 			case "sample": if !s.sample { continue }
-			case: if !base.ascii_equal_fold(fmt.tprintf("%v", s.wgpu), o.group) { continue }
+			case: if !ascii.equal_fold(fmt.tprintf("%v", s.wgpu), o.group) { continue }
 			}
 		}
 		append(&out, &s)

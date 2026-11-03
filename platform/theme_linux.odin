@@ -10,7 +10,7 @@ package platform
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
-import "../base"
+import "../ascii"
 
 // Whether the user asked to reduce animations (GNOME "Reduce Animation", KDE "animation speed: instant"). Read from the
 // GTK settings file's gtk-enable-animations, else false (animations on). os_animations_enabled negates this.
@@ -26,7 +26,7 @@ dark_mode_preferred :: proc() -> bool {
 	if dark, ok := portal_dark_mode(); ok { return dark }
 	if v, ok := gtk_setting("gtk-application-prefer-dark-theme"); ok && (v == "1" || v == "true") { return true }
 	if t := posix.getenv("GTK_THEME"); t != nil && strings.contains(string(t), "dark") { return true }
-	if v, ok := gtk_setting("gtk-theme-name"); ok && base.ascii_contains_fold(v, "dark") { return true }
+	if v, ok := gtk_setting("gtk-theme-name"); ok && ascii.contains_fold(v, "dark") { return true }
 	return false
 }
 

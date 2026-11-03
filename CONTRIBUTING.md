@@ -7,7 +7,7 @@
   Renderer, `ui.State`); a package-level variable is a table (`const`), a resource of the process (`process`: locked, atomic or
   bound to a thread the note names), a thread's (`thread`: `@(thread_local)`) or a test's (`test`), and gets its line in
   `tools/globals_allowed.txt` with why: `tests/globals` fails otherwise ([docs/getting-started.md](docs/getting-started.md), "Where state lives").
-- **Names and protocols fold by ASCII** (`base.ascii_lower`, `ascii_equal_fold`...); `strings.to_lower` / `to_upper` / `equal_fold`,
+- **Names and protocols fold by ASCII** (`ascii.lower`, `ascii.equal_fold`...); `strings.to_lower` / `to_upper` / `equal_fold`,
   which fold by Unicode, are for user text and display text, each call listed in `tools/unicode_case_allowed.txt` with why:
   `tests/unicode_case` fails otherwise.
 - **CHANGELOG: one fragment per change in [changelog.d/](changelog.d/README.md)**, never an edit of `CHANGELOG.md`:
