@@ -202,6 +202,9 @@ entries := [?]Entry{
 	{"input background", .Bg_Solid, 1}, {"input border", .Border, 1},
 	{"kbd background", .Panel2, 1}, {"kbd text", .Weak, 1}, {"kbd border", .Border, 1},
 	{"scrim background", .Black, 0.55},
+	// docking (docking.odin): where a dragged panel would land, and the squares of the drop targets
+	{"dock_preview background", .Accent, 0.22}, {"dock_preview border", .Accent, 0.85},
+	{"dock_marker background", .Panel2, 0.94}, {"dock_marker border", .Border, 1},
 	// containers (last)
 	{"card background", .Panel, 1}, {"card border", .Border, 1},
 	{"bar background", .Bar, 1}, {"bar border", .Border, 1}, {"bar sheen", .White, 0.6},

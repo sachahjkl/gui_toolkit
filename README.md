@@ -23,6 +23,7 @@ On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the
     build.bat transforms # rotated / skewed / scaled shapes, text and images, rounded clips (draw layer only)
     build.bat stream     # a thread posting lines to the interface (ui.post)
     build.bat panes      # splitters and accordions
+    build.bat docking    # panels docked, stacked, split and floated by dragging their tabs
     build.bat todo debug
 
 Needs the Odin compiler (`dev-2026-11`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
@@ -197,6 +198,8 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
   also during a drag. Try `examples/cursors`.
 - **Panes**: splitters, accordions and lists reordered by dragging ([docs/panes.md](docs/panes.md)).
+- **Docking**: the app's panels in stacks of tabs the user drags to split, join, float and dock back, every drop target
+  also in a menu for the keyboard, the layout saved as one line of text ([docs/docking.md](docs/docking.md)).
 - **Accessibility**: screen readers (NVDA, Narrator) read the windows through UI Automation (AccessKit): every widget
   says its role, name, states and value, the focus follows, requests (invoke, set value, select, focus) arrive as input;
   built only while a reader listens, sent incrementally ([docs/accessibility.md](docs/accessibility.md)).

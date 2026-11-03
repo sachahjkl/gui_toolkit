@@ -85,6 +85,7 @@ STEPS := []Step{
 	// the interface, with no window
 	{name = "post", one = true},
 	{name = "panes", one = true},
+	{name = "docking", one = true},
 	{name = "keyboard", one = true, wgpu = .Ci2},
 	{name = "status", one = true, wgpu = .Ci1},
 	{name = "states", one = true, wgpu = .Ci1},
