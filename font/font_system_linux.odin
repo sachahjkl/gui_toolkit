@@ -6,6 +6,7 @@ import "core:c"
 import "core:slice"
 import "core:strings"
 import "core:sync"
+import "../base"
 
 // The system's fonts on Linux: fontconfig (libfontconfig.so.1, present wherever there is a desktop). A family / weight /
 // style is matched with FcFontMatch after the configuration's substitutions; the fallback of a character is the best
@@ -109,7 +110,7 @@ sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -
 	defer FcPatternDestroy(m)
 	// fontconfig always answers (its default font): the family must be the one asked for
 	got: cstring
-	if FcPatternGetString(m, "family", 0, &got) != .Match || !strings.equal_fold(string(got), family) { return }
+	if FcPatternGetString(m, "family", 0, &got) != .Match || !base.ascii_equal_fold(string(got), family) { return }
 	return fc_file(m)
 }
 
@@ -170,7 +171,7 @@ fc_list_families :: proc(family: string, allocator: runtime.Allocator) -> []stri
 @(private)
 sys_has_family :: proc(family: string) -> bool {
 	l := fc_list_families(family, context.temp_allocator)
-	for f in l { if strings.equal_fold(f, family) { return true } }
+	for f in l { if base.ascii_equal_fold(f, family) { return true } }
 	return false
 }
 

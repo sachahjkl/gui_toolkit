@@ -27,6 +27,7 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
+import "../base"
 
 Kind :: enum u8 { Bool, Int, Float, String }
 
@@ -217,7 +218,7 @@ parse_value :: proc(d: Def, text: string) -> (v: Value, err: Set_Error) {
 	t := strings.trim_space(text)
 	switch d.kind {
 	case .Bool:
-		switch strings.to_lower(t, context.temp_allocator) {
+		switch base.ascii_lower(t) {
 		case "true", "1", "yes", "on":  v.b = true
 		case "false", "0", "no", "off": v.b = false
 		case: return {}, .Bad_Type

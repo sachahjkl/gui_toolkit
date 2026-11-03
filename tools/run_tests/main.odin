@@ -19,6 +19,7 @@ import "../cmdline"
 import "core:sync"
 import "core:thread"
 import "core:time"
+import "../../base"
 
 // What a step does.
 Kind :: enum {
@@ -72,6 +73,7 @@ STEPS := []Step{
 	{name = "frame_slots", oses = EVERYWHERE},
 	{name = "fsx"},
 	{name = "globals", oses = EVERYWHERE},
+	{name = "unicode_case", oses = EVERYWHERE},
 	{name = "i18n", oses = EVERYWHERE},
 	{name = "ime", oses = EVERYWHERE},
 	{name = "instance"},
@@ -239,7 +241,7 @@ choose :: proc(o: ^Options) -> []^Step {
 			switch o.group {
 			case "":
 			case "sample": if !s.sample { continue }
-			case: if !strings.equal_fold(fmt.tprintf("%v", s.wgpu), o.group) { continue }
+			case: if !base.ascii_equal_fold(fmt.tprintf("%v", s.wgpu), o.group) { continue }
 			}
 		}
 		append(&out, &s)

@@ -8,6 +8,7 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import "../../base"
 
 EMOJI_DATA_SOURCE :: "font/emoji_data.odin"
 // A line of ranges in it, at most (with its tab).
@@ -27,7 +28,7 @@ emoji_data_source :: proc(text: string) -> (d: Emoji_Data) {
 	presentation := make([dynamic]Range, context.temp_allocator)
 	for line in strings.split_lines(text, context.temp_allocator) {
 		l := strings.trim_right(line, "\r")
-		if d.version == "" && strings.has_prefix(strings.to_lower(l, context.temp_allocator), "# version") {
+		if d.version == "" && base.ascii_has_prefix_fold(l, "# version") {
 			digits := make([dynamic]byte, context.temp_allocator)
 			for c in transmute([]byte)l { if (c >= '0' && c <= '9') || c == '.' { append(&digits, c) } }
 			d.version = string(digits[:])

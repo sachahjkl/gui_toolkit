@@ -145,7 +145,7 @@ find :: proc(s: ^Session, name: string, index := 0) -> ^ui.Box {
 	return walk_find(s.state, s.state.root, name, "", index, &found)
 }
 
-// The box that shows this text (ASCII case does not count), the innermost first of the tree. nil: none.
+// The box that shows this text (letter case does not count), the innermost first of the tree. nil: none.
 find_text :: proc(s: ^Session, text: string, index := 0) -> ^ui.Box {
 	found := 0
 	return walk_find(s.state, s.state.root, "", strings.to_lower(text, s.ctx.temp_allocator), index, &found)

@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "../../base"
 @(require) import "core:time"   // (the build is Windows')
 
 // A static library of native/: an application may link other Rust static libraries (Wren: its image decoders, Wasmtime); each
@@ -111,7 +112,7 @@ naga_sources :: proc(crate: string) -> (stamp: string, ok: bool) {
 	sums := make([dynamic]string, context.temp_allocator)
 	for s in NAGA_SOURCES {
 		sum := sha256_file(join({crate, s})) or_return
-		append(&sums, strings.to_upper(sum, context.temp_allocator))
+		append(&sums, base.ascii_upper(sum))
 	}
 	return strings.join(sums[:], ",", context.temp_allocator), true
 }

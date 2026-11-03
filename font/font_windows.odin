@@ -6,6 +6,7 @@ import "core:math"
 import "core:os"
 import "core:strings"
 import "core:sync"
+import "../base"
 
 // The platform part of the package on Windows: DirectWrite opens every face (system collection, files, memory) and
 // Direct2D draws color glyphs. The text backend (backend.odin) then works on the faces it opened.
@@ -220,7 +221,7 @@ face_from_file :: proc(s: ^State, key: string, file: ^IDWriteFontFile, memory: ^
 // bold or no italic face, DirectWrite simulates them.
 load_system :: proc(s: ^State, family: string, weight := FONT_WEIGHT_NORMAL, style := Font_Style.Normal, stretch := FONT_STRETCH_NORMAL) -> (id: Font_Id, ok: bool) {
 	if s.system == nil || family == "" { return 0, false }
-	req := strings.concatenate({"sysreq:", strings.to_lower(family, context.temp_allocator), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
+	req := strings.concatenate({"sysreq:", base.ascii_lower(family), "|", itoa(weight), "|", itoa(int(style)), "|", itoa(stretch)}, context.temp_allocator)
 	if id, ok = find_key(s, req); ok { return id, id != 0 }
 	wname := to_wide(family, context.temp_allocator)
 	index: u32
@@ -266,7 +267,7 @@ face_from_dwrite_font :: proc(s: ^State, dwf: ^IDWriteFont, family_hint := "") -
 	}
 	weight, stretch, style := dwf->GetWeight(), dwf->GetStretch(), dwf->GetStyle()
 	sims := dwf->GetSimulations()
-	key := strings.concatenate({"sys:", strings.to_lower(family, context.temp_allocator), "|", itoa(int(weight)), "|", itoa(int(stretch)),
+	key := strings.concatenate({"sys:", base.ascii_lower(family), "|", itoa(int(weight)), "|", itoa(int(stretch)),
 		"|", itoa(int(style)), "|", itoa(int(sims))}, context.temp_allocator)
 	if id, ok := find_key(s, key); ok { return id }
 	dw: ^IDWriteFontFace

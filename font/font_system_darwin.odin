@@ -4,6 +4,7 @@ package font
 import "base:runtime"
 import "core:slice"
 import "core:strings"
+import "../base"
 
 // The system's fonts on macOS: CoreText. A family is opened by name (CTFontCreateWithName), bold / italic by its
 // symbolic traits; the fallback of a character is CTFontCreateForString's (the system's cascade list); the families are
@@ -108,7 +109,7 @@ ct_font :: proc(family: string, weight: int, style: Font_Style) -> CF_Type {
 	if font == nil { return nil }
 	// CoreText answers a missing family with a default font: the family must be the one asked for
 	fam := CTFontCopyFamilyName(font)
-	same := strings.equal_fold(cf_to_string(fam, context.temp_allocator), family)
+	same := base.ascii_equal_fold(cf_to_string(fam, context.temp_allocator), family)
 	if fam != nil { CFRelease(fam) }
 	if !same { CFRelease(font); return nil }
 	traits: u32
