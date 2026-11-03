@@ -147,10 +147,8 @@ vblank_grid :: proc(r: ^Renderer) -> (last: time.Tick, period_ns: f64, ok: bool)
 
 // The QueryPerformanceCounter value `qpc` on core:time's tick scale (what time.tick_now returns on Windows).
 qpc_to_tick :: proc(qpc: i64) -> time.Tick {
-	@(static) freq: win.LARGE_INTEGER
-	when ODIN_OS == .Windows {
-		if freq == 0 { win.QueryPerformanceFrequency(&freq) }
-	}
+	freq: win.LARGE_INTEGER   // (fixed at boot: the system reads it from memory it shares with the process)
+	when ODIN_OS == .Windows { win.QueryPerformanceFrequency(&freq) }
 	f := i64(freq)
 	if f == 0 { return {} }
 	return time.Tick{_nsec = (qpc / f) * 1e9 + (qpc % f) * 1e9 / f}
