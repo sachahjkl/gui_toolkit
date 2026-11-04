@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.75.0] - 2026-11-04
+
+### Changed
+- **Slug glyph data built in half the time**: `slug_build` sorts the curves of an axis once (one `u64` key each) and puts each curve in the bands it spans, found from its bounds against the bands' own; it sorted the curves of every band and tested every curve against every band of each of the ten band counts it tries. The same data (test `slug bands_are_their_definition`); 400 glyphs of a face, best of 5: Segoe UI 5.5 -> 2.8 ms, Times New Roman 8.3 -> 3.9 ms, Nirmala UI 10.0 -> 4.6 ms.
+
 ## [0.74.0] - 2026-11-04
 
 ### Changed
@@ -1510,6 +1515,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.75.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.75.0
 [0.74.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.74.0
 [0.73.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.73.0
 [0.72.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.72.0
