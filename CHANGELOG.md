@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.76.0] - 2026-11-04
+
+### Added
+- **`ui.menu_at(p)` and `ui.wheel_consumed()`: the wheel over an open menu is the menu's**: `menu_at` says whether a point is on a level of the open menu (a submenu, a nested menu, a drop-down's list) as the last build laid it out, so an app that routes the wheel to its own content before it builds the interface (a browser's page) gives it nothing there; `wheel_consumed` says whether this build's wheel went to the interface (a box that scrolls under the pointer, or a menu's level, one that fits included). A menu taller than the window scrolls under the wheel, one that fits takes it and does not move, down and across; the scroller under either gets nothing (test `keyboard menu_takes_the_wheel_over_it`).
+
 ## [0.75.0] - 2026-11-04
 
 ### Changed
@@ -1515,6 +1520,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.76.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.76.0
 [0.75.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.75.0
 [0.74.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.74.0
 [0.73.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.73.0
