@@ -184,6 +184,83 @@ bands_give_the_outline_coverage :: proc(t: ^testing.T) {
 	}
 }
 
+// The bands of the first 300 glyphs of three faces are those of their definition written out: for each count of bands,
+// every band's curves found by testing each curve against it; the count the smallest within one curve of the best; a
+// band's list its curves in descending order of their largest coordinate across it (stable), an equal neighbour's shared.
+@(test)
+bands_are_their_definition :: proc(t: ^testing.T) {
+	Curve :: struct { idx: int, lo, hi: [2]f32 }
+	GLYPHS :: 300
+	CANDIDATES :: [?]int{1, 2, 3, 4, 6, 8, 12, 16, 24, font.MAX_BANDS}
+	s := setup(t)
+	defer teardown(s)
+	q :: proc(v: f32) -> f32 { return f32(f16(v)) }
+	in_band :: proc(c: Curve, axis, band, n: int, lo, span: f32) -> bool {
+		if c.lo[axis] == c.hi[axis] { return false }   // parallel to the band's rays
+		a := lo + span * f32(band) / f32(n) - font.BAND_EPSILON
+		z := lo + span * f32(band + 1) / f32(n) + font.BAND_EPSILON
+		return c.hi[axis] >= a && c.lo[axis] <= z
+	}
+	checked := 0
+	for family in ([?]string{"Segoe UI", "Times New Roman", "Nirmala UI"}) {
+		face, ok := font.load_system(s, family)
+		if !testing.expectf(t, ok, "%s missing", family) { continue }
+		for gid in 1 ..< GLYPHS {
+			o: font.Outline
+			defer font.outline_destroy(&o)
+			if !font.dwrite_outline_provider(s, face, u16(gid), 1.0 / 4096, &o) || len(o.quads) == 0 { continue }
+			b: font.Slug_Built
+			defer font.slug_built_destroy(&b)
+			if !font.slug_build(&o, &b) { continue }
+			curves := make([dynamic]Curve, context.temp_allocator)
+			first, base := 0, 0
+			for end in o.ends {
+				n := end - first
+				if n <= 0 { continue }
+				for k in 0 ..< n {
+					p0, p1, p2 := o.quads[first + k].p[0], o.quads[first + k].p[1], o.quads[first + (k + 1) % n].p[0]
+					xs, ys := [3]f32{q(p0.x), q(p1.x), q(p2.x)}, [3]f32{q(p0.y), q(p1.y), q(p2.y)}
+					append(&curves, Curve{base + k, {min(xs[0], xs[1], xs[2]), min(ys[0], ys[1], ys[2])}, {max(xs[0], xs[1], xs[2]), max(ys[0], ys[1], ys[2])}})
+				}
+				base += n + 1
+				first = end
+			}
+			for axis in 0 ..< 2 {
+				lo := o.bbox[axis]
+				span := max(o.bbox[axis + 2] - lo, 1e-6)
+				worst: [len(CANDIDATES)]int
+				best := max(int)
+				for n, k in CANDIDATES {
+					for band in 0 ..< n {
+						cnt := 0
+						for c in curves { if in_band(c, axis, band, n, lo, span) { cnt += 1 } }
+						worst[k] = max(worst[k], cnt)
+					}
+					best = min(best, worst[k])
+				}
+				want := 0
+				for n, k in CANDIDATES { if worst[k] <= best + 1 { want = n; break } }
+				got := axis == 1 ? b.n_h : b.n_v
+				if !testing.expectf(t, got == want, "%s glyph %d axis %d: %d bands, %d by definition", family, gid, axis, got, want) { continue }
+				for band in 0 ..< got {
+					list := make([dynamic]Curve, context.temp_allocator)
+					for c in curves { if in_band(c, axis, band, got, lo, span) { append(&list, c) } }
+					// stable insertion sort, descending
+					for i in 1 ..< len(list) {
+						for j := i; j > 0 && list[j].hi[1 - axis] > list[j - 1].hi[1 - axis]; j -= 1 { list[j], list[j - 1] = list[j - 1], list[j] }
+					}
+					h := b.bands[(axis == 1 ? 0 : b.n_h) + band]
+					same := int(h.x) == len(list)
+					for c, i in list { same = same && int(b.bands[int(h.y) + i].x) == c.idx }
+					testing.expectf(t, same, "%s glyph %d axis %d band %d: the list is not its curves in order", family, gid, axis, band)
+				}
+			}
+			checked += 1
+		}
+	}
+	testing.expect(t, checked > GLYPHS, "glyphs were built")
+}
+
 // A cubic that is a quadratic raised in degree comes back as that quadratic; a true cubic is cut into pieces whose
 // quadratics stay within the tolerance of it.
 @(test)
