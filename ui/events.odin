@@ -187,6 +187,9 @@ mouse_pos :: proc() -> Vec2 { return gs().mouse }
 // A press of `button` happened in this frame, on anything or on nothing (a popup the app closes on a press outside it).
 mouse_pressed :: proc(button := platform.Mouse_Button.Left) -> bool { return gs().pressed_any[button] }
 hot_key :: proc() -> Key { return gs().hot_key }
+// The wheel of this build went to the interface: to a box that scrolls under the pointer, or to an open menu's level
+// (one that fits takes it too, and scrolls nothing). What the app draws under it gets none of it.
+wheel_consumed :: proc() -> bool { return gs().scroll_key != 0 }
 
 // Is the pointer on box `key` or on a clickable box inside it (by the last frame's tree)? For a row that shows its
 // buttons while the pointer is anywhere on it.
