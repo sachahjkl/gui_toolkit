@@ -5,6 +5,7 @@
 package ui_robust_test
 
 import "core:fmt"
+import "core:math"
 import "core:mem"
 import "core:strings"
 import "core:testing"
@@ -327,7 +328,8 @@ tooltip_places :: proc(t: ^testing.T) {
 	testing.expect(t, size.x > 30 && size.y >= 30, "as large as its content")
 	testing.expect_value(t, b.min, ui.Vec2{100 + 15 * 0.8, 100 + 15 * 1.4})
 	b = at(&f, &r, {795, 595})
-	testing.expect_value(t, b.max, ui.Vec2{800, 600})
+	testing.expect_value(t, b.max.x, 800)   // (shifted in)
+	testing.expect_value(t, b.max.y, math.round(f32(595 - 15 * ui.TOOLTIP_ABOVE_EM)))   // (above the pointer: no room below)
 	r.beside = true
 	b = at(&f, &r, {100, 100})
 	testing.expect_value(t, b.min.x, 100 + 15 * 1.2)

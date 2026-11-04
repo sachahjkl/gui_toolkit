@@ -1,7 +1,9 @@
 package ui
 
 import "core:fmt"
+import "core:math"
 import "core:unicode"
+import "../font"
 import "../platform"
 
 // Popups (menus, dropdowns, tooltips) are floating boxes appended to the ROOT, so they draw above everything built so
@@ -52,6 +54,12 @@ MENU_ITEM_EM :: 1.9
 // A tooltip's size before it was measured.
 @(private = "file") TOOLTIP_FIRST_WIDTH_EM :: 10
 @(private = "file") TOOLTIP_FIRST_HEIGHT_EM :: 3
+// Where a tooltip goes: right of and below the pointer (below its arrow); above it, this far, when it does not fit below.
+@(private = "file") TOOLTIP_BELOW_EM :: Vec2{0.8, 1.4}
+TOOLTIP_ABOVE_EM :: 0.5
+@(private = "file") TOOLTIP_RADIUS_EM :: 0.4
+// tooltip_text wraps its lines past this width.
+TOOLTIP_MAX_WIDTH_EM :: 24
 
 // Menus built from now on have items of `em` times the font size in height (0: back to MENU_ITEM_EM). A dense tool
 // panel sets it while it builds its menus, and resets it after.
@@ -665,13 +673,26 @@ hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
 	return false
 }
 
-// `if tooltip() { label("...") }` near the pointer. Not clickable, so it never blocks the box below.
+// `if tooltip() { tooltip_text("...") }` near the pointer: below it, above it when it does not fit, inside the window.
+// Not clickable, so it never blocks the box below. It is as large as what is built in it: a size relative to the
+// window (the app's style may fill) is the content's own there.
 @(deferred_none = tooltip_end)
 tooltip :: proc() -> bool {
 	s := gs()
 	em := font_size()
-	tooltip_open(clamp_popup(s.mouse + {em * 0.8, em * 1.4}, tooltip_last_size(em), s.window_size), em)
+	size := tooltip_last_size(em)
+	pos := s.mouse + TOOLTIP_BELOW_EM * em
+	if pos.y + size.y > s.window_size.y && s.mouse.y - TOOLTIP_ABOVE_EM * em - size.y >= 0 { pos.y = s.mouse.y - TOOLTIP_ABOVE_EM * em - size.y }
+	tooltip_open(clamp_popup(pos, size, s.window_size), em)
 	return true
+}
+
+// The text of a tooltip: as wide as it is, up to TOOLTIP_MAX_WIDTH_EM; its lines wrap past that.
+tooltip_text :: proc(text: string) -> Signal {
+	st := top_style()
+	w := font.text_width(gs().fonts, st.font, st.font_size, text) + 2 * st.text_pad
+	next({width = px(math.ceil(min(w, font_size() * TOOLTIP_MAX_WIDTH_EM))), height = text_size()})
+	return signal(build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###tooltip_text", text)))
 }
 
 // `tooltip` beside the pointer instead of below it: to its right (to its left when there is no room), centered on it. For
@@ -700,12 +721,14 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 	push_parent(s.root)
 	push_tags("floating")
 	push_style_copy()
+	st := top_style()
+	for a in Axis { if st.pref[a].kind == .Percent { st.pref[a] = text_size() } }
 	set_next_axis(.Y)
 	s.next_mod.fixed_x = pos.x
 	s.next_mod.fixed_y = pos.y
 	s.next_mod.width = children_sum()
 	s.next_mod.height = children_sum()
-	s.next_mod.radius = em * 0.4
+	s.next_mod.radius = em * TOOLTIP_RADIUS_EM
 	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
 	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
