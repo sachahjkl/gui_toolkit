@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.78.0] - 2026-11-04
+
+### Added
+- **`Dock_Options.strip_last`**: boxes after a stack's fold and menu buttons, the strip's last control (a window's close button stays at the far right; `strip_end` comes before them).
+- **`ui.field_num_step`**: the number at the caret of a focused field stepped as browsers' style editors step it: Up / Down 1, Page Up / Page Down 10, Shift 10, Alt 0.1, Ctrl 100, and the wheel over the field with the same modifiers; its unit and the text around it stay (`margin: 10px 5px`, `rgba(10, 20, 30, 0.5)`, `calc(100% - 12px)`), a number inside a word or a hex colour is none, the number stepped is selected and the step is an edit of the field's history. `ui.num_step_text` and `ui.num_step_delta` do it on a string and a key press.
+- **`ui.color_picker`**: a colour picker for a `ui.Color_Pick` the app owns (`color_pick_set`, `color_pick_rgba`, `color_pick_text`, `color_pick_destroy`; `color_picker_width`): a saturation / value square, a hue bar and an opacity bar beside the colour it was opened with (a click takes it back) and the new one, a switch of the text's format (hex, rgb, hsl, oklch) and the colour as text, applied as it is typed. Every part is a Tab stop, moved by the arrows (Shift: a tenth; the hue by degrees), and screen readers see sliders, a radio group and a field. No eyedropper: the platform layer reads no pixel of the screen.
+  - `ui.color_parse` / `ui.color_text`: hex, `rgb()` / `rgba()`, `hsl()` / `hsla()` and `oklch()` read and written, in the style they were written in (`Color_Style`: the format, the legacy comma syntax or the short hex); `srgb_to_hsv`, `hsv_to_srgb`, `srgb_to_hsl`, `hsl_to_srgb`, `srgb_to_oklch`, `oklch_to_srgb`.
+  - `ui.alpha_picker`, `ui.checker_draw`; `hue_picker` takes `horizontal`; `sat_val_picker`, `hue_picker` and `alpha_picker` take the keyboard and tell screen readers their values.
+
 ## [0.77.0] - 2026-11-04
 
 ### Fixed
@@ -1525,6 +1534,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.78.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.78.0
 [0.77.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.77.0
 [0.76.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.76.0
 [0.75.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.75.0
