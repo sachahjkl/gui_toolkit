@@ -1,5 +1,8 @@
 // The site's history, from CHANGELOG.md: a page with every version (changelog.html) and the last ones on the home page, in place
 // of <!-- whats-new -->. Run when the site is deployed (.github/workflows/pages.yml), so the site cannot be behind a release.
+// It also makes the site's classic presentation, classic/ (a line of plain links, a column of text with the news beside it,
+// site/classic/classic.css), from the same sources: the home page's sections and the versions, their links moved into classic/.
+// Each modern page's footer links its classic page ("Classic version"), each classic page the modern one ("Modern version").
 //   node tools/site_changelog.mjs <site> <out>
 // <out> gets a copy of <site> with the pages made. CHANGELOG.md is Keep a Changelog: "## [x.y.z] - date", "### Added"...,
 // "[x.y.z]: url" at the end.
@@ -13,6 +16,10 @@ if (!site || !out) { console.error('usage: node tools/site_changelog.mjs <site> 
 const OPEN = 6   // versions unfolded on the page
 const NEWS = 3   // versions on the home page
 const LEADS = 3  // entries of each there
+const CLASSIC = 'classic'                                    // the classic pages' folder in the site
+const CLASSIC_LINK = '<a href="classic/">Classic version</a>' // in the home page's footer
+const PAGES = ['index.html', 'changelog.html']               // the modern pages, each with a classic one of the same name
+const SECTION_PAGES = { features: 'features.html' }          // the home's sections that are pages of their own in classic/
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
@@ -142,13 +149,23 @@ if (!index.includes('<!-- whats-new -->')) { console.error(`no <!-- whats-new --
 cpSync(site, out, { recursive: true })
 writeFileSync(join(out, 'index.html'), index.replace('<!-- whats-new -->', news(releases.slice(0, NEWS))))
 
+
+const take = (re, s = index) => (s.match(re) || [''])[0]
+const inner = (html) => html.trim().replace(/^<[^>]*>/, '').replace(/<\/[^>]*>$/, '').trim()
+const text = (html) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+const name = inner(take(/<title>[^<]*<\/title>/))
+const footer = take(/<footer>[\s\S]*?<\/footer>/)
+if (!footer.includes(CLASSIC_LINK)) { console.error(`no ${CLASSIC_LINK} in the footer of ${site}/index.html`); process.exit(1) }
+
+const changelogIntro = `<p class="lead">Every version of ${esc(name)}, newest first. The format is <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, the versions follow <a href="https://semver.org">semantic versioning</a>.</p>
+<div class="filter"><input id="filter" type="search" placeholder="Filter by a word or a version" aria-label="Filter the versions by a word"><span id="count" class="small">${releases.length} versions</span></div>
+${releases.map((r, i) => release(r, i < OPEN)).join('\n')}`
+
 // the page wears the home page's head, bar, footer and script
-const take = (re) => (index.match(re) || [''])[0]
-const name = take(/<title>[^<]*<\/title>/).replace(/<\/?title>/g, '')
 const head = take(/<head>[\s\S]*?<\/head>/).replace(/<title>[^<]*<\/title>/, `<title>Changelog · ${name}</title>`)
   .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="Every version of ${esc(name)}, newest first.">`)
 const bar = take(/<header class="bar">[\s\S]*?<\/header>/).replace(/href="#"/g, 'href="index.html"').replace(/href="#(\w+)"/g, 'href="index.html#$1"')
-const footer = take(/<footer>[\s\S]*?<\/footer>/)
 const script = take(/<script>[\s\S]*?<\/script>/)
 writeFileSync(join(out, 'changelog.html'), `<!doctype html>
 <html lang="en">
@@ -158,15 +175,121 @@ ${bar}
 
 <main class="changelog">
 <h1>Changelog</h1>
-<p class="lead">Every version of ${esc(name)}, newest first. The format is <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, the versions follow <a href="https://semver.org">semantic versioning</a>.</p>
-<div class="filter"><input id="filter" type="search" placeholder="Filter by a word or a version" aria-label="Filter the versions by a word"><span id="count" class="small">${releases.length} versions</span></div>
-${releases.map((r, i) => release(r, i < OPEN)).join('\n')}
+${changelogIntro}
 </main>
 
-${footer}
+${footer.replace(CLASSIC_LINK, `<a href="${CLASSIC}/changelog.html">Classic version</a>`)}
 ${script}
 ${FILTER}
 </body>
 </html>
 `)
 console.log(`${releases.length} versions: ${join(out, 'changelog.html')}, the last ${NEWS} on the home page`)
+
+// The classic pages. A link of the home page, moved into classic/: a page keeps its name (its classic one), a section of the
+// home is its classic page or the classic home's, a file stays the site's ("img/x.png" -> "../img/x.png").
+function classicLink(href) {
+  if (/^[a-z]+:/i.test(href)) return href
+  const [path, id] = href.split('#')
+  if (!path) return id ? SECTION_PAGES[id] ?? `index.html#${id}` : 'index.html'
+  return PAGES.includes(path) ? href : `../${href}`
+}
+const classic = (html) => html.replace(/\b(href|src)="([^"]*)"/g, (_, attr, v) => `${attr}="${classicLink(v)}"`)
+
+const hero = take(/<section class="hero">[\s\S]*?<\/section>/)
+const title = inner(take(/<h1>[\s\S]*?<\/h1>/, hero))
+const logo = take(/<img class="mark" src="[^"]*"/, hero).replace(/.*src="/, '').slice(0, -1)
+const description = take(/<meta name="description" content="[^"]*">/).replace(/.*content="/, '').slice(0, -2)
+const wide = take(/<figure class="shot wide">[\s\S]*?<\/figure>/)
+const gallery = take(/<section class="gallery">[\s\S]*?<\/section>/)
+const download = take(/<section id="\w+" class="download">[\s\S]*?<\/section>/)
+const cards = [...take(/<section id="features"[\s\S]*?<\/section>/).matchAll(/<article class="card">\s*<h3>([\s\S]*?)<\/h3>([\s\S]*?)<\/article>/g)]
+  .map(([, h, body]) => ({ title: h, body: body.trim(), id: slug(text(h)), summary: text(body).split(/(?<=[.;:])\s/)[0].replace(/[.;:]$/, '') }))
+for (const [what, part] of Object.entries({ hero, title, logo, wide, gallery, download, features: cards.length })) {
+  if (!part) { console.error(`no ${what} in ${site}/index.html for the classic pages`); process.exit(1) }
+}
+
+// the nav line: the home, the modern bar's links, the screenshots after the features
+const nav = [['index.html', 'home'], ...[...take(/<nav id="nav">[\s\S]*?<\/nav>/).matchAll(/<a href="([^"]*)">([^<]*)<\/a>/g)].map(([, h, l]) => [classicLink(h), l.toLowerCase()])]
+const after = nav.findIndex(([h]) => h === SECTION_PAGES.features)
+nav.splice(after < 0 ? nav.length : after + 1, 0, ['screenshots.html', 'screenshots'])
+
+const [footBefore, footAfter] = inner(footer).split(CLASSIC_LINK)
+const classicPage = (file, { title: t, description: d, modern, main, scripts = '' }) => writeFileSync(join(out, CLASSIC, file), `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>${t}</title>
+<meta name="description" content="${d}">
+${classic(take(/<link rel="icon"[^>]*>/))}
+<link rel="stylesheet" href="classic.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="page">
+<header class="masthead">
+<img src="${classicLink(logo)}" alt="" width="48" height="48">
+<a class="name" href="index.html">${title}</a>
+<span class="tagline">${description}</span>
+</header>
+<nav class="site" aria-label="Site">
+${nav.map(([h, l], i) => `${i ? '<span class="sep" aria-hidden="true">-</span>' : ''}<a href="${h}"${h === file ? ' aria-current="page"' : ''}>${l}</a>`).join('\n')}
+</nav>
+${main}
+<footer class="foot">
+${classic(footBefore)}<a href="${modern}">Modern version</a>${classic(footAfter)}
+</footer>
+</div>
+${scripts}</body>
+</html>
+`)
+
+const newsItem = (r) => `<div class="item">
+${r.date ? `<time class="date" datetime="${esc(r.date)}">${esc(r.date)}</time>: ` : ''}<a href="changelog.html#v${esc(r.version)}">${esc(name)} ${esc(r.version)}</a> released.
+<ul>${entries(r).slice(0, LEADS).map((e) => `<li>${lead(e.text)}</li>`).join('')}</ul>
+</div>`
+
+classicPage('index.html', {
+  title: name, description, modern: '../', main: `<div class="columns">
+<main id="main">
+<h1>Welcome to ${title}</h1>
+<p>${classic(inner(take(/<p class="lead">[\s\S]*?<\/p>/, hero)))}</p>
+<p class="download">${[...take(/<div class="actions">[\s\S]*?<\/div>/, hero).matchAll(/<a [^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map(([, h, l]) => `<a href="${classicLink(h)}">${l}</a>`).join(' - ')}
+<br><span class="small">${inner(take(/<p class="small">[\s\S]*?<\/p>/, hero))}</span></p>
+<h2>Features</h2>
+<ul class="features">
+${cards.map((c) => `<li><a href="${SECTION_PAGES.features}#${c.id}">${c.title}</a>: ${c.summary}</li>`).join('\n')}
+</ul>
+${classic(download)}
+</main>
+<aside aria-labelledby="news">
+<h2 id="news">News</h2>
+${releases.slice(0, NEWS).map(newsItem).join('\n')}
+<p><a class="all" href="changelog.html">- all news -</a></p>
+</aside>
+</div>`,
+})
+classicPage(SECTION_PAGES.features, {
+  title: `Features · ${name}`, description: `What ${esc(name)} does.`, modern: '../#features', main: `<main id="main">
+<h1>Features</h1>
+${cards.map((c) => `<article class="card" id="${c.id}">\n<h2>${c.title}</h2>\n${classic(c.body)}\n</article>`).join('\n')}
+</main>`,
+})
+classicPage('screenshots.html', {
+  title: `Screenshots · ${name}`, description: `Screenshots of ${esc(name)}.`, modern: '../', main: `<main id="main">
+<h1>Screenshots</h1>
+${classic(wide)}
+${classic(gallery)}
+</main>`,
+  scripts: `${classic(take(/<script src="[^"]*"[^>]*><\/script>/))}\n`,
+})
+classicPage('changelog.html', {
+  title: `Changelog · ${name}`, description: `Every version of ${esc(name)}, newest first.`, modern: '../changelog.html', main: `<main id="main" class="changelog">
+<h1>Changelog</h1>
+${changelogIntro}
+</main>`,
+  scripts: `${FILTER}\n`,
+})
+console.log(`the classic pages: ${join(out, CLASSIC)}`)
