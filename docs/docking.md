@@ -114,7 +114,9 @@ targets while something is dragged, builds the menu, and calls `opts.on_save` wh
   to the front. It stays inside the space.
 - **Handles** are `pane_split`'s ([panes.md](panes.md)): each side keeps `DOCK_MIN_EM`; a double click, Enter or a drag
   under half the minimum folds the second side to a strip, a click brings it back; the arrows resize it from the keyboard.
-  Showing a panel of a folded side (`dock_activate`) opens it.
+  The stacks of a side that folds have a chevron button at the end of their strip, before the menu's (`pane_toggle`, a
+  Tab stop: Enter folds). The strip is in the theme's `pane_strip background` (by default the bars' surface), its hover
+  the theme's `hover_fill` over it; its tooltip names the stacks. Showing a panel of a folded side (`dock_activate`) opens it.
 - **Close**: the tab's close button, a middle click, the menu.
 - **The menu** (the button at the end of a strip, a right click on a tab, the menu key or Shift+F10 on a focused tab):
   the stack's tabs; "Dock <panel> to" every target a drag reaches (each stack: into it, at each side; each edge of the
@@ -135,4 +137,5 @@ Example: `examples/docking` (`build.bat docking`): six panels of an editor, the 
 `tests/docking` (the model: split, join, float and back, close, the strip, folds, the layout and the targets under a
 point, the text, its round trip, the texts refused; through the test session: a tab dragged onto each target and each
 edge, along strips, out and back by a double click, Escape, the keyboard and the menu, a handle, a close button, the
-preview's pixels).
+preview's pixels; the folded strip's colours in a dark theme, the fold button by the pointer and the keyboard, the
+strip's tooltip sized to its text and inside a tall window).

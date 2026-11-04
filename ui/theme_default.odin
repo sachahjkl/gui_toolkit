@@ -205,6 +205,8 @@ entries := [?]Entry{
 	// docking (docking.odin): where a dragged panel would land, and the squares of the drop targets
 	{"dock_preview background", .Accent, 0.22}, {"dock_preview border", .Accent, 0.85},
 	{"dock_marker background", .Panel2, 0.94}, {"dock_marker border", .Border, 1},
+	// a folded pane's strip (panes.odin, a dock's folded side): the surface of the bars it sits beside
+	{"pane_strip background", .Bar, 1},
 	// containers (last)
 	{"card background", .Panel, 1}, {"card border", .Border, 1},
 	{"bar background", .Bar, 1}, {"bar border", .Border, 1}, {"bar sheen", .White, 0.6},

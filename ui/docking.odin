@@ -18,7 +18,8 @@ package ui
 //     drop targets show: it docks where it is let go over one), resized by its corner, back into the dock by a double click
 //     on that part of its strip (the stack it came from) or its menu. A press on it brings it to the front.
 //   * Splits have the handle of pane_split (panes.odin): sides of at least DOCK_MIN_EM, the second side folds to a strip
-//     (a double click, Enter, a drag under half the minimum), the arrows resize it from the keyboard.
+//     (a double click, Enter, a drag under half the minimum, the chevron button at the end of its stacks' strips: the
+//     side's pane_toggle), the arrows resize it from the keyboard. The strip has the theme's "pane_strip" colours.
 //   * The stack's menu (its button at the end of the strip, the tab's context menu): its tabs, "Dock to" every target a
 //     drag can reach (for keyboard users), float, dock back, move along the strip, close.
 //
@@ -458,8 +459,17 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 			d.opts.strip_space(d.opts.user, d, leaf, grab)
 		}
 		if d.opts.strip_end != nil { d.opts.strip_end(d.opts.user, d, leaf) }
-		// the stack's menu
+		// the button that folds the side the stack is on (to the strip pane_split shows in its place)
 		mw := math.round(DOCK_MENU_EM * em)
+		if split := dock_fold_split(d, leaf); split != DOCK_NONE {
+			n := d.nodes[split]
+			p := Pane{collapsed = n.fold}
+			next({width = px(mw), height = px(mw)})
+			if tags("icon_button") {
+				if pane_toggle("###dock_fold", n.axis, &p, {side = .After, title = dock_stack_label(d, dock_leaves(d, n.b)[0])}) { dock_set_split(d, split, n.ratio, p.collapsed) }
+			}
+		}
+		// the stack's menu
 		next({width = px(mw), height = px(mw), font = gs().icon_font, text_align = .Center, text_pad = 0})
 		mb: ^Box
 		if tags("icon_button") { mb = build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects, .Draw_Focus_Ring, .No_Text_Trunc}, fmt.tprintf("%s###dock_menu_btn", ICON_DOWN)) }

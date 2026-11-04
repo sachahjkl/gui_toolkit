@@ -28,7 +28,7 @@ PANE_MIN_EM :: 3            // the smallest open pane, and what the other side k
 PANE_STRIP_EM :: 1.25       // a folded pane's strip, across the split (em)
 PANE_SNAP_FRACTION :: 0.5   // a collapsible pane dragged under this fraction of its minimum folds
 PANE_TOGGLE_EM :: 1.6       // pane_toggle's button (em, square)
-PANE_CHEVRON_EM :: 0.8      // the chevron in the strip and the button (em)
+PANE_CHEVRON_EM :: 1.4      // the chevron in the strip and the button (em)
 PANE_TOOLTIP_DELAY_S :: 0.5
 PANE_NO_LIMIT :: 1e6        // the largest size when the room is not known (logical px)
 PANE_SIDE_MIN_EM :: 40      // pane_axis with .Auto: the pane goes at the side from this room on (em)
@@ -118,7 +118,8 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	next(m)
 	flags := Box_Flags{.Clickable}
 	if !opts.no_keyboard { flags += {.Focusable} }
-	b := build_box(flags, id)
+	b: ^Box
+	if tags("pane_strip") { b = build_box(flags, id) }   // (the folded strip's colours)
 	enter := !opts.no_keyboard && s.focus_key == b.key && key_pressed_peek(.Return)   // (signal takes Enter as a click)
 	res.sig = signal(b)
 	step: f32 = SPLITTER_KEY_STEP_PX
@@ -181,9 +182,10 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	d.split = {hot = d.hot, color = d.hot ? color("accent") : color("border"), line = max(math.round(s.scale), 1)}
 	d.collapsed, d.axis, d.side = p.collapsed, axis, opts.side
 	d.chevron = {t = pane_chevron_turns(axis, opts.side, false), color = d.hot ? color("accent") : color("text")}
-	d.hover = color("hover")
+	d.bg = color_from_tags(s, b.tags_key, "background")
+	d.hover = state_fill(b, "hover_fill", d.bg)
 	b.custom, b.custom_user = pane_draw, d
-	if p.collapsed && opts.title != "" && hovered_for(res.sig, PANE_TOOLTIP_DELAY_S) { if tooltip() { label(opts.title) } }
+	if p.collapsed && opts.title != "" && hovered_for(res.sig, PANE_TOOLTIP_DELAY_S) { if tooltip() { tooltip_text(opts.title) } }
 	info := A11y_Info{role = .Splitter, name = opts.title, numeric = f64(res.size), min = f64(lo), max = f64(hi),
 		orientation = axis == .X ? Axis.Y : Axis.X, actions = opts.no_keyboard ? {} : {.Increment, .Decrement, .Set_Value}}
 	if opts.collapsible { info.expanded = !p.collapsed }
@@ -201,7 +203,8 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> bool {
 	em := font_size()
 	m := gs().has_next ? gs().next_mod : Style_Mod{}
-	m.width, m.height = px(math.round(PANE_TOGGLE_EM * em)), px(math.round(PANE_TOGGLE_EM * em))
+	if m.width == nil { m.width = px(math.round(PANE_TOGGLE_EM * em)) }
+	if m.height == nil { m.height = px(math.round(PANE_TOGGLE_EM * em)) }
 	next(m)
 	b := build_box({.Clickable, .Focusable, .Draw_Hot_Effects, .Draw_Focus_Ring}, id)
 	sig := signal(b)
@@ -221,7 +224,7 @@ pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) ->
 	}, d
 	verb := p.collapsed ? "Show" : "Hide"
 	name := opts.title != "" ? fmt.tprintf("%s %s", verb, opts.title) : verb
-	if hovered_for(sig, PANE_TOOLTIP_DELAY_S) { if tooltip() { label(name) } }
+	if hovered_for(sig, PANE_TOOLTIP_DELAY_S) { if tooltip() { tooltip_text(name) } }
 	a11y_default(b, {role = .Button, name = name, expanded = !p.collapsed})
 	return sig.clicked
 }
@@ -293,7 +296,7 @@ Pane_Draw :: struct {
 	hot, collapsed: bool,
 	axis:      Axis,
 	side:      Pane_Side,
-	hover:     Color,
+	bg, hover: Color,     // the strip's ("pane_strip background"), and the theme's hover fill over it
 }
 
 // Open: the splitter's rule. Folded: the strip, its edge towards the other side, a chevron that points where the pane
@@ -303,6 +306,7 @@ pane_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Pane_Draw)(user)
 	if !d.collapsed { splitter_draw(b, &d.split, dc); return }
 	r := b.rect
+	draw.rect(dc, r, d.bg)
 	if d.hot { draw.rect(dc, r, d.hover) }
 	l := d.split.line
 	edge := r
