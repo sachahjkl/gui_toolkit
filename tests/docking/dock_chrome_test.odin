@@ -12,7 +12,7 @@ import "../../ui"
 @(private = "file") CHROME_SIZE :: [2]int{500, 1000}   // a tall window: the folded strip is as tall
 @(private = "file") REST_MS :: 1000                     // past the strip's tooltip delay
 @(private = "file") DARK_MAX :: 0x50                    // no channel of a dark theme's surface (hovered or not) above this
-@(private = "file") CHROME_TITLES := [?]string{"", "Alpha", "Beta"}
+@(private = "file") CHROME_TITLES := [?]string{"", "Alpha", "Beta", "Gamma", "Delta", "Epsilon"}
 @(private = "file") LONG_TITLE :: "Beta, a panel whose name is long enough to take more than one line of a tooltip"
 
 @(private = "file")
@@ -29,7 +29,7 @@ chrome_build :: proc(s: ^session.Session) {
 		ui.dock_begin(&app.dock, "###dock", {title = proc(user: rawptr, id: u32) -> string {
 			return id == 2 && (^Chrome_App)(user).long ? LONG_TITLE : CHROME_TITLES[id]
 		}, user = app})
-		for p in u32(1) ..= 2 { if ui.dock_panel(&app.dock, p) { ui.label(fmt.tprintf("%s content###content", CHROME_TITLES[p])) } }
+		for p in u32(1) ..< len(CHROME_TITLES) { if ui.dock_panel(&app.dock, p) { ui.label(fmt.tprintf("%s content###content", CHROME_TITLES[p])) } }
 		ui.dock_end(&app.dock)
 	}
 }
@@ -98,6 +98,23 @@ the_fold_button_folds_and_the_strip_brings_it_back :: proc(t: ^testing.T) {
 }
 
 @(test)
+the_end_buttons_stay_in_view_past_too_many_tabs :: proc(t: ^testing.T) {
+	app: Chrome_App
+	defer ui.dock_destroy(&app.dock)
+	s := chrome_setup(t, &app, "dock1 x0.800([*a] [*b,c,d,e])")   // (four tabs in a fifth of the window)
+	right := app.dock.nodes[ui.dock_leaf_of(&app.dock, 2)].rect
+	last := session.get(s, "dock_tab_5")
+	testing.expectf(t, last.rect.max.x > right.max.x, "the tabs are more than the strip: %v in %v", last.rect, right)
+	for name in ([]string{"dock_fold", "dock_menu_btn"}) {
+		b := session.find(s, name, name == "dock_menu_btn" ? 1 : 0)
+		if !testing.expect(t, b != nil) { continue }
+		testing.expectf(t, b.rect.min.x >= right.min.x && b.rect.max.x <= right.max.x, "%s in the strip: %v in %v", name, b.rect, right)
+	}
+	session.click(s, "dock_fold")
+	testing.expect(t, app.dock.nodes[app.dock.main].fold, "and it folds")
+}
+
+@(test)
 a_tooltip_over_a_tall_strip_fits_its_text :: proc(t: ^testing.T) {
 	app: Chrome_App
 	defer ui.dock_destroy(&app.dock)
@@ -119,6 +136,16 @@ a_tooltip_over_a_tall_strip_fits_its_text :: proc(t: ^testing.T) {
 	max_w := ui.TOOLTIP_MAX_WIDTH_EM * em
 	testing.expectf(t, sizes[0].x < max_w && sizes[0].y < 3 * em, "the short one: %v", sizes[0])
 	testing.expectf(t, sizes[1].x <= max_w + em && sizes[1].x > sizes[0].x && sizes[1].y > sizes[0].y + em, "the long one wraps: %v", sizes[1])
+	// its first frame measures it (not shown: placed by a size it has not got yet), the next one shows it where it fits
+	session.leave(s)
+	session.move(s, session.center(strip_box(s, &app)))
+	first := session.find(s, "tooltip")
+	for end := s.clock + REST_MS; first == nil && s.clock < end; first = session.find(s, "tooltip") { session.frame(s) }
+	if !testing.expect(t, first != nil) { return }
+	testing.expect_value(t, first.transparency, 1)
+	session.frame(s)
+	shown := session.get(s, "tooltip")
+	testing.expectf(t, shown.transparency == 0 && inside(shown.rect, window), "shown inside the window: %v", shown.rect)
 	// at the bottom of the window: above the pointer
 	at := [2]f32{session.center(strip_box(s, &app)).x, f32(CHROME_SIZE.y) - em}
 	session.leave(s)
