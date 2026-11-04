@@ -26,7 +26,7 @@ On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the
     build.bat docking    # panels docked, stacked, split and floated by dragging their tabs
     build.bat todo debug
 
-Needs the Odin compiler (`dev-2026-11`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
+Needs the Odin compiler (`dev-2026-11a`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
 (X11 and Wayland, Vulkan through wgpu-native, text by the native backend: Fontations, HarfRust, ICU4X, fonts from
 fontconfig): `odin run tools/tk -- fetch_wgpu` puts wgpu-native beside Odin, `tools/linux_ci.sh` checks every package, builds the
 examples and runs the windowless tests; [opencode native](https://github.com/sachahjkl/opencode_native) ships a Linux build.

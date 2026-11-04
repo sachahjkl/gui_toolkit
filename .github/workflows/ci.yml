@@ -150,9 +150,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Odin dev-2026-11, clang, fontconfig
+      - name: Odin dev-2026-11a, clang, fontconfig
         env:
-          ODIN_TAG: dev-2026-11
+          ODIN_TAG: dev-2026-11a
           ODIN_SHA256: 65c9f6e97d6f8a30930e151f270ce5aeaa98fe8b2ba49fe067394e2af04f7618
         run: |
           sudo apt-get update -qq
