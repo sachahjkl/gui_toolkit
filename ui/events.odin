@@ -70,6 +70,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 		case .Scroll:
 			s.mouse = e.pos
 			s.mouse_valid = true   // (the wheel is where its event says: a first notch with no move before it scrolls too)
+			s.mods = e.mods        // (what a wheel steps by: field_num_step)
 			if zoom_keys && .Ctrl in e.mods {
 				// Ctrl+wheel zooms (wheel up = delta.y < 0 = bigger) instead of scrolling
 				s.zoom = clamp(s.zoom * math.pow(ZOOM_STEP, -e.delta.y), ZOOM_MIN, ZOOM_MAX)

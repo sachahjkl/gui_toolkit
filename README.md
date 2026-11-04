@@ -126,7 +126,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   indentation, Up / Down keep the column), scroll region, **menus** (context menus, dropdowns, menu bar: submenus,
   separators, disabled items, shortcuts, full keyboard, kept on screen), **keyboard lists** (`List_State`: active row,
   Page Up / Down, type-ahead, Enter / Escape, kept in view), wrapped text (`paragraph`), tooltip with hover delay,
-  toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, color pickers (sat/val + hue), fuzzy-match helper + highlighted labels, custom-draw boxes.
+  toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, a **colour picker** (`color_picker`: sat/val square, hue and opacity bars, old and new colour, hex / rgb / hsl / oklch text; the parts on their own too), numbers stepped in a field (`field_num_step`: Up / Down with Shift, Alt, Ctrl, and the wheel), fuzzy-match helper + highlighted labels, custom-draw boxes.
 - **2D transforms and images** (draw layer): `draw.push_transform` with a CSS-style `Affine` matrix (rotate, skew,
   scale, nested) applies to rects, borders, shadows, gradients, text and images, antialiased in local space; scaled
   text is re-rasterized at its screen size. `draw.push_clip_rounded` clips to a rounded rect under any transform.

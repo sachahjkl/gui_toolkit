@@ -93,7 +93,8 @@ targets while something is dragged, builds the menu, and calls `opts.on_save` wh
 | `title(user, panel)` | a panel's name: its tab, its menus, screen readers |
 | `tab(user, Dock_Tab)` | the content of a tab inside `t.box` (width: what it builds); nil: the title |
 | `closable(user, panel)` | nil: every panel can be closed |
-| `strip_begin`, `strip_end(user, d, leaf)` | boxes at the start of a strip and at its end (a toolbar) |
+| `strip_begin`, `strip_end(user, d, leaf)` | boxes at the start of a strip and at its end, before its fold and menu buttons (a toolbar) |
+| `strip_last(user, d, leaf)` | boxes after the fold and menu buttons: the strip's last control (a window's close button stays at the far right) |
 | `strip_space(user, d, leaf, box)` | the empty part of a docked stack's strip, once built: the app may make it `Clickable` (a handle that moves its own window) |
 | `on_save(user, d)` | save the layout (`dock_format`) |
 | `labels` | the menus' words (`DOCK_LABELS`) |
