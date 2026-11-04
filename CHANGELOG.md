@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.74.0] - 2026-11-04
+
+### Changed
+- **`font.color_prepare`, textures zeroed on the GPU**: `font.color_prepare` makes what color glyphs are drawn with (Direct2D on a WARP device, about 20 ms) for an application to call on a thread of its own while it starts; the first color glyph a frame looked up made it on the drawing thread. Textures are made render targets too and zeroed by a clear on the GPU (`ClearRenderTargetView`) where they were zeroed by uploads of zeros: a 2048 x 2048 glyph atlas page 6 ms (R8) and 3.5 ms (RGBA) of the CPU before, its first frame's.
+
 ## [0.73.0] - 2026-11-03
 
 ### Fixed
@@ -1505,6 +1510,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.74.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.74.0
 [0.73.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.73.0
 [0.72.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.72.0
 [0.71.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.71.0
