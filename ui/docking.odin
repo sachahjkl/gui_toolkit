@@ -99,6 +99,7 @@ Dock_Result :: struct {
 	closed:   u32,       // the panel the user closed this frame (DOCK_NO_PANEL: none)
 }
 
+@(private) DOCK_TABS_ID :: "###dock_tabs"   // a strip's tabs and its empty part
 @(private) dock_leaf_id :: proc(leaf: i32) -> string { return fmt.tprintf("###dock_leaf_%d", leaf) }
 @(private) dock_tab_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_tab_%d", panel) }
 @(private) dock_body_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_body_%d", panel) }
@@ -115,8 +116,10 @@ dock_title :: proc(d: ^Dock, panel: u32) -> string {
 @(private)
 dock_closable :: proc(d: ^Dock, panel: u32) -> bool { return d.opts.closable == nil || d.opts.closable(d.opts.user, panel) }
 
-// The key of a tab's box (its stack's strip is its parent).
-dock_tab_key :: proc(d: ^Dock, leaf: i32, panel: u32) -> Key { return key_from_string(key_from_string(d.space_key, dock_leaf_id(leaf)), dock_tab_id(panel)) }
+// The key of a tab's box (in its stack's strip, in the box of its tabs).
+dock_tab_key :: proc(d: ^Dock, leaf: i32, panel: u32) -> Key {
+	return key_from_string(key_from_string(key_from_string(d.space_key, dock_leaf_id(leaf)), DOCK_TABS_ID), dock_tab_id(panel))
+}
 // The key of the box a panel's content goes into.
 dock_body_key :: proc(d: ^Dock, panel: u32) -> Key { return key_from_string(d.space_key, dock_body_id(panel)) }
 
@@ -441,22 +444,27 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	a11y_set(strip, {role = .Tab_List, orientation = .X, name = dock_stack_label(d, leaf)})
 	if parent(strip) {
 		if d.opts.strip_begin != nil { d.opts.strip_begin(d.opts.user, d, leaf) }
-		for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
-		// the rest of the strip: a floating panel's title (moved by it, docked back by a double click)
-		next({width = fill(), height = pct(1), cursor = floating ? platform.Cursor.Move : platform.Cursor.Arrow})
-		grab := build_box(floating ? {.Clickable} : {}, "###dock_grab")
-		if floating {
-			gsig := signal(grab)
-			if gsig.pressed {
-				d.drag = {state = .Pressed, key = grab.key, panel = DOCK_NO_PANEL, node = root, from = mouse_pos(),
-					grab = mouse_pos() - d.origin - d.nodes[root].rect.min, float_from = d.nodes[root].float}
+		// the tabs and the rest of the strip, in the room the end's buttons leave (tabs too many for it are cut, the
+		// buttons stay in view)
+		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+		if parent(build_box({.Clip}, DOCK_TABS_ID)) {
+			for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
+			// the rest: a floating panel's title (moved by it, docked back by a double click)
+			next({width = fill(), height = pct(1), cursor = floating ? platform.Cursor.Move : platform.Cursor.Arrow})
+			grab := build_box(floating ? {.Clickable} : {}, "###dock_grab")
+			if floating {
+				gsig := signal(grab)
+				if gsig.pressed {
+					d.drag = {state = .Pressed, key = grab.key, panel = DOCK_NO_PANEL, node = root, from = mouse_pos(),
+						grab = mouse_pos() - d.origin - d.nodes[root].rect.min, float_from = d.nodes[root].float}
+				}
+				if gsig.double_clicked {
+					d.drag = {}
+					d.pending = {kind = .Redock, node = root}
+				}
+			} else if d.opts.strip_space != nil {
+				d.opts.strip_space(d.opts.user, d, leaf, grab)
 			}
-			if gsig.double_clicked {
-				d.drag = {}
-				d.pending = {kind = .Redock, node = root}
-			}
-		} else if d.opts.strip_space != nil {
-			d.opts.strip_space(d.opts.user, d, leaf, grab)
 		}
 		if d.opts.strip_end != nil { d.opts.strip_end(d.opts.user, d, leaf) }
 		// the button that folds the side the stack is on (to the strip pane_split shows in its place)

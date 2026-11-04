@@ -729,6 +729,8 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 	s.next_mod.width = children_sum()
 	s.next_mod.height = children_sum()
 	s.next_mod.radius = em * TOOLTIP_RADIUS_EM
+	prev := s.boxes[key_from_string(s.root.key, "###tooltip")]
+	if prev == nil || prev.last_build + 1 != s.build_index { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, placed and shown on the next
 	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
 	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
