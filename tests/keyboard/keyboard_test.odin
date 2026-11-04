@@ -465,6 +465,55 @@ menu_taller_than_the_window_scrolls :: proc(t: ^testing.T) {
 	testing.expect(t, panel.max.y - panel.min.y < tall.y && row_shown(0) && row_shown(LAST_ROW), "a window tall enough shows it whole")
 }
 
+Wheel_Run :: struct {
+	key:  ui.Key,
+	long: bool,   // the long menu (it scrolls), else the short one (it fits)
+}
+
+// A scroller under the open menu, which is built after it (over it).
+@(private = "file")
+build_menu_over_scroller :: proc(f: ^Fx, user: rawptr) {
+	r := (^Wheel_Run)(user)
+	build_scroller(f, nil)
+	if r.long { lr := Long_Run{key = r.key}; build_long(f, &lr) } else { mr := Menu_Run{key = r.key}; build_menu(f, &mr) }
+}
+
+// A wheel over an open menu is the menu's: one that scrolls scrolls, one that fits does not move, and the scroller under
+// either gets nothing; both report the wheel consumed and the point on a menu. With the menu closed, the scroller scrolls.
+@(test)
+menu_takes_the_wheel_over_it :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	at :: [2]f32{120, 100}   // on the scroller, and on the menu opened there
+	notch :: proc(f: ^Fx, r: ^Wheel_Run) {
+		frame(f, {{kind = .Mouse_Move, pos = at}, {kind = .Scroll, pos = at, delta = {0, 3}}, {kind = .Scroll, pos = at, delta = {2, 0}}}, build_menu_over_scroller, r)
+	}
+	for long in ([?]bool{true, false}) {
+		r := Wheel_Run{key = ui.Key(0xd4), long = long}
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^Wheel_Run)(user).key, {100, 50}) }, &r)
+		for _ in 0 ..< 3 { frame(&f, nil, build_menu_over_scroller, &r) }
+		testing.expect(t, ui.menu_at(at), "the point is on the menu")
+		first, _ := ui.menu_item_rect(0, 0)
+		notch(&f, &r)
+		testing.expect(t, ui.wheel_consumed(), "the wheel is consumed")
+		frame(&f, nil, build_menu_over_scroller, &r)
+		moved, _ := ui.menu_item_rect(0, 0)
+		testing.expectf(t, (moved.min.y < first.min.y) == long, "the menu scrolls only when it is taller than the window (long %v): %v -> %v", long, first.min.y, moved.min.y)
+		testing.expect_value(t, moved.min.x, first.min.x)
+		testing.expect_value(t, the_scroller.view_target, [2]f32{})
+		ui.ctx_menu_close()
+		frame(&f, nil, build_menu_over_scroller, &r)
+		testing.expect(t, !ui.menu_at(at), "no menu there once closed")
+		notch(&f, &r)
+		testing.expect(t, ui.wheel_consumed(), "the scroller takes it")
+		testing.expect(t, the_scroller.view_target.y > 0, "with the menu closed, the scroller scrolls")
+		the_scroller.view_target, the_scroller.view_off = {}, {}
+	}
+}
+
 // Under an anchor near the bottom, a menu opens above it; one with room on neither side shifts up to stay whole; a window
 // made shorter while it is open places it again.
 @(test)

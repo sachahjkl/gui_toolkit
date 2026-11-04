@@ -1,0 +1,3 @@
+type: Added
+
+**`ui.menu_at(p)` and `ui.wheel_consumed()`: the wheel over an open menu is the menu's**: `menu_at` says whether a point is on a level of the open menu (a submenu, a nested menu, a drop-down's list) as the last build laid it out, so an app that routes the wheel to its own content before it builds the interface (a browser's page) gives it nothing there; `wheel_consumed` says whether this build's wheel went to the interface (a box that scrolls under the pointer, or a menu's level, one that fits included). A menu taller than the window scrolls under the wheel, one that fits takes it and does not move, down and across; the scroller under either gets nothing (test `keyboard menu_takes_the_wheel_over_it`).

@@ -119,6 +119,17 @@ ctx_menu_close :: proc() { menu_pop_to(0) }
 ctx_menu_is_open :: proc(key: Key) -> bool { return key != 0 && len(gs().menus) > 0 && gs().menus[0].key == key }
 ctx_menu_any_open :: proc() -> bool { return len(gs().menus) > 0 }
 
+// Is `p` (window pixels) on a level of the open menu (a submenu, a nested menu, a drop-down's list), as the last build
+// laid it out? The wheel there is the menu's (`wheel_consumed`): an app that routes the wheel to its own content (a
+// page) before it builds the interface gives it nothing.
+menu_at :: proc(p: Vec2) -> bool {
+	s := gs()
+	for lv in s.menus {
+		if b := s.boxes[lv.panel]; b != nil && contains(b.rect, p) { return true }
+	}
+	return false
+}
+
 // Selects item `index` of the open menu (e.g. a dropdown's current value, so the keyboard starts from it).
 menu_select :: proc(index: int) { if len(gs().menus) > 0 { gs().menus[0].sel = index; gs().menus[0].reveal = true } }
 
