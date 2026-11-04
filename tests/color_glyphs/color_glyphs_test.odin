@@ -7,6 +7,7 @@ import "base:intrinsics"
 import "base:runtime"
 import "core:mem"
 import "core:testing"
+import "core:thread"
 import "../unwatched"
 import "../../draw"
 import "../../font"
@@ -131,6 +132,26 @@ colrv1_linear_gradient :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testin
 	testing.expectf(t, near(mid, {128, 0, 128}, 40), "middle %v, want purple", mid)
 	// the clip box: 800 x 700 units of 1000 -> 51 x 45 px (the box is the glyph's ink)
 	testing.expectf(t, abs(b.w - 51) <= 2 && abs(b.h - 45) <= 2, "size %d x %d, want 51 x 45", b.w, b.h)
+}) }
+
+// What draws color glyphs, made ahead on a thread of its own (an application's start): the glyphs drawn after it here
+// come out as without it.
+@(test)
+color_prepare_on_another_thread :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
+	defer font.destroy(&f.s)
+	th := thread.create_and_start_with_data(&f.s, proc(data: rawptr) { font.color_prepare((^font.State)(data)) })
+	thread.join(th)
+	thread.destroy(th)
+	font.color_prepare(&f.s)   // (again: nothing more is made)
+	if !font.color_renderable(&f.s, f.colr) { testing.fail_now(t, "COLR v1 paint trees need Windows 11 22H2 (ID2D1DeviceContext7)") }
+	b := glyph_of(f, f.colr, 0xF0100, 64)
+	testing.expect(t, b.img.color && b.img.page >= 0, "not drawn as a color glyph")
+	if b.w == 0 { return }
+	testing.expectf(t, near(at(b, 0.02, 0.5), {255, 0, 0}, 40), "left edge %v, want red", at(b, 0.02, 0.5))
+	testing.expectf(t, near(at(b, 0.98, 0.5), {0, 0, 255}, 40), "right edge %v, want blue", at(b, 0.98, 0.5))
 }) }
 
 @(test)

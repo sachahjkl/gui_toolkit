@@ -427,7 +427,7 @@ Renderer :: struct {
 	free_textures: [dynamic]Texture,      // destroyed slots, reused by the next create
 	targets:     [dynamic]Pooled_Target,  // layer render targets and snapshots, reused from frame to frame
 	scratch:     [dynamic]u8,             // RGBA upload conversion
-	zeros:       [dynamic]u8,             // zero_unfilled: a band of zero bytes
+	zeros:       [dynamic]u8,             // zero_texture: a band of zero bytes (a texture that cannot be cleared)
 	gpu_queries: [GPU_QUERY_FRAMES][3]^d3d11.IQuery,   // GPU_TIMING: disjoint, begin, end per frame slot
 	gpu_frame:   int,
 	gpu_last_ms: f32,
