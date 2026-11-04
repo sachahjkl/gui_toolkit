@@ -81,7 +81,8 @@ Dock_Options :: struct {
 	tab:         proc(user: rawptr, t: Dock_Tab),                // the content of a tab (nil: its title)
 	closable:    proc(user: rawptr, panel: u32) -> bool,         // nil: every panel can be closed
 	strip_begin: proc(user: rawptr, d: ^Dock, leaf: i32),        // boxes at the start of a stack's strip, before its tabs
-	strip_end:   proc(user: rawptr, d: ^Dock, leaf: i32),        // ... at its end, before its menu button (a toolbar)
+	strip_end:   proc(user: rawptr, d: ^Dock, leaf: i32),        // ... at its end, before its fold and menu buttons (a toolbar)
+	strip_last:  proc(user: rawptr, d: ^Dock, leaf: i32),        // ... after them: the strip's last control (a window's close button)
 	strip_space: proc(user: rawptr, d: ^Dock, leaf: i32, b: ^Box),   // the empty part of a docked stack's strip, built (the app may make it Clickable: what moves its own window)
 	on_save:     proc(user: rawptr, d: ^Dock),                   // the user is done changing the layout: save it (dock_format)
 	user:        rawptr,
@@ -484,6 +485,7 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 		msig := signal(mb)
 		if msig.clicked { dock_open_menu(d, d.nodes[leaf].active, {mb.rect.min.x, mb.rect.max.y}, msig.focused && gs().focus_visible) }
 		a11y_default(mb, {role = .Button, name = dock_labels(d).menu, popup = .Menu})
+		if d.opts.strip_last != nil { d.opts.strip_last(d.opts.user, d, leaf) }
 	}
 	// the body: keyed by the panel (its content keeps its state wherever it goes)
 	a := d.nodes[leaf].active
