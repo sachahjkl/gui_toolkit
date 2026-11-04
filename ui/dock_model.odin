@@ -237,6 +237,16 @@ dock_node_visible :: proc(d: ^Dock, n: i32) -> bool {
 	return true
 }
 
+// The split that folds the side the node is on: the nearest above it that has it on its second side (DOCK_NONE: none).
+dock_fold_split :: proc(d: ^Dock, n: i32) -> i32 {
+	if !dock_valid_node(d, n) { return DOCK_NONE }
+	c := n
+	for p := d.nodes[n].parent; p != DOCK_NONE; c, p = p, d.nodes[p].parent {
+		if d.nodes[p].b == c { return p }
+	}
+	return DOCK_NONE
+}
+
 // Whether the panel is shown: the tab on top of its stack, and the stack is not folded away.
 dock_shown :: proc(d: ^Dock, id: u32) -> bool {
 	leaf := dock_leaf_of(d, id)
