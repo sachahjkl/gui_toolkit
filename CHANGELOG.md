@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.77.0] - 2026-11-04
+
+### Fixed
+- **A folded pane's strip in the theme, a fold button on the stacks that fold, tooltips the size of their text**: the strip of a folded side (`pane_split`, a dock's folded split) painted nothing at rest and the palette's raw hover colour (opaque white on a dark theme) under the pointer; it now has the theme's `pane_strip background` (by default the bars' surface) and the theme's `hover_fill` over it, and its chevron is larger (`PANE_CHEVRON_EM` 1.4, also `pane_toggle`'s). A dock's stacks on a side that folds have a chevron button at the end of their strip, as large as the menu's button (`pane_toggle`, which now takes the size `next` gives it; a Tab stop, Enter folds); a strip's tabs are in the room its end's buttons leave, so tabs too many for a narrow stack are cut and the fold and menu buttons stay in view (they were pushed out of the strip). A tooltip's content inherited the app's style, so under a style that fills it was as large as the window; a size relative to the window is now the content's own in it, `ui.tooltip_text(text)` is as wide as its text up to `TOOLTIP_MAX_WIDTH_EM` and wraps past it, and `tooltip` goes above the pointer when it does not fit below (`TOOLTIP_ABOVE_EM`); its first frame measures it unseen and asks for the next one, which places it (it was placed by the size of 10 x 3 em it was taken to have, and stayed past the window's edge when nothing else made a frame). Tests `docking a_folded_strip_takes_the_theme_colours`, `the_fold_button_folds_and_the_strip_brings_it_back`, `the_end_buttons_stay_in_view_past_too_many_tabs`, `a_tooltip_over_a_tall_strip_fits_its_text`; `ui_robust tooltip_places` (above the pointer at the bottom).
+
 ## [0.76.0] - 2026-11-04
 
 ### Added
@@ -1520,6 +1525,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.77.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.77.0
 [0.76.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.76.0
 [0.75.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.75.0
 [0.74.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.74.0
