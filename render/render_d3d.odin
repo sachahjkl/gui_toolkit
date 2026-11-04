@@ -535,40 +535,54 @@ texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 	case .Slug_Curves: desc.Format, texel = .R16G16B16A16_FLOAT, TEXEL_BYTES_FP16
 	case .Slug_Bands: desc.Format, texel = .R16G16_UINT, 4
 	}
-	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
+	// a render target too, so that it is zeroed on the GPU (zero_texture); a format that cannot be one is zeroed by uploads
+	desc.BindFlags += {.RENDER_TARGET}
+	if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) {
+		desc.BindFlags -= {.RENDER_TARGET}
+		if win.FAILED(r.device->CreateTexture2D(&desc, nil, &td.tex)) { td.tex = nil; return false }
+	}
 	if win.FAILED(r.device->CreateShaderResourceView(td.tex, nil, &td.view)) { td.tex->Release(); td.tex, td.view = nil, nil; return false }
 	if td.kind == .RGBA {
 		// an image is nearly always written whole right after (update_texture_rgba): the zeroing waits for the first
-		// frame that draws it (zero_unfilled), and not at all when the whole texture is written before that. Zeroing here
-		// took one driver call per row, 1 to 4 ms for a photo.
+		// frame that draws it (zero_unfilled), and not at all when the whole texture is written before that.
 		td.unfilled = true
 		td.mips_dirty = false
 		return true
 	}
-	zero := make([]u8, td.w * texel)
-	defer delete(zero)
-	for y in 0 ..< td.h {
-		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(y + 1), back = 1}
-		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(zero), u32(td.w * texel), 0)
-	}
+	zero_texture(r, td, texel)
 	td.mips_dirty = td.mips
 	return true
 }
 
-// The band of zeros zero_unfilled uploads at a time.
+// The band of zeros zero_texture uploads at a time when it cannot clear.
 @(private) ZERO_BAND_BYTES :: 1 << 20
 
-// Writes zeros into an RGBA texture nothing was written to (see Texture_Data.unfilled): one UpdateSubresource of the
-// whole level 0 (its mips follow), through a zeroed buffer made once and kept.
+// Writes zeros into level 0 of a texture (its mips follow): a clear of a render target view of it, on the GPU. An
+// upload of zeros instead took the CPU 3.5 ms for a 2048 x 2048 RGBA page (in bands of a zeroed buffer kept for it),
+// 6 ms for an R8 page of that size (a driver call per row). Only a texture that cannot be a render target is uploaded.
+@(private)
+zero_texture :: proc(r: ^Renderer, td: ^Texture_Data, texel: int) {
+	rtv: ^d3d11.IRenderTargetView
+	if win.SUCCEEDED(r.device->CreateRenderTargetView(td.tex, nil, &rtv)) {
+		zero := [4]f32{}
+		r.ctx->ClearRenderTargetView(rtv, &zero)
+		rtv->Release()
+		return
+	}
+	row := td.w * texel
+	rows := max(1, min(td.h, ZERO_BAND_BYTES / row))
+	if len(r.zeros) < rows * row { runtime.resize(&r.zeros, rows * row); mem.zero_slice(r.zeros[:]) }
+	for y := 0; y < td.h; y += rows {
+		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(min(y + rows, td.h)), back = 1}
+		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.zeros), u32(row), 0)
+	}
+}
+
+// Writes zeros into an RGBA texture nothing was written to (see Texture_Data.unfilled).
 @(private)
 zero_unfilled :: proc(r: ^Renderer, td: ^Texture_Data) {
 	td.unfilled = false
-	rows := max(1, min(td.h, ZERO_BAND_BYTES / (td.w * 4)))
-	if len(r.zeros) < rows * td.w * 4 { runtime.resize(&r.zeros, rows * td.w * 4); mem.zero_slice(r.zeros[:]) }
-	for y := 0; y < td.h; y += rows {
-		box := d3d11.BOX{left = 0, top = u32(y), front = 0, right = u32(td.w), bottom = u32(min(y + rows, td.h)), back = 1}
-		r.ctx->UpdateSubresource(td.tex, 0, &box, raw_data(r.zeros), u32(td.w * 4), 0)
-	}
+	zero_texture(r, td, 4)
 	td.mips_dirty = td.mips
 }
 

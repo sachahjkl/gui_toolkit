@@ -206,6 +206,9 @@ Color_Job :: struct {
 }
 @(private) color_enqueue :: proc(s: ^State, j: Color_Job) -> bool { return false }
 
+// Nothing to make ahead: the COLR interpreter and the CBDT bitmaps need no device (color.odin has Windows' Direct2D).
+color_prepare :: proc(s: ^State) {}
+
 // Off Windows every color glyph is the COLR interpreter's or a bitmap of the CBDT table.
 @(private)
 platform_color_glyph :: proc(s: ^State, f: ^Font, gid: u16, size: f32) -> bool {

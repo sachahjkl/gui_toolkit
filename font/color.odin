@@ -209,6 +209,13 @@ color_renderable :: proc(s: ^State, id: Font_Id) -> bool {
 	return fmts & drawable != 0
 }
 
+// Makes what color glyphs are drawn with now (Direct2D on a WARP device: about 20 ms, which the first color glyph a
+// frame looked up paid on the drawing thread): for an application to call on a thread of its own while it starts.
+// Nothing more is made than the first color glyph would make. Any thread, any number of times.
+color_prepare :: proc(s: ^State) {
+	if s.factory != nil { _, _ = color_caps(s) }
+}
+
 // What Direct2D can draw here (the device is made on the first call): color glyphs at all, COLR v1 paint trees.
 @(private)
 color_caps :: proc(s: ^State) -> (d2d, paint: bool) {
