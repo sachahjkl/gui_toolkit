@@ -4,8 +4,10 @@ package ui
 // Build overlays AFTER the page content: later boxes draw on top and win hit testing.
 
 import "core:fmt"
+import "core:math"
 import "core:strings"
 import "../font"
+import "../platform"
 
 ////////////////////////////////
 // Toasts
@@ -161,9 +163,25 @@ toasts_build :: proc() {
 // Modal dialog
 
 // `if modal("confirm", width, &open) { ... }`: dims the page, centers a panel, closes on a click outside or on Escape:
-// what is inside it has Escape first (a focused field), and of several dialogs the one on top (opened last) takes it.
+// what is inside it has Escape first (a focused field), and of several dialogs the one on top (opened last) takes it. It stays in
+// the window: narrower than `width` if it must, and higher than `y_fraction` says when what is in it would go past the bottom.
+//
+// `if modal_sized("settings", preferred, &size, &open, min_size) { ... }`: a dialog of a size of its own, what is in it filling it
+// (`height = fill()`). Centered and always within the window, however small; `preferred` is what it opens at (pixels), and the
+// person resizes it by its edges and corners, the two sides moving together as it stays centered; a double click on one goes back
+// to `preferred`. `size` is the application's to keep (logical pixels, {}: `preferred`): a smaller window does not change it.
 @(private)
-Modal_Scope :: struct { panel: Key, open: ^bool }
+Modal_Scope :: struct {
+	panel:   Key,
+	open:    ^bool,
+	size:    ^Vec2,     // modal_sized: what the person chose
+	wh:      Vec2,      // its size in this frame
+	lo, hi:  Vec2,      // how small and how large it may be, in this window
+}
+
+MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
+@(private = "file") MODAL_EDGE_EM :: 0.4     // what takes a press along an edge (inside the dialog: the scrim is the rest)
+@(private = "file") MODAL_CORNER_EM :: 0.9   // and in a corner
 
 @(deferred_none = modal_end)
 modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
@@ -172,6 +190,38 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 		append(&s.popup_stack, false)
 		return false
 	}
+	margin := font_size() * MODAL_MARGIN_EM
+	w := max(min(width, s.window_size.x - 2 * margin), 1)
+	y := s.window_size.y * y_fraction
+	// (from the height of the last frame: nothing is laid out yet)
+	if b := box_from_key(key_from_string(s.root.key, fmt.tprintf("###modal_%s", id))); b != nil {
+		y = max(min(y, s.window_size.y - b.size.y - margin), min(margin, y))
+	}
+	modal_begin(s, id, open, {(s.window_size.x - w) * 0.5, y}, {w, 0})
+	return true
+}
+
+@(deferred_none = modal_end)
+modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}) -> bool {
+	s := gs()
+	if !open^ {
+		append(&s.popup_stack, false)
+		return false
+	}
+	margin := font_size() * MODAL_MARGIN_EM
+	hi := Vec2{max(s.window_size.x - 2 * margin, 1), max(s.window_size.y - 2 * margin, 1)}
+	lo := Vec2{min(min_size.x, hi.x), min(min_size.y, hi.y)}
+	want := size^ != {} ? size^ * s.scale : preferred
+	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), math.round(clamp(want.y, lo.y, hi.y))}
+	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh)
+	m := &s.modal_stack[len(s.modal_stack) - 1]
+	m.size, m.wh, m.lo, m.hi = size, wh, lo, hi
+	return true
+}
+
+// The scrim and the panel at `at`, `wh` its size (a height of 0: that of what is in it).
+@(private = "file")
+modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	em := font_size()
 	push_parent(s.root)
 	push_tags("floating")
@@ -191,10 +241,10 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	if had_a11y { a11y(app_a11y) }
 
 	set_next_axis(.Y)
-	s.next_mod.fixed_x = (s.window_size.x - width) * 0.5
-	s.next_mod.fixed_y = s.window_size.y * y_fraction
-	s.next_mod.width = px(width)
-	s.next_mod.height = children_sum()
+	s.next_mod.fixed_x = at.x
+	s.next_mod.fixed_y = at.y
+	s.next_mod.width = px(wh.x)
+	s.next_mod.height = wh.y > 0 ? px(wh.y) : children_sum()
 	s.next_mod.radius = em * 0.8
 	panel := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
@@ -202,12 +252,49 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	a11y_default(panel, {role = .Dialog, modal = true})
 	push_parent(panel)
 	append(&s.popup_stack, true)
-	append(&s.modal_stack, Modal_Scope{panel.key, open})
+	append(&s.modal_stack, Modal_Scope{panel = panel.key, open = open})
 	// keyboard: Tab cycles inside the dialog; the page widget that had the focus loses it when the dialog opens
 	s.trap_depth += 1
 	s.modal_now = panel.key
 	if s.modal_prev != panel.key { s.focus_key = 0 }
-	return true
+}
+
+// The edges and corners of a dialog that is resized, over what is in it. It stays centered: a side moved by the pointer takes the
+// opposite one along, so the size changes twice as fast as the pointer and the side stays under it.
+@(private = "file")
+modal_grips :: proc(s: ^State, m: Modal_Scope) {
+	em := font_size()
+	e, c := math.round(em * MODAL_EDGE_EM), math.round(em * MODAL_CORNER_EM)
+	w, h, sc := m.wh.x, m.wh.y, s.scale
+	Grip :: struct { dir: Vec2, cursor: platform.Cursor }
+	grips := [8]Grip{
+		{{0, -1}, .Resize_N}, {{0, 1}, .Resize_S}, {{-1, 0}, .Resize_W}, {{1, 0}, .Resize_E},
+		{{-1, -1}, .Resize_NW}, {{1, -1}, .Resize_NE}, {{-1, 1}, .Resize_SW}, {{1, 1}, .Resize_SE},
+	}
+	for g, i in grips {
+		corner := g.dir.x != 0 && g.dir.y != 0
+		t := corner ? c : e
+		gw := g.dir.x != 0 ? t : w - 2 * c
+		gh := g.dir.y != 0 ? t : h - 2 * c
+		gx := g.dir.x < 0 ? 0 : g.dir.x > 0 ? w - gw : c
+		gy := g.dir.y < 0 ? 0 : g.dir.y > 0 ? h - gh : c
+		next({fixed_x = gx, fixed_y = gy, width = px(gw), height = px(gh), cursor = g.cursor})
+		b := build_box({.Clickable}, fmt.tprintf("###modal_grip%d", i))
+		a11y_default(b, {ignore = true})
+		sig := signal(b)
+		if g.dir == {1, 1} {
+			d := frame_new(Dock_Grip_Draw)
+			d.color = sig.hovering || sig.dragging ? color("accent") : color("weak text")
+			b.custom, b.custom_user = dock_grip_draw, d
+		}
+		if sig.double_clicked { m.size^ = {}; continue }
+		if sig.pressed { drag_store({w, h, 0, 0}) }
+		if !sig.dragging { continue }
+		from := drag_load()
+		nw := g.dir.x != 0 ? clamp(from[0] + 2 * g.dir.x * sig.drag_delta.x, m.lo.x, m.hi.x) : w
+		nh := g.dir.y != 0 ? clamp(from[1] + 2 * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
+		m.size^ = {nw / sc, nh / sc}
+	}
 }
 
 @(private)
@@ -216,6 +303,7 @@ modal_end :: proc() {
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
 		s.trap_depth -= 1
 		m := pop(&s.modal_stack)
+		if m.size != nil { modal_grips(s, m) }
 		if m.panel == s.modal_prev && len(s.menus) == 0 && key_press(.Escape) { m.open^ = false }
 	}
 	ctx_menu_end()
