@@ -9,6 +9,7 @@ on:
       - "site/**"
       - "CHANGELOG.md"
       - "tools/site_changelog.mjs"
+      - "tools/site_meta.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -31,6 +32,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
       - run: node tools/site_changelog.mjs site _site
+      - run: node tools/site_meta.mjs _site _site
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
