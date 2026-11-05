@@ -21,7 +21,7 @@ Off by default, so adding the toolkit never changes an app's middle-click behavi
 ui.set_autoscroll_enabled(&s, true)
 // optional: tune the curve
 ui.set_autoscroll_settings(&s, ui.Autoscroll_Settings{
-	dead_zone = 12, max_speed = 2800, full_dist = 420, doubling = 80,
+	dead_zone = 12, max_speed = 15000, full_dist = 300, doubling = 60,
 	toggle = true, tap_ms = 250, tap_slop = 4,
 })
 ```
@@ -56,7 +56,7 @@ units per second:
 
   Every `D` px farther from the anchor multiplies the speed by 2 (exactly: `speed + c` doubles, `c = V / (2^(F/D) - 1)`; the
   `- 1` only makes the curve start at 0). Near the anchor it is gentle, far out it climbs by a constant factor per distance.
-  With the defaults (`D = 80`, `F = 420`, `V = 2800`), x px past the dead zone: 76 px/s at 80, 227 at 160, 529 at 240, 1134 at 320, 2800 at 420 (`F`). A `doubling` much larger than `full_dist` tends to the straight line
+  With the defaults (`D = 60`, `F = 300`, `V = 15000`), x px past the dead zone: 484 px/s at 60, 1452 at 120, 3387 at 180, 7258 at 240, 15000 at 300 (`F`). A `doubling` much larger than `full_dist` tends to the straight line
   `x / F * V`.
 - **capped** at `max_speed`, reached `full_dist` px past the dead zone.
 - **symmetric**: `f(-off) == -f(off)`.

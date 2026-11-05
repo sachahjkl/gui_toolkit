@@ -20,6 +20,30 @@ presented_cadence :: proc(hz: f64 = 180, strict := true) -> platform.Cadence {
 	return c
 }
 
+// A rate asked above the screen's: made, on its slots, without waiting for the screen. Below it, and with none asked, nothing changes.
+@(test)
+a_target_above_the_screen_is_made :: proc(t: ^testing.T) {
+	p := platform.cadence_plan({hz = 60, max_hz = 60}, {target_hz = 120})
+	testing.expect(t, p.above && p.hz == 120 && p.slots.strict, "120 on a 60 Hz screen")
+	testing.expect(t, !platform.cadence_plan({hz = 60, max_hz = 60}, {}).above, "the screen's rate")
+	testing.expect(t, !platform.cadence_plan({hz = 60, max_hz = 60}, {target_hz = 30}).above, "below it")
+	testing.expect(t, !platform.cadence_plan({hz = 60, max_hz = 60}, {target_hz = 60.2}).above, "a rounding of it")
+	testing.expect(t, !platform.cadence_plan({hz = 60.001, max_hz = 180}, {}).above, "a variable screen left alone")
+	c: platform.Cadence
+	platform.cadence_adopt(&c, p)
+	now := i64(10_000) * MS
+	frames := 0
+	for now < (10_000 + 1000) * MS {   // a second of frames that take 1 ms, input always there
+		d := platform.frame_decision(&c, {now_ns = now, presented = true})
+		testing.expect(t, !d.wait_swap_chain && d.present_at_once && d.latency == 2, "it does not wait for the screen")
+		testing.expect(t, platform.cadence_at_once(&c), "a frame of the interface alone too")
+		now += d.wait_ns + MS
+		platform.cadence_presented(&c, now)
+		frames += 1
+	}
+	testing.expectf(t, frames >= 118 && frames <= 122, "120 frames in a second: %d", frames)
+}
+
 // Uncapped: whatever the state, no wait and shown at once, and the choice survives a new plan.
 @(test)
 uncapped_lifts_every_wait :: proc(t: ^testing.T) {
