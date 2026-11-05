@@ -975,6 +975,95 @@ lazy_column_builds_what_is_near_the_view :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
+sized_size: ui.Vec2
+@(private = "file")
+sized_open: bool
+@(private = "file")
+sized_panel: ^ui.Box
+
+@(private = "file")
+build_sized :: proc(f: ^Fx, user: rawptr) {
+	if ui.modal_sized("t", {400, 300}, &sized_size, &sized_open, {200, 100}) { sized_panel = ui.parent_box() }
+}
+
+// A dialog of a size of its own: centered, within the window however small, resized by its edges with the opposite side following,
+// back to what it prefers on a double click.
+@(test)
+modal_sized_stays_centered_and_in_the_window :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	sized_size, sized_open = {}, true
+	for _ in 0 ..< 2 { frame(f, nil, build_sized, nil) }
+	r := sized_panel.rect
+	testing.expect_value(t, r, ui.Rect{{200, 150}, {600, 450}})
+
+	// the right edge pulled by 20: both sides move, the edge stays under the pointer
+	frame(f, {{kind = .Mouse_Move, pos = {599, 300}}}, build_sized, nil)
+	frame(f, {{kind = .Mouse_Press, pos = {599, 300}, button = .Left}}, build_sized, nil)
+	frame(f, {{kind = .Mouse_Move, pos = {619, 300}}}, build_sized, nil)
+	frame(f, nil, build_sized, nil)
+	testing.expect_value(t, sized_size, ui.Vec2{440, 300})
+	testing.expect_value(t, sized_panel.rect, ui.Rect{{180, 150}, {620, 450}})
+	// past what the window allows, then released: it stops at the margin
+	frame(f, {{kind = .Mouse_Move, pos = {2000, 300}}}, build_sized, nil)
+	frame(f, {{kind = .Mouse_Release, pos = {2000, 300}, button = .Left}}, build_sized, nil)
+	frame(f, nil, build_sized, nil)
+	testing.expect(t, sized_panel.rect.min.x > 0 && sized_panel.rect.max.x < WINDOW.x, "within the window")
+	testing.expect_value(t, sized_panel.rect.min.x, WINDOW.x - sized_panel.rect.max.x)
+
+	// a window too small for even its least: the window wins, and the size chosen is kept for when it grows
+	chosen := ui.Vec2{500, 400}
+	sized_size = chosen
+	for _ in 0 ..< 2 { frame(f, nil, build_sized, nil, {150, 80}) }
+	r = sized_panel.rect
+	testing.expect(t, r.min.x >= 0 && r.min.y >= 0 && r.max.x <= 150 && r.max.y <= 80, "within a tiny window")
+	testing.expect_value(t, sized_size, chosen)
+	for _ in 0 ..< 2 { frame(f, nil, build_sized, nil) }
+	testing.expect_value(t, sized_panel.rect, ui.Rect{{150, 100}, {650, 500}})
+
+	// a double click on an edge: what it prefers
+	click :: proc(f: ^Fx) {
+		frame(f, {{kind = .Mouse_Move, pos = {649, 300}}}, build_sized, nil)
+		frame(f, {{kind = .Mouse_Press, pos = {649, 300}, button = .Left}}, build_sized, nil)
+		frame(f, {{kind = .Mouse_Release, pos = {649, 300}, button = .Left}}, build_sized, nil)
+	}
+	click(f)
+	click(f)
+	frame(f, nil, build_sized, nil)
+	testing.expect_value(t, sized_size, ui.Vec2{})
+	testing.expect_value(t, sized_panel.rect, ui.Rect{{200, 150}, {600, 450}})
+	sized_open = false
+	frame(f, nil, build_sized, nil)
+}
+
+@(private = "file")
+build_tall_modal :: proc(f: ^Fx, user: rawptr) {
+	if ui.modal("tall", 2000, &sized_open, 0.5) {
+		sized_panel = ui.parent_box()
+		ui.next({width = ui.fill(), height = ui.px(450)})
+		ui.label("tall###x")
+	}
+}
+
+// A plain dialog does not leave the window either: narrower, and higher than asked when what is in it would pass the bottom.
+@(test)
+modal_stays_in_the_window :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	sized_open = true
+	for _ in 0 ..< 3 { frame(f, nil, build_tall_modal, nil) }
+	r := sized_panel.rect
+	testing.expect(t, r.min.x > 0 && r.max.x < WINDOW.x, "narrower than asked")
+	testing.expect(t, r.max.y < WINDOW.y, "above the bottom")
+	sized_open = false
+	frame(f, nil, build_tall_modal, nil)
+}
+
+@(private = "file")
 find_items: int
 
 @(private = "file")
