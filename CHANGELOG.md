@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.82.0] - 2026-11-05
+
+### Changed
+- **Middle-click autoscroll goes five times faster by default**: up to 15000 px/s, reached 300 px from the anchor, the speed doubling every 60 px (`DEFAULT_AUTOSCROLL`): the curve Wren settled on. It was 2800 px/s at 420 px.
+- **A `target_hz` above the screen's rate is made**: 120 on a 60 Hz screen is up to 120 frames a second while something moves (none at rest), each on its slot, none waiting for the screen, shown at once (`Cadence_Plan.above`): it stayed at the screen's rate. The screen shows the newest: not smoother, but each refresh has fresher input.
+
 ## [0.81.0] - 2026-11-05
 
 ### Added
@@ -1558,6 +1564,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.82.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.82.0
 [0.81.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.81.0
 [0.80.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.80.0
 [0.79.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.79.0
