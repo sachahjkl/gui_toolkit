@@ -28,7 +28,7 @@ Pacer :: struct {
 }
 
 // Before a frame reads its input: the cadence's decision executed (the screen's plan adopted when the display changed,
-// the swap chain's slot waited for, its latency set). Returns whether the frame is presented at once.
+// the frame's slot and the swap chain's waited for, its latency set). Returns whether the frame is presented at once.
 pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false, dragging := false, inner := false) -> (at_once: bool) {
 	if d := platform.display_info(w); d.serial != p.display_serial {
 		p.display_serial = d.serial
@@ -47,6 +47,15 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 		})
 		at_once, latency = d.present_at_once, d.latency
 		if d.wait_swap_chain && !p.slot_held { p.slot_held = wait_for_frame(r) }
+		// No frame before its slot: on a screen that does not hold the app back, a 1 kHz mouse made 430 frames a second. After
+		// the swap chain, and only what is left: the decision is made just after the last present, always early, and a screen
+		// that paces the app has by now passed the slot. Slept before, the two waits add up (60 Hz: 40 frames a second).
+		// Input is read after this, so the frame answers the newest of it.
+		if d.wait_ns > 0 {
+			if left := d.wait_until_ns - time.tick_now()._nsec; left > platform.FRAME_SLOT_MIN_WAIT_NS {
+				platform.precise_sleep(time.Duration(left))
+			}
+		}
 	}
 	if latency != p.latency {
 		set_max_frame_latency(r, latency)

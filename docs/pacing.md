@@ -59,8 +59,8 @@ Why each one:
 
 ## Use
 
-The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display changes, the swap chain's
-slot waited for, its latency set:
+The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display changes, the frame's slot and
+the swap chain's waited for (`platform.precise_sleep`: `Sleep` rounds up to the system's tick), its latency set:
 
 ```odin
 at_once := render.pace_frame(&pacer, &r, win, idled = slept, dragging = ui.active_key() != 0)
@@ -83,7 +83,9 @@ platform.cadence_adopt(&c, plan)           // its slots and its screen (again wh
 
 d := platform.frame_decision(&c, {now_ns = now, idled = idled, input = input_waits, presented = shown_once,
                                   resized = size != last_size, dragging = dragging, slot_held = slot_held})
-// wait d.wait_ns (taking input meanwhile); if d.wait_swap_chain, wait for the swap chain's latency object;
+// if d.wait_swap_chain, wait for the swap chain's latency object; then wait what is left until d.wait_until_ns, taking input
+// meanwhile (in this order: the decision comes just after a present, and on a screen that paces the app the swap chain goes past
+// the slot; the slot's wait first and the two add up, 40 frames a second at 60 Hz);
 // set the swap chain's maximum latency to d.latency; make the frame;
 // Present with no wait for a refresh when d.present_at_once
 platform.cadence_presented(&c, now)

@@ -20,7 +20,7 @@ import "core:fmt"
 // An item never built stands as the mean height of those that were; one built at another width keeps its old height
 // until it is built again. Either is corrected when the item comes near the view, and the view stays on the item it
 // showed (the first one visible keeps its place on screen: lazy_settle, after the layout), so nothing jumps.
-// `lazy_begin(all = true)` builds every item (a find in page reads the text of all of them); `always`: build this item
+// `lazy_begin(all = true)` builds every item (`all = find_sweep()`: a find in page reads them, once); `always`: build this item
 // whatever (the item that grows while streaming, one with the focus).
 
 Lazy :: struct {

@@ -46,6 +46,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.tag_sets = make(map[Key][]string)
 	s.color_memo = make(map[[2]u64]Color)
 	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
+	s.trunc_cache = make(map[Trunc_Key]Trunc_Entry)
 	post_init(s)
 	_, _ = sync.atomic_compare_exchange_strong(&tick_origin._nsec, 0, time.tick_now()._nsec)
 }
@@ -88,6 +89,7 @@ destroy :: proc(s: ^State) {
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
+	delete(s.trunc_cache)
 	rich_cache_destroy(s)
 	for _, m in s.layout_warned { delete(m) }
 	delete(s.layout_warned)
@@ -248,6 +250,7 @@ end_build :: proc() {
 		chrome_collect(s)   // none any more (full screen bars hidden...): the window forgets the last ones
 	}
 	wrap_cache_trim(s)
+	trunc_cache_trim(s)
 	rich_cache_trim(s)
 	lazy_trim(s)
 	menu_prune(s)
@@ -289,7 +292,7 @@ end_build :: proc() {
 
 // True while something is still animating, or posted calls wait beyond the last build's budget: the app loop should
 // keep rendering.
-needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more || s.lazy_more }
+needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more || s.lazy_more || s.find.waiting }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
 
 // wake_in_ms rounds up to whole milliseconds; wake_due counts a wake this close as due (a sleep rounds to whole ms).
