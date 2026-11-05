@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.84.0] - 2026-11-05
+
+### Added
+- **Text per colour stripe**: `font.Settings.subpixel_text` (`.Rgb`, `.Bgr`) gives text a coverage per stripe of the screen's pixels, sharper at few pixels per letter, on Direct3D 11 with the atlas (DirectWrite) and on WebGPU with Slug (three samples a third of a pixel apart). Blended per channel in the frame's own target; in a layer, or turned, the same text is grey. `font.system_subpixel_text` says what the system does, `render.text_subpixel_supported` what the renderer can.
+- **The site says what it is when it is shared**: a card, Open Graph and Twitter tags on every page, an Atom feed of the versions, a sitemap and a manifest (`tools/site_meta.mjs`, at deployment).
+
+### Fixed
+- **Read-backs from several threads**: the process's table of read-backs was allocated with the allocator of whoever wrote in it first, and freed by whoever emptied it, through an allocator that could be gone. It is on the process's heap.
+
 ## [0.83.0] - 2026-11-05
 
 ### Added
@@ -1569,6 +1578,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.84.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.84.0
 [0.83.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.83.0
 [0.82.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.82.0
 [0.81.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.81.0
