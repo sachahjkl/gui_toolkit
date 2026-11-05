@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.79.0] - 2026-11-05
+
+### Added
+- **`ui.find_sweep`, `ui.find_all`, `ui.find_pending`, `ui.find_refresh`**: a find in page over a lazy column reads everything once for a needle (when it rests 80 ms, and again if what is built no longer answers), and stays lazy between: `lazy_begin(all = find_sweep())`. In opencode native, a frame while finding 40 -> 1.7 ms on a conversation of 150 answers.
+
+### Changed
+- **Text cut with an ellipsis**: where it is cut is kept (by text, font, size and width): it was measured rune by rune at every frame, through the shaper. A frame at rest in opencode native 1.65 -> 1.10 ms.
+
+### Fixed
+- **`render.pace_frame` waits for the frame's slot**, after the swap chain and only what is left of it: `Frame_Decision.wait_ns` was worked out and not made, so nothing capped the frames of a screen that does not hold the app back. `platform.precise_sleep`: a wait under the system's tick.
+
 ## [0.78.0] - 2026-11-04
 
 ### Added
@@ -1534,6 +1545,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.79.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.79.0
 [0.78.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.78.0
 [0.77.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.77.0
 [0.76.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.76.0
