@@ -597,6 +597,8 @@ button_of :: proc(name: string) -> (platform.Mouse_Button, bool) {
 	case "left":   return .Left, true
 	case "right":  return .Right, true
 	case "middle": return .Middle, true
+	case "back":    return .Back, true
+	case "forward": return .Forward, true
 	}
 	return .Left, false
 }

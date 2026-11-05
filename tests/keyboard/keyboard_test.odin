@@ -974,6 +974,27 @@ lazy_column_builds_what_is_near_the_view :: proc(t: ^testing.T) {
 	testing.expectf(t, lazy_built <= 16, "still a screen's worth: %d", lazy_built)
 }
 
+// The side buttons of the mouse come through as the others do, and click nothing.
+@(test)
+side_buttons_are_read :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	seen: [2]bool
+	body :: proc(f: ^Fx, user: rawptr) {
+		s := (^[2]bool)(user)
+		s[0] ||= ui.mouse_pressed(.Back)
+		s[1] ||= ui.mouse_pressed(.Forward)
+	}
+	frame(f, {{kind = .Mouse_Press, pos = {10, 10}, button = .Back}}, body, &seen)
+	frame(f, {{kind = .Mouse_Release, pos = {10, 10}, button = .Back}}, body, &seen)
+	testing.expect(t, seen[0] && !seen[1], "back, not forward")
+	frame(f, {{kind = .Mouse_Press, pos = {10, 10}, button = .Forward}}, body, &seen)
+	frame(f, {{kind = .Mouse_Release, pos = {10, 10}, button = .Forward}}, body, &seen)
+	testing.expect(t, seen[1], "forward")
+}
+
 @(private = "file")
 sized_size: ui.Vec2
 @(private = "file")

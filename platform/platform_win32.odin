@@ -760,6 +760,8 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 	return .None
 }
 
+@(private = "file") XBUTTON1 :: 1   // the high word of a WM_XBUTTON message: the back button (2: forward)
+
 @(private)
 button_down :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
 	if win.GetCapture() != w.hwnd { win.SetCapture(w.hwnd) }
@@ -1028,6 +1030,13 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_LBUTTONUP: button_up(w, .Left, mouse_pos(lparam))
 	case win.WM_RBUTTONUP: button_up(w, .Right, mouse_pos(lparam))
 	case win.WM_MBUTTONUP: button_up(w, .Middle, mouse_pos(lparam))
+	// (TRUE: told apart from a message left to the default procedure, which would say it again as a WM_APPCOMMAND)
+	case win.WM_XBUTTONDOWN, win.WM_XBUTTONDBLCLK:
+		button_down(w, win.HIWORD(u32(wparam)) == XBUTTON1 ? .Back : .Forward, mouse_pos(lparam))
+		return 1
+	case win.WM_XBUTTONUP:
+		button_up(w, win.HIWORD(u32(wparam)) == XBUTTON1 ? .Back : .Forward, mouse_pos(lparam))
+		return 1
 
 	case win.WM_MOUSEWHEEL, win.WM_MOUSEHWHEEL:
 		notches := f32(i16(win.HIWORD(u32(wparam)))) / WHEEL_NOTCH_UNITS
