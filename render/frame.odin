@@ -1,6 +1,7 @@
 #+build windows
 package render
 
+@(require) import "core:fmt"
 @(require) import "core:mem"
 @(require) import "vendor:directx/d3d11"
 
@@ -83,7 +84,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	// a partial frame clears only its region
 	if partial && r.damage.have_clear { r.damage.have_clear = false; d3d_clear_region(r) }
-	s := D3d_Submit{cur = -1, has_slug = has_slug, bound = -1, bound_image = -1, bound_backdrop = -1}
+	s := D3d_Submit{cur = -1, has_slug = has_slug, bound = -1, bound_image = -1, bound_backdrop = -1, dual_frame = f.subpixel && d3d_dual_ensure(r)}
 	frame_walk(r, &s, f, partial, slug_frame)
 	walk_flush(r, &s)
 	unbind_inputs(r)
@@ -104,6 +105,45 @@ D3d_Submit :: struct {
 	replacing:   bool,    // the blend state of FLAG_BLEND composites is bound
 	bound_replay: int,    // the Replay in b2 (0: immediate instances, identity)
 	retained_vb: bool,    // the retained instance heap is the bound vertex buffer
+	dual_frame:  bool,    // text is blended per channel in the frame's own target
+	dual:        bool,    // ... and that is the target of the draw calls
+	dual_bound:  bool,    // its shader and blend state are bound
+}
+
+// The shader and the blend state that blend per channel: the first frame that wants them makes them. Without them the text of
+// the frame is averaged by the usual shader.
+@(private)
+d3d_dual_ensure :: proc(r: ^Renderer) -> bool {
+	if r.ps_dual != nil { return true }
+	if r.dual_failed { return false }
+	code, blob, ok := shader_code(.Rect_Dual_PS)
+	if ok {
+		defer shader_code_done(blob)
+		r.device->CreatePixelShader(raw_data(code), uint(len(code)), nil, &r.ps_dual)
+	}
+	bd := d3d11.BLEND_DESC{}
+	bd.RenderTarget[0] = {
+		BlendEnable = true,
+		SrcBlend = .SRC1_COLOR, DestBlend = .INV_SRC1_COLOR, BlendOp = .ADD,
+		SrcBlendAlpha = .ONE, DestBlendAlpha = .INV_SRC_ALPHA, BlendOpAlpha = .ADD,
+		RenderTargetWriteMask = u8(d3d11.COLOR_WRITE_ENABLE_ALL),
+	}
+	r.device->CreateBlendState(&bd, &r.blend_dual)
+	if r.ps_dual == nil || r.blend_dual == nil {
+		fmt.eprintln("render: the shader of text per colour stripe was refused by the device")
+		r.dual_failed = true
+		return false
+	}
+	return true
+}
+
+// Per channel for what is drawn next, or not: the usual pixel shader of the pipeline `slug` says otherwise.
+@(private)
+d3d_dual_select :: proc(r: ^Renderer, s: ^D3d_Submit, on: bool) {
+	if on == s.dual_bound { return }
+	s.dual_bound = on
+	r.ctx->PSSetShader(on ? r.ps_dual : (r.slug.on ? r.slug.ps : r.ps), nil, 0)
+	r.ctx->OMSetBlendState(on ? r.blend_dual : (s.replacing ? r.blend_replace : r.blend), nil, ~u32(0))
 }
 
 // profile: the run of draw calls into the target ends here.
@@ -124,6 +164,7 @@ walk_op :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, op: ^Op) -> (reboun
 	if s.has_slug { slug_bind_inputs(r, f) }
 	s.retained_vb = false
 	s.replacing = false
+	s.dual_bound = false
 	return true
 }
 
@@ -131,6 +172,7 @@ walk_op :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, op: ^Op) -> (reboun
 walk_target :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, target: int) -> (ok: bool, size: [2]int, origin: [2]f32) {
 	walk_flush(r, s)
 	s.cur = target
+	s.dual = s.dual_frame && target == 0
 	ok, size, origin = bind_target(r, f, target)
 	s.bound, s.bound_image, s.bound_backdrop = -1, -1, -1
 	profile_target_change(r)
@@ -158,6 +200,7 @@ walk_bind :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch, rc: [4]
 		s.bound, s.bound_image, s.bound_backdrop = b.tex, b.image, b.backdrop
 	}
 	if (b.backdrop != 0) != s.replacing {
+		d3d_dual_select(r, s, false)
 		s.replacing = b.backdrop != 0
 		r.ctx->OMSetBlendState(s.replacing ? r.blend_replace : r.blend, nil, ~u32(0))
 	}
@@ -166,13 +209,14 @@ walk_bind :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch, rc: [4]
 }
 
 @(private)
-walk_draw_app :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch) { d3d_draw_app(r, f, b) }
+walk_draw_app :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch) { d3d_draw_app(r, f, b); s.dual_bound = false }
 
 // `slug`: with the Slug shaders (their runs are skipped when there are none).
 @(private)
 walk_draw :: proc(r: ^Renderer, s: ^D3d_Submit, slug: bool, first, count: int) {
 	if count <= 0 || (slug && !r.slug.ready) { return }
 	slug_select(r, slug)
+	d3d_dual_select(r, s, s.dual && !s.replacing && !slug)
 	r.ctx->DrawInstanced(QUAD_VERTICES, u32(count), 0, u32(first))
 }
 

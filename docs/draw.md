@@ -304,7 +304,7 @@ What Chromium does on Windows (chromium `skia/BUILD.gn`: `SK_GAMMA_SRGB`, `SK_GA
 ClearType tuner's registry values replace them when present): `TEXT_RENDERING_SRGB`, the default of the `Srgb` space.
 Measured against Edge on the same page (Segoe UI 15 px at 175 %): ink per pixel of text width within 2 % for black on
 white and for light on dark, where plain sRGB coverage is 4 % heavier and 17 % lighter respectively. Remaining
-differences came from the rasterizer: at the time of this measurement stb_truetype, it is now DirectWrite in grayscale; Edge uses ClearType.
+differences came from the rasterizer: at the time of this measurement stb_truetype, it is now DirectWrite in grayscale; Edge uses ClearType (`font.Settings.subpixel_text` here, see [text.md](text.md)).
 Linux Chromium's values are `{curve = .Power, gamma = 1.2, contrast = 0.2}`.
 
 ### The UI in the sRGB space

@@ -44,6 +44,7 @@ const FLAG_LERP_LINEAR: u32 = 128u;
 const FLAG_SCALED: u32 = 0x10000u;
 const FLAG_MATRIX: u32 = 0x20000u;
 const FLAG_PROJECT: u32 = 0x40000u;
+const FLAG_LCD: u32 = 0x80000u;
 const BLEND_SHIFT: u32 = 8u;
 const SPACE_LINEAR: u32 = 0u;
 const SPACE_SRGB: u32 = 1u;
@@ -987,8 +988,12 @@ fn proj_texel(i: PSIn, duvx: float2, duvy: float2) -> float4 {
 	return acc / n;
 }
 
-@fragment
-fn ps_main(i: PSIn) -> @location(0) float4 {
+// What a pixel's alpha is, per colour stripe, as a share of it (text with a coverage per stripe; rect_dual.wgsl reads it).
+var<private> lcd_weight: float3 = float3(1.0, 1.0, 1.0);
+
+// (on one line: shaders.odin makes it a function for the module of rect_dual.wgsl. This body stays the entry point: moved into a
+// function here, the WebGPU backend's compiler on Direct3D 12 composited no layer, with no error.)
+@fragment fn ps_main(i: PSIn) -> @location(0) float4 {
 	let p = i.rect_pos;
 	// derivatives first, outside any branch: local units per screen pixel (constant per primitive), texture LOD
 	let dpx = dpdx(p);
@@ -1047,10 +1052,27 @@ fn ps_main(i: PSIn) -> @location(0) float4 {
 		color = float4(convert_space(gr.color.rgb, select(SPACE_LINEAR, SPACE_SRGB, gr.srgb), g.target_space), color.a * gr.color.a);
 	}
 	if (kind == KIND_GLYPH) {
-		// coverage from the atlas, kept inside the glyph's cell (a transformed quad is grown past it)
-		let h = 0.5 / max(i.style.w, 1.0);
-		let cov = textureSampleGrad(atlas, samp, clamp(i.uv, i.src.xy + h, i.src.zw - h), duvx, duvy).r;
-		color.a = color.a * text_coverage(cov, i);
+		if ((i.extra.z & FLAG_LCD) != 0u && !xf) {
+			// a pixel's three coverages, side by side in the atlas. Where the target has one alpha they are averaged: the same
+			// glyph is right in a layer (a transformed one reads the row as a finer bitmap, below)
+			let page = max(i.style.w, 1.0);
+			let t = i.uv * page;
+			let s0 = i.src.xy * page;
+			let s1 = i.src.zw * page;
+			let x0 = i32(min(s0.x + floor((t.x - s0.x) / 3.0) * 3.0, s1.x - 3.0));
+			let y0 = i32(clamp(floor(t.y), s0.y, s1.y - 1.0));
+			let c3 = float3(text_coverage(textureLoad(atlas, vec2<i32>(x0, y0), 0).r, i),
+			                text_coverage(textureLoad(atlas, vec2<i32>(x0 + 1, y0), 0).r, i),
+			                text_coverage(textureLoad(atlas, vec2<i32>(x0 + 2, y0), 0).r, i));
+			let mean = (c3.x + c3.y + c3.z) / 3.0;
+			lcd_weight = c3 / max(mean, 1.0 / 1024.0);
+			color.a = color.a * mean;
+		} else {
+			// coverage from the atlas, kept inside the glyph's cell (a transformed quad is grown past it)
+			let h = 0.5 / max(i.style.w, 1.0);
+			let cov = textureSampleGrad(atlas, samp, clamp(i.uv, i.src.xy + h, i.src.zw - h), duvx, duvy).r;
+			color.a = color.a * text_coverage(cov, i);
+		}
 		if (xf) {
 			let sd = rect_sdf_dir(p, i.half_size, 0.0);
 			color.a = color.a * saturate(0.5 - to_px(sd.x, sd.yz, dpx, dpy));

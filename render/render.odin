@@ -90,6 +90,7 @@ FLAG_SCALED :: 0x10000 // the texture holds the image reduced (a large blur): sa
                        // the scale (texels per screen pixel), edges repeat
 FLAG_MATRIX :: 0x20000 // color matrices applied to the texel (straight sRGB values, each result clamped), as a Color
                        // pass would: `aux` is their entry in the frame's gradient table (see Color_Matrix_Entry)
+FLAG_LCD :: 0x80000 // glyph: three coverages per pixel side by side in the atlas (font.Glyph_Image.lcd); `src` is three times as wide as `dst`
 FLAG_PROJECT :: 0x40000 // image: a layer drawn through a homography (draw.draw_plane). `xform` is the first of two
                         // entries of the transform table that hold the 3x3 matrix mapping layer texels to homogeneous screen
                         // pixels, then ceil(cuts / 2) entries of cuts (half-planes a x + b y + c >= 0 of the layer's texel space,
@@ -339,6 +340,15 @@ Frame_Data :: struct {
 	// first one of its draw)
 	apps:       []App_Draw,
 	app_params: [][4]f32,
+	// Text has a coverage per colour stripe: the frame's own target blends it per channel (text_subpixel_supported). A layer has one
+	// alpha per pixel: the same glyphs are averaged there.
+	subpixel:   bool,
+}
+
+// Whether text can have a coverage per colour stripe here: the renderer's blending, for `slug` or atlas text. Direct3D 11 blends the
+// atlas (the Windows default), WebGPU Slug (the default elsewhere), when the device has dual-source blending.
+text_subpixel_supported :: proc(r: ^Renderer, slug: bool) -> bool {
+	when USE_WGPU { return slug && r.wg.can_dual } else { return !slug }
 }
 
 Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot, Slug_Curves, Slug_Bands, Data }
@@ -413,6 +423,9 @@ Renderer :: struct {
 	device_generation: u64,               // bumps when the device was recreated (recover): texture contents were lost
 	lost:        bool,                    // the device was removed or reset: recover() before drawing again
 	blend_replace: ^d3d11.IBlendState,    // FLAG_BLEND composites write their result
+	ps_dual:     ^d3d11.IPixelShader,     // text blended per channel (rect_dual.wgsl): made when a frame first asks (d3d_dual_ensure)
+	blend_dual:  ^d3d11.IBlendState,
+	dual_failed: bool,
 	fx_vs:       ^d3d11.IVertexShader,    // filter passes (filter.wgsl)
 	fx_ps:       ^d3d11.IPixelShader,
 	fx_constants: ^d3d11.IBuffer,

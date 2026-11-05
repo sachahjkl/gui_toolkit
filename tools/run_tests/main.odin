@@ -128,6 +128,8 @@ STEPS := []Step{
 	{name = "render_pkg", path = "render"},
 	// text
 	{name = "text", wgpu = .Ci1},
+	{name = "subpixel"},
+	{name = "subpixel_slug", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "TOOLKIT_WGPU_DX12_COMPILER=fxc", "FONT_TEXT_RENDERER=slug"}},
 	{name = "slug", wgpu = .Ci1, sample = true},
 	{name = "colr", need = .Emoji, wgpu = .Ci1},
 	{name = "color_glyphs", wgpu = .Ci3},

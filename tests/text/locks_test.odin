@@ -98,8 +98,8 @@ runs_from_threads_are_made_once :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 	job := Run_Job{s = s, glyphs = sh.glyphs}
 	steps := s.settings.subpixel_steps
 	job.reqs = make([]font.Glyph_Request, len(sh.glyphs) + 1, context.temp_allocator)
-	for g, i in sh.glyphs { job.reqs[i] = {g.face, g.id, u8(i % steps)} }
-	job.reqs[len(sh.glyphs)] = {0, sh.glyphs[0].id, 0}
+	for g, i in sh.glyphs { job.reqs[i] = {face = g.face, id = g.id, sub = u8(i % steps)} }
+	job.reqs[len(sh.glyphs)] = {face = 0, id = sh.glyphs[0].id}
 	for k in 0 ..< LOCK_THREADS {
 		job.images[k] = make([]font.Glyph_Image, len(job.reqs), context.temp_allocator)
 		job.slugs[k] = make([]font.Slug_Glyph, len(job.glyphs), context.temp_allocator)

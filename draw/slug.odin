@@ -90,7 +90,7 @@ picture_note_slug :: proc(pic: ^Picture, g: font.Slug_Glyph) {
 // Appends the instance of one glyph. (ox, oy): the pen on the baseline, size: pixels per em, in the units of the
 // instance (screen pixels when baked, local units under `xform`).
 @(private)
-slug_inst :: proc(c: ^Context, g: font.Slug_Glyph, ox, oy, size: f32, col: Color, xform, shape: u32, screen_px: f32 = 0) {
+slug_inst :: proc(c: ^Context, g: font.Slug_Glyph, ox, oy, size: f32, col: Color, xform, shape: u32, screen_px: f32 = 0, stripes: f32 = 0) {
 	b := g.bbox
 	inst := render.Rect_Inst{
 		dst = {ox + b[0] * size, oy - b[3] * size, ox + b[2] * size, oy - b[1] * size}, src = b,
@@ -99,9 +99,11 @@ slug_inst :: proc(c: ^Context, g: font.Slug_Glyph, ox, oy, size: f32, col: Color
 		flags = u32(g.band_max.x) | u32(g.band_max.y) << 8, aux = u32(g.loc.x) | u32(g.loc.y) << 16,
 	}
 	// small text (font.Settings): colors[1].x the stem darkening in pixels, signed by the glyph's winding; .y 1 for four
-	// coverage samples per pixel. The size on the screen is the instance's under a scale (pixels per em).
+	// coverage samples per pixel; .z which way the colour stripes run (slug_dual.wgsl: 1, -1, 0 none). The size on the screen is
+	// the instance's under a scale (pixels per em).
 	st := c.fonts.settings
 	inst.colors[1] = {}   // (the shader reads it: not the color here)
+	inst.colors[1].z = stripes
 	px := screen_px > 0 ? screen_px : size
 	if st.slug_darken > 0 {
 		inst.colors[1].x = st.slug_darken * clamp((SLUG_DARKEN_NONE_PPEM - px) / (SLUG_DARKEN_NONE_PPEM - SLUG_DARKEN_FULL_PPEM), 0, 1) * f32(g.orient)
