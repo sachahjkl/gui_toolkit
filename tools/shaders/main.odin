@@ -41,7 +41,10 @@ main :: proc() {
 		fmt.sbprintf(&cmd, "\"%s\" \"%s\" 50", exe, out)
 		for b in desc.bindings { fmt.sbprintf(&cmd, " %s", b) }
 		fmt.sbprintf(&cmd, " --")
-		for f in desc.wgsl_files { fmt.sbprintf(&cmd, " \"%s\\render\\%s\"", root, f) }
+		// naga reads what module_source says, which is not always the files as they are
+		src, _ := filepath.join({tmp_dir, fmt.tprintf("%s.wgsl", desc.file)}, context.temp_allocator)
+		if werr := os.write_entire_file(src, transmute([]u8)render.module_source(m, context.temp_allocator)); werr != nil { fmt.eprintln("shaders: cannot write", src, werr); os.exit(1) }
+		fmt.sbprintf(&cmd, " \"%s\"", src)
 		// cmd.exe strips the outer quotes of a command that starts with one: wrap the whole line
 		if libc.system(strings.clone_to_cstring(fmt.tprintf("\"%s\"", strings.to_string(cmd)), context.temp_allocator)) != 0 {
 			fmt.eprintln("shaders: naga failed on", desc.file)

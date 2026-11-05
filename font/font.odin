@@ -110,10 +110,14 @@ Cascade_Entry :: struct {
 }
 
 Rendering :: enum u8 { Natural_Symmetric, Natural, Gdi_Classic, Aliased }
+// Text smoothed per colour stripe of the screen's pixels, in their order: sharper across at few pixels per letter. For a window
+// that is opaque, on a screen with such stripes (OLED panels often have not); see docs/text.md.
+Subpixel_Text :: enum u8 { Off, Rgb, Bgr }
 Grid_Fit :: enum u8 { Default, Enabled, Disabled }
 
 Settings :: struct {
 	subpixel_steps:  int,       // horizontal glyph positions per pixel (1: whole pixels, up to 4)
+	subpixel_text:   Subpixel_Text,   // text smoothed per colour stripe (off: grayscale)
 	rendering:       Rendering, // DirectWrite rendering mode of the glyph bitmaps
 	grid_fit:        Grid_Fit,
 	color_glyphs:    bool,      // color glyphs (emoji: COLR, sbix, CBDT, SVG) in color; else their outline in the text color
@@ -274,12 +278,13 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	atlas_lock(&s.atlas)
 	old := s.settings
 	if st.subpixel_steps != old.subpixel_steps || st.rendering != old.rendering || st.grid_fit != old.grid_fit || st.color_glyphs != old.color_glyphs ||
-	   st.color_engine != old.color_engine || st.colr_samples != old.colr_samples {
+	   st.subpixel_text != old.subpixel_text || st.color_engine != old.color_engine || st.colr_samples != old.colr_samples {
 		clear(&s.atlas.glyphs)
 		clear(&s.atlas.fg_glyphs)
 		s.atlas.settings_generation += 1
 	}
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
+	s.settings.subpixel_text = st.subpixel_text
 	s.settings.color_glyphs, s.settings.max_gray_pages, s.settings.max_color_pages = st.color_glyphs, st.max_gray_pages, st.max_color_pages
 	s.settings.color_async = st.color_async
 	s.settings.color_engine, s.settings.colr_samples, s.settings.colr_cache_kb = st.color_engine, st.colr_samples, st.colr_cache_kb

@@ -197,7 +197,7 @@ struct SlugPS {
 	@location(4) @interpolate(flat) clip: u32,
 	@location(5) @interpolate(flat) corr: float4,             // text correction: ls, ld, bd, 1 / (bs - bd)
 	@location(6) @interpolate(flat) corr_meta: float2,        // contrast * ld, enabled
-	@location(7) @interpolate(flat) small: float2,            // stem darkening (pixels, signed), 1: four samples per pixel
+	@location(7) @interpolate(flat) small: float3,            // stem darkening (pixels, signed), 1: four samples per pixel, stripes (slug_dual.wgsl)
 };
 
 @vertex
@@ -238,7 +238,8 @@ fn vs_slug(i: VSIn) -> SlugPS {
 	o.banding = i.radii;
 	o.glyph = vec4<i32>(i32(i.extra.w & 0xFFFFu), i32(i.extra.w >> 16u), i32(i.extra.z & 0xFFu), i32((i.extra.z >> 8u) & 0xFFu));
 	o.clip = i.extra.y;
-	o.small = i.c1.xy;
+	o.small = i.c1.xyz;
+	if (m.abcd.y != 0.0 || m.abcd.z != 0.0) { o.small.z = 0.0; }   // (turned: the text no longer runs along the stripes)
 
 	var c = i.c0;
 	c.a = c.a * rp.m1.z;   // the replay's alpha (1 for immediate instances)
