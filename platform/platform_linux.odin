@@ -401,8 +401,8 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 // Waits until `handle` is signaled or `timeout_ms` passed (0: no limit), taking the window's keyboard and mouse input
 // as it arrives (time-stamped, kept for the next poll_events). `handle` is a render frame-latency fd (poll(2)-able):
 // render.frame_waitable returns one on wgpu. Returns true when the handle was signaled. The frame then starts on fresh
-// input, as the Win32 MsgWaitForMultipleObjectsEx path does.
-wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
+// input, as the Win32 MsgWaitForMultipleObjectsEx path does. `until_press`: a key or a button taken ends the wait (wait_slot).
+wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := false) -> bool {
 	if handle == nil { return true }
 	if w.in_poll {
 		// a nested call (a frame callback): just wait on the handle, take no input
@@ -421,6 +421,7 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
 		case .X11:     x11_take_input(w)
 		case .None:
 		}
+		if until_press && press_waits(w) { return false }
 		left := -1
 		if timeout_ms > 0 {
 			rem := f64(timeout_ms) - time.duration_milliseconds(time.tick_since(start))

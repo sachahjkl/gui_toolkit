@@ -12,6 +12,10 @@ import "../platform"
 //   render.frame_end(&r, !at_once)
 //   render.paced_present(&pacer)
 //
+// Input is never what is limited: it is read as it comes, whatever the frames do. What is decided here is how many frames go out.
+// That is the application's to choose: `pacer.choices` (a rate to aim for, a ceiling; read at the next frame), or
+// `pacer.cadence.uncapped = true`: no slot, no wait for the screen (a diagnostic, a benchmark: it costs power).
+//
 // `idled`: the loop slept before this frame (nothing was due). A frame of a loop of the system (on_frame from the window
 // procedure, a modal move or size) passes `inner = true`.
 //
@@ -20,6 +24,8 @@ import "../platform"
 
 Pacer :: struct {
 	cadence:        platform.Cadence,
+	choices:        platform.Cadence_Choices,   // what the application asks of the frames: a target, a ceiling
+	adopted:        platform.Cadence_Choices,   // those the plan was made with
 	display_serial: u64,
 	size:           [2]int,   // the window's size at the last frame
 	presented:      bool,     // a frame reached the swap chain
@@ -30,9 +36,9 @@ Pacer :: struct {
 // Before a frame reads its input: the cadence's decision executed (the screen's plan adopted when the display changed,
 // the frame's slot and the swap chain's waited for, its latency set). Returns whether the frame is presented at once.
 pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false, dragging := false, inner := false) -> (at_once: bool) {
-	if d := platform.display_info(w); d.serial != p.display_serial {
-		p.display_serial = d.serial
-		platform.cadence_adopt(&p.cadence, platform.cadence_plan(d, {}))
+	if d := platform.display_info(w); d.serial != p.display_serial || p.choices != p.adopted {
+		p.display_serial, p.adopted = d.serial, p.choices
+		platform.cadence_adopt(&p.cadence, platform.cadence_plan(d, p.choices))
 	}
 	resized := w.size != p.size
 	p.size = w.size
@@ -50,10 +56,10 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 		// No frame before its slot: on a screen that does not hold the app back, a 1 kHz mouse made 430 frames a second. After
 		// the swap chain, and only what is left: the decision is made just after the last present, always early, and a screen
 		// that paces the app has by now passed the slot. Slept before, the two waits add up (60 Hz: 40 frames a second).
-		// Input is read after this, so the frame answers the newest of it.
+		// Input is taken meanwhile; a key or a button ends the wait, and the frame answers the newest of what came.
 		if d.wait_ns > 0 {
 			if left := d.wait_until_ns - time.tick_now()._nsec; left > platform.FRAME_SLOT_MIN_WAIT_NS {
-				platform.precise_sleep(time.Duration(left))
+				platform.wait_slot(w, time.Duration(left))
 			}
 		}
 	}

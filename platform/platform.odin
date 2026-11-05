@@ -361,6 +361,19 @@ event_is_input :: proc(k: Event_Kind) -> bool {
 	return false
 }
 
+WAIT_SLOT_MARGIN_MS :: 2   // the timer that ends a slot's wait is what ends it: this limit is a net under it
+
+// A key or a button came and is not handed out yet: what ends the wait of a slot. (Not a pointer that moves, nor the wheel.)
+@(private)
+press_waits :: proc(w: ^Window) -> bool {
+	for e in w.events {
+		#partial switch e.kind {
+		case .Key_Press, .Text, .Mouse_Press, .Mouse_Release, .Pointer_Down, .Pointer_Up: return true
+		}
+	}
+	return false
+}
+
 // Whether the user's input waits, without taking it: what arrived is read (without waiting) and kept for the next
 // poll_events, which hands it out with what came since. For frame pacing: a frame that answers input after a rest is shown
 // at once (frame_decision's `input`).
