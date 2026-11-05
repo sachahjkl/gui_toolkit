@@ -2,6 +2,7 @@
 // window needed), in both blend spaces.   odin test tests/layers -vet
 package layers_test
 
+import "core:mem"
 import "core:testing"
 import "core:thread"
 import "core:time"
@@ -309,4 +310,26 @@ a_device_loss_leaves_the_readbacks_of_another_renderer :: proc(t: ^testing.T) {
 		thread.yield()
 	}
 	testing.expect_value(t, st, render.Capture_Status.Ready)
+}
+
+// The table of read-backs is the process's: it does not belong to the allocator of whoever wrote in it first. Two tests side by side showed it, on a
+// busy machine: the first one ended with the second's read-back still in the table, and counted the table as its leak.
+@(test)
+the_readback_table_is_not_its_first_writers :: proc(t: ^testing.T) {
+	r: render.Renderer
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	first: render.Readback_Id
+	{
+		context.allocator = mem.tracking_allocator(&track)
+		first = render.readback_new(&r)
+	}
+	second := render.readback_new(&r)
+	defer render.readback_release(&r, second)
+	{
+		context.allocator = mem.tracking_allocator(&track)
+		render.readback_release(&r, first)
+	}
+	testing.expect_value(t, len(track.allocation_map), 0)
 }
