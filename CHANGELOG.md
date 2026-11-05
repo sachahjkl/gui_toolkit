@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.80.0] - 2026-11-05
+
+### Added
+- **The output of frames is the application's to choose**: `Pacer.choices` (a ceiling, a rate; read at the next frame, `render.pace_frame` planned with none), and `Cadence.uncapped`: no slot, no wait for the screen, every frame shown at once, for a diagnostic or a benchmark. A window at rest stays at rest.
+
+### Changed
+- **`platform.wait_slot`**: `render.pace_frame` no longer sleeps through a frame's slot: input is taken as it arrives (time-stamped, kept for the next `poll_events`), a key or a button ends the wait, a pointer that moves and the wheel do not. `wait_handle` has `until_press`. An offscreen window does not wait.
+
 ## [0.79.0] - 2026-11-05
 
 ### Added
@@ -1545,6 +1553,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.80.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.80.0
 [0.79.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.79.0
 [0.78.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.78.0
 [0.77.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.77.0
