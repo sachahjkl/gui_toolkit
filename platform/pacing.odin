@@ -33,8 +33,11 @@ package platform
 //   Continuous     frames follow one another (an animation, the wheel, a pointer sweeping the window): one per slot, each after
 //                  the screen took the previous one
 //
-// A frame that is neither a resize step nor an input answer waits for its slot, then for the swap chain's slot (unless it
-// holds one already, or nothing was presented yet: a swap chain never shown releases nothing).
+// A frame that is neither a resize step nor an input answer waits for the swap chain's slot (unless it holds one already, or
+// nothing was presented yet: a swap chain never shown releases nothing), then what is left of its own.
+//
+// Cadence.uncapped lifts all of it: whatever the state, no wait and every frame shown at once. Frames are still only made when
+// there is one to make: a window at rest stays at rest.
 
 import "core:math"
 
@@ -74,6 +77,7 @@ Frame_Decision :: struct {
 Cadence :: struct {
 	slots:        Frame_Slots,   // the clock: set from cadence_plan (cadence_adopt)
 	variable:     bool,          // the screen shows frames above the rate it reports (Cadence_Plan.variable): a drag is shown at once
+	uncapped:     bool,          // the application's choice, kept by cadence_adopt: no slot, no wait for the screen, every frame shown at once
 	state:        Cadence_State, // the last frame's
 	input_answer: bool,          // the last frame answered input (also when it was a resize step)
 	resize_ns:    i64,           // the last size change seen (0: none)
@@ -113,6 +117,7 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	d.wait_ns, d.slot_ns = frame_slot_wait(&c.slots, in_.now_ns, in_.idled, step || answer)
 	d.wait_until_ns = in_.now_ns + d.wait_ns
 	d.wait_swap_chain = !step && !answer && in_.presented && !in_.slot_held
+	if c.uncapped { d.wait_ns, d.wait_until_ns, d.wait_swap_chain, d.present_at_once, d.latency = 0, in_.now_ns, false, true, 2 }
 	return
 }
 
@@ -128,7 +133,7 @@ cadence_inner_frame :: proc(c: ^Cadence, resized, presented: bool) -> (at_once: 
 
 // Whether the last decided frame is shown at once.
 cadence_at_once :: proc(c: ^Cadence) -> bool {
-	return c.state == .Resize_Step || c.state == .Resize_Burst || c.input_answer || (c.state == .Drag && c.variable)
+	return c.uncapped || c.state == .Resize_Step || c.state == .Resize_Burst || c.input_answer || (c.state == .Drag && c.variable)
 }
 
 // The plan's clock and screen taken by the cadence (once, and again when the monitor or its rate changes).

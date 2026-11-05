@@ -59,8 +59,13 @@ Why each one:
 
 ## Use
 
-The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display changes, the frame's slot and
-the swap chain's waited for (`platform.precise_sleep`: `Sleep` rounds up to the system's tick), its latency set:
+Input is never what is limited: it is read as it comes and time-stamped, whatever the frames do. What the cadence decides is how
+many frames go out, and that is the application's to choose.
+
+The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display or `pacer.choices` change, the
+frame's slot and the swap chain's waited for, its latency set. `platform.wait_slot` makes the slot's wait: input is taken as it
+arrives, a key or a button ends it (their frame goes out now), a pointer that moves and the wheel do not (the next frame carries all
+of them, which is what holds a 1 kHz mouse back):
 
 ```odin
 at_once := render.pace_frame(&pacer, &r, win, idled = slept, dragging = ui.active_key() != 0)
@@ -74,6 +79,10 @@ It does not show input after a rest at once (`input = false`): measured in openc
 over a list, six runs each way), presenting that one frame without a wait for the refresh left the swap chain a frame
 deeper for the rest of the session: 45 to 60 ms from input to screen instead of 29 to 30. (`platform.input_pending`
 says whether input waits, for an application that measures otherwise.)
+
+The output is chosen with `pacer.choices` (`max_hz`: a ceiling, `target_hz`: a rate; read at the next frame), or
+`pacer.cadence.uncapped = true`: no slot, no wait for the screen, every frame shown at once (`frame_decision`, `cadence_at_once`).
+Frames are still only made when there is one to make. For a diagnostic or a benchmark: it costs power and may tear.
 
 By hand:
 
