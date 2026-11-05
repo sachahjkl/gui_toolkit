@@ -52,7 +52,8 @@ geometric_growth :: proc(t: ^testing.T) {
 	// speed(x) = V * (2^(x/D) - 1) / (2^(F/D) - 1): D px farther out doubles speed + c, c = V / (2^(F/D) - 1)
 	d := CFG.doubling
 	c := CFG.max_speed / (math.pow(2, CFG.full_dist / d) - 1)
-	for x in ([]f32{10, 60, 150, 300}) {
+	for k in ([]f32{0.05, 0.3, 0.6, 1}) {   // (of the ramp that a step of `d` stays on: past `full_dist` it is capped)
+		x := k * (CFG.full_dist - d)
 		v0 := ui.autoscroll_axis_speed(CFG.dead_zone + x, CFG)
 		v1 := ui.autoscroll_axis_speed(CFG.dead_zone + x + d, CFG)
 		testing.expectf(t, abs((v1 + c) - 2 * (v0 + c)) < 0.01 * (v1 + c), "not geometric at %v: %v then %v", x, v0, v1)
@@ -72,7 +73,7 @@ doubling_shapes :: proc(t: ^testing.T) {
 	vf := ui.autoscroll_axis_speed(mid, fast)
 	vs := ui.autoscroll_axis_speed(mid, slow)
 	vl := ui.autoscroll_axis_speed(mid, line)
-	testing.expect(t, abs(vl - CFG.max_speed * 0.5) < 1)
+	testing.expect(t, abs(vl - CFG.max_speed * 0.5) < CFG.max_speed * 0.001)
 	testing.expect(t, vf < vs && vs < vl)
 }
 ////////////////////////////////

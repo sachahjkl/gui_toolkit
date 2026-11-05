@@ -36,6 +36,9 @@ package platform
 // A frame that is neither a resize step nor an input answer waits for the swap chain's slot (unless it holds one already, or
 // nothing was presented yet: a swap chain never shown releases nothing), then what is left of its own.
 //
+// A target above the screen's rate (Cadence_Choices.target_hz, Cadence.above) is made: every frame on its slot, none waits for the
+// screen, every one shown at once. The screen shows what it can, always the newest: the same refreshes, each with fresher input.
+//
 // Cadence.uncapped lifts all of it: whatever the state, no wait and every frame shown at once. Frames are still only made when
 // there is one to make: a window at rest stays at rest.
 
@@ -43,6 +46,7 @@ import "core:math"
 
 CADENCE_INPUT_REST_PERIODS :: 1.5            // input after this many periods without a present starts an answer (shown at once)
 CADENCE_RESIZE_HOLD_NS     :: 120_000_000    // the frames this long after a size change are part of its burst
+@(private = "file") CADENCE_ABOVE_SCREEN :: 1.01       // a target this far over the display's rate is above it (not a rounding of it)
 @(private = "file") CADENCE_SYNC_FULL_RATE :: 0.99     // a rate this near the display's (as a part of it) is every refresh
 @(private = "file") CADENCE_SYNC_TOLERANCE :: 0.01     // how near a rate must be to display / n (as a part of the rate) to be every n-th refresh
 @(private = "file") CADENCE_SYNC_MAX_DIVIDER :: 4      // the slowest vsync interval tried; below that the application times the frames
@@ -78,6 +82,7 @@ Cadence :: struct {
 	slots:        Frame_Slots,   // the clock: set from cadence_plan (cadence_adopt)
 	variable:     bool,          // the screen shows frames above the rate it reports (Cadence_Plan.variable): a drag is shown at once
 	uncapped:     bool,          // the application's choice, kept by cadence_adopt: no slot, no wait for the screen, every frame shown at once
+	above:        bool,          // the application asked for more than the screen shows (Cadence_Plan.above): slots only, every frame shown at once
 	state:        Cadence_State, // the last frame's
 	input_answer: bool,          // the last frame answered input (also when it was a resize step)
 	resize_ns:    i64,           // the last size change seen (0: none)
@@ -117,6 +122,7 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	d.wait_ns, d.slot_ns = frame_slot_wait(&c.slots, in_.now_ns, in_.idled, step || answer)
 	d.wait_until_ns = in_.now_ns + d.wait_ns
 	d.wait_swap_chain = !step && !answer && in_.presented && !in_.slot_held
+	if c.above { d.wait_swap_chain, d.present_at_once, d.latency = false, true, 2 }
 	if c.uncapped { d.wait_ns, d.wait_until_ns, d.wait_swap_chain, d.present_at_once, d.latency = 0, in_.now_ns, false, true, 2 }
 	return
 }
@@ -133,13 +139,14 @@ cadence_inner_frame :: proc(c: ^Cadence, resized, presented: bool) -> (at_once: 
 
 // Whether the last decided frame is shown at once.
 cadence_at_once :: proc(c: ^Cadence) -> bool {
-	return c.uncapped || c.state == .Resize_Step || c.state == .Resize_Burst || c.input_answer || (c.state == .Drag && c.variable)
+	return c.uncapped || c.above || c.state == .Resize_Step || c.state == .Resize_Burst || c.input_answer || (c.state == .Drag && c.variable)
 }
 
 // The plan's clock and screen taken by the cadence (once, and again when the monitor or its rate changes).
 cadence_adopt :: proc(c: ^Cadence, p: Cadence_Plan) {
 	c.slots = p.slots
 	c.variable = p.variable
+	c.above = p.above
 }
 
 // Whether the last decided frame belongs to a resize (its step or its burst).
@@ -179,6 +186,7 @@ Cadence_Plan :: struct {
 	period_ms: f64,           // 1000 / hz: the frame budget
 	interval:  int,           // vsync refreshes per frame
 	timed:     bool,          // the application times the frames itself (its slots are the clock)
+	above:     bool,          // target_hz is above what the screen shows: the frames do not wait for it, the slots alone pace them
 	slots:     Frame_Slots,   // the cap: strict where the application paces (timed), a loose net where the screen does
 }
 
@@ -187,7 +195,8 @@ cadence_plan :: proc(d: Display_Info, choices: Cadence_Choices) -> (p: Cadence_P
 	p.hz = cadence_target_rate(d.hz, choices.target_hz, choices.max_hz, p.variable ? d.max_hz : 0)
 	p.period_ms = 1000 / p.hz
 	p.interval, p.timed = cadence_sync(d.hz, p.hz, choices.tearing, p.variable)
-	p.slots = {period_ns = i64(p.period_ms * 1e6), strict = p.timed}
+	p.above = choices.target_hz > 0 && d.hz > 0 && p.hz > d.hz * CADENCE_ABOVE_SCREEN
+	p.slots = {period_ns = i64(p.period_ms * 1e6), strict = p.timed || p.above}
 	return
 }
 

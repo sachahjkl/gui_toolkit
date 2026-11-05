@@ -80,7 +80,9 @@ over a list, six runs each way), presenting that one frame without a wait for th
 deeper for the rest of the session: 45 to 60 ms from input to screen instead of 29 to 30. (`platform.input_pending`
 says whether input waits, for an application that measures otherwise.)
 
-The output is chosen with `pacer.choices` (`max_hz`: a ceiling, `target_hz`: a rate; read at the next frame), or
+The output is chosen with `pacer.choices` (`max_hz`: a ceiling, `target_hz`: a rate; read at the next frame). A `target_hz` above the
+screen's rate is made: every frame on its slot, none waits for the screen, each shown at once (`Cadence_Plan.above`). The screen shows
+what it can, always the newest: not smoother, but each refresh has fresher input. Or
 `pacer.cadence.uncapped = true`: no slot, no wait for the screen, every frame shown at once (`frame_decision`, `cadence_at_once`).
 Frames are still only made when there is one to make. For a diagnostic or a benchmark: it costs power and may tear.
 

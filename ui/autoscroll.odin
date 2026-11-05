@@ -36,9 +36,9 @@ Autoscroll_Settings :: struct {
 
 DEFAULT_AUTOSCROLL :: Autoscroll_Settings{
 	dead_zone = 12,
-	max_speed = 2800,
-	full_dist = 420,
-	doubling  = 80,
+	max_speed = 15000,
+	full_dist = 300,
+	doubling  = 60,
 	toggle    = true,
 	tap_ms    = 250,
 	tap_slop  = 4,
