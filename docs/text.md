@@ -203,6 +203,33 @@ Positions: the pen is not rounded across; the baseline is put on a whole pixel (
 scale and a translation, as the bitmaps do). By default there is no hinting (`Settings.slug_hint_ppem` asks for it with the native backend, [slug-small-text.md](slug-small-text.md)): horizontal stems are as the outline says (the Slug
 README suggests sizes whose cap height is a whole number of pixels).
 
+## Text per colour stripe
+
+`Settings.subpixel_text` (`.Rgb`, `.Bgr`; default `.Off`) gives text a coverage per colour stripe of the screen's pixels: three
+samples a third of a pixel apart instead of one, so it is sharper across at few pixels per letter, with faint colours on its edges.
+For a window that is opaque, on a screen that has such stripes: many OLED panels have not, and there the colours show. It is the
+application's to set; `system_subpixel_text` says what the system does (on Windows its ClearType setting and order).
+
+- **Bitmaps** (the atlas, Windows): DirectWrite's ClearType analysis, its filter applied. A pixel's three coverages sit side by side
+  in an ordinary Gray page, the bitmap three times as wide (`Glyph_Image.lcd`, `FLAG_LCD`): nothing changes in the pages, their
+  upload or their eviction. They are read texel by texel, so only for bitmaps that land on the screen's pixels as they are
+  (`draw.glyph_run`: baked, not capped); `Bgr` swaps the bytes when the bitmap is made.
+- **Slug** (`slug_dual.wgsl`): a sample's coverage is over a box a pixel wide; taken a third of a pixel to each side it is three
+  stripes each filtered over their neighbours, with no filter of its own. Small text takes two half-pixel samples per stripe (six
+  in all, against four in grayscale).
+- **Blending**: three coverages need a blend factor per channel, which is dual-source blending: the shader writes the colour and
+  what to blend it by. Anything but such text writes its alpha on all three channels, the same blend as by the alpha to the bit
+  (tested), so on Direct3D 11 the whole frame's target uses it (`rect_dual.wgsl`, around `ps_main` made a function by
+  `module_source`) and no batch is split. On WebGPU only the Slug pipeline does, when the device has the `dual-source-blending`
+  feature (`text_subpixel_supported`); `rect.wgsl` keeps its entry point as it is there, see the note above it.
+- **Elsewhere**: a layer has one alpha per pixel, so the frame's own target is the only one blended per channel. There the usual
+  shader averages the three coverages: the same glyphs and pictures are right in a layer, in grey. Text that does not run along the
+  pixels' rows has no stripes: under a transform it is asked for in grey, and a picture recorded with them and replayed turned
+  reads the row of coverages as one finer bitmap.
+
+The text correction (render.Text_Rendering) applies to each stripe. Changing the setting forgets the bitmaps and makes what was
+recorded stale, as the other rendering settings do. `tests/subpixel` holds all of this on both backends.
+
 ## Color glyphs: the COLR interpreter, built-in emoji
 
 `Settings.color_engine` says who draws COLR / CPAL color glyphs (`System`, the default: Direct2D, as before; `Builtin`:
@@ -294,8 +321,8 @@ counted until the next one.
 
 ## Limits
 
-- Grayscale antialiasing only: ClearType needs the background under each glyph (dual-source blending, opaque targets),
-  which layers and translucent backgrounds do not give.
+- Text per colour stripe (below) only in the frame's own target, and only for the renderer's own text: Direct3D 11 with the atlas,
+  WebGPU with Slug. The other two pairs stay grayscale.
 - Color glyphs: on Windows 11 22H2 and later every format (COLR v0 and v1, bitmaps, SVG); from Windows 10 1607 no COLR v1
   paint trees (their v0 layers, else the outline). Text-color layers take the text's color. Off Windows: COLR v0 and v1 through the interpreter, CBDT from its PNG images (`font/cbdt.odin`); no sbix or SVG.
 - No kerning or ligature across a space (words are shaped apart, as Blink does with its word cache).

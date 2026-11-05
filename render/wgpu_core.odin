@@ -34,6 +34,7 @@ WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12" when ODIN_OS == .Windows el
 WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/tk fetch_wgpu)
 
 @(private) WGPU_SLUG_SOURCE :: WGSL_RECT + "\n" + WGSL_SLUG   // as naga reads the Slug module (shaders.odin: MODULES)
+@(private) WGPU_SLUG_DUAL_SOURCE :: WGSL_DUAL_ENABLE + "\n" + WGPU_SLUG_SOURCE + "\n" + WGSL_SLUG_DUAL   // text per colour stripe
 
 @(private) ARENA_ALIGN :: 256           // minUniformBufferOffsetAlignment of every backend we use
 @(private) PASS_CONSTANTS_SIZE :: 1280  // size_of(Pass_Constants), a multiple of ARENA_ALIGN
@@ -52,6 +53,7 @@ Wgpu_Pipe :: struct {
 	format:  wgpu.TextureFormat,
 	replace: bool,
 	pipe:    wgpu.RenderPipeline,
+	dual:    bool,   // Slug text blended per channel (slug_dual.wgsl)
 }
 
 @(private)
@@ -95,7 +97,8 @@ Wgpu_State :: struct {
 	first_shown:   bool,                 // a frame of the window was presented (the first one shows the background before compiling)
 	present_mode:  wgpu.PresentMode,
 	// shaders, layouts, pipelines
-	module_rect, module_fx, module_mip, module_slug: wgpu.ShaderModule,
+	module_rect, module_fx, module_mip, module_slug, module_slug_dual: wgpu.ShaderModule,
+	can_dual: bool,   // the device has dual-source blending
 	bgl0, bgl1, bgl_fx, bgl_mip, bgl_app: wgpu.BindGroupLayout,
 	pl_main, pl_fx, pl_mip, pl_app: wgpu.PipelineLayout,
 	pipes, fx_pipes, mip_pipes, slug_pipes: [dynamic]Wgpu_Pipe,
@@ -300,6 +303,8 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	} else { g.can_timestamp = false }
 	g.can_norm16 = bool(wgpu.AdapterHasFeature(g.adapter, .TextureFormat16bitNorm))
 	if g.can_norm16 { append(&features, wgpu.FeatureName.TextureFormat16bitNorm) }
+	g.can_dual = bool(wgpu.AdapterHasFeature(g.adapter, .DualSourceBlending))
+	if g.can_dual { append(&features, wgpu.FeatureName.DualSourceBlending) }
 	dd := wgpu.DeviceDescriptor{
 		label = "gui_toolkit",
 		requiredFeatureCount = len(features), requiredFeatures = raw_data(features),
@@ -623,23 +628,33 @@ wgpu_blend :: proc() -> wgpu.BlendState {
 // The instanced-quad pipeline for a target of `format`; `replace`: no blending (FLAG_BLEND composites write their result).
 @(private)
 wgpu_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -> wgpu.RenderPipeline {
-	return wgpu_instance_pipeline(r, format, replace, false)
+	return wgpu_instance_pipeline(r, format, replace, false, false)
 }
 
-// Slug text (slug.wgsl): the same instances and bindings, its own entry points.
+// Slug text (slug.wgsl): the same instances and bindings, its own entry points. `dual`: blended per colour stripe (slug_dual.wgsl),
+// when the device takes it.
 @(private)
-wgpu_slug_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool) -> wgpu.RenderPipeline {
-	return wgpu_instance_pipeline(r, format, replace, true)
+wgpu_slug_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool, dual := false) -> wgpu.RenderPipeline {
+	return wgpu_instance_pipeline(r, format, replace, true, dual && !replace && r.wg.can_dual)
 }
 
 @(private)
-wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool, slug: bool) -> wgpu.RenderPipeline {
+wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool, slug: bool, want_dual: bool) -> wgpu.RenderPipeline {
 	g := &r.wg
 	sync.mutex_guard(&g.pipe_lock)
+	dual := want_dual
 	// r.slug.failed: the device refused the Slug module (or a test says it did): its runs are skipped, as on Direct3D 11
 	if slug && r.slug.failed { return nil }
 	list := slug ? &g.slug_pipes : &g.pipes
-	for p in list { if p.format == format && p.replace == replace { return p.pipe } }
+	if dual && g.module_slug_dual == nil {
+		g.module_slug_dual = wgpu_module(g, "slug_dual.wgsl", WGPU_SLUG_DUAL_SOURCE)
+		if g.module_slug_dual == nil {
+			fmt.eprintln("render: wgpu: the shaders of text per colour stripe were refused by the device")
+			g.can_dual = false
+			dual = false
+		}
+	}
+	for p in list { if p.format == format && p.replace == replace && p.dual == dual { return p.pipe } }
 	if slug && g.module_slug == nil {
 		g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE)
 		if g.module_slug == nil {
@@ -648,7 +663,7 @@ wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace
 			return nil
 		}
 	}
-	module := slug ? g.module_slug : g.module_rect
+	module := dual ? g.module_slug_dual : (slug ? g.module_slug : g.module_rect)
 	t0 := time.tick_now()
 	attrs := [?]wgpu.VertexAttribute{
 		{format = .Float32x4, offset = 0, shaderLocation = 0},
@@ -663,8 +678,9 @@ wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace
 	}
 	vb := wgpu.VertexBufferLayout{stepMode = .Instance, arrayStride = size_of(Rect_Inst), attributeCount = len(attrs), attributes = raw_data(attrs[:])}
 	blend := wgpu_blend()
+	if dual { blend.color = {operation = .Add, srcFactor = .Src1, dstFactor = .OneMinusSrc1} }
 	target := wgpu.ColorTargetState{format = format, blend = replace ? nil : &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
-	fs := wgpu.FragmentState{module = module, entryPoint = slug ? "ps_slug" : "ps_main", targetCount = 1, targets = &target}
+	fs := wgpu.FragmentState{module = module, entryPoint = dual ? "ps_slug_dual" : (slug ? "ps_slug" : "ps_main"), targetCount = 1, targets = &target}
 	sync.mutex_lock(&g_compile_lock)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = slug ? "slug" : "rect", layout = g.pl_main,
@@ -675,7 +691,7 @@ wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(list, Wgpu_Pipe{format, replace, pipe})
+	append(list, Wgpu_Pipe{format, replace, pipe, dual})
 	return pipe
 }
 
@@ -697,7 +713,7 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe})
+	append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe, false})
 	return pipe
 }
 
@@ -719,7 +735,7 @@ wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, copy := fals
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(&g.mip_pipes, Wgpu_Pipe{format, copy, pipe})
+	append(&g.mip_pipes, Wgpu_Pipe{format, copy, pipe, false})
 	return pipe
 }
 
@@ -1015,7 +1031,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	rel(&g.pl_app, wgpu.PipelineLayoutRelease); rel(&g.bgl_app, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl0, wgpu.BindGroupLayoutRelease); rel(&g.bgl1, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl_fx, wgpu.BindGroupLayoutRelease); rel(&g.bgl_mip, wgpu.BindGroupLayoutRelease)
-	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease); rel(&g.module_slug, wgpu.ShaderModuleRelease)
+	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease); rel(&g.module_slug, wgpu.ShaderModuleRelease); rel(&g.module_slug_dual, wgpu.ShaderModuleRelease)
 	r.slug.failed = false   // a new device is asked again
 }
 

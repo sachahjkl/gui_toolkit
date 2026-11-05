@@ -589,5 +589,6 @@ end_frame :: proc(c: ^Context) {
 		grads = c.grads[:], replays = c.replays[:],
 		slug_runs = c.slug_runs[:], slug_curves = c.slug.curves, slug_bands = c.slug.bands,
 		apps = c.apps[:], app_params = c.app_params[:],
+		subpixel = c.fonts != nil && c.fonts.settings.subpixel_text != .Off,
 	})
 }

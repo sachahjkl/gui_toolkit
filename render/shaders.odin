@@ -3,6 +3,7 @@ package render
 import "core:crypto/hash"
 import "core:encoding/hex"
 import "core:fmt"
+import "core:strings"
 
 // The shaders are written once, in WGSL (render/*.wgsl): the WebGPU backend compiles them as they are (wgpu / naga), the Direct3D 11
 // backend uses the HLSL that naga writes from them (render/shaders/*.hlsl, generated: tools/wgsl2hlsl, naga pinned exactly and by
@@ -19,6 +20,9 @@ WGSL_SLUG :: #load("slug.wgsl", string)
 WGSL_VIDEO :: #load("video.wgsl", string)
 WGSL_MIP :: #load("mip.wgsl", string)   // WebGPU only: Direct3D 11 has GenerateMips
 WGSL_CANVAS :: #load("canvas.wgsl", string)
+WGSL_DUAL_ENABLE :: #load("dual_enable.wgsl", string)
+WGSL_RECT_DUAL :: #load("rect_dual.wgsl", string)
+WGSL_SLUG_DUAL :: #load("slug_dual.wgsl", string)   // WebGPU only: on Direct3D 11 the text of the atlas has its own (rect_dual.wgsl)
 
 // The Direct3D 11 slots of the resources of the WGSL (group.binding = register): what naga is told when it writes the HLSL, and what
 // the backend binds (bind_main, run_pass, slug_bind_inputs). Samplers: s0 atlas (bilinear), s1 images (trilinear), s2 tiled images.
@@ -42,7 +46,7 @@ CANVAS_BINDINGS :: []string{
 NAGA_VERSION :: "29.0.4"
 
 // A shader module: the WGSL files that make it (concatenated, in order, a newline after each) and the HLSL written from them.
-Shader_Module :: enum u8 { Rect, Filter, Slug, Video, Canvas }
+Shader_Module :: enum u8 { Rect, Filter, Slug, Video, Canvas, Rect_Dual }
 
 Module_Desc :: struct {
 	file:       string,     // render/shaders/<file>: the generated HLSL
@@ -59,7 +63,12 @@ MODULES := [Shader_Module]Module_Desc{
 	.Slug   = {"slug.hlsl", {"rect.wgsl", "slug.wgsl"}, {WGSL_RECT, WGSL_SLUG}, SLUG_BINDINGS, #load("shaders/slug.hlsl", string)},
 	.Video  = {"video.hlsl", {"video.wgsl"}, {WGSL_VIDEO}, VIDEO_BINDINGS, #load("shaders/video.hlsl", string)},
 	.Canvas = {"canvas.hlsl", {"canvas.wgsl"}, {WGSL_CANVAS}, CANVAS_BINDINGS, #load("shaders/canvas.hlsl", string)},
+	// a module of its own: the extension it enables is the device's to have, and the blob is made only when text asks for it
+	.Rect_Dual = {"rect_dual.hlsl", {"dual_enable.wgsl", "rect.wgsl", "rect_dual.wgsl"}, {WGSL_DUAL_ENABLE, WGSL_RECT, WGSL_RECT_DUAL}, RECT_BINDINGS, #load("shaders/rect_dual.hlsl", string)},
 }
+
+RECT_ENTRY :: "@fragment fn ps_main(i: PSIn) -> @location(0) float4 {"
+RECT_ENTRY_AS_FUNCTION :: "fn rect_shade(i: PSIn) -> float4 {"
 
 // The WGSL of a module as naga reads it (and as the SHA-256 below is taken).
 module_source :: proc(m: Shader_Module, allocator := context.allocator) -> string {
@@ -67,6 +76,12 @@ module_source :: proc(m: Shader_Module, allocator := context.allocator) -> strin
 	for s in MODULES[m].wgsl {
 		append(&b, s)
 		append(&b, '\n')
+	}
+	// rect_dual.wgsl has an entry point of its own around the body of rect.wgsl's
+	if m == .Rect_Dual {
+		out, _ := strings.replace_all(string(b[:]), RECT_ENTRY, RECT_ENTRY_AS_FUNCTION, allocator)
+		delete(b)
+		return out
 	}
 	return string(b[:])
 }
@@ -96,6 +111,7 @@ Shader_Id :: enum u8 {
 	Canvas_PS,
 	Canvas_Full_VS,
 	Canvas_Fx_PS,
+	Rect_Dual_PS,
 }
 
 Shader_Desc :: struct {
@@ -120,6 +136,7 @@ SHADERS := [Shader_Id]Shader_Desc{
 	.Canvas_PS = {.Canvas, "canvas.hlsl", "ps_canvas", "ps_5_0", "canvas_ps.dxbc", #load("shaders/canvas_ps.dxbc")},
 	.Canvas_Full_VS = {.Canvas, "canvas.hlsl", "vs_full", "vs_5_0", "canvas_full_vs.dxbc", #load("shaders/canvas_full_vs.dxbc")},
 	.Canvas_Fx_PS = {.Canvas, "canvas.hlsl", "ps_fx", "ps_5_0", "canvas_fx_ps.dxbc", #load("shaders/canvas_fx_ps.dxbc")},
+	.Rect_Dual_PS = {.Rect_Dual, "rect_dual.hlsl", "ps_main_dual", "ps_5_0", "rect_dual_ps.dxbc", #load("shaders/rect_dual_ps.dxbc")},
 }
 
 // The Direct3D compilation of these shaders (compile_hlsl, shader_compile, shader_code, shader_code_done) lives in

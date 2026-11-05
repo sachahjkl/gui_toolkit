@@ -28,6 +28,7 @@ Glyph_Image :: struct {
 	epoch:  u32,       // the page's epoch when the bitmap was put there (see Page_Ref)
 	uses_fg: bool,     // a color glyph with layers in the text color: kept once per text color
 	pending: bool,     // a color glyph being drawn (Settings.color_async): nothing to draw yet (see color_async.odin)
+	lcd:     bool,     // three coverages per pixel, side by side in a Gray page: `uv` is three times as wide as `size`
 }
 
 @(private)
@@ -92,6 +93,7 @@ Atlas :: struct {
 @(private) GLYPH_KEY_GID_SHIFT :: 28
 @(private) GLYPH_KEY_SIZE_SHIFT :: 8
 @(private) GLYPH_KEY_SIZE_MAX :: (1 << 20) - 1
+@(private) GLYPH_KEY_LCD :: 0x80   // (above the subpixel position) the three coverages of Glyph_Image.lcd
 @(private) GLYPH_SIZE_STEPS_PER_PX :: 16
 
 // page_alloc: the texels between two bitmaps; a shelf takes a bitmap up to half as tall again as it plus the slack, and a new
@@ -368,12 +370,12 @@ subpixel :: proc(s: ^State, x: f32) -> (ix: f32, sub: int) {
 // The bitmap of glyph `gid` of `face` at `size` px, its pen at subpixel position `sub` (see `subpixel`). Rasterized
 // on first use. `fg` (sRGB) is the text color: only color glyphs with layers in the text color depend on it (coverage
 // is colored when drawn). Call from drawing threads only.
-glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg: [3]u8 = {}) -> Glyph_Image {
+glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg: [3]u8 = {}, lcd := false) -> Glyph_Image {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
 	// the cache is keyed by the face's slot: the id of an unloaded font must not reach what the slot's next font has
 	if font_ptr(s, face) == nil { return Glyph_Image{page = -1} }
-	key := glyph_key(face, gid, size, sub)
+	key := glyph_key(face, gid, size, sub | (lcd ? GLYPH_KEY_LCD : 0))
 	atlas_lock(a)
 	defer atlas_unlock(a)
 	g, found := glyph_cached(a, key, fg)
@@ -418,11 +420,13 @@ glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg:
 	return g
 }
 
-// A glyph of a run for glyph_images: its face and index (as shaped), its subpixel position (see `subpixel`).
+// A glyph of a run for glyph_images: its face and index (as shaped), its subpixel position (see `subpixel`), and whether it
+// is wanted with a coverage per colour stripe (Glyph_Image.lcd: the rasterizer may not give it).
 Glyph_Request :: struct {
 	face: Font_Id,
 	id:   u16,
 	sub:  u8,
+	lcd:  bool,
 }
 
 // `glyph_image` of each glyph of a run (one size, one text color) into `out` (as long as `reqs`; a request of face 0 gets
@@ -434,10 +438,10 @@ glyph_images :: proc(s: ^State, size: f32, reqs: []Glyph_Request, out: []Glyph_I
 	sync.rw_mutex_shared_lock(&a.mu)
 	for r, i in reqs {
 		if font_ptr(s, r.face) == nil { out[i], found[i] = Glyph_Image{page = -1}, true; continue }
-		out[i], found[i] = glyph_cached(a, glyph_key(r.face, r.id, size, int(r.sub)), fg)
+		out[i], found[i] = glyph_cached(a, glyph_key(r.face, r.id, size, int(r.sub) | (r.lcd ? GLYPH_KEY_LCD : 0)), fg)
 	}
 	sync.rw_mutex_shared_unlock(&a.mu)
-	for r, i in reqs { if !found[i] { out[i] = glyph_image(s, r.face, r.id, size, int(r.sub), fg) } }
+	for r, i in reqs { if !found[i] { out[i] = glyph_image(s, r.face, r.id, size, int(r.sub), fg, r.lcd) } }
 }
 
 // The bitmap kept for `key` (in the text color `fg` when it uses it), its page marked as used by the current frames.

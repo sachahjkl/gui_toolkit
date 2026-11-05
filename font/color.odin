@@ -434,7 +434,7 @@ rasterize_colr_layers :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]
 	uses_fg := false
 	text := [4]f32{f32(fg[0]) / 255, f32(fg[1]) / 255, f32(fg[2]) / 255, 1}
 	collect :: proc(s: ^State, layers: ^[dynamic]Layer, cr: ^DWRITE_COLOR_GLYPH_RUN, text: [4]f32, uses_fg: ^bool) {
-		b, px, ok := coverage(s, &cr.glyphRun, cr.baselineOriginX, cr.baselineOriginY)
+		b, px, ok, _ := coverage(s, &cr.glyphRun, cr.baselineOriginX, cr.baselineOriginY)
 		if !ok || px == nil { return }
 		col := [4]f32{cr.runColor.r, cr.runColor.g, cr.runColor.b, cr.runColor.a}
 		if cr.paletteIndex == PALETTE_TEXT_COLOR { col = text; uses_fg^ = true }

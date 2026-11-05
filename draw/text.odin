@@ -167,6 +167,11 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 	if capped { st = size * sc / raster }
 	slug := c.fonts.settings.text_renderer == .Slug
 	page_size := f32(c.fonts.settings.page_size)
+	// a coverage per colour stripe: for bitmaps that land on the screen's pixels as they are, and text that runs along the stripes
+	stripes := c.fonts.settings.subpixel_text
+	lcd := stripes != .Off && render.text_subpixel_supported(c.renderer, slug)
+	lcd_bitmaps := lcd && !slug && baked && !capped
+	lcd_side: f32 = !lcd || !slug || !xf.simple ? 0 : (stripes == .Bgr ? -1 : 1)
 	// the text color as color glyphs with text-color layers are drawn in it (sRGB; the alpha is the image's tint)
 	enc :: #force_inline proc(v: f32) -> u8 { return u8(clamp(render.linear_to_srgb(clamp(v, 0, 1)) * 255 + 0.5, 0, 255)) }
 	fg := [3]u8{enc(color.r), enc(color.g), enc(color.b)}
@@ -194,7 +199,7 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 			// bitmap at screen size: snap the pen on the screen pixel grid
 			pens[i], sub = font.subpixel(c.fonts, lx * sc + o.x)
 		}
-		reqs[i] = {g.face, g.id, u8(sub)}
+		reqs[i] = {g.face, g.id, u8(sub), lcd_bitmaps}
 	}
 	imgs := make([]font.Glyph_Image, n, context.temp_allocator)
 	font.glyph_images(c.fonts, raster, reqs, imgs, fg)
@@ -208,7 +213,7 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 					if c.rec != nil { picture_note_slug(c.rec, sg) }
 					if xf.simple {
 						oy := ly * sc + o.y
-						slug_inst(c, sg, lx * sc + o.x, math.round(oy), size * sc, col, 0, shape, size * sc)
+						slug_inst(c, sg, lx * sc + o.x, math.round(oy), size * sc, col, 0, shape, size * sc, lcd_side)
 					} else {
 						slug_inst(c, sg, lx, k == 1 ? math.round(ly) : ly, size, col, gpu, shape, size * sc)
 					}
@@ -258,7 +263,7 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 		use_glyph_tex(c, tex)
 		append(&c.insts, render.Rect_Inst{
 			dst = dst, src = img.uv, colors = {col, col, col, col}, use_tex = render.KIND_GLYPH, soft = 1,
-			tex_size = page_size, xform = gpu, clip = shape,
+			tex_size = page_size, xform = gpu, clip = shape, flags = img.lcd ? render.FLAG_LCD : 0,
 		})
 	}
 }

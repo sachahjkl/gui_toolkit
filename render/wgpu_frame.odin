@@ -109,6 +109,7 @@ Submit :: struct {
 	groups: [dynamic]wgpu.BindGroup,   // texture bind groups of this submit, released after it
 	views:  [dynamic]wgpu.TextureView, // temporary views (mip levels)
 	timed:  bool,                      // GPU time is measured (wgpu_profile.odin)
+	dual:   bool,                      // the target blends text per colour stripe (Frame_Data.subpixel)
 	pass_kind: Gpu_Step,               // what the open pass is, for the profile
 	replay_off: [dynamic]u32,          // arena offset of each replay's constants (index 0: immediate instances); ~0 = not yet written
 	// partial redraw (damage_wgpu.odin)
@@ -330,6 +331,7 @@ walk_op :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, op: ^Op) -> (rebound: b
 walk_target :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, target: int) -> (ok: bool, size: [2]int, origin: [2]f32) {
 	end_pass(s)
 	ok, size, origin, s.cur_format, s.g_off = wgpu_begin_target(r, s, s.f, target)
+	s.dual = f.subpixel && target == 0
 	s.bound_pipe = nil
 	s.bound_replay, s.bound_tex, s.bound_image, s.bound_backdrop = -1, -1, -1, -1
 	s.vb_set = false
@@ -376,7 +378,7 @@ walk_draw_app :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, b: Batch) { wgpu_
 @(private)
 walk_draw :: proc(r: ^Renderer, s: ^Submit, slug: bool, first, count: int) {
 	if count <= 0 || (slug && !s.slug_ok) { return }
-	pipe := slug ? wgpu_slug_pipeline(r, s.cur_format, s.replace) : wgpu_pipeline(r, s.cur_format, s.replace)
+	pipe := slug ? wgpu_slug_pipeline(r, s.cur_format, s.replace, s.dual) : wgpu_pipeline(r, s.cur_format, s.replace)
 	if pipe == nil { return }
 	if pipe != s.bound_pipe { s.bound_pipe = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
 	wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(count), 0, u32(first))
