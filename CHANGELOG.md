@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.83.0] - 2026-11-05
+
+### Added
+- **The side buttons of the mouse**: `Mouse_Button.Back` and `.Forward` on Windows, X11 and Wayland, `ui.mouse_pressed(.Back)`, and `back` and `forward` over the DevTools protocol.
+
 ## [0.82.0] - 2026-11-05
 
 ### Changed
@@ -1564,6 +1569,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.83.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.83.0
 [0.82.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.82.0
 [0.81.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.81.0
 [0.80.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.80.0
