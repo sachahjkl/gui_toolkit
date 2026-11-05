@@ -53,6 +53,8 @@ readback_slot :: proc(id: u32) -> ^Readback_Slot {
 readback_new :: proc(r: ^Renderer) -> Readback_Id {
 	sync.mutex_guard(&readback_lock)
 	readback_next += 1
+	// (the process's heap: the table is the process's, and outlives whoever writes in it first. A thread's allocator could be gone by the time the table empties)
+	if readback_slots == nil { readback_slots = make(map[u32]^Readback_Slot, runtime.heap_allocator()) }
 	s := new(Readback_Slot)
 	s.id, s.renderer, s.asked = readback_next, r.id, true
 	readback_slots[s.id] = s
