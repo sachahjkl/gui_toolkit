@@ -233,7 +233,8 @@ wide_equal :: proc(a, b: []u16) -> bool {
 // messages as they arrive: they are time-stamped when they come (Event.stamp) and kept for the next poll_events. Other
 // messages (paint, size, timers...) stay queued for poll_events. Returns true when the handle was signaled.
 // For the swap chain's frame latency object (render.frame_waitable): the frame then starts on the fresh input.
-wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
+// `until_press`: a key or a button taken ends the wait (wait_slot).
+wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := false) -> bool {
 	if handle == nil { return true }
 	if w.in_poll { return win.WaitForSingleObject(win.HANDLE(handle), timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE) == win.WAIT_OBJECT_0 }
 	w.in_poll = true   // a nested poll (a frame callback) takes nothing
@@ -251,6 +252,7 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0) -> bool {
 	flags := u32(MWMO_INPUTAVAILABLE)
 	for {
 		took := take_input(w)
+		if until_press && press_waits(w) { return false }
 		ms := u32(win.INFINITE)
 		if timeout_ms > 0 {
 			left := f64(timeout_ms) - time.duration_milliseconds(time.tick_since(start))

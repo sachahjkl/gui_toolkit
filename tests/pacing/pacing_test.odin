@@ -20,6 +20,26 @@ presented_cadence :: proc(hz: f64 = 180, strict := true) -> platform.Cadence {
 	return c
 }
 
+// Uncapped: whatever the state, no wait and shown at once, and the choice survives a new plan.
+@(test)
+uncapped_lifts_every_wait :: proc(t: ^testing.T) {
+	now := i64(10_000) * MS
+	c := presented_cadence()
+	c.uncapped = true
+	platform.cadence_presented(&c, now)
+	for i in 0 ..< 10 {
+		d := platform.frame_decision(&c, {now_ns = now, presented = true, dragging = i % 2 == 0})
+		testing.expect(t, d.wait_ns == 0 && d.wait_until_ns == now && !d.wait_swap_chain && d.present_at_once && d.latency == 2, "no wait, shown at once")
+		testing.expect(t, platform.cadence_at_once(&c), "a frame of the interface alone too")
+		now += MS / 10   // (ten frames in a millisecond: nothing holds them)
+	}
+	platform.cadence_adopt(&c, platform.Cadence_Plan{slots = {period_ns = 16 * MS}})
+	testing.expect(t, c.uncapped, "a new screen keeps the choice")
+	c.uncapped = false
+	d := platform.frame_decision(&c, {now_ns = now, presented = true})
+	testing.expect(t, !d.present_at_once && d.wait_swap_chain, "capped again")
+}
+
 @(test)
 each_state_and_what_it_decides :: proc(t: ^testing.T) {
 	now := i64(10_000) * MS
