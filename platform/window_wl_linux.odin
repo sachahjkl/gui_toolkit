@@ -321,12 +321,14 @@ ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: 
 	wlc.button_serial = serial
 	w := wlc.pointer_focus
 	if w == nil { return }
-	// Linux input-event-codes: BTN_LEFT 0x110, BTN_RIGHT 0x111, BTN_MIDDLE 0x112
+	// Linux input-event-codes: BTN_LEFT 0x110, BTN_RIGHT 0x111, BTN_MIDDLE 0x112, BTN_SIDE 0x113, BTN_EXTRA 0x114, BTN_FORWARD 0x115, BTN_BACK 0x116
 	btn: Mouse_Button
 	switch button {
 	case 0x110: btn = .Left
 	case 0x111: btn = .Right
 	case 0x112: btn = .Middle
+	case 0x113, 0x116: btn = .Back
+	case 0x114, 0x115: btn = .Forward
 	case: return
 	}
 	press := state == 1

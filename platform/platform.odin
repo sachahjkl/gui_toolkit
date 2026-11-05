@@ -58,7 +58,7 @@ Event_Kind :: enum u8 {
 	Accessibility,
 }
 
-Mouse_Button :: enum u8 { Left, Right, Middle }
+Mouse_Button :: enum u8 { Left, Right, Middle, Back, Forward }   // (Back, Forward: the side buttons)
 Mouse_Buttons :: bit_set[Mouse_Button; u8]
 
 // What kind of device a pointer event comes from (Pointer Events "pointerType").
