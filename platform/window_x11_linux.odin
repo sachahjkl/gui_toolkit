@@ -216,6 +216,8 @@ x11_init_xkb :: proc() {
 @(private) X11_CLIENT_MESSAGE_WORDS :: 5   // data32 of a client message
 @(private) X11_RESPONSE_TYPE_MASK :: 0x7f  // without the bit that marks a sent event
 @(private = "file") X11_BUTTON_WHEEL_UP :: 4
+@(private = "file") X11_BUTTON_BACK :: 8
+@(private = "file") X11_BUTTON_FORWARD :: 9
 @(private = "file") X11_BUTTON_WHEEL_DOWN :: 5
 @(private = "file") X11_BUTTON_WHEEL_LEFT :: 6
 @(private = "file") X11_BUTTON_WHEEL_RIGHT :: 7
@@ -549,8 +551,15 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		mods := x11_mods(state)
 		press := type == XCB_BUTTON_PRESS
 		switch detail {
-		case 1, 2, 3:
-			btn: Mouse_Button = detail == 1 ? .Left : detail == 2 ? .Middle : .Right
+		case 1, 2, 3, X11_BUTTON_BACK, X11_BUTTON_FORWARD:
+			btn: Mouse_Button
+			switch detail {
+			case 1:                  btn = .Left
+			case 2:                  btn = .Middle
+			case 3:                  btn = .Right
+			case X11_BUTTON_BACK:    btn = .Back
+			case X11_BUTTON_FORWARD: btn = .Forward
+			}
 			if press { w.buttons_down += {btn} } else { w.buttons_down -= {btn} }
 			x11_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
 		case X11_BUTTON_WHEEL_UP, X11_BUTTON_WHEEL_DOWN, X11_BUTTON_WHEEL_LEFT, X11_BUTTON_WHEEL_RIGHT:
