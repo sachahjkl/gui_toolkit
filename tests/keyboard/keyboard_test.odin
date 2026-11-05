@@ -975,6 +975,100 @@ lazy_column_builds_what_is_near_the_view :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
+find_items: int
+
+@(private = "file")
+build_lazy_find :: proc(f: ^Fx, user: rawptr) {
+	lazy_built = 0
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	if ui.scroll_y("###fz") {
+		ui.find("fox", ui.parent_box().key)
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###fcol") {
+			lz := ui.lazy_begin(all = ui.find_sweep())
+			for i in 0 ..< find_items {
+				if ui.lazy_item(lz, fmt.tprintf("###fi%d", i), always = i == find_items - 1) {
+					lazy_built += 1
+					ui.next({width = ui.fill(), height = ui.px(40)})
+					ui.label(fmt.tprintf("fox %d###l", i))
+				}
+			}
+		}
+	}
+	lazy_scroller = ui.prev_box("###fz")
+}
+
+// A find over a lazy column: everything read once when the needle rests, then lazy again, the indices those of the whole text;
+// a match far from the view is known without being built, and text that comes in is read by a new sweep.
+@(test)
+find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	clock: f64 = 1000
+	ui.set_clock(&f.s, &clock)
+	defer ui.set_clock(&f.s, nil)
+	find_items = 50
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
+	testing.expect(t, ui.find_pending(), "the needle has not rested")
+	testing.expect(t, ui.needs_frame(&f.s), "its sweep is waited for")
+	testing.expect_value(t, ui.find_count(), 0)
+	testing.expectf(t, lazy_built <= 16, "typing builds a screen's worth: %d", lazy_built)
+
+	clock += ui.FIND_QUIET_MS
+	frame(f, nil, build_lazy_find, nil)
+	testing.expect_value(t, lazy_built, 50)
+	testing.expect(t, !ui.find_pending())
+	testing.expect_value(t, ui.find_count(), 50)
+	all := ui.find_all()
+	testing.expect_value(t, len(all), 50)
+	testing.expect(t, all[49].rect.min.y > 1900 && all[49].rect.max.y <= 2000, "the last match, in the content")
+	testing.expect(t, ui.needs_frame(&f.s), "the answer is read by a frame, whatever else happens")
+
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
+	testing.expectf(t, lazy_built <= 17, "lazy again: %d", lazy_built)
+	testing.expect_value(t, ui.find_count(), 50)
+	testing.expect(t, !ui.needs_frame(&f.s), "nothing is due")
+	testing.expect_value(t, ui.find_matches()[0].index, 0)
+
+	// what the sweep found, far from where it was read: lit there, with its index in the whole
+	lazy_scroller.view_target.y = 1800
+	lazy_scroller.view_off.y = 1800
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
+	ms := ui.find_matches()
+	testing.expect(t, len(ms) < 50, "only what is built")
+	testing.expect_value(t, ms[len(ms) - 1].index, 49)
+	testing.expect_value(t, ui.find_count(), 50)
+
+	// a new item with a match: known to be missing at once, read no sooner than the gap
+	find_items = 51
+	frame(f, nil, build_lazy_find, nil)
+	frame(f, nil, build_lazy_find, nil)
+	testing.expect_value(t, ui.find_count(), 50)
+	testing.expect(t, ui.needs_frame(&f.s), "a new sweep is due")
+	clock += ui.FIND_SWEEP_GAP_MS
+	frame(f, nil, build_lazy_find, nil)
+	testing.expect_value(t, ui.find_count(), 51)
+	testing.expect_value(t, lazy_built, 51)
+
+	// text the application knows of, far from what is built
+	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
+	testing.expect(t, !ui.needs_frame(&f.s), "nothing is due")
+	ui.find_refresh()
+	clock += ui.FIND_SWEEP_GAP_MS
+	frame(f, nil, build_lazy_find, nil)
+	testing.expect_value(t, lazy_built, 51)
+
+	// another needle starts over; none stops
+	frame(f, nil, proc(f: ^Fx, user: rawptr) { ui.find("", 0) }, nil)
+	frame(f, nil, nothing, nil)
+	testing.expect_value(t, ui.find_count(), 0)
+	testing.expect(t, !ui.find_pending())
+	testing.expect_value(t, len(ui.find_matches()), 0)
+}
+
+@(private = "file")
 lazy_empty: int
 
 // A scroll box that follows its bottom, as a conversation does, whose last items but one show nothing.

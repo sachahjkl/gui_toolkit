@@ -8,7 +8,7 @@ package platform
 //   cadence_adopt(&c, plan)
 //   ...
 //   d := frame_decision(&c, {now_ns = now, idled = idled, input = input_waits, presented = shown_once, resized = size != last})
-//   wait d.wait_ns (taking input meanwhile); if d.wait_swap_chain, wait for the swap chain's latency object
+//   if d.wait_swap_chain, wait for the swap chain's latency object; then what is left until d.wait_until_ns (taking input meanwhile)
 //   set the swap chain's latency to d.latency; ... make the frame ...; Present with no wait for a refresh if d.present_at_once
 //   cadence_presented(&c, now)
 //

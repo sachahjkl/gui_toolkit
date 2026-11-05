@@ -417,6 +417,7 @@ State :: struct {
 
 	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
 	wrap_cache:      map[Wrap_Key]Wrap_Entry,
+	trunc_cache:     map[Trunc_Key]Trunc_Entry,
 	// rich text: layouts by content, the faces of bold / italic runs, the link each focused paragraph is on (rich_text.odin)
 	rich_cache:      map[u64]Rich_Cache_Entry,
 	rich_faces:      map[font.Font_Id][4]font.Font_Id,

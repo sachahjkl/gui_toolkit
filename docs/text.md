@@ -273,8 +273,24 @@ ui.find_set_current(i)        // the occurrence painted as current (-1: none)
 
 Theme entries: `find_match background` (every match), `find_current background` (the current one). Matching ignores
 case (simple folding, rune by rune). Limits: a match may span the runs of one rich paragraph but not two boxes; text the
-build did not make is not searched (a part folded away, the items a lazy column skipped: build them all while searching,
-`lazy_begin(all = true)`); the matches are those of the last layout, so a new needle has its matches one frame later.
+build did not make is not searched (a part folded away); the matches are those of the last layout, so a new needle has its
+matches one frame later.
+
+Over a lazy column, what is far from the view is not built, so it cannot be read at every frame. The build that reads it all is
+a sweep, made once for a needle:
+
+```odin
+lz := ui.lazy_begin(all = ui.find_sweep())   // true for the build that must make every item
+ui.find_all()                                // every match of the sweep: rects in the scope's content, whatever the scroll
+ui.find_pending()                            // a needle not swept yet: find_count is not its answer
+ui.find_refresh()                            // the text changed where nothing is built (a page read above the view): sweep again
+```
+
+A sweep waits for the needle to rest (`FIND_QUIET_MS`: typing is not held up) and comes again when what is built no longer
+answers what it found: text that came in, a part unfolded, another width, no sooner than `FIND_SWEEP_GAP_MS` (`needs_frame`
+asks for the frames until then). Between two, `find_matches` is what the last layout built, its indices those of the sweep:
+`find_all` says where to scroll, and the match is lit once the view brought it in. A part folded away after the sweep is still
+counted until the next one.
 
 ## Limits
 

@@ -80,6 +80,7 @@ STEPS := []Step{
 	{name = "instance"},
 	{name = "key_repeat", oses = EVERYWHERE},
 	{name = "pacing", oses = EVERYWHERE},
+	{name = "sleep", oses = EVERYWHERE},
 	{name = "placement"},
 	{name = "size_move"},
 	{name = "testkit"},
