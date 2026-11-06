@@ -290,6 +290,31 @@ visible_rect :: proc(b: ^Box) -> Rect {
 	return r
 }
 
+// The surface a box's text is on (.Press_Stop): nil on the window itself. A selection stays on the one it started on: what is
+// behind a dialog is still built and has its place in the order, but it is not what a drag in the dialog means.
+@(private)
+sel_surface :: proc(b: ^Box) -> ^Box {
+	for p := b.parent; p != nil; p = p.parent {
+		if .Press_Stop in p.flags { return p }
+	}
+	return nil
+}
+
+// Whether two boxes have their text on the same surface.
+@(private)
+sel_same_surface :: proc(s: ^State, a, b: Key) -> bool {
+	x, y := s.boxes[a], s.boxes[b]
+	return x != nil && y != nil && sel_surface(x) == sel_surface(y)
+}
+
+// Whether the box that has the press or the pointer leaves it to the text of `b`: it is `b`, or the surface `b` is on.
+@(private)
+sel_open_to :: proc(s: ^State, b: ^Box, taker: Key) -> bool {
+	if taker == b.key { return true }
+	surface := sel_surface(b)
+	return surface != nil && surface.key == taker
+}
+
 // The selectable box at window point `p` (the last built, which draws on top), 0 for none.
 @(private)
 sel_box_at :: proc(s: ^State, p: Vec2) -> Key {
@@ -313,7 +338,7 @@ sel_nearest :: proc(s: ^State, p: Vec2) -> (Key, Vec2) {
 	q := p
 	for k in s.sel.order {
 		b := s.boxes[k]
-		if b == nil || sel_kind(b) == .None { continue }
+		if b == nil || sel_kind(b) == .None || !sel_same_surface(s, k, s.sel.anchor.box) { continue }
 		r := visible_rect(b)
 		c := Vec2{clamp(p.x, r.min.x, r.max.x - 0.5), clamp(p.y, r.min.y, r.max.y - 0.5)}
 		d := (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y) * SEL_ROW_WEIGHT   // rows first
@@ -388,14 +413,15 @@ selection_update :: proc(s: ^State) {
 			b := s.boxes[k] if k != 0 else nil
 			// a clickable box over the text (or a link in it) keeps its press
 			pressed := s.pressed_key[.Left]
-			if b != nil && pressed != 0 && pressed != k { b = nil }
+			if b != nil && pressed != 0 && !sel_open_to(s, b, pressed) { b = nil }
 			if b != nil && sel_kind(b) == .Rich {
 				d, l, o := rich_of(b)
 				if rich_link_at(l, d.runs, e.pos - o) >= 0 { b = nil }
 			}
 			if b == nil {
-				// a press on a button keeps it (a Copy button reads it on release)
-				if pressed == 0 { sel.phase = .None } else { selection_drag_end(s) }
+				// a press on a button keeps it (a Copy button reads it on release); a surface is no button
+				taker := s.boxes[pressed] if pressed != 0 else nil
+				if taker == nil || .Press_Stop in taker.flags { sel.phase = .None } else { selection_drag_end(s) }
 				sel.clicks, sel.click_ms = 0, 0   // (the next press on the text is a first one)
 				continue
 			}
@@ -481,7 +507,7 @@ selection_update :: proc(s: ^State) {
 	// the text cursor over selectable text (a clickable box or a link over it keeps its own)
 	if s.mouse_valid {
 		k := sel_box_at(s, s.mouse)
-		over := k != 0 && (s.hot_key == 0 || s.hot_key == k)
+		over := k != 0 && (s.hot_key == 0 || sel_open_to(s, s.boxes[k], s.hot_key))
 		if over && sel_kind(s.boxes[k]) == .Rich {
 			d, l, o := rich_of(s.boxes[k])
 			if rich_link_at(l, d.runs, s.mouse - o) >= 0 { over = false }
@@ -513,11 +539,11 @@ sel_step :: proc(s: ^State, dir: int) {
 	if dir > 0 {
 		if i < len(text) { sel.focus.index = font.grapheme_next(text, i); return }
 		p := sel.pos_of[sel.focus.box]
-		if p + 1 < len(sel.order) { sel.focus = {sel.order[p + 1], 0} }
+		if p + 1 < len(sel.order) && sel_same_surface(s, sel.order[p + 1], sel.focus.box) { sel.focus = {sel.order[p + 1], 0} }
 	} else {
 		if i > 0 { sel.focus.index = font.grapheme_prev(text, i); return }
 		p := sel.pos_of[sel.focus.box]
-		if p > 0 {
+		if p > 0 && sel_same_surface(s, sel.order[p - 1], sel.focus.box) {
 			k := sel.order[p - 1]
 			sel.focus = {k, len(sel_text(s, s.boxes[k], context.temp_allocator))}
 		}
@@ -533,10 +559,11 @@ sel_vertical :: proc(s: ^State, dir: int) {
 	h := c.max.y - c.min.y
 	p := Vec2{c.min.x, dir < 0 ? c.min.y - h * 0.5 : c.max.y + h * 0.5}
 	k := sel_box_at(s, p)
+	if k != 0 && !sel_same_surface(s, k, sel.focus.box) { k = 0 }
 	if k == 0 {
 		// past the box: the next / previous selectable box, at the same x
 		i := sel.pos_of[sel.focus.box] + dir
-		if i < 0 || i >= len(sel.order) {
+		if i < 0 || i >= len(sel.order) || !sel_same_surface(s, sel.order[i], sel.focus.box) {
 			text := sel_text(s, b, context.temp_allocator)
 			sel.focus.index = dir < 0 ? 0 : len(text)
 			return

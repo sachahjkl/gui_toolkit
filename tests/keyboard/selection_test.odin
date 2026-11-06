@@ -26,6 +26,8 @@ Sx :: struct {
 	ui_font: font.Font_Id,
 	link:  ui.Rich_Result,
 	clicks: int,
+	dialog: bool,
+	in_dialog: [2]^ui.Box,   // its label and its paragraph
 }
 
 PARA :: "The paragraph wraps across several lines in this narrow box, so that a drag can end in its middle."
@@ -52,6 +54,14 @@ frame :: proc(f: ^Sx, events: []platform.Event = nil, draw_it := false) -> []u8 
 	f.link = ui.rich_paragraph("###r", RICH)
 	ui.next({fixed_x = 330, fixed_y = 10, width = ui.px(100)})
 	if ui.button("Copy###b").clicked { f.clicks += 1 }
+	if ui.modal("sel", 300, &f.dialog, 0.1) {
+		ui.next({flags = {.Selectable}})
+		f.in_dialog[0] = ui.label("Said in a dialog###dl").box
+		ui.spacer(ui.px(60))
+		ui.next({width = ui.px(280), flags = {.Selectable}})
+		f.in_dialog[1] = ui.paragraph("Its second text###dp").box
+		ui.spacer(ui.px(60))
+	}
 	ui.end_build()
 	px: []u8
 	if draw_it {
@@ -158,4 +168,70 @@ selection_across_boxes :: proc(t: ^testing.T) {
 	delete(frame(f, {press(lp)}))
 	delete(frame(f, {release(lp)}))
 	testing.expect(t, f.link.link_clicked == 3 && !ui.has_selection(&f.s), "the link, not a selection")
+}
+
+// A dialog's panel takes every press, so that what is under it gets none: its text is selected all the same, plain or not, and
+// a selection stays in the dialog while the text behind it is still built.
+@(test)
+selection_in_a_dialog :: proc(t: ^testing.T) {
+	sync.mutex_lock(&lock)
+	defer sync.mutex_unlock(&lock)
+	f := new(Sx)
+	defer free(f)
+	if !testing.expect(t, render.init_offscreen(&f.r, SIZE, warp = true), "WARP") { free(f); return }
+	font.init(&f.fonts)
+	f.ui_font, _ = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
+	draw.init(&f.dc, &f.r, &f.fonts)
+	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.init(&f.s, &f.fonts, &f.theme)
+	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts); delete(clip); clip = "" }
+	f.dialog = true
+	delete(frame(f))
+	delete(frame(f))
+	l, p := f.in_dialog[0], f.in_dialog[1]
+	if !testing.expect(t, l != nil && p != nil, "built") { return }
+	y := (l.rect.min.y + l.rect.max.y) * 0.5
+	start := [2]f32{l.rect.min.x + 6.5, y}
+	end := [2]f32{l.rect.max.x + 40, y}
+	// the text cursor on it, though the panel has the pointer
+	delete(frame(f, {move(start)}))
+	testing.expect_value(t, ui.cursor(&f.s), platform.Cursor.Text)
+	// a drag along the label
+	delete(frame(f, {press(start)}))
+	delete(frame(f, {move(end)}))
+	delete(frame(f, {release(end)}))
+	testing.expect_value(t, ui.selected_text(&f.s, context.temp_allocator), "Said in a dialog")
+	testing.expect(t, f.dialog, "a press in the dialog leaves it open")
+	// a double click: a word
+	word := [2]f32{l.rect.min.x + 12, y}
+	delete(frame(f, {press(word)}))
+	delete(frame(f, {release(word)}))
+	delete(frame(f, {press(word)}))
+	delete(frame(f, {release(word)}))
+	testing.expect_value(t, ui.selected_text(&f.s, context.temp_allocator), "Said")
+	// past the dialog's text, over the page's: the selection stays in the dialog
+	page := box("###p")
+	if !testing.expect(t, page != nil, "the page is still built") { return }
+	blank := [2]f32{l.rect.min.x + 60, l.rect.max.y + 30}
+	testing.expect(t, blank.y < p.rect.min.y, "between the two texts")
+	delete(frame(f))
+	delete(frame(f, {press(start)}))
+	delete(frame(f, {move(blank)}))
+	delete(frame(f, {release(blank)}))
+	got := ui.selected_text(&f.s, context.temp_allocator)
+	testing.expectf(t, strings.has_prefix(got, "Said") && !strings.contains(got, "wraps") && !strings.contains(got, "Hello"), "only the dialog's text: %q", got)
+	// Shift+Left at the dialog's first letter does not step out into the page, which comes before it in the order
+	delete(frame(f))
+	delete(frame(f, {press(start)}))
+	delete(frame(f, {release(start)}))
+	for _ in 0 ..< 3 { delete(frame(f, {{kind = .Key_Press, key = .Left, mods = {.Shift}}})) }
+	before := ui.selected_text(&f.s, context.temp_allocator)
+	testing.expectf(t, strings.has_prefix("Said", before), "only the dialog's first letters: %q", before)
+	// a press on the panel's empty part clears, like a press on nothing, and selects nothing behind it
+	delete(frame(f, {press(start)}))
+	delete(frame(f, {release(start)}))
+	delete(frame(f, {press(blank)}))
+	delete(frame(f, {release(blank)}))
+	testing.expect(t, !ui.has_selection(&f.s), "cleared, the page behind untouched")
+	testing.expect(t, f.dialog, "and the dialog stays")
 }
