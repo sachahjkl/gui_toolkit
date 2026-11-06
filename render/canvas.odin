@@ -446,15 +446,22 @@ Canvas_Exec :: struct {
 	list:     ^Canvas_List,
 	target:   Texture,
 	state:    ^Canvas_State,
-	cur:      Texture,        // the render target bound (0: none)
+	open:     [dynamic]Canvas_Open,   // the layers begun and not ended, innermost last: draws go to the last one, or to the canvas
+	cur:      Texture,        // the render target bound (0: none, the next draw binds where it goes)
 	cur_origin: [2]i32,
 	cur_size: [2]i32,
-	cur_main: bool,           // the canvas itself is the target (else a layer or a mask)
 	bound_src, bound_clip: Texture,
 	bound_blend: ^d3d11.IBlendState,
 	main_bound: bool,         // the instanced-quad pipeline is bound
 	back, snap: Texture,
 	snap_size: [2]int,
+}
+
+// A layer open. `tex` 0: it could not be made, or was freed while open: what is drawn into it goes nowhere, not on what lies under it.
+@(private)
+Canvas_Open :: struct {
+	tex:    Texture,
+	origin: [2]i32,
 }
 
 @(private)
@@ -465,7 +472,8 @@ d3d_canvas_submit :: proc(r: ^Renderer, target: Texture, list: ^Canvas_List) -> 
 	cp := &r.canvas
 	cp.submits += 1
 	cp.stats.submits += 1
-	x := Canvas_Exec{r = r, cp = cp, list = list, target = target, state = canvas_state(r, target), bound_src = -1, bound_clip = -1, cur_main = true}
+	x := Canvas_Exec{r = r, cp = cp, list = list, target = target, state = canvas_state(r, target), bound_src = -1, bound_clip = -1}
+	defer delete(x.open)
 	if len(list.cmds) == 0 { return true }
 	canvas_buf_upload(r, &cp.insts, raw_data(list.insts), len(list.insts) * size_of(Canvas_Inst), true)
 	canvas_buf_upload(r, &cp.heap, raw_data(list.heap), len(list.heap) * 16, false)
@@ -487,12 +495,11 @@ d3d_canvas_submit :: proc(r: ^Renderer, target: Texture, list: ^Canvas_List) -> 
 		case .Put: exec_put(&x, cmd)
 		case .Snapshot: exec_snapshot(&x, cmd)
 		case .Layer_Begin: exec_layer_begin(&x, cmd)
-		case .Layer_End: exec_bind_target(&x, target, {0, 0}, true)
+		case .Layer_End: if len(x.open) > 0 { pop(&x.open) }
 		case .Layer_Fx: exec_layer_fx(&x, cmd)
 		case .Layer_Free:
 			if l, ok := cp.layers[cmd.id]; ok {
-				pool_release(r, l.tex)
-				if x.bound_src == l.tex { x.bound_src = -1 }
+				exec_layer_release(&x, l.tex)
 				delete_key(&cp.layers, cmd.id)
 			}
 		case .Clear:
@@ -539,11 +546,11 @@ exec_main_bind :: proc(x: ^Canvas_Exec) {
 
 // Makes `tex` the render target (viewport and constants for a canvas pixel origin `origin`).
 @(private)
-exec_bind_target :: proc(x: ^Canvas_Exec, tex: Texture, origin: [2]i32, main: bool) {
+exec_bind_target :: proc(x: ^Canvas_Exec, tex: Texture, origin: [2]i32) {
 	r, cp := x.r, x.cp
 	td := &r.textures[int(tex)]
 	size := [2]int{td.w, td.h}
-	if x.cur == tex && x.cur_origin == origin && x.cur_main == main && x.cur_size == {i32(size.x), i32(size.y)} && x.main_bound { return }
+	if x.cur == tex && x.cur_origin == origin && x.cur_size == {i32(size.x), i32(size.y)} && x.main_bound { return }
 	none := [3]^d3d11.IShaderResourceView{}
 	r.ctx->PSSetShaderResources(3, 3, &none[0])
 	x.bound_src, x.bound_clip = -1, -1
@@ -557,8 +564,30 @@ exec_bind_target :: proc(x: ^Canvas_Exec, tex: Texture, origin: [2]i32, main: bo
 		(^Canvas_Globals)(mapped.pData)^ = Canvas_Globals{viewport = {f32(size.x), f32(size.y)}, origin = {f32(origin.x), f32(origin.y)}, back_dim = bd}
 		r.ctx->Unmap(cp.globals, 0)
 	}
-	x.cur, x.cur_origin, x.cur_main, x.cur_size = tex, origin, main, {i32(size.x), i32(size.y)}
+	x.cur, x.cur_origin, x.cur_size = tex, origin, {i32(size.x), i32(size.y)}
 	exec_main_bind(x)
+}
+
+// Binds where draws go now. False: into a layer that does not exist, they go nowhere.
+@(private)
+exec_bind_open :: proc(x: ^Canvas_Exec) -> bool {
+	if len(x.open) == 0 {
+		exec_bind_target(x, x.target, {0, 0})
+		return true
+	}
+	top := x.open[len(x.open) - 1]
+	if top.tex == 0 { return false }
+	exec_bind_target(x, top.tex, top.origin)
+	return true
+}
+
+// A layer's texture goes back to the pool: nothing may draw into it or read it from now on.
+@(private)
+exec_layer_release :: proc(x: ^Canvas_Exec, tex: Texture) {
+	pool_release(x.r, tex)
+	if x.bound_src == tex { x.bound_src = -1 }
+	if x.cur == tex { x.cur = 0 }
+	for &o in x.open { if o.tex == tex { o.tex = 0 } }
 }
 
 @(private)
@@ -644,8 +673,8 @@ exec_back_draw :: proc(x: ^Canvas_Exec, from, to: int, ub: [4]i32) {
 @(private)
 exec_draw :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	r, cp := x.r, x.cp
-	if cmd.count <= 0 { return }
-	if x.cur_main && x.cur != x.target { exec_bind_target(x, x.target, {0, 0}, true) }
+	if cmd.count <= 0 || !exec_bind_open(x) { return }
+	main := len(x.open) == 0
 	rc, ok := exec_scissor(x, cmd.box)
 	if !ok { return }
 	r.ctx->RSSetScissorRects(1, &rc)
@@ -653,10 +682,10 @@ exec_draw :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	clip: Texture
 	if cmd.clip != 0 { clip = x.state.masks[cmd.clip] }
 	op := min(int(cmd.op), CANVAS_COMPOSITE_OPS - 1)
-	bs := cp.blend[x.cur_main && x.state.opaque ? 1 : 0][op]
-	if !x.cur_main && op == 0 { bs = cp.blend_over }
+	bs := cp.blend[main && x.state.opaque ? 1 : 0][op]
+	if !main && op == 0 { bs = cp.blend_over }
 	if bs != x.bound_blend { r.ctx->OMSetBlendState(bs, nil, ~u32(0)); x.bound_blend = bs }
-	if op >= CANVAS_BLEND_MODE_FIRST && x.cur_main {
+	if op >= CANVAS_BLEND_MODE_FIRST && main {
 		// a blend mode reads the backdrop: a copy of what the draw covers, taken again when an instance overlaps an earlier
 		// one of the group (the later one must see the earlier one's result)
 		if !exec_scratch(x, &x.back) { return }
@@ -705,13 +734,8 @@ exec_clip_make :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	zero := [4]f32{}
 	r.ctx->ClearRenderTargetView(r.textures[int(m)].rtv, &zero)
 	if cmd.count <= 0 { return }
-	// what was bound comes back for what follows: the canvas (bound again by its next draw) or an open layer
-	was, was_origin, was_main := x.cur, x.cur_origin, x.cur_main
-	defer {
-		x.cur, x.cur_main = 0, true
-		if !was_main { exec_bind_target(x, was, was_origin, false) }
-	}
-	exec_bind_target(x, m, {0, 0}, false)
+	defer x.cur = 0   // (the next draw binds where it goes)
+	exec_bind_target(x, m, {0, 0})
 	rc, ok := exec_scissor(x, cmd.box)
 	if !ok { return }
 	r.ctx->RSSetScissorRects(1, &rc)
@@ -750,17 +774,20 @@ exec_snapshot :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 @(private)
 exec_layer_begin :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	r, cp := x.r, x.cp
+	origin := [2]i32{cmd.box[0], cmd.box[1]}
 	w, h := int(cmd.box[2] - cmd.box[0]), int(cmd.box[3] - cmd.box[1])
-	if w <= 0 || h <= 0 { return }
-	if old, ok := cp.layers[cmd.id]; ok { pool_release(r, old.tex) }
+	if w <= 0 || h <= 0 { append(&x.open, Canvas_Open{0, origin}); return }
+	if old, ok := cp.layers[cmd.id]; ok {
+		exec_layer_release(x, old.tex)
+		delete_key(&cp.layers, cmd.id)
+	}
 	t := pool_acquire(r, w, h, false)
+	append(&x.open, Canvas_Open{t, origin})
 	if t == 0 { return }
 	cp.layers[cmd.id] = Canvas_Layer{tex = t, box = cmd.box, live = true}
 	cp.stats.layers += 1
 	zero := [4]f32{}
 	r.ctx->ClearRenderTargetView(r.textures[int(t)].rtv, &zero)
-	exec_bind_target(x, t, {cmd.box[0], cmd.box[1]}, false)
-	x.cur_main = false
 }
 
 // One full-screen pass of a layer's filter chain: `src` through the shader into `dst` (both of the layer's size, except the
@@ -805,7 +832,7 @@ exec_fx_pass :: proc(x: ^Canvas_Exec, src, dst: Texture, mode: u32, dir: [2]f32,
 	r.ctx->PSSetShaderResources(3, 1, &none1[0])
 	cp.stats.draws += 1
 	// the instanced pipeline is bound again by the next draw
-	x.main_bound, x.cur, x.cur_main, x.bound_src, x.bound_clip, x.bound_blend = false, 0, true, -1, -1, nil
+	x.main_bound, x.cur, x.bound_src, x.bound_clip, x.bound_blend = false, 0, -1, -1, nil
 }
 
 @(private)
@@ -826,9 +853,10 @@ exec_layer_fx :: proc(x: ^Canvas_Exec, cmd: Canvas_Cmd) {
 	case .Blur:
 		exec_blur(x, src.tex, dst_tex, cmd.sigma)
 	}
-	if cmd.id == cmd.id2 {
-		pool_release(r, src.tex)
-		if x.bound_src == src.tex { x.bound_src = -1 }
+	// the layer `id` replaced, or `id2` itself: an open one goes on in what replaces it
+	if old, had := cp.layers[cmd.id]; had {
+		for &o in x.open { if o.tex == old.tex { o = {dst_tex, {src.box[0], src.box[1]}} } }
+		exec_layer_release(x, old.tex)
 	}
 	cp.layers[cmd.id] = Canvas_Layer{tex = dst_tex, box = src.box, live = true}
 }
@@ -976,6 +1004,7 @@ Canvas_Read :: struct {
 	tex:   ^d3d11.ITexture2D,
 	query: ^d3d11.IQuery,
 	w, h:  int,
+	generation: u64,   // the device_generation they are of: a later device answers nothing about them
 }
 
 canvas_read_begin :: proc(r: ^Renderer, t: Texture, x, y, w, h: int) -> (rd: Canvas_Read, ok: bool) {
@@ -991,16 +1020,17 @@ canvas_read_begin :: proc(r: ^Renderer, t: Texture, x, y, w, h: int) -> (rd: Can
 		r.ctx->CopySubresourceRegion(rd.tex, 0, 0, 0, 0, td.tex, 0, &box)
 		if hr_failed(r.device->CreateQuery(&{Query = .EVENT}, &rd.query)) { rd.query = nil }
 		else { r.ctx->End((^d3d11.IAsynchronous)(rd.query)) }
-		rd.w, rd.h = w, h
+		rd.w, rd.h, rd.generation = w, h, r.device_generation
 		return rd, true
 	}
 }
 
 canvas_read_ready :: proc(r: ^Renderer, rd: Canvas_Read) -> bool {
 	when USE_WGPU { return true } else {
-		if rd.query == nil { return true }
+		if rd.query == nil || r.lost || rd.generation != r.device_generation { return true }   // (canvas_read_finish says it failed)
 		done: win.BOOL
-		return r.ctx->GetData((^d3d11.IAsynchronous)(rd.query), &done, size_of(win.BOOL), u32(d3d11.ASYNC_GETDATA_FLAG.DONOTFLUSH)) == 0 && bool(done)
+		hr := r.ctx->GetData((^d3d11.IAsynchronous)(rd.query), &done, size_of(win.BOOL), u32(d3d11.ASYNC_GETDATA_FLAG.DONOTFLUSH))
+		return hr_failed(hr) || (hr == 0 && bool(done))
 	}
 }
 
@@ -1011,7 +1041,7 @@ canvas_read_finish :: proc(r: ^Renderer, rd: ^Canvas_Read, out: []u8) -> bool {
 			if rd.tex != nil { rd.tex->Release() }
 			rd^ = {}
 		}
-		if rd.tex == nil || len(out) < rd.w * rd.h * 4 { return false }
+		if rd.tex == nil || r.lost || rd.generation != r.device_generation || len(out) < rd.w * rd.h * 4 { return false }
 		mapped: d3d11.MAPPED_SUBRESOURCE
 		if hr_failed(r.ctx->Map(rd.tex, 0, .READ, {}, &mapped)) { return false }
 		defer r.ctx->Unmap(rd.tex, 0)
