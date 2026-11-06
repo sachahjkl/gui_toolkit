@@ -9,6 +9,22 @@ framed :: proc() -> []u8 {
 	return build_message(7, .Method_Return, 0, "", "", "", ":1.1", "", 3, "s", w.buf[:], context.temp_allocator)
 }
 
+// A value cut short or a signature that makes no sense ends the walk, with the reader failed: it runs on the window's thread.
+@(test)
+a_walk_that_cannot_go_on_ends :: proc(t: ^testing.T) {
+	for sig in ([?]string{"(ii)", "{sv}", "(a(ii))"}) {
+		r := reader_make(nil)
+		r_skip(&r, sig)
+		testing.expectf(t, r.err, "%s: nothing to read", sig)
+	}
+	four := [?]u8{4, 0, 0, 0, 0, 0, 0, 0}
+	for sig in ([?]string{"a", "az", "a(z)"}) {
+		r := reader_make(four[:])
+		r_skip(&r, sig)
+		testing.expectf(t, r.err, "%s: an array of what takes no bytes", sig)
+	}
+}
+
 // The bytes of a message read back, and a message still arriving is told from one that cannot be.
 @(test)
 a_message_whole_cut_or_broken :: proc(t: ^testing.T) {
