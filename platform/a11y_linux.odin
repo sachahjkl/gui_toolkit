@@ -93,6 +93,12 @@ a11y_send :: proc(w: ^Window, u: ^A11y_Update, toolkit_name := "gui_toolkit", to
 	return .Applied
 }
 
+// Tests: the name of the window's bridge on the accessibility bus ("": none).
+a11y_bus_name :: proc(w: ^Window) -> string {
+	if w.a11y == nil { return "" }
+	return dbus.conn_name((^A11y_Bridge)(w.a11y).conn)
+}
+
 // The window's accessibility bus for its loop's poll set (-1: no bridge).
 @(private)
 a11y_fd :: proc(w: ^Window) -> i32 {

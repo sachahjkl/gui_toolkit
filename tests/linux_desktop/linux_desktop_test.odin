@@ -13,10 +13,12 @@ import "core:c/libc"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:sys/posix"
 import "core:testing"
 import "core:thread"
 import "core:time"
+import "../../dbus"
 import "../../platform"
 
 @(private = "file") desktop :: proc() -> string {
@@ -922,6 +924,669 @@ a_window_closed_under_a_drag_on_wayland :: proc(t: ^testing.T) {
 	pump_for(keep, 500)   // (a read of what the window left would be here)
 	sh("swaymsg -q seat seat0 cursor release button1")
 	pump_for(keep, 300)
+}
+
+////////////////////////////////
+// a thread of its own: a connection of its own (to another server, to a session bus)
+
+@(private = "file") Own_Thread :: struct { t: ^testing.T, body: proc(t: ^testing.T) }
+
+@(private = "file")
+on_own_thread :: proc(t: ^testing.T, body: proc(t: ^testing.T)) {
+	o := Own_Thread{t, body}
+	th := thread.create_and_start_with_data(&o, proc(d: rawptr) {
+		o := (^Own_Thread)(d)
+		context.allocator = runtime.heap_allocator()   // (the connection's state outlives the test)
+		o.body(o.t)
+	}, context)
+	thread.join(th)
+	thread.destroy(th)
+}
+
+// A display server of its own, with its fd: the window of this thread opens on it, and it goes away.
+@(private = "file")
+second_server :: proc() -> (undo: string) {
+	if x11() {
+		sh("Xvfb :95 -screen 0 800x600x24 -nolisten tcp >/dev/null 2>&1 & echo $! > /tmp/gt_server; for i in $(seq 50); do DISPLAY=:95 xprop -root >/dev/null 2>&1 && break; sleep 0.1; done")
+		old := strings.clone(string(posix.getenv("DISPLAY")), context.temp_allocator)
+		posix.setenv("DISPLAY", ":95", true)
+		return old
+	}
+	sh("printf 'xwayland disable\\n' > /tmp/gt_sway2.conf; ls $XDG_RUNTIME_DIR | grep -E '^wayland-[0-9]+$' | sort > /tmp/gt_before; ",
+		"(unset WAYLAND_DISPLAY SWAYSOCK; WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 sway --unsupported-gpu -c /tmp/gt_sway2.conf >/dev/null 2>&1 & echo $! > /tmp/gt_server); ",
+		"for i in $(seq 50); do ls $XDG_RUNTIME_DIR | grep -E '^wayland-[0-9]+$' | sort | comm -13 /tmp/gt_before - > /tmp/gt_socket; [ -s /tmp/gt_socket ] && break; sleep 0.1; done; sleep 0.5")
+	name, _ := os.read_entire_file("/tmp/gt_socket", context.temp_allocator)
+	old := strings.clone(string(posix.getenv("WAYLAND_DISPLAY")), context.temp_allocator)
+	posix.setenv("WAYLAND_DISPLAY", strings.clone_to_cstring(strings.trim_space(string(name)), context.temp_allocator), true)
+	return old
+}
+
+@(private = "file") back_to_the_server :: proc(old: string) {
+	posix.setenv(x11() ? "DISPLAY" : "WAYLAND_DISPLAY", strings.clone_to_cstring(old, context.temp_allocator), true)
+}
+
+// The server goes away: its windows hear it as a close, a wait does not spin nor sleep, no new window comes back on it.
+@(test)
+a_lost_server_closes_its_windows :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	on_own_thread(t, proc(t: ^testing.T) {
+		old := second_server()
+		defer back_to_the_server(old)
+		w := platform.open_window("on a server that goes", {200, 150})
+		testing.expect(t, w != nil)
+		if w == nil { sh("kill $(cat /tmp/gt_server)"); return }
+		defer platform.destroy_window(w)
+		platform.show_window(w)
+		platform.test_show_plain(w)
+		pump_for(w, 200)
+		sh("kill -9 $(cat /tmp/gt_server)")
+		seen: Seen
+		defer delete(seen.events)
+		testing.expect(t, wait_kind(w, &seen, .Close, 3000), "the windows hear it")
+		testing.expect(t, platform.is_closed(w))
+		start := time.tick_now()
+		platform.wait_event(w, 300)
+		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) >= 200, "the dead socket does not end a wait")
+		testing.expect(t, platform.open_window("after", {100, 100}) == nil, "no window on a lost connection")
+	})
+}
+
+// A compositor with no xdg-shell (a registry with nothing in it): the connection failed, the second window hears it too.
+@(test)
+a_connection_without_the_shell_stays_failed_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	Fake :: struct { listener: posix.FD }
+	path := "/tmp/gt_fake_wayland"
+	sh("rm -f ", path)
+	s := posix.socket(.UNIX, .STREAM)
+	addr: posix.sockaddr_un
+	addr.sun_family = .UNIX
+	copy(addr.sun_path[:], path)
+	testing.expect(t, posix.bind(s, (^posix.sockaddr)(&addr), size_of(addr)) == .OK)
+	testing.expect(t, posix.listen(s, 4) == .OK)
+	fake := Fake{s}
+	server := thread.create_and_start_with_data(&fake, proc(d: rawptr) {
+		// wl_display.sync: the callback's done and its delete_id; everything else needs no answer
+		c := posix.accept((^Fake)(d).listener, nil, nil)
+		for {
+			head: [8]u8
+			if posix.recv(c, &head[0], 8, {.WAITALL}) != 8 { break }
+			size := int(u16(head[6]) | u16(head[7]) << 8)
+			opcode := u16(head[4]) | u16(head[5]) << 8
+			body: [256]u8
+			if size > 8 && int(posix.recv(c, &body[0], uint(size - 8), {.WAITALL})) != size - 8 { break }
+			if head[0] == 1 && opcode == 0 {
+				out := [24]u8{}
+				copy(out[0:4], body[0:4]); out[6] = 12; copy(out[12:16], []u8{1, 0, 0, 0}); out[12 + 4] = 1; out[18] = 12; copy(out[20:24], body[0:4])
+				posix.send(c, &out[0], 24, {})
+			}
+		}
+		posix.close(c)
+	})
+	old := strings.clone(string(posix.getenv("WAYLAND_DISPLAY")), context.temp_allocator)
+	posix.setenv("WAYLAND_DISPLAY", strings.clone_to_cstring(path, context.temp_allocator), true)
+	on_own_thread(t, proc(t: ^testing.T) {
+		testing.expect(t, platform.open_window("first", {100, 100}) == nil, "no shell: no window")
+		testing.expect(t, platform.open_window("second", {100, 100}) == nil, "nor a second one")
+	})
+	posix.setenv("WAYLAND_DISPLAY", strings.clone_to_cstring(old, context.temp_allocator), true)
+	posix.close(s)
+	thread.join(server)
+	thread.destroy(server)
+}
+
+////////////////////////////////
+// a session bus of its own, and the services on it (a panel, a notification daemon, a portal, the accessibility bus)
+
+@(private = "file") BUS_ADDRESS :: "unix:path=/tmp/gt_bus.sock"
+
+@(private = "file")
+bus_start :: proc() {
+	sh("rm -f /tmp/gt_bus.sock; dbus-daemon --session --nofork --address=", BUS_ADDRESS, " >/dev/null 2>&1 & echo $! > /tmp/gt_bus.pid; for i in $(seq 50); do [ -S /tmp/gt_bus.sock ] && break; sleep 0.1; done")
+}
+
+@(private = "file")
+with_bus :: proc(t: ^testing.T, body: proc(t: ^testing.T)) {
+	bus_start()
+	posix.setenv("DBUS_SESSION_BUS_ADDRESS", BUS_ADDRESS, true)
+	on_own_thread(t, body)
+	posix.unsetenv("DBUS_SESSION_BUS_ADDRESS")
+	sh("kill $(cat /tmp/gt_bus.pid)")
+}
+
+// Services played by another connection, on a thread of its own.
+@(private = "file")
+Peer :: struct {
+	conn:       ^dbus.Conn,
+	owns:       []string,
+	stop:       bool,        // (atomic)
+	thread:     ^thread.Thread,
+	mutex:      sync.Mutex,
+	registered: [dynamic]string,   // what asked the watcher for a place: sender + its argument
+	notify_replaces: u32,
+	notify_actions: int,
+	uninhibited: int,
+	layouts:    int,                // LayoutUpdated heard
+	portal_token: string,
+	portal_filter: string,          // the filter the fake user chose
+}
+
+@(private = "file")
+peer_start :: proc(p: ^Peer, owns: []string) {
+	p.owns = owns
+	ready: sync.Sema
+	Start :: struct { p: ^Peer, ready: ^sync.Sema }
+	s := Start{p, &ready}
+	p.thread = thread.create_and_start_with_data(&s, proc(d: rawptr) {
+		s := (^Start)(d)
+		p := s.p
+		context.allocator = runtime.heap_allocator()
+		p.conn = dbus.connect_bus(.Session)
+		for n in p.owns { dbus.request_name(p.conn, n) }
+		dbus.export_object(p.conn, "/StatusNotifierWatcher", peer_handler, p)
+		dbus.export_object(p.conn, "/org/freedesktop/Notifications", peer_handler, p)
+		dbus.export_object(p.conn, "/org/freedesktop/ScreenSaver", peer_handler, p)
+		dbus.export_object(p.conn, "/org/a11y/bus", peer_handler, p)
+		dbus.export_object(p.conn, "/org/freedesktop/portal/desktop", peer_handler, p)
+		dbus.subscribe(p.conn, "", "", "com.canonical.dbusmenu", "LayoutUpdated", proc(user: rawptr, msg: ^dbus.Message) { sync.atomic_add(&(^Peer)(user).layouts, 1) }, p)
+		sync.sema_post(s.ready)
+		for !sync.atomic_load(&p.stop) {
+			dbus.dispatch(p.conn)
+			thread.yield()
+		}
+		dbus.conn_close(p.conn)
+	}, context)
+	sync.sema_wait(&ready)
+}
+
+@(private = "file")
+peer_stop :: proc(p: ^Peer) {
+	sync.atomic_store(&p.stop, true)
+	thread.join(p.thread)
+	thread.destroy(p.thread)
+	p.thread = nil
+	sync.atomic_store(&p.stop, false)
+}
+
+@(private = "file")
+peer_handler :: proc(user: rawptr, c: ^dbus.Conn, msg: ^dbus.Message) -> bool {
+	p := (^Peer)(user)
+	context.allocator = runtime.heap_allocator()
+	switch msg.member {
+	case "RegisterStatusNotifierItem":
+		r := dbus.msg_reader(msg)
+		sync.mutex_lock(&p.mutex)
+		append(&p.registered, strings.concatenate({msg.sender, "|", dbus.r_string(&r)}))
+		sync.mutex_unlock(&p.mutex)
+		dbus.reply_return(c, msg, "", nil)
+		return true
+	case "Notify":
+		r := dbus.msg_reader(msg)
+		dbus.r_string(&r)
+		p.notify_replaces = dbus.r_u32(&r)
+		dbus.r_string(&r); dbus.r_string(&r); dbus.r_string(&r)
+		end := dbus.r_array_begin(&r, "s")
+		p.notify_actions = 0
+		for r.pos < end { dbus.r_string(&r); p.notify_actions += 1 }
+		w := dbus.body_writer()
+		dbus.w_u32(&w, 7)
+		dbus.reply_return(c, msg, "u", w.buf[:])
+		return true
+	case "Inhibit":
+		w := dbus.body_writer()
+		dbus.w_u32(&w, 5)
+		dbus.reply_return(c, msg, "u", w.buf[:])
+		return true
+	case "UnInhibit":
+		sync.atomic_add(&p.uninhibited, 1)
+		return true
+	case "GetAddress":
+		w := dbus.body_writer()
+		dbus.w_string(&w, BUS_ADDRESS)
+		dbus.reply_return(c, msg, "s", w.buf[:])
+		return true
+	case "Get":
+		w := dbus.body_writer()
+		dbus.arg_variant_bool(&w, true)
+		dbus.reply_return(c, msg, "v", w.buf[:])
+		return true
+	case "OpenFile":
+		// the handle the spec gives, answered at once: a client that subscribes after this call hears nothing
+		r := dbus.msg_reader(msg)
+		dbus.r_string(&r); dbus.r_string(&r)
+		sender, _ := strings.replace_all(msg.sender[1:], ".", "_", context.temp_allocator)
+		path := strings.concatenate({"/org/freedesktop/portal/desktop/request/", sender, "/", p.portal_token}, context.temp_allocator)
+		w := dbus.body_writer()
+		dbus.w_string(&w, path)
+		dbus.reply_return(c, msg, "o", w.buf[:])
+		b := dbus.body_writer()
+		dbus.w_u32(&b, 0)
+		dl, dc := dbus.arg_dict_begin(&b)
+		dbus.arg_dict_entry(&b, "uris")
+		dbus.w_signature(&b, "as")
+		al, ac := dbus.w_array_begin(&b, 4)
+		dbus.w_string(&b, "file:///tmp/chosen.txt")
+		dbus.w_array_end(&b, al, ac)
+		dbus.arg_dict_entry(&b, "current_filter")
+		dbus.w_signature(&b, "(sa(us))")
+		dbus.w_struct(&b)
+		dbus.w_string(&b, p.portal_filter)
+		fl, fc := dbus.w_array_begin(&b, 8)
+		dbus.w_array_end(&b, fl, fc)
+		dbus.arg_dict_end(&b, dl, dc)
+		dbus.emit_signal(c, path, "org.freedesktop.portal.Request", "Response", "ua{sv}", b.buf[:])
+		return true
+	}
+	return false
+}
+
+@(private = "file")
+peer_registered :: proc(p: ^Peer) -> int {
+	sync.mutex_lock(&p.mutex)
+	defer sync.mutex_unlock(&p.mutex)
+	return len(p.registered)
+}
+
+// What a tray registered: the bus name and the object of the icon.
+@(private = "file")
+peer_item :: proc(p: ^Peer, i: int) -> (name, path: string) {
+	sync.mutex_lock(&p.mutex)
+	defer sync.mutex_unlock(&p.mutex)
+	s := p.registered[i]
+	bar := strings.index_byte(s, '|')
+	name, path = s[:bar], s[bar + 1:]
+	if !strings.has_prefix(path, "/") { name, path = path, "/StatusNotifierItem" }
+	return
+}
+
+@(private = "file")
+peer_activate :: proc(p: ^Peer, i: int) {
+	name, path := peer_item(p, i)
+	w := dbus.body_writer()
+	dbus.w_i32(&w, 1)
+	dbus.w_i32(&w, 2)
+	dbus.call_noreply(p.conn, name, path, "org.kde.StatusNotifierItem", "Activate", "ii", w.buf[:])
+}
+
+@(private = "file")
+tray_kinds :: proc(w: ^platform.Window, tr: ^platform.Tray, kind: platform.Tray_Event_Kind, ms := 2000) -> bool {
+	start := time.tick_now()
+	for time.duration_milliseconds(time.tick_since(start)) < f64(ms) {
+		platform.poll_events(w, true, PUMP_WAIT_MS)
+		for e in platform.tray_poll(tr) { if e.kind == kind { return true } }
+	}
+	return false
+}
+
+// A message of the bus ends wait_event: the idle loop of an app with a tray answers the click at once.
+@(test)
+a_bus_message_ends_a_wait :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.kde.StatusNotifierWatcher"})
+		defer peer_stop(&p)
+		w := open("bus wait")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		defer platform.destroy_window(w)
+		tr := platform.tray_create(w, nil, "tip")
+		testing.expect(t, tr != nil)
+		if tr == nil { return }
+		pump_for(w, 100)
+		Later :: struct { p: ^Peer }
+		later := Later{&p}
+		th := thread.create_and_start_with_data(&later, proc(d: rawptr) {
+			time.sleep(100 * time.Millisecond)   // (real time: the wait must have begun)
+			peer_activate((^Later)(d).p, 0)
+		}, context)
+		defer { thread.join(th); thread.destroy(th) }
+		start := time.tick_now()
+		platform.wait_event(w, 4000)
+		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 2000, "the message ends the wait")
+		testing.expect(t, tray_kinds(w, tr, .Click), "the click arrives")
+	})
+}
+
+// Two icons of a process: each its own object, each answers for itself, and the end of one is not the end of the other.
+@(test)
+two_trays_answer_each_for_itself :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.kde.StatusNotifierWatcher"})
+		defer peer_stop(&p)
+		w := open("two trays")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		defer platform.destroy_window(w)
+		a := platform.tray_create(w, nil, "a")
+		b := platform.tray_create(w, nil, "b")
+		testing.expect(t, a != nil && b != nil)
+		if a == nil || b == nil { return }
+		testing.expect_value(t, peer_registered(&p), 2)
+		peer_activate(&p, 0)
+		testing.expect(t, tray_kinds(w, a, .Click), "the first answers")
+		peer_activate(&p, 1)
+		testing.expect(t, tray_kinds(w, b, .Click), "the second answers")
+		platform.tray_destroy(a)
+		peer_activate(&p, 1)
+		testing.expect(t, tray_kinds(w, b, .Click), "it goes on after the other's end")
+	})
+}
+
+// The panel restarts: the icons are registered with the new one, and say so.
+@(test)
+a_watcher_that_comes_back_gets_the_icon_again :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.kde.StatusNotifierWatcher"})
+		w := open("watcher")
+		testing.expect(t, w != nil)
+		if w == nil { peer_stop(&p); return }
+		defer platform.destroy_window(w)
+		tr := platform.tray_create(w, nil, "again")
+		testing.expect(t, tr != nil)
+		peer_stop(&p)
+		pump_for(w, 200)
+		q: Peer
+		peer_start(&q, {"org.kde.StatusNotifierWatcher"})
+		defer peer_stop(&q)
+		testing.expect(t, tray_kinds(w, tr, .Recreated), "the icon is back")
+		testing.expect_value(t, peer_registered(&q), 1)
+	})
+}
+
+// A notification can be clicked, and one that closed is not replaced by the next.
+@(test)
+a_notification_is_clicked_and_ends :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.kde.StatusNotifierWatcher", "org.freedesktop.Notifications"})
+		defer peer_stop(&p)
+		w := open("notify")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		defer platform.destroy_window(w)
+		tr := platform.tray_create(w, nil, "n")
+		testing.expect(t, tr != nil)
+		if tr == nil { return }
+		testing.expect(t, platform.tray_notify(tr, {title = "a"}))
+		testing.expect(t, p.notify_actions >= 2, "a default action: a click on it has somewhere to go")
+		b := dbus.body_writer()
+		dbus.w_u32(&b, 7)
+		dbus.w_u32(&b, 1)
+		dbus.emit_signal(p.conn, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "NotificationClosed", "uu", b.buf[:])
+		testing.expect(t, tray_kinds(w, tr, .Notify_Timeout), "it ended")
+		testing.expect(t, platform.tray_notify(tr, {title = "b"}))
+		testing.expect_value(t, p.notify_replaces, u32(0))
+	})
+}
+
+// A menu that changes is told to the panel.
+@(test)
+a_tray_menu_that_changes_is_told :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.kde.StatusNotifierWatcher"})
+		defer peer_stop(&p)
+		w := open("menu")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		defer platform.destroy_window(w)
+		tr := platform.tray_create(w, nil, "m")
+		testing.expect(t, tr != nil)
+		if tr == nil { return }
+		platform.tray_set_menu(tr, {{id = 1, text = "one"}})
+		start := time.tick_now()
+		for sync.atomic_load(&p.layouts) == 0 && time.duration_milliseconds(time.tick_since(start)) < 2000 { platform.poll_events(w, true, PUMP_WAIT_MS) }
+		testing.expect(t, sync.atomic_load(&p.layouts) >= 1, "LayoutUpdated")
+	})
+}
+
+// An inhibition does not outlive its window.
+@(test)
+a_window_takes_its_inhibitions_with_it :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.freedesktop.ScreenSaver"})
+		defer peer_stop(&p)
+		w := open("inhibit")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		keep := open("stays")
+		defer platform.destroy_window(keep)
+		testing.expect(t, platform.idle_inhibit(w, "video") != 0)
+		platform.destroy_window(w)
+		start := time.tick_now()
+		for sync.atomic_load(&p.uninhibited) == 0 && time.duration_milliseconds(time.tick_since(start)) < 2000 { thread.yield() }
+		testing.expect_value(t, sync.atomic_load(&p.uninhibited), 1)
+	})
+}
+
+// A bus without a portal: the dialog comes from the programs that are there.
+@(test)
+no_portal_falls_back_to_zenity :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		sh("mkdir -p /tmp/gt_fakebin; printf '#!/bin/sh\\necho /tmp/from-zenity.txt\\n' > /tmp/gt_fakebin/zenity; chmod +x /tmp/gt_fakebin/zenity")
+		old := strings.clone(string(posix.getenv("PATH")), context.temp_allocator)
+		posix.setenv("PATH", strings.clone_to_cstring(strings.concatenate({"/tmp/gt_fakebin:", old}, context.temp_allocator), context.temp_allocator), true)
+		defer posix.setenv("PATH", strings.clone_to_cstring(old, context.temp_allocator), true)
+		r := platform.open_file_dialog({title = "pick"}, context.temp_allocator)
+		testing.expect_value(t, r.status, platform.Dialog_Status.Chosen)
+		testing.expect(t, len(r.paths) == 1 && r.paths[0] == "/tmp/from-zenity.txt", "zenity's answer")
+	})
+}
+
+// The portal answers at once (the handle is known before the call returns), and says which filter the user chose.
+@(test)
+a_portal_dialog_hears_the_answer_and_the_filter :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		p.portal_token = "gt1"
+		p.portal_filter = "Texts"
+		peer_start(&p, {"org.freedesktop.portal.Desktop"})
+		defer peer_stop(&p)
+		filters := []platform.File_Filter{{name = "Images", patterns = {"*.png"}}, {name = "Texts", patterns = {"*.txt"}}}
+		r := platform.open_file_dialog({title = "pick", filters = filters}, context.temp_allocator)
+		testing.expect_value(t, r.status, platform.Dialog_Status.Chosen)
+		testing.expect_value(t, r.filter, 1)
+	})
+}
+
+// A screen reader on the accessibility bus reads the whole tree, whatever the last update changed.
+@(test)
+a_reader_of_the_bus_gets_the_whole_tree :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.a11y.Bus"})
+		defer peer_stop(&p)
+		w := open("reader")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		defer platform.destroy_window(w)
+		testing.expect_value(t, platform.a11y_state(w), platform.A11y_State.Full)
+		u: platform.A11y_Update
+		defer platform.a11y_update_destroy(&u)
+		u.root, u.focus, u.tree_info = 1, 2, true
+		platform.a11y_node(&u, 1, .Window)
+		platform.a11y_children(&u, {2, 3})
+		platform.a11y_str(&u, .Label, "the window")
+		platform.a11y_node(&u, 2, .Button)
+		platform.a11y_node(&u, 3, .Button)
+		testing.expect_value(t, platform.a11y_send(w, &u), platform.A11y_Send.Applied)
+		testing.expect_value(t, platform.a11y_state(w), platform.A11y_State.Incremental)
+		// what changed: one button
+		platform.a11y_update_clear(&u)
+		u.root, u.focus = 1, 3
+		platform.a11y_node(&u, 3, .Button)
+		platform.a11y_str(&u, .Label, "renamed")
+		testing.expect_value(t, platform.a11y_send(w, &u), platform.A11y_Send.Applied)
+		Ask :: struct { p: ^Peer, name: string, count: i32, done: bool }
+		ask := Ask{p = &p, name = platform.a11y_bus_name(w)}
+		testing.expect(t, ask.name != "", "the bridge is on the bus")
+		th := thread.create_and_start_with_data(&ask, proc(d: rawptr) {
+			a := (^Ask)(d)
+			context.allocator = runtime.heap_allocator()
+			c := dbus.connect_bus_address(BUS_ADDRESS)
+			defer dbus.conn_close(c)
+			msg, ok := dbus.call(c, a.name, "/org/a11y/atspi/accessible/root", "org.a11y.atspi.Accessible", "GetChildCount", "", nil, 3000)
+			if ok { r := dbus.msg_reader(&msg); a.count = dbus.r_i32(&r) }
+			sync.atomic_store(&a.done, true)
+		}, context)
+		start := time.tick_now()
+		for !sync.atomic_load(&ask.done) && time.duration_milliseconds(time.tick_since(start)) < 4000 { platform.poll_events(w, true, PUMP_WAIT_MS) }
+		thread.join(th)
+		thread.destroy(th)
+		testing.expect_value(t, ask.count, i32(2))
+	})
+}
+
+////////////////////////////////
+// the state of a window
+
+// Before show_window nothing is on the screen.
+@(test)
+a_window_not_shown_is_not_visible :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := platform.open_window("hidden", {200, 150})
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	testing.expect(t, !platform.is_window_visible(w), "not shown yet")
+	testing.expect(t, !w.focused && !w.active, "nothing gave it the focus")
+	platform.show_window(w)
+	platform.test_show_plain(w)
+	pump_for(w, 300)
+	testing.expect(t, platform.is_window_visible(w))
+}
+
+// Asked before the window is on the screen: the window manager reads it from the window when it maps it.
+@(test)
+fullscreen_before_the_window_is_mapped_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := platform.open_window("fullscreen first", {200, 150})
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	platform.set_fullscreen(w, true)
+	platform.show_window(w)
+	pump_for(w, 500)
+	testing.expect(t, platform.is_fullscreen(w), "the server says so")
+	testing.expect_value(t, w.size, [2]int{1280, 1024})
+}
+
+// A placement that is not maximized restores a maximized window.
+@(test)
+a_placement_restores_a_maximized_window :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("restored")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	p := platform.get_placement(w)
+	platform.toggle_maximize(w)
+	pump_for(w, 400)
+	testing.expect(t, platform.is_maximized(w))
+	p.maximized = false
+	platform.set_placement(w, p)
+	pump_for(w, 400)
+	testing.expect(t, !platform.is_maximized(w))
+}
+
+// The focus goes elsewhere with a key held: its release will not come here.
+@(test)
+a_key_held_when_the_focus_goes_is_released_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open("loses the focus")
+	b := open("takes it")
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer { platform.destroy_window(a); platform.destroy_window(b) }
+	sh("xdotool windowactivate --sync ", window_id(a))
+	pump_for(a, 200)
+	seen: Seen
+	defer delete(seen.events)
+	sh("xdotool keydown a")
+	testing.expect(t, wait_kind(a, &seen, .Key_Press, 2000), "the press arrives")
+	sh("xdotool windowactivate --sync ", window_id(b))
+	defer sh("xdotool keyup a")
+	testing.expect(t, wait_kind(a, &seen, .Key_Release, 2000), "the release is made")
+}
+
+// The server repeats a held key: a repeat says it is one, as on the other systems.
+@(test)
+a_held_key_repeats_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("x repeat")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	seen: Seen
+	defer delete(seen.events)
+	sh("(xdotool keydown b; sleep 1.2; xdotool keyup b) >/dev/null 2>&1 &")
+	pump_for(w, 1600, &seen)
+	repeats, firsts, releases := 0, 0, 0
+	for e in seen.events {
+		if e.kind == .Key_Press && e.key == .B { if e.repeat { repeats += 1 } else { firsts += 1 } }
+		if e.kind == .Key_Release && e.key == .B { releases += 1 }
+	}
+	testing.expect_value(t, firsts, 1)
+	testing.expect(t, repeats >= 1, "repeats")
+	testing.expect_value(t, releases, 1)
+}
+
+////////////////////////////////
+// the clipboard's owner
+
+// Another program clears the clipboard: what this one held is gone from it.
+@(test)
+a_clipboard_lost_is_not_read_back_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("clip lost")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	pump_for(w, 200)
+	sh("swaymsg -q seat seat0 cursor set 60 60; wtype x")
+	pump_for(w, 300)
+	platform.set_clipboard(w, "mine")
+	pump_for(w, 200)
+	testing.expect_value(t, platform.get_clipboard(w, context.temp_allocator), "mine")
+	sh("wl-copy --clear")
+	pump_for(w, 300)
+	testing.expect_value(t, platform.get_clipboard(w, context.temp_allocator), "")
+	testing.expect_value(t, platform.clipboard_formats(), platform.Clipboard_Formats{})
+}
+
+// A paste leaves nothing on the window, and an answer that came too late is not the answer to the next read.
+@(test)
+a_paste_leaves_no_property_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("clip tidy")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	other_copy("text/plain", "small")
+	pump_for(w, 300)
+	testing.expect_value(t, platform.get_clipboard(w, context.temp_allocator), "small")
+	sh("xprop -id ", window_id(w), " GUI_TOOLKIT_SELECTION > /tmp/gt_prop 2>&1")
+	got, _ := os.read_entire_file("/tmp/gt_prop", context.temp_allocator)
+	testing.expect(t, strings.contains(string(got), "not found"), string(got))
 }
 
 ////////////////////////////////
