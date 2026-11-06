@@ -888,7 +888,7 @@ a_window_without_the_pointer_leaves_it_alone_on_wayland :: proc(t: ^testing.T) {
 ////////////////////////////////
 // the press the compositor takes
 
-// Another workspace comes up under a held button: the pointer leaves, its release will not come here.
+// The seat loses its pointer under a held button: the pointer leaves, the release will not come here. Given back, it works.
 @(test)
 a_pointer_taken_with_a_button_held_releases_it_on_wayland :: proc(t: ^testing.T) {
 	if !wayland() { return }
@@ -901,10 +901,16 @@ a_pointer_taken_with_a_button_held_releases_it_on_wayland :: proc(t: ^testing.T)
 	defer delete(seen.events)
 	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.5; swaymsg -q seat seat0 cursor press button1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
-	sh("swaymsg -t get_seats | grep -E 'name|capabilities'; swaymsg 'seat other attach \"*\"'; swaymsg -t get_seats | grep -E 'name|capabilities'")
-	defer sh("swaymsg -q 'seat seat0 attach \"*\"'; swaymsg -q seat seat0 cursor release button1")
+	sh("swaymsg -q 'seat other attach \"*\"'")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Release, 2000), "the release is made")
 	testing.expect_value(t, w.buttons_down, platform.Mouse_Buttons{})
+	sh("swaymsg -q seat seat0 cursor release button1; swaymsg -q 'seat seat0 attach \"*\"'; swaymsg -q seat seat0 cursor set 70 70")
+	pump_for(w, 300)
+	clear(&seen.events)
+	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.3; swaymsg -q seat seat0 cursor press button1; sleep 0.1; swaymsg -q seat seat0 cursor release button1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Press, 2000), "the pointer is back")
+	sh("wtype a")
+	testing.expect(t, wait_kind(w, &seen, .Text, 2000), "the keyboard is back")
 }
 
 // The window goes off the screen under a held button: the button's grab ends with it, the release goes elsewhere.
