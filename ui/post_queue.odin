@@ -66,7 +66,7 @@ Post_Queue :: struct {
 	mask:      uint,
 	overflow:  Post_Overflow,
 	on_drop:   Post_Proc,              // messages that will never run (nil: nothing to free)
-	wake:      proc(user: rawptr),     // asks the owner to drain (set before producers start)
+	wake:      proc(user: rawptr),     // asks the owner to drain, whatever wake_user is (set before producers start)
 	wake_user: rawptr,                 // atomic: post_queue_set_wake_user may change it while producers run
 	owner:     int,                    // atomic: the thread that drains (sync.current_thread_id)
 	_:         [POST_CACHE_LINE_BYTES]u8,
@@ -132,7 +132,7 @@ post_queue_set_wake_user :: proc(q: ^Post_Queue, user: rawptr) { sync.atomic_sto
 // long as it takes (until a drain or post_queue_close).
 post_queue_push :: proc(q: ^Post_Queue, fn: Post_Proc, data: rawptr = nil, word: u64 = 0) -> bool {
 	m := Post_Message{fn, data, word}
-	if sync.atomic_load(&q.closed) { pq_refuse(q); return false }
+	if q.slots == nil || sync.atomic_load(&q.closed) { pq_refuse(q); return false }   // (no slots: destroyed, or never made)
 	// once something spilled, every push spills until the owner took the list: a producer's later messages may not
 	// overtake its earlier ones by going into the ring
 	if sync.atomic_load(&q.spill_count) > 0 { pq_spill(q, m); pq_accepted(q); return true }
@@ -306,7 +306,7 @@ pq_ask_wake :: proc(q: ^Post_Queue, again: bool) {
 	if q.wake == nil { return }
 	if sync.atomic_exchange(&q.wake_pending, true) && !again { return }
 	user := sync.atomic_load(&q.wake_user)
-	if user == nil { return }
+	if user == nil && q.wake == wake_window { return }   // (no window yet, or none any more: the next build runs the calls)
 	sync.atomic_add(&q.stats.wakes, 1)
 	q.wake(user)
 }
