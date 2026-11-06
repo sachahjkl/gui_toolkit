@@ -378,6 +378,11 @@ cmd_page :: proc(c: ^Cmd) -> Answer {
 		w, h := f64(srv.win.size.x) / d, f64(srv.win.size.y) / d
 		fmt.sbprintf(&c.sb, `{{"layoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"visualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":%g}},"contentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}},"cssLayoutViewport":{{"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f}},"cssVisualViewport":{{"offsetX":0,"offsetY":0,"pageX":0,"pageY":0,"clientWidth":%.0f,"clientHeight":%.0f,"scale":1,"zoom":1}},"cssContentSize":{{"x":0,"y":0,"width":%.0f,"height":%.0f}}}}`, w, h, w, h, d, w, h, w, h, w, h, w, h)
 	case "Page.startScreencast":
+		// (a window with no interface, `service(srv, nil, r)`: nothing would ever say a frame changed)
+		if s == nil {
+			error_reply(to, CDP_ERROR_SERVER, "this window has no interface to cast")
+			return .Sent
+		}
 		cast_start(srv, r, to, p)
 		strings.write_string(&c.sb, "{}")
 	case "Page.stopScreencast":
