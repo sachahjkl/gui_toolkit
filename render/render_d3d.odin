@@ -405,7 +405,7 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 	if win.FAILED(factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain)) { return false }
 	set_composition_color_space(r)
 	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)))
-	ok = ok && win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(hwnd, true, &r.dcomp_target))
+	ok = ok && win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(hwnd, !r.under_children, &r.dcomp_target))
 	ok = ok && win.SUCCEEDED(r.dcomp->CreateVisual(&r.dcomp_visual))
 	ok = ok && win.SUCCEEDED(r.dcomp_visual->SetContent((^win.IUnknown)(r.swapchain)))
 	ok = ok && win.SUCCEEDED(r.dcomp_target->SetRoot(r.dcomp_visual))
