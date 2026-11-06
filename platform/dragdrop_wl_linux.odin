@@ -245,7 +245,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	// pump until the source is cancelled or finished (the compositor drives it); past the limit the drag is given up
 	deadline := time.tick_now()
 	for wlc.dnd_source != nil {
-		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS {
+		if time.duration_milliseconds(time.tick_since(deadline)) > dnd_silence_ms(w) {
 			wl_data_source_destroy(wlc.dnd_source)
 			wlc.dnd_source = nil
 			wlc.dnd_source_action = 0

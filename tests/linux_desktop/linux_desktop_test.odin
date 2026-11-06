@@ -716,6 +716,215 @@ a_fractional_scale_on_wayland :: proc(t: ^testing.T) {
 
 
 ////////////////////////////////
+// how a drag ends
+
+// Screen points in the second window, one after the other: a drag that goes on moving.
+@(private = "file") moves_in_b :: proc(b: ^platform.Window, steps: int, pause: string) -> string {
+	s := strings.builder_make(context.temp_allocator)
+	for i in 0 ..< steps {
+		if x11() {
+			fmt.sbprint(&s, "xdotool mousemove --window ", window_id(b), " ", 60 + i * 2, " 90; sleep ", pause, "; ")
+		} else {
+			fmt.sbprint(&s, "swaymsg -q seat seat0 cursor set ", 900 + i * 2, " 200; sleep ", pause, "; ")
+		}
+	}
+	return strings.to_string(s)
+}
+@(private = "file") release_drag :: proc() -> string { return x11() ? "xdotool mouseup 1" : "swaymsg -q seat seat0 cursor release button1" }
+
+@(private = "file")
+kinds :: proc(w: ^platform.Window, ms: int) -> (enters, leaves, drops: int, drop_pos: [2]f32, allowed: platform.Drop_Effects) {
+	seen: Seen
+	defer delete(seen.events)
+	pump_for(w, ms, &seen)
+	for e in seen.events {
+		#partial switch e.kind {
+		case .Drop_Enter: enters += 1; allowed = e.drop_allowed
+		case .Drop_Leave: leaves += 1
+		case .Drop: drops += 1; drop_pos = e.pos; allowed = e.drop_allowed
+		}
+	}
+	return
+}
+
+// A drag is not given up while the pointer moves, however long it lasts: the limit is of silence.
+@(test)
+a_long_drag_goes_on :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a, b := two_windows()
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer { platform.destroy_window(a); platform.destroy_window(b) }
+	platform.drag_silence_limit(a, 500)
+	r := drag_between(t, a, b, {text = "long"}, nil, press_in_a(a), fmt.tprint(moves_in_b(b, 12, "0.1"), release_drag()))
+	testing.expect(t, r.ok)
+	testing.expect_value(t, r.effect, Maybe(platform.Drop_Effect)(.Copy))
+	platform.drop_data_release(b)
+}
+
+// A click of another button in the middle of a drag is not its release.
+@(test)
+only_the_button_of_the_drag_ends_it_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a, b := two_windows()
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer { platform.destroy_window(a); platform.destroy_window(b) }
+	script := fmt.tprint("xdotool mousemove --window ", window_id(b), " 70 90; sleep 0.2; xdotool mousemove --window ", window_id(b), " 72 90; sleep 0.2; xdotool click 3; sleep 0.2; ",
+		"xdotool mousemove --window ", window_id(b), " 80 95; sleep 0.3; xdotool mouseup 1")
+	r := drag_between(t, a, b, {text = "left"}, nil, press_in_a(a), script)
+	testing.expect_value(t, r.effect, Maybe(platform.Drop_Effect)(.Copy))
+	_, _, drops, pos, _ := kinds(b, 200)
+	testing.expect_value(t, drops, 1)
+	testing.expect_value(t, pos, [2]f32{80, 95})
+	platform.drop_data_release(b)
+}
+
+// Escape gives the drag up: no effect, the target told so.
+@(test)
+escape_gives_a_drag_up_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a, b := two_windows()
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer { platform.destroy_window(a); platform.destroy_window(b) }
+	script := fmt.tprint(moves_in_b(b, 3, "0.1"), "xdotool key Escape; sleep 0.2; xdotool mouseup 1")
+	r := drag_between(t, a, b, {text = "no"}, nil, press_in_a(a), script)
+	testing.expect(t, r.ok)
+	testing.expect_value(t, r.effect, Maybe(platform.Drop_Effect)(nil))
+	enters, leaves, drops, _, _ := kinds(b, 200)
+	testing.expect_value(t, enters, 1)
+	testing.expect_value(t, leaves, 1)
+	testing.expect_value(t, drops, 0)
+}
+
+// The target hears what the source allows, and a Move is a Move.
+@(test)
+a_target_hears_what_the_source_allows :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a, b := two_windows()
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer { platform.destroy_window(a); platform.destroy_window(b) }
+	seen: Seen
+	defer delete(seen.events)
+	sh(press_in_a(a))
+	testing.expect(t, wait_kind(a, &seen, .Mouse_Press), "the press that starts the drag")
+	sh("(sleep 0.4; ", drop_in_b(b), ") >/dev/null 2>&1 &")
+	effect, ok := platform.drag_start(a, {text = "moved"}, {.Move})
+	testing.expect(t, ok)
+	testing.expect_value(t, effect, Maybe(platform.Drop_Effect)(.Move))
+	_, _, drops, _, allowed := kinds(b, 200)
+	testing.expect_value(t, drops, 1)
+	testing.expect_value(t, allowed, platform.Drop_Effects{.Move})
+	platform.drop_data_release(b)
+}
+
+// A target that stops taking drops under a drag says the drag left.
+@(test)
+a_target_disabled_under_a_drag_says_it_left :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open("drag off")
+	testing.expect(t, a != nil)
+	if a == nil { return }
+	defer platform.destroy_window(a)
+	platform.drop_target_enable(a, true)
+	pump_for(a, 300)
+	Told :: struct { leaves: int }
+	told: Told
+	platform.drop_sync_set(a, proc(user: rawptr, w: ^platform.Window, e: platform.Event) -> Maybe(platform.Drop_Effect) {
+		if e.kind == .Drop_Over && platform.drop_target_enabled(w) { platform.drop_target_enable(w, false) }
+		if e.kind == .Drop_Leave { (^Told)(user).leaves += 1 }
+		return .Copy
+	}, &told)
+	back := x11() ? fmt.tprint("xdotool mousemove --window ", window_id(a), " 60 60; sleep 0.2; xdotool mousemove --window ", window_id(a), " 70 70; sleep 0.3; xdotool mouseup 1") : "swaymsg -q seat seat0 cursor set 120 120; sleep 0.2; swaymsg -q seat seat0 cursor set 130 130; sleep 0.3; swaymsg -q seat seat0 cursor release button1"
+	drag_between(t, a, a, {text = "off"}, nil, press_in_a(a), back)
+	testing.expect_value(t, told.leaves, 1)
+	testing.expect(t, !platform.drop_active(a))
+}
+
+// A target that hangs after it took the drop: the source does not wait for it as long as for a user who keeps the button down.
+@(test)
+a_drop_on_a_hung_target_ends_soon_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open("to hung")
+	testing.expect(t, a != nil)
+	if a == nil { return }
+	defer platform.destroy_window(a)
+	sh("drag_peer target & echo $! > /tmp/gt_peer; sleep 1")
+	defer sh("kill -CONT $(cat /tmp/gt_peer); kill -9 $(cat /tmp/gt_peer)")
+	platform.drag_silence_limit(a, 20000)
+	seen: Seen
+	defer delete(seen.events)
+	sh(press_in_a(a))
+	testing.expect(t, wait_kind(a, &seen, .Mouse_Press), "the press that starts the drag")
+	sh("(sleep 0.4; xdotool mousemove 800 600; sleep 0.2; xdotool mousemove 810 610; sleep 0.5; kill -STOP $(cat /tmp/gt_peer); xdotool mouseup 1) >/dev/null 2>&1 &")
+	start := time.tick_now()
+	effect, ok := platform.drag_start(a, {text = "to a program that hangs"}, {.Copy})
+	testing.expect(t, ok)
+	testing.expect_value(t, effect, Maybe(platform.Drop_Effect)(nil))
+	testing.expect(t, time.duration_seconds(time.tick_since(start)) < 10, "given up well before the limit of a drag")
+}
+
+// A source that dies under the pointer never says it left: the next drag is a new one, the window not stuck under the old.
+@(test)
+a_source_that_dies_ends_its_drag_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("under a death")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	platform.drop_target_enable(w, true)
+	platform.drop_set_effect(w, .Copy)
+	sh("drag_peer source & echo $! > /tmp/gt_peer; sleep 1")
+	defer sh("kill -9 $(cat /tmp/gt_peer) 2>/dev/null; xdotool mouseup 1")
+	sh("xdotool mousemove 800 600 mousedown 1; sleep 0.3; xdotool mousemove 790 590; sleep 0.1; xdotool mousemove --window ", window_id(w), " 50 50; sleep 0.2")
+	seen: Seen
+	defer delete(seen.events)
+	testing.expect(t, wait_kind(w, &seen, .Drop_Enter, 3000), "the drag came over the window")
+	sh("xdotool mousemove --window ", window_id(w), " 60 60; sleep 0.1; xdotool mousemove --window ", window_id(w), " 70 70; sleep 0.1")
+	pump_for(w, 200)
+	sh("kill -9 $(cat /tmp/gt_peer)")
+	testing.expect(t, wait_kind(w, &seen, .Drop_Leave, 3000), "the source's death ends the drag")
+	testing.expect(t, !platform.drop_active(w))
+}
+
+// The window under a drag closes; the compositor's leave comes for a window that is gone.
+@(test)
+a_window_closed_under_a_drag_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("closes under a drag")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	platform.drop_target_enable(w, true)
+	platform.drop_set_effect(w, .Copy)
+	sh("drag_peer source & echo $! > /tmp/gt_peer; sleep 1")
+	defer sh("kill -9 $(cat /tmp/gt_peer) 2>/dev/null; swaymsg -q seat seat0 cursor release button1")
+	keep := open("keeps the loop")
+	testing.expect(t, keep != nil)
+	if keep == nil { platform.destroy_window(w); return }
+	defer platform.destroy_window(keep)
+	pump_for(w, 300)
+	// (sway splits the screen in the order of the windows: the peer is in the middle)
+	sh("swaymsg -q seat seat0 cursor set 640 300; sleep 0.3; swaymsg -q seat seat0 cursor press button1; sleep 0.3; swaymsg -q seat seat0 cursor set 100 300; sleep 0.2; swaymsg -q seat seat0 cursor set 110 310; sleep 0.2")
+	seen: Seen
+	defer delete(seen.events)
+	wait_kind(w, &seen, .Drop_Enter, 2000)
+	platform.destroy_window(w)
+	pump_for(keep, 500)   // (a read of what the window left would be here)
+	sh("swaymsg -q seat seat0 cursor release button1")
+	pump_for(keep, 300)
+}
+
+////////////////////////////////
 // keys: what the modifiers do to them
 
 @(private = "file")
