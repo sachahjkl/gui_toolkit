@@ -255,6 +255,124 @@ block_resumes_after_drain :: proc(t: ^testing.T) {
 	testing.expect_value(t, ran, 1)
 }
 
+@(private = "file")
+Post_Run :: struct {
+	fonts: font.State,
+	theme: ui.Theme,
+	s:     ui.State,
+	ran, woken, dropped: int,
+	got_user: rawptr,
+}
+
+@(private = "file") count_run :: proc(data: rawptr, word: u64) { (^Post_Run)(data).ran += 1 }
+@(private = "file") last_user: rawptr
+@(private = "file") wakes_seen: int
+@(private = "file") own_wake :: proc(user: rawptr) { last_user = user; wakes_seen += 1 }
+
+// More calls than a build's budget wait when the queue is sized anew: all of them run, none is lost.
+@(test)
+post_configure_runs_what_waits :: proc(t: ^testing.T) {
+	r := new(Post_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	defer ui.destroy(&r.s)
+	for _ in 0 ..< ui.POST_PER_BUILD_DEFAULT + 1 { testing.expect(t, ui.post(&r.s, count_run, r)) }
+	ui.post_configure(&r.s)
+	testing.expect_value(t, r.ran, ui.POST_PER_BUILD_DEFAULT + 1)
+}
+
+// A queue that was closed stays closed when it is sized anew.
+@(test)
+post_configure_keeps_a_closed_queue_closed :: proc(t: ^testing.T) {
+	r := new(Post_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	defer ui.destroy(&r.s)
+	ui.post_close(&r.s)
+	ui.post_configure(&r.s)
+	testing.expect(t, !ui.post(&r.s, count_run, r), "refused")
+}
+
+// The app's own wake is called, whatever its user: nil is a user.
+@(test)
+set_post_wake_with_no_user_wakes :: proc(t: ^testing.T) {
+	r := new(Post_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	defer ui.destroy(&r.s)
+	wakes_seen = 0
+	ui.set_post_wake(&r.s, own_wake, nil)
+	testing.expect(t, ui.post(&r.s, count_run, r))
+	testing.expect_value(t, wakes_seen, 1)
+}
+
+// No wake of its own any more: the window's again, not none.
+@(test)
+set_post_wake_nil_goes_back_to_the_window :: proc(t: ^testing.T) {
+	r := new(Post_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	defer ui.destroy(&r.s)
+	w := platform.open_window_offscreen("post", {100, 100})
+	defer platform.destroy_window(w)
+	build := proc(r: ^Post_Run, w: ^platform.Window) {
+		ui.begin_build(&r.s, {window_size = {100, 100}, dt = 1.0 / 60, dpi_scale = 1, window = w, base = ui.Style{font_size = 15}})
+		ui.end_build()
+		free_all(context.temp_allocator)
+	}
+	ui.set_post_wake(&r.s, own_wake, r)
+	build(r, w)
+	ui.set_post_wake(&r.s, nil, nil)
+	before := ui.post_stats(&r.s).wakes
+	testing.expect(t, ui.post(&r.s, count_run, r))
+	testing.expect_value(t, ui.post_stats(&r.s).wakes, before + 1)
+}
+
+// Of the two windows of a State, the one posts woke is gone: posts wake the other.
+@(test)
+posts_wake_the_window_that_stays :: proc(t: ^testing.T) {
+	r := new(Post_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	defer ui.destroy(&r.s)
+	a := platform.open_window_offscreen("post a", {100, 100})
+	b := platform.open_window_offscreen("post b", {100, 100})
+	defer platform.destroy_window(a)
+	build := proc(r: ^Post_Run, w: ^platform.Window) {
+		ui.begin_build(&r.s, {window_size = {100, 100}, dt = 1.0 / 60, dpi_scale = 1, window = w, base = ui.Style{font_size = 15}})
+		ui.end_build()
+		free_all(context.temp_allocator)
+	}
+	build(r, a)
+	build(r, b)
+	platform.destroy_window(b)
+	before := ui.post_stats(&r.s).wakes
+	testing.expect(t, ui.post(&r.s, count_run, r))
+	testing.expect_value(t, ui.post_stats(&r.s).wakes, before + 1)
+}
+
+// A State that is gone refuses a call, as a closed queue does.
+@(test)
+post_on_a_state_that_is_gone_is_refused :: proc(t: ^testing.T) {
+	r := new(Post_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	ui.destroy(&r.s)
+	testing.expect(t, !ui.post(&r.s, count_run, r), "refused")
+}
+
 // ui.post: run by begin_build before the frame, at most the per-build budget, needs_frame while some wait.
 @(private = "file")
 Ui_Data :: struct { lines: [dynamic]u64 }
