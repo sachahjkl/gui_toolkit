@@ -204,6 +204,7 @@ Pump_Stats :: struct {
 Window :: struct {
 	using native: Native_Window,
 	events:       [dynamic]Event,
+	batch:        [dynamic]Event,   // what the last poll_events handed out (hand_out)
 	size:         [2]int,   // client size in pixels
 	dpi_scale:    f32,
 	focused:      bool,
@@ -439,6 +440,16 @@ buttons_released :: proc(w: ^Window, pos: [2]f32, mods: Modifiers) {
 	down := w.buttons_down
 	w.buttons_down = {}
 	for b in down { append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = mods, stamp = time.tick_now()}) }
+}
+
+// What poll_events returns: a copy, which stays whole while the app reads it. What runs from an event may pump the system
+// (a paste on X11, drag_start), and what comes then is appended to w.events, which may move.
+@(private)
+hand_out :: proc(w: ^Window) -> []Event {
+	w.returned = len(w.events)
+	clear(&w.batch)
+	append(&w.batch, ..w.events[:])
+	return w.batch[:]
 }
 
 // Removes the events the last poll_events handed out (they have been read); the ones queued since stay.

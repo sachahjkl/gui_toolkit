@@ -157,6 +157,7 @@ destroy_window :: proc(w: ^Window) {
 	if w.off_event > 0 { posix.close(w.off_event); w.off_event = 0 }
 	if w.offscreen { offscreen_closed() }
 	delete(w.events)
+	delete(w.batch)
 	delete(w.injected)
 	chrome_regions_destroy(&w.chrome)
 	free(w)
@@ -369,8 +370,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 		if wait && len(w.events) == 0 && len(w.injected) == 0 { off_wait(w, timeout_ms) }
 		off_drain(w)
 		take_injected(w)
-		w.returned = len(w.events)
-		return w.events[:]
+		return hand_out(w)
 	}
 
 	switch w.backend {
@@ -381,8 +381,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	a11y_pump(w)
 	if w.off_event > 0 { off_drain(w) }
 	take_injected(w)
-	w.returned = len(w.events)
-	return w.events[:]
+	return hand_out(w)
 }
 
 // Blocks until an event is pending or `timeout_ms` elapsed (0 = no timeout). Consumes nothing (follow with
