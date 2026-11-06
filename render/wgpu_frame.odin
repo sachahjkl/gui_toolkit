@@ -2,6 +2,7 @@ package render
 
 import "base:runtime"
 import "core:fmt"
+import "core:sync"
 import "core:time"
 import "vendor:wgpu"
 
@@ -25,8 +26,8 @@ align_up :: proc(n, a: int) -> int { return (n + a - 1) / a * a }
 @(private)
 wgpu_ensure_frame :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
-	if g.frame_acquired { return true }
-	if g.surface == nil { return false }
+	if g.frame_rtv != nil { return true }
+	if r.lost || g.surface == nil || fault_hit(.Acquire) { return false }   // (lost: SurfaceGetCurrentTexture ends the process on a device gone)
 	if !g.configured { wgpu_configure_surface(r) }
 	for _ in 0 ..< 2 {
 		t_acq := time.tick_now()
@@ -38,9 +39,13 @@ wgpu_ensure_frame :: proc(r: ^Renderer) -> bool {
 			g.frame_rtv = wgpu.TextureCreateView(g.frame_tex, &{
 				format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All,
 			})
-			g.frame_acquired = g.frame_rtv != nil
+			if g.frame_rtv == nil {
+				wgpu.TextureRelease(g.frame_tex)
+				g.frame_tex = nil
+				return false
+			}
 			if st.status == .SuccessSuboptimal { g.configured = false }
-			return g.frame_acquired
+			return true
 		case .Outdated, .Lost:
 			if st.texture != nil { wgpu.TextureRelease(st.texture) }
 			wgpu_configure_surface(r)
@@ -59,7 +64,7 @@ wgpu_ensure_frame :: proc(r: ^Renderer) -> bool {
 @(private)
 wgpu_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	g := &r.wg
-	if g.shared != nil && g.shared.lost { r.lost = true }
+	wgpu_lost_poll(r)
 	if r.lost && !recover(r) { return }
 	c := clear
 	if r.space == .Srgb && c.a > 0 {
@@ -90,7 +95,7 @@ wgpu_clear_frame :: proc(r: ^Renderer) {
 	wgpu.RenderPassEncoderEnd(pass)
 	wgpu.RenderPassEncoderRelease(pass)
 	cb := wgpu.CommandEncoderFinish(enc)
-	wgpu.QueueSubmit(g.queue, {cb})
+	wgpu_submit(r, cb)
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(enc)
 }
@@ -115,6 +120,7 @@ Submit :: struct {
 	// partial redraw (damage_wgpu.odin)
 	use_target: bool,                  // target 0 is drawn into the persistent damage target, not the surface directly
 	do_partial: bool,                  // and only the damaged rectangles, loaded and scissored (else the whole frame)
+	uncleared:  bool,                  // the region could not be cleared: the target is not what the next one can start from
 	// what is bound while the frame is drawn (frame_walk)
 	cur_format: wgpu.TextureFormat,
 	g_off:      u32,                   // Globals of the current target
@@ -201,7 +207,7 @@ end_pass :: proc(s: ^Submit) {
 wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer recycle_targets(r)
 	g := &r.wg
-	if g.shared.lost { r.lost = true }
+	wgpu_lost_poll(r)
 	// resolve this frame's damage region; a partial frame composes into the persistent target (damage_wgpu.odin)
 	region := damage_resolve(r)
 	// (nothing to draw in a frame of a region still changes the target: it is cleared)
@@ -213,7 +219,10 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if !g.first_shown && g.surface != nil {
 		g.first_shown = true
 		t_first = time.tick_now()
-		if len(g.pipes) == 0 {
+		sync.mutex_lock(&g.pipe_lock)
+		compiling := len(g.pipes) == 0
+		sync.mutex_unlock(&g.pipe_lock)
+		if compiling {
 			wgpu_clear_frame(r)
 			wgpu.SurfacePresent(g.surface)
 			wgpu_drop_frame(r)
@@ -288,7 +297,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 
 	// the persistent target starts from the clear color, in the region or whole, whatever draws into it
 	if s.do_partial {
-		wgpu_damage_clear_region(r, &s)
+		s.uncleared = !wgpu_damage_clear_region(r, &s)
 	} else if s.use_target {
 		wgpu_begin_target(r, &s, &frame, 0)
 		end_pass(&s)
@@ -303,14 +312,14 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if s.timed { wprof_end(r, s.enc) }
 	t_encoded := time.tick_now()
 	cb := wgpu.CommandEncoderFinish(s.enc)
-	wgpu.QueueSubmit(g.queue, {cb})
+	submitted := wgpu_submit(r, cb)
 	t_submitted := time.tick_now()
 	g.cpu.upload += time.duration_milliseconds(time.tick_diff(t_enter, t_uploaded))
 	g.cpu.encode += time.duration_milliseconds(time.tick_diff(t_uploaded, t_encoded))
 	g.cpu.submit += time.duration_milliseconds(time.tick_diff(t_encoded, t_submitted))
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(s.enc)
-	if s.timed { wprof_submitted(r) }
+	if s.timed && submitted { wprof_submitted(r) }
 	for bg in s.groups { wgpu.BindGroupRelease(bg) }
 	for v in s.views { wgpu.TextureViewRelease(v) }
 }
@@ -543,7 +552,7 @@ wgpu_run_pass :: proc(r: ^Renderer, s: ^Submit, p: ^Pass) {
 @(private)
 wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	g := &r.wg
-	if g.surface != nil || g.frame_tex == nil { return nil }
+	if g.surface != nil || g.frame_tex == nil || r.lost { return nil }
 	w, h := r.size.x, r.size.y
 	row := align_up(w * 4, COPY_ROW_ALIGN_BYTES)
 	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
@@ -555,9 +564,10 @@ wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 		&{buffer = buf, layout = {offset = 0, bytesPerRow = u32(row), rowsPerImage = u32(h)}},
 		&{u32(w), u32(h), 1})
 	cb := wgpu.CommandEncoderFinish(enc)
-	wgpu.QueueSubmit(g.queue, {cb})
+	submitted := wgpu_submit(r, cb)
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(enc)
+	if !submitted { return nil }
 	done := false
 	ok := false
 	Map :: struct { done, ok: ^bool }
@@ -567,10 +577,7 @@ wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 		m.done^, m.ok^ = true, status == .Success
 	}
 	wgpu.BufferMapAsync(buf, {.Read}, 0, uint(row * h), {mode = .AllowSpontaneos, callback = cb_map, userdata1 = &m})
-	for tries := 0; !done && tries < READBACK_WAIT_MAX_TRIES; tries += 1 {
-		wgpu.DevicePoll(g.device, true)
-		if !done { wgpu.InstanceProcessEvents(g.instance) }
-	}
+	for tries := 0; !done && !r.lost && tries < READBACK_WAIT_MAX_TRIES; tries += 1 { wgpu_poll(r, true, events = true) }
 	if !ok { return nil }
 	src := wgpu.BufferGetConstMappedRange(buf, 0, uint(row * h))
 	out := make([]u8, w * h * 4, allocator)

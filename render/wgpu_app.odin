@@ -14,11 +14,12 @@ wgpu_app_shader_make :: proc(r: ^Renderer, d: ^App_Shader_Data) -> bool {
 	g := &r.wg
 	if g.device == nil { return false }
 	src := app_module_source(d.wgsl, context.temp_allocator)
-	errors := g.shared.errors
-	sync.mutex_lock(&g_compile_lock)
+	sync.mutex_lock(&g_compile_lock)   // (no other thread compiles on the device meanwhile: an error that comes is this module's)
+	errors := sync.atomic_load(&g.shared.errors)
 	d.module = wgpu_module(g, d.name, src)
+	failed := d.module == nil || sync.atomic_load(&g.shared.errors) != errors
 	sync.mutex_unlock(&g_compile_lock)
-	if d.module == nil || g.shared.errors != errors {
+	if failed {
 		fmt.eprintfln("render: app shader %s: the WGSL was refused", d.name)
 		if d.module != nil { wgpu.ShaderModuleRelease(d.module); d.module = nil }
 		return false
@@ -78,7 +79,7 @@ wgpu_app_pipeline :: proc(r: ^Renderer, d: ^App_Shader_Data, format: wgpu.Textur
 	target := wgpu.ColorTargetState{format = format, blend = &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = d.module, entryPoint = APP_PS_ENTRY, targetCount = 1, targets = &target}
 	sync.mutex_lock(&g_compile_lock)
-	errors := g.shared.errors
+	errors := sync.atomic_load(&g.shared.errors)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "app", layout = g.pl_app,
 		vertex = {module = d.module, entryPoint = "vs_main", bufferCount = 1, buffers = &vb},
@@ -86,7 +87,7 @@ wgpu_app_pipeline :: proc(r: ^Renderer, d: ^App_Shader_Data, format: wgpu.Textur
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
-	failed := pipe == nil || g.shared.errors != errors
+	failed := pipe == nil || sync.atomic_load(&g.shared.errors) != errors
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	if failed {

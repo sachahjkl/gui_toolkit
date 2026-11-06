@@ -56,18 +56,18 @@ d3d_damage_ensure_target :: proc(r: ^Renderer) -> bool {
 }
 
 // Clears every rectangle of the region to the frame's clear color: to the byte what ClearRenderTargetView does to a whole frame
-// (D3D11 has no scissored clear): a texture of that color, copied.
+// (D3D11 has no scissored clear): a texture of that color, copied. False: that texture was refused, the region keeps what it had.
 @(private)
-d3d_clear_region :: proc(r: ^Renderer) {
+d3d_clear_region :: proc(r: ^Renderer) -> bool {
 	d := &r.damage
-	if d.count == 0 { return }
+	if d.count == 0 { return true }
 	need := d.clear_size
 	for rc in d.rects[:d.count] { need = {max(need.x, int(rc.x1 - rc.x0)), max(need.y, int(rc.y1 - rc.y0))} }
 	if d.clear_tex == nil || need != d.clear_size {
 		if d.clear_rtv != nil { d.clear_rtv->Release(); d.clear_rtv = nil }
 		if d.clear_tex != nil { d.clear_tex->Release(); d.clear_tex = nil }
 		d.clear_size = {}
-		if !d3d_damage_texture(r, need, &d.clear_tex, &d.clear_rtv) { return }
+		if fault_hit(.Damage_Clear) || !d3d_damage_texture(r, need, &d.clear_tex, &d.clear_rtv) { return false }
 		d.clear_size = need
 	}
 	r.ctx->ClearRenderTargetView(d.clear_rtv, &d.clear)
@@ -75,6 +75,7 @@ d3d_clear_region :: proc(r: ^Renderer) {
 		box := d3d11.BOX{left = 0, top = 0, front = 0, right = u32(rc.x1 - rc.x0), bottom = u32(rc.y1 - rc.y0), back = 1}
 		r.ctx->CopySubresourceRegion(r.frame_tex, 0, u32(rc.x0), u32(rc.y0), 0, d.clear_tex, 0, &box)
 	}
+	return true
 }
 
 // The target, composed: copied whole to what `frame_tex` is (the back buffer, or the offscreen image).

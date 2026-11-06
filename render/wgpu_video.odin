@@ -1,4 +1,4 @@
-﻿package render
+package render
 
 import "core:fmt"
 import "core:sync"
@@ -198,7 +198,7 @@ wgpu_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool
 	wgpu.RenderPassEncoderRelease(pass)
 	cb := wgpu.CommandEncoderFinish(enc)
 	wgpu.CommandEncoderRelease(enc)
-	wgpu.QueueSubmit(g.queue, {cb})
+	wgpu_submit(r, cb)
 	wgpu.CommandBufferRelease(cb)
 	td.mips_dirty = td.mips   // the levels are drawn from level 0 before the next frame (wgpu_generate_mips)
 	td.unfilled = false

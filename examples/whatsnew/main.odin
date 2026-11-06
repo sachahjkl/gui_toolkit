@@ -153,12 +153,11 @@ page_pacing :: proc(app: ^App, em: f32) {
 	gap(em)
 	para("And one thing measured and left out: showing input after a rest at once (no wait for the refresh) left the swap chain a frame deeper for the rest of the session (45 to 60 ms). The pacer does not do it.")
 	gap(em)
-	p := &app.pacer
 	lines := [?]string{
 		fmt.tprintf("frames presented        %d", app.frames),
 		fmt.tprintf("  after a rest          %d", app.after_rest),
 		fmt.tprintf("  shown at once         %d   (a resize step)", app.at_once),
-		fmt.tprintf("swap chain latency      %d", p.latency),
+		fmt.tprintf("swap chain latency      %d", max(app.r.present.max_latency, 1)),
 	}
 	for l, i in lines {
 		ui.next({width = ui.fill(), height = ui.text_size(), font = ui.mono_font()})
