@@ -534,9 +534,21 @@ impl Mirror {
         if in_update.len() != nodes.len() {
             return None; // a node twice in one update
         }
-        for (_, children, graft) in nodes {
+        let mut grafted = HashSet::new();
+        for (id, children, graft) in nodes {
             if graft.is_some() && !children.is_empty() {
                 return None;
+            }
+            if let Some(g) = graft {
+                if !grafted.insert(*g) {
+                    return None; // a subtree on two nodes
+                }
+                // a subtree has one graft node: the one it has must let go first, in this update or before it
+                if let Some(&(parent, node)) = self.graft_of.get(g) {
+                    if parent != tree_id || (node != *id && !in_update.contains(&node)) {
+                        return None;
+                    }
+                }
             }
             for c in children {
                 if !seen.insert(*c) {
@@ -816,11 +828,8 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
         // the focus on a graft node whose subtree is not there yet (its first update comes after this one) is on the
         // tree's root until then (AccessKit follows a focused graft into its subtree, and panics when there is none)
         let mut focus = u.focus;
-        if let Ok(mut d) = a.deferred_focus.lock() {
-            if d.map_or(false, |(t, _)| t == tree_id) {
-                *d = None; // (this tree says where its focus is now)
-            }
-        }
+        // (what this update makes of it, which stands only if it is applied; this tree says where its focus is now)
+        let mut deferred = a.deferred_focus.lock().ok().and_then(|d| *d).filter(|(t, _)| *t != tree_id);
         let checked = {
             let Ok(m) = a.mirror.lock() else { return GT_A11Y_DEAD };
             let graft_of_focus = shape.iter().find(|s| s.0 == focus).map(|s| s.2).unwrap_or_else(|| {
@@ -828,9 +837,7 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
             });
             if let Some(sub) = graft_of_focus {
                 if !m.trees.contains_key(&sub) {
-                    if let Ok(mut d) = a.deferred_focus.lock() {
-                        *d = Some((tree_id, focus));
-                    }
+                    deferred = Some((tree_id, focus));
                     focus = tree.as_ref().map(|t| t.root.0).or_else(|| m.trees.get(&tree_id).and_then(|t| t.root)).unwrap_or(focus);
                 }
             }
@@ -850,6 +857,7 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
                 ev
             };
             a.mirror.lock().map(|mut m| m.commit(tree_id, next)).ok();
+            a.deferred_focus.lock().map(|mut d| *d = deferred).ok();
             a.shared.requested.store(false, std::sync::atomic::Ordering::SeqCst);
             a.sent_any.store(true, std::sync::atomic::Ordering::SeqCst);
             if let Some(ev) = events {
@@ -881,7 +889,7 @@ pub unsafe extern "C" fn gt_a11y_update(a: *mut GtAdapter, u: *const GtUpdate) -
         }
         #[cfg(not(windows))]
         {
-            let _ = (update, next);
+            let _ = (update, next, deferred);
             GT_A11Y_INACTIVE
         }
     })
@@ -987,4 +995,42 @@ pub unsafe extern "C" fn gt_a11y_take_action(a: *mut GtAdapter, out: *mut GtActi
         }
         1
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sub() -> TreeId {
+        TreeId(Uuid::from_u128(1))
+    }
+    fn other() -> TreeId {
+        TreeId(Uuid::from_u128(2))
+    }
+
+    /// ROOT with nodes 1 (the root) and 2, a graft node of `sub()`; `other()`, grafted on node 3, with its root 10.
+    fn grafted() -> Mirror {
+        let mut m = Mirror::default();
+        let root = m.check(TreeId::ROOT, Some(1), 1, &[(1, vec![2, 3, 4], None), (2, vec![], Some(sub())), (3, vec![], Some(other())), (4, vec![], None)]).unwrap();
+        m.commit(TreeId::ROOT, root);
+        let tree = m.check(other(), Some(10), 10, &[(10, vec![], None)]).unwrap();
+        m.commit(other(), tree);
+        m
+    }
+
+    // AccessKit panics on these ("already has a graft parent"), which ends the adapter: they are refused before it sees them.
+    #[test]
+    fn a_subtree_has_one_graft_node() {
+        let m = grafted();
+        assert!(m.check(other(), None, 10, &[(10, vec![11], None), (11, vec![], Some(sub()))]).is_none(), "taken from another tree");
+        assert!(m.check(TreeId::ROOT, None, 1, &[(4, vec![], Some(sub()))]).is_none(), "its node keeps it");
+        assert!(m.check(TreeId::ROOT, None, 1, &[(1, vec![2, 3, 4, 5], None), (4, vec![], Some(sub())), (5, vec![], Some(sub()))]).is_none(), "on two nodes");
+    }
+
+    #[test]
+    fn a_subtree_moves_once_it_is_let_go() {
+        let m = grafted();
+        assert!(m.check(TreeId::ROOT, None, 1, &[(2, vec![], None), (4, vec![], Some(sub()))]).is_some(), "in one update");
+        assert!(m.check(TreeId::ROOT, None, 1, &[(2, vec![], Some(sub()))]).is_some(), "the same node again");
+    }
 }
