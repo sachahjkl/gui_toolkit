@@ -10,4 +10,4 @@
 - a double click on an edge or a corner goes back to `preferred`;
 - `size` is the application's to keep (logical pixels, `{}`: `preferred`): a window made smaller does not change it.
 
-Several dialogs may be open, one in another or one after the other; the one built last is on top. It has the keyboard: Tab goes round its own stops and Escape closes it, the ones under it wait. A dialog that opens takes the focus from what had it, and gives it back when it closes, unless something else took it meanwhile.
+Several dialogs may be open, one in another or one after the other; the one built last is on top. It has the keyboard: Tab goes round its own stops and Escape closes it, the ones under it wait (it is known at the end of the build, so `open` turns false at the next one: an Escape read as a dialog opens is that dialog's). A dialog that opens takes the focus from what had it, and gives it back when it closes, unless something else took it meanwhile.

@@ -21,7 +21,8 @@ import "core:fmt"
 // until it is built again. Either is corrected when the item comes near the view, and the view stays on the item it
 // showed (the first one visible keeps its place on screen: lazy_settle, after the layout), so nothing jumps.
 // `lazy_begin(all = true)` builds every item (`all = find_sweep()`: a find in page reads them, once); `always`: build this item
-// whatever (the item that grows while streaming, one with the focus).
+// whatever (the item that grows while streaming, one with the focus: a focus goes with its box). One lazy column to a
+// parent: what a column keeps between frames goes by that parent's key.
 
 Lazy :: struct {
 	lo, hi:  f32,    // the content's band that is built (the view and a screen each side), in the scroll box's content
