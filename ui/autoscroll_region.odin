@@ -80,6 +80,7 @@ autoscroll_handle_input :: proc(s: ^State) {
 			}
 		case .Mouse_Release:
 			if e.button == .Middle && s.auto.phase == .Holding {
+				if e.lost { autoscroll_cancel(&s.auto); continue }   // (the system took the pointer: no tap)
 				autoscroll_point(&s.auto, e.pos)   // (a move read in this frame counts for the tap test)
 				_ = autoscroll_release(&s.auto, cfg, s.time_ms)
 			}
