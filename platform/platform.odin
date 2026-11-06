@@ -378,10 +378,11 @@ press_waits :: proc(w: ^Window) -> bool {
 // poll_events, which hands it out with what came since. For frame pacing: a frame that answers input after a rest is shown
 // at once (frame_decision's `input`).
 input_pending :: proc(w: ^Window) -> bool {
-	if w == nil { return false }
+	if w == nil || w.in_poll { return false }   // (inside the window's own poll: its batch is being handed out, nothing is read)
 	pending := false
 	for e in poll_events(w, false) { if event_is_input(e.kind) { pending = true } }
 	w.keep_events = true
+	w.returned = 0   // (kept, not read: a wait does not sleep over them)
 	return pending
 }
 
@@ -416,6 +417,29 @@ take_paint_request :: proc(w: ^Window) -> bool {
 }
 
 pump_stats :: proc(w: ^Window) -> Pump_Stats { return w.stats }
+
+// Takes back a Close: the app answered it (a document with unsaved changes, the user chose to stay), the window stays open
+// and is_closed says so again.
+cancel_close :: proc(w: ^Window) { w.closed = false }
+
+// A button's change, in the set the window keeps. False for a release of a button not held here: pressed elsewhere, or
+// already released when the pointer was taken. It says nothing to the app.
+@(private)
+button_changes :: proc(w: ^Window, b: Mouse_Button, press: bool) -> bool {
+	if press { w.buttons_down += {b}; return true }
+	if b not_in w.buttons_down { return false }
+	w.buttons_down -= {b}
+	return true
+}
+
+// The pointer was taken with buttons held (a capture lost, a grab, the compositor): their releases will not come, they
+// are made here, or what is under the press stays pressed for good.
+@(private)
+buttons_released :: proc(w: ^Window, pos: [2]f32, mods: Modifiers) {
+	down := w.buttons_down
+	w.buttons_down = {}
+	for b in down { append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = mods, stamp = time.tick_now()}) }
+}
 
 // Removes the events the last poll_events handed out (they have been read); the ones queued since stay.
 @(private)

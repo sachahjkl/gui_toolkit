@@ -93,6 +93,19 @@ a11y_send :: proc(w: ^Window, u: ^A11y_Update, toolkit_name := "gui_toolkit", to
 	return .Applied
 }
 
+// The window's accessibility bus for its loop's poll set (-1: no bridge).
+@(private)
+a11y_fd :: proc(w: ^Window) -> i32 {
+	if w.a11y == nil { return -1 }
+	return dbus.conn_fd((^A11y_Bridge)(w.a11y).conn)
+}
+
+// Answers what an assistive technology asked since the last pump: nothing else reads the bridge's connection.
+@(private)
+a11y_pump :: proc(w: ^Window) {
+	if w.a11y != nil { dbus.dispatch((^A11y_Bridge)(w.a11y).conn) }
+}
+
 a11y_take_request :: proc(w: ^Window) -> (r: A11y_Request, ok: bool) {
 	if w == nil || w.a11y == nil { return }
 	b := (^A11y_Bridge)(w.a11y)
