@@ -40,7 +40,9 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool) -> bool {
 
 replace :: proc(from, to: string, durable: bool) -> bool {
 	if libc.rename(cpath(from), cpath(to)) != 0 { return false }
-	return !durable || sync_dir(filepath.dir(to))
+	if !durable { return true }
+	dir := filepath.dir(to)
+	return sync_dir(dir == "" ? "." : dir)   // (a bare name has none)
 }
 
 // A rename or a creation is on the disk once its directory is synced.

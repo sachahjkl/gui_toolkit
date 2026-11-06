@@ -8,7 +8,7 @@ package tk_instance
 Owner :: struct {
 	name:     string,
 	identity: string,
-	closing:  bool,
+	state:    Owner_State,
 }
 
 @(private)
@@ -19,13 +19,17 @@ forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -
 
 send :: proc(cfg: Config, message: []byte) -> Outcome { return .Unresponsive }
 
-acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) { return .First, Owner{name = cfg.name, identity = cfg.identity} }
+acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) { return .First, Owner{name = cfg.name, identity = cfg.identity, state = .Claimed} }
 
-owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool { return true }
+owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
+	if o.state != .Claimed { return false }
+	o.state = .Serving
+	return true
+}
 
-owner_closing :: proc(o: ^Owner) {}
+owner_closing :: proc(o: ^Owner) { if o.state != .None { o.state = .Closing } }
 
-owner_stop :: proc(o: ^Owner) {}
+owner_stop :: proc(o: ^Owner) { o.state = .None }
 
 is_elevated :: proc() -> bool { return false }
 

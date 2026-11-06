@@ -35,7 +35,9 @@ case .Unresponsive:    // the owner did not answer in time: carry on by yourself
   path, a version), so a different copy of the application (an update just downloaded, another folder) starts on its own.
   `""` trusts any sender.
 - **`wait_ms`** is how long `acquire` keeps trying while the owner is starting (no window / socket yet) or closing. A silent
-  owner (busy or hung) ends the wait at once: a second start never waits for ever and never loses its message.
+  owner (busy or hung) ends the wait at once: a second start never waits for ever and never loses its message. The timeout
+  covers the whole exchange, and an owner that wakes later does not handle a message whose sender gave up (on Linux the
+  sender's hang-up says so: one that gives up while the handler is running is the one case left).
 
 ## Being the owner
 
@@ -55,6 +57,13 @@ for running {
 instance.owner_closing(&owner)   // when the loop ends: later starts wait (the window / socket goes, the name is still ours)
 instance.owner_stop(&owner)      // the very end: the name is free (a waiting start becomes the owner)
 ```
+
+`Owner.state` says where it is: `None` (the Owner of any outcome but `First`, or one that `owner_stop` ended), `Claimed`,
+`Serving`, `Closing`. `owner_start` works once, from `Claimed`; `owner_closing` and `owner_stop` may be called in any state, on
+the thread that called `owner_start`.
+
+On Linux a message is served only in `pump_messages`: a loop that sleeps without a timeout serves nobody until it wakes, and a
+second start that comes meanwhile answers `Unresponsive`. Call it often enough for your senders' `wait_ms`.
 
 The handler runs on the thread that called `owner_start`, inside `pump_messages`, with a message valid only during the call
 (copy what is kept). It must be quick: the sender waits for it. **`raise_window(handle)`** brings a window forward (restore
