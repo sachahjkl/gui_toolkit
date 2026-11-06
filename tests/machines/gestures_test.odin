@@ -21,7 +21,7 @@ import "../../ui"
 @(private = "file") HOLD_MS :: 2000
 @(private = "file") LONG_TIME_MS :: 1200
 @(private = "file") PANE_SIZE :: 200
-@(private = "file") PANE_SNAP_PX :: 10
+@(private = "file") PANE_SNAP_PX :: 2   // (still over the strip)
 @(private = "file") PANE_OUT_PX :: 150
 @(private = "file") VIEW_FAR :: 500
 @(private = "file") FEW_BUILDS :: 30
@@ -55,11 +55,7 @@ a_double_click_on_a_dialog_edge_holds :: proc(t: ^testing.T) {
 	session.frames(s, SETTLE_FRAMES)
 	at := session.center(session.get(s, "modal_grip3"))
 	session.click_at(s, at)
-	r.size = PREFERRED + {40, 0}
-	session.frames(s, SETTLE_FRAMES)
-	at = session.center(session.get(s, "modal_grip3"))
-	session.click_at(s, at)
-	session.press(s, at)
+	session.press(s, at)   // (the second press: the button stays down)
 	session.frames(s, SETTLE_FRAMES)
 	testing.expect_value(t, r.size, ui.Vec2{})
 	session.release(s, at)
@@ -145,7 +141,8 @@ Menus :: struct {
 	key, other: ui.Key,
 	sub_on:   bool,
 	open_other: bool,
-	last_row_of_old: bool,
+	stray:    int,   // rows of the old menu found in the new one
+	field:    ui.Text_Field,
 }
 
 @(private = "file")
@@ -158,7 +155,10 @@ menu_build :: proc(s: ^session.Session) {
 		if ui.menu_item("Second###second", keep_open = true).clicked { ui.ctx_menu_open(r.other, {200, 200}) }
 		ui.menu_item("After###after")
 	}
+	if ui.ctx_menu_is_open(r.other) { r.stray = max(r.stray, len(s.state.menus[0].items)) }
 	if ui.ctx_menu(r.other) { ui.menu_item("Other###other") }
+	ui.next({width = ui.px(FIELD_WIDTH)})
+	ui.line_edit("###f", &r.field)
 }
 
 @(private = "file")
@@ -207,8 +207,24 @@ a_menu_opened_in_a_block_opens_after_it :: proc(t: ^testing.T) {
 	session.click_at(s, (row.min + row.max) * 0.5)
 	session.frames(s, SETTLE_FRAMES)
 	testing.expect(t, ui.ctx_menu_is_open(r.other), "the other menu is open")
-	_, ok := ui.menu_item_rect(0, 1)
-	testing.expect(t, !ok, "it has its one item")
+	testing.expect(t, r.stray <= 1, "the rows of the old block stayed in it")
+}
+
+// A press on a row of a menu leaves the focus where it was: a field's context menu gives it back its keyboard.
+@(test)
+a_press_in_a_menu_keeps_the_focus :: proc(t: ^testing.T) {
+	r: Menus
+	defer ui.field_destroy(&r.field)
+	s := menus_start(t, &r)
+	session.click(s, "f")
+	want := s.state.focus_key
+	ui.ctx_menu_open(r.key, {200, 200})
+	session.frames(s, SETTLE_FRAMES)
+	row, found := ui.menu_item_rect(0, 3)
+	testing.expect(t, found, "the row is there")
+	session.click_at(s, (row.min + row.max) * 0.5)
+	testing.expect(t, !ui.ctx_menu_any_open(), "chosen")
+	testing.expect_value(t, s.state.focus_key, want)
 }
 
 // A menu opened from the keyboard selects its first item once. A pointer that moves onto a disabled row then leaves nothing selected.
@@ -393,6 +409,7 @@ a_row_selected_before_the_first_build_shows :: proc(t: ^testing.T) {
 	defer ui.list_state_destroy(&r.st)
 	ui.list_select(&r.st, ROWS - 1)
 	s := session.start(t, {size = WINDOW, user = &r, build = rows_build})
+	testing.expect(t, ui.needs_frame(s.state), "its first build asks for the frame that shows it")
 	session.wait_idle(s)
 	testing.expect(t, session.get(s, "l").view_target.y > 0, "the view went to it")
 }

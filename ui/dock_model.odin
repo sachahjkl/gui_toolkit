@@ -177,8 +177,6 @@ node_new :: proc(d: ^Dock, kind: Dock_Kind) -> i32 {
 
 @(private)
 node_free :: proc(d: ^Dock, n: i32) {
-	// (a slot soon made another node: a drag held by it, or going to drop on it, has nothing to drop)
-	if d.drag.state == .Dragging && (d.drag.node == n || d.drag.target.node == n) { d.drag.state = .Cancelled }
 	d.nodes[n] = {kind = .Free, parent = DOCK_NONE, a = DOCK_NONE, b = DOCK_NONE, active = DOCK_NO_PANEL}
 }
 

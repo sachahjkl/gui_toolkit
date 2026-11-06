@@ -236,6 +236,18 @@ menu_prune :: proc(s: ^State) {
 
 
 
+// Box `key` (a scroll bar: its box) is on a level of the open menu.
+@(private)
+menu_holds :: proc(s: ^State, key: Key) -> bool {
+	if len(s.menus) == 0 || key == 0 { return false }
+	b := s.boxes[s.sb_owner[key] or_else key] or_else nil
+	if b == nil { return false }
+	for lv in s.menus {
+		if p := s.boxes[lv.panel]; p != nil && is_descendant(b, p) { return true }
+	}
+	return false
+}
+
 @(private)
 is_descendant :: proc(b, ancestor: ^Box) -> bool {
 	for p := b; p != nil; p = p.parent { if p == ancestor { return true } }
