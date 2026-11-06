@@ -209,7 +209,7 @@ ui/color_text.odin COLOR_FORMAT_NAMES const  # a table
 ui/overlays.odin toast_position_names const  # a table
 ui/state.odin current thread  # the State this thread builds
 ui/state.odin tick_origin process  # the clock of the interfaces, started by the first init (atomic)
-ui/state.odin build_open thread  # a build is open on this thread
+ui/state.odin build_of thread  # the state whose build is open on this thread
 ui/theme_default.odin NAMED_PALETTES const  # a table
 ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table

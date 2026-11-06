@@ -268,8 +268,12 @@ dock_drag_frame :: proc(d: ^Dock) {
 	}
 	dr.seen = build
 	if active_key() != dr.key {
-		// the button went up (or what was held is gone)
-		if dr.state == .Dragging { dock_drop(d) }
+		// the button went up: a drop. Else what was held went, or the user left the window: nothing was dropped
+		if dr.state == .Dragging && gs().released_key[.Left] == dr.key {
+			dock_drop(d)
+		} else if dr.panel == DOCK_NO_PANEL && dock_valid_node(d, dr.node) {
+			d.nodes[dr.node].float = dr.float_from
+		}
 		dr^ = {}
 		return
 	}

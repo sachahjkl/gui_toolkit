@@ -342,7 +342,9 @@ text_edit_pointer :: proc(t: ^testing.T) {
 	expect_caret(t, f, 3, 3)
 	f.clock += 1000
 	p5 := point(f, 0, 5, 0)
-	frame(f, {press(p5, {.Shift}), release(p5)})
+	shift_up := release(p5)
+	shift_up.mods = {.Shift}   // (still held: a release says what is held after it)
+	frame(f, {press(p5, {.Shift}), shift_up})
 	expect_caret(t, f, 5, 3)
 	f.clock += 1000
 	p1, p6 := point(f, 0, 1, 0), point(f, 0, 6, 0)

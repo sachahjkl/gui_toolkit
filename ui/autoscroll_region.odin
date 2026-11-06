@@ -6,8 +6,8 @@ package ui
 // the box's `view_target` against the frame's dt, so the glide is the same at 60 Hz and at 180 Hz. The anchor marker is
 // drawn over the tree (draw_tree), and the cursor follows the direction.
 //
-// The session ends on a click of any button (the latched toggle mode), Escape, a wheel notch, the pointer leaving, or
-// the box going away. It does not disturb the smooth wheel/keyboard scrolling of scroll_anim.odin: autoscroll writes
+// The session ends on a click of any button (the latched toggle mode), Escape, a wheel notch, the pointer leaving, the
+// window moving or losing the user (window_left), or the box going away. It does not disturb the smooth wheel/keyboard scrolling of scroll_anim.odin: autoscroll writes
 // `view_target` just as a wheel notch would, but every frame; the animation pass still eases `view_off` toward it,
 // which keeps the motion smooth even if a frame is late.
 
@@ -19,7 +19,7 @@ import "../platform"
 // once after `init`; `set_autoscroll_settings` tunes the curve.
 set_autoscroll_enabled :: proc(s: ^State, on: bool) {
 	s.auto_enabled = on
-	if !on { autoscroll_cancel(&s.auto); s.auto_box = 0 }
+	if !on { autoscroll_cancel(&s.auto) }
 }
 
 
@@ -39,7 +39,7 @@ autoscroll_frame_settings :: proc(s: ^State) -> Autoscroll_Settings {
 }
 
 // Whether a session is live (an app may want to suppress its own middle-click behaviour while one runs).
-autoscroll_running :: proc(s: ^State) -> bool { return s.auto.active }
+autoscroll_running :: proc(s: ^State) -> bool { return autoscroll_active(&s.auto) }
 
 // Called from process_events once the frame's input is resolved: starts, drives or ends the session. Runs after
 // hit/scroll keys are known so it can pick the scroll box under a middle press and swallow the click that ends a
@@ -47,52 +47,55 @@ autoscroll_running :: proc(s: ^State) -> bool { return s.auto.active }
 @(private)
 autoscroll_handle_input :: proc(s: ^State) {
 	if !s.auto_enabled {
-		if s.auto.active { autoscroll_cancel(&s.auto); s.auto_box = 0 }
+		autoscroll_cancel(&s.auto)
 		return
 	}
 	cfg := autoscroll_frame_settings(s)
 
-	// a wheel notch, Escape or a left/right press ends a live session (the click a latched one waits for never gets here:
-	// process_events swallowed it).
-	if s.auto.active {
-		if s.scroll_delta != {} { autoscroll_cancel(&s.auto); s.auto_box = 0; return }
-		if key_pressed_peek(.Escape) { _ = key_press(.Escape); autoscroll_cancel(&s.auto); s.auto_box = 0; return }
-		if !s.mouse_valid { autoscroll_cancel(&s.auto); s.auto_box = 0; return }
+	// a wheel notch, Escape, the pointer leaving or the window moving ends a live session; so does a left/right press
+	// below (the click a latched one waits for never gets here: process_events swallowed it). What the frame's mouse
+	// events say next still counts: a middle press after the end begins the next session.
+	if autoscroll_active(&s.auto) {
+		escape := key_press(.Escape)
+		if escape || s.scroll_delta != {} || !s.mouse_valid || autoscroll_window_at(s) != s.auto.window_at { autoscroll_cancel(&s.auto) }
 	}
 
 	// resolve each mouse event in order: a press/release of the middle button engages or ends hold mode.
 	for e in s.mouse_events {
 		#partial switch e.kind {
 		case .Mouse_Press:
-			if e.button == .Middle && !s.auto.active {
+			if e.button == .Middle && !autoscroll_active(&s.auto) {
 				box := autoscroll_box_at(s, e.pos)
 				if box != 0 && !middle_click_under(s.root, e.pos) {
 					b := s.boxes[box]
 					if b != nil {
 						axes := autoscroll_box_axes(b)
 						autoscroll_begin(&s.auto, e.pos, axes, held = true, now_ms = s.time_ms)
-						s.auto_box = box
+						s.auto.box, s.auto.window_at = box, autoscroll_window_at(s)
 						autoscroll_swallow(s, .Middle)   // the press itself does not click anything
 					}
 				}
-			} else if s.auto.active && e.button != .Middle {
-				autoscroll_cancel(&s.auto); s.auto_box = 0
+			} else if autoscroll_active(&s.auto) && e.button != .Middle {
+				autoscroll_cancel(&s.auto)
 			}
 		case .Mouse_Release:
-			if e.button == .Middle && s.auto.active && s.auto.held {
-				if !autoscroll_release(&s.auto, cfg, s.time_ms) { s.auto_box = 0 }
+			if e.button == .Middle && s.auto.phase == .Holding {
+				autoscroll_point(&s.auto, e.pos)   // (a move read in this frame counts for the tap test)
+				_ = autoscroll_release(&s.auto, cfg, s.time_ms)
 			}
 		}
 	}
 
-	if s.auto.active {
+	if autoscroll_active(&s.auto) {
 		autoscroll_point(&s.auto, s.mouse)
 		// the box may be gone this build; verify next build in autoscroll_apply
-		if s.auto_box != 0 {
-			if b, ok := s.boxes[s.auto_box]; !ok || b == nil { autoscroll_cancel(&s.auto); s.auto_box = 0 }
-		}
+		if s.auto.box not_in s.boxes { autoscroll_cancel(&s.auto) }
 	}
 }
+
+// Where the window is on the screen, for the end of a session ({} with no window).
+@(private = "file")
+autoscroll_window_at :: proc(s: ^State) -> [2]int { return s.window != nil ? platform.client_origin(s.window) : {} }
 
 // The scroll region under `p` a session drives, 0 for none: a box with a view offset. One that scrolls itself (.Scroll_Self,
 // a text_edit) has nothing to drive: the region around it moves.
@@ -129,10 +132,10 @@ autoscroll_swallow :: proc(s: ^State, btn: platform.Mouse_Button) {
 // frame loop awake while the session lives.
 @(private)
 autoscroll_apply :: proc(s: ^State) {
-	if !s.auto.active || s.auto_box == 0 { return }
-	b, ok := s.boxes[s.auto_box]
+	if !autoscroll_active(&s.auto) { return }
+	b, ok := s.boxes[s.auto.box]
 	if !ok || b == nil || b.last_build != s.build_index {
-		autoscroll_cancel(&s.auto); s.auto_box = 0
+		autoscroll_cancel(&s.auto)
 		return
 	}
 	cfg := autoscroll_frame_settings(s)
@@ -157,7 +160,7 @@ autoscroll_apply :: proc(s: ^State) {
 // The anchor marker over the whole tree (after draw_box) so nothing hides it, using the theme's colours.
 @(private)
 autoscroll_draw :: proc(s: ^State, dc: ^draw.Context) {
-	if !s.auto.active { return }
+	if !autoscroll_active(&s.auto) { return }
 	autoscroll_draw_marker(dc, s.auto.anchor, s.auto.axes, s.scale, color_from_tags(s, 0, "background"), color_from_tags(s, 0, "text"))
 }
 

@@ -190,8 +190,13 @@ menu_capture_keys :: proc(s: ^State, events: []platform.Event) {
 	clear(&s.menu_keys.list)
 	clear(&s.menu_keys.consumed)
 	if len(s.menus) == 0 { return }
+	at := 0   // (the keys process_events kept, in their order: what took one of them, Ctrl+zoom or autoscroll's Escape, had it)
 	for e in events {
-		if e.kind != .Key_Press && e.kind != .Text { continue }
+		if e.kind == .Key_Press {
+			if at >= len(s.events.list) || s.events.list[at].key != e.key || s.events.list[at].mods != e.mods { continue }
+			at += 1
+			if s.events.consumed[at - 1] { continue }
+		} else if e.kind != .Text { continue }
 		append(&s.menu_keys.list, e)
 		append(&s.menu_keys.consumed, false)
 	}
@@ -281,12 +286,14 @@ menu_step :: proc(items: []Menu_Item_Info, from, dir: int) -> int {
 ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
 	s := gs()
 	if !ctx_menu_is_open(key) {
+		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
 	// a press outside every open level closes the whole menu
 	if s.build_index > s.menus[0].open_build && menu_pressed_outside(s, 0, s.menus[0].anchor) {
 		ctx_menu_close()
+		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
@@ -338,11 +345,13 @@ menu_nested :: proc(key: Key, width: f32 = 0) -> bool {
 	_, depth := menu_current()
 	d := depth + 1
 	if depth < 0 || d >= len(s.menus) || s.menus[d].key != key || !s.menus[d].nested {
+		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
 	if s.build_index > s.menus[d].open_build && menu_pressed_outside(s, d, 0) {
 		menu_pop_to(d)
+		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
@@ -395,6 +404,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			case .Escape, .Left:
 				if e.key == .Left && depth == 0 { continue }
 				menu_pop_to(depth)
+				next_drop(s)
 				append(&s.popup_stack, false)
 				return false
 			case .Down: lv.sel = menu_step(items, lv.sel, 1)

@@ -636,6 +636,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 
 	res.signal = signal(b)
 	if !has_links {
+		if len(s.rich_link) > 0 { delete_key(&s.rich_link, b.key) }   // (it had some: the link it was on went with them)
 		if s.a11y.wanted { a11y_default(b, {role = .Label, name = all}) }
 		return
 	}
@@ -668,7 +669,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		for p, k in parts {
 			if p.role != .Link { continue }
 			if _, ok := a11y_request(Key(p.id), .Click); ok { res.link_clicked = part_run[k] }
-			if _, ok := a11y_request(Key(p.id), .Focus); ok { s.focus_key = b.key; s.focus_visible = true; s.rich_link[b.key] = part_run[k] }
+			if _, ok := a11y_request(Key(p.id), .Focus); ok { s.focus_key = b.key; s.focus_visible = true; res.focused = true; s.rich_link[b.key] = part_run[k] }
 		}
 	}
 	if res.hovering {
@@ -676,12 +677,8 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		if res.link_hovered >= 0 { s.cursor_request = .Hand }
 	}
 	cur, known := s.rich_link[b.key]
-	if res.clicked {
-		if k := rich_link_at(l, d.runs, res.mouse - {b.text_pad, b.text_pad}); k >= 0 {
-			res.link_clicked = k
-		} else if res.focused && known && !res.hovering {
-			res.link_clicked = cur   // Enter / Space on the focused paragraph (the toolkit's keyboard click)
-		}
+	if res.pointer_clicked {
+		if k := rich_link_at(l, d.runs, res.mouse - {b.text_pad, b.text_pad}); k >= 0 { res.link_clicked = k }
 	}
 	if res.focused {
 		pos := -1
@@ -696,7 +693,8 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		if len(l.links) > 0 {
 			res.link_focused = l.links[pos]
 			s.rich_link[b.key] = res.link_focused
-			if key_press(.Return) || key_press(.Space) { res.link_clicked = res.link_focused }
+			// Enter, Space or a screen reader on the paragraph: the link it is on, wherever the pointer is
+			if res.clicked && !res.pointer_clicked { res.link_clicked = res.link_focused }
 		}
 	} else if known {
 		delete_key(&s.rich_link, b.key)

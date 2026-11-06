@@ -6,7 +6,7 @@ package ui
 // the direction. The mode ends on a click of any button, Escape, loss of the pointer capture, a wheel notch or a move
 // of the window.
 //
-// This module is PURE and free of any platform or box dependency on its own: `Autoscroll` holds the state, and
+// This module is PURE, free of any platform or layout dependency on its own: `Autoscroll` holds the state, and
 // `autoscroll_velocity` turns a pointer-to-anchor offset into a scroll velocity. A host (the toolkit's scroll regions,
 // or an application's document view) owns one `Autoscroll` per active session, feeds it pointer offsets and dt, and
 // applies the returned velocity to whatever it scrolls. See autoscroll_region.odin for the toolkit's own
@@ -16,7 +16,7 @@ package ui
 //   * Hold:   press, keep the button down, move, release -> the move ends when the button is released.
 //   * Toggle: a quick press and release (shorter than `tap_ms`, with little movement) latches the mode on; it stays on,
 //             scrolling as the pointer moves, until the next click anywhere.
-// The host tells the two apart by watching the button and the elapsed time (autoscroll_press / autoscroll_release).
+// The host tells the two apart by watching the button and the elapsed time (autoscroll_begin / autoscroll_release).
 
 import "core:math"
 import "../platform"
@@ -48,16 +48,24 @@ DEFAULT_AUTOSCROLL :: Autoscroll_Settings{
 // a pane that scrolls both ways offers the four directions.
 Autoscroll_Axes :: enum u8 { Y, X, Both }
 
+// Where a session is. Every end goes back to Off with the whole struct zero: autoscroll_cancel, autoscroll_click, a release
+// that is no tap.
+Autoscroll_Phase :: enum u8 {
+	Off,
+	Holding,   // the engaging button is down: its release ends the session, or latches it (a tap)
+	Latched,   // toggle mode: no button held, on until the next click
+}
+
 Autoscroll :: struct {
-	active:    bool,
-	latched:   bool,     // toggle mode: on until the next click (no button held)
+	phase:     Autoscroll_Phase,
 	axes:      Autoscroll_Axes,
 	anchor:    Vec2,     // where the marker sits (host pointer coordinates)
 	pointer:   Vec2,     // last pointer position fed in
-	press_ms:  f64,      // when the engaging press happened (for the tap test); 0 when latched without a held button
+	press_ms:  f64,      // when the engaging press happened (for the tap test)
 	press_pos: Vec2,     // where the engaging press happened (for the tap-slop test)
 	moved:     f32,      // greatest distance from press_pos seen while the button was held (tap-slop test)
-	held:      bool,     // the engaging button is still down (hold mode in progress)
+	box:       Key,      // the toolkit's session: the scroll box it scrolls (a host of its own: 0)
+	window_at: [2]int,   // the toolkit's session: where the window was when it began (a move of the window ends it)
 }
 
 // Below these the geometric curve is not computed: a doubling of nothing, a growth too small to divide by.
@@ -101,24 +109,24 @@ autoscroll_velocity :: proc(a: ^Autoscroll, cfg: Autoscroll_Settings) -> Vec2 {
 }
 
 // Starts a session at `anchor`, scrolling the given axes. `held` tells whether the engaging button is down (hold mode
-// may still turn into a latched toggle on a quick release). `now_ms` is the press time for the tap test.
+// may still turn into a latched toggle on a quick release; not held, the session is latched at once). `now_ms` is the
+// press time for the tap test.
 autoscroll_begin :: proc(a: ^Autoscroll, anchor: Vec2, axes: Autoscroll_Axes, held: bool, now_ms: f64) {
 	a^ = Autoscroll{
-		active    = true,
+		phase     = held ? .Holding : .Latched,
 		axes      = axes,
 		anchor    = anchor,
 		pointer   = anchor,
 		press_ms  = now_ms,
 		press_pos = anchor,
-		held      = held,
 	}
 }
 
 // Feeds the latest pointer position (host coordinates) and updates the tap-slop distance while a button is held.
 autoscroll_point :: proc(a: ^Autoscroll, pointer: Vec2) {
-	if !a.active { return }
+	if a.phase == .Off { return }
 	a.pointer = pointer
-	if a.held {
+	if a.phase == .Holding {
 		d := pointer - a.press_pos
 		a.moved = max(a.moved, math.sqrt(d.x * d.x + d.y * d.y))
 	}
@@ -128,26 +136,22 @@ autoscroll_point :: proc(a: ^Autoscroll, pointer: Vec2) {
 // stays active with no button held; otherwise (hold mode) the session ends. Returns whether the session is still
 // active. A later click (any button) ends a latched session: the host calls `autoscroll_click`.
 autoscroll_release :: proc(a: ^Autoscroll, cfg: Autoscroll_Settings, now_ms: f64) -> (active: bool) {
-	if !a.active || !a.held { return a.active }
-	a.held = false
+	if a.phase != .Holding { return a.phase != .Off }
 	tap := cfg.toggle && (now_ms - a.press_ms) <= f64(cfg.tap_ms) && a.moved <= cfg.tap_slop
 	if tap {
-		a.latched = true
-		a.press_ms = 0
+		a.phase = .Latched
 		return true
 	}
-	a.active = false
+	a^ = {}
 	return false
 }
 
 // A click happened (any button): a latched (toggle) session ends on it. Returns whether the click was consumed to end
 // the session (the host should then swallow it, as the browsers do: the click that stops autoscroll does nothing else).
 autoscroll_click :: proc(a: ^Autoscroll) -> (ended: bool) {
-	if a.active && a.latched {
-		a.active, a.latched = false, false
-		return true
-	}
-	return false
+	if a.phase != .Latched { return false }
+	a^ = {}
+	return true
 }
 
 // Ends the session for any other reason (Escape, a wheel notch, lost capture, a window move, the area going away).
@@ -155,7 +159,7 @@ autoscroll_cancel :: proc(a: ^Autoscroll) {
 	a^ = {}
 }
 
-autoscroll_active :: proc(a: ^Autoscroll) -> bool { return a.active }
+autoscroll_active :: proc(a: ^Autoscroll) -> bool { return a.phase != .Off }
 
 // The cursor that fits the current pointer offset: All_Scroll in the dead zone, else the directional resize cursor
 // closest to the offset (the eight compass directions, restricted to the axes the area scrolls). A host whose cursor
