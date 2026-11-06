@@ -173,6 +173,49 @@ Context :: struct {
 	device_generation: u64,                    // render.Renderer.device_generation seen last
 	layer_cache: Layer_Cache,                  // filter results kept across frames (layer_cache.odin)
 	glyphs_pending: u64,                       // color glyphs met that were still being drawn (text.odin glyph_missing)
+	in_frame: bool,                            // between begin_frame and end_frame
+	floor:    Stack_Levels,                    // what the pops stop at: the root, or what the innermost layer or plane opened with
+}
+
+// How deep the clip, alpha and transform stacks are. A layer or a plane owns what is pushed above the levels it opened with:
+// the pops inside it stop there, and what is left there ends with it.
+@(private)
+Stack_Levels :: struct { clips, alphas, xforms: int }
+
+// What is pushed from now on belongs to what just opened. Returns the floor to go back to when it closes.
+@(private)
+floor_raise :: proc(c: ^Context) -> (outer: Stack_Levels) {
+	outer = c.floor
+	c.floor = {len(c.clips), len(c.alphas), len(c.xforms)}
+	return
+}
+
+// What was left pushed above the floor ends.
+@(private)
+floor_settle :: proc(c: ^Context) {
+	if len(c.clips) > c.floor.clips {
+		close_batch(c)
+		resize(&c.clips, c.floor.clips)
+		start_batch(c)
+	}
+	if len(c.alphas) > c.floor.alphas { resize(&c.alphas, c.floor.alphas) }
+	if len(c.xforms) > c.floor.xforms { resize(&c.xforms, c.floor.xforms) }
+}
+
+// What an open layer is: closed by pop_layer, pop_mask or offscreen_end.
+@(private)
+Layer_Kind :: enum u8 {
+	Plain,       // push_layer, push_effects
+	Masked,      // push_mask
+	Offscreen,   // offscreen_begin: closed by offscreen_end, never composited
+}
+
+// What is being drawn in a masked layer.
+@(private)
+Mask_Draw :: enum u8 {
+	Content,   // the layer itself: its content, or between two mask layers
+	Layer,     // the mask layer `Open_Layer.mask`
+	Cut,       // a mask layer that has no target: an empty clip takes its drawing away
 }
 
 // A layer being drawn (push_layer / push_effects ... pop_layer).
@@ -183,17 +226,19 @@ Open_Layer :: struct {
 	filters: [2]int,    // [first, end) of Context.filter_store
 	blend:   Blend_Mode,
 	xform:   Affine,    // the transform when it was pushed (filter lengths and offsets are in that local space)
+	kind:    Layer_Kind,
+	floor:   Stack_Levels,   // the floor it goes back to
+	planes:  int,            // the planes open when it opened: those above end with it
 	// a masked layer (push_mask): the content is layer `id`; mask layers are drawn one after the other into layer
 	// `mask` and folded into `coverage` (mask_layer, pop_mask)
-	masked:   bool,
-	mask:     int,               // the mask layer being drawn (0: still the content)
+	mask_draw: Mask_Draw,
+	mask:     int,               // the mask layer being drawn (Mask_Draw.Layer)
 	mask_mode: Mask_Mode,
 	mask_op:  Mask_Op,
 	coverage: render.Image_Ref,  // the mask layers drawn so far, composited (tex 0: none yet)
 	cache:   Cache_Ask, // Layer_Effects.cache_id: a kept result composited (cache.hit: nothing drawn), or one to keep
 	region:  Rect,      // screen region of the layer
 	pending0: u64,      // Context.glyphs_pending when it was opened
-	offscreen: bool,    // offscreen_begin: closed by offscreen_end, never composited
 }
 
 init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
@@ -204,8 +249,10 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 	c.raster_scale = 1
 }
 
-// Frees the context's memory. Pictures recorded with it should be destroyed first (picture_destroy).
+// Frees the context's memory. Pictures recorded with it should be destroyed first (picture_destroy); one still being
+// recorded keeps what was recorded.
 destroy :: proc(c: ^Context) {
+	picture_end(c)
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
 	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures); delete(c.slug_runs)
@@ -243,6 +290,8 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	append(&c.xforms, Transform{m = AFFINE_IDENTITY, simple = true})
 	append(&c.xform_table, render.Xform_Data{})
 	append(&c.clip_table, render.Clip_Data{})
+	c.floor = {1, 1, 1}
+	c.in_frame = true
 	start_batch(c)
 }
 
@@ -342,7 +391,10 @@ push_clip_shape :: proc(c: ^Context, bounds: Rect, shape: render.Clip_Data) {
 	start_batch(c)
 }
 
+// Ends the clip pushed last. Stops at the root, and at the start of the layer or plane being drawn (what it was opened in is
+// not its to end).
 pop_clip :: proc(c: ^Context) {
+	if len(c.clips) <= c.floor.clips { return }
 	close_batch(c)
 	pop(&c.clips)
 	start_batch(c)
@@ -359,7 +411,8 @@ current_clip :: proc(c: ^Context) -> Rect {
 // Alpha and transforms
 
 push_alpha :: proc(c: ^Context, a: f32) { append(&c.alphas, c.alphas[len(c.alphas) - 1] * a) }
-pop_alpha :: proc(c: ^Context) { pop(&c.alphas) }
+// Ends the alpha pushed last. Stops as pop_clip does.
+pop_alpha :: proc(c: ^Context) { if len(c.alphas) > c.floor.alphas { pop(&c.alphas) } }
 
 // Rounded corners drawn from now on (rects, images, rounded clips) are circular arcs when `on`, whatever the
 // renderer's corner shape (render.set_corner_smoothing, the squircle of the UI): content that follows its own rules,
@@ -395,7 +448,7 @@ push_transform :: proc(c: ^Context, m: Affine) {
 	if c.rec != nil { push_new_slot(c, m, n); return }
 	append(&c.xforms, Transform{m = n, simple = affine_is_scale_translate(n)})
 }
-pop_transform :: proc(c: ^Context) { pop(&c.xforms) }
+pop_transform :: proc(c: ^Context) { if len(c.xforms) > c.floor.xforms { pop(&c.xforms) } }
 
 // Scale everything drawn next by `s` around `center` (screen space, i.e. applied after the current transform).
 push_scale :: proc(c: ^Context, center: Vec2, s: f32) {
@@ -410,7 +463,7 @@ push_scale :: proc(c: ^Context, center: Vec2, s: f32) {
 	append(&c.xforms, Transform{m = n, simple = affine_is_scale_translate(n)})
 }
 // Same as pop_transform (pops push_scale or push_transform).
-pop_xform :: proc(c: ^Context) { pop(&c.xforms) }
+pop_xform :: proc(c: ^Context) { pop_transform(c) }
 
 // Local -> screen transform of what is drawn now (its affine_inverse maps a screen point back, for hit testing).
 current_transform :: proc(c: ^Context) -> Affine { return c.xforms[len(c.xforms) - 1].m }
@@ -573,9 +626,13 @@ image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tin
 	append(&c.insts, inst)
 }
 
-// Uploads new glyphs (text.odin), then draws the whole frame. Call once per frame after all primitives.
+// Uploads new glyphs (text.odin), then draws the whole frame. Call once per frame after all primitives: a second call does
+// nothing, and what is drawn after it is dropped by the next begin_frame.
 end_frame :: proc(c: ^Context) {
-	if c.rec != nil { picture_end(c) }   // an unbalanced picture_begin: what was recorded is kept, not drawn
+	if !c.in_frame { return }
+	c.in_frame = false
+	picture_end(c)   // an unbalanced picture_begin: what was recorded is kept, not drawn
+	// (each ends what was opened in it, so that neither stack has to go first)
 	for len(c.planes) > 0 { discard_plane(c, pop_plane(c)) }   // unbalanced push_plane: dropped
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)

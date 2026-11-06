@@ -62,6 +62,46 @@ red_at :: proc(a: f32) -> [3]int {
 	return {255, k, k}
 }
 
+// No target for a mask layer: what is drawn for it is cut away, not drawn over the content; the mask layers that have a target
+// still apply.
+@(test)
+a_mask_layer_without_a_target_draws_nothing :: proc(t: ^testing.T) {
+	spaces(t, proc(t: ^testing.T, f: ^Fx) {
+		img := frame(f, proc(f: ^Fx) {
+			dc := &f.dc
+			draw.push_mask(dc, CONTENT)
+			draw.rect(dc, CONTENT, RED)
+			draw.forced_failures = {.Mask_Target}
+			draw.mask_layer(dc, .Alpha, .Add)
+			draw.rect(dc, {{0, 0}, {80, 64}}, BLACK)
+			draw.mask_layer(dc, .Alpha, .Intersect)
+			draw.rect(dc, {{0, 0}, {40, 64}}, BLACK)
+			draw.pop_mask(dc)
+		})
+		testing.expect(t, draw.forced_failures == {}, "the path did not run")
+		testing.expectf(t, close_rgb(px(img, 20, 32), red_at(1)), "%v: the content, under the mask that was drawn: %v", current_space, px(img, 20, 32))
+		testing.expectf(t, close_rgb(px(img, 60, 32), {255, 255, 255}), "%v: outside the mask that was drawn: %v", current_space, px(img, 60, 32))
+	})
+}
+
+// The same with the last mask layer lost: nothing of it shows.
+@(test)
+the_last_mask_layer_without_a_target_draws_nothing :: proc(t: ^testing.T) {
+	spaces(t, proc(t: ^testing.T, f: ^Fx) {
+		img := frame(f, proc(f: ^Fx) {
+			dc := &f.dc
+			draw.push_mask(dc, CONTENT)
+			draw.rect(dc, CONTENT, RED)
+			draw.forced_failures = {.Mask_Target}
+			draw.mask_layer(dc, .Alpha, .Add)
+			draw.rect(dc, {{0, 0}, {80, 64}}, BLACK)
+			draw.pop_mask(dc)
+		})
+		testing.expectf(t, close_rgb(px(img, 20, 32), red_at(1)), "%v: the content as it was: %v", current_space, px(img, 20, 32))
+		testing.expect_value(t, len(f.dc.clips), 1)
+	})
+}
+
 RED :: draw.Color{1, 0, 0, 1}
 WHITE :: draw.Color{1, 1, 1, 1}
 BLACK :: draw.Color{0, 0, 0, 1}

@@ -58,7 +58,8 @@ Plane_Fx :: struct {
 }
 
 // What pop_plane hands back: the layer and where it lies in the plane frame. Draw it with draw_plane (which gives its texture
-// back to the pool unless it is kept) or discard it with discard_plane.
+// back to the pool unless it is kept) or discard it with discard_plane, once: it is a value, and what was given back may be
+// another layer's by then (Plane_Draw.retain to draw it again).
 Plane_Layer :: struct {
 	img:     render.Image_Ref,   // tex 0: nothing was drawn (no texture available, or empty)
 	origin:  Vec2,               // plane frame position of texel (0, 0)
@@ -69,14 +70,25 @@ Plane_Layer :: struct {
 	mips:    bool,               // the texture has its mip levels (minification is filtered by them)
 }
 
+// What an open plane draws in.
+@(private)
+Plane_Mode :: enum u8 {
+	Layer,    // its layer `Open_Plane.id`
+	Direct,   // no layer: the enclosing space
+	Kept,     // nothing: the kept texture stands for the content (an empty clip takes what is drawn anyway)
+	Sink,     // nothing: planes are not recorded in pictures (the same)
+}
+
 @(private)
 Open_Plane :: struct {
-	id:      int,         // layer id (0: none, the content is drawn directly)
+	mode:    Plane_Mode,
+	id:      int,         // layer id (.Layer)
 	parent:  int,
-	hit:     bool,        // the kept texture stands for the content
 	cache:   Cache_Ask,
 	pl:      Plane_Layer,
 	pending0: u64,        // Context.glyphs_pending when it was opened
+	floor:   Stack_Levels,   // the floor it goes back to
+	layers:  int,         // the layers open when it opened: those above end with it
 }
 
 PLANE_MAX_TAPS_DEFAULT :: 8
@@ -89,7 +101,7 @@ PLANE_MAX_TAPS_DEFAULT :: 8
 // picks about the size the plane shows at on screen). Returns false when the kept texture of fx.cache_id is still good: the
 // caller skips drawing its content (anything drawn until pop_plane is discarded).
 push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = {}) -> (draw_content: bool) {
-	op := Open_Plane{parent = c.target, pending0 = c.glyphs_pending}
+	op := Open_Plane{parent = c.target, pending0 = c.glyphs_pending, layers = len(c.open_layers)}
 	s := raster_scale > 0 && !math.is_nan(raster_scale) ? raster_scale : 1
 	maxd := f32(render.max_texture_size(c.renderer))
 	// snapped to whole texels so a plane drawn flat is sampled texel for texel
@@ -108,10 +120,11 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	if c.rec != nil {
 		// planes are not recorded in pictures: nothing is drawn (what the caller draws anyway goes nowhere: an empty clip) and draw_plane
 		// of the result does nothing
-		op.hit = true
-		append(&c.planes, op)
+		op.mode = .Sink
 		push_clip(c, Rect{})
 		append(&c.alphas, 1)
+		op.floor = floor_raise(c)
+		append(&c.planes, op)
 		return false
 	}
 	if w > 0 && h > 0 && !(sz.x != sz.x) {
@@ -122,18 +135,19 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 			ask := cache_ask(c, fx.cache_id, key, {}, Rect{{0, 0}, {f32(w), f32(h)}})
 			op.cache = ask
 			if ask.hit {
-				op.hit = true
+				op.mode = .Kept
 				op.pl.img = ask.img
 				op.pl.img.origin = {}
 				op.pl.img.scale = 1
 				op.pl.img.size = {w, h}
 				op.pl.kept = true
 				op.pl.mips = mips
-				append(&c.planes, op)
 				close_batch(c)
 				append(&c.clips, Clip{})   // an empty clip: what the caller draws anyway goes nowhere
 				start_batch(c)
 				append(&c.alphas, 1)
+				op.floor = floor_raise(c)
+				append(&c.planes, op)
 				return false
 			}
 		}
@@ -141,15 +155,16 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 		if tex == 0 { tex = render.acquire_target(c.renderer, w, h) }
 	}
 	if tex == 0 {
+		op.mode = .Direct
 		op.pl.direct = true
-		append(&c.planes, op)
 		append(&c.alphas, 1)
+		op.floor = floor_raise(c)
+		append(&c.planes, op)
 		return true
 	}
 	append(&c.layers, render.Layer{tex = tex, origin = {0, 0}, size = {w, h}, space = space})
 	op.id = len(c.layers)
 	op.pl.img = render.Image_Ref{tex = tex, origin = {}, scale = 1, size = {w, h}, space = space}
-	append(&c.planes, op)
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)
 	c.target = op.id
@@ -158,21 +173,29 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 	append(&c.xforms, Transform{m = Affine{a = s, d = s, e = -o.x * s, f = -o.y * s}, simple = true})
 	start_batch(c)
 	append(&c.alphas, 1)
+	op.floor = floor_raise(c)
+	append(&c.planes, op)
 	return true
 }
 
-// Closes the plane opened last (see Plane_Layer).
+// Closes the plane opened last (see Plane_Layer): the layers left open in it end first, and what is left pushed. While a
+// picture is recorded, only a plane of the recording.
 pop_plane :: proc(c: ^Context) -> Plane_Layer {
-	if len(c.planes) == 0 { return {} }
+	if len(c.planes) <= (c.rec != nil ? c.saved.planes : 0) { return {} }
+	for len(c.open_layers) > c.planes[len(c.planes) - 1].layers { pop_layer(c) }
+	floor_settle(c)
 	op := pop(&c.planes)
+	c.floor = op.floor
 	pop(&c.alphas)
-	if op.hit {
+	switch op.mode {
+	case .Direct: return op.pl
+	case .Kept, .Sink:
 		close_batch(c)
 		pop(&c.clips)
 		start_batch(c)
 		return op.pl
+	case .Layer:
 	}
-	if op.id == 0 { return op.pl }
 	close_batch(c)
 	pop(&c.clips)
 	pop(&c.xforms)
@@ -186,11 +209,11 @@ pop_plane :: proc(c: ^Context) -> Plane_Layer {
 
 // The frame of the plane being drawn (the innermost open one): the plane frame position of texel (0, 0) and the texels per plane
 // frame unit. What is drawn meanwhile goes through the transform stack and then texels = (frame - origin) * scale. ok = false:
-// no plane is open, or its content is drawn directly (no layer: nothing projects it).
+// no plane is open, its content is drawn directly (no layer: nothing projects it), or it is being recorded (nothing is drawn).
 open_plane_frame :: proc(c: ^Context) -> (origin: Vec2, scale: f32, ok: bool) {
 	if len(c.planes) == 0 { return }
 	op := c.planes[len(c.planes) - 1]
-	if op.pl.direct { return }
+	if op.mode == .Direct || op.mode == .Sink { return }
 	return op.pl.origin, op.pl.scale, true
 }
 // Gives the texture of a plane that will not be drawn back to the pool.

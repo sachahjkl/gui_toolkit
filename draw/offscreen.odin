@@ -26,7 +26,7 @@ offscreen_begin :: proc(c: ^Context, size: [2]int) -> bool {
 	if tex == 0 { return false }
 	append(&c.layers, render.Layer{tex = tex, origin = {0, 0}, size = size, space = blend_space(c)})
 	id := len(c.layers)
-	append(&c.open_layers, Open_Layer{id = id, alpha = 1, parent = c.target, xform = AFFINE_IDENTITY, offscreen = true, pending0 = c.glyphs_pending})
+	ol := Open_Layer{id = id, alpha = 1, parent = c.target, xform = AFFINE_IDENTITY, kind = .Offscreen, planes = len(c.planes), pending0 = c.glyphs_pending}
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)
 	c.target = id
@@ -34,13 +34,15 @@ offscreen_begin :: proc(c: ^Context, size: [2]int) -> bool {
 	append(&c.xforms, Transform{m = AFFINE_IDENTITY, simple = true})
 	start_batch(c)
 	append(&c.alphas, 1)
+	ol.floor = floor_raise(c)
+	append(&c.open_layers, ol)
 	return true
 }
 
 // Closes the offscreen target opened last: its copy for readback is recorded, the target goes back to the pool. 0: no
 // offscreen target is open.
 offscreen_end :: proc(c: ^Context) -> render.Readback_Id {
-	if len(c.open_layers) == 0 || !c.open_layers[len(c.open_layers) - 1].offscreen { return 0 }
+	if !offscreen_active(c) { return 0 }
 	ol := offscreen_close(c)
 	ly := c.layers[ol.id - 1]
 	id := render.readback_new(c.renderer)
@@ -52,7 +54,9 @@ offscreen_end :: proc(c: ^Context) -> render.Readback_Id {
 // Back to what the target was opened in.
 @(private = "file")
 offscreen_close :: proc(c: ^Context) -> Open_Layer {
+	layer_settle(c)
 	ol := pop(&c.open_layers)
+	c.floor = ol.floor
 	pop(&c.alphas)
 	close_batch(c)
 	pop(&c.clips)
@@ -71,5 +75,5 @@ offscreen_drop :: proc(c: ^Context) {
 
 // Whether the target open last is an offscreen one (drawing code that must not open layers of the frame inside).
 offscreen_active :: proc(c: ^Context) -> bool {
-	return len(c.open_layers) > 0 && c.open_layers[len(c.open_layers) - 1].offscreen
+	return len(c.open_layers) > 0 && c.open_layers[len(c.open_layers) - 1].kind == .Offscreen
 }
