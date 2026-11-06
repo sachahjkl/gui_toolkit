@@ -193,7 +193,7 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	old_device, old_ctx := r.device, r.ctx
 	r.device, r.ctx = nil, nil
 	driver: d3d11.DRIVER_TYPE = r.warp ? .WARP : .HARDWARE
-	if !create_device(r, driver) {
+	if fault_hit(.Create_Device) || !create_device(r, driver) {
 		r.device, r.ctx = old_device, old_ctx
 		return false
 	}
@@ -205,6 +205,7 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 	if r.ctx != nil { r.ctx->ClearState(); r.ctx->Flush(); r.ctx->Release() }
 	if r.device != nil { r.device->Release() }
 	r.device, r.ctx = new_device, new_ctx
+	r.transparent = r.transparent_asked
 	ok := r.hwnd == nil ? create_offscreen_target(r) : create_swapchain(r)
 	ok = ok && init_pipeline(r)
 	d3d_app_shaders_recreate(r)
@@ -212,15 +213,17 @@ d3d_recover :: proc(r: ^Renderer) -> bool {
 		td := &r.textures[i]
 		#partial switch td.kind {
 		case .R8, .RGBA, .Slug_Curves, .Slug_Bands, .Data:
-			if !texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td.kind = .None }
+			if fault_hit(.Recreate_Texture) || !texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td^ = {kind = .Failed} }
+		case .None, .Failed:
 		case:
-			if td.kind != .None { td^ = {}; append(&r.free_textures, Texture(i)) }
+			td^ = {}
+			append(&r.free_textures, Texture(i))
 		}
 	}
 	r.heap_generation += 1
 	r.device_generation += 1
 	r.swap_gen, r.swap_space = r.device_generation, r.space_epoch   // (the window held now; the others of surface_use are remade when taken)
-	r.gpu_frame = 0
+	r.gpu_frame, r.gpu_last_frame = 0, 0
 	r.lost = !ok
 	return ok
 }

@@ -18,26 +18,28 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	// which is then copied to the frame's own. A partial frame keeps the target's content outside the region; the deferred
 	// clear (frame_begin) is done per rectangle below. A full frame clears the whole target now.
 	region := damage_resolve(r)
-	composing := region && d3d_damage_ensure_target(r)
-	partial := composing && r.damage.target_ready && !damage_frame_reads_itself(f)
+	composing := region && r.rtv != nil && d3d_damage_ensure_target(r)
+	// (no clear left for it: the mode was turned on after frame_begin, which cleared the frame's own target)
+	partial := composing && r.damage.target_ready && r.damage.have_clear && !damage_frame_reads_itself(f)
 	if !composing { r.damage.target_ready = false }   // what is drawn goes past it
 	r.damage.have_region = partial
 	r.damage.skip_present = partial && r.damage.count == 0
 	frame_rtv, frame_tex := r.rtv, r.frame_tex
 	if composing { r.rtv, r.frame_tex = r.damage.target_rtv, r.damage.target }
+	kept := true   // the target ends this frame holding all of it: a frame that stops halfway, or a region not cleared, leaves it behind
 	defer if composing {
 		r.rtv, r.frame_tex = frame_rtv, frame_tex
 		if !r.damage.side { d3d_damage_show(r, frame_tex) }
-		r.damage.target_ready = true
+		r.damage.target_ready = kept
 	}
-	if r.damage.have_clear && !partial {
+	if (r.damage.have_clear || composing) && !partial && r.rtv != nil {
 		r.damage.have_clear = false
 		c := r.damage.clear
 		r.ctx->ClearRenderTargetView(r.rtv, &c)
 	}
 	if r.lost || len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0) {
 		// a partial frame with a deferred clear and nothing to draw still clears its region (a caret turning off)
-		if partial && r.damage.have_clear { d3d_clear_region(r); r.damage.have_clear = false }
+		if partial && r.damage.have_clear { kept = d3d_clear_region(r); r.damage.have_clear = false }
 		return
 	}
 	timed := GPU_TIMING || r.gpu_timing || r.prof.on
@@ -45,6 +47,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer if timed { gpu_timing_end(r) }
 	// images updated since their last draw: rebuild their mip chains first
 	for &td in r.textures {
+		if td.tex == nil { continue }
 		if td.unfilled { zero_unfilled(r, &td) }
 		if td.mips_dirty { r.ctx->GenerateMips(td.view); td.mips_dirty = false }
 	}
@@ -59,12 +62,13 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		r.inst_buf = nil
 		if fault_hit(.Create_Buffer) || hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)) {
 			r.inst_buf, r.inst_cap = nil, 0
+			kept = false
 			return
 		}
 	}
 	if len(f.insts) > 0 {
 		mapped: d3d11.MAPPED_SUBRESOURCE
-		if fault_hit(.Map) || hr_failed(r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)) { return }   // (a device gone: frame_end finds out)
+		if fault_hit(.Map) || hr_failed(r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)) { kept = false; return }   // (a device gone: frame_end finds out)
 		mem.copy(mapped.pData, raw_data(f.insts), len(f.insts) * size_of(Rect_Inst))
 		r.ctx->Unmap(r.inst_buf, 0)
 	}
@@ -83,7 +87,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		profile_step(r, .Acquire, r.size.x, r.size.y, r.size.x * r.size.y, r.size.x * r.size.y * 4)
 	}
 	// a partial frame clears only its region
-	if partial && r.damage.have_clear { r.damage.have_clear = false; d3d_clear_region(r) }
+	if partial && r.damage.have_clear { r.damage.have_clear = false; kept = d3d_clear_region(r) }
 	s := D3d_Submit{cur = -1, has_slug = has_slug, bound = -1, bound_image = -1, bound_backdrop = -1, dual_frame = f.subpixel && d3d_dual_ensure(r)}
 	frame_walk(r, &s, f, partial, slug_frame)
 	walk_flush(r, &s)

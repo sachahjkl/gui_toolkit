@@ -38,7 +38,7 @@ WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3
 
 @(private) ARENA_ALIGN :: 256           // minUniformBufferOffsetAlignment of every backend we use
 @(private) PASS_CONSTANTS_SIZE :: 1280  // size_of(Pass_Constants), a multiple of ARENA_ALIGN
-@(private) WGPU_LAST_MSG_BYTES :: 256
+
 @(private) WGPU_ADAPTER_NAME_BYTES :: 128
 @(private) WAIT_REQUEST_MAX_TRIES :: 5000   // about 1 ms each (wait_request)
 @(private) SAMPLER_LOD_MAX_CLAMP :: 32
@@ -62,13 +62,24 @@ Wgpu_Table :: struct {
 	cap: int,   // elements
 }
 
-// Shared with the callbacks wgpu-native calls (possibly from another thread): the renderer itself may move.
+// Shared with the callbacks wgpu-native calls (possibly from another thread): the renderer itself may move. Every field is atomic.
 @(private)
 Wgpu_Shared :: struct {
-	lost:     bool,
-	errors:   int,
-	last_msg: [WGPU_LAST_MSG_BYTES]u8,
-	last_len: int,
+	lost:   bool,      // the device of `serial` is gone
+	errors: int,
+	serial: uintptr,   // the device the callbacks are heard from: the late word of an older one says nothing about it
+	prof:   [GPU_QUERY_FRAMES]Wprof_State,   // the slots of the GPU time, written by their map's callback (wgpu_profile.odin)
+}
+
+// What a device is made of, out of the renderer while another is made (wgpu_recover).
+@(private)
+Wgpu_Device :: struct {
+	instance: wgpu.Instance,
+	adapter:  wgpu.Adapter,
+	device:   wgpu.Device,
+	queue:    wgpu.Queue,
+	surface:  wgpu.Surface,
+	panel:    ^Panel,
 }
 
 Wgpu_State :: struct {
@@ -88,8 +99,7 @@ Wgpu_State :: struct {
 	surface_format: wgpu.TextureFormat,  // storage of the frame
 	view_format:   wgpu.TextureFormat,   // how the frame is drawn into and read
 	frame_tex:     wgpu.Texture,         // the surface texture of this frame, or the offscreen image
-	frame_rtv:     wgpu.TextureView,
-	frame_acquired: bool,
+	frame_rtv:     wgpu.TextureView,     // not nil: the frame has its target
 	configured:    bool,
 	clear:         [4]f64,
 	clear_pending: bool,                 // the frame target still has to be cleared (first pass of the frame)
@@ -116,6 +126,7 @@ Wgpu_State :: struct {
 	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
 	pipe_lock:     sync.Mutex,           // pipelines are made by the render thread and by the pre-warming thread
 	prewarm:       ^thread.Thread,
+	prewarm_format: wgpu.TextureFormat,  // the view format it makes pipelines for (`view_format` changes with the window in use)
 	panel:         ^Panel,               // translucent window: the DirectComposition visual's swap chain panel (wgpu_dcomp.odin)
 	// start-up costs, milliseconds (wgpu_costs)
 	t_device, t_modules, t_pipelines: f64,
@@ -151,20 +162,45 @@ Wgpu_Cpu :: struct {
 uncaptured_error :: proc "c" (device: ^wgpu.Device, type: wgpu.ErrorType, message: wgpu.StringView, u1, u2: rawptr) {
 	context = runtime.default_context()
 	sh := (^Wgpu_Shared)(u1)
-	if sh != nil {
-		sh.errors += 1
-		sh.last_len = copy(sh.last_msg[:], message)
-	}
+	if sh != nil { sync.atomic_add(&sh.errors, 1) }
 	fmt.eprintln("render: wgpu error:", type, message)
 }
 
 @(private)
 device_lost_cb :: proc "c" (device: ^wgpu.Device, reason: wgpu.DeviceLostReason, message: wgpu.StringView, u1, u2: rawptr) {
 	context = runtime.default_context()
-	if reason == .Destroyed || reason == .CallbackCancelled { return }
-	fmt.eprintln("render: wgpu device lost:", reason, message)
+	// (Destroyed is a loss: wgpu-native gives that reason to every one, ErrorSinkRaw::handle_error of its lib.rs. The device the
+	// renderer gave up itself is told apart by its serial)
 	sh := (^Wgpu_Shared)(u1)
-	if sh != nil { sh.lost = true }
+	if reason == .CallbackCancelled || sh == nil || uintptr(u2) != sync.atomic_load(&sh.serial) { return }
+	fmt.eprintln("render: wgpu device lost:", reason, message)
+	sync.atomic_store(&sh.lost, true)
+}
+
+// A loss the callback told of becomes the renderer's.
+@(private)
+wgpu_lost_poll :: proc(r: ^Renderer) {
+	sh := r.wg.shared
+	if sh != nil && sync.atomic_load(&sh.lost) { r.lost = true }
+}
+
+// QueueSubmit ends the process on a device gone (handle_error_fatal in wgpu-native's lib.rs): the calls that built the commands have
+// said so by now, through device_lost_cb. False: nothing was submitted.
+@(private)
+wgpu_submit :: proc(r: ^Renderer, cb: wgpu.CommandBuffer) -> bool {
+	wgpu_lost_poll(r)
+	if r.lost { return false }
+	wgpu.QueueSubmit(r.wg.queue, {cb})
+	return true
+}
+
+// DevicePoll, for the same reason. `events`: the callbacks that wait for InstanceProcessEvents too.
+@(private)
+wgpu_poll :: proc(r: ^Renderer, wait: bool, events := false) {
+	wgpu_lost_poll(r)
+	if r.lost { return }
+	wgpu.DevicePoll(r.wg.device, b32(wait))
+	if events { wgpu.InstanceProcessEvents(r.wg.instance) }
 }
 
 @(private)
@@ -227,7 +263,7 @@ wgpu_make_surface :: proc(r: ^Renderer, h: platform.Surface_Handles) -> wgpu.Sur
 		hwnd := win.HWND(h.hwnd)
 		if hwnd == nil { return nil }
 		if r.transparent {
-			s := wgpu_dcomp_surface(r, hwnd)
+			s := fault_hit(.Composition) ? nil : wgpu_dcomp_surface(r, hwnd)
 			if s != nil { return s }
 			fmt.eprintln("render: wgpu: DirectComposition unavailable, the window is opaque")
 			r.transparent = false
@@ -305,11 +341,12 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	if g.can_norm16 { append(&features, wgpu.FeatureName.TextureFormat16bitNorm) }
 	g.can_dual = bool(wgpu.AdapterHasFeature(g.adapter, .DualSourceBlending))
 	if g.can_dual { append(&features, wgpu.FeatureName.DualSourceBlending) }
+	serial := sync.atomic_add(&g.shared.serial, 1) + 1
 	dd := wgpu.DeviceDescriptor{
 		label = "gui_toolkit",
 		requiredFeatureCount = len(features), requiredFeatures = raw_data(features),
 		requiredLimits = WGPU_ADAPTER_LIMITS ? &limits : nil,
-		deviceLostCallbackInfo = {mode = .AllowSpontaneos, callback = device_lost_cb, userdata1 = g.shared},
+		deviceLostCallbackInfo = {mode = .AllowSpontaneos, callback = device_lost_cb, userdata1 = g.shared, userdata2 = rawptr(serial)},
 		uncapturedErrorCallbackInfo = {callback = uncaptured_error, userdata1 = g.shared},
 	}
 	req = {}
@@ -336,17 +373,21 @@ wgpu_take_preloaded_device :: proc(r: ^Renderer, surface: platform.Surface_Handl
 	if !take_preloaded_device(r, warp = false) { return false }
 	g := &r.wg
 	g.surface = wgpu_make_surface(r, surface)
-	fits := false
-	if g.surface != nil {
-		caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter)
-		fits = st == .Success && caps.formatCount > 0
-		wgpu.SurfaceCapabilitiesFreeMembers(caps)
-	}
+	fits := wgpu_surface_fits(g)
 	if !fits {
 		fmt.eprintln("render: wgpu: the adapter made early cannot present to this window: another is asked for")
 		wgpu_release_device(r)
 	}
 	return fits
+}
+
+// The adapter can present to the surface, one made after it.
+@(private)
+wgpu_surface_fits :: proc(g: ^Wgpu_State) -> bool {
+	if g.surface == nil { return false }
+	caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter)
+	defer wgpu.SurfaceCapabilitiesFreeMembers(caps)
+	return st == .Success && caps.formatCount > 0
 }
 
 // The name of the adapter and the graphics API wgpu chose, for logs and reports ("NVIDIA GeForce RTX 4070 SUPER (D3D12)").
@@ -382,7 +423,7 @@ wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int,
 	when ODIN_OS == .Windows { r.hwnd = win.HWND(surface.hwnd) }
 	r.surface_handles = surface
 	r.size = size
-	r.transparent = transparent
+	r.transparent, r.transparent_asked = transparent, transparent
 	r.space = space
 	if !wgpu_take_preloaded_device(r, surface) { wgpu_create_device(r, surface, false) or_return }
 	wgpu_frame_formats(r)
@@ -420,7 +461,6 @@ wgpu_create_offscreen :: proc(r: ^Renderer) -> bool {
 	g.frame_rtv = wgpu.TextureCreateView(g.frame_tex, &{
 		format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All,
 	})
-	g.frame_acquired = true
 	r.buffer_size, r.source_size = r.size, r.size
 	return g.frame_rtv != nil
 }
@@ -434,7 +474,7 @@ wgpu_surface_alpha :: proc(r: ^Renderer) -> wgpu.CompositeAlphaMode {
 @(private)
 wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
-	if g.surface == nil { return true }
+	if g.surface == nil || r.lost { return true }   // (lost: SurfaceConfigure ends the process on a device gone; the recovery configures)
 	t_start := time.tick_now()
 	t_drain := time.tick_now()
 	wgpu_drop_frame(r)
@@ -454,22 +494,28 @@ wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 	if wgpu_trace() { fmt.eprintfln("wgpu: configure %dx%d: present %v (tearing mode asked: %v), drain %.2f ms, SurfaceConfigure %.2f ms", r.size.x, r.size.y, cfg.presentMode, r.present.mode, time.duration_milliseconds(time.tick_diff(t_start, t_drain)), time.duration_milliseconds(time.tick_since(t_conf))) }
 	g.configured = true
 	r.buffer_size, r.source_size = r.size, r.size
+	present_reset_wgpu(r)
 	wgpu_latency_start(r)
 	return true
 }
 
-// Drops the texture of the frame in progress (before a reconfigure, a resize, a destroy).
+// Drops the texture of the frame in progress (before a reconfigure, a resize, a destroy). An offscreen image stays: it is the frame's for good.
 @(private)
 wgpu_drop_frame :: proc(r: ^Renderer) {
-	g := &r.wg
-	if g.frame_rtv != nil && g.surface != nil { wgpu.TextureViewRelease(g.frame_rtv); g.frame_rtv = nil }
-	if g.frame_tex != nil && g.surface != nil { wgpu.TextureRelease(g.frame_tex); g.frame_tex = nil }
-	if g.surface != nil { g.frame_acquired = false }
+	if r.wg.surface != nil { wgpu_release_frame(&r.wg) }
 }
 
+// The frame's texture and view, whatever they are.
+@(private)
+wgpu_release_frame :: proc(g: ^Wgpu_State) {
+	if g.frame_rtv != nil { wgpu.TextureViewRelease(g.frame_rtv); g.frame_rtv = nil }
+	if g.frame_tex != nil { wgpu.TextureRelease(g.frame_tex); g.frame_tex = nil }
+}
+
+// (no surface: a recovery half done. The size is kept for the one that makes it)
 @(private)
 wgpu_resize :: proc(r: ^Renderer, size: [2]int) {
-	if size.x <= 0 || size.y <= 0 || size == r.size || r.wg.surface == nil { return }
+	if size.x <= 0 || size.y <= 0 || size == r.size { return }
 	r.size = size
 	wgpu_configure_surface(r)
 }
@@ -478,10 +524,8 @@ wgpu_resize :: proc(r: ^Renderer, size: [2]int) {
 @(private)
 wgpu_resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
 	g := &r.wg
-	if g.surface != nil || g.device == nil { return false }   // a windowed renderer: resize is the one to call
-	if g.frame_rtv != nil { wgpu.TextureViewRelease(g.frame_rtv); g.frame_rtv = nil }
-	if g.frame_tex != nil { wgpu.TextureRelease(g.frame_tex); g.frame_tex = nil }
-	g.frame_acquired = false
+	if r.surface_handles.backend != .None || g.device == nil { return false }   // a windowed renderer: resize is the one to call
+	wgpu_release_frame(g)
 	r.size = size
 	return wgpu_create_offscreen(r)
 }
@@ -489,10 +533,18 @@ wgpu_resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
 @(private)
 wgpu_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	if space == r.space { return }
-	g := &r.wg
 	r.space = space
 	r.text = text_rendering_default(space)
 	release_targets(r)
+	r.space_epoch += 1
+	wgpu_retarget(r)
+	r.swap_space = r.space_epoch
+}
+
+// The window the renderer holds draws in `r.space`: its formats, and what follows them.
+@(private)
+wgpu_retarget :: proc(r: ^Renderer) {
+	g := &r.wg
 	wgpu_damage_release_target(r)   // its format follows the blend space: made again on the next partial frame
 	wgpu_frame_formats(r)
 	if g.surface != nil {
@@ -500,9 +552,7 @@ wgpu_set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 		wgpu_configure_surface(r)
 		wgpu_dcomp_color_space(r)
 	} else if g.frame_tex != nil {
-		wgpu.TextureViewRelease(g.frame_rtv)
-		wgpu.TextureRelease(g.frame_tex)
-		g.frame_tex, g.frame_rtv = nil, nil
+		wgpu_release_frame(g)
 		wgpu_create_offscreen(r)
 	}
 }
@@ -656,7 +706,9 @@ wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace
 	}
 	for p in list { if p.format == format && p.replace == replace && p.dual == dual { return p.pipe } }
 	if slug && g.module_slug == nil {
+		sync.mutex_lock(&g_compile_lock)
 		g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE)
+		sync.mutex_unlock(&g_compile_lock)
 		if g.module_slug == nil {
 			fmt.eprintln("render: wgpu: the Slug text shaders were refused by the device")
 			r.slug.failed = true
@@ -691,7 +743,7 @@ wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(list, Wgpu_Pipe{format, replace, pipe, dual})
+	if pipe != nil { append(list, Wgpu_Pipe{format, replace, pipe, dual}) }
 	return pipe
 }
 
@@ -713,7 +765,7 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe, false})
+	if pipe != nil { append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe, false}) }
 	return pipe
 }
 
@@ -735,7 +787,7 @@ wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, copy := fals
 	})
 	sync.mutex_unlock(&g_compile_lock)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	append(&g.mip_pipes, Wgpu_Pipe{format, copy, pipe, false})
+	if pipe != nil { append(&g.mip_pipes, Wgpu_Pipe{format, copy, pipe, false}) }
 	return pipe
 }
 
@@ -935,7 +987,7 @@ wgpu_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 		enc := wgpu.DeviceCreateCommandEncoder(g.device)
 		wgpu.CommandEncoderCopyBufferToBuffer(enc, h.wbuf, 0, buf, 0, u64(h.cap * stride))
 		cb := wgpu.CommandEncoderFinish(enc)
-		wgpu.QueueSubmit(g.queue, {cb})
+		wgpu_submit(r, cb)   // (not submitted: a device gone, the heaps are emptied with it)
 		wgpu.CommandBufferRelease(cb)
 		wgpu.CommandEncoderRelease(enc)
 		wgpu.BufferRelease(h.wbuf)
@@ -964,15 +1016,17 @@ wgpu_heaps_destroy :: proc(r: ^Renderer) {
 @(private)
 wgpu_prewarm_start :: proc(r: ^Renderer) {
 	if r.wg.prewarm != nil || os.get_env("TOOLKIT_WGPU_PREWARM", context.temp_allocator) == "0" { return }
+	r.wg.prewarm_format = r.wg.view_format
+	// (the thread holds `r`: a Renderer does not move between init and its first frame, what wgpu_prewarm_stop waits for at the latest)
 	r.wg.prewarm = thread.create_and_start_with_data(r, proc(data: rawptr) {
 		r := (^Renderer)(data)
 		g := &r.wg
-		wgpu_pipeline(r, g.view_format, false)
-		wgpu_slug_pipeline(r, g.view_format, false)
+		wgpu_pipeline(r, g.prewarm_format, false)
+		wgpu_slug_pipeline(r, g.prewarm_format, false)
 		wgpu_pipeline(r, .RGBA16Float, false)
 		wgpu_fx_pipeline(r, .RGBA16Float)
 		wgpu_fx_pipeline(r, .RGBA8Unorm)
-		wgpu_pipeline(r, g.view_format, true)
+		wgpu_pipeline(r, g.prewarm_format, true)
 		wgpu_pipeline(r, .RGBA16Float, true)
 		wgpu_mip_pipeline(r, r.space == .Srgb ? .RGBA8Unorm : .RGBA8UnormSrgb)
 	})
@@ -1004,12 +1058,7 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	clear(&r.targets)
 	r.targets_gen += 1
 	wgpu_profile_release(r)
-	wgpu_drop_frame(r)
-	if g.surface == nil && g.frame_tex != nil {
-		wgpu.TextureViewRelease(g.frame_rtv)
-		wgpu.TextureRelease(g.frame_tex)
-		g.frame_tex, g.frame_rtv = nil, nil
-	}
+	wgpu_release_frame(g)
 	wgpu_damage_release_target(r)
 	wgpu_release_pipelines(g)
 	wgpu_video_release(g)
@@ -1035,6 +1084,19 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	r.slug.failed = false   // a new device is asked again
 }
 
+// Takes what the renderer's device is made of out of it.
+@(private)
+wgpu_device_take :: proc(g: ^Wgpu_State) -> (d: Wgpu_Device) {
+	d = {g.instance, g.adapter, g.device, g.queue, g.surface, g.panel}
+	g.instance, g.adapter, g.device, g.queue, g.surface, g.panel = nil, nil, nil, nil, nil, nil
+	return
+}
+
+@(private)
+wgpu_device_put :: proc(g: ^Wgpu_State, d: Wgpu_Device) {
+	g.instance, g.adapter, g.device, g.queue, g.surface, g.panel = d.instance, d.adapter, d.device, d.queue, d.surface, d.panel
+}
+
 // Surface, device, adapter, instance.
 @(private)
 wgpu_release_device :: proc(r: ^Renderer) {
@@ -1053,6 +1115,8 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	for i in 1 ..< len(r.textures) { wgpu_destroy_texture(r, Texture(i)) }
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(&r.wg)
+	readback_renderer_gone(r)
+	capture_destroy(r)
 	wgpu_release_objects(r)
 	app_shaders_destroy(r)
 	wgpu_heaps_destroy(r)
@@ -1068,38 +1132,58 @@ wgpu_destroy :: proc(r: ^Renderer) {
 wgpu_recover :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
 	handles := r.surface_handles
-	was_offscreen := handles.backend == .None   // (not g.surface == nil: a recovery that found no device left it nil)
-	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(g)
+	// the new device first: if there is none, the old one stays, as on Direct3D 11. What is called on a device gone answers nothing;
+	// the calls that end the process on one wait for `r.lost` to clear (wgpu_submit, wgpu_poll, wgpu_configure_surface, wgpu_ensure_frame).
+	// (No surface for it yet: a window takes one surface at a time, and the old one holds it until it is released below.)
+	old := wgpu_device_take(g)
+	if fault_hit(.Create_Device) || !wgpu_create_device(r, {}, r.warp) {
+		wgpu_release_device(r)   // what was made of it
+		wgpu_device_put(g, old)
+		r.lost = true
+		return false
+	}
+	fresh := wgpu_device_take(g)
+	wgpu_device_put(g, old)
+	wgpu_latency_stop(r)
 	readback_device_lost(r)   // (their buffers are of the device released here)
 	capture_release_device_objects(&r.capture)   // a capture buffer is of the device released here too
 	wgpu_release_objects(r)
 	wgpu_release_device(r)
-	g.shared.lost = false
-	ok := wgpu_create_device(r, handles, r.warp)
-	if !ok {
-		// no device yet (the adapter is resetting or gone): nothing to remake textures or shaders on. They keep their kinds, so
-		// that the recovery that finds a device remakes them; until then frames draw nothing.
-		r.lost = true
-		return false
+	wgpu_device_put(g, fresh)
+	sync.atomic_store(&g.shared.lost, false)
+	r.lost = false
+	ok := true
+	if handles.backend == .None {
+		wgpu_frame_formats(r)
+		ok = wgpu_create_offscreen(r)
+	} else {
+		r.transparent = r.transparent_asked
+		g.surface = wgpu_make_surface(r, handles)
+		ok = wgpu_surface_fits(g)
+		if ok {
+			wgpu_frame_formats(r)
+			ok = wgpu_configure_surface(r)
+		}
 	}
-	wgpu_frame_formats(r)
-	ok = (was_offscreen ? wgpu_create_offscreen(r) : wgpu_configure_surface(r))
 	ok = ok && wgpu_init_pipeline(r)
 	wgpu_app_shaders_recreate(r)
 	for i in 1 ..< len(r.textures) {
 		td := &r.textures[i]
 		#partial switch td.kind {
 		case .R8, .RGBA, .Slug_Curves, .Slug_Bands, .Data:
-			if !wgpu_texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td.kind = .None }
+			if fault_hit(.Recreate_Texture) || !wgpu_texture_objects(r, td) { fmt.eprintln("render: texture", i, "could not be recreated"); td^ = {kind = .Failed} }
+		case .None, .Failed:
 		case:
-			if td.kind != .None { td^ = {}; append(&r.free_textures, Texture(i)) }
+			td^ = {}
+			append(&r.free_textures, Texture(i))
 		}
 	}
 	wgpu_heaps_destroy(r)
 	r.heap_generation += 1
 	r.device_generation += 1
-	r.gpu_frame = 0
+	r.swap_gen, r.swap_space = r.device_generation, r.space_epoch   // (the window held now; the others of surface_use are remade when taken)
+	r.gpu_frame, r.gpu_last_frame = 0, 0
 	r.lost = !ok
 	return ok
 }

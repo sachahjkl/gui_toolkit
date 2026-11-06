@@ -8,8 +8,8 @@ import "../platform"
 
 // A second window drawn by the same renderer (same device, textures, fonts and pipelines): a Surface is a swap chain of its
 // own with the state that goes with it. `surface_use` exchanges it with the renderer's own, so that the calls that follow
-// (resize, frame_begin, frame_submit, frame_end) work on the other window; call it again to go back. Direct3D 11 only:
-// with the wgpu backend `surface_create` fails.
+// (resize, frame_begin, frame_submit, frame_end) work on the other window; call it again to go back. Both backends: on WebGPU the
+// per-window state is in `wgpu_backing` (wgpu_surface.odin).
 
 Surface :: struct {
 	swapchain:      ^dxgi.ISwapChain1,
@@ -27,6 +27,7 @@ Surface :: struct {
 	surface_max:    [2]int,
 	hwnd:           win.HWND,
 	transparent:    bool,
+	transparent_asked: bool,
 	dcomp:          ^IDCompositionDevice,
 	dcomp_target:   ^IDCompositionTarget,
 	dcomp_visual:   ^IDCompositionVisual,
@@ -38,6 +39,7 @@ Surface :: struct {
 	// allocated by the wgpu surface_init). A single rawptr keeps this struct free of wgpu types so both backends build.
 	wgpu_backing:   rawptr,
 	valid:          bool,
+	held:           bool,            // surface_use gave it to the renderer: what it keeps now is the window the renderer had
 }
 
 @(private)
@@ -57,6 +59,7 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 	r.surface_max, s.surface_max = s.surface_max, r.surface_max
 	r.hwnd, s.hwnd = s.hwnd, r.hwnd
 	r.transparent, s.transparent = s.transparent, r.transparent
+	r.transparent_asked, s.transparent_asked = s.transparent_asked, r.transparent_asked
 	r.dcomp, s.dcomp = s.dcomp, r.dcomp
 	r.dcomp_target, s.dcomp_target = s.dcomp_target, r.dcomp_target
 	r.dcomp_visual, s.dcomp_visual = s.dcomp_visual, r.dcomp_visual
@@ -68,7 +71,8 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 
 // The window the renderer holds now was set aside while the device was recreated (recover: only the window in use is remade, with
 // everything else on the device) or the blend space changed: its swap chain and views belong to the old device, or to the old space.
-// Direct3D only (the wgpu surface path refreshes in wgpu_surface_use).
+// A window that cannot be remade is a device lost: the next frame_begin makes everything again, this window with it. Direct3D 11 (WebGPU:
+// wgpu_surface_refresh).
 @(private)
 surface_refresh :: proc(r: ^Renderer) {
 	when !USE_WGPU {
@@ -93,9 +97,13 @@ surface_refresh :: proc(r: ^Renderer) {
 		if r.hwnd == nil {
 			ok = create_offscreen_target(r)
 		} else {
+			r.transparent = r.transparent_asked
 			ok = create_swapchain(r, sized_by_surface = true)   // the window may not have a size yet: the swap chain gets the one of the surface
 		}
-		if !ok { fmt.eprintln("render: a window could not be remade after the device was recreated") }
+		if !ok {
+			fmt.eprintln("render: a window could not be remade after the device was recreated")
+			r.lost = true
+		}
 		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
 	} else if r.swap_space != r.space_epoch {
 		retarget(r)
@@ -126,7 +134,7 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handle
 		s^ = {}
 		s.hwnd, s.size = win.HWND(handles.hwnd), size
 		exchange(r, s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
-		r.transparent = transparent
+		r.transparent, r.transparent_asked = transparent, transparent
 		r.fixed_surface = false
 		ok = create_swapchain(r, sized_by_surface = true)
 		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }
@@ -147,8 +155,9 @@ surface_create :: proc(r: ^Renderer, handles: platform.Surface_Handles, size: [2
 	return
 }
 
-// Releases the surface (it must not be the one in use).
+// Releases the surface. The one in use gives the renderer back its window first.
 surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
+	if s.valid && s.held { surface_use(r, s) }
 	when USE_WGPU {
 		if !s.valid { return }
 		wgpu_surface_destroy(r, s)
@@ -173,13 +182,9 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 
 // Makes `s` the window the renderer draws to (its own surface goes into `s`). Call again with the same `s` to go back.
 surface_use :: proc(r: ^Renderer, s: ^Surface) {
-	when USE_WGPU {
-		if !s.valid { return }
-		wgpu_surface_use(r, s)
-		return
-	}
-	when !USE_WGPU {
-		if !s.valid { return }
+	if !s.valid { return }
+	s.held = !s.held
+	when USE_WGPU { wgpu_surface_use(r, s) } else {
 		exchange(r, s)
 		surface_refresh(r)
 	}

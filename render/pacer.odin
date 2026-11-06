@@ -30,7 +30,6 @@ Pacer :: struct {
 	size:           [2]int,   // the window's size at the last frame
 	presented:      bool,     // a frame reached the swap chain
 	slot_held:      bool,     // the swap chain's slot was waited for, no present since
-	latency:        int,      // the swap chain's maximum frame latency, as last set
 }
 
 // Before a frame reads its input: the cadence's decision executed (the screen's plan adopted when the display changed,
@@ -63,10 +62,8 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 			}
 		}
 	}
-	if latency != p.latency {
-		set_max_frame_latency(r, latency)
-		p.latency = latency
-	}
+	// (Present_State says what the swap chain has: a new one starts over, and a backend that cannot set it is asked again for nothing)
+	if latency != max(r.present.max_latency, 1) { set_max_frame_latency(r, latency) }
 	return
 }
 

@@ -1,5 +1,6 @@
 package render
 
+import "core:sync"
 import "vendor:wgpu"
 
 // WebGPU backend: GPU time of frame_submit (gpu_ms) and of each of its steps (set_gpu_profile). Timestamp queries
@@ -13,11 +14,13 @@ import "vendor:wgpu"
 @(private) WPROF_QUERIES :: 1024   // per slot (a query set holds 4096): the submit's start, then one after each step; later steps are counted in the last
 
 @(private)
+Wprof_State :: enum u8 { Free, Mapping, Mapped }   // Mapped: its results are ready
+
+@(private)
 Wgpu_Prof :: struct {
 	qs:      wgpu.QuerySet,
 	resolve: wgpu.Buffer,
 	read:    [GPU_QUERY_FRAMES]wgpu.Buffer,
-	state:   [GPU_QUERY_FRAMES]u8,     // 0: free, 1: mapping, 2: mapped (results ready)
 	count:   [GPU_QUERY_FRAMES]int,    // timestamps written in the slot
 	frame:   [GPU_QUERY_FRAMES]int,    // the submit the slot measured (gpu_frame at the time)
 	recs:    [GPU_QUERY_FRAMES][dynamic]Prof_Rec,
@@ -29,7 +32,7 @@ Wgpu_Prof :: struct {
 @(private)
 wprof_init :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
-	if g.pf.qs != nil { return true }
+	if g.pf.qs != nil { return g.pf.resolve != nil }
 	g.pf.slot = -1
 	g.pf.qs = wgpu.DeviceCreateQuerySet(g.device, &{label = "gpu time", type = .Timestamp, count = GPU_QUERY_FRAMES * WPROF_QUERIES})
 	g.pf.resolve = wgpu.DeviceCreateBuffer(g.device, &{label = "gpu time", usage = {.QueryResolve, .CopySrc}, size = GPU_QUERY_FRAMES * WPROF_QUERIES * WPROF_TIMESTAMP_BYTES})
@@ -45,20 +48,20 @@ wgpu_profile_release :: proc(r: ^Renderer) {
 	g := &r.wg
 	for i in 0 ..< GPU_QUERY_FRAMES {
 		if g.pf.read[i] != nil {
-			if g.pf.state[i] == 2 { wgpu.BufferUnmap(g.pf.read[i]) }
+			if sync.atomic_load(&g.shared.prof[i]) == .Mapped { wgpu.BufferUnmap(g.pf.read[i]) }
 			wgpu.BufferRelease(g.pf.read[i])
 		}
 		delete(g.pf.recs[i])
 	}
 	if g.pf.resolve != nil { wgpu.BufferRelease(g.pf.resolve) }
 	if g.pf.qs != nil { wgpu.QuerySetRelease(g.pf.qs) }
-	g.pf = {}
+	g.pf = {slot = -1}
+	for &s in g.shared.prof { sync.atomic_store(&s, Wprof_State.Free) }
 }
 
 @(private)
 wprof_map_done :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, u1, u2: rawptr) {
-	state := (^u8)(u1)
-	state^ = status == .Success ? 2 : 0
+	sync.atomic_store((^Wprof_State)(u1), status == .Success ? Wprof_State.Mapped : Wprof_State.Free)
 }
 
 // Reads the slots whose results arrived: the latest becomes gpu_ms / gpu_profile.
@@ -66,9 +69,9 @@ wprof_map_done :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringVie
 wprof_collect :: proc(r: ^Renderer) {
 	g := &r.wg
 	if g.pf.qs == nil { return }
-	wgpu.DevicePoll(g.device, false)   // runs the map callbacks of finished work, never waits
+	wgpu_poll(r, false)   // runs the map callbacks of finished work, never waits
 	for slot in 0 ..< GPU_QUERY_FRAMES {
-		if g.pf.state[slot] != 2 { continue }
+		if sync.atomic_load(&g.shared.prof[slot]) != .Mapped { continue }
 		n := g.pf.count[slot]
 		data := wgpu.BufferGetConstMappedRangeSlice(g.pf.read[slot], 0, uint(n), u64)
 		if n >= 2 && len(data) == n {
@@ -81,7 +84,7 @@ wprof_collect :: proc(r: ^Renderer) {
 			if r.prof.on { wprof_fill(r, slot, frame, ms, data) }
 		}
 		wgpu.BufferUnmap(g.pf.read[slot])
-		g.pf.state[slot] = 0
+		sync.atomic_store(&g.shared.prof[slot], Wprof_State.Free)
 	}
 }
 
@@ -107,7 +110,7 @@ wprof_begin :: proc(r: ^Renderer, enc: wgpu.CommandEncoder) {
 	if !wprof_init(r) { return }
 	wprof_collect(r)
 	slot := r.gpu_frame % GPU_QUERY_FRAMES
-	if g.pf.state[slot] != 0 { return }   // its previous results are not read yet: this frame is not timed
+	if sync.atomic_load(&g.shared.prof[slot]) != .Free { return }   // its previous results are not read yet: this frame is not timed
 	g.pf.slot = slot
 	g.pf.count[slot] = 0
 	g.pf.frame[slot] = r.gpu_frame
@@ -161,8 +164,8 @@ wprof_submitted :: proc(r: ^Renderer) {
 	g := &r.wg
 	slot := g.pf.slot
 	if slot < 0 { return }
-	g.pf.state[slot] = 1
-	wgpu.BufferMapAsync(g.pf.read[slot], {.Read}, 0, uint(g.pf.count[slot] * WPROF_TIMESTAMP_BYTES), {mode = .AllowSpontaneos, callback = wprof_map_done, userdata1 = &g.pf.state[slot]})
+	sync.atomic_store(&g.shared.prof[slot], Wprof_State.Mapping)
+	wgpu.BufferMapAsync(g.pf.read[slot], {.Read}, 0, uint(g.pf.count[slot] * WPROF_TIMESTAMP_BYTES), {mode = .AllowSpontaneos, callback = wprof_map_done, userdata1 = &g.shared.prof[slot]})
 	g.pf.slot = -1
 	r.gpu_frame += 1
 }

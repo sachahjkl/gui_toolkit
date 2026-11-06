@@ -74,7 +74,6 @@ chain_on_device :: proc(f: ^Fx) -> bool {
 // Recovery remade only the window in use: the other one kept its swap chain and views from the old device.
 @(test)
 a_second_window_survives_a_device_loss :: proc(t: ^testing.T) {
-	when render.RENDER_BACKEND != "d3d11" { return }   // second windows and captures: Direct3D 11 only
 	f: Fx
 	if !open(&f) { testing.fail_now(t, "no device (WARP)") }
 	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
@@ -96,10 +95,10 @@ a_second_window_survives_a_device_loss :: proc(t: ^testing.T) {
 	render.surface_use(&f.r, &a)   // the frame of this window recovers the device
 	p, ok = paint(&f, RED)
 	testing.expectf(t, ok && near(p, {255, 0, 0}), "first window after the loss: %v", p)
-	testing.expect(t, chain_on_device(&f), "the first window's swap chain is on the new device")
+	when !render.USE_WGPU { testing.expect(t, chain_on_device(&f), "the first window's swap chain is on the new device") }
 	render.surface_use(&f.r, &a)
 	render.surface_use(&f.r, &b)
-	testing.expect(t, chain_on_device(&f), "the second window's swap chain is on the new device")
+	when !render.USE_WGPU { testing.expect(t, chain_on_device(&f), "the second window's swap chain is on the new device") }
 	p, ok = paint(&f, BLUE)
 	testing.expectf(t, ok && near(p, {0, 0, 255}), "second window after the loss: %v", p)
 	render.surface_use(&f.r, &b)
@@ -108,7 +107,6 @@ a_second_window_survives_a_device_loss :: proc(t: ^testing.T) {
 // set_blend_space changed the format of the view of the window in use only.
 @(test)
 a_second_window_follows_the_blend_space :: proc(t: ^testing.T) {
-	when render.RENDER_BACKEND != "d3d11" { return }   // second windows and captures: Direct3D 11 only
 	f: Fx
 	if !open(&f) { testing.fail_now(t, "no device (WARP)") }
 	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
@@ -130,7 +128,6 @@ a_second_window_follows_the_blend_space :: proc(t: ^testing.T) {
 // A capture is of the window whose frame comes next, not of whichever window ends a frame first.
 @(test)
 a_capture_belongs_to_its_window :: proc(t: ^testing.T) {
-	when render.RENDER_BACKEND != "d3d11" { return }   // second windows and captures: Direct3D 11 only
 	f: Fx
 	if !open(&f) { testing.fail_now(t, "no device (WARP)") }
 	defer { draw.destroy(&f.dc); render.destroy(&f.r) }

@@ -22,11 +22,9 @@ import "vendor:wgpu"
 
 Wgpu_Latency :: struct {
 	timer:      win.HANDLE,   // the frame latency object (frame_waitable)
-	have_dwm:   bool,
 	last_index: u64,          // the vblank the previous frame was shown at (compositor's refresh counter)
 	have_index: bool,
 	lag_ns:     f64,          // how much later than the next vblank the swap chain really takes a new frame (learned from the acquires that had to wait)
-	armed_at:   time.Tick,    // when the latency object was last set (the acquire that follows measures its lag against it)
 }
 
 @(private)
@@ -185,18 +183,21 @@ wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
 }
 
 @(private)
-wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
-	if g.shared != nil && g.shared.lost { r.lost = true }
-	if g.surface == nil {   // offscreen
-		if g.clear_pending { wgpu_clear_frame(r); g.damage_ready = false }
-		if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
-		wgpu.DevicePoll(g.device, true)   // (no present paces an offscreen frame: on a slow device they would pile up, and a read-back wait behind them)
+wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
+	g := &r.wg
+	wgpu_lost_poll(r)
+	if g.clear_pending { g.damage_ready = false }   // nothing of this frame reached the kept target: drawn or not, it is behind
+	if r.lost || g.frame_rtv == nil {   // no frame (a hidden window, a device gone): a capture asked of it ends here
+		if r.capture.requested { capture_copy_wgpu(r, nil, g.surface_format, r.space) }
 		return
 	}
-	if !g.frame_acquired { return }
-	if g.clear_pending { wgpu_clear_frame(r); g.damage_ready = false }
+	if g.clear_pending { wgpu_clear_frame(r) }
 	// the capture copies the frame target before the present consumes the surface texture (one more command on the queue)
 	if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
+	if g.surface == nil {   // offscreen
+		wgpu_poll(r, true)   // (no present paces an offscreen frame: on a slow device they would pile up, and a read-back wait behind them)
+		return
+	}
 	if r.damage.skip_present {   // a region of nothing: the window keeps what it shows, and the texture stays acquired
 		r.present.slot_unused = true
 		return
@@ -223,6 +224,20 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {	g := &r.wg
 	wgpu_present_done(r, now, vsync)
 }
 
+// The refreshes a frame stays for. A surface in Fifo waits for the vblank whatever frame_end asked (`vsync` false): only a reconfigure
+// changes its mode.
+@(private)
+wgpu_present_sync :: proc(asked: u32, mode: wgpu.PresentMode) -> u32 {
+	return asked == 0 && mode == .Fifo ? 1 : asked
+}
+
+// A surface configured: what was counted of the one before says nothing about it (present_reset, on Direct3D 11).
+@(private)
+present_reset_wgpu :: proc(r: ^Renderer) {
+	r.present.slot_unused = false
+	r.wg.latency.have_index = false
+}
+
 // Most frames the surface may queue (api.set_max_frame_latency): the wgpu backend has no equivalent here.
 wgpu_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool { return false }
 
@@ -234,7 +249,7 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	p.slot_unused = false
 	p.presents += 1
 	if p.interval == 0 { p.interval = 1 }
-	sync := present_call(p.mode, p.tearing_ok, p.interval, vsync).sync
+	sync := wgpu_present_sync(present_call(p.mode, p.tearing_ok, p.interval, vsync).sync, r.wg.present_mode)
 	// the compositor's timing: the last vblank (QPC, refresh counter) and the period. DWM is Windows only; on Linux
 	// there is no portable per-present timing here, so the frame statistics (shown / missed refreshes) stay off and
 	// the FIFO present paces the frames.
@@ -242,8 +257,8 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	ok := false
 	when ODIN_OS == .Windows {
 		ok = hr_ok(DwmGetCompositionTimingInfo(nil, &info)) && info.qpcRefreshPeriod > 0
+		p.stats_ok = ok
 		if ok {
-			p.stats_ok = true
 			freq: win.LARGE_INTEGER
 			win.QueryPerformanceFrequency(&freq)
 			p.period_ns = f64(info.qpcRefreshPeriod) * 1e9 / f64(freq)

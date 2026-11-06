@@ -131,7 +131,8 @@ take_displayed :: proc(r: ^Renderer) -> []Displayed_Frame {
 	return out
 }
 
-// Totals since the swap chain was made: frames presented, seen on screen, refreshes missed in continuous runs.
+// Totals of the window since it was opened (a swap chain made again goes on counting): frames presented, seen on screen, refreshes
+// missed in continuous runs.
 present_totals :: proc(r: ^Renderer) -> (presents, displayed, missed: u64) {
 	return r.present.presents, r.present.displayed, r.present.missed
 }
@@ -246,7 +247,7 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 @(private)
 present_collect :: proc(r: ^Renderer) {
 	p := &r.present
-	if p.stats_fails > STATS_FAILS_MAX { return }   // not supported here (some remote sessions): stop asking
+	if p.stats_fails > STATS_FAILS_MAX { p.stats_ok = false; return }   // not supported here (some remote sessions): stop asking
 	st: dxgi.FRAME_STATISTICS
 	hr := r.swapchain->GetFrameStatistics(&st)
 	if hr == dxgi.ERROR_FRAME_STATISTICS_DISJOINT { p.have_seen = false; p.sync_count = 0; return }

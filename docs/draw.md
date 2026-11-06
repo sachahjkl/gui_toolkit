@@ -437,7 +437,7 @@ format, contents cleared. `render.Renderer.device_generation` changes: owners of
 (`draw.begin_frame` uploads the glyph atlas pages again whole from their CPU copy: glyphs stay where they were and
 pictures with text stay valid); the retained heaps are emptied
 (`heap_generation`), pictures upload again from their recording at their next replay. If no device can be had yet,
-frames draw nothing and recovery is tried again. `render.simulate_device_loss` exercises the path in tests.
+frames draw nothing and recovery is tried again. A texture the new device refuses draws nothing and says `{0, 0}` from then on, until `destroy_texture` frees its handle. `render.simulate_device_loss` exercises the path in tests.
 
 ## Offscreen rendering (tests, export)
 

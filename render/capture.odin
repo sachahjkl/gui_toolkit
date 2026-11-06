@@ -3,7 +3,8 @@ package render
 // Reading a frame back without the screen: `capture_request` marks the next frame, `frame_end` copies that frame's
 // render target (or a part of it) into a staging texture just before it presents, and `capture_poll` maps the copy once
 // the GPU is done with it. The frame is what the renderer drew, so it works with the window covered, minimized to the
-// taskbar's size, moved off the screen, or hidden, and does not depend on the monitor's scale. Nothing here costs
+// taskbar's size, moved off the screen, or hidden (Direct3D 11; on WebGPU a hidden window's surface may give no frame, and the
+// capture says Failed), and does not depend on the monitor's scale. Nothing here costs
 // anything until a capture is asked for (the copy is one GPU command in that one frame; the map never waits).
 
 import "base:runtime"
@@ -22,7 +23,7 @@ Capture_Status :: enum u8 {
 	None,      // nothing requested
 	Pending,   // asked, or copied and not yet readable: poll again (after the next frame, or a few ms)
 	Ready,     // `pixels` is the picture
-	Failed,    // the backend cannot (wgpu), the device was lost, or the rectangle is empty
+	Failed,    // the device was lost, the rectangle is empty, or there was no frame to copy (WebGPU: a hidden window's surface gives none)
 }
 
 Capture_State :: struct {
@@ -138,9 +139,10 @@ capture_copy_wgpu :: proc(r: ^Renderer, src: wgpu.Texture, format: wgpu.TextureF
 		&{buffer = c.wbuf, layout = {offset = 0, bytesPerRow = u32(row), rowsPerImage = u32(gh)}},
 		&{u32(gw), u32(gh), 1})
 	cb := wgpu.CommandEncoderFinish(enc)
-	wgpu.QueueSubmit(g.queue, {cb})
+	submitted := wgpu_submit(r, cb)
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(enc)
+	if !submitted { c.failed = true; return }
 	c.wformat, c.wrow = format, row
 	c.pending = true
 }
@@ -205,7 +207,6 @@ capture_poll_raw :: proc(r: ^Renderer, allocator := context.allocator) -> (raw: 
 	if c.requested { return {}, .Pending }
 	if !c.pending { return {}, .None }
 	when USE_WGPU {
-		g := &r.wg
 		if c.wbuf == nil { c.pending = false; return {}, .Failed }
 		if c.wmap == nil {
 			c.wmap = new(Capture_Map, runtime.heap_allocator())
@@ -217,10 +218,7 @@ capture_poll_raw :: proc(r: ^Renderer, allocator := context.allocator) -> (raw: 
 				wgpu.BufferMapAsync(c.wbuf, {.Read}, 0, uint(c.wrow * c.got[3]), {mode = .AllowProcessEvents, callback = capture_on_map, userdata1 = c.wmap})
 			}
 		}
-		if c.wmap.state == .Asked {
-			wgpu.DevicePoll(g.device, false)
-			wgpu.InstanceProcessEvents(g.instance)
-		}
+		if c.wmap.state == .Asked { wgpu_poll(r, false, events = true) }
 		switch c.wmap.state {
 		case .Asked: return {}, .Pending
 		case .Failed: c.pending = false; capture_free_wgpu(c); return {}, .Failed
