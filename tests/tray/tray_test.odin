@@ -35,6 +35,27 @@ setup :: proc() -> ^platform.Window {
 	return platform.open_window("tray test", {200, 120})   // (never shown)
 }
 
+// A shell that restarted and is not ready refuses the icon: it is asked again at the next change.
+@(test)
+an_icon_refused_at_a_restart_is_asked_again :: proc(t: ^testing.T) {
+	w := setup()
+	defer teardown(w)
+	tr := platform.tray_create(w, nil, "tip")
+	testing.expect(t, tr != nil)
+	if tr == nil { return }
+	defer platform.tray_destroy(tr)
+	refuse_add = true
+	platform.tray_inject_shell_restart(w)
+	testing.expect(t, !tr.added)
+	refuse_add = false
+	clear(&ops)
+	testing.expect(t, platform.tray_set_tooltip(tr, "again"))
+	testing.expect(t, tr.added, "it is back")
+	testing.expect_value(t, ops[0], platform.Tray_Op.Add)
+	ev := platform.tray_poll(tr)
+	if testing.expect_value(t, len(ev), 1) { testing.expect_value(t, ev[0].kind, platform.Tray_Event_Kind.Recreated) }
+}
+
 @(private = "file")
 teardown :: proc(w: ^platform.Window) {
 	platform.destroy_window(w)

@@ -1,12 +1,10 @@
 #+build linux
 package platform
 
-// File dialogs and shell actions on Linux (dialogs.odin has the API and the pure filter logic). The brief's first
-// choice is the FileChooser portal (org.freedesktop.portal.FileChooser over D-Bus), which works under a sandbox and
-// matches the user's desktop; writing a D-Bus client in Odin is a sizeable piece, so this ships the robust fallback the
-// portal degrades to anyway — zenity (GNOME) or kdialog (KDE) spawned as a child, its chosen paths read from its
-// stdout. open_url / open_path / reveal_in_folder go through xdg-open (and the file manager for "reveal"), the portal's
-// OpenURI being the same idea. The portal path is the noted next step; the spawn path needs no D-Bus.
+// File dialogs and shell actions on Linux (dialogs.odin has the API and the pure filter logic). The first choice is the
+// FileChooser portal (org.freedesktop.portal.FileChooser over D-Bus, portal_linux.odin), which works under a sandbox and
+// matches the user's desktop; without one, zenity (GNOME) or kdialog (KDE) spawned as a child, its chosen paths read from
+// its stdout. open_url / open_path go through the portal's OpenURI, else xdg-open; reveal_in_folder through xdg-open.
 //
 // A dialog blocks until the user closes it: call it from a worker of the app's blocking pool, never from the frame loop
 // (dialogs.odin says so). The child's stdout is captured through a pipe with posix_spawn file actions.

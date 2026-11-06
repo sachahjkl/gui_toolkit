@@ -984,6 +984,7 @@ a_lost_server_closes_its_windows :: proc(t: ^testing.T) {
 		defer delete(seen.events)
 		testing.expect(t, wait_kind(w, &seen, .Close, 3000), "the windows hear it")
 		testing.expect(t, platform.is_closed(w))
+		platform.take_paint_request(w)
 		start := time.tick_now()
 		platform.wait_event(w, 300)
 		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) >= 200, "the dead socket does not end a wait")
@@ -1496,10 +1497,10 @@ fullscreen_before_the_window_is_mapped_on_x11 :: proc(t: ^testing.T) {
 	testing.expect_value(t, w.size, [2]int{1280, 1024})
 }
 
-// A placement that is not maximized restores a maximized window.
+// A placement that is not maximized restores a maximized window. (On X11: a tiling compositor does not maximize.)
 @(test)
-a_placement_restores_a_maximized_window :: proc(t: ^testing.T) {
-	if desktop() == "" { return }
+a_placement_restores_a_maximized_window_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
 	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
 	w := open("restored")
 	testing.expect(t, w != nil)
@@ -1557,6 +1558,43 @@ a_held_key_repeats_on_x11 :: proc(t: ^testing.T) {
 	testing.expect_value(t, firsts, 1)
 	testing.expect(t, repeats >= 1, "repeats")
 	testing.expect_value(t, releases, 1)
+}
+
+// Xft.dpi changes (a desktop's scale setting): the windows follow, as at a change of monitor.
+@(test)
+the_scale_follows_xft_dpi_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("dpi")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	sh("xprop -root -f RESOURCE_MANAGER 8s -set RESOURCE_MANAGER 'Xft.dpi: 192'")
+	defer sh("xprop -root -remove RESOURCE_MANAGER")
+	pump_for(w, 300)
+	testing.expect_value(t, w.dpi_scale, f32(2))
+	testing.expect(t, platform.take_paint_request(w), "it repaints at it")
+}
+
+// A reader that closes its pipe in the middle of what we write is an error of the write, not the end of the program.
+@(test)
+a_reader_that_leaves_early_kills_nothing_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("clip pipe")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	pump_for(w, 200)
+	sh("swaymsg -q seat seat0 cursor set 60 60; wtype x")
+	pump_for(w, 300)
+	platform.set_clipboard(w, strings.repeat("0123456789abcdef", 64 * 1024, context.temp_allocator))
+	pump_for(w, 200)
+	reset_files()
+	capture_in_background("wl-paste -n -t text/plain | head -c 4")
+	got, ok := wait_file(w, "/tmp/gt_out", 8000)
+	testing.expect(t, ok)
+	testing.expect_value(t, got, "0123")
 }
 
 ////////////////////////////////
