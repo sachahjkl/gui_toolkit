@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.90.0] - 2026-11-06
+
+### Added
+- **`render.surface_init` `under_children`**: a composition surface below the window's child windows. A web view moved into a window with a composition surface stayed hidden behind it.
+
 ## [0.89.0] - 2026-11-06
 
 ### Added
@@ -1729,6 +1734,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.90.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.90.0
 [0.89.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.89.0
 [0.88.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.88.0
 [0.87.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.87.0
