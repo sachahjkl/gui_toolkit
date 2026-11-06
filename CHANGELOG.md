@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.88.0] - 2026-11-06
+
+### Fixed
+- **Text in a dialog or a popover can be selected**: their panel took every press, so a plain `.Selectable` label in it selected nothing, showed no text cursor, and a label made `.Clickable` to get the press counted as a button. The panel is now `.Press_Stop` (new `Box_Flag`: clickable only so that what is under it gets no press): a press on it is a press on nothing, selectable text in it takes its own, and a selection stays on the surface it started on, whatever is built behind it.
+
 ## [0.87.0] - 2026-11-06
 
 ### Added
@@ -1717,6 +1722,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.88.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.88.0
 [0.87.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.87.0
 [0.86.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.86.0
 [0.85.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.85.0
