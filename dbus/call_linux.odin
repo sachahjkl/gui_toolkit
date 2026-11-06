@@ -14,11 +14,11 @@ import "core:time"
 @(private = "file") RECV_CHUNK_BYTES :: 8192
 
 // Sends a method call and waits for its reply (bounded by timeout_ms, 0 = a default). The returned Message is valid
-// until the next call on this connection (it lives in a reply arena of the connection). ok = false on timeout or
-// disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
+// until the next call at the same depth (it lives in a reply arena of the connection, one for each call nested in a handler
+// of another). ok = false on timeout or disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
 // A handler may call this while another call waits: each gets its own reply, in whatever order they come.
 call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) {
-	if !conn_alive_or_connecting(c) { return {}, false }
+	if !conn_open(c) { return {}, false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return {}, false }
 	deadline := time.tick_now()
@@ -37,16 +37,17 @@ call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body
 		route_buffered(c)
 		// (an index: a call in a handler may have moved the list)
 		if w := c.waiters[depth]; w.done { return w.msg, w.msg.type == .Method_Return }
-		if c.disconnected { return {}, false }
+		if c.state == .Lost { return {}, false }
 		if remaining_ms(deadline, limit) <= 0 { return {}, false }
 		pump(c, remaining_ms(deadline, limit))
 	}
 }
 
 // Sends a method call and returns at once; `handler` runs from dispatch() when the reply arrives, or with a nil message
-// on timeout or when the bus goes away. deadline_ms: 0 = no deadline. conn_close runs none of them.
+// on timeout or when the bus goes away. deadline_ms: 0 = no deadline. conn_close runs none of them. A deadline fires in
+// dispatch: a loop that sleeps on conn_fd with no timeout of its own hears of it at the next thing the bus says.
 call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := DEFAULT_CALL_TIMEOUT_MS) -> bool {
-	if !conn_alive_or_connecting(c) { return false }
+	if !conn_open(c) { return false }
 	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return false }
 	dl: i64 = 0
@@ -57,35 +58,40 @@ call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string
 
 // Sends a method call expecting no reply (NO_REPLY_EXPECTED), fire and forget.
 call_noreply :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8) -> bool {
-	if !conn_alive_or_connecting(c) { return false }
+	if !conn_open(c) { return false }
 	return send_message(c, .Method_Call, FLAG_NO_REPLY_EXPECTED, path, iface, member, destination, "", 0, signature, body) != 0
 }
 
 // Emits a signal from this connection (a service we export, such as the StatusNotifierItem's NewIcon).
 emit_signal :: proc(c: ^Conn, path, iface, member, signature: string, body: []u8) -> bool {
-	if !conn_alive_or_connecting(c) { return false }
+	if !conn_open(c) { return false }
 	return send_message(c, .Signal, 0, path, iface, member, "", "", 0, signature, body) != 0
 }
 
 // Replies to a method call we received (a return with a body, or an error).
 reply_return :: proc(c: ^Conn, to: ^Message, signature: string, body: []u8) -> bool {
+	if !conn_open(c) { return false }
 	return send_message(c, .Method_Return, 0, "", "", "", to.sender, "", to.serial, signature, body) != 0
 }
 reply_error :: proc(c: ^Conn, to: ^Message, error_name, message: string) -> bool {
+	if !conn_open(c) { return false }
 	w := writer_make(context.temp_allocator)
 	w_string(&w, message)
 	return send_message(c, .Error, 0, "", "", "", to.sender, error_name, to.serial, "s", w.buf[:]) != 0
 }
 
+// A message can go: Hello goes before the connection is Ready.
 @(private)
-conn_alive_or_connecting :: proc(c: ^Conn) -> bool { return c != nil && c.fd >= 0 && !c.disconnected }
+conn_open :: proc(c: ^Conn) -> bool { return c != nil && c.state != .Lost }
 
+// The message's serial; 0 when it could not be sent, which is why no message has that one (the spec forbids it too).
 @(private)
 send_message :: proc(c: ^Conn, type: Msg_Type, flags: u8, path, iface, member, destination, error_name: string, reply_serial: u32, signature: string, body: []u8) -> u32 {
 	serial := c.serial
 	c.serial += 1
+	if c.serial == 0 { c.serial = 1 }
 	bytes := build_message(serial, type, flags, path, iface, member, destination, error_name, reply_serial, signature, body, context.temp_allocator)
-	if !send_all(c.fd, bytes) { c.disconnected = true; return 0 }
+	if !send_all(c.fd, bytes) { conn_lost(c); return 0 }
 	return serial
 }
 
@@ -101,11 +107,13 @@ remaining_ms :: proc(start: time.Tick, limit_ms: int) -> int {
 
 // Reads whatever arrived on the socket (without blocking) and routes complete messages. Call it after poll(2) says the
 // fd is readable, or any time to drain. Routes: method returns / errors to the synchronous waiter or an async handler;
-// signals to subscribers; method calls to the exported-object handler (export_linux.odin).
+// signals to subscribers; method calls to the exported-object handler (export_linux.odin). On a lost connection, what was
+// whole when it went is routed, what was not is dropped, and the calls that wait hear of it.
 dispatch :: proc(c: ^Conn) {
-	if c == nil || c.fd < 0 { return }
-	drain_socket(c)
+	if c == nil { return }
+	if c.state != .Lost { drain_socket(c) }
 	route_buffered(c)
+	if c.state == .Lost { clear(&c.in_buf) }
 	expire_pending(c)
 }
 
@@ -127,13 +135,13 @@ drain_socket :: proc(c: ^Conn) {
 			if n < len(buf) { break }   // likely drained; a full read loops to catch backlog
 			continue
 		}
-		if n == 0 { c.disconnected = true; break }
+		if n == 0 { conn_lost(c); break }
 		#partial switch posix.errno() {
 		case .EINTR:
 			continue
 		case .EAGAIN:   // on the non-blocking socket: nothing more right now
 		case:           // (ECONNRESET: the bus went away with something of ours unread)
-			c.disconnected = true
+			conn_lost(c)
 		}
 		break
 	}
@@ -148,13 +156,15 @@ route_buffered :: proc(c: ^Conn) {
 		if !ok {
 			virtual.arena_temp_end(temp)
 			// no message can be told from the next in what follows: the connection is over
-			if total < 0 { c.disconnected = true; clear(&c.in_buf) }
+			if total < 0 { conn_lost(c); clear(&c.in_buf) }
 			break
 		}
 		// the consumed bytes go first: the message is a copy, and a handler that calls must not meet it again
 		copy(c.in_buf[:], c.in_buf[total:])
 		resize(&c.in_buf, len(c.in_buf) - total)
+		c.running += 1
 		route_one(c, &msg)
+		c.running -= 1
 		virtual.arena_temp_end(temp)
 	}
 }
@@ -190,15 +200,22 @@ route_one :: proc(c: ^Conn, msg: ^Message) {
 	}
 }
 
+// One expired call at a time, looked for anew: a handler that calls comes back here and moves the list under any index.
 @(private)
 expire_pending :: proc(c: ^Conn) {
 	now := time.tick_now()._nsec
-	for i := len(c.pending) - 1; i >= 0; i -= 1 {
-		p := c.pending[i]
-		if c.disconnected || p.deadline != 0 && now >= p.deadline {
+	outer: for {
+		for p, i in c.pending {
+			if c.state != .Lost && (p.deadline == 0 || now < p.deadline) { continue }
 			unordered_remove(&c.pending, i)
-			if p.handler != nil { p.handler(p.user, c.disconnected ? .Disconnected : .Timeout, nil) }
+			if p.handler != nil {
+				c.running += 1
+				p.handler(p.user, c.state == .Lost ? .Disconnected : .Timeout, nil)
+				c.running -= 1
+			}
+			continue outer
 		}
+		return
 	}
 }
 
@@ -209,7 +226,7 @@ expire_pending :: proc(c: ^Conn) {
 // dispatch(). Any of iface / member / path may be "" to match all of that kind. Returns a subscription id for
 // unsubscribe (0 on failure).
 subscribe :: proc(c: ^Conn, sender, path, iface, member: string, handler: Signal_Handler, user: rawptr) -> u32 {
-	if !conn_alive_or_connecting(c) { return 0 }
+	if !conn_open(c) { return 0 }
 	rule := match_rule(sender, path, iface, member)
 	w := writer_make(context.temp_allocator)
 	w_string(&w, rule)
