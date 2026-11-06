@@ -586,7 +586,15 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 	frame: ^Box
 	if tags("floating") { frame = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###dock_float_%d", root)) }   // (Clickable: what is under it gets no press)
 	a11y_set(frame, {role = .Group, name = dock_stack_label(d, dock_leaves(d, root)[0]), role_description = "floating panel"})
+	// The panels are not its children, and are drawn after it, square: within its corners from here to the box that closes it, whose
+	// border goes over them.
+	frame.custom = dock_float_clip
 	dock_build_tree(d, root)
+	next({fixed_x = r.min.x, fixed_y = r.min.y, width = px(r.max.x - r.min.x), height = px(r.max.y - r.min.y)})
+	if tags("floating") {
+		end := build_box({.Draw_Border}, fmt.tprintf("###dock_float_end_%d", root))
+		end.custom = dock_float_unclip
+	}
 	g := math.round(DOCK_GRIP_EM * em)
 	next({fixed_x = r.max.x - g, fixed_y = r.max.y - g, width = px(g), height = px(g), cursor = platform.Cursor.Resize_NWSE})
 	gb := build_box({.Clickable}, dock_grip_id(root))
@@ -594,6 +602,17 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 	gd.color = signal(gb).hovering || signal(gb).dragging ? color("accent") : color("weak text")
 	gb.custom, gb.custom_user = dock_grip_draw, gd
 }
+
+@(private)
+dock_float_clip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	s := gs()
+	line := max(math.round(scale()), 1)
+	radius := max((.Fixed_Radius in b.flags ? b.radius : b.radius * s.rounding) - line, 0)
+	draw.push_clip_rounded(dc, draw.rect_pad(b.rect, -line), {radius, radius, radius, radius})
+}
+
+@(private)
+dock_float_unclip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) { draw.pop_clip(dc) }
 
 @(private)
 Dock_Grip_Draw :: struct { color: Color }

@@ -81,6 +81,28 @@ a_toast_goes_by_the_clock :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Saved 3 files") == nil, "toasts_clear takes them")
 }
 
+// A toast that says what can be done does it when clicked, once, and goes.
+@(test)
+a_toast_with_an_action_does_it_when_clicked :: proc(t: ^testing.T) {
+	Run :: struct { say: bool, done: int }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if r.say {
+			ui.toast_action(.Good, proc(user: rawptr) { (^Run)(user).done += 1 }, r, "Version %d: click to install", 2)
+			r.say = false
+		}
+		ui.toasts_build()
+	}})
+	r.say = true
+	session.frames(s, 2)
+	b := session.wait_text(s, "Version 2: click to install")
+	session.click_at(s, session.center(b))
+	session.wait_idle(s)
+	testing.expect_value(t, r.done, 1)
+	testing.expect(t, session.find_text(s, "Version 2: click to install") == nil, "gone")
+}
+
 // A popover stays open while the app builds it, by its anchor.
 @(test)
 a_popover_stands_by_its_anchor :: proc(t: ^testing.T) {
