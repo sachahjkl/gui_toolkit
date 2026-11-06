@@ -36,7 +36,7 @@ X11_Conn :: struct {
 	mime_text_html, mime_image_png, mime_uri_list, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
 	// the XDND atoms (dragdrop_x11_linux.odin)
 	xdnd_aware, xdnd_enter, xdnd_position, xdnd_status, xdnd_leave, xdnd_drop, xdnd_finished,
-	xdnd_type_list, xdnd_selection, xdnd_action_copy, xdnd_action_move, xdnd_action_link, xdnd_proxy: Xcb_Atom,
+	xdnd_type_list, xdnd_selection, xdnd_action_copy, xdnd_action_move, xdnd_action_link, xdnd_proxy, xdnd_action_list: Xcb_Atom,
 	// the window that owns CLIPBOARD now (this process), and what it holds
 	clip_owner:  Xcb_Window,
 	clip_text:   string,
@@ -238,6 +238,7 @@ x11_xkb_load :: proc() {
 @(private) XCB_SELECTION_REQUEST :: 30
 @(private) XCB_SELECTION_NOTIFY :: 31
 @(private) XCB_PROPERTY_NOTIFY :: 28
+@(private = "file") XCB_DESTROY_NOTIFY :: 17
 @(private = "file") XCB_UNMAP_NOTIFY :: 18
 @(private = "file") XCB_MAP_NOTIFY :: 19
 @(private) X11_FORMAT_8 :: 8               // a property's or a client message's format: bits per item
@@ -302,6 +303,7 @@ x11_destroy :: proc(w: ^Window) {
 	st := x11_state(w)
 	if st == nil { return }
 	for x, i in x11c.windows { if x == w { ordered_remove(&x11c.windows, i); break } }
+	if x11c.dnd_target.window == w { x11c.dnd_target.window = nil }
 	if x11c.clip_owner == st.id { x11c.clip_owner = 0; delete(x11c.clip_text); x11c.clip_text = "" }
 	xcb.destroy_window(x11c.c, st.id)
 	xcb.flush(x11c.c)
@@ -564,13 +566,31 @@ x11_event_target :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) -> ^Window {
 	return unknown
 }
 
+// Whether a window is one of this connection's.
+@(private)
+x11_is_ours :: proc(id: Xcb_Window) -> bool {
+	for x in x11c.windows { if x11_state(x).id == id { return true } }
+	return false
+}
+
+// Whether a keycode gives Escape now.
+@(private)
+x11_key_is_escape :: proc(keycode: u8) -> bool {
+	k := xkb_lib()
+	return k.ok && x11c.xkb_state != nil && key_from_keysym(k.state_key_get_one_sym(x11c.xkb_state, u32(keycode))) == .Escape
+}
+
 @(private)
 x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
+	b := ([^]u8)(raw)
+	type := raw.response_type & X11_RESPONSE_TYPE_MASK
+	if type == XCB_DESTROY_NOTIFY {   // (xcb_destroy_notify_event_t: window at [8])
+		x11_dnd_source_gone(Xcb_Window(get_u32(b[8:])))
+		return
+	}
 	w := x11_event_target(polling, raw)
 	if w == nil { return }
 	st := x11_state(w)
-	b := ([^]u8)(raw)
-	type := raw.response_type & X11_RESPONSE_TYPE_MASK
 	if x11c.xkb_event != 0 && type == x11c.xkb_event {
 		if b[1] == X11_XKB_NEW_KEYBOARD_NOTIFY || b[1] == X11_XKB_MAP_NOTIFY { x11_xkb_load() }
 		return
@@ -581,10 +601,7 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 	}
 	if x11c.xfixes_event != 0 && type == x11c.xfixes_event {
 		// xcb_xfixes_selection_notify_event_t: owner at [8], selection at [12]. This program's own writes count themselves
-		owner := Xcb_Window(get_u32(b[8:]))
-		ours := false
-		for x in x11c.windows { if x11_state(x).id == owner { ours = true } }
-		if Xcb_Atom(get_u32(b[12:])) == x11c.clipboard && !ours { clip_note_changed() }
+		if Xcb_Atom(get_u32(b[12:])) == x11c.clipboard && !x11_is_ours(Xcb_Window(get_u32(b[8:]))) { clip_note_changed() }
 		return
 	}
 	if x11c.randr_event != 0 && type == x11c.randr_event {
@@ -788,7 +805,7 @@ x11_convert_selection :: proc(requestor: Xcb_Window, selection, target, property
 @(private)
 x11_handle_selection_request :: proc(w: ^Window, b: [^]u8) {
 	// xcb_selection_request_event_t: selection at [16]
-	if x11c.dnd_source.active && Xcb_Atom(get_u32(b[16:])) == x11c.xdnd_selection { x11_dnd_serve_source_request(b); return }
+	if x11c.dnd_source.phase != .Idle && Xcb_Atom(get_u32(b[16:])) == x11c.xdnd_selection { x11_dnd_serve_source_request(b); return }
 	x11_serve_selection_request(w, b)
 }
 
