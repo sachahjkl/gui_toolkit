@@ -174,9 +174,11 @@ r_signature :: proc(r: ^Reader) -> string {
 }
 
 // Skips one complete value of the given signature (for values of a type we do not read). Advances the reader past it.
-// `sig` is consumed from the front; returns how many signature characters one value took.
+// `sig` is consumed from the front; returns how many signature characters one value took: all of them once the reader
+// failed (nothing can be read of what is left), so that a walk along a signature ends.
 r_skip :: proc(r: ^Reader, sig: string) -> int {
-	if len(sig) == 0 || r.err { return 0 }
+	if r.err { return len(sig) }
+	if len(sig) == 0 { return 0 }
 	switch sig[0] {
 	case 'y': r_u8(r); return 1
 	case 'b': r_bool(r); return 1
@@ -195,11 +197,16 @@ r_skip :: proc(r: ^Reader, sig: string) -> int {
 		return 1
 	case 'a':
 		inner := sig[1:]
+		if len(inner) == 0 { r.err = true; return 1 }   // an array of nothing
 		used := signature_one(inner)
 		n := int(r_u32(r))
 		r_align(r, sig_alignment(inner))
 		end := r.pos + n
-		for r.pos < end && !r.err { r_skip(r, inner) }
+		for r.pos < end && !r.err {
+			at := r.pos
+			r_skip(r, inner)
+			if r.pos == at { r.err = true }   // a type code that takes no bytes: the array would never end
+		}
 		r.pos = min(end, len(r.buf))
 		return 1 + used
 	case '(':
