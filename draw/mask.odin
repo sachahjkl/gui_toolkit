@@ -18,7 +18,7 @@ import "../render"
 // A mask without any layer leaves the content as it is (CSS: `mask-image: none`). Mask layers draw in sRGB, whatever
 // the frame's blend space, so their luminance is that of their CSS colors. When no render target can be had (empty,
 // too large, or while a picture is recorded) the content is drawn directly and the mask layers are not drawn: the
-// content shows unmasked.
+// content shows unmasked. A mask layer with no target of its own is lost alone: its drawing is cut away, the others apply.
 
 Mask_Mode :: enum u8 {
 	Alpha,       // coverage = the layer's alpha
@@ -33,7 +33,7 @@ Mask_Op :: render.Mask_Op
 // cover the mask layers as well as the content. Returns false when the kept result stands: neither the content nor the
 // mask layers need be drawn (what is drawn until pop_mask is discarded).
 push_mask :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects = {alpha = 1}) -> (draw_content: bool) {
-	return open_layer(c, bounds, fx, true)
+	return open_layer(c, bounds, fx, .Masked)
 }
 
 // Starts the next mask layer of the innermost push_mask: what is drawn until the next mask_layer or pop_mask is that
@@ -41,34 +41,42 @@ push_mask :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects = {alpha = 1}) ->
 mask_layer :: proc(c: ^Context, mode: Mask_Mode, op: Mask_Op) {
 	if len(c.open_layers) == 0 { return }
 	ol := &c.open_layers[len(c.open_layers) - 1]
-	if !ol.masked || ol.cache.hit { return }   // (a kept result: everything drawn is already discarded)
+	if ol.kind != .Masked || ol.cache.hit { return }   // (a kept result: everything drawn is already discarded)
 	if ol.id == 0 {
-		// no layer: the mask cannot apply; its drawing is cut away (an empty scissor) instead of showing
-		if ol.mask == 0 {
-			push_clip(c, Rect{})
-			ol.mask = -1
-		}
+		// no layer: the mask cannot apply
+		if ol.mask_draw == .Content { mask_cut(c, ol) }
 		return
 	}
-	if ol.mask > 0 { mask_fold(c, ol) }
+	switch ol.mask_draw {
+	case .Content:
+	case .Layer: mask_fold(c, ol)
+	case .Cut:
+		floor_settle(c)
+		ol.mask_draw = .Content
+	}
 	content := c.layers[ol.id - 1]
-	tex := render.acquire_target(c.renderer, content.size.x, content.size.y)
+	tex: render.Texture
+	if !failing(.Mask_Target) { tex = render.acquire_target(c.renderer, content.size.x, content.size.y) }
 	if tex == 0 {
 		// out of targets: this layer is lost (as if fully covering: the others still apply)
-		ol.mask = 0
 		ol.cache.store = false
-		close_batch(c)
-		c.target = ol.id
-		start_batch(c)
+		mask_cut(c, ol)
 		return
 	}
 	append(&c.layers, render.Layer{tex = tex, origin = content.origin, size = content.size, space = .Srgb})
-	ol.mask = len(c.layers)
+	ol.mask_draw, ol.mask = .Layer, len(c.layers)
 	ol.mask_mode, ol.mask_op = mode, op
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)
 	c.target = ol.mask
 	start_batch(c)
+}
+
+// What is drawn for this mask layer is cut away (an empty scissor) instead of showing. floor_settle ends it.
+@(private)
+mask_cut :: proc(c: ^Context, ol: ^Open_Layer) {
+	push_clip(c, Rect{})
+	ol.mask_draw = .Cut
 }
 
 // The mask layer just drawn, composited with those before it.
@@ -78,7 +86,7 @@ mask_fold :: proc(c: ^Context, ol: ^Open_Layer) {
 	ly := c.layers[ol.mask - 1]
 	layer := render.Image_Ref{tex = ly.tex, origin = ly.origin, scale = 1, size = ly.size, space = ly.space}
 	dst := render.acquire_target(c.renderer, ly.size.x, ly.size.y)
-	ol.mask = 0
+	ol.mask_draw, ol.mask = .Content, 0
 	c.target = ol.id
 	start_batch(c)
 	if dst == 0 {
@@ -100,15 +108,16 @@ mask_fold :: proc(c: ^Context, ol: ^Open_Layer) {
 pop_mask :: proc(c: ^Context) {
 	if len(c.open_layers) == 0 { return }
 	top := &c.open_layers[len(c.open_layers) - 1]
-	if !top.masked || top.cache.hit { pop_layer(c); return }
+	if top.kind != .Masked || top.cache.hit { pop_layer(c); return }
+	layer_settle(c)
 	if top.id == 0 {
-		if top.mask == -1 { pop_clip(c) }
-		pop(&c.open_layers)
+		c.floor = pop(&c.open_layers).floor
 		pop(&c.alphas)
 		return
 	}
-	if top.mask > 0 { mask_fold(c, top) }
+	if top.mask_draw == .Layer { mask_fold(c, top) }
 	ol := pop(&c.open_layers)
+	c.floor = ol.floor
 	pop(&c.alphas)
 	close_batch(c)
 	pop(&c.clips)   // the layer's own clip root

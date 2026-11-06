@@ -47,7 +47,7 @@ slug_upload :: proc(c: ^Context) {
 		rows := SLUG_MIN_ROWS
 		for rows < n { rows *= 2 }
 		rows = min(rows, render.max_texture_size(c.renderer))
-		if rows < n { return }
+		if rows < n { return }   // (font.SLUG_MAX_PAGES is under what a device gives: not reached)
 		if g.curves != 0 { render.destroy_texture(c.renderer, g.curves) }
 		if g.bands != 0 { render.destroy_texture(c.renderer, g.bands) }
 		g.curves, g.bands = render.create_slug_textures(c.renderer, rows)

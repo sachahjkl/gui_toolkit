@@ -93,6 +93,7 @@ Saved_Frame :: struct {
 	grads:   [dynamic][4]f32,
 	open_layers: [dynamic]Open_Layer,
 	target:  int,
+	floor:   Stack_Levels,
 	planes:  int,       // the planes open in the frame: those above end with the recording
 	// stacks reused by recordings
 	spare_clips:  [dynamic]Clip,
@@ -122,7 +123,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	append(&pic.clips, render.Clip_Data{})
 	append(&pic.clip_rects, Rect{})
 	s := &c.saved
-	s.planes = len(c.planes)
+	s.planes, s.floor = len(c.planes), c.floor
 	s.insts, s.batches, s.clips, s.alphas, s.xforms = c.insts, c.batches, c.clips, c.alphas, c.xforms
 	s.clip_table, s.clip_points, s.grads, s.open_layers, s.target = c.clip_table, c.clip_points, c.grads, c.open_layers, c.target
 	c.insts, c.batches, c.clip_table, c.clip_points, c.grads = pic.insts, pic.batches, pic.clips, pic.points, pic.grads
@@ -133,6 +134,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	append(&c.clips, Clip{rect = {{-RECT_UNBOUNDED, -RECT_UNBOUNDED}, {RECT_UNBOUNDED, RECT_UNBOUNDED}}})
 	append(&c.alphas, 1)
 	append(&c.xforms, Transform{m = AFFINE_IDENTITY, simple = true})
+	c.floor = {1, 1, 1}
 	c.target = 0
 	c.rec = pic
 	c.raster_scale = pic.raster_scale
@@ -151,6 +153,7 @@ picture_end :: proc(c: ^Context) {
 	s.spare_clips, s.spare_alphas, s.spare_xforms, s.spare_open = c.clips, c.alphas, c.xforms, c.open_layers
 	c.insts, c.batches, c.clips, c.alphas, c.xforms = s.insts, s.batches, s.clips, s.alphas, s.xforms
 	c.clip_table, c.clip_points, c.grads, c.open_layers, c.target = s.clip_table, s.clip_points, s.grads, s.open_layers, s.target
+	c.floor = s.floor
 	s.insts, s.batches, s.clips, s.alphas, s.xforms, s.clip_table, s.clip_points, s.grads, s.open_layers = {}, {}, {}, {}, {}, {}, {}, {}, {}
 	pic.slug_runs, c.slug_runs, s.slug_runs = c.slug_runs, s.slug_runs, {}
 	c.rec = nil
@@ -300,7 +303,10 @@ picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
 	if c.rec != nil { return .Culled }
 	// (a picture of nothing but pending glyphs is empty until they are ready)
-	if pic.glyphs_pending && font.color_ready_generation(c.fonts) != pic.pending_ready { return .Stale }
+	if pic.glyphs_pending {
+		if font.color_ready_generation(c.fonts) != pic.pending_ready { return .Stale }
+		c.glyphs_pending += 1   // (what it lacks is lacking in the layers and planes open now: they are not kept)
+	}
 	if len(pic.insts) == 0 || len(pic.batches) == 0 { return .Culled }
 	slots_update(pic)
 	if picture_stale(c, pic, m) { return .Stale }

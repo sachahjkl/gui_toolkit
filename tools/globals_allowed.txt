@@ -55,6 +55,7 @@ font/dwrite.odin IID_IDWriteFontFace7 const  # a COM interface id (passed by add
 font/dwrite.odin IID_IDWriteLocalFontFileLoader const  # a COM interface id (passed by address)
 font/emoji_data.odin EMOJI_RANGES const  # a table
 font/emoji_data.odin EMOJI_PRESENTATION_RANGES const  # a table
+draw/failures.odin forced_failures thread  # the failures a test forces, on its thread
 font/failures.odin forced_failures thread  # the failures a test forces, on its thread
 font/font_other.odin other_system const  # a system font service's table of procedures
 font/font_system_linux.odin fc_once process  # fontconfig's initialization, once for the process
