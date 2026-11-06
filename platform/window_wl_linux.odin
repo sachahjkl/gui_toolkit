@@ -125,8 +125,14 @@ wl_state :: proc(w: ^Window) -> ^Wl_Window_State { return (^Wl_Window_State)(w.w
 @(private)
 wl_connect :: proc() -> bool {
 	if wlc.link != .Untried { return wlc.link == .Connected }
-	wlc.link = wl_connect_now() ? .Connected : .Failed
-	return wlc.link == .Connected
+	if wl_connect_now() {
+		wlc.link = .Connected
+		return true
+	}
+	// (a compositor without the shell: nothing of it stays, what reads wlc sees no connection)
+	if wlc.display != nil { wl.display_disconnect(wlc.display) }
+	wlc = {link = .Failed}
+	return false
 }
 
 @(private = "file")
