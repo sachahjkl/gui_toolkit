@@ -16,6 +16,7 @@ App :: struct {
 	built:  [6]bool,     // the panels whose content was built this frame
 	saves:  int,
 	result: ui.Dock_Result,
+	hide:   bool,        // the dock is not built
 }
 
 @(private = "file")
@@ -24,6 +25,7 @@ TITLES := [?]string{"", "Alpha", "Beta", "Gamma", "Delta", "Epsilon"}
 @(private = "file")
 build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
+	if app.hide { return }
 	ui.dock_begin(&app.dock, "###dock", {
 		title = proc(user: rawptr, id: u32) -> string { return TITLES[id] },
 		on_save = proc(user: rawptr, d: ^ui.Dock) { (^App)(user).saves += 1 },
@@ -176,6 +178,88 @@ escape_cancels_a_drag :: proc(t: ^testing.T) {
 	testing.expect(t, session.find(s, "dock_overlay") == nil)
 	session.release(s, target)
 	testing.expect_value(t, layout(&app), before)
+}
+
+// A tab held over the left of c's stack, past the threshold.
+@(private = "file")
+hold_tab :: proc(s: ^session.Session, app: ^App, name: string) -> (target: [2]f32) {
+	right := ui.dock_leaf_of(&app.dock, 3)
+	target = mid(ui.dock_markers(app.dock.nodes[right].rect, app.dock.metrics)[.Left]) + app.dock.origin
+	from := tab(s, name)
+	session.press(s, from)
+	session.move(s, from + {20, 0})
+	session.move(s, target)
+	return
+}
+
+// The panel leaves the dock while its tab is held: the drop brings nothing back.
+@(test)
+a_panel_closed_while_its_tab_is_held_stays_closed :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	session.click(s, "dock_tab_2")
+	target := hold_tab(s, &app, "dock_tab_2")
+	testing.expect(t, app.result.dragging, "dragging")
+	ui.dock_close(&app.dock, 2)
+	session.frame(s)
+	testing.expect(t, !app.result.dragging, "the drag ended with it")
+	session.release(s, target)
+	session.frames(s, 2)
+	testing.expect(t, !ui.dock_has(&app.dock, 2), "closed it stays")
+}
+
+// The last panel of a floating root goes while the root is held: the root is gone, and nothing reads it.
+@(test)
+a_floating_panel_closed_while_held_ends_the_drag :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	testing.expect(t, ui.dock_float(&app.dock, 2, {{50, 50}, {250, 200}}))
+	session.frames(s, 2)
+	grab := session.find(s, "dock_grab", 2)
+	if !testing.expect(t, grab != nil) { return }
+	g := [2]f32{grab.rect.max.x - 10, mid(grab.rect).y}
+	session.press(s, g)
+	session.move(s, g + {30, 20})
+	testing.expect(t, app.result.dragging, "dragging")
+	ui.dock_close(&app.dock, 2)
+	session.frame(s)
+	testing.expect(t, !app.result.dragging, "the drag ended with it")
+	session.release(s, g + {30, 20})
+	session.frames(s, 2)
+	testing.expect_value(t, len(app.dock.floats), 0)
+}
+
+// The button went up while the dock was not built: what comes back is what was there, no drop from long ago.
+@(test)
+a_drag_the_dock_did_not_see_end_drops_nothing :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	session.click(s, "dock_tab_2")
+	before := layout(&app)
+	target := hold_tab(s, &app, "dock_tab_2")
+	app.hide = true
+	session.frame(s)
+	session.release(s, target)
+	session.frames(s, 2)
+	app.hide = false
+	session.frames(s, 2)
+	testing.expect_value(t, layout(&app), before)
+}
+
+// Enter on the tab held is no new press: the drag goes on.
+@(test)
+a_key_on_a_held_tab_leaves_the_drag_alone :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	session.click(s, "dock_tab_2")
+	target := hold_tab(s, &app, "dock_tab_2")
+	session.key(s, .Return)
+	testing.expect(t, app.result.dragging, "still dragging")
+	session.release(s, target)
 }
 
 @(test)

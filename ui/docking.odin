@@ -238,7 +238,7 @@ dock_grips :: proc(d: ^Dock) {
 		if gb == nil { continue }
 		sig := signal(gb)
 		sc := d.metrics.scale
-		if sig.pressed {
+		if sig.pointer_pressed {
 			r := d.nodes[f].rect
 			drag_store({r.min.x / sc, r.min.y / sc, (r.max.x - r.min.x) / sc, (r.max.y - r.min.y) / sc})
 		}
@@ -259,6 +259,14 @@ dock_grips :: proc(d: ^Dock) {
 dock_drag_frame :: proc(d: ^Dock) {
 	dr := &d.drag
 	if dr.state == .Idle { return }
+	build := gs().build_index
+	if build > dr.seen + 1 {
+		// the dock was not built: nothing here saw how the drag went
+		if dr.panel == DOCK_NO_PANEL && dock_valid_node(d, dr.node) { d.nodes[dr.node].float = dr.float_from }
+		dr^ = {}
+		return
+	}
+	dr.seen = build
 	if active_key() != dr.key {
 		// the button went up (or what was held is gone)
 		if dr.state == .Dragging { dock_drop(d) }
@@ -455,8 +463,8 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 			grab := build_box(floating ? {.Clickable} : {}, "###dock_grab")
 			if floating {
 				gsig := signal(grab)
-				if gsig.pressed {
-					d.drag = {state = .Pressed, key = grab.key, panel = DOCK_NO_PANEL, node = root, from = mouse_pos(),
+				if gsig.pointer_pressed {
+					d.drag = {state = .Pressed, key = grab.key, seen = gs().build_index, panel = DOCK_NO_PANEL, node = root, from = mouse_pos(),
 						grab = mouse_pos() - d.origin - d.nodes[root].rect.min, float_from = d.nodes[root].float}
 				}
 				if gsig.double_clicked {
@@ -537,7 +545,9 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	}
 	if sig.pressed {
 		if !active { d.nodes[leaf].active = p; dock_changed(d) }
-		d.drag = {state = .Pressed, key = tb.key, panel = p, node = DOCK_NONE, from = mouse_pos(), grab = mouse_pos() - tb.rect.min}
+		if sig.pointer_pressed {
+			d.drag = {state = .Pressed, key = tb.key, seen = gs().build_index, panel = p, node = DOCK_NONE, from = mouse_pos(), grab = mouse_pos() - tb.rect.min}
+		}
 	}
 	if sig.clicked && !active { dock_activate(d, p) }   // (Enter, Space)
 	if sig.middle_clicked && closable { dock_user_close(d, p) }

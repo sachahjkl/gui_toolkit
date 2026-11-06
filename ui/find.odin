@@ -39,6 +39,12 @@ Find_Match :: struct {
 	index: int,   // which occurrence: rects of one occurrence share it
 }
 
+// What the last sweep says of the needle. Unswept -> Swept (a sweep ran: `all` and `boxes` answer it) -> Stale (what is built
+// differs from what it found, or the application says the text changed) -> Swept; a new needle, or a build that makes
+// all of its text: Unswept.
+@(private)
+Find_Sweep :: enum u8 { Unswept, Swept, Stale }
+
 @(private)
 Find_State :: struct {
 	needle:  string,             // as given (owned)
@@ -49,10 +55,9 @@ Find_State :: struct {
 	by_box:  map[Key][2]int,     // box -> [first, end) in matches
 	in_match: bool,              // find_paint_text: painting the letters of a match (a rich paragraph: every run in b.text_color)
 	lazy:     bool,              // find_sweep was asked in this build: what is built may be a part of the text
+	sweep:    Find_Sweep,
 	sweeping: bool,              // this build makes everything
-	swept:    bool,              // ll and oxes answer this needle
-	stale:    bool,              // what is built differs from what the sweep found
-	waiting:  bool,              // a sweep is due, its time has not come: needs_frame
+	waiting:  bool,              // this build asks for the next one (a sweep whose time has not come, or the answer of one): needs_frame
 	changed_ms, swept_ms: f64,
 	swept_w:  f32,               // the scope's width at the sweep
 	swept_n:  int,               // occurrences found
@@ -70,30 +75,27 @@ find :: proc(needle: string, scope: Key = 0) {
 	delete(f.needle)
 	f.needle = strings.clone(needle)
 	f.changed_ms = now_ms()
-	f.swept, f.stale = false, false
+	f.sweep = .Unswept
 }
 
 // In a build that may leave text out, before the lazy column: whether this build must make all of it (see above).
 find_sweep :: proc() -> bool {
 	f := &gs().find
 	f.lazy = true
-	f.sweeping, f.waiting = false, false
-	if f.needle == "" { return false }
-	due := !f.swept || f.stale
-	if !due { return false }
+	if f.needle == "" || f.sweep == .Swept { return false }
 	now := now_ms()
-	ready := !f.swept ? now - f.changed_ms >= FIND_QUIET_MS : now - f.swept_ms >= FIND_SWEEP_GAP_MS
+	ready := f.sweep == .Unswept ? now - f.changed_ms >= FIND_QUIET_MS : now - f.swept_ms >= FIND_SWEEP_GAP_MS
 	f.sweeping, f.waiting = ready, !ready
 	return ready
 }
 
 // The application knows the text changed where nothing is built (a page read above the view): a new sweep.
-find_refresh :: proc() { f := &gs().find; f.stale = f.swept }
+find_refresh :: proc() { f := &gs().find; if f.sweep == .Swept { f.sweep = .Stale } }
 
 // The needle has not been swept yet: find_count is not its answer.
 find_pending :: proc() -> bool {
 	f := &gs().find
-	return f.needle != "" && !f.swept
+	return f.needle != "" && f.sweep == .Unswept
 }
 
 // Every match of the last sweep, in reading order: rects in the scope's content (from its top, whatever the scroll).
@@ -156,16 +158,16 @@ find_collect :: proc(s: ^State) {
 	clear(&f.matches)
 	clear(&f.by_box)
 	if !part { f.count = 0 }
-	if !part && !sweep { f.swept = false }
-	if f.needle == "" { f.count, f.swept = 0, false; return }
-	if part && !f.swept { f.count = 0; return }
+	if !part && !sweep { f.sweep = .Unswept }
+	if f.needle == "" { f.count, f.sweep = 0, .Unswept; return }
+	if part && f.sweep == .Unswept { f.count = 0; return }
 	top := s.root
 	if f.scope != 0 {
 		top = s.boxes[f.scope] or_else nil
 		// a scope not built this build (a page left while the needle stays): its subtree points into freed frame memory
 		if top == nil || top.last_build != s.build_index { return }
 	}
-	if part && top.size.x != f.swept_w { f.stale = true }
+	if part && top.size.x != f.swept_w { f.sweep = .Stale }
 	if sweep { clear(&f.boxes) }
 	hits := make([dynamic][2]int, context.temp_allocator)
 	add :: proc(f: ^Find_State, b: ^Box, r: Rect, same: bool) {
@@ -234,7 +236,7 @@ find_collect :: proc(s: ^State) {
 			}
 		}
 		if len(f.matches) > first { f.by_box[b.key] = {first, len(f.matches)} }
-		if reads && part && (known ? f.count - before != found[1] : f.count != before) { f.stale = true }
+		if reads && part && (known ? f.count - before != found[1] : f.count != before) { f.sweep = .Stale }
 		if sweep && f.count > before { f.boxes[b.key] = {before, f.count - before} }
 		// next in depth-first order, staying under `top`
 		if b.first != nil { b = b.first; continue }
@@ -244,7 +246,7 @@ find_collect :: proc(s: ^State) {
 	}
 	if part { f.count = f.swept_n }
 	if sweep {
-		f.swept, f.stale = true, false
+		f.sweep = .Swept
 		f.swept_ms, f.swept_w, f.swept_n = now_ms(), top.size.x, f.count
 		f.waiting = true   // (one more frame: the application reads the answer, says the count, goes to the first match)
 		clear(&f.all)

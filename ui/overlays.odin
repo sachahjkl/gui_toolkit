@@ -188,10 +188,48 @@ toasts_build :: proc() {
 @(private)
 Modal_Scope :: struct {
 	panel:   Key,
+	order:   int,       // its place among this build's dialogs, from 1: what Tab goes by (Focus_Entry.modal)
 	open:    ^bool,
 	size:    ^Vec2,     // modal_sized: what the person chose
 	wh:      Vec2,      // its size in this frame
 	lo, hi:  Vec2,      // how small and how large it may be, in this window
+}
+
+// A dialog of this build or the last. `focus`: what had the focus when it opened, and gets it back when it closes.
+@(private)
+Modal_Open :: struct {
+	panel: Key,
+	focus: Key,
+}
+
+// Where a dialog is, from the last build: not in it (the focus leaves the page for it), under another one, or the
+// one on top (Escape is its own).
+@(private)
+Modal_Phase :: enum u8 { Opening, Below, Top }
+
+@(private)
+modal_phase :: proc(s: ^State, panel: Key) -> (phase: Modal_Phase, focus: Key) {
+	for m, i in s.modals_open {
+		if m.panel == panel { return i == len(s.modals_open) - 1 ? .Top : .Below, m.focus }
+	}
+	return .Opening, 0
+}
+
+// A dialog of the last build that is not of this one has closed: what it took the focus from has it back, unless
+// something else took it since (a focus inside the dialog is gone with it).
+@(private)
+modals_settle :: proc(s: ^State) {
+	#reverse for m in s.modals_open {
+		gone := true
+		for b in s.modals_built { if b.panel == m.panel { gone = false; break } }
+		if !gone || m.focus == 0 { continue }
+		now := s.boxes[s.focus_key] or_else nil
+		if now != nil && now.last_build == s.build_index { continue }
+		back := s.boxes[m.focus] or_else nil
+		if back == nil || back.last_build != s.build_index { continue }
+		s.focus_key = m.focus
+		s.anim_busy = true   // (the frame that shows it)
+	}
 }
 
 MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
@@ -267,11 +305,14 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	a11y_default(panel, {role = .Dialog, modal = true})
 	push_parent(panel)
 	append(&s.popup_stack, true)
-	append(&s.modal_stack, Modal_Scope{panel = panel.key, open = open})
-	// keyboard: Tab cycles inside the dialog; the page widget that had the focus loses it when the dialog opens
-	s.trap_depth += 1
-	s.modal_now = panel.key
-	if s.modal_prev != panel.key { s.focus_key = 0 }
+	// keyboard: Tab cycles inside the dialog; what had the focus loses it while the dialog is open
+	phase, focus := modal_phase(s, panel.key)
+	if phase == .Opening {
+		focus = s.focus_key
+		s.focus_key = 0
+	}
+	append(&s.modals_built, Modal_Open{panel = panel.key, focus = focus})
+	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open})
 }
 
 // The edges and corners of a dialog that is resized, over what is in it. It stays centered: a side moved by the pointer takes the
@@ -316,10 +357,10 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 modal_end :: proc() {
 	s := gs()
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
-		s.trap_depth -= 1
 		m := pop(&s.modal_stack)
 		if m.size != nil { modal_grips(s, m) }
-		if m.panel == s.modal_prev && len(s.menus) == 0 && key_press(.Escape) { m.open^ = false }
+		phase, _ := modal_phase(s, m.panel)
+		if phase == .Top && len(s.menus) == 0 && key_press(.Escape) { m.open^ = false }
 	}
 	ctx_menu_end()
 }
