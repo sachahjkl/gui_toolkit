@@ -41,6 +41,17 @@ offscreen_begin :: proc(c: ^Context, size: [2]int) -> bool {
 // offscreen target is open.
 offscreen_end :: proc(c: ^Context) -> render.Readback_Id {
 	if len(c.open_layers) == 0 || !c.open_layers[len(c.open_layers) - 1].offscreen { return 0 }
+	ol := offscreen_close(c)
+	ly := c.layers[ol.id - 1]
+	id := render.readback_new(c.renderer)
+	if id != 0 { add_op(c, render.Op{kind = .Read, source = ol.id, box = {0, 0, i32(ly.size.x), i32(ly.size.y)}, readback = id}) }
+	render.release_target(c.renderer, ly.tex)
+	return id
+}
+
+// Back to what the target was opened in.
+@(private = "file")
+offscreen_close :: proc(c: ^Context) -> Open_Layer {
 	ol := pop(&c.open_layers)
 	pop(&c.alphas)
 	close_batch(c)
@@ -48,11 +59,14 @@ offscreen_end :: proc(c: ^Context) -> render.Readback_Id {
 	pop(&c.xforms)
 	c.target = ol.parent
 	start_batch(c)
-	ly := c.layers[ol.id - 1]
-	id := render.readback_new(c.renderer)
-	if id != 0 { add_op(c, render.Op{kind = .Read, source = ol.id, box = {0, 0, i32(ly.size.x), i32(ly.size.y)}, readback = id}) }
-	render.release_target(c.renderer, ly.tex)
-	return id
+	return ol
+}
+
+// An offscreen target closed by anything but offscreen_end (pop_layer, the end of the frame): nothing reads it.
+@(private)
+offscreen_drop :: proc(c: ^Context) {
+	ol := offscreen_close(c)
+	render.release_target(c.renderer, c.layers[ol.id - 1].tex)
 }
 
 // Whether the target open last is an offscreen one (drawing code that must not open layers of the frame inside).

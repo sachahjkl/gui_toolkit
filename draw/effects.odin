@@ -289,6 +289,7 @@ pop_layer :: proc(c: ^Context) {
 	// a masked layer closes through its mask, unless its kept result stands for it (the mask is in it)
 	if len(c.open_layers) > 0 {
 		top := &c.open_layers[len(c.open_layers) - 1]
+		if top.offscreen { offscreen_drop(c); return }
 		if top.masked && !top.cache.hit { pop_mask(c); return }
 	}
 	ol := pop(&c.open_layers)
