@@ -67,6 +67,7 @@ PORT :: 9471   // (a port per test: they run at once)
 PORT_HTTP :: 9472
 PORT_FRAMES :: 9473
 PORT_SET :: 9474
+PORT_SILENT :: 9475
 
 @(private = "file")
 Client :: struct {
@@ -255,6 +256,9 @@ what_a_browser_page_can_do_is_refused :: proc(t: ^testing.T) {
 	testing.expect_value(t, status(http_get("/json/list", HOST)), "HTTP/1.1 200")
 	testing.expect_value(t, status(http_get("/json/list", "Host: localhost:9472\r\n")), "HTTP/1.1 200")
 	testing.expect_value(t, status(http_get(page, HOST + UPGRADE)), "HTTP/1.1 101")
+	// a key alone upgrades nothing, nor a version that is not this protocol's
+	testing.expect_value(t, status(http_get(page, HOST + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n")), "HTTP/1.1 400")
+	testing.expect_value(t, status(http_get(page, HOST + "Upgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 8\r\n")), "HTTP/1.1 400")
 	// header names and the Host fold by ASCII alone: the Kelvin sign U+212A is no 'K', the long s U+017F no 's'
 	testing.expect_value(t, status(http_get("/json/list", "HOST: LOCALHOST:9472\r\n")), "HTTP/1.1 200")
 	testing.expect_value(t, status(http_get("/json/list", "Ho\u017Ft: 127.0.0.1:9472\r\n")), "HTTP/1.1 403")
@@ -275,7 +279,7 @@ a_bad_frame_ends_the_connection :: proc(t: ^testing.T) {
 	open :: proc(id: string) -> (net.TCP_Socket, bool) {
 		sock, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = PORT_FRAMES})
 		if err != nil { return {}, false }
-		req := strings.concatenate({"GET /devtools/page/", id, " HTTP/1.1\r\nHost: 127.0.0.1:9473\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"}, context.temp_allocator)
+		req := strings.concatenate({"GET /devtools/page/", id, " HTTP/1.1\r\nHost: 127.0.0.1:9473\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"}, context.temp_allocator)
 		net.send_tcp(sock, transmute([]u8)req)
 		buf: [1024]u8
 		n, _ := net.recv_tcp(sock, buf[:])
@@ -285,8 +289,8 @@ a_bad_frame_ends_the_connection :: proc(t: ^testing.T) {
 	closed :: proc(sock: net.TCP_Socket) -> bool {
 		net.set_option(sock, .Receive_Timeout, 3 * time.Second)
 		buf: [64]u8
-		n, _ := net.recv_tcp(sock, buf[:])
-		return n <= 0
+		n, e := net.recv_tcp(sock, buf[:])
+		return n <= 0 && e != .Timeout
 	}
 	{
 		sock, ok := open(srv.id)
@@ -304,4 +308,36 @@ a_bad_frame_ends_the_connection :: proc(t: ^testing.T) {
 		net.send_tcp(sock, frame[:])
 		testing.expect(t, closed(sock), "a frame over the limit")
 	}
+	// a frame of these bytes, masked (by zeros, which leave them as they are): RFC 6455 has no place for what follows
+	bad := [?][]u8{
+		{0x80, 0x80, 0, 0, 0, 0},                                  // a continuation of nothing
+		{0x01, 0x81, 0, 0, 0, 0, 'a', 0x81, 0x81, 0, 0, 0, 0, 'b'},   // a message begun within a message
+		{0x83, 0x80, 0, 0, 0, 0},                                  // an opcode with no meaning
+		{0xC1, 0x80, 0, 0, 0, 0},                                  // an extension nobody agreed on
+	}
+	for frame, i in bad {
+		sock, ok := open(srv.id)
+		if !testing.expect(t, ok) { return }
+		defer net.close(sock)
+		net.send_tcp(sock, frame)
+		testing.expectf(t, closed(sock), "bad frame %d", i)
+	}
+}
+
+// A connection that says nothing does not hold a thread as long as the program lives.
+@(test)
+a_silent_connection_is_closed :: proc(t: ^testing.T) {
+	win := platform.open_window_offscreen("devtools test", {200, 100})
+	if !testing.expect(t, win != nil) { return }
+	defer platform.destroy_window(win)
+	srv := devtools.start(win, PORT_SILENT, "test")
+	if !testing.expect(t, srv != nil, "listening") { return }
+	defer devtools.stop(srv)
+	sock, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = PORT_SILENT})
+	if !testing.expect(t, err == nil) { return }
+	defer net.close(sock)
+	net.set_option(sock, .Receive_Timeout, 2 * devtools.REQUEST_TIMEOUT)
+	buf: [64]u8
+	n, e := net.recv_tcp(sock, buf[:])
+	testing.expect(t, n <= 0 && e != .Timeout, "closed by the server")
 }

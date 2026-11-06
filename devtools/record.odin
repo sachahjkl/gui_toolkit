@@ -10,11 +10,21 @@ import "../ui"
 // The recorder: what a person does in the window, as a script of tools/cdp.mjs to run again (Toolkit.startRecording,
 // Toolkit.stopRecording). A click is written by what it clicked (its name, its text), not by where it was, so the script
 // survives the layout moving; what names nothing, and a drag, is written with coordinates. Typed text is recorded as
-// is: the recording is asked for, and is the asker's to keep.
+// is: the recording is asked for, and is the asker's to keep. Its alone: another client can neither read it nor stop it, and
+// when the asker goes the recording ends and what it held is dropped.
+
+// The pointer's gesture: what its release will make of it.
+@(private)
+Rec_Gesture :: enum u8 {
+	Idle,
+	Pressed,    // a press, not far yet: a click if it ends here
+	Dragging,   // `down` is written, and each move
+}
 
 @(private)
 Recorder :: struct {
 	on:       bool,
+	owner:    ^Conn,              // who asked (while on)
 	injected: bool,               // the events of the protocol too (a test of the recorder)
 	seen:     u64,                // the last build read
 	lines:    [dynamic]Rec_Line,  // (the server's heap)
@@ -25,11 +35,11 @@ Recorder :: struct {
 	scroll_ms: f64,
 	touched:  f64,                // the last character or notch: a pause ends them
 	scroll_at: [2]f32,
-	press:    [2]f32,             // the press under way (its release makes it a click, or a drag)
-	pressing: bool,
-	button:   platform.Mouse_Button,
+	gesture:  Rec_Gesture,
+	press:    [2]f32,             // where it began
+	last:     [2]f32,             // where the pointer last was in it
+	button:   platform.Mouse_Button,   // its button: another pressed meanwhile is no part of it
 	target:   string,             // what a click there means ("": only coordinates; the server's heap: the press and its release are frames apart)
-	dragged:  bool,
 }
 
 @(private)
@@ -64,11 +74,18 @@ rec_flush :: proc(r: ^Recorder) {
 	}
 }
 
+// Another client's, which is still there.
 @(private)
-rec_start :: proc(srv: ^Server, s: ^ui.State, p: json.Object) {
+rec_taken :: proc(srv: ^Server, to: Reply_To) -> bool {
+	r := &srv.rec
+	return r.on && r.owner != to.conn && !conn_gone(r.owner)
+}
+
+@(private)
+rec_start :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, p: json.Object) {
 	r := &srv.rec
 	rec_clear(r)
-	r.on, r.injected, r.seen, r.pressing = true, bool_of(p["injected"]), s.build_index, false
+	r.on, r.owner, r.injected, r.seen = true, to.conn, bool_of(p["injected"]), s.build_index
 }
 
 @(private)
@@ -79,6 +96,7 @@ rec_clear :: proc(r: ^Recorder) {
 	r.taken = 0
 	clear(&r.text)
 	r.scroll = {}
+	r.gesture = .Idle
 }
 
 @(private)
@@ -93,6 +111,8 @@ rec_destroy :: proc(r: ^Recorder) {
 @(private)
 rec_stop :: proc(srv: ^Server, sb: ^strings.Builder) {
 	r := &srv.rec
+	// (a drag that goes on past the end: played again, what it pressed must come up)
+	if r.gesture == .Dragging { rec_up(r, srv) }
 	rec_flush(r)
 	r.on = false
 	strings.write_string(sb, `{"lines":[`)
@@ -119,10 +139,25 @@ rec_take :: proc(srv: ^Server, sb: ^strings.Builder) {
 	r.taken = len(r.lines)
 }
 
+// " --button right" for what is not the left one (a script's lines say left unless told).
+@(private)
+rec_button :: proc(r: ^Recorder) -> string { return r.button == .Right ? " --button right" : "" }
+
+@(private)
+rec_up :: proc(r: ^Recorder, srv: ^Server) {
+	d := f32(dpi(srv))
+	rec_line(r, fmt.tprintf("up %.0f %.0f%s", r.last.x / d, r.last.y / d, rec_button(r)))
+	rec_line(r, "idle")
+}
+
 // Each frame: the input the last build took. Its tree is the one the press was made on (the click acts at the release).
 @(private)
 rec_poll :: proc(srv: ^Server, s: ^ui.State) {
 	r := &srv.rec
+	if r.on && conn_gone(r.owner) {   // (nobody will ask for it: what it holds, typed text too, goes now)
+		r.on = false
+		rec_clear(r)
+	}
 	if !r.on || s.build_index == r.seen { return }
 	r.seen = s.build_index
 	d := f32(dpi(srv))
@@ -131,31 +166,33 @@ rec_poll :: proc(srv: ^Server, s: ^ui.State) {
 		#partial switch e.kind {
 		case .Mouse_Press:
 			if e.button != .Left && e.button != .Right { continue }
+			if r.gesture != .Idle { continue }   // (a second button: the first one's gesture goes on)
 			rec_flush(r)
-			r.press, r.pressing, r.button, r.dragged = e.pos, true, e.button, false
+			r.press, r.last, r.gesture, r.button = e.pos, e.pos, .Pressed, e.button
 			delete(r.target, runtime.heap_allocator())
 			r.target = strings.clone(rec_target(s), runtime.heap_allocator())
 		case .Mouse_Move:
-			if r.pressing && !r.dragged && (abs(e.pos.x - r.press.x) > DRAG_PX * d || abs(e.pos.y - r.press.y) > DRAG_PX * d) {
-				r.dragged = true
-				rec_line(r, fmt.tprintf("down %.0f %.0f", r.press.x / d, r.press.y / d))
+			if r.gesture == .Idle { continue }
+			r.last = e.pos
+			if r.gesture == .Pressed && (abs(e.pos.x - r.press.x) > DRAG_PX * d || abs(e.pos.y - r.press.y) > DRAG_PX * d) {
+				r.gesture = .Dragging
+				rec_line(r, fmt.tprintf("down %.0f %.0f%s", r.press.x / d, r.press.y / d, rec_button(r)))
 			}
-			if r.pressing && r.dragged { rec_line(r, fmt.tprintf("move %.0f %.0f", e.pos.x / d, e.pos.y / d)) }
+			if r.gesture == .Dragging { rec_line(r, fmt.tprintf("move %.0f %.0f", e.pos.x / d, e.pos.y / d)) }
 		case .Mouse_Release:
-			if !r.pressing || e.button != r.button { continue }
-			r.pressing = false
+			if r.gesture == .Idle || e.button != r.button { continue }
+			r.last = e.pos
 			switch {
-			case r.dragged:
-				rec_line(r, fmt.tprintf("up %.0f %.0f", e.pos.x / d, e.pos.y / d))
-				rec_line(r, "idle")
+			case r.gesture == .Dragging:
+				rec_up(r, srv)
 			case r.target != "":
-				rec_line(r, fmt.tprintf("click %s%s", r.target, r.button == .Right ? " --button right" : ""))
+				rec_line(r, fmt.tprintf("click %s%s", r.target, rec_button(r)))
 				rec_line(r, "idle")
 			case:
-				rec_line(r, fmt.tprintf("down %.0f %.0f", r.press.x / d, r.press.y / d))
-				rec_line(r, fmt.tprintf("up %.0f %.0f", e.pos.x / d, e.pos.y / d))
-				rec_line(r, "idle")
+				rec_line(r, fmt.tprintf("down %.0f %.0f%s", r.press.x / d, r.press.y / d, rec_button(r)))
+				rec_up(r, srv)
 			}
+			r.gesture = .Idle
 		case .Scroll:
 			if len(r.text) > 0 { rec_flush(r) }
 			if r.scroll == {} { r.scroll_ms = ui.now_ms() }

@@ -78,8 +78,8 @@ export async function act(send, cmd, a) {
   switch (cmd) {
     case 'click': await send('Toolkit.click', { ...query(), index: +(o.index || 0), count: +(o.count || 1), button: o.button || 'left' }); break
     case 'move': await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: +o._[0], y: +o._[1] }); break
-    case 'down': await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: +o._[0], y: +o._[1], button: 'left', buttons: 1, clickCount: 1 }); break
-    case 'up': await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: +o._[0], y: +o._[1], button: 'left', buttons: 0, clickCount: 1 }); break
+    case 'down': await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: +o._[0], y: +o._[1], button: o.button || 'left', buttons: o.button === 'right' ? 2 : 1, clickCount: 1 }); break
+    case 'up': await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: +o._[0], y: +o._[1], button: o.button || 'left', buttons: 0, clickCount: 1 }); break
     case 'wheel': await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: +o._[0], y: +o._[1], deltaX: +(o._[3] || 0) * 100, deltaY: +o._[2] * 100 }); break
     case 'key': await pressKey(send, o._[0]); break
     case 'type': await send('Input.insertText', { text: o._.join(' ') }); break

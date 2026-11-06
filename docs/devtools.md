@@ -18,7 +18,8 @@ devtools.service(srv, &ui_state, &renderer)
 ```
 
 `start(win, port, title)` starts it on a port of your choosing. With nil (the variable unset) `service` and `stop` do
-nothing, so the calls stay in a release build.
+nothing, so the calls stay in a release build. A program that goes on after the server ends says so with `stop(srv, &ui_state)`:
+the clients' edits, highlight and accessibility tree end with it. What a client held down goes up when it goes, or at `stop`.
 
 ## Who can reach it
 
@@ -33,8 +34,10 @@ same-origin policy, so any page open on the machine could connect and drive the 
 
 What runs on the machine as any user can still connect, as with Chrome's own `--remote-debugging-port`. In an
 application that acts on what it is told (an agent), that is running commands: keep it opt-in, and off for what you
-ship to people. A client that stops reading is dropped after 5 s (the answers are written on the UI thread), and a
-message over 16 MB ends its connection.
+ship to people. A client that stops reading is dropped after 5 s (the answers are written on the UI thread), so is a
+connection that sends no request within 5 s, and a message over 16 MB ends its connection. A WebSocket needs `Upgrade: websocket`
+and `Sec-WebSocket-Version: 13` (else 400), and a frame RFC 6455 does not allow (a continuation of nothing, a message within a
+message, an unknown opcode, an extension's bit) ends the connection.
 
 `service` runs on the UI thread: it takes the commands the connection threads received, injects their input for the
 frame about to be built, reads the box tree of the last build, and answers. A command wakes the window
@@ -59,7 +62,7 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Accessibility.queryAXTree` | the nodes with a `role` and an `accessibleName` (contained, case ignored; `exact` for all of it). |
 | `Browser.getVersion`, `Target.*`, `Page.getFrameTree` | discovery, and attaching in sessions (`Target.attachToTarget`, `setAutoAttach`, the browser's endpoint): what Puppeteer and Playwright use. |
 | `Browser.close` | closes the window, as its close button. |
-| `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and compared on the UI thread and encoded on a thread of its own, which takes a core while it runs. |
+| `Page.startScreencast` `{minIntervalMs?}`, `Page.screencastFrameAck`, `Page.stopScreencast` | the window's frames as `Page.screencastFrame` events, PNG only (`format`, `quality`, `maxWidth` are ignored). One at a time (the next waits for the ack, with the frame's `sessionId`), no faster than `minIntervalMs` (200), none while nothing changes. Each is read back and compared on the UI thread and encoded on a thread of its own, which takes a core while it runs. One client at a time: another's start is refused, its stop and acks do nothing. |
 | `*.enable`, `*.disable`, `*.set*` | accepted, nothing to do (what clients send on attaching). |
 | `DOM.set*`, `CSS.set*` (but the edits below, `DOM.setInspectedNode`, `DOM.setNodeStackTracesEnabled`, `CSS.setLocalFontsEnabled`), `Page.setDocumentContent`, cookies, DOM storage | refused with an error: they cannot be done, and a client would show them as done. |
 | `DOM.getDocument` `{depth?}`, `DOM.requestChildNodes` `{nodeId, depth?}` | the tree as deep as it is asked (1 by default, -1 for all). What the client has is not sent again: in Chrome's frontend each node of an answer is a new object, and the one it is unfolding would never get its children. |
@@ -82,7 +85,7 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 | `Toolkit.warnings` | the layout's warnings of this build (`ui.set_layout_warnings`). |
 | `Toolkit.axAction` `{role? name? exact? index? nodeId? action? value?}` | an action on an accessible node, as a screen reader asks it (`ui.a11y_inject`): `Click` by default, `Focus`, `Set_Value`, `Increment`, `Scroll_Into_View`... (`platform.A11y_Action`). An error if the node does not offer it. |
 | `Toolkit.axAudit` | `unnamed`: the enabled controls with no name, no text in them and no placeholder (`ui.a11y_unnamed`). A clickable box without one is not even a node: a reader does not know it exists. |
-| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is; the wheel both ways (`wheel x y notches across`). `injected`: the protocol's events too, and `Toolkit.axAction` as `press`. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). |
+| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is; the wheel both ways (`wheel x y notches across`). `injected`: the protocol's events too, and `Toolkit.axAction` as `press`. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). A recording is its asker's: another client's commands on it are refused, and when the asker goes it ends and what it held is dropped. A right drag is `down` and `up` with `--button right`; a drag cut by `stopRecording` gets its `up`. |
 
 ## tools/cdp.mjs
 

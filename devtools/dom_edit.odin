@@ -68,11 +68,28 @@ css_parse :: proc(text: string) -> [dynamic]Css_Prop {
 			i = end
 			continue
 		}
-		depth, j := 0, i
-		for j < len(text) {
-			if text[j] == '(' { depth += 1 } else if text[j] == ')' { depth -= 1 } else if text[j] == ';' && depth <= 0 { break }
+		// (a ';' in parentheses, a string or a comment does not end the declaration)
+		depth, j, quote := 0, i, u8(0)
+		scan: for j < len(text) {
+			ch := text[j]
+			switch {
+			case quote != 0:
+				if ch == '\\' { j += 1 } else if ch == quote { quote = 0 }
+			case ch == '"' || ch == '\'':
+				quote = ch
+			case strings.has_prefix(text[j:], "/*"):
+				close := strings.index(text[j + 2:], "*/")
+				j = close < 0 ? len(text) : j + 2 + close + 1
+			case ch == '(':
+				depth += 1
+			case ch == ')':
+				depth -= 1
+			case ch == ';' && depth <= 0:
+				break scan
+			}
 			j += 1
 		}
+		j = min(j, len(text))
 		end := j < len(text) ? j + 1 : j
 		one(&out, text[i:j], i, end, false)
 		i = end
