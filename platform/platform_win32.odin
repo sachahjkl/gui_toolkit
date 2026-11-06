@@ -575,12 +575,12 @@ inject_event :: proc(w: ^Window, e: Event) {
 // with render.wait_for_frame, then poll_events(w, false), so the frame is built from the freshest input.
 wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	if w.offscreen {
-		if len(w.injected) > 0 || len(w.events) > w.returned { return }   // (what the last poll handed out is read)
+		if len(w.injected) > 0 || len(w.events) > w.returned || w.paint_requested { return }   // (what the last poll handed out is read)
 		win.WaitForSingleObject(w.off_event, timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE)
 		return
 	}
 	msg: win.MSG
-	if win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) { return }
+	if len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested || win.PeekMessageW(&msg, nil, 0, 0, win.PM_NOREMOVE) { return }
 	if timeout_ms > 0 { win.SetTimer(w.hwnd, 1, u32(timeout_ms), nil) }
 	win.WaitMessage()
 	if timeout_ms > 0 { win.KillTimer(w.hwnd, 1) }
@@ -771,7 +771,7 @@ button_down :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
 
 @(private)
 button_up :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
-	w.buttons_down -= {b}
+	if !button_changes(w, b, false) { return }
 	if w.buttons_down == {} { win.ReleaseCapture() }
 	append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated(), pointer = mouse_emulated_by()})
 }
@@ -945,9 +945,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 			pt: win.POINT
 			win.GetCursorPos(&pt)
 			win.ScreenToClient(hwnd, &pt)
-			down := w.buttons_down
-			w.buttons_down = {}
-			for b in down { push(w, {kind = .Mouse_Release, button = b, pos = {f32(pt.x), f32(pt.y)}, mods = current_mods()}) }
+			buttons_released(w, {f32(pt.x), f32(pt.y)}, current_mods())
 		}
 
 	case win.WM_DPICHANGED:

@@ -137,22 +137,24 @@ wl_custom_release :: proc(e: ^Custom_Entry) {
 // A custom cursor at the window's scale, on our surface. false: it cannot be shown (its fallback then).
 @(private = "file")
 wl_custom_cursor :: proc(w: ^Window, e: ^Custom_Entry) -> bool {
-	scale := max(i32(w.dpi_scale + 0.999), 1)
-	px, size, hot := custom_cursor_bgra(e, f32(scale), context.temp_allocator)
+	scale := max(i32(custom_cursor_scale(w) + 0.999), 1)
 	if e.wl_buffer == nil || e.made_scale != f32(scale) {
 		wl_custom_release(e)
+		px, size, hot := custom_cursor_bgra(e, f32(scale), context.temp_allocator)
 		e.wl_buffer = wl_shm_buffer(size, px)
+		e.wl_hot = hot
 		e.made_scale = f32(scale)
 	}
 	if e.wl_buffer == nil { return false }
-	wl_cursor_image(e.wl_buffer, hot, scale)
+	wl_cursor_image(e.wl_buffer, e.wl_hot, scale)
 	wlc.cursor_sent = WL_CURSOR_SENT_SURFACE | u64(uintptr(e.wl_buffer))
 	return true
 }
 
 @(private)
 wl_apply_cursor :: proc(w: ^Window) {
-	if wlc.pointer == nil { return }
+	// (one pointer for the seat: another window's cursor is sent when the pointer enters it, with that enter's serial)
+	if wlc.pointer == nil || wlc.pointer_focus != w { return }
 	c := w.cursor
 	if w.custom_cursor != 0 {
 		c = w.custom_fallback

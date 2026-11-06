@@ -23,6 +23,7 @@ Custom_Entry :: struct {
 	// what the backend made of it, at made_scale
 	x11_cursor: u32,
 	wl_buffer:  Wl_Proxy,
+	wl_hot:     [2]int,
 	made_scale: f32,
 }
 
@@ -140,8 +141,8 @@ cursor_size_px :: proc(w: ^Window) -> int {
 
 set_cursor :: proc(w: ^Window, c: Cursor) {
 	if w == nil { return }
+	if w.cursor == c && w.custom_cursor == 0 { return }
 	w.custom_cursor = 0
-	if w.cursor == c { return }
 	w.cursor = c
 	apply_cursor(w)
 }
@@ -150,8 +151,13 @@ set_cursor_custom :: proc(w: ^Window, cc: Custom_Cursor, fallback: Cursor, scale
 	if w == nil { return }
 	w.custom_cursor = cc
 	w.custom_fallback = fallback
+	w.custom_scale = scale
 	apply_cursor(w)
 }
+
+// The scale a custom cursor is made at: the one set_cursor_custom was given, else the window's.
+@(private)
+custom_cursor_scale :: proc(w: ^Window) -> f32 { return w.custom_scale > 0 ? w.custom_scale : w.dpi_scale }
 
 @(private)
 apply_cursor :: proc(w: ^Window) {
@@ -236,10 +242,11 @@ custom_cursor_release :: proc(w: ^Window, cc: Custom_Cursor) {
 	if e == nil { return }
 	e.refs -= 1
 	if e.refs <= 0 {
+		// (off the screen first: on Wayland its buffer is still attached to the pointer)
+		if w.custom_cursor == cc { w.custom_cursor = 0; apply_cursor(w) }
 		custom_backend_release(e)
 		delete(e.pixels)
 		e.pixels = nil
-		if w.custom_cursor == cc { w.custom_cursor = 0 }
 	}
 }
 

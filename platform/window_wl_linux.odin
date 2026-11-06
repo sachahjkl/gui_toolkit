@@ -91,7 +91,8 @@ Wl_Conn :: struct {
 	pending_offer_mimes: [dynamic]string,
 	dnd_source_action:   u32,     // the action the compositor chose for our drag (wl_data_source.action)
 	drag:          Wl_Drag_Store, // drag and drop (dragdrop_wl_linux.odin)
-	tried:         bool,          // wl_connect ran on this thread (display nil: it failed)
+	link:          Display_Link,
+	windows:       [dynamic]^Window,   // this connection's windows
 }
 
 // This thread's connection: each thread that opens windows has its own (its event queue, its seat's focus and serials), as its
@@ -104,10 +105,8 @@ Wl_Window_State :: struct {
 	xdg_surface: Wl_Proxy,
 	xdg_toplevel: Wl_Proxy,
 	decoration:  Wl_Proxy,
-	frame_cb:    Wl_Proxy,
 	transparent: bool,
 	title:       string,
-	configured:  bool,
 	pending_w, pending_h: int,     // the size the last xdg_toplevel.configure asked for (0 = app chooses)
 	fractional:  Wl_Proxy,         // wp_fractional_scale_v1 and wp_viewport: the buffer has w.size pixels, the surface
 	viewport:    Wl_Proxy,         // `logical` on the output (nil: an integer buffer scale)
@@ -123,10 +122,16 @@ wl_state :: proc(w: ^Window) -> ^Wl_Window_State { return (^Wl_Window_State)(w.w
 
 @(private)
 wl_connect :: proc() -> bool {
-	if wlc.tried { return wlc.display != nil }
-	wlc.tried = true
+	if wlc.link != .Untried { return wlc.link == .Connected }
+	wlc.link = wl_connect_now() ? .Connected : .Failed
+	return wlc.link == .Connected
+}
+
+@(private = "file")
+wl_connect_now :: proc() -> bool {
 	l := wayland_lib()
 	if !l.ok { return false }
+	wlc.windows.allocator = runtime.heap_allocator()   // (outlives whatever allocator the first window was made under)
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
 	wlc.fd = l.display_get_fd(wlc.display)
@@ -304,7 +309,10 @@ ptr_enter :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy
 @(private)
 ptr_leave :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy) {
 	context = wl_ctx_real()
-	if w := wlc.pointer_focus; w != nil { wl_push(w, {kind = .Mouse_Leave}) }
+	if w := wlc.pointer_focus; w != nil {
+		buttons_released(w, wlc.pointer_pos, wl_mods())   // (the compositor took the pointer: the release will not come here)
+		wl_push(w, {kind = .Mouse_Leave})
+	}
 	wlc.pointer_focus = nil
 }
 @(private)
@@ -332,8 +340,9 @@ ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: 
 	case: return
 	}
 	press := state == 1
-	if press { w.buttons_down += {btn} } else { w.buttons_down -= {btn} }
-	wl_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
+	if button_changes(w, btn, press) {
+		wl_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
+	}
 }
 @(private)
 ptr_axis :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, axis: u32, value: Wl_Fixed) {
@@ -375,10 +384,15 @@ kb_keymap :: proc "c" (data: rawptr, kb: Wl_Proxy, format: u32, fd: i32, size: u
 	if addr == nil || addr == rawptr(~uintptr(0)) { return }
 	defer sys_munmap(addr, uint(size))
 	s := cstring(addr)
-	if wlc.xkb_keymap != nil { k.keymap_unref(wlc.xkb_keymap) }
+	// (the one held stays when this one does not compile: the keys go on as they were)
+	keymap := k.keymap_new_from_string(wlc.xkb_ctx, s, 1 /*TEXT_V1*/, XKB_KEYMAP_COMPILE_NO_FLAGS)
+	if keymap == nil { return }
+	state := k.state_new(keymap)
+	if state == nil { k.keymap_unref(keymap); return }
 	if wlc.xkb_state != nil { k.state_unref(wlc.xkb_state) }
-	wlc.xkb_keymap = k.keymap_new_from_string(wlc.xkb_ctx, s, 1 /*TEXT_V1*/, XKB_KEYMAP_COMPILE_NO_FLAGS)
-	if wlc.xkb_keymap != nil { wlc.xkb_state = k.state_new(wlc.xkb_keymap) }
+	if wlc.xkb_keymap != nil { k.keymap_unref(wlc.xkb_keymap) }
+	wlc.xkb_keymap, wlc.xkb_state = keymap, state
+	wlc.key_repeat.held = false   // (the key held is another one in this keymap)
 }
 @(private)
 kb_enter :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy, keys: ^Wl_Array) {
@@ -416,8 +430,7 @@ kb_key :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, time, key, state: u32) {
 @(private)
 wl_key_emit :: proc(w: ^Window, keycode: u32, press, repeat: bool) {
 	k := xkb_lib()
-	sym := k.state_key_get_one_sym(wlc.xkb_state, keycode)
-	kk := key_from_keysym(sym)
+	kk := key_from_xkb(wlc.xkb_keymap, wlc.xkb_state, keycode)
 	mods := wl_mods()
 	if kk != .None { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat}) }
 	if press && .Ctrl not_in mods && .Alt not_in mods {
@@ -444,7 +457,7 @@ wl_now_ms :: proc() -> f64 { return f64(time.tick_now()._nsec) / 1e6 }
 @(private)
 wl_key_repeat_tick :: proc() {
 	w := wlc.keyboard_focus
-	if w == nil || wlc.xkb_state == nil { return }
+	if w == nil || wlc.xkb_state == nil { wlc.key_repeat.held = false; return }
 	now := wl_now_ms()
 	for key_repeat_take(&wlc.key_repeat, now) { wl_key_emit(w, wlc.key_repeat.code, true, true) }
 }
@@ -495,7 +508,6 @@ xdg_surface_configure :: proc "c" (data: rawptr, s: Wl_Proxy, serial: u32) {
 		st.logical = {st.pending_w, st.pending_h}
 		wl_size_from_logical(w, st)
 	}
-	st.configured = true
 	w.paint_requested = true
 }
 
@@ -540,15 +552,6 @@ Decoration_Listener :: struct { configure: proc "c" (data: rawptr, d: Wl_Proxy, 
 @(private) decoration_listener := Decoration_Listener{decoration_configure}
 @(private) decoration_configure :: proc "c" (data: rawptr, d: Wl_Proxy, mode: u32) {}
 
-@(private)
-Frame_Listener :: struct { done: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) }
-@(private) frame_listener := Frame_Listener{frame_done}
-@(private)
-frame_done :: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) {
-	st := (^Wl_Window_State)(data)
-	if st != nil { st.frame_cb = nil }
-}
-
 ////////////////////////////////
 // lifecycle
 
@@ -592,7 +595,8 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 	w.dpi_scale = f32(wlc.output_scale)
 
 	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
-	if st.surface == nil { free(st); w.wl = nil; return false }
+	if st.surface == nil { delete(st.title); free(st); w.wl = nil; return false }
+	append(&wlc.windows, w)
 	wl.proxy_set_user_data(st.surface, st)
 	st.logical = {max(size.x, 1), max(size.y, 1)}
 	if wlc.fractional_manager != nil && wlc.viewporter != nil {
@@ -635,9 +639,12 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 wl_destroy :: proc(w: ^Window) {
 	st := wl_state(w)
 	if st == nil { return }
+	for x, i in wlc.windows { if x == w { ordered_remove(&wlc.windows, i); break } }
+	// what the seat keeps of the window: the compositor's leave for it may still be on its way
 	if wlc.pointer_focus == w { wlc.pointer_focus = nil }
-	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil }
-	if st.frame_cb != nil { wl.proxy_destroy(st.frame_cb) }
+	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil; wlc.key_repeat.held = false }
+	if wlc.dnd_window == w { wlc.dnd_window = nil }
+	if wlc.ti_window == w { wlc.ti_window = nil }
 	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
 	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	if st.decoration != nil { wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_DESTROY, nil, wl.proxy_get_version(st.decoration), WL_MARSHAL_FLAG_DESTROY) }
@@ -700,7 +707,7 @@ wl_set_decorations :: proc(w: ^Window, on: bool) {
 }
 @(private) wl_set_dark :: proc(w: ^Window, dark: bool) {}
 @(private) wl_transparent :: proc(w: ^Window) -> bool { return wl_state(w).transparent }
-@(private) wl_fd :: proc(w: ^Window) -> i32 { return wlc.fd }
+@(private) wl_fd :: proc(w: ^Window) -> i32 { return wlc.link == .Connected ? wlc.fd : -1 }
 @(private)
 wl_show_window_menu :: proc(w: ^Window, pos: [2]f32) {
 	st := wl_state(w)
@@ -722,8 +729,10 @@ wl_push :: proc(w: ^Window, e: Event) {
 // Reads what the socket holds, without waiting, and dispatches it (wl_display_dispatch_pending alone never reads).
 @(private)
 wl_read_available :: proc() {
+	if wlc.link != .Connected { return }
 	l := wayland_lib()
-	for l.display_prepare_read(wlc.display) != 0 { l.display_dispatch_pending(wlc.display) }
+	defer wl_check_link()
+	for l.display_prepare_read(wlc.display) != 0 { if l.display_dispatch_pending(wlc.display) < 0 { return } }
 	l.display_flush(wlc.display)
 	if poll_fd_wait(wlc.fd, 0) > 0 { l.display_read_events(wlc.display) } else { l.display_cancel_read(wlc.display) }
 	l.display_dispatch_pending(wlc.display)
@@ -735,21 +744,27 @@ wl_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	// dispatch anything already queued without blocking
 	l.display_dispatch_pending(wlc.display)
 	l.display_flush(wlc.display)
-	if wait && len(w.events) == 0 {
-		r := poll_two(wlc.fd, dbus_fd(), wl_poll_timeout(timeout_ms), wake_fd(w))
-		if r.readable { dbus_pump() }
-	}
+	if wait && len(w.events) == 0 && len(w.injected) == 0 { poll_sources(w, wl_fd(w), wl_poll_timeout(timeout_ms)) }
 	wl_read_available()
 	wl_key_repeat_tick()
 	dbus_pump()
 	l.display_flush(wlc.display)
 }
 
+// A display in error has no more events, and its socket reads as ready for good.
+@(private)
+wl_check_link :: proc() {
+	if wlc.link != .Connected || wl.display_get_error(wlc.display) == 0 { return }
+	wlc.link = .Lost
+	display_lost(wlc.windows[:])
+}
+
 @(private)
 wl_wait :: proc(w: ^Window, timeout_ms: int) {
-	if len(w.events) > w.returned || len(w.injected) > 0 { return }
+	wl_read_available()   // (what a roundtrip read: poll(2) would not see it; kept for the next poll_events)
+	if wait_is_over(w) { return }
 	wl.display_flush(wlc.display)
-	poll_two(wlc.fd, -1, wl_poll_timeout(timeout_ms), wake_fd(w))
+	poll_sources(w, wl_fd(w), wl_poll_timeout(timeout_ms))
 }
 
 @(private)
