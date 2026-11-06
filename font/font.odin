@@ -185,8 +185,7 @@ Font_Kind :: enum u8 { None, Face, Cascade }
 
 @(private)
 Font :: struct {
-	kind:     Font_Kind,
-	dead:     bool,
+	kind:     Font_Kind,             // None: an unloaded font's slot (in free_slots), or slot 0
 	gen:      int,                   // generation of the slot (atomic): the high part of the ids it has had
 	// Face
 	using platform: Platform_Face,   // what the platform opened the face with (font_windows.odin, font_other.odin)
@@ -222,7 +221,6 @@ State :: struct {
 	keys:       map[string]Font_Id,  // what made each font, for sharing
 	words:      Word_Cache,
 	atlas:      Atlas,
-	generation: int,                 // bumps when faces are unloaded
 	emoji:        Emoji_Source,      // the built-in emoji font (emoji.odin)
 	colr_drawn:   int,               // glyphs the COLR interpreter drew (atomic), and those it refused (a graph it cannot read)
 	colr_refused: int,
@@ -283,6 +281,8 @@ set_settings :: proc(s: ^State, settings: Settings) {
 		clear(&s.atlas.fg_glyphs)
 		s.atlas.settings_generation += 1
 	}
+	// whether a glyph of a color face is curves or an atlas image is decided when it is built
+	if st.color_glyphs != old.color_glyphs || st.color_engine != old.color_engine { slug_forget_color(s) }
 	s.settings.subpixel_steps, s.settings.rendering, s.settings.grid_fit = st.subpixel_steps, st.rendering, st.grid_fit
 	s.settings.subpixel_text = st.subpixel_text
 	s.settings.color_glyphs, s.settings.max_gray_pages, s.settings.max_color_pages = st.color_glyphs, st.max_gray_pages, st.max_color_pages
@@ -314,8 +314,8 @@ set_settings :: proc(s: ^State, settings: Settings) {
 destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
+	platform_stop(s)   // (the color glyph thread uses the backend)
 	if s.tb != nil { s.tb.stop(s) }
-	platform_stop(s)
 	atlas_destroy(&s.atlas)
 	n := sync.atomic_load(&s.count)
 	for i in 1 ..< n { release_font(slot_ptr(s, i)) }
@@ -341,7 +341,7 @@ release_font :: proc(f: ^Font) {
 	delete(f.entries)
 	delete(f.features)
 	delete(f.lang)
-	f^ = Font{kind = .None, dead = true, gen = f.gen}
+	f^ = Font{gen = f.gen}
 }
 
 @(private)
@@ -349,13 +349,14 @@ slot_ptr :: #force_inline proc "contextless" (s: ^State, i: int) -> ^Font {
 	return &s.chunks[i / CHUNK][i % CHUNK]
 }
 
-// The slot of `id`, nil for an id that no font has (0, one out of range, one of a slot since given to another font).
+// The slot of `id`, nil for an id that no font has (0, one out of range, one of a font unloaded, one of a slot since given to
+// another font).
 @(private)
 font_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
 	i := int(id) & FONT_INDEX_MASK
 	if i <= 0 || i >= sync.atomic_load(&s.count) { return nil }
 	f := slot_ptr(s, i)
-	if sync.atomic_load(&f.gen) != int(id) >> FONT_INDEX_BITS { return nil }
+	if sync.atomic_load(&f.gen) != int(id) >> FONT_INDEX_BITS || f.kind == .None { return nil }
 	return f
 }
 
@@ -363,7 +364,7 @@ font_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
 @(private)
 face_ptr :: #force_inline proc "contextless" (s: ^State, id: Font_Id) -> ^Font {
 	f := font_ptr(s, id)
-	if f == nil || f.kind != .Face || f.dead { return nil }
+	if f == nil || f.kind != .Face { return nil }
 	return f
 }
 
@@ -519,11 +520,12 @@ cascade :: proc(s: ^State, entries: []Cascade_Entry, features: []Feature = nil, 
 }
 
 // Frees a font: its face (and data), the shaped words and glyph bitmaps that use it. Cascades that list it skip it
-// from then on. Nothing may use the font meanwhile (no shaping, measuring or drawing on any thread).
+// from then on. Nothing may use the font meanwhile (no shaping, measuring or drawing on any thread). A font loaded twice is
+// one font with one id (the same file, family or cascade): it goes for whoever else holds that id, there is no count.
 unload :: proc(s: ^State, id: Font_Id) {
 	context.allocator = runtime.heap_allocator()
 	f := font_ptr(s, id)
-	if f == nil || f.dead { return }
+	if f == nil { return }
 	words_clear(&s.words)
 	if f.kind == .Face {
 		platform_forget_face(s, id)
@@ -535,20 +537,16 @@ unload :: proc(s: ^State, id: Font_Id) {
 	for k in dead { delete_key(&s.keys, k); delete(k) }
 	release_font(f)
 	append(&s.free_slots, int(id) & FONT_INDEX_MASK)
-	s.generation += 1
 	sync.mutex_unlock(&s.mu)
 }
 
 // Whether `id` is a live font.
-valid :: proc(s: ^State, id: Font_Id) -> bool {
-	f := font_ptr(s, id)
-	return f != nil && !f.dead && f.kind != .None
-}
+valid :: proc(s: ^State, id: Font_Id) -> bool { return font_ptr(s, id) != nil }
 
 // The face whose metrics a font uses (itself for a face, the first live entry of a cascade).
 primary_face :: proc(s: ^State, id: Font_Id) -> Font_Id {
 	f := font_ptr(s, id)
-	if f == nil || f.dead { return 0 }
+	if f == nil { return 0 }
 	if f.kind == .Face { return id }
 	for e in f.entries { if face_ptr(s, e.font) != nil { return e.font } }
 	return 0

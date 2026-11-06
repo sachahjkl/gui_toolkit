@@ -307,6 +307,29 @@ async_color_glyphs :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T)
 	font.color_wait(&f.s)
 }) }
 
+// On the color glyph thread as on the drawing thread: a glyph whose COLR layers cannot be read shows its outline, it is not
+// taken for a bitmap at page 0.
+@(test)
+async_glyph_without_its_layers_is_its_outline :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	st := font.DEFAULT_SETTINGS
+	st.color_async = true
+	font.init(s, st)
+	defer font.destroy(s)
+	face, ok := font.load_system(s, "Segoe UI Emoji")
+	if !ok { testing.fail_now(t, "no Segoe UI Emoji") }
+	gid := font.shape(s, face, 40, "\U0001F600", {}, context.temp_allocator).glyphs[0].id
+	// no Direct2D, then no layers: what is left is the outline
+	font.forced_failures = {.D2d_Device, .Colr_Layers}
+	first := font.glyph_image(s, face, gid, 40, 0)
+	testing.expect(t, first.pending, "queued")
+	font.color_wait(s)
+	g := font.glyph_image(s, face, gid, 40, 0)
+	testing.expect(t, !g.pending && !g.color, "the outline, as coverage")
+	testing.expect(t, g.page >= 0 && g.size.x > 0, "drawn")
+}) }
+
 @(private = "file")
 sync_add :: proc(p: ^int) { intrinsics.atomic_add(p, 1) }
 @(private = "file")

@@ -709,12 +709,22 @@ decode16 :: #force_inline proc(w: []u16, i: int) -> (r: rune, n: int) {
 	return c, 1
 }
 
+// Whether `r`, which sticks to `prev_r` before it, stays in that character's face: a mark the face lacks may still come
+// from elsewhere; joiners and selectors always stay.
+@(private)
+stays_in_face :: proc(s: ^State, face: Font_Id, r, prev_r: rune) -> bool {
+	f := face_ptr(s, face)
+	if f == nil { return false }
+	return face_has(s, f, r) || r == CP_ZWJ || r == CP_ZWNJ || (r >= CP_VS_FIRST && r <= CP_VS_LAST) || prev_r == CP_ZWJ ||
+		(r >= CP_VS_SUPP_FIRST && r <= CP_VS_SUPP_LAST) || (r >= CP_TAG_FIRST && r <= CP_TAG_LAST)
+}
+
 // Chooses the face of each UTF-16 unit of `w`: cascade entries in order, then the system fallback, then the first face.
 @(private)
 itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 	faces := make([]Font_Id, len(w), context.temp_allocator)
 	top := font_ptr(s, id)
-	if top == nil || top.dead { return faces }
+	if top == nil { return faces }
 	entries := top.entries
 	first := primary_face(s, id)
 	prev_r: rune
@@ -727,9 +737,7 @@ itemize_faces :: proc(s: ^State, id: Font_Id, w: []u16) -> []Font_Id {
 			if faces[i - 1] == 0 {
 				// the base goes to the system fallback: so does the rest of its cluster (emoji ZWJ sequences, modifiers)
 				search = false
-			} else if pf := face_ptr(s, faces[i - 1]); pf != nil && (face_has(s, pf, r) || r == CP_ZWJ || r == CP_ZWNJ ||
-				(r >= CP_VS_FIRST && r <= CP_VS_LAST) || prev_r == CP_ZWJ || (r >= CP_VS_SUPP_FIRST && r <= CP_VS_SUPP_LAST) || (r >= CP_TAG_FIRST && r <= CP_TAG_LAST)) {
-				// a mark the base's face lacks may still come from elsewhere; joiners and selectors always stay
+			} else if stays_in_face(s, faces[i - 1], r, prev_r) {
 				chosen = faces[i - 1]
 			}
 		}
@@ -784,6 +792,16 @@ itemize_fallback :: proc(s: ^State, top: ^Font, first: Font_Id, w: []u16, faces:
 			for m in 0 ..< n { faces[k + m] = pick }
 			k += n
 		}
+		// a fallback that goes character by character (fontconfig) cuts sequences: what sticks goes with its base
+		prev_r: rune
+		for k := i; k < j; {
+			r, n := decode16(w, k)
+			if k > i && sticks(r, prev_r) && stays_in_face(s, faces[k - 1], r, prev_r) {
+				for m in 0 ..< n { faces[k + m] = faces[k - 1] }
+			}
+			prev_r = r
+			k += n
+		}
 		i = j
 	}
 }
@@ -793,7 +811,7 @@ itemize_fallback :: proc(s: ^State, top: ^Font, first: Font_Id, w: []u16, faces:
 shape_text :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool, glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster) -> f32 {
 	if !s.ok { return 0 }
 	top := font_ptr(s, id)
-	if top == nil || top.dead { return 0 }
+	if top == nil { return 0 }
 	w, bytes := utf16_of(text)
 	if len(w) == 0 { return 0 }
 	faces := itemize_faces(s, id, w)
