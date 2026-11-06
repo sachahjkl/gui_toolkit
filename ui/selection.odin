@@ -25,6 +25,10 @@ Sel_Pos :: struct {
 	index: int,     // byte index in the box's selectable text
 }
 
+// None; a selection that stands; one the pointer is making (the button is down).
+@(private)
+Sel_Phase :: enum u8 { None, Shown, Dragging }
+
 // What a drag extends the selection by.
 @(private)
 Sel_Granularity :: enum u8 { Characters, Words, Paragraphs }
@@ -32,8 +36,7 @@ Sel_Granularity :: enum u8 { Characters, Words, Paragraphs }
 @(private)
 Selection :: struct {
 	anchor, focus: Sel_Pos,
-	active:        bool,
-	dragging:      bool,
+	phase:         Sel_Phase,
 	granularity:   Sel_Granularity,
 	word_lo, word_hi: Sel_Pos,    // what the double / triple click selected (the drag keeps it)
 	serial:        u64,
@@ -49,8 +52,8 @@ Selection :: struct {
 // The selected text (boxes joined by "\n"), "" for none. During a build, as the last build showed it: the boxes built so
 // far are not all of them (a Copy button above the text), and the others' text is in memory that is gone.
 selected_text :: proc(s: ^State, allocator := context.allocator) -> string {
-	if !s.sel.active { return "" }
-	if build_open && current == s { return strings.clone(string(s.sel.snapshot[:]), allocator) }
+	if s.sel.phase == .None { return "" }
+	if build_of == s { return strings.clone(string(s.sel.snapshot[:]), allocator) }
 	return selected_text_of_boxes(s, allocator)
 }
 
@@ -80,10 +83,10 @@ selection_serial :: proc(s: ^State) -> u64 { return s.sel.serial }
 selection_changed :: proc(s: ^State) -> bool { return s.sel.changed_build == s.build_index }
 
 // Whether there is a selection (a non-empty one).
-has_selection :: proc(s: ^State) -> bool { return s.sel.active && s.sel.anchor != s.sel.focus }
+has_selection :: proc(s: ^State) -> bool { return s.sel.phase != .None && s.sel.anchor != s.sel.focus }
 
 clear_selection :: proc(s: ^State) {
-	if s.sel.active { s.sel.active = false; sel_bump(s) }
+	if s.sel.phase != .None { s.sel.phase = .None; sel_bump(s) }
 }
 
 // Selects all the text of a selectable box.
@@ -92,9 +95,13 @@ select_box :: proc(s: ^State, key: Key) {
 	if b == nil || .Selectable not_in b.flags { return }
 	s.sel.anchor = {key, 0}
 	s.sel.focus = {key, len(sel_text(s, b, context.temp_allocator))}
-	s.sel.active = true
+	s.sel.phase = .Shown
 	sel_bump(s)
 }
+
+// The button will not come up for this selection (the user left the window): it stands where it is.
+@(private)
+selection_drag_end :: proc(s: ^State) { if s.sel.phase == .Dragging { s.sel.phase = .Shown } }
 
 @(private)
 sel_bump :: proc(s: ^State) { s.sel.serial += 1; s.sel.changed_build = s.build_index }
@@ -138,7 +145,7 @@ sel_ordered :: proc(s: ^State) -> (a, b: Sel_Pos) {
 // The bytes of a box's text in the selection ([0, 0) for none).
 @(private)
 sel_range_of :: proc(s: ^State, key: Key, text_len: int) -> (lo, hi: int) {
-	if !s.sel.active { return }
+	if s.sel.phase == .None { return }
 	i, ok := s.sel.pos_of[key]
 	if !ok { return }
 	a, b := sel_ordered(s)
@@ -366,12 +373,12 @@ para_at :: proc(text: string, at: int) -> (lo, hi: int) {
 @(private)
 selection_update :: proc(s: ^State) {
 	sel := &s.sel
-	before := [3]Sel_Pos{sel.anchor, sel.focus, {Key(u64(sel.active)), 0}}
+	before := [3]Sel_Pos{sel.anchor, sel.focus, {Key(u64(sel.phase != .None)), 0}}
 	// a selection whose boxes are gone
-	if sel.active {
+	if sel.phase != .None {
 		_, oka := sel.pos_of[sel.anchor.box]
 		_, okb := sel.pos_of[sel.focus.box]
-		if !oka || !okb { sel.active = false }
+		if !oka || !okb { sel.phase = .None }
 	}
 	for e in s.mouse_events {
 		#partial switch e.kind {
@@ -387,8 +394,9 @@ selection_update :: proc(s: ^State) {
 				if rich_link_at(l, d.runs, e.pos - o) >= 0 { b = nil }
 			}
 			if b == nil {
-				if pressed == 0 { sel.active = false }   // a press on a button keeps it (a Copy button reads it on release)
-				sel.dragging = false
+				// a press on a button keeps it (a Copy button reads it on release)
+				if pressed == 0 { sel.phase = .None } else { selection_drag_end(s) }
+				sel.clicks, sel.click_ms = 0, 0   // (the next press on the text is a first one)
 				continue
 			}
 			now := s.time_ms
@@ -401,7 +409,7 @@ selection_update :: proc(s: ^State) {
 			idx := sel_index_at(s, b, e.pos)
 			text := sel_text(s, b, context.temp_allocator)
 			switch {
-			case .Shift in e.mods && sel.active:
+			case .Shift in e.mods && sel.phase != .None:
 				sel.focus = {k, idx}
 				sel.granularity = .Characters
 			case sel.clicks == 2:
@@ -418,14 +426,13 @@ selection_update :: proc(s: ^State) {
 				sel.anchor, sel.focus = {k, idx}, {k, idx}
 				sel.granularity = .Characters
 			}
-			sel.active = true
-			sel.dragging = true
+			sel.phase = .Dragging
 		case .Mouse_Release:
-			if e.button == .Left { sel.dragging = false }
+			if e.button == .Left { selection_drag_end(s) }
 		}
 	}
 	// dragging: the moving end follows the pointer, into the nearest selectable box
-	if sel.dragging && s.mouse_valid {
+	if sel.phase == .Dragging && s.mouse_valid {
 		k, q := sel_nearest(s, s.mouse)
 		if k != 0 {
 			b := s.boxes[k]
@@ -449,10 +456,10 @@ selection_update :: proc(s: ^State) {
 	// keys: when no field has the keyboard
 	field := s.focus_key != 0 && s.boxes[s.focus_key] != nil && .Text_Input in s.boxes[s.focus_key].flags
 	if !field {
-		if sel.active && sel.anchor != sel.focus && key_press(.C, {.Ctrl}) {
-			if s.clipboard_set != nil { s.clipboard_set(selected_text(s, context.temp_allocator)) }
+		if has_selection(s) && key_press(.C, {.Ctrl}) {
+			if s.clipboard_set != nil { s.clipboard_set(selected_text_of_boxes(s, context.temp_allocator)) }
 		}
-		if sel.active {
+		if sel.phase != .None {
 			fb := s.boxes[sel.focus.box]
 			if fb != nil {
 				text := sel_text(s, fb, context.temp_allocator)
@@ -479,11 +486,11 @@ selection_update :: proc(s: ^State) {
 			d, l, o := rich_of(s.boxes[k])
 			if rich_link_at(l, d.runs, s.mouse - o) >= 0 { over = false }
 		}
-		if over || sel.dragging { s.cursor_request = .Text }
+		if over || sel.phase == .Dragging { s.cursor_request = .Text }
 	}
-	after := [3]Sel_Pos{sel.anchor, sel.focus, {Key(u64(sel.active)), 0}}
+	after := [3]Sel_Pos{sel.anchor, sel.focus, {Key(u64(sel.phase != .None)), 0}}
 	if after != before { sel_bump(s) }
-	if sel.dragging { s.anim_busy = true }   // keep frames coming while the pointer drags
+	if sel.phase == .Dragging { s.anim_busy = true }   // keep frames coming while the pointer drags
 }
 
 @(private) para_lo :: proc(text: string, i: int) -> int { lo, _ := para_at(text, i); return lo }
@@ -544,7 +551,7 @@ sel_vertical :: proc(s: ^State, dir: int) {
 // draw_box: the selection behind a selectable box's text.
 @(private)
 draw_selection :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
-	if !s.sel.active || s.sel.anchor == s.sel.focus { return }
+	if !has_selection(s) { return }
 	text := sel_text(s, b, context.temp_allocator)
 	lo, hi := sel_range_of(s, b.key, len(text))
 	if hi <= lo { return }

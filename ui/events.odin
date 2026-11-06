@@ -15,7 +15,8 @@ _ :: fmt   // used by the UI_PROBE debug output only
 @(private) HOT_ANCESTORS_MAX :: 64                // ancestors of the hot box that count as hot within (hot_within, .Hot_Within)
 
 @(private)
-process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
+process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_window: bool) {
+	left := left_window
 	clear(&s.events.list)
 	clear(&s.events.consumed)
 	clear(&s.typed)
@@ -34,7 +35,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			s.mouse = e.pos
 			s.mouse_valid = true
 			// the click that ends a latched autoscroll does nothing else
-			if s.auto_enabled && autoscroll_click(&s.auto) { s.auto_box = 0; continue }
+			if s.auto_enabled && autoscroll_click(&s.auto) { continue }
 			append(&s.mouse_events, e)
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)
@@ -63,6 +64,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 		case .Mouse_Release:
 			append(&s.mouse_events, e)
 			s.mouse = e.pos
+			s.mods = e.mods
 			hot := hit_test(s, e.pos)
 			s.released_key[e.button] = s.active_key[e.button]
 			if s.active_key[e.button] != 0 && s.active_key[e.button] == hot { s.clicked_key[e.button] = hot }
@@ -79,6 +81,10 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 			}
 		case .Text:
 			append(&s.typed, e.text)
+		case .Key_Release:
+			s.mods = e.mods
+		case .Activate:
+			if s.window != nil && !s.window.active { left = true }
 		case .Key_Press:
 			s.mods = e.mods
 			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
@@ -94,6 +100,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 		case:
 		}
 	}
+	if left { window_left(s) }
 
 	// hot box: the topmost clickable box under the mouse; while a button is held, only the pressed box can be hot
 	hit: Key
@@ -104,6 +111,17 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys: bool) {
 	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse) : 0
 	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = s.time_ms }
 	autoscroll_handle_input(s)   // middle-click autoscroll (autoscroll_region.odin): after hit tests, may swallow clicks
+}
+
+// The user left the window (Event.Activate, Build_Params.inactive): nothing they were doing there goes on without them. A
+// button held has no release to come on every system (Windows makes one, X11 and Wayland do not), and no click is made of it.
+@(private)
+window_left :: proc(s: ^State) {
+	for &k in s.active_key { k = 0 }
+	s.mods = {}
+	if len(s.menus) > 0 { menu_pop_to(0) }
+	autoscroll_cancel(&s.auto)
+	selection_drag_end(s)
 }
 
 // Topmost Clickable box at `p`: later siblings draw on top, so walk them last to first.
@@ -220,8 +238,9 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 		sig.hovering = s.hot_key == b.key
 		sig.pressed = s.pressed_key[.Left] == b.key
 		sig.pointer_pressed = sig.pressed && s.a11y.pressed != b.key
-		sig.released = s.released_key[.Left] == b.key
+		sig.released = s.released_key[.Left] == b.key || s.release_owed == b.key
 		sig.clicked = s.clicked_key[.Left] == b.key
+		sig.pointer_clicked = sig.clicked && s.a11y.pressed != b.key
 		sig.double_clicked = s.double_key == b.key
 		sig.right_clicked = s.clicked_key[.Right] == b.key
 		sig.middle_clicked = s.clicked_key[.Middle] == b.key

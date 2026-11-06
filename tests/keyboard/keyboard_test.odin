@@ -1545,15 +1545,18 @@ modal_escape_goes_to_what_is_on_top :: proc(t: ^testing.T) {
 	frame(&f, nil, build_nested_modals, &r)
 	frame(&f, nil, build_nested_modals, &r)
 	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	frame(&f, nil, build_nested_modals, &r)   // (the build after the key closes it: the dialog on top is known at the end of the build)
 	testing.expect(t, r.outer && !r.inner, "nested: the inner one closes")
 	frame(&f, nil, build_nested_modals, &r)
 	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	frame(&f, nil, build_nested_modals, &r)
 	testing.expect(t, !r.outer, "then the outer one")
 
 	r.outer, r.inner = true, true
 	frame(&f, nil, build_stacked_modals, &r)
 	frame(&f, nil, build_stacked_modals, &r)
 	frame(&f, {key(.Escape)}, build_stacked_modals, &r)
+	frame(&f, nil, build_stacked_modals, &r)
 	testing.expect(t, r.outer && !r.inner, "stacked: the one built last closes")
 
 	r.outer, r.inner, r.with_field = true, false, true
@@ -1564,6 +1567,7 @@ modal_escape_goes_to_what_is_on_top :: proc(t: ^testing.T) {
 	frame(&f, {key(.Escape)}, build_nested_modals, &r)
 	testing.expect(t, r.res.cancelled && r.outer, "the field takes Escape, the dialog stays")
 	frame(&f, {key(.Escape)}, build_nested_modals, &r)
+	frame(&f, nil, build_nested_modals, &r)
 	testing.expect(t, !r.outer, "with no field focused the dialog closes")
 }
 

@@ -103,6 +103,7 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	lz.y += h
 	if lz.on && !always && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
 		lz.skip += h
+		next_drop(s)
 		return false
 	}
 	lazy_flush(lz)

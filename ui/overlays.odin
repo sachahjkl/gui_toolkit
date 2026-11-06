@@ -60,7 +60,7 @@ toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, ms
 	if t.len < len(msg) { t.len = font.grapheme_prev(msg, t.len + 1) }   // cut between clusters, not inside a character
 	copy(t.text[:], msg[:t.len])
 	s.toast_serial += 1
-	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_open ? s.time_ms : now_ms(), TOAST_LIFE_MS, s.toast_serial
+	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_now_ms(), TOAST_LIFE_MS, s.toast_serial
 }
 
 toasts_clear :: proc() { for &t in gs().toasts { t.alive = false } }
@@ -215,10 +215,25 @@ modal_phase :: proc(s: ^State, panel: Key) -> (phase: Modal_Phase, focus: Key) {
 	return .Opening, 0
 }
 
+// Escape was this dialog's in the last build (modals_settle): it closes now, by the `open` of this build.
+@(private = "file")
+modal_take_escape :: proc(s: ^State, id: string, open: ^bool) {
+	if s.modal_escape == 0 || s.modal_escape != key_from_string(s.root.key, fmt.tprintf("###modal_%s", id)) { return }
+	s.modal_escape = 0
+	open^ = false
+}
+
 // A dialog of the last build that is not of this one has closed: what it took the focus from has it back, unless
-// something else took it since (a focus inside the dialog is gone with it).
+// something else took it since (a focus inside the dialog is gone with it). Escape goes to the dialog on top at the end
+// of the build: one that opened after the dialog that took the key is the one it closes.
 @(private)
 modals_settle :: proc(s: ^State) {
+	s.modal_escape = 0
+	if s.modal_escape_taken && len(s.modals_built) > 0 {
+		s.modal_escape = s.modals_built[len(s.modals_built) - 1].panel
+		s.anim_busy = true   // (the frame that closes it)
+	}
+	s.modal_escape_taken = false
 	#reverse for m in s.modals_open {
 		gone := true
 		for b in s.modals_built { if b.panel == m.panel { gone = false; break } }
@@ -239,7 +254,9 @@ MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
 @(deferred_none = modal_end)
 modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
 	s := gs()
+	modal_take_escape(s, id, open)
 	if !open^ {
+		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
@@ -257,7 +274,9 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 @(deferred_none = modal_end)
 modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}) -> bool {
 	s := gs()
+	modal_take_escape(s, id, open)
 	if !open^ {
+		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
@@ -360,7 +379,7 @@ modal_end :: proc() {
 		m := pop(&s.modal_stack)
 		if m.size != nil { modal_grips(s, m) }
 		phase, _ := modal_phase(s, m.panel)
-		if phase == .Top && len(s.menus) == 0 && key_press(.Escape) { m.open^ = false }
+		if phase != .Below && len(s.menus) == 0 && key_press(.Escape) { s.modal_escape_taken = true }
 	}
 	ctx_menu_end()
 }
