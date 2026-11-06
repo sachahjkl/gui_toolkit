@@ -15,7 +15,7 @@ mkdir -p "$OUT/bin" "$OUT/run"
 chmod 700 "$OUT/run"
 fail=0
 pids=()
-cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null; done; rm -rf "$OUT"; }
+cleanup() { [ -f "$OUT/pointer.pid" ] && kill "$(cat "$OUT/pointer.pid")" 2>/dev/null; for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null; done; rm -rf "$OUT"; }
 trap cleanup EXIT
 
 # what open_url calls: writes its argument
@@ -29,7 +29,7 @@ export PATH="$OUT/bin:$PATH"
 unset DBUS_SESSION_BUS_ADDRESS
 export XDG_RUNTIME_DIR="$OUT/run"
 
-"$ODIN" build tests/linux_desktop/virtual_pointer -vet -out:"$OUT/virtual_pointer" || exit 1
+"$ODIN" build tests/linux_desktop/virtual_pointer -vet -out:"$OUT/bin/virtual_pointer" || exit 1
 "$ODIN" build tests/linux_desktop/drag_peer -vet -out:"$OUT/bin/drag_peer" || exit 1
 "$ODIN" build tests/linux_desktop -build-mode:test -vet -define:ODIN_TEST_THREADS=1 -debug ${GUI_TEST_NAMES:+-define:ODIN_TEST_NAMES=$GUI_TEST_NAMES} -out:"$OUT/desktop_test" || exit 1
 
@@ -126,8 +126,10 @@ EOF
   export SWAYSOCK="$(ls "$XDG_RUNTIME_DIR"/sway-ipc.* 2>/dev/null | head -1)"
   sleep 0.5
   # the seat's devices: a pointer the tests move with swaymsg, a keyboard (wtype sleeping); a device stays while its client does
-  "$OUT/virtual_pointer" &
-  pids+=($!)
+  # (a test takes the pointer away and makes it again: the file says which one to stop)
+  export GUI_TEST_POINTER_PID="$OUT/pointer.pid"
+  "$OUT/bin/virtual_pointer" &
+  echo $! > "$GUI_TEST_POINTER_PID"
   wtype -s 3600000 &
   pids+=($!)
   sleep 0.5
