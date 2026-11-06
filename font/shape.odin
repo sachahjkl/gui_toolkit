@@ -408,7 +408,7 @@ Word_Shard :: struct {
 Word_Cache :: struct {
 	shards: [SHARDS]Word_Shard,
 	cap:    int,             // words per shard generation (0: no cache)
-	epoch:  u32,             // bumps when the cache is cleared (the threads' own caches then miss)
+	epoch:  u32,             // bumps as the cache is cleared, and again once it is (the threads' own caches then miss)
 }
 
 @(private)
@@ -438,6 +438,7 @@ free_words :: proc(m: ^map[u64]^Word) {
 
 @(private)
 words_clear :: proc(c: ^Word_Cache) {
+	// first for the words being shaped (word_get), then for the widths read from what was being freed (word_width)
 	sync.atomic_store(&c.epoch, sync.atomic_add(&words_epochs, 1) + 1)
 	for &sh in c.shards {
 		sync.rw_mutex_lock(&sh.mu)
@@ -445,6 +446,7 @@ words_clear :: proc(c: ^Word_Cache) {
 		sh.cur_n = 0
 		sync.rw_mutex_unlock(&sh.mu)
 	}
+	sync.atomic_store(&c.epoch, sync.atomic_add(&words_epochs, 1) + 1)
 }
 
 @(private)
@@ -502,13 +504,21 @@ word_get :: proc(s: ^State, sh: ^Word_Shard, h: u64, id: Font_Id, size: f32, tex
 	sync.rw_mutex_lock(&sh.mu)
 	if w = word_find(sh, h, id, size, rtl, no_liga, text); w != nil { return w, false }
 	sync.rw_mutex_unlock(&sh.mu)
-	nw := shape_word(s, id, size, text, rtl, no_liga, runtime.heap_allocator())
-	sync.rw_mutex_lock(&sh.mu)
-	if nw == nil { return nil, false }
-	// another thread may have added it meanwhile
-	if w = word_find(sh, h, id, size, rtl, no_liga, text); w != nil { free(nw, runtime.heap_allocator()); return w, false }
-	word_insert(&s.words, sh, h, nw)
-	return nw, false
+	for {
+		epoch := sync.atomic_load(&s.words.epoch)
+		nw := shape_word(s, id, size, text, rtl, no_liga, runtime.heap_allocator())
+		sync.rw_mutex_lock(&sh.mu)
+		if nw == nil { return nil, false }
+		// another thread may have added it meanwhile
+		if w = word_find(sh, h, id, size, rtl, no_liga, text); w != nil { free(nw, runtime.heap_allocator()); return w, false }
+		if epoch == sync.atomic_load(&s.words.epoch) {
+			word_insert(&s.words, sh, h, nw)
+			return nw, false
+		}
+		// cleared meanwhile: it was shaped under what the clear is for
+		sync.rw_mutex_unlock(&sh.mu)
+		free(nw, runtime.heap_allocator())
+	}
 }
 
 @(private)

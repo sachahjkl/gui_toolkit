@@ -15,7 +15,6 @@ dwrite_backend := Text_Backend{
 	start        = dwrite_start,
 	stop         = proc(s: ^State) {},
 	face_open    = proc(s: ^State, f: ^Font) -> bool { return true },
-	face_close   = proc(f: ^Font) {},
 	has_glyph    = dwrite_has_glyph,
 	face_metrics = dwrite_face_metrics,
 	glyph_box    = dwrite_glyph_box,

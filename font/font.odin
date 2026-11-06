@@ -293,6 +293,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	if st.text_renderer != old.text_renderer { s.atlas.settings_generation += 1 }
 	if st.slug_tolerance != old.slug_tolerance {
 		slug_clear(&s.atlas.slug)
+		sync.atomic_add(&s.atlas.slug.outline_source, 1)
 		s.atlas.settings_generation += 1
 	}
 	// hinting changes which outline a glyph of a size uses: what was recorded with the other one is stale

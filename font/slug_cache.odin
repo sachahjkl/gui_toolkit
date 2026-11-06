@@ -46,6 +46,7 @@ Slug_Store :: struct {
 	pages:     [dynamic]^Slug_Page,
 	glyphs:    map[u64]Slug_Glyph,
 	provider:  Outline_Provider,
+	outline_source: u64,      // atomic: bumps when outlines would come out otherwise (a provider, a tolerance)
 	evictions: int,
 	built:     int,           // glyphs built (diagnostics)
 	blanks:    int,
@@ -123,6 +124,7 @@ slug_set_provider :: proc(s: ^State, p: Outline_Provider) {
 	defer atlas_unlock(&s.atlas)
 	st := &s.atlas.slug
 	st.provider = p
+	sync.atomic_add(&st.outline_source, 1)
 	for k, g in st.glyphs { if g.kind == .Atlas { slug_forget(st, k, g) } }
 }
 
