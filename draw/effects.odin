@@ -180,16 +180,17 @@ push_layer :: proc(c: ^Context, bounds: Rect, alpha: f32) { push_effects(c, boun
 // Returns false when the result kept under fx.cache_id is still good (see layer_cache.odin): the content need not be
 // drawn (what is drawn until pop_layer is discarded); pop_layer composites the kept result.
 push_effects :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects) -> (draw_content: bool) {
-	return open_layer(c, bounds, fx, false)
+	return open_layer(c, bounds, fx, .Plain)
 }
 
-// push_effects, and push_mask (`masked`: its mask layers are drawn in it too, and its result is kept masked).
+// push_effects, and push_mask (.Masked: its mask layers are drawn in it too, and its result is kept masked).
 @(private)
-open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, masked: bool) -> (draw_content: bool) {
+open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, kind: Layer_Kind) -> (draw_content: bool) {
+	masked := kind == .Masked
 	m := c.xforms[len(c.xforms) - 1].m
 	first := len(c.filter_store)
 	for f in fx.filters { if !filter_is_identity(f) { append(&c.filter_store, f) } }
-	ol := Open_Layer{alpha = fx.alpha, parent = c.target, filters = {first, len(c.filter_store)}, blend = fx.blend, xform = m, masked = masked, pending0 = c.glyphs_pending}
+	ol := Open_Layer{alpha = fx.alpha, parent = c.target, filters = {first, len(c.filter_store)}, blend = fx.blend, xform = m, kind = kind, planes = len(c.planes), pending0 = c.glyphs_pending}
 	out := filters_outset(m, c.filter_store[first:])
 	visible := rect_intersect(c.clips[len(c.clips) - 1].rect, target_rect(c))
 	space := blend_space(c)
@@ -245,11 +246,12 @@ open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, masked: bool) -
 		ol.region = needed
 		if ask.hit {
 			// nothing to draw: what comes until pop_layer goes nowhere (an empty clip)
-			append(&c.open_layers, ol)
 			close_batch(c)
 			append(&c.clips, Clip{})
 			start_batch(c)
 			append(&c.alphas, 1)
+			ol.floor = floor_raise(c)
+			append(&c.open_layers, ol)
 			return false
 		}
 		// to be kept: drawn whole when small enough, so that it stays good when more of it comes into view
@@ -268,31 +270,42 @@ open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, masked: bool) -
 		resize(&c.filter_store, first)
 		ol.filters = {first, first}
 		ol.cache = {}
-		append(&c.open_layers, ol)
 		push_alpha(c, fx.alpha)
+		ol.floor = floor_raise(c)
+		append(&c.open_layers, ol)
 		return true
 	}
 	ol.region = Rect{{x0, y0}, {x1, y1}}
 	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}, space = space})
 	ol.id = len(c.layers)
-	append(&c.open_layers, ol)
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)
 	c.target = ol.id
 	append(&c.clips, Clip{rect = {{x0, y0}, {x1, y1}}})
 	start_batch(c)
 	append(&c.alphas, 1)   // full opacity inside: the layer's alpha applies once, when it is composited
+	ol.floor = floor_raise(c)
+	append(&c.open_layers, ol)
 	return true
 }
 
+// What the innermost layer holds ends before it does: the planes opened in it, what is left pushed.
+@(private)
+layer_settle :: proc(c: ^Context) {
+	for len(c.planes) > c.open_layers[len(c.open_layers) - 1].planes { discard_plane(c, pop_plane(c)) }
+	floor_settle(c)
+}
+
+// Closes the innermost layer (nothing when none is open).
 pop_layer :: proc(c: ^Context) {
+	if len(c.open_layers) == 0 { return }
+	layer_settle(c)
 	// a masked layer closes through its mask, unless its kept result stands for it (the mask is in it)
-	if len(c.open_layers) > 0 {
-		top := &c.open_layers[len(c.open_layers) - 1]
-		if top.offscreen { offscreen_drop(c); return }
-		if top.masked && !top.cache.hit { pop_mask(c); return }
-	}
+	top := &c.open_layers[len(c.open_layers) - 1]
+	if top.kind == .Offscreen { offscreen_drop(c); return }
+	if top.kind == .Masked && !top.cache.hit { pop_mask(c); return }
 	ol := pop(&c.open_layers)
+	c.floor = ol.floor
 	pop(&c.alphas)
 	if ol.cache.hit && ol.cache.result {
 		close_batch(c)
@@ -321,7 +334,7 @@ pop_layer :: proc(c: ^Context) {
 		pop(&c.clips)   // the empty clip that discarded the content
 		start_batch(c)
 		f := Filtered{img = ol.cache.img, full = ol.cache.full}
-		_, tail := layer_split(c.filter_store[ol.filters[0]:ol.filters[1]], ol.masked)
+		_, tail := layer_split(c.filter_store[ol.filters[0]:ol.filters[1]], ol.kind == .Masked)
 		set_tail(&f, tail)
 		resize(&c.filter_store, ol.filters[0])
 		composite(c, f, ol.alpha, ol.blend, true)
@@ -650,7 +663,7 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 ////////////////////////////////
 // Backdrops (CSS backdrop-filter)
 
-// What was drawn behind a rect, filtered: draw it with backdrop_draw. Holds a pooled texture until then (or a kept one).
+// What was drawn behind a rect, filtered: draw it with backdrop_draw, once. Holds a pooled texture until then (or a kept one).
 Backdrop :: struct {
 	image: render.Image_Ref,
 	full:  [2]int,

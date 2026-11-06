@@ -364,3 +364,184 @@ the_readback_table_is_not_its_first_writers :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, len(track.allocation_map), 0)
 }
+
+// A second end_frame submits nothing: the frame is not drawn twice.
+@(test)
+a_second_end_frame_submits_nothing :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.rect(&f.dc, {{0, 0}, {64, 64}}, {1, 0, 0, 0.5})
+	draw.end_frame(&f.dc)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	img := render.read_pixels(&f.r, context.temp_allocator)
+	testing.expectf(t, abs(px(img, 32, 32)[1] - half_over_white(.Srgb)) <= 2, "%v", px(img, 32, 32))
+}
+
+// Pops past the root do nothing: what comes next draws as if they had not been made.
+@(test)
+pops_stop_at_the_root :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	img := frame(&f, proc(dc: ^draw.Context) {
+		draw.pop_clip(dc)
+		draw.pop_alpha(dc)
+		draw.pop_transform(dc)
+		draw.pop_xform(dc)
+		draw.pop_layer(dc)
+		draw.pop_mask(dc)
+		draw.rect(dc, {{0, 0}, {64, 64}}, RED)
+	})
+	testing.expect(t, close_px(px(img, 32, 32), {255, 0, 0, 255}))
+}
+
+// What a layer opened is its own: a pop inside it stops at it, and what it left pushed ends with it.
+@(test)
+a_layer_owns_its_stacks :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	img := frame(&f, proc(dc: ^draw.Context) {
+		draw.push_clip(dc, {{0, 0}, {32, 64}})
+		draw.push_layer(dc, {{0, 0}, {64, 64}}, 1)
+		draw.pop_clip(dc)       // (the layer's root: not the caller's)
+		draw.pop_alpha(dc)
+		draw.rect(dc, {{0, 0}, {16, 64}}, RED)
+		draw.push_clip(dc, {{0, 0}, {4, 4}})
+		draw.push_alpha(dc, 0.5)
+		draw.push_transform(dc, draw.affine_translate({1, 1}))
+		draw.pop_layer(dc)      // (left pushed)
+		draw.rect(dc, {{16, 0}, {64, 64}}, BLUE)
+		draw.pop_clip(dc)
+	})
+	testing.expect(t, close_px(px(img, 8, 32), {255, 0, 0, 255}), "the layer's content")
+	testing.expect(t, close_px(px(img, 24, 32), {0, 0, 255, 255}), "after it: the caller's clip, opaque, not moved")
+	testing.expect(t, close_px(px(img, 48, 32), {255, 255, 255, 255}), "cut by the caller's clip")
+	testing.expect_value(t, len(f.dc.clips), 1)
+	testing.expect_value(t, len(f.dc.alphas), 1)
+	testing.expect_value(t, len(f.dc.xforms), 1)
+}
+
+// Layers and planes end in the order they were opened: a layer left open in a plane ends with the plane.
+@(test)
+a_layer_left_open_in_a_plane_ends_with_it :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	img := frame(&f, proc(dc: ^draw.Context) {
+		_ = draw.push_plane(dc, {{0, 0}, {64, 64}}, 1)
+		draw.push_layer(dc, {{0, 0}, {64, 64}}, 1)
+		draw.rect(dc, {{0, 0}, {32, 64}}, RED)
+		draw.pop_plane_draw(dc, draw.MAT4_IDENTITY)
+	})
+	testing.expect(t, close_px(px(img, 16, 32), {255, 0, 0, 255}), "the layer's content is in the plane")
+	testing.expect_value(t, len(f.dc.open_layers), 0)
+	testing.expect_value(t, len(f.dc.clips), 1)
+}
+
+// ... and at the end of the frame, whichever stack is closed first.
+@(test)
+a_layer_and_a_plane_left_open_end_with_the_frame :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	_ = frame(&f, proc(dc: ^draw.Context) {
+		_ = draw.push_plane(dc, {{0, 0}, {64, 64}}, 1)
+		draw.push_layer(dc, {{0, 0}, {64, 64}}, 1)
+	})
+	testing.expect_value(t, len(f.dc.clips), 1)
+	_ = frame(&f, proc(dc: ^draw.Context) {
+		draw.push_layer(dc, {{0, 0}, {64, 64}}, 1)
+		_ = draw.push_plane(dc, {{0, 0}, {64, 64}}, 1)
+	})
+	testing.expect_value(t, len(f.dc.clips), 1)
+	testing.expect_value(t, len(f.dc.xforms), 1)
+}
+
+// A plane left open in a layer ends with the layer: the layer is closed, its plane dropped.
+@(test)
+a_plane_left_open_in_a_layer_ends_with_it :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	img := frame(&f, proc(dc: ^draw.Context) {
+		draw.push_layer(dc, {{0, 0}, {64, 64}}, 1)
+		draw.rect(dc, {{0, 0}, {32, 64}}, RED)
+		_ = draw.push_plane(dc, {{0, 0}, {64, 64}}, 1)
+		draw.rect(dc, {{0, 0}, {64, 64}}, BLUE)
+		draw.pop_layer(dc)
+	})
+	testing.expect(t, close_px(px(img, 16, 32), {255, 0, 0, 255}), "the layer")
+	testing.expect(t, close_px(px(img, 48, 32), {255, 255, 255, 255}), "not the plane")
+	testing.expect_value(t, len(f.dc.planes), 0)
+}
+
+// A recording ends only what it opened: the frame's plane stays open across it.
+@(test)
+a_recording_cannot_close_the_frames_plane :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	img := frame(&f, proc(dc: ^draw.Context) {
+		@(static) pic: draw.Picture
+		_ = draw.push_plane(dc, {{0, 0}, {64, 64}}, 1)
+		draw.picture_begin(dc, &pic)
+		_ = draw.pop_plane(dc)
+		draw.picture_end(dc)
+		draw.picture_destroy(dc, &pic)
+		draw.rect(dc, {{0, 0}, {64, 64}}, RED)
+		draw.pop_plane_draw(dc, draw.MAT4_IDENTITY)
+	})
+	testing.expect(t, close_px(px(img, 32, 32), {255, 0, 0, 255}))
+}
+
+// A plane opened while recording draws nothing: there is no frame for it to say.
+@(test)
+a_plane_of_a_recording_has_no_frame :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	@(static) ok: bool
+	_ = frame(&f, proc(dc: ^draw.Context) {
+		@(static) pic: draw.Picture
+		draw.picture_begin(dc, &pic)
+		_ = draw.push_plane(dc, {{0, 0}, {8, 8}}, 1)
+		_, _, ok = draw.open_plane_frame(dc)
+		_ = draw.pop_plane(dc)
+		draw.picture_end(dc)
+		draw.picture_destroy(dc, &pic)
+	})
+	testing.expect(t, !ok)
+}
+
+// A context destroyed in the middle of a recording frees the frame's lists it had put aside.
+@(test)
+a_context_destroyed_while_recording_leaves_nothing :: proc(t: ^testing.T) {
+	r: render.Renderer
+	if !render.init_offscreen(&r, SIZE, warp = true) { testing.fail_now(t, "no device (WARP)") }
+	defer render.destroy(&r)
+	fonts: font.State
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	pic: draw.Picture
+	dc: draw.Context
+	draw.init(&dc, &r, &fonts)
+	{
+		context.allocator = mem.tracking_allocator(&track)
+		draw.begin_frame(&dc, {f32(SIZE.x), f32(SIZE.y)})
+		draw.rect(&dc, {{0, 0}, {8, 8}}, RED)
+		draw.picture_begin(&dc, &pic)
+		draw.rect(&dc, {{0, 0}, {8, 8}}, RED)
+	}
+	{
+		draw.destroy(&dc)   // (what is freed knows its allocator; what the renderer keeps is not tracked here)
+		delete(pic.insts); delete(pic.batches); delete(pic.batch_bounds); delete(pic.slots); delete(pic.clips); delete(pic.clip_rects)
+		delete(pic.points); delete(pic.grads); delete(pic.pages); delete(pic.slug_pages); delete(pic.slug_runs)
+	}
+	testing.expect_value(t, len(track.allocation_map), 0)
+}

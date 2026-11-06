@@ -133,7 +133,9 @@ draw.pop_layer(dc)                     // composited once, at 50 %
   the last step reading it is recorded (`render.release_target`): many layers in a frame share a few textures.
 - A layer that would be empty, or larger than `render.max_texture_size`, falls back to `push_alpha` (its filters
   and blend mode are then lost).
-- `draw.layer_depth(dc)`: layers open. `end_frame` closes any left open.
+- `draw.layer_depth(dc)`: layers open. `end_frame` closes any left open; a second `end_frame` does nothing.
+- A layer or a plane owns what is pushed in it: `pop_clip`, `pop_alpha` and `pop_transform` stop at where it started (and at the
+  root), and what it leaves pushed ends with it, as do the planes and layers left open in it, in the order they were opened.
 
 How it is drawn: the frame is a list of steps run in the order they were recorded (`render.Frame_Data`): draw
 calls (a `Batch` into a `target`: 0 = the frame, k = `layers[k - 1]`) and operations (`render.Op`: clear a layer,

@@ -6,6 +6,7 @@ package color_glyphs_test
 import "base:intrinsics"
 import "base:runtime"
 import "core:mem"
+import "core:sync"
 import "core:testing"
 import "core:thread"
 import "../unwatched"
@@ -305,6 +306,66 @@ async_color_glyphs :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T)
 	_ = font.glyph_image(&f.s, f.sbix, 2, 30, 0)
 	font.unload(&f.s, f.sbix)
 	font.color_wait(&f.s)
+}) }
+
+// A kept layer around a picture recorded while a glyph was pending is not kept as it is: the glyph shows once it is ready, though
+// the caller's key never changed. The color glyph thread is held inside the glyph (its outlines) for as long as it takes.
+@(test)
+kept_layer_waits_for_a_replayed_pending_glyph :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r: render.Renderer
+	if !render.init_offscreen(&r, DSIZE, warp = true, space = .Srgb) { testing.fail_now(t, "no offscreen renderer") }
+	defer render.destroy(&r)
+	f := new(Fx)
+	defer free(f)
+	if !open(t, f) { testing.fail_now(t, "test fonts did not load") }
+	defer font.destroy(&f.s)
+	st := f.s.settings
+	st.color_async = true
+	st.color_engine = .Builtin
+	font.set_settings(&f.s, st)
+	@(static) gate: sync.Sema
+	gate = {}
+	font.slug_set_provider(&f.s, proc(s: ^font.State, face: font.Font_Id, gid: u16, tol: f32, out: ^font.Outline) -> bool {
+		sync.sema_wait(&gate)
+		sync.sema_post(&gate)
+		return font.dwrite_outline_provider(s, face, gid, tol, out)
+	})
+	dc: draw.Context
+	draw.init(&dc, &r, &f.s)
+	defer draw.destroy(&dc)
+	pic: draw.Picture
+	defer draw.picture_destroy(&dc, &pic)
+	colr := font.cascade(&f.s, {{font = f.colr}}, nil, true)
+	record :: proc(dc: ^draw.Context, pic: ^draw.Picture, colr: font.Font_Id) {
+		draw.picture_begin(dc, pic)
+		draw.text(dc, colr, 48, {10, 60}, draw.Color{0, 0, 0, 1}, "\U000F0100")
+		draw.picture_end(dc)
+	}
+	layer_frame :: proc(dc: ^draw.Context, r: ^render.Renderer, pic: ^draw.Picture, colr: font.Font_Id, first: bool) -> (l: RGBA) {
+		draw.begin_frame(dc, {f32(DSIZE.x), f32(DSIZE.y)})
+		render.frame_begin(r, {1, 1, 1, 1})
+		if first { record(dc, pic, colr) }
+		if draw.push_effects(dc, {{0, 0}, {f32(DSIZE.x), f32(DSIZE.y)}}, draw.Layer_Effects{alpha = 1, cache_id = 7, cache_key = 99}) {
+			if draw.replay(dc, pic, draw.AFFINE_IDENTITY) == .Stale {
+				record(dc, pic, colr)
+				_ = draw.replay(dc, pic, draw.AFFINE_IDENTITY)
+			}
+		}
+		draw.pop_layer(dc)
+		draw.end_frame(dc)
+		render.frame_end(r)
+		img := render.read_pixels(r, context.temp_allocator)
+		o := (40 * DSIZE.x + 17) * 4
+		return {int(img[o]), int(img[o + 1]), int(img[o + 2]), int(img[o + 3])}
+	}
+	_ = layer_frame(&dc, &r, &pic, colr, true)
+	testing.expect(t, pic.glyphs_pending, "recorded while the glyph was pending")
+	_ = layer_frame(&dc, &r, &pic, colr, false)   // (the same key twice: a layer that looks fresh is kept now)
+	sync.sema_post(&gate)
+	font.color_wait(&f.s)
+	l: RGBA
+	for _ in 0 ..< 3 { l = layer_frame(&dc, &r, &pic, colr, false) }
+	testing.expectf(t, l[0] > 200 && l[2] < 60, "the glyph, once ready: %v", l)
 }) }
 
 // On the color glyph thread as on the drawing thread: a glyph whose COLR layers cannot be read shows its outline, it is not
