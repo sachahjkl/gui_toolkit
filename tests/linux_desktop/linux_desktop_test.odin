@@ -713,3 +713,215 @@ a_fractional_scale_on_wayland :: proc(t: ^testing.T) {
 		if e.kind == .Mouse_Press { testing.expectf(t, abs(e.pos.x - 90) <= 3 && abs(e.pos.y - 90) <= 3, "at the buffer's pixels: %v", e.pos) }
 	}
 }
+
+
+////////////////////////////////
+// keys: what the modifiers do to them
+
+@(private = "file")
+texts :: proc(s: ^Seen) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	for e in s.events { if e.kind == .Text { strings.write_rune(&b, e.text) } }
+	return strings.to_string(b)
+}
+
+@(private = "file")
+pressed :: proc(s: ^Seen, k: platform.Key) -> bool {
+	for e in s.events { if e.kind == .Key_Press && e.key == k { return true } }
+	return false
+}
+
+@(private = "file") wait_text :: proc(w: ^platform.Window, s: ^Seen, want: string, ms := 3000) {
+	start := time.tick_now()
+	for time.duration_milliseconds(time.tick_since(start)) < f64(ms) && len(texts(s)) < len(want) {
+		for e in platform.poll_events(w, true, PUMP_WAIT_MS) { append(&s.events, e) }
+	}
+}
+
+// Shift and Caps Lock change what a key types; the key keeps its name whatever it types (Shift+1 is N1 that types !).
+@(test)
+modifiers_reach_the_typed_text_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("modifiers")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	seen: Seen
+	defer delete(seen.events)
+	sh("xdotool key --window 0 a shift+a shift+1 Caps_Lock a Caps_Lock a shift+Tab")
+	wait_text(w, &seen, "aA!Aa")
+	testing.expect_value(t, texts(&seen), "aA!Aa")
+	testing.expect(t, pressed(&seen, .N1), "Shift+1 is the key 1")
+	testing.expect(t, pressed(&seen, .Tab), "Shift+Tab is the key Tab")
+}
+
+// xdotool gives a spare keycode the symbol it types and takes it back: the keymap of the server changes under the window.
+@(test)
+a_new_keymap_is_followed_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("keymap")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	seen: Seen
+	defer delete(seen.events)
+	sh("xdotool key --delay 400 eacute &")
+	wait_text(w, &seen, "é", 2500)
+	testing.expect_value(t, texts(&seen), "é")
+}
+
+////////////////////////////////
+// windows that end
+
+// The server's notices for a window that is gone are for nobody: not for the window that polls.
+@(test)
+a_closed_window_leaves_the_others_alone :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open("goes")
+	b := open("stays")
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer platform.destroy_window(b)
+	platform.destroy_window(a)
+	pump_for(b, 300)
+	testing.expect(t, !platform.is_minimized(b), "the other window is not minimized")
+	testing.expect(t, platform.is_window_visible(b))
+}
+
+////////////////////////////////
+// the waits of a real window
+
+@(test)
+an_injected_event_ends_a_wait :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("inject")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	pump_for(w, 100)
+	platform.inject_event(w, {kind = .Activate})
+	start := time.tick_now()
+	evs := platform.poll_events(w, true, 3000)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 1000, "the wait ends at once")
+	testing.expect_value(t, len(evs), 1)
+}
+
+// A repaint asked for (the pump set the latch, nothing else is pending): wait_event does not sleep over it.
+@(test)
+a_repaint_asked_for_ends_a_wait :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("latch")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	pump_for(w, 100)
+	w.paint_requested = true
+	start := time.tick_now()
+	platform.wait_event(w, 3000)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 1000, "the wait ends at once")
+}
+
+////////////////////////////////
+// cursors
+
+// A custom cursor gives way to the named one the window already had, and to it again when it is released.
+@(test)
+a_custom_cursor_gives_way :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("custom")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	if x11() {
+		sh("xdotool windowactivate --sync ", window_id(w), " mousemove --window ", window_id(w), " 50 40")
+	} else {
+		sh("swaymsg -q seat seat0 cursor set 60 60")
+	}
+	pump_for(w, 200)
+	shown :: proc(t: ^testing.T, w: ^platform.Window) -> u64 {
+		pump_for(w, 100)
+		s, ok := platform.cursor_on_screen(w)
+		testing.expect(t, ok)
+		return s
+	}
+	pixels := make([]u8, 16 * 16 * 4)
+	defer delete(pixels)
+	for i := 0; i < len(pixels); i += 4 { pixels[i], pixels[i + 3] = 255, 255 }
+	platform.set_cursor(w, .Hand)
+	hand := shown(t, w)
+	cc, err := platform.custom_cursor_create(w, pixels, {16, 16}, {8, 8})
+	testing.expect_value(t, err, platform.Custom_Cursor_Error.None)
+	platform.set_cursor_custom(w, cc, .Arrow)
+	testing.expect(t, shown(t, w) != hand, "the custom cursor shows")
+	platform.set_cursor(w, .Hand)
+	testing.expect_value(t, shown(t, w), hand)
+	platform.set_cursor_custom(w, cc, .Arrow)
+	testing.expect(t, shown(t, w) != hand)
+	platform.custom_cursor_release(w, cc)
+	testing.expect_value(t, shown(t, w), hand)
+}
+
+// Only the window under the pointer sets what the pointer shows.
+@(test)
+a_window_without_the_pointer_leaves_it_alone_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a, b := two_windows()
+	testing.expect(t, a != nil && b != nil)
+	if a == nil || b == nil { return }
+	defer { platform.destroy_window(a); platform.destroy_window(b) }
+	sh("swaymsg -q seat seat0 cursor set 100 100")
+	pump_for(a, 300)
+	platform.set_cursor(a, .Hand)
+	before, _ := platform.cursor_on_screen(a)
+	platform.set_cursor(b, .Text)
+	after, _ := platform.cursor_on_screen(a)
+	testing.expect_value(t, after, before)
+}
+
+////////////////////////////////
+// the press the compositor takes
+
+// Another workspace comes up under a held button: the pointer leaves, its release will not come here.
+@(test)
+a_pointer_taken_with_a_button_held_releases_it_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("taken")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	seen: Seen
+	defer delete(seen.events)
+	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.5; swaymsg -q seat seat0 cursor press button1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
+	sh("swaymsg -q workspace 9")
+	defer sh("swaymsg -q seat seat0 cursor release button1; swaymsg -q workspace 1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Release, 2000), "the release is made")
+	testing.expect_value(t, w.buttons_down, platform.Mouse_Buttons{})
+}
+
+// Another client grabs the pointer under a held button (the window manager's menu): the release goes to it.
+@(test)
+a_grab_with_a_button_held_releases_it_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("grabbed")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	seen: Seen
+	defer delete(seen.events)
+	sh("xdotool mousemove --window ", window_id(w), " 50 50 mousedown 1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
+	sh("xdotool key alt+space")
+	defer sh("xdotool key Escape; xdotool mouseup 1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Release, 2000), "the release is made")
+	testing.expect_value(t, w.buttons_down, platform.Mouse_Buttons{})
+}
