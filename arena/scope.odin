@@ -102,12 +102,15 @@ run_cleanup :: proc(s: ^Scope, id: Cleanup_Id) -> bool {
 	return false
 }
 
-// Closes the scope and frees it. The pointer is dead afterwards.
+// Closes the scope and frees it, and every scope under it: those pointers are dead afterwards, and closing one again reads
+// freed memory. A scope's own cleanup may close it, not a scope above it: what is left of the cleanups would run on an arena
+// that is gone (it asserts).
 scope_close :: proc(s: ^Scope) {
 	if s == nil || s.closing { return }
 	s.closing = true
 	for len(s.children) > 0 {
 		child := pop(&s.children)
+		assert(!child.closing, "a scope closed from a cleanup of a scope under it")
 		child.parent = nil   // already detached: do not search the parent's list again
 		scope_close(child)
 	}

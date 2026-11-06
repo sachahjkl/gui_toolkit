@@ -22,7 +22,7 @@ POOL_CHUNK_MASK  :: POOL_CHUNK_SIZE - 1
 
 Slot :: struct($T: typeid) {
 	value:     T,
-	gen:       u32,    // 0 until first use; live slots have gen >= 1
+	gen:       u32,    // 0 until first use; live slots have gen >= 1; at max(u32) a removal retires the slot
 	live:      bool,
 	next_free: u32,    // index + 1 of the next free slot, 0 = end of list (only meaningful when not live)
 }
@@ -50,7 +50,6 @@ pool_insert :: proc(p: ^Pool($T), value: T) -> (h: Handle, ptr: ^T) {
 	slot := &p.chunks[index >> POOL_CHUNK_SHIFT][index & POOL_CHUNK_MASK]
 	if p.free_head != 0 { p.free_head = slot.next_free }
 	slot.gen += 1
-	if slot.gen == 0 { slot.gen = 1 }   // wrapped: 0 stays reserved
 	slot.live = true
 	slot.value = value
 	slot.next_free = 0
@@ -82,9 +81,10 @@ pool_remove :: proc(p: ^Pool($T), h: Handle) -> (value: T, ok: bool) {
 	value = slot.value
 	slot.value = {}
 	slot.live = false
+	p.count -= 1
+	if slot.gen == max(u32) { return value, true }   // its generations are spent: it is never used again, or an old handle would come back
 	slot.next_free = p.free_head
 	p.free_head = handle_index(h) + 1
-	p.count -= 1
 	return value, true
 }
 
