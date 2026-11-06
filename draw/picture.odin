@@ -93,6 +93,7 @@ Saved_Frame :: struct {
 	grads:   [dynamic][4]f32,
 	open_layers: [dynamic]Open_Layer,
 	target:  int,
+	planes:  int,       // the planes open in the frame: those above end with the recording
 	// stacks reused by recordings
 	spare_clips:  [dynamic]Clip,
 	spare_alphas: [dynamic]f32,
@@ -121,6 +122,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 	append(&pic.clips, render.Clip_Data{})
 	append(&pic.clip_rects, Rect{})
 	s := &c.saved
+	s.planes = len(c.planes)
 	s.insts, s.batches, s.clips, s.alphas, s.xforms = c.insts, c.batches, c.clips, c.alphas, c.xforms
 	s.clip_table, s.clip_points, s.grads, s.open_layers, s.target = c.clip_table, c.clip_points, c.grads, c.open_layers, c.target
 	c.insts, c.batches, c.clip_table, c.clip_points, c.grads = pic.insts, pic.batches, pic.clips, pic.points, pic.grads
@@ -141,6 +143,7 @@ picture_begin :: proc(c: ^Context, pic: ^Picture, raster_scale: f32 = 1) {
 picture_end :: proc(c: ^Context) {
 	pic := c.rec
 	if pic == nil { return }
+	for len(c.planes) > c.saved.planes { discard_plane(c, pop_plane(c)) }   // (its stacks are the recording's: they end with it)
 	for len(c.open_layers) > 0 { pop_layer(c) }
 	close_batch(c)
 	pic.insts, pic.batches, pic.clips, pic.points, pic.grads = c.insts, c.batches, c.clip_table, c.clip_points, c.grads

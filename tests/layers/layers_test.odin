@@ -287,6 +287,37 @@ a_context_leaves_no_texture_behind :: proc(t: ^testing.T) {
 	testing.expect_value(t, render.texture_memory(&r).count, before)
 }
 
+// An offscreen target nobody closed is dropped with the frame: not composited, and what it pushed goes with it.
+@(test)
+an_offscreen_target_left_open_ends_with_the_frame :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	frame(&f, proc(dc: ^draw.Context) {
+		if !draw.offscreen_begin(dc, {8, 8}) { return }
+		draw.rect(dc, {{0, 0}, {8, 8}}, {1, 0, 0, 1})
+	})
+	testing.expect_value(t, len(f.dc.xforms), 1)
+	testing.expect_value(t, len(f.dc.open_layers), 0)
+}
+
+// A plane still open when a recording ends goes with the recording: the frame's stacks are not its own.
+@(test)
+a_plane_left_open_in_a_picture_ends_with_it :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Linear) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	frame(&f, proc(dc: ^draw.Context) {
+		@(static) pic: draw.Picture
+		draw.picture_begin(dc, &pic)
+		_ = draw.push_plane(dc, {{0, 0}, {8, 8}}, 1)
+		draw.picture_end(dc)
+		draw.picture_destroy(dc, &pic)
+	})
+	testing.expect_value(t, len(f.dc.planes), 0)
+	testing.expect_value(t, len(f.dc.clips), 1)
+}
+
 // A device lost is one renderer's: the read-back waiting on another still comes.
 @(test)
 a_device_loss_leaves_the_readbacks_of_another_renderer :: proc(t: ^testing.T) {
