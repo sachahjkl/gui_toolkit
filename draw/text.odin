@@ -14,6 +14,38 @@ TEXT_RASTER_TOLERANCE :: 0.1
 // Largest size text is rasterized at when scaled (font.raster_size_limit may cap it further).
 @(private) TEXT_RASTER_SIZE_MAX :: 4096
 
+// glyph_run_stroke: outlines are read within this part of an em, a curve is this many lines.
+@(private) STROKE_TOLERANCE_EM :: 1.0 / 1024
+@(private) STROKE_CURVE_LINES :: 6
+
+// The outlines of `glyphs` as `glyph_run` places them, stroked: a line of `width` along their edges, half inside and half outside, its joins round. What has no outline (a
+// bitmap) is left out.
+glyph_run_stroke :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []font.Glyph_Pos, width: f32) {
+	if width <= 0 || size <= 0 || c.fonts == nil { return }
+	points := make([dynamic]Vec2, 0, 64, context.temp_allocator)
+	for g in glyphs {
+		o := font.Outline{quads = make([dynamic]font.Quad, context.temp_allocator), ends = make([dynamic]int, context.temp_allocator)}
+		if !font.glyph_outline(c.fonts, g.face, g.id, STROKE_TOLERANCE_EM, &o) { continue }
+		at := pos + {g.x, g.y}
+		first := 0
+		for end in o.ends {
+			clear(&points)
+			for q in o.quads[first:end] {
+				straight := q.p[1] == q.p[2]
+				if len(points) == 0 { append(&points, at + {q.p[0].x, -q.p[0].y} * size) }
+				for i in 1 ..= (straight ? 1 : STROKE_CURVE_LINES) {
+					t := f32(i) / (straight ? 1 : STROKE_CURVE_LINES)
+					u := 1 - t
+					p := q.p[0] * (u * u) + q.p[1] * (2 * u * t) + q.p[2] * (t * t)
+					append(&points, at + {p.x, -p.y} * size)
+				}
+			}
+			polyline(c, points[:], width, color)
+			first = end
+		}
+	}
+}
+
 @(private)
 Glyph_Tex :: struct {
 	tex:     render.Texture,
