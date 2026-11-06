@@ -98,6 +98,7 @@ STEPS := []Step{
 	{name = "a11y", one = true},
 	{name = "a11y_uia", path = "tests/a11y", one = true, defines = {"A11Y_ACCESSKIT=true"}, need = .A11y_Lib},
 	{name = "devtools"},
+	{name = "devtools_unit", path = "devtools"},
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},

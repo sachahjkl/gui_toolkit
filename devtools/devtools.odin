@@ -75,6 +75,9 @@ Server :: struct {
 	asked:    bool,               // a command in the inbox wants a frame (under lock; the ticker reads it, atomic)
 	ended:    bool,               // a connection ended since the last frame (atomic)
 	cast_dirty: bool,             // the window changed since the last frame of the screencast (atomic)
+	cast_session: u64,            // the screencast running, by number; 0: none (atomic)
+	cast_hash: u64,               // the last picture of the screencast (atomic: the encoders')
+	cast_same: u64,               // an encoder found the picture of this screencast unchanged: nothing goes out, no ack comes (atomic)
 	encoding: int,                // pictures being encoded on their own threads (atomic)
 	// the UI thread's own
 	captures: [dynamic]Capture_Ask,   // screenshots asked for, answered when a capture of their part is ready
@@ -82,6 +85,7 @@ Server :: struct {
 	waits:    [dynamic]Wait,      // Toolkit.waitFor, waitIdle
 	rec:      Recorder,           // Toolkit.startRecording
 	screencast: Cast,               // Page.startScreencast
+	casts:    u64,                // how many there have been: each one's number
 	dom:      Dom,                // the box tree as Chrome's DevTools sees it (dom.odin)
 	samples:  [METRIC_RING]Metric_Sample,   // the last frames (Toolkit.metrics)
 	sampled:  int,
@@ -89,7 +93,7 @@ Server :: struct {
 	sample_at: time.Tick,
 	shots:    int,
 	sessions: int,
-	captured: bool,               // the accessibility tree is asked of the ui (ui.a11y_capture)
+	captured: ^ui.State,          // the ui the accessibility tree is asked of (ui.a11y_capture); only compared
 }
 
 // Where an answer goes: the connection, the command's id, its session (a client attached with Target.attachToTarget).
@@ -149,7 +153,9 @@ start_from_env :: proc(win: ^platform.Window, title := "") -> ^Server {
 	return start(win, port, title)
 }
 
-stop :: proc(srv: ^Server) {
+// `s`: for a program that goes on after this, the ui it served: the edits of DOM and CSS, the highlight and the accessibility
+// tree asked of it end too. nil, the usual end of a program, leaves it alone, and it may be gone by now.
+stop :: proc(srv: ^Server, s: ^ui.State = nil) {
 	if srv == nil { return }
 	sync.atomic_store(&srv.stopping, true)
 	if srv.accepter != nil {   // (start_local has neither)
@@ -173,10 +179,14 @@ stop :: proc(srv: ^Server) {
 		sync.unlock(&c.write)
 	}
 	for c in conns {
-		if c.local { local_free(c) } else { thread.join(c.thread); thread.destroy(c.thread) }
-		free(c, runtime.heap_allocator())
+		input_release(srv, c)
+		conn_free(c)
 	}
 	delete(srv.conns)
+	if s != nil {
+		dom_reset(srv, s, gone = true)
+		if srv.captured == s { ui.a11y_capture(s, false) }
+	}
 	for m in srv.inbox { delete(m.text, runtime.heap_allocator()) }
 	delete(srv.inbox)
 	for w in srv.captures { release(w.to) }
@@ -196,7 +206,7 @@ stop :: proc(srv: ^Server) {
 // commands that came in are carried out, input injected into the window's queue for this frame.
 service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv == nil { return }
-	sync.atomic_store(&srv.ended, false)   // (before anything looks at the connections: one that ends after this is seen next time)
+	ended := sync.atomic_exchange(&srv.ended, false)   // (before anything looks at the connections: one that ends after this is seen next time)
 	// (first: the time between frames is the program's rhythm, and a frame that reads a capture back is not late for it)
 	if s != nil { metrics_sample(srv, s) }
 	if len(srv.later) > 0 { cast_touch(srv) }
@@ -205,7 +215,7 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	screenshots_poll(srv, s, r)
 	if s != nil {
 		cast_poll(srv, s, r)
-		if !srv.captured { ui.a11y_capture(s, true); srv.captured = true }
+		if srv.captured != s { ui.a11y_capture(s, true); srv.captured = s }
 		rec_poll(srv, s)
 		waits_poll(srv, s)
 		dom_sync(srv, s)
@@ -220,11 +230,32 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		handle(srv, s, r, m)
 		delete(m.text, runtime.heap_allocator())
 	}
+	// (after its last commands: they may press)
+	if ended { conns_release(srv) }
 	// What needs another frame. Through the ticker: a wake sent from here is taken by the poll_events of the frame about to be
 	// built, and the window would then sleep until its next timer (a real window's; an offscreen one keeps it).
-	sync.atomic_store(&srv.waiting, len(srv.waits) + len(srv.later) + len(srv.captures) + (srv.screencast.owed || srv.screencast.pending ? 1 : 0))
-	sync.atomic_store(&srv.cast_dirty, s != nil && srv.screencast.on && s.build_index + 1 != srv.screencast.last_build)
+	sync.atomic_store(&srv.waiting, len(srv.waits) + len(srv.later) + len(srv.captures) + (srv.screencast.owed || srv.screencast.phase == .Capturing ? 1 : 0))
+	sync.atomic_store(&srv.cast_dirty, s != nil && srv.screencast.phase != .Off && s.build_index + 1 != srv.screencast.last_build)
 	conns_reap(srv)
+}
+
+// What the clients that went held down goes up: a drag does not stay under way for want of a client.
+@(private)
+conns_release :: proc(srv: ^Server) {
+	sync.lock(&srv.lock)
+	defer sync.unlock(&srv.lock)
+	for c in srv.conns { if conn_gone(c) { input_release(srv, c) } }
+}
+
+@(private)
+input_release :: proc(srv: ^Server, c: ^Conn) {
+	if c.buttons != {} || len(c.keys) > 0 { cast_touch(srv) }
+	for b in c.buttons {
+		c.buttons -= {b}
+		platform.inject_event(srv.win, platform.Event{kind = .Mouse_Release, button = b, pos = c.pointer, buttons = c.buttons})
+	}
+	for k in c.keys { platform.inject_event(srv.win, platform.Event{kind = .Key_Release, key = k}) }
+	clear(&c.keys)
 }
 
 // Connections that ended, once nothing is left to answer on them. (Each tool's run is a connection or two, for as long
@@ -239,10 +270,10 @@ conns_reap :: proc(srv: ^Server) {
 		for m in srv.inbox { if m.conn == c { continue outer } }
 		for w in srv.captures { if w.to.conn == c { continue outer } }
 		for w in srv.waits { if w.to.conn == c { continue outer } }
-		if srv.screencast.on && srv.screencast.to.conn == c { continue }
-		if srv.dom.to.conn == c { continue }   // (dom_sync sees it gone, and takes its edits back)
-		if c.local { local_free(c) } else { thread.join(c.thread); thread.destroy(c.thread) }
-		free(c, runtime.heap_allocator())
+		if srv.screencast.phase != .Off && srv.screencast.to.conn == c { continue }
+		if srv.rec.on && srv.rec.owner == c { continue }   // (rec_poll sees it gone, and ends the recording)
+		if srv.dom.to.conn == c || srv.dom.lit == c { continue }   // (dom_sync sees it gone, and takes its edits back)
+		conn_free(c)
 		unordered_remove(&srv.conns, i)
 	}
 }
@@ -383,13 +414,17 @@ cmd_page :: proc(c: ^Cmd) -> Answer {
 			error_reply(to, CDP_ERROR_SERVER, "this window has no interface to cast")
 			return .Sent
 		}
+		if cast_taken(srv, to) {
+			error_reply(to, CDP_ERROR_SERVER, "another client is casting this window")
+			return .Sent
+		}
 		cast_start(srv, r, to, p)
 		strings.write_string(&c.sb, "{}")
 	case "Page.stopScreencast":
-		cast_stop(srv, r)
+		if !cast_taken(srv, to) { cast_stop(srv, r) }
 		strings.write_string(&c.sb, "{}")
 	case "Page.screencastFrameAck":
-		cast_ack(srv, s)
+		cast_ack(srv, s, to, p)
 		strings.write_string(&c.sb, "{}")
 	// (what Chrome's DevTools asks on attaching and cannot do without; there is nothing behind them)
 	case "Page.getResourceTree":
@@ -436,10 +471,10 @@ cmd_input :: proc(c: ^Cmd) -> Answer {
 	switch c.method {
 	case "Input.dispatchMouseEvent", "Input.emulateTouchFromMouseEvent":   // (the second: DevTools' picture of the window, clicked)
 		cast_touch(srv)
-		mouse_event(srv, p)
+		mouse_event(srv, c.to.conn, p)
 	case "Input.dispatchKeyEvent":
 		cast_touch(srv)
-		key_event(srv, p)
+		key_event(srv, c.to.conn, p)
 	case "Input.insertText":
 		cast_touch(srv)
 		insert_text(srv, str(p["text"]))
@@ -500,13 +535,17 @@ cmd_toolkit :: proc(c: ^Cmd) -> Answer {
 		strings.write_string(sb, "]}")
 	case "Toolkit.frames":
 		frames_write(sb, srv, p)
-	case "Toolkit.startRecording":
-		rec_start(srv, s, p)
-		fmt.sbprintf(sb, `{{"now":%.3f}}`, ui.now_ms())
-	case "Toolkit.pollRecording":
-		rec_take(srv, sb)
-	case "Toolkit.stopRecording":
-		rec_stop(srv, sb)
+	case "Toolkit.startRecording", "Toolkit.pollRecording", "Toolkit.stopRecording":
+		if rec_taken(srv, to) { error_reply(to, CDP_ERROR_SERVER, "another client is recording this window"); return .Sent }
+		switch c.method {
+		case "Toolkit.startRecording":
+			rec_start(srv, s, to, p)
+			fmt.sbprintf(sb, `{{"now":%.3f}}`, ui.now_ms())
+		case "Toolkit.pollRecording":
+			rec_take(srv, sb)
+		case:
+			rec_stop(srv, sb)
+		}
 	case "Toolkit.getTree":
 		strings.write_string(sb, `{"root":`)
 		write_node(sb, srv, s, s.root, bool_of(p["all"]), true)
@@ -544,7 +583,8 @@ edit_refused :: proc(method: string) -> bool {
 }
 
 // A client attached to the window (the browser's endpoint, as Playwright and Puppeteer use). A session is only a name
-// to answer under: they all see the one window.
+// to answer under: they all see the one window, and what owns something (a cast, the tree, a recording) is the connection.
+// So Target.detachFromTarget and Target.closeTarget have nothing to do, and no name is refused.
 @(private)
 new_session :: proc(srv: ^Server) -> string {
 	srv.sessions += 1
@@ -609,7 +649,7 @@ button_of :: proc(name: string) -> (platform.Mouse_Button, bool) {
 }
 
 @(private)
-mouse_event :: proc(srv: ^Server, p: json.Object) {
+mouse_event :: proc(srv: ^Server, c: ^Conn, p: json.Object) {
 	d := f32(dpi(srv))
 	e := platform.Event{pos = {f32(num(p["x"])) * d, f32(num(p["y"])) * d}, mods = mods_of(p)}
 	bits := int(num(p["buttons"]))
@@ -624,11 +664,13 @@ mouse_event :: proc(srv: ^Server, p: json.Object) {
 		if !has { return }
 		e.kind, e.button = .Mouse_Press, b
 		e.buttons += {b}
+		c.buttons += {b}
 		platform.inject_event(srv.win, platform.Event{kind = .Mouse_Move, pos = e.pos, mods = e.mods, buttons = e.buttons - {b}})
 	case "mouseReleased":
 		if !has { return }
 		e.kind, e.button = .Mouse_Release, b
 		e.buttons -= {b}
+		c.buttons -= {b}
 	case "mouseWheel":
 		// positive y scrolls the content down, as Event.delta
 		e.kind = .Scroll
@@ -637,20 +679,27 @@ mouse_event :: proc(srv: ^Server, p: json.Object) {
 	case:
 		return
 	}
+	c.pointer = e.pos
 	platform.inject_event(srv.win, e)
 }
 
 @(private)
-key_event :: proc(srv: ^Server, p: json.Object) {
+key_event :: proc(srv: ^Server, c: ^Conn, p: json.Object) {
 	k := key_of(str(p["key"]), str(p["code"]))
 	m := mods_of(p)
 	text := str(p["text"])
 	switch str(p["type"]) {
 	case "keyDown", "rawKeyDown":
-		if k != .None { platform.inject_event(srv.win, platform.Event{kind = .Key_Press, key = k, mods = m, repeat = bool_of(p["autoRepeat"])}) }
+		if k != .None {
+			if !slice.contains(c.keys[:], k) { append(&c.keys, k) }
+			platform.inject_event(srv.win, platform.Event{kind = .Key_Press, key = k, mods = m, repeat = bool_of(p["autoRepeat"])})
+		}
 		if str(p["type"]) == "keyDown" && .Ctrl not_in m { insert_text(srv, text) }
 	case "keyUp":
-		if k != .None { platform.inject_event(srv.win, platform.Event{kind = .Key_Release, key = k, mods = m}) }
+		if k != .None {
+			if i, found := slice.linear_search(c.keys[:], k); found { unordered_remove(&c.keys, i) }
+			platform.inject_event(srv.win, platform.Event{kind = .Key_Release, key = k, mods = m})
+		}
 	case "char":
 		insert_text(srv, text)
 	}
@@ -711,18 +760,20 @@ key_of :: proc(key, code: string) -> platform.Key {
 }
 
 // A click on a box's middle: a move and a press now, the release at the next frame (the press is seen first, as a
-// hand's would be). `count` 2: a double click.
+// hand's would be). `count` 2: a double click. After a click of the same batch, all of it goes behind that one's release.
 @(private)
 click :: proc(srv: ^Server, b: ^ui.Box, p: json.Object) -> (x, y: f64) {
 	pos := [2]f32{math.round((b.rect.min.x + b.rect.max.x) * 0.5), math.round((b.rect.min.y + b.rect.max.y) * 0.5)}
 	btn, has := button_of(str(p["button"]))
 	if !has { btn = .Left }
 	count := max(int(num(p["count"], 1)), 1)
-	platform.inject_event(srv.win, platform.Event{kind = .Mouse_Move, pos = pos})
+	behind := len(srv.later) > 0
+	move := platform.Event{kind = .Mouse_Move, pos = pos}
+	if behind { append(&srv.later, move) } else { platform.inject_event(srv.win, move) }
 	for i in 0 ..< count {
 		ev := platform.Event{kind = .Mouse_Press, button = btn, pos = pos, buttons = {btn}}
 		up := platform.Event{kind = .Mouse_Release, button = btn, pos = pos}
-		if i == 0 { platform.inject_event(srv.win, ev) } else { append(&srv.later, ev) }
+		if i == 0 && !behind { platform.inject_event(srv.win, ev) } else { append(&srv.later, ev) }
 		append(&srv.later, up)
 	}
 	d := dpi(srv)
@@ -845,7 +896,7 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.
 	if r == nil { return false }
 	if len(srv.captures) == 0 {
 		// (a frame of the screencast on its way gives way: it asks again; this one may want a part of the window)
-		if srv.screencast.pending { render.capture_cancel(r); srv.screencast.pending = false }
+		if srv.screencast.phase == .Capturing { render.capture_cancel(r); srv.screencast.phase = .Ready }
 		if !render.capture_request(r, rect) { return false }
 	}
 	append(&srv.captures, Capture_Ask{hold(to), rect})
@@ -854,11 +905,11 @@ screenshot_ask :: proc(srv: ^Server, r: ^render.Renderer, to: Reply_To, p: json.
 
 @(private)
 screenshots_poll :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
-	if srv.screencast.pending {
+	if srv.screencast.phase == .Capturing {
 		raw, status := render.capture_poll_raw(r, runtime.heap_allocator())
 		#partial switch status {
 		case .Ready: cast_frame(srv, s, raw)
-		case .None, .Failed: srv.screencast.pending = false
+		case .None, .Failed: srv.screencast.phase = .Ready
 		}
 		return
 	}
@@ -942,6 +993,7 @@ Encode_Job :: struct {
 	replies: []Reply_To,   // (held: the job's now)
 	frame:   bool,         // a frame of the screencast: an event to `to`, with this text after its data
 	first:   bool,         // the screencast's first: it goes out, whatever the picture
+	session: u64,          // the screencast's number: when it is over, the frame is nobody's
 	to:      Reply_To,     // (held)
 	meta:    string,       // (the heap's)
 }
@@ -957,17 +1009,22 @@ encode_start :: proc(j: Encode_Job) {
 encode_run :: proc(j: ^Encode_Job) {
 	h := runtime.heap_allocator()
 	srv := j.srv
-	same := false
+	same, stale := false, false
 	if j.frame {
-		c := &srv.screencast
-		crc := u64(hash.crc32(j.raw.pixels))
-		same = !j.first && crc == sync.atomic_load(&c.last_hash)
-		sync.atomic_store(&c.last_hash, crc)
+		stale = sync.atomic_load(&srv.cast_session) != j.session
+		if !stale {
+			crc := u64(hash.crc32(j.raw.pixels))
+			same = !j.first && crc == sync.atomic_load(&srv.cast_hash)
+			sync.atomic_store(&srv.cast_hash, crc)
+		}
 	}
-	if same {
+	if stale {
 		release(j.to)
 		delete(j.meta, h)
-		sync.atomic_store(&srv.screencast.same, true)
+	} else if same {
+		release(j.to)
+		delete(j.meta, h)
+		sync.atomic_store(&srv.cast_same, j.session)
 		platform.wake(srv.win)
 	} else {
 		png := png_encode(render.capture_raw_finish(j.raw), j.raw.size.x, j.raw.size.y, h)

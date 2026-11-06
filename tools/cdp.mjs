@@ -8,7 +8,7 @@
 //   find <text> | --name <id>    boxes whose text contains <text> (or named <id>)
 //   click <text> | --name <id> [--index n] [--count 2] [--button right]
 //   move <x> <y>                 the pointer
-//   down <x> <y> | up <x> <y>    a press, a release (left)
+//   down <x> <y> | up <x> <y> [--button right]   a press, a release (left unless told)
 //   wheel <x> <y> <notches> [<across>]   positive scrolls the content down (and to the right)
 //   key <name>                   Enter, Tab, Escape, ArrowDown, F3, a, ctrl+f, shift+Tab...
 //   type <text>                  text input

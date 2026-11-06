@@ -125,6 +125,6 @@ wait_idle :: proc(srv: ^Server, s: ^ui.State, w: ^Wait) -> bool {
 ticker :: proc(srv: ^Server) {
 	for !sync.atomic_load(&srv.stopping) {
 		time.sleep(TICK_INTERVAL)
-		if sync.atomic_load(&srv.waiting) > 0 || sync.atomic_load(&srv.asked) || sync.atomic_load(&srv.ended) || sync.atomic_load(&srv.screencast.same) { platform.wake(srv.win) }
+		if sync.atomic_load(&srv.waiting) > 0 || sync.atomic_load(&srv.asked) || sync.atomic_load(&srv.ended) || sync.atomic_load(&srv.cast_same) != 0 { platform.wake(srv.win) }
 	}
 }

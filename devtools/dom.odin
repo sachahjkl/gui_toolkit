@@ -27,6 +27,7 @@ OPAQUE_ALPHA :: 0.999
 @(private)
 Dom :: struct {
 	to:     Reply_To,                // who gets the events (conn nil: nobody has asked)
+	lit:    ^Conn,                   // who highlighted a box, which goes with it (nil: no highlight of a client's)
 	ids:    map[ui.Key]int,          // the key's number (2n)
 	keys:   [dynamic]ui.Key,         // the number's key
 	sent:   map[int][dynamic]int,    // the children the client knows of a node
@@ -232,6 +233,7 @@ dom_reset :: proc(srv: ^Server, s: ^ui.State, gone := false) {
 	clear(&srv.dom.search)
 	if srv.dom.to.conn != nil { release(srv.dom.to) }
 	srv.dom.to = {}
+	srv.dom.lit = nil
 	if s != nil { ui.set_inspected(s, 0) }
 }
 
@@ -251,6 +253,10 @@ dom_destroy :: proc(srv: ^Server) {
 // What changed in this build, for the nodes the client knows. Each frame, while a client looks at the tree.
 @(private)
 dom_sync :: proc(srv: ^Server, s: ^ui.State) {
+	if srv.dom.lit != nil && conn_gone(srv.dom.lit) {
+		srv.dom.lit = nil
+		ui.set_inspected(s, 0)
+	}
 	to := srv.dom.to
 	if to.conn == nil { return }
 	if conn_gone(to.conn) { dom_reset(srv, s, gone = true); return }
@@ -460,6 +466,15 @@ cmd_dom :: proc(c: ^Cmd) -> Answer {
 	srv, s, to, p := c.srv, c.s, c.to, c.p
 	sb := &c.sb
 	d := dpi(srv)
+	// (what tells the tree's client something, or moves its edits: DOM.getDocument takes the tree over, an edit too)
+	switch c.method {
+	case "DOM.requestChildNodes", "DOM.pushNodesByBackendIdsToFrontend", "DOM.getNodeForLocation", "DOM.performSearch", "DOM.getSearchResults",
+	     "DOM.discardSearchResults", "DOM.markUndoableState", "DOM.undo", "DOM.redo":
+		if srv.dom.to.conn != nil && srv.dom.to.conn != to.conn {
+			error_reply(to, CDP_ERROR_SERVER, "another client has the tree: DOM.getDocument takes it over")
+			return .Sent
+		}
+	}
 	switch c.method {
 	case "DOM.getDocument":
 		dom_take(srv, s, to)
@@ -515,6 +530,7 @@ cmd_dom :: proc(c: ^Cmd) -> Answer {
 		strings.write_string(sb, "{}")
 	case "DOM.hideHighlight":
 		ui.set_inspected(s, 0)
+		srv.dom.lit = nil
 		strings.write_string(sb, "{}")
 	case "DOM.setNodeValue":
 		id := dom_param(p)
@@ -580,12 +596,20 @@ cmd_css :: proc(c: ^Cmd) -> Answer {
 		strings.write_string(sb, "]}")
 	case "CSS.setStyleTexts":
 		edits, _ := p["edits"].(json.Array)
+		style_id :: proc(v: json.Value) -> int {
+			edit, _ := v.(json.Object)
+			id, _ := strconv.parse_int(strings.trim_prefix(str(edit["styleSheetId"]), "toolkit-"))
+			return id
+		}
+		// (all or none: an error says nothing was done)
+		for v in edits {
+			if dom_box(srv, s, style_id(v)) == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return .Sent }
+		}
 		strings.write_string(sb, `{"styles":[`)
 		for v, i in edits {
 			edit, _ := v.(json.Object)
-			id, _ := strconv.parse_int(strings.trim_prefix(str(edit["styleSheetId"]), "toolkit-"))
+			id := style_id(v)
 			b := dom_box(srv, s, id)
-			if b == nil { error_reply(to, CDP_ERROR_SERVER, "this box is not in the window any more"); return .Sent }
 			if srv.dom.to.conn != to.conn { dom_take(srv, s, to) }
 			dom_style_set(srv, s, id, b, str(edit["text"]))
 			if i > 0 { strings.write_byte(sb, ',') }
@@ -623,8 +647,10 @@ cmd_overlay :: proc(c: ^Cmd) -> Answer {
 	case "Overlay.highlightNode":
 		b := dom_box(c.srv, c.s, dom_param(c.p))
 		ui.set_inspected(c.s, b != nil ? b.key : 0)
+		c.srv.dom.lit = b != nil ? c.to.conn : nil
 	case "Overlay.hideHighlight":
 		ui.set_inspected(c.s, 0)
+		c.srv.dom.lit = nil
 	case:
 		return .Unknown
 	}
