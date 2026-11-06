@@ -51,17 +51,20 @@ Slug_Store :: struct {
 	blanks:    int,
 }
 
-// A glyph key: the hinted size, the face, the glyph.
+// A glyph key: the hinted size, the slot of the face, the glyph.
 @(private) SLUG_KEY_PPEM_SHIFT :: 48
-@(private) SLUG_KEY_FACE_SHIFT :: 16
-@(private) SLUG_KEY_FACE_MASK :: 0xffffffff
+@(private) SLUG_KEY_SLOT_SHIFT :: 16
 // Hinted glyphs are kept per this fraction of a pixel per em.
 @(private) SLUG_PPEM_STEPS_PER_PX :: 4
 // The size a glyph is asked at to learn whether it is a color glyph.
 @(private) SLUG_COLOR_PROBE_SIZE_PX :: 32
 
 @(private)
-slug_key :: #force_inline proc(face: Font_Id, gid: u16, ppem_q: u16 = 0) -> u64 { return u64(ppem_q) << SLUG_KEY_PPEM_SHIFT | (u64(face) & SLUG_KEY_FACE_MASK) << SLUG_KEY_FACE_SHIFT | u64(gid) }
+slug_key :: #force_inline proc(face: Font_Id, gid: u16, ppem_q: u16 = 0) -> u64 { return u64(ppem_q) << SLUG_KEY_PPEM_SHIFT | u64(int(face) & FONT_INDEX_MASK) << SLUG_KEY_SLOT_SHIFT | u64(gid) }
+
+// The slot of the face of a key.
+@(private)
+slug_key_slot :: #force_inline proc(k: u64) -> int { return int(k >> SLUG_KEY_SLOT_SHIFT) & FONT_INDEX_MASK }
 
 @(private)
 slug_init :: proc(st: ^Slug_Store) {
@@ -80,7 +83,23 @@ slug_destroy :: proc(st: ^Slug_Store) {
 
 @(private)
 slug_forget_face :: proc(st: ^Slug_Store, face: Font_Id) {
-	for k in st.glyphs { if Font_Id((k >> SLUG_KEY_FACE_SHIFT) & SLUG_KEY_FACE_MASK) == face { delete_key(&st.glyphs, k) } }
+	// keys hold the slot of a face, as glyph keys do: what is kept for the slot goes with the font in it
+	slot := int(face) & FONT_INDEX_MASK
+	for k, g in st.glyphs { if slug_key_slot(k) == slot { slug_forget(st, k, g) } }
+}
+
+// Forgets one glyph. Its data stays in its page until the page is reused: a frame may be drawing from it.
+@(private)
+slug_forget :: proc(st: ^Slug_Store, k: u64, g: Slug_Glyph) {
+	if g.kind == .Curves { st.pages[g.page].glyphs -= 1 }
+	delete_key(&st.glyphs, k)
+}
+
+// Forgets the glyphs of the color faces (whether color glyphs are drawn in color changed). Caller holds the atlas lock.
+@(private)
+slug_forget_color :: proc(s: ^State) {
+	st := &s.atlas.slug
+	for k, g in st.glyphs { if slot_ptr(s, slug_key_slot(k)).color { slug_forget(st, k, g) } }
 }
 
 // Forgets every glyph and clears every page (settings that shape the data changed).
@@ -97,11 +116,14 @@ slug_page_reset :: proc(p: ^Slug_Page) {
 	p.epoch += 1
 }
 
-// Replaces where outlines come from (a TrueType / CFF reader on another platform, a test). Glyphs already built stay.
+// Replaces where outlines come from (a TrueType / CFF reader on another platform, a test). Glyphs already built stay; those
+// that had no curves are asked of it.
 slug_set_provider :: proc(s: ^State, p: Outline_Provider) {
 	atlas_lock(&s.atlas)
 	defer atlas_unlock(&s.atlas)
-	s.atlas.slug.provider = p
+	st := &s.atlas.slug
+	st.provider = p
+	for k, g in st.glyphs { if g.kind == .Atlas { slug_forget(st, k, g) } }
 }
 
 // The glyph data of `gid` of `face`, built on first use. Call from the threads that draw (the atlas lock is taken).
@@ -110,13 +132,15 @@ slug_set_provider :: proc(s: ^State, p: Outline_Provider) {
 slug_glyph :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Glyph {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
+	// the store is keyed by the face's slot: only a live face leaves anything in it (unload forgets what a face left there)
+	if face_ptr(s, face) == nil { return SLUG_NOT_DRAWN }
 	atlas_lock(a)
 	defer atlas_unlock(a)
 	ppem_q := slug_ppem(s, ppem)
 	key := slug_key(face, gid, ppem_q)
 	if g, ok := slug_cached(a, key); ok { return g }
-	g := slug_make(s, face, gid, f32(ppem_q) / SLUG_PPEM_STEPS_PER_PX)
-	a.slug.glyphs[key] = g
+	g, keep := slug_make(s, face, gid, f32(ppem_q) / SLUG_PPEM_STEPS_PER_PX)
+	if keep { a.slug.glyphs[key] = g }
 	return g
 }
 
@@ -127,7 +151,10 @@ slug_glyphs :: proc(s: ^State, glyphs: []Glyph_Pos, ppem: f32, out: []Slug_Glyph
 	ppem_q := slug_ppem(s, ppem)
 	found := make([]bool, len(glyphs), context.temp_allocator)
 	sync.rw_mutex_shared_lock(&a.mu)
-	for g, i in glyphs { out[i], found[i] = slug_cached(a, slug_key(g.face, g.id, ppem_q)) }
+	for g, i in glyphs {
+		if face_ptr(s, g.face) == nil { out[i], found[i] = SLUG_NOT_DRAWN, true; continue }
+		out[i], found[i] = slug_cached(a, slug_key(g.face, g.id, ppem_q))
+	}
 	sync.rw_mutex_shared_unlock(&a.mu)
 	for g, i in glyphs { if !found[i] { out[i] = slug_glyph(s, g.face, g.id, ppem) } }
 }
@@ -135,7 +162,7 @@ slug_glyphs :: proc(s: ^State, glyphs: []Glyph_Pos, ppem: f32, out: []Slug_Glyph
 // The hinted size a glyph drawn at `ppem` is kept for (0: not hinted).
 @(private)
 slug_ppem :: #force_inline proc(s: ^State, ppem: f32) -> u16 {
-	if ppem <= 0 || ppem > s.settings.slug_hint_ppem || s.tb.outline_hinted == nil { return 0 }
+	if ppem <= 0 || ppem > s.settings.slug_hint_ppem || s.tb == nil || s.tb.outline_hinted == nil { return 0 }
 	return u16(clamp(math.round(ppem * SLUG_PPEM_STEPS_PER_PX), 1, f32(max(u16))))
 }
 
@@ -148,25 +175,27 @@ slug_cached :: #force_inline proc(a: ^Atlas, key: u64) -> (g: Slug_Glyph, ok: bo
 	return
 }
 
-// Caller holds the atlas lock.
+// What a glyph that is not in the store draws from.
+@(private) SLUG_NOT_DRAWN :: Slug_Glyph{kind = .Atlas, page = -1}
+
+// Caller holds the atlas lock. `keep`: the answer holds for the next lookups (no room in the store is this frame's).
 @(private)
-slug_make :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Glyph {
-	atlas_fallback := Slug_Glyph{kind = .Atlas, page = -1}
+slug_make :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> (g: Slug_Glyph, keep: bool) {
 	st := &s.atlas.slug
 	f := face_ptr(s, face)
-	if f == nil || st.provider == nil || !s.ok { return atlas_fallback }
-	if f.color && s.settings.color_glyphs && platform_color_glyph(s, f, gid, SLUG_COLOR_PROBE_SIZE_PX) { return atlas_fallback }
+	if f == nil || st.provider == nil || !s.ok { return SLUG_NOT_DRAWN, true }
+	if f.color && s.settings.color_glyphs && platform_color_glyph(s, f, gid, SLUG_COLOR_PROBE_SIZE_PX) { return SLUG_NOT_DRAWN, true }
 	o: Outline
 	defer outline_destroy(&o)
 	if ppem > 0 {
-		if !s.tb.outline_hinted(s, face, gid, ppem, s.settings.slug_tolerance, &o) { return atlas_fallback }
-	} else if !st.provider(s, face, gid, s.settings.slug_tolerance, &o) { return atlas_fallback }
-	if len(o.quads) == 0 { st.blanks += 1; return Slug_Glyph{kind = .Blank, page = -1} }
+		if !s.tb.outline_hinted(s, face, gid, ppem, s.settings.slug_tolerance, &o) { return SLUG_NOT_DRAWN, true }
+	} else if !st.provider(s, face, gid, s.settings.slug_tolerance, &o) { return SLUG_NOT_DRAWN, true }
+	if len(o.quads) == 0 { st.blanks += 1; return Slug_Glyph{kind = .Blank, page = -1}, true }
 	b: Slug_Built
 	defer slug_built_destroy(&b)
-	if !slug_build(&o, &b) { return atlas_fallback }
+	if !slug_build(&o, &b) { return SLUG_NOT_DRAWN, true }
 	pi := slug_alloc(s, len(b.curves), len(b.bands))
-	if pi < 0 { return atlas_fallback }
+	if pi < 0 { return SLUG_NOT_DRAWN, false }
 	p := st.pages[pi]
 	cx, bx := p.cu, p.bu
 	slug_patch_lists(&b, cx, pi)
@@ -182,12 +211,13 @@ slug_make :: proc(s: ^State, face: Font_Id, gid: u16, ppem: f32 = 0) -> Slug_Gly
 		kind = .Curves, page = i32(pi), epoch = p.epoch, loc = {u16(bx), u16(pi)},
 		band_max = {u8(b.n_v - 1), u8(b.n_h - 1)}, transform = b.transform, bbox = b.bbox,
 		orient = outline_orient(&o), hinted = ppem > 0,
-	}
+	}, true
 }
 
 // A page with room for `nc` curve texels and `nb` band texels, -1 when the glyph cannot be stored.
 @(private)
 slug_alloc :: proc(s: ^State, nc, nb: int) -> int {
+	if failing(.Slug_Alloc) { return -1 }
 	a := &s.atlas
 	st := &a.slug
 	for i := len(st.pages) - 1; i >= 0; i -= 1 {

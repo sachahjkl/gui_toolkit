@@ -132,7 +132,8 @@ already there (threads that draw at once look up side by side), then alone per g
 Bitmaps live in **atlas pages** kept on the CPU (gray: 1 byte per texel; color: 4). Each draw context uploads what
 changed since it last looked (`atlas_sync_page`), so several renderers can share one font state. A page is never
 cleared while a frame may still draw from it: pages remember the atlas clock of their last use, contexts the clock at
-the start of their frame (`atlas_begin_frame`); when every page of a kind is in use and the limit is reached
+the start of their frame (`atlas_begin_frame`, until `atlas_end_frame`: a context between frames, a hidden window's, holds no
+page); when every page of a kind is in use and the limit is reached
 (`Settings.max_gray_pages` / `max_color_pages`), the least recently used page no current frame drew from is cleared,
 else one more page is made. (The stb_truetype atlas cleared itself in the middle of a frame when it was full: glyphs
 drawn earlier in that frame then showed whatever was rasterized over them.)

@@ -5,10 +5,11 @@ package font
 
 FONT_FAILURE_HOOKS :: #config(FONT_FAILURE_HOOKS, ODIN_TEST)
 
-Forced_Failure :: enum u8 { D2d_Device, D2d_Context, D2d_Brush, Colr_Stops, Colr_Scan, Colr_Clip, Word_Alloc, Bidi }
+Forced_Failure :: enum u8 { D2d_Device, D2d_Context, D2d_Brush, Colr_Stops, Colr_Scan, Colr_Clip, Colr_Layers, Word_Alloc, Bidi, Slug_Alloc }
 
 when FONT_FAILURE_HOOKS {
-	// What the next calls on this thread fail, each one once: a test sets it, and finds it empty when the path ran.
+	// What the next calls on this thread fail, each one once: a test sets it, and finds it empty when the path ran. A color
+	// glyph queued takes them with it to the color glyph thread (color_enqueue).
 	@(thread_local) forced_failures: bit_set[Forced_Failure]
 
 	@(private)
