@@ -7,6 +7,7 @@
 # Rewrite it from the code (keeping the classes known): odin test tests/globals -define:GLOBALS_WRITE=true
 config/config_test.odin DEFS test
 config/snapshot_test.odin SNAP_DEFS test
+config/snapshot_test.odin LATE_DEFS test
 flate/flate.odin LEN_BASE const  # a table of RFC 1951
 flate/flate.odin LEN_EXTRA const  # a table of RFC 1951
 flate/flate.odin DIST_BASE const  # a table of RFC 1951
