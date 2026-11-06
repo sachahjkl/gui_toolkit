@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.85.0] - 2026-11-06
+
+### Added
+- **`ui.toast_action`**: a toast that a click acts on, and dismisses, for one that says what can be done.
+
+### Fixed
+- **The corners of a floating panel**: its panels, drawn after its frame and square, covered the frame's round corners, whose border stopped short of them. They are clipped to the frame now, and its border goes over them.
+
 ## [0.84.0] - 2026-11-05
 
 ### Added
@@ -1578,6 +1586,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.85.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.85.0
 [0.84.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.84.0
 [0.83.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.83.0
 [0.82.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.82.0
