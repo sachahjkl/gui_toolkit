@@ -410,6 +410,25 @@ a_frame_with_no_texture_keeps_its_damage :: proc(t: ^testing.T) {
 	testing.expectf(t, mclose_to(got, {0, 255, 0}), "the rectangle of the frame skipped is drawn: %v", got)
 }
 
+// A capture asked of a frame the surface had no texture for ends: it does not stay Pending for good.
+@(test)
+a_capture_of_no_frame_says_so :: proc(t: ^testing.T) {
+	when !render.USE_WGPU { return }
+	f: Fx
+	if !mopen(&f) { testing.fail_now(t, "no device (WARP)") }
+	defer mclose(&f)
+	s: render.Surface
+	testing.expect(t, render.surface_init(&f.r, &s, mwindow(), MSIZE), "a surface")
+	render.surface_use(&f.r, &s)
+	defer { render.surface_use(&f.r, &s); render.surface_destroy(&f.r, &s) }
+	render.fault_arm(.Acquire, 0, FAULT_ALWAYS)
+	render.capture_request(&f.r)
+	mframe(&f, MRED)
+	render.fault_arm(.Acquire, 0, 0)
+	_, _, status := render.capture_poll(&f.r, context.temp_allocator)
+	testing.expect_value(t, status, render.Capture_Status.Failed)
+}
+
 // A whole frame that stopped halfway leaves nothing a region can start from.
 @(test)
 an_aborted_frame_is_not_kept :: proc(t: ^testing.T) {
