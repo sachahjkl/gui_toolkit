@@ -238,7 +238,6 @@ x11_xkb_load :: proc() {
 @(private) XCB_SELECTION_REQUEST :: 30
 @(private) XCB_SELECTION_NOTIFY :: 31
 @(private) XCB_PROPERTY_NOTIFY :: 28
-@(private = "file") X11_NOTIFY_GRAB :: 1   // the mode of a crossing event
 @(private = "file") XCB_UNMAP_NOTIFY :: 18
 @(private = "file") XCB_MAP_NOTIFY :: 19
 @(private) X11_FORMAT_8 :: 8               // a property's or a client message's format: bits per item
@@ -642,16 +641,12 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		w.minimized = false
 	case XCB_UNMAP_NOTIFY:
 		w.minimized = true
+		// (a grab cannot take a held button from the window, but its going off the screen ends the button's own grab)
+		buttons_released(w, {}, {})
 	case XCB_ENTER_NOTIFY:
 	case XCB_LEAVE_NOTIFY:
-		// xcb_leave_notify_event_t: event_x, event_y at [24], state at [28], mode at [30]
-		mode := b[30]
-		if mode == X11_NOTIFY_GRAB {
-			// another client took the pointer (a menu of the window manager): the release goes to it, and is made here
-			pos := [2]f32{f32(i16(u16(b[24]) | u16(b[25]) << 8)), f32(i16(u16(b[26]) | u16(b[27]) << 8))}
-			buttons_released(w, pos, x11_mods(u16(b[28]) | u16(b[29]) << 8))
-		}
-		// (under the button's own grab the pointer is still the window's: as on Windows, until the release says where it is)
+		// (under the button's own grab the pointer is still the window's, as under a capture on Windows: the end of the grab
+		// says it left, with its own LeaveNotify)
 		if w.buttons_down == {} { x11_push(w, {kind = .Mouse_Leave}) }
 	case XCB_FOCUS_IN:
 		w.focused = true; w.active = true
