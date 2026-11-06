@@ -468,7 +468,7 @@ popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above
 	s.next_mod.height = children_sum()
 	s.next_mod.radius = em * 0.5
 	if prev == nil { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
-	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
+	p := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
 	p.cursor = .Arrow
 	_ = signal(p)
 	push_parent(p)

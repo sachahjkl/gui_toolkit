@@ -84,6 +84,7 @@ Box_Flag :: enum u8 {
 	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
 	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
 	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
+	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
