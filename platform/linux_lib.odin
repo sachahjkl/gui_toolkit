@@ -15,6 +15,7 @@ package platform
 
 import "core:sys/posix"
 import "core:sync"
+import "core:time"
 
 @(private) Lib :: posix.Symbol_Table
 
@@ -75,6 +76,7 @@ Wayland_Lib :: struct {
 	display_cancel_read:    proc "c" (d: Wl_Display),
 	display_flush:          proc "c" (d: Wl_Display) -> i32,
 	display_roundtrip:      proc "c" (d: Wl_Display) -> i32,
+	display_get_error:      proc "c" (d: Wl_Display) -> i32,
 	// proxy marshalling: this single entry point makes every request (wayland-client 1.20+)
 	proxy_marshal_flags:    proc "c" (p: Wl_Proxy, opcode: u32, interface: ^Wl_Interface, version: u32, flags: u32, #c_vararg args: ..any) -> Wl_Proxy,
 	proxy_add_listener:     proc "c" (p: Wl_Proxy, implementation: rawptr, data: rawptr) -> i32,
@@ -122,6 +124,7 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 		wl.display_cancel_read    = auto_cast lib_sym(h, "wl_display_cancel_read")
 		wl.display_flush          = auto_cast lib_sym(h, "wl_display_flush")
 		wl.display_roundtrip      = auto_cast lib_sym(h, "wl_display_roundtrip")
+		wl.display_get_error      = auto_cast lib_sym(h, "wl_display_get_error")
 		wl.proxy_marshal_flags    = auto_cast lib_sym(h, "wl_proxy_marshal_flags")
 		wl.proxy_add_listener     = auto_cast lib_sym(h, "wl_proxy_add_listener")
 		wl.proxy_destroy          = auto_cast lib_sym(h, "wl_proxy_destroy")
@@ -174,6 +177,18 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 @(private) XKB_STATE_MODS_EFFECTIVE :: (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3)
 @(private) XKB_KEY_DOWN :: 1
 
+// What a thread's connection to the display server is. Lost is for good: a new window does not come back on it.
+@(private) Display_Link :: enum u8 { Untried, Failed, Connected, Lost }
+
+// The server went away: for each window of the connection, what the user closing it would have said.
+@(private)
+display_lost :: proc(windows: []^Window) {
+	for w in windows {
+		w.closed = true
+		append(&w.events, Event{kind = .Close, stamp = time.tick_now()})
+	}
+}
+
 @(private)
 Xkb_Lib :: struct {
 	handle: Lib,
@@ -184,6 +199,8 @@ Xkb_Lib :: struct {
 	keymap_new_from_names: proc "c" (ctx: Xkb_Context, names: rawptr, flags: i32) -> Xkb_Keymap,
 	keymap_unref:      proc "c" (m: Xkb_Keymap),
 	keymap_key_repeats: proc "c" (m: Xkb_Keymap, key: u32) -> i32,   // (optional)
+	keymap_key_get_syms_by_level: proc "c" (m: Xkb_Keymap, key, layout, level: u32, syms: ^[^]Xkb_Keysym) -> i32,   // (optional)
+	state_key_get_layout: proc "c" (s: Xkb_State, key: u32) -> u32,   // (optional)
 	state_new:         proc "c" (m: Xkb_Keymap) -> Xkb_State,
 	state_unref:       proc "c" (s: Xkb_State),
 	state_update_mask: proc "c" (s: Xkb_State, depressed, latched, locked, dg, lg, eg: u32) -> i32,
@@ -197,6 +214,7 @@ Xkb_Lib :: struct {
 	x11_get_core_keyboard_device_id: proc "c" (conn: rawptr) -> i32,
 	x11_keymap_new_from_device: proc "c" (ctx: Xkb_Context, conn: rawptr, device_id: i32, flags: i32) -> Xkb_Keymap,
 	x11_state_new_from_device: proc "c" (m: Xkb_Keymap, conn: rawptr, device_id: i32) -> Xkb_State,
+	x11_select_events: proc "c" (c: Xcb_Connection, device: u16, affect, clear, select_all, affect_map, map_parts: u16, details: rawptr) -> Xcb_Void_Cookie,   // libxcb-xkb (optional)
 }
 
 // (loaded once, as wl)
@@ -215,6 +233,8 @@ xkb_lib :: proc() -> ^Xkb_Lib {
 		xkb.keymap_new_from_names = auto_cast lib_sym(h, "xkb_keymap_new_from_names")
 		xkb.keymap_unref       = auto_cast lib_sym(h, "xkb_keymap_unref")
 		xkb.keymap_key_repeats = auto_cast lib_sym(h, "xkb_keymap_key_repeats")
+		xkb.keymap_key_get_syms_by_level = auto_cast lib_sym(h, "xkb_keymap_key_get_syms_by_level")
+		xkb.state_key_get_layout = auto_cast lib_sym(h, "xkb_state_key_get_layout")
 		xkb.state_new          = auto_cast lib_sym(h, "xkb_state_new")
 		xkb.state_unref        = auto_cast lib_sym(h, "xkb_state_unref")
 		xkb.state_update_mask  = auto_cast lib_sym(h, "xkb_state_update_mask")
@@ -231,6 +251,7 @@ xkb_lib :: proc() -> ^Xkb_Lib {
 			xkb.x11_get_core_keyboard_device_id = auto_cast lib_sym(xh, "xkb_x11_get_core_keyboard_device_id")
 			xkb.x11_keymap_new_from_device = auto_cast lib_sym(xh, "xkb_x11_keymap_new_from_device")
 			xkb.x11_state_new_from_device = auto_cast lib_sym(xh, "xkb_x11_state_new_from_device")
+			if eh := lib_open({"libxcb-xkb.so.1", "libxcb-xkb.so"}); eh != nil { xkb.x11_select_events = auto_cast lib_sym(eh, "xcb_xkb_select_events") }
 		}
 	})
 	return &xkb

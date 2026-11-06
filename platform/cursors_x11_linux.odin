@@ -153,9 +153,10 @@ x11_named_cursor :: proc(c: Cursor) -> u32 {
 @(private = "file")
 x11_custom_cursor :: proc(w: ^Window, e: ^Custom_Entry) -> u32 {
 	if xc.argb_format == 0 || xc.create_picture == nil || xc.picture_cursor == nil { return 0 }
-	if e.x11_cursor != 0 && e.made_scale == w.dpi_scale { return e.x11_cursor }
+	scale := custom_cursor_scale(w)
+	if e.x11_cursor != 0 && e.made_scale == scale { return e.x11_cursor }
 	x11_custom_release(e)
-	px, size, hot := custom_cursor_bgra(e, w.dpi_scale, context.temp_allocator)
+	px, size, hot := custom_cursor_bgra(e, scale, context.temp_allocator)
 	root := u32(x11c.screen.root)
 	pix := xcb.generate_id(x11c.c)
 	xc.create_pixmap(x11c.c, ARGB_DEPTH, pix, root, u16(size.x), u16(size.y))
@@ -169,7 +170,7 @@ x11_custom_cursor :: proc(w: ^Window, e: ^Custom_Entry) -> u32 {
 	defer xc.free_picture(x11c.c, pic)
 	cid := xcb.generate_id(x11c.c)
 	xc.picture_cursor(x11c.c, cid, pic, u16(hot.x), u16(hot.y))
-	e.x11_cursor, e.made_scale = cid, w.dpi_scale
+	e.x11_cursor, e.made_scale = cid, scale
 	return cid
 }
 

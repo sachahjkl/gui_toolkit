@@ -257,8 +257,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	wlc.dnd_sending = false
 	wlc.drag.active = false
 	// the compositor keeps the pointer during a drag: the release of the press that began it never comes to the window
-	for b in w.buttons_down { wl_push(w, {kind = .Mouse_Release, button = b, pos = wlc.pointer_pos, mods = wl_mods()}) }
-	w.buttons_down = {}
+	buttons_released(w, wlc.pointer_pos, wl_mods())
 	eff := wlc.dnd_source_action
 	if eff & WL_DND_ACTION_MOVE != 0 { return .Move, true }
 	if eff & WL_DND_ACTION_COPY != 0 { return .Copy, true }

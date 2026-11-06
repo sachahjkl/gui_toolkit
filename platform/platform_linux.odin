@@ -45,6 +45,7 @@ Native_Window :: struct {
 	custom_cursors: [dynamic]Custom_Entry,
 	custom_cursor:  Custom_Cursor,
 	custom_fallback: Cursor,
+	custom_scale:   f32,            // set_cursor_custom's scale (0: the window's)
 	// offscreen window (open_window_offscreen): no surface at all, so it runs with no display server (a service, an SSH
 	// login, a CI runner). Input comes only through inject_event; an eventfd stands in for the message queue.
 	offscreen:    bool,
@@ -377,6 +378,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	case .X11:     x11_pump(w, wait, timeout_ms)
 	case .None:
 	}
+	a11y_pump(w)
 	if w.off_event > 0 { off_drain(w) }
 	take_injected(w)
 	w.returned = len(w.events)
@@ -387,7 +389,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 // render.wait_for_frame then poll_events(w, false), as the Win32 path does).
 wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	if w.offscreen {
-		if len(w.injected) > 0 || len(w.events) > w.returned { return }   // (what the last poll handed out is read)
+		if wait_is_over(w) { return }   // (what the last poll handed out is read)
 		off_wait(w, timeout_ms)
 		return
 	}
@@ -428,17 +430,16 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := 
 			if rem <= 0 { return poll_fd_wait(fd, 0) > 0 }
 			left = int(rem + WAIT_CEIL_MS)
 		}
-		// wait on both the render fd and the window's connection fd: whichever wakes first
+		// wait on both the render fd and the window's connection fd: whichever wakes first. (Not on the wake fd, as on
+		// Windows: the wait is a frame's at most, and the next poll_events sees the wake.)
 		conn := w.backend == .Wayland ? wl_fd(w) : x11_fd(w)
-		r := poll_two(fd, conn, left)
-		if r.rendered { return true }
-		if r.timed_out { return false }
+		pfds := [2]Pollfd{{fd = fd, events = POLLIN}, {fd = conn, events = POLLIN}}
+		r := poll(&pfds[0], conn >= 0 ? 2 : 1, i32(left))
+		if r <= 0 { return false }
+		if pfds[0].revents & POLL_DONE != 0 { return true }
 		// the connection woke us: loop, take the input it carries, and wait again on what is left of the timeout
 	}
 }
-
-@(private)
-Poll_Result :: struct { rendered, readable, timed_out: bool }
 
 // poll(2) on one fd. Returns > 0 when readable, 0 on timeout, < 0 on error.
 @(private)
@@ -447,26 +448,27 @@ poll_fd_wait :: proc(fd: i32, timeout_ms: int) -> int {
 	return int(poll(&pfd, 1, i32(timeout_ms)))
 }
 
-// poll(2) on the render fd, the connection fd and the window's wake fd (-1: none) together. A wake only ends the wait.
+// poll(2) on all that ends a window's wait: its connection (-1: lost), its wake fd, the session bus, its accessibility
+// bus. Consumes nothing: the pump that follows takes what came.
 @(private)
-poll_two :: proc(render_fd, conn_fd: i32, timeout_ms: int, wake_event: i32 = -1) -> (res: Poll_Result) {
-	fds: [3]Pollfd
+poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) {
+	fds: [4]Pollfd
 	n: uint = 0
-	ri, ci := -1, -1
-	if render_fd >= 0 { fds[n] = {fd = render_fd, events = POLLIN}; ri = int(n); n += 1 }
-	if conn_fd >= 0 { fds[n] = {fd = conn_fd, events = POLLIN}; ci = int(n); n += 1 }
-	if wake_event >= 0 { fds[n] = {fd = wake_event, events = POLLIN}; n += 1 }
-	if n == 0 { res.timed_out = true; return }
-	r := poll(&fds[0], n, i32(timeout_ms))
-	if r == 0 { res.timed_out = true; return }
-	if r < 0 { res.timed_out = true; return }
-	if ri >= 0 && (fds[ri].revents & POLLIN) != 0 { res.rendered = true }
-	if ci >= 0 && (fds[ci].revents & POLLIN) != 0 { res.readable = true }
-	return
+	for fd in ([4]i32{conn_fd, wake_fd(w), dbus_fd(), a11y_fd(w)}) {
+		if fd >= 0 { fds[n] = {fd = fd, events = POLLIN}; n += 1 }
+	}
+	if n > 0 { poll(&fds[0], n, i32(timeout_ms)) }
 }
+
+// Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.
+@(private)
+wait_is_over :: proc(w: ^Window) -> bool { return len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested }
 
 @(private) Pollfd :: struct { fd: i32, events: i16, revents: i16 }
 @(private) POLLIN :: i16(0x0001)
+@(private) POLLERR :: i16(0x0008)
+@(private) POLLHUP :: i16(0x0010)
+@(private) POLL_DONE :: POLLIN | POLLERR | POLLHUP   // what a read of the fd would tell: data, or its end
 @(default_calling_convention = "c", private)
 foreign libc {
 	poll :: proc(fds: ^Pollfd, nfds: uint, timeout: i32) -> i32 ---

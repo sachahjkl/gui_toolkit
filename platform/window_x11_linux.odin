@@ -26,6 +26,7 @@ X11_Conn :: struct {
 	xkb_ctx:    Xkb_Context,
 	xkb_keymap: Xkb_Keymap,
 	xkb_state:  Xkb_State,
+	xkb_event:  u8,          // the XKB extension's first event, 0 without it
 	// atoms interned once
 	wm_protocols, wm_delete_window, net_wm_name, utf8_string, net_wm_state,
 	net_wm_state_fullscreen, net_wm_state_maximized_horz, net_wm_state_maximized_vert,
@@ -45,7 +46,7 @@ X11_Conn :: struct {
 	foreign_formats: X11_Foreign_Formats,      // what another client's CLIPBOARD offers, as last read
 	dnd_target:  X11_Dnd_Target,           // drag and drop (dragdrop_x11_linux.odin)
 	dnd_source:  X11_Dnd_Source,
-	tried:       bool,                     // x11_connect ran on this thread (c nil: it failed)
+	link:        Display_Link,
 }
 
 // This thread's connection: each thread that opens windows has its own (its events, its windows, its selections), as its
@@ -71,14 +72,15 @@ x11_state :: proc(w: ^Window) -> ^X11_Window_State { return (^X11_Window_State)(
 
 @(private)
 x11_connect :: proc() -> bool {
-	if x11c.tried { return x11c.c != nil }
-	x11c.tried = true
+	if x11c.link != .Untried { return x11c.link == .Connected }
+	x11c.link = .Failed
 	x := xcb_lib()
 	if !x.ok { return false }
 	scr: i32
 	x11c.windows.allocator = runtime.heap_allocator()   // (outlives whatever allocator the first window was made under)
 	x11c.c = x.connect(nil, &scr)
 	if x11c.c == nil || x.connection_has_error(x11c.c) != 0 { x11c.c = nil; return false }
+	x11c.link = .Connected
 	x11c.fd = x.get_file_descriptor(x11c.c)
 	setup := x.get_setup(x11c.c)
 	it := x.setup_roots_iterator(setup)
@@ -150,12 +152,13 @@ x11_init_xkb :: proc() {
 	if x11c.xkb_ctx == nil { return }
 	if k.x11_handle != nil && k.x11_setup_xkb_extension != nil {
 		maj, min, bev, ber: i32
-		k.x11_setup_xkb_extension(rawptr(x11c.c), 1, 0, 0, &maj, &min, &bev, &ber)
-		dev := k.x11_get_core_keyboard_device_id(rawptr(x11c.c))
-		if dev >= 0 {
-			x11c.xkb_keymap = k.x11_keymap_new_from_device(x11c.xkb_ctx, rawptr(x11c.c), dev, XKB_KEYMAP_COMPILE_NO_FLAGS)
-			if x11c.xkb_keymap != nil { x11c.xkb_state = k.x11_state_new_from_device(x11c.xkb_keymap, rawptr(x11c.c), dev) }
+		if k.x11_setup_xkb_extension(rawptr(x11c.c), 1, 0, 0, &maj, &min, &bev, &ber) != 0 {
+			x11c.xkb_event = u8(bev)
+			if k.x11_select_events != nil {
+				k.x11_select_events(x11c.c, XCB_XKB_ID_USE_CORE_KBD, X11_XKB_WATCHED, 0, X11_XKB_WATCHED, X11_XKB_MAP_ALL, X11_XKB_MAP_ALL, nil)
+			}
 		}
+		x11_xkb_load()
 	}
 	if x11c.xkb_keymap == nil && k.keymap_new_from_names != nil {
 		// a built-in us keymap when the x11 companion is missing
@@ -163,6 +166,33 @@ x11_init_xkb :: proc() {
 		if x11c.xkb_keymap != nil { x11c.xkb_state = k.state_new(x11c.xkb_keymap) }
 	}
 }
+
+// The server's keymap, in place of the one held; that one stays when the server's cannot be had.
+@(private)
+x11_xkb_load :: proc() {
+	k := xkb_lib()
+	if k.x11_handle == nil || k.x11_keymap_new_from_device == nil { return }
+	dev := k.x11_get_core_keyboard_device_id(rawptr(x11c.c))
+	if dev < 0 { return }
+	keymap := k.x11_keymap_new_from_device(x11c.xkb_ctx, rawptr(x11c.c), dev, XKB_KEYMAP_COMPILE_NO_FLAGS)
+	if keymap == nil { return }
+	state := k.x11_state_new_from_device(keymap, rawptr(x11c.c), dev)
+	if state == nil { k.keymap_unref(keymap); return }
+	if x11c.xkb_state != nil { k.state_unref(x11c.xkb_state) }
+	if x11c.xkb_keymap != nil { k.keymap_unref(x11c.xkb_keymap) }
+	x11c.xkb_keymap, x11c.xkb_state = keymap, state
+}
+
+@(private = "file") XCB_XKB_ID_USE_CORE_KBD :: 0x100
+@(private = "file") X11_XKB_WATCHED :: 1 << 0 | 1 << 1    // XKB events: NewKeyboardNotify, MapNotify
+@(private = "file") X11_XKB_MAP_ALL :: 0xff               // every part of a map
+@(private = "file") X11_XKB_NEW_KEYBOARD_NOTIFY :: 0      // xkbType, in the second byte of an XKB event
+@(private = "file") X11_XKB_MAP_NOTIFY :: 1
+@(private = "file") X11_MAPPING_POINTER :: 2              // MappingNotify's request: modifiers, keyboard, pointer
+@(private = "file") X11_STATE_MODS_MASK :: 0xff           // the state of a key event: its modifiers
+@(private = "file") X11_STATE_GROUP_SHIFT :: 13           // and its group
+@(private = "file") X11_STATE_GROUP_MASK :: 3
+@(private = "file") XCB_MAPPING_NOTIFY :: 34
 
 // XCB event / request constants used below (from xproto).
 @(private) XCB_COPY_FROM_PARENT :: 0
@@ -208,6 +238,7 @@ x11_init_xkb :: proc() {
 @(private) XCB_SELECTION_REQUEST :: 30
 @(private) XCB_SELECTION_NOTIFY :: 31
 @(private) XCB_PROPERTY_NOTIFY :: 28
+@(private = "file") X11_NOTIFY_GRAB :: 1   // the mode of a crossing event
 @(private = "file") XCB_UNMAP_NOTIFY :: 18
 @(private = "file") XCB_MAP_NOTIFY :: 19
 @(private) X11_FORMAT_8 :: 8               // a property's or a client message's format: bits per item
@@ -372,7 +403,7 @@ x11_set_decorations :: proc(w: ^Window, on: bool) {
 }
 
 @(private) x11_transparent :: proc(w: ^Window) -> bool { return x11_state(w).transparent }
-@(private) x11_fd :: proc(w: ^Window) -> i32 { return x11c.fd }
+@(private) x11_fd :: proc(w: ^Window) -> i32 { return x11c.link == .Connected ? x11c.fd : -1 }
 
 @(private) XCB_CONFIG_WINDOW_X :: 1 << 0
 @(private) XCB_CONFIG_WINDOW_Y :: 1 << 1
@@ -455,9 +486,9 @@ x11_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 	x := &xcb
 	// first what xcb has read already (behind the reply of a request): poll(2) on the socket would not see it
 	any := x11_drain(w)
-	if wait && !any && len(w.events) == 0 {
+	if wait && !any && len(w.events) == 0 && len(w.injected) == 0 {
 		x.flush(x11c.c)
-		poll_two(x11c.fd, dbus_fd(), timeout_ms > 0 ? timeout_ms : -1, wake_fd(w))
+		poll_sources(w, x11_fd(w), timeout_ms > 0 ? timeout_ms : -1)
 		x11_drain(w)
 	}
 	dbus_pump()
@@ -469,19 +500,29 @@ x11_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 x11_drain :: proc(w: ^Window) -> (any: bool) {
 	for {
 		ev := xcb.poll_for_event(x11c.c)
-		if ev == nil { return }
+		if ev == nil { break }
 		any = true
 		x11_handle_event(w, ev)
 		posix.free(ev)
 	}
+	x11_check_link()
+	return
+}
+
+// A connection in error has no more events, and its socket reads as ready for good.
+@(private)
+x11_check_link :: proc() {
+	if x11c.link != .Connected || xcb.connection_has_error(x11c.c) == 0 { return }
+	x11c.link = .Lost
+	display_lost(x11c.windows[:])
 }
 
 @(private)
 x11_wait :: proc(w: ^Window, timeout_ms: int) {
 	x11_drain(w)   // (what xcb has read already: poll(2) would not see it; kept for the next poll_events)
-	if len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested { return }
+	if wait_is_over(w) { return }
 	xcb.flush(x11c.c)
-	poll_two(x11c.fd, -1, timeout_ms > 0 ? timeout_ms : -1, wake_fd(w))
+	poll_sources(w, x11_fd(w), timeout_ms > 0 ? timeout_ms : -1)
 }
 
 // Takes only keyboard and pointer events now (wait_handle), queuing them time-stamped; leaves the rest for poll_events.
@@ -499,31 +540,46 @@ x11_push :: proc(w: ^Window, e: Event) {
 	append(&w.events, e)
 }
 
-// The window an event is for: one connection brings the events of all of them, whichever window polls.
+// The window an event is for: one connection brings the events of all of them, whichever window polls. nil: a window that
+// is gone, its last notices still on their way (a destroyed window's UnmapNotify is nobody else's). A PropertyNotify may
+// be another client's window, the one an INCR transfer goes to.
 @(private)
 x11_event_target :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) -> ^Window {
 	b := ([^]u8)(raw)
 	id: Xcb_Window
+	unknown: ^Window
 	switch raw.response_type & X11_RESPONSE_TYPE_MASK {
 	case XCB_KEY_PRESS, XCB_KEY_RELEASE, XCB_BUTTON_PRESS, XCB_BUTTON_RELEASE, XCB_MOTION_NOTIFY, XCB_ENTER_NOTIFY, XCB_LEAVE_NOTIFY:
 		id = Xcb_Window(get_u32(b[12:]))
-	case XCB_FOCUS_IN, XCB_FOCUS_OUT, XCB_EXPOSE, XCB_CONFIGURE_NOTIFY, XCB_MAP_NOTIFY, XCB_UNMAP_NOTIFY, XCB_CLIENT_MESSAGE, XCB_PROPERTY_NOTIFY:
+	case XCB_FOCUS_IN, XCB_FOCUS_OUT, XCB_EXPOSE, XCB_CONFIGURE_NOTIFY, XCB_MAP_NOTIFY, XCB_UNMAP_NOTIFY, XCB_CLIENT_MESSAGE:
 		id = Xcb_Window(get_u32(b[4:]))
+	case XCB_PROPERTY_NOTIFY:
+		id = Xcb_Window(get_u32(b[4:]))
+		unknown = polling
 	case XCB_SELECTION_REQUEST, XCB_SELECTION_CLEAR, XCB_SELECTION_NOTIFY:
 		id = Xcb_Window(get_u32(b[8:]))
 	case:
 		return polling
 	}
 	for x in x11c.windows { if x11_state(x).id == id { return x } }
-	return polling
+	return unknown
 }
 
 @(private)
 x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 	w := x11_event_target(polling, raw)
+	if w == nil { return }
 	st := x11_state(w)
 	b := ([^]u8)(raw)
 	type := raw.response_type & X11_RESPONSE_TYPE_MASK
+	if x11c.xkb_event != 0 && type == x11c.xkb_event {
+		if b[1] == X11_XKB_NEW_KEYBOARD_NOTIFY || b[1] == X11_XKB_MAP_NOTIFY { x11_xkb_load() }
+		return
+	}
+	if type == XCB_MAPPING_NOTIFY {
+		if b[4] != X11_MAPPING_POINTER { x11_xkb_load() }   // (xcb_mapping_notify_event_t: request at [4])
+		return
+	}
 	if x11c.xfixes_event != 0 && type == x11c.xfixes_event {
 		// xcb_xfixes_selection_notify_event_t: owner at [8], selection at [12]. This program's own writes count themselves
 		owner := Xcb_Window(get_u32(b[8:]))
@@ -560,8 +616,9 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 			case X11_BUTTON_BACK:    btn = .Back
 			case X11_BUTTON_FORWARD: btn = .Forward
 			}
-			if press { w.buttons_down += {btn} } else { w.buttons_down -= {btn} }
-			x11_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
+			if button_changes(w, btn, press) {
+				x11_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
+			}
 		case X11_BUTTON_WHEEL_UP, X11_BUTTON_WHEEL_DOWN, X11_BUTTON_WHEEL_LEFT, X11_BUTTON_WHEEL_RIGHT:
 			if press {
 				e := Event{kind = .Scroll, pos = pos, mods = mods}
@@ -587,7 +644,15 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		w.minimized = true
 	case XCB_ENTER_NOTIFY:
 	case XCB_LEAVE_NOTIFY:
-		x11_push(w, {kind = .Mouse_Leave})
+		// xcb_leave_notify_event_t: event_x, event_y at [24], state at [28], mode at [30]
+		mode := b[30]
+		if mode == X11_NOTIFY_GRAB {
+			// another client took the pointer (a menu of the window manager): the release goes to it, and is made here
+			pos := [2]f32{f32(i16(u16(b[24]) | u16(b[25]) << 8)), f32(i16(u16(b[26]) | u16(b[27]) << 8))}
+			buttons_released(w, pos, x11_mods(u16(b[28]) | u16(b[29]) << 8))
+		}
+		// (under the button's own grab the pointer is still the window's: as on Windows, until the release says where it is)
+		if w.buttons_down == {} { x11_push(w, {kind = .Mouse_Leave}) }
 	case XCB_FOCUS_IN:
 		w.focused = true; w.active = true
 		x11_push(w, {kind = .Activate})
@@ -688,8 +753,9 @@ x11_key :: proc(w: ^Window, keycode: u32, state: u16, press: bool) {
 	key := Key.None
 	text: rune
 	if k.ok && x11c.xkb_state != nil {
-		sym := k.state_key_get_one_sym(x11c.xkb_state, keycode)
-		key = key_from_keysym(sym)
+		// the modifiers and the group of the event are the ones it was typed with, whatever came since
+		k.state_update_mask(x11c.xkb_state, u32(state) & X11_STATE_MODS_MASK, 0, 0, 0, 0, u32(state) >> X11_STATE_GROUP_SHIFT & X11_STATE_GROUP_MASK)
+		key = key_from_xkb(x11c.xkb_keymap, x11c.xkb_state, keycode)
 		if press {
 			buf: [8]u8
 			n := k.state_key_get_utf8(x11c.xkb_state, keycode, &buf[0], size_of(buf))
