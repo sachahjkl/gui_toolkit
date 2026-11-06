@@ -111,8 +111,8 @@ STEPS := []Step{
 	{name = "cursors", one = true},
 	{name = "tray", one = true},
 	// pixels
-	{name = "lifecycle"},
-	{name = "lifecycle_faults", path = "tests/lifecycle", defines = {"TOOLKIT_RENDER_FAULTS=true"}},
+	{name = "lifecycle", wgpu = .Ci3},
+	{name = "lifecycle_faults", path = "tests/lifecycle", defines = {"TOOLKIT_RENDER_FAULTS=true"}, wgpu = .Ci3},
 	{name = "canvas"},
 	{name = "layers", wgpu = .Ci4, sample = true},
 	{name = "planes", wgpu = .Ci2},

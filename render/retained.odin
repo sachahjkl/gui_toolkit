@@ -181,7 +181,10 @@ is_device_loss :: proc(hr: win.HRESULT) -> bool {
 
 // The device was lost (driver update, GPU reset, adapter removed): frame_begin recovers on its own; call it yourself
 // to know when it is done.
-device_lost :: proc(r: ^Renderer) -> bool { return r.lost }
+device_lost :: proc(r: ^Renderer) -> bool {
+	when USE_WGPU { wgpu_lost_poll(r) }
+	return r.lost
+}
 
 // Recreates the device and everything on it after a loss. Texture handles stay valid (same size and format) but
 // their contents are gone: `device_generation` changes, owners upload their images again (draw.begin_frame resets
