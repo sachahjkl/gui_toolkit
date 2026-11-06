@@ -194,6 +194,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.menu_close_pending = false
 	s.toast_area_set = false
 	s.boxes_built = 0
+	s.virtual_depth = 0
 	s.time_ms = p.time_ms > 0 ? p.time_ms : clock_ms(s)
 	left := p.inactive && !s.inactive
 	s.inactive = p.inactive
@@ -375,6 +376,7 @@ touch_box :: proc(s: ^State, key: Key) -> ^Box {
 	b.first, b.last, b.next, b.prev, b.parent = nil, nil, nil, nil, nil
 	b.child_count = 0
 	b.last_build = s.build_index
+	b.virtual = s.virtual_depth > 0
 	return b
 }
 
@@ -396,7 +398,8 @@ boxes_gone :: proc(s: ^State) {
 		key = 0
 	}
 	if b := s.boxes[s.release_owed] if s.release_owed != 0 else nil; b != nil && b.last_build == s.build_index { s.release_owed = 0 }
-	if box_gone(s, s.focus_key) { s.focus_key = 0 }
+	// (a box of a virtual list or a lazy column has only left the built range: the focus waits for it there)
+	if box_gone(s, s.focus_key) && !s.boxes[s.focus_key].virtual { s.focus_key = 0 }
 	if box_gone(s, s.last_click_key) { s.last_click_key = 0 }
 	if len(s.rich_link) == 0 { return }
 	dead := make([dynamic]Key, context.temp_allocator)

@@ -109,6 +109,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	set_next_axis(.Y)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
 	b.cursor = .Arrow
+	s.virtual_depth += 1
 	wheel := signal(b).scrolled   // the wheel (against last build's bounds)
 	if wheel != {} { st.reveal, st.reveal_wait = 0, 0 }   // the user scrolls: the active row no longer pulls the view
 	if y, asked := st.scroll_to.?; asked { vlist_view_at(b, y); st.scroll_to = nil }
@@ -240,6 +241,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 @(private)
 vlist_end :: proc(rows: Vlist_Rows, ok: bool) {
 	s := gs()
+	s.virtual_depth -= 1
 	st := (^Virtual_List)(pop(&s.list_stack))
 	n := len(st.ids)
 	spacer(px(st.offsets[n] - st.offsets[st.last]), exact = true)
