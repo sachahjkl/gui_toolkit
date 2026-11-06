@@ -1,6 +1,6 @@
 # config: a typed preference registry (an about:config for any application)
 
-`import "gt:config"` (or the relative path of the submodule). Pure Odin (`core:` + `base:runtime`), any target.
+`import "gt:config"` (or the relative path of the submodule). Pure Odin (`core:`, `base:runtime` and the toolkit's `ascii` and `fsx`), any target.
 Every tunable is a named, typed, documented preference, so an application never hides a setting behind a magic constant.
 
 The package is named `tk_config` (the directory is `config`): an application that keeps a thin `config` alias package of its
@@ -44,8 +44,9 @@ an observer. An unknown name or a kind mismatch is a programming error (it asser
 ## Layers
 
 A value comes from one of four layers, lowest to highest: `Default < User < Command_Line < Policy`. A higher layer wins
-for the run; a policy value also **locks** the preference (the user cannot change it). Setting a lower layer while a higher
-one owns the preference is refused with `.Locked`, but the user's own value is still kept for the profile file.
+for the run; a policy value also **locks** the preference (`is_locked`: the user cannot change it, and `reset` changes
+nothing). Setting a lower layer while a higher one owns the preference is refused with `.Locked`, but the user's own value is
+still kept for the profile file. `.Default` is no layer to set: it always answers `.Locked`, or `.Unknown`.
 
 ```odin
 err := config.set_from_string(&p, "net.max_connections", "12", .User)   // full validation; Set_Error
@@ -58,12 +59,16 @@ config.reset(&p, "net.max_connections")                                   // bac
 ## Persistence (user changes only, atomically)
 
 ```odin
-config.save_user(&p, profile_path)        // writes only user-set values; atomic (.tmp renamed over the file)
+config.save_user(&p, profile_path)        // writes only user-set values; atomic and flushed (fsx.write_atomic)
 config.load_file(&p, profile_path, .User) // missing file = no changes
 ```
 
 A value read before its definition is registered (the profile file and the command line are read early) is remembered per
-layer and applied when `register` arrives, and survives a round trip even if no definition ever registers it.
+layer and applied when `register` arrives, and survives a round trip even if no definition ever registers it. A user's value
+the definition refuses, in `register` (which counts them) or in `load_file` (a problem), leaves the default in place and stays
+in the profile: another version may take it.
+
+`p.dirty` says the user's layer differs from what was last read or saved: a change under a higher layer counts, reading a file does not.
 
 ## Observers (apply without a restart)
 
@@ -93,6 +98,7 @@ changed := config.restore(&p, s)                 // put them all back (policy va
 
 ## File format
 
-`save_user` writes one tag line (`wbprefs 1`) then `name<TAB>value` with `\\`, `\n`, `\r`, `\t` escapes; `load_file` also
-accepts the policy tag `wbpolicy 1` and skips `#` comments and a leading byte-order mark. The tags are kept as they are so
-files an existing application already wrote stay readable.
+`save_user` writes one tag line (`wbprefs 1`) then `name<TAB>value` with `\\`, `\n`, `\r`, `\t` escapes. `load_file` wants the
+tag of the layer it reads, `wbpolicy 1` for `.Policy` and `wbprefs 1` otherwise, and skips `#` comments and a leading byte-order
+mark. The tags are kept as they are so files an existing application already wrote stay readable. `save_user` writes what it
+knows, so a comment or a line that is no `name<TAB>value` does not survive it.
