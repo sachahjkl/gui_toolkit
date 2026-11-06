@@ -219,6 +219,7 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	if .Clickable in b.flags {
 		sig.hovering = s.hot_key == b.key
 		sig.pressed = s.pressed_key[.Left] == b.key
+		sig.pointer_pressed = sig.pressed && s.a11y.pressed != b.key
 		sig.released = s.released_key[.Left] == b.key
 		sig.clicked = s.clicked_key[.Left] == b.key
 		sig.double_clicked = s.double_key == b.key

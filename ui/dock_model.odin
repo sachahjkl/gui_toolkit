@@ -80,12 +80,14 @@ Dock_Target :: struct {
 
 // A drag of a tab (a panel) or of a floating panel's title (its root, `panel` = DOCK_NO_PANEL). Idle -> Pressed (the button
 // went down on it) -> Dragging (it moved past DOCK_DRAG_EM: the drop targets show) -> dropped where `target` says when the
-// button goes up; Escape: Cancelled until the button goes up. A floating panel moved follows the pointer while Dragging.
+// button goes up; Escape, or what is dragged leaving the dock: Cancelled until the button goes up. A floating panel moved
+// follows the pointer while Dragging. A dock not built for a while drops nothing: what ended there went unseen.
 Dock_Drag_State :: enum u8 { Idle, Pressed, Dragging, Cancelled }
 
 Dock_Drag :: struct {
 	state:  Dock_Drag_State,
 	key:    Key,       // the box held
+	seen:   u64,       // the last build of the dock that saw it
 	panel:  u32,
 	node:   i32,       // a floating root moved (panel = DOCK_NO_PANEL)
 	from:   Vec2,      // where the press was (window px)
@@ -491,6 +493,10 @@ dock_close :: proc(d: ^Dock, id: u32) -> bool {
 	if !dock_has(d, id) { return false }
 	detach(d, id)
 	dock_changed(d)
+	// (its tab, or the floating root it was the last of)
+	dr := &d.drag
+	gone := dr.panel == DOCK_NO_PANEL ? !dock_valid_node(d, dr.node) : dr.panel == id
+	if dr.state != .Idle && gone { dr.state = .Cancelled }
 	return true
 }
 

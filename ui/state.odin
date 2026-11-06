@@ -85,6 +85,8 @@ destroy :: proc(s: ^State) {
 	delete(s.focus_order)
 	delete(s.popup_stack)
 	delete(s.modal_stack)
+	delete(s.modals_open)
+	delete(s.modals_built)
 	delete(s.list_stack)
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
@@ -168,8 +170,9 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	clear(&s.disabled_stack); s.disabled_depth = 0
 	clear(&s.tab_stops_off); s.tab_skip = 0
 	clear(&s.focus_order)
-	s.trap_depth = 0
-	s.modal_prev, s.modal_now = s.modal_now, 0
+	s.modals_open, s.modals_built = s.modals_built, s.modals_open
+	clear(&s.modals_built)
+	s.find.waiting = false
 	s.bar_keys, s.bar_keys_prev = s.bar_keys_prev, s.bar_keys
 	clear(&s.bar_keys)
 	s.has_next = false
@@ -235,6 +238,7 @@ end_build :: proc() {
 	assert(len(s.style_stack) == 1, "ui: unbalanced style push/pop")
 	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
+	assert(len(s.modal_stack) == 0, "ui: unbalanced modal scopes")
 
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }
@@ -255,6 +259,7 @@ end_build :: proc() {
 	lazy_trim(s)
 	menu_prune(s)
 	selection_update(s)
+	modals_settle(s)
 	handle_tab_navigation(s)
 	update_animations(s)
 	find_collect(s)     // (the rects are final)
@@ -286,6 +291,7 @@ end_build :: proc() {
 		s.released_key[b] = 0
 		s.clicked_key[b] = 0
 	}
+	s.a11y.pressed = 0
 	s.double_key = 0
 	s.metrics.total_ms = real_ms() - s.build_start
 }
@@ -501,7 +507,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	}
 
 	if .Focusable in b.flags && .Disabled not_in b.flags && s.tab_skip == 0 {
-		append(&s.focus_order, Focus_Entry{key = b.key, trapped = s.trap_depth > 0})
+		append(&s.focus_order, Focus_Entry{key = b.key, modal = len(s.modal_stack) > 0 ? s.modal_stack[len(s.modal_stack) - 1].order : 0})
 	}
 
 	// link into the parent
@@ -776,13 +782,20 @@ focus_step :: proc(s: ^State, from: Key, dir: int) {
 	s.focus_visible = true
 }
 
-// The Tab stops of the last build, in order: those inside the open modal when there is one, else the others.
+// The dialog that has the keyboard: the last one built that has a Tab stop (0: the page).
+@(private)
+focus_modal :: proc(s: ^State) -> int {
+	top := 0
+	for e in s.focus_order { top = max(top, e.modal) }
+	return top
+}
+
+// The Tab stops of the last build, in order: those of the dialog on top when there is one, else the others.
 @(private)
 focus_stops :: proc(s: ^State) -> [dynamic]Key {
-	trapped := false
-	for e in s.focus_order { if e.trapped { trapped = true; break } }
+	top := focus_modal(s)
 	stops := make([dynamic]Key, 0, len(s.focus_order), context.temp_allocator)
-	for e in s.focus_order { if e.trapped == trapped { append(&stops, e.key) } }
+	for e in s.focus_order { if e.modal == top { append(&stops, e.key) } }
 	return stops
 }
 
@@ -802,13 +815,12 @@ handle_arrow_navigation :: proc(s: ^State) -> bool {
 	case key_press(.Down):  dir = {0, 1}
 	case: return false
 	}
-	trapped := false
-	for e in s.focus_order { if e.trapped { trapped = true; break } }
+	top := focus_modal(s)
 	c0 := (cur.rect.min + cur.rect.max) * 0.5
 	best: Key
 	best_score := max(f32)
 	for e in s.focus_order {
-		if e.trapped != trapped || e.key == cur.key { continue }
+		if e.modal != top || e.key == cur.key { continue }
 		b := s.boxes[e.key]
 		if b == nil { continue }
 		c := (b.rect.min + b.rect.max) * 0.5

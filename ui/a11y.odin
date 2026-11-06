@@ -110,6 +110,7 @@ A11y_Data :: struct {
 	values:    [dynamic]string,            // values of the requests (copies, freed at the next build)
 	updates, refused: int,
 	kids:      [dynamic]u64,               // scratch
+	pressed:   Key,                        // this build's press came from a screen reader, no button is held
 	focus_to:  Key,                        // a11y_focus_on: this build's focus for readers, over the toolkit's
 	diff_window: ^platform.Window,         // the window the diff's nodes went to (another one: a whole tree)
 	cost_ms:   f64,                        // the last build's tree: making it, the diff and the send
@@ -289,6 +290,7 @@ a11y_route :: proc(s: ^State, r: platform.A11y_Request) {
 		}
 		if .Clickable in b.flags && .Disabled not_in b.flags {
 			s.pressed_key[.Left], s.released_key[.Left], s.clicked_key[.Left] = key, key, key
+			s.a11y.pressed = key
 			if .Focusable in b.flags { s.focus_key = key }
 			// a widget that answers the action itself (an accordion) sees it too
 			append(&s.a11y.handled, r)
