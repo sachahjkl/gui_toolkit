@@ -30,6 +30,7 @@ unset DBUS_SESSION_BUS_ADDRESS
 export XDG_RUNTIME_DIR="$OUT/run"
 
 "$ODIN" build tests/linux_desktop/virtual_pointer -vet -out:"$OUT/virtual_pointer" || exit 1
+"$ODIN" build tests/linux_desktop/drag_peer -vet -out:"$OUT/bin/drag_peer" || exit 1
 "$ODIN" build tests/linux_desktop -build-mode:test -vet -define:ODIN_TEST_THREADS=1 -debug ${GUI_TEST_NAMES:+-define:ODIN_TEST_NAMES=$GUI_TEST_NAMES} -out:"$OUT/desktop_test" || exit 1
 
 run_tests() {

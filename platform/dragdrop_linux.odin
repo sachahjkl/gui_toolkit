@@ -31,7 +31,11 @@ Dnd_State :: struct {
 	script:    [dynamic]Drag_Step, // drag_script
 	image_size, image_offset: [2]int,
 	image_held: bool,
+	silence_ms: int,               // drag_silence_limit (0: DND_SOURCE_WAIT_MS)
 }
+
+@(private)
+dnd_silence_ms :: proc(w: ^Window) -> f64 { return f64(w.dnd.silence_ms > 0 ? w.dnd.silence_ms : DND_SOURCE_WAIT_MS) }
 
 @(private)
 dnd_state :: proc(w: ^Window) -> ^Dnd_State {

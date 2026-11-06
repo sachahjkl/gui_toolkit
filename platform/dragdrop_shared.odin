@@ -70,5 +70,9 @@ drag_image_held :: proc(w: ^Window) -> (size, offset: [2]int, ok: bool) {
 	return w.dnd.image_size, w.dnd.image_offset, true
 }
 
+// Tests: how long a drag from the window may stay silent before it is given up (0: the system's limit). Nothing to do on
+// Windows, whose loop has none.
+drag_silence_limit :: proc(w: ^Window, ms: int) { dnd_state(w).silence_ms = ms }
+
 // Whether drag_start is running from this window (its own drop target then sees a drag that came from the app).
 drag_sending :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.sending }
