@@ -57,7 +57,6 @@ package platform
 @(private) WL_SURFACE_SET_BUFFER_SCALE :: 8
 @(private) WL_SEAT_GET_POINTER :: 0
 @(private) WL_SEAT_GET_KEYBOARD :: 1
-@(private) WL_SEAT_GET_TOUCH :: 2
 @(private) WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE :: 0
 @(private) WL_DATA_DEVICE_MANAGER_GET_DATA_DEVICE :: 1
 @(private) WL_REGION_ADD :: 1

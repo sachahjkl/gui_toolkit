@@ -508,6 +508,7 @@ destroy_window :: proc(w: ^Window) {
 	if w.offscreen { offscreen_closed() }
 	cursors_destroy(w)
 	delete(w.events)
+	delete(w.batch)
 	delete(w.injected)
 	chrome_regions_destroy(&w.chrome)
 	free(w)
@@ -535,8 +536,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 		}
 		win.WaitForSingleObject(w.off_event, 0)   // (the signal of what is taken here: the next wait is for what comes after)
 		take_injected(w)
-		w.returned = len(w.events)
-		return w.events[:]
+		return hand_out(w)
 	}
 
 	if !w.keep_events { drop_returned(w) }   // what wait_handle took is the start of this batch
@@ -558,8 +558,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 		win.DispatchMessageW(&msg)
 	}
 	take_injected(w)
-	w.returned = len(w.events)
-	return w.events[:]
+	return hand_out(w)
 }
 
 // Queues an event as if the system had delivered it: the next poll_events returns it (after the real events of that
