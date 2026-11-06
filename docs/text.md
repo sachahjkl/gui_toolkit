@@ -161,6 +161,8 @@ The draw layer (`draw/text.odin`):
   `TEXT_RASTER_TOLERANCE`; under rotation / skew the quads go through the GPU transform (at their subpixel position in
   local units when not rescaled). Inside `draw.picture_begin` / `picture_end` the run is recorded with its pages (see
   [draw.md](draw.md), Retained drawing).
+- `draw.glyph_run_stroke(dc, size, pos, color, glyphs, width)`: the outlines of the same run as a line of `width`, half inside and half outside, its joins round (CSS `-webkit-text-stroke`).
+- `font.glyph_ink_extent(s, face, gid, lo, hi, across)`: where a glyph has ink inside a band, in ems, from its outline, kept per glyph and band; `font.run_ink_spans(s, glyphs, size, top, bottom, gap)`: the same for a run, left to right, joined by their gap (the gaps of a skipping underline).
 - `draw.text(dc, id, size, pos, color, s)`, `draw.text_ex(..., opts)`: shape then `glyph_run`.
 
 The coverage is raw (linear) coverage, as DirectWrite gives it before Direct2D applies its gamma: the renderer's text
