@@ -140,6 +140,25 @@ client :: proc(c: ^Client) {
 	}
 }
 
+// A window with no interface (service with no ui.State) refuses a screencast, and an ack sent all the same does nothing.
+@(test)
+no_screencast_without_an_interface :: proc(t: ^testing.T) {
+	win := platform.open_window_offscreen("devtools test", {200, 100})
+	if !testing.expect(t, win != nil) { return }
+	defer platform.destroy_window(win)
+	srv := devtools.start_local(win, "test")
+	defer devtools.stop(srv)
+	l := devtools.local_connect(srv)
+	defer devtools.local_close(l)
+	devtools.local_send(l, `{"id":1,"method":"Page.startScreencast","params":{}}`)
+	devtools.service(srv, nil, nil)
+	got := devtools.local_take(l, context.temp_allocator)
+	if !testing.expect_value(t, len(got), 1) { return }
+	testing.expectf(t, strings.has_prefix(got[0], `{"id":1,"error":`), "%s", got[0])
+	devtools.local_send(l, `{"id":2,"method":"Page.screencastFrameAck","params":{"sessionId":1}}`)
+	devtools.service(srv, nil, nil)
+}
+
 // The server answers a command from a WebSocket client once the window's loop serves it.
 @(test)
 a_command_over_a_websocket :: proc(t: ^testing.T) {
