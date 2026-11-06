@@ -28,9 +28,7 @@ Native_Window :: struct {
 	closed:       bool,
 	in_poll:      bool,
 	integrated:   bool,             // set_integrated_title: the app draws the title bar (client-side decorations)
-	fullscreen:   bool,
-	maximized:    bool,
-	minimized:    bool,
+	show:         Show_State,       // as the server last said (or the emulated one of an offscreen window)
 	dark_title:   bool,
 	display:      Display_Info,
 	display_stale: bool,
@@ -50,9 +48,7 @@ Native_Window :: struct {
 	// login, a CI runner). Input comes only through inject_event; an eventfd stands in for the message queue.
 	offscreen:    bool,
 	off_event:    posix.FD,         // eventfd: the loop waits on it, wake (any window) and inject_event (offscreen) write to it
-	off_state:    Off_State,
 	off_place:    [4]int,
-	off_visible:  bool,
 	// drag and drop (dragdrop_wl_linux.odin / dragdrop_x11_linux.odin), made on first use
 	dnd:          ^Dnd_State,
 	// icons of the notification area this window owns (tray_linux.odin)
@@ -61,8 +57,9 @@ Native_Window :: struct {
 	a11y:         rawptr,
 }
 
-// The emulated state of an offscreen window (mirrors Win32).
-@(private) Off_State :: enum u8 { Normal, Minimized, Maximized, Fullscreen }
+// What a window is on the screen: one state, read back from the server (an offscreen window's is emulated, as Win32's
+// Off_State). Hidden: nothing was mapped yet.
+@(private) Show_State :: enum u8 { Hidden, Normal, Minimized, Maximized, Fullscreen }
 
 @(private, thread_local) pumping: int
 
@@ -91,8 +88,6 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.user = user
 	w.on_frame = on_frame
 	w.dpi_scale = 1
-	w.focused = true
-	w.active = true
 	w.display_stale = true
 	w.integrated = integrated_title
 	w.backend = kind
@@ -129,7 +124,7 @@ open_window_offscreen :: proc(title: string, size: [2]int, dpi_scale: f32 = 1, u
 	w.focused = true
 	w.active = true
 	w.size = {max(size.x, 1), max(size.y, 1)}
-	w.off_state = .Normal
+	w.show = .Normal
 	w.off_place = {0, 0, w.size.x, w.size.y}
 	offscreen_opened()
 	return w
@@ -141,10 +136,13 @@ report_missing :: proc(what: string) {
 	posix.write(posix.STDERR_FILENO, raw_data(msg), len(msg))
 }
 
+// Not from a callback running under the window (on_frame, a Drop_Sync, a drop during its drag): the frame or the drag that
+// called it still reads the window.
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
 	if w.destroy_hook != nil { w.destroy_hook(w, w.destroy_hook_user) }
 	clipboard_watch(w, false)
+	idle_release_window(w)
 	tray_destroy_all(w)
 	dnd_destroy(w)
 	a11y_detach(w)
@@ -190,10 +188,7 @@ set_title :: proc(w: ^Window, title: string) {
 }
 
 show_window :: proc(w: ^Window) {
-	if w.offscreen {
-		w.off_visible = true
-		return
-	}
+	if w.offscreen { return }
 	switch w.backend {
 	case .Wayland: wl_show(w)
 	case .X11:     x11_show(w)
@@ -218,7 +213,7 @@ raise_window :: proc(w: ^Window) {
 // Whether the window is on screen (mapped and not minimized). An offscreen window is never "visible" in this sense.
 is_window_visible :: proc(w: ^Window) -> bool {
 	if w == nil || w.offscreen { return false }
-	return !w.closed && !w.minimized
+	return !w.closed && w.show != .Hidden && w.show != .Minimized
 }
 
 // The native handles a renderer makes a wgpu surface from (neutral; see Surface_Handles). An offscreen window has none.
@@ -237,13 +232,13 @@ native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
 	}
 	return {}
 }
-is_maximized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Maximized : w.maximized }
-is_minimized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Minimized : w.minimized }
-is_fullscreen :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Fullscreen : w.fullscreen }
+is_maximized :: proc(w: ^Window) -> bool { return w.show == .Maximized }
+is_minimized :: proc(w: ^Window) -> bool { return w.show == .Minimized }
+is_fullscreen :: proc(w: ^Window) -> bool { return w.show == .Fullscreen }
 is_integrated_title :: proc(w: ^Window) -> bool { return w.integrated }
 
 minimize :: proc(w: ^Window) {
-	if w.offscreen { w.off_state = .Minimized; return }
+	if w.offscreen { w.show = .Minimized; return }
 	switch w.backend {
 	case .Wayland: wl_minimize(w)
 	case .X11:     x11_minimize(w)
@@ -252,10 +247,16 @@ minimize :: proc(w: ^Window) {
 }
 
 toggle_maximize :: proc(w: ^Window) {
-	if w.offscreen { w.off_state = w.off_state == .Maximized ? .Normal : .Maximized; return }
+	if w.offscreen { w.show = w.show == .Maximized ? .Normal : .Maximized; return }
+	set_maximized(w, w.show != .Maximized)
+}
+
+// (the state changes when the server says it did)
+@(private)
+set_maximized :: proc(w: ^Window, on: bool) {
 	switch w.backend {
-	case .Wayland: wl_set_maximized(w, !w.maximized)
-	case .X11:     x11_set_maximized(w, !w.maximized)
+	case .Wayland: wl_set_maximized(w, on)
+	case .X11:     x11_set_maximized(w, on)
 	case .None:
 	}
 }
@@ -268,9 +269,11 @@ request_close :: proc(w: ^Window) {
 }
 
 set_fullscreen :: proc(w: ^Window, on: bool) {
-	if w.offscreen { w.off_state = on ? .Fullscreen : .Normal; return }
-	if w.fullscreen == on { return }
-	w.fullscreen = on
+	if w.offscreen {
+		if on { w.show = .Fullscreen } else if w.show == .Fullscreen { w.show = .Normal }
+		return
+	}
+	if (w.show == .Fullscreen) == on { return }
 	w.display_stale = true
 	switch w.backend {
 	case .Wayland: wl_set_fullscreen(w, on)
@@ -468,6 +471,15 @@ wait_is_over :: proc(w: ^Window) -> bool { return len(w.events) > w.returned || 
 @(private) POLLERR :: i16(0x0008)
 @(private) POLLHUP :: i16(0x0010)
 @(private) POLL_DONE :: POLLIN | POLLERR | POLLHUP   // what a read of the fd would tell: data, or its end
+
+// The window has the keyboard, or lost it (one event for a change; a key held then will not say it was released here).
+@(private)
+window_focus :: proc(w: ^Window, on: bool, mods: Modifiers) {
+	if w.active == on { return }
+	w.focused, w.active = on, on
+	append(&w.events, Event{kind = .Activate, stamp = time.tick_now()})
+	if !on { keys_released(w, mods) }
+}
 @(default_calling_convention = "c", private)
 foreign libc {
 	poll :: proc(fds: ^Pollfd, nfds: uint, timeout: i32) -> i32 ---

@@ -9,6 +9,7 @@ package platform
 // Reading a flavour another client owns (x11_selection_read) uses ConvertSelection to a scratch property and reads it
 // back, following an INCR hand-off when the owner streams the data in chunks.
 
+import "base:runtime"
 import "core:strings"
 import "core:time"
 import "core:sys/posix"
@@ -19,6 +20,7 @@ import "core:sys/posix"
 @(private = "file") X11_SELECTION_READ_WAIT_MS :: 3000    // silence of the owner that gives up a synchronous read of a selection
 @(private = "file") X11_FORMATS_CACHE_MS :: 500           // without XFIXES clipboard_formats asks the owner no more often (a Paste item asks every frame)
 @(private) X11_SELECTION_POLL_MS :: 20                    // between two looks at the connection during such a read
+@(private = "file") X11_INCR_SILENCE_MS :: 30000          // a requestor that deletes nothing for this long left
 
 // An in-progress INCR transfer we are sending to a requestor: the bytes left and the property / window to post on.
 @(private)
@@ -28,7 +30,7 @@ X11_Incr_Send :: struct {
 	target:    Xcb_Atom,
 	data:      []u8,
 	offset:    int,
-	active:    bool,
+	heard:     time.Tick,   // the requestor's last delete: one that stops reading is given up (X11_INCR_SILENCE_MS)
 }
 
 // What another client's CLIPBOARD offers (its TARGETS), as last read (x11_foreign_formats).
@@ -38,6 +40,7 @@ X11_Foreign_Formats :: struct {
 	at:      time.Tick,
 	seq:     u32,
 	read:    bool,
+	silent:  bool,   // the owner did not answer: it is asked again, not trusted until the clipboard changes
 }
 
 // Own CLIPBOARD and advertise the rich targets. The store's flavours (clipboard_linux.odin) are read at serve time, so
@@ -46,13 +49,24 @@ X11_Foreign_Formats :: struct {
 x11_clipboard_own_rich :: proc(w: ^Window, text: string) {
 	st := x11_state(w)
 	if st == nil { return }
-	delete(x11c.clip_text)
-	x11c.clip_text = strings.clone(text)
-	x11c.clip_owner = st.id
+	delete(x11c.clip_text, runtime.heap_allocator())
+	x11c.clip_text = strings.clone(text, runtime.heap_allocator())   // (outlives whatever allocator the app calls under)
 	x11_set_selection_owner(x11c.clipboard, st.id)
-	// also own PRIMARY with the text (middle-click paste of a selection)
+	// also own PRIMARY with the text (middle-click paste of a selection). It has no state of its own: while the window lives
+	// what asks for it gets the same text, and losing it changes nothing here
 	x11_set_selection_owner(x11c.primary, st.id)
 	xcb.flush(x11c.c)
+	x11c.clip_owner = x11_selection_owner(x11c.clipboard) == st.id ? st.id : 0   // (the server may refuse: only it says)
+}
+
+// Who owns a selection now (0: nobody).
+@(private = "file")
+x11_selection_owner :: proc(selection: Xcb_Atom) -> Xcb_Window {
+	if xcb.get_selection_owner == nil || xcb.get_selection_owner_reply == nil { return 0 }
+	reply := xcb.get_selection_owner_reply(x11c.c, xcb.get_selection_owner(x11c.c, selection), nil)
+	if reply == nil { return 0 }
+	defer posix.free(reply)
+	return Xcb_Window(get_u32(([^]u8)(reply)[8:]))   // xcb_get_selection_owner_reply_t: owner at [8]
 }
 
 // The list of target atoms we offer, from the store's current formats.
@@ -166,14 +180,14 @@ x11_answer_multiple :: proc(requestor: Xcb_Window, property: Xcb_Atom) -> bool {
 // PropertyChangeMask on the requestor to hear its deletes.
 @(private)
 x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: []u8) {
-	// listen for the requestor's property deletes
-	x11_change_window_attrs_event_mask(requestor, XCB_EVENT_MASK_PROPERTY_CHANGE)
+	// listen for the requestor's property deletes, and its end
+	if !x11_is_ours(requestor) { x11_change_window_attrs_event_mask(requestor, XCB_EVENT_MASK_PROPERTY_CHANGE | XCB_EVENT_MASK_STRUCTURE_NOTIFY) }
 	size := u32(len(data))
 	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, x11c.atom_incr, X11_FORMAT_32, 1, &size)
 	// keep a copy that outlives the temp allocator
 	buf := make([]u8, len(data))
 	copy(buf, data)
-	append(&x11c.incr_sends, X11_Incr_Send{requestor = requestor, property = property, target = target, data = buf, offset = 0, active = true})
+	append(&x11c.incr_sends, X11_Incr_Send{requestor = requestor, property = property, target = target, data = buf, heard = time.tick_now()})
 	xcb.flush(x11c.c)
 }
 
@@ -182,7 +196,8 @@ x11_start_incr :: proc(requestor: Xcb_Window, property, target: Xcb_Atom, data: 
 @(private)
 x11_incr_on_property_delete :: proc(window: Xcb_Window, property: Xcb_Atom) {
 	for &s, i in x11c.incr_sends {
-		if !s.active || s.requestor != window || s.property != property { continue }
+		if s.requestor != window || s.property != property { continue }
+		s.heard = time.tick_now()
 		remaining := len(s.data) - s.offset
 		chunk := min(remaining, X11_INCR_THRESHOLD)
 		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, window, property, s.target, X11_FORMAT_8, u32(chunk), chunk > 0 ? raw_data(s.data[s.offset:]) : nil)
@@ -193,6 +208,17 @@ x11_incr_on_property_delete :: proc(window: Xcb_Window, property: Xcb_Atom) {
 			unordered_remove(&x11c.incr_sends, i)
 		}
 		return
+	}
+}
+
+// The transfers nobody reads any more: a requestor that was destroyed (0: only those silent for too long).
+@(private)
+x11_incr_give_up :: proc(gone: Xcb_Window = 0) {
+	for i := len(x11c.incr_sends) - 1; i >= 0; i -= 1 {
+		s := &x11c.incr_sends[i]
+		if s.requestor != gone && time.duration_milliseconds(time.tick_since(s.heard)) < X11_INCR_SILENCE_MS { continue }
+		delete(s.data)
+		unordered_remove(&x11c.incr_sends, i)
 	}
 }
 
@@ -209,22 +235,24 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 	target := x11_target_for_mime(mime)
 	if target == 0 { return nil }
 	clear(&st.paste_buf)
-	st.paste_got = false
-	st.paste_incr = false
+	st.paste = .Waiting
+	st.paste_selection, st.paste_target = selection, target
+	defer st.paste = .Idle
 	x11_convert_selection(st.id, selection, target, x11c.wren_selection)
 	xcb.flush(x11c.c)
 	last := time.tick_now()
 	size := 0
-	for !st.paste_got || st.paste_incr {
+	for st.paste != .Done {
 		if ev := xcb.poll_for_event(x11c.c); ev != nil {
 			x11_handle_event(w, ev)
 			posix.free(ev)
 		} else {
+			x11_check_link()
+			if x11c.link != .Connected { return nil }
 			poll_fd_wait(x11c.fd, X11_SELECTION_POLL_MS)
 		}
 		if len(st.paste_buf) != size { size = len(st.paste_buf); last = time.tick_now() }
-		if !st.paste_got && time.duration_milliseconds(time.tick_since(last)) > wait_ms {
-			st.paste_incr = false
+		if st.paste != .Done && time.duration_milliseconds(time.tick_since(last)) > wait_ms {
 			clear(&st.paste_buf)
 			return nil
 		}
@@ -240,13 +268,14 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 @(private)
 x11_foreign_formats :: proc(w: ^Window) -> Clipboard_Formats {
 	f := &x11c.foreign_formats
-	if f.read && f.seq == clipboard_sequence() && (x11c.xfixes_event != 0 || time.duration_milliseconds(time.tick_since(f.at)) < X11_FORMATS_CACHE_MS) { return f.formats }
+	told := x11c.xfixes_event != 0 && !f.silent   // (XFIXES says when it changes: until then what was read holds)
+	if f.read && f.seq == clipboard_sequence() && (told || time.duration_milliseconds(time.tick_since(f.at)) < X11_FORMATS_CACHE_MS) { return f.formats }
 	b := x11_selection_read(w, x11c.clipboard, "TARGETS", context.temp_allocator, X11_TEXT_READ_WAIT_MS)
 	names := make([dynamic]string, context.temp_allocator)
 	for i in 0 ..< len(b) / size_of(u32) {
 		append(&names, x11_atom_name(Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):])))))
 	}
-	f^ = {clipboard_formats_from_mimes(names[:]), time.tick_now(), clipboard_sequence(), true}
+	f^ = {clipboard_formats_from_mimes(names[:]), time.tick_now(), clipboard_sequence(), true, b == nil}
 	return f.formats
 }
 

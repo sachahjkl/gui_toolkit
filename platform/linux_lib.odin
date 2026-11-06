@@ -215,6 +215,8 @@ Xkb_Lib :: struct {
 	x11_keymap_new_from_device: proc "c" (ctx: Xkb_Context, conn: rawptr, device_id: i32, flags: i32) -> Xkb_Keymap,
 	x11_state_new_from_device: proc "c" (m: Xkb_Keymap, conn: rawptr, device_id: i32) -> Xkb_State,
 	x11_select_events: proc "c" (c: Xcb_Connection, device: u16, affect, clear, select_all, affect_map, map_parts: u16, details: rawptr) -> Xcb_Void_Cookie,   // libxcb-xkb (optional)
+	x11_per_client_flags: proc "c" (c: Xcb_Connection, device: u16, change, value, ctrls_to_change, auto_ctrls, auto_ctrls_values: u32) -> Xcb_Intern_Atom_Cookie,
+	x11_per_client_flags_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr,
 }
 
 // (loaded once, as wl)
@@ -251,7 +253,11 @@ xkb_lib :: proc() -> ^Xkb_Lib {
 			xkb.x11_get_core_keyboard_device_id = auto_cast lib_sym(xh, "xkb_x11_get_core_keyboard_device_id")
 			xkb.x11_keymap_new_from_device = auto_cast lib_sym(xh, "xkb_x11_keymap_new_from_device")
 			xkb.x11_state_new_from_device = auto_cast lib_sym(xh, "xkb_x11_state_new_from_device")
-			if eh := lib_open({"libxcb-xkb.so.1", "libxcb-xkb.so"}); eh != nil { xkb.x11_select_events = auto_cast lib_sym(eh, "xcb_xkb_select_events") }
+			if eh := lib_open({"libxcb-xkb.so.1", "libxcb-xkb.so"}); eh != nil {
+				xkb.x11_select_events = auto_cast lib_sym(eh, "xcb_xkb_select_events")
+				xkb.x11_per_client_flags = auto_cast lib_sym(eh, "xcb_xkb_per_client_flags")
+				xkb.x11_per_client_flags_reply = auto_cast lib_sym(eh, "xcb_xkb_per_client_flags_reply")
+			}
 		}
 	})
 	return &xkb
@@ -327,6 +333,8 @@ Xcb_Lib :: struct {
 	translate_coordinates: proc "c" (c: Xcb_Connection, src, dst: Xcb_Window, x, y: i16) -> Xcb_Intern_Atom_Cookie,
 	translate_coordinates_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr,
 	set_selection_owner: proc "c" (c: Xcb_Connection, owner: Xcb_Window, selection: Xcb_Atom, time: u32) -> Xcb_Void_Cookie,
+	get_selection_owner: proc "c" (c: Xcb_Connection, selection: Xcb_Atom) -> Xcb_Intern_Atom_Cookie,
+	get_selection_owner_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr,
 	convert_selection:  proc "c" (c: Xcb_Connection, requestor: Xcb_Window, selection, target, property: Xcb_Atom, time: u32) -> Xcb_Void_Cookie,
 	get_atom_name:      proc "c" (c: Xcb_Connection, atom: Xcb_Atom) -> Xcb_Intern_Atom_Cookie,
 	get_atom_name_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: rawptr) -> rawptr,
@@ -382,6 +390,8 @@ xcb_lib :: proc() -> ^Xcb_Lib {
 		xcb.translate_coordinates = auto_cast lib_sym(h, "xcb_translate_coordinates")
 		xcb.translate_coordinates_reply = auto_cast lib_sym(h, "xcb_translate_coordinates_reply")
 		xcb.set_selection_owner = auto_cast lib_sym(h, "xcb_set_selection_owner")
+		xcb.get_selection_owner = auto_cast lib_sym(h, "xcb_get_selection_owner")
+		xcb.get_selection_owner_reply = auto_cast lib_sym(h, "xcb_get_selection_owner_reply")
 		xcb.convert_selection  = auto_cast lib_sym(h, "xcb_convert_selection")
 		xcb.get_atom_name      = auto_cast lib_sym(h, "xcb_get_atom_name")
 		xcb.get_atom_name_reply = auto_cast lib_sym(h, "xcb_get_atom_name_reply")

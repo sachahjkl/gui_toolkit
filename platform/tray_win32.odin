@@ -82,6 +82,15 @@ tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 	return t
 }
 
+// A shell not yet up when it said it restarted refused the icon: asked again at the next change of it.
+@(private = "file")
+tray_ensure_added :: proc(t: ^Tray) {
+	if !t.added && tray_add(t) { tray_push(t, {kind = .Recreated}) }
+}
+
+@(private)
+tray_menu_changed :: proc(t: ^Tray) {}   // (the menu is read when it opens)
+
 // Removes the icon and frees the tray.
 tray_destroy :: proc(t: ^Tray) {
 	if t == nil { return }
@@ -96,6 +105,7 @@ tray_destroy :: proc(t: ^Tray) {
 // Another icon from a PNG file's bytes (nil: the exe's icon).
 tray_set_icon :: proc(t: ^Tray, icon_png: []u8) -> bool {
 	if t == nil { return false }
+	tray_ensure_added(t)
 	old, old_large := t.icon, t.icon_large
 	if !tray_load_icon(t, icon_png) { return false }
 	ok := tray_shell(.Modify, t)
@@ -109,6 +119,7 @@ tray_set_icon_rgba :: proc(t: ^Tray, rgba: []u8, size: [2]int) -> bool {
 	if t == nil { return false }
 	icon := icon_from_rgba(rgba, size)
 	if icon == nil { return false }
+	tray_ensure_added(t)
 	old, old_large := t.icon, t.icon_large
 	t.icon, t.icon_large = icon, nil
 	ok := tray_shell(.Modify, t)
@@ -122,12 +133,14 @@ tray_set_tooltip :: proc(t: ^Tray, text: string) -> bool {
 	if t == nil { return false }
 	delete(t.tooltip)
 	t.tooltip = clone_string(text)
+	tray_ensure_added(t)
 	return tray_shell(.Modify, t)
 }
 
 // Shows a notification from the icon (title: 63 UTF-16 units, body: 255; cut beyond). Its events come as Notify_*.
 tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool {
 	if t == nil { return false }
+	tray_ensure_added(t)
 	if tray_test_hook != nil { return tray_test_hook(.Notify, t) }
 	nid := tray_nid(t)
 	nid.uFlags = win.NIF_INFO
@@ -187,7 +200,10 @@ tray_window_message :: proc(w: ^Window, msg: u32, wparam: win.WPARAM, lparam: wi
 		pos := [2]i32{i32(i16(u16(uintptr(wparam) & 0xFFFF))), i32(i16(u16((uintptr(wparam) >> 16) & 0xFFFF)))}
 		tray_push(t, {kind = kind, pos = pos, keyboard = keyboard})
 		if kind == .Right_Click && t.auto_menu && len(t.menu) > 0 {
-			if item, chosen := tray_menu_at(t, pos); chosen { tray_push(t, {kind = .Menu_Item, item = item, pos = pos}) }
+			item, chosen := tray_menu_at(t, pos)
+			// (the menu's loop runs frames: the app may have ended the icon meanwhile)
+			if !chosen { return true }
+			for x in w.trays { if x == t { tray_push(t, {kind = .Menu_Item, item = item, pos = pos}); break } }
 		}
 		return true
 	}

@@ -6,8 +6,9 @@ package platform
 // Both ride the platform's shared session bus (dbus_linux.odin); without a bus or a StatusNotifierWatcher (a bare X11
 // session with no panel) tray_create returns nil, as the Win32 backend does when the shell refuses an icon.
 //
-//   * tray_create exports an object implementing org.kde.StatusNotifierItem at /StatusNotifierItem, registers it with
-//     the watcher, and serves its properties (Id, Title, Status, IconPixmap, ToolTip, Menu) through
+//   * tray_create exports an object implementing org.kde.StatusNotifierItem at /StatusNotifierItem/<n> (each icon its
+//     own object on the connection, named to the watcher by its path), registers it with the watcher, follows the
+//     watcher's restarts, and serves its properties (Id, Title, Status, IconPixmap, ToolTip, Menu) through
 //     org.freedesktop.DBus.Properties. The host (the panel) calls Activate / SecondaryActivate / ContextMenu / Scroll,
 //     which become Tray_Events.
 //   * tray_set_menu builds a com.canonical.dbusmenu tree the host renders; a chosen item comes back as an Event method
@@ -19,7 +20,6 @@ import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:sync"
-import "core:sys/posix"
 import "../dbus"
 
 @(private) SNI_WATCHER :: "org.kde.StatusNotifierWatcher"
@@ -29,24 +29,29 @@ import "../dbus"
 @(private) DBUSMENU_IFACE :: "com.canonical.dbusmenu"
 @(private) DBUSMENU_PATH :: "/MenuBar"
 @(private) PROPS_IFACE :: "org.freedesktop.DBus.Properties"
+@(private = "file") DBUS_SERVICE :: "org.freedesktop.DBus"
+@(private = "file") DBUS_PATH :: "/org/freedesktop/DBus"
 @(private) NOTIFY_SERVICE :: "org.freedesktop.Notifications"
 @(private) NOTIFY_PATH :: "/org/freedesktop/Notifications"
 
 // What the Linux tray keeps beyond the shared Tray fields.
 Native_Tray :: struct {
 	conn:        ^dbus.Conn,
-	bus_name:    string,      // our unique item name (org.kde.StatusNotifierItem-<pid>-<id>)
+	path:        string,      // this icon's object (/StatusNotifierItem/<n>)
+	menu_path:   string,      // its menu's (/MenuBar/<n>)
 	icon_rgba:   []u8,        // the icon as RGBA (StatusNotifierItem wants ARGB pixmaps)
 	icon_size:   [2]int,
 	title:       string,
 	menu_ids:    map[i32]int, // dbusmenu id -> the app's Tray_Menu_Item.id
 	next_menu_id: i32,
+	menu_revision: u32,       // of the layout, told with LayoutUpdated
 	sub_action:  u32,         // the Notifications ActionInvoked subscription
 	sub_closed:  u32,
-	last_notify: u32,         // the id Notify returned, to match its signals
+	sub_watcher: u32,         // the watcher's owner changing (a panel that restarts)
+	last_notify: u32,         // the id Notify returned, to match its signals; 0 once it closed: nothing to replace
 }
 
-@(private) tray_pid_counter: u32   // the process's icons so far, for their bus names (atomic)
+@(private) tray_pid_counter: u32   // the process's icons so far, for their paths (atomic)
 
 tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 	if w == nil || w.offscreen { return nil }
@@ -59,18 +64,21 @@ tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 	t.conn = conn
 	t.title = clone_string(tooltip)
 	t.menu_ids = make(map[i32]int)
-	t.bus_name = fmt.aprintf("org.kde.StatusNotifierItem-%d-%d", int(posix.getpid()), sync.atomic_add(&tray_pid_counter, 1) + 1)
+	t.menu_revision = 1
+	n := sync.atomic_add(&tray_pid_counter, 1) + 1
+	t.path = fmt.aprintf("%s/%d", SNI_ITEM_PATH, n)
+	t.menu_path = fmt.aprintf("%s/%d", DBUSMENU_PATH, n)
 	if icon_png != nil { tray_set_icon(t, icon_png) }   // decodes to RGBA through the hook if present
-	// own our item name, export the object and the menu, register with the watcher
-	if !dbus.request_name(conn, t.bus_name) {
-		tray_free_native(t); tray_free(t); return nil
-	}
-	dbus.export_object(conn, SNI_ITEM_PATH, sni_item_handler, t)
-	dbus.export_object(conn, DBUSMENU_PATH, dbusmenu_handler, t)
+	// export the object and the menu, register with the watcher
+	dbus.export_object(conn, t.path, sni_item_handler, t)
+	dbus.export_object(conn, t.menu_path, dbusmenu_handler, t)
 	if !sni_register(t) {
+		dbus.export_remove(conn, t.path)
+		dbus.export_remove(conn, t.menu_path)
 		tray_free_native(t); tray_free(t); return nil
 	}
 	t.added = true
+	t.sub_watcher = dbus.subscribe(conn, DBUS_SERVICE, DBUS_PATH, DBUS_SERVICE, "NameOwnerChanged", sni_watcher_changed, t)
 	append(&w.trays, t)
 	return t
 }
@@ -78,10 +86,11 @@ tray_create :: proc(w: ^Window, icon_png: []u8 = nil, tooltip := "") -> ^Tray {
 tray_destroy :: proc(t: ^Tray) {
 	if t == nil { return }
 	if t.conn != nil {
-		dbus.export_remove(t.conn, SNI_ITEM_PATH)
-		dbus.export_remove(t.conn, DBUSMENU_PATH)
+		dbus.export_remove(t.conn, t.path)
+		dbus.export_remove(t.conn, t.menu_path)
 		if t.sub_action != 0 { dbus.unsubscribe(t.conn, t.sub_action) }
 		if t.sub_closed != 0 { dbus.unsubscribe(t.conn, t.sub_closed) }
+		if t.sub_watcher != 0 { dbus.unsubscribe(t.conn, t.sub_watcher) }
 	}
 	if w := t.window; w != nil {
 		for x, i in w.trays { if x == t { unordered_remove(&w.trays, i); break } }
@@ -100,7 +109,7 @@ tray_set_icon :: proc(t: ^Tray, icon_png: []u8) -> bool {
 			t.icon_size = img.size
 		}
 	}
-	if t.added && t.conn != nil { dbus.emit_signal(t.conn, SNI_ITEM_PATH, SNI_ITEM_IFACE, "NewIcon", "", nil) }
+	if t.added && t.conn != nil { dbus.emit_signal(t.conn, t.path, SNI_ITEM_IFACE, "NewIcon", "", nil) }
 	return true
 }
 
@@ -110,7 +119,7 @@ tray_set_icon_rgba :: proc(t: ^Tray, rgba: []u8, size: [2]int) -> bool {
 	t.icon_rgba = make([]u8, len(rgba))
 	copy(t.icon_rgba, rgba)
 	t.icon_size = size
-	if t.added && t.conn != nil { dbus.emit_signal(t.conn, SNI_ITEM_PATH, SNI_ITEM_IFACE, "NewIcon", "", nil) }
+	if t.added && t.conn != nil { dbus.emit_signal(t.conn, t.path, SNI_ITEM_IFACE, "NewIcon", "", nil) }
 	return true
 }
 
@@ -118,7 +127,7 @@ tray_set_tooltip :: proc(t: ^Tray, text: string) -> bool {
 	if t == nil { return false }
 	delete(t.tooltip); t.tooltip = clone_string(text)
 	delete(t.title); t.title = clone_string(text)
-	if t.added && t.conn != nil { dbus.emit_signal(t.conn, SNI_ITEM_PATH, SNI_ITEM_IFACE, "NewToolTip", "", nil) }
+	if t.added && t.conn != nil { dbus.emit_signal(t.conn, t.path, SNI_ITEM_IFACE, "NewToolTip", "", nil) }
 	return true
 }
 
@@ -132,8 +141,10 @@ tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool {
 	dbus.w_string(&w, "")                            // app_icon
 	dbus.w_string(&w, n.title)                       // summary
 	dbus.w_string(&w, n.body)                        // body
-	// actions: as(); none unless the app wants them (kept empty here)
+	// actions: as: the default one, what a click on the notification does (Notify_Click)
 	alen, acontent := dbus.w_array_begin(&w, DBUS_ALIGN_STRING)
+	dbus.w_string(&w, "default")
+	dbus.w_string(&w, "Open")
 	dbus.w_array_end(&w, alen, acontent)
 	// hints: a{sv}
 	hlen, hcontent := dbus.arg_dict_begin(&w)
@@ -211,7 +222,8 @@ tray_destroy_all :: proc(w: ^Window) {
 
 @(private)
 tray_free_native :: proc(t: ^Tray) {
-	delete(t.bus_name)
+	delete(t.path)
+	delete(t.menu_path)
 	delete(t.icon_rgba)
 	delete(t.title)
 	delete(t.menu_ids)
@@ -223,9 +235,31 @@ tray_free_native :: proc(t: ^Tray) {
 @(private)
 sni_register :: proc(t: ^Tray) -> bool {
 	w := dbus.body_writer()
-	dbus.w_string(&w, t.bus_name)
+	dbus.w_string(&w, t.path)   // (a path: the watcher takes the name from the sender, each icon has its object)
 	_, ok := dbus.call(t.conn, SNI_WATCHER, SNI_WATCHER_PATH, SNI_WATCHER, "RegisterStatusNotifierItem", "s", w.buf[:], TRAY_DBUS_CALL_MS)
 	return ok
+}
+
+// The name of the watcher changed hands: a panel left, or came (back). The icon goes to the new one.
+@(private)
+sni_watcher_changed :: proc(user: rawptr, msg: ^dbus.Message) {
+	t := (^Tray)(user)
+	r := dbus.msg_reader(msg)
+	if dbus.r_string(&r) != SNI_WATCHER { return }
+	_ = dbus.r_string(&r)
+	t.added = dbus.r_string(&r) != "" && sni_register(t)
+	if t.added { tray_push(t, {kind = .Recreated}) }
+}
+
+// The menu changed: the host reads it again.
+@(private)
+tray_menu_changed :: proc(t: ^Tray) {
+	t.menu_revision += 1
+	if !t.added || t.conn == nil { return }
+	w := dbus.body_writer()
+	dbus.w_u32(&w, t.menu_revision)
+	dbus.w_i32(&w, 0)   // the root
+	dbus.emit_signal(t.conn, t.menu_path, DBUSMENU_IFACE, "LayoutUpdated", "ui", w.buf[:])
 }
 
 // org.kde.StatusNotifierItem on our object: the host calls Activate / ContextMenu / Scroll and reads properties.
@@ -301,7 +335,7 @@ sni_write_prop :: proc(t: ^Tray, w: ^dbus.Writer, name: string) -> bool {
 	case "Status":     dbus.arg_variant_string(w, "Active"); return true
 	case "IconName":   dbus.arg_variant_string(w, ""); return true
 	case "ItemIsMenu": dbus.arg_variant_bool(w, false); return true
-	case "Menu":       dbus.arg_variant_object(w, DBUSMENU_PATH); return true
+	case "Menu":       dbus.arg_variant_object(w, t.menu_path); return true
 	case "IconPixmap":
 		sni_write_icon_pixmap(t, w)
 		return true
@@ -361,6 +395,7 @@ notify_closed_signal :: proc(user: rawptr, msg: ^dbus.Message) {
 	id := dbus.r_u32(&r)
 	reason := dbus.r_u32(&r)
 	if id != t.last_notify { return }
+	t.last_notify = 0
 	// reason: 1 expired, 2 dismissed by user, 3 closed by call
 	tray_push(t, reason == 1 ? Tray_Event{kind = .Notify_Timeout} : Tray_Event{kind = .Notify_Hidden})
 }

@@ -21,12 +21,16 @@ Text_Input_Listener :: struct {
 ti_enter :: proc "c" (data: rawptr, ti: Wl_Proxy, surface: Wl_Proxy) {
 	context = wl_ctx_real()
 	wlc.ti_window = window_of_surface(surface)
-	if wlc.ti_enabled { wl_ti_enable() }
+	if wlc.ti_enabled {
+		wl_ti_enable()
+		if r := wlc.ti_rect; r != {} { wl_ti_send_rect(r) }   // (the compositor forgot what it was told before the leave)
+	}
 }
 @(private)
 ti_leave :: proc "c" (data: rawptr, ti: Wl_Proxy, surface: Wl_Proxy) {
 	context = wl_ctx_real()
 	wlc.ti_window = nil
+	ime_compose_reset(&wlc.ime)   // (the composition stays with the window that lost the keyboard: nothing commits it now)
 }
 @(private)
 ti_preedit :: proc "c" (data: rawptr, ti: Wl_Proxy, text: cstring, cursor_begin, cursor_end: i32) {
@@ -66,7 +70,9 @@ wl_ime_set_enabled :: proc(w: ^Window, on: bool) {
 	} else {
 		wl.proxy_marshal_flags(wlc.text_input, ZWP_TI_DISABLE, nil, wl.proxy_get_version(wlc.text_input), 0)
 		wl_ti_commit_state()
+		context = wl_ctx_real()   // (what it holds was made in the listeners)
 		ime_compose_reset(&wlc.ime)
+		wlc.ti_rect = {}
 	}
 }
 
@@ -91,17 +97,25 @@ wl_ime_set_cursor_rect :: proc(w: ^Window, x, y, width, height: int) {
 	if w == nil || wlc.text_input == nil || !wlc.ti_enabled { return }
 	// the compositor wants surface-local (logical) coordinates; our pixels are physical
 	r := ime_cursor_rect_logical(x, y, width, height, w.dpi_scale)
+	wlc.ti_rect = r
+	wl_ti_send_rect(r)
+}
+
+@(private = "file")
+wl_ti_send_rect :: proc(r: [4]i32) {
 	wl.proxy_marshal_flags(wlc.text_input, ZWP_TI_SET_CURSOR_RECTANGLE, nil, wl.proxy_get_version(wlc.text_input), 0, r[0], r[1], r[2], r[3])
 	wl_ti_commit_state()
 }
 
+// (one composition for the seat: it is the window's that has the text input)
 @(private)
 wl_ime_preedit :: proc(w: ^Window) -> (text: string, cursor: int) {
+	if w != wlc.ti_window { return "", 0 }
 	return wlc.ime.preedit, wlc.ime.cursor
 }
 
 @(private)
 wl_ime_preedit_changed :: proc(w: ^Window) -> bool {
-	return ime_compose_take_changed(&wlc.ime)
+	return w == wlc.ti_window && ime_compose_take_changed(&wlc.ime)
 }
 
