@@ -1042,7 +1042,9 @@ a_connection_without_the_shell_stays_failed_on_wayland :: proc(t: ^testing.T) {
 
 @(private = "file")
 bus_start :: proc() {
-	sh("rm -f /tmp/gt_bus.sock; dbus-daemon --session --nofork --address=", BUS_ADDRESS, " >/dev/null 2>&1 & echo $! > /tmp/gt_bus.pid; for i in $(seq 50); do [ -S /tmp/gt_bus.sock ] && break; sleep 0.1; done")
+	sh("rm -f /tmp/gt_bus.sock; printf '<busconfig><type>session</type><listen>", BUS_ADDRESS, "</listen><auth>EXTERNAL</auth>",
+		"<policy context=\"default\"><allow send_destination=\"*\" eavesdrop=\"true\"/><allow eavesdrop=\"true\"/><allow own=\"*\"/></policy></busconfig>' > /tmp/gt_bus.conf; ",
+		"dbus-daemon --config-file=/tmp/gt_bus.conf --nofork >/dev/null 2>&1 & echo $! > /tmp/gt_bus.pid; for i in $(seq 50); do [ -S /tmp/gt_bus.sock ] && break; sleep 0.1; done")
 }
 
 @(private = "file")
