@@ -22,6 +22,7 @@ import "core:time"
 import "../../devtools"
 import "../../examples/whatsnew"
 import "../../testkit/session"
+import "../../ui"
 
 // The numbers a page shows live (its frame counters, its timings) may differ on this share of its pixels, by this much.
 @(private = "file") MAX_SHARE :: 0.004
@@ -504,7 +505,7 @@ devtools_screencast_comes_to_rest :: proc(t: ^testing.T) {
 	end := time.tick_add(time.tick_now(), CALL_LIMIT)
 	for rest < CAST_REST_ROUNDS || frames == 0 {
 		if time.tick_diff(time.tick_now(), end) <= 0 { break }
-		asked := sync.atomic_load(&srv.asked) || sync.atomic_load(&srv.waiting) > 0 || sync.atomic_load(&srv.screencast.same)
+		asked := sync.atomic_load(&srv.asked) || sync.atomic_load(&srv.waiting) > 0 || sync.atomic_load(&srv.cast_same) != 0
 		if asked { session.frame(r.s) } else { thread.yield() }
 		busy := sync.atomic_load(&srv.encoding) > 0
 		for m in devtools.local_take(c.l, context.temp_allocator) {
@@ -813,4 +814,203 @@ devtools_edit_history_and_its_limits :: proc(t: ^testing.T) {
 	_, _, after := box_content(dt, id)
 	testing.expect_value(t, after, before)
 	leave(dt)
+}
+
+////////////////////////////////
+// What a client holds, and who it is
+
+// How far a drag goes in these tests, past DRAG_PX.
+@(private = "file") DRAG_LENGTH :: 40
+
+@(private = "file")
+mouse :: proc(c: ^Client, kind: string, x, y: int, button := "left", loc := #caller_location) {
+	send(c, "Input.dispatchMouseEvent", fmt.tprintf(`{{"type":%q,"x":%d,"y":%d,"button":%q}}`, kind, x, y, button), loc)
+}
+
+@(private = "file")
+lines_with :: proc(lines: []string, prefix: string) -> (n: int) {
+	for l in lines { if strings.has_prefix(l, prefix) { n += 1 } }
+	return
+}
+
+// Two clicks of one batch: each press has its release before the next, or the second is no click at all.
+@(test)
+devtools_two_clicks_in_a_batch :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	send(c, "Toolkit.startRecording", `{"injected":true}`)
+	devtools.local_send(c.l, `{"id":100,"method":"Toolkit.click","params":{"name":"nav1"}}`)
+	devtools.local_send(c.l, `{"id":101,"method":"Toolkit.click","params":{"name":"nav2"}}`)
+	session.frames(r.s, CLIENT_GONE_FRAMES)
+	lines := stop_recording(c)
+	testing.expectf(t, lines_with(lines, "click") == 2, "two clicks: %v", lines)
+}
+
+// A client that goes in the middle of a drag or of a key does not leave them down.
+@(test)
+devtools_what_a_client_held_goes_up :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	tool := connect(r)
+	send(c, "Toolkit.startRecording", `{"injected":true}`)
+	mouse(tool, "mousePressed", CONTENT_X, CONTENT_Y)
+	mouse(tool, "mouseMoved", CONTENT_X + DRAG_LENGTH, CONTENT_Y)
+	send(tool, "Input.dispatchKeyEvent", `{"type":"rawKeyDown","key":"Shift"}`)
+	devtools.local_close(tool.l)
+	tool.closed = true
+	released := false
+	for _ in 0 ..< CLIENT_GONE_FRAMES {
+		session.frame(r.s)
+		for e in ui.build_events(&r.app.s) { if e.kind == .Key_Release && e.key == .Shift { released = true } }
+	}
+	testing.expect(t, released, "the key came up")
+	lines := stop_recording(c)
+	testing.expectf(t, lines_with(lines, "up ") == 1, "the button came up: %v", lines)
+}
+
+// A recording is its asker's: nobody else reads or ends it, and it ends with it, typed text and all.
+@(test)
+devtools_a_recording_ends_with_its_client :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	tool := connect(r)
+	send(tool, "Toolkit.startRecording", `{"injected":true}`)
+	send(tool, "Input.insertText", `{"text":"a password"}`)
+	session.frames(r.s, 2)
+	_, refused := ask(c, "Toolkit.pollRecording")
+	testing.expect(t, refused != "", "another client reads nothing")
+	_, refused = ask(c, "Toolkit.stopRecording")
+	testing.expect(t, refused != "", "and stops nothing")
+	_, refused = ask(c, "Toolkit.startRecording")
+	testing.expect(t, refused != "", "and starts nothing over it")
+	leave(tool)
+	testing.expect(t, !r.srv.rec.on, "it ended")
+	testing.expect_value(t, len(r.srv.rec.text), 0)
+	_, refused = ask(c, "Toolkit.startRecording")
+	testing.expect_value(t, refused, "")
+	stop_recording(c)
+}
+
+// A drag cut by the end of the recording still ends, a second button is no part of it, and a right drag stays one.
+@(test)
+devtools_a_recorded_drag_is_whole :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	x, y := CONTENT_X, CONTENT_Y
+	send(c, "Toolkit.startRecording", `{"injected":true}`)
+	mouse(c, "mousePressed", x, y)
+	mouse(c, "mouseMoved", x + DRAG_LENGTH, y)
+	session.frames(r.s, 2)
+	lines := stop_recording(c)
+	testing.expectf(t, lines_with(lines, "up ") == 1, "cut by the stop: %v", lines)
+	mouse(c, "mouseReleased", x + DRAG_LENGTH, y)
+	session.frames(r.s, 2)
+
+	send(c, "Toolkit.startRecording", `{"injected":true}`)
+	mouse(c, "mousePressed", x, y)
+	mouse(c, "mouseMoved", x + DRAG_LENGTH, y)
+	session.frames(r.s, 2)
+	mouse(c, "mousePressed", x + DRAG_LENGTH, y, "right")
+	session.frames(r.s, 2)
+	mouse(c, "mouseReleased", x + DRAG_LENGTH, y)
+	session.frames(r.s, 2)
+	mouse(c, "mouseReleased", x + DRAG_LENGTH, y, "right")
+	session.frames(r.s, 2)
+	lines = stop_recording(c)
+	testing.expectf(t, lines_with(lines, "up ") == 1, "a second button in a drag: %v", lines)
+	testing.expectf(t, lines_with(lines, "down ") == 1, "%v", lines)
+
+	send(c, "Toolkit.startRecording", `{"injected":true}`)
+	mouse(c, "mousePressed", x, y, "right")
+	mouse(c, "mouseMoved", x + DRAG_LENGTH, y)
+	session.frames(r.s, 2)
+	mouse(c, "mouseReleased", x + DRAG_LENGTH, y, "right")
+	session.frames(r.s, 2)
+	lines = stop_recording(c)
+	right := false
+	for l in lines { if strings.has_prefix(l, "down ") && strings.has_suffix(l, " --button right") { right = true } }
+	testing.expectf(t, right, "a right drag: %v", lines)
+	for l in lines { if strings.has_prefix(l, "up ") { testing.expectf(t, strings.has_suffix(l, " --button right"), "%s", l) } }
+}
+
+// A screencast is its client's: nobody else takes it over, ends it or acks its frames.
+@(test)
+devtools_a_screencast_is_its_client_s :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	tool := connect(r)
+	send(tool, "Page.startScreencast", `{"format":"png","minIntervalMs":0}`)
+	_, refused := ask(c, "Page.startScreencast", `{"format":"png"}`)
+	testing.expect(t, refused != "", "it is taken")
+	send(c, "Page.stopScreencast")
+	frames := 0
+	end := time.tick_add(time.tick_now(), CALL_LIMIT)
+	for frames == 0 && time.tick_diff(time.tick_now(), end) > 0 {
+		session.frame(r.s)
+		send(tool, "Toolkit.state")
+		for e in tool.events { if e.method == "Page.screencastFrame" { frames += 1 } }
+	}
+	testing.expect(t, frames > 0, "the other client's stop stopped nothing")
+	send(tool, "Page.stopScreencast")
+}
+
+// A client that highlighted a box and went takes the highlight with it, though it never asked for the document.
+@(test)
+devtools_a_highlight_goes_with_its_client :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	id := node_id(by_id(document(c), "nav4"))
+	tool := connect(r)
+	send(tool, "Overlay.highlightNode", fmt.tprintf(`{{"nodeId":%d}}`, id))
+	testing.expect(t, r.app.s.inspected != 0, "it is lit")
+	leave(tool)
+	testing.expect_value(t, r.app.s.inspected, ui.Key(0))
+}
+
+// What moves the tree's client's history, or tells it of nodes, is for that client: another takes the tree first.
+@(test)
+devtools_the_tree_is_its_client_s :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	id := node_id(by_id(document(c), "nav4"))
+	send(c, "DOM.removeNode", fmt.tprintf(`{{"nodeId":%d}}`, id))
+	testing.expect_value(t, count_named(c, "nav4"), 0)
+	tool := connect(r)
+	_, refused := ask(tool, "DOM.undo")
+	testing.expect(t, refused != "", "another client's undo")
+	testing.expect_value(t, count_named(c, "nav4"), 0)
+	_, refused = ask(tool, "DOM.requestChildNodes", fmt.tprintf(`{{"nodeId":%d}}`, id))
+	testing.expect(t, refused != "", "a read that would tell the owner")
+	send(c, "DOM.undo")
+	testing.expect_value(t, count_named(c, "nav4"), 1)
+}
+
+// CSS.setStyleTexts does all of it or none: an error says nothing was done.
+@(test)
+devtools_style_edits_are_all_or_none :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	id := node_id(by_id(document(c), "nav4"))
+	sheet := fmt.tprintf("toolkit-%d", id)
+	before := send(c, "CSS.getInlineStylesForNode", fmt.tprintf(`{{"nodeId":%d}}`, id))
+	text := text_of(field(field(before, "inlineStyle"), "cssText"))
+	_, refused := ask(c, "CSS.setStyleTexts", fmt.tprintf(`{{"edits":[{{"styleSheetId":%q,"text":"opacity: 0.5;"}},{{"styleSheetId":"toolkit-999999","text":"opacity: 0.5;"}}]}}`, sheet))
+	testing.expect(t, refused != "", "a box that is not there")
+	after := send(c, "CSS.getInlineStylesForNode", fmt.tprintf(`{{"nodeId":%d}}`, id))
+	testing.expect_value(t, text_of(field(field(after, "inlineStyle"), "cssText")), text)
+}
+
+// A program that goes on after devtools.stop, told so: the edits and the accessibility tree of the clients end there.
+@(test)
+devtools_a_program_that_goes_on_after_stop :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	send(c, "DOM.removeNode", fmt.tprintf(`{{"nodeId":%d}}`, node_id(by_id(document(c), "nav4"))))
+	testing.expect_value(t, count_named(c, "nav4"), 0)
+	send(c, "Overlay.highlightNode", fmt.tprintf(`{{"nodeId":%d}}`, node_id(by_id(document(c), "nav3"))))
+	r.app.devtools = nil
+	devtools.stop(r.srv, &r.app.s)
+	testing.expect_value(t, r.app.s.inspected, ui.Key(0))
+	session.frames(r.s, 2)
+	session.wait_box(r.s, "nav4")
 }

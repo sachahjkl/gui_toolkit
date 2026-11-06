@@ -32,6 +32,10 @@ Conn :: struct {
 	page:   bool,   // on the page's endpoint, not the browser's
 	local:  bool,   // a client of this process (Local_Client): no socket, what it is sent waits in `outbox`
 	outbox: [dynamic]string,   // (under write; the heap's)
+	// what it holds down, the UI thread's own: it goes up when the client goes (input_release)
+	buttons: platform.Mouse_Buttons,
+	keys:    [dynamic]platform.Key,   // (the heap's)
+	pointer: [2]f32,
 }
 
 // A client in this process, with no socket: the same commands, answers and events, without a port. What a program or a test drives itself with; the frames are
@@ -51,6 +55,7 @@ local_connect :: proc(srv: ^Server) -> Local_Client {
 	c := new(Conn, runtime.heap_allocator())
 	c.srv, c.local, c.page = srv, true, true
 	c.outbox.allocator = runtime.heap_allocator()
+	c.keys.allocator = runtime.heap_allocator()
 	sync.lock(&srv.lock)
 	append(&srv.conns, c)
 	sync.unlock(&srv.lock)
@@ -88,17 +93,26 @@ local_take :: proc(l: Local_Client, allocator := context.allocator) -> []string 
 	return out
 }
 
-// The client goes, as a connection that ends: what it edited goes with it. The connection is freed by a later frame or by `stop`.
+// The client goes, as a connection that ends: what it edited goes with it, what it held down goes up. The connection is freed
+// by a later frame or by `stop`: `l` is not to be used after this.
 local_close :: proc(l: Local_Client) {
 	sync.atomic_store(&l.conn.done, true)
 	sync.atomic_store(&l.conn.srv.ended, true)
 }
 
+// A connection whose thread, if it has one, has ended or is told to.
 @(private)
-local_free :: proc(c: ^Conn) {
+conn_free :: proc(c: ^Conn) {
 	h := runtime.heap_allocator()
-	for m in c.outbox { delete(m, h) }
-	delete(c.outbox)
+	if c.local {
+		for m in c.outbox { delete(m, h) }
+		delete(c.outbox)
+	} else {
+		thread.join(c.thread)
+		thread.destroy(c.thread)
+	}
+	delete(c.keys)
+	free(c, h)
 }
 
 // A command is small: a message over this ends the connection.
@@ -107,6 +121,9 @@ MAX_MESSAGE :: 16 * 1024 * 1024
 // A client that stops reading must not hold the UI thread, which answers on its socket.
 @(private)
 SEND_TIMEOUT :: 5 * time.Second
+// A connection that sends no request must not hold a thread for as long as the program lives. (Once upgraded, a client may be
+// silent for as long as it likes.)
+REQUEST_TIMEOUT :: 5 * time.Second
 // accept failing for good (no descriptor left, say) must not take a core.
 @(private)
 ACCEPT_RETRY :: 50 * time.Millisecond
@@ -119,6 +136,9 @@ MAX_HEADERS_BYTES :: 64 * 1024
 HTTP_HEAD_END :: "\r\n\r\n"
 
 // RFC 6455: the opcodes (from WS_OP_CONTROL on, control frames, whole and at most WS_MAX_CONTROL_PAYLOAD long).
+@(private) WS_VERSION :: "13"
+// The bits of a frame's first byte for extensions: none was agreed on, so none may be set.
+@(private) WS_RSV_BITS :: 0x70
 @(private) WS_OP_CONTINUATION :: 0x0
 @(private) WS_OP_TEXT :: 0x1
 @(private) WS_OP_BINARY :: 0x2
@@ -151,7 +171,9 @@ accept_loop :: proc(srv: ^Server) {
 		if err != nil { time.sleep(ACCEPT_RETRY); continue }
 		c := new(Conn, runtime.heap_allocator())   // (what crosses threads comes from the heap and goes back to it)
 		c.srv, c.sock = srv, sock
+		c.keys.allocator = runtime.heap_allocator()
 		net.set_option(sock, .Send_Timeout, SEND_TIMEOUT)
+		net.set_option(sock, .Receive_Timeout, REQUEST_TIMEOUT)
 		// (its thread first: one that ends at once may be reaped as soon as it is in the list, which then joins it)
 		c.thread = thread.create_and_start_with_poly_data(c, conn_loop)
 		sync.lock(&srv.lock)
@@ -214,7 +236,7 @@ conn_loop :: proc(c: ^Conn) {
 	defer delete(parts)
 	if len(parts) < 2 || parts[0] != "GET" { http_reply(c, "405 Method Not Allowed", "text/plain", "GET only"); return }
 	path := parts[1]
-	key, host, origin := "", "", ""
+	key, host, origin, upgrade, version := "", "", "", "", ""
 	for l in lines[1:] {
 		i := strings.index_byte(l, ':')
 		if i < 0 { continue }
@@ -223,6 +245,8 @@ conn_loop :: proc(c: ^Conn) {
 		case ascii.equal_fold(h, "Sec-WebSocket-Key"): key = v
 		case ascii.equal_fold(h, "Host"):              host = v
 		case ascii.equal_fold(h, "Origin"):            origin = v
+		case ascii.equal_fold(h, "Upgrade"):           upgrade = v
+		case ascii.equal_fold(h, "Sec-WebSocket-Version"): version = v
 		}
 	}
 	// (the one Origin taken: Chrome's own DevTools, on the WebSocket only. A page cannot send it, its browser writes its own.)
@@ -249,6 +273,11 @@ conn_loop :: proc(c: ^Conn) {
 		free_all(context.temp_allocator)
 		return
 	}
+	if !ascii.equal_fold(upgrade, "websocket") || version != WS_VERSION {
+		http_reply(c, "400 Bad Request", "text/plain", "a WebSocket needs Upgrade: websocket and Sec-WebSocket-Version: 13")
+		free_all(context.temp_allocator)
+		return
+	}
 	c.page = strings.has_prefix(path, "/devtools/page/")
 	// the upgrade (RFC 6455): the accept key is base64(sha1(key + the protocol's GUID))
 	h: sha1.Context
@@ -260,16 +289,19 @@ conn_loop :: proc(c: ^Conn) {
 	accept := base64.encode(digest[:], allocator = context.temp_allocator)
 	send_all(c, transmute([]u8)fmt.tprintf("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept))
 	free_all(context.temp_allocator)
+	net.set_option(c.sock, .Receive_Timeout, time.Duration(0))
 
 	msg := make([dynamic]u8)
 	defer delete(msg)
 	frame := make([dynamic]u8)
 	defer delete(frame)
+	fragments := false   // a message has begun and its last frame has not come: only a continuation may follow
 	for {
 		clear(&frame)
 		if !read_exact(&r, 2, &frame) { return }
 		fin := frame[0] & 0x80 != 0
 		op := frame[0] & 0x0f
+		if frame[0] & WS_RSV_BITS != 0 { return }
 		if frame[1] & 0x80 == 0 { return }   // (a client must mask its frames)
 		n := u64(frame[1] & 0x7f)
 		if op >= WS_OP_CONTROL && (n > WS_MAX_CONTROL_PAYLOAD || !fin) { return }   // (a control frame is short and whole)
@@ -296,12 +328,16 @@ conn_loop :: proc(c: ^Conn) {
 			send_frame(c, WS_OP_PONG, frame[:])
 		case WS_OP_PONG:
 		case WS_OP_CONTINUATION, WS_OP_TEXT, WS_OP_BINARY:
+			if (op == WS_OP_CONTINUATION) != fragments { return }   // (one with nothing to continue, or a message within a message)
 			if len(msg) + len(frame) > MAX_MESSAGE { return }   // (the frames of one message add up)
 			append(&msg, ..frame[:])
+			fragments = !fin
 			if fin {
 				if inbox_add(c, string(msg[:])) { platform.wake(c.srv.win) }
 				clear(&msg)
 			}
+		case:   // (an opcode the protocol has not defined)
+			return
 		}
 	}
 }
