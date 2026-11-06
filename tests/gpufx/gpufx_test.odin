@@ -547,3 +547,43 @@ a_line_is_smooth_at_any_angle :: proc(t: ^testing.T) {
 	})
 	testing.expectf(t, cov(img, 60, 40) > 0.9 && cov(img, 100, 120) > 0.9, "whole at its joints: %v, %v", cov(img, 60, 40), cov(img, 100, 120))
 }
+
+// A curve goes where the formula says, and a shape with a hole leaves it empty, with no seam from one contour to the other.
+@(test)
+paths_fill_and_stroke_curves :: proc(t: ^testing.T) {
+	current_space, current_format = .Srgb, .Unorm8
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer close(&f)
+	img := frame(&f, proc(dc: ^draw.Context) { draw.bezier(dc, {20, 120}, {50, 10}, {110, 150}, {140, 40}, 4, {1, 1, 1, 1}) })
+	for k in 1 ..< 8 {
+		at := draw.bezier_cubic_at({20, 120}, {50, 10}, {110, 150}, {140, 40}, f32(k) / 8)
+		testing.expectf(t, cov(img, int(at.x), int(at.y)) > 0.5, "on the curve at %v: %v", at, cov(img, int(at.x), int(at.y)))
+	}
+	testing.expectf(t, cov(img, 80, 20) < 0.01, "not off it: %v", cov(img, 80, 20))
+
+	// a ring: outside, the ring, the hole, and the two contours' starts are not joined
+	img = frame(&f, proc(dc: ^draw.Context) {
+		p := draw.path_make(allocator = context.temp_allocator)
+		draw.path_arc(&p, {80, 80}, {60, 60}, 0, math.TAU)
+		draw.path_close(&p)
+		draw.path_arc(&p, {80, 80}, {30, 30}, math.TAU, 0)
+		draw.path_close(&p)
+		draw.path_fill(dc, &p, {1, 1, 1, 1})
+	})
+	testing.expectf(t, cov(img, 80, 35) > 0.95 && cov(img, 35, 80) > 0.95, "the ring: %v, %v", cov(img, 80, 35), cov(img, 35, 80))
+	testing.expectf(t, cov(img, 80, 80) < 0.01, "its hole: %v", cov(img, 80, 80))
+	testing.expectf(t, cov(img, 125, 80) > 0.95, "no seam where the contours start: %v", cov(img, 125, 80))
+	testing.expectf(t, cov(img, 150, 20) < 0.01, "outside: %v", cov(img, 150, 20))
+
+	// a translucent stroke is even: its pieces do not add up where they overlap
+	img = frame(&f, proc(dc: ^draw.Context) {
+		p := draw.path_make(allocator = context.temp_allocator)
+		draw.path_move_to(&p, {20, 80})
+		draw.path_line_to(&p, {80, 80})
+		draw.path_line_to(&p, {140, 80})
+		draw.path_stroke(dc, &p, 8, {1, 1, 1, 0.5})
+	})
+	a, b := cov(img, 50, 80), cov(img, 80, 80)
+	testing.expectf(t, math.abs(a - b) < 0.02, "the same along it and at a joint: %v, %v", a, b)
+}

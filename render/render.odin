@@ -160,6 +160,7 @@ Xform_Data :: struct {
 CLIP_RRECT :: 0     // rounded rect: center, half_size, per-corner radii
 CLIP_ELLIPSE :: 1   // ellipse: center, half_size = radii
 CLIP_POLYGON :: 2   // polygon: points[first ..< first + count] of the frame's point table, local space
+POLYGON_BREAK :: 1e29   // a point of a polygon past it ends a contour (rect.wgsl polygon_sdf)
 // Clip_Data.flags
 CLIP_CIRCLE :: 1    // rounded rect: circular corners whatever set_corner_smoothing says
 CLIP_EVENODD :: 2   // polygon: even-odd fill rule (else nonzero)
