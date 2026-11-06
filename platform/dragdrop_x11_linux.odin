@@ -336,7 +336,7 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 				break
 			}
 		}
-		if time.duration_milliseconds(time.tick_since(deadline)) > DND_SOURCE_WAIT_MS { break }
+		if time.duration_milliseconds(time.tick_since(deadline)) > dnd_silence_ms(w) { break }
 		if ev == nil { poll_fd_wait(x11c.fd, XDND_SOURCE_POLL_MS) }
 	}
 	if !dropped && x11c.dnd_source.target != 0 { x11_send_source_leave(x11c.dnd_source.target) }

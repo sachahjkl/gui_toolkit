@@ -143,6 +143,7 @@ ole_ready :: proc() -> bool {
 	image_size:   [2]int,      // what the system's drag image helper holds for the last drag_start (drag_image_held)
 	image_offset: [2]int,
 	image_held:   bool,
+	silence_ms:   int,         // drag_silence_limit (the system's loop has no limit)
 }
 
 @(private) IID_IUnknown := win.GUID{0x00000000, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
