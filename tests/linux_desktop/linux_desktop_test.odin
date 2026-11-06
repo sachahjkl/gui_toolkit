@@ -768,8 +768,8 @@ a_new_keymap_is_followed_on_x11 :: proc(t: ^testing.T) {
 	seen: Seen
 	defer delete(seen.events)
 	sh("xdotool key --delay 400 eacute &")
-	wait_text(w, &seen, "é", 2500)
-	testing.expect_value(t, texts(&seen), "é")
+	wait_text(w, &seen, "\u00e9", 2500)
+	testing.expect_value(t, texts(&seen), "\u00e9")
 }
 
 ////////////////////////////////
