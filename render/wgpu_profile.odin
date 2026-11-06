@@ -48,7 +48,7 @@ wgpu_profile_release :: proc(r: ^Renderer) {
 	g := &r.wg
 	for i in 0 ..< GPU_QUERY_FRAMES {
 		if g.pf.read[i] != nil {
-			if sync.atomic_load(&g.shared.prof[i]) == .Mapped { wgpu.BufferUnmap(g.pf.read[i]) }
+			if sync.atomic_load(&g.shared.prof[i]) == .Mapped { wgpu.BufferUnmap(g.pf.read[i]) }   // (a read buffer: the device made shared)
 			wgpu.BufferRelease(g.pf.read[i])
 		}
 		delete(g.pf.recs[i])
@@ -56,7 +56,7 @@ wgpu_profile_release :: proc(r: ^Renderer) {
 	if g.pf.resolve != nil { wgpu.BufferRelease(g.pf.resolve) }
 	if g.pf.qs != nil { wgpu.QuerySetRelease(g.pf.qs) }
 	g.pf = {slot = -1}
-	for &s in g.shared.prof { sync.atomic_store(&s, Wprof_State.Free) }
+	if g.shared != nil { for &s in g.shared.prof { sync.atomic_store(&s, Wprof_State.Free) } }
 }
 
 @(private)
