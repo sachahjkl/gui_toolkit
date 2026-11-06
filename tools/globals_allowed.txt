@@ -119,7 +119,6 @@ platform/window_wl_linux.odin keyboard_listener const  # a listener table (passe
 platform/window_wl_linux.odin xdg_surface_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin xdg_toplevel_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin decoration_listener const  # a listener table (passed by address to libwayland)
-platform/window_wl_linux.odin frame_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin fractional_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin data_device_listener const  # a listener table (passed by address to libwayland)
 platform/window_x11_linux.odin x11c thread  # this thread's X11 connection: its events, its windows, its selections
