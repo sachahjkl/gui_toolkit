@@ -259,6 +259,8 @@ Toast :: struct {
 	len:     int,
 	born_ms: f64,
 	life_ms: f64,
+	action:  proc(user: rawptr),   // what a click does besides dismissing it (toast_action)
+	user:    rawptr,
 }
 
 Focus_Entry :: struct {
