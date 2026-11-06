@@ -85,6 +85,70 @@ injected_close_closes_the_window :: proc(t: ^testing.T) {
 	testing.expect(t, len(evs) == 1 && evs[0].injected, "an injected event says so (the real pointer is elsewhere)")
 }
 
+// A release of a button pressed elsewhere says nothing, nor one that comes after a lost capture made it.
+@(test)
+a_release_comes_once_and_only_of_a_press :: proc(t: ^testing.T) {
+	w := platform.open_window("release", {200, 150})
+	defer platform.destroy_window(w)
+	h := w.hwnd
+	win.SendMessageW(h, win.WM_LBUTTONUP, 0, xy(10, 10))
+	testing.expect_value(t, len(w.events), 0)
+	win.SendMessageW(h, win.WM_LBUTTONDOWN, 0, xy(10, 10))
+	win.ReleaseCapture()
+	win.SendMessageW(h, win.WM_LBUTTONUP, 0, xy(10, 10))
+	testing.expect_value(t, len(w.events), 2)
+}
+
+// What the pump left for the loop ends the wait: a wait does not sleep over a repaint asked for, nor over events kept.
+@(test)
+a_wait_does_not_sleep_over_what_is_left :: proc(t: ^testing.T) {
+	w := platform.open_window("wait", {200, 150})
+	defer platform.destroy_window(w)
+	for len(platform.poll_events(w, false)) > 0 {}
+	drain :: proc(w: ^platform.Window) {
+		msg: win.MSG
+		for win.PeekMessageW(&msg, nil, 0, 0, win.PM_REMOVE) { win.DispatchMessageW(&msg) }
+	}
+	drain(w)
+	w.paint_requested = true
+	start := time.tick_now()
+	platform.wait_event(w, WAIT_THAT_ENDS_A_FAILING_RUN_MS)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < WAIT_THAT_ENDS_A_FAILING_RUN_MS / 2, "a repaint asked for")
+	platform.take_paint_request(w)
+	drain(w)
+	win.SendMessageW(w.hwnd, win.WM_KEYDOWN, win.WPARAM('A'), 0)   // (queued by the window procedure, no message left)
+	start = time.tick_now()
+	platform.wait_event(w, WAIT_THAT_ENDS_A_FAILING_RUN_MS)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < WAIT_THAT_ENDS_A_FAILING_RUN_MS / 2, "an event not handed out")
+}
+
+WAIT_THAT_ENDS_A_FAILING_RUN_MS :: 2000
+
+// A batch stays whole while the app reads it, whatever comes meanwhile: a drag or a paste run from an event pump the system.
+@(test)
+a_batch_outlives_what_comes_while_it_is_read :: proc(t: ^testing.T) {
+	w := platform.open_window_offscreen("batch", {16, 16})
+	defer platform.destroy_window(w)
+	platform.inject_event(w, {kind = .Key_Press, key = .A})
+	evs := platform.poll_events(w, false)
+	testing.expect_value(t, len(evs), 1)
+	for _ in 0 ..< 1000 { append(&w.events, platform.Event{kind = .Mouse_Move}) }   // (as a window procedure does)
+	testing.expect_value(t, evs[0].key, platform.Key.A)
+	testing.expect(t, raw_data(evs) != raw_data(w.events[:]), "the batch is not the queue the system appends to")
+}
+
+// A Close is the app's to answer: taken back, the window is open.
+@(test)
+a_close_can_be_taken_back :: proc(t: ^testing.T) {
+	w := platform.open_window_offscreen("veto", {16, 16})
+	defer platform.destroy_window(w)
+	platform.request_close(w)
+	platform.poll_events(w, false)
+	testing.expect(t, platform.is_closed(w))
+	platform.cancel_close(w)
+	testing.expect(t, !platform.is_closed(w))
+}
+
 // %APPDATA% longer than MAX_PATH (a roaming profile on a deep UNC path) is read whole, not sliced out of bounds.
 @(test)
 config_dir_with_a_long_path :: proc(t: ^testing.T) {
