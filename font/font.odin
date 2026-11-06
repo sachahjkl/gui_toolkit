@@ -220,6 +220,7 @@ State :: struct {
 	free_slots: [dynamic]int,        // slots of unloaded fonts, to reuse (under mu)
 	keys:       map[string]Font_Id,  // what made each font, for sharing
 	words:      Word_Cache,
+	ink:        Ink_Cache,           // where glyphs have ink along a band (ink.odin)
 	atlas:      Atlas,
 	emoji:        Emoji_Source,      // the built-in emoji font (emoji.odin)
 	colr_drawn:   int,               // glyphs the COLR interpreter drew (atomic), and those it refused (a graph it cannot read)
@@ -315,6 +316,7 @@ set_settings :: proc(s: ^State, settings: Settings) {
 destroy :: proc(s: ^State) {
 	context.allocator = runtime.heap_allocator()
 	words_destroy(&s.words)
+	ink_cache_destroy(&s.ink)
 	platform_stop(s)   // (the color glyph thread uses the backend)
 	if s.tb != nil { s.tb.stop(s) }
 	atlas_destroy(&s.atlas)
@@ -527,6 +529,7 @@ unload :: proc(s: ^State, id: Font_Id) {
 	context.allocator = runtime.heap_allocator()
 	f := font_ptr(s, id)
 	if f == nil { return }
+	ink_cache_clear(&s.ink)
 	words_clear(&s.words)
 	if f.kind == .Face {
 		platform_forget_face(s, id)

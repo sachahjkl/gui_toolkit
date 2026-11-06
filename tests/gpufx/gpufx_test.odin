@@ -523,6 +523,29 @@ gpu_timing_measures_the_frames :: proc(t: ^testing.T) {
 	testing.expectf(t, ms > 0 && ms == render.gpu_ms(&f.r), "its time %v ms", ms)
 }
 // A line at an angle: whole on its axis, nothing away from it, and edges of partial coverage, where rows of a rect would leave steps.
+// The stroke of an O: its outer and inner edges, nothing inside or out.
+@(test)
+a_glyph_is_stroked_along_its_outlines :: proc(t: ^testing.T) {
+	current_space, current_format = .Srgb, .Unorm8
+	f: Fx
+	font.init(&f.fonts)
+	defer font.destroy(&f.fonts)
+	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer close(&f)
+	img := frame(&f, proc(dc: ^draw.Context) {
+		id, _ := font.load_embedded(dc.fonts, font.FALLBACK_UI_DATA)
+		sh := font.shape(dc.fonts, id, 100, "O", {}, context.temp_allocator)
+		draw.glyph_run_stroke(dc, 100, {30, 130}, {1, 1, 1, 1}, sh.glyphs, 3)
+	})
+	runs, was := 0, false
+	for x in 0 ..< SIZE.x {
+		on := cov(img, x, 95) > 0.5
+		if on && !was { runs += 1 }
+		was = on
+	}
+	testing.expect_value(t, runs, 4)
+}
+
 @(test)
 a_line_is_smooth_at_any_angle :: proc(t: ^testing.T) {
 	current_space, current_format = .Srgb, .Unorm8
