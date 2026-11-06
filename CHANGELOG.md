@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.87.0] - 2026-11-06
+
+### Added
+- **`push_clip_polygon` takes several contours**: a point past `render.POLYGON_BREAK` ends one, with no edge to the next: a clip with holes.
+- **`draw.Path`**: lines, quadratic and cubic Bézier curves, arcs and rounded rectangles, flattened to a tolerance, filled (`path_fill`, nonzero or even-odd, holes included) or stroked (`path_stroke`, round ends and joins, even in translucent colors), with `path_contains` for hit tests, `path_bounds`, `bezier_cubic_at`, `bezier_quad_at` and `draw.bezier`.
+- **`draw.line`, `draw.polyline`**: a line of any angle, with round ends and antialiased edges.
+
+### Changed
+- **`render.release_targets`** takes the textures to leave: a picture still on screen stays, for the program to carry over to the new generation.
+
 ## [0.86.0] - 2026-11-06
 
 ### Added
@@ -1707,6 +1717,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.87.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.87.0
 [0.86.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.86.0
 [0.85.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.85.0
 [0.84.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.84.0
