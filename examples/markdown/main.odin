@@ -183,7 +183,7 @@ main :: proc() {
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	platform.show_window(app.win)
 	for !platform.is_closed(app.win) {
-		if app.frames == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_ms(&app.ui_state)); app.slept = true }
+		if app.frames == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_in_ms(&app.ui_state)); app.slept = true }
 		frame(app)
 		if app.frames > 0 { app.frames -= 1 }
 	}

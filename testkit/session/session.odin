@@ -135,8 +135,8 @@ Own :: struct {
 // The session a frame runs for (the clipboard callbacks of Build_Params take no argument). A test's only: one test at a time.
 @(private) current: ^Session
 // The thread of the test running, while one runs: a second thread at once means the runner was not told -define:ODIN_TEST_THREADS=1.
-@(private) owner_thread: int
-@(private) live_sessions: int
+@(private) owner_thread: int    // (atomic)
+@(private) live_sessions: int   // (atomic)
 
 // An application around `o.build`, offscreen, with the embedded fonts and the offscreen renderer. It ends with the test.
 start :: proc(t: ^testing.T, o: Options, loc := #caller_location) -> ^Session {
@@ -197,9 +197,8 @@ attach :: proc(t: ^testing.T, app: Application, loc := #caller_location) -> ^Ses
 session_new :: proc(t: ^testing.T, loc: runtime.Source_Code_Location) -> ^Session {
 	testing.set_fail_timeout(t, TEST_LIMIT, loc)
 	me := sync.current_thread_id()
-	if live_sessions > 0 && owner_thread != me { stop_test(t, "two tests at once: run this package with -define:ODIN_TEST_THREADS=1", loc) }
-	owner_thread = me
-	live_sessions += 1
+	if sync.atomic_add(&live_sessions, 1) > 0 && sync.atomic_load(&owner_thread) != me { stop_test(t, "two tests at once: run this package with -define:ODIN_TEST_THREADS=1", loc) }
+	sync.atomic_store(&owner_thread, me)
 	s := new(Session)
 	s.t = t
 	s.test = context
@@ -217,7 +216,7 @@ session_new :: proc(t: ^testing.T, loc: runtime.Source_Code_Location) -> ^Sessio
 // The test is over (testing.cleanup: on the runner's main thread when it was stopped by a failure).
 @(private)
 session_end :: proc(s: ^Session) {
-	live_sessions -= 1
+	sync.atomic_sub(&live_sessions, 1)
 	if s.thread != sync.current_thread_id() { return }   // (stopped in the middle of what it was doing: its state stays as it was, with the process)
 	context = s.ctx
 	if testing.failed(s.t) { keep_failure(s) }
@@ -330,6 +329,7 @@ own_frame :: proc(s: ^Session) {
 	if region, partial := s.damage.?; partial {
 		draw.damage_begin(&own.dc)
 		draw.damage(&own.dc, region)
+		s.damage = nil
 	}
 	ui.draw_tree(s.state, &own.dc)
 	draw.end_frame(&own.dc)
@@ -343,14 +343,16 @@ own_frame :: proc(s: ^Session) {
 frames :: proc(s: ^Session, n: int) { for _ in 0 ..< n { frame(s) } }
 
 // `ms` of the clock go by, frame by frame: what is due on the way (a caret's blink, a tooltip's delay, the end of an animation) happens.
-advance :: proc(s: ^Session, ms: f64) {
+advance :: proc(s: ^Session, ms: f64, loc := #caller_location) {
+	if ui.building() { failed(s, "advance inside a build: no frame can be made, the clock would never move", loc) }
 	end := s.clock + ms
 	for s.clock < end {
 		frame(s)
 	}
 }
 
-// Nothing moves any more: the frames it takes, each one of the usual length to the clock.
+// Nothing moves any more: the frames it takes, each one of the usual length to the clock. A timed wake is no movement (a
+// caret blinks for ever): what it waits for is `advance`'s.
 wait_idle :: proc(s: ^Session, deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) {
 	end := time.tick_add(time.tick_now(), deadline)
 	quiet := 0
@@ -416,7 +418,10 @@ set_dpi :: proc(s: ^Session, dpi_scale: f32) {
 @(private) DPI_BASE :: 96   // dpi of a scale of 1
 
 // The drawing context of an application of `start`.
-draw_context :: proc(s: ^Session) -> ^draw.Context { return &s.own.dc }
+draw_context :: proc(s: ^Session, loc := #caller_location) -> ^draw.Context {
+	if s.own == nil { failed(s, "draw_context: an attached application draws with its own", loc) }
+	return &s.own.dc
+}
 
 // The window becomes the one the user is in, or stops being it (another session's window takes it: `activate(b, true)` after `activate(a, false)`).
 activate :: proc(s: ^Session, on: bool) {

@@ -88,6 +88,7 @@ STEPS := []Step{
 	{name = "autoscroll", oses = EVERYWHERE},
 	// the interface, with no window
 	{name = "post", one = true},
+	{name = "machines", one = true},
 	{name = "panes", one = true},
 	{name = "docking", one = true},
 	{name = "keyboard", one = true, wgpu = .Ci2},

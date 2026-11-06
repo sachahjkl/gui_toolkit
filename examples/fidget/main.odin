@@ -285,7 +285,7 @@ main :: proc() {
 	for !platform.is_closed(app.win) && !app.want_quit {
 		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) {
 			when #config(LOOP_PROBE, false) { fmt.eprintln("loop: idle wait, frame", app.frame_index, "anim_mode", app.anim_mode, "enabled", animations_enabled(app), "os", platform.os_animations_enabled()) }
-			platform.wait_event(app.win, ui.wake_ms(&app.ui_state))
+			platform.wait_event(app.win, ui.wake_in_ms(&app.ui_state))
 			app.slept = true
 		}
 		frame(app)

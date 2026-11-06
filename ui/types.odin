@@ -393,6 +393,7 @@ State :: struct {
 	menus:           [dynamic]Menu_Level,   // the open menu and its open submenus, outermost first (menu.odin)
 	menu_build:      [dynamic]int,          // levels whose items are being built (innermost last)
 	menu_close_pending: bool,               // an item was chosen: the menu closes when its block ends, not in the middle of it
+	menu_next:       Maybe(Menu_Level),     // a menu opened from inside a menu's block: it opens when the block ends
 	menu_keys:       Events,                // key presses and text of this frame while a menu is open: the menu owns them
 	popup_stack:     [dynamic]bool,   // one entry per open popup scope: did it push parents/tags?
 	hover_since_ms:  f64,

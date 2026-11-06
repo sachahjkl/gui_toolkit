@@ -358,7 +358,7 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 	b := build_box({.Clickable}, id)
 	b.cursor = .Hand
 	sig = signal(b)
-	if sig.pressed {
+	if sig.pointer_pressed {
 		p := slider_pct(b)
 		pl, ph := (lo_v^ - lo) / (hi - lo), (hi_v^ - lo) / (hi - lo)
 		which: f32 = abs(p - pl) < abs(p - ph) ? 0 : 1
@@ -416,7 +416,7 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 			key := sig.box.key
 			old := value^
 			if sig.pressed { value^ += dir * amount; timer_set(key, STEPPER_REPEAT_DELAY_MS) }
-			else if sig.dragging && timer_due(key) { value^ += dir * amount; timer_set(key, STEPPER_REPEAT_MS) }
+			else if sig.dragging && sig.hovering && timer_due(key) { value^ += dir * amount; timer_set(key, STEPPER_REPEAT_MS) }   // (off the button it waits, as a scroll bar's arrow does)
 			if sig.dragging {
 				// a wake at the next repeat, not a frame at every refresh while the button is held
 				if t, ok := s.timers[key]; ok {
@@ -777,8 +777,7 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig:
 	s := gs()
 	em := font_size()
 	// a disabled scope, so the label and icon inside go neutral too
-	append(&s.disabled_stack, disabled)
-	if disabled { s.disabled_depth += 1 }
+	push_disabled(disabled)
 	defer pop_disabled()
 	if tags("button") {
 		set_next_axis(.X, .Center)

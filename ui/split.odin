@@ -71,7 +71,7 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 		res.finished = true
 	}
 
-	if res.sig.pressed { drag_store({size^, 0, 0, 0}) }
+	if res.sig.pointer_pressed { drag_store({size^, 0, 0, 0}) }
 	if res.sig.dragging {
 		s.cursor_request = cur   // (also when the pointer runs ahead of the handle)
 		d := (axis == .X ? res.sig.drag_delta.x : res.sig.drag_delta.y) / unit
