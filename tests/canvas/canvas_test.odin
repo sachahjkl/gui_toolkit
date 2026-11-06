@@ -67,6 +67,131 @@ identity_inst :: proc(box: [4]f32, kind: u32, paint: u32, op: u32 = 0, flags: u3
 	}
 }
 
+// A red rectangle over the whole canvas, drawn wherever draws go now.
+red_draw :: proc(f: ^Fx) {
+	first := len(f.insts)
+	append(&f.insts, rect_inst(0, 0, W, H, solid(&f^, {1, 0, 0, 1})))
+	append(&f.cmds, render.Canvas_Cmd{kind = .Draw, op = 0, source = render.CANVAS_SRC_NONE, box = {0, 0, W, H}, first = first, count = 1})
+}
+
+// A filter pass between the begin and the end of a layer: what is drawn after it stays in that layer.
+@(test)
+a_filter_pass_leaves_the_open_layer_open :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, W, H}})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Fx, fx = .Copy, id = 2, id2 = 1})
+	red_draw(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 1})
+	testing.expect(t, submit(&f))
+	testing.expectf(t, pixel(&f, 32, 24).a == 0, "the draw reached the canvas: %v", pixel(&f, 32, 24))
+}
+
+// A layer inside a layer: its end goes back to the one around it.
+@(test)
+layers_nest :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, W, H}})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 2, box = {0, 0, W, H}})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 2})
+	red_draw(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 1})
+	testing.expect(t, submit(&f))
+	testing.expectf(t, pixel(&f, 32, 24).a == 0, "the draw reached the canvas: %v", pixel(&f, 32, 24))
+}
+
+// A layer that could not be made: what was meant for it does not land on the canvas, unfiltered.
+@(test)
+a_layer_not_made_takes_its_draws_away :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, 0, 0}})
+	red_draw(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 1})
+	red_draw(&f)
+	testing.expect(t, submit(&f))
+	testing.expectf(t, pixel(&f, 32, 24).a == 255, "the draw after the end is the canvas's: %v", pixel(&f, 32, 24))
+	append(&f.cmds, render.Canvas_Cmd{kind = .Clear})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, 0, 0}})
+	red_draw(&f)
+	testing.expect(t, submit(&f))
+	testing.expectf(t, pixel(&f, 32, 24).a == 0, "the draw reached the canvas: %v", pixel(&f, 32, 24))
+}
+
+// A layer freed while it is open: its texture may be someone else's by now.
+@(test)
+a_layer_freed_open_takes_nothing_more :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, W, H}})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Free, id = 1})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 2, box = {0, 0, W, H}})   // (the same texture, from the pool)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 2})
+	red_draw(&f)   // into layer 1, which is gone
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 1})
+	append(&f.paints, render.Canvas_Paint{
+		m = {1, 0, 0, 1}, t = {0, 0, 0, 0}, p = {0, 0, W, H}, q = {W, H, 0, 0}, kind = render.CP_IMAGE,
+		flags = render.CP_WRAP_CLAMP | render.CP_WRAP_CLAMP << 2,
+	})
+	pi := u32(len(f.paints) - 1)
+	first := len(f.insts)
+	append(&f.insts, rect_inst(0, 0, W, H, pi))
+	append(&f.cmds, render.Canvas_Cmd{kind = .Draw, op = 0, source = render.CANVAS_SRC_LAYER0 - 2, box = {0, 0, W, H}, first = first, count = 1})
+	testing.expect(t, submit(&f))
+	testing.expectf(t, pixel(&f, 32, 24).a == 0, "layer 2 got what was drawn into layer 1: %v", pixel(&f, 32, 24))
+}
+
+// A filter pass into a layer that exists gives its old texture back.
+@(test)
+a_layer_replaced_goes_back_to_the_pool :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 1, box = {0, 0, W, H}})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 1})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Begin, id = 2, box = {0, 0, W, H}})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_End, id = 2})
+	append(&f.cmds, render.Canvas_Cmd{kind = .Layer_Fx, fx = .Copy, id = 2, id2 = 1})
+	testing.expect(t, submit(&f))
+	for p in f.r.canvas.pool { testing.expectf(t, !p.used, "texture %v is lost to the pool", p.tex) }
+}
+
+// canvas_set_opaque on a source texture: what it noted goes with the texture, and a slot used again starts clean.
+@(test)
+a_canvas_source_leaves_no_state :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	src := render.canvas_texture_create(&f.r, 4, 4, false)
+	testing.expect(t, src != 0, "a source texture")
+	render.canvas_set_opaque(&f.r, src, true)
+	render.destroy_texture(&f.r, src)
+	_, kept := f.r.canvas.states[src]
+	testing.expect(t, !kept, "its state stays behind")
+}
+
+// A read begun on a device that was made again: it is over, it says it failed, and nothing of the old device reaches the new one.
+@(test)
+a_read_does_not_outlive_its_device :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f) { return }
+	defer close(&f)
+	rd, ok := render.canvas_read_begin(&f.r, f.target, 0, 0, W, H)
+	testing.expect(t, ok, "a read")
+	render.simulate_device_loss(&f.r)
+	testing.expect(t, render.canvas_read_ready(&f.r, rd), "ready while the device is lost: nothing to wait for")
+	testing.expect(t, render.recover(&f.r), "the device is back")
+	testing.expect(t, render.canvas_read_ready(&f.r, rd), "ready on the new device")
+	out := make([]u8, W * H * 4)
+	defer delete(out)
+	testing.expect(t, !render.canvas_read_finish(&f.r, &rd, out), "it failed")
+}
+
 // A draw of the instances added since `first` over the whole canvas.
 draw :: proc(f: ^Fx, first: int, op: u8 = 0, source: i32 = render.CANVAS_SRC_NONE, clip: i32 = 0) {
 	append(&f.cmds, render.Canvas_Cmd{kind = .Draw, op = op, source = source, clip = clip, box = {0, 0, W, H}, first = first, count = len(f.insts) - first})
