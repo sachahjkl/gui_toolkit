@@ -545,3 +545,20 @@ a_context_destroyed_while_recording_leaves_nothing :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, len(track.allocation_map), 0)
 }
+// A layer left open in an offscreen target ends with it: the copy is recorded all the same.
+@(test)
+a_layer_left_open_in_an_offscreen_target_ends_with_it :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	@(static) id: render.Readback_Id
+	id = 0
+	_ = frame(&f, proc(dc: ^draw.Context) {
+		if !draw.offscreen_begin(dc, {8, 8}) { return }
+		draw.push_layer(dc, {{0, 0}, {8, 8}}, 1)
+		id = draw.offscreen_end(dc)
+	})
+	testing.expect(t, id != 0)
+	render.readback_release(&f.r, id)
+	testing.expect_value(t, len(f.dc.open_layers), 0)
+}
