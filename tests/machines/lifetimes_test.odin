@@ -226,6 +226,50 @@ a_latched_autoscroll_ends_with_the_window :: proc(t: ^testing.T) {
 	session.wait_idle(s)
 }
 
+// A press on the window's frame is the click a latched session waits for, though the window sees no Mouse_Press of it.
+@(test)
+a_press_on_the_frame_ends_a_latched_autoscroll :: proc(t: ^testing.T) {
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) { scroller() }})
+	ui.set_autoscroll_enabled(s.state, true)
+	session.click_at(s, session.center(session.get(s, "region")), .Middle)
+	testing.expect(t, ui.autoscroll_running(s.state), "latched")
+	session.event(s, {kind = .Frame_Press})
+	session.frames(s, SETTLE_FRAMES)
+	testing.expect(t, !ui.autoscroll_running(s.state), "ended")
+}
+
+// The system took the pointer soon after a middle press: that release is no quick tap, nothing latches.
+@(test)
+a_release_the_system_made_is_no_tap :: proc(t: ^testing.T) {
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) { scroller() }})
+	ui.set_autoscroll_enabled(s.state, true)
+	at := session.center(session.get(s, "region"))
+	session.press(s, at, .Middle)
+	testing.expect(t, ui.autoscroll_running(s.state), "held")
+	session.event(s, {kind = .Mouse_Release, button = .Middle, pos = at, lost = true})
+	session.frames(s, SETTLE_FRAMES)
+	testing.expect(t, !ui.autoscroll_running(s.state), "ended, not latched")
+}
+
+// Nor is it a click: the button may never have gone up.
+@(test)
+a_release_the_system_made_is_no_click :: proc(t: ^testing.T) {
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.px(100)})
+		if ui.button("Hold###lost").clicked { r.clicks += 1 }
+	}})
+	at := session.center(session.get(s, "lost"))
+	session.press(s, at)
+	session.event(s, {kind = .Mouse_Release, button = .Left, pos = at, lost = true})
+	session.frames(s, SETTLE_FRAMES)
+	testing.expect_value(t, r.clicks, 0)
+	testing.expect_value(t, s.state.active_key[.Left], ui.Key(0))
+}
+
 // So does one whose window moves under the pointer.
 @(test)
 an_autoscroll_ends_when_the_window_moves :: proc(t: ^testing.T) {

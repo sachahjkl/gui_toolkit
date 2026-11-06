@@ -69,7 +69,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)
 			s.released_key[e.button] = s.active_key[e.button]
-			if s.active_key[e.button] != 0 && s.active_key[e.button] == hot { s.clicked_key[e.button] = hot }
+			if !e.lost && s.active_key[e.button] != 0 && s.active_key[e.button] == hot { s.clicked_key[e.button] = hot }
 			s.active_key[e.button] = 0
 		case .Scroll:
 			s.mouse = e.pos
@@ -87,6 +87,8 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods
 		case .Activate:
 			if s.window != nil && !s.window.active { left = true }
+		case .Frame_Press:
+			left = true
 		case .Key_Press:
 			s.mods = e.mods
 			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
@@ -115,7 +117,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	autoscroll_handle_input(s)   // middle-click autoscroll (autoscroll_region.odin): after hit tests, may swallow clicks
 }
 
-// The user left the window (Event.Activate, Build_Params.inactive): nothing they were doing there goes on without them. A
+// The user left the window (Event.Activate, Event.Frame_Press, Build_Params.inactive): nothing they were doing there goes on without them. A
 // button held has no release to come on every system (Windows makes one, X11 and Wayland do not), and no click is made of it.
 @(private)
 window_left :: proc(s: ^State) {

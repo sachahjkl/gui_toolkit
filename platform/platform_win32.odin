@@ -884,7 +884,13 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 			button_down(w, .Left, screen_to_client(hwnd, lparam))
 			return 0
 		}
-	case win.WM_NCLBUTTONUP, win.WM_NCRBUTTONDOWN, win.WM_NCRBUTTONUP, win.WM_NCRBUTTONDBLCLK:
+		push(w, {kind = .Frame_Press})
+	case win.WM_NCRBUTTONDOWN, win.WM_NCRBUTTONDBLCLK:
+		if w.integrated && is_caption_button(wparam) { return 0 }
+		push(w, {kind = .Frame_Press})
+	case win.WM_NCMBUTTONDOWN:
+		push(w, {kind = .Frame_Press})
+	case win.WM_NCLBUTTONUP, win.WM_NCRBUTTONUP:
 		if w.integrated && is_caption_button(wparam) { return 0 }
 
 	case win.WM_SETCURSOR:

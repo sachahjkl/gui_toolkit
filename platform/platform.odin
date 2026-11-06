@@ -39,6 +39,7 @@ Event_Kind :: enum u8 {
 	Mouse_Press,
 	Mouse_Release,
 	Mouse_Leave,
+	Frame_Press,   // a press on the window's frame or caption (Windows: X11 and Wayland keep them from the window): nothing of the window's, and what was going on there ends
 	Scroll,
 	Close,
 	Activate,   // the window became active or inactive (Window.active): a title bar drawn by the app dims or lights up
@@ -96,6 +97,7 @@ Event :: struct {
 	                    // pointer.kind says which: an app that pans with fingers drops the touch ones, keeps the pen's)
 	pointer: Pointer_Info,    // Pointer_*: the finger or pen
 	drop_allowed: Drop_Effects,   // Drop_*: what the source allows
+	lost:   bool,       // Mouse_Release: the button is still down for all we know, the system took the pointer away: no click, no gesture ends by it
 	injected: bool,     // made by inject_event (a test, a remote control, a macro), not by the system: the real pointer is
 	                    // elsewhere (an app that reads the cursor's position from the system uses `pos` for these)
 }
@@ -460,7 +462,7 @@ keys_released :: proc(w: ^Window, mods: Modifiers) {
 buttons_released :: proc(w: ^Window, pos: [2]f32, mods: Modifiers) {
 	down := w.buttons_down
 	w.buttons_down = {}
-	for b in down { append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = mods, stamp = time.tick_now()}) }
+	for b in down { append(&w.events, Event{kind = .Mouse_Release, button = b, pos = pos, mods = mods, stamp = time.tick_now(), lost = true}) }
 }
 
 // What poll_events returns: a copy, which stays whole while the app reads it. What runs from an event may pump the system
