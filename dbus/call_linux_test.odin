@@ -7,6 +7,15 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 
+// A call that fails at once, or is answered: a limit it never reaches.
+@(private = "file") TEST_CALL_MS :: 2000
+// What a peer that says nothing is waited for.
+@(private = "file") TEST_SILENCE_MS :: 20
+// More than one, and the list must shrink under the walk of it.
+@(private = "file") TEST_EXPIRED :: 3
+
+@(private = "file") TEST_SOCKET :: "/tmp/gui_toolkit_dbus_silent_test"
+
 // A connection whose other end is the test: what the bus would send is written there beforehand (the serials are known: each
 // call takes the next).
 @(private = "file")
@@ -14,7 +23,7 @@ test_conn :: proc(t: ^testing.T) -> (c: ^Conn, peer: linux.Fd) {
 	pair: [2]linux.Fd
 	testing.expect_value(t, linux.socketpair(.UNIX, .STREAM, .HOPOPT, &pair), linux.Errno.NONE)
 	c = new(Conn)
-	c.fd, c.serial, c.connected = i32(pair[0]), 1, true
+	c.fd, c.serial, c.state = i32(pair[0]), 1, .Ready
 	_ = virtual.arena_init_growing(&c.msg_arena)
 	set_nonblocking(c.fd)
 	return c, pair[1]
@@ -124,16 +133,19 @@ a_full_socket_is_waited_for :: proc(t: ^testing.T) {
 @(private = "file")
 Heard :: struct { calls: int, status: Call_Status, nil_msg: bool }
 
+@(private = "file")
+heard :: proc(user: rawptr, status: Call_Status, msg: ^Message) {
+	x := (^Heard)(user)
+	x.calls, x.status, x.nil_msg = x.calls + 1, status, msg == nil
+}
+
 // The bus goes away: a call waiting without a deadline hears of it.
 @(test)
 a_lost_bus_runs_what_waits :: proc(t: ^testing.T) {
 	c, peer := test_conn(t)
 	defer conn_close(c)
 	h: Heard
-	testing.expect(t, call_async(c, "d", "/p", "i.f", "m", "", nil, proc(user: rawptr, status: Call_Status, msg: ^Message) {
-		x := (^Heard)(user)
-		x.calls, x.status, x.nil_msg = x.calls + 1, status, msg == nil
-	}, &h, 0))
+	testing.expect(t, call_async(c, "d", "/p", "i.f", "m", "", nil, heard, &h, 0))
 	linux.close(peer)
 	dispatch(c)
 	testing.expect_value(t, h.calls, 1)
@@ -152,4 +164,133 @@ a_broken_stream_ends_the_connection :: proc(t: ^testing.T) {
 	dispatch(c)
 	testing.expect(t, !conn_alive(c))
 	testing.expect_value(t, len(c.in_buf), 0)
+	// (nothing more is read: what would come now starts anywhere)
+	testing.expect_value(t, conn_fd(c), -1)
+}
+
+// A socket at EOF stays readable: a lost connection gives its fd up, or the window loop's poll(2) never sleeps again.
+@(test)
+a_lost_bus_leaves_nothing_to_poll :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer conn_close(c)
+	linux.close(peer)
+	dispatch(c)
+	testing.expect(t, !conn_alive(c))
+	testing.expect_value(t, conn_fd(c), -1)
+	dispatch(c)   // (what the loop does anyway)
+	_, ok := call(c, "d", "/p", "i.f", "m", "", nil, TEST_CALL_MS)
+	testing.expect(t, !ok, "no call on a lost connection")
+	testing.expect(t, !call_noreply(c, "d", "/p", "i.f", "m", "", nil))
+	to := Message{sender = ":1.2", serial = 1}
+	testing.expect(t, !reply_return(c, &to, "", nil))
+}
+
+// A send that fails loses the connection, and what waits hears of it at the next dispatch: nothing will wake it otherwise.
+@(test)
+a_failed_send_runs_what_waits :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer conn_close(c)
+	h: Heard
+	testing.expect(t, call_async(c, "d", "/p", "i.f", "m", "", nil, heard, &h, 0))
+	linux.close(peer)
+	testing.expect(t, !call_noreply(c, "d", "/p", "i.f", "m", "", nil), "the peer is gone")
+	testing.expect_value(t, conn_fd(c), -1)
+	dispatch(c)
+	testing.expect_value(t, h.calls, 1)
+	testing.expect_value(t, h.status, Call_Status.Disconnected)
+}
+
+// What had arrived whole before the bus went is still routed, the rest is not kept.
+@(test)
+what_came_before_the_end_is_routed :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer conn_close(c)
+	h: Heard
+	testing.expect(t, call_async(c, "d", "/p", "i.f", "m", "", nil, heard, &h, 0))
+	says(peer, 1, "the last reply")
+	cut := [?]u8{'l', 2, 0, 1}
+	linux.send(peer, cut[:], {.NOSIGNAL})
+	linux.close(peer)
+	dispatch(c)
+	dispatch(c)   // (the first read stops short of the EOF)
+	testing.expect_value(t, h.calls, 1)
+	testing.expect_value(t, h.status, Call_Status.Ok)
+	testing.expect(t, !conn_alive(c))
+	testing.expect_value(t, len(c.in_buf), 0)
+}
+
+// The handshake runs on the window's thread: a peer that took the connection and says nothing is given up.
+@(test)
+a_silent_peer_is_given_up :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer { conn_close(c); linux.close(peer) }
+	buf: [AUTH_LINE_BYTES]u8
+	start := time.tick_now()
+	testing.expect_value(t, read_line(c.fd, buf[:], TEST_SILENCE_MS), "")
+	testing.expect(t, time.tick_since(start) < time.Second, "within its limit")
+}
+
+// The whole of it: a listener whose backlog took the connection and that nobody serves.
+@(test)
+a_bus_that_never_answers_is_no_bus :: proc(t: ^testing.T) {
+	listener, err := linux.socket(.UNIX, .STREAM, {}, .HOPOPT)
+	testing.expect_value(t, err, linux.Errno.NONE)
+	defer linux.close(listener)
+	linux.unlink(TEST_SOCKET)
+	defer linux.unlink(TEST_SOCKET)
+	sa: linux.Sock_Addr_Un
+	sa.sun_family = .UNIX
+	copy(sa.sun_path[:], string(TEST_SOCKET))
+	testing.expect_value(t, linux.bind(listener, &sa), linux.Errno.NONE)
+	testing.expect_value(t, linux.listen(listener, 1), linux.Errno.NONE)
+	start := time.tick_now()
+	testing.expect(t, connect_bus_address("unix:path=" + TEST_SOCKET) == nil)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 2 * HANDSHAKE_MS, "within the handshake's limit")
+}
+
+@(test)
+a_line_of_the_handshake :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer conn_close(c)
+	buf: [AUTH_LINE_BYTES]u8
+	both := "OK 1234\r\nthe next line\r\n"
+	linux.send(peer, transmute([]u8)both, {.NOSIGNAL})
+	testing.expect_value(t, read_line(c.fd, buf[:], TEST_CALL_MS), "OK 1234")
+	testing.expect_value(t, read_line(c.fd, buf[:], TEST_CALL_MS), "the next line")
+	cut := "OK 12"
+	linux.send(peer, transmute([]u8)cut, {.NOSIGNAL})
+	linux.close(peer)
+	testing.expect_value(t, read_line(c.fd, buf[:], TEST_CALL_MS), "")   // (a line cut short is no OK)
+}
+
+@(private = "file")
+Reentry :: struct { c: ^Conn, calls: int }
+
+// A handler of an expired call calls: that dispatches, and the expired calls left go from under the walk that ran it.
+@(test)
+a_timed_out_handler_that_calls :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer { conn_close(c); linux.close(peer) }
+	re := Reentry{c = c}
+	for i in 0 ..< TEST_EXPIRED {
+		append(&c.pending, Pending{serial = u32(1000 + i), user = &re, deadline = 1, handler = proc(user: rawptr, status: Call_Status, msg: ^Message) {
+			x := (^Reentry)(user)
+			x.calls += 1
+			call(x.c, "d", "/p", "i.f", "m", "", nil, TEST_SILENCE_MS)
+		}})
+	}
+	dispatch(c)
+	testing.expect_value(t, re.calls, TEST_EXPIRED)
+	testing.expect_value(t, len(c.pending), 0)
+}
+
+// No message has serial 0: it is what a failed send answers, and the spec forbids it.
+@(test)
+the_serial_wraps_past_zero :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer { conn_close(c); linux.close(peer) }
+	c.serial = max(u32)
+	testing.expect(t, call_noreply(c, "d", "/p", "i.f", "m", "", nil))
+	testing.expect(t, call_noreply(c, "d", "/p", "i.f", "m", "", nil), "the one after the last")
+	testing.expect_value(t, c.serial, u32(2))
 }

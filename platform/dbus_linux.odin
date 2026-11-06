@@ -31,13 +31,15 @@ Session_Bus :: struct {
 
 @(private, thread_local) session: Session_Bus
 
-// This thread's session bus (nil when unreachable). Opened once per thread.
+// This thread's session bus (nil when unreachable, or gone: it ends with the login, and the services fall back as they do
+// with none). Opened once per thread.
 @(private)
 session_bus :: proc() -> ^dbus.Conn {
-	if session.tried { return session.conn }
-	session.tried = true
-	session.conn = dbus.connect_bus(.Session)
-	return session.conn
+	if !session.tried {
+		session.tried = true
+		session.conn = dbus.connect_bus(.Session)
+	}
+	return dbus.conn_alive(session.conn) ? session.conn : nil
 }
 
 // Drains the bus if it is open (called from the window loop after poll said its fd is readable, and once per pump so

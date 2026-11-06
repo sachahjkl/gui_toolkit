@@ -28,7 +28,17 @@ the ScreenSaver idle inhibitor and the AT-SPI accessibility bridge — all under
   `com.canonical.dbusmenu`) answers method calls the bus routes to a path. `request_name` claims a well-known name.
 - **Folds into the window loop**: `conn_fd` gives the socket to the program's own `poll(2)`, and `dispatch` drains
   whatever arrived without blocking. `platform_linux.odin` watches the bus fd alongside the window's connection and
-  calls `dispatch` each pump, so async replies and portal / theme signals arrive promptly on the UI thread.
+  calls `dispatch` each pump, so async replies and portal / theme signals arrive promptly on the UI thread. A deadline of
+  `call_async` fires in `dispatch`: a loop that sleeps with no timeout of its own hears of it late.
+
+## A lost bus
+
+The connection is lost at EOF, on a failed read or send, or on bytes that cannot be a message. It closes its socket at
+that moment, so `conn_fd` answers -1 and `conn_alive` false, for good: there is no reconnection. The `Conn` stays valid, every
+call on it fails at once, and `dispatch` routes what had arrived whole and runs the waiting `call_async` handlers with
+`.Disconnected`. `conn_close` frees it, never from one of its own handlers (it asserts).
+
+Connecting is bounded too, on the UI thread: `connect`, the SASL answer and `Hello` get 5 seconds each.
 
 ## Threading
 
@@ -67,5 +77,6 @@ with `w_array_begin` / `w_array_end` at the element's alignment; raw array bytes
 - **No Unix-fd passing.** Auth skips `NEGOTIATE_UNIX_FD`; the tray sends its icon inline as an ARGB pixmap, and the
   portals that would pass an fd are not used that way here. A service that needs `UnixFD` (some notification servers for
   large images) would need the fd-passing `sendmsg` path added.
-- The synchronous `call` keeps the reply in a single static slot for the duration of the return; do not hold a
-  `Message` from `call` across another `call` / `dispatch`.
+- A `Message` from `call` lasts until the next `call` at the same depth (a call nested in a handler has its own).
+- `request_name` answers false for a name it queued for, and `NameLost` / `NameAcquired` are not followed: the tray's name
+  is its process's own.

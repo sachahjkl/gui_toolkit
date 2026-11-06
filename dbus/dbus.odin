@@ -41,7 +41,6 @@ Call_Status :: enum u8 {
 	Error,       // an ERROR came back (its name and message are in the reply)
 	Timeout,     // no reply within the deadline
 	Disconnected, // the connection was lost
-	Unsupported, // the connection was never established (no bus)
 }
 
 // A handler for a signal the connection subscribed to (subscribe). `msg` is valid only during the call; copy what you
@@ -81,10 +80,20 @@ Waiter :: struct {
 	msg:    Message,
 }
 
+// Where a connection is. Handshake and Ready hold an open socket, Lost never does: it was closed when the bus went, so that
+// a poll(2) loop has nothing left to wake on. There is no way back from Lost; conn_close still has to free the Conn.
+@(private)
+Conn_State :: enum u8 {
+	Handshake,   // SASL and Hello are running, inside connect_bus
+	Ready,       // what a caller of connect_bus is given
+	Lost,        // EOF, a failed read or send, or a stream that cannot be read: fd is -1
+}
+
 // A connection to a bus. Opaque to callers; its fd is given out through conn_fd.
 Conn :: struct {
 	bus:         Bus_Kind,
-	fd:          i32,         // the Unix socket, -1 when not connected
+	state:       Conn_State,
+	fd:          i32,         // the Unix socket, -1 once Lost
 	unique_name: string,      // this connection's name on the bus (":1.42"), learned from Hello
 	serial:      u32,         // the next outgoing serial
 	// an incoming-byte buffer: whole messages are parsed out of it, a partial message stays until the rest arrives
@@ -99,8 +108,7 @@ Conn :: struct {
 	// a scratch allocator for parsing one message (its memory goes back once it is routed), so a signal handler's reads do not leak
 	msg_arena:   virtual.Arena,
 	exports:     ^[dynamic]Exported,   // objects we serve (export_object), nil until the first
-	connected:   bool,
-	disconnected: bool,
+	running:     int,         // handlers on the stack (conn_close must not free what they stand on)
 }
 
 // The connection's per-message scratch allocator.
