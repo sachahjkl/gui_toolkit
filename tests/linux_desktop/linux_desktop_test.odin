@@ -901,15 +901,15 @@ a_pointer_taken_with_a_button_held_releases_it_on_wayland :: proc(t: ^testing.T)
 	defer delete(seen.events)
 	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.5; swaymsg -q seat seat0 cursor press button1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
-	sh("swaymsg -q workspace 9")
-	defer sh("swaymsg -q seat seat0 cursor release button1; swaymsg -q workspace 1")
+	sh("swaymsg -t get_seats | grep -E 'name|capabilities'; swaymsg 'seat other attach \"*\"'; swaymsg -t get_seats | grep -E 'name|capabilities'")
+	defer sh("swaymsg -q 'seat seat0 attach \"*\"'; swaymsg -q seat seat0 cursor release button1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Release, 2000), "the release is made")
 	testing.expect_value(t, w.buttons_down, platform.Mouse_Buttons{})
 }
 
-// Another client grabs the pointer under a held button (the window manager's menu): the release goes to it.
+// The window goes off the screen under a held button: the button's grab ends with it, the release goes elsewhere.
 @(test)
-a_grab_with_a_button_held_releases_it_on_x11 :: proc(t: ^testing.T) {
+a_window_unmapped_with_a_button_held_releases_it_on_x11 :: proc(t: ^testing.T) {
 	if !x11() { return }
 	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
 	w := open("grabbed")
@@ -920,8 +920,28 @@ a_grab_with_a_button_held_releases_it_on_x11 :: proc(t: ^testing.T) {
 	defer delete(seen.events)
 	sh("xdotool mousemove --window ", window_id(w), " 50 50 mousedown 1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
-	sh("xdotool key alt+space")
-	defer sh("xdotool key Escape; xdotool mouseup 1")
+	sh("xdotool windowminimize --sync ", window_id(w))
+	defer sh("xdotool mouseup 1; xdotool windowactivate --sync ", window_id(w))
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Release, 2000), "the release is made")
 	testing.expect_value(t, w.buttons_down, platform.Mouse_Buttons{})
+}
+
+// Under a press the pointer stays the window's, as under a capture on Windows: it left when the release says so.
+@(test)
+a_held_button_keeps_the_pointer_on_x11 :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("held")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	seen: Seen
+	defer delete(seen.events)
+	sh("xdotool mousemove --window ", window_id(w), " 50 50 mousedown 1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
+	sh("xdotool mousemove 1200 900")
+	pump_for(w, 200, &seen)
+	testing.expect(t, !has_kind_of(&seen, .Mouse_Leave), "no leave under the press")
+	sh("xdotool mouseup 1")
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Leave, 2000), "the leave comes with the release")
 }
