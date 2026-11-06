@@ -5,6 +5,127 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.86.0] - 2026-11-06
+
+### Added
+- **`platform.drag_silence_limit`**: for tests, how long a drag may stay silent before it is given up.
+- **`Signal.pointer_clicked`**: the click was the button's, so the pointer is where it says. `clicked` stays true for Enter, Space and a screen reader too.
+- **`platform.cancel_close`**: takes back a Close the app answered by staying open: `is_closed` no longer stays true for good.
+- **Event.lost**: a Mouse_Release made because the system took the pointer. It is no click, and a middle button lost soon after its press no longer latches autoscroll.
+- **Event.Frame_Press**: a press on the window's frame or caption (Windows). What the window was doing ends with it: a latched autoscroll waits for the next click anywhere, and a click there came to nobody.
+- **`font.atlas_end_frame`**: a draw context between frames holds no page (`draw.end_frame` calls it): a context that stopped drawing no longer keeps the atlas from reusing pages.
+- **`devtools.stop(srv, s)`**: for a program that goes on after the server, the `ui.State` it served: the clients' edits, the highlight and the accessibility tree asked of it end too.
+- **`Signal.pointer_pressed`**: the press was the button's, so the pointer is where it says and it is held. `pressed` stays true for Enter, Space and a screen reader too. `ui.slider` and the colour pickers read it: Enter on them no longer set the value from wherever the pointer was.
+
+### Changed
+- **`ui.Reorder`** holds the press that drags (`held`) in place of `active`: a release and a press read in one frame end the drag, as does the box held going away. Read `reorder_dragging`.
+- **Escape in a dialog** goes to the dialog on top at the end of the build, and closes it at the next one: read in the frame a new dialog opens, it closed the one under it. `open` turns false one build later than it did.
+- **`ui.Autoscroll`** says where a session is in one field, `phase` (`Autoscroll_Phase`: `Off`, `Holding`, `Latched`), in place of `active`, `held` and `latched`; every end zeroes it, with the box it scrolls (`box`). `State.auto_box` and `State.auto_pressed` are gone.
+- **`draw.open_plane_frame`**: `ok = false` for a plane being recorded, which draws nothing (`Open_Plane.mode` replaces `hit`).
+- **A capture of a frame WebGPU could not get** (a hidden window's surface) says `Failed`: it stayed `Pending`.
+- **A box that goes lets go of what held it**: a press, the focus, a click on the way to a double one. A box of a vlist or a lazy column has only left the view: the focus waits for it there.
+- **`devtools`: what a client started is its own.** A screencast, a recording and the tree of `DOM` have one client: another's `Page.startScreencast`, its `Toolkit.*Recording`, `DOM.undo` / `redo` / `requestChildNodes` and the like are refused, and its stop and acks change nothing. A recording ends with its client, typed text included; a highlight goes with its client; what a client held down, buttons and keys, goes up when it goes.
+- **`instance.Owner_State`**: an `Owner` says where it is (`None`, `Claimed`, `Serving`, `Closing`) in `Owner.state`, which replaces `Owner.closing`. A second `owner_start` answers false and opens nothing, a file descriptor 0 is one like any other, and a window that could not be destroyed no longer points at its Owner.
+- **`config` layers**: `Entry.locked` is gone, `is_locked` reads the layer, and an observer sees a policy value locked. `.Default` no longer goes over a layer, `reset` under a policy changes nothing, `load_file` wants the tag of the layer it reads (`POLICY_MAGIC` for `.Policy`), `register` answers how many waiting values it refused, a user's value that its definition refuses stays in the profile, and `dirty` counts a change under a higher layer and no longer a file just read. `restore` survives an observer that registers.
+- **A dialog gives the focus back**: what had the focus when `ui.modal` opened has it again when it closes, unless something else took it meanwhile.
+
+### Removed
+- **`render.Pacer.latency`**: `Present_State.max_latency` says what the swap chain has, a new one included.
+
+### Fixed
+- **A press on a row of an open menu** leaves the keyboard focus where it was: choosing an item of a field's context menu with the mouse took the focus from the field.
+- **`testkit/session`**: `advance` in a build ends the test (it hung to the test's limit), `draw_context` on an attached session says so, `Session.damage` is the next frame's only, and the guard against two tests at once is atomic.
+- **`ui.a11y_tree`** is empty when no tree was made (it answered with the last one), and an active descendant not made in this build is not named.
+- **Title bar regions** are forgotten with no caption or window too: buttons no build makes any more stayed in `chrome_regions`.
+- **A box of the last build** looked up during a build has no text, name, accessibility or custom data: they pointed into memory the build had freed.
+- **`ui.theme_destroy`** leaves an empty theme: a palette applied after it appended to freed memory, a second destroy freed it twice.
+- **`ui.color_picker`**: the text left by the user is written as the picker writes it: a spelling of theirs (`#F00`) or what is no colour stayed. `Color_Pick.shown` is gone.
+- **Find in page**: a sweep's wait is a timed wake, not a frame at each refresh, and a sweep during a glide reports the place in the content (the scroll had moved after the layout). Its clock is the build's.
+- **Toasts** ask for frames only while they fade, and a wake between; `ui.set_toast_area` lasts one build, whether `toasts_build` ran or not.
+- **Docks**: two requests in one frame are both done, and the stack's menu of a closed panel closes.
+- **`vlist`**: `vlist_scroll_to` on a list with no box yet is kept for its first build, the wheel ends the wait for a row with the reveal, and a row of no height is not waited for over 600 builds.
+- **`list` and `vlist`**: rows gone from under the active row say `changed`; no row is nothing to reveal (`reveal` stayed armed); a row selected before the first build comes into view with no other frame asked for.
+- **`ui.text_edit_caret_rect`** says `false` once the editor is built no more.
+- **`text_edit`**: the column of Up and Down ends with every other move and edit (undo, redo, select all, cut, paste, Ctrl+Backspace, a double click kept it).
+- **The caret of a `line_edit`** is solid after an arrow key, as a `text_edit`'s is: it could stay in the off half of its blink.
+- **Undo in `line_edit` and `text_edit`**: a move of the caret ends a step (type, arrow, type was one), and a field's steps go by the build's clock, as a text area's do.
+- **Menus**: a press of a side button outside closes them; a Right or Enter on a submenu that turned disabled opens nothing later; a menu opened from the keyboard selects its first item once, so a pointer on a disabled row leaves nothing selected; a menu opened from inside a menu's block opens when the block ends, its rows not mixed with the old one's.
+- **`ui.stepper`**: held with the pointer off its button it waits, as a scroll bar's arrow does.
+- **A press with no pointer** (Enter, Space, a screen reader) no longer takes the place of a drag going on (`splitter`, `pane_split`, the edges of `modal_sized`), sets a `range_slider` from the pointer, or moves the caret of a `line_edit` or a `text_edit` to it.
+- **`ui.pane_split`**: a strip pulled out and pushed back under the snap stays folded when let go, and a screen reader's value on a folded pane says `toggled`. What a press was on is one state (`Pane_Press`).
+- **`ui.modal_sized`**: a press on an edge that does not move chooses no size (the size a small window clamped it to stayed for good), and a double click on an edge stays at the preferred size while the button is held.
+- `platform` on Windows: a surrogate pairs only with the unit right after it, a pointer whose end the system no longer describes still ends, a resize made of inner frames has its burst.
+- Clipboard on Linux: a selection another program cleared is not read back, X11 asks the server who owns what it took, a late answer is not the next read's, a paste leaves no property, an INCR reader that left is given up, `XdndSelection` is let go, a large drag goes by INCR, a reader that closes its pipe no longer ends the process on Wayland. Windows: a real window's `clipboard_changed` reads the system's clipboard with an offscreen window open.
+- `platform` on Linux: a seat that loses its pointer or keyboard and gets it back works again, a scale change of the output or of Xft.dpi reaches the windows, the display is read again after a change of the output.
+- `platform` on Linux: a window has one state (`Show_State`), read back from the server: nothing shown is not visible, a state asked before the map reaches the window manager. `set_placement` restores a maximized window on every backend and applies at once on a shown Windows window, an offscreen `set_fullscreen(false)` leaves another state alone, `toggle_maximize` leaves full screen on Windows.
+- Accessibility on Linux: the bridge is read by the window's loop, it keeps the whole tree an update changes (**`platform.a11y_tree_merge`**), `a11y_state` is `Off` until a reader runs (org.a11y.Status), a bus that refuses is asked once.
+- File dialogs on Linux: a bus without a portal falls back to zenity and kdialog, the portal's answer cannot be missed, its `filter` is the user's choice, a lost bus is `Failed` and not `Cancelled`. `idle_inhibit` ends with its window.
+- Tray on Linux: each icon has its own object, a failed create leaves nothing exported, a panel that restarts gets the icons again (`Recreated`), a menu that changes is told (`LayoutUpdated`), a notification has a default action, so `Notify_Click` can come, and one that closed is not replaced by the next. Windows: an icon a restarting shell refused is added at its next change.
+- Drag and drop on Linux: a drag says where it is (`Drag_Phase`). X11: only the button that began it ends it, Escape gives it up. Both: the limit is one of silence, a target that took a drop has five seconds, the target hears what the source allows and a Move is told, a source that dies ends its drag, a target disabled under a drag says `Drop_Leave`, no event of kind `None`. A drag script is used up however `drag_start` ends. `drop_inject` of anything but `Drop_Enter` needs a drag over the window.
+- `platform` on Linux: `set_cursor` to the cursor the window had takes a custom cursor off the screen, releasing the shown custom cursor shows the window's own, Wayland sends a cursor only for the window under the pointer, `set_cursor_custom`'s `scale` is used.
+- `platform`: a release comes once and only of a press made here, on every backend; a pointer taken with a button held makes its release on Wayland and when an X11 window is unmapped; X11 says no `Mouse_Leave` under a press, as a capture on Windows; a key held when the focus goes makes its `Key_Release`. `Activate` comes once for a change, and a window is neither `focused` nor `active` until the system says so.
+- `platform.poll_events`: the batch stays whole while the app reads it. What runs from an event may pump the system (a paste on X11, `drag_start`), and `w.events` may then move.
+- `platform`: `wait_event` sees all that ends it. On Linux the session bus and the accessibility bus (a tray click answered at once), injected events; on Wayland and Windows a repaint asked for; on Windows the events not handed out; after `input_pending`, what it kept.
+- `platform` on Linux: a closed window's last notices go to nobody (the X11 window that polled read as minimized), a window closed under a drag or an input method leaves nothing that points at it, a compositor without xdg-shell fails every `open_window`, and a server that goes away closes its windows (`Display_Link`) instead of leaving a loop that never hears of it.
+- `platform` on X11: typed text follows Shift, AltGr, Caps Lock and the layout (a key is read with the modifiers and the group of its event), a change of keymap is followed, a held key says `repeat`. On X11 and Wayland a key keeps its name whatever it types: Shift+1 is `N1`, Shift+Tab is `Tab`, the keypad without Num Lock is `Home`, `Left`...
+- **Focus keys**: an arrow and a Tab read in one frame both move the focus, and `ui.focus_step` says its direction (`ui.tab_direction`): a rich paragraph entered backward that way starts at its last link.
+- **`Signal.mods`** follows `Key_Release` and `Mouse_Release`: a modifier let go during a drag is no longer held.
+- **`ui.rich_paragraph`**: Enter and Space choose the link that has the focus wherever the pointer is (they took the link under it, or nothing over plain text), and a screen reader's focus on a link of a paragraph without the focus stays.
+- **The build lifecycle**: `ui.building()` stays true to the last line of `end_build`; `end_build` ends the build that is open, whatever `use` selected since, and asserts that there is one; `ui.destroy` in the middle of a build leaves none open on the thread. `end_build` also asserts the list and menu scopes.
+- **Selected text** is one state (`Sel_Phase`): no drag goes on with its selection gone (the text cursor and the frames stayed), `select_box` ends a drag, and a press on a button between two presses on a text breaks their double click.
+- **`ui.next` and `ui.a11y`** before what builds nothing (a closed `modal`, `modal_sized`, `ctx_menu` or `menu_nested`, a skipped `lazy_item`) no longer land on the next box.
+- **An open menu** no longer gets the keys something else took first (Ctrl+zoom, autoscroll's Escape).
+- **Autoscroll**: a move of the window ends a session, as its documentation said. A move read with the release counts against a tap. What ends a session no longer ends the frame's input: a middle press read with it starts the next one, and the Escape it took does not reach an open menu.
+- **The window the user leaves** (`Event.Activate`, `Build_Params.inactive`): an open menu closes, a held button ends with no click, the modifiers are forgotten, a selection stops following the pointer, autoscroll ends. A dock drag cut that way drops nothing.
+- **A box that goes takes what held it**: at the end of a build a press, the focus, the first click of a double click and the link of a rich paragraph let go of a box the build did not make. A key that comes back later is another box; a focus given ahead of its box stands. `splitter` and `pane_split` say `finished` when their box is back.
+- **`ui.set_post_wake`**: the app's wake is called with a `nil` user too, and a `nil` wake goes back to the window's. Of two windows of a State, posts wake the one that stays when the other is destroyed. A post on a State that is gone is refused.
+- **`ui.post_configure`** runs every call that waits, not a build's budget of them (the rest were lost), and a closed queue stays closed.
+- **`draw.offscreen_end`**: closes the layers left open in the target (it answered 0 and left the target open).
+- **`font`**: the emoji font comes back on the next emoji when whoever shared its id unloaded it.
+- **`font`**: a word being shaped while the word cache is cleared is shaped again, and no thread keeps the width of a word cleared under it.
+- **`font`**: a glyph the COLR interpreter was drawing when the settings changed is drawn again with them, and its outlines follow a new provider or tolerance.
+- **`font`**: `glyph_outline` and `slug_glyphs` answer on a state never started (they read a nil backend). `Text_Backend.face_close`, which nothing called, is gone.
+- **`draw.destroy`**: in the middle of a recording it no longer leaks the lists of the frame.
+- **`draw`**: a layer or plane that replays a picture lacking a pending color glyph is not kept: the glyph comes when it is ready.
+- **Frame statistics on WebGPU**: `frame_end(vsync = false)` on a Fifo surface counts the vblank it waits for, a reconfigured surface starts its run over, and `vblank_grid` says unknown once the compositor stops answering (Direct3D 11 too). `gpu_ms` starts over with a new device.
+- **`draw`**: a mask layer with no target of its own draws nothing (its drawing landed in the content); `Open_Layer` says what it is and what a mask draws in with `Layer_Kind` and `Mask_Draw`.
+- **`draw`**: a layer or a plane owns what is pushed in it: pops stop at where it started and at the root (they panicked there), what is left pushed ends with it, and layers and planes left open inside one another end in the order they were opened. A recording cannot close a plane of the frame.
+- **`draw`**: a second `end_frame` does nothing (it drew the frame twice).
+- **`render.canvas_read_ready` and `canvas_read_finish`** on a read begun before a device loss: ready at once, and the finish says it failed. They used the old device's objects on the new context.
+- **2D canvas layers** nest. A filter pass inside an open layer leaves it open, what is drawn into a layer that could not be made or was freed goes nowhere instead of onto the canvas, and a layer replaced by a filter pass gives its texture back to the pool. `canvas_set_opaque` on a source texture no longer outlives it.
+- **A texture a recovery could not make again**: `Texture_Kind.Failed`, it draws nothing, `texture_size` says `{0, 0}` and `destroy_texture` frees its slot. A frame crashed on one (Direct3D 11), and its slot was lost.
+- **`render.set_fixed_surface`** survives a device loss: the chain made again had the window's size, and a window larger than it was clipped. A translucent window that fell back to opaque during a recovery tries DirectComposition again at the next one.
+- **`render.readback_poll`** says `Failed` for a read-back whose frame did not run, which stayed `Pending` for good, and for an id of another renderer. A renderer destroyed takes its read-backs with it.
+- **`font`**: a system fallback that goes character by character (fontconfig) no longer cuts a sequence: joiners, selectors and what follows a ZWJ stay with their base.
+- **`font`**: the Slug store follows what its glyphs depend on: `color_glyphs` and `color_engine` reach the glyphs of color faces, a new provider is asked for what had no curves, no room is not kept, and keys hold the slot of a face, so what a face leaves goes with it at any generation.
+- **Partial redraw**: a frame that stopped halfway (Direct3D 11), that had no surface texture (WebGPU) or whose region could not be cleared leaves nothing the next region starts from: the next frame is whole. Their rectangles were lost, or composed onto a blank target.
+- **A window that cannot be remade** (Direct3D 11, WebGPU) counts as a device lost: the next `frame_begin` tries again, where it drew into nothing and the next clear crashed. A swap chain that `ResizeBuffers` finds gone is a loss too, and a size asked while there is no swap chain is kept.
+- **`font`**: a page reused uploads whole to a context that had it: the old bitmaps no longer stay in its texture between the new ones.
+- **`render.surface_destroy`** of the Surface in use gives the renderer back its own window first: it tore that window down.
+- **Second windows on WebGPU**: a window set aside is made again after a recovery and follows `set_blend_space`, as on Direct3D 11. Its capture, its clear and its first frame are its own, and `surface_destroy` frees its frame statistics.
+- **`font`**: a color glyph drawn on the color thread whose COLR layers cannot be read shows its outline, as on the drawing thread (it was kept as a bitmap at page 0, out of range when no page exists).
+- **A device lost on WebGPU**: it is noticed (wgpu-native reports every loss with the reason `Destroyed`, which was taken for the renderer's own release), offscreen too. A recovery makes the new device first: with none to be had the old one stays and frames draw nothing, where they ended the process on a nil device. Calls that end the process on a device gone (`QueueSubmit`, `DevicePoll`, `SurfaceConfigure`, `SurfaceGetCurrentTexture`) wait for the recovery.
+- **`font`**: the id of a font just unloaded, or of a cascade, no longer leaves blank glyphs for the next face in its slot (`Font.dead` and `State.generation` are gone: an unloaded slot is `Font_Kind.None`).
+- **AT-SPI on Linux**: the bridge's connection is dispatched once a frame, so what a client asks of the exported object is answered and a lost bus is seen.
+- **`native/a11y`**: an update that is refused or finds no assistive technology leaves the deferred focus as it was, and one that would give a subtree a second graft node is refused instead of ending the adapter.
+- **`arena.Pool`**: a slot whose generations are spent is retired instead of wrapping, so a handle never comes back to life, even after 2^32 reuses.
+- **`devtools` input and recordings**: two `Toolkit.click` of one batch are two clicks; a drag cut by `Toolkit.stopRecording` gets its `up`, a second button no longer breaks a recorded drag, and a right drag replays as one (`down` and `up` of `tools/cdp.mjs` take `--button right`). `CSS.setStyleTexts` does all of its edits or none, a `;` in a string or a comment no longer ends a declaration, and a frame of a screencast that ended no longer touches the one that took its place.
+- **`devtools` connections**: a connection that sends no request is closed after 5 seconds, an upgrade needs `Upgrade: websocket` and version 13, and a frame RFC 6455 does not allow ends the connection instead of being glued to the message under way.
+- **`instance` on Linux**: `acquire` and `send` never block past their timeout, with a large message or a full backlog, and an owner that wakes after a sender gave up no longer handles its message as well.
+- **`config.save_user`** goes through `fsx.write_atomic`, flushed: a save that fails never removes the profile, and leaves no temporary file.
+- **`fsx`**: `write_atomic` writes through a temporary file of its own, `<path>.<pid>.<thread>.tmp`, so two writers can no longer tear a file; `replace` with `durable` answers false when the directory could not be synced; `read_all` no longer returns a replaced file cut to the old size.
+- **`dbus`: connecting cannot hang the window's thread.** `connect`, the SASL answer and `Hello` each have a limit of 5 seconds, and a signal no longer fails the authentication.
+- **`dbus`: a lost bus closes its socket.** `conn_fd` answers -1 from then on, so the window loop no longer spins on a socket at EOF; nothing more is read after a stream that cannot be parsed, a failed send runs the `call_async` handlers that wait at the next `dispatch`, and `platform` falls back as with no bus. A handler of an expired call that calls no longer panics, serial 0 is never used, and `conn_close` from a handler asserts. `Call_Status.Unsupported`, never produced, is gone.
+- **Read-backs on WebGPU**: a buffer is released outside the table's lock. Releasing one still being mapped may call its callback, which takes that lock.
+- **`flate`**: an inflater that failed stays failed (`inflate_finish` said `Truncated`, and a later push went on from where it stopped), and nothing is written after `deflate_finish` (it wrote past the end of the stream).
+- **`ui.find`**: a sweep left waiting when its page went away kept `needs_frame` true for good, and the loop never slept.
+- **`ui.line_edit`, `ui.text_edit`**: the word a double click took collapsed to the pointer at the first frame made with the button down. The drag now goes on by words, as selectable text does.
+- **`draw`**: an offscreen target left open is dropped at the end of the frame (it was composited, left its transform on the stack and cut the filters of the layers around it), and a plane left open in a recording ends with the recording (it took the frame's stacks down at `end_frame`).
+- **Dock drags that lost what they held**: closing a floating panel while it was dragged ended in a bounds check (`docking.odin`), a panel closed while its tab was held came back at the drop, a drag whose button went up while the dock was not built dropped when the dock came back, and Enter on a held tab restarted the drag.
+- **Dialogs on dialogs**: with two open, the one underneath took the focus away at every frame, so a field of the top one could not keep the keyboard, and Tab went through both. Each dialog now knows where it stands among those of the last build: the top one has the keyboard, the others wait.
+- **D-Bus**: `r_skip` never returned from a message cut short inside a struct or a dict entry, or from an array of a type that takes no bytes; it ran on the window's thread.
+- **DevTools**: `Page.startScreencast` on a window served with no `ui.State` is refused. It woke the window for good, and an ack dereferenced the missing state.
+
 ## [0.85.0] - 2026-11-06
 
 ### Added
@@ -1586,6 +1707,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.86.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.86.0
 [0.85.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.85.0
 [0.84.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.84.0
 [0.83.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.83.0
