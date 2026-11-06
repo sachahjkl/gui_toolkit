@@ -33,8 +33,17 @@ set_toast_area :: proc(r: Rect) { gs().toast_area = r; gs().toast_area_set = tru
 @(private = "file") TOAST_FADE_OUT_S :: 0.35
 @(private = "file") TOAST_GLIDE_RATE :: 40
 
-// Queue a message. Toasts fade in, stay ~3.8 s, fade out; click to dismiss. Oldest is replaced when all slots are used.
-toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
+// Queue a message. Toasts fade in, stay ~3.8 s, fade out; click to dismiss (toast_action: to do something). Oldest is replaced when all slots are used.
+toast :: proc(kind: Toast_Kind, format: string, args: ..any) { toast_add(kind, nil, nil, fmt.tprintf(format, ..args)) }
+
+// A toast that says what can be done: a click on it does `action`, and dismisses it. (Called while the interface is built, after the
+// toasts are; `user` must still be good when it is clicked.)
+toast_action :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, format: string, args: ..any) {
+	toast_add(kind, action, user, fmt.tprintf(format, ..args))
+}
+
+@(private = "file")
+toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, msg: string) {
 	s := gs()
 	slot := -1
 	oldest_ms := max(f64)
@@ -46,7 +55,7 @@ toast :: proc(kind: Toast_Kind, format: string, args: ..any) {
 	if slot < 0 { slot = oldest }
 	t := &s.toasts[slot]
 	t^ = {}
-	msg := fmt.tprintf(format, ..args)
+	t.action, t.user = action, user
 	t.len = min(len(msg), len(t.text))
 	if t.len < len(msg) { t.len = font.grapheme_prev(msg, t.len + 1) }   // cut between clusters, not inside a character
 	copy(t.text[:], msg[:t.len])
@@ -93,6 +102,9 @@ toasts_build :: proc() {
 
 	icons := [Toast_Kind]string{.Info = ICON_INFO, .Good = ICON_CHECK, .Warn = ICON_WARN, .Bad = ICON_WARN_BIG}
 	tag := [Toast_Kind]string{.Info = "accent", .Good = "good", .Warn = "warn", .Bad = "bad"}
+	clicked: proc(user: rawptr)   // (after the loop: it may queue a toast, in a slot this loop is reading)
+	clicked_user: rawptr
+	defer if clicked != nil { clicked(clicked_user) }
 	for idx, slot in order {
 		t := &s.toasts[idx]
 		age := f32(s.time_ms - t.born_ms) / 1000
@@ -142,7 +154,10 @@ toasts_build :: proc() {
 		s.next_mod.border = tint
 		b := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Draw_Hot_Effects, .Clip}, id)
 		b.cursor = .Hand
-		if signal(b).clicked { t.alive = false }
+		if signal(b).clicked {
+			t.alive = false
+			clicked, clicked_user = t.action, t.user
+		}
 		// announced when it appears (a live region): a problem at once, the rest when the reader is free
 		urgent := t.kind == .Bad || t.kind == .Warn
 		a11y_default(b, {role = urgent ? .Alert : .Status, name = strings.clone(string(t.text[:t.len]), frame_allocator()), live = urgent ? .Assertive : .Polite, no_children = true})
