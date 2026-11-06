@@ -27,7 +27,6 @@ Color_Raster :: struct {
 	once:    sync.Once,
 	ok:      bool,                  // set once: Direct2D draws color glyphs (ID2D1DeviceContext4 and IDWriteFactory4)
 	paint:   bool,                  // ... COLR v1 paint trees too (ID2D1DeviceContext7, IDWriteFactory8)
-	tried:   bool,
 	device:  ^d3d11.IDevice,
 	dxgi:    rawptr,
 	d2d:     ^ID2D1Device,
@@ -68,8 +67,6 @@ BITMAP_FORMATS :: DWRITE_GLYPH_IMAGE_FORMATS_PNG | DWRITE_GLYPH_IMAGE_FORMATS_JP
 
 @(private)
 color_raster_init :: proc(cr: ^Color_Raster) -> bool {
-	if cr.tried { return cr.dc != nil }
-	cr.tried = true
 	cr.device, cr.dxgi = d3d_device_for_d2d(.WARP)
 	if cr.device == nil { return false }
 	props := D2D1_CREATION_PROPERTIES{threadingMode = 0}

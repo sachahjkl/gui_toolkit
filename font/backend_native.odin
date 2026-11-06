@@ -135,7 +135,6 @@ native_backend := Text_Backend{
 	start        = native_start,
 	stop         = proc(s: ^State) {},
 	face_open    = native_face_open,
-	face_close   = native_face_release,
 	has_glyph    = native_has_glyph,
 	face_metrics = native_face_metrics,
 	glyph_box    = native_glyph_box,

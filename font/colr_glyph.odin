@@ -20,7 +20,8 @@ Face_Colr :: struct {
 	cblc, cbdt: []u8,             // off Windows: the bitmap glyphs (c may then be nil)
 	gsub_ctx: rawptr,
 	mu:       sync.Mutex,
-	outlines: map[u16]^Outline,   // em units; emptied (between renders) when over the budget
+	outlines: map[u16]^Outline,   // em units; emptied (between renders) when over the budget, or from another source
+	source:   u64,                // Slug_Store.outline_source they came from
 	bytes:    int,
 	active:   int,                // renders in progress: their outlines must not be freed
 	nested:   map[u16]bool,       // colr_nests_glyph per glyph, once asked (under mu)
@@ -112,10 +113,12 @@ face_colr_begin :: proc(s: ^State, fc: ^Face_Colr) {
 	context.allocator = runtime.heap_allocator()
 	sync.mutex_lock(&fc.mu)
 	defer sync.mutex_unlock(&fc.mu)
-	if fc.active == 0 && fc.bytes > s.settings.colr_cache_kb * 1024 {
+	source := sync.atomic_load(&s.atlas.slug.outline_source)
+	if fc.active == 0 && (fc.bytes > s.settings.colr_cache_kb * 1024 || fc.source != source) {
 		for _, o in fc.outlines { outline_destroy(o); free(o) }
 		clear(&fc.outlines)
 		fc.bytes = 0
+		fc.source = source
 	}
 	fc.active += 1
 }
@@ -198,12 +201,21 @@ colr_put :: proc(s: ^State, bm: Colr_Bitmap) -> Glyph_Image {
 }
 
 // Caller holds the atlas lock. The drawing itself (bounded, but it can take a while) runs with the lock released, so
-// that the other threads that draw are not held up; the lock is taken again for the bitmap's place in a page.
+// that the other threads that draw are not held up; the lock is taken again for the bitmap's place in a page. New settings
+// meanwhile (set_settings forgot what was kept): it is drawn again with them.
 @(private)
 rasterize_colr :: proc(s: ^State, face: Font_Id, f: ^Font, gid: u16, size: f32, x: f32, fg: [3]u8, key: u64) -> (g: Glyph_Image, uses_fg: bool, ok: bool) {
-	atlas_unlock(&s.atlas)
-	bm, drawn := colr_draw(s, face, f, gid, size, x, fg)
-	atlas_lock(&s.atlas)
+	bm: Colr_Bitmap
+	drawn: bool
+	for {
+		generation := s.atlas.settings_generation
+		atlas_unlock(&s.atlas)
+		bm, drawn = colr_draw(s, face, f, gid, size, x, fg)
+		atlas_lock(&s.atlas)
+		if generation == s.atlas.settings_generation { break }
+		if drawn { delete(bm.px, runtime.heap_allocator()) }
+		if !colr_draws(s, f, gid) { return {}, false, false }
+	}
 	if !drawn { return {}, false, false }
 	// another thread may have drawn the same glyph meanwhile and put it in a page: the one kept is the one every caller gets
 	if ex, found := s.atlas.glyphs[key]; found {

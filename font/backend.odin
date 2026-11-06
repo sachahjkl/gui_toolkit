@@ -91,7 +91,6 @@ Text_Backend :: struct {
 	stop:         proc(s: ^State),
 	// Opens the backend's side of a face the platform just made (`f` is not published yet); false: unusable face.
 	face_open:    proc(s: ^State, f: ^Font) -> bool,
-	face_close:   proc(f: ^Font),
 	// Whether the face maps `r` to a glyph other than .notdef.
 	has_glyph:    proc(s: ^State, f: ^Font, r: rune) -> bool,
 	face_metrics: proc(s: ^State, f: ^Font) -> Face_Metrics,
@@ -134,7 +133,7 @@ system_families :: proc(s: ^State, allocator := context.allocator) -> []string {
 // filled into `out` in font units up to `tolerance`; false when the backend has none (an application that draws glyph
 // paths, such as a 2D canvas, calls this instead of a backend's own provider). The same shape on every system.
 glyph_outline :: proc(s: ^State, face: Font_Id, gid: u16, tolerance: f32, out: ^Outline) -> bool {
-	if s == nil || s.tb.outline == nil { return false }
+	if s == nil || s.tb == nil || s.tb.outline == nil { return false }
 	return s.tb.outline(s, face, gid, tolerance, out)
 }
 
@@ -152,7 +151,6 @@ none_backend := Text_Backend{
 	start = proc(s: ^State) -> bool { return false },
 	stop = proc(s: ^State) {},
 	face_open = proc(s: ^State, f: ^Font) -> bool { return false },
-	face_close = proc(f: ^Font) {},
 	has_glyph = proc(s: ^State, f: ^Font, r: rune) -> bool { return false },
 	face_metrics = proc(s: ^State, f: ^Font) -> Face_Metrics { return {} },
 	glyph_box = proc(s: ^State, f: ^Font, gid: u16) -> (Glyph_Box, bool) { return {}, false },
