@@ -39,10 +39,13 @@ offscreen_begin :: proc(c: ^Context, size: [2]int) -> bool {
 	return true
 }
 
-// Closes the offscreen target opened last: its copy for readback is recorded, the target goes back to the pool. 0: no
-// offscreen target is open.
+// Closes the offscreen target opened last, and the layers left open in it: its copy for readback is recorded, the target
+// goes back to the pool. 0: no offscreen target is open.
 offscreen_end :: proc(c: ^Context) -> render.Readback_Id {
-	if !offscreen_active(c) { return 0 }
+	at := len(c.open_layers) - 1
+	for at >= 0 && c.open_layers[at].kind != .Offscreen { at -= 1 }
+	if at < 0 { return 0 }
+	for len(c.open_layers) > at + 1 { pop_layer(c) }
 	ol := offscreen_close(c)
 	ly := c.layers[ol.id - 1]
 	id := render.readback_new(c.renderer)
