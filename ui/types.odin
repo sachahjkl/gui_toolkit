@@ -104,6 +104,7 @@ Box :: struct {
 	name:        string,         // hash part of the id string ("" for anonymous boxes), for debugging and tests
 	last_build:  u64,
 	first_build: u64,
+	virtual:     bool,   // in a vlist or a lazy column: it leaves the build and comes back as the view moves
 
 	// inputs from the build
 	flags:       Box_Flags,
@@ -400,6 +401,7 @@ State :: struct {
 	hover_key:       Key,
 	mouse_moved:     bool,            // the pointer moved this frame
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
+	virtual_depth:   int,                   // > 0 inside a vlist or a lazy column (Box.virtual)
 
 	// integrated title bar (window_chrome.odin)
 	window:          ^platform.Window,      // Build_Params.window: gets the title bar regions after each build
