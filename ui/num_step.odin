@@ -108,7 +108,7 @@ field_num_step :: proc(f: ^Text_Field, box: ^Box) -> (changed: bool) {
 		clear(&f.buf)
 		append(&f.buf, out)
 		f.mark, f.cursor = lo, hi
-		f.edited_ms = now_ms()
+		f.edited_ms = build_now_ms()
 		return true
 	}
 	for e, i in s.events.list {

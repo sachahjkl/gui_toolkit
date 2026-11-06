@@ -57,7 +57,7 @@ Find_State :: struct {
 	lazy:     bool,              // find_sweep was asked in this build: what is built may be a part of the text
 	sweep:    Find_Sweep,
 	sweeping: bool,              // this build makes everything
-	waiting:  bool,              // this build asks for the next one (a sweep whose time has not come, or the answer of one): needs_frame
+	waiting:  bool,              // this build asks for the next one (the answer of a sweep): needs_frame
 	changed_ms, swept_ms: f64,
 	swept_w:  f32,               // the scope's width at the sweep
 	swept_n:  int,               // occurrences found
@@ -74,19 +74,21 @@ find :: proc(needle: string, scope: Key = 0) {
 	if needle == f.needle { return }
 	delete(f.needle)
 	f.needle = strings.clone(needle)
-	f.changed_ms = now_ms()
+	f.changed_ms = build_now_ms()
 	f.sweep = .Unswept
 }
 
 // In a build that may leave text out, before the lazy column: whether this build must make all of it (see above).
 find_sweep :: proc() -> bool {
-	f := &gs().find
+	s := gs()
+	f := &s.find
 	f.lazy = true
 	if f.needle == "" || f.sweep == .Swept { return false }
-	now := now_ms()
-	ready := f.sweep == .Unswept ? now - f.changed_ms >= FIND_QUIET_MS : now - f.swept_ms >= FIND_SWEEP_GAP_MS
-	f.sweeping, f.waiting = ready, !ready
-	return ready
+	// (a wake at the end of the wait, not a frame at every refresh)
+	left := f.sweep == .Unswept ? f.changed_ms + FIND_QUIET_MS - s.time_ms : f.swept_ms + FIND_SWEEP_GAP_MS - s.time_ms
+	f.sweeping = left <= 0
+	if !f.sweeping { wake_within(s, int(left) + WAKE_MARGIN_MS) }
+	return f.sweeping
 }
 
 // The application knows the text changed where nothing is built (a page read above the view): a new sweep.
@@ -247,7 +249,7 @@ find_collect :: proc(s: ^State) {
 	if part { f.count = f.swept_n }
 	if sweep {
 		f.sweep = .Swept
-		f.swept_ms, f.swept_w, f.swept_n = now_ms(), top.size.x, f.count
+		f.swept_ms, f.swept_w, f.swept_n = s.time_ms, top.size.x, f.count
 		f.waiting = true   // (one more frame: the application reads the answer, says the count, goes to the first match)
 		clear(&f.all)
 		for m in f.matches {

@@ -108,10 +108,10 @@ reorder_drag_through_a_build :: proc(t: ^testing.T) {
 	// press item 11 at x 60 (10 into it), move 2 px: under the threshold
 	build(r, {{kind = .Mouse_Move, pos = {60, 20}}, {kind = .Mouse_Press, pos = {60, 20}, button = .Left}})
 	build(r, {{kind = .Mouse_Move, pos = {62, 20}}})
-	testing.expect(t, !r.drag.active, "under the threshold")
+	testing.expect(t, !ui.reorder_dragging(&r.drag, 11), "under the threshold")
 	// past it, then on to the slot of item 13: the dragged item follows the pointer, the others make room
 	build(r, {{kind = .Mouse_Move, pos = {70, 20}}})
-	testing.expect(t, r.drag.active && r.drag.id == 11)
+	testing.expect(t, ui.reorder_dragging(&r.drag, 11))
 	testing.expect_value(t, r.drag.grab, 10)
 	build(r, {{kind = .Mouse_Move, pos = {175, 20}}})
 	testing.expect_value(t, r.items, [4]u64{10, 12, 13, 11})
@@ -119,9 +119,19 @@ reorder_drag_through_a_build :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.pos[3], 150)   // held past the end: at the last slot
 	build(r, {{kind = .Mouse_Release, pos = {500, 20}, button = .Left}})
 	build(r)
-	testing.expect(t, !r.drag.active, "the button went up")
+	testing.expect(t, !ui.reorder_dragging(&r.drag, 11), "the button went up")
 	// the moved items slide to their slots and stop
 	for _ in 0 ..< 200 { build(r); if !ui.needs_frame(&r.s) { break } }
 	testing.expect_value(t, r.pos, [4]f32{0, 50, 100, 150})
 	testing.expect(t, !ui.needs_frame(&r.s), "at rest")
+
+	// a release and a new press read in one frame: that drag is over, whatever the press is on
+	build(r, {{kind = .Mouse_Move, pos = {60, 20}}, {kind = .Mouse_Press, pos = {60, 20}, button = .Left}})
+	build(r, {{kind = .Mouse_Move, pos = {80, 20}}})
+	id := r.drag.id
+	testing.expect(t, ui.reorder_dragging(&r.drag, id), "dragging")
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}, {kind = .Mouse_Press, pos = {80, 20}, button = .Left}})
+	build(r)
+	testing.expect(t, !ui.reorder_dragging(&r.drag, id) || r.drag.grab == 0, "not the same drag")
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}})
 }

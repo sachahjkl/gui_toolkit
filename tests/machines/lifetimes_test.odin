@@ -1,4 +1,4 @@
-package scenarios_test
+package machines_test
 
 // What outlives a frame and what ends it: a box that goes while something holds it, a window the user leaves, an Escape
 // that comes with a new dialog, a style given to nothing, the links of a paragraph.

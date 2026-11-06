@@ -14,8 +14,8 @@ package ui
 //   * menu_move_to: "Move to ..." items for a tab that may go to another strip.
 //
 // State machine (Pane.collapsed): Open -> Collapsed (snap under half the minimum, double click, Enter, pane_toggle);
-// Collapsed -> Open (click, Enter, a drag past half the minimum, pane_toggle). A drag holds where it began
-// (drag_store: the size, folded or not), so it can fold and unfold the pane as the pointer goes back and forth.
+// Collapsed -> Open (click, Enter, a drag past half the minimum, pane_toggle, a screen reader's value). A drag holds where
+// it began (drag_store: the size, Pane_Press), so it can fold and unfold the pane as the pointer goes back and forth.
 
 import "core:fmt"
 import "core:math"
@@ -44,6 +44,15 @@ pane_place_name :: proc(pl: Pane_Place) -> string {
 	}
 	return ""
 }
+
+// What the press of a drag was on (drag_store, its [1]): the bar of an open pane, the strip of a folded one (a release
+// there is a click that brings it back), or a strip the gesture has used (folded by this double click, pulled out: its
+// release is no click, wherever it ends).
+@(private = "file")
+Pane_Press :: enum u8 { Bar, Strip, Strip_Used }
+
+@(private = "file")
+pane_press :: proc() -> Pane_Press { return Pane_Press(int(drag_load()[1])) }
 
 // The app's: what it saves.
 Pane :: struct {
@@ -125,8 +134,8 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	step: f32 = SPLITTER_KEY_STEP_PX
 
 	// a drag: from where it began, folded (0) or open
-	prev := drag_load()   // (the press before this one: a double click whose first click was on the strip is no double click on the bar)
-	if res.sig.pressed { drag_store({p.collapsed ? 0 : open, p.collapsed ? 1 : 0, 0, 0}) }
+	prev := pane_press()   // (the press before this one: a double click whose first click was on the strip is no double click on the bar)
+	if res.sig.pointer_pressed { drag_store({p.collapsed ? 0 : open, f32(p.collapsed ? Pane_Press.Strip : Pane_Press.Bar), 0, 0}) }
 	if res.sig.dragging && res.sig.drag_delta != {} {
 		s.cursor_request = cur
 		d := (axis == .X ? res.sig.drag_delta.x : res.sig.drag_delta.y) / s.scale
@@ -134,11 +143,12 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 		from := drag_load()
 		want := from[0] + d
 		if opts.collapsible && want < lo * PANE_SNAP_FRACTION {
-			if !p.collapsed && from[1] == 0 { p.size[axis] = from[0] }   // (folded by a drag: it comes back at the size it had)
+			if !p.collapsed && pane_press() == .Bar { p.size[axis] = from[0] }   // (folded by a drag: it comes back at the size it had)
 			p.collapsed = true
 		} else {
 			p.collapsed = false
 			p.size[axis] = clamp(want, lo, hi)
+			if pane_press() == .Strip { s.drag_payload[1] = f32(Pane_Press.Strip_Used) }
 		}
 	}
 	if res.sig.released { res.finished = true }
@@ -147,15 +157,15 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 		p.collapsed = !p.collapsed
 	case enter && !p.collapsed && opts.default_size > 0:
 		p.size[axis] = clamp(opts.default_size, lo, hi)
-	case res.sig.clicked && p.collapsed && drag_load()[1] == 1 && drag_load()[2] == 0:   // a click on the strip (not a drag out of it)
+	case res.sig.clicked && p.collapsed && (!res.sig.pointer_clicked || pane_press() == .Strip):   // a click on the strip (not a drag out of it)
 		p.collapsed = false
-	case res.sig.double_clicked && !p.collapsed && prev[1] == 0:
+	case res.sig.double_clicked && !p.collapsed && prev == .Bar:
 		if opts.collapsible {
 			p.collapsed = true
-			drag_store({0, 1, 1, 0})   // (the button is still down: a move from here pulls the pane out again; its release is no click)
+			drag_store({0, f32(Pane_Press.Strip_Used), 0, 0})   // (the button is still down: a move from here pulls the pane out again)
 		} else if opts.default_size > 0 {
 			p.size[axis] = clamp(opts.default_size, lo, hi)
-			drag_store({p.size[axis], 0, 0, 0})   // (the button is still down: a move from here starts at the default)
+			drag_store({p.size[axis], f32(Pane_Press.Bar), 0, 0})   // (the button is still down: a move from here starts at the default)
 		}
 	}
 	if res.sig.focused && !opts.no_keyboard && !p.collapsed {
@@ -191,7 +201,8 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	if opts.collapsible { info.expanded = !p.collapsed }
 	a11y_default(b, info)
 	if v, ok := a11y_numeric_request(b.key, res.size, step); ok {
-		p.collapsed = false
+		if p.collapsed { res.toggled = true }
+		p.collapsed, d.collapsed = false, false
 		p.size[axis] = clamp(v, lo, hi)
 		res.size, res.changed, res.finished = p.size[axis], true, true
 		if opts.on_save != nil { opts.on_save(opts.user, p) }

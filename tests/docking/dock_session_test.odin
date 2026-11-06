@@ -10,6 +10,8 @@ import "../../platform"
 import "../../testkit/session"
 import "../../ui"
 
+@(private = "file") TAB_CLOSE_SEARCH :: 8
+
 @(private = "file")
 App :: struct {
 	dock:   ui.Dock,
@@ -60,6 +62,80 @@ mid :: proc(r: ui.Rect) -> [2]f32 { return (r.min + r.max) * 0.5 }
 
 @(private = "file")
 tab :: proc(s: ^session.Session, name: string) -> [2]f32 { return session.center(session.get(s, name)) }
+
+// The user leaves the window in the middle of a drag: no release came, nothing is dropped.
+@(test)
+a_drag_cut_by_the_window_drops_nothing :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	right := ui.dock_leaf_of(&app.dock, 3)
+	target := mid(ui.dock_markers(app.dock.nodes[right].rect, app.dock.metrics)[.Center]) + app.dock.origin
+	at := tab(s, "dock_tab_2")
+	session.press(s, at)
+	before := layout(&app)   // (the press showed its tab)
+	session.move(s, target)
+	session.frames(s, 2)
+	testing.expect(t, app.result.dragging, "dragging")
+	session.activate(s, false)
+	session.frames(s, 2)
+	testing.expect(t, !app.result.dragging, "over")
+	testing.expect_value(t, layout(&app), before)
+}
+
+// Two closes asked in one frame: both are done.
+@(test)
+two_closes_in_one_frame_both_close :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	b := tab(s, "dock_tab_2")
+	c: [2]f32   // (the close button of the last stack's tab)
+	for i in 0 ..< TAB_CLOSE_SEARCH { if k := session.find(s, "dock_close", i); k != nil { c = session.center(k) } }
+	session.event(s, {kind = .Mouse_Move, pos = c})
+	session.frame(s)
+	session.event(s, {kind = .Mouse_Press, button = .Left, pos = c})
+	session.frame(s)
+	session.event(s, {kind = .Mouse_Press, button = .Middle, pos = b})
+	session.event(s, {kind = .Mouse_Release, button = .Middle, pos = b})
+	session.event(s, {kind = .Mouse_Release, button = .Left, pos = c})
+	session.frames(s, 2)
+	testing.expect(t, !ui.dock_has(&app.dock, 2), "the tab of the middle click")
+	testing.expect(t, !ui.dock_has(&app.dock, 3), "the tab of the close button")
+}
+
+// The stack's menu of a panel that closes: not left open with nothing to say.
+@(test)
+the_menu_of_a_closed_panel_closes :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	ui.dock_open_menu(&app.dock, 1, {100, 100})
+	session.frames(s, 2)
+	testing.expect(t, ui.ctx_menu_any_open(), "open")
+	ui.dock_close(&app.dock, 1)
+	session.frames(s, 2)
+	testing.expect(t, !ui.ctx_menu_any_open(), "closed")
+}
+
+// The stack a drag was over goes before the drop: the panel stays where it is, nothing drops on a slot soon something else.
+@(test)
+a_drop_on_a_stack_that_went_drops_nothing :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	right := ui.dock_leaf_of(&app.dock, 3)
+	target := mid(ui.dock_markers(app.dock.nodes[right].rect, app.dock.metrics)[.Center]) + app.dock.origin
+	session.press(s, tab(s, "dock_tab_2"))
+	session.move(s, target)
+	session.frames(s, 2)
+	testing.expect(t, app.result.dragging, "dragging")
+	ui.dock_close(&app.dock, 3)
+	session.release(s, target)
+	session.frames(s, 2)
+	testing.expect(t, ui.dock_has(&app.dock, 2), "the panel dragged is in the dock")
+	testing.expect_value(t, ui.dock_leaf_of(&app.dock, 2), ui.dock_leaf_of(&app.dock, 1))
+}
 
 @(test)
 a_tab_dragged_onto_each_target :: proc(t: ^testing.T) {

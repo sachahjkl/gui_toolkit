@@ -33,9 +33,10 @@ LIST_TYPEAHEAD_MS :: 900.0
 
 List_State :: struct {
 	sel:         int,     // active row (-1: none)
+	// (the next three say what `list` saw: read them in a build that made the list, its next call clears them)
 	activated:   bool,    // this frame: Enter or a double click on the active row
 	cancelled:   bool,    // this frame: Escape while the list had the focus
-	changed:     bool,    // this frame: the active row changed
+	changed:     bool,    // this frame: the active row changed (a key, a click, rows gone from under it)
 	focused:     bool,    // the list has the keyboard focus (as of this frame's input)
 	key:         Key,     // the list's box (give it the focus with set_focus)
 	count:       int,     // rows built last frame
@@ -142,12 +143,12 @@ list :: proc(id: string, st: ^List_State) -> bool {
 	st.focused = s.focus_key == b.key
 	st.selectable, st.building = st.building, st.selectable
 	clear(&st.building)
+	old := st.sel
 	// (a row list_select asked for may not be counted yet: the first build, a row added now. list_end checks it.)
 	if st.sel >= st.count && st.reveal == 0 { st.sel = st.count - 1 }
-	old := st.sel
 	st.seek = false
 	if st.focused { list_keys(s, st) }
-	if st.sel != old { st.changed = true }
+	if st.sel != old && b.first_build != s.build_index { st.changed = true }   // (the zero value's row 0 of a list with none is no change)
 	append(&s.list_stack, st)
 	push_parent(b)
 	return true
@@ -160,7 +161,11 @@ list_end :: proc() {
 	b := parent_box()
 	pop_parent()
 	st.count = len(st.building)
-	if st.sel >= st.count { st.sel = st.count - 1 }
+	if st.sel >= st.count {
+		st.sel = st.count - 1
+		if b.first_build != s.build_index { st.changed = true }
+	}
+	if st.sel < 0 { st.reveal = 0 }   // (no row to bring into view)
 	a11y_default(b, {role = .List_Box, active_descendant = st.sel >= 0 ? key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel)) : 0})
 	// (a row clicked this frame changed the selection after the rows before it were built)
 	for c := b.first; c != nil; c = c.next {
@@ -182,13 +187,13 @@ list_end :: proc() {
 	// keep the active row in view (its rect is last frame's: done again on the next frames until it is settled)
 	if st.reveal > 0 && st.sel >= 0 {
 		st.reveal -= 1
+		s.anim_busy = true   // (a row not laid out yet, the first build: the next frames have it)
 		if r := box_from_key(key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel))); r != nil && r.last_build + 1 >= s.build_index {
 			// rows are children of the list: rel_pos is their place in the content, whatever the scroll animation did
 			top := r.rel_pos.y
 			bottom := top + r.size.y
 			if top < b.view_target.y { b.view_target.y = top }
 			if bottom > b.view_target.y + b.size.y { b.view_target.y = bottom - b.size.y }
-			s.anim_busy = true
 		}
 	}
 }

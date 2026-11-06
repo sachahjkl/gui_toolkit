@@ -210,6 +210,13 @@ dock_end :: proc(d: ^Dock) -> (res: Dock_Result) {
 	return
 }
 
+// The stack's menu of a panel closed: it has nothing to say.
+@(private)
+dock_menu_of_gone :: proc(d: ^Dock, panel: u32) {
+	if d.menu_panel != panel || current == nil { return }
+	if ctx_menu_is_open(key_from_string(d.space_key, "###dock_menu")) { ctx_menu_close() }
+}
+
 // Opens the stack's menu for `panel` (at `pos`, window px; `from_keyboard`: its first item is selected).
 dock_open_menu :: proc(d: ^Dock, panel: u32, pos: Vec2, from_keyboard := false) {
 	d.menu_panel = panel
@@ -473,7 +480,7 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 				}
 				if gsig.double_clicked {
 					d.drag = {}
-					d.pending = {kind = .Redock, node = root}
+					append(&d.pending, Dock_Action{kind = .Redock, node = root})
 				}
 			} else if d.opts.strip_space != nil {
 				d.opts.strip_space(d.opts.user, d, leaf, grab)
@@ -578,17 +585,17 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 
 // (in the build: done by dock_end)
 @(private)
-dock_user_close :: proc(d: ^Dock, p: u32) { d.pending = {kind = .Close, panel = p} }
+dock_user_close :: proc(d: ^Dock, p: u32) { append(&d.pending, Dock_Action{kind = .Close, panel = p}) }
 
 @(private)
 dock_do_pending :: proc(d: ^Dock) {
-	a := d.pending
-	d.pending = {}
-	switch a.kind {
-	case .None:
-	case .Close:  if dock_close(d, a.panel) { d.closed = a.panel }
-	case .Redock: if dock_valid_node(d, a.node) && dock_is_floating(d, a.node) { dock_redock(d, a.node) }
+	for a in d.pending {
+		switch a.kind {
+		case .Close:  if dock_close(d, a.panel) { d.closed = a.panel }
+		case .Redock: if dock_valid_node(d, a.node) && dock_is_floating(d, a.node) { dock_redock(d, a.node) }
+		}
 	}
+	clear(&d.pending)
 }
 
 // A floating root: its frame, its handles and stacks, its grip.

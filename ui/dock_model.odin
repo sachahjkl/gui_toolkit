@@ -129,12 +129,12 @@ Dock :: struct {
 	held:   bool,                      // a handle or a grip of the dock is held this frame
 	closed: u32,                       // the panel a user closed this frame
 	menu_panel: u32,                   // the panel the open "Dock to" menu is for
-	pending: Dock_Action,              // asked for while the boxes are built: done by dock_end
+	pending: [dynamic]Dock_Action,     // asked for while the boxes are built: done by dock_end
 }
 
 // A change of the tree asked for in the middle of the build (a close button, a double click on a floating panel's title):
 // the stacks being built stay as they are until dock_end does it.
-Dock_Action_Kind :: enum u8 { None, Close, Redock }
+Dock_Action_Kind :: enum u8 { Close, Redock }
 Dock_Action :: struct {
 	kind:  Dock_Action_Kind,
 	panel: u32,
@@ -151,6 +151,7 @@ dock_destroy :: proc(d: ^Dock) {
 	delete_soa(d.nodes)
 	delete_soa(d.panels)
 	delete(d.floats)
+	delete(d.pending)
 	d^ = {}
 }
 
@@ -176,6 +177,8 @@ node_new :: proc(d: ^Dock, kind: Dock_Kind) -> i32 {
 
 @(private)
 node_free :: proc(d: ^Dock, n: i32) {
+	// (a slot soon made another node: a drag held by it, or going to drop on it, has nothing to drop)
+	if d.drag.state == .Dragging && (d.drag.node == n || d.drag.target.node == n) { d.drag.state = .Cancelled }
 	d.nodes[n] = {kind = .Free, parent = DOCK_NONE, a = DOCK_NONE, b = DOCK_NONE, active = DOCK_NO_PANEL}
 }
 
@@ -497,6 +500,7 @@ dock_close :: proc(d: ^Dock, id: u32) -> bool {
 	dr := &d.drag
 	gone := dr.panel == DOCK_NO_PANEL ? !dock_valid_node(d, dr.node) : dr.panel == id
 	if dr.state != .Idle && gone { dr.state = .Cancelled }
+	dock_menu_of_gone(d, id)
 	return true
 }
 

@@ -170,6 +170,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	append(&s.last_events, ..p.events)
 	s.metrics.lazy_built = 0
 	selection_snapshot(s)
+	// what the last build's boxes hold of its arena goes with it: a box looked up during this build has none
+	for _, b in s.boxes { b.text, b.name, b.a11y, b.custom_user = "", "", nil, nil }
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_sets); clear(&s.color_memo)
@@ -190,6 +192,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.anim_busy = false
 	s.wake_ms = 0
 	s.menu_close_pending = false
+	s.toast_area_set = false
 	s.boxes_built = 0
 	s.time_ms = p.time_ms > 0 ? p.time_ms : clock_ms(s)
 	left := p.inactive && !s.inactive
@@ -260,7 +263,7 @@ end_build :: proc() {
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {
 		chrome_collect(s)
-	} else if s.window != nil && platform.is_integrated_title(s.window) && len(s.chrome.caption) > 0 {
+	} else if len(s.chrome.caption) > 0 || s.chrome.buttons != {} {
 		chrome_collect(s)   // none any more (full screen bars hidden...): the window forgets the last ones
 	}
 	wrap_cache_trim(s)
@@ -272,8 +275,8 @@ end_build :: proc() {
 	selection_update(s)
 	modals_settle(s)
 	handle_tab_navigation(s)
+	find_collect(s)     // (the rects are final, with the scroll they were laid out at: update_animations moves it)
 	update_animations(s)
-	find_collect(s)     // (the rects are final)
 	a11y_end_build(s)   // (after the focus moved and the rects are final)
 
 	// drop boxes and animations that were not touched this build
@@ -651,9 +654,14 @@ push_tags_key :: proc(s: ^State) { _ = current_tags_key(s) }
 // no hover, no keyboard focus, and it fades to a muted look. Scopes nest; `disabled(false)` changes nothing.
 @(deferred_none = pop_disabled)
 disabled :: proc(cond := true) -> bool {
+	push_disabled(cond)
+	return true
+}
+
+@(private)
+push_disabled :: proc(cond: bool) {
 	append(&gs().disabled_stack, cond)
 	if cond { gs().disabled_depth += 1 }
-	return true
 }
 
 pop_disabled :: proc() {

@@ -49,6 +49,19 @@ frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr)
 	free_all(context.temp_allocator)
 }
 
+// A theme destroyed is a theme with nothing: a palette applied again makes its entries anew, and a second destroy has nothing to free.
+@(test)
+a_destroyed_theme_starts_over :: proc(t: ^testing.T) {
+	theme: ui.Theme
+	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	ui.theme_destroy(&theme)
+	testing.expect_value(t, len(theme.patterns), 0)
+	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	testing.expect(t, len(theme.patterns) > 0, "made again")
+	ui.theme_destroy(&theme)
+	ui.theme_destroy(&theme)
+}
+
 Run :: struct { sel: int, items: []string, labels: []string, icons: []string }
 
 build_widgets :: proc(f: ^Fx, user: rawptr) {

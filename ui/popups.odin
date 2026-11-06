@@ -99,7 +99,7 @@ Menu_Level :: struct {
 	eff_width:    f32,       // width of the rows this frame
 	activate:     bool,      // keyboard: choose the selected item when it is built
 	open_sub:     bool,      // keyboard: open the selected submenu
-	from_keyboard: bool,     // opened from the keyboard: the first item starts selected
+	from_keyboard: bool,     // opened from the keyboard: the first item starts selected (until its rows are known)
 	panel:        Key,
 	hover_item:   int,       // item under the pointer and since when (submenus open / close after a delay)
 	hover_since:  f64,
@@ -110,17 +110,20 @@ Menu_Level :: struct {
 // Opens the menu `key` with its top-left corner at `pos` (window pixels), replacing any open menu.
 // `anchor`: the box that opens the menu (dropdown button, menu bar entry): pressing it again is not a press "outside",
 // so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
-ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false) {
-	s := gs()
-	menu_pop_to(0)
-	s.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
-	append(&s.menus, Menu_Level{key = key, anchor = anchor, pos = pos, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard})
-}
+ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false) { menu_open(key, pos, {}, anchor, from_keyboard) }
 
 // Opens the menu below `rect` (above it when there is no room below), e.g. under the button that opens it.
-ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard := false) {
-	ctx_menu_open(key, {rect.min.x, rect.max.y}, anchor, from_keyboard)
-	gs().menus[0].around = rect
+ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard := false) { menu_open(key, {rect.min.x, rect.max.y}, rect, anchor, from_keyboard) }
+
+// In the block of an open menu the rows still to come are that menu's: this one opens when the block ends (menu_end).
+@(private = "file")
+menu_open :: proc(key: Key, pos: Vec2, around: Rect, anchor: Key, from_keyboard: bool) {
+	s := gs()
+	lv := Menu_Level{key = key, anchor = anchor, pos = pos, around = around, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard}
+	if len(s.menu_build) > 0 { s.menu_next = lv; return }
+	menu_pop_to(0)
+	s.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
+	append(&s.menus, lv)
 }
 
 ctx_menu_close :: proc() { menu_pop_to(0) }
@@ -303,13 +306,12 @@ ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
 // A press of this frame (any button) landed outside the open levels from `from` on, and not on `anchor`.
 @(private = "file")
 menu_pressed_outside :: proc(s: ^State, from: int, anchor: Key) -> bool {
-	if !s.pressed_any[.Left] && !s.pressed_any[.Right] && !s.pressed_any[.Middle] { return false }
 	hit: Key
-	switch {
-	case s.pressed_any[.Left]:  hit = s.pressed_key[.Left]
-	case s.pressed_any[.Right]: hit = s.pressed_key[.Right]
-	case:                       hit = s.pressed_key[.Middle]
+	any_press := false
+	for b in platform.Mouse_Button {
+		if s.pressed_any[b] { hit, any_press = s.pressed_key[b], true; break }
 	}
+	if !any_press { return false }
 	if hit != 0 && hit == anchor { return false }
 	if owner, ok := s.sb_owner[hit]; ok { hit = owner }   // a level's scroll bar is part of it
 	hb := s.boxes[hit] if hit != 0 else nil
@@ -366,7 +368,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	clear(&lv.items)
 	lv.prev_width, lv.width = lv.width, 0
 	lv.built_build = s.build_index
-	lv.activate = false
+	lv.activate, lv.open_sub = false, false
 
 	// The pointer's item is the selected one in the frame that sees the pointer there: the rows are built in order, so
 	// a row built before the hovered one would otherwise still be drawn selected (and the hovered one not yet) until the
@@ -385,7 +387,11 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	if depth == len(s.menus) - 1 {
 		// the innermost level takes the keys in the order they came, until one hands over (opens a submenu, chooses)
 		items := lv.prev[:]
-		if lv.from_keyboard && lv.sel < 0 { lv.sel = menu_step(items, -1, 1) }
+		// (once its rows are known: from then on the keys and the pointer say what is selected, nothing too)
+		if lv.from_keyboard && len(items) > 0 {
+			if lv.sel < 0 { lv.sel = menu_step(items, -1, 1) }
+			lv.from_keyboard = false
+		}
 		keys: for e, i in s.menu_keys.list {
 			if s.menu_keys.consumed[i] { continue }
 			s.menu_keys.consumed[i] = true
@@ -491,6 +497,12 @@ menu_end :: proc() {
 		if len(s.menu_build) == 0 && s.menu_close_pending {
 			s.menu_close_pending = false
 			ctx_menu_close()
+		}
+		if lv, opens := s.menu_next.?; opens && len(s.menu_build) == 0 {
+			s.menu_next = nil
+			s.menu_close_pending = false
+			ctx_menu_close()
+			append(&s.menus, lv)
 		}
 	}
 	ctx_menu_end()

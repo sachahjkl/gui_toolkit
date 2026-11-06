@@ -1,6 +1,5 @@
 package ui
 
-import "core:hash"
 import "core:math"
 import "core:slice"
 import "../draw"
@@ -22,8 +21,7 @@ Color_Pick :: struct {
 	style:  Color_Style,         // how the text writes it
 	old:    Srgba,               // the colour it was opened with
 	field:  Text_Field,
-	typed:  bool,                // the last change came from the field: its text is the colour as the user wrote it
-	shown:  u64,                 // what the field's text was made from (the text it would write), to make it again on a change
+	typed:  bool,                // the last change came from the field, which has the focus: its text is the colour as the user wrote it
 }
 
 @(private = "file") COLOR_PICKER_EM :: 17          // its width (four format names side by side)
@@ -41,7 +39,7 @@ color_pick_destroy :: proc(cp: ^Color_Pick) { field_destroy(&cp.field) }
 // Starts the picker on `c` written in `style` (its old colour too).
 color_pick_set :: proc(cp: ^Color_Pick, c: Srgba, style: Color_Style) {
 	cp.hue, cp.sat, cp.val = srgb_to_hsv(c.rgb)
-	cp.alpha, cp.style, cp.old, cp.typed, cp.shown = c.a, style, c, false, 0
+	cp.alpha, cp.style, cp.old, cp.typed = c.a, style, c, false
 }
 
 color_pick_rgba :: proc(cp: ^Color_Pick) -> Srgba {
@@ -128,8 +126,7 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 	// the text: made again when the colour or the format changed elsewhere (not while it is being typed in)
 	key := key_from_string(root.key, "###text")
 	want := color_text(color_pick_rgba(cp), cp.style)
-	h := hash.fnv64a(transmute([]u8)want)
-	if focus_key() != key && !cp.typed && h != cp.shown { field_set(&cp.field, want); cp.shown = h }
+	if focus_key() != key && !cp.typed && field_string(&cp.field) != want { field_set(&cp.field, want) }
 	next({width = px(w), height = px(math.round(em * ROW_EM)), font = mono_font(), radius = em * SWATCH_RADIUS_EM})
 	res := line_edit("###text", &cp.field)
 	a11y_default(res.box, {role = .Text_Input, name = "Colour"})
@@ -137,9 +134,12 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 		if c, style, ok := color_parse(field_string(&cp.field)); ok {
 			color_pick_from(cp, c)
 			cp.style, cp.typed, changed = style, true, true
-			cp.shown = hash.fnv64a(transmute([]u8)color_text(color_pick_rgba(cp), cp.style))
 		}
 	}
-	if !res.focused && cp.typed && focus_key() != key { cp.typed = false }   // (left: written as the picker writes it)
+	// (left: written as the picker writes it, by the next build)
+	if !res.focused && cp.typed && focus_key() != key {
+		cp.typed = false
+		gs().anim_busy = true
+	}
 	return
 }
