@@ -121,12 +121,14 @@ huffman_build :: proc "contextless" (h: ^Huffman, lengths: []u8) -> (left: int) 
 ////////////////////////////////
 // Inflating
 
+// Failed: a push answered an error; nothing more comes of the stream, every later call says the same.
 @(private)
-Inflate_State :: enum u8 { Header, Blocks, Codes, Trailer, Done }
+Inflate_State :: enum u8 { Header, Blocks, Codes, Trailer, Done, Failed }
 
 Inflater :: struct {
 	format:  Format,
 	state:   Inflate_State,
+	failure: Error,          // Failed: why
 	input:   [dynamic]u8,    // what has not been consumed whole (the current block starts in it)
 	bit:     int,            // the next bit to read in `input`
 	window:  [dynamic]u8,    // the last WINDOW bytes of output
@@ -333,8 +335,16 @@ block_end :: proc(z: ^Inflater) {
 	}
 }
 
-// Takes `input`; appends what it allows to `out`.
+// Takes `input`; appends what it allows to `out`. An error ends the stream.
 inflate_push :: proc(z: ^Inflater, input: []u8, out: ^[dynamic]u8) -> Error {
+	if z.state == .Failed { return z.failure }
+	err := inflate_steps(z, input, out)
+	if err != .None { z.state, z.failure = .Failed, err }
+	return err
+}
+
+@(private)
+inflate_steps :: proc(z: ^Inflater, input: []u8, out: ^[dynamic]u8) -> Error {
 	append(&z.input, ..input)
 	start := len(out)
 	for {
@@ -388,13 +398,19 @@ inflate_push :: proc(z: ^Inflater, input: []u8, out: ^[dynamic]u8) -> Error {
 		case .Done:
 			if z.bit >> 3 < len(z.input) { return .Junk_After_End }
 			return compact(z)
+		case .Failed:
+			return z.failure
 		}
 	}
 }
 
-// The end of the input: Truncated when the data had not ended.
+// The end of the input: Truncated when the data had not ended, what went wrong when a push failed.
 inflate_finish :: proc(z: ^Inflater) -> Error {
-	return z.state == .Done ? .None : .Truncated
+	#partial switch z.state {
+	case .Done:   return .None
+	case .Failed: return z.failure
+	}
+	return .Truncated
 }
 
 // Drops the input consumed whole.
@@ -466,9 +482,13 @@ header :: proc(z: ^Inflater, b: ^Bits) -> (ok: bool, err: Error) {
 ////////////////////////////////
 // Deflating
 
+// Fresh -> Writing (the header is out) -> Finished (the trailer is out: what follows would be after the end of the stream).
+@(private)
+Deflate_State :: enum u8 { Fresh, Writing, Finished }
+
 Deflater :: struct {
 	format:  Format,
-	started: bool,
+	state:   Deflate_State,
 	window:  [dynamic]u8,    // the last input (up to WINDOW bytes before each push)
 	head:    []i64,          // hash -> last position (in `window` coordinates + base)
 	prev:    []i64,          // position -> previous position with the same hash (modulo WINDOW)
@@ -539,8 +559,8 @@ hash3 :: #force_inline proc(p: []u8, i: int) -> int {
 
 @(private)
 start :: proc(d: ^Deflater, out: ^[dynamic]u8) {
-	if d.started { return }
-	d.started = true
+	if d.state != .Fresh { return }
+	d.state = .Writing
 	switch d.format {
 	case .Gzip: append(out, 0x1F, 0x8B, 8, 0, 0, 0, 0, 0, 0, 0xFF)
 	case .Zlib: append(out, 0x78, 0x9C)
@@ -565,6 +585,7 @@ dist_index :: proc(dist: int) -> int {
 
 // Takes `input`; appends its compressed form (one or more non-final blocks) to `out`.
 deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
+	if d.state == .Finished { return }
 	start(d, out)
 	if len(input) == 0 { return }
 	switch d.format {
@@ -618,9 +639,11 @@ deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 	}
 }
 
-// The end: an empty final block, the remaining bits, the trailer.
+// The end: an empty final block, the remaining bits, the trailer. Once only: after it, nothing more is written.
 deflate_finish :: proc(d: ^Deflater, out: ^[dynamic]u8) {
+	if d.state == .Finished { return }
 	start(d, out)
+	d.state = .Finished
 	put(d, out, 1, 1)   // BFINAL
 	put(d, out, 1, 2)   // fixed
 	put_code(d, out, 0, 7)   // end of block (fixed code of 256)

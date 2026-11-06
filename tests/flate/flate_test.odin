@@ -254,6 +254,41 @@ errors_inside_a_block_that_came_in_chunks :: proc(t: ^testing.T) {
 	testing.expect_value(t, flate.inflate_push(&z, packed[100:], &out), flate.Error.Too_Large)
 }
 
+// A stream that failed says so to the end, and does not start again from where it stopped.
+@(test)
+a_failed_stream_stays_failed :: proc(t: ^testing.T) {
+	z: flate.Inflater
+	flate.inflater_init(&z, .Zlib)
+	defer flate.inflater_destroy(&z)
+	out := make([dynamic]u8)
+	defer delete(out)
+	bad := [?]u8{0xFF, 0xFF, 0xFF, 0xFF}
+	testing.expect_value(t, flate.inflate_push(&z, bad[:], &out), flate.Error.Bad_Data)
+	testing.expect_value(t, flate.inflate_push(&z, bad[:], &out), flate.Error.Bad_Data)
+	testing.expect_value(t, flate.inflate_finish(&z), flate.Error.Bad_Data)
+}
+
+// What is pushed after the end goes nowhere: the stream stays one stream.
+@(test)
+a_finished_deflater_writes_nothing_more :: proc(t: ^testing.T) {
+	d: flate.Deflater
+	flate.deflater_init(&d, .Zlib)
+	defer flate.deflater_destroy(&d)
+	out := make([dynamic]u8)
+	defer delete(out)
+	text := "the end of the stream"
+	flate.deflate_push(&d, transmute([]u8)text, &out)
+	flate.deflate_finish(&d, &out)
+	n := len(out)
+	flate.deflate_push(&d, transmute([]u8)text, &out)
+	flate.deflate_finish(&d, &out)
+	testing.expect_value(t, len(out), n)
+	back, err := flate.inflate(.Zlib, out[:])
+	defer delete(back)
+	testing.expect_value(t, err, flate.Error.None)
+	testing.expect_value(t, string(back), text)
+}
+
 // Neither way leaves anything in the temporary allocator (a stream may run for long between two resets).
 @(test)
 streams_stay_out_of_the_temp_allocator :: proc(t: ^testing.T) {
