@@ -28,6 +28,7 @@ Surface :: struct {
 	hwnd:           win.HWND,
 	transparent:    bool,
 	transparent_asked: bool,
+	under_children: bool,
 	dcomp:          ^IDCompositionDevice,
 	dcomp_target:   ^IDCompositionTarget,
 	dcomp_visual:   ^IDCompositionVisual,
@@ -60,6 +61,7 @@ exchange :: proc(r: ^Renderer, s: ^Surface) {
 	r.hwnd, s.hwnd = s.hwnd, r.hwnd
 	r.transparent, s.transparent = s.transparent, r.transparent
 	r.transparent_asked, s.transparent_asked = s.transparent_asked, r.transparent_asked
+	r.under_children, s.under_children = s.under_children, r.under_children
 	r.dcomp, s.dcomp = s.dcomp, r.dcomp
 	r.dcomp_target, s.dcomp_target = s.dcomp_target, r.dcomp_target
 	r.dcomp_visual, s.dcomp_visual = s.dcomp_visual, r.dcomp_visual
@@ -118,8 +120,10 @@ surface_refresh :: proc(r: ^Renderer) {
 // no GDI surface); the blend space is the renderer's. With it, `fixed_size` (> 0) is what set_fixed_surface does for the
 // renderer's own window: the buffers keep that size (the monitor's, say) while the window is resized, shown 1:1 and clipped by the
 // client area, so nothing is ever stretched. Where DirectComposition is missing the surface is an opaque HWND chain, as render.init's.
+// `under_children`: a composition surface goes above the window's child windows, and one moved into the window from elsewhere (a web
+// view) would be hidden behind it: this puts it below them. Direct3D (fixed_size neither has a meaning on WebGPU).
 // `surface_init` makes it in the Surface `s` points to, where the program keeps it. Prefer it to `surface_create`.
-surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (ok: bool) {
+surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}, under_children := false) -> (ok: bool) {
 	when USE_WGPU {
 		// a second window on WebGPU: its own wgpu surface (and the latency / present state that go with it), swapped with the
 		// renderer's by surface_use, exactly as the Direct3D path swaps its swap chain. fixed_size is Direct3D's composition
@@ -135,6 +139,7 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handle
 		s.hwnd, s.size = win.HWND(handles.hwnd), size
 		exchange(r, s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
 		r.transparent, r.transparent_asked = transparent, transparent
+		r.under_children = under_children
 		r.fixed_surface = false
 		ok = create_swapchain(r, sized_by_surface = true)
 		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }
@@ -150,8 +155,8 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handle
 // copied into a field, an optimizing build with debug information (`-o:speed -debug`) splits it into thousands of values with a debug
 // record each, and LLVM spends more than ten minutes on the module (Wren's dev build did, until it called surface_init). New code calls
 // surface_init with the Surface where it lives.
-surface_create :: proc(r: ^Renderer, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}) -> (s: Surface, ok: bool) {
-	ok = surface_init(r, &s, handles, size, transparent, fixed_size)
+surface_create :: proc(r: ^Renderer, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}, under_children := false) -> (s: Surface, ok: bool) {
+	ok = surface_init(r, &s, handles, size, transparent, fixed_size, under_children)
 	return
 }
 

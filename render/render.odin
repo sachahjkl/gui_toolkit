@@ -472,6 +472,7 @@ Renderer :: struct {
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
 	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
 	transparent_asked: bool,              // what init or surface_init was told: a window remade tries again what failed once
+	under_children: bool,                 // surface_init: the composition surface is below the window's child windows
 	dcomp:        ^IDCompositionDevice,
 	dcomp_target: ^IDCompositionTarget,
 	dcomp_visual: ^IDCompositionVisual,

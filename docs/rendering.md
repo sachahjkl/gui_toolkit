@@ -51,7 +51,7 @@ makes its own device when that adapter cannot present to it.
 Second windows (the developer tools, a detached panel) use the same neutral handles:
 
 ```odin
-render.surface_init(&r, &surface, platform.native_surface_handles(second_window), size, transparent, fixed_size)
+render.surface_init(&r, &surface, platform.native_surface_handles(second_window), size, transparent, fixed_size, under_children)
 render.surface_use(&r, &surface)   // the renderer now draws to the second window; call again to go back
 ```
 
