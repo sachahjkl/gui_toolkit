@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.89.0] - 2026-11-06
+
+### Added
+- **`ui.tween`**: a value that reaches its target in a set time, gently at both ends, for what the eye follows from end to end.
+- **`draw.glyph_run_stroke`**: the outlines of a glyph run as a line of a width.
+- **`font.glyph_ink_extent`, `font.run_ink_spans`**: where the ink of a glyph or a run crosses a band, from the outlines, kept per glyph and band: the gaps of a skipping underline.
+
 ## [0.88.0] - 2026-11-06
 
 ### Fixed
@@ -1722,6 +1729,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.89.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.89.0
 [0.88.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.88.0
 [0.87.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.87.0
 [0.86.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.86.0
