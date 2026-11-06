@@ -13,7 +13,8 @@ POST_CAPACITY_DEFAULT :: 1024
 POST_PER_BUILD_DEFAULT :: 512
 
 // Posts a call from any thread: `fn(data, word)` runs on the interface's thread at the start of the next build (or
-// the next drain_posts). False when the queue is closed (the State is being destroyed) or full with .Fail.
+// the next drain_posts). False when the queue is closed (the State is being destroyed, or gone) or full with .Fail. The
+// call changes the app's data, and builds nothing: no box can be made before the build's root.
 post :: proc{post_state, post_window}
 
 post_state :: proc(s: ^State, fn: Post_Proc, data: rawptr = nil, word: u64 = 0) -> bool {
@@ -29,23 +30,28 @@ post_window :: proc(w: ^platform.Window, fn: Post_Proc, data: rawptr = nil, word
 }
 
 // Sizes the queue and says what a full ring does (default: 1024 slots, Block, 512 calls per build). Call it on the
-// interface's thread before any thread posts: the calls waiting are run first. `on_drop` gets the calls that will
-// never run (Drop_Oldest, or left when the State is destroyed), to free their data.
+// interface's thread before any thread posts: every call waiting is run first, whatever the budget. A closed queue stays
+// closed. `on_drop` gets the calls that will never run (Drop_Oldest, or left when the State is destroyed), to free their
+// data.
 post_configure :: proc(s: ^State, capacity := POST_CAPACITY_DEFAULT, overflow := Post_Overflow.Block, per_build := POST_PER_BUILD_DEFAULT, on_drop: Post_Proc = nil) {
-	drain_posts(s)
+	post_queue_set_owner(&s.posts, sync.current_thread_id())
+	_, s.posts_more = post_queue_drain(&s.posts)
 	wake, user := s.posts.wake, sync.atomic_load(&s.posts.wake_user)
+	closed := sync.atomic_load(&s.posts.closed)
 	post_queue_destroy(&s.posts)
 	s.posts = {}
 	post_queue_init(&s.posts, capacity, overflow, wake, user, on_drop)
+	if closed { post_queue_close(&s.posts) }
 	s.post_budget = per_build
 }
 
 // Who to wake when a call is posted. By default the window of Build_Params.window (platform.wake); an app whose loop
-// waits on something else (its own event, a socket) gives its own. Call it before any thread posts.
+// waits on something else (its own event, a socket) gives its own, called with `user` (nil too). `wake` nil: back to the
+// window. Call it before any thread posts.
 set_post_wake :: proc(s: ^State, wake: proc(user: rawptr), user: rawptr) {
-	s.posts.wake = wake
 	s.post_wake_own = wake != nil
-	post_queue_set_wake_user(&s.posts, user)
+	s.posts.wake = wake != nil ? wake : wake_window
+	post_queue_set_wake_user(&s.posts, wake != nil ? user : rawptr(s.window))
 }
 
 // Runs the calls posted so far (at most `budget`, < 0: the State's per-build budget, 0: none), on the interface's thread.
@@ -90,7 +96,9 @@ post_window_gone :: proc(w: ^platform.Window, user: rawptr) {
 	s := (^State)(user)
 	for k, i in s.post_windows { if k == w { unordered_remove(&s.post_windows, i); break } }
 	_ = sync.atomic_compare_exchange_strong(&w.post_queue, rawptr(&s.posts), nil)
-	_ = sync.atomic_compare_exchange_strong(&s.posts.wake_user, rawptr(w), nil)
+	// (a window that stays takes over, until the next build says which)
+	next := len(s.post_windows) > 0 ? rawptr(s.post_windows[0]) : nil
+	_ = sync.atomic_compare_exchange_strong(&s.posts.wake_user, rawptr(w), next)
 	if s.window == w { s.window = nil }
 }
 
