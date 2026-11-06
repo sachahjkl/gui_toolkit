@@ -55,6 +55,7 @@ const CLIP_EVENODD: u32 = 2u;
 const CLIP_SCISSOR: u32 = 4u;
 const MAX_CLIP_DEPTH: i32 = 8;
 const MAX_POLYGON_POINTS: u32 = 4096u;
+const POLYGON_BREAK: f32 = 1e29;
 
 const BLEND_MULTIPLY: u32 = 1u;
 const BLEND_SCREEN: u32 = 2u;
@@ -493,15 +494,19 @@ fn point_at(ret: bool, k: u32) -> float2 {
 	return points[k];
 }
 
-// Signed distance to a polygon (negative inside), with the nonzero or even-odd rule.
+// Signed distance to a polygon (negative inside), with the nonzero or even-odd rule. A point past POLYGON_BREAK ends a contour: the
+// next one starts at the point after it, with no edge between them (a shape with holes).
 fn polygon_sdf(p: float2, first: u32, count0: u32, evenodd: bool, ret: bool) -> f32 {
 	let count = min(count0, MAX_POLYGON_POINTS);
 	if (count < 3u) { return 1e9; }
 	var d = 1e30;
 	var winding = 0;
 	var a = point_at(ret, first + count - 1u);
+	var starts = a.x > POLYGON_BREAK;
 	for (var i = 0u; i < count; i++) {
 		let b = point_at(ret, first + i);
+		if (b.x > POLYGON_BREAK) { starts = true; continue; }
+		if (starts) { a = b; starts = false; continue; }
 		let e = b - a;
 		let w = p - a;
 		let q = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-12));

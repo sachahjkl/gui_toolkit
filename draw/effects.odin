@@ -765,6 +765,7 @@ push_clip_polygon :: proc(c: ^Context, pts: []Vec2, evenodd := false) {
 	b := Rect{pts[0], pts[0]}
 	for p in pts {
 		append(&c.clip_points, [2]f32{p.x, p.y})
+		if p.x > render.POLYGON_BREAK { continue }   // (ends a contour: a shape with holes, path_fill)
 		b = Rect{{min(b.min.x, p.x), min(b.min.y, p.y)}, {max(b.max.x, p.x), max(b.max.y, p.y)}}
 	}
 	push_clip_shape(c, b, render.Clip_Data{kind = render.CLIP_POLYGON, first = u32(first), count = u32(len(pts)), flags = evenodd ? render.CLIP_EVENODD : 0})
