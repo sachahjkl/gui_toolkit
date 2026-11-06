@@ -96,6 +96,8 @@ a11y_send :: proc(w: ^Window, u: ^A11y_Update, toolkit_name := "gui_toolkit", to
 a11y_take_request :: proc(w: ^Window) -> (r: A11y_Request, ok: bool) {
 	if w == nil || w.a11y == nil { return }
 	b := (^A11y_Bridge)(w.a11y)
+	// (this bus's fd is in no poll: what a client asked is served here, once a frame)
+	if len(b.requests) == 0 { dbus.dispatch(b.conn) }
 	if len(b.requests) == 0 { return }
 	r = b.requests[0]
 	ordered_remove(&b.requests, 0)
