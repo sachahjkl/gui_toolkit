@@ -842,10 +842,14 @@ recycle_targets :: proc(r: ^Renderer) {
 	}
 }
 
-// Releases every pooled layer target (memory pressure, device teardown), kept ones included (targets_generation).
-release_targets :: proc(r: ^Renderer) {
-	for p in r.targets { destroy_texture(r, p.tex) }
-	clear(&r.targets)
+// Releases every pooled layer target (memory pressure, device teardown), kept ones included (targets_generation), but keep: a
+// texture still shown, which stays as it is, for the program to carry over to the new generation.
+release_targets :: proc(r: ^Renderer, keep: Texture = 0) {
+	for i := len(r.targets) - 1; i >= 0; i -= 1 {
+		if keep != 0 && r.targets[i].tex == keep { continue }
+		destroy_texture(r, r.targets[i].tex)
+		unordered_remove(&r.targets, i)
+	}
 	r.targets_gen += 1
 }
 
