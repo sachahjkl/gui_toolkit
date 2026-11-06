@@ -522,3 +522,28 @@ gpu_timing_measures_the_frames :: proc(t: ^testing.T) {
 	testing.expectf(t, index >= first && index < next, "the frame measured %v is one of %v .. %v", index, first, next)
 	testing.expectf(t, ms > 0 && ms == render.gpu_ms(&f.r), "its time %v ms", ms)
 }
+// A line at an angle: whole on its axis, nothing away from it, and edges of partial coverage, where rows of a rect would leave steps.
+@(test)
+a_line_is_smooth_at_any_angle :: proc(t: ^testing.T) {
+	current_space, current_format = .Srgb, .Unorm8
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer close(&f)
+	img := frame(&f, proc(dc: ^draw.Context) { draw.line(dc, {20, 30}, {140, 110}, 4, {1, 1, 1, 1}) })
+	testing.expectf(t, cov(img, 80, 70) > 0.95, "on its axis: %v", cov(img, 80, 70))
+	testing.expectf(t, cov(img, 80, 90) < 0.01 && cov(img, 80, 50) < 0.01, "away from it: %v, %v", cov(img, 80, 90), cov(img, 80, 50))
+	partial := 0
+	for y in 0 ..< SIZE.y {
+		for x in 0 ..< SIZE.x {
+			if v := cov(img, x, y); v > 0.1 && v < 0.9 { partial += 1 }
+		}
+	}
+	testing.expectf(t, partial > 100, "its edges are soft: %d pixels between", partial)
+
+	// the pieces of a polyline leave no gap where they meet
+	img = frame(&f, proc(dc: ^draw.Context) {
+		pts := [?]draw.Vec2{{20, 80}, {60, 40}, {100, 120}, {140, 80}}
+		draw.polyline(dc, pts[:], 4, {1, 1, 1, 1})
+	})
+	testing.expectf(t, cov(img, 60, 40) > 0.9 && cov(img, 100, 120) > 0.9, "whole at its joints: %v, %v", cov(img, 60, 40), cov(img, 100, 120))
+}

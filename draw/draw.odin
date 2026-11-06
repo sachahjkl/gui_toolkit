@@ -517,6 +517,26 @@ triangle :: proc(c: ^Context, a, b, d: Vec2, color: Color) {
 	}
 }
 
+// A line from `a` to `b`, `width` across, with round ends, its edges antialiased at any angle: a rounded rect turned along it.
+line :: proc(c: ^Context, a, b: Vec2, width: f32, color: Color) {
+	d := b - a
+	length := math.sqrt(d.x * d.x + d.y * d.y)
+	half := width * 0.5
+	if length == 0 {
+		rect(c, {a - half, a + half}, color, half)
+		return
+	}
+	dir := d / length
+	push_transform(c, Affine{a = dir.x, b = dir.y, c = -dir.y, d = dir.x, e = a.x, f = a.y})
+	rect(c, {{-half, -half}, {length + half, half}}, color, half)
+	pop_transform(c)
+}
+
+// A line through `points`. Its pieces meet on round ends: in a translucent color their overlaps show, draw it in a layer then.
+polyline :: proc(c: ^Context, points: []Vec2, width: f32, color: Color) {
+	for i in 1 ..< len(points) { line(c, points[i - 1], points[i], width, color) }
+}
+
 // Per-corner colors (gradients) and radii; corner order: top-left, bottom-left, top-right, bottom-right. Colors are
 // interpolated premultiplied, in the space set_interpolation chooses.
 rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, border: f32 = 0, soft: f32 = 1) {
