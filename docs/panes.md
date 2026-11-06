@@ -58,10 +58,10 @@ another place while the others slide out of the way. The geometry is pure and in
 | `reorder_edge_scroll(pos, size, view_off, view, limit, target)` | an item held past an edge of the view scrolls the list |
 | `reorder_moved(delta, axis, across)` | how far a press moved, along the axis (and across it when leaving the list is a gesture of its own) |
 
-The drag's state is a `Reorder` (the item, whether it moved past the threshold, where the pointer holds it):
+The drag's state is a `Reorder` (the press that drags, the item, where the pointer holds it; `reorder_dragging` says whether an item is dragged):
 
 ```odin
-ui.reorder_frame(&app.drag)   // the button went up: no drag
+ui.reorder_frame(&app.drag)   // the press is over (the button went up, the box held went): no drag
 for item, i in app.items {
 	slot := f32(i) * pitch - offset
 	x, dragging := ui.reorder_item_pos(&app.drag, key_of(item), item.id, slot, ui.mouse_pos().x - area.rect.min.x, -offset, f32(n - 1) * pitch - offset)

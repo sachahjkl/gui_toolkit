@@ -155,7 +155,7 @@ menu_build :: proc(s: ^session.Session) {
 		if ui.menu_item("Second###second", keep_open = true).clicked { ui.ctx_menu_open(r.other, {200, 200}) }
 		ui.menu_item("After###after")
 	}
-	if ui.ctx_menu_is_open(r.other) { r.stray = max(r.stray, len(s.state.menus[0].items)) }
+	if ui.ctx_menu_is_open(r.other) && s.state.menus[0].open_build == s.state.build_index { r.stray = len(s.state.menus[0].items) }
 	if ui.ctx_menu(r.other) { ui.menu_item("Other###other") }
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	ui.line_edit("###f", &r.field)
@@ -207,7 +207,7 @@ a_menu_opened_in_a_block_opens_after_it :: proc(t: ^testing.T) {
 	session.click_at(s, (row.min + row.max) * 0.5)
 	session.frames(s, SETTLE_FRAMES)
 	testing.expect(t, ui.ctx_menu_is_open(r.other), "the other menu is open")
-	testing.expect(t, r.stray <= 1, "the rows of the old block stayed in it")
+	testing.expect_value(t, r.stray, 0)   // (the rows of the old block stayed in it)
 }
 
 // A press on a row of a menu leaves the focus where it was: a field's context menu gives it back its keyboard.
