@@ -72,7 +72,6 @@ toasts_build :: proc() {
 	s := gs()
 	em := font_size()
 	area := s.toast_area_set ? s.toast_area : Rect{{0, 0}, s.window_size}
-	s.toast_area_set = false
 	w := min(em * 26, (area.max.x - area.min.x) * 0.9)
 	h, gap, margin := em * 3.0, em * 0.6, em * 1.1
 	pos := s.toast_pos
@@ -114,7 +113,9 @@ toasts_build :: proc() {
 			in_t := clamp(age / TOAST_FADE_IN_S, 0, 1)
 			ease = 1 - (1 - in_t) * (1 - in_t) * (1 - in_t)
 			alpha = min(ease, clamp((life - age) / TOAST_FADE_OUT_S, 0, 1))
-			s.anim_busy = true
+			// frames while it fades; between the two nothing moves until the fade out
+			holds := life - TOAST_FADE_OUT_S - age
+			if age < TOAST_FADE_IN_S || holds <= 0 { s.anim_busy = true } else { wake_within(s, int(holds * 1000) + WAKE_MARGIN_MS) }
 		} else {
 			// no animation: just wake up when the oldest one expires
 			left_ms := int((life - age) * 1000) + WAKE_MARGIN_MS
@@ -191,6 +192,7 @@ Modal_Scope :: struct {
 	order:   int,       // its place among this build's dialogs, from 1: what Tab goes by (Focus_Entry.modal)
 	open:    ^bool,
 	size:    ^Vec2,     // modal_sized: what the person chose
+	preferred: Vec2,    // modal_sized: what a double click on an edge goes back to
 	wh:      Vec2,      // its size in this frame
 	lo, hi:  Vec2,      // how small and how large it may be, in this window
 }
@@ -287,7 +289,7 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), math.round(clamp(want.y, lo.y, hi.y))}
 	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
-	m.size, m.wh, m.lo, m.hi = size, wh, lo, hi
+	m.size, m.preferred, m.wh, m.lo, m.hi = size, preferred, wh, lo, hi
 	return true
 }
 
@@ -362,10 +364,17 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 			d.color = sig.hovering || sig.dragging ? color("accent") : color("weak text")
 			b.custom, b.custom_user = dock_grip_draw, d
 		}
-		if sig.double_clicked { m.size^ = {}; continue }
-		if sig.pressed { drag_store({w, h, 0, 0}) }
+		if sig.double_clicked {
+			m.size^ = {}
+			drag_store({clamp(m.preferred.x, m.lo.x, m.hi.x), clamp(m.preferred.y, m.lo.y, m.hi.y), 0, 0})   // (the button is still down: a move from here starts at the size it went back to)
+			continue
+		}
+		if sig.pointer_pressed { drag_store({w, h, 0, 0}) }
 		if !sig.dragging { continue }
+		// (a press alone sets nothing: the size of this window, clamped, is not the person's)
 		from := drag_load()
+		if sig.drag_delta == {} && from[2] == 0 { continue }
+		s.drag_payload[2] = 1
 		nw := g.dir.x != 0 ? clamp(from[0] + 2 * g.dir.x * sig.drag_delta.x, m.lo.x, m.hi.x) : w
 		nh := g.dir.y != 0 ? clamp(from[1] + 2 * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
 		m.size^ = {nw / sc, nh / sc}

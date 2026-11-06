@@ -356,7 +356,11 @@ scroll_into_view :: proc(b: ^Box) {
 a11y_end_build :: proc(s: ^State) {
 	s.a11y.built = false
 	state := s.a11y.state
-	if !s.a11y.wanted { s.a11y.cost_ms = 0; return }
+	if !s.a11y.wanted {
+		s.a11y.cost_ms = 0
+		platform.a11y_update_clear(&s.a11y.full)   // (a tree not made is none: not the last one made)
+		return
+	}
 	start := time.tick_now()
 	defer s.a11y.cost_ms = time.duration_milliseconds(time.tick_since(start))
 	u := &s.a11y.full
@@ -584,7 +588,7 @@ a11y_walk :: proc(s: ^State, u: ^platform.A11y_Update, b: ^Box, focus: Key, focu
 		if info.labelled_by != 0 { platform.a11y_ids(u, .Labelled_By, {u64(info.labelled_by)}) }
 		if info.described_by != 0 { platform.a11y_ids(u, .Described_By, {u64(info.described_by)}) }
 		if info.controls != 0 { platform.a11y_ids(u, .Controls, {u64(info.controls)}) }
-		if info.active_descendant != 0 && s.boxes[info.active_descendant] != nil { platform.a11y_int(u, .Active_Descendant, u64(info.active_descendant)) }
+		if d := s.boxes[info.active_descendant] if info.active_descendant != 0 else nil; d != nil && d.last_build == s.build_index { platform.a11y_int(u, .Active_Descendant, u64(info.active_descendant)) }
 		if v, ok := info.graft.?; ok { platform.a11y_graft(u, v) }
 		if info.text != nil && runs > 0 { a11y_text_selection(u, b, info.text) }
 		if info.write != nil { info.write(u, b, info.write_user) }

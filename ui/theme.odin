@@ -27,7 +27,8 @@ theme_destroy :: proc(t: ^Theme) {
 		delete(p.source)
 	}
 	delete(t.patterns)
-	t.palette_made = false
+	t.patterns = nil
+	t.palette_at, t.palette_made = 0, false
 }
 
 @(private = "file") THEME_MISSING_COLOR :: Color{1, 0, 1, 1}   // magenta: no entry

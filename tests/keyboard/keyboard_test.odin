@@ -1122,7 +1122,7 @@ find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
 	find_items = 50
 	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
 	testing.expect(t, ui.find_pending(), "the needle has not rested")
-	testing.expect(t, ui.needs_frame(&f.s), "its sweep is waited for")
+	testing.expect(t, ui.wake_ms(&f.s) > 0, "its sweep is waited for")
 	testing.expect_value(t, ui.find_count(), 0)
 	testing.expectf(t, lazy_built <= 16, "typing builds a screen's worth: %d", lazy_built)
 
@@ -1156,7 +1156,7 @@ find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
 	frame(f, nil, build_lazy_find, nil)
 	frame(f, nil, build_lazy_find, nil)
 	testing.expect_value(t, ui.find_count(), 50)
-	testing.expect(t, ui.needs_frame(&f.s), "a new sweep is due")
+	testing.expect(t, ui.wake_ms(&f.s) > 0, "a new sweep is due")
 	clock += ui.FIND_SWEEP_GAP_MS
 	frame(f, nil, build_lazy_find, nil)
 	testing.expect_value(t, ui.find_count(), 51)

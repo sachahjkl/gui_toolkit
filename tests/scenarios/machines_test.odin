@@ -94,7 +94,8 @@ a_sweep_nobody_asks_for_lets_the_loop_sleep :: proc(t: ^testing.T) {
 		ui.label("a word")
 	}})
 	session.frame(s)
-	testing.expect(t, ui.needs_frame(s.state), "the sweep is on its way")
+	testing.expect(t, ui.wake_ms(s.state) > 0, "the sweep is on its way: a wake when its time comes")
+	testing.expect(t, !ui.needs_frame(s.state), "and no frame until then")
 	r.on_page = false
 	for _ in 0 ..< SETTLE_FRAMES { session.frame(s) }
 	testing.expect(t, !ui.needs_frame(s.state), "nothing is waiting for it")

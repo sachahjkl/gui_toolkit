@@ -294,6 +294,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		focused := res.focused
 		before := len(f.buf)
 		before_hash := hash_bytes(f.buf[:])
+		c0, m0 := f.cursor, f.mark
 		pad := b.text_pad
 
 		// a screen reader sets the text, types over the selection, or moves the caret
@@ -314,16 +315,16 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		text := field_string(f)
 
 		// mouse: click places the caret, drag selects, double-click selects the word
-		if res.pressed || res.dragging {
+		if res.pointer_pressed || res.dragging {
 			x := res.mouse.x - pad + f.scroll_x
 			idx := font.index_from_x(s.fonts, b.font, b.font_size, secret ? secret_mask(text) : text, x)
 			if secret { idx = secret_unmask_index(text, idx) }
-			if res.pressed { f.word.on = false }
+			if res.pointer_pressed { f.word.on = false }
 			if f.word.on {
 				f.mark, f.cursor = word_drag_to(f.word, text, idx)
 			} else {
 				f.cursor = idx
-				if res.pressed && .Shift not_in res.mods { f.mark = idx }
+				if res.pointer_pressed && .Shift not_in res.mods { f.mark = idx }
 			}
 			f.edited_ms = now
 		}
@@ -380,7 +381,9 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		}
 		after_hash := hash_bytes(f.buf[:])
 		res.changed = before != len(f.buf) || before_hash != after_hash
-		if res.changed { f.edited_ms = now }
+		moved := f.cursor != c0 || f.mark != m0
+		if res.changed || moved { f.edited_ms = now }
+		if moved && !res.changed { f.last_edit = .None }   // (what is typed after a move of the caret is another step)
 		if focused { caret_wake(s, now - f.edited_ms) }
 		text = field_string(f)
 		// what is shown, and where the caret and the selection's end are in it

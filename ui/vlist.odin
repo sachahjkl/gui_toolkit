@@ -46,6 +46,7 @@ Virtual_List :: struct {
 	anchor_top:  f32,
 	has_anchor:  bool,
 	reveal_wait: int,              // builds the active row has been waited for (to be laid out, to measure it)
+	scroll_to:   Maybe(f32),       // vlist_scroll_to on a list with no box: where the next build puts the view
 }
 
 Vlist_Rows :: struct { first, last: int }
@@ -65,9 +66,16 @@ vlist_invalidate :: proc(st: ^Virtual_List) { clear(&st.measured) }
 vlist_scroll_to :: proc(st: ^Virtual_List, y: f32) {
 	st.has_anchor = false
 	if b := box_from_key(st.key); b != nil {
-		b.view_off.y, b.view_target.y = y, y
-		b.view_anim[1].active = false
+		vlist_view_at(b, y)
+	} else {
+		st.scroll_to = y
 	}
+}
+
+@(private = "file")
+vlist_view_at :: proc(b: ^Box, y: f32) {
+	b.view_off.y, b.view_target.y = y, y
+	b.view_anim[1].active = false
 }
 
 // Top of row `i` in the content and its height (estimated if never laid out) as of this build.
@@ -102,7 +110,8 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
 	b.cursor = .Arrow
 	wheel := signal(b).scrolled   // the wheel (against last build's bounds)
-	if wheel != {} { st.reveal = 0 }   // the user scrolls: the active row no longer pulls the view
+	if wheel != {} { st.reveal, st.reveal_wait = 0, 0 }   // the user scrolls: the active row no longer pulls the view
+	if y, asked := st.scroll_to.?; asked { vlist_view_at(b, y); st.scroll_to = nil }
 	st.virtual = true
 	st.key = b.key
 	st.activated, st.cancelled, st.changed = false, false, false
@@ -170,8 +179,9 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	resize(&st.selectable, n)
 	if selectable != nil && len(selectable) == n { copy(st.selectable[:], selectable) } else { for &v in st.selectable { v = true } }
 	st.count = n
-	if st.sel >= n { st.sel = n - 1 }
 	old := st.sel
+	if st.sel >= n { st.sel = n - 1 }
+	if st.sel < 0 { st.reveal = 0 }   // (no row to bring into view)
 	st.seek = false
 	st.page_rows = max(int(view_h / max(st.est, 1)), 1)
 	if st.focused { list_keys(s, st) }
@@ -183,12 +193,15 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		if pick >= 0 { st.sel = pick; st.reveal = LIST_REVEAL_FRAMES }
 		st.seek = false
 	}
-	if st.sel != old { st.changed = true }
+	if st.sel != old && b.first_build != s.build_index { st.changed = true }   // (the zero value's row 0 of a list with none is no change)
 	// the active row in view, at once (its place is known even when it is not built), and again for a few builds while
 	// the rows around it get measured
 	if st.reveal > 0 && st.sel >= 0 && st.sel < n {
 		// (until the row itself has been laid out: its height was an estimate, the view may still be on its way)
-		if _, measured := st.measured[ids[st.sel]]; measured || st.reveal_wait > VLIST_REVEAL_WAIT_MAX_BUILDS {
+		// (a row laid out with no height has none to measure: nothing more will come of waiting)
+		r := box_from_key(vlist_row_key(b.key, st.sel))
+		_, measured := st.measured[ids[st.sel]]
+		if measured || (r != nil && r.last_build + 1 == s.build_index) || st.reveal_wait > VLIST_REVEAL_WAIT_MAX_BUILDS {
 			st.reveal -= 1
 			st.reveal_wait = 0
 		} else {

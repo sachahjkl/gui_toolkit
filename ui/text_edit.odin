@@ -42,7 +42,7 @@ Text_Area :: struct {
 	cursor:     int,       // byte index of the caret
 	mark:       int,       // other end of the selection
 	scroll:     [2]f32,    // pixels
-	pref_x:     f32,       // column kept by Up / Down (valid when has_pref)
+	pref_x:     f32,       // column kept by Up / Down (valid when has_pref: any other move or edit ends it, in text_edit)
 	has_pref:   bool,
 	edited_ms:  f64,
 	undo, redo: [dynamic]Edit_Snapshot,
@@ -56,13 +56,17 @@ Text_Area :: struct {
 	caret_rect: Rect,      // window coordinates of the caret and of the selection's other end, when last drawn
 	mark_rect:  Rect,      // (text_edit_caret_rect)
 	rects_ok:   bool,
+	built:      u64,       // the build that last made it: the rects are of an editor still there
 	word:       Word_Drag, // the word a double click took, while its button is held
 }
 
 // The caret and the other end of the selection of a text_edit as last drawn, in window coordinates (a line-tall bar
-// each): where a completion popover or an input method window goes. false before the editor was first drawn.
+// each): where a completion popover or an input method window goes. false before the editor was first drawn, and once it
+// is built no more.
 text_edit_caret_rect :: proc(a: ^Text_Area) -> (caret, mark: Rect, ok: bool) {
-	return a.caret_rect, a.mark_rect, a.rects_ok
+	s := gs()
+	shown := a.built == s.build_index || (build_of == s && a.built + 1 == s.build_index)   // (in a build: the last one's)
+	return a.caret_rect, a.mark_rect, a.rects_ok && shown
 }
 
 // Syntax colouring for text_edit. A classifier the caller provides, called per visible paragraph: the editor never knows a
@@ -434,6 +438,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 			if b.size.x > 0 { e.wrap_w = max(TEXT_VIEW_MIN_PX * s.scale, b.size.x - e.gutter - 2 * pad) } else { wake_within(s, 1) }
 		}
 		e.lines = edit_lines(&e)
+		a.built = s.build_index
 		before_hash := hash_bytes(a.buf[:])
 		c0, m0 := a.cursor, a.mark
 		edit_requests(&e)
@@ -453,6 +458,8 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		res.changed = hash_bytes(a.buf[:]) != before_hash
 		cursor_moved := e.moved || res.changed || a.cursor != c0 || a.mark != m0
 		if cursor_moved { a.edited_ms = e.now }
+		if cursor_moved && !e.vertical { a.has_pref = false }   // (the column holds from one Up or Down to the next)
+		if cursor_moved && !res.changed { a.group = .None }     // (what is typed after a move of the caret is another step)
 		if res.focused { caret_wake(s, e.now - a.edited_ms) }
 		if res.changed || cursor_moved { e.lines = edit_lines(&e) }
 
@@ -481,6 +488,7 @@ Edit_Build :: struct {
 	wrap_w: f32,               // the width lines wrap at (0: they do not)
 	lines:  []Visual_Line,
 	moved:  bool,              // the caret was placed, even where it was
+	vertical: bool,            // Up, Down or a page moved it: the column stays
 }
 
 @(private="file")
@@ -496,7 +504,6 @@ edit_requests :: proc(e: ^Edit_Build) {
 		begin_edit(a, .Other, e.now)
 		a.mark, a.cursor = 0, len(a.buf)
 		insert(a, r.value)
-		a.has_pref = false
 	}
 	if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
 		begin_edit(a, .Other, e.now)
@@ -506,7 +513,7 @@ edit_requests :: proc(e: ^Edit_Build) {
 		runs := a11y_text_lines(area_string(a), edit_lines(e))
 		a.mark = a11y_run_byte(area_string(a), runs, b, r.sel[0], int(r.sel[1]))
 		a.cursor = a11y_run_byte(area_string(a), runs, b, r.sel[2], int(r.sel[3]))
-		a.upstream, a.has_pref = false, false
+		a.upstream = false
 		e.moved = true
 	}
 }
@@ -530,7 +537,7 @@ edit_pointer :: proc(e: ^Edit_Build) {
 	text := area_string(a)
 	bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, e.lines, wrap_w), a.scroll, wrap_w > 0)
 	mp := b.rect.min + res.mouse
-	if res.pressed {
+	if res.pointer_pressed {
 		a.sb_drag = .None
 		toward, away := scrollbar_grab()
 		vgrab := Rect{{bars.vtrack.min.x - toward, bars.vtrack.min.y}, {bars.vtrack.max.x + away, bars.vtrack.max.y}}
@@ -543,8 +550,8 @@ edit_pointer :: proc(e: ^Edit_Build) {
 			a.sb_grab = (mp.x >= bars.hthumb.min.x && mp.x < bars.hthumb.max.x) ? mp.x - bars.hthumb.min.x : (bars.hthumb.max.x - bars.hthumb.min.x) * 0.5
 		}
 	}
-	if !res.dragging && !res.pressed { a.sb_drag = .None }
-	if a.sb_drag != .None && (res.pressed || res.dragging) {
+	if !res.dragging && !res.pointer_pressed { a.sb_drag = .None }
+	if a.sb_drag != .None && (res.pointer_pressed || res.dragging) {
 		content := content_extent(a, text, b, lh, e.lines, wrap_w)
 		view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
 		if a.sb_drag == .Vertical {
@@ -554,16 +561,15 @@ edit_pointer :: proc(e: ^Edit_Build) {
 			span := (bars.htrack.max.x - bars.htrack.min.x) - (bars.hthumb.max.x - bars.hthumb.min.x)
 			if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + end_slack() - view.x) }
 		}
-	} else if res.pressed || res.dragging {
+	} else if res.pointer_pressed || res.dragging {
 		idx, up := edit_point_to_index(e, res.mouse)
-		if res.pressed { a.word.on = false }
+		if res.pointer_pressed { a.word.on = false }
 		if a.word.on {
 			a.mark, a.cursor = word_drag_to(a.word, text, idx)
 		} else {
 			a.cursor, a.upstream = idx, up
-			if res.pressed && .Shift not_in res.mods { a.mark = idx }
+			if res.pointer_pressed && .Shift not_in res.mods { a.mark = idx }
 		}
-		a.has_pref = false
 		e.moved = true
 	}
 	if res.double_clicked && a.sb_drag == .None {
@@ -583,7 +589,7 @@ edit_keys_typing :: proc(e: ^Edit_Build, tab_indents: bool) {
 	if len(s.typed) > 0 {
 		begin_edit(a, .Insert, e.now)
 		for r in s.typed { insert(a, utf8.runes_to_string({r}, context.temp_allocator)) }
-		a.has_pref, a.upstream = false, false
+		a.upstream = false
 	}
 	if key_press(.Return) {
 		begin_edit(a, .Other, e.now)
@@ -593,16 +599,17 @@ edit_keys_typing :: proc(e: ^Edit_Build, tab_indents: bool) {
 		for ls + indent < len(a.buf) && a.buf[ls + indent] == ' ' && ls + indent < a.cursor { indent += 1 }
 		insert(a, "\n")
 		if indent > 0 { insert(a, strings.repeat(" ", indent, context.temp_allocator)) }
-		a.has_pref, a.upstream = false, false
+		a.upstream = false
 	}
 	if key_press(.Return, {.Ctrl}) { e.res.committed = true }
-	if tab_indents && key_press(.Tab) { begin_edit(a, .Insert, e.now); insert(a, "    "); a.has_pref = false }
+	if tab_indents && key_press(.Tab) { begin_edit(a, .Insert, e.now); insert(a, "    ") }
 }
 
 @(private="file")
 edit_move :: proc(a: ^Text_Area, to: int, extend: bool, upstream := false) {
 	a.cursor = to
 	a.upstream = upstream
+	a.has_pref = false   // (edit_vertical sets it again)
 	if !extend { a.mark = to }
 }
 
@@ -628,6 +635,7 @@ edit_vertical :: proc(e: ^Edit_Build, lines: int, extend: bool) {
 	}
 	edit_move(a, idx, extend, up)
 	a.pref_x, a.has_pref = x, true
+	e.vertical = true
 }
 
 // The moves: arrows, pages, the line's ends (with Shift they select), words and the document's ends (Ctrl).
@@ -640,8 +648,8 @@ edit_keys_moves :: proc(e: ^Edit_Build) {
 		ext := mods == shift
 		t := area_string(a)
 		lo, hi := sel(a)
-		if key_press(.Left, mods)  { edit_move(a, (lo != hi && !ext) ? lo : prev_index(t, a.cursor), ext); a.has_pref = false }
-		if key_press(.Right, mods) { edit_move(a, (lo != hi && !ext) ? hi : next_index(t, a.cursor), ext); a.has_pref = false }
+		if key_press(.Left, mods)  { edit_move(a, (lo != hi && !ext) ? lo : prev_index(t, a.cursor), ext) }
+		if key_press(.Right, mods) { edit_move(a, (lo != hi && !ext) ? hi : next_index(t, a.cursor), ext) }
 		if key_press(.Up, mods)    { edit_vertical(e, -1, ext) }
 		if key_press(.Down, mods)  { edit_vertical(e, 1, ext) }
 		if key_press(.Page_Up, mods)   { edit_vertical(e, -page, ext) }
@@ -658,17 +666,16 @@ edit_keys_moves :: proc(e: ^Edit_Build) {
 			} else {
 				edit_move(a, l.end, ext, l.soft)
 			}
-			a.has_pref = false
 		}
 	}
 	cs := Mods{.Ctrl, .Shift}
 	for mods in ([?]Mods{{.Ctrl}, cs}) {
 		ext := mods == cs
 		t := area_string(a)
-		if key_press(.Left, mods)  { edit_move(a, word_left(t, a.cursor), ext); a.has_pref = false }
-		if key_press(.Right, mods) { edit_move(a, word_right(t, a.cursor), ext); a.has_pref = false }
-		if key_press(.Home, mods)  { edit_move(a, 0, ext); a.has_pref = false }
-		if key_press(.End, mods)   { edit_move(a, len(a.buf), ext); a.has_pref = false }
+		if key_press(.Left, mods)  { edit_move(a, word_left(t, a.cursor), ext) }
+		if key_press(.Right, mods) { edit_move(a, word_right(t, a.cursor), ext) }
+		if key_press(.Home, mods)  { edit_move(a, 0, ext) }
+		if key_press(.End, mods)   { edit_move(a, len(a.buf), ext) }
 	}
 }
 
@@ -680,13 +687,13 @@ edit_keys_deleting :: proc(e: ^Edit_Build) {
 		lo, hi := sel(a)
 		begin_edit(a, .Delete, e.now)
 		if lo != hi { delete_range(a, lo, hi) } else { p := prev_index(area_string(a), a.cursor); delete_range(a, p, a.cursor) }
-		a.has_pref, a.upstream = false, false
+		a.upstream = false
 	}
 	if key_press(.Delete) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
 		lo, hi := sel(a)
 		begin_edit(a, .Delete, e.now)
 		if lo != hi { delete_range(a, lo, hi) } else { n := next_index(area_string(a), a.cursor); delete_range(a, a.cursor, n) }
-		a.has_pref, a.upstream = false, false
+		a.upstream = false
 	}
 	if key_press(.Backspace, {.Ctrl}) && (a.cursor != a.mark || a.cursor > 0) {
 		lo, hi := sel(a)
