@@ -26,13 +26,13 @@ import "core:time"
 Owner :: struct {
 	name:     string,        // owned
 	identity: string,        // owned: the token a sender must match to hand over ("" trusts any sender)
-	closing:  bool,          // set before the socket goes: later messages are refused
+	state:    Owner_State,
 	handler:  Handler,
 	user:     rawptr,
-	lock:     linux.Fd,      // the flock'd file (-1: none)
-	listen:   linux.Fd,      // the socket (-1: none)
-	sock:     string,        // owned: its path
-	thread:   int,           // the thread whose pump_messages reads the socket
+	lock:     linux.Fd,      // the flock'd file: Claimed, Serving, Closing
+	listen:   linux.Fd,      // the socket: Serving
+	sock:     string,        // owned: its path: Serving
+	thread:   int,           // the thread whose pump_messages reads the socket: Serving
 }
 
 @(private)
@@ -65,13 +65,13 @@ dir_is_ours :: proc(dir: cstring) -> bool {
 }
 
 // "" with no runtime directory: nothing to open or to connect to, the start carries on by itself.
-@(private = "file")
+@(private)
 path_of :: proc(name, ext: string) -> string {
 	dir := runtime_dir()
 	return dir == "" ? "" : strings.concatenate({dir, "/", name, ext}, context.temp_allocator)
 }
 
-@(private = "file")
+@(private)
 address_of :: proc(path: string) -> (addr: linux.Sock_Addr_Un, ok: bool) {
 	if path == "" || len(path) >= len(addr.sun_path) { return {}, false }
 	addr.sun_family = .UNIX
@@ -79,22 +79,24 @@ address_of :: proc(path: string) -> (addr: linux.Sock_Addr_Un, ok: bool) {
 	return addr, true
 }
 
-// One attempt to hand `message` (under `identity`) to the owner of `name`.
+// One attempt to hand `message` (under `identity`) to the owner of `name`, all of it within timeout_ms: the socket does not
+// block, whether the owner's backlog is full or the message is more than the socket holds. The socket closes on the way
+// out, whatever happened: that is how an owner that wakes later learns that this sender went on alone (serve).
 @(private)
 forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -> Reply {
 	addr, ok := address_of(path_of(name, ".sock"))
 	if !ok { return .No_Window }
-	s, err := linux.socket(.UNIX, .STREAM, {.CLOEXEC}, .HOPOPT)
+	s, err := linux.socket(.UNIX, .STREAM, {.CLOEXEC, .NONBLOCK}, .HOPOPT)
 	if err != .NONE { return .No_Window }
 	defer linux.close(s)
-	if linux.connect(s, &addr) != .NONE { return .No_Window }   // nobody listens (starting, closing) or no file
+	if linux.connect(s, &addr) != .NONE { return .No_Window }   // nobody listens (starting, closing), no file, or a full backlog
+	deadline := time.tick_add(time.tick_now(), time.Duration(max(timeout_ms, 1)) * time.Millisecond)
 	data := encode(identity, message)
 	head: [LENGTH_PREFIX_BYTES]u8
 	endian.put_u32(head[:], .Little, u32(len(data)))
-	if !send_all(s, head[:]) || !send_all(s, data) { return .No_Window }   // it closed while we asked
-	fds := []linux.Poll_Fd{{fd = s, events = {.IN}}}
-	n, _ := linux.poll(fds, i32(max(timeout_ms, 1)))
-	if n <= 0 { return .Timeout }
+	if r := send_all(s, head[:], deadline); r != .Accepted { return r }
+	if r := send_all(s, data, deadline); r != .Accepted { return r }
+	if !wait_for(s, {.IN}, deadline) { return .Timeout }
 	answer: [1]u8
 	got, rerr := linux.recv(s, answer[:], {})
 	if rerr != .NONE || got != 1 { return .No_Window }   // closed without answering: it is going away
@@ -105,16 +107,34 @@ forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -
 	return .Refused
 }
 
+// Until `s` can do what `events` says; false at the deadline.
 @(private = "file")
-send_all :: proc(s: linux.Fd, data: []u8) -> bool {
+wait_for :: proc(s: linux.Fd, events: linux.Fd_Poll_Events, deadline: time.Tick) -> bool {
+	for {
+		left := time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline))
+		if left <= 0 { return false }
+		fds := []linux.Poll_Fd{{fd = s, events = events}}
+		n, err := linux.poll(fds, i32(left) + 1)
+		if err == .EINTR { continue }
+		return err == .NONE && n > 0
+	}
+}
+
+// All of `data` on the non-blocking socket: Accepted when it went, Timeout at the deadline, No_Window when the peer closed.
+@(private = "file")
+send_all :: proc(s: linux.Fd, data: []u8, deadline: time.Tick) -> Reply {
 	at := 0
 	for at < len(data) {
 		n, err := linux.send(s, data[at:], {.NOSIGNAL})
 		if err == .EINTR { continue }
-		if err != .NONE || n <= 0 { return false }
+		if err == .EAGAIN {
+			if !wait_for(s, {.OUT}, deadline) { return .Timeout }
+			continue
+		}
+		if err != .NONE || n <= 0 { return .No_Window }
 		at += n
 	}
-	return true
+	return .Accepted
 }
 
 // Hands `message` to the owner of `cfg.name` without trying to become the owner: a pure "ping the running copy".
@@ -136,7 +156,7 @@ acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
 		fd, err := linux.open(lock_path, {.RDWR, .CREAT, .CLOEXEC}, {.IRUSR, .IWUSR})
 		if err != .NONE { return .Unresponsive, {} }   // (no runtime directory: carry on as if it was not asked)
 		if linux.flock(fd, {.EX, .NB}) == .NONE {
-			return .First, Owner{name = strings.clone(cfg.name), identity = strings.clone(cfg.identity), lock = fd, listen = -1}
+			return .First, Owner{name = strings.clone(cfg.name), identity = strings.clone(cfg.identity), state = .Claimed, lock = fd}
 		}
 		linux.close(fd)
 		left := int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
@@ -151,10 +171,10 @@ acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
 	}
 }
 
-// Opens the owner's socket (served by pump_messages on this thread) and sets the handler that takes the messages.
+// Opens the owner's socket (served by pump_messages on this thread) and sets the handler that takes the messages. False,
+// with nothing changed, when it failed or the Owner is not Claimed: an Owner starts once.
 owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
-	if o.lock <= 0 { return false }
-	o.handler, o.user = handler, user
+	if o.state != .Claimed { return false }
 	path := path_of(o.name, ".sock")
 	addr, ok := address_of(path)
 	if !ok { return false }
@@ -164,6 +184,7 @@ owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
 	linux.unlink(cpath)   // a socket left by an owner that crashed: the lock says it is ours now
 	if linux.bind(s, &addr) != .NONE || linux.listen(s, LISTEN_BACKLOG) != .NONE { linux.close(s); return false }
 	o.listen, o.sock, o.thread = s, strings.clone(path), sync.current_thread_id()
+	o.handler, o.user, o.state = handler, user, .Serving
 	sync.mutex_lock(&owners_mu)
 	append(&owners, o)
 	sync.mutex_unlock(&owners_mu)
@@ -176,26 +197,26 @@ is_elevated :: proc() -> bool { return linux.geteuid() == 0 }
 // The owner is ending: later messages are refused and the socket goes. The name is still its own (the lock is held):
 // a start that comes now waits, and takes the name once owner_stop has released it.
 owner_closing :: proc(o: ^Owner) {
-	o.closing = true
-	if o.listen > 0 {
+	if o.state == .Serving {
 		sync.mutex_lock(&owners_mu)
 		for x, i in owners { if x == o { unordered_remove(&owners, i); break } }
 		if len(owners) == 0 { delete(owners); owners = nil }
 		sync.mutex_unlock(&owners_mu)
 		linux.close(o.listen)
-		o.listen = -1
 		linux.unlink(strings.clone_to_cstring(o.sock, context.temp_allocator))
+		delete(o.sock)
+		o.sock = ""
 	}
-	delete(o.sock)
-	o.sock = ""
+	if o.state != .None { o.state = .Closing }
 }
 
 // The owner is done with the name: the lock is released (a start that was waiting becomes the owner).
 owner_stop :: proc(o: ^Owner) {
+	if o.state == .None { return }
 	owner_closing(o)
-	if o.lock > 0 { linux.close(o.lock); o.lock = -1 }
+	linux.close(o.lock)
 	delete(o.name); delete(o.identity)
-	o.name, o.identity = "", ""
+	o^ = {}
 }
 
 // Raising a window is the shell's job (the window system: xdg-activation on Wayland, _NET_ACTIVE_WINDOW on X11): nothing
@@ -214,16 +235,17 @@ pump_messages :: proc() {
 			c, err := linux.accept(o.listen, cast(^linux.Sock_Addr_Un)nil, {.CLOEXEC})
 			if err != .NONE { break }   // EAGAIN: nobody waits
 			answer := [1]u8{serve(o, c)}
-			send_all(c, answer[:])
+			linux.send(c, answer[:], {.NOSIGNAL})   // (one byte on an empty socket; a sender gone is no matter)
 			linux.close(c)
 		}
 	}
 }
 
-// Reads one message from `c` and hands it to the handler: the byte to answer.
+// Reads one message from `c` and hands it to the handler: the byte to answer. A sender that hung up has timed out and gone on
+// alone: what it wrote is still there to read, and is not handled.
 @(private = "file")
 serve :: proc(o: ^Owner, c: linux.Fd) -> u8 {
-	if o.closing || o.handler == nil { return 0 }
+	if o.handler == nil { return 0 }
 	head: [LENGTH_PREFIX_BYTES]u8
 	if !read_full(c, head[:]) { return 0 }
 	n := int(endian.unchecked_get_u32le(head[:]))
@@ -233,8 +255,16 @@ serve :: proc(o: ^Owner, c: linux.Fd) -> u8 {
 	identity, message, ok := decode(data)
 	if !ok { return 0 }
 	if !same_identity(o.identity, identity) { return 2 }
+	if hung_up(c) { return 0 }
 	o.handler(o.user, message)
 	return 1
+}
+
+@(private = "file")
+hung_up :: proc(c: linux.Fd) -> bool {
+	fds := []linux.Poll_Fd{{fd = c, events = {.RDHUP}}}
+	n, _ := linux.poll(fds, 0)
+	return n > 0 && fds[0].revents & {.HUP, .RDHUP} != {}
 }
 
 @(private = "file")

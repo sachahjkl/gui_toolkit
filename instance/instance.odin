@@ -14,8 +14,12 @@
 //
 // What can go wrong, and what then: the owner has no window / socket yet (it is starting) or has just dropped it (it is
 // closing): the second start tries again for a short while, and when the lock is gone it becomes the owner itself; the
-// owner does not answer (a task keeps it busy, a hung process): after the timeout the second start carries on by itself,
-// it never waits for ever and never loses its message.
+// owner does not answer (a task keeps it busy, a hung process): after the timeout, which covers the whole exchange, the
+// second start carries on by itself. It never waits for ever and never loses its message, and the owner, when it wakes,
+// does not handle a message whose sender has gone on alone.
+//
+// An Owner is driven from the thread that called owner_start (owner_closing and owner_stop too: a window is destroyed
+// by its own thread).
 //
 // The package name is `tk_instance` (the directory is `instance`, imported as `toolkit:instance`): import it as `instance`
 // unless the application keeps a package of its own by that name.
@@ -42,6 +46,14 @@ Outcome :: enum u8 {
 	Forwarded,        // the owner took the message: this start is done (exit, or just stop)
 	Other_Instance,   // the owner is a copy with a different identity: carry on by yourself, owning nothing
 	Unresponsive,     // the owner did not answer in time: carry on by yourself, and say so
+}
+
+// Where an Owner is. The system's handles of an Owner mean something only in the states that have them.
+Owner_State :: enum u8 {
+	None,      // nothing is held: the Owner of any outcome but First, and one that owner_stop ended
+	Claimed,   // the name is held, nothing serves it yet: a second start tries again
+	Serving,   // owner_start ran: pump_messages hands the messages over
+	Closing,   // owner_closing ran: the name is still held, nothing will serve it again
 }
 
 // What a second start hands over, and the trust token of the sender.

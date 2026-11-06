@@ -8,6 +8,14 @@ import "core:sys/posix"
 import "core:testing"
 import "../../fsx"
 
+// A name with no directory is in the current one, which is the directory to sync.
+@(test)
+a_durable_write_of_a_bare_name :: proc(t: ^testing.T) {
+	name := fmt.tprintf("gui_toolkit_fsx_bare_%d", os.get_pid())
+	defer fsx.delete_file(name)
+	testing.expect(t, fsx.write_atomic(name, transmute([]byte)string("data"), flush = true))
+}
+
 // `durable` is a promise: a directory that could not be synced is said to be so, though the name did change.
 @(test)
 a_durable_replace_says_it_could_not_sync :: proc(t: ^testing.T) {

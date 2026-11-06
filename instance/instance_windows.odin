@@ -40,10 +40,10 @@ Flash_Info :: struct { size: win.UINT, hwnd: win.HWND, flags: win.DWORD, count: 
 // What the owner holds.
 Owner :: struct {
 	name:     string,        // owned
-	mutex:    win.HANDLE,
-	hwnd:     win.HWND,
+	state:    Owner_State,
+	mutex:    win.HANDLE,    // Claimed, Serving, Closing
+	hwnd:     win.HWND,      // Serving
 	identity: string,        // owned: the token a sender must match to hand over ("" trusts any sender)
-	closing:  bool,          // set before the window goes: later messages are refused
 	handler:  Handler,
 	user:     rawptr,
 }
@@ -105,7 +105,7 @@ acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
 	for {
 		mutex, existing := claim(cfg.name)
 		if mutex == nil { return .Unresponsive, {} }   // (no kernel object: carry on as if it was not asked)
-		if !existing { return .First, Owner{name = strings.clone(cfg.name), mutex = mutex, identity = strings.clone(cfg.identity)} }
+		if !existing { return .First, Owner{name = strings.clone(cfg.name), state = .Claimed, mutex = mutex, identity = strings.clone(cfg.identity)} }
 		win.CloseHandle(mutex)
 		left := int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
 		switch forward_once(cfg.name, cfg.identity, message, max(left, FORWARD_MIN_MS)) {
@@ -120,15 +120,16 @@ acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
 }
 
 // Makes the owner's window (on this thread, which must go on pumping messages) and the handler that takes the messages.
+// False, with nothing changed, when it failed or the Owner is not Claimed: an Owner starts once.
 owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
-	if o.mutex == nil { return false }
-	o.handler, o.user = handler, user
+	if o.state != .Claimed { return false }
 	inst := win.HINSTANCE(win.GetModuleHandleW(nil))
 	class := win.utf8_to_wstring(CLASS_NAME, context.temp_allocator)
 	wc := win.WNDCLASSEXW{cbSize = size_of(win.WNDCLASSEXW), lpfnWndProc = owner_proc, hInstance = inst, lpszClassName = class}
 	win.RegisterClassExW(&wc)   // (fails harmlessly when another owner of this process has registered it)
 	o.hwnd = win.CreateWindowExW(0, class, win.utf8_to_wstring(o.name, context.temp_allocator), 0, 0, 0, 0, 0, win.HWND_MESSAGE, nil, inst, nil)
 	if o.hwnd == nil { return false }
+	o.handler, o.user, o.state = handler, user, .Serving
 	win.SetWindowLongPtrW(o.hwnd, win.GWLP_USERDATA, win.LONG_PTR(uintptr(o)))
 	// An elevated owner takes the message from a normal sender (a link clicked in a normal program) only if it lets the
 	// message through (UIPI); a normal owner leaves the default, which keeps it from processes of a lower integrity.
@@ -153,7 +154,7 @@ owner_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, 
 	context = runtime.default_context()
 	o := (^Owner)(uintptr(win.GetWindowLongPtrW(hwnd, win.GWLP_USERDATA)))
 	cds := (^win.COPYDATASTRUCT)(uintptr(lparam))
-	if o == nil || cds == nil || cds.dwData != MAGIC || o.closing || o.handler == nil { return 0 }
+	if o == nil || cds == nil || cds.dwData != MAGIC || o.handler == nil { return 0 }
 	if cds.cbData == 0 || cds.cbData > ENVELOPE_MAX || cds.lpData == nil { return 0 }
 	identity, message, ok := decode((cast([^]byte)cds.lpData)[:cds.cbData])
 	if !ok { return 0 }
@@ -165,16 +166,22 @@ owner_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, 
 // The owner is ending: later messages are refused and the window goes. The name is still its own (the mutex is held):
 // a start that comes now waits, and takes the name once owner_stop has released it.
 owner_closing :: proc(o: ^Owner) {
-	o.closing = true
-	if o.hwnd != nil { win.DestroyWindow(o.hwnd); o.hwnd = nil }
+	if o.state == .Serving {
+		// (first: a DestroyWindow from another thread fails, and the window must not go on pointing here)
+		win.SetWindowLongPtrW(o.hwnd, win.GWLP_USERDATA, 0)
+		win.DestroyWindow(o.hwnd)
+		o.hwnd = nil
+	}
+	if o.state != .None { o.state = .Closing }
 }
 
 // The owner is done with the name: the mutex is released (a start that was waiting becomes the owner).
 owner_stop :: proc(o: ^Owner) {
+	if o.state == .None { return }
 	owner_closing(o)
-	if o.mutex != nil { win.CloseHandle(o.mutex); o.mutex = nil }
+	win.CloseHandle(o.mutex)
 	delete(o.name); delete(o.identity)
-	o.name, o.identity = "", ""
+	o^ = {}
 }
 
 // Brings a window to the front: restored when minimized, then raised and given the foreground (the owner was allowed to by

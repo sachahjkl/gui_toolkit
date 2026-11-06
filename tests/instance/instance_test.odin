@@ -47,6 +47,8 @@ instance_key_follows_prefix_and_path :: proc(t: ^testing.T) {
 // A few of the second start's attempts (instance: ACQUIRE_RETRY_MS).
 @(private = "file") OWNER_STARTING_MS :: 150
 @(private = "file") OWNER_GOES_AFTER :: 150 * time.Millisecond
+// Pumps that cannot all have come before the message: it was there by the first whole one.
+@(private = "file") PUMPS_TO_BE_SURE :: 2
 
 ////////////////////////////////
 // The real exchange, in one process: a thread is the owner (it pumps its window), the test thread is the second start.
@@ -59,7 +61,8 @@ Owner_Thread :: struct {
 	closing:  bool,          // refuse messages from now on (as the owner does when it ends), keep pumping
 	closing_seen: bool,      // atomic: it does
 	wake:     sync.Sema,     // owner_end
-	pump:     bool,          // false: do not pump (a busy owner)
+	pump:     bool,          // atomic; false: do not pump (a busy owner)
+	pumps:    int,           // atomic: how many times it did
 	delay_ms: int,           // the window comes this long after the mutex (an owner that is starting)
 	got:      [dynamic]string,
 	mu:       sync.Mutex,
@@ -77,6 +80,9 @@ owner_handler :: proc(user: rawptr, message: []byte) {
 }
 
 @(private = "file")
+owner_ignores :: proc(user: rawptr, message: []byte) {}
+
+@(private = "file")
 owner_main :: proc(th: ^thread.Thread) {
 	d := (^Owner_Thread)(th.data)
 	outcome, owner := inst.acquire({name = d.name, identity = d.identity, wait_ms = 0}, nil)
@@ -86,11 +92,14 @@ owner_main :: proc(th: ^thread.Thread) {
 	if d.delay_ms > 0 { time.sleep(time.Duration(d.delay_ms) * time.Millisecond) }
 	if d.started { inst.owner_start(&owner, owner_handler, d) }
 	for !d.stop {
-		if d.closing {
-			owner.closing = true
+		if d.closing && !sync.atomic_load(&d.closing_seen) {
+			inst.owner_closing(&owner)
 			sync.atomic_store(&d.closing_seen, true)
 		}
-		if d.pump { inst.pump_messages() }
+		if sync.atomic_load(&d.pump) {
+			inst.pump_messages()
+			sync.atomic_add(&d.pumps, 1)
+		}
 		_ = sync.sema_wait_with_timeout(&d.wake, OWNER_POLL)
 	}
 	if d.started { inst.owner_stop(&owner) }
@@ -174,6 +183,57 @@ instance_a_silent_owner_does_not_hold_the_second_start :: proc(t: ^testing.T) {
 	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 700}, msg(false, {"about:config"}))
 	testing.expect_value(t, outcome, inst.Outcome.Unresponsive)
 	testing.expect(t, time.duration_milliseconds(time.tick_since(t0)) < 3000, "it gave up after about the timeout")
+}
+
+// The second start gave up and carries on alone: an owner that wakes later must not open what it asked as well.
+@(test)
+instance_a_message_given_up_is_not_handled :: proc(t: ^testing.T) {
+	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
+	d, th := owner_begin(name, `C:\a\app.exe`, pump = false)
+	defer owner_end(d, th)
+	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 0}, msg(false, {"about:config"}))
+	testing.expect_value(t, outcome, inst.Outcome.Unresponsive)
+	sync.atomic_store(&d.pump, true)
+	testing.expect(t, testkit.await(d, proc(d: ^Owner_Thread) -> bool { return sync.atomic_load(&d.pumps) >= PUMPS_TO_BE_SURE }), "the owner wakes")
+	sync.mutex_lock(&d.mu)
+	defer sync.mutex_unlock(&d.mu)
+	testing.expect_value(t, len(d.got), 0)
+}
+
+// More than the socket holds, to an owner that does not read: the wait is over at the timeout all the same.
+@(test)
+instance_a_large_message_does_not_hold_the_second_start :: proc(t: ^testing.T) {
+	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
+	d, th := owner_begin(name, `C:\a\app.exe`, pump = false)
+	defer owner_end(d, th)
+	large := make([]byte, inst.ENVELOPE_MAX / 2, context.temp_allocator)
+	t0 := time.tick_now()
+	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 0}, large)
+	testing.expect_value(t, outcome, inst.Outcome.Unresponsive)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(t0)) < 3000, "it gave up after about the timeout")
+}
+
+// An Owner starts once: a second start, or a start after closing, opens nothing.
+@(test)
+instance_an_owner_starts_once :: proc(t: ^testing.T) {
+	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
+	outcome, owner := inst.acquire({name = name, identity = "", wait_ms = 0}, nil)
+	testing.expect_value(t, outcome, inst.Outcome.First)
+	testing.expect_value(t, owner.state, inst.Owner_State.Claimed)
+	testing.expect(t, inst.owner_start(&owner, owner_ignores, nil))
+	testing.expect_value(t, owner.state, inst.Owner_State.Serving)
+	testing.expect(t, !inst.owner_start(&owner, owner_ignores, nil), "already started")
+	inst.owner_closing(&owner)
+	testing.expect_value(t, owner.state, inst.Owner_State.Closing)
+	testing.expect(t, !inst.owner_start(&owner, owner_ignores, nil), "it is closing")
+	inst.owner_stop(&owner)
+	testing.expect_value(t, owner.state, inst.Owner_State.None)
+	testing.expect(t, !inst.owner_start(&owner, owner_ignores, nil), "it is over")
+	inst.owner_stop(&owner)   // (twice is nothing)
+	none: inst.Owner
+	testing.expect(t, !inst.owner_start(&none, owner_ignores, nil), "what acquire gives with no name")
+	inst.owner_closing(&none)
+	testing.expect_value(t, none.state, inst.Owner_State.None)
 }
 
 @(test)
