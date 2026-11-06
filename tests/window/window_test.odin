@@ -38,6 +38,7 @@ capture_follows_the_buttons :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(w.events), 4)
 	if len(w.events) == 4 {
 		testing.expect(t, w.events[3].kind == .Mouse_Release && w.events[3].button == .Left, "the lost press is released")
+		testing.expect(t, w.events[3].lost, "and says it is no real release")
 	}
 	// the usual way: press, release, capture given back, and nothing extra
 	clear(&w.events)
@@ -46,6 +47,21 @@ capture_follows_the_buttons :: proc(t: ^testing.T) {
 	win.SendMessageW(h, win.WM_LBUTTONUP, 0, xy(10, 10))
 	testing.expect(t, win.GetCapture() != h)
 	testing.expect_value(t, len(w.events), 2)
+}
+
+// A press outside the client area says so. (HTNOWHERE: on the caption the system would start moving the window, and wait.)
+@(test)
+a_press_on_the_frame_is_told :: proc(t: ^testing.T) {
+	HTNOWHERE :: 0
+	w := platform.open_window("frame press test", {200, 150})
+	defer platform.destroy_window(w)
+	clear(&w.events)
+	for msg in ([?]u32{win.WM_NCLBUTTONDOWN, win.WM_NCRBUTTONDOWN, win.WM_NCMBUTTONDOWN}) {
+		win.SendMessageW(w.hwnd, msg, HTNOWHERE, xy(10, 10))
+	}
+	n := 0
+	for e in w.events { if e.kind == .Frame_Press { n += 1 } }
+	testing.expect_value(t, n, 3)
 }
 
 // Two windows of one thread: the poll of one takes the messages of both, and neither loses events it has not read.
