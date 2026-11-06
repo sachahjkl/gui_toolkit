@@ -56,6 +56,7 @@ Text_Area :: struct {
 	caret_rect: Rect,      // window coordinates of the caret and of the selection's other end, when last drawn
 	mark_rect:  Rect,      // (text_edit_caret_rect)
 	rects_ok:   bool,
+	word:       Word_Drag, // the word a double click took, while its button is held
 }
 
 // The caret and the other end of the selection of a text_edit as last drawn, in window coordinates (a line-tall bar
@@ -555,14 +556,19 @@ edit_pointer :: proc(e: ^Edit_Build) {
 		}
 	} else if res.pressed || res.dragging {
 		idx, up := edit_point_to_index(e, res.mouse)
-		a.cursor, a.upstream = idx, up
-		if res.pressed && .Shift not_in res.mods { a.mark = idx }
+		if res.pressed { a.word.on = false }
+		if a.word.on {
+			a.mark, a.cursor = word_drag_to(a.word, text, idx)
+		} else {
+			a.cursor, a.upstream = idx, up
+			if res.pressed && .Shift not_in res.mods { a.mark = idx }
+		}
 		a.has_pref = false
 		e.moved = true
 	}
 	if res.double_clicked && a.sb_drag == .None {
-		a.mark = word_left(text, min(a.cursor + 1, len(text)))
-		a.cursor = word_right(text, a.mark)
+		a.word = word_drag_at(text, a.cursor)
+		a.mark, a.cursor = a.word.lo, a.word.hi
 	}
 	if res.scrolled != {} {
 		a.scroll.y += res.scrolled.y * lh * TEXT_EDIT_WHEEL_LINES

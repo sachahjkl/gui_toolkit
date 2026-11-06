@@ -145,7 +145,7 @@ sat_val_picker :: proc(id: string, hue: f32, sat, val: ^f32) -> (changed: bool) 
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
 	sig := signal(b)
-	if sig.pressed || sig.dragging {
+	if sig.pointer_pressed || sig.dragging {
 		w, h := b.rect.max.x - b.rect.min.x, b.rect.max.y - b.rect.min.y
 		if w > 1 && h > 1 {
 			sat^ = clamp((gs().mouse.x - b.rect.min.x) / w, 0, 1)
@@ -218,7 +218,7 @@ alpha_picker :: proc(id: string, hue, sat, val: f32, alpha: ^f32, horizontal := 
 // Where a press or a drag puts a bar's marker (0..1 along it).
 @(private = "file")
 bar_input :: proc(b: ^Box, sig: Signal, horizontal: bool) -> (t: f32, ok: bool) {
-	if !sig.pressed && !sig.dragging { return }
+	if !sig.pointer_pressed && !sig.dragging { return }
 	r := b.rect
 	long := horizontal ? r.max.x - r.min.x : r.max.y - r.min.y
 	if long <= 1 { return }

@@ -318,7 +318,7 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 		if step > 0 { v = math.round(v / step) * step }
 		value^ = clamp(v, lo, hi)
 	}
-	if sig.pressed || sig.dragging {
+	if sig.pointer_pressed || sig.dragging {
 		v := lo + slider_pct(b) * (hi - lo)
 		if step > 0 { v = math.round(v / step) * step }
 		value^ = clamp(v, lo, hi)

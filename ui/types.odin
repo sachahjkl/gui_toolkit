@@ -158,7 +158,8 @@ Signal :: struct {
 	box:             ^Box,
 	mouse:           Vec2,    // mouse position relative to the box
 	hovering:        bool,
-	pressed:         bool,    // left press began on this box this frame
+	pressed:         bool,    // left press began on this box this frame, or Enter, Space or a screen reader activated it
+	pointer_pressed: bool,    // the press was the button's: the pointer is where it says, and it is held
 	released:        bool,
 	clicked:         bool,    // left press and release both on this box
 	double_clicked:  bool,
@@ -264,8 +265,8 @@ Toast :: struct {
 }
 
 Focus_Entry :: struct {
-	key:     Key,
-	trapped: bool,
+	key:   Key,
+	modal: int,   // the dialog it is in (Modal_Scope.order; 0: none)
 }
 
 Animation :: struct {
@@ -363,10 +364,10 @@ State :: struct {
 	focus_key:    Key,
 	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box
 	focus_order:  [dynamic]Focus_Entry,  // Tab stops in build order (this frame)
-	trap_depth:   int,               // > 0 while building inside a modal: Tab cycles inside it only
 	tab_stops_off: [dynamic]bool,    // `tab_stops` scopes; tab_skip counts the ones that turned Tab stops off
 	tab_skip:     int,
-	modal_prev, modal_now: Key,      // modal open last frame / this frame (focus resets when a modal opens)
+	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
+	modals_built: [dynamic]Modal_Open,   // and of this one
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to

@@ -17,6 +17,29 @@ Text_Field :: struct {
 	undo, redo: [dynamic]Edit_Snapshot,   // edit history (Ctrl+Z / Ctrl+Y, field_undo / field_redo)
 	last_edit:  Field_Edit,   // what the last recorded edit was: consecutive typing is one undo step
 	last_edit_ms: f64,
+	word:       Word_Drag,    // the word a double click took, while its button is held
+}
+
+// A double click takes a word; until the button goes up the selection goes on by words from it, and a frame made
+// meanwhile leaves it alone. `on` ends at the next press.
+@(private)
+Word_Drag :: struct {
+	on:     bool,
+	lo, hi: int,   // the word
+}
+
+@(private)
+word_drag_at :: proc(text: string, at: int) -> Word_Drag {
+	lo := word_left(text, min(at + 1, len(text)))
+	return {on = true, lo = lo, hi = word_right(text, lo)}
+}
+
+// The selection with the pointer on byte `at`: the word held, up to the word under the pointer.
+@(private)
+word_drag_to :: proc(w: Word_Drag, text: string, at: int) -> (mark, cursor: int) {
+	if at < w.lo { return w.hi, word_drag_at(text, at).lo }
+	if at > w.hi { return w.lo, word_drag_at(text, at).hi }
+	return w.lo, w.hi
 }
 
 Field_Snapshot :: Edit_Snapshot
@@ -295,17 +318,19 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			x := res.mouse.x - pad + f.scroll_x
 			idx := font.index_from_x(s.fonts, b.font, b.font_size, secret ? secret_mask(text) : text, x)
 			if secret { idx = secret_unmask_index(text, idx) }
-			f.cursor = idx
-			if res.pressed && .Shift not_in res.mods { f.mark = idx }
+			if res.pressed { f.word.on = false }
+			if f.word.on {
+				f.mark, f.cursor = word_drag_to(f.word, text, idx)
+			} else {
+				f.cursor = idx
+				if res.pressed && .Shift not_in res.mods { f.mark = idx }
+			}
 			f.edited_ms = now
 		}
 		if res.double_clicked {
-			if secret {   // (its words are not shown: all of it)
-				f.mark, f.cursor = 0, len(text)
-			} else {
-				f.mark = word_left(text, min(f.cursor + 1, len(text)))
-				f.cursor = word_right(text, f.mark)
-			}
+			// (a secret's words are not shown: all of it)
+			f.word = secret ? Word_Drag{on = true, hi = len(text)} : word_drag_at(text, f.cursor)
+			f.mark, f.cursor = f.word.lo, f.word.hi
 		}
 
 		if focused {
