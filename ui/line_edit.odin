@@ -95,7 +95,7 @@ field_forget_history :: proc(f: ^Text_Field) {
 // Records the state before an edit of kind `kind` (typing and deleting merge with the previous step of the same kind).
 @(private)
 field_checkpoint :: proc(f: ^Text_Field, kind: Field_Edit) {
-	now := now_ms()
+	now := build_now_ms()
 	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < FIELD_UNDO_MERGE_MS && len(f.undo) > 0
 	f.last_edit, f.last_edit_ms = kind, now
 	edit_history_record(&f.undo, &f.redo, f.buf[:], f.cursor, f.mark, FIELD_UNDO_STEPS, merge)

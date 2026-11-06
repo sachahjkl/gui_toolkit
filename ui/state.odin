@@ -105,6 +105,7 @@ destroy :: proc(s: ^State) {
 	delete(s.last_events)
 	virtual.arena_destroy(&s.arena)
 	if current == s { current = nil }
+	if build_of == s { build_of = nil }   // (destroyed in the middle of a build: there is none to end)
 	s^ = {}
 }
 
@@ -141,13 +142,18 @@ Build_Params :: struct {
 	                                    // the caret of a focused text field is not drawn and does not blink (inactive())
 }
 
-// A build is open on this thread (between begin_build and end_build), whatever its state.
-@(private, thread_local) build_open: bool
+// The state whose build is open on this thread (between begin_build and the end of end_build), nil when none is.
+@(private, thread_local) build_of: ^State
 
 // True between begin_build and end_build. An app whose window procedure makes frames (platform: on_frame, inside a
 // loop of the system) asks this before building one: a build begun inside another empties its parent stack, frees its
 // frame arena and selects another state under it.
-building :: proc() -> bool { return build_open }
+building :: proc() -> bool { return build_of != nil }
+
+// The time of what a call does: the open build's clock (Build_Params.time_ms), else the state's. What a build compares with
+// its own time (an edit, a toast) takes this.
+@(private)
+build_now_ms :: proc() -> f64 { return build_of != nil && build_of == current ? current.time_ms : now_ms() }
 
 // The window being built is not the one the user is in (Build_Params.inactive): a widget that shows a caret or a focus
 // highlight that only the user's window shows reads this.
@@ -155,8 +161,8 @@ inactive :: proc() -> bool { return current != nil && current.inactive }
 
 begin_build :: proc(s: ^State, p: Build_Params) {
 	// (a frame made from a message pumped during a build: a loop of the system such as TrackPopupMenu, a modal dialog)
-	assert(!build_open, "ui: begin_build inside another build")
-	build_open = true
+	assert(build_of == nil, "ui: begin_build inside another build")
+	build_of = s
 	use(s)
 	s.build_index += 1
 	s.build_start = real_ms()
@@ -186,6 +192,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.menu_close_pending = false
 	s.boxes_built = 0
 	s.time_ms = p.time_ms > 0 ? p.time_ms : clock_ms(s)
+	left := p.inactive && !s.inactive
 	s.inactive = p.inactive
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
 	if s.theme != nil && s.theme.serial != s.theme_serial {
@@ -203,7 +210,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	// calls posted from other threads change the app's data before the frame reads it (post.odin)
 	post_begin_build(s, p.window)
 	selection_begin(s)
-	process_events(s, p.events, !p.disable_zoom)
+	process_events(s, p.events, !p.disable_zoom, left)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	menu_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
@@ -229,8 +236,9 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 }
 
 end_build :: proc() {
-	s := gs()
-	build_open = false
+	s := build_of
+	assert(s != nil, "ui: end_build with no build open")
+	use(s)   // (whatever was selected since: this is the build that ends)
 	pop(&s.parent_stack)
 	assert(len(s.parent_stack) == 0, "ui: unbalanced parent push/pop")
 	assert(len(s.tag_marks) == 0, "ui: unbalanced tags push/pop")
@@ -239,6 +247,8 @@ end_build :: proc() {
 	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 	assert(len(s.modal_stack) == 0, "ui: unbalanced modal scopes")
+	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
+	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }
@@ -258,6 +268,7 @@ end_build :: proc() {
 	rich_cache_trim(s)
 	lazy_trim(s)
 	menu_prune(s)
+	boxes_gone(s)
 	selection_update(s)
 	modals_settle(s)
 	handle_tab_navigation(s)
@@ -294,6 +305,7 @@ end_build :: proc() {
 	s.a11y.pressed = 0
 	s.double_key = 0
 	s.metrics.total_ms = real_ms() - s.build_start
+	build_of = nil
 }
 
 // True while something is still animating, or posted calls wait beyond the last build's budget: the app loop should
@@ -361,6 +373,32 @@ touch_box :: proc(s: ^State, key: Key) -> ^Box {
 	b.child_count = 0
 	b.last_build = s.build_index
 	return b
+}
+
+// A box of the last build that this one did not make. Not one never built: a focus may be given ahead of its box.
+@(private)
+box_gone :: proc(s: ^State, key: Key) -> bool {
+	b := s.boxes[key] if key != 0 else nil
+	return b != nil && b.last_build != s.build_index
+}
+
+// What holds a box by its key lets go of it here, once the build said which boxes stand (end_build): a press, the focus,
+// a click that may become a double one, the link of a paragraph. A box of that key built later is another box.
+@(private)
+boxes_gone :: proc(s: ^State) {
+	for &key, button in s.active_key {
+		held := s.sb_owner[key] or_else key   // (a scroll bar is no box: its scroll box says)
+		if !box_gone(s, held) { continue }
+		if button == .Left { s.release_owed = key }
+		key = 0
+	}
+	if b := s.boxes[s.release_owed] if s.release_owed != 0 else nil; b != nil && b.last_build == s.build_index { s.release_owed = 0 }
+	if box_gone(s, s.focus_key) { s.focus_key = 0 }
+	if box_gone(s, s.last_click_key) { s.last_click_key = 0 }
+	if len(s.rich_link) == 0 { return }
+	dead := make([dynamic]Key, context.temp_allocator)
+	for k in s.rich_link { if k not_in s.boxes || box_gone(s, k) { append(&dead, k) } }
+	for k in dead { delete_key(&s.rich_link, k) }
 }
 
 box_from_key :: proc(key: Key) -> ^Box {
@@ -551,6 +589,15 @@ pop_style :: proc() { pop(&gs().style_stack) }
 next :: proc(m: Style_Mod) {
 	gs().next_mod = m
 	gs().has_next = true
+}
+
+// A widget that builds nothing this frame (a closed dialog, a skipped item): what `next` and `a11y` said was for its box,
+// not for the one after it.
+@(private)
+next_drop :: proc(s: ^State) {
+	s.has_next = false
+	s.next_mod = {}
+	s.a11y.has_next = false
 }
 
 @(deferred_none = pop_parent)
@@ -746,8 +793,8 @@ debug_dump_tall :: proc(s: ^State, limit: f32) {
 // arrows itself has the focus; sliders, text fields and open menus consume their arrows before this runs.
 @(private)
 handle_tab_navigation :: proc(s: ^State) {
-	s.tab_dir = 0
-	if handle_arrow_navigation(s) { return }
+	s.tab_dir, s.tab_dir_next = s.tab_dir_next, 0
+	handle_arrow_navigation(s)
 	dir := 0
 	if key_press(.Tab) { dir = 1 } else if key_press(.Tab, {.Shift}) { dir = -1 }
 	if dir == 0 || len(s.focus_order) == 0 { return }
@@ -780,6 +827,8 @@ focus_step :: proc(s: ^State, from: Key, dir: int) {
 	if cur < 0 { next = dir > 0 ? 0 : n - 1 } else { next = (cur + (dir > 0 ? 1 : -1) + n) % n }
 	s.focus_key = stops[next]
 	s.focus_visible = true
+	// (tab_direction speaks of the next build: one open now ends before it)
+	if build_of == s { s.tab_dir_next = dir > 0 ? 1 : -1 } else { s.tab_dir = dir > 0 ? 1 : -1 }
 }
 
 // The dialog that has the keyboard: the last one built that has a Tab stop (0: the page).

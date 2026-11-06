@@ -8,6 +8,7 @@ package ui_robust_test
 import "base:runtime"
 import "core:testing"
 import "core:thread"
+import "../../platform"
 import "../../ui"
 
 @(test)
@@ -28,6 +29,58 @@ building_is_true_between_begin_and_end :: proc(t: ^testing.T) {
 	defer close(&g)
 	frame(&g, nil, proc(f: ^Fx, user: rawptr) { ui.spacer(ui.px(4)) })
 	testing.expect(t, !ui.building(), "no build after the second state's")
+}
+
+// A state destroyed in the middle of its build leaves no build open on the thread: the next state builds.
+@(test)
+a_state_destroyed_in_its_build_leaves_none_open :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	ui.begin_build(&f.s, {window_size = {800, 600}, dt = 1.0 / 60, dpi_scale = 1, base = ui.Style{font = f.base_font, font_size = 15}})
+	close(&f)
+	testing.expect(t, !ui.building(), "its build is gone with it")
+	g: Fx
+	if !testing.expect(t, open(&g), "fonts") { return }
+	defer close(&g)
+	frame(&g, nil, proc(f: ^Fx, user: rawptr) { ui.spacer(ui.px(4)) })
+}
+
+// `use` of another state in the middle of a build: end_build ends the build that is open, not the state selected.
+@(test)
+end_build_ends_the_build_that_is_open :: proc(t: ^testing.T) {
+	f, g: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	if !testing.expect(t, open(&g), "fonts") { return }
+	defer close(&g)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.use(&(^Fx)(user).s) }, &g)
+	testing.expect(t, !ui.building(), "no build open after it")
+	testing.expect_value(t, ui.boxes_built(&g.s), 0)
+}
+
+// The clipboard written from end_build is written from a build: building() says so until the build is over.
+@(test)
+a_build_is_open_to_its_last_line :: proc(t: ^testing.T) {
+	@(static) seen: bool
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	one :: proc(f: ^Fx, events: []platform.Event) {
+		ui.begin_build(&f.s, {
+			window_size = {800, 600}, events = events, dt = 1.0 / 60, dpi_scale = 1,
+			base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
+			clipboard_set = proc(text: string) { seen = ui.building() },
+		})
+		ui.next({flags = {.Selectable}})
+		ui.label("Words###words")
+		ui.end_build()
+		free_all(context.temp_allocator)
+	}
+	one(&f, nil)
+	one(&f, nil)
+	ui.select_box(&f.s, ui.box_at("###words").key)
+	one(&f, {{kind = .Key_Press, key = .C, mods = {.Ctrl}}})
+	testing.expect(t, seen, "the copy of end_build ran in the build")
 }
 
 // The assertion is caught on a thread of the test's own, whose assertion procedure records the message and ends that

@@ -39,7 +39,7 @@ Both are live at once, as in the browsers; the toolkit tells them apart from the
   mode on. It stays on, scrolling as the pointer moves with no button held, until the next click anywhere — that click
   is swallowed (it only ends the mode, as the browsers do).
 
-A session also ends on Escape, a wheel notch, the pointer leaving the window, or the scrolled area going away.
+A session also ends on Escape, a wheel notch, the pointer leaving the window, the window moving or losing the user, or the scrolled area going away.
 
 ## The acceleration curve (`autoscroll_axis_speed`)
 

@@ -161,7 +161,8 @@ Signal :: struct {
 	pressed:         bool,    // left press began on this box this frame, or Enter, Space or a screen reader activated it
 	pointer_pressed: bool,    // the press was the button's: the pointer is where it says, and it is held
 	released:        bool,
-	clicked:         bool,    // left press and release both on this box
+	clicked:         bool,    // left press and release both on this box, or Enter, Space or a screen reader activated it
+	pointer_clicked: bool,    // the click was the button's: the pointer is where it says
 	double_clicked:  bool,
 	right_clicked:   bool,
 	middle_clicked:  bool,
@@ -354,6 +355,7 @@ State :: struct {
 	released_key: [platform.Mouse_Button]Key,
 	clicked_key:  [platform.Mouse_Button]Key,
 	double_key:   Key,
+	release_owed: Key,                           // a left press ended with its box: `released` when that box is back
 	scroll_delta: Vec2,
 	scroll_key:   Key,
 	last_click_key:  Key,
@@ -369,7 +371,10 @@ State :: struct {
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
 	modals_built: [dynamic]Modal_Open,   // and of this one
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)
+	modal_escape: Key,               // the dialog Escape closed in the last build: the next one takes it (modal_take_escape)
+	modal_escape_taken: bool,        // a dialog took Escape in this build: the one on top at its end is closed
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
+	tab_dir_next: int,               // the same asked during a build (focus_step): tab_dir of the next one
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
 	scrollbar_arrows: bool,          // set_scrollbar_arrows
@@ -409,14 +414,12 @@ State :: struct {
 	scroll_cfg_set:  bool,
 	frame_ms:        f64,                   // the frame's time (Build_Params.frame_ms, else now_ms)
 
-	// middle-click autoscroll of scroll regions (autoscroll.odin): the one active session, the area it drives, its
-	// settings, and whether it is enabled at all. `auto_box` is the scroll box the session scrolls (0 when none).
+	// middle-click autoscroll of scroll regions (autoscroll.odin): the one session, its settings, and whether it is
+	// enabled at all.
 	auto:            Autoscroll,
-	auto_box:        Key,
 	auto_cfg:        Autoscroll_Settings,
 	auto_cfg_set:    bool,
 	auto_enabled:    bool,       // set_autoscroll_enabled; off by default (an app opts in, so nothing changes silently)
-	auto_pressed:    bool,       // a middle press this frame started (or could start) a session: set in process_events
 
 	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
 	wrap_cache:      map[Wrap_Key]Wrap_Entry,
