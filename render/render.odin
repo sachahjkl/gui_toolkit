@@ -351,7 +351,9 @@ text_subpixel_supported :: proc(r: ^Renderer, slug: bool) -> bool {
 	when USE_WGPU { return slug && r.wg.can_dual } else { return !slug }
 }
 
-Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot, Slug_Curves, Slug_Bands, Data }
+// Failed: a device recovered could not make it again. It holds nothing and draws nothing; its owner still has the handle, so the slot
+// waits for destroy_texture.
+Texture_Kind :: enum u8 { None, R8, RGBA, Target, Snapshot, Slug_Curves, Slug_Bands, Data, Failed }
 
 // The texels of a data texture (create_texture_data): raw 8-bit values, never color-converted.
 Data_Format :: enum u8 {
@@ -467,6 +469,7 @@ Renderer :: struct {
 	surface_handles: platform.Surface_Handles,   // the neutral native handles init was given (wgpu backend; the surface is made from them)
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
 	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
+	transparent_asked: bool,              // what init or surface_init was told: a window remade tries again what failed once
 	dcomp:        ^IDCompositionDevice,
 	dcomp_target: ^IDCompositionTarget,
 	dcomp_visual: ^IDCompositionVisual,
@@ -581,7 +584,7 @@ texture_space :: proc(r: ^Renderer, t: Texture) -> Blend_Space {
 texture_bpp :: proc(r: ^Renderer, t: Texture) -> int {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return 0 }
 	switch r.textures[int(t)].kind {
-	case .None: return 0
+	case .None, .Failed: return 0
 	case .R8: return 1
 	case .Data: return r.textures[int(t)].data_format == .R8 ? 1 : 4
 	case .RGBA, .Snapshot, .Slug_Bands: return 4
@@ -683,7 +686,7 @@ texture_memory :: proc(r: ^Renderer) -> (m: Texture_Memory) {
 		if i == 0 || (td.tex == nil && td.wtex == nil) { continue }
 		m.count += 1
 		switch td.kind {
-		case .None:
+		case .None, .Failed:
 		case .R8: m.glyphs += td.size * td.size
 		case .RGBA:
 			n := td.w * td.h * 4

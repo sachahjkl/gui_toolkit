@@ -11,6 +11,13 @@ Fault :: enum {
 	Map,              // Direct3D 11: a dynamic buffer of the frame not mapped
 	Capture_Map,      // WebGPU: capture_poll's map answers Failed
 	Capture_Map_Late, // WebGPU: capture_poll's map is held back until fault_capture_map_answer
+	Create_Device,    // recover: no device can be had
+	Create_Swapchain, // Direct3D 11: a window's swap chain refused
+	Acquire,          // WebGPU: the surface has no texture to give (a hidden window)
+	Recreate_Texture, // recover: a texture cannot be made again
+	Damage_Clear,     // the texture that clears a region refused
+	Resize_Buffers,   // Direct3D 11: ResizeBuffers says the device is gone
+	Composition,      // DirectComposition unavailable for a translucent window
 }
 
 @(private = "file", thread_local) fault_skip: [Fault]int

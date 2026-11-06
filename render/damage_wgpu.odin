@@ -22,7 +22,7 @@ import "vendor:wgpu"
 @(private)
 wgpu_damage_ensure_target :: proc(r: ^Renderer) -> bool {
 	g := &r.wg
-	if g.damage_target != nil && g.damage_size == r.size {
+	if g.damage_target != nil && g.damage_view != nil && g.damage_sample != nil && g.damage_size == r.size {
 		return true
 	}
 	if g.damage_sample != nil { wgpu.TextureViewRelease(g.damage_sample); g.damage_sample = nil }
@@ -82,28 +82,29 @@ wgpu_damage_setup :: proc(r: ^Renderer, region: bool, f: Frame_Data) -> (use_tar
 }
 
 // Clears every rectangle of the region to the frame's clear color: to the byte what a pass's clear does to a whole frame (WebGPU
-// has no scissored clear): a texture of that color, copied.
+// has no scissored clear): a texture of that color, copied. False: that texture was refused, the region keeps what it had.
 @(private)
-wgpu_damage_clear_region :: proc(r: ^Renderer, s: ^Submit) {
+wgpu_damage_clear_region :: proc(r: ^Renderer, s: ^Submit) -> bool {
 	g := &r.wg
 	d := &r.damage
 	g.clear_pending = false
-	if d.count == 0 { return }
+	if d.count == 0 { return true }
 	need := g.damage_clear_size
 	for rc in d.rects[:d.count] { need = {max(need.x, int(rc.x1 - rc.x0)), max(need.y, int(rc.y1 - rc.y0))} }
 	if g.damage_clear == nil || need != g.damage_clear_size {
 		if g.damage_clear_view != nil { wgpu.TextureViewRelease(g.damage_clear_view); g.damage_clear_view = nil }
 		if g.damage_clear != nil { wgpu.TextureRelease(g.damage_clear); g.damage_clear = nil }
 		g.damage_clear_size = {}
+		if fault_hit(.Damage_Clear) { return false }
 		vf := [1]wgpu.TextureFormat{g.view_format}
 		g.damage_clear = wgpu.DeviceCreateTexture(g.device, &{
 			label = "damage clear", usage = {.RenderAttachment, .CopySrc}, dimension = ._2D,
 			size = {u32(need.x), u32(need.y), 1}, format = g.surface_format, mipLevelCount = 1, sampleCount = 1,
 			viewFormatCount = g.view_format != g.surface_format ? 1 : 0, viewFormats = raw_data(vf[:]),
 		})
-		if g.damage_clear == nil { return }
+		if g.damage_clear == nil { return false }
 		g.damage_clear_view = wgpu.TextureCreateView(g.damage_clear, &{format = g.view_format, dimension = ._2D, mipLevelCount = 1, arrayLayerCount = 1, aspect = .All})
-		if g.damage_clear_view == nil { return }
+		if g.damage_clear_view == nil { return false }
 		g.damage_clear_size = need
 	}
 	att := wgpu.RenderPassColorAttachment{view = g.damage_clear_view, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store, clearValue = g.clear}
@@ -116,6 +117,7 @@ wgpu_damage_clear_region :: proc(r: ^Renderer, s: ^Submit) {
 			&{texture = g.damage_target, mipLevel = 0, origin = {u32(rc.x0), u32(rc.y0), 0}, aspect = .All},
 			&{u32(rc.x1 - rc.x0), u32(rc.y1 - rc.y0), 1})
 	}
+	return true
 }
 
 // Exchanges the kept target with the one a frame is drawn into on the side (damage.odin: verify).
@@ -145,9 +147,10 @@ wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
 		&{buffer = buf, layout = {offset = 0, bytesPerRow = u32(row), rowsPerImage = u32(h)}},
 		&{u32(w), u32(h), 1})
 	cb := wgpu.CommandEncoderFinish(enc)
-	wgpu.QueueSubmit(g.queue, {cb})
+	submitted := wgpu_submit(r, cb)
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(enc)
+	if !submitted { return nil }
 	done, ok := false, false
 	M :: struct { done, ok: ^bool }
 	m := M{&done, &ok}
@@ -155,10 +158,7 @@ wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
 		m := (^M)(u1); m.done^, m.ok^ = true, status == .Success
 	}
 	wgpu.BufferMapAsync(buf, {.Read}, 0, uint(row * h), {mode = .AllowSpontaneos, callback = cb_map, userdata1 = &m})
-	for tries := 0; !done && tries < READBACK_WAIT_MAX_TRIES; tries += 1 {
-		wgpu.DevicePoll(g.device, true)
-		if !done { wgpu.InstanceProcessEvents(g.instance) }
-	}
+	for tries := 0; !done && !r.lost && tries < READBACK_WAIT_MAX_TRIES; tries += 1 { wgpu_poll(r, true, events = true) }
 	if !ok { return nil }
 	src := wgpu.BufferGetConstMappedRange(buf, 0, uint(row * h))
 	out := make([]u8, w * h * 4)
@@ -186,5 +186,5 @@ wgpu_damage_blit_to_surface :: proc(r: ^Renderer, s: ^Submit) {
 	wgpu.RenderPassEncoderDraw(p, FULLSCREEN_VERTICES, 1, 0, 0)
 	wgpu.RenderPassEncoderEnd(p)
 	wgpu.RenderPassEncoderRelease(p)
-	g.damage_ready = true
+	g.damage_ready = !s.uncleared
 }

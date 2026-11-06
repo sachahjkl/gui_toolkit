@@ -37,3 +37,10 @@ present_call_without_vsync_is_at_once :: proc(t: ^testing.T) {
 		}
 	}
 }
+// A surface in Fifo waits for the vblank even when frame_end asked for no wait: only a surface in Immediate is at once.
+@(test)
+wgpu_present_sync_follows_the_surface :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_present_sync(0, .Fifo), 1)
+	testing.expect_value(t, wgpu_present_sync(0, .Immediate), 0)
+	testing.expect_value(t, wgpu_present_sync(2, .Fifo), 2)
+}

@@ -8,9 +8,10 @@ package render
 // handles by wgpu_make_surface (HWND + DirectComposition on Windows, Wayland / XCB on Linux).
 //
 // What is per-window (swapped in and out):
-//   * r.wg: surface, surface_format, view_format, frame_tex, frame_rtv, frame_acquired, configured, present_mode,
+//   * r.wg: surface, surface_format, view_format, frame_tex, frame_rtv, configured, present_mode, clear, clear_pending, first_shown,
 //     latency (its frame-latency timer), panel (the DirectComposition visual's swap-chain panel for a translucent window);
-//   * r: present (Present_State: mode and frame statistics), size, buffer_size, source_size, hwnd, transparent.
+//   * r: present (Present_State: mode and frame statistics), capture, size, buffer_size, source_size, hwnd, transparent, and what the
+//     window's objects were made on and in (swap_gen, swap_space).
 // Everything else (device, queue, instance, adapter, pipelines, buffers, textures) is the renderer's and is not touched.
 
 import "core:fmt"
@@ -26,9 +27,11 @@ Wgpu_Surface :: struct {
 	view_format:    wgpu.TextureFormat,
 	frame_tex:      wgpu.Texture,
 	frame_rtv:      wgpu.TextureView,
-	frame_acquired: bool,
 	configured:     bool,
 	present_mode:   wgpu.PresentMode,
+	clear:          [4]f64,
+	clear_pending:  bool,
+	first_shown:    bool,
 	latency:        Wgpu_Latency,
 	panel:          ^Panel,
 	// partial redraw: the persistent target and verify reference belong to one window (damage_wgpu.odin)
@@ -48,13 +51,16 @@ Wgpu_Surface :: struct {
 	// the renderer-level per-window state
 	present:        Present_State,
 	damage:         Damage_State,
+	capture:        Capture_State,
 	size:           [2]int,
 	buffer_size:    [2]int,
 	source_size:    [2]int,
 	hwnd:           win.HWND,
 	handles:        platform.Surface_Handles,
 	transparent:    bool,
-	space_epoch:    u64,
+	transparent_asked: bool,
+	gen:            u64,   // Renderer.swap_gen and swap_space, while the window is set aside:
+	space_epoch:    u64,   // what it was made on and in
 }
 
 // Swaps the window-specific state of the renderer with the backing of `s`. After it, the renderer draws to the window
@@ -67,9 +73,11 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 	g.view_format, b.view_format = b.view_format, g.view_format
 	g.frame_tex, b.frame_tex = b.frame_tex, g.frame_tex
 	g.frame_rtv, b.frame_rtv = b.frame_rtv, g.frame_rtv
-	g.frame_acquired, b.frame_acquired = b.frame_acquired, g.frame_acquired
 	g.configured, b.configured = b.configured, g.configured
 	g.present_mode, b.present_mode = b.present_mode, g.present_mode
+	g.clear, b.clear = b.clear, g.clear
+	g.clear_pending, b.clear_pending = b.clear_pending, g.clear_pending
+	g.first_shown, b.first_shown = b.first_shown, g.first_shown
 	g.latency, b.latency = b.latency, g.latency
 	g.panel, b.panel = b.panel, g.panel
 	g.damage_target, b.damage_target = b.damage_target, g.damage_target
@@ -87,12 +95,15 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 	g.damage_clear_size, b.damage_clear_size = b.damage_clear_size, g.damage_clear_size
 	r.present, b.present = b.present, r.present
 	r.damage, b.damage = b.damage, r.damage
+	r.capture, b.capture = b.capture, r.capture
 	r.size, b.size = b.size, r.size
 	r.buffer_size, b.buffer_size = b.buffer_size, r.buffer_size
 	r.source_size, b.source_size = b.source_size, r.source_size
 	r.hwnd, b.hwnd = b.hwnd, r.hwnd
 	r.surface_handles, b.handles = b.handles, r.surface_handles
 	r.transparent, b.transparent = b.transparent, r.transparent
+	r.transparent_asked, b.transparent_asked = b.transparent_asked, r.transparent_asked
+	r.swap_gen, b.gen = b.gen, r.swap_gen
 	r.swap_space, b.space_epoch = b.space_epoch, r.swap_space
 }
 
@@ -101,15 +112,16 @@ wgpu_surface_exchange :: proc(r: ^Renderer, b: ^Wgpu_Surface) {
 @(private)
 wgpu_surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent: bool) -> bool {
 	g := &r.wg
-	if g.device == nil { fmt.eprintln("render: wgpu: no device for a second window"); return false }
+	if g.device == nil || r.lost { fmt.eprintln("render: wgpu: no device for a second window"); return false }
 	b := new(Wgpu_Surface)
 	// the renderer's window steps aside while we build the second window's surface on it (wgpu_make_surface reads
 	// r.transparent, and configure reads r.size and the formats), then steps back; the second window's state stays in `b`.
 	wgpu_surface_exchange(r, b)
-	r.size, r.surface_handles, r.transparent, r.swap_space = size, handles, transparent, r.space_epoch
+	r.size, r.surface_handles, r.transparent, r.transparent_asked = size, handles, transparent, transparent
+	r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
 	when ODIN_OS == .Windows { r.hwnd = win.HWND(handles.hwnd) }
 	r.present = {}
-	g.surface, g.panel, g.configured, g.frame_acquired = nil, nil, false, false
+	g.surface, g.panel, g.configured, g.frame_tex, g.frame_rtv = nil, nil, false, nil, nil
 	g.latency = {}
 	ok := true
 	g.surface = wgpu_make_surface(r, handles)
@@ -130,11 +142,43 @@ wgpu_surface_use :: proc(r: ^Renderer, s: ^Surface) {
 	b := (^Wgpu_Surface)(s.wgpu_backing)
 	if b == nil { return }
 	wgpu_surface_exchange(r, b)
-	// the blend space may have changed while this surface was set aside (set_blend_space touches only the current window):
-	// bring its formats and configuration in line, as the Direct3D surface_refresh does for a space change.
-	if r.swap_space != r.space_epoch {
-		wgpu_frame_formats(r)
-		if r.wg.surface != nil { wgpu_configure_surface(r) }
+	wgpu_surface_refresh(r)
+}
+
+// The window the renderer holds now was set aside while the device was recreated (recover: only the window in use is remade) or the
+// blend space changed (set_blend_space: idem), what surface_refresh does on Direct3D 11. A device still lost: its recovery remakes it.
+@(private)
+wgpu_surface_refresh :: proc(r: ^Renderer) {
+	if r.lost { return }
+	g := &r.wg
+	if r.swap_gen != r.device_generation {
+		wgpu_latency_stop(r)
+		wgpu_release_frame(g)
+		capture_release_device_objects(&r.capture)
+		wgpu_damage_release_target(r)
+		if g.surface != nil { wgpu.SurfaceUnconfigure(g.surface); wgpu.SurfaceRelease(g.surface); g.surface = nil }
+		wgpu_dcomp_destroy(r)
+		g.configured = false
+		ok := true
+		if r.surface_handles.backend == .None {
+			wgpu_frame_formats(r)
+			ok = wgpu_create_offscreen(r)
+		} else {
+			r.transparent = r.transparent_asked
+			g.surface = wgpu_make_surface(r, r.surface_handles)
+			ok = wgpu_surface_fits(g)
+			if ok {
+				wgpu_frame_formats(r)
+				ok = wgpu_configure_surface(r)
+			}
+		}
+		if !ok {
+			fmt.eprintln("render: a window could not be remade after the device was recreated")
+			r.lost = true   // (the next frame_begin tries again, with everything else)
+		}
+		r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
+	} else if r.swap_space != r.space_epoch {
+		wgpu_retarget(r)
 		r.swap_space = r.space_epoch
 	}
 }
@@ -148,10 +192,12 @@ wgpu_surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 	wgpu_surface_exchange(r, b)
 	g := &r.wg
 	wgpu_latency_stop(r)
-	wgpu_drop_frame(r)
+	wgpu_release_frame(g)
 	wgpu_damage_release_target(r)   // the second window's persistent target and verify reference (damage_wgpu.odin)
 	if g.surface != nil { wgpu.SurfaceUnconfigure(g.surface); wgpu.SurfaceRelease(g.surface); g.surface = nil }
 	wgpu_dcomp_destroy(r)   // frees the translucent window's DirectComposition panel, if any (wgpu_dcomp.odin)
+	capture_destroy(r)
+	present_destroy(r)
 	wgpu_surface_exchange(r, b)
 	free(b)
 	s.wgpu_backing = nil

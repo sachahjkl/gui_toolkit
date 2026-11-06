@@ -27,7 +27,7 @@ when !USE_WGPU {
 d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
 	r.hwnd = win.HWND(surface.hwnd)
 	r.size = size
-	r.transparent = transparent
+	r.transparent, r.transparent_asked = transparent, transparent
 	r.space = space
 	if !take_preloaded_device(r, warp = false) { create_device(r, .HARDWARE) or_return }   // (device_preload.odin)
 	create_swapchain(r) or_return
@@ -37,6 +37,7 @@ d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, 
 // The swap chain of the window (a composition one when translucent), its waitable object and the frame's view.
 @(private)
 create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
+	if fault_hit(.Create_Swapchain) { return false }
 	hwnd, size, transparent := r.hwnd, r.size, r.transparent
 	dxgi_device: ^dxgi.IDevice
 	r.device->QueryInterface(dxgi.IDevice_UUID, (^rawptr)(&dxgi_device))
@@ -66,7 +67,7 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 	r.swap_flags = desc.Flags
 	present_reset(r)
 	// translucent: through DirectComposition; where that is missing (Wine, old systems) fall back to an opaque window
-	if transparent && !init_composition(r, factory, dxgi_device, hwnd, desc, size) {
+	if transparent && (fault_hit(.Composition) || !init_composition(r, factory, dxgi_device, hwnd, desc, size)) {
 		fmt.eprintln("render: DirectComposition unavailable, the window is opaque")
 		r.transparent = false
 	}
@@ -93,6 +94,15 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 	}
 	create_target(r)
 	r.source_size = r.buffer_size
+	// a chain made again (recover, surface_refresh) keeps what set_fixed_surface asked: the size of the buffers, and what is shown of them
+	if r.fixed_surface {
+		if r.transparent {
+			r.surface_max = {max(r.surface_max.x, r.size.x), max(r.surface_max.y, r.size.y)}
+			resize_buffers(r, r.surface_max)
+		} else {
+			r.fixed_surface = false   // (it fell back to an opaque window, whose buffers follow the window)
+		}
+	}
 	return true
 }
 
@@ -100,6 +110,7 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 // initialized again afterwards.
 d3d_destroy :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	readback_renderer_gone(r)
 	canvas_pipeline_release(r)
 	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }
 	canvas_pipeline_free(r)
@@ -225,6 +236,8 @@ retarget :: proc(r: ^Renderer, previous: Maybe(Blend_Space) = nil) {
 				fmt.eprintln("render: staying in", prev)
 				r.space = prev
 				r.text = text_rendering_default(prev)
+			} else {
+				r.lost = true   // (a window set aside has no space to go back to: it is made again, in this one)
 			}
 		}
 		set_composition_color_space(r)
@@ -433,6 +446,7 @@ create_target :: proc(r: ^Renderer) {
 	r.device->CreateRenderTargetView(backbuffer, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
 	// kept for snapshots (backdrop filters, blend modes); with flip swap chains buffer 0 is always the one drawn
 	r.frame_tex = backbuffer
+	if r.rtv == nil { r.lost = true }   // (nothing to draw into: what frame_begin clears)
 	// the buffers' own size (resize may keep them larger than what is shown)
 	if backbuffer != nil {
 		desc: d3d11.TEXTURE2D_DESC
@@ -448,7 +462,8 @@ create_target :: proc(r: ^Renderer) {
 // made smaller again once they hold more than twice the pixels shown. Without SetSourceSize (or with a slack of 0)
 // the buffers follow the size exactly.
 d3d_resize :: proc(r: ^Renderer, size: [2]int) {
-	if size.x <= 0 || size.y <= 0 || size == r.size || r.swapchain == nil { return }
+	if size.x <= 0 || size.y <= 0 || size == r.size { return }
+	if r.swapchain == nil { r.size = size; return }   // (a recovery half done: the one that makes the chain takes the size)
 	if r.fixed_surface {
 		// The surface keeps its size: the window shows its top-left `size` pixels, 1:1, clipped by the client area (see
 		// set_fixed_surface). Grown beyond the surface, the buffers follow (one step shown scaled by the system).
@@ -488,8 +503,10 @@ resize_buffers :: proc(r: ^Renderer, size: [2]int) {
 	r.ctx->OMSetRenderTargets(0, nil, nil)
 	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
 	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
-	r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, r.swap_flags)   // flags must match creation
-	create_target(r)
+	hr := r.swapchain->ResizeBuffers(0, u32(size.x), u32(size.y), .UNKNOWN, r.swap_flags)   // flags must match creation
+	if fault_hit(.Resize_Buffers) { hr = DXGI_ERROR_DEVICE_REMOVED }
+	if is_device_loss(hr) { r.lost = true }
+	create_target(r)   // (refused otherwise: the buffers stay as they were, and buffer_size says so)
 	r.source_size = r.buffer_size   // ResizeBuffers presents the whole buffers again
 }
 
@@ -664,7 +681,7 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 	if int(t) <= 0 || int(t) >= len(r.textures) { return }
 	td := &r.textures[int(t)]
 	if td.kind == .None { return }
-	if td.canvas == CANVAS_TEX_TARGET { canvas_state_free(r, t) }
+	canvas_state_free(r, t)   // (a target's masks; canvas_set_opaque gives any canvas texture a state)
 	td = &r.textures[int(t)]
 	if td.rtv != nil { td.rtv->Release() }
 	if td.view != nil { td.view->Release() }
@@ -695,7 +712,7 @@ d3d_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 		return
 	}
 	r.damage.have_clear = false
-	r.ctx->ClearRenderTargetView(r.rtv, &c)
+	if r.rtv != nil { r.ctx->ClearRenderTargetView(r.rtv, &c) }
 }
 
 @(private)

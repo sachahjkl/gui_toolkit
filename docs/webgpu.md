@@ -73,7 +73,7 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
 * Frame capture (`capture_request` / `capture_poll`) works on both backends: the frame target (surface or offscreen) is
   copied into a mappable buffer before the present, mapped without waiting, and read back as straight RGBA8 with sRGB values
   and alpha forced to 255 (a window is opaque), the same picture the Direct3D 11 path gives. It costs nothing until a capture
-  is asked for. Offscreen readbacks (`draw.offscreen_end` + `readback_poll`) also work on both.
+  is asked for. A frame the surface gave no texture for (a hidden window) has nothing to copy: its capture says `Failed`. Offscreen readbacks (`draw.offscreen_end` + `readback_poll`) also work on both.
 * Not implemented, and they say so (`false`, 0 or an empty result): the GPU canvas engine (`canvas_*`, docs/canvas.md),
   `set_fixed_surface` and `set_max_frame_latency`; `surface_init` ignores `fixed_size`. Use the Direct3D 11 backend for those.
 

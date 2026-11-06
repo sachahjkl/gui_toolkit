@@ -232,7 +232,7 @@ damage_frame_reads_itself :: proc(f: Frame_Data) -> bool {
 }
 
 // At frame_submit: whether a region was built this frame, and its counters. False: the frame is whole (no damage tracking,
-// mode Off). The backend still decides whether the kept target allows a partial frame (have_region says it did).
+// mode Off). The backend then decides whether the kept target allows a partial frame: have_region says it did.
 @(private)
 damage_resolve :: proc(r: ^Renderer) -> bool {
 	d := &r.damage
@@ -245,7 +245,6 @@ damage_resolve :: proc(r: ^Renderer) -> bool {
 	px := 0
 	for i in 0 ..< d.count { px += rect_area(d.rects[i]) }
 	d.px_raster = px
-	d.have_region = true
 	return true
 }
 
@@ -272,14 +271,14 @@ damage_side_frame :: proc(r: ^Renderer, f: Frame_Data) -> []u8 {
 		wgpu_damage_side_swap(r)
 		defer wgpu_damage_side_swap(r)
 		r.wg.damage_ready = false
-		r.wg.clear_pending = true
 		if !wgpu_damage_ensure_target(r) { return nil }
+		r.wg.clear_pending = true
 	} else {
 		d3d_damage_side_swap(r)
 		defer d3d_damage_side_swap(r)
 		d.target_ready = false
-		d.have_clear = true
 		if !d3d_damage_ensure_target(r) { return nil }
+		d.have_clear = true
 	}
 	d.side, d.building = true, true
 	defer d.side = false

@@ -88,7 +88,7 @@ resize_offscreen :: proc(r: ^Renderer, size: [2]int) -> bool {
 
 // Whether the renderer draws into an offscreen target (init_offscreen), not a window's swap chain or surface.
 is_offscreen :: proc(r: ^Renderer) -> bool {
-	when USE_WGPU { return r.wg.surface == nil && r.wg.device != nil } else { return r.swapchain == nil && r.offscreen != nil }
+	when USE_WGPU { return r.surface_handles.backend == .None && r.wg.device != nil } else { return r.swapchain == nil && r.offscreen != nil }
 }
 
 // Most frames the swap chain may queue: 1 (the default) keeps the time from input to screen at one frame; 2 or more let
@@ -154,6 +154,7 @@ wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> boo
 }
 
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
+	defer readback_frame_done(f)
 	when DAMAGE_CHECK {
 		if !r.damage.building { damage_check_submit(r, f); return }
 	}
@@ -169,7 +170,7 @@ frame_end :: proc(r: ^Renderer, vsync := true) {
 	}
 	when USE_WGPU { wgpu_frame_end(r, vsync) } else { d3d_frame_end(r, vsync) }
 	r.damage.building, r.damage.skip_present = false, false
-	if !r.first_present_noted {
+	if !r.first_present_noted && r.present.presents > 0 {
 		r.first_present_noted = true
 		if render_trace() {
 			if ms := process_uptime_ms(); ms >= 0 {
