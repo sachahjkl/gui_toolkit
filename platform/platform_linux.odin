@@ -347,7 +347,8 @@ wake_signal :: proc(h: rawptr) {
 	sys_write(i32(uintptr(h)), &one, size_of(one))
 }
 
-// Requests a wake-up for the loop (a timer, an animation, another thread): the loop polls this fd with its connection.
+// Requests a wake-up for the loop (a timer, an animation, another thread): the loop polls this fd with its connection. It
+// is the loop of `w` that wakes: a thread that waits in the poll of another window is woken through that one.
 wake :: proc(w: ^Window) {
 	if w.off_event <= 0 { return }
 	one: u64 = 1

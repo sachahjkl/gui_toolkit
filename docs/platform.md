@@ -32,7 +32,7 @@ A new backend implements this set (the Win32 and Linux backends both do). Proced
 no-ops with a sane return, never an error.
 
 **Lifecycle** — `open_window`, `open_window_offscreen`, `show_window`, `destroy_window`, `set_title`, `set_size`,
-`is_closed`, `is_offscreen`.
+`is_closed`, `cancel_close` (the app answered a Close by staying open), `is_offscreen`.
 
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
 `is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `set_chrome_regions`, `show_system_menu`,
