@@ -204,13 +204,17 @@ straight_srgb :: proc(px: [4]f32, space: Blend_Space) -> (u8, u8, u8, u8) {
 
 // Forgets a readback (its picture is no longer wanted, or was taken).
 readback_release :: proc(r: ^Renderer, id: Readback_Id) {
-	sync.mutex_guard(&readback_lock)
+	sync.mutex_lock(&readback_lock)
 	s := readback_slots[u32(id)]
+	if s != nil {
+		delete_key(&readback_slots, u32(id))
+		if len(readback_slots) == 0 { delete(readback_slots); readback_slots = nil }
+	}
+	sync.mutex_unlock(&readback_lock)
 	if s == nil { return }
+	// (outside the lock: releasing a buffer may call its map callback, which takes it)
 	readback_free_objects(s)
-	delete_key(&readback_slots, u32(id))
 	free(s)
-	if len(readback_slots) == 0 { delete(readback_slots); readback_slots = nil }
 }
 
 @(private)
@@ -229,10 +233,14 @@ readback_free_objects :: proc(s: ^Readback_Slot) {
 // The device of `r` is gone: its copies waiting to be read are lost (their poll says Failed).
 @(private)
 readback_device_lost :: proc(r: ^Renderer) {
-	sync.mutex_guard(&readback_lock)
+	gone := make([dynamic]Readback_Slot, context.temp_allocator)
+	sync.mutex_lock(&readback_lock)
 	for _, s in readback_slots {
 		if s.renderer != r.id { continue }
-		readback_free_objects(s)
+		append(&gone, s^)
+		when USE_WGPU { s.wbuf = nil } else { s.staging = nil }
 		if s.copied || s.asked { s.failed = true }
 	}
+	sync.mutex_unlock(&readback_lock)
+	for &s in gone { readback_free_objects(&s) }   // (outside the lock: see readback_release)
 }
