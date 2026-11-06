@@ -2,7 +2,9 @@ package tk_config
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:testing"
+import "../fsx"
 
 @(private = "file")
 DEFS := [?]Def{
@@ -205,7 +207,7 @@ policy_file_locks :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(problems), 1)   // "bogus" is not a choice
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 3)
 	testing.expect_value(t, set_from_string(&p, "net.max_conns", "5", .User), Set_Error.Locked)
-	testing.expect(t, entry(&p, ref_of(&p, "net.max_conns")).locked)
+	testing.expect(t, is_locked(&p, ref_of(&p, "net.max_conns")))
 }
 
 // A run with --pref (or under a policy) keeps the user's own value in the profile file; a user change made meanwhile
@@ -253,4 +255,150 @@ higher_layers_keep_the_user_value :: proc(t: ^testing.T) {
 	// K / M / G that overflow are out of range, not wrapped
 	_, e := parse_value(DEFS[1], "17179869185G")
 	testing.expect_value(t, e, Set_Error.Out_Of_Range)
+}
+
+@(private = "file")
+Locked_Seen :: struct { locked: bool, calls: int }
+
+// A default is no layer that can be set: it does not go over what the user chose.
+@(test)
+a_default_decides_nothing_over_a_layer :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	set_from_string(&p, "net.max_conns", "8", .User)
+	testing.expect_value(t, set_from_string(&p, "net.max_conns", "3", .Default), Set_Error.Locked)
+	testing.expect_value(t, int_of(&p, "net.max_conns"), 8)
+	testing.expect_value(t, entry(&p, ref_of(&p, "net.max_conns")).source, Source.User)
+}
+
+// What a policy refuses, it refuses whole: the user's value under it is not lost to a reset that answers `.Locked`.
+@(test)
+a_refused_reset_keeps_the_user_value :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	set_from_string(&p, "net.max_conns", "8", .User)
+	set_from_string(&p, "net.max_conns", "3", .Policy)
+	p.dirty = false
+	testing.expect_value(t, reset(&p, "net.max_conns"), Set_Error.Locked)
+	s, ok := user_text(&p, "net.max_conns")
+	testing.expect(t, ok && s == "8", "the user's value is still there")
+	testing.expect(t, !p.dirty, "nothing changed")
+}
+
+// An observer of a policy value sees it locked.
+@(test)
+an_observer_sees_a_policy_value_locked :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	seen: Locked_Seen
+	watch(&p, "net.", proc(user: rawptr, name: string, p: ^Prefs) {
+		s := (^Locked_Seen)(user)
+		s.calls += 1
+		s.locked = is_locked(p, ref_of(p, name))
+	}, &seen)
+	set_from_string(&p, "net.max_conns", "3", .Policy)
+	testing.expect_value(t, seen.calls, 1)
+	testing.expect(t, seen.locked)
+}
+
+// A value the definition refuses is the user's all the same: this version does not take it, the next may, and a save is no
+// reason to lose it.
+@(test)
+a_refused_value_waiting_stays_in_the_profile :: proc(t: ^testing.T) {
+	path := fmt.tprintf("%s/wb_config_refused_test.txt", fsx.temp_dir(context.temp_allocator))
+	defer os.remove(path)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	testing.expect_value(t, set_from_string(&p, "net.max_conns", "999", .User), Set_Error.Unknown)
+	testing.expect_value(t, register(&p, DEFS[:]), 1)
+	testing.expect_value(t, int_of(&p, "net.max_conns"), 6)
+	testing.expect(t, is_default(&p, ref_of(&p, "net.max_conns")))
+	testing.expect(t, save_user(&p, path))
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, err == nil)
+	testing.expect(t, strings.contains(string(data), "net.max_conns\t999\n"), "the line is still there")
+}
+
+// The same for a line read once the definition is there: a problem to report, and a line to keep.
+@(test)
+a_refused_line_of_the_profile_stays :: proc(t: ^testing.T) {
+	path := fmt.tprintf("%s/wb_config_refused_line_test.txt", fsx.temp_dir(context.temp_allocator))
+	defer os.remove(path)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("wbprefs 1\nnet.max_conns\t999\n")) == nil)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	n, problems := load_file(&p, path, .User)
+	testing.expect_value(t, n, 0)
+	testing.expect_value(t, len(problems), 1)
+	testing.expect_value(t, int_of(&p, "net.max_conns"), 6)
+	testing.expect(t, save_user(&p, path))
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, err == nil)
+	testing.expect(t, strings.contains(string(data), "net.max_conns\t999\n"), "the line is still there")
+}
+
+// `dirty` says what the file does not have yet: a change under a higher layer, a value not registered, never what was just read.
+@(test)
+dirty_is_what_the_profile_does_not_have :: proc(t: ^testing.T) {
+	path := fmt.tprintf("%s/wb_config_dirty_test.txt", fsx.temp_dir(context.temp_allocator))
+	defer os.remove(path)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("wbprefs 1\nnet.max_conns\t9\nui.scale\t2\n")) == nil)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:1])
+	load_file(&p, path, .User)
+	testing.expect(t, !p.dirty, "a registered value, just read")
+	register(&p, DEFS[:])
+	testing.expect(t, !p.dirty, "a waiting value, just read")
+	testing.expect_value(t, float_of(&p, "ui.scale"), 2.0)
+
+	set_from_string(&p, "net.agent", "cli", .Command_Line)
+	testing.expect(t, !p.dirty, "not the user's")
+	testing.expect_value(t, set_from_string(&p, "net.agent", "mine", .User), Set_Error.Locked)
+	testing.expect(t, p.dirty, "under the command line: the file does not have it")
+
+	p.dirty = false
+	set_from_string(&p, "not.yet", "1", .User)
+	testing.expect(t, p.dirty, "not registered: the file does not have it")
+}
+
+// A save that cannot replace the file leaves all there was: never a profile removed in the hope of a second try.
+@(test)
+a_save_that_fails_leaves_what_was_there :: proc(t: ^testing.T) {
+	dir := fmt.tprintf("%s/wb_config_failed_save_test", fsx.temp_dir(context.temp_allocator))
+	fsx.remove_tree(dir)
+	defer fsx.remove_tree(dir)
+	path := fmt.tprintf("%s/profile", dir)
+	testing.expect(t, os.make_directory_all(path) == nil)   // (what cannot be replaced by a file)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	set_from_string(&p, "net.max_conns", "9", .User)
+	testing.expect(t, !save_user(&p, path), "it failed")
+	testing.expect(t, p.dirty, "still to be saved")
+	testing.expect_value(t, fsx.path_kind(path), fsx.Path_Kind.Directory)
+	testing.expect_value(t, len(fsx.list_files(dir)), 0)   // (no temporary file left)
+}
+
+// A file says what it is: a policy read as a profile would be written back as the user's, a profile read as a policy would lock.
+@(test)
+a_file_of_the_other_layer_is_refused :: proc(t: ^testing.T) {
+	path := fmt.tprintf("%s/wb_config_magic_test.txt", fsx.temp_dir(context.temp_allocator))
+	defer os.remove(path)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("wbpolicy 1\nnet.max_conns\t3\n")) == nil)
+	n, problems := load_file(&p, path, .User)
+	testing.expect_value(t, n, 0)
+	testing.expect_value(t, len(problems), 1)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("wbprefs 1\nnet.max_conns\t3\n")) == nil)
+	n, problems = load_file(&p, path, .Policy)
+	testing.expect_value(t, n, 0)
+	testing.expect_value(t, len(problems), 1)
+	testing.expect_value(t, int_of(&p, "net.max_conns"), 6)
 }

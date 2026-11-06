@@ -40,17 +40,25 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool) -> bool {
 
 replace :: proc(from, to: string, durable: bool) -> bool {
 	if libc.rename(cpath(from), cpath(to)) != 0 { return false }
-	if durable { sync_dir(filepath.dir(to)) }
-	return true
+	return !durable || sync_dir(filepath.dir(to))
 }
 
 // A rename or a creation is on the disk once its directory is synced.
 @(private = "file")
-sync_dir :: proc(dir: string) {
+sync_dir :: proc(dir: string) -> bool {
 	fd := open_retry(dir, {})
-	if fd < 0 { return }
-	posix.fsync(fd)
-	posix.close(fd)
+	if fd < 0 { return false }
+	defer posix.close(fd)
+	for {
+		if posix.fsync(fd) == .OK { return true }
+		#partial switch posix.errno() {
+		case .EINTR:
+			continue
+		case .EINVAL:   // (a file system that syncs no directory: there is nothing more to do)
+			return true
+		}
+		return false
+	}
 }
 
 delete_file :: proc(path: string) -> bool {
