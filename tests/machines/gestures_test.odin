@@ -443,6 +443,34 @@ vlist_scroll_to_waits_for_its_box :: proc(t: ^testing.T) {
 	testing.expect(t, session.get(s, "v").view_target.y > 0, "the view went there (the rows measured since keep it on its row)")
 }
 
+// A focused field whose row left the built range has only left the view: the focus is its own again when it comes back.
+@(test)
+a_focus_waits_for_its_row_of_a_virtual_list :: proc(t: ^testing.T) {
+	Run :: struct { st: ui.Virtual_List, ids: [ROWS]u64, f: ui.Text_Field }
+	r: Run
+	for &id, i in r.ids { id = u64(i + 1) }
+	defer { ui.vlist_destroy(&r.st); ui.field_destroy(&r.f) }
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.px(LIST_SIZE), height = ui.px(LIST_SIZE)})
+		if rows, ok := ui.vlist("###v", &r.st, r.ids[:]); ok {
+			for i in rows.first ..< rows.last {
+				ui.next({height = ui.px(ROW_HEIGHT)})
+				if i == 0 { ui.line_edit("###e", &r.f) } else { ui.list_row(&r.st, i, "row") }
+			}
+		}
+	}})
+	session.frames(s, SETTLE_FRAMES)
+	session.click(s, "e")
+	ui.vlist_scroll_to(&r.st, VIEW_FAR)
+	session.frames(s, SETTLE_FRAMES)
+	testing.expect(t, session.find(s, "e") == nil, "its row is not built")
+	ui.vlist_scroll_to(&r.st, 0)
+	session.frames(s, SETTLE_FRAMES)
+	session.type_text(s, "back")
+	testing.expect_value(t, ui.field_string(&r.f), "back")
+}
+
 // Rows of no height are never measured: the view does not wait for them, build after build.
 @(test)
 a_row_of_no_height_is_not_waited_for :: proc(t: ^testing.T) {

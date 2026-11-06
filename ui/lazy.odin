@@ -21,7 +21,7 @@ import "core:fmt"
 // until it is built again. Either is corrected when the item comes near the view, and the view stays on the item it
 // showed (the first one visible keeps its place on screen: lazy_settle, after the layout), so nothing jumps.
 // `lazy_begin(all = true)` builds every item (`all = find_sweep()`: a find in page reads them, once); `always`: build this item
-// whatever (the item that grows while streaming, one with the focus: a focus goes with its box). One lazy column to a
+// whatever (the item that grows while streaming; a focus in an item left behind waits for it). One lazy column to a
 // parent: what a column keeps between frames goes by that parent's key.
 
 Lazy :: struct {
@@ -76,6 +76,7 @@ lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
 	lz.scroll = sb
 	if sb == nil || all { return }
 	lz.on = true
+	s.virtual_depth += 1
 	view := sb.size.y > 0 ? sb.size.y : s.window_size.y   // (the first frame: no layout yet)
 	lz.lo = sb.view_off.y - view * LAZY_MARGIN
 	lz.hi = sb.view_off.y + view * (1 + LAZY_MARGIN)
@@ -138,6 +139,7 @@ lazy_end :: proc(lz: ^Lazy) {
 	lazy_flush(lz)
 	lazy_count(lz)
 	s := gs()
+	if lz.on { s.virtual_depth -= 1 }
 	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = lz.known_h / f32(lz.known_n) }
 	if lz.scroll != nil { append(&s.lazy_frame, lz) }
 	// every item built and nothing in any: their content was built after each item closed
