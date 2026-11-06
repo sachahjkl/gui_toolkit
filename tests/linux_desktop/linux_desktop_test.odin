@@ -1110,19 +1110,16 @@ a_pointer_taken_with_a_button_held_releases_it_on_wayland :: proc(t: ^testing.T)
 	defer delete(seen.events)
 	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.5; swaymsg -q seat seat0 cursor press button1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "the press arrives")
-	devices := []string{"0:0:wlr_virtual_pointer_v1", "0:0:wlr_virtual_keyboard_v1"}
-	for d in devices { sh("swaymsg -q 'seat other attach ", d, "'") }
+	// (the seat's only pointer: its virtual keyboards stay, each wtype is a new one that a seat would keep)
+	POINTER :: "0:0:wlr_virtual_pointer_v1"
+	sh("swaymsg -q 'seat other attach ", POINTER, "'")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Release, 2000), "the release is made")
 	testing.expect_value(t, w.buttons_down, platform.Mouse_Buttons{})
-	sh("swaymsg -q seat seat0 cursor release button1")
-	for d in devices { sh("swaymsg -q 'seat seat0 attach ", d, "'") }
-	sh("swaymsg -q seat seat0 cursor set 70 70")
+	sh("swaymsg -q seat seat0 cursor release button1; swaymsg -q 'seat seat0 attach ", POINTER, "'; swaymsg -q seat seat0 cursor set 70 70")
 	pump_for(w, 300)
 	clear(&seen.events)
 	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.3; swaymsg -q seat seat0 cursor press button1; sleep 0.1; swaymsg -q seat seat0 cursor release button1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Press, 2000), "the pointer is back")
-	sh("wtype a")
-	testing.expect(t, wait_kind(w, &seen, .Text, 2000), "the keyboard is back")
 }
 
 // The window goes off the screen under a held button: the button's grab ends with it, the release goes elsewhere.
