@@ -429,7 +429,7 @@ Layer :: struct {
 @(private)
 rasterize_colr_layers :: proc(s: ^State, run: ^DWRITE_GLYPH_RUN, x: f32, fg: [3]u8) -> (Glyph_Image, bool, bool) {
 	context.allocator = runtime.heap_allocator()
-	if s.factory2 == nil { return {}, false, false }
+	if failing(.Colr_Layers) || s.factory2 == nil { return {}, false, false }
 	layers := make([dynamic]Layer, 0, COLOR_LAYERS_HINT, context.temp_allocator)
 	uses_fg := false
 	text := [4]f32{f32(fg[0]) / 255, f32(fg[1]) / 255, f32(fg[2]) / 255, 1}

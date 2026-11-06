@@ -42,6 +42,11 @@ text_begin_frame :: proc(c: ^Context) {
 	if c.fonts != nil { font.atlas_begin_frame(c.fonts, c) }
 }
 
+@(private)
+text_end_frame :: proc(c: ^Context) {
+	if c.fonts != nil { font.atlas_end_frame(c.fonts, c) }
+}
+
 // The device was recreated: the page textures kept their handles but lost their contents. The atlas still has every
 // bitmap on the CPU, so the pages upload again whole at the end of the frame; recorded pictures stay valid.
 @(private)

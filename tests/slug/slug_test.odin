@@ -322,6 +322,90 @@ provider_is_replaceable :: proc(t: ^testing.T) {
 	testing.expect_value(t, g.band_max, [2]u8{0, 0})
 }
 
+// A face gets the provider of the moment: what was answered without one is asked again of the next.
+@(test)
+a_new_provider_is_asked_again :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	face, ok := font.load_system(s, "Segoe UI")
+	testing.expect(t, ok)
+	gid := glyph_of(s, face, 'H')
+	provider := s.atlas.slug.provider
+	font.slug_set_provider(s, nil)
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Atlas)
+	font.slug_set_provider(s, provider)
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Curves)
+}
+
+// No room in the store is a state of this frame, not of the glyph: it is built when asked again.
+@(test)
+no_room_for_a_glyph_is_not_kept :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	face, ok := font.load_system(s, "Segoe UI")
+	testing.expect(t, ok)
+	gid := glyph_of(s, face, 'H')
+	font.forced_failures = {.Slug_Alloc}
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Atlas)
+	testing.expect(t, font.forced_failures == {}, "the path did not run")
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Curves)
+}
+
+// Color glyphs on or off changes which glyphs are curves: an emoji kept as an outline goes back to the atlas, and comes back.
+@(test)
+the_color_setting_reaches_the_kept_glyphs :: proc(t: ^testing.T) {
+	st := font.DEFAULT_SETTINGS
+	st.color_glyphs = false
+	s := setup(t, st)
+	defer teardown(s)
+	face, ok := font.load_system(s, "Segoe UI Emoji")
+	testing.expect(t, ok)
+	gid := glyph_of(s, face, 0x1F600)
+	plain := glyph_of(s, face, 'A')
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Curves)
+	kept := font.slug_glyph(s, face, plain)
+	testing.expect_value(t, kept.kind, font.Slug_Kind.Curves)
+	st.color_glyphs = true
+	font.set_settings(s, st)
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Atlas)
+	testing.expect_value(t, font.slug_glyph(s, face, plain).kind, font.Slug_Kind.Curves)
+	st.color_glyphs = false
+	font.set_settings(s, st)
+	testing.expect_value(t, font.slug_glyph(s, face, gid).kind, font.Slug_Kind.Curves)
+}
+
+// Generations a slot goes through before its ids meet what 32 bits of them kept.
+@(private = "file") SLOT_GENERATIONS_WRAP :: 4096
+
+// Whatever the generation of its slot, what a face leaves in the store goes with it: the next font there builds its own.
+@(test)
+a_slot_many_generations_on_keeps_nothing_of_a_face :: proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	base, ok := font.load_embedded(s, font.FALLBACK_MONO_DATA)
+	testing.expect(t, ok)
+	// cascades are the cheap way through a slot's generations (each takes the slot the last one left)
+	turn :: proc(s: ^font.State, base: font.Font_Id, n: int) {
+		for i in 0 ..< n {
+			id := font.cascade(s, {{font = base}}, {{tag = {'s', 's', '0', '1'}, value = u32(i)}}, true)
+			font.unload(s, id)
+			free_all(context.temp_allocator)
+		}
+	}
+	turn(s, base, SLOT_GENERATIONS_WRAP)
+	a, ok_a := font.load_embedded(s, font.FALLBACK_UI_DATA)
+	testing.expect(t, ok_a)
+	gid := glyph_of(s, a, 'H')
+	testing.expect_value(t, font.slug_glyph(s, a, gid).kind, font.Slug_Kind.Curves)
+	font.unload(s, a)
+	turn(s, base, SLOT_GENERATIONS_WRAP - 1)
+	b, ok_b := font.load_embedded(s, font.FALLBACK_UI_DATA)
+	testing.expect(t, ok_b && b != a)
+	built := font.slug_stats(s).built
+	testing.expect_value(t, font.slug_glyph(s, b, gid).kind, font.Slug_Kind.Curves)
+	testing.expect_value(t, font.slug_stats(s).built, built + 1)
+}
+
 @(test)
 cache_pages_and_eviction :: proc(t: ^testing.T) {
 	st := font.DEFAULT_SETTINGS

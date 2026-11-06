@@ -80,7 +80,7 @@ Atlas :: struct {
 	pending:   map[u64]bool,             // color glyphs queued (color_async.odin), by key
 	fg_pending: map[Fg_Key]bool,         // ... and those known to use the text color, by key and color
 	clock:  u64,
-	users:  map[rawptr]u64,    // draw contexts: the clock at the start of their current frame
+	users:  map[rawptr]u64,    // draw contexts in a frame: the clock at its start
 	evictions: int,
 	settings_generation: u64,  // bumps when the rendering settings change (bitmaps made before no longer match)
 	slug:   Slug_Store,        // glyph curves of the Slug renderer (slug_cache.odin); shares the lock and the clock
@@ -150,7 +150,7 @@ atlas_forget_face :: proc(a: ^Atlas, face: Font_Id) {
 	slug_forget_face(&a.slug, face)
 }
 
-// A draw context starts a frame: pages it draws from until its next frame are kept.
+// A draw context starts a frame: the pages it draws from are kept until atlas_end_frame.
 atlas_begin_frame :: proc(s: ^State, user: rawptr) {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
@@ -159,6 +159,9 @@ atlas_begin_frame :: proc(s: ^State, user: rawptr) {
 	a.clock += 1
 	a.users[user] = a.clock
 }
+
+// A draw context has submitted its frame: nothing is drawn from the pages any more, and until its next frame it holds none.
+atlas_end_frame :: proc(s: ^State, user: rawptr) { atlas_remove_user(s, user) }
 
 // A draw context goes away.
 atlas_remove_user :: proc(s: ^State, user: rawptr) {
@@ -210,8 +213,10 @@ atlas_sync_page :: proc(s: ^State, i: int, since: u64, user: rawptr, upload: Upl
 	bpp := p.kind == .Color ? 4 : 1
 	stride := p.size * bpp
 	if since == 0 || since < p.log_from {
-		used := max(p.bottom, 1)
-		upload(user, i, p.kind, 0, 0, p.size, min(used, p.size), p.pixels[:], stride)
+		// a new texture is empty below the shelves; one that had the page before it was reused is not, and a stretched
+		// glyph samples the texels around it
+		rows := since == 0 ? min(max(p.bottom, 1), p.size) : p.size
+		upload(user, i, p.kind, 0, 0, p.size, rows, p.pixels[:], stride)
 		return p.version
 	}
 	for d in p.log {
@@ -369,12 +374,13 @@ subpixel :: proc(s: ^State, x: f32) -> (ix: f32, sub: int) {
 
 // The bitmap of glyph `gid` of `face` at `size` px, its pen at subpixel position `sub` (see `subpixel`). Rasterized
 // on first use. `fg` (sRGB) is the text color: only color glyphs with layers in the text color depend on it (coverage
-// is colored when drawn). Call from drawing threads only.
+// is colored when drawn). What could not be drawn is kept as a blank like what has nothing to draw, until the atlas forgets
+// it (clear_atlas, new settings): a failure is not asked again every frame. Call from drawing threads only.
 glyph_image :: proc(s: ^State, face: Font_Id, gid: u16, size: f32, sub: int, fg: [3]u8 = {}, lcd := false) -> Glyph_Image {
 	context.allocator = runtime.heap_allocator()
 	a := &s.atlas
-	// the cache is keyed by the face's slot: the id of an unloaded font must not reach what the slot's next font has
-	if font_ptr(s, face) == nil { return Glyph_Image{page = -1} }
+	// the cache is keyed by the face's slot: only a live face leaves anything in it (unload forgets what a face left there)
+	if face_ptr(s, face) == nil { return Glyph_Image{page = -1} }
 	key := glyph_key(face, gid, size, sub | (lcd ? GLYPH_KEY_LCD : 0))
 	atlas_lock(a)
 	defer atlas_unlock(a)
@@ -437,7 +443,7 @@ glyph_images :: proc(s: ^State, size: f32, reqs: []Glyph_Request, out: []Glyph_I
 	found := make([]bool, len(reqs), context.temp_allocator)
 	sync.rw_mutex_shared_lock(&a.mu)
 	for r, i in reqs {
-		if font_ptr(s, r.face) == nil { out[i], found[i] = Glyph_Image{page = -1}, true; continue }
+		if face_ptr(s, r.face) == nil { out[i], found[i] = Glyph_Image{page = -1}, true; continue }
 		out[i], found[i] = glyph_cached(a, glyph_key(r.face, r.id, size, int(r.sub) | (r.lcd ? GLYPH_KEY_LCD : 0)), fg)
 	}
 	sync.rw_mutex_shared_unlock(&a.mu)

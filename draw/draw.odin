@@ -591,4 +591,5 @@ end_frame :: proc(c: ^Context) {
 		apps = c.apps[:], app_params = c.app_params[:],
 		subpixel = c.fonts != nil && c.fonts.settings.subpixel_text != .Off,
 	})
+	text_end_frame(c)
 }

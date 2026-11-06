@@ -30,6 +30,7 @@ Color_Job :: struct {
 	size:     f32,
 	x:        f32,
 	settings: u64,     // atlas settings generation when queued
+	failures: bit_set[Forced_Failure],   // a test's, for the thread that draws it (failures.odin)
 }
 
 @(private)
@@ -88,6 +89,11 @@ color_enqueue :: proc(s: ^State, job: Color_Job) -> bool {
 		q.worker = thread.create_and_start_with_data(s, color_worker)
 		if q.worker == nil { return false }
 	}
+	job := job
+	when FONT_FAILURE_HOOKS {
+		job.failures = forced_failures
+		forced_failures = {}
+	}
 	append(&q.jobs, job)
 	sync.cond_broadcast(&q.cv)
 	return true
@@ -138,6 +144,7 @@ color_worker :: proc(data: rawptr) {
 @(private)
 color_job_run :: proc(s: ^State, job: Color_Job) {
 	context.allocator = runtime.heap_allocator()
+	when FONT_FAILURE_HOOKS { forced_failures = job.failures }
 	f := face_ptr(s, job.face)   // alive: unload waits for the request in flight
 	a := &s.atlas
 	ids := [1]u16{job.gid}
@@ -181,7 +188,9 @@ color_job_run :: proc(s: ^State, job: Color_Job) {
 	case drawn:
 		g = color_bitmap_put(s, px, w, h, origin)
 	case fmts & DWRITE_GLYPH_IMAGE_FORMATS_COLR != 0:
-		g, uses_fg, _ = rasterize_colr_layers(s, &run, job.x, job.fg)
+		layers: bool
+		g, uses_fg, layers = rasterize_colr_layers(s, &run, job.x, job.fg)
+		if !layers { g, _ = rasterize_outline(s, f, &run, job.x) }
 	case:
 		// not drawable in color: its outline, as coverage
 		g, _ = rasterize_outline(s, f, &run, job.x)
