@@ -56,10 +56,12 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 					s.last_click_key = hot
 					s.last_click_ms = s.time_ms
 				}
-				// keyboard focus follows the click
+				// keyboard focus follows the click (not into an open menu: what opened it has the keyboard when it closes)
 				b := s.boxes[hot] if hot != 0 else nil
-				s.focus_key = (b != nil && .Focusable in b.flags) ? hot : 0
-				s.focus_visible = false
+				if !menu_holds(s, hot) {
+					s.focus_key = (b != nil && .Focusable in b.flags) ? hot : 0
+					s.focus_visible = false
+				}
 			}
 		case .Mouse_Release:
 			append(&s.mouse_events, e)
