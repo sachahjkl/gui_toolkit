@@ -455,7 +455,11 @@ x11_dnd_serve_source_request :: proc(b: [^]u8) {
 	data := x11_dnd_src_bytes(target)
 	ok := data != nil
 	if ok {
-		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, X11_FORMAT_8, u32(len(data)), len(data) > 0 ? raw_data(data) : nil)
+		if len(data) > X11_INCR_THRESHOLD {
+			x11_start_incr(requestor, property, target, data)
+		} else {
+			xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, requestor, property, target, X11_FORMAT_8, u32(len(data)), len(data) > 0 ? raw_data(data) : nil)
+		}
 	}
 	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_SELECTION_NOTIFY

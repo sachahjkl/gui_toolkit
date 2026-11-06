@@ -48,7 +48,12 @@ get_placement :: proc(w: ^Window) -> Placement {
 // Puts the window where `p` says, on the monitor nearest to the rectangle and inside its work area (a layout saved with a monitor
 // that is gone comes back on one that is there). Nothing is shown: `show_window` shows it, maximized when `p` says so.
 set_placement :: proc(w: ^Window, p: Placement) {
-	if w.offscreen { w.off_place = p.rect; w.want_maximized = p.maximized; return }
+	if w.offscreen {
+		w.off_place = p.rect
+		w.want_maximized = p.maximized
+		if !p.maximized && w.off_state == .Maximized { w.off_state = .Normal }
+		return
+	}
 	rc := win.RECT{i32(p.rect[0]), i32(p.rect[1]), i32(p.rect[0] + p.rect[2]), i32(p.rect[1] + p.rect[3])}
 	work := [4]int{PLACEMENT_NO_WORK_ORIGIN_PX, PLACEMENT_NO_WORK_ORIGIN_PX, PLACEMENT_NO_WORK_SIZE_PX, PLACEMENT_NO_WORK_SIZE_PX}
 	mi := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
@@ -60,5 +65,9 @@ set_placement :: proc(w: ^Window, p: Placement) {
 	// a window that crossed to a monitor of another DPI is resized by the system for it (the size is scaled): asked again, now that it is there,
 	// the rectangle is the one wanted (a window opens on the monitor the user is on, which is rarely the one a saved layout names)
 	if now := outer_rect(w); now != r { win.SetWindowPos(w.hwnd, nil, i32(r[0]), i32(r[1]), i32(r[2]), i32(r[3]), win.SWP_NOZORDER | win.SWP_NOACTIVATE) }
-	w.want_maximized = p.maximized
+	if win.IsWindowVisible(w.hwnd) {
+		if is_maximized(w) != p.maximized { win.ShowWindow(w.hwnd, p.maximized ? win.SW_MAXIMIZE : win.SW_RESTORE) }   // (shown: at once)
+	} else {
+		w.want_maximized = p.maximized
+	}
 }

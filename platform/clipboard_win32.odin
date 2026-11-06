@@ -18,7 +18,12 @@ import stbi "vendor:stb/image"
 @(private = "file") CLIPBOARD_OPEN_ATTEMPTS :: 5
 
 // Changes whenever a program (this one too) writes the clipboard.
-clipboard_sequence :: proc() -> u32 { return clip_is_virtual(nil) ? sync.atomic_load(&clip.seq) : u32(win.GetClipboardSequenceNumber()) }
+clipboard_sequence :: proc() -> u32 { return clip_sequence_of(nil) }
+
+// The count a window reads: its own clipboard's, the store for an offscreen window, the system's for a real one, whatever other
+// windows the process has.
+@(private = "file")
+clip_sequence_of :: proc(w: ^Window) -> u32 { return clip_is_virtual(w) ? sync.atomic_load(&clip.seq) : u32(win.GetClipboardSequenceNumber()) }
 
 // What the clipboard holds, without opening it.
 clipboard_formats :: proc() -> (out: Clipboard_Formats) {
@@ -170,7 +175,7 @@ clipboard_watch :: proc(w: ^Window, on: bool) -> bool {
 
 // True once after the clipboard changed (compared with the last call for this window; the first call says true).
 clipboard_changed :: proc(w: ^Window) -> bool {
-	seq := clipboard_sequence() + 1   // (never 0 at first, on a session nothing was copied in: the zero of clip_seen is "not asked yet")
+	seq := clip_sequence_of(w) + 1   // (never 0 at first, on a session nothing was copied in: the zero of clip_seen is "not asked yet")
 	if seq == w.clip_seen { return false }
 	w.clip_seen = seq
 	return true

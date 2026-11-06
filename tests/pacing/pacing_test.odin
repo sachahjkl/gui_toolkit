@@ -105,7 +105,7 @@ each_state_and_what_it_decides :: proc(t: ^testing.T) {
 		testing.expect_value(t, d.state, platform.Cadence_State.Drag)
 		testing.expect(t, d.present_at_once && d.latency == 2 && d.wait_ns > 3 * MS && d.wait_swap_chain, "its slot and the screen, then shown at once")
 		testing.expect(t, platform.cadence_at_once(&c), "the frame's own")
-		testing.expect(t, platform.cadence_inner_frame(&c, false, true), "a frame of the chrome inside it: at once too")
+		testing.expect(t, platform.cadence_inner_frame(&c, false, true, 0), "a frame of the chrome inside it: at once too")
 		// the same screen, nothing dragged: as before, the refresh
 		d = platform.frame_decision(&c, {now_ns = now + 8 * MS, input = true, presented = true})
 		testing.expect_value(t, d.state, platform.Cadence_State.Continuous)
@@ -177,15 +177,25 @@ input_after_a_pause_of_the_hand_starts_an_answer :: proc(t: ^testing.T) {
 an_inner_frame_changes_state_only_with_a_new_size :: proc(t: ^testing.T) {
 	c := presented_cadence()
 	c.state = .Continuous
-	testing.expect(t, !platform.cadence_inner_frame(&c, false, true), "nothing new: paced")
-	testing.expect(t, platform.cadence_inner_frame(&c, true, true), "a new size: at once")
+	testing.expect(t, !platform.cadence_inner_frame(&c, false, true, 0), "nothing new: paced")
+	testing.expect(t, platform.cadence_inner_frame(&c, true, true, 0), "a new size: at once")
 	testing.expect_value(t, c.state, platform.Cadence_State.Resize_Step)
-	testing.expect(t, !platform.cadence_inner_frame(&c, false, true), "the next inner frame is no step")
+	testing.expect(t, !platform.cadence_inner_frame(&c, false, true, 0), "the next inner frame is no step")
 	testing.expect_value(t, c.state, platform.Cadence_State.Continuous)
 	c.state, c.input_answer = .Resize_Step, true
-	testing.expect(t, platform.cadence_inner_frame(&c, false, true), "a step that answered input stays an answer")
+	testing.expect(t, platform.cadence_inner_frame(&c, false, true, 0), "a step that answered input stays an answer")
 	c.state, c.input_answer = .Continuous, false
-	testing.expect(t, !platform.cadence_inner_frame(&c, true, false), "never before the first present")
+	testing.expect(t, !platform.cadence_inner_frame(&c, true, false, 0), "never before the first present")
+}
+
+// A resize made of inner frames (a loop of the system) has its burst like any other.
+@(test)
+a_size_step_of_an_inner_frame_starts_a_burst :: proc(t: ^testing.T) {
+	c := presented_cadence()
+	now: i64 = 1_000_000_000
+	platform.cadence_inner_frame(&c, true, true, now)
+	d := platform.frame_decision(&c, {now_ns = now + 1_000_000, presented = true})
+	testing.expect_value(t, d.state, platform.Cadence_State.Resize_Burst)
 }
 
 @(test)

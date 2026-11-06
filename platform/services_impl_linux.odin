@@ -19,6 +19,7 @@ import "../ascii"
 Idle_Record :: struct {
 	handle: Idle_Inhibit,
 	cookie: u32,
+	window: ^Window,
 }
 
 @(private)
@@ -34,20 +35,28 @@ idle_inhibit_linux :: proc(w: ^Window, reason: string) -> Idle_Inhibit {
 	cookie := dbus.r_u32(&r)
 	session.idle_next += 1
 	h := Idle_Inhibit(session.idle_next)
-	append(&session.idle_records, Idle_Record{handle = h, cookie = cookie})
+	append(&session.idle_records, Idle_Record{handle = h, cookie = cookie, window = w})
 	return h
+}
+
+// What the window kept awake goes with it: nothing else would ever release it.
+@(private)
+idle_release_window :: proc(w: ^Window) {
+	for i := len(session.idle_records) - 1; i >= 0; i -= 1 {
+		if session.idle_records[i].window == w { idle_uninhibit_linux(session.idle_records[i].handle) }
+	}
 }
 
 @(private)
 idle_uninhibit_linux :: proc(h: Idle_Inhibit) {
 	if h == 0 { return }
-	conn := session_bus()
-	if conn == nil { return }
 	for rec, i in session.idle_records {
 		if rec.handle != h { continue }
-		wr := dbus.body_writer()
-		dbus.w_u32(&wr, rec.cookie)
-		dbus.call_noreply(conn, SCREENSAVER_SERVICE, SCREENSAVER_PATH, SCREENSAVER_SERVICE, "UnInhibit", "u", wr.buf[:])
+		if conn := session_bus(); conn != nil {   // (a bus that went took the inhibition with it)
+			wr := dbus.body_writer()
+			dbus.w_u32(&wr, rec.cookie)
+			dbus.call_noreply(conn, SCREENSAVER_SERVICE, SCREENSAVER_PATH, SCREENSAVER_SERVICE, "UnInhibit", "u", wr.buf[:])
+		}
 		unordered_remove(&session.idle_records, i)
 		return
 	}

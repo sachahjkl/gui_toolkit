@@ -64,17 +64,26 @@ mouse_emulated_by :: proc() -> Pointer_Info {
 	return Pointer_Info{kind = x & MI_WP_TOUCH_BIT != 0 ? .Touch : .Pen}
 }
 
+// The message of a contact's end, and the system no longer knows it: the end still counts, or the contact stays down for good.
+@(private = "file")
+pointer_gone :: proc(w: ^Window, msg: win.UINT, id: u32) {
+	if msg != win.WM_POINTERUP && msg != win.WM_POINTERCAPTURECHANGED { return }
+	if !pointer_state_up(&w.pointers, id) { return }
+	append(&w.events, Event{kind = .Pointer_Cancel, mods = current_mods(), pointer = {id = id}, stamp = time.tick_now()})
+}
+
 @(private)
 pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 	id := u32(win.LOWORD(u32(wparam)))
 	kind: win.POINTER_INPUT_TYPE
-	if !GetPointerType(id, &kind) || (kind != .PT_TOUCH && kind != .PT_PEN) { return }
+	if !GetPointerType(id, &kind) { pointer_gone(w, msg, id); return }
+	if kind != .PT_TOUCH && kind != .PT_PEN { return }
 	info: win.POINTER_INFO
 	pi := Pointer_Info{id = id, kind = kind == .PT_PEN ? .Pen : .Touch}
 	measured: Maybe(f32)
 	if kind == .PT_PEN {
 		pen: win.POINTER_PEN_INFO
-		if !win.GetPointerPenInfo(id, &pen) { return }
+		if !win.GetPointerPenInfo(id, &pen) { pointer_gone(w, msg, id); return }
 		info = pen.pointerInfo
 		if .pressure in pen.penMask { measured = f32(pen.pressure) / POINTER_PRESSURE_RANGE }
 		if .tiltX in pen.penMask { pi.tilt.x = f32(pen.tiltX) }
@@ -84,7 +93,7 @@ pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 		pi.eraser = .eraser in pen.penFlags || .inverted in pen.penFlags
 	} else {
 		touch: POINTER_TOUCH_INFO
-		if !GetPointerTouchInfo(id, &touch) { return }
+		if !GetPointerTouchInfo(id, &touch) { pointer_gone(w, msg, id); return }
 		info = touch.pointerInfo
 		if touch.touchMask & TOUCH_MASK_PRESSURE != 0 { measured = f32(touch.pressure) / POINTER_PRESSURE_RANGE }
 		if touch.touchMask & TOUCH_MASK_CONTACT != 0 { pi.contact = {f32(touch.rcContact.right - touch.rcContact.left), f32(touch.rcContact.bottom - touch.rcContact.top)} }

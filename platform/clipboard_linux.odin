@@ -12,6 +12,7 @@ package platform
 // clipboard_changed tells a window once when the clipboard changes hands: through wl_data_device on Wayland, XFIXES on
 // X11. An X server without XFIXES only tells this process when it loses the clipboard.
 
+import "base:runtime"
 import "core:strings"
 import "core:sync"
 
@@ -26,7 +27,7 @@ clipboard_sequence :: proc() -> u32 { return sync.atomic_load(&clip.seq) }
 clipboard_formats :: proc() -> Clipboard_Formats {
 	if wlc.display != nil {
 		if wlc.data_source != nil { return clip_store_formats() }
-		if wlc.have_offer && wlc.offer != nil { return clipboard_formats_from_mimes(wlc.offer_mimes[:]) }
+		if wlc.offer != nil { return clipboard_formats_from_mimes(wlc.offer_mimes[:]) }
 		return {}
 	}
 	if x11c.c != nil && x11c.clip_owner == 0 && len(x11c.windows) > 0 { return x11_foreign_formats(x11c.windows[0]) }
@@ -92,7 +93,7 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 clip_foreign_owner :: proc(w: ^Window) -> bool {
 	if w == nil || w.offscreen { return false }
 	switch w.backend {
-	case .Wayland: return wlc.data_source == nil && wlc.have_offer && wlc.offer != nil
+	case .Wayland: return wlc.data_source == nil
 	case .X11:     return x11c.clip_owner == 0 || (x11_state(w) != nil && x11c.clip_owner != x11_state(w).id)
 	case .None:
 	}
@@ -121,7 +122,8 @@ clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
 	if w != nil && !w.offscreen {
 		switch w.backend {
 		case .Wayland:
-			delete(wlc.clip_text); wlc.clip_text = strings.clone(txt)
+			delete(wlc.clip_text, runtime.heap_allocator())
+			wlc.clip_text = strings.clone(txt, runtime.heap_allocator())   // (outlives whatever allocator the app calls under)
 			wl_clipboard_publish()
 		case .X11:
 			x11_clipboard_own_rich(w, txt)

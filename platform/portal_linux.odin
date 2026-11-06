@@ -32,7 +32,7 @@ Portal_Dialog :: struct {
 	done:   bool,
 	code:   u32,          // the Response response code (0 success, 1 cancelled, 2 ended)
 	paths:  [dynamic]string,
-	filter: int,
+	filter: string,       // the filter the user left selected, by its name ("": none said; temporary allocator)
 }
 
 // Runs a FileChooser portal dialog of `kind` (DIALOG_OPEN, DIALOG_SAVE, DIALOG_FOLDER). Returns the portal result, or status
@@ -57,29 +57,50 @@ portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.alloc
 	}
 	portal_write_filters(&w, d)
 	dbus.arg_dict_end(&w, ol, oc)
+	// the handle of the request is known from the token: the answer can come before the call's own reply is read
+	pd := Portal_Dialog{}
+	expected := portal_request_path(conn, token)
+	sub := dbus.subscribe(conn, PORTAL_SERVICE, expected, REQUEST_IFACE, "Response", portal_response_signal, &pd)
+	defer dbus.unsubscribe(conn, sub)
+	// (any refusal: no portal on this bus, or none that opens dialogs: the programs that are there do it)
 	msg, ok := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, FILECHOOSER_IFACE, method, "ssa{sv}", w.buf[:], PORTAL_DIALOG_CALL_MS)
-	if !ok { return {status = .Failed} }
+	if !ok { return {status = .Unsupported} }
 	r := dbus.msg_reader(&msg)
 	request_path := dbus.r_string(&r)
-	// subscribe to the Response on the request object, then pump until it arrives (no timeout: the user takes their time)
-	pd := Portal_Dialog{}
-	sub := dbus.subscribe(conn, PORTAL_SERVICE, request_path, REQUEST_IFACE, "Response", portal_response_signal, &pd)
+	// (an old portal chose the handle itself)
+	other: u32
+	if request_path != expected { other = dbus.subscribe(conn, PORTAL_SERVICE, request_path, REQUEST_IFACE, "Response", portal_response_signal, &pd) }
+	defer if other != 0 { dbus.unsubscribe(conn, other) }
+	// pump until it arrives (no timeout: the user takes their time)
 	for !pd.done {
 		dbus.dispatch(conn)
 		if !dbus.conn_alive(conn) { break }
 		portal_wait_fd(dbus.conn_fd(conn), PORTAL_DIALOG_POLL_MS)
 	}
-	dbus.unsubscribe(conn, sub)
-	if pd.code != 0 || len(pd.paths) == 0 {
+	defer {
 		for p in pd.paths { delete(p) }
 		delete(pd.paths)
-		return {status = .Cancelled}
 	}
+	if !pd.done { return {status = .Failed} }   // (the bus went away: nobody cancelled anything)
+	if pd.code != 0 || len(pd.paths) == 0 { return {status = .Cancelled} }
 	out := make([]string, len(pd.paths), allocator)
 	for p, i in pd.paths { out[i] = strings.clone(p, allocator) }
-	for p in pd.paths { delete(p) }
-	delete(pd.paths)
-	return {status = .Chosen, paths = out, filter = d.filter_index}
+	return {status = .Chosen, paths = out, filter = portal_filter_index(d, pd.filter)}
+}
+
+// /org/freedesktop/portal/desktop/request/SENDER/TOKEN: the sender is the connection's name without its colon, its dots
+// as underscores (temporary allocator).
+@(private = "file")
+portal_request_path :: proc(conn: ^dbus.Conn, token: string) -> string {
+	sender, _ := strings.replace_all(strings.trim_prefix(dbus.conn_name(conn), ":"), ".", "_", context.temp_allocator)
+	return strings.concatenate({"/org/freedesktop/portal/desktop/request/", sender, "/", token}, context.temp_allocator)
+}
+
+// The line of the dialog's filters the portal named; the one it opened on when it named none.
+@(private = "file")
+portal_filter_index :: proc(d: File_Dialog, name: string) -> int {
+	for f, i in d.filters { if f.name == name { return i } }
+	return d.filter_index
 }
 
 @(private = "file") PORTAL_DIALOG_CALL_MS :: 8000    // the request that opens the dialog, not the time the user takes
@@ -135,6 +156,15 @@ portal_response_signal :: proc(user: rawptr, msg: ^dbus.Message) {
 					uri := dbus.r_string(&r)
 					for p in uri_list_to_paths(uri, context.allocator) { append(&pd.paths, p) }
 				}
+			} else {
+				dbus.r_skip(&r, vs)
+			}
+		} else if key == "current_filter" {
+			vs := dbus.r_variant_sig(&r)   // "(sa(us))": a name and its patterns
+			if vs == "(sa(us))" {
+				dbus.r_align_entry(&r)
+				pd.filter = strings.clone(dbus.r_string(&r), context.temp_allocator)
+				dbus.r_skip(&r, "a(us)")
 			} else {
 				dbus.r_skip(&r, vs)
 			}

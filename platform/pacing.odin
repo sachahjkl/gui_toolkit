@@ -128,8 +128,10 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 }
 
 // A frame made inside another one's work or a loop of the system (a frame of the interface alone): it has no slot of its
-// own; only a new size changes its state. Returns whether it is shown at once.
-cadence_inner_frame :: proc(c: ^Cadence, resized, presented: bool) -> (at_once: bool) {
+// own; only a new size changes its state, and the burst of a resize follows it as any other's. (The answer to input of the
+// frame around it stays: a frame of the chrome inside it is part of that answer.) Returns whether it is shown at once.
+cadence_inner_frame :: proc(c: ^Cadence, resized, presented: bool, now_ns: i64) -> (at_once: bool) {
+	if resized { c.resize_ns = now_ns }
 	switch {
 	case resized && presented: c.state = .Resize_Step
 	case c.state == .Resize_Step || c.state == .Resize_Burst: c.state = .Continuous

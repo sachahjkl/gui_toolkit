@@ -194,6 +194,8 @@ Key :: enum u8 {
 	Num_Add, Num_Subtract,      // keypad + and - (keypad digits arrive as N0..N9)
 }
 
+Keys :: bit_set[Key; u128]
+
 // How the window's frames were asked for since it opened (pump_stats): for tests and diagnostics of the message loop.
 Pump_Stats :: struct {
 	paint_frames:       int,   // on_frame calls made from the window procedure (a loop of the system), not from the app's own loop
@@ -205,6 +207,7 @@ Window :: struct {
 	using native: Native_Window,
 	events:       [dynamic]Event,
 	batch:        [dynamic]Event,   // what the last poll_events handed out (hand_out)
+	keys_down:    Keys,             // pressed in this window and not yet released
 	size:         [2]int,   // client size in pixels
 	dpi_scale:    f32,
 	focused:      bool,
@@ -431,6 +434,24 @@ button_changes :: proc(w: ^Window, b: Mouse_Button, press: bool) -> bool {
 	if b not_in w.buttons_down { return false }
 	w.buttons_down -= {b}
 	return true
+}
+
+// A key's change, in the set the window keeps. False for a release of a key not held here: pressed elsewhere (the Alt of an
+// Alt+Tab that brought the window), or already released when the focus left.
+@(private)
+key_changes :: proc(w: ^Window, k: Key, press: bool) -> bool {
+	if press { w.keys_down += {k}; return true }
+	if k not_in w.keys_down { return false }
+	w.keys_down -= {k}
+	return true
+}
+
+// The focus left with keys held: their releases go elsewhere, they are made here.
+@(private)
+keys_released :: proc(w: ^Window, mods: Modifiers) {
+	down := w.keys_down
+	w.keys_down = {}
+	for k in down { append(&w.events, Event{kind = .Key_Release, key = k, mods = mods, stamp = time.tick_now()}) }
 }
 
 // The pointer was taken with buttons held (a capture lost, a grab, the compositor): their releases will not come, they
