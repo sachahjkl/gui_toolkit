@@ -64,15 +64,18 @@ ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	} else if src == wlc.dnd_source {
 		wl_data_source_destroy(src)
 		wlc.dnd_source = nil
-		wlc.dnd_sending = false
+		wlc.drag.phase = .Abandoned
 		wlc.dnd_source_action = 0   // (the target it hovered may have chosen an action: nothing was dropped)
 	}
 }
-@(private) ds_dnd_drop :: proc "c" (data: rawptr, src: Wl_Proxy) {}
+@(private)
+ds_dnd_drop :: proc "c" (data: rawptr, src: Wl_Proxy) {
+	if src == wlc.dnd_source { wlc.drag.phase = .Dropped }
+}
 @(private)
 ds_dnd_finished :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	context = wl_ctx_real()
-	if src == wlc.dnd_source { wl_data_source_destroy(src); wlc.dnd_source = nil; wlc.dnd_sending = false }
+	if src == wlc.dnd_source { wl_data_source_destroy(src); wlc.dnd_source = nil; wlc.drag.phase = .Finished }
 }
 @(private) ds_action :: proc "c" (data: rawptr, src: Wl_Proxy, action: u32) { wlc.dnd_source_action = action }
 
@@ -162,7 +165,8 @@ off_offer :: proc "c" (data: rawptr, o: Wl_Proxy, mime: cstring) {
 		append(&wlc.pending_offer_mimes, strings.clone(string(mime)))
 	}
 }
-@(private) off_source_actions :: proc "c" (data: rawptr, o: Wl_Proxy, actions: u32) {}
+// (right after the offer's types, before the enter that names the offer: only one drag at a time is ever described)
+@(private) off_source_actions :: proc "c" (data: rawptr, o: Wl_Proxy, actions: u32) { wlc.offer_actions = actions }
 @(private) off_action :: proc "c" (data: rawptr, o: Wl_Proxy, action: u32) {}
 
 // The CLIPBOARD selection changed to `offer` (nil = cleared). The offer's MIME types are whatever we gathered for it

@@ -99,7 +99,8 @@ x11_serve_selection_request :: proc(w: ^Window, b: [^]u8) {
 	target := Xcb_Atom(get_u32(b[20:]))
 	property := Xcb_Atom(get_u32(b[24:]))
 	if property == 0 { property = target }   // obsolete clients leave property None: use the target atom
-	ok := x11_answer_target(requestor, target, property)
+	// (XdndSelection after its drag, a late reader: what the clipboard holds is not what was dragged)
+	ok := (selection == x11c.clipboard || selection == x11c.primary) && x11_answer_target(requestor, target, property)
 	ev: [X11_EVENT_BYTES]u8
 	ev[0] = XCB_SELECTION_NOTIFY
 	put_u32(ev[8:], u32(requestor))

@@ -33,6 +33,7 @@ drop_inject :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, data: ^Drag_Data 
 	case: return false
 	}
 	d := dnd_state(w)
+	if kind != .Drop_Enter && !d.over { return false }   // (no drag: as the system, nothing comes without an enter)
 	if kind == .Drop_Enter {
 		context.allocator = d.allocator
 		drag_data_destroy(&d.data)

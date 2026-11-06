@@ -114,7 +114,7 @@ import win "core:sys/windows"
 @(private = "file")
 Dnd_Thread :: struct {
 	ole:          Ole_State,
-	drag_running: bool,   // drag_start runs on this thread, from whichever window
+	drag_running: int,    // drag_starts running on this thread, from whichever window (a drop handler may start one)
 }
 
 @(private = "file", thread_local) dnd_thread: Dnd_Thread
@@ -301,7 +301,7 @@ answer :: proc(d: ^Dnd_State) -> u32 {
 	if e, ok := d.effect.?; ok && e in d.allowed { return effects_to_win({e}) }
 	// the app's own drag came over one of its windows while drag_start blocks: the app cannot answer before the drop,
 	// which it receives as Drop events once drag_start returns
-	if dnd_thread.drag_running { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
+	if dnd_thread.drag_running > 0 { if e, ok := drop_effect_for(d.allowed, {}).?; ok { return effects_to_win({e}) } }
 	return 0
 }
 
@@ -502,24 +502,22 @@ dragdrop_thread_init :: proc() -> bool { return ole_ready() }
 // `image` follows the pointer, over every application, with its hot spot under the pointer (none: the system's
 // default picture of the data).
 drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) {
+	d := dnd_state(w)
+	steps := d.script   // (this drag's, however it ends)
+	d.script = {}
+	defer delete(steps)
 	if drag_data_empty(data) || allowed == {} { return nil, false }
 	if !ole_ready() { return nil, false }
 	obj := make_data_object(data)
 	if obj == nil { return nil, false }
 	defer obj.vt.Release(obj)
-	d := dnd_state(w)
 	d.image_held, d.image_size, d.image_offset = false, {}, {}
 	if img, has := image.?; has && set_drag_image(obj, img) { read_drag_image(d, obj) }
 	d.sending = true
 	defer d.sending = false
-	dnd_thread.drag_running = true
-	defer dnd_thread.drag_running = false
-	if len(d.script) > 0 {
-		steps := d.script
-		d.script = {}
-		defer delete(steps)
-		return run_script(w, obj, steps[:], allowed), true
-	}
+	dnd_thread.drag_running += 1
+	defer dnd_thread.drag_running -= 1
+	if len(steps) > 0 { return run_script(w, obj, steps[:], allowed), true }
 	// the system's loop pumps the thread's messages: a repaint meanwhile is asked for (take_paint_request), never run
 	// as a frame inside the app's own frame that called drag_start
 	pumping += 1
