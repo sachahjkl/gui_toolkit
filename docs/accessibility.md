@@ -2,8 +2,8 @@
 
 The toolkit exposes its windows to assistive technologies (NVDA, Narrator, JAWS, Windows magnifier, voice control):
 each frame, the boxes of `ui` become an accessibility tree, and [AccessKit](https://github.com/AccessKit/accesskit)
-turns it into UI Automation on Windows. On Linux a small AT-SPI 2 bridge over D-Bus serves it (`platform/a11y_linux.odin`:
-roles, names, states, bounds, Invoke and Focus). macOS has only a stub (`platform/a11y_stub.odin`).
+turns it into UI Automation on Windows. On Linux a small AT-SPI 2 bridge over D-Bus answers for it (`platform/a11y_linux.odin`:
+roles, names, states, bounds, Invoke and Focus), but it does not register with the desktop yet, so a screen reader does not find the window. macOS has only a stub (`platform/a11y_stub.odin`).
 
 ## Turning it on
 

@@ -153,8 +153,8 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
   path as a typed key) and exposes the preedit through `ime_preedit`; `ime_set_cursor_rect` places the candidate
   window. What the protocol sends is pending until its `done`: `Ime_Compose` (`ime.odin`, pure: `tests/ime`) keeps it and makes
   the events (Backspace presses for the text replaced, `.Text` for the text committed) and the preedit;
-  `ime_cursor_rect_logical` turns the caret's rectangle into the compositor's units. On **X11**, libxkbcommon already composes dead keys and Compose sequences inline, so committed text arrives
-  as `.Text` with no extra work.
+  `ime_cursor_rect_logical` turns the caret's rectangle into the compositor's units. On **X11**, text comes from the key and the modifiers through libxkbcommon as `.Text`:
+  no input method, and no dead keys or Compose sequences (Known gaps).
 - **Smaller services** (`services_linux.odin`): `idle_inhibit` / `idle_uninhibit` keep the screen awake through
   `org.freedesktop.ScreenSaver`; `add_recent_file` appends to the freedesktop `recently-used.xbel`.
 - **Cursors** (`cursors_wl_linux.odin`): Wayland names a shape to the compositor through `wp_cursor_shape_v1`, so the
@@ -162,6 +162,8 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
 
 ### Known gaps
 
-- **AT-SPI** is a minimal bridge (root tree, names, DoAction); the full surface (Text ranges, Collection, per-node
-  objects at their own paths) is what AccessKit's `accesskit_unix` adapter would give.
+- **AT-SPI** is a minimal bridge (root tree, names, DoAction) that answers calls but does not register with the
+  desktop: a screen reader such as Orca does not find the window yet. The full surface (registration, Text ranges,
+  Collection, per-node objects at their own paths) is what AccessKit's `accesskit_unix` adapter would give.
+- **Input**: no dead keys or Compose sequences on X11, no touch on Wayland.
 
