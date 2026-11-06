@@ -11,6 +11,7 @@
 package render
 
 import "core:math"
+import "core:slice"
 import "base:runtime"
 import "core:sync"
 import "core:time"
@@ -859,10 +860,10 @@ recycle_targets :: proc(r: ^Renderer) {
 }
 
 // Releases every pooled layer target (memory pressure, device teardown), kept ones included (targets_generation), but keep: a
-// texture still shown, which stays as it is, for the program to carry over to the new generation.
-release_targets :: proc(r: ^Renderer, keep: Texture = 0) {
+// textures still shown, which stay as they are, for the program to carry over to the new generation.
+release_targets :: proc(r: ^Renderer, keep: []Texture = nil) {
 	for i := len(r.targets) - 1; i >= 0; i -= 1 {
-		if keep != 0 && r.targets[i].tex == keep { continue }
+		if slice.contains(keep, r.targets[i].tex) { continue }
 		destroy_texture(r, r.targets[i].tex)
 		unordered_remove(&r.targets, i)
 	}
