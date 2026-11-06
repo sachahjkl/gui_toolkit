@@ -6,7 +6,7 @@ package platform
 // decorations are asked for through zxdg_decoration_manager_v1 when the compositor has it (KDE); where it does not
 // (GNOME), the window is undecorated and the app draws its own title bar (integrated title) — the toolkit already does
 // this on Windows, so the same frame works. Input comes from wl_seat (wl_pointer, wl_keyboard with its xkbcommon
-// keymap, wl_touch); DPI from wp_fractional_scale with wp_viewporter when the compositor offers them, else the wl_output scale. The
+// keymap; no wl_touch yet: a finger reaches a window as the compositor's emulated pointer, if it makes one); DPI from wp_fractional_scale with wp_viewporter when the compositor offers them, else the wl_output scale. The
 // CLIPBOARD comes from wl_data_device (clipboard_linux.odin adds the richer flavours and the drag and drop).
 //
 // All event handling is in C callbacks (listeners); they stash into the per-window / per-seat state and queue Events,
@@ -42,7 +42,6 @@ Wl_Conn :: struct {
 	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
 	pointer:    Wl_Proxy,
 	keyboard:   Wl_Proxy,
-	touch:      Wl_Proxy,
 	fd:         i32,
 	output_scale: i32,            // integer buffer scale from wl_output (1, 2...)
 	output_px:  [2]i32,           // the current output mode's pixel size (wl_output mode; 0 until one arrives)
@@ -257,18 +256,42 @@ Seat_Listener :: struct {
 seat_name :: proc "c" (data: rawptr, seat: Wl_Proxy, name: cstring) {}
 @(private)
 seat_capabilities :: proc "c" (data: rawptr, seat: Wl_Proxy, caps: u32) {
-	WL_SEAT_POINTER :: 1; WL_SEAT_KEYBOARD :: 2; WL_SEAT_TOUCH :: 4
+	WL_SEAT_POINTER :: 1; WL_SEAT_KEYBOARD :: 2
+	context = wl_ctx_real()
+	// (an object of a capability the seat lost stays dead when the capability comes back: a new one is asked for)
 	if caps & WL_SEAT_POINTER != 0 && wlc.pointer == nil {
 		wlc.pointer = wl.proxy_marshal_flags(seat, WL_SEAT_GET_POINTER, wl.pointer_interface, wl.proxy_get_version(seat), 0, nil)
 		wl.proxy_add_listener(wlc.pointer, &pointer_listener, nil)
+	} else if caps & WL_SEAT_POINTER == 0 && wlc.pointer != nil {
+		if w := wlc.pointer_focus; w != nil { buttons_released(w, wlc.pointer_pos, wl_mods()); wl_push(w, {kind = .Mouse_Leave}) }
+		wlc.pointer_focus = nil
+		if wlc.cursor_shape_device != nil {
+			wl.proxy_marshal_flags(wlc.cursor_shape_device, WP_CURSOR_SHAPE_DEVICE_DESTROY, nil, wl.proxy_get_version(wlc.cursor_shape_device), WL_MARSHAL_FLAG_DESTROY)
+			wlc.cursor_shape_device = nil
+		}
+		wl_release_input(wlc.pointer, WL_POINTER_RELEASE)
+		wlc.pointer = nil
 	}
 	if caps & WL_SEAT_KEYBOARD != 0 && wlc.keyboard == nil {
 		wlc.keyboard = wl.proxy_marshal_flags(seat, WL_SEAT_GET_KEYBOARD, wl.keyboard_interface, wl.proxy_get_version(seat), 0, nil)
 		wl.proxy_add_listener(wlc.keyboard, &keyboard_listener, nil)
+	} else if caps & WL_SEAT_KEYBOARD == 0 && wlc.keyboard != nil {
+		if w := wlc.keyboard_focus; w != nil { w.focused = false; w.active = false; wl_push(w, {kind = .Activate}) }
+		wlc.keyboard_focus = nil
+		wlc.key_repeat.held = false
+		wl_release_input(wlc.keyboard, WL_KEYBOARD_RELEASE)
+		wlc.keyboard = nil
 	}
-	if caps & WL_SEAT_TOUCH != 0 && wlc.touch == nil {
-		wlc.touch = wl.proxy_marshal_flags(seat, WL_SEAT_GET_TOUCH, wl.touch_interface, wl.proxy_get_version(seat), 0, nil)
-	}
+}
+
+@(private = "file") WL_POINTER_RELEASE :: 1
+@(private = "file") WL_KEYBOARD_RELEASE :: 0
+@(private = "file") WL_INPUT_RELEASE_SINCE :: 3   // the seat's version that has their release
+
+@(private = "file")
+wl_release_input :: proc(p: Wl_Proxy, release: u32) {
+	v := wl.proxy_get_version(p)
+	if v >= WL_INPUT_RELEASE_SINCE { wl.proxy_marshal_flags(p, release, nil, v, WL_MARSHAL_FLAG_DESTROY) } else { wl.proxy_destroy(p) }
 }
 
 @(private)

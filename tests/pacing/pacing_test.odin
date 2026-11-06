@@ -478,3 +478,22 @@ input_pending_sees_input_and_keeps_it :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, !platform.input_pending(w), "taken")
 }
+
+// Kept is not read: a wait does not sleep over it. And inside the window's own poll nothing is read, nor kept twice.
+@(test)
+input_pending_keeps_what_a_wait_must_see :: proc(t: ^testing.T) {
+	WAIT_THAT_ENDS_A_FAILING_RUN_MS :: 2000
+	w := platform.open_window_offscreen("pending wait", {200, 100})
+	if !testing.expect(t, w != nil) { return }
+	defer platform.destroy_window(w)
+	platform.inject_event(w, {kind = .Mouse_Move, pos = {10, 20}})
+	testing.expect(t, platform.input_pending(w))
+	start := time.tick_now()
+	platform.wait_event(w, WAIT_THAT_ENDS_A_FAILING_RUN_MS)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < WAIT_THAT_ENDS_A_FAILING_RUN_MS / 2, "the wait ends at once")
+	testing.expect_value(t, len(platform.poll_events(w, false)), 1)
+	w.in_poll = true   // (as inside a frame callback)
+	testing.expect(t, !platform.input_pending(w))
+	w.in_poll = false
+	testing.expect_value(t, len(platform.poll_events(w, false)), 0)
+}
