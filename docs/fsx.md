@@ -13,13 +13,17 @@ touching the callers.
 
 ```odin
 data, ok := fsx.read_all(path)                   // the whole file, false when larger than max_size (default 1 TiB)
-ok = fsx.write_atomic(path, data)                // through path.tmp renamed over path: a reader sees old or new, never half
+ok = fsx.write_atomic(path, data)                // through a temporary file renamed over path: a reader sees old or new, never half
 ok = fsx.write_atomic(path, data, flush = true)  // flush: on the disk when it returns
 ```
 
-`write_atomic` is how a store replaces a file without a reader ever seeing a torn write: it writes `path.tmp` in full,
-then renames it over `path` (`replace`, atomic on both systems). A reader that opened the old file keeps reading it;
-a reader that opens after the rename sees the new one.
+`write_atomic` is how a store replaces a file without a reader ever seeing a torn write: it writes
+`<path>.<pid>.<thread>.tmp` in full, then renames it over `path` (`replace`, atomic on both systems). A reader that opened the
+old file keeps reading it; a reader that opens after the rename sees the new one. Two writers each write their own
+temporary file, and the last rename stays. A failed write removes its temporary file; a crash leaves it behind.
+
+`read_all` reads between two `stat`s that agree, and tries again when they do not: a file replaced meanwhile comes back
+whole, the old or the new one, or not at all after a few tries.
 
 ## Pieces of a file
 
@@ -27,7 +31,8 @@ a reader that opens after the rename sees the new one.
 n, ok := fsx.read_at(path, offset, buf)          // up to len(buf) bytes from offset; short at end of file
 size, stamp, ok := fsx.stat(path)                // size and an opaque modification stamp (compare to a kept one)
 ok = fsx.write_parts(path, parts[:], flush)      // create/truncate, write the slices one after the other
-ok = fsx.replace(from, to, durable)              // rename from over to atomically; durable: on the disk when it returns
+ok = fsx.replace(from, to, durable)              // rename from over to atomically; durable: on the disk when it returns,
+                                                 // and false may mean renamed, but the directory could not be synced
 ok = fsx.delete_file(path)                        // true when the file is gone (including: was already absent)
 ```
 

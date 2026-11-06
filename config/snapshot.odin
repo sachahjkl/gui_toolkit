@@ -38,7 +38,7 @@ restore :: proc(p: ^Prefs, s: []Pref_State) -> (changed: int) {
 		i, ok := p.index[st.name]
 		if !ok { continue }
 		e := &p.entries[i]
-		if e.locked || e.source == .Policy { continue }
+		if e.source == .Policy { continue }
 		same_value := e.value.b == st.value.b && e.value.i == st.value.i && e.value.f == st.value.f && e.value.s == st.value.s
 		same_user := e.has_user == st.has_user && e.user_text == st.user_text
 		if same_value && e.source == st.source && same_user { continue }
@@ -46,6 +46,7 @@ restore :: proc(p: ^Prefs, s: []Pref_State) -> (changed: int) {
 		// (what the profile file keeps changes too: assign says so only of a value that becomes the user's)
 		if e.source == .User { p.dirty = true }
 		assign(p, i, st.value, st.source)
+		e = &p.entries[i]   // (an observer may have registered: the entries moved)
 		if !same_user {
 			delete(e.user_text, p.allocator)
 			e.user_text, e.has_user = strings.clone(st.user_text, p.allocator), st.has_user

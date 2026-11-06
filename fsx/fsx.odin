@@ -8,7 +8,8 @@
 //
 //	write_parts    creates or truncates `path` and writes `parts` one after the other; `flush`: through to the disk
 //	replace        renames `from` over `to` atomically (a reader sees the old file or the new one); `durable`: the
-//	               new name is on the disk when it returns (MOVEFILE_WRITE_THROUGH; the directory synced on POSIX)
+//	               new name is on the disk when it returns (MOVEFILE_WRITE_THROUGH; the directory synced on POSIX),
+//	               and false says it may not be, even though the rename was done
 //	delete_file    removes a file (true when it is gone)
 //	stat           size and the system's modification stamp (opaque: only compared with another stamp)
 //	read_at        up to len(buf) bytes from `offset` (short at the end of the file). A file being replaced or
@@ -21,6 +22,7 @@
 package fsx
 
 import "base:runtime"
+import "core:fmt"
 import "core:os"
 
 // The most one system call is asked to read or write: a larger request is split.
@@ -28,6 +30,9 @@ import "core:os"
 IO_CHUNK_MAX_BYTES :: 1 << 30
 @(private)
 READ_ALL_MAX_BYTES :: 1 << 40
+// A file that changes under every read of it is given up after this many.
+@(private)
+READ_ALL_TRIES :: 4
 
 // A plain file of a directory (list_files): its name (no path) and size.
 Dir_File :: struct {
@@ -43,31 +48,32 @@ Path_Kind :: enum u8 {
 	Link,
 }
 
-// The whole file, at most `max_size` bytes (false when it is larger, missing or unreadable).
+// The whole file as it was at some moment, at most `max_size` bytes (false when it is larger, missing, unreadable, or
+// replaced each time it was read): the file is read between two stats that agree, so a larger one that took its place
+// between them does not come back cut to the old size.
 read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = READ_ALL_MAX_BYTES) -> ([]byte, bool) {
-	size, _, ok := stat(path)
-	if !ok || size < 0 || size > max_size { return nil, false }
-	buf := make([]byte, int(size), allocator)
-	n, rok := read_at(path, 0, buf)
-	if !rok || n != len(buf) { delete(buf, allocator); return nil, false }
-	return buf, true
+	for _ in 0 ..< READ_ALL_TRIES {
+		size, stamp, ok := stat(path)
+		if !ok || size < 0 || size > max_size { return nil, false }
+		buf := make([]byte, int(size), allocator)
+		n, rok := read_at(path, 0, buf)
+		size_after, stamp_after, still := stat(path)
+		if rok && n == len(buf) && still && size_after == size && stamp_after == stamp { return buf, true }
+		delete(buf, allocator)
+	}
+	return nil, false
 }
 
-// Writes `data` to `path` through `path`.tmp renamed over it: a reader sees the old file or the new one.
+// Writes `data` to `path` through a temporary file next to it, renamed over it: a reader sees the old file or the new
+// one, and two writers each their own whole file (the last rename stays). The name is this thread's, so no other live
+// writer has it: a crash leaves it behind, `<path>.<pid>.<thread>.tmp`. `flush`: on the disk when it returns; false then
+// may also mean the file was replaced but its directory could not be synced (replace).
 write_atomic :: proc(path: string, data: []byte, flush := false) -> bool {
-	tmp := concat_temp(path, ".tmp")
+	tmp := fmt.tprintf("%s.%d.%d.tmp", path, os.get_pid(), os.get_current_thread_id())
 	parts := [1][]byte{data}
 	if !write_parts(tmp, parts[:], flush) { delete_file(tmp); return false }
 	if !replace(tmp, path, flush) { delete_file(tmp); return false }
 	return true
-}
-
-@(private)
-concat_temp :: proc(a, b: string) -> string {
-	out := make([]byte, len(a) + len(b), context.temp_allocator)
-	copy(out, a)
-	copy(out[len(a):], b)
-	return string(out)
 }
 
 // The directory for temporary files: TEMP when it is set (what a test harness points at a throwaway folder, on every

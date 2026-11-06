@@ -87,3 +87,24 @@ policy_values_are_not_restored_over :: proc(t: ^testing.T) {
 	testing.expect_value(t, restore(&p, snap), 0)
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 3)
 }
+
+@(private = "file")
+LATE_DEFS := [?]Def{ {name = "late.pref", description = "Registered by an observer", kind = .Bool} }
+
+// An observer that registers moves the entries: what restore still has to put back must go to where the entry is now.
+@(test)
+a_restore_survives_an_observer_that_registers :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, SNAP_DEFS[:])
+	set_from_string(&p, "net.agent", "mine", .User)
+	set_from_string(&p, "net.agent", "cmd", .Command_Line)
+	snap := snapshot(&p)
+	defer snapshot_destroy(snap)
+	set_from_string(&p, "net.agent", "other", .Command_Line)
+	set_from_string(&p, "net.agent", "theirs", .User)
+	watch(&p, "net.", proc(user: rawptr, name: string, p: ^Prefs) { register(p, LATE_DEFS[:]) }, nil)
+	shrink(&p.entries)   // (no room left: the next entry moves them)
+	testing.expect_value(t, restore(&p, snap), 1)
+	testing.expect_value(t, entry(&p, ref_of(&p, "net.agent")).user_text, "mine")
+}

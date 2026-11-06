@@ -28,6 +28,7 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "../ascii"
+import "../fsx"
 
 Kind :: enum u8 { Bool, Int, Float, String }
 
@@ -57,8 +58,7 @@ Source :: enum u8 { Default, User, Command_Line, Policy }
 Entry :: struct {
 	def:    Def,
 	value:  Value,
-	source: Source,
-	locked: bool,   // set by policy: the user cannot change it
+	source: Source, // the layer that decides the value; .Policy locks it (is_locked)
 	// the user layer's value (text, owned) while a higher layer (command line, policy) decides the effective one: it is
 	// what the profile file keeps, so a run with --pref or under a policy does not erase it
 	user_text: string,
@@ -82,7 +82,7 @@ Prefs :: struct {
 	observers: [dynamic]Observer,
 	next_observer: int,
 	version:   u64,                  // bumped on every change
-	dirty:     bool,                 // user-visible state changed since the last save
+	dirty:     bool,                 // the user's layer differs from what was last read or saved
 	allocator: runtime.Allocator,
 }
 
@@ -137,7 +137,9 @@ prefs_destroy :: proc(p: ^Prefs) {
 
 // Adds definitions. Registering a name again with the same kind is a no-op; a different kind is a programming error.
 // `category`: the about:config category of the definitions that name none (else their name's first segment).
-register :: proc(p: ^Prefs, defs: []Def, category := "") {
+// `refused`: how many values waiting for these definitions they do not accept. The default stays; a user's value is kept
+// for the profile file all the same, as is one load_file refuses: another version may take it.
+register :: proc(p: ^Prefs, defs: []Def, category := "") -> (refused: int) {
 	for d in defs {
 		if i, exists := p.index[d.name]; exists {
 			assert(p.entries[i].def.kind == d.kind, "preference registered twice with different kinds")
@@ -153,13 +155,23 @@ register :: proc(p: ^Prefs, defs: []Def, category := "") {
 		if pv, found := p.pending[d.name]; found {
 			key, _ := delete_key(&p.pending, d.name)
 			delete(key, p.allocator)
+			// (it was dirty, or not, when it came)
+			dirty := p.dirty
 			layers := [3]Source{.User, .Command_Line, .Policy}
 			for src in layers {
-				if pv.has[src] { set_from_string(p, d.name, pv.value[src], src) }
+				if pv.has[src] {
+					err := set_from_string(p, d.name, pv.value[src], src)
+					if err != .None && err != .Locked {
+						refused += 1
+						if src == .User { keep_user_text(p, &p.entries[idx], pv.value[src]) }
+					}
+				}
 				delete(pv.value[src], p.allocator)
 			}
+			p.dirty = dirty
 		}
 	}
+	return
 }
 
 @(private)
@@ -256,6 +268,7 @@ parse_value :: proc(d: Def, text: string) -> (v: Value, err: Set_Error) {
 
 // Sets by name from text, with full validation. Precedence: policy > command line > user > default. A value from a
 // lower layer is refused (`.Locked`) while a higher layer owns the preference for this run; a policy value also locks it.
+// `.Default` sets nothing: a default comes from the definition, and reset goes back to it.
 set_from_string :: proc(p: ^Prefs, name: string, text: string, source: Source) -> Set_Error {
 	i, ok := p.index[name]
 	if !ok {
@@ -268,23 +281,24 @@ set_from_string :: proc(p: ^Prefs, name: string, text: string, source: Source) -
 			pv.value[source] = strings.clone(text, p.allocator)
 			pv.has[source] = true
 			p.pending[name] = pv
+			if source == .User { p.dirty = true }
 		}
 		return .Unknown
 	}
 	e := &p.entries[i]
-	if source == .User && (e.locked || e.source == .Command_Line || e.source == .Policy) {
-		// a higher layer decides for this run: the user's value is kept for the profile file (validated first)
-		if _, err := parse_value(e.def, text); err != .None { return err }
-		keep_user_text(p, e, text)
-		return .Locked
-	}
-	if e.locked && source != .Policy { return .Locked }
 	v, err := parse_value(e.def, text)
 	if err != .None { return err }
+	if source == .Default || source < e.source {
+		// a higher layer decides for this run: the user's value is kept for the profile file
+		if source == .User {
+			keep_user_text(p, e, text)
+			p.dirty = true
+		}
+		return .Locked
+	}
 	// a higher layer over the user's value: that value stays the user's
 	if source > .User && e.source == .User { keep_user_text(p, e, value_text(e.def, e.value)) }
 	assign(p, i, v, source)
-	if source == .Policy { e.locked = true }
 	return .None
 }
 @(private)
@@ -316,17 +330,18 @@ set_int :: proc(p: ^Prefs, r: Ref, v: i64, source := Source.User) -> Set_Error {
 }
 set_string :: proc(p: ^Prefs, r: Ref, v: string, source := Source.User) -> Set_Error { return set_from_string(p, p.entries[int(r)].def.name, v, source) }
 
-// Back to the default (the user layer only: command line and policy values stay).
+// Back to the default (the user layer only: a command line value stays for this run). Under a policy it is refused
+// (`.Locked`) and changes nothing.
 reset :: proc(p: ^Prefs, name: string) -> Set_Error {
 	i, ok := p.index[name]
 	if !ok { return .Unknown }
 	e := &p.entries[i]
+	if e.source == .Policy { return .Locked }
 	if e.has_user {
 		delete(e.user_text, p.allocator)
 		e.user_text, e.has_user = "", false
 		p.dirty = true
 	}
-	if e.source == .Policy || e.locked { return .Locked }
 	if e.source == .Command_Line { return .None }   // this run keeps the command line's value
 	if e.source == .Default { return .None }
 	assign(p, i, e.def.default, .Default)
@@ -335,6 +350,9 @@ reset :: proc(p: ^Prefs, name: string) -> Set_Error {
 }
 
 is_default :: proc(p: ^Prefs, r: Ref) -> bool { return p.entries[int(r)].source == .Default }
+
+// A policy decides it: the user cannot change it.
+is_locked :: proc(p: ^Prefs, r: Ref) -> bool { return p.entries[int(r)].source == .Policy }
 
 ////////////////////////////////
 // Observers
@@ -395,12 +413,14 @@ apply_args :: proc(p: ^Prefs, args: []string, allocator := context.allocator) ->
 	return
 }
 
-// The first line of a saved user file; `load_file` also accepts the policy file's "wbpolicy 1". These tags are kept as they
-// are so the files an existing application already wrote stay readable (the format is one tag line, then `name<TAB>value`
-// with the usual escapes); a new application can read its own files all the same.
+// The first line of a saved user file, and of a policy file. These tags are kept as they are so the files an existing
+// application already wrote stay readable (the format is one tag line, then `name<TAB>value` with the usual escapes); a new
+// application can read its own files all the same.
 USER_MAGIC :: "wbprefs 1"
+POLICY_MAGIC :: "wbpolicy 1"
 
-// Writes the user's changes (and only those). Atomic: a crash leaves the previous file intact.
+// Writes the user's changes (and only those), on the disk when it returns. Atomic: a crash or a failure leaves the previous
+// file intact, and a failure no temporary file.
 save_user :: proc(p: ^Prefs, path: string) -> bool {
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_string(&sb, USER_MAGIC)
@@ -416,22 +436,21 @@ save_user :: proc(p: ^Prefs, path: string) -> bool {
 	for name, pv in p.pending {
 		if pv.has[.User] { fmt.sbprintf(&sb, "%s\t%s\n", name, escape(pv.value[.User])) }
 	}
-	tmp := strings.concatenate({path, ".tmp"}, context.temp_allocator)
-	if err := os.write_entire_file(tmp, transmute([]byte)strings.to_string(sb)); err != nil { return false }
-	if err := os.rename(tmp, path); err != nil {
-		_ = os.remove(path)
-		if err2 := os.rename(tmp, path); err2 != nil { return false }
-	}
+	if !fsx.write_atomic(path, transmute([]byte)strings.to_string(sb), flush = true) { return false }
 	p.dirty = false
 	return true
 }
 
-// Reads a preference file as `source` (User for the profile, Policy for the enterprise file). Missing file = no changes.
-// `applied` counts the lines accepted, including those waiting for their definition.
+// Reads a preference file as `source` (User for the profile, Policy for the enterprise file), whose first line must be that
+// layer's tag. Missing file = no changes. `applied` counts the lines accepted, including those waiting for their definition.
+// A line of the profile that its definition refuses is a problem, and stays in the profile (register). What was read is
+// not dirty: the file has it.
 load_file :: proc(p: ^Prefs, path: string, source: Source) -> (applied: int, problems: [dynamic]string) {
 	problems = make([dynamic]string, context.temp_allocator)
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return 0, problems }
+	dirty := p.dirty
+	defer p.dirty = dirty
 	text := string(data)
 	first := true
 	for line in strings.split_lines_iterator(&text) {
@@ -439,7 +458,7 @@ load_file :: proc(p: ^Prefs, path: string, source: Source) -> (applied: int, pro
 			first = false
 			// a byte-order mark (a file saved by Notepad) is not part of the magic
 			magic := strings.trim_prefix(line, "\xEF\xBB\xBF")
-			if magic == USER_MAGIC || magic == "wbpolicy 1" { continue }
+			if magic == (source == .Policy ? POLICY_MAGIC : USER_MAGIC) { continue }
 			append(&problems, fmt.aprintf("%s: not a preference file", path, allocator = context.temp_allocator))
 			return
 		}
@@ -452,6 +471,7 @@ load_file :: proc(p: ^Prefs, path: string, source: Source) -> (applied: int, pro
 		case .None: applied += 1
 		case .Unknown: applied += 1   // not registered yet: kept, applied when the definition arrives
 		case .Locked, .Bad_Type, .Out_Of_Range, .Not_A_Choice:
+			if source == .User && e != .Locked { keep_user_text(p, &p.entries[p.index[name]], value) }
 			append(&problems, fmt.aprintf("%s: %s", name, set_error_text(e), allocator = context.temp_allocator))
 		}
 	}
