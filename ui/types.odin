@@ -275,6 +275,8 @@ Focus_Entry :: struct {
 Animation :: struct {
 	value:      f32,
 	last_build: u64,
+	from, to:   f32,   // tween: where it set off for where
+	elapsed_s:  f32,
 }
 
 Events :: struct {
