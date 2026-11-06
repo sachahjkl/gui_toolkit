@@ -146,3 +146,49 @@ a_sequence_of_the_fallback_stays_in_one_face :: proc(t: ^testing.T) { unwatched.
 	testing.expect(t, len(sh.glyphs) > 0)
 	for g in sh.glyphs { testing.expect_value(t, g.face, emoji) }
 }) }
+
+// A state never started answers: no outline, no hinted size.
+@(test)
+a_state_never_started_has_no_outlines :: proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	o: font.Outline
+	testing.expect(t, !font.glyph_outline(s, 1, 1, 1.0 / 4096, &o))
+	out: [1]font.Slug_Glyph
+	font.slug_glyphs(s, {{face = 0}}, 12, out[:])
+	testing.expect_value(t, out[0].kind, font.Slug_Kind.Atlas)
+}
+
+// The emoji font unloaded by whoever held its id comes back on the next emoji.
+@(test)
+the_emoji_font_comes_back_when_unloaded :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	font.set_emoji_source(s, data = font.FALLBACK_UI_DATA)
+	id := font.emoji_face(s)
+	testing.expect(t, id != 0)
+	font.unload(s, id)
+	again := font.emoji_face(s)
+	testing.expect(t, again != id && font.valid(s, again))
+}) }
+
+// The cache cleared while a word is being shaped: what comes out of the old settings is not kept.
+@(test)
+a_word_shaped_across_a_clear_is_shaped_again :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := setup(t)
+	defer teardown(s)
+	ui := sys(t, s, "Segoe UI")
+	@(static) calls: int
+	calls = 0
+	clearing := font.System_Fonts{name = "clears the words", fallback = proc(s: ^font.State, first: font.Font_Id, w: []u16, a, b: int, faces: []font.Font_Id) {
+		calls += 1
+		if calls == 1 { font.clear_word_cache(s) }
+	}}
+	system := s.system_fonts
+	s.system_fonts = &clearing
+	defer s.system_fonts = system
+	_ = font.text_width(s, ui, 20, "\U00010FFF")
+	testing.expect_value(t, calls, 2)
+	_ = font.text_width(s, ui, 20, "\U00010FFF")
+	testing.expect_value(t, calls, 2)
+}) }

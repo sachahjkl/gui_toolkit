@@ -20,7 +20,7 @@ default; `Settings.backend` still picks either one for a `State` (read by `init`
 | Procedure       | Does                                                                                             |
 |-----------------|--------------------------------------------------------------------------------------------------|
 | `start`, `stop` | per-`State` setup (the script item of ASCII text, a version check)                               |
-| `face_open`, `face_close` | the backend's side of a face the platform made (native: opens the same file or bytes in Fontations) |
+| `face_open` | the backend's side of a face the platform made (native: opens the same file or bytes in Fontations; it closes with the face, `release_font`) |
 | `has_glyph`     | coverage of one character (the package caches the BMP answers per face)                          |
 | `face_metrics`  | design metrics (`Face_Metrics`: upem, ascent, descent, line gap, x / cap height, underline, strike) |
 | `glyph_box`     | advance and ink box of a glyph (design units)                                                   |

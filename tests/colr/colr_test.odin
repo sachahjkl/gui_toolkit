@@ -457,3 +457,67 @@ emoji_drawn_through_the_draw_layer :: proc(t: ^testing.T) {
 		testing.expect_value(t, refused, 0)
 	}
 }
+// The settings changed while the interpreter draws a glyph, outside the atlas' lock: the glyph is drawn again with the new ones.
+@(test)
+a_glyph_drawn_across_new_settings_is_drawn_again :: proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	st := font.DEFAULT_SETTINGS
+	st.color_engine = .Builtin
+	font.init(s, st)
+	defer font.destroy(s)
+	face, ok := font.load_embedded(s, COLRV1)
+	testing.expect(t, ok)
+	@(static) changed: bool
+	changed = false
+	font.slug_set_provider(s, proc(s: ^font.State, face: font.Font_Id, gid: u16, tol: f32, out: ^font.Outline) -> bool {
+		if !changed {
+			changed = true
+			st := s.settings
+			st.colr_samples += 1
+			font.set_settings(s, st)
+		}
+		return font.dwrite_outline_provider(s, face, gid, tol, out)
+	})
+	gid := font.shape(s, face, 40, "\U000F0100", {}, context.temp_allocator).glyphs[0].id
+	before, _ := font.colr_counts(s)
+	img := font.glyph_image(s, face, gid, 40, 0)
+	after, _ := font.colr_counts(s)
+	testing.expect(t, changed && img.color)
+	testing.expect_value(t, after - before, 2)
+}
+
+// The outlines the interpreter keeps follow where they come from: another provider or another tolerance is asked again.
+@(test)
+the_interpreters_outlines_follow_their_source :: proc(t: ^testing.T) {
+	s := new(font.State)
+	defer free(s)
+	st := font.DEFAULT_SETTINGS
+	st.color_engine = .Builtin
+	font.init(s, st)
+	defer font.destroy(s)
+	face, ok := font.load_embedded(s, COLRV1)
+	testing.expect(t, ok)
+	@(static) asked: int
+	asked = 0
+	provider :: proc(s: ^font.State, face: font.Font_Id, gid: u16, tol: f32, out: ^font.Outline) -> bool {
+		asked += 1
+		return font.dwrite_outline_provider(s, face, gid, tol, out)
+	}
+	font.slug_set_provider(s, provider)
+	gid := font.shape(s, face, 40, "\U000F0100", {}, context.temp_allocator).glyphs[0].id
+	_ = font.glyph_image(s, face, gid, 40, 0)
+	testing.expect(t, asked > 0)
+	asked = 0
+	_ = font.glyph_image(s, face, gid, 41, 0)
+	testing.expect_value(t, asked, 0)
+	font.slug_set_provider(s, provider)
+	_ = font.glyph_image(s, face, gid, 42, 0)
+	testing.expect(t, asked > 0, "a new provider")
+	asked = 0
+	st = s.settings
+	st.slug_tolerance *= 2
+	font.set_settings(s, st)
+	_ = font.glyph_image(s, face, gid, 43, 0)
+	testing.expect(t, asked > 0, "a new tolerance")
+}

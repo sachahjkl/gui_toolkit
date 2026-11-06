@@ -27,8 +27,8 @@ Emoji_Source :: struct {
 	failed: bool,
 }
 
-// The emoji font: a font file read from `path`, or font `data` (compiled into the exe with #load: kept, never freed).
-// An empty path and no data take the emoji font away. Call it while nothing draws or shapes text.
+// The emoji font: a font file read from `path`, or font `data` (compiled into the exe with #load: kept, never freed; it
+// wins over a path given with it). An empty path and no data take the emoji font away. Call it while nothing draws or shapes text.
 set_emoji_source :: proc(s: ^State, path := "", data: []byte = nil) {
 	context.allocator = runtime.heap_allocator()
 	e := &s.emoji
@@ -44,14 +44,14 @@ set_emoji_source :: proc(s: ^State, path := "", data: []byte = nil) {
 	words_clear(&s.words)
 }
 
-// The emoji face, loaded on first use; 0 when there is none or it does not load.
+// The emoji face, loaded on first use and again when it was unloaded; 0 when there is none or it does not load.
 emoji_face :: proc(s: ^State) -> Font_Id {
 	e := &s.emoji
-	if f := sync.atomic_load(&e.face); f != 0 { return f }
+	if f := sync.atomic_load(&e.face); f != 0 && valid(s, f) { return f }
 	if !s.ok { return 0 }
 	sync.mutex_lock(&e.mu)
 	defer sync.mutex_unlock(&e.mu)
-	if f := sync.atomic_load(&e.face); f != 0 { return f }
+	if f := sync.atomic_load(&e.face); f != 0 && valid(s, f) { return f }
 	if e.failed || (e.path == "" && len(e.data) == 0) { return 0 }
 	id: Font_Id
 	ok: bool
