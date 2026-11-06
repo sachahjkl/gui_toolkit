@@ -11,8 +11,10 @@ package platform
 // window and act on its controls. The richer AccessKit `accesskit_unix` adapter is the alternative the report
 // discusses (native/a11y); this keeps the toolkit self-contained with no Rust dependency on Linux.
 //
-// When the a11y bus is unreachable (no assistive technology running, the common case) a11y_state stays Off and nothing
-// is built, exactly as the Windows adapter does.
+// While no assistive technology runs (org.a11y.Status says so, the common case), or the a11y bus is unreachable, a11y_state
+// stays Off and nothing is built, exactly as the Windows adapter does. The bridge's connection is read by the window's
+// loop (a11y_fd, a11y_pump). It answers the calls on the window's root; it does not yet announce the window to the registry
+// (org.a11y.atspi.Socket.Embed), so a reader that walks the desktop from there does not find it.
 
 import "base:runtime"
 import "core:strings"
@@ -25,28 +27,60 @@ import "../dbus"
 @(private)
 A11y_Bridge :: struct {
 	conn:     ^dbus.Conn,
-	update:   A11y_Update,     // the latest tree, owned here (copied from the toolkit's)
-	have:     bool,
-	active:   bool,            // an assistive technology connected
+	update:   A11y_Update,     // the whole tree as the updates made it, owned here (a11y_tree_merge)
 	requests: [dynamic]A11y_Request,
 }
 
-// Whether this build can read its windows to assistive technologies. True on Linux when the a11y bus answers.
-a11y_available :: proc() -> bool { return a11y_bus_address() != "" }
+// What the session says of accessibility, for this thread. Unasked until the first frame that wonders. Absent: no a11y bus.
+// Quiet: a bus, nobody reading. Listening: an assistive technology runs. Failed: a bus that refused the connection.
+@(private) A11y_Bus_State :: enum u8 { Unasked, Absent, Quiet, Listening, Failed }
 
-// Asks the session bus for the a11y bus address (org.a11y.Bus.GetAddress). "" when there is no a11y bus.
+@(private = "file") ATSPI_STATUS_IFACE :: "org.a11y.Status"
+@(private = "file") ATSPI_ENABLED_PROP :: "IsEnabled"
+
+// Whether this build can read its windows to assistive technologies. True on Linux when the a11y bus answers.
+a11y_available :: proc() -> bool { return a11y_bus_state() != .Absent && session.a11y != .Failed }
+
+// Asks the session bus, once, for the a11y bus (org.a11y.Bus.GetAddress) and whether anything reads it; then follows that.
 @(private)
-a11y_bus_address :: proc() -> string {
-	if session.a11y_asked { return session.a11y_address }
-	session.a11y_asked = true
+a11y_bus_state :: proc() -> A11y_Bus_State {
+	if session.a11y != .Unasked { return session.a11y }
+	session.a11y = .Absent
 	conn := session_bus()
-	if conn == nil { return "" }
+	if conn == nil { return .Absent }
 	msg, ok := dbus.call(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, ATSPI_BUS_NAME, "GetAddress", "", nil, DBUS_QUICK_CALL_MS)
-	if !ok { return "" }
+	if !ok { return .Absent }
 	r := dbus.msg_reader(&msg)
-	addr := dbus.r_string(&r)
-	session.a11y_address = strings.clone(addr)
-	return session.a11y_address
+	session.a11y_address = strings.clone(dbus.r_string(&r))
+	if session.a11y_address == "" { return .Absent }
+	w := dbus.body_writer()
+	dbus.w_string(&w, ATSPI_STATUS_IFACE)
+	dbus.w_string(&w, ATSPI_ENABLED_PROP)
+	session.a11y = .Quiet
+	if status, read := dbus.call(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, PROPS_IFACE, "Get", "ss", w.buf[:], DBUS_QUICK_CALL_MS); read {
+		sr := dbus.msg_reader(&status)
+		if dbus.r_variant_sig(&sr) == "b" && dbus.r_bool(&sr) { session.a11y = .Listening }
+	}
+	session.a11y_sub = dbus.subscribe(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, PROPS_IFACE, "PropertiesChanged", a11y_status_changed, nil)
+	return session.a11y
+}
+
+// PropertiesChanged(interface s, changed a{sv}, invalidated as): the reader that comes, or goes.
+@(private = "file")
+a11y_status_changed :: proc(user: rawptr, msg: ^dbus.Message) {
+	r := dbus.msg_reader(msg)
+	if dbus.r_string(&r) != ATSPI_STATUS_IFACE { return }
+	end := dbus.r_array_begin(&r, "{sv}")
+	for r.pos < end {
+		dbus.r_align_entry(&r)
+		key := dbus.r_string(&r)
+		sig := dbus.r_variant_sig(&r)
+		if key == ATSPI_ENABLED_PROP && sig == "b" {
+			if session.a11y == .Quiet || session.a11y == .Listening { session.a11y = dbus.r_bool(&r) ? .Listening : .Quiet }
+		} else {
+			dbus.r_skip(&r, sig)
+		}
+	}
 }
 
 @(private)
@@ -65,31 +99,33 @@ a11y_detach :: proc(w: ^Window) {
 	w.a11y = nil
 }
 
-// What the adapter needs now. Without an a11y bus, Off (the toolkit skips the tree). With one, Full when the bridge is
-// new (send the whole tree), Incremental after.
+// What the adapter needs now. Nobody reading, Off (the toolkit skips the tree). Then Full when the bridge has no tree (send
+// the whole tree), Incremental after.
 a11y_state :: proc(w: ^Window) -> A11y_State {
-	if w == nil || w.offscreen { return .Off }
-	if a11y_bus_address() == "" { return .Off }
+	if w == nil || w.offscreen || a11y_bus_state() != .Listening {
+		if w != nil && w.a11y != nil { a11y_update_clear(&(^A11y_Bridge)(w.a11y).update) }   // (a reader that comes back gets a whole one)
+		return .Off
+	}
 	if w.a11y == nil { return .Full }
-	b := (^A11y_Bridge)(w.a11y)
-	return b.have ? .Incremental : .Full
+	return len((^A11y_Bridge)(w.a11y).update.nodes) > 0 ? .Incremental : .Full
 }
 
-// Hands an update to the bridge, making the bridge on the first call. We keep a copy of the whole tree (the a11y bus is
-// pull-based: a client asks for a node's properties, so we must be able to answer from the last tree at any time).
+// Hands an update to the bridge, making the bridge on the first call. We keep the whole tree (the a11y bus is pull-based: a
+// client asks for a node's properties, so we must be able to answer from it at any time): an update holds what changed.
 a11y_send :: proc(w: ^Window, u: ^A11y_Update, toolkit_name := "gui_toolkit", toolkit_version := "") -> A11y_Send {
-	if w == nil || w.offscreen { return .Inactive }
-	if a11y_bus_address() == "" { return .Inactive }
+	if w == nil || w.offscreen || a11y_bus_state() != .Listening { return .Inactive }
 	if w.a11y == nil {
+		conn := dbus.connect_bus_address(session.a11y_address)
+		if conn == nil {
+			session.a11y = .Failed   // (asked once: a tree a frame would knock at it for nothing)
+			return .Failed
+		}
 		b := new(A11y_Bridge)
-		b.conn = dbus.connect_bus_address(a11y_bus_address())
-		if b.conn == nil { free(b); return .Inactive }
+		b.conn = conn
 		dbus.export_object(b.conn, ATSPI_ROOT_PATH, atspi_object_handler, w)
 		w.a11y = b
 	}
-	b := (^A11y_Bridge)(w.a11y)
-	a11y_copy_update(&b.update, u)
-	b.have = true
+	a11y_tree_merge(&(^A11y_Bridge)(w.a11y).update, u)
 	return .Applied
 }
 
@@ -115,24 +151,10 @@ a11y_pump :: proc(w: ^Window) {
 a11y_take_request :: proc(w: ^Window) -> (r: A11y_Request, ok: bool) {
 	if w == nil || w.a11y == nil { return }
 	b := (^A11y_Bridge)(w.a11y)
-	// (this bus's fd is in no poll: what a client asked is served here, once a frame)
-	if len(b.requests) == 0 { dbus.dispatch(b.conn) }
 	if len(b.requests) == 0 { return }
 	r = b.requests[0]
 	ordered_remove(&b.requests, 0)
 	return r, true
-}
-
-// A deep copy of the toolkit's update into the bridge's own buffers (the toolkit reuses its arrays each frame).
-@(private)
-a11y_copy_update :: proc(dst: ^A11y_Update, src: ^A11y_Update) {
-	a11y_update_clear(dst)
-	append(&dst.nodes, ..src.nodes[:])
-	append(&dst.ids, ..src.ids[:])
-	append(&dst.props, ..src.props[:])
-	append(&dst.bytes, ..src.bytes[:])
-	append(&dst.floats, ..src.floats[:])
-	dst.root, dst.focus, dst.tree, dst.tree_info = src.root, src.focus, src.tree, src.tree_info
 }
 
 ////////////////////////////////

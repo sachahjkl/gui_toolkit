@@ -55,7 +55,6 @@ Wl_Conn :: struct {
 	pointer_pos:    [2]f32,
 	// the clipboard text another client offered, and the fd/offer plumbing (clipboard_linux.odin uses the richer parts)
 	clip_text:  string,
-	have_offer: bool,
 	offer:      Wl_Proxy,
 	// the keyboard-enter serial: a wl_data_device.set_selection needs a recent input serial (clipboard owner)
 	kbd_serial: u32,
@@ -76,6 +75,7 @@ Wl_Conn :: struct {
 	text_input:    Wl_Proxy,
 	ti_enabled:    bool,
 	ti_window:     ^Window,       // the window the text-input is enabled for
+	ti_rect:       [4]i32,        // the cursor rectangle told last (surface units)
 	ime:           Ime_Compose,   // what the input method sent, applied on `done` (ime.odin)
 	// cursor shapes (cursors_wl_linux.odin): the compositor draws them from a named shape (wp_cursor_shape_v1)
 	cursor_shape_manager: Wl_Proxy,
@@ -108,6 +108,8 @@ Wl_Window_State :: struct {
 	transparent: bool,
 	title:       string,
 	pending_w, pending_h: int,     // the size the last xdg_toplevel.configure asked for (0 = app chooses)
+	toplevel:    Show_State,       // what the last configure said; the window's state once it is shown
+	floating:    [2]int,           // `logical` when it last was neither maximized nor full screen
 	fractional:  Wl_Proxy,         // wp_fractional_scale_v1 and wp_viewport: the buffer has w.size pixels, the surface
 	viewport:    Wl_Proxy,         // `logical` on the output (nil: an integer buffer scale)
 	logical:     [2]int,           // the surface's size, in the compositor's units
@@ -134,6 +136,7 @@ wl_connect_now :: proc() -> bool {
 	wlc.windows.allocator = runtime.heap_allocator()   // (outlives whatever allocator the first window was made under)
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
+	sigpipe_ignored()
 	wlc.fd = l.display_get_fd(wlc.display)
 	wlc.output_scale = 1
 	wlc.key_repeat.rate, wlc.key_repeat.delay_ms = KEY_REPEAT_DEFAULT_RATE, KEY_REPEAT_DEFAULT_DELAY_MS
@@ -156,6 +159,14 @@ wl_connect_now :: proc() -> bool {
 		if wlc.text_input != nil { l.proxy_add_listener(wlc.text_input, &text_input_listener, nil) }
 	}
 	return wlc.xdg_wm_base != nil && wlc.compositor != nil
+}
+
+// A peer that closes its pipe while a data source writes to it is an EPIPE, not the end of the process. (An app that handles
+// SIGPIPE itself keeps its handler.)
+@(private = "file")
+sigpipe_ignored :: proc() {
+	old: posix.sigaction_t
+	if posix.sigaction(.SIGPIPE, nil, &old) == .OK && old.sa_handler == auto_cast posix.SIG_DFL { posix.signal(.SIGPIPE, auto_cast posix.SIG_IGN) }
 }
 
 @(private)
@@ -239,8 +250,22 @@ Output_Listener :: struct {
 output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: i32, make, model: cstring, transform: i32) {}
 @(private)
 output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { wlc.output_refresh_mhz = refresh; wlc.output_px = {w, h} } }
+// A change of the output is complete: the windows' rate and monitor are read again, and a window without a fractional
+// scale follows the output's integer one.
 @(private)
-output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {}
+output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {
+	context = wl_ctx_real()
+	for w in wlc.windows {
+		w.display_stale = true
+		st := wl_state(w)
+		if st.viewport != nil || w.dpi_scale == f32(wlc.output_scale) { continue }
+		w.dpi_scale = f32(wlc.output_scale)
+		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
+		wl_size_from_logical(w, st)
+		w.paint_requested = true
+		apply_cursor(w)
+	}
+}
 @(private)
 output_scale_ev :: proc "c" (data: rawptr, o: Wl_Proxy, factor: i32) { if factor > 0 { wlc.output_scale = factor } }
 
@@ -277,7 +302,7 @@ seat_capabilities :: proc "c" (data: rawptr, seat: Wl_Proxy, caps: u32) {
 		wlc.keyboard = wl.proxy_marshal_flags(seat, WL_SEAT_GET_KEYBOARD, wl.keyboard_interface, wl.proxy_get_version(seat), 0, nil)
 		wl.proxy_add_listener(wlc.keyboard, &keyboard_listener, nil)
 	} else if caps & WL_SEAT_KEYBOARD == 0 && wlc.keyboard != nil {
-		if w := wlc.keyboard_focus; w != nil { w.focused = false; w.active = false; wl_push(w, {kind = .Activate}) }
+		if w := wlc.keyboard_focus; w != nil { window_focus(w, false, {}) }
 		wlc.keyboard_focus = nil
 		wlc.key_repeat.held = false
 		wl_release_input(wlc.keyboard, WL_KEYBOARD_RELEASE)
@@ -423,12 +448,12 @@ kb_enter :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy
 	context = wl_ctx_real()
 	wlc.kbd_serial = serial
 	wlc.keyboard_focus = window_of_surface(surface)
-	if w := wlc.keyboard_focus; w != nil { w.focused = true; w.active = true; wl_push(w, {kind = .Activate}) }
+	if w := wlc.keyboard_focus; w != nil { window_focus(w, true, {}) }
 }
 @(private)
 kb_leave :: proc "c" (data: rawptr, kb: Wl_Proxy, serial: u32, surface: Wl_Proxy) {
 	context = wl_ctx_real()
-	if w := wlc.keyboard_focus; w != nil { w.focused = false; w.active = false; wl_push(w, {kind = .Activate}) }
+	if w := wlc.keyboard_focus; w != nil { window_focus(w, false, {}) }
 	wlc.key_repeat.held = false
 	wlc.keyboard_focus = nil
 }
@@ -456,7 +481,7 @@ wl_key_emit :: proc(w: ^Window, keycode: u32, press, repeat: bool) {
 	k := xkb_lib()
 	kk := key_from_xkb(wlc.xkb_keymap, wlc.xkb_state, keycode)
 	mods := wl_mods()
-	if kk != .None { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat}) }
+	if kk != .None && key_changes(w, kk, press) { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat}) }
 	if press && .Ctrl not_in mods && .Alt not_in mods {
 		buf: [8]u8
 		n := k.state_key_get_utf8(wlc.xkb_state, keycode, &buf[0], size_of(buf))
@@ -530,6 +555,10 @@ xdg_surface_configure :: proc "c" (data: rawptr, s: Wl_Proxy, serial: u32) {
 	w := st.win
 	if st.pending_w > 0 && st.pending_h > 0 {
 		st.logical = {st.pending_w, st.pending_h}
+		if st.toplevel == .Normal { st.floating = st.logical }
+		wl_size_from_logical(w, st)
+	} else if st.floating != {} {
+		st.logical = st.floating   // (no size asked for, after a maximize: the one before it)
 		wl_size_from_logical(w, st)
 	}
 	w.paint_requested = true
@@ -548,19 +577,19 @@ xdg_toplevel_configure :: proc "c" (data: rawptr, t: Wl_Proxy, w, h: i32, states
 	st := (^Wl_Window_State)(data)
 	if st == nil || st.win == nil { return }
 	st.pending_w, st.pending_h = int(w), int(h)
-	// decode the states array (u32 each): 1 maximized, 2 fullscreen, 4 activated
-	st.win.maximized = false
-	st.win.fullscreen = false
+	// decode the states array (u32 each): 1 maximized, 2 fullscreen, 4 activated. (No state says a toplevel is minimized.)
+	st.toplevel = .Normal
 	if states != nil && states.data != nil {
 		n := states.size / size_of(u32)
 		arr := ([^]u32)(states.data)
 		for i in 0 ..< n {
 			switch arr[i] {
-			case 1: st.win.maximized = true
-			case 2: st.win.fullscreen = true
+			case 1: if st.toplevel == .Normal { st.toplevel = .Maximized }
+			case 2: st.toplevel = .Fullscreen
 			}
 		}
 	}
+	if st.win.show != .Hidden { st.win.show = st.toplevel }
 }
 @(private)
 xdg_toplevel_close :: proc "c" (data: rawptr, t: Wl_Proxy) {
@@ -623,6 +652,8 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 	append(&wlc.windows, w)
 	wl.proxy_set_user_data(st.surface, st)
 	st.logical = {max(size.x, 1), max(size.y, 1)}
+	st.floating = st.logical
+	st.toplevel = .Normal
 	if wlc.fractional_manager != nil && wlc.viewporter != nil {
 		st.viewport = wl.proxy_marshal_flags(wlc.viewporter, WP_VIEWPORTER_GET_VIEWPORT, &wp_viewport_iface, wl.proxy_get_version(wlc.viewporter), 0, nil, st.surface)
 		st.fractional = wl.proxy_marshal_flags(wlc.fractional_manager, WP_FRACTIONAL_MANAGER_GET, &wp_fractional_iface, wl.proxy_get_version(wlc.fractional_manager), 0, nil, st.surface)
@@ -705,6 +736,7 @@ wl_show :: proc(w: ^Window) {
 	st := wl_state(w)
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 	wl.display_flush(wlc.display)
+	w.show = st.toplevel
 }
 @(private) wl_minimize :: proc(w: ^Window) { st := wl_state(w); wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0); wl.display_flush(wlc.display) }
 @(private)

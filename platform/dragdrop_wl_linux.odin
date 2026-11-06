@@ -9,6 +9,7 @@ package platform
 // The data of a drag is read lazily: on Drop we read each flavour the offer advertised into the window's Drag_Data,
 // then the app reads drop_data(window).
 
+import "base:runtime"
 import "core:strings"
 import "core:time"
 import "core:sys/posix"
@@ -214,8 +215,11 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	src := wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE,
 		wl.data_source_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil)
 	if src == nil { return nil, false }
-	drag_data_destroy(&wlc.drag.data)
-	wlc.drag.data = drag_data_clone(data)
+	{
+		context.allocator = runtime.heap_allocator()   // (the store outlives whatever allocator this drag is called under)
+		drag_data_destroy(&wlc.drag.data)
+		wlc.drag.data = drag_data_clone(data)
+	}
 	wlc.drag.phase = .Tracking
 	wlc.dnd_source_action = 0
 	wlc.dnd_source = src

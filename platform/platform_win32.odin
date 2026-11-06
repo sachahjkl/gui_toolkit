@@ -51,7 +51,6 @@ Native_Window :: struct {
 	off_event:      win.HANDLE,
 	off_state:      Off_State,      // emulated window state (normal / minimized / maximized / fullscreen)
 	off_place:      [4]int,         // emulated outer rectangle (left, top, width, height): what getBounds reports
-	off_visible:    bool,           // show_window was called (a headless window is shown only to a remote client's eye)
 }
 
 // The emulated state of an offscreen window.
@@ -126,8 +125,6 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	w.user = user
 	w.on_frame = on_frame
 	w.dpi_scale = 1
-	w.focused = true
-	w.active = true
 	w.display_stale = true
 	w.integrated = integrated_title
 
@@ -283,6 +280,7 @@ minimize :: proc(w: ^Window) {
 // Maximizes, or restores a maximized window (the maximize / restore caption button, a double click on the title bar).
 toggle_maximize :: proc(w: ^Window) {
 	if w.offscreen { w.off_state = w.off_state == .Maximized ? .Normal : .Maximized; return }
+	set_fullscreen(w, false)   // (the frame it restores: a maximized window is not full screen any more)
 	win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, is_maximized(w) ? win.SC_RESTORE : win.SC_MAXIMIZE, 0)
 }
 
@@ -294,7 +292,10 @@ request_close :: proc(w: ^Window) {
 
 // Full screen: the window covers its monitor, without frame nor title bar (F11). Off: back to where it was, maximized or not.
 set_fullscreen :: proc(w: ^Window, on: bool) {
-	if w.offscreen { w.off_state = on ? .Fullscreen : .Normal; return }
+	if w.offscreen {
+		if on { w.off_state = .Fullscreen } else if w.off_state == .Fullscreen { w.off_state = .Normal }
+		return
+	}
 	if w.fullscreen == on { return }
 	if on {
 		w.saved_place = {length = size_of(win.WINDOWPLACEMENT)}
@@ -389,7 +390,6 @@ resize_border :: proc(w: ^Window) -> int {
 show_window :: proc(w: ^Window) {
 	if w.offscreen {
 		// nothing to show: a headless window is only ever seen through a remote capture
-		w.off_visible = true
 		if w.want_maximized { w.off_state = .Maximized; w.want_maximized = false }
 		return
 	}
@@ -490,7 +490,8 @@ wake_handle :: proc(w: ^Window) -> rawptr { return w != nil && w.offscreen ? raw
 wake_signal :: proc(h: rawptr) { if h != nil { win.SetEvent(win.HANDLE(h)) } }
 
 // Destroys the window and what it holds (its cursors, drawn and custom; its event list; its title bar's regions),
-// then frees `w`. A process that ends with its window open needs not call it.
+// then frees `w`. A process that ends with its window open needs not call it. Not from a callback running under the window
+// (on_frame, a Drop_Sync, a drop during its drag): the message or the drag that called it still reads the window.
 destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
 	if w.destroy_hook != nil { w.destroy_hook(w, w.destroy_hook_user) }
@@ -818,7 +819,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		return 0   // (the message woke the loop; clipboard_changed reads the sequence number)
 
 	case win.WM_SETFOCUS:  w.focused = true; a11y_window_focus(w, true)
-	case win.WM_KILLFOCUS: w.focused = false; a11y_window_focus(w, false)
+	case win.WM_KILLFOCUS:
+		w.focused = false
+		w.high_surrogate = 0   // (its other half went elsewhere)
+		keys_released(w, current_mods())
+		a11y_window_focus(w, false)
 
 	case win.WM_GETOBJECT:
 		if r, ok := a11y_wm_getobject(w, wparam, lparam); ok { return r }
@@ -987,22 +992,24 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_KEYDOWN, win.WM_SYSKEYDOWN:
 		key := key_from_vk(wparam)
-		if key != .None { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & KEYDOWN_WAS_DOWN_BIT) != 0}) }
+		if key != .None && key_changes(w, key, true) { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & KEYDOWN_WAS_DOWN_BIT) != 0}) }
 		// no menu-bar beep on Alt+key; Alt+F4 closes, Alt+Space opens the system menu
 		if msg == win.WM_SYSKEYDOWN && key != .None && wparam != win.VK_F4 && wparam != win.VK_SPACE { return 0 }
 	case win.WM_KEYUP, win.WM_SYSKEYUP:
 		key := key_from_vk(wparam)
-		if key != .None { push(w, {kind = .Key_Release, key = key, mods = current_mods()}) }
+		if key != .None && key_changes(w, key, false) { push(w, {kind = .Key_Release, key = key, mods = current_mods()}) }
 
 	case win.WM_CHAR:
 		c := u16(wparam)
 		if c >= SURROGATE_HIGH_FIRST && c < SURROGATE_LOW_FIRST { w.high_surrogate = c; return 0 }
 		r: rune = rune(c)
+		high := w.high_surrogate
+		w.high_surrogate = 0   // (whatever comes: a low half pairs with the high one right before it, or is no character)
 		if c >= SURROGATE_LOW_FIRST && c < SURROGATE_LOW_END {
-			pair := [2]u16{w.high_surrogate, c}
+			if high == 0 { return 0 }
+			pair := [2]u16{high, c}
 			out: [2]rune
 			if utf16.decode(out[:], pair[:]) > 0 { r = out[0] }
-			w.high_surrogate = 0
 		}
 		if r >= RUNE_FIRST_PRINTABLE && r != RUNE_DEL { push(w, {kind = .Text, text = r, mods = current_mods()}) }
 		return 0

@@ -17,3 +17,4 @@ tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool { return false }
 tray_show_menu :: proc(t: ^Tray) -> (id: int, ok: bool) { return 0, false }
 tray_inject :: proc(t: ^Tray, code: u32, pos: [2]i32 = {}) {}
 tray_inject_shell_restart :: proc(w: ^Window) {}
+@(private) tray_menu_changed :: proc(t: ^Tray) {}

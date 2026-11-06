@@ -137,6 +137,80 @@ a_batch_outlives_what_comes_while_it_is_read :: proc(t: ^testing.T) {
 	testing.expect(t, raw_data(evs) != raw_data(w.events[:]), "the batch is not the queue the system appends to")
 }
 
+// A high surrogate pairs with the low one right after it, or with nothing: not with one that comes later.
+@(test)
+a_lone_surrogate_pairs_with_nothing :: proc(t: ^testing.T) {
+	w := platform.open_window("surrogate", {200, 150})
+	defer platform.destroy_window(w)
+	h := w.hwnd
+	win.SendMessageW(h, win.WM_CHAR, 0xD83D, 0)
+	win.SendMessageW(h, win.WM_CHAR, win.WPARAM('a'), 0)
+	win.SendMessageW(h, win.WM_CHAR, 0xDE00, 0)
+	testing.expect_value(t, len(w.events), 1)
+	if len(w.events) == 1 { testing.expect_value(t, w.events[0].text, 'a') }
+	clear(&w.events)
+	win.SendMessageW(h, win.WM_CHAR, 0xD83D, 0)
+	win.SendMessageW(h, win.WM_CHAR, 0xDE00, 0)
+	testing.expect_value(t, len(w.events), 1)
+	if len(w.events) == 1 { testing.expect_value(t, w.events[0].text, '\U0001F600') }
+}
+
+// The focus goes with a key held: its release goes elsewhere, it is made here. And a window not shown has no focus.
+@(test)
+a_key_held_when_the_focus_goes_is_released :: proc(t: ^testing.T) {
+	w := platform.open_window("keys", {200, 150})
+	defer platform.destroy_window(w)
+	testing.expect(t, !w.focused && !w.active, "nothing gave it the focus")
+	h := w.hwnd
+	win.SendMessageW(h, win.WM_KEYDOWN, win.WPARAM('A'), 0)
+	win.SendMessageW(h, win.WM_KILLFOCUS, 0, 0)
+	testing.expect_value(t, len(w.events), 2)
+	if len(w.events) == 2 { testing.expect(t, w.events[1].kind == .Key_Release && w.events[1].key == .A, "the release") }
+	win.SendMessageW(h, win.WM_KEYUP, win.WPARAM('A'), 0)
+	testing.expect_value(t, len(w.events), 2)
+}
+
+// An emulated window keeps a state a full screen left alone; a placement restores a maximized one.
+@(test)
+an_offscreen_state_is_left_as_it_is :: proc(t: ^testing.T) {
+	w := platform.open_window_offscreen("state", {16, 16})
+	defer platform.destroy_window(w)
+	platform.toggle_maximize(w)
+	platform.set_fullscreen(w, false)
+	testing.expect(t, platform.is_maximized(w), "it was not full screen: nothing to leave")
+	p := platform.get_placement(w)
+	p.maximized = false
+	platform.set_placement(w, p)
+	testing.expect(t, !platform.is_maximized(w))
+}
+
+// A placement on a window on the screen applies at once: nothing else will read it.
+@(test)
+a_placement_reaches_a_shown_window :: proc(t: ^testing.T) {
+	w := platform.open_window("placement", {200, 150})
+	defer platform.destroy_window(w)
+	platform.show_window(w)
+	p := platform.get_placement(w)
+	p.maximized = true
+	platform.set_placement(w, p)
+	testing.expect(t, platform.is_maximized(w))
+	p.maximized = false
+	platform.set_placement(w, p)
+	testing.expect(t, !platform.is_maximized(w))
+}
+
+// With an offscreen window open, a real window's clipboard_changed goes on reading the system's clipboard.
+@(test)
+a_real_window_reads_the_clipboard_of_the_system :: proc(t: ^testing.T) {
+	w := platform.open_window("real", {200, 150})
+	defer platform.destroy_window(w)
+	o := platform.open_window_offscreen("other", {16, 16})
+	defer platform.destroy_window(o)
+	platform.clipboard_changed(w)
+	platform.set_clipboard(w, "from the real window")   // (the system's)
+	testing.expect(t, platform.clipboard_changed(w), "the system's clipboard changed")
+}
+
 // A Close is the app's to answer: taken back, the window is open.
 @(test)
 a_close_can_be_taken_back :: proc(t: ^testing.T) {

@@ -178,7 +178,6 @@ wl_selection_set :: proc(offer: Wl_Proxy) {
 		wl_free_mimes(&wlc.offer_mimes)
 	}
 	wlc.offer = offer
-	wlc.have_offer = offer != nil
 	if wlc.data_source == nil { clip_note_changed() }
 	if offer != nil && offer == wlc.pending_offer {
 		wl_free_mimes(&wlc.offer_mimes)
@@ -230,10 +229,8 @@ wl_pipe_read_all :: proc(fd: posix.FD, allocator := context.allocator) -> []u8 {
 
 @(private)
 wl_clipboard_get_text :: proc(w: ^Window, allocator := context.allocator) -> string {
-	// our own selection: the store's text
-	if wlc.data_source != nil || !wlc.have_offer || wlc.offer == nil {
-		return strings.clone(wlc.clip_text, allocator)
-	}
+	if wlc.data_source != nil { return strings.clone(wlc.clip_text, allocator) }   // our own selection: the store's text
+	if wlc.offer == nil { return "" }   // (cleared: what we once offered is not on the clipboard)
 	// pick the first text MIME the offer advertises
 	mime := wl_offer_pick_text()
 	if mime == "" { return "" }

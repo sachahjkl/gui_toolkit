@@ -29,28 +29,18 @@ move_window :: proc(w: ^Window, x, y: int) {
 }
 
 get_placement :: proc(w: ^Window) -> Placement {
-	if w.offscreen { return {w.off_place, w.off_state == .Maximized} }
+	if w.offscreen { return {w.off_place, w.show == .Maximized} }
 	return {outer_rect(w), is_maximized(w)}
 }
 
 set_placement :: proc(w: ^Window, p: Placement) {
-	if w.offscreen { w.off_place = p.rect; w.off_state = p.maximized ? .Maximized : .Normal; return }
+	if w.offscreen { w.off_place = p.rect; w.show = p.maximized ? .Maximized : .Normal; return }
+	if is_maximized(w) != p.maximized { set_maximized(w, p.maximized) }
 	if w.backend == .X11 {
 		x11_move(w, p.rect[0], p.rect[1])
 		x11_set_size(w, {p.rect[2], p.rect[3]})
 	} else {
 		// Wayland: restore the size (position is the compositor's)
 		wl_set_size(w, {p.rect[2], p.rect[3]})
-	}
-	if p.maximized { toggle_maximize_to(w, true) }
-}
-
-@(private)
-toggle_maximize_to :: proc(w: ^Window, on: bool) {
-	if w.maximized == on { return }
-	switch w.backend {
-	case .Wayland: wl_set_maximized(w, on)
-	case .X11:     x11_set_maximized(w, on)
-	case .None:
 	}
 }

@@ -1067,7 +1067,6 @@ Peer :: struct {
 	notify_actions: int,
 	uninhibited: int,
 	layouts:    int,                // LayoutUpdated heard
-	portal_token: string,
 	portal_filter: string,          // the filter the fake user chose
 }
 
@@ -1154,8 +1153,19 @@ peer_handler :: proc(user: rawptr, c: ^dbus.Conn, msg: ^dbus.Message) -> bool {
 		// the handle the spec gives, answered at once: a client that subscribes after this call hears nothing
 		r := dbus.msg_reader(msg)
 		dbus.r_string(&r); dbus.r_string(&r)
+		token := ""
+		end := dbus.r_array_begin(&r, "{sv}")
+		for r.pos < end {
+			dbus.r_align_entry(&r)
+			if key := dbus.r_string(&r); key == "handle_token" {
+				dbus.r_variant_sig(&r)
+				token = strings.clone(dbus.r_string(&r), context.temp_allocator)
+			} else {
+				dbus.read_variant_skip(&r)
+			}
+		}
 		sender, _ := strings.replace_all(msg.sender[1:], ".", "_", context.temp_allocator)
-		path := strings.concatenate({"/org/freedesktop/portal/desktop/request/", sender, "/", p.portal_token}, context.temp_allocator)
+		path := strings.concatenate({"/org/freedesktop/portal/desktop/request/", sender, "/", token}, context.temp_allocator)
 		w := dbus.body_writer()
 		dbus.w_string(&w, path)
 		dbus.reply_return(c, msg, "o", w.buf[:])
@@ -1389,7 +1399,6 @@ a_portal_dialog_hears_the_answer_and_the_filter :: proc(t: ^testing.T) {
 	if desktop() == "" { return }
 	with_bus(t, proc(t: ^testing.T) {
 		p: Peer
-		p.portal_token = "gt1"
 		p.portal_filter = "Texts"
 		peer_start(&p, {"org.freedesktop.portal.Desktop"})
 		defer peer_stop(&p)

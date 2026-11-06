@@ -22,7 +22,8 @@ Session_Bus :: struct {
 	conn:          ^dbus.Conn,
 	tried:         bool,              // connect_bus ran (conn nil: there is no bus)
 	a11y_address:  string,            // the a11y bus's (a11y_bus_address), "" when there is none
-	a11y_asked:    bool,
+	a11y:          A11y_Bus_State,
+	a11y_sub:      u32,               // its PropertiesChanged: an assistive technology that comes or goes
 	theme_changed: proc(dark: bool),  // watch_color_scheme's callback
 	theme_sub:     u32,               // its subscription to SettingChanged
 	idle_records:  [dynamic]Idle_Record,   // the live inhibitions (idle_inhibit_linux)

@@ -100,6 +100,7 @@ tray_set_menu :: proc(t: ^Tray, items: []Tray_Menu_Item) {
 	tray_menu_free(t.menu[:])
 	clear(&t.menu)
 	for it in items { append(&t.menu, tray_item_clone(it)) }
+	tray_menu_changed(t)
 }
 
 // The item of a menu with that id, submenus included (nil when there is none).

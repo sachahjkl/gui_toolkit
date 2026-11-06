@@ -55,7 +55,7 @@ Touch_Finger :: struct {
 }
 
 @(private)
-Touch_State :: enum u8 { Idle, Pressed, Panning, Pinching, Held, Done }
+Touch_State :: enum u8 { Idle, Pressed, Panning, Pinching, Held }
 
 Touch_Gesture :: struct {
 	settings:  Touch_Gesture_Settings,
@@ -124,7 +124,7 @@ touch_gesture_down :: proc(g: ^Touch_Gesture, id: u32, pos: [2]f32, ms: f64) -> 
 	g.fingers[g.count] = {id = id, start = pos, pos = pos}
 	g.count += 1
 	switch g.state {
-	case .Idle, .Done:
+	case .Idle:
 		g.state = .Pressed
 		g.down_ms = ms
 		g.n_samples = 0
@@ -147,7 +147,7 @@ touch_gesture_move :: proc(g: ^Touch_Gesture, id: u32, pos: [2]f32, ms: f64) -> 
 	if i < 0 { return {} }
 	g.fingers[i].pos = pos
 	switch g.state {
-	case .Idle, .Done, .Held:
+	case .Idle, .Held:
 		return {}
 	case .Pressed:
 		d := pos - g.fingers[i].start
@@ -198,7 +198,7 @@ touch_gesture_up :: proc(g: ^Touch_Gesture, id: u32, pos: [2]f32, ms: f64) -> To
 		if i == 0 { sample(g, pos, ms) }
 		v := release_velocity(g, ms)
 		if v.x * v.x + v.y * v.y >= g.settings.fling_min_speed * g.settings.fling_min_speed { return {kind = .Fling, pos = pos, velocity = v} }
-	case .Idle, .Pinching, .Held, .Done:
+	case .Idle, .Pinching, .Held:
 	}
 	return {kind = .End, pos = pos}
 }

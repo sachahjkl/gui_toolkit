@@ -43,7 +43,7 @@ dbusmenu_get_layout :: proc(t: ^Tray, c: ^dbus.Conn, msg: ^dbus.Message) -> bool
 	clear(&t.menu_ids)
 	t.next_menu_id = 1
 	w := dbus.body_writer()
-	dbus.w_u32(&w, 1)   // revision
+	dbus.w_u32(&w, t.menu_revision)
 	// the root item (id 0) with the menu's items as children
 	dbusmenu_write_root(t, &w)
 	dbus.reply_return(c, msg, "u(ia{sv}av)", w.buf[:])

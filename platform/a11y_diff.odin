@@ -133,6 +133,33 @@ a11y_diff_patch :: proc(d: ^A11y_Diff, changed: ^A11y_Update) -> ^A11y_Update {
 	return &d.out
 }
 
+// `tree` as an update leaves it: a whole tree replaces it; else the nodes of `u` replace theirs, and what no node reaches from
+// the root any more goes, as an adapter drops it. For an adapter that answers from the tree it keeps.
+a11y_tree_merge :: proc(tree, u: ^A11y_Update) {
+	at := make(map[u64]int, len(tree.nodes) + len(u.nodes), context.temp_allocator)   // id -> where: >= 0 in `tree`, < 0 in `u`
+	if !u.tree_info { for n, i in tree.nodes { at[n.id] = i } }
+	for n, i in u.nodes { at[n.id] = -i - 1 }
+	root := u.root != 0 ? u.root : tree.root
+	out: A11y_Update
+	seen := make(map[u64]bool, len(at), context.temp_allocator)
+	walk := make([dynamic]u64, context.temp_allocator)
+	append(&walk, root)
+	for len(walk) > 0 {
+		id := pop(&walk)
+		if id in seen { continue }
+		seen[id] = true
+		i, known := at[id]
+		if !known { continue }
+		from := i >= 0 ? tree : u
+		k := i >= 0 ? i : -i - 1
+		a11y_copy_node(&out, from, k)
+		append(&walk, ..a11y_node_children(from, k))
+	}
+	out.root, out.focus, out.tree, out.tree_info = root, u.focus, u.tree, true
+	a11y_update_destroy(tree)
+	tree^ = out
+}
+
 // Copies node `i` of `src` (with its children and properties) at the end of `dst`.
 a11y_copy_node :: proc(dst: ^A11y_Update, src: ^A11y_Update, i: int) {
 	n := src.nodes[i]

@@ -105,7 +105,7 @@ platform/platform_win32.odin os_build process  # the Windows build number (atomi
 platform/platform_win32.odin window_class process  # the window class, registered once for the process (sync.Once)
 platform/portal_linux.odin portal_token.counter process  # the portal request tokens, unique in the process (atomic)
 platform/tray.odin tray_test_hook process  # a test's hook, set before the calls it answers and cleared after (not locked)
-platform/tray_linux.odin tray_pid_counter process  # the icons' bus names, unique in the process (atomic)
+platform/tray_linux.odin tray_pid_counter process  # the icons' object paths, unique in the process (atomic)
 platform/tray_win32.odin taskbar_created_msg process  # the TaskbarCreated message number (atomic: every thread writes the same)
 platform/tray_win32.odin tray_next_id process  # the icons' ids, unique in the process (atomic)
 platform/virtual.odin machine process  # the virtual screen the offscreen windows share (locked: Virtual_Machine.mutex)

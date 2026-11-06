@@ -43,7 +43,7 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 	p.size = w.size
 	latency := 1
 	if inner {
-		at_once = platform.cadence_inner_frame(&p.cadence, resized, p.presented)
+		at_once = platform.cadence_inner_frame(&p.cadence, resized, p.presented, time.tick_now()._nsec)
 		if at_once { latency = 2 } else if !p.slot_held { p.slot_held = wait_for_frame(r) }
 	} else {
 		d := platform.frame_decision(&p.cadence, {

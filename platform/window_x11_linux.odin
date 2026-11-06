@@ -59,13 +59,20 @@ X11_Window_State :: struct {
 	colormap: Xcb_Colormap,
 	transparent: bool,
 	title:    string,
-	mapped:   bool,
-	// the bytes another client offered through a selection request, read in during a paste; paste_incr while an INCR
-	// transfer streams in (clipboard_x11_linux.odin)
+	map_phase: X11_Map_Phase,
+	first_state: [dynamic]Xcb_Atom,   // what _NET_WM_STATE asks for before the first map
+	// a read of a selection (clipboard_x11_linux.odin): what was asked, how far it is, the bytes that came
+	paste:     X11_Paste_Phase,
+	paste_selection, paste_target: Xcb_Atom,
 	paste_buf: [dynamic]u8,
-	paste_got: bool,
-	paste_incr: bool,
 }
+
+// Where a window is with the server. Unmapped: an iconified window, under a window manager that does not say
+// _NET_WM_STATE_HIDDEN. (Before the first map a state is a property the window manager reads, after it a request to it.)
+@(private) X11_Map_Phase :: enum u8 { Never, Asked, Mapped, Unmapped }
+
+// A read of a selection: asked, the owner streaming it in (INCR), answered. Idle: nothing is asked, what comes is late.
+@(private) X11_Paste_Phase :: enum u8 { Idle, Waiting, Receiving, Done }
 
 @(private)
 x11_state :: proc(w: ^Window) -> ^X11_Window_State { return (^X11_Window_State)(w.x11) }
@@ -89,6 +96,7 @@ x11_connect :: proc() -> bool {
 	x11_intern_atoms()
 	x11_extensions_init()
 	x11_init_xkb()
+	x11_change_window_attrs_event_mask(x11c.screen.root, XCB_EVENT_MASK_PROPERTY_CHANGE)   // (Xft.dpi: RESOURCE_MANAGER)
 	return true
 }
 
@@ -157,6 +165,11 @@ x11_init_xkb :: proc() {
 			if k.x11_select_events != nil {
 				k.x11_select_events(x11c.c, XCB_XKB_ID_USE_CORE_KBD, X11_XKB_WATCHED, 0, X11_XKB_WATCHED, X11_XKB_MAP_ALL, X11_XKB_MAP_ALL, nil)
 			}
+			if k.x11_per_client_flags != nil && k.x11_per_client_flags_reply != nil {
+				// a held key repeats as presses alone: without this the server sends a release before each
+				cookie := k.x11_per_client_flags(x11c.c, XCB_XKB_ID_USE_CORE_KBD, X11_XKB_DETECTABLE_AUTO_REPEAT, X11_XKB_DETECTABLE_AUTO_REPEAT, 0, 0, 0)
+				if reply := k.x11_per_client_flags_reply(x11c.c, cookie, nil); reply != nil { posix.free(reply) }
+			}
 		}
 		x11_xkb_load()
 	}
@@ -186,6 +199,7 @@ x11_xkb_load :: proc() {
 @(private = "file") XCB_XKB_ID_USE_CORE_KBD :: 0x100
 @(private = "file") X11_XKB_WATCHED :: 1 << 0 | 1 << 1    // XKB events: NewKeyboardNotify, MapNotify
 @(private = "file") X11_XKB_MAP_ALL :: 0xff               // every part of a map
+@(private = "file") X11_XKB_DETECTABLE_AUTO_REPEAT :: 1   // of the client's flags
 @(private = "file") X11_XKB_NEW_KEYBOARD_NOTIFY :: 0      // xkbType, in the second byte of an XKB event
 @(private = "file") X11_XKB_MAP_NOTIFY :: 1
 @(private = "file") X11_MAPPING_POINTER :: 2              // MappingNotify's request: modifiers, keyboard, pointer
@@ -238,6 +252,8 @@ x11_xkb_load :: proc() {
 @(private) XCB_SELECTION_REQUEST :: 30
 @(private) XCB_SELECTION_NOTIFY :: 31
 @(private) XCB_PROPERTY_NOTIFY :: 28
+@(private = "file") X11_NOTIFY_GRAB :: 1   // the mode of a focus event
+@(private = "file") X11_NOTIFY_UNGRAB :: 2
 @(private = "file") XCB_DESTROY_NOTIFY :: 17
 @(private = "file") XCB_UNMAP_NOTIFY :: 18
 @(private = "file") XCB_MAP_NOTIFY :: 19
@@ -309,6 +325,7 @@ x11_destroy :: proc(w: ^Window) {
 	xcb.flush(x11c.c)
 	delete(st.title)
 	delete(st.paste_buf)
+	delete(st.first_state)
 	free(st)
 	w.x11 = nil
 }
@@ -336,7 +353,7 @@ x11_set_size :: proc(w: ^Window, px: [2]int) {
 x11_show :: proc(w: ^Window) {
 	st := x11_state(w)
 	xcb.map_window(x11c.c, st.id)
-	st.mapped = true
+	if st.map_phase == .Never { st.map_phase = .Asked }
 	xcb.flush(x11c.c)
 }
 
@@ -356,27 +373,35 @@ x11_minimize :: proc(w: ^Window) {
 	st := x11_state(w)
 	wm_change := x11_atom("WM_CHANGE_STATE")
 	x11_send_root_message(wm_change, st.id, {3, 0, 0, 0, 0})
-	w.minimized = true
 }
 
 @(private)
 x11_set_maximized :: proc(w: ^Window, on: bool) {
-	st := x11_state(w)
-	x11_net_wm_state(st.id, on, x11c.net_wm_state_maximized_horz, x11c.net_wm_state_maximized_vert)
-	w.maximized = on
+	x11_net_wm_state(w, on, x11c.net_wm_state_maximized_horz, x11c.net_wm_state_maximized_vert)
 }
 
 @(private)
 x11_set_fullscreen :: proc(w: ^Window, on: bool) {
-	st := x11_state(w)
-	x11_net_wm_state(st.id, on, x11c.net_wm_state_fullscreen, 0)
+	x11_net_wm_state(w, on, x11c.net_wm_state_fullscreen, 0)
 }
 
-// _NET_WM_STATE change: a ClientMessage to the root as the EWMH spec requires (action 1 add, 0 remove).
+// _NET_WM_STATE change: a ClientMessage to the root as the EWMH spec requires (action 1 add, 0 remove). A window the
+// window manager does not know yet says it in its property, read when it maps it.
 @(private)
-x11_net_wm_state :: proc(id: Xcb_Window, add: bool, a1, a2: Xcb_Atom) {
+x11_net_wm_state :: proc(w: ^Window, add: bool, a1, a2: Xcb_Atom) {
+	st := x11_state(w)
+	if st.map_phase == .Never {
+		for a in ([]Xcb_Atom{a1, a2}) {
+			if a == 0 { continue }
+			for x, i in st.first_state { if x == a { ordered_remove(&st.first_state, i); break } }
+			if add { append(&st.first_state, a) }
+		}
+		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.net_wm_state, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(st.first_state)), raw_data(st.first_state[:]))
+		xcb.flush(x11c.c)
+		return
+	}
 	data := [X11_CLIENT_MESSAGE_WORDS]u32{add ? 1 : 0, u32(a1), u32(a2), 1, 0}
-	x11_send_root_message(x11c.net_wm_state, id, data)
+	x11_send_root_message(x11c.net_wm_state, st.id, data)
 }
 
 @(private)
@@ -493,6 +518,7 @@ x11_pump :: proc(w: ^Window, wait: bool, timeout_ms: int) {
 		x11_drain(w)
 	}
 	dbus_pump()
+	x11_incr_give_up()
 	x.flush(x11c.c)
 }
 
@@ -586,6 +612,7 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 	type := raw.response_type & X11_RESPONSE_TYPE_MASK
 	if type == XCB_DESTROY_NOTIFY {   // (xcb_destroy_notify_event_t: window at [8])
 		x11_dnd_source_gone(Xcb_Window(get_u32(b[8:])))
+		x11_incr_give_up(Xcb_Window(get_u32(b[8:])))
 		return
 	}
 	w := x11_event_target(polling, raw)
@@ -654,10 +681,12 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		ey := i16(u16(b[26]) | u16(b[27]) << 8)
 		state := u16(b[28]) | u16(b[29]) << 8
 		x11_push(w, {kind = .Mouse_Move, pos = {f32(ex), f32(ey)}, mods = x11_mods(state), buttons = w.buttons_down})
-	case XCB_MAP_NOTIFY:     // (the state of a window manager without _NET_WM_STATE_HIDDEN: an iconified window is unmapped)
-		w.minimized = false
+	case XCB_MAP_NOTIFY:
+		st.map_phase = .Mapped
+		x11_read_wm_state(w)
 	case XCB_UNMAP_NOTIFY:
-		w.minimized = true
+		st.map_phase = .Unmapped
+		x11_read_wm_state(w)
 		// (a grab cannot take a held button from the window, but its going off the screen ends the button's own grab)
 		buttons_released(w, {}, {})
 	case XCB_ENTER_NOTIFY:
@@ -665,12 +694,9 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		// (under the button's own grab the pointer is still the window's, as under a capture on Windows: the end of the grab
 		// says it left, with its own LeaveNotify)
 		if w.buttons_down == {} { x11_push(w, {kind = .Mouse_Leave}) }
-	case XCB_FOCUS_IN:
-		w.focused = true; w.active = true
-		x11_push(w, {kind = .Activate})
-	case XCB_FOCUS_OUT:
-		w.focused = false; w.active = false
-		x11_push(w, {kind = .Activate})
+	case XCB_FOCUS_IN, XCB_FOCUS_OUT:
+		// xcb_focus_in_event_t: mode at [8]. A keyboard grab (a menu of the window manager, our own drag) moves no focus
+		if mode := b[8]; mode != X11_NOTIFY_GRAB && mode != X11_NOTIFY_UNGRAB { window_focus(w, type == XCB_FOCUS_IN, {}) }
 	case XCB_EXPOSE:
 		w.paint_requested = true
 	case XCB_CONFIGURE_NOTIFY:
@@ -706,11 +732,13 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		pwin := Xcb_Window(get_u32(b[4:]))
 		patom := Xcb_Atom(get_u32(b[8:]))
 		pstate := b[16]
-		if pwin == st.id && patom == x11c.net_wm_state {
+		if pwin == x11c.screen.root {
+			if patom == x11c.resource_manager { x11_dpi_changed() }
+		} else if pwin == st.id && patom == x11c.net_wm_state {
 			x11_read_wm_state(w)
 		} else if pstate == 1 {   // Deleted: a requestor consumed an INCR chunk, send the next
 			x11_incr_on_property_delete(pwin, patom)
-		} else if pwin == st.id && st.paste_incr && patom == x11c.wren_selection {
+		} else if pwin == st.id && st.paste == .Receiving && patom == x11c.wren_selection {
 			x11_incr_receive_chunk(w)
 		}
 	}
@@ -724,6 +752,7 @@ x11_read_wm_state :: proc(w: ^Window) {
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
 	if reply == nil { return }
 	defer posix.free(reply)
+	if st.map_phase == .Never || st.map_phase == .Asked { return }   // (still Hidden: what it says now is only what was asked)
 	atoms := ([^]Xcb_Atom)(xcb.get_property_value(reply))
 	horz, vert, hidden, full: bool
 	for i in 0 ..< int(xcb.get_property_value_length(reply)) / size_of(Xcb_Atom) {
@@ -734,7 +763,25 @@ x11_read_wm_state :: proc(w: ^Window) {
 		case x11c.net_wm_state_fullscreen:     full = true
 		}
 	}
-	w.minimized, w.maximized, w.fullscreen = hidden, horz && vert, full
+	switch {
+	case hidden || st.map_phase == .Unmapped: w.show = .Minimized   // (a window manager without _NET_WM_STATE_HIDDEN unmaps it)
+	case full:                                w.show = .Fullscreen
+	case horz && vert:                        w.show = .Maximized
+	case:                                     w.show = .Normal
+	}
+}
+
+// Xft.dpi changed (RESOURCE_MANAGER): the windows' scale follows, as a monitor's change on the other systems.
+@(private = "file")
+x11_dpi_changed :: proc() {
+	k := x11_dpi_scale()
+	for x in x11c.windows {
+		if x.dpi_scale == k { continue }
+		x.dpi_scale = k
+		x.display_stale = true
+		x.paint_requested = true
+		apply_cursor(x)
+	}
 }
 
 // Where a point is in another window, and the child of `dst` under it (0: none). xcb_translate_coordinates.
@@ -779,7 +826,8 @@ x11_key :: proc(w: ^Window, keycode: u32, state: u16, press: bool) {
 	}
 	mods := x11_mods(state)
 	if key != .None {
-		x11_push(w, {kind = press ? .Key_Press : .Key_Release, key = key, mods = mods})
+		repeat := press && key in w.keys_down
+		if key_changes(w, key, press) { x11_push(w, {kind = press ? .Key_Press : .Key_Release, key = key, mods = mods, repeat = repeat}) }
 	}
 	if press && text != 0 && .Ctrl not_in mods && .Alt not_in mods {
 		x11_push(w, {kind = .Text, text = text, mods = mods})
@@ -812,19 +860,22 @@ x11_handle_selection_request :: proc(w: ^Window, b: [^]u8) {
 @(private)
 x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 	st := x11_state(w)
-	property := Xcb_Atom(get_u32(b[20:]))   // xcb_selection_notify_event_t: requestor at [8], selection, target, property
-	if property == 0 { st.paste_got = true; return }
+	// xcb_selection_notify_event_t: requestor at [8], selection, target, property. The answer to the read now running: a
+	// read that gave up may hear from its owner when the next one runs
+	if st.paste != .Waiting || Xcb_Atom(get_u32(b[12:])) != st.paste_selection || Xcb_Atom(get_u32(b[16:])) != st.paste_target { return }
+	property := Xcb_Atom(get_u32(b[20:]))
+	if property == 0 { st.paste = .Done; return }
 	// read the property without deleting it first, so we can tell an INCR hand-off (type = INCR) from real data
 	cookie := xcb.get_property(x11c.c, 0, st.id, property, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
-	if reply == nil { st.paste_got = true; return }
+	if reply == nil { st.paste = .Done; return }
 	// xcb_get_property_reply_t: type at [8]
 	ptype := Xcb_Atom(get_u32(([^]u8)(reply)[8:]))
 	n := int(xcb.get_property_value_length(reply))
 	if ptype == x11c.atom_incr {
 		// the real data streams in: delete the property to ask for the first chunk, then read on each PropertyNotify
 		posix.free(reply)
-		st.paste_incr = true
+		st.paste = .Receiving
 		clear(&st.paste_buf)
 		xcb.delete_property(x11c.c, st.id, property)
 		xcb.flush(x11c.c)
@@ -836,10 +887,12 @@ x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 		append(&st.paste_buf, ..data[:n])
 	}
 	posix.free(reply)
-	st.paste_got = true
+	xcb.delete_property(x11c.c, st.id, property)   // (the answer is read: nothing of it stays on the window)
+	xcb.flush(x11c.c)
+	st.paste = .Done
 }
 
-// One INCR chunk arrived on our scratch property (PropertyNotify NewValue while paste_incr): append it, delete the
+// One INCR chunk arrived on our scratch property (PropertyNotify NewValue while Receiving): append it, delete the
 // property to ask for the next. A zero-length chunk ends the transfer.
 @(private)
 x11_incr_receive_chunk :: proc(w: ^Window) {
@@ -856,8 +909,7 @@ x11_incr_receive_chunk :: proc(w: ^Window) {
 		xcb.flush(x11c.c)
 	} else {
 		posix.free(reply)
-		st.paste_incr = false   // the empty terminator: done
-		st.paste_got = true
+		st.paste = .Done   // the empty terminator
 		xcb.delete_property(x11c.c, st.id, x11c.wren_selection)
 		xcb.flush(x11c.c)
 	}
