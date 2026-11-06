@@ -32,8 +32,8 @@ serves diagnostics.
 
 A `Handle` (a `distinct u64`: generation in the high 32 bits, slot index in the low 32) is what an application hands across
 a boundary — to a script, a serialized reference, a foreign API. Removing an object bumps the slot's generation, so any
-copy of the old handle fails to resolve instead of silently reaching whatever reused the slot. Handle 0 is always invalid,
-so a zeroed field or an uninitialized global is safe.
+copy of the old handle fails to resolve instead of silently reaching whatever reused the slot; a slot that has used all its
+generations is retired, not reused. Handle 0 is always invalid, so a zeroed field or an uninitialized global is safe.
 
 ```odin
 p: arena.Pool(Node)
