@@ -509,3 +509,54 @@ controls_without_a_name_are_found :: proc(t: ^testing.T) {
 	got := ui.a11y_unnamed(&f.s)
 	if testing.expect_value(t, len(got), 1) { testing.expect_value(t, got[0].name, "mute") }
 }
+
+// What an adapter that answers from its own tree keeps: an update changes its nodes, what no node reaches goes, a whole tree
+// replaces everything.
+@(test)
+a_tree_takes_an_update :: proc(t: ^testing.T) {
+	tree, u: platform.A11y_Update
+	defer { platform.a11y_update_destroy(&tree); platform.a11y_update_destroy(&u) }
+	u.root, u.focus, u.tree_info = 1, 2, true
+	platform.a11y_node(&u, 1, .Window)
+	platform.a11y_children(&u, {2, 3})
+	platform.a11y_node(&u, 2, .Button)
+	platform.a11y_str(&u, .Label, "two")
+	platform.a11y_node(&u, 3, .Group)
+	platform.a11y_children(&u, {4})
+	platform.a11y_node(&u, 4, .Button)
+	platform.a11y_str(&u, .Label, "four")
+	platform.a11y_tree_merge(&tree, &u)
+	testing.expect_value(t, len(tree.nodes), 4)
+
+	label :: proc(tree: ^platform.A11y_Update, id: u64) -> string {
+		for n, i in tree.nodes { if n.id == id { return platform.a11y_node_string(tree, i, .Label) } }
+		return "(gone)"
+	}
+	// one node changes: the others stay
+	platform.a11y_update_clear(&u)
+	u.root, u.focus = 1, 4
+	platform.a11y_node(&u, 4, .Button)
+	platform.a11y_str(&u, .Label, "renamed")
+	platform.a11y_tree_merge(&tree, &u)
+	testing.expect_value(t, len(tree.nodes), 4)
+	testing.expect_value(t, label(&tree, 4), "renamed")
+	testing.expect_value(t, label(&tree, 2), "two")
+	testing.expect_value(t, tree.focus, u64(4))
+
+	// the group leaves the root's children: it goes, with what is under it
+	platform.a11y_update_clear(&u)
+	u.root, u.focus = 1, 2
+	platform.a11y_node(&u, 1, .Window)
+	platform.a11y_children(&u, {2})
+	platform.a11y_tree_merge(&tree, &u)
+	testing.expect_value(t, len(tree.nodes), 2)
+	testing.expect_value(t, label(&tree, 4), "(gone)")
+
+	// a whole tree: nothing of the old one stays
+	platform.a11y_update_clear(&u)
+	u.root, u.focus, u.tree_info = 9, 9, true
+	platform.a11y_node(&u, 9, .Window)
+	platform.a11y_tree_merge(&tree, &u)
+	testing.expect_value(t, len(tree.nodes), 1)
+	testing.expect_value(t, tree.root, u64(9))
+}

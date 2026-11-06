@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Linux backends against real servers, on a virtual desktop nobody sees: tests/linux_desktop under Xvfb with a window
 # manager, then under a headless Wayland compositor. Never on a person's desktop: DISPLAY and WAYLAND_DISPLAY are this
-# script's. Needs: Xvfb openbox xdotool xclip xprop xwininfo xrandr, Xorg with its dummy driver, sway wl-clipboard wtype, and
+# script's. Needs: Xvfb openbox xdotool xclip xprop xwininfo xrandr, Xorg with its dummy driver, sway wl-clipboard wtype, dbus-daemon, and
 # libxcb, its xfixes and randr libraries, libxkbcommon(-x11), libwayland-client where dlopen finds them.
 #   XORG: how to start Xorg (default: Xorg); XORG_MODULES: more module directories for it.
 #   tools/linux_desktop.sh [odin] [x11|randr|wayland]
