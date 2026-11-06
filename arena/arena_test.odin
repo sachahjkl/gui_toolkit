@@ -49,8 +49,9 @@ pool_iteration_and_reuse :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.used, u32(100))   // free slots were reused, the pool did not grow
 }
 
+// A slot whose generations are spent is retired: reusing it would make an old handle good again.
 @(test)
-generation_wrap_skips_zero :: proc(t: ^testing.T) {
+generations_never_wrap :: proc(t: ^testing.T) {
 	p: Pool(int)
 	defer pool_destroy(&p)
 	h, _ := pool_insert(&p, 1)
@@ -58,10 +59,14 @@ generation_wrap_skips_zero :: proc(t: ^testing.T) {
 	h = handle_make(0, max(u32) - 1)
 	pool_remove(&p, h)
 	h2, _ := pool_insert(&p, 2)   // gen = max
+	testing.expect_value(t, handle_gen(h2), max(u32))
 	pool_remove(&p, h2)
-	h3, _ := pool_insert(&p, 3)   // wraps: must be 1, never 0
+	h3, _ := pool_insert(&p, 3)
+	testing.expect(t, handle_index(h3) != handle_index(h2), "another slot")
 	testing.expect_value(t, handle_gen(h3), u32(1))
 	testing.expect(t, h3 != NIL_HANDLE)
+	testing.expect(t, pool_get(&p, h2) == nil)
+	testing.expect_value(t, p.count, 1)
 }
 
 @(private = "file")

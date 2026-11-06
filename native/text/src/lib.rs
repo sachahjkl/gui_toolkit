@@ -488,11 +488,6 @@ pub unsafe extern "C" fn gt_scripts(text_ptr: *const u8, text_len: usize, out: *
                 _ => runs.push(GtScriptRun { start: i as u32, end, tag: t.to_be_bytes() }),
             }
         }
-        // a leading run of Common characters took its script from nothing: the run after it
-        if runs.len() > 1 && common(Tag::new(&runs[0].tag)) {
-            runs[1].start = 0;
-            runs.remove(0);
-        }
         if !out.is_null() && runs.len() <= cap {
             std::ptr::copy_nonoverlapping(runs.as_ptr(), out, runs.len());
         }
@@ -588,4 +583,26 @@ pub unsafe extern "C" fn gt_file_face_count(path: *const u8, path_len: usize) ->
 #[no_mangle]
 pub extern "C" fn gt_text_version() -> u32 {
     2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runs(text: &str) -> Vec<(u32, u32, Tag)> {
+        let mut out = vec![GtScriptRun { start: 0, end: 0, tag: [0; 4] }; 8];
+        let n = unsafe { gt_scripts(text.as_ptr(), text.len(), out.as_mut_ptr(), out.len()) };
+        out[..n].iter().map(|r| (r.start, r.end, Tag::new(&r.tag))).collect()
+    }
+
+    // Characters of no script take the script of the run around them: the one before, else the one after.
+    #[test]
+    fn common_characters_join_a_run() {
+        let latin = Script::LATIN.tag();
+        assert_eq!(runs("  abc"), vec![(0, 5, latin)]);
+        assert_eq!(runs("abc  "), vec![(0, 5, latin)]);
+        assert_eq!(runs("  "), vec![(0, 2, Script::COMMON.tag())]);
+        let greek = Script::GREEK.tag();
+        assert_eq!(runs("1 a \u{3b1}"), vec![(0, 4, latin), (4, 6, greek)]);
+    }
 }
