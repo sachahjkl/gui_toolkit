@@ -717,6 +717,32 @@ anim :: proc(key: Key, target: f32, rate: f32 = ANIM_RATE_DEFAULT, initial: Mayb
 	return a.value
 }
 
+// Goes to `target` in `ms`, leaving and arriving gently (a smoothstep): for what the eye follows from end to end, where anim's first
+// step, its largest, looks like a jolt. A new target sets off from where the value is, for the whole time. It asks for frames while it
+// moves; 0 ms, or animations off: at once.
+tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil) -> f32 {
+	s := gs()
+	a, found := s.anims[key]
+	if !found {
+		a.value = initial.? or_else target
+		a.from, a.to = a.value, a.value
+	}
+	a.last_build = s.build_index
+	if s.anim_rate == 0 || ms <= 0 {
+		a.value, a.from, a.to = target, target, target
+	} else if target != a.to {
+		a.from, a.to, a.elapsed_s = a.value, target, 0   // (this frame is its start: the time since the last one is not part of it)
+		s.anim_busy = true
+	} else if a.value != a.to {
+		a.elapsed_s += s.dt
+		p := min(a.elapsed_s * 1000 / ms, 1)
+		a.value = p >= 1 ? a.to : a.from + (a.to - a.from) * p * p * (3 - 2 * p)
+		s.anim_busy = true
+	}
+	s.anims[key] = a
+	return a.value
+}
+
 // How long a palette change cross-fades the colours of the boxes.
 PALETTE_FADE_MS :: 160.0
 
