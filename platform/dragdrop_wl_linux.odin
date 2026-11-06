@@ -16,12 +16,13 @@ import "core:sys/posix"
 @(private = "file") WL_DND_ACTIONS_SINCE :: 3   // the version of the data device that has actions
 @(private = "file") WL_DND_POLL_MS :: 100       // between two checks of the limit of a drag
 @(private = "file") WL_BUFFER_DESTROY :: 0
+@(private = "file") WL_DND_NOT_TOLD :: ~u32(0)  // wlc.dnd_told_action of a new offer
 
 // What this thread's connection is dragging now (drag_start), so the shared data-source send callback can feed it.
 @(private)
 Wl_Drag_Store :: struct {
-	data:   Drag_Data,
-	active: bool,
+	data:  Drag_Data,
+	phase: Drag_Phase,
 }
 
 ////////////////////////////////
@@ -46,22 +47,29 @@ wl_dnd_enter :: proc(serial: u32, surface: Wl_Proxy, x, y: f32, offer: Wl_Proxy)
 	}
 	// a window that is no drop target takes nothing: the compositor needs an accepted type for a drop to happen here
 	if !wl_dnd_target(w) { return }
-	// set our preferred action so the compositor shows a cursor
-	if offer != nil {
-		if wl.proxy_get_version(offer) >= WL_DND_ACTIONS_SINCE {
-			wl.proxy_marshal_flags(offer, WL_DATA_OFFER_SET_ACTIONS, nil, wl.proxy_get_version(offer), 0,
-				u32(WL_DND_ACTION_COPY | WL_DND_ACTION_MOVE), u32(WL_DND_ACTION_COPY))
-		}
-	}
 	d := dnd_state(w)
 	context.allocator = d.allocator
 	drag_data_destroy(&d.data)
-	d.allowed = {.Copy, .Move}
+	d.allowed = wlc.offer_actions != 0 ? wl_effects_of(wlc.offer_actions) : {.Copy, .Move}
 	d.over = true
 	d.effect = nil
+	wlc.dnd_told_action = WL_DND_NOT_TOLD
 	deliver_drop(w, .Drop_Enter, {wlc.dnd_x, wlc.dnd_y})
 	wl_dnd_accept(w)
-	wl_push(w, {})   // nudge the loop so the queued event is delivered promptly
+}
+
+@(private = "file")
+wl_effects_of :: proc(actions: u32) -> (out: Drop_Effects) {
+	if actions & WL_DND_ACTION_COPY != 0 { out += {.Copy} }
+	if actions & WL_DND_ACTION_MOVE != 0 { out += {.Move} }
+	return
+}
+
+@(private = "file")
+wl_actions_of :: proc(effects: Drop_Effects) -> (out: u32) {
+	if .Copy in effects { out |= WL_DND_ACTION_COPY }
+	if .Move in effects { out |= WL_DND_ACTION_MOVE }
+	return
 }
 
 @(private = "file")
@@ -72,7 +80,15 @@ wl_dnd_target :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.enabled
 wl_dnd_accept :: proc(w: ^Window) {
 	offer := wlc.dnd_offer
 	if offer == nil { return }
-	if dnd_answer(w) != nil && len(wlc.dnd_mimes) > 0 {
+	// the action wanted, each time the app's answer changes (the compositor shows it, and the source hears it)
+	answer := dnd_answer(w)
+	action: u32
+	if e, ok := answer.?; ok { action = wl_actions_of({e}) }
+	if action != wlc.dnd_told_action && wl.proxy_get_version(offer) >= WL_DND_ACTIONS_SINCE {
+		wl.proxy_marshal_flags(offer, WL_DATA_OFFER_SET_ACTIONS, nil, wl.proxy_get_version(offer), 0, wl_actions_of(w.dnd.allowed), action)
+		wlc.dnd_told_action = action
+	}
+	if answer != nil && len(wlc.dnd_mimes) > 0 {
 		c := strings.clone_to_cstring(wlc.dnd_mimes[0], context.temp_allocator)
 		wl.proxy_marshal_flags(offer, WL_DATA_OFFER_ACCEPT, nil, wl.proxy_get_version(offer), 0, wlc.dnd_enter_serial, c)
 	} else {
@@ -92,12 +108,7 @@ wl_dnd_motion :: proc(x, y: f32) {
 
 @(private)
 wl_dnd_leave :: proc() {
-	w := wlc.dnd_window
-	if w != nil {
-		d := w.dnd
-		if d != nil { d.over = false }
-		if wl_dnd_target(w) { deliver_drop(w, .Drop_Leave, {wlc.dnd_x, wlc.dnd_y}) }
-	}
+	if w := wlc.dnd_window; w != nil { drop_left(w, {wlc.dnd_x, wlc.dnd_y}) }
 	if wlc.dnd_offer != nil {
 		wl.proxy_marshal_flags(wlc.dnd_offer, WL_DATA_OFFER_DESTROY, nil, wl.proxy_get_version(wlc.dnd_offer), WL_MARSHAL_FLAG_DESTROY)
 		wlc.dnd_offer = nil
@@ -115,7 +126,7 @@ wl_dnd_drop :: proc() {
 	// read each flavour the offer advertised into the Drag_Data
 	drag_data_destroy(&d.data)
 	// (the app's own drag: this thread would have to serve the pipe it reads)
-	d.data = wlc.dnd_sending ? drag_data_clone(wlc.drag.data) : wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
+	d.data = wlc.drag.phase != .Idle ? drag_data_clone(wlc.drag.data) : wl_read_drag_data(wlc.dnd_offer, wlc.dnd_mimes[:], d.allocator)
 	if wlc.dnd_offer != nil && wl.proxy_get_version(wlc.dnd_offer) >= WL_DND_ACTIONS_SINCE {
 		wl.proxy_marshal_flags(wlc.dnd_offer, WL_DATA_OFFER_FINISH, nil, wl.proxy_get_version(wlc.dnd_offer), 0)
 	}
@@ -200,22 +211,18 @@ wl_drag_uris :: proc() -> string {
 wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image)) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	st := wl_state(w)
 	if st == nil || wlc.data_device == nil || wlc.data_device_manager == nil { return nil, false }
-	drag_data_destroy(&wlc.drag.data)
-	wlc.drag.data = drag_data_clone(data)
-	wlc.drag.active = true
-	wlc.dnd_source_action = 0
 	src := wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE,
 		wl.data_source_interface, wl.proxy_get_version(wlc.data_device_manager), 0, nil)
 	if src == nil { return nil, false }
+	drag_data_destroy(&wlc.drag.data)
+	wlc.drag.data = drag_data_clone(data)
+	wlc.drag.phase = .Tracking
+	wlc.dnd_source_action = 0
 	wlc.dnd_source = src
-	wlc.dnd_sending = true
 	wl.proxy_add_listener(src, &data_source_listener, nil)
 	for m in drag_data_mimes(data) { wl_source_offer(src, m) }
 	if wl.proxy_get_version(src) >= WL_DND_ACTIONS_SINCE {
-		act: u32 = 0
-		if .Copy in allowed { act |= WL_DND_ACTION_COPY }
-		if .Move in allowed { act |= WL_DND_ACTION_MOVE }
-		wl.proxy_marshal_flags(src, WL_DATA_SOURCE_SET_ACTIONS, nil, wl.proxy_get_version(src), 0, act)
+		wl.proxy_marshal_flags(src, WL_DATA_SOURCE_SET_ACTIONS, nil, wl.proxy_get_version(src), 0, wl_actions_of(allowed))
 	}
 	// the picture: a surface the compositor moves with the pointer, its hot spot where the buffer is attached
 	icon, icon_buffer: Wl_Proxy
@@ -242,26 +249,32 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 		wl.proxy_marshal_flags(icon, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(icon), 0)
 	}
 	wl.display_flush(wlc.display)
-	// pump until the source is cancelled or finished (the compositor drives it); past the limit the drag is given up
-	deadline := time.tick_now()
-	for wlc.dnd_source != nil {
-		if time.duration_milliseconds(time.tick_since(deadline)) > dnd_silence_ms(w) {
-			wl_data_source_destroy(wlc.dnd_source)
-			wlc.dnd_source = nil
-			wlc.dnd_source_action = 0
-			break
+	// pump until the source is cancelled or finished. The compositor drives it, however long the user holds the button:
+	// the limit is the target's, once it has the drop
+	dropped_at: time.Tick
+	for drag_runs(wlc.drag.phase) {
+		if wlc.drag.phase == .Dropped {
+			if dropped_at == {} { dropped_at = time.tick_now() }
+			if time.duration_milliseconds(time.tick_since(dropped_at)) > drag_limit_ms(.Dropped, w) { wl_drag_given_up() }
 		}
+		if wlc.link != .Connected { wl_drag_given_up(); break }
 		poll_fd_wait(wlc.fd, WL_DND_POLL_MS)
 		wl_read_available()
 	}
-	wlc.dnd_sending = false
-	wlc.drag.active = false
+	wlc.drag.phase = .Idle
 	// the compositor keeps the pointer during a drag: the release of the press that began it never comes to the window
 	buttons_released(w, wlc.pointer_pos, wl_mods())
 	eff := wlc.dnd_source_action
 	if eff & WL_DND_ACTION_MOVE != 0 { return .Move, true }
 	if eff & WL_DND_ACTION_COPY != 0 { return .Copy, true }
 	return nil, true
+}
+
+@(private = "file")
+wl_drag_given_up :: proc() {
+	if wlc.dnd_source != nil { wl_data_source_destroy(wlc.dnd_source); wlc.dnd_source = nil }
+	wlc.dnd_source_action = 0
+	wlc.drag.phase = .Abandoned
 }
 
 // The MIME types a Drag_Data offers (the app's own first, then the standard ones).

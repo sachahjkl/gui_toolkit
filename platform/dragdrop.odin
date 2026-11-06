@@ -5,8 +5,9 @@ package platform
 //
 // Receiving: drop_target_enable(window, true) makes the window a drop target. A drag that comes over it queues
 // Drop_Enter, Drop_Over (each time the pointer moves or a modifier changes), then Drop_Leave or Drop, at the pointer's
-// position (client pixels), with the source's allowed effects in Event.drop_allowed. What is dragged is read once, when
-// it enters: drop_data(window) gives it from Drop_Enter until the poll after the Drop / Drop_Leave. The system asks
+// position (client pixels), with the source's allowed effects in Event.drop_allowed. What is dragged is read when it
+// enters on Windows: drop_data(window) gives it from Drop_Enter until the poll after the Drop / Drop_Leave. X11 and Wayland
+// give the bytes only to a drop: there drop_data holds them from the Drop on, and is empty over the window. The system asks
 // "what would happen here" synchronously while the app answers in its next frame: the app says what it would do with
 // drop_set_effect (the answer stays until it changes; none = the drop is refused), and the window gives the system the
 // last answer (as browsers do with their renderer).

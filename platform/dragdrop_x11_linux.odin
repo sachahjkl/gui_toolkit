@@ -44,6 +44,7 @@ x11_dnd_intern_atoms :: proc() {
 	x11c.xdnd_action_move = x11_atom("XdndActionMove")
 	x11c.xdnd_action_link = x11_atom("XdndActionLink")
 	x11c.xdnd_proxy = x11_atom("XdndProxy")
+	x11c.xdnd_action_list = x11_atom("XdndActionList")
 }
 
 // Mark the window as an XDND target (or not).
@@ -71,7 +72,7 @@ X11_Dnd_Target :: struct {
 	types:    [dynamic]Xcb_Atom,
 	accepted: Xcb_Atom,     // the type we will read on drop
 	pos:      [2]f32,
-	active:   bool,
+	window:   ^Window,      // the window it is over (its source's death is told there)
 }
 
 @(private)
@@ -80,8 +81,10 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 	d1 := get_u32(b[16:]); d2 := get_u32(b[20:]); d3 := get_u32(b[24:]); d4 := get_u32(b[28:])
 	switch mtype {
 	case x11c.xdnd_enter:
+		drop_left(w, x11c.dnd_target.pos)   // (a source that went without a word)
 		x11c.dnd_target.source = Xcb_Window(get_u32(b[12:]))
 		x11c.dnd_target.version = int(d1 >> XDND_VERSION_SHIFT)
+		x11c.dnd_target.window = w
 		clear(&x11c.dnd_target.types)
 		if d1 & 1 != 0 {
 			// more than three types: read the XdndTypeList property on the source
@@ -90,16 +93,20 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 			for a in ([]u32{d2, d3, d4}) { if a != 0 { append(&x11c.dnd_target.types, Xcb_Atom(a)) } }
 		}
 		x11c.dnd_target.accepted = x11_dnd_pick_type()
-		x11c.dnd_target.active = true
+		// its end, if it dies without a word: nothing else tells (a window of ours keeps its mask)
+		if !x11_is_ours(x11c.dnd_target.source) {
+			x11_change_window_attrs_event_mask(x11c.dnd_target.source, XCB_EVENT_MASK_STRUCTURE_NOTIFY)
+			xcb.flush(x11c.c)
+		}
 	case x11c.xdnd_position:
 		rootx := i16(u16(d2 >> 16)); rooty := i16(u16(d2 & 0xffff))   // data32[2]
 		p := x11_root_to_client(w, int(rootx), int(rooty))
 		x11c.dnd_target.pos = p
 		d := dnd_state(w)
+		d.allowed = x11_source_actions(x11c.dnd_target.source, Xcb_Atom(d4))
 		if !d.over {
 			context.allocator = d.allocator
 			drag_data_destroy(&d.data)
-			d.allowed = {.Copy, .Move, .Link}
 			d.over = true
 			d.effect = nil
 			deliver_drop(w, .Drop_Enter, p)
@@ -109,12 +116,9 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 		e := dnd_answer(w)
 		if x11c.dnd_target.accepted == 0 { e = nil }
 		x11_send_xdnd_status(w, x11c.dnd_target.source, e)
-		x11_push(w, {})
 	case x11c.xdnd_leave:
-		d := w.dnd
-		if d != nil { d.over = false }
-		deliver_drop(w, .Drop_Leave, x11c.dnd_target.pos)
-		x11c.dnd_target.active = false
+		drop_left(w, x11c.dnd_target.pos)
+		x11c.dnd_target.window = nil
 	case x11c.xdnd_drop:
 		d := dnd_state(w)
 		// request the selection for the accepted type; the data arrives as a SelectionNotify we read synchronously
@@ -128,8 +132,39 @@ x11_dnd_client_message :: proc(w: ^Window, mtype: Xcb_Atom, b: [^]u8) {
 		e := dnd_answer(w)
 		if x11c.dnd_target.accepted == 0 { e = nil }
 		x11_send_xdnd_finished(w, x11c.dnd_target.source, e)
-		x11c.dnd_target.active = false
+		x11c.dnd_target.window = nil
 	}
+}
+
+// The drag's source died under a window (DestroyNotify of the window it named at XdndEnter).
+@(private)
+x11_dnd_source_gone :: proc(source: Xcb_Window) {
+	t := &x11c.dnd_target
+	if t.window == nil || t.source != source { return }
+	drop_left(t.window, t.pos)
+	t.window = nil
+}
+
+// What the source allows: its XdndActionList, else the action of its XdndPosition.
+@(private = "file")
+x11_source_actions :: proc(source: Xcb_Window, action: Xcb_Atom) -> (out: Drop_Effects) {
+	reply := xcb.get_property_reply(x11c.c, xcb.get_property(x11c.c, 0, source, x11c.xdnd_action_list, XCB_ATOM_ATOM, 0, XDND_TYPE_LIST_MAX_WORDS), nil)
+	if reply != nil {
+		defer posix.free(reply)
+		atoms := ([^]Xcb_Atom)(xcb.get_property_value(reply))
+		for i in 0 ..< int(xcb.get_property_value_length(reply)) / size_of(Xcb_Atom) { out += x11_effect_of(atoms[i]) }
+	}
+	return out != {} ? out : x11_effect_of(action)
+}
+
+@(private = "file")
+x11_effect_of :: proc(action: Xcb_Atom) -> Drop_Effects {
+	switch action {
+	case x11c.xdnd_action_copy: return {.Copy}
+	case x11c.xdnd_action_move: return {.Move}
+	case x11c.xdnd_action_link: return {.Link}
+	}
+	return {}
 }
 
 @(private)
@@ -223,11 +258,11 @@ X11_Dnd_Source :: struct {
 	data:      Drag_Data,
 	allowed:   Drop_Effects,
 	targets:   [dynamic]Xcb_Atom,
-	active:    bool,
+	phase:     Drag_Phase,
+	button:    u8,             // the core button whose release ends the drag
 	window:    Xcb_Window,
 	target:    Xcb_Window,     // the toplevel under the pointer we are talking to
-	accepted:  bool,
-	finished:  bool,
+	accepted:  bool,           // it says a drop there would be taken
 	dest:      Xcb_Window,     // where the messages for it go: the target, or its XdndProxy
 	action:    Xcb_Atom,       // the action asked of the target
 	image:     X11_Drag_Image,
@@ -240,27 +275,65 @@ X11_Dnd_Source :: struct {
 x11_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image)) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	st := x11_state(w)
 	if st == nil { return nil, false }
-	drag_data_destroy(&x11c.dnd_source.data)
+	// the drag follows the press that began it: a press already released has nothing to end it
+	button := x11_core_button(w.buttons_down)
+	if button == 0 { return nil, false }
 	x11c.dnd_source = {}
 	x11c.dnd_source.data = drag_data_clone(data)
 	x11c.dnd_source.allowed = allowed
 	x11c.dnd_source.window = st.id
-	x11c.dnd_source.active = true
+	x11c.dnd_source.phase = .Tracking
+	x11c.dnd_source.button = button
 	x11c.dnd_source.action = x11_action_atom(drop_effect_for(allowed, {}))
 	x11_dnd_build_targets(data)
 	if img, has := image.?; has { x11_drag_image_make(w, img) }
 	// own XdndSelection so the target can read our data (served by the same SelectionRequest handler)
 	x11_dnd_own_selection(st.id)
-	// publish the type list for more than three types
+	// publish the type list for more than three types, and what the target may do
 	if len(x11c.dnd_source.targets) > XDND_INLINE_TYPES {
 		xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_type_list, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(x11c.dnd_source.targets)), raw_data(x11c.dnd_source.targets[:]))
 	}
+	actions := make([dynamic]Xcb_Atom, context.temp_allocator)
+	for e in allowed { append(&actions, x11_action_atom(e)) }
+	xcb.change_property(x11c.c, XCB_PROP_MODE_REPLACE, st.id, x11c.xdnd_action_list, XCB_ATOM_ATOM, X11_FORMAT_32, u32(len(actions)), raw_data(actions[:]))
+	x11_keyboard_grab(st.id, true)
 	result := x11_dnd_source_loop(w)
+	x11_keyboard_grab(st.id, false)
+	x11_set_selection_owner(x11c.xdnd_selection, 0)   // (what asks for it now is told there is nothing)
+	xcb.delete_property(x11c.c, st.id, x11c.xdnd_action_list)
 	x11_drag_image_free()
 	drag_data_destroy(&x11c.dnd_source.data)
 	delete(x11c.dnd_source.targets)
-	x11c.dnd_source.active = false
+	x11c.dnd_source.phase = .Idle
 	return result, true
+}
+
+// The first of the buttons held, as the server numbers it (0: none).
+@(private = "file")
+x11_core_button :: proc(down: Mouse_Buttons) -> u8 {
+	for b in down {
+		switch b {
+		case .Left:    return 1
+		case .Middle:  return 2
+		case .Right:   return 3
+		case .Back:    return 8
+		case .Forward: return 9
+		}
+	}
+	return 0
+}
+
+// Escape reaches the drag wherever the focus is. (A refused grab: Escape then works only with the focus here.)
+@(private = "file")
+x11_keyboard_grab :: proc(id: Xcb_Window, on: bool) {
+	if xcb.grab_keyboard == nil || xcb.grab_keyboard_reply == nil || xcb.ungrab_keyboard == nil { return }
+	X11_GRAB_MODE_ASYNC :: 1
+	if on {
+		if reply := xcb.grab_keyboard_reply(x11c.c, xcb.grab_keyboard(x11c.c, 0, id, 0, X11_GRAB_MODE_ASYNC, X11_GRAB_MODE_ASYNC), nil); reply != nil { posix.free(reply) }
+	} else {
+		xcb.ungrab_keyboard(x11c.c, 0)
+		xcb.flush(x11c.c)
+	}
 }
 
 @(private)
@@ -285,40 +358,61 @@ x11_dnd_own_selection :: proc(owner: Xcb_Window) {
 // otherwise stay pressed).
 @(private)
 x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
-	deadline := time.tick_now()
-	released, dropped := false, false
+	s := &x11c.dnd_source
+	heard := time.tick_now()   // the user or the target, last
 	last_target: Xcb_Window = 0
-	for !x11c.dnd_source.finished {
+	for drag_runs(s.phase) {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev != nil {
 			b := ([^]u8)(ev)
 			type := ev.response_type & X11_RESPONSE_TYPE_MASK
 			switch type {
 			case XCB_MOTION_NOTIFY:
+				if s.phase != .Tracking { break }
+				heard = time.tick_now()
 				rootx := int(i16(u16(b[20]) | u16(b[21]) << 8))
 				rooty := int(i16(u16(b[22]) | u16(b[23]) << 8))
 				x11_drag_image_move(rootx, rooty)
 				tgt, dest := x11_window_at(rootx, rooty)
 				if tgt != last_target {
 					if last_target != 0 { x11_send_source_leave(last_target) }
-					x11c.dnd_source.dest = dest
+					s.dest = dest
 					if tgt != 0 { x11_send_source_enter(tgt) }
 					last_target = tgt
-					x11c.dnd_source.target = tgt
+					s.target = tgt
 				}
 				if tgt != 0 { x11_send_source_position(tgt, rootx, rooty) }
 			case XCB_BUTTON_RELEASE:
-				released = true
 				x11_handle_event(w, ev)
+				if b[1] == s.button && s.phase == .Tracking {
+					heard = time.tick_now()
+					if s.target != 0 && s.accepted {
+						x11_send_source_drop(s.target)
+						s.phase = .Dropped   // XdndFinished ends it
+					} else {
+						s.phase = .Abandoned
+					}
+				}
+			case XCB_KEY_PRESS:
+				if x11_key_is_escape(b[1]) {
+					if s.phase == .Tracking { s.phase = .Abandoned }
+				} else {
+					x11_handle_event(w, ev)
+				}
 			case XCB_CLIENT_MESSAGE:
 				mtype := Xcb_Atom(get_u32(b[8:]))
+				from := Xcb_Window(get_u32(b[12:]))   // (a late word of the target the pointer left says nothing of this one)
 				if mtype == x11c.xdnd_status {
-					x11c.dnd_source.accepted = get_u32(b[16:]) & 1 != 0
-					x11c.dnd_source.answer = Xcb_Atom(get_u32(b[28:]))
+					if from == s.target {
+						s.accepted = get_u32(b[16:]) & 1 != 0
+						s.answer = Xcb_Atom(get_u32(b[28:]))
+					}
 				} else if mtype == x11c.xdnd_finished {
-					x11c.dnd_source.accepted = get_u32(b[16:]) & 1 != 0
-					if a := Xcb_Atom(get_u32(b[20:])); a != 0 { x11c.dnd_source.answer = a }
-					x11c.dnd_source.finished = true
+					if from == s.target {
+						s.accepted = get_u32(b[16:]) & 1 != 0
+						if a := Xcb_Atom(get_u32(b[20:])); a != 0 { s.answer = a }
+						s.phase = .Finished
+					}
 				} else {
 					x11_handle_event(w, ev)   // the drag over this app's own window: its drop target's messages
 				}
@@ -327,21 +421,22 @@ x11_dnd_source_loop :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 			}
 			posix.free(ev)
 		}
-		if released {
-			released = false
-			if x11c.dnd_source.target != 0 && x11c.dnd_source.accepted {
-				x11_send_source_drop(x11c.dnd_source.target)
-				dropped = true   // wait for XdndFinished
-			} else {
-				break
-			}
+		if drag_runs(s.phase) && time.duration_milliseconds(time.tick_since(heard)) > drag_limit_ms(s.phase, w) {
+			if s.phase == .Dropped { s.target = 0 }   // (it had its XdndDrop: no leave comes after)
+			s.phase = .Abandoned
 		}
-		if time.duration_milliseconds(time.tick_since(deadline)) > dnd_silence_ms(w) { break }
-		if ev == nil { poll_fd_wait(x11c.fd, XDND_SOURCE_POLL_MS) }
+		if ev == nil {
+			x11_check_link()
+			if x11c.link != .Connected { s.phase = .Abandoned; break }
+			poll_fd_wait(x11c.fd, XDND_SOURCE_POLL_MS)
+		}
 	}
-	if !dropped && x11c.dnd_source.target != 0 { x11_send_source_leave(x11c.dnd_source.target) }
-	if !x11c.dnd_source.finished || !x11c.dnd_source.accepted { return nil }
-	switch x11c.dnd_source.answer {
+	if s.phase == .Abandoned {
+		if s.target != 0 { x11_send_source_leave(s.target) }
+		return nil
+	}
+	if !s.accepted { return nil }
+	switch s.answer {
 	case x11c.xdnd_action_move: return .Move
 	case x11c.xdnd_action_link: return .Link
 	}
@@ -495,6 +590,7 @@ x11_root_to_client :: proc(w: ^Window, rootx, rooty: int) -> [2]f32 {
 X11_Drag_Image :: struct {
 	window:  Xcb_Window,
 	pixmap:  u32,
+	colormap: Xcb_Colormap,   // made for its visual (0: the screen's)
 	mapped:  bool,
 	through: bool,     // the pointer passes through it (XFIXES); else it is kept beside the pointer
 	size:    [2]int,
@@ -556,10 +652,12 @@ x11_drag_image_make :: proc(w: ^Window, img: Drag_Image) {
 	depth: u8 = x11c.screen.root_depth
 	visual := x11c.screen.root_visual
 	colormap := u32(x11c.screen.default_colormap)
+	made_colormap: Xcb_Colormap
 	if argb := x11_argb_visual(); argb != 0 {
 		depth, visual = X11_ARGB_DEPTH, argb
 		colormap = xcb.generate_id(x11c.c)
-		xcb.create_colormap(x11c.c, 0, Xcb_Colormap(colormap), root, visual)
+		made_colormap = Xcb_Colormap(colormap)
+		xcb.create_colormap(x11c.c, 0, made_colormap, root, visual)
 	}
 	pixmap := xcb.generate_id(x11c.c)
 	x11_image.create_pixmap(x11c.c, depth, pixmap, root, u16(fit.size.x), u16(fit.size.y))
@@ -576,7 +674,7 @@ x11_drag_image_make :: proc(w: ^Window, img: Drag_Image) {
 	values := [4]u32{pixmap, 0, 1, colormap}   // in the order of their bits: background, border, override redirect, colormap
 	xcb.create_window(x11c.c, depth, id, root, 0, 0, u16(fit.size.x), u16(fit.size.y), 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, visual,
 		XCB_CW_BACK_PIXMAP | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP, &values[0])
-	x11c.dnd_source.image = {window = id, pixmap = pixmap, through = x11_window_input_through(id), size = fit.size, offset = fit.offset}
+	x11c.dnd_source.image = {window = id, pixmap = pixmap, colormap = made_colormap, through = x11_window_input_through(id), size = fit.size, offset = fit.offset}
 	xcb.flush(x11c.c)
 	d := dnd_state(w)
 	d.image_held, d.image_size, d.image_offset = true, fit.size, fit.offset
@@ -601,6 +699,7 @@ x11_drag_image_free :: proc() {
 	if im.window == 0 { return }
 	xcb.destroy_window(x11c.c, im.window)
 	if x11_image.free_pixmap != nil { x11_image.free_pixmap(x11c.c, im.pixmap) }
+	if im.colormap != 0 && xcb.free_colormap != nil { xcb.free_colormap(x11c.c, im.colormap) }
 	xcb.flush(x11c.c)
 	im^ = {}
 }

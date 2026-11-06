@@ -11,8 +11,20 @@ package platform
 import "base:runtime"
 import "core:time"
 
-@(private) DND_SOURCE_WAIT_MS :: 60000   // a drag from the window gives up after this long without an end
+@(private) DND_SOURCE_WAIT_MS :: 60000   // a drag from the window gives up after this long without a sign of the user
+@(private) DND_FINISH_WAIT_MS :: 5000    // a target that took a drop has this long to say it is done
 @(private = "file") DRAG_THRESHOLD_PX :: 4
+
+// Where a drag from this app is, on either transport. Tracking: it follows the user. Dropped: released over a target
+// that took it, which reads the data. Finished and Abandoned are its ends: the target's answer stands, or there is none.
+@(private) Drag_Phase :: enum u8 { Idle, Tracking, Dropped, Finished, Abandoned }
+
+// Whether a drag still runs.
+@(private) drag_runs :: proc(p: Drag_Phase) -> bool { return p == .Tracking || p == .Dropped }
+
+// The silence that ends a drag in this phase: the limit of a user who holds a button is not the one of a program that was asked.
+@(private)
+drag_limit_ms :: proc(p: Drag_Phase, w: ^Window) -> f64 { return p == .Dropped ? min(DND_FINISH_WAIT_MS, dnd_silence_ms(w)) : dnd_silence_ms(w) }
 @(private) DRAG_IMAGE_MAX_PX :: 512
 
 // What a window keeps for drag and drop (Native_Window.dnd, made on first use). Mirrors the Win32 Dnd_State fields the
@@ -24,6 +36,7 @@ Dnd_State :: struct {
 	effect:    Maybe(Drop_Effect), // the app's answer (drop_set_effect)
 	allowed:   Drop_Effects,       // the source's
 	over:      bool,               // between Drop_Enter and Drop_Leave / Drop
+	last_pos:  [2]f32,             // where the last Drop_* event said
 	sending:   bool,               // drag_start runs from this window
 	allocator: runtime.Allocator,  // the app's, when the state was made: `data` lives in it
 	sync:      Drop_Sync,          // drop_sync_set
@@ -53,6 +66,7 @@ drop_target_enable :: proc(w: ^Window, on: bool) -> bool {
 	d := dnd_state(w)
 	if on == d.enabled { return true }
 	d.enabled = on
+	if !on { drop_left(w, d.last_pos) }
 	switch w.backend {
 	case .Wayland: // the compositor routes drags to the focused surface; nothing to register
 	case .X11:     x11_dnd_set_aware(w, on)
@@ -72,18 +86,17 @@ drag_threshold :: proc(w: ^Window) -> [2]f32 { return {DRAG_THRESHOLD_PX, DRAG_T
 // source loop. Blocks until the drop or cancel; returns the chosen effect. ok = false when the backend could not start
 // it (no data, no serial).
 drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) {
-	if drag_data_empty(data) || allowed == {} { return nil, false }
-	if w == nil || w.offscreen { return nil, false }
+	if w == nil { return nil, false }
 	d := dnd_state(w)
+	steps := d.script   // (this drag's, however it ends)
+	d.script = {}
+	defer delete(steps)
+	if drag_data_empty(data) || allowed == {} { return nil, false }
+	if w.offscreen && len(steps) == 0 { return nil, false }
 	d.image_held, d.image_size, d.image_offset = false, {}, {}
-	if len(d.script) > 0 {
-		steps := d.script
-		d.script = {}
-		defer delete(steps)
-		return drag_run_script(w, data, allowed, steps[:]), true
-	}
 	d.sending = true
 	defer d.sending = false
+	if len(steps) > 0 { return drag_run_script(w, data, allowed, steps[:]), true }
 	switch w.backend {
 	case .Wayland: return wl_drag_start(w, data, allowed, image)
 	case .X11:     return x11_drag_start(w, data, allowed, image)
@@ -127,6 +140,7 @@ drag_image_bgra :: proc(img: Drag_Image) -> (fit: Drag_Image, bgra: []u8) {
 deliver_drop :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, mods: Modifiers = {}) -> Maybe(Drop_Effect) {
 	d := w.dnd
 	if d == nil { return nil }
+	d.last_pos = pos
 	ev := Event{kind = kind, pos = pos, mods = mods, drop_allowed = d.allowed, stamp = time.tick_now()}
 	if d.sending && d.sync != nil {
 		e := d.sync(d.sync_user, w, ev)
@@ -138,6 +152,16 @@ deliver_drop :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, mods: Modifiers 
 	return kind == .Drop_Leave ? nil : d.effect
 }
 
+// A drag over the window is over: its Drop_Leave, when one was over it. What a backend does for a leave of the system's, a
+// source that died, a window that stops taking drops.
+@(private)
+drop_left :: proc(w: ^Window, pos: [2]f32) {
+	d := w.dnd
+	if d == nil || !d.over { return }
+	d.over = false
+	deliver_drop(w, .Drop_Leave, pos)
+}
+
 // The app's last answer, when the source allows it. A drag of this very process (over the window it started from or
 // another of its windows), with no drop_sync_set: the thread is in drag_start and cannot answer before the drop, the
 // convention does.
@@ -146,7 +170,7 @@ dnd_answer :: proc(w: ^Window) -> Maybe(Drop_Effect) {
 	d := w.dnd
 	if d == nil { return nil }
 	if e, ok := d.effect.?; ok && e in d.allowed { return e }
-	if (d.sending && d.sync == nil) || (!d.sending && (x11c.dnd_source.active || wlc.dnd_sending)) { return drop_effect_for(d.allowed, {}) }
+	if (d.sending && d.sync == nil) || (!d.sending && (x11c.dnd_source.phase != .Idle || wlc.drag.phase != .Idle)) { return drop_effect_for(d.allowed, {}) }
 	return nil
 }
 
@@ -158,6 +182,7 @@ drag_run_script :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, step
 	drag_data_destroy(&d.data)
 	d.data = drag_data_clone(data)
 	d.allowed = allowed
+	d.effect = nil   // (a new drag: nothing accepted until the app says so, as DragEnter on Windows)
 	inside := false
 	result: Maybe(Drop_Effect)
 	for s, i in steps {

@@ -69,7 +69,8 @@ Wl_Conn :: struct {
 	dnd_enter_serial: u32,
 	dnd_x, dnd_y:  f32,
 	dnd_source:    Wl_Proxy,      // our wl_data_source while we drag from this app
-	dnd_sending:   bool,
+	offer_actions: u32,           // what the source of the last offer allows (wl_data_offer.source_actions)
+	dnd_told_action: u32,         // the action last asked for on the offer over the window
 	// IME (ime_wl_linux.odin): the text-input manager and the per-seat text-input object
 	ti_manager:    Wl_Proxy,
 	text_input:    Wl_Proxy,
