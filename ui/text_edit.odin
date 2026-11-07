@@ -21,7 +21,6 @@ import "../platform"
 TEXT_UNDO_MAX :: 200
 @(private="file") TEXT_UNDO_GROUP_MS :: 1000
 @(private="file") TEXT_EDIT_LINE_HEIGHT :: 1.15   // of the font's line height
-@(private="file") TEXT_EDIT_WHEEL_LINES :: 3
 @(private="file") TEXT_EDIT_GUTTER_FONT_SCALE :: 0.85
 // Room kept past the longest line, so the caret at its end is seen.
 @(private="file") TEXT_EDIT_END_SLACK_PX :: 4
@@ -577,8 +576,8 @@ edit_pointer :: proc(e: ^Edit_Build) {
 		a.mark, a.cursor = a.word.lo, a.word.hi
 	}
 	if res.scrolled != {} {
-		a.scroll.y += res.scrolled.y * lh * TEXT_EDIT_WHEEL_LINES
-		if wrap_w <= 0 { a.scroll.x += res.scrolled.x * lh * TEXT_EDIT_WHEEL_LINES }
+		a.scroll.y += res.scrolled.y * wheel_step(b, .Y)
+		if wrap_w <= 0 { a.scroll.x += res.scrolled.x * wheel_step(b, .X) }
 	}
 }
 
