@@ -31,6 +31,7 @@
 package host
 
 import "core:fmt"
+import "core:time"
 import "../draw"
 import "../font"
 import "../platform"
@@ -82,6 +83,7 @@ Host :: struct {
 
 	// The hooks, all optional, in the order of a frame.
 	before_input: proc(h: ^Host),                                      // before the input is read (a remote control's commands: this frame's)
+	still:        proc(h: ^Host, events: []platform.Event) -> bool,   // nothing it shows changed: no build, no picture (the last one stays)
 	dragging:     proc(h: ^Host) -> bool,                              // the pacer paces as a drag. nil: a press is held
 	input:        proc(h: ^Host, events: []platform.Event) -> []platform.Event,   // what is left of the input for the interface
 	params:       proc(h: ^Host, p: ^ui.Build_Params),                 // what each build is given
@@ -89,10 +91,26 @@ Host :: struct {
 	after_build:  proc(h: ^Host),                                      // the interface is built, nothing is drawn
 	hold:         proc(h: ^Host, size: Vec2) -> (ms: int),             // > 0: no picture this frame, and a wake within that
 	rest_frame:   proc(h: ^Host),   // from the system's loop, no step of a resize to show: the program's whole frame. nil: this window's
+	after_frame:  proc(h: ^Host),   // the picture is out (or held): what the program does between two frames. Not after a frame that found its window closed
 
 	slept:   bool,     // the loop slept before this frame (hosts_wait)
+	times:   Host_Times,   // the last picture's steps
 	shown:   [2]int,   // the size of the last picture
 	last_ms: f64,      // the clock at the last frame
+}
+
+// How long the steps of the last picture took. (The builds are the application's to time: `builds` may make several.)
+Host_Times :: struct { draw, present: time.Duration }
+
+// A window and a renderer the application made itself, in its own order of start (a device loaded on a thread while its fonts load, its
+// own faces): the host takes them as they are, `sh` filled. The first one adopted is the main one. Its state is the application's to
+// init (ui.init), as it was before.
+host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^Host, size: Vec2), user: rawptr = nil) {
+	first := sh.main == nil
+	h.shared, h.win, h.build, h.user, h.paced = sh, w, build, user, first
+	if first { sh.main = h }
+	h.last_ms = ui.now_ms()
+	w.user, w.on_frame = h, host_paint
 }
 
 // Opens a window: the first one makes what is shared, the others a surface on it. `h` stays where it is until host_close (the window
@@ -203,6 +221,7 @@ host_frame :: proc(h: ^Host, inner := false) {
 	if platform.is_closed(h.win) { return }
 	ui.use(&h.state)   // (a frame of another window may have run in that call)
 	host_picture(h, events, at_once)
+	if h.after_frame != nil { h.after_frame(h) }
 	if !inner && h.settle > 0 { h.settle -= 1 }
 	free_all(context.temp_allocator)
 }
@@ -224,6 +243,7 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
 	render.mark_input(r)
 	events := read
 	if len(events) > 0 { h.settle = max(h.settle, h.after_input) }
+	if h.still != nil && h.still(h, events) { return }
 	if h.input != nil { events = h.input(h, events) }
 	render.resize(r, h.win.size)
 	size := Vec2{f32(h.win.size.x), f32(h.win.size.y)}
@@ -237,12 +257,15 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
 		ui.wake_within(&h.state, left)
 		return
 	}
+	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	render.frame_begin(r, h.background)
 	ui.draw_tree(&h.state, &sh.dc)
 	draw.end_frame(&sh.dc)
+	t_present := time.tick_now()
 	render.frame_end(r, h.paced && !at_once)
 	if h.paced { render.paced_present(&h.pacer) }
+	h.times = {draw = time.tick_diff(t_draw, t_present), present = time.tick_since(t_present)}
 	h.shown = h.win.size
 }
 
