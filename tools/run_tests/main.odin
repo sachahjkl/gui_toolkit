@@ -132,7 +132,10 @@ STEPS := []Step{
 	// text
 	{name = "text", wgpu = .Ci1},
 	{name = "subpixel"},
-	{name = "subpixel_slug", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "TOOLKIT_WGPU_DX12_COMPILER=fxc", "FONT_TEXT_RENDERER=slug"}},
+	{name = "subpixel_slug", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "FONT_TEXT_RENDERER=slug"}},
+	// FXC, the compiler every Windows has (no DXC beside the program): one device, so every shader through it once. (Each device costs FXC
+	// some ten seconds: the whole package with it was four minutes.)
+	{name = "subpixel_fxc", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "TOOLKIT_WGPU_DX12_COMPILER=fxc", "FONT_TEXT_RENDERER=slug", "ODIN_TEST_NAMES=subpixel_test.light_text_on_dark_reaches_its_colour"}},
 	{name = "slug", wgpu = .Ci1, sample = true},
 	{name = "colr", need = .Emoji, wgpu = .Ci1},
 	{name = "color_glyphs", wgpu = .Ci3},
@@ -311,8 +314,11 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 
 	cmd := make([dynamic]string, context.temp_allocator)
 	suffix := o.backend != "" ? fmt.tprintf("_%s", o.backend) : ""
-	// (the WebGPU programs next to DXC's DLLs, which tools/tk fetch_wgpu leaves in build/: without them wgpu falls back to FXC)
-	exe := fmt.tprintf("%s/%s%s%s", o.backend == "wgpu" ? "build" : BUILD_DIR, s.name, suffix, EXE_SUFFIX)
+	// (the WebGPU programs next to DXC's DLLs, which tools/tk fetch_wgpu leaves in build/: without them wgpu falls back to FXC, ten
+	// seconds a device. A step asks for WebGPU by its backend or by its own defines)
+	on_wgpu := o.backend == "wgpu"
+	for d in s.defines { if d == "TOOLKIT_RENDER=wgpu" { on_wgpu = true } }
+	exe := fmt.tprintf("%s/%s%s%s", on_wgpu ? "build" : BUILD_DIR, s.name, suffix, EXE_SUFFIX)
 	here, _ := os.get_working_directory(context.temp_allocator)
 	exe_path := fmt.tprintf("%s/%s", here, exe)
 	switch s.kind {
