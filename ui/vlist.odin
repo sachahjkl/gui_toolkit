@@ -66,16 +66,10 @@ vlist_invalidate :: proc(st: ^Virtual_List) { clear(&st.measured) }
 vlist_scroll_to :: proc(st: ^Virtual_List, y: f32) {
 	st.has_anchor = false
 	if b := box_from_key(st.key); b != nil {
-		vlist_view_at(b, y)
+		view_jump(b, y)
 	} else {
 		st.scroll_to = y
 	}
-}
-
-@(private = "file")
-vlist_view_at :: proc(b: ^Box, y: f32) {
-	b.view_off.y, b.view_target.y = y, y
-	b.view_anim[1].active = false
 }
 
 // Top of row `i` in the content and its height (estimated if never laid out) as of this build.
@@ -112,7 +106,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	s.virtual_depth += 1
 	wheel := signal(b).scrolled   // the wheel (against last build's bounds)
 	if wheel != {} { st.reveal, st.reveal_wait = 0, 0 }   // the user scrolls: the active row no longer pulls the view
-	if y, asked := st.scroll_to.?; asked { vlist_view_at(b, y); st.scroll_to = nil }
+	if y, asked := st.scroll_to.?; asked { view_jump(b, y); st.scroll_to = nil }
 	st.virtual = true
 	st.key = b.key
 	st.activated, st.cancelled, st.changed = false, false, false
@@ -157,6 +151,8 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	total := y
 
 	// 3. the view stays on the row it showed, wherever that row is now
+	view_h := b.size.y > 0 ? b.size.y : s.window_size.y
+	limit := max(0, total - view_h)   // (not view_limit: the bounds are last build's, these rows' are known)
 	dragging := s.active_key[.Left] == scrollbar_key(b)
 	if st.has_anchor && !dragging && n > 0 {
 		at := -1
@@ -165,14 +161,9 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		if at < 0 { for k in 0 ..< n { if ids[k] == st.anchor_id { at = k; break } } }
 		if at >= 0 {
 			moved := st.offsets[at] - st.anchor_top   // what the rows above it grew or shrank by
-			if abs(moved) > VLIST_ANCHOR_MOVED_PX && b.view_off.y > 0 {
-				b.view_off.y += moved
-				if b.view_target.y > 0 { b.view_target.y += moved }   // (heading for the top: stays the top)
-			}
+			if abs(moved) > VLIST_ANCHOR_MOVED_PX && b.view_off.y > 0 { view_shift(b, moved, limit) }
 		}
 	}
-	view_h := b.size.y > 0 ? b.size.y : s.window_size.y
-	limit := max(0, total - view_h)
 	b.view_target.y = clamp(b.view_target.y, 0, limit)
 	b.view_off.y = clamp(b.view_off.y, 0, max(limit, b.view_off.y))
 
@@ -209,8 +200,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 			st.reveal_wait += 1
 		}
 		top, bottom := st.offsets[st.sel], st.offsets[st.sel + 1]
-		if top < b.view_target.y { b.view_target.y = top }
-		if bottom > b.view_target.y + view_h { b.view_target.y = min(bottom - view_h, top) }
+		b.view_target.y = view_reveal_offset(b.view_target.y, top, bottom, view_h)
 		s.anim_busy = true
 	}
 

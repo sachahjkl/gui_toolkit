@@ -170,10 +170,7 @@ lazy_settle :: proc(s: ^State) {
 				if b.key != c.anchor { continue }
 				moved := content_top(sb, b) - c.anchor_top
 				if abs(moved) > LAZY_ANCHOR_MOVED_PX {
-					limit := max(0, sb.view_bounds.y - sb.size.y)
-					sb.view_off.y = clamp(sb.view_off.y + moved, 0, limit)
-					sb.view_target.y = clamp(sb.view_target.y + moved, 0, limit)
-					if a := &sb.view_anim[1]; a.active { a.from += f64(moved); a.to += f64(moved) }
+					view_shift(sb, moved, view_limit(sb))
 					layout_positions(sb, .Y)
 				}
 				break
