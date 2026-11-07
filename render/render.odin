@@ -384,12 +384,45 @@ Texture_Data :: struct {
 	canvas: u8,           // RGBA, canvas.odin: 0 not a canvas texture, else a CANVAS_TEX_* (see canvas_texture_objects)
 }
 
+// All that is one window's: a Renderer has the one it draws to, a Surface one set aside, and surface_use exchanges the
+// two whole (`exchange`). A field that belongs to a window goes here and needs no list of its own; what all the windows
+// of a renderer share (the device, what is made on it, settings) stays in Renderer. On WebGPU the part made of wgpu
+// objects is Wgpu_Window, which moves with this.
+// Several kilobytes (Present_State's ring of 256 frames): moved through pointers, never by value (see surface_create).
+Window_Target :: struct {
+	swapchain:   ^dxgi.ISwapChain1,
+	rtv:         ^d3d11.IRenderTargetView,
+	frame_tex:   ^d3d11.ITexture2D,       // what `rtv` draws into (back buffer or offscreen image): snapshots copy it
+	frame_format: dxgi.FORMAT,            // its storage format
+	frame_view:  dxgi.FORMAT,             // how a copy of it is read: values in `space`, like the frame's render target view
+	offscreen:   ^d3d11.ITexture2D,       // init_offscreen: the frame target instead of a swap chain
+	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
+	swap_flags:  dxgi.SWAP_CHAIN,
+	present:     Present_State,           // present.odin: mode, frame statistics
+	size:        [2]int,                  // what is drawn and shown (the window's client area)
+	buffer_size: [2]int,                  // the swap chain's buffers: `size` or larger (resize, set_resize_slack)
+	source_size: [2]int,                  // the region of the buffers presented (SetSourceSize)
+	fixed_surface: bool,                  // set_fixed_surface: the buffers keep one size while the window resizes
+	surface_max: [2]int,                  // that size
+	hwnd:        win.HWND,
+	surface_handles: platform.Surface_Handles,   // the neutral native handles init was given (wgpu backend; the surface is made from them)
+	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
+	transparent_asked: bool,              // what init or surface_init was told: a window remade tries again what failed once
+	under_children: bool,                 // surface_init: the composition surface is below the window's child windows
+	dcomp:        ^IDCompositionDevice,
+	dcomp_target: ^IDCompositionTarget,
+	dcomp_visual: ^IDCompositionVisual,
+	capture:     Capture_State,           // capture.odin: reading a frame back: of one window, the next frame_end of it
+	damage:      Damage_State,            // damage.odin: partial redraw (dirty rectangles)
+	swap_gen:    u64,                     // the device_generation the window's objects (swap chain, views, capture copy) were made on
+	swap_space:  u64,                     // the space_epoch they were made in
+}
+
 Renderer :: struct {
+	using target: Window_Target,          // the window drawn to
 	id:          u64,                     // renderer_id
 	device:      ^d3d11.IDevice,
 	ctx:         ^d3d11.IDeviceContext,
-	swapchain:   ^dxgi.ISwapChain1,
-	rtv:         ^d3d11.IRenderTargetView,
 	vs:          ^d3d11.IVertexShader,
 	ps:          ^d3d11.IPixelShader,
 	layout:      ^d3d11.IInputLayout,
@@ -434,9 +467,6 @@ Renderer :: struct {
 	fx_ps:       ^d3d11.IPixelShader,
 	fx_constants: ^d3d11.IBuffer,
 	sampler_border: ^d3d11.ISamplerState, // filter passes: bilinear, clamp (the shader adds the transparent border)
-	frame_tex:   ^d3d11.ITexture2D,       // what `rtv` draws into (back buffer or offscreen image): snapshots copy it
-	frame_format: dxgi.FORMAT,            // its storage format
-	frame_view:  dxgi.FORMAT,             // how a copy of it is read: values in `space`, like the frame's render target view
 	space:       Blend_Space,             // of the frame (init, set_blend_space); new RGBA textures are stored in it
 	text:        Text_Rendering,          // set_text_rendering
 	blur_sigma_limit: f32,                // set_blur_sigma_limit
@@ -455,36 +485,15 @@ Renderer :: struct {
 	canvas:      Canvas_Pipeline,         // canvas.odin: 2D canvas drawing
 	targets_gen: u64,                     // targets_generation
 	filter_format: Target_Format,         // set_filter_precision
-	latency_handle: win.HANDLE,           // signaled when the swap chain can accept a new frame (LOW_LATENCY)
-	swap_flags:  dxgi.SWAP_CHAIN,
-	present:     Present_State,           // present.odin: mode, frame statistics
 	swap_buffers: int,                    // set before init: back buffers of the swap chain (0 = 2). 3 lets frames be
 	                                      // presented faster than the compositor takes them (tearing on a fixed-rate display)
 	                                      // without Present blocking; latency stays bounded by the latency object.
-	size:        [2]int,                  // what is drawn and shown (the window's client area)
-	buffer_size: [2]int,                  // the swap chain's buffers: `size` or larger (resize, set_resize_slack)
-	source_size: [2]int,                  // the region of the buffers presented (SetSourceSize)
 	resize_slack: int,                    // set_resize_slack: 0 = DEFAULT_RESIZE_SLACK, < 0 = buffers of the exact size
-	fixed_surface: bool,                  // set_fixed_surface: the buffers keep one size while the window resizes
-	surface_max: [2]int,                  // that size
-	hwnd:        win.HWND,
-	surface_handles: platform.Surface_Handles,   // the neutral native handles init was given (wgpu backend; the surface is made from them)
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
-	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
-	transparent_asked: bool,              // what init or surface_init was told: a window remade tries again what failed once
-	under_children: bool,                 // surface_init: the composition surface is below the window's child windows
-	dcomp:        ^IDCompositionDevice,
-	dcomp_target: ^IDCompositionTarget,
-	dcomp_visual: ^IDCompositionVisual,
-	offscreen:   ^d3d11.ITexture2D,      // init_offscreen: the frame target instead of a swap chain
 	warp:        bool,                   // the device is WARP (software)
 	wg:          Wgpu_State,             // the wgpu backend (wgpu_*.odin); zero on the Direct3D backend
-	first_present_noted: bool,
-	capture:     Capture_State,          // capture.odin: reading a frame back
-	damage:      Damage_State,           // damage.odin: partial redraw (dirty rectangles)
+	first_present_noted: bool,           // (the program's first, whichever window: a trace of its start)
 	teardown_wait_ms: int,               // set_teardown_wait
-	swap_gen:    u64,                    // the device_generation the window's objects (swap chain, views, capture copy) were made on (exchanged with a Surface)
-	swap_space:  u64,                    // the space_epoch they were made in (idem)
 	space_epoch: u64,                    // bumps at each set_blend_space
 }
 
