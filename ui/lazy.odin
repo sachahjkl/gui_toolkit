@@ -192,11 +192,9 @@ lazy_settle :: proc(s: ^State) {
 			for b in lz.items {
 				if b.key != lz.pin { continue }
 				c.pin_found = true
-				limit := max(0, sb.view_bounds.y - sb.size.y)
-				want := clamp(content_top(sb, b) + lz.pin_dy, 0, limit)
+				want := clamp(content_top(sb, b) + lz.pin_dy, 0, view_limit(sb))
 				if abs(want - sb.view_off.y) > LAZY_ANCHOR_MOVED_PX {
-					sb.view_off.y, sb.view_target.y = want, want
-					sb.view_anim[1] = {}   // (no glide toward where it was)
+					view_jump(sb, want)   // (no glide toward where it was)
 					layout_positions(sb, .Y)
 					c.pin_moved = true
 				}
