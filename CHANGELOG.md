@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.93.0] - 2026-11-07
+
+### Changed
+- **The wheel scrolls as the system says**: a notch moves `platform.wheel_lines()` lines (Windows' setting, lines per notch, characters across; three on Linux), each `ui.WHEEL_LINE_PX` (100/3 logical px, a browser's line) at the window's scale, in whole pixels; where the system says a page, a page less a line. Every view scrolls by `ui.wheel_step(box, axis)`, text fields too. Before, a notch was 4 em of the box's font whatever the setting.
+
+### Fixed
+- **A tab is drawn as space**: `font.TAB_SPACES` (4) spaces wide, the same wherever it is (measured as shown), with a space's glyph. Fonts have no glyph for it: it was drawn as a missing one (a box) in code and in tools' output.
+
 ## [0.92.0] - 2026-11-07
 
 ### Added
@@ -1765,6 +1773,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.93.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.93.0
 [0.92.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.92.0
 [0.91.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.91.0
 [0.90.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.90.0
