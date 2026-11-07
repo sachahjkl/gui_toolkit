@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.95.0] - 2026-11-07
+
+### Added
+- **Contrast**: `ui.luminance` and `ui.contrast` (WCAG's ratio), `ui.to_oklch` / `ui.from_oklch` for linear colours, and `ui.readable(fg, ground, ratio)`: the colour moved along its OKLCH lightness, its hue and chroma kept, only as far as it must to read on the ground (lighter on a dark one, darker on a light one).
+- **The system's light / dark, on Windows too, and when it changes**: `platform.dark_mode_preferred()` reads Windows' app mode (AppsUseLightTheme) as it read the portal and GTK on Linux; `platform.color_scheme_serial()` moves when the choice may have changed (WM_SETTINGCHANGE "ImmersiveColorSet", the portal's SettingChanged): an app that follows the system compares one integer a frame.
+
 ## [0.94.0] - 2026-11-07
 
 ### Changed
@@ -1778,6 +1784,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.95.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.95.0
 [0.94.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.94.0
 [0.93.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.93.0
 [0.92.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.92.0
