@@ -114,6 +114,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .Draw_Text in flags && b.text != "" {
 		paint := .Text_Wrap in flags ? draw_wrapped_text : draw_box_text
 		if s.find.needle != "" { find_paint_text(s, dc, b, paint) } else { paint(s, dc, b) }
+		if .Selectable in flags && b.custom != rich_draw { paint_selected(s, dc, b, paint) }
 	}
 
 	if .Clip in flags { draw.push_clip(dc, r) }
