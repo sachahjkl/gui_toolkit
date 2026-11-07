@@ -140,6 +140,7 @@ Context :: struct {
 	renderer: ^render.Renderer,
 	atlas:    render.Texture,
 	insts:    [dynamic]render.Rect_Inst,
+	insts_low: int,   // frames in a row that used little of insts' room (render.shrink_due)
 	batches:  [dynamic]render.Batch,
 	clips:    [dynamic]Clip,
 	alphas:   [dynamic]f32,
@@ -274,6 +275,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 		slug_gpu_device_reset(c)
 	}
 	clear(&c.slug_runs); clear(&c.apps); clear(&c.app_params)
+	if render.shrink_due(cap(c.insts), len(c.insts), &c.insts_low) { shrink(&c.insts, max(len(c.insts) * 2, render.SHRINK_MIN_ELEMS)) }
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
 	clear(&c.open_layers); clear(&c.planes); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)

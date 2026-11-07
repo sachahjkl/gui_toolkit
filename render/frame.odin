@@ -56,6 +56,10 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	upload_structured(r, &r.points_buf, &r.points_view, &r.points_cap, raw_data(f.points), len(f.points), size_of([2]f32))
 	upload_structured(r, &r.grads_buf, &r.grads_view, &r.grads_cap, raw_data(f.grads), len(f.grads), size_of([4]f32))
 	if len(f.apps) > 0 { upload_structured(r, &r.app_params_buf, &r.app_params_view, &r.app_params_cap, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
+	if shrink_due(r.inst_cap, len(f.insts), &r.inst_low) {
+		r.inst_buf->Release()
+		r.inst_buf, r.inst_cap = nil, 0   // (made again just below, at what is drawn now)
+	}
 	if len(f.insts) > r.inst_cap {
 		if r.inst_buf != nil { r.inst_buf->Release() }
 		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, INST_CAP_MIN))
