@@ -30,6 +30,16 @@ dark_mode_preferred :: proc() -> bool {
 	return false
 }
 
+// The portal's SettingChanged, once: it bumps color_scheme_serial (the value is read again by dark_mode_preferred).
+@(private) scheme_watched: bool
+
+@(private)
+color_scheme_watch :: proc() {
+	if scheme_watched { return }
+	scheme_watched = true
+	watch_color_scheme(proc(dark: bool) { color_scheme_bump() })
+}
+
 // A value from the GTK 3 settings.ini ($XDG_CONFIG_HOME/gtk-3.0/settings.ini), under [Settings]. Cheap and widely set
 // by the desktop. ok = false when the file or the key is absent.
 @(private)
