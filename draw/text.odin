@@ -287,6 +287,12 @@ glyph_run :: proc(c: ^Context, size: f32, pos: Vec2, color: Color, glyphs: []fon
 			y0 := ly + img.offset.y / k
 			dst = {x0, y0, x0 + img.size.x / k, y0 + img.size.y / k}
 		}
+		// wholly outside the clip (screen pixels, nothing recorded: a picture is replayed elsewhere): no instance. Text drawn
+		// in strips (a find's matches: the text again in each piece of its rows) cost every glyph in every strip.
+		if baked && c.rec == nil {
+			cl := c.clips[len(c.clips) - 1].rect
+			if dst[2] <= cl.min.x || dst[0] >= cl.max.x || dst[3] <= cl.min.y || dst[1] >= cl.max.y { continue }
+		}
 		tex := glyph_texture(c, int(img.page))
 		if tex == 0 { continue }
 		if c.rec != nil { picture_note_page(c.rec, img) }

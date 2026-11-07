@@ -429,6 +429,7 @@ Renderer :: struct {
 	slug:        Slug_Pipeline,           // slug.odin
 	inst_buf:    ^d3d11.IBuffer,
 	inst_cap:    int,
+	inst_low:    int,   // shrink_due
 	globals:     ^d3d11.IBuffer,
 	blend:       ^d3d11.IBlendState,
 	raster:      ^d3d11.IRasterizerState,
@@ -924,6 +925,22 @@ gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
 
 // Smallest instance buffer (instances) and frame table (elements) made: both grow by doubling from there.
 @(private) INST_CAP_MIN :: 4096
+
+// A buffer grown for a peak (a frame that drew a hundred times what frames draw) is not kept at it: after SHRINK_FRAMES frames
+// in a row that used less than 1/SHRINK_RATIO of it, it goes back to what they use. (A find's strips of text left 300 MB
+// of instance buffers behind.)
+SHRINK_RATIO      :: 8
+SHRINK_FRAMES     :: 30
+SHRINK_MIN_ELEMS  :: 4096
+
+// Whether a buffer of `room` elements, `used` of them by this frame, should shrink now (`low`: the frames counted so far).
+shrink_due :: proc(room, used: int, low: ^int) -> bool {
+	if room <= SHRINK_MIN_ELEMS || used * SHRINK_RATIO >= room { low^ = 0; return false }
+	low^ += 1
+	if low^ < SHRINK_FRAMES { return false }
+	low^ = 0
+	return true
+}
 @(private) TABLE_CAP_MIN :: 64
 // The vertices of one draw: a quad as a triangle strip, a full-screen triangle (the shaders make them from the vertex index).
 @(private) QUAD_VERTICES :: 4

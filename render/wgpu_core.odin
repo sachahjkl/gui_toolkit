@@ -60,6 +60,7 @@ Wgpu_Pipe :: struct {
 Wgpu_Table :: struct {
 	buf: wgpu.Buffer,
 	cap: int,   // elements
+	low: int,   // shrink_due
 }
 
 // Shared with the callbacks wgpu-native calls (possibly from another thread): the renderer itself may move. Every field is atomic.

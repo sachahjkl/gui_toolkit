@@ -142,6 +142,7 @@ arena_write :: proc(g: ^Wgpu_State, data: rawptr, size: int) -> u32 {
 
 @(private)
 upload_table :: proc(g: ^Wgpu_State, t: ^Wgpu_Table, data: rawptr, n, stride: int) {
+	if t.buf != nil && shrink_due(t.cap, n, &t.low) { wgpu.BufferRelease(t.buf); t.buf, t.cap = nil, 0 }
 	if t.buf == nil || n > t.cap {
 		if t.buf != nil { wgpu.BufferRelease(t.buf) }
 		t.cap = max(n, t.cap * 2, TABLE_CAP_MIN)
@@ -252,6 +253,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	upload_table(g, &g.points, raw_data(f.points), len(f.points), size_of([2]f32))
 	upload_table(g, &g.grads, raw_data(f.grads), len(f.grads), size_of([4]f32))
 	if len(f.apps) > 0 { upload_table(g, &g.app_params, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
+	if g.inst.buf != nil && shrink_due(g.inst.cap, len(f.insts), &g.inst.low) { wgpu.BufferRelease(g.inst.buf); g.inst.buf, g.inst.cap = nil, 0 }
 	if g.inst.buf == nil || len(f.insts) > g.inst.cap {
 		if g.inst.buf != nil { wgpu.BufferRelease(g.inst.buf) }
 		g.inst.cap = max(len(f.insts), g.inst.cap * 2, INST_CAP_MIN)
