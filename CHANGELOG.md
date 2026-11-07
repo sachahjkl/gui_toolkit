@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.97.0] - 2026-11-07
+
+### Changed
+- **`ui.find_sweep`** (breaking): a find in a lazy column reads the column a slice of items at each frame (`FIND_SWEEP_ITEMS`), from the top down, instead of building all of it in one frame: a long document no longer freezes the window when a needle rests. It returns the items this build makes for it, given to **`ui.lazy_begin(sweep = ...)`** (was `lazy_begin(all = find_sweep())`); the text of the scope around the items (the column's own boxes, before them and after them) is read too, in reading order. Until a sweep ends, what the last one found stands; **`ui.find_progress`** says how far it is, and `find_count` while `find_pending` is what it has read so far. A match not counted yet has the index -1.
+
 ## [0.96.0] - 2026-11-07
 
 ### Added
@@ -1789,6 +1794,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.97.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.97.0
 [0.96.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.96.0
 [0.95.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.95.0
 [0.94.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.94.0
