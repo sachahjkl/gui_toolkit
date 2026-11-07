@@ -126,7 +126,6 @@ Dock :: struct {
 	opts:   Dock_Options,
 	saved:  u64,                       // the serial on_save last saw
 	begin_serial: u64,                 // the serial when this frame's dock_begin began
-	held:   bool,                      // a handle or a grip of the dock is held this frame
 	closed: u32,                       // the panel a user closed this frame
 	menu_panel: u32,                   // the panel the open "Dock to" menu is for
 	pending: [dynamic]Dock_Action,     // asked for while the boxes are built: done by dock_end

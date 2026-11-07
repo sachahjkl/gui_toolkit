@@ -105,6 +105,7 @@ Dock_Result :: struct {
 @(private) dock_tab_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_tab_%d", panel) }
 @(private) dock_body_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_body_%d", panel) }
 @(private) dock_grip_id :: proc(root: i32) -> string { return fmt.tprintf("###dock_grip_%d", root) }
+@(private) dock_split_id :: proc(split: i32) -> string { return fmt.tprintf("###dock_split_%d", split) }
 
 @(private)
 dock_labels :: proc(d: ^Dock) -> Dock_Labels { return d.opts.labels != nil ? d.opts.labels^ : DOCK_LABELS }
@@ -130,7 +131,6 @@ dock_begin :: proc(d: ^Dock, id: string, opts := Dock_Options{}) {
 	s := gs()
 	dock_ready(d)
 	d.opts = opts
-	d.held = false
 	d.closed = DOCK_NO_PANEL
 	if d.saved == 0 { d.saved = d.serial }   // (the layout the app made or loaded is not a change of the user's)
 	d.begin_serial = d.serial
@@ -202,12 +202,27 @@ dock_end :: proc(d: ^Dock) -> (res: Dock_Result) {
 	res.closed = d.closed
 	res.dragging = d.drag.state == .Dragging
 	res.changed = d.serial != d.begin_serial
-	if d.serial != d.saved && d.drag.state == .Idle && !d.held {
+	if d.serial != d.saved && d.drag.state == .Idle && !dock_held(d) {
 		d.saved = d.serial
 		res.finished = true
 		if d.opts.on_save != nil { d.opts.on_save(d.opts.user, d) }
 	}
 	return
+}
+
+// Whether the left button holds one of the dock's own controls: a tab or a floating panel's title (pressed, dragged, or
+// cancelled by Escape until the release), a split's handle, a floating panel's corner. What is held in a panel's content,
+// or in what the app builds in a strip, is not the dock's. It is the press that says so: when the press ends (the button
+// went up, the box held went, the user left the window), so does this, at once.
+dock_held :: proc(d: ^Dock) -> bool {
+	k := active_key()
+	if k == 0 || len(d.nodes) == 0 { return false }
+	if d.drag.state != .Idle && d.drag.key == k { return true }
+	for f in d.floats { if k == key_from_string(d.space_key, dock_grip_id(f)) { return true } }
+	for i in 0 ..< i32(len(d.nodes)) {
+		if d.nodes[i].kind == .Split && k == key_from_string(d.space_key, dock_split_id(i)) { return true }
+	}
+	return false
 }
 
 // The stack's menu of a panel closed: it has nothing to say.
@@ -255,7 +270,6 @@ dock_grips :: proc(d: ^Dock) {
 			press^ = {from = {r.min / sc, r.max / sc}, taken = true}
 		}
 		if !sig.dragging || press == nil { continue }
-		d.held = true
 		from := press.from
 		lo := DOCK_FLOAT_MIN_EM * d.metrics.em / sc
 		w := max(from.max.x - from.min.x + sig.drag_delta.x / sc, lo.x)
@@ -289,7 +303,6 @@ dock_drag_frame :: proc(d: ^Dock) {
 		dr^ = {}
 		return
 	}
-	d.held = true
 	switch dr.state {
 	case .Idle, .Cancelled: return
 	case .Pressed:
@@ -431,12 +444,11 @@ dock_handle :: proc(d: ^Dock, split: i32) -> ^Box {
 	name := fmt.tprintf("%s | %s", dock_stack_label(d, dock_leaves(d, n.a)[0]), dock_stack_label(d, dock_leaves(d, n.b)[0]))
 	opts := Pane_Options{side = .After, total = room / sc, min_size = m.min / sc, min_other = m.min / sc, collapsible = true, title = name, thickness = m.handle}
 	if ax == .X { next({fixed_x = hr.min.x, fixed_y = hr.min.y, height = px(hr.max.y - hr.min.y)}) } else { next({fixed_x = hr.min.x, fixed_y = hr.min.y, width = px(hr.max.x - hr.min.x)}) }
-	r := pane_split(fmt.tprintf("###dock_split_%d", split), ax, &p, opts)
+	r := pane_split(dock_split_id(split), ax, &p, opts)
 	if r.changed {
 		ratio := p.collapsed ? n.ratio : 1 - p.size[ax] * sc / room
 		dock_set_split(d, split, ratio, p.collapsed)
 	}
-	if r.dragging { d.held = true }
 	return r.sig.box
 }
 
