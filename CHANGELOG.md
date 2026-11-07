@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.92.0] - 2026-11-07
+
+### Added
+- **`host.host_adopt`**, hooks **`still`** and **`after_frame`**, **`Host.times`**: a window and a renderer an application made in its own order of start become a host; a window whose picture would not change is not built; what a program does between two frames goes after the picture; the last picture's draw and present times.
+
+### Removed
+- **`ui.Reorder`** and **`ui.reorder_frame`** are gone: the drag of a reordered list is kept on the press of the item's box (ui.press_data) and ends with it (the button went up, the box went, the user left the window). The procedures take the item's box key in place of a `^Reorder` and an id: `reorder_begin(item, moved, threshold, press, slot)`, `reorder_dragging(item)`, `reorder_item_pos(item, slot, pointer, lo, hi, rate)` (its animation keyed by the item's box too). Lists whose items share ids drag apart, the box's key being its list's.
+- **`ui.Dock.held`** is gone: `ui.dock_held(&d)` asks the press whether the left button holds one of the dock's controls (a tab or a floating panel's title, a handle, a floating panel's corner). It keeps nothing, so it ends with the press (the release, the box held going, the user leaving the window) and says the same at any time of the frame. Write `ui.dock_held(&app.dock)` where `app.dock.held` was read.
+
 ## [0.91.0] - 2026-11-07
 
 ### Added
@@ -1756,6 +1765,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.92.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.92.0
 [0.91.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.91.0
 [0.90.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.90.0
 [0.89.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.89.0
