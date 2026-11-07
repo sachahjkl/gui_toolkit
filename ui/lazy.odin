@@ -38,6 +38,8 @@ Lazy :: struct {
 	known_h: f32,    // heights known this frame (their sum and count: the next frame's estimate)
 	known_n: int,
 	items:   [dynamic]^Box,   // the items built, in order (lazy_settle)
+	pin:     Key,     // the item the view stays on, whatever moves around it (lazy_pin), 0: none
+	pin_dy:  f32,
 }
 
 @(private)
@@ -50,6 +52,8 @@ Lazy_Column :: struct {
 	anchor:     Key,   // the first item visible at the last frame
 	anchor_top: f32,   // where it started in the content
 	seen:       u64,
+	pin_found:  bool,  // the pinned item was built and laid out at the last build
+	pin_moved:  bool,  // ... and the view had to move to stay on it
 }
 
 LAZY_MARGIN :: 1.0   // screens built above and below the view
@@ -87,18 +91,33 @@ lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
 	return
 }
 
+// The view stays on this item, `dy` into it (from the item's top to the view's top: what was on screen at that place), placed after each
+// layout: what grows or shrinks around it, items built for the first time above it above all, moves nothing. Said at each build for as long
+// as it holds (the item must be built: `always` in its lazy_item). The column's own anchor waits meanwhile.
+lazy_pin :: proc(lz: ^Lazy, id: string, dy: f32) {
+	lz.pin = key_from_string(lz.column, id)
+	lz.pin_dy = dy
+}
+
+// What the last layout found of the pin: whether the item was there, and whether the view had to move to be on it. (Found and not moved
+// a few builds in a row: the heights around it have settled.)
+lazy_pinned :: proc(lz: ^Lazy) -> (found, moved: bool) {
+	c := gs().lazy_columns[lz.column] or_else {}
+	return c.pin_found, c.pin_moved
+}
+
 // One item: true when it is built now (its box is the parent until the block ends); false when a space stands for it.
 @(deferred_out = lazy_item_end)
 lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	s := gs()
 	key := key_from_string(parent_box().key, id)
-	e := s.lazy_heights[key] or_else {}
-	if b := s.boxes[key]; b != nil && b.last_build + 1 == s.build_index {
-		e.h = b.size.y   // built at the last build: its height then
-		e.known = true
+	// (One look in one map: a column of thousands pays this for each of them, at every build. What was built last has its height from lazy_settle.)
+	e, kept := &s.lazy_heights[key]
+	if !kept {
+		s.lazy_heights[key] = {}
+		e = &s.lazy_heights[key]
 	}
 	e.seen = s.build_index
-	s.lazy_heights[key] = e
 	h := e.h
 	if !e.known { h = lz.est } else if h > 0 { lz.known_h += h; lz.known_n += 1 }
 	top := lz.y
@@ -141,7 +160,7 @@ lazy_end :: proc(lz: ^Lazy) {
 	s := gs()
 	if lz.on { s.virtual_depth -= 1 }
 	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = lz.known_h / f32(lz.known_n) }
-	if lz.scroll != nil { append(&s.lazy_frame, lz) }
+	append(&s.lazy_frame, lz)   // (a column in no scroll box too: its items' heights are noted there)
 	// every item built and nothing in any: their content was built after each item closed
 	if lz.built >= 2 && lz.empty == lz.built && s.layout_warnings && !(lz.column in s.layout_warned) {
 		col := box_from_key(lz.column)
@@ -161,11 +180,29 @@ lazy_settle :: proc(s: ^State) {
 	content_top :: proc(sb, b: ^Box) -> f32 { return b.rect.min.y - sb.rect.min.y + sb.view_off.y }
 	for lz in s.lazy_frame {
 		s.metrics.lazy_built += len(lz.items)
+		for b in lz.items {
+			if e, kept := &s.lazy_heights[b.key]; kept { e.h, e.known = b.size.y, true }
+		}
 		sb := lz.scroll
 		c, ok := &s.lazy_columns[lz.column]
 		if !ok || sb == nil || sb.last_build != s.build_index { continue }
 		dragging := s.active_key[.Left] == scrollbar_key(sb)
-		if c.anchor != 0 && !dragging && sb.view_off.y > 0 {
+		c.pin_found, c.pin_moved = false, false
+		if lz.pin != 0 {
+			for b in lz.items {
+				if b.key != lz.pin { continue }
+				c.pin_found = true
+				limit := max(0, sb.view_bounds.y - sb.size.y)
+				want := clamp(content_top(sb, b) + lz.pin_dy, 0, limit)
+				if abs(want - sb.view_off.y) > LAZY_ANCHOR_MOVED_PX {
+					sb.view_off.y, sb.view_target.y = want, want
+					sb.view_anim[1] = {}   // (no glide toward where it was)
+					layout_positions(sb, .Y)
+					c.pin_moved = true
+				}
+				break
+			}
+		} else if c.anchor != 0 && !dragging && sb.view_off.y > 0 {
 			for b in lz.items {
 				if b.key != c.anchor { continue }
 				moved := content_top(sb, b) - c.anchor_top
