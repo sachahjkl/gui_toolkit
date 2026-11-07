@@ -143,6 +143,16 @@ Build_Params :: struct {
 	                                    // the caret of a focused text field is not drawn and does not blink (inactive())
 }
 
+// Build_Params.clipboard_get and clipboard_set of the system's clipboard, for the window of the build being made
+// (Build_Params.window): what a program would otherwise keep a global for, the procedures taking no argument.
+window_clipboard_get :: proc() -> string {
+	if current == nil || current.window == nil { return "" }
+	return platform.get_clipboard(current.window, context.temp_allocator)
+}
+window_clipboard_set :: proc(text: string) {
+	if current != nil && current.window != nil { platform.set_clipboard(current.window, text) }
+}
+
 // The state whose build is open on this thread (between begin_build and the end of end_build), nil when none is.
 @(private, thread_local) build_of: ^State
 

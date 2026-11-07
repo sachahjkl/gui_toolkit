@@ -586,6 +586,11 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	if timeout_ms > 0 { win.KillTimer(w.hwnd, 1) }
 }
 
+// Whether the window has something for its next poll_events, without waiting or taking anything: what the poll of another
+// window of the thread took for this one, an injected event, a repaint asked for. A loop of several windows asks each
+// before it sleeps (wait_event looks at the one it is given, and at the thread's queue).
+events_waiting :: proc(w: ^Window) -> bool { return len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested }
+
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) {
 	if w.offscreen { if w.off_event != nil { win.SetEvent(w.off_event) }; return }

@@ -44,19 +44,40 @@ packages; they import each other by relative paths, so any collection name works
 `-subsystem:windows` gives no console: what the program prints is lost unless it is redirected
 (`Start-Process build\myapp.exe -RedirectStandardOutput out.txt -Wait`); leave it out while developing to see it.
 
-What the loop of `examples/hello/main.odin` does, in order (every example has the same):
+`examples/hello/main.odin` is a window as an object, `host.Host` (the `gt:host` package, above `ui` and `render`):
 
-1. `font.init`, `platform.open_window(..., transparent = true)`, `render.init_window(&r, win, win.size, transparent = true)`,
+```odin
+App :: struct { shared: host.Shared, main: host.Host }          // what the windows share; one window
+
+host.host_open(&app.main, &app.shared, {title = "My app", size = {640, 400}}, build, app)
+platform.show_window(app.main.win)
+for !platform.is_closed(app.main.win) {
+	host.hosts_wait({&app.main})   // 0 % CPU at rest
+	host.host_frame(&app.main)
+}
+host.host_close(&app.main)
+```
+
+`build :: proc(h: ^host.Host, size: host.Vec2)` holds the widgets (`h.user` is the `app` given to `host_open`). What it does
+for you, in order:
+
+1. `host_open`: `font.init`, `platform.open_window(..., transparent = true)`, `render.init_window(&r, win, win.size, transparent = true)`,
    `render.set_fixed_surface(&r, platform.monitor_size(win))` (below: a resize never stretches a frame), a UI font
    (`font.load_system_or_embedded(..., platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)`),
-   `draw.init`, `ui.apply_palette` + `ui.init`;
-2. `win.on_frame`: the frame procedure with `inner = true`, called from inside the system's loops (live resize, menus) by
-   `WM_PAINT`;
-3. each frame: `render.pace_frame` -> `platform.poll_events` -> `render.resize` -> `ui.begin_build` ->
+   `draw.init`, `ui.apply_palette` + `ui.init`, and `win.on_frame`: a frame with `inner = true`, called from inside the
+   system's loops (live resize, menus) by `WM_PAINT`;
+2. `host_frame`: `render.pace_frame` -> `platform.poll_events` -> `render.resize` -> `ui.begin_build` ->
    your widgets -> `ui.end_build` -> `draw.begin_frame` -> `render.frame_begin` -> `ui.draw_tree` -> `draw.end_frame` ->
    `render.frame_end(&r, !at_once)` -> `render.paced_present` -> `free_all(context.temp_allocator)` (`docs/pacing.md`);
-4. between frames: `platform.wait_event(win, ui.wake_in_ms(&s))` unless `ui.needs_frame(&s)` (an animation): 0 % CPU
+3. `hosts_wait`: `platform.wait_event(win, ui.wake_in_ms(&s))` unless `ui.needs_frame(&s)` (an animation): 0 % CPU
    at rest, woken by input or by the interface's own timers (caret blink, tooltip).
+
+What a frame of yours does besides is a hook of the Host (`host/host.odin`): `params` (the style, the animations of each
+build), `input` (events the interface does not see), `builds` (several builds in a frame: `host.host_build` again),
+`hold` (no picture this frame), `after_build`, `before_input`, `dragging`, `rest_frame`. Another window is another
+`host_open` with the same `Shared`: a surface on the same renderer, built in turn, `hosts_wait({&a, &b})` for both
+(`hosts_frame` makes a frame of each). The steps above are all public: a program may make its frames by hand, as
+`examples/fidget` does, or mix both.
 
 **A window that resizes without stretching.** An ordinary swap chain (`open_window` and `init_window` with their defaults)
 is scaled to the window by the system: while the window is resized, the last frame is shown stretched until one of the new
