@@ -476,3 +476,26 @@ concurrent_measure_while_unloading :: proc(t: ^testing.T) { unwatched.run(t, pro
 	testing.expect_value(t, job.preview_bad, 0)
 	testing.expect_value(t, job.bad, 0)
 }) }
+
+// A tab is TAB_SPACES spaces wide, measured as shaped, cached or not, and it draws a space's glyph (no missing one).
+@(test)
+a_tab_is_spaces_wide :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for cache in ([]int{font.DEFAULT_SETTINGS.word_cache, 0}) {
+		st := font.DEFAULT_SETTINGS
+		st.word_cache = cache
+		s := setup(t, st)
+		defer teardown(s)
+		a := sys(t, s, "Consolas")
+		sp := font.text_width(s, a, 20, " ")
+		x := font.text_width(s, a, 20, "x")
+		testing.expect(t, sp > 0)
+		testing.expect_value(t, font.text_width(s, a, 20, "\t"), sp * font.TAB_SPACES)
+		testing.expect_value(t, font.text_width(s, a, 20, "\t\tx"), 2 * sp * font.TAB_SPACES + x)
+		testing.expect_value(t, font.text_width(s, a, 20, "x\tx"), sp * font.TAB_SPACES + 2 * x)
+		sh := font.shape(s, a, 20, "\tx", {}, context.temp_allocator)
+		testing.expect_value(t, sh.width, sp * font.TAB_SPACES + x)
+		blank := font.shape(s, a, 20, " ", {}, context.temp_allocator)
+		testing.expect(t, len(sh.glyphs) == 2 && len(blank.glyphs) == 1 && sh.glyphs[0].id == blank.glyphs[0].id, "the tab is a space's glyph")
+		testing.expect_value(t, sh.glyphs[1].x, sp * font.TAB_SPACES)
+	}
+}) }

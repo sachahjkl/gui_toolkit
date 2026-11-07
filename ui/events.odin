@@ -11,8 +11,19 @@ _ :: fmt   // used by the UI_PROBE debug output only
 
 // Presses this close count as a double click (widgets' signal, words of selected text).
 @(private) DOUBLE_CLICK_MS :: 450
-@(private = "file") WHEEL_NOTCH_EM :: 4           // what a notch of the wheel scrolls
+WHEEL_LINE_PX :: 100.0 / 3   // a line of the wheel, in logical px: a browser's (a notch of three lines is 100 px), so a page scrolls here as there
 @(private) HOT_ANCESTORS_MAX :: 64                // ancestors of the hot box that count as hot within (hot_within, .Hot_Within)
+
+// What a notch of the wheel moves box `b` along `axis`, in px: the lines the system says (characters across), each WHEEL_LINE_PX at the
+// window's scale; a page of the box less a line, where the system says a page. Every view scrolls by this, the text fields too.
+wheel_step :: proc(b: ^Box, axis: Axis = .Y) -> f32 {
+	sc := max(gs().scale, 0.01)
+	line := WHEEL_LINE_PX * sc
+	n := platform.wheel_lines(axis == .X)
+	if n > 0 { return math.round(n * line) }   // (whole pixels: where a view stops is where a pixel is)
+	page := axis == .X ? b.rect.max.x - b.rect.min.x : b.rect.max.y - b.rect.min.y
+	return math.round(max(page - line, line))
+}
 
 @(private)
 process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_window: bool) {
@@ -265,10 +276,9 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	}
 	if .Scroll_Self in b.flags && s.scroll_key == b.key { sig.scrolled = s.scroll_delta }
 	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && s.scroll_key == b.key {
-		step := b.font_size * WHEEL_NOTCH_EM
 		d := s.scroll_delta
-		if .View_Scroll_X in b.flags { b.view_target.x += d.x * step; sig.scrolled.x = d.x }
-		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * step; sig.scrolled.y = d.y }
+		if .View_Scroll_X in b.flags { b.view_target.x += d.x * wheel_step(b, .X); sig.scrolled.x = d.x }
+		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * wheel_step(b, .Y); sig.scrolled.y = d.y }
 		// clamp against last frame's bounds; the animation pass re-clamps with fresh ones
 		b.view_target = {clamp(b.view_target.x, 0, view_limit(b, .X)), clamp(b.view_target.y, 0, view_limit(b))}
 	}

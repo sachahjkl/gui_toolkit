@@ -533,6 +533,9 @@ set_clipboard :: proc(w: ^Window, text: string) {
 // the user has not asked to reduce them.
 os_animations_enabled :: proc() -> bool { return !reduce_motion_preferred() }
 
+// What a notch of the wheel moves: the desktops have no one setting for it, so the usual three lines.
+wheel_lines :: proc(across := false) -> f32 { return WHEEL_LINES_DEFAULT }
+
 // Per-user config directory: $XDG_CONFIG_HOME, else $HOME/.config.
 config_dir :: proc(allocator := context.allocator) -> string {
 	if x := posix.getenv("XDG_CONFIG_HOME"); x != nil && string(x) != "" {

@@ -176,6 +176,8 @@ Custom_Cursor :: distinct u64
 // fallback is).
 CUSTOM_CURSOR_MAX_CSS :: 128
 
+WHEEL_LINES_DEFAULT :: 3   // what a notch of the wheel moves where the system does not say (wheel_lines)
+
 Custom_Cursor_Error :: enum u8 {
 	None,
 	Bad_Size,    // no pixels, or fewer bytes than width * height * 4

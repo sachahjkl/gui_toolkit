@@ -43,6 +43,7 @@ import "core:unicode"
 // one script and face, glyphs of a word beyond one per byte.
 @(private) SPANS_HINT :: 2
 @(private) RUN_WORDS_HINT :: 16
+TAB_SPACES :: 4   // a tab is as wide as this many spaces of its face (fonts have no glyph for it: it was drawn as a missing one)
 @(private) SCRIPT_RUNS_HINT :: 4
 @(private) WORD_PIECES_HINT :: 4
 @(private) WORD_GLYPHS_SLACK :: 4
@@ -124,7 +125,7 @@ measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Opt
 		single := true
 		for i in 0 ..< len(text) {
 			b := text[i]
-			if b == ' ' && len(text) > 1 { single = false; break }
+			if (b == ' ' || b == '\t') && len(text) > 1 { single = false; break }
 			hi = max(hi, b)
 		}
 		if single {
@@ -136,7 +137,7 @@ measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Opt
 	i := 0
 	for i < len(text) {
 		j := i
-		if text[i] == ' ' { j = i + 1 } else { for j < len(text) && text[j] != ' ' { j += 1 } }
+		if text[i] == ' ' || text[i] == '\t' { j = i + 1 } else { for j < len(text) && text[j] != ' ' && text[j] != '\t' { j += 1 } }
 		piece := text[i:j]
 		rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : piece_rtl(piece)
 		w += word_width(s, id, size, piece, rtl, no_liga)
@@ -281,7 +282,7 @@ shape_run :: proc(s: ^State, id: Font_Id, size: f32, text: string, start, end: i
 	i := start
 	for i < end {
 		j := i
-		if text[i] == ' ' { j = i + 1 } else { for j < end && text[j] != ' ' { j += 1 } }
+		if text[i] == ' ' || text[i] == '\t' { j = i + 1 } else { for j < end && text[j] != ' ' && text[j] != '\t' { j += 1 } }
 		append(&pieces, Piece{i, j})
 		i = j
 	}
@@ -578,7 +579,7 @@ L1_Entry :: struct {
 @(private, thread_local)
 l1_words: [L1_SIZE]L1_Entry
 
-// Width of one word (text without U+0020, or a single space).
+// Width of one word (text without U+0020 nor a tab, or a single one of them).
 @(private)
 word_width :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool) -> f32 {
 	context.allocator = runtime.heap_allocator()
@@ -638,7 +639,13 @@ word_copy :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga:
 shape_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, rtl, no_liga: bool, allocator: runtime.Allocator) -> ^Word {
 	glyphs := make([dynamic]Glyph_Pos, 0, len(text) + WORD_GLYPHS_SLACK, context.temp_allocator)
 	clusters := make([dynamic]Cluster, 0, len(text) + WORD_GLYPHS_SLACK, context.temp_allocator)
-	width := shape_text(s, id, size, text, rtl, no_liga, &glyphs, &clusters)
+	tab := text == "\t"
+	width := shape_text(s, id, size, tab ? " " : text, rtl, no_liga, &glyphs, &clusters)
+	if tab {   // a tab: a space TAB_SPACES wide (one width wherever it is: what is measured is what is shown)
+		width *= TAB_SPACES
+		for &g in glyphs { g.advance = width }
+		for &c in clusters { c.x1 = c.x0 + width }
+	}
 	ng, nc := len(glyphs), len(clusters)
 	if failing(.Word_Alloc) { return nil }
 	block, err := runtime.mem_alloc(size_of(Word) + ng * size_of(Glyph_Pos) + nc * size_of(Cluster) + len(text), align_of(Word), allocator)
