@@ -27,6 +27,10 @@ Splitter_Options :: struct {
 	no_keyboard:  bool,   // not a Tab stop (a handle the mouse alone moves)
 }
 
+// What a splitter's press keeps (press_data): the size the drag started from.
+@(private = "file")
+Split_Press :: struct { from: f32, taken: bool }
+
 Splitter_Result :: struct {
 	using sig: Signal, // (dragging: the handle is held)
 	changed:   bool,   // `size` changed this frame
@@ -71,17 +75,18 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 		res.finished = true
 	}
 
-	if res.sig.pointer_pressed { drag_store({size^, 0, 0, 0}) }
-	if res.sig.dragging {
+	press := press_data(Split_Press, b.key)
+	if press != nil && !press.taken { press^ = {from = size^, taken = true} }
+	if res.sig.dragging && press != nil {
 		s.cursor_request = cur   // (also when the pointer runs ahead of the handle)
 		d := (axis == .X ? res.sig.drag_delta.x : res.sig.drag_delta.y) / unit
 		if opts.after { d = -d }
-		size^ = clamp(drag_load()[0] + d, lo, hi)
+		size^ = clamp(press.from + d, lo, hi)
 	}
 	if res.sig.released { res.finished = true }
 	if res.sig.double_clicked && opts.default_size > 0 {
 		size^ = clamp(opts.default_size, lo, hi)
-		drag_store({size^, 0, 0, 0})   // (the button is still down: a move from here starts at the default)
+		if press != nil { press.from = size^ }   // (the button is still down: a move from here starts at the default)
 		res.finished = true
 	}
 	if res.sig.focused && !opts.no_keyboard {

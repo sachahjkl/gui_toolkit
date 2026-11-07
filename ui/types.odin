@@ -360,6 +360,8 @@ State :: struct {
 	clicked_key:  [platform.Mouse_Button]Key,
 	double_key:   Key,
 	release_owed: Key,                           // a left press ended with its box: `released` when that box is back
+	press_serial: [platform.Mouse_Button]u64,    // bumps at each press: a press of the same box again is another one
+	press_kept:   map[Press_Data_Key]Press_Data, // press_data: what each gesture keeps on its press
 	scroll_delta: Vec2,
 	scroll_key:   Key,
 	last_click_key:  Key,

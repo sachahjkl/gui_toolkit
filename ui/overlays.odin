@@ -336,6 +336,10 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open})
 }
 
+// What the press of a dialog's grip keeps (press_data): the size it started from, and whether it moved yet.
+@(private = "file")
+Modal_Grip_Press :: struct { from: Vec2, taken, moved: bool }
+
 // The edges and corners of a dialog that is resized, over what is in it. It stays centered: a side moved by the pointer takes the
 // opposite one along, so the size changes twice as fast as the pointer and the side stays under it.
 @(private = "file")
@@ -364,19 +368,20 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 			d.color = sig.hovering || sig.dragging ? color("accent") : color("weak text")
 			b.custom, b.custom_user = dock_grip_draw, d
 		}
+		press := press_data(Modal_Grip_Press, b.key)
+		if press != nil && !press.taken { press^ = {from = {w, h}, taken = true} }
 		if sig.double_clicked {
 			m.size^ = {}
-			drag_store({clamp(m.preferred.x, m.lo.x, m.hi.x), clamp(m.preferred.y, m.lo.y, m.hi.y), 0, 0})   // (the button is still down: a move from here starts at the size it went back to)
+			// (the button is still down: a move from here starts at the size it went back to)
+			if press != nil { press.from = {clamp(m.preferred.x, m.lo.x, m.hi.x), clamp(m.preferred.y, m.lo.y, m.hi.y)} }
 			continue
 		}
-		if sig.pointer_pressed { drag_store({w, h, 0, 0}) }
-		if !sig.dragging { continue }
+		if !sig.dragging || press == nil { continue }
 		// (a press alone sets nothing: the size of this window, clamped, is not the person's)
-		from := drag_load()
-		if sig.drag_delta == {} && from[2] == 0 { continue }
-		s.drag_payload[2] = 1
-		nw := g.dir.x != 0 ? clamp(from[0] + 2 * g.dir.x * sig.drag_delta.x, m.lo.x, m.hi.x) : w
-		nh := g.dir.y != 0 ? clamp(from[1] + 2 * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
+		if sig.drag_delta == {} && !press.moved { continue }
+		press.moved = true
+		nw := g.dir.x != 0 ? clamp(press.from.x + 2 * g.dir.x * sig.drag_delta.x, m.lo.x, m.hi.x) : w
+		nh := g.dir.y != 0 ? clamp(press.from.y + 2 * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
 		m.size^ = {nw / sc, nh / sc}
 	}
 }

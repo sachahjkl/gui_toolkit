@@ -44,7 +44,9 @@ hline :: proc(width: Size) {
 	build_box({.Draw_Background}, "")
 }
 
-// Value stored at press time for the active drag (which thumb, column width at start, note position, ...).
+// Value stored at press time for the active drag (column width at start, note position, ...). One for the State, which no press
+// owns: it outlives its press, which a gesture that reads the press before this one needs (panes.odin). What lasts only as long
+// as its press is better kept by press_data, typed and ended with it.
 Drag_Payload :: [4]f32
 drag_store :: proc(v: Drag_Payload) { gs().drag_payload = v }
 drag_load :: proc() -> Drag_Payload { return gs().drag_payload }
@@ -353,21 +355,25 @@ a11y_numeric_request :: proc(key: Key, value, step: f32) -> (f32, bool) {
 	return value, false
 }
 
+// What a range slider's press keeps (press_data): the thumb it took.
+@(private = "file")
+Range_Press :: struct { high, taken: bool }
+
 // Two thumbs on one track: the one closest to the pointer moves.
 range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal) {
 	b := build_box({.Clickable}, id)
 	b.cursor = .Hand
 	sig = signal(b)
-	if sig.pointer_pressed {
+	press := press_data(Range_Press, b.key)
+	if press != nil && !press.taken {
 		p := slider_pct(b)
 		pl, ph := (lo_v^ - lo) / (hi - lo), (hi_v^ - lo) / (hi - lo)
-		which: f32 = abs(p - pl) < abs(p - ph) ? 0 : 1
-		if abs(pl - ph) < RANGE_SLIDER_SAME_EPS { which = p < pl ? 0 : 1 }
-		drag_store({which, 0, 0, 0})
+		press^ = {high = abs(p - pl) >= abs(p - ph), taken = true}
+		if abs(pl - ph) < RANGE_SLIDER_SAME_EPS { press.high = p >= pl }
 	}
-	if sig.dragging {
+	if sig.dragging && press != nil {
 		v := lo + slider_pct(b) * (hi - lo)
-		if drag_load()[0] == 0 { lo_v^ = clamp(v, lo, hi_v^) } else { hi_v^ = clamp(v, lo_v^, hi) }
+		if !press.high { lo_v^ = clamp(v, lo, hi_v^) } else { hi_v^ = clamp(v, lo_v^, hi) }
 	}
 	d := frame_new(Slider_Draw)
 	d.range = true
