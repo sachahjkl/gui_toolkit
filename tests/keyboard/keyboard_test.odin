@@ -1223,6 +1223,54 @@ lazy_items_of_no_height_stay_so :: proc(t: ^testing.T) {
 	}
 }
 
+@(private = "file")
+lazy_pin_at: int
+
+@(private = "file")
+lazy_pin_grow: f32
+
+// A column whose items above the pinned one grow from one frame to the next, as a page read before them would.
+@(private = "file")
+build_lazy_pin :: proc(f: ^Fx, user: rawptr) {
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	if ui.scroll_y("###lzp") {
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###col") {
+			lz := ui.lazy_begin()
+			ui.lazy_pin(lz, "###it30", 10)
+			for i in 0 ..< 50 {
+				if ui.lazy_item(lz, fmt.tprintf("###it%d", i), always = i == 30) {
+					ui.next({width = ui.fill(), height = ui.px(i < 30 ? 40 + lazy_pin_grow : 40)})
+					ui.label(fmt.tprintf("item %d###l", i))
+				}
+			}
+			found, moved := ui.lazy_pinned(lz)
+			if found && !moved { lazy_pin_at += 1 }
+		}
+	}
+	lazy_scroller = ui.prev_box("###lzp")
+}
+
+// The view stays on the pinned item, 10 px into it, whatever grows above it: in place a few builds after it is asked for, and again after
+// each change.
+@(test)
+lazy_pin_keeps_the_view_on_its_item :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	lazy_pin_at, lazy_pin_grow = 0, 0
+	for _ in 0 ..< 8 { frame(f, nil, build_lazy_pin, nil) }
+	item := ui.box_from_key(ui.key_from_string(ui.key_from_string(lazy_scroller.key, "###col"), "###it30"))
+	testing.expect(t, item != nil)
+	testing.expect(t, lazy_pin_at > 0, "it settles")
+	if item != nil { testing.expect_value(t, lazy_scroller.rect.min.y - item.rect.min.y, f32(10)) }
+	lazy_pin_grow = 25
+	for _ in 0 ..< 8 { frame(f, nil, build_lazy_pin, nil) }
+	item = ui.box_from_key(ui.key_from_string(ui.key_from_string(lazy_scroller.key, "###col"), "###it30"))
+	if item != nil { testing.expect_value(t, lazy_scroller.rect.min.y - item.rect.min.y, f32(10)) }
+}
+
 // Hidden while the pointer is elsewhere, shown over its box and for a moment when revealed; always shown when not asked for.
 @(test)
 scrollbar_autohide_follows_the_pointer :: proc(t: ^testing.T) {
