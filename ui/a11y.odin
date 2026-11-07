@@ -338,14 +338,8 @@ a11y_route :: proc(s: ^State, r: platform.A11y_Request) {
 @(private)
 scroll_into_view :: proc(b: ^Box) {
 	for p := b.parent; p != nil; p = p.parent {
-		if .View_Scroll_Y in p.flags {
-			if b.rect.min.y < p.rect.min.y { p.view_target.y -= p.rect.min.y - b.rect.min.y }
-			if b.rect.max.y > p.rect.max.y { p.view_target.y += b.rect.max.y - p.rect.max.y }
-		}
-		if .View_Scroll_X in p.flags {
-			if b.rect.min.x < p.rect.min.x { p.view_target.x -= p.rect.min.x - b.rect.min.x }
-			if b.rect.max.x > p.rect.max.x { p.view_target.x += b.rect.max.x - p.rect.max.x }
-		}
+		if .View_Scroll_Y in p.flags { view_reveal_box(p, b, .Y) }
+		if .View_Scroll_X in p.flags { view_reveal_box(p, b, .X) }
 	}
 }
 
@@ -596,12 +590,12 @@ a11y_walk :: proc(s: ^State, u: ^platform.A11y_Update, b: ^Box, focus: Key, focu
 	if .View_Scroll_Y in b.flags {
 		platform.a11y_num(u, .Scroll_Y, f64(b.view_off.y))
 		platform.a11y_num(u, .Scroll_Y_Min, 0)
-		platform.a11y_num(u, .Scroll_Y_Max, f64(max(0, b.view_bounds.y - b.size.y)))
+		platform.a11y_num(u, .Scroll_Y_Max, f64(view_limit(b)))
 	}
 	if .View_Scroll_X in b.flags {
 		platform.a11y_num(u, .Scroll_X, f64(b.view_off.x))
 		platform.a11y_num(u, .Scroll_X_Min, 0)
-		platform.a11y_num(u, .Scroll_X_Max, f64(max(0, b.view_bounds.x - b.size.x)))
+		platform.a11y_num(u, .Scroll_X_Max, f64(view_limit(b, .X)))
 	}
 	append(&s.a11y.kids, u64(b.key))
 }

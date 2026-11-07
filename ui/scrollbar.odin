@@ -103,8 +103,7 @@ scrollbar_parts :: proc(b: ^Box) -> (bar, track, thumb: Rect, arrow: f32, ok: bo
 	if gs().scrollbar_arrows && bar.max.y - bar.min.y > 2 * (w + 2 * m) + w { arrow = w + 2 * m }
 	track = {{bar.min.x, bar.min.y + arrow}, {bar.max.x, bar.max.y - arrow}}
 	th_avail := track.max.y - track.min.y
-	maxoff := content - view
-	at, th := scrollbar_thumb(b.font_size, th_avail, view, content, clamp(b.view_off.y / maxoff, 0, 1))
+	at, th := scrollbar_thumb(b.font_size, th_avail, view, content, clamp(b.view_off.y / view_limit(b), 0, 1))
 	y := track.min.y + at
 	thumb = {{track.min.x, y}, {track.max.x, y + th}}
 	ok = true
@@ -132,7 +131,7 @@ scrollbar_arrow_rects :: proc(b: ^Box) -> (start, end: Rect, ok: bool) {
 // A held arrow's step: the view moves by it toward `dir` (eased like the wheel's).
 @(private = "file")
 scrollbar_arrow_step :: proc(b: ^Box, dir: f32) {
-	b.view_target.y = clamp(b.view_target.y + dir * b.font_size * SCROLLBAR_ARROW_STEP_EM, 0, max(b.view_bounds.y - b.size.y, 0))
+	b.view_target.y = clamp(b.view_target.y + dir * b.font_size * SCROLLBAR_ARROW_STEP_EM, 0, view_limit(b))
 }
 
 // Press on a scrollbar: an arrow steps the view; else remember where the thumb was grabbed (a press on the track centres
@@ -180,8 +179,7 @@ scrollbar_drag :: proc(s: ^State) {
 	span := (track.max.y - track.min.y) - (thumb.max.y - thumb.min.y)
 	if span <= 0 { return }
 	t := clamp((s.mouse.y - s.sb_grab - track.min.y) / span, 0, 1)
-	b.view_target.y = t * (b.view_bounds.y - b.size.y)
-	b.view_off.y = b.view_target.y
+	view_jump(b, t * view_limit(b))
 	s.anim_busy = true
 }
 

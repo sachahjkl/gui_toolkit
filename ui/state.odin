@@ -801,8 +801,7 @@ update_animations :: proc(s: ^State) {
 		for axis in Axis {
 			scroll_flag := axis == .X ? Box_Flag.View_Scroll_X : Box_Flag.View_Scroll_Y
 			if scroll_flag not_in b.flags { continue }
-			limit := max(0, b.view_bounds[int(axis)] - b.size[int(axis)])
-			b.view_target[int(axis)] = clamp(b.view_target[int(axis)], 0, limit)
+			b.view_target[int(axis)] = clamp(b.view_target[int(axis)], 0, view_limit(b, axis))
 			scroll_step(s, b, int(axis))
 		}
 	}
@@ -939,9 +938,7 @@ scroll_focus_into_view :: proc(s: ^State) {
 	if b == nil { return }
 	for p := b.parent; p != nil; p = p.parent {
 		if .View_Scroll_Y not_in p.flags { continue }
-		margin := b.font_size
-		if b.rect.min.y < p.rect.min.y { p.view_target.y -= p.rect.min.y - b.rect.min.y + margin }
-		if b.rect.max.y > p.rect.max.y { p.view_target.y += b.rect.max.y - p.rect.max.y + margin }
+		view_reveal_box(p, b, margin = b.font_size)
 	}
 }
 

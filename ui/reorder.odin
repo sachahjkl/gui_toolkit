@@ -33,8 +33,7 @@ reorder_offset :: proc(offset: f32, n: int, pitch, view: f32, current: int, foll
 	o := offset
 	if follow && current >= 0 && current < n {
 		lead := f32(current) * pitch
-		if lead < o { o = lead }
-		if lead + pitch > o + view { o = lead + pitch - view }
+		o = view_reveal_offset(o, lead, lead + pitch, view)
 	}
 	return clamp(o, 0, limit)
 }

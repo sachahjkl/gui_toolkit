@@ -462,7 +462,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	if first { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
 	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}, id)
 	p.cursor = .Arrow
-	if !lv.scrolls { p.view_off, p.view_target = {}, {} }
+	if !lv.scrolls { view_jump(p, 0) }
 	a11y_default(p, {role = .Menu, orientation = .Y})
 	lv.panel = p.key
 	_ = signal(p)
@@ -489,11 +489,8 @@ menu_reveal :: proc(lv: ^Menu_Level, b: ^Box) {
 	if !lv.scrolls || panel == nil || b.first_build == s.build_index { return }
 	top: f32
 	for q := b; q != nil && q != panel; q = q.parent { top += q.rel_pos.y }
-	y := panel.view_target.y
-	if top < y { y = top }
-	if top + b.size.y > y + panel.size.y { y = top + b.size.y - panel.size.y }
-	if y != panel.view_target.y { scrollbar_reveal(panel) }
-	panel.view_target.y, panel.view_off.y = y, y   // (a step of the keyboard jumps, as the system's menus do)
+	if view_reveal(panel, top, top + b.size.y) { scrollbar_reveal(panel) }
+	view_jump(panel, panel.view_target.y)   // (a step of the keyboard jumps, as the system's menus do)
 	lv.reveal = false
 }
 

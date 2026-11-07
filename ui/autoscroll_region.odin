@@ -149,9 +149,8 @@ autoscroll_apply :: proc(s: ^State) {
 	}
 	dt := f64(s.dt)
 	step := Vec2{f32(f64(vel.x) * dt), f32(f64(vel.y) * dt)}
-	limit := Vec2{max(0, b.view_bounds.x - b.size.x), max(0, b.view_bounds.y - b.size.y)}
-	if .View_Scroll_X in b.flags { b.view_target.x = clamp(b.view_target.x + step.x, 0, limit.x) }
-	if .View_Scroll_Y in b.flags { b.view_target.y = clamp(b.view_target.y + step.y, 0, limit.y) }
+	if .View_Scroll_X in b.flags { b.view_target.x = clamp(b.view_target.x + step.x, 0, view_limit(b, .X)) }
+	if .View_Scroll_Y in b.flags { b.view_target.y = clamp(b.view_target.y + step.y, 0, view_limit(b)) }
 	s.anim_busy = true
 }
 

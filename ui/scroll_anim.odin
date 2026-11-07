@@ -84,6 +84,62 @@ scroll_anim_retarget :: proc(a: ^Scroll_Anim, cfg: Scroll_Settings, pos, vel, to
 	}
 }
 
+// The verbs of a scroll box's view. view_off, view_target and view_anim go together: code that moves a view says which
+// of these it means, and only scroll_step and these write them. Positions are in the content, 0 at its start.
+// Bounds are the last layout's, so what is new this build may lie past them: the update's clamp has the last word.
+
+// The largest scroll along an axis.
+view_limit :: proc(b: ^Box, axis := Axis.Y) -> f32 {
+	return max(0, b.view_bounds[int(axis)] - b.size[int(axis)])
+}
+
+// The offset closest to `offset` that shows `top` .. `bottom` in `view`; what is longer than the view keeps its top.
+// `margin`: how much room is left around it when the offset has to move (what already shows stays as it is).
+view_reveal_offset :: proc(offset, top, bottom, view: f32, margin: f32 = 0) -> f32 {
+	o := offset
+	if top < o { o = top - margin }
+	if bottom > o + view { o = min(bottom + margin - view, top - margin) }
+	return o
+}
+
+// Heads for `top` .. `bottom` (a glide, as the wheel's); true when the target moved. A view that shows its bar only for
+// a while decides for itself whether this is a reason to: see scrollbar_reveal.
+view_reveal :: proc(b: ^Box, top, bottom: f32, axis := Axis.Y, margin: f32 = 0) -> (moved: bool) {
+	ai := int(axis)
+	y := view_reveal_offset(b.view_target[ai], top, bottom, b.size[ai], margin)
+	moved = y != b.view_target[ai]
+	b.view_target[ai] = y
+	return
+}
+
+// view_reveal of `b`, a box inside the scroll box `p`, as its rect stands in the last layout.
+@(private)
+view_reveal_box :: proc(p, b: ^Box, axis := Axis.Y, margin: f32 = 0) {
+	ai := int(axis)
+	top := b.rect.min[ai] - p.rect.min[ai] + p.view_off[ai]
+	view_reveal(p, top, top + b.rect.max[ai] - b.rect.min[ai], axis, margin)
+}
+
+// Goes to `at` with no glide. Not clamped: content filtered anew has no bounds yet, the update clamps it.
+// (Ending a glide is cutting `active`: scroll_step reads the rest of a Scroll_Anim only while it is set, and with it
+// off a view that sits on its target has nothing to follow, wherever the old glide was heading.)
+view_jump :: proc(b: ^Box, at: f32, axis := Axis.Y) {
+	ai := int(axis)
+	b.view_off[ai], b.view_target[ai] = at, at
+	b.view_anim[ai].active = false
+}
+
+// The content moved by `by` under the view: the view follows, what it showed stays on screen, and a glide under way
+// goes on from where it was instead of starting over. `limit`: the largest scroll of the content as it now is, which
+// view_limit does not know before the layout. A target at the top stays there: a view going back to the top still ends
+// there (the glide, shifted with the rest, turns to it at its speed).
+view_shift :: proc(b: ^Box, by, limit: f32, axis := Axis.Y) {
+	ai := int(axis)
+	b.view_off[ai] = clamp(b.view_off[ai] + by, 0, limit)
+	if b.view_target[ai] > 0 { b.view_target[ai] = clamp(b.view_target[ai] + by, 0, limit) }
+	if a := &b.view_anim[ai]; a.active { a.from += f64(by); a.to += f64(by) }
+}
+
 // One axis of a scroll box toward its (clamped) target, at the end of a build (update_animations).
 @(private)
 scroll_step :: proc(s: ^State, b: ^Box, ai: int) {

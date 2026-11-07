@@ -811,7 +811,7 @@ write_node :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, b: ^ui.Box,
 		n += 1
 	}
 	if n > 0 { strings.write_string(sb, `"]`) }
-	if .View_Scroll_Y in b.flags { fmt.sbprintf(sb, `,"scroll":%.1f,"scrollMax":%.1f`, b.view_off.y / d, max(0, b.view_bounds.y - b.size.y) / d) }
+	if .View_Scroll_Y in b.flags { fmt.sbprintf(sb, `,"scroll":%.1f,"scrollMax":%.1f`, b.view_off.y / d, ui.view_limit(b) / d) }
 	first := true
 	for c := b.first; c != nil; c = c.next {
 		if !all && !worth(s, c) { continue }
