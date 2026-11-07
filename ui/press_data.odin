@@ -62,3 +62,25 @@ press_data_destroy :: proc(s: ^State) {
 	for _, e in s.press_kept { mem.free(e.data, e.allocator) }
 	delete(s.press_kept)
 }
+
+// The press held on box `from` goes on on box `to`, with what it keeps: a gesture whose item is built in another place while it lasts
+// (a tab dragged out of a list into a grid of pinned ones, whose boxes have other parents) is the same press. Call it in the build
+// that makes `to`, before its signal. False, and nothing changes, when no button holds `from`.
+press_hand :: proc(from, to: Key) -> bool {
+	s := gs()
+	if from == 0 || to == 0 || from == to { return false }
+	handed := false
+	for &k, button in s.active_key {
+		if k != from { continue }
+		k = to
+		handed = true
+		moved := make([dynamic]Press_Data_Key, context.temp_allocator)
+		for pk, e in s.press_kept { if pk.key == from && e.button == button { append(&moved, pk) } }
+		for pk in moved {
+			e := s.press_kept[pk]
+			delete_key(&s.press_kept, pk)
+			s.press_kept[Press_Data_Key{to, pk.type}] = e
+		}
+	}
+	return handed
+}

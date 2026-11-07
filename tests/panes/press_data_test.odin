@@ -117,3 +117,26 @@ a_press_ends_with_its_box_and_with_the_window :: proc(t: ^testing.T) {
 	build(p, {{kind = .Frame_Press}})   // (a press on the window's frame: the user is elsewhere)
 	testing.expect(t, p.got == nil, "the user left the window")
 }
+
+// ui.press_hand: the press goes on on another box with what it kept, and ends with the button as before; the first box holds nothing.
+@(test)
+a_press_handed_to_another_box_keeps_its_data :: proc(t: ^testing.T) {
+	p := new(Px)
+	defer free(p)
+	start(p)
+	defer stop(p)
+	pr := press(AT)
+	build(p, pr[:])
+	if !testing.expect(t, p.got != nil, "the press has its data") { return }
+	p.got.n = 5
+	from := ui.key_from_string(p.s.root.key, "###grip")
+	to := ui.key_from_string(p.s.root.key, "###elsewhere")
+	ui.begin_build(&p.s, {window_size = {400, 100}, dt = 1.0 / 60, dpi_scale = 1, base = ui.Style{font = p.f, font_size = 15}})
+	testing.expect(t, ui.press_hand(from, to), "a button holds the first box")
+	got := ui.press_data(Grip, to)
+	testing.expect(t, got != nil && got.n == 5, "what the press kept goes with it")
+	testing.expect(t, ui.press_data(Grip, from) == nil, "the first box holds nothing now")
+	testing.expect(t, !ui.press_hand(from, to), "nothing to hand twice")
+	ui.end_build()
+	free_all(context.temp_allocator)
+}
