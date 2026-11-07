@@ -4,6 +4,8 @@ package host_test
 
 import "core:testing"
 import win "core:sys/windows"
+import "../../draw"
+import "../../font"
 import "../../host"
 import "../../platform"
 import "../../render"
@@ -66,14 +68,64 @@ a_frame_goes_in_its_order :: proc(t: ^testing.T) {
 	h.params = proc(h: ^host.Host, bp: ^ui.Build_Params) { note(h, "params") }
 	h.after_build = proc(h: ^host.Host) { note(h, "after_build") }
 	h.hold = proc(h: ^host.Host, size: host.Vec2) -> int { note(h, "hold"); return 0 }
+	h.still = proc(h: ^host.Host, e: []platform.Event) -> bool { note(h, "still"); return false }
+	h.after_frame = proc(h: ^host.Host) { note(h, "after_frame") }
 	step(h)
-	want := []string{"dragging", "before_input", "input", "params", "after_build", "hold"}
+	want := []string{"dragging", "before_input", "still", "input", "params", "after_build", "hold", "after_frame"}
 	testing.expect_value(t, len(p.seen), len(want))
 	for w, i in want {
 		if i < len(p.seen) { testing.expectf(t, p.seen[i] == w, "%d: %s, want %s", i, p.seen[i], w) }
 	}
 	testing.expect_value(t, h.shown, SIZE)
 	testing.expect(t, ui.building() == false, "no build left open")
+}
+
+// A window that says nothing it shows changed is not built, and its last picture stays.
+@(test)
+a_still_window_builds_nothing :: proc(t: ^testing.T) {
+	p: Probe
+	defer delete(p.seen)
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	open_main(t, &sh, h, &p)
+	defer host.host_close(h)
+	step(h)
+	built := p.builds
+	h.still = proc(h: ^host.Host, e: []platform.Event) -> bool { return true }
+	step(h)
+	step(h)
+	testing.expect_value(t, p.builds, built)
+}
+
+// A window and a renderer the application made itself: the host takes them, and its frames go as an opened one's.
+@(test)
+an_adopted_window_has_its_frames :: proc(t: ^testing.T) {
+	p: Probe
+	sh: host.Shared
+	w := platform.open_window_offscreen("adopted", SIZE)
+	if !testing.expect(t, w != nil) { return }
+	if !testing.expect(t, render.init_offscreen(&sh.r, w.size, warp = true), "no renderer (WARP)") { platform.destroy_window(w); return }
+	font.init(&sh.fonts)   // (what is shared, made by the application: its fonts, its drawing, its theme)
+	sh.font, _, _ = font.load_system_or_embedded(&sh.fonts, "", font.FALLBACK_UI_DATA)
+	draw.init(&sh.dc, &sh.r, &sh.fonts)
+	ui.apply_palette(&sh.theme, ui.PALETTE_MIDNIGHT)
+	h := new(host.Host)
+	defer free(h)
+	host.host_adopt(h, &sh, w, probe_build, &p)
+	testing.expect(t, sh.main == h && h.paced, "the first one adopted is the main one, paced")
+	ui.init(&h.state, &sh.fonts, &sh.theme)
+	ui.set_clock(&h.state, &p.clock)
+	testing.expect(t, w.on_frame != nil && w.user == h)
+	step(h)
+	testing.expect_value(t, p.builds, 1)
+	testing.expect_value(t, h.shown, SIZE)
+	ui.destroy(&h.state)
+	ui.theme_destroy(&sh.theme)
+	draw.destroy(&sh.dc)
+	render.destroy(&sh.r)
+	font.destroy(&sh.fonts)
+	platform.destroy_window(w)
 }
 
 // A frame may build as many times as it needs: the builds after the first take no input.
