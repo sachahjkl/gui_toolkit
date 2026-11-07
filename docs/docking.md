@@ -87,6 +87,9 @@ first; `next` sizes the box, `fill` by default), takes the input (a drop, the dr
 corners of floating panels) and builds the strips, the handles and the floating panels' frames. `dock_end` draws the drop
 targets while something is dragged, builds the menu, and calls `opts.on_save` when the user is done changing the layout
 (not in the middle of a drag); it returns `changed`, `finished`, `dragging` and the panel the user `closed`.
+`dock_held(d)` says whether the left button holds one of the dock's own controls (a tab or a floating panel's title,
+pressed or dragged, a handle, a floating panel's corner; not what a panel's content holds). It holds no state: it asks the
+press, so it ends with it (the release, the box held going, the user leaving the window), and may be asked at any time.
 
 | `Dock_Options` | |
 |---|---|
