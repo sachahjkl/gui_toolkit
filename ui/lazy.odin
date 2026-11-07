@@ -20,7 +20,8 @@ import "core:fmt"
 // An item never built stands as the mean height of those that were; one built at another width keeps its old height
 // until it is built again. Either is corrected when the item comes near the view, and the view stays on the item it
 // showed (the first one visible keeps its place on screen: lazy_settle, after the layout), so nothing jumps.
-// `lazy_begin(all = true)` builds every item (`all = find_sweep()`: a find in page reads them, once); `always`: build this item
+// `lazy_begin(all = true)` builds every item; `sweep`: these items too, by their order ([first, end): `sweep = find_sweep()`, a find in
+// page reads a slice of them at each frame); `always`: build this item
 // whatever (the item that grows while streaming; a focus in an item left behind waits for it). One lazy column to a
 // parent: what a column keeps between frames goes by that parent's key.
 
@@ -40,6 +41,8 @@ Lazy :: struct {
 	items:   [dynamic]^Box,   // the items built, in order (lazy_settle)
 	pin:     Key,     // the item the view stays on, whatever moves around it (lazy_pin), 0: none
 	pin_dy:  f32,
+	sweep:   [2]int,  // the items built for a find's sweep, [first, end) by their order
+	n:       int,     // items met so far
 }
 
 @(private)
@@ -62,15 +65,17 @@ LAZY_MARGIN :: 1.0   // screens built above and below the view
 @(private = "file") LAZY_TRIM_INTERVAL_BUILDS :: 120
 @(private = "file") LAZY_KEEP_BUILDS :: 600
 
-// In the column the items go in. `all`: build every item this frame. (The space of the last items skipped is put in
-// when the block lazy_begin was called in ends: before the column closes.)
+// In the column the items go in. `all`: build every item this frame; `sweep`: these ones too (find_sweep). (The space of the last
+// items skipped is put in when the block lazy_begin was called in ends: before the column closes.)
 @(deferred_out = lazy_end)
-lazy_begin :: proc(all := false) -> (lz: ^Lazy) {
+lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	s := gs()
 	lz = new(Lazy, frame_allocator())
 	lz.items.allocator = frame_allocator()
+	lz.sweep = sweep
 	col := parent_box()
 	lz.column = col.key
+	if sweep[1] > sweep[0] { s.find.column = col.key }
 	c := s.lazy_columns[col.key] or_else {}
 	c.seen = s.build_index
 	s.lazy_columns[col.key] = c
@@ -122,7 +127,9 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	if !e.known { h = lz.est } else if h > 0 { lz.known_h += h; lz.known_n += 1 }
 	top := lz.y
 	lz.y += h
-	if lz.on && !always && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
+	swept := lz.n >= lz.sweep[0] && lz.n < lz.sweep[1]
+	lz.n += 1
+	if lz.on && !always && !swept && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
 		lz.skip += h
 		next_drop(s)
 		return false
@@ -132,6 +139,8 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	next({width = fill(), height = children_sum(), axis = .Y})
 	lz.last = build_box({}, id)
 	append(&lz.items, lz.last)
+	if lz.sweep[1] > lz.sweep[0] { append(&s.find.built, lz.last.key) }
+	if swept { append(&s.find.chunk, lz.last.key) }
 	push_parent(lz.last)
 	return true
 }
@@ -159,6 +168,7 @@ lazy_end :: proc(lz: ^Lazy) {
 	lazy_count(lz)
 	s := gs()
 	if lz.on { s.virtual_depth -= 1 }
+	if lz.sweep[1] > lz.sweep[0] { s.find.total = lz.n }   // (where the sweep ends)
 	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = lz.known_h / f32(lz.known_n) }
 	append(&s.lazy_frame, lz)   // (a column in no scroll box too: its items' heights are noted there)
 	// every item built and nothing in any: their content was built after each item closed

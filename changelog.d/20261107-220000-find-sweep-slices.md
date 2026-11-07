@@ -1,0 +1,3 @@
+type: Changed
+
+**`ui.find_sweep`** (breaking): a find in a lazy column reads the column a slice of items at each frame (`FIND_SWEEP_ITEMS`), from the top down, instead of building all of it in one frame: a long document no longer freezes the window when a needle rests. It returns the items this build makes for it, given to **`ui.lazy_begin(sweep = ...)`** (was `lazy_begin(all = find_sweep())`); the text of the scope around the items (the column's own boxes, before them and after them) is read too, in reading order. Until a sweep ends, what the last one found stands; **`ui.find_progress`** says how far it is, and `find_count` while `find_pending` is what it has read so far. A match not counted yet has the index -1.
