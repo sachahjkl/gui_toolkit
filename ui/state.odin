@@ -1,6 +1,7 @@
 package ui
 
 import "core:fmt"
+import "core:strings"
 import "core:math"
 import "core:mem"
 import "core:mem/virtual"
@@ -470,7 +471,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	if .Disabled in b.flags && s.focus_key == b.key { s.focus_key = 0 }
 	selection_note(s, b)
 	b.name = ""
-	if id != "" { b.name = fmt.aprint(hash_part(id), allocator = frame_allocator()) }
+	if id != "" { b.name = strings.clone(hash_part(id), frame_allocator()) }
 	b.pref = st.pref
 	b.layout_axis = axis
 	b.cross = cross
@@ -505,7 +506,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.text_dim = {}
 	disp := display_part(id)
 	if disp != "" {
-		b.text = fmt.aprint(disp, allocator = frame_allocator())
+		b.text = strings.clone(disp, frame_allocator())
 		m := font.metrics(s.fonts, b.font, b.font_size)
 		b.text_dim = {font.text_width(s.fonts, b.font, b.font_size, b.text), m.line_height}
 	}
