@@ -5,6 +5,28 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.91.0] - 2026-11-07
+
+### Added
+- **`ui.lazy_pin`**, **`ui.lazy_pinned`**: the view stays on an item, a given distance into it, placed after each layout whatever grows around it; what the last layout found of it says when it has settled.
+- **ui.press_data**: what a gesture keeps lives on its press: the zero T when the press began, the same while it lasts, gone when it ends by whatever way (release, its box gone, the user leaving the window). A press of the same box again, even in one batch of input, starts from zero.
+- **ui.window_clipboard_get, ui.window_clipboard_set**: Build_Params' clipboard procedures for the system's clipboard of the build's window, so a program no longer needs a global to reach its window.
+- **platform.events_waiting**: whether a window has something for its next poll_events, without waiting. A loop of several windows asks each before it sleeps, because the poll of one window of the thread takes the others' messages.
+- **host**: a window as an object, above ui and render. host_open, host_frame (pace, input, resize, builds, picture, present), host_close, and hosts_wait / hosts_due / hosts_frame for several windows on one renderer. Hooks cover what a rich application's frame does of its own: params, input, builds (several in a frame: host_build), hold (no picture this frame), after_build, before_input, dragging, rest_frame. It keeps the orders that matter: input is read with the renderer given back, a step of a resize is that window's alone, buffers keep the monitor's size, and only the first window is paced. examples/hello and examples/todo use it; the way by hand is unchanged.
+- **render.surface_scope**: surface_use until the end of the calling scope, so a frame on a second window cannot forget to go back.
+- **ui.view_limit, ui.view_reveal, ui.view_reveal_offset, ui.view_jump, ui.view_shift**: the verbs of a scroll box's view, for code that wrote view_off, view_target and view_anim by hand. view_reveal says whether the target moved, so a caller decides on scrollbar_reveal itself; view_shift keeps a glide under way and leaves a target at the top there.
+
+### Changed
+- **A lazy column** looks each item up once per build, in one map: an item's height is noted after the layout that placed it.
+- **Splitters, dialog grips, floating panel corners, range sliders**: what their drag starts from is kept on the press (ui.press_data), not in the State's one drag payload. ui.drag_store and ui.drag_load stay, for gestures that read an earlier press (panes).
+- **render.Window_Target**: what is one window's is now a struct of its own, included by using in Renderer and Surface, and Wgpu_Window on the WebGPU side; surface_use exchanges them whole, so a new window field needs no list. Field access is unchanged, except that Surface.gen and Surface.space_epoch are now Surface.swap_gen and Surface.swap_space, and Surface.wgpu_backing is a ^Wgpu_Window.
+- **A row taller than its view keeps its top**: ui.list, menus, reorder_offset, the focus and the accessibility reveal now follow the rule ui.vlist had, instead of showing the row's bottom.
+- **A box's name and text**: copied as they are at each build, without going through the formatter.
+
+### Fixed
+- **WebGPU second windows**: a window's frame format now goes with it through surface_use, as its offscreen target does on Direct3D 11.
+- **Scrolling**: dragging a scroll bar's thumb or stepping a long menu ends a glide under way, which could pull the view back for a frame; a ui.vlist whose rows moved during a glide no longer starts the glide over.
+
 ## [0.90.0] - 2026-11-06
 
 ### Added
@@ -1734,6 +1756,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.91.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.91.0
 [0.90.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.90.0
 [0.89.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.89.0
 [0.88.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.88.0
