@@ -650,6 +650,20 @@ wheel_lines :: proc(across := false) -> f32 {
 	return n == win.WHEEL_PAGESCROLL ? 0 : f32(n)
 }
 
+// Whether the user prefers dark apps (Settings > Personalization > Colors > "Choose your app mode"; the registry's
+// AppsUseLightTheme, 0: dark). Absent (older systems): light, Windows' own default.
+dark_mode_preferred :: proc() -> bool {
+	v, size: win.DWORD = 1, size_of(win.DWORD)
+	key := win.utf8_to_wstring(`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`)
+	name := win.utf8_to_wstring("AppsUseLightTheme")
+	if win.RegGetValueW(win.HKEY_CURRENT_USER, key, name, win.RRF_RT_REG_DWORD, nil, &v, &size) != 0 { return false }
+	return v == 0
+}
+
+// (Windows tells every top-level window of WM_SETTINGCHANGE: nothing to start.)
+@(private)
+color_scheme_watch :: proc() {}
+
 // Per-user config directory (%APPDATA%).
 config_dir :: proc(allocator := context.allocator) -> string {
 	name := win.utf8_to_wstring("APPDATA", context.temp_allocator)
@@ -915,6 +929,10 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		}
 
 	case win.WM_SETTINGCHANGE:
+		if lparam != 0 {   // (the light / dark choice of the apps: "ImmersiveColorSet")
+			name := win.wstring(rawptr(uintptr(lparam)))
+			if s, err := win.wstring_to_utf8(name, -1, context.temp_allocator); err == nil && s == "ImmersiveColorSet" { color_scheme_bump() }
+		}
 		if wparam == win.SPI_SETCURSORS {   // another pointer size or scheme: drawn cursors are made again
 			cursor_settings_changed()
 			cursor_on_dpi_change(w)

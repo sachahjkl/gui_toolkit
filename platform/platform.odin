@@ -18,6 +18,7 @@
 //   * Everything is in physical pixels. `window.dpi_scale` is dpi/96.
 package platform
 
+import "core:sync"
 import "core:time"
 
 @(private) DPI_BASE :: 96                  // dpi of a scale of 1 (dpi_scale is dpi / 96)
@@ -177,6 +178,19 @@ Custom_Cursor :: distinct u64
 CUSTOM_CURSOR_MAX_CSS :: 128
 
 WHEEL_LINES_DEFAULT :: 3   // what a notch of the wheel moves where the system does not say (wheel_lines)
+
+// Bumped each time the system's light / dark preference may have changed (Windows: WM_SETTINGCHANGE "ImmersiveColorSet";
+// Linux: the appearance portal's SettingChanged). An app that follows dark_mode_preferred keeps the last value it saw and
+// reads the preference again when this moves: no event to route, one integer compared per frame.
+@(private) scheme_serial: u32
+
+color_scheme_serial :: proc() -> u32 {
+	color_scheme_watch()
+	return sync.atomic_load(&scheme_serial)
+}
+
+@(private)
+color_scheme_bump :: proc() { sync.atomic_add(&scheme_serial, 1) }
 
 Custom_Cursor_Error :: enum u8 {
 	None,
