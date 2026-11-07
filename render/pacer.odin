@@ -20,7 +20,9 @@ import "../platform"
 // procedure, a modal move or size) passes `inner = true`.
 //
 // Input after a rest is not shown at once (no wait for the refresh): measured in opencode native, that one frame left the
-// swap chain a frame deeper for the rest of the session (input to screen 45 to 60 ms instead of 30, every run).
+// swap chain a frame deeper for the rest of the session (input to screen 45 to 60 ms instead of 30, every run). That holds
+// for every frame that goes through pace_frame, whatever the application: the decision is never told of input (`input = false`
+// below), so no caller can ask for it.
 
 Pacer :: struct {
 	cadence:        platform.Cadence,
