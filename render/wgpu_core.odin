@@ -82,20 +82,10 @@ Wgpu_Device :: struct {
 	panel:    ^Panel,
 }
 
-Wgpu_State :: struct {
-	shared:        ^Wgpu_Shared,
-	instance:      wgpu.Instance,
-	adapter:       wgpu.Adapter,
-	device:        wgpu.Device,
-	queue:         wgpu.Queue,
+// What is one window's among the wgpu objects: Wgpu_State has the one drawn to, a Surface one set aside (Window_Target
+// says the same of the rest, and moves with it).
+Wgpu_Window :: struct {
 	surface:       wgpu.Surface,
-	backend_type:  wgpu.BackendType,
-	adapter_name:  [WGPU_ADAPTER_NAME_BYTES]u8,
-	adapter_name_len: int,
-	cpu_adapter:   bool,
-	max_tex:       int,
-	can_timestamp: bool,                 // TimestampQuery (+ inside encoders)
-	can_norm16:    bool,                 // TextureFormat16bitNorm: R16Unorm / RG16Unorm planes (10-bit video, wgpu_video.odin)
 	surface_format: wgpu.TextureFormat,  // storage of the frame
 	view_format:   wgpu.TextureFormat,   // how the frame is drawn into and read
 	frame_tex:     wgpu.Texture,         // the surface texture of this frame, or the offscreen image
@@ -103,35 +93,10 @@ Wgpu_State :: struct {
 	configured:    bool,
 	clear:         [4]f64,
 	clear_pending: bool,                 // the frame target still has to be cleared (first pass of the frame)
-	fxc:           bool,                 // Direct3D 12 compiles the shaders with FXC (slow: seconds for the first frame's pipelines)
 	first_shown:   bool,                 // a frame of the window was presented (the first one shows the background before compiling)
 	present_mode:  wgpu.PresentMode,
-	// shaders, layouts, pipelines
-	module_rect, module_fx, module_mip, module_slug, module_slug_dual: wgpu.ShaderModule,
-	can_dual: bool,   // the device has dual-source blending
-	bgl0, bgl1, bgl_fx, bgl_mip, bgl_app: wgpu.BindGroupLayout,
-	pl_main, pl_fx, pl_mip, pl_app: wgpu.PipelineLayout,
-	pipes, fx_pipes, mip_pipes, slug_pipes: [dynamic]Wgpu_Pipe,
-	video:         Wgpu_Video,           // wgpu_video.odin
-	s_atlas, s_img, s_wrap, s_fx, s_mip: wgpu.Sampler,
-	dummy_r8, dummy_rgba, dummy_curves, dummy_bands: wgpu.Texture,
-	dummy_r8_view, dummy_rgba_view, dummy_curves_view, dummy_bands_view: wgpu.TextureView,
-	// tables of the frame
-	inst, xforms, clips, points, grads, app_params: Wgpu_Table,
-	arena:         wgpu.Buffer,
-	arena_cap:     int,
-	arena_used:    int,
-	// latency (wgpu_present.odin)
-	latency:       Wgpu_Latency,
-	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
-	pipe_lock:     sync.Mutex,           // pipelines are made by the render thread and by the pre-warming thread
-	prewarm:       ^thread.Thread,
-	prewarm_format: wgpu.TextureFormat,  // the view format it makes pipelines for (`view_format` changes with the window in use)
+	latency:       Wgpu_Latency,         // wgpu_present.odin
 	panel:         ^Panel,               // translucent window: the DirectComposition visual's swap chain panel (wgpu_dcomp.odin)
-	// start-up costs, milliseconds (wgpu_costs)
-	t_device, t_modules, t_pipelines: f64,
-	n_pipelines: int,
-	cpu: Wgpu_Cpu,
 	// partial redraw (damage_wgpu.odin): wgpu-native has no present-with-damage in the pinned version, so a partial
 	// frame draws into a persistent target (kept across frames, scissored to the region) and the whole target is then
 	// copied to the surface and presented. `damage_target` holds the last full composite; `damage_size` its size.
@@ -148,6 +113,46 @@ Wgpu_State :: struct {
 	damage_clear:  wgpu.Texture,       // a texture of the clear color, copied into the region
 	damage_clear_view: wgpu.TextureView,
 	damage_clear_size: [2]int,
+}
+
+Wgpu_State :: struct {
+	using window:  Wgpu_Window,          // the window drawn to
+	shared:        ^Wgpu_Shared,
+	instance:      wgpu.Instance,
+	adapter:       wgpu.Adapter,
+	device:        wgpu.Device,
+	queue:         wgpu.Queue,
+	backend_type:  wgpu.BackendType,
+	adapter_name:  [WGPU_ADAPTER_NAME_BYTES]u8,
+	adapter_name_len: int,
+	cpu_adapter:   bool,
+	max_tex:       int,
+	can_timestamp: bool,                 // TimestampQuery (+ inside encoders)
+	can_norm16:    bool,                 // TextureFormat16bitNorm: R16Unorm / RG16Unorm planes (10-bit video, wgpu_video.odin)
+	fxc:           bool,                 // Direct3D 12 compiles the shaders with FXC (slow: seconds for the first frame's pipelines)
+	// shaders, layouts, pipelines
+	module_rect, module_fx, module_mip, module_slug, module_slug_dual: wgpu.ShaderModule,
+	can_dual: bool,   // the device has dual-source blending
+	bgl0, bgl1, bgl_fx, bgl_mip, bgl_app: wgpu.BindGroupLayout,
+	pl_main, pl_fx, pl_mip, pl_app: wgpu.PipelineLayout,
+	pipes, fx_pipes, mip_pipes, slug_pipes: [dynamic]Wgpu_Pipe,
+	video:         Wgpu_Video,           // wgpu_video.odin
+	s_atlas, s_img, s_wrap, s_fx, s_mip: wgpu.Sampler,
+	dummy_r8, dummy_rgba, dummy_curves, dummy_bands: wgpu.Texture,
+	dummy_r8_view, dummy_rgba_view, dummy_curves_view, dummy_bands_view: wgpu.TextureView,
+	// tables of the frame
+	inst, xforms, clips, points, grads, app_params: Wgpu_Table,
+	arena:         wgpu.Buffer,
+	arena_cap:     int,
+	arena_used:    int,
+	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
+	pipe_lock:     sync.Mutex,           // pipelines are made by the render thread and by the pre-warming thread
+	prewarm:       ^thread.Thread,
+	prewarm_format: wgpu.TextureFormat,  // the view format it makes pipelines for (`view_format` changes with the window in use)
+	// start-up costs, milliseconds (wgpu_costs)
+	t_device, t_modules, t_pipelines: f64,
+	n_pipelines: int,
+	cpu: Wgpu_Cpu,
 }
 
 // Where the CPU time of a frame goes (TOOLKIT_WGPU_TRACE: averages printed once per second).

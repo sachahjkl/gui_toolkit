@@ -1,74 +1,27 @@
 package render
 
 import "core:fmt"
+import "core:slice"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
-import "vendor:directx/dxgi"
 import "../platform"
 
 // A second window drawn by the same renderer (same device, textures, fonts and pipelines): a Surface is a swap chain of its
 // own with the state that goes with it. `surface_use` exchanges it with the renderer's own, so that the calls that follow
-// (resize, frame_begin, frame_submit, frame_end) work on the other window; call it again to go back. Both backends: on WebGPU the
-// per-window state is in `wgpu_backing` (wgpu_surface.odin).
+// (resize, frame_begin, frame_submit, frame_end) work on the other window; call it again to go back, or let surface_scope do both.
+// Both backends: WebGPU's objects of a window are a Wgpu_Window, on the heap (wgpu_surface.odin).
 
 Surface :: struct {
-	swapchain:      ^dxgi.ISwapChain1,
-	rtv:            ^d3d11.IRenderTargetView,
-	frame_tex:      ^d3d11.ITexture2D,
-	frame_format:   dxgi.FORMAT,
-	frame_view:     dxgi.FORMAT,
-	latency_handle: win.HANDLE,
-	swap_flags:     dxgi.SWAP_CHAIN,
-	present:        Present_State,
-	size:           [2]int,
-	buffer_size:    [2]int,
-	source_size:    [2]int,
-	fixed_surface:  bool,
-	surface_max:    [2]int,
-	hwnd:           win.HWND,
-	transparent:    bool,
-	transparent_asked: bool,
-	under_children: bool,
-	dcomp:          ^IDCompositionDevice,
-	dcomp_target:   ^IDCompositionTarget,
-	dcomp_visual:   ^IDCompositionVisual,
-	capture:        Capture_State,   // a capture is of one window: the next frame_end of this surface
-	damage:         Damage_State,    // partial redraw state of this window (swapped with surface_use)
-	gen:            u64,             // Renderer.swap_gen and swap_space, while the surface is set aside:
-	space_epoch:    u64,             // what it was made on and in
-	// On the WebGPU backend the fields above are unused; the per-window state lives here instead (a ^Wgpu_Surface,
-	// allocated by the wgpu surface_init). A single rawptr keeps this struct free of wgpu types so both backends build.
-	wgpu_backing:   rawptr,
-	valid:          bool,
-	held:           bool,            // surface_use gave it to the renderer: what it keeps now is the window the renderer had
+	using target: Window_Target,
+	wgpu_backing: ^Wgpu_Window,   // WebGPU: allocated by surface_init
+	valid:        bool,
+	held:         bool,           // surface_use gave it to the renderer: what it keeps now is the window the renderer had
 }
 
+// The window's state changes hands whole. Byte by byte, not `a, b = b, a`: a value of this size is what surface_create warns of.
 @(private)
 exchange :: proc(r: ^Renderer, s: ^Surface) {
-	r.swapchain, s.swapchain = s.swapchain, r.swapchain
-	r.rtv, s.rtv = s.rtv, r.rtv
-	r.frame_tex, s.frame_tex = s.frame_tex, r.frame_tex
-	r.frame_format, s.frame_format = s.frame_format, r.frame_format
-	r.frame_view, s.frame_view = s.frame_view, r.frame_view
-	r.latency_handle, s.latency_handle = s.latency_handle, r.latency_handle
-	r.swap_flags, s.swap_flags = s.swap_flags, r.swap_flags
-	r.present, s.present = s.present, r.present
-	r.size, s.size = s.size, r.size
-	r.buffer_size, s.buffer_size = s.buffer_size, r.buffer_size
-	r.source_size, s.source_size = s.source_size, r.source_size
-	r.fixed_surface, s.fixed_surface = s.fixed_surface, r.fixed_surface
-	r.surface_max, s.surface_max = s.surface_max, r.surface_max
-	r.hwnd, s.hwnd = s.hwnd, r.hwnd
-	r.transparent, s.transparent = s.transparent, r.transparent
-	r.transparent_asked, s.transparent_asked = s.transparent_asked, r.transparent_asked
-	r.under_children, s.under_children = s.under_children, r.under_children
-	r.dcomp, s.dcomp = s.dcomp, r.dcomp
-	r.dcomp_target, s.dcomp_target = s.dcomp_target, r.dcomp_target
-	r.dcomp_visual, s.dcomp_visual = s.dcomp_visual, r.dcomp_visual
-	r.capture, s.capture = s.capture, r.capture
-	r.damage, s.damage = s.damage, r.damage
-	r.swap_gen, s.gen = s.gen, r.swap_gen
-	r.swap_space, s.space_epoch = s.space_epoch, r.swap_space
+	slice.ptr_swap_non_overlapping(&r.target, &s.target, size_of(Window_Target))
 }
 
 // The window the renderer holds now was set aside while the device was recreated (recover: only the window in use is remade, with
@@ -129,8 +82,6 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handle
 		// renderer's by surface_use, exactly as the Direct3D path swaps its swap chain. fixed_size is Direct3D's composition
 		// trick (buffers kept one size while the window resizes); wgpu reconfigures on resize, so it is ignored here.
 		s^ = {}
-		when ODIN_OS == .Windows { s.hwnd = win.HWND(handles.hwnd) }
-		s.size, s.transparent = size, transparent
 		ok = wgpu_surface_init(r, s, handles, size, transparent)
 		s.valid = ok
 		return
@@ -195,4 +146,10 @@ surface_use :: proc(r: ^Renderer, s: ^Surface) {
 	}
 }
 
+// surface_use until the end of the calling scope: no way out of a frame forgets to go back.
+@(deferred_in = surface_use)
+surface_scope :: proc(r: ^Renderer, s: ^Surface) { surface_use(r, s) }
+
 _ :: fmt
+_ :: win     // (the three: used in Direct3D's branches only)
+_ :: d3d11
