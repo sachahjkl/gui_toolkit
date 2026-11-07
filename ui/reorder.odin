@@ -7,16 +7,25 @@ package ui
 //   * reorder_slot: where a dragged item belongs (the slot its middle is over); list_move moves it there;
 //   * reorder_edge_scroll: an item held past an edge of the view scrolls the list;
 //   * reorder_visible: which items show (with a margin), so a long scrolling list builds only those.
-// Reorder is the drag's state (one per list or per family of lists that never drag at once): reorder_frame ends a
-// drag when the button went up, reorder_begin starts one past a threshold, reorder_item_pos gives each item its place
-// (its slot's, animated when items move; the dragged one follows the pointer).
+// The drag is the press's (press_data), on the item's box: reorder_begin starts it past a threshold, reorder_item_pos
+// gives each item its place (its slot's, animated when items move; the dragged one follows the pointer). An item is told
+// by the key of its box, which is its list's too: lists whose items share ids drag apart. The drag ends with its press
+// (the button went up, the item's box went, the user left the window): nothing to end, nothing kept by the app.
 
 import "core:math"
 
-Reorder :: struct {
-	held: Key,    // the press that drags an item: the drag lasts as long as that one (0: no drag)
-	id:   u64,    // the item it drags
-	grab: f32,    // where the pointer holds it: pointer minus the item's leading edge, at the press
+// What the press of an item keeps while it drags it.
+@(private = "file")
+Reorder_Press :: struct {
+	dragging: bool,
+	grab:     f32,   // where the pointer holds it: pointer minus the item's leading edge, at the press
+}
+
+// The left button's press on box `item` (another button drags nothing); nil when it holds no such box.
+@(private = "file")
+reorder_press :: proc(item: Key) -> ^Reorder_Press {
+	if item == 0 || active_key() != item { return nil }
+	return press_data(Reorder_Press, item)
 }
 
 // The size of each of `n` items sharing `avail`: an equal share between `min_size` and `max_size` (the maximum wins
@@ -83,31 +92,33 @@ reorder_moved :: proc(delta: Vec2, axis: Axis, across: bool) -> f32 {
 	return max(along, across ? other : 0)
 }
 
-// Ends the drag once its press is over: the left button went up, wherever (a new press read with it is another drag), or
-// the box held went (an item taken out of the list). Once per frame, before the items.
-reorder_frame :: proc(r: ^Reorder) {
-	if r.held != 0 && (active_key() != r.held || gs().released_key[.Left] != 0) { r^ = {} }
+// Whether the item whose box is `item` is dragged.
+reorder_dragging :: proc(item: Key) -> bool {
+	p := reorder_press(item)
+	return p != nil && p.dragging
 }
 
-reorder_dragging :: proc(r: ^Reorder, id: u64) -> bool { return r.held != 0 && r.id == id }
-
-// Starts dragging item `id` when the press moved more than `threshold` (`moved`: reorder_moved); `press` and `slot`:
-// where the press and the item's leading edge were, in the coordinates reorder_item_pos is given.
-reorder_begin :: proc(r: ^Reorder, id: u64, moved, threshold, press, slot: f32) -> bool {
-	if r.held != 0 || moved <= threshold || active_key() == 0 { return false }
-	r^ = {held = active_key(), id = id, grab = press - slot}
+// Starts dragging the item whose box is `item`, held by the left button, when the press moved more than `threshold`
+// (`moved`: reorder_moved); `press` and `slot`: where the press and the item's leading edge were, in the coordinates
+// reorder_item_pos is given. Once per press: false when it drags already.
+reorder_begin :: proc(item: Key, moved, threshold, press, slot: f32) -> bool {
+	p := reorder_press(item)
+	if p == nil || p.dragging || moved <= threshold { return false }
+	p^ = {dragging = true, grab = press - slot}
 	return true
 }
 
 REORDER_ANIM_RATE :: 30
 
-// The place of item `id` along the axis: its `slot`, animated (`key` keeps the animation; `rate` as `anim`), or, while
-// it is dragged, the pointer less the grab, within `lo` .. `hi` (the release then slides from there).
-reorder_item_pos :: proc(r: ^Reorder, key: Key, id: u64, slot, pointer, lo, hi: f32, rate: f32 = REORDER_ANIM_RATE) -> (pos: f32, dragging: bool) {
-	if reorder_dragging(r, id) {
-		pos = clamp(pointer - r.grab, lo, hi)
-		_ = anim(key, pos, rate, pos)
+// The place along the axis of the item whose box is `item` (its key before the box is built: key_from_string of the
+// list's box and the item's id): its `slot`, animated (`rate` as `anim`), or, while it is dragged, the pointer less the
+// grab, within `lo` .. `hi` (the release then slides from there).
+reorder_item_pos :: proc(item: Key, slot, pointer, lo, hi: f32, rate: f32 = REORDER_ANIM_RATE) -> (pos: f32, dragging: bool) {
+	k := key_from_string(item, "###reorder_pos")   // (the item's own box may animate on its key)
+	if p := reorder_press(item); p != nil && p.dragging {
+		pos = clamp(pointer - p.grab, lo, hi)
+		_ = anim(k, pos, rate, pos)
 		return pos, true
 	}
-	return math.round(anim(key, slot, rate, slot)), false
+	return math.round(anim(k, slot, rate, slot)), false
 }
