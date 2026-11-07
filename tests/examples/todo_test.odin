@@ -25,7 +25,7 @@ start_todo :: proc(t: ^testing.T, loc := #caller_location) -> (s: ^session.Sessi
 	app = todo.open({headless = true, data_dir = dir})
 	if !testing.expect(t, app != nil, "todo opens", loc = loc) { session.stop_test(t, "no application", loc) }
 	testing.cleanup(t, proc(p: rawptr) { todo.close((^todo.App)(p)) }, app)
-	s = session.attach(t, {win = app.win, state = &app.ui_state, renderer = &app.r, user = app, allocator = context.allocator,
+	s = session.attach(t, {win = app.main.win, state = &app.main.state, renderer = &app.shared.r, user = app, allocator = context.allocator,
 		frame = proc(user: rawptr) { todo.frame((^todo.App)(user)) }}, loc)
 	session.frames(s, 2)
 	return
