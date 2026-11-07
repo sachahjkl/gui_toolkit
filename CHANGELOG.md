@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.98.0] - 2026-11-07
+
+### Fixed
+- **Instance buffers go back down after a peak**: the draw context's instance list and the renderer's instance buffer (D3D11, and WebGPU's tables) are no longer kept at the size of the largest frame ever drawn; after `render.SHRINK_FRAMES` frames in a row that used less than `1/render.SHRINK_RATIO` of them, they shrink to what is drawn (`render.shrink_due`).
+- **Text outside the clip makes no instance**: a glyph placed in screen pixels and wholly outside the clip rectangle is no longer drawn (nothing recorded in a picture: it is replayed elsewhere). Text drawn again in strips, as a find in page paints the letters of its matches, made every glyph of the box in every strip: a needle with thousands of matches took 72 MB of instances and 300 MB of buffers in one frame.
+
 ## [0.97.0] - 2026-11-07
 
 ### Changed
@@ -1794,6 +1800,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.98.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.0
 [0.97.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.97.0
 [0.96.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.96.0
 [0.95.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.95.0
