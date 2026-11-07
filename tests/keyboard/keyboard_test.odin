@@ -1186,7 +1186,7 @@ lazy_empty: int
 build_lazy_empty :: proc(f: ^Fx, user: rawptr) {
 	ui.next({width = ui.px(300), height = ui.px(200)})
 	id := fmt.tprintf("###lze%d", lazy_empty)
-	if sb := ui.prev_box(id); sb != nil { sb.view_target.y = max(0, sb.view_bounds.y - sb.size.y) }
+	if sb := ui.prev_box(id); sb != nil { sb.view_target.y = ui.view_limit(sb) }
 	if ui.scroll_y(id) {
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###col") {

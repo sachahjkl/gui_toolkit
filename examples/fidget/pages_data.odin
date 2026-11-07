@@ -447,7 +447,6 @@ handle_table_keys :: proc(app: ^App, list: ^ui.Box, disp: []Disp, row_h, view_h:
 	if sel != app.selected_row {
 		app.selected_row = sel
 		y := f32(sel) * row_h
-		if y < list.view_target.y { list.view_target.y = y }
-		if y + row_h > list.view_target.y + view_h { list.view_target.y = y + row_h - view_h }
+		list.view_target.y = ui.view_reveal_offset(list.view_target.y, y, y + row_h, view_h)
 	}
 }

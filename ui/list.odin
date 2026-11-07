@@ -190,10 +190,7 @@ list_end :: proc() {
 		s.anim_busy = true   // (a row not laid out yet, the first build: the next frames have it)
 		if r := box_from_key(key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel))); r != nil && r.last_build + 1 >= s.build_index {
 			// rows are children of the list: rel_pos is their place in the content, whatever the scroll animation did
-			top := r.rel_pos.y
-			bottom := top + r.size.y
-			if top < b.view_target.y { b.view_target.y = top }
-			if bottom > b.view_target.y + b.size.y { b.view_target.y = bottom - b.size.y }
+			view_reveal(b, r.rel_pos.y, r.rel_pos.y + r.size.y)
 		}
 	}
 }

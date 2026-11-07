@@ -36,8 +36,7 @@ scroller_build :: proc(s: ^session.Session) {
 
 @(private = "file")
 max_scroll :: proc(s: ^session.Session) -> f32 {
-	b := session.get(s, "view")
-	return b.view_bounds.y - b.size.y
+	return ui.view_limit(session.get(s, "view"))
 }
 
 @(test)

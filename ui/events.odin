@@ -268,8 +268,7 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 		if .View_Scroll_X in b.flags { b.view_target.x += d.x * step; sig.scrolled.x = d.x }
 		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * step; sig.scrolled.y = d.y }
 		// clamp against last frame's bounds; the animation pass re-clamps with fresh ones
-		limit := Vec2{max(0, b.view_bounds.x - b.size.x), max(0, b.view_bounds.y - b.size.y)}
-		b.view_target = {clamp(b.view_target.x, 0, limit.x), clamp(b.view_target.y, 0, limit.y)}
+		b.view_target = {clamp(b.view_target.x, 0, view_limit(b, .X)), clamp(b.view_target.y, 0, view_limit(b))}
 	}
 	return
 }
