@@ -89,7 +89,7 @@ sweep_build :: proc(s: ^session.Session) {
 	if ui.scroll_y("###region") {
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column() {
-			lz := ui.lazy_begin(all = sweep)
+			lz := ui.lazy_begin(sweep = sweep)
 			for i in 0 ..< LINES {
 				if ui.lazy_item(lz, item_id(i)) {
 					ui.next({height = ui.px(LINE_HEIGHT)})

@@ -1086,6 +1086,8 @@ modal_stays_in_the_window :: proc(t: ^testing.T) {
 
 @(private = "file")
 find_items: int
+@(private = "file")
+find_around: bool   // a match in the scope before the lazy column and one after it
 
 @(private = "file")
 build_lazy_find :: proc(f: ^Fx, user: rawptr) {
@@ -1094,8 +1096,14 @@ build_lazy_find :: proc(f: ^Fx, user: rawptr) {
 	if ui.scroll_y("###fz") {
 		ui.find("fox", ui.parent_box().key)
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###fout") {
+		ui.next({width = ui.fill(), height = ui.px(20)})
+		ui.label(find_around ? "a fox before###before" : "before###before")
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###fcol") {
-			lz := ui.lazy_begin(all = ui.find_sweep())
+			ui.next({width = ui.fill(), height = ui.px(20)})
+			ui.label(find_around ? "a fox at the column's top###ctop" : "the column's top###ctop")
+			lz := ui.lazy_begin(sweep = ui.find_sweep())
 			for i in 0 ..< find_items {
 				if ui.lazy_item(lz, fmt.tprintf("###fi%d", i), always = i == find_items - 1) {
 					lazy_built += 1
@@ -1103,13 +1111,19 @@ build_lazy_find :: proc(f: ^Fx, user: rawptr) {
 					ui.label(fmt.tprintf("fox %d###l", i))
 				}
 			}
+			ui.next({width = ui.fill(), height = ui.px(20)})
+			ui.label(find_around ? "a fox at the column's foot###cfoot" : "the column's foot###cfoot")
+		}
+		ui.next({width = ui.fill(), height = ui.px(20)})
+		ui.label(find_around ? "a fox after###after" : "after###after")
 		}
 	}
 	lazy_scroller = ui.prev_box("###fz")
 }
 
-// A find over a lazy column: everything read once when the needle rests, then lazy again, the indices those of the whole text;
-// a match far from the view is known without being built, and text that comes in is read by a new sweep.
+// A find over a lazy column: read once when the needle rests, a slice of items at each frame (no frame builds the whole column), then
+// lazy again, the indices those of the whole text; a match far from the view is known without being built, and text that comes in is
+// read by a new sweep.
 @(test)
 find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
 	f := new(Fx)
@@ -1128,12 +1142,24 @@ find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
 
 	clock += ui.FIND_QUIET_MS
 	frame(f, nil, build_lazy_find, nil)
-	testing.expect_value(t, lazy_built, 50)
+	testing.expectf(t, lazy_built <= 16 + ui.FIND_SWEEP_ITEMS, "a slice, not the column: %d", lazy_built)
+	testing.expect(t, ui.find_pending(), "under way")
+	testing.expect_value(t, ui.find_count(), ui.FIND_SWEEP_ITEMS)   // (what it has read so far)
+	testing.expect(t, ui.find_progress() < 1, "it says how far it is")
+	testing.expect(t, ui.needs_frame(&f.s), "the next slice is due at once")
+	frames := 1
+	for ui.find_pending() && frames < 10 {
+		frame(f, nil, build_lazy_find, nil)
+		testing.expectf(t, lazy_built <= 16 + ui.FIND_SWEEP_ITEMS, "a slice, not the column: %d", lazy_built)
+		frames += 1
+	}
+	testing.expect_value(t, frames, (50 + ui.FIND_SWEEP_ITEMS - 1) / ui.FIND_SWEEP_ITEMS)
 	testing.expect(t, !ui.find_pending())
 	testing.expect_value(t, ui.find_count(), 50)
+	testing.expect_value(t, ui.find_progress(), 1)
 	all := ui.find_all()
 	testing.expect_value(t, len(all), 50)
-	testing.expect(t, all[49].rect.min.y > 1900 && all[49].rect.max.y <= 2000, "the last match, in the content")
+	testing.expect(t, all[49].rect.min.y > 1940 && all[49].rect.max.y <= 2040, "the last match, in the content (under the labels before the items)")
 	testing.expect(t, ui.needs_frame(&f.s), "the answer is read by a frame, whatever else happens")
 
 	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
@@ -1159,8 +1185,10 @@ find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
 	testing.expect(t, ui.wake_ms(&f.s) > 0, "a new sweep is due")
 	clock += ui.FIND_SWEEP_GAP_MS
 	frame(f, nil, build_lazy_find, nil)
+	testing.expect_value(t, ui.find_count(), 50)   // (what the last sweep found stands while the next one reads)
+	testing.expectf(t, lazy_built <= 16 + ui.FIND_SWEEP_ITEMS, "a slice: %d", lazy_built)
+	for i := 0; ui.find_count() != 51 && i < 10; i += 1 { frame(f, nil, build_lazy_find, nil) }
 	testing.expect_value(t, ui.find_count(), 51)
-	testing.expect_value(t, lazy_built, 51)
 
 	// text the application knows of, far from what is built
 	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
@@ -1168,7 +1196,23 @@ find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
 	ui.find_refresh()
 	clock += ui.FIND_SWEEP_GAP_MS
 	frame(f, nil, build_lazy_find, nil)
-	testing.expect_value(t, lazy_built, 51)
+	testing.expect(t, ui.find_progress() < 1, "read again")
+	for i := 0; ui.find_progress() < 1 && i < 10; i += 1 { frame(f, nil, build_lazy_find, nil) }
+	testing.expect_value(t, ui.find_count(), 51)
+
+	// text of the scope around the column: counted too, in reading order
+	find_around = true
+	defer find_around = false
+	ui.find_refresh()
+	clock += ui.FIND_SWEEP_GAP_MS
+	for i := 0; ui.find_count() != 55 && i < 10; i += 1 { frame(f, nil, build_lazy_find, nil) }
+	testing.expect_value(t, ui.find_count(), 55)
+	around := ui.find_all()
+	if testing.expect_value(t, len(around), 55) {
+		testing.expect(t, around[0].rect.max.y <= 20, "the text before the column, first")
+		testing.expect(t, around[1].rect.max.y <= 40, "then the column's own, before its items")
+		for i in 1 ..< 55 { testing.expectf(t, around[i].rect.min.y >= around[i - 1].rect.max.y, "in reading order at %d", i) }
+	}
 
 	// another needle starts over; none stops
 	frame(f, nil, proc(f: ^Fx, user: rawptr) { ui.find("", 0) }, nil)
