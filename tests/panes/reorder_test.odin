@@ -54,84 +54,185 @@ Rx :: struct {
 	theme: ui.Theme,
 	s:     ui.State,
 	f:     font.Font_Id,
-	drag:  ui.Reorder,
 	items: [4]u64,
 	pos:   [4]f32,
+	keys:  [4]ui.Key,   // the items' boxes, by place
+	hide:  u64,         // an item not built (0: none)
+	other: [4]u64,      // a second list under the first, whose items have the same ids (none: zeros)
+	other_pos: [4]f32,
 }
 
+@(private = "file") PITCH :: 50
+
+// One list in a box `id` at `y`: its items `pitch` apart, the one dragged following the pointer, the others sliding.
 @(private = "file")
-build :: proc(r: ^Rx, events: []platform.Event = nil) {
-	PITCH :: 50
-	ui.begin_build(&r.s, {window_size = {400, 100}, events = events, dt = 1.0 / 60, animations = true, dpi_scale = 1, base = ui.Style{font = r.f, font_size = 15}})
-	ui.reorder_frame(&r.drag)
-	n := len(r.items)
-	ui.next({width = ui.fill(), height = ui.px(40)})
-	area := ui.build_box({}, "###area")
+build_list :: proc(id: string, y: f32, items: []u64, pos: []f32, keys: []ui.Key, hide: u64) {
+	n := len(items)
+	ui.next({fixed_x = 0, fixed_y = y, width = ui.px(400), height = ui.px(40)})
+	area := ui.build_box({}, id)
 	from, to := -1, -1
 	if ui.parent(area) {
-		for id, i in r.items {
-			key := ui.key_from_string(area.key, fmt.tprintf("x%d", id))
+		for item, i in items {
+			if item == hide { continue }
+			name := fmt.tprintf("###it%d", item)
+			key := ui.key_from_string(area.key, name)   // (the box's key, before it is built)
 			slot := f32(i) * PITCH
-			x, dragging := ui.reorder_item_pos(&r.drag, key, id, slot, ui.mouse_pos().x - area.rect.min.x, 0, f32(n - 1) * PITCH)
-			r.pos[i] = x
+			x, dragging := ui.reorder_item_pos(key, slot, ui.mouse_pos().x - area.rect.min.x, 0, f32(n - 1) * PITCH)
+			pos[i] = x
 			ui.next({fixed_x = x, fixed_y = 0, width = ui.px(PITCH), height = ui.pct(1)})
-			b := ui.build_box({.Clickable}, fmt.tprintf("###it%d", id))
+			b := ui.build_box({.Clickable}, name)
+			keys[i] = b.key
 			sig := ui.signal(b)
 			if sig.dragging {
-				ui.reorder_begin(&r.drag, id, ui.reorder_moved(sig.drag_delta, .X, false), 4, ui.mouse_pos().x - sig.drag_delta.x - area.rect.min.x, slot)
-				if dragging || ui.reorder_dragging(&r.drag, id) {
+				ui.reorder_begin(b.key, ui.reorder_moved(sig.drag_delta, .X, false), 4, ui.mouse_pos().x - sig.drag_delta.x - area.rect.min.x, slot)
+				if dragging || ui.reorder_dragging(b.key) {
 					if s := ui.reorder_slot(x, PITCH, n); s != i { from, to = i, s }
 				}
 			}
 		}
 	}
-	if from >= 0 { _ = ui.list_move(r.items[:], from, to, 0) }
+	if from >= 0 { _ = ui.list_move(items, from, to, 0) }
+}
+
+@(private = "file")
+build :: proc(r: ^Rx, events: []platform.Event = nil) {
+	ui.begin_build(&r.s, {window_size = {400, 100}, events = events, dt = 1.0 / 60, animations = true, dpi_scale = 1, base = ui.Style{font = r.f, font_size = 15}})
+	build_list("###area", 0, r.items[:], r.pos[:], r.keys[:], r.hide)
+	if r.other[0] != 0 {
+		keys: [4]ui.Key
+		build_list("###other", 50, r.other[:], r.other_pos[:], keys[:], 0)
+	}
 	ui.end_build()
 	free_all(context.temp_allocator)
+}
+
+@(private = "file")
+start :: proc(r: ^Rx) {
+	font.init(&r.fonts)
+	r.f, _ = font.load_embedded(&r.fonts, font.FALLBACK_UI_DATA)
+	ui.apply_palette(&r.theme, ui.PALETTE_MIDNIGHT)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	r.items = {10, 11, 12, 13}
+	build(r)
+	build(r)
+}
+
+@(private = "file")
+stop :: proc(r: ^Rx) {
+	ui.destroy(&r.s)
+	ui.theme_destroy(&r.theme)
+	font.destroy(&r.fonts)
+}
+
+// Item 11 (x 50 .. 100) pressed at x 60 and moved past the threshold: dragged, 10 px into it.
+@(private = "file")
+hold :: proc(r: ^Rx, button := platform.Mouse_Button.Left) {
+	build(r, {{kind = .Mouse_Move, pos = {60, 20}}, {kind = .Mouse_Press, pos = {60, 20}, button = button}})
+	build(r, {{kind = .Mouse_Move, pos = {70, 20}}})
+	build(r, {{kind = .Mouse_Move, pos = {80, 20}}})
 }
 
 @(test)
 reorder_drag_through_a_build :: proc(t: ^testing.T) {
 	r := new(Rx)
 	defer free(r)
-	font.init(&r.fonts)
-	defer font.destroy(&r.fonts)
-	r.f, _ = font.load_embedded(&r.fonts, font.FALLBACK_UI_DATA)
-	ui.apply_palette(&r.theme, ui.PALETTE_MIDNIGHT)
-	defer ui.theme_destroy(&r.theme)
-	ui.init(&r.s, &r.fonts, &r.theme)
-	defer ui.destroy(&r.s)
-	r.items = {10, 11, 12, 13}
-	build(r)
-	build(r)
+	start(r)
+	defer stop(r)
 	testing.expect_value(t, r.pos, [4]f32{0, 50, 100, 150})
+	it11 := r.keys[1]
 	// press item 11 at x 60 (10 into it), move 2 px: under the threshold
 	build(r, {{kind = .Mouse_Move, pos = {60, 20}}, {kind = .Mouse_Press, pos = {60, 20}, button = .Left}})
 	build(r, {{kind = .Mouse_Move, pos = {62, 20}}})
-	testing.expect(t, !ui.reorder_dragging(&r.drag, 11), "under the threshold")
+	testing.expect(t, !ui.reorder_dragging(it11), "under the threshold")
 	// past it, then on to the slot of item 13: the dragged item follows the pointer, the others make room
 	build(r, {{kind = .Mouse_Move, pos = {70, 20}}})
-	testing.expect(t, ui.reorder_dragging(&r.drag, 11))
-	testing.expect_value(t, r.drag.grab, 10)
+	testing.expect(t, ui.reorder_dragging(it11))
+	build(r, {{kind = .Mouse_Move, pos = {80, 20}}})
+	testing.expect_value(t, r.pos[1], 70)   // (held 10 px into it)
 	build(r, {{kind = .Mouse_Move, pos = {175, 20}}})
 	testing.expect_value(t, r.items, [4]u64{10, 12, 13, 11})
 	build(r, {{kind = .Mouse_Move, pos = {500, 20}}})
 	testing.expect_value(t, r.pos[3], 150)   // held past the end: at the last slot
 	build(r, {{kind = .Mouse_Release, pos = {500, 20}, button = .Left}})
 	build(r)
-	testing.expect(t, !ui.reorder_dragging(&r.drag, 11), "the button went up")
+	testing.expect(t, !ui.reorder_dragging(it11), "the button went up")
 	// the moved items slide to their slots and stop
 	for _ in 0 ..< 200 { build(r); if !ui.needs_frame(&r.s) { break } }
 	testing.expect_value(t, r.pos, [4]f32{0, 50, 100, 150})
 	testing.expect(t, !ui.needs_frame(&r.s), "at rest")
 
-	// a release and a new press read in one frame: that drag is over, whatever the press is on
+	// a release and a new press read in one frame: that drag is over, the new press starts under the threshold
 	build(r, {{kind = .Mouse_Move, pos = {60, 20}}, {kind = .Mouse_Press, pos = {60, 20}, button = .Left}})
 	build(r, {{kind = .Mouse_Move, pos = {80, 20}}})
-	id := r.drag.id
-	testing.expect(t, ui.reorder_dragging(&r.drag, id), "dragging")
+	held := ui.active_key()
+	testing.expect(t, ui.reorder_dragging(held), "dragging")
 	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}, {kind = .Mouse_Press, pos = {80, 20}, button = .Left}})
 	build(r)
-	testing.expect(t, !ui.reorder_dragging(&r.drag, id) || r.drag.grab == 0, "not the same drag")
+	testing.expect(t, !ui.reorder_dragging(held), "not the same drag")
 	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}})
+}
+
+// The drag ends with its press however it ends: the user leaving the window, the item's box going.
+@(test)
+reorder_ends_with_its_press :: proc(t: ^testing.T) {
+	r := new(Rx)
+	defer free(r)
+	start(r)
+	defer stop(r)
+	it11 := r.keys[1]
+	hold(r)
+	testing.expect(t, ui.reorder_dragging(it11), "dragging")
+	build(r, {{kind = .Frame_Press}})   // (a press on the window's frame: the user is elsewhere)
+	testing.expect(t, !ui.reorder_dragging(it11), "the user left the window")
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}})
+	for _ in 0 ..< 200 { build(r); if !ui.needs_frame(&r.s) { break } }
+	testing.expect_value(t, r.pos, [4]f32{0, 50, 100, 150})   // (back to its slot)
+
+	hold(r)
+	testing.expect(t, ui.reorder_dragging(it11), "dragging again")
+	r.hide = 11   // (taken out of the list)
+	build(r)
+	r.hide = 0
+	build(r)
+	testing.expect(t, !ui.reorder_dragging(it11), "its box went: the drag with it")
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}})
+}
+
+// Another button drags nothing, and a press of it in the middle of a drag leaves the drag alone.
+@(test)
+reorder_is_the_left_button_s :: proc(t: ^testing.T) {
+	r := new(Rx)
+	defer free(r)
+	start(r)
+	defer stop(r)
+	it11 := r.keys[1]
+	hold(r, .Right)
+	testing.expect(t, !ui.reorder_dragging(it11), "the right button")
+	testing.expect_value(t, r.pos[1], 50)
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Right}})
+	hold(r)
+	build(r, {{kind = .Mouse_Press, pos = {80, 20}, button = .Right}})
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Right}})
+	testing.expect(t, ui.reorder_dragging(it11), "a right click in the middle of the drag")
+	build(r, {{kind = .Mouse_Release, pos = {80, 20}, button = .Left}})
+	testing.expect(t, !ui.reorder_dragging(it11), "the left button went up")
+}
+
+// Two lists whose items have the same ids: the item dragged is the one held, not its namesake in the other list.
+@(test)
+reorder_lists_with_the_same_ids :: proc(t: ^testing.T) {
+	r := new(Rx)
+	defer free(r)
+	start(r)
+	defer stop(r)
+	r.other = r.items
+	build(r)
+	hold(r)
+	testing.expect(t, ui.reorder_dragging(r.keys[1]), "dragging")
+	testing.expect_value(t, r.pos[1], 70)
+	testing.expect_value(t, r.other_pos, [4]f32{0, 50, 100, 150})   // (its namesake stays)
+	build(r, {{kind = .Mouse_Move, pos = {175, 20}}})
+	testing.expect_value(t, r.items, [4]u64{10, 12, 13, 11})
+	testing.expect_value(t, r.other, [4]u64{10, 11, 12, 13})
+	build(r, {{kind = .Mouse_Release, pos = {175, 20}, button = .Left}})
 }

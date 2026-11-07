@@ -58,18 +58,23 @@ another place while the others slide out of the way. The geometry is pure and in
 | `reorder_edge_scroll(pos, size, view_off, view, limit, target)` | an item held past an edge of the view scrolls the list |
 | `reorder_moved(delta, axis, across)` | how far a press moved, along the axis (and across it when leaving the list is a gesture of its own) |
 
-The drag's state is a `Reorder` (the press that drags, the item, where the pointer holds it; `reorder_dragging` says whether an item is dragged):
+The drag is the press's (`press_data`), on the item's box: the app keeps nothing, and the drag ends with the press (the
+left button went up, the item's box went, the user left the window). An item is told by its box's key, which comes from
+its list's box: two lists whose items share ids drag apart. `reorder_item_pos` is asked before the box is built, with the
+key it will have (`key_from_string` of the list's box and the item's id string); `reorder_dragging` says whether that
+item is dragged:
 
 ```odin
-ui.reorder_frame(&app.drag)   // the press is over (the button went up, the box held went): no drag
 for item, i in app.items {
 	slot := f32(i) * pitch - offset
-	x, dragging := ui.reorder_item_pos(&app.drag, key_of(item), item.id, slot, ui.mouse_pos().x - area.rect.min.x, -offset, f32(n - 1) * pitch - offset)
+	name := id_of(item)
+	key := ui.key_from_string(area.key, name)   // (the item's box, before it is built)
+	x, dragging := ui.reorder_item_pos(key, slot, ui.mouse_pos().x - area.rect.min.x, -offset, f32(n - 1) * pitch - offset)
 	ui.next({fixed_x = x, width = ui.px(pitch), height = ui.pct(1)})
-	sig := ui.signal(ui.build_box({.Clickable}, id_of(item)))
+	sig := ui.signal(ui.build_box({.Clickable}, name))
 	if sig.dragging {
-		ui.reorder_begin(&app.drag, item.id, ui.reorder_moved(sig.drag_delta, .X, false), threshold, ui.mouse_pos().x - sig.drag_delta.x - area.rect.min.x, slot)
-		if ui.reorder_dragging(&app.drag, item.id) {
+		ui.reorder_begin(key, ui.reorder_moved(sig.drag_delta, .X, false), threshold, ui.mouse_pos().x - sig.drag_delta.x - area.rect.min.x, slot)
+		if ui.reorder_dragging(key) {
 			if to := ui.reorder_slot(x + offset, pitch, n); to != i { move_from, move_to = i, to }
 		}
 	}
@@ -77,7 +82,7 @@ for item, i in app.items {
 if move_from >= 0 { app.current = ui.list_move(app.items[:], move_from, move_to, app.current) }
 ```
 
-Items sit at their slot, animated when they move (`anim`, keyed by the item); the dragged one follows the pointer within
+Items sit at their slot, animated when they move (`anim`, keyed by the item's box); the dragged one follows the pointer within
 `lo .. hi` and slides back from there when released. Wren's tab strip and tab sidebar use it.
 
 Example: `examples/panes` (`build.bat panes`). Tests: `tests/panes` (dragging within the limits, the pane after the

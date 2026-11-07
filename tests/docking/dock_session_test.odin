@@ -415,6 +415,50 @@ a_handle_resizes_and_folds :: proc(t: ^testing.T) {
 	testing.expect(t, app.built[3])
 }
 
+// dock_held: the left button on one of the dock's controls, for as long as that press lasts and no longer.
+@(test)
+the_dock_is_held_as_long_as_the_press :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	testing.expect(t, !ui.dock_held(&app.dock), "nothing held")
+	// a tab, pressed then dragged; the release ends it
+	at := tab(s, "dock_tab_2")
+	session.press(s, at)
+	testing.expect(t, ui.dock_held(&app.dock), "a tab pressed")
+	session.move(s, at + {20, 0})
+	testing.expect(t, app.result.dragging && ui.dock_held(&app.dock), "a tab dragged")
+	session.release(s, at + {20, 0})
+	testing.expect(t, !ui.dock_held(&app.dock), "released")
+	// a split's handle; the user leaving the window ends it
+	h := session.center(session.get(s, fmt.tprintf("dock_split_%d", app.dock.main)))
+	session.press(s, h)
+	session.move(s, h + {10, 0})
+	testing.expect(t, ui.dock_held(&app.dock), "a handle held")
+	session.activate(s, false)
+	session.frame(s)
+	testing.expect(t, !ui.dock_held(&app.dock), "the user left the window")
+	session.activate(s, true)
+	session.release(s, h + {10, 0})
+	// another button on a tab is no hold of the dock's
+	session.press(s, tab(s, "dock_tab_3"), .Right)
+	testing.expect(t, !ui.dock_held(&app.dock), "the right button")
+	session.release(s, tab(s, "dock_tab_3"), .Right)
+	// a floating panel's corner; its box going ends it
+	testing.expect(t, ui.dock_float(&app.dock, 2, {{50, 50}, {250, 200}}))
+	session.frames(s, 2)
+	g := session.center(session.get(s, fmt.tprintf("dock_grip_%d", app.dock.floats[0])))
+	session.press(s, g)
+	session.move(s, g + {10, 10})
+	testing.expect(t, ui.dock_held(&app.dock), "a corner held")
+	app.hide = true
+	session.frames(s, 2)
+	app.hide = false
+	session.frames(s, 2)
+	testing.expect(t, !ui.dock_held(&app.dock), "its box went: the press with it")
+	session.release(s, g + {10, 10})
+}
+
 @(test)
 a_close_button_closes_the_panel :: proc(t: ^testing.T) {
 	app: App
