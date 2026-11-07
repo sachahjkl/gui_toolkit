@@ -6,12 +6,11 @@ import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "core:time"
 import "../../devtools"
 import "../../draw"
 import "../../font"
+import "../../host"
 import "../../platform"
-import "../../render"
 import "../../ui"
 
 Filter :: enum { All, Active, Done }
@@ -24,13 +23,8 @@ Task :: struct {
 
 App :: struct {
 	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol
-	win:      ^platform.Window,
-	r:        render.Renderer,
-	fonts:    font.State,
-	dc:       draw.Context,
-	ui_state: ui.State,
-	theme:    ui.Theme,
-	ui_font:  font.Font_Id,
+	shared:   host.Shared,        // the device, the fonts (shared.font: the interface's), the theme
+	main:     host.Host,          // the window, its interface (main.state), its frames
 	icons:    font.Font_Id,
 
 	tasks:     [dynamic]Task,
@@ -43,11 +37,7 @@ App :: struct {
 	menu_task: int,
 	saved_zoom: f32,
 
-	frames_requested: int,
-	last_tick:        time.Tick,
 	stats_boxes:      int,
-	pacer: render.Pacer,
-	slept: bool,
 	data_in: string,   // Open_Options.data_dir
 }
 
@@ -66,8 +56,8 @@ data_dir :: proc() -> string {
 save :: proc(app: ^App) {
 	sb := strings.builder_make(context.temp_allocator)
 	fmt.sbprintf(&sb, "#theme\t%d\n", app.dark ? 1 : 0)
-	fmt.sbprintf(&sb, "#zoom\t%.3f\n", ui.zoom(&app.ui_state))
-	app.saved_zoom = ui.zoom(&app.ui_state)
+	fmt.sbprintf(&sb, "#zoom\t%.3f\n", ui.zoom(&app.main.state))
+	app.saved_zoom = ui.zoom(&app.main.state)
 	for t in app.tasks { fmt.sbprintf(&sb, "%d\t%s\n", t.done ? 1 : 0, t.title) }
 	dir := data_dir()
 	_ = os.make_directory_all(dir)
@@ -92,7 +82,7 @@ load :: proc(app: ^App) {
 	for line in strings.split_lines_iterator(&text) {
 		if strings.has_prefix(line, "#theme\t") { app.dark = strings.has_suffix(line, "1"); continue }
 		if strings.has_prefix(line, "#zoom\t") {
-			if z, ok := strconv.parse_f32(line[6:]); ok { ui.set_zoom(&app.ui_state, z) }
+			if z, ok := strconv.parse_f32(line[6:]); ok { ui.set_zoom(&app.main.state, z) }
 			continue
 		}
 		if i := strings.index_byte(line, '\t'); i > 0 { add_task(app, line[i + 1:], line[:i] == "1") }
@@ -304,53 +294,33 @@ build_footer :: proc(app: ^App, em: f32, total, done: int) {
 }
 
 ////////////////////////////////
-// Frame loop
+// Frames (host: the window, its interface, its frames)
 
-clip_get :: proc() -> string { return platform.get_clipboard(the_app.win, context.temp_allocator) }
-clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
+// One frame of the window: what a test calls, as the loop does.
+frame :: proc(app: ^App) { host.host_frame(&app.main) }
 
-frame :: proc(app: ^App, inner := false) {
-	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
-	app.slept = false
-	devtools.service(app.devtools, &app.ui_state, &app.r)
-	events := platform.poll_events(app.win, false)
-	render.mark_input(&app.r)
-	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 4) }
-	scale := app.win.dpi_scale
-	render.resize(&app.r, app.win.size)
-	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
+@(private = "file")
+todo_build :: proc(h: ^host.Host, size: host.Vec2) { build_ui((^App)(h.user)) }
 
-	now := time.tick_now()
-	dt := clamp(f32(time.duration_seconds(time.tick_diff(app.last_tick, now))), 0.0005, 0.1)
-	app.last_tick = now
-
-	ui.apply_palette(&app.theme, app.dark ? ui.PALETTE_MIDNIGHT : ui.PALETTE_DAYLIGHT)
-	platform.set_dark_title(app.win, app.dark)
-
-	// the base style is in LOGICAL pixels: the toolkit multiplies it by dpi scale * zoom (Ctrl+wheel, Ctrl +/-/0)
-	base := ui.Style{
+// The base style is in LOGICAL pixels: the toolkit multiplies it by dpi scale * zoom (Ctrl+wheel, Ctrl +/-/0).
+@(private = "file")
+todo_params :: proc(h: ^host.Host, p: ^ui.Build_Params) {
+	app := (^App)(h.user)
+	ui.apply_palette(&app.shared.theme, app.dark ? ui.PALETTE_MIDNIGHT : ui.PALETTE_DAYLIGHT)
+	platform.set_dark_title(h.win, app.dark)
+	p.base = ui.Style{
 		pref = {.X = ui.text_size(), .Y = ui.px(36)},
-		font = app.ui_font, font_size = 15, text_pad = 7,
+		font = app.shared.font, font_size = 15, text_pad = 7,
 		cursor = .Arrow,
 	}
-	ui.begin_build(&app.ui_state, {
-		window_size = size, events = events, dt = dt, animations = platform.os_animations_enabled(),
-		dpi_scale = scale, base = base, clipboard_get = clip_get, clipboard_set = clip_set,
-	})
-	build_ui(app)
-	ui.end_build()
-	platform.set_cursor(app.win, ui.cursor(&app.ui_state))
-	if ui.needs_frame(&app.ui_state) { app.frames_requested = max(app.frames_requested, 2) }
-	if ui.zoom(&app.ui_state) != app.saved_zoom { app.dirty = true }
-	if app.dirty { save(app) }
+}
 
-	draw.begin_frame(&app.dc, size)
-	render.frame_begin(&app.r, {0, 0, 0, 1})
-	ui.draw_tree(&app.ui_state, &app.dc)
-	draw.end_frame(&app.dc)
-	render.frame_end(&app.r, !at_once)
-	render.paced_present(&app.pacer)
-	free_all(context.temp_allocator)
+@(private = "file")
+todo_after_build :: proc(h: ^host.Host) {
+	app := (^App)(h.user)
+	if ui.needs_frame(&h.state) { h.settle = max(h.settle, 2) }
+	if ui.zoom(&h.state) != app.saved_zoom { app.dirty = true }
+	if app.dirty { save(app) }
 }
 
 // What `open` starts from.
@@ -367,30 +337,25 @@ open :: proc(o: Open_Options) -> ^App {
 	the_app = app
 	app.data_in = o.data_dir
 	app.dark = true
-	font.init(&app.fonts)
-	if o.headless {
-		app.win = platform.open_window_offscreen("gui_toolkit todo", WINDOW_SIZE)
-		if !render.init_offscreen(&app.r, app.win.size, warp = true) { fmt.eprintln("renderer init failed"); return nil }
-	} else {
-		app.win = platform.open_window("gui_toolkit todo", WINDOW_SIZE, transparent = true)
-		if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return nil }
-		render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
+	if !host.host_open(&app.main, &app.shared, {title = "gui_toolkit todo", size = WINDOW_SIZE, headless = o.headless}, todo_build, app) {
+		the_app = nil
+		free(app)
+		return nil
 	}
 	ok: bool
-	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, o.headless ? "" : platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
-	if !ok { fmt.eprintln("cannot load a UI font"); return nil }
-	app.icons, ok = font.load_embedded(&app.fonts, ui.ICON_FONT_DATA)
-	if !ok { fmt.eprintln("cannot load the icon font"); return nil }
-	draw.init(&app.dc, &app.r, &app.fonts)
-	ui.init(&app.ui_state, &app.fonts, &app.theme)
-	app.ui_state.icon_font = app.icons
+	app.icons, ok = font.load_embedded(&app.shared.fonts, ui.ICON_FONT_DATA)
+	if !ok { fmt.eprintln("cannot load the icon font"); close(app); return nil }
+	h := &app.main
+	h.state.icon_font = app.icons
+	h.background = {0, 0, 0, 1}
+	h.after_input = 4
+	h.settle = 4
+	h.params = todo_params
+	h.after_build = todo_after_build
+	h.before_input = proc(h: ^host.Host) { app := (^App)(h.user); devtools.service(app.devtools, &h.state, &app.shared.r) }
 	load(app)
-	app.saved_zoom = ui.zoom(&app.ui_state)
-	app.last_tick = time.tick_now()
-	app.frames_requested = 4
-	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
-	app.devtools = devtools.start_from_env(app.win, "gui_toolkit todo")
+	app.saved_zoom = ui.zoom(&h.state)
+	app.devtools = devtools.start_from_env(h.win, "gui_toolkit todo")
 	return app
 }
 
@@ -401,12 +366,7 @@ close :: proc(app: ^App) {
 	delete(app.tasks)
 	ui.field_destroy(&app.input)
 	ui.field_destroy(&app.search)
-	ui.destroy(&app.ui_state)
-	ui.theme_destroy(&app.theme)
-	draw.destroy(&app.dc)
-	render.destroy(&app.r)
-	font.destroy(&app.fonts)
-	platform.destroy_window(app.win)
+	host.host_close(&app.main)
 	the_app = nil
 	free(app)
 }
@@ -415,11 +375,9 @@ main :: proc() {
 	app := open({})
 	if app == nil { return }
 	defer close(app)
-	platform.show_window(app.win)
-
-	for !platform.is_closed(app.win) {
-		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_in_ms(&app.ui_state)); app.slept = true }
+	platform.show_window(app.main.win)
+	for !platform.is_closed(app.main.win) {
+		host.hosts_wait({&app.main})
 		frame(app)
-		if app.frames_requested > 0 { app.frames_requested -= 1 }
 	}
 }

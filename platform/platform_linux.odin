@@ -463,6 +463,9 @@ poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) {
 	if n > 0 { poll(&fds[0], n, i32(timeout_ms)) }
 }
 
+// Whether the window has something for its next poll_events, without waiting or taking anything (as on Win32).
+events_waiting :: proc(w: ^Window) -> bool { return wait_is_over(w) }
+
 // Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.
 @(private)
 wait_is_over :: proc(w: ^Window) -> bool { return len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested }
