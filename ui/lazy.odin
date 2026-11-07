@@ -187,7 +187,13 @@ lazy_end :: proc(lz: ^Lazy) {
 lazy_settle :: proc(s: ^State) {
 	defer clear(&s.lazy_frame)
 	s.lazy_more = false
-	content_top :: proc(sb, b: ^Box) -> f32 { return b.rect.min.y - sb.rect.min.y + sb.view_off.y }
+	// (where the layout put it in the content, not rounded: the rects are on whole pixels, and their error, half a pixel at most,
+	// read as a move of the content would put a view that moves by less, a slow glide, back where it was at every frame)
+	content_top :: proc(sb, b: ^Box) -> f32 {
+		y: f32
+		for p := b; p != nil && p != sb; p = p.parent { y += p.rel_pos.y }
+		return y
+	}
 	for lz in s.lazy_frame {
 		s.metrics.lazy_built += len(lz.items)
 		for b in lz.items {

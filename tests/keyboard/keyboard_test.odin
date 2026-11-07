@@ -1879,3 +1879,42 @@ a11y_edits_of_fields_are_edits :: proc(t: ^testing.T) {
 	testing.expect(t, ui.area_undo(&a.area), "undoable")
 	testing.expect_value(t, ui.area_string(&a.area), "ab")
 }
+
+@(private = "file")
+build_lazy_glide :: proc(f: ^Fx, user: rawptr) {
+	ui.next({width = ui.px(300), height = ui.px(200)})
+	if ui.scroll_y("###lzg") {
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###col") {
+			lz := ui.lazy_begin()
+			for i in 0 ..< 100 {
+				if ui.lazy_item(lz, fmt.tprintf("###g%d", i)) {
+					ui.next({width = ui.fill(), height = ui.px(40)})
+					ui.label(fmt.tprintf("item %d###l", i))
+				}
+			}
+		}
+	}
+	lazy_scroller = ui.prev_box("###lzg")
+}
+
+// A view of a lazy column that moves by less than a pixel a frame (a slow glide, the wheel's click just past its dead zone) goes
+// where it is sent. The column kept the item it was on in its place, measured on rects rounded to whole pixels: their error, read
+// as a move of the content, put the view back where it was every few frames, and it did not move.
+@(test)
+a_lazy_column_lets_its_view_move_by_less_than_a_pixel :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	for _ in 0 ..< 3 { frame(f, nil, build_lazy_glide, nil) }
+	y: f32 = 2000.3
+	ui.view_jump(lazy_scroller, y)
+	for _ in 0 ..< 2 { frame(f, nil, build_lazy_glide, nil) }
+	for i in 0 ..< 40 {
+		y -= 0.2
+		ui.view_jump(lazy_scroller, y)
+		frame(f, nil, build_lazy_glide, nil)
+		if !testing.expectf(t, abs(lazy_scroller.view_off.y - y) < 0.01, "frame %d: at %v, sent to %v", i, lazy_scroller.view_off.y, y) { return }
+	}
+}
