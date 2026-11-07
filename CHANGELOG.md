@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.98.1] - 2026-11-07
+
+### Fixed
+- **A lazy column lets its view move by less than a pixel**: the item the view is on was kept in its place by its rect, rounded to whole pixels; that error, read as a move of the content, put a view moving by less than a pixel a frame (a slow glide, the wheel's click just past its dead zone) back where it was every few frames, and it did not move. Its place is now read where the layout put it, not rounded.
+
 ## [0.98.0] - 2026-11-07
 
 ### Fixed
@@ -1800,6 +1805,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.98.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.1
 [0.98.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.0
 [0.97.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.97.0
 [0.96.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.96.0
