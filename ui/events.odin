@@ -44,6 +44,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 				fmt.eprintf("press pos=(%.0f,%.0f) hit=%v rect=%v text=%q\n", e.pos.x, e.pos.y, hot, hb != nil ? hb.rect : Rect{}, hb != nil ? hb.text : "")
 			}
 			s.active_key[e.button] = hot
+			s.press_serial[e.button] += 1
 			s.press_pos[e.button] = e.pos
 			s.pressed_key[e.button] = hot
 			s.pressed_any[e.button] = true
@@ -105,6 +106,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 		}
 	}
 	if left { window_left(s) }
+	press_data_sweep(s)
 
 	// hot box: the topmost clickable box under the mouse; while a button is held, only the pressed box can be hot
 	hit: Key

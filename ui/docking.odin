@@ -237,6 +237,10 @@ dock_raise_pressed :: proc(d: ^Dock) {
 	}
 }
 
+// What the press of a floating panel's corner keeps (press_data): the panel's rect when it began, logical px.
+@(private = "file")
+Dock_Grip_Press :: struct { from: Rect, taken: bool }
+
 // The floating panels' corners (their boxes of the last build): resized before the layout, so the frame follows at once.
 @(private)
 dock_grips :: proc(d: ^Dock) {
@@ -245,17 +249,18 @@ dock_grips :: proc(d: ^Dock) {
 		if gb == nil { continue }
 		sig := signal(gb)
 		sc := d.metrics.scale
-		if sig.pointer_pressed {
+		press := press_data(Dock_Grip_Press, gb.key)
+		if press != nil && !press.taken {
 			r := d.nodes[f].rect
-			drag_store({r.min.x / sc, r.min.y / sc, (r.max.x - r.min.x) / sc, (r.max.y - r.min.y) / sc})
+			press^ = {from = {r.min / sc, r.max / sc}, taken = true}
 		}
-		if !sig.dragging { continue }
+		if !sig.dragging || press == nil { continue }
 		d.held = true
-		from := drag_load()
+		from := press.from
 		lo := DOCK_FLOAT_MIN_EM * d.metrics.em / sc
-		w := max(from[2] + sig.drag_delta.x / sc, lo.x)
-		h := max(from[3] + sig.drag_delta.y / sc, lo.y)
-		nr := Rect{{from[0], from[1]}, {from[0] + w, from[1] + h}}
+		w := max(from.max.x - from.min.x + sig.drag_delta.x / sc, lo.x)
+		h := max(from.max.y - from.min.y + sig.drag_delta.y / sc, lo.y)
+		nr := Rect{from.min, {from.min.x + w, from.min.y + h}}
 		if nr != d.nodes[f].float { d.nodes[f].float = nr; dock_changed(d) }
 	}
 }
