@@ -440,6 +440,7 @@ State :: struct {
 	find:            Find_State,
 	// selection of text outside fields (selection.odin), and this build's mouse presses / releases it reads
 	sel:             Selection,
+	sel_painting:    bool,   // paint_selected: the text is painted again over the selection, in its colour (run colours give way)
 	mouse_events:    [dynamic]platform.Event,
 	// calls posted from other threads (post.odin)
 	posts:           Post_Queue,

@@ -541,6 +541,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	} else {
 		rich_paint_text(s, dc, b)
 	}
+	if .Selectable in b.flags { paint_selected(s, dc, b, rich_paint_text) }
 }
 
 // The text of a rich paragraph, what goes with it (its lines, the ring of the focused link).
@@ -558,7 +559,7 @@ rich_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 			r := d.runs[f.run]
 			x0, x1 := o.x + f.x, o.x + f.x + f.width
 			col := d.colors[f.run]
-			if col.a == 0 || s.find.in_match { col = b.text_color }
+			if col.a == 0 || s.find.in_match || s.sel_painting { col = b.text_color }
 			base := Vec2{math.round(x0), o.y + li.baseline}
 			draw.text(dc, f.face, f.size, base, col, r.text[f.start:f.end])
 			m := font.metrics(s.fonts, f.face, f.size)

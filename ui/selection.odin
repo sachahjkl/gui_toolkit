@@ -575,6 +575,26 @@ sel_vertical :: proc(s: ^State, dir: int) {
 	sel.focus = {k, sel_index_at(s, s.boxes[k], p)}
 }
 
+// The selected part of a selectable box's text painted again over its selection, in the theme's "selection text" colour: what
+// it covers reads whatever the text's own colour (a faint one was lost on the selection's). `paint` is how the box paints its text.
+@(private)
+paint_selected :: proc(s: ^State, dc: ^draw.Context, b: ^Box, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
+	if !has_selection(s) { return }
+	text := sel_text(s, b, context.temp_allocator)
+	lo, hi := sel_range_of(s, b.key, len(text))
+	if hi <= lo { return }
+	keep := b.text_color
+	b.text_color = tuned(color_from_tags(s, b.tags_key, "selection text"))
+	s.sel_painting = true
+	for r in sel_rects(s, b, lo, hi) {
+		draw.push_clip(dc, r)
+		paint(s, dc, b)
+		draw.pop_clip(dc)
+	}
+	s.sel_painting = false
+	b.text_color = keep
+}
+
 // draw_box: the selection behind a selectable box's text.
 @(private)
 draw_selection :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
