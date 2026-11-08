@@ -45,7 +45,8 @@ for (const doc of docs) {
     for (const m of line.matchAll(/(?<![\w./\\-])((?:tools|examples|tests|docs|src|native|res|assets|ui|draw|render|font|platform|devtools)[\\/][\w./\\-]*\w)/g)) {
       const p = m[1]
       if (/^[.*]*\*/.test(line.slice(m.index + p.length)) || !exists(p.split(/[\\/]/)[0])) continue   // (a pattern; a folder of the reader's project)
-      once(`path ${p}`, () => exists(p) || exists(`${p}.exe`) || /^(tools|examples|tests|docs)[\\/]$/.test(p))
+      // (docs/index.html is the page tk site_docs makes, the home page's link to the Docs section)
+      once(`path ${p}`, () => exists(p) || exists(`${p}.exe`) || /^(tools|examples|tests|docs)[\\/]$/.test(p) || p === 'docs/index.html')
     }
     // flags, in code spans only
     for (const span of line.matchAll(/`([^`]+)`/g)) {

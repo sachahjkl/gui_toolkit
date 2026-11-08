@@ -27,6 +27,8 @@
 //                                             tests (tools/run_tests); every step runs, then the failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
+//   site_docs <site> <out>                    every docs/*.md as <out>/docs/<name>.html in the site's look, and <out>/docs/index.html that
+//                                             lists them (site_docs.odin); <site> gives the header and the style, <out> is the folder to publish
 //   release <version> [-summary:text] [-no-push]
 //                                             publishes a version, on Windows or Linux (release.odin, CONTRIBUTING.md): the CHANGELOG
 //                                             section, the version, the commit, the tag, the push and the GitHub release
@@ -71,6 +73,7 @@ COMMANDS := []Command {
 	{name = "emoji_board", flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = run_emoji_board},
 	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},
 	{name = "build", flags = {"debug"}, positionals = -1, run = run_build},
+	{name = "site_docs", positionals = 2, run = run_site_docs},
 	{name = "ci", run = run_ci},
 	{name = "desktop_tests", positionals = -1, run = run_desktop_tests},
 }
