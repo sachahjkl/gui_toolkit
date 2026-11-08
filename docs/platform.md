@@ -34,6 +34,10 @@ no-ops with a sane return, never an error.
 **Lifecycle** — `open_window`, `open_window_offscreen`, `show_window`, `destroy_window`, `set_title`, `set_size`,
 `is_closed`, `cancel_close` (the app answered a Close by staying open), `is_offscreen`.
 
+**Identity** — `set_app_id(id)`, once before the first window: on Linux, the windows' Wayland app_id and X11 WM_CLASS.
+The desktop finds the program's `<id>.desktop` by it, for the icon and the name in a task bar. Without a call, the id is
+the executable's file name. On Windows it does nothing: the program declares its AppUserModelID itself.
+
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
 `is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `set_chrome_regions`, `show_system_menu`,
 `needs_top_border`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,

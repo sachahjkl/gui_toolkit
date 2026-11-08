@@ -98,6 +98,10 @@ is_windows_11 :: proc() -> bool {
 // The process's window class, registered by the first window of any thread.
 @(private) window_class: sync.Once
 
+// The program's id on the desktop: Linux's app_id / WM_CLASS. Windows groups windows by the AppUserModelID, which the
+// program declares itself (SetCurrentProcessExplicitAppUserModelID).
+set_app_id :: proc(id: string) {}
+
 // Open a window. `size` is in logical pixels (96 dpi): it is scaled by the DPI of the monitor the window lands on
 // and clamped to the monitor work area (CW_USEDEFAULT can pick a non-primary monitor with another DPI).
 // `transparent`: no GDI redirection surface, for a renderer that presents with alpha (render.init `transparent`).

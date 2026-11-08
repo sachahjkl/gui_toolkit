@@ -75,6 +75,31 @@ foreign libc {
 @(private) EFD_CLOEXEC :: 0o2000000
 @(private) EFD_NONBLOCK :: 0o0004000
 
+// The program's id on the desktop: Wayland's app_id and X11's WM_CLASS. The desktop finds the program's <id>.desktop by it,
+// for the window's icon and name in a task bar. "" = the executable's file name.
+@(private) app_id: string
+
+// Sets the program's id on the desktop (the name of its .desktop file, without ".desktop"), once at start, before the first
+// window opens.
+set_app_id :: proc(id: string) { app_id = id }
+
+// The id the windows declare (temp memory).
+@(private)
+app_id_or_exe :: proc() -> string {
+	if app_id != "" { return app_id }
+	exe, err := posix_readlink_self()
+	if err || exe == "" { return "gui_toolkit" }
+	return exe[strings.last_index_byte(exe, '/') + 1:]
+}
+
+@(private = "file")
+posix_readlink_self :: proc() -> (path: string, failed: bool) {
+	buf := make([]byte, 4096, context.temp_allocator)
+	n := posix.readlink("/proc/self/exe", raw_data(buf), len(buf))
+	if n <= 0 { return "", true }
+	return string(buf[:n]), false
+}
+
 // Opens a window on the chosen backend. `size` is logical pixels (scaled by the monitor's DPI). `transparent`: an
 // alpha surface the compositor blends (render.init transparent); `integrated_title`: the app draws the title bar
 // (client-side decorations). Returns nil when no display server is reachable or the backend could not make the window.
