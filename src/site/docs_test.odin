@@ -185,3 +185,11 @@ addresses_move_between_relative_and_root :: proc(t: ^testing.T) {
 	testing.expect_value(t, docs_out_rel("api/index.md"), "api/index.html")
 	testing.expect_value(t, docs_page_url("api/index.html"), "/docs/api/")
 }
+
+// Every docs site, whatever its own style sheet: on a phone a table's columns keep room for their text, and the table scrolls.
+@(test)
+a_docs_table_keeps_its_columns_on_a_phone :: proc(t: ^testing.T) {
+	css := docs_css({})
+	defer delete(css)
+	testing.expect(t, strings.contains(css, "@media (max-width: 800px) { .doc-article .table-box th, .doc-article .table-box td { width: min(26ch, 70vw); } }"))
+}
