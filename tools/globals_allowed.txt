@@ -6,6 +6,7 @@
 # app's state: it is a field of the struct that owns it (the Window, the render device or Renderer, ui.State).
 # Rewrite it from the code (keeping the classes known): odin test tests/globals -define:GLOBALS_WRITE=true
 config/config_test.odin DEFS test
+config/search_test.odin SEARCH_DEFS test
 config/snapshot_test.odin SNAP_DEFS test
 config/snapshot_test.odin LATE_DEFS test
 flate/flate.odin LEN_BASE const  # a table of RFC 1951
