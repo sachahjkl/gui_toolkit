@@ -1,4 +1,4 @@
-# Publishes site/ (plain HTML and CSS, no build step) to GitHub Pages: https://sachahjkl.github.io/gui_toolkit/
+# Publishes site/ (plain HTML and CSS, its pages made by tk site_build) to GitHub Pages: https://sachahjkl.github.io/gui_toolkit/
 # Pages use the "GitHub Actions" source (set once: gh api -X POST repos/sachahjkl/gui_toolkit/pages -f build_type=workflow).
 name: Pages
 
@@ -10,8 +10,7 @@ on:
       - "CHANGELOG.md"
       - "docs/**"
       - "tools/tk/**"
-      - "tools/site_changelog.mjs"
-      - "tools/site_meta.mjs"
+      - "src/site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -33,10 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
-      - run: node tools/site_changelog.mjs site _site
-      - run: node tools/site_meta.mjs _site _site
-
-      # the Docs section: docs/*.md as pages, made by tk (Odin, same pinned archive as the Linux job of ci.yml)
+      # the site, made by tk (Odin, the same pinned archive as the Linux job of ci.yml): the changelog's pages, what each page says
+      # when shared, the Docs section
       - name: Odin dev-2026-11a
         env:
           ODIN_TAG: dev-2026-11a
@@ -48,7 +45,7 @@ jobs:
           echo "$ODIN_SHA256  $RUNNER_TEMP/odin.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/odin" && tar -xzf "$RUNNER_TEMP/odin.tar.gz" -C "$RUNNER_TEMP/odin"
           dirname "$(find "$RUNNER_TEMP/odin" -maxdepth 3 -name odin -type f | head -1)" >> "$GITHUB_PATH"
-      - run: mkdir -p build && odin run tools/tk -out:build/tk -- site_docs site _site
+      - run: mkdir -p build && odin run tools/tk -out:build/tk -- site_build site _site
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

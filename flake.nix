@@ -96,7 +96,7 @@
     formatter.${system} = pkgs.alejandra;
 
     devShells.${system}.default = pkgs.mkShell {
-      packages = [odin] ++ (with pkgs; [cargo rustc nodejs]) ++ desktops ++ preCommitCheck.enabledPackages;
+      packages = [odin] ++ (with pkgs; [cargo rustc]) ++ desktops ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       # (nix develop clears LD_LIBRARY_PATH when it is an attribute)
       shellHook =

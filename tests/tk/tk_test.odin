@@ -14,6 +14,7 @@ import tk "../../tools/tk"
 import "../../tools/cmdline"
 import "../../src/testkit"
 import "../../src/ascii"
+import tk_site "../../src/site"
 
 @(private = "file") ABC_SHA256 :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 @(private = "file") PNG_SIGNATURE :: "\x89PNG\r\n\x1a\n"
@@ -308,64 +309,9 @@ a_flag_split_at_its_colon_is_joined :: proc(t: ^testing.T) {
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(a.flags), 1)
 }
-// site_docs: the Markdown of docs/*.md as HTML.
+// site_docs: docs/*.md as pages (their Markdown: src/site's tests).
 @(private = "file") has :: proc(t: ^testing.T, html, part: string, loc := #caller_location) {
 	testing.expect(t, strings.contains(html, part), fmt.tprintf("%q is not in %q", part, html), loc = loc)
-}
-
-@(test)
-markdown_headings_and_paragraphs :: proc(t: ^testing.T) {
-	html := tk.markdown_html("# Title (`x`)\n\nOne line\nand two.\n\n## Against core:compress\n\n### Third\n")
-	has(t, html, `<h1 id="title-x">Title (<code>x</code>)</h1>`)
-	has(t, html, "<p>One line\nand two.</p>")
-	has(t, html, `<h2 id="against-corecompress">Against core:compress</h2>`)
-	has(t, html, `<h3 id="third">Third</h3>`)
-	testing.expect_value(t, tk.markdown_title("text\n```\n# not a title\n```\n# The title `x`\n"), "The title x")
-}
-
-@(test)
-markdown_inline_constructs :: proc(t: ^testing.T) {
-	has(t, tk.markdown_html("a **strong** and *em* text"), "a <strong>strong</strong> and <em>em</em> text")
-	has(t, tk.markdown_html("a **strong\nacross** lines"), "<strong>strong\nacross</strong>")
-	// code is literal: no emphasis, no link, HTML escaped
-	has(t, tk.markdown_html("`a < b && **c** [d](e)`"), "<code>a &lt; b &amp;&amp; **c** [d](e)</code>")
-	has(t, tk.markdown_html("``a ` b``"), "<code>a ` b</code>")
-	// a star that opens nothing stays a star
-	has(t, tk.markdown_html("2 * 3 and *.png"), "2 * 3 and *.png")
-	has(t, tk.markdown_html("<b>&\"</b>"), "&lt;b&gt;&amp;&quot;&lt;/b&gt;")
-	has(t, tk.markdown_html(`a \* b \`),  "a * b \\")
-	has(t, tk.markdown_html("![shot](screenshots/x.png)"), `<img src="screenshots/x.png" alt="shot" loading="lazy">`)
-	has(t, tk.markdown_html("[the `code` link](x.md)"), `<a href="x.html">the <code>code</code> link</a>`)
-}
-
-@(test)
-markdown_code_blocks :: proc(t: ^testing.T) {
-	html := tk.markdown_html("```odin\nif a < b {\n\t# not a heading\n\n\t- not a list\n}\n```\nafter\n\n```\nplain\n```\n")
-	has(t, html, "<pre><code class=\"language-odin\">if a &lt; b {\n\t# not a heading\n\n\t- not a list\n}</code></pre>")
-	has(t, html, "<pre><code>plain</code></pre>")
-	has(t, html, "<p>after</p>")
-}
-
-@(test)
-markdown_lists :: proc(t: ^testing.T) {
-	html := tk.markdown_html("Intro:\n- one\n  wrapped\n- two\n  - nested *a*\n  - nested b\n- three\n\n1. first\n2. second\n   ```\n   code\n   ```\n\nend")
-	has(t, html, "<p>Intro:</p>\n<ul>\n<li>one\nwrapped\n</li>")
-	has(t, html, "<li>two\n<ul>\n<li>nested <em>a</em>\n</li>\n<li>nested b\n</li>\n</ul>\n</li>")
-	has(t, html, "<li>three\n</li>\n</ul>")
-	has(t, html, "<ol>\n<li>")
-	has(t, html, "<li>second\n<pre><code>code</code></pre>\n</li>\n</ol>")
-	has(t, html, "<p>end</p>")
-	// a blank line between two items keeps one list
-	testing.expect_value(t, strings.count(tk.markdown_html("- a\n\n- b\n"), "<ul>"), 1)
-}
-
-@(test)
-markdown_tables :: proc(t: ^testing.T) {
-	html := tk.markdown_html("| A | B |\n|---|:--|\n| `x|y` | **b** |\n| 2 | 3 \\| 4 |\n\nafter")
-	has(t, html, "<thead><tr><th>A</th><th>B</th></tr></thead>")
-	has(t, html, "<tr><td><code>x|y</code></td><td><strong>b</strong></td></tr>")
-	has(t, html, "<td>2</td><td>3 | 4</td>")
-	has(t, html, "</table></div>\n<p>after</p>")
 }
 
 @(test)
@@ -377,7 +323,7 @@ markdown_links_become_pages_or_github :: proc(t: ^testing.T) {
 	testing.expect_value(t, tk.doc_link("../CONTRIBUTING.md"), tk.GITHUB_BLOB + "CONTRIBUTING.md")
 	testing.expect_value(t, tk.doc_link("../src/ui/ui.odin#L3"), tk.GITHUB_BLOB + "src/ui/ui.odin#L3")
 	testing.expect_value(t, tk.doc_link("screenshots/a.png"), tk.GITHUB_BLOB + "docs/screenshots/a.png")
-	has(t, tk.markdown_html("[c](../CONTRIBUTING.md) and [d](draw.md)"), `<a href="`+tk.GITHUB_BLOB+`CONTRIBUTING.md">c</a> and <a href="draw.html">d</a>`)
+	has(t, tk_site.markdown_html("[c](../CONTRIBUTING.md) and [d](draw.md)", tk.doc_link), `<a href="`+tk.GITHUB_BLOB+`CONTRIBUTING.md">c</a> and <a href="draw.html">d</a>`)
 }
 
 @(test)
@@ -404,7 +350,23 @@ site_docs_writes_pages_and_index :: proc(t: ^testing.T) {
 	has(t, index, `<li><a href="zzz.html">Not in a group</a></li>`)
 }
 
+
+// A command that reads its own arguments (cdp, doc_check, site_check) gets them all, its "--name value" ones too.
 @(test)
-markdown_loose_list_items_keep_paragraphs :: proc(t: ^testing.T) {
-	has(t, tk.markdown_html("- first\n\n  second\n- b\n"), "<li><p>first</p>\n<p>second</p>\n</li>")
+a_raw_command_gets_every_argument :: proc(t: ^testing.T) {
+	a, why := tk.parse({"cdp", "--port", "9300", "click", "--name", "nav0", ",", "idle"})
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, strings.join(a.positionals[:], " ", context.temp_allocator), "--port 9300 click --name nav0 , idle")
+	testing.expect_value(t, len(a.flags), 0)
+	_, why = tk.parse({"screenshots", "--only", "about"})
+	testing.expect(t, why != "", "the others still read their flags")
+}
+
+// theme_shots: the palettes' names, from the toolkit's one list of them.
+@(test)
+the_palettes_are_named_by_the_source :: proc(t: ^testing.T) {
+	names := tk.palette_names("x := 1\nNAMED_PALETTES := [?]Named_Palette{\n\t{\"Midnight\", PALETTE_MIDNIGHT},\n\t{\"Gruvbox Light\", PALETTE_GRUVBOX_LIGHT},\n}\nOTHER := {\"No\", PALETTE_NO}\n")
+	testing.expect_value(t, strings.join(names, "|", context.temp_allocator), "Midnight|Gruvbox Light")
+	source, ok := tk.read_text(fmt.tprintf("%s/../../src/ui/theme_default.odin", #directory))
+	testing.expect(t, ok && len(tk.palette_names(source)) > 10, "the toolkit's list is read")
 }

@@ -27,7 +27,7 @@ On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the
     odin run tools/tk -- build todo -debug
 
 `build.bat` and `./build.sh` are shortcuts for `tk build`. Every other step is a command of `tools/tk` too: `ci`, `desktop_tests`,
-`release`, `fetch_wgpu`... (the head of `tools/tk/main.odin`). On Linux, `nix develop` gives what they need (`flake.nix`).
+`release`, `fetch_wgpu`, `cdp`, `screenshots`, `site_build`, `doc_check`... (the head of `tools/tk/main.odin`). On Linux, `nix develop` gives what they need (`flake.nix`).
 
 Needs the Odin compiler (`dev-2026-11a`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
 (X11 and Wayland, Vulkan through wgpu-native, text by the native backend: Fontations, HarfRust, ICU4X, fonts from
@@ -56,7 +56,7 @@ few lines (`examples/hello`), the backends and options, the tests, the versions,
 ![examples/transforms: rotated, skewed and scaled shapes, text and images, rounded clips](docs/screenshots/transforms.png)
 <p align="center"><b>examples/transforms</b>: the draw layer's affine transforms, rounded clips and images</p>
 
-Screenshots are regenerated with `node tools/screenshots.mjs --build` (default settings, over the DevTools protocol: the mouse and the windows in front are left alone).
+Screenshots are regenerated with `odin run tools/tk -- screenshots -build` (default settings, over the DevTools protocol: the mouse and the windows in front are left alone).
 
 ## What it looks like
 
@@ -108,6 +108,8 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `process` | What a program knows of its own process: its arguments as UTF-8, its executable, and an output for the person or script that started it, also from a Windows program with a window. See [docs/process.md](docs/process.md). |
 | `instance` | One running copy of an application per named resource: the first start owns a name, a second start hands an opaque message to it and comes forward instead of opening a second copy. Platform-neutral interface (a name, an identity token, `[]byte` messages, a handler); named mutex + message window on Windows, lock file + Unix socket on POSIX (`instance_<os>.odin`). See [docs/instance.md](docs/instance.md). |
 | `testkit` | Reusable building blocks for an application's own tests: a block of test-server ports (so several worktrees test side by side, `url` rewrites the default ports to the run's block) and a reader of the process's memory, open handles and (on Windows) GDI / USER objects for endurance and leak tests (`process_<os>.odin`). Pure of any product name. See [docs/testkit.md](docs/testkit.md). |
+| `cdp` | A client of the Chrome DevTools Protocol for tools: a toolkit window (the `devtools` server) or a browser, one WebSocket for a run; find, click, keys, text, pictures, waits, screencasts, scripts and timelines (a picture after each action, compared with another run). See [docs/cdp.md](docs/cdp.md). |
+| `site` | A project's website from its own pages: CHANGELOG.md as a changelog page, news and classic pages, what each page says when shared (feed, sitemap, manifest), Markdown as HTML, and the pages checked in a real browser. See [docs/site.md](docs/site.md). |
 
 ## Features
 
@@ -232,7 +234,7 @@ cache and the scroll curve; `tests/cursors` the cursors' CSS names, system or dr
 custom cursors on a hidden window. `tests/layers`, `tests/effects`,
 `tests/blend_space`, `tests/gradients`, `tests/shadows` and `tests/retained` (text, color emoji and transformed glyphs included) are pixel tests on an offscreen WARP renderer (most in both blend spaces); `tests/text` covers faces, fallback, shaping, bidi, line breaks, carets, color glyphs and the atlas pages (`atlas_stress`); `tests/slug` the Slug text (outlines, bands against the exact winding number, the glyph store and its eviction, pixels against the atlas, order, clips, rotation, pictures, device loss). `odin run tools/textcompare -- -out <dir> -dpr 1.75` writes atlas | Slug | difference images of the same scenes and measures both (CPU, GPU, first paint, memory).
 
-`tests/examples/whatsnew_test.odin` runs `examples/whatsnew` in the test's process with no window and drives it over the devtools protocol (docs/devtools.md), with a client that needs no socket: each page must show no layout warning, nothing a screen reader cannot name, and look like its reference image (`tests/examples/baseline`, `TOOLKIT_TEST_UPDATE=1` writes them); then a wheel burst in the lazy column, find with its scope gone, the recorder, the screencast, Chrome's DevTools' way through the box tree. `node tests/e2e/timeline.mjs` tests the Node tool `tools/timeline.mjs` over a real socket.
+`tests/examples/whatsnew_test.odin` runs `examples/whatsnew` in the test's process with no window and drives it over the devtools protocol (docs/devtools.md), with a client that needs no socket: each page must show no layout warning, nothing a screen reader cannot name, and look like its reference image (`tests/examples/baseline`, `TOOLKIT_TEST_UPDATE=1` writes them); then a wheel burst in the lazy column, find with its scope gone, the recorder, the screencast, Chrome's DevTools' way through the box tree. `tk timeline_test` tests the timelines of `src/cdp` (docs/cdp.md) against the program over a real socket.
 
 Timing checks (durations, CPU or GPU times, frames in a time window) are opt-in: `base.perf_skip` skips them unless
 `GUI_PERF=1` (or `true`) is set and `CI` is not, and prints `perf: skipped (...)`. Run them by hand, never in CI:

@@ -3,7 +3,7 @@ package examples_test
 
 // examples/whatsnew in this process, with no window, driven over the devtools protocol as a tool would, by a client with no socket (devtools.Local_Client):
 // each page must show no layout warning and nothing a screen reader cannot name, and must look like its reference image; then the scenarios of what broke before,
-// and Chrome's DevTools' way through the box tree. (The socket itself: tests/devtools. tools/timeline.mjs, which is a Node program: tests/e2e/timeline.mjs. Windows only:
+// and Chrome's DevTools' way through the box tree. (The socket itself: tests/devtools. The timelines of src/cdp over a real socket: tk timeline_test. Windows only:
 // the reference images were made with the system's fonts, on WARP.)
 
 import "base:runtime"

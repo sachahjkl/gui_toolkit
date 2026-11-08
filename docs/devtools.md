@@ -85,25 +85,27 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 | `Toolkit.warnings` | the layout's warnings of this build (`ui.set_layout_warnings`). |
 | `Toolkit.axAction` `{role? name? exact? index? nodeId? action? value?}` | an action on an accessible node, as a screen reader asks it (`ui.a11y_inject`): `Click` by default, `Focus`, `Set_Value`, `Increment`, `Scroll_Into_View`... (`platform.A11y_Action`). An error if the node does not offer it. |
 | `Toolkit.axAudit` | `unnamed`: the enabled controls with no name, no text in them and no placeholder (`ui.a11y_unnamed`). A clickable box without one is not even a node: a reader does not know it exists. |
-| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tools/cdp.mjs play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is; the wheel both ways (`wheel x y notches across`). `injected`: the protocol's events too, and `Toolkit.axAction` as `press`. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). A recording is its asker's: another client's commands on it are refused, and when the asker goes it ends and what it held is dropped. A right drag is `down` and `up` with `--button right`; a drag cut by `stopRecording` gets its `up`. |
+| `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tk cdp play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is; the wheel both ways (`wheel x y notches across`). `injected`: the protocol's events too, and `Toolkit.axAction` as `press`. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). A recording is its asker's: another client's commands on it are refused, and when the asker goes it ends and what it held is dropped. A right drag is `down` and `up` with `--button right`; a drag cut by `stopRecording` gets its `up`. |
 
-## tools/cdp.mjs
+## tk cdp
 
-A client for the command line (Node 22+, no package):
+The client for the command line is a command of the toolkit's tool, on the client of `src/cdp` ([cdp.md](cdp.md)):
 
 ```
 $env:TOOLKIT_DEVTOOLS=9222; build\whatsnew.exe   # PowerShell; in bash: TOOLKIT_DEVTOOLS=9222 build/whatsnew
-node tools/cdp.mjs tree
-node tools/cdp.mjs click "Lazy column" , idle , wheel 700 400 30 , idle , shot out.png
-node tools/cdp.mjs key ctrl+f , type odin , key Enter , wait-for "matches"
-node tools/cdp.mjs press "Send" --role button
-node tools/cdp.mjs audit
-node tools/cdp.mjs metrics --reset , click "Lazy column" , idle , metrics
-node tools/cdp.mjs record steps.txt      # until Enter; then: node tools/cdp.mjs play steps.txt
-node tools/cdp.mjs cast frames/          # the window's frames as PNGs, until Enter
+odin run tools/tk -- cdp tree
+odin run tools/tk -- cdp click "Lazy column" , idle , wheel 700 400 30 , idle , shot out.png
+odin run tools/tk -- cdp key ctrl+f , type odin , key Enter , wait-for "matches"
+odin run tools/tk -- cdp press "Send" --role button
+odin run tools/tk -- cdp audit
+odin run tools/tk -- cdp metrics --reset , click "Lazy column" , idle , metrics
+odin run tools/tk -- cdp record steps.txt      # until Enter; then: tk cdp play steps.txt
+odin run tools/tk -- cdp cast frames/          # the window's frames as PNGs, until Enter
 ```
 
-`tools/cdp_client.mjs` is the same as a module, for a script of your own; `tests/e2e/timeline.mjs` is an example of one. In the program's own process, with no socket: `devtools.start_local` and `devtools.Local_Client` (`tests/examples/whatsnew_test.odin`).
+`--port <n>` comes first when the port is not 9222. The head of `tools/tk/cdp.odin` lists every command. For a tool of your own,
+the same client is the `cdp` package (`src/cdp`, [cdp.md](cdp.md)); `tools/tk/timeline_test.odin` is an example of one. In the
+program's own process, with no socket: `devtools.start_local` and `devtools.Local_Client` (`tests/examples/whatsnew_test.odin`).
 
 ## Timelines
 
@@ -111,10 +113,10 @@ A timeline is a run kept whole: each action with when it happened, a picture of 
 frame in between.
 
 ```
-node tools/cdp.mjs record --timeline run1            # what a person does, until Enter
-node tools/cdp.mjs play run1/timeline.json --timeline run2                # again; each picture compared with run1's
-node tools/cdp.mjs play run1/timeline.json --timeline run2 --realtime     # with the recorded pauses
-node tools/cdp.mjs play steps.txt --timeline run3 --against run1          # a script against a run
+odin run tools/tk -- cdp record --timeline run1                                  # what a person does, until Enter
+odin run tools/tk -- cdp play run1/timeline.json --timeline run2                 # again; each picture compared with run1's
+odin run tools/tk -- cdp play run1/timeline.json --timeline run2 --realtime      # with the recorded pauses
+odin run tools/tk -- cdp play steps.txt --timeline run3 --against run1           # a script against a run
 ```
 
 A folder per run:
@@ -126,18 +128,19 @@ A folder per run:
   mark per step, a counter of the frame time.
 - `steps.txt`, `step-NNN.png`, `step-NNN.diff.png`.
 
-`play` exits with code 1 if a step differs: over 0.4 % of its pixels by more than 32 of 255 (`--max-diff` for the share),
+`play` fails (exit code 1) if a step differs: over 0.4 % of its pixels by more than 32 of 255 (`--max-diff` for the share),
 which lets numbers shown live pass. Each step waits for the window to rest (1.5 s at most; the page says when it was
 still moving), and a picture is taken per action, not per frame. The window's encoder is built for rate, on a thread of its own, so the window
 does not freeze for it; pictures stay in memory during the run, and are compressed, compared and written when it ends.
-`tools/timeline.mjs` is the same as a module (`recordTimeline`, `playTimeline`).
+`cdp.record_timeline` and `cdp.play_timeline` are the same for a tool of your own; `tk timeline_test` tests them against
+`examples/whatsnew` over a real socket.
 
 **What was on screen and what was typed are in the folder as they were**: a run on real data is not to be shared as it
 stands, and typed passwords are recorded like any other text.
 
 ## Chrome's DevTools
 
-`node tools/cdp.mjs inspect` prints the address to paste in Chrome or Edge. The box tree stands for the DOM:
+`tk cdp inspect` prints the address to paste in Chrome or Edge. The box tree stands for the DOM:
 
 - **Elements**: the boxes worth showing, followed as the window changes. The tag says what a box does (`button`, `input`,
   `scroll`, `text`, `box`), its name is its `id`, its flags its `class`, `role` and `aria-label` what a reader gets. Search

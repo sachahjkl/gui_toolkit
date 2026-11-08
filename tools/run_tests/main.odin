@@ -60,6 +60,8 @@ STEPS := []Step{
 	{name = "arena", path = "src/arena"},
 	{name = "ascii", path = "src/ascii", oses = EVERYWHERE},
 	{name = "base", path = "src/base"},
+	{name = "cdp", path = "src/cdp", oses = EVERYWHERE},
+	{name = "site", path = "src/site", oses = EVERYWHERE},
 	{name = "config", path = "src/config", oses = EVERYWHERE},
 	{name = "dbus", path = "src/dbus", oses = LINUX_ONLY},
 	{name = "desktop_pkg", path = "src/desktop", oses = EVERYWHERE},

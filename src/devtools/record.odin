@@ -7,7 +7,7 @@ import "core:strings"
 import "../platform"
 import "../ui"
 
-// The recorder: what a person does in the window, as a script of tools/cdp.mjs to run again (Toolkit.startRecording,
+// The recorder: what a person does in the window, as a script of tk cdp to run again (Toolkit.startRecording,
 // Toolkit.stopRecording). A click is written by what it clicked (its name, its text), not by where it was, so the script
 // survives the layout moving; what names nothing, and a drag, is written with coordinates. Typed text is recorded as
 // is: the recording is asked for, and is the asker's to keep. Its alone: another client can neither read it nor stop it, and

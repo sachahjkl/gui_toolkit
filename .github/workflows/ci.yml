@@ -30,11 +30,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # what the documentation names must exist
-      - name: Documentation (tools/doc_check.mjs)
-        run: node tools/doc_check.mjs
-
       - uses: ./.github/actions/setup-odin
+
+      # what the documentation names must exist
+      - name: Documentation (tk doc_check)
+        shell: pwsh
+        timeout-minutes: 3
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/tk -vet -out:build/tk.exe -- doc_check
 
       # a few seconds: every fragment of changelog.d is well formed and none was already released, ui/version.odin is
       # the last published version (only `tk release` writes it). (tests/changelog tests the tool, with the other packages.)
@@ -118,18 +120,14 @@ jobs:
         timeout-minutes: 14
         run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # tools/timeline.mjs and tools/cdp_client.mjs are Node programs: they are tested as one, over a real socket
-      - name: The timeline tool (tests/e2e/timeline.mjs)
+      # the timelines of src/cdp against examples/whatsnew as a program of its own, over a real socket
+      - name: The timelines (tk timeline_test)
         shell: pwsh
         timeout-minutes: 3
         run: |
           odin build examples/whatsnew -vet -out:build/whatsnew.exe
           if ($LASTEXITCODE) { exit 1 }
-          node tests/e2e/timeline.mjs
+          ./build/tk.exe timeline_test
           if ($LASTEXITCODE) { exit 1 }
 
       # what a test leaves when it fails: the frame, the tree of boxes, a page that differs from its reference image

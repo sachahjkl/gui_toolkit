@@ -27,6 +27,7 @@ examples/fidget/pages_data.odin query := strings.to_lower(ui.field_string(&app.f
 examples/fidget/pages_data.odin name := strings.to_lower(row_name(&r)  # user text: the table's filter
 examples/fidget/pages_data.odin strings.contains(strings.to_lower(dept_names[r.dept]  # user text: the table's filter
 examples/todo/main.odin strings.contains(strings.to_lower(t.title, context.temp_allocator), strings.to_lower(query  # user text: the todo list's search
+src/site/html.odin return strings.to_lower(dotted  # display text: a heading's class and a menu label in lower case, as JavaScript's toLowerCase made them
 src/instance/instance.odin when ODIN_OS == .Windows { p = strings.to_lower(p  # a Windows path (the file system folds by Unicode)
 src/instance/instance.odin return strings.equal_fold(x, y)  # Windows paths (identities are often paths; the file system folds by Unicode)
 src/platform/dialogs.odin strings.equal_fold(name[len(name) - len(ext):], ext)  # a file name against a dialog's filter, as the system's dialog matches it
