@@ -2,7 +2,7 @@
 //   odin build examples/whatsnew -vet -out:build/whatsnew.exe -subsystem:windows
 //   build\whatsnew.exe                  the window
 //   build\whatsnew.exe --page=lazy      open on a page (its name in lower case, or its number)
-//   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tests/e2e/timeline.mjs, over devtools
+//   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tk timeline_test, over devtools
 package whatsnew
 
 import "core:fmt"
@@ -49,7 +49,7 @@ App :: struct {
 	slept:   bool,
 	page:    Page,
 	palette: Maybe(Page),   // the page the palette was applied for (Emboss has its own)
-	forced:  string,        // --palette=<name>: that one, on every page (tools/theme_shots.mjs)
+	forced:  string,        // --palette=<name>: that one, on every page (tk theme_shots)
 	n:       int,           // paragraphs of this build (their ids)
 	// measures
 	frames, at_once, after_rest: int,

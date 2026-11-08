@@ -31,8 +31,7 @@ run_release :: proc(a: ^Args) -> string {
 	if !run({changelog, "-check", fmt.tprintf("-release:%s", version)}, root) { return "the release is not consistent" }
 
 	when ODIN_OS == .Windows {
-		if why := build_example(root, "fidget", false); why != "" { return why }
-		if !run({"node", "tools/screenshots.mjs", "--only", "about"}, root) { return "the About picture failed" }
+		if why := screenshots(root, {build = true, only = {"about"}, width = SHOTS_WIDTH}); why != "" { return fmt.tprintf("the About picture failed: %s", why) }
 	} else {
 		fmt.println("tk release: the About picture is taken on Windows (fidget): it stays as it is")
 	}

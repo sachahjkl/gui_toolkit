@@ -27,8 +27,25 @@
 //                                             tests (tools/run_tests); every step runs, then the failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
+//   site_build <site> <out>                   the site as published: site_changelog, site_meta, then site_docs into <out> (site.odin)
+//   site_changelog <site> <out>               a copy of <site> with the history from CHANGELOG.md and the classic pages (src/site)
+//   site_meta <site> <out>                    what each page says when shared, the feed, the sitemap, the files around the pages
 //   site_docs <site> <out>                    every docs/*.md as <out>/docs/<name>.html in the site's look, and <out>/docs/index.html that
 //                                             lists them (site_docs.odin); <site> gives the header and the style, <out> is the folder to publish
+//   site_card                                 draws site/img/card.png in a local Chromium, once, by hand
+//   site_check [--site folder] [--shot file.png] [--browser program]
+//                                             the site's pages in Chrome or Edge with no window, served on 127.0.0.1
+//   cdp [--port 9222] <command> [args] [, <command> [args]]...
+//                                             drives a toolkit window over the DevTools protocol: tree, find, click, key, type, shot,
+//                                             idle, wait-for, record, play, timelines... (cdp.odin lists them)
+//   screenshots [-build] [-only:a,b] [-width:1400]
+//                                             docs/screenshots/*.png and site/img from the examples, their own frames (shots.odin)
+//   theme_shots [-build] [-out:dir] [-page:Find] [-find:the] [-only:a,b]
+//                                             examples/whatsnew in every named palette, no window -> build/theme_shots
+//   timeline_test [-exe:file] [-out:dir] [-port:9477]
+//                                             the timelines of src/cdp against examples/whatsnew --headless over a real socket
+//   doc_check [--root folder] [--extra folder]...
+//                                             the files, flags and names the documentation cites exist (doc_check.odin)
 //   release <version> [-summary:text] [-no-push]
 //                                             publishes a version, on Windows or Linux (release.odin, CONTRIBUTING.md): the CHANGELOG
 //                                             section, the version, the commit, the tag, the push and the GitHub release
@@ -58,6 +75,7 @@ Command :: struct {
 	flags:       []string,                 // what it takes: "name" a switch, "name:" a flag with a value
 	positionals: int,                      // how many plain arguments it takes (-1: none or one)
 	run:         proc(a: ^Args) -> string, // "" when the work is done, else why it is not
+	raw:         bool,                     // every argument is a plain one: the command reads its own (--name value)
 }
 
 COMMANDS := []Command {
@@ -74,6 +92,16 @@ COMMANDS := []Command {
 	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},
 	{name = "build", flags = {"debug"}, positionals = -1, run = run_build},
 	{name = "site_docs", positionals = 2, run = run_site_docs},
+	{name = "site_build", positionals = 2, run = run_site_build},
+	{name = "site_changelog", positionals = 2, run = run_site_changelog},
+	{name = "site_meta", positionals = 2, run = run_site_meta},
+	{name = "site_card", run = run_site_card},
+	{name = "site_check", raw = true, run = run_site_check},
+	{name = "cdp", raw = true, run = run_cdp},
+	{name = "screenshots", flags = {"build", "only:", "width:"}, run = run_screenshots},
+	{name = "theme_shots", flags = {"build", "out:", "page:", "find:", "only:"}, run = run_theme_shots},
+	{name = "timeline_test", flags = {"exe:", "out:", "port:"}, run = run_timeline_test},
+	{name = "doc_check", raw = true, run = run_doc_check},
 	{name = "ci", run = run_ci},
 	{name = "desktop_tests", positionals = -1, run = run_desktop_tests},
 }
@@ -110,6 +138,10 @@ parse :: proc(args: []string, allocator := context.temp_allocator) -> (a: Args, 
 	if len(args) == 0 { return a, "no command" }
 	for &c in COMMANDS { if c.name == args[0] { a.command = &c } }
 	if a.command == nil { return a, fmt.tprintf("no command %s", args[0]) }
+	if a.command.raw {
+		append(&a.positionals, ..args[1:])
+		return a, ""
+	}
 	for arg in args[1:] {
 		if len(arg) < 2 || arg[0] != '-' { append(&a.positionals, arg); continue }
 		name, value := arg[1:], ""
