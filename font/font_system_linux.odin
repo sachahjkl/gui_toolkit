@@ -9,9 +9,11 @@ import "core:sync"
 import "../ascii"
 
 // The system's fonts on Linux: fontconfig (libfontconfig.so.1, present wherever there is a desktop). A family / weight /
-// style is matched with FcFontMatch after the configuration's substitutions; the fallback of a character is the best
-// match whose charset has it; the families are FcFontList's. Written against fontconfig's documented C API (2.11+:
-// FcWeightFromOpenType); checked by `odin check -target:linux_amd64`, not yet run on a Linux machine.
+// style is matched with FcFontMatch after the configuration's substitutions. A family that is not installed stands for
+// the installed one the configuration binds to its name (an alias: Liberation Mono for "Courier New"), and a generic
+// family (monospace) for the font fontconfig picks: fc_resolve_family. The fallback of a character is the best match
+// whose charset has it; the families are FcFontList's. Written against fontconfig's documented C API (2.11+:
+// FcWeightFromOpenType); tested on Linux by tests/color_native/system_fonts_test_linux.odin.
 
 foreign import fontconfig "system:fontconfig"
 
@@ -96,10 +98,54 @@ fc_file :: proc(m: ^Fc_Pattern) -> (path: string, index: int, ok: bool) {
 	return strings.clone(string(file), context.temp_allocator), int(idx & 0xFFFF), true   // high bits: a named instance
 }
 
+// fontconfig's generic families: the configuration picks their font, whatever its name (fc-match monospace).
+@(private) FC_GENERICS :: [?]string{"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "emoji", "math"}
+
+// Put after the family asked for: what fontconfig's substitution puts before it binds to that name.
+@(private) FC_SENTINEL :: "gui-toolkit-sentinel"
+
+@(private)
+fc_is_generic :: proc(family: string) -> bool {
+	for g in FC_GENERICS { if ascii.equal_fold(g, family) { return true } }
+	return false
+}
+
+// The installed family that stands for `family` (temp memory): the family itself when it is installed, else the first
+// installed family the configuration binds to that name, such as Liberation Mono for "Courier New" (30-metric-aliases.conf).
+// fontconfig always answers with some font, so not every answer counts: a sentinel family is added after `family`, and
+// the substitution puts the aliases of `family` before it and the defaults (the generic families, sans-serif) after it.
+// Firefox reads fontconfig's aliases the same way. A generic family stands for itself: fontconfig resolves it.
+@(private)
+fc_resolve_family :: proc(family: string) -> (resolved: string, ok: bool) {
+	if family == "" || !fc_init() { return }
+	if fc_is_generic(family) || fc_installed(family) { return family, true }
+	p := FcPatternCreate()
+	if p == nil { return }
+	defer FcPatternDestroy(p)
+	FcPatternAddString(p, "family", strings.clone_to_cstring(family, context.temp_allocator))
+	FcPatternAddString(p, "family", FC_SENTINEL)
+	FcConfigSubstitute(nil, p, FC_MATCH_PATTERN)
+	for i := c.int(0); ; i += 1 {
+		name: cstring
+		if FcPatternGetString(p, "family", i, &name) != .Match || name == nil { break }
+		n := string(name)
+		if n == FC_SENTINEL { break }
+		if ascii.equal_fold(n, family) { continue }
+		if fc_installed(n) { return strings.clone(n, context.temp_allocator), true }
+	}
+	return
+}
+
+@(private)
+fc_installed :: proc(family: string) -> bool {
+	for f in fc_list_families(family, context.temp_allocator) { if ascii.equal_fold(f, family) { return true } }
+	return false
+}
+
 @(private)
 sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -> (path: string, index: int, ok: bool) {
-	if !fc_init() || family == "" { return }
-	p := fc_pattern(family, weight, style, stretch)
+	target := fc_resolve_family(family) or_return
+	p := fc_pattern(target, weight, style, stretch)
 	if p == nil { return }
 	defer FcPatternDestroy(p)
 	FcConfigSubstitute(nil, p, FC_MATCH_PATTERN)
@@ -108,9 +154,10 @@ sys_find :: proc(family: string, weight: int, style: Font_Style, stretch: int) -
 	m := FcFontMatch(nil, p, &res)
 	if m == nil { return }
 	defer FcPatternDestroy(m)
-	// fontconfig always answers (its default font): the family must be the one asked for
+	// fontconfig always answers (its default font): the family must be the one resolved, unless it is a generic one
 	got: cstring
-	if FcPatternGetString(m, "family", 0, &got) != .Match || !ascii.equal_fold(string(got), family) { return }
+	if FcPatternGetString(m, "family", 0, &got) != .Match { return }
+	if !fc_is_generic(target) && !ascii.equal_fold(string(got), target) { return }
 	return fc_file(m)
 }
 
@@ -170,9 +217,8 @@ fc_list_families :: proc(family: string, allocator: runtime.Allocator) -> []stri
 
 @(private)
 sys_has_family :: proc(family: string) -> bool {
-	l := fc_list_families(family, context.temp_allocator)
-	for f in l { if ascii.equal_fold(f, family) { return true } }
-	return false
+	_, ok := fc_resolve_family(family)
+	return ok
 }
 
 @(private)
