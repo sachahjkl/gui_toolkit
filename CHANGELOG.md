@@ -5,6 +5,18 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.99.0] - 2026-11-08
+
+### Added
+- **`update`** (package `tk_update`): signed updates of a program, from Wren and opencode native. A `Product` (name, signing context, public key) checks what a release publishes: one manifest per platform and channel (`manifest_name`, channels optional), signed with Ed25519, for a strictly newer version and the release's own file name (`check_release`). `place` puts the downloaded program in place of the running one after its size and SHA-256 (Windows: renamed aside, put back on failure; Linux: renamed over), `remove_leftovers` cleans up at the next start, and `manifest_of`, `manifest_bytes` and `sign` are the release tool's side. [docs/update.md](docs/update.md).
+- **`platform.set_app_id`**: the program's id on the Linux desktop, the name of its .desktop file: Wayland's app_id and X11's WM_CLASS (which windows on X11 had none of). By default the executable's file name, where every window said "gui_toolkit", so a task bar could not find the program's icon and name.
+
+### Changed
+- **`tk release`** publishes a version on Windows or Linux (tools/tk), in place of tools/release.ps1, which is gone: the CHANGELOG section and the version, the commit, the annotated tag, the push and the GitHub release. The About picture is taken again on Windows only.
+
+### Fixed
+- **System fonts on Linux take fontconfig's aliases and generic families**: `font.load_system` and `font.has_system_family` give "Courier New" the installed font the configuration binds to it (Liberation Mono, by 30-metric-aliases.conf), and `monospace`, `serif`, `sans-serif` and the other generic families the font fontconfig picks. They refused any answer whose family was not the one asked for, so such a name was missing and text fell to the next font.
+
 ## [0.98.3] - 2026-11-08
 
 ### Fixed
@@ -1815,6 +1827,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.99.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.99.0
 [0.98.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.3
 [0.98.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.2
 [0.98.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.1
