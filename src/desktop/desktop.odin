@@ -407,7 +407,8 @@ in_nix_store :: proc(exe: string) -> bool { return strings.has_prefix(exe, "/nix
 same_path :: proc(a, b: string) -> bool {
 	if a == "" || b == "" { return false }
 	when ODIN_OS == .Windows {
-		return strings.equal_fold(normalize_slashes(a), normalize_slashes(b))
+		// (one file has two names when a folder has a short 8.3 name too, C:\Users\RUNNER~1: a TEMP or a shortcut may give either)
+		return strings.equal_fold(long_path(normalize_slashes(a)), long_path(normalize_slashes(b)))
 	} else {
 		return a == b
 	}

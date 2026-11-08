@@ -163,7 +163,9 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		if os.write_entire_file(conf, XORG_DUMMY_CONF) != nil { return "xorg.conf cannot be written" }
 		xorg := os.get_env("XORG", context.temp_allocator)
 		cmd := make([dynamic]string, context.temp_allocator)
-		append(&cmd, xorg != "" ? xorg : "Xorg", ":96", "-config", conf)
+		// (XORG may be a command line: "sudo /usr/lib/xorg/Xorg")
+		append(&cmd, ..strings.fields(xorg != "" ? xorg : "Xorg", context.temp_allocator))
+		append(&cmd, ":96", "-config", conf)
 		if m := os.get_env("XORG_MODULES", context.temp_allocator); m != "" { append(&cmd, "-modulepath", m) }
 		append(&cmd, "-ac", "-noreset", "-logfile", join({d.out, "xorg.log"}), "-nolisten", "tcp")
 		ok := start(&d, "xorg.out", ..cmd[:]) && until(&d, 100, "xprop", "-root")

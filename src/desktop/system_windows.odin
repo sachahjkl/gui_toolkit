@@ -19,3 +19,14 @@ system_file :: proc(name: string, folder: System_Folder, allocator := context.te
 	if err != nil { return "" }
 	return strings.concatenate({strings.trim_right(dir, "\\/"), "\\", name}, allocator)
 }
+// The long form of an existing path (every folder by its long name, not its 8.3 short name); `path` itself when it is not there.
+long_path :: proc(path: string) -> string {
+	w := win.utf8_to_wstring(path, context.temp_allocator)
+	n := win.GetLongPathNameW(w, nil, 0)
+	if n == 0 { return path }
+	buf := make([]u16, n, context.temp_allocator)
+	got := win.GetLongPathNameW(w, cstring16(raw_data(buf)), n)
+	if got == 0 || got >= n { return path }
+	out, err := win.utf16_to_utf8(buf[:got], context.temp_allocator)
+	return err == nil ? out : path
+}
