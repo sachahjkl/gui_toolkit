@@ -21,6 +21,9 @@
 //   emoji_board [-size:32] [-scale:1] [-step:37] [-font:ttf] [-out-dir:dir]
 //                                             the COLR interpreter against a headless Edge on the same font (tools/colrboard): every
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
+//   release <version> [-summary:text] [-no-push]
+//                                             publishes a version, on Windows or Linux (release.odin, CONTRIBUTING.md): the CHANGELOG
+//                                             section, the version, the commit, the tag, the push and the GitHub release
 // A relative path given is the working directory's; the defaults are in the toolkit's checkout (two folders above this file), from
 // wherever tk runs, except emoji_board's, which runs in the checkout. Every download is checked against its SHA-256 before it is used.
 // Exit code 0 when the work is done, 1 when it failed, 2 for a command line it does not understand. tests/tk calls the procedures below.
@@ -60,6 +63,7 @@ COMMANDS := []Command {
 	{name = "make_logo", flags = {"out:"}, run = run_make_logo},
 	{name = "ppm_diff", flags = {"tolerance:"}, positionals = 2, run = run_ppm_diff},
 	{name = "emoji_board", flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = run_emoji_board},
+	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},
 }
 
 Flag :: struct {
