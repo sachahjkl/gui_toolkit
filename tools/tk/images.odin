@@ -1,10 +1,10 @@
-// Pictures: the difference of two PPM files, the logo and the icon made from it (drawn by GDI+: gdiplus_windows.odin).
+// Pictures: the difference of two PPM files, the logo and the icon made from it (drawn by the paint package: logo.odin).
 package tk
 
-import "core:encoding/endian"
 import "core:fmt"
 import "core:os"
 import "core:strconv"
+import paint "../../src/paint"
 
 PPM_TOLERANCE :: 2
 PPM_HEADER_TOKENS :: 4   // P6, width, height, the largest value
@@ -16,13 +16,6 @@ LOGO_DEFAULT_OUT :: ".project/image.png"
 ICON_CROP_AT :: 56
 ICON_CROP_SIZE :: 400
 @(rodata) ICON_SIZES := [?]int{16, 24, 32, 48, 64, 128, 256}
-// The .ico format: a header, a 16-byte entry per picture; a picture of 256 px says 0 as its size.
-ICO_HEADER :: 6
-ICO_ENTRY :: 16
-ICO_TYPE_ICON :: 1
-ICO_PLANES :: 1
-ICO_BITS :: 32
-ICO_SIZE_256 :: 256
 
 Ppm :: struct {
 	w, h: int,
@@ -86,35 +79,14 @@ ppm_diff_files :: proc(a, b: string, tolerance: int) -> (d: Ppm_Diff, why: strin
 	return ppm_diff(ppms[0], ppms[1], tolerance)
 }
 
-// A .ico of PNG pictures, the sizes of `sizes` (one per picture).
-ico_from_pngs :: proc(pngs: [][]byte, sizes: []int, allocator := context.allocator) -> []byte {
-	total := ICO_HEADER + ICO_ENTRY * len(pngs)
-	for p in pngs { total += len(p) }
-	out := make([]byte, total, allocator)
-	endian.put_u16(out[0:], .Little, 0)
-	endian.put_u16(out[2:], .Little, ICO_TYPE_ICON)
-	endian.put_u16(out[4:], .Little, u16(len(pngs)))
-	offset := ICO_HEADER + ICO_ENTRY * len(pngs)
-	for p, i in pngs {
-		e := out[ICO_HEADER + ICO_ENTRY * i:]
-		dim := sizes[i] >= ICO_SIZE_256 ? 0 : u8(sizes[i])
-		e[0], e[1], e[2], e[3] = dim, dim, 0, 0
-		endian.put_u16(e[4:], .Little, ICO_PLANES)
-		endian.put_u16(e[6:], .Little, ICO_BITS)
-		endian.put_u32(e[8:], .Little, u32(len(p)))
-		endian.put_u32(e[12:], .Little, u32(offset))
-		copy(out[offset:], p)
-		offset += len(p)
-	}
-	return out
-}
-
 // A multi-size .ico (PNG-compressed, 16 to 256 px) from the 512 px logo `png`.
 make_icon :: proc(png, out: string) -> string {
 	pngs, why := icon_pngs(png, ICON_SIZES[:])
 	if why != "" { return why }
 	defer { for p in pngs { delete(p) }; delete(pngs) }
-	ico := ico_from_pngs(pngs, ICON_SIZES[:])
+	entries := make([]paint.Ico_Entry, len(pngs), context.temp_allocator)
+	for p, i in pngs { entries[i] = {ICON_SIZES[i], p} }
+	ico := paint.ico_encode(entries)
 	defer delete(ico)
 	if os.write_entire_file(out, ico) != nil { return fmt.tprintf("%s cannot be written", out) }
 	fmt.printfln("wrote %s", out)
@@ -123,7 +95,9 @@ make_icon :: proc(png, out: string) -> string {
 
 // Draws the logo, a PNG of 512 px, into `out`.
 make_logo :: proc(out: string) -> string {
-	if why := draw_logo(out); why != "" { return why }
+	logo := draw_logo()
+	defer paint.canvas_destroy(&logo)
+	if !paint.write_png(logo, out) { return fmt.tprintf("%s cannot be written", out) }
 	fmt.printfln("wrote %s", out)
 	return ""
 }
