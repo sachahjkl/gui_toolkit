@@ -308,3 +308,103 @@ a_flag_split_at_its_colon_is_joined :: proc(t: ^testing.T) {
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(a.flags), 1)
 }
+// site_docs: the Markdown of docs/*.md as HTML.
+@(private = "file") has :: proc(t: ^testing.T, html, part: string, loc := #caller_location) {
+	testing.expect(t, strings.contains(html, part), fmt.tprintf("%q is not in %q", part, html), loc = loc)
+}
+
+@(test)
+markdown_headings_and_paragraphs :: proc(t: ^testing.T) {
+	html := tk.markdown_html("# Title (`x`)\n\nOne line\nand two.\n\n## Against core:compress\n\n### Third\n")
+	has(t, html, `<h1 id="title-x">Title (<code>x</code>)</h1>`)
+	has(t, html, "<p>One line\nand two.</p>")
+	has(t, html, `<h2 id="against-corecompress">Against core:compress</h2>`)
+	has(t, html, `<h3 id="third">Third</h3>`)
+	testing.expect_value(t, tk.markdown_title("text\n```\n# not a title\n```\n# The title `x`\n"), "The title x")
+}
+
+@(test)
+markdown_inline_constructs :: proc(t: ^testing.T) {
+	has(t, tk.markdown_html("a **strong** and *em* text"), "a <strong>strong</strong> and <em>em</em> text")
+	has(t, tk.markdown_html("a **strong\nacross** lines"), "<strong>strong\nacross</strong>")
+	// code is literal: no emphasis, no link, HTML escaped
+	has(t, tk.markdown_html("`a < b && **c** [d](e)`"), "<code>a &lt; b &amp;&amp; **c** [d](e)</code>")
+	has(t, tk.markdown_html("``a ` b``"), "<code>a ` b</code>")
+	// a star that opens nothing stays a star
+	has(t, tk.markdown_html("2 * 3 and *.png"), "2 * 3 and *.png")
+	has(t, tk.markdown_html("<b>&\"</b>"), "&lt;b&gt;&amp;&quot;&lt;/b&gt;")
+	has(t, tk.markdown_html(`a \* b \`),  "a * b \\")
+	has(t, tk.markdown_html("![shot](screenshots/x.png)"), `<img src="screenshots/x.png" alt="shot" loading="lazy">`)
+	has(t, tk.markdown_html("[the `code` link](x.md)"), `<a href="x.html">the <code>code</code> link</a>`)
+}
+
+@(test)
+markdown_code_blocks :: proc(t: ^testing.T) {
+	html := tk.markdown_html("```odin\nif a < b {\n\t# not a heading\n\n\t- not a list\n}\n```\nafter\n\n```\nplain\n```\n")
+	has(t, html, "<pre><code class=\"language-odin\">if a &lt; b {\n\t# not a heading\n\n\t- not a list\n}</code></pre>")
+	has(t, html, "<pre><code>plain</code></pre>")
+	has(t, html, "<p>after</p>")
+}
+
+@(test)
+markdown_lists :: proc(t: ^testing.T) {
+	html := tk.markdown_html("Intro:\n- one\n  wrapped\n- two\n  - nested *a*\n  - nested b\n- three\n\n1. first\n2. second\n   ```\n   code\n   ```\n\nend")
+	has(t, html, "<p>Intro:</p>\n<ul>\n<li>one\nwrapped\n</li>")
+	has(t, html, "<li>two\n<ul>\n<li>nested <em>a</em>\n</li>\n<li>nested b\n</li>\n</ul>\n</li>")
+	has(t, html, "<li>three\n</li>\n</ul>")
+	has(t, html, "<ol>\n<li>")
+	has(t, html, "<li>second\n<pre><code>code</code></pre>\n</li>\n</ol>")
+	has(t, html, "<p>end</p>")
+	// a blank line between two items keeps one list
+	testing.expect_value(t, strings.count(tk.markdown_html("- a\n\n- b\n"), "<ul>"), 1)
+}
+
+@(test)
+markdown_tables :: proc(t: ^testing.T) {
+	html := tk.markdown_html("| A | B |\n|---|:--|\n| `x|y` | **b** |\n| 2 | 3 \\| 4 |\n\nafter")
+	has(t, html, "<thead><tr><th>A</th><th>B</th></tr></thead>")
+	has(t, html, "<tr><td><code>x|y</code></td><td><strong>b</strong></td></tr>")
+	has(t, html, "<td>2</td><td>3 | 4</td>")
+	has(t, html, "</table></div>\n<p>after</p>")
+}
+
+@(test)
+markdown_links_become_pages_or_github :: proc(t: ^testing.T) {
+	testing.expect_value(t, tk.doc_link("update.md"), "update.html")
+	testing.expect_value(t, tk.doc_link("./update.md#section"), "update.html#section")
+	testing.expect_value(t, tk.doc_link("#same-page"), "#same-page")
+	testing.expect_value(t, tk.doc_link("https://rustup.rs"), "https://rustup.rs")
+	testing.expect_value(t, tk.doc_link("../CONTRIBUTING.md"), tk.GITHUB_BLOB + "CONTRIBUTING.md")
+	testing.expect_value(t, tk.doc_link("../src/ui/ui.odin#L3"), tk.GITHUB_BLOB + "src/ui/ui.odin#L3")
+	testing.expect_value(t, tk.doc_link("screenshots/a.png"), tk.GITHUB_BLOB + "docs/screenshots/a.png")
+	has(t, tk.markdown_html("[c](../CONTRIBUTING.md) and [d](draw.md)"), `<a href="`+tk.GITHUB_BLOB+`CONTRIBUTING.md">c</a> and <a href="draw.html">d</a>`)
+}
+
+@(test)
+site_docs_writes_pages_and_index :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "tk-site-docs")
+	site, docs, out := fmt.tprintf("%s/site", dir), fmt.tprintf("%s/docs", dir), fmt.tprintf("%s/out", dir)
+	_ = os.make_directory_all(site)
+	_ = os.make_directory_all(docs)
+	write(fmt.tprintf("%s/index.html", site), transmute([]byte)string(`<header class="bar"><a href="#features">F</a><a href="changelog.html">C</a><img src="img/l.png"><a href="https://x.y/z">G</a></header><script>var menu = 1</script>`))
+	write(fmt.tprintf("%s/getting-started.md", docs), transmute([]byte)string("# Getting started\n\nSee [the draw page](draw.md).\n"))
+	write(fmt.tprintf("%s/draw.md", docs), transmute([]byte)string("# Drawing\n\nText.\n"))
+	write(fmt.tprintf("%s/zzz.md", docs), transmute([]byte)string("# Not in a group\n"))
+	testing.expect_value(t, tk.build_docs(docs, site, out), "")
+
+	page := string(read(fmt.tprintf("%s/docs/getting-started.html", out)))
+	has(t, page, "<title>Getting started · gui_toolkit</title>")
+	has(t, page, `<a href="../index.html#features">F</a><a href="../changelog.html">C</a><img src="../img/l.png"><a href="https://x.y/z">G</a>`)
+	has(t, page, `<a href="getting-started.html" aria-current="page">Getting started</a>`)
+	has(t, page, `<a href="draw.html">the draw page</a>`)
+	has(t, page, "var menu = 1")
+	index := string(read(fmt.tprintf("%s/docs/index.html", out)))
+	start, drawing, other := strings.index(index, "<h2>Start</h2>"), strings.index(index, "<h2>Drawing and text</h2>"), strings.index(index, "<h2>Other</h2>")
+	testing.expect(t, 0 <= start && start < drawing && drawing < other, "the groups are in order, the ungrouped document last")
+	has(t, index, `<li><a href="zzz.html">Not in a group</a></li>`)
+}
+
+@(test)
+markdown_loose_list_items_keep_paragraphs :: proc(t: ^testing.T) {
+	has(t, tk.markdown_html("- first\n\n  second\n- b\n"), "<li><p>first</p>\n<p>second</p>\n</li>")
+}

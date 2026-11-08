@@ -181,3 +181,29 @@ html.lightbox-open { overflow: hidden; }
 .lightbox-count { margin-right: 6px; color: var(--faint); font-family: var(--mono); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .lightbox .btn { font-family: inherit; font-size: 0.9rem; cursor: pointer; }
 .lightbox .btn:hover { text-decoration: none; }
+
+/* the Docs section (tools/tk site_docs): a menu of the documents beside the page */
+.docs { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; max-width: 1200px; margin: 0 auto; padding: 24px 16px 72px; }
+.docs-nav { position: sticky; top: 70px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; font-size: 0.9rem; }
+.docs-nav h2 { margin: 18px 0 4px; font: 700 0.78rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--weak); }
+.docs-nav a { display: block; padding: 3px 0; color: var(--weak); }
+.docs-nav a:hover { color: var(--text); text-decoration: none; }
+.docs-nav a[aria-current="page"] { color: var(--accent); }
+.doc { min-width: 0; }
+.doc h1 { font: 700 clamp(1.6rem, 4vw, 2.2rem) var(--mono); margin: 0 0 16px; overflow-wrap: anywhere; }
+.doc h2 { font: 700 1.35rem var(--mono); margin: 40px 0 10px; padding-top: 8px; border-top: 1px solid var(--bg3); }
+.doc h3 { font: 700 1.05rem var(--mono); margin: 28px 0 8px; color: var(--cyan); }
+.doc h4, .doc h5, .doc h6 { font: 700 0.95rem var(--mono); margin: 20px 0 6px; }
+.doc li { margin: 4px 0; }
+.doc li > p { margin: 4px 0; }
+.doc pre { overflow-x: auto; margin: 14px 0; padding: 12px 14px; background: var(--bg1); border: 1px solid var(--bg3); border-radius: 8px; line-height: 1.45; tab-size: 4; }
+.doc pre code { padding: 0; background: none; color: var(--text); overflow-wrap: normal; }
+.doc .table { overflow-x: auto; margin: 14px 0; }
+.doc table { border-collapse: collapse; font-size: 0.92rem; }
+.doc th, .doc td { padding: 6px 12px; border: 1px solid var(--bg3); text-align: left; vertical-align: top; }
+.doc th { background: var(--bg2); }
+.doc img { max-width: 100%; height: auto; border-radius: 8px; }
+@media (max-width: 800px) {
+  .docs { grid-template-columns: 1fr; }
+  .docs-nav { position: static; max-height: none; }
+}
