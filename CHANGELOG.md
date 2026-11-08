@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.101.0] - 2026-11-08
+
+### Changed
+- **The library's packages are in `src/`** (`src/ui`, `src/platform`...): a program's collection points there (`-collection:gt=<toolkit>/src`), and the examples, tests, tools and docs apart from it. **Every step is a command of `tools/tk`**, on Windows and Linux: `build` (an example; `build.bat` and `./build.sh` are its shortcuts), `ci` (what tools/linux_ci.sh did), `desktop_tests` (what tools/linux_desktop.sh did, its fake xdg-open an Odin program), `build_text` on Linux too. The scripts are gone. `flake.nix`: the development shell on Linux (the pinned Odin with wgpu-native, Rust, the virtual desktops' servers).
+
 ## [0.100.0] - 2026-11-08
 
 ### Added
@@ -1832,6 +1837,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.101.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.101.0
 [0.100.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.100.0
 [0.99.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.99.0
 [0.98.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.3
