@@ -185,6 +185,7 @@ html.lightbox-open { overflow: hidden; }
 /* the Docs section (tools/tk site_docs): a menu of the documents beside the page */
 .docs { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; max-width: 1200px; margin: 0 auto; padding: 24px 16px 72px; }
 .docs-nav { position: sticky; top: 70px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; font-size: 0.9rem; }
+.docs-nav > summary { display: none; }
 .docs-nav h2 { margin: 18px 0 4px; font: 700 0.78rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--weak); }
 .docs-nav a { display: block; padding: 3px 0; color: var(--weak); }
 .docs-nav a:hover { color: var(--text); text-decoration: none; }
@@ -207,4 +208,14 @@ html.lightbox-open { overflow: hidden; }
 @media (max-width: 800px) {
   .docs { grid-template-columns: minmax(0, 1fr); }
   .docs-nav { position: static; max-height: none; }
+  /* a phone: the menu folded above the page, one line that names the page */
+  .docs-nav > summary {
+    display: flex; gap: 8px; align-items: center; cursor: pointer; list-style: none; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid var(--bg3); background: var(--bg1); color: var(--text); font: 600 0.95rem var(--sans);
+  }
+  .docs-nav > summary span { min-width: 0; color: var(--weak); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .docs-nav > summary::-webkit-details-marker { display: none; }
+  .docs-nav > summary::after { content: "\25BE"; margin-left: auto; color: var(--weak); }
+  .docs-nav[open] > summary::after { content: "\25B4"; }
+  .docs-nav[open] > nav { padding: 4px 4px 12px; }
 }

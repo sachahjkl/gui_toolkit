@@ -128,7 +128,8 @@ up_links :: proc(html: string) -> string {
 	return strings.to_string(b)
 }
 
-// A page: the home's header, the menu of every document, `body`. `current` is the document's name ("" for the index).
+// A page: the home's header, the menu of every document, `body`. The menu is open beside the page on a wide screen; on a phone it
+// is folded above it (the script closes it before the page is drawn; without scripts it stays open), its line naming the page. `current` is the document's name ("" for the index).
 docs_page :: proc(header, script: string, docs: []Doc, current, title, body: string) -> string {
 	b: strings.Builder
 	strings.builder_init(&b, context.temp_allocator)
@@ -144,9 +145,12 @@ docs_page :: proc(header, script: string, docs: []Doc, current, title, body: str
 <body>
 %s
 <div class="docs">
-<nav class="docs-nav" aria-label="Documentation">
+<details class="docs-nav" id="docs-nav" open>
+<summary>Documents<span>%s</span></summary>
+<script>(function () { var d = document.getElementById("docs-nav"), m = matchMedia("(max-width: 800px)"); d.open = !m.matches; m.addEventListener("change", function () { d.open = !m.matches }) })()</script>
+<nav aria-label="Documentation">
 <a href="index.html"%s>All documents</a>
-`, tk_site.esc(title), header, current == "" ? ` aria-current="page"` : "")
+`, tk_site.esc(title), header, current == "" ? "" : tk_site.esc(fmt.tprintf(": %s", short_title(title))), current == "" ? ` aria-current="page"` : "")
 	for g in doc_groups(docs) {
 		fmt.sbprintf(&b, "<h2>%s</h2>\n", tk_site.esc(g.title))
 		for d in g.docs {
@@ -154,6 +158,7 @@ docs_page :: proc(header, script: string, docs: []Doc, current, title, body: str
 		}
 	}
 	fmt.sbprintf(&b, `</nav>
+</details>
 <main class="doc">
 %s
 %s</main>
