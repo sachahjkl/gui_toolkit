@@ -85,6 +85,7 @@ STEPS := []Step{
 	{name = "size_move"},
 	{name = "testkit"},
 	{name = "tk"},
+	{name = "tk_tool", path = "tools/tk", oses = EVERYWHERE},   // (the tool: what it reads of GitHub's API, what it asks of it)
 	{name = "autoscroll", oses = EVERYWHERE},
 	// the interface, with no window
 	{name = "post", one = true},

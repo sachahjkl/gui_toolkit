@@ -28,6 +28,7 @@ package tk
 
 import "core:crypto/sha2"
 import "core:encoding/hex"
+import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -184,7 +185,8 @@ capture :: proc(command: []string) -> (out: string, ok: bool) {
 download_pinned :: proc(url, path, sha256: string, quiet := false) -> string {
 	if got, ok := sha256_file(path); !ok || got != sha256 {
 		if !quiet { fmt.printfln("downloading %s", url) }
-		if !run({system_program("curl"), "-fsSL", "-o", path, url}) {
+		curl := system_program("curl")
+		if !run({curl, "-fsSL", "--retry", "3", "--retry-delay", "10", "--retry-all-errors", "-o", path, url}) && !download_through_api(url, path, quiet) {
 			_ = os.remove(path)
 			return fmt.tprintf("downloading %s failed", url)
 		}
@@ -193,6 +195,54 @@ download_pinned :: proc(url, path, sha256: string, quiet := false) -> string {
 	if got != sha256 {
 		_ = os.remove(path)
 		return fmt.tprintf("%s: SHA-256 mismatch (%s, expected %s)", filepath.base(path), got, sha256)
+	}
+	return ""
+}
+
+// A file of a GitHub release (https://github.com/<owner>/<repo>/releases/download/<tag>/<name>) through GitHub's API: its release
+// downloads answered 504 for over an hour while the API served the same files. GH_TOKEN or GITHUB_TOKEN, when set, is sent (a
+// CI's: more requests allowed). False: not such a file, or the API did not give it either. (The caller checks the SHA-256.)
+download_through_api :: proc(url, path: string, quiet := false) -> bool {
+	PREFIX :: "https://github.com/"
+	if !strings.has_prefix(url, PREFIX) { return false }
+	parts := strings.split(url[len(PREFIX):], "/", context.temp_allocator)
+	if len(parts) != 6 || parts[2] != "releases" || parts[3] != "download" { return false }
+	owner, repo, tag, name := parts[0], parts[1], parts[4], parts[5]
+	curl := system_program("curl")
+	auth: [dynamic]string
+	auth.allocator = context.temp_allocator
+	token := os.get_env("GH_TOKEN", context.temp_allocator)
+	if token == "" { token = os.get_env("GITHUB_TOKEN", context.temp_allocator) }
+	if token != "" { append(&auth, "-H", fmt.tprintf("Authorization: Bearer %s", token)) }
+	if !quiet { fmt.printfln("the release download failed: %s through GitHub's API", name) }
+	release_cmd := make([dynamic]string, context.temp_allocator)
+	append(&release_cmd, curl, "-fsSL", "--retry", "5", "--retry-delay", "10", "--retry-all-errors")
+	append(&release_cmd, ..auth[:])
+	append(&release_cmd, fmt.tprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", owner, repo, tag))
+	answer, read := capture(release_cmd[:])
+	if !read { return false }
+	id := release_asset_id(answer, name)
+	if id == "" { return false }
+	asset_cmd := make([dynamic]string, context.temp_allocator)
+	append(&asset_cmd, curl, "-fsSL", "--retry", "5", "--retry-delay", "10", "--retry-all-errors", "-H", "Accept: application/octet-stream")
+	append(&asset_cmd, ..auth[:])
+	append(&asset_cmd, "-o", path, fmt.tprintf("https://api.github.com/repos/%s/%s/releases/assets/%s", owner, repo, id))
+	return run(asset_cmd[:])
+}
+
+// The id of the asset named `name` in a release as GitHub's API says it ("": none).
+release_asset_id :: proc(release_json, name: string) -> string {
+	v, err := json.parse_string(release_json, allocator = context.temp_allocator)
+	if err != nil { return "" }
+	root, _ := v.(json.Object)
+	assets, _ := root["assets"].(json.Array)
+	for a in assets {
+		o, _ := a.(json.Object)
+		if n, _ := o["name"].(json.String); n != name { continue }
+		#partial switch id in o["id"] {
+		case json.Integer: return fmt.tprintf("%d", id)
+		case json.Float:   return fmt.tprintf("%d", i64(id))
+		}
 	}
 	return ""
 }
