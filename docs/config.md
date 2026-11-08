@@ -88,6 +88,24 @@ summary, more := config.summary_of(d.description)
 if config.matches(d, query) { ... }             // every word of the query in the name, title or description
 ```
 
+### A search over pages
+
+A settings dialog made of pages shows, while a query is typed, the matching preferences of every page under their page's
+title. `Search` says what shows; the dialog keeps its own layout and draws:
+
+```odin
+config.search_begin(&s, field_text)               // "": no search
+for page in pages {
+    config.search_page(&s, page.title)            // a title with every word of the query: the whole page shows
+    for name in page.names {
+        show, heading := config.search_shows(&s, &prefs, name)
+        if heading != "" { draw_heading(heading) } // before the page's first match, once
+        if show { draw_row(name) }
+    }
+}
+if config.searching(&s) && s.found == 0 { draw_nothing_matches() }
+```
+
 ## Snapshots (reset to a known state)
 
 ```odin
