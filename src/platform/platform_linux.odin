@@ -100,6 +100,11 @@ posix_readlink_self :: proc() -> (path: string, failed: bool) {
 	return string(buf[:n]), false
 }
 
+// Whether a window can exist unseen (made and never shown, its frames still rendered). Not on Wayland or X11: a toplevel is
+// mapped as soon as it has a buffer, and one left unmapped gets no frame callbacks. A program that needs an unseen window
+// here opens an offscreen one (open_window_offscreen, render.init_offscreen).
+can_hide_windows :: proc() -> bool { return false }
+
 // Opens a window on the chosen backend. `size` is logical pixels (scaled by the monitor's DPI). `transparent`: an
 // alpha surface the compositor blends (render.init transparent); `integrated_title`: the app draws the title bar
 // (client-side decorations). Returns nil when no display server is reachable or the backend could not make the window.
