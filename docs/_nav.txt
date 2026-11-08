@@ -1,0 +1,56 @@
+# The menu of the site's Docs section (tk site_docs, src/site: docs/site.md says the format).
+#   Section             a section of the menu (at the start of the line)
+#     page.md  Label    a page of it, in this order; without a label, its first heading
+# A document no line names is still a page: it goes to a last section, "More".
+
+Start
+  getting-started.md  Getting started
+
+Drawing and text
+  draw.md             Drawing
+  canvas.md           The 2D canvas
+  text.md             Text
+  font-backend.md     Text backends
+  slug-small-text.md  Slug's small text
+  shaders.md          Application shaders
+  rendering.md        Rendering backends
+  webgpu.md           WebGPU
+  paint.md            paint: vector pictures
+
+Widgets and layout
+  docking.md          Docking
+  panes.md            Splitter and panes
+  modals.md           Modal dialogs
+  autoscroll.md       Middle-click autoscroll
+  dragdrop.md         Drag and drop
+  accessibility.md    Accessibility
+  i18n.md             i18n: the text shown
+
+Platform and system
+  platform.md         Platform backends
+  clipboard.md        Rich clipboard
+  dialogs.md          File dialogs
+  tray.md             Notification area icon
+  dbus.md             D-Bus client
+  fsx.md              fsx: file helpers
+  instance.md         instance: one running copy
+  update.md           update: signed updates
+  desktop.md          desktop: the program on the desktop
+  process.md          process: the program's process
+  config.md           config: preferences
+
+Frames and threads
+  pacing.md           The cadence model
+  frame_gate.md       The frame gate
+  post.md             Calls from other threads
+  locks.md            Locks
+  arena.md            arena: lifetimes
+  flate.md            flate: DEFLATE streams
+
+Tools and tests
+  testing.md          Testing
+  testkit.md          testkit
+  devtools.md         devtools
+  cdp.md              cdp: DevTools protocol client
+  site.md             site: a project's website
+  toolbox.md          toolbox: what tools share

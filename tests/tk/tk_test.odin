@@ -14,7 +14,6 @@ import tk "../../tools/tk"
 import "../../tools/cmdline"
 import "../../src/testkit"
 import "../../src/ascii"
-import tk_site "../../src/site"
 import toolbox "../../src/toolbox"
 
 @(private = "file") PNG_SIGNATURE :: "\x89PNG\r\n\x1a\n"
@@ -269,47 +268,44 @@ a_flag_split_at_its_colon_is_joined :: proc(t: ^testing.T) {
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(a.flags), 1)
 }
-// site_docs: docs/*.md as pages (their Markdown: src/site's tests).
+// site_docs: the toolkit's Docs section, made by src/site's build_docs (its tests: src/site/docs_test.odin) with the home page's
+// header and script.
 @(private = "file") has :: proc(t: ^testing.T, html, part: string, loc := #caller_location) {
 	testing.expect(t, strings.contains(html, part), fmt.tprintf("%q is not in %q", part, html), loc = loc)
 }
 
 @(test)
-markdown_links_become_pages_or_github :: proc(t: ^testing.T) {
-	testing.expect_value(t, tk.doc_link("update.md"), "update.html")
-	testing.expect_value(t, tk.doc_link("./update.md#section"), "update.html#section")
-	testing.expect_value(t, tk.doc_link("#same-page"), "#same-page")
-	testing.expect_value(t, tk.doc_link("https://rustup.rs"), "https://rustup.rs")
-	testing.expect_value(t, tk.doc_link("../CONTRIBUTING.md"), tk.GITHUB_BLOB + "CONTRIBUTING.md")
-	testing.expect_value(t, tk.doc_link("../src/ui/ui.odin#L3"), tk.GITHUB_BLOB + "src/ui/ui.odin#L3")
-	testing.expect_value(t, tk.doc_link("screenshots/a.png"), tk.GITHUB_BLOB + "docs/screenshots/a.png")
-	has(t, tk_site.markdown_html("[c](../CONTRIBUTING.md) and [d](draw.md)", tk.doc_link), `<a href="`+tk.GITHUB_BLOB+`CONTRIBUTING.md">c</a> and <a href="draw.html">d</a>`)
-}
-
-@(test)
-site_docs_writes_pages_and_index :: proc(t: ^testing.T) {
+site_docs_writes_pages_in_the_sites_header :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t, "tk-site-docs")
 	site, docs, out := fmt.tprintf("%s/site", dir), fmt.tprintf("%s/docs", dir), fmt.tprintf("%s/out", dir)
 	_ = os.make_directory_all(site)
-	_ = os.make_directory_all(docs)
-	write(fmt.tprintf("%s/index.html", site), transmute([]byte)string(`<header class="bar"><a href="#features">F</a><a href="changelog.html">C</a><img src="img/l.png"><a href="https://x.y/z">G</a></header><script>var menu = 1</script>`))
-	write(fmt.tprintf("%s/getting-started.md", docs), transmute([]byte)string("# Getting started\n\nSee [the draw page](draw.md).\n"))
+	_ = os.make_directory_all(fmt.tprintf("%s/screenshots", docs))
+	write(fmt.tprintf("%s/index.html", site), transmute([]byte)string(`<header class="bar"><a href="#features">F</a> <a href="changelog.html">C</a> <img src="img/l.png"> <a href="https://x.y/z">G</a></header><script>var menu = 1</script>`))
+	write(fmt.tprintf("%s/_nav.txt", docs), transmute([]byte)string("Start\n  getting-started.md  Getting started\nDrawing\n  draw.md\n"))
+	write(fmt.tprintf("%s/getting-started.md", docs), transmute([]byte)string("# Getting started\n\nSee [the draw page](draw.md) and ![a](screenshots/a.png).\n"))
 	write(fmt.tprintf("%s/draw.md", docs), transmute([]byte)string("# Drawing\n\nText.\n"))
-	write(fmt.tprintf("%s/zzz.md", docs), transmute([]byte)string("# Not in a group\n"))
+	write(fmt.tprintf("%s/screenshots/a.png", docs), transmute([]byte)string("PNG"))
 	testing.expect_value(t, tk.build_docs(docs, site, out), "")
 
-	page := string(read(fmt.tprintf("%s/docs/getting-started.html", out)))
-	has(t, page, "<title>Getting started · gui_toolkit</title>")
-	has(t, page, `<a href="../index.html#features">F</a><a href="../changelog.html">C</a><img src="../img/l.png"><a href="https://x.y/z">G</a>`)
-	has(t, page, `<a href="getting-started.html" aria-current="page">Getting started</a>`)
-	has(t, page, `<a href="draw.html">the draw page</a>`)
-	has(t, page, "var menu = 1")
+	page := string(read(fmt.tprintf("%s/docs/getting-started/index.html", out)))
+	has(t, page, "<title>Getting started · gui_toolkit docs</title>")
+	has(t, page, `<header class="bar"><a href="../../#features">F</a> <a href="../../changelog.html">C</a> <img src="../../img/l.png"> <a href="https://x.y/z">G</a></header>`)
+	has(t, page, `<label class="doc-nav-open" for="doc-nav"><span></span><span></span><span></span> Documentation</label>`)
+	has(t, page, `<a href="../../docs/getting-started/" aria-current="page" class="active">Getting started</a>`)
+	has(t, page, `<a href="../../docs/draw/">the draw page</a>`)
+	has(t, page, `<img src="../../docs/screenshots/a.png"`)
+	has(t, page, `<a class="doc-next" href="../../docs/draw/">`)
+	has(t, page, "<script>var menu = 1</script>")
+	testing.expect_value(t, string(read(fmt.tprintf("%s/docs/screenshots/a.png", out))), "PNG")
+	// the old address goes on to the page; the documentation's home lists the pages
+	has(t, string(read(fmt.tprintf("%s/docs/draw.html", out))), `<meta http-equiv="refresh" content="0; url=draw/">`)
 	index := string(read(fmt.tprintf("%s/docs/index.html", out)))
-	start, drawing, other := strings.index(index, "<h2>Start</h2>"), strings.index(index, "<h2>Drawing and text</h2>"), strings.index(index, "<h2>Other</h2>")
-	testing.expect(t, 0 <= start && start < drawing && drawing < other, "the groups are in order, the ungrouped document last")
-	has(t, index, `<li><a href="zzz.html">Not in a group</a></li>`)
+	start, drawing := strings.index(index, `<h2 id="start">`), strings.index(index, `<h2 id="drawing">`)
+	testing.expect(t, 0 <= start && start < drawing, "the sections are in the menu's order")
+	css := string(read(fmt.tprintf("%s/docs/docs.css", out)))
+	has(t, css, "--surface: var(--bg1);")
+	has(t, css, ".table-box { overflow-x: auto;")
 }
-
 
 // A command that reads its own arguments (cdp, doc_check, site_check) gets them all, its "--name value" ones too.
 @(test)
