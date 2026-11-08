@@ -22,7 +22,7 @@ DOC_GROUPS := []Doc_Group {
 	{"Start", {"getting-started"}},
 	{"Drawing and text", {"draw", "canvas", "text", "font-backend", "slug-small-text", "shaders", "rendering", "webgpu"}},
 	{"Widgets and layout", {"docking", "panes", "modals", "autoscroll", "dragdrop", "accessibility", "i18n"}},
-	{"Platform and system", {"platform", "clipboard", "dialogs", "tray", "dbus", "fsx", "instance", "update", "config"}},
+	{"Platform and system", {"platform", "clipboard", "dialogs", "tray", "dbus", "fsx", "instance", "update", "desktop", "process", "config"}},
 	{"Frames and threads", {"pacing", "frame_gate", "post", "locks", "arena", "flate"}},
 	{"Tools and tests", {"testing", "testkit", "devtools"}},
 }

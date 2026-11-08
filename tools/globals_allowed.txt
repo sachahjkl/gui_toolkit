@@ -56,6 +56,23 @@ font/dwrite.odin IID_IDWriteFontFace7 const  # a COM interface id (passed by add
 font/dwrite.odin IID_IDWriteLocalFontFileLoader const  # a COM interface id (passed by address)
 font/emoji_data.odin EMOJI_RANGES const  # a table
 font/emoji_data.odin EMOJI_PRESENTATION_RANGES const  # a table
+desktop/com_windows.odin CLSID_ShellLink const  # a COM class id (a variable: the calls take its address)
+desktop/com_windows.odin IID_IShellLinkW const  # a COM interface id (a variable: the calls take its address)
+desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variable: the calls take its address)
+desktop/com_windows.odin IID_IPropertyStore const  # a COM interface id (a variable: the calls take its address)
+desktop/com_windows.odin PKEY_AppUserModel_ID const  # a property key (a variable: the calls take its address)
+desktop/desktop_entry.odin CONTENT_TYPES const  # a table: the web documents' extensions and MIME types
+desktop/desktop_entry_test.odin BROWSER_SCHEMES test
+desktop/identity_test.odin TEST_SCHEMES test
+desktop/identity_test.odin TEST_LIBRARIES test
+desktop/identity_test.odin TEST_SCRATCH_ROOTS test
+desktop/identity_test.odin BAD_SCHEMES test
+desktop/install_test.odin TEST_PAYLOAD test
+desktop/integration_linux.odin LINUX_BACKEND const  # a backend's table of procedures
+desktop/integration_linux.odin ICON_SIZES const  # a table: the sizes of the icon theme's folders
+desktop/integration_test_windows.odin watch_counter test
+desktop/integration_test_windows.odin windows_watcher_wakes_on_every_place_it_watches.sc test
+desktop/integration_windows.odin WINDOWS_BACKEND const  # a backend's table of procedures
 draw/failures.odin forced_failures thread  # the failures a test forces, on its thread
 font/failures.odin forced_failures thread  # the failures a test forces, on its thread
 font/font_other.odin other_system const  # a system font service's table of procedures
@@ -176,6 +193,8 @@ platform/wl_protocol_linux.odin t_seat_resize const  # a protocol table, built o
 platform/wl_protocol_linux.odin t_output_opt const  # a protocol table, built once (wayland_lib), then read
 platform/x11_ext_linux.odin xfixes thread  # a library and what was made with it on this thread's connection
 platform/x11_ext_linux.odin randr thread  # a library and what was made with it on this thread's connection
+process/console_windows.odin console_out process  # the parent's console, attached once for the process (console_once)
+process/console_windows.odin console_once process  # the attachment of the parent's console: once for the process
 render/api.odin renderer_ids process  # the renderers' ids, unique in the process (atomic)
 render/api.odin render_trace.state process  # a switch of the environment, read once (atomic)
 render/capture.odin capture_map_held thread  # the capture mapped by this thread

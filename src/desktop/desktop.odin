@@ -1,0 +1,444 @@
+// Package desktop (tk_desktop): the files that make a portable program part of the user's desktop, and the installed
+// copy of the program. Everything is in the user's own profile: never system-wide, never with administrator rights.
+// docs/desktop.md says what a program gets and how it configures it.
+//
+// The package is the interface (`Identity`, `Options`, `Status`, `status`, `install`, `remove`, `uninstall`) and one
+// backend per platform in its own files:
+//
+//     integration_windows.odin   Start menu and desktop shortcuts (IShellLink, with the AppUserModelID), the user's PATH
+//                                with a console launcher, and, for a browser, the registration as a candidate browser
+//                                (StartMenuInternet, RegisteredApplications, a ProgID) with the program's URL schemes
+//     integration_linux.odin     the XDG .desktop file, the icons of the hicolor theme, a link in ~/.local/bin
+//     integration_darwin.odin    nothing that makes sense for an executable outside a bundle (documented stub)
+//     integration_other.odin     every other target: unsupported
+//
+// Nothing here is a preference of the user: the state is read from the disk (the registry) every time it is asked, so
+// a box that shows it is always true. Every location is a field of `Options` (an injectable root), which is how the
+// tests work on a scratch folder and a scratch registry key and never touch the real desktop.
+//
+// Removal deletes only what carries the mark of the program: a shortcut with its AppUserModelID, a key or a .desktop
+// file that names its executable or holds its marker. A file of the same name made by something else stays.
+package tk_desktop
+
+import "base:runtime"
+import "core:os"
+import "core:strings"
+import "../ascii"
+import "../process"
+
+// What the program is on the desktop: its names and the marks of what it writes. Everything platform-specific derives
+// from these, so a second channel of the program (development builds) lives next to the release one without sharing a
+// single file or key. The strings and slices are the program's constants: `options_clone` shares them.
+Identity :: struct {
+	name:        string,   // "Wren": the menu entry, the shortcut's file name, the name in the system's lists
+	key:         string,   // "Wren": registry key and ProgID stem (letters and digits)
+	slug:        string,   // "wren": .desktop file, icon name, window class (lower case, hyphens)
+	aumid:       string,   // "FromentSoftware.Wren": Windows AppUserModelID, the same the window declares
+	description: string,   // one line, for the menu entry
+	vendor:      string,   // "Froment Software"
+	exe_name:    string,   // "wren.exe": the executable's file name in an install folder ("" = slug, with .exe on Windows)
+
+	// The marks: what makes a file, a key or a value the program's.
+	entry_marker:    string,   // Linux: the key of the .desktop file that marks it ("X-Wren-Integration"; begins with X-)
+	registry_mark:   string,   // Windows: the value that marks a registry key ("WrenIntegration"), set to the aumid
+	vendor_key:      string,   // Windows: Software\<vendor_key>\<key> keeps the program's own values ("FromentSoftware")
+	manifest_name:   string,   // the installed copy's list of files ("wren_install.txt")
+	manifest_header: string,   // its first line, a comment ("# Written by Wren Setup: ...")
+	launcher_mark:   string,   // Windows: what the console launcher contains ("" = the program has no launcher)
+
+	// The program's command line.
+	cli_flag:            string,     // "--desktop-integration": parse_cli
+	env_prefix:          string,     // "WREN_DESKTOP_": roots_from_env reads <prefix>MENU_DIR and the others
+	url_schemes:         []string,   // the program's own URL schemes ("wren-https"), registered with the browser registration
+	url_flag:            string,     // "--open-url": a URL scheme runs `"<exe>" <url_flag> "%1"`
+	uninstall_arguments: string,     // Windows: Settings > Apps runs `"<exe>" <uninstall_arguments>` ("--setup"); "" = none
+
+	// The .desktop file (Linux); "" leaves the line out.
+	generic_name: string,   // "Web Browser"
+	categories:   string,   // "Network;WebBrowser;"
+	keywords:     string,   // "Internet;WWW;Browser;Web;"
+
+	// NixOS (nixos_linux.odin): the installed copy runs by itself. No libraries: the copy is not adapted.
+	nix_runtime_name: string,     // the name of the Nix profile of the runtime ("wren-runtime")
+	nixos_libraries:  []string,   // nixpkgs attributes of what the program links and opens ("glibc", "wayland", ...)
+
+	watch_thread_name: string,     // the watcher's thread ("wren-desktop-watch")
+	cleanup_name:      string,     // Windows: the stem of the deferred deletion's batch file ("wren_cleanup"; "" = slug)
+	scratch_roots:     []string,   // Windows: the registry keys under HKCU that delete_scratch_root may delete (prefixes)
+}
+
+// An icon of the theme (Linux): a square PNG of `size` pixels.
+Icon :: struct {
+	size: int,
+	png:  []byte,
+}
+
+Options :: struct {
+	identity:         Identity,
+	exe:              string,     // the program to integrate (absolute); "" = the running executable
+	register_browser: bool,       // also register as a browser: http(s) addresses, the file types, the program's URL schemes
+	file_types:       []string,   // extensions with their dot (".html"): registered when register_browser
+
+	// What an installation of these options has (`install` writes the parts that are on and takes away the ones that are
+	// off: that is what "Modify" does; `remove` takes away all of them).
+	start_menu:       bool,       // the launcher in the application menu (options_make: on)
+	desktop_shortcut: bool,       // a launcher on the desktop
+	add_to_path:      bool,       // the program on the user's PATH (Windows: its folder; Linux: a link in bin_dir)
+	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the program ships without one
+
+	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
+	// roots_from_env) points each at a scratch place.
+	menu_dir:         string,     // Windows: the Programs folder of the user's Start menu
+	desktop_dir:      string,     // Windows: the user's Desktop folder
+	environment_root: string,     // Windows: the subkey of HKEY_CURRENT_USER that stands for "Environment" (PATH lives there)
+	install_dir:      string,     // where the installed copy lives ("" = the platform's default, install.odin)
+	registry_root:    string,     // Windows: the subkey of HKEY_CURRENT_USER that stands for "Software" (default "Software")
+	applications_dir: string,     // Linux: $XDG_DATA_HOME/applications
+	icons_dir:        string,     // Linux: $XDG_DATA_HOME/icons/hicolor
+	bin_dir:          string,     // Linux: ~/.local/bin, where the PATH part puts its link
+	icons:            []Icon,     // Linux: the PNGs to install (the program embeds them; Windows uses the executable's own icon)
+	notify_system:    bool,       // tell the system once done (SHChangeNotify, update-desktop-database); off for scratch roots
+}
+
+// The parts of an integration, as the platforms keep them (`Backend.parts`).
+Part :: enum u8 {
+	Launcher,           // the shortcut in the application menu, the .desktop file
+	Registration,       // the registry keys that list the program as a browser, and its URL schemes (Windows)
+	Icons,              // the icons of the theme (Linux)
+	Desktop_Shortcut,   // a shortcut on the desktop (Windows)
+	Path,               // the program on the user's PATH (Windows: its folder; Linux: a link in ~/.local/bin)
+}
+Parts :: bit_set[Part]
+
+Part_Status :: struct {
+	present: bool,     // something of the part is there (and is the program's: see the backend's marks)
+	partial: bool,     // present, but some of its pieces are missing (a key of the registry, an icon size)
+	target:  string,   // the program the part launches ("" when it cannot say); owned by the Status
+	stale:   bool,     // present but pointing to another program than the one integrated
+}
+
+// absent: nothing of it exists. installed: every part exists and runs this program. repair: something exists and it is
+// not all there, or it runs another executable (the program was moved or updated into another folder).
+State :: enum u8 { Absent, Installed, Repair }
+
+Status :: struct {
+	state:      State,
+	parts:      [Part]Part_Status,
+	wanted:     Parts,      // the parts an installation of these options has
+	stale_exe:  string,     // the first other program a part points to (owned); "" when none
+	incomplete: bool,       // some wanted part is missing while another exists
+	error:      Error,      // reading failed (the state is then Absent: nothing could be seen)
+}
+
+Error :: enum u8 {
+	None,
+	Unsupported,     // this platform has no integration (or none that makes sense)
+	No_Executable,   // the executable to integrate is unknown or does not exist
+	Bad_Options,     // an identity field is empty or malformed
+	Io,              // a file could not be written or removed
+	System,          // the system refused (COM, registry)
+}
+
+Result :: struct {
+	error:  Error,
+	detail: string,   // what failed, for a message; in the temporary allocator
+}
+
+error_text :: proc(e: Error) -> string {
+	switch e {
+	case .None:          return "ok"
+	case .Unsupported:   return "desktop integration is not available on this platform"
+	case .No_Executable: return "the program's executable is unknown"
+	case .Bad_Options:   return "invalid options"
+	case .Io:            return "a file could not be written or removed"
+	case .System:        return "the system refused"
+	}
+	return ""
+}
+
+// What one platform implements. A backend reads and changes the disk only through the roots of `Options`.
+Backend :: struct {
+	name:            string,
+	targets:         string,   // what the integration adds, for a label: "Start menu"
+	targets_browser: string,   // the same for a browser: "Start menu, default apps"
+	parts:           Parts,
+	status:          proc(o: ^Options, allocator: runtime.Allocator) -> Status,   // fills parts and error only (classify does the rest)
+	install:         proc(o: ^Options) -> Result,
+	remove:          proc(o: ^Options) -> Result,
+	open_defaults:   proc() -> bool,   // the system's page where the user picks the default programs
+
+	// The installed copy (install.odin). All optional (nil: the platform has no such thing; the folder is then the default).
+	default_install_dir: proc(o: ^Options, allocator: runtime.Allocator) -> string,   // where a copy is installed unless told otherwise
+	locate:              proc(o: ^Options, allocator: runtime.Allocator) -> string,   // the folder the system recorded for it ("" = none)
+	record:              proc(o: ^Options, dir, version: string) -> Result,           // the system's record (Windows: the Apps list)
+	unrecord:            proc(o: ^Options) -> Result,
+	cleanup_later:       proc(o: ^Options, files: []string, folder: string, pid: u32) -> bool,   // deletes files after process `pid` ends
+	path_remove:         proc(o: ^Options, dir: string) -> Result,                    // takes one folder out of the user's PATH
+}
+
+status_destroy :: proc(s: ^Status, allocator := context.allocator) {
+	for &p in s.parts { delete(p.target, allocator) }
+	delete(s.stale_exe, allocator)
+	s^ = {}
+}
+
+// The options of a program that integrates with the application menu: the running executable, the menu entry, the
+// system told. A browser sets `register_browser` and its `file_types`; the other parts are off.
+options_make :: proc(identity: Identity, allocator := context.temp_allocator) -> Options {
+	return Options{
+		identity = identity,
+		exe = process.executable_path(allocator),
+		start_menu = true,
+		notify_system = true,
+	}
+}
+
+// A copy of `o` that owns its strings (for a job on another thread). The identity, the icons and the launcher are
+// shared: they are the program's own constants and embedded data.
+options_clone :: proc(o: Options, allocator := context.allocator) -> Options {
+	c := o
+	c.exe = clone_or_empty(o.exe, allocator)
+	c.menu_dir = clone_or_empty(o.menu_dir, allocator)
+	c.desktop_dir = clone_or_empty(o.desktop_dir, allocator)
+	c.environment_root = clone_or_empty(o.environment_root, allocator)
+	c.install_dir = clone_or_empty(o.install_dir, allocator)
+	c.registry_root = clone_or_empty(o.registry_root, allocator)
+	c.applications_dir = clone_or_empty(o.applications_dir, allocator)
+	c.icons_dir = clone_or_empty(o.icons_dir, allocator)
+	c.bin_dir = clone_or_empty(o.bin_dir, allocator)
+	types := make([]string, len(o.file_types), allocator)
+	for ft, i in o.file_types { types[i] = strings.clone(ft, allocator) }
+	c.file_types = types
+	return c
+}
+
+options_destroy :: proc(o: ^Options, allocator := context.allocator) {
+	delete(o.exe, allocator); delete(o.menu_dir, allocator); delete(o.registry_root, allocator)
+	delete(o.desktop_dir, allocator); delete(o.environment_root, allocator); delete(o.install_dir, allocator)
+	delete(o.applications_dir, allocator); delete(o.icons_dir, allocator); delete(o.bin_dir, allocator)
+	for ft in o.file_types { delete(ft, allocator) }
+	delete(o.file_types, allocator)
+	o^ = {}
+}
+
+// The directory and its parents exist afterwards (already being there is not an error, on every platform).
+@(private)
+ensure_dir :: proc(path: string) -> bool {
+	if os.is_dir(path) { return true }
+	return os.make_directory_all(path) == nil || os.is_dir(path)
+}
+
+// Every part of the backend that these options ask for.
+parts_wanted :: proc(b: ^Backend, o: ^Options) -> Parts {
+	w := b.parts
+	if !o.start_menu { w -= {.Launcher} }
+	if !o.desktop_shortcut { w -= {.Desktop_Shortcut} }
+	if !o.add_to_path { w -= {.Path} }
+	if !o.register_browser { w -= {.Registration} }
+	if len(o.icons) == 0 { w -= {.Icons} }   // nothing to install: nothing to miss
+	return w
+}
+
+// What the platform's integration of `o` looks like on the disk. `o.exe` is the program it should run.
+status :: proc(o: ^Options, allocator := context.allocator) -> Status {
+	b := platform_backend()
+	if b == nil { return Status{error = .Unsupported} }
+	if e := validate(o, need_exe = false); e.error != .None { return Status{error = e.error} }
+	s := b.status(o, allocator)
+	classify(&s, parts_wanted(b, o), allocator)
+	return s
+}
+
+install :: proc(o: ^Options) -> Result {
+	b := platform_backend()
+	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
+	if e := validate(o, need_exe = true); e.error != .None { return e }
+	return b.install(o)
+}
+
+remove :: proc(o: ^Options) -> Result {
+	b := platform_backend()
+	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
+	if e := validate(o, need_exe = false); e.error != .None { return e }
+	return b.remove(o)
+}
+
+// Opens the system's own page of default programs (a browser's business); false when there is none.
+open_default_apps :: proc() -> bool {
+	b := platform_backend()
+	return b != nil && b.open_defaults != nil && b.open_defaults()
+}
+
+// True when this platform can integrate at all (the program hides the box otherwise).
+supported :: proc() -> bool { return platform_backend() != nil }
+
+// The parts this platform's integration has (the program shows an option only for a part that exists).
+supported_parts :: proc() -> Parts {
+	b := platform_backend()
+	return b == nil ? {} : b.parts
+}
+
+// The launcher's place in the user's words: "Start menu" on Windows, "application menu" elsewhere.
+menu_name :: proc() -> string {
+	when ODIN_OS == .Windows { return "Start menu" } else { return "application menu" }
+}
+
+// Where the system lists the programs that can be the default browser, in the user's words.
+default_apps_name :: proc() -> string {
+	when ODIN_OS == .Windows { return "Default apps" } else { return "the default browser setting" }
+}
+
+// What the integration adds on this platform, for a label: "Start menu", or "Start menu, default apps" for a browser.
+targets :: proc(browser: bool) -> string {
+	b := platform_backend()
+	if b == nil { return "" }
+	return browser ? b.targets_browser : b.targets
+}
+
+// True when the system has a page where the user picks the default programs.
+has_default_apps_page :: proc() -> bool {
+	b := platform_backend()
+	return b != nil && b.open_defaults != nil
+}
+
+// The identity's fields are what the backends build paths, keys and marks from: a malformed one could reach another
+// program's files.
+@(private)
+validate :: proc(o: ^Options, need_exe: bool) -> Result {
+	id := o.identity
+	if id.name == "" || id.key == "" || id.slug == "" || id.aumid == "" { return {.Bad_Options, "the identity has an empty field"} }
+	if !all_of(id.key, letter_or_digit) { return {.Bad_Options, "identity.key is letters and digits only"} }
+	if !all_of(id.slug, slug_char) { return {.Bad_Options, "identity.slug is lower case letters, digits and hyphens"} }
+	if strings.contains_any(id.name, "\\/:*?\"<>|\x00") { return {.Bad_Options, "identity.name is used in a file name"} }
+	if !ascii.has_prefix_fold(id.entry_marker, "X-") || !all_of(id.entry_marker, key_char) { return {.Bad_Options, "identity.entry_marker is a .desktop key that begins with X-"} }
+	if id.registry_mark == "" || !all_of(id.registry_mark, letter_or_digit) { return {.Bad_Options, "identity.registry_mark is letters and digits"} }
+	if id.vendor_key == "" || !all_of(id.vendor_key, letter_or_digit) { return {.Bad_Options, "identity.vendor_key is letters and digits"} }
+	if id.manifest_name == "" || strings.contains_any(id.manifest_name, "\\/:*?\"<>|\x00") { return {.Bad_Options, "identity.manifest_name is a file name"} }
+	for s in id.url_schemes {
+		if s == "" || !all_of(s, scheme_char) || !(s[0] >= 'a' && s[0] <= 'z') { return {.Bad_Options, "identity.url_schemes are lower case schemes"} }
+	}
+	if len(id.url_schemes) > 0 && id.url_flag == "" { return {.Bad_Options, "identity.url_flag is what a URL scheme runs"} }
+	if len(o.launcher) > 0 && id.launcher_mark == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
+	if o.exe == "" { o.exe = process.executable_path() }
+	if need_exe {
+		if o.exe == "" { return {.No_Executable, error_text(.No_Executable)} }
+		if !os.is_file(o.exe) { return {.No_Executable, strings.concatenate({"no such file: ", o.exe}, context.temp_allocator)} }
+	}
+	return {}
+}
+
+@(private = "file")
+all_of :: proc(s: string, ok: proc(c: u8, first: bool) -> bool) -> bool {
+	for i in 0 ..< len(s) { if !ok(s[i], i == 0) { return false } }
+	return true
+}
+
+@(private = "file")
+letter_or_digit :: proc(c: u8, _: bool) -> bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' }
+
+@(private = "file")
+slug_char :: proc(c: u8, _: bool) -> bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' }
+
+@(private = "file")
+key_char :: proc(c: u8, first: bool) -> bool { return letter_or_digit(c, first) || c == '-' }
+
+@(private = "file")
+scheme_char :: proc(c: u8, first: bool) -> bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '+' || c == '.' }
+
+// Works out `state`, `wanted`, `incomplete` and `stale_exe` from the parts a backend read.
+classify :: proc(s: ^Status, wanted: Parts, allocator := context.allocator) {
+	s.wanted = wanted
+	any_present, all_wanted, any_stale := false, true, false
+	for p in Part {
+		ps := &s.parts[p]
+		if ps.present { any_present = true }
+		if ps.present && ps.stale {
+			any_stale = true
+			if s.stale_exe == "" && ps.target != "" { s.stale_exe = strings.clone(ps.target, allocator) }
+		}
+		if p in wanted && (!ps.present || ps.partial) { all_wanted = false }
+	}
+	switch {
+	case !any_present:                      s.state = .Absent
+	case all_wanted && !any_stale:          s.state = .Installed
+	case:                                   s.state = .Repair
+	}
+	s.incomplete = any_present && !all_wanted
+}
+
+// A one-line description of a status ("installed", "to repair: points to C:\old\app.exe", ...), for logs and the
+// command line.
+describe :: proc(s: ^Status) -> string {
+	switch s.state {
+	case .Absent:    return "absent"
+	case .Installed: return "installed"
+	case .Repair:
+		if s.stale_exe != "" { return strings.concatenate({"to repair: points to ", s.stale_exe}, context.temp_allocator) }
+		return "to repair: incomplete"
+	}
+	return ""
+}
+
+// The system is NixOS: ID=nixos in /etc/os-release (also seen inside an FHS sandbox, which hides /etc/NIXOS). The
+// installed copy needs its runtime there (nixos_linux.odin).
+is_nixos :: proc() -> bool {
+	when ODIN_OS == .Linux {
+		data, err := os.read_entire_file("/etc/os-release", context.temp_allocator)
+		return err == nil && os_release_is_nixos(string(data))
+	} else {
+		return false
+	}
+}
+
+os_release_is_nixos :: proc(text: string) -> bool {
+	rest := text
+	for line in strings.split_lines_iterator(&rest) {
+		l := strings.trim_space(line)
+		if !strings.has_prefix(l, "ID=") { continue }
+		return strings.trim(l[len("ID="):], "\"'") == "nixos"
+	}
+	return false
+}
+
+// The program is in the Nix store: a Nix package made it, and the package makes it run and lists it in the menu.
+in_nix_store :: proc(exe: string) -> bool { return strings.has_prefix(exe, "/nix/store/") }
+
+// Same file? Windows paths ignore case and slash direction; the others are exact.
+same_path :: proc(a, b: string) -> bool {
+	if a == "" || b == "" { return false }
+	when ODIN_OS == .Windows {
+		return strings.equal_fold(normalize_slashes(a), normalize_slashes(b))
+	} else {
+		return a == b
+	}
+}
+
+@(private)
+normalize_slashes :: proc(s: string) -> string {
+	if strings.index_byte(s, '/') < 0 { return s }
+	r, _ := strings.replace_all(s, "/", "\\", context.temp_allocator)
+	return r
+}
+
+// "a, b;c" -> ["a", "b", "c"] (commas, semicolons and spaces separate; empty items go).
+split_list :: proc(v: string, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	rest := v
+	for len(rest) > 0 {
+		i := strings.index_any(rest, ", \t;")
+		item := strings.trim_space(i < 0 ? rest : rest[:i])
+		rest = i < 0 ? "" : rest[i + 1:]
+		if item != "" { append(&out, item) }
+	}
+	return out[:]
+}
+
+// An extension as the registry and the MIME table want it: lower case (ASCII: an extension is a name), with its dot.
+normalize_extension :: proc(ext: string, allocator := context.temp_allocator) -> string {
+	e := ascii.lower(strings.trim_space(ext), allocator)
+	if e == "" || e == "." { return "" }
+	return e[0] == '.' ? e : strings.concatenate({".", e}, allocator)
+}
+
+@(private)
+clone_or_empty :: proc(s: string, allocator: runtime.Allocator) -> string { return s == "" ? "" : strings.clone(s, allocator) }

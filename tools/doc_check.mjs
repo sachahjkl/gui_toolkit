@@ -24,7 +24,7 @@ for (const dir of dirs) {
 }
 const inCode = (word) => code.includes(word)
 const exists = (p) => dirs.some((d) => existsSync(join(d, p.replace(/[\\/]$/, '').replaceAll('\\', '/'))))
-const PACKAGES = 'ui|draw|render|font|platform|config|arena|instance|testkit|i18n|fsx|flate|devtools'
+const PACKAGES = 'ui|draw|render|font|platform|config|arena|instance|testkit|i18n|fsx|flate|devtools|desktop|process'
 const SYSTEM_FLAGS = /^--(recursive|init|locked|release|force|target-dir|no-verify)$/
 
 const problems = []
