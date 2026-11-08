@@ -38,7 +38,7 @@ run :: proc(command: []string, how := Run{}) -> bool {
 	log: ^os.File
 	if how.log != "" {
 		err: os.Error
-		log, err = os.open(how.log, {.Write, .Create, .Append})
+		log, err = os.open(how.log, {.Write, .Create, .Append, .Inheritable})   // (Windows: a handle the child does not inherit is no output for it)
 		if err != nil {
 			fmt.eprintfln("%s: %v", how.log, err)
 			return false

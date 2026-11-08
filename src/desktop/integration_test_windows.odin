@@ -36,7 +36,7 @@ Scratch :: struct {
 @(private = "file")
 scratch_make :: proc() -> Scratch {
 	tmp, _ := os.temp_dir(context.allocator)
-	id := fmt.aprintf("%d_%d", os.get_pid(), time.to_unix_nanoseconds(time.now()))
+	id := test_unique_id()
 	s: Scratch
 	s.dir = fmt.aprintf("%s\\tk_desktop_test_%s", tmp, id)
 	s.menu = fmt.aprintf("%s\\Start Menu\\Programs", s.dir)

@@ -56,6 +56,7 @@ font/dwrite.odin IID_IDWriteFontFace7 const  # a COM interface id (passed by add
 font/dwrite.odin IID_IDWriteLocalFontFileLoader const  # a COM interface id (passed by address)
 font/emoji_data.odin EMOJI_RANGES const  # a table
 font/emoji_data.odin EMOJI_PRESENTATION_RANGES const  # a table
+desktop/install_test.odin test_unique_id.serial test  # the tests' folder names, unique across the threads that run them
 desktop/com_windows.odin CLSID_ShellLink const  # a COM class id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IShellLinkW const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variable: the calls take its address)

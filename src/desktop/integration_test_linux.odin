@@ -19,7 +19,7 @@ Scratch :: struct {
 @(private = "file")
 scratch_make :: proc() -> Scratch {
 	tmp, _ := os.temp_dir(context.allocator)
-	id := fmt.aprintf("%d_%d", os.get_pid(), time.to_unix_nanoseconds(time.now()), allocator = context.allocator)
+	id := test_unique_id()
 	s: Scratch
 	s.dir = fmt.aprintf("%s/tk_desktop_test_%s", tmp, id)
 	s.exe = fmt.aprintf("%s/v1/sample dir/sample", s.dir)   // (a space: the Exec line must quote it)

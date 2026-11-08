@@ -5,6 +5,7 @@ package tk_desktop
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "../process"
 import "core:time"
@@ -18,12 +19,20 @@ Tree :: struct {
 	opts: Options,
 }
 
+// A name no other test of this run has: tests on other threads start within one tick of the clock (Windows' is coarse), and
+// one then removed the other's folder.
+@(private)
+test_unique_id :: proc(allocator := context.allocator) -> string {
+	@(static) serial: int
+	return fmt.aprintf("%d_%d_%d", os.get_pid(), time.to_unix_nanoseconds(time.now()), sync.atomic_add(&serial, 1), allocator = allocator)
+}
+
 @(private)
 tree_make :: proc() -> Tree {
 	tmp, _ := os.temp_dir(context.allocator)
 	defer delete(tmp)
 	t: Tree
-	t.root = fmt.aprintf("%s/tk_desktop_install_test_%d_%d", strings.trim_right(tmp, "\\/"), os.get_pid(), time.to_unix_nanoseconds(time.now()))
+	t.root = fmt.aprintf("%s/tk_desktop_install_test_%s", strings.trim_right(tmp, "\\/"), test_unique_id(context.temp_allocator))
 	t.src = fmt.aprintf("%s/package", t.root)
 	t.dst = fmt.aprintf("%s/installed/Sample", t.root)
 	put :: proc(path, text: string) {
