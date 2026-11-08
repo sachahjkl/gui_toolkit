@@ -63,6 +63,7 @@ STEPS := []Step{
 	{name = "config", path = "config", oses = EVERYWHERE},
 	{name = "dbus", path = "dbus", oses = LINUX_ONLY},
 	{name = "instance_pkg", path = "instance", oses = LINUX_ONLY},
+	{name = "update", path = "update", oses = EVERYWHERE},
 	{name = "changelog", oses = EVERYWHERE},
 	{name = "clipboard", oses = EVERYWHERE},
 	{name = "clipboard_station"},
