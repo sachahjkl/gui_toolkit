@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.105.0] - 2026-11-08
+
+### Added
+- **`platform.can_hide_windows`**: whether a window can exist unseen, made and never shown. Yes on Windows; no on Wayland and X11, where a toplevel is shown as soon as it has a buffer: a program that needs an unseen window opens an offscreen one there.
+
+### Fixed
+- **Variable faces off Windows**: `font.axes` reads a face's axes from its `fvar` table, and `font.with_variations` makes an instance the native backend opens at its location (a simulation of it keeps it). Both did nothing there, so a variable font was drawn at its default instance: a web font in `font-weight: 400` whose default is 300 came out light.
+
 ## [0.104.1] - 2026-11-08
 
 ### Fixed
@@ -1873,6 +1881,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.105.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.105.0
 [0.104.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.104.1
 [0.104.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.104.0
 [0.103.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.103.0
