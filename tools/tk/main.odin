@@ -14,8 +14,8 @@
 //                                             Linux: puts the static wgpu-native in Odin's vendor/wgpu/lib/wgpu-linux-x86_64-release.
 //                                             -odin: the compiler whose vendor folder it is (default: odin on the PATH)
 //   gen_emoji_data [-data:file]               font/emoji_data.odin from Unicode's emoji-data.txt (default build/emoji/emoji-data.txt)
-//   make_icon -png:file -out:file             a multi-size .ico (PNG, 16 to 256 px) from the 512 px logo (Windows: GDI+)
-//   make_logo [-out:file]                     draws the logo, 512 px (default .project/image.png; Windows: GDI+)
+//   make_icon -png:file -out:file             a multi-size .ico (PNG, 16 to 256 px) from the 512 px logo
+//   make_logo [-out:file]                     draws the logo, 512 px (default .project/image.png)
 //   ppm_diff a.ppm b.ppm [-tolerance:2]       two P6 PPM files (tools/render_probe): the largest and mean difference of a channel, and
 //                                             how many pixels differ by more than the tolerance
 //   emoji_board [-size:32] [-scale:1] [-step:37] [-font:ttf] [-out-dir:dir]

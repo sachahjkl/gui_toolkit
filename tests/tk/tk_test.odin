@@ -1,6 +1,6 @@
 // tools/tk in process: its command line, ppm_diff on two small pictures, the font with a table dropped, the stamps that make a second
 // build nothing, a pinned file kept or fetched (from a file: URL, offline), font/emoji_data.odin from a small emoji-data.txt, the
-// board's list and cells, the .ico, the command line PowerShell splits (tools/cmdline), and (Windows) the logo and the icon drawn by GDI+.
+// board's list and cells, the command line PowerShell splits (tools/cmdline), and the logo and the icon (drawn by the paint package).
 //   odin test tests/tk -vet
 package tk_test
 
@@ -259,29 +259,10 @@ the_emoji_board :: proc(t: ^testing.T) {
 }
 
 @(test)
-an_icon_of_pngs :: proc(t: ^testing.T) {
-	pngs := [][]byte{{1, 2, 3}, {4, 5}}
-	ico := tk.ico_from_pngs(pngs, {16, 256}, context.temp_allocator)
-	u16_at :: proc(b: []byte, o: int) -> int { v, _ := endian.get_u16(b[o:], .Little); return int(v) }
-	u32_at :: proc(b: []byte, o: int) -> int { v, _ := endian.get_u32(b[o:], .Little); return int(v) }
-	testing.expect_value(t, len(ico), 6 + 2 * 16 + 5)
-	testing.expect_value(t, u16_at(ico, 2), 1)   // an icon
-	testing.expect_value(t, u16_at(ico, 4), 2)
-	testing.expect_value(t, ico[6], 16)
-	testing.expect_value(t, ico[22], 0)          // 256 is said 0
-	testing.expect_value(t, u16_at(ico, 6 + 6), 32)
-	testing.expect_value(t, u32_at(ico, 6 + 8), 3)
-	testing.expect_value(t, u32_at(ico, 6 + 12), 38)
-	testing.expect_value(t, u32_at(ico, 22 + 12), 41)
-	testing.expect(t, slice.equal(ico[41:], []byte{4, 5}), "the second picture last")
-}
-
-@(test)
 the_logo_and_its_icon :: proc(t: ^testing.T) {
-	when ODIN_OS != .Windows { return }
 	dir := testkit.temp_folder(t, "tk-logo")
 	logo := fmt.tprintf("%s/logo.png", dir)
-	testing.expect_value(t, tk.draw_logo(logo), "")
+	testing.expect_value(t, tk.make_logo(logo), "")
 	data := read(logo)
 	testing.expect(t, strings.has_prefix(string(data), PNG_SIGNATURE), "a PNG")
 	width, _ := endian.get_u32(data[PNG_WIDTH_AT:], .Big)
@@ -295,6 +276,11 @@ the_logo_and_its_icon :: proc(t: ^testing.T) {
 		delete(p)
 	}
 	delete(pngs)
+	icon := fmt.tprintf("%s/icon.ico", dir)
+	testing.expect_value(t, tk.make_icon(logo, icon), "")
+	ico := read(icon)
+	count, _ := endian.get_u16(ico[4:], .Little)
+	testing.expect_value(t, int(count), len(tk.ICON_SIZES))
 }
 
 // PowerShell 7 hands `-name:value` typed after `--` to a program as `-name:` and `value`: the tools join them again; what

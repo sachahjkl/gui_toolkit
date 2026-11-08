@@ -20,7 +20,7 @@ Doc_Group :: struct {
 // The index's order. A document that no group names goes into "Other", so a new document is never left out of the site.
 DOC_GROUPS := []Doc_Group {
 	{"Start", {"getting-started"}},
-	{"Drawing and text", {"draw", "canvas", "text", "font-backend", "slug-small-text", "shaders", "rendering", "webgpu"}},
+	{"Drawing and text", {"draw", "canvas", "text", "font-backend", "slug-small-text", "shaders", "rendering", "webgpu", "paint"}},
 	{"Widgets and layout", {"docking", "panes", "modals", "autoscroll", "dragdrop", "accessibility", "i18n"}},
 	{"Platform and system", {"platform", "clipboard", "dialogs", "tray", "dbus", "fsx", "instance", "update", "desktop", "process", "config"}},
 	{"Frames and threads", {"pacing", "frame_gate", "post", "locks", "arena", "flate"}},
