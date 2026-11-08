@@ -320,3 +320,13 @@ a_small_site_is_made :: proc(t: ^testing.T) {
 	testing.expect_value(t, strings.count(sitemap, "<loc>"), 6)
 	testing.expect(t, !build_changelog(site, out, {changes = cat(root, "/none.md")}), "no CHANGELOG, no pages")
 }
+
+// A site whose changelog is a folder and whose anchors have no dots (Wren's): the feed points there.
+@(test)
+a_version_is_told_where_the_site_says :: proc(t: ^testing.T) {
+	m := Meta{url = "https://example.org/"}
+	testing.expect_value(t, version_address(m, "1.2.3"), "https://example.org/changelog.html#v1.2.3")
+	m.changelog_page = "changelog/"
+	m.version_anchor = proc(v: string) -> string { s, _ := strings.replace_all(v, ".", "-", context.temp_allocator); return cat("v", s) }
+	testing.expect_value(t, version_address(m, "1.2.3"), "https://example.org/changelog/#v1-2-3")
+}

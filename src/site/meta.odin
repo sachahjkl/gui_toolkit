@@ -37,6 +37,16 @@ Meta :: struct {
 	card_size:    int,      // its font size, px
 	card_logo:    int,      // the logo's size on it, px
 	card_font:    string,   // its font-family
+	changelog_page: string,                      // the changelog's page in the site ("": CHANGELOG_PAGE)
+	version_anchor: proc(version: string) -> string,   // a version's anchor in it (nil: "v" and the version: "v1.2.3")
+}
+
+// Where a version is told: the changelog's page and the version's anchor in it.
+@(private)
+version_address :: proc(m: Meta, version: string) -> string {
+	page := m.changelog_page != "" ? m.changelog_page : CHANGELOG_PAGE
+	anchor := m.version_anchor != nil ? m.version_anchor(version) : cat("v", version)
+	return cat(m.url, page, "#", anchor)
 }
 
 @(private) NOT_LISTED :: "404.html"
@@ -221,7 +231,7 @@ feed_xml :: proc(m: Meta, rs: []^Feed_Version) -> string {
   <updated>`, rs[0].date, "T00:00:00Z</updated>\n")
 	for r, i in rs {
 		if i > 0 { strings.write_byte(&b, '\n') }
-		address := cat(m.url, CHANGELOG_PAGE, "#v", r.version)
+		address := version_address(m, r.version)
 		put(&b, `  <entry>
     <id>`, address, `</id>
     <title>`, esc(m.name), " ", esc(r.version), `</title>
@@ -381,7 +391,7 @@ sitemap_xml :: proc(listed: []string) -> string {
 }
 
 llms_txt :: proc(m: Meta) -> string {
-	return cat("# ", m.name, "\n\n> ", m.tagline, "\n\n## Pages\n\n- [", m.name, "](", m.url, "): the home page.\n- [Changelog](", m.url, CHANGELOG_PAGE,
+	return cat("# ", m.name, "\n\n> ", m.tagline, "\n\n## Pages\n\n- [", m.name, "](", m.url, "): the home page.\n- [Changelog](", m.url, m.changelog_page != "" ? m.changelog_page : CHANGELOG_PAGE,
 		"): every version.\n- [Releases feed](", m.url, FEED_FILE, "): new versions, in Atom.\n- [Source](", m.repository, "): the repository.\n")
 }
 
