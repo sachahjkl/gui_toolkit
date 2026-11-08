@@ -79,13 +79,20 @@ cursor_older_name :: proc(c: Cursor) -> (name: string, glyph: u16) {
 	return "left_ptr", XC_LEFT_PTR
 }
 
+// The size and hotspot of a custom cursor shown at `scale` (device px): what custom_cursor_bgra makes, and what custom_cursor_info says.
+@(private)
+custom_cursor_geometry :: proc(e: ^Custom_Entry, scale: f32) -> (size: [2]int, hot: [2]int) {
+	k := max(scale, 0.1) / e.density
+	size = {max(int(f32(e.size.x) * k + 0.5), 1), max(int(f32(e.size.y) * k + 0.5), 1)}
+	hot = {clamp(int(e.hot.x * k), 0, size.x - 1), clamp(int(e.hot.y * k), 0, size.y - 1)}
+	return
+}
+
 // A custom cursor's pixels at a scale: premultiplied BGRA (what X RENDER and wl_shm take), scaled to the nearest pixel, with
 // its hotspot.
 @(private)
 custom_cursor_bgra :: proc(e: ^Custom_Entry, scale: f32, allocator := context.allocator) -> (px: []u8, size: [2]int, hot: [2]int) {
-	k := max(scale, 0.1) / e.density
-	size = {max(int(f32(e.size.x) * k + 0.5), 1), max(int(f32(e.size.y) * k + 0.5), 1)}
-	hot = {clamp(int(e.hot.x * k), 0, size.x - 1), clamp(int(e.hot.y * k), 0, size.y - 1)}
+	size, hot = custom_cursor_geometry(e, scale)
 	px = make([]u8, size.x * size.y * 4, allocator)
 	for y in 0 ..< size.y {
 		sy := min(y * e.size.y / size.y, e.size.y - 1)
@@ -267,7 +274,9 @@ custom_cursor_stats :: proc(w: ^Window) -> (images, handles: int) {
 custom_cursor_info :: proc(w: ^Window, cc: Custom_Cursor, scale: f32 = 0) -> Cursor_Info {
 	e := custom_entry(w, cc)
 	if e == nil { return {} }
-	return {size = e.size, hot = {int(e.hot.x), int(e.hot.y)}, source = .System, ok = true}
+	// what the window shows: the image at the scale it is shown at (custom_cursor_bgra), as on Windows
+	size, hot := custom_cursor_geometry(e, scale > 0 ? scale : custom_cursor_scale(w))
+	return {size = size, hot = hot, source = .System, ok = true}
 }
 
 @(private)
