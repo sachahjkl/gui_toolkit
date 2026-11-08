@@ -6,7 +6,7 @@ Wren's tooling), not for the programs they make. Pure Odin with `core:os`, Windo
 
 ```odin
 ok := toolbox.run({"cargo", "build", "--release"}, {dir = "native"})        // its output on this process's
-ok = toolbox.run({"odin", "test", "tests/x"}, {log = "build/x.log", limit = 10 * time.Minute, echo = true})
+ok = toolbox.run({"odin", "test", "tests/fsx"}, {log = "build/fsx.log", limit = 10 * time.Minute, echo = true})
 out, code := toolbox.capture({"git", "rev-parse", "HEAD"})                   // standard output and exit code
 env := toolbox.env_with({"XDG_CONFIG_HOME"}, "XDG_CONFIG_HOME=/tmp/c")      // this process's, changed
 sum := toolbox.sha256_hex(data)                                              // 64 lower-case hex digits
