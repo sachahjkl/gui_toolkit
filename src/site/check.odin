@@ -6,7 +6,9 @@ package tk_site
 // page: its links, pictures, styles and scripts are there, and the anchors they point at; it links the same page in the other
 // presentation ("Classic version", "Modern version"). The classic pages: no sideways scrolling on a phone or a desktop, a skip link
 // the keyboard reaches first and shows, a main landmark, a text for every picture, light and dark; the classic home about a screen
-// high. Then the project's own checks (Check_Options.extra). Nothing is published: the folder is served on 127.0.0.1 for the time
+// high. The documentation pages (build_docs): nothing sticks out of a phone's screen but in the frame of a code block or a table, the
+// menu closed there and open beside the page on a desktop, its toggle and the search working. Then the project's own checks
+// (Check_Options.extra). Nothing is published: the folder is served on 127.0.0.1 for the time
 // of the check. Nothing waits for a delay to run out: what a step leads to is awaited, under a limit.
 
 import "core:encoding/json"
@@ -67,6 +69,11 @@ CHECK_ALT_TEXTS   :: `[...document.images].filter((i) => i.hasAttribute('src')).
 CHECK_SKIP_LINK   :: `(() => { const a = document.activeElement, r = a.getBoundingClientRect(); return a.matches('a.skip[href="#main"]') && r.left >= 0 && r.top >= 0 && getComputedStyle(a).outlineStyle !== 'none' })()`
 CHECK_HIGH        :: `document.documentElement.scrollHeight / innerHeight`
 CHECK_COLORS      :: `getComputedStyle(document.body).backgroundColor + ' ' + getComputedStyle(document.body).color`
+CHECK_DOCS_PAGE   :: `document.body.classList.contains('docs') && !!document.querySelector('.doc-shell')`
+CHECK_DOCS_MENU_SHOWN :: `getComputedStyle(document.querySelector('.doc-side')).display !== 'none'`
+CHECK_DOCS_FOUND  :: `!document.getElementById('doc-search-results').hidden && document.querySelectorAll('#doc-search-results a').length > 0`
+// What is drawn past the screen's right edge, but inside a code block's or a table's frame (it scrolls there): "" when nothing.
+CHECK_DOCS_OUTSIDE :: `[...document.body.querySelectorAll('*')].filter((e) => !(e.parentElement && e.parentElement.closest('pre, .table-box')) && e.getClientRects().length > 0 && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 3).map((e) => e.tagName.toLowerCase() + (e.className ? '.' + e.className : '') + ' ' + Math.round(e.getBoundingClientRect().right) + ' px').join(', ')`
 
 Site_View :: struct {
 	width, height: int,
@@ -75,6 +82,7 @@ Site_View :: struct {
 
 CHECK_DESKTOP :: Site_View{width = 1400, height = 900}
 CHECK_PHONE   :: Site_View{width = 375, height = 812, mobile = true}
+CHECK_DOCS_PHONE :: Site_View{width = 390, height = 844, mobile = true}
 
 Site_Link :: struct {
 	path, anchor: string,
@@ -574,6 +582,26 @@ site_classic :: proc(s: ^Check, path: string) {
 	check_expect(s, light != "" && dark != "" && light != dark, fmt.tprintf("%s: light and dark (%s / %s)", path, light, dark))
 }
 
+// A page of build_docs (docs.odin). On a phone: nothing sticks out of the screen but inside the frame of a code block or a table,
+// which scrolls; the menu is closed. On a wide screen: the menu is beside the page. On the documentation's home: the toggle opens
+// the menu, and the search finds pages.
+@(private = "file")
+site_docs_page :: proc(s: ^Check, path: string) {
+	check_view(s, CHECK_DOCS_PHONE)
+	out := check_text(s, CHECK_DOCS_OUTSIDE)
+	check_expect(s, out == "", fmt.tprintf("%s: nothing sticks out at %d px%s%s", path, CHECK_DOCS_PHONE.width, out == "" ? "" : ": ", out))
+	check_expect(s, check_true(s, "!" + CHECK_DOCS_MENU_SHOWN), fmt.tprintf("%s: the menu is closed at %d px", path, CHECK_DOCS_PHONE.width))
+	if strings.has_suffix(path, "docs/index.html") {
+		check_js(s, `document.querySelector('.doc-nav-open').click()`)
+		check_expect(s, check_wait(s, CHECK_DOCS_MENU_SHOWN, CHECK_INPUT_LIMIT), fmt.tprintf("%s: the toggle opens the menu", path))
+		check_js(s, `document.querySelector('.doc-nav-open').click()`)
+		check_js(s, `(() => { const box = document.getElementById('doc-search-input'); box.value = 'the'; box.dispatchEvent(new Event('input')) })()`)
+		check_expect(s, check_wait(s, CHECK_DOCS_FOUND, CHECK_READ_LIMIT), fmt.tprintf("%s: the search finds pages", path))
+	}
+	check_view(s, CHECK_DESKTOP)
+	check_expect(s, check_true(s, CHECK_DOCS_MENU_SHOWN), fmt.tprintf("%s: the menu is beside the page at %d px", path, CHECK_DESKTOP.width))
+}
+
 @(private = "file")
 site_page :: proc(s: ^Check, path: string, pages: []string) {
 	if !check_go(s, path) { return }
@@ -587,6 +615,7 @@ site_page :: proc(s: ^Check, path: string, pages: []string) {
 	said := len(broken) > 0 ? fmt.tprintf(": not %s", strings.join(broken[:], ", ", context.temp_allocator)) : ""
 	check_expect(s, read && len(broken) == 0, fmt.tprintf("%s: its %d links resolve%s", path, len(links), said))
 
+	if check_true(s, CHECK_DOCS_PAGE) { site_docs_page(s, path) }
 	classic := strings.has_prefix(path, CHECK_CLASSIC)
 	// (only the pages the changelog step pairs have the other presentation: the docs pages and the 404 have none)
 	if !classic && path != HOME_PAGE && path != CHANGELOG_PAGE { return }
@@ -618,7 +647,11 @@ site_checks :: proc(s: ^Check, pages: []string) -> bool {
 	check_view(s, CHECK_DESKTOP)
 	viewers := [?]string{"index.html", CHECK_CLASSIC + "screenshots.html"}
 	for path in viewers { site_viewer(s, path) }
-	for path in pages { site_page(s, path, pages) }
+	for path in pages {
+		// (a page left at an old address goes on to the new one while it is checked: check_links reads its one link)
+		if strings.contains(read_text(fmt.tprintf("%s/%s", s.root, path)), `http-equiv="refresh"`) { continue }
+		site_page(s, path, pages)
+	}
 	if s.extra != nil { s.extra(s) }
 	return true
 }

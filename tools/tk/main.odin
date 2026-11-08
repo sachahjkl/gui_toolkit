@@ -27,11 +27,11 @@
 //                                             tests (tools/run_tests); every step runs, then the failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
-//   site_build <site> <out>                   the site as published: site_changelog, site_meta, then site_docs into <out> (site.odin)
+//   site_build <site> <out>                   the site as published: site_changelog, site_meta, site_docs into <out>, then its links (site.odin)
 //   site_changelog <site> <out>               a copy of <site> with the history from CHANGELOG.md and the classic pages (src/site)
 //   site_meta <site> <out>                    what each page says when shared, the feed, the sitemap, the files around the pages
-//   site_docs <site> <out>                    every docs/*.md as <out>/docs/<name>.html in the site's look, and <out>/docs/index.html that
-//                                             lists them (site_docs.odin); <site> gives the header and the style, <out> is the folder to publish
+//   site_docs <site> <out>                    every docs/*.md as <out>/docs/<name>/index.html with src/site's menu, search and contents,
+//                                             docs/_nav.txt the menu (site_docs.odin); <site>/index.html gives the header and script
 //   site_card                                 draws site/img/card.png in a local Chromium, once, by hand
 //   site_check [--site folder] [--shot file.png] [--browser program]
 //                                             the site's pages in Chrome or Edge with no window, served on 127.0.0.1
