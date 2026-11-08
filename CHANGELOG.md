@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.102.0] - 2026-11-08
+
+### Added
+- **`toolbox` package** (`tk_toolbox`, [docs/toolbox.md](docs/toolbox.md)): what the tools of a project share. `run` (the output shown or appended to a log; a working directory, an environment, a time limit, `echo`), `capture` (the standard output and the exit code, the standard error shown on failure), `env_with`, `exit_code` and `succeeded` (a Windows exit code read as the program's signed 32-bit code), `sha256_hex` and `sha256_file`, `download_pinned` (curl with retries, GitHub's API when a release download fails, a file whose SHA-256 is wrong removed), `download_through_api`, `release_asset_id` and `system_program`. `tools/tk` uses it; its own copies of these procedures are gone.
+- **`paint` package** (`tk_paint`, [docs/paint.md](docs/paint.md)): a vector rasterizer on the CPU for pictures made ahead of time, pure Odin and deterministic: an RGBA canvas with a transform, paths (lines, quadratic and cubic Béziers, arcs, rounded rectangles, ellipses, polygons), `fill` (non-zero, even-odd) and `stroke` / `widen` (width, miter, bevel and round joins, flat, square and round caps) with antialiasing, solid colours and linear / radial gradients that pad or repeat, `set_clip`, `draw_canvas` / `resize` (cubic for downscaling, nearest for magnifying), `png_encode` / `png_decode`, `ico_encode` with PNG or DIB entries (`dib_encode`). `tk make_logo` and `tk make_icon` draw with it on Windows and Linux; GDI+ and tools/tk/gdiplus_windows.odin are gone.
+- **`desktop` package** (`tk_desktop`, [docs/desktop.md](docs/desktop.md)): the integration of a program with the user's desktop (Start menu and desktop shortcuts, the PATH with a console launcher, the freedesktop.org entry and icons, a link in `~/.local/bin`, and for a browser its registration and URL schemes), its watcher, its command line, and the installed copy (manifest, Settings > Apps record, uninstall, NixOS runtime). Every name and mark is a field of the program's `Identity`; every place is an injectable root. Moved from Wren and made generic. **`process` package** (`tk_process`, [docs/process.md](docs/process.md)): `command_line_args` (UTF-8 on Windows), `console_write` / `console_error` (a Windows program with a window writes to its parent's console), `executable_path`, `parent_dir`.
+- **`tk site_docs`**: the documents of `docs/` as a "Docs" section of the website, with its own Markdown to HTML converter (`tools/tk/site_docs.odin`). The Pages workflow runs it.
+- **`cdp` and `site` packages** (src/cdp, src/site): a client of the DevTools protocol for tools (a window or a browser, input, waits, pictures, screencasts, scripts, timelines compared with another run) and the steps of a project website (CHANGELOG.md to a changelog page, news and classic pages, what a page says when shared, Markdown to HTML, the pages checked in a real browser), generic: opencode native uses both. docs/cdp.md, docs/site.md.
+
+### Changed
+- **The Node tools are tk commands**: `tk cdp` (was tools/cdp.mjs), `tk screenshots`, `tk theme_shots`, `tk timeline_test` (was tests/e2e/timeline.mjs), `tk doc_check` (same flags: `--root`, `--extra`), `tk site_build`, `site_changelog`, `site_meta`, `site_card`, `site_check`. The CI and the Pages workflow run only Odin; Node is no longer needed.
+
+### Fixed
+- **`tk site_check`** checks the site as it is published (the Docs pages and the 404 too) and waits for what each step leads to instead of fixed delays (opencode native's check, now shared): the old check hung when the viewer did not open. **`tk theme_shots`** reads the palettes from src/ui/theme_default.odin (tools/theme_shots.mjs still read ui/, gone since the packages moved to src/).
+
 ## [0.101.0] - 2026-11-08
 
 ### Changed
@@ -1837,6 +1852,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.102.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.102.0
 [0.101.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.101.0
 [0.100.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.100.0
 [0.99.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.99.0
