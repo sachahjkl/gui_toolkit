@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.106.0] - 2026-11-08
+
+### Added
+- **Content that fades out at its edges**: `draw.mask_edge_fade` draws the mask of a `push_mask` that fades the content to transparent over given widths at the left, top, right and bottom edges; `ui.next({edge_fade = ...})` gives it to a box that clips, so that a list that scrolls fades out where it goes on instead of ending in a straight cut.
+
 ## [0.105.0] - 2026-11-08
 
 ### Added
@@ -1881,6 +1886,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.106.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.106.0
 [0.105.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.105.0
 [0.104.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.104.1
 [0.104.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.104.0
