@@ -54,15 +54,13 @@
 // Exit code 0 when the work is done, 1 when it failed, 2 for a command line it does not understand. tests/tk calls the procedures below.
 package tk
 
-import "core:crypto/sha2"
-import "core:encoding/hex"
-import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "../cmdline"
+import toolbox "../../src/toolbox"
 
 // What a stamp file ends with, as PowerShell's Set-Content wrote them (the ones already built stay valid).
 NEWLINE :: "\r\n" when ODIN_OS == .Windows else "\n"
@@ -198,109 +196,12 @@ read_text :: proc(path: string) -> (string, bool) {
 	return string(data), err == nil
 }
 
-sha256_hex :: proc(data: []byte) -> string {
-	ctx: sha2.Context_256
-	sha2.init_256(&ctx)
-	sha2.update(&ctx, data)
-	digest: [sha2.DIGEST_SIZE_256]byte
-	sha2.final(&ctx, digest[:])
-	return string(hex.encode(digest[:], context.temp_allocator))
-}
-
-// The SHA-256 of a file, in lower case. ok = false: it cannot be read.
-sha256_file :: proc(path: string) -> (sum: string, ok: bool) {
-	data, err := os.read_entire_file(path, context.allocator)
-	if err != nil { return "", false }
-	defer delete(data)
-	return sha256_hex(data), true
-}
-
-// Runs a program, its output on this one's. `dir`: its working directory ("" this one's).
-run :: proc(command: []string, dir := "") -> bool {
-	p, err := os.process_start({command = command, working_dir = dir, stdout = os.stdout, stderr = os.stderr})
-	if err != nil { return false }
-	st, werr := os.process_wait(p)
-	return werr == nil && st.exited && st.exit_code == 0
-}
-
-// Runs a program, its output returned.
-capture :: proc(command: []string) -> (out: string, ok: bool) {
-	st, stdout, _, err := os.process_exec({command = command}, context.temp_allocator)
-	return string(stdout), err == nil && st.exited && st.exit_code == 0
-}
-
-// `path` as pinned: kept when its SHA-256 is `sha256`, else downloaded from `url` and checked (a file that does not match is removed).
-download_pinned :: proc(url, path, sha256: string, quiet := false) -> string {
-	if got, ok := sha256_file(path); !ok || got != sha256 {
-		if !quiet { fmt.printfln("downloading %s", url) }
-		curl := system_program("curl")
-		if !run({curl, "-fsSL", "--retry", "3", "--retry-delay", "10", "--retry-all-errors", "-o", path, url}) && !download_through_api(url, path, quiet) {
-			_ = os.remove(path)
-			return fmt.tprintf("downloading %s failed", url)
-		}
-	}
-	got, _ := sha256_file(path)
-	if got != sha256 {
-		_ = os.remove(path)
-		return fmt.tprintf("%s: SHA-256 mismatch (%s, expected %s)", filepath.base(path), got, sha256)
-	}
-	return ""
-}
-
-// A file of a GitHub release (https://github.com/<owner>/<repo>/releases/download/<tag>/<name>) through GitHub's API: its release
-// downloads answered 504 for over an hour while the API served the same files. GH_TOKEN or GITHUB_TOKEN, when set, is sent (a
-// CI's: more requests allowed). False: not such a file, or the API did not give it either. (The caller checks the SHA-256.)
-download_through_api :: proc(url, path: string, quiet := false) -> bool {
-	PREFIX :: "https://github.com/"
-	if !strings.has_prefix(url, PREFIX) { return false }
-	parts := strings.split(url[len(PREFIX):], "/", context.temp_allocator)
-	if len(parts) != 6 || parts[2] != "releases" || parts[3] != "download" { return false }
-	owner, repo, tag, name := parts[0], parts[1], parts[4], parts[5]
-	curl := system_program("curl")
-	auth: [dynamic]string
-	auth.allocator = context.temp_allocator
-	token := os.get_env("GH_TOKEN", context.temp_allocator)
-	if token == "" { token = os.get_env("GITHUB_TOKEN", context.temp_allocator) }
-	if token != "" { append(&auth, "-H", fmt.tprintf("Authorization: Bearer %s", token)) }
-	if !quiet { fmt.printfln("the release download failed: %s through GitHub's API", name) }
-	release_cmd := make([dynamic]string, context.temp_allocator)
-	append(&release_cmd, curl, "-fsSL", "--retry", "5", "--retry-delay", "10", "--retry-all-errors")
-	append(&release_cmd, ..auth[:])
-	append(&release_cmd, fmt.tprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", owner, repo, tag))
-	answer, read := capture(release_cmd[:])
-	if !read { return false }
-	id := release_asset_id(answer, name)
-	if id == "" { return false }
-	asset_cmd := make([dynamic]string, context.temp_allocator)
-	append(&asset_cmd, curl, "-fsSL", "--retry", "5", "--retry-delay", "10", "--retry-all-errors", "-H", "Accept: application/octet-stream")
-	append(&asset_cmd, ..auth[:])
-	append(&asset_cmd, "-o", path, fmt.tprintf("https://api.github.com/repos/%s/%s/releases/assets/%s", owner, repo, id))
-	return run(asset_cmd[:])
-}
-
-// The id of the asset named `name` in a release as GitHub's API says it ("": none).
-release_asset_id :: proc(release_json, name: string) -> string {
-	v, err := json.parse_string(release_json, allocator = context.temp_allocator)
-	if err != nil { return "" }
-	root, _ := v.(json.Object)
-	assets, _ := root["assets"].(json.Array)
-	for a in assets {
-		o, _ := a.(json.Object)
-		if n, _ := o["name"].(json.String); n != name { continue }
-		#partial switch id in o["id"] {
-		case json.Integer: return fmt.tprintf("%d", id)
-		case json.Float:   return fmt.tprintf("%d", i64(id))
-		}
-	}
-	return ""
-}
-
 // Unpacks a zip archive into `dir`.
 unzip :: proc(zip, dir: string) -> bool {
 	when ODIN_OS == .Windows {
-		return run({system_program("tar"), "-xf", zip, "-C", dir})   // (bsdtar, which reads zip archives)
+		return toolbox.run({toolbox.system_program("tar"), "-xf", zip, "-C", dir})   // (bsdtar, which reads zip archives)
 	} else {
-		return run({"unzip", "-qo", zip, "-d", dir})
+		return toolbox.run({"unzip", "-qo", zip, "-d", dir})
 	}
 }
 

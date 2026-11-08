@@ -8,6 +8,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "../../src/ascii"
+import toolbox "../../src/toolbox"
 @(require) import "core:time"   // (the build's timing is Windows')
 
 // A static library of native/: an application may link other Rust static libraries (Wren: its image decoders, Wasmtime); each
@@ -55,7 +56,7 @@ rust_stamp :: proc(crate, steps: string) -> (stamp: string, ok: bool) {
 		if err != nil { return "", false }
 		append(&all, ..data)
 	}
-	return sha256_hex(all[:]), true
+	return toolbox.sha256_hex(all[:]), true
 }
 
 // Builds a static library of native/ into <out>/<name>.lib (Windows) or <out>/lib<name>.a (elsewhere), unless its stamp says it
@@ -72,7 +73,7 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 			return ""
 		}
 		target := join({out, "target"})
-		if !run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
+		if !toolbox.run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
 		_ = os.make_directory_all(out)
 		if os.copy_file(file, join({target, "release", name})) != nil { return fmt.tprintf("%s cannot be written", file) }
 		if !write_stamp(stamp_file, stamp) { return fmt.tprintf("%s cannot be written", stamp_file) }
@@ -88,32 +89,32 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 			fmt.printfln("%s up to date in %s", lib.name, out)
 			return ""
 		}
-		if _, found := capture({"cargo", "--version"}); !found { return "cargo not found: install Rust with rustup (stable, x86_64-pc-windows-msvc)" }
+		if _, code := toolbox.capture({"cargo", "--version"}); code != 0 { return "cargo not found: install Rust with rustup (stable, x86_64-pc-windows-msvc)" }
 
 		target := join({out, "target"})
 		began := time.tick_now()
-		if !run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
+		if !toolbox.run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
 		_ = os.make_directory_all(out)
 		if os.copy_file(file, join({target, "release", fmt.tprintf("%s.lib", lib.name)})) != nil { return fmt.tprintf("%s cannot be written", file) }
 
-		sysroot, has_rustc := capture({"rustc", "--print", "sysroot"})
-		if !has_rustc { return "rustc --print sysroot failed" }
+		sysroot, rustc_code := toolbox.capture({"rustc", "--print", "sysroot"})
+		if rustc_code != 0 { return "rustc --print sysroot failed" }
 		bin := join({strings.trim_space(sysroot), "lib", "rustlib", RUST_TARGET, "bin"})
-		if !os.exists(join({bin, "llvm-objcopy.exe"})) && !run({"rustup", "component", "add", "llvm-tools"}) { return "rustup component add llvm-tools failed" }
+		if !os.exists(join({bin, "llvm-objcopy.exe"})) && !toolbox.run({"rustup", "component", "add", "llvm-tools"}) { return "rustup component add llvm-tools failed" }
 		ar, objcopy := join({bin, "llvm-ar.exe"}), join({bin, "llvm-objcopy.exe"})
 		work := join({out, "rename"})
 		_ = os.remove_all(work)
 		_ = os.make_directory_all(work)
-		members, _ := capture({ar, "t", file})
+		members, _ := toolbox.capture({ar, "t", file})
 		member := ""
 		for m in strings.split_lines(members, context.temp_allocator) {
 			name := strings.trim_space(m)
 			if strings.has_prefix(name, fmt.tprintf("%s-", lib.name)) && strings.has_suffix(name, ".rcgu.o") { member = name; break }
 		}
 		if member == "" { return fmt.tprintf("%s.lib: the crate object was not found", lib.name) }
-		if !run({ar, "x", file, member}, work) { return "llvm-ar x failed" }
-		if !run({objcopy, fmt.tprintf("--redefine-sym=rust_eh_personality=%s", lib.symbol), member}, work) { return "llvm-objcopy failed" }
-		if !run({ar, "r", file, member}, work) { return "llvm-ar failed" }
+		if !toolbox.run({ar, "x", file, member}, {dir = work}) { return "llvm-ar x failed" }
+		if !toolbox.run({objcopy, fmt.tprintf("--redefine-sym=rust_eh_personality=%s", lib.symbol), member}, {dir = work}) { return "llvm-objcopy failed" }
+		if !toolbox.run({ar, "r", file, member}, {dir = work}) { return "llvm-ar failed" }
 		_ = os.remove_all(work)
 		if os.write_entire_file(stamp_file, stamp) != nil { return fmt.tprintf("%s cannot be written", stamp_file) }
 		size: i64
@@ -127,7 +128,7 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 naga_sources :: proc(crate: string) -> (stamp: string, ok: bool) {
 	sums := make([dynamic]string, context.temp_allocator)
 	for s in NAGA_SOURCES {
-		sum := sha256_file(join({crate, s})) or_return
+		sum := toolbox.sha256_file(join({crate, s})) or_return
 		append(&sums, ascii.upper(sum))
 	}
 	return strings.join(sums[:], ",", context.temp_allocator), true
@@ -137,7 +138,7 @@ naga_sources :: proc(crate: string) -> (stamp: string, ok: bool) {
 build_naga :: proc(root: string) -> string {
 	crate, out := join({root, NAGA_CRATE}), join({root, NAGA_OUT})
 	exe, stamp_file := join({out, NAGA_EXE}), join({out, NAGA_STAMP})
-	got, has_lock := sha256_file(join({crate, "Cargo.lock"}))
+	got, has_lock := toolbox.sha256_file(join({crate, "Cargo.lock"}))
 	if !has_lock { return "tools/wgsl2hlsl/Cargo.lock is missing" }
 	if got != NAGA_LOCK_SHA256 {
 		return fmt.tprintf("tools/wgsl2hlsl/Cargo.lock does not match the pinned SHA-256 (%s); review the change, then update NAGA_LOCK_SHA256 in tools/tk/native.odin", got)
@@ -149,7 +150,7 @@ build_naga :: proc(root: string) -> string {
 		return ""
 	}
 	_ = os.make_directory_all(out)
-	if !run({"cargo", "build", "--release", "--locked", "--target-dir", join({out, "target"})}, crate) { return "cargo build failed" }
+	if !toolbox.run({"cargo", "build", "--release", "--locked", "--target-dir", join({out, "target"})}, {dir = crate}) { return "cargo build failed" }
 	if os.copy_file(exe, join({out, "target", "release", NAGA_EXE})) != nil { return fmt.tprintf("%s cannot be written", exe) }
 	if !write_stamp(stamp_file, sources) { return fmt.tprintf("%s cannot be written", stamp_file) }
 	fmt.printfln("naga: built %s", exe)

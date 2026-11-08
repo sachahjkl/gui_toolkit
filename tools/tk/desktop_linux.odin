@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:time"
+import toolbox "../../src/toolbox"
 
 // desktop_tests [x11|randr|wayland]: the Linux backends against real servers, on a virtual desktop nobody sees (tests/linux_desktop):
 // under Xvfb with a window manager (x11), under Xorg's dummy driver with two monitors of 60 and 144 Hz (randr), then under a
@@ -130,13 +131,13 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 	defer stop_all(&d)
 
 	tests := join({d.root, "tests", "linux_desktop"})
-	if !run({"odin", "build", join({tests, "virtual_pointer"}), "-vet", fmt.tprintf("-out:%s", join({bin, "virtual_pointer"}))}) { return "building virtual_pointer failed" }
-	if !run({"odin", "build", join({tests, "drag_peer"}), "-vet", fmt.tprintf("-out:%s", join({bin, "drag_peer"}))}) { return "building drag_peer failed" }
-	if !run({"odin", "build", join({tests, "xdg_open"}), "-vet", fmt.tprintf("-out:%s", join({bin, "xdg-open"}))}) { return "building xdg_open failed" }
+	if !toolbox.run({"odin", "build", join({tests, "virtual_pointer"}), "-vet", fmt.tprintf("-out:%s", join({bin, "virtual_pointer"}))}) { return "building virtual_pointer failed" }
+	if !toolbox.run({"odin", "build", join({tests, "drag_peer"}), "-vet", fmt.tprintf("-out:%s", join({bin, "drag_peer"}))}) { return "building drag_peer failed" }
+	if !toolbox.run({"odin", "build", join({tests, "xdg_open"}), "-vet", fmt.tprintf("-out:%s", join({bin, "xdg-open"}))}) { return "building xdg_open failed" }
 	test_cmd := make([dynamic]string, context.temp_allocator)
 	append(&test_cmd, "odin", "build", tests, "-build-mode:test", "-vet", "-define:ODIN_TEST_THREADS=1", "-debug", fmt.tprintf("-out:%s", join({d.out, "desktop_test"})))
 	if names := os.get_env("GUI_TEST_NAMES", context.temp_allocator); names != "" { append(&test_cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", names)) }
-	if !run(test_cmd[:]) { return "building tests/linux_desktop failed" }
+	if !toolbox.run(test_cmd[:]) { return "building tests/linux_desktop failed" }
 
 	failed := make([dynamic]string, context.temp_allocator)
 	if only == "" || only == "x11" {
@@ -180,7 +181,7 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		}
 		env_unset(&d, "GUI_TEST_RANDR")
 		stop_all(&d)
-		if xorg != "" { _ = run({"sudo", "-n", "pkill", "-f", "Xorg :96"}) }   // (an Xorg started through sudo is not this one's to stop)
+		if xorg != "" { _ = toolbox.run({"sudo", "-n", "pkill", "-f", "Xorg :96"}) }   // (an Xorg started through sudo is not this one's to stop)
 	}
 	if only == "" || only == "wayland" {
 		// Wayland: sway on no hardware. Its virtual output and seat take the test's cursor; wtype is a virtual keyboard
@@ -223,7 +224,7 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		}
 		// (a test may have stopped the pointer and made another: the file names the one that runs)
 		if data, err := os.read_entire_file(pid_file, context.temp_allocator); err == nil {
-			_ = run({"kill", strings.trim_space(string(data))})
+			_ = toolbox.run({"kill", strings.trim_space(string(data))})
 		}
 	}
 	if len(failed) > 0 { return fmt.tprintf("failed: %s", strings.join(failed[:], ", ", context.temp_allocator)) }

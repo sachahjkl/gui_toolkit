@@ -11,6 +11,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import toolbox "../../src/toolbox"
 
 // What the code is, where a name is looked for.
 @(private = "file") CODE_EXTENSIONS :: [?]string{".odin", ".mjs", ".js", ".ps1", ".sh", ".bat", ".rs", ".yml", ".toml", ".nix"}
@@ -18,7 +19,7 @@ import "core:strings"
 // The folders a cited path starts with.
 @(private = "file") PATH_ROOTS :: [?]string{"tools", "examples", "tests", "docs", "src", "native", "res", "assets", "ui", "draw", "render", "font", "platform", "devtools"}
 // The packages whose names are checked: `ui.box`, `cdp.connect`.
-@(private = "file") PACKAGES :: [?]string{"ui", "draw", "render", "font", "platform", "config", "arena", "instance", "testkit", "i18n", "fsx", "flate", "devtools", "cdp", "site", "desktop", "process", "update", "paint"}
+@(private = "file") PACKAGES :: [?]string{"ui", "draw", "render", "font", "platform", "config", "arena", "instance", "testkit", "i18n", "fsx", "flate", "devtools", "cdp", "site", "desktop", "process", "update", "paint", "toolbox"}
 // Flags of other programs (git, cargo).
 @(private = "file") SYSTEM_FLAGS :: [?]string{"--recursive", "--init", "--locked", "--release", "--force", "--target-dir", "--no-verify"}
 @(private = "file") NOT_NAMES :: [?]string{"odin", "md", "mjs", "exe", "wgsl"}
@@ -59,8 +60,8 @@ Docs :: struct {
 
 @(private = "file")
 tracked :: proc(dir: string) -> (files: []string, ok: bool) {
-	out, ran := capture({"git", "-C", dir, "ls-files"})
-	if !ran { return nil, false }
+	out, code := toolbox.capture({"git", "-C", dir, "ls-files"})
+	if code != 0 { return nil, false }
 	list := make([dynamic]string, context.temp_allocator)
 	for l in strings.split_lines(out, context.temp_allocator) { if l != "" { append(&list, l) } }
 	return list[:], true

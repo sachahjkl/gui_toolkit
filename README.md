@@ -111,6 +111,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `testkit` | Reusable building blocks for an application's own tests: a block of test-server ports (so several worktrees test side by side, `url` rewrites the default ports to the run's block) and a reader of the process's memory, open handles and (on Windows) GDI / USER objects for endurance and leak tests (`process_<os>.odin`). Pure of any product name. See [docs/testkit.md](docs/testkit.md). |
 | `cdp` | A client of the Chrome DevTools Protocol for tools: a toolkit window (the `devtools` server) or a browser, one WebSocket for a run; find, click, keys, text, pictures, waits, screencasts, scripts and timelines (a picture after each action, compared with another run). See [docs/cdp.md](docs/cdp.md). |
 | `site` | A project's website from its own pages: CHANGELOG.md as a changelog page, news and classic pages, what each page says when shared (feed, sitemap, manifest), Markdown as HTML, and the pages checked in a real browser. See [docs/site.md](docs/site.md). |
+| `toolbox` | What the tools of a project share (`tk`, a program's own build tool): a command run with its output shown or captured (its folder, its environment, a time limit), the environment of a child, the exit code of a finished process, the SHA-256 of bytes and files, and a download pinned by SHA-256 (curl with retries, GitHub's API when a release download fails). See [docs/toolbox.md](docs/toolbox.md). |
 
 ## Features
 

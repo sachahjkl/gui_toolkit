@@ -68,6 +68,7 @@ STEPS := []Step{
 	{name = "instance_pkg", path = "src/instance", oses = LINUX_ONLY},
 	{name = "paint", path = "src/paint", oses = EVERYWHERE},
 	{name = "process", path = "src/process", oses = EVERYWHERE},
+	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
 	{name = "update", path = "src/update", oses = EVERYWHERE},
 	{name = "changelog", oses = EVERYWHERE},
 	{name = "clipboard", oses = EVERYWHERE},
@@ -91,7 +92,6 @@ STEPS := []Step{
 	{name = "size_move"},
 	{name = "testkit"},
 	{name = "tk"},
-	{name = "tk_tool", path = "tools/tk", oses = EVERYWHERE},   // (the tool: what it reads of GitHub's API, what it asks of it)
 	{name = "autoscroll", oses = EVERYWHERE},
 	// the interface, with no window
 	{name = "post", one = true},
