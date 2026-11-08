@@ -123,6 +123,7 @@ Box :: struct {
 	radius:      f32,
 	squish:      f32,
 	transparency: f32,
+	edge_fade:   [4]f32,         // a .Clip box: its content fades out over these widths at its left, top, right, bottom edges (px)
 	cursor:      platform.Cursor,
 	tags_key:    Key,            // identifies the tag stack the box was built under (for theme lookups while drawing)
 	custom:      Custom_Draw,
@@ -206,6 +207,8 @@ Style_Mod :: struct {
 	axis:          Maybe(Axis),              // child layout axis (applies to the box itself, not inherited)
 	cross:         Maybe(Cross_Align),       // child alignment across that axis (next box only)
 	gap:           Maybe(Vec2),              // .Wrap boxes: spacing between items / lines (next box only)
+	edge_fade:     Maybe([4]f32),            // a .Clip box: its content fades to transparent over these widths at its left, top,
+	                                         // right and bottom edges, px (next box only): a list that scrolls shows that it goes on
 	fixed_x:       Maybe(f32),
 	fixed_y:       Maybe(f32),
 	fixed_w:       Maybe(f32),

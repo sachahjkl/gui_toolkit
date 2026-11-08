@@ -118,8 +118,14 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	}
 
 	if .Clip in flags { draw.push_clip(dc, r) }
+	faded := .Clip in flags && b.edge_fade != {}
+	if faded { draw.push_mask(dc, r) }   // (no cache_id: it always asks for the content)
 	if b.custom != nil { b.custom(b, b.custom_user, dc) }
 	for c := b.first; c != nil; c = c.next { draw_box(s, dc, c, scale) }
+	if faded {
+		draw.mask_edge_fade(dc, r, b.edge_fade)
+		draw.pop_mask(dc)
+	}
 	if .Clip in flags { draw.pop_clip(dc) }
 	if .View_Scroll_Y in flags { draw_scrollbar(s, dc, b) }
 

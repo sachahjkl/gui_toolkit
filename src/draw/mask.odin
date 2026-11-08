@@ -147,3 +147,28 @@ pop_mask :: proc(c: ^Context) {
 	}
 	composite_layer(c, ol, f)
 }
+
+// The mask layers of content that fades out at the edges of `r` (after push_mask's content): opaque inside, transparent
+// at each edge whose width in `fade` (left, top, right, bottom) is not 0, a linear ramp over that width. A list that
+// scrolls fades out this way where it goes on.
+mask_edge_fade :: proc(c: ^Context, r: Rect, fade: [4]f32) {
+	ramp :: proc(c: ^Context, r: Rect, lead, trail, length: f32, horizontal: bool) {
+		clear :: Color{1, 1, 1, 0}
+		a := clamp(lead / length, 0, 1)
+		z := clamp(1 - trail / length, a, 1)
+		stops := [4]Gradient_Stop{{color = lead > 0 ? clear : WHITE, pos = 0}, {color = WHITE, pos = a}, {color = WHITE, pos = z}, {color = trail > 0 ? clear : WHITE, pos = 1}}
+		gradient(c, r, {kind = .Linear, start = {0, 0}, end = horizontal ? {length, 0} : {0, length}, stops = stops[:]})
+	}
+	w, h := r.max.x - r.min.x, r.max.y - r.min.y
+	if w <= 0 || h <= 0 { return }
+	horizontal := fade[0] > 0 || fade[2] > 0
+	vertical := fade[1] > 0 || fade[3] > 0
+	if horizontal {
+		mask_layer(c, .Alpha, .Add)
+		ramp(c, r, fade[0], fade[2], w, true)
+	}
+	if vertical {
+		mask_layer(c, .Alpha, horizontal ? .Intersect : .Add)
+		ramp(c, r, fade[1], fade[3], h, false)
+	}
+}
