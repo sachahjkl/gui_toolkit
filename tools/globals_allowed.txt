@@ -216,3 +216,5 @@ ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table
 platform/platform.odin scheme_serial process  # the system's light / dark choice, bumped as it may change (atomic): one system, whatever the number of apps
 platform/theme_linux.odin scheme_watched process  # the portal's SettingChanged subscribed once for the process (the main thread's)
+update/update_test.odin OTHER_SEED test
+update/update_test.odin TEST_SEED test
