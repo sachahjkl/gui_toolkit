@@ -99,6 +99,7 @@ platform/linux_lib.odin xkb_once process  # a library of the system, loaded once
 platform/linux_lib.odin xcb process  # a library of the system, loaded once (sync.Once), then only read
 platform/linux_lib.odin xcb_once process  # a library of the system, loaded once (sync.Once), then only read
 platform/platform.odin CURSOR_CSS_NAMES const  # a table
+platform/platform_linux.odin app_id const  # the program's id on the desktop, set once at start before the first window opens
 platform/platform_linux.odin pumping thread  # the windows of this thread inside poll_events
 platform/platform_win32.odin pumping thread  # the windows of this thread inside poll_events
 platform/platform_win32.odin os_build process  # the Windows build number (atomic: every thread writes the same)

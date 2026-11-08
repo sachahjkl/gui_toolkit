@@ -673,8 +673,8 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 
 	ctitle := strings.clone_to_cstring(title, context.temp_allocator)
 	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_TITLE, nil, wl.proxy_get_version(st.xdg_toplevel), 0, ctitle)
-	app_id := strings.clone_to_cstring("gui_toolkit", context.temp_allocator)
-	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_APP_ID, nil, wl.proxy_get_version(st.xdg_toplevel), 0, app_id)
+	cid := strings.clone_to_cstring(app_id_or_exe(), context.temp_allocator)
+	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_APP_ID, nil, wl.proxy_get_version(st.xdg_toplevel), 0, cid)
 
 	// server-side decorations when the compositor offers them and the app did not ask for an integrated title
 	if wlc.decoration_manager != nil {

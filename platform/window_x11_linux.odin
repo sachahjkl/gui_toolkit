@@ -217,6 +217,7 @@ x11_xkb_load :: proc() {
 @(private) XCB_PROP_MODE_REPLACE :: 0
 @(private) XCB_ATOM_WM_NAME :: Xcb_Atom(39)
 @(private) XCB_ATOM_STRING :: Xcb_Atom(31)
+@(private) XCB_ATOM_WM_CLASS :: Xcb_Atom(67)
 @(private) XCB_ATOM_ATOM :: Xcb_Atom(4)
 @(private) XCB_ATOM_CARDINAL :: Xcb_Atom(6)
 @(private) XCB_CONFIG_WINDOW_WIDTH :: 1 << 2
@@ -302,6 +303,10 @@ x11_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> 
 
 	// title (both WM_NAME, Latin-1, and _NET_WM_NAME, UTF-8)
 	x11_set_title(w, title)
+	// WM_CLASS: "<instance>\0<class>\0", both the program's id (what the desktop matches with its .desktop file)
+	app := app_id_or_exe()
+	class := strings.concatenate({app, "\x00", app, "\x00"}, context.temp_allocator)
+	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, X11_FORMAT_8, u32(len(class)), raw_data(class))
 	// close through WM_DELETE_WINDOW
 	dw := x11c.wm_delete_window
 	x.change_property(x11c.c, XCB_PROP_MODE_REPLACE, id, x11c.wm_protocols, XCB_ATOM_ATOM, X11_FORMAT_32, 1, &dw)
