@@ -489,6 +489,8 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.cross = cross
 	b.gap = {}
 	if has_mod { if v, ok := mod.gap.?; ok { b.gap = v } }
+	b.edge_fade = {}
+	if has_mod { if v, ok := mod.edge_fade.?; ok { b.edge_fade = v } }
 	b.font = st.font
 	b.font_size = st.font_size
 	b.text_pad = st.text_pad

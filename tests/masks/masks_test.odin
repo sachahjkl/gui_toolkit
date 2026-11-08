@@ -286,3 +286,31 @@ recorded_mask_falls_back :: proc(t: ^testing.T) {
 	testing.expect(t, close_rgb(px(img, 130, 32), {255, 255, 255}), "the mask is not drawn")
 	draw.picture_destroy(&f.dc, &pic)
 }
+
+// mask_edge_fade: the content fades to nothing at a faded edge, linearly over its width; two faded axes multiply.
+@(test)
+edge_fade :: proc(t: ^testing.T) {
+	spaces(t, proc(t: ^testing.T, f: ^Fx) {
+		img := frame(f, proc(f: ^Fx) {
+			dc := &f.dc
+			draw.push_mask(dc, CONTENT)
+			draw.rect(dc, CONTENT, RED)
+			draw.mask_edge_fade(dc, CONTENT, {40, 0, 0, 0})
+			draw.pop_mask(dc)
+		})
+		testing.expectf(t, close_rgb(px(img, 0, 30), red_at(0), 8), "%v: the faded edge %v", current_space, px(img, 0, 30))
+		testing.expectf(t, close_rgb(px(img, 20, 30), red_at(0.5), 8), "%v: half way %v", current_space, px(img, 20, 30))
+		testing.expectf(t, close_rgb(px(img, 100, 30), red_at(1)), "%v: past the fade %v", current_space, px(img, 100, 30))
+		testing.expectf(t, close_rgb(px(img, 159, 30), red_at(1)), "%v: the edge not faded %v", current_space, px(img, 159, 30))
+		img2 := frame(f, proc(f: ^Fx) {
+			dc := &f.dc
+			draw.push_mask(dc, CONTENT)
+			draw.rect(dc, CONTENT, RED)
+			draw.mask_edge_fade(dc, CONTENT, {40, 32, 0, 0})
+			draw.pop_mask(dc)
+		})
+		testing.expectf(t, close_rgb(px(img2, 100, 16), red_at(0.5), 8), "%v: top half way %v", current_space, px(img2, 100, 16))
+		testing.expectf(t, close_rgb(px(img2, 20, 16), red_at(0.25), 8), "%v: corner, both halves %v", current_space, px(img2, 20, 16))
+		testing.expectf(t, close_rgb(px(img2, 100, 50), red_at(1)), "%v: inside %v", current_space, px(img2, 100, 50))
+	})
+}

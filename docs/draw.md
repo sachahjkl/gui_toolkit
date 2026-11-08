@@ -222,6 +222,9 @@ idle_frames)` (64 MB, 4 Mpx, 600 frames by default; 0 bytes turns it off), `laye
 the same fields and returns false likewise: the kept result has its mask in it (skip the content and the mask layers;
 `mask_layer` does nothing then), so `cache_key` must cover the mask layers too. Trailing matrices of a masked layer stay
 live only when they commute with the mask (every CSS filter function does); others run before the mask.
+`mask_edge_fade(dc, r, {left, top, right, bottom})`, after the content of a `push_mask`, draws the mask that fades the
+content out over those widths at the edges of `r` (0: that edge stays opaque). A `ui` box gets it with `edge_fade` in
+`ui.next` (with `.Clip`): a list that scrolls fades out where it goes on.
 
 **GPU profile** (`src/render/gpu_profile.odin`): `render.set_gpu_profile(r, true)` puts a timestamp after each step of
 `frame_submit` (a run of draw calls into one target, a clear, a copy, a filter pass); `render.gpu_profile(r)` gives,
