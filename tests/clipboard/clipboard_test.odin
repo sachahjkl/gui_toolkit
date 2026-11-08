@@ -7,7 +7,7 @@ package clipboard_test
 import "core:strconv"
 import "core:strings"
 import "core:testing"
-import "../../platform"
+import "../../src/platform"
 
 @(private = "file")
 put32 :: proc(b: []u8, at: int, v: u32) { b[at], b[at + 1], b[at + 2], b[at + 3] = u8(v), u8(v >> 8), u8(v >> 16), u8(v >> 24) }

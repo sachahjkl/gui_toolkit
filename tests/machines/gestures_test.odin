@@ -4,9 +4,9 @@ package machines_test
 // its button, the keyboard latches of a menu, the undo steps and the column of a text, the rows of a list that go.
 
 import "core:testing"
-import "../../platform"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/platform"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{600, 500}
 @(private = "file") SMALL_WINDOW :: [2]int{300, 250}

@@ -7,10 +7,10 @@ import "core:slice"
 import "core:testing"
 import win "core:sys/windows"
 import "vendor:directx/d3d11"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
 
 SIZE :: [2]int{64, 64}
 

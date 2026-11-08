@@ -2,7 +2,7 @@
 // rotated, skewed and scaled with draw.push_transform; rounded clips (draw.push_clip_rounded); tiled and mipmapped
 // images (render.create_texture_rgba, draw.image, draw.image_tiled).
 //
-//   build.bat transforms
+//   odin run tools/tk -- build transforms
 //   transforms.exe [--time=SECONDS]     freeze the animation at that time (screenshots)
 //                  [--stress=N]         N rotated cards (shape + border + text + image each) instead of the demo
 //                  [--flat]             with --stress: no rotation (the CPU-baked path), for comparison
@@ -22,11 +22,11 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
-import "../../devtools"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
+import "../../src/devtools"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
 
 LOGO_PNG :: #load("../../.project/image.png")
 

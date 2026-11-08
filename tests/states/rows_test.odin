@@ -5,9 +5,9 @@ package states_test
 
 import "core:sync"
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 @(private = "file")
 rows_lock: sync.Mutex

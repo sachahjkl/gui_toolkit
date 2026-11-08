@@ -6,7 +6,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
-import "../../render"
+import "../../src/render"
 import tk "../tk"
 
 // The toolkit's root and the translator (built on first use).

@@ -7,7 +7,7 @@ package pacing_test
 
 import "core:testing"
 import "core:time"
-import "../../platform"
+import "../../src/platform"
 
 MS :: 1_000_000
 

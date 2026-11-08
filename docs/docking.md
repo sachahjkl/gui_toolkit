@@ -1,4 +1,4 @@
-# Docking (`ui/dock_model.odin`, `ui/docking.odin`)
+# Docking (`src/ui/dock_model.odin`, `src/ui/docking.odin`)
 
 Panels the user rearranges, as in an IDE: stacks of tabs side by side or one above the other, split, joined, floated over
 the window and docked back by dragging their tabs. The app owns the layout as flat data (a `ui.Dock`), builds its panels'
@@ -137,7 +137,7 @@ that `controls` its panel's body, a `.Tab_Panel` labelled by its tab. Handles ar
 stacks on each side, with their size as a value. A floating panel is a group ("floating panel"). The squares and the
 preview are not in the tree: the menu is how a screen reader reaches the targets.
 
-Example: `examples/docking` (`build.bat docking`): six panels of an editor, the layout saved next to the program. Tests:
+Example: `examples/docking` (`tk build docking`): six panels of an editor, the layout saved next to the program. Tests:
 `tests/docking` (the model: split, join, float and back, close, the strip, folds, the layout and the targets under a
 point, the text, its round trip, the texts refused; through the test session: a tab dragged onto each target and each
 edge, along strips, out and back by a double click, Escape, the keyboard and the menu, a handle, a close button, the

@@ -21,7 +21,7 @@ when !FONT_NATIVE_LINK {
 	when ODIN_OS == .Windows { foreign import gt_text "system:kernel32.lib" } else { foreign import gt_text "system:c" }
 } else when ODIN_OS == .Windows {
 	foreign import gt_text {
-		"../build/text/gt_text.lib",
+		"../../build/text/gt_text.lib",
 		"system:ntdll.lib",
 		"system:userenv.lib",
 		"system:ws2_32.lib",
@@ -34,7 +34,7 @@ when !FONT_NATIVE_LINK {
 	// TODO(linux, macos): tools/build_text builds the .lib on Windows only; elsewhere `cargo build --release` in
 	// native/text gives libgt_text.a.
 	foreign import gt_text {
-		"../build/text/libgt_text.a",
+		"../../build/text/libgt_text.a",
 		"system:dl",
 		"system:pthread",
 		"system:m",

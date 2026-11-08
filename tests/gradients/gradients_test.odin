@@ -5,9 +5,9 @@ package gradients_test
 
 import "core:math"
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 W :: 200
 H :: 40

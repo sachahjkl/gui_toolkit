@@ -1,4 +1,4 @@
-# Modal dialogs (`ui/overlays.odin`)
+# Modal dialogs (`src/ui/overlays.odin`)
 
 `ui.modal(id, width, &open, y_fraction)` dims the page and shows a panel as tall as what is in it. It stays in the window: narrower than `width` if it must, higher than `y_fraction` says when what is in it would pass the bottom.
 

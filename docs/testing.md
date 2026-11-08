@@ -7,7 +7,7 @@
 
 ## A test of an interface
 
-A test is an `@(test)` procedure on Odin's own test runner, and it calls the toolkit directly (`testkit/session`, `toolkit:testkit/session` from an application):
+A test is an `@(test)` procedure on Odin's own test runner, and it calls the toolkit directly (`src/testkit/session`, `toolkit:testkit/session` from an application):
 
 ```odin
 App :: struct { clicks: int, name: ui.Text_Field }
@@ -46,6 +46,6 @@ The rules:
 - **Pictures**: `session.expect_like(s, path)` against a reference image, `TOOLKIT_TEST_UPDATE=1` writes them: review them like code. Prefer a colour at a point (`pixel`, `count_color`): it says what is wrong.
 - **The globals**: `tests/globals` reads the packages' sources (next to it, not from the working directory) and checks every package-level variable against `tools/globals_allowed.txt` (getting-started.md, "Where state lives").
 - **The case of names**: `tests/unicode_case` reads the sources the same way and fails on a call of `strings.to_lower` / `to_upper` / `equal_fold` or `unicode.to_lower` / `to_upper` that `tools/unicode_case_allowed.txt` does not list with why: they fold by Unicode (the Kelvin sign U+212A is `k` to them), names and protocols take `ascii.lower`, `ascii.equal_fold`...
-- **What needs a real window** stays in `tests/window`, `tests/cursors`, `tests/tray`: hidden windows, fed the system's messages, on the runner's desktop. **What needs a real server** on Linux: `tools/linux_desktop.sh`.
+- **What needs a real window** stays in `tests/window`, `tests/cursors`, `tests/tray`: hidden windows, fed the system's messages, on the runner's desktop. **What needs a real server** on Linux: `tk desktop_tests`.
 
 Numbers in a test are named at the top of its file.

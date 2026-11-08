@@ -3,9 +3,9 @@ package fidget
 import "core:fmt"
 import "core:math"
 import "core:strings"
-import "../../draw"
-import "../../platform"
-import "../../ui"
+import "../../src/draw"
+import "../../src/platform"
+import "../../src/ui"
 
 ////////////////////////////////
 // Commands

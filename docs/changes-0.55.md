@@ -30,7 +30,7 @@ differently, what to change. `examples/whatsnew` shows each item live (`odin bui
 
 ## New API
 
-### Frame pacing, ready-made: `render/pacer.odin`
+### Frame pacing, ready-made: `src/render/pacer.odin`
 
 ```odin
 pacer: render.Pacer              // in the app, one per window
@@ -50,7 +50,7 @@ sequence; opencode native's `pace()` is now one call. Also new, for an applicati
 - `platform.input_pending(w) -> bool`: input waits in the queue (polls, keeps the events for the next `poll_events`).
 - `platform.event_is_input(kind) -> bool`.
 
-### Lazy column: `ui/lazy.odin`
+### Lazy column: `src/ui/lazy.odin`
 
 ```odin
 ui.next({width = ui.fill(), height = ui.fill()})

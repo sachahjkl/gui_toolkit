@@ -1,9 +1,9 @@
 package subpixel_test
 
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 // Text with a coverage per colour stripe, on an offscreen renderer (WARP), with the renderer's own text: the atlas on Direct3D 11,
 // Slug on WebGPU. Black text has no colour of its own, so what has one is what the stripes did.

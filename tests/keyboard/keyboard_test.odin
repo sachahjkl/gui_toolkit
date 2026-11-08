@@ -6,9 +6,9 @@ package keyboard_test
 import "core:sync"
 import "core:fmt"
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 // A focused field's next wake right after an edit: the caret's flip (530 ms) and the margin of a wake, at most: the real clock goes on between the edit and the look.
 CARET_FLIP_WAKE_MS :: 535

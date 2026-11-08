@@ -19,10 +19,10 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../devtools"
+import "../../src/devtools"
 import "../../examples/whatsnew"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 // The numbers a page shows live (its frame counters, its timings) may differ on this share of its pixels, by this much.
 @(private = "file") MAX_SHARE :: 0.004

@@ -10,9 +10,9 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 import stbi "vendor:stb/image"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 Scene :: struct {
 	name: string,

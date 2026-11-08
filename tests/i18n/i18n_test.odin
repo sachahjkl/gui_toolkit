@@ -3,7 +3,7 @@
 package i18n_test
 
 import "core:testing"
-import i18n "../../i18n"
+import i18n "../../src/i18n"
 
 @(test)
 english_is_the_text_itself :: proc(t: ^testing.T) {

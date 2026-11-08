@@ -7,8 +7,8 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
-import "../../ascii"
-@(require) import "core:time"   // (the build is Windows')
+import "../../src/ascii"
+@(require) import "core:time"   // (the build's timing is Windows')
 
 // A static library of native/: an application may link other Rust static libraries (Wren: its image decoders, Wasmtime); each
 // carries its own standard library and all define the unmangled rust_eh_personality, so ours is renamed in the object that defines
@@ -58,10 +58,26 @@ rust_stamp :: proc(crate, steps: string) -> (stamp: string, ok: bool) {
 	return sha256_hex(all[:]), true
 }
 
-// Builds a static library of native/ into <out>/<name>.lib, unless its stamp says it is up to date (`force`: always).
+// Builds a static library of native/ into <out>/<name>.lib (Windows) or <out>/lib<name>.a (elsewhere), unless its stamp says it
+// is up to date (`force`: always). On Linux the symbol is not renamed: the programs link with --allow-multiple-definition.
 build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 	when ODIN_OS != .Windows {
-		return "the static libraries are built here on Windows (Linux: tools/linux_ci.sh)"
+		crate, out := join({root, lib.crate}), join({root, lib.out})
+		name := fmt.tprintf("lib%s.a", lib.name)
+		file, stamp_file := join({out, name}), join({out, RUST_STAMP})
+		stamp, ok := rust_stamp(crate, BUILD_STEPS_SOURCE)
+		if !ok { return fmt.tprintf("the sources of %s cannot be read", crate) }
+		if !force && stamp_holds(file, stamp_file, stamp) {
+			fmt.printfln("%s up to date in %s", lib.name, out)
+			return ""
+		}
+		target := join({out, "target"})
+		if !run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
+		_ = os.make_directory_all(out)
+		if os.copy_file(file, join({target, "release", name})) != nil { return fmt.tprintf("%s cannot be written", file) }
+		if !write_stamp(stamp_file, stamp) { return fmt.tprintf("%s cannot be written", stamp_file) }
+		fmt.printfln("built %s", file)
+		return ""
 	} else {
 		crate, out := join({root, lib.crate}), join({root, lib.out})
 		file := join({out, fmt.tprintf("%s.lib", lib.name)})

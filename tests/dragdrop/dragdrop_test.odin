@@ -1,7 +1,7 @@
 package dragdrop_test
 
 import "core:testing"
-import "../../platform"
+import "../../src/platform"
 
 @(test)
 custom_entries_round_trip :: proc(t: ^testing.T) {

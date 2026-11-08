@@ -3,7 +3,7 @@ package keyboard_test
 
 import "core:testing"
 import win "core:sys/windows"
-import "../../platform"
+import "../../src/platform"
 
 @(test)
 arguments_keep_every_character :: proc(t: ^testing.T) {

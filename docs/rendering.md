@@ -56,14 +56,14 @@ render.surface_use(&r, &surface)   // the renderer now draws to the second windo
 ```
 
 Everything else — `frame_begin` / `frame_submit` / `frame_end`, textures, pooled targets, capture
-(`render/capture.odin`), the blend space, `set_max_frame_latency` (it returns false on wgpu), resize, DPI — is the same call on every
+(`src/render/capture.odin`), the blend space, `set_max_frame_latency` (it returns false on wgpu), resize, DPI — is the same call on every
 system; each dispatches to its backend behind `when USE_WGPU`.
 
 ## What differs between the backends
 
 - **Present pacing.** Direct3D uses a DXGI waitable swap chain (a frame-latency object) and DWM timing for the frame
   statistics (shown / missed refreshes). wgpu on Linux has neither: the FIFO present mode paces frames at the vblank,
-  `render.wait_for_frame` just acquires the next surface texture, and the per-frame statistics stay off. Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it. Both backends take the decision from `render.present_call(mode, tearing_ok, interval, vsync)`: the sync interval (0: at once), the tearing flag (only with no wait, only where the system and the swap chain allow it) and the mode the frame is presented in; `render/present_test.odin` checks it as data.
+  `render.wait_for_frame` just acquires the next surface texture, and the per-frame statistics stay off. Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it. Both backends take the decision from `render.present_call(mode, tearing_ok, interval, vsync)`: the sync interval (0: at once), the tearing flag (only with no wait, only where the system and the swap chain allow it) and the mode the frame is presented in; `src/render/present_test.odin` checks it as data.
 - **Translucency.** A translucent window (`transparent`) goes through DirectComposition on Windows (premultiplied
   alpha). On Linux the compositor blends the alpha surface directly — there is no extra effect to turn on.
 - **The 2D canvas** (`canvas.odin`) is Direct3D only for now; `render.canvas_supported` reports `false` on the wgpu

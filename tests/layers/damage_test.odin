@@ -3,9 +3,9 @@
 package layers_test
 
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 @(private = "file") WHITE :: [4]f32{1, 1, 1, 1}
 @(private = "file") RED :: draw.Color{1, 0, 0, 1}

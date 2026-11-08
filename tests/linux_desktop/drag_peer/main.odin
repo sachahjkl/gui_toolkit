@@ -6,7 +6,7 @@
 package drag_peer
 
 import "core:os"
-import "../../../platform"
+import "../../../src/platform"
 
 PEER_SIZE :: [2]int{300, 200}
 PUMP_WAIT_MS :: 20

@@ -4,7 +4,7 @@
 // The stack's menu (its button, a right click or the menu key on a tab) reaches every target from the keyboard; Ctrl+Tab goes
 // through a stack's panels; the handles resize and fold. The layout is saved next to the program (docking_layout.txt) and
 // read again at the next start; "View" puts back a closed panel.
-//   build.bat docking
+//   odin run tools/tk -- build docking
 package docking
 
 import "core:fmt"
@@ -12,11 +12,11 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:time"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 Panel :: enum u32 { Files = 1, Outline, Editor, Console, Problems, Search }
 

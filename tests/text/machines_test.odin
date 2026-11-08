@@ -2,9 +2,9 @@ package text_test
 
 import "core:testing"
 import "../unwatched"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 // What lasts in the font package says what state it is in: a slot, a page, a sequence of the fallback.
 

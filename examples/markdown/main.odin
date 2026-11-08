@@ -6,11 +6,11 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "core:time"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 SAMPLE :: `# Rich text in gui_toolkit
 

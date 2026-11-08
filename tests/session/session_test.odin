@@ -4,9 +4,9 @@
 package session_test
 
 import "core:testing"
-import "../../platform"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/platform"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") App :: struct { clicks: int, field: ui.Text_Field, typed: string }
 

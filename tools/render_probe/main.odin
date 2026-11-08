@@ -10,9 +10,9 @@ import "core:time"
 import "core:thread"
 import "base:runtime"
 import win "core:sys/windows"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 veh :: proc "system" (info: ^win.EXCEPTION_POINTERS) -> win.LONG {
 	context = runtime.default_context()

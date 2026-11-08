@@ -1,7 +1,7 @@
 # Notification area icon (`platform.tray_*`)
 
 An icon in the notification area (the "system tray") with a tooltip, a menu and notifications. The API is the
-toolkit's (`platform/tray.odin`); Windows implements it with `Shell_NotifyIconW` version 4 (`tray_win32.odin`), Linux with StatusNotifierItem and
+toolkit's (`src/platform/tray.odin`); Windows implements it with `Shell_NotifyIconW` version 4 (`tray_win32.odin`), Linux with StatusNotifierItem and
 `org.freedesktop.Notifications` over D-Bus (`tray_linux.odin`); other systems answer "not supported" (`tray_stub.odin`: `tray_create` returns nil, the other calls do nothing).
 
 ```odin

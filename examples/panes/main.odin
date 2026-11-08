@@ -1,16 +1,16 @@
 // Panes the user resizes, folds and places (ui.pane_split, ui.pane_toggle, ui.pane_place_menu) and sections the user
 // folds (ui.accordion): a sidebar of sections, a content area and a bottom panel (below or at the right). Double-click a
 // handle or press Enter on it to fold its pane; click the strip to bring it back; Tab to a handle and use the arrow keys.
-//   build.bat panes
+//   odin run tools/tk -- build panes
 package panes
 
 import "core:fmt"
 import "core:time"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 App :: struct {
 	win:      ^platform.Window,

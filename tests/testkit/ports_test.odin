@@ -4,7 +4,7 @@
 package testkit_test
 
 import "core:testing"
-import tk "../../testkit"
+import tk "../../src/testkit"
 
 @(test)
 url_moves_default_ports :: proc(t: ^testing.T) {

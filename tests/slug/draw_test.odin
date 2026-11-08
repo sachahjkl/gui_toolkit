@@ -1,9 +1,9 @@
 package slug_test
 
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 // Pixel tests of Slug text through the draw layer on an offscreen renderer (WARP): against the atlas, under transforms,
 // in order with other primitives, clipped, in pictures, after a lost device.

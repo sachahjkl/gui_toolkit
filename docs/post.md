@@ -16,7 +16,7 @@ line := strings.clone(text)
 if !ui.post(&app.ui_state, on_line, raw_data(line), u64(len(line))) { delete(line) }   // closed: never runs
 ```
 
-Example: `examples/stream` (`build.bat stream`).
+Example: `examples/stream` (`tk build stream`).
 
 ## API
 

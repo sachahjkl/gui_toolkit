@@ -5,7 +5,7 @@ package slug_test
 import "core:fmt"
 import "core:math"
 import "core:testing"
-import "../../font"
+import "../../src/font"
 
 setup :: proc(t: ^testing.T, settings := font.DEFAULT_SETTINGS) -> ^font.State {
 	s := new(font.State)

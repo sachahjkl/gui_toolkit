@@ -1,7 +1,7 @@
 # fidget (gui_toolkit example)
 
 The widget gallery, built entirely on the `ui` package.
-`build.bat fidget` at the repo root, then `build\fidget.exe`.
+`odin run tools/tk -- build fidget` at the repo root, then `build/fidget`.
 
 - **Controls**: buttons (accent / secondary / danger / ghost; hover and press show at once), icon buttons with tooltips,
   switches, checkboxes, radios, segmented control (sliding pill), chips, sliders, range slider, stepper

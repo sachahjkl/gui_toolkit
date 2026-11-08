@@ -22,12 +22,12 @@ import "core:slice"
 import "core:strings"
 import "../cmdline"
 import "core:time"
-import "../../ascii"
+import "../../src/ascii"
 
 // Keep a Changelog's, in the order of a version's subsections.
 TYPE_NAMES := [?]string{"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"}
 LINK :: "https://github.com/sachahjkl/gui_toolkit/releases/tag/v%s"
-VERSION_FILE :: "ui/version.odin"
+VERSION_FILE :: "src/ui/version.odin"
 // A subject in a fragment's name, at most, and from where it may be cut at a '-'.
 SLUG_MAX :: 48
 SLUG_CUT_MIN :: 16

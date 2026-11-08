@@ -6,10 +6,10 @@ package gpufx_test
 
 import "core:math"
 import "core:testing"
-import "../../base"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/base"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 SIZE :: [2]int{160, 160}
 

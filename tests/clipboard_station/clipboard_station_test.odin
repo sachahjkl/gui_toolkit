@@ -6,7 +6,7 @@ package clipboard_station_test
 
 import "core:testing"
 import win "core:sys/windows"
-import "../../platform"
+import "../../src/platform"
 
 foreign import user32 "system:User32.lib"
 @(default_calling_convention = "system")

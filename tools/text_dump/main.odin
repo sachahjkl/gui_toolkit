@@ -5,7 +5,7 @@ package text_dump
 
 import "core:fmt"
 import "core:os"
-import "../../font"
+import "../../src/font"
 import corpus "../text_corpus"
 
 main :: proc() {

@@ -4,9 +4,9 @@ package masks_test
 
 import "core:math"
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 SIZE :: [2]int{160, 64}
 

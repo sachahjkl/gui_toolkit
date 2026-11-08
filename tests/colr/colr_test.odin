@@ -9,9 +9,9 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 COLRV1 :: #load("../color_glyphs/data/test_glyphs-glyf_colr_1.ttf")
 

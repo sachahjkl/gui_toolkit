@@ -208,7 +208,7 @@ the blend with what is already drawn. `push_layer(dc, bounds, alpha)` is `push_e
   further. Results are stored as `render.set_filter_precision` says: `.Half` (fp16, the default) or `.Unorm8`
   (sRGB-encoded 8 bits, as browsers keep them: half the memory and bandwidth).
 
-**Kept results** (`draw/layer_cache.odin`). Give a layer `cache_id` (its identity), `cache_key` (a signature of what
+**Kept results** (`src/draw/layer_cache.odin`). Give a layer `cache_id` (its identity), `cache_key` (a signature of what
 you draw in it) and `cache_anchor` (the screen point its content moves with): once the same key came two frames in a
 row, the filtered result is kept, and while the key, the filters run by passes, the transform's linear part, the
 anchor's fraction and the bounds relative to the anchor stay the same, `push_effects` returns false (skip the
@@ -223,7 +223,7 @@ the same fields and returns false likewise: the kept result has its mask in it (
 `mask_layer` does nothing then), so `cache_key` must cover the mask layers too. Trailing matrices of a masked layer stay
 live only when they commute with the mask (every CSS filter function does); others run before the mask.
 
-**GPU profile** (`render/gpu_profile.odin`): `render.set_gpu_profile(r, true)` puts a timestamp after each step of
+**GPU profile** (`src/render/gpu_profile.odin`): `render.set_gpu_profile(r, true)` puts a timestamp after each step of
 `frame_submit` (a run of draw calls into one target, a clear, a copy, a filter pass); `render.gpu_profile(r)` gives,
 a few frames later, the time, count, pixels written and estimated traffic of each kind of step
 (`Gpu_Step`), the render targets bound and the slowest steps. `detail = true` times every draw call (batch, instance
@@ -564,7 +564,7 @@ drag images, captures of one element, `toBlob`-like exports.
 
 When only a small part of the window changed since the last frame (a caret, a hovered control, a progress bar, a video,
 a local animation), the renderer can repaint only the changed rectangles instead of the whole window. The
-application marks the changed boxes each frame; `draw` forwards them to the renderer (`render/damage.odin`):
+application marks the changed boxes each frame; `draw` forwards them to the renderer (`src/render/damage.odin`):
 
 ```odin
 draw.set_partial_redraw(dc, true)        // turn it on (off: the whole window every frame, the default)

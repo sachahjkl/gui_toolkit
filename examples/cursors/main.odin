@@ -9,11 +9,11 @@ import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:time"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 App :: struct {
 	win:      ^platform.Window,

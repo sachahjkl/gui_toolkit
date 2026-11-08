@@ -103,7 +103,7 @@ through wgpu's platform surface descriptors:
 - X11 (XCB): `wgpu.SurfaceSourceXCBWindow{ connection = xcb_connection, window = xcb_window }`.
 
 The platform package exposes these handles for the renderer through `native_surface_handles(w)`; `render.init` takes a neutral handle instead of a `win.HWND` so the same call opens the renderer on
-every system. The present mode (`Vsync`: wgpu's Fifo; `Tearing`: its Immediate, where the surface offers it), resize, DPI and capture (`render/capture.odin`) are the
+every system. The present mode (`Vsync`: wgpu's Fifo; `Tearing`: its Immediate, where the surface offers it), resize, DPI and capture (`src/render/capture.odin`) are the
 same code as the Windows wgpu path (`wgpu_surface.odin`), which the Linux surface slots into.
 
 ## Linux desktop services

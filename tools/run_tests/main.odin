@@ -19,7 +19,7 @@ import "../cmdline"
 import "core:sync"
 import "core:thread"
 import "core:time"
-import "../../ascii"
+import "../../src/ascii"
 
 // What a step does.
 Kind :: enum {
@@ -57,13 +57,13 @@ Step :: struct {
 STEPS := []Step{
 	// no interface, no device
 	{name = "affine", wgpu = .Ci1},
-	{name = "arena", path = "arena"},
-	{name = "ascii", path = "ascii", oses = EVERYWHERE},
-	{name = "base", path = "base"},
-	{name = "config", path = "config", oses = EVERYWHERE},
-	{name = "dbus", path = "dbus", oses = LINUX_ONLY},
-	{name = "instance_pkg", path = "instance", oses = LINUX_ONLY},
-	{name = "update", path = "update", oses = EVERYWHERE},
+	{name = "arena", path = "src/arena"},
+	{name = "ascii", path = "src/ascii", oses = EVERYWHERE},
+	{name = "base", path = "src/base"},
+	{name = "config", path = "src/config", oses = EVERYWHERE},
+	{name = "dbus", path = "src/dbus", oses = LINUX_ONLY},
+	{name = "instance_pkg", path = "src/instance", oses = LINUX_ONLY},
+	{name = "update", path = "src/update", oses = EVERYWHERE},
 	{name = "changelog", oses = EVERYWHERE},
 	{name = "clipboard", oses = EVERYWHERE},
 	{name = "clipboard_station"},
@@ -101,7 +101,7 @@ STEPS := []Step{
 	{name = "a11y", one = true},
 	{name = "a11y_uia", path = "tests/a11y", one = true, defines = {"A11Y_ACCESSKIT=true"}, need = .A11y_Lib},
 	{name = "devtools"},
-	{name = "devtools_unit", path = "devtools"},
+	{name = "devtools_unit", path = "src/devtools"},
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
@@ -130,7 +130,7 @@ STEPS := []Step{
 	{name = "appshaders", wgpu = .Ci3},
 	{name = "video", wgpu = .Ci2, sample = true},
 	{name = "textures", wgpu = .Ci4},
-	{name = "render_pkg", path = "render"},
+	{name = "render_pkg", path = "src/render"},
 	// text
 	{name = "text", wgpu = .Ci1},
 	{name = "subpixel"},
@@ -147,10 +147,10 @@ STEPS := []Step{
 	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Text_Lib},
 	// what must keep compiling
 	{name = "uia_probe", path = "tools/uia_probe", kind = .Build},
-	{name = "font_on_linux", path = "font", kind = .Check, target = "linux_amd64"},
-	{name = "flate_on_linux", path = "flate", kind = .Check, target = "linux_amd64"},
-	{name = "font_on_darwin", path = "font", kind = .Check, target = "darwin_arm64"},
-	{name = "flate_on_darwin", path = "flate", kind = .Check, target = "darwin_arm64"},
+	{name = "font_on_linux", path = "src/font", kind = .Check, target = "linux_amd64"},
+	{name = "flate_on_linux", path = "src/flate", kind = .Check, target = "linux_amd64"},
+	{name = "font_on_darwin", path = "src/font", kind = .Check, target = "darwin_arm64"},
+	{name = "flate_on_darwin", path = "src/flate", kind = .Check, target = "darwin_arm64"},
 }
 
 // What ends a package that does not end, by default: a hang is a failure that names itself.
@@ -244,7 +244,7 @@ choose :: proc(o: ^Options) -> []^Step {
 	for &s in STEPS {
 		if s.path == "" { s.path = fmt.aprintf("tests/%s", s.name) }
 		oses := s.oses == {} ? WINDOWS_ONLY : s.oses
-		if s.kind != .Test && THIS_OS == .Linux { continue }   // (what compiles for Linux is the Linux job's own check: tools/linux_ci.sh)
+		if s.kind != .Test && THIS_OS == .Linux { continue }   // (what compiles for Linux is the Linux job's own check: tk ci)
 		if THIS_OS not_in oses { continue }
 		if len(o.only) > 0 && !slice.contains(o.only[:], s.name) { continue }
 		if o.backend == "wgpu" {

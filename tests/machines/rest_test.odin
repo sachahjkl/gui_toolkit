@@ -4,9 +4,9 @@ package machines_test
 // behind, what a sweep measures while the view glides, what a screen reader is told of what went, the title bar forgotten.
 
 import "core:testing"
-import "../../platform"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/platform"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{600, 500}
 @(private = "file") SCROLL_SIZE :: 300

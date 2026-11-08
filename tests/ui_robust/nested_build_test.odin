@@ -8,8 +8,8 @@ package ui_robust_test
 import "base:runtime"
 import "core:testing"
 import "core:thread"
-import "../../platform"
-import "../../ui"
+import "../../src/platform"
+import "../../src/ui"
 
 @(test)
 building_is_true_between_begin_and_end :: proc(t: ^testing.T) {

@@ -2,7 +2,7 @@ package chrome_test
 
 import "core:math"
 import "core:testing"
-import "../../ui"
+import "../../src/ui"
 
 @(private = "file")
 luminance :: proc(c: u32) -> f64 {

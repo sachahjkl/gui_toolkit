@@ -5,9 +5,9 @@ package scenarios_test
 // keys and the wheel while it has the keyboard, the number selected after.
 
 import "core:testing"
-import "../../platform"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/platform"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(test)
 numbers_step_by_each_modifier :: proc(t: ^testing.T) {

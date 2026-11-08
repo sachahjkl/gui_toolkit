@@ -8,7 +8,7 @@ import "base:runtime"
 import "core:strings"
 import "core:testing"
 import win "core:sys/windows"
-import "../../platform"
+import "../../src/platform"
 
 @(test)
 patterns_are_normalized :: proc(t: ^testing.T) {

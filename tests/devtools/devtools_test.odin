@@ -11,8 +11,8 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../devtools"
-import "../../platform"
+import "../../src/devtools"
+import "../../src/platform"
 
 // The PNG the screenshots are sent as reads back to the same pixels.
 @(test)

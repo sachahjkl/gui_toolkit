@@ -4,7 +4,7 @@
 package frame_slots_test
 
 import "core:testing"
-import "../../platform"
+import "../../src/platform"
 
 MS :: 1_000_000
 

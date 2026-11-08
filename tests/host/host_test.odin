@@ -4,12 +4,12 @@ package host_test
 
 import "core:testing"
 import win "core:sys/windows"
-import "../../draw"
-import "../../font"
-import "../../host"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/host"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 @(private = "file") SIZE :: [2]int{320, 200}
 @(private = "file") FRAME_MS :: 16

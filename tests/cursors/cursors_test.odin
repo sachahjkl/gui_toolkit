@@ -4,7 +4,7 @@
 package cursors_test
 
 import "core:testing"
-import "../../platform"
+import "../../src/platform"
 
 @(test)
 css_names :: proc(t: ^testing.T) {

@@ -4,7 +4,7 @@ package clock_test
 
 import "core:testing"
 import "core:thread"
-import "../../ui"
+import "../../src/ui"
 
 // The clock has run for this long: it is running.
 @(private = "file") RUNS_MS :: 2

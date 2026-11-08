@@ -8,8 +8,8 @@ import "core:strings"
 import "core:testing"
 import "core:time"
 import "../unwatched"
-import "../../base"
-import "../../font"
+import "../../src/base"
+import "../../src/font"
 import corpus "../../tools/text_corpus"
 
 _ :: corpus   // used by the native tests only

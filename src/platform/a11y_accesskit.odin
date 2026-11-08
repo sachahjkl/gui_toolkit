@@ -21,7 +21,7 @@ when !A11Y_NATIVE_LINK {
 	foreign import gt_a11y "system:kernel32.lib"   // the symbols come from the program's own Rust library
 } else {
 	foreign import gt_a11y {
-		"../build/a11y/gt_a11y.lib",
+		"../../build/a11y/gt_a11y.lib",
 		"system:ntdll.lib",
 		"system:userenv.lib",
 		"system:ws2_32.lib",

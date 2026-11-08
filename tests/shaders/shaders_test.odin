@@ -3,7 +3,7 @@ package tests_shaders
 @(require) import "core:slice"
 import "core:strings"
 import "core:testing"
-import "../../render"
+import "../../src/render"
 
 // The shaders are written in WGSL (render/*.wgsl); the Direct3D 11 backend embeds the HLSL naga wrote from them and its DXBC.
 // After editing a .wgsl file, `odin run tools/shaders` writes both again (CI also runs it with -check, which has naga write the HLSL again).
@@ -15,7 +15,7 @@ hlsl_matches_wgsl :: proc(t: ^testing.T) {
 	for desc, m in render.MODULES {
 		want := render.module_header(m, context.temp_allocator)
 		testing.expectf(t, strings.has_prefix(desc.hlsl, want),
-			"render/shaders/%s is stale (it was not written from the current %v): run odin run tools/shaders", desc.file, desc.wgsl_files)
+			"src/render/shaders/%s is stale (it was not written from the current %v): run odin run tools/shaders", desc.file, desc.wgsl_files)
 	}
 }
 
@@ -26,7 +26,7 @@ blobs_match_sources :: proc(t: ^testing.T) {
 		for d, id in render.SHADERS {
 			code, ok := render.shader_compile(id, context.temp_allocator)
 			testing.expectf(t, ok, "%s %s does not compile", d.name, d.entry)
-			testing.expectf(t, len(d.blob) > 0 && slice.equal(code, d.blob), "render/shaders/%s is stale: run odin run tools/shaders", d.file)
+			testing.expectf(t, len(d.blob) > 0 && slice.equal(code, d.blob), "src/render/shaders/%s is stale: run odin run tools/shaders", d.file)
 		}
 	}
 }
@@ -40,6 +40,6 @@ blobs_are_dxbc :: proc(t: ^testing.T) {
 			size := int(d.blob[24]) | int(d.blob[25]) << 8 | int(d.blob[26]) << 16 | int(d.blob[27]) << 24
 			ok = size == len(d.blob)
 		}
-		testing.expectf(t, ok, "render/shaders/%s is not a DXBC container", d.file)
+		testing.expectf(t, ok, "src/render/shaders/%s is not a DXBC container", d.file)
 	}
 }

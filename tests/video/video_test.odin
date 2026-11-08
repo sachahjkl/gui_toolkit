@@ -5,9 +5,9 @@ package video_test
 import "core:testing"
 import "vendor:directx/d3d11"
 import win "core:sys/windows"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 _ :: d3d11   // (only the Direct3D 11 build uses them: nv12_texture_of_the_device)
 _ :: win

@@ -52,14 +52,14 @@ visual extent `[x0, x1)` (spacing included), `rtl`. Carets and hit testing:
   where the stretch between the two carets would cover letters that are not selected. `ui.line_edit` and `ui.text_edit` draw
   one rectangle per stretch.
 
-**Grapheme clusters** (`font/grapheme.odin`, UAX #29 on `core:unicode/utf8`'s segmentation): what a reader calls one
+**Grapheme clusters** (`src/font/grapheme.odin`, UAX #29 on `core:unicode/utf8`'s segmentation): what a reader calls one
 character, e.g. an emoji family (5 code points), a flag (2), a letter and its combining marks, a Hangul syllable, an Indic
 conjunct. `grapheme_next(s, i)` and `grapheme_prev(s, i)` give the boundary after / before any byte index (also one inside a
 code point or a cluster), `is_grapheme_boundary`, `grapheme_count`. The arrows, Backspace and Delete of `ui.line_edit` and
 `ui.text_edit`, clicks (`hit_index`), the cut of a toast and the line breaks of `ui.wrap_lines` work on clusters: nothing
 is ever left of a half emoji.
 
-**Editing wrapped text** (`ui/text_lines.odin`, `ui/text_edit.odin`). `ui.text_visual_lines(fonts, font, size, text,
+**Editing wrapped text** (`src/ui/text_lines.odin`, `src/ui/text_edit.odin`). `ui.text_visual_lines(fonts, font, size, text,
 width)` gives the visual lines of edited text: each paragraph ("\n") breaks at the backend's line break opportunities
 (`line_breaks` on the whole paragraph: spaces, hyphens, CJK, Thai / Lao / Khmer / Myanmar words), a word wider than the
 line between grapheme clusters; trailing spaces stay on their line. A wrapped line's end is also the next line's start:
@@ -70,7 +70,7 @@ box is as tall as its lines within the limits, then scrolls. `Edit_Result.caret`
 build); `ui.text_edit_caret_rect(a)` gives the caret and the selection's other end in window coordinates as last drawn
 (completion popovers, input method windows). Example: the composer of `examples/fidget`.
 
-**Syntax colouring** (`ui/text_edit.odin`). `ui.text_edit(..., highlight = &hl)` with a `ui.Text_Highlight` draws coloured
+**Syntax colouring** (`src/ui/text_edit.odin`). `ui.text_edit(..., highlight = &hl)` with a `ui.Text_Highlight` draws coloured
 runs the caller classifies; the editor itself knows no language. `hl.spans(user, line_text, para, &out)` is called per
 *visible* paragraph (never the whole document) and appends `ui.Text_Span{start, end, color}` byte ranges into `line_text`
 (in order, non-overlapping); a byte no span covers uses the box's text colour, and a zero colour `{0,0,0,0}` falls back to
@@ -80,7 +80,7 @@ rejects. `Edit_Result.hover_line` is the paragraph under the pointer (or -1): sh
 cost is only the visible lines'. Example: an editor of content-blocker filters colours Adblock
 syntax and underlines lines its engine would drop.
 
-**Rich text** (`ui/rich_text.odin`). `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
+**Rich text** (`src/ui/rich_text.odin`). `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
 each run has its text and a `Rich_Style` (face, size, `bold`, `italic`, `code` (mono font, the theme's `code_bg`),
 colour, background, `underline`, `strike`, `link`). Lines break at the backend's opportunities computed on the whole
 text, so a word whose style changes in the middle is not broken there; "\n" always breaks; a word wider than the line is
@@ -93,7 +93,7 @@ by `ui.rich_set_faces(state, regular, bold, italic, bold_italic)`, else simulate
 `rich_layout`, `rich_text` (the whole text), `rich_index_at` (hit test), `rich_caret`, `rich_range_rects`,
 `rich_link_at`. Example: `examples/markdown`.
 
-**Selecting text outside fields** (`ui/selection.odin`). Labels, paragraphs and rich paragraphs built with
+**Selecting text outside fields** (`src/ui/selection.odin`). Labels, paragraphs and rich paragraphs built with
 `.Selectable` (`next({flags = {.Selectable}})`, or `style({flags = {.Selectable}})` around a whole document: clickable
 boxes in it stay buttons) share one selection that runs across boxes in build order. Press and drag selects (into the
 nearest selectable box when the pointer leaves the text: above a box its start, below it its end), Shift+click
@@ -152,7 +152,7 @@ current frame). New rendering settings (`set_settings`: subpixel steps, renderin
 forget the cached bitmaps and bump `atlas_settings_generation`; `clear_atlas` clears every page. After a device loss
 the draw context uploads its pages again from the CPU copy.
 
-The draw layer (`draw/text.odin`):
+The draw layer (`src/draw/text.odin`):
 
 - `draw.glyph_run(dc, size, pos, color, glyphs)`: draws shaped glyphs with the text origin at `pos` (left, baseline):
   coverage glyphs are `KIND_GLYPH` instances sampling a gray page (`t0`; a page change starts a batch), color glyphs
@@ -193,7 +193,7 @@ The path, from the font to the screen:
    are kept, then the least recently used page that no current frame draws from is cleared (new epoch: pictures that
    drew from it are stale, `slug_pages_hold`), else one more is made. A glyph the provider has no outline for, a color
    glyph, or one that does not fit a row is drawn from the atlas (`Slug_Kind.Atlas`); a space is `Blank`.
-4. **Draw** (`draw/slug.odin`, `render/slug.wgsl`): a glyph is one `KIND_SLUG` instance in the ordinary instance list (so
+4. **Draw** (`src/draw/slug.odin`, `src/render/slug.wgsl`): a glyph is one `KIND_SLUG` instance in the ordinary instance list (so
    order, clips, fades, transforms and pictures are as for any primitive); `slug_runs` tells the renderer which ones, and
    `frame_submit` draws a batch in pieces, switching between the two pipelines in order. The vertex shader grows each
    glyph's box by half a pixel on screen whatever the transform (the reference's dynamic dilation); the pixel shader is
@@ -240,7 +240,7 @@ recorded stale, as the other rendering settings do. `tests/subpixel` holds all o
 `Settings.color_engine` says who draws COLR / CPAL color glyphs (`System`, the default: Direct2D, as before; `Builtin`:
 this package).
 
-**The interpreter** (`font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in them: their tables come from DirectWrite on Windows and from the native backend elsewhere, so Linux gets the same emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
+**The interpreter** (`src/font/colr.odin`, `colr_raster.odin`, `colr_gsub.odin`; no DirectWrite in them: their tables come from DirectWrite on Windows and from the native backend elsewhere, so Linux gets the same emoji) reads the face's `COLR` and `CPAL` tables (`TryGetFontTable`: system fonts, files and memory fonts alike) and draws
 the glyph at the requested pixel size on the CPU:
 
 - COLR v0 layers and v1 paint graphs: `PaintColrLayers`, `PaintSolid`, linear / radial / sweep gradients (the three extend
@@ -270,7 +270,7 @@ the glyph at the requested pixel size on the CPU:
 - Against Direct2D on the color-fonts test glyphs the mean difference is 0.7 / 255; against Chrome / Edge on 115 emoji of
   Noto Color Emoji (`tools/tk emoji_board`) it is 0.3 to 0.7 / 255 at 16 to 64 px and 100 % to 175 %.
 
-**Built-in emoji** (`font/emoji.odin`): `set_emoji_source(s, path)` or `set_emoji_source(s, data = ...)` hands the package an
+**Built-in emoji** (`src/font/emoji.odin`): `set_emoji_source(s, path)` or `set_emoji_source(s, data = ...)` hands the package an
 emoji font (Wren ships Noto Color Emoji, `tools/tk fetch_emoji`). It loads on the first emoji that needs it. In shaping it
 takes the characters drawn as emoji by default (`Emoji_Presentation`, regional indicators), any emoji followed by U+FE0F or
 U+20E3 even when a face of the cascade has a text glyph, and it replaces the system's own color emoji font when a font
@@ -279,7 +279,7 @@ a text-presentation emoji nothing else draws falls back to the emoji font before
 Wales) go through the face's GSUB `ccmp` ligatures (`gsub_ligate`), which DirectWrite does not apply to tag characters.
 All 3 963 fully qualified sequences of Unicode 18's `emoji-test.txt` shape to one glyph (`tests/colr`).
 
-**One color glyph as pixels** (`font/color_canvas.odin`): `color_glyph_rgba(s, face, gid, size, fg)` rasterizes a single
+**One color glyph as pixels** (`src/font/color_canvas.odin`): `color_glyph_rgba(s, face, gid, size, fg)` rasterizes a single
 color glyph to a straight-alpha RGBA `Color_Glyph{px, w, h, ox, oy}` at an exact em size, with `(ox, oy)` the offset from
 the pen (baseline origin, y down) to the bitmap's top-left corner; `glyph_is_color(s, face, gid, size)` says whether a
 glyph is drawn in color. Unlike `glyph_image`, nothing goes through the atlas or the draw layer: the caller owns the
@@ -292,7 +292,7 @@ report no color glyph, so a caller falls back to the outline.
 
 ## Find in page
 
-`ui/find.odin` finds a needle in the text the interface shows (labels, wrapped paragraphs, rich paragraphs) after each
+`src/ui/find.odin` finds a needle in the text the interface shows (labels, wrapped paragraphs, rich paragraphs) after each
 layout, in reading order, with the rectangles of each match whether on screen or scrolled away, and paints them behind
 the text. The application owns the search field and the navigation:
 
@@ -329,7 +329,7 @@ counted until the next one.
 - Text per colour stripe (below) only in the frame's own target, and only for the renderer's own text: Direct3D 11 with the atlas,
   WebGPU with Slug. The other two pairs stay grayscale.
 - Color glyphs: on Windows 11 22H2 and later every format (COLR v0 and v1, bitmaps, SVG); from Windows 10 1607 no COLR v1
-  paint trees (their v0 layers, else the outline). Text-color layers take the text's color. Off Windows: COLR v0 and v1 through the interpreter, CBDT from its PNG images (`font/cbdt.odin`); no sbix or SVG.
+  paint trees (their v0 layers, else the outline). Text-color layers take the text's color. Off Windows: COLR v0 and v1 through the interpreter, CBDT from its PNG images (`src/font/cbdt.odin`); no sbix or SVG.
 - No kerning or ligature across a space (words are shaped apart, as Blink does with its word cache).
 - Horizontal text only.
 - Before Windows 8.1 (no `IDWriteFactory2`): no system fallback, no color glyphs, ClearType analyses averaged to gray.

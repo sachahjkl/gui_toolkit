@@ -14,7 +14,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
-import "../../render"
+import "../../src/render"
 
 NAGA_EXE :: "build/naga/wgsl2hlsl.exe"
 
@@ -27,7 +27,7 @@ main :: proc() {
 	}
 	check := len(os.args) > 1 && os.args[1] == "-check"
 	root, exe := toolchain()
-	shaders_dir, _ := filepath.join({root, "render", "shaders"}, context.temp_allocator)
+	shaders_dir, _ := filepath.join({root, "src", "render", "shaders"}, context.temp_allocator)
 	tmp_dir, _ := filepath.join({root, "build", "tmp"}, context.temp_allocator)
 	build_dir, _ := filepath.join({root, "build"}, context.temp_allocator)
 	os.make_directory(build_dir)

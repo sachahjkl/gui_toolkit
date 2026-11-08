@@ -1,7 +1,7 @@
 // Effects demo (draw layer only, no UI): filter chains on layers (blur, color matrices, drop shadows), blend modes,
 // backdrops (frosted glass), ellipse and polygon clips, glowing text.
 //
-//   build.bat effects
+//   odin run tools/tk -- build effects
 //   effects.exe [--time=SECONDS]     freeze the animation at that time (screenshots)
 //               [--stress=N]         N blurred, shadowed cards over a frosted backdrop each, instead of the demo
 //               [--bench=FRAMES]     print instance / layer / pass counts, CPU and GPU times (the GPU time of each
@@ -18,11 +18,11 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
-import "../../devtools"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
+import "../../src/devtools"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
 
 App :: struct {
 	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol

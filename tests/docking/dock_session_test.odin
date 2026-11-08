@@ -6,9 +6,9 @@ package docking_test
 
 import "core:fmt"
 import "core:testing"
-import "../../platform"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/platform"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") TAB_CLOSE_SEARCH :: 8
 

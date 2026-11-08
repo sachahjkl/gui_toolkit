@@ -1,5 +1,5 @@
 // Moved here with the primitives it covers (was Wren's src/base/base_test.odin: the generational pool and the scope tree).
-//   odin test arena -vet
+//   odin test src/arena -vet
 package arena
 
 import "core:testing"
