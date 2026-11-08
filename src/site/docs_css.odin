@@ -250,7 +250,7 @@ DOCS_CODE_CSS :: `/* code blocks, tables and the skip link */
 .t { color: #ffcb6b; }
 .table-box { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .table-box table { border-collapse: collapse; width: 100%; font-size: 15px; }
-.table-box th, .table-box td { min-width: 14ch; padding: 9px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table-box th, .table-box td { min-width: min(26ch, 70vw); padding: 9px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .table-box th { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .table-box tr:last-child td { border-bottom: 0; }
 .skip { position: absolute; left: 12px; top: -60px; z-index: 40; padding: 8px 14px; background: var(--accent); color: var(--bg); }
