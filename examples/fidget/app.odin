@@ -3,12 +3,12 @@
 package fidget
 
 import "core:time"
-import "../../devtools"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/devtools"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 // Icon-font characters (icons.ttf)
 ICON_GEAR :: "G"

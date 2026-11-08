@@ -7,7 +7,7 @@ import "core:sync"
 import "core:testing"
 import "../unwatched"
 import "core:thread"
-import "../../font"
+import "../../src/font"
 
 setup :: proc(t: ^testing.T, settings := font.DEFAULT_SETTINGS) -> ^font.State {
 	s := new(font.State)

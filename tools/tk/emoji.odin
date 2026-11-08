@@ -8,9 +8,9 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
-import "../../ascii"
+import "../../src/ascii"
 
-EMOJI_DATA_SOURCE :: "font/emoji_data.odin"
+EMOJI_DATA_SOURCE :: "src/font/emoji_data.odin"
 // A line of ranges in it, at most (with its tab).
 EMOJI_DATA_LINE :: 118
 

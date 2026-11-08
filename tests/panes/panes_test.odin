@@ -5,11 +5,11 @@
 package panes_test
 
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 @(private) SIZE :: [2]int{400, 240}
 

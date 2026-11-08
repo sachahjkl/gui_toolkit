@@ -12,7 +12,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:time"
-import "../../font"
+import "../../src/font"
 import corpus "../text_corpus"
 
 ADV_TOLERANCE :: 0.01   // px: two advances closer than this are the same

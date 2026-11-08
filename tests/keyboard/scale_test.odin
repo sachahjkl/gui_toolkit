@@ -3,10 +3,10 @@ package keyboard_test
 
 import "core:sync"
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
+import "../../src/ui"
 
 @(private = "file") SIZE :: [2]int{400, 200}
 @(private = "file") lock: sync.Mutex

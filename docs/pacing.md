@@ -1,6 +1,6 @@
 # The cadence model: when a frame starts and how it is shown
 
-`platform/pacing.odin` (with its clock, `platform/frame_slots.odin`), pure logic (no window, no clock, no swap chain);
+`src/platform/pacing.odin` (with its clock, `src/platform/frame_slots.odin`), pure logic (no window, no clock, no swap chain);
 `tests/pacing` and `tests/frame_slots`.
 
 An application that draws only when something moves has to decide, for each frame, when it starts, whether it waits for
@@ -62,7 +62,7 @@ Why each one:
 Input is never what is limited: it is read as it comes and time-stamped, whatever the frames do. What the cadence decides is how
 many frames go out, and that is the application's to choose.
 
-The renderer does all of it for a window (render/pacer.odin): the plan adopted when the display or `pacer.choices` change, the
+The renderer does all of it for a window (src/render/pacer.odin): the plan adopted when the display or `pacer.choices` change, the
 frame's slot and the swap chain's waited for, its latency set. `platform.wait_slot` makes the slot's wait: input is taken as it
 arrives, a key or a button ends it (their frame goes out now), a pointer that moves and the wheel do not (the next frame carries all
 of them, which is what holds a 1 kHz mouse back):

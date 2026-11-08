@@ -1,6 +1,6 @@
 # The frame gate: one state machine for the frames of a thread
 
-`platform/frame_gate.odin`, pure logic (no window, no clock); `tests/frame_gate`.
+`src/platform/frame_gate.odin`, pure logic (no window, no clock); `tests/frame_gate`.
 
 A thread draws its windows, and several things can ask for a frame while it is making one: a loop of the system that pumps
 the thread's messages and paints from `WM_PAINT` (live resize, a menu, Alt+Space, a modal dialog, a drag and drop:

@@ -2,8 +2,8 @@
 
 The toolkit exposes its windows to assistive technologies (NVDA, Narrator, JAWS, Windows magnifier, voice control):
 each frame, the boxes of `ui` become an accessibility tree, and [AccessKit](https://github.com/AccessKit/accesskit)
-turns it into UI Automation on Windows. On Linux a small AT-SPI 2 bridge over D-Bus answers for it (`platform/a11y_linux.odin`:
-roles, names, states, bounds, Invoke and Focus), but it does not register with the desktop yet, so a screen reader does not find the window. macOS has only a stub (`platform/a11y_stub.odin`).
+turns it into UI Automation on Windows. On Linux a small AT-SPI 2 bridge over D-Bus answers for it (`src/platform/a11y_linux.odin`:
+roles, names, states, bounds, Invoke and Focus), but it does not register with the desktop yet, so a screen reader does not find the window. macOS has only a stub (`src/platform/a11y_stub.odin`).
 
 ## Turning it on
 
@@ -151,7 +151,7 @@ another window than its last one sends that window a whole tree. A tree of the a
 
 ## Known limits
 
-- **Linux**: the AT-SPI 2 bridge above, without text ranges or per-node objects. **macOS**: a stub (`platform/a11y_stub.odin`).
+- **Linux**: the AT-SPI 2 bridge above, without text ranges or per-node objects. **macOS**: a stub (`src/platform/a11y_stub.odin`).
 - **The toolkit's own tree is made again in each build that makes one** (an immediate-mode interface: there is no
   record of what changed); the diff then sends only what changed. Its cost grows with the nodes of the window, not with
   the changes (`a11y_cost`); a virtual list makes nodes for its visible rows only.
@@ -161,7 +161,7 @@ another window than its last one sends that window a whole tree. A tree of the a
 
 ## The platform layer
 
-`platform/a11y.odin` is independent of the system: roles (`A11y_Role`, AccessKit's list), flags, actions, properties,
+`src/platform/a11y.odin` is independent of the system: roles (`A11y_Role`, AccessKit's list), flags, actions, properties,
 and an update writer (`a11y_node`, `a11y_bounds`, `a11y_children`, `a11y_str`, `a11y_num`, `a11y_int`, `a11y_ids`,
 `a11y_bytes`, `a11y_floats`, `a11y_selection`, `a11y_graft`); `a11y_diff.odin` turns whole trees into incremental
 updates, `a11y_diff_patch` node-by-node ones. `a11y_state(window)` (Off / Full / Incremental), `a11y_send`, `a11y_take_request`. The adapter

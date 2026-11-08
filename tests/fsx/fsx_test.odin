@@ -7,7 +7,7 @@ import "core:os"
 import "core:sync"
 import "core:testing"
 import "core:thread"
-import "../../fsx"
+import "../../src/fsx"
 
 // The smaller file of two (read_all_never_gives_a_part).
 SIZE_SHORT :: 4096

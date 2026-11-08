@@ -9,9 +9,9 @@ import "core:thread"
 import "core:testing"
 import "core:time"
 import win "core:sys/windows"
-import "../../base"
-import "../../platform"
-import "../../render"
+import "../../src/base"
+import "../../src/platform"
+import "../../src/render"
 
 // Long enough for a timer of a modal loop (16 ms) to fire, had it been set.
 WINDOW_SIZE :: [2]int{320, 240}

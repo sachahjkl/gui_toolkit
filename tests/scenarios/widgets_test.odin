@@ -4,9 +4,9 @@ package scenarios_test
 // a virtual list scrolled by the program, a menu's heading, posted calls by the window, selection cleared.
 
 import "core:testing"
-import "../../platform"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/platform"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{500, 400}
 // A toast's life is over by then (ui TOAST_LIFE_MS, its fade out).

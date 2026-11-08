@@ -6,7 +6,7 @@ package canvas_test
 import "core:slice"
 import "core:testing"
 import "core:time"
-import "../../render"
+import "../../src/render"
 
 W, H :: 64, 48
 RED :: [4]u8{255, 0, 0, 255}

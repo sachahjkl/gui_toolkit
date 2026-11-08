@@ -1,7 +1,7 @@
 # changelog.d
 
 One file per change, assembled into `CHANGELOG.md` when a version is published. A branch adds its fragment here and
-never edits `CHANGELOG.md` nor `ui/version.odin`: two branches never conflict on them.
+never edits `CHANGELOG.md` nor `src/ui/version.odin`: two branches never conflict on them.
 
 A fragment is `changelog.d/<yyyyMMdd-HHmmss>-<subject>.md` (subject: lowercase letters, digits and `-`):
 

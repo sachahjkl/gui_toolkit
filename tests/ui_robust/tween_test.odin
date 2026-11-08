@@ -3,7 +3,7 @@ package ui_robust_test
 // ui.tween: a set time, gentle at both ends, the first step not the largest, and no frames asked for once it is there.
 
 import "core:testing"
-import "../../ui"
+import "../../src/ui"
 
 @(private = "file") TWEEN_MS :: 200
 @(private = "file") TWEEN_DT :: 0.02

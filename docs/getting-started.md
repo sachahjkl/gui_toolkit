@@ -8,7 +8,7 @@ PowerShell 5.1).
 
 | What | Version | Needed for |
 |---|---|---|
-| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library, `-define:FONT_BACKEND=native` (`tools/linux_ci.sh` builds that way). No macOS backend. |
+| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library, `-define:FONT_BACKEND=native` (`tk ci` builds that way). No macOS backend. |
 | [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-11) | **`dev-2026-11`** (`odin version` says `dev-2026-11-nightly:9a69916`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
 | MSVC: Visual Studio 2022 or its Build Tools, workload "Desktop development with C++" (MSVC x64 and a Windows 10/11 SDK) | | Odin links with `link.exe` and finds it by itself (no developer prompt needed); `rc.exe` for an exe icon (`-resource:`) |
 | PowerShell 5.1 or 7 | | the scripts of `tools\` |
@@ -25,21 +25,21 @@ git init
 git submodule add https://github.com/sachahjkl/gui_toolkit libs/gui_toolkit
 git -C libs/gui_toolkit tag -l                # the published versions
 git -C libs/gui_toolkit checkout vX.Y.Z       # the latest (examples/hello is in every version after 0.43.0)
-mkdir src, build                              # (odin does not create the output folder: "don't have access to write")
+mkdir app, build                              # (odin does not create the output folder: "don't have access to write")
 ```
 
 The smallest application is `examples/hello` (a label, a text field, a button that counts its clicks). Copy it, with
 the toolkit's packages imported through a collection named `gt`:
 
 ```powershell
-(Get-Content libs\gui_toolkit\examples\hello\main.odin) -replace '"\.\./\.\./', '"gt:' -replace '^package hello', 'package myapp' | Set-Content src\main.odin
-odin build src -collection:gt=libs/gui_toolkit -vet -out:build/myapp.exe -subsystem:windows
+(Get-Content libs\gui_toolkit\examples\hello\main.odin) -replace '"\.\./\.\./src/', '"gt:' -replace '^package hello', 'package myapp' | Set-Content app\main.odin
+odin build app -collection:gt=libs/gui_toolkit/src -vet -out:build/myapp.exe -subsystem:windows
 build\myapp.exe                  # the window
 build\myapp.exe --frames=3       # three frames of the hidden window, prints "hello: 3 frames, 11 boxes", exits 0
 ```
 
 `import "gt:ui"`, `"gt:draw"`, `"gt:render"`, `"gt:font"`, `"gt:platform"` (and `"gt:flate"`, `"gt:base"`) are the
-packages; they import each other by relative paths, so any collection name works. `-o:speed` for a release build
+packages, in the toolkit's `src` folder; they import each other by relative paths, so any collection name works. `-o:speed` for a release build
 (about 9 s for hello), `-debug` for a debugger (and the Direct3D debug layer: `D3D_DEBUG` follows `-debug`).
 `-subsystem:windows` gives no console: what the program prints is lost unless it is redirected
 (`Start-Process build\myapp.exe -RedirectStandardOutput out.txt -Wait`); leave it out while developing to see it.
@@ -72,7 +72,7 @@ for you, in order:
 3. `hosts_wait`: `platform.wait_event(win, ui.wake_in_ms(&s))` unless `ui.needs_frame(&s)` (an animation): 0 % CPU
    at rest, woken by input or by the interface's own timers (caret blink, tooltip).
 
-What a frame of yours does besides is a hook of the Host (`host/host.odin`): `params` (the style, the animations of each
+What a frame of yours does besides is a hook of the Host (`src/host/host.odin`): `params` (the style, the animations of each
 build), `input` (events the interface does not see), `builds` (several builds in a frame: `host.host_build` again),
 `hold` (no picture this frame), `after_build`, `before_input`, `dragging`, `rest_frame`. Another window is another
 `host_open` with the same `Shared`: a surface on the same renderer, built in turn, `hosts_wait({&a, &b})` for both
@@ -99,11 +99,13 @@ surface (`set_fixed_surface` returns false), so the recipe does not help there (
 The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line_edit`, `if ui.row() { ... }`):
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.
 
-## 3. What `build.bat` does
+## 3. What `tk build` does
 
-`build.bat <example> [debug]` (in the toolkit's folder) is `odin build examples/<example> -out:build/<example>.exe
--o:speed -vet -subsystem:windows` (or `-debug` instead of `-o:speed`), with `-resource:examples/<example>/<example>.rc`
-when the example has an icon. It builds the examples only; your project calls `odin build` itself as above.
+`odin run tools/tk -- build <example> [-debug]` (in the toolkit's folder; `build.bat` and `./build.sh` are its shortcuts) is
+`odin build examples/<example> -out:build/<example> -o:speed -vet` (or `-debug` instead of `-o:speed`). On Windows it adds
+`-subsystem:windows` and `-resource:examples/<example>/<example>.rc` when the example has an icon; on Linux it builds the native
+text backend first and adds `-define:FONT_BACKEND=native`. It builds the examples only; your project calls `odin build` itself as
+above.
 
 ## 4. Choices made when compiling (`-define:`)
 
@@ -145,7 +147,7 @@ odin run tools/run_tests -- -backend:wgpu              # the pixel tests on WebG
 
 Pixel tests draw on an offscreen renderer on WARP (`render.init_offscreen(&r, size, warp = true)`: software, the same
 pixels on every machine, no window). Timing assertions only run with `GUI_PERF=1` and never in CI (`base.perf_skip`).
-A test of your own interface uses `testkit/session` ([testing.md](testing.md)): an application with no window, input through the
+A test of your own interface uses `src/testkit/session` ([testing.md](testing.md)): an application with no window, input through the
 event path, real pixels, barriers on a state, and a clock of its own, so that the caret blink, double clicks and delays do not depend on how
 fast the machine runs.
 
@@ -154,7 +156,7 @@ fast the machine runs.
 Semantic versioning, `ui.VERSION`, git tags `vX.Y.Z` with a GitHub release each; while `0.x` a minor version may change
 the API (CHANGELOG.md says how). Pin the submodule to a tag and read the CHANGELOG's section before moving it. A change to
 the toolkit itself follows [CONTRIBUTING.md](../CONTRIBUTING.md): a fragment in `changelog.d/`, never an edit of
-`CHANGELOG.md` or `ui/version.odin`.
+`CHANGELOG.md` or `src/ui/version.odin`.
 
 ## 7. Where state lives
 

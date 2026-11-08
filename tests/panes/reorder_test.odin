@@ -4,9 +4,9 @@ package panes_test
 
 import "core:fmt"
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 @(test)
 reorder_geometry :: proc(t: ^testing.T) {

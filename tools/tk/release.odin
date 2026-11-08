@@ -31,13 +31,13 @@ run_release :: proc(a: ^Args) -> string {
 	if !run({changelog, "-check", fmt.tprintf("-release:%s", version)}, root) { return "the release is not consistent" }
 
 	when ODIN_OS == .Windows {
-		if !run({"cmd", "/c", "build.bat", "fidget"}, root) { return "building fidget failed" }
+		if why := build_example(root, "fidget", false); why != "" { return why }
 		if !run({"node", "tools/screenshots.mjs", "--only", "about"}, root) { return "the About picture failed" }
 	} else {
 		fmt.println("tk release: the About picture is taken on Windows (fidget): it stays as it is")
 	}
 
-	if !git(root, "add", "-A", "--", "CHANGELOG.md", "changelog.d", "ui/version.odin", "README.md", "docs/screenshots/about.png") { return "git add failed" }
+	if !git(root, "add", "-A", "--", "CHANGELOG.md", "changelog.d", "src/ui/version.odin", "README.md", "docs/screenshots/about.png") { return "git add failed" }
 	if !git(root, "commit", "-q", "-m", summary != "" ? fmt.tprintf("%s: %s", version, summary) : version) { return "git commit failed" }
 	tag := fmt.tprintf("v%s", version)
 	if !git(root, "tag", "-a", tag, "-m", summary != "" ? fmt.tprintf("%s: %s", tag, summary) : tag) { return "git tag failed" }

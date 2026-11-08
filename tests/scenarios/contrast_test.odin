@@ -5,8 +5,8 @@ package scenarios_test
 
 import "core:math"
 import "core:testing"
-import "../../draw"
-import "../../ui"
+import "../../src/draw"
+import "../../src/ui"
 
 @(test)
 contrast_is_wcags :: proc(t: ^testing.T) {

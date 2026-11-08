@@ -2,7 +2,7 @@ package text_test
 
 import "core:testing"
 import "../unwatched"
-import "../../font"
+import "../../src/font"
 
 FAMILY :: "\U0001F468\u200D\U0001F469\u200D\U0001F467"
 FLAG_FR :: "\U0001F1EB\U0001F1F7"

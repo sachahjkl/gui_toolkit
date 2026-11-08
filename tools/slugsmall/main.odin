@@ -10,9 +10,9 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import stbi "vendor:stb/image"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 Variant :: struct {
 	name:   string,

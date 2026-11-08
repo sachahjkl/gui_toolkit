@@ -13,10 +13,10 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../platform"
-import "../../testkit"
+import "../../src/platform"
+import "../../src/testkit"
 import "../../tools/uia"
-import "../../ui"
+import "../../src/ui"
 
 _ :: runtime
 _ :: testkit

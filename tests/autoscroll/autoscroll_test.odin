@@ -6,7 +6,7 @@ package autoscroll_test
 
 import "core:math"
 import "core:testing"
-import "../../ui"
+import "../../src/ui"
 
 CFG :: ui.DEFAULT_AUTOSCROLL
 

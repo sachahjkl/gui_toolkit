@@ -4,7 +4,7 @@
 package key_repeat_test
 
 import "core:testing"
-import "../../platform"
+import "../../src/platform"
 
 @(test)
 a_held_key_repeats_after_the_delay_at_the_rate :: proc(t: ^testing.T) {

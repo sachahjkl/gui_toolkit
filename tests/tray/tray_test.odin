@@ -7,7 +7,7 @@ package tray_test
 
 import "core:testing"
 import win "core:sys/windows"
-import "../../platform"
+import "../../src/platform"
 
 // Room for an item's text read back; the menu's flags core:sys/windows does not name.
 @(private = "file") TEXT_MAX :: 64

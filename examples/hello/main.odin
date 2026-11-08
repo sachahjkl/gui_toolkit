@@ -9,9 +9,9 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "../../host"
-import "../../platform"
-import "../../ui"
+import "../../src/host"
+import "../../src/platform"
+import "../../src/ui"
 
 App :: struct {
 	shared: host.Shared,   // the device, the fonts, the theme

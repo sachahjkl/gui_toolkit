@@ -10,9 +10,9 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "../unwatched"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 COLRV1 :: #load("data/test_glyphs-glyf_colr_1.ttf")
 SBIX :: #load("data/twemoji_smiley-sbix.ttf")

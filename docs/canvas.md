@@ -1,6 +1,6 @@
 # The 2D canvas engine (Direct3D 11)
 
-`render/canvas.odin`, `canvas_types.odin`, `canvas.wgsl`. Added in 0.26.0. A renderer for the drawing model of the HTML 2D canvas (paths, gradients, images, the 26 composite operators, clips, shadows, filters), meant for programs that keep a bitmap per canvas and want it drawn on the GPU. It is not part of `draw`: it has its own targets and its own shaders (module `Canvas` of `tools/shaders`), and what it makes is an ordinary RGBA texture that `draw.image` shows.
+`src/render/canvas.odin`, `canvas_types.odin`, `canvas.wgsl`. Added in 0.26.0. A renderer for the drawing model of the HTML 2D canvas (paths, gradients, images, the 26 composite operators, clips, shadows, filters), meant for programs that keep a bitmap per canvas and want it drawn on the GPU. It is not part of `draw`: it has its own targets and its own shaders (module `Canvas` of `tools/shaders`), and what it makes is an ordinary RGBA texture that `draw.image` shows.
 
 ```odin
 tex := render.canvas_texture_create(&r, 800, 600, target = true)     // a canvas: a render target, kept while it lives

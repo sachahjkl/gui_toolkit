@@ -1,6 +1,6 @@
 // A thread that reads a stream (server-sent events, simulated) and hands each line to the interface with ui.post: no
 // lock nor queue of the app's own. The window sleeps between lines (0 % CPU) and wakes for each batch.
-//   build.bat stream
+//   odin run tools/tk -- build stream
 package stream
 
 import "core:fmt"
@@ -9,11 +9,11 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import "core:time"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 App :: struct {
 	win:      ^platform.Window,

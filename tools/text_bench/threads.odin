@@ -11,7 +11,7 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import "core:time"
-import "../../font"
+import "../../src/font"
 
 THREAD_COUNTS :: [?]int{1, 2, 4, 8}
 // Operations per thread per path: a few tenths of a second each.

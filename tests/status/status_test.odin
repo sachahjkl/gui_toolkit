@@ -3,9 +3,9 @@
 package status_test
 
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 @(test)
 history_ring :: proc(t: ^testing.T) {

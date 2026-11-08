@@ -4,7 +4,7 @@
 package color_native_test
 
 import "core:testing"
-import "../../font"
+import "../../src/font"
 
 COLR :: #load("../color_glyphs/data/test_glyphs-glyf_colr_1.ttf")
 CBDT :: #load("../color_glyphs/data/chromacheck-cbdt.ttf")

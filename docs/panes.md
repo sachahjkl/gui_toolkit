@@ -1,4 +1,4 @@
-# Splitter, panes, accordion, reorderable lists (`ui/split.odin`, `ui/panes.odin`, `ui/reorder.odin`)
+# Splitter, panes, accordion, reorderable lists (`src/ui/split.odin`, `src/ui/panes.odin`, `src/ui/reorder.odin`)
 
 ## `ui.splitter`
 
@@ -44,7 +44,7 @@ still folding: the content is clipped to the animated height (`ACCORDION_RATE`, 
 are off), and nothing is built once it is folded. No frame at rest. The header is a Tab stop: Enter or Space toggle it.
 The open state is the app's (`open` is flipped on a click).
 
-## A list reordered by dragging (`ui/reorder.odin`)
+## A list reordered by dragging (`src/ui/reorder.odin`)
 
 Tabs along a strip, rows in a sidebar, cards in a column: items `pitch` apart along X or Y, which the user drags to
 another place while the others slide out of the way. The geometry is pure and independent of the axis:
@@ -85,11 +85,11 @@ if move_from >= 0 { app.current = ui.list_move(app.items[:], move_from, move_to,
 Items sit at their slot, animated when they move (`anim`, keyed by the item's box); the dragged one follows the pointer within
 `lo .. hi` and slides back from there when released. Wren's tab strip and tab sidebar use it.
 
-Example: `examples/panes` (`build.bat panes`). Tests: `tests/panes` (dragging within the limits, the pane after the
+Example: `examples/panes` (`tk build panes`). Tests: `tests/panes` (dragging within the limits, the pane after the
 handle, double click, keys, no Tab stop, the animated height, the keyboard, what is drawn; the reorder geometry and a
 drag through a build).
 
-## Panes the user folds and places (`ui/panes.odin`)
+## Panes the user folds and places (`src/ui/panes.odin`)
 
 Panels the user drags into stacks of tabs, splits and floating panels: [docking.md](docking.md) (its splits use `pane_split`).
 

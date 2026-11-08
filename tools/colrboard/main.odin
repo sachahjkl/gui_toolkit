@@ -17,7 +17,7 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import "../../font"
+import "../../src/font"
 import stbi "vendor:stb/image"
 
 COLS :: 12

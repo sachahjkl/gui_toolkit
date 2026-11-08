@@ -3,8 +3,8 @@ name: CI
 # Four kinds of jobs, all in parallel (a push to master gives its verdict in about 6 minutes, 12 at most):
 #   build      CHANGELOG fragments, the examples, the shaders (HLSL from WGSL, DXBC)
 #   tests      every test package (tools/run_tests: D3D11 on WARP), native text, UI Automation, on a desktop of its own
-#   linux      odin check of every package for Linux, the examples built, the tests (tools/linux_ci.sh), the
-#              backends on a virtual desktop (tools/linux_desktop.sh)
+#   linux      odin check of every package for Linux, the examples built, the tests (tk ci), the
+#              backends on a virtual desktop (tk desktop_tests)
 #   wgpu       the WebGPU backend on WARP, one test at a time: every package on a push to master or a manual run, split in
 #              four groups of about 4 minutes (tools/run_tests -backend:wgpu -group:ci1..ci4); a pull request runs the 'sample'
 #              group only (Slug text, video, filters and blends, layers), its full run comes with the merge into master.
@@ -46,7 +46,7 @@ jobs:
         shell: cmd
         timeout-minutes: 6
         run: |
-          for %%e in (hello fidget todo smoke transforms effects docking) do (call build.bat %%e || exit /b 1)
+          for %%e in (hello fidget todo smoke transforms effects docking) do (odin run tools/tk -out:build/tk.exe -- build %%e || exit /b 1)
 
       # naga's translator is rebuilt only when its sources change (tools/tk build_naga compares its stamp)
       - name: Cache the WGSL to HLSL translator
@@ -142,7 +142,7 @@ jobs:
           if-no-files-found: ignore
 
   # Linux: odin check -vet of every package, the examples built (native text, Vulkan through wgpu-native), the tests that
-  # need no window (tools/linux_ci.sh). Odin and wgpu-native pinned by SHA-256, crates by Cargo.lock.
+  # need no window (tk ci). Odin and wgpu-native pinned by SHA-256, crates by Cargo.lock.
   linux:
     name: Linux (check, examples, tests)
     runs-on: ubuntu-24.04
@@ -172,18 +172,18 @@ jobs:
             ~/.cargo/registry
           key: text-linux-${{ hashFiles('native/text/**') }}
 
-      - name: Check, examples, tests (tools/linux_ci.sh)
-        run: tools/linux_ci.sh odin
+      - name: Check, examples, tests (tk ci)
+        run: odin run tools/tk -out:build/tk -- ci
 
       # the backends against real servers, no window seen by anyone: X11 under Xvfb and a window manager, RandR on Xorg's
       # dummy driver, Wayland under a headless sway; the input from the servers' test devices
-      - name: A virtual desktop (tools/linux_desktop.sh)
+      - name: A virtual desktop (tk desktop_tests)
         timeout-minutes: 8
         env:
           XORG: sudo /usr/lib/xorg/Xorg
         run: |
           sudo apt-get install -y -qq xvfb openbox xdotool xclip x11-utils x11-xserver-utils xserver-xorg-core xserver-xorg-video-dummy sway wl-clipboard wtype libxcb-xfixes0 libxcb-randr0 libxkbcommon-x11-0 libwayland-client0
-          tools/linux_desktop.sh odin
+          odin run tools/tk -out:build/tk -- desktop_tests
 
   wgpu:
     name: WebGPU (${{ matrix.group }})

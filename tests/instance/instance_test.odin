@@ -10,8 +10,8 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import inst "../../instance"
-import "../../testkit"
+import inst "../../src/instance"
+import "../../src/testkit"
 
 @(private = "file") unique_counter: u64
 

@@ -5,7 +5,7 @@ package text_corpus
 
 import "core:fmt"
 import "core:strings"
-import "../../font"
+import "../../src/font"
 
 Sample :: struct {
 	name:   string,

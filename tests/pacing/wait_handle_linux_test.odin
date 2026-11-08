@@ -4,7 +4,7 @@ package pacing_test
 import "core:sys/posix"
 import "core:thread"
 import "core:time"
-import "../../platform"
+import "../../src/platform"
 import "core:testing"
 
 // A nested wait_handle with no limit waits for the handle, as on Windows (0 must not become poll's "do not wait").

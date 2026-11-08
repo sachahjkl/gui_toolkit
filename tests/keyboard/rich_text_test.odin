@@ -7,11 +7,11 @@ import "core:mem"
 import "core:strings"
 import "core:sync"
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../platform"
-import "../../render"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/render"
+import "../../src/ui"
 
 @(private = "file")
 Rx :: struct {

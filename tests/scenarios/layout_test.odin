@@ -4,8 +4,8 @@ package scenarios_test
 
 import "core:math"
 import "core:testing"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{400, 300}
 

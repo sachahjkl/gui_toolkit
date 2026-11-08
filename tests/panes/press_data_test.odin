@@ -3,9 +3,9 @@ package panes_test
 // ui.press_data: what a gesture keeps lives as long as its press, and a new press starts from zero.
 
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 @(private = "file")
 Px :: struct {

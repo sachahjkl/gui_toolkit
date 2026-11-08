@@ -3,9 +3,9 @@ package text_test
 import "core:os"
 import "core:testing"
 import "../unwatched"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 // Pixel tests of text drawn through the draw layer on an offscreen renderer (WARP).
 

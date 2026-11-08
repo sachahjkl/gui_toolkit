@@ -13,7 +13,7 @@ default; `Settings.backend` still picks either one for a `State` (read by `init`
 `text_backends` test and `tools/text_bench` compare them in one process. Without the define, asking for `native` gives
 `dwrite`, and on Linux no text is shaped at all: its builds always pass the define. `font.backend(s)` tells which one a `State` uses; `font.backend_available(b)` whether this build has it.
 
-## The interface (`font/backend.odin`)
+## The interface (`src/font/backend.odin`)
 
 `Text_Backend` is a table of procedures, all callable from any thread at once:
 
@@ -70,7 +70,7 @@ and build the program with `-define:FONT_BACKEND=native -define:FONT_NATIVE_LINK
 
 **WebGPU's wgpu-native is a Rust static library too**, prebuilt: it cannot join your workspace. Its few unmangled symbols
 of Rust's standard library (`rust_eh_personality`) collide with yours. On Linux they are the same code: link with
-`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (tools/linux_ci.sh, opencode native's build.sh). On Windows the
+`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (`tk build`, opencode native's occtools). On Windows the
 linker refuses the duplicate: use Direct3D 11 there (the default backend), or build wgpu-native from source in your
 workspace.
 
@@ -80,7 +80,7 @@ library's `rust_eh_personality` renamed so it links next to other Rust static li
 
 ## Platforms
 
-`odin check font -no-entry-point` passes for Windows, Linux and macOS, with either define. What only Windows has is in
+`odin check src/font -no-entry-point` passes for Windows, Linux and macOS, with either define. What only Windows has is in
 `*_windows.odin` (DirectWrite faces and analyzers, Direct2D color glyphs, the color glyph thread, gray glyph bitmaps).
 `font_other.odin` is the platform part elsewhere: faces from files and memory opened by the native backend, the
 system's fonts from the platform's font service, no bitmap rasterizer (text is drawn by Slug from the backend's outlines),
@@ -96,7 +96,7 @@ no COLR color glyphs yet.
 The Linux service runs in the CI and on real desktops. The macOS one is written against the documented C API and has
 never run on a Mac. A face of a macOS collection (.ttc) is found by its PostScript name
 (`gt_face_postscript_name`, `gt_file_face_count`). On Linux and macOS `cargo build --release --locked --lib --target-dir ../../build/text/target`
-in `native/text`, then a copy of `libgt_text.a` to `build/text/` (`tools/linux_ci.sh` does it; the script is Windows-only).
+in `native/text`, then a copy of `libgt_text.a` to `build/text/` (`tk build_text` does it, on Windows and Linux).
 
 ## Comparing the backends
 

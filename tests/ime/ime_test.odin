@@ -7,7 +7,7 @@ package ime_test
 
 import "core:strings"
 import "core:testing"
-import "../../platform"
+import "../../src/platform"
 
 // The bytes of one kana in UTF-8: the caret's offsets in a preedit of kana.
 @(private = "file") KANA_BYTES :: 3

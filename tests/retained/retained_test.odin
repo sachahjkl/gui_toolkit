@@ -4,9 +4,9 @@
 package retained_test
 
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
 
 N :: 128
 SIZE :: [2]int{N, N}

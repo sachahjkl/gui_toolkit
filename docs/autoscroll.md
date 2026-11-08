@@ -6,10 +6,10 @@ farther, the faster, along an acceleration curve. A marker is drawn at the ancho
 
 There are two layers:
 
-- a **pure** core (`ui/autoscroll.odin`): the `Autoscroll` state, the acceleration curve and the engage/latch/end state
+- a **pure** core (`src/ui/autoscroll.odin`): the `Autoscroll` state, the acceleration curve and the engage/latch/end state
   machine. It has no window or box dependency, so it can be unit tested on its own (`tests/autoscroll`) and reused by an
   application for its own document view (for instance a web page, which does not live in the box tree).
-- the toolkit's **wiring** of its scroll regions (`ui/autoscroll_region.odin`): a middle press on a box with
+- the toolkit's **wiring** of its scroll regions (`src/ui/autoscroll_region.odin`): a middle press on a box with
   `.View_Scroll_X` / `.View_Scroll_Y` starts a session, every frame its velocity is integrated into the box's scroll
   target, the marker is drawn and the cursor follows.
 

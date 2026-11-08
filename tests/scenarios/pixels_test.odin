@@ -3,11 +3,11 @@ package scenarios_test
 // What is drawn, by its pixels: boxes, borders, rounded corners, clips, order, text, hover and press, the theme, a palette's fade; fonts; partial redraw.
 
 import "core:testing"
-import "../../draw"
-import "../../font"
-import "../../render"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/render"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{320, 200}
 @(private = "file") RED :: session.Color{255, 0, 0, 255}

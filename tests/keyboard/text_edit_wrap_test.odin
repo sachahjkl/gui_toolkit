@@ -5,9 +5,9 @@ package keyboard_test
 import "core:strings"
 import "core:sync"
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 @(private = "file")
 Fx :: struct {

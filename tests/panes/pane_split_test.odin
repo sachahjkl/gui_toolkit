@@ -5,7 +5,7 @@
 package panes_test
 
 import "core:testing"
-import "../../ui"
+import "../../src/ui"
 
 // Frames of 16 ms past the toolkit's double click time (450 ms).
 @(private = "file") DOUBLE_CLICK_FRAMES :: 30

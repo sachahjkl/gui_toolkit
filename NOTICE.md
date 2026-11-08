@@ -22,13 +22,13 @@ RAD Debugger is MIT licensed:
     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-`ui/icons.ttf` (compiled into the exes) is the icon font from `raddebugger/data/`.
+`src/ui/icons.ttf` (compiled into the exes) is the icon font from `raddebugger/data/`.
 
 ## Slug (text drawn from outlines)
 
-`render/slug.wgsl` (and the HLSL naga writes from it) is derived from the reference shaders of the Slug algorithm by Eric Lengyel
+`src/render/slug.wgsl` (and the HLSL naga writes from it) is derived from the reference shaders of the Slug algorithm by Eric Lengyel
 (<https://github.com/EricLengyel/Slug>, commit `be3c13eb7d63f9e8aa5c583e42d92c374cb91d98`; the originals are kept,
-with their licenses and SHA-256, in `font/slug_ref/`): the coverage function, the root solvers and the dynamic dilation
+with their licenses and SHA-256, in `src/font/slug_ref/`): the coverage function, the root solvers and the dynamic dilation
 are his, adapted to this renderer's instances and transforms. The algorithm is described in "GPU-Centered Font
 Rendering Directly from Glyph Outlines", Journal of Computer Graphics Techniques 6(2), 2017, and "A Decade of Slug"
 (<https://terathon.com/blog/decade-slug.html>). The patent was dedicated to the public domain on 2026-03-17. The code
@@ -54,23 +54,23 @@ may be used freely for any purpose provided credit is given, as here. License (M
 
 Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas) are missing, e.g. under Wine:
 
-- `font/data/Roboto-Regular.ttf`: Roboto, font data copyright Google 2011, Apache License 2.0
-  (`font/data/Roboto-LICENSE.txt`).
-- `font/data/Inconsolata-Regular.ttf`: Inconsolata, copyright (c) 2006-2012 Raph Levien, copyright (c) 2011-2012
-  Cyreal, SIL Open Font License 1.1 (`font/data/Inconsolata-OFL.txt`).
+- `src/font/data/Roboto-Regular.ttf`: Roboto, font data copyright Google 2011, Apache License 2.0
+  (`src/font/data/Roboto-LICENSE.txt`).
+- `src/font/data/Inconsolata-Regular.ttf`: Inconsolata, copyright (c) 2006-2012 Raph Levien, copyright (c) 2011-2012
+  Cyreal, SIL Open Font License 1.1 (`src/font/data/Inconsolata-OFL.txt`).
 
 ## Emoji (optional, `font.set_emoji_source`)
 
-- Noto Color Emoji (COLR v1), copyright Google, SIL Open Font License 1.1 (`font/data/NotoColorEmoji-OFL.txt`), is not part of
+- Noto Color Emoji (COLR v1), copyright Google, SIL Open Font License 1.1 (`src/font/data/NotoColorEmoji-OFL.txt`), is not part of
   this repository: `tools/tk fetch_emoji` fetches it (Google Fonts' build, pinned by commit and SHA-256) for programs that
   ship it. The COLR interpreter itself reads any COLR font.
-- `font/emoji_data.odin` is generated from Unicode's `emoji-data.txt` (Unicode 18.0.0, Unicode License v3,
+- `src/font/emoji_data.odin` is generated from Unicode's `emoji-data.txt` (Unicode 18.0.0, Unicode License v3,
   <https://www.unicode.org/license.txt>).
 - The color glyph test fonts of `tests/color_glyphs/data` keep their own licenses (see `data/README.txt`).
 
 ## Native text backend (optional, `-define:FONT_BACKEND=native`)
 
-`native/text` (`gt_text.lib`, linked statically; `font/backend_native.odin`) is the portable text backend used on
+`native/text` (`gt_text.lib`, linked statically; `src/font/backend_native.odin`) is the portable text backend used on
 every platform in place of DirectWrite. It is built on, under their own licenses:
 
 - [HarfRust](https://github.com/harfbuzz/harfrust) (`harfrust` 0.15.0), MIT, the shaper (a Rust port of HarfBuzz):

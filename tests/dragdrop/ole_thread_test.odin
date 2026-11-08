@@ -4,7 +4,7 @@ package dragdrop_test
 import "core:testing"
 import "core:thread"
 import win "core:sys/windows"
-import "../../platform"
+import "../../src/platform"
 
 // What a thread answered: dragdrop_thread_init, twice.
 @(private = "file")

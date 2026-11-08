@@ -14,7 +14,7 @@ For an application on the toolkit (Wren first). 0.57's report is docs/changes-0.
 - **`wait_event`** no longer ends at once on events already handed out.
 - **DevTools**: what the server cannot do is refused instead of pretending, and `DOM.undo` works.
 - **Linux**: X11 copy and paste and drag and drop work, for the first time on X11 for copy and paste. Wayland reads its socket during
-  an animation, repeats keys, and a window's wake works. All run on real servers in the CI (`tools/linux_desktop.sh`).
+  an animation, repeats keys, and a window's wake works. All run on real servers in the CI (`tk desktop_tests`).
 
 New: `platform.window_on_destroy`, `ui.scrollbar_rects`, `render.damage_verify_differences`, `render.capture_poll_raw`,
 `render.capture_raw_finish`; `-define:TOOLKIT_DAMAGE_CHECK=true` to check partial frames against whole ones,

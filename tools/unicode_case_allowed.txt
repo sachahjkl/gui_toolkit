@@ -2,37 +2,37 @@
 # sign U+212A is 'k' to them, the long s U+017F 's'): tests/unicode_case fails on any other in the toolkit's .odin files (names and
 # protocols are ASCII: ascii.lower, ascii.equal_fold...) and on an entry here that matches no line.
 # "<path> <code>  # why": the line of <path> that holds <code>.
-config/search.odin query = strings.to_lower(  # user text: the settings' search
-config/search.odin t := strings.to_lower(title  # user text: a page's title in the settings' search
-config/titles.odin name := strings.to_lower(d.name  # user text: the settings' search
-config/titles.odin title := strings.to_lower(title_of(d)  # user text: the settings' search
-config/titles.odin desc := strings.to_lower(d.description  # user text: the settings' search
-config/titles.odin strings.write_rune(&sb, unicode.to_upper(r))  # display text: a title's capital
-config/titles.odin case "kb", "mb", "gb": return strings.to_upper(w  # display text: a word of a title in capitals
-config/titles.odin case "d3d", "d3d11", "d3d12": return strings.to_upper(w  # display text: a word of a title in capitals
-config/titles.odin case "ws", "wss": return strings.to_upper(w  # display text: a word of a title in capitals
-devtools/ax.odin name := strings.to_lower(name_of  # user text: an accessible name looked for, as the interface shows it
-devtools/ax.odin have := strings.to_lower(ax_name_of(u, i)  # user text: an accessible name looked for, as the interface shows it
-devtools/devtools.odin ltext := strings.to_lower(text  # user text: the text of a box looked for, as the interface shows it
-devtools/devtools.odin strings.contains(strings.to_lower(ui.box_text(b)  # user text: the text of a box looked for
-devtools/dom.odin strings.contains(strings.to_lower(text, context.temp_allocator), query)  # user text: the Elements panel's search
-devtools/dom.odin dom_search(srv, s, s.root, strings.to_lower(str(p["query"])  # user text: the Elements panel's search
+src/config/search.odin query = strings.to_lower(  # user text: the settings' search
+src/config/search.odin t := strings.to_lower(title  # user text: a page's title in the settings' search
+src/config/titles.odin name := strings.to_lower(d.name  # user text: the settings' search
+src/config/titles.odin title := strings.to_lower(title_of(d)  # user text: the settings' search
+src/config/titles.odin desc := strings.to_lower(d.description  # user text: the settings' search
+src/config/titles.odin strings.write_rune(&sb, unicode.to_upper(r))  # display text: a title's capital
+src/config/titles.odin case "kb", "mb", "gb": return strings.to_upper(w  # display text: a word of a title in capitals
+src/config/titles.odin case "d3d", "d3d11", "d3d12": return strings.to_upper(w  # display text: a word of a title in capitals
+src/config/titles.odin case "ws", "wss": return strings.to_upper(w  # display text: a word of a title in capitals
+src/devtools/ax.odin name := strings.to_lower(name_of  # user text: an accessible name looked for, as the interface shows it
+src/devtools/ax.odin have := strings.to_lower(ax_name_of(u, i)  # user text: an accessible name looked for, as the interface shows it
+src/devtools/devtools.odin ltext := strings.to_lower(text  # user text: the text of a box looked for, as the interface shows it
+src/devtools/devtools.odin strings.contains(strings.to_lower(ui.box_text(b)  # user text: the text of a box looked for
+src/devtools/dom.odin strings.contains(strings.to_lower(text, context.temp_allocator), query)  # user text: the Elements panel's search
+src/devtools/dom.odin dom_search(srv, s, s.root, strings.to_lower(str(p["query"])  # user text: the Elements panel's search
 examples/fidget/pages_data.odin query := strings.to_lower(ui.field_string(&app.filter)  # user text: the table's filter
 examples/fidget/pages_data.odin name := strings.to_lower(row_name(&r)  # user text: the table's filter
 examples/fidget/pages_data.odin strings.contains(strings.to_lower(dept_names[r.dept]  # user text: the table's filter
 examples/todo/main.odin strings.contains(strings.to_lower(t.title, context.temp_allocator), strings.to_lower(query  # user text: the todo list's search
-instance/instance.odin when ODIN_OS == .Windows { p = strings.to_lower(p  # a Windows path (the file system folds by Unicode)
-instance/instance.odin return strings.equal_fold(x, y)  # Windows paths (identities are often paths; the file system folds by Unicode)
-platform/dialogs.odin strings.equal_fold(name[len(name) - len(ext):], ext)  # a file name against a dialog's filter, as the system's dialog matches it
-platform/dialogs.odin } else if strings.equal_fold(p, name) {  # a file name against a dialog's filter, as the system's dialog matches it
-testkit/session/input.odin strings.to_lower(text, s.ctx.temp_allocator)  # user text: the text of a box a test looks for, as the interface shows it
-testkit/session/input.odin strings.contains(strings.to_lower(ui.box_text(b)  # user text: the text of a box a test looks for
+src/instance/instance.odin when ODIN_OS == .Windows { p = strings.to_lower(p  # a Windows path (the file system folds by Unicode)
+src/instance/instance.odin return strings.equal_fold(x, y)  # Windows paths (identities are often paths; the file system folds by Unicode)
+src/platform/dialogs.odin strings.equal_fold(name[len(name) - len(ext):], ext)  # a file name against a dialog's filter, as the system's dialog matches it
+src/platform/dialogs.odin } else if strings.equal_fold(p, name) {  # a file name against a dialog's filter, as the system's dialog matches it
+src/testkit/session/input.odin strings.to_lower(text, s.ctx.temp_allocator)  # user text: the text of a box a test looks for, as the interface shows it
+src/testkit/session/input.odin strings.contains(strings.to_lower(ui.box_text(b)  # user text: the text of a box a test looks for
 tools/tk/main.odin !strings.equal_fold(fi.name, name)  # a file name on Windows (the file system folds by Unicode)
-ui/find.odin n0 = unicode.to_lower(n0)  # user text: find in page
-ui/find.odin if unicode.to_lower(r) == n0 {  # user text: find in page
-ui/find.odin if unicode.to_lower(a) != unicode.to_lower(b)  # user text: find in page
-ui/fuzzy.odin l := unicode.to_lower(r)  # user text: the fuzzy match of what is typed
-ui/list.odin strings.has_prefix(strings.to_lower(label[  # user text: a list's type-ahead
-ui/list.odin utf8.encode_rune(unicode.to_lower(r))  # user text: a list's type-ahead
-ui/popups.odin want := unicode.to_lower(e.text)  # user text: a menu's type-ahead (the letter typed)
-ui/popups.odin return unicode.to_lower(r)  # user text: a menu's type-ahead (an item's first letter)
+src/ui/find.odin n0 = unicode.to_lower(n0)  # user text: find in page
+src/ui/find.odin if unicode.to_lower(r) == n0 {  # user text: find in page
+src/ui/find.odin if unicode.to_lower(a) != unicode.to_lower(b)  # user text: find in page
+src/ui/fuzzy.odin l := unicode.to_lower(r)  # user text: the fuzzy match of what is typed
+src/ui/list.odin strings.has_prefix(strings.to_lower(label[  # user text: a list's type-ahead
+src/ui/list.odin utf8.encode_rune(unicode.to_lower(r))  # user text: a list's type-ahead
+src/ui/popups.odin want := unicode.to_lower(e.text)  # user text: a menu's type-ahead (the letter typed)
+src/ui/popups.odin return unicode.to_lower(r)  # user text: a menu's type-ahead (an item's first letter)

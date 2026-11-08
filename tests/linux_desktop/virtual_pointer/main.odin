@@ -1,6 +1,6 @@
 #+build linux
 // Gives a headless Wayland compositor a pointer: a seat with no device has no pointer capability, and a client never gets
-// a wl_pointer. This program makes one zwlr_virtual_pointer_v1 and stays until it is killed; tools/linux_desktop.sh starts
+// a wl_pointer. This program makes one zwlr_virtual_pointer_v1 and stays until it is killed; tk desktop_tests starts
 // it, and the tests move the seat's cursor with swaymsg. By dlopen, as platform/linux_lib.odin: no development package.
 package virtual_pointer
 

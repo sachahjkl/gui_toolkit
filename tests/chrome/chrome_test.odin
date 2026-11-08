@@ -6,9 +6,9 @@ package chrome_test
 import "core:fmt"
 import "core:sync"
 import "core:testing"
-import "../../font"
-import "../../platform"
-import "../../ui"
+import "../../src/font"
+import "../../src/platform"
+import "../../src/ui"
 
 WINDOW :: ui.Vec2{800, 600}
 

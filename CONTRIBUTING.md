@@ -23,9 +23,9 @@
   `type` is `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or `Security`; the text is the one entry, as it will read in the list.
   `odin run tools/changelog -- -new -type:Added -subject:rich-paragraph "-text:..."` writes it;
   `odin run tools/changelog -- -check` (run by the CI) checks every fragment.
-- **The version is not a branch's business**: `ui/version.odin` and the README's badge say the last published version
+- **The version is not a branch's business**: `src/ui/version.odin` and the README's badge say the last published version
   until the next one is published. A branch that needs a new version says so (in its pull request: "minor" when it adds
-  or changes API, "patch" otherwise); `tools/changelog -check` fails when `ui/version.odin` differs from the last
+  or changes API, "patch" otherwise); `tools/changelog -check` fails when `src/ui/version.odin` differs from the last
   section of `CHANGELOG.md`.
 
 ## Publishing a version
@@ -33,7 +33,7 @@
 `odin run tools/tk -- release <version> "-summary:one-line summary"`, on a clean `master`, on Windows or Linux:
 
 1. `tools/changelog -assemble -version:<version>` makes the `## [<version>] - <date>` section from the fragments
-   (by type, newest first), writes the version in `ui/version.odin` and the README's badge, and deletes the fragments;
+   (by type, newest first), writes the version in `src/ui/version.odin` and the README's badge, and deletes the fragments;
 2. on Windows, the About picture (it shows the version) is taken again from fidget; elsewhere it stays;
 3. it commits that as `<version>: <summary>`, tags it `v<version>` (annotated), pushes `master` and the tag,
    and creates the GitHub release with the section as its notes (`tools/changelog -section -version:<version>`).

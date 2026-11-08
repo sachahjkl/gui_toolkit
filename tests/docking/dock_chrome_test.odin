@@ -6,8 +6,8 @@ package docking_test
 
 import "core:fmt"
 import "core:testing"
-import "../../testkit/session"
-import "../../ui"
+import "../../src/testkit/session"
+import "../../src/ui"
 
 @(private = "file") CHROME_SIZE :: [2]int{500, 1000}   // a tall window: the folded strip is as tall
 @(private = "file") REST_MS :: 1000                     // past the strip's tooltip delay

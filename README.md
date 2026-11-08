@@ -17,18 +17,21 @@ The design (box tree, keyed persistence, size-kind layout, signals, tag-based th
 On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the system (Direct3D 11, DirectWrite). On Linux, wgpu-native and a small Rust library for text are linked into the program. Programs are one file (icon font and fallback text fonts compiled in): the widget gallery is
 2.4 MB, the todo example 2 MB. They idle at 0 % CPU, and a frame of the gallery takes under 1 ms of CPU (`fidget --bench=300`).
 
-    build.bat fidget     # the widget gallery           ->  build\fidget.exe
-    build.bat todo       # a todo app                   ->  build\todo.exe
-    build.bat smoke      # renderer / font / draw smoke test (no UI layer)
-    build.bat transforms # rotated / skewed / scaled shapes, text and images, rounded clips (draw layer only)
-    build.bat stream     # a thread posting lines to the interface (ui.post)
-    build.bat panes      # splitters and accordions
-    build.bat docking    # panels docked, stacked, split and floated by dragging their tabs
-    build.bat todo debug
+    odin run tools/tk -- build fidget       # the widget gallery  ->  build/fidget(.exe)
+    odin run tools/tk -- build todo         # a todo app
+    odin run tools/tk -- build smoke        # renderer / font / draw smoke test (no UI layer)
+    odin run tools/tk -- build transforms   # rotated / skewed / scaled shapes, text and images, rounded clips (draw layer only)
+    odin run tools/tk -- build stream       # a thread posting lines to the interface (ui.post)
+    odin run tools/tk -- build panes        # splitters and accordions
+    odin run tools/tk -- build docking      # panels docked, stacked, split and floated by dragging their tabs
+    odin run tools/tk -- build todo -debug
+
+`build.bat` and `./build.sh` are shortcuts for `tk build`. Every other step is a command of `tools/tk` too: `ci`, `desktop_tests`,
+`release`, `fetch_wgpu`... (the head of `tools/tk/main.odin`). On Linux, `nix develop` gives what they need (`flake.nix`).
 
 Needs the Odin compiler (`dev-2026-11a`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
 (X11 and Wayland, Vulkan through wgpu-native, text by the native backend: Fontations, HarfRust, ICU4X, fonts from
-fontconfig): `odin run tools/tk -- fetch_wgpu` puts wgpu-native beside Odin, `tools/linux_ci.sh` checks every package, builds the
+fontconfig): `odin run tools/tk -- fetch_wgpu` puts wgpu-native beside Odin, `tk ci` checks every package, builds the
 examples and runs the windowless tests; [opencode native](https://github.com/sachahjkl/opencode_native) ships a Linux build.
 **New project? Start with [docs/getting-started.md](docs/getting-started.md)**: the toolkit as a submodule, a window in a
 few lines (`examples/hello`), the backends and options, the tests, the versions, and the pitfalls.
@@ -164,7 +167,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   `render.take_displayed` reports every frame that reached the screen (vblank time, input latency, missed refreshes),
   `measured_refresh_hz` and `vblank_grid` the measured vblank interval and phase. `render.set_latency_probe(r, true)`
   splits the input -> screen time into wait / work / Present / scan-out (`latency_summary`: p50 / p95 / max, in ms and
-  in refreshes); see `render/latency.odin`.
+  in refreshes); see `src/render/latency.odin`.
   On a dynamic or variable refresh display the reported rate is the one the screen rests at: `Display_Info.max_hz` is the
   highest mode at the current size, `platform.refresh_is_variable(hz, max_hz)` says whether to aim above `hz`, and
   `platform.display_live_hz(w)` reads the rate the compositor runs at now (primary monitor only). The swap chain's latency object
@@ -233,7 +236,7 @@ Timing checks (durations, CPU or GPU times, frames in a time window) are opt-in:
 `GUI_PERF=1` (or `true`) is set and `CI` is not, and prints `perf: skipped (...)`. Run them by hand, never in CI:
 `GUI_PERF=1 odin test tests/colr -vet`, `GUI_PERF=1 odin test tests/window -vet`, `GUI_PERF=1 odin test tests/gpufx -vet`.
 
-`tests/examples` drives `examples/fidget` and `examples/todo` in the test's process (`testkit/session`: no window of the system, no input of the machine):
+`tests/examples` drives `examples/fidget` and `examples/todo` in the test's process (`src/testkit/session`: no window of the system, no input of the machine):
 clipboard, Tab and arrow focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a click
 outside, toggles, segmented, chips, slider, tooltip, context menu, wheel scroll, theme, saved files. Debug aids: `-define:UI_PROBE=true` logs every press with the hit box's rect; `--dump` (fidget) prints oversized boxes.
 
@@ -244,4 +247,4 @@ to use it. The design and several algorithms follow the RAD Debugger (MIT, Epic 
 
 The optional Slug text renderer uses the shaders and the algorithm of [Slug](https://github.com/EricLengyel/Slug) by
 Eric Lengyel (MIT; the patent is in the public domain since 2026-03-17): credit and license text in NOTICE.md, the
-pinned reference shaders in `font/slug_ref/`.
+pinned reference shaders in `src/font/slug_ref/`.

@@ -10,19 +10,19 @@ odin build examples/fidget -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native)
 ```
 
 The procedures of the interface (`render.init`, `frame_begin`, `frame_submit`, `frame_end`, textures, targets, retained heaps,
-`read_pixels`, ...) are the same; `render/api.odin` lists the ones whose work depends on the backend and calls its `d3d_*` or `wgpu_*`
+`read_pixels`, ...) are the same; `src/render/api.odin` lists the ones whose work depends on the backend and calls its `d3d_*` or `wgpu_*`
 implementation (`when`, resolved at compile time: only the chosen backend is in the program). `render.backend_name()` tells which.
 
 ## What it is
 
 | file | |
 |---|---|
-| `render/wgpu_core.odin` | device (on a thread of its own), surface, pipelines (made on a pre-warming thread), textures, targets, retained heaps, device loss |
-| `render/wgpu_frame.odin` | `frame_submit`: one render pass per run of draw calls into a target, copies for snapshots, filter passes, readback |
-| `render/wgpu_present.odin` | present modes, the frame latency object and the frame statistics (rebuilt from the compositor's timing) |
-| `render/wgpu_profile.odin` | `gpu_ms` and `gpu_profile`, from timestamp queries between passes |
-| `render/wgpu_dcomp.odin` | translucent windows: a DirectComposition visual fed through `SurfaceSourceSwapChainPanel` |
-| `render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
+| `src/render/wgpu_core.odin` | device (on a thread of its own), surface, pipelines (made on a pre-warming thread), textures, targets, retained heaps, device loss |
+| `src/render/wgpu_frame.odin` | `frame_submit`: one render pass per run of draw calls into a target, copies for snapshots, filter passes, readback |
+| `src/render/wgpu_present.odin` | present modes, the frame latency object and the frame statistics (rebuilt from the compositor's timing) |
+| `src/render/wgpu_profile.odin` | `gpu_ms` and `gpu_profile`, from timestamp queries between passes |
+| `src/render/wgpu_dcomp.odin` | translucent windows: a DirectComposition visual fed through `SurfaceSourceSwapChainPanel` |
+| `src/render/rect.wgsl`, `filter.wgsl`, `slug.wgsl`, `mip.wgsl` | the shaders, written once (see "One source for the shaders"); `mip.wgsl` is mip chain generation, which WebGPU lacks (Direct3D 11 has `GenerateMips`) |
 
 The pixel tests run on both backends with the same expectations: `odin run tools/run_tests [-- -backend:wgpu]` (the wgpu ones one
 test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools/tk fetch_wgpu` first: with DXC
@@ -36,12 +36,12 @@ job (`-Group ci1` .. `ci4`, defined in the script, which checks that together th
 Every shader is written once, in WGSL (`render/*.wgsl`). WebGPU compiles it as it is. Direct3D 11 embeds the HLSL that **naga** (the translator wgpu uses) writes from it, compiled ahead of time to DXBC as before (no shader compiles at start-up under D3D11):
 
 ```
-render/*.wgsl --tools/wgsl2hlsl (naga 29.0.4)--> render/shaders/*.hlsl --D3DCompile--> render/shaders/*.dxbc (embedded)
+render/*.wgsl --tools/wgsl2hlsl (naga 29.0.4)--> src/render/shaders/*.hlsl --D3DCompile--> src/render/shaders/*.dxbc (embedded)
 ```
 
 * `odin run tools/shaders` does both steps (`-- -check` only compares). It builds the translator first (`tools/tk build_naga`: a small Rust program, `tools\wgsl2hlsl`; naga is pinned exactly in `Cargo.toml`, `Cargo.lock` carries the SHA-256 of every crate and `tools/tk` pins `Cargo.lock` itself, builds with `--locked`; needs `cargo`).
 * The first line of each generated HLSL names the SHA-256 of the WGSL it came from: `tests/shaders` fails when a `.wgsl` file was edited and `tools/shaders` was not run, and when a blob is not what the embedded HLSL compiles to. CI also runs `tools/shaders -- -check` (naga writes the HLSL again and it must be identical).
-* A module is the WGSL files concatenated: `rect`, `filter`, and `slug` (= `rect.wgsl` + `slug.wgsl`, the text shaders reuse rect's transforms, clips and text correction). `render/shaders.odin` lists the modules and the Direct3D 11 slot of every resource (`RECT_BINDINGS`...: group.binding = register), which is what naga is told and what the backend binds.
+* A module is the WGSL files concatenated: `rect`, `filter`, and `slug` (= `rect.wgsl` + `slug.wgsl`, the text shaders reuse rect's transforms, clips and text correction). `src/render/shaders.odin` lists the modules and the Direct3D 11 slot of every resource (`RECT_BINDINGS`...: group.binding = register), which is what naga is told and what the backend binds.
 * What the translation needed on the D3D11 side: the instance layout uses naga's `LOC0..LOC8` semantics, the tables (transforms, clips, points, gradients, retained heaps) are raw buffers read as `ByteAddressBuffer`, filter passes use a plain clamp sampler (the shader adds the transparent border), and naga's sampler heaps (Direct3D 12) become plain `SamplerState`s (a few lines of text processing in the translator).
 * Cost: none at run time (same DXBC pipeline); the naga HLSL is a little bigger (pixel shader 110 KB, was 100 KB) and measures the same on the GPU (see the CHANGELOG).
 
@@ -83,7 +83,7 @@ Measurements: `CHANGELOG.md`.
 
 When only a small part of the window changed since the last frame (a blinking caret, a hovered control, a progress bar,
 a video, a local CSS animation), the renderer can rasterize only the changed rectangles instead of the whole
-window. The application marks the changed boxes between `frame_begin` and `frame_submit` (`render/damage.odin`):
+window. The application marks the changed boxes between `frame_begin` and `frame_submit` (`src/render/damage.odin`):
 
 ```
 render.set_partial_redraw(r, true)         // or draw.set_partial_redraw(c, true)
@@ -124,12 +124,12 @@ region covers and the pixels of the whole frame, and whether a region is in effe
 
 ### How each backend presents a partial frame
 
-* **Direct3D 11 / DXGI** (`render/damage_d3d.odin`): a `FLIP_DISCARD` swap chain allows no dirty rectangles and does not keep
+* **Direct3D 11 / DXGI** (`src/render/damage_d3d.odin`): a `FLIP_DISCARD` swap chain allows no dirty rectangles and does not keep
   the back buffer's content between frames. So a frame with a region composes into a **target kept across frames**, and the
   whole target is copied to the back buffer and presented. As on WebGPU, the rasterization is partial and the present full.
 * **WebGPU / wgpu-native**: the pinned version (29.0.1.1) exposes only `SurfacePresent`, **not** a present-with-damage
   entry point, and a surface texture does not keep its content between frames either. So the renderer composes every
-  frame with a region into a **persistent render target** kept across frames (`render/damage_wgpu.odin`): a whole frame clears
+  frame with a region into a **persistent render target** kept across frames (`src/render/damage_wgpu.odin`): a whole frame clears
   it and draws everything; a partial frame loads it (`LoadOp::Load`, keeping the content) and draws only the scissored
   rectangles. The whole target is then drawn to the surface texture (a surface takes no `CopyDst`: `ps_copy` of `mip.wgsl`) and
   presented in full. **The rasterization is

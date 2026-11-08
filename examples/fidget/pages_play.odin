@@ -6,9 +6,9 @@ package fidget
 
 import "core:fmt"
 import "core:math"
-import "../../draw"
-import "../../platform"
-import "../../ui"
+import "../../src/draw"
+import "../../src/platform"
+import "../../src/ui"
 
 spawn_ball :: proc(app: ^App, p, v: [2]f32) {
 	slot := -1

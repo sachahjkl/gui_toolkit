@@ -6,12 +6,12 @@ import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "../../devtools"
-import "../../draw"
-import "../../font"
-import "../../host"
-import "../../platform"
-import "../../ui"
+import "../../src/devtools"
+import "../../src/draw"
+import "../../src/font"
+import "../../src/host"
+import "../../src/platform"
+import "../../src/ui"
 
 Filter :: enum { All, Active, Done }
 

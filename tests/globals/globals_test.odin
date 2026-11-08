@@ -28,7 +28,7 @@ GLOBALS_WRITE :: #config(GLOBALS_WRITE, false)
 // The repository, from this file's own place (tests/globals).
 ROOT :: #directory + "/../.."
 GLOBALS_LIST :: ROOT + "/tools/globals_allowed.txt"
-// The packages whose globals are listed, under the repository.
+// The packages whose globals are listed, under the repository's src (tools/globals_allowed.txt names them from there).
 GLOBALS_DIRS :: [?]string{
 	"arena", "ascii", "base", "config", "dbus", "devtools", "draw", "flate", "font", "fsx", "i18n", "instance", "platform", "render", "update",
 	"testkit", "testkit/session", "ui",
@@ -47,7 +47,7 @@ List :: struct {
 // What the compiler's own parser reads: the top level, its `when` blocks and the procedures' `@(static)` variables; not a struct's fields,
 // nor a foreign block's.
 find_globals :: proc(found: ^[dynamic]Global, dir: string) {
-	entries, err := os.read_all_directory_by_path(fmt.tprintf("%s/%s", ROOT, dir), context.temp_allocator)
+	entries, err := os.read_all_directory_by_path(fmt.tprintf("%s/src/%s", ROOT, dir), context.temp_allocator)
 	if err != nil { return }
 	slice.sort_by(entries, proc(a, b: os.File_Info) -> bool { return a.name < b.name })
 	for e in entries {

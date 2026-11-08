@@ -8,7 +8,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import changelog "../../tools/changelog"
-import "../../testkit"
+import "../../src/testkit"
 
 @(private = "file") BASE_VERSION :: "1.2.3"
 @(private = "file") NEXT_VERSION :: "9.9.9"
@@ -20,7 +20,7 @@ import "../../testkit"
 fresh :: proc(t: ^testing.T) -> string {
 	dir := testkit.temp_folder(t, "changelog")
 	_ = os.make_directory_all(fmt.tprintf("%s/changelog.d", dir))
-	_ = os.make_directory_all(fmt.tprintf("%s/ui", dir))
+	_ = os.make_directory_all(fmt.tprintf("%s/src/ui", dir))
 	write(fmt.tprintf("%s/%s", dir, changelog.VERSION_FILE), VERSION_SOURCE)
 	write(fmt.tprintf("%s/CHANGELOG.md", dir), fmt.tprintf("# Changelog\r\n\r\nIntro.\r\n\r\n## [%s] - 2026-01-01\r\n\r\n### Added\r\n- %s\r\n", BASE_VERSION, OLD_ENTRY))
 	write(fmt.tprintf("%s/README.md", dir), `<a><img src="https://img.shields.io/badge/version-1.2.3-1d57ba" alt="version 1.2.3"></a>`)

@@ -8,7 +8,7 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "../unwatched"
-import "../../font"
+import "../../src/font"
 
 LOCK_THREADS :: 8
 LOCK_ROUNDS :: 50

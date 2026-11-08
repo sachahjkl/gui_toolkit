@@ -6,7 +6,7 @@ package placement_test
 import "core:os"
 import "core:testing"
 import win "core:sys/windows"
-import "../../platform"
+import "../../src/platform"
 
 @(test)
 a_rectangle_that_fits_stays :: proc(t: ^testing.T) {

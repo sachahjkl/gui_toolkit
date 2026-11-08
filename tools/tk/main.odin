@@ -21,6 +21,12 @@
 //   emoji_board [-size:32] [-scale:1] [-step:37] [-font:ttf] [-out-dir:dir]
 //                                             the COLR interpreter against a headless Edge on the same font (tools/colrboard): every
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
+//   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
+//                                             information; Windows: no console, its .rc; Linux: the native text backend first
+//   ci                                        what the CI checks on this system: odin check of every package, the examples, the
+//                                             tests (tools/run_tests); every step runs, then the failures are said
+//   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
+//                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
 //   release <version> [-summary:text] [-no-push]
 //                                             publishes a version, on Windows or Linux (release.odin, CONTRIBUTING.md): the CHANGELOG
 //                                             section, the version, the commit, the tag, the push and the GitHub release
@@ -48,7 +54,7 @@ EXIT_USAGE :: 2
 Command :: struct {
 	name:        string,
 	flags:       []string,                 // what it takes: "name" a switch, "name:" a flag with a value
-	positionals: int,                      // how many plain arguments it takes
+	positionals: int,                      // how many plain arguments it takes (-1: none or one)
 	run:         proc(a: ^Args) -> string, // "" when the work is done, else why it is not
 }
 
@@ -64,6 +70,9 @@ COMMANDS := []Command {
 	{name = "ppm_diff", flags = {"tolerance:"}, positionals = 2, run = run_ppm_diff},
 	{name = "emoji_board", flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = run_emoji_board},
 	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},
+	{name = "build", flags = {"debug"}, positionals = -1, run = run_build},
+	{name = "ci", run = run_ci},
+	{name = "desktop_tests", positionals = -1, run = run_desktop_tests},
 }
 
 Flag :: struct {
@@ -109,7 +118,7 @@ parse :: proc(args: []string, allocator := context.temp_allocator) -> (a: Args, 
 		if !known { return a, fmt.tprintf("%s takes no flag -%s", a.command.name, spelled) }
 		append(&a.flags, Flag{name, value})
 	}
-	if len(a.positionals) != a.command.positionals {
+	if a.command.positionals >= 0 && len(a.positionals) != a.command.positionals || len(a.positionals) > 1 && a.command.positionals < 0 {
 		return a, fmt.tprintf("%s takes %d plain arguments, not %d", a.command.name, a.command.positionals, len(a.positionals))
 	}
 	return a, ""

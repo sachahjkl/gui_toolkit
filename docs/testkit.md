@@ -4,7 +4,7 @@
 not tied to any one application: a block of test-server ports, and a reader of the process's memory and handle counts.
 The package carries no product name — an application passes in its own environment variable and defaults.
 
-A test of an interface: `testkit/session`, in [testing.md](testing.md). It is a package of its own (`gt:testkit/session`), since it brings in the renderer and the widgets and this one brings in nothing.
+A test of an interface: `src/testkit/session`, in [testing.md](testing.md). It is a package of its own (`gt:testkit/session`), since it brings in the renderer and the widgets and this one brings in nothing.
 
 The package is named `tk_testkit` (the directory is `testkit`): import it as `testkit` unless the application keeps a
 package of its own by that name.

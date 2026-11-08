@@ -1,9 +1,9 @@
 #+build linux
-// The Linux backends against real servers, on a virtual desktop that tools/linux_desktop.sh starts: X11 under Xvfb and a
+// The Linux backends against real servers, on a virtual desktop that tk desktop_tests starts: X11 under Xvfb and a
 // window manager (openbox), Wayland under a headless compositor (sway). The input comes from the servers' own test
 // devices (xdotool's XTEST, swaymsg's seat cursor, wtype), the other programs on the clipboard are xclip and wl-clipboard.
 // One test at a time: the tests share the process's connection to the server.
-//   tools/linux_desktop.sh [odin]
+//   odin run tools/tk -- desktop_tests [x11|randr|wayland]
 //   GUI_TEST_DESKTOP=x11|wayland, set by the script; without it every test passes without doing anything: nothing here
 //   may ever reach a person's desktop.
 package linux_desktop_test
@@ -18,8 +18,8 @@ import "core:sys/posix"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../dbus"
-import "../../platform"
+import "../../src/dbus"
+import "../../src/platform"
 
 @(private = "file") desktop :: proc() -> string {
 	v := posix.getenv("GUI_TEST_DESKTOP")

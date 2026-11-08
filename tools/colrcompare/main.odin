@@ -10,7 +10,7 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:time"
-import "../../font"
+import "../../src/font"
 import stbi "vendor:stb/image"
 
 Img :: struct {

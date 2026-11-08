@@ -7,7 +7,7 @@ package color_native_test
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../../font"
+import "../../src/font"
 
 // What `fc-match <pattern>` says the family is ("" when fc-match is not there).
 @(private = "file")

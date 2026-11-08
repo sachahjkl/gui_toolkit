@@ -5,7 +5,7 @@ package frame_gate_test
 
 import "core:testing"
 import "core:thread"
-import "../../platform"
+import "../../src/platform"
 
 // The admission table, every stage against both kinds.
 @(test)
