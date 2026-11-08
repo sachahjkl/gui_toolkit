@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.98.3] - 2026-11-08
+
+### Fixed
+- **`tools/tk`'s pinned downloads** (wgpu-native, DXC, the emoji font) try again, and a file of a GitHub release whose download fails comes through GitHub's API (with `GH_TOKEN` or `GITHUB_TOKEN` when set), checked against its SHA-256 as before: GitHub's release downloads answered 504 for over an hour while its API served the same files, and a CI fetching wgpu-native failed. The tool's own tests run in `run_tests` (`tk_tool`).
+
 ## [0.98.2] - 2026-11-08
 
 ### Fixed
@@ -1810,6 +1815,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.98.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.3
 [0.98.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.2
 [0.98.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.1
 [0.98.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.98.0
