@@ -2,6 +2,7 @@
   # The toolkit's development on Linux: the pinned Odin with wgpu-native in its vendor folder, Rust for the native text backend,
   # the libraries the examples open, and what tk desktop_tests starts (Xvfb, openbox, Xorg's dummy driver, sway).
   #   nix develop                          then: odin run tools/tk -- ci (or build, desktop_tests, release)
+  # git and gh are the system's (gh with its own login).
   description = "gui_toolkit: a fast, native, immediate-mode GUI toolkit in Odin";
 
   inputs = {
@@ -95,7 +96,7 @@
     formatter.${system} = pkgs.alejandra;
 
     devShells.${system}.default = pkgs.mkShell {
-      packages = [odin] ++ (with pkgs; [cargo rustc nodejs git gh]) ++ desktops ++ preCommitCheck.enabledPackages;
+      packages = [odin] ++ (with pkgs; [cargo rustc nodejs]) ++ desktops ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       # (nix develop clears LD_LIBRARY_PATH when it is an attribute)
       shellHook =
