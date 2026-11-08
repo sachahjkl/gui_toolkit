@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.104.0] - 2026-11-08
+
+### Added
+- **`site.Meta.changelog_page` and `version_anchor`**: where a site tells a version (the feed's links, llms.txt), for a site whose changelog is another page or whose anchors are written otherwise (Wren's `changelog/#v0-7-0`).
+
+### Fixed
+- **Docs tables on a phone**: each column keeps room for its text (26 characters, at most 70 % of the screen) and the table scrolls sideways in its frame. The columns were squeezed to one word a line.
+
 ## [0.103.0] - 2026-11-08
 
 ### Added
@@ -1860,6 +1868,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.104.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.104.0
 [0.103.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.103.0
 [0.102.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.102.0
 [0.101.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.101.0
