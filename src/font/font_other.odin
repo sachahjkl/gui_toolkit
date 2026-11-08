@@ -24,6 +24,7 @@ Platform_Face :: struct {
 	index:   u32,
 	weight:  int,      // nominal weight and style: the base of the fallback
 	style:   Font_Style,
+	variations: []Axis_Value,   // the instance of a variable face (with_variations): the native backend opens it there (heap)
 }
 
 @(private)
@@ -45,7 +46,8 @@ other_system := System_Fonts{
 platform_release_face :: proc(f: ^Font) {
 	if f.owned { delete(f.data, runtime.heap_allocator()) }
 	delete(f.path, runtime.heap_allocator())
-	f.data, f.path = nil, ""
+	delete(f.variations, runtime.heap_allocator())
+	f.data, f.path, f.variations = nil, "", nil
 }
 
 // A face of a font file (TrueType, OpenType, collections: `index` picks the face), opened by the backend.
@@ -154,14 +156,70 @@ with_simulations :: proc(s: ^State, id: Font_Id, bold, oblique: bool) -> Font_Id
 		copy(nf.data, f.data)
 		nf.owned = true
 	}
+	if len(f.variations) > 0 {   // (a simulation of an instance keeps the instance)
+		nf.variations = make([]Axis_Value, len(f.variations), runtime.heap_allocator())
+		copy(nf.variations, f.variations)
+	}
 	nid := publish_face(s, key, nf, from_wide(f.family, context.temp_allocator))
 	return nid != 0 ? nid : id
 }
 
-// TODO: the axes and instances of variable faces through the native backend.
-axes :: proc(s: ^State, id: Font_Id, allocator := context.allocator) -> []Axis { return nil }
+// The axes of a variable face, from its 'fvar' table (OpenType: a header, then one 20-byte record per axis: tag, minimum,
+// default and maximum as 16.16 fixed). Empty for a static face.
+axes :: proc(s: ^State, id: Font_Id, allocator := context.allocator) -> []Axis {
+	f := face_ptr(s, id)
+	if f == nil { return nil }
+	data, ctx := face_table_read(f, "fvar")
+	defer face_table_release(f, ctx)
+	return fvar_axes(data, allocator)
+}
 
-with_variations :: proc(s: ^State, id: Font_Id, values: []Axis_Value) -> Font_Id { return id }
+@(private)
+fvar_axes :: proc(t: []u8, allocator := context.allocator) -> []Axis {
+	be16 :: proc(b: []u8, at: int) -> int { return int(b[at]) << 8 | int(b[at + 1]) }
+	fixed :: proc(b: []u8, at: int) -> f32 { return f32(i32(u32(b[at]) << 24 | u32(b[at + 1]) << 16 | u32(b[at + 2]) << 8 | u32(b[at + 3]))) / 65536 }
+	if len(t) < 16 || be16(t, 0) != 1 { return nil }
+	first, count, size := be16(t, 4), be16(t, 8), be16(t, 10)
+	if count == 0 || size < 20 || first + count * size > len(t) { return nil }
+	out := make([]Axis, count, allocator)
+	for i in 0 ..< count {
+		at := first + i * size
+		out[i] = {tag = {t[at], t[at + 1], t[at + 2], t[at + 3]}, min = fixed(t, at + 4), default = fixed(t, at + 8), max = fixed(t, at + 12)}
+	}
+	return out
+}
+
+// An instance of a variable face at the given axis values (CSS font-variation-settings, and font-weight / font-stretch /
+// font-style on variable fonts): a face of its own, opened by the native backend at that location. Axes the face lacks
+// are ignored by the backend. Returns `id` for a static face.
+with_variations :: proc(s: ^State, id: Font_Id, values: []Axis_Value) -> Font_Id {
+	f := face_ptr(s, id)
+	if f == nil || len(values) == 0 || len(axes(s, id, context.temp_allocator)) == 0 { return id }
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "var:")
+	strings.write_int(&sb, int(id))
+	for v in values {
+		tag := v.tag
+		strings.write_byte(&sb, '|')
+		strings.write_string(&sb, string(tag[:]))
+		strings.write_byte(&sb, '=')
+		strings.write_int(&sb, int(v.value * 1000))
+	}
+	key := strings.to_string(sb)
+	if nid, ok := find_key(s, key); ok { return nid }
+	nf := Font{kind = .Face}
+	nf.index, nf.sims, nf.weight, nf.style = f.index, f.sims, f.weight, f.style
+	if f.path != "" { nf.path = strings.clone(f.path, runtime.heap_allocator()) }
+	if len(f.data) > 0 {   // a copy: the faces are unloaded independently
+		nf.data = make([]byte, len(f.data), runtime.heap_allocator())
+		copy(nf.data, f.data)
+		nf.owned = true
+	}
+	nf.variations = make([]Axis_Value, len(values), runtime.heap_allocator())
+	copy(nf.variations, values)
+	nid := publish_face(s, key, nf, from_wide(f.family, context.temp_allocator))
+	return nid != 0 ? nid : id
+}
 
 // Where the native backend reads a face: its bytes or its file.
 @(private)
@@ -175,7 +233,7 @@ Native_Source :: struct {
 @(private)
 native_source :: proc(f: ^Font) -> (src: Native_Source, ok: bool) {
 	if f == nil { return }
-	src = {path = f.path, data = f.data, index = f.index}
+	src = {path = f.path, data = f.data, index = f.index, axes = f.variations}
 	return src, f.path != "" || len(f.data) > 0
 }
 
