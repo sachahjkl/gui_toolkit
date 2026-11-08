@@ -102,6 +102,10 @@ is_windows_11 :: proc() -> bool {
 // program declares itself (SetCurrentProcessExplicitAppUserModelID).
 set_app_id :: proc(id: string) {}
 
+// Whether a window can exist unseen (made and never shown, its frames still rendered): on Windows, yes (a window that
+// show_window is never called for). See platform_linux.odin.
+can_hide_windows :: proc() -> bool { return true }
+
 // Open a window. `size` is in logical pixels (96 dpi): it is scaled by the DPI of the monitor the window lands on
 // and clamped to the monitor work area (CW_USEDEFAULT can pick a non-primary monitor with another DPI).
 // `transparent`: no GDI redirection surface, for a renderer that presents with alpha (render.init `transparent`).

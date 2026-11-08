@@ -33,6 +33,8 @@ no-ops with a sane return, never an error.
 
 **Lifecycle** — `open_window`, `open_window_offscreen`, `show_window`, `destroy_window`, `set_title`, `set_size`,
 `is_closed`, `cancel_close` (the app answered a Close by staying open), `is_offscreen`.
+`can_hide_windows()`: whether a window can exist unseen, made and never shown (Windows); on Wayland and X11 it cannot, and a
+program that needs an unseen window opens an offscreen one.
 
 **Identity** — `set_app_id(id)`, once before the first window: on Linux, the windows' Wayland app_id and X11 WM_CLASS.
 The desktop finds the program's `<id>.desktop` by it, for the icon and the name in a task bar. Without a call, the id is
