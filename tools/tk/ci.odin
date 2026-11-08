@@ -3,6 +3,7 @@ package tk
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import toolbox "../../src/toolbox"
 
 // What a program's file ends with.
 EXE :: ".exe" when ODIN_OS == .Windows else ""
@@ -17,7 +18,7 @@ CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", 
 LINUX_FLAGS :: [?]string{"-define:FONT_BACKEND=native", "-extra-linker-flags:-Wl,--allow-multiple-definition"}
 
 // The packages of the library, under src/.
-PACKAGES :: [?]string{"arena", "ascii", "base", "cdp", "config", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "host", "i18n", "instance", "paint", "platform", "process", "render", "site", "testkit", "ui", "update"}
+PACKAGES :: [?]string{"arena", "ascii", "base", "cdp", "config", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "host", "i18n", "instance", "paint", "platform", "process", "render", "site", "testkit", "toolbox", "ui", "update"}
 
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource
@@ -47,7 +48,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 		flags := LINUX_FLAGS
 		append(&cmd, ..flags[:])
 	}
-	if !run(cmd[:]) { return fmt.tprintf("building examples/%s failed", example) }
+	if !toolbox.run(cmd[:]) { return fmt.tprintf("building examples/%s failed", example) }
 	fmt.printfln("built %s", out)
 	return ""
 }
@@ -65,7 +66,7 @@ run_ci :: proc(a: ^Args) -> string {
 		cmd := make([dynamic]string, context.temp_allocator)
 		append(&cmd, "odin", "check", join({root, "src", p}), "-no-entry-point", "-vet")
 		when ODIN_OS != .Windows { append(&cmd, "-target:linux_amd64", LINUX_FLAGS[0]) }
-		if run(cmd[:]) {   // (the compiler says what is wrong, and nothing when all is well)
+		if toolbox.run(cmd[:]) {   // (the compiler says what is wrong, and nothing when all is well)
 			fmt.printfln("check ok   %s", p)
 		} else {
 			fmt.printfln("check FAIL %s", p)
@@ -76,7 +77,7 @@ run_ci :: proc(a: ^Args) -> string {
 	for e in examples {
 		if why := build_example(root, e, false); why != "" { append(&failed, why) }
 	}
-	if !run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, root) {
+	if !toolbox.run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, {dir = root}) {
 		append(&failed, "tools/run_tests")
 	}
 	if len(failed) > 0 { return fmt.tprintf("failed: %s", strings.join(failed[:], ", ", context.temp_allocator)) }

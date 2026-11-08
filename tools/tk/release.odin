@@ -3,6 +3,7 @@ package tk
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import toolbox "../../src/toolbox"
 
 // Publishes a version of gui_toolkit, on Windows or Linux (CONTRIBUTING.md, "Publishing a version"), from a clean checkout of master:
 //   1. tools/changelog assembles the fragments of changelog.d into the version's CHANGELOG.md section, and writes the version in
@@ -19,16 +20,16 @@ run_release :: proc(a: ^Args) -> string {
 		command := make([dynamic]string, context.temp_allocator)
 		append(&command, "git", "-C", root)
 		append(&command, ..args)
-		return run(command[:])
+		return toolbox.run(command[:])
 	}
 
-	if out, ok := capture({"git", "-C", root, "status", "--porcelain"}); !ok || strings.trim_space(out) != "" { return "the working tree is not clean" }
-	if out, ok := capture({"git", "-C", root, "branch", "--show-current"}); !ok || strings.trim_space(out) != "master" { return "not on master" }
+	if out, code := toolbox.capture({"git", "-C", root, "status", "--porcelain"}); code != 0 || strings.trim_space(out) != "" { return "the working tree is not clean" }
+	if out, code := toolbox.capture({"git", "-C", root, "branch", "--show-current"}); code != 0 || strings.trim_space(out) != "master" { return "not on master" }
 	changelog := join({root, "build", "changelog.exe" when ODIN_OS == .Windows else "changelog"})
-	if !run({"odin", "build", join({root, "tools", "changelog"}), fmt.tprintf("-out:%s", changelog)}) { return "building tools/changelog failed" }
-	if !run({changelog, "-check"}, root) { return "changelog.d has fragments to fix first" }
-	if !run({changelog, "-assemble", fmt.tprintf("-version:%s", version)}, root) { return "assembling the CHANGELOG failed" }
-	if !run({changelog, "-check", fmt.tprintf("-release:%s", version)}, root) { return "the release is not consistent" }
+	if !toolbox.run({"odin", "build", join({root, "tools", "changelog"}), fmt.tprintf("-out:%s", changelog)}) { return "building tools/changelog failed" }
+	if !toolbox.run({changelog, "-check"}, {dir = root}) { return "changelog.d has fragments to fix first" }
+	if !toolbox.run({changelog, "-assemble", fmt.tprintf("-version:%s", version)}, {dir = root}) { return "assembling the CHANGELOG failed" }
+	if !toolbox.run({changelog, "-check", fmt.tprintf("-release:%s", version)}, {dir = root}) { return "the release is not consistent" }
 
 	when ODIN_OS == .Windows {
 		if why := screenshots(root, {build = true, only = {"about"}, width = SHOTS_WIDTH}); why != "" { return fmt.tprintf("the About picture failed: %s", why) }
@@ -45,9 +46,9 @@ run_release :: proc(a: ^Args) -> string {
 	if !git(root, "push", "-q", "origin", "HEAD:master") { return "pushing master failed" }
 	if !git(root, "push", "-q", "origin", tag) { return "pushing the tag failed" }
 	notes := join({root, "build", fmt.tprintf("gui_toolkit-%s-notes.md", version)})
-	if !run({changelog, "-section", fmt.tprintf("-version:%s", version), fmt.tprintf("-out:%s", notes)}, root) { return "reading the CHANGELOG section failed" }
+	if !toolbox.run({changelog, "-section", fmt.tprintf("-version:%s", version), fmt.tprintf("-out:%s", notes)}, {dir = root}) { return "reading the CHANGELOG section failed" }
 	defer os.remove(notes)
-	if !run({"gh", "release", "create", tag, "--title", fmt.tprintf("gui_toolkit %s", version), "--notes-file", notes, "--verify-tag", "--latest"}, root) { return "gh release create failed" }
+	if !toolbox.run({"gh", "release", "create", tag, "--title", fmt.tprintf("gui_toolkit %s", version), "--notes-file", notes, "--verify-tag", "--latest"}, {dir = root}) { return "gh release create failed" }
 	fmt.printfln("released %s", tag)
 	return ""
 }

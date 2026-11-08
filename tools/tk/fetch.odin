@@ -4,6 +4,7 @@ package tk
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import toolbox "../../src/toolbox"
 
 Pinned :: struct {
 	name, url, sha256: string,
@@ -90,11 +91,11 @@ fetch_emoji :: proc(o: Emoji_Options) -> string {
 	cache := join({temp_folder(), EMOJI_CACHE})
 	_ = os.make_directory_all(cache)
 	dst := join({o.dest, EMOJI_RESULT.name})
-	if sum, ok := sha256_file(dst); ok && sum == EMOJI_RESULT.sha256 {
+	if sum, ok := toolbox.sha256_file(dst); ok && sum == EMOJI_RESULT.sha256 {
 		if !o.quiet { fmt.printfln("%s: as pinned", EMOJI_RESULT.name) }
 	} else {
 		src := join({cache, fmt.tprintf("%s-%s", EMOJI_COMMIT, EMOJI_SOURCE.name)})
-		if why := download_pinned(EMOJI_SOURCE.url, src, EMOJI_SOURCE.sha256, o.quiet); why != "" { return why }
+		if why := toolbox.download_pinned(EMOJI_SOURCE.url, src, EMOJI_SOURCE.sha256, quiet = o.quiet); why != "" { return why }
 		font, err := os.read_entire_file(src, context.allocator)
 		if err != nil { return fmt.tprintf("%s cannot be read", src) }
 		defer delete(font)
@@ -102,16 +103,16 @@ fetch_emoji :: proc(o: Emoji_Options) -> string {
 		if why != "" { return why }
 		defer delete(stripped)
 		if os.write_entire_file(dst, stripped) != nil { return fmt.tprintf("%s cannot be written", dst) }
-		if got := sha256_hex(stripped); got != EMOJI_RESULT.sha256 {
+		if got := toolbox.sha256_hex(stripped); got != EMOJI_RESULT.sha256 {
 			_ = os.remove(dst)
 			return fmt.tprintf("%s: SHA-256 mismatch after stripping (%s, expected %s)", EMOJI_RESULT.name, got, EMOJI_RESULT.sha256)
 		}
 		if !o.quiet { fmt.printfln("%s: %d KiB", EMOJI_RESULT.name, (len(stripped) + BYTES_PER_KIB / 2) / BYTES_PER_KIB) }
 	}
-	if why := download_pinned(EMOJI_LICENCE.url, join({o.dest, EMOJI_LICENCE.name}), EMOJI_LICENCE.sha256, o.quiet); why != "" { return why }
+	if why := toolbox.download_pinned(EMOJI_LICENCE.url, join({o.dest, EMOJI_LICENCE.name}), EMOJI_LICENCE.sha256, quiet = o.quiet); why != "" { return why }
 	if o.unicode {
 		for u in UNICODE_FILES {
-			if why := download_pinned(u.url, join({o.dest, u.name}), u.sha256, o.quiet); why != "" { return why }
+			if why := toolbox.download_pinned(u.url, join({o.dest, u.name}), u.sha256, quiet = o.quiet); why != "" { return why }
 		}
 	}
 	return ""
@@ -176,14 +177,14 @@ strip_table :: proc(src: []byte, drop: string, allocator := context.allocator) -
 // Every file of `files` in `dir`, with its pinned SHA-256.
 files_as_pinned :: proc(dir: string, files: []Pinned) -> bool {
 	for f in files {
-		if sum, ok := sha256_file(join({dir, f.name})); !ok || sum != f.sha256 { return false }
+		if sum, ok := toolbox.sha256_file(join({dir, f.name})); !ok || sum != f.sha256 { return false }
 	}
 	return true
 }
 
 fetch_wgpu :: proc(o: Wgpu_Options) -> string {
-	root_text, ok := capture({o.odin, "root"})
-	if !ok { return fmt.tprintf("%s root failed", o.odin) }
+	root_text, code := toolbox.capture({o.odin, "root"})
+	if code != 0 { return fmt.tprintf("%s root failed", o.odin) }
 	odin_root := strings.trim_right(strings.trim_space(root_text), "\\/")
 	when ODIN_OS == .Windows {
 		return fetch_wgpu_windows(odin_root, o)
@@ -198,7 +199,7 @@ fetch_wgpu_windows :: proc(odin_root: string, o: Wgpu_Options) -> string {
 		fmt.printfln("wgpu-native %s: %s is as pinned", WGPU_VERSION, lib_dir)
 	} else {
 		zip := join({temp_folder(), WGPU_WINDOWS_ZIP.name})
-		if why := download_pinned(WGPU_WINDOWS_ZIP.url, zip, WGPU_WINDOWS_ZIP.sha256); why != "" { return why }
+		if why := toolbox.download_pinned(WGPU_WINDOWS_ZIP.url, zip, WGPU_WINDOWS_ZIP.sha256); why != "" { return why }
 		x := join({temp_folder(), WGPU_WINDOWS_EXTRACT})
 		_ = os.remove_all(x)
 		_ = os.make_directory_all(x)
@@ -207,7 +208,7 @@ fetch_wgpu_windows :: proc(odin_root: string, o: Wgpu_Options) -> string {
 		for f in WGPU_WINDOWS_FILES {
 			src := find_file(x, f.name, "")
 			if src == "" { return fmt.tprintf("%s is not in the wgpu-native archive", f.name) }
-			if got, _ := sha256_file(src); got != f.sha256 { return fmt.tprintf("%s from the archive does not match its pinned SHA-256 (%s)", f.name, got) }
+			if got, _ := toolbox.sha256_file(src); got != f.sha256 { return fmt.tprintf("%s from the archive does not match its pinned SHA-256 (%s)", f.name, got) }
 			if os.copy_file(join({lib_dir, f.name}), src) != nil { return fmt.tprintf("%s cannot be written", join({lib_dir, f.name})) }
 		}
 		_ = os.remove_all(x)
@@ -226,7 +227,7 @@ fetch_wgpu_windows :: proc(odin_root: string, o: Wgpu_Options) -> string {
 		return ""
 	}
 	zip := join({temp_folder(), DXC_ZIP.name})
-	if why := download_pinned(DXC_ZIP.url, zip, DXC_ZIP.sha256); why != "" { return why }
+	if why := toolbox.download_pinned(DXC_ZIP.url, zip, DXC_ZIP.sha256); why != "" { return why }
 	x := join({temp_folder(), DXC_EXTRACT})
 	_ = os.remove_all(x)
 	_ = os.make_directory_all(x)
@@ -250,7 +251,7 @@ fetch_wgpu_linux :: proc(odin_root: string) -> string {
 		return ""
 	}
 	zip := join({temp_folder(), WGPU_LINUX_ZIP.name})
-	if why := download_pinned(WGPU_LINUX_ZIP.url, zip, WGPU_LINUX_ZIP.sha256); why != "" { return why }
+	if why := toolbox.download_pinned(WGPU_LINUX_ZIP.url, zip, WGPU_LINUX_ZIP.sha256); why != "" { return why }
 	defer { _ = os.remove(zip) }
 	_ = os.make_directory_all(dest)
 	if !unzip(zip, dest) { return "the wgpu-native archive cannot be unpacked" }

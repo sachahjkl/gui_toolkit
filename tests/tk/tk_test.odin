@@ -1,5 +1,5 @@
 // tools/tk in process: its command line, ppm_diff on two small pictures, the font with a table dropped, the stamps that make a second
-// build nothing, a pinned file kept or fetched (from a file: URL, offline), font/emoji_data.odin from a small emoji-data.txt, the
+// build nothing, font/emoji_data.odin from a small emoji-data.txt, the
 // board's list and cells, the command line PowerShell splits (tools/cmdline), and the logo and the icon (drawn by the paint package).
 //   odin test tests/tk -vet
 package tk_test
@@ -15,8 +15,8 @@ import "../../tools/cmdline"
 import "../../src/testkit"
 import "../../src/ascii"
 import tk_site "../../src/site"
+import toolbox "../../src/toolbox"
 
-@(private = "file") ABC_SHA256 :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 @(private = "file") PNG_SIGNATURE :: "\x89PNG\r\n\x1a\n"
 @(private = "file") PNG_WIDTH_AT :: 16   // in IHDR, after the signature and the chunk's length and type
 
@@ -169,37 +169,11 @@ the_stamps_of_the_builds :: proc(t: ^testing.T) {
 	testing.expect(t, sok)
 	parts := strings.split(sources, ",", context.temp_allocator)
 	testing.expect_value(t, len(parts), 3)
-	sum, _ := tk.sha256_file(fmt.tprintf("%s/Cargo.toml", crate))
+	sum, _ := toolbox.sha256_file(fmt.tprintf("%s/Cargo.toml", crate))
 	testing.expect_value(t, parts[0], ascii.upper(sum))
 	// a stamp PowerShell's Set-Content wrote ends with a line end
 	write(stamp, transmute([]byte)fmt.tprintf("%s\r\n", sources))
 	testing.expect(t, tk.stamp_holds(lib, stamp, sources))
-}
-
-@(test)
-a_pinned_file :: proc(t: ^testing.T) {
-	testing.expect_value(t, tk.sha256_hex(transmute([]byte)string("abc")), ABC_SHA256)
-	dir := testkit.temp_folder(t, "tk-pin")
-	have := fmt.tprintf("%s/have.txt", dir)
-	write(have, transmute([]byte)string("abc"))
-	// as pinned: kept, nothing fetched (the address would not answer)
-	testing.expect_value(t, tk.download_pinned("https://invalid.invalid/abc", have, ABC_SHA256, quiet = true), "")
-	testing.expect_value(t, string(read(have)), "abc")
-	when ODIN_OS == .Windows {
-		// not there: fetched (curl, a file: URL), then checked
-		src := fmt.tprintf("%s/src.txt", dir)
-		write(src, transmute([]byte)string("abc"))
-		url, _ := strings.replace_all(fmt.tprintf("file:///%s", src), "\\", "/", context.temp_allocator)
-		got := fmt.tprintf("%s/got.txt", dir)
-		testing.expect_value(t, tk.download_pinned(url, got, ABC_SHA256, quiet = true), "")
-		testing.expect_value(t, string(read(got)), "abc")
-		// what came is not what is pinned: refused, removed
-		write(src, transmute([]byte)string("abd"))
-		bad := fmt.tprintf("%s/bad.txt", dir)
-		why := tk.download_pinned(url, bad, ABC_SHA256, quiet = true)
-		testing.expect(t, strings.contains(why, "SHA-256 mismatch"), why)
-		testing.expect(t, !os.exists(bad), "the file that does not match is gone")
-	}
 }
 
 @(private = "file")

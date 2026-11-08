@@ -9,6 +9,7 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 import "../../src/ascii"
+import toolbox "../../src/toolbox"
 
 EMOJI_DATA_SOURCE :: "src/font/emoji_data.odin"
 // A line of ranges in it, at most (with its tab).
@@ -197,10 +198,10 @@ emoji_board :: proc(root: string, o: Board_Options) -> string {
 	if os.write_entire_file(list_file, strings.to_string(listed)) != nil { return fmt.tprintf("%s cannot be written", list_file) }
 
 	_ = os.make_directory_all("build")
-	if !run({"odin", "build", "tools/colrboard", "-vet", "-out:build/colrboard.exe"}) { return "build failed" }
+	if !toolbox.run({"odin", "build", "tools/colrboard", "-vet", "-out:build/colrboard.exe"}) { return "build failed" }
 	colrboard := join({root, "build", "colrboard.exe"})
 	size, scale := fmt.tprint(o.size), number_text(o.scale)
-	_ = run({colrboard, "write", font, list_file, out_dir, size, scale})
+	_ = toolbox.run({colrboard, "write", font, list_file, out_dir, size, scale})
 
 	cw, ch := board_cell(o.size)
 	rows := (len(list) + BOARD_COLUMNS - 1) / BOARD_COLUMNS
@@ -225,6 +226,6 @@ emoji_board :: proc(root: string, o: Board_Options) -> string {
 		return "edge timed out"
 	}
 	if !os.exists(png) { return "no screenshot" }
-	if !run({colrboard, "compare", font, list_file, png, out_dir, size, scale}) { return "colrboard compare failed" }
+	if !toolbox.run({colrboard, "compare", font, list_file, png, out_dir, size, scale}) { return "colrboard compare failed" }
 	return ""
 }
