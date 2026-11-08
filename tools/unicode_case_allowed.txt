@@ -11,7 +11,7 @@ src/config/titles.odin strings.write_rune(&sb, unicode.to_upper(r))  # display t
 src/config/titles.odin case "kb", "mb", "gb": return strings.to_upper(w  # display text: a word of a title in capitals
 src/config/titles.odin case "d3d", "d3d11", "d3d12": return strings.to_upper(w  # display text: a word of a title in capitals
 src/config/titles.odin case "ws", "wss": return strings.to_upper(w  # display text: a word of a title in capitals
-src/desktop/desktop.odin return strings.equal_fold(normalize_slashes(a)  # a Windows path (the file system folds by Unicode)
+src/desktop/desktop.odin return strings.equal_fold(long_path(normalize_slashes(a))  # a Windows path (the file system folds by Unicode)
 src/desktop/install.odin if !strings.equal_fold(a[:len(b)], b)  # a Windows path (the file system folds by Unicode)
 src/desktop/integration_windows.odin registered_mine := registered_ok && strings.equal_fold(registered  # a registry key's path (the registry folds by Unicode)
 src/desktop/integration_windows.odin ok && strings.equal_fold(registered, l.capabilities)  # a registry key's path (the registry folds by Unicode)
