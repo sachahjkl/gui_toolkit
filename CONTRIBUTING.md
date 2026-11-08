@@ -30,14 +30,15 @@
 
 ## Publishing a version
 
-`powershell -File tools\release.ps1 <version> ["one-line summary"]`, on a clean `master`:
+`odin run tools/tk -- release <version> "-summary:one-line summary"`, on a clean `master`, on Windows or Linux:
 
 1. `tools/changelog -assemble -version:<version>` makes the `## [<version>] - <date>` section from the fragments
    (by type, newest first), writes the version in `ui/version.odin` and the README's badge, and deletes the fragments;
-2. the script commits that as `<version>: <summary>`, tags it `v<version>` (annotated), pushes `master` and the tag,
+2. on Windows, the About picture (it shows the version) is taken again from fidget; elsewhere it stays;
+3. it commits that as `<version>: <summary>`, tags it `v<version>` (annotated), pushes `master` and the tag,
    and creates the GitHub release with the section as its notes (`tools/changelog -section -version:<version>`).
 
-`-NoPush` stops after the tag, to look at the commit first. Semantic versioning: while the version is `0.x`, a minor
+`-no-push` stops after the tag, to look at the commit first. Semantic versioning: while the version is `0.x`, a minor
 bump may change the API.
 
 `tests/changelog` tests `tools/changelog` on a throwaway copy (malformed fragments, no fragment, two of

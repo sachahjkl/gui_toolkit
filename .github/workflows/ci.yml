@@ -37,7 +37,7 @@ jobs:
       - uses: ./.github/actions/setup-odin
 
       # a few seconds: every fragment of changelog.d is well formed and none was already released, ui/version.odin is
-      # the last published version (only tools/release.ps1 writes it). (tests/changelog tests the tool, with the other packages.)
+      # the last published version (only `tk release` writes it). (tests/changelog tests the tool, with the other packages.)
       - name: CHANGELOG fragments (tools/changelog)
         timeout-minutes: 3
         run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/changelog -vet -out:build/changelog.exe -- -check

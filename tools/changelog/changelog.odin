@@ -11,7 +11,7 @@
 //   odin run tools/changelog -- -check -release:0.4.0        ready to tag 0.4.0: no fragment left, its section there, the version said
 //   odin run tools/changelog -- -assemble                    what the next version brings, printed
 //   odin run tools/changelog -- -assemble -version:0.4.0     the release: a "## [0.4.0] - <date>" section in CHANGELOG.md, the version written in
-//                                                            ui/version.odin and the README's badge, the fragments deleted (tools/release.ps1 does it)
+//                                                            ui/version.odin and the README's badge, the fragments deleted (tk release does it)
 //   odin run tools/changelog -- -section -version:0.4.0 [-out:f.md]   the body of that version's section (release notes)
 // -root:dir works on another checkout. Exit code 0 when all is well, 1 otherwise. The procedures below are what tests/changelog calls.
 package changelog_tool
