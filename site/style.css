@@ -189,7 +189,7 @@ html.lightbox-open { overflow: hidden; }
 .docs-nav a { display: block; padding: 3px 0; color: var(--weak); }
 .docs-nav a:hover { color: var(--text); text-decoration: none; }
 .docs-nav a[aria-current="page"] { color: var(--accent); }
-.doc { min-width: 0; }
+.doc { min-width: 0; max-width: none; margin: 0; padding: 0; }   /* (a main: the site's centring margins would size it to its widest code block in the grid) */
 .doc h1 { font: 700 clamp(1.6rem, 4vw, 2.2rem) var(--mono); margin: 0 0 16px; overflow-wrap: anywhere; }
 .doc h2 { font: 700 1.35rem var(--mono); margin: 40px 0 10px; padding-top: 8px; border-top: 1px solid var(--bg3); }
 .doc h3 { font: 700 1.05rem var(--mono); margin: 28px 0 8px; color: var(--cyan); }
