@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.103.0] - 2026-11-08
+
+### Added
+- **`site.build_docs`**: a documentation site from a project's Markdown: a page per document in the site's header and footer, a menu from `docs/_nav.txt` (folded under a "Documentation" toggle on a phone, no script), a search with no server, collapsible groups, a breadcrumb, the previous and next pages, "On this page", the old addresses sent on. `site.check_links` checks a built site's links without a browser; `site.check` also checks the documentation pages at 390 px. Wren's documentation generator moved here; the toolkit's Docs section uses it.
+
+### Changed
+- **`site.render_markdown`** replaces `markdown_html`: one converter (Wren's, which reads more: blockquotes, HTML blocks, aligned tables, autolinks, titles, heading anchors, unique ids), with coloured code blocks (`site.write_code_block`, `site.Code_Language`), the headings and the plain text of a document. A `|` in a code span no longer splits a table cell, two trailing spaces are a hard break, and a title keeps a `_` inside a word.
+
 ## [0.102.0] - 2026-11-08
 
 ### Added
@@ -1852,6 +1860,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.103.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.103.0
 [0.102.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.102.0
 [0.101.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.101.0
 [0.100.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.100.0
