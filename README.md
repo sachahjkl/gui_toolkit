@@ -80,7 +80,7 @@ open and close themselves. Overrides for a single box go through `ui.next({...})
 
 The toolkit follows semantic versioning (`ui.VERSION`; while `0.x`, a minor bump may change the API).
 Changes are listed in [CHANGELOG.md](CHANGELOG.md); releases are git tags `vX.Y.Z`. A change adds a fragment to
-[changelog.d/](changelog.d/README.md) and leaves the version alone: `tools/release.ps1` assembles the fragments and writes
+[changelog.d/](changelog.d/README.md) and leaves the version alone: `tk release` (tools/tk) assembles the fragments and writes
 the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Layers (same layering as raddebugger, one Odin package each)
@@ -100,6 +100,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `dbus` | The D-Bus calls the Linux side needs. |
 | `config` | A typed preference registry — an about:config for any application (`config.Prefs`): named, typed, documented, bounded preferences with four layers (default < user < command line < policy, policy locks), prefix observers, atomic save of user changes only, snapshots, and titles / summary / search for a settings UI. Pure Odin, any target. See [docs/config.md](docs/config.md). |
 | `arena` | Lifetime and ownership primitives: a `Scope` tree (a growing virtual-memory arena plus reverse-order cleanups, closing a scope closes its children) and a generational `Pool` (fixed-address slots addressed by a `Handle` that can never dangle). Pure Odin, any target. See [docs/arena.md](docs/arena.md). |
+| `update` | Signed updates of a program: the manifest a release publishes per platform and channel (Ed25519, the product's key and signing context), what a program checks before it installs anything (signature, product, channel, platform, a strictly newer version, the file's size and SHA-256), and the new program put in place of the running one (Windows: the running one renamed aside; Linux: renamed over). The program downloads with its own client. See [docs/update.md](docs/update.md). |
 | `instance` | One running copy of an application per named resource: the first start owns a name, a second start hands an opaque message to it and comes forward instead of opening a second copy. Platform-neutral interface (a name, an identity token, `[]byte` messages, a handler); named mutex + message window on Windows, lock file + Unix socket on POSIX (`instance_<os>.odin`). See [docs/instance.md](docs/instance.md). |
 | `testkit` | Reusable building blocks for an application's own tests: a block of test-server ports (so several worktrees test side by side, `url` rewrites the default ports to the run's block) and a reader of the process's memory, open handles and (on Windows) GDI / USER objects for endurance and leak tests (`process_<os>.odin`). Pure of any product name. See [docs/testkit.md](docs/testkit.md). |
 
