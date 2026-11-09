@@ -287,6 +287,14 @@ damage_environment :: proc(r: ^Renderer, f: Frame_Data) -> u64 {
 	return hash.fnv64a(mem.ptr_to_bytes(&e))
 }
 
+// Whether a partial frame is not presented: a region of nothing leaves the window as it is. Not when a capture waits for
+// this frame: its copy is taken from the frame's texture, which a skipped frame does not have (DevTools' screenshots
+// failed once a frame drew nothing).
+@(private)
+damage_skips_present :: proc(r: ^Renderer, partial: bool) -> bool {
+	return partial && r.damage.count == 0 && !r.capture.requested
+}
+
 @(private)
 damage_verify_env :: proc(d: ^Damage_State) {
 	@(static) state: int   // 0 unknown, 1 off, 2 on (the process's: atomic, every thread reads the same environment)
