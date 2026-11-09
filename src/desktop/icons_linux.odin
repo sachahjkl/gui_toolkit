@@ -252,7 +252,8 @@ int_text :: proc(n: int) -> string {
 folder_names :: proc(path: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	clean := strings.trim_right(path, "/")
-	if clean == "" { append(&out, "drive-harddisk-root", "drive-harddisk", "folder"); return out[:] }
+	// (the root as Thunar shows it: drive-harddisk; Breeze's drive-harddisk-root is drawn for light backgrounds only)
+	if clean == "" { append(&out, "drive-harddisk", "folder"); return out[:] }
 	specials := [?]struct { k: platform.Known_Folder, name: string }{
 		{.Home, "user-home"}, {.Desktop, "user-desktop"}, {.Documents, "folder-documents"}, {.Downloads, "folder-download"},
 		{.Music, "folder-music"}, {.Pictures, "folder-pictures"}, {.Videos, "folder-videos"},
@@ -345,7 +346,8 @@ icon_of_path_in :: proc(roots: Xdg_Roots, theme: string, path: string, folder: b
 	return icon_load(file, size, allocator)
 }
 
-// A theme's file as pixels: a PNG as it is, an SVG rendered at `size`.
+// A theme's file as pixels: an SVG rendered at `size`; a PNG larger than `size` reduced to it (its ratio kept), a smaller
+// one as it is.
 @(private)
 icon_load :: proc(file: string, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
 	data, err := os.read_entire_file(file, context.temp_allocator)
@@ -353,5 +355,13 @@ icon_load :: proc(file: string, size: int, allocator: runtime.Allocator) -> (ico
 	if strings.has_suffix(file, ".svg") { return svg_render(data, size, allocator) }
 	rgba, w, h, decoded := png.decode(data, allocator)
 	if !decoded { return }
+	if w > size || h > size {
+		k := f32(size) / f32(max(w, h))
+		dw, dh := max(1, int(f32(w) * k + 0.5)), max(1, int(f32(h) * k + 0.5))
+		small := platform.rgba_resample(rgba, w, h, dw, dh, allocator)
+		delete(rgba, allocator)
+		return File_Icon{small, {dw, dh}}, true
+	}
 	return File_Icon{rgba, {w, h}}, true
 }
+

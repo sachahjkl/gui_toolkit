@@ -243,7 +243,7 @@ cursor_image_destroy :: proc(img: ^Cursor_Image, allocator := context.allocator)
 
 // RGBA8 (straight alpha) `src` of sw x sh pixels resampled to dw x dh: a tent filter as wide as a source pixel when
 // enlarging (bilinear), as wide as the reduction when reducing (every source pixel counts), in premultiplied alpha.
-cursor_resample :: proc(src: []u8, sw, sh, dw, dh: int, allocator := context.allocator) -> []u8 {
+rgba_resample :: proc(src: []u8, sw, sh, dw, dh: int, allocator := context.allocator) -> []u8 {
 	if sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 || len(src) < sw * sh * 4 { return nil }
 	out := make([]u8, dw * dh * 4, allocator)
 	if sw == dw && sh == dh { copy(out, src[:sw * sh * 4]); return out }

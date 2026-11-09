@@ -68,6 +68,12 @@ the_icons_of_a_theme :: proc(t: ^testing.T) {
 	} else {
 		fmt.println("icons: librsvg is not here: the SVG check is skipped")
 	}
+	// a PNG larger than the size asked: reduced to it
+	small, sok := icon_of_path_in(roots, "Test", "/x/notes.txt", false, 8, context.allocator, 16)
+	defer file_icon_destroy(&small)
+	testing.expect(t, sok)
+	testing.expect_value(t, small.size, [2]int{8, 8})
+	testing.expect_value(t, small.rgba[0], 255)
 	// chosen at one size, made at another: the file of 16 pixels for a picture asked at 40, chosen as at 16
 	big, bok := icon_of_path_in(roots, "Test", "/x/notes.txt", false, 40, context.allocator, 16)
 	defer file_icon_destroy(&big)

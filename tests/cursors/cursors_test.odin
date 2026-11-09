@@ -123,27 +123,27 @@ hotspots :: proc(t: ^testing.T) {
 resample :: proc(t: ^testing.T) {
 	// 2 x 2: red opaque, transparent, blue half, green opaque
 	src := []u8{255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255, 128, 0, 255, 0, 255}
-	same := platform.cursor_resample(src, 2, 2, 2, 2)
+	same := platform.rgba_resample(src, 2, 2, 2, 2)
 	defer delete(same)
 	testing.expect(t, string(same) == string(src), "same size: a copy")
-	up := platform.cursor_resample(src, 2, 2, 4, 4)
+	up := platform.rgba_resample(src, 2, 2, 4, 4)
 	defer delete(up)
 	testing.expect(t, len(up) == 64, "4 x 4")
 	testing.expect(t, up[0] == 255 && up[1] == 0 && up[3] == 255, "corner keeps its colour")
 	// transparent pixels lend no colour (premultiplied): the pixel next to the transparent one stays pure red
 	testing.expectf(t, up[4] == 255 && up[5] == 0 && up[6] == 0, "no dark fringe: %v", up[4:8])
-	down := platform.cursor_resample(src, 2, 2, 1, 1)
+	down := platform.rgba_resample(src, 2, 2, 1, 1)
 	defer delete(down)
 	// alpha: (255 + 0 + 128 + 255) / 4
 	testing.expectf(t, abs(int(down[3]) - 160) <= 1, "mean alpha %d", down[3])
 	big := make([]u8, 256 * 256 * 4)
 	defer delete(big)
 	for i := 0; i < len(big); i += 4 { big[i], big[i + 3] = 200, 255 }
-	small := platform.cursor_resample(big, 256, 256, 32, 32)
+	small := platform.rgba_resample(big, 256, 256, 32, 32)
 	defer delete(small)
 	testing.expect(t, small[0] == 200 && small[3] == 255 && small[len(small) - 1] == 255, "uniform stays uniform")
-	testing.expect(t, platform.cursor_resample(src, 2, 2, 0, 4) == nil, "an empty target")
-	testing.expect(t, platform.cursor_resample(src[:8], 2, 2, 4, 4) == nil, "too few pixels")
+	testing.expect(t, platform.rgba_resample(src, 2, 2, 0, 4) == nil, "an empty target")
+	testing.expect(t, platform.rgba_resample(src[:8], 2, 2, 4, 4) == nil, "too few pixels")
 }
 
 // A hidden window: every cursor is made, at the size of the system's, and custom cursors live and die.
