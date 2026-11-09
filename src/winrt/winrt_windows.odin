@@ -60,6 +60,12 @@ init :: proc() -> bool {
 	return ok(hr) || hr == RPC_E_CHANGED_MODE
 }
 
+// The same, with what RoInitialize answered (S_OK, S_FALSE: already in it; RPC_E_CHANGED_MODE counts as joined).
+init_result :: proc() -> HRESULT {
+	hr := RoInitialize(RO_INIT_MULTITHREADED)
+	return hr == RPC_E_CHANGED_MODE ? S_OK : hr
+}
+
 // Leaves the apartment (after init, on the same thread, once every object of the thread is released).
 uninit :: proc() { RoUninitialize() }
 
