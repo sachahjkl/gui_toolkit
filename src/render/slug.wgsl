@@ -91,7 +91,9 @@ fn CalcCoverage(xcov: f32, ycov: f32, xwgt: f32, ywgt: f32) -> f32 {
 // the caller: a sample of a supersampled pixel passes twice as many, its own half-pixel box). dk: stem darkening, the
 // pixels every edge moves outwards, signed by the outline's winding (+ for clockwise outer contours, y up): for those a
 // horizontal ray's + root is a right edge and its - root a left one, a vertical ray's + root a top edge.
-fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>, pixelsPerEm: float2, dk: f32) -> f32 {
+// dk: how far the edges move out (pixels), x: those a horizontal ray crosses (the stems' sides), y: those a vertical one crosses
+// (the baseline, the x-height, the tops): a weight only across keeps the letters on their lines.
+fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>, pixelsPerEm: float2, dk2: float2) -> f32 {
 
 	var bandMax = glyphData.zw;
 	bandMax.y &= 0x00FF;
@@ -100,6 +102,7 @@ fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>, 
 	let bandIndex = clamp(vec2<i32>(renderCoord * bandTransform.xy + bandTransform.zw), vec2<i32>(0, 0), bandMax);
 	let glyphLoc = glyphData.xy;
 
+	var dk = dk2.x;
 	var xcov = 0.0;
 	var xwgt = 0.0;
 
@@ -133,6 +136,7 @@ fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>, 
 		}
 	}
 
+	dk = dk2.y;
 	var ycov = 0.0;
 	var ywgt = 0.0;
 
@@ -167,6 +171,9 @@ fn SlugRender(renderCoord: float2, bandTransform: float4, glyphData: vec4<i32>, 
 	return CalcCoverage(xcov, ycov, xwgt, ywgt);
 }
 
+// The edges' moves of a glyph: its darkening on both axes, its weight across only.
+fn slug_dk(i: SlugPS) -> float2 { return float2(i.small.x + i.small.w, i.small.x); }
+
 // Dynamic dilation (reference vertex shader): the vertex moves along its normal so that the glyph's box grows by half a
 // pixel on screen, whatever the matrix; returns the em-space coordinate of the moved vertex (xy) and its position (zw).
 // pos.xy: the vertex, pos.zw: its normal (the direction away from the box); tex: its em coordinate; jac: em units per
@@ -197,7 +204,7 @@ struct SlugPS {
 	@location(4) @interpolate(flat) clip: u32,
 	@location(5) @interpolate(flat) corr: float4,             // text correction: ls, ld, bd, 1 / (bs - bd)
 	@location(6) @interpolate(flat) corr_meta: float2,        // contrast * ld, enabled
-	@location(7) @interpolate(flat) small: float3,            // stem darkening (pixels, signed), 1: four samples per pixel, stripes (slug_dual.wgsl)
+	@location(7) @interpolate(flat) small: float4,            // stem darkening (pixels, signed), 1: four samples per pixel, stripes (slug_dual.wgsl), weight across only (pixels, signed)
 };
 
 @vertex
@@ -238,7 +245,7 @@ fn vs_slug(i: VSIn) -> SlugPS {
 	o.banding = i.radii;
 	o.glyph = vec4<i32>(i32(i.extra.w & 0xFFFFu), i32(i.extra.w >> 16u), i32(i.extra.z & 0xFFu), i32((i.extra.z >> 8u) & 0xFFu));
 	o.clip = i.extra.y;
-	o.small = i.c1.xyz;
+	o.small = i.c1;
 	if (m.abcd.y != 0.0 || m.abcd.z != 0.0) { o.small.z = 0.0; }   // (turned: the text no longer runs along the stripes)
 
 	var c = i.c0;
@@ -287,12 +294,12 @@ fn ps_slug(i: SlugPS) -> @location(0) float4 {
 		// four samples on a rotated grid, each over its own half-pixel box: the coverage of thin stems and tight curves
 		// is measured rather than estimated from the two rays of one sample
 		let e = emsPerPixel;
-		cov = 0.25 * (SlugRender(i.tex + float2(-0.125, -0.375) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
-		              SlugRender(i.tex + float2( 0.375, -0.125) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
-		              SlugRender(i.tex + float2( 0.125,  0.375) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
-		              SlugRender(i.tex + float2(-0.375,  0.125) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0));
+		cov = 0.25 * (SlugRender(i.tex + float2(-0.125, -0.375) * e, i.banding, i.glyph, ppe * 2.0, slug_dk(i) * 2.0) +
+		              SlugRender(i.tex + float2( 0.375, -0.125) * e, i.banding, i.glyph, ppe * 2.0, slug_dk(i) * 2.0) +
+		              SlugRender(i.tex + float2( 0.125,  0.375) * e, i.banding, i.glyph, ppe * 2.0, slug_dk(i) * 2.0) +
+		              SlugRender(i.tex + float2(-0.375,  0.125) * e, i.banding, i.glyph, ppe * 2.0, slug_dk(i) * 2.0));
 	} else {
-		cov = SlugRender(i.tex, i.banding, i.glyph, ppe, i.small.x);
+		cov = SlugRender(i.tex, i.banding, i.glyph, ppe, slug_dk(i));
 	}
 	var color = i.color;
 	color.a = color.a * slug_text_coverage(cov, i);

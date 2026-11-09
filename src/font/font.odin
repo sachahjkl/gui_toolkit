@@ -137,6 +137,8 @@ Settings :: struct {
 	slug_darken:     f32,       // stem darkening: edges pushed out by this many pixels at 12 px per em and less, fading out by
 	                            // 36; 0: none
 	slug_supersample_ppem: f32, // glyphs at most this many pixels per em take four coverage samples per pixel; 0: never
+	slug_stripe_weight: f32,    // text drawn in colour stripes (subpixel_text) is this many pixels bolder, at every size: its
+	                            // three thin stripes read lighter than grey text, and a touch of weight looks better (as MacType)
 	color_engine:    Color_Engine,   // who draws COLR / CPAL color glyphs (colr.odin, or Direct2D)
 	colr_samples:    int,       // vertical samples per pixel row of the interpreter's scan conversion
 	colr_cache_kb:   int,       // glyph outlines the interpreter keeps per face (KiB) before it drops them all
@@ -163,11 +165,14 @@ when DEFAULT_TEXT_RENDERER == "slug" {
 	@(private) BUILD_TEXT_RENDERER :: Text_Renderer.Atlas
 }
 
+// How much bolder text in colour stripes is by default (pixels): a touch, that keeps its shape (tests/subpixel, docs/text.md).
+SLUG_STRIPE_WEIGHT_PX :: 0.2
+
 DEFAULT_SETTINGS :: Settings{
 	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
-	slug_hint_ppem = 0, slug_darken = 0, slug_supersample_ppem = 0,
+	slug_hint_ppem = 0, slug_darken = 0, slug_supersample_ppem = 0, slug_stripe_weight = SLUG_STRIPE_WEIGHT_PX,
 	color_engine = .System, colr_samples = 8, colr_cache_kb = 8192,
 	backend = BUILD_BACKEND,
 }
@@ -262,6 +267,7 @@ sanitize_settings :: proc(st: ^Settings) {
 	st.slug_tolerance = clamp(st.slug_tolerance, SLUG_TOLERANCE_MIN_EM, SLUG_TOLERANCE_MAX_EM)
 	st.slug_hint_ppem = clamp(st.slug_hint_ppem, 0, SLUG_PPEM_SETTING_MAX)
 	st.slug_darken = clamp(st.slug_darken, 0, 1)
+	st.slug_stripe_weight = clamp(st.slug_stripe_weight, 0, 1)
 	st.slug_supersample_ppem = clamp(st.slug_supersample_ppem, 0, SLUG_PPEM_SETTING_MAX)
 	st.colr_samples = clamp(st.colr_samples, 1, COLR_SAMPLES_MAX)
 	st.colr_cache_kb = clamp(st.colr_cache_kb, COLR_CACHE_MIN_KB, COLR_CACHE_MAX_KB)
@@ -299,9 +305,10 @@ set_settings :: proc(s: ^State, settings: Settings) {
 	}
 	// hinting changes which outline a glyph of a size uses: what was recorded with the other one is stale
 	if st.slug_hint_ppem != old.slug_hint_ppem { s.atlas.settings_generation += 1 }
-	if st.slug_darken != old.slug_darken || st.slug_supersample_ppem != old.slug_supersample_ppem { s.atlas.settings_generation += 1 }
+	if st.slug_darken != old.slug_darken || st.slug_supersample_ppem != old.slug_supersample_ppem || st.slug_stripe_weight != old.slug_stripe_weight { s.atlas.settings_generation += 1 }
 	s.settings.text_renderer, s.settings.slug_pages, s.settings.slug_tolerance = st.text_renderer, st.slug_pages, st.slug_tolerance
 	s.settings.slug_hint_ppem, s.settings.slug_darken, s.settings.slug_supersample_ppem = st.slug_hint_ppem, st.slug_darken, st.slug_supersample_ppem
+	s.settings.slug_stripe_weight = st.slug_stripe_weight
 	atlas_unlock(&s.atlas)
 	if st.system_fallback != s.settings.system_fallback {
 		s.settings.system_fallback = st.system_fallback
