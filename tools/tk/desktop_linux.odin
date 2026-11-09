@@ -33,7 +33,6 @@ Desk :: struct {
 @(private = "file") MAX_GROUPS :: 16
 @(private = "file") running_groups: [MAX_GROUPS]posix.pid_t
 @(private = "file") running_count: int
-@(private = "file") STOP_WAIT :: 3 * time.Second   // what a group is given to end on SIGTERM before SIGKILL
 
 @(private = "file")
 group_add :: proc(pid: posix.pid_t) {
@@ -60,25 +59,17 @@ on_end_signal :: proc "c" (sig: posix.Signal) {
 	posix._exit(128 + i32(sig))
 }
 
-// A program in a process group of its own, its output in `out`. setsid runs it in place (same process) when it is not a
-// group leader, which a child of tk never is: its pid is its group's.
+// A program in a process group of its own (toolbox.start_group), its output in `out`, known to the signal handler.
 @(private = "file")
 start_group :: proc(d: ^Desk, out: ^os.File, command: ..string) -> (p: os.Process, err: os.Error) {
-	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "setsid")
-	append(&cmd, ..command)
-	p = os.process_start({command = cmd[:], env = d.env[:], stdout = out, stderr = out}) or_return
+	p = toolbox.start_group(command, d.env[:], out) or_return
 	group_add(posix.pid_t(p.pid))
 	return p, nil
 }
 
-// SIGTERM to the whole group, then SIGKILL to what is left of it (a wrapper's children too) after STOP_WAIT at most.
 @(private = "file")
 stop_group :: proc(p: os.Process) {
-	posix.kill(-posix.pid_t(p.pid), .SIGTERM)
-	_, _ = os.process_wait(p, STOP_WAIT)
-	posix.kill(-posix.pid_t(p.pid), .SIGKILL)
-	_, _ = os.process_wait(p, STOP_WAIT)
+	toolbox.stop_group(p)
 	group_remove(posix.pid_t(p.pid))
 }
 
