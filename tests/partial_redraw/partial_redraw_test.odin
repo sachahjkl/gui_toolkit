@@ -90,7 +90,7 @@ app_build :: proc(s: ^session.Session) {
 // A session of the app with partial redraw on and every partial frame checked against the whole one.
 @(private = "file")
 open :: proc(t: ^testing.T, app: ^App, animations := true) -> ^session.Session {
-	s := session.start(t, {size = WINDOW, build = app_build, user = app, animations = animations, palette = ui.PALETTE_MIDNIGHT})
+	s := session.start(t, {size = WINDOW, build = app_build, user = app, animations = animations, palette = ui.palette_of("Midnight")})
 	ui.set_partial_redraw(s.state, true)
 	draw.set_damage_verify(session.draw_context(s), true)
 	session.frames(s, 3)
@@ -221,7 +221,7 @@ a_palette_change_is_exact :: proc(t: ^testing.T) {
 	defer ui.field_destroy(&app.field)
 	s := open(t, &app)
 	settle(s)
-	app.palette = ui.PALETTE_DAYLIGHT
+	app.palette = ui.palette_of("Midnight", light = true)
 	session.frame(s)
 	px, _ := region_px(s)
 	testing.expectf(t, px >= WINDOW.x * WINDOW.y / 2, "a new palette redraws most of the window (%d px)", px)
@@ -272,7 +272,7 @@ a_resize_redraws_the_whole_frame :: proc(t: ^testing.T) {
 the_check_catches_a_region_that_misses :: proc(t: ^testing.T) {
 	app: App
 	defer ui.field_destroy(&app.field)
-	s := session.start(t, {size = WINDOW, build = app_build, user = &app, palette = ui.PALETTE_MIDNIGHT})
+	s := session.start(t, {size = WINDOW, build = app_build, user = &app, palette = ui.palette_of("Midnight")})
 	dc := session.draw_context(s)
 	draw.set_partial_redraw(dc, true)
 	draw.set_damage_verify(dc, true)
