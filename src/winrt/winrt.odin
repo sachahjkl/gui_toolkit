@@ -22,6 +22,7 @@ GUID :: struct {
 PIID_IAsyncOperation                :: GUID{0x9fc2b0bb, 0xe446, 0x44e2, {0xaa, 0x61, 0x9c, 0xab, 0x8f, 0x63, 0x6a, 0xf2}}
 PIID_AsyncOperationCompletedHandler :: GUID{0xfcdcf02c, 0xe5d8, 0x4478, {0x91, 0x5a, 0x4d, 0x90, 0xb7, 0x4b, 0x83, 0xa5}}
 PIID_EventHandler                   :: GUID{0x9de1c535, 0x6ae1, 0x11e0, {0x84, 0xe1, 0x18, 0xa9, 0x05, 0xbc, 0xc5, 0x3f}}
+PIID_TypedEventHandler              :: GUID{0x9de1c534, 0x6ae1, 0x11e0, {0x84, 0xe1, 0x18, 0xa9, 0x05, 0xbc, 0xc5, 0x3f}}
 PIID_IVectorView                    :: GUID{0xbbe1fa4c, 0xb0e3, 0x4583, {0xba, 0xef, 0x1f, 0x1b, 0x2e, 0x48, 0x3e, 0x56}}
 
 // The namespace of the IDs of generic instances: 11f47ad5-7b73-42c0-abae-878b1e16adee.
@@ -54,6 +55,7 @@ sig_generic :: proc(piid: GUID, args: ..string, allocator := context.temp_alloca
 
 // The signatures of the fundamental types this package uses.
 SIG_STRING :: "string"
+SIG_INSPECTABLE :: "cinterface(IInspectable)"   // Object (IInspectable)
 
 // The interface ID of a type by its signature, as Windows computes it: SHA-1 of the namespace and the UTF-8 signature,
 // the first 16 bytes read big-endian, version 5, variant RFC 4122.
@@ -82,3 +84,6 @@ async_iids :: proc(result: string) -> (operation, handler: GUID) {
 
 // The ID of EventHandler<T>, for T of signature `args`.
 event_handler_iid :: proc(args: string) -> GUID { return piid_of(sig_generic(PIID_EventHandler, args)) }
+
+// The ID of TypedEventHandler<S, T>, for a sender of signature `sender` and arguments of signature `args`.
+typed_event_handler_iid :: proc(sender, args: string) -> GUID { return piid_of(sig_generic(PIID_TypedEventHandler, sender, args)) }

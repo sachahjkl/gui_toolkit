@@ -58,6 +58,8 @@ Native_Window :: struct {
 	dnd:          ^Dnd_State,
 	// icons of the notification area this window owns (tray_linux.odin)
 	trays:        [dynamic]^Tray,
+	// the notifications it showed (notify_linux.odin)
+	notify:       Notify_State,
 	// the accessibility adapter / tree (a11y_linux.odin), nil until an assistive technology connects
 	a11y:         rawptr,
 }
@@ -179,6 +181,7 @@ destroy_window :: proc(w: ^Window) {
 	clipboard_watch(w, false)
 	idle_release_window(w)
 	tray_destroy_all(w)
+	notify_detach(w)
 	dnd_destroy(w)
 	a11y_detach(w)
 	switch w.backend {
@@ -254,7 +257,9 @@ raise_window :: proc(w: ^Window) {
 	if w == nil || w.offscreen { return }
 	switch w.backend {
 	case .X11:     x11_raise(w)
-	case .Wayland: wl_activate(w)
+	case .Wayland:
+		// (a click on a notification of the window: the server's token for it, which the compositor honours)
+		if token := notify_take_token(w); token != "" { wl_activate_token(w, token) } else { wl_activate(w) }
 	case .None:
 	}
 }
@@ -426,6 +431,9 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 
 	if w.offscreen {
 		if wait && len(w.events) == 0 && len(w.injected) == 0 { off_wait(w, timeout_ms) }
+		// (notifications, portals: an offscreen window hears the buses its wait watched, as a shown one does)
+		dbus_pump()
+		a11y_pump(w)
 		off_drain(w)
 		take_injected(w)
 		return hand_out(w)
@@ -562,7 +570,7 @@ inject_event :: proc(w: ^Window, e: Event) {
 
 @(private)
 off_wait :: proc(w: ^Window, timeout_ms: int) {
-	poll_fd_wait(i32(w.off_event), timeout_ms > 0 ? timeout_ms : -1)
+	poll_sources(w, -1, timeout_ms > 0 ? timeout_ms : -1)   // its eventfd, the session bus, the accessibility bus
 }
 
 @(private)

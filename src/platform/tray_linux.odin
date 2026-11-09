@@ -13,8 +13,8 @@ package platform
 //     which become Tray_Events.
 //   * tray_set_menu builds a com.canonical.dbusmenu tree the host renders; a chosen item comes back as an Event method
 //     call and becomes a Menu_Item event.
-//   * tray_notify calls org.freedesktop.Notifications.Notify; its ActionInvoked / NotificationClosed signals become
-//     Notify_* events.
+//   * tray_notify shows a notification through notify_linux.odin (the toolkit's one Notify); its results become
+//     Notify_* events of the icon.
 
 import "base:runtime"
 import "core:fmt"
@@ -31,8 +31,6 @@ import "../dbus"
 @(private) PROPS_IFACE :: "org.freedesktop.DBus.Properties"
 @(private = "file") DBUS_SERVICE :: "org.freedesktop.DBus"
 @(private = "file") DBUS_PATH :: "/org/freedesktop/DBus"
-@(private) NOTIFY_SERVICE :: "org.freedesktop.Notifications"
-@(private) NOTIFY_PATH :: "/org/freedesktop/Notifications"
 
 // What the Linux tray keeps beyond the shared Tray fields.
 Native_Tray :: struct {
@@ -45,10 +43,8 @@ Native_Tray :: struct {
 	menu_ids:    map[i32]int, // dbusmenu id -> the app's Tray_Menu_Item.id
 	next_menu_id: i32,
 	menu_revision: u32,       // of the layout, told with LayoutUpdated
-	sub_action:  u32,         // the Notifications ActionInvoked subscription
-	sub_closed:  u32,
 	sub_watcher: u32,         // the watcher's owner changing (a panel that restarts)
-	last_notify: u32,         // the id Notify returned, to match its signals; 0 once it closed: nothing to replace
+	last_notify: u32,         // tray_notify's last notification, which the next replaces; 0 once it closed
 }
 
 @(private) tray_pid_counter: u32   // the process's icons so far, for their paths (atomic)
@@ -88,10 +84,9 @@ tray_destroy :: proc(t: ^Tray) {
 	if t.conn != nil {
 		dbus.export_remove(t.conn, t.path)
 		dbus.export_remove(t.conn, t.menu_path)
-		if t.sub_action != 0 { dbus.unsubscribe(t.conn, t.sub_action) }
-		if t.sub_closed != 0 { dbus.unsubscribe(t.conn, t.sub_closed) }
 		if t.sub_watcher != 0 { dbus.unsubscribe(t.conn, t.sub_watcher) }
 	}
+	notify_tray_gone(t.window, t)
 	if w := t.window; w != nil {
 		for x, i in w.trays { if x == t { unordered_remove(&w.trays, i); break } }
 	}
@@ -133,51 +128,19 @@ tray_set_tooltip :: proc(t: ^Tray, text: string) -> bool {
 
 @(private = "file") TRAY_DBUS_CALL_MS :: 5000
 
+// The notification goes through notify_linux.odin's Notify; its results become the icon's Notify_* events.
 tray_notify :: proc(t: ^Tray, n: Tray_Notify) -> bool {
-	if t == nil || t.conn == nil { return false }
-	w := dbus.body_writer()
-	dbus.w_string(&w, "gui_toolkit")                 // app_name
-	dbus.w_u32(&w, t.last_notify)                    // replaces_id
-	dbus.w_string(&w, "")                            // app_icon
-	dbus.w_string(&w, n.title)                       // summary
-	dbus.w_string(&w, n.body)                        // body
-	// actions: as: the default one, what a click on the notification does (Notify_Click)
-	alen, acontent := dbus.w_array_begin(&w, DBUS_ALIGN_STRING)
-	dbus.w_string(&w, "default")
-	dbus.w_string(&w, "Open")
-	dbus.w_array_end(&w, alen, acontent)
-	// hints: a{sv}
-	hlen, hcontent := dbus.arg_dict_begin(&w)
-	if n.silent {
-		dbus.arg_dict_entry(&w, "suppress-sound")
-		dbus.arg_variant_bool(&w, true)
+	if t == nil || t.window == nil { return false }
+	urgency := Notification_Urgency.Normal
+	#partial switch n.icon {
+	case .Info:  urgency = .Low
+	case .Error: urgency = .Critical
 	}
-	switch n.icon {
-	case .None, .App:
-	case .Info:    tray_hint_urgency(&w, 0)
-	case .Warning: tray_hint_urgency(&w, 1)
-	case .Error:   tray_hint_urgency(&w, 2)
-	}
-	dbus.arg_dict_end(&w, hlen, hcontent)
-	dbus.w_i32(&w, -1)                               // expire_timeout: the server default
-	msg, ok := dbus.call(t.conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "Notify", "susssasa{sv}i", w.buf[:], TRAY_DBUS_CALL_MS)
+	id, ok := notify_send(t.window, {title = n.title, body = n.body, urgency = urgency, silent = n.silent, replace = Notification_Id(t.last_notify)}, t)
 	if !ok { return false }
-	r := dbus.msg_reader(&msg)
-	t.last_notify = dbus.r_u32(&r)
+	t.last_notify = u32(id)
 	tray_push(t, {kind = .Notify_Shown})
-	// subscribe to the notification's result the first time
-	if t.sub_action == 0 {
-		t.sub_action = dbus.subscribe(t.conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "ActionInvoked", notify_action_signal, t)
-		t.sub_closed = dbus.subscribe(t.conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "NotificationClosed", notify_closed_signal, t)
-	}
 	return true
-}
-
-@(private)
-tray_hint_urgency :: proc(w: ^dbus.Writer, level: u8) {
-	dbus.arg_dict_entry(w, "urgency")
-	dbus.w_signature(w, "y")
-	dbus.w_u8(w, level)
 }
 
 // Opens the menu from the app (a left click): the StatusNotifierItem model has the host own the menu, so there is no
@@ -375,29 +338,6 @@ sni_write_icon_pixmap :: proc(t: ^Tray, w: ^dbus.Writer) {
 		dbus.w_array_end(w, bl, bc)
 	}
 	dbus.w_array_end(w, al, ac)
-}
-
-////////////////////////////////
-// notifications signals
-
-@(private)
-notify_action_signal :: proc(user: rawptr, msg: ^dbus.Message) {
-	t := (^Tray)(user)
-	r := dbus.msg_reader(msg)
-	id := dbus.r_u32(&r)
-	if id == t.last_notify { tray_push(t, {kind = .Notify_Click}) }
-}
-
-@(private)
-notify_closed_signal :: proc(user: rawptr, msg: ^dbus.Message) {
-	t := (^Tray)(user)
-	r := dbus.msg_reader(msg)
-	id := dbus.r_u32(&r)
-	reason := dbus.r_u32(&r)
-	if id != t.last_notify { return }
-	t.last_notify = 0
-	// reason: 1 expired, 2 dismissed by user, 3 closed by call
-	tray_push(t, reason == 1 ? Tray_Event{kind = .Notify_Timeout} : Tray_Event{kind = .Notify_Hidden})
 }
 
 _ :: runtime

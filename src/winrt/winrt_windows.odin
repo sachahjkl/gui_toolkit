@@ -244,13 +244,16 @@ await :: proc(operation: rawptr, handler_iid: GUID, result: rawptr, timeout_ms: 
 ////////////////////////////////
 // Events
 
-// An event handler of the program's own (an EventHandler<T>, or any delegate whose Invoke takes two pointers): it calls
-// `callback` with `user`, on the thread the source raises the event on. Counted: the source keeps its own reference.
+// An event handler of the program's own (an EventHandler<T>, a TypedEventHandler<S, T>, or any delegate whose Invoke
+// takes two pointers): it calls `callback` with `user` and the event's sender and arguments (borrowed: valid during the
+// call), on the thread the source raises the event on. Counted: the source keeps its own reference; `done` (nil: none)
+// runs once the last reference went, so that what `user` points to can be freed then.
 Event_Handler :: struct {
 	vtbl:     ^Event_Handler_Vtbl,
 	refs:     i32,
 	iid:      GUID,
-	callback: proc(user: rawptr),
+	callback: proc(user: rawptr, sender: rawptr, args: rawptr),
+	done:     proc(user: rawptr),
 	user:     rawptr,
 }
 
@@ -278,22 +281,24 @@ EVENT_HANDLER_VTBL := Event_Handler_Vtbl{
 		left := sync.atomic_sub(&this.refs, 1) - 1
 		if left == 0 {
 			context = runtime.default_context()
+			if this.done != nil { this.done(this.user) }
 			free(this, runtime.heap_allocator())
 		}
 		return u32(left)
 	},
 	Invoke = proc "system" (this: ^Event_Handler, sender: rawptr, args: rawptr) -> HRESULT {
 		context = runtime.default_context()
-		this.callback(this.user)
+		this.callback(this.user, sender, args)
 		return S_OK
 	},
 }
 
-// A handler of ID `iid` (see event_handler_iid) that calls `callback(user)`. Give it to the source's add method, then
-// release it: the source keeps it until its remove method.
-event_handler_make :: proc(iid: GUID, callback: proc(user: rawptr), user: rawptr) -> ^Event_Handler {
+// A handler of ID `iid` (see event_handler_iid, typed_event_handler_iid) that calls `callback(user, sender, args)`.
+// Give it to the source's add method, then release it: the source keeps it until its remove method. `done(user)` runs
+// when the last reference goes (nil: nothing to do).
+event_handler_make :: proc(iid: GUID, callback: proc(user: rawptr, sender: rawptr, args: rawptr), user: rawptr, done: proc(user: rawptr) = nil) -> ^Event_Handler {
 	h := new(Event_Handler, runtime.heap_allocator())
-	h^ = {vtbl = &EVENT_HANDLER_VTBL, refs = 1, iid = iid, callback = callback, user = user}
+	h^ = {vtbl = &EVENT_HANDLER_VTBL, refs = 1, iid = iid, callback = callback, done = done, user = user}
 	return h
 }
 
