@@ -54,6 +54,7 @@ may be used freely for any purpose provided credit is given, as here. License (M
 
 Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas) are missing, e.g. under Wine:
 
+- `src/lucide/lucide.ttf`: Lucide, copyright (c) Lucide Icons and Contributors, ISC License (`src/lucide/LICENSE.txt`).
 - `src/font/data/Roboto-Regular.ttf`: Roboto, font data copyright Google 2011, Apache License 2.0
   (`src/font/data/Roboto-LICENSE.txt`).
 - `src/font/data/Inconsolata-Regular.ttf`: Inconsolata, copyright (c) 2006-2012 Raph Levien, copyright (c) 2011-2012
