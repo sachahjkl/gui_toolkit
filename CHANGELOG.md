@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.128.0] - 2026-11-09
+
+### Added
+- **`lucide`: the Lucide icons as a font** (`lucide.DATA`) and constants for their characters (`lucide.SEARCH`, `lucide.PALETTE`, `lucide.DOWNLOAD`...): one set of icons for every program of the toolkit, in place of each program's own copy.
+
 ## [0.127.0] - 2026-11-09
 
 ### Added
@@ -2066,6 +2071,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.128.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.128.0
 [0.127.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.127.0
 [0.126.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.126.0
 [0.125.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.125.0
