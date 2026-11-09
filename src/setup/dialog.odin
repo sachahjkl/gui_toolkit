@@ -150,8 +150,7 @@ watch_begin :: proc(d: ^Dialog, c: Config) {
 		d := (^Dialog)(user)
 		sync.atomic_store(&d.stale_flag, true)
 		wake(d)
-	}, d)
-	desktop.options_destroy(&o)
+	}, d)   // (the options are temp memory, as options() makes them: the watcher copies the places)
 }
 
 @(private = "file")
