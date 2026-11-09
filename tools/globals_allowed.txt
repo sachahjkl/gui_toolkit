@@ -209,6 +209,11 @@ platform/x11_ext_linux.odin xfixes thread  # a library and what was made with it
 platform/x11_ext_linux.odin randr thread  # a library and what was made with it on this thread's connection
 process/console_windows.odin console_out process  # the parent's console, attached once for the process (console_once)
 process/console_windows.odin console_once process  # the attachment of the parent's console: once for the process
+qr/qr.odin MODE_BITS const  # a table of ISO/IEC 18004 (the mode indicators)
+qr/qr.odin COUNT_BITS const  # a table of ISO/IEC 18004 (the bits of the character count)
+qr/qr.odin ECC_PER_BLOCK const  # a table of ISO/IEC 18004 (table 9)
+qr/qr.odin ECC_BLOCKS const  # a table of ISO/IEC 18004 (table 9)
+qr/qr_test.odin CAPACITY test
 render/api.odin renderer_ids process  # the renderers' ids, unique in the process (atomic)
 render/api.odin render_trace.state process  # a switch of the environment, read once (atomic)
 render/capture.odin capture_map_held thread  # the capture mapped by this thread
