@@ -70,6 +70,24 @@ The handler runs on the thread that called `owner_start`, inside `pump_messages`
 if minimized, foreground, with a taskbar-flash fallback when the foreground cannot be taken); `handle` is an opaque window
 handle (a HWND on Windows; on POSIX raising is the window system's job and this does nothing).
 
+## Served on a thread of its own
+
+A program whose loop sleeps until its window has an event never calls `pump_messages` in time. **`serve_start(owner,
+handler, user)`** serves the Owner `acquire` gave (First) on a new thread: the thread calls `owner_start` (the socket or
+the message window is its own), sleeps until a start connects, and runs the handler there. The handler copies the message
+and hands it to the interface's thread (`ui.post`). **`serve_stop(server)`** ends the Owner (the name is free when it
+returns) and the thread. `serve_start` gives nil, the Owner stopped, when the Owner cannot be served.
+
+```odin
+outcome, owner := instance.acquire({name = name, wait_ms = 3000}, message)
+if outcome == .Forwarded { return 0 }
+server := instance.serve_start(owner, proc(user: rawptr, message: []byte) {
+    ui.post(...)   // a copy of message, to the interface's thread
+}, app)
+// ... the program's loop ...
+instance.serve_stop(server)
+```
+
 ## Pinging without owning
 
 ```odin
