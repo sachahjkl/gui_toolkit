@@ -561,7 +561,8 @@ The widget gallery (`fidget --bench=400`, pages 0 and 2) measures the same as 0.
 whole). `offscreen_end` returns a `render.Readback_Id`; after the frame, `render.readback_poll(r, id)` gives the
 pixels (straight RGBA8, sRGB values, alpha kept) once the GPU copied them (`Pending` until then, `Ready` once,
 `Failed` after a lost device; the same on both backends: a staging texture under Direct3D 11, a mapped buffer under wgpu); `render.readback_release` drops one no longer wanted. Uses:
-drag images, captures of one element, `toBlob`-like exports.
+drag images, captures of one element, `toBlob`-like exports. With automatic damage (below), what is drawn into it damages
+nothing: a drag image keeps the frames of the drag partial.
 
 ## Partial redraw (damage regions)
 
@@ -605,24 +606,37 @@ draw.end_frame(dc)                        // the region is built here, then the 
 draw.damage_memory_destroy(&memory)       // at the end of the window
 ```
 
-At `end_frame`, each span is reduced to a digest: a hash of what decides its pixels (each instance with its transform, clip
-shape and gradient resolved, the batch scissor, the textures with `render.texture_version`, the layer it is drawn into, the
-filter and mask steps) and the screen rectangle its instances can reach (cut by the scissor and the layers around it; all of a
-layer whose filters spread it). A span whose digest changed is damaged where it was and where it is, a new span where it is, a
-gone span where it was. Content outside every span is span 0. A region begun by hand (`damage_begin`, `damage`) is kept and
-added to. Nothing happens while partial redraw is off; the memory then forgets its frame.
+`draw.damage_auto` takes one memory a frame: two trees drawn into one frame share one memory, or the second call asserts (a
+second memory would replace the first one, which would keep its old frame).
+
+At `end_frame`, what is drawn is cut into parts: a part is what one span drew between two cuts (a span with children has a
+part before its first child, one between two children, one after the last). Each part is reduced to a digest: a hash of
+what decides its pixels (each instance with its transform, clip shape and gradient resolved, the batch scissor, the textures
+with `render.texture_version`, the layer it is drawn into, the filter and mask steps) and the screen rectangle its instances
+can reach (cut by the scissor and the layers around it; all of a layer whose filters spread it). A part whose digest changed
+is damaged where it was and where it is, a new part where it is, a gone part where it was. Content outside every span is
+span 0. A region begun by hand (`damage_begin`, `damage`) is kept and added to. Nothing happens while partial redraw is off;
+the memory then forgets its frame.
+
+The comparison is linear in the number of parts: both frames keep their parts in draw order (`memory.parts`, and
+`memory.next` while a frame is worked out: the two arrays are swapped, not copied). Parts are matched by position from the
+start and from the end while their spans are the same; only the parts between (added, removed or moved) are matched by span
+through a map. For 10,000 spans of two instances each, end_frame works out the region in about 0.45 ms (`-o:speed`,
+`tests/partial_redraw`, `ten_thousand_spans_cost_little`).
 
 These frames are damaged whole (`draw.Damage_Auto_Stats.whole`, a `draw.Damage_Whole`): the first one, another size, other
-font settings or another device, `draw.damage_whole(dc)`, a frame that copies a target (a backdrop, a blend mode), an
-offscreen layer or a plane (their texels are not the screen's), and spans drawn in another order (a box raised above
-another). The renderer damages the whole frame itself when the clear colour, the blend space, the text or corner settings
-change (docs/webgpu.md "Partial redraw").
+font settings or another device, `draw.damage_whole(dc)`, a frame that copies a target (a backdrop, a blend mode), a plane
+(drawn through a homography: where it shows is not known), and parts drawn in another order (a box raised above another).
+The renderer damages the whole frame itself when the clear colour, the blend space, the text or corner settings change
+(docs/webgpu.md "Partial redraw"). An offscreen target (`offscreen_begin`) is never shown: what is drawn into it is not in
+any digest, and its readback is not a copy of the window.
 
 A custom draw needs nothing: what it draws is in the digest. A span whose pixels change while no instance does (a texture
-written outside the renderer, a shader reading what it is not given) calls `draw.damage_volatile(dc)`: it is redrawn every
-frame. A replayed picture (`draw.replay`) is always redrawn where it lands: its content is not compared.
-`draw.damage_memory_reset(&memory)` makes the next frame whole. `memory.stats` says how many spans drew, how many were
-damaged, and why a frame was whole.
+written outside the renderer, a shader reading what it is not given) calls `draw.damage_volatile(dc)`: each of its parts is
+redrawn every frame. A replayed picture (`draw.replay`) is always redrawn where it lands: its content is not compared.
+`draw.damage_memory_reset(&memory)` makes the next frame whole. `memory.stats` says how many parts drew, how many were
+damaged, why a frame was whole, what working out the region took (`ms`), and the pixels the renderer drew on the window
+(`px_drawn`, all of `px_window` for a whole frame). These are the window's own: each window keeps its memory.
 
 The `ui` package uses this for its whole tree: `ui.set_partial_redraw(&state, true)` (or `Host.partial_redraw` in `host`),
 each box a span keyed by its key, `ui.damage_stats(&state)` for the counters.
