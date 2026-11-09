@@ -215,6 +215,25 @@ portal_read_color_scheme :: proc(conn: ^dbus.Conn) -> (dark: bool, ok: bool) {
 	return scheme == 1, true
 }
 
+// The icon theme the desktop shows, as the Settings portal gives it (org.gnome.desktop.interface icon-theme: GNOME's,
+// and the setting of the sessions that choose theirs by dconf). ok = false when the portal or the key is absent.
+portal_icon_theme :: proc(allocator := context.allocator) -> (name: string, ok: bool) {
+	conn := session_bus()
+	if conn == nil { return }
+	w := dbus.body_writer()
+	dbus.w_string(&w, "org.gnome.desktop.interface")
+	dbus.w_string(&w, "icon-theme")
+	msg, got := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "ReadOne", "ss", w.buf[:], DBUS_QUICK_CALL_MS)
+	if !got || msg.type != .Method_Return { return }
+	r := dbus.msg_reader(&msg)
+	vs := dbus.r_variant_sig(&r)
+	for vs == "v" { vs = dbus.r_variant_sig(&r) }
+	if vs != "s" { return }
+	v := dbus.r_string(&r)
+	if v == "" { return }
+	return strings.clone(v, allocator), true
+}
+
 // The live dark-mode read theme_linux.odin uses when the portal answers; falls back to the GTK heuristics otherwise.
 @(private)
 portal_dark_mode :: proc() -> (dark: bool, ok: bool) {
