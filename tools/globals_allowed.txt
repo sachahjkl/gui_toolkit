@@ -65,6 +65,7 @@ desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variabl
 desktop/com_windows.odin IID_IPropertyStore const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin PKEY_AppUserModel_ID const  # a property key (a variable: the calls take its address)
 desktop/desktop_entry.odin CONTENT_TYPES const  # a table: the web documents' extensions and MIME types
+desktop/open_with_linux.odin mime_cache process  # the XDG MIME database read last, for every window of the process (locked: mime_cache.mutex)
 desktop/desktop_entry_test.odin BROWSER_SCHEMES test
 desktop/identity_test.odin TEST_SCHEMES test
 desktop/identity_test.odin TEST_LIBRARIES test

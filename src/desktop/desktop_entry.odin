@@ -105,18 +105,25 @@ quote_exec_argument :: proc(arg: string, allocator := context.temp_allocator) ->
 exec_program :: proc(exec_value: string, allocator := context.temp_allocator) -> string {
 	args := exec_arguments(exec_value, context.temp_allocator)
 	if len(args) == 0 { return "" }
-	program, _ := strings.replace_all(args[0], "%%", "%", allocator)
+	program, _ := strings.replace_all(args[0].text, "%%", "%", allocator)
 	return program
+}
+
+// One argument of an Exec value, unquoted. `quoted`: some of it was in double quotes, where the specification forbids
+// field codes (exec_expand refuses them there: a file name put in `sh -c "viewer %f"` would be read by the shell).
+Exec_Argument :: struct {
+	text:   string,
+	quoted: bool,
 }
 
 // The arguments of an Exec value, unquoted as the specification says: a string value first (unescape_value), then
 // arguments apart by spaces, a double-quoted one with `\"`, `` \` ``, `\$` and `\\` escaped. A field code stays as it is
 // (`%f`), and `%%` stays `%%`: exec_expand reads them.
-exec_arguments :: proc(exec_value: string, allocator := context.temp_allocator) -> []string {
+exec_arguments :: proc(exec_value: string, allocator := context.temp_allocator) -> []Exec_Argument {
 	v := unescape_value(exec_value)
-	out := make([dynamic]string, allocator)
+	out := make([dynamic]Exec_Argument, allocator)
 	sb := strings.builder_make(context.temp_allocator)
-	in_arg, quoted := false, false
+	in_arg, quoted, was_quoted := false, false, false
 	for i := 0; i < len(v); i += 1 {
 		c := v[i]
 		switch {
@@ -124,55 +131,67 @@ exec_arguments :: proc(exec_value: string, allocator := context.temp_allocator) 
 		case quoted && c == '\\' && i + 1 < len(v):
 			i += 1
 			strings.write_byte(&sb, v[i])
-		case !quoted && c == '"': quoted, in_arg = true, true
+		case !quoted && c == '"': quoted, in_arg, was_quoted = true, true, true
 		case !quoted && (c == ' ' || c == '\t'):
-			if in_arg { append(&out, strings.clone(strings.to_string(sb), allocator)) }
+			if in_arg { append(&out, Exec_Argument{strings.clone(strings.to_string(sb), allocator), was_quoted}) }
 			strings.builder_reset(&sb)
-			in_arg = false
+			in_arg, was_quoted = false, false
 		case:
 			strings.write_byte(&sb, c)
 			in_arg = true
 		}
 	}
-	if in_arg { append(&out, strings.clone(strings.to_string(sb), allocator)) }
+	if in_arg { append(&out, Exec_Argument{strings.clone(strings.to_string(sb), allocator), was_quoted}) }
 	return out[:]
 }
 
 // The command an application's Exec value runs to open `path`: its field codes replaced (%f %F %u %U the path, %c the
 // name, %k the desktop file, %i "--icon" and the icon when there is one, %% a %; the deprecated ones dropped). A value
-// with no file code gets the path at its end.
-exec_expand :: proc(exec_value, path, name, icon, desktop_file: string, allocator := context.temp_allocator) -> []string {
+// with no file code gets the path at its end. Not `ok`, as the specification says, for: an unknown field code (a `%`
+// at the end too), a field code other than %% in a quoted argument, %F %U or %i inside an argument, more than one
+// file code, no program.
+exec_expand :: proc(exec_value, path, name, icon, desktop_file: string, allocator := context.temp_allocator) -> (args: []string, ok: bool) {
 	out := make([dynamic]string, allocator)
 	placed := false
 	for a in exec_arguments(exec_value, context.temp_allocator) {
-		switch a {
-		case "%f", "%F", "%u", "%U":
-			append(&out, strings.clone(path, allocator))
-			placed = true
-			continue
-		case "%i":
-			if icon != "" { append(&out, strings.clone("--icon", allocator), strings.clone(icon, allocator)) }
-			continue
-		case "%d", "%D", "%n", "%N", "%v", "%m":
-			continue
+		if !a.quoted {
+			switch a.text {
+			case "%f", "%F", "%u", "%U":
+				if placed { return nil, false }
+				append(&out, strings.clone(path, allocator))
+				placed = true
+				continue
+			case "%i":
+				if icon != "" { append(&out, strings.clone("--icon", allocator), strings.clone(icon, allocator)) }
+				continue
+			case "%d", "%D", "%n", "%N", "%v", "%m":
+				continue
+			}
 		}
 		sb := strings.builder_make(allocator)
-		for i := 0; i < len(a); i += 1 {
-			if a[i] != '%' || i + 1 >= len(a) { strings.write_byte(&sb, a[i]); continue }
+		for i := 0; i < len(a.text); i += 1 {
+			if a.text[i] != '%' { strings.write_byte(&sb, a.text[i]); continue }
+			if i + 1 >= len(a.text) { return nil, false }
 			i += 1
-			switch a[i] {
-			case '%': strings.write_byte(&sb, '%')
+			code := a.text[i]
+			if code == '%' { strings.write_byte(&sb, '%'); continue }
+			if a.quoted { return nil, false }
+			switch code {
 			case 'c': strings.write_string(&sb, name)
 			case 'k': strings.write_string(&sb, desktop_file)
-			case 'f', 'F', 'u', 'U':
+			case 'f', 'u':
+				if placed { return nil, false }
 				strings.write_string(&sb, path)
 				placed = true
+			case 'd', 'D', 'n', 'N', 'v', 'm':
+			case: return nil, false   // %F %U %i inside an argument, or a code the specification does not list
 			}
 		}
 		append(&out, strings.to_string(sb))
 	}
-	if !placed && len(out) > 0 { append(&out, strings.clone(path, allocator)) }
-	return out[:]
+	if len(out) == 0 { return nil, false }
+	if !placed { append(&out, strings.clone(path, allocator)) }
+	return out[:], true
 }
 
 // The value of `key` in the [Desktop Entry] group ("" when absent). Comments, blank lines, other groups and

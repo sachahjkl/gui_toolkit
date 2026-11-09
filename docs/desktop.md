@@ -116,16 +116,32 @@ them. The system's default application is `platform.open_path`.
 
 - Linux reads the XDG specifications: the type from shared-mime-info (`mime/globs2` and `mime/subclasses` under each data
   directory; every `text/*` is also `text/plain`), the applications from the desktop entries under `applications/` (their
-  `MimeType`; not `Hidden`, not `Terminal`), and `mimeapps.list` for the default and the user's own associations. The id
-  is the desktop file id (`org.gnome.TextEditor.desktop`). `open_with` runs its `Exec` line, the field codes replaced
-  (`exec_expand`), with `platform.launch_detached`.
+  `MimeType`; not `Hidden`, not `Terminal`, an `Exec` line that `exec_expand` accepts). The MIME Applications
+  specification orders them, level by level: each configuration directory, then each data directory's `applications/`.
+  A level's `mimeapps.list` adds and removes associations for itself and the levels after it; its
+  `<desktop>-mimeapps.list` (each name of `$XDG_CURRENT_DESKTOP`, in lower case) gives defaults only. The default of a type
+  is the first `[Default Applications]` entry, level by level, that is associated with the type; else the most preferred
+  application of the type. The type comes before its parents. The id is the desktop file id
+  (`org.gnome.TextEditor.desktop`). `open_with` runs its `Exec` line, the field codes replaced (`exec_expand`), with
+  `platform.launch_detached`. What was read stays in a cache of the process until a file or a folder read changes (one
+  `statx` each: under 1 ms for 83 entries in 9 data directories, against 10 to 16 ms to read everything again in a debug
+  build). A link that loops under `applications/` is read once.
 - Windows asks the shell for the recommended handlers of the extension (`SHAssocEnumHandlers`, as Explorer's "Open with"
   shows them). The id is the handler's name; `open_with` calls `IAssocHandler.Invoke` with the file. The default is the
   handler of the program `AssocQueryStringW` names.
 - Elsewhere: no handler.
 
-`exec_arguments(value)` splits an `Exec` value as the specification quotes it, and `exec_expand(value, path, name, icon,
-desktop_file)` makes the command that opens `path`.
+`exec_arguments(value)` splits an `Exec` value as the specification quotes it: each `Exec_Argument` has its `text` and
+whether it was `quoted`. `exec_expand(value, path, name, icon, desktop_file)` makes the command that opens `path`, or
+returns `ok = false` for a line the specification refuses:
+
+- a field code other than `%%` in a quoted argument (`sh -c "viewer %f"`: the shell would read the file name);
+- a field code the specification does not list, or a `%` at the end;
+- `%F`, `%U` or `%i` inside an argument (they must be an argument of their own);
+- more than one of `%f`, `%F`, `%u` and `%U`;
+- no program.
+
+The deprecated codes (`%d`, `%D`, `%n`, `%N`, `%v`, `%m`) are dropped. A line with no file code gets the path at its end.
 
 ## The installed copy
 
