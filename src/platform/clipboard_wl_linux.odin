@@ -2,7 +2,7 @@
 package platform
 
 // The Wayland clipboard owner: a full wl_data_source that offers the toolkit's flavours (text,
-// HTML, PNG, text/uri-list) to other clients, answers wl_data_source.send by writing the bytes to the fd the
+// HTML, PNG, text/uri-list, x-special/gnome-copied-files, application/x-kde-cutselection) to other clients, answers wl_data_source.send by writing the bytes to the fd the
 // compositor hands over, and gives the selection up on cancelled; and the read side, wl_data_offer.receive over a
 // pipe, read without blocking the UI loop. There is no primary (middle-click) selection on Wayland.
 //
@@ -19,6 +19,9 @@ import "core:sys/posix"
 @(private) WL_MIME_HTML  :: "text/html"
 @(private) WL_MIME_PNG   :: "image/png"
 @(private) WL_MIME_URIS  :: "text/uri-list"
+// (file managers read their own list first: GNOME Files and its kin a copy or a cut there, Dolphin a cut in the KDE flag)
+@(private) WL_MIME_GNOME_FILES :: CLIPBOARD_GNOME_FILES_MIME
+@(private) WL_MIME_KDE_CUT     :: CLIPBOARD_KDE_CUT_MIME
 
 @(private = "file") WL_PIPE_CHUNK_BYTES :: 4096
 @(private = "file") WL_OFFER_READ_WAIT_MS :: 2000   // silence of the peer that gives up a read
@@ -91,6 +94,8 @@ wl_write_clip_flavour :: proc(fd: i32, mime: string) {
 	case WL_MIME_HTML:                wl_fd_write_all(fd, transmute([]u8)clip_html_locked())
 	case WL_MIME_PNG:                 wl_fd_write_all(fd, clip_png_locked())
 	case WL_MIME_URIS:                wl_fd_write_all(fd, transmute([]u8)clip_uris_locked())
+	case WL_MIME_GNOME_FILES:         wl_fd_write_all(fd, transmute([]u8)clip_gnome_files_locked())
+	case WL_MIME_KDE_CUT:             if clip_files_cut_locked() { wl_fd_write_all(fd, transmute([]u8)string("1")) }
 	}
 }
 
@@ -124,7 +129,11 @@ wl_clipboard_publish :: proc() {
 	}
 	if .Html in fmts { wl_source_offer(src, WL_MIME_HTML) }
 	if .Image in fmts { wl_source_offer(src, WL_MIME_PNG) }
-	if .Files in fmts { wl_source_offer(src, WL_MIME_URIS) }
+	if .Files in fmts {
+		wl_source_offer(src, WL_MIME_URIS)
+		wl_source_offer(src, WL_MIME_GNOME_FILES)
+		if clip_store_files_cut() { wl_source_offer(src, WL_MIME_KDE_CUT) }
+	}
 	serial := wlc.kbd_serial != 0 ? wlc.kbd_serial : wlc.button_serial
 	wl.proxy_marshal_flags(wlc.data_device, WL_DATA_DEVICE_SET_SELECTION, nil, wl.proxy_get_version(wlc.data_device), 0, src, serial)
 	wl.display_flush(wlc.display)

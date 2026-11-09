@@ -6,7 +6,8 @@ package platform
 //
 //   * clipboard_set writes several flavours at once with one owner (text, HTML with its source URL, an image, files);
 //     clipboard_set_html / _image / _files are shorthands.
-//   * clipboard_get_image (RGBA8), clipboard_get_html (the fragment and its source URL), clipboard_get_files (paths).
+//   * clipboard_get_image (RGBA8), clipboard_get_html (the fragment and its source URL), clipboard_get_files (paths),
+//     clipboard_files_cut (whether those files were cut: a paste moves them).
 //   * clipboard_formats says what is there without reading it (a Paste item enabled or not); clipboard_sequence changes
 //     whenever another program (or this one) writes the clipboard; clipboard_watch makes the window wake when that
 //     happens and clipboard_changed tells it once.
@@ -74,6 +75,7 @@ Clipboard_Content :: struct {
 	source_url: string,          // the page the HTML comes from (resolves its relative links)
 	image:      Maybe(Clipboard_Image),
 	files:      []string,        // absolute paths
+	files_cut:  bool,            // the files were cut: a paste moves them (a file manager's Cut); ignored without files
 }
 
 // The process's own store: what an offscreen window's clipboard is (virtual.odin), and on Linux what this process put on the
@@ -88,6 +90,7 @@ Clip_Store :: struct {
 	source_url: string,
 	image_png:  []u8,       // PNG bytes, when an image was given and png_encode could make them
 	files:      []string,
+	files_cut:  bool,
 	formats:    Clipboard_Formats,
 }
 @(private) clip: Clip_Store
@@ -111,6 +114,7 @@ clip_store_put :: proc(c: Clipboard_Content) {
 	if len(c.files) > 0 {
 		clip.files = make([]string, len(c.files))
 		for p, i in c.files { clip.files[i] = strings.clone(p) }
+		clip.files_cut = c.files_cut   // (only with files: clip_store_files_cut is then "files that were cut")
 		clip.formats += {.Files}
 	}
 	clip_note_changed()
@@ -123,6 +127,7 @@ clip_clear_locked :: proc() {
 	for p in clip.files { delete(p) }
 	delete(clip.files)
 	clip.text, clip.html, clip.source_url, clip.image_png, clip.files = "", "", "", nil, nil
+	clip.files_cut = false
 	clip.formats = {}
 }
 
@@ -170,6 +175,13 @@ clip_store_files :: proc(allocator := context.allocator) -> (paths: []string, ok
 	paths = make([]string, len(clip.files), allocator)
 	for p, i in clip.files { paths[i] = strings.clone(p, allocator) }
 	return paths, true
+}
+
+@(private)
+clip_store_files_cut :: proc() -> bool {
+	sync.mutex_lock(&clip.mutex)
+	defer sync.mutex_unlock(&clip.mutex)
+	return clip.files_cut
 }
 
 // How rgba_to_dib writes the pixels.
@@ -418,7 +430,41 @@ clipboard_formats_from_mimes :: proc(mimes: []string) -> (out: Clipboard_Formats
 @(private) CLIPBOARD_IMAGE_MIMES :: [?]string{"image/png", "image/jpeg", "image/bmp", "image/x-bmp"}
 // The file-list types, best first: the standard list, then GNOME Files' (a "copy" or "cut" line, then the URIs). KDE's
 // application/x-kde-cutselection is only a flag beside a text/uri-list.
-@(private) CLIPBOARD_FILES_MIMES :: [?]string{"text/uri-list", "x-special/gnome-copied-files"}
+@(private) CLIPBOARD_GNOME_FILES_MIME :: "x-special/gnome-copied-files"
+@(private) CLIPBOARD_KDE_CUT_MIME :: "application/x-kde-cutselection"
+@(private) CLIPBOARD_FILES_MIMES :: [?]string{"text/uri-list", CLIPBOARD_GNOME_FILES_MIME}
+// The types that say whether the files were cut, in the order they are asked: KDE's flag is one byte, GNOME's list is
+// read whole.
+@(private) CLIPBOARD_CUT_MIMES :: [?]string{CLIPBOARD_KDE_CUT_MIME, CLIPBOARD_GNOME_FILES_MIME}
+
+// GNOME Files' x-special/gnome-copied-files for a list of absolute paths: a "copy" or "cut" line, then one file:// URI
+// per line, without a last line end (what GNOME Files and Nautilus write; some readers take a trailing newline for an
+// empty URI). Temporary allocator by default. Pure.
+gnome_copied_files_encode :: proc(paths: []string, cut: bool, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	strings.write_string(&b, cut ? "cut" : "copy")
+	for p in paths {
+		strings.write_byte(&b, '\n')
+		strings.write_string(&b, file_uri(p, context.temp_allocator))
+	}
+	return strings.to_string(b)
+}
+
+// Whether a flavour of the clipboard says its files were cut: x-special/gnome-copied-files whose first line is "cut",
+// or application/x-kde-cutselection that holds "1". False for any other type. Pure.
+clipboard_files_cut_decode :: proc(mime: string, data: []u8) -> bool {
+	BLANK :: " \t\r\n\x00"   // (a C writer can leave its terminating zero in the property)
+	s := string(data)
+	switch {
+	case ascii.equal_fold(mime, CLIPBOARD_GNOME_FILES_MIME):
+		first := s
+		if nl := strings.index_byte(s, '\n'); nl >= 0 { first = s[:nl] }
+		return strings.trim(first, BLANK) == "cut"
+	case ascii.equal_fold(mime, CLIPBOARD_KDE_CUT_MIME):
+		return strings.trim(s, BLANK) == "1"
+	}
+	return false
+}
 
 // The first of `wanted` that `offered` holds ("" when none): which type to read of another program's offer. Pure.
 clipboard_pick_mime :: proc(offered, wanted: []string) -> string {
