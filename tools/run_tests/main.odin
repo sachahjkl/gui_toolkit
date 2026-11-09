@@ -86,6 +86,8 @@ STEPS := []Step{
 	{name = "i18n", oses = EVERYWHERE},
 	{name = "ime", oses = EVERYWHERE},
 	{name = "instance"},
+	{name = "hotkey", oses = EVERYWHERE},
+	{name = "winrt", path = "src/winrt", oses = EVERYWHERE},
 	{name = "key_repeat", oses = EVERYWHERE},
 	{name = "pacing", oses = EVERYWHERE},
 	{name = "sleep", oses = EVERYWHERE},

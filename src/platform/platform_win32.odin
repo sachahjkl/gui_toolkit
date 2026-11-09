@@ -860,6 +860,10 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_DESTROY:
 		return 0
 
+	case win.WM_HOTKEY:
+		push(w, {kind = .Hotkey, hotkey = int(wparam)})
+		return 0
+
 	case win.WM_CLIPBOARDUPDATE:
 		return 0   // (the message woke the loop; clipboard_changed reads the sequence number)
 

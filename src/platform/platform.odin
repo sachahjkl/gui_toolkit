@@ -58,6 +58,8 @@ Event_Kind :: enum u8 {
 	// an assistive technology asked for the window's tree or for an action (a11y.odin): build a frame, which sends the
 	// tree and takes the requests (the ui package does both when Build_Params.window is set)
 	Accessibility,
+	// a hotkey of the program's was pressed, wherever the keyboard is (hotkey.odin): Event.hotkey is its id
+	Hotkey,
 }
 
 Mouse_Button :: enum u8 { Left, Right, Middle, Back, Forward }   // (Back, Forward: the side buttons)
@@ -100,6 +102,7 @@ Event :: struct {
 	drop_allowed: Drop_Effects,   // Drop_*: what the source allows
 	lost:   bool,       // Mouse_Release: the button is still down for all we know, the system took the pointer away: no click, no gesture ends by it
 	injected: bool,     // made by inject_event (a test, a remote control, a macro), not by the system: the real pointer is
+	hotkey: int,        // Hotkey: the id given to hotkey_register
 	                    // elsewhere (an app that reads the cursor's position from the system uses `pos` for these)
 }
 
