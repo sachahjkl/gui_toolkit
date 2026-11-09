@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.137.0] - 2026-11-09
+
+### Added
+- **`config.Def.hidden`**: a preference the program keeps for itself (a layout, a last choice): `prefs_page` shows it on no page and its search does not find it.
+
 ## [0.136.0] - 2026-11-09
 
 ### Added
@@ -2127,6 +2132,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.137.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.137.0
 [0.136.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.136.0
 [0.135.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.135.0
 [0.134.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.134.0
