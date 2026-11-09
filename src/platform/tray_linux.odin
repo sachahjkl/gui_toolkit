@@ -314,7 +314,7 @@ sni_props :: proc(t: ^Tray, c: ^dbus.Conn, msg: ^dbus.Message) -> bool {
 	case "GetAll":
 		w := dbus.body_writer()
 		dlen, dcontent := dbus.arg_dict_begin(&w)
-		for p in ([]string{"Category", "Id", "Title", "Status", "IconName", "ToolTip", "Menu", "ItemIsMenu"}) {
+		for p in ([]string{"Category", "Id", "Title", "Status", "IconName", "IconPixmap", "ToolTip", "Menu", "ItemIsMenu"}) {
 			dbus.arg_dict_entry(&w, p)
 			sni_write_prop(t, &w, p)
 		}

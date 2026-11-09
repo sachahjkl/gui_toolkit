@@ -1461,6 +1461,59 @@ a_tray_menu_that_changes_is_told :: proc(t: ^testing.T) {
 	})
 }
 
+// A panel that reads the icon through GetAll (Quickshell, Waybar) gets its pixels: without IconPixmap there, it draws
+// the "missing icon" pattern.
+@(test)
+a_tray_icon_is_in_get_all :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	with_bus(t, proc(t: ^testing.T) {
+		p: Peer
+		peer_start(&p, {"org.kde.StatusNotifierWatcher"})
+		defer peer_stop(&p)
+		w := open("icon")
+		testing.expect(t, w != nil)
+		if w == nil { return }
+		defer platform.destroy_window(w)
+		tr := platform.tray_create(w, nil, "i")
+		testing.expect(t, tr != nil)
+		if tr == nil { return }
+		testing.expect(t, platform.tray_set_icon_rgba(tr, make([]u8, 4 * 4 * 4, context.temp_allocator), {4, 4}))
+		// A panel of its own: the peer's connection belongs to the peer's thread, and the tray answers only while this
+		// thread pumps the window.
+		Panel :: struct { name, path: string, width: i32, done: bool }
+		panel: Panel
+		panel.name, panel.path = peer_item(&p, 0)
+		th := thread.create_and_start_with_data(&panel, proc(d: rawptr) {
+			panel := (^Panel)(d)
+			context.allocator = runtime.heap_allocator()
+			defer sync.atomic_store(&panel.done, true)
+			c := dbus.connect_bus(.Session)
+			if c == nil { return }
+			defer dbus.conn_close(c)
+			b := dbus.body_writer()
+			dbus.w_string(&b, "org.kde.StatusNotifierItem")
+			msg, ok := dbus.call(c, panel.name, panel.path, "org.freedesktop.DBus.Properties", "GetAll", "s", b.buf[:])
+			if !ok { return }
+			r := dbus.msg_reader(&msg)
+			end := dbus.r_array_begin(&r, "{sv}")
+			for r.pos < end {
+				dbus.r_align_entry(&r)
+				if dbus.r_string(&r) != "IconPixmap" { dbus.read_variant_skip(&r); continue }
+				if dbus.r_variant_sig(&r) != "a(iiay)" { return }
+				if dbus.r_array_begin(&r, "(iiay)") > r.pos {
+					dbus.r_align_entry(&r)
+					panel.width = dbus.r_i32(&r)
+				}
+				return
+			}
+		}, context)
+		defer { thread.join(th); thread.destroy(th) }
+		start := time.tick_now()
+		for !sync.atomic_load(&panel.done) && time.duration_milliseconds(time.tick_since(start)) < 4000 { platform.poll_events(w, true, PUMP_WAIT_MS) }
+		testing.expect_value(t, panel.width, i32(4))
+	})
+}
+
 // An inhibition does not outlive its window.
 @(test)
 a_window_takes_its_inhibitions_with_it :: proc(t: ^testing.T) {
