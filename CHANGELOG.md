@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.126.0] - 2026-11-09
+
+### Added
+- **`setup`**: a program installs itself for the user from a dialog of its own, over the desktop package: the state of the install (`facts`, `state_of`), Install (the copy, the launchers, the program's own parts by `Config.prepare`, the system's record), Uninstall (what the running copy holds goes at the end of the process), Repair, Upgrade, Open the installed copy, and the offer at a start (`wanted`, the user's choice kept by the program). It was opencode native's Setup. See docs/setup.md.
+- **The console launcher** (`tools/console_launcher`, `src/console_launcher`): `<stem>.com` beside a program of the Windows subsystem, which `desktop.install` writes with the PATH entry. In cmd or PowerShell it gives a console command its output and its exit code and lets a window go. A program builds its own with its mark and its rules (`LAUNCHER_DEFAULT`, `LAUNCHER_OTHERS`: words as the first argument, flags anywhere, `(none)`) and embeds the bytes. It was Wren's (src/tools/wrencom). See docs/desktop.md.
+
 ## [0.125.0] - 2026-11-09
 
 ### Added
@@ -2055,6 +2061,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.126.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.126.0
 [0.125.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.125.0
 [0.124.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.1
 [0.124.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.0
