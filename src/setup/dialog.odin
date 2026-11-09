@@ -28,6 +28,7 @@ Dialog :: struct {
 	installed: string,             // the copy just installed, to open (owned; "": none)
 	removed:   bool,               // this copy was uninstalled while it runs: its file goes when the process ends
 	leftovers: [dynamic]string,    // ... with these (owned)
+	copied:    string,             // the line whose path was just copied (its id, owned): a check until the pointer leaves
 }
 
 Event :: enum u8 {
@@ -79,6 +80,7 @@ destroy :: proc(d: ^Dialog) {
 	facts_free(&d.facts)
 	delete(d.note)
 	delete(d.installed)
+	delete(d.copied)
 	for l in d.leftovers { delete(l) }
 	delete(d.leftovers)
 	d^ = {}
@@ -144,10 +146,10 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border, .Sunken}, "###setup_where") }
 			if ui.parent(well) {
 				ui.spacer(ui.px(em * 0.5))
-				where_row("###w1", "program", f.exe, em)
-				where_row("###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", em)
-				where_row("###w3", WORDS_RECORD, f.record ? c.identity.name : "-", em)
-				where_row("###w4", "this copy", f.running, em)
+				where_row(d, "###w1", "program", f.exe, true, em)
+				where_row(d, "###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", false, em)
+				where_row(d, "###w3", WORDS_RECORD, f.record ? c.identity.name : "-", false, em)
+				where_row(d, "###w4", "this copy", f.running, true, em)
 				ui.spacer(ui.px(em * 0.5))
 			}
 			ui.spacer(ui.px(em * MARGIN_EM))
@@ -191,9 +193,10 @@ line_next :: proc() {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 }
 
-// A line of the well: what, at a fixed width and weak, then where (a path), cut when it does not fit.
+// A line of the well: what, at a fixed width and weak, then where. A path that does not fit is cut; the pointer over it
+// shows it whole, and a click on it or on the copy button after it puts it on the clipboard.
 @(private = "file")
-where_row :: proc(id, key, value: string, em: f32) {
+where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.55)), axis = .X, cross = .Center})
 	if ui.row(.Center, id = id) {
 		ui.spacer(ui.px(em * 0.9))
@@ -201,10 +204,65 @@ where_row :: proc(id, key, value: string, em: f32) {
 			ui.next({width = ui.px(em * 9), height = ui.pct(1), text_pad = 0})
 			ui.label(fmt.tprintf("%s###k", key))
 		}
-		ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0, font = ui.mono_font(), font_size = math.round(em * 0.86)})
-		ui.label(fmt.tprintf("%s###v", value))
+		mono := ui.Style_Mod{width = ui.fill(), height = ui.pct(1), text_pad = 0, font = ui.mono_font(), font_size = math.round(em * 0.86)}
+		if !path || value == "" {
+			ui.next(mono)
+			ui.label(fmt.tprintf("%s###v", value))
+		} else {
+			ui.next(mono)
+			ui.a11y({role = .Button, name = fmt.tprintf("Copy %s", value)})
+			text := ui.build_box({.Clickable, .Draw_Text}, fmt.tprintf("%s###v", value))
+			sig := ui.signal(text)
+			ui.spacer(ui.px(em * 0.4))
+			side := math.round(em * 1.3)
+			ui.next({width = ui.px(side), height = ui.px(side), cursor = .Hand})
+			ui.a11y({role = .Button, name = fmt.tprintf("Copy %s", value)})
+			button := ui.build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, "###copy")
+			bsig := ui.signal(button)
+			copied := d.copied == id
+			glyph := ui.frame_new(Copy_Glyph)
+			glyph^ = {ui.color("text"), copied}
+			button.custom, button.custom_user = copy_draw, glyph
+			if sig.clicked || bsig.clicked {
+				ui.window_clipboard_set(value)
+				delete(d.copied)
+				d.copied = strings.clone(id)
+			} else if copied && !sig.hovering && !bsig.hovering {
+				delete(d.copied)
+				d.copied = ""   // (the check goes when the pointer leaves)
+			}
+			if ui.hovered_for(sig, 0.4) || ui.hovered_for(bsig, 0.4) {
+				if ui.tooltip() {
+					ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 1.8), font = ui.mono_font(), font_size = math.round(em * 0.86)})
+					ui.label(fmt.tprintf("%s###tip", copied ? "Copied" : value))
+				}
+			}
+		}
 		ui.spacer(ui.px(em * 0.9))
 	}
+}
+
+@(private = "file")
+Copy_Glyph :: struct { color: draw.Color, copied: bool }
+
+// Two sheets, one over the other (copy); a check once copied. Drawn: the icons' font has no such glyph.
+@(private = "file")
+copy_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	g := (^Copy_Glyph)(user)
+	r := b.rect
+	side := min(r.max.x - r.min.x, r.max.y - r.min.y)
+	c := (r.min + r.max) * 0.5
+	w := max(1, math.round(side * 0.08))
+	if g.copied {
+		pts := [3][2]f32{c + {-0.28, 0.02} * side, c + {-0.08, 0.22} * side, c + {0.3, -0.2} * side}
+		draw.polyline(dc, pts[:], w * 1.4, g.color)
+		return
+	}
+	u := side * 0.42
+	back := draw.Rect{c + {-0.32, -0.32} * side, c + {-0.32, -0.32} * side + u}
+	front := draw.Rect{c + {-0.1, -0.1} * side, c + {-0.1, -0.1} * side + u}
+	draw.rect(dc, back, g.color, side * 0.08, w)
+	draw.rect(dc, front, g.color, side * 0.08, w)
 }
 
 // The logo, the name, the version and the state.

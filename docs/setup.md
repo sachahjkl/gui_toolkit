@@ -33,6 +33,10 @@ setup.finish(&d, cfg)
 setup.destroy(&d)
 ```
 
+The dialog says where everything is: the installed program, the menu's entry, the system's record, this copy. A path
+that does not fit is cut; the pointer over it shows it whole, and a click on it or on the copy button after it puts it on
+the clipboard.
+
 ## The states
 
 | State | When | The dialog offers |
