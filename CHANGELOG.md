@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.110.0] - 2026-11-09
+
+### Added
+- **`host.host_hide`**, **`host.host_show`**: a window with its renderer off the screen and back, the renderer's surface released first (**`render.surface_drop`**) and made again at the first frame after the show (`render.surface_remake(r, handles)`, which now takes the window's native handles). `tk desktop_tests` builds its tests with the native text backend and tests a host's hide and show with its renderer.
+
+### Fixed
+- **Wayland**: a window shown again after `hide_window` no longer ends the connection (`must ack the initial configure before attaching buffer`): the hide destroys the surface with its role, since the last frames' content updates could wait behind a FIFO barrier of `wp_fifo_v1` that an unmapped surface never clears, and the new role's first commit with them.
+
 ## [0.109.0] - 2026-11-09
 
 ### Added
@@ -1914,6 +1922,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.110.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.110.0
 [0.109.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.109.0
 [0.108.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.108.0
 [0.107.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.107.0
