@@ -63,6 +63,9 @@
       fontconfig
       freetype
       dbus
+      librsvg # the SVG icons of the icon themes (desktop.file_icon)
+      cairo
+      glib
     ];
 
     # What tk desktop_tests starts and asks.

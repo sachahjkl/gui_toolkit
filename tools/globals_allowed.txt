@@ -61,6 +61,8 @@ desktop/com_windows.odin CLSID_ShellLink const  # a COM class id (a variable: th
 desktop/open_with_windows.odin BHID_DataObject const  # a COM id (a variable: the calls take its address)
 desktop/open_with_windows.odin IID_IDataObject const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IShellLinkW const  # a COM interface id (a variable: the calls take its address)
+desktop/icons_linux.odin icon_cache process  # the icon theme read last, by every thread that asks an icon: locked (its mutex)
+desktop/svg_linux.odin rsvg process  # librsvg and cairo, opened once (sync.Once) and then only read
 desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IPropertyStore const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin PKEY_AppUserModel_ID const  # a property key (a variable: the calls take its address)
