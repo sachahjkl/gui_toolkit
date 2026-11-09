@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "../draw"
 import "../render"
 import "../ui"
 
@@ -21,18 +22,27 @@ Metric_Sample :: struct {
 	frame, build, layout, total: f32,
 	at:          f64,   // ui.now_ms, when the frame after this build began
 	build_index: u64,
+	whole:       draw.Damage_Whole,   // why this frame was drawn whole (No: only its damage region was drawn)
+	px_drawn:    int,                 // pixels rasterized, with partial redraw on (0 when it is off)
+	px_window:   int,
 }
 
 // Each frame: the last build's numbers, once.
 @(private)
-metrics_sample :: proc(srv: ^Server, s: ^ui.State) {
+metrics_sample :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if s.build_index == srv.sample_build { return }
 	srv.sample_build = s.build_index
 	now := time.tick_now()
 	m := ui.build_metrics(s)
 	frame := srv.sample_at != {} ? f32(time.duration_milliseconds(time.tick_diff(srv.sample_at, now))) : 0
 	srv.sample_at = now
-	srv.samples[srv.sampled % METRIC_RING] = {frame, f32(m.build_ms), f32(m.layout_ms), f32(m.total_ms), ui.now_ms(), s.build_index}
+	x := Metric_Sample{frame, f32(m.build_ms), f32(m.layout_ms), f32(m.total_ms), ui.now_ms(), s.build_index, ui.damage_stats(s).whole, 0, 0}
+	if r != nil && ui.partial_redraw(s) {
+		_, _, x.px_drawn, x.px_window, _ = render.damage_stats(r)
+		x.px_window = r.size.x * r.size.y
+		if x.whole != .No { x.px_drawn = x.px_window }
+	}
+	srv.samples[srv.sampled % METRIC_RING] = x
 	srv.sampled += 1
 }
 
@@ -60,6 +70,7 @@ metrics_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, r: ^rend
 	stat(sb, "buildMs", srv.samples[:n], 1)
 	stat(sb, "layoutMs", srv.samples[:n], 2)
 	stat(sb, "totalMs", srv.samples[:n], 3)
+	damage_write(sb, srv.samples[:n])
 	when render.RENDER_PROBE {
 		if r != nil {
 			if !render.latency_probe_on(r) { render.set_latency_probe(r, true) }   // (from the first asking on)
@@ -75,6 +86,29 @@ metrics_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, r: ^rend
 		srv.sample_at = {}
 		when render.RENDER_PROBE { if r != nil { render.latency_reset(r) } }
 	}
+}
+
+// "damage": with partial redraw on (ui.set_partial_redraw), the frames drawn only where they changed, why the others
+// were whole, and the share of the window's pixels drawn; null when it is off.
+@(private)
+damage_write :: proc(sb: ^strings.Builder, samples: []Metric_Sample) {
+	partial, drawn, window: int
+	whole: [draw.Damage_Whole]int
+	for x in samples {
+		if x.px_window == 0 { continue }
+		if x.whole == .No { partial += 1 } else { whole[x.whole] += 1 }
+		drawn += x.px_drawn
+		window += x.px_window
+	}
+	if window == 0 { strings.write_string(sb, `,"damage":null`); return }
+	fmt.sbprintf(sb, `,"damage":{{"partial":%d,"drawnShare":%.4f,"whole":{{`, partial, f64(drawn) / f64(window))
+	first := true
+	for n, why in whole {
+		if why == .No || n == 0 { continue }
+		fmt.sbprintf(sb, `%s"%v":%d`, first ? "" : ",", why, n)
+		first = false
+	}
+	strings.write_string(sb, "}}")
 }
 
 // Toolkit.frames {after?}: the frames still in the ring, one by one, after build `after`; `now` on the same clock as their
