@@ -155,8 +155,8 @@ wl_custom_cursor :: proc(w: ^Window, e: ^Custom_Entry) -> bool {
 wl_apply_cursor :: proc(w: ^Window) {
 	// (one pointer for the seat: another window's cursor is sent when the pointer enters it, with that enter's serial)
 	if wlc.pointer == nil || wlc.pointer_focus != w { return }
-	c := w.cursor
-	if w.custom_cursor != 0 {
+	c, band := cursor_shown(w)
+	if w.custom_cursor != 0 && !band {
 		c = w.custom_fallback
 		if e := custom_entry(w, w.custom_cursor); e != nil && wl_custom_cursor(w, e) { return }
 	}

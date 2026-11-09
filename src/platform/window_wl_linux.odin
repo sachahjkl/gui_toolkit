@@ -108,6 +108,8 @@ Wl_Window_State :: struct {
 	transparent: bool,
 	title:       string,
 	pending_w, pending_h: int,     // the size the last xdg_toplevel.configure asked for (0 = app chooses)
+	server_side: bool,             // the decoration mode the compositor chose: it draws the frame
+	tiled:       bool,             // the last configure said an edge is tiled: a tiling compositor, which draws its border
 	toplevel:    Show_State,       // what the last configure said; the window's state once it is shown
 	floating:    [2]int,           // `logical` when it last was neither maximized nor full screen
 	fractional:  Wl_Proxy,         // wp_fractional_scale_v1 and wp_viewport: the buffer has w.size pixels, the surface
@@ -376,6 +378,7 @@ ptr_motion :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, sx, sy: Wl_Fixed) 
 	w := wlc.pointer_focus
 	if w == nil { return }
 	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)) * w.dpi_scale, f32(wl_fixed_to_f64(sy)) * w.dpi_scale}
+	frame_hover_at(w, wlc.pointer_pos)
 	wl_push(w, {kind = .Mouse_Move, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
 }
 @(private)
@@ -395,10 +398,57 @@ ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: 
 	case: return
 	}
 	press := state == 1
+	if press && wl_frame_press(w, btn, serial, time) {
+		wl_push(w, {kind = .Frame_Press, button = btn, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
+		return
+	}
 	if button_changes(w, btn, press) {
 		wl_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
 	}
 }
+// A press on the frame of an integrated title bar (frame_linux.odin): the compositor moves or resizes the window, a
+// double click on the caption maximizes it, a right click there opens the compositor's window menu. True when it was
+// the frame's: the app does not get the press.
+@(private)
+wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool {
+	h := frame_hit(w, wlc.pointer_pos)
+	if !hit_is_frame(h) || wlc.seat == nil { return false }
+	st := wl_state(w)
+	ver := wl.proxy_get_version(st.xdg_toplevel)
+	#partial switch btn {
+	case .Left:
+		if h == .Caption {
+			if caption_double_click(w, wlc.pointer_pos, time) { toggle_maximize(w); return true }
+			wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_MOVE, nil, ver, 0, wlc.seat, serial)
+		} else {
+			wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_RESIZE, nil, ver, 0, wlc.seat, serial, wl_resize_edges(h))
+		}
+		wl.display_flush(wlc.display)
+		return true
+	case .Right:
+		if h != .Caption { return false }
+		wl_show_window_menu(w, wlc.pointer_pos)
+		return true
+	}
+	return false
+}
+
+// xdg_toplevel.resize_edge of a band.
+@(private)
+wl_resize_edges :: proc(h: Hit) -> u32 {
+	#partial switch h {
+	case .Top:          return 1
+	case .Bottom:       return 2
+	case .Left:         return 4
+	case .Top_Left:     return 5
+	case .Bottom_Left:  return 6
+	case .Right:        return 8
+	case .Top_Right:    return 9
+	case .Bottom_Right: return 10
+	}
+	return 0
+}
+
 @(private)
 ptr_axis :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, axis: u32, value: Wl_Fixed) {
 	context = wl_ctx_real()
@@ -583,8 +633,10 @@ xdg_toplevel_configure :: proc "c" (data: rawptr, t: Wl_Proxy, w, h: i32, states
 	st := (^Wl_Window_State)(data)
 	if st == nil || st.win == nil { return }
 	st.pending_w, st.pending_h = int(w), int(h)
-	// decode the states array (u32 each): 1 maximized, 2 fullscreen, 4 activated. (No state says a toplevel is minimized.)
+	// decode the states array (u32 each): 1 maximized, 2 fullscreen, 4 activated, 5 to 8 tiled left, right, top, bottom.
+	// (No state says a toplevel is minimized.)
 	st.toplevel = .Normal
+	st.tiled = false
 	if states != nil && states.data != nil {
 		n := states.size / size_of(u32)
 		arr := ([^]u32)(states.data)
@@ -592,9 +644,11 @@ xdg_toplevel_configure :: proc "c" (data: rawptr, t: Wl_Proxy, w, h: i32, states
 			switch arr[i] {
 			case 1: if st.toplevel == .Normal { st.toplevel = .Maximized }
 			case 2: st.toplevel = .Fullscreen
+			case 5, 6, 7, 8: st.tiled = true
 			}
 		}
 	}
+	st.win.system_frame = st.server_side || st.tiled
 	if st.win.show != .Hidden { st.win.show = st.toplevel }
 }
 @(private)
@@ -609,7 +663,13 @@ xdg_toplevel_close :: proc "c" (data: rawptr, t: Wl_Proxy) {
 @(private)
 Decoration_Listener :: struct { configure: proc "c" (data: rawptr, d: Wl_Proxy, mode: u32) }
 @(private) decoration_listener := Decoration_Listener{decoration_configure}
-@(private) decoration_configure :: proc "c" (data: rawptr, d: Wl_Proxy, mode: u32) {}
+@(private)
+decoration_configure :: proc "c" (data: rawptr, d: Wl_Proxy, mode: u32) {
+	st := (^Wl_Window_State)(data)
+	if st == nil || st.win == nil { return }
+	st.server_side = mode == ZXDG_TOPLEVEL_DECORATION_MODE_SERVER_SIDE
+	st.win.system_frame = st.server_side || st.tiled
+}
 
 ////////////////////////////////
 // lifecycle
@@ -774,7 +834,9 @@ wl_set_decorations :: proc(w: ^Window, on: bool) {
 wl_show_window_menu :: proc(w: ^Window, pos: [2]f32) {
 	st := wl_state(w)
 	if wlc.seat == nil { return }
-	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SHOW_WINDOW_MENU, nil, wl.proxy_get_version(st.xdg_toplevel), 0, wlc.seat, wlc.enter_serial, i32(pos.x), i32(pos.y))
+	// (the serial of the press that asked for it; the place in the surface's units)
+	scale := w.dpi_scale > 0 ? w.dpi_scale : 1
+	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SHOW_WINDOW_MENU, nil, wl.proxy_get_version(st.xdg_toplevel), 0, wlc.seat, wlc.button_serial, i32(pos.x / scale), i32(pos.y / scale))
 	wl.display_flush(wlc.display)
 }
 

@@ -46,6 +46,10 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	}
 	interp := draw.set_interpolation(dc, .Linear)
 	draw_box(s, dc, s.root, s.scale)
+	if s.window != nil && s.root != nil && platform.needs_frame_outline(s.window) {
+		// (a frame of the system's would be there: Linux with an integrated title bar)
+		draw.rect(dc, s.root.rect, color_from_tags(s, 0, "border"), 0, max(1, math.round(s.scale)))
+	}
 	autoscroll_draw(s, dc)   // the autoscroll anchor marker, over everything (autoscroll_region.odin)
 	if b := s.boxes[s.inspected]; s.inspected != 0 && box_current(s, b) {
 		draw.rect(dc, b.rect, INSPECTED_FILL_COLOR)

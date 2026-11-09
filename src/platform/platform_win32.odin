@@ -349,6 +349,9 @@ show_system_menu :: proc(w: ^Window, pos: [2]f32) {
 
 // Windows 10 draws no line along the top of a window whose client area covers its title bar: the app draws it there
 // (1 px, the theme's border colour) while the window is neither maximized nor full screen.
+// The system draws a window's outline on Windows.
+needs_frame_outline :: proc(w: ^Window) -> bool { return false }
+
 needs_top_border :: proc(w: ^Window) -> bool {
 	return w.integrated && !w.fullscreen && !is_windows_11() && !is_maximized(w)
 }
