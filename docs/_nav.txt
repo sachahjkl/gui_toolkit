@@ -35,6 +35,7 @@ Platform and system
   dbus.md             D-Bus client
   fsx.md              fsx: file helpers
   instance.md         instance: one running copy
+  winrt.md            winrt: Windows Runtime APIs
   update.md           update: signed updates
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process

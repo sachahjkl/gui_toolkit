@@ -89,6 +89,12 @@ nowhere: xdg-open, an application of "Open with" (`desktop.open_with`).
 
 **Devices** — `input_devices`, `touch_max_points`.
 
+**Hotkeys** (`hotkey.odin`) — `hotkey_register(w, id, hk)`, `hotkey_unregister`: a combination the system gives the
+window wherever the keyboard is, as a `Hotkey` event whose `hotkey` is the id. `hotkey_parse("Ctrl+Shift+V")` and
+`hotkey_text` read and write their text (Ctrl, Shift, Alt, Win, then a letter, a digit, F1 to F12 or a named key).
+Windows: `RegisterHotKey` (false when another program holds the combination). Linux: none (false): the compositor binds
+shortcuts to commands.
+
 **Drag and drop** (`dragdrop.odin`), **tray** (`tray.odin`), **accessibility** (`a11y.odin`): optional; a backend that
 has none keeps the shared stubs (neither Windows nor Linux), which answer "not supported".
 
