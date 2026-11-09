@@ -49,12 +49,12 @@ known_folder_path :: proc(k: Known_Folder, allocator := context.allocator) -> st
 
 open_url :: proc(url: string) -> bool {
 	if portal_open_uri(url) { return true }   // the portal (OpenURI) first; xdg-open otherwise
-	return spawn_detached({"xdg-open", url})
+	return launch_detached({"xdg-open", url})
 }
 open_path :: proc(path: string) -> bool {
 	uri := strings.concatenate({"file://", path}, context.temp_allocator)
 	if portal_open_uri(uri) { return true }
-	return spawn_detached({"xdg-open", path})
+	return launch_detached({"xdg-open", path})
 }
 
 // Reveal a file in the file manager with it selected: the GTK file managers answer the D-Bus
@@ -63,7 +63,7 @@ open_path :: proc(path: string) -> bool {
 reveal_in_folder :: proc(path: string) -> bool {
 	dir := path
 	if i := strings.last_index_byte(path, '/'); i > 0 { dir = path[:i] }
-	return spawn_detached({"xdg-open", dir})
+	return launch_detached({"xdg-open", dir})
 }
 
 ////////////////////////////////
@@ -181,11 +181,11 @@ have_program :: proc(name: string) -> bool {
 	return false
 }
 
-// Starts args[0] detached (fire and forget: xdg-open), returning whether the spawn itself succeeded. A shell in between
-// starts it in the background and ends at once: the program is the system's child from then on, and waiting for the shell
-// leaves no zombie. A program that is missing is told by have_program, not here.
-@(private)
-spawn_detached :: proc(args: []string) -> bool {
+// (Linux) Starts args[0] with its arguments, detached (fire and forget: xdg-open, an application of "Open with"), its
+// output nowhere. True when the start itself succeeded: a program that is not there is not seen here. A shell in between
+// starts it in the background and ends at once: the program is the system's child from then on, and waiting for the
+// shell leaves no zombie.
+launch_detached :: proc(args: []string) -> bool {
 	SHELL_ARGS := [?]string{"sh", "-c", `"$@" >/dev/null 2>&1 </dev/null &`, "sh"}
 	argv := make([]cstring, len(SHELL_ARGS) + len(args) + 1, context.temp_allocator)
 	for a, i in SHELL_ARGS { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }

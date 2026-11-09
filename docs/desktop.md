@@ -107,6 +107,26 @@ copy run by itself: `nix-build` makes a profile of `nixos_libraries` (with patch
 of the garbage collector, listed in the manifest), and patchelf sets the copy's loader and library path to it. A copy in the
 Nix store (`in_nix_store`) is never adapted: its package already runs it. `is_nixos` reads `/etc/os-release`.
 
+## Open with
+
+`handlers_for_file(path)` lists the applications the system knows for the type of the file at `path` (the file need not
+exist: its name says its type). The default comes first (`Handler.default`), then the others by name. Each `Handler` has
+an `id` and a `name` for a menu; free the list with `handlers_destroy`. `open_with(path, id)` opens the file with one of
+them. The system's default application is `platform.open_path`.
+
+- Linux reads the XDG specifications: the type from shared-mime-info (`mime/globs2` and `mime/subclasses` under each data
+  directory; every `text/*` is also `text/plain`), the applications from the desktop entries under `applications/` (their
+  `MimeType`; not `Hidden`, not `Terminal`), and `mimeapps.list` for the default and the user's own associations. The id
+  is the desktop file id (`org.gnome.TextEditor.desktop`). `open_with` runs its `Exec` line, the field codes replaced
+  (`exec_expand`), with `platform.launch_detached`.
+- Windows asks the shell for the recommended handlers of the extension (`SHAssocEnumHandlers`, as Explorer's "Open with"
+  shows them). The id is the handler's name; `open_with` calls `IAssocHandler.Invoke` with the file. The default is the
+  handler of the program `AssocQueryStringW` names.
+- Elsewhere: no handler.
+
+`exec_arguments(value)` splits an `Exec` value as the specification quotes it, and `exec_expand(value, path, name, icon,
+desktop_file)` makes the command that opens `path`.
+
 ## The installed copy
 
 ```odin

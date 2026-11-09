@@ -58,6 +58,8 @@ font/emoji_data.odin EMOJI_RANGES const  # a table
 font/emoji_data.odin EMOJI_PRESENTATION_RANGES const  # a table
 desktop/install_test.odin test_unique_id.serial test  # the tests' folder names, unique across the threads that run them
 desktop/com_windows.odin CLSID_ShellLink const  # a COM class id (a variable: the calls take its address)
+desktop/open_with_windows.odin BHID_DataObject const  # a COM id (a variable: the calls take its address)
+desktop/open_with_windows.odin IID_IDataObject const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IShellLinkW const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IPropertyStore const  # a COM interface id (a variable: the calls take its address)
