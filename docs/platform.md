@@ -47,7 +47,7 @@ X11: unmapped (withdrawn). Windows: `SW_HIDE`.
 A window opened and not yet shown is hidden too, and gets no frame either. Wayland: it is a surface with no role (the
 renderer makes its surface on it); its toplevel is made at the first `show_window`, so a window never shown is in no
 task bar (ShojiWM lists every toplevel, even one with no picture yet). `set_maximized` and `set_fullscreen` asked before
-that show are asked by the new toplevel. `Window.shown_again` counts the shows after a hide: the host makes the
+that show are asked by the new toplevel; `minimize` is asked once its first configure came. `Window.shown_again` counts the shows after a hide: the host makes the
 renderer's surface again at the next frame (`render.surface_remake`).
 `raise_window(w)` brings a shown window to the front with the keyboard focus. X11: `_NET_ACTIVE_WINDOW`. Wayland:
 `xdg_activation_v1`, a token with the seat's last input serial the connection saw (0 when it saw none), spent on the
@@ -114,7 +114,9 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
   Hyprland and niri draw their own border), when the X11 window manager reports `_NET_FRAME_EXTENTS`, nor when the
   window is maximized or full screen. Windows always has the system's.
 - **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is `wp_fractional_scale_v1` with `wp_viewporter`:
-  the buffer has the scaled size, the surface the logical one; without them the `wl_output` integer scale. X11 reads `Xft.dpi`.
+  the buffer has the scaled size, the surface the logical one; without them the `wl_output` integer scale. A window that
+  the compositor has given no fractional scale yet follows the integer scale. A window never shown has a surface with no
+  role, on no output: most compositors send its scale with the first configure, and the first show waits for it. X11 reads `Xft.dpi`.
 - **Translucency.** `set_backdrop` is the Windows acrylic effect; on Linux a window is translucent when it was opened
   with an alpha surface (`render.init` `transparent`), which the compositor blends — there is no extra effect to turn
   on, so `set_backdrop` reports whether the window is translucent at all.
