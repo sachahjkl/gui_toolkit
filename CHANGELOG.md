@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.115.0] - 2026-11-09
+
+### Fixed
+- **The wheel goes to the box that scrolls its way**: a box that scrolls only sideways (`.View_Scroll_X`, a wide table) no longer takes an up-and-down wheel from the page around it, and Shift+wheel scrolls such a box sideways, as in a browser. A box that scrolls itself still gets the wheel as it is (a number field steps further with Shift).
+
 ## [0.114.1] - 2026-11-09
 
 ### Fixed
@@ -1963,6 +1968,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.115.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.115.0
 [0.114.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.1
 [0.114.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.0
 [0.113.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.113.0
