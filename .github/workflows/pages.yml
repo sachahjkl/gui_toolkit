@@ -1,4 +1,4 @@
-# Publishes site/ (plain HTML and CSS, its pages made by tk site_build) to GitHub Pages: https://sachahjkl.github.io/gui_toolkit/
+# Publishes site/ (plain HTML and CSS, its pages made by tk site_build) to GitHub Pages: https://gt.sacha.house/
 # Pages use the "GitHub Actions" source (set once: gh api -X POST repos/sachahjkl/gui_toolkit/pages -f build_type=workflow).
 name: Pages
 

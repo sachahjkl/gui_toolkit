@@ -5,7 +5,7 @@
 <p align="center"><b>A fast, native, immediate-mode GUI toolkit.</b></p>
 
 <p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.119.0-1d57ba" alt="version 0.119.0"></a>
-<a href="https://sachahjkl.github.io/gui_toolkit/"><img src="https://img.shields.io/badge/site-github.io-56b6c2" alt="site"></a></p>
+<a href="https://gt.sacha.house/"><img src="https://img.shields.io/badge/site-gt.sacha.house-56b6c2" alt="site"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org). You describe the interface in code on every frame; it keeps the state between
 frames and draws with its own renderer: Direct3D 11 on Windows, Vulkan on Linux (through WebGPU).
