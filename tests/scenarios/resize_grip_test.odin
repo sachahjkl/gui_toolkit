@@ -46,3 +46,35 @@ a_dialog_s_resize_grip_is_a_square_bevelled_corner :: proc(t: ^testing.T) {
 	grip_dialog(t, true)
 	grip_dialog(t, false)
 }
+
+// A dialog held at the top of the window (modal_sized's `top`): its top stays where it is, its bottom edge follows the pointer, one
+// to one, and it has no grips at its top.
+@(private = "file")
+Top_Dialog :: struct { size: ui.Vec2, open: bool, panel: ui.Rect }
+
+@(test)
+a_dialog_held_at_the_top_grows_downward :: proc(t: ^testing.T) {
+	d := Top_Dialog{open = true}
+	s := session.start(t, {size = {400, 300}, user = &d, build = proc(s: ^session.Session) {
+		d := (^Top_Dialog)(s.user)
+		if ui.modal_sized("top", {200, 120}, &d.size, &d.open, {100, 60}, top = 0.1) {
+			d.panel = ui.parent_box().rect
+			ui.label("Hello")
+		}
+	}})
+	session.frames(s, 2)
+	before := d.panel
+	testing.expect_value(t, before.min.y, f32(30))
+	testing.expect(t, session.find(s, "modal_grip0") == nil && session.find(s, "modal_grip4") == nil && session.find(s, "modal_grip5") == nil, "no grips at its top")
+	grip := session.find(s, "modal_grip1")   // (the bottom edge)
+	if !testing.expect(t, grip != nil, "its bottom edge's grip") { return }
+	at := session.center(grip)
+	session.press(s, at)
+	session.move(s, at + {0, 20})
+	session.move(s, at + {0, 40})
+	session.release(s, at + {0, 40})
+	session.frames(s, 2)
+	testing.expect_value(t, d.panel.min.y, before.min.y)
+	testing.expect_value(t, d.panel.max.y - d.panel.min.y, before.max.y - before.min.y + 40)
+	testing.expect_value(t, d.panel.max.x - d.panel.min.x, before.max.x - before.min.x)
+}

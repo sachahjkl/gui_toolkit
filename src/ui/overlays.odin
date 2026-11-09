@@ -186,6 +186,7 @@ toasts_build :: proc() {
 // (`height = fill()`). Centered and always within the window, however small; `preferred` is what it opens at (pixels), and the
 // person resizes it by its edges and corners, the two sides moving together as it stays centered; a double click on one goes back
 // to `preferred`. `size` is the application's to keep (logical pixels, {}: `preferred`): a smaller window does not change it.
+// `top` (0..1, of the window's height): its top is held there instead (a command palette); its bottom edge follows the pointer.
 @(private)
 Modal_Scope :: struct {
 	panel:   Key,
@@ -195,6 +196,7 @@ Modal_Scope :: struct {
 	preferred: Vec2,    // modal_sized: what a double click on an edge goes back to
 	wh:      Vec2,      // its size in this frame
 	lo, hi:  Vec2,      // how small and how large it may be, in this window
+	top:     bool,      // modal_sized with `top`: its top stays where it is; its bottom follows the pointer (no grips at its top)
 }
 
 // A dialog of this build or the last. `focus`: what had the focus when it opened, and gets it back when it closes.
@@ -274,7 +276,7 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 }
 
 @(deferred_none = modal_end)
-modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}) -> bool {
+modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}, top: f32 = -1) -> bool {
 	s := gs()
 	modal_take_escape(s, id, open)
 	if !open^ {
@@ -287,9 +289,14 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 	lo := Vec2{min(min_size.x, hi.x), min(min_size.y, hi.y)}
 	want := size^ != {} ? size^ * s.scale : preferred
 	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), math.round(clamp(want.y, lo.y, hi.y))}
-	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh)
+	y := math.round((s.window_size.y - wh.y) * 0.5)
+	if top >= 0 {
+		// held at `top` of the window's height, unless it would go past its bottom
+		y = math.round(clamp(s.window_size.y * top, margin, max(s.window_size.y - margin - wh.y, margin)))
+	}
+	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
-	m.size, m.preferred, m.wh, m.lo, m.hi = size, preferred, wh, lo, hi
+	m.size, m.preferred, m.wh, m.lo, m.hi, m.top = size, preferred, wh, lo, hi, top >= 0
 	// (its resize grip's corner is square: the grip's bevel fills it)
 	if panel := box_from_key(m.panel); panel != nil { panel.square_corners = {.Bottom_Right} }
 	return true
@@ -355,6 +362,7 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 		{{-1, -1}, .Resize_NW}, {{1, -1}, .Resize_NE}, {{-1, 1}, .Resize_SW}, {{1, 1}, .Resize_SE},
 	}
 	for g, i in grips {
+		if m.top && g.dir.y < 0 { continue }   // (its top stays: nothing to hold there)
 		corner := g.dir.x != 0 && g.dir.y != 0
 		t := corner ? c : e
 		gw := g.dir.x != 0 ? t : w - 2 * c
@@ -379,7 +387,8 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 		if sig.drag_delta == {} && !press.moved { continue }
 		press.moved = true
 		nw := g.dir.x != 0 ? clamp(press.from.x + 2 * g.dir.x * sig.drag_delta.x, m.lo.x, m.hi.x) : w
-		nh := g.dir.y != 0 ? clamp(press.from.y + 2 * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
+		// (centred, the opposite side moves too: twice the pointer; held at its top, the bottom alone follows it)
+		nh := g.dir.y != 0 ? clamp(press.from.y + (m.top ? 1 : 2) * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
 		m.size^ = {nw / sc, nh / sc}
 	}
 }
