@@ -146,6 +146,13 @@ surface_use :: proc(r: ^Renderer, s: ^Surface) {
 	}
 }
 
+// The window of the current surface came back on the screen (platform.hide_window, then show_window): its next frame
+// makes a new swap chain. The old one may wait for good for a screen the window left (Vulkan's FIFO on Wayland waits for
+// the frame callback of the last frame before the hide). Direct3D's swap chain survives a hide: nothing to do.
+surface_remake :: proc(r: ^Renderer) {
+	when USE_WGPU { wgpu_surface_remake(r) }
+}
+
 // surface_use until the end of the calling scope: no way out of a frame forgets to go back.
 @(deferred_in = surface_use)
 surface_scope :: proc(r: ^Renderer, s: ^Surface) { surface_use(r, s) }

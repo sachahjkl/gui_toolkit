@@ -166,6 +166,44 @@ wake_ends_a_waiting_poll :: proc(t: ^testing.T) {
 	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) >= 250, "a wake counts once")
 }
 
+// Whether the server shows the window: X11's map state (xwininfo), the compositor's tree on Wayland (swaymsg).
+@(private = "file")
+on_screen :: proc(w: ^platform.Window, title: string) -> bool {
+	if x11() { return sh("xwininfo -id ", window_id(w), " | grep -q IsViewable") == 0 }
+	return sh("swaymsg -t get_tree | grep -q '\"name\": \"", title, "\"'") == 0
+}
+
+// hide_window takes the window off the screen and show_window brings it back, as many times as asked; a wake still ends
+// the wait of a hidden window (a program in the notification area waits on it), and each show after a hide is counted
+// (the host makes a new swap chain then).
+@(test)
+a_window_hides_and_comes_back :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	title :: "hide and show"
+	w := open(title)
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	testing.expect(t, on_screen(w, title), "shown")
+	for round in 1 ..= 2 {
+		platform.hide_window(w)
+		pump_for(w, 300)
+		testing.expect(t, !platform.is_window_visible(w), "hidden for the program")
+		testing.expect(t, !on_screen(w, title), "off the screen")
+		platform.wake(w)
+		start := time.tick_now()
+		platform.poll_events(w, true, 5000)
+		testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 2000, "a wake ends a hidden window's wait")
+		platform.show_window(w)
+		platform.test_show_plain(w)
+		pump_for(w, 300)
+		testing.expect(t, platform.is_window_visible(w), "visible again for the program")
+		testing.expect(t, on_screen(w, title), "on the screen again")
+		testing.expect_value(t, w.shown_again, u32(round))
+	}
+}
+
 // An event read from the socket behind a reply is queued inside xcb: poll(2) does not see it, a wait must not sleep over it.
 @(test)
 a_wait_does_not_sleep_over_what_xcb_read :: proc(t: ^testing.T) {
