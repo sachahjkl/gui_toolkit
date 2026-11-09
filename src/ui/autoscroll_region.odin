@@ -102,7 +102,7 @@ autoscroll_window_at :: proc(s: ^State) -> [2]int { return s.window != nil ? pla
 // a text_edit) has nothing to drive: the region around it moves.
 @(private)
 autoscroll_box_at :: proc(s: ^State, p: Vec2) -> Key {
-	k := scroll_hit_test(s, p)
+	k := scroll_hit_test(s, p, {0, 1})   // (the page a session drives: a box that scrolls only sideways inside it is passed over)
 	for b := s.boxes[k] if k != 0 else nil; b != nil; b = b.parent {
 		if .View_Scroll_X in b.flags || .View_Scroll_Y in b.flags { return b.key }
 	}

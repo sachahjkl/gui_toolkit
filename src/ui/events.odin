@@ -125,7 +125,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	active := s.active_key[.Left]
 	s.hot_key = (active == 0 || hit == active) ? hit : 0
 	scrollbar_drag(s)
-	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse) : 0
+	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse, scroll_view_delta(s)) : 0
 	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = s.time_ms }
 	autoscroll_handle_input(s)   // middle-click autoscroll (autoscroll_region.odin): after hit tests, may swallow clicks
 }
@@ -178,23 +178,36 @@ box_contains :: proc(b: ^Box, p: Vec2) -> bool {
 	return platform.slanted_contains({b.rect.min, b.rect.max, b.slant}, p)
 }
 
+// The wheel as a view scrolls by it: Shift turns an up-and-down wheel sideways, as in a browser. (The raw delta stays what a
+// box that scrolls itself is told: a number field steps further with Shift.)
 @(private)
-scroll_hit_test :: proc(s: ^State, p: Vec2) -> Key {
+scroll_view_delta :: proc(s: ^State) -> Vec2 {
+	d := s.scroll_delta
+	if .Shift in s.mods && d.x == 0 { return {d.y, 0} }
+	return d
+}
+
+// The box the wheel scrolls: the innermost under `p` that scrolls the way `d` goes (mostly sideways: .View_Scroll_X, else
+// .View_Scroll_Y; .Scroll_Self takes both). A box that scrolls only sideways (a wide table) lets a vertical wheel through to
+// the page around it.
+@(private)
+scroll_hit_test :: proc(s: ^State, p: Vec2, d: Vec2) -> Key {
 	if s.root == nil { return 0 }
-	return scroll_hit_box(s.root, p, s.root.rect)
+	return scroll_hit_box(s.root, p, s.root.rect, abs(d.x) > abs(d.y))
 }
 
 @(private)
-scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
+scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways: bool) -> Key {
 	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
 	child_clip := clip
 	if .Clip in b.flags {
 		child_clip = Rect{{max(clip.min.x, b.rect.min.x), max(clip.min.y, b.rect.min.y)}, {min(clip.max.x, b.rect.max.x), min(clip.max.y, b.rect.max.y)}}
 	}
 	for c := b.last; c != nil; c = c.prev {
-		if k := scroll_hit_box(c, p, child_clip); k != 0 { return k }
+		if k := scroll_hit_box(c, p, child_clip, sideways); k != 0 { return k }
 	}
-	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags || .Scroll_Self in b.flags) && contains(b.rect, p) { return b.key }
+	takes := .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
+	if takes && contains(b.rect, p) { return b.key }
 	return 0
 }
 
@@ -276,7 +289,7 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	}
 	if .Scroll_Self in b.flags && s.scroll_key == b.key { sig.scrolled = s.scroll_delta }
 	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && s.scroll_key == b.key {
-		d := s.scroll_delta
+		d := scroll_view_delta(s)
 		if .View_Scroll_X in b.flags { b.view_target.x += d.x * wheel_step(b, .X); sig.scrolled.x = d.x }
 		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * wheel_step(b, .Y); sig.scrolled.y = d.y }
 		// clamp against last frame's bounds; the animation pass re-clamps with fresh ones
