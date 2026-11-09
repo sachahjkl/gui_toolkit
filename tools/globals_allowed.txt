@@ -93,6 +93,7 @@ instance/instance_linux.odin owners_mu process  # the instance owners started in
 instance/instance_linux.odin owners process  # the instance owners started in the process (locked: owners_mu)
 platform/a11y_accesskit.odin a11y_abi_checked process  # whether the accessibility library's ABI matches (atomic)
 platform/clipboard.odin clip process  # the process's clipboard store (locked: Clip_Store.mutex)
+platform/hotkey.odin HOTKEY_KEY_NAMES const  # a table: the names of the keys a hotkey can name
 platform/clipboard_wl_linux.odin data_source_listener const  # a listener table (passed by address to libwayland)
 platform/clipboard_wl_linux.odin data_offer_listener const  # a listener table (passed by address to libwayland)
 platform/cursors_win32.odin system_cursors thread  # the system's cursors and pointer settings, dropped by this thread's windows on WM_SETTINGCHANGE
