@@ -118,6 +118,7 @@ Wl_Window_State :: struct {
 	viewport:    Wl_Proxy,         // `logical` on the output (nil: an integer buffer scale)
 	logical:     [2]int,           // the surface's size, in the compositor's units
 	activation_token: Wl_Proxy,    // an xdg_activation_token_v1 waiting for its `done` (wl_activate)
+	wanted:      Show_State,       // maximized or full screen, asked while there was no role: the next role asks it once
 	win:         ^Window,          // back pointer for the listeners
 }
 
@@ -722,9 +723,12 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 	st.logical = {max(size.x, 1), max(size.y, 1)}
 	st.floating = st.logical
 	st.toplevel = .Normal
-	if !wl_surface_make(w, st) { delete(st.title); free(st); w.wl = nil; return false }
+	st.wanted = .Normal
+	// a surface for the renderer, with no role: no toplevel exists until the first show, so a window never shown (a
+	// program that starts in the notification area) is in no task bar
+	if !wl_surface_make(w, st, role = false) { delete(st.title); free(st); w.wl = nil; return false }
 	append(&wlc.windows, w)
-	wl.display_roundtrip(wlc.display)   // the first configure arrives; the surface is ready for the renderer
+	wl.display_roundtrip(wlc.display)   // (what the compositor says of the new surface: its preferred scale)
 	return true
 }
 
@@ -732,10 +736,11 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 @(private) WL_FIRST_CONFIGURE_WAIT_MS :: 500
 @(private) WL_FIRST_CONFIGURE_POLL_MS :: 5
 
-// The window's surface, its scale objects and its toplevel role, committed without a buffer (the compositor answers with
-// the first configure). Made at open, and again when a hidden window is shown (wl_hide destroyed them).
+// The window's surface and its scale objects, and with `role` its toplevel role, committed without a buffer (the
+// compositor answers with the first configure). Made at open without the role, and with it when a hidden window is shown
+// again (wl_hide destroyed them).
 @(private)
-wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State) -> bool {
+wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
 	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
 	if st.surface == nil { return false }
 	wl.proxy_set_user_data(st.surface, st)
@@ -744,11 +749,11 @@ wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State) -> bool {
 		st.fractional = wl.proxy_marshal_flags(wlc.fractional_manager, WP_FRACTIONAL_MANAGER_GET, &wp_fractional_iface, wl.proxy_get_version(wlc.fractional_manager), 0, nil, st.surface)
 		if st.fractional != nil { wl.proxy_add_listener(st.fractional, &fractional_listener, st) }
 	}
-	wl_role_make(w, st)
 	wl_size_from_logical(w, st)
 	if wlc.output_scale > 1 && st.viewport == nil {
 		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
 	}
+	if role { wl_role_make(w, st) }
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 	return true
 }
@@ -776,6 +781,12 @@ wl_role_make :: proc(w: ^Window, st: ^Wl_Window_State) {
 	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_TITLE, nil, wl.proxy_get_version(st.xdg_toplevel), 0, ctitle)
 	cid := strings.clone_to_cstring(app_id_or_exe(), context.temp_allocator)
 	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_APP_ID, nil, wl.proxy_get_version(st.xdg_toplevel), 0, cid)
+	// (before the first commit: the first configure says it, and the first frame has its size)
+	#partial switch st.wanted {
+	case .Maximized:  wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MAXIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0)
+	case .Fullscreen: wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_FULLSCREEN, nil, wl.proxy_get_version(st.xdg_toplevel), 0, nil)
+	}
+	st.wanted = .Normal
 
 	// server-side decorations when the compositor offers them and the app did not ask for an integrated title
 	if wlc.decoration_manager != nil {
@@ -856,14 +867,21 @@ wl_set_size :: proc(w: ^Window, px: [2]int) {
 @(private)
 wl_show :: proc(w: ^Window) {
 	st := wl_state(w)
-	if st.surface == nil {
-		// hidden (wl_hide): a new surface and role, their first configure, then the next frame's buffer maps them. The
-		// renderer makes its surface on the new one (Window.shown_again: host_frame, render.surface_remake).
+	if st.surface == nil || st.xdg_toplevel == nil {
 		st.toplevel = .Normal
-		if !wl_surface_make(w, st) { return }
-		w.shown_again += 1
+		if st.surface == nil {
+			// hidden (wl_hide): a new surface and role. The renderer makes its surface on the new one
+			// (Window.shown_again: host_frame, render.surface_remake).
+			if !wl_surface_make(w, st, role = true) { return }
+			w.shown_again += 1
+		} else {
+			// the first show: the role on the surface the window was opened with (no frame came before it: a hidden
+			// window gets none, and a surface that had a buffer could not take the role)
+			wl_role_make(w, st)
+			wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
+		}
 		// A buffer before the first configure is acked is a protocol error, and a compositor may send that configure after
-		// a roundtrip (Hyprland lays the window out first): wait for it.
+		// a roundtrip (Hyprland lays the window out first): wait for it. The next frame's buffer maps the window.
 		deadline := time.tick_add(time.tick_now(), WL_FIRST_CONFIGURE_WAIT_MS * time.Millisecond)
 		for !st.acked && time.tick_diff(time.tick_now(), deadline) > 0 {
 			wl.display_roundtrip(wlc.display)
@@ -925,7 +943,10 @@ activation_token_done :: proc "c" (data: rawptr, t: Wl_Proxy, token: cstring) {
 @(private)
 wl_set_maximized :: proc(w: ^Window, on: bool) {
 	st := wl_state(w)
-	if st.xdg_toplevel == nil { return }
+	if st.xdg_toplevel == nil {   // (the next role asks it)
+		if on { st.wanted = .Maximized } else if st.wanted == .Maximized { st.wanted = .Normal }
+		return
+	}
 	op: u32 = on ? XDG_TOPLEVEL_SET_MAXIMIZED : XDG_TOPLEVEL_UNSET_MAXIMIZED
 	wl.proxy_marshal_flags(st.xdg_toplevel, op, nil, wl.proxy_get_version(st.xdg_toplevel), 0)
 	wl.display_flush(wlc.display)
@@ -933,7 +954,10 @@ wl_set_maximized :: proc(w: ^Window, on: bool) {
 @(private)
 wl_set_fullscreen :: proc(w: ^Window, on: bool) {
 	st := wl_state(w)
-	if st.xdg_toplevel == nil { return }
+	if st.xdg_toplevel == nil {   // (the next role asks it)
+		if on { st.wanted = .Fullscreen } else if st.wanted == .Fullscreen { st.wanted = .Normal }
+		return
+	}
 	if on { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_FULLSCREEN, nil, wl.proxy_get_version(st.xdg_toplevel), 0, nil) }
 	else  { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_UNSET_FULLSCREEN, nil, wl.proxy_get_version(st.xdg_toplevel), 0) }
 	wl.display_flush(wlc.display)

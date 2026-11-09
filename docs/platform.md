@@ -43,7 +43,11 @@ wait for a screen the window is not on); its wait still ends on a wake, a post a
 and the surface go, and `show_window` makes new ones and waits for their first configure, so the compositor places and
 focuses it as a new window. (The role alone is not enough: the last frames' content updates may wait in the surface's
 queue behind a FIFO barrier of `wp_fifo_v1` that an unmapped surface never clears, and every later commit with them.)
-X11: unmapped (withdrawn). Windows: `SW_HIDE`. `Window.shown_again` counts the shows after a hide: the host makes the
+X11: unmapped (withdrawn). Windows: `SW_HIDE`.
+A window opened and not yet shown is hidden too, and gets no frame either. Wayland: it is a surface with no role (the
+renderer makes its surface on it); its toplevel is made at the first `show_window`, so a window never shown is in no
+task bar (ShojiWM lists every toplevel, even one with no picture yet). `set_maximized` and `set_fullscreen` asked before
+that show are asked by the new toplevel. `Window.shown_again` counts the shows after a hide: the host makes the
 renderer's surface again at the next frame (`render.surface_remake`).
 `raise_window(w)` brings a shown window to the front with the keyboard focus. X11: `_NET_ACTIVE_WINDOW`. Wayland:
 `xdg_activation_v1`, a token with the seat's last input serial the connection saw (0 when it saw none), spent on the
