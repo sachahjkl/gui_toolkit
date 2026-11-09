@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.125.0] - 2026-11-09
+
+### Added
+- **`qr` and `ui.qr_code`**: QR Codes (ISO/IEC 18004, model 2), as Project Nayuki's generator makes them: numeric, alphanumeric or byte mode, levels L, M, Q and H, the smallest version that holds the text, the mask of lowest penalty. `ui.qr_code` draws one dark on white in whole device pixels with its quiet zone, encoded again only when its text changes ([docs/qr.md](docs/qr.md)).
+- **`platform.notify`**: system notifications without a tray icon (title, body, PNG icon, urgency, buttons, replace in place, silent), `notify_close`, `notify_supported`, `notify_set_app`; clicks, buttons and closes come back as `Notification_Click`, `Notification_Action` and `Notification_Closed` events of the window. Linux: org.freedesktop.Notifications (desktop-entry, urgency and image-data hints; an ActivationToken lets `raise_window` bring the window to the front on Wayland, `notify_activation_token`). Windows 10 and later: WinRT toasts under a registered AppUserModelID. See docs/notifications.md.
+
+### Changed
+- **Text in colour stripes is a touch bolder** (Slug): `font.Settings.slug_stripe_weight` (default `SLUG_STRIPE_WEIGHT_PX`, 0.2 px, at every size) moves the stems' sides out, across only, so striped text no longer reads thinner than grey text and keeps its baseline and x-height. The Slug shaders take the edges' moves per axis.
+- **`winrt.event_handler_make`**: the callback receives the sender and the arguments of the event (`callback(user, sender, args)`), and an optional `done(user)` runs when the last reference goes; **`winrt.typed_event_handler_iid`** and **`SIG_INSPECTABLE`** give the IDs of `TypedEventHandler<S, T>`. A program that passes a callback of its own to `event_handler_make` changes its signature to `proc(user, sender, args: rawptr)` (Papier's clipboard history does).
+- **`platform.tray_notify`** on Linux shows its notification through the code of `notify`: one Notify call for both; info is a low urgency, error a critical one.
+
+### Fixed
+- **Offscreen windows on Linux** hear the session bus and the accessibility bus while they wait: notifications and portal answers reach a window that has no display.
+
 ## [0.124.1] - 2026-11-09
 
 ### Fixed
@@ -2041,6 +2055,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.125.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.125.0
 [0.124.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.1
 [0.124.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.0
 [0.123.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.123.0

@@ -4,7 +4,7 @@
 
 <p align="center"><b>A fast, native, immediate-mode GUI toolkit.</b></p>
 
-<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.124.1-1d57ba" alt="version 0.124.1"></a>
+<p align="center"><a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.125.0-1d57ba" alt="version 0.125.0"></a>
 <a href="https://gt.sacha.house/"><img src="https://img.shields.io/badge/site-gt.sacha.house-56b6c2" alt="site"></a></p>
 
 A native GUI toolkit in [Odin](https://odin-lang.org). You describe the interface in code on every frame; it keeps the state between
