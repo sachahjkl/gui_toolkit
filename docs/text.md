@@ -87,7 +87,9 @@ text, so a word whose style changes in the middle is not broken there; "\n" alwa
 cut between grapheme clusters; `max_lines` ends the last line with "…"; the box's `text_align` aligns the lines. The box
 is full width and as tall as its lines (`Box.measure_y`: its height follows the width the layout gave it). Links: the
 result's `link_hovered`, `link_clicked`, `link` and `link_focused` (the paragraph is a Tab stop; Tab / Shift+Tab go
-through its links, Enter / Space choose one; the pointer is a hand over them). Bold and italic runs take the faces given
+through its links, Enter / Space choose one; the pointer is a hand over them). `ui.rich_links(text, style, &runs)` turns
+plain text into runs whose web addresses (`http://`, `https://`) are links, without the sentence's closing marks
+(`web_address_len` finds one). Bold and italic runs take the faces given
 by `ui.rich_set_faces(state, regular, bold, italic, bold_italic)`, else simulated ones. Layouts are kept by content
 (`rich_layout_cached`): thousands of runs are laid out once. The geometry is public for selection and custom drawing:
 `rich_layout`, `rich_text` (the whole text), `rich_index_at` (hit test), `rich_caret`, `rich_range_rects`,
