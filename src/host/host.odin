@@ -224,6 +224,8 @@ host_frame :: proc(h: ^Host, inner := false) {
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }
 	events := platform.poll_events(h.win, false)
+	// (this frame is the repaint the system asked for: a request left would end every wait, and the loop would never sleep)
+	_ = platform.take_paint_request(h.win)
 	if platform.is_closed(h.win) { return }
 	ui.use(&h.state)   // (a frame of another window may have run in that call)
 	host_picture(h, events, at_once)

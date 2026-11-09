@@ -232,10 +232,19 @@ a_host_hides_and_comes_back :: proc(t: ^testing.T) {
 	}
 	frames(h, 5)
 	testing.expect(t, on_screen(h.win, title), "shown")
+	// at rest the loop sleeps: no frame is due once what was set off settled (the system's repaint request included)
+	for i := 0; i < 20 && h.settle > 0; i += 1 { host.host_frame(h); pump_for(h.win, 10) }
+	pump_for(h.win, 100)
+	host.host_frame(h)
+	due, _ := host.hosts_due({h})
+	testing.expect(t, !due, "at rest, no frame is due")
 	for round in 1 ..= 3 {
 		host.host_hide(h)
 		pump_for(h.win, 200)
 		testing.expect(t, !on_screen(h.win, title), "off the screen")
+		// a hidden window's wait sleeps, even when the system asked for a repaint
+		h.win.paint_requested = true
+		testing.expect(t, !platform.events_waiting(h.win), "hidden: a repaint request ends no wait")
 		host.host_show(h)
 		before := builds
 		start := time.tick_now()

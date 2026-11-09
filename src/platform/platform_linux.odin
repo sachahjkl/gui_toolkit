@@ -521,7 +521,10 @@ events_waiting :: proc(w: ^Window) -> bool { return wait_is_over(w) }
 
 // Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.
 @(private)
-wait_is_over :: proc(w: ^Window) -> bool { return len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested }
+wait_is_over :: proc(w: ^Window) -> bool {
+	// (a repaint of a hidden window shows nothing: its request waits for the show)
+	return len(w.events) > w.returned || len(w.injected) > 0 || (w.paint_requested && w.show != .Hidden)
+}
 
 @(private) Pollfd :: struct { fd: i32, events: i16, revents: i16 }
 @(private) POLLIN :: i16(0x0001)
