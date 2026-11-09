@@ -184,7 +184,7 @@ classes, and only these:
 
 | Class | What | Example |
 |---|---|---|
-| `const` | a table, written by the compiler, or once (at start-up, a `sync.Once`) before anything reads it; then only read, by any thread | `ui.NAMED_PALETTES`, the Wayland protocol tables, the sRGB tables |
+| `const` | a table, written by the compiler, or once (at start-up, a `sync.Once`) before anything reads it; then only read, by any thread | `ui.THEMES`, the Wayland protocol tables, the sRGB tables |
 | `process` | a resource of the process, one whatever the number of apps: locked, atomic, or bound to a thread its note names | the clipboard store, the device made early (`render.preload_device`), the window class, a library of the system |
 | `thread` | `@(thread_local)`: each thread its own | the State a thread builds, the frame gate, OLE on Windows, the display connection and session bus on Linux |
 | `test` | a test's own | |

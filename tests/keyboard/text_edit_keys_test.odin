@@ -31,7 +31,7 @@ open :: proc(f: ^Fx) -> bool {
 	font.init(&f.fonts)
 	id, ok := font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	if !ok { return false }
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	f.ui_font = id
 	f.clock = 1000

@@ -88,6 +88,9 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	}
 	keyboard_focus := s.focus_visible && b.key == s.focus_key
 	focus_ring := (.Draw_Focus_Ring in flags && b.focus_t > FOCUS_T_EPS) || keyboard_focus
+	// the machined finish draws its reliefs itself (machined.odin): the face, and for a well or a bevel its edge and focus
+	machined_face, machined_whole := machined_box(s, dc, b, r, radius, keyboard_focus)
+	if machined_whole { focus_ring = false }
 	if focus_ring && s.theme != nil && s.theme.finish != .Flat {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
@@ -95,10 +98,10 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		glow := FOCUS_GLOW_PX * scale
 		draw.rect(dc, draw.rect_pad(r, glow), tuned(c), radius + glow, 0, glow)
 	}
-	if .Draw_Background in flags {
+	if .Draw_Background in flags && !machined_face {
 		paint_rect(dc, r, b.bg, radius, box_sheen(s, b))
 	}
-	if .Draw_Hot_Effects in flags && b.hot_t > DRAW_INVISIBLE_EPS {
+	if .Draw_Hot_Effects in flags && b.hot_t > DRAW_INVISIBLE_EPS && !machined_face {
 		// the theme's step toward its tint, over what is actually under the box (theme_default.odin: state_entries)
 		hover := color_from_tags(s, b.tags_key, "hover_fill")
 		press := color_from_tags(s, b.tags_key, "press_fill")
@@ -133,7 +136,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .Clip in flags { draw.pop_clip(dc) }
 	if .View_Scroll_Y in flags { draw_scrollbar(s, dc, b) }
 
-	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS {
+	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS && !machined_whole {
 		border := b.border
 		if b.hot_t > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && .Clickable in flags {
 			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > DRAW_INVISIBLE_EPS { border = srgb_step(border, k, k.a * b.hot_t) }
@@ -307,6 +310,8 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 	px := max(1, math.round(s.scale))
 	switch finish {
 	case .Flat:
+	case .Machined:   // (its reliefs are machined_box's; a surface painted here is plain)
+		draw.rect(dc, r, c, radius)
 	case .Gradient:
 		top := draw.mix(c, white, GRADIENT_TOP_WHITE * k)
 		bot := draw.mix(c, black, GRADIENT_BOTTOM_BLACK * k)

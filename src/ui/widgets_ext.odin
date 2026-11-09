@@ -41,7 +41,7 @@ icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
 
 hline :: proc(width: Size) {
 	next({width = width, height = px(max(1, math.round(scale()))), bg = color("border")})
-	build_box({.Draw_Background}, "")
+	build_box({.Draw_Background, .Groove}, "")
 }
 
 // Value stored at press time for the active drag (column width at start, note position, ...). One for the State, which no press
@@ -448,7 +448,9 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if d.n <= 0 { return }
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
 	x := r.min.x + d.pad + d.t * iw
-	paint_rect(dc, {{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
+	pill := Rect{{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}
+	if machined() { machined_bevel(dc, pill, rad(max(0, b.radius - d.pad * 0.5)), d.accent, 0, 0); return }
+	paint_rect(dc, pill, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
 }
 
 // Sliding-pill segmented control. Returns true when the selection changed.
@@ -461,7 +463,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 	if tags("weak") { text_off = color("text") }
 	if tags("button") {
 		set_next_axis(.X)
-		b := build_box({.Draw_Background, .Draw_Border}, id)
+		b := build_box({.Draw_Background, .Draw_Border, .Sunken}, id)   // (machined: a sunken track, its pill bevelled)
 		d := frame_new(Seg_Draw)
 		d.t, d.n, d.accent, d.pad = t, len(labels), accent, em * 0.25
 		b.custom, b.custom_user = seg_draw, d

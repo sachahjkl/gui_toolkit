@@ -40,7 +40,7 @@ open :: proc(f: ^Rx) -> bool {
 	f.ui_font, ok = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	f.mono, ok2 = font.load_embedded(&f.fonts, font.FALLBACK_MONO_DATA)
 	draw.init(&f.dc, &f.r, &f.fonts)
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	f.s.mono_font = f.mono
 	return ok && ok2
@@ -388,9 +388,11 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 	f.needle = "HH"
 	gold := draw.Color{0.9, 0.75, 0.48, 1}
 	// large letters reach their full colour; those of the text one reads are thin, and what counts
-	count := len(ui.NAMED_PALETTES)
+	all := ui.theme_palettes(ui.THEMES[:], allocator = context.allocator)
+	defer { for np in all { delete(np.name) }; delete(all) }
+	count := len(all)
 	for run in 0 ..< 2 * count {
-		np := ui.NAMED_PALETTES[run % count]
+		np := all[run % count]
 		size: f32 = run < count ? 48 : 15
 		p, name := np.palette, np.name
 		f.runs = {{text = "HH", style = {size = size, color = gold}}, {text = " x "}, {text = "HH", style = {size = size, color = gold}}}

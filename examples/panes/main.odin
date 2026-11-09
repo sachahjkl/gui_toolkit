@@ -97,7 +97,7 @@ frame :: proc(app: ^App, inner := false) {
 	now := time.tick_now()
 	dt := clamp(f32(time.duration_seconds(time.tick_diff(app.last_tick, now))), 0.0005, 0.1)
 	app.last_tick = now
-	ui.apply_palette(&app.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&app.theme, ui.palette_of("Midnight"))
 	platform.set_dark_title(app.win, true)
 	base := ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = app.ui_font, font_size = 14, text_pad = 6, cursor = .Arrow}
 	ui.begin_build(&app.ui_state, {window_size = size, events = events, dt = dt, animations = platform.os_animations_enabled(), dpi_scale = app.win.dpi_scale, base = base, window = app.win})

@@ -45,18 +45,27 @@ Anim_Mode :: enum { System, On, Off }
 ////////////////////////////////
 // Palettes (each one expands into the full theme)
 
-DEFAULT_PALETTE :: 1   // Graphite
+DEFAULT_PALETTE :: "Graphite"
 
-Named_Palette :: ui.Named_Palette
+// Every version of every theme of the toolkit, by its name ("Nord", "Nord Light"): what the theme menu and the settings list.
+palettes: []ui.Named_Palette
 
-palettes := ui.NAMED_PALETTES
+palettes_make :: proc() {
+	if len(palettes) == 0 { palettes = ui.theme_palettes(ui.THEMES[:], allocator = context.allocator) }
+}
+
+// The palette of this name's index (the first when there is none).
+palette_index :: proc(name: string) -> int {
+	for p, i in palettes { if p.name == name { return i } }
+	return 0
+}
 
 ////////////////////////////////
 // Commands: one enum + one table drive the palette, the menus and the shortcuts
 
 Command :: enum {
 	Go_Controls, Go_Inputs, Go_Data, Go_Playground,
-	Theme_Midnight, Theme_Graphite, Theme_Daylight, Theme_Nord, Theme_Dracula, Theme_Amber, Theme_Aero, Theme_Bootstrap, Next_Theme,
+	Next_Theme, Toggle_Machined,
 	Toggle_Status, Toggle_Animations, Anim_System, Anim_On, Anim_Off, Toggle_Slowmo, Toggle_Boxes,
 	Toast_Info, Toast_Good, Toast_Warn, Toast_Bad, Clear_Toasts, Open_Modal, About, Settings,
 	Spawn_Balls, Confetti, Clear_Balls, Reset_Values,
@@ -71,15 +80,8 @@ command_info := [Command]Command_Info{
 	.Go_Inputs = {"Go to Inputs", "Navigate", "Ctrl+2", ICON_PENCIL},
 	.Go_Data = {"Go to Data", "Navigate", "Ctrl+3", ICON_LIST},
 	.Go_Playground = {"Go to Playground", "Navigate", "Ctrl+4", ICON_CUBE},
-	.Theme_Midnight = {"Theme: Midnight", "Theme", "", ICON_PALETTE},
-	.Theme_Graphite = {"Theme: Graphite", "Theme", "", ICON_PALETTE},
-	.Theme_Daylight = {"Theme: Daylight", "Theme", "", ICON_PALETTE},
-	.Theme_Nord = {"Theme: Nord", "Theme", "", ICON_PALETTE},
-	.Theme_Dracula = {"Theme: Dracula", "Theme", "", ICON_PALETTE},
-	.Theme_Amber = {"Theme: Amber", "Theme", "", ICON_PALETTE},
-	.Theme_Aero = {"Theme: Aero", "Theme", "", ICON_PALETTE},
-	.Theme_Bootstrap = {"Theme: Bootstrap", "Theme", "", ICON_PALETTE},
 	.Next_Theme = {"Theme: Cycle next", "Theme", "Ctrl+T", ICON_REFRESH},
+	.Toggle_Machined = {"Theme: Machined finish", "Theme", "Ctrl+M", ICON_PALETTE},
 	.Toggle_Status = {"View: Toggle status bar", "View", "Ctrl+B", ICON_WINDOW},
 	.Toggle_Animations = {"View: Toggle animations", "View", "Ctrl+J", ui.ICON_RADIO_ON},
 	.Anim_System = {"View: Animations follow system setting", "View", "", ICON_PAUSE},
@@ -161,6 +163,7 @@ App :: struct {
 
 	// settings (persisted)
 	palette_idx: int,
+	machined:    bool,   // the machined finish (a theme made for its own finish keeps it)
 	anim_mode:   Anim_Mode,
 	show_status: bool,
 	saved:       Saved_Settings,

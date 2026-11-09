@@ -138,7 +138,7 @@ frame :: proc(app: ^App, inner := false) {
 	now := time.tick_now()
 	dt := clamp(f32(time.duration_seconds(time.tick_diff(app.last, now))), 0.0005, 0.1)
 	app.last = now
-	ui.apply_palette(&app.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&app.theme, ui.palette_of("Midnight"))
 	ui.begin_build(&app.ui_state, {
 		window_size = size, events = events, dt = dt, animations = true, dpi_scale = app.win.dpi_scale,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(34)}, font = app.ui_font, font_size = 16, text_pad = 8},

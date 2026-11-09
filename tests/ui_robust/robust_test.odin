@@ -26,7 +26,7 @@ open :: proc(f: ^Fx) -> bool {
 	if !ok { return false }
 	icons, iok := font.load_embedded(&f.fonts, ui.ICON_FONT_DATA)
 	if !iok { return false }
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	f.s.icon_font = icons
 	f.base_font = id
@@ -53,10 +53,10 @@ frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr)
 @(test)
 a_destroyed_theme_starts_over :: proc(t: ^testing.T) {
 	theme: ui.Theme
-	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&theme, ui.palette_of("Midnight"))
 	ui.theme_destroy(&theme)
 	testing.expect_value(t, len(theme.patterns), 0)
-	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&theme, ui.palette_of("Midnight"))
 	testing.expect(t, len(theme.patterns) > 0, "made again")
 	ui.theme_destroy(&theme)
 	ui.theme_destroy(&theme)
@@ -102,12 +102,12 @@ theme_edited_before_the_palette :: proc(t: ^testing.T) {
 	mine := ui.Color{0.1, 0.9, 0.3, 1}
 	ui.theme_add(&th, fmt.tprintf("%s background", "chart"), mine)   // the tags of a temporary string
 	free_all(context.temp_allocator)
-	ui.apply_palette(&th, ui.PALETTE_MIDNIGHT)
-	ui.apply_palette(&th, ui.PALETTE_MIDNIGHT)   // twice: the entries are made once
+	ui.apply_palette(&th, ui.palette_of("Midnight"))
+	ui.apply_palette(&th, ui.palette_of("Midnight"))   // twice: the entries are made once
 	testing.expect_value(t, ui.theme_lookup(&th, {"chart"}, "background"), mine)
 	testing.expect(t, ui.theme_lookup(&th, {}, "text") != ui.Color{1, 0, 1, 1}, "the palette's entries exist")
 	n := len(th.patterns)
-	ui.apply_palette(&th, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&th, ui.palette_of("Midnight"))
 	testing.expect_value(t, len(th.patterns), n)
 }
 

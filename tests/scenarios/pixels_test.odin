@@ -65,7 +65,7 @@ a_rounded_box_has_no_corners :: proc(t: ^testing.T) {
 
 @(test)
 a_box_s_transparency_lets_through_what_is_under_it :: proc(t: ^testing.T) {
-	s := session.start(t, {size = WINDOW, palette = ui.PALETTE_MIDNIGHT, build = proc(s: ^session.Session) {
+	s := session.start(t, {size = WINDOW, palette = ui.palette_of("Midnight"), build = proc(s: ^session.Session) {
 		fixed_box("###white", 0, 0, 100, 100, {1, 1, 1, 1})
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(100), height = ui.px(100), bg = {0, 0, 0, 1}, transparency = 0.5})
 		ui.build_box({.Draw_Background}, "###half")
@@ -142,13 +142,13 @@ the_theme_goes_by_tags :: proc(t: ^testing.T) {
 // Another palette cross-fades by the clock: the colours are between the two on the way, the new ones at the end. With no animations it jumps.
 @(test)
 a_palette_change_fades_by_the_clock :: proc(t: ^testing.T) {
-	s := session.start(t, {size = WINDOW, animations = true, palette = ui.PALETTE_MIDNIGHT, build = proc(s: ^session.Session) {
+	s := session.start(t, {size = WINDOW, animations = true, palette = ui.palette_of("Midnight"), build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(60), height = ui.px(40)})
 		ui.build_box({.Draw_Background}, "###panel")
 	}})
 	session.wait_idle(s)
 	dark := session.pixel(session.capture(s), 30, 20)
-	ui.apply_palette(s.state.theme, ui.PALETTE_DAYLIGHT)
+	ui.apply_palette(s.state.theme, ui.palette_of("Midnight", light = true))
 	session.frames(s, 2)
 	between := session.pixel(session.capture(s), 30, 20)
 	session.advance(s, FADE_OVER_MS)
@@ -180,7 +180,7 @@ every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) {
 		if ui.tags("menu_item") { ui.button("Item###i") }
 	}})
 	magenta := session.Color{255, 0, 255, 255}
-	for p in ui.NAMED_PALETTES {
+	for p in ui.theme_palettes(ui.THEMES[:]) {
 		ui.apply_palette(s.state.theme, p.palette)
 		session.advance(s, FADE_OVER_MS)
 		testing.expectf(t, session.count_color(session.capture(s), {0, 0}, {500, 300}, magenta, 8) == 0, "%s has them all", p.name)

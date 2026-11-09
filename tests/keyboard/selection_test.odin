@@ -91,7 +91,7 @@ selection_across_boxes :: proc(t: ^testing.T) {
 	font.init(&f.fonts)
 	f.ui_font, _ = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	draw.init(&f.dc, &f.r, &f.fonts)
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts); delete(clip); clip = "" }
 	plain := frame(f, draw_it = true)
@@ -182,7 +182,7 @@ selection_in_a_dialog :: proc(t: ^testing.T) {
 	font.init(&f.fonts)
 	f.ui_font, _ = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	draw.init(&f.dc, &f.r, &f.fonts)
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts); delete(clip); clip = "" }
 	f.dialog = true

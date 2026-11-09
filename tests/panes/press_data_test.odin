@@ -43,7 +43,7 @@ build :: proc(p: ^Px, events: []platform.Event = nil) {
 start :: proc(p: ^Px) {
 	font.init(&p.fonts)
 	p.f, _ = font.load_embedded(&p.fonts, font.FALLBACK_UI_DATA)
-	ui.apply_palette(&p.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&p.theme, ui.palette_of("Midnight"))
 	ui.init(&p.s, &p.fonts, &p.theme)
 	p.show = true
 	build(p)

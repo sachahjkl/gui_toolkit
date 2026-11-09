@@ -168,7 +168,7 @@ frame :: proc(app: ^App, inner := false) {
 	now := time.tick_now()
 	dt := clamp(f32(time.duration_seconds(time.tick_diff(app.last, now))), 0.0005, 0.1)
 	app.last = now
-	ui.apply_palette(&app.theme, ui.PALETTE_GRAPHITE)
+	ui.apply_palette(&app.theme, ui.palette_of("Graphite"))
 	platform.set_dark_title(app.win, true)
 	app.want_custom = false
 	ui.begin_build(&app.ui_state, {

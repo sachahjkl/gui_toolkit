@@ -110,7 +110,7 @@ build :: proc(r: ^Rx, events: []platform.Event = nil) {
 start :: proc(r: ^Rx) {
 	font.init(&r.fonts)
 	r.f, _ = font.load_embedded(&r.fonts, font.FALLBACK_UI_DATA)
-	ui.apply_palette(&r.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&r.theme, ui.palette_of("Midnight"))
 	ui.init(&r.s, &r.fonts, &r.theme)
 	r.items = {10, 11, 12, 13}
 	build(r)

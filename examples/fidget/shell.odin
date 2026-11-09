@@ -16,9 +16,9 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Go_Inputs: app.page = .Inputs
 	case .Go_Data: app.page = .Data
 	case .Go_Playground: app.page = .Playground
-	case .Theme_Midnight, .Theme_Graphite, .Theme_Daylight, .Theme_Nord, .Theme_Dracula, .Theme_Amber, .Theme_Aero, .Theme_Bootstrap:
-		set_palette(app, int(cmd) - int(Command.Theme_Midnight))
-		ui.toast(.Info, "Theme: %s", palettes[app.palette_idx].name)
+	case .Toggle_Machined:
+		app.machined = !app.machined
+		ui.toast(.Info, "Finish: %s", app.machined ? "machined" : "the theme's")
 	case .Next_Theme:
 		set_palette(app, app.palette_idx + 1)
 		ui.toast(.Info, "Theme: %s", palettes[app.palette_idx].name)
@@ -70,6 +70,7 @@ handle_shortcuts :: proc(app: ^App) {
 	if ui.key_press(.N3, ctrl) { run_cmd(app, .Go_Data) }
 	if ui.key_press(.N4, ctrl) { run_cmd(app, .Go_Playground) }
 	if ui.key_press(.T, ctrl) { run_cmd(app, .Next_Theme) }
+	if ui.key_press(.M, ctrl) { run_cmd(app, .Toggle_Machined) }
 	if ui.key_press(.B, ctrl) { run_cmd(app, .Toggle_Status) }
 	if ui.key_press(.J, ctrl) { run_cmd(app, .Toggle_Animations) }
 	if ui.key_press(.F1) { run_cmd(app, .About) }
@@ -177,9 +178,10 @@ build_menubar :: proc(app: ^App, em: f32) {
 			}
 			if ui.ctx_menu(theme_m, menu_w) {
 				for p, i in palettes {
-					if ui.menu_item(p.name, "", app.palette_idx == i).clicked { run_cmd(app, Command(int(Command.Theme_Midnight) + i)) }
+					if ui.menu_item(p.name, "", app.palette_idx == i).clicked { set_palette(app, i); ui.toast(.Info, "Theme: %s", p.name) }
 				}
 				ui.menu_separator()
+				if ui.menu_item("Machined finish", "Ctrl+M", app.machined).clicked { run_cmd(app, .Toggle_Machined) }
 				if ui.menu_item("Cycle next", "Ctrl+T", false, ICON_REFRESH).clicked { run_cmd(app, .Next_Theme) }
 			}
 			if ui.ctx_menu(help_m, menu_w) {

@@ -79,6 +79,8 @@ set_palette :: proc(app: ^App, idx: int) {
 
 apply_theme :: proc(app: ^App) {
 	p := palettes[app.palette_idx].palette
+	if app.machined && p.finish == .Flat { p.finish = .Machined }
+	app.theme.glow = 1
 	ui.apply_palette(&app.theme, p, render.blend_space(&app.r))
 	if app.accent_override {
 		ui.theme_set(&app.theme, "accent", draw.hsv(app.hue, app.sat, app.val))
@@ -217,7 +219,8 @@ open :: proc(o: Open_Options) -> ^App {
 	ui.history_init(&app.frames, 96, 2)
 	app.sliders_on = true
 	app.corner_smoothing = 1
-	set_palette(app, DEFAULT_PALETTE)
+	palettes_make()
+	set_palette(app, palette_index(DEFAULT_PALETTE))
 	reset_values(app)
 	data_init(app)
 	app.tree_open[0], app.tree_open[1], app.tree_open[6], app.tree_open[10] = true, true, true, true

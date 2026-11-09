@@ -62,7 +62,7 @@ caret_rect_is_where_the_caret_is_drawn :: proc(t: ^testing.T) {
 	ok: bool
 	f.ui_font, ok = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	draw.init(&f.dc, &f.r, &f.fonts)
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer {
 		ui.area_destroy(&f.area)

@@ -121,11 +121,13 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   (at the right edge, or at the left one with `.Scrollbar_Left`; `set_scrollbar_autohide` shows them only under the pointer).
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
-- **Theme**: `(tags -> color)` patterns, `apply_palette` expands an 11-color palette (dark and light included);
-  colors cross-fade when the palette changes. Interaction states (hover, press, focus, selection) show at once, as
-  visible steps per role (`hover_fill`, `press_fill`: a fraction of the way to the tint in sRGB values, right in both
-  blend spaces); `Theme.transition_ms` brings back short fades. Finishes: flat, gradient (Bootstrap 2) or glass (Aero), optionally over
-  a translucent window with the Windows 11 acrylic backdrop.
+- **Themes**: 25 themes, most with a dark and a light version, the system's light or dark followed (`theme_show`); a
+  program's own colours moved to the theme shown (`theme_recolor`); a user's themes from a file of theirs. See
+  [docs/themes.md](docs/themes.md). `(tags -> color)` patterns, `apply_palette` expands a palette; colors cross-fade
+  when it changes. Interaction states (hover, press, focus, selection) show at once, as visible steps per role
+  (`hover_fill`, `press_fill`: a fraction of the way to the tint in sRGB values, right in both blend spaces);
+  `Theme.transition_ms` brings back short fades. Finishes: flat, gradient (Bootstrap 2), glass (Aero), optionally over
+  a translucent window with the Windows 11 acrylic backdrop, or machined (bevelled buttons, sunken wells, carved lines).
 - **Look controls**: corner rounding (square to very round, squircle or circular corners) and density
   (comfortable / compact), both live.
 - **Zoom, built in**: Ctrl+wheel, Ctrl +, Ctrl -, Ctrl 0 scale every size and the font (`ui.zoom`, `ui.set_zoom`;

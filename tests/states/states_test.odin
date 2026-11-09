@@ -26,7 +26,7 @@ Fx :: struct {
 ui_state_lock: sync.Mutex
 
 @(private = "file")
-open :: proc(f: ^Fx, p := ui.PALETTE_GRAPHITE) -> bool {
+open :: proc(f: ^Fx, p := ui.palette_of("Graphite")) -> bool {
 	font.init(&f.fonts)
 	id, ok := font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	if !ok { return false }
@@ -152,10 +152,10 @@ hover_and_press_are_instant :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.row2.hot_t, 1)
 	testing.expect_value(t, r.cross.hot_t, 1)
 	testing.expect(t, r.within, "hot_within: the row holds the hot button")
-	testing.expect(t, r.cross.text_color == draw.hex(ui.PALETTE_GRAPHITE.bad), "the remove cross is red under the pointer")
+	testing.expect(t, r.cross.text_color == draw.hex(ui.palette_of("Graphite").bad), "the remove cross is red under the pointer")
 	frame(&f, &r, {move(100, 155)})
 	testing.expect_value(t, r.cross.hot_t, 0)
-	testing.expect(t, r.cross.text_color != draw.hex(ui.PALETTE_GRAPHITE.bad), "and back at once")
+	testing.expect(t, r.cross.text_color != draw.hex(ui.palette_of("Graphite").bad), "and back at once")
 	testing.expect_value(t, ui.cursor(&f.s), platform.Cursor.Hand)
 }
 
@@ -234,9 +234,9 @@ palette_change_cross_fades :: proc(t: ^testing.T) {
 	frame(&f, &r, nil)
 	testing.expect(t, r.btn.bg == r.btn.target_bg, "settled")
 	serial := f.theme.serial
-	ui.apply_palette(&f.theme, ui.PALETTE_GRAPHITE)
+	ui.apply_palette(&f.theme, ui.palette_of("Graphite"))
 	testing.expect_value(t, f.theme.serial, serial)   // the same colours: no change, no fade
-	ui.apply_palette(&f.theme, ui.PALETTE_DAYLIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight", light = true))
 	testing.expect(t, f.theme.serial != serial, "another palette bumps the serial")
 	frame(&f, &r, nil)
 	testing.expect(t, r.btn.bg != r.btn.target_bg, "the first frame after a palette change is part of the way")
@@ -249,7 +249,7 @@ palette_change_cross_fades :: proc(t: ^testing.T) {
 @(test)
 state_fills_are_visible_steps :: proc(t: ^testing.T) {
 	enc :: proc(c: f32) -> f32 { return render.linear_to_srgb(c) * 255 }
-	for p in ([2]ui.Palette{ui.PALETTE_GRAPHITE, ui.PALETTE_DAYLIGHT}) {
+	for p in ([2]ui.Palette{ui.palette_of("Graphite"), ui.palette_of("Midnight", light = true)}) {
 		th: ui.Theme
 		defer ui.theme_destroy(&th)
 		ui.apply_palette(&th, p)

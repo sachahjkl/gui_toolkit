@@ -59,7 +59,7 @@ sizes_follow_the_scale :: proc(t: ^testing.T) {
 	font.init(&f.fonts)
 	f.ui_font, _ = font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	draw.init(&f.dc, &f.r, &f.fonts)
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts) }
 
