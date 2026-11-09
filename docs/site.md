@@ -2,7 +2,7 @@
 
 `src/site` (package `tk_site`; import it as `tk_site "<toolkit>/src/site"`, or `tk_site "gt:site"`) makes the pages of a
 project's site from its own sources, and checks them in a real browser. The toolkit's site uses it (`tk site_build`), so do
-opencode native's (`occtools site build`) and Wren's documentation (its `docsite` tool). A project gives its names, address and
+opencode native's (`ocntools site build`) and Wren's documentation (its `docsite` tool). A project gives its names, address and
 colours (`Meta`, `Docs`), its home page as the template (`site/index.html`), its CHANGELOG.md and its documents (`docs/`).
 
 ## The changelog's pages

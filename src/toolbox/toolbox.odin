@@ -1,4 +1,4 @@
-// Package toolbox: what the tools of a project share (tk, occtools, Wren's tooling), not the programs they build. A command run with
+// Package toolbox: what the tools of a project share (tk, ocntools, Wren's tooling), not the programs they build. A command run with
 // its output shown or captured, the environment of a child, the SHA-256 of bytes and files, and a download pinned by SHA-256.
 // (Named tk_toolbox: a program may have a `toolbox` package of its own.)
 //
