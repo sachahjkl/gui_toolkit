@@ -415,6 +415,7 @@ wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool
 	h := frame_hit(w, wlc.pointer_pos)
 	if !hit_is_frame(h) || wlc.seat == nil { return false }
 	st := wl_state(w)
+	if st.xdg_toplevel == nil { return false }   // (hidden)
 	ver := wl.proxy_get_version(st.xdg_toplevel)
 	#partial switch btn {
 	case .Left:
@@ -715,35 +716,50 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 	w.wl = st
 	w.dpi_scale = f32(wlc.output_scale)
 
-	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
-	if st.surface == nil { delete(st.title); free(st); w.wl = nil; return false }
-	append(&wlc.windows, w)
-	wl.proxy_set_user_data(st.surface, st)
 	st.logical = {max(size.x, 1), max(size.y, 1)}
 	st.floating = st.logical
 	st.toplevel = .Normal
+	if !wl_surface_make(w, st) { delete(st.title); free(st); w.wl = nil; return false }
+	append(&wlc.windows, w)
+	wl.display_roundtrip(wlc.display)   // the first configure arrives; the surface is ready for the renderer
+	return true
+}
+
+// How long a shown window waits for its first configure, and how long each poll for it lasts.
+@(private) WL_FIRST_CONFIGURE_WAIT_MS :: 500
+@(private) WL_FIRST_CONFIGURE_POLL_MS :: 5
+
+// The window's surface, its scale objects and its toplevel role, committed without a buffer (the compositor answers with
+// the first configure). Made at open, and again when a hidden window is shown (wl_hide destroyed them).
+@(private)
+wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State) -> bool {
+	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
+	if st.surface == nil { return false }
+	wl.proxy_set_user_data(st.surface, st)
 	if wlc.fractional_manager != nil && wlc.viewporter != nil {
 		st.viewport = wl.proxy_marshal_flags(wlc.viewporter, WP_VIEWPORTER_GET_VIEWPORT, &wp_viewport_iface, wl.proxy_get_version(wlc.viewporter), 0, nil, st.surface)
 		st.fractional = wl.proxy_marshal_flags(wlc.fractional_manager, WP_FRACTIONAL_MANAGER_GET, &wp_fractional_iface, wl.proxy_get_version(wlc.fractional_manager), 0, nil, st.surface)
 		if st.fractional != nil { wl.proxy_add_listener(st.fractional, &fractional_listener, st) }
 	}
-
 	wl_role_make(w, st)
 	wl_size_from_logical(w, st)
 	if wlc.output_scale > 1 && st.viewport == nil {
 		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
 	}
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
-	wl.display_roundtrip(wlc.display)   // the first configure arrives; the surface is ready for the renderer
 	return true
 }
 
-// The toplevel role of the surface: its xdg_surface and xdg_toplevel, the title, the app id, the decoration. Made at
-// open, and again when a hidden window is shown (wl_hide removed them).
-// How long a shown window waits for its first configure, and how long each poll for it lasts.
-@(private) WL_FIRST_CONFIGURE_WAIT_MS :: 500
-@(private) WL_FIRST_CONFIGURE_POLL_MS :: 5
+// The surface and its scale objects go (wl_surface_make makes them again).
+@(private)
+wl_surface_destroy :: proc(st: ^Wl_Window_State) {
+	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
+	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
+	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
+	st.fractional, st.viewport, st.surface = nil, nil, nil
+}
 
+// The toplevel role of the surface: its xdg_surface and xdg_toplevel, the title, the app id, the decoration.
 @(private)
 wl_role_make :: proc(w: ^Window, st: ^Wl_Window_State) {
 	st.acked = false
@@ -769,9 +785,7 @@ wl_role_make :: proc(w: ^Window, st: ^Wl_Window_State) {
 	}
 }
 
-// The role goes, the surface stays: xdg-shell unmaps a surface whose toplevel is destroyed, and a buffer left attached
-// would make the next get_xdg_surface a protocol error, so a null buffer is committed. The surface, its scale objects and
-// what the renderer made on it stay for wl_show. (The decoration goes before its toplevel, as the protocol asks.)
+// (The decoration goes before its toplevel, as the protocol asks.)
 @(private)
 wl_role_destroy :: proc(st: ^Wl_Window_State) {
 	if st.decoration != nil { wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_DESTROY, nil, wl.proxy_get_version(st.decoration), WL_MARSHAL_FLAG_DESTROY) }
@@ -780,13 +794,20 @@ wl_role_destroy :: proc(st: ^Wl_Window_State) {
 	st.decoration, st.xdg_toplevel, st.xdg_surface = nil, nil, nil
 }
 
+// The role and the surface go; wl_show makes new ones. Not the role alone: the last frames' content updates may wait in
+// the surface's queue (a FIFO barrier of wp_fifo_v1 that an unmapped surface never clears), and every later commit,
+// the new role's first one included, would wait behind them. A new surface starts with an empty queue. What renders to
+// the surface releases it first (host_hide: render.surface_drop).
 @(private)
 wl_hide :: proc(w: ^Window) {
 	st := wl_state(w)
-	if st == nil || st.xdg_toplevel == nil { return }
+	if st == nil || st.surface == nil { return }
+	// what the seat keeps of the window: its leave may name a surface that is gone
+	if wlc.pointer_focus == w { wlc.pointer_focus = nil }
+	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil; wlc.key_repeat.held = false }
+	window_focus(w, false, {})
 	wl_role_destroy(st)
-	wl.proxy_marshal_flags(st.surface, WL_SURFACE_ATTACH, nil, wl.proxy_get_version(st.surface), 0, nil, i32(0), i32(0))
-	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
+	wl_surface_destroy(st)
 	wl.display_flush(wlc.display)
 	w.show = .Hidden
 }
@@ -801,10 +822,8 @@ wl_destroy :: proc(w: ^Window) {
 	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil; wlc.key_repeat.held = false }
 	if wlc.dnd_window == w { wlc.dnd_window = nil }
 	if wlc.ti_window == w { wlc.ti_window = nil }
-	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
-	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	wl_role_destroy(st)
-	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
+	wl_surface_destroy(st)
 	wl.display_flush(wlc.display)
 	delete(st.title)
 	free(st)
@@ -815,7 +834,7 @@ wl_destroy :: proc(w: ^Window) {
 wl_set_title :: proc(w: ^Window, title: string) {
 	st := wl_state(w)
 	c := strings.clone_to_cstring(title, context.temp_allocator)
-	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_TITLE, nil, wl.proxy_get_version(st.xdg_toplevel), 0, c)
+	if st.xdg_toplevel != nil { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_TITLE, nil, wl.proxy_get_version(st.xdg_toplevel), 0, c) }   // (hidden: the next role takes st.title)
 	if title != st.title { delete(st.title); st.title = strings.clone(title) }
 	wl.display_flush(wlc.display)
 }
@@ -833,12 +852,12 @@ wl_set_size :: proc(w: ^Window, px: [2]int) {
 @(private)
 wl_show :: proc(w: ^Window) {
 	st := wl_state(w)
-	if st.xdg_toplevel == nil {
-		// hidden (wl_hide): a new role, its first configure, then the next frame's buffer maps it
-		wl_role_make(w, st)
+	if st.surface == nil {
+		// hidden (wl_hide): a new surface and role, their first configure, then the next frame's buffer maps them. The
+		// renderer makes its surface on the new one (Window.shown_again: host_frame, render.surface_remake).
 		st.toplevel = .Normal
+		if !wl_surface_make(w, st) { return }
 		w.shown_again += 1
-		wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 		// A buffer before the first configure is acked is a protocol error, and a compositor may send that configure after
 		// a roundtrip (Hyprland lays the window out first): wait for it.
 		deadline := time.tick_add(time.tick_now(), WL_FIRST_CONFIGURE_WAIT_MS * time.Millisecond)
@@ -854,10 +873,11 @@ wl_show :: proc(w: ^Window) {
 	wl.display_flush(wlc.display)
 	w.show = st.toplevel
 }
-@(private) wl_minimize :: proc(w: ^Window) { st := wl_state(w); wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0); wl.display_flush(wlc.display) }
+@(private) wl_minimize :: proc(w: ^Window) { st := wl_state(w); if st.xdg_toplevel == nil { return }; wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0); wl.display_flush(wlc.display) }
 @(private)
 wl_set_maximized :: proc(w: ^Window, on: bool) {
 	st := wl_state(w)
+	if st.xdg_toplevel == nil { return }
 	op: u32 = on ? XDG_TOPLEVEL_SET_MAXIMIZED : XDG_TOPLEVEL_UNSET_MAXIMIZED
 	wl.proxy_marshal_flags(st.xdg_toplevel, op, nil, wl.proxy_get_version(st.xdg_toplevel), 0)
 	wl.display_flush(wlc.display)
@@ -865,6 +885,7 @@ wl_set_maximized :: proc(w: ^Window, on: bool) {
 @(private)
 wl_set_fullscreen :: proc(w: ^Window, on: bool) {
 	st := wl_state(w)
+	if st.xdg_toplevel == nil { return }
 	if on { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_FULLSCREEN, nil, wl.proxy_get_version(st.xdg_toplevel), 0, nil) }
 	else  { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_UNSET_FULLSCREEN, nil, wl.proxy_get_version(st.xdg_toplevel), 0) }
 	wl.display_flush(wlc.display)
@@ -883,7 +904,7 @@ wl_set_decorations :: proc(w: ^Window, on: bool) {
 @(private)
 wl_show_window_menu :: proc(w: ^Window, pos: [2]f32) {
 	st := wl_state(w)
-	if wlc.seat == nil { return }
+	if wlc.seat == nil || st.xdg_toplevel == nil { return }
 	// (the serial of the press that asked for it; the place in the surface's units)
 	scale := w.dpi_scale > 0 ? w.dpi_scale : 1
 	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SHOW_WINDOW_MENU, nil, wl.proxy_get_version(st.xdg_toplevel), 0, wlc.seat, wlc.button_serial, i32(pos.x / scale), i32(pos.y / scale))

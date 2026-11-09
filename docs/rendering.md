@@ -55,10 +55,11 @@ render.surface_init(&r, &surface, platform.native_surface_handles(second_window)
 render.surface_use(&r, &surface)   // the renderer now draws to the second window; call again to go back
 ```
 
-`render.surface_remake(&r)`: the window of the current surface came back on the screen (`platform.hide_window`, then
-`show_window`); its next frame configures a new swap chain. On wgpu the old one may wait for good: Vulkan's FIFO on Wayland
-waits for the frame callback of the last frame before the hide. A Direct3D swap chain survives a hide (nothing to do).
-`host_frame` calls it on its own when `Window.shown_again` changed.
+`render.surface_drop(&r)`: the window of the current surface leaves the screen (`platform.hide_window`): the wgpu surface
+and its swap chain go before the window's native surface does (Wayland destroys it); frames are skipped until
+`render.surface_remake(&r, platform.native_surface_handles(win))` makes one on the window's handles again, configured at the
+next frame. A Direct3D swap chain survives a hide (both do nothing). `host.host_hide` calls the first, `host_frame` the
+second when `Window.shown_again` changed.
 
 Everything else — `frame_begin` / `frame_submit` / `frame_end`, textures, pooled targets, capture
 (`src/render/capture.odin`), the blend space, `set_max_frame_latency` (it returns false on wgpu), resize, DPI — is the same call on every

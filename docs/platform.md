@@ -37,12 +37,14 @@ no-ops with a sane return, never an error.
 program that needs an unseen window opens an offscreen one.
 `hide_window(w)` takes a shown window off the screen and `show_window(w)` brings it back, its size, title and interface
 kept: a program that lives in the notification area hides its window instead of closing it, and shows it again in a few
-milliseconds (no new device, fonts or state). Draw no frame of a hidden window (on Linux a frame would wait for a screen
-the window is not on); its wait still ends on a wake, a post and the tray. Wayland: the toplevel role goes (a null buffer
-is committed) and `show_window` makes a new one and waits for its first configure, so the compositor places and focuses it
-as a new window; X11: unmapped (withdrawn); Windows: `SW_HIDE`. `Window.shown_again` counts the shows after a hide: the
-host makes a new swap chain at the next frame (`render.surface_remake`), as Vulkan's FIFO would otherwise wait for good on
-the frame callback of the last frame before the hide.
+milliseconds (no new device, fonts or state). A window with a renderer goes through the host (`host.host_hide`,
+`host.host_show`), which releases the renderer's surface first. Draw no frame of a hidden window (on Linux a frame would
+wait for a screen the window is not on); its wait still ends on a wake, a post and the tray. Wayland: the toplevel role
+and the surface go, and `show_window` makes new ones and waits for their first configure, so the compositor places and
+focuses it as a new window. (The role alone is not enough: the last frames' content updates may wait in the surface's
+queue behind a FIFO barrier of `wp_fifo_v1` that an unmapped surface never clears, and every later commit with them.)
+X11: unmapped (withdrawn). Windows: `SW_HIDE`. `Window.shown_again` counts the shows after a hide: the host makes the
+renderer's surface again at the next frame (`render.surface_remake`).
 
 **Identity** — `set_app_id(id)`, once before the first window: on Linux, the windows' Wayland app_id and X11 WM_CLASS.
 The desktop finds the program's `<id>.desktop` by it, for the icon and the name in a task bar. Without a call, the id is

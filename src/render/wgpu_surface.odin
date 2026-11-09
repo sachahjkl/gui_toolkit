@@ -112,12 +112,21 @@ wgpu_surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 	s.wgpu_backing = nil
 }
 
-// The current surface's swap chain is dropped: the next frame configures a new one (surface_remake).
+// The current surface goes with its swap chain (surface_drop); frames are skipped until a new one is made.
 @(private)
-wgpu_surface_remake :: proc(r: ^Renderer) {
+wgpu_surface_drop :: proc(r: ^Renderer) {
 	g := &r.wg
-	if g.surface == nil || r.lost { return }
 	wgpu_release_frame(g)
-	wgpu.SurfaceUnconfigure(g.surface)
+	if g.surface != nil { wgpu.SurfaceUnconfigure(g.surface); wgpu.SurfaceRelease(g.surface); g.surface = nil }
 	g.configured = false
+}
+
+// A surface on `handles` for the current window (surface_remake), configured at the next frame.
+@(private)
+wgpu_surface_make_again :: proc(r: ^Renderer, handles: platform.Surface_Handles) {
+	wgpu_surface_drop(r)
+	if r.lost { return }   // (the recovery makes the surface from r.surface_handles)
+	r.surface_handles = handles
+	r.transparent = r.transparent_asked
+	r.wg.surface = wgpu_make_surface(r, handles)
 }
