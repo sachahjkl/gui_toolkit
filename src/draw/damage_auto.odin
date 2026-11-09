@@ -403,7 +403,10 @@ segment_digest :: proc(d: ^Digest, from, to: Span_Cut) -> (h: u64, bounds: Rect,
 					h = hash_mix(h, clip_hash(d, c.replays[b.replay - 1].outer))
 				}
 				h = hash_mix(h, batch_hash(d, bi))
-				bounds = rect_union(bounds, reach(d, scissor_of(b), b.target))
+				// (where the picture draws, cut by the batch's scissor: not the whole scissor)
+				at := scissor_of(b)
+				if b.replay - 1 < len(c.replay_bounds) { at = rect_intersect(at, c.replay_bounds[b.replay - 1]) }
+				if !rect_empty(at) { bounds = rect_union(bounds, reach(d, at, b.target)) }
 			case b.app > 0:
 				h = hash_mix(h, batch_hash(d, bi))
 				h = hash_mix(h, app_hash(d, b.app - 1, int(c.insts[b.first].aux)))
