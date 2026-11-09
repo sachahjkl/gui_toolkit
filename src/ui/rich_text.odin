@@ -15,6 +15,7 @@ import "../font"
 //
 //   rich_paragraph(id, runs, max_lines = 0): the box (full width, as tall as its lines; `next` may say otherwise).
 //   rich_layout / rich_index_at / rich_caret / rich_range_rects / rich_link_at: the layout and its geometry.
+//   rich_links(text, style, &runs): plain text as runs, each web address in it a link.
 //   rich_set_faces(state, regular, bold, italic, bold_italic): the faces `bold` / `italic` runs of a family take (else the
 //   regular face with simulated bold / slant).
 
@@ -34,6 +35,50 @@ Rich_Style :: struct {
 Rich_Run :: struct {
 	text: string,
 	using style: Rich_Style,
+}
+
+// Appends `text` to `runs` as runs of `style`, each web address in it (http://, https://) a link run: the theme's "link"
+// colour, underlined. A mark that ends a sentence after an address (".", ",", ")" without its "("...) is not part of it.
+rich_links :: proc(text: string, style: Rich_Style, runs: ^[dynamic]Rich_Run) {
+	start, i := 0, 0
+	for i < len(text) {
+		n := web_address_len(text, i)
+		if n == 0 { i += 1; continue }
+		if i > start { append(runs, Rich_Run{text = text[start:i], style = style}) }
+		link := style
+		link.link, link.underline, link.color = text[i:i + n], true, {}
+		append(runs, Rich_Run{text = text[i:i + n], style = link})
+		i += n
+		start = i
+	}
+	if start < len(text) { append(runs, Rich_Run{text = text[start:], style = style}) }
+}
+
+// The length of the web address that starts at byte `i` of `text`, 0 for none.
+web_address_len :: proc(text: string, i: int) -> int {
+	rest := text[i:]
+	scheme := 0
+	if strings.has_prefix(rest, "https://") { scheme = len("https://") } else if strings.has_prefix(rest, "http://") { scheme = len("http://") }
+	if scheme == 0 { return 0 }
+	if i > 0 {   // (not inside a word: "xhttp://")
+		c := text[i - 1]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' { return 0 }
+	}
+	end := scheme
+	for end < len(rest) {
+		c := rest[end]
+		if c <= ' ' || c == 0x7f || c == '<' || c == '>' || c == '"' || c == '`' { break }
+		end += 1
+	}
+	// a closing mark that ends the sentence, or a bracket that the address does not open
+	for end > scheme {
+		c := rest[end - 1]
+		if strings.index_byte(".,;:!?'*", c) >= 0 { end -= 1; continue }
+		if c == ')' && strings.count(rest[:end], "(") < strings.count(rest[:end], ")") { end -= 1; continue }
+		if c == ']' && strings.count(rest[:end], "[") < strings.count(rest[:end], "]") { end -= 1; continue }
+		break
+	}
+	return end > scheme ? end : 0
 }
 
 // A piece of a run on one line.
