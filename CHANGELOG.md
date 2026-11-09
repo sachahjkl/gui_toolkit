@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.117.0] - 2026-11-09
+
+### Added
+- **The machined finish** (`Finish.Machined`): bevelled buttons that sink when pressed, fields and segmented tracks as sunken wells with a ring of the accent when focused, separators as carved grooves (box flags `.Sunken`, `.Groove`); flat on a light palette. Its primitives for a program's own surfaces: `machined_bevel`, `machined_well`, `machined_groove`, `machined_plate`, `machined_lamp`, `machined_pip` (each draws its flat form outside the finish); `Theme.glow` sets its halos. It draws up to `MACHINED_OVERFLOW_PX` outside a box: a region redrawn alone must hold that margin. fidget: a Machined finish switch (Ctrl+M).
+
+### Changed
+- **Themes replace the named palettes**: `ui.THEMES` (25 themes, most with a dark and a light version: opencode native's and the toolkit's), `Theme_Def`, `Theme_Colors`, `theme_palette`, `theme_palettes`, `palette_of`, `theme_find`; `theme_show` applies a theme, a mode (system, dark, light) and a finish, and follows the system; `theme_recolor` moves a program's own colours to the theme shown; `themes_read` reads a user's themes. `NAMED_PALETTES`, `palette_named` and the `PALETTE_*` constants are gone: `palette_of("Midnight")`, `palette_of("Midnight", light = true)` for Daylight. `Palette.well`: the colour of sunken surfaces. See docs/themes.md.
+
 ## [0.116.0] - 2026-11-09
 
 ### Added
@@ -1978,6 +1986,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.117.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.117.0
 [0.116.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.116.0
 [0.114.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.2
 [0.115.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.115.0
