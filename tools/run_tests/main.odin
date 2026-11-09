@@ -116,6 +116,7 @@ STEPS := []Step{
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},
+	{name = "setup", one = true, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
