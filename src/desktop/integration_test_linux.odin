@@ -35,6 +35,7 @@ scratch_make :: proc() -> Scratch {
 		exe = s.exe, register_browser = true, start_menu = true, file_types = split_list(".html,.svg", context.temp_allocator), icons = icons,
 		applications_dir = fmt.aprintf("%s/share/applications", s.dir), icons_dir = fmt.aprintf("%s/share/icons/hicolor", s.dir),
 		bin_dir = fmt.aprintf("%s/bin", s.dir), autostart_dir = fmt.aprintf("%s/config/autostart", s.dir), notify_system = false,
+		desktop_dir = fmt.aprintf("%s/Desktop", s.dir),   // (never the user's: remove takes out a copy that is the program's)
 	}
 	delete(tmp)
 	delete(id)
@@ -44,7 +45,7 @@ scratch_make :: proc() -> Scratch {
 @(private = "file")
 scratch_destroy :: proc(s: ^Scratch) {
 	_ = os.remove_all(s.dir)
-	delete(s.dir); delete(s.exe); delete(s.exe2); delete(s.opts.applications_dir); delete(s.opts.icons_dir); delete(s.opts.bin_dir); delete(s.opts.autostart_dir)
+	delete(s.dir); delete(s.exe); delete(s.exe2); delete(s.opts.applications_dir); delete(s.opts.icons_dir); delete(s.opts.bin_dir); delete(s.opts.autostart_dir); delete(s.opts.desktop_dir)
 }
 
 @(private = "file")
@@ -209,4 +210,49 @@ linux_autostart :: proc(t: ^testing.T) {
 	_ = os.write_entire_file(entry, "[Desktop Entry]\nName=Sample\nExec=/usr/bin/something-else\n")
 	expect_ok(t, remove(o))
 	testing.expect(t, os.is_file(entry), "not the program's: stays")
+}
+
+// The desktop's copy of the entry: written executable with the option, its part present; taken out with the option off and by
+// remove; another program's file of that name stays, and Install says so.
+@(test)
+linux_desktop_shortcut :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	copy := fmt.tprintf("%s/sample.desktop", o.desktop_dir)
+	o.desktop_shortcut = true
+	expect_ok(t, install(o))
+	text, err := os.read_entire_file(copy, context.temp_allocator)
+	testing.expect(t, err == nil, "the copy on the desktop")
+	testing.expect_value(t, string(text), desktop_entry_text(o))
+	if info, serr := os.stat(copy, context.temp_allocator); serr == nil {
+		testing.expect(t, .Execute_User in info.mode, "executable: a desktop starts only such an entry")
+	}
+	testing.expect(t, status(o, context.temp_allocator).parts[.Desktop_Shortcut].present, "the part is there")
+	o.desktop_shortcut = false
+	expect_ok(t, install(o))
+	testing.expect(t, !os.exists(copy), "taken out with the option")
+	o.desktop_shortcut = true
+	expect_ok(t, install(o))
+	expect_ok(t, remove(o))
+	testing.expect(t, !os.exists(copy), "removed")
+	_ = os.write_entire_file(copy, "[Desktop Entry]\nName=Sample\nExec=/usr/bin/something-else\n")
+	testing.expect(t, install(o).error != .None, "another program's file: not replaced")
+	expect_ok(t, remove(o))
+	testing.expect(t, os.is_file(copy), "not the program's: stays")
+}
+
+// The desktop folder of user-dirs.dirs: $HOME made the home, an absolute path as it is, anything else not taken.
+@(test)
+linux_user_dirs_desktop :: proc(t: ^testing.T) {
+	text := "# written by xdg-user-dirs-update\nXDG_DOWNLOAD_DIR=\"$HOME/Téléchargements\"\nXDG_DESKTOP_DIR=\"$HOME/Bureau\"\n"
+	dir, found := user_dirs_desktop(text, "/home/ada")
+	testing.expect(t, found)
+	testing.expect_value(t, dir, "/home/ada/Bureau")
+	dir, found = user_dirs_desktop("XDG_DESKTOP_DIR=\"/data/desk\"\n", "/home/ada")
+	testing.expect_value(t, dir, "/data/desk")
+	_, found = user_dirs_desktop("XDG_DESKTOP_DIR=\"Desk\"\n", "/home/ada")
+	testing.expect(t, !found, "neither $HOME nor absolute")
+	_, found = user_dirs_desktop("XDG_MUSIC_DIR=\"$HOME/Music\"\n", "/home/ada")
+	testing.expect(t, !found)
 }

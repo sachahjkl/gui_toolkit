@@ -37,6 +37,20 @@ The dialog says where everything is: the installed program, the menu's entry, th
 that does not fit is cut; the pointer over it shows it whole, and a click on it or on the copy button after it puts it on
 the clipboard.
 
+The dialog opens at 36 by 27 em; its edges and its corner resize it (`Dialog.size`, logical pixels: the program may keep it
+between starts). What it says scrolls when it is made small; its buttons stay under it.
+
+## The program's look
+
+The dialog is drawn with the theme's widgets. A program with a look of its own gives `Config` three procedures (each may be
+nil, and `Config.user` is passed to them):
+
+| | |
+|---|---|
+| `backdrop(user)` | drawn first in the dialog: what lies behind it (a blur of the window, a dim of its own); nil: the theme's scrim |
+| `button(id, label, kind, em, user) -> bool` | each button, `kind` one of `Button_Kind` (`Normal`, `Accent`: what installs or opens, `Danger`: Uninstall); clicked: true |
+| `close(id, em, user) -> bool` | a close control in the dialog's corner, built last (over what is in the dialog); nil: none (Close, Not now and Escape close it) |
+
 ## The states
 
 | State | When | The dialog offers |

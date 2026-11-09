@@ -29,7 +29,15 @@ Config :: struct {
 	// PATH and its console launcher...
 	prepare:        proc(o: ^desktop.Options, user: rawptr),
 	user:           rawptr,
+	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
+	// its buttons, and a close control in its corner (none: the dialog closes from its buttons and Escape).
+	backdrop:       proc(user: rawptr),
+	button:         proc(id, label: string, kind: Button_Kind, em: f32, user: rawptr) -> bool,
+	close:          proc(id: string, em: f32, user: rawptr) -> bool,
 }
+
+// What a button of the dialog does: Normal, Accent (what installs or opens), Danger (Uninstall).
+Button_Kind :: enum u8 { Normal, Accent, Danger }
 
 State :: enum u8 {
 	Not_Installed,

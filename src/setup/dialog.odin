@@ -22,7 +22,8 @@ import "../ui"
 Dialog :: struct {
 	open:      bool,
 	facts:     Facts,              // as last read (strings owned)
-	shortcut:  bool,               // Windows: the Desktop's shortcut, asked of Install
+	shortcut:  bool,               // the Desktop's shortcut, asked of Install
+	size:      [2]f32,             // what the user made it, logical pixels ({}: DIALOG_EM; the program may keep it)
 	note:      string,             // what the last action said (owned)
 	note_good: bool,
 	installed: string,             // the copy just installed, to open (owned; "": none)
@@ -46,8 +47,8 @@ Logo :: struct {
 	size:    [2]f32,
 }
 
-@(private = "file") DIALOG_WIDTH_EM :: 36
-@(private = "file") DIALOG_TOP      :: 0.18   // of the window's height
+@(private = "file") DIALOG_EM       :: [2]f32{36, 27}   // its size at first (a grip of its corner or edges makes it larger or smaller)
+@(private = "file") DIALOG_MIN_EM   :: [2]f32{28, 16}   // ... and at the least (what does not fit scrolls; the buttons stay)
 @(private = "file") MARGIN_EM       :: 1.5
 @(private = "file") LOGO_EM         :: 4.2
 
@@ -132,29 +133,32 @@ when ODIN_OS == .Windows {
 // The dialog, while it is open (a modal over the window). What the user did, if anything.
 dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: Event) {
 	was_open := d.open
-	if ui.modal("setup", em * DIALOG_WIDTH_EM, &d.open, DIALOG_TOP) {
+	if ui.modal_sized("setup", DIALOG_EM * em, &d.size, &d.open, DIALOG_MIN_EM * em) {
 		f := &d.facts
-		ui.spacer(ui.px(em * 1.3))
-		head(d, c, em, logo)
-		ui.spacer(ui.px(em))
-		line_next()
-		if ui.row(id = "###setup_where_row") {
-			ui.spacer(ui.px(em * MARGIN_EM))
-			// (a sunken well, as a field is)
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = em * 0.5})
-			well: ^ui.Box
-			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border, .Sunken}, "###setup_where") }
-			if ui.parent(well) {
-				ui.spacer(ui.px(em * 0.5))
-				where_row(d, "###w1", "program", f.exe, true, em)
-				where_row(d, "###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", false, em)
-				where_row(d, "###w3", WORDS_RECORD, f.record ? c.identity.name : "-", false, em)
-				where_row(d, "###w4", "this copy", f.running, true, em)
-				ui.spacer(ui.px(em * 0.5))
+		if c.backdrop != nil { c.backdrop(c.user) }
+		// what the dialog says scrolls when it is made small; its buttons stay under it
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.scroll_y("###setup_scroll") {
+			ui.spacer(ui.px(em * 1.3))
+			head(d, c, em, logo)
+			ui.spacer(ui.px(em))
+			line_next()
+			if ui.row(id = "###setup_where_row") {
+				ui.spacer(ui.px(em * MARGIN_EM))
+				// (a sunken well, as a field is)
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = em * 0.5})
+				well: ^ui.Box
+				if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border, .Sunken}, "###setup_where") }
+				if ui.parent(well) {
+					ui.spacer(ui.px(em * 0.5))
+					where_row(d, "###w1", "program", f.exe, true, em)
+					where_row(d, "###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", false, em)
+					where_row(d, "###w3", WORDS_RECORD, f.record ? c.identity.name : "-", false, em)
+					where_row(d, "###w4", "this copy", f.running, true, em)
+					ui.spacer(ui.px(em * 0.5))
+				}
+				ui.spacer(ui.px(em * MARGIN_EM))
 			}
-			ui.spacer(ui.px(em * MARGIN_EM))
-		}
-		when ODIN_OS == .Windows {
 			if !f.from_nix {
 				ui.spacer(ui.px(em * 0.7))
 				line_next()
@@ -163,22 +167,25 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 					ui.checkbox("###setup_shortcut", "Shortcut on the Desktop", &d.shortcut)
 				}
 			}
-		}
-		if d.note != "" {
-			ui.spacer(ui.px(em * 0.6))
-			line_next()
-			if ui.row(.Center, id = "###setup_note_row") {
-				ui.spacer(ui.px(em * MARGIN_EM))
-				if ui.tags(d.note_good ? "good" : "bad") {
-					ui.next({width = ui.fill(), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###setup_note", d.note))
+			if d.note != "" {
+				ui.spacer(ui.px(em * 0.6))
+				line_next()
+				if ui.row(.Center, id = "###setup_note_row") {
+					ui.spacer(ui.px(em * MARGIN_EM))
+					if ui.tags(d.note_good ? "good" : "bad") {
+						ui.next({width = ui.fill(), text_pad = 0})
+						ui.paragraph(fmt.tprintf("%s###setup_note", d.note))
+					}
+					ui.spacer(ui.px(em * MARGIN_EM))
 				}
-				ui.spacer(ui.px(em * MARGIN_EM))
 			}
+			ui.spacer(ui.px(em * 0.6))
 		}
-		ui.spacer(ui.px(em * 1.1))
+		ui.spacer(ui.px(em * 0.5))
 		ev = buttons(d, c, em)
 		ui.spacer(ui.px(em * 1.3))
+		// (last: over what is in the dialog, it takes the clicks in its corner)
+		if c.close != nil && c.close("###setup_close_x", em, c.user) { d.open = false }
 	}
 	// closed without an answer: not again for this version
 	if was_open && !d.open && ev == .None && d.facts.state != .Removal_Scheduled && d.installed == "" {
@@ -352,7 +359,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 	if ui.row(.Center, id = "###setup_buttons") {
 		ui.spacer(ui.px(em * MARGIN_EM))
 		if f.state == .This_Copy || f.state == .Repair || f.state == .Other_Copy {
-			if button("###setup_uninstall", "Uninstall", "danger_button", em) {
+			if button(c, "###setup_uninstall", "Uninstall", .Danger, em) {
 				ok, leftovers, why := uninstall(c)
 				for l in leftovers { append(&d.leftovers, l) }
 				delete(leftovers)
@@ -373,17 +380,17 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 		upgrade := is_upgrade(f^, c.version)
 		switch {
 		case just_installed:
-			if button("###setup_close", "Close", "button", em) { d.open = false }
+			if button(c, "###setup_close", "Close", .Normal, em) { d.open = false }
 			ui.spacer(ui.px(em * 0.5))
-			if button("###setup_launch", "Open the installed copy", "accent_button", em) {
+			if button(c, "###setup_launch", "Open the installed copy", .Accent, em) {
 				if launch(d.installed) { ev = .Launched } else { say(d, false, fmt.tprintf("%s does not start", d.installed)) }
 			}
 		case upgrade:
-			if button("###setup_later", "Not now", "button", em) { d.open = false; ev = .Dismissed }
+			if button(c, "###setup_later", "Not now", .Normal, em) { d.open = false; ev = .Dismissed }
 		case f.state == .Not_Installed || f.state == .Other_Copy:
-			if button("###setup_standalone", "Keep standalone", "button", em) { d.open = false; ev = .Kept_Standalone }
+			if button(c, "###setup_standalone", "Keep standalone", .Normal, em) { d.open = false; ev = .Kept_Standalone }
 		case:
-			if button("###setup_close", "Close", "button", em) { d.open = false }
+			if button(c, "###setup_close", "Close", .Normal, em) { d.open = false }
 		}
 		if !just_installed && f.state != .Removal_Scheduled && !f.from_nix {
 			label := "Install"
@@ -393,7 +400,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			case .This_Copy:  label = "Update the shortcuts"
 			}
 			ui.spacer(ui.px(em * 0.5))
-			if button("###setup_install", label, "accent_button", em) {
+			if button(c, "###setup_install", label, .Accent, em) {
 				ok, exe_or_why := install(c, d.shortcut)
 				if ok {
 					ev = .Installed
@@ -415,10 +422,13 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 	return
 }
 
+// A button: the program's (Config.button), else a button of the theme of its kind.
 @(private = "file")
-button :: proc(id, label, tag: string, em: f32) -> bool {
+button :: proc(c: Config, id, label: string, kind: Button_Kind, em: f32) -> bool {
+	if c.button != nil { return c.button(id, label, kind, em, c.user) }
+	TAGS := [Button_Kind]string{.Normal = "button", .Accent = "accent_button", .Danger = "danger_button"}
 	ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2.2))})
 	clicked := false
-	if ui.tags(tag) { clicked = ui.button(fmt.tprintf("%s%s", label, id)).clicked }
+	if ui.tags(TAGS[kind]) { clicked = ui.button(fmt.tprintf("%s%s", label, id)).clicked }
 	return clicked
 }
