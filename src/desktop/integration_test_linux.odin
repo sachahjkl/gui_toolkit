@@ -34,7 +34,7 @@ scratch_make :: proc() -> Scratch {
 		identity = test_identity(),
 		exe = s.exe, register_browser = true, start_menu = true, file_types = split_list(".html,.svg", context.temp_allocator), icons = icons,
 		applications_dir = fmt.aprintf("%s/share/applications", s.dir), icons_dir = fmt.aprintf("%s/share/icons/hicolor", s.dir),
-		bin_dir = fmt.aprintf("%s/bin", s.dir), notify_system = false,
+		bin_dir = fmt.aprintf("%s/bin", s.dir), autostart_dir = fmt.aprintf("%s/config/autostart", s.dir), notify_system = false,
 	}
 	delete(tmp)
 	delete(id)
@@ -44,7 +44,7 @@ scratch_make :: proc() -> Scratch {
 @(private = "file")
 scratch_destroy :: proc(s: ^Scratch) {
 	_ = os.remove_all(s.dir)
-	delete(s.dir); delete(s.exe); delete(s.exe2); delete(s.opts.applications_dir); delete(s.opts.icons_dir); delete(s.opts.bin_dir)
+	delete(s.dir); delete(s.exe); delete(s.exe2); delete(s.opts.applications_dir); delete(s.opts.icons_dir); delete(s.opts.bin_dir); delete(s.opts.autostart_dir)
 }
 
 @(private = "file")
@@ -166,4 +166,47 @@ linux_path_link :: proc(t: ^testing.T) {
 	expect_ok(t, install(&moved))
 	expect_ok(t, forget_path(&moved, fmt.tprintf("%s/v2", s.dir)))
 	testing.expect(t, !os.exists(link), "the folder's link is gone")
+}
+
+// The Autostart part: an entry that starts the program with its arguments at the start of the session, repaired when
+// the arguments change, taken out with the option and by remove; another program's entry of that name stays.
+@(test)
+linux_autostart :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	entry := fmt.tprintf("%s/sample.desktop", o.autostart_dir)
+	o.autostart, o.autostart_arguments = true, "--hidden"
+	expect_ok(t, install(o))
+	text, err := os.read_entire_file(entry, context.temp_allocator)
+	testing.expect(t, err == nil, "the autostart entry")
+	testing.expect_value(t, string(text), autostart_entry_text(o))
+	exec, _ := entry_value(string(text), "Exec")
+	testing.expect(t, strings.has_suffix(exec, " --hidden"), "started with its arguments")
+	testing.expect_value(t, exec_program(exec), s.exe)
+	st := status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, st.parts[.Autostart].present && !st.parts[.Autostart].partial, "the part is there")
+
+	// other arguments: to repair, then repaired
+	o.autostart_arguments = "--tray"
+	st = status(o, context.temp_allocator)
+	testing.expect(t, st.parts[.Autostart].partial, "other arguments")
+	testing.expect_value(t, st.state, State.Repair)
+	expect_ok(t, install(o))
+	testing.expect_value(t, status(o, context.temp_allocator).state, State.Installed)
+
+	// the option off: the entry goes
+	o.autostart = false
+	expect_ok(t, install(o))
+	testing.expect(t, !os.exists(entry), "taken out with the option")
+
+	// remove takes it out; another program's entry of that name stays
+	o.autostart = true
+	expect_ok(t, install(o))
+	expect_ok(t, remove(o))
+	testing.expect(t, !os.exists(entry), "removed")
+	_ = os.write_entire_file(entry, "[Desktop Entry]\nName=Sample\nExec=/usr/bin/something-else\n")
+	expect_ok(t, remove(o))
+	testing.expect(t, os.is_file(entry), "not the program's: stays")
 }

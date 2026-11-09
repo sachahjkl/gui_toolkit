@@ -61,7 +61,7 @@ s := desktop.status(&o)               // .Absent, .Installed or .Repair, part by
 defer desktop.status_destroy(&s)
 ```
 
-`Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `register_browser` with its
+`Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `register_browser` with its
 `file_types`, the `launcher` bytes, the `icons`) and where everything goes. `install` writes the parts that are on and takes
 away the ones that are off: applying a change of options is the same call. `status` says `Repair` when a wanted part is
 missing or incomplete, or when a part runs another executable (`stale_exe`: the program was moved). `describe` says it in one
@@ -75,6 +75,7 @@ words of this system.
 | `Launcher` | `<Start menu>\Programs\<name>.lnk` (IShellLink with the AppUserModelID) |
 | `Desktop_Shortcut` | `<Desktop>\<name>.lnk` |
 | `Path` | the executable's folder in `HKCU\Environment\Path` (REG_EXPAND_SZ), marked by `PathDir` in `Software\<vendor_key>\<key>`; the console launcher `<stem>.com` beside `<stem>.exe` |
+| `Autostart` | with `autostart`: the value `<key>` of `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" <autostart_arguments>` |
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
 
 The installed copy goes to `%LOCALAPPDATA%\Programs\<name>` unless `install_dir` says otherwise. `record_install` writes
@@ -93,6 +94,7 @@ provides the launcher's bytes; the launcher must contain `launcher_mark`, which 
 | `Launcher` | `$XDG_DATA_HOME/applications/<slug>.desktop` (`desktop_entry_text`), marked by its `entry_marker` line |
 | `Icons` | `$XDG_DATA_HOME/icons/hicolor/<n>x<n>/apps/<slug>.png`, one per icon of the options |
 | `Path` | a link `~/.local/bin/<slug>` to the executable |
+| `Autostart` | with `autostart`: `$XDG_CONFIG_HOME/autostart/<slug>.desktop` (the XDG Autostart specification), `Exec` the executable and `autostart_arguments`, marked as the desktop entry is |
 
 The entry has `MimeType=` (http, https, the URL schemes and the file types) only with `register_browser`, and `Exec` takes
 `%U` when the program is a browser or has URL schemes. After a change `update-desktop-database` runs when it is installed.
@@ -130,7 +132,7 @@ with files left for after the process ends.
 ## The tests' scratch roots
 
 Every place is a field of `Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
-HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `install_dir`. A test points them at a scratch folder and a
+HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `install_dir`. A test points them at a scratch folder and a
 scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
 (`ROOT_NAMES`), so a program's own end-to-end tests run it on scratch places; any of them set turns the notification off.
 `delete_scratch_root` deletes a scratch registry key, and only one under the identity's `scratch_roots`.

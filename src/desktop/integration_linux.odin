@@ -8,6 +8,7 @@ package tk_desktop
 //                                                    "open with" and the default browser setting list the program
 //   $XDG_DATA_HOME/icons/hicolor/<n>x<n>/apps/<slug>.png   the icons, one per size the program embeds
 //   ~/.local/bin/<slug>                              the PATH part: a link to the executable
+//   $XDG_CONFIG_HOME/autostart/<slug>.desktop        the Autostart part: the program at the start of the session
 //
 // $XDG_DATA_HOME defaults to ~/.local/share (and must be an absolute path, as the specification says). After a change
 // `update-desktop-database <applications>` rebuilds the MIME cache when that tool is installed.
@@ -24,9 +25,9 @@ import "../fsx"
 @(private = "file")
 LINUX_BACKEND := Backend{
 	name = "linux",
-	targets = "application menu, PATH",
-	targets_browser = "application menu, default browser, PATH",
-	parts = {.Launcher, .Icons, .Path},
+	targets = "application menu, PATH, session start",
+	targets_browser = "application menu, default browser, PATH, session start",
+	parts = {.Launcher, .Icons, .Path, .Autostart},
 	status = linux_status,
 	install = linux_install,
 	remove = linux_remove,
@@ -129,7 +130,42 @@ linux_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
 			ps.stale = !same_path(target, o.exe)
 		}
 	}
+
+	// Autostart: present when the entry is the program's; partial when it starts it with other arguments.
+	if path := autostart_path(o); path != "" {
+		if ours, target, text := autostart_ours(o, path); ours {
+			ps := &s.parts[.Autostart]
+			ps.present = true
+			ps.target = clone_or_empty(target, allocator)
+			ps.stale = !same_path(target, o.exe)
+			ps.partial = o.autostart && text != autostart_entry_text(o) && !ps.stale
+		}
+	}
 	return s
+}
+
+// <autostart_dir>/<slug>.desktop ($XDG_CONFIG_HOME/autostart): the entry that starts the program with the session.
+@(private = "file")
+autostart_path :: proc(o: ^Options) -> string {
+	dir := o.autostart_dir
+	if dir == "" {
+		config := xdg_config_home()
+		if config == "" { return "" }
+		dir = strings.concatenate({config, "/autostart"}, context.temp_allocator)
+	}
+	return strings.concatenate({dir, "/", o.identity.slug, ".desktop"}, context.temp_allocator)
+}
+
+// The autostart entry at `path` when it is the program's (its mark, or an Exec that runs it), and the program it runs.
+@(private = "file")
+autostart_ours :: proc(o: ^Options, path: string) -> (ours: bool, target, text: string) {
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil { return }
+	text = string(data)
+	mark, _ := entry_value(text, o.identity.entry_marker)
+	exec, _ := entry_value(text, "Exec")
+	target = exec_program(exec)
+	return mark == o.identity.slug || same_path(target, o.exe), target, text
 }
 
 // <bin_dir>/<slug> (~/.local/bin/<slug>): the symlink that puts the program on the user's PATH (the "Add to PATH" of Linux).
@@ -179,6 +215,16 @@ linux_install :: proc(o: ^Options) -> Result {
 		}
 	}
 
+	// Autostart: the entry written when the option is on; an entry of ours taken out when it is off.
+	if path := autostart_path(o); path != "" {
+		if o.autostart {
+			if !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
+			if !fsx.write_atomic(path, transmute([]byte)autostart_entry_text(o)) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
+		} else if ours, _, _ := autostart_ours(o, path); ours {
+			_ = os.remove(path)
+		}
+	}
+
 	// (the icon theme's cache is checked against the directories' times: there is nothing to run for the icons)
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
 	return {}
@@ -215,6 +261,12 @@ linux_remove :: proc(o: ^Options) -> Result {
 	if link := bin_link_path(o); link != "" {
 		if target, err := os.read_link(link, context.temp_allocator); err == nil && same_path(target, o.exe) {
 			if rerr := os.remove(link); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", link}, context.temp_allocator)} }
+		}
+	}
+	// Autostart: the entry goes when it is the program's.
+	if path := autostart_path(o); path != "" {
+		if ours, _, _ := autostart_ours(o, path); ours {
+			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
 		}
 	}
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }

@@ -56,7 +56,7 @@ parse_cli :: proc(id: Identity, args: []string, allocator := context.temp_alloca
 }
 
 // The names of the roots roots_from_env reads, after the identity's prefix.
-ROOT_NAMES :: [?]string{"MENU_DIR", "DESKTOP_DIR", "ENVIRONMENT_ROOT", "INSTALL_DIR", "REGISTRY_ROOT", "APPLICATIONS_DIR", "ICONS_DIR", "BIN_DIR"}
+ROOT_NAMES :: [?]string{"MENU_DIR", "DESKTOP_DIR", "ENVIRONMENT_ROOT", "INSTALL_DIR", "REGISTRY_ROOT", "APPLICATIONS_DIR", "ICONS_DIR", "BIN_DIR", "AUTOSTART_DIR"}
 
 // The roots a test (or a script that wants a dry run in a scratch place) sets in the environment, each named
 // `Identity.env_prefix` + one of ROOT_NAMES. Any of them given also turns the system notification off: nothing outside
@@ -65,12 +65,13 @@ ROOT_NAMES :: [?]string{"MENU_DIR", "DESKTOP_DIR", "ENVIRONMENT_ROOT", "INSTALL_
 //     <prefix>DESKTOP_DIR       <prefix>ENVIRONMENT_ROOT  (Windows: the Desktop folder; the key that stands for HKCU\Environment)
 //     <prefix>APPLICATIONS_DIR  <prefix>ICONS_DIR         (Linux)
 //     <prefix>BIN_DIR                                     (Linux: where the PATH part puts its link)
+//     <prefix>AUTOSTART_DIR                               (Linux: where the autostart entry goes)
 //     <prefix>INSTALL_DIR                                 (where the installed copy is)
 // An identity without a prefix reads nothing.
 roots_from_env :: proc(o: ^Options, lookup: proc(name: string) -> string) {
 	prefix := o.identity.env_prefix
 	if prefix == "" { return }
-	dsts := [len(ROOT_NAMES)]^string{&o.menu_dir, &o.desktop_dir, &o.environment_root, &o.install_dir, &o.registry_root, &o.applications_dir, &o.icons_dir, &o.bin_dir}
+	dsts := [len(ROOT_NAMES)]^string{&o.menu_dir, &o.desktop_dir, &o.environment_root, &o.install_dir, &o.registry_root, &o.applications_dir, &o.icons_dir, &o.bin_dir, &o.autostart_dir}
 	names := ROOT_NAMES
 	scratch := false
 	for name, i in names {
