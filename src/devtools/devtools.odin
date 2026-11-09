@@ -31,6 +31,7 @@ import "core:thread"
 import "core:time"
 import "core:unicode/utf8"
 import "../platform"
+import png "../png"
 import "../render"
 import "../ui"
 
@@ -1027,8 +1028,8 @@ encode_run :: proc(j: ^Encode_Job) {
 		sync.atomic_store(&srv.cast_same, j.session)
 		platform.wake(srv.win)
 	} else {
-		png := png_encode(render.capture_raw_finish(j.raw), j.raw.size.x, j.raw.size.y, h)
-		data := base64.encode(png, allocator = h)
+		file := png.encode(render.capture_raw_finish(j.raw), j.raw.size.x, j.raw.size.y, .Fast, h)
+		data := base64.encode(file, allocator = h)
 		if j.frame {
 			event(j.to.conn, j.to.session, "Page.screencastFrame", fmt.tprintf(`{{"data":"%s",%s}}`, data, j.meta))
 			release(j.to)
@@ -1039,7 +1040,7 @@ encode_run :: proc(j: ^Encode_Job) {
 			release(w)
 		}
 		delete(data, h)
-		delete(png, h)
+		delete(file, h)
 	}
 	delete(j.replies, h)
 	delete(j.raw.pixels, h)

@@ -103,8 +103,8 @@ tray_set_icon :: proc(t: ^Tray, icon_png: []u8) -> bool {
 	if t == nil { return false }
 	delete(t.icon_rgba)
 	t.icon_rgba, t.icon_size = nil, {}
-	if png_decode_hook != nil && len(icon_png) > 0 {
-		if img, ok := png_decode_hook(icon_png); ok {
+	if len(icon_png) > 0 {
+		if img, ok := png_decode(icon_png); ok {
 			t.icon_rgba = img.rgba
 			t.icon_size = img.size
 		}

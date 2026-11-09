@@ -1,11 +1,9 @@
 package tk_paint
 
 import "core:encoding/endian"
-import "core:hash"
-import "core:image/png"
 import "core:math"
 import "core:os"
-import "../flate"
+import png "../png"
 
 // The canvas as 8-bit RGBA, not premultiplied, row by row from the top. A transparent pixel is all zeros.
 to_rgba8 :: proc(c: Canvas, allocator := context.allocator) -> []u8 {
@@ -30,92 +28,16 @@ from_rgba8 :: proc(rgba: []u8, width, height: int, allocator := context.allocato
 	return c
 }
 
-// PNG: what a file holds besides the compressed rows.
-@(private = "file") PNG_SIGNATURE :: [8]u8{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
-@(private = "file") PNG_IHDR_BYTES :: 13
-@(private = "file") PNG_BIT_DEPTH :: 8
-@(private = "file") PNG_COLOR_RGBA :: 6
-@(private = "file") PNG_FILTERS :: 5   // None, Sub, Up, Average, Paeth
-
-// The canvas as a PNG file (8-bit RGBA). Each row takes the filter whose bytes add up least as signed values (the
-// usual guess at what compresses best), then flate.deflate.
+// The canvas as a PNG file (8-bit RGBA, png.encode's .Small: a file to keep).
 png_encode :: proc(c: Canvas, allocator := context.allocator) -> []u8 {
-	pixels := to_rgba8(c, context.temp_allocator)
-	stride := c.width * 4
-	raw := make([]u8, (stride + 1) * c.height, context.temp_allocator)
-	trial := make([]u8, stride, context.temp_allocator)
-	zero := make([]u8, stride, context.temp_allocator)
-	for y in 0 ..< c.height {
-		row := pixels[y * stride:][:stride]
-		up := y > 0 ? pixels[(y - 1) * stride:][:stride] : zero
-		out := raw[y * (stride + 1):][:stride + 1]
-		best := max(int)
-		for f in 0 ..< PNG_FILTERS {
-			score := 0
-			for x in 0 ..< stride {
-				a := x >= 4 ? row[x - 4] : 0
-				b := up[x]
-				cc := x >= 4 ? up[x - 4] : 0
-				v: u8
-				switch f {
-				case 0: v = row[x]
-				case 1: v = row[x] - a
-				case 2: v = row[x] - b
-				case 3: v = row[x] - u8((int(a) + int(b)) / 2)
-				case 4: v = row[x] - paeth(a, b, cc)
-				}
-				trial[x] = v
-				score += int(abs(i8(v)))
-			}
-			if score < best {
-				best = score
-				out[0] = u8(f)
-				copy(out[1:], trial)
-			}
-		}
-	}
-	z := flate.deflate(.Zlib, raw, context.temp_allocator)
-	buf := make([dynamic]u8, 0, len(z) + 64, allocator)
-	signature := PNG_SIGNATURE
-	append(&buf, ..signature[:])
-	ihdr: [PNG_IHDR_BYTES]u8
-	endian.put_u32(ihdr[0:], .Big, u32(c.width))
-	endian.put_u32(ihdr[4:], .Big, u32(c.height))
-	ihdr[8], ihdr[9] = PNG_BIT_DEPTH, PNG_COLOR_RGBA
-	chunk(&buf, "IHDR", ihdr[:])
-	chunk(&buf, "IDAT", z)
-	chunk(&buf, "IEND", nil)
-	return buf[:]
+	return png.encode(to_rgba8(c, context.temp_allocator), c.width, c.height, .Small, allocator)
 }
 
-@(private = "file")
-paeth :: proc(a, b, c: u8) -> u8 {
-	p := int(a) + int(b) - int(c)
-	pa, pb, pc := abs(p - int(a)), abs(p - int(b)), abs(p - int(c))
-	if pa <= pb && pa <= pc { return a }
-	if pb <= pc { return b }
-	return c
-}
-
-@(private = "file")
-chunk :: proc(buf: ^[dynamic]u8, kind: string, data: []u8) {
-	n: [4]u8
-	endian.put_u32(n[:], .Big, u32(len(data)))
-	append(buf, ..n[:])
-	start := len(buf)
-	append(buf, kind)
-	append(buf, ..data)
-	endian.put_u32(n[:], .Big, hash.crc32(buf[start:]))
-	append(buf, ..n[:])
-}
-
-// A PNG file (any colour type core:image/png reads) as a canvas.
+// A PNG file (any colour type, bit depth or palette png.decode reads) as a canvas.
 png_decode :: proc(data: []u8, allocator := context.allocator) -> (c: Canvas, ok: bool) {
-	img, err := png.load_from_bytes(data, {.alpha_add_if_missing})
-	if err != nil { return }
-	defer png.destroy(img)
-	if img.depth != 8 || img.channels != 4 { return }
-	return from_rgba8(img.pixels[:], img.width, img.height, allocator), true
+	rgba, w, h, decoded := png.decode(data, context.temp_allocator)
+	if !decoded { return }
+	return from_rgba8(rgba, w, h, allocator), true
 }
 
 // The canvas as a PNG file at `path`.

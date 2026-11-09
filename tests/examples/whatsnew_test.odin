@@ -11,7 +11,6 @@ import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
 
-import "core:image/png"
 import "core:os"
 import "core:strconv"
 import "core:strings"
@@ -20,6 +19,7 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 import "../../src/devtools"
+import png "../../src/png"
 import "../../examples/whatsnew"
 import "../../src/testkit/session"
 import "../../src/ui"
@@ -193,9 +193,9 @@ shot :: proc(c: ^Client, clip := "", loc := #caller_location) -> Picture {
 decode_shot :: proc(s: ^session.Session, data: string, loc := #caller_location) -> Picture {
 	raw, derr := base64.decode(data, allocator = context.temp_allocator)
 	if derr != nil { session.failed(s, "a picture that is not base64", loc) }
-	img, err := png.load_from_bytes(raw, {.alpha_add_if_missing}, context.temp_allocator)
-	if err != nil { session.failed(s, fmt.tprintf("a picture that is not a PNG: %v", err), loc) }
-	return {img.pixels[:], img.width, img.height}
+	rgba, w, h, ok := png.decode(raw, context.temp_allocator)
+	if !ok { session.failed(s, "a picture that is not a PNG", loc) }
+	return {rgba, w, h}
 }
 
 ////////////////////////////////
@@ -322,7 +322,7 @@ whatsnew_pages_look_like_their_images :: proc(t: ^testing.T) {
 			got := shot(c)
 			path := fmt.tprintf("%s/%s.png", dir, page[0])
 			if update == "1" {
-				data := devtools.png_encode(got.rgba, got.width, got.height)
+				data := png.encode(got.rgba, got.width, got.height, .Fast)
 				defer delete(data)
 				_ = os.write_entire_file(path, data)
 				continue

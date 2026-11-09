@@ -74,8 +74,8 @@ there. `resize(src, w, h)` makes a new canvas of the whole picture.
 
 ## Files
 
-- `png_encode(c)`: 8-bit RGBA. Each row takes the PNG filter whose bytes add up least, then `flate.deflate`.
-  `png_decode(data)` reads any PNG that `core:image/png` reads. `write_png(c, path)`.
+- `png_encode(c)`: 8-bit RGBA through `png.encode`'s `.Small` ([png.md](png.md)): each row takes the PNG filter whose
+  bytes add up least, then `flate.deflate`. `png_decode(data)` reads any PNG that `png.decode` reads. `write_png(c, path)`.
 - `ico_encode(entries)`: an .ico file of `Ico_Entry{size, data}` pictures in their order. A picture is a PNG file or a
   classic DIB from `dib_encode(c)` (BGRA rows from the bottom, an empty AND mask), which old readers of small icons expect.
 

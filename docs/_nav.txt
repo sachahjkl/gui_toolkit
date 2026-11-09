@@ -46,6 +46,7 @@ Frames and threads
   locks.md            Locks
   arena.md            arena: lifetimes
   flate.md            flate: DEFLATE streams
+  png.md              png: the PNG codec
 
 Tools and tests
   testing.md          Testing

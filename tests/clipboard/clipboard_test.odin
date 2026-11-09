@@ -224,7 +224,6 @@ html_format_offsets :: proc(t: ^testing.T) {
 
 @(test)
 png_round_trip :: proc(t: ^testing.T) {
-	when ODIN_OS != .Windows { return }   // (elsewhere the toolkit has no PNG codec: png_encode_hook is the app's)
 	src := []u8{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255}
 	png := platform.png_encode({src, {2, 2}})
 	defer delete(png)
@@ -244,7 +243,51 @@ formats_from_mimes :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.clipboard_formats_from_mimes(nil), platform.Clipboard_Formats{})
 	testing.expect_value(t, platform.clipboard_formats_from_mimes({"text/plain;charset=utf-8", "application/x-other"}), platform.Clipboard_Formats{.Text})
 	testing.expect_value(t, platform.clipboard_formats_from_mimes({"UTF8_STRING", "text/html", "image/png", "text/uri-list"}), platform.Clipboard_Formats{.Text, .Html, .Image, .Files})
-	testing.expect_value(t, platform.clipboard_formats_from_mimes({"image/jpeg"}), platform.Clipboard_Formats{})
+	// the image types read when there is no PNG; WebP is not (core:image has no decoder for it)
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"image/jpeg"}), platform.Clipboard_Formats{.Image})
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"image/bmp"}), platform.Clipboard_Formats{.Image})
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"image/webp"}), platform.Clipboard_Formats{})
+	// file managers: GNOME Files (its own list, the paths as text), KDE (a list, a flag, the paths as text)
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"x-special/gnome-copied-files", "UTF8_STRING", "text/plain"}), platform.Clipboard_Formats{.Text, .Files})
+	testing.expect_value(t, platform.clipboard_formats_from_mimes({"application/x-kde-cutselection", "text/uri-list", "text/plain;charset=utf-8"}), platform.Clipboard_Formats{.Text, .Files})
+}
+
+// Which type of another program's offer is read: the first wanted it holds, whatever the case of the offer.
+@(test)
+the_best_type_offered_is_read :: proc(t: ^testing.T) {
+	images := []string{"image/png", "image/jpeg", "image/bmp"}
+	testing.expect_value(t, platform.clipboard_pick_mime({"text/html", "image/jpeg", "image/png"}, images), "image/png")
+	testing.expect_value(t, platform.clipboard_pick_mime({"image/webp", "Image/JPEG"}, images), "image/jpeg")
+	testing.expect_value(t, platform.clipboard_pick_mime({"image/webp"}, images), "")
+	testing.expect_value(t, platform.clipboard_pick_mime(nil, images), "")
+}
+
+// Another program's JPEG and BMP read as RGBA, as its PNG is.
+RED_JPEG :: #load("data/red.jpg")    // 16 x 8, #ff0000 (ImageMagick, quality 95)
+BLUE_BMP :: #load("data/blue.bmp")   // 4 x 2, #3080c0, 24 bits
+JPEG_DELTA :: 4                      // what JPEG's rounding moves a channel of a flat colour by
+
+@(test)
+jpeg_and_bmp_read_as_rgba :: proc(t: ^testing.T) {
+	img, ok := platform.clipboard_image_decode("image/jpeg", RED_JPEG, context.temp_allocator)
+	testing.expect(t, ok, "a JPEG")
+	testing.expect_value(t, img.size, [2]int{16, 8})
+	if ok {
+		p := img.rgba[(3 * 16 + 5) * 4:][:4]
+		testing.expectf(t, int(p[0]) >= 255 - JPEG_DELTA && int(p[1]) <= JPEG_DELTA && int(p[2]) <= JPEG_DELTA && p[3] == 255, "red, opaque: %v", p)
+	}
+	img, ok = platform.clipboard_image_decode("image/bmp", BLUE_BMP, context.temp_allocator)
+	testing.expect(t, ok, "a BMP")
+	testing.expect_value(t, img.size, [2]int{4, 2})
+	if ok { testing.expect_value(t, [4]u8{img.rgba[4], img.rgba[5], img.rgba[6], img.rgba[7]}, [4]u8{0x30, 0x80, 0xc0, 255}) }
+	png := platform.png_encode({img.rgba, img.size}, context.temp_allocator)
+	back, pok := platform.clipboard_image_decode("image/png", png, context.temp_allocator)
+	testing.expect(t, pok && string(back.rgba) == string(img.rgba), "a PNG")
+	_, bad := platform.clipboard_image_decode("image/webp", RED_JPEG, context.temp_allocator)
+	testing.expect(t, !bad, "a type it does not read")
+	jpeg := RED_JPEG
+	_, bad = platform.clipboard_image_decode("image/jpeg", jpeg[:40], context.temp_allocator)
+	testing.expect(t, !bad, "a JPEG cut short")
 }
 
 // A path of the file list survives the round trip whatever it holds: a percent sign is not read as an escape.

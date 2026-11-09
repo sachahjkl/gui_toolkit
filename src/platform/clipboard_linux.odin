@@ -5,9 +5,9 @@ package platform
 // CLIPBOARD selection (window_x11_linux.odin) or the Wayland wl_data_device (window_wl_linux.odin). The richer
 // flavours — HTML, an image, a file list — are kept by the process that set them and offered to other clients under
 // their MIME types (text/html, image/png, text/uri-list); a get of a flavour another process owns reads it back over
-// the selection transport. PNG for images uses the engine's own encoder when an app wires png_encode_hook; without it
-// an image is offered as its raw bytes only when the app already holds PNG. This keeps the toolkit free of an image
-// codec while letting a browser (which has one) carry pictures.
+// the selection transport. Images go through the toolkit's PNG codec (png_encode / png_decode, clipboard.odin); another
+// program's JPEG or BMP is read too when it offers no PNG (clipboard_image_decode), GNOME Files' list when there is no
+// text/uri-list.
 //
 // clipboard_changed tells a window once when the clipboard changes hands: through wl_data_device on Wayland, XFIXES on
 // X11. An X server without XFIXES only tells this process when it loses the clipboard.
@@ -15,10 +15,6 @@ package platform
 import "base:runtime"
 import "core:strings"
 import "core:sync"
-
-// An app with an image codec (a browser) sets this so clipboard_set can offer pictures as PNG; nil without one.
-png_encode_hook: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8
-png_decode_hook: proc(b: []u8, allocator := context.allocator) -> (Clipboard_Image, bool)
 
 clipboard_sequence :: proc() -> u32 { return sync.atomic_load(&clip.seq) }
 
@@ -45,17 +41,14 @@ clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []
 }
 
 clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
-	if png_decode_hook == nil { return }
-	// our own image
-	sync.mutex_lock(&clip.mutex)
-	have := clip.image_png
-	owned := clip.formats >= {.Image} && !clip_foreign_owner(w)
-	sync.mutex_unlock(&clip.mutex)
-	if owned && len(have) > 0 { return png_decode_hook(have, allocator) }
-	// another process owns it: read the PNG flavour over the selection
-	b := clip_read_foreign(w, "image/png", context.temp_allocator)
+	if !clip_foreign_owner(w) { return clip_store_image(allocator) }   // our own image
+	// another process owns it: read its best image type over the selection
+	wanted := CLIPBOARD_IMAGE_MIMES
+	mime := clipboard_pick_mime(clip_foreign_mimes(w), wanted[:])
+	if mime == "" { return }
+	b := clip_read_foreign(w, mime, context.temp_allocator)
 	if len(b) == 0 { return }
-	return png_decode_hook(b, allocator)
+	return clipboard_image_decode(mime, b, allocator)
 }
 
 clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html, source_url: string, ok: bool) {
@@ -82,10 +75,30 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 	}
 	sync.mutex_unlock(&clip.mutex)
 	if owned { return own, true }
-	b := clip_read_foreign(w, "text/uri-list", context.temp_allocator)
+	if !clip_foreign_owner(w) { return nil, false }
+	// (GNOME Files' list is a "copy" or "cut" line, then the URIs: uri_list_to_paths skips that line)
+	wanted := CLIPBOARD_FILES_MIMES
+	mime := clipboard_pick_mime(clip_foreign_mimes(w), wanted[:])
+	if mime == "" { return nil, false }
+	b := clip_read_foreign(w, mime, context.temp_allocator)
 	if len(b) == 0 { return nil, false }
 	list := uri_list_to_paths(string(b), allocator)
 	return list, len(list) > 0
+}
+
+// The MIME types another client offers on the clipboard (temp allocator): the Wayland offer's, or the X11 owner's TARGETS.
+@(private)
+clip_foreign_mimes :: proc(w: ^Window) -> []string {
+	if w == nil || w.offscreen { return nil }
+	switch w.backend {
+	case .Wayland:
+		if wlc.offer == nil || wlc.data_source != nil { return nil }
+		return wlc.offer_mimes[:]
+	case .X11:
+		return x11_foreign_targets(w)
+	case .None:
+	}
+	return nil
 }
 
 // Whether another process owns the clipboard now (we are not the selection owner).
@@ -148,17 +161,6 @@ clipboard_changed :: proc(w: ^Window) -> bool {
 	if seen == w.clip_seen { return false }
 	w.clip_seen = seen
 	return true
-}
-
-// PNG without an app codec: not available in the toolkit itself. An app that wants pictures on the clipboard wires
-// png_encode_hook / png_decode_hook (a browser has image.encode / image.decode). Without them these report "no PNG".
-png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8 {
-	if png_encode_hook != nil { return png_encode_hook(img, allocator) }
-	return nil
-}
-png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
-	if png_decode_hook != nil { return png_decode_hook(b, allocator) }
-	return {}, false
 }
 
 ////////////////////////////////

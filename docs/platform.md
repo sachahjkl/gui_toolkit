@@ -118,13 +118,14 @@ sane fallback (or a no-op) when its desktop piece is absent, so a bare session s
 ### Rich clipboard (cross-process)
 
 The clipboard owner is complete on both backends. **Wayland** (`clipboard_wl_linux.odin`): a full `wl_data_source`
-offers every flavour the store holds (text, HTML, `text/uri-list`, and PNG when the app sets `png_encode_hook` and `png_decode_hook`: the toolkit has no PNG codec on Linux), its `send` callback writes the bytes to the
+offers every flavour the store holds (text, HTML, `text/uri-list`, `image/png` through the toolkit's codec: [png.md](png.md)), its `send` callback writes the bytes to the
 fd the compositor hands over, `cancelled` releases it, and `set_selection` uses the last input serial; reading a
 flavour another client owns dups a pipe, calls `wl_data_offer.receive`, and reads it. There is no **primary**
 (middle-click) selection on Wayland (on X11 a copy owns `PRIMARY` too). **X11** (`clipboard_x11_linux.odin`): `SelectionRequest` serves `TARGETS`,
 `TIMESTAMP`, `MULTIPLE` and the MIME targets, with **INCR** for a payload too large for one property (a pasted image);
 reading follows an INCR hand-off. `clipboard_set` / `clipboard_get_image` / `_get_html` / `_get_files` read a foreign
-owner over the selection transport.
+owner over the selection transport, in the best type it offers (an image as PNG, JPEG or BMP; files as `text/uri-list` or
+GNOME's list: [clipboard.md](clipboard.md)).
 
 ### Drag and drop
 

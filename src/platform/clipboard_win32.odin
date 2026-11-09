@@ -4,17 +4,13 @@ package platform
 // The clipboard's flavours on Windows (clipboard.odin has the API). Formats read, best first: images "PNG" (alpha, what
 // browsers and Office write), CF_DIBV5, CF_DIB, CF_BITMAP; HTML "HTML Format"; files CF_HDROP. Written: CF_UNICODETEXT
 // (CRLF line ends), "HTML Format", "PNG" + CF_DIBV5 (alpha) + CF_DIB (opaque over white), CF_HDROP with "Preferred
-// DropEffect" = copy. PNG goes through stb_image (vendor:stb).
+// DropEffect" = copy. PNG goes through the toolkit's own codec (src/png, clipboard.odin).
 
-import "base:runtime"
 import "core:strings"
 import "core:sync"
 import win "core:sys/windows"
-import stbi "vendor:stb/image"
 
 @(private = "file") CLIPBOARD_FORMAT_NAME_MAX_CHARS :: 256
-@(private = "file") PNG_ENCODE_HEADROOM_BYTES :: 64   // on top of a first guess of one byte per pixel
-@(private = "file") PNG_SIGNATURE_BYTES :: 8          // anything shorter is no PNG
 @(private = "file") CLIPBOARD_OPEN_ATTEMPTS :: 5
 
 // Changes whenever a program (this one too) writes the clipboard.
@@ -179,35 +175,6 @@ clipboard_changed :: proc(w: ^Window) -> bool {
 	if seq == w.clip_seen { return false }
 	w.clip_seen = seq
 	return true
-}
-
-// A PNG file's bytes of the pixels (stb_image_write), nil on failure.
-png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8 {
-	w, h := img.size.x, img.size.y
-	if w <= 0 || h <= 0 || len(img.rgba) < w * h * 4 { return nil }
-	out := make([dynamic]u8, 0, w * h + PNG_ENCODE_HEADROOM_BYTES, allocator)
-	sink :: proc "c" (ctx: rawptr, data: rawptr, size: i32) {
-		context = runtime.default_context()
-		append((^[dynamic]u8)(ctx), ..([^]u8)(data)[:size])
-	}
-	if stbi.write_png_to_func(sink, &out, i32(w), i32(h), 4, raw_data(img.rgba), i32(w * 4)) == 0 {
-		delete(out)
-		return nil
-	}
-	return out[:]
-}
-
-// The pixels of a PNG file's bytes (stb_image), as straight RGBA.
-png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
-	if len(b) < PNG_SIGNATURE_BYTES { return }
-	w, h, n: i32
-	p := stbi.load_from_memory(raw_data(b), i32(len(b)), &w, &h, &n, 4)
-	if p == nil { return }
-	defer stbi.image_free(p)
-	if w <= 0 || h <= 0 { return }
-	out := make([]u8, int(w) * int(h) * 4, allocator)
-	copy(out, p[:len(out)])
-	return {out, {int(w), int(h)}}, true
 }
 
 ////////////////////////////////

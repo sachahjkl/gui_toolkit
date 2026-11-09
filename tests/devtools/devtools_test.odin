@@ -1,10 +1,7 @@
 package devtools_test
 
 import "base:runtime"
-import "core:bytes"
 import "core:fmt"
-import "core:image"
-import "core:image/png"
 import "core:net"
 import "core:strings"
 import "core:sync"
@@ -13,55 +10,6 @@ import "core:thread"
 import "core:time"
 import "../../src/devtools"
 import "../../src/platform"
-
-// The PNG the screenshots are sent as reads back to the same pixels.
-@(test)
-png_round_trip :: proc(t: ^testing.T) {
-	px := [?]u8{
-		255, 0, 0, 255,   0, 255, 0, 255,   0, 0, 255, 255,
-		10, 20, 30, 255,  10, 20, 30, 255,  200, 100, 50, 255,
-	}
-	data := devtools.png_encode(px[:], 3, 2)
-	defer delete(data)
-	img, err := png.load_from_bytes(data)
-	if !testing.expectf(t, err == nil, "decodes: %v", err) { return }
-	defer image.destroy(img)
-	testing.expect_value(t, img.width, 3)
-	testing.expect_value(t, img.height, 2)
-	testing.expect_value(t, img.channels, 4)
-	testing.expect(t, bytes.equal(img.pixels[:], px[:]), "same pixels")
-}
-
-// A window's worth of what a picture holds: flat areas, rows like the last, gradients, noise. Pixel for pixel through the
-// PNG decoder, at sizes either side of the row distance the window of 32 KiB allows.
-@(test)
-png_of_a_large_picture :: proc(t: ^testing.T) {
-	for size in ([?][2]int{{1, 1}, {2310, 1505}, {9000, 40}}) {
-		w, h := size.x, size.y
-		px := make([]u8, w * h * 4)
-		defer delete(px)
-		seed: u32 = 12345
-		for y in 0 ..< h {
-			for x in 0 ..< w {
-				p := px[(y * w + x) * 4:][:4]
-				switch {
-				case y % 200 < 100 && x < w / 2: p[0], p[1], p[2], p[3] = 20, 22, 24, 255
-				case y % 200 < 100:              p[0], p[1], p[2], p[3] = u8(x), u8(x >> 8), 90, 255
-				case y % 200 < 150:              p[0], p[1], p[2], p[3] = u8(x % 7 * 30), u8(x % 5 * 40), u8(y / 10), 255
-				case:
-					seed = seed * 1664525 + 1013904223
-					p[0], p[1], p[2], p[3] = u8(seed >> 24), u8(seed >> 16), u8(seed >> 8), u8(seed)
-				}
-			}
-		}
-		data := devtools.png_encode(px, w, h)
-		defer delete(data)
-		img, err := png.load_from_bytes(data)
-		if !testing.expectf(t, err == nil, "%v decodes: %v", size, err) { return }
-		defer image.destroy(img)
-		testing.expect(t, bytes.equal(img.pixels[:], px), "same pixels")
-	}
-}
 
 PORT :: 9471   // (a port per test: they run at once)
 PORT_HTTP :: 9472
