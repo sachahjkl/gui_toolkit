@@ -148,6 +148,38 @@ keys_and_pointer_reach_the_window :: proc(t: ^testing.T) {
 	}
 }
 
+// send_hotkey types for whatever has the keyboard: here the window itself, which receives Ctrl+V as a key of its own
+// (Wayland's virtual keyboard; X11 has none: false).
+@(test)
+a_hotkey_sent_reaches_the_window_that_has_the_keyboard :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("send")
+	testing.expect(t, w != nil, "the window opens")
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	if x11() {
+		testing.expect(t, !platform.send_hotkey(w, {key = .V, mods = {.Ctrl}}), "X11: none")
+		return
+	}
+	sh("swaymsg -q seat seat0 cursor set 60 60; sleep 0.5; swaymsg -q seat seat0 cursor press button1; sleep 0.1; swaymsg -q seat seat0 cursor release button1; sleep 0.2")
+	pump_for(w, 300)
+	testing.expect(t, platform.send_hotkey(w, {key = .V, mods = {.Ctrl}}), "the compositor has a virtual keyboard")
+	testing.expect(t, platform.send_hotkey(w, {key = .Insert, mods = {.Shift}}))
+	seen: Seen
+	defer delete(seen.events)
+	testing.expect(t, wait_kind(w, &seen, .Key_Release), "the keys arrive")
+	pump_for(w, 300)
+	ctrl_v, shift_insert := false, false
+	for e in seen.events {
+		if e.kind != .Key_Press { continue }
+		if e.key == .V && e.mods == {.Ctrl} { ctrl_v = true }
+		if e.key == .Insert && e.mods == {.Shift} { shift_insert = true }
+	}
+	testing.expect(t, ctrl_v, "Ctrl+V, with its modifier")
+	testing.expect(t, shift_insert, "Shift+Insert")
+}
+
 // The window is shown; a click before any motion, at a scale: the position on entering. (Scale 2 only on a scaled output.)
 @(test)
 wake_ends_a_waiting_poll :: proc(t: ^testing.T) {

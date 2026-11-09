@@ -93,7 +93,10 @@ nowhere: xdg-open, an application of "Open with" (`desktop.open_with`).
 window wherever the keyboard is, as a `Hotkey` event whose `hotkey` is the id. `hotkey_parse("Ctrl+Shift+V")` and
 `hotkey_text` read and write their text (Ctrl, Shift, Alt, Win, then a letter, a digit, F1 to F12 or a named key).
 Windows: `RegisterHotKey` (false when another program holds the combination). Linux: none (false): the compositor binds
-shortcuts to commands.
+shortcuts to commands. `send_hotkey(w, hk)` is the other way: it presses `hk` for whatever window has the keyboard (another
+program's: a clipboard history pastes with Ctrl+V into the program it was called from). Windows: `SendInput`. Wayland: a
+virtual keyboard of the seat (`zwp_virtual_keyboard_v1`, with a keymap that has the key alone; false when the compositor
+has none); the window's thread calls it. X11: false.
 
 **Drag and drop** (`dragdrop.odin`), **tray** (`tray.odin`), **accessibility** (`a11y.odin`): optional; a backend that
 has none keeps the shared stubs (neither Windows nor Linux), which answer "not supported".
