@@ -22,7 +22,8 @@ import "../render"
 // that copies its own target (backdrops, blend modes), a plane, parts drawn in another order (a box raised above another),
 // and damage_whole. The renderer adds its own (render.damage_environment: the clear colour, the blend space, text and corner
 // settings). An offscreen target (offscreen_begin) is never shown: what is drawn into it damages nothing. A picture replayed
-// (draw.replay) is drawn where it lands every frame: its content is not compared. A span that calls damage_volatile is
+// (draw.replay) is drawn where it lands every frame, unless its replay asked to be compared (`compare`: the picture, its
+// version and slots, where it lands, its clips and textures). A span that calls damage_volatile is
 // redrawn every frame (pixels that change with no instance changing: a texture written outside the renderer).
 //
 // Usage, each frame, with partial redraw on (set_partial_redraw):
@@ -392,8 +393,15 @@ segment_digest :: proc(d: ^Digest, from, to: Span_Cut) -> (h: u64, bounds: Rect,
 			case b.op > 0:
 				h = hash_mix(h, op_hash(d, c.ops[b.op - 1]))
 			case b.replay > 0:
-				// a picture: its content is not compared, it is redrawn where it lands
-				volatile = true
+				// a picture: compared when its replay asked (replay's `compare`: what decides its pixels is its ident, its
+				// outer clip and its batches' state), else redrawn where it lands
+				ident := b.replay - 1 < len(c.replay_idents) ? c.replay_idents[b.replay - 1] : 0
+				if ident == 0 {
+					volatile = true
+				} else {
+					h = hash_mix(h, ident)
+					h = hash_mix(h, clip_hash(d, c.replays[b.replay - 1].outer))
+				}
 				h = hash_mix(h, batch_hash(d, bi))
 				bounds = rect_union(bounds, reach(d, scissor_of(b), b.target))
 			case b.app > 0:
