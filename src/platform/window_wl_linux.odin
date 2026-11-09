@@ -40,6 +40,7 @@ Wl_Conn :: struct {
 	decoration_manager: Wl_Proxy,
 	fractional_manager: Wl_Proxy, // wp_fractional_scale_manager_v1 (optional)
 	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
+	activation: Wl_Proxy,         // xdg_activation_v1 (optional): raise_window asks the focus with it
 	pointer:    Wl_Proxy,
 	keyboard:   Wl_Proxy,
 	fd:         i32,
@@ -116,6 +117,7 @@ Wl_Window_State :: struct {
 	fractional:  Wl_Proxy,         // wp_fractional_scale_v1 and wp_viewport: the buffer has w.size pixels, the surface
 	viewport:    Wl_Proxy,         // `logical` on the output (nil: an integer buffer scale)
 	logical:     [2]int,           // the surface's size, in the compositor's units
+	activation_token: Wl_Proxy,    // an xdg_activation_token_v1 waiting for its `done` (wl_activate)
 	win:         ^Window,          // back pointer for the listeners
 }
 
@@ -227,6 +229,7 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
 	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)
 	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
+	case "xdg_activation_v1": wlc.activation = bind(name, &xdg_activation_iface, 1, version)
 	}
 }
 
@@ -750,9 +753,10 @@ wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State) -> bool {
 	return true
 }
 
-// The surface and its scale objects go (wl_surface_make makes them again).
+// The surface and its scale objects go (wl_surface_make makes them again), and a request of the focus for it.
 @(private)
 wl_surface_destroy :: proc(st: ^Wl_Window_State) {
+	wl_activation_drop(st)
 	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
 	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
@@ -872,6 +876,50 @@ wl_show :: proc(w: ^Window) {
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 	wl.display_flush(wlc.display)
 	w.show = st.toplevel
+}
+
+// Asks the compositor to give the window the focus (xdg_activation_v1): a token for the surface, then `activate` with
+// it when it comes. The token carries the seat's last input serial this connection saw. A program shown by a command
+// (a shortcut of the compositor runs `app show`) has had no input of its own: the serial is then 0, and the compositor
+// decides (ShojiWM and Hyprland accept a token of the seat; sway follows focus_on_window_activation).
+@(private)
+wl_activate :: proc(w: ^Window) {
+	st := wl_state(w)
+	if st == nil || st.surface == nil || wlc.activation == nil { return }
+	wl_activation_drop(st)   // (one request at a time: the newest)
+	token := wl.proxy_marshal_flags(wlc.activation, XDG_ACTIVATION_GET_TOKEN, &xdg_activation_token_iface, wl.proxy_get_version(wlc.activation), 0, nil)
+	if token == nil { return }
+	st.activation_token = token
+	wl.proxy_add_listener(token, &activation_token_listener, st)
+	if wlc.seat != nil {
+		serial := max(wlc.kbd_serial, wlc.button_serial, wlc.enter_serial)
+		wl.proxy_marshal_flags(token, XDG_ACTIVATION_TOKEN_SET_SERIAL, nil, wl.proxy_get_version(token), 0, serial, wlc.seat)
+	}
+	wl.proxy_marshal_flags(token, XDG_ACTIVATION_TOKEN_SET_SURFACE, nil, wl.proxy_get_version(token), 0, st.surface)
+	wl.proxy_marshal_flags(token, XDG_ACTIVATION_TOKEN_COMMIT, nil, wl.proxy_get_version(token), 0)
+	wl.display_flush(wlc.display)
+}
+
+@(private)
+wl_activation_drop :: proc(st: ^Wl_Window_State) {
+	if st.activation_token == nil { return }
+	wl.proxy_marshal_flags(st.activation_token, XDG_ACTIVATION_TOKEN_DESTROY, nil, wl.proxy_get_version(st.activation_token), WL_MARSHAL_FLAG_DESTROY)
+	st.activation_token = nil
+}
+
+@(private)
+Activation_Token_Listener :: struct { done: proc "c" (data: rawptr, t: Wl_Proxy, token: cstring) }
+@(private) activation_token_listener := Activation_Token_Listener{activation_token_done}
+
+// (The token of a surface that went is destroyed with it: its `done` never comes here.)
+@(private)
+activation_token_done :: proc "c" (data: rawptr, t: Wl_Proxy, token: cstring) {
+	context = wl_ctx_real()
+	st := (^Wl_Window_State)(data)
+	if st.activation_token != t { return }
+	if st.surface != nil { wl.proxy_marshal_flags(wlc.activation, XDG_ACTIVATION_ACTIVATE, nil, wl.proxy_get_version(wlc.activation), 0, token, st.surface) }
+	wl_activation_drop(st)
+	wl.display_flush(wlc.display)
 }
 @(private) wl_minimize :: proc(w: ^Window) { st := wl_state(w); if st.xdg_toplevel == nil { return }; wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0); wl.display_flush(wlc.display) }
 @(private)
