@@ -23,7 +23,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	partial := composing && r.damage.target_ready && r.damage.have_clear && !damage_frame_reads_itself(f)
 	if !composing { r.damage.target_ready = false }   // what is drawn goes past it
 	r.damage.have_region = partial
-	r.damage.skip_present = partial && r.damage.count == 0
+	r.damage.skip_present = damage_skips_present(r, partial)
 	frame_rtv, frame_tex := r.rtv, r.frame_tex
 	if composing { r.rtv, r.frame_tex = r.damage.target_rtv, r.damage.target }
 	kept := true   // the target ends this frame holding all of it: a frame that stops halfway, or a region not cleared, leaves it behind
