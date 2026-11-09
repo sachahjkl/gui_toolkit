@@ -19,7 +19,9 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 import "../../src/dbus"
+import "../../src/host"
 import "../../src/platform"
+import "../../src/ui"
 
 @(private = "file") desktop :: proc() -> string {
 	v := posix.getenv("GUI_TEST_DESKTOP")
@@ -201,6 +203,46 @@ a_window_hides_and_comes_back :: proc(t: ^testing.T) {
 		testing.expect(t, platform.is_window_visible(w), "visible again for the program")
 		testing.expect(t, on_screen(w, title), "on the screen again")
 		testing.expect_value(t, w.shown_again, u32(round))
+	}
+}
+
+@(private = "file")
+host_build :: proc(h: ^host.Host, size: host.Vec2) { (^int)(h.user)^ += 1; ui.label("hidden and shown###l") }
+
+// A host's window with its renderer, hidden and shown again between frames, several times: no frame waits for a screen
+// the window left (Vulkan's FIFO on Wayland, its barriers), the compositor sees a toplevel each time, and frames come
+// again at once.
+@(test)
+a_host_hides_and_comes_back :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	title :: "host hide and show"
+	builds := 0
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	if !host.host_open(h, &sh, {title = title, size = {320, 200}}, host_build, &builds) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	host.host_show(h)
+	frames :: proc(h: ^host.Host, n: int) {
+		for _ in 0 ..< n { h.settle = max(h.settle, 1); host.host_frame(h); pump_for(h.win, 20) }
+	}
+	frames(h, 5)
+	testing.expect(t, on_screen(h.win, title), "shown")
+	for round in 1 ..= 3 {
+		host.host_hide(h)
+		pump_for(h.win, 200)
+		testing.expect(t, !on_screen(h.win, title), "off the screen")
+		host.host_show(h)
+		before := builds
+		start := time.tick_now()
+		frames(h, 5)
+		testing.expectf(t, time.duration_milliseconds(time.tick_since(start)) < 2000, "round %d: five frames after the show, in %.0f ms", round, time.duration_milliseconds(time.tick_since(start)))
+		testing.expect(t, builds > before, "built again")
+		testing.expect(t, on_screen(h.win, title), "on the screen again")
 	}
 }
 

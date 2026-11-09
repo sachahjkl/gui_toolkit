@@ -199,8 +199,12 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 	if !toolbox.run({"odin", "build", join({tests, "virtual_pointer"}), "-vet", fmt.tprintf("-out:%s", join({bin, "virtual_pointer"}))}) { return "building virtual_pointer failed" }
 	if !toolbox.run({"odin", "build", join({tests, "drag_peer"}), "-vet", fmt.tprintf("-out:%s", join({bin, "drag_peer"}))}) { return "building drag_peer failed" }
 	if !toolbox.run({"odin", "build", join({tests, "xdg_open"}), "-vet", fmt.tprintf("-out:%s", join({bin, "xdg-open"}))}) { return "building xdg_open failed" }
+	// (a host with its renderer is tested too: the native text library, linked as the examples are)
+	if why := build_rust_lib(d.root, TEXT_LIB, false); why != "" { return why }
 	test_cmd := make([dynamic]string, context.temp_allocator)
 	append(&test_cmd, "odin", "build", tests, "-build-mode:test", "-vet", "-define:ODIN_TEST_THREADS=1", "-debug", fmt.tprintf("-out:%s", join({d.out, "desktop_test"})))
+	flags := LINUX_FLAGS
+	append(&test_cmd, ..flags[:])
 	if names := os.get_env("GUI_TEST_NAMES", context.temp_allocator); names != "" { append(&test_cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", names)) }
 	if !toolbox.run(test_cmd[:]) { return "building tests/linux_desktop failed" }
 

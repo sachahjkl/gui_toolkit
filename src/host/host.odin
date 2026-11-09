@@ -215,10 +215,10 @@ host_frame :: proc(h: ^Host, inner := false) {
 	sh := h.shared
 	defer ui.use(&sh.main.state)
 	ui.use(&h.state)
-	if h.win.shown_again != h.shown_again {   // (before the pace: its wait is on the old swap chain)
+	if h.win.shown_again != h.shown_again {   // (before the pace: its wait would be on the old swap chain)
 		h.shown_again = h.win.shown_again
 		render.surface_scope(&sh.r, &h.surface)
-		render.surface_remake(&sh.r)
+		render.surface_remake(&sh.r, platform.native_surface_handles(h.win))
 	}
 	at_once := host_pace(h, inner)
 	h.slept = false
@@ -230,6 +230,22 @@ host_frame :: proc(h: ^Host, inner := false) {
 	if h.after_frame != nil { h.after_frame(h) }
 	if !inner && h.settle > 0 { h.settle -= 1 }
 	free_all(context.temp_allocator)
+}
+
+// Takes the window off the screen, its interface kept: the renderer's surface goes first, then the window's (Wayland
+// destroys its surface: platform.hide_window). Make no frame of it until host_show. Not from inside its frame.
+host_hide :: proc(h: ^Host) {
+	if !platform.is_window_visible(h.win) { return }
+	render.surface_scope(&h.shared.r, &h.surface)
+	render.surface_drop(&h.shared.r)
+	platform.hide_window(h.win)
+}
+
+// Brings back a window host_hide took off the screen (or shows it the first time): its next frame makes the renderer's
+// surface again (host_frame, Window.shown_again).
+host_show :: proc(h: ^Host) {
+	platform.show_window(h.win)
+	h.settle = max(h.settle, h.after_input)
 }
 
 // The wait of the frame, on this window's swap chain. (Its own scope: the surface goes back before the input is read.)
