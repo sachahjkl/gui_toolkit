@@ -24,9 +24,8 @@ offscreen_begin :: proc(c: ^Context, size: [2]int) -> bool {
 	if c.rec != nil || size.x <= 0 || size.y <= 0 { return false }
 	tex := render.acquire_target(c.renderer, size.x, size.y)
 	if tex == 0 { return false }
-	append(&c.layers, render.Layer{tex = tex, origin = {0, 0}, size = size, space = blend_space(c)})
-	layer_reach_add(c, c.target, false, false, {})   // (its texels are not the screen's: damage_auto makes the frame whole)
-	id := len(c.layers)
+	// (never composited, only read back: what is drawn into it damages no pixel of the window)
+	id := layer_add(c, render.Layer{tex = tex, origin = {0, 0}, size = size, space = blend_space(c)}, {parent = c.target, shows = .Never})
 	ol := Open_Layer{id = id, alpha = 1, parent = c.target, xform = AFFINE_IDENTITY, kind = .Offscreen, planes = len(c.planes), pending0 = c.glyphs_pending}
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)

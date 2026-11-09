@@ -40,7 +40,8 @@ tuned :: proc(c: Color, over: Maybe(Color) = nil) -> Color {
 set_partial_redraw :: proc(s: ^State, on: bool) { s.partial_redraw = on }
 partial_redraw :: proc(s: ^State) -> bool { return s.partial_redraw }
 
-// What the last frame's partial redraw found: the boxes that drew, those damaged, and why a frame was whole.
+// What the last frame's partial redraw found: the parts of boxes that drew, those damaged, why a frame was whole, and the
+// pixels drawn on this state's window.
 damage_stats :: proc(s: ^State) -> draw.Damage_Auto_Stats { return s.damage.stats }
 
 // Span ids of what draw_tree draws besides the boxes (box keys are hashes: these stand apart from them).
