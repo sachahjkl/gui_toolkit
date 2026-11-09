@@ -350,3 +350,28 @@ t_fullscreen_types :: proc() -> []^Wl_Interface { t_output_opt[0] = wl.output_in
 
 @(private)
 raw_types :: proc(s: []^Wl_Interface) -> [^]^Wl_Interface { return len(s) > 0 ? ([^]^Wl_Interface)(&s[0]) : nil }
+
+// zwp_virtual_keyboard_unstable_v1: a client types as a keyboard of the seat would, to whatever has the keyboard (another
+// program's window): its keymap (an xkb keymap in a file), then keys and modifiers (send_hotkey).
+@(private) VK_MANAGER_CREATE :: 0
+@(private) VK_KEYMAP    :: 0
+@(private) VK_KEY       :: 1
+@(private) VK_MODIFIERS :: 2
+@(private) VK_DESTROY   :: 3
+@(private) vk_manager_iface: Wl_Interface
+@(private) vk_iface: Wl_Interface
+@(private = "file") vkm_methods: [1]Wl_Message
+@(private = "file") vk_methods: [4]Wl_Message
+@(private = "file") t_vkm_create: [2]^Wl_Interface
+
+@(private)
+virtual_keyboard_build_tables :: proc() {
+	t_vkm_create[0], t_vkm_create[1] = wl.seat_interface, &vk_iface
+	vkm_methods[0] = {"create_virtual_keyboard", "on", raw_types(t_vkm_create[:])}
+	vk_manager_iface = {"zwp_virtual_keyboard_manager_v1", 1, 1, &vkm_methods[0], 0, nil}
+	vk_methods[0] = {"keymap", "uhu", nil}
+	vk_methods[1] = {"key", "uuu", nil}
+	vk_methods[2] = {"modifiers", "uuuu", nil}
+	vk_methods[3] = {"destroy", "", nil}
+	vk_iface = {"zwp_virtual_keyboard_v1", 1, 4, &vk_methods[0], 0, nil}
+}

@@ -14,6 +14,7 @@ package platform
 // prepare_read / read_events dance so several threads could read it safely (we read from one).
 
 import "base:runtime"
+import "core:fmt"
 import "core:time"
 import "core:strings"
 import "core:unicode/utf8"
@@ -41,6 +42,7 @@ Wl_Conn :: struct {
 	fractional_manager: Wl_Proxy, // wp_fractional_scale_manager_v1 (optional)
 	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
 	activation: Wl_Proxy,         // xdg_activation_v1 (optional): raise_window asks the focus with it
+	virtual_keyboards: Wl_Proxy,  // zwp_virtual_keyboard_manager_v1 (optional): send_hotkey types with it
 	pointer:    Wl_Proxy,
 	keyboard:   Wl_Proxy,
 	fd:         i32,
@@ -233,6 +235,7 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)
 	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
 	case "xdg_activation_v1": wlc.activation = bind(name, &xdg_activation_iface, 1, version)
+	case "zwp_virtual_keyboard_manager_v1": wlc.virtual_keyboards = bind(name, &vk_manager_iface, 1, version)
 	}
 }
 
@@ -1186,3 +1189,39 @@ foreign libc_memfd {
 }
 
 _ :: mem
+
+// send_hotkey on Wayland: a virtual keyboard of the seat (zwp_virtual_keyboard_v1), a keymap that has the key alone (the
+// modifiers go by the `modifiers` request, in the masks of xkb's "complete" compatibility: Shift 1, Control 4, Mod1 8,
+// Mod4 64), the key pressed and released, the keyboard destroyed. False when the compositor has no such protocol.
+@(private)
+wl_send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
+	if wlc.virtual_keyboards == nil || wlc.seat == nil { return false }
+	sym := keysym_name_of(hk.key)
+	if sym == "" { return false }
+	keymap := fmt.tprintf("xkb_keymap {{\nxkb_keycodes \"papier\" {{ minimum = 8; maximum = 9; <K1> = 9; }};\nxkb_types \"papier\" {{ include \"complete\" }};\nxkb_compatibility \"papier\" {{ include \"complete\" }};\nxkb_symbols \"papier\" {{ key <K1> {{ [ %s ] }}; }};\n}};\n", sym)
+	fd := memfd_create("gui_toolkit_keymap", 0)
+	if fd < 0 { return false }
+	defer posix.close(posix.FD(fd))
+	data := transmute([]u8)keymap
+	if posix.write(posix.FD(fd), raw_data(data), uint(len(data))) != len(data) { return false }
+	zero := u8(0)   // (the size counts the terminating NUL, as the protocol's keymap is a C string)
+	posix.write(posix.FD(fd), &zero, 1)
+
+	kb := wl.proxy_marshal_flags(wlc.virtual_keyboards, VK_MANAGER_CREATE, &vk_iface, 1, 0, wlc.seat, nil)
+	if kb == nil { return false }
+	XKB_V1 :: 1
+	wl.proxy_marshal_flags(kb, VK_KEYMAP, nil, 1, 0, u32(XKB_V1), i32(fd), u32(len(data) + 1))
+	mods: u32
+	if .Shift in hk.mods { mods |= 1 }
+	if .Ctrl in hk.mods  { mods |= 4 }
+	if .Alt in hk.mods   { mods |= 8 }
+	if hk.super          { mods |= 64 }
+	now := u32(time.to_unix_nanoseconds(time.now()) / 1e6)
+	EVDEV_KEY :: 1   // (<K1> = 9: an xkb keycode is the evdev one plus 8)
+	wl.proxy_marshal_flags(kb, VK_MODIFIERS, nil, 1, 0, mods, u32(0), u32(0), u32(0))
+	wl.proxy_marshal_flags(kb, VK_KEY, nil, 1, 0, now, u32(EVDEV_KEY), u32(1))
+	wl.proxy_marshal_flags(kb, VK_KEY, nil, 1, 0, now + 1, u32(EVDEV_KEY), u32(0))
+	wl.proxy_marshal_flags(kb, VK_MODIFIERS, nil, 1, 0, u32(0), u32(0), u32(0), u32(0))
+	wl.proxy_marshal_flags(kb, VK_DESTROY, nil, 1, WL_MARSHAL_FLAG_DESTROY)
+	return wl.display_roundtrip(wlc.display) >= 0
+}

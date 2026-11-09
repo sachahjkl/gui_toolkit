@@ -253,6 +253,12 @@ is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 // Brings a shown window to the front with the keyboard focus (the user asked to switch to it). X11 asks the window
 // manager (_NET_ACTIVE_WINDOW). Wayland asks the compositor through xdg_activation_v1, which decides; without that
 // protocol nothing happens.
+// Presses `hk` for the window that has the keyboard (hotkey.odin): Wayland's virtual keyboard; X11 has none here.
+send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
+	if w == nil || w.offscreen || w.backend != .Wayland { return false }
+	return wl_send_hotkey(w, hk)
+}
+
 raise_window :: proc(w: ^Window) {
 	if w == nil || w.offscreen { return }
 	switch w.backend {

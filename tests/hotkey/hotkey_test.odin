@@ -22,3 +22,14 @@ a_hotkey_reads_from_its_text :: proc(t: ^testing.T) {
 	_, ok = platform.hotkey_parse("Ctrl+")
 	testing.expect(t, !ok, "no key")
 }
+
+// The keysym names of the keys a hotkey names, as xkb reads them in a keymap.
+@(test)
+a_key_has_its_keysym_name :: proc(t: ^testing.T) {
+	testing.expect_value(t, platform.keysym_name_of(.V), "v")
+	testing.expect_value(t, platform.keysym_name_of(.N7), "7")
+	testing.expect_value(t, platform.keysym_name_of(.F12), "F12")
+	testing.expect_value(t, platform.keysym_name_of(.Page_Up), "Prior")
+	testing.expect_value(t, platform.keysym_name_of(.Insert), "Insert")
+	testing.expect_value(t, platform.keysym_name_of(.Menu), "")
+}

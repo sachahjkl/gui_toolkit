@@ -94,6 +94,7 @@ instance/instance_linux.odin owners process  # the instance owners started in th
 platform/a11y_accesskit.odin a11y_abi_checked process  # whether the accessibility library's ABI matches (atomic)
 platform/clipboard.odin clip process  # the process's clipboard store (locked: Clip_Store.mutex)
 platform/hotkey.odin HOTKEY_KEY_NAMES const  # a table: the names of the keys a hotkey can name
+platform/hotkey.odin KEYSYM_NAMES const  # a table: the xkb names of the keys a hotkey can name
 platform/clipboard_wl_linux.odin data_source_listener const  # a listener table (passed by address to libwayland)
 platform/clipboard_wl_linux.odin data_offer_listener const  # a listener table (passed by address to libwayland)
 platform/cursors_win32.odin system_cursors thread  # the system's cursors and pointer settings, dropped by this thread's windows on WM_SETTINGCHANGE
@@ -156,6 +157,11 @@ platform/wl_protocol_linux.odin t_ti_surface const  # a protocol table, built on
 platform/wl_protocol_linux.odin wp_cursor_shape_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_cursor_shape_device_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_csm_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin vk_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin vk_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin vkm_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin vk_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_vkm_create const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin xdg_activation_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin xdg_activation_token_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin xa_methods const  # a protocol table, built once (wayland_lib), then read

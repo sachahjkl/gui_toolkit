@@ -22,11 +22,34 @@ hotkey_unregister :: proc(w: ^Window, id: int) {
 }
 
 // (winuser.h)
+@(private = "file") KEYEVENTF_KEYUP :: 0x0002
 @(private = "file") MOD_ALT      :: 0x0001
 @(private = "file") MOD_CONTROL  :: 0x0002
 @(private = "file") MOD_SHIFT    :: 0x0004
 @(private = "file") MOD_WIN      :: 0x0008
 @(private = "file") MOD_NOREPEAT :: 0x4000
+
+// SendInput: the modifiers down, the key down and up, the modifiers up, in one batch (no other input between them).
+send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
+	vk := vk_of_key(hk.key)
+	if vk == 0 { return false }
+	mods := make([dynamic]u16, context.temp_allocator)
+	if .Ctrl in hk.mods  { append(&mods, u16(win.VK_CONTROL)) }
+	if .Shift in hk.mods { append(&mods, u16(win.VK_SHIFT)) }
+	if .Alt in hk.mods   { append(&mods, u16(win.VK_MENU)) }
+	if hk.super          { append(&mods, u16(win.VK_LWIN)) }
+	inputs := make([dynamic]win.INPUT, context.temp_allocator)
+	key :: proc(vk: u16, up: bool) -> win.INPUT {
+		i := win.INPUT{type = .KEYBOARD}
+		i.ki.wVk = vk
+		if up { i.ki.dwFlags = KEYEVENTF_KEYUP }
+		return i
+	}
+	for m in mods { append(&inputs, key(m, false)) }
+	append(&inputs, key(u16(vk), false), key(u16(vk), true))
+	#reverse for m in mods { append(&inputs, key(m, true)) }
+	return win.SendInput(u32(len(inputs)), raw_data(inputs), size_of(win.INPUT)) == u32(len(inputs))
+}
 
 // The virtual key of a key a hotkey can name (hotkey.odin), 0 for the others.
 @(private = "file")
