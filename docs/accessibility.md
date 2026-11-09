@@ -62,6 +62,7 @@ What the widgets say:
 | `stepper` | SpinButton | value, min, max |
 | `sat_val_picker`, `hue_picker`, `alpha_picker` | Slider | the saturation and value as text; the hue in degrees, the opacity in percent |
 | `color_picker` | Group of the pickers, a Button (the old colour), a RadioGroup (the format) and a TextInput | `Colour picker` |
+| `qr_code` | Image | `QR code: ` and its text |
 | `progress` | ProgressIndicator | percent (busy when indeterminate) |
 | `segmented` | RadioGroup of RadioButtons | selected, "2 of 3" |
 | `chips` | Buttons | toggled |
