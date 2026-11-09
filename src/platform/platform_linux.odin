@@ -507,14 +507,22 @@ poll_fd_wait :: proc(fd: i32, timeout_ms: int) -> int {
 // poll(2) on all that ends a window's wait: its connection (-1: lost), its wake fd, the session bus, its accessibility
 // bus. Consumes nothing: the pump that follows takes what came.
 @(private)
-poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) {
+poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) -> (r: Poll_Sources) {
 	fds: [4]Pollfd
 	n: uint = 0
 	for fd in ([4]i32{conn_fd, wake_fd(w), dbus_fd(), a11y_fd(w)}) {
 		if fd >= 0 { fds[n] = {fd = fd, events = POLLIN}; n += 1 }
 	}
-	if n > 0 { poll(&fds[0], n, i32(timeout_ms)) }
+	if n == 0 || poll(&fds[0], n, i32(timeout_ms)) <= 0 { return }
+	for f in fds[:n] {
+		if f.revents & POLL_DONE == 0 { continue }
+		if f.fd == conn_fd { r.conn = true } else { r.other = true }
+	}
+	return
 }
+
+// What ended a poll_sources: the window system's connection, another source (a wake, a bus), or neither (the time).
+@(private) Poll_Sources :: struct { conn, other: bool }
 
 // Whether the window has something for its next poll_events, without waiting or taking anything (as on Win32).
 events_waiting :: proc(w: ^Window) -> bool { return wait_is_over(w) }

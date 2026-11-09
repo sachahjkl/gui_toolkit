@@ -238,6 +238,11 @@ a_host_hides_and_comes_back :: proc(t: ^testing.T) {
 	host.host_frame(h)
 	due, _ := host.hosts_due({h})
 	testing.expect(t, !due, "at rest, no frame is due")
+	// and the wait sleeps its time: what the renderer's own queues receive after a frame (the presentation feedback, the
+	// FIFO events) ends no wait of the window
+	rest := time.tick_now()
+	platform.wait_event(h.win, 300)
+	testing.expectf(t, time.duration_milliseconds(time.tick_since(rest)) >= 250, "at rest, a wait of 300 ms sleeps (%.0f ms)", time.duration_milliseconds(time.tick_since(rest)))
 	for round in 1 ..= 3 {
 		host.host_hide(h)
 		pump_for(h.win, 200)
