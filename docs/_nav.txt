@@ -53,6 +53,7 @@ Frames and threads
   flate.md            flate: DEFLATE streams
   png.md              png: the PNG codec
   qr.md               qr: QR Codes
+  lucide.md           lucide: the Lucide icons
 
 Tools and tests
   testing.md          Testing
