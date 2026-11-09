@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.124.0] - 2026-11-09
+
+### Added
+- **`winrt`** and **hotkeys**: what a program needs for the Windows clipboard history and a global shortcut.
+  - `winrt`: Windows Runtime APIs from Odin with no projection: HSTRINGs, activation factories, the interface IDs of generic instances computed from their signatures (`async_iids`, `event_handler_iid`), `await` for an `IAsyncOperation<T>` (a completion handler, a timeout that cancels), event handlers of the program's own, read-only vectors. See docs/winrt.md.
+  - `platform.hotkey_register`, `hotkey_unregister`, `hotkey_parse`, `hotkey_text`: a key combination the system gives a window wherever the keyboard is, as a `Hotkey` event with its id. Windows: `RegisterHotKey`; Linux has none (the compositor binds shortcuts to commands). See docs/platform.md.
+  - `prefs_page`: a page of `Options.pages` with no preference in the registry is not shown (a program that registers some preferences on one system only).
+  - `platform.uri_list_to_paths` on Windows: `file:///C:/x` reads as `C:/x`, not `/C:/x`.
+
 ## [0.123.0] - 2026-11-09
 
 ### Fixed
@@ -2027,6 +2036,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.124.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.0
 [0.123.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.123.0
 [0.122.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.122.0
 [0.121.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.121.0
