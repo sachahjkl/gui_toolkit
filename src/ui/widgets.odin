@@ -44,7 +44,7 @@ row :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") 
 field_frame :: proc(id: string, cross := Cross_Align.Center) -> bool {
 	set_next_axis(.X, cross)
 	push_tags("input")
-	b := build_box({.Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Focus_Within}, id)
+	b := build_box({.Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Focus_Within, .Sunken}, id)
 	pop_tags()
 	push_parent(b)
 	return true

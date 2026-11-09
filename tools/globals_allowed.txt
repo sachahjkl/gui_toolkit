@@ -243,7 +243,9 @@ ui/overlays.odin toast_position_names const  # a table
 ui/state.odin current thread  # the State this thread builds
 ui/state.odin tick_origin process  # the clock of the interfaces, started by the first init (atomic)
 ui/state.odin build_of thread  # the state whose build is open on this thread
-ui/theme_default.odin NAMED_PALETTES const  # a table
+ui/themes.odin THEMES const  # the toolkit's themes, read only
+ui/themes.odin THEME_MODE_NAMES const  # a table of names, read only
+ui/themes.odin FINISH_NAMES const  # a table of names, read only
 ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table
 platform/platform.odin scheme_serial process  # the system's light / dark choice, bumped as it may change (atomic): one system, whatever the number of apps

@@ -419,7 +419,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 	wrap := false, auto_height := false, min_lines := 1, max_lines := 0, highlight: ^Text_Highlight = nil) -> (res: Edit_Result) {
 	s := gs()
 	if tags("input") {
-		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring}, id)
+		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
 		b.cursor = .Text
 		b.text = ""
 		res.signal = signal(b)

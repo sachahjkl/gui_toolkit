@@ -128,11 +128,12 @@ build_settings :: proc(app: ^App) {
 					//- appearance
 					section_title("APPEARANCE", inner)
 					if ui.form_row("Theme") {
-						names: [len(palettes)]string
+						names := make([]string, len(palettes), context.temp_allocator)
 						for p, i in palettes { names[i] = p.name }
 						sel := app.palette_idx
 						if ui.dropdown("###st_theme", names[:], &sel) { set_palette(app, sel) }
 					}
+					if ui.form_row("Machined finish") { ui.toggle("###st_machined", "", &app.machined) }
 					if ui.form_row("Zoom") {
 						z := ui.zoom(&app.ui_state) * 100
 						old := z
@@ -214,7 +215,7 @@ build_settings :: proc(app: ^App) {
 					if ui.row(.Center, id = "###st_foot") {
 						if ui.tags("ghost_button") {
 							if ui.button_icon("###st_reset", ICON_UNDO, "Restore defaults").clicked {
-								set_palette(app, DEFAULT_PALETTE)
+								set_palette(app, palette_index(DEFAULT_PALETTE))
 								app.anim_mode = .System
 								app.os_anim_checked_ms = 0
 								app.show_status = true

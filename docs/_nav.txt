@@ -18,6 +18,7 @@ Drawing and text
   paint.md            paint: vector pictures
 
 Widgets and layout
+  themes.md           Themes and finishes
   docking.md          Docking
   panes.md            Splitter and panes
   modals.md           Modal dialogs

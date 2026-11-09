@@ -62,7 +62,7 @@ a_folded_strip_takes_the_theme_colours :: proc(t: ^testing.T) {
 	// a quarter down the strip: no chevron, no edge
 	x, y := int(session.center(h).x), int(h.rect.min.y + (h.rect.max.y - h.rect.min.y) * 0.25)
 	rest := session.pixel(session.capture(s), x, y)
-	testing.expectf(t, session.near(rest, rgba(ui.PALETTE_MIDNIGHT.panel)), "the strip is the bars' surface: %v", rest)
+	testing.expectf(t, session.near(rest, rgba(ui.palette_of("Midnight").panel)), "the strip is the bars' surface: %v", rest)
 	session.move(s, session.center(h))
 	hot := session.pixel(session.capture(s), x, y)
 	testing.expectf(t, dark(hot) && hot != rest, "hovered: a step of the dark theme, %v", hot)

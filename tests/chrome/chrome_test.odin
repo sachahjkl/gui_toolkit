@@ -26,7 +26,7 @@ open :: proc(f: ^Fx) -> bool {
 	if !ok { return false }
 	icons, iok := font.load_embedded(&f.fonts, ui.ICON_FONT_DATA)
 	if !iok { return false }
-	ui.apply_palette(&f.theme, ui.PALETTE_GRAPHITE)
+	ui.apply_palette(&f.theme, ui.palette_of("Graphite"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	f.s.icon_font = icons
 	f.base_font = id

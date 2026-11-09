@@ -131,7 +131,7 @@ graph_hover :: proc(t: ^testing.T) {
 	id, ok := font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	if !testing.expect(t, ok) { return }
 	f.base = id
-	ui.apply_palette(&f.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	defer ui.theme_destroy(&f.theme)
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer ui.destroy(&f.s)

@@ -161,7 +161,7 @@ shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless: bool) -> bool {
 		return false
 	}
 	draw.init(&sh.dc, &sh.r, &sh.fonts)
-	ui.apply_palette(&sh.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&sh.theme, ui.palette_of("Midnight"))
 	return true
 }
 

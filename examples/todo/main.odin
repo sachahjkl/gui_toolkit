@@ -306,7 +306,7 @@ todo_build :: proc(h: ^host.Host, size: host.Vec2) { build_ui((^App)(h.user)) }
 @(private = "file")
 todo_params :: proc(h: ^host.Host, p: ^ui.Build_Params) {
 	app := (^App)(h.user)
-	ui.apply_palette(&app.shared.theme, app.dark ? ui.PALETTE_MIDNIGHT : ui.PALETTE_DAYLIGHT)
+	ui.apply_palette(&app.shared.theme, app.dark ? ui.palette_of("Midnight") : ui.palette_of("Midnight", light = true))
 	platform.set_dark_title(h.win, app.dark)
 	p.base = ui.Style{
 		pref = {.X = ui.text_size(), .Y = ui.px(36)},

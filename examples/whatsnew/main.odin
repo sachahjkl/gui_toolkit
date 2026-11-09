@@ -424,8 +424,8 @@ frame :: proc(app: ^App, inner := false) {
 	want := app.page == .Emboss ? Page.Emboss : Page.Pacing
 	if app.palette != want {
 		app.palette = want
-		pal := want == .Emboss ? ui.PALETTE_BOOTSTRAP : ui.PALETTE_MIDNIGHT
-		if p, ok := ui.palette_named(app.forced); ok && app.forced != "" { pal = p }
+		pal := want == .Emboss ? ui.palette_of("Bootstrap") : ui.palette_of("Midnight")
+		if t, _, ok := ui.theme_find(ui.THEMES[:], app.forced); ok && app.forced != "" { pal = ui.theme_palette(t, false) }
 		ui.apply_palette(&app.theme, pal, render.blend_space(&app.r))
 		platform.set_dark_title(app.win, pal.dark)
 	}
@@ -492,7 +492,7 @@ open :: proc(args: []string, headless_default := false) -> ^App {
 	if !ok { fmt.eprintln("whatsnew: no UI font"); return nil }
 	if mono, mok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("consola.ttf"), font.FALLBACK_MONO_DATA); mok { app.mono = mono }
 	draw.init(&app.dc, &app.r, &app.fonts)
-	ui.apply_palette(&app.theme, ui.PALETTE_MIDNIGHT, render.blend_space(&app.r))
+	ui.apply_palette(&app.theme, ui.palette_of("Midnight"), render.blend_space(&app.r))
 	ui.init(&app.s, &app.fonts, &app.theme)
 	app.s.mono_font = app.mono
 	ui.field_set(&app.needle, "the")

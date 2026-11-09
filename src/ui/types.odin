@@ -84,6 +84,8 @@ Box_Flag :: enum u8 {
 	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
 	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
 	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
+	Sunken,              // a well (fields, field_frame, well): the machined finish carves it in, its focus a ring of light
+	Groove,              // a separator (hline, vline): the machined finish carves it as a groove
 	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`field_frame`)
 	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
 }
@@ -232,6 +234,7 @@ Finish :: enum u8 {
 	Flat,       // plain colour
 	Gradient,   // vertical gradient, highlight line along the top edge, embossed text, glowing focus (Bootstrap 2)
 	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
+	Machined,   // bevelled buttons, sunken wells, carved lines (machined.odin); flat on a light palette
 }
 
 // Interaction states (hover, press, focus, selection, disabled) show at once by default: the frame that sees the pointer
@@ -245,6 +248,7 @@ Theme :: struct {
 	finish:        Finish,
 	transition_ms: f32,   // 0: states change at once (default)
 	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"
+	glow:          f32,   // the halos of the machined finish (a focused well, a lamp, a hot accent button), 0..1; 0: none
 	serial:        u64,   // bumped when a colour changes (theme_add, theme_set, apply_palette)
 }
 

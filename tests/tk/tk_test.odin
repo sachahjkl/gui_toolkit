@@ -318,11 +318,11 @@ a_raw_command_gets_every_argument :: proc(t: ^testing.T) {
 	testing.expect(t, why != "", "the others still read their flags")
 }
 
-// theme_shots: the palettes' names, from the toolkit's one list of them.
+// theme_shots: the themes' names, from the toolkit's one list of them.
 @(test)
-the_palettes_are_named_by_the_source :: proc(t: ^testing.T) {
-	names := tk.palette_names("x := 1\nNAMED_PALETTES := [?]Named_Palette{\n\t{\"Midnight\", PALETTE_MIDNIGHT},\n\t{\"Gruvbox Light\", PALETTE_GRUVBOX_LIGHT},\n}\nOTHER := {\"No\", PALETTE_NO}\n")
-	testing.expect_value(t, strings.join(names, "|", context.temp_allocator), "Midnight|Gruvbox Light")
-	source, ok := tk.read_text(fmt.tprintf("%s/../../src/ui/theme_default.odin", #directory))
-	testing.expect(t, ok && len(tk.palette_names(source)) > 10, "the toolkit's list is read")
+the_themes_are_named_by_the_source :: proc(t: ^testing.T) {
+	names := tk.theme_names("x := 1\nTHEMES := [?]Theme_Def{\n\t// a comment\n\t{\"Midnight\",\n\t\t{{0x0}},\n\t{\"Rosé Pine\", {},\n}\nOTHER := {\n\t{\"No\",\n}\n")
+	testing.expect_value(t, strings.join(names, "|", context.temp_allocator), "Midnight|Rosé Pine")
+	source, ok := tk.read_text(fmt.tprintf("%s/../../src/ui/themes.odin", #directory))
+	testing.expect(t, ok && len(tk.theme_names(source)) > 20, "the toolkit's list is read")
 }

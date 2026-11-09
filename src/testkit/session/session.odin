@@ -72,7 +72,7 @@ Options :: struct {
 	user:       rawptr,              // what `build` works on
 	size:       [2]int,              // the client area in physical pixels (0: DEFAULT_SIZE)
 	dpi_scale:  f32,                 // dpi / 96 (0: 1)
-	palette:    Maybe(ui.Palette),   // nil: PALETTE_MIDNIGHT
+	palette:    Maybe(ui.Palette),   // nil: ui.palette_of("Midnight")
 	animations: bool,                // false: every transition jumps to its end
 	smooth_scroll: ui.Smooth_Scroll,
 	no_renderer: bool,               // build and layout only: no device is made, `capture` is refused. For what no pixel depends on
@@ -169,7 +169,7 @@ start :: proc(t: ^testing.T, o: Options, loc := #caller_location) -> ^Session {
 		s.renderer = &own.renderer
 		draw.init(&own.dc, &own.renderer, &own.fonts)
 	}
-	palette := o.palette.? or_else ui.PALETTE_MIDNIGHT
+	palette := o.palette.? or_else ui.palette_of("Midnight")
 	ui.apply_palette(&own.theme, palette, o.space)
 	ui.init(&own.state, &own.fonts, &own.theme)
 	own.state.icon_font = own.icon_font

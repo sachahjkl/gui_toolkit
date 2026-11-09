@@ -8,8 +8,8 @@ package tk
 //   -width   the width of the pictures (default 1400; 0: as rendered); a wider picture is made smaller, a narrower one stays
 //
 // theme_shots [-build] [-out:folder] [-page:name] [-find:text] [-only:name,name]: a picture of a page of examples/whatsnew in every
-// palette of ui.NAMED_PALETTES, with no window (--headless): to look at what a change of colours does in all of them. By default
-// the find page, searching "the", into build/theme_shots.
+// theme of ui.THEMES (its dark version, or its only one), with no window (--headless): to look at what a change of colours does in
+// all of them. By default the find page, searching "the", into build/theme_shots.
 
 import "core:fmt"
 import "core:os"
@@ -184,21 +184,18 @@ run_theme_shots :: proc(a: ^Args) -> string {
 	})
 }
 
-// The names of ui.NAMED_PALETTES, from the source: one list of them, the toolkit's.
-palette_names :: proc(source: string) -> []string {
+// The names of ui.THEMES, from the source (tk does not import the interface): each line of the list that opens a theme,
+// `\t{"Name",`.
+theme_names :: proc(source: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
-	at := strings.index(source, "NAMED_PALETTES :=")
+	at := strings.index(source, "THEMES := [?]Theme_Def{")
 	if at < 0 { return nil }
 	list := source[at:]
 	if end := strings.index(list, "\n}"); end >= 0 { list = list[:end] }
-	for {
-		open := strings.index(list, "{\"")
-		if open < 0 { break }
-		list = list[open + 2:]
-		close := strings.index_byte(list, '"')
-		if close < 0 { break }
-		if strings.has_prefix(list[close:], "\", PALETTE_") { append(&out, list[:close]) }
-		list = list[close:]
+	for line in strings.split_lines(list, context.temp_allocator) {
+		if !strings.has_prefix(line, "\t{\"") { continue }
+		rest := line[3:]
+		if close := strings.index_byte(rest, '"'); close > 0 { append(&out, rest[:close]) }
 	}
 	return out[:]
 }
@@ -210,10 +207,10 @@ theme_shots :: proc(root: string, o: Theme_Shots_Options) -> string {
 	}
 	if !os.exists(exe) { return fmt.tprintf("%s is missing: run with -build", exe) }
 	_ = os.make_directory_all(o.out)
-	source, read := read_text(join({root, "src", "ui", "theme_default.odin"}))
-	if !read { return "src/ui/theme_default.odin cannot be read" }
-	names := palette_names(source)
-	if len(names) == 0 { return "no NAMED_PALETTES in src/ui/theme_default.odin" }
+	source, read := read_text(join({root, "src", "ui", "themes.odin"}))
+	if !read { return "src/ui/themes.odin cannot be read" }
+	names := theme_names(source)
+	if len(names) == 0 { return "no THEMES in src/ui/themes.odin" }
 	for name in names {
 		if !wanted(o.only, name) { continue }
 		if why := theme_shot(exe, name, o); why != "" { return why }

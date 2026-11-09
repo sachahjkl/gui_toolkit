@@ -384,7 +384,7 @@ ui_post_runs_in_begin_build :: proc(t: ^testing.T) {
 	defer font.destroy(&fonts)
 	ui_font, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
 	theme: ui.Theme
-	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&theme, ui.palette_of("Midnight"))
 	defer ui.theme_destroy(&theme)
 	s := new(ui.State)
 	defer free(s)
@@ -420,7 +420,7 @@ ui_destroy_leaves_no_window_with_its_queue :: proc(t: ^testing.T) {
 	defer font.destroy(&fonts)
 	ui_font, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
 	theme: ui.Theme
-	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&theme, ui.palette_of("Midnight"))
 	defer ui.theme_destroy(&theme)
 	s := new(ui.State)
 	defer free(s)
@@ -451,7 +451,7 @@ ui_state_outlives_its_window :: proc(t: ^testing.T) {
 	defer font.destroy(&fonts)
 	ui_font, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
 	theme: ui.Theme
-	ui.apply_palette(&theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&theme, ui.palette_of("Midnight"))
 	defer ui.theme_destroy(&theme)
 	s, other := new(ui.State), new(ui.State)
 	defer { free(s); free(other) }

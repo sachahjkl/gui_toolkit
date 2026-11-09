@@ -109,7 +109,7 @@ an_adopted_window_has_its_frames :: proc(t: ^testing.T) {
 	font.init(&sh.fonts)   // (what is shared, made by the application: its fonts, its drawing, its theme)
 	sh.font, _, _ = font.load_system_or_embedded(&sh.fonts, "", font.FALLBACK_UI_DATA)
 	draw.init(&sh.dc, &sh.r, &sh.fonts)
-	ui.apply_palette(&sh.theme, ui.PALETTE_MIDNIGHT)
+	ui.apply_palette(&sh.theme, ui.palette_of("Midnight"))
 	h := new(host.Host)
 	defer free(h)
 	host.host_adopt(h, &sh, w, probe_build, &p)

@@ -2,168 +2,20 @@ package ui
 
 import "../draw"
 
-// A palette is eleven sRGB colors; `apply_palette` expands it into the full tag-based theme the built-in widgets use.
+// A palette is the sRGB colours of the built-in widgets; `apply_palette` expands it into the full tag-based theme they
+// use. A program makes it from a theme (themes.odin: theme_palette).
 Palette :: struct {
 	bg, panel, panel2, text, weak, border, accent, accent_text, good, warn, bad: u32,   // 0xRRGGBBAA
 	dark:   bool,
 	finish: Finish,   // how raised surfaces are painted; their "sheen" entry (0..1) says how strongly
 	bar:    u32,      // menu / status bars (0 = panel)
+	well:   u32,      // sunken surfaces: fields, wells (0 = the page a step darker)
 	translucent: bool, // `bg` has alpha < 1 and the app shows the OS backdrop behind it (see platform.set_backdrop)
 }
 
-PALETTE_MIDNIGHT :: Palette{
-	bg = 0x0f1220ff, panel = 0x171b2fff, panel2 = 0x20253dff, text = 0xe6e9f5ff, weak = 0x8d95b5ff, border = 0x2b3150ff,
-	accent = 0x7c8cffff, accent_text = 0x0b0e1cff, good = 0x4ade80ff, warn = 0xfbbf24ff, bad = 0xf87171ff, dark = true,
-}
-
-PALETTE_DAYLIGHT :: Palette{
-	bg = 0xf3f4f7ff, panel = 0xffffffff, panel2 = 0xe9ecf2ff, text = 0x1f2430ff, weak = 0x6b7380ff, border = 0xd9dde4ff,
-	accent = 0x3b5bdbff, accent_text = 0xffffffff, good = 0x2f9e5aff, warn = 0xc98a10ff, bad = 0xd6333fff, dark = false,
-}
-
-PALETTE_GRAPHITE :: Palette{
-	bg = 0x151515ff, panel = 0x1e1e1eff, panel2 = 0x2a2a2aff, text = 0xeaeaeaff, weak = 0x8e8e8eff, border = 0x353535ff,
-	accent = 0x4cc2ffff, accent_text = 0x06222fff, good = 0x5dd39eff, warn = 0xf4c95dff, bad = 0xff6b6bff, dark = true,
-}
-
-PALETTE_NORD :: Palette{
-	bg = 0x2e3440ff, panel = 0x3b4252ff, panel2 = 0x434c5eff, text = 0xeceff4ff, weak = 0x9aa5b8ff, border = 0x4c566aff,
-	accent = 0x88c0d0ff, accent_text = 0x1d2430ff, good = 0xa3be8cff, warn = 0xebcb8bff, bad = 0xbf616aff, dark = true,
-}
-
-PALETTE_DRACULA :: Palette{
-	bg = 0x1e1f29ff, panel = 0x282a36ff, panel2 = 0x343746ff, text = 0xf8f8f2ff, weak = 0x9aa0c8ff, border = 0x44475aff,
-	accent = 0xbd93f9ff, accent_text = 0x1a1326ff, good = 0x50fa7bff, warn = 0xf1fa8cff, bad = 0xff5555ff, dark = true,
-}
-
-PALETTE_AMBER :: Palette{
-	bg = 0x16120bff, panel = 0x201a10ff, panel2 = 0x2d2415ff, text = 0xffe9c2ff, weak = 0xb59a66ff, border = 0x3d311cff,
-	accent = 0xffb000ff, accent_text = 0x1a1200ff, good = 0x9acd32ff, warn = 0xffd54fff, bad = 0xff7043ff, dark = true,
-}
-
-// Windows 7: sky-blue glass behind white panels, glossy silver buttons, Aero blue for selection
-PALETTE_AERO :: Palette{
-	bg = 0xb9d1ee8c, panel = 0xfbfcfeff, panel2 = 0xe3e9f1ff, text = 0x1b2633ff, weak = 0x4f6178ff, border = 0x8ea6c6ff,
-	accent = 0x2f86dbff, accent_text = 0xffffffff, good = 0x2e9e45ff, warn = 0xd08c00ff, bad = 0xd13b2eff, dark = false,
-	finish = .Glass, bar = 0x6fa3dcb0, translucent = true,
-}
-
-// Bootstrap 2 (2012): white page, grey wells, gradient buttons with embossed text, blue focus glow
-PALETTE_BOOTSTRAP :: Palette{
-	bg = 0xffffffff, panel = 0xf5f5f5ff, panel2 = 0xe9e9e9ff, text = 0x333333ff, weak = 0x8a8a8aff, border = 0xccccccff,
-	accent = 0x0a6fd1ff, accent_text = 0xffffffff, good = 0x51a351ff, warn = 0xf89406ff, bad = 0xd2463fff, dark = false,
-	finish = .Gradient,
-}
-
-// Editor and terminal palettes, each from its own scheme (the scheme's background, its line highlight as the second panel,
-// its foreground, its muted text lifted where it is under 4:1 on the background, its own accent), with the dark text of
-// the scheme on the accent.
-
-// Gruvbox (Pavel Pertsev): warm browns, cream text, orange accent
-PALETTE_GRUVBOX :: Palette{
-	bg = 0x282828ff, panel = 0x32302fff, panel2 = 0x3c3836ff, text = 0xebdbb2ff, weak = 0xa89984ff, border = 0x504945ff,
-	accent = 0xfe8019ff, accent_text = 0x282828ff, good = 0xb8bb26ff, warn = 0xfabd2fff, bad = 0xfb4934ff, dark = true,
-}
-
-PALETTE_GRUVBOX_LIGHT :: Palette{
-	bg = 0xfbf1c7ff, panel = 0xf9f5d7ff, panel2 = 0xebdbb2ff, text = 0x3c3836ff, weak = 0x7c6f64ff, border = 0xd5c4a1ff,
-	accent = 0xaf3a03ff, accent_text = 0xfbf1c7ff, good = 0x79740eff, warn = 0xb57614ff, bad = 0x9d0006ff, dark = false,
-}
-
-// Naysayer (the Emacs theme of Jonathan Blow's streams): a deep teal, tan text, the green of its strings
-PALETTE_NAYSAYER :: Palette{
-	bg = 0x062329ff, panel = 0x0a2d36ff, panel2 = 0x0c4754ff, text = 0xd1b897ff, weak = 0x86a09eff, border = 0x14505eff,
-	accent = 0x2ec09cff, accent_text = 0x062329ff, good = 0x44b340ff, warn = 0xe0b45aff, bad = 0xe5646aff, dark = true,
-}
-
-// Solarized (Ethan Schoonover), the two modes of one set of sixteen colors
-PALETTE_SOLARIZED :: Palette{
-	bg = 0x002b36ff, panel = 0x073642ff, panel2 = 0x0b3e4aff, text = 0xc0c5bbff, weak = 0x768c93ff, border = 0x15505eff,
-	accent = 0x268bd2ff, accent_text = 0x002b36ff, good = 0x859900ff, warn = 0xb58900ff, bad = 0xdc322fff, dark = true,
-}
-
-PALETTE_SOLARIZED_LIGHT :: Palette{
-	bg = 0xfdf6e3ff, panel = 0xf5efdcff, panel2 = 0xeee8d5ff, text = 0x586e75ff, weak = 0x657b83ff, border = 0xded8c4ff,
-	accent = 0x268bd2ff, accent_text = 0xfdf6e3ff, good = 0x859900ff, warn = 0xb58900ff, bad = 0xdc322fff, dark = false,
-}
-
-// Monokai (Wimer Hazenberg): the olive-black of Sublime Text, the green of its functions
-PALETTE_MONOKAI :: Palette{
-	bg = 0x272822ff, panel = 0x2d2e27ff, panel2 = 0x3e3d32ff, text = 0xf8f8f2ff, weak = 0x9b9780ff, border = 0x49483eff,
-	accent = 0xa6e22eff, accent_text = 0x272822ff, good = 0xa6e22eff, warn = 0xfd971fff, bad = 0xf92672ff, dark = true,
-}
-
-// Tokyo Night (enkia): indigo night, periwinkle accent
-PALETTE_TOKYO_NIGHT :: Palette{
-	bg = 0x1a1b26ff, panel = 0x1f2335ff, panel2 = 0x292e42ff, text = 0xc0caf5ff, weak = 0x8089b5ff, border = 0x3b4261ff,
-	accent = 0x7aa2f7ff, accent_text = 0x1a1b26ff, good = 0x9ece6aff, warn = 0xe0af68ff, bad = 0xf7768eff, dark = true,
-}
-
-// Catppuccin, Mocha (dark) and Latte (light)
-PALETTE_CATPPUCCIN :: Palette{
-	bg = 0x1e1e2eff, panel = 0x262637ff, panel2 = 0x313244ff, text = 0xcdd6f4ff, weak = 0xa6adc8ff, border = 0x45475aff,
-	accent = 0xcba6f7ff, accent_text = 0x1e1e2eff, good = 0xa6e3a1ff, warn = 0xf9e2afff, bad = 0xf38ba8ff, dark = true,
-}
-
-PALETTE_CATPPUCCIN_LATTE :: Palette{
-	bg = 0xeff1f5ff, panel = 0xf8f9fbff, panel2 = 0xe6e9efff, text = 0x4c4f69ff, weak = 0x6c6f85ff, border = 0xccd0daff,
-	accent = 0x8839efff, accent_text = 0xffffffff, good = 0x40a02bff, warn = 0xdf8e1dff, bad = 0xd20f39ff, dark = false,
-}
-
-// One Dark (Atom)
-PALETTE_ONE_DARK :: Palette{
-	bg = 0x282c34ff, panel = 0x2c313aff, panel2 = 0x353b45ff, text = 0xc8ccd4ff, weak = 0x8a93a2ff, border = 0x3e4451ff,
-	accent = 0x61afefff, accent_text = 0x21252bff, good = 0x98c379ff, warn = 0xe5c07bff, bad = 0xe06c75ff, dark = true,
-}
-
-// Everforest (sainnhe): a green-grey forest, soft contrast
-PALETTE_EVERFOREST :: Palette{
-	bg = 0x2d353bff, panel = 0x343f44ff, panel2 = 0x3d484dff, text = 0xd3c6aaff, weak = 0x9da9a0ff, border = 0x475258ff,
-	accent = 0xa7c080ff, accent_text = 0x2d353bff, good = 0xa7c080ff, warn = 0xdbbc7fff, bad = 0xe67e80ff, dark = true,
-}
-Named_Palette :: struct { name: string, palette: Palette }
-
-// The built-in palettes, for theme pickers and settings (names are what apps store).
-NAMED_PALETTES := [?]Named_Palette{
-	{"Midnight", PALETTE_MIDNIGHT},
-	{"Graphite", PALETTE_GRAPHITE},
-	{"Daylight", PALETTE_DAYLIGHT},
-	{"Nord", PALETTE_NORD},
-	{"Dracula", PALETTE_DRACULA},
-	{"Amber", PALETTE_AMBER},
-	{"Aero", PALETTE_AERO},
-	{"Bootstrap", PALETTE_BOOTSTRAP},
-	{"Gruvbox", PALETTE_GRUVBOX},
-	{"Gruvbox Light", PALETTE_GRUVBOX_LIGHT},
-	{"Naysayer", PALETTE_NAYSAYER},
-	{"Solarized", PALETTE_SOLARIZED},
-	{"Solarized Light", PALETTE_SOLARIZED_LIGHT},
-	{"Monokai", PALETTE_MONOKAI},
-	{"Tokyo Night", PALETTE_TOKYO_NIGHT},
-	{"Catppuccin", PALETTE_CATPPUCCIN},
-	{"Catppuccin Latte", PALETTE_CATPPUCCIN_LATTE},
-	{"One Dark", PALETTE_ONE_DARK},
-	{"Everforest", PALETTE_EVERFOREST},
-}
-
-// The built-in palette of that name (case-insensitive); ok = false when there is none.
-palette_named :: proc(name: string) -> (Palette, bool) {
-	for np in NAMED_PALETTES {
-		if len(np.name) != len(name) { continue }
-		same := true
-		for i in 0 ..< len(name) {
-			a, b := np.name[i], name[i]
-			if a >= 'A' && a <= 'Z' { a += 32 }
-			if b >= 'A' && b <= 'Z' { b += 32 }
-			if a != b { same = false; break }
-		}
-		if same { return np.palette, true }
-	}
-	return {}, false
-}
 // Slots a theme entry can point at.
 @(private)
-Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar }
+Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well }
 
 @(private)
 Entry :: struct { tags: string, slot: Slot, alpha: f32 }
@@ -175,7 +27,7 @@ entries := [?]Entry{
 	// generic names
 	{"background", .Bg, 1}, {"text", .Text, 1}, {"border", .Border, 1}, {"hover", .Hover, 1},
 	{"drop_shadow", .Black, 0.6}, {"selection", .Accent, 0.35}, {"selection text", .Text, 1}, {"cursor", .Text, 1}, {"focus border", .Accent, 1},
-	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0},
+	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
 	// variants
@@ -237,12 +89,19 @@ state_entries := [?]Entry{
 	{"hover_fill", .Hover, 0.07}, {"press_fill", .Hover, 0.12}, {"hover_border", .Hover, 0},
 }
 
+// The well of a palette that names none: its page this much toward black.
+@(private) WELL_DARKEN :: 0.35
+
 @(private)
 slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	switch s {
 	case .Bg: return p.bg
 	case .Bg_Solid: return p.bg | 0xff   // inputs stay opaque on translucent palettes
 	case .Bar: return p.bar != 0 ? p.bar : p.panel
+	case .Well:
+		if p.well != 0 { return p.well }
+		w := draw.mix(draw.hex(p.bg | 0xff), {0, 0, 0, 1}, WELL_DARKEN)
+		return u32(w.r * 255) << 24 | u32(w.g * 255) << 16 | u32(w.b * 255) << 8 | 0xff
 	case .Panel: return p.panel
 	case .Panel2: return p.panel2
 	case .Text: return p.text
@@ -286,7 +145,9 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 		k := t.palette_at + len(entries) + i
 		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
 	}
-	if t.finish != p.finish { t.finish = p.finish; changed = true }
+	// (the machined reliefs are made for the dark: a light palette is flat)
+	finish := p.finish == .Machined && !p.dark ? Finish.Flat : p.finish
+	if t.finish != finish { t.finish = finish; changed = true }
 	if changed { t.serial += 1 }
 }
 
