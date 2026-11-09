@@ -43,3 +43,4 @@ src/ui/list.odin strings.has_prefix(strings.to_lower(label[  # user text: a list
 src/ui/list.odin utf8.encode_rune(unicode.to_lower(r))  # user text: a list's type-ahead
 src/ui/popups.odin want := unicode.to_lower(e.text)  # user text: a menu's type-ahead (the letter typed)
 src/ui/popups.odin return unicode.to_lower(r)  # user text: a menu's type-ahead (an item's first letter)
+src/prefs_page/prefs_page.odin strings.to_upper(heading  # display text: a page's title above its matches, in capitals
