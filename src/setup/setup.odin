@@ -25,15 +25,26 @@ Config :: struct {
 	install_folder: string,          // the install folder's name beside the default ("": the desktop package's default)
 	icons:          []desktop.Icon,  // Linux: the icons of the menu entry (Windows uses the executable's own)
 	note:           string,          // a line under the version in the dialog ("": none)
-	// the program's own parts of an install, set on the options before they are written: the start with the session, the
-	// PATH and its console launcher...
-	prepare:        proc(o: ^desktop.Options, user: rawptr),
+	// The program's own options of an install, shown as boxes in the dialog (the PATH, a browser's registration...): their
+	// first values. What the user ticks is given to `prepare`, in this order.
+	choices:        []Choice,
+	// The program's own parts of the options, set before anything is read or written, the install folder known: the start
+	// with the session, the PATH and its console launcher, the places of a test (desktop.roots_from_env)... `choices`: the
+	// boxes' values.
+	prepare:        proc(o: ^desktop.Options, choices: []bool, user: rawptr),
+	folder:         bool,            // the dialog lets the user choose the install folder before the first install
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
 	// its buttons, and a close control in its corner (none: the dialog closes from its buttons and Escape).
 	backdrop:       proc(user: rawptr),
 	button:         proc(id, label: string, kind: Button_Kind, em: f32, user: rawptr) -> bool,
 	close:          proc(id: string, em: f32, user: rawptr) -> bool,
+}
+
+// An option of the program's install (Config.choices).
+Choice :: struct {
+	label: string,
+	on:    bool,
 }
 
 // What a button of the dialog does: Normal, Accent (what installs or opens), Danger (Uninstall).
@@ -78,18 +89,25 @@ state_of :: proc(f: Facts) -> State {
 
 // The options of the program's integration, its install folder set: the one the system recorded (Windows), else
 // Config.install_folder beside the default. `recorded`: the system has a record of it.
-options :: proc(c: Config) -> (o: desktop.Options, recorded: bool) {
+options :: proc(c: Config, choices: []bool = nil) -> (o: desktop.Options, recorded: bool) {
 	o = desktop.options_make(c.identity)
 	o.icons = c.icons
 	default := desktop.default_install_dir(&o)
-	if found := desktop.install_target(&o); found != "" && !desktop.same_path(found, default) { o.install_dir = found; return o, true }
-	if default != "" && c.install_folder != "" { o.install_dir = join({process.parent_dir(default), c.install_folder}) } else { o.install_dir = default }
-	return o, false
+	if found := desktop.install_target(&o); found != "" && !desktop.same_path(found, default) {
+		o.install_dir, recorded = found, true
+	} else if default != "" && c.install_folder != "" {
+		o.install_dir = join({process.parent_dir(default), c.install_folder})
+	} else {
+		o.install_dir = default
+	}
+	// (last: the program sees the folder, and may put every place elsewhere: a test's)
+	if c.prepare != nil { c.prepare(&o, choices_or_first(c, choices), c.user) }
+	return
 }
 
 // The state of the install, as the disk and the system say it (strings in temp memory).
-facts :: proc(c: Config) -> (f: Facts) {
-	o, recorded := options(c)
+facts :: proc(c: Config, choices: []bool = nil) -> (f: Facts) {
+	o, recorded := options(c, choices)
 	f.running = process.executable_path()
 	f.dir = o.install_dir
 	info := desktop.installed_info(&o, f.dir, context.temp_allocator)
@@ -109,7 +127,8 @@ facts :: proc(c: Config) -> (f: Facts) {
 		f.record = recorded
 	} else {
 		icons := s.parts[.Icons]
-		f.record = recorded || icons.present || len(c.icons) == 0
+		// (a program with no icons has nothing of a record to install: complete when it is there, no leftover when not)
+		f.record = recorded || icons.present || (len(c.icons) == 0 && f.exe_there)
 	}
 	f.state = state_of(f)
 	f.nixos = desktop.is_nixos()
@@ -120,8 +139,13 @@ facts :: proc(c: Config) -> (f: Facts) {
 
 // Copies this program into the install folder (unless it runs from there), writes its launchers, the program's own parts
 // and the system's record. The installed program (temp memory), or why not.
-install :: proc(c: Config, desktop_shortcut: bool) -> (ok: bool, exe_or_why: string) {
-	o, _ := options(c)
+// `choices`: the program's options (nil: their first values); `folder`: another install folder than the default ("").
+install :: proc(c: Config, desktop_shortcut: bool, choices: []bool = nil, folder := "") -> (ok: bool, exe_or_why: string) {
+	o, _ := options(c, choices)
+	if folder != "" {
+		if why := desktop.check_install_dir(folder, c.identity.name, probe = true); why != "" { return false, why }
+		o.install_dir = folder
+	}
 	if o.install_dir == "" { return false, "the install folder is unknown" }
 	exe_name := desktop.exe_name_of(o.identity)
 	plan := desktop.Install_Plan{
@@ -131,7 +155,6 @@ install :: proc(c: Config, desktop_shortcut: bool) -> (ok: bool, exe_or_why: str
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
 	o.exe = join({o.install_dir, exe_name})
 	o.desktop_shortcut = desktop_shortcut
-	if c.prepare != nil { c.prepare(&o, c.user) }
 	if r := desktop.install(&o); r.error != .None { return false, failure(r) }
 	if r := desktop.record_install(&o, o.install_dir, c.version); r.error != .None { return false, failure(r) }
 	return true, o.exe
@@ -140,10 +163,9 @@ install :: proc(c: Config, desktop_shortcut: bool) -> (ok: bool, exe_or_why: str
 // Removes the launchers and parts (ours only), the system's record and the installed files. The files of the copy that
 // runs (Windows: they cannot be deleted while it runs) are in `leftovers` (heap, the caller's): remove_later deletes them
 // once this process has ended.
-uninstall :: proc(c: Config) -> (ok: bool, leftovers: [dynamic]string, why: string) {
-	o, _ := options(c)
+uninstall :: proc(c: Config, choices: []bool = nil) -> (ok: bool, leftovers: [dynamic]string, why: string) {
+	o, _ := options(c, choices)   // (the program's parts are taken away too)
 	o.exe = join({o.install_dir, desktop.exe_name_of(o.identity)})
-	if c.prepare != nil { c.prepare(&o, c.user) }   // (its parts are taken away too)
 	ur := desktop.uninstall(&o, process.executable_path(), context.temp_allocator)
 	if len(ur.leftovers) > 0 {
 		leftovers = make([dynamic]string)
@@ -188,6 +210,20 @@ version_older :: proc(a, b: string) -> bool {
 // An older copy is installed and this one can replace it.
 is_upgrade :: proc(f: Facts, version: string) -> bool {
 	return f.state == .Other_Copy && version_older(f.version, version)
+}
+
+// A newer copy is installed: replacing it with this one goes back.
+is_downgrade :: proc(f: Facts, version: string) -> bool {
+	return f.state == .Other_Copy && version_older(version, f.version)
+}
+
+// The values of the program's options: those given, else their first ones (temp memory).
+@(private)
+choices_or_first :: proc(c: Config, choices: []bool) -> []bool {
+	if len(choices) == len(c.choices) { return choices }
+	out := make([]bool, len(c.choices), context.temp_allocator)
+	for x, i in c.choices { out[i] = x.on }
+	return out
 }
 
 // What the user answered the dialog, kept by the program between starts (Choice_Text; "" at first).

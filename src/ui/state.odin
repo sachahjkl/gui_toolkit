@@ -166,6 +166,10 @@ window_clipboard_set :: proc(text: string) {
 // frame arena and selects another state under it.
 building :: proc() -> bool { return build_of != nil }
 
+// The state whose build is open on this thread (nil outside a build): what a widget that works on other threads keeps,
+// to post to it (ui.post) when its work ends.
+current_state :: proc() -> ^State { return build_of }
+
 // The time of what a call does: the open build's clock (Build_Params.time_ms), else the state's. What a build compares with
 // its own time (an edit, a toast) takes this.
 @(private)
