@@ -476,7 +476,7 @@ custom_handle :: proc(w: ^Window, cc: Custom_Cursor, scale: f32) -> win.HCURSOR 
 		if v.handle != nil && v.px == px { v.used = cs.clock; return v.handle }
 	}
 	pixels := e.pixels
-	if px != e.size { pixels = cursor_resample(e.pixels, e.size.x, e.size.y, px.x, px.y, context.temp_allocator) }
+	if px != e.size { pixels = rgba_resample(e.pixels, e.size.x, e.size.y, px.x, px.y, context.temp_allocator) }
 	hot := [2]int{int(e.hot.x * f32(px.x) / f32(e.size.x)), int(e.hot.y * f32(px.y) / f32(e.size.y))}
 	h := make_cursor(pixels, px, hot)
 	if h == nil { return nil }
