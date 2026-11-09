@@ -30,7 +30,7 @@ X11_Conn :: struct {
 	// atoms interned once
 	wm_protocols, wm_delete_window, net_wm_name, utf8_string, net_wm_state,
 	net_wm_state_fullscreen, net_wm_state_maximized_horz, net_wm_state_maximized_vert,
-	net_wm_state_hidden, motif_wm_hints, clipboard, primary, targets, wren_selection,
+	net_wm_state_hidden, net_wm_moveresize, motif_wm_hints, clipboard, primary, targets, wren_selection,
 	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager, net_frame_extents,
 	// the rich-clipboard target atoms (clipboard_x11_linux.odin): the MIME types and the protocol atoms
 	mime_text_html, mime_image_png, mime_uri_list, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
@@ -131,6 +131,7 @@ x11_intern_atoms :: proc() {
 	x11c.net_wm_state_maximized_horz = x11_atom("_NET_WM_STATE_MAXIMIZED_HORZ")
 	x11c.net_wm_state_maximized_vert = x11_atom("_NET_WM_STATE_MAXIMIZED_VERT")
 	x11c.net_wm_state_hidden = x11_atom("_NET_WM_STATE_HIDDEN")
+	x11c.net_wm_moveresize = x11_atom("_NET_WM_MOVERESIZE")
 	x11c.motif_wm_hints = x11_atom("_MOTIF_WM_HINTS")
 	x11c.clipboard = x11_atom("CLIPBOARD")
 	x11c.primary = x11_atom("PRIMARY")
@@ -390,6 +391,34 @@ x11_set_fullscreen :: proc(w: ^Window, on: bool) {
 	x11_net_wm_state(w, on, x11c.net_wm_state_fullscreen, 0)
 }
 
+// A left press on the frame of an integrated title bar (frame_linux.odin): the window manager moves or resizes the
+// window (_NET_WM_MOVERESIZE, after the press's implicit grab is let go), a double click on the caption maximizes it.
+// X11 has no window menu: a right click stays the app's. True when it was the frame's.
+@(private)
+x11_frame_press :: proc(w: ^Window, btn: Mouse_Button, pos: [2]f32, root: [2]i16, time: u32) -> bool {
+	if btn != .Left || x11c.net_wm_moveresize == 0 { return false }
+	h := frame_hit(w, pos)
+	if !hit_is_frame(h) { return false }
+	if h == .Caption && caption_double_click(w, pos, time) { toggle_maximize(w); return true }
+	// _NET_WM_MOVERESIZE_SIZE_TOPLEFT 0 .. _SIZE_LEFT 7 clockwise, _MOVE 8
+	direction: u32
+	#partial switch h {
+	case .Top_Left:     direction = 0
+	case .Top:          direction = 1
+	case .Top_Right:    direction = 2
+	case .Right:        direction = 3
+	case .Bottom_Right: direction = 4
+	case .Bottom:       direction = 5
+	case .Bottom_Left:  direction = 6
+	case .Left:         direction = 7
+	case:               direction = 8
+	}
+	if xcb.ungrab_pointer != nil { xcb.ungrab_pointer(x11c.c, time) }
+	// root x, root y, the direction, button 1, a normal application as the source
+	x11_send_root_message(x11c.net_wm_moveresize, x11_state(w).id, {u32(i32(root.x)), u32(i32(root.y)), direction, 1, 1})
+	return true
+}
+
 // _NET_WM_STATE change: a ClientMessage to the root as the EWMH spec requires (action 1 add, 0 remove). A window the
 // window manager does not know yet says it in its property, read when it maps it.
 @(private)
@@ -454,6 +483,20 @@ x11_client_origin :: proc(w: ^Window) -> [2]int {
 	if st == nil { return {} }
 	p, _, _ := x11_translate(st.id, x11c.screen.root, 0, 0)
 	return p
+}
+
+// Whether the window manager draws a frame around the window: _NET_FRAME_EXTENTS says how wide (all zero: none).
+@(private)
+x11_read_frame_extents :: proc(w: ^Window) {
+	st := x11_state(w)
+	if st == nil { return }
+	w.system_frame = false
+	reply := xcb.get_property_reply(x11c.c, xcb.get_property(x11c.c, 0, st.id, x11c.net_frame_extents, XCB_ATOM_CARDINAL, 0, X11_FRAME_EXTENTS_WORDS), nil)
+	if reply == nil { return }
+	defer posix.free(reply)
+	if xcb.get_property_value_length(reply) < X11_FRAME_EXTENTS_WORDS * size_of(u32) { return }
+	e := ([^]u32)(xcb.get_property_value(reply))
+	w.system_frame = e[0] > 0 || e[1] > 0 || e[2] > 0 || e[3] > 0
 }
 
 // The window's outer rectangle: its corner is the frame's (what a move sets, under a window manager), the frame read from
@@ -664,6 +707,13 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 			case X11_BUTTON_BACK:    btn = .Back
 			case X11_BUTTON_FORWARD: btn = .Forward
 			}
+			// (event time at [4], root x and y at [16] and [18])
+			time := u32(b[4]) | u32(b[5]) << 8 | u32(b[6]) << 16 | u32(b[7]) << 24
+			root := [2]i16{i16(u16(b[16]) | u16(b[17]) << 8), i16(u16(b[18]) | u16(b[19]) << 8)}
+			if press && x11_frame_press(w, btn, pos, root, time) {
+				x11_push(w, {kind = .Frame_Press, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
+				break
+			}
 			if button_changes(w, btn, press) {
 				x11_push(w, {kind = press ? .Mouse_Press : .Mouse_Release, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
 			}
@@ -685,6 +735,7 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 		ex := i16(u16(b[24]) | u16(b[25]) << 8)
 		ey := i16(u16(b[26]) | u16(b[27]) << 8)
 		state := u16(b[28]) | u16(b[29]) << 8
+		frame_hover_at(w, {f32(ex), f32(ey)})
 		x11_push(w, {kind = .Mouse_Move, pos = {f32(ex), f32(ey)}, mods = x11_mods(state), buttons = w.buttons_down})
 	case XCB_MAP_NOTIFY:
 		st.map_phase = .Mapped
@@ -741,6 +792,8 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 			if patom == x11c.resource_manager { x11_dpi_changed() }
 		} else if pwin == st.id && patom == x11c.net_wm_state {
 			x11_read_wm_state(w)
+		} else if pwin == st.id && patom == x11c.net_frame_extents {
+			x11_read_frame_extents(w)
 		} else if pstate == 1 {   // Deleted: a requestor consumed an INCR chunk, send the next
 			x11_incr_on_property_delete(pwin, patom)
 		} else if pwin == st.id && st.paste == .Receiving && patom == x11c.wren_selection {

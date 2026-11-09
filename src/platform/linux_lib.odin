@@ -330,6 +330,7 @@ Xcb_Lib :: struct {
 	grab_keyboard:      proc "c" (c: Xcb_Connection, owner_events: u8, window: Xcb_Window, time: u32, pointer_mode, keyboard_mode: u8) -> Xcb_Intern_Atom_Cookie,
 	grab_keyboard_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr,
 	ungrab_keyboard:    proc "c" (c: Xcb_Connection, time: u32) -> Xcb_Void_Cookie,
+	ungrab_pointer:     proc "c" (c: Xcb_Connection, time: u32) -> Xcb_Void_Cookie,
 	translate_coordinates: proc "c" (c: Xcb_Connection, src, dst: Xcb_Window, x, y: i16) -> Xcb_Intern_Atom_Cookie,
 	translate_coordinates_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Intern_Atom_Cookie, e: ^^Xcb_Generic_Error) -> rawptr,
 	set_selection_owner: proc "c" (c: Xcb_Connection, owner: Xcb_Window, selection: Xcb_Atom, time: u32) -> Xcb_Void_Cookie,
@@ -387,6 +388,7 @@ xcb_lib :: proc() -> ^Xcb_Lib {
 		xcb.grab_keyboard      = auto_cast lib_sym(h, "xcb_grab_keyboard")
 		xcb.grab_keyboard_reply = auto_cast lib_sym(h, "xcb_grab_keyboard_reply")
 		xcb.ungrab_keyboard    = auto_cast lib_sym(h, "xcb_ungrab_keyboard")
+		xcb.ungrab_pointer     = auto_cast lib_sym(h, "xcb_ungrab_pointer")
 		xcb.translate_coordinates = auto_cast lib_sym(h, "xcb_translate_coordinates")
 		xcb.translate_coordinates_reply = auto_cast lib_sym(h, "xcb_translate_coordinates_reply")
 		xcb.set_selection_owner = auto_cast lib_sym(h, "xcb_set_selection_owner")

@@ -187,8 +187,8 @@ x11_apply_cursor :: proc(w: ^Window) {
 	x11_cursor_lib()
 	if xc.change_attributes == nil || xc.create_pixmap == nil { return }
 	id: u32
-	c := w.cursor
-	if w.custom_cursor != 0 {
+	c, band := cursor_shown(w)
+	if w.custom_cursor != 0 && !band {
 		c = w.custom_fallback
 		if e := custom_entry(w, w.custom_cursor); e != nil { id = x11_custom_cursor(w, e) }
 	}

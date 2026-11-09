@@ -39,6 +39,11 @@ Native_Window :: struct {
 	stats:        Pump_Stats,
 	clip_seen:    u32,              // clipboard_changed: the count last told, plus one (0: not asked yet)
 	buttons_down: Mouse_Buttons,
+	// the frame of an integrated title bar (frame_linux.odin): the resize band under the pointer, the last caption press
+	frame_hover:  Hit,
+	system_frame: bool,             // the compositor or window manager draws a frame around it (frame_linux.odin)
+	caption_ms:   u32,
+	caption_pos:  [2]f32,
 	// cursor state shared by both backends (cursors_linux.odin)
 	custom_cursors: [dynamic]Custom_Entry,
 	custom_cursor:  Custom_Cursor,
@@ -338,6 +343,11 @@ show_system_menu :: proc(w: ^Window, pos: [2]f32) {
 // Whether a 1-pixel top line should be drawn over an integrated title bar. The compositors draw their own borders, so
 // the toolkit does not need the Windows-10 top-line workaround: always false.
 needs_top_border :: proc(w: ^Window) -> bool { return false }
+
+// Whether the app draws the window's outline: with an integrated title bar a window has no frame unless the system
+// still draws one (system_frame: Wayland server-side decorations or a tiling compositor's border, an X11 window
+// manager's frame). One with none, neither maximized nor full screen, gets a 1-pixel line around it (ui.draw_tree).
+needs_frame_outline :: proc(w: ^Window) -> bool { return w.integrated && !w.offscreen && !w.system_frame && w.show == .Normal }
 
 // Thickness of the resize band along the top of an integrated title bar (physical pixels).
 resize_border :: proc(w: ^Window) -> int { return max(int(RESIZE_BAND_PX * w.dpi_scale), 1) }

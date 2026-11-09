@@ -42,7 +42,7 @@ the executable's file name. On Windows it does nothing: the program declares its
 
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
 `is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `set_chrome_regions`, `show_system_menu`,
-`needs_top_border`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,
+`needs_top_border`, `needs_frame_outline`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,
 `set_offscreen_dpi`, `set_offscreen_active`.
 
 **An offscreen window's machine** (`virtual.odin`) — `virtual_screen_set`, `virtual_screen`: the screen `monitor_size` and `display_info` answer for it; its input comes through `inject_event`, its cursor is `w.cursor`, its clipboard the process's store: nothing of the machine it runs on is read or written.
@@ -85,6 +85,15 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **Decorations.** Windows and KDE (zxdg-decoration) draw a server title bar; **GNOME draws none** — set an integrated
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
   frame as Windows). X11 asks the window manager for no decorations through Motif hints when integrated.
+- **An integrated title bar's frame on Linux** (`frame_linux.odin`). Windows moves, resizes and maximizes a window from
+  its hit test; Wayland and X11 leave that to the client. A left press on the caption becomes the compositor's move
+  (`xdg_toplevel.move`, X11 `_NET_WM_MOVERESIZE`), on a band along any of the four sides its resize, a double click on
+  the caption maximizes or restores, a right click there opens the compositor's window menu (Wayland), and the pointer
+  over a band shows the resize cursor. The app gets an `Event.Frame_Press` instead of the press. Where the window has
+  no frame of the system's, `needs_frame_outline` is true and `ui` draws a 1-pixel outline in the theme's border colour:
+  not when the compositor chose server-side decorations, when it tiles the window (the `tiled_*` states: sway,
+  Hyprland and niri draw their own border), when the X11 window manager reports `_NET_FRAME_EXTENTS`, nor when the
+  window is maximized or full screen. Windows always has the system's.
 - **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is `wp_fractional_scale_v1` with `wp_viewporter`:
   the buffer has the scaled size, the surface the logical one; without them the `wl_output` integer scale. X11 reads `Xft.dpi`.
 - **Translucency.** `set_backdrop` is the Windows acrylic effect; on Linux a window is translucent when it was opened
