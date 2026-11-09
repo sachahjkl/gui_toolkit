@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.127.0] - 2026-11-09
+
+### Added
+- **`setup`: the program's own look, and the Desktop's shortcut on Linux.** `Config.backdrop`, `Config.button` (`Button_Kind`: `Normal`, `Accent`, `Danger`) and `Config.close` let a program draw the dialog's backdrop, its buttons and a close control as its own dialogs do. The dialog asks for a shortcut on the Desktop on Linux too: `desktop` has a `Desktop_Shortcut` part there (a copy of the entry in `xdg_desktop_dir`, executable; another program's file stays). The `setup` package has its tests (the states, the versions, when a start offers the dialog). The dialog can be resized from its edges and its corner (`Dialog.size`, which the program may keep); what it says scrolls when it is small, its buttons stay under it.
+
 ## [0.126.0] - 2026-11-09
 
 ### Added
@@ -2061,6 +2066,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.127.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.127.0
 [0.126.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.126.0
 [0.125.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.125.0
 [0.124.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.1
