@@ -145,6 +145,7 @@ jobs:
           ./build/tk.exe no-such-command *> $null
           if ($bad -ne $LASTEXITCODE -or $bad -eq 0) { Write-Host "an unknown command: tk.com $bad, tk.exe $LASTEXITCODE"; exit 1 }
           if (-not (Select-String -Path build/tk.com -Pattern '(tk console launcher)' -SimpleMatch -Quiet)) { Write-Host 'the mark is not in tk.com'; exit 1 }
+          exit 0   # (the step's code would be the last program's: tk.exe's 2 for the unknown command, on purpose)
 
       # what a test leaves when it fails: the frame, the tree of boxes, a page that differs from its reference image
       - name: Keep what failed tests left
