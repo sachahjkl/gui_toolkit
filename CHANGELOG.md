@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.135.0] - 2026-11-09
+
+### Added
+- **`platform.send_hotkey`**: presses a key combination for whatever window has the keyboard, another program's (a clipboard history pastes into the program it was called from). Windows: `SendInput`; Wayland: a virtual keyboard of the seat (`zwp_virtual_keyboard_v1`); X11: none yet. `keysym_name_of` gives a key's xkb name. See docs/platform.md.
+
 ## [0.134.0] - 2026-11-09
 
 ### Added
@@ -2116,6 +2121,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.135.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.135.0
 [0.134.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.134.0
 [0.133.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.133.0
 [0.132.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.132.0
