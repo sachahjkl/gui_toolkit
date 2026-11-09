@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.107.0] - 2026-11-09
+
+### Added
+- **`png` package**: the one PNG codec of the toolkit. `png.encode(rgba, width, height, .Small | .Fast)` writes straight RGBA8 as a PNG file (`.Small`: the filter of least sum per row and `flate.deflate`; `.Fast`: Sub and `flate.deflate_runs`), `png.decode` reads any PNG (every colour type, bit depth, palette, `tRNS`; 16 bits rounded to 8) as straight RGBA8, `png.rgba8_of` converts any `core:image` picture. `platform.clipboard_image_decode(mime, bytes)` reads a PNG, JPEG or BMP file, `platform.clipboard_pick_mime(offered, wanted)` picks the type to read of another program's offer.
+
+### Changed
+- **One PNG codec everywhere**: `paint.png_encode` / `png_decode`, `cdp.png_encode` / `png_decode`, the screenshots of `devtools`, `testkit/session`'s pictures, the CBDT emoji of `font` and the Windows clipboard use the `png` package. `devtools.png_encode` is removed: `png.encode(rgba, w, h, .Fast)` writes the same file. The Windows clipboard no longer links `vendor:stb/image`, and `platform.png_encode` writes at `.Fast` (a 1400 x 925 picture in 2 ms rather than 90).
+
+### Removed
+- **`platform.png_encode_hook` and `platform.png_decode_hook`**: the toolkit has its own PNG codec on every system (`platform.png_encode` / `png_decode`), so an application has nothing to set.
+
+### Fixed
+- **Linux: pasting another program's image or files**: `platform.clipboard_get_image` read nothing unless the application had set a PNG hook, so an image copied by a screenshot tool, a browser's Copy image or `wl-copy --type image/png` did not paste. It is read now on Wayland and X11 through the toolkit's PNG codec, and an offer of `image/jpeg` or `image/bmp` alone is read too; `clipboard_formats` says `.Image` for them. `clipboard_get_files` also reads GNOME Files' `x-special/gnome-copied-files` when there is no `text/uri-list`. The tray's PNG icon is decoded the same way.
+- **`tk desktop_tests` leaves no compositor running**: a server it starts (and the test program) runs in a process group of its own, and is stopped with its whole group, also on a failure, a time limit or a signal to `tk`. A wrapper such as NixOS's sway (`dbus-run-session`, which runs sway and a session bus beside it) took the signal alone and left sway, swaybg and the bus running, holding the command's output open. Their output goes to files now, the test program's printed when it ends. `a_lost_server_closes_its_windows` stops its second server with its children, so the window hears the compositor go.
+
 ## [0.106.0] - 2026-11-08
 
 ### Added
@@ -1886,6 +1901,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.107.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.107.0
 [0.106.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.106.0
 [0.105.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.105.0
 [0.104.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.104.1
