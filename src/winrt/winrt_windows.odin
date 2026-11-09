@@ -32,7 +32,19 @@ foreign runtimeobject {
 	WindowsGetStringRawBuffer :: proc(s: HSTRING, length: ^u32) -> [^]u16 ---
 }
 
-@(private) RO_INIT_MULTITHREADED :: 1
+foreign import ole32 "system:ole32.lib"
+
+@(default_calling_convention = "system", private)
+foreign ole32 {
+	CoWaitForMultipleHandles :: proc(flags: u32, timeout: u32, count: u32, handles: [^]win.HANDLE, index: ^u32) -> HRESULT ---
+}
+
+@(private) RO_INIT_SINGLETHREADED :: 0
+@(private) RO_INIT_MULTITHREADED  :: 1
+
+// The apartment a thread joins (init). Most APIs work in both; some only in one (the clipboard's: Single, else
+// RO_E_UNSUPPORTED_FROM_MTA). A Single thread must pump its messages (a window's loop, MsgWaitForMultipleObjects).
+Apartment :: enum u8 { Multi, Single }
 
 IID_IUnknown    :: GUID{0x00000000, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
 IID_IAgileObject :: GUID{0x94ea2b94, 0xe9cc, 0x49e0, {0xc0, 0xff, 0xee, 0x64, 0xca, 0x8f, 0x5b, 0x90}}
@@ -53,17 +65,10 @@ vtable :: #force_inline proc(object: rawptr, $T: typeid) -> ^T { return (^^T)(ob
 
 ok :: #force_inline proc(hr: HRESULT) -> bool { return hr >= 0 }
 
-// Joins the thread to the multithreaded apartment (once per thread that calls Windows Runtime APIs). A thread already
-// in the other kind of apartment stays in it: true, the calls work there too.
-init :: proc() -> bool {
-	hr := RoInitialize(RO_INIT_MULTITHREADED)
-	return ok(hr) || hr == RPC_E_CHANGED_MODE
-}
-
-// The same, with what RoInitialize answered (S_OK, S_FALSE: already in it; RPC_E_CHANGED_MODE counts as joined).
-init_result :: proc() -> HRESULT {
-	hr := RoInitialize(RO_INIT_MULTITHREADED)
-	return hr == RPC_E_CHANGED_MODE ? S_OK : hr
+// Joins the thread to an apartment (once per thread that calls Windows Runtime APIs). What RoInitialize answered: S_OK,
+// or S_FALSE when the thread was in it already. A thread in the other kind already: RPC_E_CHANGED_MODE (it stays there).
+init :: proc(apartment := Apartment.Multi) -> HRESULT {
+	return RoInitialize(apartment == .Single ? RO_INIT_SINGLETHREADED : RO_INIT_MULTITHREADED)
 }
 
 // Leaves the apartment (after init, on the same thread, once every object of the thread is released).
@@ -199,7 +204,8 @@ COMPLETION_VTBL := Completion_Vtbl{
 	},
 }
 
-// Waits for the operation `operation` (an IAsyncOperation<T>, whose completion handler's ID is `handler_iid`: see
+// Waits for the operation `operation`. The thread keeps taking the COM calls made to it while it waits
+// (CoWaitForMultipleHandles): a single-threaded apartment's objects stay reachable. (an IAsyncOperation<T>, whose completion handler's ID is `handler_iid`: see
 // async_iids) and writes its result to `result` (a T: an interface pointer or an HSTRING, owned by the caller then).
 // The operation is released. Past `timeout_ms` it is cancelled: E_TIMEOUT. A failed operation gives its error.
 await :: proc(operation: rawptr, handler_iid: GUID, result: rawptr, timeout_ms: u32 = AWAIT_MS) -> HRESULT {
@@ -211,7 +217,9 @@ await :: proc(operation: rawptr, handler_iid: GUID, result: rawptr, timeout_ms: 
 	if c.event == nil { return E_ABORT }
 	op := vtable(operation, IAsyncOperation_Vtbl)
 	if hr := op.put_Completed(operation, c); !ok(hr) { return hr }
-	if win.WaitForSingleObject(c.event, timeout_ms) != win.WAIT_OBJECT_0 {
+	handles := [1]win.HANDLE{c.event}
+	index: u32
+	if !ok(CoWaitForMultipleHandles(0, timeout_ms, 1, &handles[0], &index)) {
 		if info := query(operation, IID_IAsyncInfo); info != nil {
 			vtable(info, IAsyncInfo_Vtbl).Cancel(info)
 			release(info)

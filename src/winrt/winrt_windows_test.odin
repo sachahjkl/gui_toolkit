@@ -18,7 +18,7 @@ IPathIOStatics_Vtbl :: struct {
 // A string goes to an HSTRING and back; an operation is awaited and gives its result; one that fails gives its error.
 @(test)
 an_operation_is_awaited :: proc(t: ^testing.T) {
-	testing.expect(t, init())
+	testing.expect(t, ok(init()))
 	defer uninit()
 
 	h := string_make("héllo, wörld")
@@ -50,4 +50,26 @@ an_operation_is_awaited :: proc(t: ^testing.T) {
 	testing.expect(t, ok(vtable(statics, IPathIOStatics_Vtbl).ReadTextAsync(statics, missing, &op)))
 	hr = await(op, handler, &text)
 	testing.expect(t, !ok(hr), "a file that is not there: an error")
+}
+
+// In a single-threaded apartment too: the wait takes the thread's COM calls.
+@(test)
+an_operation_is_awaited_in_a_single_threaded_apartment :: proc(t: ^testing.T) {
+	testing.expect(t, ok(init(.Single)))
+	defer uninit()
+	statics, hr := factory("Windows.Storage.PathIO", IID_IPathIOStatics)
+	testing.expectf(t, ok(hr), "PathIO's statics: %x", u32(hr))
+	defer release(statics)
+	path := fmt.tprintf("%s\\tk_winrt_sta_%d.txt", os.get_env("TEMP", context.temp_allocator), os.get_pid())
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string("from an STA")) == nil)
+	defer os.remove(path)
+	hpath := string_make(path)
+	defer string_delete(hpath)
+	op: rawptr
+	testing.expect(t, ok(vtable(statics, IPathIOStatics_Vtbl).ReadTextAsync(statics, hpath, &op)))
+	_, handler := async_iids(SIG_STRING)
+	text: HSTRING
+	testing.expect(t, ok(await(op, handler, &text)))
+	testing.expect_value(t, string_read(text, context.temp_allocator), "from an STA")
+	string_delete(text)
 }
