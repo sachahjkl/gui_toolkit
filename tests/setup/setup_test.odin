@@ -101,3 +101,15 @@ escape_dismisses_it_for_this_version :: proc(t: ^testing.T) {
 	testing.expect(t, !app.d.open)
 	testing.expect_value(t, app.event, setup.Event.Dismissed)
 }
+
+// A path is copied by its button (or by a click on it); the button shows a check until the pointer leaves.
+@(test)
+a_path_is_copied :: proc(t: ^testing.T) {
+	app: App
+	defer setup.destroy(&app.d)
+	path := `C:\Users\someone\AppData\Local\Programs\sample\sample.exe`
+	s := start(t, &app, {state = .This_Copy, exe = strings.clone(path), running = strings.clone(path), exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
+	session.click(s, "copy")
+	testing.expect_value(t, ui.window_clipboard_get(), path)
+	testing.expect(t, app.d.copied != "", "the button shows it")
+}
