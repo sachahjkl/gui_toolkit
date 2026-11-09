@@ -37,6 +37,7 @@ Platform and system
   fsx.md              fsx: file helpers
   instance.md         instance: one running copy
   winrt.md            winrt: Windows Runtime APIs
+  setup.md            setup: a program installs itself
   update.md           update: signed updates
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
