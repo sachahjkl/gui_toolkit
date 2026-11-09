@@ -76,6 +76,7 @@ Host :: struct {
 	paced:      bool,             // frames follow the pacer; else each is shown at once. The first window's by default
 	user:       rawptr,
 	background: draw.Color,       // what the frame is cleared to
+	partial_redraw: bool,         // each frame redraws only what changed in the interface (ui.set_partial_redraw); read at every frame
 	settle:     int,              // frames still owed, whatever else asks for one (what a change set off settles)
 	after_input: int,             // frames owed after an event
 
@@ -284,6 +285,7 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	render.frame_begin(r, h.background)
+	ui.set_partial_redraw(&h.state, h.partial_redraw)
 	ui.draw_tree(&h.state, &sh.dc)
 	draw.end_frame(&sh.dc)
 	t_present := time.tick_now()

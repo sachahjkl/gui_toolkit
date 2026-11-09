@@ -589,3 +589,40 @@ or the region will clip the fringe. Correctness is checked by `draw.set_damage_v
 `TOOLKIT_DAMAGE_VERIFY=1`): every frame with a region is rendered in full too and the first differing pixel is reported;
 `render.damage_verify_differences` counts the frames that differed.
 `draw.damage_stats(dc)` returns the rectangles added and kept and the pixels covered, for diagnostics.
+
+### Automatic damage
+
+A program that does not want to track its changes lets `draw` find them (`src/draw/damage_auto.odin`). It labels what it
+draws with spans, and keeps one `draw.Damage_Memory` per window:
+
+```odin
+draw.begin_frame(dc, size)
+draw.damage_auto(dc, &memory)             // compare this frame with the last one at end_frame
+draw.damage_span_begin(dc, id)            // what is drawn from here belongs to span `id` (spans nest)
+... draw ...
+draw.damage_span_end(dc)
+draw.end_frame(dc)                        // the region is built here, then the frame is submitted
+draw.damage_memory_destroy(&memory)       // at the end of the window
+```
+
+At `end_frame`, each span is reduced to a digest: a hash of what decides its pixels (each instance with its transform, clip
+shape and gradient resolved, the batch scissor, the textures with `render.texture_version`, the layer it is drawn into, the
+filter and mask steps) and the screen rectangle its instances can reach (cut by the scissor and the layers around it; all of a
+layer whose filters spread it). A span whose digest changed is damaged where it was and where it is, a new span where it is, a
+gone span where it was. Content outside every span is span 0. A region begun by hand (`damage_begin`, `damage`) is kept and
+added to. Nothing happens while partial redraw is off; the memory then forgets its frame.
+
+These frames are damaged whole (`draw.Damage_Auto_Stats.whole`, a `draw.Damage_Whole`): the first one, another size, other
+font settings or another device, `draw.damage_whole(dc)`, a frame that copies a target (a backdrop, a blend mode), an
+offscreen layer or a plane (their texels are not the screen's), and spans drawn in another order (a box raised above
+another). The renderer damages the whole frame itself when the clear colour, the blend space, the text or corner settings
+change (docs/webgpu.md "Partial redraw").
+
+A custom draw needs nothing: what it draws is in the digest. A span whose pixels change while no instance does (a texture
+written outside the renderer, a shader reading what it is not given) calls `draw.damage_volatile(dc)`: it is redrawn every
+frame. A replayed picture (`draw.replay`) is always redrawn where it lands: its content is not compared.
+`draw.damage_memory_reset(&memory)` makes the next frame whole. `memory.stats` says how many spans drew, how many were
+damaged, and why a frame was whole.
+
+The `ui` package uses this for its whole tree: `ui.set_partial_redraw(&state, true)` (or `Host.partial_redraw` in `host`),
+each box a span keyed by its key, `ui.damage_stats(&state)` for the counters.

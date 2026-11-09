@@ -375,6 +375,9 @@ State :: struct {
 	last_click_key:  Key,
 	last_click_ms:   f64,
 	inspected:    Key,               // set_inspected: the box lit over everything
+	partial_redraw: bool,            // set_partial_redraw: each frame redraws only what changed (draw_tree)
+	partial_redraw_set: bool,        // draw_tree turned the renderer's partial redraw on: off again when the state is
+	damage:       draw.Damage_Memory, // what each box drew last frame (draw.damage_auto)
 	scrollbar_autohide: bool,        // set_scrollbar_autohide
 	edits:        map[Key]Box_Edit,  // box_edit: what a tool imposes on boxes, build after build
 	focus_key:    Key,

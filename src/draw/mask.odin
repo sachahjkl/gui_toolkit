@@ -64,6 +64,7 @@ mask_layer :: proc(c: ^Context, mode: Mask_Mode, op: Mask_Op) {
 		return
 	}
 	append(&c.layers, render.Layer{tex = tex, origin = content.origin, size = content.size, space = .Srgb})
+	layer_reach_add(c, ol.id, true, false, {content.origin, content.origin + {f32(content.size.x), f32(content.size.y)}})
 	ol.mask_draw, ol.mask = .Layer, len(c.layers)
 	ol.mask_mode, ol.mask_op = mode, op
 	add_op(c, render.Op{kind = .Clear, dst = tex})

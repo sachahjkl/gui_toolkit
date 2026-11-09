@@ -111,6 +111,8 @@ STEPS := []Step{
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
+	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
+	{name = "partial_redraw", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},

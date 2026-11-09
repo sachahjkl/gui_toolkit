@@ -1,6 +1,8 @@
 package render
 
 import "core:fmt"
+import "core:hash"
+import "core:mem"
 import "core:os"
 import "core:sync"
 import "vendor:directx/d3d11"
@@ -64,6 +66,9 @@ Damage_State :: struct {
 	px_raster:   int,             // pixels inside the region (what partial rendering rasterized)
 	px_full:     int,             // pixels of the whole frame (what a full frame would rasterize)
 	verify_differences: int,      // frames render.damage.verify found different (damage_verify_differences)
+	frame_clear:  [4]f32,         // what frame_begin was given (damage_environment)
+	environment:  u64,            // damage_environment of the last frame with a region: another one damages the whole frame
+	have_environment: bool,
 	// Direct3D 11 (damage_d3d.odin; WebGPU keeps its own in Wgpu_State). One window's, so it goes with the state in surface_use.
 	target:       ^d3d11.ITexture2D,          // the kept target: what the next region starts from
 	target_rtv:   ^d3d11.IRenderTargetView,
@@ -126,6 +131,10 @@ damage_scroll :: proc(r: ^Renderer, rect: Damage_Rect, dx, dy: i32) {
 	damage_add(r, nr)
 	damage_add(r, moved)
 }
+
+// Whether a region is being built for this frame (damage_begin was called and frame_submit has not run yet): a second
+// source of damage adds to it instead of beginning another one.
+damage_building :: proc(r: ^Renderer) -> bool { return r.damage.building }
 
 // The damage of this frame: how many rectangles were added, how many remain after fusion, the pixels the region covers
 // and the pixels of the whole frame, and whether a region is in effect. For wren ctl stats / render.damage.*.
@@ -234,10 +243,16 @@ damage_frame_reads_itself :: proc(f: Frame_Data) -> bool {
 // At frame_submit: whether a region was built this frame, and its counters. False: the frame is whole (no damage tracking,
 // mode Off). The backend then decides whether the kept target allows a partial frame: have_region says it did.
 @(private)
-damage_resolve :: proc(r: ^Renderer) -> bool {
+damage_resolve :: proc(r: ^Renderer, f: Frame_Data) -> bool {
 	d := &r.damage
 	d.have_region = false
 	if d.mode != .On || !d.building { return false }
+	// a setting that changes every pixel, while no instance changes, makes the whole frame (the region's owner cannot see it)
+	env := damage_environment(r, f)
+	if !d.side && (!d.have_environment || env != d.environment) {
+		if d.have_environment { damage_add(r, {0, 0, i32(r.size.x), i32(r.size.y)}) }
+		d.environment, d.have_environment = env, true
+	}
 	d.building = false
 	// the environment flag mirrors the pref, read once: render.damage.verify
 	damage_verify_env(d)
@@ -246,6 +261,30 @@ damage_resolve :: proc(r: ^Renderer) -> bool {
 	for i in 0 ..< d.count { px += rect_area(d.rects[i]) }
 	d.px_raster = px
 	return true
+}
+
+// What shapes every pixel of a frame besides its instances: the size, the clear colour, the blend space, how text, corners and
+// filters are drawn, the device. A change of one of them changes pixels that no region marks.
+@(private)
+damage_environment :: proc(r: ^Renderer, f: Frame_Data) -> u64 {
+	Environment :: struct {
+		size:        [2]int,
+		clear:       [4]f32,
+		space:       Blend_Space,
+		space_epoch: u64,
+		text:        Text_Rendering,
+		corners:     f32,
+		blur_limit:  f32,
+		filters:     Target_Format,
+		device:      u64,
+		transparent: bool,
+		subpixel:    bool,
+	}
+	e: Environment   // (zeroed whole: the padding is hashed too)
+	e.size, e.clear, e.space, e.space_epoch, e.text = r.size, r.damage.frame_clear, r.space, r.space_epoch, r.text
+	e.corners, e.blur_limit, e.filters, e.device = r.corner_smoothing, r.blur_sigma_limit, r.filter_format, r.device_generation
+	e.transparent, e.subpixel = r.transparent, f.subpixel
+	return hash.fnv64a(mem.ptr_to_bytes(&e))
 }
 
 @(private)

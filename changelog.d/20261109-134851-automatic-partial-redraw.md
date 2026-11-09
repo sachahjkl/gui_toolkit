@@ -1,0 +1,3 @@
+type: Added
+
+**Automatic partial redraw**: `ui.set_partial_redraw` (or `Host.partial_redraw` in `host`) redraws only the boxes whose drawing changed since the last frame, with no rectangle marked by hand; an idle frame redraws nothing, a caret blink or a hover a small rectangle, custom draws included. Underneath, `draw.damage_auto` with `draw.damage_span_begin` / `damage_span_end` compares a digest of what each span draws (`draw.Damage_Memory`, `damage_volatile`, `damage_whole`, `ui.damage_stats`); `render.texture_version` and `render.damage_building` are new, and a frame with a region is whole when the clear colour, blend space, text or corner settings change.

@@ -163,6 +163,7 @@ push_plane :: proc(c: ^Context, bounds: Rect, raster_scale: f32, fx: Plane_Fx = 
 		return true
 	}
 	append(&c.layers, render.Layer{tex = tex, origin = {0, 0}, size = {w, h}, space = space})
+	layer_reach_add(c, c.target, false, false, {})   // (drawn through a homography: damage_auto makes the frame whole)
 	op.id = len(c.layers)
 	op.pl.img = render.Image_Ref{tex = tex, origin = {}, scale = 1, size = {w, h}, space = space}
 	add_op(c, render.Op{kind = .Clear, dst = tex})

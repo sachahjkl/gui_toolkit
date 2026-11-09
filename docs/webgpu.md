@@ -119,6 +119,12 @@ tests): each frame is drawn whole on the side, the tiles that differ from the la
 frame must come out the same to the byte. `render.destroy` prints the counts and ends the program with exit code 1 on a
 difference.
 
+What shapes every pixel besides the instances damages the whole frame by itself: a frame with a region whose size, clear
+colour, blend space, text rendering, corner smoothing, filter settings, transparency, subpixel text or device differ from the
+last frame with a region is a whole region (`damage_environment`). A second source of damage checks `damage_building(r)`
+and adds to the region open instead of beginning another one. `texture_version(r, t)` changes at each creation, upload,
+canvas drawing or video frame of a texture: automatic damage (docs/draw.md "Automatic damage") compares it.
+
 Counters for diagnostics: `damage_stats(r)` returns the rectangles added and kept, the pixels the
 region covers and the pixels of the whole frame, and whether a region is in effect.
 

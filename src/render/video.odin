@@ -59,6 +59,7 @@ create_video_target :: proc(r: ^Renderer, w, h: int) -> Texture {
 // Converts `p` into `dst` (a video target of video_target_size(p)). false: the picture could not be used (it stays as it
 // was).
 video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool {
+	texture_written(r, dst)
 	when USE_WGPU { return wgpu_video_convert(r, dst, p) } else { return d3d_video_convert(r, dst, p) }
 }
 

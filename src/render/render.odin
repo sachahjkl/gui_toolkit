@@ -382,6 +382,7 @@ Texture_Data :: struct {
 	wformat: wgpu.TextureFormat,
 	mip_count: int,
 	canvas: u8,           // RGBA, canvas.odin: 0 not a canvas texture, else a CANVAS_TEX_* (see canvas_texture_objects)
+	version: u64,         // texture_version: a stamp of the renderer's, new at creation and at each write of its texels
 }
 
 // All that is one window's: a Renderer has the one it draws to, a Surface one set aside, and surface_use exchanges the
@@ -496,6 +497,7 @@ Renderer :: struct {
 	first_present_noted: bool,           // (the program's first, whichever window: a trace of its start)
 	teardown_wait_ms: int,               // set_teardown_wait
 	space_epoch: u64,                    // bumps at each set_blend_space
+	texture_stamp: u64,                  // the last texture_version given (texture_written)
 }
 
 blend_space :: proc(r: ^Renderer) -> Blend_Space { return r.space }
@@ -568,13 +570,33 @@ set_teardown_wait :: proc(r: ^Renderer, ms: int) { r.teardown_wait_ms = max(ms, 
 
 @(private)
 add_texture :: proc(r: ^Renderer, td: Texture_Data) -> Texture {
+	t: Texture
 	if n := len(r.free_textures); n > 0 {
-		t := pop(&r.free_textures)
+		t = pop(&r.free_textures)
 		r.textures[int(t)] = td
-		return t
+	} else {
+		append(&r.textures, td)
+		t = Texture(len(r.textures) - 1)
 	}
-	append(&r.textures, td)
-	return Texture(len(r.textures) - 1)
+	texture_written(r, t)   // (a slot used again is another texture: what was drawn of the old one is not this one)
+	return t
+}
+
+// A stamp that changes whenever the texels of `t` may have changed: at its creation and at each upload, canvas drawing or video
+// frame into it. Automatic partial redraw (draw.damage_auto) compares it from one frame to the next: the same instance drawing
+// a texture written since shows other pixels. Render targets are written by frames, which their users follow: their stamp
+// changes only when they are made. 0: no such texture.
+texture_version :: proc(r: ^Renderer, t: Texture) -> u64 {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return 0 }
+	return r.textures[int(t)].version
+}
+
+// The texels of `t` changed (an upload, a canvas submit, a video frame): a new texture_version.
+@(private)
+texture_written :: proc(r: ^Renderer, t: Texture) {
+	if int(t) <= 0 || int(t) >= len(r.textures) { return }
+	r.texture_stamp += 1
+	r.textures[int(t)].version = r.texture_stamp
 }
 
 // Size in texels (0, 0 for an invalid or destroyed texture).

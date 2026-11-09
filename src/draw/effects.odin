@@ -277,6 +277,7 @@ open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, kind: Layer_Kin
 	}
 	ol.region = Rect{{x0, y0}, {x1, y1}}
 	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}, space = space})
+	layer_reach_add(c, c.target, true, ol.filters[1] > ol.filters[0], ol.region)
 	ol.id = len(c.layers)
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)
@@ -364,6 +365,11 @@ composite_layer :: proc(c: ^Context, ol: Open_Layer, f: Filtered) {
 	// (a color glyph still being drawn is missing from the pixels: they are not kept, or the glyph would never come into them)
 	fresh := c.glyphs_pending == ol.pending0
 	kept := fresh && ol.cache.store && !ol.cache.result && cache_store(c, ol.cache, f.img, f.full, ol.region)
+	if ol.id > 0 && ol.id <= len(c.layer_reach) {
+		// where its filters took its pixels (damage_auto.odin: a change inside it reaches all of that)
+		lr := &c.layer_reach[ol.id - 1]
+		lr.shown = rect_union(lr.shown, {f.img.origin, f.img.origin + {f32(f.full.x), f32(f.full.y)}})
+	}
 	composite(c, f, ol.alpha, ol.blend, kept, fresh && ol.cache.result ? ol.cache : {})
 }
 
