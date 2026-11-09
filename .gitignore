@@ -7,3 +7,4 @@ tools/wgsl2hlsl/target/
 .direnv/
 .pre-commit-config.yaml
 /tk
+/run_tests
