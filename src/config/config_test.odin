@@ -402,3 +402,20 @@ a_file_of_the_other_layer_is_refused :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(problems), 1)
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 6)
 }
+// The first save of a program makes the folder of its file.
+@(test)
+the_first_save_makes_its_folder :: proc(t: ^testing.T) {
+	dir := fmt.tprintf("build/config_test_dirs_%d", os.get_pid())
+	defer os.remove_all(dir)
+	path := fmt.tprintf("%s/a/b/prefs", dir)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	set_from_string(&p, "net.max_conns", "9", .User)
+	testing.expect(t, save_user(&p, path))
+	q := prefs_make()
+	defer prefs_destroy(&q)
+	register(&q, DEFS[:])
+	load_file(&q, path, .User)
+	testing.expect_value(t, int_of(&q, "net.max_conns"), 9)
+}

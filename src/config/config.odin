@@ -26,6 +26,7 @@ import "core:math"
 import "core:os"
 import "core:slice"
 import "core:strconv"
+import "core:path/filepath"
 import "core:strings"
 import "../ascii"
 import "../fsx"
@@ -420,7 +421,7 @@ USER_MAGIC :: "wbprefs 1"
 POLICY_MAGIC :: "wbpolicy 1"
 
 // Writes the user's changes (and only those), on the disk when it returns. Atomic: a crash or a failure leaves the previous
-// file intact, and a failure no temporary file.
+// file intact, and a failure no temporary file. Its folder is made when it is not there (the first save of a program).
 save_user :: proc(p: ^Prefs, path: string) -> bool {
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_string(&sb, USER_MAGIC)
@@ -436,6 +437,7 @@ save_user :: proc(p: ^Prefs, path: string) -> bool {
 	for name, pv in p.pending {
 		if pv.has[.User] { fmt.sbprintf(&sb, "%s\t%s\n", name, escape(pv.value[.User])) }
 	}
+	if dir := filepath.dir(path); dir != "" && dir != "." { fsx.make_dirs(dir) }
 	if !fsx.write_atomic(path, transmute([]byte)strings.to_string(sb), flush = true) { return false }
 	p.dirty = false
 	return true
