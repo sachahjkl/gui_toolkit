@@ -118,3 +118,19 @@ a_page_is_shown :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Style") != nil, "the page clicked shows")
 	testing.expect(t, session.find_text(s, "Cache") == nil, "the other no more")
 }
+
+// A preference's line is as tall as its words and its control: a field, with its unit or not, makes it no taller.
+@(test)
+a_line_is_as_tall_as_its_words :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app)
+	em := ui.font_size()
+	for name in ([]string{"set_net.cache", "set_net.max_body"}) {
+		b := session.find(s, name)
+		testing.expectf(t, b != nil, "%s is shown", name)
+		if b == nil { continue }
+		h := b.rect.max.y - b.rect.min.y
+		testing.expectf(t, h < em * 6, "%s: %.0f px tall (an em is %.0f)", name, h, em)
+	}
+}
