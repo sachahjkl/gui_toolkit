@@ -178,6 +178,15 @@ file is chosen by, the picture still made at `size` (Papirus's small icons are m
 
 The theme read and the files found are kept while the data folders and the theme's name are the same.
 
+## A terminal in a folder
+
+`open_terminal(dir)` opens a terminal whose shell starts in `dir` ("Open a terminal here"). False when none can start.
+
+| System | The terminal |
+|---|---|
+| Linux | `$TERMINAL` when it is set, else the first of `xdg-terminal-exec`, foot, kitty, alacritty, wezterm, ghostty, gnome-terminal, kgx, konsole, xfce4-terminal, tilix, terminator, lxterminal, mate-terminal, urxvt, st, xterm found on the `PATH`, started in the folder. |
+| Windows | Windows Terminal (`wt -d <dir>`), else the command prompt started in the folder. |
+
 ## The installed copy
 
 ```odin
