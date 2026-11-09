@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.111.2] - 2026-11-09
+
+### Fixed
+- **Wayland: a wait sleeps through the renderer's own traffic**: the presentation feedback and the FIFO events of the frame just shown, and the ids of the renderer's callbacks, made the connection readable at each refresh, and every wait ended there: a window at rest drew a frame at each refresh. A wait now ends on what is the window's (its input, a repaint asked for), a change of the clipboard, a wake, a bus or the time. `tests/linux_desktop` checks that a wait at rest sleeps its time.
+
 ## [0.111.1] - 2026-11-09
 
 ### Fixed
@@ -1932,6 +1937,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.111.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.2
 [0.111.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.1
 [0.111.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.0
 [0.110.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.110.0
