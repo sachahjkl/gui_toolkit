@@ -174,6 +174,7 @@ hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 
 // Whether `p` is on the box's shape: its rect, or the trapezoid `slant` makes of it.
 box_contains :: proc(b: ^Box, p: Vec2) -> bool {
+	if b.hit_outset > 0 { return contains(Rect{b.rect.min - b.hit_outset, b.rect.max + b.hit_outset}, p) }
 	if b.slant == {} { return contains(b.rect, p) }
 	return platform.slanted_contains({b.rect.min, b.rect.max, b.slant}, p)
 }

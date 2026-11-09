@@ -512,6 +512,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.custom_user = nil
 	b.measure_y = nil
 	b.slant = {}
+	b.hit_outset = 0
 	b.a11y = nil
 	if s.a11y.has_next {
 		b.a11y = new_clone(s.a11y.next, frame_allocator())

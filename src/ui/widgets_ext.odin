@@ -39,8 +39,11 @@ icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
 	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", glyph, parent_box().child_count))
 }
 
+// A horizontal rule across `width`: a line of the border's colour; in the machined finish a groove, a dark line and the
+// lit one under it, both inside the box (the next box, drawn after, would cover a line outside it).
 hline :: proc(width: Size) {
-	next({width = width, height = px(max(1, math.round(scale()))), bg = color("border")})
+	line := max(1, math.round(scale()))
+	next({width = width, height = px(machined() ? 2 * line : line), bg = color("border")})
 	build_box({.Draw_Background, .Groove}, "")
 }
 
