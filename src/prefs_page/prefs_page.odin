@@ -491,7 +491,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^con
 	if number && e.def.unit != "" {
 		ui.spacer(ui.px(em * 0.4))
 		if ui.tags("weak") {
-			ui.next({width = ui.text_size(0), height = ui.pct(1), text_pad = 0, font_size = math.round(em * 0.86)})
+			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * CONTROL_H_EM)), text_pad = 0, font_size = math.round(em * 0.86)})
 			ui.label(fmt.tprintf("%s###unit", e.def.unit))
 		}
 	}
