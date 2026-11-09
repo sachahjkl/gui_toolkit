@@ -30,6 +30,9 @@ if r.finished { save_settings(app) }
   thick and in the accent colour while hot, held or focused from the keyboard. Nothing animates: no frame at rest.
 - `opts.fill` paints the grab area (a pane's colour: the handle looks part of it); `opts.line_at` puts the rule at its
   `Start` or `End` instead of its `Middle`, where it is the edge of the next pane: one line, not two side by side.
+- `opts.flush` makes the handle its rule alone: the panes meet at it, so their own rules and a selected row reach it,
+  with no strip of the handle beside it. It is grabbed as wide as `thickness` all the same: its hit area
+  (`Box.hit_outset`) reaches over the panes' edges, where nothing of theirs is clickable.
 - Result: the signal (`dragging` while held), `changed` (the size changed this frame), `finished` (a drag, a reset or a
   key ended: persist now).
 

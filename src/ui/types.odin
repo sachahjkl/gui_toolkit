@@ -138,6 +138,7 @@ Box :: struct {
 	custom_user: rawptr,
 	measure_y:   proc(b: ^Box) -> f32,   // a .Text height that depends on the width the X pass gave (rich_paragraph)
 	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
+	hit_outset:  f32,              // frame pixels its hit area reaches past its rect on each side: a thin handle grabbed wider than it is drawn (reset each build)
 
 	// colors: targets from the theme, and the animated values actually drawn
 	target_bg, target_border, target_text: Color,

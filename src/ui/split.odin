@@ -27,6 +27,9 @@ Splitter_Options :: struct {
 	no_keyboard:  bool,   // not a Tab stop (a handle the mouse alone moves)
 	fill:         Color,  // the handle's own background (clear: the window shows through it)
 	line_at:      Splitter_Line,   // where its rule is: one line with a pane's own edge, not two lines side by side
+	// the handle is its rule alone: the panes meet at it, with no strip of the handle beside it; it is grabbed as wide
+	// as `thickness` all the same (its hit area reaches over the panes' edges, where nothing of theirs is clickable)
+	flush:        bool,
 }
 
 // Where a splitter's rule is drawn across its handle.
@@ -57,12 +60,14 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	s := gs()
 	unit := opts.unit > 0 ? opts.unit : s.scale
 	grab := opts.thickness > 0 ? opts.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale)
+	line := max(math.round(s.scale), 1)
+	across := opts.flush ? line : grab
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if axis == .X {
-		m.width = px(grab)
+		m.width = px(across)
 		if m.height == nil { m.height = fill() }
 	} else {
-		m.height = px(grab)
+		m.height = px(across)
 		if m.width == nil { m.width = fill() }
 	}
 	cur := axis == .X ? platform.Cursor.Resize_H : platform.Cursor.Resize_V
@@ -71,6 +76,7 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	flags := Box_Flags{.Clickable}
 	if !opts.no_keyboard { flags += {.Focusable} }
 	b := build_box(flags, id)
+	if opts.flush { b.hit_outset = math.ceil((grab - line) * 0.5) }
 	enter := !opts.no_keyboard && s.focus_key == b.key && key_pressed_peek(.Return)   // (signal takes Enter as a click)
 	res.sig = signal(b)
 	lo, hi := splitter_limits(min_size, max_size, opts)

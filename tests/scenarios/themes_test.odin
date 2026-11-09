@@ -273,3 +273,27 @@ a_light_palette_is_drawn_flat :: proc(t: ^testing.T) {
 	ui.apply_palette(&th, p)
 	testing.expect_value(t, th.finish, ui.Finish.Machined)
 }
+
+// A machined rule between two panes keeps its two lines, the dark one and the lit one under it: both are inside its box,
+// which the pane under it, drawn after, does not cover.
+@(test)
+a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) {
+	p := ui.palette_of("Midnight", false)
+	p.finish = .Machined
+	s := session.start(t, {size = MACHINED_WINDOW, palette = p, build = proc(s: ^session.Session) {
+		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(200), height = ui.px(120), axis = .Y})
+		if ui.column(id = "###panes") {
+			ui.next({width = ui.fill(), height = ui.px(40), bg = {0.1, 0.1, 0.1, 1}})
+			ui.build_box({.Draw_Background}, "###above")
+			ui.hline(ui.fill())
+			ui.next({width = ui.fill(), height = ui.fill(), bg = {0.1, 0.1, 0.1, 1}})
+			ui.build_box({.Draw_Background}, "###below")
+		}
+	}})
+	below := session.get(s, "below")
+	testing.expect_value(t, int(below.rect.min.y), 42)   // (the rule takes two lines)
+	img := session.capture(s)
+	dark, lit, pane := session.pixel(img, 100, 40), session.pixel(img, 100, 41), session.pixel(img, 100, 50)
+	testing.expectf(t, int(lit.r) > int(dark.r), "two lines: the dark %v, the lit %v", dark, lit)
+	testing.expectf(t, !session.near(lit, pane, 2), "the lit line %v is not under the pane %v", lit, pane)
+}

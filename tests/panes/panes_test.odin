@@ -348,3 +348,28 @@ splitter_fill_and_rule_at_the_end :: proc(t: ^testing.T) {
 	testing.expect(t, at(px, last, y) != [3]u8{255, 0, 0}, "the rule on the last column")
 	testing.expect_value(t, at(px, last - 1, y), [3]u8{255, 0, 0})
 }
+
+// A flush handle is its rule alone: the panes meet at it, and it is grabbed as wide as a usual handle all the same, over
+// the panes' edges.
+@(test)
+a_flush_splitter_is_its_rule_and_grabbed_wider :: proc(t: ^testing.T) {
+	f := setup(t)
+	if f == nil { return }
+	defer teardown(f)
+	f.opts = {flush = true}
+	frame(f)
+	frame(f)
+	b := split_box()
+	if !testing.expect(t, b != nil) { return }
+	testing.expect_value(t, b.rect.min.x, 100)
+	testing.expect_value(t, b.rect.max.x - b.rect.min.x, 1)   // (no strip beside the rule)
+	frame(f, {move({98, 50})})   // two pixels into the left pane
+	testing.expect_value(t, ui.cursor(&f.s), platform.Cursor.Resize_H)
+	frame(f, {press({98, 50})})
+	testing.expect(t, f.res.dragging, "the press beside the rule takes the handle")
+	frame(f, {move({138, 50})})
+	testing.expect_value(t, f.size, 140)
+	frame(f, {release({138, 50})})
+	frame(f, {move({110, 50})})   // well into the pane: not the handle
+	testing.expect(t, ui.cursor(&f.s) != platform.Cursor.Resize_H, "beyond its grab, the pane's")
+}
