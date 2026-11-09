@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.118.0] - 2026-11-09
+
+### Added
+- **Automatic partial redraw**: `ui.set_partial_redraw` (or `Host.partial_redraw` in `host`) redraws only the boxes whose drawing changed since the last frame, with no rectangle marked by hand; an idle frame redraws nothing, a caret blink or a hover a small rectangle, custom draws included. Underneath, `draw.damage_auto` with `draw.damage_span_begin` / `damage_span_end` compares a digest of what each span draws (`draw.Damage_Memory`, `damage_volatile`, `damage_whole`, `ui.damage_stats`); `render.texture_version` and `render.damage_building` are new, and a frame with a region is whole when the clear colour, blend space, text or corner settings change. `Toolkit.metrics` (DevTools) reports it: the partial frames, why the others were whole, and the share of pixels drawn.
+
 ## [0.117.0] - 2026-11-09
 
 ### Added
@@ -1986,6 +1991,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.118.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.118.0
 [0.117.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.117.0
 [0.116.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.116.0
 [0.114.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.2
