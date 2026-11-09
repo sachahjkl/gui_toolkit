@@ -77,7 +77,7 @@ wgpu_damage_setup :: proc(r: ^Renderer, region: bool, f: Frame_Data) -> (use_tar
 	// a partial frame is only safe when the target already holds the last frame; otherwise compose a full one now
 	do_partial = use_target && g.damage_ready && !damage_frame_reads_itself(f)
 	r.damage.have_region = do_partial
-	r.damage.skip_present = do_partial && r.damage.count == 0
+	r.damage.skip_present = damage_skips_present(r, do_partial)
 	return
 }
 
