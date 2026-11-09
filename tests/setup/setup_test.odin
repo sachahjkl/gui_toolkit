@@ -188,7 +188,7 @@ the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
 	app.cfg = {identity = desktop.Identity{name = "Sample", slug = "sample", exe_name = "sample", manifest_name = "sample_install.txt"},
 		version = "1.0.0", prepare = scratch_prepare, user = &sc}
 	setup.open(&app.d, app.cfg)
-	session.wait_text(s, "Not installed")
+	session.wait_text(s, "Install Sample")   // (the title the facts give: "not installed" is also in the line of the versions)
 	testing.expect(t, app.d.known)
 	testing.expect(t, app.d.watcher != nil, "the install is watched")
 	// something else puts a program there
