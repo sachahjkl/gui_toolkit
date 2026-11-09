@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.120.0] - 2026-11-09
+
+### Added
+- **`prefs_page`**: a program's settings page from its `config` registry, with no code per preference, in the look of opencode native's settings: the search in a well and the pages with their icons on the left; the page's title and a line per preference on the right (its title and description, a switch, a segmented choice or a list, a slider or a field with its unit, a reset button, a carved line); a search shows what matches in every page. `Options.custom` gives a preference a control of the program's own; `theme_cards` shows the themes as cards in their own colours. `Options.changed` runs after each change, for the program to save and apply it. See docs/prefs_page.md.
+
 ## [0.119.0] - 2026-11-09
 
 ### Added
@@ -1996,6 +2001,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.120.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.120.0
 [0.119.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.119.0
 [0.118.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.118.0
 [0.117.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.117.0
