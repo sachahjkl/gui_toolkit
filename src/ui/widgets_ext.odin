@@ -126,10 +126,18 @@ fit_row_width :: proc() -> bool {
 }
 
 @(private)
-mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
+mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 	em := font_size()
-	fit := fit_row_width()
-	set_next_axis(.X, .Center)
+	fit := fit_row_width() && !wrap
+	if wrap {
+		// as tall as its lines, its mark on the first one
+		s := gs()
+		if !s.has_next { s.next_mod, s.has_next = {}, true }
+		if s.next_mod.height == nil { s.next_mod.height = children_sum() }   // (what else the caller said stays)
+		set_next_axis(.X, .Start)
+	} else {
+		set_next_axis(.X, .Center)
+	}
 	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
 	a11y_default(row_box, {role = radio ? .Radio_Button : .Check_Box, toggled = on ? .True : .False})
 	sig := signal(row_box)
@@ -147,21 +155,27 @@ mark_row :: proc(id, text: string, on, radio: bool) -> Signal {
 		d.radio = radio
 		custom("mark", mark_draw, d)
 		spacer(px(em * 0.6))
-		next({width = fit ? text_size() : fill(), height = pct(1)})
-		build_box({.Draw_Text}, text)
+		if wrap {
+			next({width = fill(), height = text_size()})
+			build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, text)
+		} else {
+			next({width = fit ? text_size() : fill(), height = pct(1)})
+			build_box({.Draw_Text}, text)
+		}
 	}
 	return sig
 }
 
-// Clickable row: animated check box + label. `value` is toggled on click.
-checkbox :: proc(id: string, text: string, value: ^bool) -> Signal {
-	sig := mark_row(id, text, value^, false)
+// Clickable row: animated check box + label. `value` is toggled on click. `wrap`: a label longer than the row goes on to
+// the next lines (the row as tall as they are, the mark on the first) instead of running past it.
+checkbox :: proc(id: string, text: string, value: ^bool, wrap := false) -> Signal {
+	sig := mark_row(id, text, value^, false, wrap)
 	if sig.clicked { value^ = !value^; a11y_state_toggled(sig.box, value^) }
 	return sig
 }
 
-radio :: proc(id: string, text: string, selected: ^int, index: int) -> Signal {
-	sig := mark_row(id, text, selected^ == index, true)
+radio :: proc(id: string, text: string, selected: ^int, index: int, wrap := false) -> Signal {
+	sig := mark_row(id, text, selected^ == index, true, wrap)
 	if sig.clicked { selected^ = index; a11y_state_toggled(sig.box, true) }
 	return sig
 }
