@@ -38,6 +38,14 @@ number: `exit_code` reads it back as a 32-bit signed integer, so `exit(-1)` give
 variables that `extra` sets, followed by `extra` ("NAME=value"). Names compare by ASCII case on Windows and exactly on other
 systems. The per-drive entries of Windows (`=C:=C:\work`) stay.
 
+## Process groups (Linux)
+
+`start_group(command, env, out)` starts a command in a process group of its own (`setsid`). `env` is its whole environment
+(nil: this process's); `out` receives its standard output and error (nil: none). `stop_group(p, wait)` sends SIGTERM to
+the whole group, waits for the leader at most `wait` (default `GROUP_STOP_WAIT`, 3 s), then sends SIGKILL to what is left.
+Use them for a program that runs beside a tool, such as a compositor for tests: a wrapper (NixOS's `sway` is
+`dbus-run-session`) starts the real program as its child, and a signal to the wrapper alone leaves that child running.
+
 ## Hashes
 
 `sha256_hex(data)` and `sha256_file(path)` give the SHA-256 as 64 lower-case hex digits. `sha256_file` returns ok = false
