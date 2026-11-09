@@ -109,6 +109,7 @@ create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
 }
 
 update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
+	texture_written(r, t)
 	when USE_WGPU { wgpu_update_texture_r8(r, t, x, y, w, h, pixels, pitch) } else { d3d_update_texture_r8(r, t, x, y, w, h, pixels, pitch) }
 }
 
@@ -121,6 +122,7 @@ create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
 }
 
 update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
+	texture_written(r, t)
 	when USE_WGPU { wgpu_update_texture_rgba(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_rgba(r, t, x, y, w, h, pixels, stride) }
 }
 
@@ -133,6 +135,7 @@ create_texture_data :: proc(r: ^Renderer, w, h: int, format := Data_Format.RGBA8
 // Uploads a w x h block at (x, y) of a data texture: `pixels` are its texels as they are (4 bytes each for RGBA8, 1 for R8);
 // `stride` = bytes per row (0: tight).
 update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
+	texture_written(r, t)
 	when USE_WGPU { wgpu_update_texture_data(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_data(r, t, x, y, w, h, pixels, stride) }
 }
 
@@ -142,6 +145,7 @@ destroy_texture :: proc(r: ^Renderer, t: Texture) {
 
 frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	r.damage.have_region = false
+	r.damage.frame_clear = clear
 	when DAMAGE_CHECK { r.damage.mode = .On }
 	when USE_WGPU { wgpu_frame_begin(r, clear) } else { d3d_frame_begin(r, clear) }
 }

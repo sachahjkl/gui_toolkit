@@ -7,6 +7,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:sync"
 import "core:time"
+import "../draw"
 import "../font"
 import "../platform"
 
@@ -61,6 +62,7 @@ use :: proc(s: ^State) { current = (^State)(rawptr(s)) }
 destroy :: proc(s: ^State) {
 	box_edits_clear(s)
 	delete(s.edits)
+	draw.damage_memory_destroy(&s.damage)
 	post_destroy(s)   // (first: the threads still posting get false from now on)
 	for _, b in s.boxes { free(b) }
 	for b in s.free_boxes { free(b) }

@@ -17,7 +17,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	// Resolve this frame's damage region (damage.odin, damage_d3d.odin). A frame with a region composes into the kept target,
 	// which is then copied to the frame's own. A partial frame keeps the target's content outside the region; the deferred
 	// clear (frame_begin) is done per rectangle below. A full frame clears the whole target now.
-	region := damage_resolve(r)
+	region := damage_resolve(r, f)
 	composing := region && r.rtv != nil && d3d_damage_ensure_target(r)
 	// (no clear left for it: the mode was turned on after frame_begin, which cleared the frame's own target)
 	partial := composing && r.damage.target_ready && r.damage.have_clear && !damage_frame_reads_itself(f)

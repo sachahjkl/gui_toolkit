@@ -210,7 +210,7 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	g := &r.wg
 	wgpu_lost_poll(r)
 	// resolve this frame's damage region; a partial frame composes into the persistent target (damage_wgpu.odin)
-	region := damage_resolve(r)
+	region := damage_resolve(r, f)
 	// (nothing to draw in a frame of a region still changes the target: it is cleared)
 	if r.lost || (!region && (len(f.batches) == 0 || (len(f.insts) == 0 && len(f.ops) == 0 && len(f.replays) == 0))) { return }
 	if !wgpu_ensure_frame(r) { return }

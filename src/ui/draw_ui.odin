@@ -34,8 +34,31 @@ tuned :: proc(c: Color, over: Maybe(Color) = nil) -> Color {
 	return o
 }
 
+// Partial redraw of the tree: each frame, what every box draws is compared with what it drew the last frame, and only where a
+// box changed, came or went is drawn again (draw.damage_auto: a box is a span keyed by its key). Custom draws are compared by
+// what they draw too. On a renderer that supports it; off by default. host turns it on with Host.partial_redraw.
+set_partial_redraw :: proc(s: ^State, on: bool) { s.partial_redraw = on }
+partial_redraw :: proc(s: ^State) -> bool { return s.partial_redraw }
+
+// What the last frame's partial redraw found: the boxes that drew, those damaged, and why a frame was whole.
+damage_stats :: proc(s: ^State) -> draw.Damage_Auto_Stats { return s.damage.stats }
+
+// Span ids of what draw_tree draws besides the boxes (box keys are hashes: these stand apart from them).
+@(private = "file") SPAN_FRAME_OUTLINE :: 0x6f75_746c_696e_6531
+@(private = "file") SPAN_AUTOSCROLL :: 0x6175_746f_7363_726c
+@(private = "file") SPAN_INSPECTED :: 0x696e_7370_6563_7464
+
 draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	use(s)
+	if s.partial_redraw {
+		draw.set_partial_redraw(dc, true)
+		s.partial_redraw_set = true
+		draw.damage_auto(dc, &s.damage)
+	} else if s.partial_redraw_set {
+		draw.set_partial_redraw(dc, false)
+		s.partial_redraw_set = false
+		draw.damage_memory_reset(&s.damage)
+	}
 	bg := color_from_tags(s, 0, "background")
 	s.space = draw.blend_space(dc)
 	s.backdrop = {bg.r, bg.g, bg.b, 1}
@@ -48,12 +71,18 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	draw_box(s, dc, s.root, s.scale)
 	if s.window != nil && s.root != nil && platform.needs_frame_outline(s.window) {
 		// (a frame of the system's would be there: Linux with an integrated title bar)
+		draw.damage_span_begin(dc, SPAN_FRAME_OUTLINE)
 		draw.rect(dc, s.root.rect, color_from_tags(s, 0, "border"), 0, max(1, math.round(s.scale)))
+		draw.damage_span_end(dc)
 	}
+	draw.damage_span_begin(dc, SPAN_AUTOSCROLL)
 	autoscroll_draw(s, dc)   // the autoscroll anchor marker, over everything (autoscroll_region.odin)
+	draw.damage_span_end(dc)
 	if b := s.boxes[s.inspected]; s.inspected != 0 && box_current(s, b) {
+		draw.damage_span_begin(dc, SPAN_INSPECTED)
 		draw.rect(dc, b.rect, INSPECTED_FILL_COLOR)
 		draw.rect(dc, b.rect, INSPECTED_EDGE_COLOR, 0, 1)
+		draw.damage_span_end(dc)
 	}
 	draw.set_interpolation(dc, interp)
 }
@@ -72,6 +101,9 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 
 @(private)
 draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
+	// what the box draws, its children apart, is compared with its last frame's (set_partial_redraw)
+	draw.damage_span_begin(dc, u64(b.key))
+	defer draw.damage_span_end(dc)
 	r := b.rect
 	radius := .Fixed_Radius in b.flags ? b.radius : b.radius * s.rounding
 	flags := b.flags

@@ -167,6 +167,7 @@ canvas_texture_objects :: proc(r: ^Renderer, td: ^Texture_Data) -> bool {
 // Replaces a w x h block at (x, y) of a canvas texture with premultiplied sRGB-encoded RGBA8 `pixels` (rows of `stride` bytes,
 // 0: w * 4).
 canvas_upload :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) -> bool {
+	texture_written(r, t)
 	when USE_WGPU { return false } else { return d3d_canvas_upload(r, t, x, y, w, h, pixels, stride) }
 }
 
@@ -432,6 +433,7 @@ canvas_stats_reset :: proc(r: ^Renderer) { r.canvas.stats = {} }
 
 // Replays `list` into the canvas texture `target`. false: nothing was drawn (not a canvas, or the device is lost).
 canvas_submit :: proc(r: ^Renderer, target: Texture, list: ^Canvas_List) -> bool {
+	texture_written(r, target)
 	when USE_WGPU { return false } else { return d3d_canvas_submit(r, target, list) }
 }
 
@@ -909,6 +911,7 @@ exec_blur :: proc(x: ^Canvas_Exec, src, dst: Texture, sigma: f32) {
 
 // The whole canvas to one premultiplied color (a new canvas that is opaque black, reset()).
 canvas_clear :: proc(r: ^Renderer, t: Texture, color: [4]f32) {
+	texture_written(r, t)
 	when USE_WGPU { return } else {
 		if int(t) <= 0 || int(t) >= len(r.textures) || r.lost { return }
 		td := &r.textures[int(t)]

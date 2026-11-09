@@ -81,6 +81,12 @@ reads it with `poll_events`); the first frame after the show makes the renderer'
 (`hosts_frame` makes a frame of each). The steps above are all public: a program may make its frames by hand, as
 `examples/fidget` does, or mix both.
 
+**Redraw only what changed.** Set `h.partial_redraw = true` (any time; it is read at every frame): each frame then compares
+what every box draws with the last frame and redraws only where something changed (a hover, a caret, an animation, a toast).
+An idle frame redraws nothing; the window shows the same pixels as with whole frames. A program that makes its frames by hand
+calls `ui.set_partial_redraw(&state, true)` before `ui.draw_tree`; `ui.damage_stats(&state)` says what the last frame
+redrew. How it works and what makes a frame whole: docs/draw.md "Automatic damage".
+
 **A window that resizes without stretching.** An ordinary swap chain (`open_window` and `init_window` with their defaults)
 is scaled to the window by the system: while the window is resized, the last frame is shown stretched until one of the new
 size arrives. Three lines give a composition swap chain whose buffers keep the size of the screen, so that a frame of the old

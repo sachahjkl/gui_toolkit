@@ -176,6 +176,14 @@ Context :: struct {
 	glyphs_pending: u64,                       // color glyphs met that were still being drawn (text.odin glyph_missing)
 	in_frame: bool,                            // between begin_frame and end_frame
 	floor:    Stack_Levels,                    // what the pops stop at: the root, or what the innermost layer or plane opened with
+	// automatic damage (damage_auto.odin): this frame's
+	auto_memory:   ^Damage_Memory,             // damage_auto: the last frame to compare with (nil: no automatic damage)
+	auto_whole:    bool,                       // damage_whole
+	span_stack:    [dynamic]u64,               // the spans open
+	span_cuts:     [dynamic]Span_Cut,          // where what is drawn changes span
+	span_volatile: [dynamic]u64,               // spans redrawn every frame (damage_volatile)
+	layer_reach:   [dynamic]Layer_Reach,       // by layer id - 1: where its content shows
+	target_frames: [dynamic]u64,               // by texture id: the frame that drew into it last as a layer (kept across frames)
 }
 
 // How deep the clip, alpha and transform stacks are. A layer or a plane owns what is pushed above the levels it opened with:
@@ -258,6 +266,7 @@ destroy :: proc(c: ^Context) {
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
 	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.pictures); delete(c.slug_runs)
 	delete(c.apps); delete(c.app_params)
+	delete(c.span_stack); delete(c.span_cuts); delete(c.span_volatile); delete(c.layer_reach); delete(c.target_frames)
 	saved_destroy(&c.saved)
 	slug_gpu_destroy(c)
 	text_destroy(c)
@@ -279,6 +288,8 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
 	clear(&c.open_layers); clear(&c.planes); clear(&c.filter_store); clear(&c.grads); clear(&c.replays)
+	clear(&c.span_stack); clear(&c.span_cuts); clear(&c.span_volatile); clear(&c.layer_reach)
+	c.auto_memory, c.auto_whole = nil, false
 	c.frame_no += 1
 	cache_begin_frame(c)
 	c.raster_scale = 1
@@ -658,6 +669,7 @@ end_frame :: proc(c: ^Context) {
 	for len(c.planes) > 0 { discard_plane(c, pop_plane(c)) }   // unbalanced push_plane: dropped
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
+	if c.auto_memory != nil { damage_auto_finish(c) }   // (every instance is in: the region is built before the frame goes)
 	text_upload(c)
 	slug_upload(c)
 	render.frame_submit(c.renderer, render.Frame_Data{
