@@ -1234,6 +1234,14 @@ peer_handler :: proc(user: rawptr, c: ^dbus.Conn, msg: ^dbus.Message) -> bool {
 		sync.mutex_unlock(&p.mutex)
 		dbus.reply_return(c, msg, "", nil)
 		return true
+	case "GetCapabilities":   // (every server answers it: what it shows; the client asks before its first Notify)
+		w := dbus.body_writer()
+		len_at, content_at := dbus.w_array_begin(&w, 4)
+		dbus.w_string(&w, "actions")
+		dbus.w_string(&w, "body")
+		dbus.w_array_end(&w, len_at, content_at)
+		dbus.reply_return(c, msg, "as", w.buf[:])
+		return true
 	case "Notify":
 		r := dbus.msg_reader(msg)
 		dbus.r_string(&r)
