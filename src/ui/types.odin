@@ -98,6 +98,10 @@ Cross_Align :: enum u8 { Start, Center, End }
 
 Custom_Draw :: proc(box: ^Box, user: rawptr, dc: ^draw.Context)
 
+// A box's corners, in the order of draw.rect_corners' radii.
+Corner :: enum u8 { Top_Left, Bottom_Left, Top_Right, Bottom_Right }
+Corners :: bit_set[Corner; u8]
+
 Box :: struct {
 	// tree (rebuilt every frame)
 	first, last, next, prev, parent: ^Box,
@@ -124,6 +128,7 @@ Box :: struct {
 	text_pad:    f32,
 	text_align:  Text_Align,
 	radius:      f32,
+	square_corners: Corners,     // these corners stay square whatever the radius (a resize grip's corner)
 	squish:      f32,
 	transparency: f32,
 	edge_fade:   [4]f32,         // a .Clip box: its content fades out over these widths at its left, top, right, bottom edges (px)
