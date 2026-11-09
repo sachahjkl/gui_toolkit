@@ -21,7 +21,7 @@ winrt.string_delete(text)
 
 | | |
 |---|---|
-| `init`, `uninit` | the thread joins the multithreaded apartment (a thread already in a single-threaded one stays there) |
+| `init(apartment)`, `uninit` | the thread joins an apartment: `.Multi` (the default) or `.Single` (some APIs, the clipboard's, refuse the other: `RO_E_UNSUPPORTED_FROM_MTA`); a `.Single` thread pumps its messages |
 | `string_make`, `string_read`, `string_delete` | HSTRINGs from and to UTF-8 |
 | `factory`, `activate` | a class's statics or activation factory; a new instance of a class with a default constructor |
 | `vtable(object, T)`, `query`, `release` | an interface's methods; another interface of an object; the end of a reference |
@@ -44,5 +44,6 @@ This part is pure: its tests run on every system and check IDs of the SDK's head
 
 ## Threads
 
-`await` blocks its thread until the operation ends: call it from a thread of the program's own, not from the window's.
+`await` blocks its thread until the operation ends, taking the COM calls made to the thread meanwhile
+(`CoWaitForMultipleHandles`): call it from a thread of the program's own, not from the window's.
 An event handler runs on the thread the source raises the event on: hand the work to the program's threads from there.
