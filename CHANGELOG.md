@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.111.0] - 2026-11-09
+
+### Added
+- **`desktop`: the `Autostart` part**: the program starts with the user's session (`Options.autostart`, with `autostart_arguments`: `--hidden` for a program of the notification area). Linux: an XDG autostart entry (`$XDG_CONFIG_HOME/autostart/<slug>.desktop`, `autostart_dir`, `<prefix>AUTOSTART_DIR`); Windows: the value of the key under `HKCU\...\CurrentVersion\Run`. Status, repair when the arguments change, removal of only what is the program's.
+
 ## [0.110.0] - 2026-11-09
 
 ### Added
@@ -1922,6 +1927,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.111.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.0
 [0.110.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.110.0
 [0.109.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.109.0
 [0.108.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.108.0
