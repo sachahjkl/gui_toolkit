@@ -40,6 +40,7 @@ Native_Window :: struct {
 	dnd:            ^Dnd_State,     // drag and drop (dragdrop_win32.odin), made on first use
 	pointers:       Pointer_State,  // fingers and pens (pointer_win32.odin)
 	trays:          [dynamic]^Tray, // icons of the notification area this window receives (tray_win32.odin)
+	notify:         Notify_State,   // the toasts it showed (notify_windows.odin)
 	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
 	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
 	a11y:           rawptr,         // the accessibility adapter (a11y_accesskit.odin), nil when not compiled in
@@ -83,7 +84,11 @@ MODAL_FRAME_MS :: 16
 @(private) os_build: u32
 
 // Windows 11 (build 22000 or later): rounded corners, Snap Layouts, a frame drawn by the compositor around the window.
-is_windows_11 :: proc() -> bool {
+is_windows_11 :: proc() -> bool { return windows_build() >= WINDOWS_11_FIRST_BUILD }
+
+// The Windows build number (10240: the first Windows 10).
+@(private)
+windows_build :: proc() -> u32 {
 	build := sync.atomic_load(&os_build)
 	if build == 0 {
 		vi := win.OSVERSIONINFOEXW{dwOSVersionInfoSize = size_of(win.OSVERSIONINFOEXW)}
@@ -91,7 +96,7 @@ is_windows_11 :: proc() -> bool {
 		build = max(vi.dwBuildNumber, 1)
 		sync.atomic_store(&os_build, build)
 	}
-	return build >= WINDOWS_11_FIRST_BUILD
+	return build
 }
 
 @(private = "file") WINDOW_CLASS_NAME :: "gui_toolkit_window"
@@ -515,6 +520,7 @@ destroy_window :: proc(w: ^Window) {
 	if w.destroy_hook != nil { w.destroy_hook(w, w.destroy_hook_user) }
 	dnd_destroy(w)   // (revoked while the window exists)
 	tray_destroy_all(w)
+	notify_detach(w)
 	if w.clip_watch { clipboard_watch(w, false) }
 	pointer_state_destroy(&w.pointers)
 	a11y_detach(w)
@@ -833,6 +839,10 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	if w == nil { return win.DefWindowProcW(hwnd, msg, wparam, lparam) }
 	if msg == A11Y_MESSAGE {   // an assistive technology asked for the tree or for an action: the loop makes a frame
 		append(&w.events, Event{kind = .Accessibility, stamp = time.tick_now()})
+		return 0
+	}
+	if msg == NOTIFY_MESSAGE {   // a toast was clicked or went: what its handlers heard on the system's thread
+		notify_window_message(w)
 		return 0
 	}
 	if msg >= win.WM_APP && tray_window_message(w, msg, wparam, lparam) { return 0 }   // (TaskbarCreated is >= 0xC000)

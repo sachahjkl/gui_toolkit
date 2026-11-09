@@ -176,8 +176,12 @@ source side) and **X11 XDND v5** (`dragdrop_x11_linux.odin`: `XdndAware`, the En
 `tray_linux.odin` implements the **StatusNotifierItem** specification over D-Bus: it exports an item object, serves its
 properties (icon as an ARGB pixmap, title, tooltip, menu), registers with the `StatusNotifierWatcher`, and turns the
 host's Activate / SecondaryActivate / ContextMenu into `Tray_Event`s. The menu is a **`com.canonical.dbusmenu`** tree
-(`dbusmenu_linux.odin`: `GetLayout`, `Event`). `tray_notify` calls **`org.freedesktop.Notifications`**; its
-`ActionInvoked` / `NotificationClosed` signals become `Notify_*` events. Same public API as `tray_win32.odin`.
+(`dbusmenu_linux.odin`: `GetLayout`, `Event`). `tray_notify` shows its notification through `notify_linux.odin`;
+the results become `Notify_*` events of the icon. Same public API as `tray_win32.odin`.
+
+`notify_linux.odin` shows system notifications through **`org.freedesktop.Notifications`**: `Notify` with the
+`desktop-entry`, `urgency` and `image-data` hints; `ActionInvoked`, `NotificationClosed` and `ActivationToken` become
+`Notification_*` events of the window ([notifications.md](notifications.md)).
 
 ### Dialogs, shell and live theme
 
