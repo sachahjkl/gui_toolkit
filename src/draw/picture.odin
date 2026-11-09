@@ -319,7 +319,8 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine, compare := false) -> Repla
 	if !invertible { return .Culled }
 	scissor := rect_intersect(c.clips[len(c.clips) - 1].rect, target_rect(c))
 	if rect_empty(scissor) { return .Culled }
-	if b, ok := picture_bounds_l(pic, l); !ok || rect_empty(rect_intersect(rect_pad(b, 1), scissor)) { return .Culled }
+	drawn_at, has_bounds := picture_bounds_l(pic, l)
+	if !has_bounds || rect_empty(rect_intersect(rect_pad(drawn_at, 1), scissor)) { return .Culled }
 	if !picture_upload(c, pic) { return .Culled }
 	base := pic.offsets[.Insts]
 	append(&c.replays, render.Replay{
@@ -341,6 +342,7 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine, compare := false) -> Repla
 		if ident == 0 { ident = 1 }
 	}
 	append(&c.replay_idents, ident)
+	append(&c.replay_bounds, rect_pad(drawn_at, 2))
 	close_batch(c)
 	for b, k in pic.batches {
 		if bb := pic.batch_bounds[k]; bb.slot != max(u32) {

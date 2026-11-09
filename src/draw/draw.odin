@@ -160,6 +160,7 @@ Context :: struct {
 	grads:    [dynamic][4]f32,                 // gradient table of this frame (or of the picture being recorded)
 	replays:  [dynamic]render.Replay,          // pictures drawn this frame
 	replay_idents: [dynamic]u64,               // per replay: what decides its pixels (replay's `compare`), 0: redrawn every frame
+	replay_bounds: [dynamic]Rect,              // per replay: where the picture draws (screen, before the scissor)
 	glyphs:   Glyph_Pages,                     // textures of the font atlas pages (text.odin)
 	slug_runs: [dynamic][2]int,                // instances of KIND_SLUG: [first, count) of `insts` (slug.odin)
 	apps:     [dynamic]render.App_Draw,        // application shader draws of this frame (app_shader.odin)
@@ -265,7 +266,7 @@ destroy :: proc(c: ^Context) {
 	picture_end(c)
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
-	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.replay_idents); delete(c.pictures); delete(c.slug_runs)
+	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.replay_idents); delete(c.replay_bounds); delete(c.pictures); delete(c.slug_runs)
 	delete(c.apps); delete(c.app_params)
 	delete(c.span_stack); delete(c.span_cuts); delete(c.span_volatile); delete(c.layer_reach); delete(c.target_frames)
 	saved_destroy(&c.saved)
@@ -288,7 +289,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	if render.shrink_due(cap(c.insts), len(c.insts), &c.insts_low) { shrink(&c.insts, max(len(c.insts) * 2, render.SHRINK_MIN_ELEMS)) }
 	clear(&c.insts); clear(&c.batches); clear(&c.clips); clear(&c.alphas); clear(&c.xforms)
 	clear(&c.xform_table); clear(&c.clip_table); clear(&c.clip_points); clear(&c.layers); clear(&c.ops)
-	clear(&c.open_layers); clear(&c.planes); clear(&c.filter_store); clear(&c.grads); clear(&c.replays); clear(&c.replay_idents)
+	clear(&c.open_layers); clear(&c.planes); clear(&c.filter_store); clear(&c.grads); clear(&c.replays); clear(&c.replay_idents); clear(&c.replay_bounds)
 	clear(&c.span_stack); clear(&c.span_cuts); clear(&c.span_volatile); clear(&c.layer_reach)
 	c.auto_memory, c.auto_whole = nil, false
 	c.frame_no += 1

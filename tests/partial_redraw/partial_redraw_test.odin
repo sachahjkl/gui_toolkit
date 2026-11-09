@@ -522,3 +522,70 @@ an_offscreen_target_damages_nothing :: proc(t: ^testing.T) {
 	}
 	expect_exact(t, s, "offscreen")
 }
+
+@(private = "file")
+Replayed :: struct {
+	pic:      draw.Picture,
+	slot:     u32,
+	record:   bool,   // record it (again) at the next draw
+	color:    draw.Color,
+	slot_x:   f32,    // where the slot puts its square
+	compare:  bool,
+	dc:       ^draw.Context,
+}
+
+@(private = "file")
+replayed_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	r := (^Replayed)(user)
+	r.dc = dc
+	if r.record {
+		r.record = false
+		draw.picture_begin(dc, &r.pic)
+		draw.rect(dc, {{0, 0}, {120, 40}}, {0.2, 0.2, 0.2, 1}, 4)
+		draw.push_transform(dc, draw.affine_translate({0, 0}))
+		r.slot = draw.current_slot(dc)
+		draw.rect(dc, {{4, 4}, {4 + SQUARE, 4 + SQUARE}}, r.color, 3)
+		draw.pop_transform(dc)
+		draw.picture_end(dc)
+	}
+	draw.picture_set_slot(&r.pic, r.slot, draw.affine_translate({r.slot_x, 0}))
+	_ = draw.replay(dc, &r.pic, draw.affine_translate(b.rect.min), compare = r.compare)
+}
+
+// A picture replayed with `compare` is drawn again only when something of it changed: an idle frame draws nothing, its slot
+// moved or a new recording redraws it. Without, it is redrawn every frame.
+@(test)
+a_compared_replay_redraws_only_when_it_changed :: proc(t: ^testing.T) {
+	r := Replayed{record = true, color = {0.9, 0.3, 0.1, 1}, compare = true}
+	s := session.start(t, {size = WINDOW, user = &r, palette = ui.palette_of("Midnight"), build = proc(s: ^session.Session) {
+		r := (^Replayed)(s.user)
+		ui.next({width = ui.px(200), height = ui.px(60)})
+		b := ui.build_box({}, "###replayed")
+		b.custom, b.custom_user = replayed_draw, r
+	}})
+	defer if r.dc != nil { draw.picture_destroy(r.dc, &r.pic) }
+	ui.set_partial_redraw(s.state, true)
+	draw.set_damage_verify(session.draw_context(s), true)
+	settle(s, 5)
+	for _ in 0 ..< 3 {
+		session.frame(s)
+		px, active := region_px(s)
+		testing.expectf(t, active && px == 0, "an unchanged replay redraws %d px", px)
+	}
+	r.slot_x = 30
+	session.frame(s)
+	px, _ := region_px(s)
+	testing.expectf(t, px > 0 && px < WINDOW.x * WINDOW.y / 4, "the slot moved: %d px", px)
+	session.frame(s)
+	px, _ = region_px(s)
+	testing.expect_value(t, px, 0)
+	r.color, r.record = {0.1, 0.8, 0.3, 1}, true
+	session.frame(s)
+	px, _ = region_px(s)
+	testing.expectf(t, px > 0, "recorded again: %d px", px)
+	r.compare = false
+	session.frame(s)
+	session.frame(s)
+	px, _ = region_px(s)
+	testing.expectf(t, px > 0, "without compare, every frame: %d px", px)
+}
