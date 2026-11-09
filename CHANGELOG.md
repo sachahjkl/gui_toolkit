@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.114.2] - 2026-11-09
+
+### Fixed
+- **A window never shown is in no task bar (Wayland)**: `open_window` makes a surface with no role, and the toplevel is made at the first `show_window`. A program that starts hidden in the notification area was listed in the task bars that show every toplevel (ShojiWM). `set_maximized` and `set_fullscreen` asked before the first show are asked by the new toplevel.
+
 ## [0.115.0] - 2026-11-09
 
 ### Fixed
@@ -1968,6 +1973,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.114.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.2
 [0.115.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.115.0
 [0.114.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.1
 [0.114.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.0
