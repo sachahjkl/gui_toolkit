@@ -175,7 +175,7 @@ Section "Screen"
 EndSection
 `
 
-SWAY_CONF :: "xwayland disable\noutput HEADLESS-1 resolution 1280x1024@60Hz\ndefault_border none\n"
+SWAY_CONF :: "xwayland disable\nfocus_on_window_activation focus\noutput HEADLESS-1 resolution 1280x1024@60Hz\ndefault_border none\n"
 
 run_desktop_tests :: proc(a: ^Args) -> string {
 	only := len(a.positionals) > 0 ? a.positionals[0] : ""

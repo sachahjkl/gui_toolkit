@@ -1618,6 +1618,27 @@ a_reader_of_the_bus_gets_the_whole_tree :: proc(t: ^testing.T) {
 ////////////////////////////////
 // the state of a window
 
+// raise_window gives the keyboard back to a window that lost it: on Wayland through xdg_activation_v1 (the desktop's
+// sway grants it: focus_on_window_activation focus).
+@(test)
+a_raised_window_takes_the_keyboard_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open("raised")
+	testing.expect(t, a != nil)
+	if a == nil { return }
+	defer platform.destroy_window(a)
+	b := open("over it")
+	testing.expect(t, b != nil)
+	if b == nil { return }
+	defer platform.destroy_window(b)
+	for i := 0; i < 100 && !b.focused; i += 1 { pump_for(b, 10) }
+	testing.expect(t, b.focused && !a.focused, "the newest window has the keyboard")
+	platform.raise_window(a)
+	for i := 0; i < 200 && !a.focused; i += 1 { pump_for(a, 10) }
+	testing.expect(t, a.focused && !b.focused, "the raised window has it")
+}
+
 // Before show_window nothing is on the screen.
 @(test)
 a_window_not_shown_is_not_visible :: proc(t: ^testing.T) {

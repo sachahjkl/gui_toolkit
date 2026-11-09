@@ -137,6 +137,7 @@ platform/window_wl_linux.odin keyboard_listener const  # a listener table (passe
 platform/window_wl_linux.odin xdg_surface_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin xdg_toplevel_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin decoration_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin activation_token_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin fractional_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin data_device_listener const  # a listener table (passed by address to libwayland)
 platform/window_x11_linux.odin x11c thread  # this thread's X11 connection: its events, its windows, its selections
@@ -150,6 +151,15 @@ platform/wl_protocol_linux.odin t_ti_surface const  # a protocol table, built on
 platform/wl_protocol_linux.odin wp_cursor_shape_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_cursor_shape_device_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_csm_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_activation_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_activation_token_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xa_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xat_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xat_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xa_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xa_activate const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xat_serial const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xat_surface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_csd_methods const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin t_csm_get_pointer const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_fractional_manager_iface const  # a protocol table, built once (wayland_lib), then read

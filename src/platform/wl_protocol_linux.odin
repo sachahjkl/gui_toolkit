@@ -200,6 +200,43 @@ wp_scale_build_tables :: proc() {
 	wp_viewport_iface = {"wp_viewport", 1, 3, &wp_v_methods[0], 0, nil}
 }
 
+// xdg_activation_v1: a client asks the compositor to give a surface the focus. A token names the request (a serial of
+// the seat's input, the surface); `done` gives the token, which `activate` spends on a surface.
+@(private) XDG_ACTIVATION_GET_TOKEN :: 1
+@(private) XDG_ACTIVATION_ACTIVATE :: 2
+@(private) XDG_ACTIVATION_TOKEN_SET_SERIAL :: 0
+@(private) XDG_ACTIVATION_TOKEN_SET_SURFACE :: 2
+@(private) XDG_ACTIVATION_TOKEN_COMMIT :: 3
+@(private) XDG_ACTIVATION_TOKEN_DESTROY :: 4
+@(private) xdg_activation_iface: Wl_Interface
+@(private) xdg_activation_token_iface: Wl_Interface
+@(private = "file") xa_methods: [3]Wl_Message
+@(private = "file") xat_methods: [5]Wl_Message
+@(private = "file") xat_events: [1]Wl_Message
+@(private = "file") t_xa_get: [1]^Wl_Interface
+@(private = "file") t_xa_activate: [2]^Wl_Interface
+@(private = "file") t_xat_serial: [2]^Wl_Interface
+@(private = "file") t_xat_surface: [1]^Wl_Interface
+
+@(private)
+xdg_activation_build_tables :: proc() {
+	xa_methods[0] = {"destroy", "", nil}
+	t_xa_get[0] = &xdg_activation_token_iface
+	xa_methods[1] = {"get_activation_token", "n", raw_types(t_xa_get[:])}
+	t_xa_activate[0], t_xa_activate[1] = nil, wl.surface_interface
+	xa_methods[2] = {"activate", "so", raw_types(t_xa_activate[:])}
+	xdg_activation_iface = {"xdg_activation_v1", 1, 3, &xa_methods[0], 0, nil}
+	t_xat_serial[0], t_xat_serial[1] = nil, wl.seat_interface
+	xat_methods[0] = {"set_serial", "uo", raw_types(t_xat_serial[:])}
+	xat_methods[1] = {"set_app_id", "s", nil}
+	t_xat_surface[0] = wl.surface_interface
+	xat_methods[2] = {"set_surface", "o", raw_types(t_xat_surface[:])}
+	xat_methods[3] = {"commit", "", nil}
+	xat_methods[4] = {"destroy", "", nil}
+	xat_events[0] = {"done", "s", nil}
+	xdg_activation_token_iface = {"xdg_activation_token_v1", 1, 5, &xat_methods[0], 1, &xat_events[0]}
+}
+
 // The static interface tables for the protocols the library does not provide. They are built once (wayland_lib)
 // because the `types` arrays reference the library's own wl_surface_interface etc., known only at run time.
 @(private) xdg_wm_base_iface: Wl_Interface
