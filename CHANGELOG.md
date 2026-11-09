@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.112.0] - 2026-11-09
+
+### Added
+- **`platform.raise_window` (Wayland)**: asks the focus through `xdg_activation_v1`, with the seat's last input serial. It did nothing before. A program shown by a shortcut of the compositor now gets the keyboard on compositors that do not focus a new window by themselves.
+
 ## [0.111.3] - 2026-11-09
 
 ### Fixed
@@ -1942,6 +1947,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.112.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.112.0
 [0.111.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.3
 [0.111.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.2
 [0.111.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.1
