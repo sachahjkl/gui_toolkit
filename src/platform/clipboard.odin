@@ -484,7 +484,16 @@ uri_list_to_paths :: proc(list: string, allocator := context.allocator) -> []str
 			p := l[len("file://"):]
 			// strip an authority (host) before the path
 			if slash := strings.index_byte(p, '/'); slash > 0 { p = p[slash:] } else if slash < 0 { continue }
-			append(&out, percent_decode(p, allocator))
+			path := percent_decode(p, allocator)
+			// a Windows path: file:///C:/x is C:/x there
+			when ODIN_OS == .Windows {
+				if len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+					drive := strings.clone(path[1:], allocator)
+					delete(path, allocator)
+					path = drive
+				}
+			}
+			append(&out, path)
 		} else if strings.has_prefix(l, "/") {
 			append(&out, strings.clone(l, allocator))
 		}

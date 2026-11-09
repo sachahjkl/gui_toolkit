@@ -19,7 +19,7 @@ DEFS := [?]config.Def{
 }
 
 @(private = "file")
-PAGES := [?]prefs_page.Page_Info{{category = "net", title = "Network"}, {category = "look", title = "Look"}}
+PAGES := [?]prefs_page.Page_Info{{category = "net", title = "Network"}, {category = "gone", title = "Nothing here"}, {category = "look", title = "Look"}}
 
 @(private = "file")
 App :: struct {
@@ -114,6 +114,7 @@ a_page_is_shown :: proc(t: ^testing.T) {
 	defer app_end(&app)
 	s := app_start(t, &app)
 	testing.expect(t, session.find_text(s, "Cache") != nil, "the first page shows")
+	testing.expect(t, session.find_text(s, "Nothing here") == nil, "a page with no preference is not shown")
 	session.click(s, "nav1")
 	testing.expect(t, session.find_text(s, "Style") != nil, "the page clicked shows")
 	testing.expect(t, session.find_text(s, "Cache") == nil, "the other no more")
