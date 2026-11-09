@@ -119,6 +119,8 @@ Wl_Window_State :: struct {
 	logical:     [2]int,           // the surface's size, in the compositor's units
 	activation_token: Wl_Proxy,    // an xdg_activation_token_v1 waiting for its `done` (wl_activate)
 	wanted:      Show_State,       // maximized or full screen, asked while there was no role: the next role asks it once
+	minimize_wanted: bool,         // minimized, asked while there was no role: the next show asks it once its role is configured
+	scale_given: bool,             // a preferred_scale came: until then the scale follows the output's integer one
 	win:         ^Window,          // back pointer for the listeners
 }
 
@@ -264,16 +266,20 @@ output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: 
 @(private)
 output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { wlc.output_refresh_mhz = refresh; wlc.output_px = {w, h} } }
 // A change of the output is complete: the windows' rate and monitor are read again, and a window without a fractional
-// scale follows the output's integer one.
+// scale follows the output's integer one. So does a window with one that the compositor has given no scale yet: it
+// sends one when the surface enters an output or gets its role, not to a surface that was never shown.
 @(private)
 output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {
 	context = wl_ctx_real()
 	for w in wlc.windows {
 		w.display_stale = true
 		st := wl_state(w)
-		if st.viewport != nil || w.dpi_scale == f32(wlc.output_scale) { continue }
+		if st.scale_given || w.dpi_scale == f32(wlc.output_scale) { continue }
 		w.dpi_scale = f32(wlc.output_scale)
-		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
+		// (a hidden window has no surface: wl_surface_make sets the buffer scale of the next one)
+		if st.surface != nil && st.viewport == nil {
+			wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
+		}
 		wl_size_from_logical(w, st)
 		w.paint_requested = true
 		apply_cursor(w)
@@ -702,6 +708,7 @@ fractional_preferred :: proc "c" (data: rawptr, f: Wl_Proxy, scale: u32) {
 	st := (^Wl_Window_State)(data)
 	if st == nil || st.win == nil || scale == 0 { return }
 	w := st.win
+	st.scale_given = true
 	k := f32(scale) / FRACTIONAL_DENOMINATOR
 	if k == w.dpi_scale { return }
 	w.dpi_scale = k
@@ -728,7 +735,9 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 	// program that starts in the notification area) is in no task bar
 	if !wl_surface_make(w, st, role = false) { delete(st.title); free(st); w.wl = nil; return false }
 	append(&wlc.windows, w)
-	wl.display_roundtrip(wlc.display)   // (what the compositor says of the new surface: its preferred scale)
+	// (what the compositor says of the new surface. A surface with no role is on no output: most compositors send its
+	// preferred scale only with the first configure of wl_show, which waits for it before the first buffer)
+	wl.display_roundtrip(wlc.display)
 	return true
 }
 
@@ -887,6 +896,13 @@ wl_show :: proc(w: ^Window) {
 			wl.display_roundtrip(wlc.display)
 			if !st.acked { poll_fd_wait(wlc.fd, WL_FIRST_CONFIGURE_POLL_MS) }
 		}
+		// a minimize asked before the show: the role exists and is configured, the next frame maps it minimized (as GTK's
+		// minimize of an unmapped window). No configure state says minimized: w.show stays the toplevel's.
+		if st.minimize_wanted {
+			st.minimize_wanted = false
+			wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0)
+			wl.display_flush(wlc.display)
+		}
 		w.show = st.toplevel
 		w.paint_requested = true
 		return
@@ -939,7 +955,13 @@ activation_token_done :: proc "c" (data: rawptr, t: Wl_Proxy, token: cstring) {
 	wl_activation_drop(st)
 	wl.display_flush(wlc.display)
 }
-@(private) wl_minimize :: proc(w: ^Window) { st := wl_state(w); if st.xdg_toplevel == nil { return }; wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0); wl.display_flush(wlc.display) }
+@(private)
+wl_minimize :: proc(w: ^Window) {
+	st := wl_state(w)
+	if st.xdg_toplevel == nil { st.minimize_wanted = true; return }   // (the next show asks it)
+	wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_SET_MINIMIZED, nil, wl.proxy_get_version(st.xdg_toplevel), 0)
+	wl.display_flush(wlc.display)
+}
 @(private)
 wl_set_maximized :: proc(w: ^Window, on: bool) {
 	st := wl_state(w)
