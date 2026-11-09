@@ -14,7 +14,7 @@ import "core:fmt"
 import tk_site "../../src/site"
 
 SITE_META :: tk_site.Meta{
-	url         = "https://sachahjkl.github.io/gui_toolkit/",
+	url         = "https://gt.sacha.house/",
 	name        = "gui_toolkit",
 	repository  = "https://github.com/sachahjkl/gui_toolkit",
 	tagline     = "A fast, native, immediate-mode GUI toolkit in Odin",
