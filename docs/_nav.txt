@@ -50,6 +50,7 @@ Frames and threads
   arena.md            arena: lifetimes
   flate.md            flate: DEFLATE streams
   png.md              png: the PNG codec
+  qr.md               qr: QR Codes
 
 Tools and tests
   testing.md          Testing

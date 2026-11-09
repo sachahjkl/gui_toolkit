@@ -344,6 +344,7 @@ State :: struct {
 	// lazy columns (lazy.odin): the heights items had when last built, the width each column was measured at
 	lazy_heights:    map[Key]Lazy_Height,
 	lazy_columns:    map[Key]Lazy_Column,
+	qr_codes:        map[Key]Qr_Cached,   // qr_code: each box's encoded text, kept while the box is built
 	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)
 	lazy_more:       bool,             // a lazy column showed spaces where items stand: one more frame (needs_frame)
 	dt:           f32,
