@@ -6,6 +6,7 @@ package tk_lucide
 
 DATA :: #load("lucide.ttf")
 
+ALIGN_LEFT          :: "\ue185"   // align-left
 APP_WINDOW          :: "\ue426"   // app-window
 ARROW_LEFT          :: "\ue048"   // arrow-left
 ARROW_RIGHT         :: "\ue049"   // arrow-right
@@ -16,13 +17,16 @@ CHECK               :: "\ue06c"   // check
 CHEVRON_DOWN        :: "\ue06d"   // chevron-down
 CHEVRON_RIGHT       :: "\ue06f"   // chevron-right
 CHEVRON_UP          :: "\ue070"   // chevron-up
+CLIPBOARD           :: "\ue085"   // clipboard
 CODE                :: "\ue093"   // code
 COOKIE              :: "\ue26b"   // cookie
 COPY                :: "\ue09e"   // copy
 CPU                 :: "\ue0a9"   // cpu
 DOWNLOAD            :: "\ue0b2"   // download
+EDIT                :: "\ue172"   // edit
 EYE_OFF             :: "\ue0bb"   // eye-off
 FILE                :: "\ue0c0"   // file
+FILES               :: "\ue0cf"   // files
 FOLDER              :: "\ue0d7"   // folder
 FOLDER_TREE         :: "\ue33c"   // folder-tree
 GAUGE               :: "\ue1bf"   // gauge
@@ -31,6 +35,7 @@ HARD_DRIVE          :: "\ue0ed"   // hard-drive
 HAT_GLASSES         :: "\ue683"   // hat-glasses
 HISTORY             :: "\ue1f5"   // history
 HOME                :: "\ue0f5"   // home
+IMAGE               :: "\ue0f6"   // image
 INFO                :: "\ue0f9"   // info
 KEYBOARD            :: "\ue284"   // keyboard
 LAYERS_2            :: "\ue52a"   // layers-2
@@ -47,6 +52,7 @@ PANEL_LEFT          :: "\ue12a"   // panel-left
 PAPERCLIP           :: "\ue12d"   // paperclip
 PENCIL              :: "\ue1f9"   // pencil
 PIN                 :: "\ue259"   // pin
+PIN_OFF             :: "\ue2b6"   // pin-off
 PLAY                :: "\ue13c"   // play
 PLUG                :: "\ue37f"   // plug
 PLUS                :: "\ue13d"   // plus
@@ -54,6 +60,7 @@ POWER               :: "\ue140"   // power
 QR_CODE             :: "\ue1df"   // qr-code
 REFRESH_CW          :: "\ue145"   // refresh-cw
 ROTATE_CCW          :: "\ue148"   // rotate-ccw
+SAVE                :: "\ue14d"   // save
 SEARCH              :: "\ue151"   // search
 SEND_HORIZONTAL     :: "\ue4f2"   // send-horizontal
 SEND_TO_BACK        :: "\ue4f3"   // send-to-back
