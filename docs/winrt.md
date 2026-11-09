@@ -26,14 +26,15 @@ winrt.string_delete(text)
 | `factory`, `activate` | a class's statics or activation factory; a new instance of a class with a default constructor |
 | `vtable(object, T)`, `query`, `release` | an interface's methods; another interface of an object; the end of a reference |
 | `await(operation, handler_iid, &result, timeout_ms)` | waits for an `IAsyncOperation<T>` and writes its result; past the timeout (10 s by default) it cancels it |
-| `event_handler_make(iid, callback, user)` | an event handler (`EventHandler<T>`, `TypedEventHandler<S, T>`) that calls `callback(user)` |
+| `event_handler_make(iid, callback, user, done)` | an event handler (`EventHandler<T>`, `TypedEventHandler<S, T>`) that calls `callback(user, sender, args)`; `done(user)` runs when the last reference goes |
 | `vector_size`, `vector_at` | an `IVectorView<T>` |
 
 ## The IDs of generic instances
 
 `IAsyncOperation<ClipboardHistoryItemsResult>` has no ID in any header: Windows computes it from the type's signature (a
 UUID version 5, SHA-1). `piid_of(signature)` does the same; `sig_class`, `sig_interface`, `sig_generic` and `SIG_STRING`
-write the signatures, and `async_iids(result)` and `event_handler_iid(args)` give the two IDs a program needs most:
+write the signatures (`SIG_INSPECTABLE` for `Object`), and `async_iids(result)`, `event_handler_iid(args)` and
+`typed_event_handler_iid(sender, args)` give the IDs a program needs most:
 
 ```odin
 result := winrt.sig_class("Windows.ApplicationModel.DataTransfer.ClipboardHistoryItemsResult", IID_IClipboardHistoryItemsResult)

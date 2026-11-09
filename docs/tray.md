@@ -33,7 +33,7 @@ platform.tray_notify(tray, {title = "Ada", body = "Lunch?", icon = .App})
 | `tray_set_menu(t, items)` | the menu a right click or the menu key opens (`Tray.auto_menu`, on by default); items, separators, check and radio marks, disabled, default (bold) items, submenus; a deep copy |
 | `tray_show_menu(t) -> (id, ok)` | opens the menu at the pointer from the app (after a left click, say); blocks in the system's menu loop |
 | `tray_poll(t) -> []Tray_Event` | what happened since the previous call |
-| `tray_notify(t, Tray_Notify)` | a notification from the icon: title, body, icon (none, info, warning, error, the app's), silent, quiet time |
+| `tray_notify(t, Tray_Notify)` | a notification from the icon: title, body, icon (none, info, warning, error, the app's), silent, quiet time. Linux: shown by `notify`'s code, info is a low urgency and error a critical one. A notification with no icon and with buttons: [notifications.md](notifications.md) |
 | `tray_destroy(t)` | removes the icon; `destroy_window` removes the icons of the window |
 
 Events (`Tray_Event_Kind`): `Click` (left click; Enter or Space on the icon: `keyboard`), `Double_Click` (a double click

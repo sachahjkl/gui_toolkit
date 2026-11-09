@@ -32,6 +32,7 @@ Platform and system
   clipboard.md        Rich clipboard
   dialogs.md          File dialogs
   tray.md             Notification area icon
+  notifications.md    System notifications
   dbus.md             D-Bus client
   fsx.md              fsx: file helpers
   instance.md         instance: one running copy

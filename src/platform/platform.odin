@@ -60,6 +60,10 @@ Event_Kind :: enum u8 {
 	Accessibility,
 	// a hotkey of the program's was pressed, wherever the keyboard is (hotkey.odin): Event.hotkey is its id
 	Hotkey,
+	// a notification of the window (notify.odin): Event.notification says which, and the button or the reason
+	Notification_Click,    // a click on its body
+	Notification_Action,   // a button: Event.notification.action is its id
+	Notification_Closed,   // it is gone (Event.notification.reason): no event of it comes after
 }
 
 Mouse_Button :: enum u8 { Left, Right, Middle, Back, Forward }   // (Back, Forward: the side buttons)
@@ -104,6 +108,7 @@ Event :: struct {
 	injected: bool,     // made by inject_event (a test, a remote control, a macro), not by the system: the real pointer is
 	hotkey: int,        // Hotkey: the id given to hotkey_register
 	                    // elsewhere (an app that reads the cursor's position from the system uses `pos` for these)
+	notification: Notification_Event,   // Notification_*: which notification, its button, why it went
 }
 
 // Where Display_Info.hz comes from, most exact first.

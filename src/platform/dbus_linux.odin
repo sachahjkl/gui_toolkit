@@ -28,6 +28,8 @@ Session_Bus :: struct {
 	theme_sub:     u32,               // its subscription to SettingChanged
 	idle_records:  [dynamic]Idle_Record,   // the live inhibitions (idle_inhibit_linux)
 	idle_next:     u64,
+	notify_caps:   Notify_Caps,       // the notification server's (notify_linux.odin)
+	notify_caps_known: bool,
 }
 
 @(private, thread_local) session: Session_Bus
