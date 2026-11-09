@@ -2,9 +2,8 @@
 package font
 
 import "base:runtime"
-import "core:image"
-import "core:image/png"
 import "core:math"
+import png "../png"
 
 // Bitmap color glyphs off Windows: the CBLC / CBDT tables (Noto Color Emoji as most Linux systems ship it), PNG images at
 // fixed sizes. The nearest strike at or above the size asked for is decoded and scaled. Windows has Direct2D for these.
@@ -165,27 +164,23 @@ cbdt_draw :: proc(fc: ^Face_Colr, gid: u16, size: f32) -> (bm: Colr_Bitmap, ok: 
 	if fc == nil || size <= 0 { return }
 	g := cbdt_glyph(fc, gid, size) or_return
 	heap := runtime.heap_allocator()
-	img, err := png.load_from_bytes(g.png, {.alpha_add_if_missing}, heap)
-	if err != nil || img == nil { return }
-	defer image.destroy(img, heap)
-	if img.channels != 4 || img.depth != 8 || img.width <= 0 || img.height <= 0 { return }
+	src, src_w, src_h := png.decode(g.png, heap) or_return
+	defer delete(src, heap)
 	k := size / f32(g.ppem)
-	w, h := max(int(math.round(f32(img.width) * k)), 1), max(int(math.round(f32(img.height) * k)), 1)
+	w, h := max(int(math.round(f32(src_w) * k)), 1), max(int(math.round(f32(src_h) * k)), 1)
 	if w > CBDT_SCALED_MAX_PX || h > CBDT_SCALED_MAX_PX { return }
-	src := img.pixels[:]
-	if len(src) < img.width * img.height * 4 { return }
 	px := make([]u8, w * h * 4, heap)
 	// each pixel the average of what it covers, weighted by alpha so that transparent colors do not bleed in
 	for y in 0 ..< h {
-		y0 := y * img.height / h
-		y1 := max((y + 1) * img.height / h, y0 + 1)
+		y0 := y * src_h / h
+		y1 := max((y + 1) * src_h / h, y0 + 1)
 		for x in 0 ..< w {
-			x0 := x * img.width / w
-			x1 := max((x + 1) * img.width / w, x0 + 1)
+			x0 := x * src_w / w
+			x1 := max((x + 1) * src_w / w, x0 + 1)
 			r, gr, b, a, n: u32
 			for sy in y0 ..< y1 {
 				for sx in x0 ..< x1 {
-					p := src[(sy * img.width + sx) * 4:][:4]
+					p := src[(sy * src_w + sx) * 4:][:4]
 					pa := u32(p[3])
 					r += u32(p[0]) * pa; gr += u32(p[1]) * pa; b += u32(p[2]) * pa; a += pa
 					n += 1

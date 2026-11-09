@@ -1,10 +1,8 @@
 package tk_session
 
 import "core:fmt"
-import "core:image"
-import "core:image/png"
 import "core:os"
-import "../../devtools"
+import png "../../png"
 import "../../render"
 
 // Pixels: the last frame of the real renderer, read back from its offscreen target.
@@ -70,7 +68,7 @@ count_different :: proc(a, b: Image, delta := PIXEL_DELTA) -> (n: int) {
 save_png :: proc(s: ^Session, name: string) {
 	px := render.read_pixels(s.renderer, s.test.temp_allocator)
 	if px == nil { return }
-	data := devtools.png_encode(px, s.renderer.size.x, s.renderer.size.y)
+	data := png.encode(px, s.renderer.size.x, s.renderer.size.y, .Fast)
 	defer delete(data)
 	_ = os.write_entire_file(out_path(s, name), data)
 }
@@ -79,13 +77,8 @@ save_png :: proc(s: ^Session, name: string) {
 load_png :: proc(s: ^Session, path: string) -> (img: Image, ok: bool) {
 	data, err := os.read_entire_file(path, s.test.temp_allocator)
 	if err != nil { return }
-	decoded, derr := png.load_from_bytes(data, {.alpha_add_if_missing})
-	if derr != nil { return }
-	defer image.destroy(decoded)
-	if decoded.channels != 4 || decoded.depth != 8 { return }
-	rgba := make([]u8, len(decoded.pixels), s.test.temp_allocator)
-	copy(rgba, decoded.pixels[:])
-	return {rgba, decoded.width, decoded.height}, true
+	rgba, w, h := png.decode(data, s.test.temp_allocator) or_return
+	return {rgba, w, h}, true
 }
 
 // The last frame looks like the reference image `path`: on at most `max_share` of its pixels by more than `delta`. What differs is left
@@ -93,7 +86,7 @@ load_png :: proc(s: ^Session, path: string) -> (img: Image, ok: bool) {
 expect_like :: proc(s: ^Session, path: string, delta := PIXEL_DELTA, max_share := MAX_SHARE, loc := #caller_location) {
 	got := capture(s, loc)
 	if v, _ := os.lookup_env("TOOLKIT_TEST_UPDATE", s.test.temp_allocator); v == "1" {
-		data := devtools.png_encode(got.rgba, got.width, got.height)
+		data := png.encode(got.rgba, got.width, got.height, .Fast)
 		defer delete(data)
 		_ = os.write_entire_file(path, data)
 		return

@@ -63,7 +63,7 @@ steps, those that differ from the reference, and the actions.
 ## Pictures
 
 `png_decode` and `png_read` give RGBA8 (`Picture`) whatever the PNG's format. `png_encode` and `png_write` write one, its rows
-filtered as fits each best. `compare(a, b, delta)` gives the share of pixels that differ by more than `delta` of 255 on a
+filtered as fits each best (`png.encode`'s `.Small`: [png.md](png.md)). `compare(a, b, delta)` gives the share of pixels that differ by more than `delta` of 255 on a
 colour channel, and a picture of where (red). `shrink(p, width)` makes a picture `width` pixels wide with a box filter (each
 pixel the mean of the area it covers).
 

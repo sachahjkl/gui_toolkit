@@ -270,13 +270,26 @@ x11_foreign_formats :: proc(w: ^Window) -> Clipboard_Formats {
 	f := &x11c.foreign_formats
 	told := x11c.xfixes_event != 0 && !f.silent   // (XFIXES says when it changes: until then what was read holds)
 	if f.read && f.seq == clipboard_sequence() && (told || time.duration_milliseconds(time.tick_since(f.at)) < X11_FORMATS_CACHE_MS) { return f.formats }
-	b := x11_selection_read(w, x11c.clipboard, "TARGETS", context.temp_allocator, X11_TEXT_READ_WAIT_MS)
-	names := make([dynamic]string, context.temp_allocator)
-	for i in 0 ..< len(b) / size_of(u32) {
-		append(&names, x11_atom_name(Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):])))))
-	}
-	f^ = {clipboard_formats_from_mimes(names[:]), time.tick_now(), clipboard_sequence(), true, b == nil}
+	names, answered := x11_read_targets(w)
+	f^ = {clipboard_formats_from_mimes(names), time.tick_now(), clipboard_sequence(), true, !answered}
 	return f.formats
+}
+
+// The names of what another client's CLIPBOARD offers now (its TARGETS, temp allocator): asked each time, for a read.
+@(private)
+x11_foreign_targets :: proc(w: ^Window) -> []string {
+	names, _ := x11_read_targets(w)
+	return names
+}
+
+@(private = "file")
+x11_read_targets :: proc(w: ^Window) -> (names: []string, answered: bool) {
+	b := x11_selection_read(w, x11c.clipboard, "TARGETS", context.temp_allocator, X11_TEXT_READ_WAIT_MS)
+	list := make([dynamic]string, context.temp_allocator)
+	for i in 0 ..< len(b) / size_of(u32) {
+		append(&list, x11_atom_name(Xcb_Atom(get_u32(raw_data(b[i * size_of(u32):])))))
+	}
+	return list[:], b != nil
 }
 
 @(private)

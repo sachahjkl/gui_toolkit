@@ -56,7 +56,7 @@ frame about to be built, reads the box tree of the last build, and answers. A co
 | `Input.dispatchMouseEvent` | `mouseMoved`, `mousePressed`, `mouseReleased` (`button`: left, right, middle), `mouseWheel` (`deltaY` in CSS pixels, 100 a notch, positive scrolls the content down). `x`, `y` in CSS pixels (the window's pixels / its DPI scale). |
 | `Input.dispatchKeyEvent` | `keyDown` / `rawKeyDown` / `keyUp` with the DOM's `key` ("Enter", "ArrowDown", "a", "F3") or `code`; `keyDown` with `text` also types it; `modifiers`: Alt 1, Ctrl 2, Shift 8. |
 | `Input.insertText` | text, as typed. |
-| `Page.captureScreenshot` | PNG of the window's pixels (`clip` in CSS pixels), from the renderer's capture: the frame as presented. Encoded on a thread of its own: the window goes on meanwhile. |
+| `Page.captureScreenshot` | PNG of the window's pixels (`clip` in CSS pixels), from the renderer's capture: the frame as presented. Encoded on a thread of its own (`png.encode`'s `.Fast`: [png.md](png.md)): the window goes on meanwhile. |
 | `Page.getLayoutMetrics` | the window's size in CSS pixels, its DPI scale as the visual viewport's zoom. |
 | `Accessibility.getFullAXTree` | the tree a screen reader gets (`ui.a11y_tree`, built while the server runs): role in Chrome's vocabulary (button, textbox, StaticText, checkbox...), name, value, properties (focused, disabled, expanded, selected, checked...), children; and, beyond the protocol, `bounds` in CSS pixels and `actions`. |
 | `Accessibility.queryAXTree` | the nodes with a `role` and an `accessibleName` (contained, case ignored; `exact` for all of it). |

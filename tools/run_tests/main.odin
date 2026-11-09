@@ -67,6 +67,7 @@ STEPS := []Step{
 	{name = "desktop_pkg", path = "src/desktop", oses = EVERYWHERE},
 	{name = "instance_pkg", path = "src/instance", oses = LINUX_ONLY},
 	{name = "paint", path = "src/paint", oses = EVERYWHERE},
+	{name = "png", path = "src/png", oses = EVERYWHERE},
 	{name = "process", path = "src/process", oses = EVERYWHERE},
 	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
 	{name = "update", path = "src/update", oses = EVERYWHERE},
@@ -156,6 +157,7 @@ STEPS := []Step{
 	{name = "flate_on_linux", path = "src/flate", kind = .Check, target = "linux_amd64"},
 	{name = "font_on_darwin", path = "src/font", kind = .Check, target = "darwin_arm64"},
 	{name = "flate_on_darwin", path = "src/flate", kind = .Check, target = "darwin_arm64"},
+	{name = "png_on_darwin", path = "src/png", kind = .Check, target = "darwin_arm64"},
 }
 
 // What ends a package that does not end, by default: a hang is a failure that names itself.

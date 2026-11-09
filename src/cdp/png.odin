@@ -1,10 +1,9 @@
 package tk_cdp
 
-// The pictures of a run: PNG read and written (core:image/png), two compared, one made smaller.
+// The pictures of a run: PNG read and written (the toolkit's png package), two compared, one made smaller.
 
-import "core:image"
-import "core:image/png"
 import "core:os"
+import png "../png"
 
 // RGBA, 8 bits a channel, rows from the top.
 Picture :: struct {
@@ -19,21 +18,7 @@ picture_destroy :: proc(p: ^Picture) {
 
 // A PNG's pixels as RGBA8, whatever its own format (grey, RGB, a palette, 16 bits).
 png_decode :: proc(data: []byte, allocator := context.allocator) -> (p: Picture, ok: bool) {
-	img, err := png.load_from_bytes(data, {.alpha_add_if_missing})
-	defer png.destroy(img)   // (what it made before a failure too)
-	if err != nil { return }
-	if img.channels != 4 { return }
-	p.width, p.height = img.width, img.height
-	p.pixels = make([]u8, img.width * img.height * 4, allocator)
-	if img.depth == 8 {
-		copy(p.pixels, img.pixels[:])
-	} else if img.depth == 16 {
-		wide := img.pixels[:]
-		for i in 0 ..< len(p.pixels) { p.pixels[i] = wide[i * 2 + (ODIN_ENDIAN == .Little ? 1 : 0)] }   // (the high byte)
-	} else {
-		delete(p.pixels, allocator)
-		return {}, false
-	}
+	p.pixels, p.width, p.height = png.decode(data, allocator) or_return
 	return p, true
 }
 
@@ -43,14 +28,10 @@ png_read :: proc(path: string, allocator := context.allocator) -> (p: Picture, o
 	return png_decode(data, allocator)
 }
 
-// RGBA8 as a PNG, its rows filtered as fits each best, at deflate's highest level: what is kept should be small.
+// RGBA8 as a PNG, png.encode's .Small: what is kept should be small.
 png_encode :: proc(p: Picture, allocator := context.allocator) -> (data: []byte, ok: bool) {
-	img := image.Image{width = p.width, height = p.height, channels = 4, depth = 8}
-	img.pixels = make([dynamic]u8, len(p.pixels), context.temp_allocator)
-	copy(img.pixels[:], p.pixels)
-	out := make([dynamic]byte, allocator)
-	if png.save_to_buffer(&out, &img, allocator = context.temp_allocator) != nil { delete(out); return nil, false }
-	return out[:], true
+	data = png.encode(p.pixels, p.width, p.height, .Small, allocator)
+	return data, data != nil
 }
 
 png_write :: proc(path: string, p: Picture) -> bool {

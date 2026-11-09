@@ -297,10 +297,8 @@ the_process_s_clipboard_keeps_every_flavour :: proc(t: ^testing.T) {
 	before := platform.clipboard_sequence()
 	testing.expect(t, platform.clipboard_set(w, {text = "again"}), "text")
 	testing.expect(t, platform.clipboard_sequence() != before, "the count moves")
-	when ODIN_OS == .Windows {   // (PNG needs an application's codec on Linux: png_encode_hook)
-		px := []u8{255, 0, 0, 255, 0, 255, 0, 128}
-		testing.expect(t, platform.clipboard_set_image(w, {px, {2, 1}}), "an image")
-		img, iok := platform.clipboard_get_image(w, context.temp_allocator)
-		testing.expect(t, iok && img.size == {2, 1} && img.rgba[4] == 0 && img.rgba[5] == 255 && img.rgba[7] == 128, "comes back whole")
-	}
+	px := []u8{255, 0, 0, 255, 0, 255, 0, 128}
+	testing.expect(t, platform.clipboard_set_image(w, {px, {2, 1}}), "an image")
+	img, iok := platform.clipboard_get_image(w, context.temp_allocator)
+	testing.expect(t, iok && img.size == {2, 1} && img.rgba[4] == 0 && img.rgba[5] == 255 && img.rgba[7] == 128, "comes back whole")
 }

@@ -18,7 +18,12 @@ package platform
 import "base:runtime"
 import "core:strings"
 import "core:sync"
+import "core:image"
+import "core:image/bmp"
+import "core:image/jpeg"
 import "core:unicode/utf16"
+import "../ascii"
+import png "../png"
 
 @(private = "file") DIB_CORE_HEADER_BYTES :: 12     // BITMAPCOREHEADER
 @(private = "file") DIB_INFO_HEADER_BYTES :: 40     // BITMAPINFOHEADER
@@ -41,6 +46,18 @@ Clipboard_Formats :: bit_set[Clipboard_Format; u8]
 Clipboard_Image :: struct {
 	rgba: []u8,
 	size: [2]int,
+}
+
+// The image as a PNG file, nil when it is empty. png.encode's .Fast: a copy runs on the UI thread (a 1400 x 925 screenshot
+// in 2 ms, not 90), and the file only goes from one program to another on this machine.
+png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8 {
+	return png.encode(img.rgba, img.size.x, img.size.y, .Fast, allocator)
+}
+
+// A PNG file as straight RGBA (any colour type or bit depth png.decode reads).
+png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
+	img.rgba, img.size.x, img.size.y = png.decode(b, allocator) or_return
+	return img, true
 }
 
 clipboard_image_destroy :: proc(img: ^Clipboard_Image, allocator := context.allocator) {
@@ -384,15 +401,56 @@ get16 :: proc(b: []u8, at: int) -> u16 { return u16(b[at]) | u16(b[at + 1]) << 8
 
 // What a list of MIME types offers (another client's selection on Linux). Pure.
 clipboard_formats_from_mimes :: proc(mimes: []string) -> (out: Clipboard_Formats) {
+	images, files := CLIPBOARD_IMAGE_MIMES, CLIPBOARD_FILES_MIMES
 	for m in mimes {
 		switch {
 		case m == "UTF8_STRING", m == "STRING", m == "TEXT", strings.has_prefix(m, "text/plain"): out += {.Text}
 		case m == "text/html":     out += {.Html}
-		case m == "image/png":     out += {.Image}
-		case m == "text/uri-list": out += {.Files}
+		case clipboard_mime_in(m, images[:]): out += {.Image}
+		case clipboard_mime_in(m, files[:]): out += {.Files}
 		}
 	}
 	return
+}
+
+// The image types another program's offer is read in, best first: PNG keeps alpha; some tools offer JPEG or BMP alone.
+// (image/webp is not read: Odin's core:image has no WebP decoder.)
+@(private) CLIPBOARD_IMAGE_MIMES :: [?]string{"image/png", "image/jpeg", "image/bmp", "image/x-bmp"}
+// The file-list types, best first: the standard list, then GNOME Files' (a "copy" or "cut" line, then the URIs). KDE's
+// application/x-kde-cutselection is only a flag beside a text/uri-list.
+@(private) CLIPBOARD_FILES_MIMES :: [?]string{"text/uri-list", "x-special/gnome-copied-files"}
+
+// The first of `wanted` that `offered` holds ("" when none): which type to read of another program's offer. Pure.
+clipboard_pick_mime :: proc(offered, wanted: []string) -> string {
+	for m in wanted { if clipboard_mime_in(m, offered) { return m } }
+	return ""
+}
+
+@(private = "file")
+clipboard_mime_in :: proc(m: string, list: []string) -> bool {
+	for x in list { if ascii.equal_fold(x, m) { return true } }
+	return false
+}
+
+// The pixels of an image file of one of CLIPBOARD_IMAGE_MIMES (PNG, JPEG, BMP), as straight RGBA. Pure.
+clipboard_image_decode :: proc(mime: string, data: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
+	heap := runtime.heap_allocator()   // (the decoder's own picture, freed here)
+	decoded: ^image.Image
+	err: image.Error
+	switch {
+	case ascii.equal_fold(mime, "image/png"):
+		return png_decode(data, allocator)
+	case ascii.equal_fold(mime, "image/jpeg"):
+		decoded, err = jpeg.load_from_bytes(data, {}, heap)
+	case ascii.equal_fold(mime, "image/bmp"), ascii.equal_fold(mime, "image/x-bmp"):
+		decoded, err = bmp.load_from_bytes(data, {}, heap)
+	case:
+		return
+	}
+	defer image.destroy(decoded, heap)
+	if err != nil { return }
+	img.rgba, img.size.x, img.size.y = png.rgba8_of(decoded, allocator) or_return
+	return img, true
 }
 
 // The file:// URI of an absolute path: every byte but the unreserved ones and the slashes is percent-encoded (temporary

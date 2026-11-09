@@ -17,5 +17,3 @@ clipboard_set_image :: proc(w: ^Window, img: Clipboard_Image) -> bool { return f
 clipboard_set_files :: proc(w: ^Window, paths: []string) -> bool { return false }
 clipboard_watch :: proc(w: ^Window, on: bool) -> bool { return !on }
 clipboard_changed :: proc(w: ^Window) -> bool { return false }
-png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8 { return nil }
-png_decode :: proc(b: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) { return }

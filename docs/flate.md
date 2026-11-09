@@ -74,7 +74,7 @@ decoders):
 | Roboto-Regular.ttf (159 KB) | 48.8 %, 5.3 ms | 50.8 %, 1.2 ms | 48.7 %, 2.1 ms | 46.3 %, 5.7 ms |
 
 Inflating the same streams (core level 6), output rate: `flate.inflate` 130 to 445 MB/s (`inflate_push` in 16 KiB
-chunks the same), `core:compress/deflate` 400 to 1530 MB/s. A picture as `devtools.png_encode` makes it (Sub filter,
+chunks the same), `core:compress/deflate` 400 to 1530 MB/s. A picture as `png.encode(.., .Fast)` makes it (Sub filter,
 `deflate_runs`): 609 KB in 3.0 ms and 957 KB in 5.1 ms for the two screenshots; `core:image/png`'s `save_to_buffer`
 at level 1 with the same filter 358 KB in 8.9 ms and 592 KB in 12.8 ms.
 

@@ -14,8 +14,6 @@
 package transforms
 
 import "core:fmt"
-import "core:image"
-import "core:image/png"
 import "core:math"
 import "core:os"
 import "core:slice"
@@ -26,6 +24,7 @@ import "../../src/devtools"
 import "../../src/draw"
 import "../../src/font"
 import "../../src/platform"
+import png "../../src/png"
 import "../../src/render"
 
 LOGO_PNG :: #load("../../.project/image.png")
@@ -40,7 +39,7 @@ App :: struct {
 	photo:   render.Texture,   // 512 x 512 opaque, fine rings: shows mip filtering when minified
 	sticker: render.Texture,   // 64 x 64 with soft alpha over black transparent pixels: shows premultiplied filtering
 	checker: render.Texture,   // 32 x 32 tile for image_tiled
-	logo:    render.Texture,   // decoded from a PNG with core:image/png
+	logo:    render.Texture,   // decoded from a PNG with the toolkit's png.decode
 	start:   time.Tick,
 	freeze:  f32,              // < 0: live animation
 	stress:  int,
@@ -120,16 +119,10 @@ checker_pixel :: proc(x, y, w, h: int) -> [4]u8 {
 }
 
 load_logo :: proc(r: ^render.Renderer) -> render.Texture {
-	img: ^image.Image
-	err: image.Error
-	img, err = png.load_from_bytes(LOGO_PNG, {.alpha_add_if_missing})
-	if err != nil || img.depth != 8 || img.channels != 4 {
-		if img != nil { png.destroy(img) }
-		return 0
-	}
-	defer png.destroy(img)
-	t := render.create_texture_rgba(r, img.width, img.height)
-	render.update_texture_rgba(r, t, 0, 0, img.width, img.height, img.pixels[:])
+	rgba, w, h, ok := png.decode(LOGO_PNG, context.temp_allocator)
+	if !ok { return 0 }
+	t := render.create_texture_rgba(r, w, h)
+	render.update_texture_rgba(r, t, 0, 0, w, h, rgba)
 	return t
 }
 
