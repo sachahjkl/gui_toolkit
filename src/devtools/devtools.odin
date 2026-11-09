@@ -209,7 +209,7 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 	if srv == nil { return }
 	ended := sync.atomic_exchange(&srv.ended, false)   // (before anything looks at the connections: one that ends after this is seen next time)
 	// (first: the time between frames is the program's rhythm, and a frame that reads a capture back is not late for it)
-	if s != nil { metrics_sample(srv, s, r) }
+	if s != nil { metrics_sample(srv, s) }
 	if len(srv.later) > 0 { cast_touch(srv) }
 	for e in srv.later { platform.inject_event(srv.win, e) }
 	clear(&srv.later)

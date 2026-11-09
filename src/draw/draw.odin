@@ -182,7 +182,7 @@ Context :: struct {
 	span_stack:    [dynamic]u64,               // the spans open
 	span_cuts:     [dynamic]Span_Cut,          // where what is drawn changes span
 	span_volatile: [dynamic]u64,               // spans redrawn every frame (damage_volatile)
-	layer_reach:   [dynamic]Layer_Reach,       // by layer id - 1: where its content shows
+	layer_reach:   [dynamic]Layer_Reach,       // by layer id - 1: where its content shows (layer_add appends both)
 	target_frames: [dynamic]u64,               // by texture id: the frame that drew into it last as a layer (kept across frames)
 }
 
@@ -669,7 +669,8 @@ end_frame :: proc(c: ^Context) {
 	for len(c.planes) > 0 { discard_plane(c, pop_plane(c)) }   // unbalanced push_plane: dropped
 	for len(c.open_layers) > 0 { pop_layer(c) }   // unbalanced push_layer: composite what was drawn
 	close_batch(c)
-	if c.auto_memory != nil { damage_auto_finish(c) }   // (every instance is in: the region is built before the frame goes)
+	auto := c.auto_memory
+	if auto != nil { damage_auto_finish(c) }   // (every instance is in: the region is built before the frame goes)
 	text_upload(c)
 	slug_upload(c)
 	render.frame_submit(c.renderer, render.Frame_Data{
@@ -682,5 +683,6 @@ end_frame :: proc(c: ^Context) {
 		apps = c.apps[:], app_params = c.app_params[:],
 		subpixel = c.fonts != nil && c.fonts.settings.subpixel_text != .Off,
 	})
+	if auto != nil { damage_auto_drawn(c, auto) }
 	text_end_frame(c)
 }

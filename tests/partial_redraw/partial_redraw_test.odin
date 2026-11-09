@@ -134,8 +134,8 @@ an_idle_frame_redraws_nothing :: proc(t: ^testing.T) {
 	}
 	st := ui.damage_stats(s.state)
 	testing.expect_value(t, st.changed, 0)
-	testing.expect(t, st.spans > 10, "the boxes are spans")
-	log.infof("idle frame: 0 px of %d, %d spans", WINDOW.x * WINDOW.y, st.spans)
+	testing.expect(t, st.parts > 10, "the boxes are spans")
+	log.infof("idle frame: 0 px of %d, %d parts", WINDOW.x * WINDOW.y, st.parts)
 	expect_exact(t, s, "idle")
 }
 
@@ -285,4 +285,240 @@ the_check_catches_a_region_that_misses :: proc(t: ^testing.T) {
 	s.damage = draw.Rect{{0, 0}, {2, 2}}   // (far from the square)
 	session.frame(s)
 	testing.expect(t, render.damage_verify_differences(s.renderer) > 0, "the moved square is outside the region: the frame differs")
+}
+
+// Spans drawn with draw directly, a grid of boxes of two instances each: what working out the region costs, and the calls of
+// draw that change what is compared (damage_volatile, damage_whole, damage_memory_reset, an offscreen target).
+@(private = "file") BOXES_WINDOW :: [2]int{1600, 1000}
+@(private = "file") BOXES_SIDE :: 100       // 10,000 boxes, 20,000 instances
+@(private = "file") FEW_SIDE :: 10          // 100 boxes
+@(private = "file") BOXES_FRAMES :: 20
+@(private = "file") OFFSCREEN_SIZE :: [2]int{32, 32}
+@(private = "file") READBACK_FRAMES :: 10   // frames to wait for a readback at the most
+// What working out the region of 10,000 spans may take at the most (optimized, -o:speed): a tenth of a frame at 60 Hz.
+@(private = "file") BOXES_MS_MAX :: 1.6
+
+@(private = "file")
+Boxes :: struct {
+	side:      int,
+	lit:       int,    // the box drawn in another colour (-1: none)
+	volatile:  int,    // the box that calls damage_volatile (-1: none)
+	whole:     bool,   // damage_whole
+	offscreen: Maybe([4]f32),   // a box that also draws into an offscreen target, of this colour
+	readback:  render.Readback_Id,
+}
+
+@(private = "file")
+boxes_frame :: proc(s: ^session.Session, memory: ^draw.Damage_Memory, b: ^Boxes) -> draw.Damage_Auto_Stats {
+	dc := session.draw_context(s)
+	size := [2]f32{f32(BOXES_WINDOW.x), f32(BOXES_WINDOW.y)}
+	cell := size / f32(b.side)
+	draw.begin_frame(dc, size)
+	render.frame_begin(s.renderer, {0, 0, 0, 1})
+	draw.damage_auto(dc, memory)
+	if b.whole { draw.damage_whole(dc) }
+	for i in 0 ..< b.side * b.side {
+		draw.damage_span_begin(dc, u64(i) + 1)
+		at := cell * {f32(i % b.side), f32(i / b.side)}
+		r := draw.Rect{at + 1, at + cell - 1}
+		draw.rect(dc, r, i == b.lit ? draw.Color{0.9, 0.5, 0.1, 1} : draw.Color{0.2, 0.3, 0.4, 1}, 2)
+		draw.rect(dc, r, {0.8, 0.8, 0.8, 1}, 2, 1)
+		if i == b.volatile { draw.damage_volatile(dc) }
+		if colour, ok := b.offscreen.?; ok && i == 0 && draw.offscreen_begin(dc, OFFSCREEN_SIZE) {
+			draw.rect(dc, {{0, 0}, {f32(OFFSCREEN_SIZE.x), f32(OFFSCREEN_SIZE.y)}}, colour)
+			b.readback = draw.offscreen_end(dc)
+		}
+		draw.damage_span_end(dc)
+	}
+	draw.end_frame(dc)
+	render.frame_end(s.renderer, false)
+	return memory.stats
+}
+
+// A session for the boxes: its window, partial redraw on, every partial frame checked against the whole one.
+@(private = "file")
+boxes_open :: proc(t: ^testing.T, app: ^App) -> ^session.Session {
+	s := session.start(t, {size = BOXES_WINDOW, build = proc(s: ^session.Session) {}, user = app})
+	dc := session.draw_context(s)
+	draw.set_partial_redraw(dc, true)
+	draw.set_damage_verify(dc, true)
+	return s
+}
+
+@(test)
+ten_thousand_spans_cost_little :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := boxes_open(t, &app)
+	memory: draw.Damage_Memory
+	defer draw.damage_memory_destroy(&memory)
+	b := Boxes{side = BOXES_SIDE, lit = -1, volatile = -1}
+	boxes_frame(s, &memory, &b)
+	idle_ms, lit_ms: f32
+	for k in 0 ..< BOXES_FRAMES {
+		b.lit = -1
+		st := boxes_frame(s, &memory, &b)
+		testing.expect_value(t, st.changed, 0)
+		testing.expect_value(t, st.px_drawn, 0)
+		idle_ms += st.ms
+		b.lit = k * 37
+		st = boxes_frame(s, &memory, &b)
+		testing.expect_value(t, st.changed, 1)
+		testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+		lit_ms += st.ms
+		// (the next frame changes the same box back)
+		b.lit = -1
+		_ = boxes_frame(s, &memory, &b)
+	}
+	idle_ms /= BOXES_FRAMES
+	lit_ms /= BOXES_FRAMES
+	log.infof("10,000 spans, 20,000 instances: %.3f ms a frame when nothing changes, %.3f ms when one span changes", idle_ms, lit_ms)
+	when ODIN_OPTIMIZATION_MODE == .Speed {
+		testing.expectf(t, idle_ms < BOXES_MS_MAX && lit_ms < BOXES_MS_MAX, "the region of 10,000 spans takes %.3f / %.3f ms", idle_ms, lit_ms)
+	}
+	expect_exact(t, s, "10,000 spans")
+}
+
+// A box added in the middle and one taken out redraw themselves alone; boxes raised above others redraw the window.
+@(test)
+added_removed_and_raised_spans :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := boxes_open(t, &app)
+	memory: draw.Damage_Memory
+	defer draw.damage_memory_destroy(&memory)
+	dc := session.draw_context(s)
+	frame :: proc(s: ^session.Session, memory: ^draw.Damage_Memory, ids: []u64) -> draw.Damage_Auto_Stats {
+		dc := session.draw_context(s)
+		draw.begin_frame(dc, {f32(BOXES_WINDOW.x), f32(BOXES_WINDOW.y)})
+		render.frame_begin(s.renderer, {0, 0, 0, 1})
+		draw.damage_auto(dc, memory)
+		for id in ids {
+			draw.damage_span_begin(dc, id)
+			at := [2]f32{f32(id % 10) * 40, f32(id / 10) * 40}
+			draw.rect(dc, {at, at + 60}, {f32(id % 3) / 3, 0.4, f32(id % 7) / 7, 1})   // (they overlap their neighbours)
+			draw.damage_span_end(dc)
+		}
+		draw.end_frame(dc)
+		render.frame_end(s.renderer, false)
+		return memory.stats
+	}
+	frame(s, &memory, {1, 2, 3, 4, 5, 6})
+	st := frame(s, &memory, {1, 2, 3, 9, 4, 5, 6})
+	testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+	testing.expect_value(t, st.changed, 1)
+	st = frame(s, &memory, {1, 2, 9, 4, 5, 6})
+	testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+	testing.expect_value(t, st.changed, 1)
+	st = frame(s, &memory, {1, 2, 9, 5, 4, 6})
+	testing.expect_value(t, st.whole, draw.Damage_Whole.Order)
+	_, _, px, _, _ := draw.damage_stats(dc)
+	testing.expect_value(t, px, BOXES_WINDOW.x * BOXES_WINDOW.y)
+	st = frame(s, &memory, {1, 2, 9, 5, 4, 6})
+	testing.expect_value(t, st.changed, 0)
+	expect_exact(t, s, "added, removed and raised")
+}
+
+// damage_volatile: the box is redrawn every frame, alone.
+@(test)
+a_volatile_span_is_redrawn_every_frame :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := boxes_open(t, &app)
+	memory: draw.Damage_Memory
+	defer draw.damage_memory_destroy(&memory)
+	b := Boxes{side = FEW_SIDE, lit = -1, volatile = 7}
+	boxes_frame(s, &memory, &b)
+	cell := BOXES_WINDOW / FEW_SIDE
+	for _ in 0 ..< 3 {
+		st := boxes_frame(s, &memory, &b)
+		testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+		testing.expect_value(t, st.changed, 1)
+		testing.expectf(t, st.px_drawn > 0 && st.px_drawn <= (cell.x + 4) * (cell.y + 4), "a volatile box redraws %d px", st.px_drawn)
+	}
+	b.volatile = -1
+	boxes_frame(s, &memory, &b)
+	st := boxes_frame(s, &memory, &b)
+	testing.expect_value(t, st.changed, 0)
+	expect_exact(t, s, "volatile")
+}
+
+// damage_whole: that frame is whole, the next one partial again.
+@(test)
+damage_whole_makes_one_frame_whole :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := boxes_open(t, &app)
+	memory: draw.Damage_Memory
+	defer draw.damage_memory_destroy(&memory)
+	b := Boxes{side = FEW_SIDE, lit = -1, volatile = -1}
+	boxes_frame(s, &memory, &b)
+	b.whole = true
+	st := boxes_frame(s, &memory, &b)
+	testing.expect_value(t, st.whole, draw.Damage_Whole.Asked)
+	testing.expect_value(t, st.px_drawn, BOXES_WINDOW.x * BOXES_WINDOW.y)
+	b.whole = false
+	st = boxes_frame(s, &memory, &b)
+	testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+	testing.expect_value(t, st.px_drawn, 0)
+	expect_exact(t, s, "damage_whole")
+}
+
+// damage_memory_reset: the next frame is whole (nothing to compare with), the one after partial again.
+@(test)
+a_reset_memory_makes_the_next_frame_whole :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := boxes_open(t, &app)
+	memory: draw.Damage_Memory
+	defer draw.damage_memory_destroy(&memory)
+	b := Boxes{side = FEW_SIDE, lit = -1, volatile = -1}
+	boxes_frame(s, &memory, &b)
+	st := boxes_frame(s, &memory, &b)
+	testing.expect_value(t, st.changed, 0)
+	draw.damage_memory_reset(&memory)
+	st = boxes_frame(s, &memory, &b)
+	testing.expect_value(t, st.whole, draw.Damage_Whole.First)
+	testing.expect_value(t, st.px_drawn, BOXES_WINDOW.x * BOXES_WINDOW.y)
+	st = boxes_frame(s, &memory, &b)
+	testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+	testing.expect_value(t, st.changed, 0)
+	expect_exact(t, s, "damage_memory_reset")
+}
+
+// An offscreen target (a drag image) is never shown: what changes in it changes no part and redraws nothing of the window, and
+// it is read back whole.
+@(test)
+an_offscreen_target_damages_nothing :: proc(t: ^testing.T) {
+	app: App
+	defer ui.field_destroy(&app.field)
+	s := boxes_open(t, &app)
+	memory: draw.Damage_Memory
+	defer draw.damage_memory_destroy(&memory)
+	colours := [2][4]f32{{1, 0, 0, 1}, {0, 0, 1, 1}}
+	b := Boxes{side = FEW_SIDE, lit = -1, volatile = -1, offscreen = colours[0]}
+	boxes_frame(s, &memory, &b)
+	for k in 1 ..= 3 {
+		b.offscreen = colours[k % 2]
+		st := boxes_frame(s, &memory, &b)
+		testing.expect_value(t, st.whole, draw.Damage_Whole.No)
+		testing.expect_value(t, st.changed, 0)
+		testing.expect_value(t, st.px_drawn, 0)
+	}
+	// the last one, blue, read back whole although the window's frame drew nothing
+	id := b.readback
+	b.offscreen = nil
+	pixels: []u8
+	status: render.Capture_Status
+	for _ in 0 ..< READBACK_FRAMES {
+		pixels, _, status = render.readback_poll(s.renderer, id, context.temp_allocator)
+		if status != .Pending { break }
+		boxes_frame(s, &memory, &b)
+	}
+	testing.expect_value(t, status, render.Capture_Status.Ready)
+	if len(pixels) >= 4 * OFFSCREEN_SIZE.x * OFFSCREEN_SIZE.y {
+		last := len(pixels) - 4
+		testing.expectf(t, pixels[2] > 200 && pixels[0] < 50 && pixels[last + 2] > 200, "the offscreen target is blue: %v", pixels[:4])
+	}
+	expect_exact(t, s, "offscreen")
 }

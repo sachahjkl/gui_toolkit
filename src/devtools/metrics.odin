@@ -29,19 +29,17 @@ Metric_Sample :: struct {
 
 // Each frame: the last build's numbers, once.
 @(private)
-metrics_sample :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
+metrics_sample :: proc(srv: ^Server, s: ^ui.State) {
 	if s.build_index == srv.sample_build { return }
 	srv.sample_build = s.build_index
 	now := time.tick_now()
 	m := ui.build_metrics(s)
 	frame := srv.sample_at != {} ? f32(time.duration_milliseconds(time.tick_diff(srv.sample_at, now))) : 0
 	srv.sample_at = now
-	x := Metric_Sample{frame, f32(m.build_ms), f32(m.layout_ms), f32(m.total_ms), ui.now_ms(), s.build_index, ui.damage_stats(s).whole, 0, 0}
-	if r != nil && ui.partial_redraw(s) {
-		_, _, x.px_drawn, x.px_window, _ = render.damage_stats(r)
-		x.px_window = r.size.x * r.size.y
-		if x.whole != .No { x.px_drawn = x.px_window }
-	}
+	// (the damage of this state's window: the renderer's own is that of the window it drew last)
+	st := ui.damage_stats(s)
+	x := Metric_Sample{frame, f32(m.build_ms), f32(m.layout_ms), f32(m.total_ms), ui.now_ms(), s.build_index, st.whole, 0, 0}
+	if ui.partial_redraw(s) { x.px_drawn, x.px_window = st.px_drawn, st.px_window }
 	srv.samples[srv.sampled % METRIC_RING] = x
 	srv.sampled += 1
 }

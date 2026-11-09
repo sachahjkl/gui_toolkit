@@ -276,9 +276,7 @@ open_layer :: proc(c: ^Context, bounds: Rect, fx: Layer_Effects, kind: Layer_Kin
 		return true
 	}
 	ol.region = Rect{{x0, y0}, {x1, y1}}
-	append(&c.layers, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}, space = space})
-	layer_reach_add(c, c.target, true, ol.filters[1] > ol.filters[0], ol.region)
-	ol.id = len(c.layers)
+	ol.id = layer_add(c, render.Layer{tex = tex, origin = {x0, y0}, size = {w, h}, space = space}, {parent = c.target, shows = .Screen, spreads = ol.filters[1] > ol.filters[0], shown = ol.region})
 	add_op(c, render.Op{kind = .Clear, dst = tex})
 	close_batch(c)
 	c.target = ol.id
