@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.108.0] - 2026-11-09
+
+### Added
+- **`platform.needs_frame_outline`**: a window with an integrated title bar and no frame of the system's (Linux: no server-side decorations, not tiled, no X11 frame extents; neither maximized nor full screen) gets a 1-pixel outline in the theme's border colour, drawn by `ui`.
+
+### Fixed
+- **An integrated title bar on Linux works as a frame**: a press on the caption moves the window (Wayland `xdg_toplevel.move`, X11 `_NET_WM_MOVERESIZE`), the bands along its four sides resize it (with the resize cursor over them), a double click on the caption maximizes or restores it, and a right click there opens the compositor's window menu. Nothing of that happened: the window could not be moved. The window menu now gets the press's serial and the surface's coordinates.
+
 ## [0.107.0] - 2026-11-09
 
 ### Added
@@ -1901,6 +1909,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.108.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.108.0
 [0.107.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.107.0
 [0.106.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.106.0
 [0.105.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.105.0
