@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.109.0] - 2026-11-09
+
+### Added
+- **`platform.hide_window`**: a shown window off the screen and back with `show_window` in a few milliseconds, its interface kept (a program in the notification area): Wayland (the toplevel role made again, its first configure waited for), X11 (withdrawn), Windows (`SW_HIDE`). `Window.shown_again` counts the shows after a hide; `host_frame` then makes a new swap chain (**`render.surface_remake`**), which Vulkan's FIFO on Wayland would otherwise wait on for good.
+
 ## [0.108.0] - 2026-11-09
 
 ### Added
@@ -1909,6 +1914,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.109.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.109.0
 [0.108.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.108.0
 [0.107.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.107.0
 [0.106.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.106.0
