@@ -49,7 +49,12 @@ Dialog :: struct {
 	watcher:   ^desktop.Watcher,   // while open (nil: none could start; setup.stale reads again)
 	stale_flag: bool,              // atomic: the watcher (or the program) says the install changed
 	state:     ^ui.State,          // atomic: the State of its last frame, which the threads wake (nil before one)
+	at:        [Button_Role]draw.Rect,   // where the last frame put its buttons ({}: not shown): a program's automation clicks them
 }
+
+// The buttons a program's automation finds in Dialog.at. Secondary: what closes (Keep standalone, Not now, Close) or opens
+// the installed copy.
+Button_Role :: enum u8 { Install, Uninstall, Secondary }
 
 Event :: enum u8 {
 	None,
@@ -66,7 +71,7 @@ Logo :: struct {
 	size:    [2]f32,
 }
 
-@(private = "file") DIALOG_EM       :: [2]f32{36, 27}   // its size at first (a grip of its corner or edges makes it larger or smaller)
+@(private = "file") DIALOG_EM       :: [2]f32{36, 31}   // its size at first (a grip of its corner or edges makes it larger or smaller)
 @(private = "file") DIALOG_MIN_EM   :: [2]f32{28, 16}   // ... and at the least (what does not fit scrolls; the buttons stay)
 @(private = "file") MARGIN_EM       :: 1.5
 @(private = "file") LOGO_EM         :: 4.2
@@ -606,6 +611,9 @@ lamp_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 	f := &d.facts
 	idle := d.job == nil || d.job.kind == .Read
+	d.at = {}
+	// (keys are made under the row: the box of a button is looked for there, right after it)
+	mark :: proc(d: ^Dialog, role: Button_Role, id: string) { if b := ui.prev_box(id); b != nil { d.at[role] = b.rect } }
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(.Center, id = "###setup_buttons") {
 		ui.spacer(ui.px(em * MARGIN_EM))
@@ -614,6 +622,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			if button(c, "###setup_uninstall", d.confirm ? "Click again to uninstall" : "Uninstall", .Danger, em) && idle && d.job == nil {
 				if d.confirm { job_start(d, c, .Uninstall) } else { d.confirm = true }
 			}
+			mark(d, .Uninstall, "###setup_uninstall")
 		}
 		ui.spacer(ui.fill())
 		just_installed := d.installed != "" && f.state != .This_Copy
@@ -625,12 +634,16 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			if button(c, "###setup_launch", "Open the installed copy", .Accent, em) {
 				if launch(d.installed) { ev = .Launched } else { say(d, false, fmt.tprintf("%s does not start", d.installed)) }
 			}
+			mark(d, .Secondary, "###setup_launch")
 		case upgrade:
 			if button(c, "###setup_later", "Not now", .Normal, em) { d.open = false; ev = .Dismissed }
+			mark(d, .Secondary, "###setup_later")
 		case d.known && (f.state == .Not_Installed || f.state == .Other_Copy):
 			if button(c, "###setup_standalone", "Keep standalone", .Normal, em) { d.open = false; ev = .Kept_Standalone }
+			mark(d, .Secondary, "###setup_standalone")
 		case:
 			if button(c, "###setup_close", "Close", .Normal, em) { d.open = false }
+			mark(d, .Secondary, "###setup_close")
 		}
 		if d.known && !just_installed && f.state != .Removal_Scheduled && !f.from_nix {
 			label := "Install"
@@ -646,6 +659,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			}
 			ui.spacer(ui.px(em * 0.5))
 			if button(c, "###setup_install", label, .Accent, em) && idle && d.job == nil { job_start(d, c, .Install) }
+			mark(d, .Install, "###setup_install")
 		}
 		ui.spacer(ui.px(em * MARGIN_EM))
 	}
