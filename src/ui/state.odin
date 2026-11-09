@@ -796,6 +796,12 @@ update_animations :: proc(s: ^State) {
 	if hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil; hb != nil && hb.last_build == s.build_index {
 		for p := hb; p != nil && n < len(chain); p = p.parent { chain[n] = p.key; n += 1 }
 	}
+	// the focused box and its ancestors (for .Focus_Within boxes)
+	fchain: [HOT_ANCESTORS_MAX]Key
+	fn := 0
+	if fb := s.boxes[s.focus_key] if s.focus_key != 0 else nil; fb != nil && fb.last_build == s.build_index {
+		for p := fb; p != nil && fn < len(fchain); p = p.parent { fchain[fn] = p.key; fn += 1 }
+	}
 	for _, b in s.boxes {
 		if b.last_build != s.build_index { continue }
 		hot: f32 = s.hot_key == b.key ? 1 : 0
@@ -804,6 +810,9 @@ update_animations :: proc(s: ^State) {
 		}
 		active: f32 = s.active_key[.Left] == b.key ? 1 : 0
 		focus: f32 = s.focus_key == b.key ? 1 : 0
+		if .Focus_Within in b.flags && focus == 0 {
+			for k in fchain[:fn] { if k == b.key { focus = 1; break } }
+		}
 		disabled: f32 = .Disabled in b.flags ? 1 : 0
 		step(&b.hot_t, hot, rate, &s.anim_busy)
 		step(&b.active_t, active, rate, &s.anim_busy)

@@ -101,6 +101,21 @@ surface (`set_fixed_surface` returns false), so the recipe does not help there (
 The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line_edit`, `if ui.row() { ... }`):
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.
 
+A field with things beside it in one surface (a search icon, the field, a count) is an `if ui.field_frame(id) { ... }`.
+The frame draws an input's background, border and corners (its radius from `next`), and one focus ring around all of
+it while a box inside has the keyboard focus (the box flag `.Focus_Within`). Build the field inside under the tag
+`"bare"` (`if ui.tags("bare") { ui.line_edit(...) }`): the default theme makes a bare field's background, border and
+focus ring clear, so it does not draw a second box inside the frame.
+
+```odin
+ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})
+if ui.field_frame("###search") {
+	glyph(ICO_SEARCH)
+	ui.next({width = ui.fill(), height = ui.pct(1)})
+	if ui.tags("bare") { ui.line_edit("###field", &field, "Search") }
+}
+```
+
 ## 3. What `tk build` does
 
 `odin run tools/tk -- build <example> [-debug]` (in the toolkit's folder; `build.bat` and `./build.sh` are its shortcuts) is
