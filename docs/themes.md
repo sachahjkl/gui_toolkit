@@ -5,13 +5,23 @@ surfaces are painted. `ui.theme_show` applies the three and follows the system w
 
 ```odin
 choice := ui.Theme_Choice{name = "Nord", mode = .System, finish = .Machined, glow = 1}
-if ui.theme_show(&app.theme, ui.THEMES[:], choice, &app.shown) {
+if ui.theme_show(&app.theme, ui.THEMES[:], choice, &app.shown, render.blend_space(&app.r)) {
 	platform.set_dark_title(app.win, !app.shown.light)   // the system's title bar, as the version shown
 }
 ```
 
-Call `theme_show` once per frame. It applies only when the choice changed, or, in the `System` mode, when
-`platform.color_scheme_serial` moved; otherwise it costs one hash.
+The last argument is the blend space of the renderer that draws with the theme, as `apply_palette` takes it: the
+translucent entries (hover, selection) get the alpha that looks right in that space.
+
+Call `theme_show` once per frame. It applies again when one of these changes:
+
+- the choice: the name, the mode, the finish, the glow;
+- the definition of the theme shown: its colours, its versions, its own finish (a themes file read again with the same names);
+- the blend space;
+- in the `System` mode, `platform.color_scheme_serial`.
+
+Otherwise it costs a lookup in the list and one hash. Each change of the look bumps `Theme.serial`: the colours
+cross-fade, the glow jumps.
 
 ## A theme
 

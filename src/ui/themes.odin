@@ -9,8 +9,8 @@ package ui
 //   texts:  faint, weak, text, bright
 //   hues:   accent, blue, purple, green, yellow, red, cyan, rose
 
-import "core:fmt"
 import "core:math"
+import "core:mem"
 import "core:strconv"
 import "core:strings"
 import "../ascii"
@@ -130,29 +130,59 @@ Theme_Choice :: struct {
 
 // What theme_show applied last: one for each Theme.
 Theme_Shown :: struct {
-	key:   u64,         // the choice and the system's light or dark it was applied for
+	key:   u64,         // the theme's colours, the choice, the blend space and the system's light or dark it was applied for
 	def:   Theme_Def,   // the theme shown (its name is the list's)
 	light: bool,        // its light version is shown
 }
 
-// Shows `c` with `t`: the palette of its theme's version (theme_palette), its halos. Call it once a frame: it applies
-// only when the choice changed, or, in the System mode, when the system went light or dark (platform.color_scheme_serial),
-// and costs a hash otherwise. A name that is not in `list` shows its first theme. True when it applied: the program
-// then gives its windows' title bars the version shown (platform.set_dark_title(w, !shown.light)).
-theme_show :: proc(t: ^Theme, list: []Theme_Def, c: Theme_Choice, shown: ^Theme_Shown) -> bool {
+// Shows `c` with `t`: the palette of its theme's version (theme_palette), its halos. `space`: the blend space of the
+// renderer `t` draws with (render.blend_space), as apply_palette takes it. Call it once a frame: it applies only when
+// the choice, the theme's definition (a themes file read again) or the space changed, or, in the System mode, when the
+// system went light or dark (platform.color_scheme_serial); otherwise it costs a lookup in `list` and a hash. A name
+// that is not in `list` shows its first theme. True when it applied: the program then gives its windows' title bars the
+// version shown (platform.set_dark_title(w, !shown.light)).
+theme_show :: proc(t: ^Theme, list: []Theme_Def, c: Theme_Choice, shown: ^Theme_Shown, space: draw.Blend_Space) -> bool {
 	if len(list) == 0 { return false }
-	scheme := c.mode == .System ? platform.color_scheme_serial() : 0
-	key := hash_bytes(transmute([]u8)fmt.tprintf("%s|%v|%v|%v|%v", ascii.lower(c.name), c.mode, c.finish, c.glow, scheme)) | 1
-	if key == shown.key { return false }
-	shown.key = key
 	def, _, ok := theme_find(list, c.name)
 	if !ok { def = list[0] }
+	key := theme_show_key(def, c, space)
+	if key == shown.key { return false }
+	shown.key = key
 	light := theme_wants_light(c.mode)
 	_, shown.light = theme_version(def, light)
 	shown.def = def
-	apply_palette(t, theme_palette(def, light, c.finish))
-	t.glow = c.glow
+	apply_palette(t, theme_palette(def, light, c.finish), space)
+	// (the halos are drawn from Theme.glow, not from the palette: a change of it alone is a change of the look too)
+	if t.glow != c.glow { t.glow = c.glow; t.serial += 1 }
 	return true
+}
+
+// Everything theme_show's result depends on, as one hash. The fields go through a zeroed struct (no padding garbage);
+// the name is hashed apart.
+@(private = "file")
+theme_show_key :: proc(def: Theme_Def, c: Theme_Choice, space: draw.Blend_Space) -> u64 {
+	Fields :: struct {
+		dark, light:   Theme_Colors,
+		accent_text:   u32,
+		glow:          f32,
+		scheme:        u32,
+		versions:      Theme_Versions,
+		own_finish:    Finish,
+		has_finish:    bool,
+		translucent:   bool,
+		mode:          Theme_Mode,
+		finish:        Finish,
+		space:         draw.Blend_Space,
+	}
+	f: Fields
+	f.dark, f.light, f.accent_text, f.versions, f.translucent = def.dark, def.light, def.accent_text, def.versions, def.translucent
+	f.own_finish, f.has_finish = def.finish.?
+	f.glow, f.mode, f.finish, f.space = c.glow, c.mode, c.finish, space
+	f.scheme = c.mode == .System ? platform.color_scheme_serial() : 0
+	h := u64(FNV64_OFFSET_BASIS)
+	fnv64_mix(&h, transmute([]u8)def.name)
+	fnv64_mix(&h, mem.ptr_to_bytes(&f))
+	return h | 1   // (0 is "nothing shown yet")
 }
 
 ////////////////////////////////
