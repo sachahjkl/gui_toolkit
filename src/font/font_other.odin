@@ -12,9 +12,11 @@ import "../ascii"
 // a font file for a family / weight / style, the file of a font that has a character (the fallback) and the families.
 // No bitmap rasterizer: text is drawn by Slug from the outlines.
 
-// What the system does with text. No service says the stripes of a screen everywhere: the usual order on Linux, where text
-// has them; macOS smooths in grey.
-system_subpixel_text :: proc() -> Subpixel_Text { return ODIN_OS == .Linux ? .Rgb : .Off }
+// What the system does with text: on Linux what fontconfig's configuration says (its `rgba` and `antialias`, as every
+// application reads them); macOS smooths in grey.
+system_subpixel_text :: proc() -> Subpixel_Text {
+	when ODIN_OS == .Linux { return fc_subpixel_text() } else { return .Off }
+}
 
 @(private)
 Platform_Face :: struct {
