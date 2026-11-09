@@ -1,7 +1,7 @@
 # toolbox: what the tools of a project share
 
 `import toolbox "<toolkit>/src/toolbox"` (a relative path: a tool has no collection of its own). The package is named
-`tk_toolbox`. It is for the tools that build, check and publish a project (`tools/tk` here, occtools in opencode native,
+`tk_toolbox`. It is for the tools that build, check and publish a project (`tools/tk` here, ocntools in opencode native,
 Wren's tooling), not for the programs they make. Pure Odin with `core:os`, Windows and Linux.
 
 ```odin

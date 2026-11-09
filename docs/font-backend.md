@@ -70,7 +70,7 @@ and build the program with `-define:FONT_BACKEND=native -define:FONT_NATIVE_LINK
 
 **WebGPU's wgpu-native is a Rust static library too**, prebuilt: it cannot join your workspace. Its few unmangled symbols
 of Rust's standard library (`rust_eh_personality`) collide with yours. On Linux they are the same code: link with
-`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (`tk build`, opencode native's occtools). On Windows the
+`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (`tk build`, opencode native's ocntools). On Windows the
 linker refuses the duplicate: use Direct3D 11 there (the default backend), or build wgpu-native from source in your
 workspace.
 

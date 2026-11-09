@@ -5,7 +5,7 @@ code, no GPU, any target. The same calls make the same bytes on every system.
 
 The package draws pictures that a program makes ahead of time: a logo, the sizes of an icon, a check sheet. It does not
 draw a window: `draw` and `render` do that. `tk make_logo` and `tk make_icon` use it, and so do the logo commands of Wren
-(`wrentool logo`) and opencode native (`occtools logo`).
+(`wrentool logo`) and opencode native (`ocntools logo`).
 
 ## A picture
 
