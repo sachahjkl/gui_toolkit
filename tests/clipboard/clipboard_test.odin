@@ -313,6 +313,30 @@ a_drive_path_reads_back_on_windows :: proc(t: ^testing.T) {
 	when ODIN_OS == .Windows { testing.expect_value(t, paths[0], "C:/Users/me/a b.txt") } else { testing.expect_value(t, paths[0], "/C:/Users/me/a b.txt") }
 }
 
+// GNOME Files' list: the copy or cut line, one URI per line, no last line end; and a cut read back from it and from KDE's flag.
+@(test)
+gnome_copied_files_and_the_cut_flags :: proc(t: ^testing.T) {
+	cut := platform.gnome_copied_files_encode({"/tmp/a b.txt", "/tmp/c"}, true)
+	testing.expect_value(t, cut, "cut\nfile:///tmp/a%20b.txt\nfile:///tmp/c")
+	testing.expect_value(t, platform.gnome_copied_files_encode({"/x"}, false), "copy\nfile:///x")
+	testing.expect_value(t, platform.gnome_copied_files_encode(nil, true), "cut")
+	// the URIs read back as paths: the first line is skipped
+	paths := platform.uri_list_to_paths(cut, context.temp_allocator)
+	testing.expect_value(t, len(paths), 2)
+	if len(paths) == 2 { testing.expect_value(t, paths[0], "/tmp/a b.txt") }
+	GNOME :: "x-special/gnome-copied-files"
+	KDE :: "application/x-kde-cutselection"
+	testing.expect(t, platform.clipboard_files_cut_decode(GNOME, transmute([]u8)cut), "GNOME: cut")
+	testing.expect(t, platform.clipboard_files_cut_decode(GNOME, transmute([]u8)string("cut\r\nfile:///x\r\n")), "GNOME: cut, CRLF")
+	testing.expect(t, !platform.clipboard_files_cut_decode(GNOME, transmute([]u8)string("copy\nfile:///x")), "GNOME: copy")
+	testing.expect(t, !platform.clipboard_files_cut_decode(GNOME, transmute([]u8)string("cutting\nfile:///x")), "GNOME: only the whole word")
+	testing.expect(t, !platform.clipboard_files_cut_decode(GNOME, nil), "GNOME: nothing")
+	testing.expect(t, platform.clipboard_files_cut_decode(KDE, transmute([]u8)string("1")), "KDE: cut")
+	testing.expect(t, platform.clipboard_files_cut_decode("Application/X-KDE-Cutselection", []u8{'1', 0}), "KDE: case, a C string")
+	testing.expect(t, !platform.clipboard_files_cut_decode(KDE, transmute([]u8)string("0")), "KDE: not cut")
+	testing.expect(t, !platform.clipboard_files_cut_decode("text/uri-list", transmute([]u8)string("cut")), "another type says nothing")
+}
+
 // clipboard_changed tells once, not at every call.
 @(test)
 clipboard_changed_tells_once :: proc(t: ^testing.T) {

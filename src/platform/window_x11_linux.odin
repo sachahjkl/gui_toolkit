@@ -33,7 +33,7 @@ X11_Conn :: struct {
 	net_wm_state_hidden, net_wm_moveresize, motif_wm_hints, clipboard, primary, targets, wren_selection,
 	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager, net_frame_extents,
 	// the rich-clipboard target atoms (clipboard_x11_linux.odin): the MIME types and the protocol atoms
-	mime_text_html, mime_image_png, mime_uri_list, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
+	mime_text_html, mime_image_png, mime_uri_list, mime_gnome_files, mime_kde_cut, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
 	// the XDND atoms (dragdrop_x11_linux.odin)
 	xdnd_aware, xdnd_enter, xdnd_position, xdnd_status, xdnd_leave, xdnd_drop, xdnd_finished,
 	xdnd_type_list, xdnd_selection, xdnd_action_copy, xdnd_action_move, xdnd_action_link, xdnd_proxy, xdnd_action_list: Xcb_Atom,
@@ -146,6 +146,8 @@ x11_intern_atoms :: proc() {
 	x11c.mime_text_html = x11_atom("text/html")
 	x11c.mime_image_png = x11_atom("image/png")
 	x11c.mime_uri_list = x11_atom("text/uri-list")
+	x11c.mime_gnome_files = x11_atom(CLIPBOARD_GNOME_FILES_MIME)
+	x11c.mime_kde_cut = x11_atom(CLIPBOARD_KDE_CUT_MIME)
 	x11c.atom_incr = x11_atom("INCR")
 	x11c.atom_multiple = x11_atom("MULTIPLE")
 	x11c.atom_timestamp = x11_atom("TIMESTAMP")

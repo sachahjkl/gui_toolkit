@@ -4,7 +4,8 @@ package platform
 // The rich clipboard on Linux (clipboard.odin has the API and the pure conversions). Text goes through the X11
 // CLIPBOARD selection (window_x11_linux.odin) or the Wayland wl_data_device (window_wl_linux.odin). The richer
 // flavours — HTML, an image, a file list — are kept by the process that set them and offered to other clients under
-// their MIME types (text/html, image/png, text/uri-list); a get of a flavour another process owns reads it back over
+// their MIME types (text/html, image/png, text/uri-list with GNOME Files' x-special/gnome-copied-files, and KDE's
+// application/x-kde-cutselection for files that were cut); a get of a flavour another process owns reads it back over
 // the selection transport. Images go through the toolkit's PNG codec (png_encode / png_decode, clipboard.odin); another
 // program's JPEG or BMP is read too when it offers no PNG (clipboard_image_decode), GNOME Files' list when there is no
 // text/uri-list.
@@ -84,6 +85,18 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 	if len(b) == 0 { return nil, false }
 	list := uri_list_to_paths(string(b), allocator)
 	return list, len(list) > 0
+}
+
+// Whether the files on the clipboard were cut (a paste moves them): the store's flag while this process owns the
+// clipboard, else what another program's KDE flag or GNOME list says.
+clipboard_files_cut :: proc(w: ^Window) -> bool {
+	if !clip_foreign_owner(w) { return clip_store_files_cut() }
+	offered := clip_foreign_mimes(w)
+	for mime in CLIPBOARD_CUT_MIMES {
+		if clipboard_pick_mime(offered, {mime}) == "" { continue }
+		if clipboard_files_cut_decode(mime, clip_read_foreign(w, mime, context.temp_allocator)) { return true }
+	}
+	return false
 }
 
 // The MIME types another client offers on the clipboard (temp allocator): the Wayland offer's, or the X11 owner's TARGETS.
@@ -172,6 +185,14 @@ clipboard_changed :: proc(w: ^Window) -> bool {
 @(private) clip_text_locked :: proc() -> string { return clip.text }
 @(private) clip_html_locked :: proc() -> string { return clip.html }
 @(private) clip_png_locked  :: proc() -> []u8   { return clip.image_png }
+@(private) clip_files_cut_locked :: proc() -> bool { return clip.files_cut }
+
+// The clipboard files as GNOME Files' list (gnome_copied_files_encode), on the temp allocator while the lock is held.
+@(private)
+clip_gnome_files_locked :: proc() -> string {
+	if len(clip.files) == 0 { return "" }
+	return gnome_copied_files_encode(clip.files, clip.files_cut)
+}
 
 // The clipboard files as a text/uri-list (RFC 2483: one percent-encoded file:// URI per line, CRLF). Built on the temp allocator while
 // the lock is held; the send callback writes it straight out.

@@ -4,7 +4,7 @@ package platform
 // The clipboard's flavours on Windows (clipboard.odin has the API). Formats read, best first: images "PNG" (alpha, what
 // browsers and Office write), CF_DIBV5, CF_DIB, CF_BITMAP; HTML "HTML Format"; files CF_HDROP. Written: CF_UNICODETEXT
 // (CRLF line ends), "HTML Format", "PNG" + CF_DIBV5 (alpha) + CF_DIB (opaque over white), CF_HDROP with "Preferred
-// DropEffect" = copy. PNG goes through the toolkit's own codec (src/png, clipboard.odin).
+// DropEffect" = copy, or move for files that were cut. PNG goes through the toolkit's own codec (src/png, clipboard.odin).
 
 import "core:strings"
 import "core:sync"
@@ -104,6 +104,16 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 	return out[:], true
 }
 
+// Whether the files on the clipboard were cut (a paste moves them): "Preferred DropEffect" says move, as Explorer's Cut
+// writes it.
+clipboard_files_cut :: proc(w: ^Window) -> bool {
+	if clip_is_virtual(w) { return clip_store_files_cut() }
+	if !open_clipboard(w) { return false }
+	defer win.CloseClipboard()
+	b := clip_bytes(u32(registered_format("Preferred DropEffect")), context.temp_allocator)
+	return len(b) >= 4 && get32(b, 0) & DROPEFFECT_MOVE != 0
+}
+
 // Replaces the clipboard's contents by every flavour of `c` (one owner). False when the clipboard could not be had or
 // a flavour could not be written.
 clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
@@ -134,7 +144,8 @@ clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool {
 	}
 	if len(c.files) > 0 {
 		append(&items, Item{win.CF_HDROP, hdrop_encode(c.files, context.temp_allocator)})
-		effect := []u8{1, 0, 0, 0}   // DROPEFFECT_COPY: a paste copies (a cut would say move)
+		// what Explorer reads to choose between a copy and a move when it pastes
+		effect := []u8{c.files_cut ? DROPEFFECT_MOVE : DROPEFFECT_COPY, 0, 0, 0}
 		append(&items, Item{u32(registered_format("Preferred DropEffect")), effect})
 	}
 	if !open_clipboard(w) { return false }

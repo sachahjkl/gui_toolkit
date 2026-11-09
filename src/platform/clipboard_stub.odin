@@ -11,6 +11,7 @@ clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []
 clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) { return }
 clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html, source_url: string, ok: bool) { return }
 clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (paths: []string, ok: bool) { return }
+clipboard_files_cut :: proc(w: ^Window) -> bool { return false }
 clipboard_set :: proc(w: ^Window, c: Clipboard_Content) -> bool { return false }
 clipboard_set_html :: proc(w: ^Window, html: string, text := "", source_url := "") -> bool { return false }
 clipboard_set_image :: proc(w: ^Window, img: Clipboard_Image) -> bool { return false }

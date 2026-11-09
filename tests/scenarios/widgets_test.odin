@@ -302,3 +302,19 @@ the_process_s_clipboard_keeps_every_flavour :: proc(t: ^testing.T) {
 	img, iok := platform.clipboard_get_image(w, context.temp_allocator)
 	testing.expect(t, iok && img.size == {2, 1} && img.rgba[4] == 0 && img.rgba[5] == 255 && img.rgba[7] == 128, "comes back whole")
 }
+
+// A cut comes back with its files (a file manager's paste moves them); a plain set of files is a copy.
+@(test)
+files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, no_renderer = true})
+	w := s.win
+	paths := []string{"C:/a.txt", "C:/b c.txt"}
+	testing.expect(t, platform.clipboard_set(w, {files = paths, files_cut = true}), "cut")
+	got, has := platform.clipboard_get_files(w, context.temp_allocator)
+	testing.expect(t, has && len(got) == 2 && got[1] == "C:/b c.txt", "the files come back")
+	testing.expect(t, platform.clipboard_files_cut(w), "said cut")
+	testing.expect(t, platform.clipboard_set_files(w, paths), "copied")
+	testing.expect(t, !platform.clipboard_files_cut(w), "said copied")
+	testing.expect(t, platform.clipboard_set(w, {text = "x", files_cut = true}), "text alone")
+	testing.expect(t, !platform.clipboard_files_cut(w), "no files, no cut")
+}

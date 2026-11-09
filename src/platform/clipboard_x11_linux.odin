@@ -2,7 +2,8 @@
 package platform
 
 // The rich X11 clipboard: owning CLIPBOARD with every flavour the store holds and answering SelectionRequest for each
-// (TARGETS, the MIME targets text/html, image/png, text/uri-list, UTF8_STRING / STRING / TEXT, TIMESTAMP, MULTIPLE),
+// (TARGETS, the MIME targets text/html, image/png, text/uri-list, x-special/gnome-copied-files,
+// application/x-kde-cutselection, UTF8_STRING / STRING / TEXT, TIMESTAMP, MULTIPLE),
 // with INCR for a payload too large for a single property (a pasted image). The plain-text path in
 // window_x11_linux.odin stays; this adds the flavours and the protocol niceties the spec and real clients expect.
 //
@@ -78,7 +79,10 @@ x11_offer_targets :: proc() -> []Xcb_Atom {
 	if .Text in fmts { append(&list, x11c.utf8_string, XCB_ATOM_STRING, x11c.atom_text) }
 	if .Html in fmts { append(&list, x11c.mime_text_html) }
 	if .Image in fmts { append(&list, x11c.mime_image_png) }
-	if .Files in fmts { append(&list, x11c.mime_uri_list) }
+	if .Files in fmts {
+		append(&list, x11c.mime_uri_list, x11c.mime_gnome_files)
+		if clip_store_files_cut() { append(&list, x11c.mime_kde_cut) }
+	}
 	return list[:]
 }
 
@@ -99,6 +103,13 @@ x11_bytes_for_target :: proc(target: Xcb_Atom) -> (data: []u8, ok: bool) {
 	case x11c.mime_uri_list:
 		sync_lock_clip(); defer sync_unlock_clip()
 		return transmute([]u8)clip_uris_locked(), true
+	case x11c.mime_gnome_files:
+		sync_lock_clip(); defer sync_unlock_clip()
+		s := clip_gnome_files_locked()
+		return transmute([]u8)s, s != ""
+	case x11c.mime_kde_cut:
+		sync_lock_clip(); defer sync_unlock_clip()
+		return transmute([]u8)strings.clone("1", context.temp_allocator), clip_files_cut_locked()
 	}
 	return nil, false
 }
@@ -299,6 +310,8 @@ x11_target_for_mime :: proc(mime: string) -> Xcb_Atom {
 	case "text/html":     return x11c.mime_text_html
 	case "image/png":     return x11c.mime_image_png
 	case "text/uri-list": return x11c.mime_uri_list
+	case CLIPBOARD_GNOME_FILES_MIME: return x11c.mime_gnome_files
+	case CLIPBOARD_KDE_CUT_MIME:     return x11c.mime_kde_cut
 	case "TARGETS":       return x11c.targets
 	}
 	return x11_atom(mime)   // a format of the app's own
