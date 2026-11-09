@@ -30,6 +30,7 @@ entries := [?]Entry{
 	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
+	{"resize_grip shade", .Border, 1},   // the bevel in a dialog's or a floating panel's corner: toward the border, darker on a light theme, lighter on a dark one
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
 	{"bad border", .Bad, 1}, {"good border", .Good, 1}, {"warn border", .Warn, 1},

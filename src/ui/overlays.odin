@@ -290,6 +290,8 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
 	m.size, m.preferred, m.wh, m.lo, m.hi = size, preferred, wh, lo, hi
+	// (its resize grip's corner is square: the grip's bevel fills it)
+	if panel := box_from_key(m.panel); panel != nil { panel.square_corners = {.Bottom_Right} }
 	return true
 }
 
@@ -363,11 +365,7 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 		b := build_box({.Clickable}, fmt.tprintf("###modal_grip%d", i))
 		a11y_default(b, {ignore = true})
 		sig := signal(b)
-		if g.dir == {1, 1} {
-			d := frame_new(Dock_Grip_Draw)
-			d.color = sig.hovering || sig.dragging ? color("accent") : color("weak text")
-			b.custom, b.custom_user = dock_grip_draw, d
-		}
+		if g.dir == {1, 1} { resize_grip_paint(b, sig) }
 		press := press_data(Modal_Grip_Press, b.key)
 		if press != nil && !press.taken { press^ = {from = {w, h}, taken = true} }
 		if sig.double_clicked {

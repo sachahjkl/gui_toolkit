@@ -113,6 +113,10 @@ it while a box inside has the keyboard focus (the box flag `.Focus_Within`). Bui
 `"bare"` (`if ui.tags("bare") { ui.line_edit(...) }`): the default theme makes a bare field's background, border and
 focus ring clear, so it does not draw a second box inside the frame.
 
+A box's `square_corners` (`ui.Corners`: `.Top_Left`, `.Bottom_Left`, `.Top_Right`, `.Bottom_Right`) stay square whatever its
+radius: its background, border, shadow, hover and focus ring follow (`ui.box_radii`, `ui.radii_grown`; `ui.paint_rect_corners`
+is `paint_rect` with a radius per corner).
+
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})
 if ui.field_frame("###search") {

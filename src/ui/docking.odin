@@ -42,6 +42,7 @@ DOCK_MIN_EM :: PANE_MIN_EM   // the least a side of a split keeps (em)
 DOCK_GRIP_EM :: 1.1          // a floating panel's resize grip (em, square)
 DOCK_GRIP_DOTS :: 3          // the grip's rows of dots
 DOCK_GRIP_DOT_PITCH_PX :: 3  // between them (logical px)
+RESIZE_GRIP_BEVEL_PAST_PX :: 5   // the grip's bevel reaches this far past its box, up and left (logical px)
 DOCK_MENU_WIDTH_EM :: 15
 DOCK_INSERT_PX :: 2          // the line where a dragged tab goes in a strip (logical px)
 DOCK_PREVIEW_BORDER_PX :: 2  // the preview's outline (logical px)
@@ -623,6 +624,7 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 	next({fixed_x = r.min.x, fixed_y = r.min.y, width = px(r.max.x - r.min.x), height = px(r.max.y - r.min.y), cursor = platform.Cursor.Arrow})
 	frame: ^Box
 	if tags("floating") { frame = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###dock_float_%d", root)) }   // (Clickable: what is under it gets no press)
+	frame.square_corners = {.Bottom_Right}   // (the grip's corner: its bevel fills it)
 	a11y_set(frame, {role = .Group, name = dock_stack_label(d, dock_leaves(d, root)[0]), role_description = "floating panel"})
 	// The panels are not its children, and are drawn after it, square: within its corners from here to the box that closes it, whose
 	// border goes over them.
@@ -631,14 +633,13 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 	next({fixed_x = r.min.x, fixed_y = r.min.y, width = px(r.max.x - r.min.x), height = px(r.max.y - r.min.y)})
 	if tags("floating") {
 		end := build_box({.Draw_Border}, fmt.tprintf("###dock_float_end_%d", root))
+		end.square_corners = frame.square_corners
 		end.custom = dock_float_unclip
 	}
 	g := math.round(DOCK_GRIP_EM * em)
 	next({fixed_x = r.max.x - g, fixed_y = r.max.y - g, width = px(g), height = px(g), cursor = platform.Cursor.Resize_NWSE})
 	gb := build_box({.Clickable}, dock_grip_id(root))
-	gd := frame_new(Dock_Grip_Draw)
-	gd.color = signal(gb).hovering || signal(gb).dragging ? color("accent") : color("weak text")
-	gb.custom, gb.custom_user = dock_grip_draw, gd
+	resize_grip_paint(gb, signal(gb))
 }
 
 @(private)
@@ -646,26 +647,46 @@ dock_float_clip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	s := gs()
 	line := max(math.round(scale()), 1)
 	radius := max((.Fixed_Radius in b.flags ? b.radius : b.radius * s.rounding) - line, 0)
-	draw.push_clip_rounded(dc, draw.rect_pad(b.rect, -line), {radius, radius, radius, radius})
+	draw.push_clip_rounded(dc, draw.rect_pad(b.rect, -line), box_radii(radius, b.square_corners))
 }
 
 @(private)
 dock_float_unclip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) { draw.pop_clip(dc) }
 
+// A resize grip in the bottom right corner of a dialog or a floating panel (the corner is square): a darker bevel cut across
+// the corner, and dots on it. The bevel sets the dots off the surface whatever its colour.
 @(private)
-Dock_Grip_Draw :: struct { color: Color }
+Resize_Grip_Draw :: struct { dots, shade: Color }
 
 @(private)
-dock_grip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	gd := (^Dock_Grip_Draw)(user)
-	r := b.rect
+resize_grip_paint :: proc(b: ^Box, sig: Signal) {
+	gd := frame_new(Resize_Grip_Draw)
+	gd.dots = sig.hovering || sig.dragging ? color("accent") : color("weak text")
+	gd.shade = color("resize_grip shade")
+	b.custom, b.custom_user = resize_grip_draw, gd
+}
+
+@(private)
+resize_grip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	gd := (^Resize_Grip_Draw)(user)
 	s := max(math.round(scale()), 1)
+	// inside the surface's border (its parent draws it after this), as far up and left as the grip goes
+	r := Rect{b.rect.min, b.rect.max - s}
+	g := r.max.x - r.min.x + RESIZE_GRIP_BEVEL_PAST_PX * s   // (past the grip's box: the dots well inside the bevel)
+	// the bevel: a band as wide as the corner, one edge along the cut, clipped to the corner (an antialiased cut at 45°)
+	h := g * math.SQRT_TWO * 0.5          // half the band's width
+	n := Vec2{1, 1} / math.SQRT_TWO        // across the cut, toward the corner
+	d := Vec2{-1, 1} / math.SQRT_TWO       // along the cut
+	mid := Vec2{r.max.x - g * 0.5, r.max.y - g * 0.5} + n * h
+	draw.push_clip(dc, {r.max - g, r.max})
+	draw.line(dc, mid - d * 2 * g, mid + d * 2 * g, 2 * h, gd.shade)
+	draw.pop_clip(dc)
 	pitch := DOCK_GRIP_DOT_PITCH_PX * s
 	for i in 0 ..< DOCK_GRIP_DOTS {
 		for j in 0 ..= i {
 			x := r.max.x - 2 * s - f32(j) * pitch
 			y := r.max.y - 2 * s - f32(i - j) * pitch
-			draw.rect(dc, {{x - s, y - s}, {x, y}}, gd.color)
+			draw.rect(dc, {{x - s, y - s}, {x, y}}, gd.dots)
 		}
 	}
 }
