@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.136.0] - 2026-11-09
+
+### Added
+- **`prefs_page.Page_Info.names`**: the preferences a page shows, in this order, whatever their category (nil: those of its category, as before), so that a program's settings pages need not be its registry's categories, which its editor of every preference keeps.
+- **`draw.replay(..., compare = true)`**: with partial redraw (`damage_auto`), a replayed picture is compared with the last frame's (the picture, its version, its slots, the matrix, the alpha, the outer clip, its batches' state and textures) and drawn again only when one of them changed, where the picture draws (not its whole scissor). Off by default: a replay is redrawn every frame, as before.
+
 ## [0.135.0] - 2026-11-09
 
 ### Added
@@ -2121,6 +2127,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.136.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.136.0
 [0.135.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.135.0
 [0.134.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.134.0
 [0.133.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.133.0
