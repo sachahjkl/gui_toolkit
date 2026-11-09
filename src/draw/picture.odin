@@ -300,7 +300,11 @@ picture_stale :: proc(c: ^Context, pic: ^Picture, m: Affine) -> bool {
 // Draws the picture under `m` (after the current transform), faded by the alpha stack, cut by the clips pushed around
 // it. Its instances are uploaded first if needed (first replay, re-recorded, evicted, device lost); changed slots are
 // rewritten. Not while recording.
-replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
+// `compare`: with partial redraw (damage_auto), the replay is compared with the last frame's as any drawing is (the picture,
+// its version, its slots, where and how faded it lands, its clips and textures) and redrawn only when one of them changed.
+// Off: it is redrawn every frame. Turn it on for a picture whose pixels nothing else decides (no texture written outside
+// the renderer that is not versioned, no time-dependent shader).
+replay :: proc(c: ^Context, pic: ^Picture, m: Affine, compare := false) -> Replay_Result {
 	if c.rec != nil { return .Culled }
 	// (a picture of nothing but pending glyphs is empty until they are ready)
 	if pic.glyphs_pending {
@@ -325,6 +329,18 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine) -> Replay_Result {
 		slug_runs = pic.slug_runs[:], insts = u32(base),
 	})
 	idx := len(c.replays)
+	ident: u64 = 0
+	if compare {
+		// (the instances are the version's; the slots move them without a new recording)
+		ident = hash_mix(hash_mix(0x7265706c, u64(uintptr(pic))), pic.version)
+		for sl in pic.slots {
+			for v in ([6]f32{sl.eff.a, sl.eff.b, sl.eff.c, sl.eff.d, sl.eff.e, sl.eff.f}) { ident = hash_mix(ident, u64(transmute(u32)v)) }
+		}
+		for v in ([6]f32{l.a, l.b, l.c, l.d, l.e, l.f}) { ident = hash_mix(ident, u64(transmute(u32)v)) }
+		ident = hash_mix(ident, u64(transmute(u32)c.alphas[len(c.alphas) - 1]))
+		if ident == 0 { ident = 1 }
+	}
+	append(&c.replay_idents, ident)
 	close_batch(c)
 	for b, k in pic.batches {
 		if bb := pic.batch_bounds[k]; bb.slot != max(u32) {
