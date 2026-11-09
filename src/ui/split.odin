@@ -25,7 +25,12 @@ Splitter_Options :: struct {
 	                      // pixels: `size` is a fraction of it)
 	step:         f32,    // an arrow key's move in units of `size` (0: 10 logical pixels; Ctrl: a fifth of it)
 	no_keyboard:  bool,   // not a Tab stop (a handle the mouse alone moves)
+	fill:         Color,  // the handle's own background (clear: the window shows through it)
+	line_at:      Splitter_Line,   // where its rule is: one line with a pane's own edge, not two lines side by side
 }
+
+// Where a splitter's rule is drawn across its handle.
+Splitter_Line :: enum u8 { Middle, Start, End }
 
 // What a splitter's press keeps (press_data): the size the drag started from.
 @(private = "file")
@@ -112,6 +117,7 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	d.hot = res.sig.hovering || res.dragging || (res.sig.focused && s.focus_visible)
 	d.color = d.hot ? color("accent") : color("border")
 	d.line = max(math.round(s.scale), 1)
+	d.fill, d.at = opts.fill, opts.line_at
 	b.custom, b.custom_user = splitter_draw, d
 	// (a bar between side-by-side panes is vertical: its orientation is across `axis`)
 	a11y_default(b, {role = .Splitter, numeric = f64(size^), min = f64(lo), max = f64(hi), orientation = axis == .X ? Axis.Y : Axis.X,
@@ -120,20 +126,32 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 }
 
 @(private)
-Splitter_Draw :: struct { hot: bool, color: Color, line: f32 }
+Splitter_Draw :: struct { hot: bool, color: Color, line: f32, fill: Color, at: Splitter_Line }
 
-// A rule along the middle of the handle, twice as thick and in the accent colour while hot, held or focused.
+// The handle's fill, then a rule along it (its middle, its start or its end), twice as thick and in the accent colour
+// while hot, held or focused.
 @(private)
 splitter_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Splitter_Draw)(user)
 	r := b.rect
 	th := d.hot ? d.line * 2 : d.line
+	if d.fill.a > 0 { draw.rect(dc, r, d.fill) }
 	if r.max.x - r.min.x < r.max.y - r.min.y {
-		x := math.round((r.min.x + r.max.x) * 0.5)
-		draw.rect(dc, {{x - th * 0.5, r.min.y}, {x + th * 0.5, r.max.y}}, d.color)
+		x0: f32
+		switch d.at {
+		case .Middle: x0 = math.round((r.min.x + r.max.x) * 0.5) - th * 0.5
+		case .Start:  x0 = r.min.x
+		case .End:    x0 = r.max.x - th
+		}
+		draw.rect(dc, {{x0, r.min.y}, {x0 + th, r.max.y}}, d.color)
 	} else {
-		y := math.round((r.min.y + r.max.y) * 0.5)
-		draw.rect(dc, {{r.min.x, y - th * 0.5}, {r.max.x, y + th * 0.5}}, d.color)
+		y0: f32
+		switch d.at {
+		case .Middle: y0 = math.round((r.min.y + r.max.y) * 0.5) - th * 0.5
+		case .Start:  y0 = r.min.y
+		case .End:    y0 = r.max.y - th
+		}
+		draw.rect(dc, {{r.min.x, y0}, {r.max.x, y0 + th}}, d.color)
 	}
 }
 

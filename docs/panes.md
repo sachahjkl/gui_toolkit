@@ -28,6 +28,8 @@ if r.finished { save_settings(app) }
 - Resize cursor over it and while it is held, even when the pointer runs ahead of it.
 - Drawn as a rule along the middle of the grab area (`opts.thickness` frame pixels, default 5 logical pixels), twice as
   thick and in the accent colour while hot, held or focused from the keyboard. Nothing animates: no frame at rest.
+- `opts.fill` paints the grab area (a pane's colour: the handle looks part of it); `opts.line_at` puts the rule at its
+  `Start` or `End` instead of its `Middle`, where it is the edge of the next pane: one line, not two side by side.
 - Result: the signal (`dragging` while held), `changed` (the size changed this frame), `finished` (a drag, a reset or a
   key ended: persist now).
 

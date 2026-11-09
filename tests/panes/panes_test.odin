@@ -327,3 +327,24 @@ splitter_draws_a_rule :: proc(t: ^testing.T) {
 	testing.expect(t, hot != rest, "the accent colour under the pointer")
 	testing.expect(t, pixel(px3, x + 1, 100) != beside || pixel(px3, x - 1, 100) != beside, "twice as thick")
 }
+
+// A filled handle with its rule at its end: the grab area in the fill's colour, the rule on its last column alone.
+@(test)
+splitter_fill_and_rule_at_the_end :: proc(t: ^testing.T) {
+	f := setup(t, true)
+	if f == nil { return }
+	defer teardown(f)
+	f.opts = {fill = {1, 0, 0, 1}, line_at = .End}
+	delete(frame(f))
+	px := frame(f)
+	defer delete(px)
+	b := split_box()
+	if !testing.expect(t, b != nil) { return }
+	y := 100
+	at := proc(px: []u8, x, y: int) -> [3]u8 { i := (y * SIZE.x + x) * 4; return {px[i], px[i + 1], px[i + 2]} }
+	first := int(b.rect.min.x)
+	last := int(b.rect.max.x) - 1
+	testing.expect_value(t, at(px, first, y), [3]u8{255, 0, 0})       // the fill
+	testing.expect(t, at(px, last, y) != [3]u8{255, 0, 0}, "the rule on the last column")
+	testing.expect_value(t, at(px, last - 1, y), [3]u8{255, 0, 0})
+}
