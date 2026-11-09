@@ -13,4 +13,4 @@ icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator
 }
 
 @(private)
-icon_of_path_native :: proc(path: string, folder: bool, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) { return }
+icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) { return }

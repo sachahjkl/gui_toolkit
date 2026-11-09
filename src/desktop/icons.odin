@@ -23,9 +23,11 @@ file_icon_key :: proc(path: string, folder: bool, allocator := context.allocator
 	return icon_key_native(path, folder, allocator)
 }
 
-// The icon of `path`, about `size` pixels square (the nearest the system has, or rendered at that size). ok is false
-// when the system has none to give. It reads files: call it from a worker, not from the interface's thread.
-file_icon :: proc(path: string, folder: bool, size: int, allocator := context.allocator) -> (icon: File_Icon, ok: bool) {
-	return icon_of_path_native(path, folder, size, allocator)
+// The icon of `path`, about `size` pixels square (the nearest the system has, or rendered at that size). `choose`, when
+// above 0: the size the theme's file is chosen by, the picture still made at `size` (a theme whose small icons are
+// monochrome, Papirus's, gives its coloured ones from 24). ok is false when the system has none to give. It reads files:
+// call it from a worker, not from the interface's thread.
+file_icon :: proc(path: string, folder: bool, size: int, choose := 0, allocator := context.allocator) -> (icon: File_Icon, ok: bool) {
+	return icon_of_path_native(path, folder, size, choose > 0 ? choose : size, allocator)
 }
 

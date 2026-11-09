@@ -164,10 +164,11 @@ The deprecated codes (`%d`, `%D`, `%n`, `%N`, `%v`, `%m`) are dropped. A line wi
 
 ## Icons of files
 
-`file_icon(path, folder, size)` gives the icon the system shows for a file or a folder, about `size` pixels square, as
+`file_icon(path, folder, size, choose)` gives the icon the system shows for a file or a folder, about `size` pixels square, as
 straight RGBA8 (`File_Icon`; `file_icon_destroy` frees it). `file_icon_key(path, folder)` says what decides it: two paths
-with the same key have the same icon, so a program keeps one picture per key and size. `file_icon` reads files: call it
-from a worker.
+with the same key have the same icon, so a program keeps one picture per key and size. `choose` (above 0): the size the theme's
+file is chosen by, the picture still made at `size` (Papirus's small icons are monochrome, its coloured ones start at 24).
+`file_icon` reads files: call it from a worker.
 
 | System | Where the icon comes from |
 |---|---|

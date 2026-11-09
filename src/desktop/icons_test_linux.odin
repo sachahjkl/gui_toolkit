@@ -68,6 +68,11 @@ the_icons_of_a_theme :: proc(t: ^testing.T) {
 	} else {
 		fmt.println("icons: librsvg is not here: the SVG check is skipped")
 	}
+	// chosen at one size, made at another: the file of 16 pixels for a picture asked at 40, chosen as at 16
+	big, bok := icon_of_path_in(roots, "Test", "/x/notes.txt", false, 40, context.allocator, 16)
+	defer file_icon_destroy(&big)
+	testing.expect(t, bok)
+	testing.expect_value(t, big.size, [2]int{16, 16})   // (a PNG as it is: its size; an SVG would be made at 40)
 	// a type the theme has nothing for: none
 	_, none := icon_of_path_in(roots, "Test", "/x/data.bin", false, 16, context.allocator)
 	testing.expect(t, !none)

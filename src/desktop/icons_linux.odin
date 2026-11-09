@@ -298,13 +298,13 @@ icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator
 }
 
 @(private)
-icon_of_path_native :: proc(path: string, folder: bool, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
-	return icon_of_path_in(xdg_roots(), icon_theme_name(xdg_config_home()), path, folder, size, allocator)
+icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
+	return icon_of_path_in(xdg_roots(), icon_theme_name(xdg_config_home()), path, folder, size, allocator, choose)
 }
 
 // The icon of `path` from the XDG folders `roots` and the theme named `theme` (the tests give theirs).
 @(private)
-icon_of_path_in :: proc(roots: Xdg_Roots, theme: string, path: string, folder: bool, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
+icon_of_path_in :: proc(roots: Xdg_Roots, theme: string, path: string, folder: bool, size: int, allocator: runtime.Allocator, choose := 0) -> (icon: File_Icon, ok: bool) {
 	names: []string
 	if folder {
 		names = folder_names(path)
@@ -322,7 +322,7 @@ icon_of_path_in :: proc(roots: Xdg_Roots, theme: string, path: string, folder: b
 		sync.mutex_guard(&icon_cache.mutex)
 		c := icon_cache_get(roots, theme)
 		for n in names {
-			if f := icon_file(c, n, size); f != "" { file = strings.clone(f, context.temp_allocator); break }
+			if f := icon_file(c, n, choose > 0 ? choose : size); f != "" { file = strings.clone(f, context.temp_allocator); break }
 		}
 	}
 	if file == "" { return }

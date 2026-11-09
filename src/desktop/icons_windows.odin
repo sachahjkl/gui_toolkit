@@ -63,7 +63,7 @@ icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator
 }
 
 @(private)
-icon_of_path_native :: proc(path: string, folder: bool, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
+icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
 	info: SHFILEINFOW
 	flags: win.UINT = SHGFI_ICON | (size <= 16 ? SHGFI_SMALLICON : SHGFI_LARGEICON)
 	if SHGetFileInfoW(win.utf8_to_wstring(path, context.temp_allocator), 0, &info, size_of(info), flags) == 0 || info.hIcon == nil {
