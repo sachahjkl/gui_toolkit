@@ -26,7 +26,8 @@ Fx :: struct {
 ui_state_lock: sync.Mutex
 
 @(private = "file")
-open :: proc(f: ^Fx, p := ui.palette_of("Graphite")) -> bool {
+open :: proc(f: ^Fx, palette: Maybe(ui.Palette) = nil) -> bool {
+	p := palette.? or_else ui.palette_of("Graphite")
 	font.init(&f.fonts)
 	id, ok := font.load_embedded(&f.fonts, font.FALLBACK_UI_DATA)
 	if !ok { return false }
