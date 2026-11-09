@@ -5,6 +5,26 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.130.0] - 2026-11-09
+
+### Added
+- **`ui.current_state`**: the State whose build is open on this thread (nil outside a build), for a widget that works on other threads and posts to it (`ui.post`) when its work ends.
+- **`platform.Clipboard_Content.files_cut`, `platform.clipboard_files_cut`**: files cut on the clipboard, for a move, as file managers do it. Windows writes and reads `Preferred DropEffect` = move. Linux also offers `x-special/gnome-copied-files` (`copy` or `cut`, then the URIs) and, for a cut, `application/x-kde-cutselection`; it reads the cut from either. Pure helpers: `gnome_copied_files_encode`, `clipboard_files_cut_decode`.
+- **`lucide`**: the icons of classeur, a file manager: folders (open, plus, search, input, output, symlink), the kinds of files (text, code, image, music, video, archive, spreadsheet, link), the arrows, the panels, the columns and rows, the bookmark, the star, the filter, the scissors and paste, the terminal, the USB drive.
+- **`modal_sized(..., top)`**: a resizable dialog held at a height of the window (a command palette) instead of centered; its bottom edge and corners follow the pointer, its top has no grips.
+
+### Changed
+- **`desktop.watch_start`**: no timer any more. A place that does not exist (nothing installed yet, a folder or a key deleted) is followed through its nearest existing ancestor, which wakes the program only when the next folder (or key) toward the place comes; the place that comes is watched itself. On Linux the watcher also follows the install folder, the Desktop and the autostart folder, and an overflow of inotify's queue is a change.
+- **`setup`**: the dialog does its work on a thread of its own and follows the disk while it is open.
+  - Reading the state, Install, Uninstall and the folder picker run on the dialog's thread, one at a time; the dialog says "Working…" and its buttons wait; the end of the work and a change seen by the watcher wake the program (`ui.post` to the State of the dialog's last frame). `setup.dialog` is called every frame, open or not.
+  - While open, the places of the install are watched (`desktop.watch_start`): a change made elsewhere is read again at once; `setup.stale` lets the program ask for it too.
+  - `Config.choices`: the program's own options of an install, shown as boxes; `Config.prepare` receives their values (`prepare(o, choices, user)`) and is called before anything is read or written, so a test can point every place at a folder of its own.
+  - `Config.folder`: the user may choose the install folder before the first install (`install(c, shortcut, choices, folder)`; checked with `desktop.check_install_dir`).
+  - Uninstall asks for a second click. A newer installed copy is named as such (`is_downgrade`: "Go back to <version>").
+
+### Fixed
+- **`setup.facts`**: a program with no icons that is not installed reads as not installed, not as an install to repair.
+
 ## [0.129.0] - 2026-11-09
 
 ### Added
@@ -2076,6 +2096,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.130.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.130.0
 [0.129.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.129.0
 [0.128.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.128.0
 [0.127.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.127.0
