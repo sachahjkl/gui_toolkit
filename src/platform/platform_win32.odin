@@ -409,6 +409,13 @@ show_window :: proc(w: ^Window) {
 	win.SetForegroundWindow(w.hwnd)
 }
 
+// Takes the window off the screen (and off the taskbar); show_window brings it back. Its frames are the program's to stop,
+// as on Linux, where a hidden window's frame would wait for a screen. A no-op for an offscreen window.
+hide_window :: proc(w: ^Window) {
+	if w.offscreen { return }
+	win.ShowWindow(w.hwnd, win.SW_HIDE)   // (a DXGI swap chain survives it: shown_again stays)
+}
+
 // Brings an already-shown window to the front and gives it the keyboard focus (the user asked to switch to it). A no-op
 // for an offscreen window. On Wayland a client cannot raise itself, so there it is best effort (the Linux backend).
 raise_window :: proc(w: ^Window) {

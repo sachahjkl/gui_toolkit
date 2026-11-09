@@ -96,6 +96,7 @@ Host :: struct {
 	slept:   bool,     // the loop slept before this frame (hosts_wait)
 	times:   Host_Times,   // the last picture's steps
 	shown:   [2]int,   // the size of the last picture
+	shown_again: u32,  // the window's count of shows after a hide, as of the last frame (a new one remakes the swap chain)
 	last_ms: f64,      // the clock at the last frame
 }
 
@@ -214,6 +215,11 @@ host_frame :: proc(h: ^Host, inner := false) {
 	sh := h.shared
 	defer ui.use(&sh.main.state)
 	ui.use(&h.state)
+	if h.win.shown_again != h.shown_again {   // (before the pace: its wait is on the old swap chain)
+		h.shown_again = h.win.shown_again
+		render.surface_scope(&sh.r, &h.surface)
+		render.surface_remake(&sh.r)
+	}
 	at_once := host_pace(h, inner)
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }

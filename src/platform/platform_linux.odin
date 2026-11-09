@@ -231,6 +231,19 @@ show_window :: proc(w: ^Window) {
 	}
 }
 
+// Takes the window off the screen; show_window brings it back with its size, its title and what it shows. The program
+// draws no frame of a hidden window (a frame would wait for a screen the window is not on); its loop still waits on it
+// (input stops, but a wake, a post and the tray still end the wait). Wayland: the toplevel role goes and a new one is made
+// at the show, so the compositor places and focuses it as a new window. X11: unmapped (withdrawn).
+hide_window :: proc(w: ^Window) {
+	if w.offscreen { return }   // (never on a screen)
+	switch w.backend {
+	case .Wayland: wl_hide(w)
+	case .X11:     x11_hide(w)
+	case .None:
+	}
+}
+
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
 is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 

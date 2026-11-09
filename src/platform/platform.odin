@@ -236,6 +236,7 @@ Window :: struct {
 	post_queue:   rawptr,               // atomic: the ^base.Post_Queue of the ui State built for this window (ui.post_window)
 	destroy_hook: proc(w: ^Window, user: rawptr),   // window_on_destroy
 	destroy_hook_user: rawptr,
+	shown_again:  u32,   // counts the show_window calls that brought back a hidden window (the host remakes its swap chain then)
 }
 
 // `fn(w, user)` runs when `w` is destroyed, before it is freed (nil: nothing). One per window: returns what was there. For

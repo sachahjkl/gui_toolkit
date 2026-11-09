@@ -60,6 +60,7 @@ X11_Window_State :: struct {
 	transparent: bool,
 	title:    string,
 	map_phase: X11_Map_Phase,
+	withdrawn: bool,                  // hide_window took it off the screen (show_window maps it again)
 	first_state: [dynamic]Xcb_Atom,   // what _NET_WM_STATE asks for before the first map
 	// a read of a selection (clipboard_x11_linux.odin): what was asked, how far it is, the bytes that came
 	paste:     X11_Paste_Phase,
@@ -358,8 +359,25 @@ x11_set_size :: proc(w: ^Window, px: [2]int) {
 @(private)
 x11_show :: proc(w: ^Window) {
 	st := x11_state(w)
+	if st.withdrawn {
+		st.withdrawn = false
+		w.shown_again += 1
+		w.show = .Normal
+		w.paint_requested = true
+	}
 	xcb.map_window(x11c.c, st.id)
 	if st.map_phase == .Never { st.map_phase = .Asked }
+	xcb.flush(x11c.c)
+}
+
+// Off the screen until x11_show: unmapped, which a window manager reads as withdrawn (ICCCM), not minimized.
+@(private)
+x11_hide :: proc(w: ^Window) {
+	st := x11_state(w)
+	if st == nil || st.withdrawn { return }
+	st.withdrawn = true
+	w.show = .Hidden
+	xcb.unmap_window(x11c.c, st.id)
 	xcb.flush(x11c.c)
 }
 
@@ -822,6 +840,7 @@ x11_read_wm_state :: proc(w: ^Window) {
 		}
 	}
 	switch {
+	case st.withdrawn:                        w.show = .Hidden   // (the program hid it: x11_hide)
 	case hidden || st.map_phase == .Unmapped: w.show = .Minimized   // (a window manager without _NET_WM_STATE_HIDDEN unmaps it)
 	case full:                                w.show = .Fullscreen
 	case horz && vert:                        w.show = .Maximized
