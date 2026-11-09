@@ -25,7 +25,8 @@ DEFS := [?]config.Def{
 A `Def` carries its dotted lower-case `name`, a `description` (a settings UI shows its first sentence and folds the rest),
 a `kind` (`.Bool / .Int / .Float / .String`), a `default`, optional `bounded` bounds, a `choices` list for strings, a
 `unit` ("ms", "bytes"), `bytes` (an int that accepts `K`/`M`/`G` when typed), `restart` (takes effect at the next start)
-and a `category` (defaults to the first name segment).
+and a `category` (defaults to the first name segment). A `hidden` preference is the program's own (a layout, a last
+choice): it is kept and read as the others, but no settings page shows it, nor anything that lists the settings.
 
 ## The registry
 

@@ -16,6 +16,7 @@ DEFS := [?]config.Def{
 	{name = "net.cache", description = "Keep a cache of the responses.", kind = .Bool, default = {b = true}},
 	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB"},
 	{name = "look.style", description = "How surfaces are drawn.", kind = .String, default = {s = "flat"}, choices = {"flat", "machined"}},
+	{name = "net.window_size", description = "The size the window was given.", kind = .String, default = {s = ""}, hidden = true},
 }
 
 @(private = "file")
@@ -118,6 +119,20 @@ a_page_is_shown :: proc(t: ^testing.T) {
 	session.click(s, "nav1")
 	testing.expect(t, session.find_text(s, "Style") != nil, "the page clicked shows")
 	testing.expect(t, session.find_text(s, "Cache") == nil, "the other no more")
+}
+
+// A hidden preference (the program's own) is on no page, and the search does not find it.
+@(test)
+a_hidden_preference_is_on_no_page :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app)
+	testing.expect(t, session.find_text(s, "Cache") != nil, "its page shows")
+	testing.expect(t, session.find(s, "set_net.window_size") == nil, "not the hidden one")
+	app_end(&app)
+	app = {}
+	s = app_start(t, &app, "window")
+	testing.expect(t, session.find_text(s, "Window size") == nil, "the search does not find it")
 }
 
 // A preference's line is as tall as its words and its control: a field, with its unit or not, makes it no taller.
