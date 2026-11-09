@@ -961,6 +961,13 @@ second_server :: proc() -> (undo: string) {
 	return old
 }
 
+// The second server goes, with what it started: a server may be a wrapper (NixOS's sway is dbus-run-session, which runs
+// sway and a session bus as its children), and a signal to the wrapper alone leaves the compositor running. Its children
+// first: once the wrapper is gone they are no longer its.
+@(private = "file") kill_second_server :: proc(signal: string) {
+	sh("pkill -", signal, " -P $(cat /tmp/gt_server); kill -", signal, " $(cat /tmp/gt_server)")
+}
+
 @(private = "file") back_to_the_server :: proc(old: string) {
 	posix.setenv(x11() ? "DISPLAY" : "WAYLAND_DISPLAY", strings.clone_to_cstring(old, context.temp_allocator), true)
 }
@@ -974,12 +981,12 @@ a_lost_server_closes_its_windows :: proc(t: ^testing.T) {
 		defer back_to_the_server(old)
 		w := platform.open_window("on a server that goes", {200, 150})
 		testing.expect(t, w != nil)
-		if w == nil { sh("kill $(cat /tmp/gt_server)"); return }
+		if w == nil { kill_second_server("TERM"); return }
 		defer platform.destroy_window(w)
 		platform.show_window(w)
 		platform.test_show_plain(w)
 		pump_for(w, 200)
-		sh("kill -9 $(cat /tmp/gt_server)")
+		kill_second_server("KILL")
 		seen: Seen
 		defer delete(seen.events)
 		testing.expect(t, wait_kind(w, &seen, .Close, 3000), "the windows hear it")
