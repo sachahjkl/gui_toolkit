@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.121.0] - 2026-11-09
+
+### Changed
+- **`draw.damage_auto`** works out the region in linear time: 0.45 ms instead of 2.0 to 2.6 ms for 10,000 spans (`-o:speed`). A span is compared by parts (what it drew between two children); `Damage_Memory` holds `parts` and `next` (swapped, not copied), `Damage_Span` is now `Damage_Part`, `Damage_Auto_Stats` has `parts` (was `spans`), `ms`, `px_drawn` and `px_window`, and `Damage_Whole.Offscreen` is now `Plane`. A second memory in one frame asserts.
+- **A resize grip sits in a square corner**: a resizable dialog (`modal_sized`) and a floating dock panel keep their bottom right corner square, and their grip is a bevel cut across it in the theme's `resize_grip shade` (the border colour: darker on a light theme, lighter on a dark one), with its dots on it, clear of its edge. Boxes have `square_corners` (`ui.Corners`) for this; `ui.paint_rect_corners`, `ui.box_radii` and `ui.radii_grown` are new.
+- **`ui.theme_show` takes the blend space** (`theme_show(&theme, list, choice, &shown, render.blend_space(&r))`): a program that draws in sRGB gets its translucent entries for sRGB. It applies again when the definition of the theme shown changes (a themes file read again with the same names) or the space changes, and a change of the glow alone bumps `Theme.serial`.
+
+### Fixed
+- **`Toolkit.metrics`**: `damage` counts the pixels of the served window (from its `ui.State`), not those of the window the shared renderer drew last.
+- **`draw.offscreen_begin`** no longer makes the frames of automatic damage whole: what is drawn into an offscreen target damages nothing, so a drag image keeps partial redraw on.
+- **Wayland**: `platform.minimize` before the first `show_window` (or while hidden) is asked at the show, once the toplevel's first configure came, as `set_maximized` and `set_fullscreen` are. A window with no fractional scale from the compositor yet follows the output's integer scale, and a hidden window no longer sets a buffer scale on its destroyed surface.
+- **"Open with" on Linux** follows the MIME Applications specification: a `mimeapps.list` removes associations only for its level and the ones after it (a system list no longer removes what the user added), `<desktop>-mimeapps.list` gives defaults, a type with no `[Default Applications]` entry gets its most preferred application as default, and a type comes before its parents. A link that loops under `applications/` no longer overflows the stack. What was read is cached until a file or folder read changes (under 1 ms a call, against 10 to 16 ms in a debug build).
+
+### Security
+- **`desktop.exec_expand`** refuses an `Exec` line the Desktop Entry specification refuses: a field code in a quoted argument (`sh -c "viewer %f"` let a file name such as `a;rm -rf ~.txt` run as shell code), an unknown code, `%F` `%U` `%i` inside an argument, two file codes. It returns `ok`; `exec_arguments` returns `Exec_Argument` (`text`, `quoted`). "Open with" lists no application with such a line.
+
 ## [0.120.0] - 2026-11-09
 
 ### Added
@@ -2001,6 +2017,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.121.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.121.0
 [0.120.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.120.0
 [0.119.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.119.0
 [0.118.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.118.0
