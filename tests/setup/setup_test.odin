@@ -3,8 +3,11 @@
 //   odin test tests/setup -vet -define:ODIN_TEST_THREADS=1
 package setup_test
 
+import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:time"
 import desktop "../../src/desktop"
 import setup "../../src/setup"
 import "../../src/testkit/session"
@@ -47,7 +50,7 @@ App :: struct {
 @(private = "file")
 start :: proc(t: ^testing.T, app: ^App, f: setup.Facts) -> ^session.Session {
 	app.cfg = {identity = desktop.Identity{name = "Sample", vendor = "Someone"}, version = "1.0.0"}
-	app.d.open = true
+	app.d.open, app.d.known = true, true
 	app.d.facts = f
 	return session.start(t, {size = {900, 640}, user = app, build = proc(s: ^session.Session) {
 		app := (^App)(s.user)
@@ -112,4 +115,87 @@ a_path_is_copied :: proc(t: ^testing.T) {
 	session.click(s, "copy")
 	testing.expect_value(t, ui.window_clipboard_get(), path)
 	testing.expect(t, app.d.copied != "", "the button shows it")
+}
+
+// A newer copy is installed: this one goes back to its version, and says so.
+@(test)
+a_newer_copy_is_named_as_such :: proc(t: ^testing.T) {
+	app: App
+	defer setup.destroy(&app.d)
+	s := start(t, &app, {state = .Other_Copy, version = strings.clone("1.2.0"), exe_there = true, manifest = true})
+	testing.expect(t, session.find_text(s, "A newer copy is installed (1.2.0)") != nil)
+	testing.expect(t, session.find_text(s, "Go back to 1.0.0") != nil)
+}
+
+// Uninstall asks once: the first click changes the button, Escape takes it back.
+@(test)
+uninstall_asks_first :: proc(t: ^testing.T) {
+	app: App
+	defer setup.destroy(&app.d)
+	s := start(t, &app, {state = .This_Copy, exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
+	session.click(s, "setup_uninstall")
+	testing.expect(t, session.find_text(s, "Click again to uninstall") != nil)
+	testing.expect(t, app.d.job == nil, "nothing is removed yet")
+}
+
+// The program's options are boxes; what is ticked is what the dialog keeps for prepare.
+@(test)
+the_program_s_choices_are_boxes :: proc(t: ^testing.T) {
+	app: App
+	defer setup.destroy(&app.d)
+	s := start(t, &app, {state = .Not_Installed})
+	app.cfg.choices = []setup.Choice{{label = "Add to PATH", on = true}, {label = "Register as a browser", on = false}}
+	append(&app.d.choices, true, false)
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Register as a browser") != nil)
+	session.click(s, "setup_choice_1")
+	testing.expect(t, app.d.choices[1], "ticked")
+}
+
+@(private = "file")
+Scratch :: struct { root, install: string }
+
+// Everything an install touches in a folder of the test's own.
+@(private = "file")
+scratch_prepare :: proc(o: ^desktop.Options, choices: []bool, user: rawptr) {
+	sc := (^Scratch)(user)
+	o.applications_dir = fmt.tprintf("%s/share/applications", sc.root)
+	o.icons_dir = fmt.tprintf("%s/share/icons/hicolor", sc.root)
+	o.bin_dir = fmt.tprintf("%s/bin", sc.root)
+	o.autostart_dir = fmt.tprintf("%s/config/autostart", sc.root)
+	o.desktop_dir = fmt.tprintf("%s/Desktop", sc.root)
+	o.menu_dir = fmt.tprintf("%s/menu", sc.root)
+	o.install_dir = sc.install
+	o.notify_system = false
+}
+
+// The dialog reads the install on its thread, then follows the disk: a copy put in the install folder by something else
+// shows at once (the watch), with nothing clicked.
+@(test)
+the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux { return }
+	tmp := os.get_env("TMPDIR", context.temp_allocator)
+	sc := Scratch{root = fmt.tprintf("%s/tk_setup_%d", tmp != "" ? tmp : "/tmp", time.now()._nsec)}
+	sc.install = fmt.tprintf("%s/programs/sample", sc.root)
+	testing.expect(t, os.make_directory_all(sc.root) == nil)
+	defer os.remove_all(sc.root)
+	app: App
+	defer setup.destroy(&app.d)
+	s := session.start(t, {size = {900, 640}, user = &app, build = proc(s: ^session.Session) {
+		app := (^App)(s.user)
+		if ev := setup.dialog(&app.d, app.cfg, ui.font_size()); ev != .None { app.event = ev }
+	}})
+	app.cfg = {identity = desktop.Identity{name = "Sample", slug = "sample", exe_name = "sample", manifest_name = "sample_install.txt"},
+		version = "1.0.0", prepare = scratch_prepare, user = &sc}
+	setup.open(&app.d, app.cfg)
+	session.wait_text(s, "Not installed")
+	testing.expect(t, app.d.known)
+	testing.expect(t, app.d.watcher != nil, "the install is watched")
+	// something else puts a program there
+	testing.expect(t, os.make_directory_all(sc.install) == nil)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/sample", sc.install), transmute([]byte)string("x")) == nil)
+	session.wait_text(s, "earlier setup")
+	session.key(s, .Escape)
+	session.frames(s, 2)
+	testing.expect(t, app.d.watcher == nil, "closed: no longer watched")
 }

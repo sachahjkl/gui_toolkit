@@ -7,11 +7,13 @@ package tk_desktop
 // uninstall of the installed copy by another process). A change wakes the program, which reads the state again when it
 // shows it.
 //
-// A place that disappears (its key or folder is deleted: that is a change too) cannot be waited on any more: the thread
-// lets it go, wakes the program, and tries to open it again every few seconds, so that it is watched again when it comes
-// back (the first Start menu shortcut of a fresh profile creates the folder). The watcher never ends because one place
-// did.
+// A place that does not exist (a fresh profile has no install folder yet; a key is deleted) is followed through its
+// nearest existing ancestor: a folder's parent with only its names watched, a key's parent key with only its subkeys
+// watched. When that ancestor changes, the place is looked for again: one level nearer, or the place itself, which came
+// (a change). A place that goes is followed through its ancestor again. Nothing runs on a timer; changes elsewhere in an
+// ancestor wake nobody. The watcher never ends because one place did.
 
+import "core:os"
 import "core:strings"
 import win "core:sys/windows"
 import "core:thread"
@@ -26,18 +28,18 @@ foreign kernel32_watch {
 
 WATCH_KEYS :: 2   // the registry subtree, the environment key
 WATCH_DIRS :: 3   // the Programs folder, the Desktop folder, the install folder
-WATCH_RETRY_MS :: 3000
-
 Watch_Key :: struct {
 	path:    string,      // under HKCU (owned)
 	subtree: bool,
 	key:     win.HKEY,    // nil: not open now
+	exact:   bool,        // `key` is the place itself (else its nearest existing ancestor, its subkeys watched)
 	event:   win.HANDLE,  // signalled by the registry
 }
 
 Watch_Dir :: struct {
 	path:   string,       // owned ("" = nothing to watch: the folder is unknown)
 	handle: win.HANDLE,   // nil: not open now
+	exact:  bool,         // `handle` watches the folder itself (else its nearest existing ancestor's names)
 }
 
 Watch_State :: struct {
@@ -70,14 +72,13 @@ watch_start_windows :: proc(o: ^Options, wake: Watch_Proc, user: rawptr) -> ^Wat
 	// when it comes (watch_dir_open retries), so a first install starts being followed too.
 	st.dirs[2].path = strings.clone(install_target(o, context.temp_allocator))
 
-	// the registry subtree is the one that must exist now: without it there is nothing to follow. The others may be
-	// missing (a fresh profile has no Desktop key...): they are tried again by the thread
-	if !watch_key_open(&st.keys[0]) {
+	// a place that is missing is followed through its ancestor; only a registry where nothing at all can be opened ends it
+	for &k in st.keys { _ = watch_key_open(&k) }
+	for &d in st.dirs { _ = watch_dir_open(&d) }
+	if st.keys[0].key == nil {
 		watch_state_free(st)
 		return nil
 	}
-	_ = watch_key_open(&st.keys[1])
-	for &d in st.dirs { _ = watch_dir_open(&d) }
 
 	st.thread = thread.create_and_start_with_data(st, watch_thread, name = thread_name(o))
 	if st.thread == nil {
@@ -89,20 +90,30 @@ watch_start_windows :: proc(o: ^Options, wake: Watch_Proc, user: rawptr) -> ^Wat
 	return w
 }
 
+// Watches the key, else its nearest existing ancestor (its subkeys: the next one toward the key coming). True when the
+// key itself is watched.
 @(private = "file")
 watch_key_open :: proc(k: ^Watch_Key) -> bool {
-	if k.key != nil { return true }
-	if win.RegOpenKeyExW(win.HKEY_CURRENT_USER, win.utf8_to_wstring(k.path, context.temp_allocator), 0, win.KEY_NOTIFY, &k.key) != 0 {
-		k.key = nil
-		return false
-	}
+	watch_key_close(k)
 	if k.event == nil { k.event = win.CreateEventW(nil, true, false, nil) }
-	win.ResetEvent(k.event)
-	if k.event == nil || RegNotifyChangeKeyValue(k.key, win.BOOL(k.subtree), REG_FILTER, k.event, true) != 0 {
-		watch_key_close(k)
-		return false
+	if k.event == nil { return false }
+	path := k.path
+	for {
+		h: win.HKEY
+		if win.RegOpenKeyExW(win.HKEY_CURRENT_USER, win.utf8_to_wstring(path, context.temp_allocator), 0, win.KEY_NOTIFY, &h) == 0 {
+			exact := path == k.path
+			win.ResetEvent(k.event)
+			if RegNotifyChangeKeyValue(h, win.BOOL(exact && k.subtree), exact ? REG_FILTER : win.REG_NOTIFY_CHANGE_NAME, k.event, true) != 0 {
+				win.RegCloseKey(h)
+				return false
+			}
+			k.key, k.exact = h, exact
+			return exact
+		}
+		i := strings.last_index_byte(path, '\\')
+		if i <= 0 { return false }   // (HKCU itself is not opened: the root of the registry key always exists)
+		path = path[:i]
 	}
-	return true
 }
 
 // Lets go of the key (the event stays for the next open).
@@ -112,14 +123,27 @@ watch_key_close :: proc(k: ^Watch_Key) {
 	k.key = nil
 }
 
+// Watches the folder, else the names in its nearest existing ancestor. True when the folder itself is watched.
 @(private = "file")
 watch_dir_open :: proc(d: ^Watch_Dir) -> bool {
-	if d.handle != nil { return true }
+	watch_dir_close(d)
 	if d.path == "" { return false }
-	h := win.FindFirstChangeNotificationW(cast([^]u16)win.utf8_to_wstring(d.path, context.temp_allocator), false, DIR_FILTER)
-	if h == win.INVALID_HANDLE_VALUE { return false }
-	d.handle = h
-	return true
+	for path := strings.trim_right(d.path, "\\/"); path != ""; {
+		exact := path == strings.trim_right(d.path, "\\/")
+		filter := u32(exact ? DIR_FILTER : win.FILE_NOTIFY_CHANGE_DIR_NAME)
+		h := win.FindFirstChangeNotificationW(cast([^]u16)win.utf8_to_wstring(path, context.temp_allocator), false, filter)
+		if h != win.INVALID_HANDLE_VALUE {
+			d.handle, d.exact = h, exact
+			return exact
+		}
+		i := max(strings.last_index_byte(path, '\\'), strings.last_index_byte(path, '/'))
+		if i < 0 { break }
+		up := path[:i]
+		if len(up) == 2 && up[1] == ':' { up = path[:i + 1] }   // (C:\ keeps its separator)
+		if up == path || up == "" { break }
+		path = up
+	}
+	return false
 }
 
 @(private = "file")
@@ -141,37 +165,39 @@ watch_thread :: proc(data: rawptr) {
 		// what is open now (rebuilt: a place may have gone, or come back)
 		n := 1
 		handles[0] = st.stop
-		missing := false
 		for k, i in st.keys {
-			if k.key != nil { handles[n], kinds[n], slots[n] = k.event, .Key, i; n += 1 } else { missing = true }
+			if k.key != nil { handles[n], kinds[n], slots[n] = k.event, .Key, i; n += 1 }
 		}
 		for d, i in st.dirs {
-			if d.handle != nil { handles[n], kinds[n], slots[n] = d.handle, .Dir, i; n += 1 } else if d.path != "" { missing = true }
+			if d.handle != nil { handles[n], kinds[n], slots[n] = d.handle, .Dir, i; n += 1 }
 		}
 
-		r := win.WaitForMultipleObjects(u32(n), &handles[0], false, missing ? WATCH_RETRY_MS : win.INFINITE)
+		r := win.WaitForMultipleObjects(u32(n), &handles[0], false, win.INFINITE)
 		if r == win.WAIT_FAILED { return }
-		if r == win.WAIT_TIMEOUT {
-			// a place that was gone: watched again if it is back (which is a change)
-			back := false
-			for &k in st.keys { if k.key == nil && watch_key_open(&k) { back = true } }
-			for &d in st.dirs { if d.handle == nil && watch_dir_open(&d) { back = true } }
-			if back { st.wake(st.user) }
-			continue
-		}
 		i := int(r - win.WAIT_OBJECT_0)
 		if i < 0 || i >= n { return }
+		changed := false
 		switch kinds[i] {
 		case .Stop: return
 		case .Key:
 			k := &st.keys[slots[i]]
-			win.ResetEvent(k.event)
-			if RegNotifyChangeKeyValue(k.key, win.BOOL(k.subtree), REG_FILTER, k.event, true) != 0 { watch_key_close(k) }   // (deleted)
+			if !k.exact {
+				changed = watch_key_open(k)   // (a subkey of the ancestor came or went: nearer, or the key itself)
+			} else {
+				changed = true
+				win.ResetEvent(k.event)
+				if RegNotifyChangeKeyValue(k.key, win.BOOL(k.subtree), REG_FILTER, k.event, true) != 0 { _ = watch_key_open(k) }   // (deleted: its ancestor)
+			}
 		case .Dir:
 			d := &st.dirs[slots[i]]
-			if !win.FindNextChangeNotification(d.handle) { watch_dir_close(d) }   // (deleted)
+			if !d.exact {
+				changed = watch_dir_open(d)   // (a folder of the ancestor came or went: nearer, or the folder itself)
+			} else {
+				changed = true
+				if !os.is_dir(d.path) || !win.FindNextChangeNotification(d.handle) { _ = watch_dir_open(d) }   // (deleted: its ancestor)
+			}
 		}
-		st.wake(st.user)
+		if changed { st.wake(st.user) }
 	}
 }
 
