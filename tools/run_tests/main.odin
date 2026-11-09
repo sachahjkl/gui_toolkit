@@ -90,6 +90,7 @@ STEPS := []Step{
 	{name = "hotkey", oses = EVERYWHERE},
 	{name = "notify", one = true, oses = EVERYWHERE},   // (Linux: a bus and a notification server of its own)
 	{name = "winrt", path = "src/winrt", oses = EVERYWHERE},
+	{name = "console_launcher", path = "src/console_launcher", oses = EVERYWHERE},
 	{name = "key_repeat", oses = EVERYWHERE},
 	{name = "pacing", oses = EVERYWHERE},
 	{name = "sleep", oses = EVERYWHERE},

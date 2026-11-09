@@ -130,6 +130,22 @@ jobs:
           ./build/tk.exe timeline_test
           if ($LASTEXITCODE) { exit 1 }
 
+      # the console launcher (tools/console_launcher) beside a console program of its own (tk.exe): what it gives is what the
+      # program gives, its output and its exit code, through a pipe
+      - name: The console launcher (tools/console_launcher)
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          odin build tools/console_launcher -vet -subsystem:console -o:size -out:build/tk.com '-define:LAUNCHER_MARK=(tk console launcher)' -define:LAUNCHER_DEFAULT=wait
+          if ($LASTEXITCODE) { exit 1 }
+          $direct = (./build/tk.exe help 2>&1 | Out-String); $code = $LASTEXITCODE
+          $launched = (./build/tk.com help 2>&1 | Out-String); $lcode = $LASTEXITCODE
+          if ($direct -ne $launched -or $code -ne $lcode) { Write-Host "tk.exe: $code`n$direct`ntk.com: $lcode`n$launched"; exit 1 }
+          ./build/tk.com no-such-command *> $null; $bad = $LASTEXITCODE
+          ./build/tk.exe no-such-command *> $null
+          if ($bad -ne $LASTEXITCODE -or $bad -eq 0) { Write-Host "an unknown command: tk.com $bad, tk.exe $LASTEXITCODE"; exit 1 }
+          if (-not (Select-String -Path build/tk.com -Pattern '(tk console launcher)' -SimpleMatch -Quiet)) { Write-Host 'the mark is not in tk.com'; exit 1 }
+
       # what a test leaves when it fails: the frame, the tree of boxes, a page that differs from its reference image
       - name: Keep what failed tests left
         if: failure()

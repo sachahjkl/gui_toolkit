@@ -87,6 +87,24 @@ next start, and `cleanup_later` deletes the files a running copy holds after the
 The console launcher exists because a program with a window gives the prompt back at once and has no console. The program
 provides the launcher's bytes; the launcher must contain `launcher_mark`, which is how removal tells it from another file.
 
+The toolkit has the launcher: `tools/console_launcher` (what it does: `src/console_launcher`). For a console command it
+waits for the program, hands it its standard input, output and error, and ends with its exit code; for the rest (a window
+that stays) it lets go of it. A program builds its own, with its mark and its rules, and embeds the bytes:
+
+```sh
+odin build ext/gui_toolkit/tools/console_launcher -subsystem:console -o:size -out:build/<stem>.com \
+    "-define:LAUNCHER_MARK=(<stem> console launcher)" -define:LAUNCHER_DEFAULT=wait "-define:LAUNCHER_OTHERS=(none),--hidden"
+```
+
+```odin
+when ODIN_OS == .Windows { o.launcher = #load("../build/<stem>.com") }
+```
+
+`LAUNCHER_DEFAULT` is what a command line does (`wait` or `detach`); `LAUNCHER_OTHERS`, comma-separated, names those that
+do the other: a word is the first argument, a flag (`--x`) is anywhere (also as `--x=value`), `(none)` is no argument at
+all. `--cli` anywhere makes the launcher wait, and the program never sees it. A browser: `detach`, its console commands in
+`LAUNCHER_OTHERS`. A program of the notification area with commands: `wait`, what shows its window in `LAUNCHER_OTHERS`.
+
 ## Linux
 
 | Part | What is written |
