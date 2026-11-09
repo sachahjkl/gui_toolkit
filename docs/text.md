@@ -215,7 +215,9 @@ README suggests sizes whose cap height is a whole number of pixels).
 `Settings.subpixel_text` (`.Rgb`, `.Bgr`; default `.Off`) gives text a coverage per colour stripe of the screen's pixels: three
 samples a third of a pixel apart instead of one, so it is sharper across at few pixels per letter, with faint colours on its edges.
 For a window that is opaque, on a screen that has such stripes: many OLED panels have not, and there the colours show. It is the
-application's to set; `system_subpixel_text` says what the system does (on Windows its ClearType setting and order).
+application's to set; `system_subpixel_text` says what the system does (on Windows its ClearType setting and order; on Linux
+fontconfig's `antialias` and `rgba`, as other applications read them: grey when it is not smoothed, its stripes unknown, vertical or
+none; macOS grey).
 
 - **Bitmaps** (the atlas, Windows): DirectWrite's ClearType analysis, its filter applied. A pixel's three coverages sit side by side
   in an ordinary Gray page, the bitmap three times as wide (`Glyph_Image.lcd`, `FLAG_LCD`): nothing changes in the pages, their

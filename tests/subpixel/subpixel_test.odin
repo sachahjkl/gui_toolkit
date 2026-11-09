@@ -5,8 +5,8 @@ import "../../src/draw"
 import "../../src/font"
 import "../../src/render"
 
-// Text with a coverage per colour stripe, on an offscreen renderer (WARP), with the renderer's own text: the atlas on Direct3D 11,
-// Slug on WebGPU. Black text has no colour of its own, so what has one is what the stripes did.
+// Text with a coverage per colour stripe, on an offscreen renderer (WARP on Windows, the GPU elsewhere), with the renderer's own text:
+// the atlas on Direct3D 11, Slug on WebGPU. Black text has no colour of its own, so what has one is what the stripes did.
 
 SIZE :: [2]int{240, 90}
 TINT :: 12   // red and blue further apart than this: a pixel the stripes coloured (grey text has none at all)
@@ -25,7 +25,8 @@ open :: proc(f: ^Fx, stripes: font.Subpixel_Text) -> bool {
 	st.subpixel_text = stripes
 	font.init(&f.fonts, st)
 	ok: bool
-	f.ui, ok = font.load_system(&f.fonts, "Segoe UI")
+	// (the built-in face off Windows: no system face is the same on every Linux machine)
+	when ODIN_OS == .Windows { f.ui, ok = font.load_system(&f.fonts, "Segoe UI") } else { f.ui, ok = font.load_memory(&f.fonts, font.FALLBACK_UI_DATA, false) }
 	draw.init(&f.dc, &f.r, &f.fonts)
 	return ok
 }
@@ -68,7 +69,7 @@ paragraph :: proc(f: ^Fx) {
 // Two renderers side by side: `stripes` and grayscale.
 pair :: proc(t: ^testing.T, stripes: font.Subpixel_Text = .Rgb) -> (a, b: ^Fx) {
 	a, b = new(Fx), new(Fx)
-	if !open(a, stripes) || !open(b, .Off) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
+	if !open(a, stripes) || !open(b, .Off) { testing.fail_now(t, "no offscreen renderer or no face") }
 	if !render.text_subpixel_supported(&a.r, render.USE_WGPU) { testing.fail_now(t, "this device blends no text per channel") }
 	return
 }
@@ -92,7 +93,7 @@ the_order_of_the_stripes_swaps_red_and_blue :: proc(t: ^testing.T) {
 	a, b := new(Fx), new(Fx)
 	defer free(a)
 	defer free(b)
-	if !open(a, .Rgb) || !open(b, .Bgr) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
+	if !open(a, .Rgb) || !open(b, .Bgr) { testing.fail_now(t, "no offscreen renderer or no face") }
 	defer close(a)
 	defer close(b)
 	rgb, bgr := frame(a, paragraph), frame(b, paragraph)

@@ -145,7 +145,8 @@ STEPS := []Step{
 	// text
 	{name = "text", wgpu = .Ci1},
 	{name = "subpixel"},
-	{name = "subpixel_slug", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "FONT_TEXT_RENDERER=slug"}},
+	{name = "subpixel_slug", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "FONT_TEXT_RENDERER=slug"}, oses = EVERYWHERE, text = true},
+	{name = "subpixel_system", oses = LINUX_ONLY, text = true},
 	// FXC, the compiler every Windows has (no DXC beside the program): one device, so every shader through it once. (Each device costs FXC
 	// some ten seconds: the whole package with it was four minutes.)
 	{name = "subpixel_fxc", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "TOOLKIT_WGPU_DX12_COMPILER=fxc", "FONT_TEXT_RENDERER=slug", "ODIN_TEST_NAMES=subpixel_test.light_text_on_dark_reaches_its_colour"}},

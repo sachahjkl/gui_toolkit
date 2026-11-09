@@ -29,6 +29,9 @@ foreign import fontconfig "system:fontconfig"
 @(private) FC_SLANT_ROMAN :: c.int(0)
 @(private) FC_SLANT_ITALIC :: c.int(100)
 @(private) FC_SLANT_OBLIQUE :: c.int(110)
+// fontconfig's `rgba`: the order of a pixel's colour stripes (vertical ones are not drawn: text runs across rows).
+@(private) FC_RGBA_RGB :: c.int(1)
+@(private) FC_RGBA_BGR :: c.int(2)
 // What FcWeightFromOpenType takes at most.
 @(private) FC_OPENTYPE_WEIGHT_MAX :: 1000
 
@@ -44,6 +47,7 @@ foreign fontconfig {
 	FcPatternGetString    :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, s: ^cstring) -> Fc_Result ---
 	FcPatternGetInteger   :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, i: ^c.int) -> Fc_Result ---
 	FcPatternGetCharSet   :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, cs: ^^Fc_Char_Set) -> Fc_Result ---
+	FcPatternGetBool      :: proc(p: ^Fc_Pattern, object: cstring, n: c.int, b: ^c.int) -> Fc_Result ---
 	FcConfigSubstitute    :: proc(config: ^Fc_Config, p: ^Fc_Pattern, kind: c.int) -> c.int ---
 	FcDefaultSubstitute   :: proc(p: ^Fc_Pattern) ---
 	FcFontMatch           :: proc(config: ^Fc_Config, p: ^Fc_Pattern, result: ^Fc_Result) -> ^Fc_Pattern ---
@@ -66,6 +70,27 @@ foreign fontconfig {
 fc_init :: proc() -> bool {
 	sync.once_do(&fc_once, proc() { fc_ok = FcInit() != 0 })
 	return fc_ok
+}
+
+// What the configuration asks of text in general (an empty pattern, its substitutions and defaults applied): stripes in the
+// order of `rgba` when it is smoothed; grey when it is not smoothed, its stripes unknown, vertical or none.
+@(private)
+fc_subpixel_text :: proc() -> Subpixel_Text {
+	if !fc_init() { return .Off }
+	p := FcPatternCreate()
+	if p == nil { return .Off }
+	defer FcPatternDestroy(p)
+	FcConfigSubstitute(nil, p, FC_MATCH_PATTERN)
+	FcDefaultSubstitute(p)
+	smooth: c.int = 1
+	if FcPatternGetBool(p, "antialias", 0, &smooth) == .Match && smooth == 0 { return .Off }
+	order: c.int
+	if FcPatternGetInteger(p, "rgba", 0, &order) != .Match { return .Off }
+	switch order {
+	case FC_RGBA_RGB: return .Rgb
+	case FC_RGBA_BGR: return .Bgr
+	}
+	return .Off
 }
 
 // A pattern for a family (may be "") at weight / style, with the configuration's substitutions applied.
