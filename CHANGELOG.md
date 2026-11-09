@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.131.0] - 2026-11-09
+
+### Added
+- **`setup.Dialog.at`**: where the last frame put the dialog's buttons (Install, Uninstall, the secondary one: `Button_Role`), for a program's automation and its tests. The dialog opens 31 em high (27 before), so a program's choices show without scrolling.
+
 ## [0.130.0] - 2026-11-09
 
 ### Added
@@ -2096,6 +2101,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.131.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.131.0
 [0.130.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.130.0
 [0.129.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.129.0
 [0.128.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.128.0
