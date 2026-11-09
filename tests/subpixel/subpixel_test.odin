@@ -23,6 +23,7 @@ open :: proc(f: ^Fx, stripes: font.Subpixel_Text) -> bool {
 	st := font.DEFAULT_SETTINGS
 	st.text_renderer = render.USE_WGPU ? .Slug : .Atlas
 	st.subpixel_text = stripes
+	st.slug_stripe_weight = 0   // (the stripes themselves: same weight as grey; stripe_text_is_a_touch_bolder has the weight)
 	font.init(&f.fonts, st)
 	ok: bool
 	// (the built-in face off Windows: no system face is the same on every Linux machine)
@@ -242,4 +243,26 @@ changing_the_setting_changes_the_text :: proc(t: ^testing.T) {
 	st.subpixel_text = .Rgb
 	font.set_settings(&a.fonts, st)
 	testing.expect(t, tinted(frame(a, paragraph)) > 0, "no stripes again")
+}
+
+// Striped text is a touch bolder by default (font.Settings.slug_stripe_weight), across only: more ink than grey, but not much, and
+// no taller (its rows of ink are those of grey text: the letters stay on their lines).
+@(test)
+stripe_text_is_a_touch_bolder :: proc(t: ^testing.T) {
+	a, b := pair(t)
+	defer unpair(a, b)
+	st := a.fonts.settings
+	st.slug_stripe_weight = font.SLUG_STRIPE_WEIGHT_PX
+	font.set_settings(&a.fonts, st)
+	lcd, gray := frame(a, paragraph), frame(b, paragraph)
+	r := ink(lcd) / ink(gray)
+	testing.expectf(t, r > 1.05 && r < 1.45, "a touch bolder: %.3f of grayscale's ink", r)
+	rows :: proc(img: []u8) -> (top, bottom: int) {
+		top, bottom = SIZE.y, -1
+		for y in 0 ..< SIZE.y { for x in 0 ..< SIZE.x { p := px(img, x, y); if p.x + p.y + p.z < 3 * 200 { top = min(top, y); bottom = max(bottom, y) } } }
+		return
+	}
+	lt, lb := rows(lcd)
+	gt, gb := rows(gray)
+	testing.expectf(t, lt >= gt && lb <= gb, "no taller: rows %d..%d within grey's %d..%d", lt, lb, gt, gb)
 }

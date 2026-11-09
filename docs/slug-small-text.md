@@ -8,6 +8,7 @@ of `font.Settings` address it; each is off by default (0) and they combine.
 | --- | --- | --- |
 | `slug_hint_ppem` | Screen-aligned glyphs at most this many pixels per em use an outline hinted for their size: the native backend's light auto-hinter (skrifa), vertical only, so the baseline, the x-height and horizontal stems land on whole pixels while shapes and advances stay as designed. | One glyph per size (quarter pixels) instead of one per face; a hinting instance per face and size in the Rust library. Needs `-define:FONT_BACKEND=native` (DirectWrite's backend has no hinter: nothing happens). |
 | `slug_darken` | Stem darkening: every edge moves outwards by this many pixels at 12 px per em and less, fading out linearly by 36. The side is the glyph's winding (`Slug_Glyph.orient`: TrueType clockwise, CFF counter-clockwise). | Nothing measurable: two additions per root in the shader. |
+| `slug_stripe_weight` | Text drawn in colour stripes (`subpixel_text`) is this many pixels bolder at every size, across only (default 0.2; see text.md). | None: one addition per root. |
 | `slug_supersample_ppem` | Glyphs at most this many pixels per em take four coverage samples on a rotated grid, each over its own half-pixel box, instead of one estimated from two rays. | Four times the fragment work of those glyphs. |
 
 The darkening and the samples travel in `colors[1]` of the glyph's instance (x: signed pixels, y: 1 for four samples);

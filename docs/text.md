@@ -236,6 +236,10 @@ none; macOS grey).
   pixels' rows has no stripes: under a transform it is asked for in grey, and a picture recorded with them and replayed turned
   reads the row of coverages as one finer bitmap.
 
+Text in stripes is a touch bolder (`Settings.slug_stripe_weight`, default `SLUG_STRIPE_WEIGHT_PX` = 0.2 pixels, at every size, as
+MacType does): three thin stripes read lighter than grey text. The weight is across only (the stems' sides move out, the baseline,
+the x-height and the tops stay), so the letters keep their lines. Slug only: the atlas's ClearType bitmaps are DirectWrite's.
+
 The text correction (render.Text_Rendering) applies to each stripe. Changing the setting forgets the bitmaps and makes what was
 recorded stale, as the other rendering settings do. `tests/subpixel` holds all of this on both backends.
 

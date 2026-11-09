@@ -99,7 +99,8 @@ slug_inst :: proc(c: ^Context, g: font.Slug_Glyph, ox, oy, size: f32, col: Color
 		flags = u32(g.band_max.x) | u32(g.band_max.y) << 8, aux = u32(g.loc.x) | u32(g.loc.y) << 16,
 	}
 	// small text (font.Settings): colors[1].x the stem darkening in pixels, signed by the glyph's winding; .y 1 for four
-	// coverage samples per pixel; .z which way the colour stripes run (slug_dual.wgsl: 1, -1, 0 none). The size on the screen is
+	// coverage samples per pixel; .z which way the colour stripes run (slug_dual.wgsl: 1, -1, 0 none); .w the weight of striped
+	// text, across only (pixels, signed as .x). The size on the screen is
 	// the instance's under a scale (pixels per em).
 	st := c.fonts.settings
 	inst.colors[1] = {}   // (the shader reads it: not the color here)
@@ -108,6 +109,7 @@ slug_inst :: proc(c: ^Context, g: font.Slug_Glyph, ox, oy, size: f32, col: Color
 	if st.slug_darken > 0 {
 		inst.colors[1].x = st.slug_darken * clamp((SLUG_DARKEN_NONE_PPEM - px) / (SLUG_DARKEN_NONE_PPEM - SLUG_DARKEN_FULL_PPEM), 0, 1) * f32(g.orient)
 	}
+	if stripes != 0 { inst.colors[1].w = st.slug_stripe_weight * f32(g.orient) }   // (stripes: a touch bolder across, at any size)
 	if st.slug_supersample_ppem > 0 && px <= st.slug_supersample_ppem { inst.colors[1].y = 1 }
 	append(&c.insts, inst)
 	slug_note_run(c)

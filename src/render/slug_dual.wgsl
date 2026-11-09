@@ -11,10 +11,10 @@ struct Slug_Dual_Out {
 // together span the same pixel's width (ps_slug's four, for each stripe, would be twelve).
 fn slug_stripe(i: SlugPS, dx: f32, e: float2, ppe: float2) -> f32 {
 	if (i.small.y > 0.5) {
-		return 0.5 * (SlugRender(i.tex + float2(dx - 0.25, -0.25) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0) +
-		              SlugRender(i.tex + float2(dx + 0.25,  0.25) * e, i.banding, i.glyph, ppe * 2.0, i.small.x * 2.0));
+		return 0.5 * (SlugRender(i.tex + float2(dx - 0.25, -0.25) * e, i.banding, i.glyph, ppe * 2.0, slug_dk(i) * 2.0) +
+		              SlugRender(i.tex + float2(dx + 0.25,  0.25) * e, i.banding, i.glyph, ppe * 2.0, slug_dk(i) * 2.0));
 	}
-	return SlugRender(i.tex + float2(dx, 0.0) * e, i.banding, i.glyph, ppe, i.small.x);
+	return SlugRender(i.tex + float2(dx, 0.0) * e, i.banding, i.glyph, ppe, slug_dk(i));
 }
 
 @fragment
