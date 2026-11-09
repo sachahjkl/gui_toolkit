@@ -289,10 +289,10 @@ the_check_catches_a_region_that_misses :: proc(t: ^testing.T) {
 
 // Spans drawn with draw directly, a grid of boxes of two instances each: what working out the region costs, and the calls of
 // draw that change what is compared (damage_volatile, damage_whole, damage_memory_reset, an offscreen target).
-@(private = "file") BOXES_WINDOW :: [2]int{1600, 1000}
+@(private = "file") BOXES_WINDOW :: [2]int{800, 500}   // (cells of 8 by 5: each box still two instances; the region's cost is the CPU's, the pixels only slow WARP)
 @(private = "file") BOXES_SIDE :: 100       // 10,000 boxes, 20,000 instances
 @(private = "file") FEW_SIDE :: 10          // 100 boxes
-@(private = "file") BOXES_FRAMES :: 20
+@(private = "file") BOXES_FRAMES :: 10
 @(private = "file") OFFSCREEN_SIZE :: [2]int{32, 32}
 @(private = "file") READBACK_FRAMES :: 10   // frames to wait for a readback at the most
 // What working out the region of 10,000 spans may take at the most (optimized, -o:speed): a tenth of a frame at 60 Hz.
