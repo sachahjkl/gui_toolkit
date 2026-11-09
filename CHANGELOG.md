@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.111.1] - 2026-11-09
+
+### Fixed
+- **Linux: the loop sleeps at rest again**: the system's repaint request (a configure, an expose) stayed set, so every `hosts_wait` ended at once and a window drew frames for ever (60 a second; a core for a hidden one). `host_frame` now takes the request (its frame answers it), and a hidden window's request ends no wait. `tests/linux_desktop` checks that no frame is due at rest.
+
 ## [0.111.0] - 2026-11-09
 
 ### Added
@@ -1927,6 +1932,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.111.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.1
 [0.111.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.0
 [0.110.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.110.0
 [0.109.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.109.0
