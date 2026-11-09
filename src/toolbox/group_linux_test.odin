@@ -1,3 +1,4 @@
+#+build linux
 package tk_toolbox
 
 import "core:fmt"

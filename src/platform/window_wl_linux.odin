@@ -1017,8 +1017,11 @@ wl_wait :: proc(w: ^Window, timeout_ms: int) {
 		wl.display_flush(wlc.display)
 		left := -1
 		if timeout_ms > 0 {
-			left = int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
-			if left <= 0 { return }
+			// (rounded up: a part of a millisecond left is a millisecond of sleep, not a return that the caller's loop
+			// turns into a spin until its deadline)
+			rest := time.tick_diff(time.tick_now(), deadline)
+			if rest <= 0 { return }
+			left = int((rest + time.Millisecond - 1) / time.Millisecond)
 		}
 		r := poll_sources(w, wl_fd(w), wl_poll_timeout(left))
 		if !r.conn || r.other { return }   // (the time, a key's repeat, or another source)

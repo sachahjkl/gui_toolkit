@@ -206,6 +206,10 @@ a_window_hides_and_comes_back :: proc(t: ^testing.T) {
 	}
 }
 
+// How long the host's loop is watched at rest, and the wakes it may have in that time (the last wait's end included).
+@(private = "file") REST_MS :: 300
+@(private = "file") REST_WAKES_MAX :: 4
+
 @(private = "file")
 host_build :: proc(h: ^host.Host, size: host.Vec2) { (^int)(h.user)^ += 1; ui.label("hidden and shown###l") }
 
@@ -238,11 +242,18 @@ a_host_hides_and_comes_back :: proc(t: ^testing.T) {
 	host.host_frame(h)
 	due, _ := host.hosts_due({h})
 	testing.expect(t, !due, "at rest, no frame is due")
-	// and the wait sleeps its time: what the renderer's own queues receive after a frame (the presentation feedback, the
-	// FIFO events) ends no wait of the window
+	// and the loop sleeps: what the renderer's own queues receive after a frame (the presentation feedback, the FIFO
+	// events) ends no wait of the window. An event of the desktop may still come (a window manager's late focus or
+	// property change on X11) and end one wait: that is a wake, and counted as one. A wait that does not sleep wakes
+	// hundreds of times in 300 ms.
+	wakes := 0
 	rest := time.tick_now()
-	platform.wait_event(h.win, 300)
-	testing.expectf(t, time.duration_milliseconds(time.tick_since(rest)) >= 250, "at rest, a wait of 300 ms sleeps (%.0f ms)", time.duration_milliseconds(time.tick_since(rest)))
+	for left := REST_MS; left > 0; left = REST_MS - int(time.duration_milliseconds(time.tick_since(rest))) {
+		platform.wait_event(h.win, left)
+		_ = platform.poll_events(h.win, false)
+		wakes += 1
+	}
+	testing.expectf(t, wakes <= REST_WAKES_MAX, "at rest, the loop sleeps (%d wakes in %d ms)", wakes, REST_MS)
 	for round in 1 ..= 3 {
 		host.host_hide(h)
 		pump_for(h.win, 200)
