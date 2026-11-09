@@ -4,6 +4,7 @@ package tk
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 import "core:time"
 import toolbox "../../src/toolbox"
 
@@ -13,12 +14,72 @@ import toolbox "../../src/toolbox"
 // XDG_RUNTIME_DIR, the session bus (none) and xdg-open (tests/linux_desktop/xdg_open). Needs Xvfb, openbox, xdotool, xclip, xprop,
 // xwininfo, xrandr, Xorg with its dummy driver, sway, wl-clipboard, wtype, and the libraries of the Linux backend.
 // XORG: how to start Xorg (default Xorg); XORG_MODULES: more module folders for it. GUI_TEST_NAMES: only these tests.
+//
+// Every program started here (a server, the test program) runs in a process group of its own (setsid), and is stopped with
+// all of that group: a server may be a wrapper (NixOS's sway is dbus-run-session, which starts sway and a session bus
+// beside it), and a signal to the wrapper alone leaves the compositor and the bus running. What they print goes to files in
+// <out>, never to tk's own output: a process left behind would hold it open. The test program's log is printed when it ends.
+// A signal that ends tk (timeout's SIGTERM, Ctrl+C, a closed terminal) stops the groups first.
 
 @(private = "file")
 Desk :: struct {
 	root, out: string,
 	env:       [dynamic]string,   // KEY=VALUE: what every program started here gets
-	servers:   [dynamic]os.Process,
+	servers:   [dynamic]os.Process,   // each the leader of its process group
+}
+
+// The process groups that run now, for the signal handler (it may read nothing else). Written by the main thread only,
+// the count after the slot.
+@(private = "file") MAX_GROUPS :: 16
+@(private = "file") running_groups: [MAX_GROUPS]posix.pid_t
+@(private = "file") running_count: int
+@(private = "file") STOP_WAIT :: 3 * time.Second   // what a group is given to end on SIGTERM before SIGKILL
+
+@(private = "file")
+group_add :: proc(pid: posix.pid_t) {
+	if running_count < MAX_GROUPS {
+		running_groups[running_count] = pid
+		running_count += 1
+	}
+}
+
+@(private = "file")
+group_remove :: proc(pid: posix.pid_t) {
+	for i in 0 ..< running_count {
+		if running_groups[i] != pid { continue }
+		running_count -= 1
+		running_groups[i] = running_groups[running_count]
+		return
+	}
+}
+
+// tk ends on a signal: every group it started ends too. (kill and _exit only: what a signal handler may call)
+@(private = "file")
+on_end_signal :: proc "c" (sig: posix.Signal) {
+	for i in 0 ..< running_count { posix.kill(-running_groups[i], .SIGKILL) }
+	posix._exit(128 + i32(sig))
+}
+
+// A program in a process group of its own, its output in `out`. setsid runs it in place (same process) when it is not a
+// group leader, which a child of tk never is: its pid is its group's.
+@(private = "file")
+start_group :: proc(d: ^Desk, out: ^os.File, command: ..string) -> (p: os.Process, err: os.Error) {
+	cmd := make([dynamic]string, context.temp_allocator)
+	append(&cmd, "setsid")
+	append(&cmd, ..command)
+	p = os.process_start({command = cmd[:], env = d.env[:], stdout = out, stderr = out}) or_return
+	group_add(posix.pid_t(p.pid))
+	return p, nil
+}
+
+// SIGTERM to the whole group, then SIGKILL to what is left of it (a wrapper's children too) after STOP_WAIT at most.
+@(private = "file")
+stop_group :: proc(p: os.Process) {
+	posix.kill(-posix.pid_t(p.pid), .SIGTERM)
+	_, _ = os.process_wait(p, STOP_WAIT)
+	posix.kill(-posix.pid_t(p.pid), .SIGKILL)
+	_, _ = os.process_wait(p, STOP_WAIT)
+	group_remove(posix.pid_t(p.pid))
 }
 
 @(private = "file")
@@ -32,12 +93,12 @@ env_unset :: proc(d: ^Desk, key: string) {
 	for i := len(d.env) - 1; i >= 0; i -= 1 { if strings.has_prefix(d.env[i], fmt.tprintf("%s=", key)) { ordered_remove(&d.env, i) } }
 }
 
-// A program left running (a server, a window manager), its output in <out>/<log>.
+// A program left running (a server, a window manager) in a group of its own, its output in <out>/<log>.
 @(private = "file")
 start :: proc(d: ^Desk, log: string, command: ..string) -> bool {
 	f, err := os.create(join({d.out, log}))
 	if err != nil { return false }
-	p, perr := os.process_start({command = command, env = d.env[:], stdout = f, stderr = f})
+	p, perr := start_group(d, f, ..command)
 	os.close(f)
 	if perr != nil { fmt.printfln("desktop: %s does not start", command[0]); return false }
 	append(&d.servers, p)
@@ -46,21 +107,22 @@ start :: proc(d: ^Desk, log: string, command: ..string) -> bool {
 
 @(private = "file")
 stop_all :: proc(d: ^Desk) {
-	for p in d.servers {
-		_ = os.process_terminate(p)
-		_, _ = os.process_wait(p, 3 * time.Second)
-		_ = os.process_kill(p)
-	}
+	for p in d.servers { stop_group(p) }
 	clear(&d.servers)
 }
 
-// Runs a program to its end, its output on this one's, at most `limit`.
+// Runs a program to its end in a group of its own, at most `limit`, its output in <out>/<log>; then stops what it left
+// running in its group (a test's own servers and peers).
 @(private = "file")
-run_env :: proc(d: ^Desk, limit: time.Duration, command: ..string) -> bool {
-	p, err := os.process_start({command = command, env = d.env[:], stdout = os.stdout, stderr = os.stderr})
+run_env :: proc(d: ^Desk, limit: time.Duration, log: string, command: ..string) -> bool {
+	f, ferr := os.create(join({d.out, log}))
+	if ferr != nil { return false }
+	p, err := start_group(d, f, ..command)
+	os.close(f)
 	if err != nil { return false }
 	st, werr := os.process_wait(p, limit)
-	if werr != nil { _ = os.process_kill(p); _, _ = os.process_wait(p); fmt.printfln("desktop: %s took more than %v", command[0], limit); return false }
+	stop_group(p)
+	if werr != nil { fmt.printfln("desktop: %s took more than %v", command[0], limit); return false }
 	return st.exited && st.exit_code == 0
 }
 
@@ -77,7 +139,9 @@ until :: proc(d: ^Desk, tries: int, command: ..string) -> bool {
 
 @(private = "file")
 desktop_run :: proc(d: ^Desk, name: string, limit: time.Duration) -> bool {
-	ok := run_env(d, limit, join({d.out, "desktop_test"}))
+	log := fmt.tprintf("desktop_test_%s.log", name)
+	ok := run_env(d, limit, log, join({d.out, "desktop_test"}))
+	if data, err := os.read_entire_file(join({d.out, log}), context.temp_allocator); err == nil { fmt.print(string(data)) }
 	fmt.printfln("desktop %s %s", ok ? "ok  " : "FAIL", name)
 	return ok
 }
@@ -116,6 +180,7 @@ SWAY_CONF :: "xwayland disable\noutput HEADLESS-1 resolution 1280x1024@60Hz\ndef
 run_desktop_tests :: proc(a: ^Args) -> string {
 	only := len(a.positionals) > 0 ? a.positionals[0] : ""
 	if only != "" && only != "x11" && only != "randr" && only != "wayland" { return "x11, randr or wayland" }
+	for sig in ([?]posix.Signal{.SIGTERM, .SIGINT, .SIGHUP}) { posix.signal(sig, on_end_signal) }
 	d := Desk{root = toolkit_root()}
 	d.out = fmt.tprintf("%s/gt_desktop_%d", os.get_env("TMPDIR", context.temp_allocator) != "" ? os.get_env("TMPDIR", context.temp_allocator) : "/tmp", os.get_pid())
 	bin, run_dir := join({d.out, "bin"}), join({d.out, "run"})
@@ -170,9 +235,9 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		if m := os.get_env("XORG_MODULES", context.temp_allocator); m != "" { append(&cmd, "-modulepath", m) }
 		append(&cmd, "-ac", "-noreset", "-logfile", join({d.out, "xorg.log"}), "-nolisten", "tcp")
 		ok := start(&d, "xorg.out", ..cmd[:]) && until(&d, 100, "xprop", "-root")
-		ok = ok && run_env(&d, 10 * time.Second, "xrandr", "--addmode", "DUMMY1", "m60")
-		ok = ok && run_env(&d, 10 * time.Second, "xrandr", "--addmode", "DUMMY1", "m144")
-		ok = ok && run_env(&d, 10 * time.Second, "xrandr", "--output", "DUMMY0", "--mode", "m60", "--pos", "0x0", "--output", "DUMMY1", "--mode", "m144", "--pos", "1280x0")
+		ok = ok && run_env(&d, 10 * time.Second, "xrandr.log", "xrandr", "--addmode", "DUMMY1", "m60")
+		ok = ok && run_env(&d, 10 * time.Second, "xrandr.log", "xrandr", "--addmode", "DUMMY1", "m144")
+		ok = ok && run_env(&d, 10 * time.Second, "xrandr.log", "xrandr", "--output", "DUMMY0", "--mode", "m60", "--pos", "0x0", "--output", "DUMMY1", "--mode", "m144", "--pos", "1280x0")
 		env_set(&d, "GUI_TEST_RANDR", "1")
 		env_set(&d, "GUI_TEST_DESKTOP", "")
 		if !ok || !desktop_run(&d, "randr", 60 * time.Second) {
@@ -210,12 +275,9 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		// does (a test takes the pointer away and makes it again: the file says which one to stop)
 		pid_file := join({d.out, "pointer.pid"})
 		env_set(&d, "GUI_TEST_POINTER_PID", pid_file)
-		pointer, perr := os.process_start({command = {join({bin, "virtual_pointer"})}, env = d.env[:], stdout = os.stdout, stderr = os.stderr})
-		if perr == nil {
-			append(&d.servers, pointer)
-			_ = os.write_entire_file(pid_file, fmt.tprint(pointer.pid))
-		}
-		ok = ok && perr == nil && start(&d, "wtype.log", "wtype", "-s", "3600000")
+		pointer_ok := start(&d, "pointer.log", join({bin, "virtual_pointer"}))
+		if pointer_ok { _ = os.write_entire_file(pid_file, fmt.tprint(d.servers[len(d.servers) - 1].pid)) }
+		ok = ok && pointer_ok && start(&d, "wtype.log", "wtype", "-s", "3600000")
 		time.sleep(500 * time.Millisecond)
 		env_set(&d, "GUI_TEST_DESKTOP", "wayland")
 		if !ok || !desktop_run(&d, "wayland", 240 * time.Second) {

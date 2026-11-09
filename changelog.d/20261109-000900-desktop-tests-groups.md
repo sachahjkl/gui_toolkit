@@ -1,0 +1,3 @@
+type: Fixed
+
+**`tk desktop_tests` leaves no compositor running**: a server it starts (and the test program) runs in a process group of its own, and is stopped with its whole group, also on a failure, a time limit or a signal to `tk`. A wrapper such as NixOS's sway (`dbus-run-session`, which runs sway and a session bus beside it) took the signal alone and left sway, swaybg and the bus running, holding the command's output open. Their output goes to files now, the test program's printed when it ends. `a_lost_server_closes_its_windows` stops its second server with its children, so the window hears the compositor go.
