@@ -20,3 +20,14 @@ signatures_are_written_as_windows_reads_them :: proc(t: ^testing.T) {
 		"rc(Windows.ApplicationModel.DataTransfer.ClipboardHistoryItemsResult;{e6dfdee6-0ee2-52e3-852b-f295db65939a})")
 	testing.expect_value(t, sig_generic(PIID_IAsyncOperation, SIG_STRING), "pinterface({9fc2b0bb-e446-44e2-aa61-9cab8f636af2};string)")
 }
+
+// TypedEventHandler<ToastNotification, T>: the IDs of windows.ui.notifications.h (the toasts' events, platform/notify_windows.odin).
+@(test)
+typed_event_handler_ids_are_those_of_the_sdk :: proc(t: ^testing.T) {
+	toast := sig_class("Windows.UI.Notifications.ToastNotification", GUID{0x997e2675, 0x059e, 0x4e60, {0x8b, 0x06, 0x17, 0x60, 0x91, 0x7c, 0x8b, 0x80}})
+	dismissed := sig_class("Windows.UI.Notifications.ToastDismissedEventArgs", GUID{0x3f89d935, 0xd9cb, 0x4538, {0xa0, 0xf0, 0xff, 0xe7, 0x65, 0x99, 0x38, 0xf8}})
+	failed := sig_class("Windows.UI.Notifications.ToastFailedEventArgs", GUID{0x35176862, 0xcfd4, 0x44f8, {0xad, 0x64, 0xf5, 0x00, 0xfd, 0x89, 0x6c, 0x3b}})
+	testing.expect_value(t, guid_string(typed_event_handler_iid(toast, SIG_INSPECTABLE)), "{ab54de2d-97d9-5528-b6ad-105afe156530}")
+	testing.expect_value(t, guid_string(typed_event_handler_iid(toast, dismissed)), "{61c2402f-0ed0-5a18-ab69-59f4aa99a368}")
+	testing.expect_value(t, guid_string(typed_event_handler_iid(toast, failed)), "{95e3e803-c969-5e3a-9753-ea2ad22a9a33}")
+}

@@ -934,6 +934,16 @@ wl_activate :: proc(w: ^Window) {
 	wl.display_flush(wlc.display)
 }
 
+// Asks the focus with a token another program got for us (a notification server, for the click on a notification).
+@(private)
+wl_activate_token :: proc(w: ^Window, token: string) {
+	st := wl_state(w)
+	if st == nil || st.surface == nil || wlc.activation == nil { return }
+	ctoken := strings.clone_to_cstring(token, context.temp_allocator)
+	wl.proxy_marshal_flags(wlc.activation, XDG_ACTIVATION_ACTIVATE, nil, wl.proxy_get_version(wlc.activation), 0, ctoken, st.surface)
+	wl.display_flush(wlc.display)
+}
+
 @(private)
 wl_activation_drop :: proc(st: ^Wl_Window_State) {
 	if st.activation_token == nil { return }

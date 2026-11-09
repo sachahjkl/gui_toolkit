@@ -220,7 +220,8 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   says its role, name, states and value, the focus follows, requests (invoke, set value, select, focus) arrive as input;
   built only while a reader listens, sent incrementally ([docs/accessibility.md](docs/accessibility.md)).
 - **Threads and the system**: `ui.post` runs calls posted from any thread at the next build (a lock-free ring,
-  [docs/post.md](docs/post.md)); a notification area icon with menu and notifications ([docs/tray.md](docs/tray.md));
+  [docs/post.md](docs/post.md)); a notification area icon with menu and notifications ([docs/tray.md](docs/tray.md)); system notifications with
+  buttons, without an icon ([docs/notifications.md](docs/notifications.md));
   the clipboard's images, HTML and files ([docs/clipboard.md](docs/clipboard.md)); file dialogs and shell actions
   ([docs/dialogs.md](docs/dialogs.md)); drag and drop ([docs/dragdrop.md](docs/dragdrop.md)).
 - **Long lists**: `vlist` builds only the rows in view (rows of any height, measured and cached; keyboard and type-ahead
