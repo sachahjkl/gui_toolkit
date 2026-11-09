@@ -1,8 +1,9 @@
 package tk_desktop
 
 // The icons of the person's icon theme (freedesktop.org Icon Theme specification 0.13):
-//   - the theme: gtk-icon-theme-name of $XDG_CONFIG_HOME/gtk-4.0/settings.ini, then gtk-3.0's, then KDE's kdeglobals
-//     ([Icons] Theme=), else hicolor;
+//   - the theme: the Settings portal's org.gnome.desktop.interface icon-theme (what GTK shows: dconf's), else
+//     gtk-icon-theme-name of $XDG_CONFIG_HOME/gtk-4.0/settings.ini, then gtk-3.0's, then KDE's kdeglobals ([Icons]
+//     Theme=), else hicolor; read once per process;
 //   - its folders: icons/<theme> under $HOME/.icons and each data directory; its index.theme (the first found) gives its
 //     subfolders with their size, scale and type, and the themes it inherits; hicolor comes last;
 //   - an icon name: the subfolder that matches the size, else the nearest, theme by theme; a PNG or an SVG file;
@@ -48,6 +49,8 @@ Icon_Cache :: struct {
 	key:    string,
 	chain:  []^Icon_Theme,                 // the theme, what it inherits, hicolor
 	found:  map[string]string,             // "name@size" -> the file ("" none)
+	theme:  string,                        // the theme's name, read once (heap)
+	named:  bool,
 }
 
 @(private = "file") icon_cache: Icon_Cache
@@ -156,7 +159,9 @@ icon_cache_get :: proc(roots: Xdg_Roots, name: string) -> ^Icon_Cache {
 	key := strings.concatenate({name, "\n", strings.join(roots.data, ":", context.temp_allocator)}, context.temp_allocator)
 	if c.ready && c.key == key { return c }
 	if c.ready { virtual.arena_destroy(&c.arena) }
+	theme, named := c.theme, c.named
 	c^ = {}
+	c.theme, c.named = theme, named
 	_ = virtual.arena_init_growing(&c.arena)
 	a := virtual.arena_allocator(&c.arena)
 	c.key = strings.clone(key, a)
@@ -299,7 +304,18 @@ icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator
 
 @(private)
 icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
-	return icon_of_path_in(xdg_roots(), icon_theme_name(xdg_config_home()), path, folder, size, allocator, choose)
+	theme: string
+	{
+		sync.mutex_guard(&icon_cache.mutex)
+		if !icon_cache.named {
+			// (the portal asked from this worker once: its connection is this thread's)
+			name, asked := platform.portal_icon_theme(runtime.heap_allocator())
+			if !asked { name = icon_theme_name(xdg_config_home(), runtime.heap_allocator()) }
+			icon_cache.theme, icon_cache.named = name, true
+		}
+		theme = strings.clone(icon_cache.theme, context.temp_allocator)
+	}
+	return icon_of_path_in(xdg_roots(), theme, path, folder, size, allocator, choose)
 }
 
 // The icon of `path` from the XDG folders `roots` and the theme named `theme` (the tests give theirs).
