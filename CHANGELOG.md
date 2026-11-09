@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.124.1] - 2026-11-09
+
+### Fixed
+- **Linux: `system_subpixel_text` reads fontconfig** (`antialias`, `rgba`) instead of always saying RGB: a configuration that asks for BGR, grey or no smoothing is followed. The colour-stripe text tests (`tests/subpixel`, Slug) run on Linux too, with the built-in face.
+
 ## [0.124.0] - 2026-11-09
 
 ### Added
@@ -2036,6 +2041,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.124.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.1
 [0.124.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.124.0
 [0.123.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.123.0
 [0.122.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.122.0
