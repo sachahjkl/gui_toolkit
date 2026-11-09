@@ -52,6 +52,7 @@ Def :: struct {
 	restart:     bool,        // takes effect at the next start
 	bytes:       bool,        // Int: accepts K / M / G suffixes when typed
 	category:    string,      // grouping in about:config; defaults to the first name segment
+	hidden:      bool,        // the program's own (a layout, a last choice): no settings page shows it, nor what lists the settings
 }
 
 Source :: enum u8 { Default, User, Command_Line, Policy }

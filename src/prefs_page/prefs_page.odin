@@ -113,26 +113,31 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 		return kept[:]
 	}
 	cats := make([dynamic]string, context.temp_allocator)
-	for e in prefs.entries { if !slice.contains(cats[:], e.def.category) { append(&cats, e.def.category) } }
+	for e in prefs.entries { if !e.def.hidden && !slice.contains(cats[:], e.def.category) { append(&cats, e.def.category) } }
 	slice.sort(cats[:])
 	out := make([]Page_Info, len(cats), context.temp_allocator)
 	for c, i in cats { out[i] = {category = c, title = config.category_title(c)} }
 	return out
 }
 
-// The preferences of a page: its own list (those registered), else its category's.
+// The preferences of a page: its own list (those registered), else its category's; never a hidden one (Def.hidden: the
+// program's own).
 page_names :: proc(prefs: ^config.Prefs, pg: Page_Info) -> []string {
 	if pg.names == nil { return names_of(prefs, pg.category) }
 	out := make([dynamic]string, 0, len(pg.names), context.temp_allocator)
-	for name in pg.names { if name in prefs.index { append(&out, name) } }
+	for name in pg.names {
+		r, ok := prefs.index[name]
+		if ok && !prefs.entries[r].def.hidden { append(&out, name) }
+	}
 	return out[:]
 }
 
-// The names of a category's preferences, in their order in the registry (the order the program declared them in).
+// The names of a category's preferences, in their order in the registry (the order the program declared them in); not the
+// hidden ones.
 @(private)
 names_of :: proc(prefs: ^config.Prefs, category: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
-	for e in prefs.entries { if e.def.category == category { append(&out, e.def.name) } }
+	for e in prefs.entries { if e.def.category == category && !e.def.hidden { append(&out, e.def.name) } }
 	return out[:]
 }
 
