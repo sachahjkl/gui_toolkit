@@ -27,7 +27,7 @@ prefs_page.build(&page, &prefs, {
 
 - On the left: the search in a well, then the pages, each a button with its icon and its title; the page shown is
   pressed in. A page is a category of the registry (`Def.category`, or the first segment of the name). `Options.pages`
-  gives their order, titles and icons; without it, each category shows by name. A page narrower than 40 ems shows the
+  gives their order, titles and icons (a page with no preference in the registry is not shown); without it, each category shows by name. A page narrower than 40 ems shows the
   icons alone. `Options.foot` is a faint line under the pages (where the file is).
 - On the right: the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes

@@ -37,7 +37,8 @@ Options :: struct {
 	// the preferences with a control of the program's own, under their words (the themes' cards), and that control
 	custom_names: []string,
 	custom:    proc(user: rawptr, name: string, em: f32),
-	// the pages in their order; nil: each category of the registry, by name, its title from config.category_title
+	// the pages in their order (one with no preference is not shown); nil: each category of the registry, by name, its
+	// title from config.category_title
 	pages:     []Page_Info,
 	icon_font: font.Font_Id,   // the font of the pages' icons, and of the two below (0: none, words instead)
 	search_icon, reset_icon: string,
@@ -100,7 +101,12 @@ editing :: proc(p: ^Page) -> bool {
 // The pages of `o`, or each category of the registry by name.
 @(private)
 pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
-	if o.pages != nil { return o.pages }
+	if o.pages != nil {
+		// (a page with no preference in this registry is not shown: a program that registers some only on one system)
+		kept := make([dynamic]Page_Info, context.temp_allocator)
+		for pg in o.pages { if len(names_of(prefs, pg.category)) > 0 { append(&kept, pg) } }
+		return kept[:]
+	}
 	cats := make([dynamic]string, context.temp_allocator)
 	for e in prefs.entries { if !slice.contains(cats[:], e.def.category) { append(&cats, e.def.category) } }
 	slice.sort(cats[:])

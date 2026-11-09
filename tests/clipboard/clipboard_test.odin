@@ -305,6 +305,14 @@ file_uris_round_trip :: proc(t: ^testing.T) {
 	testing.expect_value(t, hosted[1], "/plain")
 }
 
+// A Windows path's URI (file:///C:/...) reads back as a Windows path there.
+@(test)
+a_drive_path_reads_back_on_windows :: proc(t: ^testing.T) {
+	paths := platform.uri_list_to_paths(platform.file_uri("/C:/Users/me/a b.txt"), context.temp_allocator)
+	testing.expect_value(t, len(paths), 1)
+	when ODIN_OS == .Windows { testing.expect_value(t, paths[0], "C:/Users/me/a b.txt") } else { testing.expect_value(t, paths[0], "/C:/Users/me/a b.txt") }
+}
+
 // clipboard_changed tells once, not at every call.
 @(test)
 clipboard_changed_tells_once :: proc(t: ^testing.T) {
