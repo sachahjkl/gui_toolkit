@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.114.0] - 2026-11-09
+
+### Added
+- **`ui.field_frame`, the box flag `.Focus_Within`, the theme tag `bare`**: one surface for a field and what goes with it (an icon, a count), with one focus ring around all of it while a box inside has the focus. A field built under `bare` draws no background, border or focus ring of its own: no box inside a box, no square ring inside round corners.
+
 ## [0.113.0] - 2026-11-09
 
 ### Added
@@ -1952,6 +1957,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.114.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.114.0
 [0.113.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.113.0
 [0.112.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.112.0
 [0.111.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.111.3
