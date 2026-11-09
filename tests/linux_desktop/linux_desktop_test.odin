@@ -1650,6 +1650,23 @@ a_raised_window_takes_the_keyboard_on_wayland :: proc(t: ^testing.T) {
 	testing.expect(t, a.focused && !b.focused, "the raised window has it")
 }
 
+// A window opened and never shown is no toplevel: a task bar lists it only from its first show. On Wayland the toplevel
+// role is made at that show: before it, even a picture on the window's surface puts nothing on the screen (a toplevel
+// made at open would be mapped by it). On X11 the window is mapped at the show.
+@(test)
+a_window_never_shown_is_no_toplevel :: proc(t: ^testing.T) {
+	if !x11() && !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	title :: "never shown"
+	w := platform.open_window(title, {200, 150})
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	platform.test_show_plain(w)
+	pump_for(w, 300)
+	testing.expect(t, !on_screen(w, title), "not a toplevel before its first show")
+}
+
 // Before show_window nothing is on the screen.
 @(test)
 a_window_not_shown_is_not_visible :: proc(t: ^testing.T) {
@@ -1667,10 +1684,11 @@ a_window_not_shown_is_not_visible :: proc(t: ^testing.T) {
 	testing.expect(t, platform.is_window_visible(w))
 }
 
-// Asked before the window is on the screen: the window manager reads it from the window when it maps it.
+// Asked before the window is on the screen: the window manager reads it from the window when it maps it (Wayland: the
+// toplevel made at the first show asks it).
 @(test)
-fullscreen_before_the_window_is_mapped_on_x11 :: proc(t: ^testing.T) {
-	if !x11() { return }
+fullscreen_before_the_window_is_shown :: proc(t: ^testing.T) {
+	if !x11() && !wayland() { return }
 	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
 	w := platform.open_window("fullscreen first", {200, 150})
 	testing.expect(t, w != nil)
@@ -1678,6 +1696,7 @@ fullscreen_before_the_window_is_mapped_on_x11 :: proc(t: ^testing.T) {
 	defer platform.destroy_window(w)
 	platform.set_fullscreen(w, true)
 	platform.show_window(w)
+	platform.test_show_plain(w)   // (Wayland: the window is mapped by its first picture, and sway makes it full screen then)
 	pump_for(w, 500)
 	testing.expect(t, platform.is_fullscreen(w), "the server says so")
 	testing.expect_value(t, w.size, [2]int{1280, 1024})
