@@ -410,6 +410,40 @@ scrollbar_follows_the_scale :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
+Frame_Run :: struct { frame, field: ^ui.Box, text: ui.Text_Field, focus: bool }
+
+@(private = "file")
+build_field_frame :: proc(f: ^Fx, user: rawptr) {
+	r := (^Frame_Run)(user)
+	ui.next({width = ui.px(300), height = ui.px(30)})
+	if ui.field_frame("###frame") {
+		r.frame = ui.parent_box()
+		ui.next({width = ui.fill(), height = ui.pct(1)})
+		if ui.tags("bare") { r.field = ui.line_edit("###field", &r.text).box }
+	}
+	if r.focus { ui.set_focus(r.field.key) } else if ui.focus_key() == r.field.key { ui.set_focus(0) }
+}
+
+// A field_frame is focused while its field is, and the bare field inside draws no surface, border or ring of its own.
+@(test)
+a_field_frame_is_focused_with_its_field :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Frame_Run{focus = true}
+	defer ui.field_destroy(&r.text)
+	for _ in 0 ..< 3 { frame(&f, nil, build_field_frame, &r) }
+	testing.expect_value(t, r.frame.focus_t, 1)
+	r.focus = false
+	for _ in 0 ..< 3 { frame(&f, nil, build_field_frame, &r) }
+	testing.expect_value(t, r.frame.focus_t, 0)
+	for name in ([]string{"background", "border", "focus border"}) {
+		testing.expectf(t, ui.theme_lookup(&f.theme, {"bare", "input"}, name).a == 0, "a bare field's %s is clear", name)
+		testing.expectf(t, ui.theme_lookup(&f.theme, {"input"}, name).a > 0, "an input's %s is not", name)
+	}
+}
+
+@(private = "file")
 Deep_Run :: struct { outer: ^ui.Box, depth: int }
 
 @(private = "file")

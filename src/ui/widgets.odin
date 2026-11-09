@@ -36,6 +36,20 @@ row :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") 
 	return true
 }
 
+// `if field_frame(id) { ... }`: one surface for a field and what goes with it (a search icon, the field, a count), laid
+// out left to right. It has an input's background, border and corners (radius from `next` or the style), and one focus
+// ring around all of it while a box inside has the keyboard focus (.Focus_Within). Build the field inside under the tag
+// "bare": the field then draws no background, border or focus ring of its own.
+@(deferred_none = pop_parent)
+field_frame :: proc(id: string, cross := Cross_Align.Center) -> bool {
+	set_next_axis(.X, cross)
+	push_tags("input")
+	b := build_box({.Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Focus_Within}, id)
+	pop_tags()
+	push_parent(b)
+	return true
+}
+
 // `if column() { ... }`: children are laid out top to bottom.
 @(deferred_none = pop_parent)
 column :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") -> bool {
