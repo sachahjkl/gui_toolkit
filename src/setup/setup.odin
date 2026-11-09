@@ -33,6 +33,7 @@ Config :: struct {
 	// boxes' values.
 	prepare:        proc(o: ^desktop.Options, choices: []bool, user: rawptr),
 	folder:         bool,            // the dialog lets the user choose the install folder before the first install
+	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
 	// its buttons, and a close control in its corner (none: the dialog closes from its buttons and Escape).

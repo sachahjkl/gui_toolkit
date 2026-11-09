@@ -71,7 +71,7 @@ Logo :: struct {
 	size:    [2]f32,
 }
 
-@(private = "file") DIALOG_EM       :: [2]f32{36, 31}   // its size at first (a grip of its corner or edges makes it larger or smaller)
+@(private = "file") DIALOG_EM       :: [2]f32{46, 34}   // its size at first (a grip of its corner or edges makes it larger or smaller)
 @(private = "file") DIALOG_MIN_EM   :: [2]f32{28, 16}   // ... and at the least (what does not fit scrolls; the buttons stay)
 @(private = "file") MARGIN_EM       :: 1.5
 @(private = "file") LOGO_EM         :: 4.2
@@ -333,6 +333,10 @@ when ODIN_OS == .Windows {
 }
 
 // The dialog, while it is open (a modal over the window); called each frame, open or not. What happened, if anything.
+//
+// Laid out dense, as a tool's panel: a title bar (the name, the close control); a header (what the dialog offers, the
+// versions, the state as a badge); the install location; the options as a grid of boxes; what the disk says (where the
+// files are, a note); the buttons. Config.square: every corner square.
 dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: Event) {
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
 	ev = job_collect(d, c)
@@ -345,69 +349,25 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 	busy := d.job != nil && d.job.kind != .Read
 	if ui.modal_sized("setup", DIALOG_EM * em, &d.size, &d.open, DIALOG_MIN_EM * em) {
 		f := &d.facts
+		if c.square { ui.parent_box().radius = 0 }
 		if c.backdrop != nil { c.backdrop(c.user) }
+		title_bar(d, c, em)
 		// what the dialog says scrolls when it is made small; its buttons stay under it
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.scroll_y("###setup_scroll") {
-			ui.spacer(ui.px(em * 1.3))
+			ui.spacer(ui.px(em * 0.5))
 			head(d, c, em, logo)
-			ui.spacer(ui.px(em))
 			if d.known {
-				line_next()
-				if ui.row(id = "###setup_where_row") {
-					ui.spacer(ui.px(em * MARGIN_EM))
-					// (a sunken well, as a field is)
-					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = em * 0.5})
-					well: ^ui.Box
-					if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border, .Sunken}, "###setup_where") }
-					if ui.parent(well) {
-						ui.spacer(ui.px(em * 0.5))
-						where_row(d, "###w1", "program", f.exe, true, em)
-						where_row(d, "###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", false, em)
-						where_row(d, "###w3", WORDS_RECORD, f.record ? c.identity.name : "-", false, em)
-						where_row(d, "###w4", "this copy", f.running, true, em)
-						ui.spacer(ui.px(em * 0.5))
-					}
-					ui.spacer(ui.px(em * MARGIN_EM))
-				}
-				if c.folder && f.state == .Not_Installed && !f.from_nix { folder_row(d, c, em, busy) }
-				if !f.from_nix {
-					ui.spacer(ui.px(em * 0.7))
-					line_next()
-					if ui.row(id = "###setup_desk_row") {
-						ui.spacer(ui.px(em * MARGIN_EM))
-						ui.checkbox("###setup_shortcut", "Shortcut on the Desktop", &d.shortcut)
-					}
-					for x, i in c.choices {
-						if i >= len(d.choices) { break }
-						ui.spacer(ui.px(em * 0.3))
-						line_next()
-						if ui.row(id = fmt.tprintf("###setup_choice_row_%d", i)) {
-							ui.spacer(ui.px(em * MARGIN_EM))
-							ui.checkbox(fmt.tprintf("###setup_choice_%d", i), x.label, &d.choices[i])
-						}
-					}
-				}
-			}
-			if d.note != "" || busy {
+				location(d, c, em, busy)
+				if !f.from_nix { options_grid(d, c, em) }
 				ui.spacer(ui.px(em * 0.6))
-				line_next()
-				if ui.row(.Center, id = "###setup_note_row") {
-					ui.spacer(ui.px(em * MARGIN_EM))
-					if ui.tags(busy ? "weak" : d.note_good ? "good" : "bad") {
-						ui.next({width = ui.fill(), text_pad = 0})
-						ui.paragraph(fmt.tprintf("%s###setup_note", busy ? "Working…" : d.note))
-					}
-					ui.spacer(ui.px(em * MARGIN_EM))
-				}
+				info(d, c, em, busy)
 			}
-			ui.spacer(ui.px(em * 0.6))
+			ui.spacer(ui.px(em * 0.5))
 		}
-		ui.spacer(ui.px(em * 0.5))
+		ui.spacer(ui.px(em * 0.4))
 		if bev := buttons(d, c, em); bev != .None { ev = bev }
-		ui.spacer(ui.px(em * 1.3))
-		// (last: over what is in the dialog, it takes the clicks in its corner)
-		if c.close != nil && c.close("###setup_close_x", em, c.user) { d.open = false }
+		ui.spacer(ui.px(em * 0.8))
 	}
 	// closed without an answer: not again for this version
 	if was_open && !d.open && ev == .None && d.facts.state != .Removal_Scheduled && d.installed == "" {
@@ -417,33 +377,244 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 	return
 }
 
-// The install folder, before the first install: a field and the system's folder picker.
+// A corner's radius: `k` ems, none when the program wants it square.
 @(private = "file")
-folder_row :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
-	ui.spacer(ui.px(em * 0.7))
+rad :: proc(c: Config, em, k: f32) -> f32 { return c.square ? 0 : math.round(em * k) }
+
+// The dialog's own title bar: "<name> Setup", and the close control (the program's, else a cross).
+@(private = "file")
+title_bar :: proc(d: ^Dialog, c: Config, em: f32) {
+	h := math.round(em * 2.3)
+	ui.next({width = ui.fill(), height = ui.px(h), axis = .X, cross = .Center})
+	if ui.row(.Center, id = "###setup_title_bar") {
+		ui.spacer(ui.px(em * MARGIN_EM))
+		ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0})
+		ui.label(fmt.tprintf("%s Setup###setup_title", c.identity.name))
+		if c.close != nil {
+			if c.close("###setup_close_x", em, c.user) { d.open = false }
+		} else {
+			side := math.round(em * 1.7)
+			ui.next({width = ui.px(side), height = ui.px(side), radius = rad(c, em, 0.3), text_pad = 0})
+			if ui.tags("ghost_button") {
+				x := ui.button("×###setup_close_x")
+				if x.clicked { d.open = false }
+			}
+		}
+		ui.spacer(ui.px(em * 0.6))
+	}
+}
+
+// A framed panel across the dialog, inside its margins: `if panel(...) { ... }`.
+@(private = "file", deferred_none = panel_end)
+panel :: proc(c: Config, em: f32, id: string, axis := ui.Axis.Y) -> bool {
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+	ui.push_parent(ui.build_box({}, fmt.tprintf("%s_line", id)))
+	ui.spacer(ui.px(em * MARGIN_EM))
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = axis, cross = .Center, radius = rad(c, em, 0.4)})
+	box: ^ui.Box
+	if ui.tags("input") { box = ui.build_box({.Draw_Background, .Draw_Border}, id) }
+	ui.push_parent(box)
+	return true
+}
+
+@(private = "file")
+panel_end :: proc() {
+	ui.pop_parent()
+	ui.spacer(ui.px(ui.font_size() * MARGIN_EM))
+	ui.pop_parent()
+}
+
+// What the dialog offers for this state, and the state in a word.
+@(private = "file")
+title_and_badge :: proc(f: Facts, c: Config) -> (title, badge: string) {
+	name := c.identity.name
+	switch f.state {
+	case .Not_Installed:     return fmt.tprintf("Install %s", name), "Not installed"
+	case .This_Copy:         return fmt.tprintf("%s is installed", name), "Installed"
+	case .Repair:            return fmt.tprintf("Repair %s", name), "To repair"
+	case .Other_Copy:
+		if is_upgrade(f, c.version) { return fmt.tprintf("Upgrade %s", name), "Older installed" }
+		if is_downgrade(f, c.version) { return fmt.tprintf("Replace %s", name), "Newer installed" }
+		return fmt.tprintf("Replace %s", name), "Other copy"
+	case .Removal_Scheduled: return fmt.tprintf("%s is uninstalled", name), "Removed"
+	case .Nix_Package:       return fmt.tprintf("%s from Nix", name), "Nix package"
+	}
+	return name, ""
+}
+
+// The header: the logo, what is offered and the versions, the state as a badge.
+@(private = "file")
+head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
+	f := &d.facts
+	if panel(c, em, "###setup_head", .X) {
+		ui.spacer(ui.px(em * 0.9))
+		if l, has := logo.?; has {
+			side := math.round(em * 2.6)
+			ui.next({width = ui.px(side), height = ui.px(side)})
+			b := ui.build_box({}, "###setup_logo")
+			p := ui.frame_new(Logo)
+			p^ = l
+			b.custom, b.custom_user = logo_draw, p
+			ui.spacer(ui.px(em * 0.8))
+		}
+		title, badge := "Reading the install…", ""
+		if d.known { title, badge = title_and_badge(f^, c) }
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###setup_words") {
+			ui.spacer(ui.px(em * 0.55))
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.7)), font_size = math.round(em * 1.25), text_pad = 0})
+			ui.label(fmt.tprintf("%s###setup_name", title))
+			if ui.tags("weak") {
+				installed := "not installed"
+				if d.known && f.state != .Not_Installed && f.state != .Nix_Package { installed = f.version != "" ? fmt.tprintf("v%s installed", f.version) : "installed" }
+				vendor := c.identity.vendor != "" ? fmt.tprintf("  ·  %s", c.identity.vendor) : ""
+				ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.35)), font_size = math.round(em * 0.9), text_pad = 0})
+				ui.label(fmt.tprintf("This copy: v%s → %s%s###setup_version", c.version, installed, vendor))
+			}
+			ui.spacer(ui.px(em * 0.55))
+		}
+		if badge != "" {
+			_, tone := state_words(f^, c)
+			ui.spacer(ui.px(em * 0.6))
+			ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2)), radius = rad(c, em, 0.3), text_pad = 0, text_align = .Center})
+			if ui.tags("button", tone) {
+				b := ui.build_box({.Draw_Background, .Draw_Border, .Draw_Text}, fmt.tprintf("%s###setup_badge", badge))
+				b.text_align = .Center
+			}
+		}
+		ui.spacer(ui.px(em * 0.9))
+	}
+}
+
+// Where it goes: a field and the system's folder picker before the first install, else where it is.
+@(private = "file")
+location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
+	f := &d.facts
+	choose := c.folder && f.state == .Not_Installed && !f.from_nix
+	ui.spacer(ui.px(em * 0.6))
 	line_next()
-	if ui.row(.Center, id = "###setup_folder_row") {
+	if ui.row(id = "###setup_location_label") {
 		ui.spacer(ui.px(em * MARGIN_EM))
 		if ui.tags("weak") {
-			ui.next({width = ui.px(em * 6), height = ui.px(math.round(em * 2)), text_pad = 0})
-			ui.label("Install in###setup_folder_label")
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.5)), text_pad = 0})
+			ui.label(choose ? "Install location###setup_loc" : "Installed program###setup_loc")
 		}
-		ui.next({width = ui.fill(), height = ui.px(math.round(em * 2))})
-		_ = ui.line_edit("###setup_folder", &d.folder)
-		ui.spacer(ui.px(em * 0.5))
-		if button(c, "###setup_pick", "Choose…", .Normal, em) && !busy && d.job == nil { job_start(d, c, .Pick_Folder) }
+	}
+	line_next()
+	if ui.row(.Center, id = "###setup_location_row") {
+		ui.spacer(ui.px(em * MARGIN_EM))
+		if choose {
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(c, em, 0.3)})
+			_ = ui.line_edit("###setup_folder", &d.folder)
+			ui.spacer(ui.px(em * 0.4))
+			if button(c, "###setup_pick", "Choose…", .Normal, em) && !busy && d.job == nil { job_start(d, c, .Pick_Folder) }
+		} else {
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(c, em, 0.3)})
+			well: ^ui.Box
+			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border}, "###setup_where") }
+			if ui.parent(well) { where_row(d, "###w1", "", f.exe, true, em) }
+		}
 		ui.spacer(ui.px(em * MARGIN_EM))
 	}
-	if why := desktop.check_install_dir(strings.trim_space(ui.field_string(&d.folder)), c.identity.name); why != "" {
+	if choose {
+		if why := desktop.check_install_dir(strings.trim_space(ui.field_string(&d.folder)), c.identity.name); why != "" {
+			line_next()
+			if ui.row(id = "###setup_folder_why_row") {
+				ui.spacer(ui.px(em * MARGIN_EM))
+				if ui.tags("bad") {
+					ui.next({width = ui.fill(), text_pad = 0, font_size = math.round(em * 0.86)})
+					ui.paragraph(fmt.tprintf("%s###setup_folder_why", why))
+				}
+				ui.spacer(ui.px(em * MARGIN_EM))
+			}
+		}
+	}
+}
+
+// "Options": a section header, then the Desktop shortcut and the program's choices, two framed boxes a line.
+@(private = "file")
+options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
+	ui.spacer(ui.px(em * 0.7))
+	if panel(c, em, "###setup_options_head", .X) {
+		ui.next({width = ui.px(max(math.round(em * 0.22), 2)), height = ui.px(math.round(em * 1.9)), bg = ui.color("accent")})
+		ui.build_box({.Draw_Background}, "###setup_options_bar")
+		ui.spacer(ui.px(em * 0.7))
+		ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.9)), text_pad = 0})
+		ui.label("Options###setup_options_label")
+	}
+	n := 1 + min(len(c.choices), len(d.choices))
+	for first := 0; first < n; first += 2 {
+		ui.spacer(ui.px(em * 0.4))
 		line_next()
-		if ui.row(id = "###setup_folder_why_row") {
-			ui.spacer(ui.px(em * (MARGIN_EM + 6)))
-			if ui.tags("bad") {
-				ui.next({width = ui.fill(), text_pad = 0, font_size = math.round(em * 0.86)})
-				ui.paragraph(fmt.tprintf("%s###setup_folder_why", why))
+		if ui.row(.Center, id = fmt.tprintf("###setup_options_%d", first)) {
+			ui.spacer(ui.px(em * MARGIN_EM))
+			for k in first ..< first + 2 {
+				if k > first { ui.spacer(ui.px(em * 0.4)) }
+				ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.4)), axis = .X, cross = .Center, radius = rad(c, em, 0.4)})
+				if k >= n {
+					ui.build_box({}, fmt.tprintf("###setup_tile_%d", k))   // (an empty place: the line keeps two columns)
+					continue
+				}
+				tile: ^ui.Box
+				if ui.tags("input") { tile = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###setup_tile_%d", k)) }
+				if ui.parent(tile) {
+					ui.spacer(ui.px(em * 0.6))
+					if k == 0 {
+						ui.checkbox("###setup_shortcut", "Shortcut on the Desktop", &d.shortcut)
+					} else {
+						ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), c.choices[k - 1].label, &d.choices[k - 1])
+					}
+				}
 			}
 			ui.spacer(ui.px(em * MARGIN_EM))
 		}
+	}
+}
+
+// What the disk says, in a framed box: the state in a sentence, the launcher and the record, this copy, the note of
+// NixOS, and what the last action said.
+@(private = "file")
+info :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
+	f := &d.facts
+	if panel(c, em, "###setup_info") {
+		ui.spacer(ui.px(em * 0.45))
+		words, tone := state_words(f^, c)
+		line_next()
+		if ui.row(.Center, id = "###setup_state_row") {
+			ui.spacer(ui.px(em * 0.9))
+			if ui.tags(tone == "accent" ? "" : tone) {
+				ui.next({width = ui.fill(), text_pad = 0})
+				ui.paragraph(fmt.tprintf("%s###setup_state", words))
+			}
+			ui.spacer(ui.px(em * 0.9))
+		}
+		where_row(d, "###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", false, em)
+		where_row(d, "###w3", WORDS_RECORD, f.record ? c.identity.name : "-", false, em)
+		where_row(d, "###w4", "this copy", f.running, true, em)
+		if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
+			line_next()
+			if ui.row(id = "###setup_nixos_row") {
+				ui.spacer(ui.px(em * 0.9))
+				if ui.tags("weak") {
+					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+					ui.paragraph("On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).###setup_nixos")
+				}
+				ui.spacer(ui.px(em * 0.9))
+			}
+		}
+		if d.note != "" || busy {
+			ui.spacer(ui.px(em * 0.3))
+			line_next()
+			if ui.row(.Center, id = "###setup_note_row") {
+				ui.spacer(ui.px(em * 0.9))
+				if ui.tags(busy ? "weak" : d.note_good ? "good" : "bad") {
+					ui.next({width = ui.fill(), text_pad = 0})
+					ui.paragraph(fmt.tprintf("%s###setup_note", busy ? "Working…" : d.note))
+				}
+				ui.spacer(ui.px(em * 0.9))
+			}
+		}
+		ui.spacer(ui.px(em * 0.45))
 	}
 }
 
@@ -460,9 +631,11 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.55)), axis = .X, cross = .Center})
 	if ui.row(.Center, id = id) {
 		ui.spacer(ui.px(em * 0.9))
-		if ui.tags("weak") {
-			ui.next({width = ui.px(em * 9), height = ui.pct(1), text_pad = 0})
-			ui.label(fmt.tprintf("%s###k", key))
+		if key != "" {
+			if ui.tags("weak") {
+				ui.next({width = ui.px(em * 9), height = ui.pct(1), text_pad = 0})
+				ui.label(fmt.tprintf("%s###k", key))
+			}
 		}
 		mono := ui.Style_Mod{width = ui.fill(), height = ui.pct(1), text_pad = 0, font = ui.mono_font(), font_size = math.round(em * 0.86)}
 		if !path || value == "" {
@@ -525,65 +698,6 @@ copy_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect(dc, front, g.color, side * 0.08, w)
 }
 
-// The logo, the name, the version and the state.
-@(private = "file")
-head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
-	f := &d.facts
-	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-	if ui.row(id = "###setup_head") {
-		ui.spacer(ui.px(em * MARGIN_EM))
-		if l, has := logo.?; has {
-			side := math.round(em * LOGO_EM)
-			ui.next({width = ui.px(side), height = ui.px(side)})
-			b := ui.build_box({}, "###setup_logo")
-			p := ui.frame_new(Logo)
-			p^ = l
-			b.custom, b.custom_user = logo_draw, p
-			ui.spacer(ui.px(em * 1.1))
-		}
-		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
-		if ui.column(id = "###setup_words") {
-			ui.spacer(ui.px(em * 0.3))
-			ui.next({width = ui.fill(), height = ui.px(em * 2), font_size = math.round(em * 1.5), text_pad = 0})
-			ui.label(fmt.tprintf("%s###setup_name", c.identity.name))
-			if ui.tags("weak") {
-				ui.next({width = ui.fill(), height = ui.px(em * 1.4), font_size = math.round(em * 0.86), text_pad = 0})
-				vendor := c.identity.vendor != "" ? fmt.tprintf("  ·  %s", c.identity.vendor) : ""
-				ui.label(fmt.tprintf("version %s%s###setup_version", c.version, vendor))
-				if c.note != "" {
-					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###setup_about", c.note))
-				}
-			}
-			ui.spacer(ui.px(em * 0.6))
-			words, tone := "Reading the install…", "weak"
-			if d.known { words, tone = state_words(f^, c) }
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
-			if ui.row(.Center, id = "###setup_state_row") {
-				if ui.tags(tone) {
-					lamp := tone == "accent" ? ui.color("accent") : ui.color("text")
-					ui.next({width = ui.px(math.round(em * 0.7)), height = ui.px(math.round(em * 0.7))})
-					b := ui.build_box({}, "###setup_lamp")
-					p := ui.frame_new(draw.Color)
-					p^ = lamp
-					b.custom, b.custom_user = lamp_draw, p
-				}
-				ui.spacer(ui.px(em * 0.5))
-				ui.next({width = ui.fill(), text_pad = 0})
-				ui.paragraph(fmt.tprintf("%s###setup_state", words))
-			}
-			if d.known && f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
-				ui.spacer(ui.px(em * 0.4))
-				if ui.tags("weak") {
-					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					ui.paragraph("On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).###setup_nixos")
-				}
-			}
-		}
-		ui.spacer(ui.px(em * MARGIN_EM))
-	}
-}
-
 @(private = "file")
 logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	l := (^Logo)(user)
@@ -594,15 +708,6 @@ logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	sz := l.size * scale
 	at := r.min + (room - sz) * 0.5
 	draw.image(dc, l.texture, {at, at + sz})
-}
-
-@(private = "file")
-lamp_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
-	c := (^draw.Color)(user)^
-	r := b.rect
-	prev := draw.set_circular_corners(dc, true)
-	defer draw.set_circular_corners(dc, prev)
-	draw.rect(dc, r, c, (r.max.x - r.min.x) * 0.5)
 }
 
 // Uninstall on the left; on the right, what closes, and what installs (or the installed copy to open). While the work
@@ -672,7 +777,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 button :: proc(c: Config, id, label: string, kind: Button_Kind, em: f32) -> bool {
 	if c.button != nil { return c.button(id, label, kind, em, c.user) }
 	TAGS := [Button_Kind]string{.Normal = "button", .Accent = "accent_button", .Danger = "danger_button"}
-	ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2.2))})
+	ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2.2)), radius = rad(c, em, 0.4)})
 	clicked := false
 	if ui.tags(TAGS[kind]) { clicked = ui.button(fmt.tprintf("%s%s", label, id)).clicked }
 	return clicked
