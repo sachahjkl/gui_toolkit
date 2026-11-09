@@ -9,6 +9,8 @@ package tk_desktop
 //   $XDG_DATA_HOME/icons/hicolor/<n>x<n>/apps/<slug>.png   the icons, one per size the program embeds
 //   ~/.local/bin/<slug>                              the PATH part: a link to the executable
 //   $XDG_CONFIG_HOME/autostart/<slug>.desktop        the Autostart part: the program at the start of the session
+//   <desktop folder>/<slug>.desktop                  the Desktop_Shortcut part: a copy of the entry, executable (a desktop
+//                                                    starts only an executable entry); the folder is xdg_desktop_dir's
 //
 // $XDG_DATA_HOME defaults to ~/.local/share (and must be an absolute path, as the specification says). After a change
 // `update-desktop-database <applications>` rebuilds the MIME cache when that tool is installed.
@@ -27,7 +29,7 @@ LINUX_BACKEND := Backend{
 	name = "linux",
 	targets = "application menu, PATH, session start",
 	targets_browser = "application menu, default browser, PATH, session start",
-	parts = {.Launcher, .Icons, .Path, .Autostart},
+	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart},
 	status = linux_status,
 	install = linux_install,
 	remove = linux_remove,
@@ -131,9 +133,19 @@ linux_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
 		}
 	}
 
+	// Desktop_Shortcut: present when the copy on the desktop is the program's.
+	if path := desktop_shortcut_path(o); path != "" {
+		if ours, target, _ := entry_ours(o, path); ours {
+			ps := &s.parts[.Desktop_Shortcut]
+			ps.present = true
+			ps.target = clone_or_empty(target, allocator)
+			ps.stale = !same_path(target, o.exe)
+		}
+	}
+
 	// Autostart: present when the entry is the program's; partial when it starts it with other arguments.
 	if path := autostart_path(o); path != "" {
-		if ours, target, text := autostart_ours(o, path); ours {
+		if ours, target, text := entry_ours(o, path); ours {
 			ps := &s.parts[.Autostart]
 			ps.present = true
 			ps.target = clone_or_empty(target, allocator)
@@ -156,9 +168,9 @@ autostart_path :: proc(o: ^Options) -> string {
 	return strings.concatenate({dir, "/", o.identity.slug, ".desktop"}, context.temp_allocator)
 }
 
-// The autostart entry at `path` when it is the program's (its mark, or an Exec that runs it), and the program it runs.
+// The desktop entry at `path` (the autostart one, the desktop's copy) when it is the program's (its mark, or an Exec that runs it), and the program it runs.
 @(private = "file")
-autostart_ours :: proc(o: ^Options, path: string) -> (ours: bool, target, text: string) {
+entry_ours :: proc(o: ^Options, path: string) -> (ours: bool, target, text: string) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return }
 	text = string(data)
@@ -166,6 +178,14 @@ autostart_ours :: proc(o: ^Options, path: string) -> (ours: bool, target, text: 
 	exec, _ := entry_value(text, "Exec")
 	target = exec_program(exec)
 	return mark == o.identity.slug || same_path(target, o.exe), target, text
+}
+
+// <desktop folder>/<slug>.desktop: the copy of the entry on the desktop ("" when there is no home).
+@(private = "file")
+desktop_shortcut_path :: proc(o: ^Options) -> string {
+	dir := o.desktop_dir != "" ? o.desktop_dir : xdg_desktop_dir()
+	if dir == "" { return "" }
+	return strings.concatenate({dir, "/", o.identity.slug, ".desktop"}, context.temp_allocator)
 }
 
 // <bin_dir>/<slug> (~/.local/bin/<slug>): the symlink that puts the program on the user's PATH (the "Add to PATH" of Linux).
@@ -220,7 +240,21 @@ linux_install :: proc(o: ^Options) -> Result {
 		if o.autostart {
 			if !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
 			if !fsx.write_atomic(path, transmute([]byte)autostart_entry_text(o)) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
-		} else if ours, _, _ := autostart_ours(o, path); ours {
+		} else if ours, _, _ := entry_ours(o, path); ours {
+			_ = os.remove(path)
+		}
+	}
+
+	// Desktop_Shortcut: the entry's copy, executable, when the option is on; ours taken out when it is off (another
+	// program's file of that name stays).
+	if path := desktop_shortcut_path(o); path != "" {
+		ours, _, _ := entry_ours(o, path)
+		if o.desktop_shortcut {
+			if os.exists(path) && !ours { return {.Io, strings.concatenate({path, " is another program's"}, context.temp_allocator)} }
+			if !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
+			if !fsx.write_atomic(path, transmute([]byte)desktop_entry_text(o)) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
+			_ = os.chmod(path, os.Permissions_Default_File | {.Execute_User})
+		} else if ours {
 			_ = os.remove(path)
 		}
 	}
@@ -263,9 +297,15 @@ linux_remove :: proc(o: ^Options) -> Result {
 			if rerr := os.remove(link); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", link}, context.temp_allocator)} }
 		}
 	}
+	// Desktop_Shortcut: the copy goes when it is the program's.
+	if path := desktop_shortcut_path(o); path != "" {
+		if ours, _, _ := entry_ours(o, path); ours {
+			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
+		}
+	}
 	// Autostart: the entry goes when it is the program's.
 	if path := autostart_path(o); path != "" {
-		if ours, _, _ := autostart_ours(o, path); ours {
+		if ours, _, _ := entry_ours(o, path); ours {
 			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
 		}
 	}

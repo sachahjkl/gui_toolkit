@@ -110,6 +110,7 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | Part | What is written |
 |---|---|
 | `Launcher` | `$XDG_DATA_HOME/applications/<slug>.desktop` (`desktop_entry_text`), marked by its `entry_marker` line |
+| `Desktop_Shortcut` | with `desktop_shortcut`: a copy of the entry in the desktop folder (`xdg_desktop_dir`: `$XDG_DESKTOP_DIR`, else `user-dirs.dirs`, else `~/Desktop`), executable; another program's file of that name stays (Install fails with it) |
 | `Icons` | `$XDG_DATA_HOME/icons/hicolor/<n>x<n>/apps/<slug>.png`, one per icon of the options |
 | `Path` | a link `~/.local/bin/<slug>` to the executable |
 | `Autostart` | with `autostart`: `$XDG_CONFIG_HOME/autostart/<slug>.desktop` (the XDG Autostart specification), `Exec` the executable and `autostart_arguments`, marked as the desktop entry is |
