@@ -24,8 +24,13 @@ import "../draw"
 import "../font"
 import "../ui"
 
-// A page: a category of the registry, its title and its icon (a glyph of Options.icon_font; "": none).
-Page_Info :: struct { category, title, icon: string }
+// A page: a category of the registry, its title and its icon (a glyph of Options.icon_font; "": none). `names`: the
+// preferences it shows, in this order, whatever their category (nil: those of `category`, in the registry's order); a
+// program whose pages are not its registry's categories keeps those for its other views (an editor of every preference).
+Page_Info :: struct {
+	category, title, icon: string,
+	names:                 []string,
+}
 
 // What a program gives the page.
 Options :: struct {
@@ -104,7 +109,7 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 	if o.pages != nil {
 		// (a page with no preference in this registry is not shown: a program that registers some only on one system)
 		kept := make([dynamic]Page_Info, context.temp_allocator)
-		for pg in o.pages { if len(names_of(prefs, pg.category)) > 0 { append(&kept, pg) } }
+		for pg in o.pages { if len(page_names(prefs, pg)) > 0 { append(&kept, pg) } }
 		return kept[:]
 	}
 	cats := make([dynamic]string, context.temp_allocator)
@@ -113,6 +118,14 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 	out := make([]Page_Info, len(cats), context.temp_allocator)
 	for c, i in cats { out[i] = {category = c, title = config.category_title(c)} }
 	return out
+}
+
+// The preferences of a page: its own list (those registered), else its category's.
+page_names :: proc(prefs: ^config.Prefs, pg: Page_Info) -> []string {
+	if pg.names == nil { return names_of(prefs, pg.category) }
+	out := make([dynamic]string, 0, len(pg.names), context.temp_allocator)
+	for name in pg.names { if name in prefs.index { append(&out, name) } }
+	return out[:]
 }
 
 // The names of a category's preferences, in their order in the registry (the order the program declared them in).
@@ -148,7 +161,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 						page_title("Search", em)
 						for pg in pages {
 							config.search_page(&p.search, pg.title)
-							for name in names_of(prefs, pg.category) { setting(p, prefs, o, name, em) }
+							for name in page_names(prefs, pg) { setting(p, prefs, o, name, em) }
 						}
 						if p.search.found == 0 {
 							if ui.tags("weak") {
@@ -158,7 +171,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 						}
 					} else {
 						page_title(pages[cur].title, em)
-						for name in names_of(prefs, pages[cur].category) { setting(p, prefs, o, name, em) }
+						for name in page_names(prefs, pages[cur]) { setting(p, prefs, o, name, em) }
 					}
 					ui.spacer(ui.px(em * 1.5))
 				}
