@@ -249,7 +249,7 @@ Theme :: struct {
 	transition_ms: f32,   // 0: states change at once (default)
 	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"
 	glow:          f32,   // the halos of the machined finish (a focused well, a lamp, a hot accent button), 0..1; 0: none
-	serial:        u64,   // bumped when a colour changes (theme_add, theme_set, apply_palette)
+	serial:        u64,   // bumped when the look changes: a colour, the finish, the glow (theme_add, theme_set, apply_palette, theme_show)
 }
 
 Timer :: struct {
