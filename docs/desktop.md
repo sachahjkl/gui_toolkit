@@ -162,6 +162,21 @@ returns `ok = false` for a line the specification refuses:
 
 The deprecated codes (`%d`, `%D`, `%n`, `%N`, `%v`, `%m`) are dropped. A line with no file code gets the path at its end.
 
+## Icons of files
+
+`file_icon(path, folder, size)` gives the icon the system shows for a file or a folder, about `size` pixels square, as
+straight RGBA8 (`File_Icon`; `file_icon_destroy` frees it). `file_icon_key(path, folder)` says what decides it: two paths
+with the same key have the same icon, so a program keeps one picture per key and size. `file_icon` reads files: call it
+from a worker.
+
+| System | Where the icon comes from |
+|---|---|
+| Linux | The person's icon theme (Icon Theme specification): `gtk-icon-theme-name` of gtk-4.0's or gtk-3.0's `settings.ini`, else KDE's `kdeglobals` `[Icons] Theme=`, the themes it inherits, then `hicolor`; the subfolder of the size asked, else the nearest. A file's names: its type's icon (`mime/icons`), the type with `/` made `-` (`image-png`), its family's (`mime/generic-icons`), its parents', `<media>-x-generic`. A folder: the person's folders their own (`user-home`, `user-desktop`, `folder-documents`, `folder-download`, `folder-music`, `folder-pictures`, `folder-videos`), the trash `user-trash`, the root `drive-harddisk-root`, else `folder`. PNG files decoded; SVG files rendered by librsvg and cairo, opened at run time (`svg_available`): without them, the PNG icons only. |
+| Windows | The shell's (`SHGetFileInfoW`): 16 pixels at 16 and under, else 32. A program's, a shortcut's, an icon file's own; a folder's own. |
+| Other systems | None (`ok` false). |
+
+The theme read and the files found are kept while the data folders and the theme's name are the same.
+
 ## The installed copy
 
 ```odin

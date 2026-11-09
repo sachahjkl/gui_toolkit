@@ -126,6 +126,8 @@ Mime_Database :: struct {
 	levels:    []Mime_Level,
 	globs:     [dynamic]Mime_Glob,
 	parents:   map[string][dynamic]string,
+	icons:     map[string]string,   // mime/icons: a type's own icon name
+	generic:   map[string]string,   // mime/generic-icons: the icon of its family (image-x-generic)
 	stamps:    [dynamic]File_Stamp,
 }
 
@@ -198,10 +200,15 @@ mime_database :: proc(roots: Xdg_Roots, allocator: runtime.Allocator) -> Mime_Da
 		apps      = make(map[string]App_Entry, a),
 		globs     = make([dynamic]Mime_Glob, a),
 		parents   = make(map[string][dynamic]string, a),
+		icons     = make(map[string]string, a),
+		generic   = make(map[string]string, a),
 		stamps    = make([dynamic]File_Stamp, a),
 	}
 	for root in roots.data {
 		if text, ok := database_read(&db, strings.concatenate({root, "/mime/globs2"}, context.temp_allocator)); ok { globs_read(&db, text) }
+		// (the first data directory that names a type's icon wins: the user's before the system's)
+		if text, ok := database_read(&db, strings.concatenate({root, "/mime/icons"}, context.temp_allocator)); ok { icon_names_read(&db.icons, text, a) }
+		if text, ok := database_read(&db, strings.concatenate({root, "/mime/generic-icons"}, context.temp_allocator)); ok { icon_names_read(&db.generic, text, a) }
 		if text, ok := database_read(&db, strings.concatenate({root, "/mime/subclasses"}, context.temp_allocator)); ok {
 			for line in strings.split_lines(text, context.temp_allocator) {
 				f := strings.fields(line, context.temp_allocator)
@@ -233,6 +240,17 @@ mime_database :: proc(roots: Xdg_Roots, allocator: runtime.Allocator) -> Mime_Da
 	for id, e in db.apps { append(&db.levels[e.level].ids, id) }
 	for &l in db.levels { slice.sort(l.ids[:]) }
 	return db
+}
+
+// `type:icon-name` lines (mime/icons, mime/generic-icons).
+@(private = "file")
+icon_names_read :: proc(m: ^map[string]string, text: string, a: runtime.Allocator) {
+	for line in strings.split_lines(text, context.temp_allocator) {
+		at := strings.index_byte(line, ':')
+		if at <= 0 || at == len(line) - 1 { continue }
+		if line[:at] in m { continue }
+		m[strings.clone(line[:at], a)] = strings.clone(line[at + 1:], a)
+	}
 }
 
 @(private)
