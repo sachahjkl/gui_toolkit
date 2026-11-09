@@ -173,3 +173,25 @@ desktop_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> 
 	line(&sb, id.entry_marker, id.slug)
 	return strings.to_string(sb)
 }
+
+// The autostart entry of `o` (the XDG Autostart specification): the program with `autostart_arguments`, at the start of
+// the session, marked as the program's as its desktop entry is.
+autostart_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+	id := o.identity
+	sb := strings.builder_make(allocator)
+	line :: proc(sb: ^strings.Builder, key, value: string) { fmt.sbprintf(sb, "%s=%s\n", key, value) }
+	strings.write_string(&sb, "[Desktop Entry]\n")
+	line(&sb, "Type", "Application")
+	line(&sb, "Version", "1.0")
+	line(&sb, "Name", escape_value(id.name))
+	if id.description != "" { line(&sb, "Comment", escape_value(id.description)) }
+	exec := quote_exec_argument(o.exe)
+	if o.autostart_arguments != "" { exec = strings.concatenate({exec, " ", o.autostart_arguments}, context.temp_allocator) }
+	line(&sb, "Exec", escape_value(exec))
+	line(&sb, "TryExec", escape_value(o.exe))
+	line(&sb, "Icon", id.slug)
+	line(&sb, "Terminal", "false")
+	line(&sb, "X-GNOME-Autostart-enabled", "true")
+	line(&sb, id.entry_marker, id.slug)
+	return strings.to_string(sb)
+}

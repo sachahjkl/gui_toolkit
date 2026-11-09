@@ -32,9 +32,9 @@ import "../process"
 @(private = "file")
 WINDOWS_BACKEND := Backend{
 	name = "windows",
-	targets = "Start menu",
-	targets_browser = "Start menu, default apps",
-	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path},
+	targets = "Start menu, session start",
+	targets_browser = "Start menu, default apps, session start",
+	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart},
 	status = windows_status,
 	install = windows_install,
 	remove = windows_remove,
@@ -125,6 +125,14 @@ windows_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
 	if dir := exe_dir(o.exe); dir != "" && path_contains(o, dir) {
 		s.parts[.Path].present = true
 		s.parts[.Path].partial = o.add_to_path && len(o.launcher) > 0 && !launcher_current(o)
+	}
+
+	// the start with the session: the value of Run named by the key (partial: other arguments)
+	if cmd, found := reg_get(run_key(o), o.identity.key); found {
+		ps := &s.parts[.Autostart]
+		prog := command_program(cmd)
+		ps.present, ps.target, ps.stale = true, clone_or_empty(prog, allocator), !same_path(prog, o.exe)
+		ps.partial = o.autostart && !ps.stale && cmd != autostart_command(o)
 	}
 
 	// the registration: three pieces; each one is ours when it has the mark or runs the executable
@@ -249,6 +257,12 @@ windows_install :: proc(o: ^Options) -> Result {
 			path_changed = had && !path_contains(o, dir)
 			if r := launcher_remove(o, o.exe); r.error != .None { return r }
 		}
+	}
+	// the start with the session: the value written when the option is on, taken out when it is off
+	if o.autostart {
+		if !reg_set(run_key(o), o.identity.key, autostart_command(o)) { return {.System, strings.concatenate({"cannot write HKCU\\", run_key(o)}, context.temp_allocator)} }
+	} else if _, found := reg_get(run_key(o), o.identity.key); found {
+		_ = reg_delete_value(run_key(o), o.identity.key)
 	}
 	if o.notify_system {
 		notify_associations()
@@ -392,6 +406,10 @@ windows_remove :: proc(o: ^Options) -> Result {
 		path_changed = had && !path_contains(o, dir)
 		if r := launcher_remove(o, o.exe); r.error != .None && res.error == .None { res = r }
 	}
+	// the start with the session: the value is named by the key (the program's own name)
+	if _, found := reg_get(run_key(o), o.identity.key); found && !reg_delete_value(run_key(o), o.identity.key) && res.error == .None {
+		res = {.System, strings.concatenate({"cannot delete a value of HKCU\\", run_key(o)}, context.temp_allocator)}
+	}
 	if o.notify_system {
 		notify_associations()
 		if path_changed { broadcast_environment() }
@@ -441,4 +459,16 @@ link_key_status :: proc(o: ^Options, key: string) -> (command: string, command_o
 windows_open_defaults :: proc() -> bool {
 	r := win.ShellExecuteW(nil, win.L("open"), win.L("ms-settings:defaultapps"), nil, nil, win.SW_SHOWNORMAL)
 	return uintptr(r) > 32
+}
+
+// HKCU\<registry root>\Microsoft\Windows\CurrentVersion\Run: the programs that start with the session, one value each.
+@(private = "file")
+run_key :: proc(o: ^Options) -> string { return reg_join(registry_root_of(o), "Microsoft", "Windows", "CurrentVersion", "Run") }
+
+// The command of the program's Run value: the executable, quoted, and `autostart_arguments`.
+@(private = "file")
+autostart_command :: proc(o: ^Options) -> string {
+	c := strings.concatenate({"\"", o.exe, "\""}, context.temp_allocator)
+	if o.autostart_arguments != "" { c = strings.concatenate({c, " ", o.autostart_arguments}, context.temp_allocator) }
+	return c
 }

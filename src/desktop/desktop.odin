@@ -84,6 +84,8 @@ Options :: struct {
 	start_menu:       bool,       // the launcher in the application menu (options_make: on)
 	desktop_shortcut: bool,       // a launcher on the desktop
 	add_to_path:      bool,       // the program on the user's PATH (Windows: its folder; Linux: a link in bin_dir)
+	autostart:        bool,       // the program starts with the user's session
+	autostart_arguments: string,  // what it starts with then ("--hidden": in the notification area; "": nothing)
 	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the program ships without one
 
 	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
@@ -96,6 +98,7 @@ Options :: struct {
 	applications_dir: string,     // Linux: $XDG_DATA_HOME/applications
 	icons_dir:        string,     // Linux: $XDG_DATA_HOME/icons/hicolor
 	bin_dir:          string,     // Linux: ~/.local/bin, where the PATH part puts its link
+	autostart_dir:    string,     // Linux: $XDG_CONFIG_HOME/autostart
 	icons:            []Icon,     // Linux: the PNGs to install (the program embeds them; Windows uses the executable's own icon)
 	notify_system:    bool,       // tell the system once done (SHChangeNotify, update-desktop-database); off for scratch roots
 }
@@ -107,6 +110,7 @@ Part :: enum u8 {
 	Icons,              // the icons of the theme (Linux)
 	Desktop_Shortcut,   // a shortcut on the desktop (Windows)
 	Path,               // the program on the user's PATH (Windows: its folder; Linux: a link in ~/.local/bin)
+	Autostart,          // the program starts with the user's session (Linux: an XDG autostart entry; Windows: HKCU\...\Run)
 }
 Parts :: bit_set[Part]
 
@@ -234,6 +238,7 @@ parts_wanted :: proc(b: ^Backend, o: ^Options) -> Parts {
 	if !o.start_menu { w -= {.Launcher} }
 	if !o.desktop_shortcut { w -= {.Desktop_Shortcut} }
 	if !o.add_to_path { w -= {.Path} }
+	if !o.autostart { w -= {.Autostart} }
 	if !o.register_browser { w -= {.Registration} }
 	if len(o.icons) == 0 { w -= {.Icons} }   // nothing to install: nothing to miss
 	return w

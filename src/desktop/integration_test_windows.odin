@@ -757,3 +757,38 @@ windows_scratch_roots_only :: proc(t: ^testing.T) {
 	testing.expect(t, delete_scratch_root(id, root), "a scratch key is deleted")
 	testing.expect(t, !reg_key_exists(root), "gone")
 }
+
+// The Autostart part: the Run value named by the key, the executable and its arguments; repaired when they change; taken
+// out with the option and by remove. (A scratch registry root: the user's own Run key is never touched.)
+@(test)
+windows_autostart :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	run := fmt.tprintf("%s\\Microsoft\\Windows\\CurrentVersion\\Run", s.root)
+	o.autostart, o.autostart_arguments = true, "--hidden"
+	testing.expect_value(t, install(o).error, Error.None)
+	cmd, ok := reg_get(run, o.identity.key)
+	testing.expect(t, ok, "the Run value")
+	testing.expect_value(t, cmd, fmt.tprintf("\"%s\" --hidden", s.exe))
+	state, st := state_of(o)
+	testing.expect_value(t, state, State.Installed)
+	testing.expect(t, st.parts[.Autostart].present, "the part is there")
+
+	o.autostart_arguments = "--tray"
+	state, _ = state_of(o)
+	testing.expect_value(t, state, State.Repair)
+	testing.expect_value(t, install(o).error, Error.None)
+	state, _ = state_of(o)
+	testing.expect_value(t, state, State.Installed)
+
+	o.autostart = false
+	testing.expect_value(t, install(o).error, Error.None)
+	_, ok = reg_get(run, o.identity.key)
+	testing.expect(t, !ok, "taken out with the option")
+	o.autostart = true
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect_value(t, remove(o).error, Error.None)
+	_, ok = reg_get(run, o.identity.key)
+	testing.expect(t, !ok, "removed")
+}

@@ -23,3 +23,12 @@ xdg_bin_dir :: proc(allocator := context.temp_allocator) -> string {
 	if err != nil || home == "" { return "" }
 	return strings.concatenate({home, "/.local/bin"}, allocator)
 }
+
+// The user's configuration directory ($XDG_CONFIG_HOME, else ~/.config): its autostart folder starts programs with the
+// session (the XDG Autostart specification).
+xdg_config_home :: proc(allocator := context.temp_allocator) -> string {
+	if v, ok := os.lookup_env("XDG_CONFIG_HOME", allocator); ok && filepath.is_abs(v) { return v }
+	home, err := os.user_home_dir(allocator)
+	if err != nil || home == "" { return "" }
+	return strings.concatenate({home, "/.config"}, allocator)
+}
