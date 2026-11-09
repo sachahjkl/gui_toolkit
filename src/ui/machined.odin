@@ -192,7 +192,8 @@ machined_pip :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color) {
 // background a well (a clear one sits in a well: a bare field); an opaque background with a sheen is raised: bevelled
 // when it can be clicked, else a face with a lit rim.
 @(private)
-machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radius: f32, keyboard_focus: bool) -> (face, whole: bool) {
+machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32, keyboard_focus: bool) -> (face, whole: bool) {
+	radius := radii[0]   // (a well or a bevel: one radius; a raised panel takes each corner's)
 	if s.theme == nil || s.theme.finish != .Machined { return }
 	if .Groove in b.flags {
 		p := px1()
@@ -217,7 +218,7 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radius: f32
 		return true, !keyboard_focus   // (a keyboard's focus keeps the theme's ring)
 	}
 	// a raised panel (a bar, a key cap): its face, a lit rim along its top
-	draw.rect(dc, r, b.bg, radius)
-	draw.rect_corners(dc, draw.rect_pad(r, -px1()), {{1, 1, 1, 0.07}, {1, 1, 1, 0}, {1, 1, 1, 0.07}, {1, 1, 1, 0}}, radii4(max(0, radius - px1())), px1())
+	draw.rect_corners(dc, r, colors4(b.bg), radii)
+	draw.rect_corners(dc, draw.rect_pad(r, -px1()), {{1, 1, 1, 0.07}, {1, 1, 1, 0}, {1, 1, 1, 0.07}, {1, 1, 1, 0}}, radii_grown(radii, -px1()), px1())
 	return true, false   // (its edge is the theme's: draw_box draws it)
 }

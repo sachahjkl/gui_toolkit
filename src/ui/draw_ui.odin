@@ -106,6 +106,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	defer draw.damage_span_end(dc)
 	r := b.rect
 	radius := .Fixed_Radius in b.flags ? b.radius : b.radius * s.rounding
+	radii := box_radii(radius, b.square_corners)
 	flags := b.flags
 	if b.transparency != 0 { draw.push_alpha(dc, 1 - b.transparency) }
 	// disabled: the outermost disabled box fades itself and its subtree (nested disabled boxes do not compound)
@@ -116,22 +117,22 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 
 	if .Draw_Shadow in flags {
 		sc := tuned(color_from_tags(s, b.tags_key, "drop_shadow"))
-		draw.rect(dc, draw.rect_shift(draw.rect_pad(r, DROP_SHADOW_SPREAD_PX * scale), {DROP_SHADOW_OFFSET_PX * scale, DROP_SHADOW_OFFSET_PX * scale}), sc, radius, 0, DROP_SHADOW_SOFT_PX * scale)
+		draw.rect_corners(dc, draw.rect_shift(draw.rect_pad(r, DROP_SHADOW_SPREAD_PX * scale), {DROP_SHADOW_OFFSET_PX * scale, DROP_SHADOW_OFFSET_PX * scale}), colors4(sc), radii, 0, DROP_SHADOW_SOFT_PX * scale)
 	}
 	keyboard_focus := s.focus_visible && b.key == s.focus_key
 	focus_ring := (.Draw_Focus_Ring in flags && b.focus_t > FOCUS_T_EPS) || keyboard_focus
 	// the machined finish draws its reliefs itself (machined.odin): the face, and for a well or a bevel its edge and focus
-	machined_face, machined_whole := machined_box(s, dc, b, r, radius, keyboard_focus)
+	machined_face, machined_whole := machined_box(s, dc, b, r, radii, keyboard_focus)
 	if machined_whole { focus_ring = false }
 	if focus_ring && s.theme != nil && s.theme.finish != .Flat {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
 		c.a *= (keyboard_focus ? 1 : b.focus_t) * FOCUS_GLOW_ALPHA
 		glow := FOCUS_GLOW_PX * scale
-		draw.rect(dc, draw.rect_pad(r, glow), tuned(c), radius + glow, 0, glow)
+		draw.rect_corners(dc, draw.rect_pad(r, glow), colors4(tuned(c)), radii_grown(radii, glow), 0, glow)
 	}
 	if .Draw_Background in flags && !machined_face {
-		paint_rect(dc, r, b.bg, radius, box_sheen(s, b))
+		paint_rect_corners(dc, r, b.bg, radii, box_sheen(s, b))
 	}
 	if .Draw_Hot_Effects in flags && b.hot_t > DRAW_INVISIBLE_EPS && !machined_face {
 		// the theme's step toward its tint, over what is actually under the box (theme_default.odin: state_entries)
@@ -142,7 +143,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		h.a = math.lerp(hover.a * b.hot_t, press.a, held)
 		if h.a > DRAW_INVISIBLE_EPS {
 			h.a = draw.alpha_like_srgb(s.space, h, h.a, box_under(b))
-			draw.rect(dc, r, h, radius)
+			draw.rect_corners(dc, r, colors4(h), radii)
 		}
 	}
 	// (a rich paragraph paints both itself, between its runs' backgrounds and its text)
@@ -173,7 +174,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		if b.hot_t > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && .Clickable in flags {
 			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > DRAW_INVISIBLE_EPS { border = srgb_step(border, k, k.a * b.hot_t) }
 		}
-		draw.rect(dc, r, border, radius, max(1, math.round(scale)))
+		draw.rect_corners(dc, r, colors4(border), radii, max(1, math.round(scale)))
 	}
 	if flags & {.Draw_Side_Top, .Draw_Side_Bottom, .Draw_Side_Left, .Draw_Side_Right} != {} {
 		t := max(1, math.round(scale))
@@ -189,12 +190,27 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if focus_ring {
 		c := color_from_tags(s, b.tags_key, "focus border")
 		if !keyboard_focus { c.a *= b.focus_t }
-		draw.rect(dc, r, c, radius, FOCUS_RING_PX * scale)
+		draw.rect_corners(dc, r, colors4(c), radii, FOCUS_RING_PX * scale)
 	}
 	if squished { draw.pop_xform(dc) }
 	if fade { draw.pop_alpha(dc) }
 	if b.transparency != 0 { draw.pop_alpha(dc) }
 }
+
+// The radii of a box's corners (draw.rect_corners' order): `radius`, or 0 for its square corners.
+box_radii :: proc(radius: f32, square: Corners) -> (radii: [4]f32) {
+	for c in Corner { radii[int(c)] = c in square ? 0 : radius }
+	return
+}
+
+// Radii of a shape grown by `d` around it (shrunk when negative): a round corner follows, a square one stays square.
+radii_grown :: proc(radii: [4]f32, d: f32) -> (out: [4]f32) {
+	for r, i in radii { out[i] = r > 0 ? max(r + d, 0) : 0 }
+	return
+}
+
+@(private)
+colors4 :: proc(c: Color) -> [4]Color { return {c, c, c, c} }
 
 // Baseline origin for a block of text of `dim` inside `r`.
 text_origin :: proc(s: ^State, b: ^Box, dim: Vec2) -> Vec2 {
@@ -331,10 +347,15 @@ len_utf8 :: proc(r: rune) -> int {
 // Fills a raised surface with the theme's finish (see `Finish`). `k` (0..1) is how strongly: 0 is a plain fill.
 // Custom draw procs use it for their accent fills so they match the buttons.
 paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1) {
+	paint_rect_corners(dc, r, c, {radius, radius, radius, radius}, k)
+}
+
+// paint_rect with a radius per corner (draw.rect_corners' order).
+paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1) {
 	s := gs()
 	finish := s.theme != nil ? s.theme.finish : .Flat
 	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
-		draw.rect(dc, r, c, radius)
+		draw.rect_corners(dc, r, colors4(c), radii)
 		return
 	}
 	white := Color{1, 1, 1, c.a}
@@ -343,12 +364,12 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 	switch finish {
 	case .Flat:
 	case .Machined:   // (its reliefs are machined_box's; a surface painted here is plain)
-		draw.rect(dc, r, c, radius)
+		draw.rect_corners(dc, r, colors4(c), radii)
 	case .Gradient:
 		top := draw.mix(c, white, GRADIENT_TOP_WHITE * k)
 		bot := draw.mix(c, black, GRADIENT_BOTTOM_BLACK * k)
-		draw.rect_corners(dc, r, {top, bot, top, bot}, {radius, radius, radius, radius})
-		inset := min(radius, (r.max.x - r.min.x) * 0.5) * GRADIENT_HIGHLIGHT_INSET
+		draw.rect_corners(dc, r, {top, bot, top, bot}, radii)
+		inset := min(max(radii[0], radii[2]), (r.max.x - r.min.x) * 0.5) * GRADIENT_HIGHLIGHT_INSET
 		draw.rect(dc, {{r.min.x + inset, r.min.y + px}, {r.max.x - inset, r.min.y + 2 * px}}, tuned({1, 1, 1, GRADIENT_HIGHLIGHT_ALPHA * k * c.a}, top))
 	case .Glass:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
@@ -359,10 +380,11 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 		t1 := draw.mix(c, white, GLASS_MID_WHITE * gloss)
 		b0 := draw.mix(c, black, GLASS_LOWER_BLACK * gloss)
 		b1 := draw.mix(c, white, GLASS_BOTTOM_WHITE * gloss)
-		rr := min(radius, (r.max.y - r.min.y) * 0.5, (r.max.x - r.min.x) * 0.5)
-		draw.rect_corners(dc, {r.min, {r.max.x, mid}}, {t0, t1, t0, t1}, {rr, 0, rr, 0})
-		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr, 0, rr})
-		draw.rect(dc, draw.rect_pad(r, -px), tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1}), max(0, rr - px), px)
+		lim := min((r.max.y - r.min.y) * 0.5, (r.max.x - r.min.x) * 0.5)
+		rr := [4]f32{min(radii[0], lim), min(radii[1], lim), min(radii[2], lim), min(radii[3], lim)}
+		draw.rect_corners(dc, {r.min, {r.max.x, mid}}, {t0, t1, t0, t1}, {rr[0], 0, rr[2], 0})
+		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr[1], 0, rr[3]})
+		draw.rect_corners(dc, draw.rect_pad(r, -px), colors4(tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1})), radii_grown(rr, -px), px)
 	}
 }
 
