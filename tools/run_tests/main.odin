@@ -68,6 +68,7 @@ STEPS := []Step{
 	{name = "instance_pkg", path = "src/instance", oses = LINUX_ONLY},
 	{name = "paint", path = "src/paint", oses = EVERYWHERE},
 	{name = "png", path = "src/png", oses = EVERYWHERE},
+	{name = "qr", path = "src/qr", oses = EVERYWHERE},
 	{name = "process", path = "src/process", oses = EVERYWHERE},
 	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
 	{name = "update", path = "src/update", oses = EVERYWHERE},
