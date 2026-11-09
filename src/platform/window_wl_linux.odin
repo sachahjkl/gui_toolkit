@@ -955,11 +955,26 @@ wl_check_link :: proc() {
 }
 
 @(private)
+// Until something comes for the window (its input, a repaint asked for), the clipboard changes, a wake, the session bus,
+// the accessibility bus, or the time. The connection's fd alone is not enough: the renderer's own traffic (the presentation
+// feedback and the FIFO events of the frame just shown, the ids of its callbacks) makes it readable at each refresh, and a
+// wait that ended there drew a frame at each refresh, for ever.
 wl_wait :: proc(w: ^Window, timeout_ms: int) {
-	wl_read_available()   // (what a roundtrip read: poll(2) would not see it; kept for the next poll_events)
-	if wait_is_over(w) { return }
-	wl.display_flush(wlc.display)
-	poll_sources(w, wl_fd(w), wl_poll_timeout(timeout_ms))
+	deadline := time.tick_add(time.tick_now(), time.Duration(timeout_ms) * time.Millisecond)
+	clip_was := clipboard_sequence()
+	for {
+		// (what a roundtrip read: poll(2) would not see it; kept for the next poll_events)
+		wl_read_available()
+		if wait_is_over(w) || clipboard_sequence() != clip_was { return }
+		wl.display_flush(wlc.display)
+		left := -1
+		if timeout_ms > 0 {
+			left = int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
+			if left <= 0 { return }
+		}
+		r := poll_sources(w, wl_fd(w), wl_poll_timeout(left))
+		if !r.conn || r.other { return }   // (the time, a key's repeat, or another source)
+	}
 }
 
 @(private)
