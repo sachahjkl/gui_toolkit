@@ -128,7 +128,7 @@ STEPS := []Step{
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
-	{name = "partial_redraw", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
+	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},
@@ -149,7 +149,7 @@ STEPS := []Step{
 	{name = "shadows", wgpu = .Ci4},
 	{name = "retained", wgpu = .Ci4},
 	{name = "masks", wgpu = .Ci3},
-	{name = "gpufx", wgpu = .Ci1},
+	{name = "gpufx", wgpu = .Ci4},
 	{name = "shaders", wgpu = .Ci1},
 	{name = "appshaders", wgpu = .Ci3},
 	{name = "video", wgpu = .Ci2, sample = true},
