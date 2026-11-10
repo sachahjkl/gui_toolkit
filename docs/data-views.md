@@ -130,7 +130,7 @@ if ev.menu || key_ev.menu { open_menu(ev.menu ? ev.menu_at : key_ev.menu_at) }
 `Table_Events`: `menu` and `menu_at` (a right click on a row selects it), `keyboard`, `activated` (a double click or
 Enter), `sorted`, `resized`, `columns` (a right click on the header). `Table.lead(t, row, size)`, when set, builds what
 goes before the first cell's text (an icon `size` wide); `lead_user` is the caller's. `Table.lead_em` is the room
-before the first title and the first cell (0: 0.6 em).
+before the first title and the first cell (0: 0.6 em). `Table.header_bg` is the header's background (nil: none).
 
 ## Type to filter (`src/ui/type_to_field.odin`)
 
