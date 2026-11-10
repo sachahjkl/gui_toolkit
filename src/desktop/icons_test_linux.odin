@@ -8,9 +8,9 @@ import "../png"
 
 // A theme of the test's own: a PNG per type at 16 pixels, an SVG folder that scales; a MIME database that names them.
 @(private = "file")
-theme_make :: proc(t: ^testing.T) -> (roots: Xdg_Roots, base: string) {
+theme_make :: proc(t: ^testing.T, tag := "") -> (roots: Xdg_Roots, base: string) {
 	tmp, _ := os.temp_directory(context.temp_allocator)
-	base = fmt.tprintf("%s/tk_icons_%d", tmp, os.get_pid())
+	base = fmt.tprintf("%s/tk_icons_%d%s", tmp, os.get_pid(), tag)   // (a tag per test: tests run side by side)
 	_ = os.remove_all(base)
 	theme := fmt.tprintf("%s/data/icons/Test", base)
 	_ = os.make_directory_all(fmt.tprintf("%s/16x16/mimetypes", theme))
@@ -82,4 +82,32 @@ the_icons_of_a_theme :: proc(t: ^testing.T) {
 	// a type the theme has nothing for: none
 	_, none := icon_of_path_in(roots, "Test", "/x/data.bin", false, 16, context.allocator)
 	testing.expect(t, !none)
+}
+
+// An application's icon by its name: in the theme, in pixmaps, or an absolute path.
+@(test)
+the_icon_of_a_name :: proc(t: ^testing.T) {
+	roots, base := theme_make(t, "_names")
+	defer os.remove_all(base)
+	_ = os.make_directory_all(fmt.tprintf("%s/data/pixmaps", base))
+	px := make([]u8, 4 * 4 * 4, context.temp_allocator)
+	for i := 0; i < len(px); i += 4 { px[i + 2], px[i + 3] = 255, 255 }
+	legacy := fmt.tprintf("%s/data/pixmaps/legacy.png", base)
+	testing.expect(t, os.write_entire_file(legacy, png.encode(px, 4, 4, .Fast, context.temp_allocator)) == nil)
+
+	themed, ok := theme_icon_in(roots, "Test", "text-plain", 16, context.allocator)
+	defer file_icon_destroy(&themed)
+	testing.expect(t, ok, "in the theme")
+	testing.expect_value(t, themed.rgba[0], 255)
+	old, pok := theme_icon_in(roots, "Test", "legacy", 16, context.allocator)
+	defer file_icon_destroy(&old)
+	testing.expect(t, pok, "in pixmaps")
+	testing.expect_value(t, old.rgba[2], 255)
+	direct, dok := theme_icon_in(roots, "Test", legacy, 16, context.allocator)
+	defer file_icon_destroy(&direct)
+	testing.expect(t, dok, "an absolute path")
+	_, none := theme_icon_in(roots, "Test", "no-such-icon", 16, context.allocator)
+	testing.expect(t, !none)
+	_, bad := theme_icon_in(roots, "Test", "/etc/hostname", 16, context.allocator)
+	testing.expect(t, !bad, "not a picture")
 }
