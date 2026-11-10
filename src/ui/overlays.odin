@@ -329,7 +329,7 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	s.next_mod.width = px(wh.x)
 	s.next_mod.height = wh.y > 0 ? px(wh.y) : children_sum()
 	s.next_mod.radius = em * 0.8
-	panel := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###modal_%s", id))
+	panel := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
 	_ = signal(panel)
 	a11y_default(panel, {role = .Dialog, modal = true})

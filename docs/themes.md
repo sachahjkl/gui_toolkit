@@ -82,16 +82,18 @@ light.accent = #b58900
 | Finish | Raised surfaces (buttons, bars) | Sunken ones (fields) | Separators |
 |---|---|---|---|
 | `Flat` | plain colour | plain colour, thin edge | a line |
-| `Gradient` | vertical gradient, a highlight line, engraved text | plain | a line |
+| `Gradient` | a shade: the face a few percent lighter at its top than at its bottom, a fine lit line along its top; the text as on the plain colour | plain | a line |
 | `Glass` | a glossy upper half, a white rim | plain | a line |
-| `Machined` | bevelled: a soft shadow, a lit rim, a dark edge; pressed, it sinks | a well: inner shadow, lit lip, a ring of the accent when focused | a carved groove |
+| `Machined` | bevelled: a soft shadow, a lit rim, a dark edge, engraved text; pressed, it sinks. Panels (cards, dialogs, menus, tooltips) are plates: a shaded face, a lit rim, a shadow | a well: inner shadow, lit lip, a ring of the accent when focused. Check boxes, radios, switches, sliders and progress bars are wells, what is on a raised key or a lit face in them | a carved groove |
 
 The machined reliefs are made for the dark: on a light palette, `apply_palette` makes the finish `Flat`.
 `Theme.glow` (0..1) sets the strength of its halos: a focused well, a lamp.
 
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
 background is a well (`line_edit`, `text_edit`, `field_frame`, the track of `segmented`; a clear background sits in a
-well, as a bare field does); an opaque background with a sheen is raised (bevelled when it is `.Clickable`).
+well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips); an
+opaque background with a sheen is raised (bevelled when it is `.Clickable`). An accent fill a widget paints itself
+(`paint_rect`) is a lit face, as in `Gradient` but a little stronger.
 
 A program draws its own surfaces with the same primitives; outside the machined finish each one draws its flat form, so
 one call serves every finish:

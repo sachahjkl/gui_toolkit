@@ -237,7 +237,7 @@ backdrop_under :: proc(s: ^State, b: ^Box) -> Color {
 
 // The engraving of text on a raised surface: a dark shadow over light text, a light edge under dark text.
 @(private = "file") ENGRAVE_SHADOW_ALPHA :: 0.35
-@(private = "file") ENGRAVE_LIGHT_ALPHA :: 0.75
+@(private = "file") ENGRAVE_LIGHT_ALPHA :: 0.20   // (more blurred dark text on a light face)
 
 @(private)
 draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
@@ -248,7 +248,8 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 		text, width = truncate(s, b, avail)
 	}
 	pos := text_origin(s, b, {width, b.text_dim.y})
-	if s.theme != nil && s.theme.finish != .Flat {
+	// (engraved: the machined finish's alone; on a shaded face the text reads as on the plain colour)
+	if s.theme != nil && s.theme.finish == .Machined {
 		if k := box_sheen(s, b); k > DRAW_INVISIBLE_EPS {
 			// text lighter than what is under it sits in a groove (a dark shadow above); darker text is lit from below. (By
 			// the contrast, not the text alone: grey text on a dark panel took a light edge under it, a pixel low to the eye.)
@@ -331,11 +332,15 @@ len_utf8 :: proc(r: rune) -> int {
 ////////////////////////////////
 // Finishes
 
-// .Gradient: how far the top goes toward white and the bottom toward black; the highlight line's inset (of the radius) and alpha.
-@(private = "file") GRADIENT_TOP_WHITE :: 0.50
-@(private = "file") GRADIENT_BOTTOM_BLACK :: 0.14
-@(private = "file") GRADIENT_HIGHLIGHT_INSET :: 0.7
-@(private = "file") GRADIENT_HIGHLIGHT_ALPHA :: 0.30
+// A lit face (.Gradient, and .Machined's surfaces painted here): how far its top goes toward white and its bottom toward
+// black, in sRGB steps (srgb_step), and the alpha of the lit line along its top. Small: a shade, not a gloss; the text
+// on it reads as on the plain colour.
+@(private = "file") GRADIENT_TOP_WHITE :: 0.07
+@(private = "file") GRADIENT_BOTTOM_BLACK :: 0.08
+@(private = "file") GRADIENT_RIM_ALPHA :: 0.10
+@(private = "file") MACHINED_TOP_WHITE :: 0.10
+@(private = "file") MACHINED_BOTTOM_BLACK :: 0.14
+@(private = "file") MACHINED_RIM_ALPHA :: 0.16
 // .Glass: the gloss of a saturated (not bright) fill; the four stops of the two halves, top to bottom; the inner rim's alpha.
 @(private = "file") GLASS_BRIGHT_LUM :: 0.6
 @(private = "file") GLASS_SATURATED_GLOSS :: 0.6
@@ -364,14 +369,10 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 	px := max(1, math.round(s.scale))
 	switch finish {
 	case .Flat:
-	case .Machined:   // (its reliefs are machined_box's; a surface painted here is plain)
-		draw.rect_corners(dc, r, colors4(c), radii)
+	case .Machined:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
+		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * k)
 	case .Gradient:
-		top := draw.mix(c, white, GRADIENT_TOP_WHITE * k)
-		bot := draw.mix(c, black, GRADIENT_BOTTOM_BLACK * k)
-		draw.rect_corners(dc, r, {top, bot, top, bot}, radii)
-		inset := min(max(radii[0], radii[2]), (r.max.x - r.min.x) * 0.5) * GRADIENT_HIGHLIGHT_INSET
-		draw.rect(dc, {{r.min.x + inset, r.min.y + px}, {r.max.x - inset, r.min.y + 2 * px}}, tuned({1, 1, 1, GRADIENT_HIGHLIGHT_ALPHA * k * c.a}, top))
+		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * k)
 	case .Glass:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
 		// saturated fills keep more of their colour so white text stays readable on them
@@ -387,6 +388,18 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr[1], 0, rr[3]})
 		draw.rect_corners(dc, draw.rect_pad(r, -px), colors4(tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1})), radii_grown(rr, -px), px)
 	}
+}
+
+// A face of colour `c` lit from above: its top `up` toward white, its bottom `down` toward black (sRGB steps), a lit line
+// of alpha `rim` along its top edge that fades down its sides.
+lit_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, up, down, rim: f32) {
+	top := srgb_step(c, {1, 1, 1, 1}, up)
+	bot := srgb_step(c, {0, 0, 0, 1}, down)
+	draw.rect_corners(dc, r, {top, bot, top, bot}, radii)
+	if rim <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 4 { return }
+	p := max(1, math.round(gs().scale))
+	lit := tuned({1, 1, 1, rim * c.a}, top)
+	draw.rect_corners(dc, draw.rect_pad(r, -p), {lit, {1, 1, 1, 0}, lit, {1, 1, 1, 0}}, radii_grown(radii, -p), p)
 }
 
 // Sheen of the box's tags (0 when the theme is flat).

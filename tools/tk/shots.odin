@@ -7,6 +7,9 @@ package tk
 //   -only    just these pictures
 //   -width   the width of the pictures (default 1400; 0: as rendered); a wider picture is made smaller, a narrower one stays
 //
+// finish_shots [-build] [-out:folder] [-page:N] [-theme:N]: a picture of a page of fidget (0: the controls, 1: the inputs) in
+// each finish (flat, gradient, glass, machined), into build/finish_shots by default: to look at what a change of a finish does.
+//
 // theme_shots [-build] [-out:folder] [-page:name] [-find:text] [-only:name,name]: a picture of a page of examples/whatsnew in every
 // theme of ui.THEMES (its dark version, or its only one), with no window (--headless): to look at what a change of colours does in
 // all of them. By default the find page, searching "the", into build/theme_shots.
@@ -131,7 +134,8 @@ end_program :: proc(p: os.Process) {
 }
 
 @(private = "file")
-capture_shot :: proc(root: string, s: Shot, width: int) -> string {
+// `out`: the folder of the picture ("": docs/screenshots, copied to site/img when it is there).
+capture_shot :: proc(root: string, s: Shot, width: int, out_dir := "") -> string {
 	exe := join({root, "build", fmt.tprintf("%s%s", s.example, EXE)})
 	if !os.exists(exe) { return fmt.tprintf("%s is missing: run with -build", exe) }
 	settings, err := os.make_directory_temp("", "gui_toolkit_shot_*", context.temp_allocator)
@@ -147,8 +151,9 @@ capture_shot :: proc(root: string, s: Shot, width: int) -> string {
 	time.sleep(time.Duration(s.ms) * time.Millisecond)
 	png, ok := cdp.screenshot(&c, nil, context.temp_allocator)
 	if !ok { return fmt.tprintf("%s: %s", s.name, c.failure) }
-	out := join({root, "docs", "screenshots", fmt.tprintf("%s.png", s.name)})
+	out := join({out_dir != "" ? out_dir : join({root, "docs", "screenshots"}), fmt.tprintf("%s.png", s.name)})
 	if why = write_picture(out, png, width); why != "" { return why }
+	if out_dir != "" { fmt.println("saved", out); return "" }
 	site := join({root, "site", "img", fmt.tprintf("%s.png", s.name)})
 	if os.exists(site) && os.copy_file(site, out) != nil { return fmt.tprintf("%s cannot be written", site) }
 	fmt.println("saved", s.name)
@@ -233,5 +238,23 @@ theme_shot :: proc(exe, name: string, o: Theme_Shots_Options) -> string {
 	out := join({o.out, fmt.tprintf("%s.png", file)})
 	if !cdp.shot(&c, out) { return fmt.tprintf("%s: %s", out, c.failure) }
 	fmt.println("saved", name)
+	return ""
+}
+
+FINISHES :: [?]string{"flat", "gradient", "glass", "machined"}
+
+run_finish_shots :: proc(a: ^Args) -> string {
+	root := toolkit_root()
+	if has_flag(a, "build") {
+		if why := build_example(root, "fidget", false); why != "" { return why }
+	}
+	out := flag_value(a, "out", join({root, "build", "finish_shots"}))
+	_ = os.make_directory_all(out)
+	page := flag_value(a, "page", "0")
+	theme := flag_value(a, "theme", "0")
+	for f in FINISHES {
+		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200}
+		if why := capture_shot(root, s, 0, out); why != "" { return why }
+	}
 	return ""
 }

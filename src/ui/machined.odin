@@ -7,7 +7,7 @@ package ui
 // for the dark: a light palette is drawn flat (apply_palette).
 //
 // The built-in widgets take it from their boxes (machined_box): a box with a background and a sheen is raised (bevelled
-// when it can be clicked), a .Sunken box is a well, a .Groove box a groove. A program draws its own boxes with the same
+// when it can be clicked), a .Sunken box is a well, a .Groove box a groove, a .Plate box a raised panel (machined_plate). A program draws its own boxes with the same
 // primitives (machined_bevel, machined_well, machined_groove, machined_plate, machined_lamp, machined_pip); outside the
 // machined finish each draws its flat form (a plain face, a thin edge), so one call serves every finish.
 //
@@ -22,6 +22,14 @@ MACHINED_OVERFLOW_PX :: 6
 // The flat form of a raised face: under the pointer, held: this far toward the text.
 @(private = "file") FLAT_HOT     :: 0.06
 @(private = "file") FLAT_PRESSED :: 0.12
+// A raised face (machined_bevel): how far its top goes toward white and its bottom toward black; its rim's light.
+@(private = "file") BEVEL_TOP_LIGHTEN   :: 0.14
+@(private = "file") BEVEL_BOTTOM_DARKEN :: 0.20
+@(private = "file") BEVEL_RIM_ALPHA     :: 0.22
+// A .Plate box: how far its face goes toward white at the top and toward black at the bottom; its shadow (logical pixels).
+@(private = "file") PLATE_TOP_LIGHTEN   :: 0.05
+@(private = "file") PLATE_BOTTOM_DARKEN :: 0.06
+@(private = "file") PLATE_SHADOW_PX     :: 5
 // Below this a state or a halo draws nothing.
 @(private = "file") VISIBLE :: 0.01
 
@@ -79,10 +87,10 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		draw.box_shadow(dc, draw.rect_shift(r, {0, 1.5 * s}), rr, 2.2 * s, {0, 0, 0, 0.65})
 		// (under the pointer only, and tight: a wide halo reached what is above it)
 		if g := glow_of(); glow.a > 0 && hot > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 2.5 * s, with_alpha(glow, 0.2 * hot * g)) }
-		top, bot := lighten(face, 0.10), darken(face, 0.16)
+		top, bot := lighten(face, BEVEL_TOP_LIGHTEN), darken(face, BEVEL_BOTTOM_DARKEN)
 		draw.rect_corners(dc, r, {top, bot, top, bot}, rr)
 		// the rim: light along the top, dark along the bottom
-		draw.rect_corners(dc, draw.rect_pad(r, -p), {{1, 1, 1, 0.16}, {1, 1, 1, 0.03}, {1, 1, 1, 0.16}, {1, 1, 1, 0.03}}, radii4(max(0, radius - p)), p)
+		draw.rect_corners(dc, draw.rect_pad(r, -p), {{1, 1, 1, BEVEL_RIM_ALPHA}, {1, 1, 1, 0.03}, {1, 1, 1, BEVEL_RIM_ALPHA}, {1, 1, 1, 0.03}}, radii4(max(0, radius - p)), p)
 		draw.rect(dc, {{r.min.x + radius * 0.8, r.max.y - 2 * p}, {r.max.x - radius * 0.8, r.max.y - p}}, {0, 0, 0, 0.25})
 	} else {
 		draw.rect(dc, r, darken(face, 0.22), radius)
@@ -207,6 +215,12 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 		return true, true
 	}
 	if .Draw_Background not_in b.flags || b.bg.a < VISIBLE { return }
+	if .Plate in b.flags && b.bg.a >= 0.99 {
+		// a raised panel: its face a shade lighter at the top, a lit rim, a dark edge; a shadow under it unless it has its own
+		// (.Draw_Shadow: a dialog, a menu)
+		machined_plate(dc, r, radius, lighten(b.bg, PLATE_TOP_LIGHTEN), darken(b.bg, PLATE_BOTTOM_DARKEN), .Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX)
+		return true, true
+	}
 	if .Sunken in b.flags {
 		focus := keyboard_focus ? 1 : b.focus_t
 		machined_well(dc, r, radius, color_from_tags(s, b.tags_key, "well"), focus, color_from_tags(s, b.tags_key, "focus border"))

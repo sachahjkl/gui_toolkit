@@ -623,7 +623,7 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 	em := d.metrics.em
 	next({fixed_x = r.min.x, fixed_y = r.min.y, width = px(r.max.x - r.min.x), height = px(r.max.y - r.min.y), cursor = platform.Cursor.Arrow})
 	frame: ^Box
-	if tags("floating") { frame = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow}, fmt.tprintf("###dock_float_%d", root)) }   // (Clickable: what is under it gets no press)
+	if tags("floating") { frame = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, fmt.tprintf("###dock_float_%d", root)) }   // (Clickable: what is under it gets no press)
 	frame.square_corners = {.Bottom_Right}   // (the grip's corner: its bevel fills it)
 	a11y_set(frame, {role = .Group, name = dock_stack_label(d, dock_leaves(d, root)[0]), role_description = "floating panel"})
 	// The panels are not its children, and are drawn after it, square: within its corners from here to the box that closes it, whose
