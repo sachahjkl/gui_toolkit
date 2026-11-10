@@ -8,6 +8,7 @@ package tk_desktop
 import "base:runtime"
 import "core:strings"
 import win "core:sys/windows"
+import "../ascii"
 
 foreign import shell32 "system:Shell32.lib"
 foreign import user32 "system:User32.lib"
@@ -65,7 +66,7 @@ extension_of :: proc(path: string) -> string {
 	i := strings.last_index_byte(path, '.')
 	j := max(strings.last_index_byte(path, '\\'), strings.last_index_byte(path, '/'))
 	if i <= j + 1 { return "" }
-	return strings.to_lower(path[i:], context.temp_allocator)
+	return ascii.lower(path[i:])   // (an extension: ASCII)
 }
 
 @(private)
