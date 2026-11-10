@@ -18,7 +18,7 @@ CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", 
 LINUX_FLAGS :: [?]string{"-define:FONT_BACKEND=native", "-extra-linker-flags:-Wl,--allow-multiple-definition"}
 
 // The packages of the library, under src/.
-PACKAGES :: [?]string{"arena", "ascii", "base", "cdp", "config", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "host", "i18n", "instance", "paint", "platform", "png", "process", "qr", "render", "site", "testkit", "toolbox", "ui", "update"}
+PACKAGES :: [?]string{"arena", "ascii", "base", "cdp", "config", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "host", "i18n", "instance", "mermaid", "paint", "platform", "png", "process", "qr", "render", "site", "svg", "testkit", "toolbox", "ui", "update"}
 
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource
@@ -61,6 +61,7 @@ run_ci :: proc(a: ^Args) -> string {
 	failed := make([dynamic]string, context.temp_allocator)
 	when ODIN_OS != .Windows {
 		if why := build_rust_lib(root, TEXT_LIB, false); why != "" { return why }
+		if why := build_rust_lib(root, MERMAID_LIB, false); why != "" { return why }   // (tests/mermaid)
 	}
 	for p in PACKAGES {
 		cmd := make([dynamic]string, context.temp_allocator)

@@ -35,7 +35,7 @@ LINUX_ONLY :: Oses{.Linux}
 EVERYWHERE :: Oses{.Windows, .Linux}
 
 // The libraries a step links, which a CI step builds before it.
-Need :: enum { None, Text_Lib, A11y_Lib, Emoji }
+Need :: enum { None, Text_Lib, A11y_Lib, Mermaid_Lib, Emoji }
 
 // A group of the WebGPU backend: about the same time each, on a runner.
 Wgpu_Group :: enum { None, Ci1, Ci2, Ci3, Ci4 }
@@ -100,6 +100,8 @@ STEPS := []Step{
 	{name = "netif", oses = EVERYWHERE},
 	{name = "placement"},
 	{name = "placement_text", oses = EVERYWHERE},
+	{name = "svg", oses = EVERYWHERE},
+	{name = "mermaid", one = true, need = .Mermaid_Lib, text = true, oses = EVERYWHERE},   // (Linux: tk ci builds the library first)
 	{name = "size_move"},
 	{name = "testkit"},
 	{name = "tk"},
@@ -314,6 +316,7 @@ missing_need :: proc(n: Need) -> string {
 	case .None: return ""
 	case .Text_Lib: file = ODIN_OS == .Windows ? "build/text/gt_text.lib" : "build/text/libgt_text.a"
 	case .A11y_Lib: file = "build/a11y/gt_a11y.lib"
+	case .Mermaid_Lib: file = ODIN_OS == .Windows ? "build/mermaid/gt_mermaid.lib" : "build/mermaid/libgt_mermaid.a"
 	case .Emoji: file = "build/emoji/NotoColorEmoji-COLRv1.ttf"
 	}
 	return os.exists(file) ? "" : fmt.tprintf("%s is not there: build it first", file)
@@ -323,7 +326,7 @@ run_step :: proc(s: ^Step, o: ^Options) -> Result {
 	began := time.tick_now()
 	r := Result{step = s}
 	need := s.need
-	if s.text && ODIN_OS == .Linux { need = .Text_Lib }
+	if s.text && ODIN_OS == .Linux && need == .None { need = .Text_Lib }
 	if why := missing_need(need); why != "" {
 		r.why = why
 	} else {

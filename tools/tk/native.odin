@@ -23,6 +23,7 @@ Rust_Lib :: struct {
 
 @(rodata) TEXT_LIB := Rust_Lib{name = "gt_text", crate = "native/text", out = "build/text", symbol = "gt_text_rust_eh_personality"}
 @(rodata) A11Y_LIB := Rust_Lib{name = "gt_a11y", crate = "native/a11y", out = "build/a11y", symbol = "gt_a11y_rust_eh_personality"}
+@(rodata) MERMAID_LIB := Rust_Lib{name = "gt_mermaid", crate = "native/mermaid", out = "build/mermaid", symbol = "gt_mermaid_rust_eh_personality"}
 
 RUST_TARGET :: "x86_64-pc-windows-msvc"
 // The hash of what a library is built from, beside it.

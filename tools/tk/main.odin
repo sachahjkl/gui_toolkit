@@ -4,6 +4,7 @@
 //   build_text [-force]                       the native text backend (native/text, cargo) -> build/text/gt_text.lib; nothing to do
 //                                             when build/text/STAMP is the hash of the crate's sources, Cargo.lock and tools/tk/native.odin
 //   build_a11y [-force]                       the AccessKit adapter (native/a11y) -> build/a11y/gt_a11y.lib, the same way
+//   build_mermaid [-force]                    Mermaid diagrams to SVG (native/mermaid) -> build/mermaid/gt_mermaid.lib, the same way
 //   build_naga                                the WGSL to HLSL translator (tools/wgsl2hlsl, naga) -> build/naga/wgsl2hlsl.exe: its Cargo.lock
 //                                             pinned by SHA-256 (NAGA_LOCK_SHA256), rebuilt when build/naga/wgsl2hlsl.sources differs
 //   fetch_emoji [-dest:dir] [-unicode]        Noto Color Emoji COLR v1 (pinned by commit and SHA-256, its SVG table dropped) and OFL.txt
@@ -79,6 +80,7 @@ Command :: struct {
 COMMANDS := []Command {
 	{name = "build_text", flags = {"force"}, run = run_build_text},
 	{name = "build_a11y", flags = {"force"}, run = run_build_a11y},
+	{name = "build_mermaid", flags = {"force"}, run = run_build_mermaid},
 	{name = "build_naga", run = run_build_naga},
 	{name = "fetch_emoji", flags = {"dest:", "unicode"}, run = run_fetch_emoji},
 	{name = "fetch_wgpu", flags = {"dest:", "no-dxc", "odin:"}, run = run_fetch_wgpu},
@@ -232,6 +234,7 @@ stamp_holds :: proc(output, stamp, expected: string) -> bool {
 
 run_build_text :: proc(a: ^Args) -> string { return build_rust_lib(toolkit_root(), TEXT_LIB, has_flag(a, "force")) }
 run_build_a11y :: proc(a: ^Args) -> string { return build_rust_lib(toolkit_root(), A11Y_LIB, has_flag(a, "force")) }
+run_build_mermaid :: proc(a: ^Args) -> string { return build_rust_lib(toolkit_root(), MERMAID_LIB, has_flag(a, "force")) }
 run_build_naga :: proc(a: ^Args) -> string { return build_naga(toolkit_root()) }
 
 run_fetch_emoji :: proc(a: ^Args) -> string {

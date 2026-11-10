@@ -88,6 +88,8 @@ jobs:
             build/text/STAMP
             build/a11y/gt_a11y.lib
             build/a11y/STAMP
+            build/mermaid/gt_mermaid.lib
+            build/mermaid/STAMP
             build/emoji
           key: native-${{ hashFiles('native/**', 'tools/tk/**') }}
           restore-keys: native-
@@ -107,13 +109,15 @@ jobs:
 
       # fat LTO makes a cold build of the two Rust libraries slow (the cache is saved only when the job succeeds: this step has its
       # own, long limit so that a cold run can end and fill it; with the cache the step takes seconds)
-      - name: Native libraries (text backend, AccessKit adapter)
+      - name: Native libraries (text backend, AccessKit adapter, Mermaid diagrams)
         shell: pwsh
         timeout-minutes: 30
         run: |
           ./build/tk.exe build_text
           if ($LASTEXITCODE) { exit 1 }
           ./build/tk.exe build_a11y
+          if ($LASTEXITCODE) { exit 1 }
+          ./build/tk.exe build_mermaid
           if ($LASTEXITCODE) { exit 1 }
 
       - name: Tests (tools/run_tests)
@@ -184,8 +188,9 @@ jobs:
         with:
           path: |
             build/text
+            build/mermaid
             ~/.cargo/registry
-          key: text-linux-${{ hashFiles('native/text/**') }}
+          key: native-linux-${{ hashFiles('native/text/**', 'native/mermaid/**') }}
 
       - name: Check, examples, tests (tk ci)
         run: odin run tools/tk -out:build/tk -- ci
