@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.151.0] - 2026-11-10
+
+### Added
+- `site`: the home page's download for the reader's system (`Changelog_Options.downloads`): `<!-- download -->` becomes one button per system, the reader's shown by a script of the page (the first when it is not known), and `<!-- download-others -->` a line that offers the others.
+
 ## [0.150.0] - 2026-11-10
 
 ### Added
@@ -2261,6 +2266,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.151.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.151.0
 [0.150.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.150.0
 [0.149.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.149.0
 [0.148.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.148.0
