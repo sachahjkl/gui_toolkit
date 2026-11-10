@@ -258,7 +258,6 @@ render/wgpu_core.odin g_compile_lock process  # the shader compiler, one at a ti
 render/wgpu_dcomp.odin panel_vtable const  # a COM vtable (passed by address)
 render/wgpu_dcomp.odin IID_ISwapChainPanelNative const  # a COM interface id (passed by address)
 render/wgpu_dcomp.odin IID_IUnknown_ const  # a COM interface id (passed by address)
-syntax/syntax.odin LANGUAGES const  # a table: the languages every program gets (code blocks, previews)
 testkit/folders.odin temp_folder.serial test  # the test folders' names (atomic)
 testkit/session/session.odin current test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin owner_thread test  # the session a test runs (one test at a time: owner_thread checks it)
