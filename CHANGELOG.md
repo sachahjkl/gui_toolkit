@@ -5,6 +5,23 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.141.0] - 2026-11-10
+
+### Added
+- **`Toolkit.click`** takes CDP's `modifiers` (Alt 1, Ctrl 2, Shift 8): a Ctrl or Shift click, as a test marks rows of a list.
+- **`lucide`**: `BUG`, `GIT_FORK`, `LIST_CHECKS`, `MICROCHIP`, `NETWORK`, `PAUSE`, `SCROLL_TEXT`, `THERMOMETER`, `ZOOM_IN`, `ZOOM_OUT`.
+- **`ui.table_widths_text`, `table_widths_apply`, `table_sort_text`, `table_sort_apply`**: a table's column widths and sort as a preference's text (`pid=6.5,command=30`, `-memory`), and back.
+- **Lists mark more than one row** (`List_State.multi`): a Ctrl click marks a row besides the active one, a Shift click a range, Ctrl+A every row; a marked row is drawn as the active one and goes with its row's identity (`list_is_marked`, `list_mark_count`, `list_mark`, `list_mark_all`, `list_marks_clear`, `list_row_id`).
+- **`desktop`**: the desktop entry says `StartupWMClass=<slug>`, the window's class: a launcher and a dock match the program's window to its entry by it.
+- **`process.affinity`, `process.set_affinity`** (Linux): the logical processors another process may run on, read and set for every thread of it, by pid and start time as `set_priority`; `Cpu_Set` with `cpu_set_has`, `cpu_set_put`, `cpu_set_count`.
+
+### Changed
+- **`ui.key_name`**: the Escape key is "Escape" in menus, tooltips and the sheet of the keys, as the other keys are named whole ("Delete", "Page Down").
+- **`ui.palette`** keeps a command only when what is typed is in its label whole, or in pieces that each begin a word, the words in order (`ui.fuzzy_words`): "prio" finds "Raise the priority" and no longer "Previous section". The text whole ranks before pieces, the start of a word before elsewhere.
+
+### Fixed
+- **`process.set_priority`** lists the threads through a descriptor of the process's own `/proc/<pid>` folder, whose start time it checks, and its pidfd says afterwards whether the process still ran: a pid given to another process in between is no longer read or changed.
+
 ## [0.140.0] - 2026-11-10
 
 ### Added
@@ -2171,6 +2188,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.141.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.141.0
 [0.140.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.140.0
 [0.139.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.139.0
 [0.138.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.138.0
