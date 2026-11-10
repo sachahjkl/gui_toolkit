@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.159.0] - 2026-11-10
+
+### Added
+- **Stripes, rules and tints of a list's rows**: `List_State.zebra` and `.rules` (every second row shaded, a hairline under each), `list_row`'s `tint`, `table_cell`'s `border` (a busy cell's outline); `animations_on` and `keep_animating` for a program's own motion.
+
 ## [0.158.0] - 2026-11-10
 
 ### Added
@@ -2301,6 +2306,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.159.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.159.0
 [0.158.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.158.0
 [0.157.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.157.0
 [0.156.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.156.0
