@@ -101,6 +101,7 @@ PLUG                :: "\ue37f"   // plug
 PLUS                :: "\ue13d"   // plus
 POWER               :: "\ue140"   // power
 QR_CODE             :: "\ue1df"   // qr-code
+REDO_2              :: "\ue2a0"   // redo-2
 REFRESH_CW          :: "\ue145"   // refresh-cw
 ROTATE_CCW          :: "\ue148"   // rotate-ccw
 ROWS_2              :: "\ue439"   // rows-2
