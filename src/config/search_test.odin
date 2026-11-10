@@ -65,3 +65,17 @@ a_search_shows_what_matches_under_its_page :: proc(t: ^testing.T) {
 	show, _ := search_shows(&s, &p, "no.such.preference")
 	testing.expect(t, !show, "a name that is not registered never shows")
 }
+
+// Each word of a query in any of the fields, in any case; a word in none of them, no match.
+@(test)
+every_word_in_one_of_the_fields :: proc(t: ^testing.T) {
+	TITLE, ID, DIR :: "Kernel build", "ses_e3e01578", "/home/sacha/Projects/opencode_native"
+	testing.expect(t, words_match("", TITLE, ID, DIR), "no query")
+	testing.expect(t, words_match("  ", TITLE, ID, DIR), "spaces only")
+	testing.expect(t, words_match("kernel", TITLE, ID, DIR), "the title")
+	testing.expect(t, words_match("SES_E3E", TITLE, ID, DIR), "the id, in another case")
+	testing.expect(t, words_match("kernel  ses_e3e native", TITLE, ID, DIR), "a word in each field")
+	testing.expect(t, words_match("native kernel", TITLE, ID, DIR), "in any order")
+	testing.expect(t, !words_match("kernel classeur", TITLE, ID, DIR), "a word in none of them")
+	testing.expect(t, !words_match("kernel build ses", TITLE), "a field left out is not searched")
+}

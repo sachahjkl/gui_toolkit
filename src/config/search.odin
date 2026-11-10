@@ -50,3 +50,18 @@ search_shows :: proc(s: ^Search, p: ^Prefs, name: string) -> (show: bool, headin
 	heading, s.heading = s.heading, ""
 	return true, heading
 }
+
+// Whether every word of `query` (separated by spaces, in any case) is in one of `fields` (in any case): a search over several
+// fields of one thing, each word in any of them ("kernel ses_e3" finds a session by its title and its id). An empty query
+// matches everything.
+words_match :: proc(query: string, fields: ..string) -> bool {
+	q := strings.to_lower(query, context.temp_allocator)
+	low := make([]string, len(fields), context.temp_allocator)
+	for f, i in fields { low[i] = strings.to_lower(f, context.temp_allocator) }
+	for word in strings.fields_iterator(&q) {
+		found := false
+		for f in low { if strings.contains(f, word) { found = true; break } }
+		if !found { return false }
+	}
+	return true
+}
