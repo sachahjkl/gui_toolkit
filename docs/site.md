@@ -24,6 +24,15 @@ a `download` section, a `features` section of `article.card` items, a `nav#nav`.
 The pages were first made by JavaScript and were compared with these byte for byte. The parts that read text say which regular
 expression they match, with what JavaScript gives its whitespace, `.`, UTF-16 lengths and `$` in a replacement (`html.odin`).
 
+## The download for the reader's system
+
+`Changelog_Options.downloads` lists the systems the program is published for (`Download`: `os` "windows", "linux" or
+"macos", `label`, `href`, `detail`), the first one shown when the reader's is not known (no JavaScript, a phone). In the home
+page, `<!-- download -->` becomes one button per system (`a.btn.accent.get`, the system's mark in `.get-icon`, "Download
+for <label>" in `.get-main`, the detail in `.get-sub`), and `<!-- download-others -->` a line that offers the other systems
+("Also for Linux"). A script put before `</body>` shows the button and the line of the system the browser says it runs on.
+The version mark is replaced after, so `href` and `detail` can name it.
+
 ## What a page says when shared
 
 `build_meta(m, from, out)` gives each page of `out` its canonical address, its Open Graph and Twitter tags from its own title

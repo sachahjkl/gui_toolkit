@@ -330,3 +330,28 @@ a_version_is_told_where_the_site_says :: proc(t: ^testing.T) {
 	m.version_anchor = proc(v: string) -> string { s, _ := strings.replace_all(v, ".", "-", context.temp_allocator); return cat("v", s) }
 	testing.expect_value(t, version_address(m, "1.2.3"), "https://example.org/changelog/#v1-2-3")
 }
+
+// One button per system, the first shown; the line of the others names the rest for each; the script before </body>.
+@(test)
+a_download_for_each_system :: proc(t: ^testing.T) {
+	page := "<div class=\"actions\"><!-- download --></div><p><!-- download-others --> · MIT</p></body>"
+	downloads := []Download{
+		{os = "windows", label = "Windows", href = "w.zip", detail = "x64 · .zip"},
+		{os = "linux", label = "Linux", href = "l.tar.gz", detail = "x64 · .tar.gz"},
+	}
+	out, why := with_downloads(page, downloads)
+	testing.expect_value(t, why, "")
+	testing.expect(t, strings.contains(out, `<a class="btn accent get" data-download-os="windows" href="w.zip">`), "the first shown")
+	testing.expect(t, strings.contains(out, `data-download-os="linux" hidden href="l.tar.gz"`), "the others hidden")
+	testing.expect(t, strings.contains(out, `Download for Linux</span> <span class="get-sub">x64 · .tar.gz</span>`))
+	testing.expect(t, strings.contains(out, `<span data-download-others="windows">Also for <a href="l.tar.gz">Linux</a></span>`))
+	testing.expect(t, strings.contains(out, `<span data-download-others="linux" hidden>Also for <a href="w.zip">Windows</a></span>`))
+	testing.expect(t, strings.has_suffix(out, "</script>\n</body>"), "the script last")
+	testing.expect(t, !strings.contains(out, DOWNLOAD_MARK) && !strings.contains(out, DOWNLOAD_OTHERS_MARK))
+
+	same, none_why := with_downloads("<body></body>", nil)
+	testing.expect_value(t, same, "<body></body>")
+	testing.expect_value(t, none_why, "")
+	_, why = with_downloads(page, nil)
+	testing.expect(t, why != "", "a mark and no system")
+}

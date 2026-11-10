@@ -32,6 +32,9 @@ Changelog_Options :: struct {
 	// In the home page, this text is the last version ("": none): its download links can name the files of that release, a
 	// download at once rather than a page of GitHub (a site deployed with each release cannot name a file not there yet).
 	version_mark: string,
+	// The systems of the home page's download, the first shown when the reader's is not known (download.odin): in place
+	// of its <!-- download --> and <!-- download-others --> marks.
+	downloads:    []Download,
 }
 
 Item :: struct {
@@ -670,7 +673,9 @@ build_changelog :: proc(site, out: string, o: Changelog_Options) -> bool {
 	if !has_index || !has_changes { return false }
 	releases := parse_changelog(changes)
 	if len(releases) == 0 { fmt.eprintfln("site: no version in %s", o.changes); return false }
-	pages, why := make_pages(with_version(index, releases[0].version, o.version_mark), releases)
+	home, dl_why := with_downloads(index, o.downloads)
+	if dl_why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, dl_why); return false }
+	pages, why := make_pages(with_version(home, releases[0].version, o.version_mark), releases)
 	if why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, why); return false }
 	if !copy_site(site, out) { return false }
 	// (a site keeps its classic.css there; one without it still gets the pages)
