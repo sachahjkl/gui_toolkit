@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.156.0] - 2026-11-10
+
+### Fixed
+- **`prefs_page`**: a slider dragged and let go keeps its value. `ui.slider` moves its value only while the button is down, and the page read the preference again at the release: what was dragged was never written, and the slider went back. The page now keeps the value while the button is down and writes it when it comes up.
+
 ## [0.155.0] - 2026-11-10
 
 ### Added
@@ -2286,6 +2291,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.156.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.156.0
 [0.155.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.155.0
 [0.154.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.154.0
 [0.153.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.153.0
