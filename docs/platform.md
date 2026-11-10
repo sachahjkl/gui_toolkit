@@ -96,7 +96,10 @@ order, `up`, `loopback`); `interface_addresses_destroy` frees the list. core:net
 
 **Hotkeys** (`hotkey.odin`) — `hotkey_register(w, id, hk)`, `hotkey_unregister`: a combination the system gives the
 window wherever the keyboard is, as a `Hotkey` event whose `hotkey` is the id. `hotkey_parse("Ctrl+Shift+V")` and
-`hotkey_text` read and write their text (Ctrl, Shift, Alt, Win, then a letter, a digit, F1 to F12 or a named key).
+`hotkey_text` read and write their text (Ctrl, Shift, Alt, Win, then a letter, a digit, F1 to F12, a named key, or a
+single character for a key Key does not name: `Hotkey.char`, the key that types it on the user's layout, "Ctrl+Shift+ù").
+`ui.hotkey_field` records one from the keys pressed (a click, then the keys): a key Key does not name comes as a
+`Key_Press` with its character (`Event.char`).
 Windows: `RegisterHotKey` (false when another program holds the combination). Linux: none (false): the compositor binds
 shortcuts to commands. `send_hotkey(w, hk)` is the other way: it presses `hk` for whatever window has the keyboard (another
 program's: a clipboard history pastes with Ctrl+V into the program it was called from). Windows: `SendInput`. Wayland: a

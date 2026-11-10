@@ -7,6 +7,7 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 import "core:unicode/utf16"
+import "core:unicode"
 import win "core:sys/windows"
 
 Native_Window :: struct {
@@ -1062,6 +1063,12 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_KEYDOWN, win.WM_SYSKEYDOWN:
 		key := key_from_vk(wparam)
 		if key != .None && key_changes(w, key, true) { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & KEYDOWN_WAS_DOWN_BIT) != 0}) }
+		// a key Key does not name: its character on the layout, with no modifier (the high bit: a dead key)
+		if key == .None && (lparam & KEYDOWN_WAS_DOWN_BIT) == 0 {
+			if ch := MapVirtualKeyW(u32(wparam), MAPVK_VK_TO_CHAR) & 0x7FFF_FFFF; ch > ' ' && ch != 0x7F {
+				push(w, {kind = .Key_Press, char = unicode_lower(rune(ch)), mods = current_mods()})
+			}
+		}
 		// no menu-bar beep on Alt+key; Alt+F4 closes, Alt+Space opens the system menu
 		if msg == win.WM_SYSKEYDOWN && key != .None && wparam != win.VK_F4 && wparam != win.VK_SPACE { return 0 }
 	case win.WM_KEYUP, win.WM_SYSKEYUP:
@@ -1133,3 +1140,12 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	defer w.in_def_proc -= 1
 	return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 }
+
+foreign import user32_map "system:User32.lib"
+@(default_calling_convention = "system", private = "file")
+foreign user32_map { MapVirtualKeyW :: proc(code: u32, map_type: u32) -> u32 --- }
+@(private = "file") MAPVK_VK_TO_CHAR :: 2
+
+// (MapVirtualKeyW gives a letter in capitals: the key types it in small letters without Shift)
+@(private = "file")
+unicode_lower :: proc(r: rune) -> rune { return unicode.to_lower(r) }

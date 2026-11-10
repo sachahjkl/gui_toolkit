@@ -33,3 +33,16 @@ a_key_has_its_keysym_name :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.keysym_name_of(.Insert), "Insert")
 	testing.expect_value(t, platform.keysym_name_of(.Menu), "")
 }
+
+// A key named by the character it types (no Key for it: the French ù): read, written back, its keysym by its code point.
+@(test)
+a_key_named_by_its_character :: proc(t: ^testing.T) {
+	hk, ok := platform.hotkey_parse("Ctrl+Shift+ù")
+	testing.expect(t, ok)
+	testing.expect_value(t, hk, platform.Hotkey{mods = {.Ctrl, .Shift}, char = 'ù'})
+	testing.expect_value(t, platform.hotkey_text(hk), "Ctrl+Shift+ù")
+	testing.expect_value(t, platform.keysym_of(hk), "U00F9")
+	testing.expect_value(t, platform.keysym_of({key = .V}), "v")
+	_, ok = platform.hotkey_parse("Ctrl+ùù")
+	testing.expect(t, !ok, "one character")
+}

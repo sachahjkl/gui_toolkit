@@ -274,7 +274,7 @@ the_first_key_not_taken_is_given :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if ui.key_press(.Return) { r.enter_taken = true }
-		if k, m, ok := ui.key_take(); ok { r.key, r.mods, r.ok = k, m, true }
+		if hk, ok := ui.key_take(); ok { r.key, r.mods, r.ok = hk.key, hk.mods, true }
 	}})
 	session.frame(s)
 	session.key(s, .K, {.Ctrl, .Shift})
@@ -372,4 +372,52 @@ files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) {
 	testing.expect(t, !platform.clipboard_files_cut(w), "said copied")
 	testing.expect(t, platform.clipboard_set(w, {text = "x", files_cut = true}), "text alone")
 	testing.expect(t, !platform.clipboard_files_cut(w), "no files, no cut")
+}
+
+////////////////////////////////
+// hotkey_field
+
+@(private = "file") recorded: platform.Hotkey
+@(private = "file") recorded_changes: int
+
+@(private = "file")
+hotkey_session :: proc(t: ^testing.T) -> ^session.Session {
+	recorded, recorded_changes = {key = .V, mods = {.Ctrl}}, 0
+	return session.start(t, {size = {400, 200}, build = proc(s: ^session.Session) {
+		ui.next({width = ui.px(240)})
+		if ui.hotkey_field("###keys", &recorded) { recorded_changes += 1 }
+	}})
+}
+
+// A click arms the field; the combination pressed is its value; a key named by the character it types is taken too.
+@(test)
+a_hotkey_field_records_the_keys_pressed :: proc(t: ^testing.T) {
+	s := hotkey_session(t)
+	testing.expect(t, session.find_text(s, "Ctrl+V") != nil, "the value shows")
+	session.click(s, "keys")
+	testing.expect(t, ui.hotkey_recording(), "armed")
+	testing.expect(t, session.find_text(s, ui.HOTKEY_FIELD_RECORDING) != nil, "it says so")
+	session.key(s, .K)   // (a key alone: no shortcut, it waits)
+	testing.expect(t, ui.hotkey_recording())
+	session.key(s, .F5, {.Ctrl, .Shift})
+	testing.expect_value(t, recorded, platform.Hotkey{key = .F5, mods = {.Ctrl, .Shift}})
+	testing.expect_value(t, recorded_changes, 1)
+	testing.expect(t, !ui.hotkey_recording(), "done")
+	session.click(s, "keys")
+	session.event(s, {kind = .Key_Press, char = 'ù', mods = {.Ctrl, .Shift}})
+	session.frame(s)
+	session.frame(s)
+	testing.expect_value(t, recorded, platform.Hotkey{mods = {.Ctrl, .Shift}, char = 'ù'})
+	testing.expect(t, session.find_text(s, "Ctrl+Shift+ù") != nil)
+}
+
+// Escape gives the recording up: the value stays.
+@(test)
+escape_gives_a_hotkey_recording_up :: proc(t: ^testing.T) {
+	s := hotkey_session(t)
+	session.click(s, "keys")
+	session.key(s, .Escape)
+	testing.expect(t, !ui.hotkey_recording())
+	testing.expect_value(t, recorded, platform.Hotkey{key = .V, mods = {.Ctrl}})
+	testing.expect_value(t, recorded_changes, 0)
 }
