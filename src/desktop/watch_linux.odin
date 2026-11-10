@@ -18,6 +18,7 @@ package tk_desktop
 // again).
 
 import "base:runtime"
+import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:sys/linux"
@@ -85,22 +86,34 @@ watch_start_linux :: proc(o: ^Options, wake: Watch_Proc, user: rawptr) -> ^Watch
 }
 
 // Watches the place, else its nearest existing ancestor. True when the place itself is watched now.
+//
+// A directory made between the failed watch of it and the watch of its parent sends its CREATE before the parent is
+// watched: once an ancestor is, the next directory toward the place is looked for, and if it is there now the place
+// settles again, one level down (what comes after the watch, the watch sees; what came before it, this finds).
 @(private = "file")
 watch_place_settle :: proc(st: ^Watch_Linux, p: ^Watch_Place) -> bool {
 	if p.path == "" { return false }
-	watch_place_release(st, p)
-	for dir := p.path; dir != ""; {
-		c := strings.clone_to_cstring(dir, context.temp_allocator)
-		if wd, err := linux.inotify_add_watch(st.inotify, c, WATCH_MASK); err == .NONE {
-			p.on, p.wd, p.exact = strings.clone(dir, st.allocator), wd, dir == p.path
-			return p.exact
+	for _ in 0 ..< WATCH_SETTLE_TRIES {
+		watch_place_release(st, p)
+		for dir := p.path; dir != ""; {
+			c := strings.clone_to_cstring(dir, context.temp_allocator)
+			if wd, err := linux.inotify_add_watch(st.inotify, c, WATCH_MASK); err == .NONE {
+				p.on, p.wd, p.exact = strings.clone(dir, st.allocator), wd, dir == p.path
+				break
+			}
+			up := filepath.dir(dir)
+			if up == dir || up == "." { break }
+			dir = up
 		}
-		up := filepath.dir(dir)
-		if up == dir || up == "." { break }
-		dir = up
+		if p.exact || p.on == "" { return p.exact }
+		next := strings.concatenate({strings.trim_right(p.on, "/"), "/", next_component(p.on, p.path)}, context.temp_allocator)
+		if !os.is_dir(next) { return false }
 	}
-	return false
+	return p.exact
 }
+
+// (how many times a place settles again while its path is being made under it)
+@(private = "file") WATCH_SETTLE_TRIES :: 16
 
 // Lets go of what the place watches; the descriptor goes when no other place watches the same directory.
 @(private = "file")

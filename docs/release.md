@@ -6,7 +6,7 @@ release workflow; a project's own tool (`tools/<tool>`) gives them its `Config` 
 ```odin
 CONFIG :: release.Config{
 	name = "classeur", repository = "https://github.com/sachahjkl/classeur",
-	changelog = "CHANGELOG.md", version_file = "src/main.odin", version_line = "APP_VERSION :: ",
+	changelog = "CHANGELOG.md", version_file = VERSION_FILE, version_line = "APP_VERSION :: ",   // (the file of APP_VERSION)
 	program = "build/classeur", dist = "build/dist",
 	files = {{"README.md", "README.md"}, {"LICENSE", "LICENSE"}},
 	check = run_check,

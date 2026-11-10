@@ -255,10 +255,11 @@ win_close :: proc(f: ^Win_Fx) {
 }
 
 // One frame on the window, captured: `box` nil is a frame without damage_begin, a zero rect marks nothing; the pixels at
-// (16, 16) and (40, 40).
+// (16, 16) and (40, 40). `read` false: the frame is drawn and ended, nothing read back (a capture waits for its frame: it is
+// always presented).
 @(private = "file")
-win_frame :: proc(f: ^Win_Fx, box: Maybe(draw.Rect), color: Maybe(draw.Color), clear := [4]f32{1, 1, 1, 1}) -> (inside, outside: [3]int, ok: bool) {
-	render.capture_request(&f.r)
+win_frame :: proc(f: ^Win_Fx, box: Maybe(draw.Rect), color: Maybe(draw.Color), clear := [4]f32{1, 1, 1, 1}, read := true) -> (inside, outside: [3]int, ok: bool) {
+	if read { render.capture_request(&f.r) }
 	render.frame_begin(&f.r, clear)
 	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
 	if b, has := box.?; has {
@@ -268,6 +269,7 @@ win_frame :: proc(f: ^Win_Fx, box: Maybe(draw.Rect), color: Maybe(draw.Color), c
 	if c, has := color.?; has { draw.rect(&f.dc, {{0, 0}, {f32(SIZE.x), f32(SIZE.y)}}, c) }
 	draw.end_frame(&f.dc)
 	render.frame_end(&f.r)
+	if !read { return {}, {}, true }
 	for _ in 0 ..< 400 {
 		pixels, size, status := render.capture_poll(&f.r, context.temp_allocator)
 		#partial switch status {
@@ -311,7 +313,8 @@ a_region_works_on_a_window :: proc(t: ^testing.T) {
 	testing.expectf(t, near(outside, {0, 255, 0}), "and only the region: %v", outside)
 }
 
-// Nothing marked: no present, and the slot of the swap chain is still there for the next frame.
+// Nothing marked: no present, and the slot of the swap chain is still there for the next frame. A capture that waits for such a
+// frame has it presented (its copy is taken from the frame's texture), with nothing changed in it.
 @(test)
 a_region_of_nothing_presents_nothing :: proc(t: ^testing.T) {
 	f: Win_Fx
@@ -323,15 +326,21 @@ a_region_of_nothing_presents_nothing :: proc(t: ^testing.T) {
 	win_frame(&f, BOX, RED)
 	presents, _, _ := render.present_totals(&f.r)
 	render.wait_for_frame(&f.r)
-	inside, outside, ok := win_frame(&f, draw.Rect{}, GREEN)
-	testing.expect(t, ok)
-	testing.expectf(t, near(inside, {255, 0, 0}) && near(outside, {255, 0, 0}), "nothing changed: %v %v", inside, outside)
+	_, _, drawn := win_frame(&f, draw.Rect{}, GREEN, read = false)
+	testing.expect(t, drawn)
 	after, _, _ := render.present_totals(&f.r)
 	testing.expect_value(t, after, presents)
 	testing.expect(t, render.wait_for_frame(&f.r, 2000), "the slot waited for and not used")
+	// a capture of a region of nothing: presented, and what it shows is what was there
+	inside, outside, ok := win_frame(&f, draw.Rect{}, GREEN)
+	testing.expect(t, ok)
+	testing.expectf(t, near(inside, {255, 0, 0}) && near(outside, {255, 0, 0}), "nothing changed: %v %v", inside, outside)
+	captured, _, _ := render.present_totals(&f.r)
+	testing.expect_value(t, captured, presents + 1)
+	render.wait_for_frame(&f.r)
 	win_frame(&f, BOX, GREEN)
 	final, _, _ := render.present_totals(&f.r)
-	testing.expect_value(t, final, presents + 1)
+	testing.expect_value(t, final, presents + 2)
 }
 
 // The GPU profile's first touch of the back buffer leaves the frame's clear color where it was.
