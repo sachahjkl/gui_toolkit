@@ -22,6 +22,7 @@ Widgets and layout
   docking.md          Docking
   panes.md            Splitter and panes
   modals.md           Modal dialogs
+  commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
   data-views.md       Tables, graphs and meters
   dragdrop.md         Drag and drop

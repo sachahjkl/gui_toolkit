@@ -41,6 +41,7 @@ them with a job on another thread.
 | `url_schemes`, `url_flag` | `wren-https`, `--open-url` | the program's own URL schemes, which run `"<exe>" <url_flag> "%1"` |
 | `uninstall_arguments` | `--setup` | Settings > Apps runs `"<exe>" <uninstall_arguments>` |
 | `generic_name`, `categories`, `keywords` | `Web Browser`, `Network;WebBrowser;` | the `.desktop` lines (`""`: the line is left out) |
+| `actions` | `{{id = "services", name = "Services", arguments = "--section services"}}` | the entry's actions (`Desktop_Action`): `Actions=` and a `[Desktop Action <id>]` group each, which runs the program with its arguments; a launcher's right click offers them |
 | `nix_runtime_name`, `nixos_libraries` | `wren-runtime`, `glibc`... | the Nix profile the installed copy runs with on NixOS (no libraries: the copy is not adapted) |
 | `watch_thread_name` | `wren-desktop-watch` | the watcher's thread |
 | `cleanup_name` | `wren_cleanup` | the stem of the batch file of a deferred deletion (`""`: the slug) |

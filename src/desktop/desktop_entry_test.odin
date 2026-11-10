@@ -172,3 +172,39 @@ classify_states :: proc(t: ^testing.T) {
 	testing.expect_value(t, describe(&s), "to repair: points to C:\\old\\sample.exe")
 	status_destroy(&s)
 }
+
+// The actions: listed in the main group, each a group of its own after it, run with the program and its arguments.
+@(test)
+desktop_entry_actions :: proc(t: ^testing.T) {
+	id := test_identity()
+	id.url_schemes, id.generic_name, id.keywords = nil, "", ""
+	actions := []Desktop_Action{{id = "services", name = "Services", arguments = "--section services"}, {id = "new", name = "New window"}}
+	id.actions = actions
+	o := Options{identity = id, exe = "/opt/sample/sample"}
+	want := `[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Sample
+Comment=A test.
+Exec=/opt/sample/sample
+TryExec=/opt/sample/sample
+Icon=sample
+Terminal=false
+StartupNotify=true
+Categories=Utility;
+Actions=services;new;
+X-Sample-Integration=sample
+
+[Desktop Action services]
+Name=Services
+Exec=/opt/sample/sample --section services
+
+[Desktop Action new]
+Name=New window
+Exec=/opt/sample/sample
+`
+	text := desktop_entry_text(&o)
+	testing.expect_value(t, text, want)
+	exec, _ := entry_value(text, "Exec")
+	testing.expect_value(t, exec, "/opt/sample/sample")   // (the main group's, not an action's)
+}

@@ -57,6 +57,7 @@ Identity :: struct {
 	generic_name: string,   // "Web Browser"
 	categories:   string,   // "Network;WebBrowser;"
 	keywords:     string,   // "Internet;WWW;Browser;Web;"
+	actions:      []Desktop_Action,   // the entry's actions: what a launcher's right click offers besides the program
 
 	// NixOS (nixos_linux.odin): the installed copy runs by itself. No libraries: the copy is not adapted.
 	nix_runtime_name: string,     // the name of the Nix profile of the runtime ("wren-runtime")
@@ -65,6 +66,14 @@ Identity :: struct {
 	watch_thread_name: string,     // the watcher's thread ("wren-desktop-watch")
 	cleanup_name:      string,     // Windows: the stem of the deferred deletion's batch file ("wren_cleanup"; "" = slug)
 	scratch_roots:     []string,   // Windows: the registry keys under HKCU that delete_scratch_root may delete (prefixes)
+}
+
+// An action of the desktop entry (the Desktop Entry Specification's [Desktop Action id]): a launcher's menu offers it,
+// and it runs the program with `arguments` ("--section services").
+Desktop_Action :: struct {
+	id:        string,   // letters, digits and '-': the group's name ("services")
+	name:      string,   // what the menu says ("Services")
+	arguments: string,   // what the program is run with
 }
 
 // An icon of the theme (Linux): a square PNG of `size` pixels.

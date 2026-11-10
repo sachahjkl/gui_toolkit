@@ -240,7 +240,20 @@ desktop_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> 
 		for m in mime_types(o.file_types, id.url_schemes) { strings.write_string(&sb2, m); strings.write_byte(&sb2, ';') }
 		line(&sb, "MimeType", strings.to_string(sb2))
 	}
+	if len(id.actions) > 0 {
+		ids := strings.builder_make(context.temp_allocator)
+		for a in id.actions { strings.write_string(&ids, a.id); strings.write_byte(&ids, ';') }
+		line(&sb, "Actions", strings.to_string(ids))
+	}
 	line(&sb, id.entry_marker, id.slug)
+	// (the actions' groups after the main one: a key after a group's header is that group's)
+	for a in id.actions {
+		fmt.sbprintf(&sb, "\n[Desktop Action %s]\n", a.id)
+		line(&sb, "Name", escape_value(a.name))
+		exec := quote_exec_argument(o.exe)
+		if a.arguments != "" { exec = strings.concatenate({exec, " ", a.arguments}, context.temp_allocator) }
+		line(&sb, "Exec", escape_value(exec))
+	}
 	return strings.to_string(sb)
 }
 
