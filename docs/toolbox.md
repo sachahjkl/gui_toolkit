@@ -71,3 +71,40 @@ program of that name earlier on the PATH. On other systems, `system_program` ret
 
 The tests (`odin test src/toolbox`) run without a network: the hashes, `env_with`, a run with a log and a time limit, a
 capture in another folder and environment, a pinned file kept, a `file:` URL downloaded, and a wrong SHA-256 refused.
+
+## A program's logo
+
+Each program draws its own logo; `write_logo(logo)` writes what every program makes of it. The program gives
+`render(size, user)`, which draws the logo at that size (a canvas the toolbox frees), and says which files it wants:
+
+- `dir` and `master`: `<dir>/logo.png` at `master` pixels (0: none).
+- `sizes`: `<dir>/logo_<size>.png` each (the desktop entry, the site, the program's window).
+- `ico`: the `.ico` of the Windows executable, with the sizes `ico_sizes` (nil: `ICO_SIZES`, 16 to 256 px). Each size
+  is drawn at its size. The sizes from `ico_png_from` are PNG entries, the ones below are classic DIBs (0: all PNG).
+- `project_image`: `PROJECT_IMAGE` (`.project/image.png`, 512 px), the picture of the repository and of opencode's
+  sessions of it.
+
+It says each file it writes and returns "" when all are written, else the file that is not. Folders are made.
+
+```odin
+why := toolbox.write_logo({render = logo_render, dir = "assets", master = 1024, sizes = {16, 32, 64, 128, 256},
+                           ico = "assets/papier.ico", project_image = true})
+```
+
+## A Windows executable's version and icon
+
+`version_header(version)` is a C header of a version of three numbers: `VER_MAJOR`, `VER_MINOR`, `VER_PATCH` (numbers)
+and `VER_STRING` (the text). It is "" when the version is not three numbers. `write_version_header(path, version)`
+writes it, only when it changes (the resource is not compiled again). The `.rc` file includes it for its VERSIONINFO:
+
+```rc
+#include "../build/version.h"
+1 ICON "..\\assets\\papier.ico"
+1 VERSIONINFO
+FILEVERSION VER_MAJOR, VER_MINOR, VER_PATCH, 0
+...
+VALUE "ProductVersion", VER_STRING
+```
+
+`exe_has_icon(path)` (Windows) is true when the executable carries an icon group 1: what Explorer, the Start menu's
+shortcut and the window show. A build checks with it that the resource is linked.
