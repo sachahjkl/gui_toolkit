@@ -20,7 +20,8 @@ import "core:math"
 // above the view (a row measured for the first time, a width change), the view stays on the row it was showing.
 //
 // Keyboard and mouse as in `list` (Up / Down, Page Up / Down, Home / End, Enter, Escape, type-ahead on `labels`), over
-// all the rows, built or not; the active row is scrolled into view at once. `labels` / `selectable` may be nil (no
+// all the rows, built or not; the active row is scrolled into view at once. With `multi`, Ctrl and Shift clicks and
+// Ctrl+A mark rows besides the active one (List_State); a mark goes with its row when the row is no longer in `ids`. `labels` / `selectable` may be nil (no
 // type-ahead / every row selectable).
 
 @(private = "file") VLIST_FIRST_ESTIMATE_EM :: 2.4     // a row's height before any was measured
@@ -140,6 +141,17 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	// 2. this build's rows and where they are
 	resize(&st.ids, n)
 	copy(st.ids[:], ids)
+	st.row_ids = st.ids[:]
+	st.marks_changed = false
+	// (a marked row that is gone, or filtered out, is no longer marked)
+	if len(st.marks) > 0 {
+		live := make(map[u64]struct{}, n, context.temp_allocator)
+		for id in ids { live[id] = {} }
+		gone := make([dynamic]u64, context.temp_allocator)
+		for id in st.marks { if id not_in live { append(&gone, id) } }
+		for id in gone { delete_key(&st.marks, id) }
+		if len(gone) > 0 { st.marks_changed = true }
+	}
 	resize(&st.offsets, n + 1)
 	y: f32
 	for i in 0 ..< n {

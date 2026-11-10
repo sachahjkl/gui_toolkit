@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
+import "../platform"
 
 // Keyboard-driven lists and tables: a vertical scroll region that is one Tab stop, with an active row.
 //
@@ -50,11 +51,80 @@ List_State :: struct {
 	reveal:      int,     // frames left to keep scrolling the active row into view
 	page_rows:   int,     // rows that fit in the view (last frame)
 	virtual:     bool,    // a Virtual_List: the row count and selectability come from the app, not from the rows built
+	// Marks: with `multi`, a Ctrl click marks a row besides the active one (or unmarks it), a Shift click marks the rows
+	// from the last row clicked to this one, a click alone clears them; the list's Ctrl+A marks every row. A row is
+	// marked by its identity (a Virtual_List's id, a `list`'s index): the marks follow the rows through a sort.
+	multi:       bool,
+	marks:       map[u64]bool,
+	marks_changed: bool,  // this frame: the marks changed
+	mark_from:   u64,     // the identity of the row a Shift click's range starts from
+	row_ids:     []u64,   // (a Virtual_List's ids, this build)
 }
 
 list_state_destroy :: proc(st: ^List_State) {
 	delete(st.selectable)
 	delete(st.building)
+	delete(st.marks)
+}
+
+// The identity of row `i`: a Virtual_List's id, else the index.
+list_row_id :: proc(st: ^List_State, i: int) -> u64 {
+	if i >= 0 && i < len(st.row_ids) { return st.row_ids[i] }
+	return u64(i)
+}
+
+// Whether row `i` is marked.
+list_is_marked :: proc(st: ^List_State, i: int) -> bool {
+	return len(st.marks) > 0 && list_row_id(st, i) in st.marks
+}
+
+// The rows marked (0: none; the selection is then the active row alone).
+list_mark_count :: proc(st: ^List_State) -> int { return len(st.marks) }
+
+list_marks_clear :: proc(st: ^List_State) {
+	if len(st.marks) > 0 { clear(&st.marks); st.marks_changed = true }
+}
+
+// Marks every row that can be selected (as of the last build).
+list_mark_all :: proc(st: ^List_State) {
+	for i in 0 ..< st.count {
+		if i < len(st.selectable) && !st.selectable[i] { continue }
+		st.marks[list_row_id(st, i)] = true
+	}
+	st.marks_changed = true
+}
+
+// Marks row `i` (`on`) or unmarks it.
+list_mark :: proc(st: ^List_State, i: int, on := true) {
+	id := list_row_id(st, i)
+	if on { st.marks[id] = true } else { delete_key(&st.marks, id) }
+	st.marks_changed = true
+}
+
+// A click on row `i` of a list with `multi`: Ctrl marks it or unmarks it (the active row joins the marks first), Shift
+// marks the range from the last row clicked, a click alone clears the marks.
+@(private = "file")
+list_mark_click :: proc(st: ^List_State, i: int, mods: platform.Modifiers) {
+	id := list_row_id(st, i)
+	switch {
+	case .Ctrl in mods:
+		if len(st.marks) == 0 && st.sel >= 0 && st.sel != i && st.sel < st.count { st.marks[list_row_id(st, st.sel)] = true }
+		if id in st.marks { delete_key(&st.marks, id) } else { st.marks[id] = true }
+		st.mark_from = id
+	case .Shift in mods:
+		from := st.sel
+		for k in 0 ..< st.count { if list_row_id(st, k) == st.mark_from { from = k; break } }
+		if from < 0 { from = i }
+		clear(&st.marks)
+		for k in min(from, i) ..= max(from, i) {
+			if k < len(st.selectable) && !st.selectable[k] { continue }
+			st.marks[list_row_id(st, k)] = true
+		}
+	case:
+		clear(&st.marks)
+		st.mark_from = id
+	}
+	st.marks_changed = true
 }
 
 // Type-ahead: does row `i`, labelled `label`, match what was typed? Records the first match and the first one at or
@@ -83,7 +153,13 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 	page := max(st.page_rows - 1, 1)
 	up :: proc(st: ^List_State) -> int { return st.sel < 0 ? list_next_selectable(st, -1, 1) : list_next_selectable(st, st.sel, -1) }
 	for e, i in s.events.list {
-		if s.events.consumed[i] || e.mods != {} { continue }
+		if s.events.consumed[i] { continue }
+		if st.multi && e.key == .A && e.mods == {.Ctrl} {
+			list_mark_all(st)
+			s.events.consumed[i] = true
+			continue
+		}
+		if e.mods != {} { continue }
 		used := true
 		#partial switch e.key {
 		case .Down:      st.sel = list_next_selectable(st, st.sel, 1)
@@ -96,7 +172,11 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 		case .Escape:    st.cancelled = true
 		case:            used = false
 		}
-		if used { s.events.consumed[i] = true; st.reveal = LIST_REVEAL_FRAMES }
+		if used {
+			s.events.consumed[i] = true
+			st.reveal = LIST_REVEAL_FRAMES
+			if st.multi && e.key != .Return && e.key != .Escape { list_marks_clear(st) }   // (a move alone: the active row is the selection)
+		}
 	}
 	if len(s.typed) > 0 {
 		if s.time_ms - st.typed_ms > LIST_TYPEAHEAD_MS { st.typed_len = 0 }
@@ -139,7 +219,7 @@ list :: proc(id: string, st: ^List_State) -> bool {
 	b.cursor = .Arrow
 	_ = signal(b)
 	st.key = b.key
-	st.activated, st.cancelled, st.changed = false, false, false
+	st.activated, st.cancelled, st.changed, st.marks_changed = false, false, false, false
 	st.focused = s.focus_key == b.key
 	st.selectable, st.building = st.building, st.selectable
 	clear(&st.building)
@@ -205,7 +285,8 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> 
 		if selectable { list_seek_row(st, i, label) }
 	}
 	active := selectable && i == st.sel
-	if active { push_tags(st.focused ? "selected" : "weak_selected") }
+	lit := active || (selectable && st.multi && list_is_marked(st, i))   // (a marked row shows as the active one)
+	if lit { push_tags(st.focused ? "selected" : "weak_selected") }
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
@@ -213,15 +294,20 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> 
 	s.next_mod = m
 	s.has_next = true
 	flags := Box_Flags{.Clickable}
-	if active { flags += {.Draw_Background} }
+	if lit { flags += {.Draw_Background} }
 	// rows that can be chosen light up under the pointer (theme: "list_row hover_fill"), headers do not
 	// (and stay lit while the pointer is on a button of theirs)
 	if selectable { flags += {.Draw_Hot_Effects, .Hot_Within}; push_tags("list_row") }
 	b := build_box(flags, fmt.tprintf("###lrow_%d", i))
 	if m.cursor == nil { b.cursor = .Arrow }   // (a row that opens something: `next({cursor = .Hand})`)
 	if selectable { pop_tags() }
-	if active { pop_tags() }
+	if lit { pop_tags() }
 	sig := signal(b)
+	if selectable && st.multi {
+		if sig.pointer_pressed { list_mark_click(st, i, sig.mods) }
+		// (a right click on a row outside the marks makes it the selection alone; on a marked row, the marks stay)
+		if sig.right_clicked && len(st.marks) > 0 && !list_is_marked(st, i) { list_marks_clear(st) }
+	}
 	if selectable && (sig.pressed || sig.right_clicked) {
 		if st.sel != i { st.changed = true }
 		st.sel = i
