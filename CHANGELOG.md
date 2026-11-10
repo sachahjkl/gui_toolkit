@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.170.0] - 2026-11-10
+
+### Fixed
+- **A Mermaid gantt chart's section names** sat on the left edge of their band (mermaid-svg sets them there, its whole padding after them): `gt_mermaid` moves them half that padding in.
+
 ## [0.169.0] - 2026-11-10
 
 ### Fixed
@@ -2387,6 +2392,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.170.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.170.0
 [0.169.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.169.0
 [0.168.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.168.0
 [0.165.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.1
