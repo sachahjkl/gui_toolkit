@@ -3,7 +3,9 @@
 //
 //	package [version]   <dist>/<name>-<version>-linux-x64.tar.gz on Linux, <name>-<version>-windows-x64.zip on Windows:
 //	                    the program and the files beside it, its SHA-256 in <archive>.sha256; the version is the
-//	                    sources' when none is given, and a version given must be theirs (a tag)
+//	                    sources' when none is given, and a version given must be theirs (a tag). A program that
+//	                    updates itself (Config.update): the program alone too, and its manifest signed by
+//	                    $UPDATE_SIGNING_KEY (a release, with its tag, needs the key)
 //	notes <version>     the changelog's section of that version (a GitHub release's notes)
 //	ship <version> [--dry-run]
 //	                    from a clean master: the changelog's [Unreleased] becomes [<version>] with today's date, the
@@ -19,6 +21,7 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 import toolbox "../toolbox"
+import update "../update"
 
 Config :: struct {
 	name:         string,     // the program ("classeur"): the archive's name, the commit's and the tag's message
@@ -30,6 +33,9 @@ Config :: struct {
 	dist:         string,     // where the archive goes ("build/dist")
 	files:        [][2]string,   // what goes beside the program: a file and its name in the archive
 	check:        proc() -> int, // the project's checks, run by ship before it commits (0: they passed)
+	// a program that updates itself (gt:update; its name set): package_ writes the program alone, what an installed copy
+	// downloads, and its manifest signed by $UPDATE_SIGNING_KEY (toolbox.UPDATE_KEY_ENV)
+	update:       update.Product,
 }
 
 // The version of the sources: the value in quotes after `line` ("" when the line is not there).
@@ -136,6 +142,10 @@ package_ :: proc(c: Config, args: []string) -> int {
 		if asked != version { fmt.eprintfln("%s: the tag says %s, the sources %s", c.name, asked, version); return 1 }
 	}
 	if !os.exists(c.program) { fmt.eprintfln("%s: %s is not built (a release build first)", c.name, c.program); return 1 }
+	// (a release, with its tag: the copies installed update themselves from its signed manifest, which needs the key)
+	updates := c.update.name != ""
+	signed := os.get_env(toolbox.UPDATE_KEY_ENV, context.temp_allocator) != ""
+	if updates && len(args) > 0 && !signed { fmt.eprintfln("%s: a release signs its update manifest: set %s", c.name, toolbox.UPDATE_KEY_ENV); return 1 }
 	when ODIN_OS == .Windows {
 		name := fmt.tprintf("%s-%s-windows-x64", c.name, version)
 		exe, archive := fmt.tprintf("%s.exe", c.name), fmt.tprintf("%s.zip", name)
@@ -159,7 +169,23 @@ package_ :: proc(c: Config, args: []string) -> int {
 		_ = os.chmod(fmt.tprintf("%s/%s", stage, exe), {.Read_User, .Write_User, .Execute_User, .Read_Group, .Execute_Group, .Read_Other, .Execute_Other})
 		if !toolbox.run({"tar", "--owner=0", "--group=0", "--numeric-owner", "-czf", archive, name}, {dir = c.dist}) { return 1 }
 	}
+	// the program alone (stripped on Linux, as in the archive) and its signed manifest
+	program: []u8
+	if updates {
+		err: os.Error
+		program, err = os.read_entire_file(fmt.tprintf("%s/%s", stage, exe), context.temp_allocator)
+		if err != nil { fmt.eprintfln("%s: %s/%s cannot be read", c.name, stage, exe); return 1 }
+	}
 	_ = os.remove_all(stage)
+	if updates {
+		alone := fmt.tprintf("%s/%s", c.dist, update.expected_file_name(c.update, version, update.PLATFORM, context.temp_allocator))
+		if os.write_entire_file(alone, program) != nil { fmt.eprintfln("%s: %s cannot be written", c.name, alone); return 1 }
+		when ODIN_OS != .Windows { _ = os.chmod(alone, {.Read_User, .Write_User, .Execute_User, .Read_Group, .Execute_Group, .Read_Other, .Execute_Other}) }
+		if signed {
+			manifest := fmt.tprintf("%s/%s", c.dist, update.manifest_name(update.PLATFORM, "", context.temp_allocator))
+			if why := toolbox.update_manifest(c.update, alone, version, "", manifest); why != "" { fmt.eprintfln("%s: %s", c.name, why); return 1 }
+		}
+	}
 	sum, ok := toolbox.sha256_file(fmt.tprintf("%s/%s", c.dist, archive))
 	if !ok { return 1 }
 	// (one file per archive: the Linux and the Windows jobs of a release each upload their own)

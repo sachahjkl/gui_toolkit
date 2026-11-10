@@ -22,6 +22,12 @@ release.ship(CONFIG, args)       // <tool> ship <version> [--dry-run]
 | `notes` | The changelog's section of a version on the standard output: a GitHub release's notes. |
 | `ship` | From a clean `master`: `[Unreleased]` becomes `[<version>] - <today>` with a new empty `[Unreleased]` above it and the version's link at the end, the sources' version set, `check` run, then a commit, the annotated tag `v<version>` and the push. `--dry-run` shows the section it would release. |
 
+A program that updates itself ([update.md](update.md)) gives its product in `Config.update`: `package_` then writes, beside
+the archive, the program alone (`expected_file_name`, stripped on Linux as in the archive), what an installed copy downloads,
+and its manifest and `.sig` (`manifest_name`), signed by `$UPDATE_SIGNING_KEY` ([toolbox.md](toolbox.md)). A release (a
+version given) without the key is refused; a package without a version is not signed. The release workflow gives the key
+as a secret and uploads `<dist>/*`.
+
 The pure parts are there for a project's own steps: `version_of`, `version_set`, `semver`, `semver_newer`,
 `changelog_release`, `changelog_section`.
 
