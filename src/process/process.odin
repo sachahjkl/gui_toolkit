@@ -7,6 +7,8 @@
 //	console_error       the same on the standard error output
 //	executable_path     the running executable ("" when the system cannot say)
 //	parent_dir          the folder of a path ("" when it has none)
+//
+// Other processes (a signal, a priority, by pid and start time): other.odin.
 package tk_process
 
 import "core:os"
