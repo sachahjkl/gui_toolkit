@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.145.0] - 2026-11-10
+
+### Added
+- **`update.Updater`**: a program updates itself. A thread of its own checks the release a while after the start and then every day, downloads the program it names, checks it against the signed manifest and puts it in place; automatic or offered (`check_now`, `install_now`), its state in `update.status`, the program told of each change (`news`). A copy from the Nix store is left to its package manager.
+  - **`gt:http`** (`tk_http`): one GET over HTTP or HTTPS with what the system has (WinHTTP; libcurl loaded at run time on Linux), redirects followed, the body bounded.
+  - `toolbox.update_command`: the `update` command of a project's tool (keygen, pubkey, the signed manifest of a release, verify), for its product; `toolbox.update_manifest` for a release step.
+
 ## [0.144.0] - 2026-11-10
 
 ### Added
@@ -2221,6 +2228,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.145.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.145.0
 [0.144.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.144.0
 [0.143.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.143.0
 [0.142.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.142.0
