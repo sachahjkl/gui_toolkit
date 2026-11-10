@@ -768,12 +768,13 @@ click :: proc(srv: ^Server, b: ^ui.Box, p: json.Object) -> (x, y: f64) {
 	btn, has := button_of(str(p["button"]))
 	if !has { btn = .Left }
 	count := max(int(num(p["count"], 1)), 1)
+	mods := mods_of(p)   // (a Ctrl or Shift click: CDP's modifiers)
 	behind := len(srv.later) > 0
-	move := platform.Event{kind = .Mouse_Move, pos = pos}
+	move := platform.Event{kind = .Mouse_Move, pos = pos, mods = mods}
 	if behind { append(&srv.later, move) } else { platform.inject_event(srv.win, move) }
 	for i in 0 ..< count {
-		ev := platform.Event{kind = .Mouse_Press, button = btn, pos = pos, buttons = {btn}}
-		up := platform.Event{kind = .Mouse_Release, button = btn, pos = pos}
+		ev := platform.Event{kind = .Mouse_Press, button = btn, pos = pos, buttons = {btn}, mods = mods}
+		up := platform.Event{kind = .Mouse_Release, button = btn, pos = pos, mods = mods}
 		if i == 0 && !behind { platform.inject_event(srv.win, ev) } else { append(&srv.later, ev) }
 		append(&srv.later, up)
 	}

@@ -76,7 +76,7 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 |---|---|
 | `Toolkit.getTree` `{all?}` | the tree: `key`, `name` (the id's hash part), `text` (rich paragraphs too), `x y w h`, `flags` (Clickable, Focusable, Text_Input, View_Scroll_Y...), `role`, `label`, `focused`, `hot`, `scroll` / `scrollMax`. Without `all`, only boxes named, with text, interactive, or holding such boxes. |
 | `Toolkit.find` `{name? text?}` | boxes named `name` exactly, or whose text contains `text` (ignoring case), in tree order. |
-| `Toolkit.click` `{name? text? index? count? button?}` | a click on the middle of the match (the nearest clickable box around it): a move and a press now, the release at the next frame; `count` 2 for a double click. |
+| `Toolkit.click` `{name? text? index? count? button? modifiers?}` | a click on the middle of the match (the nearest clickable box around it): a move and a press now, the release at the next frame; `count` 2 for a double click; `modifiers` as CDP's (Alt 1, Ctrl 2, Shift 8): a Ctrl or Shift click. |
 | `Toolkit.state` | the build counter, the focused and hovered keys, the size and DPI scale. |
 | `Toolkit.waitFor` `{name? text? gone? timeout?}` | answers when such a box is there (its nodes), or gone; an error after `timeout` ms (5000). It counts from two builds on, so input sent before it has been seen. |
 | `Toolkit.waitIdle` `{timeout?}` | answers when three builds in a row had nothing moving: `{idle: true}`, or `{idle: false}` at the timeout (a page animating for good). Before a screenshot, in place of a sleep. |
