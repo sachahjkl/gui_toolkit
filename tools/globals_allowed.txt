@@ -61,7 +61,14 @@ desktop/com_windows.odin CLSID_ShellLink const  # a COM class id (a variable: th
 desktop/open_with_windows.odin BHID_DataObject const  # a COM id (a variable: the calls take its address)
 desktop/open_with_windows.odin IID_IDataObject const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IShellLinkW const  # a COM interface id (a variable: the calls take its address)
-desktop/icons_linux.odin icon_cache process  # the icon theme read last, by every thread that asks an icon: locked (its mutex)
+desktop/icons_linux.odin icon_cache process  # the icon theme read last, by every thread that asks an icon: locked (icon_mutex)
+desktop/icons_linux.odin icon_mutex process  # guards icon_cache
+desktop/icons_linux.odin theme_name process  # the icon theme's name, asked once (theme_mutex)
+desktop/icons_linux.odin theme_known process  # whether theme_name was asked (theme_mutex)
+desktop/icons_linux.odin theme_mutex process  # guards theme_name and theme_known
+desktop/icons_windows.odin IID_IImageList const  # a COM interface id (a variable: the call takes its address)
+desktop/icons_windows.odin com_started thread  # COM started on this thread (the shell's icons need it)
+desktop/terminal_linux.odin TERMINALS const  # the terminals tried, in order
 desktop/svg_linux.odin rsvg process  # librsvg and cairo, opened once (sync.Once) and then only read
 desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IPropertyStore const  # a COM interface id (a variable: the calls take its address)

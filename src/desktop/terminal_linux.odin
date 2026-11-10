@@ -30,6 +30,9 @@ open_terminal_native :: proc(dir: string) -> bool {
 	env_terminal, _ := os.lookup_env("TERMINAL", context.temp_allocator)
 	term := terminal_program(path_list, env_terminal)
 	if term == "" || !os.is_dir(dir) { return false }
-	// (started in the folder: a terminal opens its shell where it starts)
-	return platform.launch_detached({"sh", "-c", `cd "$0" || exit 1; exec "$@"`, dir, term})
+	// (started in the folder: a terminal opens its shell where it starts; $TERMINAL may hold arguments: "kitty -1")
+	args := make([dynamic]string, context.temp_allocator)
+	append(&args, "sh", "-c", `cd "$0" || exit 1; exec "$@"`, dir)
+	append(&args, ..strings.fields(term, context.temp_allocator))
+	return platform.launch_detached(args[:])
 }

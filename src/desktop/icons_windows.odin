@@ -1,7 +1,9 @@
 package tk_desktop
 
-// The shell's icon of a path (SHGetFileInfoW), as Explorer shows it: a folder's own (the person's folders, a drive),
-// a program's or a shortcut's own, else its type's. Its colour bitmap read as 32-bit BGRA.
+// The shell's icon of a path, as Explorer shows it: a folder's own (the person's folders, a drive), a program's or a
+// shortcut's own, else its type's. SHGetFileInfoW gives its index in the system's image list; the list of the size
+// asked (16, 32, 48 or 256 pixels: SHGetImageList) gives the icon, its colour bitmap read as 32-bit BGRA (an old icon
+// with no alpha takes it from its mask). COM is started once on each thread that asks (the shell needs it).
 
 import "base:runtime"
 import "core:strings"
@@ -25,10 +27,23 @@ SHFILEINFOW :: struct {
 @(private = "file") SHGFI_USEFILEATTRIBUTES :: 0x10
 @(private = "file") FILE_ATTRIBUTE_NORMAL   :: 0x80
 @(private = "file") FILE_ATTRIBUTE_DIRECTORY :: 0x10
+@(private = "file") SHGFI_SYSICONINDEX      :: 0x4000
+@(private = "file") SHIL_LARGE      :: 0   // 32
+@(private = "file") SHIL_SMALL      :: 1   // 16
+@(private = "file") SHIL_EXTRALARGE :: 2   // 48
+@(private = "file") SHIL_JUMBO      :: 4   // 256
+@(private = "file") ILD_TRANSPARENT :: 0x1
+
+// IImageList's interface id: an IImageList is an HIMAGELIST (the shell's documentation says it may be cast).
+@(private = "file", rodata)
+IID_IImageList := win.GUID{0x46EB5926, 0x582E, 0x4017, {0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50}}
+
+@(private = "file", thread_local) com_started: bool
 
 @(default_calling_convention = "system", private = "file")
 foreign shell32 {
 	SHGetFileInfoW :: proc(path: win.LPCWSTR, attributes: win.DWORD, info: ^SHFILEINFOW, size: win.UINT, flags: win.UINT) -> uintptr ---
+	SHGetImageList :: proc(list: i32, riid: ^win.GUID, out: ^rawptr) -> win.HRESULT ---
 }
 
 @(default_calling_convention = "system", private = "file")
@@ -62,18 +77,43 @@ icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator
 	return strings.concatenate({"type:", ext}, allocator)
 }
 
+// The list of the system's images nearest above `size`.
+@(private = "file")
+image_list_for :: proc(size: int) -> i32 {
+	switch {
+	case size <= 16: return SHIL_SMALL
+	case size <= 32: return SHIL_LARGE
+	case size <= 48: return SHIL_EXTRALARGE
+	}
+	return SHIL_JUMBO
+}
+
 @(private)
 icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
+	if !com_started {
+		win.CoInitializeEx(nil, .APARTMENTTHREADED)
+		com_started = true
+	}
 	info: SHFILEINFOW
-	flags: win.UINT = SHGFI_ICON | (size <= 16 ? SHGFI_SMALLICON : SHGFI_LARGEICON)
-	if SHGetFileInfoW(win.utf8_to_wstring(path, context.temp_allocator), 0, &info, size_of(info), flags) == 0 || info.hIcon == nil {
+	wpath := win.utf8_to_wstring(path, context.temp_allocator)
+	if SHGetFileInfoW(wpath, 0, &info, size_of(info), SHGFI_SYSICONINDEX) == 0 {
 		// (a path that is gone: the icon of its kind)
 		attrs: win.DWORD = folder ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL
-		if SHGetFileInfoW(win.utf8_to_wstring(path, context.temp_allocator), attrs, &info, size_of(info), flags | SHGFI_USEFILEATTRIBUTES) == 0 || info.hIcon == nil { return }
+		if SHGetFileInfoW(wpath, attrs, &info, size_of(info), SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES) == 0 { return }
 	}
-	defer win.DestroyIcon(info.hIcon)
+	list: rawptr
+	if SHGetImageList(image_list_for(size), &IID_IImageList, &list) < 0 || list == nil { return }
+	hicon := win.ImageList_GetIcon(win.HIMAGELIST(list), info.iIcon, ILD_TRANSPARENT)
+	if hicon == nil { return }
+	defer win.DestroyIcon(hicon)
+	return icon_pixels(hicon, allocator)
+}
+
+// An icon's pixels: its colour bitmap as RGBA; with no alpha in it, the alpha from its mask (black there: shown).
+@(private = "file")
+icon_pixels :: proc(hicon: win.HICON, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
 	ii: win.ICONINFO
-	if !GetIconInfo(info.hIcon, &ii) { return }
+	if !GetIconInfo(hicon, &ii) { return }
 	defer if ii.hbmColor != nil { win.DeleteObject(win.HGDIOBJ(ii.hbmColor)) }
 	defer if ii.hbmMask != nil { win.DeleteObject(win.HGDIOBJ(ii.hbmMask)) }
 	if ii.hbmColor == nil { return }
@@ -88,12 +128,17 @@ icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, alloc
 		delete(px, allocator)
 		return
 	}
-	// BGRA to RGBA; an icon of no alpha (an old one) is opaque
 	any_alpha := false
 	for i := 3; i < len(px); i += 4 { if px[i] != 0 { any_alpha = true; break } }
+	mask: []u8
+	if !any_alpha && ii.hbmMask != nil {
+		mask = make([]u8, w * h * 4, context.temp_allocator)
+		mi := bi
+		if win.GetDIBits(dc, ii.hbmMask, 0, u32(h), raw_data(mask), &mi, win.DIB_RGB_COLORS) == 0 { mask = nil }
+	}
 	for i := 0; i < len(px); i += 4 {
 		px[i], px[i + 2] = px[i + 2], px[i]
-		if !any_alpha { px[i + 3] = 255 }
+		if !any_alpha { px[i + 3] = mask != nil && mask[i] != 0 ? 0 : 255 }
 	}
 	return File_Icon{px, {w, h}}, true
 }

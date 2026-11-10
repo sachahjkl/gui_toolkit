@@ -374,7 +374,12 @@ open_command :: proc(db: ^Mime_Database, path: string, id: string) -> ([]string,
 @(private)
 mime_of_file :: proc(db: ^Mime_Database, path: string) -> string {
 	if os.is_dir(path) { return "inode/directory" }
-	name := filepath.base(path)
+	return mime_of_name(db, filepath.base(path))
+}
+
+// The type a file's name says (its globs alone: nothing is read).
+@(private)
+mime_of_name :: proc(db: ^Mime_Database, name: string) -> string {
 	lower := ascii.lower(name, context.temp_allocator)
 	best, best_weight, best_len := "application/octet-stream", -1, 0
 	for g in db.globs {

@@ -23,6 +23,7 @@ Rsvg :: struct {
 	unref:           proc "c" (object: rawptr),
 	surface_create:  proc "c" (format: i32, width, height: i32) -> rawptr,
 	surface_flush:   proc "c" (surface: rawptr),
+	surface_status:  proc "c" (surface: rawptr) -> i32,
 	surface_data:    proc "c" (surface: rawptr) -> [^]u8,
 	surface_stride:  proc "c" (surface: rawptr) -> i32,
 	surface_destroy: proc "c" (surface: rawptr),
@@ -52,6 +53,7 @@ rsvg_open :: proc() {
 	ok &= sym(gobject, "g_object_unref", &rsvg.unref)
 	ok &= sym(cairo, "cairo_image_surface_create", &rsvg.surface_create)
 	ok &= sym(cairo, "cairo_surface_flush", &rsvg.surface_flush)
+	ok &= sym(cairo, "cairo_surface_status", &rsvg.surface_status)
 	ok &= sym(cairo, "cairo_image_surface_get_data", &rsvg.surface_data)
 	ok &= sym(cairo, "cairo_image_surface_get_stride", &rsvg.surface_stride)
 	ok &= sym(cairo, "cairo_surface_destroy", &rsvg.surface_destroy)
@@ -73,9 +75,11 @@ svg_render :: proc(data: []u8, size: int, allocator: runtime.Allocator) -> (icon
 	handle := rsvg.new_from_data(raw_data(data), uint(len(data)), nil)
 	if handle == nil { return }
 	defer rsvg.unref(handle)
+	// (cairo gives an error surface, never nil: its status says)
 	surface := rsvg.surface_create(CAIRO_FORMAT_ARGB32, i32(size), i32(size))
 	if surface == nil { return }
 	defer rsvg.surface_destroy(surface)
+	if rsvg.surface_status(surface) != 0 { return }
 	cr := rsvg.create(surface)
 	viewport := Rsvg_Rect{0, 0, f64(size), f64(size)}
 	drawn := rsvg.render_document(handle, cr, &viewport, nil) != 0
@@ -83,6 +87,7 @@ svg_render :: proc(data: []u8, size: int, allocator: runtime.Allocator) -> (icon
 	if !drawn { return }
 	rsvg.surface_flush(surface)
 	src := rsvg.surface_data(surface)
+	if src == nil { return }
 	stride := int(rsvg.surface_stride(surface))
 	// cairo's ARGB32: a native-endian word per pixel (B, G, R, A in memory here), premultiplied
 	out := make([]u8, size * size * 4, allocator)
