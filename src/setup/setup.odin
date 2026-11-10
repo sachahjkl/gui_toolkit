@@ -163,6 +163,25 @@ install :: proc(c: Config, desktop_shortcut: bool, choices: []bool = nil, folder
 	return true, o.exe
 }
 
+// After an update put a new program in place of the installed copy (update.Updater): its install manifest and the
+// system's record (Settings > Apps) say `version`. Nothing to do for `exe` when it is not the installed copy. why: "" when
+// done (temp memory).
+updated :: proc(c: Config, version: string, exe := "") -> (ok: bool, why: string) {
+	running := exe != "" ? exe : process.executable_path()
+	o, _ := options(c)
+	info := desktop.installed_info(&o, o.install_dir, context.temp_allocator)
+	if !info.manifest || info.exe == "" || !desktop.same_path(info.exe, running) { return true, "" }
+	exe_name := desktop.exe_name_of(o.identity)
+	plan := desktop.Install_Plan{
+		identity = o.identity, src_exe = running, dir = o.install_dir, exe_name = exe_name,
+		version = version, channel = "release", adapt = true,
+	}
+	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
+	o.exe = running
+	if r := desktop.record_install(&o, o.install_dir, version); r.error != .None { return false, failure(r) }
+	return true, ""
+}
+
 // Removes the launchers and parts (ours only), the system's record and the installed files. The files of the copy that
 // runs (Windows: they cannot be deleted while it runs) are in `leftovers` (heap, the caller's): remove_later deletes them
 // once this process has ended.

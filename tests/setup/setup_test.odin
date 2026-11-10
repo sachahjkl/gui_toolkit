@@ -235,3 +235,33 @@ a_screen_of_its_own_asks_the_controller :: proc(t: ^testing.T) {
 	d.facts = {state = .Not_Installed}
 	testing.expect_value(t, setup.close(&d, .Close), setup.Event.Dismissed)   // (no answer: not again for this version)
 }
+
+// After an update the installed copy says its new version; a copy elsewhere changes nothing.
+@(test)
+an_update_of_the_installed_copy_is_recorded :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux { return }
+	tmp := os.get_env("TMPDIR", context.temp_allocator)
+	sc := Scratch{root = fmt.tprintf("%s/tk_setup_upd_%d", tmp != "" ? tmp : "/tmp", time.now()._nsec)}
+	sc.install = fmt.tprintf("%s/programs/sample", sc.root)
+	testing.expect(t, os.make_directory_all(sc.root) == nil)
+	defer os.remove_all(sc.root)
+	cfg := setup.Config{identity = desktop.Identity{
+		name = "Sample", key = "Sample", slug = "sample", aumid = "GuiToolkit.Sample.Test", description = "A test.",
+		vendor = "Gui Toolkit", exe_name = "sample", entry_marker = "X-Sample-Integration", registry_mark = "SampleIntegration",
+		vendor_key = "GuiToolkitTest", manifest_name = "sample_install.txt", manifest_header = "# Written by the setup tests.",
+		cli_flag = "--desktop-integration", env_prefix = "SAMPLE_DESKTOP_", watch_thread_name = "sample-watch", cleanup_name = "sample_cleanup",
+	}, version = "1.0.0", prepare = scratch_prepare, user = &sc}
+	ok, exe := setup.install(cfg, false)
+	testing.expectf(t, ok, "installed: %s", exe)
+	exe = strings.clone(exe, context.temp_allocator)
+	testing.expect_value(t, setup.facts(cfg).version, "1.0.0")
+
+	ok, _ = setup.updated(cfg, "1.1.0", exe = fmt.tprintf("%s/elsewhere/sample", sc.root))
+	testing.expect(t, ok)
+	testing.expect_value(t, setup.facts(cfg).version, "1.0.0")   // (not the installed copy: nothing)
+
+	why: string
+	ok, why = setup.updated(cfg, "1.1.0", exe = exe)
+	testing.expectf(t, ok, "recorded: %s", why)
+	testing.expect_value(t, setup.facts(cfg).version, "1.1.0")
+}

@@ -110,3 +110,9 @@ record (`desktop.record_install`: on Windows, Settings > Apps, whose Uninstall r
 `uninstall(cfg)` takes it all away; what the running copy holds (Windows) is in its leftovers, which `finish` hands to
 `desktop.cleanup_later` at the end of the process. After an install from another copy, the dialog offers to open the
 installed one (`Launched`): the program ends then.
+
+## After an update
+
+When `update.Updater` has put a new program in place of the installed copy (`docs/update.md`), `updated(cfg, version)`
+makes the install say it: the install manifest names the new version, and so does the system's record (Settings > Apps on
+Windows). For a program that is not the installed copy (a build, an unzipped folder), it does nothing and returns ok.
