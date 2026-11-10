@@ -11,6 +11,10 @@ package tk_setup
 //   setup.finish(&d, cfg)                    at the end of the process (what an uninstall left goes then)
 //   setup.destroy(&d)
 //
+// A program that draws a screen of its own keeps the Dialog and calls `update` each frame instead of `dialog`, and the
+// actions below from its buttons (the dialog uses the same): what the state is, what is offered and how the work goes
+// are the same in every screen.
+//
 // Nothing is read or written on the interface thread: reading the state, Install, Uninstall and the folder picker run on
 // a thread of the dialog's, one at a time; meanwhile the dialog says so and its buttons wait, and the end of the work
 // wakes the program (ui.post to the State of the dialog's last frame: destroy the dialog before that State). While the dialog is open, the places of the install are watched (desktop.watch_start): what
@@ -338,13 +342,8 @@ when ODIN_OS == .Windows {
 // versions, the state as a badge); the install location; the options as a grid of boxes; what the disk says (where the
 // files are, a note); the buttons. Config.square: every corner square.
 dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: Event) {
-	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
-	ev = job_collect(d, c)
-	if !d.open {
-		watch_end(d)
-		return
-	}
-	if d.job == nil && sync.atomic_load(&d.stale_flag) { job_start(d, c, .Read) }
+	ev = update(d, c)
+	if !d.open { return }
 	was_open := d.open
 	busy := d.job != nil && d.job.kind != .Read
 	if ui.modal_sized("setup", DIALOG_EM * em, &d.size, &d.open, DIALOG_MIN_EM * em) {
@@ -369,12 +368,99 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 		if bev := buttons(d, c, em); bev != .None { ev = bev }
 		ui.spacer(ui.px(em * 0.8))
 	}
-	// closed without an answer: not again for this version
-	if was_open && !d.open && ev == .None && d.facts.state != .Removal_Scheduled && d.installed == "" {
-		if d.facts.state != .This_Copy { ev = .Dismissed }
-	}
+	if was_open && !d.open && ev == .None { ev = closed_event(d) }
 	if !d.open { watch_end(d) }
 	return
+}
+
+////////////////////////////////
+// The controller: what a screen of the program's own calls (the dialog calls the same)
+
+// Each frame, open or not: collects the work that ended (its event), reads the install again when it changed, stops
+// watching once closed.
+update :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
+	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
+	ev = job_collect(d, c)
+	if !d.open {
+		watch_end(d)
+		return
+	}
+	if d.job == nil && sync.atomic_load(&d.stale_flag) { job_start(d, c, .Read) }
+	return
+}
+
+// Install, Uninstall or the folder picker is at work (the buttons wait; reading the state is not work).
+busy :: proc(d: ^Dialog) -> bool { return d.job != nil && d.job.kind != .Read }
+
+// What the install button says for the state ("": none is offered: not read yet, just installed, removed, from Nix).
+install_label :: proc(d: ^Dialog, c: Config) -> string {
+	f := &d.facts
+	if !d.known || d.installed != "" && f.state != .This_Copy || f.state == .Removal_Scheduled || f.from_nix { return "" }
+	#partial switch f.state {
+	case .Other_Copy:
+		switch {
+		case is_upgrade(f^, c.version):   return fmt.tprintf("Upgrade to %s", c.version)
+		case is_downgrade(f^, c.version): return fmt.tprintf("Go back to %s", c.version)
+		}
+		return "Replace the installed copy"
+	case .Repair:    return "Repair"
+	case .This_Copy: return "Update the shortcuts"
+	}
+	return "Install"
+}
+
+// Uninstall is offered: something of an install is there.
+can_uninstall :: proc(d: ^Dialog) -> bool {
+	return d.known && (d.facts.state == .This_Copy || d.facts.state == .Repair || d.facts.state == .Other_Copy)
+}
+
+// What closes the screen without installing: Close, Not now (an upgrade), Keep standalone (no install, another copy).
+Closing :: enum u8 { Close, Not_Now, Keep_Standalone }
+
+closing :: proc(d: ^Dialog, c: Config) -> Closing {
+	switch {
+	case d.installed != "" && d.facts.state != .This_Copy: return .Close
+	case is_upgrade(d.facts, c.version):                   return .Not_Now
+	case d.known && (d.facts.state == .Not_Installed || d.facts.state == .Other_Copy): return .Keep_Standalone
+	}
+	return .Close
+}
+
+// Starts Install (with Dialog.shortcut, choices and folder) on the dialog's thread; nothing while work is out.
+start_install :: proc(d: ^Dialog, c: Config) { if d.known && d.job == nil { job_start(d, c, .Install) } }
+
+// Starts Uninstall on the dialog's thread (a screen asks first: Dialog.confirm); nothing while work is out.
+start_uninstall :: proc(d: ^Dialog, c: Config) { if d.known && d.job == nil { job_start(d, c, .Uninstall) } }
+
+// Opens the system's folder picker for the install folder (Dialog.folder takes the answer).
+pick_folder :: proc(d: ^Dialog, c: Config) { if d.job == nil { job_start(d, c, .Pick_Folder) } }
+
+// Starts the copy just installed (Dialog.installed): Launched, the program then ends; None when it does not start.
+open_installed :: proc(d: ^Dialog) -> Event {
+	if d.installed != "" && launch(d.installed) { return .Launched }
+	say(d, false, fmt.tprintf("%s does not start", d.installed))
+	return .None
+}
+
+// Closes the screen by `how`: the event to keep (Kept_Standalone, Dismissed: not again for this version, or None).
+close :: proc(d: ^Dialog, how: Closing) -> Event {
+	if !d.open { return .None }
+	d.open = false
+	watch_end(d)
+	switch how {
+	case .Keep_Standalone: return .Kept_Standalone
+	case .Not_Now:         return .Dismissed
+	case .Close:
+	}
+	return closed_event(d)
+}
+
+// Closed without an answer (Close, Escape, a click outside): not again for this version, unless there is nothing to
+// ask (installed, just installed, removed).
+@(private = "file")
+closed_event :: proc(d: ^Dialog) -> Event {
+	if d.facts.state == .Removal_Scheduled || d.installed != "" || d.facts.state == .This_Copy { return .None }
+	return .Dismissed
 }
 
 // A corner's radius: `k` ems, none when the program wants it square.
@@ -424,9 +510,8 @@ panel_end :: proc() {
 	ui.pop_parent()
 }
 
-// What the dialog offers for this state, and the state in a word.
-@(private = "file")
-title_and_badge :: proc(f: Facts, c: Config) -> (title, badge: string) {
+// What the screen offers for this state ("Install Classeur", "Repair Classeur"...), and the state in a word.
+headline :: proc(f: Facts, c: Config) -> (title, badge: string) {
 	name := c.identity.name
 	switch f.state {
 	case .Not_Installed:     return fmt.tprintf("Install %s", name), "Not installed"
@@ -458,7 +543,7 @@ head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
 			ui.spacer(ui.px(em * 0.8))
 		}
 		title, badge := "Reading the install…", ""
-		if d.known { title, badge = title_and_badge(f^, c) }
+		if d.known { title, badge = headline(f^, c) }
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###setup_words") {
 			ui.spacer(ui.px(em * 0.55))
@@ -507,7 +592,7 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(c, em, 0.3)})
 			_ = ui.line_edit("###setup_folder", &d.folder)
 			ui.spacer(ui.px(em * 0.4))
-			if button(c, "###setup_pick", "Choose…", .Normal, em) && !busy && d.job == nil { job_start(d, c, .Pick_Folder) }
+			if button(c, "###setup_pick", "Choose…", .Normal, em) && !busy { pick_folder(d, c) }
 		} else {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(c, em, 0.3)})
 			well: ^ui.Box
@@ -714,56 +799,34 @@ logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 // runs, a click does nothing.
 @(private = "file")
 buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
-	f := &d.facts
-	idle := d.job == nil || d.job.kind == .Read
 	d.at = {}
 	// (keys are made under the row: the box of a button is looked for there, right after it)
 	mark :: proc(d: ^Dialog, role: Button_Role, id: string) { if b := ui.prev_box(id); b != nil { d.at[role] = b.rect } }
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(.Center, id = "###setup_buttons") {
 		ui.spacer(ui.px(em * MARGIN_EM))
-		if d.known && (f.state == .This_Copy || f.state == .Repair || f.state == .Other_Copy) {
+		if can_uninstall(d) {
 			// (the first click asks; the second uninstalls)
-			if button(c, "###setup_uninstall", d.confirm ? "Click again to uninstall" : "Uninstall", .Danger, em) && idle && d.job == nil {
-				if d.confirm { job_start(d, c, .Uninstall) } else { d.confirm = true }
+			if button(c, "###setup_uninstall", d.confirm ? "Click again to uninstall" : "Uninstall", .Danger, em) && !busy(d) {
+				if d.confirm { start_uninstall(d, c) } else { d.confirm = true }
 			}
 			mark(d, .Uninstall, "###setup_uninstall")
 		}
 		ui.spacer(ui.fill())
-		just_installed := d.installed != "" && f.state != .This_Copy
-		upgrade := is_upgrade(f^, c.version)
-		switch {
-		case just_installed:
-			if button(c, "###setup_close", "Close", .Normal, em) { d.open = false }
+		just_installed := d.installed != "" && d.facts.state != .This_Copy
+		how := closing(d, c)
+		CLOSING_WORDS := [Closing]string{.Close = "Close", .Not_Now = "Not now", .Keep_Standalone = "Keep standalone"}
+		CLOSING_IDS := [Closing]string{.Close = "###setup_close", .Not_Now = "###setup_later", .Keep_Standalone = "###setup_standalone"}
+		if button(c, CLOSING_IDS[how], CLOSING_WORDS[how], .Normal, em) { ev = close(d, how) }
+		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }
+		if just_installed {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_launch", "Open the installed copy", .Accent, em) {
-				if launch(d.installed) { ev = .Launched } else { say(d, false, fmt.tprintf("%s does not start", d.installed)) }
-			}
+			if button(c, "###setup_launch", "Open the installed copy", .Accent, em) { ev = open_installed(d) }
 			mark(d, .Secondary, "###setup_launch")
-		case upgrade:
-			if button(c, "###setup_later", "Not now", .Normal, em) { d.open = false; ev = .Dismissed }
-			mark(d, .Secondary, "###setup_later")
-		case d.known && (f.state == .Not_Installed || f.state == .Other_Copy):
-			if button(c, "###setup_standalone", "Keep standalone", .Normal, em) { d.open = false; ev = .Kept_Standalone }
-			mark(d, .Secondary, "###setup_standalone")
-		case:
-			if button(c, "###setup_close", "Close", .Normal, em) { d.open = false }
-			mark(d, .Secondary, "###setup_close")
 		}
-		if d.known && !just_installed && f.state != .Removal_Scheduled && !f.from_nix {
-			label := "Install"
-			#partial switch f.state {
-			case .Other_Copy:
-				switch {
-				case upgrade:                       label = fmt.tprintf("Upgrade to %s", c.version)
-				case is_downgrade(f^, c.version):   label = fmt.tprintf("Go back to %s", c.version)
-				case:                               label = "Replace the installed copy"
-				}
-			case .Repair:     label = "Repair"
-			case .This_Copy:  label = "Update the shortcuts"
-			}
+		if label := install_label(d, c); label != "" {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_install", label, .Accent, em) && idle && d.job == nil { job_start(d, c, .Install) }
+			if button(c, "###setup_install", label, .Accent, em) && !busy(d) { start_install(d, c) }
 			mark(d, .Install, "###setup_install")
 		}
 		ui.spacer(ui.px(em * MARGIN_EM))

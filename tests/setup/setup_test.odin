@@ -199,3 +199,39 @@ the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, app.d.watcher == nil, "closed: no longer watched")
 }
+
+// A program that draws its own screen asks the controller what to offer and closes through it: the same answers as the
+// dialog's.
+@(test)
+a_screen_of_its_own_asks_the_controller :: proc(t: ^testing.T) {
+	cfg := setup.Config{identity = desktop.Identity{name = "Sample"}, version = "1.0.0"}
+	d: setup.Dialog
+	defer setup.destroy(&d)
+	d.open, d.known = true, true
+	d.facts = {state = .Not_Installed}
+	title, badge := setup.headline(d.facts, cfg)
+	testing.expect_value(t, title, "Install Sample")
+	testing.expect_value(t, badge, "Not installed")
+	testing.expect_value(t, setup.install_label(&d, cfg), "Install")
+	testing.expect(t, !setup.can_uninstall(&d), "nothing to uninstall")
+	testing.expect(t, !setup.busy(&d))
+	testing.expect_value(t, setup.closing(&d, cfg), setup.Closing.Keep_Standalone)
+	testing.expect_value(t, setup.close(&d, .Keep_Standalone), setup.Event.Kept_Standalone)
+	testing.expect(t, !d.open, "closed")
+	testing.expect_value(t, setup.close(&d, .Close), setup.Event.None)   // (closed already: nothing)
+
+	d.open = true
+	d.facts = {state = .Other_Copy, version = "0.9.0", exe_there = true, manifest = true}
+	testing.expect_value(t, setup.install_label(&d, cfg), "Upgrade to 1.0.0")
+	testing.expect(t, setup.can_uninstall(&d))
+	testing.expect_value(t, setup.closing(&d, cfg), setup.Closing.Not_Now)
+	testing.expect_value(t, setup.close(&d, .Not_Now), setup.Event.Dismissed)
+
+	d.open = true
+	d.facts = {state = .This_Copy, exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true}
+	testing.expect_value(t, setup.install_label(&d, cfg), "Update the shortcuts")
+	testing.expect_value(t, setup.close(&d, .Close), setup.Event.None)   // (installed: nothing to remember)
+	d.open = true
+	d.facts = {state = .Not_Installed}
+	testing.expect_value(t, setup.close(&d, .Close), setup.Event.Dismissed)   // (no answer: not again for this version)
+}

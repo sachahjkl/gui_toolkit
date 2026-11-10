@@ -40,6 +40,41 @@ the clipboard.
 The dialog opens at 36 by 27 em; its edges and its corner resize it (`Dialog.size`, logical pixels: the program may keep it
 between starts). What it says scrolls when it is made small; its buttons stay under it.
 
+## A screen of the program's own
+
+A program that wants another layout keeps the `Dialog` and its machinery and draws the rest: it calls `update` each frame
+instead of `dialog`, and the actions from its own buttons. The state, what is offered and the work (on the dialog's
+thread, the install watched) are the same as in the dialog, which calls the same procedures.
+
+```odin
+ev := setup.update(&d, cfg)                       // each frame, open or not: the work that ended, the install read again
+if d.open && ui.modal_sized("my_setup", ...) {
+	title, badge := setup.headline(d.facts, cfg)   // "Install Classeur", "Not installed"
+	words, tone := setup.state_words(d.facts, cfg) // the state in a sentence, its tone
+	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Config.choices
+	if setup.can_uninstall(&d) && my_button("Uninstall") && !setup.busy(&d) { setup.start_uninstall(&d, cfg) }
+	how := setup.closing(&d, cfg)                  // Close, Not_Now or Keep_Standalone
+	if my_button(...) { ev = setup.close(&d, how) }
+	if d.installed != "" && my_button("Open the installed copy") { ev = setup.open_installed(&d) }
+	if label := setup.install_label(&d, cfg); label != "" && my_button(label) && !setup.busy(&d) { setup.start_install(&d, cfg) }
+}
+// Escape or a click outside closed it: setup.close(&d, .Close) gives the event to keep
+```
+
+| | |
+|---|---|
+| `update(d, c) -> Event` | each frame: collects the work that ended, reads the install again when it changed, stops watching once closed |
+| `headline(f, c)`, `state_words(f, c)` | what the screen offers and the state in a word; the state in a sentence and its tone |
+| `install_label(d, c)` | Install, Repair, Upgrade to …, Go back to …, Replace the installed copy, Update the shortcuts; "": none |
+| `can_uninstall(d)`, `busy(d)` | something of an install is there; Install, Uninstall or the picker is at work |
+| `closing(d, c) -> Closing` | `Close`, `Not_Now` (an upgrade) or `Keep_Standalone` (no install, another copy) |
+| `start_install`, `start_uninstall`, `pick_folder` | the work, on the dialog's thread (nothing while work is out) |
+| `open_installed(d)` | starts `Dialog.installed`: `Launched`, the program then ends |
+| `close(d, how)` | closes it: `Kept_Standalone`, `Dismissed` (Not now, or no answer), or `None` (nothing to remember) |
+
+`Dialog.facts`, `known` (read once), `shortcut`, `choices`, `folder`, `note` / `note_good`, `installed` and `confirm`
+are what such a screen shows and sets.
+
 ## The program's look
 
 The dialog is drawn with the theme's widgets. A program with a look of its own gives `Config` three procedures (each may be
