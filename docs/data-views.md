@@ -19,7 +19,7 @@ ui.value_history_clear(&cpu)
 
 `line_graph(id, series, opts)` draws one or more series in the box that `next` gives. Each series is an area under its
 line, filled with its colour fading to the bottom. The newest value is at the right edge. The grid and the frame use the
-theme's border colour.
+theme's border colour; in the machined finish a graph with a grid is a well (a screen set in the surface).
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 12)})
@@ -46,7 +46,7 @@ round value at or above `v`: 1, 2 or 5 times a power of ten, at least `floor`.
 
 `meter_bar(id, used, alert)` is a flat bar of how full something is (`used` from 0 to 1): the theme's accent on its border
 colour. Past `alert` the bar takes the colour of the `bad` tag. It has no animation: it shows the last sample. Screen
-readers read it as a progress indicator in percent.
+readers read it as a progress indicator in percent. In the machined finish it is a slot carved in the surface, its run a lit face.
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(max(3, em * 0.25))})
