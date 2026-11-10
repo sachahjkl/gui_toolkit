@@ -10,11 +10,13 @@ package tk_desktop
 //   - the names of a file: its type's icon (mime/icons), the type with '/' made '-' (image-png), its family's
 //     (mime/generic-icons), then its parents', then <media>-x-generic; a folder: the person's folders their own names
 //     (user-home, folder-download...), else folder.
-// What was read is kept while the roots and the theme's name are the same (a lock: any thread may ask).
+// What was read is kept while the roots and the theme's name are the same (icon_mutex: any thread may ask). The theme's
+// name is asked once (theme_mutex; the portal is asked with no lock held) until file_icons_forget.
 
 import "base:runtime"
 import "core:mem/virtual"
 import "core:os"
+import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "core:sync"
@@ -43,17 +45,45 @@ Icon_Theme :: struct {
 
 @(private = "file")
 Icon_Cache :: struct {
-	mutex:  sync.Mutex,
 	arena:  virtual.Arena,
 	ready:  bool,
 	key:    string,
 	chain:  []^Icon_Theme,                 // the theme, what it inherits, hicolor
 	found:  map[string]string,             // "name@size" -> the file ("" none)
-	theme:  string,                        // the theme's name, read once (heap)
-	named:  bool,
 }
 
 @(private = "file") icon_cache: Icon_Cache
+@(private = "file") icon_mutex: sync.Mutex     // guards icon_cache
+
+// The theme's name as last asked (heap), and whether it was asked. Guarded by theme_mutex.
+@(private = "file") theme_name: string
+@(private = "file") theme_known: bool
+@(private = "file") theme_mutex: sync.Mutex
+
+// The theme's name: asked of the portal (else read from the files) the first time, with no lock held while it is.
+@(private = "file")
+icon_theme_current :: proc() -> string {
+	{
+		sync.mutex_guard(&theme_mutex)
+		if theme_known { return strings.clone(theme_name, context.temp_allocator) }
+	}
+	name, asked := platform.portal_icon_theme(runtime.heap_allocator())
+	if !asked { name = icon_theme_name(xdg_config_home(), runtime.heap_allocator()) }
+	sync.mutex_guard(&theme_mutex)
+	if theme_known {
+		delete(name, runtime.heap_allocator())
+	} else {
+		theme_name, theme_known = name, true
+	}
+	return strings.clone(theme_name, context.temp_allocator)
+}
+
+// Forgets the theme's name: the next icon asks it again (the person chose another theme).
+file_icons_forget :: proc() {
+	sync.mutex_guard(&theme_mutex)
+	delete(theme_name, runtime.heap_allocator())
+	theme_name, theme_known = "", false
+}
 
 // The icon theme the desktop shows (its name), "" when none is set.
 @(private)
@@ -159,9 +189,7 @@ icon_cache_get :: proc(roots: Xdg_Roots, name: string) -> ^Icon_Cache {
 	key := strings.concatenate({name, "\n", strings.join(roots.data, ":", context.temp_allocator)}, context.temp_allocator)
 	if c.ready && c.key == key { return c }
 	if c.ready { virtual.arena_destroy(&c.arena) }
-	theme, named := c.theme, c.named
 	c^ = {}
-	c.theme, c.named = theme, named
 	_ = virtual.arena_init_growing(&c.arena)
 	a := virtual.arena_allocator(&c.arena)
 	c.key = strings.clone(key, a)
@@ -229,9 +257,9 @@ icon_file :: proc(c: ^Icon_Cache, name: string, size: int) -> string {
 		for d in t.dirs {
 			dist := dir_distance(d, size)
 			if dist >= best { continue }
-			for b in t.bases { for e in exts {
+			bases: for b in t.bases { for e in exts {
 				p := strings.concatenate({b, "/", d.sub, "/", name, e}, context.temp_allocator)
-				if os.is_file(p) { found, best = p, dist; break }
+				if os.is_file(p) { found, best = p, dist; break bases }
 			} }
 		}
 		if found != "" { break }
@@ -298,25 +326,15 @@ icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator
 		names := folder_names(path)
 		return strings.concatenate({"folder:", names[0]}, allocator)
 	}
+	// (from the name alone: a key costs no read of the file)
 	sync.mutex_guard(&mime_cache.mutex)
 	db := mime_cache_get(&mime_cache, xdg_roots())
-	return strings.concatenate({"type:", mime_of_file(db, path)}, allocator)
+	return strings.concatenate({"type:", mime_of_name(db, filepath.base(path))}, allocator)
 }
 
 @(private)
 icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
-	theme: string
-	{
-		sync.mutex_guard(&icon_cache.mutex)
-		if !icon_cache.named {
-			// (the portal asked from this worker once: its connection is this thread's)
-			name, asked := platform.portal_icon_theme(runtime.heap_allocator())
-			if !asked { name = icon_theme_name(xdg_config_home(), runtime.heap_allocator()) }
-			icon_cache.theme, icon_cache.named = name, true
-		}
-		theme = strings.clone(icon_cache.theme, context.temp_allocator)
-	}
-	return icon_of_path_in(xdg_roots(), theme, path, folder, size, allocator, choose)
+	return icon_of_path_in(xdg_roots(), icon_theme_current(), path, folder, size, allocator, choose)
 }
 
 // The icon of `path` from the XDG folders `roots` and the theme named `theme` (the tests give theirs).
@@ -328,7 +346,7 @@ icon_of_path_in :: proc(roots: Xdg_Roots, theme: string, path: string, folder: b
 	} else {
 		sync.mutex_guard(&mime_cache.mutex)
 		db := mime_cache_get(&mime_cache, roots)
-		found := file_names(db, mime_of_file(db, path))
+		found := file_names(db, mime_of_name(db, filepath.base(path)))
 		// (copied: the database's memory is not reached after the lock)
 		copied := make([]string, len(found), context.temp_allocator)
 		for n, i in found { copied[i] = strings.clone(n, context.temp_allocator) }
@@ -336,7 +354,7 @@ icon_of_path_in :: proc(roots: Xdg_Roots, theme: string, path: string, folder: b
 	}
 	file := ""
 	{
-		sync.mutex_guard(&icon_cache.mutex)
+		sync.mutex_guard(&icon_mutex)
 		c := icon_cache_get(roots, theme)
 		for n in names {
 			if f := icon_file(c, n, choose > 0 ? choose : size); f != "" { file = strings.clone(f, context.temp_allocator); break }

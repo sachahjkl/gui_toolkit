@@ -173,10 +173,12 @@ file is chosen by, the picture still made at `size` (Papirus's small icons are m
 | System | Where the icon comes from |
 |---|---|
 | Linux | The person's icon theme (Icon Theme specification), read once per process: the Settings portal's `org.gnome.desktop.interface` `icon-theme` (dconf's, what GTK shows), else `gtk-icon-theme-name` of gtk-4.0's or gtk-3.0's `settings.ini`, else KDE's `kdeglobals` `[Icons] Theme=`, the themes it inherits, then `hicolor`; the subfolder of the size asked, else the nearest. A file's names: its type's icon (`mime/icons`), the type with `/` made `-` (`image-png`), its family's (`mime/generic-icons`), its parents', `<media>-x-generic`. A folder: the person's folders their own (`user-home`, `user-desktop`, `folder-documents`, `folder-download`, `folder-music`, `folder-pictures`, `folder-videos`), the trash `user-trash`, the root `drive-harddisk`, else `folder`. PNG files decoded, reduced to the size asked when larger; SVG files rendered by librsvg and cairo, opened at run time (`svg_available`): without them, the PNG icons only. |
-| Windows | The shell's (`SHGetFileInfoW`): 16 pixels at 16 and under, else 32. A program's, a shortcut's, an icon file's own; a folder's own. |
+| Windows | The shell's: the path's index in the system's image list (`SHGetFileInfoW`), the icon from the list nearest above the size asked (16, 32, 48, 256: `SHGetImageList`). A program's, a shortcut's, an icon file's own; a folder's own. COM is started on each thread that asks. |
 | Other systems | None (`ok` false). |
 
-The theme read and the files found are kept while the data folders and the theme's name are the same.
+The theme read and the files found are kept while the data folders and the theme's name are the same. The theme's name is
+asked once (`file_icons_forget` makes the next icon ask it again: the person chose another theme). `file_icon_key` reads no
+file: on Linux it is the type the name says.
 
 ## A terminal in a folder
 
