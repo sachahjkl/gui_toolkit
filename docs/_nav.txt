@@ -62,3 +62,4 @@ Tools and tests
   cdp.md              cdp: DevTools protocol client
   site.md             site: a project's website
   toolbox.md          toolbox: what tools share
+  release.md          release: a program's release

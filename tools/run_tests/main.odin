@@ -72,6 +72,7 @@ STEPS := []Step{
 	{name = "qr", path = "src/qr", oses = EVERYWHERE},
 	{name = "process", path = "src/process", oses = EVERYWHERE},
 	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
+	{name = "release", path = "src/release", oses = EVERYWHERE},
 	{name = "update", path = "src/update", oses = EVERYWHERE},
 	{name = "changelog", oses = EVERYWHERE},
 	{name = "clipboard", oses = EVERYWHERE},
