@@ -24,6 +24,7 @@ import "../draw"
 import "../font"
 import "../platform"
 import "../ui"
+import update "../update"
 
 // A page: a category of the registry, its title and its icon (a glyph of Options.icon_font; "": none). `names`: the
 // preferences it shows, in this order, whatever their category (nil: those of `category`, in the registry's order); a
@@ -48,6 +49,11 @@ Options :: struct {
 	// what the program has to say under a preference's line ("" nothing): a shortcut another program holds...
 	problem:   proc(user: rawptr, name: string) -> string,
 	custom:    proc(user: rawptr, name: string, em: f32),
+	// the program's Updater (gt:update): under the line of update_pref ("update.auto"), its state and its buttons (Check
+	// now; Install when a version is on offer; Restart now, by `restart`, when one is installed)
+	updater:     ^update.Updater,
+	update_pref: string,
+	restart:     proc(user: rawptr),
 	// the pages in their order (one with no preference is not shown); nil: each category of the registry, by name, its
 	// title from config.category_title
 	pages:     []Page_Info,
@@ -345,6 +351,7 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 				ui.paragraph(fmt.tprintf("%s###err", f.error))
 			}
 		}
+		if o.updater != nil && name == o.update_pref { updater_under(o, em) }
 		if o.problem != nil {
 			if why := o.problem(o.user, name); why != "" {
 				if ui.tags("bad") {
@@ -639,3 +646,31 @@ card_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
+
+// The Updater's state, in words, and what can be done with it.
+@(private = "file")
+updater_under :: proc(o: Options, em: f32) {
+	st := update.status(o.updater)
+	if ui.tags("weak") {
+		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+		ui.paragraph(fmt.tprintf("%s###update_state", update.status_words(st)))
+	}
+	if st.phase == .Managed { return }
+	ui.spacer(ui.px(em * 0.4))
+	ui.next({height = ui.children_sum()})
+	if ui.row() {
+		busy := st.phase == .Checking || st.phase == .Downloading || st.phase == .Installed
+		ui.next({height = ui.px(math.round(em * CONTROL_H_EM))})
+		if ui.disabled(busy) { if ui.button("Check now###update_check").clicked { update.check_now(o.updater) } }
+		if st.phase == .Available {
+			ui.spacer(ui.px(em * 0.5))
+			ui.next({height = ui.px(math.round(em * CONTROL_H_EM))})
+			if ui.button(fmt.tprintf("Install %s###update_install", st.version)).clicked { update.install_now(o.updater) }
+		}
+		if st.phase == .Installed && o.restart != nil {
+			ui.spacer(ui.px(em * 0.5))
+			ui.next({height = ui.px(math.round(em * CONTROL_H_EM))})
+			if ui.button("Restart now###update_restart").clicked { o.restart(o.user) }
+		}
+	}
+}
