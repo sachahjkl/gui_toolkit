@@ -5,6 +5,23 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.138.0] - 2026-11-10
+
+### Added
+- **`lucide.REDO_2`**: the redo icon.
+- **`ui.splitter`'s `flush`**: the handle is its rule alone, the panes meet at it (their rules and a selected row reach it, with no strip beside it), and it is grabbed as wide as a usual handle all the same. **`Box.hit_outset`**: how far a box's hit area reaches past its rect.
+- **`ui.ctx_menu_open(..., search = true)`**: a menu searched by typing (fuzzy): the items that do not match go, a submenu's items come up into the menu, the first match is selected.
+- **`desktop.open_terminal`**: a terminal opened in a folder ($TERMINAL or a common terminal on Linux, Windows Terminal or the command prompt on Windows).
+- **`ui.splitter` options `fill` and `line_at`**: the handle painted in a pane's colour, its rule at its start or end (one line with the next pane's edge, not two side by side).
+- **`instance.serve_start`, `serve_stop`**: an Owner served on a thread of its own, for a program whose loop sleeps until its window has an event.
+- **`desktop.file_icon` (the size its file is chosen by apart from the size made: `choose`), `file_icon_key`, `file_icon_destroy`, `svg_available`**: the system's icon of a file or a folder, as its file manager shows it: on Linux the person's icon theme (Icon Theme specification, the type from shared-mime-info, SVG files rendered by librsvg opened at run time), on Windows the shell's icon of the path.
+  - `platform.cursor_resample` is now `platform.rgba_resample` (an icon theme's PNG files are reduced with it).
+  - `platform.portal_icon_theme`: the icon theme the desktop shows, from the Settings portal (`org.gnome.desktop.interface` `icon-theme`); `file_icon` reads it before the GTK and KDE files.
+
+### Fixed
+- **`desktop.file_icon`**: two threads asking the first icons at once no longer share the theme's cache unlocked; the portal is asked with no lock held (`file_icons_forget` asks the theme again); `file_icon_key` reads no file; on Windows the icons come at 48 and 256 pixels too, COM is started on the asking thread, an icon with no alpha takes its mask; `open_terminal` quotes a drive's root and shows no dialog when Windows Terminal is missing, `$TERMINAL` may hold arguments.
+- **`ui.hline` in the machined finish** keeps its two lines, the dark one and the lit one under it: the rule is two lines tall there, both inside its box. The lit line was drawn under the box, where the pane after it covered it (a lone dark line), and showed through a clear splitter's handle as a ledge.
+
 ## [0.137.0] - 2026-11-09
 
 ### Added
@@ -2132,6 +2149,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.138.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.138.0
 [0.137.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.137.0
 [0.136.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.136.0
 [0.135.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.135.0
