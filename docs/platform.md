@@ -87,6 +87,11 @@ nowhere: xdg-open, an application of "Open with" (`desktop.open_with`).
 
 **System** — `config_dir`, `system_font_path`, `os_animations_enabled`, `app_icon_rgba`.
 
+**Network interfaces** (`net_interfaces.odin`) — `interface_addresses()` lists every IPv4 and IPv6 address of every
+interface, IPv4 first (`Interface_Address`: the interface's name, the family, the address and the netmask in network
+order, `up`, `loopback`); `interface_addresses_destroy` frees the list. core:net's `IP4_Address` is `addr[:4]`, its
+`IP6_Address` is `transmute([8]u16be)addr`. Linux: the C library's `getifaddrs`. Elsewhere: an empty list for now.
+
 **Devices** — `input_devices`, `touch_max_points`.
 
 **Hotkeys** (`hotkey.odin`) — `hotkey_register(w, id, hk)`, `hotkey_unregister`: a combination the system gives the
