@@ -94,7 +94,9 @@ options :: proc(c: Config, choices: []bool = nil) -> (o: desktop.Options, record
 	o = desktop.options_make(c.identity)
 	o.icons = c.icons
 	default := desktop.default_install_dir(&o)
-	if found := desktop.install_target(&o); found != "" && !desktop.same_path(found, default) {
+	// (the record alone: an install in the default folder is recorded too; install_target would give the default
+	// for no record, and telling the two apart by the folder made such an install one "to repair")
+	if found := desktop.install_recorded(&o); found != "" {
 		o.install_dir, recorded = found, true
 	} else if default != "" && c.install_folder != "" {
 		o.install_dir = join({process.parent_dir(default), c.install_folder})

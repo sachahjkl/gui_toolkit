@@ -80,7 +80,8 @@ words of this system.
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
 
 The installed copy goes to `%LOCALAPPDATA%\Programs\<name>` unless `install_dir` says otherwise. `record_install` writes
-`Software\Microsoft\Windows\CurrentVersion\Uninstall\<key>`, which Settings > Apps lists and `install_target` reads back.
+`Software\Microsoft\Windows\CurrentVersion\Uninstall\<key>`, which Settings > Apps lists and `install_target` reads back
+(the default folder when there is no record); `install_recorded` reads the record alone ("" when there is none).
 A running program's file cannot be deleted: `files_install` renames it to `.old` first, `clean_old` deletes those at the
 next start, and `cleanup_later` deletes the files a running copy holds after the process ends. `open_default_apps` opens
 `ms-settings:defaultapps`, where the user picks the default browser: a program that is not a browser does not call it.
