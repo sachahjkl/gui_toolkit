@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.157.0] - 2026-11-10
+
+### Changed
+- `platform.move_to_active_monitor(w, follow)`: the monitor under the pointer by default (`.Pointer`: a pointer moved to another monitor is followed with no click), or the one of the window in front (`.Focus`). `active_monitor_parse` reads "pointer" or "focus".
+
 ## [0.156.0] - 2026-11-10
 
 ### Fixed
@@ -2291,6 +2296,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.157.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.157.0
 [0.156.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.156.0
 [0.155.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.155.0
 [0.154.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.154.0
