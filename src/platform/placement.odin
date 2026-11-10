@@ -20,6 +20,18 @@ fit_rect_to_work :: proc(r, work: [4]int) -> [4]int {
 	return {clamp(r[0], work[0], work[0] + work[2] - w), clamp(r[1], work[1], work[1] + work[3] - h), w, h}
 }
 
+// Which monitor move_to_active_monitor takes: the one under the pointer, or the one of the window in front.
+Active_Monitor :: enum u8 { Pointer, Focus }
+
+// The text of a choice ("pointer", "focus"), for a preference; ok = false: neither.
+active_monitor_parse :: proc(text: string) -> (a: Active_Monitor, ok: bool) {
+	switch text {
+	case "pointer": return .Pointer, true
+	case "focus":   return .Focus, true
+	}
+	return .Pointer, false
+}
+
 // A rectangle of the work area `from` at the same place on the work area `to`: the share of the room left around it on
 // each axis is kept (a window in the middle stays in the middle, one in a corner in that corner), its size too, then it
 // is fitted to `to`. Pure.
