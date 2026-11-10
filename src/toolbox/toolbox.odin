@@ -15,6 +15,7 @@
 //	write_logo       the files of a program's logo, from its drawing: PNG sizes, the .ico, the project's picture
 //	write_version_header  the C header of a version of three numbers, for a Windows executable's VERSIONINFO
 //	exe_has_icon     (Windows) a Windows executable carries its icon (group 1)
+//	update_command   the update command of a project's tool: keygen, pubkey, the signed manifest of a release, verify
 package tk_toolbox
 
 import "core:crypto/sha2"
