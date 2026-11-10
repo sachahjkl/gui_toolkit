@@ -238,3 +238,35 @@ a_layout_as_text_and_back :: proc(t: ^testing.T) {
 	ui.table_sort_apply(&m, keys, "unknown")
 	testing.expect_value(t, m.sort, 3)
 }
+
+@(private = "file") HEAT_BG :: ui.Color{0.8, 0.1, 0.1, 1}
+@(private = "file") HEAT_FG :: ui.Color{1, 1, 1, 1}
+
+@(private = "file")
+Heat_App :: struct { l: ui.Table_Layout }
+
+@(private = "file")
+build_heat :: proc(s: ^session.Session) {
+	app := (^Heat_App)(s.user)
+	ui.next({width = ui.px(TABLE_W), height = ui.px(30), axis = .X})
+	if ui.row(id = "###heat_row") {
+		ui.table_cell(&app.l, 0, "busy", HEAT_BG, HEAT_FG)
+		ui.table_cell(&app.l, 1, "plain")
+	}
+}
+
+@(test)
+a_cell_has_its_background_and_its_text_colour :: proc(t: ^testing.T) {
+	app: Heat_App
+	ui.table_layout_init(&app.l, COLUMNS[:2])
+	defer ui.table_layout_destroy(&app.l)
+	s := session.start(t, {build = build_heat, user = &app, no_renderer = true})
+	session.advance(s, 1000)   // (colours approach their targets)
+	busy := session.find_text(s, "busy")
+	testing.expect(t, busy != nil)
+	if busy == nil { return }
+	testing.expect_value(t, busy.bg, HEAT_BG)
+	testing.expect_value(t, busy.text_color, HEAT_FG)
+	plain := session.find_text(s, "plain")
+	testing.expect(t, plain != nil && plain.text_color != HEAT_FG, "a cell with no colour keeps the theme's")
+}

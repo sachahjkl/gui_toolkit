@@ -83,7 +83,7 @@ direction. A program saves it and reads it back.
 | `table_widths_text(l, keys)`, `table_widths_apply(l, keys, text)` | the widths that are not the columns' own, as a preference's text (`pid=6.5,command=30`, in ems; `keys[k]` names column k), and back (bounded; a name it does not know is skipped) |
 | `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending), and back (only to a column shown) |
 | `table_column_items(l)` | the columns' menu items, in the caller's `ctx_menu`: each column but the first, checked when shown |
-| `table_cell(l, col, text, bg)` | a cell under its title, clipped to the column. True when the pointer is on it and its text is cut |
+| `table_cell(l, col, text, bg, fg)` | a cell under its title, clipped to the column, on a background `bg` with its text in `fg` (both optional). True when the pointer is on it and its text is cut |
 | `table_cell_tip(row, text)` | the cut text, in a tooltip beside the pointer after `TABLE_TIP_DELAY_S` |
 | `table_row_end()` | the room of the scroll bar at the end of a row |
 | `text_cut_under_mouse(b, text, pad)` | the test of `table_cell`, for a cell a program builds itself |

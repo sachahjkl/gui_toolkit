@@ -265,14 +265,15 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 }
 
 // A cell of a row under column `col`'s title: its text clipped to the column's width, a number at the right. `bg`: a
-// background (a busy cell's tint). True when the pointer is on the cell and its text does not fit (table_cell_tip).
-table_cell :: proc(l: ^Table_Layout, col: int, text: string, bg: Maybe(Color) = nil) -> (cut: bool) {
+// background (a busy cell's tint); `fg`: its text's colour, the one that reads on that background. True when the pointer
+// is on the cell and its text does not fit (table_cell_tip).
+table_cell :: proc(l: ^Table_Layout, col: int, text: string, bg: Maybe(Color) = nil, fg: Maybe(Color) = nil) -> (cut: bool) {
 	em := font_size()
 	c := l.columns[col]
 	pad := c.number ? em * TABLE_NUMBER_PAD_EM : em * TABLE_RULE_GRIP_EM * 0.5 + max(1, scale())
 	flags := Box_Flags{.Draw_Text, .Clip}
 	if bg != nil { flags += {.Draw_Background} }
-	next({width = l.width[col] == 0 ? fill() : px(em * l.width[col]), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg})
+	next({width = l.width[col] == 0 ? fill() : px(em * l.width[col]), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg, fg = fg})
 	b := build_box(flags, fmt.tprintf("%s###c%d", text_shown(text), col))
 	return text_cut_under_mouse(b, text, pad)
 }
