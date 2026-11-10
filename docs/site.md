@@ -31,7 +31,8 @@ expression they match, with what JavaScript gives its whitespace, `.`, UTF-16 le
 page, `<!-- download -->` becomes one button per system (`a.btn.accent.get`, the system's mark in `.get-icon`, "Download
 for <label>" in `.get-main`, the detail in `.get-sub`), and `<!-- download-others -->` a line that offers the other systems
 ("Also for Linux"). A script put before `</body>` shows the button and the line of the system the browser says it runs on.
-The version mark is replaced after, so `href` and `detail` can name it.
+The version mark is replaced after, so `href` and `detail` can name it. The other systems' buttons carry `hidden`: the site's
+stylesheet keeps them hidden even where a `.btn` sets its `display` (`[hidden] { display: none !important; }`).
 
 ## What a page says when shared
 
