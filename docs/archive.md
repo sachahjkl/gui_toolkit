@@ -23,7 +23,9 @@ xerr := archive.extract(&idx, "2024/june/a.jpg", "/tmp/a.jpg")
 | `read(idx, name, limit)` | a file of it, whole; `Too_Large` past `limit` |
 | `extract(idx, name, out)` | a file of it written to `out`, its folders made; a name with `..` or a drive is refused (`Unsafe_Name`) |
 
-Names inside are `/`-separated, without a leading or a trailing `/` (a `\` of a zip made on Windows becomes `/`).
+Names inside are `/`-separated, without a leading or a trailing `/` (a `\` of a zip made on Windows becomes `/`). An entry
+whose name has a `.` or `..` part, or a drive (`C:`), is left out of the index: a malicious archive lists nothing that a
+copy out of it could follow out of its folder. `find` is one look (`Index.by_name`).
 
 ## How it reads
 

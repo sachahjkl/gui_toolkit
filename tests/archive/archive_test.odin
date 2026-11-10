@@ -146,10 +146,15 @@ a_tar_and_a_gzipped_tar_are_listed_and_read :: proc(t: ^testing.T) {
 a_name_out_of_its_folder_is_refused :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t)
 	path := fmt.tprintf("%s/evil.zip", dir)
-	testing.expect(t, os.write_entire_file(path, make_zip({{"../evil.txt", "no", false}})) == nil)
+	testing.expect(t, os.write_entire_file(path, make_zip({{"../evil.txt", "no", false}, {"ok/../../up.txt", "no", false}, {"C:/x.txt", "no", false}, {"fine.txt", "yes", false}})) == nil)
 	idx, _ := archive.open(path)
 	defer archive.index_destroy(&idx)
+	// (left out of the index: not listed, not taken out)
+	top := make([dynamic]archive.Entry, context.temp_allocator)
+	archive.children(&idx, "", &top)
+	testing.expect_value(t, names(top[:]), "fine.txt")
 	testing.expect_value(t, archive.extract(&idx, "../evil.txt", fmt.tprintf("%s/out/evil.txt", dir)), archive.Error.Unsafe_Name)
+	testing.expect_value(t, archive.extract(&idx, "ok/../../up.txt", fmt.tprintf("%s/out/up.txt", dir)), archive.Error.Unsafe_Name)
 	_, kerr := archive.open(fmt.tprintf("%s/not.txt", dir))
 	testing.expect_value(t, kerr, archive.Error.Not_An_Archive)
 }
