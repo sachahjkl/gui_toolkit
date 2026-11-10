@@ -19,51 +19,13 @@
 // ended by an exception leaves them to the runner.
 package unwatched
 
-import "core:fmt"
-import "core:os"
 import "core:testing"
-import "core:thread"
-
-@(private)
-Job :: struct {
-	t:      ^testing.T,
-	body:   proc(t: ^testing.T),
-	code:   u32,       // the exception that ended the body, 0 when it returned
-	module: [260]u16,  // where it was raised
-	offset: uintptr,
-}
-
-@(private, thread_local)
-current: ^Job
 
 // Calls body(t) on a thread of its own and waits for it (directly, off Windows).
 run :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc := #caller_location) {
-	when ODIN_OS != .Windows {
-		body(t)
+	when ODIN_OS == .Windows {
+		run_unwatched(t, body, loc)
 	} else {
-		job := Job{t = t, body = body}
-		th := thread.create_and_start_with_data(&job, proc(data: rawptr) {
-			current = (^Job)(data)
-			t := current.t
-			first := len(t.cleanups)
-			current.body(t)
-			current = nil
-			// (the body's own cleanups, here: what it made is this thread's)
-			for i := len(t.cleanups) - 1; i >= first; i -= 1 {
-				c := t.cleanups[i]
-				context = c.ctx
-				c.procedure(c.user_data)
-			}
-			resize(&t.cleanups, first)
-		}, init_context = context)
-		thread.join(th)
-		thread.destroy(th)
-		// (testing.fail_now ends the body with a trap too, after saying why)
-		if job.code != 0 && !t._fail_now_called {
-			module := module_name(job.module[:])
-			testing.expectf(t, false, "exception 0x%08X at %s+0x%X in %s", job.code, module, job.offset, loc.procedure, loc = loc)
-			fmt.eprintfln("unwatched: exception 0x%08X at %s+0x%X in %s", job.code, module, job.offset, loc.procedure)
-			os.flush(os.stderr)
-		}
+		body(t)
 	}
 }
