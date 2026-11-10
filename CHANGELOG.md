@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.171.0] - 2026-11-10
+
+### Added
+- **A text field's menu**: a right click on a `line_edit` opens Undo, Redo, Cut, Copy, Paste, Delete and Select all, each with its keys and its icon (`ui.field_menu`; a secret's neither copies nor cuts; `menu = false`: the program has its own). **`menu_item` takes `icon_font`**: an item's icon may be a character of any face (0: `State.icon_font`), so a menu of the toolkit's draws Lucide's whatever the program's icons are.
+
 ## [0.170.0] - 2026-11-10
 
 ### Fixed
@@ -2392,6 +2397,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.171.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.171.0
 [0.170.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.170.0
 [0.169.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.169.0
 [0.168.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.168.0
