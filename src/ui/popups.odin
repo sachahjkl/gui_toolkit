@@ -3,6 +3,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "core:unicode"
+import "core:unicode/utf8"
 import "../font"
 import "../platform"
 
@@ -23,7 +24,7 @@ import "../platform"
 // Keyboard (the open menu owns every key press and typed character of the frame): Up / Down / Home / End move over the
 // enabled items (wrapping), Right / Enter / Space open the selected submenu, Enter / Space choose the selected item,
 // Left / Escape close the innermost submenu, Escape closes the menu, a typed letter selects the next item starting
-// with it. Pointer: hovering selects, resting on a submenu item opens it (and on another item closes it) after
+// with it (a menu opened with `search`: what is typed searches the items, see ctx_menu_open). Pointer: hovering selects, resting on a submenu item opens it (and on another item closes it) after
 // MENU_HOVER_MS, clicking chooses; a press outside every open level closes the menu. A menu opens where asked and
 // stays on screen: it flips to the other side of the point (or of the anchor rect) when it does not fit, then is
 // clamped to the window. A level taller than the window is as tall as the window and scrolls (wheel, scroll bar; the
@@ -105,21 +106,42 @@ Menu_Level :: struct {
 	hover_since:  f64,
 	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
+	search:       bool,      // typing searches its items (ctx_menu_open's `search`)
+	query:        [MENU_QUERY_BYTES]u8,   // what was typed (search), query_len bytes of UTF-8
+	query_len:    int,
+	pick_first:   bool,      // the query changed: the first item that matches is selected when it is built
+}
+
+@(private) MENU_QUERY_BYTES :: 64
+
+// What was typed in a menu that searches ("" none).
+@(private)
+menu_query :: proc(lv: ^Menu_Level) -> string { return string(lv.query[:lv.query_len]) }
+
+// Whether a row of the level that is being built is shown: no search, or its label has the query's letters in order.
+@(private = "file")
+menu_matches :: proc(lv: ^Menu_Level, text: string) -> bool {
+	q := menu_query(lv)
+	if q == "" { return true }
+	_, _, ok := fuzzy_score(q, display_part(text))
+	return ok
 }
 
 // Opens the menu `key` with its top-left corner at `pos` (window pixels), replacing any open menu.
 // `anchor`: the box that opens the menu (dropdown button, menu bar entry): pressing it again is not a press "outside",
 // so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
-ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false) { menu_open(key, pos, {}, anchor, from_keyboard) }
+// `search`: what is typed searches the items (fuzzy, File Pilot's): a line at the top shows it, the items that do not
+// match go, a submenu's items come up into the menu, the first match is selected (Enter chooses it).
+ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false, search := false) { menu_open(key, pos, {}, anchor, from_keyboard, search) }
 
 // Opens the menu below `rect` (above it when there is no room below), e.g. under the button that opens it.
 ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard := false) { menu_open(key, {rect.min.x, rect.max.y}, rect, anchor, from_keyboard) }
 
 // In the block of an open menu the rows still to come are that menu's: this one opens when the block ends (menu_end).
 @(private = "file")
-menu_open :: proc(key: Key, pos: Vec2, around: Rect, anchor: Key, from_keyboard: bool) {
+menu_open :: proc(key: Key, pos: Vec2, around: Rect, anchor: Key, from_keyboard: bool, search := false) {
 	s := gs()
-	lv := Menu_Level{key = key, anchor = anchor, pos = pos, around = around, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard}
+	lv := Menu_Level{key = key, anchor = anchor, pos = pos, around = around, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search}
 	if len(s.menu_build) > 0 { s.menu_next = lv; return }
 	menu_pop_to(0)
 	s.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
@@ -408,6 +430,22 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			if s.menu_keys.consumed[i] { continue }
 			s.menu_keys.consumed[i] = true
 			valid := lv.sel >= 0 && lv.sel < len(items) && items[lv.sel].enabled
+			if lv.search && e.kind == .Text {
+				buf, n := utf8.encode_rune(e.text)
+				if lv.query_len + n <= MENU_QUERY_BYTES && e.text >= ' ' {
+					copy(lv.query[lv.query_len:], buf[:n])
+					lv.query_len += n
+					lv.pick_first, lv.sel = true, -1
+				}
+				continue
+			}
+			if lv.search && e.kind != .Text && e.key == .Backspace && lv.query_len > 0 {
+				_, size := utf8.decode_last_rune_in_string(menu_query(lv))
+				lv.query_len -= size
+				lv.pick_first, lv.sel = true, -1
+				continue
+			}
+			if lv.search && e.kind != .Text && e.key == .Space { continue }   // (a space is typed, not a choice)
 			if e.kind == .Text {
 				want := unicode.to_lower(e.text)
 				for k in 1 ..= len(items) {
@@ -470,6 +508,16 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	append(&s.popup_stack, true)
 	append(&s.menu_build, depth)
 	spacer(px(em * MENU_PAD_EM))
+	if lv.search {
+		// the query, or what typing does
+		q := menu_query(lv)
+		next({width = px(w), height = px(dense(em * 2.0)), text_pad = em * 0.8})
+		if q == "" { push_tags("weak") }
+		label(q == "" ? "Type to search###menu_query" : fmt.tprintf("%s###menu_query", q))
+		if q == "" { pop_tags() }
+		hline(px(w))
+		spacer(px(em * MENU_PAD_EM))
+	}
 	return true
 }
 
@@ -635,9 +683,11 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 		// outside a menu: a plain row (so menu bodies can be factored into procs and reused elsewhere)
 		return button(text)
 	}
+	if !menu_matches(lv, text) { return {} }
 	en := enabled && s.disabled_depth == 0
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, first = first_letter(display_part(text))})
+	if lv.pick_first && en { lv.sel, lv.pick_first, lv.reveal = idx, false, true }
 	sig := menu_row(lv, idx, text, shortcut, icon, checked, en, false, idx == lv.sel)
 	// resting on another item than the open submenu's closes that submenu (a nested menu stays: a press closes it)
 	if sig.hovering && len(s.menus) > depth + 1 && !s.menus[depth + 1].nested && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
@@ -652,6 +702,7 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 // A line between groups of items (not an item: the keyboard skips it).
 menu_separator :: proc() {
 	lv, _ := menu_current()
+	if lv != nil && menu_query(lv) != "" { return }   // (a search shows the matches alone)
 	em := font_size()
 	w := lv != nil ? lv.eff_width : em * MENU_MIN_WIDTH_EM
 	spacer(px(em * MENU_SEPARATOR_GAP_EM))
@@ -667,6 +718,11 @@ menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil { append(&s.popup_stack, false); return false }
+	// (a search: the submenu's items come up into this level, the submenu itself is not shown)
+	if menu_query(lv) != "" {
+		append(&s.popup_stack, false)
+		return enabled && s.disabled_depth == 0
+	}
 	en := enabled && s.disabled_depth == 0
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, submenu = true, first = first_letter(display_part(text))})

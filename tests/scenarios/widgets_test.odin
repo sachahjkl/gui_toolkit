@@ -231,6 +231,39 @@ a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.chosen, "first")
 }
 
+// A menu that searches: typed letters keep the items that have them in order (a submenu's items come up), the first
+// match is selected; Backspace takes a letter back; Enter chooses it.
+@(test)
+a_menu_that_searches :: proc(t: ^testing.T) {
+	Run :: struct { chosen: string }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		key := ui.key_from_string(0, "menu")
+		if s.frames == 1 { ui.ctx_menu_open(key, {50, 50}, search = true) }
+		if ui.ctx_menu(key) {
+			if ui.menu_item("Open").clicked { r.chosen = "open" }
+			if ui.menu_item("Rename").clicked { r.chosen = "rename" }
+			ui.menu_separator()
+			if ui.menu_submenu("Sort by") {
+				if ui.menu_item("Name").clicked { r.chosen = "name" }
+				if ui.menu_item("Date modified").clicked { r.chosen = "date" }
+			}
+		}
+	}})
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Type to search") != nil, "what typing does")
+	session.type_text(s, "dmx")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Open") == nil, "no match: nothing")
+	session.key(s, .Backspace)
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Date modified") != nil, "the submenu's item came up")
+	testing.expect(t, session.find_text(s, "Rename") == nil, "the others went")
+	session.key(s, .Return)
+	testing.expect_value(t, r.chosen, "date")
+}
+
 // A call posted to a window runs in that window's next build, on its thread.
 @(test)
 a_call_posted_to_a_window_runs_in_its_next_build :: proc(t: ^testing.T) {
