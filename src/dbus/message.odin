@@ -25,6 +25,12 @@ Msg_Type :: enum u8 { Invalid, Method_Call, Method_Return, Error, Signal }
 
 // Flags.
 @(private) FLAG_NO_REPLY_EXPECTED :: 1
+// The caller lets the service ask the user (polkit's password dialog) before it answers.
+@(private) FLAG_ALLOW_INTERACTIVE_AUTHORIZATION :: 4
+
+// The flags of a method call.
+@(private)
+call_flags :: proc "contextless" (interactive: bool) -> u8 { return interactive ? FLAG_ALLOW_INTERACTIVE_AUTHORIZATION : 0 }
 
 // The fixed header and the length of the fields array: less than this cannot be a message yet.
 @(private) MIN_MESSAGE_BYTES :: 16
