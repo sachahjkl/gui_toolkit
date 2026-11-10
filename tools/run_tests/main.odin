@@ -83,6 +83,7 @@ STEPS := []Step{
 	{name = "dragdrop", oses = EVERYWHERE},
 	{name = "flate", oses = EVERYWHERE},
 	{name = "archive", oses = EVERYWHERE},
+	{name = "syntax", path = "src/syntax", oses = EVERYWHERE},
 	{name = "frame_gate"},
 	{name = "frame_slots", oses = EVERYWHERE},
 	{name = "fsx"},
