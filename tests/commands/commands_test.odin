@@ -86,6 +86,7 @@ command_texts :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.chord_text({.F5, {}}), "F5")
 	testing.expect_value(t, ui.chord_text({.N3, {.Ctrl}}), "Ctrl+3")
 	testing.expect_value(t, ui.chord_text({.Return, {.Alt}}), "Alt+Enter")
+	testing.expect_value(t, ui.chord_text({.Escape, {}}), "Escape")
 	testing.expect_value(t, ui.chord_text({}), "")
 	testing.expect_value(t, ui.command_shortcut(PALETTE_COMMANDS[1]), "Shift+Delete")
 	testing.expect_value(t, ui.command_keys_text(PALETTE_COMMANDS[3]), "Ctrl+K, Ctrl+Shift+P")
@@ -166,4 +167,36 @@ shortcuts_sheet_lists_the_keys :: proc(t: ^testing.T) {
 	frame(&f, {key(.Escape)}, sheet, &r)
 	frame(&f, nil, sheet, &r)   // (a dialog takes Escape at the end of a build: it closes at the next)
 	testing.expect(t, !r.open, "Escape closes it")
+}
+
+// The palette's matching: the needle whole, or pieces that begin words; never letters scattered in a word.
+@(test)
+fuzzy_words_whole_or_at_words_starts :: proc(t: ^testing.T) {
+	// whole: anywhere, at a word's start ranked above
+	whole, ranges, ok := ui.fuzzy_words("prio", "Raise the priority")
+	testing.expect(t, ok && len(ranges) == 1 && ranges[0] == {10, 14}, "whole, at its word")
+	// pieces at words' starts, the words in order
+	pieces, _, ok2 := ui.fuzzy_words("ks", "Keyboard shortcuts")
+	testing.expect(t, ok2, "the words' first letters")
+	testing.expect(t, whole > pieces, "the needle whole before pieces")
+	_, ranges, ok = ui.fuzzy_words("endt", "End task")
+	testing.expect(t, ok && len(ranges) == 2 && ranges[0] == {0, 3} && ranges[1] == {4, 5}, "a word's start, then the next word's")
+	_, ranges, ok = ui.fuzzy_words("cp", "CommandPalette")
+	testing.expect(t, ok && len(ranges) == 2, "a capital after a small letter begins a word")
+	// letters scattered in a word: no match
+	_, _, ok = ui.fuzzy_words("prio", "Previous section")
+	testing.expect(t, !ok, "scattered letters do not match")
+	_, _, ok = ui.fuzzy_words("sk", "Keyboard shortcuts")
+	testing.expect(t, !ok, "the words out of order")
+	// the start of the text ranks above a word's start; a shorter text above a longer one
+	a, _, _ := ui.fuzzy_words("kill", "Kill…")
+	b, _, _ := ui.fuzzy_words("kill", "Socket kill")
+	testing.expect(t, a > b, "the start of the text first")
+	// (the longest piece first, then shorter ones: "abc" in "ab x abc" is whole)
+	_, ranges, ok = ui.fuzzy_words("abc", "ab-x abc")
+	testing.expect(t, ok && len(ranges) == 1 && ranges[0] == {5, 8}, "whole when it is there")
+	_, ranges, ok = ui.fuzzy_words("abx", "ab-x")
+	testing.expect(t, ok && len(ranges) == 2, "pieces after a shorter first piece")
+	s, r, ok3 := ui.fuzzy_words(" ", "anything")
+	testing.expect(t, ok3 && s == 0 && r == nil, "an empty needle matches everything")
 }
