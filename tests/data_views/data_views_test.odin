@@ -214,3 +214,27 @@ rows_are_marked_by_ctrl_and_shift_clicks :: proc(t: ^testing.T) {
 	session.key(s, .Down)
 	testing.expect_value(t, ui.list_mark_count(&app.vl), 0)
 }
+
+@(test)
+a_layout_as_text_and_back :: proc(t: ^testing.T) {
+	keys := []string{"name", "size", "notes", "id"}
+	l: ui.Table_Layout
+	ui.table_layout_init(&l, COLUMNS[:])
+	defer ui.table_layout_destroy(&l)
+	testing.expect_value(t, ui.table_widths_text(&l, keys), "")
+	l.width[1] = 9
+	l.sort, l.descending = 3, true
+	widths, sort := ui.table_widths_text(&l, keys), ui.table_sort_text(&l, keys)
+	testing.expect_value(t, widths, "size=9.0")
+	testing.expect_value(t, sort, "-id")
+	m: ui.Table_Layout
+	ui.table_layout_init(&m, COLUMNS[:])
+	defer ui.table_layout_destroy(&m)
+	ui.table_widths_apply(&m, keys, "size=9.0,notes=12,nothing=4,id=x,name=1000")
+	testing.expect(t, m.width[1] == 9 && m.width[2] == 0 && m.width[3] == COLUMNS[3].width, "a width read; the room-left column and the bad ones skipped")
+	testing.expect_value(t, m.width[0], ui.TABLE_COLUMN_MAX_EM)
+	ui.table_sort_apply(&m, keys, sort)
+	testing.expect(t, m.sort == 3 && m.descending, "the sort read")
+	ui.table_sort_apply(&m, keys, "unknown")
+	testing.expect_value(t, m.sort, 3)
+}
