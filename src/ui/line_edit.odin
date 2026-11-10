@@ -1,10 +1,12 @@
 package ui
 
+import "core:fmt"
 import "core:math"
 import "core:strings"
 import "core:unicode/utf8"
 import "../draw"
 import "../font"
+import lucide "../lucide"
 import "../platform"
 
 // Single-line text field state. The caller owns it (like any other value); the widget edits it in place.
@@ -175,7 +177,11 @@ Line_Edit_Draw :: struct {
 	caret:       Color,
 	weak:        Color,
 	pad:         f32,
+	end:         f32,   // room kept at the right end (the reveal button): the text is cut before it
 }
+
+// The reveal button of a secret field (line_edit's `reveal`), in font sizes: its width.
+REVEAL_EM :: 1.9
 
 // The caret position before / after the grapheme cluster at `i` (an emoji sequence, a flag, a letter with its marks
 // are one): arrows, Backspace and Delete move and remove whole clusters.
@@ -262,6 +268,8 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	cy := (b.rect.min.y + b.rect.max.y) * 0.5
 	baseline := math.round(cy + (m.ascent - m.descent) * 0.5)
 	x0 := b.rect.min.x + d.pad - d.scroll_x
+	if d.end > 0 { draw.push_clip(dc, {b.rect.min, {b.rect.max.x - d.end, b.rect.max.y}}) }
+	defer if d.end > 0 { draw.pop_clip(dc) }
 	if d.text == "" && !d.focused {
 		draw.text(dc, b.font, b.font_size, {math.round(b.rect.min.x + d.pad), baseline}, d.weak, d.placeholder)
 		return
@@ -282,9 +290,13 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Single-line editor. Tags used: "input" (+ whatever the caller pushed, e.g. "bad" for an invalid value).
 // Supports: typing, selection (shift, mouse drag, double-click word), Home/End, ctrl+arrows (words),
 // Backspace/Delete (ctrl = word), ctrl+A/C/X/V, Enter (committed), Escape (cancelled, drops focus).
-// `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut.
-line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false) -> (res: Edit_Result) {
+// `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut. With `reveal`, a button
+// at its end (an eye) shows it as text and hides it again; `reveal^` says which, and is the caller's to keep.
+line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil) -> (res: Edit_Result) {
 	s := gs()
+	revealable := secret && reveal != nil
+	// (revealed, it is text: shown, copied, its words selected; the person chose to see it)
+	masked := secret && !(revealable && reveal^)
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
 		b.cursor = .Text
@@ -296,6 +308,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		before_hash := hash_bytes(f.buf[:])
 		c0, m0 := f.cursor, f.mark
 		pad := b.text_pad
+		end: f32 = revealable ? math.round(b.font_size * REVEAL_EM) : 0
 
 		// a screen reader sets the text, types over the selection, or moves the caret
 		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
@@ -317,8 +330,8 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		// mouse: click places the caret, drag selects, double-click selects the word
 		if res.pointer_pressed || res.dragging {
 			x := res.mouse.x - pad + f.scroll_x
-			idx := font.index_from_x(s.fonts, b.font, b.font_size, secret ? secret_mask(text) : text, x)
-			if secret { idx = secret_unmask_index(text, idx) }
+			idx := font.index_from_x(s.fonts, b.font, b.font_size, masked ? secret_mask(text) : text, x)
+			if masked { idx = secret_unmask_index(text, idx) }
 			if res.pointer_pressed { f.word.on = false }
 			if f.word.on {
 				f.mark, f.cursor = word_drag_to(f.word, text, idx)
@@ -330,7 +343,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		}
 		if res.double_clicked {
 			// (a secret's words are not shown: all of it)
-			f.word = secret ? Word_Drag{on = true, hi = len(text)} : word_drag_at(text, f.cursor)
+			f.word = masked ? Word_Drag{on = true, hi = len(text)} : word_drag_at(text, f.cursor)
 			f.mark, f.cursor = f.word.lo, f.word.hi
 		}
 
@@ -369,8 +382,8 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			if key_press(.Backspace, ctrl) && deleting(f, true) { if !delete_selection(f) { lo := word_left(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
 			if key_press(.Delete, ctrl) && deleting(f, false)    { if !delete_selection(f) { hi := word_right(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
 			if key_press(.A, ctrl) { field_select_all(f) }
-			if !secret && (key_press(.C, ctrl) || key_press(.Insert, ctrl)) { field_copy(f) }
-			if !secret && (key_press(.X, ctrl) || key_press(.Delete, shift)) { field_cut(f) }
+			if !masked && (key_press(.C, ctrl) || key_press(.Insert, ctrl)) { field_copy(f) }
+			if !masked && (key_press(.X, ctrl) || key_press(.Delete, shift)) { field_cut(f) }
 			if key_press(.V, ctrl) || key_press(.Insert, shift) { field_paste(f) }
 			if key_press(.Z, ctrl) { field_undo(f) }
 			if key_press(.Y, ctrl) || key_press(.Z, cs) { field_redo(f) }
@@ -388,10 +401,10 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		text = field_string(f)
 		// what is shown, and where the caret and the selection's end are in it
 		shown, cursor, mark := text, f.cursor, f.mark
-		if secret { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
+		if masked { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
 
 		// keep the caret visible
-		inner := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - 2 * pad)
+		inner := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - 2 * pad - end)
 		cx := font.x_from_index(s.fonts, b.font, b.font_size, shown, cursor)
 		total := font.text_width(s.fonts, b.font, b.font_size, shown)
 		if cx - f.scroll_x > inner { f.scroll_x = cx - inner }
@@ -408,20 +421,39 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		d.selection = color("selection")
 		d.caret = color("cursor")
 		if tags("weak") { d.weak = color("text") }
-		d.pad = pad
+		d.pad, d.end = pad, end
 		b.custom = line_edit_draw
 		b.custom_user = d
 		if s.a11y.wanted {
 			lh := font.metrics(s.fonts, b.font, b.font_size).line_height
 			t := frame_new(A11y_Text)
 			t^ = {text = d.text, cursor = cursor, mark = mark, font = b.font, size = b.font_size, line_height = lh,
-				origin = {b.rect.min.x + pad, (b.rect.min.y + b.rect.max.y - lh) * 0.5}, scroll = {f.scroll_x, 0}, password = secret}
+				origin = {b.rect.min.x + pad, (b.rect.min.y + b.rect.max.y - lh) * 0.5}, scroll = {f.scroll_x, 0}, password = masked}
 			a11y_default(b, {role = .Text_Input, placeholder = placeholder, text = t})
 		} else {
 			a11y_default(b, {role = .Text_Input, placeholder = placeholder})
 		}
+		if revealable { reveal_button(b, reveal, end) }
 	}
 	return
+}
+
+// The eye at the end of a secret field: the field's child, over its right end (the text stops before it).
+@(private)
+reveal_button :: proc(field: ^Box, reveal: ^bool, w: f32) {
+	field.layout_axis = .X
+	push_parent(field)
+	defer pop_parent()
+	spacer(fill())
+	shown := reveal^
+	if !shown { push_tags("weak") }
+	next({width = px(w), height = pct(1), font = lucide_icons(), text_align = .Center, text_pad = 0})
+	eye := build_box({.Clickable, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###reveal", shown ? lucide.EYE_OFF : lucide.EYE))
+	if !shown { pop_tags() }
+	eye.cursor = .Hand
+	a11y_default(eye, {role = .Button, name = shown ? "Hide the password" : "Show the password"})
+	// (the field keeps the keyboard: one looks at what was typed, then goes on typing)
+	if signal(eye).clicked { reveal^ = !shown; gs().focus_key = field.key }
 }
 
 SECRET_BULLET :: "•"
