@@ -44,3 +44,17 @@ contains_fold :: proc "contextless" (hay, needle: string) -> bool {
 	}
 	return false
 }
+
+// Orders `a` and `b` with case ignored (ASCII), then as they are: < 0 when `a` comes first, 0 when they are the same
+// bytes. Names in a table sorted A to Z ("bash" before "Chrome" before "chrome").
+compare_fold :: proc "contextless" (a, b: string) -> int {
+	for i in 0 ..< min(len(a), len(b)) {
+		x, y := lower_byte(a[i]), lower_byte(b[i])
+		if x != y { return int(x) - int(y) }
+	}
+	if len(a) != len(b) { return len(a) - len(b) }
+	for i in 0 ..< len(a) {
+		if a[i] != b[i] { return int(a[i]) - int(b[i]) }
+	}
+	return 0
+}

@@ -16,3 +16,14 @@ ascii_case_leaves_other_letters :: proc(t: ^testing.T) {
 	testing.expect(t, contains_fold("Adwaita-DARK", "dark") && contains_fold("x", ""))
 	testing.expect(t, !contains_fold("Dar\u212A", "dark") && !contains_fold("da", "dark"))
 }
+
+// compare_fold: the case ignored first, then the bytes; a prefix comes first.
+@(test)
+compare_fold_orders_names :: proc(t: ^testing.T) {
+	testing.expect(t, compare_fold("bash", "Chrome") < 0)
+	testing.expect(t, compare_fold("Chrome", "chrome") < 0)
+	testing.expect(t, compare_fold("chrome", "Chrome") > 0)
+	testing.expect(t, compare_fold("fire", "Firefox") < 0)
+	testing.expect_value(t, compare_fold("same", "same"), 0)
+	testing.expect(t, compare_fold("Key", "key") > 0)
+}
