@@ -320,7 +320,9 @@ state_words :: proc(f: Facts, c: Config) -> (words, tone: string) {
 		if is_downgrade(f, c.version) { return fmt.tprintf("A newer copy is installed (%s): this one (%s) is older.", f.version, c.version), "warn" }
 		return fmt.tprintf("A copy is installed (%s): this one runs on its own.", f.version != "" ? f.version : "?"), "warn"
 	case .Removal_Scheduled: return "Uninstalled: the program is deleted when this window closes.", "warn"
-	case .Nix_Package:   return "Installed by Nix: the Nix package has the menu entry and the icon.", "good"
+	case .Nix_Package:
+		if leftover(f) { return "Installed by Nix. An earlier install left files here: they can be removed.", "accent" }
+		return "Installed by Nix: the Nix package has the menu entry and the icon.", "good"
 	}
 	return "", ""
 }
@@ -411,7 +413,7 @@ install_label :: proc(d: ^Dialog, c: Config) -> string {
 
 // Uninstall is offered: something of an install is there.
 can_uninstall :: proc(d: ^Dialog) -> bool {
-	return d.known && (d.facts.state == .This_Copy || d.facts.state == .Repair || d.facts.state == .Other_Copy)
+	return d.known && (d.facts.state == .This_Copy || d.facts.state == .Repair || d.facts.state == .Other_Copy || d.facts.state == .Nix_Package && leftover(d.facts))
 }
 
 // What closes the screen without installing: Close, Not now (an upgrade), Keep standalone (no install, another copy).
@@ -803,7 +805,10 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 		ui.spacer(ui.px(em * MARGIN_EM))
 		if can_uninstall(d) {
 			// (the first click asks; the second uninstalls)
-			if button(c, "###setup_uninstall", d.confirm ? "Click again to uninstall" : "Uninstall", .Danger, em) && !busy(d) {
+			// (beside a Nix package, what goes is only what an earlier install left)
+			nix := d.facts.state == .Nix_Package
+			words := d.confirm ? (nix ? "Click again to remove" : "Click again to uninstall") : (nix ? "Remove what is left" : "Uninstall")
+			if button(c, "###setup_uninstall", words, .Danger, em) && !busy(d) {
 				if d.confirm { start_uninstall(d, c) } else { d.confirm = true }
 			}
 			mark(d, .Uninstall, "###setup_uninstall")

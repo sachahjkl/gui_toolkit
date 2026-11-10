@@ -57,7 +57,7 @@ State :: enum u8 {
 	Repair,              // a launcher, the system's record, the manifest or a file is missing
 	Other_Copy,          // a copy is installed elsewhere: this one runs on its own (Install replaces that one)
 	Removal_Scheduled,   // uninstalled while it ran: its file goes when this process ends (the dialog says it, the disk does not)
-	Nix_Package,         // this copy runs from the Nix store: the Nix configuration installs it
+	Nix_Package,         // this copy runs from the Nix store, and no copy is installed: the Nix configuration installs it
 }
 
 Facts :: struct {
@@ -77,16 +77,21 @@ Facts :: struct {
 	from_nix:   bool,     // this copy runs from the Nix store: never offered an install
 }
 
-// What the facts make of an install. No program but something of it left: to repair, or to remove.
+// What the facts make of an install. No program but something of it left: to repair, or to remove. A copy of the Nix store
+// is the Nix package's whatever an earlier install left: a repair would install it beside the package (leftover says).
 state_of :: proc(f: Facts) -> State {
 	switch {
-	case !f.exe_there:  return f.start_lnk || f.desk_lnk || f.record || f.manifest ? .Repair : .Not_Installed
+	case !f.exe_there && f.from_nix: return .Nix_Package
+	case !f.exe_there:  return leftover(f) ? .Repair : .Not_Installed
 	case !f.manifest:   return .Repair
 	case !f.running_it: return .Other_Copy
 	case f.start_lnk && f.record && f.missing == 0: return .This_Copy
 	}
 	return .Repair
 }
+
+// No program installed, but something of an install is left: a launcher, a shortcut, the record, the manifest.
+leftover :: proc(f: Facts) -> bool { return !f.exe_there && (f.start_lnk || f.desk_lnk || f.record || f.manifest) }
 
 // The options of the program's integration, its install folder set: the one the system recorded (Windows), else
 // Config.install_folder beside the default. `recorded`: the system has a record of it.
@@ -133,10 +138,9 @@ facts :: proc(c: Config, choices: []bool = nil) -> (f: Facts) {
 		// (a program with no icons has nothing of a record to install: complete when it is there, no leftover when not)
 		f.record = recorded || icons.present || (len(c.icons) == 0 && f.exe_there)
 	}
-	f.state = state_of(f)
 	f.nixos = desktop.is_nixos()
 	f.from_nix = desktop.in_nix_store(f.running)
-	if f.from_nix && f.state == .Not_Installed { f.state = .Nix_Package }
+	f.state = state_of(f)
 	return
 }
 

@@ -18,6 +18,13 @@ the_state_of_an_install :: proc(t: ^testing.T) {
 	no_menu := whole
 	no_menu.start_lnk = false
 	testing.expect_value(t, state_of(no_menu), State.Repair)
+	// a copy of the Nix store: the package's, whatever an earlier install left; an installed copy is still one
+	testing.expect_value(t, state_of({from_nix = true}), State.Nix_Package)
+	left := Facts{from_nix = true, record = true}
+	testing.expect_value(t, state_of(left), State.Nix_Package)
+	testing.expect(t, leftover(left), "its icons are left")
+	testing.expect(t, !leftover({from_nix = true}), "nothing left")
+	testing.expect_value(t, state_of({from_nix = true, exe_there = true, manifest = true}), State.Other_Copy)
 }
 
 // Versions compare number by number; one that does not read as a version is never older.
