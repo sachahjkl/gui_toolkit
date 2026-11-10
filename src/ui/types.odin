@@ -86,6 +86,7 @@ Box_Flag :: enum u8 {
 	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
 	Sunken,              // a well (fields, field_frame, well): the machined finish carves it in, its focus a ring of light
 	Groove,              // a separator (hline, vline): the machined finish carves it as a groove
+	Plate,               // a raised panel (a card, a dialog, a menu, a tooltip): the machined finish lifts it (machined_box)
 	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`field_frame`)
 	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
 }
@@ -238,7 +239,7 @@ Theme_Pattern :: struct {
 // How raised surfaces (buttons, bars, selected items) are painted.
 Finish :: enum u8 {
 	Flat,       // plain colour
-	Gradient,   // vertical gradient, highlight line along the top edge, embossed text, glowing focus (Bootstrap 2)
+	Gradient,   // a face a few percent lighter at its top than at its bottom, a fine lit line along its top, glowing focus
 	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
 	Machined,   // bevelled buttons, sunken wells, carved lines (machined.odin); flat on a light palette
 }

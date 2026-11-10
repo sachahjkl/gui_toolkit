@@ -114,6 +114,23 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Mark_Draw)(user)
 	r := b.rect
 	w := r.max.x - r.min.x
+	if machined() {   // a hole in the surface; checked, a raised key of the accent in it (a radio: a lit bead)
+		well := color_from_tags(s, b.tags_key, "well")
+		prev := draw.set_circular_corners(dc, d.radio)
+		machined_well(dc, r, d.radio ? w * 0.5 : rad(w * MARK_BOX_RADIUS_FRACTION), well)
+		draw.set_circular_corners(dc, prev)
+		if d.t <= MARK_CHECK_MIN_T { return }
+		if d.radio {
+			machined_lamp(dc, draw.rect_center(r), w * 0.55 * d.t, d.accent, 1, 0)
+			return
+		}
+		inset := max(1, math.round(scale())) + (1 - d.t) * w * 0.5
+		draw.push_alpha(dc, min(1, d.t * MARK_FILL_FADE_SPEED))
+		machined_bevel(dc, draw.rect_pad(r, -inset), rad(w * MARK_BOX_RADIUS_FRACTION) - inset * 0.5, d.accent, 0, 0)
+		draw.pop_alpha(dc)
+		mark_check(s, dc, r, d)
+		return
+	}
 	if d.radio {
 		draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), w * 0.5, MARK_RING_PX * scale())
 		dot := w * 0.5 * d.t
@@ -128,13 +145,19 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	fill.a *= min(1, d.t * MARK_FILL_FADE_SPEED)
 	paint_rect(dc, draw.rect_pad(r, -inset), fill, rad(w * MARK_BOX_RADIUS_FRACTION), d.t)
 	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * MARK_BOX_RADIUS_FRACTION), MARK_RING_PX * scale())
-	if marks := s.widget_icon_font; d.t > MARK_CHECK_MIN_T && marks != 0 {
-		size := d.size * d.t
-		m := font.metrics(s.fonts, marks, size)
-		dim := font.text_width(s.fonts, marks, size, ICON_CHECK)
-		c := draw.rect_center(r)
-		draw.text(dc, marks, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
-	}
+	mark_check(s, dc, r, d)
+}
+
+// The check of a check box, grown with `d.t`, in its centre.
+@(private = "file")
+mark_check :: proc(s: ^State, dc: ^draw.Context, r: Rect, d: ^Mark_Draw) {
+	marks := s.widget_icon_font
+	if d.t <= MARK_CHECK_MIN_T || marks == 0 { return }
+	size := d.size * d.t
+	m := font.metrics(s.fonts, marks, size)
+	dim := font.text_width(s.fonts, marks, size, ICON_CHECK)
+	c := draw.rect_center(r)
+	draw.text(dc, marks, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
 }
 
 // A width for a row of controls whose text is a child of it (check boxes, radios, switches): as wide as its children
@@ -225,6 +248,9 @@ a11y_state_toggled :: proc(b: ^Box, on: bool) {
 @(private = "file") TOGGLE_KNOB_HOT_STRETCH :: 0.06
 @(private = "file") TOGGLE_KNOB_SHADOW_ALPHA :: 0.30
 @(private = "file") TOGGLE_KNOB_SHADOW_SOFT_PX :: 3
+// machined: how much of the accent lights the channel when on; the knob's face
+@(private = "file") TOGGLE_MACHINED_LIT :: 0.85
+@(private = "file") TOGGLE_MACHINED_KNOB :: Color{0.62, 0.62, 0.62, 1}
 
 Toggle_Draw :: struct { t, hot, active: f32, track, accent: Color }
 
@@ -233,11 +259,17 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Toggle_Draw)(user)
 	r := b.rect
 	h := r.max.y - r.min.y
-	paint_rect(dc, r, draw.mix(d.track, d.accent, d.t), rad(h * 0.5), d.t)
 	pad := h * TOGGLE_KNOB_PAD_FRACTION
 	kd := h - 2 * pad
 	kw := kd * (1 + TOGGLE_KNOB_PRESS_STRETCH * d.active + TOGGLE_KNOB_HOT_STRETCH * d.hot)
 	x := math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t)
+	if machined() {   // a channel carved in the surface, lit with the accent when on; the knob a raised key in it
+		well := color_from_tags(gs(), b.tags_key, "well")
+		machined_well(dc, r, rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT))
+		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, rad(kd * 0.5), TOGGLE_MACHINED_KNOB, d.hot, d.active)
+		return
+	}
+	paint_rect(dc, r, draw.mix(d.track, d.accent, d.t), rad(h * 0.5), d.t)
 	sc := scale()
 	draw.rect(dc, {{x - sc, r.min.y + pad + sc}, {x + kw + sc, r.max.y - pad + 2 * sc}}, {0, 0, 0, TOGGLE_KNOB_SHADOW_ALPHA}, rad(kd * 0.5), 0, TOGGLE_KNOB_SHADOW_SOFT_PX * sc)
 	draw.rect(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, {1, 1, 1, 1}, rad(kd * 0.5))
@@ -285,6 +317,8 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 @(private = "file") SLIDER_KNOB_SHADOW_ALPHA :: 0.35
 @(private = "file") SLIDER_KNOB_SHADOW_SOFT_PX :: 4
 @(private = "file") SLIDER_KNOB_DOT_FRACTION :: 0.38
+// machined: the slot is this much thicker than the flat track (an inner shadow needs the room)
+@(private = "file") SLIDER_MACHINED_TRACK :: 1.5
 // Without a step, the arrow keys move a hundredth of the range. Page keys: this many arrow moves.
 @(private = "file") SLIDER_FINE_DIVISIONS :: 100
 @(private = "file") SLIDER_PAGE_STEPS :: 10
@@ -316,13 +350,29 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	x0, x1 := slider_geom(r, em)
 	cy := (r.min.y + r.max.y) * 0.5
 	th := em * SLIDER_TRACK_EM
-	draw.rect(dc, {{x0, cy - th * 0.5}, {x1, cy + th * 0.5}}, d.track, rad(th * 0.5))
 	fx0 := d.range ? math.lerp(x0, x1, d.t0) : x0
 	fx1 := math.lerp(x0, x1, d.t1)
-	draw.rect(dc, {{fx0, cy - th * 0.5}, {fx1, cy + th * 0.5}}, d.accent, rad(th * 0.5))
 	kr := em * (SLIDER_KNOB_EM + SLIDER_KNOB_HOT_EM * d.hot + SLIDER_KNOB_ACTIVE_EM * d.active)
 	knobs := [2]f32{math.lerp(x0, x1, d.t0), fx1}
 	sc := scale()
+	if machined() {   // a slot carved in the surface, its run lit with the accent; the knobs raised keys on it
+		mth := math.round(th * SLIDER_MACHINED_TRACK)
+		slot := Rect{{x0, math.round(cy - mth * 0.5)}, {x1, math.round(cy - mth * 0.5) + mth}}
+		machined_well(dc, slot, rad(mth * 0.5), color_from_tags(gs(), b.tags_key, "well"))
+		if fx1 - fx0 > 1 { paint_rect(dc, {{fx0, slot.min.y + sc}, {fx1, slot.max.y - sc}}, d.accent, rad(mth * 0.5)) }
+		prev := draw.set_circular_corners(dc, true)
+		for i in (d.range ? 0 : 1) ..< 2 {
+			kx := knobs[i]
+			machined_bevel(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, kr, TOGGLE_MACHINED_KNOB, d.hot, d.active)
+			dot := kr * SLIDER_KNOB_DOT_FRACTION
+			draw.rect(dc, {{kx - dot, cy - dot}, {kx + dot, cy + dot}}, d.accent, dot)
+		}
+		draw.set_circular_corners(dc, prev)
+		slider_value(dc, d, r, cy, em, sc)
+		return
+	}
+	draw.rect(dc, {{x0, cy - th * 0.5}, {x1, cy + th * 0.5}}, d.track, rad(th * 0.5))
+	draw.rect(dc, {{fx0, cy - th * 0.5}, {fx1, cy + th * 0.5}}, d.accent, rad(th * 0.5))
 	for i in (d.range ? 0 : 1) ..< 2 {
 		kx := knobs[i]
 		draw.rect(dc, {{kx - kr - sc, cy - kr + sc}, {kx + kr + sc, cy + kr + 3 * sc}}, {0, 0, 0, SLIDER_KNOB_SHADOW_ALPHA}, rad(kr), 0, SLIDER_KNOB_SHADOW_SOFT_PX * sc)
@@ -330,6 +380,12 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.rect(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, d.accent, rad(kr), SLIDER_KNOB_RING_PX * sc)
 		draw.rect(dc, {{kx - kr * SLIDER_KNOB_DOT_FRACTION, cy - kr * SLIDER_KNOB_DOT_FRACTION}, {kx + kr * SLIDER_KNOB_DOT_FRACTION, cy + kr * SLIDER_KNOB_DOT_FRACTION}}, d.accent, rad(kr))
 	}
+	slider_value(dc, d, r, cy, em, sc)
+}
+
+// The slider's value, at its right end.
+@(private = "file")
+slider_value :: proc(dc: ^draw.Context, d: ^Slider_Draw, r: Rect, cy, em, sc: f32) {
 	size := em * SLIDER_VALUE_FONT_SCALE
 	m := font.metrics(gs().fonts, d.mono, size)
 	w := font.text_width(gs().fonts, d.mono, size, d.value_text)
@@ -593,7 +649,8 @@ bar_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	w := r.max.x - r.min.x
 	radius := rad((r.max.y - r.min.y) * 0.5)
-	draw.rect(dc, r, d.track, radius)
+	// (machined: a slot carved in the surface, its fill a lit face in it)
+	if machined() { machined_well(dc, r, radius, color_from_tags(gs(), b.tags_key, "well")) } else { draw.rect(dc, r, d.track, radius) }
 	if d.indeterminate {
 		seg := w * PROGRESS_SWEEP_SEGMENT_FRACTION
 		e := d.phase * d.phase * (3 - 2 * d.phase)
@@ -755,7 +812,7 @@ card :: proc(title: string, icon_glyph: string = "") -> bool {
 	gs().next_mod.width = fill()
 	gs().next_mod.height = children_sum()
 	gs().next_mod.radius = em * 0.6
-	c := build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###card_%s", title))
+	c := build_box({.Draw_Background, .Draw_Border, .Plate}, fmt.tprintf("###card_%s", title))
 	a11y_default(c, {role = .Group, name = title})
 	push_parent(c)
 	spacer(px(em * 0.9))

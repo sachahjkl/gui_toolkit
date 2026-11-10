@@ -100,6 +100,7 @@ COMMANDS := []Command {
 	{name = "cdp", raw = true, run = run_cdp},
 	{name = "screenshots", flags = {"build", "only:", "width:"}, run = run_screenshots},
 	{name = "theme_shots", flags = {"build", "out:", "page:", "find:", "only:"}, run = run_theme_shots},
+	{name = "finish_shots", flags = {"build", "out:", "page:", "theme:"}, run = run_finish_shots},
 	{name = "timeline_test", flags = {"exe:", "out:", "port:"}, run = run_timeline_test},
 	{name = "doc_check", raw = true, run = run_doc_check},
 	{name = "ci", run = run_ci},

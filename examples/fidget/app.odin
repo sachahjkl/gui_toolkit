@@ -164,6 +164,7 @@ App :: struct {
 	// settings (persisted)
 	palette_idx: int,
 	machined:    bool,   // the machined finish (a theme made for its own finish keeps it)
+	finish:      Maybe(ui.Finish),   // --finish=name: every theme in this finish (not saved)
 	anim_mode:   Anim_Mode,
 	show_status: bool,
 	saved:       Saved_Settings,

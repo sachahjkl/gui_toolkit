@@ -502,7 +502,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	s.next_mod.height = lv.scrolls ? px(s.window_size.y) : children_sum()
 	s.next_mod.radius = em * 0.5
 	if first { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
-	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}, id)
+	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Plate}, id)
 	p.cursor = .Arrow
 	if !lv.scrolls { view_jump(p, 0) }
 	a11y_default(p, {role = .Menu, orientation = .Y})
@@ -814,7 +814,7 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 	s.next_mod.radius = em * TOOLTIP_RADIUS_EM
 	prev := s.boxes[key_from_string(s.root.key, "###tooltip")]
 	if prev == nil || prev.last_build + 1 != s.build_index { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, placed and shown on the next
-	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow}, "###tooltip")
+	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, "###tooltip")
 	a11y_default(p, {role = .Tooltip})
 	push_parent(p)
 	append(&s.popup_stack, true)

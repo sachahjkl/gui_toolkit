@@ -80,6 +80,7 @@ set_palette :: proc(app: ^App, idx: int) {
 apply_theme :: proc(app: ^App) {
 	p := palettes[app.palette_idx].palette
 	if app.machined && p.finish == .Flat { p.finish = .Machined }
+	if f, ok := app.finish.?; ok { p.finish = f }
 	app.theme.glow = 1
 	ui.apply_palette(&app.theme, p, render.blend_space(&app.r))
 	if app.accent_override {
@@ -226,7 +227,8 @@ open :: proc(o: Open_Options) -> ^App {
 	app.tree_open[0], app.tree_open[1], app.tree_open[6], app.tree_open[10] = true, true, true, true
 	app.tree_sel = 2
 	settings_load(app)
-	for a in o.args {   // flags to look at one thing: --page=N --palette=N --anim=on|off
+	for a in o.args {   // flags to look at one thing: --page=N --palette=N --anim=on|off --finish=name
+		if strings.has_prefix(a, "--finish=") { app.finish = ui.finish_of(a[9:]) }
 		if strings.has_prefix(a, "--page=") { if v, vok := strconv.parse_int(a[7:]); vok { app.page = Page(clamp(v, 0, len(Page) - 1)) } }
 		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
 		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
