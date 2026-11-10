@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.148.0] - 2026-11-10
+
+### Added
+- **`platform.placement_text`, `placement_parse`**: a window's placement as a preference's text ("120 80 1400 900", "maximized" after it) and back, so that a program opens its window where it was, on the monitor it was on (`set_placement` brings it onto one that is there).
+
 ## [0.147.0] - 2026-11-10
 
 ### Added
@@ -2243,6 +2248,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.148.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.148.0
 [0.147.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.147.0
 [0.146.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.146.0
 [0.145.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.145.1
