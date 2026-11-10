@@ -180,6 +180,22 @@ The theme read and the files found are kept while the data folders and the theme
 asked once (`file_icons_forget` makes the next icon ask it again: the person chose another theme). `file_icon_key` reads no
 file: on Linux it is the type the name says.
 
+## Icons of applications
+
+`theme_icon(name, size)` gives the icon named `name` in the person's icon theme, about `size` pixels square, as a
+`File_Icon`. `name` is a desktop entry's `Icon=` key (`firefox`). The lookup is the one of `file_icon`: the theme, the
+themes it inherits, `hicolor`, the subfolder of the size asked, else the nearest. Then come the `pixmaps` folders of the
+data directories, as the specification says. An absolute path is the file itself (a PNG or an SVG). `ok` is false when
+there is none, and on systems other than Linux. It reads files: call it once per name and size, or from a worker.
+
+```odin
+if ic, ok := desktop.theme_icon(entry.icon, 32); ok {
+	defer desktop.file_icon_destroy(&ic)
+	tex := render.create_texture_rgba(&r, ic.size.x, ic.size.y)
+	render.update_texture_rgba(&r, tex, 0, 0, ic.size.x, ic.size.y, ic.rgba)
+}
+```
+
 ## A terminal in a folder
 
 `open_terminal(dir)` opens a terminal whose shell starts in `dir` ("Open a terminal here"). False when none can start.

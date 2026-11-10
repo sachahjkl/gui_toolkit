@@ -31,3 +31,11 @@ file_icon :: proc(path: string, folder: bool, size: int, choose := 0, allocator 
 	return icon_of_path_native(path, folder, size, choose > 0 ? choose : size, allocator)
 }
 
+
+// The icon named `name` in the person's icon theme (a desktop entry's Icon= key: "firefox"), about `size` pixels square:
+// the theme, the themes it inherits, hicolor, then the pixmaps folder of each data directory. An absolute path is the
+// file itself (a PNG or an SVG). ok is false when there is none, and on systems other than Linux. It reads files: call it
+// once per name and size, or from a worker.
+theme_icon :: proc(name: string, size: int, allocator := context.allocator) -> (icon: File_Icon, ok: bool) {
+	return theme_icon_native(name, size, allocator)
+}

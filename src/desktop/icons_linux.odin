@@ -383,3 +383,36 @@ icon_load :: proc(file: string, size: int, allocator: runtime.Allocator) -> (ico
 	return File_Icon{rgba, {w, h}}, true
 }
 
+
+@(private)
+theme_icon_native :: proc(name: string, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
+	return theme_icon_in(xdg_roots(), icon_theme_current(), name, size, allocator)
+}
+
+// The icon named `name` from the XDG folders `roots` and the theme named `theme` (the tests give theirs).
+@(private)
+theme_icon_in :: proc(roots: Xdg_Roots, theme: string, name: string, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
+	if name == "" { return }
+	exts := [?]string{".png", ".svg"}
+	if strings.has_prefix(name, "/") {
+		if !(strings.has_suffix(name, ".png") || strings.has_suffix(name, ".svg")) || !os.is_file(name) { return }
+		return icon_load(name, size, allocator)
+	}
+	file := ""
+	{
+		sync.mutex_guard(&icon_mutex)
+		c := icon_cache_get(roots, theme)
+		if f := icon_file(c, name, size); f != "" { file = strings.clone(f, context.temp_allocator) }
+	}
+	// (the specification's last place: the pixmaps folders, which older programs still use)
+	if file == "" {
+		pixmaps: for d in roots.data {
+			for e in exts {
+				p := strings.concatenate({d, "/pixmaps/", name, e}, context.temp_allocator)
+				if os.is_file(p) { file = p; break pixmaps }
+			}
+		}
+	}
+	if file == "" { return }
+	return icon_load(file, size, allocator)
+}

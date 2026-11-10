@@ -143,3 +143,7 @@ icon_pixels :: proc(hicon: win.HICON, allocator: runtime.Allocator) -> (icon: Fi
 	}
 	return File_Icon{px, {w, h}}, true
 }
+
+// (Windows has no icon themes: a program's icon comes from its executable, file_icon)
+@(private)
+theme_icon_native :: proc(name: string, size: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) { return }
