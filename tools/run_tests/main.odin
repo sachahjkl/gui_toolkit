@@ -99,6 +99,7 @@ STEPS := []Step{
 	{name = "sleep", oses = EVERYWHERE},
 	{name = "netif", oses = EVERYWHERE},
 	{name = "placement"},
+	{name = "placement_text", oses = EVERYWHERE},
 	{name = "size_move"},
 	{name = "testkit"},
 	{name = "tk"},
