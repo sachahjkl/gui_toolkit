@@ -23,6 +23,7 @@ Widgets and layout
   panes.md            Splitter and panes
   modals.md           Modal dialogs
   autoscroll.md       Middle-click autoscroll
+  data-views.md       Tables, graphs and meters
   dragdrop.md         Drag and drop
   accessibility.md    Accessibility
   i18n.md             i18n: the text shown
