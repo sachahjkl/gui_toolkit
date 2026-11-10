@@ -226,6 +226,9 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   buttons, without an icon ([docs/notifications.md](docs/notifications.md));
   the clipboard's images, HTML and files ([docs/clipboard.md](docs/clipboard.md)); file dialogs and shell actions
   ([docs/dialogs.md](docs/dialogs.md)); drag and drop ([docs/dragdrop.md](docs/dragdrop.md)).
+- **Tables and graphs**: `table_build`, a sortable table of texts (titles that sort and resize, a columns' menu, the
+  keyboard while a filter field has it, cut cells in a tooltip) on `vlist`; `type_to_field` (typing anywhere filters);
+  `line_graph`, `sparkline` and `meter_bar` for values over time ([docs/data-views.md](docs/data-views.md)).
 - **Long lists**: `vlist` builds only the rows in view (rows of any height, measured and cached; keyboard and type-ahead
   over all rows); wrapped paragraphs are cached between frames; scroll regions glide along an impulse or ease-out curve
   on the app's frame clock (`set_scroll_settings`). Middle-click autoscroll (as Chrome and Firefox do it): a press of
