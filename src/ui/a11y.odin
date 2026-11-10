@@ -425,7 +425,7 @@ a11y_box_text :: proc(b: ^Box) -> string { return a11y_text_shown(gs(), b) }
 @(private)
 a11y_text_shown :: proc(s: ^State, b: ^Box) -> string {
 	if b.text == "" || .Draw_Text not_in b.flags { return "" }
-	if s.icon_font != 0 && b.font == s.icon_font { return "" }   // a glyph: decoration
+	if b.font != 0 && (b.font == s.icon_font || b.font == s.widget_icon_font) { return "" }   // a glyph: decoration
 	return b.text
 }
 

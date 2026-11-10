@@ -164,7 +164,7 @@ toasts_build :: proc() {
 		a11y_default(b, {role = urgent ? .Alert : .Status, name = strings.clone(string(t.text[:t.len]), frame_allocator()), live = urgent ? .Assertive : .Polite, no_children = true})
 		push_parent(b)
 		spacer(px(em * 0.6))
-		icon(icons[t.kind], em * 1.8, tint)
+		widget_icon(icons[t.kind], em * 1.8, tint)
 		spacer(px(em * 0.4))
 		next({width = fill(), height = pct(1)})
 		build_box({.Draw_Text}, fmt.tprintf("%s###msg", string(t.text[:t.len])))
