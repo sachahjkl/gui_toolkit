@@ -80,3 +80,11 @@ an_update_manifest_is_signed :: proc(t: ^testing.T) {
 	testing.expect_value(t, m.version, "1.2.3")
 	testing.expect(t, update_manifest(product, program, "1.2.4", "", out) != "", "named for another version")
 }
+
+// A key goes nowhere a commit could take it: the toolkit's work tree is one, the temporary folder is not.
+@(test)
+a_key_is_kept_out_of_work_trees :: proc(t: ^testing.T) {
+	base, _ := os.temp_directory(context.temp_allocator)
+	testing.expect(t, !in_git_tree(fmt.tprintf("%s/no-such-key", base)), "the temporary folder")
+	testing.expect(t, in_git_tree("src/toolbox/no-such-key"), "a work tree")
+}

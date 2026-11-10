@@ -74,11 +74,11 @@ update_seed :: proc() -> (seed: [32]byte, ok: bool) {
 }
 
 // Whether `path` is in a git work tree: a signing key there could be committed.
-@(private = "file")
+@(private)
 in_git_tree :: proc(path: string) -> bool {
-	abs, err := filepath.abs(path, context.temp_allocator)
+	// (the folder's: the key's file does not exist yet, and abs reads the file system)
+	dir, err := filepath.abs(filepath.dir(path), context.temp_allocator)
 	if err != nil { return true }
-	dir := filepath.dir(abs)
 	for {
 		if os.exists(fmt.tprintf("%s/.git", dir)) { return true }
 		parent := filepath.dir(dir)
