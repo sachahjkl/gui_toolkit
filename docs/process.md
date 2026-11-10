@@ -27,6 +27,9 @@ name a new process by the time a program acts on it. Linux only for now; elsewhe
 start, ok := process.process_start_time(pid)          // Linux: clock ticks after the boot (field 22 of /proc/<pid>/stat)
 r, errno := process.signal_process(pid, start, .Terminate)
 r, errno = process.set_priority(pid, start, 5)       // the nice value, for every thread
+cpus, r, errno := process.affinity(pid, start)       // the logical processors it may run on (a Cpu_Set)
+process.cpu_set_put(&cpus, 3, false)                 // not on processor 3
+r, errno = process.set_affinity(pid, start, cpus)    // for every thread; an empty set is refused (Failed, EINVAL)
 ```
 
 | `Act_Result` | What it means |
@@ -40,8 +43,11 @@ r, errno = process.set_priority(pid, start, 5)       // the nice value, for ever
 `Signal` is `Terminate` (SIGTERM), `Kill` (SIGKILL), `Stop` (SIGSTOP), `Continue` (SIGCONT), `Hangup` (SIGHUP) or
 `Interrupt` (SIGINT).
 
-How it acts on Linux: `pidfd_open` pins the pid (while the descriptor is open, the pid cannot name another process);
-the start time is read again from `/proc/<pid>/stat`; only when it is the same does `pidfd_send_signal` send the signal.
-`set_priority` pins the process the same way, then calls `setpriority` for each thread of `/proc/<pid>/task`: the nice
-value is each thread's, and `setpriority` on the pid alone sets the main thread's. A thread that ends while the list is
-read is skipped. `parse_start_time(stat)` reads the start time of a `stat` line (pure, any target).
+How it acts on Linux: `pidfd_open` pins the process, and so does a descriptor of its folder `/proc/<pid>`: once the
+process ends, every read through that folder fails, even when the pid names a new process. The start time is read
+through the folder; only when it is the same does `pidfd_send_signal` send the signal. `set_priority` and `set_affinity`
+pin the process the same way, list its threads through the same folder (`task`) and call `setpriority` or
+`sched_setaffinity` for each: a priority and an affinity are each thread's, and the call on the pid alone sets the main
+thread's. A thread that ends while the list is read is skipped. Then the pidfd says whether the process still runs: when
+it ended in between, its thread ids may name another process's threads, and the answer is `Gone`. `Cpu_Set` holds up to
+`CPU_SET_MAX` (1024) processors: `cpu_set_has`, `cpu_set_put`, `cpu_set_count`. `parse_start_time(stat)` reads the start time of a `stat` line (pure, any target).

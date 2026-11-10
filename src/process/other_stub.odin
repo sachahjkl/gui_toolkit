@@ -6,3 +6,5 @@ package tk_process
 process_start_time :: proc(pid: i32) -> (start: u64, ok: bool) { return }
 signal_process :: proc(pid: i32, start_time: u64, sig: Signal) -> (r: Act_Result, errno: int) { return .Unsupported, 0 }
 set_priority :: proc(pid: i32, start_time: u64, nice: int) -> (r: Act_Result, errno: int) { return .Unsupported, 0 }
+affinity :: proc(pid: i32, start_time: u64) -> (cpus: Cpu_Set, r: Act_Result, errno: int) { return {}, .Unsupported, 0 }
+set_affinity :: proc(pid: i32, start_time: u64, cpus: Cpu_Set) -> (r: Act_Result, errno: int) { return .Unsupported, 0 }
