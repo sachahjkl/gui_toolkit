@@ -3,14 +3,16 @@ package platform
 
 import win "core:sys/windows"
 
-// Puts a window on the monitor the user works on (the one of the window in front, else the one under the pointer) when it
-// is on another: at the same place of that monitor's work area (rect_on_work). A program called up from anywhere (a
-// shortcut, a notification area icon) calls it before it shows its window. True when the window moved.
-move_to_active_monitor :: proc(w: ^Window) -> bool {
+// Puts a window on the monitor the user works on when it is on another: the one under the pointer (.Pointer), or the one
+// of the window in front (.Focus; the pointer's when there is none), at the same place of that monitor's work area
+// (rect_on_work). A program called up from anywhere (a shortcut, a notification area icon) calls it before it shows its
+// window. True when the window moved.
+move_to_active_monitor :: proc(w: ^Window, follow := Active_Monitor.Pointer) -> bool {
 	if w == nil || w.offscreen || w.hwnd == nil { return false }
-	fg := win.GetForegroundWindow()
 	target: win.HMONITOR
-	if fg != nil && fg != w.hwnd { target = win.MonitorFromWindow(fg, .MONITOR_DEFAULTTONULL) }
+	if follow == .Focus {
+		if fg := win.GetForegroundWindow(); fg != nil && fg != w.hwnd { target = win.MonitorFromWindow(fg, .MONITOR_DEFAULTTONULL) }
+	}
 	if target == nil {
 		pt: win.POINT
 		if win.GetCursorPos(&pt) { target = win.MonitorFromPoint(pt, .MONITOR_DEFAULTTONEAREST) }

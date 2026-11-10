@@ -31,3 +31,13 @@ a_rectangle_goes_to_the_same_place_of_another_work_area :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.rect_on_work({0, 0, 1920, 1040}, right, left), left)
 	testing.expect_value(t, platform.rect_on_work({1920, -200, 2560, 1400}, right, left), left)   // (larger than its new monitor)
 }
+
+@(test)
+a_monitor_followed_by_its_name :: proc(t: ^testing.T) {
+	a, ok := platform.active_monitor_parse("focus")
+	testing.expect(t, ok && a == .Focus)
+	a, ok = platform.active_monitor_parse("pointer")
+	testing.expect(t, ok && a == .Pointer)
+	_, ok = platform.active_monitor_parse("mouse")
+	testing.expect(t, !ok)
+}
