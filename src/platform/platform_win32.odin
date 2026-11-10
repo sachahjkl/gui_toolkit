@@ -424,6 +424,12 @@ hide_window :: proc(w: ^Window) {
 
 // Brings an already-shown window to the front and gives it the keyboard focus (the user asked to switch to it). A no-op
 // for an offscreen window. On Wayland a client cannot raise itself, so there it is best effort (the Linux backend).
+// Brings the window to the front (Windows has no activation token: the foreground rules decide, as raise_window).
+raise_window_token :: proc(w: ^Window, token: string) { raise_window(w) }
+
+// No activation token on Windows: "".
+activation_token_from_env :: proc(allocator := context.allocator) -> string { return "" }
+
 raise_window :: proc(w: ^Window) {
 	if w == nil || w.offscreen { return }
 	win.SetForegroundWindow(w.hwnd)

@@ -11,6 +11,7 @@ package platform
 // Xft.dpi/96 on X11). A backend fills `size`, `dpi_scale`, `focused`, `active` and queues Events into `w.events`; this
 // file hands them out with the same re-entrancy and drop-what-was-returned rules as Win32.
 
+import "core:os"
 import "core:time"
 import "core:strings"
 import "core:sys/posix"
@@ -268,6 +269,27 @@ raise_window :: proc(w: ^Window) {
 		if token := notify_take_token(w); token != "" { wl_activate_token(w, token) } else { wl_activate(w) }
 	case .None:
 	}
+}
+
+// Brings the window to the front with an activation token another process got for it: a second start of the program,
+// which the launcher gave XDG_ACTIVATION_TOKEN (activation_token_from_env) and which hands it to the first. The
+// compositor honours a token of a recent launch where a token of the window's own (no recent input) it may refuse.
+// "": raise_window.
+raise_window_token :: proc(w: ^Window, token: string) {
+	if w == nil || w.offscreen { return }
+	if token == "" || w.backend != .Wayland { raise_window(w); return }
+	wl_activate_token(w, token)
+}
+
+// The activation token the launcher gave this process (Wayland's XDG_ACTIVATION_TOKEN, X11's DESKTOP_STARTUP_ID), taken
+// out of the environment so that a program it starts does not reuse it (the specification asks it); "" none.
+activation_token_from_env :: proc(allocator := context.allocator) -> string {
+	for name in ([]string{"XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID"}) {
+		value := os.get_env(name, context.temp_allocator)
+		_ = os.unset_env(name)
+		if value != "" { return strings.clone(value, allocator) }
+	}
+	return ""
 }
 
 // Whether the window is on screen (mapped and not minimized). An offscreen window is never "visible" in this sense.
