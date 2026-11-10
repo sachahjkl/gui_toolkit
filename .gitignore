@@ -4,6 +4,7 @@ build/
 *.obj
 *.ilk
 tools/wgsl2hlsl/target/
+native/*/target/
 .direnv/
 .pre-commit-config.yaml
 /tk
