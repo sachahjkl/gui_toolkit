@@ -226,6 +226,19 @@ key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 	return false
 }
 
+// The first key press of the frame not taken yet, taken (a recorder of shortcuts: whatever is pressed). Shift, Ctrl and
+// Alt alone are not keys here: they come with the key they modify. ok = false: none.
+key_take :: proc() -> (key: platform.Key, mods: platform.Modifiers, ok: bool) {
+	s := gs()
+	for e, i in s.events.list {
+		if s.events.consumed[i] || e.kind != .Key_Press || e.key == .None { continue }
+		if e.key == .Shift || e.key == .Ctrl || e.key == .Alt { continue }
+		s.events.consumed[i] = true
+		return e.key, e.mods, true
+	}
+	return
+}
+
 // Like key_press but does not consume (for global shortcuts that must not steal keys from a focused field).
 key_pressed_peek :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 	s := gs()
