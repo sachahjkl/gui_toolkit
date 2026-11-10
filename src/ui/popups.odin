@@ -511,11 +511,9 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	push_parent(p)
 	append(&s.popup_stack, true)
 	append(&s.menu_build, depth)
+	// (a menu that searches has its field at its very top, from edge to edge)
+	if lv.search { menu_search_field(s, lv, w, em) }
 	spacer(px(em * MENU_PAD_EM))
-	if lv.search {
-		menu_search_field(s, lv, w, em)
-		spacer(px(em * MENU_PAD_EM))
-	}
 	return true
 }
 
@@ -826,41 +824,44 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 tooltip_end :: proc() { ctx_menu_end() }
 
 
-// The search of a menu opened with `search`: a field (its well, a magnifier, what is typed and a caret that blinks as
-// a field's does), so that the person sees the keys go there. The menu keeps the keys: the field is drawn, not focused.
+// The search of a menu opened with `search`: a band from edge to edge at its top, in a field's background with the
+// menu's separator under it (no frame of its own: the menu's border is its border), a magnifier, what is typed and a caret that blinks
+// as a field's does, so that the person sees the keys go there. The menu keeps the keys: the field is drawn, not focused.
 @(private = "file")
 menu_search_field :: proc(s: ^State, lv: ^Menu_Level, w, em: f32) {
 	q := menu_query(lv)
-	next({width = px(w), height = px(dense(em * 2.4))})
-	if row(.Center, {}, "###menu_search_row") {
-		spacer(px(em * 0.4))
-		next({width = fill(), height = px(dense(em * 1.9))})
-		if field_frame("###menu_search") {
-			// the magnifier, in the weak text's colour
-			next({width = px(em * 1.7), height = pct(1)})
-			ink := frame_new(Color)
-			ink^ = color("weak text")
-			custom("###menu_search_icon", menu_magnifier_draw, ink)
-			// what is typed, the caret after it (before the hint while nothing is)
-			since := now_ms() - lv.typed_ms
-			caret_on := !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
-			caret_wake(s, since)
-			if q != "" {
-				next({width = text_size(), height = pct(1), text_pad = 0})
-				label(fmt.tprintf("%s###menu_query", q))
-			}
-			next({width = px(max(1, math.round(em / CARET_WIDTH_DIVISOR))), height = px(math.round(em * 1.25)), bg = caret_on ? color("cursor") : Color{}})
-			build_box({.Draw_Background}, "###menu_caret")
-			if q == "" {
-				spacer(px(em * 0.2))
-				if tags("weak") {
-					next({width = fill(), height = pct(1), text_pad = 0})
-					label("Type to search###menu_query")
-				}
+	next({width = px(w), height = px(dense(em * 2.3))})
+	set_next_axis(.X, .Center)
+	push_tags("input")
+	band := build_box({.Draw_Background}, "###menu_search")
+	pop_tags()
+	if parent(band) {
+		spacer(px(em * 0.5))
+		// the magnifier, in the weak text's colour
+		next({width = px(em * 1.7), height = pct(1)})
+		ink := frame_new(Color)
+		ink^ = color("weak text")
+		custom("###menu_search_icon", menu_magnifier_draw, ink)
+		// what is typed, the caret after it (before the hint while nothing is)
+		since := now_ms() - lv.typed_ms
+		caret_on := !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
+		caret_wake(s, since)
+		if q != "" {
+			next({width = text_size(), height = pct(1), text_pad = 0})
+			label(fmt.tprintf("%s###menu_query", q))
+		}
+		next({width = px(max(1, math.round(em / CARET_WIDTH_DIVISOR))), height = px(math.round(em * 1.25)), bg = caret_on ? color("cursor") : Color{}})
+		build_box({.Draw_Background}, "###menu_caret")
+		if q == "" {
+			spacer(px(em * 0.2))
+			if tags("weak") {
+				next({width = fill(), height = pct(1), text_pad = 0})
+				label("Type to search###menu_query")
 			}
 		}
-		spacer(px(em * 0.4))
 	}
+	// (the line under it is the menu's separator, not a field's border)
+	hline(px(w))
 }
 
 // A magnifier: a ring and its handle, sized to the box's height.
