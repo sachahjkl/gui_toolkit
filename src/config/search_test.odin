@@ -78,4 +78,11 @@ every_word_in_one_of_the_fields :: proc(t: ^testing.T) {
 	testing.expect(t, words_match("native kernel", TITLE, ID, DIR), "in any order")
 	testing.expect(t, !words_match("kernel classeur", TITLE, ID, DIR), "a word in none of them")
 	testing.expect(t, !words_match("kernel build ses", TITLE), "a field left out is not searched")
+	// between double quotes, the words are one: in that order, spaces and all
+	testing.expect(t, words_match(`"kernel build"`, TITLE, ID, DIR), "a phrase")
+	testing.expect(t, !words_match(`"build kernel"`, TITLE, ID, DIR), "not in that order")
+	testing.expect(t, words_match(`"Session 2 " ses`, "Session 2 about", "ses_2"), "a phrase and a word")
+	testing.expect(t, !words_match(`"Session 2 "`, "Session 12 about"), "its spaces at its ends dropped, not those inside")
+	testing.expect(t, !words_match(`"session 2 a`, "Session 20 about"), "a quote left open runs to the end")
+	testing.expect(t, words_match(`""  kernel`, TITLE), "an empty phrase is no word")
 }
