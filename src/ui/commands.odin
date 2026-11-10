@@ -18,12 +18,15 @@ package ui
 //   if i := ui.palette(palette_key, COMMANDS[:], enabled[:]); i >= 0 { run(Cmd(i)) }
 
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import "../platform"
 
 // The palette's width when none is given, in em; where its top is, a share of the window's height.
 PALETTE_WIDTH_EM :: 32
 PALETTE_TOP :: 0.12
+// What a match of the group's letters (not the label's alone) loses against one of the label's.
+PALETTE_GROUP_MATCH_PENALTY :: 100
 // The sheet's width, in em; its list's height at most, a share of the window's height.
 SHEET_WIDTH_EM :: 34
 SHEET_HEIGHT :: 0.7
@@ -136,9 +139,9 @@ palette_open :: proc(key: Key, width_em: f32 = PALETTE_WIDTH_EM) {
 }
 
 // The palette `key` while it is open: every command, under its group's heading, with its keys. What is typed keeps the
-// commands whose label and group have its letters in order (the headings go then; each line says its group). A
-// command that cannot act now (`enabled[i]` false; nil: all can) is greyed. Returns the index of the command chosen, -1
-// when none is.
+// commands whose label and group have its letters in order, the best matches first (the headings go then; each line
+// says its group); the first one is selected. A command that cannot act now (`enabled[i]` false; nil: all can) is
+// greyed. Returns the index of the command chosen, -1 when none is.
 palette :: proc(key: Key, commands: []Command, enabled: []bool = nil, width_em: f32 = PALETTE_WIDTH_EM) -> (chosen: int) {
 	chosen = -1
 	// (the block of ctx_menu is the menu: its items are built inside it)
@@ -150,19 +153,38 @@ palette :: proc(key: Key, commands: []Command, enabled: []bool = nil, width_em: 
 palette_items :: proc(commands: []Command, enabled: []bool) -> (chosen: int) {
 	chosen = -1
 	lv, _ := menu_current()
-	searching := lv != nil && menu_query(lv) != ""
-	group := ""
-	for c, i in commands {
-		if c.group != group && !searching {
-			if i > 0 { menu_separator() }
-			if c.group != "" { menu_heading(c.group) }
-		}
-		group = c.group
+	query := lv != nil ? menu_query(lv) : ""
+	item :: proc(commands: []Command, enabled: []bool, i: int, searching: bool) -> bool {
+		c := commands[i]
 		text := c.label
 		if searching && c.group != "" { text = fmt.tprintf("%s  ·  %s", c.label, c.group) }
 		on := enabled == nil || (i < len(enabled) && enabled[i])
-		if menu_item(fmt.tprintf("%s###palette_%d", text, i), command_shortcut(c), enabled = on).clicked { chosen = i }
+		return menu_item(fmt.tprintf("%s###palette_%d", text, i), command_shortcut(c), enabled = on).clicked
 	}
+	if query == "" {
+		group := ""
+		for c, i in commands {
+			if c.group != group {
+				if i > 0 { menu_separator() }
+				if c.group != "" { menu_heading(c.group) }
+			}
+			group = c.group
+			if item(commands, enabled, i, false) { chosen = i }
+		}
+		return
+	}
+	// a search: the best matches first (the label's letters matter more than the group's), then in the table's order
+	Ranked :: struct { index, score: int }
+	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
+	for c, i in commands {
+		if score, _, ok := fuzzy_score(query, c.label); ok {
+			append(&ranked, Ranked{i, score})
+		} else if score2, _, ok2 := fuzzy_score(query, fmt.tprintf("%s %s", c.label, c.group)); ok2 {
+			append(&ranked, Ranked{i, score2 - PALETTE_GROUP_MATCH_PENALTY})
+		}
+	}
+	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
+	for r in ranked { if item(commands, enabled, r.index, true) { chosen = r.index } }
 	return
 }
 
