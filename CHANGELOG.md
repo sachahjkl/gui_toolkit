@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.142.0] - 2026-11-10
+
+### Added
+- **`ui.hotkey_field`**: a field that records a key combination from the keys pressed (a click, then the keys; Escape gives it up), for a program's shortcut. `ui.hotkey_recording` says when one records (a program lets its global hotkey go then).
+  - `platform.Hotkey.char`: a key named by the character it types on the user's layout, when Key has none (the French ù): read and written by `hotkey_parse` and `hotkey_text`, registered on Windows (`VkKeyScanW`), sent on Wayland (its keysym `U00F9`, `keysym_of`).
+  - `platform.Event.char`: a `Key_Press` of a key Key does not name comes with the character it types with no modifier (Windows, Wayland). `ui.key_take` gives a `platform.Hotkey`.
+  - `prefs_page`: `Options.hotkeys` names the preferences that hold a key combination (recorded, not typed); `Options.problem` shows what the program says under a line.
+- **`setup.update`** and the controller of the Setup for a screen of the program's own: `headline`, `install_label`, `can_uninstall`, `busy`, `closing`, `start_install`, `start_uninstall`, `pick_folder`, `open_installed`, `close`. The dialog uses the same.
+
+### Changed
+- **A menu that searches**: its field is a band from edge to edge at the menu's top, in a field's background with the menu's separator under it, no frame of its own.
+- **A menu that searches** (`ctx_menu_open(..., search = true)`) shows its query in a field: a magnifier, what is typed and a caret that blinks, "Type to search" while nothing is.
+
+### Fixed
+- **`setup.facts`**: on Windows, a program installed in the default folder (`%LOCALAPPDATA%\Programs\<name>`, or an `install_folder` that is the same path) was taken for an install "to repair" after its restart: the record of the default folder counted as no record. `desktop.install_recorded` reads the record alone.
+
 ## [0.141.1] - 2026-11-10
 
 ### Fixed
@@ -2193,6 +2209,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.142.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.142.0
 [0.141.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.141.1
 [0.141.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.141.0
 [0.140.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.140.0
