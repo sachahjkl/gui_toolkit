@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.140.0] - 2026-11-10
+
+### Added
+- **`desktop.Identity.actions`**: the desktop entry's actions (`Desktop_Action`: `Actions=` and a `[Desktop Action id]` group each, the program run with its arguments), which a launcher's right click offers.
+- **`ui.Command`**: a program's commands in one table (label, group, keys) give its key handling (`command_pressed`), its menus' and tooltips' key texts (`chord_text`, `command_shortcut`, `command_tip`), a command palette that searches as you type, the best matches first (`palette_open`, `palette`) and a sheet of the keys (`shortcuts_sheet`); docs/commands.md.
+
 ## [0.139.0] - 2026-11-10
 
 ### Added
@@ -2165,6 +2171,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.140.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.140.0
 [0.139.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.139.0
 [0.138.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.138.0
 [0.137.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.137.0
