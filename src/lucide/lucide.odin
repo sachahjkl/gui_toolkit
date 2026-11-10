@@ -9,6 +9,8 @@ DATA :: #load("lucide.ttf")
 ALERT_CIRCLE        :: "\ue077"   // alert-circle
 ALIGN_LEFT          :: "\ue185"   // align-left
 APP_WINDOW          :: "\ue426"   // app-window
+ARCHIVE             :: "\ue041"   // archive
+ARCHIVE_RESTORE     :: "\ue2cd"   // archive-restore
 ARROW_DOWN          :: "\ue042"   // arrow-down
 ARROW_LEFT          :: "\ue048"   // arrow-left
 ARROW_RIGHT         :: "\ue049"   // arrow-right
@@ -20,12 +22,14 @@ BOOKMARK            :: "\ue060"   // bookmark
 BOOK_OPEN           :: "\ue05f"   // book-open
 BOT                 :: "\ue1bb"   // bot
 BUG                 :: "\ue20c"   // bug
+CALENDAR_CLOCK      :: "\ue304"   // calendar-clock
 CHECK               :: "\ue06c"   // check
 CHEVRON_DOWN        :: "\ue06d"   // chevron-down
 CHEVRON_LEFT        :: "\ue06e"   // chevron-left
 CHEVRON_RIGHT       :: "\ue06f"   // chevron-right
 CHEVRON_UP          :: "\ue070"   // chevron-up
 CLIPBOARD           :: "\ue085"   // clipboard
+CLIPBOARD_COPY      :: "\ue225"   // clipboard-copy
 CLIPBOARD_PASTE     :: "\ue3e8"   // clipboard-paste
 CODE                :: "\ue093"   // code
 COLUMNS_2           :: "\ue098"   // columns-2
@@ -47,6 +51,8 @@ FILES               :: "\ue0cf"   // files
 FILE_ARCHIVE        :: "\ue30d"   // file-archive
 FILE_BOX            :: "\ue310"   // file-box
 FILE_CODE           :: "\ue0c3"   // file-code
+FILE_DIFF           :: "\ue317"   // file-diff
+FILE_DOWN           :: "\ue318"   // file-down
 FILE_IMAGE          :: "\ue31c"   // file-image
 FILE_MUSIC          :: "\ue55e"   // file-music
 FILE_PLAY           :: "\ue321"   // file-play
@@ -70,6 +76,7 @@ GIT_FORK            :: "\ue28d"   // git-fork
 GLOBE               :: "\ue0e8"   // globe
 HARD_DRIVE          :: "\ue0ed"   // hard-drive
 HARD_DRIVE_DOWNLOAD :: "\ue4e5"   // hard-drive-download
+HASH                :: "\ue0ef"   // hash
 HAT_GLASSES         :: "\ue683"   // hat-glasses
 HISTORY             :: "\ue1f5"   // history
 HOME                :: "\ue0f5"   // home
@@ -86,8 +93,10 @@ LIST_CHECKS         :: "\ue1d0"   // list-checks
 LIST_TREE           :: "\ue408"   // list-tree
 LOADER              :: "\ue109"   // loader
 LOCK                :: "\ue10b"   // lock
+LOG_OUT             :: "\ue10e"   // log-out
 MENU                :: "\ue115"   // menu
 MESSAGE_SQUARE      :: "\ue117"   // message-square
+MESSAGE_SQUARE_QUOTE:: "\ue572"   // message-square-quote
 MICROCHIP           :: "\ue61a"   // microchip
 MONITOR             :: "\ue11d"   // monitor
 MUSIC               :: "\ue122"   // music
@@ -107,6 +116,7 @@ PLUG                :: "\ue37f"   // plug
 PLUS                :: "\ue13d"   // plus
 POWER               :: "\ue140"   // power
 QR_CODE             :: "\ue1df"   // qr-code
+QUOTE               :: "\ue239"   // quote
 REDO_2              :: "\ue2a0"   // redo-2
 REFRESH_CW          :: "\ue145"   // refresh-cw
 ROTATE_CCW          :: "\ue148"   // rotate-ccw
@@ -117,6 +127,7 @@ SCROLL_TEXT         :: "\ue45f"   // scroll-text
 SEARCH              :: "\ue151"   // search
 SEND_HORIZONTAL     :: "\ue4f2"   // send-horizontal
 SEND_TO_BACK        :: "\ue4f3"   // send-to-back
+SERVER              :: "\ue153"   // server
 SETTINGS            :: "\ue154"   // settings
 SHIELD              :: "\ue158"   // shield
 SLIDERS_HORIZONTAL  :: "\ue29a"   // sliders-horizontal
@@ -127,6 +138,7 @@ SUN_MOON            :: "\ue2b2"   // sun-moon
 TABLE_2             :: "\ue2f9"   // table-2
 TERMINAL            :: "\ue181"   // terminal
 TEXT_CURSOR_INPUT   :: "\ue265"   // text-cursor-input
+TEXT_QUOTE          :: "\ue49e"   // text-quote
 THERMOMETER         :: "\ue186"   // thermometer
 TRASH_2             :: "\ue18e"   // trash-2
 TRIANGLE_ALERT      :: "\ue193"   // triangle-alert
