@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.169.0] - 2026-11-10
+
+### Fixed
+- **A Mermaid gantt chart in `dateFormat X` or `x`** (seconds or milliseconds since 1970, as a model writes the timing of calls) was refused: "cannot parse task end". mermaid-svg reads no such format: `gt_mermaid` gives it the chart with its dates written as `YYYY-MM-DD HH:mm:ss` (UTC), its directives, ids and durations as they were.
+- **Resizing a table's column no longer moves the columns after the fill column a frame late.** The fill column took the header's width of the last build: it is now `fill_least` (`Size.least`: a size the layout never shrinks under), resolved in the build it is in. A list's stripes are fainter again (0.8 %).
+
 ## [0.168.0] - 2026-11-10
 
 ### Added
@@ -2381,6 +2387,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.169.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.169.0
 [0.168.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.168.0
 [0.165.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.1
 [0.167.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.167.0
