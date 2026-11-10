@@ -70,6 +70,7 @@ direction. A program saves it and reads it back.
 | `title` | the header's text |
 | `width` | in ems; 0: the room the other columns leave (one column has it) |
 | `number` | right-aligned; sorted by the row's number; the first click sorts the largest first |
+| `low_first` | a number that the first click sorts from the lowest (an id) |
 | `weak` | its text in the weak colour (details beside the name) |
 | `hidden` | not shown until the user asks for it |
 

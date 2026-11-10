@@ -20,6 +20,7 @@ COLUMNS := [?]ui.Table_Column{
 	{title = "Name", width = 10},
 	{title = "Size", width = 6, number = true},
 	{title = "Notes", width = 0, weak = true},
+	{title = "ID", width = 4, number = true, low_first = true},
 }
 
 @(private = "file")
@@ -45,6 +46,7 @@ app_init :: proc(app: ^App) {
 		ui.table_data_cell(&app.d, r.name)
 		ui.table_data_cell(&app.d, "n", r.size)
 		ui.table_data_cell(&app.d, r.notes)
+		ui.table_data_cell(&app.d, "i", f64(r.id))
 	}
 	ui.table_apply(&app.t, &app.d, "")
 }
@@ -89,6 +91,10 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	testing.expect_value(t, first_name(&app), "echo##x")   // a number: largest first at the first click
 	session.click(s, "hd_1")
 	testing.expect_value(t, first_name(&app), "Alpha")
+	// an id: from the lowest at the first click
+	session.click(s, "hd_3")
+	testing.expect_value(t, first_name(&app), "delta")
+	testing.expect(t, !app.t.descending)
 	// a row selected stays selected through a sort
 	session.click(s, "lrow_2")
 	testing.expect_value(t, ui.table_data_text(&app.d, ui.table_selected(&app.t), 0), "charlie")

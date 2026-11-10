@@ -51,6 +51,7 @@ Table_Column :: struct {
 	title:  string,
 	width:  f32,    // in ems; 0: the room the others leave (one column has it)
 	number: bool,   // right-aligned, sorted by its number, largest first at the first click
+	low_first: bool,   // a number sorted from the lowest at the first click (an id)
 	weak:   bool,   // its text in the weak colour (details beside the name)
 	hidden: bool,   // not shown until the user asks (table_column_items)
 }
@@ -147,7 +148,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 				if l.sort == k {
 					l.descending = !l.descending
 				} else {
-					l.sort, l.descending = k, c.number
+					l.sort, l.descending = k, c.number && !c.low_first
 				}
 				ev.sorted = true
 			}
