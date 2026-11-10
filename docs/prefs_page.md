@@ -52,6 +52,12 @@ The controls:
 A locked preference (a policy, the command line) shows its control disabled. `Options.problem(user, name)` gives what
 the program has to say under a line (a shortcut another program holds): it shows in red.
 
+A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `Options.updater`, and in `update_pref` the
+preference whose line shows it (its own switch, "update.auto"). Under that line: the state in words (`update.status_words`:
+up to date, a version available, downloading, installed, the last check's failure, or that a package manager updates this
+copy), a **Check now** button, **Install <version>** when one is on offer, and **Restart now** when one is installed and the
+program gives `Options.restart`.
+
 ## Changes
 
 A value goes through `config.set_from_string` at the `User` layer: every observer of the registry runs. A field applies

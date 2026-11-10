@@ -154,6 +154,23 @@ status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 	return {u.phase, strings.clone(version, allocator), strings.clone(u.result, allocator), u.failed, u.asked, u.serial}
 }
 
+// The state in a sentence, for a settings line or a status bar.
+status_words :: proc(st: Status, allocator := context.temp_allocator) -> string {
+	switch st.phase {
+	case .Managed:     return "A package manager updates this copy."
+	case .Checking:    return "Checking for a newer version…"
+	case .Downloading: return fmt.aprintf("Downloading version %s…", st.version, allocator = allocator)
+	case .Available:   return fmt.aprintf("Version %s is available.", st.version, allocator = allocator)
+	case .Installed:   return fmt.aprintf("Version %s is installed: it runs at the next start.", st.version, allocator = allocator)
+	case .Idle:
+	}
+	switch {
+	case st.result == "": return "Not checked yet."
+	case st.failed:       return fmt.aprintf("The last check failed: %s.", st.result, allocator = allocator)
+	}
+	return "Up to date."
+}
+
 ////////////////////////////////
 // The thread
 

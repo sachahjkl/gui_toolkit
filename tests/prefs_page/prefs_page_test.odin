@@ -4,12 +4,16 @@
 //   odin test tests/prefs_page -vet -define:ODIN_TEST_THREADS=1
 package prefs_page_test
 
+import "core:fmt"
+import "core:os"
 import "core:strings"
+import "core:time"
 import "core:testing"
 import config "../../src/config"
 import prefs_page "../../src/prefs_page"
 import "../../src/testkit/session"
 import "../../src/ui"
+import update "../../src/update"
 
 @(private = "file")
 DEFS := [?]config.Def{
@@ -31,13 +35,14 @@ App :: struct {
 	prefs:   config.Prefs,
 	page:    prefs_page.Page,
 	changed: [dynamic]string,
+	updater: ^update.Updater,
 }
 
 @(private = "file")
 app_build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
 	ui.next({width = ui.fill(), height = ui.fill()})
-	prefs_page.build(&app.page, &app.prefs, {user = app, pages = PAGES[:], hotkeys = HOTKEYS[:], problem = proc(user: rawptr, name: string) -> string {
+	prefs_page.build(&app.page, &app.prefs, {user = app, pages = PAGES[:], hotkeys = HOTKEYS[:], updater = app.updater, update_pref = "net.cache", problem = proc(user: rawptr, name: string) -> string {
 		return name == "look.keys" && config.string_of(&(^App)(user).prefs, "look.keys") == "Ctrl+Alt+Delete" ? "Windows holds it" : ""
 	}, changed = proc(user: rawptr, name: string) {
 		app := (^App)(user)
@@ -171,4 +176,37 @@ a_shortcut_is_recorded_by_its_keys :: proc(t: ^testing.T) {
 	testing.expect_value(t, config.string_of(&app.prefs, "look.keys"), "Ctrl+Alt+Delete")
 	testing.expect(t, len(app.changed) == 1 && app.changed[0] == "look.keys", "the program hears of it")
 	testing.expect(t, session.find_text(s, "Windows holds it") != nil, "the program's word under the line")
+}
+
+// The line of the update preference says the Updater's state, and its Check now asks: a server that cannot be reached says
+// so there.
+@(test)
+the_updater_shows_under_its_preference :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	base, _ := os.temp_directory(context.temp_allocator)
+	app.updater = update.updater_start({product = {name = "app", sign_context = "app-update-v1\n"}, folder = "http://127.0.0.1:1/", current = "1.0.0", exe = fmt.tprintf("%s/no-such-app", base)})
+	defer update.updater_stop(app.updater)
+	s := app_start(t, &app, "cache")
+	testing.expect(t, session.find_text(s, "Not checked yet.") != nil, "its state")
+	session.click(s, "update_check")
+	deadline := time.time_add(time.now(), 10 * time.Second)
+	for update.status(app.updater).serial < 2 && time.diff(time.now(), deadline) > 0 { time.sleep(5 * time.Millisecond) }
+	session.frame(s)
+	testing.expect(t, update.status(app.updater).failed, "the check failed")
+	found := false
+	if b := session.find_text(s, update.status_words(update.status(app.updater))); b != nil { found = true }
+	testing.expect(t, found, "said under the line")
+}
+
+// A copy a package manager updates says so, and offers nothing.
+@(test)
+a_managed_copy_offers_nothing :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	app.updater = update.updater_start({product = {name = "app"}, folder = "http://127.0.0.1:1/", current = "1.0.0", exe = "/nix/store/x-app/bin/app"})
+	defer update.updater_stop(app.updater)
+	s := app_start(t, &app, "cache")
+	testing.expect(t, session.find_text(s, "A package manager updates this copy.") != nil)
+	testing.expect(t, session.find(s, "update_check") == nil, "no Check now")
 }
