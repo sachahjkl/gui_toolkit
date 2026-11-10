@@ -35,6 +35,7 @@ Platform and system
   notifications.md    System notifications
   dbus.md             D-Bus client
   fsx.md              fsx: file helpers
+  ascii.md            ascii: the case of names
   instance.md         instance: one running copy
   winrt.md            winrt: Windows Runtime APIs
   setup.md            setup: a program installs itself
