@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.145.1] - 2026-11-10
+
+### Fixed
+- `toolbox.update_command keygen` writes a key outside a work tree: it refused every path (the key's file, which does not exist yet, was looked up to make its absolute path).
+
 ## [0.145.0] - 2026-11-10
 
 ### Added
@@ -2228,6 +2233,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.145.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.145.1
 [0.145.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.145.0
 [0.144.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.144.0
 [0.143.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.143.0
