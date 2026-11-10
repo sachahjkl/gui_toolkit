@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.152.0] - 2026-11-10
+
+### Fixed
+- **`desktop.watch_start` on Linux**: a place made in the moment between the failed watch of it and the watch of its parent (its CREATE came before that watch) was not followed: once an ancestor is watched, the next directory toward the place is looked for, and the place settles one level down when it is there. (`watch_follows_places_that_come_and_go` failed now and then.)
+
 ## [0.151.0] - 2026-11-10
 
 ### Added
@@ -2266,6 +2271,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.152.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.152.0
 [0.151.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.151.0
 [0.150.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.150.0
 [0.149.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.149.0
