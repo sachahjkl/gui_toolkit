@@ -1043,6 +1043,34 @@ a_source_that_dies_ends_its_drag_on_x11 :: proc(t: ^testing.T) {
 	testing.expect(t, !platform.drop_active(w))
 }
 
+// A drag of another program over the window: its types are known from its enter, before its data (read at the drop).
+@(test)
+the_types_of_a_drag_are_known_before_its_drop :: proc(t: ^testing.T) {
+	if !wayland() && !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("its types")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	platform.drop_target_enable(w, true)
+	platform.drop_set_effect(w, .Copy)
+	sh("drag_peer source & echo $! > /tmp/gt_peer; sleep 1")
+	defer sh(x11() ? "kill -9 $(cat /tmp/gt_peer) 2>/dev/null; xdotool mouseup 1" : "kill -9 $(cat /tmp/gt_peer) 2>/dev/null; swaymsg -q seat seat0 cursor release button1")
+	keep := open("keeps the loop")
+	if keep != nil { defer platform.destroy_window(keep) }
+	pump_for(w, 300)
+	if x11() {
+		sh("xdotool mousemove 800 600 mousedown 1; sleep 0.3; xdotool mousemove 790 590; sleep 0.1; xdotool mousemove --window ", window_id(w), " 50 50; sleep 0.2")
+	} else {
+		sh("swaymsg -q seat seat0 cursor set 640 300; sleep 0.3; swaymsg -q seat seat0 cursor press button1; sleep 0.3; swaymsg -q seat seat0 cursor set 100 300; sleep 0.2; swaymsg -q seat seat0 cursor set 110 310; sleep 0.2")
+	}
+	seen: Seen
+	defer delete(seen.events)
+	testing.expect(t, wait_kind(w, &seen, .Drop_Enter, 3000), "the drag came over the window")
+	types := platform.drop_types(w)
+	testing.expectf(t, len(types) > 0, "its types before the drop: %v", types)
+}
+
 // The window under a drag closes; the compositor's leave comes for a window that is gone.
 @(test)
 a_window_closed_under_a_drag_on_wayland :: proc(t: ^testing.T) {

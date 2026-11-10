@@ -23,7 +23,10 @@ for e in platform.poll_events(win, false) {
 ```
 
 - Events come at the pointer's position (client pixels), with the modifiers held and `drop_allowed` (what the source
-  allows). The data is read once when the drag enters (and again at the drop, for sources that render late).
+  allows). On Windows the data is read when the drag enters (and again at the drop, for sources that render late); on
+  Linux (X11 and Wayland) only at the drop, the source serving each type over a pipe or a selection: before it,
+  `drop_types(win)` says the MIME types the drag offers (a program's own, `text/uri-list`...), which a target judges a
+  drop by.
 - The system asks synchronously what a drop would do; the app answers in its next frame with `drop_set_effect`. The
   window gives the system the app's last answer (nil = refused). This is what browsers do with their renderer.
 - `drop_effect_for(allowed, mods, preferred)`: the usual convention (Ctrl copies, Shift moves, Ctrl+Shift or Alt

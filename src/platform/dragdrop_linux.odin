@@ -212,3 +212,20 @@ dnd_destroy :: proc(w: ^Window) {
 	free(d)
 	w.dnd = nil
 }
+
+// The MIME types the drag over the window offers, from its Drop_Enter on: what a target judges a drop by before it comes
+// (the data is read at the drop: the source serves each type over a pipe or a selection). Temporary allocator.
+drop_types :: proc(w: ^Window, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	if w == nil || w.dnd == nil || !w.dnd.over { return out[:] }
+	switch w.backend {
+	case .Wayland:
+		// (a drag of this very process: its own data's types)
+		if wlc.drag.phase != .Idle { for m in drag_data_mimes(wlc.drag.data) { append(&out, m) }; return out[:] }
+		if wlc.dnd_window == w { for m in wlc.dnd_mimes { append(&out, m) } }
+	case .X11:
+		if x11c.dnd_target.window == w { for t in x11c.dnd_target.types { append(&out, x11_atom_name(t)) } }
+	case .None:
+	}
+	return out[:]
+}

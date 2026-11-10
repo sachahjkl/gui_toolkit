@@ -11,6 +11,7 @@ drop_target_enabled :: proc(w: ^Window) -> bool { return false }
 dragdrop_thread_init :: proc() -> bool { return true }
 drop_data :: proc(w: ^Window) -> ^Drag_Data { return nil }
 drop_active :: proc(w: ^Window) -> bool { return false }
+drop_types :: proc(w: ^Window, allocator := context.temp_allocator) -> []string { return nil }
 drop_set_effect :: proc(w: ^Window, effect: Maybe(Drop_Effect)) {}
 drop_data_release :: proc(w: ^Window) {}
 drop_inject :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, data: ^Drag_Data = nil, allowed: Drop_Effects = {.Copy, .Move, .Link}, mods: Modifiers = {}) -> bool { return false }

@@ -660,3 +660,9 @@ drop_self_test :: proc(w: ^Window, data: Drag_Data, pos: [2]f32, allowed: Drop_E
 	d.target.vt.Drop(&d.target, obj, 0, pt, &e)
 	return true
 }
+
+// The MIME types the drag over the window offers (its data is read at DragEnter: its types). Temporary allocator.
+drop_types :: proc(w: ^Window, allocator := context.temp_allocator) -> []string {
+	if w == nil || w.dnd == nil || !w.dnd.over { return nil }
+	return drag_data_types(w.dnd.data, allocator)
+}
