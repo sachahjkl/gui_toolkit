@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:math"
 import "core:unicode"
 import "core:unicode/utf8"
+import "../draw"
 import "../font"
 import "../platform"
 
@@ -109,6 +110,7 @@ Menu_Level :: struct {
 	search:       bool,      // typing searches its items (ctx_menu_open's `search`)
 	query:        [MENU_QUERY_BYTES]u8,   // what was typed (search), query_len bytes of UTF-8
 	query_len:    int,
+	typed_ms:     f64,       // when the query last changed (or the menu opened): its caret is solid, then blinks
 	pick_first:   bool,      // the query changed: the first item that matches is selected when it is built
 }
 
@@ -130,7 +132,7 @@ menu_matches :: proc(lv: ^Menu_Level, text: string) -> bool {
 // Opens the menu `key` with its top-left corner at `pos` (window pixels), replacing any open menu.
 // `anchor`: the box that opens the menu (dropdown button, menu bar entry): pressing it again is not a press "outside",
 // so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
-// `search`: what is typed searches the items (fuzzy, File Pilot's): a line at the top shows it, the items that do not
+// `search`: what is typed searches the items (fuzzy, File Pilot's): a field at the top shows it (a magnifier, a caret), the items that do not
 // match go, a submenu's items come up into the menu, the first match is selected (Enter chooses it).
 ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false, search := false) { menu_open(key, pos, {}, anchor, from_keyboard, search) }
 
@@ -141,7 +143,7 @@ ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard 
 @(private = "file")
 menu_open :: proc(key: Key, pos: Vec2, around: Rect, anchor: Key, from_keyboard: bool, search := false) {
 	s := gs()
-	lv := Menu_Level{key = key, anchor = anchor, pos = pos, around = around, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search}
+	lv := Menu_Level{key = key, anchor = anchor, pos = pos, around = around, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, typed_ms = now_ms()}
 	if len(s.menu_build) > 0 { s.menu_next = lv; return }
 	menu_pop_to(0)
 	s.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
@@ -436,6 +438,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 					copy(lv.query[lv.query_len:], buf[:n])
 					lv.query_len += n
 					lv.pick_first, lv.sel = true, -1
+					lv.typed_ms = now_ms()
 				}
 				continue
 			}
@@ -443,6 +446,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 				_, size := utf8.decode_last_rune_in_string(menu_query(lv))
 				lv.query_len -= size
 				lv.pick_first, lv.sel = true, -1
+				lv.typed_ms = now_ms()
 				continue
 			}
 			if lv.search && e.kind != .Text && e.key == .Space { continue }   // (a space is typed, not a choice)
@@ -509,13 +513,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	append(&s.menu_build, depth)
 	spacer(px(em * MENU_PAD_EM))
 	if lv.search {
-		// the query, or what typing does
-		q := menu_query(lv)
-		next({width = px(w), height = px(dense(em * 2.0)), text_pad = em * 0.8})
-		if q == "" { push_tags("weak") }
-		label(q == "" ? "Type to search###menu_query" : fmt.tprintf("%s###menu_query", q))
-		if q == "" { pop_tags() }
-		hline(px(w))
+		menu_search_field(s, lv, w, em)
 		spacer(px(em * MENU_PAD_EM))
 	}
 	return true
@@ -827,3 +825,56 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 @(private)
 tooltip_end :: proc() { ctx_menu_end() }
 
+
+// The search of a menu opened with `search`: a field (its well, a magnifier, what is typed and a caret that blinks as
+// a field's does), so that the person sees the keys go there. The menu keeps the keys: the field is drawn, not focused.
+@(private = "file")
+menu_search_field :: proc(s: ^State, lv: ^Menu_Level, w, em: f32) {
+	q := menu_query(lv)
+	next({width = px(w), height = px(dense(em * 2.4))})
+	if row(.Center, {}, "###menu_search_row") {
+		spacer(px(em * 0.4))
+		next({width = fill(), height = px(dense(em * 1.9))})
+		if field_frame("###menu_search") {
+			// the magnifier, in the weak text's colour
+			next({width = px(em * 1.7), height = pct(1)})
+			ink := frame_new(Color)
+			ink^ = color("weak text")
+			custom("###menu_search_icon", menu_magnifier_draw, ink)
+			// what is typed, the caret after it (before the hint while nothing is)
+			since := now_ms() - lv.typed_ms
+			caret_on := !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
+			caret_wake(s, since)
+			if q != "" {
+				next({width = text_size(), height = pct(1), text_pad = 0})
+				label(fmt.tprintf("%s###menu_query", q))
+			}
+			next({width = px(max(1, math.round(em / CARET_WIDTH_DIVISOR))), height = px(math.round(em * 1.25)), bg = caret_on ? color("cursor") : Color{}})
+			build_box({.Draw_Background}, "###menu_caret")
+			if q == "" {
+				spacer(px(em * 0.2))
+				if tags("weak") {
+					next({width = fill(), height = pct(1), text_pad = 0})
+					label("Type to search###menu_query")
+				}
+			}
+		}
+		spacer(px(em * 0.4))
+	}
+}
+
+// A magnifier: a ring and its handle, sized to the box's height.
+@(private = "file")
+menu_magnifier_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	r := b.rect
+	h := min(r.max.y - r.min.y, r.max.x - r.min.x)
+	k := h * 0.2                          // the ring's radius
+	c := Vec2{(r.min.x + r.max.x) * 0.5 - k * 0.3, (r.min.y + r.max.y) * 0.5 - k * 0.3}
+	stroke := max(1, h * 0.065)
+	p := draw.path_make(allocator = context.temp_allocator)
+	draw.path_arc(&p, c, {k, k}, 0, 2 * math.PI)
+	ink := (^Color)(user)^
+	draw.path_stroke(dc, &p, stroke, ink)
+	d := k * 0.7071
+	draw.line(dc, c + {d, d}, c + {d, d} * 2.1, stroke, ink)
+}

@@ -41,7 +41,8 @@ ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 | `palette(key, commands, enabled, width_em) -> int` | while it is open: the commands under their groups' headings, each with its first key; the index chosen, or -1 |
 | `shortcuts_sheet(id, commands, open, title)` | a dialog: every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window |
 
-The palette is a menu that searches (`ctx_menu_open(..., search = true)`): what is typed keeps the commands whose label
+The palette is a menu that searches (`ctx_menu_open(..., search = true)`; its top is a field, a magnifier and a caret
+that blinks, the menu keeping the keys): what is typed keeps the commands whose label
 (or label and group) holds it whole, or in pieces that each begin a word, the words in order (`fuzzy_words`: "prio" finds
 "Raise the priority", "ks" "Keyboard shortcuts"; letters scattered in a word match nothing, so "prio" does not find
 "Previous section"), the best matches first (the text whole before pieces, at a word's start before elsewhere; a match in the label
