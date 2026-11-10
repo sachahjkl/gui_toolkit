@@ -156,6 +156,43 @@ cut_copy_paste_through_the_clipboard :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(ui.field_string(&e.field), "\n"), "no line break in a line edit")
 }
 
+// A right click on a field opens its menu, an icon on each item: Paste puts the clipboard at the caret, Cut takes the
+// selection, and a secret's menu neither copies nor cuts.
+@(test)
+a_field_has_a_menu :: proc(t: ^testing.T) {
+	s, e := editors_start(t)
+	session.set_clipboard(s, "XY")
+	session.click(s, "field")
+	session.type_text(s, "ab")
+	session.click(s, "field", .Right)
+	session.frames(s, 2)
+	testing.expect(t, ui.ctx_menu_any_open(), "a right click opens it")
+	icons := 0
+	for i := 0; session.find(s, "ico", i) != nil; i += 1 { icons += 1 }
+	testing.expectf(t, icons == 7, "an icon on each item: %d", icons)
+	session.click_text(s, "Paste")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&e.field), "abXY")
+	testing.expect(t, !ui.ctx_menu_any_open(), "chosen: it closes")
+	session.key(s, .A, {.Ctrl})
+	session.click(s, "field", .Right)
+	session.frames(s, 2)
+	session.click_text(s, "Cut")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&e.field), "")
+	testing.expect_value(t, session.clipboard(s), "abXY")
+	// a secret's: no copy, no cut
+	session.click(s, "secret")
+	session.type_text(s, "pw")
+	session.key(s, .A, {.Ctrl})
+	session.click(s, "secret", .Right)
+	session.frames(s, 2)
+	session.click_text(s, "Copy")
+	session.frames(s, 2)
+	testing.expect_value(t, session.clipboard(s), "abXY")
+	session.key(s, .Escape)
+}
+
 // A secret field shows no text and gives none away.
 @(test)
 a_secret_field_does_not_copy :: proc(t: ^testing.T) {

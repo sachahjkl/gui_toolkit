@@ -292,7 +292,8 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Backspace/Delete (ctrl = word), ctrl+A/C/X/V, Enter (committed), Escape (cancelled, drops focus).
 // `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut. With `reveal`, a button
 // at its end (an eye) shows it as text and hides it again; `reveal^` says which, and is the caller's to keep.
-line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil) -> (res: Edit_Result) {
+// A right press on it opens its menu (field_menu: Undo, Cut, Copy, Paste...); `menu` false: the program has its own.
+line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil, menu := true) -> (res: Edit_Result) {
 	s := gs()
 	revealable := secret && reveal != nil
 	// (revealed, it is text: shown, copied, its words selected; the person chose to see it)
@@ -434,8 +435,35 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			a11y_default(b, {role = .Text_Input, placeholder = placeholder})
 		}
 		if revealable { reveal_button(b, reveal, end) }
+		if menu {
+			key := key_from_string(b.key, "field_menu")
+			if s.pressed_any[.Right] && s.pressed_key[.Right] == b.key && !ctx_menu_any_open() {
+				s.focus_key = b.key
+				ctx_menu_open(key, s.mouse)
+			}
+			field_menu(key, f, masked)
+		}
 	}
 	return
+}
+
+// The menu of a text field, `key` its menu (ctx_menu_open opens it): the edits of field_undo, field_cut, field_copy,
+// field_paste, field_delete and field_select_all, each with its keys and its icon (Lucide's: lucide_icons). A secret is
+// neither copied nor cut.
+field_menu :: proc(key: Key, f: ^Text_Field, secret := false) {
+	if ctx_menu(key) {
+		ico := lucide_icons()
+		sel := field_has_selection(f)
+		if menu_item("Undo", "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = field_can_undo(f)).clicked { field_undo(f) }
+		if menu_item("Redo", "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = field_can_redo(f)).clicked { field_redo(f) }
+		menu_separator()
+		if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { field_cut(f) }
+		if menu_item("Copy", "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { field_copy(f) }
+		if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(f) }
+		if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { field_delete(f) }
+		menu_separator()
+		if menu_item("Select all", "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(f.buf) > 0).clicked { field_select_all(f) }
+	}
 }
 
 // The eye at the end of a secret field: the field's child, over its right end (the text stops before it).
