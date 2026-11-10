@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.149.0] - 2026-11-10
+
+### Added
+- **Diagrams: the `svg` and `mermaid` packages** (docs/diagrams.md). `svg.parse` reads a drawing in SVG (paths and every command of them, rects, circles, ellipses, lines, polygons, texts and tspans, markers, transforms, fills, strokes, dashes, opacities, the style attribute) and `svg.draw_doc` draws it with the toolkit's paths and fonts, at any scale. `mermaid.diagram` lays out a Mermaid diagram's text (flowchart, sequence, class, state, ER, gantt, pie, mindmap, timeline, git graph...) through mermaid-svg in native/mermaid (`tools/tk build_mermaid`, about 1 MB; `-define:MERMAID_NATIVE_LINK=false` for a program that builds `gt_mermaid` into its own Rust library) and gives that drawing.
+
 ## [0.148.0] - 2026-11-10
 
 ### Added
@@ -2248,6 +2253,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.149.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.149.0
 [0.148.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.148.0
 [0.147.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.147.0
 [0.146.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.146.0
