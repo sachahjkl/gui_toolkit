@@ -39,6 +39,9 @@ Options :: struct {
 	user:      rawptr,
 	// after a value was set or reset (it was valid): save the file, apply it
 	changed:   proc(user: rawptr, name: string),
+	// while a slider is held, each value it moves to (the file is written when it is let go): the program shows it at
+	// once (a rounding, a size), without writing it
+	preview:   proc(user: rawptr, name: string, value: f64),
 	// the values a String preference without its own choices may take, and their labels (nil, nil: a free field)
 	choices:   proc(user: rawptr, name: string) -> (labels, values: []string),
 	// the preferences with a control of the program's own, under their words (the themes' cards), and that control
@@ -450,8 +453,10 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 			// written when the button comes up (the file is not rewritten at the pointer's rate), or at once for a key or a
 			// click; while it is down, the value is the page's (held), the preference's when it is up again
 			if sig.pointer_pressed || sig.dragging {
+				moved := !held || v != p.held_value
 				if !held { delete(p.held); p.held = strings.clone(name) }
 				p.held_value = v
+				if moved && o.preview != nil { o.preview(o.user, name, f64(v)) }
 			} else {
 				if held { delete(p.held); p.held = "" }
 				text := e.def.kind == .Int ? fmt.tprintf("%d", i64(math.round(v))) : fmt.tprintf("%g", v)

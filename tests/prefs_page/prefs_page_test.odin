@@ -37,6 +37,7 @@ App :: struct {
 	page:    prefs_page.Page,
 	changed: [dynamic]string,
 	updater: ^update.Updater,
+	preview: f64,   // the last value a held slider showed (Options.preview)
 }
 
 @(private = "file")
@@ -48,6 +49,8 @@ app_build :: proc(s: ^session.Session) {
 	}, changed = proc(user: rawptr, name: string) {
 		app := (^App)(user)
 		append(&app.changed, strings.clone(name))
+	}, preview = proc(user: rawptr, name: string, value: f64) {
+		if name == "look.zoom" { (^App)(user).preview = value }
 	}})
 }
 
@@ -228,4 +231,24 @@ a_slider_keeps_where_it_was_let_go :: proc(t: ^testing.T) {
 	got := config.float_of(&app.prefs, "look.zoom")
 	testing.expectf(t, got > 1.8, "the value let go is kept: %v", got)
 	testing.expect(t, len(app.changed) > 0 && app.changed[len(app.changed) - 1] == "look.zoom", "the program is told")
+}
+
+// A slider held shows its value at once (Options.preview: the program applies it), the preference written at the release.
+@(test)
+a_held_slider_previews_its_value :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "interface is drawn")
+	sl := session.get(s, "sl")
+	r := sl.rect
+	from := [2]f32{r.min.x + (r.max.x - r.min.x) * (1 - 0.5) / 1.5, (r.min.y + r.max.y) * 0.5}   // (1 on 0.5 .. 2)
+	to := [2]f32{r.max.x - 2, from.y}
+	session.press(s, from)
+	session.move(s, to)
+	session.frames(s, 2)
+	testing.expectf(t, app.preview > 1.8, "previewed while held: %v", app.preview)
+	testing.expect_value(t, config.float_of(&app.prefs, "look.zoom"), 1)   // (not written yet)
+	session.release(s, to)
+	session.frames(s, 2)
+	testing.expect(t, config.float_of(&app.prefs, "look.zoom") > 1.8, "written at the release")
 }
