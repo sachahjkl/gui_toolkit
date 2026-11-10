@@ -311,3 +311,19 @@ a_dib_is_bottom_up_bgra_with_a_mask :: proc(t: ^testing.T) {
 	testing.expect(t, slice.equal(dib[40 + 12:][:4], []u8{0, 0, 255, 255}), "the top row last, blue first")
 	testing.expect(t, slice.equal(dib[40:][:4], []u8{0, 0, 0, 0}), "transparent")
 }
+
+// Each pixel the average of what it covers, a transparent one giving no colour; a size larger than the source refused.
+@(test)
+a_picture_shrinks_to_the_average_of_what_it_covers :: proc(t: ^testing.T) {
+	// 4 x 2: red and blue on the left half, a transparent green and white on the right
+	src := []u8{
+		255, 0, 0, 255,   0, 0, 255, 255,   0, 255, 0, 0,   255, 255, 255, 255,
+		255, 0, 0, 255,   0, 0, 255, 255,   0, 255, 0, 0,   255, 255, 255, 255,
+	}
+	out := rgba_shrink(src, 4, 2, 2, 1, context.temp_allocator)
+	testing.expect_value(t, len(out), 8)
+	testing.expect(t, slice.equal(out[0:4], []u8{127, 0, 127, 255}), "red and blue: purple")
+	testing.expect(t, slice.equal(out[4:8], []u8{255, 255, 255, 127}), "white, half covered: no green in it")
+	testing.expect(t, rgba_shrink(src, 4, 2, 8, 1) == nil, "no larger")
+	testing.expect(t, rgba_shrink(src[:8], 4, 2, 2, 1) == nil, "too few bytes")
+}

@@ -127,3 +127,32 @@ weights :: proc(start, count, n: int) -> []Taps {
 	}
 	return out
 }
+
+// RGBA8 `src` (straight alpha) of sw x sh pixels shrunk to dw x dh (each no larger than the source's): each pixel the
+// average of the source pixels it covers, weighted by their alpha (a transparent pixel gives no colour). Reads each
+// source pixel once and keeps nothing else: a thumbnail of a 4K picture. nil for sizes out of range.
+rgba_shrink :: proc(src: []u8, sw, sh, dw, dh: int, allocator := context.allocator) -> []u8 {
+	if sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 || dw > sw || dh > sh || len(src) < sw * sh * 4 { return nil }
+	out := make([]u8, dw * dh * 4, allocator)
+	for dy in 0 ..< dh {
+		y0, y1 := dy * sh / dh, (dy + 1) * sh / dh
+		for dx in 0 ..< dw {
+			x0, x1 := dx * sw / dw, (dx + 1) * sw / dw
+			r, g, b, a: u64
+			for y in y0 ..< y1 {
+				row := src[(y * sw + x0) * 4:(y * sw + x1) * 4]
+				for i := 0; i < len(row); i += 4 {
+					pa := u64(row[i + 3])
+					r += u64(row[i]) * pa
+					g += u64(row[i + 1]) * pa
+					b += u64(row[i + 2]) * pa
+					a += pa
+				}
+			}
+			o := out[(dy * dw + dx) * 4:]
+			if a > 0 { o[0], o[1], o[2] = u8(r / a), u8(g / a), u8(b / a) }
+			o[3] = u8(a / u64((y1 - y0) * (x1 - x0)))
+		}
+	}
+	return out
+}

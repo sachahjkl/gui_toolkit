@@ -66,7 +66,9 @@ stray at most 0.05 pixels from the curve.
 ## One canvas into another
 
 `draw_canvas(&dst, src, to, from, filter)` draws the `from` rectangle of `src` into the `to` rectangle of `dst`, over what is
-there. `resize(src, w, h)` makes a new canvas of the whole picture.
+there. `resize(src, w, h)` makes a new canvas of the whole picture. `rgba_shrink(src, sw, sh, dw, dh)` shrinks RGBA8 bytes
+(straight alpha) without a canvas: each pixel the average of the source pixels it covers, weighted by their alpha. It reads
+each source pixel once and keeps nothing else, for a thumbnail of a large picture.
 
 - `.Cubic`: Keys' cubic convolution (a = -0.75), widened by the reduction so that every source pixel counts. The source
   outside `from` counts as transparent. This is near GDI+'s `HighQualityBicubic` from 4 to 25 times smaller.
