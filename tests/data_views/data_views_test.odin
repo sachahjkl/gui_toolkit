@@ -371,3 +371,34 @@ a_narrow_table_keeps_its_fill_column :: proc(t: ^testing.T) {
 	if notes == nil { return }
 	testing.expect(t, notes.size.x >= session.BASE_FONT_SIZE * ui.TABLE_FILL_MIN_EM - 1, "the fill column keeps its least width")
 }
+
+@(private = "file") WIDE_W :: 900
+
+@(private = "file")
+build_wide :: proc(s: ^session.Session) {
+	app := (^Heat_App)(s.user)
+	ui.next({width = ui.px(WIDE_W), height = ui.px(30), axis = .X})
+	if ui.row(id = "###wide_row") {
+		for k in 0 ..< len(app.l.columns) { ui.table_cell(&app.l, k, "x") }
+	}
+}
+
+// A column made wider takes its room from the fill column in the same build: the column after it does not move (a
+// fill column from the last build's width lagged a frame, and the columns after it moved with the drag).
+@(test)
+a_resize_moves_no_column_after_the_fill :: proc(t: ^testing.T) {
+	app: Heat_App
+	ui.table_layout_init(&app.l, COLUMNS[:])
+	defer ui.table_layout_destroy(&app.l)
+	s := session.start(t, {build = build_wide, user = &app, no_renderer = true})
+	session.frames(s, 2)
+	id := session.get(s, "c3")
+	if !testing.expect(t, id != nil) { return }
+	right := id.rect.max.x
+	app.l.width[1] += 5
+	session.frames(s, 1)
+	id = session.get(s, "c3")
+	testing.expect_value(t, id.rect.max.x, right)
+	notes := session.get(s, "c2")
+	testing.expect(t, notes != nil && notes.size.x > 0)
+}

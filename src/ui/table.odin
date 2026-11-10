@@ -67,7 +67,6 @@ Table_Layout :: struct {
 	shown:      []bool,   // (owned) the first column is always shown
 	sort:       int,
 	descending: bool,
-	fill_px:    f32,      // the fill column's width, from the header's at the last build (0: not known yet)
 }
 
 table_layout_init :: proc(l: ^Table_Layout, columns: []Table_Column, sort := 0, descending := false) {
@@ -171,13 +170,6 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 	s.next_mod, s.has_next = m, true
 	if row(.Center, flags, id) {
 		if signal(parent_box()).right_clicked { ev.menu = true }
-		// (the header's width at the last build: what the fill column has is what the others leave, at least
-		// TABLE_FILL_MIN_EM)
-		if total := parent_box().size.x; total > 0 {
-			fixed := em * TABLE_SCROLLBAR_EM
-			for k in 0 ..< len(l.columns) { if l.shown[k] && l.width[k] > 0 { fixed += em * l.width[k] } }
-			l.fill_px = max(em * TABLE_FILL_MIN_EM, total - fixed)
-		}
 		for c, k in l.columns {
 			if !l.shown[k] { continue }
 			sorting := l.sort == k
@@ -275,11 +267,12 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 	return
 }
 
-// The width of column `k`: its own (in ems), or for the fill column (width 0) what the others leave at the last build,
-// never under TABLE_FILL_MIN_EM. A program that builds a cell itself (an icon beside a name) gives it this width.
+// The width of column `k`: its own (in ems), or for the fill column (width 0) what the others leave, never under
+// TABLE_FILL_MIN_EM (fill_least: the layout resolves it in the build it is in, a resize included). A program that builds a
+// cell itself (an icon beside a name) gives it this width.
 table_width :: proc(l: ^Table_Layout, k: int) -> Size {
 	if l.width[k] > 0 { return px(font_size() * l.width[k]) }
-	return l.fill_px > 0 ? px(l.fill_px) : fill()
+	return fill_least(font_size() * TABLE_FILL_MIN_EM)
 }
 
 // A cell of a row under column `col`'s title: its text clipped to the column's width, a number at the right. `bg`: a

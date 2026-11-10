@@ -7,7 +7,7 @@ import "core:math"
 //   1. standalone sizes   (pixels, text)
 //   2. upward-dependent   (percent of the nearest ancestor that has a real size)
 //   3. downward-dependent (children sum), post-order
-//   4. violations         (children exceed the parent: shrink by (1 - strictness))
+//   4. violations         (children exceed the parent: shrink by (1 - strictness), never under Size.least)
 //   5. positions
 // A box with .Draw_Border keeps its border out of the content area (like CSS border-box): its children are laid out
 // inside it, so they never draw under the border (a selection outline in a menu or a bordered list stays visible).
@@ -143,34 +143,40 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 			for c := b.first; c != nil; c = c.next {
 				if is_floating(c, axis) { continue }
 				violation := c.size[ai] - avail
-				if violation > 0 { c.size[ai] -= min(violation, c.size[ai] * (1 - c.pref[axis].strictness)) }
+				if violation > 0 { c.size[ai] -= min(violation, shrinkable(c, axis)) }
 			}
 		} else if axis == b.layout_axis {
 			total, budget: f32
 			for c := b.first; c != nil; c = c.next {
 				if is_floating(c, axis) { continue }
 				total += c.size[ai]
-				budget += c.size[ai] * (1 - c.pref[axis].strictness)
+				budget += shrinkable(c, axis)
 			}
 			violation := total - avail
 			if violation > LAYOUT_VIOLATION_EPS_PX && budget > 0 {
 				for c := b.first; c != nil; c = c.next {
 					if is_floating(c, axis) { continue }
-					share := c.size[ai] * (1 - c.pref[axis].strictness) / budget
-					c.size[ai] = max(0, c.size[ai] - violation * share)
+					give := shrinkable(c, axis)
+					c.size[ai] = max(0, c.size[ai] - min(give, violation * give / budget))
 				}
 			}
 		} else {
 			for c := b.first; c != nil; c = c.next {
 				if is_floating(c, axis) { continue }
 				violation := c.size[ai] - avail
-				if violation > 0 {
-					c.size[ai] -= min(violation, c.size[ai] * (1 - c.pref[axis].strictness))
-				}
+				if violation > 0 { c.size[ai] -= min(violation, shrinkable(c, axis)) }
 			}
 		}
 	}
 	for c := b.first; c != nil; c = c.next { layout_violations(c, axis) }
+}
+
+// How much of its size a box gives up when its parent is too small: (1 - strictness) of it, never going under its least.
+@(private = "file")
+shrinkable :: proc(c: ^Box, axis: Axis) -> f32 {
+	ai := int(axis)
+	p := c.pref[axis]
+	return max(0, min(c.size[ai] * (1 - p.strictness), c.size[ai] - p.least))
 }
 
 @(private)
