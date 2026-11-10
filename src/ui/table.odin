@@ -25,6 +25,7 @@ import "core:fmt"
 import "core:math"
 import "core:mem/virtual"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import "../ascii"
 import "../draw"
@@ -97,6 +98,53 @@ table_layout_toggle :: proc(l: ^Table_Layout, k: int) -> (sort_changed: bool) {
 		return true
 	}
 	return
+}
+
+// The layout as a preference's text, and back. `keys[k]` names column k (a stable name: the titles may be translated).
+//   widths: the columns whose width is not their own, "pid=6.5,command=30" (ems)
+//   sort:   the sort's column, "-" before it when descending: "memory", "-memory"
+table_widths_text :: proc(l: ^Table_Layout, keys: []string, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	for c, k in l.columns {
+		if k >= len(keys) || l.width[k] == c.width { continue }
+		if strings.builder_len(b) > 0 { strings.write_byte(&b, ',') }
+		fmt.sbprintf(&b, "%s=%.1f", keys[k], l.width[k])
+	}
+	return strings.to_string(b)
+}
+
+// Sets the widths a text of table_widths_text names (bounded to TABLE_COLUMN_MIN_EM..TABLE_COLUMN_MAX_EM); a name it does
+// not know or a width it cannot read is skipped. A column of width 0 (the room left) keeps it.
+table_widths_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
+	rest := text
+	for pair in strings.split_iterator(&rest, ",") {
+		eq := strings.index_byte(pair, '=')
+		if eq < 0 { continue }
+		k := table_key_index(keys, strings.trim_space(pair[:eq]))
+		w, ok := strconv.parse_f32(strings.trim_space(pair[eq + 1:]))
+		if k < 0 || !ok || k >= len(l.columns) || l.columns[k].width == 0 { continue }
+		l.width[k] = clamp(w, TABLE_COLUMN_MIN_EM, TABLE_COLUMN_MAX_EM)
+	}
+}
+
+table_sort_text :: proc(l: ^Table_Layout, keys: []string, allocator := context.temp_allocator) -> string {
+	if l.sort < 0 || l.sort >= len(keys) { return "" }
+	return strings.concatenate({l.descending ? "-" : "", keys[l.sort]}, allocator)
+}
+
+// Sets the sort a text of table_sort_text names, when it names a column shown; else the sort stays.
+table_sort_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
+	t := strings.trim_space(text)
+	descending := strings.has_prefix(t, "-")
+	k := table_key_index(keys, strings.trim_prefix(t, "-"))
+	if k < 0 || k >= len(l.columns) || !l.shown[k] { return }
+	l.sort, l.descending = k, descending
+}
+
+@(private = "file")
+table_key_index :: proc(keys: []string, key: string) -> int {
+	for k, i in keys { if k == key && key != "" { return i } }
+	return -1
 }
 
 // What happened in the header in a build.

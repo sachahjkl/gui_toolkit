@@ -80,6 +80,8 @@ direction. A program saves it and reads it back.
 | `table_layout_reset(l)` | the columns' own widths and visibility back (the "Default columns" of a menu) |
 | `table_layout_toggle(l, k)` | shows or hides column `k` (never the first); true when the sort moved to the first column |
 | `table_header(id, l, lead_em)` | the titles: a click sorts by a column, a second click reverses it; the rule before a title, dragged, resizes the column; the sort's arrow at the title's end. Returns `sorted`, `resized` (a rule let go: save the layout) and `menu` (a right click on the header). `next` may set the header's background and height |
+| `table_widths_text(l, keys)`, `table_widths_apply(l, keys, text)` | the widths that are not the columns' own, as a preference's text (`pid=6.5,command=30`, in ems; `keys[k]` names column k), and back (bounded; a name it does not know is skipped) |
+| `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending), and back (only to a column shown) |
 | `table_column_items(l)` | the columns' menu items, in the caller's `ctx_menu`: each column but the first, checked when shown |
 | `table_cell(l, col, text, bg)` | a cell under its title, clipped to the column. True when the pointer is on it and its text is cut |
 | `table_cell_tip(row, text)` | the cut text, in a tooltip beside the pointer after `TABLE_TIP_DELAY_S` |
