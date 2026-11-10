@@ -19,3 +19,15 @@ a_placement_is_written_and_read :: proc(t: ^testing.T) {
 		testing.expectf(t, !ok, "%q is no placement", bad)
 	}
 }
+
+// The same place on another monitor: in the middle stays in the middle, in a corner in that corner; too large, fitted.
+@(test)
+a_rectangle_goes_to_the_same_place_of_another_work_area :: proc(t: ^testing.T) {
+	left := [4]int{0, 0, 1920, 1040}
+	right := [4]int{1920, -200, 2560, 1400}
+	testing.expect_value(t, platform.rect_on_work({560, 240, 800, 560}, left, right), [4]int{1920 + 880, -200 + 420, 800, 560})
+	testing.expect_value(t, platform.rect_on_work({0, 0, 800, 560}, left, right), [4]int{1920, -200, 800, 560})
+	testing.expect_value(t, platform.rect_on_work({1120, 480, 800, 560}, left, right), [4]int{1920 + 1760, -200 + 840, 800, 560})
+	testing.expect_value(t, platform.rect_on_work({0, 0, 1920, 1040}, right, left), left)
+	testing.expect_value(t, platform.rect_on_work({1920, -200, 2560, 1400}, right, left), left)   // (larger than its new monitor)
+}

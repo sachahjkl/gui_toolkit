@@ -628,28 +628,24 @@ options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
 		ui.label("Options###setup_options_label")
 	}
 	n := 1 + min(len(c.choices), len(d.choices))
-	for first := 0; first < n; first += 2 {
+	// (one per line, as wide as the dialog: a long label wraps in its tile, never past it)
+	for k in 0 ..< n {
 		ui.spacer(ui.px(em * 0.4))
 		line_next()
-		if ui.row(.Center, id = fmt.tprintf("###setup_options_%d", first)) {
+		if ui.row(.Center, id = fmt.tprintf("###setup_options_%d", k)) {
 			ui.spacer(ui.px(em * MARGIN_EM))
-			for k in first ..< first + 2 {
-				if k > first { ui.spacer(ui.px(em * 0.4)) }
-				ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.4)), axis = .X, cross = .Center, radius = rad(c, em, 0.4)})
-				if k >= n {
-					ui.build_box({}, fmt.tprintf("###setup_tile_%d", k))   // (an empty place: the line keeps two columns)
-					continue
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = rad(c, em, 0.4)})
+			tile: ^ui.Box
+			if ui.tags("input") { tile = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###setup_tile_%d", k)) }
+			if ui.parent(tile) {
+				ui.spacer(ui.px(em * 0.5))
+				ui.next({width = ui.fill()})
+				if k == 0 {
+					ui.checkbox("###setup_shortcut", "Shortcut on the Desktop", &d.shortcut, wrap = true)
+				} else {
+					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), c.choices[k - 1].label, &d.choices[k - 1], wrap = true)
 				}
-				tile: ^ui.Box
-				if ui.tags("input") { tile = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###setup_tile_%d", k)) }
-				if ui.parent(tile) {
-					ui.spacer(ui.px(em * 0.6))
-					if k == 0 {
-						ui.checkbox("###setup_shortcut", "Shortcut on the Desktop", &d.shortcut)
-					} else {
-						ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), c.choices[k - 1].label, &d.choices[k - 1])
-					}
-				}
+				ui.spacer(ui.px(em * 0.5))
 			}
 			ui.spacer(ui.px(em * MARGIN_EM))
 		}

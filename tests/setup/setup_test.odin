@@ -265,3 +265,27 @@ an_update_of_the_installed_copy_is_recorded :: proc(t: ^testing.T) {
 	testing.expectf(t, ok, "recorded: %s", why)
 	testing.expect_value(t, setup.facts(cfg).version, "1.1.0")
 }
+
+// A long label of an option wraps in its tile, never past it: one option per line, its tile as tall as its lines.
+@(test)
+a_long_option_stays_in_its_tile :: proc(t: ^testing.T) {
+	app: App
+	defer setup.destroy(&app.d)
+	LONG :: "Start with the session, in the notification area, and keep the history of the clipboard from the first copy"
+	app.cfg = {identity = desktop.Identity{name = "Sample", vendor = "Someone"}, version = "1.0.0", choices = []setup.Choice{{label = LONG, on = true}, {label = "Add to PATH"}}}
+	append(&app.d.choices, true, false)
+	app.d.open, app.d.known = true, true
+	app.d.facts = {state = .Not_Installed}
+	s := session.start(t, {size = {560, 760}, user = &app, build = proc(s: ^session.Session) {
+		app := (^App)(s.user)
+		if ev := setup.dialog(&app.d, app.cfg, ui.font_size()); ev != .None { app.event = ev }
+	}})
+	session.frames(s, 3)
+	session.save_png(s, "options.png")
+	tile := session.find(s, "setup_tile_1")
+	words := session.find_text(s, LONG)
+	testing.expect(t, tile != nil && words != nil)
+	if tile == nil || words == nil { return }
+	testing.expectf(t, words.rect.max.x <= tile.rect.max.x && words.rect.max.y <= tile.rect.max.y, "inside: %v in %v", words.rect, tile.rect)
+	testing.expect(t, words.rect.max.y - words.rect.min.y > ui.font_size() * 1.8, "on more than one line")
+}

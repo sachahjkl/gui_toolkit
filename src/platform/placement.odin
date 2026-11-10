@@ -20,6 +20,19 @@ fit_rect_to_work :: proc(r, work: [4]int) -> [4]int {
 	return {clamp(r[0], work[0], work[0] + work[2] - w), clamp(r[1], work[1], work[1] + work[3] - h), w, h}
 }
 
+// A rectangle of the work area `from` at the same place on the work area `to`: the share of the room left around it on
+// each axis is kept (a window in the middle stays in the middle, one in a corner in that corner), its size too, then it
+// is fitted to `to`. Pure.
+rect_on_work :: proc(r, from, to: [4]int) -> [4]int {
+	at :: proc(pos, from_origin, from_size, to_origin, to_size, size: int) -> int {
+		room := from_size - size
+		share := room > 0 ? clamp(f64(pos - from_origin) / f64(room), 0, 1) : 0
+		return to_origin + int(share * f64(max(to_size - size, 0)) + 0.5)
+	}
+	moved := [4]int{at(r[0], from[0], from[2], to[0], to[2], r[2]), at(r[1], from[1], from[3], to[1], to[3], r[3]), r[2], r[3]}
+	return fit_rect_to_work(moved, to)
+}
+
 // A rectangle of WINDOWPLACEMENT (workspace coordinates: relative to the work area, for a window that is no tool window)
 // on the screen: the work area of the monitor starts at `work`, the monitor at `monitor`. A taskbar along the left or top
 // edge is what makes them differ. Pure.
