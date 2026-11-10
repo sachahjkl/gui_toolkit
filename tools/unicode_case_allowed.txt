@@ -44,3 +44,5 @@ src/ui/list.odin utf8.encode_rune(unicode.to_lower(r))  # user text: a list's ty
 src/ui/popups.odin want := unicode.to_lower(e.text)  # user text: a menu's type-ahead (the letter typed)
 src/ui/popups.odin return unicode.to_lower(r)  # user text: a menu's type-ahead (an item's first letter)
 src/prefs_page/prefs_page.odin strings.to_upper(heading  # display text: a page's title above its matches, in capitals
+src/desktop/icons_windows.odin {"folder:", strings.to_lower(path  # a path: Windows folds a file's name by Unicode (one icon's key per folder)
+src/desktop/icons_windows.odin {"file:", strings.to_lower(path  # a path: Windows folds a file's name by Unicode (one icon's key per file)

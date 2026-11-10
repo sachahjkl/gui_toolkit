@@ -86,6 +86,7 @@ desktop/integration_linux.odin ICON_SIZES const  # a table: the sizes of the ico
 desktop/integration_test_windows.odin watch_counter test
 desktop/integration_test_windows.odin windows_watcher_wakes_on_every_place_it_watches.sc test
 desktop/integration_windows.odin WINDOWS_BACKEND const  # a backend's table of procedures
+desktop/terminal_linux.odin TERMINALS const  # a table: the terminals tried in their order
 draw/failures.odin forced_failures thread  # the failures a test forces, on its thread
 font/failures.odin forced_failures thread  # the failures a test forces, on its thread
 font/font_other.odin other_system const  # a system font service's table of procedures

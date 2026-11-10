@@ -29,7 +29,8 @@ serve_start :: proc(owner: Owner, handler: Handler, user: rawptr, allocator := c
 		free(s, allocator)
 		return nil
 	}
-	s.thread = thread.create_and_start_with_data(s, serve_main)
+	// (with the caller's context: the thread frees the owner's strings, made with the caller's allocator)
+	s.thread = thread.create_and_start_with_data(s, serve_main, context)
 	sync.sema_wait(&s.started)
 	if !s.ok {
 		thread.join(s.thread)
