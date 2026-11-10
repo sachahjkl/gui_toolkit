@@ -96,6 +96,7 @@ STEPS := []Step{
 	{name = "key_repeat", oses = EVERYWHERE},
 	{name = "pacing", oses = EVERYWHERE},
 	{name = "sleep", oses = EVERYWHERE},
+	{name = "netif", oses = EVERYWHERE},
 	{name = "placement"},
 	{name = "size_move"},
 	{name = "testkit"},
