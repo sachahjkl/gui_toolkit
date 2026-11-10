@@ -52,7 +52,10 @@ renderer's surface again at the next frame (`render.surface_remake`).
 `raise_window(w)` brings a shown window to the front with the keyboard focus. X11: `_NET_ACTIVE_WINDOW`. Wayland:
 `xdg_activation_v1`, a token with the seat's last input serial the connection saw (0 when it saw none), spent on the
 window's surface; the compositor decides. A compositor that does not focus a new window by itself (ShojiWM's Windows 7
-configuration) gives the focus this way: call it after `show_window` when the user asked for the window.
+configuration) gives the focus this way: call it after `show_window` when the user asked for the window. A second start of the
+program brings the first one's window up with the token its launcher gave it: `activation_token_from_env()` in the second
+(Wayland's `XDG_ACTIVATION_TOKEN`, X11's `DESKTOP_STARTUP_ID`, taken out of the environment), handed to the first, which
+calls `raise_window_token(w, token)` (Windows: `raise_window`).
 
 **Identity** — `set_app_id(id)`, once before the first window: on Linux, the windows' Wayland app_id and X11 WM_CLASS.
 The desktop finds the program's `<id>.desktop` by it, for the icon and the name in a task bar. Without a call, the id is
