@@ -2,6 +2,9 @@
 //! package calls it and draws the SVG with its svg package.
 //!
 //! Every entry point catches panics: a diagram the library cannot draw is an error the program shows as the diagram's text.
+//!
+//! A gantt chart whose `dateFormat` is `X` (seconds since 1970) or `x` (milliseconds), which mermaid-svg does not read, is
+//! given to it in `YYYY-MM-DD HH:mm:ss` (epoch_gantt).
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -49,7 +52,10 @@ pub unsafe extern "C" fn gt_mermaid_render(
         if font_size > 0.0 {
             t = t.with_font_size(font_size);
         }
-        mermaid_svg::render_with(&text, &t)
+        match epoch_gantt(&text) {
+            Some(text) => mermaid_svg::render_with(&text, &t),
+            None => mermaid_svg::render_with(&text, &t),
+        }
     }));
     let (code, body) = match result {
         Ok(Ok(svg)) => (GT_MERMAID_OK, svg),
@@ -73,6 +79,74 @@ pub unsafe extern "C" fn gt_mermaid_free(p: *mut u8, len: usize) {
     }
 }
 
+/// A gantt chart in `dateFormat X` or `x`, its dates written as `YYYY-MM-DD HH:mm:ss` (UTC). None: not one.
+/// A task's dates are its numbers after the `:` (a duration has a unit, an id a letter: they stay as they are).
+fn epoch_gantt(text: &str) -> Option<String> {
+    let mut lines = text.lines();
+    let first = lines.clone().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("%%"))?;
+    if first != "gantt" {
+        return None;
+    }
+    let scale = lines.clone().find_map(|l| match l.trim().strip_prefix("dateFormat")?.trim() {
+        "X" => Some(1.0),
+        "x" => Some(0.001),
+        _ => None,
+    })?;
+    let mut out = String::with_capacity(text.len() + 64);
+    for line in lines.by_ref() {
+        let t = line.trim();
+        let indent = &line[..line.len() - line.trim_start().len()];
+        if t.starts_with("dateFormat") {
+            out.push_str(indent);
+            out.push_str("dateFormat YYYY-MM-DD HH:mm:ss");
+        } else if let Some(colon) = task_colon(t) {
+            out.push_str(indent);
+            out.push_str(&t[..=colon]);
+            let parts: Vec<String> = t[colon + 1..]
+                .split(',')
+                .map(|p| {
+                    let v = p.trim();
+                    match v.parse::<f64>() {
+                        Ok(n) if v.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-') => format!(" {}", civil(n * scale)),
+                        _ => p.to_string(),
+                    }
+                })
+                .collect();
+            out.push_str(&parts.join(","));
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// Where a task line's `:` is (a directive's is not a task's: `title`, `axisFormat`...).
+fn task_colon(t: &str) -> Option<usize> {
+    const DIRECTIVES: [&str; 14] = ["title", "dateFormat", "axisFormat", "tickInterval", "excludes", "includes", "todayMarker",
+        "weekday", "weekend", "section", "displayMode", "inclusiveEndDates", "topAxis", "click"];
+    if t.is_empty() || t.starts_with("%%") || DIRECTIVES.iter().any(|d| t.starts_with(d)) {
+        return None;
+    }
+    t.find(':')
+}
+
+/// Seconds since 1970 as `YYYY-MM-DD HH:mm:ss`, UTC (Howard Hinnant's civil_from_days).
+fn civil(secs: f64) -> String {
+    let total = secs.floor() as i64;
+    let (days, rest) = (total.div_euclid(86_400), total.rem_euclid(86_400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", rest / 3600, rest % 3600 / 60, rest % 60)
+}
+
 unsafe fn bytes<'a>(p: *const u8, len: usize) -> &'a [u8] {
     if p.is_null() || len == 0 {
         &[]
@@ -91,6 +165,25 @@ mod tests {
         let s = unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(out, len)).into_owned() };
         unsafe { gt_mermaid_free(out, len) };
         (code, s)
+    }
+
+    const EPOCH: &str = "gantt\n    title Calls\n    dateFormat X\n    axisFormat %S s\n    section Parallel\n    Read the folder :a1, 0, 1\n    Explore :a2, 0, 3\n    section After\n    Answer :after a2, 1\n";
+
+    #[test]
+    fn a_gantt_in_seconds_since_1970_is_drawn() {
+        let (code, svg) = render(EPOCH, "dark");
+        assert_eq!(code, GT_MERMAID_OK, "{svg}");
+        assert!(svg.contains("Read the folder") && svg.contains("Answer"));
+        let text = epoch_gantt(EPOCH).unwrap();
+        assert!(text.contains("dateFormat YYYY-MM-DD HH:mm:ss"));
+        assert!(text.contains(":a2, 1970-01-01 00:00:00, 1970-01-01 00:00:03"), "{text}");
+        assert!(text.contains(":after a2, 1970-01-01 00:00:01"), "the start an id: {text}");
+        assert!(text.contains("title Calls") && text.contains("axisFormat %S s"), "the directives as they were: {text}");
+        let ms = epoch_gantt("gantt\ndateFormat x\nA :a, 1500, 2000\n").unwrap();
+        assert!(ms.contains("1970-01-01 00:00:01, 1970-01-01 00:00:02"), "milliseconds: {ms}");
+        assert!(epoch_gantt("gantt\ndateFormat YYYY-MM-DD\nA :a, 2026-01-01, 3d\n").is_none(), "another format: as it is");
+        assert!(epoch_gantt("flowchart LR\nA --> B\n").is_none(), "not a gantt");
+        assert_eq!(civil(1_794_351_911.0), "2026-11-10 23:05:11");   // (date -u -d @1794351911)
     }
 
     #[test]
