@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.150.0] - 2026-11-10
+
+### Added
+- `platform.move_to_active_monitor`: a window goes to the monitor the user works on (the one of the window in front, else under the pointer), at the same place of its work area (`rect_on_work`), before a program called up by a shortcut shows it. Windows.
+
+### Fixed
+- `setup` dialog: one option per line, its tile as tall as its label: a long label wraps in it instead of running past its edge.
+
 ## [0.149.0] - 2026-11-10
 
 ### Added
@@ -2253,6 +2261,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.150.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.150.0
 [0.149.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.149.0
 [0.148.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.148.0
 [0.147.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.147.0
