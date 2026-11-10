@@ -4,9 +4,8 @@
 # "<path> <code>  # why": the line of <path> that holds <code>.
 src/config/search.odin query = strings.to_lower(  # user text: the settings' search
 src/config/search.odin t := strings.to_lower(title  # user text: a page's title in the settings' search
-src/config/titles.odin name := strings.to_lower(d.name  # user text: the settings' search
-src/config/titles.odin title := strings.to_lower(title_of(d)  # user text: the settings' search
-src/config/titles.odin desc := strings.to_lower(d.description  # user text: the settings' search
+src/config/search.odin q := strings.to_lower(query  # user text: a search's query (words_match)
+src/config/search.odin low[i] = strings.to_lower(f  # user text: the fields a search looks in (words_match)
 src/config/titles.odin strings.write_rune(&sb, unicode.to_upper(r))  # display text: a title's capital
 src/config/titles.odin case "kb", "mb", "gb": return strings.to_upper(w  # display text: a word of a title in capitals
 src/config/titles.odin case "d3d", "d3d11", "d3d12": return strings.to_upper(w  # display text: a word of a title in capitals
