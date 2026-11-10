@@ -39,6 +39,7 @@ Platform and system
   dbus.md             D-Bus client
   fsx.md              fsx: file helpers
   archive.md          archive: zip and tar
+  syntax.md           syntax: the colours of code
   ascii.md            ascii: the case of names
   instance.md         instance: one running copy
   winrt.md            winrt: Windows Runtime APIs
