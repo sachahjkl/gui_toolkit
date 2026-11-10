@@ -324,6 +324,7 @@ Table :: struct {
 	lead:      proc(t: ^Table, row: int, size: f32),
 	lead_user: rawptr,
 	lead_em:   f32,             // the room before the first title and the first cell (0: 0.6)
+	header_bg: Maybe(Color),    // the header's background (nil: none)
 }
 
 table_init :: proc(t: ^Table, columns: []Table_Column, sort := 0, descending := false) {
@@ -460,6 +461,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 	m.axis = .Y
 	next(m)
 	if column(id = id) {
+		if t.header_bg != nil { next({bg = t.header_bg}) }
 		h := table_header("###header", &t.layout, lead_em)
 		ev.sorted, ev.resized, ev.columns = h.sorted, h.resized, h.menu
 		row_h := dense(em * TABLE_ROW_EM)
