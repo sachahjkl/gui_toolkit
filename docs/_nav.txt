@@ -16,6 +16,7 @@ Drawing and text
   rendering.md        Rendering backends
   webgpu.md           WebGPU
   paint.md            paint: vector pictures
+  diagrams.md         Diagrams: svg and mermaid
 
 Widgets and layout
   themes.md           Themes and finishes

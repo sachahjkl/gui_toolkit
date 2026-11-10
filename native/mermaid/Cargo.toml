@@ -1,0 +1,26 @@
+# The toolkit's Mermaid diagrams (src/mermaid): mermaid-svg turns a diagram's text into SVG (its own parser and layout, no
+# browser, no JavaScript), which the svg package draws with the toolkit's paths and fonts. Linked statically into applications
+# that draw diagrams (tools/tk build_mermaid -> build/mermaid/gt_mermaid.lib), or built into an application's own Rust library
+# (MERMAID_NATIVE_LINK=false, as for gt_text). Versions are pinned exactly here and by Cargo.lock (SHA-256 of every crate); the
+# build runs with --locked.
+[package]
+name = "gt_mermaid"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+mermaid-svg = { version = "=0.7.0", default-features = false }
+
+[profile.release]
+opt-level = "s"     # (a diagram takes milliseconds; the library's size is what every program pays)
+codegen-units = 1
+lto = "fat"
+debug = false
+panic = "unwind"    # every entry point catches panics: a diagram the library cannot draw is shown as its text, not a dead app
+incremental = false
