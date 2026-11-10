@@ -5,6 +5,8 @@ package svg_test
 
 import "core:math"
 import "core:testing"
+import font "../../src/font"
+import paint "../../src/paint"
 import svg "../../src/svg"
 
 FLOWCHART :: #load("flowchart.svg", string)
@@ -146,4 +148,61 @@ what_is_not_svg_is_no_drawing :: proc(t: ^testing.T) {
 	testing.expect(t, !ok)
 	_, ok = svg.parse("")
 	testing.expect(t, !ok)
+}
+
+// The pixels of `c` that are not `bg` (by more than a rounding).
+@(private = "file")
+inked :: proc(c: paint.Canvas, bg: paint.Color) -> int {
+	n := 0
+	for p in c.pixels {
+		d := p - [4]f32{bg.r * bg.a, bg.g * bg.a, bg.b * bg.a, bg.a}
+		if abs(d.r) + abs(d.g) + abs(d.b) + abs(d.a) > 0.02 { n += 1 }
+	}
+	return n
+}
+
+// The drawing on the CPU: its size at the scale, its background where nothing is, a text drawn from its glyphs' outlines
+// (none without fonts), a dashed line as about half of the solid one.
+@(test)
+a_drawing_is_rastered :: proc(t: ^testing.T) {
+	fonts: font.State
+	font.init(&fonts)
+	defer font.destroy(&fonts)
+	regular, ok := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
+	if !testing.expect(t, ok, "the embedded face") { return }
+	WHITE :: svg.Color{1, 1, 1, 1}
+
+	doc, parsed := svg.parse(FLOWCHART)
+	defer svg.destroy(&doc)
+	if !testing.expect(t, parsed) { return }
+	c := svg.raster(&doc, 2, &fonts, {regular = regular}, WHITE)
+	defer paint.canvas_destroy(&c)
+	testing.expect_value(t, c.width, int(math.ceil(doc.view[2] * 2)))
+	testing.expect_value(t, c.height, int(math.ceil(doc.view[3] * 2)))
+	testing.expect_value(t, inked({width = 1, height = 1, pixels = c.pixels[:1]}, WHITE), 0)
+	testing.expect(t, inked(c, WHITE) > c.width * c.height / 50, "its boxes and lines")
+
+	words, _ := svg.parse(`<svg viewBox="0 0 120 30"><text x="60" y="20" text-anchor="middle" font-size="14" fill="#000">Ship it</text></svg>`)
+	defer svg.destroy(&words)
+	none := svg.raster(&words, 1, nil, {regular = regular}, WHITE)
+	defer paint.canvas_destroy(&none)
+	testing.expect_value(t, inked(none, WHITE), 0)
+	text := svg.raster(&words, 1, &fonts, {regular = regular}, WHITE)
+	defer paint.canvas_destroy(&text)
+	ink := inked(text, WHITE)
+	testing.expect(t, ink > 60, "the letters")
+	left, right := text.width, 0
+	for p, i in text.pixels { if p.r < 0.5 { left, right = min(left, i % text.width), max(right, i % text.width) } }
+	testing.expectf(t, abs(f32(left + right) * 0.5 - 60) < 3, "centred on its x: %d..%d", left, right)
+
+	solid, _ := svg.parse(`<svg viewBox="0 0 200 10"><path d="M0 5H200" stroke="#000" stroke-width="2"/></svg>`)
+	defer svg.destroy(&solid)
+	dash, _ := svg.parse(`<svg viewBox="0 0 200 10"><path d="M0 5H200" stroke="#000" stroke-width="2" stroke-dasharray="5 5"/></svg>`)
+	defer svg.destroy(&dash)
+	a := svg.raster(&solid, 1, nil, {}, WHITE)
+	defer paint.canvas_destroy(&a)
+	b := svg.raster(&dash, 1, nil, {}, WHITE)
+	defer paint.canvas_destroy(&b)
+	ia, ib := inked(a, WHITE), inked(b, WHITE)
+	testing.expectf(t, ia >= 400 && abs(f32(ib) / f32(ia) - 0.5) < 0.1, "the dashes: %d of %d", ib, ia)
 }

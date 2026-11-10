@@ -23,6 +23,16 @@ It reads what diagrams and icons use: `svg`, `g`, `path` (every command, arcs to
 is drawn. The paths are built at the screen's scale: curves are smooth and strokes as wide as the scale makes them at
 every zoom. `Options.recolor` turns the drawing's colours into the program's (its theme).
 
+`svg.raster(&doc, scale, fonts, options, background)` makes the same drawing into pixels on the CPU, where no frame is
+drawn: a `paint.Canvas` to copy (`paint.to_rgba8`) or to save (`paint.png_encode`). Its texts are filled from the outlines
+of the options' faces; a glyph without an outline (a colour emoji) is left out.
+
+```odin
+c := svg.raster(&doc, 2, &fonts, {regular = regular, bold = bold}, background = {1, 1, 1, 1})
+defer paint.canvas_destroy(&c)
+platform.clipboard_set_image(win, {rgba = paint.to_rgba8(c, context.temp_allocator), size = {c.width, c.height}})
+```
+
 ## mermaid: a diagram's text
 
 `mermaid.diagram(text, dark)` lays out a [Mermaid](https://mermaid.js.org) diagram (flowchart, sequence, class, state, ER,
