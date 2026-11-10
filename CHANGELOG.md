@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.153.0] - 2026-11-10
+
+### Added
+- **`svg.raster`**: a drawing made into pixels on the CPU (a `paint.Canvas`), where no frame is drawn: a diagram to copy as a picture or to save as a PNG file. Its shapes, dashes and markers are those `svg.draw_doc` draws; its texts are filled from the outlines of the program's faces.
+
 ## [0.152.0] - 2026-11-10
 
 ### Fixed
@@ -2271,6 +2276,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.153.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.153.0
 [0.152.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.152.0
 [0.151.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.151.0
 [0.150.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.150.0
