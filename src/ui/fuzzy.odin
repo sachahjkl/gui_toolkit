@@ -158,3 +158,76 @@ fuzzy_score :: proc(needle, hay: string, allocator := context.temp_allocator) ->
 	score -= len(hay) / FUZZY_BYTES_PER_LENGTH_POINT
 	return score, out[:], true
 }
+
+// fuzzy_words: what a match earns. A run of the needle whole in the text beats pieces at words' starts; the start of the
+// text or of a word adds; each piece past the first, and the text's length, cost.
+@(private = "file") WORDS_SCORE_WHOLE :: 1000
+@(private = "file") WORDS_SCORE_PIECES :: 600
+@(private = "file") WORDS_SCORE_TEXT_START :: 200
+@(private = "file") WORDS_SCORE_WORD_START :: 100
+@(private = "file") WORDS_PIECE_COST :: 60
+// The needle's characters a search by pieces tries at most (a longer one is matched whole or not at all).
+@(private = "file") WORDS_MAX_NEEDLE :: 64
+
+// Matching for a command palette, stricter than fuzzy_score: the needle (spaces ignored, case-insensitively) is in `hay`
+// whole ("prio" in "Raise the priority"), or is made of pieces that each begin a word of `hay`, the words in order ("ks"
+// in "Keyboard shortcuts", "endt" in "End task"). Letters scattered in a word do not match: "prio" does not find
+// "Previous section". A word begins the text, follows a character that is not a letter or a digit, or is a capital after
+// a small letter. `score` ranks matches, higher first: the needle whole before pieces, at the start of the text or of a
+// word before elsewhere, fewer pieces and a shorter text first. An empty needle matches everything with score 0.
+fuzzy_words :: proc(needle, hay: string, allocator := context.temp_allocator) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	b := strings.builder_make(context.temp_allocator)
+	for r in fold_lower(needle) { if !unicode.is_space(r) { strings.write_rune(&b, r) } }
+	want := strings.to_string(b)
+	if want == "" { return 0, nil, true }
+	low := fold_lower(hay)
+	out := make([dynamic]Fuzzy_Range, allocator)
+	if at := strings.index(low, want); at >= 0 {
+		// (the first place it starts a word, else the first place it is)
+		for i := at; i >= 0 && i < len(low); {
+			if word_start(hay, i) { at = i; break }
+			next := strings.index(low[i + 1:], want)
+			if next < 0 { break }
+			i += 1 + next
+		}
+		score = WORDS_SCORE_WHOLE
+		if at == 0 { score += WORDS_SCORE_TEXT_START } else if word_start(hay, at) { score += WORDS_SCORE_WORD_START }
+		append(&out, Fuzzy_Range{at, at + len(want)})
+		return score - len(hay) / FUZZY_BYTES_PER_LENGTH_POINT, out[:], true
+	}
+	if len(want) > WORDS_MAX_NEEDLE { return 0, nil, false }
+	if !word_pieces(hay, low, want, 0, &out) { return 0, nil, false }
+	score = WORDS_SCORE_PIECES - WORDS_PIECE_COST * (len(out) - 1)
+	if out[0][0] == 0 { score += WORDS_SCORE_TEXT_START }
+	return score - len(hay) / FUZZY_BYTES_PER_LENGTH_POINT, out[:], true
+}
+
+// Whether a word of `hay` begins at byte `i`.
+@(private = "file")
+word_start :: proc(hay: string, i: int) -> bool {
+	if i == 0 { return true }
+	prev, _ := utf8.decode_last_rune_in_string(hay[:i])
+	cur, _ := utf8.decode_rune_in_string(hay[i:])
+	if !unicode.is_letter(prev) && !unicode.is_digit(prev) { return true }
+	return unicode.is_lower(prev) && unicode.is_upper(cur)
+}
+
+// `want` as pieces that each begin a word of `hay` at or after `from`, the longest piece tried first; the pieces are
+// appended to `out` (taken back when the rest does not match).
+@(private = "file")
+word_pieces :: proc(hay, low, want: string, from: int, out: ^[dynamic]Fuzzy_Range) -> bool {
+	if want == "" { return true }
+	for w := from; w < len(low); w += rune_width_at(low, w) {
+		if !word_start(hay, w) { continue }
+		common := 0
+		for common < len(want) && w + common < len(low) && low[w + common] == want[common] { common += 1 }
+		for l := common; l > 0; l -= 1 {
+			// (whole runes only: a piece never ends inside one)
+			if l < len(want) && !utf8.rune_start(want[l]) { continue }
+			append(out, Fuzzy_Range{w, w + l})
+			if word_pieces(hay, low, want[l:], w + l, out) { return true }
+			pop(out)
+		}
+	}
+	return false
+}

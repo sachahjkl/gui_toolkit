@@ -4,7 +4,7 @@ package ui
 //
 //   command_pressed   the key handling: a command's keys, pressed this frame
 //   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)")
-//   palette           the command palette: a menu that searches (fuzzy), every command with its keys, grouped
+//   palette           the command palette: a menu that searches (fuzzy_words), every command with its keys, grouped
 //   shortcuts_sheet   a dialog that lists every command's keys, grouped
 //
 // A program keeps its commands in a table of its own (an enum of its commands indexing an array of Command) and says
@@ -66,7 +66,7 @@ key_name :: proc(k: platform.Key) -> string {
 	case .F1 ..= .F12:
 		functions := KEY_FUNCTIONS
 		return functions[int(k) - int(platform.Key.F1)]
-	case .Escape:     return "Esc"
+	case .Escape:     return "Escape"
 	case .Return:     return "Enter"
 	case .Tab:        return "Tab"
 	case .Space:      return "Space"
@@ -139,7 +139,7 @@ palette_open :: proc(key: Key, width_em: f32 = PALETTE_WIDTH_EM) {
 }
 
 // The palette `key` while it is open: every command, under its group's heading, with its keys. What is typed keeps the
-// commands whose label and group have its letters in order, the best matches first (the headings go then; each line
+// commands whose label (or label and group) holds it whole or in pieces that begin words (fuzzy_words), the best matches first (the headings go then; each line
 // says its group); the first one is selected. A command that cannot act now (`enabled[i]` false; nil: all can) is
 // greyed. Returns the index of the command chosen, -1 when none is.
 palette :: proc(key: Key, commands: []Command, enabled: []bool = nil, width_em: f32 = PALETTE_WIDTH_EM) -> (chosen: int) {
@@ -177,9 +177,9 @@ palette_items :: proc(commands: []Command, enabled: []bool) -> (chosen: int) {
 	Ranked :: struct { index, score: int }
 	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
 	for c, i in commands {
-		if score, _, ok := fuzzy_score(query, c.label); ok {
+		if score, _, ok := fuzzy_words(query, c.label); ok {
 			append(&ranked, Ranked{i, score})
-		} else if score2, _, ok2 := fuzzy_score(query, fmt.tprintf("%s %s", c.label, c.group)); ok2 {
+		} else if score2, _, ok2 := fuzzy_words(query, fmt.tprintf("%s %s", c.label, c.group)); ok2 {
 			append(&ranked, Ranked{i, score2 - PALETTE_GROUP_MATCH_PENALTY})
 		}
 	}
