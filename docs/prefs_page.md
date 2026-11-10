@@ -62,7 +62,9 @@ program gives `Options.restart`.
 
 A value goes through `config.set_from_string` at the `User` layer: every observer of the registry runs. A field applies
 its text on Enter or when it loses the keyboard; a refused value stays as it was, and the reason shows under the line
-("out of range: 1 to 64 KB"). A slider applies its value when the drag ends, or at each key. `Options.changed` runs after
+("out of range: 1 to 64 KB"). A slider applies its value when the drag ends, or at each key; while it is held,
+`Options.preview(user, name, value)` gets each value it moves to, for the program to show at once (a rounding, a size)
+without writing it. `Options.changed` runs after
 each value set or reset: save the file there (`config.save_user`) and apply the change.
 
 ## Themes as cards
