@@ -20,6 +20,7 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 import "core:time/datetime"
+import ascii "../ascii"
 import flate "../flate"
 
 Kind :: enum u8 { Zip, Tar, Tar_Gz }
@@ -56,7 +57,7 @@ Index :: struct {
 
 // The kind of an archive by its name: .zip, .tar, .tar.gz, .tgz (any case). ok = false: none.
 kind_of :: proc(name: string) -> (kind: Kind, ok: bool) {
-	lower := strings.to_lower(name, context.temp_allocator)
+	lower := ascii.lower(name)   // (an extension: ASCII)
 	switch {
 	case strings.has_suffix(lower, ".zip"):                                        return .Zip, true
 	case strings.has_suffix(lower, ".tar"):                                        return .Tar, true

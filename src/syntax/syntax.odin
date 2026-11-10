@@ -8,6 +8,7 @@
 package tk_syntax
 
 import "core:strings"
+import ascii "../ascii"
 
 // A language. `names` are the words that call it (a code block's info string, lower case); `extensions` its files'.
 Language :: struct {
@@ -94,7 +95,7 @@ language :: proc(name: string, project: []Language = nil) -> (l: Language, ok: b
 language_of_file :: proc(file_name: string) -> (l: Language, ok: bool) {
 	dot := strings.last_index_byte(file_name, '.')
 	if dot < 0 { return }
-	ext := strings.to_lower(file_name[dot + 1:], context.temp_allocator)
+	ext := ascii.lower(file_name[dot + 1:])   // (an extension: ASCII)
 	for x in LANGUAGES {
 		if !x.highlight { continue }
 		for e in x.extensions { if e == ext { return x, true } }
