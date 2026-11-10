@@ -1,7 +1,7 @@
 package text_test
 
 import "core:testing"
-import "../unwatched"
+import "../../src/testkit/unwatched"
 import "../../src/draw"
 import "../../src/font"
 import "../../src/render"

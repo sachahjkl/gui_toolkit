@@ -1,7 +1,7 @@
 package text_backends_test
 
 import "core:testing"
-import "../unwatched"
+import "../../src/testkit/unwatched"
 import "../../src/font"
 
 _ :: testing   // the test needs the native backend

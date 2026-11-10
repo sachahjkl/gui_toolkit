@@ -5,7 +5,7 @@ package text_test
 import "core:fmt"
 import "core:sync"
 import "core:testing"
-import "../unwatched"
+import "../../src/testkit/unwatched"
 import "core:thread"
 import "../../src/font"
 
