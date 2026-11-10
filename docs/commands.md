@@ -42,8 +42,9 @@ ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 | `shortcuts_sheet(id, commands, open, title)` | a dialog: every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window |
 
 The palette is a menu that searches (`ctx_menu_open(..., search = true)`): what is typed keeps the commands whose label
-and group hold its letters in order (fuzzy, `fuzzy_score`), the headings go and each line says its group, and the first
-match is selected: Enter runs it. A command that cannot act now is greyed and is not chosen. Escape closes the palette,
+and group hold its letters in order (fuzzy, `fuzzy_score`), the best matches first (a match in the label before one that
+needs the group's letters), the headings go and each line says its group, and the first match is selected: Enter runs
+it. A command that cannot act now is greyed and is not chosen. Escape closes the palette,
 and the sheet.
 
 `tests/commands` tests the texts, the keys and the palette.

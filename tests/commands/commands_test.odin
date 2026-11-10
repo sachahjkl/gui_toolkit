@@ -123,6 +123,16 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.chosen, 1)
 	testing.expect(t, !ui.ctx_menu_any_open(), "choosing closes the palette")
 
+	// the best match first: "c" is in the group of End task, Kill and Start (Processes, Services), and at the start of
+	// Command palette's label: Command palette comes first, though it is last in the table
+	r.chosen = -1
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open((^Palette_Run)(user).key) }, &r)
+	frame(&f, nil, build_palette, &r)
+	frame(&f, {typed('c')}, build_palette, &r)
+	frame(&f, nil, build_palette, &r)
+	frame(&f, {key(.Return)}, build_palette, &r)
+	testing.expect_value(t, r.chosen, 3)
+
 	// what cannot act is not chosen: "start" matches only Start, which is greyed
 	r.chosen = -1
 	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open((^Palette_Run)(user).key) }, &r)
