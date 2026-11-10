@@ -628,8 +628,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			if parent(b) {
 				spacer(px(em * 0.6))
 				next({width = px(em * 1.5), height = pct(1)})
-				if checked && s.icon_font != 0 {
-					if style({font = s.icon_font, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, "V###chk") }
+				if checked && widget_icons() != 0 {
+					if style({font = widget_icons(), text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###chk", ICON_CHECK)) }
 				} else if glyph != "" && s.icon_font != 0 {
 					if style({font = s.icon_font, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph)) }
 				} else {
@@ -643,8 +643,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 						build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###key", shortcut))
 					}
 				}
-				if submenu && s.icon_font != 0 {
-					if tags("weak") { icon(">", em * 1.2) }
+				if submenu && widget_icons() != 0 {
+					if tags("weak") { widget_icon(">", em * 1.2) }
 				}
 				spacer(px(em * 0.5 + menu_bar_room(lv, em)))
 			}

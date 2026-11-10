@@ -5,6 +5,7 @@ package commands_test
 
 import "core:testing"
 import "../../src/font"
+import lucide "../../src/lucide"
 import "../../src/platform"
 import "../../src/ui"
 
@@ -199,4 +200,33 @@ fuzzy_words_whole_or_at_words_starts :: proc(t: ^testing.T) {
 	testing.expect(t, ok && len(ranges) == 2, "pieces after a shorter first piece")
 	s, r, ok3 := ui.fuzzy_words(" ", "anything")
 	testing.expect(t, ok3 && s == 0 && r == nil, "an empty needle matches everything")
+}
+
+// The widgets' marks come from the toolkit's own icon font, whatever icon font the program sets (Lucide here): a menu's
+// check is ICON_CHECK of widget_icons, not a "V" of the program's font.
+@(test)
+the_widgets_marks_are_the_toolkits :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	lucide_font, ok := font.load_embedded(&f.fonts, lucide.DATA)
+	if !testing.expect(t, ok, "Lucide loads") { return }
+	f.s.icon_font = lucide_font
+	key := ui.Key(0x5e1ec7)
+	build :: proc(f: ^Fx, user: rawptr) {
+		key := (^ui.Key)(user)^
+		if ui.ctx_menu(key) { ui.menu_item("Kept", checked = true) }
+	}
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^ui.Key)(user)^, {10, 10}) }, &key)
+	frame(&f, nil, build, &key)
+	frame(&f, nil, build, &key)
+	marks := ui.widget_icons()
+	testing.expect(t, marks != 0 && marks != lucide_font, "a font of its own")
+	found := false
+	for _, b in f.s.boxes {
+		if b == nil || b.last_build != f.s.build_index || ui.box_text(b) != ui.ICON_CHECK { continue }
+		found = true
+		testing.expect(t, b.font == marks, "the check is drawn in the toolkit's icon font")
+	}
+	testing.expect(t, found, "the checked item has its mark")
 }

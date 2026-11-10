@@ -15,7 +15,23 @@ import "../font"
 // `font.load_embedded(&fonts, ui.ICON_FONT_DATA)`.
 ICON_FONT_DATA :: #load("icons.ttf")
 
-// Characters of the icon font that the widgets use.
+// The toolkit's icon font, for the widgets' own marks (a check, an arrow, a radio's dot): whatever icon font the program
+// sets as `icon_font` (Lucide, its own), the marks are these characters of this font. Loaded the first time a widget
+// draws one (0: no font state).
+widget_icons :: proc() -> font.Font_Id {
+	s := gs()
+	if s.widget_icon_font == 0 && s.fonts != nil { s.widget_icon_font, _ = font.load_embedded(s.fonts, ICON_FONT_DATA) }
+	return s.widget_icon_font
+}
+
+// A widget's mark (one of the ICON_ characters), `width` wide, in the toolkit's icon font.
+@(private)
+widget_icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
+	next({width = px(width), height = pct(1), font = widget_icons(), text_align = .Center, fg = fg})
+	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", glyph, parent_box().child_count))
+}
+
+// Characters of the toolkit's icon font (widget_icons) that the widgets use.
 ICON_CHECK :: "V"
 ICON_UP :: "^"
 ICON_DOWN :: "v"
@@ -103,12 +119,12 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	fill.a *= min(1, d.t * MARK_FILL_FADE_SPEED)
 	paint_rect(dc, draw.rect_pad(r, -inset), fill, rad(w * MARK_BOX_RADIUS_FRACTION), d.t)
 	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * MARK_BOX_RADIUS_FRACTION), MARK_RING_PX * scale())
-	if d.t > MARK_CHECK_MIN_T && s.icon_font != 0 {
+	if marks := s.widget_icon_font; d.t > MARK_CHECK_MIN_T && marks != 0 {
 		size := d.size * d.t
-		m := font.metrics(s.fonts, s.icon_font, size)
-		dim := font.text_width(s.fonts, s.icon_font, size, ICON_CHECK)
+		m := font.metrics(s.fonts, marks, size)
+		dim := font.text_width(s.fonts, marks, size, ICON_CHECK)
 		c := draw.rect_center(r)
-		draw.text(dc, s.icon_font, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
+		draw.text(dc, marks, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
 	}
 }
 
@@ -130,6 +146,7 @@ fit_row_width :: proc() -> bool {
 
 @(private)
 mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
+	_ = widget_icons()   // (the check is drawn in it: loaded before the draw)
 	em := font_size()
 	fit := fit_row_width() && !wrap
 	if wrap {
@@ -433,7 +450,7 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 					build_box({.Draw_Text}, fmt.tprintf("%d###val", value^))
 				}
 			}
-			next({width = px(em * 2.2), height = px(em * 2.2)})
+			next({width = px(em * 2.2), height = px(em * 2.2), font = widget_icons()})
 			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
 			amount := .Shift in sig.mods ? STEPPER_SHIFT_AMOUNT : 1
 			key := sig.box.key
@@ -543,7 +560,7 @@ rating :: proc(id: string, value: ^int) {
 			grow := anim(key_from_string(box.key, fmt.tprintf("%s_g", cell_id)), prev != nil ? prev.hot_t : 0, RATING_GROW_RATE)
 			lit := i < value^
 			if !lit { push_tags("weak") }
-			next({width = px(em * 2), height = pct(1), font = gs().icon_font, font_size = em * (1 + RATING_GROW_SCALE * grow), text_align = .Center})
+			next({width = px(em * 2), height = pct(1), font = widget_icons(), font_size = em * (1 + RATING_GROW_SCALE * grow), text_align = .Center})
 			b := build_box({.Clickable, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s", lit ? ICON_RADIO_ON : ICON_RADIO, cell_id))
 			if !lit { pop_tags() }
 			if signal(b).clicked { value^ = value^ == i + 1 ? 0 : i + 1 }
@@ -620,7 +637,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 			spacer(px(em * 0.8))
 			next({width = fill(), height = pct(1)})
 			build_box({.Draw_Text}, fmt.tprintf("%s###cur", cur))
-			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
+			if tags("weak") { widget_icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
 		}
 	}
 	// Down / Alt+Down on the focused button opens the list from the keyboard too

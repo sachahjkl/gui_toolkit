@@ -516,7 +516,7 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 			}
 		}
 		// the stack's menu
-		next({width = px(mw), height = px(mw), font = gs().icon_font, text_align = .Center, text_pad = 0})
+		next({width = px(mw), height = px(mw), font = widget_icons(), text_align = .Center, text_pad = 0})
 		mb: ^Box
 		if tags("icon_button") { mb = build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects, .Draw_Focus_Ring, .No_Text_Trunc}, fmt.tprintf("%s###dock_menu_btn", ICON_DOWN)) }
 		msig := signal(mb)
@@ -563,7 +563,7 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 		if d.opts.close_buttons && closable {
 			// (shown on the tab on top and the one under the pointer; its room is kept on the others: no tab moves)
 			cw := math.round(DOCK_CLOSE_EM * em)
-			next({width = px(cw), height = px(cw), font = gs().icon_font, font_size = em * DOCK_CLOSE_GLYPH_FRACTION, text_align = .Center, text_pad = 0})
+			next({width = px(cw), height = px(cw), font = widget_icons(), font_size = em * DOCK_CLOSE_GLYPH_FRACTION, text_align = .Center, text_pad = 0})
 			cb: ^Box
 			show := active || sig.hovering || hot_within(tb.key)
 			if tags("icon_button", "weak") { cb = build_box({.Clickable, .Draw_Hot_Effects, .No_Text_Trunc} + (show ? {.Draw_Text} : {}), fmt.tprintf("%s###dock_close", ICON_X)) }

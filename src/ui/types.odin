@@ -310,7 +310,8 @@ State :: struct {
 	root:        ^Box,
 	theme:       ^Theme,
 	fonts:       ^font.State,
-	icon_font:   font.Font_Id,
+	icon_font:   font.Font_Id,           // the program's icons (icon, icon_button, a menu item's icon); any icon font
+	widget_icon_font: font.Font_Id,      // the toolkit's own (ICON_FONT_DATA): the widgets' marks, loaded when first needed
 	mono_font:   font.Font_Id,           // optional: used by sliders, kbd chips and tables (falls back to the UI font)
 	timers:      map[Key]Timer,
 	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)
