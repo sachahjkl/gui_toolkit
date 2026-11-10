@@ -117,7 +117,8 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | `Autostart` | with `autostart`: `$XDG_CONFIG_HOME/autostart/<slug>.desktop` (the XDG Autostart specification), `Exec` the executable and `autostart_arguments`, marked as the desktop entry is |
 
 The entry has `MimeType=` (http, https, the URL schemes and the file types) only with `register_browser`, and `Exec` takes
-`%U` when the program is a browser or has URL schemes. After a change `update-desktop-database` runs when it is installed.
+`%U` when the program is a browser or has URL schemes. `StartupWMClass=` is the slug, the window's class (`platform.set_app_id`
+with the slug): a launcher and a dock match the window to the entry by it. After a change `update-desktop-database` runs when it is installed.
 The installed copy goes to `$XDG_DATA_HOME/<slug>`; nothing records it but its manifest.
 
 ### NixOS

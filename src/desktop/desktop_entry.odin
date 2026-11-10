@@ -233,6 +233,8 @@ desktop_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> 
 	line(&sb, "Icon", id.slug)
 	line(&sb, "Terminal", "false")
 	line(&sb, "StartupNotify", "true")
+	// (the window's class is the slug: a launcher and a dock match the window to this entry by it, on X11 and Wayland)
+	line(&sb, "StartupWMClass", id.slug)
 	if id.categories != "" { line(&sb, "Categories", escape_value(id.categories)) }
 	if id.keywords != "" { line(&sb, "Keywords", escape_value(id.keywords)) }
 	if o.register_browser {
