@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.163.0] - 2026-11-10
+
+### Added
+- **`release.Config.update`**: a program that updates itself; `package_` writes the program alone and its manifest signed by `$UPDATE_SIGNING_KEY` beside the archive (a release without the key is refused).
+
+### Fixed
+- **Setup, a copy of the Nix store beside what an earlier install left**: it read as "To repair", with "The installed program is missing" in red, when an icon or a menu entry of an earlier install was left. A copy of the Nix store with no installed copy is now the Nix package's (`State.Nix_Package`, `setup.state_of`): the screen says an earlier install left files, and offers only to remove them ("Remove what is left"), never a repair that would install this copy beside the package. `setup.leftover` says when something is left.
+
 ## [0.162.0] - 2026-11-10
 
 ### Added
@@ -2331,6 +2339,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.163.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.163.0
 [0.162.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.162.0
 [0.161.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.161.0
 [0.160.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.160.0
