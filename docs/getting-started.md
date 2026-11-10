@@ -107,6 +107,10 @@ surface (`set_fixed_surface` returns false), so the recipe does not help there (
 The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line_edit`, `if ui.row() { ... }`):
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.
 
+A password is `ui.line_edit(id, &field, secret = true)`: bullets in place of its characters, and it is neither copied nor cut.
+Give it `reveal = &shown` (a `bool` the program keeps) and an eye at its end shows the text and hides it again; shown, it is
+text like any other. The field keeps the keyboard when the eye is clicked.
+
 A field with things beside it in one surface (a search icon, the field, a count) is an `if ui.field_frame(id) { ... }`.
 The frame draws an input's background, border and corners (its radius from `next`), and one focus ring around all of
 it while a box inside has the keyboard focus (the box flag `.Focus_Within`). Build the field inside under the tag

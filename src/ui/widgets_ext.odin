@@ -10,6 +10,7 @@ import "core:strconv"
 import "core:strings"
 import "../draw"
 import "../font"
+import lucide "../lucide"
 
 // The icon font (raddebugger's icons.ttf), compiled into every app that uses the toolkit: load it with
 // `font.load_embedded(&fonts, ui.ICON_FONT_DATA)`.
@@ -22,6 +23,14 @@ widget_icons :: proc() -> font.Font_Id {
 	s := gs()
 	if s.widget_icon_font == 0 && s.fonts != nil { s.widget_icon_font, _ = font.load_embedded(s.fonts, ICON_FONT_DATA) }
 	return s.widget_icon_font
+}
+
+// The Lucide face (the lucide package), for a widget's mark the toolkit's own font has not (the eye of a secret field), loaded when
+// first needed.
+lucide_icons :: proc() -> font.Font_Id {
+	s := gs()
+	if s.lucide_font == 0 && s.fonts != nil { s.lucide_font, _ = font.load_embedded(s.fonts, lucide.DATA) }
+	return s.lucide_font
 }
 
 // A widget's mark (one of the ICON_ characters), `width` wide, in the toolkit's icon font.

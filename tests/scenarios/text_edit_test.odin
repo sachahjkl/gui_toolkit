@@ -22,6 +22,8 @@ import "../../src/ui"
 Editors :: struct {
 	field:  ui.Text_Field,
 	secret: ui.Text_Field,
+	shown:  ui.Text_Field,   // a secret that can be revealed
+	reveal: bool,
 	area:   ui.Text_Area,
 	grow:   ui.Text_Area,
 	result: ui.Edit_Result,
@@ -34,6 +36,8 @@ editors_build :: proc(s: ^session.Session) {
 	e.result = ui.line_edit("###field", &e.field)
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	ui.line_edit("###secret", &e.secret, secret = true)
+	ui.next({width = ui.px(FIELD_WIDTH)})
+	ui.line_edit("###shown", &e.shown, secret = true, reveal = &e.reveal)
 	ui.next({width = ui.px(AREA_SIZE.x), height = ui.px(AREA_SIZE.y)})
 	ui.text_edit("###area", &e.area, tab_indents = true)
 	ui.next({width = ui.px(AREA_NARROW)})
@@ -47,6 +51,7 @@ editors_start :: proc(t: ^testing.T, no_renderer := true, loc := #caller_locatio
 		e := (^Editors)(p)
 		ui.field_destroy(&e.field)
 		ui.field_destroy(&e.secret)
+		ui.field_destroy(&e.shown)
 		ui.area_destroy(&e.area)
 		ui.area_destroy(&e.grow)
 		free(e)
@@ -165,6 +170,37 @@ a_secret_field_does_not_copy :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.clipboard(s), "before")
 	testing.expect_value(t, ui.field_string(&e.secret), "hunter2")
 	testing.expect(t, session.find_text(s, "hunter2") == nil, "it is shown by no box")
+}
+
+// A secret field with a reveal button: the eye at its end shows the text, and hides it again; shown, it is text (copied). A
+// secret field without one has no eye.
+@(test)
+a_secret_field_can_be_revealed :: proc(t: ^testing.T) {
+	s, e := editors_start(t)
+	testing.expect(t, session.find(s, "reveal", 1) == nil, "one eye: the field that asks for it")
+	session.set_clipboard(s, "before")
+	session.click(s, "shown")
+	session.type_text(s, "hunter2")
+	field, eye := session.find(s, "shown"), session.find(s, "reveal")
+	if !testing.expect(t, field != nil && eye != nil, "the field and its eye") { return }
+	testing.expect(t, eye.rect.max.x <= field.rect.max.x + 0.5 && eye.rect.min.x > field.rect.min.x + (field.rect.max.x - field.rect.min.x) * 0.5, "at its end, inside it")
+	shown_text :: proc(b: ^ui.Box) -> string { return (^ui.Line_Edit_Draw)(b.custom_user).text }
+	testing.expect_value(t, shown_text(field), "•••••••")
+	testing.expect_value(t, session.get(s, "reveal").a11y.name, "Show the password")   // (a button a screen reader names)
+	session.click(s, "reveal")
+	testing.expect(t, e.reveal, "shown")
+	testing.expect_value(t, shown_text(session.find(s, "shown")), "hunter2")
+	testing.expect_value(t, session.focused_name(s), "shown")   // (the field keeps the keyboard)
+	session.type_text(s, "!")
+	testing.expect_value(t, ui.field_string(&e.shown), "hunter2!")
+	session.key(s, .Backspace)
+	session.key(s, .A, {.Ctrl})
+	session.key(s, .C, {.Ctrl})
+	testing.expect_value(t, session.clipboard(s), "hunter2")
+	session.click(s, "reveal")
+	testing.expect(t, !e.reveal, "hidden again")
+	testing.expect_value(t, shown_text(session.find(s, "shown")), "•••••••")
+	testing.expect_value(t, ui.field_string(&e.shown), "hunter2")
 }
 
 // By the mouse: a press puts the caret, a drag selects, a double click a word.
