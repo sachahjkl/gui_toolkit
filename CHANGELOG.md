@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.168.0] - 2026-11-10
+
+### Added
+- **`lucide`: twelve more icons** for a program's menus: `ARCHIVE`, `ARCHIVE_RESTORE`, `CALENDAR_CLOCK`, `CLIPBOARD_COPY`, `FILE_DIFF`, `FILE_DOWN`, `HASH`, `LOG_OUT`, `MESSAGE_SQUARE_QUOTE`, `QUOTE`, `SERVER`, `TEXT_QUOTE`. docs/lucide.md says how a program draws its own icons, from a font of its own, with no constant in the toolkit.
+
+### Fixed
+- **`archive.kind_of` and `syntax.language_of_file`** fold a file's extension by ASCII (`ascii.lower`), as the toolkit's rule wants for names (`unicode_case` failed on them). The test of the launcher's activation token builds with `-vet` on Windows.
+
 ## [0.165.1] - 2026-11-10
 
 ### Changed
@@ -2373,6 +2381,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.168.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.168.0
 [0.165.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.1
 [0.167.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.167.0
 [0.166.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.166.0
