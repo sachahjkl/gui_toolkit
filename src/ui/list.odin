@@ -59,6 +59,10 @@ List_State :: struct {
 	marks_changed: bool,  // this frame: the marks changed
 	mark_from:   u64,     // the identity of the row a Shift click's range starts from
 	row_ids:     []u64,   // (a Virtual_List's ids, this build)
+	// The look of the rows (list_row): `zebra` gives every second row the theme's "list_row zebra background" (a table
+	// of numbers reads along its lines), `rules` a hairline under each row ("rule border").
+	zebra:       bool,
+	rules:       bool,
 }
 
 list_state_destroy :: proc(st: ^List_State) {
@@ -277,7 +281,9 @@ list_end :: proc() {
 
 // Row `i` of the list being built: a box laid out along X (full width, as tall as its cells unless `next` says
 // otherwise). `label` is what type-ahead matches. Rows that are not `selectable` (headers) are skipped by the keys.
-list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> Signal {
+// `tint`: the row's background when it is not the active or a marked row (a row that just came, a row in alert), in
+// place of the zebra's shade.
+list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tint: Maybe(Color) = nil) -> Signal {
 	s := gs()
 	if !st.virtual {
 		for len(st.building) <= i { append(&st.building, true) }
@@ -298,7 +304,18 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true) -> 
 	// rows that can be chosen light up under the pointer (theme: "list_row hover_fill"), headers do not
 	// (and stay lit while the pointer is on a button of theirs)
 	if selectable { flags += {.Draw_Hot_Effects, .Hot_Within}; push_tags("list_row") }
+	// (the zebra goes by the row's index, a header's too: the stripes stay put while the rows scroll)
+	zebra := st.zebra && !lit && i & 1 == 1 && tint == nil
+	if zebra { flags += {.Draw_Background}; push_tags("zebra") }
+	if tint != nil && !lit {
+		flags += {.Draw_Background}
+		m.bg = tint
+		s.next_mod = m
+	}
+	if st.rules { flags += {.Draw_Side_Bottom}; push_tags("rule") }
 	b := build_box(flags, fmt.tprintf("###lrow_%d", i))
+	if st.rules { pop_tags() }
+	if zebra { pop_tags() }
 	if m.cursor == nil { b.cursor = .Arrow }   // (a row that opens something: `next({cursor = .Hand})`)
 	if selectable { pop_tags() }
 	if lit { pop_tags() }

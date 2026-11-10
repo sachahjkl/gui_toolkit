@@ -270,3 +270,64 @@ a_cell_has_its_background_and_its_text_colour :: proc(t: ^testing.T) {
 	plain := session.find_text(s, "plain")
 	testing.expect(t, plain != nil && plain.text_color != HEAT_FG, "a cell with no colour keeps the theme's")
 }
+
+@(private = "file") CELL_BORDER :: ui.Color{0.5, 0.05, 0.05, 1}
+
+@(private = "file")
+build_striped :: proc(s: ^session.Session) {
+	app := (^App)(s.user)
+	app.t.vl.zebra, app.t.vl.rules = true, true
+	ui.next({width = ui.px(TABLE_W), height = ui.px(300)})
+	ui.table_build("###table", &app.t, &app.d, "")
+	ui.next({width = ui.px(TABLE_W), height = ui.px(30), axis = .X})
+	if ui.row(id = "###bordered") { ui.table_cell(&app.t.layout, 1, "outlined", HEAT_BG, HEAT_FG, CELL_BORDER) }
+}
+
+@(test)
+rows_in_stripes_with_a_rule_under_each :: proc(t: ^testing.T) {
+	app: App
+	app_init(&app)
+	defer app_destroy(&app)
+	app.t.vl.sel = -1
+	s := session.start(t, {build = build_striped, user = &app, no_renderer = true})
+	session.advance(s, 1000)
+	even, odd := session.find(s, "lrow_2"), session.find(s, "lrow_3")
+	testing.expect(t, even != nil && odd != nil)
+	if even == nil || odd == nil { return }
+	testing.expect(t, .Draw_Background not_in even.flags && .Draw_Background in odd.flags && odd.bg.a > 0, "every second row is shaded")
+	testing.expect(t, .Draw_Side_Bottom in even.flags && .Draw_Side_Bottom in odd.flags && even.border.a > 0, "a rule under each row")
+	cell := session.find_text(s, "outlined")
+	testing.expect(t, cell != nil && .Draw_Border in cell.flags && cell.border == CELL_BORDER, "a cell's outline")
+}
+
+@(private = "file") ROW_TINT :: ui.Color{0.2, 0.7, 0.3, 0.5}
+
+@(private = "file")
+Tint_App :: struct { vl: ui.Virtual_List, ids: [4]u64, animations: bool }
+
+@(private = "file")
+build_tinted :: proc(s: ^session.Session) {
+	app := (^Tint_App)(s.user)
+	app.vl.zebra = true
+	app.animations = ui.animations_on()
+	ui.next({width = ui.px(TABLE_W), height = ui.px(200)})
+	if rows, ok := ui.vlist("###tinted", &app.vl, app.ids[:]); ok {
+		for i in rows.first ..< rows.last {
+			ui.next({height = ui.px(20)})
+			ui.list_row(&app.vl, i, "row", tint = i == 1 ? ROW_TINT : nil)
+		}
+	}
+}
+
+@(test)
+a_row_tinted_in_place_of_its_stripe :: proc(t: ^testing.T) {
+	app := Tint_App{ids = {11, 12, 13, 14}}
+	app.vl.sel = -1
+	defer ui.vlist_destroy(&app.vl)
+	s := session.start(t, {build = build_tinted, user = &app, no_renderer = true})
+	session.advance(s, 1000)
+	row := session.find(s, "lrow_1")
+	testing.expect(t, row != nil && .Draw_Background in row.flags && row.bg == ROW_TINT, "the tint is the row's background")
+	// (a session's window animates nothing: values jump, as when the desktop asks for less motion)
+	testing.expect(t, !app.animations, "animations_on says so")
+}

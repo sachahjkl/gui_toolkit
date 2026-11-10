@@ -83,7 +83,7 @@ direction. A program saves it and reads it back.
 | `table_widths_text(l, keys)`, `table_widths_apply(l, keys, text)` | the widths that are not the columns' own, as a preference's text (`pid=6.5,command=30`, in ems; `keys[k]` names column k), and back (bounded; a name it does not know is skipped) |
 | `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending), and back (only to a column shown) |
 | `table_column_items(l)` | the columns' menu items, in the caller's `ctx_menu`: each column but the first, checked when shown |
-| `table_cell(l, col, text, bg, fg)` | a cell under its title, clipped to the column, on a background `bg` with its text in `fg` (both optional). True when the pointer is on it and its text is cut |
+| `table_cell(l, col, text, bg, fg, border)` | a cell under its title, clipped to the column, on a background `bg` with its text in `fg` and a 1 px outline in `border` (each optional: a busy cell's tint, the text that reads on it, a stronger shade of the tint). True when the pointer is on it and its text is cut |
 | `table_cell_tip(row, text)` | the cut text, in a tooltip beside the pointer after `TABLE_TIP_DELAY_S` |
 | `table_row_end()` | the room of the scroll bar at the end of a row |
 | `text_cut_under_mouse(b, text, pad)` | the test of `table_cell`, for a cell a program builds itself |
@@ -104,6 +104,22 @@ marked by its identity: a `vlist`'s id (a mark goes when its row is no longer in
 | `list_is_marked(st, i)`, `list_mark_count(st)` | whether row `i` is marked; how many are (0: the active row alone) |
 | `list_mark(st, i, on)`, `list_mark_all(st)`, `list_marks_clear(st)` | the program's own changes (its Ctrl+A when another field has the keyboard); `marks_changed` says the frame changed them |
 | `list_row_id(st, i)` | the identity a row is marked by |
+
+### Stripes, rules and a row's tint
+
+Two fields of the list's state (`List_State`, so a `vlist`'s and a `Table`'s `vl` too) set the look of its rows:
+`zebra` shades every second row (the theme's `list_row zebra background`, a step off the page toward the text), `rules`
+draws a hairline under each row (`rule border`). The active and the marked rows keep the selection's colours.
+`list_row(st, i, label, selectable, tint)` takes a `tint`: the row's background in place of its stripe (a row that just
+came, a row in alert).
+
+```odin
+app.table.vl.zebra, app.table.vl.rules = true, true
+row := ui.list_row(&app.vl, i, label, tint = is_new ? green_flash : nil)
+```
+
+A program's own motion (that flash fading) asks `animations_on()` first (false when the desktop asks for less motion),
+draws from the clock (`now_ms`) and calls `keep_animating()` while it still moves: the frames stop when it stops.
 
 ### The table of texts
 
