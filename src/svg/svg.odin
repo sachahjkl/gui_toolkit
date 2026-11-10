@@ -14,6 +14,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:strconv"
 import "core:strings"
+import ascii "../ascii"
 
 Vec2 :: [2]f32
 Color :: [4]f32   // straight RGBA, 0..1
@@ -421,7 +422,7 @@ color_of :: proc(v: string) -> (Color, bool) {
 		}
 		return c, true
 	}
-	switch strings.to_lower(s, context.temp_allocator) {
+	switch ascii.lower(s, context.temp_allocator) {   // (a colour's name: ASCII)
 	case "black":  return {0, 0, 0, 1}, true
 	case "white":  return {1, 1, 1, 1}, true
 	case "red":    return {1, 0, 0, 1}, true
