@@ -42,6 +42,9 @@ TABLE_ROW_EM :: 1.9
 @(private = "file") TABLE_RULE_GRIP_EM :: 0.7
 // Room at the right of the last column for the rows' scroll bar, which floats over them.
 @(private = "file") TABLE_SCROLLBAR_EM :: 1
+// The fill column (width 0) never goes narrower: when the window is too narrow, the last columns go past the right edge
+// (cut by the rows) instead of the fill column going to nothing under its neighbours' text.
+TABLE_FILL_MIN_EM :: 10
 // Room for the sort's arrow, and the pad of a number's cell at its right.
 @(private = "file") TABLE_ARROW_EM :: 1.5
 @(private = "file") TABLE_NUMBER_PAD_EM :: 0.6
@@ -64,6 +67,7 @@ Table_Layout :: struct {
 	shown:      []bool,   // (owned) the first column is always shown
 	sort:       int,
 	descending: bool,
+	fill_px:    f32,      // the fill column's width, from the header's at the last build (0: not known yet)
 }
 
 table_layout_init :: proc(l: ^Table_Layout, columns: []Table_Column, sort := 0, descending := false) {
@@ -167,10 +171,17 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 	s.next_mod, s.has_next = m, true
 	if row(.Center, flags, id) {
 		if signal(parent_box()).right_clicked { ev.menu = true }
+		// (the header's width at the last build: what the fill column has is what the others leave, at least
+		// TABLE_FILL_MIN_EM)
+		if total := parent_box().size.x; total > 0 {
+			fixed := em * TABLE_SCROLLBAR_EM
+			for k in 0 ..< len(l.columns) { if l.shown[k] && l.width[k] > 0 { fixed += em * l.width[k] } }
+			l.fill_px = max(em * TABLE_FILL_MIN_EM, total - fixed)
+		}
 		for c, k in l.columns {
 			if !l.shown[k] { continue }
 			sorting := l.sort == k
-			next({width = l.width[k] == 0 ? fill() : px(em * l.width[k]), height = pct(1)})
+			next({width = table_width(l, k), height = pct(1)})
 			sig: Signal
 			if row(.Center, {.Clickable, .Draw_Hot_Effects}, fmt.tprintf("###hd_%d", k)) {
 				sig = signal(parent_box())
@@ -264,6 +275,13 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 	return
 }
 
+// The width of column `k`: its own (in ems), or for the fill column (width 0) what the others leave at the last build,
+// never under TABLE_FILL_MIN_EM. A program that builds a cell itself (an icon beside a name) gives it this width.
+table_width :: proc(l: ^Table_Layout, k: int) -> Size {
+	if l.width[k] > 0 { return px(font_size() * l.width[k]) }
+	return l.fill_px > 0 ? px(l.fill_px) : fill()
+}
+
 // A cell of a row under column `col`'s title: its text clipped to the column's width, a number at the right. `bg`: a
 // background (a busy cell's tint); `fg`: its text's colour, the one that reads on that background; `border`: a 1 px
 // outline (a stronger shade of the tint sets the cell apart from its neighbours). True when the pointer is on the cell
@@ -275,7 +293,7 @@ table_cell :: proc(l: ^Table_Layout, col: int, text: string, bg: Maybe(Color) = 
 	flags := Box_Flags{.Draw_Text, .Clip}
 	if bg != nil { flags += {.Draw_Background} }
 	if border != nil { flags += {.Draw_Border} }
-	next({width = l.width[col] == 0 ? fill() : px(em * l.width[col]), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg, fg = fg, border = border})
+	next({width = table_width(l, col), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg, fg = fg, border = border})
 	b := build_box(flags, fmt.tprintf("%s###c%d", text_shown(text), col))
 	return text_cut_under_mouse(b, text, pad)
 }
@@ -564,7 +582,7 @@ table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em: f32) -> (tip
 		text := table_data_text(d, r, k)
 		if k == 0 {
 			// the first column: the lead (an icon), then the text
-			next({width = t.width[0] == 0 ? fill() : px(em * t.width[0]), height = pct(1), axis = .X, cross = .Center})
+			next({width = table_width(&t.layout, 0), height = pct(1), axis = .X, cross = .Center})
 			if row(id = "###c_first") {
 				spacer(px(em * lead_em * 0.8))
 				if t.lead != nil {

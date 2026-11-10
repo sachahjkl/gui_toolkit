@@ -344,3 +344,30 @@ a_row_tinted_in_place_of_its_stripe :: proc(t: ^testing.T) {
 	// (a session's window animates nothing: values jump, as when the desktop asks for less motion)
 	testing.expect(t, !app.animations, "animations_on says so")
 }
+
+@(private = "file") NARROW_W :: 160
+
+@(private = "file")
+build_narrow :: proc(s: ^session.Session) {
+	app := (^Heat_App)(s.user)
+	ui.next({width = ui.px(NARROW_W), height = ui.px(30)})
+	ui.table_header("###narrow_head", &app.l)
+	ui.next({width = ui.px(NARROW_W), height = ui.px(30), axis = .X})
+	if ui.row(id = "###narrow_row") {
+		for k in 0 ..< len(app.l.columns) { ui.table_cell(&app.l, k, "x") }
+	}
+}
+
+// Too narrow for its columns, the fill column keeps TABLE_FILL_MIN_EM: the others go past the edge.
+@(test)
+a_narrow_table_keeps_its_fill_column :: proc(t: ^testing.T) {
+	app: Heat_App
+	ui.table_layout_init(&app.l, COLUMNS[:])
+	defer ui.table_layout_destroy(&app.l)
+	s := session.start(t, {build = build_narrow, user = &app, no_renderer = true})
+	session.frames(s, 3)   // (the header's width is known from the build before)
+	notes := session.get(s, "c2")
+	testing.expect(t, notes != nil)
+	if notes == nil { return }
+	testing.expect(t, notes.size.x >= session.BASE_FONT_SIZE * ui.TABLE_FILL_MIN_EM - 1, "the fill column keeps its least width")
+}
