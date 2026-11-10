@@ -6,8 +6,49 @@ target; the placement of a new program is written for Windows and Linux.
 The package is named `tk_update` (the directory is `update`): a program may have an `update` package of its own, and Odin
 package names are unique within a build.
 
-It checks what a release publishes and puts the new program in place of the running one. It does not download: the program
-fetches the files with its own HTTP client, and says the result with its own words.
+It checks what a release publishes and puts the new program in place of the running one. The `Updater` does all of it on a
+thread of its own (below); a program with an HTTP client of its own can call the pieces instead.
+
+## The Updater
+
+```odin
+u := update.updater_start({
+    product = PRODUCT,
+    folder  = "https://github.com/me/app/releases/latest/download/",   // the manifest, its .sig and the program are there
+    current = APP_VERSION,
+    exe     = process.executable_path(),
+    news    = proc(user: rawptr) { ui.post(&(^App)(user).state, on_update_news, user) },
+    user    = app,
+})
+update.set_auto(u, check = true, install = true)   // from the program's preference
+...
+st := update.status(u)          // on the interface's thread, in on_update_news: phase, version, result, failed, asked, serial
+update.check_now(u)             // "Check for updates": its result is said even when nothing is new (st.asked)
+update.install_now(u)           // the version on offer (phase Available), when install is not automatic
+update.updater_stop(u)          // at the end: no news after it; a download under way ends by itself
+```
+
+`updater_start` removes what an earlier update left (`remove_leftovers`) and starts a thread that waits. With `check` on, it
+checks `first_check` after the start (`FIRST_CHECK`, 20 s: the session's network may come later than the program), then every
+`every` (`CHECK_EVERY`, a day); a check that failed is made again after `retry` (`RETRY_AFTER`, an hour). With `install` on,
+what a check finds is downloaded and put in place at once. The phases:
+
+| Phase | What it is |
+|---|---|
+| `Idle` | nothing on offer: the last check found nothing newer (or a 404: no release for this system), or none was made |
+| `Checking` | the manifest and its signature are being fetched and checked (`check_release`) |
+| `Available` | a newer version, signed and checked: `install_now` installs it |
+| `Downloading` | the program is being downloaded (at most the manifest's size) and put in place (`place`) |
+| `Installed` | the new program is in place: it runs at the next start. The program restarts when it likes |
+| `Managed` | the program runs from `/nix/store`: its package manager updates it, nothing is asked |
+
+`news(user)` is called on the updater's thread at each change, never after `updater_stop` returned: the program posts to its
+interface's thread and reads `status` there. `Status.serial` grows at each change, so a program says each result once;
+`Status.asked` says the result answers `check_now` or `install_now`, which a program says even when it is "up to date".
+Downloads go through `tk_http` (`docs/http.md`): WinHTTP on Windows, libcurl on Linux.
+
+The release publishes the files with `toolbox.update_command` (`docs/toolbox.md`): a manifest and its `.sig` for each
+platform, and the program alone under `expected_file_name`.
 
 ## A product
 

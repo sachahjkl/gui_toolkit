@@ -108,3 +108,16 @@ VALUE "ProductVersion", VER_STRING
 
 `exe_has_icon(path)` (Windows) is true when the executable carries an icon group 1: what Explorer, the Start menu's
 shortcut and the window show. A build checks with it that the resource is linked.
+
+## A program's update files
+
+`update_command(product, args)` is the `update` command of a project's tool, for its product (`docs/update.md`):
+
+- `update keygen <file>`: a new key pair. The private key goes in `<file>` (refused inside a git work tree, or over a file
+  that exists); the public key is printed, for the product's `public_key`.
+- `update pubkey`: the public key of `$UPDATE_SIGNING_KEY` (`UPDATE_KEY_ENV`).
+- `update manifest <program> <version> <channel> <out.json>`: the manifest of the program (named
+  `expected_file_name(product, version, platform)`; `-` for no channel) and its `.sig`, signed by `$UPDATE_SIGNING_KEY`.
+- `update verify <manifest.json> <channel>`: the manifest and its `.sig`, checked with the product's key.
+
+`update_manifest(product, program, version, channel, out)` is the manifest step alone, for a tool's release step.

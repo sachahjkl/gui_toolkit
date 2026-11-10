@@ -1,6 +1,7 @@
 // Package tk_update: the signed manifest of a release, what a program checks before it installs an update, and how it puts the
 // new program in place of the running one. (Named tk_update: a program may have an `update` package of its own; import it as
-// `update "<toolkit>/update"`.) Nothing here downloads: the program fetches the files with its own HTTP client.
+// `update "<toolkit>/update"`.) The Updater (updater.odin) does the whole of it on a thread of its own, with tk_http; a program
+// with an HTTP client of its own calls the pieces below.
 //
 // A release publishes, for each platform (and each channel, for a product that has channels), a manifest (a small JSON file) and
 // its detached signature:

@@ -66,6 +66,7 @@
       librsvg # the SVG icons of the icon themes (desktop.file_icon)
       cairo
       glib
+      curl # tk_http on Linux (dlopen)
     ];
 
     # What tk desktop_tests starts and asks.
