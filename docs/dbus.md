@@ -22,6 +22,9 @@ the ScreenSaver idle inhibitor and the AT-SPI accessibility bridge — all under
 - **Calls methods**, synchronously (`call`, a bounded wait) or asynchronously (`call_async` + a `Reply_Handler`), and
   fire-and-forget (`call_noreply`). Replies (`reply_return` / `reply_error`) and signals (`emit_signal`) go out the same
   way.
+- **Lets a service ask the user** (`interactive = true` on `call` or `call_async`): the call carries the flag
+  `ALLOW_INTERACTIVE_AUTHORIZATION`, so a service that checks with polkit (systemd's `StartUnit` on a system unit) can
+  show the password dialog instead of refusing. Give such a call a timeout long enough for a person to answer.
 - **Subscribes to signals** (`subscribe` / `unsubscribe`, through the bus's `AddMatch` / `RemoveMatch`) and routes each
   to its handler.
 - **Exports objects** (`export_object`): a service the toolkit runs (the StatusNotifierItem and its

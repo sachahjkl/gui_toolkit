@@ -62,6 +62,28 @@ a_reply_outlives_the_message_after_it :: proc(t: ^testing.T) {
 	testing.expect_value(t, msg.destination, ":1.1")
 }
 
+// An interactive call carries ALLOW_INTERACTIVE_AUTHORIZATION (4); an ordinary call no flag.
+@(test)
+an_interactive_call_lets_the_service_ask :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer { conn_close(c); linux.close(peer) }
+	says(peer, 1, "first")
+	_, ok1 := call(c, "d", "/p", "i.f", "m", "", nil, TEST_CALL_MS, interactive = true)
+	// (a reply is routed only to a call that waits for it)
+	says(peer, 2, "second")
+	_, ok2 := call(c, "d", "/p", "i.f", "m", "", nil, TEST_CALL_MS)
+	testing.expect(t, ok1 && ok2)
+	buf: [4096]u8
+	n, err := linux.recv(peer, buf[:], {})
+	testing.expect_value(t, err, linux.Errno.NONE)
+	first, used, parsed := parse_message(buf[:n], context.temp_allocator)
+	testing.expect(t, parsed)
+	testing.expect_value(t, first.flags, u8(FLAG_ALLOW_INTERACTIVE_AUTHORIZATION))
+	second, _, parsed2 := parse_message(buf[used:n], context.temp_allocator)
+	testing.expect(t, parsed2)
+	testing.expect_value(t, second.flags, u8(0))
+}
+
 @(private = "file")
 Nested :: struct {
 	c:     ^Conn,

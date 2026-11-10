@@ -17,9 +17,11 @@ import "core:time"
 // until the next call at the same depth (it lives in a reply arena of the connection, one for each call nested in a handler
 // of another). ok = false on timeout or disconnect. `body` is the already-marshalled arguments (writer.buf[:]) for `signature`, or nil / "".
 // A handler may call this while another call waits: each gets its own reply, in whatever order they come.
-call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) {
+// `interactive`: the service may ask the user first (ALLOW_INTERACTIVE_AUTHORIZATION: polkit shows its password dialog);
+// give such a call a timeout long enough for a person to answer.
+call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, timeout_ms := DEFAULT_CALL_TIMEOUT_MS, interactive := false) -> (msg: Message, ok: bool) {
 	if !conn_open(c) { return {}, false }
-	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
+	serial := send_message(c, .Method_Call, call_flags(interactive), path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return {}, false }
 	deadline := time.tick_now()
 	limit := timeout_ms > 0 ? timeout_ms : DEFAULT_CALL_TIMEOUT_MS
@@ -46,9 +48,10 @@ call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body
 // Sends a method call and returns at once; `handler` runs from dispatch() when the reply arrives, or with a nil message
 // on timeout or when the bus goes away. deadline_ms: 0 = no deadline. conn_close runs none of them. A deadline fires in
 // dispatch: a loop that sleeps on conn_fd with no timeout of its own hears of it at the next thing the bus says.
-call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := DEFAULT_CALL_TIMEOUT_MS) -> bool {
+// `interactive`: as for `call`.
+call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, handler: Reply_Handler, user: rawptr, deadline_ms := DEFAULT_CALL_TIMEOUT_MS, interactive := false) -> bool {
 	if !conn_open(c) { return false }
-	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body)
+	serial := send_message(c, .Method_Call, call_flags(interactive), path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return false }
 	dl: i64 = 0
 	if deadline_ms > 0 { dl = time.tick_now()._nsec + i64(deadline_ms) * NS_PER_MS }
