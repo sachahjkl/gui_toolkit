@@ -297,3 +297,16 @@ a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) {
 	testing.expectf(t, int(lit.r) > int(dark.r), "two lines: the dark %v, the lit %v", dark, lit)
 	testing.expectf(t, !session.near(lit, pane, 2), "the lit line %v is not under the pane %v", lit, pane)
 }
+
+// warn_button: the warning hue behind black text, as danger_button is the bad hue behind white text.
+@(test)
+a_warn_button_is_amber_with_dark_text :: proc(t: ^testing.T) {
+	th: ui.Theme
+	defer ui.theme_destroy(&th)
+	shown: ui.Theme_Shown
+	testing.expect(t, ui.theme_show(&th, ui.THEMES[:], {name = ui.THEMES[0].name, mode = .Dark}, &shown, .Linear))
+	testing.expect_value(t, ui.theme_lookup(&th, {"warn_button"}, "background"), ui.theme_lookup(&th, {"warn"}, "text"))
+	testing.expect_value(t, ui.theme_lookup(&th, {"danger_button"}, "background"), ui.theme_lookup(&th, {"bad"}, "text"))
+	black := ui.theme_lookup(&th, {}, "find_text")
+	testing.expect_value(t, ui.theme_lookup(&th, {"warn_button"}, "text"), black)
+}

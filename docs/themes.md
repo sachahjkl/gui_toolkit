@@ -107,3 +107,14 @@ one call serves every finish:
 
 What the machined finish draws reaches out of a box by up to `MACHINED_OVERFLOW_PX` logical pixels (a shadow, a halo,
 the lip of a well). A region redrawn on its own must hold that much around its boxes.
+
+## Button variants
+
+A button takes the colours of a variant from the tags around it (`if ui.tags("danger_button") { ui.button(...) }`):
+
+| Tag | Colours | For |
+|---|---|---|
+| `accent_button` | the accent, its text colour | the action a dialog is for |
+| `warn_button` | the warning hue, black text | an action done with care (end a task, stop a service) |
+| `danger_button` | the bad hue, white text | an action that loses something (kill, delete) |
+| `ghost_button`, `icon_button` | no background until hovered | a tool among many |
