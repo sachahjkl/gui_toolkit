@@ -23,6 +23,8 @@ src/devtools/devtools.odin ltext := strings.to_lower(text  # user text: the text
 src/devtools/devtools.odin strings.contains(strings.to_lower(ui.box_text(b)  # user text: the text of a box looked for
 src/devtools/dom.odin strings.contains(strings.to_lower(text, context.temp_allocator), query)  # user text: the Elements panel's search
 src/devtools/dom.odin dom_search(srv, s, s.root, strings.to_lower(str(p["query"])  # user text: the Elements panel's search
+src/ui/table.odin append(&d.search, strings.to_lower(search  # user text: what a table's filter looks in
+src/ui/table.odin q := strings.to_lower(query  # user text: a table's filter
 examples/fidget/pages_data.odin query := strings.to_lower(ui.field_string(&app.filter)  # user text: the table's filter
 examples/fidget/pages_data.odin name := strings.to_lower(row_name(&r)  # user text: the table's filter
 examples/fidget/pages_data.odin strings.contains(strings.to_lower(dept_names[r.dept]  # user text: the table's filter

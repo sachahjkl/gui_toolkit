@@ -455,6 +455,7 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 }
 
 @(private = "file") SEGMENTED_RATE :: 40
+@(private = "file") SEGMENT_TOOLTIP_DELAY_S :: 0.5
 
 Seg_Draw :: struct { t: f32, n: int, accent: Color, pad: f32 }
 
@@ -470,8 +471,9 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	paint_rect(dc, pill, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
 }
 
-// Sliding-pill segmented control. Returns true when the selection changed.
-segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: bool) {
+// Sliding-pill segmented control. Returns true when the selection changed. `tips`: a tooltip per segment, shown when the
+// pointer rests on it ("" or a missing entry: none); a screen reader reads it as the segment's description.
+segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string = nil) -> (changed: bool) {
 	em := font_size()
 	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), f32(selected^), SEGMENTED_RATE, f32(selected^))
 	accent := color("accent")
@@ -493,8 +495,11 @@ segmented :: proc(id: string, labels: []string, selected: ^int) -> (changed: boo
 				push_tags("segment")
 				item := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects}, fmt.tprintf("%s###seg%d", label, i))
 				pop_tags()
-				if signal(item).clicked && i != selected^ { selected^ = i; changed = true }
-				a11y_default(item, {role = .Radio_Button, toggled = i == selected^ ? .True : .False, position = i + 1, set_size = len(labels)})
+				isig := signal(item)
+				if isig.clicked && i != selected^ { selected^ = i; changed = true }
+				tip := i < len(tips) ? tips[i] : ""
+				if tip != "" && hovered_for(isig, SEGMENT_TOOLTIP_DELAY_S) { if tooltip() { tooltip_text(tip) } }
+				a11y_default(item, {role = .Radio_Button, toggled = i == selected^ ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
 			}
 			// (the item clicked this frame is the selected one: the earlier items said otherwise)
 			if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
