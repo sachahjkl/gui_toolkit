@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.154.0] - 2026-11-10
+
+### Added
+- **`config.words_match(query, fields..)`**: whether every word of a query is in one of several fields, in any case: a search over a thing's title, id and folder at once. `config.matches` (a preference's search) uses it.
+
 ## [0.153.0] - 2026-11-10
 
 ### Added
@@ -2276,6 +2281,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.154.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.154.0
 [0.153.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.153.0
 [0.152.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.152.0
 [0.151.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.151.0
