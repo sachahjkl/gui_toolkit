@@ -79,6 +79,7 @@ desktop/desktop_entry_test.odin BROWSER_SCHEMES test
 desktop/identity_test.odin TEST_SCHEMES test
 desktop/identity_test.odin TEST_LIBRARIES test
 desktop/identity_test.odin TEST_SCRATCH_ROOTS test
+desktop/identity_test.odin BAD_ACTIONS test
 desktop/identity_test.odin BAD_SCHEMES test
 desktop/install_test.odin TEST_PAYLOAD test
 desktop/integration_linux.odin LINUX_BACKEND const  # a backend's table of procedures

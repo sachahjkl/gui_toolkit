@@ -7,6 +7,7 @@ import "core:testing"
 @(private = "file") TEST_SCHEMES := [?]string{"sample-http", "sample-https"}
 @(private = "file") TEST_LIBRARIES := [?]string{"glibc", "stdenv.cc.cc"}
 @(private = "file") TEST_SCRATCH_ROOTS := [?]string{`Software\TkDesktopTest_`}
+@(private = "file") BAD_ACTIONS := [?]Desktop_Action{{id = "new window", name = "New window"}}
 @(private = "file") BAD_SCHEMES := [?]string{"Sample-http"}
 
 @(private)
@@ -45,6 +46,7 @@ identity_is_validated :: proc(t: ^testing.T) {
 		{"a manifest in another folder", proc(id: ^Identity) { id.manifest_name = "../x.txt" }},
 		{"a scheme in capitals", proc(id: ^Identity) { id.url_schemes = BAD_SCHEMES[:] }},
 		{"schemes without a flag", proc(id: ^Identity) { id.url_flag = "" }},
+		{"an action with a space in its id", proc(id: ^Identity) { id.actions = BAD_ACTIONS[:] }},
 	}
 	for c in cases {
 		o.identity = test_identity()
