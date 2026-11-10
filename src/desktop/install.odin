@@ -75,6 +75,13 @@ install_target :: proc(o: ^Options, allocator := context.temp_allocator) -> stri
 	return ""
 }
 
+// The folder of the recorded install alone: "" when the system has no record of it (no default in its place, unlike
+// install_target: a record of the default folder is a record all the same).
+install_recorded :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+	if b := platform_backend(); b != nil && b.locate != nil { return b.locate(o, allocator) }
+	return ""
+}
+
 // The platform's default install folder ("" when it has none).
 default_install_dir :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
 	if b := platform_backend(); b != nil && b.default_install_dir != nil { return b.default_install_dir(o, allocator) }

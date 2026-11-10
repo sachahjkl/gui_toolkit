@@ -592,6 +592,7 @@ windows_record_locates_the_installed_copy :: proc(t: ^testing.T) {
 	o := &s.opts
 	dir := fmt.tprintf("%s\\installed", s.dir)
 	testing.expect_value(t, windows_locate(o, context.temp_allocator), "")
+	testing.expect_value(t, install_recorded(o), "")   // no record: no folder, not the default
 	testing.expect_value(t, record_install(o, dir, "0.3.0").error, Error.None)
 	key := fmt.tprintf("%s\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sample", s.root)
 	get :: proc(t: ^testing.T, key, name, want: string) {
@@ -604,6 +605,12 @@ windows_record_locates_the_installed_copy :: proc(t: ^testing.T) {
 	get(t, key, "UninstallString", fmt.tprintf("\"%s\\%s\" --uninstall", dir, exe_name_of(o.identity)))
 	testing.expect_value(t, windows_locate(o, context.temp_allocator), dir)
 	testing.expect_value(t, install_target(o), dir)   // no install_dir option: the record says where
+	testing.expect_value(t, install_recorded(o), dir)
+	// a record of the default folder is a record (setup.facts took it for none: an install "to repair")
+	default := windows_default_install_dir(o, context.temp_allocator)
+	testing.expect_value(t, record_install(o, default, "0.3.0").error, Error.None)
+	testing.expect_value(t, install_recorded(o), default)
+	testing.expect_value(t, record_install(o, dir, "0.3.0").error, Error.None)
 	o.install_dir = `X:\elsewhere`
 	testing.expect_value(t, install_target(o), `X:\elsewhere`)   // the option wins
 	o.install_dir = ""
