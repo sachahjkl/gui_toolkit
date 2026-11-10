@@ -52,16 +52,36 @@ search_shows :: proc(s: ^Search, p: ^Prefs, name: string) -> (show: bool, headin
 }
 
 // Whether every word of `query` (separated by spaces, in any case) is in one of `fields` (in any case): a search over several
-// fields of one thing, each word in any of them ("kernel ses_e3" finds a session by its title and its id). An empty query
-// matches everything.
+// fields of one thing, each word in any of them ("kernel ses_e3" finds a session by its title and its id). Words between
+// double quotes are one, spaces and all ("\"Session 2\"" is not in "Session 12"); a quote left open runs to the end. An empty
+// query matches everything.
 words_match :: proc(query: string, fields: ..string) -> bool {
 	q := strings.to_lower(query, context.temp_allocator)
 	low := make([]string, len(fields), context.temp_allocator)
 	for f, i in fields { low[i] = strings.to_lower(f, context.temp_allocator) }
-	for word in strings.fields_iterator(&q) {
+	for word in query_words(q) {
 		found := false
 		for f in low { if strings.contains(f, word) { found = true; break } }
 		if !found { return false }
 	}
 	return true
+}
+
+// The words of a query: what is between double quotes is one (its spaces at its ends dropped; nothing in them: no word).
+@(private = "file")
+query_words :: proc(q: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	rest := q
+	for len(rest) > 0 {
+		quote := strings.index_byte(rest, '"')
+		plain := quote < 0 ? rest : rest[:quote]
+		for word in strings.fields_iterator(&plain) { append(&out, word) }
+		if quote < 0 { break }
+		rest = rest[quote + 1:]
+		end := strings.index_byte(rest, '"')
+		phrase := end < 0 ? rest : rest[:end]
+		if p := strings.trim_space(phrase); p != "" { append(&out, p) }
+		rest = end < 0 ? "" : rest[end + 1:]
+	}
+	return out[:]
 }
