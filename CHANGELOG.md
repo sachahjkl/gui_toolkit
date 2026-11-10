@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.144.0] - 2026-11-10
+
+### Added
+- **`ui.line_edit`'s `reveal`**: a secret field (a password) with an eye at its end that shows the text and hides it again (`reveal: ^bool`, kept by the program); shown, it is text, copied as any other; the field keeps the keyboard. **`ui.lucide_icons`**: the lucide package's face, loaded when first needed, for the marks the toolkit's own icon font has not.
+
 ## [0.143.0] - 2026-11-10
 
 ### Added
@@ -2216,6 +2221,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.144.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.144.0
 [0.143.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.143.0
 [0.142.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.142.0
 [0.141.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.141.1
