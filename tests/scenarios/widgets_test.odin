@@ -264,6 +264,26 @@ a_menu_that_searches :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.chosen, "date")
 }
 
+// key_take: the frame's first key press not taken yet, with its modifiers; a key a build took already is not given.
+@(test)
+the_first_key_not_taken_is_given :: proc(t: ^testing.T) {
+	Run :: struct { key: platform.Key, mods: platform.Modifiers, ok: bool, enter_taken: bool }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if ui.key_press(.Return) { r.enter_taken = true }
+		if k, m, ok := ui.key_take(); ok { r.key, r.mods, r.ok = k, m, true }
+	}})
+	session.frame(s)
+	session.key(s, .K, {.Ctrl, .Shift})
+	testing.expect(t, r.ok)
+	testing.expect_value(t, r.key, platform.Key.K)
+	testing.expect_value(t, r.mods, platform.Modifiers{.Ctrl, .Shift})
+	r = {}
+	session.key(s, .Return)
+	testing.expect(t, r.enter_taken && !r.ok, "taken by the build before: not given")
+}
+
 // A call posted to a window runs in that window's next build, on its thread.
 @(test)
 a_call_posted_to_a_window_runs_in_its_next_build :: proc(t: ^testing.T) {
