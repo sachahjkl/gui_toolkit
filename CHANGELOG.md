@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.141.1] - 2026-11-10
+
+### Fixed
+- **The widgets' marks** (a check in a menu or a check box, a dropdown's and a submenu's arrow, a stepper's signs, a toast's sign) are drawn in the toolkit's own icon font (`ui.widget_icons`), whatever `icon_font` the program sets: with Lucide as its icon font, a check was a letter "V".
+
 ## [0.141.0] - 2026-11-10
 
 ### Added
@@ -2188,6 +2193,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.141.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.141.1
 [0.141.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.141.0
 [0.140.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.140.0
 [0.139.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.139.0
