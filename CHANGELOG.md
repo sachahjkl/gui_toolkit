@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.166.0] - 2026-11-10
+
+### Added
+- **`platform.activation_token_from_env`** and **`platform.raise_window_token`**: a second start hands the token its launcher gave it (XDG_ACTIVATION_TOKEN, DESKTOP_STARTUP_ID) to the first, whose window comes up with it on Wayland.
+- **`syntax`**: the colours of source code as runs of classes (`spans`, `language`, `language_of_file`), the site's lexer made a package of its own; Python, Go, TypeScript and the shell coloured too. `site.Code_Language` is `syntax.Language`.
+- **`archive`**: what a zip, a tar or a gzipped tar holds (`open`, `children`, `find`), a file of it read or extracted (`read`, `extract`; a name that would leave its folder refused). Read only, pure Odin.
+- **`testkit/unwatched`** (was `tests/unwatched`, the toolkit's own): a test's body on a thread the runner of `core:testing` does not watch, for a program's tests on Windows. There the runner fails a test on any exception of its thread, even one DirectWrite, Direct3D or DXGI raises and catches itself ("Signal caught: Unknown", now and then). `unwatched.run` now also does the body's `testing.cleanup`s on its thread when it returns: a window or a testkit session made in the body ends on the thread that made it. docs/testkit.md.
+
 ## [0.165.0] - 2026-11-10
 
 ### Added
@@ -2352,6 +2360,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.166.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.166.0
 [0.165.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.0
 [0.164.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.164.0
 [0.163.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.163.0
