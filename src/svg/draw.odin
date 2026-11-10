@@ -66,36 +66,48 @@ linear :: proc(c: Color, o: Options) -> draw.Color {
 // A stroke in dashes: on and off along each contour of the flattened path, the pattern's lengths at `scale`.
 @(private)
 dashed :: proc(dc: ^draw.Context, p: ^draw.Path, width: f32, color: draw.Color, pattern: []f32, scale: f32) {
+	for k in p.contours {
+		for run in dash_runs(p.points[k.first:][:k.count], k.closed, pattern, scale) { draw.polyline(dc, run, width, color) }
+	}
+}
+
+// The dashes of one polyline (`closed`: back to its first point): the runs of points where the pattern is on, its
+// lengths at `scale` (in the temp allocator). A pattern of nothing is the whole line.
+@(private)
+dash_runs :: proc(pts: []Vec2, closed: bool, pattern: []f32, scale: f32) -> [][]Vec2 {
+	runs := make([dynamic][]Vec2, context.temp_allocator)
+	if len(pts) < 2 { return runs[:] }
 	total: f32
 	for d in pattern { total += d }
-	if total <= 0 { draw.path_stroke(dc, p, width, color); return }
-	for k in p.contours {
-		pts := p.points[k.first:][:k.count]
-		n := len(pts) + (k.closed ? 1 : 0)
-		i, left, on := 0, pattern[0] * scale, true
-		run := make([dynamic]draw.Vec2, context.temp_allocator)
-		if on { append(&run, pts[0]) }
-		for j in 1 ..< n {
-			a, b := pts[j - 1], pts[j % len(pts)]
-			seg := math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y))
-			t: f32 = 0
-			for seg - t > left {
-				t += left
-				q := a + (b - a) * (t / seg)
-				if on {
-					append(&run, q)
-					draw.polyline(dc, run[:], width, color)
-					clear(&run)
-				} else {
-					append(&run, q)
-				}
-				on = !on
-				i = (i + 1) % len(pattern)
-				left = max(pattern[i] * scale, 0.5)
-			}
-			left -= seg - t
-			if on { append(&run, b) }
-		}
-		if on && len(run) > 1 { draw.polyline(dc, run[:], width, color) }
+	if total <= 0 {
+		all := make([dynamic]Vec2, context.temp_allocator)
+		append(&all, ..pts)
+		if closed { append(&all, pts[0]) }
+		append(&runs, all[:])
+		return runs[:]
 	}
+	n := len(pts) + (closed ? 1 : 0)
+	i, left, on := 0, max(pattern[0] * scale, 0.5), true
+	run := make([dynamic]Vec2, context.temp_allocator)
+	append(&run, pts[0])
+	for j in 1 ..< n {
+		a, b := pts[j - 1], pts[j % len(pts)]
+		seg := math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y))
+		t: f32 = 0
+		for seg - t > left {
+			t += left
+			q := a + (b - a) * (t / seg)
+			append(&run, q)
+			if on { append(&runs, run[:]) }
+			run = make([dynamic]Vec2, context.temp_allocator)
+			if !on { append(&run, q) }
+			on = !on
+			i = (i + 1) % len(pattern)
+			left = max(pattern[i] * scale, 0.5)
+		}
+		left -= seg - t
+		if on { append(&run, b) }
+	}
+	if on && len(run) > 1 { append(&runs, run[:]) }
+	return runs[:]
 }

@@ -1,4 +1,5 @@
-// Package svg: a drawing in SVG, read into shapes and texts (svg.odin) and drawn with the toolkit's paths and fonts (draw.odin).
+// Package svg: a drawing in SVG, read into shapes and texts (svg.odin), drawn with the toolkit's paths and fonts (draw.odin),
+// or made into pixels on the CPU (raster.odin: a picture to copy or save).
 // It reads what diagrams and icons use, not the whole of SVG: svg, g, path, rect, circle, ellipse, line, polyline, polygon, text
 // and tspan, markers (drawn where a line starts or ends), transforms, fill, stroke, stroke-width, stroke-dasharray, opacity,
 // font-size, font-weight, text-anchor, and the style attribute. A linear gradient is its first colour; what it does not know
@@ -6,7 +7,7 @@
 //
 //	doc, ok := svg.parse(text)
 //	defer svg.destroy(&doc)
-//	svg.draw(dc, &doc, at, scale, {regular = ui_font, bold = ui_bold})
+//	svg.draw_doc(dc, &doc, at, scale, {regular = ui_font, bold = ui_bold})
 package tk_svg
 
 import "core:math"
