@@ -70,6 +70,9 @@ the executable's file name. On Windows it does nothing: the program declares its
 `wake_handle` / `wake_signal` (a thread-safe wake handle for offscreen windows), `inject_event`.
 
 **Placement** — `outer_rect`, `client_origin`, `move_window`, `get_placement`, `set_placement`.
+`move_to_active_monitor(w)` puts a window on the monitor the user works on (the one of the window in front, else the one
+under the pointer), at the same place of its work area (`rect_on_work`): a program called up by a shortcut or a
+notification area icon calls it before it shows its window. Windows; elsewhere the system places what it shows.
 
 **Display** — `display_info`, `display_invalidate`, `display_live_hz`, `monitor_size` (the window's monitor in pixels,
 for a screen-sized fixed surface).
