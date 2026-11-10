@@ -69,6 +69,10 @@ Page :: struct {
 	focus_search: bool,
 	search:       config.Search,
 	fields:       map[string]^Field,   // the free fields' text while typed
+	// the slider held (its preference's name, owned; "": none) and where it is: ui.slider moves its value only while the
+	// button is down, so the value is kept here between frames and written on the release
+	held:         string,
+	held_value:   f32,
 }
 
 @(private)
@@ -82,6 +86,7 @@ Field :: struct {
 destroy :: proc(p: ^Page) {
 	ui.field_destroy(&p.query)
 	delete(p.current)
+	delete(p.held)
 	for k, f in p.fields { ui.field_destroy(&f.text); delete(f.synced); delete(f.error); free(f); delete(k) }
 	delete(p.fields)
 	p^ = {}
@@ -437,12 +442,18 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 		}
 	case .Int, .Float:
 		if lo, hi, step, ok := slider_of(e.def); ok {
-			v := e.def.kind == .Int ? f32(e.value.i) : f32(e.value.f)
+			held := p.held != "" && p.held == name
+			v := held ? p.held_value : (e.def.kind == .Int ? f32(e.value.i) : f32(e.value.f))
 			ui.next({width = ui.px(em * 15), height = ui.px(math.round(em * CONTROL_H_EM))})
 			ui.a11y({name = config.title_of(e.def)})
 			sig := ui.slider("###sl", &v, lo, hi, step, slider_format(e.def))
-			// (written when the drag ends, or at each key: the file is not rewritten at the pointer's rate)
-			if !sig.dragging {
+			// written when the button comes up (the file is not rewritten at the pointer's rate), or at once for a key or a
+			// click; while it is down, the value is the page's (held), the preference's when it is up again
+			if sig.pointer_pressed || sig.dragging {
+				if !held { delete(p.held); p.held = strings.clone(name) }
+				p.held_value = v
+			} else {
+				if held { delete(p.held); p.held = "" }
 				text := e.def.kind == .Int ? fmt.tprintf("%d", i64(math.round(v))) : fmt.tprintf("%g", v)
 				if text != config.value_string(prefs, r) { apply(p, prefs, o, name, text) }
 			}

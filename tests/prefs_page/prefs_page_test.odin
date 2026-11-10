@@ -20,6 +20,7 @@ DEFS := [?]config.Def{
 	{name = "net.cache", description = "Keep a cache of the responses.", kind = .Bool, default = {b = true}},
 	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB"},
 	{name = "look.style", description = "How surfaces are drawn.", kind = .String, default = {s = "flat"}, choices = {"flat", "machined"}},
+	{name = "look.zoom", description = "How large the interface is drawn.", kind = .Float, default = {f = 1}, bounded = true, min = 0.5, max = 2},
 	{name = "look.keys", description = "What shows the window.", kind = .String, default = {s = "Ctrl+Shift+U"}},
 	{name = "net.window_size", description = "The size the window was given.", kind = .String, default = {s = ""}, hidden = true},
 }
@@ -209,4 +210,22 @@ a_managed_copy_offers_nothing :: proc(t: ^testing.T) {
 	s := app_start(t, &app, "cache")
 	testing.expect(t, session.find_text(s, "A package manager updates this copy.") != nil)
 	testing.expect(t, session.find(s, "update_check") == nil, "no Check now")
+}
+
+// A slider dragged and let go keeps where it was let go: ui.slider moves its value only while the button is down, the page
+// keeps it until the release writes it (it went back to the old value at the release).
+@(test)
+a_slider_keeps_where_it_was_let_go :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "interface is drawn")
+	sl := session.get(s, "sl")
+	r := sl.rect
+	from := [2]f32{r.min.x + (r.max.x - r.min.x) * (1 - 0.5) / 1.5, (r.min.y + r.max.y) * 0.5}   // (1 on 0.5 .. 2)
+	to := [2]f32{r.max.x - 2, from.y}
+	session.drag(s, from, to)
+	session.frames(s, 2)
+	got := config.float_of(&app.prefs, "look.zoom")
+	testing.expectf(t, got > 1.8, "the value let go is kept: %v", got)
+	testing.expect(t, len(app.changed) > 0 && app.changed[len(app.changed) - 1] == "look.zoom", "the program is told")
 }
