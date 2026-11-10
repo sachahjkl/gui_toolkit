@@ -14,3 +14,16 @@ the_start_time_of_a_stat_line :: proc(t: ^testing.T) {
 	_, none := parse_start_time("no name")
 	testing.expect(t, !none)
 }
+
+@(test)
+a_cpu_set_holds_its_processors :: proc(t: ^testing.T) {
+	s: Cpu_Set
+	cpu_set_put(&s, 0)
+	cpu_set_put(&s, 65)
+	cpu_set_put(&s, CPU_SET_MAX)   // (beyond the set: ignored)
+	testing.expect(t, cpu_set_has(s, 0) && cpu_set_has(s, 65) && !cpu_set_has(s, 1) && !cpu_set_has(s, CPU_SET_MAX))
+	testing.expect_value(t, cpu_set_count(s), 2)
+	cpu_set_put(&s, 0, false)
+	testing.expect(t, !cpu_set_has(s, 0))
+	testing.expect_value(t, cpu_set_count(s), 1)
+}

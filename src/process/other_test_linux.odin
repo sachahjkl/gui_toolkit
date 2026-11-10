@@ -44,6 +44,34 @@ a_signal_reaches_only_the_process_that_started_then :: proc(t: ^testing.T) {
 	testing.expect(t, !gone)
 }
 
+// The test's own child, a sleep: its processors read, narrowed to the first one, read again; a wrong start time is
+// refused.
+@(test)
+an_affinity_reaches_every_thread_of_the_process :: proc(t: ^testing.T) {
+	child, err := os.process_start({command = {"sleep", "30"}})
+	testing.expect(t, err == nil, "sleep starts")
+	if err != nil { return }
+	defer { _ = os.process_kill(child); _, _ = os.process_wait(child, TEST_WAIT) }
+	pid := i32(child.pid)
+	start, _ := process_start_time(pid)
+	cpus, r, _ := affinity(pid, start)
+	testing.expect_value(t, r, Act_Result.Done)
+	testing.expect(t, cpu_set_count(cpus) >= 1, "it may run somewhere")
+	first := -1
+	for i in 0 ..< CPU_SET_MAX { if cpu_set_has(cpus, i) { first = i; break } }
+	one: Cpu_Set
+	cpu_set_put(&one, first)
+	r, _ = set_affinity(pid, start, one)
+	testing.expect_value(t, r, Act_Result.Done)
+	again, r2, _ := affinity(pid, start)
+	testing.expect_value(t, r2, Act_Result.Done)
+	testing.expect(t, cpu_set_count(again) == 1 && cpu_set_has(again, first), "one processor now")
+	r, _ = set_affinity(pid, start + 1, cpus)
+	testing.expect_value(t, r, Act_Result.Gone)
+	r, _ = set_affinity(pid, start, {})
+	testing.expect_value(t, r, Act_Result.Failed)
+}
+
 @(private = "file")
 int_text :: proc(n: int) -> string {
 	buf: [24]u8
