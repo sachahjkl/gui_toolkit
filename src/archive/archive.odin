@@ -10,8 +10,8 @@
 //
 // A zip is read from its end (its central directory, ZIP64 too): opening a large one reads a few kilobytes. A tar is read
 // header by header; a gzipped one is inflated on the way (each open, each read goes through it again from its start).
-// Names inside are '/'-separated, without a leading or a trailing '/'. A name that would leave the archive's folder
-// ("../x", an absolute path) is refused by extract.
+// Names inside are '/'-separated, without a leading or a trailing '/'. An entry whose name has a "." or ".." part or a
+// drive ("C:") is left out of the index: nothing of it is listed, nothing made from it can leave its folder.
 package tk_archive
 
 import "core:mem/virtual"
@@ -50,6 +50,7 @@ Index :: struct {
 	path:    string,   // the archive's file (the arena's)
 	kind:    Kind,
 	entries: [dynamic]Entry,
+	by_name: map[string]int,   // each entry's index by its name (find in one look)
 	arena:   virtual.Arena,
 }
 
@@ -66,6 +67,7 @@ kind_of :: proc(name: string) -> (kind: Kind, ok: bool) {
 
 index_destroy :: proc(idx: ^Index) {
 	delete(idx.entries)
+	delete(idx.by_name)
 	virtual.arena_destroy(&idx.arena)
 	idx^ = {}
 }
@@ -81,6 +83,25 @@ clean_name :: proc(name: string) -> string {
 	return strings.trim(s, "/")
 }
 
+// Whether a cleaned name stays in its folder: no "." or ".." part, no drive.
+@(private)
+safe_name :: proc(name: string) -> bool {
+	if name == "" || len(name) >= 2 && name[1] == ':' { return false }
+	for part in strings.split(name, "/", context.temp_allocator) { if part == "." || part == ".." || part == "" { return false } }
+	return true
+}
+
+// Appends an entry to the index, its name kept, unless the name is unsafe (safe_name).
+@(private)
+add_entry :: proc(idx: ^Index, e: Entry) {
+	if !safe_name(e.name) { return }
+	x := e
+	x.name = keep(idx, e.name)
+	if at, seen := idx.by_name[x.name]; seen { idx.entries[at] = x; return }   // (a later one of the same name wins)
+	idx.by_name[x.name] = len(idx.entries)
+	append(&idx.entries, x)
+}
+
 // The archive at `path`, read: its index (index_destroy it).
 open :: proc(path: string, allocator := context.allocator) -> (idx: Index, err: Error) {
 	kind, ok := kind_of(path)
@@ -88,6 +109,7 @@ open :: proc(path: string, allocator := context.allocator) -> (idx: Index, err: 
 	idx.kind = kind
 	idx.path = keep(&idx, path)
 	idx.entries = make([dynamic]Entry, allocator)
+	idx.by_name = make(map[string]int, 64, allocator)
 	switch kind {
 	case .Zip:            err = zip_index(&idx)
 	case .Tar, .Tar_Gz:   err = tar_index(&idx)
@@ -98,9 +120,8 @@ open :: proc(path: string, allocator := context.allocator) -> (idx: Index, err: 
 
 // The entry named `name` (nil: none).
 find :: proc(idx: ^Index, name: string) -> ^Entry {
-	want := clean_name(name)
-	for &e in idx.entries { if e.name == want { return &e } }
-	return nil
+	at, ok := idx.by_name[clean_name(name)]
+	return ok ? &idx.entries[at] : nil
 }
 
 // The entries right under the folder `dir` of the archive ("": its top), appended to `out` (their names are the index's).
@@ -269,8 +290,8 @@ zip_index :: proc(idx: ^Index) -> Error {
 		}
 		name := clean_name(raw)
 		if name != "" {
-			append(&idx.entries, Entry{
-				name = keep(idx, name), dir = strings.has_suffix(raw, "/") || strings.has_suffix(raw, "\\"),
+			add_entry(idx, Entry{
+				name = name, dir = strings.has_suffix(raw, "/") || strings.has_suffix(raw, "\\"),
 				size = unpacked, packed = packed, offset = offset, method = method, flags = flags,
 				mtime = time_of(1980 + dos_date >> 9, dos_date >> 5 & 15, dos_date & 31, dos_time >> 11, dos_time >> 5 & 63, (dos_time & 31) * 2),
 			})
@@ -400,8 +421,8 @@ tar_feed :: proc(s: ^Tar_Scan, data: []u8) -> Error {
 		clean := clean_name(name)
 		if clean != "" && (kind == '0' || kind == 0 || kind == '7' || kind == '5' || kind == '1' || kind == '2') {
 			dir := kind == '5' || strings.has_suffix(name, "/")
-			append(&s.idx.entries, Entry{
-				name = keep(s.idx, clean), dir = dir, size = dir ? 0 : size, packed = size,
+			add_entry(s.idx, Entry{
+				name = clean, dir = dir, size = dir ? 0 : size, packed = size,
 				mtime = octal(h[136:148]) * i64(time.Second), offset = s.at + i64(p),
 			})
 		}
@@ -472,6 +493,7 @@ tar_read :: proc(idx: ^Index, e: Entry, allocator := context.allocator) -> (data
 	again: Index
 	defer index_destroy(&again)
 	again.path, again.kind = idx.path, idx.kind
+	again.by_name = make(map[string]int, 64, context.temp_allocator)
 	s := Tar_Scan{idx = &again, want = e.offset, want_n = e.size}
 	s.pending = make([dynamic]u8, context.temp_allocator)
 	s.got = make([dynamic]u8, allocator)
