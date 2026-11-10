@@ -226,15 +226,16 @@ key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 	return false
 }
 
-// The first key press of the frame not taken yet, taken (a recorder of shortcuts: whatever is pressed). Shift, Ctrl and
-// Alt alone are not keys here: they come with the key they modify. ok = false: none.
-key_take :: proc() -> (key: platform.Key, mods: platform.Modifiers, ok: bool) {
+// The first key press of the frame not taken yet, taken (a recorder of shortcuts: whatever is pressed): a key Key
+// names, or one by the character it types (Hotkey.char). Shift, Ctrl and Alt alone are not keys here: they come with the
+// key they modify. ok = false: none.
+key_take :: proc() -> (hk: platform.Hotkey, ok: bool) {
 	s := gs()
 	for e, i in s.events.list {
-		if s.events.consumed[i] || e.kind != .Key_Press || e.key == .None { continue }
+		if s.events.consumed[i] || e.kind != .Key_Press || (e.key == .None && e.char == 0) { continue }
 		if e.key == .Shift || e.key == .Ctrl || e.key == .Alt { continue }
 		s.events.consumed[i] = true
-		return e.key, e.mods, true
+		return {key = e.key, mods = e.mods, char = e.key == .None ? e.char : 0}, true
 	}
 	return
 }

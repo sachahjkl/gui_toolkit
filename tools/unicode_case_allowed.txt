@@ -48,3 +48,4 @@ src/ui/popups.odin return unicode.to_lower(r)  # user text: a menu's type-ahead 
 src/prefs_page/prefs_page.odin strings.to_upper(heading  # display text: a page's title above its matches, in capitals
 src/desktop/icons_windows.odin {"folder:", strings.to_lower(path  # a path: Windows folds a file's name by Unicode (one icon's key per folder)
 src/desktop/icons_windows.odin {"file:", strings.to_lower(path  # a path: Windows folds a file's name by Unicode (one icon's key per file)
+src/platform/platform_win32.odin unicode_lower :: proc(r: rune) -> rune { return unicode.to_lower(  # a key's character on the user's layout (MapVirtualKeyW gives a letter in capitals): user text

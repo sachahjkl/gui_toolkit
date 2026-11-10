@@ -315,6 +315,7 @@ State :: struct {
 	mono_font:   font.Font_Id,           // optional: used by sliders, kbd chips and tables (falls back to the UI font)
 	timers:      map[Key]Timer,
 	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)
+	hotkey_recorder: Key,               // the hotkey_field that records the next combination (0: none)
 	toasts:      [TOAST_SLOTS]Toast,
 	toast_pos:   Toast_Position,
 	toast_serial: u64,

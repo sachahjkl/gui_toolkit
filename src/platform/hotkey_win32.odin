@@ -7,7 +7,8 @@ import win "core:sys/windows"
 // MOD_NOREPEAT: a held combination is one event.
 hotkey_register :: proc(w: ^Window, id: int, hk: Hotkey) -> bool {
 	if w == nil || w.hwnd == nil { return false }
-	vk := vk_of_key(hk.key)
+	hk := hk
+	vk := vk_of(&hk)
 	if vk == 0 { return false }
 	mods := u32(MOD_NOREPEAT)
 	if .Ctrl in hk.mods  { mods |= MOD_CONTROL }
@@ -31,7 +32,8 @@ hotkey_unregister :: proc(w: ^Window, id: int) {
 
 // SendInput: the modifiers down, the key down and up, the modifiers up, in one batch (no other input between them).
 send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
-	vk := vk_of_key(hk.key)
+	hk := hk
+	vk := vk_of(&hk)
 	if vk == 0 { return false }
 	mods := make([dynamic]u16, context.temp_allocator)
 	if .Ctrl in hk.mods  { append(&mods, u16(win.VK_CONTROL)) }
@@ -50,6 +52,25 @@ send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
 	#reverse for m in mods { append(&inputs, key(m, true)) }
 	return win.SendInput(u32(len(inputs)), raw_data(inputs), size_of(win.INPUT)) == u32(len(inputs))
 }
+
+// The virtual key of a hotkey's key: by its name, or the one that types its character on the user's layout
+// (VkKeyScanW), whose modifiers join the hotkey's (a character typed with Shift: Shift too). 0: none.
+@(private = "file")
+vk_of :: proc(hk: ^Hotkey) -> u32 {
+	if hk.key != .None || hk.char == 0 { return vk_of_key(hk.key) }
+	if hk.char > 0xFFFF { return 0 }
+	scan := VkKeyScanW(u16(hk.char))
+	if scan == -1 { return 0 }
+	shift := u8(u16(scan) >> 8)
+	if shift & 1 != 0 { hk.mods += {.Shift} }
+	if shift & 2 != 0 { hk.mods += {.Ctrl} }
+	if shift & 4 != 0 { hk.mods += {.Alt} }
+	return u32(u16(scan) & 0xFF)
+}
+
+foreign import user32_vk "system:User32.lib"
+@(default_calling_convention = "system", private = "file")
+foreign user32_vk { VkKeyScanW :: proc(ch: u16) -> i16 --- }
 
 // The virtual key of a key a hotkey can name (hotkey.odin), 0 for the others.
 @(private = "file")

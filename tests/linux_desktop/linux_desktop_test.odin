@@ -178,6 +178,14 @@ a_hotkey_sent_reaches_the_window_that_has_the_keyboard :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, ctrl_v, "Ctrl+V, with its modifier")
 	testing.expect(t, shift_insert, "Shift+Insert")
+
+	// a key named by its character (one Key does not have): it types that character
+	testing.expect(t, platform.send_hotkey(w, {char = 'é'}))
+	clear(&seen.events)
+	testing.expect(t, wait_kind(w, &seen, .Text), "its text arrives")
+	typed := false
+	for e in seen.events { if e.kind == .Text && e.text == 'é' { typed = true } }
+	testing.expect(t, typed, "é")
 }
 
 // The window is shown; a click before any motion, at a scale: the position on entering. (Scale 2 only on a scaled output.)

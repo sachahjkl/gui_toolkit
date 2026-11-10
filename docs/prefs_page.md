@@ -47,8 +47,10 @@ The controls:
 | `Int` bounded with at most 200 steps, `Float` bounded | a slider (a round step: 0.1, 1, 10...), its unit after its value |
 | other numbers, sizes in bytes | a field, its unit after it |
 | a name in `Options.custom_names` | the program's own (`Options.custom`), under the words |
+| a name in `Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
 
-A locked preference (a policy, the command line) shows its control disabled.
+A locked preference (a policy, the command line) shows its control disabled. `Options.problem(user, name)` gives what
+the program has to say under a line (a shortcut another program holds): it shows in red.
 
 ## Changes
 

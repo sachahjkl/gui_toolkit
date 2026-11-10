@@ -22,6 +22,7 @@ import "../ascii"
 import config "../config"
 import "../draw"
 import "../font"
+import "../platform"
 import "../ui"
 
 // A page: a category of the registry, its title and its icon (a glyph of Options.icon_font; "": none). `names`: the
@@ -41,6 +42,11 @@ Options :: struct {
 	choices:   proc(user: rawptr, name: string) -> (labels, values: []string),
 	// the preferences with a control of the program's own, under their words (the themes' cards), and that control
 	custom_names: []string,
+	// the String preferences that hold a key combination (platform.hotkey_text): a field that records the keys pressed
+	// (ui.hotkey_field) in place of one to type in
+	hotkeys:   []string,
+	// what the program has to say under a preference's line ("" nothing): a shortcut another program holds...
+	problem:   proc(user: rawptr, name: string) -> string,
 	custom:    proc(user: rawptr, name: string, em: f32),
 	// the pages in their order (one with no preference is not shown); nil: each category of the registry, by name, its
 	// title from config.category_title
@@ -80,6 +86,7 @@ focus_search :: proc(p: ^Page) { p.focus_search = true }
 
 // Whether a field of a preference has the keyboard: its Escape is the field's, not the program's.
 editing :: proc(p: ^Page) -> bool {
+	if ui.hotkey_recording() { return true }   // (its Escape gives the recording up)
 	k := ui.focus_key()
 	if k == 0 { return false }
 	for _, f in p.fields { if f.box == k { return true } }
@@ -338,6 +345,14 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 				ui.paragraph(fmt.tprintf("%s###err", f.error))
 			}
 		}
+		if o.problem != nil {
+			if why := o.problem(o.user, name); why != "" {
+				if ui.tags("bad") {
+					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+					ui.paragraph(fmt.tprintf("%s###problem", why))
+				}
+			}
+		}
 		ui.spacer(ui.px(em * 0.5))
 		ui.hline(ui.fill())
 		ui.spacer(ui.px(em * 0.3))
@@ -390,6 +405,12 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 		ui.a11y({name = config.title_of(e.def)})
 		if ui.toggle("###sw", "", &v).clicked { apply(p, prefs, o, name, v ? "true" : "false") }
 	case .String:
+		if slice.contains(o.hotkeys, name) {
+			hk, _ := platform.hotkey_parse(e.value.s)
+			ui.next({width = ui.px(em * 13), height = ui.px(math.round(em * CONTROL_H_EM))})
+			if ui.hotkey_field("###keys", &hk) { apply(p, prefs, o, name, platform.hotkey_text(hk)) }
+			return true
+		}
 		labels, values := choices_of(o, e)
 		if len(values) == 0 { field(p, prefs, o, r, e, em); return true }
 		sel := -1

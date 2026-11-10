@@ -94,6 +94,8 @@ Event :: struct {
 	button: Mouse_Button,
 	mods:   Modifiers,
 	text:   rune,       // Text
+	char:   rune,       // Key_Press of a key Key does not name (key .None): the character it types with no modifier on the
+	                    // user's layout (the French ù), for a recorder of shortcuts (ui.key_take); 0 for the others
 	pos:    [2]f32,     // Mouse_*, Scroll (client pixels)
 	delta:  [2]f32,     // Scroll: wheel notches (+y = scroll content down, like a page moving up); fractional from
 	                    // high-resolution wheels and touchpads (a notch is 120 units of WM_MOUSEWHEEL)

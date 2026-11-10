@@ -553,6 +553,13 @@ wl_key_emit :: proc(w: ^Window, keycode: u32, press, repeat: bool) {
 	kk := key_from_xkb(wlc.xkb_keymap, wlc.xkb_state, keycode)
 	mods := wl_mods()
 	if kk != .None && key_changes(w, kk, press) { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat}) }
+	// a key Key does not name: the character of its first level, with no modifier (a recorder of shortcuts reads it)
+	if kk == .None && press && !repeat && k.keymap_key_get_syms_by_level != nil && k.state_key_get_layout != nil {
+		syms: [^]Xkb_Keysym
+		if k.keymap_key_get_syms_by_level(wlc.xkb_keymap, keycode, k.state_key_get_layout(wlc.xkb_state, keycode), 0, &syms) >= 1 {
+			if ch := rune(k.keysym_to_utf32(syms[0])); ch > ' ' && ch != RUNE_DEL { wl_push(w, {kind = .Key_Press, char = ch, mods = mods}) }
+		}
+	}
 	if press && .Ctrl not_in mods && .Alt not_in mods {
 		buf: [8]u8
 		n := k.state_key_get_utf8(wlc.xkb_state, keycode, &buf[0], size_of(buf))
@@ -1196,7 +1203,7 @@ _ :: mem
 @(private)
 wl_send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
 	if wlc.virtual_keyboards == nil || wlc.seat == nil { return false }
-	sym := keysym_name_of(hk.key)
+	sym := keysym_of(hk)
 	if sym == "" { return false }
 	keymap := fmt.tprintf("xkb_keymap {{\nxkb_keycodes \"papier\" {{ minimum = 8; maximum = 9; <K1> = 9; }};\nxkb_types \"papier\" {{ include \"complete\" }};\nxkb_compatibility \"papier\" {{ include \"complete\" }};\nxkb_symbols \"papier\" {{ key <K1> {{ [ %s ] }}; }};\n}};\n", sym)
 	fd := memfd_create("gui_toolkit_keymap", 0)

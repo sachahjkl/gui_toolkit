@@ -16,11 +16,15 @@ DEFS := [?]config.Def{
 	{name = "net.cache", description = "Keep a cache of the responses.", kind = .Bool, default = {b = true}},
 	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB"},
 	{name = "look.style", description = "How surfaces are drawn.", kind = .String, default = {s = "flat"}, choices = {"flat", "machined"}},
+	{name = "look.keys", description = "What shows the window.", kind = .String, default = {s = "Ctrl+Shift+U"}},
 	{name = "net.window_size", description = "The size the window was given.", kind = .String, default = {s = ""}, hidden = true},
 }
 
 @(private = "file")
 PAGES := [?]prefs_page.Page_Info{{category = "net", title = "Network"}, {category = "gone", title = "Nothing here"}, {category = "look", title = "Look"}}
+
+@(private = "file", rodata)
+HOTKEYS := [?]string{"look.keys"}
 
 @(private = "file")
 App :: struct {
@@ -33,7 +37,9 @@ App :: struct {
 app_build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
 	ui.next({width = ui.fill(), height = ui.fill()})
-	prefs_page.build(&app.page, &app.prefs, {user = app, pages = PAGES[:], changed = proc(user: rawptr, name: string) {
+	prefs_page.build(&app.page, &app.prefs, {user = app, pages = PAGES[:], hotkeys = HOTKEYS[:], problem = proc(user: rawptr, name: string) -> string {
+		return name == "look.keys" && config.string_of(&(^App)(user).prefs, "look.keys") == "Ctrl+Alt+Delete" ? "Windows holds it" : ""
+	}, changed = proc(user: rawptr, name: string) {
 		app := (^App)(user)
 		append(&app.changed, strings.clone(name))
 	}})
@@ -149,4 +155,20 @@ a_line_is_as_tall_as_its_words :: proc(t: ^testing.T) {
 		h := b.rect.max.y - b.rect.min.y
 		testing.expectf(t, h < em * 6, "%s: %.0f px tall (an em is %.0f)", name, h, em)
 	}
+}
+
+// A preference that holds a key combination is recorded: a click, the keys pressed, saved as their text; what the program
+// says of it shows under its line.
+@(test)
+a_shortcut_is_recorded_by_its_keys :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "shows the window")
+	testing.expect(t, session.find_text(s, "Ctrl+Shift+U") != nil, "its keys show")
+	session.click(s, "keys")
+	testing.expect(t, prefs_page.editing(&app.page), "while it records, Escape is its own")
+	session.key(s, .Delete, {.Ctrl, .Alt})
+	testing.expect_value(t, config.string_of(&app.prefs, "look.keys"), "Ctrl+Alt+Delete")
+	testing.expect(t, len(app.changed) == 1 && app.changed[0] == "look.keys", "the program hears of it")
+	testing.expect(t, session.find_text(s, "Windows holds it") != nil, "the program's word under the line")
 }
