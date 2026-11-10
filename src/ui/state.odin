@@ -768,6 +768,13 @@ tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil) -> f32 
 	return a.value
 }
 
+// Whether the window animates: false when the desktop asks for less motion (Build_Params.animations). A program's own
+// motion (a row that flashes, a value that pulses) asks it first.
+animations_on :: proc() -> bool { return gs().anim_rate != 0 }
+
+// Asks for the next frame: a program's own animation, drawn from the clock (now_ms), is still moving.
+keep_animating :: proc() { gs().anim_busy = true }
+
 // How long a palette change cross-fades the colours of the boxes.
 PALETTE_FADE_MS :: 160.0
 
