@@ -19,6 +19,7 @@ BLOCKS              :: "\ue4fa"   // blocks
 BOOKMARK            :: "\ue060"   // bookmark
 BOOK_OPEN           :: "\ue05f"   // book-open
 BOT                 :: "\ue1bb"   // bot
+BUG                 :: "\ue20c"   // bug
 CHECK               :: "\ue06c"   // check
 CHEVRON_DOWN        :: "\ue06d"   // chevron-down
 CHEVRON_LEFT        :: "\ue06e"   // chevron-left
@@ -42,6 +43,7 @@ EXTERNAL_LINK       :: "\ue0b9"   // external-link
 EYE                 :: "\ue0ba"   // eye
 EYE_OFF             :: "\ue0bb"   // eye-off
 FILE                :: "\ue0c0"   // file
+FILES               :: "\ue0cf"   // files
 FILE_ARCHIVE        :: "\ue30d"   // file-archive
 FILE_BOX            :: "\ue310"   // file-box
 FILE_CODE           :: "\ue0c3"   // file-code
@@ -49,7 +51,6 @@ FILE_IMAGE          :: "\ue31c"   // file-image
 FILE_MUSIC          :: "\ue55e"   // file-music
 FILE_PLAY           :: "\ue321"   // file-play
 FILE_PLUS           :: "\ue0c9"   // file-plus
-FILES               :: "\ue0cf"   // files
 FILE_SPREADSHEET    :: "\ue326"   // file-spreadsheet
 FILE_SYMLINK        :: "\ue327"   // file-symlink
 FILE_TEXT           :: "\ue0cc"   // file-text
@@ -65,6 +66,7 @@ FOLDER_SEARCH       :: "\ue339"   // folder-search
 FOLDER_SYMLINK      :: "\ue33b"   // folder-symlink
 FOLDER_TREE         :: "\ue33c"   // folder-tree
 GAUGE               :: "\ue1bf"   // gauge
+GIT_FORK            :: "\ue28d"   // git-fork
 GLOBE               :: "\ue0e8"   // globe
 HARD_DRIVE          :: "\ue0ed"   // hard-drive
 HARD_DRIVE_DOWNLOAD :: "\ue4e5"   // hard-drive-download
@@ -80,19 +82,23 @@ LAYOUT_LIST         :: "\ue1d9"   // layout-list
 LIGHTBULB           :: "\ue1c2"   // lightbulb
 LINK                :: "\ue102"   // link
 LIST                :: "\ue106"   // list
+LIST_CHECKS         :: "\ue1d0"   // list-checks
 LIST_TREE           :: "\ue408"   // list-tree
 LOADER              :: "\ue109"   // loader
 LOCK                :: "\ue10b"   // lock
 MENU                :: "\ue115"   // menu
 MESSAGE_SQUARE      :: "\ue117"   // message-square
+MICROCHIP           :: "\ue61a"   // microchip
 MONITOR             :: "\ue11d"   // monitor
 MUSIC               :: "\ue122"   // music
+NETWORK             :: "\ue125"   // network
 PACKAGE             :: "\ue129"   // package
 PALETTE             :: "\ue1dd"   // palette
 PANEL_BOTTOM        :: "\ue42c"   // panel-bottom
 PANEL_LEFT          :: "\ue12a"   // panel-left
 PANEL_RIGHT         :: "\ue431"   // panel-right
 PAPERCLIP           :: "\ue12d"   // paperclip
+PAUSE               :: "\ue12e"   // pause
 PENCIL              :: "\ue1f9"   // pencil
 PIN                 :: "\ue259"   // pin
 PIN_OFF             :: "\ue2b6"   // pin-off
@@ -107,6 +113,7 @@ ROTATE_CCW          :: "\ue148"   // rotate-ccw
 ROWS_2              :: "\ue439"   // rows-2
 SAVE                :: "\ue14d"   // save
 SCISSORS            :: "\ue14e"   // scissors
+SCROLL_TEXT         :: "\ue45f"   // scroll-text
 SEARCH              :: "\ue151"   // search
 SEND_HORIZONTAL     :: "\ue4f2"   // send-horizontal
 SEND_TO_BACK        :: "\ue4f3"   // send-to-back
@@ -120,6 +127,7 @@ SUN_MOON            :: "\ue2b2"   // sun-moon
 TABLE_2             :: "\ue2f9"   // table-2
 TERMINAL            :: "\ue181"   // terminal
 TEXT_CURSOR_INPUT   :: "\ue265"   // text-cursor-input
+THERMOMETER         :: "\ue186"   // thermometer
 TRASH_2             :: "\ue18e"   // trash-2
 TRIANGLE_ALERT      :: "\ue193"   // triangle-alert
 TYPE                :: "\ue198"   // type
@@ -131,3 +139,5 @@ VOLUME_X            :: "\ue1ac"   // volume-x
 WRENCH              :: "\ue1b1"   // wrench
 X                   :: "\ue1b2"   // x
 ZAP                 :: "\ue1b4"   // zap
+ZOOM_IN             :: "\ue1b6"   // zoom-in
+ZOOM_OUT            :: "\ue1b7"   // zoom-out
