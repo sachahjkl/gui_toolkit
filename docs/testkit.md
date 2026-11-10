@@ -52,3 +52,25 @@ m := testkit.memory_split()   // Windows only (zero elsewhere): where the privat
 `memory_split` shows a private-bytes number split into what the heaps hold against what they have committed, and the
 private committed virtual memory outside the heaps by kind — the quickest way to tell a heap leak from arena growth from
 code pages.
+
+## A body the test runner does not watch (Windows)
+
+On Windows the runner of `core:testing` takes any exception raised on a test's thread for a crash, even one caught further
+up: the test fails with "Signal caught: Unknown". DirectWrite, Direct3D and DXGI raise C++ exceptions (0xE06D7363) and
+catch them themselves (a full in-process cache, an adapter probed), so a test that draws text or opens a window fails now
+and then. `unwatched.run` (package `testkit/unwatched`) runs the body on a thread of its own, where a caught C++ exception
+is nobody's business; any other exception still fails the test.
+
+```odin
+import "gt:testkit/unwatched"
+
+@(test)
+a_window_test :: proc(t: ^testing.T) {
+	unwatched.run(t, proc(t: ^testing.T) {
+		// open a window, attach a testkit session, draw, check...
+	})
+}
+```
+
+What the body leaves to `testing.cleanup` is done on its thread when it returns: a window or a session made in the body
+ends on the thread that made it. Off Windows the body runs on the test's own thread.

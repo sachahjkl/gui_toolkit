@@ -1,7 +1,7 @@
 package text_test
 
 import "core:testing"
-import "../unwatched"
+import "../../src/testkit/unwatched"
 import "../../src/font"
 
 FAMILY :: "\U0001F468\u200D\U0001F469\u200D\U0001F467"
