@@ -55,7 +55,7 @@ entries := [?]Entry{
 	{"remove_button hot text", .Bad, 1},   // "hot": the box is under the pointer (build_box)
 	{"zebra background", .Bg_Solid, 0.45},
 	// a list's rows (List_State.zebra, .rules): every second row a shade off the page, a hairline under each row
-	{"list_row zebra background", .Hover, 0.03}, {"rule border", .Border, 0.8},
+	{"list_row zebra background", .Hover, 0.015}, {"rule border", .Border, 0.8},
 	{"input background", .Bg_Solid, 1}, {"input border", .Border, 1},
 	// a field inside a field_frame (tag "bare"): the frame is its surface, its border and its focus ring
 	{"bare input background", .Bg_Solid, 0}, {"bare input border", .Border, 0}, {"bare focus border", .Accent, 0},
