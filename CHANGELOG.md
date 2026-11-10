@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.164.0] - 2026-11-10
+
+### Changed
+- **The Gradient finish is a shade, the Machined one a relief everywhere.** Gradient: a face a few percent lighter at its top than at its bottom and a fine lit line, no white gloss nor engraved text (the text reads as on the plain colour). Machined: cards, dialogs, menus and tooltips are plates (`Box_Flag.Plate`); check boxes, radios, switches, sliders and progress bars are wells with a raised key or a lit face in them; buttons' bevels are stronger; an accent fill (`paint_rect`) is a lit face; the light engraving under dark text is fainter. `tk finish_shots` pictures fidget's pages in each finish; fidget takes `--finish=name`.
+
 ## [0.163.0] - 2026-11-10
 
 ### Added
@@ -2339,6 +2344,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.164.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.164.0
 [0.163.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.163.0
 [0.162.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.162.0
 [0.161.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.161.0
