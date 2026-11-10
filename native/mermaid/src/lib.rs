@@ -4,7 +4,8 @@
 //! Every entry point catches panics: a diagram the library cannot draw is an error the program shows as the diagram's text.
 //!
 //! A gantt chart whose `dateFormat` is `X` (seconds since 1970) or `x` (milliseconds), which mermaid-svg does not read, is
-//! given to it in `YYYY-MM-DD HH:mm:ss` (epoch_gantt).
+//! given to it in `YYYY-MM-DD HH:mm:ss` (epoch_gantt). A gantt chart's section names, which mermaid-svg sets on the
+//! edge of their band, are moved half its padding in (gantt_labels).
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -52,10 +53,11 @@ pub unsafe extern "C" fn gt_mermaid_render(
         if font_size > 0.0 {
             t = t.with_font_size(font_size);
         }
-        match epoch_gantt(&text) {
+        let svg = match epoch_gantt(&text) {
             Some(text) => mermaid_svg::render_with(&text, &t),
             None => mermaid_svg::render_with(&text, &t),
-        }
+        };
+        svg.map(|svg| gantt_labels(&svg))
     }));
     let (code, body) = match result {
         Ok(Ok(svg)) => (GT_MERMAID_OK, svg),
@@ -121,6 +123,23 @@ fn epoch_gantt(text: &str) -> Option<String> {
     Some(out)
 }
 
+/// A gantt chart's section names away from the edge of their band: mermaid-svg sets them at the band's x, the whole
+/// padding after them (its gutter is the widest name and that padding); half of it goes before. Another drawing: as it is.
+fn gantt_labels(svg: &str) -> String {
+    if !svg.contains(r#"aria-roledescription="gantt""#) {
+        return svg.to_string();
+    }
+    // the bands: the first rect drawn is a section's, its x the gutter's edge; the padding is that x (the chart's own)
+    let Some(at) = svg.find("<rect x=\"") else { return svg.to_string() };
+    let rest = &svg[at + 9..];
+    let Some(end) = rest.find('"') else { return svg.to_string() };
+    let edge = &rest[..end];
+    let Ok(pad) = edge.parse::<f64>() else { return svg.to_string() };
+    let from = format!("<text x=\"{edge}\" ");
+    let to = format!("<text x=\"{}\" ", pad + pad / 2.0);
+    svg.replace(&from, &to)
+}
+
 /// Where a task line's `:` is (a directive's is not a task's: `title`, `axisFormat`...).
 fn task_colon(t: &str) -> Option<usize> {
     const DIRECTIVES: [&str; 14] = ["title", "dateFormat", "axisFormat", "tickInterval", "excludes", "includes", "todayMarker",
@@ -183,7 +202,10 @@ mod tests {
         assert!(ms.contains("1970-01-01 00:00:01, 1970-01-01 00:00:02"), "milliseconds: {ms}");
         assert!(epoch_gantt("gantt\ndateFormat YYYY-MM-DD\nA :a, 2026-01-01, 3d\n").is_none(), "another format: as it is");
         assert!(epoch_gantt("flowchart LR\nA --> B\n").is_none(), "not a gantt");
-        assert_eq!(civil(1_794_351_911.0), "2026-11-10 23:05:11");   // (date -u -d @1794351911)
+        assert_eq!(civil(1_794_351_911.0), "2026-11-10 23:05:11");
+        // a section's name half the padding in from its band's edge, the band where it was
+        assert!(svg.contains(r#"<rect x="16" "#) && !svg.contains(r#"<text x="16" "#), "{svg}");
+        assert!(svg.contains(r#"<text x="24" "#));   // (date -u -d @1794351911)
     }
 
     #[test]
