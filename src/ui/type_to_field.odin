@@ -19,8 +19,9 @@ type_to_field :: proc(field: Key) -> bool {
 	printable := false
 	for r in s.typed { if r >= ' ' && r != 0x7f { printable = true; break } }
 	if !printable { return false }
-	// (a key with Alt or Ctrl is a shortcut: Alt+P still gives the text "p", which is not typing)
-	if .Alt in s.mods || .Ctrl in s.mods { return false }
+	// (a key with Alt or Ctrl is a shortcut: Alt+P still gives the text "p", which is not typing. Only this frame's
+	// presses count: an input method's text comes with none, whatever was held before)
+	if .Alt in s.typed_mods || .Ctrl in s.typed_mods { return false }
 	if b := s.boxes[s.focus_key]; s.focus_key != 0 && b != nil && is_text_field(b) { return false }
 	s.focus_key = field
 	return true

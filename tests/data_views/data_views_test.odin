@@ -117,11 +117,16 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, session.focused_name(s) != "search", "Alt+P does not go to the filter")
 	testing.expect_value(t, ui.field_string(&app.search), "BR")
+	// text with no key press after a shortcut (an input method's) is typing again
+	session.key(s, .U, {.Ctrl})
+	session.type_text(s, "o")
+	testing.expect_value(t, session.focused_name(s), "search")
+	testing.expect_value(t, ui.field_string(&app.search), "BRo")
 	// another field keeps what is typed in it
 	session.click(s, "other")
 	session.type_text(s, "x")
 	testing.expect_value(t, ui.field_string(&app.other), "x")
-	testing.expect_value(t, ui.field_string(&app.search), "BR")
+	testing.expect_value(t, ui.field_string(&app.search), "BRo")
 }
 
 @(test)

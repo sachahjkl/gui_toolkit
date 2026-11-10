@@ -31,6 +31,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	clear(&s.events.list)
 	clear(&s.events.consumed)
 	clear(&s.typed)
+	s.typed_mods = {}
 	clear(&s.mouse_events)
 	s.mouse_moved = false
 
@@ -103,6 +104,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			left = true
 		case .Key_Press:
 			s.mods = e.mods
+			s.typed_mods += e.mods
 			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
 				#partial switch e.key {
 				case .Equal, .Num_Add: s.zoom = clamp(s.zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
