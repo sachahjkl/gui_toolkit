@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.165.1] - 2026-11-10
+
+### Changed
+- **A list's stripes are fainter**: every second row 1.5 % toward the theme's tint, from 3 %: the stripes guide the eye across a line without drawing it.
+
+### Fixed
+- **`archive`**: an entry named with a `.` or `..` part or a drive is left out of the index (a copy of a folder out of a malicious archive made folders outside its destination); `find` looks entries up by name.
+
 ## [0.167.0] - 2026-11-10
 
 ### Fixed
@@ -2365,6 +2373,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.165.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.1
 [0.167.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.167.0
 [0.166.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.166.0
 [0.165.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.0
