@@ -87,6 +87,22 @@ direction. A program saves it and reads it back.
 | `text_cut_under_mouse(b, text, pad)` | the test of `table_cell`, for a cell a program builds itself |
 | `text_shown(text)` | a text with a zero-width space between two `#`: a `##` would end the shown part of an id |
 
+### More than one row (`src/ui/list.odin`)
+
+A list (`list`, `vlist`, the rows a program builds with `list_row`) has one active row, `sel`. With `multi` set on its
+state, rows can be marked besides it: a Ctrl click marks a row or unmarks it (the active row joins the marks first), a
+Shift click marks the rows from the last one clicked to this one, a click alone clears the marks, and Ctrl+A marks every
+row while the list has the keyboard (a move with the keys alone clears them). A marked row is drawn as the active one. A
+right click on a row outside the marks clears them; on a marked row, the marks stay (the menu acts on them). A row is
+marked by its identity: a `vlist`'s id (a mark goes when its row is no longer in the ids: gone or filtered out), a
+`list`'s index. The selection a program acts on is the marked rows, or the active row when none is marked.
+
+| Procedure | |
+|---|---|
+| `list_is_marked(st, i)`, `list_mark_count(st)` | whether row `i` is marked; how many are (0: the active row alone) |
+| `list_mark(st, i, on)`, `list_mark_all(st)`, `list_marks_clear(st)` | the program's own changes (its Ctrl+A when another field has the keyboard); `marks_changed` says the frame changed them |
+| `list_row_id(st, i)` | the identity a row is marked by |
+
 ### The table of texts
 
 `Table_Data` holds the rows of one reading: each cell's text (in the data's arena), the number a numeric column sorts by,

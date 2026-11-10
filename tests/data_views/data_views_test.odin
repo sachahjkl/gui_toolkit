@@ -4,7 +4,9 @@
 //   odin test tests/data_views -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package data_views_test
 
+import "core:fmt"
 import "core:testing"
+import "../../src/platform"
 import "../../src/testkit/session"
 import "../../src/ui"
 
@@ -149,4 +151,66 @@ a_segment_has_its_tooltip :: proc(t: ^testing.T) {
 	session.hover(s, "seg1")
 	session.advance(s, TIP_WAIT_MS)
 	testing.expect(t, session.find(s, "tooltip_text") == nil, "no tooltip for an empty one")
+}
+
+// A list of rows the program builds (vlist and list_row), with marks: Ctrl and Shift clicks, Ctrl+A, a filter.
+@(private = "file")
+Marks_App :: struct {
+	vl:   ui.Virtual_List,
+	ids:  [dynamic]u64,
+}
+
+@(private = "file")
+marks_build :: proc(s: ^session.Session) {
+	app := (^Marks_App)(s.user)
+	app.vl.multi = true
+	ui.next({width = ui.px(TABLE_W), height = ui.px(300)})
+	if rows, ok := ui.vlist("###rows", &app.vl, app.ids[:]); ok {
+		for i in rows.first ..< rows.last {
+			ui.next({height = ui.px(24)})
+			ui.list_row(&app.vl, i, "")
+		}
+	}
+}
+
+// A click on row `i` with modifiers held.
+@(private = "file")
+row_click :: proc(s: ^session.Session, i: int, mods: platform.Modifiers = {}) {
+	at := session.center(session.get(s, fmt.tprintf("lrow_%d", i)))
+	session.move(s, at)
+	s.buttons += {.Left}
+	session.event(s, {kind = .Mouse_Press, button = .Left, pos = at, mods = mods})
+	session.frame(s)
+	s.buttons -= {.Left}
+	session.event(s, {kind = .Mouse_Release, button = .Left, pos = at, mods = mods})
+	session.frames(s, 3)
+}
+
+@(test)
+rows_are_marked_by_ctrl_and_shift_clicks :: proc(t: ^testing.T) {
+	app: Marks_App
+	defer { ui.vlist_destroy(&app.vl); delete(app.ids) }
+	for id in ([]u64{10, 11, 12, 13, 14, 15}) { append(&app.ids, id) }
+	s := session.start(t, {build = marks_build, user = &app, no_renderer = true})
+	row_click(s, 1)
+	testing.expect(t, app.vl.sel == 1 && ui.list_mark_count(&app.vl) == 0, "a click alone: the active row, no mark")
+	row_click(s, 3, {.Ctrl})
+	testing.expect(t, ui.list_is_marked(&app.vl, 1) && ui.list_is_marked(&app.vl, 3) && ui.list_mark_count(&app.vl) == 2, "Ctrl: the active row and this one")
+	row_click(s, 1, {.Ctrl})
+	testing.expect(t, !ui.list_is_marked(&app.vl, 1) && ui.list_mark_count(&app.vl) == 1, "Ctrl again: unmarked")
+	row_click(s, 5, {.Shift})
+	// (the last row clicked is row 1, Ctrl's: rows 1 to 5)
+	testing.expect(t, ui.list_mark_count(&app.vl) == 5 && ui.list_is_marked(&app.vl, 1) && ui.list_is_marked(&app.vl, 5) && !ui.list_is_marked(&app.vl, 0), "Shift: from the last row clicked")
+	// the marks follow the rows' identities: row 13 moved to the end is still marked; a row gone is not
+	ordered_remove(&app.ids, 3)
+	append(&app.ids, 13)
+	ordered_remove(&app.ids, 3)   // (14: gone)
+	session.frames(s, 2)
+	testing.expect(t, ui.list_mark_count(&app.vl) == 4 && ui.list_is_marked(&app.vl, len(app.ids) - 1), "by identity")
+	row_click(s, 0)
+	testing.expect_value(t, ui.list_mark_count(&app.vl), 0)
+	session.key(s, .A, {.Ctrl})
+	testing.expect_value(t, ui.list_mark_count(&app.vl), len(app.ids))
+	session.key(s, .Down)
+	testing.expect_value(t, ui.list_mark_count(&app.vl), 0)
 }
