@@ -95,6 +95,7 @@ Line_Graph_Draw :: struct {
 	count:  int,
 	opts:   Line_Graph_Opts,
 	line:   Color,   // the grid's and the frame's
+	well:   Color,   // machined: a graph with a grid is a well of this colour (a screen set in the surface)
 	scale:  f32,
 }
 
@@ -119,6 +120,7 @@ line_graph :: proc(id: string, series: []Line_Series, opts: Line_Graph_Opts) -> 
 	d.opts.top = line_graph_top(series, opts)
 	if d.opts.points <= 0 { for s in series { d.opts.points = max(d.opts.points, len(s.values)) } }
 	d.line = color("border")
+	d.well = color("well")
 	d.scale = scale()
 	return custom(id, line_graph_draw, d)
 }
@@ -135,6 +137,8 @@ line_graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	w, h := r.max.x - r.min.x, r.max.y - r.min.y
 	if w <= 2 || h <= 2 { return }
 	px := max(1, math.round(d.scale))
+	sunk := d.opts.grid && machined()
+	if sunk { machined_well(dc, r, 0, d.well) }
 	if d.opts.grid {
 		grid := d.line
 		grid.a *= LINE_GRAPH_GRID_ALPHA
@@ -171,21 +175,28 @@ line_graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.pop_clip(dc)
 		draw.polyline(dc, points[:line_len], (d.opts.grid ? LINE_GRAPH_LINE_PX : SPARKLINE_LINE_PX) * d.scale, s.color)
 	}
-	if d.opts.grid { draw.rect(dc, r, d.line, border = px) }
+	if d.opts.grid && !sunk { draw.rect(dc, r, d.line, border = px) }   // (a well has its own edge)
 }
 
 ////////////////////////////////
 // Meter bar
 
 @(private = "file")
-Meter_Draw :: struct { used: f32, bar, track: Color }
+Meter_Draw :: struct { used: f32, bar, track, well: Color }
 
 @(private = "file")
 meter_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Meter_Draw)(user)
 	r := b.rect
+	fill := Rect{r.min, {r.min.x + (r.max.x - r.min.x) * clamp(d.used, 0, 1), r.max.y}}
+	if machined() {   // a slot carved in the surface, its run a lit face in it
+		machined_well(dc, r, 0, d.well)
+		p := max(1, math.round(scale()))
+		if fill.max.x - fill.min.x > 2 * p { paint_rect(dc, draw.rect_pad(fill, -p), d.bar, 0) }
+		return
+	}
 	draw.rect(dc, r, d.track)
-	draw.rect(dc, {r.min, {r.min.x + (r.max.x - r.min.x) * clamp(d.used, 0, 1), r.max.y}}, d.bar)
+	draw.rect(dc, fill, d.bar)
 }
 
 // A flat bar of how full something is (`used` 0..1): the theme's accent on its border colour; past `alert` (0..1) the
@@ -194,7 +205,7 @@ meter_bar :: proc(id: string, used: f32, alert: f32 = 1) -> ^Box {
 	d := frame_new(Meter_Draw)
 	full: Color
 	if tags("bad") { full = color("text") }
-	d^ = {used, used > alert ? full : color("accent"), color("border")}
+	d^ = {used, used > alert ? full : color("accent"), color("border"), color("well")}
 	b := custom(id, meter_draw, d)
 	a11y_default(b, {role = .Progress_Indicator, numeric = f64(clamp(used, 0, 1) * 100), min = 0, max = 100, read_only = true})
 	return b
