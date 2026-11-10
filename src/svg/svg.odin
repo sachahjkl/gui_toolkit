@@ -23,7 +23,7 @@ Color :: [4]f32   // straight RGBA, 0..1
 Document :: struct {
 	view:   [4]f32,
 	items:  [dynamic]Item,
-	arena:  virtual.Arena,
+	arena:  ^virtual.Arena,   // (on the heap: the document is returned and copied, its allocator must not point into a copy)
 }
 
 Item :: union { Shape, Text }
@@ -60,15 +60,16 @@ Text :: struct {
 
 // Reads `src`. ok false: no <svg> element. The document's memory is its own: destroy frees it.
 parse :: proc(src: string) -> (doc: Document, ok: bool) {
-	if virtual.arena_init_growing(&doc.arena) != nil { return }
-	a := virtual.arena_allocator(&doc.arena)
+	doc.arena = new(virtual.Arena)
+	if virtual.arena_init_growing(doc.arena) != nil { free(doc.arena); doc.arena = nil; return }
+	a := virtual.arena_allocator(doc.arena)
 	doc.items = make([dynamic]Item, a)
 	p := Parser{src = src, doc = &doc, a = a}
 	p.markers = make(map[string]^Node, allocator = context.temp_allocator)
 	root := read_tree(&p)
 	p.tree = root
 	svg := find_svg(root)
-	if svg == nil { virtual.arena_destroy(&doc.arena); doc = {}; return }
+	if svg == nil { destroy(&doc); return }
 	doc.view = view_of(svg)
 	collect_markers(&p, svg)
 	walk(&p, svg, IDENTITY, Style{fill = Color{0, 0, 0, 1}, stroke_width = 1, font_size = 16, opacity = 1})
@@ -76,7 +77,10 @@ parse :: proc(src: string) -> (doc: Document, ok: bool) {
 }
 
 destroy :: proc(doc: ^Document) {
-	virtual.arena_destroy(&doc.arena)
+	if doc.arena != nil {
+		virtual.arena_destroy(doc.arena)
+		free(doc.arena)
+	}
 	doc^ = {}
 }
 
