@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.139.0] - 2026-11-10
+
+### Added
+- **`ui.key_take`**: the frame's first key press not taken yet, with its modifiers (a recorder of shortcuts).
+- **`release` package**: a program's release steps for a project's tool: `package_` (the archive and its SHA-256), `notes` (the changelog's section), `ship` (the changelog dated, the version set, the checks, the commit, the tag, the push), and the pure version and changelog helpers.
+- **`desktop.theme_icon`**: an application's icon by its name (a desktop entry's Icon=) from the person's icon theme, the themes it inherits, hicolor, then pixmaps; an absolute path is the file itself (Linux; elsewhere none).
+- **`ui.segmented` `tips`**: a tooltip per segment, also the segment's description for a screen reader.
+- **`ui.type_to_field`**: a printable character typed while no text field has the keyboard gives it to one field (a filter), which takes the character in the same build: just start typing to search.
+- **`ui.table_build` and its layers**: a sortable table of texts (`Table`, `Table_Data`, `table_apply`, `table_keys`): titles that sort and reverse, rules that resize, a columns' menu (`table_column_items`), the keyboard while a filter field has it (arrows, pages, Ctrl+Home/End, Enter, Menu and Shift+F10), cut cells shown whole in a tooltip, the selection strong while the window is the user's; `table_header`, `table_cell` and `Table_Layout` for a table that builds its own rows (docs/data-views.md).
+- **`ui.Value_History`, `ui.line_graph`, `ui.sparkline`, `ui.meter_bar`**: the last N values of a sample, their graph (each series an area under its line, grid and frame, a top found with a floor: `graph_top`), the same small and bare, and a flat bar of how full something is that turns to the bad colour past a threshold (docs/data-views.md).
+- **`ui.Worker`**: a reader on its own thread: the interface asks (`worker_ask`, asks during a run make one more run), the job swaps its result in under the worker's lock and wakes the window (`worker_published`), the interface takes it once (`worker_take`).
+- **`platform.interface_addresses`**: the IPv4 and IPv6 addresses of every network interface with their netmask and whether the interface is up or the loopback (Linux: getifaddrs; elsewhere an empty list).
+- **`process.signal_process` / `set_priority` / `process_start_time`**: a signal or a nice value for another process named by its pid and its start time; on Linux the pid is pinned with a pidfd and the start time read again before `pidfd_send_signal`, and the nice value is set on every thread (other systems: `.Unsupported`).
+- **`dbus.call` / `call_async` `interactive`**: the call carries ALLOW_INTERACTIVE_AUTHORIZATION, so a service that checks with polkit (systemd on a system unit) can ask the user for a password instead of refusing.
+- **`ascii.compare_fold`**: the order of two names, case ignored (ASCII) first, then the bytes (a table sorted A to Z). docs/ascii.md describes the package.
+
 ## [0.138.0] - 2026-11-10
 
 ### Added
@@ -2149,6 +2165,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.139.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.139.0
 [0.138.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.138.0
 [0.137.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.137.0
 [0.136.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.136.0
