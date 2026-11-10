@@ -332,6 +332,9 @@ validate :: proc(o: ^Options, need_exe: bool) -> Result {
 		if s == "" || !all_of(s, scheme_char) || !(s[0] >= 'a' && s[0] <= 'z') { return {.Bad_Options, "identity.url_schemes are lower case schemes"} }
 	}
 	if len(id.url_schemes) > 0 && id.url_flag == "" { return {.Bad_Options, "identity.url_flag is what a URL scheme runs"} }
+	for a in id.actions {
+		if a.id == "" || !all_of(a.id, key_char) || a.name == "" { return {.Bad_Options, "identity.actions have an id of letters, digits and '-', and a name"} }
+	}
 	if len(o.launcher) > 0 && id.launcher_mark == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
 	if o.exe == "" { o.exe = process.executable_path() }
 	if need_exe {
