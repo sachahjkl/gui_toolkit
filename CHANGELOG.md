@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.165.0] - 2026-11-10
+
+### Added
+- **`prefs_page.Options.preview`**: each value a held slider moves to, for the program to show at once; the preference is still written at the release.
+
+### Changed
+- **Machined: a graph with a grid is a well, a meter bar a slot** (`line_graph`, `meter_bar`): a screen set in the surface, a run lit in a carved slot.
+
 ## [0.164.0] - 2026-11-10
 
 ### Changed
@@ -2344,6 +2352,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.165.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.165.0
 [0.164.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.164.0
 [0.163.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.163.0
 [0.162.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.162.0
