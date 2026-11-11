@@ -476,7 +476,8 @@ table_cell :: proc(l: ^Table_Layout, col: int, text: string, bg: Maybe(Color) = 
 	flags := Box_Flags{.Draw_Text, .Clip}
 	if bg != nil { flags += {.Draw_Background} }
 	if border != nil { flags += {.Draw_Border} }
-	next({width = table_width(l, col), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg, fg = fg, border = border})
+	// (square, whatever the style: a tinted cell is part of its row, side by side with the next one)
+	next({width = table_width(l, col), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg, fg = fg, border = border, radius = 0})
 	b := build_box(flags, fmt.tprintf("%s###c%d", text_shown(text), col))
 	return text_cut_under_mouse(b, text, pad)
 }

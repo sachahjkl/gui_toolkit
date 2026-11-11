@@ -1,6 +1,6 @@
 package scenarios_test
 
-// A row of a list, of a table or of a menu is square, whatever radius the style around it has: a selected row's fill runs
+// A row of a list, of a table or of a menu is square, and so is a table's tinted cell, whatever radius the style around it has: a selected row's fill runs
 // from edge to edge, row under row.
 
 import "core:testing"
@@ -8,11 +8,13 @@ import "../../src/testkit/session"
 import "../../src/ui"
 
 @(private = "file")
-Rows :: struct { list: ui.List_State, menu_open: bool }
+Rows :: struct { list: ui.List_State, menu_open: bool, table: ui.Table }
 
 @(test)
 a_row_is_square :: proc(t: ^testing.T) {
 	r: Rows
+	ui.table_init(&r.table, {{title = "Name", width = 10}})
+	defer ui.table_destroy(&r.table)
 	s := session.start(t, {size = {400, 300}, user = &r, build = proc(s: ^session.Session) {
 		r := (^Rows)(s.user)
 		if ui.style({radius = 10}) {
@@ -23,6 +25,8 @@ a_row_is_square :: proc(t: ^testing.T) {
 			key := ui.key_from_string(0, "m")
 			if !r.menu_open { r.menu_open = true; ui.ctx_menu_open(key, {50, 50}) }
 			if ui.ctx_menu(key) { ui.menu_item("An item") }
+			ui.next({width = ui.px(300), height = ui.px(24), axis = .X})
+			if ui.row(id = "###trow") { ui.table_cell(&r.table.layout, 0, "busy", bg = ui.Color{0.8, 0.2, 0.2, 1}) }
 		}
 	}})
 	session.frames(s, 3)
@@ -31,4 +35,6 @@ a_row_is_square :: proc(t: ^testing.T) {
 	item: ^ui.Box
 	for k, b in s.state.boxes { if b.a11y != nil && b.a11y.role == .Menu_Item { item = b; _ = k; break } }
 	if testing.expect(t, item != nil, "a menu's row") { testing.expect_value(t, item.radius, 0) }
+	cell := session.find(s, "c0")
+	if testing.expect(t, cell != nil, "a table's tinted cell") { testing.expect_value(t, cell.radius, 0) }
 }
