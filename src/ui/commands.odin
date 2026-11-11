@@ -185,6 +185,9 @@ palette_selected_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	s := gs()
 	p := px1()
 	r := b.rect
+	side := math.round(6 * scale())   // (off the dialog's sides)
+	r.min.x += side
+	r.max.x -= side
 	well := color_from_tags(s, b.tags_key, "well")
 	if machined() { machined_well(dc, r, 0, well) } else { draw.rect(dc, r, well) }
 	bar := math.round(2 * scale())

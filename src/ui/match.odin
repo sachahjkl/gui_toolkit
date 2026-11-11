@@ -1,7 +1,8 @@
 package ui
 
 // What a search found, shown: in a list filtered by what is typed (the palette, a menu that searches, a settings page, a
-// program's own list), the parts of each line that match are drawn in the theme's "match" colour on its "match_bg".
+// program's own list), the parts of each line that match are drawn in the theme's "match" colour (the text's) on its
+// "match_bg" (a tint of the accent).
 //
 //	ranges := ui.word_ranges(line, query)                   // each word (or "phrase") of a query, where it is in the line
 //	_, ranges, _ = ui.fuzzy_words(query, line)              // or what a fuzzy search found
