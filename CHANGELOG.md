@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.175.1] - 2026-11-11
+
+### Fixed
+- **A second window never waits for the screen** (`render.set_present_wait`, set by `host` for every window but the first): on Wayland a Fifo present waited for a frame callback the compositor never sent to a window it did not show, and froze every window of the thread. Its frames now go out in a mailbox (else with tearing).
+
 ## [0.175.0] - 2026-11-11
 
 ### Added
@@ -2426,6 +2431,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.175.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.175.1
 [0.175.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.175.0
 [0.174.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.174.0
 [0.173.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.173.0
