@@ -343,3 +343,30 @@ find_text :: proc(f: ^Fx, text: string) -> ^ui.Box {
 	}
 	return walk(f.s.root, text)
 }
+
+// A word typed with a slip still finds its word: a letter for another, one missing, two swapped; its beginning too. Too many
+// slips for its length find nothing, and two words of the needle are two words of the text.
+@(test)
+fuzzy_typos_forgive_a_slip :: proc(t: ^testing.T) {
+	score, ranges, ok := ui.fuzzy_typos("Qestart pencode native", "Restart opencode native")
+	testing.expect(t, ok, "a letter for another, one missing")
+	testing.expect_value(t, len(ranges), 3)
+	if len(ranges) == 3 {
+		testing.expect_value(t, ranges[0], ui.Fuzzy_Range{0, 7})
+		testing.expect_value(t, ranges[1], ui.Fuzzy_Range{8, 16})
+	}
+	exact, _, _ := ui.fuzzy_typos("restart opencode", "Restart opencode native")
+	testing.expect(t, exact > score, "no slip ranks higher")
+	_, _, swapped := ui.fuzzy_typos("rsetart", "Restart opencode native")
+	testing.expect(t, swapped, "two letters swapped")
+	_, _, begun := ui.fuzzy_typos("restr", "Restart opencode native")
+	testing.expect(t, begun, "a word's beginning, with a slip")
+	_, _, prio := ui.fuzzy_typos("prio", "Previous section")
+	testing.expect(t, !prio, "two slips in four letters: no")
+	_, _, short := ui.fuzzy_typos("qui", "Quit")
+	testing.expect(t, short, "a short word, whole at its beginning")
+	_, _, short_slip := ui.fuzzy_typos("qit", "Quit")
+	testing.expect(t, !short_slip, "a short word has no slip")
+	_, _, twice := ui.fuzzy_typos("open open", "Restart opencode native")
+	testing.expect(t, !twice, "two words of the needle, two words of the text")
+}

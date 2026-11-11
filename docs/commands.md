@@ -48,7 +48,8 @@ The palette is a dialog (`modal_sized`: its edges and its corner's grip resize i
 the pointer moving over a line selects it. What is typed keeps the commands whose label
 (or label and group) holds it whole, or in pieces that each begin a word, the words in order (`fuzzy_words`: "prio" finds
 "Raise the priority", "ks" "Keyboard shortcuts"; letters scattered in a word match nothing, so "prio" does not find
-"Previous section"), the best matches first (the text whole before pieces, at a word's start before elsewhere; a match in the label
+"Previous section"), or, when nothing is found so, each word with a slip or two (`fuzzy_typos`: "Qestart pencode" finds "Restart
+opencode native"; none in a word of three letters, one up to six, two beyond), the best matches first (the text whole before pieces, at a word's start before elsewhere; a match in the label
 before one that needs the group's letters), the headings go and each line says its group, and the first match is selected: Enter runs
 it. A command that cannot act now is greyed and is not chosen. Escape closes the palette,
 and the sheet.

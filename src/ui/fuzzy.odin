@@ -231,3 +231,80 @@ word_pieces :: proc(hay, low, want: string, from: int, out: ^[dynamic]Fuzzy_Rang
 	}
 	return false
 }
+
+// fuzzy_typos: a word typed with a slip still finds its word. How many slips a word may have, by its length in letters (a
+// letter missing, one too many, one for another, two side by side swapped: one each), and what a match earns (below any of
+// fuzzy_words', what it is tried after), less for each slip.
+@(private = "file") TYPO_FREE_LEN :: 3      // up to this long: none
+@(private = "file") TYPO_ONE_LEN :: 6       // up to this long: one; longer: two
+@(private = "file") TYPOS_SCORE :: 300
+@(private = "file") TYPO_COST :: 60
+
+// Matching that forgives slips, for what a person types in a palette after fuzzy_words found nothing: each word of `needle`
+// is a word of `hay`, whole or its beginning, with a few slips at most ("Qestart pencode" finds "Restart opencode native";
+// "prio" does not find "Previous section": two slips in four letters). Two words of the needle are two words of `hay`.
+// `ranges` are the words found, as far as the needle's word goes. An empty needle matches everything with score 0.
+fuzzy_typos :: proc(needle, hay: string, allocator := context.temp_allocator) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	wanted := strings.fields(fold_lower(needle), context.temp_allocator)
+	if len(wanted) == 0 { return 0, nil, true }
+	low := fold_lower(hay)
+	// the words of `hay`: runs of letters and digits
+	Word :: struct { from, to: int, runes: []rune }
+	words := make([dynamic]Word, context.temp_allocator)
+	start := -1
+	for r, i in low {
+		inside := unicode.is_letter(r) || unicode.is_digit(r)
+		if inside && start < 0 { start = i }
+		if !inside && start >= 0 { append(&words, Word{start, i, utf8.string_to_runes(low[start:i], context.temp_allocator)}); start = -1 }
+	}
+	if start >= 0 { append(&words, Word{start, len(low), utf8.string_to_runes(low[start:], context.temp_allocator)}) }
+	used := make([]bool, len(words), context.temp_allocator)
+	out := make([dynamic]Fuzzy_Range, allocator)
+	slips := 0
+	for w in wanted {
+		want := utf8.string_to_runes(w, context.temp_allocator)
+		allowed := len(want) <= TYPO_FREE_LEN ? 0 : len(want) <= TYPO_ONE_LEN ? 1 : 2
+		best, best_d, best_n := -1, allowed + 1, 0
+		for word, k in words {
+			if used[k] { continue }
+			// the whole word, or its beginning as long as what was typed (one letter more or less: a slip in it)
+			d, n := typo_distance(want, word.runes), len(word.runes)
+			for l in max(len(want) - 1, 1) ..= min(len(want) + 1, len(word.runes)) {
+				if pd := typo_distance(want, word.runes[:l]); pd < d { d, n = pd, l }
+			}
+			if d < best_d { best, best_d, best_n = k, d, n }
+		}
+		if best < 0 { return 0, nil, false }
+		used[best] = true
+		slips += best_d
+		word := words[best]
+		end := word.from + len(utf8.runes_to_string(word.runes[:best_n], context.temp_allocator))
+		append(&out, Fuzzy_Range{word.from, end})
+	}
+	// (in the order they are in the text: a highlight is drawn from left to right)
+	for i in 1 ..< len(out) {
+		for j := i; j > 0 && out[j][0] < out[j - 1][0]; j -= 1 { out[j], out[j - 1] = out[j - 1], out[j] }
+	}
+	return TYPOS_SCORE - TYPO_COST * slips - len(hay) / FUZZY_BYTES_PER_LENGTH_POINT, out[:], true
+}
+
+// The slips that make `a` into `b`: a letter missing, one too many, one for another, two side by side swapped (the optimal
+// string alignment distance).
+@(private = "file")
+typo_distance :: proc(a, b: []rune) -> int {
+	n, m := len(a), len(b)
+	row := make([][]int, n + 1, context.temp_allocator)
+	for i in 0 ..= n {
+		row[i] = make([]int, m + 1, context.temp_allocator)
+		row[i][0] = i
+	}
+	for j in 0 ..= m { row[0][j] = j }
+	for i in 1 ..= n {
+		for j in 1 ..= m {
+			cost := a[i - 1] == b[j - 1] ? 0 : 1
+			row[i][j] = min(row[i - 1][j] + 1, row[i][j - 1] + 1, row[i - 1][j - 1] + cost)
+			if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] { row[i][j] = min(row[i][j], row[i - 2][j - 2] + 1) }
+		}
+	}
+	return row[n][m]
+}
