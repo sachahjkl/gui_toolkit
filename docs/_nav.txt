@@ -26,6 +26,7 @@ Widgets and layout
   commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
   data-views.md       Tables, graphs and meters
+  preview.md          Preview: zoom and pan
   dragdrop.md         Drag and drop
   accessibility.md    Accessibility
   i18n.md             i18n: the text shown

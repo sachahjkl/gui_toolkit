@@ -112,21 +112,14 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 		return
 	}
 	if g := glow_of(); focus > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 4 * s, with_alpha(accent, 0.12 * focus * g)) }
-	draw.rect(dc, r, base, radius)
+	// (the surface stops inside the edge: under it, a lit colour's soft fringe spilled onto the rim around the opening)
+	draw.rect(dc, draw.rect_pad(r, -p), base, max(0, radius - p))
 	draw.inset_shadow(dc, r, rr, draw.rect_shift(draw.rect_pad(r, -0.5 * s), {0, 2.5 * s}), rr, 3.5 * s, {0, 0, 0, 0.85})
 	draw.rect(dc, {{r.min.x + radius * 0.6, r.max.y}, {r.max.x - radius * 0.6, r.max.y + p}}, {1, 1, 1, 0.07})
 	edge := focus > VISIBLE ? draw.mix(Color{0, 0, 0, 0.9}, with_alpha(accent, 0.85), focus) : Color{0, 0, 0, 0.9}
 	draw.rect(dc, r, edge, radius, p)
 	// the rim of the opening, lit: without it a dark well on a dark panel has no edge (the accent's ring replaces it)
 	if focus < 0.99 { draw.rect(dc, draw.rect_pad(r, p), {1, 1, 1, 0.1 * (1 - focus)}, radius + p, p) }
-}
-
-// A small light of `accent` set in a surface (a key's mark that it is the chosen one): the light, its halo (the theme's
-// glow).
-machined_light :: proc(dc: ^draw.Context, r: Rect, accent: Color) {
-	h := r.max.y - r.min.y
-	if g := glow_of(); g > 0 { draw.box_shadow(dc, r, radii4(h * 0.5), 3 * scale(), with_alpha(accent, 0.5 * g)) }
-	draw.rect(dc, r, accent, h * 0.5)
 }
 
 // A carved line from `a` to `b` (horizontal, or `vertical`).

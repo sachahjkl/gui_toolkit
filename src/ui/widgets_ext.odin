@@ -562,10 +562,9 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 
 Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius: f32 }
 
-// machined: the key's face toward the accent, the light under its label, its height and its reach (of the key's width)
+// machined: the key's face toward the accent, its least radius
 @(private = "file") SEG_KEY_ACCENT :: 0.1
-@(private = "file") SEG_LIGHT_PX :: 2
-@(private = "file") SEG_LIGHT_REACH :: 0.34
+@(private = "file") SEG_KEY_RADIUS_PX :: 3
 // a groove between two segments: its share of the track's height, and how far from the key it shows in full
 @(private = "file") SEG_GROOVE_HEIGHT :: 0.5
 
@@ -575,7 +574,7 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	if d.n <= 0 { return }
 	if machined() {
-		// a slot carved in the surface, grooves between its segments, the chosen one a raised key with a lit line
+		// a slot carved in the surface, grooves between its segments, the chosen one a raised key
 		r = draw.Rect{{math.round(r.min.x), math.round(r.min.y)}, {math.round(r.max.x), math.round(r.max.y)}}
 		h := r.max.y - r.min.y
 		pad := math.max(math.round(d.pad), px1())
@@ -591,13 +590,9 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 		x := math.round(r.min.x + pad + d.t * iw)
 		key := Rect{{x, r.min.y + pad}, {math.round(x + iw), r.max.y - pad}}
-		machined_bevel(dc, key, max(0, d.radius - pad), draw.mix(d.face, d.accent, SEG_KEY_ACCENT), 0, 0, glow = d.accent)
-		lw := math.round((key.max.x - key.min.x) * SEG_LIGHT_REACH)
-		lx := math.round((key.min.x + key.max.x - lw) * 0.5)
-		lp := SEG_LIGHT_PX * px1()
-		ly := key.max.y - lp - 2 * px1()   // (low on the key: clear of the label)
-		light := Rect{{lx, ly}, {lx + lw, ly + lp}}
-		machined_light(dc, light, d.accent)
+		// (a radius of its own, near the slot's curve: at 0 its lit rim and its edge met in a notch at the corners)
+		key_radius := math.round(max(d.radius - pad * 0.5, SEG_KEY_RADIUS_PX * scale()))
+		machined_bevel(dc, key, key_radius, draw.mix(d.face, d.accent, SEG_KEY_ACCENT), 0, 0, glow = d.accent)
 		return
 	}
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
