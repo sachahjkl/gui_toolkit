@@ -132,7 +132,8 @@ STEPS := []Step{
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
 	{name = "cli", oses = EVERYWHERE},
 	{name = "prewarm", oses = EVERYWHERE, wgpu = .Ci3},   // (Linux's renderer is wgpu: it runs there as it is)
-	{name = "edged", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the edged finish, Console, the dashboard's pieces: a process of their own)
+	{name = "edged", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the edged finish, Kernel, the dashboard's pieces: a process of their own)
+	{name = "system_title", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the system's title bar: a process of its own, the scenarios' is full)
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},

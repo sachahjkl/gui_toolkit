@@ -1,4 +1,4 @@
-package scenarios_test
+package system_title_test
 
 // A window whose title bar is the system's has the system's caption buttons: ui.window_buttons draws none. Switched to an
 // integrated title (the program draws it), they are there; switched back, gone again.
