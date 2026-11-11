@@ -27,6 +27,7 @@ PREVIEW_KEY_PAN :: 0.1
 // The bar over the corner: its margin from the box's edges and its height, in ems.
 PREVIEW_BAR_MARGIN_EM :: 0.5
 PREVIEW_BAR_EM        :: 1.9
+PREVIEW_BAR_GUESS_EM  :: 15   // its width before its first frame
 
 // What a preview keeps between frames: the zoom (1: what fits) and how far the content's centre is from the box's.
 Preview :: struct {
@@ -176,10 +177,14 @@ Preview_Button :: enum u8 { None, Out, In, Native, Fit }
 preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: Preview_Button) {
 	margin := math.round(em * PREVIEW_BAR_MARGIN_EM)
 	h := math.round(em * PREVIEW_BAR_EM)
-	w := math.round(em * 13)
+	// (as wide as what it holds: its width of the last frame places it in the corner; the first, an estimate)
+	w := math.round(em * PREVIEW_BAR_GUESS_EM)
+	if last := box_from_key(key_from_string(b.key, "preview_bar")); last != nil && last.rect.max.x > last.rect.min.x {
+		w = last.rect.max.x - last.rect.min.x
+	}
 	if view.x < w + 2 * margin || view.y < h + 2 * margin { return }
 	if parent(b) {
-		next({fixed_x = view.x - w - margin, fixed_y = view.y - h - margin, width = px(w), height = px(h), axis = .X, cross = .Center, radius = rad(em * 0.4)})
+		next({fixed_x = view.x - w - margin, fixed_y = view.y - h - margin, width = children_sum(), height = px(h), axis = .X, cross = .Center, radius = rad(em * 0.4)})
 		push_tags("bar")
 		bar := build_box({.Draw_Background, .Draw_Border}, "###preview_bar")
 		pop_tags()
@@ -190,7 +195,7 @@ preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: P
 				next({width = text_size(em * 0.2), height = pct(1), font_size = em * 0.85})
 				label(fmt.tprintf("%.0f %%###preview_zoom", fit * zoom * 100))
 			}
-			spacer(fill())
+			spacer(px(em * 0.3))
 			items := [?]struct { id, text: string, which: Preview_Button }{
 				{"###preview_out", "−", .Out}, {"###preview_in", "+", .In}, {"###preview_native", "1:1", .Native}, {"###preview_fit", "Fit", .Fit},
 			}
