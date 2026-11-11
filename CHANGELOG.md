@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.188.0] - 2026-11-11
+
+### Added
+- **A table's columns moved by their titles**: a title dragged sideways moves its column (the first stays first), a line in the accent's colour where it will go; `Table_Layout.order`, `table_layout_move`, `table_order_text` / `table_order_apply` to keep the order (columns added since stay where they are); `Table_Header_Events.moved`, `Table_Events.moved`.
+
+### Changed
+- **A table's third click leaves its rows unsorted**: the data's own order (`TABLE_UNSORTED`, `none` in `table_sort_text`), not the table's first sort; `Table_Layout.default_sort` and `default_descending` are gone. `Table.order` (the rows shown) is `Table.rows`.
+
 ## [0.187.2] - 2026-11-11
 
 ### Fixed
@@ -2541,6 +2549,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.188.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.188.0
 [0.187.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.2
 [0.187.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.1
 [0.187.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.0
