@@ -38,7 +38,8 @@ ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 | `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |
 | `command_pressed(c, enabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act takes no key |
 | `palette_open(&p)` | opens the palette (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty |
-| `palette(&p, commands, enabled) -> (int, resized)` | while it is open: the commands under their groups' headings, each with its icon and its first key; the index chosen, or -1; `resized`: the user changed its size (`p.size`, logical pixels: keep it) |
+| `palette(&p, commands, enabled, opts) -> (int, resized)` | while it is open: the commands under their groups' headings, each with its icon and its first key; the index chosen, or -1; `resized`: the user changed its size (`p.size`, logical pixels: keep it). Ctrl, Alt or Shift with Enter chooses too: `p.chosen_mods` says which |
+| `Palette_Options{recent, recent_title, first, keys, foot}` | what a program adds: the commands run last on top under their heading ("Recent") while nothing is typed; a command first while something is (an alias typed whole); per command the text of its keys as the program shows them (its user's own, a sequence "Ctrl+M, T"); a line under the list |
 | `shortcuts_sheet(id, commands, open, title)` | a dialog: every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window |
 
 The palette is a dialog (`modal_sized`: its edges and its corner's grip resize it, `PALETTE_WIDTH_EM` by

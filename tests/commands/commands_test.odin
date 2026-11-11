@@ -66,13 +66,15 @@ Palette_Run :: struct {
 	pal:     ui.Command_Palette,
 	enabled: [len(PALETTE_COMMANDS)]bool,
 	chosen:  int,
+	mods:    platform.Modifiers,
 	pressed: [len(PALETTE_COMMANDS)]bool,
+	opts:    ui.Palette_Options,
 }
 
 @(private = "file")
 build_palette :: proc(f: ^Fx, user: rawptr) {
 	r := (^Palette_Run)(user)
-	if i, _ := ui.palette(&r.pal, PALETTE_COMMANDS[:], r.enabled[:]); i >= 0 { r.chosen = i }
+	if i, _ := ui.palette(&r.pal, PALETTE_COMMANDS[:], r.enabled[:], r.opts); i >= 0 { r.chosen, r.mods = i, r.pal.chosen_mods }
 }
 
 @(private = "file")
@@ -292,4 +294,52 @@ a_key_is_held_from_its_press_to_its_release :: proc(t: ^testing.T) {
 	frame(&f, {key(.Ctrl)}, nothing, nil)
 	frame(&f, {{kind = .Frame_Press}}, nothing, nil)
 	testing.expect(t, !ui.key_held(.Ctrl), "the window left: none held")
+}
+
+// A program's additions: the recent commands on top under their heading, a command first while searching, the keys'
+// texts of its own, a foot line, Enter with a modifier.
+@(test)
+palette_options :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Palette_Run{chosen = -1}
+	defer ui.palette_destroy(&r.pal)
+	r.enabled = {true, true, true, true}
+	recent := []int{2}
+	keys := []string{"", "", "Ctrl+M, T", ""}
+	r.opts = {recent = recent, keys = keys, foot = "Enter: run   Ctrl+Enter: its keys"}
+	// nothing typed: the recent one first, selected; Enter runs it
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
+	frame(&f, nil, build_palette, &r)
+	frame(&f, nil, build_palette, &r)
+	testing.expect(t, find_text(&f, "Recent") != nil, "the recent group's heading")
+	testing.expect(t, find_text(&f, "Ctrl+M, T") != nil, "the program's text of the keys")
+	testing.expect(t, find_text(&f, "Ctrl+S") == nil, "instead of its chord")
+	testing.expect(t, find_text(&f, "Enter: run   Ctrl+Enter: its keys") != nil, "the foot line")
+	frame(&f, {key(.Return)}, build_palette, &r)
+	testing.expect_value(t, r.chosen, 2)
+	testing.expect_value(t, r.mods, platform.Modifiers{})
+	// letters typed: `first` before the best match; Ctrl+Enter chooses it with Ctrl
+	r.chosen = -1
+	r.opts.first = 0
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
+	frame(&f, nil, build_palette, &r)
+	for c in "ki" { frame(&f, {typed(c)}, build_palette, &r) }
+	frame(&f, nil, build_palette, &r)
+	frame(&f, {key(.Return, {.Ctrl})}, build_palette, &r)
+	testing.expect_value(t, r.chosen, 0)
+	testing.expect_value(t, r.mods, platform.Modifiers{.Ctrl})
+}
+
+// A box of the last build that shows `text` (nil: none).
+@(private = "file")
+find_text :: proc(f: ^Fx, text: string) -> ^ui.Box {
+	walk :: proc(b: ^ui.Box, text: string) -> ^ui.Box {
+		if b == nil { return nil }
+		if b.text == text { return b }
+		for c := b.first; c != nil; c = c.next { if r := walk(c, text); r != nil { return r } }
+		return nil
+	}
+	return walk(f.s.root, text)
 }

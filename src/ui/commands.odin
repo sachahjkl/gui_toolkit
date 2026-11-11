@@ -153,6 +153,18 @@ Command_Palette :: struct {
 	fresh:  bool,   // opened this frame: the field takes the keyboard
 	reveal: bool,   // the selected line is brought into view at the next build
 	mouse:  Vec2,   // the pointer at the last build (a line takes the selection when the pointer moves over it)
+	// the modifiers of the Enter that chose (Ctrl+Enter, Alt+Enter, Shift+Enter: what else the program does with the
+	// command chosen; {} plain Enter or a click)
+	chosen_mods: platform.Modifiers,
+}
+
+// What a program adds to its palette (every field optional).
+Palette_Options :: struct {
+	recent:       []int,       // commands run last (their indices, the last first): a group of their own on top while nothing is typed
+	recent_title: string,      // that group's heading ("": "Recent")
+	first:        Maybe(int),  // a command put first while something is typed (an alias typed whole: its command)
+	keys:         []string,    // per command (by index): the text of its keys, as the program shows them ("Ctrl+M, T", one's own keys), instead of its first chord
+	foot:         string,      // a line under the list (its keys' help)
 }
 
 palette_destroy :: proc(p: ^Command_Palette) { field_destroy(&p.field) }
@@ -168,13 +180,15 @@ palette_open :: proc(p: ^Command_Palette) {
 // first (the headings go then; each line says its group); the first one is selected. Up, Down, Page Up, Page Down move
 // the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`enabled[i]` false; nil: all
 // can) is greyed and is not chosen. Returns the index of the command chosen (-1: none), and `resized` when the user
-// changed its size this frame (`p.size`: keep it).
-palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil) -> (chosen: int, resized: bool) {
+// changed its size this frame (`p.size`: keep it). Enter with Ctrl, Alt or Shift chooses too: `p.chosen_mods` says which.
+// `opts`: the recent commands on top, a command first, the keys' texts, a foot line (Palette_Options).
+palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil, opts := Palette_Options{}) -> (chosen: int, resized: bool) {
 	chosen = -1
+	p.chosen_mods = {}
 	if !p.open { return }
 	em := font_size()
 	query := strings.trim_space(field_string(&p.field))
-	list := palette_list(commands, query)
+	list := palette_list(commands, query, opts)
 	n := len(list)
 	can :: proc(enabled: []bool, i: int) -> bool { return enabled == nil || (i < len(enabled) && enabled[i]) }
 	row_h := math.round(dense(em * PALETTE_ROW_EM))
@@ -204,6 +218,10 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 			if res.changed { p.sel = 0; p.reveal = true }
 			if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
 			if res.committed && n > 0 && list[p.sel].index >= 0 && can(enabled, list[p.sel].index) { chosen = list[p.sel].index }
+			// (Enter with a modifier: the program's other use of the command chosen)
+			for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
+				if n > 0 && can(enabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
+			}
 			spacer(px(em * 0.4))
 		}
 		spacer(px(em * 0.3))
@@ -223,17 +241,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 			// (a column of icons when a command has one and the state has an icon font)
 			icons := false
 			if gs().icon_font != 0 { for c in commands { if c.icon != "" { icons = true; break } } }
-			group := ""
 			for line, k in list {
 				c := commands[line.index]
-				if query == "" && c.group != group {
-					if c.group != "" {
-						if tags("weak") {
-							next({width = fill(), height = px(em * PALETTE_HEADING_EM), font_size = em * 0.9, text_pad = em * 0.7})
-							build_box({.Draw_Text}, fmt.tprintf("%s###palette_h_%s", c.group, hash_part(c.group)))
-						}
+				if line.heading != "" {
+					if tags("weak") {
+						next({width = fill(), height = px(em * PALETTE_HEADING_EM), font_size = em * 0.9, text_pad = em * 0.7})
+						build_box({.Draw_Text}, fmt.tprintf("%s###palette_h_%d", line.heading, k))
 					}
-					group = c.group
 				}
 				text := c.label
 				if query != "" && c.group != "" { text = fmt.tprintf("%s  ·  %s", c.label, c.group) }
@@ -245,7 +259,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 				flags := Box_Flags{.Clickable, .Draw_Hot_Effects}
 				if sel { flags += {.Draw_Background} }
 				if !on { flags += {.Disabled} }
-				rb := build_box(flags, fmt.tprintf("###palette_%d", line.index))
+				rb := build_box(flags, fmt.tprintf("###palette_%d_%d", line.index, k))
 				a11y_default(rb, {role = .Menu_Item, name = text, selected = sel})
 				rs := signal(rb)
 				if rs.hovering && moved { p.sel = k }
@@ -266,7 +280,8 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 					}
 					next({width = fill(), text_pad = 0})
 					matched_label("###t", text, ranges)
-					if keys := command_shortcut(c); keys != "" {
+					keys := line.index < len(opts.keys) ? opts.keys[line.index] : command_shortcut(c)
+					if keys != "" {
 						if tags("weak") {
 							next({width = text_size(), height = pct(1), text_pad = 0, font_size = em * 0.9})
 							label(fmt.tprintf("%s###k", keys))
@@ -280,7 +295,19 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 				pop_tags()
 			}
 		}
-		spacer(px(em * 0.4))
+		if opts.foot != "" {
+			next({width = fill(), height = px(dense(em * 2)), axis = .X, cross = .Center})
+			if row(.Center, {.Draw_Side_Top}, "###palette_foot") {
+				spacer(px(em * 0.7))
+				if tags("weak") {
+					next({width = fill(), height = pct(1), font_size = em * 0.85})
+					label(fmt.tprintf("%s###palette_foot_text", opts.foot))
+				}
+				spacer(px(em * 1.4))   // (the corner's grip)
+			}
+		} else {
+			spacer(px(em * 0.4))
+		}
 	}
 	resized = p.size != before
 	if chosen >= 0 { p.open = false }
@@ -302,22 +329,37 @@ palette_line_top :: proc(list: []Palette_Line, k: int, row_h, em: f32) -> f32 {
 	return f32(k) * row_h + f32(list[k].headings) * (em * PALETTE_HEADING_EM)
 }
 
+// A command's line, the headings above it (to place it), and the heading shown just above it ("": none).
 @(private = "file")
-Palette_Line :: struct { index, headings: int }   // a command, and the group headings above it
+Palette_Line :: struct { index, headings: int, heading: string }
 
-// The commands the palette lists for `query`: every one in the table's order (with no query), else the matches, the best
-// first (the label's letters matter more than the group's).
+// The commands the palette lists for `query`: every one in the table's order (with no query; the recent ones first, under
+// their heading), else the matches, the best first (the label's letters matter more than the group's), `opts.first` before
+// them.
 @(private = "file")
-palette_list :: proc(commands: []Command, query: string) -> []Palette_Line {
+palette_list :: proc(commands: []Command, query: string, opts: Palette_Options) -> []Palette_Line {
 	out := make([dynamic]Palette_Line, 0, len(commands), context.temp_allocator)
 	if query == "" {
-		group, headings := "", 0
+		headings := 0
+		recent := 0
+		for i in opts.recent {
+			if i < 0 || i >= len(commands) { continue }
+			heading := ""
+			if recent == 0 {
+				heading = opts.recent_title != "" ? opts.recent_title : "Recent"
+				headings += 1
+			}
+			append(&out, Palette_Line{i, headings, heading})
+			recent += 1
+		}
+		group := ""
 		for c, i in commands {
-			if c.group != group {
-				if c.group != "" { headings += 1 }
+			heading := ""
+			if c.group != group || (recent > 0 && i == 0) {
+				if c.group != "" { heading = c.group; headings += 1 }
 				group = c.group
 			}
-			append(&out, Palette_Line{i, headings})
+			append(&out, Palette_Line{i, headings, heading})
 		}
 		return out[:]
 	}
@@ -334,7 +376,13 @@ palette_list :: proc(commands: []Command, query: string) -> []Palette_Line {
 		}
 	}
 	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
-	for r in ranked { append(&out, Palette_Line{r.index, 0}) }
+	if f, ok := opts.first.?; ok && f >= 0 && f < len(commands) {
+		append(&out, Palette_Line{f, 0, ""})
+	}
+	for r in ranked {
+		if f, ok := opts.first.?; ok && r.index == f { continue }
+		append(&out, Palette_Line{r.index, 0, ""})
+	}
 	return out[:]
 }
 
