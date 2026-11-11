@@ -222,3 +222,10 @@ if ui.title_strip("###boot", "Boot") { open = false }
 | `title_strip(id, title, closable)` | a title, white and bold, on the accent fading to the bar's colour; a red block closes (true) |
 
 In the machined and edged finishes a tile, a part and the strip are lit along their top and shaded along their bottom.
+
+## A strip that opens into a grid
+
+`if ui.strip_grid("###themes", &open, {gap, gap}) { cells... }`: the cells (each its own width) on one line that scrolls
+sideways (a wheel turned sideways, the bar under it); "Show all" under it lays them out as a grid wrapped to the width,
+"Show fewer" folds them back. The button is there only when the line does not hold them all, or when open. `open` is the
+program's to keep (a preference, if it should last).

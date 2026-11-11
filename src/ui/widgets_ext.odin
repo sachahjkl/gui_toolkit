@@ -1038,3 +1038,51 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false) -> (sig:
 	}
 	return
 }
+
+////////////////////////////////
+// A strip that opens into a grid
+
+// `if strip_grid("###themes", &open, {gap, gap}) { cells... }`: its cells (each its own width) on one line that scrolls
+// sideways; "Show all" under it lays them out as a grid, wrapped to the width, and "Show fewer" folds them back. The button
+// is there only when the line does not hold them all (or when open). `open` is the program's to keep.
+@(deferred_in = strip_grid_end)
+strip_grid :: proc(id: string, open: ^bool, gap: Vec2 = {}, show_all := "Show all", show_fewer := "Show fewer") -> bool {
+	next({width = fill(), height = children_sum(), axis = .Y})
+	push_parent(build_box({}, id))
+	if !open^ {
+		// (a line as wide as its cells, in a view that scrolls it: a wheel turned sideways, the bar under it)
+		set_next_axis(.X)
+		next({width = fill(), height = children_sum()})
+		view := build_box({.Clip, .View_Scroll_X, .View_Clamp_X, .Allow_Overflow_X}, "###strip_view")
+		_ = signal(view)
+		push_parent(view)
+	}
+	// (the cells: a flow, wrapped to the width when open; as wide as they are on one line when folded. Built here, not with
+	// `flow`, whose own end would close it at this procedure's end)
+	next({width = open^ ? fill() : children_sum(), height = children_sum(), axis = .X, gap = gap})
+	push_parent(build_box({.Wrap}, "###strip_cells"))
+	return true
+}
+
+@(private)
+strip_grid_end :: proc(id: string, open: ^bool, gap: Vec2, show_all, show_fewer: string) {
+	pop_parent()   // the cells
+	if !open^ { pop_parent() }   // the view
+	// what the last layout said: the line wider than its view
+	outer := parent_box()
+	view := box_from_key(key_from_string(outer.key, "###strip_view"))
+	cut := view != nil && view.first != nil && view.first.size.x > view.size.x + 0.5
+	if cut || open^ {
+		em := font_size()
+		spacer(px(em * 0.3))
+		next({width = fill(), height = children_sum(), axis = .X})
+		if row(id = "###strip_more") {
+			spacer(fill())
+			push_tags("ghost_button")
+			next({width = text_size(em * 0.6), height = px(dense(em * 1.8)), font_size = math.round(em * 0.9)})
+			if button(fmt.tprintf("%s###strip_toggle", open^ ? show_fewer : show_all)).clicked { open^ = !open^ }
+			pop_tags()
+		}
+	}
+	pop_parent()   // the strip
+}
