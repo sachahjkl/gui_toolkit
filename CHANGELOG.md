@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.181.0] - 2026-11-11
+
+### Added
+- **A toast is as tall as its words, and may have a title**: its text goes on to the next lines inside it instead of past its edge, and the stack places each by its height. `toast_titled(kind, title, body, action, user)`: the title bold on its line (cut with "…"), the text under it.
+- **`segmented(look = .Text)`**: a segmented control in words, as wide as they are, `separator` between them ("All / Active 2 / Done 1"); the chosen word bold and underlined, the others weak until the pointer is on them.
+
+### Fixed
+- **A thin ring's rounded corners are as heavy as its sides**: blended in linear light, the pixels a curve cuts were paler than a browser draws them (a 1 px border looked thinner in its corners). `draw.rect` and `draw.rect_corners` take the `backdrop` a ring is drawn over; its edge then blends as in sRGB values. A box's border gives its own: the colour under it (`box_under`).
+
 ## [0.180.3] - 2026-11-11
 
 ### Fixed
@@ -2485,6 +2494,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.181.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.181.0
 [0.180.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.3
 [0.180.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.2
 [0.180.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.1
