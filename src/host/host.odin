@@ -171,8 +171,11 @@ surface_open :: proc(h: ^Host, o: Open) -> bool {
 	sh := h.shared
 	ok := render.surface_init(&sh.r, &h.surface, platform.native_surface_handles(h.win), h.win.size, transparent = true,
 		fixed_size = platform.monitor_size(h.win), under_children = o.under_children)
-	if !ok { fmt.eprintln("host: the renderer refused a window") }
-	return ok
+	if !ok { fmt.eprintln("host: the renderer refused a window"); return false }
+	// (not the paced window: its frames never wait for the screen, which may not show it)
+	render.surface_scope(&sh.r, &h.surface)
+	render.set_present_wait(&sh.r, false)
+	return true
 }
 
 // Closes a window. The first one ends what is shared: it goes last. Not from inside this window's own frame.

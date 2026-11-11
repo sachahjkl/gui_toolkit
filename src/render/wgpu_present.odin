@@ -168,10 +168,11 @@ wgpu_query_tearing :: proc(r: ^Renderer) {
 	g := &r.wg
 	caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter)
 	defer wgpu.SurfaceCapabilitiesFreeMembers(caps)
-	r.present.tearing_ok = false
+	r.present.tearing_ok, r.present.mailbox_ok = false, false
 	if st == .Success {
 		for i in 0 ..< caps.presentModeCount {
 			if caps.presentModes[i] == .Immediate { r.present.tearing_ok = true }
+			if caps.presentModes[i] == .Mailbox { r.present.mailbox_ok = true }
 		}
 		if wgpu_trace() { fmt.eprintfln("wgpu: surface present modes %v, formats %v, alpha %v", caps.presentModes[:caps.presentModeCount], caps.formats[:caps.formatCount], caps.alphaModes[:caps.alphaModeCount]) }
 	}
@@ -179,6 +180,10 @@ wgpu_query_tearing :: proc(r: ^Renderer) {
 
 @(private)
 wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
+	if r.present.no_wait {
+		if r.present.mailbox_ok { return .Mailbox }
+		if r.present.tearing_ok { return .Immediate }
+	}
 	return present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode == .Tearing ? .Immediate : .Fifo
 }
 

@@ -68,6 +68,11 @@ Present_State :: struct {
 	interval:      u32,                    // refreshes per frame with Vsync (1..4)
 	expected:      f64,                    // refreshes per frame of app-timed frames (0: interval)
 	tearing_ok:    bool,                   // the system can present with tearing
+	mailbox_ok:    bool,                   // ... or in a mailbox: the newest frame shown at the next refresh, no wait
+	// the window's frames never wait for the screen (set_present_wait): a window that is not the paced one. On Wayland a
+	// present in Fifo waits for the compositor's frame callback, which a window it does not show (covered, closing) never
+	// gets: the thread of every window would wait for ever
+	no_wait:       bool,
 	ring:          [PRESENT_RING]Present_Slot,
 	input:         time.Tick,              // set_frame_input for the next present
 	read:          time.Tick,              // set_frame_read for the next present
@@ -94,6 +99,10 @@ Present_State :: struct {
 
 // Vsync (default) or Tearing (see the package comment). Tearing without system support stays Vsync.
 set_present_mode :: proc(r: ^Renderer, mode: Present_Mode) { r.present.mode = mode }
+
+// Whether the frames of the window in use wait for the screen (true: the default). A window other than the paced one says
+// false (host does): its frames go out in a mailbox (else with tearing), never waiting for the compositor to show it.
+set_present_wait :: proc(r: ^Renderer, wait: bool) { r.present.no_wait = !wait }
 present_mode :: proc(r: ^Renderer) -> Present_Mode { return present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode }
 
 // The system can present with tearing (Windows 10 1709+ with a driver that allows it): what variable refresh needs.
