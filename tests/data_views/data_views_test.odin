@@ -598,3 +598,35 @@ a_header_beside_a_sidebar_fits_its_room :: proc(t: ^testing.T) {
 	if room == nil || titles == nil { return }
 	testing.expectf(t, abs(titles.size.x - room.size.x) < 1, "the titles' row %v wide in a room %v wide", titles.size.x, room.size.x)
 }
+
+// A column reset: its own width, and unsorted when the rows went by it; another column's sort stays.
+@(test)
+a_column_is_reset :: proc(t: ^testing.T) {
+	l: ui.Table_Layout
+	ui.table_layout_init(&l, COLUMNS[:])
+	defer ui.table_layout_destroy(&l)
+	l.width[1], l.sort, l.descending = 20, 1, true
+	testing.expect(t, ui.table_column_reset(&l, 1), "the sort changed")
+	testing.expect(t, l.width[1] == COLUMNS[1].width && l.sort == ui.TABLE_UNSORTED && !l.descending)
+	l.width[2], l.sort = 9, 3
+	testing.expect(t, !ui.table_column_reset(&l, 2), "the sort is another column's")
+	testing.expect(t, l.width[2] == COLUMNS[2].width && l.sort == 3)
+}
+
+// New data under the same filter keeps the list where it was scrolled: the selected row is not brought back into view.
+// A cleared filter brings it; the cells light the filter's words.
+@(test)
+new_rows_scroll_nothing :: proc(t: ^testing.T) {
+	app: App
+	app_init(&app)
+	defer app_destroy(&app)
+	s := session.start(t, {build = build, user = &app, no_renderer = true})
+	session.click(s, "lrow_2")
+	session.frames(s, 20)
+	ui.table_apply(&app.t, &app.d, "")
+	testing.expect_value(t, app.t.vl.reveal, 0)
+	ui.table_apply(&app.t, &app.d, "a")
+	testing.expect_value(t, app.t.highlight, "a")
+	ui.table_apply(&app.t, &app.d, "")
+	testing.expect(t, app.t.vl.reveal > 0, "the filter cleared: the row comes into view")
+}

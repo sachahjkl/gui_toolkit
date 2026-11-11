@@ -7,7 +7,9 @@ package ui
 //   table_header: the columns' titles; a click sorts by a column, a second click reverses, a third gives the rows their
 //                 own order back (unsorted); a title dragged sideways moves its column (not the first); the rule before
 //                 a title, dragged, resizes the column; a right click asks for the columns' menu (table_column_items)
-//   table_cell:   a cell under its title; says whether the pointer is on it and its text is cut (table_cell_tip shows it)
+//   table_cell:   a cell under its title, what matches Table_Layout.highlight lit; says whether the pointer is on it and
+//                 its text is cut (table_cell_tip shows it)
+//   table_menu_items: the header's menu (a column reset, unsorted, the columns shown, the default columns)
 //
 // The table of texts, on top of them (rows of texts and numbers, filtered and sorted by the table):
 //   Table_Data:   the rows of a reading: every cell's text (made once, in its arena) and the number a numeric column
@@ -90,6 +92,8 @@ Table_Layout :: struct {
 	// a title dragged sideways (table_header): its column
 	moving:     bool,
 	moving_col: int,
+	menu_column: int,     // the column whose title was right-clicked for the header's menu (-1: the header's empty part)
+	highlight:  string,   // what the cells light where it matches, each word of it (the filter's text; not owned)
 }
 
 // `sort`: the column sorted by at first (TABLE_UNSORTED: none).
@@ -99,6 +103,7 @@ table_layout_init :: proc(l: ^Table_Layout, columns: []Table_Column, sort := 0, 
 	l.shown = make([]bool, len(columns))
 	l.order = make([]int, len(columns))
 	l.sort, l.descending = sort, descending
+	l.menu_column = -1
 	table_layout_reset(l)
 }
 
@@ -244,7 +249,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := T
 	if m.bg != nil { flags += {.Draw_Background} }
 	s.next_mod, s.has_next = m, true
 	if row(.Center, flags, id) {
-		if signal(parent_box()).right_clicked { ev.menu = true }
+		if signal(parent_box()).right_clicked { ev.menu, l.menu_column = true, -1 }
 		// (the titles in a box that scrolls sideways with the rows: as wide as the columns, at least, past its edge)
 		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
 		view := build_box({.Clip, .View_Scroll_X, .Allow_Overflow_X, .Scrollbar_None}, "###hd_view")
@@ -301,7 +306,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := T
 				table_sort_click(l, k)
 				ev.sorted = true
 			}
-			if sig.right_clicked { ev.menu = true }
+			if sig.right_clicked { ev.menu, l.menu_column = true, k }
 			prev, prev_px = k, sig.box != nil ? sig.box.size.x : 0
 		}
 		if prev >= 0 {
@@ -416,6 +421,52 @@ arrow_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.polyline(dc, {{c.x - w, tip.y - dir * w}, tip, {c.x + w, tip.y - dir * w}}, line, d.color)
 }
 
+// A column as the table gives it: its own width, and the rows unsorted when they go by it. True when the sort changed.
+table_column_reset :: proc(l: ^Table_Layout, k: int) -> (sort_changed: bool) {
+	if k < 0 || k >= len(l.columns) { return }
+	l.width[k] = l.columns[k].width
+	if l.sort == k {
+		l.sort, l.descending = TABLE_UNSORTED, false
+		sort_changed = true
+	}
+	return
+}
+
+// The words of a table's header menu (table_menu_items); "%s": the column's title.
+Table_Menu_Labels :: struct { reset, unsorted, columns, defaults: string }
+TABLE_MENU_LABELS :: Table_Menu_Labels{reset = "Reset %s", unsorted = "Unsorted", columns = "Columns", defaults = "Default columns"}
+
+// The menu of a table's header (in the caller's ctx_menu, opened on Table_Header_Events.menu): the column whose title was
+// right-clicked back to its own width and unsorted (table_column_reset), the rows unsorted, each column shown or not
+// (table_column_items), every column as at first (table_layout_reset: widths, shown, order). `changed`: the layout to
+// save; `sort_changed`: the rows to sort again.
+table_menu_items :: proc(l: ^Table_Layout, labels := TABLE_MENU_LABELS) -> (changed, sort_changed: bool) {
+	if k := l.menu_column; k >= 0 && k < len(l.columns) {
+		own := l.width[k] == l.columns[k].width && l.sort != k
+		if menu_item(fmt.tprintf(labels.reset, l.columns[k].title), enabled = !own).clicked {
+			if table_column_reset(l, k) { sort_changed = true }
+			changed = true
+		}
+	}
+	if menu_item(labels.unsorted, checked = l.sort == TABLE_UNSORTED, enabled = l.sort != TABLE_UNSORTED).clicked {
+		l.sort, l.descending = TABLE_UNSORTED, false
+		changed, sort_changed = true, true
+	}
+	if len(l.columns) > 1 {
+		menu_separator()
+		menu_heading(labels.columns)
+		c, s := table_column_items(l)
+		changed, sort_changed = changed || c, sort_changed || s
+	}
+	menu_separator()
+	if menu_item(labels.defaults).clicked {
+		sort := l.sort
+		table_layout_reset(l)
+		changed, sort_changed = true, sort_changed || l.sort != sort
+	}
+	return
+}
+
 // The menu items of the columns (in the caller's ctx_menu): each column but the first, checked when shown; a click
 // shows or hides it and keeps the menu open. True when the sort changed (a hidden column was sorted by).
 table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
@@ -477,9 +528,29 @@ table_cell :: proc(l: ^Table_Layout, col: int, text: string, bg: Maybe(Color) = 
 	if bg != nil { flags += {.Draw_Background} }
 	if border != nil { flags += {.Draw_Border} }
 	// (square, whatever the style: a tinted cell is part of its row, side by side with the next one)
+	if ranges := word_ranges(text, l.highlight); len(ranges) > 0 {
+		// what matches the filter, lit: the cell keeps its text (a screen reader's, a test's), drawn by the line in it
+		next({width = table_width(l, col), height = pct(1), axis = .X, cross = .Center, bg = bg, fg = fg, border = border, radius = 0})
+		b := build_box(flags - {.Draw_Text}, fmt.tprintf("%s###c%d", text_shown(text), col))
+		if parent(b) {
+			next({width = fill(), text_align = c.number ? .Right : .Left, text_pad = pad})
+			table_matched_line(text, ranges, fg)
+		}
+		return text_cut_under_mouse(b, text, pad)
+	}
 	next({width = table_width(l, col), height = pct(1), text_align = c.number ? .Right : .Left, text_pad = pad, bg = bg, fg = fg, border = border, radius = 0})
 	b := build_box(flags, fmt.tprintf("%s###c%d", text_shown(text), col))
 	return text_cut_under_mouse(b, text, pad)
+}
+
+// A line of a cell with its ranges lit (match_runs), in `fg` when the cell gives its text a colour.
+@(private = "file")
+table_matched_line :: proc(text: string, ranges: []Fuzzy_Range, fg: Maybe(Color) = nil) {
+	runs := make([dynamic]Rich_Run, context.temp_allocator)
+	style: Rich_Style
+	if c, ok := fg.?; ok { style.color = c }
+	match_runs(text, ranges, style, &runs)
+	rich_paragraph("###lit", runs[:], max_lines = 1)
 }
 
 // Text to show as it is in a box's id: a "##" in it would end the shown part (key.odin), so a zero-width space goes
@@ -601,15 +672,19 @@ table_selected :: proc(t: ^Table) -> int {
 }
 
 // Filters and sorts the rows again (new data, a new filter, a new sort). `query` is matched in each row's search text,
-// case ignored. The same row stays selected when it is shown; a new filter selects its first row.
+// case ignored, and lit in the cells (Table_Layout.highlight). The same row stays selected when it is shown, where the
+// list is scrolled (a cleared filter brings it into view); a new filter selects its first row.
 table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 	keep: u64
 	has_keep := t.vl.sel >= 0 && t.vl.sel < len(t.ids)
 	if has_keep { keep = t.ids[t.vl.sel] }
 	q := strings.to_lower(query, context.temp_allocator)
+	cleared := false
 	if q != t.query {
+		cleared = q == ""
 		delete(t.query)
 		t.query = strings.clone(q)
+		t.highlight = t.query
 		// a new search starts from its first row; a cleared one keeps the row selected, in view
 		if q != "" {
 			has_keep = false
@@ -629,7 +704,9 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 		for id, i in t.ids {
 			if id == keep {
 				t.vl.sel = i
-				if q == "" { list_select(&t.vl, i) }   // (a cleared filter: the row stays in view)
+				// (a cleared filter: the row comes into view; new rows of the same filter scroll nothing: the list stays where
+				// the user scrolled it)
+				if cleared { list_select(&t.vl, i) }
 				break
 			}
 		}
@@ -783,9 +860,19 @@ table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em: f32) -> (tip
 					t.lead(t, r, em * 1.5)
 					spacer(px(em * 0.4))
 				}
-				next({width = fill(), height = pct(1), text_pad = 0})
-				b := build_box({.Draw_Text, .Clip}, fmt.tprintf("%s###c0", text_shown(text)))
-				if text_cut_under_mouse(b, text, 0) { tip = text }
+				if ranges := word_ranges(text, t.highlight); len(ranges) > 0 {
+					next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+					b := build_box({.Clip}, fmt.tprintf("%s###c0", text_shown(text)))
+					if parent(b) {
+						next({width = fill(), text_pad = 0})
+						table_matched_line(text, ranges)
+					}
+					if text_cut_under_mouse(b, text, 0) { tip = text }
+				} else {
+					next({width = fill(), height = pct(1), text_pad = 0})
+					b := build_box({.Draw_Text, .Clip}, fmt.tprintf("%s###c0", text_shown(text)))
+					if text_cut_under_mouse(b, text, 0) { tip = text }
+				}
 			}
 			continue
 		}
