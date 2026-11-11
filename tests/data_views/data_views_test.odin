@@ -402,3 +402,31 @@ a_resize_moves_no_column_after_the_fill :: proc(t: ^testing.T) {
 	notes := session.get(s, "c2")
 	testing.expect(t, notes != nil && notes.size.x > 0)
 }
+
+@(private = "file")
+build_scrolled :: proc(s: ^session.Session) {
+	app := (^Heat_App)(s.user)
+	ui.next({width = ui.px(NARROW_W), height = ui.px(60), axis = .Y, flags = {.View_Scroll_X, .Allow_Overflow_X, .Clip}})
+	if ui.column(id = "###scroller") {
+		ui.next({width = ui.fill_least(ui.table_min_width(&app.l)), height = ui.px(30), axis = .X})
+		if ui.row(id = "###wide_row") {
+			for k in 0 ..< len(app.l.columns) { ui.table_cell(&app.l, k, "x") }
+		}
+	}
+}
+
+// In a box that scrolls sideways, a row of fill_least is as wide as its columns: past the box's edge, reachable.
+@(test)
+a_row_wider_than_its_box_scrolls :: proc(t: ^testing.T) {
+	app: Heat_App
+	ui.table_layout_init(&app.l, COLUMNS[:])
+	defer ui.table_layout_destroy(&app.l)
+	s := session.start(t, {build = build_scrolled, user = &app, no_renderer = true})
+	session.frames(s, 2)
+	row := session.get(s, "wide_row")
+	if !testing.expect(t, row != nil) { return }
+	testing.expect(t, row.size.x >= ui.table_min_width(&app.l) - 0.5, "the row keeps the columns' width")
+	testing.expect(t, row.size.x > NARROW_W, "past the box's edge")
+	scroller := session.get(s, "scroller")
+	if testing.expect(t, scroller != nil) { testing.expect(t, ui.view_limit(scroller, .X) > 0, "the box scrolls sideways") }
+}

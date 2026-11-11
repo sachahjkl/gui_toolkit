@@ -39,7 +39,7 @@ Size :: struct {
 	kind:       Size_Kind,
 	value:      f32,
 	strictness: f32,   // 0 = shrinks freely when space runs out, 1 = never shrinks
-	least:      f32,   // px it never shrinks under, whatever its strictness (fill_least)
+	least:      f32,   // px it is never smaller than: its resolved size at least, and no shrinking under it (fill_least)
 }
 
 px :: proc(v: f32, strictness: f32 = 1) -> Size { return {kind = .Pixels, value = v, strictness = strictness} }
@@ -47,7 +47,8 @@ text_size :: proc(padding: f32 = 0, strictness: f32 = 1) -> Size { return {kind 
 pct :: proc(p: f32, strictness: f32 = 0) -> Size { return {kind = .Percent, value = p, strictness = strictness} }
 children_sum :: proc(strictness: f32 = 1) -> Size { return {kind = .Children_Sum, value = 0, strictness = strictness} }
 fill :: proc() -> Size { return pct(1, 0) }
-// fill(), never narrower than `least` px when space runs out: what comes after it goes past the parent's edge instead.
+// fill(), never narrower than `least` px: past the parent's edge when the parent is smaller (a parent that scrolls, or
+// clips it).
 fill_least :: proc(least: f32) -> Size { return {kind = .Percent, value = 1, least = least} }
 
 ////////////////////////////////

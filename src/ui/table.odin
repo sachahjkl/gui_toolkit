@@ -67,6 +67,7 @@ Table_Layout :: struct {
 	shown:      []bool,   // (owned) the first column is always shown
 	sort:       int,
 	descending: bool,
+	scroll_x:   f32,      // the rows' and the titles' sideways scroll at the last build (table_scroll_sync)
 }
 
 table_layout_init :: proc(l: ^Table_Layout, columns: []Table_Column, sort := 0, descending := false) {
@@ -155,6 +156,7 @@ Table_Header_Events :: struct {
 	sorted:  bool,   // a title was clicked: the sort changed (the caller sorts its rows again)
 	resized: bool,   // a column's rule was let go: its width changed (the caller saves the layout)
 	menu:    bool,   // a right click on the header: the columns' menu, at the pointer
+	view:    Key,    // the box the titles scroll in, sideways (table_scroll_sync: with the rows)
 }
 
 // The columns' titles in a row of the width `next` gives (its height: TABLE_HEADER_EM; `next` may set a background).
@@ -170,6 +172,15 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 	s.next_mod, s.has_next = m, true
 	if row(.Center, flags, id) {
 		if signal(parent_box()).right_clicked { ev.menu = true }
+		// (the titles in a box that scrolls sideways with the rows: as wide as the columns, at least, past its edge)
+		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+		view := build_box({.Clip, .View_Scroll_X, .Allow_Overflow_X}, "###hd_view")
+		ev.view = view.key
+		push_parent(view)
+		defer pop_parent()
+		next({width = fill_least(table_min_width(l)), height = pct(1), axis = .X, cross = .Center})
+		push_parent(build_box({}, "###hd_row"))
+		defer pop_parent()
 		for c, k in l.columns {
 			if !l.shown[k] { continue }
 			sorting := l.sort == k
@@ -265,6 +276,33 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 		}
 	}
 	return
+}
+
+// The least width of a row of the columns shown, in frame pixels: the columns' own, the fill column's TABLE_FILL_MIN_EM
+// and the room of the scroll bar. A wider room: the fill column takes the rest; a narrower one: the rows scroll sideways.
+table_min_width :: proc(l: ^Table_Layout) -> f32 {
+	em := font_size()
+	w := em * TABLE_SCROLLBAR_EM
+	for k in 0 ..< len(l.columns) {
+		if !l.shown[k] { continue }
+		w += em * (l.width[k] > 0 ? l.width[k] : TABLE_FILL_MIN_EM)
+	}
+	return w
+}
+
+// The rows' sideways scroll given to the titles (`header`: Table_Header_Events.view), in the build they are made in;
+// the titles scrolled themselves (the wheel over them): the rows follow at the next build. Call it once the rows' list
+// is built. A program that builds its rows itself gives its list View_Scroll_X and Allow_Overflow_X and each row
+// fill_least(table_min_width), as table_build does.
+table_scroll_sync :: proc(l: ^Table_Layout, header: Key, list: ^Virtual_List) {
+	hb, lb := box_from_key(header), box_from_key(list.key)
+	if hb == nil || lb == nil { return }
+	if hb.view_target.x != l.scroll_x && lb.view_target.x == l.scroll_x {
+		lb.view_target.x = hb.view_target.x   // (the titles were scrolled)
+	}
+	hb.view_off.x, hb.view_target.x = lb.view_off.x, lb.view_target.x
+	hb.view_anim.x.active = false
+	l.scroll_x = lb.view_target.x
 }
 
 // The width of column `k`: its own (in ems), or for the fill column (width 0) what the others leave, never under
@@ -527,13 +565,14 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 		h := table_header("###header", &t.layout, lead_em)
 		ev.sorted, ev.resized, ev.columns = h.sorted, h.resized, h.menu
 		row_h := dense(em * TABLE_ROW_EM)
-		next({width = fill(), height = fill()})
+		least := table_min_width(&t.layout)
+		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
 		if rows, ok := vlist("###rows", &t.vl, t.ids[:]); ok {
 			// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
 			t.vl.focused = !inactive()
 			for i in rows.first ..< rows.last {
 				r := t.order[i]
-				next({height = px(row_h)})
+				next({width = fill_least(least), height = px(row_h)})
 				row := list_row(&t.vl, i, table_label(d, r))
 				tip := ""
 				if parent(row.box) { tip = table_cells(t, d, r, em, lead_em) }
@@ -553,6 +592,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 			}
 		}
 		if t.vl.activated { ev.activated = true }
+		table_scroll_sync(&t.layout, h.view, &t.vl)
 	}
 	return
 }

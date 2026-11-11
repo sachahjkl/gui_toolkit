@@ -22,10 +22,10 @@ if ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]), ena
 tip := ui.command_tip(COMMANDS[.Kill])          // "Kill… (Shift+Delete)"
 
 // the palette and the sheet
-if run_palette { ui.palette_open(palette_key) }
+if run_palette { ui.palette_open(&app.palette) }
 enabled: [Cmd]bool
 for c in Cmd { enabled[c] = can(c) }
-if i := ui.palette(palette_key, COMMANDS[:], enabled[:]); i >= 0 { run(Cmd(i)) }
+if i, resized := ui.palette(&app.palette, COMMANDS[:], enabled[:]); i >= 0 { run(Cmd(i)) }   // resized: save app.palette.size
 ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 ```
 
@@ -37,12 +37,14 @@ ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 | `key_name(key)` | a key's printed name (`Page Down`, `Enter`, `Escape`) |
 | `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |
 | `command_pressed(c, enabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act takes no key |
-| `palette_open(key, width_em)` | opens the palette at the top centre of the window (`PALETTE_TOP` of its height) |
-| `palette(key, commands, enabled, width_em) -> int` | while it is open: the commands under their groups' headings, each with its first key; the index chosen, or -1 |
+| `palette_open(&p)` | opens the palette (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty |
+| `palette(&p, commands, enabled) -> (int, resized)` | while it is open: the commands under their groups' headings, each with its icon and its first key; the index chosen, or -1; `resized`: the user changed its size (`p.size`, logical pixels: keep it) |
 | `shortcuts_sheet(id, commands, open, title)` | a dialog: every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window |
 
-The palette is a menu that searches (`ctx_menu_open(..., search = true)`; its top is a field, a magnifier and a caret
-that blinks, the menu keeping the keys): what is typed keeps the commands whose label
+The palette is a dialog (`modal_sized`: its edges and its corner's grip resize it, `PALETTE_WIDTH_EM` by
+`PALETTE_HEIGHT_EM` at first, never under `PALETTE_MIN_EM`) with a field at its top and the commands under it; a command's
+`icon` (a glyph of the state's `icon_font`) shows before its label. Up, Down, Page Up, Page Down move the selection;
+the pointer moving over a line selects it. What is typed keeps the commands whose label
 (or label and group) holds it whole, or in pieces that each begin a word, the words in order (`fuzzy_words`: "prio" finds
 "Raise the priority", "ks" "Keyboard shortcuts"; letters scattered in a word match nothing, so "prio" does not find
 "Previous section"), the best matches first (the text whole before pieces, at a word's start before elsewhere; a match in the label

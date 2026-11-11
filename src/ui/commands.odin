@@ -4,7 +4,8 @@ package ui
 //
 //   command_pressed   the key handling: a command's keys, pressed this frame
 //   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)")
-//   palette           the command palette: a menu that searches (fuzzy_words), every command with its keys, grouped
+//   palette           the command palette: a dialog the user resizes, that searches (fuzzy_words), every command with
+//                     its keys, grouped
 //   shortcuts_sheet   a dialog that lists every command's keys, grouped
 //
 // A program keeps its commands in a table of its own (an enum of its commands indexing an array of Command) and says
@@ -14,17 +15,23 @@ package ui
 //   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}, {}}}, ...}
 //   if ui.command_pressed(COMMANDS[.Kill]) { kill() }
 //   ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]))
-//   if ui.key_press(.K, {.Ctrl}) { ui.palette_open(palette_key) }
-//   if i := ui.palette(palette_key, COMMANDS[:], enabled[:]); i >= 0 { run(Cmd(i)) }
+//   if ui.key_press(.K, {.Ctrl}) { ui.palette_open(&palette) }
+//   if i, _ := ui.palette(&palette, COMMANDS[:], enabled[:]); i >= 0 { run(Cmd(i)) }
 
 import "core:fmt"
+import "core:math"
 import "core:slice"
 import "core:strings"
 import "../platform"
 
-// The palette's width when none is given, in em; where its top is, a share of the window's height.
-PALETTE_WIDTH_EM :: 32
+// The palette's size at first, in em, and the least it is made; where its top is, a share of the window's height; a line's
+// height and a group heading's, in em.
+PALETTE_WIDTH_EM :: 34
+PALETTE_HEIGHT_EM :: 26
+PALETTE_MIN_EM :: Vec2{22, 10}
 PALETTE_TOP :: 0.12
+PALETTE_ROW_EM :: 2
+PALETTE_HEADING_EM :: 1.9
 // What a match of the group's letters (not the label's alone) loses against one of the label's.
 PALETTE_GROUP_MATCH_PENALTY :: 100
 // The sheet's width, in em; its list's height at most, a share of the window's height.
@@ -41,6 +48,7 @@ Command :: struct {
 	label: string,     // "End task": the menu's, the palette's and the sheet's text
 	group: string,     // "Processes": the palette's and the sheet's heading ("" none)
 	keys:  [2]Chord,   // its keys, the first one shown in menus and tooltips; {} none
+	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
 }
 
 // "Ctrl+Shift+P", "Delete", "F5" ("" for no key). Modifiers come first, in the order Ctrl, Shift, Alt.
@@ -130,50 +138,175 @@ command_pressed :: proc(c: Command, enabled := true) -> bool {
 ////////////////////////////////
 // The palette
 
-// Opens the palette `key`: a menu at the top centre of the window that searches what is typed, its first command
-// selected.
-palette_open :: proc(key: Key, width_em: f32 = PALETTE_WIDTH_EM) {
-	s := gs()
-	w := font_size() * width_em
-	ctx_menu_open(key, {max((s.window_size.x - w) * 0.5, 0), s.window_size.y * PALETTE_TOP}, from_keyboard = true, search = true)
+// The palette: a dialog at the top centre of the window (modal_sized: its edges and its corner resize it), a field that
+// searches what is typed, and the commands under it. The program keeps it between frames; `size` is the size the user
+// gave it (logical pixels; {} the default), for the program to keep between starts.
+Command_Palette :: struct {
+	open:   bool,
+	size:   Vec2,
+	field:  Text_Field,
+	sel:    int,    // the line selected, among the commands listed
+	fresh:  bool,   // opened this frame: the field takes the keyboard
+	reveal: bool,   // the selected line is brought into view at the next build
+	mouse:  Vec2,   // the pointer at the last build (a line takes the selection when the pointer moves over it)
 }
 
-// The palette `key` while it is open: every command, under its group's heading, with its keys. What is typed keeps the
-// commands whose label (or label and group) holds it whole or in pieces that begin words (fuzzy_words), the best matches first (the headings go then; each line
-// says its group); the first one is selected. A command that cannot act now (`enabled[i]` false; nil: all can) is
-// greyed. Returns the index of the command chosen, -1 when none is.
-palette :: proc(key: Key, commands: []Command, enabled: []bool = nil, width_em: f32 = PALETTE_WIDTH_EM) -> (chosen: int) {
+palette_destroy :: proc(p: ^Command_Palette) { field_destroy(&p.field) }
+
+// Opens the palette, its field empty and its first command selected.
+palette_open :: proc(p: ^Command_Palette) {
+	p.open, p.fresh, p.sel, p.reveal = true, true, 0, true
+	field_clear(&p.field)
+}
+
+// The palette while it is open: every command, under its group's heading, with its keys. What is typed keeps the
+// commands whose label (or label and group) holds it whole or in pieces that begin words (fuzzy_words), the best matches
+// first (the headings go then; each line says its group); the first one is selected. Up, Down, Page Up, Page Down move
+// the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`enabled[i]` false; nil: all
+// can) is greyed and is not chosen. Returns the index of the command chosen (-1: none), and `resized` when the user
+// changed its size this frame (`p.size`: keep it).
+palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil) -> (chosen: int, resized: bool) {
 	chosen = -1
-	// (the block of ctx_menu is the menu: its items are built inside it)
-	if ctx_menu(key, font_size() * width_em) { chosen = palette_items(commands, enabled) }
+	if !p.open { return }
+	em := font_size()
+	query := strings.trim_space(field_string(&p.field))
+	list := palette_list(commands, query)
+	n := len(list)
+	can :: proc(enabled: []bool, i: int) -> bool { return enabled == nil || (i < len(enabled) && enabled[i]) }
+	row_h := math.round(dense(em * PALETTE_ROW_EM))
+	if n > 0 {
+		page := max(int(p_view_h(p) / row_h), 1)
+		if key_press(.Down) { p.sel = (p.sel + 1) % n; p.reveal = true }
+		if key_press(.Up) { p.sel = (p.sel + n - 1) % n; p.reveal = true }
+		if key_press(.Page_Down) { p.sel = min(p.sel + page, n - 1); p.reveal = true }
+		if key_press(.Page_Up) { p.sel = max(p.sel - page, 0); p.reveal = true }
+	}
+	p.sel = clamp(p.sel, 0, max(n - 1, 0))
+	mouse := mouse_pos()
+	moved := abs(mouse.x - p.mouse.x) + abs(mouse.y - p.mouse.y) > 0.5
+	p.mouse = mouse
+	before := p.size
+	if modal_sized("palette", {em * PALETTE_WIDTH_EM, em * PALETTE_HEIGHT_EM}, &p.size, &p.open, {em * PALETTE_MIN_EM.x, em * PALETTE_MIN_EM.y}, top = PALETTE_TOP) {
+		spacer(px(em * 0.6))
+		next({width = fill(), height = px(dense(em * 2.2)), axis = .X, cross = .Center})
+		if row(.Center, id = "###palette_top") {
+			spacer(px(em * 0.6))
+			next({width = fill(), height = pct(1)})
+			res := line_edit("###palette_field", &p.field, "Type to search")
+			if p.fresh { set_focus(res.box.key); p.fresh = false }
+			if res.changed { p.sel = 0; p.reveal = true }
+			if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
+			if res.committed && n > 0 && list[p.sel].index >= 0 && can(enabled, list[p.sel].index) { chosen = list[p.sel].index }
+			spacer(px(em * 0.6))
+		}
+		spacer(px(em * 0.4))
+		next({width = fill(), height = fill()})
+		if scroll_y("###palette_list") {
+			lb := parent_box()
+			view_h := lb.rect.max.y - lb.rect.min.y
+			if p.reveal && view_h > row_h {
+				top := palette_line_top(list, p.sel, row_h, em)
+				lb.view_target.y = view_reveal_offset(lb.view_target.y, top, top + row_h, view_h)
+				p.reveal = false
+			}
+			if n == 0 {
+				next({width = fill(), height = px(row_h), text_align = .Center})
+				if tags("weak") { label("Nothing matches###palette_none") }
+			}
+			// (a column of icons when a command has one and the state has an icon font)
+			icons := false
+			if gs().icon_font != 0 { for c in commands { if c.icon != "" { icons = true; break } } }
+			group := ""
+			for line, k in list {
+				c := commands[line.index]
+				if query == "" && c.group != group {
+					if c.group != "" {
+						if tags("weak") {
+							next({width = fill(), height = px(em * PALETTE_HEADING_EM), font_size = em * 0.9, text_pad = em * 0.7})
+							build_box({.Draw_Text}, fmt.tprintf("%s###palette_h_%s", c.group, hash_part(c.group)))
+						}
+					}
+					group = c.group
+				}
+				text := c.label
+				if query != "" && c.group != "" { text = fmt.tprintf("%s  ·  %s", c.label, c.group) }
+				on := can(enabled, line.index)
+				sel := k == p.sel
+				push_tags("menu_item")
+				if sel { push_tags("selected") }
+				next({width = fill(), height = px(row_h), axis = .X, cross = .Center, bg = color("background"), radius = em * 0.3})
+				flags := Box_Flags{.Clickable, .Draw_Hot_Effects}
+				if sel { flags += {.Draw_Background} }
+				if !on { flags += {.Disabled} }
+				rb := build_box(flags, fmt.tprintf("###palette_%d", line.index))
+				a11y_default(rb, {role = .Menu_Item, name = text, selected = sel})
+				rs := signal(rb)
+				if rs.hovering && moved { p.sel = k }
+				if rs.clicked && on { chosen = line.index }
+				if parent(rb) {
+					spacer(px(em * 0.7))
+					if icons {
+						if !sel { push_tags("weak") }
+						next({width = px(em * 1.7), height = pct(1), font = gs().icon_font, font_size = em * 0.95, text_align = .Center, text_pad = 0})
+						build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###i", c.icon))
+						if !sel { pop_tags() }
+						spacer(px(em * 0.5))
+					}
+					next({width = fill(), height = pct(1), text_pad = 0})
+					label(fmt.tprintf("%s###t", text_shown(text)))
+					if keys := command_shortcut(c); keys != "" {
+						if tags("weak") {
+							next({width = text_size(), height = pct(1), text_pad = 0, font_size = em * 0.9})
+							label(fmt.tprintf("%s###k", keys))
+						}
+					}
+					spacer(px(em * 0.7))
+				}
+				if sel { pop_tags() }
+				pop_tags()
+			}
+		}
+		spacer(px(em * 0.4))
+	}
+	resized = p.size != before
+	if chosen >= 0 { p.open = false }
 	return
 }
 
+// The palette's list's height at the last build (0: not laid out yet).
 @(private = "file")
-palette_items :: proc(commands: []Command, enabled: []bool) -> (chosen: int) {
-	chosen = -1
-	lv, _ := menu_current()
-	query := lv != nil ? menu_query(lv) : ""
-	item :: proc(commands: []Command, enabled: []bool, i: int, searching: bool) -> bool {
-		c := commands[i]
-		text := c.label
-		if searching && c.group != "" { text = fmt.tprintf("%s  ·  %s", c.label, c.group) }
-		on := enabled == nil || (i < len(enabled) && enabled[i])
-		return menu_item(fmt.tprintf("%s###palette_%d", text, i), command_shortcut(c), enabled = on).clicked
-	}
+p_view_h :: proc(p: ^Command_Palette) -> f32 {
+	s := gs()
+	b := box_from_key(key_from_string(key_from_string(s.root.key, "###modal_palette"), "###palette_list"))
+	if b == nil { return 0 }
+	return b.rect.max.y - b.rect.min.y
+}
+
+// The top of line `k` in the list, the headings counted (a list with no search has one before each group).
+@(private = "file")
+palette_line_top :: proc(list: []Palette_Line, k: int, row_h, em: f32) -> f32 {
+	return f32(k) * row_h + f32(list[k].headings) * (em * PALETTE_HEADING_EM)
+}
+
+@(private = "file")
+Palette_Line :: struct { index, headings: int }   // a command, and the group headings above it
+
+// The commands the palette lists for `query`: every one in the table's order (with no query), else the matches, the best
+// first (the label's letters matter more than the group's).
+@(private = "file")
+palette_list :: proc(commands: []Command, query: string) -> []Palette_Line {
+	out := make([dynamic]Palette_Line, 0, len(commands), context.temp_allocator)
 	if query == "" {
-		group := ""
+		group, headings := "", 0
 		for c, i in commands {
 			if c.group != group {
-				if i > 0 { menu_separator() }
-				if c.group != "" { menu_heading(c.group) }
+				if c.group != "" { headings += 1 }
+				group = c.group
 			}
-			group = c.group
-			if item(commands, enabled, i, false) { chosen = i }
+			append(&out, Palette_Line{i, headings})
 		}
-		return
+		return out[:]
 	}
-	// a search: the best matches first (the label's letters matter more than the group's), then in the table's order
 	Ranked :: struct { index, score: int }
 	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
 	for c, i in commands {
@@ -184,8 +317,8 @@ palette_items :: proc(commands: []Command, enabled: []bool) -> (chosen: int) {
 		}
 	}
 	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
-	for r in ranked { if item(commands, enabled, r.index, true) { chosen = r.index } }
-	return
+	for r in ranked { append(&out, Palette_Line{r.index, 0}) }
+	return out[:]
 }
 
 ////////////////////////////////

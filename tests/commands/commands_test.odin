@@ -62,7 +62,7 @@ PALETTE_COMMANDS := [?]ui.Command{
 }
 
 Palette_Run :: struct {
-	key:     ui.Key,
+	pal:     ui.Command_Palette,
 	enabled: [len(PALETTE_COMMANDS)]bool,
 	chosen:  int,
 	pressed: [len(PALETTE_COMMANDS)]bool,
@@ -71,7 +71,7 @@ Palette_Run :: struct {
 @(private = "file")
 build_palette :: proc(f: ^Fx, user: rawptr) {
 	r := (^Palette_Run)(user)
-	if i := ui.palette(r.key, PALETTE_COMMANDS[:], r.enabled[:]); i >= 0 { r.chosen = i }
+	if i, _ := ui.palette(&r.pal, PALETTE_COMMANDS[:], r.enabled[:]); i >= 0 { r.chosen = i }
 }
 
 @(private = "file")
@@ -100,7 +100,8 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	r := Palette_Run{key = ui.Key(0x9a1e77e), chosen = -1}
+	r := Palette_Run{chosen = -1}
+	defer ui.palette_destroy(&r.pal)
 	r.enabled = {true, true, false, true}
 
 	// a command's keys, and only when it can act
@@ -112,23 +113,23 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	testing.expect(t, !r.pressed[2], "a command that cannot act takes no key")
 
 	// the palette: typed letters keep the matches, Enter runs the first one that can act
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open((^Palette_Run)(user).key) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
 	frame(&f, nil, build_palette, &r)
 	frame(&f, nil, build_palette, &r)
-	pr, sel, ok := ui.menu_rect(0)
-	testing.expect(t, ok, "the palette is laid out")
-	testing.expect(t, abs((pr.min.x + pr.max.x) * 0.5 - WINDOW.x * 0.5) < 2, "at the window's centre")
-	testing.expect_value(t, sel, 0)
+	panel := ui.box_from_key(ui.key_from_string(f.s.root.key, "###modal_palette"))
+	testing.expect(t, panel != nil, "the palette is laid out")
+	if panel != nil { testing.expect(t, abs((panel.rect.min.x + panel.rect.max.x) * 0.5 - WINDOW.x * 0.5) < 2, "at the window's centre") }
+	testing.expect_value(t, r.pal.sel, 0)
 	for c in "kil" { frame(&f, {typed(c)}, build_palette, &r) }
 	frame(&f, nil, build_palette, &r)
 	frame(&f, {key(.Return)}, build_palette, &r)
 	testing.expect_value(t, r.chosen, 1)
-	testing.expect(t, !ui.ctx_menu_any_open(), "choosing closes the palette")
+	testing.expect(t, !r.pal.open, "choosing closes the palette")
 
 	// the best match first: "c" is in the group of End task, Kill and Start (Processes, Services), and at the start of
 	// Command palette's label: Command palette comes first, though it is last in the table
 	r.chosen = -1
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open((^Palette_Run)(user).key) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
 	frame(&f, nil, build_palette, &r)
 	frame(&f, {typed('c')}, build_palette, &r)
 	frame(&f, nil, build_palette, &r)
@@ -137,14 +138,23 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 
 	// what cannot act is not chosen: "start" matches only Start, which is greyed
 	r.chosen = -1
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open((^Palette_Run)(user).key) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
 	frame(&f, nil, build_palette, &r)
 	for c in "start" { frame(&f, {typed(c)}, build_palette, &r) }
 	frame(&f, nil, build_palette, &r)
 	frame(&f, {key(.Return)}, build_palette, &r)
 	testing.expect_value(t, r.chosen, -1)
 	frame(&f, {key(.Escape)}, build_palette, &r)
-	testing.expect(t, !ui.ctx_menu_any_open(), "Escape closes it")
+	frame(&f, nil, build_palette, &r)   // (a dialog takes Escape at the end of a build: it closes at the next)
+	testing.expect(t, !r.pal.open, "Escape closes it")
+
+	// a size of the user's: the palette opens at it
+	r.pal.size = {500, 300}
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
+	frame(&f, nil, build_palette, &r)
+	frame(&f, nil, build_palette, &r)
+	panel = ui.box_from_key(ui.key_from_string(f.s.root.key, "###modal_palette"))
+	if testing.expect(t, panel != nil) { testing.expect_value(t, panel.rect.max.x - panel.rect.min.x, f32(500)) }
 }
 
 Sheet_Run :: struct { open: bool }

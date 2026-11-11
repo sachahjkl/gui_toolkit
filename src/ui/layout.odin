@@ -40,6 +40,7 @@ layout_standalone :: proc(b: ^Box, axis: Axis) {
 		b.size[ai] = math.ceil(b.text_dim[ai] + 2 * (b.text_pad + b.pref[axis].value))   // value = extra padding on top of text_pad; ceil: rounding during placement must never trigger "..." truncation
 	case .None, .Percent, .Children_Sum:
 	}
+	b.size[ai] = max(b.size[ai], b.pref[axis].least)
 	for c := b.first; c != nil; c = c.next { layout_standalone(c, axis) }
 }
 
@@ -53,6 +54,7 @@ layout_upward :: proc(b: ^Box, axis: Axis) {
 		// the classic mistake: a percentage inside a box sized by its children is of a distant ancestor (often the
 		// window): a label meant to fill its row's height stretches the row, a dialog, a list to the window's
 		if gs().layout_warnings && a != b.parent && b.size[ai] > gs().window_size[ai] * 0.5 { layout_warn(b, axis, a) }
+		b.size[ai] = max(b.size[ai], b.pref[axis].least)
 	}
 	for c := b.first; c != nil; c = c.next { layout_upward(c, axis) }
 }
@@ -106,7 +108,7 @@ layout_downward :: proc(b: ^Box, axis: Axis) {
 			}
 			v += 2 * border_inset(b)
 		}
-		b.size[ai] = v
+		b.size[ai] = max(v, b.pref[axis].least)
 	}
 }
 
