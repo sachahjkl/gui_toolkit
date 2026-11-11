@@ -177,7 +177,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 		if signal(parent_box()).right_clicked { ev.menu = true }
 		// (the titles in a box that scrolls sideways with the rows: as wide as the columns, at least, past its edge)
 		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
-		view := build_box({.Clip, .View_Scroll_X, .Allow_Overflow_X}, "###hd_view")
+		view := build_box({.Clip, .View_Scroll_X, .Allow_Overflow_X, .Scrollbar_None}, "###hd_view")
 		ev.view = view.key
 		push_parent(view)
 		defer pop_parent()

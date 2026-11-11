@@ -102,7 +102,7 @@ scrollbar_parts :: proc(b: ^Box, axis := Axis.Y) -> (bar, track, thumb: Rect, ar
 	if axis == .X { return scrollbar_parts_x(b) }
 	view := b.size.y
 	content := b.view_bounds.y
-	if .View_Scroll_Y not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
+	if .View_Scroll_Y not_in b.flags || .Scrollbar_None in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
 	w, m := scrollbar_size(b.font_size)
 	bar = {{b.rect.max.x - w - m, b.rect.min.y + m}, {b.rect.max.x - m, b.rect.max.y - m}}
 	if .Scrollbar_Left in b.flags { bar.min.x, bar.max.x = b.rect.min.x + m, b.rect.min.x + m + w }
@@ -122,7 +122,7 @@ scrollbar_parts :: proc(b: ^Box, axis := Axis.Y) -> (bar, track, thumb: Rect, ar
 scrollbar_parts_x :: proc(b: ^Box) -> (bar, track, thumb: Rect, arrow: f32, ok: bool) {
 	view := b.size.x
 	content := b.view_bounds.x
-	if .View_Scroll_X not_in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
+	if .View_Scroll_X not_in b.flags || .Scrollbar_None in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
 	w, m := scrollbar_size(b.font_size)
 	end := b.rect.max.x - m
 	if _, _, _, _, y_bar := scrollbar_parts(b, .Y); y_bar { end -= w + m }
