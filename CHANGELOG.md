@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.174.0] - 2026-11-11
+
+### Added
+- **`syntax.guess`**: the language of a text with no name (a copy, a paste): its `#!` line, JSON, or the language whose `signs` and keywords it holds the most of, only for a text with the punctuation of code (prose, addresses and paths are none). **SQL** (`Language.fold_case`: keywords in any case).
+
+### Changed
+- **Middle-click autoscroll is on by default**: every scroll region of every program (`scroll_y`, lists, tables, a vlist) takes a click of the wheel and scrolls by the pointer, as in the browsers. A program whose middle button does something else calls `ui.set_autoscroll_enabled(&state, false)`.
+
 ## [0.173.0] - 2026-11-11
 
 ### Added
@@ -2413,6 +2421,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.174.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.174.0
 [0.173.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.173.0
 [0.172.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.172.0
 [0.171.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.171.0
