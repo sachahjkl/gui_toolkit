@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.193.0] - 2026-11-11
+
+### Added
+- **`fuzzy_typos`: a word typed with a slip still finds its word** (a letter missing, one too many, one for another, two swapped; none in a word of three letters, one up to six, two beyond), whole or its beginning: "Qestart pencode" finds "Restart opencode native". The command palette tries it after every exact match, on the label then with the tags, and lights the words it found.
+
 ## [0.192.3] - 2026-11-11
 
 ### Fixed
@@ -2623,6 +2628,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.193.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.193.0
 [0.192.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.3
 [0.192.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.2
 [0.192.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.1
