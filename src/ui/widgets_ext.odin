@@ -286,8 +286,8 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		kw = math.round(kd * (1 + TOGGLE_KNOB_PRESS_STRETCH * d.active + TOGGLE_KNOB_HOT_STRETCH * d.hot))
 		x = math.round(math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t))
 		well := color_from_tags(gs(), b.tags_key, "well")
-		machined_well(dc, r, rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT))
-		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, rad(kd * 0.5), TOGGLE_MACHINED_KNOB, d.hot, d.active)
+		machined_well(dc, r, shape_rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT))
+		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, shape_rad(kd * 0.5), TOGGLE_MACHINED_KNOB, d.hot, d.active)
 		return
 	}
 	paint_rect(dc, r, draw.mix(d.track, d.accent, d.t), rad(h * 0.5), d.t)
@@ -379,8 +379,8 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if machined() {   // a slot carved in the surface, its run lit with the accent; the knobs raised keys on it
 		mth := math.round(th * SLIDER_MACHINED_TRACK)
 		slot := Rect{{x0, math.round(cy - mth * 0.5)}, {x1, math.round(cy - mth * 0.5) + mth}}
-		machined_well(dc, slot, rad(mth * 0.5), color_from_tags(gs(), b.tags_key, "well"))
-		if fx1 - fx0 > 1 { paint_rect(dc, {{fx0, slot.min.y + sc}, {fx1, slot.max.y - sc}}, d.accent, rad(mth * 0.5)) }
+		machined_well(dc, slot, shape_rad(mth * 0.5), color_from_tags(gs(), b.tags_key, "well"))
+		if fx1 - fx0 > 1 { paint_rect(dc, {{fx0, slot.min.y + sc}, {fx1, slot.max.y - sc}}, d.accent, shape_rad(mth * 0.5)) }
 		prev := draw.set_circular_corners(dc, true)
 		for i in (d.range ? 0 : 1) ..< 2 {
 			kx := knobs[i]

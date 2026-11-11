@@ -362,6 +362,10 @@ THEMES := [?]Theme_Def{
 	{"Graphite",
 		{{0x0e0e0eff, 0x151515ff, 0x1e1e1eff, 0x1e1e1eff, 0x2a2a2aff, 0x353535ff}, {0x5e5e5eff, 0x8e8e8eff, 0xeaeaeaff, 0xffffffff},
 			{0x4cc2ffff, 0x60a5faff, 0xa78bfaff, 0x5dd39eff, 0xf4c95dff, 0xff6b6bff, 0x4cc2ffff, 0xf472b6ff}}, {}, .Dark_Only, nil, false, 0},
+	// a console at night: blue black, a hairline lit along the top of every surface, square tiles of colour (finish Edged)
+	{"Console",
+		{{0x070a10ff, 0x0a0e16ff, 0x0f1520ff, 0x121a27ff, 0x1a2436ff, 0x243048ff}, {0x4a5670ff, 0x7f8ca6ff, 0xc8d2e2ff, 0xeef3fbff},
+			{0x3d7fd6ff, 0x5b9be8ff, 0x9a7ae0ff, 0x62d07aff, 0xe0a85aff, 0xd9434fff, 0x4cc2b0ff, 0xd4568fff}}, {}, .Dark_Only, .Edged, false, 0xffffffff},
 	// a terminal's amber
 	{"Amber",
 		{{0x100d07ff, 0x16120bff, 0x201a10ff, 0x201a10ff, 0x2d2415ff, 0x3d311cff}, {0x7a6640ff, 0xb59a66ff, 0xffe9c2ff, 0xfff6e5ff},
@@ -484,7 +488,7 @@ THEMES := [?]Theme_Def{
 }
 
 // The finishes by their names, for settings.
-FINISH_NAMES := [Finish]string{.Flat = "flat", .Gradient = "gradient", .Glass = "glass", .Machined = "machined"}
+FINISH_NAMES := [Finish]string{.Flat = "flat", .Gradient = "gradient", .Glass = "glass", .Machined = "machined", .Edged = "edged"}
 
 // The finish of a name of FINISH_NAMES (ASCII case ignored); Flat for any other.
 finish_of :: proc(name: string) -> Finish {

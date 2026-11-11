@@ -9,9 +9,10 @@ package ui
 import "core:math"
 import "../draw"
 
-// Corner rounding factor for every rounded shape the toolkit draws: 0 = square corners, 1 = default, up to 2.
+// Corner rounding factor for every rounded shape the toolkit draws: 0 = square corners, 1 = default, up to 2. The edged
+// finish has square corners whatever it is set to (rounding returns 0 there): its hairlines run straight to the corners.
 set_rounding :: proc(s: ^State, r: f32) { s.rounding = clamp(r, 0, 2) }
-rounding :: proc(s: ^State) -> f32 { return s.rounding }
+rounding :: proc(s: ^State) -> f32 { return s.theme != nil && s.theme.finish == .Edged ? 0 : s.rounding }
 
 // Scroll bars that show only while the pointer is over their box, while one is held, and for a moment after
 // scrollbar_reveal. Off by default: a bar always shows. Still there to grab as soon as the pointer comes.
@@ -41,7 +42,11 @@ scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
 }
 
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
-rad :: proc(r: f32) -> f32 { return r * gs().rounding }
+rad :: proc(r: f32) -> f32 { return r * rounding(gs()) }
+
+// A radius that is a widget's shape, not a corner (a switch's pill, a slider's slot): the rounding setting scales it, the
+// edged finish's square corners leave it.
+shape_rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 
 // Scrollbars of scroll boxes and of text_edit. Width and thumb in em, the margin as a fraction of the width.
 @(private) SCROLLBAR_WIDTH_MIN_PX :: 6
@@ -237,11 +242,11 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 	w := axis == .Y ? track.max.x - track.min.x : track.max.y - track.min.y
 	if hot || active {
 		tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows
-		draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding)
+		draw.rect(dc, track, tuned(tc), w * 0.5 * rounding(s))
 	}
 	glyph := c
 	c.a = (active && s.sb_arrow == 0 ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
-	draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
+	draw.rect(dc, thumb, tuned(c), w * 0.5 * rounding(s))
 	if axis == .X { return }
 	start, end, arrows := scrollbar_arrow_rects(b)
 	if !arrows { return }

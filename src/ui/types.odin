@@ -247,6 +247,7 @@ Finish :: enum u8 {
 	Gradient,   // a face a few percent lighter at its top than at its bottom, a fine lit line along its top, glowing focus
 	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
 	Machined,   // bevelled buttons, sunken wells, carved lines (machined.odin); flat on a light palette
+	Edged,      // the machined reliefs drawn crisp: a dark hairline around, a lit line along the top, a shade along the bottom, no blur
 }
 
 // Interaction states (hover, press, focus, selection, disabled) show at once by default: the frame that sees the pointer

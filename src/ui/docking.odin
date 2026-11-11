@@ -646,7 +646,7 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 dock_float_clip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	s := gs()
 	line := max(math.round(scale()), 1)
-	radius := max((.Fixed_Radius in b.flags ? b.radius : b.radius * s.rounding) - line, 0)
+	radius := max((.Fixed_Radius in b.flags ? b.radius : b.radius * rounding(s)) - line, 0)
 	draw.push_clip_rounded(dc, draw.rect_pad(b.rect, -line), box_radii(radius, b.square_corners))
 }
 
