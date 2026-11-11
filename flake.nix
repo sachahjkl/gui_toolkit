@@ -95,12 +95,18 @@
       };
     };
   in {
-    packages.${system}.odin = odin;
+    packages.${system} = {
+      inherit odin;
+      # the fonts the tests find, whatever the machine has (CI: FONTCONFIG_FILE=$(nix build .#test-fonts ...)): the text and
+      # the color glyphs' tests look for these
+      test-fonts = pkgs.makeFontsConf {fontDirectories = with pkgs; [dejavu_fonts noto-fonts-color-emoji];};
+    };
     checks.${system}.pre-commit = preCommitCheck;
     formatter.${system} = pkgs.alejandra;
 
     devShells.${system}.default = pkgs.mkShell {
-      packages = [odin] ++ (with pkgs; [cargo rustc]) ++ desktops ++ preCommitCheck.enabledPackages;
+      # (dbus: dbus-daemon, the notifications' tests start a session bus of their own)
+      packages = [odin] ++ (with pkgs; [cargo rustc dbus]) ++ desktops ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       # (nix develop clears LD_LIBRARY_PATH when it is an attribute)
       shellHook =

@@ -161,62 +161,37 @@ jobs:
           if-no-files-found: ignore
 
   # Linux: odin check -vet of every package, the examples built (native text, Vulkan through wgpu-native), the tests that
-  # need no window (tk ci). Odin and wgpu-native pinned by SHA-256, crates by Cargo.lock.
+  # need no window (tk ci), the backends on a virtual desktop (tk desktop_tests). In the flake's development shell (nix
+  # develop), as on a developer's machine: Odin, Rust, Mesa, Xorg, sway and the rest from the NixOS cache, no distribution's
+  # package mirror in the way (Ubuntu's DNS failed for hours). On the runner itself: Xorg starts through sudo, sway will not
+  # start as root.
   linux:
-    name: "Linux (Debian 12: check, examples, tests)"
+    name: Linux (check, examples, tests)
     runs-on: ubuntu-24.04
-    container: debian:bookworm
     timeout-minutes: 30
     steps:
-      # Debian 12 (bookworm): its packages from deb.debian.org, not from the runner's Ubuntu mirrors (their DNS failed for hours),
-      # and its glibc 2.36, what a Linux program of the toolkit then needs. First: checkout wants git.
-      - name: Debian's packages
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends git ca-certificates curl jq xz-utils zstd unzip clang lld libfontconfig-dev fonts-noto-color-emoji fonts-dejavu-core mesa-vulkan-drivers >/dev/null
-
       - uses: actions/checkout@v7
 
-      - name: Rust, stable (Debian's is too old for the native libraries)
-        run: |
-          export RUSTUP_HOME="$HOME/.rustup" CARGO_HOME="$HOME/.cargo"
-          echo "RUSTUP_HOME=$RUSTUP_HOME" >> "$GITHUB_ENV"; echo "CARGO_HOME=$CARGO_HOME" >> "$GITHUB_ENV"
-          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors https://sh.rustup.rs | sh -s -- -y -q --profile minimal
-          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-
-      - name: Odin dev-2026-11a
-        env:
-          ODIN_TAG: dev-2026-11a
-          ODIN_SHA256: 65c9f6e97d6f8a30930e151f270ce5aeaa98fe8b2ba49fe067394e2af04f7618
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/odin.tar.gz" "https://github.com/odin-lang/Odin/releases/download/$ODIN_TAG/odin-linux-amd64-$ODIN_TAG.tar.gz"
-          echo "$ODIN_SHA256  $RUNNER_TEMP/odin.tar.gz" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/odin" && tar -xzf "$RUNNER_TEMP/odin.tar.gz" -C "$RUNNER_TEMP/odin"
-          dirname "$(find "$RUNNER_TEMP/odin" -maxdepth 3 -name odin -type f | head -1)" >> "$GITHUB_PATH"
-
-      - name: wgpu-native (tools/tk fetch_wgpu)
-        run: mkdir -p build && odin run tools/tk -vet -out:build/tk -- fetch_wgpu
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
 
       - uses: actions/cache@v6
         with:
           path: |
             build/text
             build/mermaid
-            ~/.cargo/registry
-          key: native-linux-${{ hashFiles('native/text/**', 'native/mermaid/**') }}
+          key: native-linux-nix-${{ hashFiles('native/text/**', 'native/mermaid/**', 'flake.lock') }}
 
-      - name: Check, examples, tests (tk ci)
-        run: odin run tools/tk -out:build/tk -- ci
-
-      # the backends against real servers, no window seen by anyone: X11 under Xvfb and a window manager, RandR on Xorg's
-      # dummy driver, Wayland under a headless sway; the input from the servers' test devices
-      - name: A virtual desktop (tk desktop_tests)
-        timeout-minutes: 8
-        env:
-          XORG: /usr/lib/xorg/Xorg   # (the container's user is root)
+      - name: Check, examples, tests (tk ci), the virtual desktop (tk desktop_tests)
         run: |
-          apt-get install -y -qq --no-install-recommends xvfb openbox xdotool xclip x11-utils x11-xserver-utils xserver-xorg-core xserver-xorg-video-dummy sway wl-clipboard wtype libxcb-xfixes0 libxcb-randr0 libxkbcommon-x11-0 libwayland-client0 >/dev/null
-          odin run tools/tk -out:build/tk -- desktop_tests
+          export FONTCONFIG_FILE="$(nix build --no-link --print-out-paths .#test-fonts)"
+          nix develop --command sh -c '
+            set -e
+            mkdir -p build
+            odin run tools/tk -vet -out:build/tk -- fetch_wgpu
+            odin run tools/tk -out:build/tk -- ci
+            XORG="sudo $(command -v Xorg)" timeout 480 odin run tools/tk -out:build/tk -- desktop_tests
+          '
 
   wgpu:
     name: WebGPU (${{ matrix.group }})
