@@ -16,7 +16,9 @@
 // deflate_runs: a whole buffer at a high rate, for what repeats in known ways (the rows of a picture): flate_runs.odin.
 package flate
 
+import "base:intrinsics"
 import "core:hash"
+import "core:simd"
 
 Format :: enum u8 { Gzip, Zlib, Raw }
 
@@ -583,6 +585,22 @@ dist_index :: proc(dist: int) -> int {
 	return di
 }
 
+// How far p and q are the same, up to `limit` bytes: a register of bytes at once, then the place of the first that differs.
+@(private)
+same :: #force_inline proc "contextless" (p, q: [^]u8, limit: int) -> int #no_bounds_check {
+	LANES :: 16
+	Bytes :: #simd[LANES]u8
+	n := 0
+	for ; n + LANES <= limit; n += LANES {
+		a := intrinsics.unaligned_load((^Bytes)(&p[n]))
+		b := intrinsics.unaligned_load((^Bytes)(&q[n]))
+		differ := transmute(u16)simd.extract_lsbs(simd.lanes_ne(a, b))
+		if differ != 0 { return n + int(intrinsics.count_trailing_zeros(differ)) }
+	}
+	for n < limit && p[n] == q[n] { n += 1 }
+	return n
+}
+
 // Takes `input`; appends its compressed form (one or more non-final blocks) to `out`.
 deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 	if d.state == .Finished { return }
@@ -606,8 +624,7 @@ deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 			h := hash3(w, i)
 			cand := int(d.head[h]) - d.base
 			for chain := 0; chain < MAX_CHAIN && cand >= 0 && i - cand <= WINDOW - MATCH_LOOKAHEAD && cand < i; chain += 1 {
-				l := 0
-				for l < MATCH_MAX && i + l < len(w) && w[cand + l] == w[i + l] { l += 1 }
+				l := same(&w[i], &w[cand], min(MATCH_MAX, len(w) - i))
 				if l > best_len { best_len, best_dist = l, i - cand; if l == MATCH_MAX { break } }
 				nxt := int(d.prev[(cand + d.base) % WINDOW]) - d.base
 				if nxt >= cand { break }

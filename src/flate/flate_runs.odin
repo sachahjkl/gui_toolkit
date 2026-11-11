@@ -1,6 +1,5 @@
 package flate
 
-import "base:intrinsics"
 import "core:hash"
 
 // Compression for pictures being taken while a program runs, where the rate matters and the size less: several hundred
@@ -60,20 +59,6 @@ dist_code :: proc "contextless" (dist: u32) -> Code {
 	k := DIST_CODES - 1
 	for u32(DIST_BASE[k]) > dist { k -= 1 }
 	return {reverse(u32(k), FIXED_DIST_BITS) | (dist - u32(DIST_BASE[k])) << FIXED_DIST_BITS, FIXED_DIST_BITS + u32(DIST_EXTRA[k])}
-}
-
-// How far p and q are the same, up to `limit` bytes.
-@(private = "file")
-same :: #force_inline proc "contextless" (p, q: [^]u8, limit: int) -> int {
-	n := 0
-	for n + 8 <= limit {
-		a := intrinsics.unaligned_load((^u64)(&p[n]))
-		b := intrinsics.unaligned_load((^u64)(&q[n]))
-		if a != b { return n + int(intrinsics.count_trailing_zeros(a ~ b)) / 8 }   // (little endian: the targets the toolkit has)
-		n += 8
-	}
-	for n < limit && p[n] == q[n] { n += 1 }
-	return n
 }
 
 // Worst case 9 bits a byte, so the output never outgrows what is made here.

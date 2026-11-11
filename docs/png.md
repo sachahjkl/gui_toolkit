@@ -22,7 +22,7 @@ pixels, w, h, ok := png.decode(file)                  // straight RGBA8, rows fr
 
 | | Filters | Compression | A 1400 x 925 screenshot (`docs/screenshots/controls.png`, `data.png`) |
 |---|---|---|---|
-| `.Small` | each row the filter (None, Sub, Up, Average, Paeth) whose bytes add up least as signed values | `flate.deflate` (LZ77, dynamic Huffman codes) | 177 KB in 90 ms, 245 KB in 100 ms |
+| `.Small` | each row the filter (None, Sub, Up, Average, Paeth) whose bytes add up least as signed values | `flate.deflate` (LZ77, dynamic Huffman codes) | 177 KB in 28 ms, 245 KB in 34 ms |
 | `.Fast` | Sub on every row: equal neighbouring pixels become runs of zeros | `flate.deflate_runs` (runs and the row above only) | 341 KB in 2.0 ms, 500 KB in 2.5 ms |
 
 `.Small` is for a file that is kept: `paint.png_encode` (the logo and the icons of `tk make_logo` and `tk make_icon`),

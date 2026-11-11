@@ -293,11 +293,7 @@ d3d_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	defer r.ctx->Unmap(staging, 0)
 	out := make([]u8, r.size.x * r.size.y * 4, allocator)
 	for y in 0 ..< r.size.y {
-		row := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))), r.size.x * 4)
-		for x in 0 ..< r.size.x {
-			o := (y * r.size.x + x) * 4
-			out[o], out[o + 1], out[o + 2], out[o + 3] = row[x * 4 + 2], row[x * 4 + 1], row[x * 4], row[x * 4 + 3]
-		}
+		swap_red_blue(raw_data(out[y * r.size.x * 4:]), ([^]u8)(mapped.pData)[y * int(mapped.RowPitch):], r.size.x)
 	}
 	return out
 }

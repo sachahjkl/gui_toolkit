@@ -73,6 +73,9 @@ decoders):
 | a JavaScript file (106 KB) | 24.3 %, 2.9 ms | 27.3 %, 0.5 ms | 23.4 %, 1.3 ms | 22.9 %, 3.9 ms |
 | Roboto-Regular.ttf (159 KB) | 48.8 %, 5.3 ms | 50.8 %, 1.2 ms | 48.7 %, 2.1 ms | 46.3 %, 5.7 ms |
 
+Since 2026-11-12 `flate.deflate` compares the bytes of a match 16 at once (one SSE or NEON register): on the same kind of
+machine the two screenshots take 32 ms and 47 ms, their output unchanged.
+
 Inflating the same streams (core level 6), output rate: `flate.inflate` 130 to 445 MB/s (`inflate_push` in 16 KiB
 chunks the same), `core:compress/deflate` 400 to 1530 MB/s. A picture as `png.encode(.., .Fast)` makes it (Sub filter,
 `deflate_runs`): 609 KB in 3.0 ms and 957 KB in 5.1 ms for the two screenshots; `core:image/png`'s `save_to_buffer`

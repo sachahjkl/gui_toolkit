@@ -120,3 +120,84 @@ what_is_not_a_png_is_refused :: proc(t: ^testing.T) {
 	_, _, _, ok = decode(data[:len(data) - 20])
 	testing.expect(t, !ok, "a file cut short")
 }
+
+// Bytes in a test row: 4 registers and 3 pixels, so that the last pixels take the path of single bytes.
+@(private = "file") FILTER_ROW_BYTES :: 4 * LANES + 3 * RGBA
+
+// paeth_bytes is paeth of each byte: every a, b and c.
+@(test)
+paeth_bytes_matches_paeth :: proc(t: ^testing.T) {
+	wrong := 0
+	for a in 0 ..< 256 {
+		for b in 0 ..< 256 {
+			// (c: its 256 values in the 16 lanes of 16 registers)
+			for hi in 0 ..< 256 / LANES {
+				cs: [LANES]u8
+				for &c, lane in cs { c = u8(hi * LANES + lane) }
+				got := transmute([LANES]u8)paeth_bytes(Bytes(u8(a)), Bytes(u8(b)), transmute(Bytes)cs)
+				for c, lane in cs { if got[lane] != paeth(u8(a), u8(b), c) { wrong += 1 } }
+			}
+		}
+	}
+	testing.expect_value(t, wrong, 0)
+}
+
+// filter_row and filter_sums against the filters' definition a byte at a time, at every row length up to a few registers:
+// a row of noise under a row of noise, and a first row (zeros above).
+@(test)
+filtered_rows_match_the_definition :: proc(t: ^testing.T) {
+	row, up, zero, out: [FILTER_ROW_BYTES]u8
+	seed: u32 = 2463534242
+	for &b in row { seed = seed * 1664525 + 1013904223; b = u8(seed >> 24) }
+	for &b in up { seed = seed * 1664525 + 1013904223; b = u8(seed >> 24) }
+	row[5], up[9] = 0x80, 0x80   // (the value that is its own negative)
+	for above in ([2][]u8{up[:], zero[:]}) {
+		for stride := RGBA; stride <= FILTER_ROW_BYTES; stride += RGBA {
+			sums := filter_sums(raw_data(row[:]), raw_data(above), stride)
+			for f in 0 ..< FILTERS {
+				out = 0xEE
+				filter_row(f, raw_data(row[:]), raw_data(above), raw_data(out[:]), stride)
+				wrong, sum := 0, 0
+				for x in 0 ..< stride {
+					a := x >= RGBA ? row[x - RGBA] : 0
+					c := x >= RGBA ? above[x - RGBA] : 0
+					v: u8
+					switch f {
+					case 0: v = row[x]
+					case 1: v = row[x] - a
+					case 2: v = row[x] - above[x]
+					case 3: v = row[x] - u8((int(a) + int(above[x])) / 2)
+					case 4: v = row[x] - paeth(a, above[x], c)
+					}
+					if out[x] != v { wrong += 1 }
+					sum += v < 128 ? int(v) : 256 - int(v)
+				}
+				testing.expectf(t, wrong == 0, "filter %d, %d bytes: %d wrong", f, stride, wrong)
+				testing.expectf(t, sums[f] == sum, "filter %d, %d bytes: sum %d, want %d", f, stride, sums[f], sum)
+				testing.expectf(t, stride == FILTER_ROW_BYTES || out[stride] == 0xEE, "filter %d, %d bytes: wrote beyond them", f, stride)
+			}
+		}
+	}
+}
+
+// A picture wider than a register, with every filter's kind of row, reads back to its pixels at both levels.
+@(test)
+wide_rows_read_back :: proc(t: ^testing.T) {
+	W :: 37
+	H :: 12
+	px: [W * H * RGBA]u8
+	seed: u32 = 88172645
+	for y in 0 ..< H {
+		for x in 0 ..< W {
+			seed = seed * 1664525 + 1013904223
+			p := px[(y * W + x) * RGBA:][:RGBA]
+			switch y % 4 {
+			case 0: p[0], p[1], p[2], p[3] = u8(seed >> 24), u8(seed >> 16), u8(seed >> 8), 255   // noise
+			case 1: p[0], p[1], p[2], p[3] = u8(x * 5), u8(x * 3), u8(x), 255                     // a slope across
+			case 2: copy(p, px[((y - 1) * W + x) * RGBA:][:RGBA])                                // the row above
+			case 3: p[0], p[1], p[2], p[3] = u8(x * 5 + y), u8(x * 3 + y * 7), u8(x + y), 200     // a slope both ways
+			}
+		}
+	}
+	for level in Compression { expect_pixels(t, encode(px[:], W, H, level, context.temp_allocator), W, H, px[:]) }
+}

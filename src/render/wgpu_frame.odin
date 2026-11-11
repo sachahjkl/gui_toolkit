@@ -583,14 +583,8 @@ wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	if !ok { return nil }
 	src := wgpu.BufferGetConstMappedRange(buf, 0, uint(row * h))
 	out := make([]u8, w * h * 4, allocator)
-	for y in 0 ..< h {
-		line := src[y * row:][:w * 4]
-		for x in 0 ..< w {
-			o := (y * w + x) * 4
-			// the storage is B8G8R8A8 (or R16G16B16A16 float for a translucent linear target, not supported here)
-			out[o], out[o + 1], out[o + 2], out[o + 3] = line[x * 4 + 2], line[x * 4 + 1], line[x * 4], line[x * 4 + 3]
-		}
-	}
+	// the storage is B8G8R8A8 (or R16G16B16A16 float for a translucent linear target, not supported here)
+	for y in 0 ..< h { swap_red_blue(raw_data(out[y * w * 4:]), raw_data(src[y * row:]), w) }
 	wgpu.BufferUnmap(buf)
 	return out
 }

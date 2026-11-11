@@ -143,23 +143,12 @@ readback_poll :: proc(r: ^Renderer, id: Readback_Id, allocator := context.alloca
 		src := wgpu.BufferGetConstMappedRange(s.wbuf, 0, uint(s.wrow * size.y))
 		if src == nil { readback_release(r, id); return nil, {}, .Failed }
 		pixels = make([]u8, size.x * size.y * 4, allocator)
-		for y in 0 ..< size.y {
-			row := src[y * s.wrow:]
-			out := pixels[y * size.x * 4:][:size.x * 4]
-			for x in 0 ..< size.x {
-				px: [4]f32
-				#partial switch s.wformat {
-				case .RGBA16Float:
-					h := ([^]u16)(raw_data(row))
-					for k in 0 ..< 4 { px[k] = f32(transmute(f16)h[x * 4 + k]) }
-				case .BGRA8Unorm, .BGRA8UnormSrgb:
-					px = {f32(row[x * 4 + 2]) / 255, f32(row[x * 4 + 1]) / 255, f32(row[x * 4]) / 255, f32(row[x * 4 + 3]) / 255}
-				case:
-					px = {f32(row[x * 4]) / 255, f32(row[x * 4 + 1]) / 255, f32(row[x * 4 + 2]) / 255, f32(row[x * 4 + 3]) / 255}
-				}
-				out[x * 4], out[x * 4 + 1], out[x * 4 + 2], out[x * 4 + 3] = straight_srgb(px, s.space)
-			}
+		layout := Texel_Layout.RGBA8
+		#partial switch s.wformat {
+		case .RGBA16Float: layout = .Half
+		case .BGRA8Unorm, .BGRA8UnormSrgb: layout = .BGRA8
 		}
+		for y in 0 ..< size.y { straight_srgb_row(raw_data(pixels[y * size.x * 4:]), raw_data(src[y * s.wrow:]), size.x, layout, s.space) }
 		readback_release(r, id)
 		return pixels, size, .Ready
 	} else {
@@ -169,24 +158,13 @@ readback_poll :: proc(r: ^Renderer, id: Readback_Id, allocator := context.alloca
 		if win.FAILED(hr) { readback_release(r, id); return nil, {}, .Failed }
 		size = s.size
 		pixels = make([]u8, size.x * size.y * 4, allocator)
+		layout := Texel_Layout.RGBA8
+		#partial switch s.format {
+		case .R16G16B16A16_FLOAT: layout = .Half
+		case .B8G8R8A8_UNORM, .B8G8R8A8_UNORM_SRGB: layout = .BGRA8
+		}
 		for y in 0 ..< size.y {
-			row := uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))
-			out := pixels[y * size.x * 4:][:size.x * 4]
-			for x in 0 ..< size.x {
-				px: [4]f32
-				#partial switch s.format {
-				case .R16G16B16A16_FLOAT:
-					src := ([^]u16)(row)
-					for k in 0 ..< 4 { px[k] = f32(transmute(f16)src[x * 4 + k]) }
-				case .B8G8R8A8_UNORM, .B8G8R8A8_UNORM_SRGB:
-					src := ([^]u8)(row)
-					px = {f32(src[x * 4 + 2]) / 255, f32(src[x * 4 + 1]) / 255, f32(src[x * 4]) / 255, f32(src[x * 4 + 3]) / 255}
-				case:
-					src := ([^]u8)(row)
-					px = {f32(src[x * 4]) / 255, f32(src[x * 4 + 1]) / 255, f32(src[x * 4 + 2]) / 255, f32(src[x * 4 + 3]) / 255}
-				}
-				out[x * 4], out[x * 4 + 1], out[x * 4 + 2], out[x * 4 + 3] = straight_srgb(px, s.space)
-			}
+			straight_srgb_row(raw_data(pixels[y * size.x * 4:]), ([^]u8)(mapped.pData)[y * int(mapped.RowPitch):], size.x, layout, s.space)
 		}
 		r.ctx->Unmap(s.staging, 0)
 		readback_release(r, id)
