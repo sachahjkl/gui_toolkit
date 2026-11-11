@@ -1,6 +1,7 @@
 #+build linux, darwin, freebsd, openbsd, netbsd
 package fsx
 
+import "base:runtime"
 import "core:c/libc"
 import "core:os"
 import "core:path/filepath"
@@ -72,6 +73,29 @@ stat :: proc(path: string) -> (size: i64, stamp: i64, ok: bool) {
 	st: posix.stat_t
 	if posix.stat(cpath(path), &st) != .OK || !posix.S_ISREG(st.st_mode) { return 0, 0, false }
 	return i64(st.st_size), i64(st.st_mtim.tv_sec) * NS_PER_SECOND + i64(st.st_mtim.tv_nsec), true
+}
+
+// The whole file through one descriptor (read_all): its size and its bytes of one file; .Changed when its size or its
+// time moved while it was read (a writer in place).
+@(private)
+read_open :: proc(path: string, max_size: i64, allocator: runtime.Allocator) -> (buf: []byte, got: Read_Got) {
+	fd := open_retry(path, {})
+	if fd < 0 { return nil, .No }
+	defer posix.close(fd)
+	before, after: posix.stat_t
+	if posix.fstat(fd, &before) != .OK || !posix.S_ISREG(before.st_mode) || i64(before.st_size) > max_size { return nil, .No }
+	buf = make([]byte, int(before.st_size), allocator)
+	n := 0
+	for n < len(buf) {
+		r := posix.pread(fd, raw_data(buf[n:]), uint(min(len(buf) - n, IO_CHUNK_MAX_BYTES)), posix.off_t(n))
+		if r < 0 && posix.errno() == .EINTR { continue }
+		if r <= 0 { break }
+		n += int(r)
+	}
+	same := posix.fstat(fd, &after) == .OK && after.st_size == before.st_size && after.st_mtim == before.st_mtim
+	if n == len(buf) && same { return buf, .Whole }
+	delete(buf, allocator)
+	return nil, .Changed
 }
 
 read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {

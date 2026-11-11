@@ -7,6 +7,7 @@ import "core:os"
 import "core:sync"
 import "core:testing"
 import "core:thread"
+import "core:time"
 import "../../src/fsx"
 
 // The smaller file of two (read_all_never_gives_a_part).
@@ -67,7 +68,7 @@ a_failed_write_leaves_no_temporary_file :: proc(t: ^testing.T) {
 @(private = "file")
 Rewriter :: struct { path: string, stop: bool }
 
-// Rewrites the file with one letter or twice as many of another, for read_all to meet between its stat and its read.
+// Rewrites the file with one letter or twice as many of another, for read_all to meet in the middle of its read.
 @(private = "file")
 rewrite :: proc(r: ^Rewriter) {
 	short := make([]byte, SIZE_SHORT)
@@ -75,9 +76,14 @@ rewrite :: proc(r: ^Rewriter) {
 	defer { delete(short); delete(long) }
 	for &b in short { b = 'a' }
 	for &b in long { b = 'b' }
+	// every file at one time, as a coarse clock gives two writes close together (Windows' last write time): the name's
+	// size and time cannot tell one file from the next
+	at := time.unix(1_700_000_000, 0)
 	for !sync.atomic_load(&r.stop) {
 		fsx.write_atomic(r.path, short)
+		_ = os.change_times(r.path, at, at)
 		fsx.write_atomic(r.path, long)
+		_ = os.change_times(r.path, at, at)
 	}
 }
 
