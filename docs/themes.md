@@ -88,7 +88,7 @@ light.accent = #b58900
 | `Edged` | the machined reliefs drawn crisp, nothing blurred: a dark hairline around, a lit line along the top, a shade along the bottom; pressed, the shade along the top. Panels: a lit line along their top, a shadow | a well: a dark hairline around, dark lines under its top, a lit lip under it | a carved groove |
 
 The machined and edged reliefs are made for the dark: on a light palette, `apply_palette` makes the finish `Flat`.
-The theme `Console` (blue black, square tiles of colour) is made for `Edged`: it brings it whatever the program's finish.
+The theme `Kernel` (blue black, square tiles of colour) is made for `Edged`: it brings it whatever the program's finish.
 The edged finish has square corners whatever the rounding asked (`rounding(s)` is 0 there, and `rad(r)` with it). What
 is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot and knob, a lamp (`shape_rad(r)`: a
 radius the rounding setting scales and the edged finish leaves).

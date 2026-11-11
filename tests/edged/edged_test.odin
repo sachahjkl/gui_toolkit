@@ -63,8 +63,8 @@ a_machined_face_casts_a_shadow :: proc(t: ^testing.T) {
 }
 
 @(test)
-console_is_dark_and_edged :: proc(t: ^testing.T) {
-	p := ui.palette_of("Console")
+kernel_is_dark_and_edged :: proc(t: ^testing.T) {
+	p := ui.palette_of("Kernel")
 	testing.expect_value(t, p.finish, ui.Finish.Edged)
 	testing.expect(t, p.dark)
 	testing.expect_value(t, ui.finish_of("edged"), ui.Finish.Edged)
@@ -78,13 +78,13 @@ console_is_dark_and_edged :: proc(t: ^testing.T) {
 	testing.expect_value(t, th.finish, ui.Finish.Flat)
 }
 
-// The built-in widgets in Console, for the eye: build/session/console_widgets/console.png.
+// The built-in widgets in Kernel, for the eye: build/session/console_widgets/console.png.
 @(test)
 console_widgets :: proc(t: ^testing.T) {
 	Widgets :: struct { on, off: bool, level: f32, pick: int, field: ui.Text_Field }
 	w: Widgets
 	w.on, w.level, w.pick = true, 0.4, 1
-	s := session.start(t, {size = {720, 560}, palette = ui.palette_of("Console"), user = &w, build = proc(s: ^session.Session) {
+	s := session.start(t, {size = {720, 560}, palette = ui.palette_of("Kernel"), user = &w, build = proc(s: ^session.Session) {
 		w := (^Widgets)(s.user)
 		ui.next({fixed_x = 16, fixed_y = 16, width = ui.px(688), height = ui.px(528)})
 		if ui.column(id = "###page") {
@@ -134,7 +134,7 @@ console_widgets :: proc(t: ^testing.T) {
 // A stacked bar's parts are as long as their shares: the colour of each is where its share puts it.
 @(test)
 a_stacked_bar_cuts_by_shares :: proc(t: ^testing.T) {
-	s := session.start(t, {size = {400, 60}, palette = ui.palette_of("Console"), build = proc(s: ^session.Session) {
+	s := session.start(t, {size = {400, 60}, palette = ui.palette_of("Kernel"), build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 0, fixed_y = 10, width = ui.px(400), height = ui.px(30)})
 		ui.stacked_bar("###bar", {{1, {1, 0, 0, 1}, ""}, {3, {0, 1, 0, 1}, ""}})
 	}})
@@ -151,7 +151,7 @@ a_stacked_bar_cuts_by_shares :: proc(t: ^testing.T) {
 @(test)
 edged_corners_are_square :: proc(t: ^testing.T) {
 	for finish in ([]ui.Finish{.Edged, .Machined}) {
-		p := ui.palette_of("Console")
+		p := ui.palette_of("Kernel")
 		p.finish = finish
 		s := session.start(t, {size = {200, 120}, palette = p, build = proc(s: ^session.Session) {
 			ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(160), height = ui.px(80), radius = 12, bg = {0.3, 0.3, 0.3, 1}})
@@ -170,7 +170,7 @@ edged_corners_are_square :: proc(t: ^testing.T) {
 // dark page (a dialog over its dimmed window).
 @(test)
 an_edged_panel_is_outlined_on_its_sides :: proc(t: ^testing.T) {
-	s := session.start(t, {size = {200, 120}, palette = ui.palette_of("Console"), build = proc(s: ^session.Session) {
+	s := session.start(t, {size = {200, 120}, palette = ui.palette_of("Kernel"), build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(200), height = ui.px(120), bg = {0, 0, 0, 1}})
 		if ui.column(flags = {.Draw_Background}, id = "###page") {
 			ui.next({fixed_x = 40, fixed_y = 30, width = ui.px(120), height = ui.px(60), bg = ui.color("background"), border = ui.color("border")})
