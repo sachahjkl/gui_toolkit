@@ -49,20 +49,24 @@ Path_Kind :: enum u8 {
 }
 
 // The whole file as it was at some moment, at most `max_size` bytes (false when it is larger, missing, unreadable, or
-// replaced each time it was read): the file is read between two stats that agree, so a larger one that took its place
-// between them does not come back cut to the old size.
+// changed in place each time it was read). It is read through one open file: its size and its bytes are of that one
+// file, whatever takes its name meanwhile (write_atomic's renames). Two stats of the name could not say so: a file
+// replaced and replaced again within one tick of the clock had the size and the time of the first (Windows), and the
+// start of the larger one between came back.
 read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = READ_ALL_MAX_BYTES) -> ([]byte, bool) {
 	for _ in 0 ..< READ_ALL_TRIES {
-		size, stamp, ok := stat(path)
-		if !ok || size < 0 || size > max_size { return nil, false }
-		buf := make([]byte, int(size), allocator)
-		n, rok := read_at(path, 0, buf)
-		size_after, stamp_after, still := stat(path)
-		if rok && n == len(buf) && still && size_after == size && stamp_after == stamp { return buf, true }
-		delete(buf, allocator)
+		buf, got := read_open(path, max_size, allocator)
+		switch got {
+		case .Whole:   return buf, true
+		case .Changed: continue   // (written in place while it was read: again)
+		case .No:      return nil, false
+		}
 	}
 	return nil, false
 }
+
+// What a read through one open file gave (read_open).
+@(private) Read_Got :: enum u8 { No, Whole, Changed }
 
 // Writes `data` to `path` through a temporary file next to it, renamed over it: a reader sees the old file or the new
 // one, and two writers each their own whole file (the last rename stays). The name is this thread's, so no other live

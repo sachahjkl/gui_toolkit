@@ -1,5 +1,6 @@
 package fsx
 
+import "base:runtime"
 import "core:strings"
 import win "core:sys/windows"
 
@@ -44,6 +45,33 @@ stat :: proc(path: string) -> (size: i64, stamp: i64, ok: bool) {
 	size = i64(data.nFileSizeHigh) << 32 | i64(data.nFileSizeLow)
 	stamp = i64(data.ftLastWriteTime.dwHighDateTime) << 32 | i64(data.ftLastWriteTime.dwLowDateTime)
 	return size, stamp, true
+}
+
+// The whole file through one handle (read_all): its size and its bytes of one file, whatever replaces its name meanwhile
+// (the handle shares delete: a rename over it goes through); .Changed when its size or its time moved while it was read.
+@(private)
+read_open :: proc(path: string, max_size: i64, allocator: runtime.Allocator) -> (buf: []byte, got: Read_Got) {
+	h := win.CreateFileW(wide(path), win.GENERIC_READ, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_ATTRIBUTE_NORMAL, nil)
+	if h == win.INVALID_HANDLE_VALUE { return nil, .No }
+	defer win.CloseHandle(h)
+	before, after: win.BY_HANDLE_FILE_INFORMATION
+	if !win.GetFileInformationByHandle(h, &before) || before.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY != 0 { return nil, .No }
+	size := i64(before.nFileSizeHigh) << 32 | i64(before.nFileSizeLow)
+	if size > max_size { return nil, .No }
+	buf = make([]byte, int(size), allocator)
+	n := 0
+	for n < len(buf) {
+		ov: win.OVERLAPPED
+		ov.Offset = win.DWORD(u64(n) & 0xFFFF_FFFF)
+		ov.OffsetHigh = win.DWORD(u64(n) >> 32)
+		r: win.DWORD
+		if !win.ReadFile(h, raw_data(buf[n:]), win.DWORD(min(len(buf) - n, IO_CHUNK_MAX_BYTES)), &r, &ov) || r == 0 { break }
+		n += int(r)
+	}
+	same := win.GetFileInformationByHandle(h, &after) && after.nFileSizeHigh == before.nFileSizeHigh && after.nFileSizeLow == before.nFileSizeLow && after.ftLastWriteTime == before.ftLastWriteTime
+	if n == len(buf) && same { return buf, .Whole }
+	delete(buf, allocator)
+	return nil, .Changed
 }
 
 read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {
