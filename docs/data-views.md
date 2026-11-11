@@ -199,3 +199,24 @@ ui.next({width = ui.fill()})
 ui.matched_label("###t", line, ranges)       // one line, cut with "…"; no ranges: a plain label
 ui.match_runs(text, ranges, style, &runs)    // the same as runs, for a rich_paragraph of several lines
 ```
+
+## Sections, tiles, stacked bars, title strips
+
+Pieces of a dense dashboard (`sections.odin`). `hue(.Cyan)` is a hue of the theme shown (`Hue`: accent, blue, purple,
+green, yellow, red, cyan, rose), for what a program colours by meaning.
+
+```odin
+ui.section_header("###mem", "Memory", "what the boot program left", "462 MiB", ui.hue(.Cyan))
+ui.stacked_bar("###time", {{20.6, ui.hue(.Yellow), "20.6 ms"}, {33.2, ui.hue(.Blue), "33.2 ms"}})
+if ui.flow({4, 4}) { for f, i in files { ui.tile(fmt.tprintf("###f%d", i), f, ui.hue(.Green)) } }
+if ui.title_strip("###boot", "Boot") { open = false }
+```
+
+| Procedure | What it is |
+|---|---|
+| `section_header(id, title, note, value, color)` | a stripe of the colour, the title in capitals and bold in it, a weak note, a large value at the right |
+| `tile(id, text, color, clickable)` | a tile of the colour over what is under it, its words light; as wide as they are |
+| `stacked_bar(id, parts)` | a well cut in `Bar_Part`s (share, colour, words), the words of each in it when they fit; full width, 1.9 lines |
+| `title_strip(id, title, closable)` | a title, white and bold, on the accent fading to the bar's colour; a red block closes (true) |
+
+In the machined and edged finishes a tile, a part and the strip are lit along their top and shaded along their bottom.

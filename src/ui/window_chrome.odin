@@ -76,9 +76,11 @@ Caption_Draw :: struct {
 
 // The caption buttons (minimize, maximize or restore, close) in the current row, as tall as it, at the system's width
 // and with its colours (the close button red under the pointer; dimmed glyphs while the window is inactive). Clicks
-// act on Build_Params.window; the button clicked is returned too (`ok` false: none).
+// act on Build_Params.window; the button clicked is returned too (`ok` false: none). Nothing when the window's title bar
+// is the system's (platform.set_integrated_title false): the system draws them there.
 window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 	s := gs()
+	if s.window != nil && !platform.is_integrated_title(s.window) { return }
 	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale   // the system's size: the UI zoom does not apply
 	w := math.round(CAPTION_BUTTON_WIDTH * dpi)
 	maxed := s.window != nil && platform.is_maximized(s.window)
@@ -126,7 +128,10 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	// the system's fills (WinUI: subtle fill secondary / tertiary), mixed in sRGB over the title bar as it does
 	glyph := d.dark ? draw.Color{1, 1, 1, 1} : draw.Color{0, 0, 0, 1}
 	bg: Color
-	if d.button == .Close && hot + press > CAPTION_DRAWN_EPS {
+	if d.button == .Close && edged() {   // (the edged finish: a red block, at rest too, as a console's window has)
+		close_block(dc, b.rect, hot, press)
+		glyph = {1, 1, 1, d.active || hot > CAPTION_STATE_EPS ? 1 : 0.75}
+	} else if d.button == .Close && hot + press > CAPTION_DRAWN_EPS {
 		red := draw.hex(CAPTION_CLOSE_HOT)
 		bg = srgb_mix(d.under, red, math.min(hot + press, 1) * (1 - CAPTION_CLOSE_PRESS_DIM * press))
 		glyph = draw.mix(glyph, draw.Color{1, 1, 1, 1}, math.min(hot + press, 1))
@@ -138,7 +143,7 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		if !d.active && hot < CAPTION_STATE_EPS { glyph.a = CAPTION_GLYPH_INACTIVE_ALPHA }
 		else if press > CAPTION_STATE_EPS { glyph.a = 1 - CAPTION_GLYPH_PRESS_DIM * press }
 	}
-	if hot + press > CAPTION_DRAWN_EPS { draw.rect(dc, b.rect, bg) }
+	if hot + press > CAPTION_DRAWN_EPS && !(d.button == .Close && edged()) { draw.rect(dc, b.rect, bg) }
 	glyph_size := math.round(CAPTION_GLYPH_SIZE * d.dpi)
 	c := draw.rect_center(b.rect)
 	if d.glyph_font != 0 {
