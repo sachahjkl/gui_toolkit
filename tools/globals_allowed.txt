@@ -5,6 +5,7 @@
 # or bound to a thread the note names). thread: @(thread_local). test: a test's. There is no class for one window's or one
 # app's state: it is a field of the struct that owns it (the Window, the render device or Renderer, ui.State).
 # Rewrite it from the code (keeping the classes known): odin test tests/globals -define:GLOBALS_WRITE=true
+changelog/changelog.odin TYPE_NAMES const  # Keep a Changelog's types, a table
 config/config_test.odin DEFS test
 config/search_test.odin SEARCH_DEFS test
 config/snapshot_test.odin SNAP_DEFS test

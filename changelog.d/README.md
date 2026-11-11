@@ -16,6 +16,9 @@ type: Added
   no blank line, no heading.
 - One change, one fragment. Two fragments may share a subject (the time keeps them apart).
 
+The package `src/changelog` reads and assembles them ([docs/changelog.md](../docs/changelog.md)); a program made with the
+toolkit keeps its own the same way, and `release.ship` assembles them.
+
 `odin run tools/changelog -- -new -type:Added -subject:thing "-text:**...**: ..."` writes one;
 `-Check` (CI) says whether they are all well formed and none was already released; `-Assemble` prints what the next
 version brings. `odin run tools/tk -- release <version>` assembles them into a `## [<version>]` section, writes the version and

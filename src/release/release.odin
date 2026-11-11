@@ -8,25 +8,27 @@
 //	                    $UPDATE_SIGNING_KEY (a release, with its tag, needs the key)
 //	notes <version>     the changelog's section of that version (a GitHub release's notes)
 //	ship <version> [--dry-run]
-//	                    from a clean master: the changelog's [Unreleased] becomes [<version>] with today's date, the
-//	                    sources' version becomes <version>, the project's checks, a commit, the tag v<version>, the push
+//	                    from a clean master: the fragments of changelog.d/ assembled into the changelog's section
+//	                    [<version>] with today's date, the sources' version becomes <version>, the project's checks, a
+//	                    commit, the tag v<version>, the push
 //
-// The changelog follows Keep a Changelog: `## [Unreleased]`, then `## [x.y.z] - yyyy-mm-dd` sections, the versions'
-// links at its end.
+// The changelog is made of fragments, one file per change in changelog.d/ beside CHANGELOG.md (gt:changelog,
+// docs/changelog.md); CHANGELOG.md follows Keep a Changelog: `## [x.y.z] - yyyy-mm-dd` sections, the versions' links at
+// its end. An [Unreleased] section written by hand is assembled with the fragments, then removed.
 package tk_release
 
 import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "core:time"
+import changelog "../changelog"
 import toolbox "../toolbox"
 import update "../update"
 
 Config :: struct {
 	name:         string,     // the program ("classeur"): the archive's name, the commit's and the tag's message
 	repository:   string,     // https://github.com/<owner>/<repo>: the versions' links
-	changelog:    string,     // "CHANGELOG.md"
+	changelog:    string,     // "CHANGELOG.md", its fragments in changelog.d/ beside it
 	version_file: string,     // the source that holds the version ("src/main.odin")
 	version_line: string,     // the start of its line ("APP_VERSION :: "), the version in quotes after it
 	program:      string,     // the release build ("build/classeur", "build/classeur.exe")
@@ -82,54 +84,24 @@ semver_newer :: proc(a, b: string) -> bool {
 	return false
 }
 
-// The changelog with its [Unreleased] section become [<version>] - <date>, a new empty [Unreleased] above it, and the
-// version's link at the end. ok = false when there is no [Unreleased] section or it says nothing.
-changelog_release :: proc(text, version, date, repository: string, allocator := context.temp_allocator) -> (out: string, ok: bool) {
-	HEAD :: "## [Unreleased]"
-	at := strings.index(text, HEAD)
-	if at < 0 { return }
-	body_start := at + len(HEAD)
-	next := strings.index(text[body_start:], "\n## [")
-	body_end := next < 0 ? len(text) : body_start + next
-	// (the links at the end are not part of the section)
-	if next < 0 { if links := strings.index(text[body_start:], "\n["); links >= 0 { body_end = body_start + links } }
-	if strings.trim_space(text[body_start:body_end]) == "" { return }
-	b := strings.builder_make(allocator)
-	strings.write_string(&b, text[:at])
-	fmt.sbprintf(&b, "%s\n\n## [%s] - %s", HEAD, version, date)
-	strings.write_string(&b, text[body_start:])
-	if !strings.has_suffix(strings.to_string(b), "\n") { strings.write_byte(&b, '\n') }
-	fmt.sbprintf(&b, "[%s]: %s/releases/tag/v%s\n", version, repository, version)
-	return strings.to_string(b), true
-}
-
-// The body of the changelog's section of `version` (its ### parts), "" when there is none.
-changelog_section :: proc(text, version: string) -> string {
-	head := fmt.tprintf("## [%s]", version)
-	at := strings.index(text, head)
-	if at < 0 { return "" }
-	start := at + len(head)
-	if nl := strings.index_byte(text[start:], '\n'); nl >= 0 { start += nl + 1 } else { return "" }
-	end := len(text)
-	if next := strings.index(text[start:], "\n## ["); next >= 0 { end = start + next }
-	if links := strings.index(text[start:end], "\n["); links >= 0 { end = start + links }
-	return strings.trim_space(text[start:end])
-}
-
 @(private = "file")
 read_text :: proc(path: string) -> (string, bool) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	return string(data), err == nil
 }
 
+// The folder of the changelog and its fragments, for gt:changelog.
+@(private = "file")
+changelog_options :: proc(c: Config) -> changelog.Options {
+	return {root = os.dir(c.changelog), link = fmt.tprintf("%s/releases/tag/v%%s", c.repository)}
+}
+
 // `notes <version>`: the changelog's section on the standard output.
 notes :: proc(c: Config, args: []string) -> int {
 	if len(args) != 1 { fmt.eprintfln("%s: notes <version>", c.name); return 2 }
-	text, ok := read_text(c.changelog)
-	if !ok { fmt.eprintfln("%s: %s cannot be read", c.name, c.changelog); return 1 }
-	section := changelog_section(text, strings.trim_prefix(args[0], "v"))
-	if section == "" { fmt.eprintfln("%s: %s has no section %s", c.name, c.changelog, args[0]); return 1 }
-	fmt.println(section)
+	section, ok := changelog.section(changelog_options(c).root, strings.trim_prefix(args[0], "v"))
+	if !ok { fmt.eprintfln("%s: %s has no section %s", c.name, c.changelog, args[0]); return 1 }
+	fmt.print(section)
 	return 0
 }
 
@@ -217,20 +189,29 @@ ship :: proc(c: Config, args: []string) -> int {
 		fmt.eprintfln("%s: the working tree is not clean", c.name)
 		return 1
 	}
-	changes, _ := read_text(c.changelog)
-	date := fmt.tprintf("%04d-%02d-%02d", time.date(time.now()))
-	new_changes, ok := changelog_release(changes, version, date, c.repository)
-	if !ok { fmt.eprintfln("%s: %s has nothing under [Unreleased]", c.name, c.changelog); return 1 }
+	o := changelog_options(c)
+	problems, fragments := changelog.check(o)
+	for p in problems { fmt.eprintfln("%s: %s", c.name, p) }
+	if len(problems) > 0 { return 1 }
+	section, _ := changelog.preview(o.root)
+	if section == "" { fmt.eprintfln("%s: nothing to release: no fragment in changelog.d/ (and nothing under [Unreleased] in %s)", c.name, c.changelog); return 1 }
 	new_source, sok := version_set(source, c.version_line, version)
 	if !sok { fmt.eprintfln("%s: %s has no %s line", c.name, c.version_file, c.version_line); return 1 }
 	if dry {
-		fmt.printfln("ship %s (dry run): the section it releases\n%s", version, changelog_section(new_changes, version))
+		fmt.printfln("ship %s (dry run): the section it releases\n%s", version, section)
 		return 0
 	}
-	if os.write_entire_file(c.changelog, new_changes) != nil || os.write_entire_file(c.version_file, new_source) != nil { return 1 }
+	_, errors := changelog.assemble(o, version)
+	for e in errors { fmt.eprintfln("%s: %s", c.name, e) }
+	if len(errors) > 0 { return 1 }
+	if os.write_entire_file(c.version_file, new_source) != nil { return 1 }
 	if c.check != nil && c.check() != 0 { fmt.eprintfln("%s: the checks failed: nothing is committed (git checkout . takes the changes back)", c.name); return 1 }
+	add := make([dynamic]string, context.temp_allocator)
+	append(&add, "git", "add", "-A", "--", c.changelog, c.version_file)
+	// (the fragments deleted: a project with only an [Unreleased] section may have no changelog.d/ to add)
+	if fragments > 0 { append(&add, fmt.tprintf("%s/changelog.d", o.root)) }
 	steps := [][]string{
-		{"git", "add", c.changelog, c.version_file},
+		add[:],
 		{"git", "commit", "-m", fmt.tprintf("%s %s", c.name, version)},
 		{"git", "tag", "-a", fmt.tprintf("v%s", version), "-m", fmt.tprintf("%s %s", c.name, version)},
 		{"git", "push", "origin", "master", fmt.tprintf("v%s", version)},

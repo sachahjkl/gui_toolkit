@@ -20,7 +20,12 @@ release.ship(CONFIG, args)       // <tool> ship <version> [--dry-run]
 |---|---|
 | `package_` | `<dist>/<name>-<version>-linux-x64.tar.gz` (stripped, mode 755, owner 0) or `<name>-<version>-windows-x64.zip`: the program and `files`, and `<archive>.sha256`. A version given (a tag, `v` or not) must be the sources'. |
 | `notes` | The changelog's section of a version on the standard output: a GitHub release's notes. |
-| `ship` | From a clean `master`: `[Unreleased]` becomes `[<version>] - <today>` with a new empty `[Unreleased]` above it and the version's link at the end, the sources' version set, `check` run, then a commit, the annotated tag `v<version>` and the push. `--dry-run` shows the section it would release. |
+| `ship` | From a clean `master`: the fragments checked (a malformed one stops it, and so does nothing to release), then assembled into `## [<version>] - <today>` with the version's link, the sources' version set, `check` run, then a commit (the changelog, `changelog.d/` and the version file), the annotated tag `v<version>` and the push. `--dry-run` shows the section it would release. |
+
+The changelog is made of fragments ([changelog.md](changelog.md)): a change adds its file to `changelog.d/`, beside
+`Config.changelog`, and never edits the changelog. `ship` assembles them: the version's section, its link
+(`<repository>/releases/tag/v<version>`), the fragments deleted. A changelog that still has an `## [Unreleased]` section
+written by hand gets its entries in the version too, after the fragments', and loses the section.
 
 A program that updates itself ([update.md](update.md)) gives its product in `Config.update`: `package_` then writes, beside
 the archive, the program alone (`expected_file_name`, stripped on Linux as in the archive), what an installed copy downloads,
@@ -28,8 +33,8 @@ and its manifest and `.sig` (`manifest_name`), signed by `$UPDATE_SIGNING_KEY` (
 version given) without the key is refused; a package without a version is not signed. The release workflow gives the key
 as a secret and uploads `<dist>/*`.
 
-The pure parts are there for a project's own steps: `version_of`, `version_set`, `semver`, `semver_newer`,
-`changelog_release`, `changelog_section`.
+The pure parts are there for a project's own steps: `version_of`, `version_set`, `semver`, `semver_newer`. The changelog's
+are in `gt:changelog` ([changelog.md](changelog.md)).
 
 A release workflow on a tag `v*` runs the project's checks, `package`, then `gh release create <tag> <dist>/* --notes-file`
 with `notes`' output (classeur's and papier's `.github/workflows/release.yml`).

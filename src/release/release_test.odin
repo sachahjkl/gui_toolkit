@@ -2,7 +2,6 @@ package tk_release
 
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "core:testing"
 import "../testkit"
 import toolbox "../toolbox"
@@ -32,20 +31,17 @@ versions_compare_as_numbers :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "two numbers")
 }
 
-// [Unreleased] becomes the version with its date, a new [Unreleased] above it, the version's link at the end; the notes
-// of the release are its section alone.
+// The notes of a release are its section of the changelog (gt:changelog reads it, beside Config.changelog); a version
+// without one is refused.
 @(test)
-the_changelog_is_released :: proc(t: ^testing.T) {
-	REPO :: "https://github.com/someone/something"
-	before := "# Changelog\n\n## [Unreleased]\n\n### Added\n- A thing.\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[0.1.0]: https://github.com/someone/something/releases/tag/v0.1.0\n"
-	after, ok := changelog_release(before, "0.2.0", "2026-11-09", REPO)
-	testing.expect(t, ok)
-	testing.expect_value(t, changelog_section(after, "0.2.0"), "### Added\n- A thing.")
-	testing.expect_value(t, changelog_section(after, "0.1.0"), "### Added\n- The first.")
-	testing.expect(t, strings.contains(after, "## [Unreleased]\n\n## [0.2.0] - 2026-11-09"), "a new [Unreleased] above the version")
-	testing.expect(t, strings.contains(after, "[0.2.0]: https://github.com/someone/something/releases/tag/v0.2.0\n"), "the version's link")
-	_, ok = changelog_release(after, "0.3.0", "2026-11-10", REPO)
-	testing.expect(t, !ok, "nothing under [Unreleased]: nothing to release")
+the_notes_are_the_section :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t)
+	path := fmt.tprintf("%s/CHANGELOG.md", dir)
+	text := "# Changelog\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[0.1.0]: https://github.com/someone/something/releases/tag/v0.1.0\n"
+	testing.expect(t, os.write_entire_file(path, text) == nil)
+	c := Config{name = "sample", repository = "https://github.com/someone/something", changelog = path}
+	testing.expect_value(t, notes(c, {"v0.1.0"}), 0)
+	testing.expect_value(t, notes(c, {"0.2.0"}), 1)
 }
 
 // A program that updates itself: package_ writes the program alone beside the archive and its manifest, signed with the

@@ -41,5 +41,5 @@
 `-no-push` stops after the tag, to look at the commit first. Semantic versioning: while the version is `0.x`, a minor
 bump may change the API.
 
-`tests/changelog` tests `tools/changelog` on a throwaway copy (malformed fragments, no fragment, two of
-one subject, an assembled one left behind, a release).
+`tests/changelog` tests `src/changelog` with the options of `tools/changelog` on a throwaway copy (malformed fragments, no fragment, two of
+one subject, an assembled one left behind, a release, a hand-written `[Unreleased]` section).
