@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.196.0] - 2026-11-11
+
+### Fixed
+- **A window the compositor does not show no longer freezes its program** (Wayland): a picture presented in Fifo waited for the compositor's word that it showed the last one, which a covered window never gets, so a program whose main window another of its windows covered whole stopped answering. A window now presents a picture only once the last one was shown (`platform.frame_shown_pending`, `frame_shown_ask`); while it waits it reads its input and draws nothing, and the word asks for the next picture.
+
 ## [0.195.1] - 2026-11-11
 
 ### Changed
@@ -2650,6 +2655,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.196.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.0
 [0.195.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.1
 [0.195.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.0
 [0.194.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.194.0
