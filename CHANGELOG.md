@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.190.1] - 2026-11-11
+
+### Fixed
+- **`release.notes` and `release.ship` find a changelog named `CHANGELOG.md` without a folder**: they looked for it at the root of the disk (0.190.0).
+
 ## [0.190.0] - 2026-11-11
 
 ### Added
@@ -2564,6 +2569,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.190.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.1
 [0.190.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.0
 [0.189.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.189.1
 [0.189.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.189.0
