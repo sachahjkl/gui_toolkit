@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.187.2] - 2026-11-11
+
+### Fixed
+- Linux: **a portal that answers "no preference" for the colour scheme no longer makes the system light**: the GTK settings (`gtk-application-prefer-dark-theme`, a dark `GTK_THEME` or theme name) decide then, as with no portal. A session whose portal has no backend for it answers 0; a program following the system showed its light version, and the machined finish flat.
+
 ## [0.187.1] - 2026-11-11
 
 ### Fixed
@@ -2536,6 +2541,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.187.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.2
 [0.187.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.1
 [0.187.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.0
 [0.186.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.186.0
