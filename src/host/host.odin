@@ -224,7 +224,11 @@ host_frame :: proc(h: ^Host, inner := false) {
 		render.surface_scope(&sh.r, &h.surface)
 		render.surface_remake(&sh.r, platform.native_surface_handles(h.win))
 	}
-	at_once := host_pace(h, inner)
+	// (the last picture not shown yet: the compositor does not show the window, covered or minimized. No picture in this
+	// frame: its swap chain's image is not even taken (a present in Fifo would wait for ever for that word, and an image
+	// taken and not presented would hold the next). Decided once, here: the word may come while the input is read)
+	shown := !platform.frame_shown_pending(h.win)
+	at_once := shown ? host_pace(h, inner) : false
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }
 	events := platform.poll_events(h.win, false)
@@ -232,7 +236,7 @@ host_frame :: proc(h: ^Host, inner := false) {
 	_ = platform.take_paint_request(h.win)
 	if platform.is_closed(h.win) { return }
 	ui.use(&h.state)   // (a frame of another window may have run in that call)
-	host_picture(h, events, at_once)
+	host_picture(h, events, at_once, shown)
 	if h.after_frame != nil { h.after_frame(h) }
 	if !inner && h.settle > 0 { h.settle -= 1 }
 	free_all(context.temp_allocator)
@@ -264,7 +268,8 @@ host_pace :: proc(h: ^Host, inner: bool) -> (at_once: bool) {
 }
 
 @(private = "file")
-host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
+// `shown`: the last picture was shown (else this frame reads and builds, and draws nothing).
+host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	sh := h.shared
 	r := &sh.r
 	render.surface_scope(r, &h.surface)
@@ -285,10 +290,9 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
 		ui.wake_within(&h.state, left)
 		return
 	}
-	// (the last picture not shown yet: the compositor does not show the window, covered or minimized. No picture now: a
-	// present in Fifo would wait for ever for it. The input was read and built; the word that it is shown asks for the
-	// next picture, drawn against the last one drawn)
-	if platform.frame_shown_pending(h.win) { return }
+	// (the input was read and built; the word that the last picture is shown asks for the next, drawn against the last one
+	// drawn)
+	if !shown { return }
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	render.frame_begin(r, h.background)
