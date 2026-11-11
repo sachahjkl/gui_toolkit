@@ -23,6 +23,7 @@ import "core:math"
 import "core:slice"
 import "core:strings"
 import "../draw"
+import lucide "../lucide"
 import "../platform"
 
 // The palette's size at first, in em, and the least it is made; where its top is, a share of the window's height; a line's
@@ -177,6 +178,20 @@ palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	machined_groove(dc, {r.min.x, y}, {r.max.x, y})
 }
 
+// The selected line: sunk in a well with a bar of the accent at its left, its text in the theme's own colour. A raised
+// face of the accent (a button's) put the text, and what the search found in it, on a colour too close to theirs.
+@(private = "file")
+palette_selected_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
+	s := gs()
+	p := px1()
+	r := b.rect
+	well := color_from_tags(s, b.tags_key, "well")
+	if machined() { machined_well(dc, r, 0, well) } else { draw.rect(dc, r, well) }
+	bar := math.round(2 * scale())
+	inset := math.round(r.max.y - r.min.y) * 0.25
+	draw.rect(dc, {{r.min.x + 2 * p, r.min.y + inset}, {r.min.x + 2 * p + bar, r.max.y - inset}}, color_from_tags(s, b.tags_key, "accent"), bar * 0.5)
+}
+
 // What a program adds to its palette (every field optional).
 Palette_Options :: struct {
 	recent:       []int,       // commands run last (their indices, the last first): a group of their own on top while nothing is typed
@@ -250,7 +265,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, radius = em * 0.8})
 		if row(.Center, {}, "###palette_top") {
 			parent_box().custom = palette_strip_draw
-			spacer(px(em * 0.4))
+			spacer(px(em * 0.8))
+			// (a magnifier before the field and the number of results after it, faint: what the strip is for, and what it
+			// found)
+			if tags("weak") {
+				next({width = px(em * 1.2), height = pct(1), font = lucide_icons(), font_size = em * 1.05, text_align = .Center, text_pad = 0})
+				build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###palette_search_icon", lucide.SEARCH))
+			}
 			next({width = fill(), height = pct(1), font_size = em * 1.05})
 			push_tags("bare")
 			res := line_edit("###palette_field", &p.field, "Type to search")
@@ -263,7 +284,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
 				if n > 0 && can(enabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
 			}
-			spacer(px(em * 0.4))
+			found := 0
+			for line in list { if line.index >= 0 { found += 1 } }
+			if tags("weak") {
+				next({width = text_size(), height = pct(1), font_size = em * 0.85, text_pad = em * 0.4})
+				label(fmt.tprintf("%d###palette_count", found))
+			}
+			spacer(px(em * 0.8))
 		}
 		spacer(px(em * 0.3))
 		next({width = fill(), height = fill()})
@@ -296,11 +323,11 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 				sel := k == p.sel
 				push_tags("menu_item")
 				if sel { push_tags("selected") }
-				next({width = fill(), height = px(row_h), axis = .X, cross = .Center, bg = color("background"), radius = em * 0.3})
+				next({width = fill(), height = px(row_h), axis = .X, cross = .Center})
 				flags := Box_Flags{.Clickable, .Draw_Hot_Effects}
-				if sel { flags += {.Draw_Background} }
 				if !on { flags += {.Disabled} }
 				rb := build_box(flags, fmt.tprintf("###palette_%d_%d", line.index, k))
+				if sel { rb.custom = palette_selected_draw }
 				a11y_default(rb, {role = .Menu_Item, name = text, selected = sel})
 				rs := signal(rb)
 				if rs.hovering && moved { p.sel = k }
