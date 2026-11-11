@@ -33,10 +33,36 @@ MACHINED_OVERFLOW_PX :: 6
 // Below this a state or a halo draws nothing.
 @(private = "file") VISIBLE :: 0.01
 
-// Whether the machined finish is the one drawn now.
+// Whether the machined reliefs are drawn now: the machined finish, or the edged one (the same reliefs, crisp).
 machined :: proc() -> bool {
 	s := gs()
-	return s != nil && s.theme != nil && s.theme.finish == .Machined
+	return s != nil && s.theme != nil && (s.theme.finish == .Machined || s.theme.finish == .Edged)
+}
+
+// Whether the edged finish is the one drawn now: no blurred shadow under a raised face nor inside a well; hairlines say
+// the relief (a lit one along a top, a dark one along a bottom, a dark one around).
+edged :: proc() -> bool {
+	s := gs()
+	return s != nil && s.theme != nil && s.theme.finish == .Edged
+}
+
+// The edged finish: a raised face's top and bottom toward white and black; its lit top line, its dark bottom line; a well's
+// dark lines under its opening's top edge (the first, then a fainter one), its lit lower lip.
+@(private = "file") EDGED_TOP_LIGHTEN   :: 0.08
+@(private = "file") EDGED_BOTTOM_DARKEN :: 0.10
+@(private = "file") EDGED_RIM_ALPHA     :: 0.24
+@(private = "file") EDGED_SHADE_ALPHA   :: 0.35
+@(private = "file") EDGED_WELL_TOP      :: 0.55
+@(private = "file") EDGED_WELL_TOP2     :: 0.22
+@(private = "file") EDGED_LIP_ALPHA     :: 0.08
+@(private = "file") EDGED_EDGE_ALPHA    :: 0.85
+
+// A hairline `p` thick along the top of `r` (inside it), and one along its bottom, kept off the rounded corners.
+@(private = "file")
+edged_lines :: proc(dc: ^draw.Context, r: Rect, radius, p: f32, top, bottom: Color) {
+	inset := max(p, radius * 0.6)
+	if top.a > 0 { draw.rect(dc, {{r.min.x + inset, r.min.y + p}, {r.max.x - inset, r.min.y + 2 * p}}, top) }
+	if bottom.a > 0 { draw.rect(dc, {{r.min.x + inset, r.max.y - 2 * p}, {r.max.x - inset, r.max.y - p}}, bottom) }
 }
 
 // One device pixel at least, rounded.
@@ -83,6 +109,21 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		return
 	}
 	face := lighten(face_color, 0.06 * hot)
+	if edged() {
+		// (filled shapes from the outside in, as the machined bevel: the dark hairline, then the face inside it, then its lines)
+		inner, ir := draw.rect_pad(r, -p), max(0, radius - p)
+		draw.rect(dc, r, {0, 0, 0, EDGED_EDGE_ALPHA}, radius)
+		if pressed < 0.5 {
+			if g := glow_of(); glow.a > 0 && hot > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 2.5 * s, with_alpha(glow, 0.2 * hot * g)) }
+			top, bot := lighten(face, EDGED_TOP_LIGHTEN), darken(face, EDGED_BOTTOM_DARKEN)
+			draw.rect_corners(dc, inner, {top, bot, top, bot}, radii4(ir))
+			edged_lines(dc, r, radius, p, {1, 1, 1, EDGED_RIM_ALPHA}, {0, 0, 0, EDGED_SHADE_ALPHA})
+		} else {   // pushed in: darker, the shade now along its top
+			draw.rect(dc, inner, darken(face, 0.18), ir)
+			edged_lines(dc, r, radius, p, {0, 0, 0, EDGED_WELL_TOP}, {})
+		}
+		return
+	}
 	// (filled shapes from the outside in, each over the antialiased edge of the one under it: the edge, then the face
 	// inside it. Strokes side by side left gaps in the curves at a small size, and their greys changed along them)
 	inner, ir := draw.rect_pad(r, -p), max(0, radius - p)
@@ -116,6 +157,16 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 		return
 	}
 	if g := glow_of(); focus > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 4 * s, with_alpha(accent, 0.12 * focus * g)) }
+	if edged() {
+		// (filled shapes from the outside in, as the machined well: the dark hairline (the accent's when focused), the
+		// surface inside it, then the dark lines under its top and the lit lip under it)
+		draw.rect(dc, r, draw.mix(Color{0, 0, 0, 0.9}, with_alpha(accent, 0.9), focus), radius)
+		draw.rect(dc, draw.rect_pad(r, -p), base, max(0, radius - p))
+		edged_lines(dc, r, radius, p, {0, 0, 0, EDGED_WELL_TOP}, {})
+		edged_lines(dc, draw.rect_shift(r, {0, p}), radius, p, {0, 0, 0, EDGED_WELL_TOP2}, {})
+		draw.rect(dc, {{r.min.x + radius * 0.6, r.max.y}, {r.max.x - radius * 0.6, r.max.y + p}}, {1, 1, 1, EDGED_LIP_ALPHA})
+		return
+	}
 	// (filled shapes from the outside in, each over the antialiased edge of the one under it: the lit rim of the opening,
 	// the dark edge, the surface. Three strokes side by side left gaps in the curves at a small size, their greys
 	// changing along them; and the surface stops inside the edge, so a lit colour spills nothing onto the rim)
@@ -159,7 +210,11 @@ machined_plate :: proc(dc: ^draw.Context, r: Rect, radius: f32, top, bottom: Col
 	if shadow > 0 { draw.box_shadow(dc, draw.rect_shift(r, {0, 2 * s}), rr, shadow * s, {0, 0, 0, 0.6}) }
 	if g := glow_of(); glow.a > 0 && g > 0 { draw.box_shadow(dc, r, rr, 6 * s, with_alpha(glow, glow.a * 0.5 * g)) }
 	draw.rect_corners(dc, r, {top, bottom, top, bottom}, rr)
-	if rim > 0 { draw.rect_corners(dc, draw.rect_pad(r, -p), {{1, 1, 1, rim}, {1, 1, 1, 0}, {1, 1, 1, rim}, {1, 1, 1, 0}}, radii4(max(0, radius - p)), p) }
+	if edged() {   // (a line along its top, of light at once, not a rim fading down its sides)
+		edged_lines(dc, r, radius, p, {1, 1, 1, max(rim, 0.10)}, {0, 0, 0, EDGED_SHADE_ALPHA * 0.6})
+	} else if rim > 0 {
+		draw.rect_corners(dc, draw.rect_pad(r, -p), {{1, 1, 1, rim}, {1, 1, 1, 0}, {1, 1, 1, rim}, {1, 1, 1, 0}}, radii4(max(0, radius - p)), p)
+	}
 	if border.a > 0 { draw.rect(dc, r, border, radius, p) }
 }
 
@@ -210,7 +265,7 @@ machined_pip :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color) {
 @(private)
 machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32, keyboard_focus: bool) -> (face, whole: bool) {
 	radius := radii[0]   // (a well or a bevel: one radius; a raised panel takes each corner's)
-	if s.theme == nil || s.theme.finish != .Machined { return }
+	if !machined() { return }
 	if .Groove in b.flags {
 		p := px1()
 		if r.max.x - r.min.x < r.max.y - r.min.y {
@@ -241,6 +296,10 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	}
 	// a raised panel (a bar, a key cap): its face, a lit rim along its top
 	draw.rect_corners(dc, r, colors4(b.bg), radii)
+	if edged() {
+		edged_lines(dc, r, radius, px1(), {1, 1, 1, 0.09}, {0, 0, 0, EDGED_SHADE_ALPHA * 0.6})
+		return true, false
+	}
 	draw.rect_corners(dc, draw.rect_pad(r, -px1()), {{1, 1, 1, 0.07}, {1, 1, 1, 0}, {1, 1, 1, 0.07}, {1, 1, 1, 0}}, radii_grown(radii, -px1()), px1())
 	return true, false   // (its edge is the theme's: draw_box draws it)
 }

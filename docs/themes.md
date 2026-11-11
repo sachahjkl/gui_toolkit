@@ -49,7 +49,7 @@ text on its accent (`accent_text`; 0 picks the darkest step or the brightest tex
 | `palette_of(name, light)` | a palette of `THEMES` by name: examples and tests |
 | `theme_wants_light(mode)` | whether a mode shows the light version now (`System`: `platform.dark_mode_preferred`) |
 | `theme_mode_of(name)`, `THEME_MODE_NAMES` | the modes by name: "system", "dark", "light" |
-| `finish_of(name)`, `FINISH_NAMES` | the finishes by name: "flat", "gradient", "glass", "machined" |
+| `finish_of(name)`, `FINISH_NAMES` | the finishes by name: "flat", "gradient", "glass", "machined", "edged" |
 
 The palette takes, from a version: `bg` = bg0, `bar` = bg1, `panel` = bg2, `panel2` = bg3, `border` = line,
 `well` = well, `weak` and `text`, `accent`, `good` = green, `warn` = yellow, `bad` = red.
@@ -85,8 +85,13 @@ light.accent = #b58900
 | `Gradient` | a shade: the face a few percent lighter at its top than at its bottom, a fine lit line along its top; the text as on the plain colour | plain | a line |
 | `Glass` | a glossy upper half, a white rim | plain | a line |
 | `Machined` | bevelled: a soft shadow, a lit rim, a dark edge, engraved text; pressed, it sinks. Panels (cards, dialogs, menus, tooltips) are plates: a shaded face, a lit rim, a shadow | a well: inner shadow, lit lip, a ring of the accent when focused. Check boxes, radios, switches, sliders and progress bars are wells, what is on a raised key or a lit face in them | a carved groove |
+| `Edged` | the machined reliefs drawn crisp, nothing blurred: a dark hairline around, a lit line along the top, a shade along the bottom; pressed, the shade along the top. Panels: a lit line along their top, a shadow | a well: a dark hairline around, dark lines under its top, a lit lip under it | a carved groove |
 
-The machined reliefs are made for the dark: on a light palette, `apply_palette` makes the finish `Flat`.
+The machined and edged reliefs are made for the dark: on a light palette, `apply_palette` makes the finish `Flat`.
+The theme `Console` (blue black, square tiles of colour) is made for `Edged`: it brings it whatever the program's finish.
+The edged finish has square corners whatever the rounding asked (`rounding(s)` is 0 there, and `rad(r)` with it). What
+is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot and knob, a lamp (`shape_rad(r)`: a
+radius the rounding setting scales and the edged finish leaves).
 `Theme.glow` (0..1) sets the strength of its halos: a focused well, a lamp.
 
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
@@ -95,8 +100,8 @@ well, as a bare field does); `.Plate` with an opaque background is a raised pane
 opaque background with a sheen is raised (bevelled when it is `.Clickable`). An accent fill a widget paints itself
 (`paint_rect`) is a lit face, as in `Gradient` but a little stronger.
 
-A program draws its own surfaces with the same primitives; outside the machined finish each one draws its flat form, so
-one call serves every finish:
+A program draws its own surfaces with the same primitives; in the edged finish each one draws its crisp form, outside
+these two its flat form, so one call serves every finish (`machined()`: the reliefs are drawn; `edged()`: crisp):
 
 | Procedure | What it draws |
 |---|---|
@@ -106,6 +111,7 @@ one call serves every finish:
 | `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers |
 | `machined_lamp(dc, c, d, color, lit, glow)` | a status lamp: a glass bead and its halo |
 | `machined_pip(dc, c, d, color)` | a small hole with a dab of colour: what is over |
+| `relief_face(dc, r, color, radius)` | a face of colour lit along its top, shaded along its bottom (a tile, a part of a bar) |
 
 What the machined finish draws reaches out of a box by up to `MACHINED_OVERFLOW_PX` logical pixels (a shadow, a halo,
 the lip of a well). A region redrawn on its own must hold that much around its boxes.

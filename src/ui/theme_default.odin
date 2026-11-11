@@ -29,6 +29,9 @@ entries := [?]Entry{
 	// generic names
 	{"background", .Bg, 1}, {"text", .Text, 1}, {"border", .Border, 1}, {"hover", .Hover, 1},
 	{"drop_shadow", .Black, 0.6}, {"selection", .Accent, 0.35}, {"selection text", .Text, 1}, {"cursor", .Text, 1}, {"focus border", .Accent, 1},
+	// the hues, for what a program colours by meaning (hue())
+	{"hue_accent", .Accent, 1}, {"hue_blue", .Blue, 1}, {"hue_purple", .Purple, 1}, {"hue_green", .Good, 1}, {"hue_yellow", .Warn, 1},
+	{"hue_red", .Bad, 1}, {"hue_cyan", .Cyan, 1}, {"hue_rose", .Rose, 1},
 	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
@@ -161,7 +164,7 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
 	}
 	// (the machined reliefs are made for the dark: a light palette is flat)
-	finish := p.finish == .Machined && !p.dark ? Finish.Flat : p.finish
+	finish := (p.finish == .Machined || p.finish == .Edged) && !p.dark ? Finish.Flat : p.finish
 	if t.finish != finish { t.finish = finish; changed = true }
 	if changed { t.serial += 1 }
 }

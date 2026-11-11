@@ -106,7 +106,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	draw.damage_span_begin(dc, u64(b.key))
 	defer draw.damage_span_end(dc)
 	r := b.rect
-	radius := .Fixed_Radius in b.flags ? b.radius : b.radius * s.rounding
+	radius := .Fixed_Radius in b.flags ? b.radius : b.radius * rounding(s)
 	radii := box_radii(radius, b.square_corners)
 	flags := b.flags
 	if b.transparency != 0 { draw.push_alpha(dc, 1 - b.transparency) }
@@ -370,7 +370,7 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 	px := max(1, math.round(s.scale))
 	switch finish {
 	case .Flat:
-	case .Machined:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
+	case .Machined, .Edged:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
 		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * k)
 	case .Gradient:
 		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * k)

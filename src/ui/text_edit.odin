@@ -330,9 +330,9 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		hot := d.bar_hot == which
 		shows := scrollbar_opacity(s, b)
 		if shows <= SCROLLBAR_HIDDEN_ALPHA { continue }
-		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows; draw.rect(dc, track, tuned(tc), w * 0.5 * s.rounding) }
+		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows; draw.rect(dc, track, tuned(tc), w * 0.5 * rounding(s)) }
 		c.a = (hot ? TEXT_EDIT_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA) * shows
-		draw.rect(dc, thumb, tuned(c), w * 0.5 * s.rounding)
+		draw.rect(dc, thumb, tuned(c), w * 0.5 * rounding(s))
 	}
 
 	// line numbers (not scrolled horizontally): one per paragraph, on its first visual line
