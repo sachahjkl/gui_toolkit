@@ -331,11 +331,21 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 		if ui.row(.Center, id = "###line") {
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###words") {
+				// (a search: its words lit in the title and the description)
+				query := ui.field_string(&p.query)
+				title := config.title_of(e.def)
 				ui.next({width = ui.fill(), height = ui.px(em * 1.5), font_size = math.round(em * 0.92), text_pad = 0})
-				ui.label(fmt.tprintf("%s###t", config.title_of(e.def)))
+				ui.matched_label("###t", title, ui.word_ranges(title, query))
 				if ui.tags("weak") {
+					note := note_of(e)
 					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###d", note_of(e)))
+					if ranges := ui.word_ranges(note, query); len(ranges) > 0 {
+						runs := make([dynamic]ui.Rich_Run, context.temp_allocator)
+						ui.match_runs(note, ranges, {}, &runs)
+						ui.rich_paragraph("###d", runs[:])
+					} else {
+						ui.paragraph(fmt.tprintf("%s###d", note))
+					}
 				}
 				ui.spacer(ui.px(em * 0.2))
 			}

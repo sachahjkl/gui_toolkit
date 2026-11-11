@@ -186,3 +186,16 @@ view.search_key = ui.line_edit("###search", &view.search, "Filter").box.key
 tooltip). A screen reader reads it as the segment's description.
 
 Tests: `tests/data_views` (the table, type to filter, a segment's tooltip).
+
+### What a search found
+
+A list filtered by what is typed lights the parts of each line that match: the theme's `match` colour on its `match_bg`.
+The palette, a menu that searches, and a settings page's search do it; a program's own list too:
+
+```odin
+ranges := ui.word_ranges(line, query)        // each word (or "phrase") of the query, every place it is, in any case
+_, ranges, _ = ui.fuzzy_words(query, line)   // or what a fuzzy search found
+ui.next({width = ui.fill()})
+ui.matched_label("###t", line, ranges)       // one line, cut with "…"; no ranges: a plain label
+ui.match_runs(text, ranges, style, &runs)    // the same as runs, for a rich_paragraph of several lines
+```

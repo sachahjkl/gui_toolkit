@@ -32,6 +32,7 @@ entries := [?]Entry{
 	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
+	{"match", .Accent, 1}, {"match_bg", .Accent, 0.18},   // what a search found in a line (match.odin)
 	// source code's classes (code.odin, tk_syntax): keywords, strings, comments, calls and directives, types and numbers
 	{"code_keyword", .Purple, 1}, {"code_string", .Good, 1}, {"code_comment", .Weak, 1}, {"code_func", .Blue, 1}, {"code_type", .Cyan, 1},
 	{"resize_grip shade", .Border, 1},   // the bevel in a dialog's or a floating panel's corner: toward the border, darker on a light theme, lighter on a dark one

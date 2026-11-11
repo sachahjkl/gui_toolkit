@@ -258,8 +258,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 						if !sel { pop_tags() }
 						spacer(px(em * 0.5))
 					}
-					next({width = fill(), height = pct(1), text_pad = 0})
-					label(fmt.tprintf("%s###t", text_shown(text)))
+					// (what the search found in the label lit; its tags, which the line does not show, light nothing)
+					ranges: []Fuzzy_Range
+					if query != "" {
+						if _, r, ok := fuzzy_words(query, c.label); ok { ranges = r } else { ranges = word_ranges(c.label, query) }
+					}
+					next({width = fill(), text_pad = 0})
+					matched_label("###t", text, ranges)
 					if keys := command_shortcut(c); keys != "" {
 						if tags("weak") {
 							next({width = text_size(), height = pct(1), text_pad = 0, font_size = em * 0.9})

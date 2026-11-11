@@ -633,8 +633,15 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 				} else {
 					build_box({}, "###nochk")
 				}
-				next({width = fill(), height = pct(1)})
-				build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label))
+				// (a menu that searches: what was typed lit in the label)
+				if q := menu_query(lv); q != "" {
+					_, ranges, _ := fuzzy_score(q, label)
+					next({width = fill()})
+					matched_label("###lbl", label, ranges)
+				} else {
+					next({width = fill(), height = pct(1)})
+					build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label))
+				}
 				if shortcut != "" {
 					if tags("weak") {
 						next({width = text_size(em * 0.5), height = pct(1)})

@@ -280,3 +280,13 @@ slice_has :: proc(xs: []string, x: string) -> bool {
 	for y in xs { if y == x { return true } }
 	return false
 }
+
+// A search lights its words in the titles and the descriptions: the description is drawn as runs then.
+@(test)
+a_search_lights_its_words :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "cache")
+	session.frames(s, 2)
+	testing.expect(t, session.find(s, "d") != nil, "its runs")
+}

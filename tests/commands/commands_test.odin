@@ -3,6 +3,7 @@
 //   odin run tools/run_tests -- commands   (on Linux it needs the native text backend: tools/tk build_text)
 package commands_test
 
+import "core:slice"
 import "core:testing"
 import "../../src/font"
 import lucide "../../src/lucide"
@@ -259,4 +260,14 @@ the_widgets_marks_are_the_toolkits :: proc(t: ^testing.T) {
 		testing.expect(t, b.font == marks, "the check is drawn in the toolkit's icon font")
 	}
 	testing.expect(t, found, "the checked item has its mark")
+}
+
+// Each word of a query where it is, in any case, every place, merged where they touch; a phrase as one.
+@(test)
+the_words_of_a_query_in_a_line :: proc(t: ^testing.T) {
+	testing.expect(t, slice.equal(ui.word_ranges("Keep a Cache of the cached", "cache"), []ui.Fuzzy_Range{{7, 12}, {20, 25}}))
+	testing.expect(t, slice.equal(ui.word_ranges("Max body size", "body max"), []ui.Fuzzy_Range{{0, 3}, {4, 8}}))
+	testing.expect(t, slice.equal(ui.word_ranges("ab", "a b"), []ui.Fuzzy_Range{{0, 2}}), "touching: one")
+	testing.expect(t, slice.equal(ui.word_ranges("Session 12 and Session 2", `"session 2"`), []ui.Fuzzy_Range{{15, 24}}), "a phrase")
+	testing.expect_value(t, len(ui.word_ranges("text", "")), 0)
 }
