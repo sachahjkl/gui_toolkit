@@ -105,8 +105,9 @@
     formatter.${system} = pkgs.alejandra;
 
     devShells.${system}.default = pkgs.mkShell {
-      # (dbus: dbus-daemon, the notifications' tests start a session bus of their own)
-      packages = [odin] ++ (with pkgs; [cargo rustc dbus]) ++ desktops ++ preCommitCheck.enabledPackages;
+      # (dbus: dbus-daemon, the notifications' tests start a session bus of their own; curl: the shell's own, a system's curl
+      # loads the shell's glibc through LD_LIBRARY_PATH and stops)
+      packages = [odin] ++ (with pkgs; [cargo rustc dbus curl]) ++ desktops ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       # (nix develop clears LD_LIBRARY_PATH when it is an attribute)
       shellHook =

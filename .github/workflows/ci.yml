@@ -182,6 +182,32 @@ jobs:
             build/mermaid
           key: native-linux-nix-${{ hashFiles('native/text/**', 'native/mermaid/**', 'flake.lock') }}
 
+      # (the shell's dbus reads its session bus's configuration where NixOS keeps it, /etc/dbus-1, which this runner does not
+      # have: a session bus of its own for sway's dbus-run-session)
+      - name: dbus's session configuration
+        run: |
+          sudo mkdir -p /etc/dbus-1
+          sudo tee /etc/dbus-1/session.conf >/dev/null <<'EOF'
+          <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+           "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+          <busconfig>
+            <type>session</type>
+            <listen>unix:tmpdir=/tmp</listen>
+            <auth>EXTERNAL</auth>
+            <policy context="default">
+              <allow send_destination="*" eavesdrop="true"/>
+              <allow eavesdrop="true"/>
+              <allow own="*"/>
+            </policy>
+          </busconfig>
+          EOF
+
+      # (Vulkan's drivers are in /run/opengl-driver on NixOS: here, Mesa's software one from the flake's nixpkgs)
+      - name: lavapipe
+        run: |
+          mesa="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#mesa | head -1)"
+          echo "VK_DRIVER_FILES=$(find "$mesa" -name 'lvp_icd*.json' | head -1)" >> "$GITHUB_ENV"
+
       - name: Check, examples, tests (tk ci), the virtual desktop (tk desktop_tests)
         run: |
           export FONTCONFIG_FILE="$(nix build --no-link --print-out-paths .#test-fonts)"
