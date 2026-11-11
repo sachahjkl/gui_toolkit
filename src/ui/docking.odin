@@ -42,7 +42,7 @@ DOCK_MIN_EM :: PANE_MIN_EM   // the least a side of a split keeps (em)
 DOCK_GRIP_EM :: 1.1          // a floating panel's resize grip (em, square)
 DOCK_GRIP_DOTS :: 3          // the grip's rows of dots
 DOCK_GRIP_DOT_PITCH_PX :: 3  // between them (logical px)
-RESIZE_GRIP_BEVEL_PAST_PX :: 5   // the grip's bevel reaches this far past its box, up and left (logical px)
+RESIZE_GRIP_BEVEL_PAST_PX :: 5   // the grip's bevel reaches this far past the corner's size, up and left: its box with it (logical px)
 DOCK_MENU_WIDTH_EM :: 15
 DOCK_INSERT_PX :: 2          // the line where a dragged tab goes in a strip (logical px)
 DOCK_PREVIEW_BORDER_PX :: 2  // the preview's outline (logical px)
@@ -650,7 +650,7 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 		end.square_corners = frame.square_corners
 		end.custom = dock_float_unclip
 	}
-	g := math.round(DOCK_GRIP_EM * em)
+	g := math.round(DOCK_GRIP_EM * em) + RESIZE_GRIP_BEVEL_PAST_PX * scale()   // (the bevel's square: resize_grip_draw)
 	next({fixed_x = r.max.x - g, fixed_y = r.max.y - g, width = px(g), height = px(g), cursor = platform.Cursor.Resize_NWSE})
 	gb := build_box({.Clickable}, dock_grip_id(root))
 	resize_grip_paint(gb, signal(gb))
@@ -684,9 +684,11 @@ resize_grip_paint :: proc(b: ^Box, sig: Signal) {
 resize_grip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	gd := (^Resize_Grip_Draw)(user)
 	s := max(math.round(scale()), 1)
-	// inside the surface's border (its parent draws it after this), as far up and left as the grip goes
+	// inside the surface's border (its parent draws it after this), as far up and left as the grip's box goes: the box is the
+	// bevel's square, so that all of what is drawn takes the press, with its cursor (a bevel past its box gave the edges'
+	// cursors on its upper part)
 	r := Rect{b.rect.min, b.rect.max - s}
-	g := r.max.x - r.min.x + RESIZE_GRIP_BEVEL_PAST_PX * s   // (past the grip's box: the dots well inside the bevel)
+	g := r.max.x - r.min.x
 	// the bevel: a band as wide as the corner, one edge along the cut, clipped to the corner (an antialiased cut at 45°)
 	h := g * math.SQRT_TWO * 0.5          // half the band's width
 	n := Vec2{1, 1} / math.SQRT_TWO        // across the cut, toward the corner

@@ -1,16 +1,18 @@
-package scenarios_test
+package resize_grip_test
 
 // A resize grip in a dialog's corner: the corner stays square, a bevel toward the border colour is cut across it (darker on a light
 // theme, lighter on a dark one), and the other corners are round.
 
+import "core:math"
 import "core:testing"
+import "../../src/platform"
 import "../../src/testkit/session"
 import "../../src/ui"
 
 @(private = "file") GRIP_WINDOW :: [2]int{400, 300}
 
 @(private = "file")
-Grip_Dialog :: struct { size: ui.Vec2, open: bool, panel: ui.Rect }
+Grip_Dialog :: struct { size: ui.Vec2, open: bool, panel: ui.Rect, em: f32 }
 
 @(private = "file")
 grip_dialog :: proc(t: ^testing.T, light: bool) {
@@ -77,4 +79,24 @@ a_dialog_held_at_the_top_grows_downward :: proc(t: ^testing.T) {
 	testing.expect_value(t, d.panel.min.y, before.min.y)
 	testing.expect_value(t, d.panel.max.y - d.panel.min.y, before.max.y - before.min.y + 40)
 	testing.expect_value(t, d.panel.max.x - d.panel.min.x, before.max.x - before.min.x)
+}
+
+// All of the grip's bevel is the corner: the pointer on its upper part, past the corner's size, has the corner's cursor, not
+// the bottom edge's.
+@(test)
+the_whole_bevel_has_the_corner_cursor :: proc(t: ^testing.T) {
+	d := Grip_Dialog{open = true}
+	s := session.start(t, {size = GRIP_WINDOW, user = &d, build = proc(s: ^session.Session) {
+		d := (^Grip_Dialog)(s.user)
+		if ui.modal_sized("grip", {200, 150}, &d.size, &d.open) {
+			d.panel = ui.parent_box().rect
+			d.em = ui.font_size()
+			ui.label("Hello")
+		}
+	}})
+	session.frames(s, 2)
+	// on the bevel near the bottom edge, past the corner's own size (0.9 em) by 3 of its 5 px
+	session.move(s, {d.panel.max.x - math.round(d.em * 0.9) - 3, d.panel.max.y - 2})
+	session.frames(s, 2)
+	testing.expect_value(t, session.cursor(s), platform.Cursor.Resize_SE)
 }

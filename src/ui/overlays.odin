@@ -408,6 +408,7 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 		if m.top && g.dir.y < 0 { continue }   // (its top stays: nothing to hold there)
 		corner := g.dir.x != 0 && g.dir.y != 0
 		t := corner ? c : e
+		if g.dir == {1, 1} { t = c + RESIZE_GRIP_BEVEL_PAST_PX * sc }   // (the grip's bevel: all of it takes the press, with its cursor)
 		gw := g.dir.x != 0 ? t : w - 2 * c
 		gh := g.dir.y != 0 ? t : h - 2 * c
 		gx := g.dir.x < 0 ? 0 : g.dir.x > 0 ? w - gw : c
