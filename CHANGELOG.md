@@ -5,6 +5,18 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.187.0] - 2026-11-11
+
+### Added
+- **A title bar in the finish shown**: `caption_face(dc, r, top, bottom)` paints a title bar's face: in the edged finish the accent fading out from the left with its hairlines (the console's window), in the machined one a shaded face, flat one colour. `caption_ink(c)` is the colour words take on it. In the edged finish the window's close button is a red block, at rest too.
+- **The system's title bar, by choice**: `platform.system_title_available(w)` says whether the system can draw a window's title bar (Windows, X11, a Wayland compositor with server-side decorations such as KDE; not GNOME). A program offers it as a preference and switches with `set_integrated_title` at any time; `ui.window_buttons` draws nothing while the title bar is the system's. The test sessions take `integrated_title`.
+- **The edged finish and the Console theme**: `Finish.Edged` draws the machined reliefs crisp, nothing blurred: a dark hairline around a face, a lit line along its top, a shade along its bottom; a well with dark lines under its top and a lit lip; a panel (a dialog, a menu) outlined all around in its border's colour, lit; square corners, except what is round by its shape (a radio, a switch, a slider's knob: `shape_rad`). `Console` (blue black, the hues of a console) is made for it. With them, pieces of a dense dashboard: `section_header` (a stripe, a title in capitals in its hue, a note, a value), `tile` (a tile of colour with its words), `stacked_bar` (a bar cut in parts with their words), `title_strip` (a title on the accent fading out, a red block that closes), `hue(.Cyan)` (the hues of the theme shown) and `relief_face`.
+
+### Fixed
+- **A renderer that ends waits for the GPU**: `render.destroy` lets the GPU finish what it was given first (Direct3D 11: an event query; WebGPU: a poll that waits). An offscreen frame is only flushed, and a renderer released while WARP still drew it could end the process.
+- **A widget's bold is the family's own** (a toast's title, a section's name, segmented in words): `ui.styled_face(face, bold, italic)` (`styled_face_of(state, ...)` outside a build) gives the face the program declared for that family, else the system's family, else a simulated one. The widgets asked `font.styled_face`, which simulated the bold of an embedded face: its strokes thickened by an algorithm, the bar of an e lost its join at small sizes. `rich_set_faces` is now `set_family` (it serves every widget, not rich text alone), and `State.rich_faces` is `families`.
+- **`fsx.read_all` never gives the start of a larger file**: it read between two stats of the name that agreed, and on Windows a file replaced twice within one tick of the clock had the size and the time of the first, so the first part of the larger one between came back. It reads through one open file now (its size and its bytes of that file, whatever takes its name meanwhile). The test's writer gives every file one time, so it fails on every system without the fix.
+
 ## [0.186.0] - 2026-11-11
 
 ### Added
@@ -2519,6 +2531,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.187.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.0
 [0.186.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.186.0
 [0.185.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.185.0
 [0.184.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.184.0
