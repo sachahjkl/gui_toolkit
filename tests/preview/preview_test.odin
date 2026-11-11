@@ -67,6 +67,7 @@ the_buttons_and_keys :: proc(t: ^testing.T) {
 	r: Run
 	s := start(t, &r)
 	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "50 %") != nil, "the bar says the zoom")
 	session.click(s, "preview_native")
 	session.frame(s)
 	testing.expect_value(t, r.res.percent, f32(100))

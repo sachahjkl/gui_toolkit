@@ -186,9 +186,11 @@ preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: P
 		if parent(bar) {
 			spacer(px(em * 0.4))
 			if tags("weak") {
-				next({width = fill(), height = pct(1), font_size = em * 0.85, text_align = .Center})
+				// (its own width: a fill beside the buttons' text sizes had none left)
+				next({width = text_size(em * 0.2), height = pct(1), font_size = em * 0.85})
 				label(fmt.tprintf("%.0f %%###preview_zoom", fit * zoom * 100))
 			}
+			spacer(fill())
 			items := [?]struct { id, text: string, which: Preview_Button }{
 				{"###preview_out", "−", .Out}, {"###preview_in", "+", .In}, {"###preview_native", "1:1", .Native}, {"###preview_fit", "Fit", .Fit},
 			}
