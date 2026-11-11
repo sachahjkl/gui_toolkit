@@ -159,9 +159,9 @@ Command_Palette :: struct {
 	chosen_mods: platform.Modifiers,
 }
 
-// The field's strip: a field's darker background, its top corners the dialog's. A raised dialog (machined, edged) has a
-// lit rim just inside its border: the strip begins inside it, or the dialog's edge was lost along the strip's top and sides
-// and showed only at its corners.
+// The field's strip: a field's darker background, its top corners the dialog's, a line under it. A raised dialog
+// (machined, edged) has a lit rim just inside its border: the strip begins inside it, or the dialog's edge was lost along
+// the strip's top and sides and showed only at its corners.
 @(private = "file")
 palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	r := b.rect
@@ -172,6 +172,9 @@ palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	radius := max(0, b.radius - (r.min.y - b.rect.min.y))
 	well := color_from_tags(gs(), b.tags_key, "well")
 	draw.rect_corners(dc, r, {well, well, well, well}, {radius, 0, radius, 0})
+	// the line that parts the field from the results: carved (machined, edged), the border's colour (flat)
+	y := b.rect.max.y - (machined() ? 2 : 1) * px1()
+	machined_groove(dc, {r.min.x, y}, {r.max.x, y})
 }
 
 // What a program adds to its palette (every field optional).
@@ -245,7 +248,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's, but the
 		// darker background of a field, so that it reads as the place to type: palette_strip_draw)
 		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, radius = em * 0.8})
-		if row(.Center, {.Draw_Side_Bottom}, "###palette_top") {
+		if row(.Center, {}, "###palette_top") {
 			parent_box().custom = palette_strip_draw
 			spacer(px(em * 0.4))
 			next({width = fill(), height = pct(1), font_size = em * 1.05})
