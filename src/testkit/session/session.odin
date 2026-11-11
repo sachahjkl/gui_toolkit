@@ -204,7 +204,7 @@ session_new :: proc(t: ^testing.T, loc: runtime.Source_Code_Location) -> ^Sessio
 	s := new(Session)
 	s.t = t
 	s.test = context
-	s.name = strings.clone(loc.procedure)
+	s.name = strings.clone(test_name(loc.procedure))
 	s.out = strings.clone(fmt.tprintf("%s/build/%s/%s", repo_root(), OUT_DIR, s.name))
 	s.thread = me
 	s.clock = CLOCK_START_MS
@@ -437,3 +437,13 @@ set_clipboard :: proc(s: ^Session, text: string) { platform.set_clipboard(s.win,
 
 // The cursor the window asks for now.
 cursor :: proc(s: ^Session) -> platform.Cursor { return s.win.cursor }
+
+// The test's name from the procedure that attached it: a body run by unwatched.run is an anonymous procedure named
+// "pkg::test_name$anon-pkg:file.odin:123", whose folder under build/session had that whole name; its test's is kept.
+@(private = "package")
+test_name :: proc(procedure: string) -> string {
+	name := procedure
+	if i := strings.index(name, "$anon"); i >= 0 { name = name[:i] }
+	if i := strings.last_index(name, "::"); i >= 0 { name = name[i + 2:] }
+	return name != "" ? name : procedure
+}
