@@ -285,6 +285,10 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
 		ui.wake_within(&h.state, left)
 		return
 	}
+	// (the last picture not shown yet: the compositor does not show the window, covered or minimized. No picture now: a
+	// present in Fifo would wait for ever for it. The input was read and built; the word that it is shown asks for the
+	// next picture, drawn against the last one drawn)
+	if platform.frame_shown_pending(h.win) { return }
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	render.frame_begin(r, h.background)
@@ -292,6 +296,7 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once: bool) {
 	ui.draw_tree(&h.state, &sh.dc)
 	draw.end_frame(&sh.dc)
 	t_present := time.tick_now()
+	platform.frame_shown_ask(h.win)   // (with the picture's commit)
 	render.frame_end(r, h.paced && !at_once)
 	if h.paced { render.paced_present(&h.pacer) }
 	h.times = {draw = time.tick_diff(t_draw, t_present), present = time.tick_since(t_present)}
@@ -319,7 +324,10 @@ hosts_frame :: proc(hosts: []^Host, inner := false) {
 hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
 	for h in hosts {
 		if platform.is_closed(h.win) { continue }
-		if h.settle > 0 || ui.needs_frame(&h.state) || platform.events_waiting(h.win) { return true, 0 }
+		if platform.events_waiting(h.win) { return true, 0 }
+		// (its last picture not shown yet: what moves or settles waits for the compositor's word, which wakes the loop)
+		if platform.frame_shown_pending(h.win) { continue }
+		if h.settle > 0 || ui.needs_frame(&h.state) { return true, 0 }
 		if w := ui.wake_in_ms(&h.state); w > 0 && (wake_ms == 0 || w < wake_ms) { wake_ms = w }
 	}
 	return

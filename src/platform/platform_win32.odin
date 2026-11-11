@@ -625,6 +625,10 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 // before it sleeps (wait_event looks at the one it is given, and at the thread's queue).
 events_waiting :: proc(w: ^Window) -> bool { return len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested }
 
+// Wayland's word that a picture was shown (platform_linux.odin): Windows' presents do not wait for a window it does not show.
+frame_shown_pending :: proc(w: ^Window) -> bool { return false }
+frame_shown_ask :: proc(w: ^Window) {}
+
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) {
 	if w.offscreen { if w.off_event != nil { win.SetEvent(w.off_event) }; return }

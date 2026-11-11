@@ -577,6 +577,21 @@ poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) -> (r: Poll_Sour
 // Whether the window has something for its next poll_events, without waiting or taking anything (as on Win32).
 events_waiting :: proc(w: ^Window) -> bool { return wait_is_over(w) }
 
+// Whether the compositor has not yet shown the window's last picture: Wayland's word (wl_surface.frame) asked by
+// frame_shown_ask has not come. A compositor does not show a window that is covered, minimized or on another workspace,
+// and a present in Fifo waits for that word: the window's thread would wait for ever. The picture's owner makes none
+// while it is pending (host does); the word, when it comes, asks for a repaint. False on X11 and for an offscreen window.
+frame_shown_pending :: proc(w: ^Window) -> bool {
+	if w == nil || w.offscreen || w.backend != .Wayland { return false }
+	return wl_frame_shown_pending(w)
+}
+
+// Asks for the compositor's word that it shows the window's next picture: just before it is presented. Wayland only.
+frame_shown_ask :: proc(w: ^Window) {
+	if w == nil || w.offscreen || w.backend != .Wayland { return }
+	wl_frame_shown_ask(w)
+}
+
 // Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.
 @(private)
 wait_is_over :: proc(w: ^Window) -> bool {

@@ -125,6 +125,11 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **Window position.** X11 and Windows report and set the outer rectangle. **Wayland does not let a client know or set
   its absolute position** (the compositor places windows): `client_origin` is `{0,0}`, `move_window` is a no-op. Save
   and restore the **size** and the **maximized** state (both work everywhere), not the position, on Wayland.
+- **A window not shown.** Wayland's compositor tells when it shows a window's picture (`wl_surface.frame`), and a present
+  in Fifo waits for that word about the last one: a window it does not show (covered whole, minimized, on another
+  workspace) never gets it. `frame_shown_ask(w)`, just before a picture is presented, asks for it; `frame_shown_pending(w)`
+  says it has not come. `host` presents no picture while it is pending (the input is still read and built), and the word
+  asks for a repaint. False and nothing elsewhere.
 - **Decorations.** Windows and KDE (zxdg-decoration) draw a server title bar; **GNOME draws none** — set an integrated
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
   frame as Windows). X11 asks the window manager for no decorations through Motif hints when integrated.

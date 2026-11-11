@@ -124,6 +124,7 @@ Wl_Window_State :: struct {
 	minimize_wanted: bool,         // minimized, asked while there was no role: the next show asks it once its role is configured
 	scale_given: bool,             // a preferred_scale came: until then the scale follows the output's integer one
 	win:         ^Window,          // back pointer for the listeners
+	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
 }
 
 @(private)
@@ -784,7 +785,40 @@ wl_surface_destroy :: proc(st: ^Wl_Window_State) {
 	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
 	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
-	st.fractional, st.viewport, st.surface = nil, nil, nil
+	if st.frame_cb != nil { wl.proxy_destroy(st.frame_cb) }
+	st.fractional, st.viewport, st.surface, st.frame_cb = nil, nil, nil, nil
+}
+
+// The compositor's word that it shows a window's picture: wl_surface.frame, asked with the picture (wl_frame_shown_ask),
+// done when the compositor draws it. A window it does not show (covered by another, minimized, on another workspace)
+// gets no word until it shows it again.
+@(private) Wl_Callback_Listener :: struct { done: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) }
+@(private) frame_shown_listener := Wl_Callback_Listener{wl_frame_shown_done}
+
+@(private)
+wl_frame_shown_done :: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) {
+	context = wl_ctx_real()
+	st := (^Wl_Window_State)(data)
+	wl.proxy_destroy(cb)
+	if st.frame_cb != cb { return }
+	st.frame_cb = nil
+	// (the window's next picture, which waited for this: a repaint wakes the loop)
+	if st.win != nil { st.win.paint_requested = true }
+}
+
+// Asks the word for the window's next commit: call it just before the picture is presented (the present commits it).
+@(private)
+wl_frame_shown_ask :: proc(w: ^Window) {
+	st := wl_state(w)
+	if st == nil || st.surface == nil || st.frame_cb != nil { return }
+	st.frame_cb = wl.proxy_marshal_flags(st.surface, WL_SURFACE_FRAME, wl.callback_interface, wl.proxy_get_version(st.surface), 0, nil)
+	if st.frame_cb != nil { wl.proxy_add_listener(st.frame_cb, &frame_shown_listener, st) }
+}
+
+@(private)
+wl_frame_shown_pending :: proc(w: ^Window) -> bool {
+	st := wl_state(w)
+	return st != nil && st.frame_cb != nil
 }
 
 // The toplevel role of the surface: its xdg_surface and xdg_toplevel, the title, the app id, the decoration.
