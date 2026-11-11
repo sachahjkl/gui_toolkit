@@ -69,6 +69,10 @@ rgba8_of :: proc(img: ^image.Image, allocator := context.allocator) -> (rgba: []
 	ch := img.channels
 	if len(img.pixels) < n * ch * img.depth / 8 { return }
 	rgba = make([]u8, n * RGBA, allocator)
+	if ch == RGBA && img.depth == 8 {   // (what it is already)
+		copy(rgba, img.pixels[:n * RGBA])
+		return rgba, img.width, img.height, true
+	}
 	for i in 0 ..< n {
 		s: [4]u8
 		for c in 0 ..< ch {

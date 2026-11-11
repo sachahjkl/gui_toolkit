@@ -98,12 +98,20 @@ deflate :: proc(format: Format, data: []u8, allocator := context.allocator) -> [
 Huffman :: struct {
 	count:  [MAX_CODE_BITS + 1]u16,
 	symbol: [LIT_SYMBOLS]u16,
+	// By the next FAST_BITS bits of the input: the symbol whose code they start with (<< FAST_LENGTH_BITS) and that code's
+	// length; 0 when the code is longer (decode then reads it bit by bit).
+	fast:   [1 << FAST_BITS]u16,
 }
+
+// The codes decoded in one step: most of a block's symbols have a code no longer.
+@(private) FAST_BITS :: 9
+@(private) FAST_LENGTH_BITS :: 4   // room for a length up to FAST_BITS
 
 // < 0: an over-subscribed set of lengths; > 0: an incomplete one (allowed for a single code only)
 @(private)
 huffman_build :: proc "contextless" (h: ^Huffman, lengths: []u8) -> (left: int) {
 	h.count = {}
+	h.fast = {}
 	for l in lengths { h.count[l] += 1 }
 	if int(h.count[0]) == len(lengths) { return 0 }
 	left = 1
@@ -114,8 +122,23 @@ huffman_build :: proc "contextless" (h: ^Huffman, lengths: []u8) -> (left: int) 
 	}
 	offs: [MAX_CODE_BITS + 1]u16
 	for i in 1 ..< MAX_CODE_BITS { offs[i + 1] = offs[i] + h.count[i] }
+	// the canonical codes (RFC 1951 §3.2.2), for the table: a code comes first bit first in the input, so its bits reversed
+	// are the low bits of what is read, under every value of the bits that follow it
+	next: [MAX_CODE_BITS + 1]u16
+	code: u16
+	for i in 1 ..< MAX_CODE_BITS + 1 {
+		code = (code + (i > 1 ? h.count[i - 1] : 0)) << 1
+		next[i] = code
+	}
 	for l, sym in lengths {
-		if l != 0 { h.symbol[offs[l]] = u16(sym); offs[l] += 1 }
+		if l == 0 { continue }
+		h.symbol[offs[l]] = u16(sym)
+		offs[l] += 1
+		c := next[l]
+		next[l] += 1
+		if l > FAST_BITS { continue }
+		first := int(intrinsics.reverse_bits(c) >> (16 - uint(l)))
+		for i := first; i < len(h.fast); i += 1 << uint(l) { h.fast[i] = u16(sym) << FAST_LENGTH_BITS | u16(l) }
 	}
 	return left
 }
@@ -181,9 +204,13 @@ bits :: proc(b: ^Bits, n: int) -> u32 {
 	if !need(b, n) { return 0 }
 	at := b.bit >> 3
 	v: u32
-	for k in 0 ..< 4 {
-		if at + k >= len(b.data) { break }
-		v |= u32(b.data[at + k]) << uint(8 * k)
+	if at + 4 <= len(b.data) {
+		v = u32(intrinsics.unaligned_load((^u32le)(&b.data[at])))
+	} else {
+		for k in 0 ..< 4 {
+			if at + k >= len(b.data) { break }
+			v |= u32(b.data[at + k]) << uint(8 * k)
+		}
 	}
 	v >>= uint(b.bit & 7)
 	b.bit += n
@@ -192,6 +219,14 @@ bits :: proc(b: ^Bits, n: int) -> u32 {
 
 @(private)
 decode :: proc(b: ^Bits, h: ^Huffman) -> int {
+	// a short code, when 4 bytes are there to read (at least 25 bits from the current one): one look in the table
+	if at := b.bit >> 3; at + 4 <= len(b.data) {
+		v := u32(intrinsics.unaligned_load((^u32le)(&b.data[at]))) >> uint(b.bit & 7)
+		if e := h.fast[v & (1 << FAST_BITS - 1)]; e != 0 {
+			b.bit += int(e & (1 << FAST_LENGTH_BITS - 1))
+			return int(e >> FAST_LENGTH_BITS)
+		}
+	}
 	code, first, index := 0, 0, 0
 	for l in 1 ..< MAX_CODE_BITS + 1 {
 		if !need(b, 1) { return -1 }
@@ -316,15 +351,29 @@ codes :: proc(b: ^Bits, z: ^Inflater, out: ^[dynamic]u8) -> (done: bool, err: Er
 		if b.short { b.bit = start; return false, .None }
 		have := len(z.window) + len(out)
 		if dist > have { return false, .Bad_Data }
-		for _ in 0 ..< length {
-			// the byte `dist` back, in this block's output or in the window before it
-			back := len(out) - dist
-			c := back >= 0 ? out[back] : z.window[len(z.window) + back]
-			append(out, c)
-		}
+		copy_match(out, z.window[:], length, dist)
 		if z.limit > 0 && len(out) > z.limit { return false, .Too_Large }
 	}
 	return false, .None
+}
+
+// `length` bytes onto `out`, those `dist` back: from the window before this block's output where they start there, then
+// from the output itself (which a match reaches into its own bytes when it is longer than its distance).
+@(private)
+copy_match :: proc(out: ^[dynamic]u8, window: []u8, length, dist: int) #no_bounds_check {
+	at := len(out)
+	non_zero_resize(out, at + length)
+	from_window := clamp(dist - at, 0, length)
+	if from_window > 0 { copy(out[at:][:from_window], window[len(window) - (dist - at):][:from_window]) }
+	at += from_window
+	rest := length - from_window
+	if rest == 0 { return }
+	if dist >= rest {
+		copy(out[at:][:rest], out[at - dist:][:rest])
+	} else {
+		p := raw_data(out^)
+		for k in at ..< at + rest { p[k] = p[k - dist] }
+	}
 }
 
 // The end of the current block: the next one, or the trailer.
@@ -492,8 +541,8 @@ Deflater :: struct {
 	format:  Format,
 	state:   Deflate_State,
 	window:  [dynamic]u8,    // the last input (up to WINDOW bytes before each push)
-	head:    []i64,          // hash -> last position (in `window` coordinates + base)
-	prev:    []i64,          // position -> previous position with the same hash (modulo WINDOW)
+	head:    []u32,          // hash -> last position (in `window` coordinates + base, modulo 2^32)
+	prev:    []u32,          // position -> previous position with the same hash (modulo WINDOW)
 	base:    int,            // the absolute position of window[0]
 	acc:     u64,            // bits not yet written
 	nacc:    uint,
@@ -516,16 +565,19 @@ BLOCK_SYMBOLS :: 16 * 1024
 @(private) SYM_DIST_MASK :: 0xFFFF
 // The multiplicative hash of Knuth: 2^32 / the golden ratio.
 @(private) HASH_MULTIPLIER :: 2654435761
+// A hash that no position has yet: one before the first, which is before the window. (Positions are kept modulo 2^32: one
+// that is 4 GiB old reads as a recent one, and is then a candidate like another, whose bytes are compared.)
+@(private) NO_POSITION :: 0xFFFF_FFFF
 // How far inside the window a match must start (MIN_LOOKAHEAD of zlib: MATCH_MAX + MATCH_MIN + 1).
 @(private) MATCH_LOOKAHEAD :: 262
 
 deflater_init :: proc(d: ^Deflater, format: Format, allocator := context.allocator) {
 	d^ = Deflater{format = format, adler = 1}
 	d.window = make([dynamic]u8, allocator)
-	d.head = make([]i64, 1 << HASH_BITS, allocator)
-	d.prev = make([]i64, WINDOW, allocator)
+	d.head = make([]u32, 1 << HASH_BITS, allocator)
+	d.prev = make([]u32, WINDOW, allocator)
 	d.syms = make([dynamic]u32, allocator)
-	for &h in d.head { h = -1 }
+	for &h in d.head { h = NO_POSITION }
 }
 
 deflater_destroy :: proc(d: ^Deflater) {
@@ -549,9 +601,13 @@ put :: proc(d: ^Deflater, out: ^[dynamic]u8, v: u32, n: uint) {
 // A Huffman code is written from its most significant bit.
 @(private)
 put_code :: proc(d: ^Deflater, out: ^[dynamic]u8, code: u32, n: uint) {
-	r: u32
-	for i in 0 ..< n { r |= ((code >> i) & 1) << (n - 1 - i) }
-	put(d, out, r, n)
+	put(d, out, reversed(code, n), n)
+}
+
+// The `n` low bits of `code` (n <= 16), last first.
+@(private)
+reversed :: #force_inline proc "contextless" (code: u32, n: uint) -> u32 {
+	return u32(intrinsics.reverse_bits(u16(code)) >> (16 - n))
 }
 
 @(private)
@@ -571,18 +627,22 @@ start :: proc(d: ^Deflater, out: ^[dynamic]u8) {
 }
 
 // The length and distance codes of a match (indices into LEN_BASE and DIST_BASE).
+// (Computed: from the fifth code on, LEN_BASE - MATCH_MIN has 4 codes for each power of two, and DIST_BASE - 1 has 2.)
 @(private)
-len_index :: proc(length: int) -> int {
-	li := LEN_CODES - 1
-	for li > 0 && int(LEN_BASE[li]) > length { li -= 1 }
-	return li
+len_index :: #force_inline proc "contextless" (length: int) -> int {
+	l := u32(length - MATCH_MIN)
+	if l < 4 { return int(l) }
+	if length == MATCH_MAX { return LEN_CODES - 1 }
+	top := 31 - intrinsics.count_leading_zeros(l)
+	return int(4 * (top - 1) + (l >> (top - 2)) & 3)
 }
 
 @(private)
-dist_index :: proc(dist: int) -> int {
-	di := DIST_CODES - 1
-	for di > 0 && int(DIST_BASE[di]) > dist { di -= 1 }
-	return di
+dist_index :: #force_inline proc "contextless" (dist: int) -> int {
+	v := u32(dist - 1)
+	if v < 2 { return int(v) }
+	top := 31 - intrinsics.count_leading_zeros(v)
+	return int(2 * top + (v >> (top - 1)) & 1)
 }
 
 // How far p and q are the same, up to `limit` bytes: a register of bytes at once, then the place of the first that differs.
@@ -622,13 +682,19 @@ deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 		best_len, best_dist := 0, 0
 		if i + MATCH_MIN <= len(w) {
 			h := hash3(w, i)
-			cand := int(d.head[h]) - d.base
+			limit := min(MATCH_MAX, len(w) - i)
+			// (a distance of 0 or beyond 2^31: the position is not before this one)
+			cand := i - int(u32(i + d.base) - d.head[h])
 			for chain := 0; chain < MAX_CHAIN && cand >= 0 && i - cand <= WINDOW - MATCH_LOOKAHEAD && cand < i; chain += 1 {
-				l := same(&w[i], &w[cand], min(MATCH_MAX, len(w) - i))
-				if l > best_len { best_len, best_dist = l, i - cand; if l == MATCH_MAX { break } }
-				nxt := int(d.prev[(cand + d.base) % WINDOW]) - d.base
-				if nxt >= cand { break }
-				cand = nxt
+				// a candidate that is not the same where the best one ended cannot be longer: not compared
+				if w[cand + best_len] == w[i + best_len] {
+					l := same(&w[i], &w[cand], limit)
+					if l > best_len { best_len, best_dist = l, i - cand; if l == limit { break } }
+				}
+				at := u32(cand + d.base)
+				back := at - d.prev[at & (WINDOW - 1)]
+				if back == 0 || back > WINDOW { break }
+				cand -= int(back)
 			}
 		}
 		n := best_len >= MATCH_MIN ? best_len : 1
@@ -637,8 +703,9 @@ deflate_push :: proc(d: ^Deflater, input: []u8, out: ^[dynamic]u8) {
 			p := i + k
 			if p + MATCH_MIN <= len(w) {
 				h := hash3(w, p)
-				d.prev[(p + d.base) % WINDOW] = d.head[h]
-				d.head[h] = i64(p + d.base)
+				at := u32(p + d.base)
+				d.prev[at & (WINDOW - 1)] = d.head[h]
+				d.head[h] = at
 			}
 		}
 		i += n
@@ -857,16 +924,47 @@ emit_block :: proc(d: ^Deflater, out: ^[dynamic]u8, raw: []u8) {
 	}
 }
 
+// The most bits a symbol takes: a length's code and extra bits, a distance's code and extra bits.
+@(private) SYMBOL_MAX_BITS :: MAX_CODE_BITS + 5 + MAX_CODE_BITS + 13
+// What emit_symbols writes at once: more than a symbol and the bits left of the one before.
+@(private) EMIT_STEP_BYTES :: 8
+
 @(private)
-emit_symbols :: proc(d: ^Deflater, out: ^[dynamic]u8, lit, dist: ^Code) {
+emit_symbols :: proc(d: ^Deflater, out: ^[dynamic]u8, lit, dist: ^Code) #no_bounds_check {
+	#assert(SYMBOL_MAX_BITS + 7 <= EMIT_STEP_BYTES * 8)
+	// room for every symbol at its longest: the bits go out 8 bytes at once, the whole bytes of them kept
+	at := len(out)
+	non_zero_resize(out, at + (len(d.syms) + 1) * EMIT_STEP_BYTES + EMIT_STEP_BYTES)
+	p := raw_data(out^)
+	acc, nacc := d.acc, d.nacc
 	for s in d.syms {
-		if s & MATCH_BIT == 0 { put_code(d, out, u32(lit.code[s]), uint(lit.length[s])); continue }
-		length, distance := int((s >> SYM_LEN_SHIFT) & SYM_LEN_MASK), int(s & SYM_DIST_MASK)
-		li, di := len_index(length), dist_index(distance)
-		put_code(d, out, u32(lit.code[LEN_SYMBOL_FIRST + li]), uint(lit.length[LEN_SYMBOL_FIRST + li]))
-		put(d, out, u32(length - int(LEN_BASE[li])), uint(LEN_EXTRA[li]))
-		put_code(d, out, u32(dist.code[di]), uint(dist.length[di]))
-		put(d, out, u32(distance - int(DIST_BASE[di])), uint(DIST_EXTRA[di]))
+		if s & MATCH_BIT == 0 {
+			acc |= u64(reversed(u32(lit.code[s]), uint(lit.length[s]))) << nacc
+			nacc += uint(lit.length[s])
+		} else {
+			length, distance := int((s >> SYM_LEN_SHIFT) & SYM_LEN_MASK), int(s & SYM_DIST_MASK)
+			li, di := len_index(length), dist_index(distance)
+			ls := LEN_SYMBOL_FIRST + li
+			acc |= u64(reversed(u32(lit.code[ls]), uint(lit.length[ls]))) << nacc
+			nacc += uint(lit.length[ls])
+			acc |= u64(length - int(LEN_BASE[li])) << nacc
+			nacc += uint(LEN_EXTRA[li])
+			acc |= u64(reversed(u32(dist.code[di]), uint(dist.length[di]))) << nacc
+			nacc += uint(dist.length[di])
+			acc |= u64(distance - int(DIST_BASE[di])) << nacc
+			nacc += uint(DIST_EXTRA[di])
+		}
+		intrinsics.unaligned_store((^u64le)(&p[at]), u64le(acc))
+		at += int(nacc >> 3)
+		acc >>= nacc &~ 7
+		nacc &= 7
 	}
-	put_code(d, out, u32(lit.code[END_OF_BLOCK]), uint(lit.length[END_OF_BLOCK]))
+	acc |= u64(reversed(u32(lit.code[END_OF_BLOCK]), uint(lit.length[END_OF_BLOCK]))) << nacc
+	nacc += uint(lit.length[END_OF_BLOCK])
+	intrinsics.unaligned_store((^u64le)(&p[at]), u64le(acc))
+	at += int(nacc >> 3)
+	acc >>= nacc &~ 7
+	nacc &= 7
+	resize(out, at)
+	d.acc, d.nacc = acc, nacc
 }

@@ -148,7 +148,7 @@ readback_poll :: proc(r: ^Renderer, id: Readback_Id, allocator := context.alloca
 		case .RGBA16Float: layout = .Half
 		case .BGRA8Unorm, .BGRA8UnormSrgb: layout = .BGRA8
 		}
-		for y in 0 ..< size.y { straight_srgb_row(raw_data(pixels[y * size.x * 4:]), raw_data(src[y * s.wrow:]), size.x, layout, s.space) }
+		straight_srgb_rows(raw_data(pixels), raw_data(src), s.wrow, size, layout, s.space)
 		readback_release(r, id)
 		return pixels, size, .Ready
 	} else {
@@ -163,9 +163,7 @@ readback_poll :: proc(r: ^Renderer, id: Readback_Id, allocator := context.alloca
 		case .R16G16B16A16_FLOAT: layout = .Half
 		case .B8G8R8A8_UNORM, .B8G8R8A8_UNORM_SRGB: layout = .BGRA8
 		}
-		for y in 0 ..< size.y {
-			straight_srgb_row(raw_data(pixels[y * size.x * 4:]), ([^]u8)(mapped.pData)[y * int(mapped.RowPitch):], size.x, layout, s.space)
-		}
+		straight_srgb_rows(raw_data(pixels), ([^]u8)(mapped.pData), int(mapped.RowPitch), size, layout, s.space)
 		r.ctx->Unmap(s.staging, 0)
 		readback_release(r, id)
 		return pixels, size, .Ready

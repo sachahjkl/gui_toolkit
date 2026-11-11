@@ -73,8 +73,11 @@ decoders):
 | a JavaScript file (106 KB) | 24.3 %, 2.9 ms | 27.3 %, 0.5 ms | 23.4 %, 1.3 ms | 22.9 %, 3.9 ms |
 | Roboto-Regular.ttf (159 KB) | 48.8 %, 5.3 ms | 50.8 %, 1.2 ms | 48.7 %, 2.1 ms | 46.3 %, 5.7 ms |
 
-Since 2026-11-12 `flate.deflate` compares the bytes of a match 16 at once (one SSE or NEON register): on the same kind of
-machine the two screenshots take 32 ms and 47 ms, their output unchanged.
+Since 2026-11-12 `flate.deflate` compares the bytes of a match 16 at once (one SSE or NEON register), skips a candidate
+that cannot be longer than the best one, and writes a block's symbols 8 bytes at once: on the same kind of machine the
+two screenshots take 23 ms and 36 ms and `CHANGELOG.md` a third less, their output unchanged. `flate.inflate` reads a
+code of up to 9 bits in one look in a table and copies a match in one piece: 560 to 680 MB/s on the two screenshots
+(360 to 440 before), 370 MB/s on `CHANGELOG.md` (190 before).
 
 Inflating the same streams (core level 6), output rate: `flate.inflate` 130 to 445 MB/s (`inflate_push` in 16 KiB
 chunks the same), `core:compress/deflate` 400 to 1530 MB/s. A picture as `png.encode(.., .Fast)` makes it (Sub filter,

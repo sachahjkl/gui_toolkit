@@ -39,10 +39,11 @@ swap_red_blue :: proc "contextless" (dst, src: [^]u8, n: int) #no_bounds_check {
 	}
 }
 
-// `n` premultiplied texels of a target in `space` as straight sRGB RGBA8: straight_srgb of each. An opaque texel of sRGB
-// bytes is its own bytes: where 4 in a row are opaque they are moved as they are.
+// A `size` picture of premultiplied texels of a target in `space` (rows `pitch` bytes apart) as straight sRGB RGBA8:
+// straight_srgb of each. An opaque texel of bytes is its own bytes in an sRGB target, and each of its bytes through one
+// table in a linear one: where 4 in a row are opaque they are made at once.
 @(private)
-straight_srgb_row :: proc(dst, src: [^]u8, n: int, layout: Texel_Layout, space: Blend_Space) #no_bounds_check {
+straight_srgb_rows :: proc(dst, src: [^]u8, pitch: int, size: [2]int, layout: Texel_Layout, space: Blend_Space) #no_bounds_check {
 	one :: #force_inline proc(dst, src: [^]u8, i: int, layout: Texel_Layout, space: Blend_Space) #no_bounds_check {
 		px: [4]f32
 		switch layout {
@@ -60,15 +61,32 @@ straight_srgb_row :: proc(dst, src: [^]u8, n: int, layout: Texel_Layout, space: 
 		d[0], d[1], d[2], d[3] = straight_srgb(px, space)
 	}
 	OPAQUE :: 0xFF00_0000
-	as_they_are := layout != .Half && space == .Srgb
-	i := 0
-	for ; as_they_are && i + TEXELS <= n; i += TEXELS {
-		v := load(src, i)
-		if simd.reduce_and(transmute(#simd[TEXELS]u32)v) & OPAQUE == OPAQUE {
-			store(dst, i, layout == .BGRA8 ? red_blue_swapped(v) : v)
-		} else {
-			for k in 0 ..< TEXELS { one(dst, src, i + k, layout, space) }
+	bytes := layout != .Half
+	// what straight_srgb makes of a color byte of an opaque texel
+	opaque: [256]u8
+	if bytes && space != .Srgb {
+		for &o, c in opaque {
+			v := f32(c) / 255
+			o, _, _, _ = straight_srgb({v, v, v, 1}, space)
 		}
 	}
-	for ; i < n; i += 1 { one(dst, src, i, layout, space) }
+	for y in 0 ..< size.y {
+		from, to := src[y * pitch:], dst[y * size.x * 4:]
+		i := 0
+		for ; bytes && i + TEXELS <= size.x; i += TEXELS {
+			v := load(from, i)
+			if simd.reduce_and(transmute(#simd[TEXELS]u32)v) & OPAQUE != OPAQUE {
+				for k in 0 ..< TEXELS { one(to, from, i + k, layout, space) }
+				continue
+			}
+			if layout == .BGRA8 { v = red_blue_swapped(v) }
+			if space != .Srgb {
+				b := transmute([TEXELS * 4]u8)v
+				for k in 0 ..< TEXELS { b[k * 4], b[k * 4 + 1], b[k * 4 + 2] = opaque[b[k * 4]], opaque[b[k * 4 + 1]], opaque[b[k * 4 + 2]] }
+				v = transmute(Texels)b
+			}
+			store(to, i, v)
+		}
+		for ; i < size.x; i += 1 { one(to, from, i, layout, space) }
+	}
 }
