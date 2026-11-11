@@ -180,10 +180,11 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 	row_h := math.round(dense(em * PALETTE_ROW_EM))
 	if n > 0 {
 		page := max(int(p_view_h(p) / row_h), 1)
-		if key_press(.Down) { p.sel = (p.sel + 1) % n; p.reveal = true }
-		if key_press(.Up) { p.sel = (p.sel + n - 1) % n; p.reveal = true }
-		if key_press(.Page_Down) { p.sel = min(p.sel + page, n - 1); p.reveal = true }
-		if key_press(.Page_Up) { p.sel = max(p.sel - page, 0); p.reveal = true }
+		// (the palette's own keys, read before its dialog is built)
+		if key_press_any(.Down) { p.sel = (p.sel + 1) % n; p.reveal = true }
+		if key_press_any(.Up) { p.sel = (p.sel + n - 1) % n; p.reveal = true }
+		if key_press_any(.Page_Down) { p.sel = min(p.sel + page, n - 1); p.reveal = true }
+		if key_press_any(.Page_Up) { p.sel = max(p.sel - page, 0); p.reveal = true }
 	}
 	p.sel = clamp(p.sel, 0, max(n - 1, 0))
 	mouse := mouse_pos()

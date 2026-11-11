@@ -454,3 +454,26 @@ code_takes_the_theme_s_colours :: proc(t: ^testing.T) {
 	testing.expect(t, found_str, "a string in code_string")
 	testing.expect(t, r.keyword != r.str, "two colours")
 }
+
+// A dialog holds the keys: code built outside it gets no Escape while it is open; inside, it does.
+@(test)
+a_dialog_holds_the_keys :: proc(t: ^testing.T) {
+	Run :: struct { open: bool, outside, inside: bool }
+	r := Run{open = true}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if ui.key_press(.Escape) { r.outside = true }
+		if ui.modal("###keys_dialog", 300, &r.open) {
+			if ui.key_pressed_peek(.Escape) { r.inside = true }
+			ui.label("A dialog###d")
+		}
+	}})
+	session.frames(s, 2)
+	session.key(s, .Escape)
+	session.frame(s)
+	testing.expect(t, !r.outside, "not the page's")
+	testing.expect(t, r.inside, "the dialog's")
+	testing.expect(t, !r.open, "Escape closes it")
+	session.key(s, .Escape)
+	testing.expect(t, r.outside, "closed: the page's again")
+}

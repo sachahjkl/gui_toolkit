@@ -890,7 +890,8 @@ handle_tab_navigation :: proc(s: ^State) {
 	s.tab_dir, s.tab_dir_next = s.tab_dir_next, 0
 	handle_arrow_navigation(s)
 	dir := 0
-	if key_press(.Tab) { dir = 1 } else if key_press(.Tab, {.Shift}) { dir = -1 }
+	// (the focus moves among the stops of the dialog on top: its keys, read at the end of the build, outside its scope)
+	if key_press_any(.Tab) { dir = 1 } else if key_press_any(.Tab, {.Shift}) { dir = -1 }
 	if dir == 0 || len(s.focus_order) == 0 { return }
 	stops := focus_stops(s)
 	if len(stops) == 0 { return }
@@ -952,10 +953,10 @@ handle_arrow_navigation :: proc(s: ^State) -> bool {
 	if cur == nil || cur.last_build != s.build_index || .Text_Input in cur.flags { return false }
 	dir: Vec2
 	switch {
-	case key_press(.Left):  dir = {-1, 0}
-	case key_press(.Right): dir = {1, 0}
-	case key_press(.Up):    dir = {0, -1}
-	case key_press(.Down):  dir = {0, 1}
+	case key_press_any(.Left):  dir = {-1, 0}
+	case key_press_any(.Right): dir = {1, 0}
+	case key_press_any(.Up):    dir = {0, -1}
+	case key_press_any(.Down):  dir = {0, 1}
 	case: return false
 	}
 	top := focus_modal(s)

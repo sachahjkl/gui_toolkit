@@ -234,8 +234,16 @@ contains :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.ma
 // refresh while it is, as Windows' Task Manager).
 key_held :: proc(key: platform.Key) -> bool { return key in gs().keys_held }
 
-// Consuming keyboard query: true once if a matching key press (exact modifiers) is pending.
+// Consuming keyboard query: true once if a matching key press (exact modifiers) is pending. While a dialog is open, the
+// keys are its own: code built outside it gets none (keys_behind_dialogs turns that off).
 key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
+	if keys_held_by_dialog(gs()) { return false }
+	return key_press_any(key, mods)
+}
+
+// key_press wherever it is asked from (a dialog's own Escape, taken as its scope ends).
+@(private)
+key_press_any :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 	s := gs()
 	for e, i in s.events.list {
 		if s.events.consumed[i] || e.key != key || e.mods != mods { continue }
@@ -250,6 +258,7 @@ key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 // key they modify. ok = false: none.
 key_take :: proc() -> (hk: platform.Hotkey, ok: bool) {
 	s := gs()
+	if keys_held_by_dialog(s) { return }
 	for e, i in s.events.list {
 		if s.events.consumed[i] || e.kind != .Key_Press || (e.key == .None && e.char == 0) { continue }
 		if e.key == .Shift || e.key == .Ctrl || e.key == .Alt { continue }
@@ -262,6 +271,7 @@ key_take :: proc() -> (hk: platform.Hotkey, ok: bool) {
 // Like key_press but does not consume (for global shortcuts that must not steal keys from a focused field).
 key_pressed_peek :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
 	s := gs()
+	if keys_held_by_dialog(s) { return false }
 	for e, i in s.events.list { if !s.events.consumed[i] && e.key == key && e.mods == mods { return true } }
 	return false
 }
@@ -331,3 +341,20 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	}
 	return
 }
+
+// Whether a dialog holds the keys from the code asking: one is open (the last build's on top), and the code is not built
+// inside it. A program reads its keys before it builds its dialogs: without this, Escape closed the window behind one.
+@(private)
+keys_held_by_dialog :: proc(s: ^State) -> bool {
+	if s.keys_behind_dialogs || len(s.modals_open) == 0 { return false }
+	top := s.modals_open[len(s.modals_open) - 1].panel
+	for m in s.modal_stack { if m.panel == top { return false } }
+	return true
+}
+
+// Keys reach code built outside an open dialog too (by default a dialog holds them: key_press, key_take and
+// command_pressed give nothing elsewhere while it is open).
+set_keys_behind_dialogs :: proc(s: ^State, on: bool) { s.keys_behind_dialogs = on }
+
+// Whether a dialog is open now (the last build's): a program's own key handling may wait for it.
+dialog_open :: proc() -> bool { return len(gs().modals_open) > 0 }

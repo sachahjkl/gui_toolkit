@@ -414,6 +414,7 @@ State :: struct {
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)
 	modal_escape: Key,               // the dialog Escape closed in the last build: the next one takes it (modal_take_escape)
 	modal_escape_taken: bool,        // a dialog took Escape in this build: the one on top at its end is closed
+	keys_behind_dialogs: bool,       // set_keys_behind_dialogs: keys reach code outside an open dialog
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	tab_dir_next: int,               // the same asked during a build (focus_step): tab_dir of the next one
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to

@@ -443,7 +443,7 @@ modal_end :: proc() {
 		m := pop(&s.modal_stack)
 		if m.size != nil { modal_grips(s, m) }
 		phase, _ := modal_phase(s, m.panel)
-		if phase != .Below && len(s.menus) == 0 && key_press(.Escape) { s.modal_escape_taken = true }
+		if phase != .Below && len(s.menus) == 0 && key_press_any(.Escape) { s.modal_escape_taken = true }
 	}
 	ctx_menu_end()
 }
