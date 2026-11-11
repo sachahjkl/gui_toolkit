@@ -52,4 +52,6 @@ before one that needs the group's letters), the headings go and each line says i
 it. A command that cannot act now is greyed and is not chosen. Escape closes the palette,
 and the sheet.
 
+A program's settings go in its palette too: `prefs_page.palette_commands` and `prefs_page.show` (docs/prefs_page.md).
+
 `tests/commands` tests the texts, the keys and the palette.

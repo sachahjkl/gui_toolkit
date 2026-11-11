@@ -78,3 +78,20 @@ returns the index of the one clicked, or -1.
 Tab goes through the search, the pages and the controls. `focus_search(&page)` gives the search the keyboard at the
 next build (a program opens the page with it). `editing(&page)` says whether a field has the keyboard: a program that
 closes the page on Escape leaves that Escape to the field.
+
+## The settings in the command palette
+
+`palette_commands(prefs, options)` gives one `ui.Command` per preference the pages show (a hidden one is not): its label
+is the title the page gives it, its group `Settings · <page>`, its icon the page's (else Lucide's sliders). A program puts
+them after its own commands in `ui.palette`; when one is chosen, it opens its settings and calls `show(page, prefs,
+options, name)`: the page's search holds the preference's name in quotes, so it shows alone with its control, and the
+page under the search is its own (clearing the search lands there).
+
+```odin
+settings, names := prefs_page.palette_commands(&app.prefs, opts)
+all := slice.concatenate([][]ui.Command{app_commands, settings}, context.temp_allocator)
+if i, _ := ui.palette(&app.palette, all, enabled); i >= len(app_commands) {
+    app.settings_open = true
+    prefs_page.show(&app.page, &app.prefs, opts, names[i - len(app_commands)])
+}
+```

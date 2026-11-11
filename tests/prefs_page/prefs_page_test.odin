@@ -252,3 +252,31 @@ a_held_slider_previews_its_value :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, config.float_of(&app.prefs, "look.zoom") > 1.8, "written at the release")
 }
+
+// The settings as commands of a palette: one per preference shown (not a hidden one), under its page; show puts the one
+// chosen alone on its page.
+@(test)
+a_setting_from_the_palette :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app)
+	commands, names := prefs_page.palette_commands(&app.prefs, {pages = PAGES[:]})
+	testing.expect_value(t, len(commands), 5)   // (the six of DEFS but the hidden one)
+	testing.expect_value(t, len(names), 5)
+	at := -1
+	for n, i in names { if n == "look.style" { at = i } }
+	testing.expect(t, at >= 0, "look.style is there")
+	testing.expect(t, !slice_has(names, "net.window_size"), "not the hidden one")
+	if at >= 0 { testing.expect_value(t, commands[at].group, "Settings · Look") }
+	prefs_page.show(&app.page, &app.prefs, {pages = PAGES[:]}, "look.style")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "How surfaces are drawn.") != nil, "the one chosen")
+	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") == nil, "alone")
+	testing.expect_value(t, app.page.current, "look")
+}
+
+@(private = "file")
+slice_has :: proc(xs: []string, x: string) -> bool {
+	for y in xs { if y == x { return true } }
+	return false
+}
