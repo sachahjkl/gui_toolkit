@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.190.2] - 2026-11-11
+
+### Fixed
+- **A dialog closed by its own button gives the keys back at once**: the first key after the click (Escape, a shortcut) went nowhere when no frame came between them, held by a dialog no longer there (0.189.1).
+
 ## [0.190.1] - 2026-11-11
 
 ### Fixed
@@ -2569,6 +2574,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.190.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.2
 [0.190.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.1
 [0.190.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.0
 [0.189.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.189.1
