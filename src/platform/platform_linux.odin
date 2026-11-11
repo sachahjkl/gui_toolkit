@@ -546,13 +546,18 @@ poll_fd_wait :: proc(fd: i32, timeout_ms: int) -> int {
 @(private)
 poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) -> (r: Poll_Sources) {
 	fds: [4]Pollfd
+	which: [4]Wake_Source
 	n: uint = 0
-	for fd in ([4]i32{conn_fd, wake_fd(w), dbus_fd(), a11y_fd(w)}) {
-		if fd >= 0 { fds[n] = {fd = fd, events = POLLIN}; n += 1 }
+	sources := [4]i32{conn_fd, wake_fd(w), dbus_fd(), a11y_fd(w)}
+	kinds := [4]Wake_Source{.Connection, .Wake, .Bus, .A11y}
+	for fd, i in sources {
+		if fd >= 0 { fds[n], which[n] = {fd = fd, events = POLLIN}, kinds[i]; n += 1 }
 	}
+	w.woke = .Time
 	if n == 0 || poll(&fds[0], n, i32(timeout_ms)) <= 0 { return }
-	for f in fds[:n] {
+	for f, i in fds[:n] {
 		if f.revents & POLL_DONE == 0 { continue }
+		if w.woke == .Time { w.woke = which[i] }
 		if f.fd == conn_fd { r.conn = true } else { r.other = true }
 	}
 	return

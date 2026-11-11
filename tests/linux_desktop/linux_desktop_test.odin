@@ -288,12 +288,15 @@ a_host_hides_and_comes_back :: proc(t: ^testing.T) {
 	// hundreds of times in 300 ms.
 	wakes := 0
 	rest := time.tick_now()
+	why := strings.builder_make(context.temp_allocator)   // (each wake: when, what ended it, the events it brought)
 	for left := REST_MS; left > 0; left = REST_MS - int(time.duration_milliseconds(time.tick_since(rest))) {
 		platform.wait_event(h.win, left)
-		_ = platform.poll_events(h.win, false)
+		evs := platform.poll_events(h.win, false)
 		wakes += 1
+		fmt.sbprintf(&why, " %.0fms:%v", time.duration_milliseconds(time.tick_since(rest)), h.win.woke)
+		for e in evs { fmt.sbprintf(&why, "+%v", e.kind) }
 	}
-	testing.expectf(t, wakes <= REST_WAKES_MAX, "at rest, the loop sleeps (%d wakes in %d ms)", wakes, REST_MS)
+	testing.expectf(t, wakes <= REST_WAKES_MAX, "at rest, the loop sleeps (%d wakes in %d ms:%s)", wakes, REST_MS, strings.to_string(why))
 	for round in 1 ..= 3 {
 		host.host_hide(h)
 		pump_for(h.win, 200)

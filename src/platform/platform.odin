@@ -231,11 +231,17 @@ Pump_Stats :: struct {
 	ignored_size_moves: int,   // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE from outside a loop of the system (another program's drag tool): ignored
 }
 
+// What ended a window's last wait (Linux: wait_event, wait_handle): the window system's connection, the window's own wake
+// (wake, a timer of the program), the session bus, the accessibility bus, or the time running out. For a test that a loop
+// at rest sleeps, and why it did not.
+Wake_Source :: enum u8 { Time, Connection, Wake, Bus, A11y }
+
 Window :: struct {
 	using native: Native_Window,
 	events:       [dynamic]Event,
 	batch:        [dynamic]Event,   // what the last poll_events handed out (hand_out)
 	keys_down:    Keys,             // pressed in this window and not yet released
+	woke:         Wake_Source,      // what ended its last wait (Linux)
 	size:         [2]int,   // client size in pixels
 	dpi_scale:    f32,
 	focused:      bool,
