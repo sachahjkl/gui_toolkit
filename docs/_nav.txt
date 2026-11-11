@@ -50,6 +50,7 @@ Platform and system
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
   config.md           config: preferences
+  cli.md              cli: the command line
   prefs_page.md       prefs_page: the settings page
 
 Frames and threads
