@@ -15,6 +15,7 @@ package tk_cli
 
 import "core:fmt"
 import "core:strings"
+import "core:unicode/utf8"
 
 Option :: struct {
 	name:     string,   // without its dashes: "session" is --session
@@ -23,42 +24,73 @@ Option :: struct {
 	separate: bool,     // the value may also be the next argument (--pref name=value)
 	help:     string,
 	hidden:   bool,     // accepted, not listed (what tools and tests pass)
+	group:    string,   // the heading it is listed under (the first option of a group names it; "": "Options")
 }
+
+// A line of the help's examples: what is typed, what it does.
+Example :: struct { line, what: string }
+
+// A variable of the environment the program reads, and what it does.
+Variable :: struct { name, what: string }
 
 Program :: struct {
 	name:    string,   // as it is typed
 	summary: string,   // one line: what it is
 	version: string,   // --version says it ("": no --version)
-	footer:  string,   // after the options (where its files are); "": none
+	examples:    []Example,
+	environment: []Variable,
+	footer:      string,   // last (where its files are); "": none
 }
 
 // Exit codes: the help asked, a line not understood (as getopt's programs).
 EXIT_OK    :: 0
 EXIT_USAGE :: 2
 
-// The help: the program, how it is called, its options (not the hidden ones) with what each takes.
+// The help: the program, how it is called, its options by group (not the hidden ones) with what each takes, examples, the
+// environment it reads, and the footer.
 usage :: proc(p: Program, options: []Option, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	fmt.sbprintf(&b, "%s", p.name)
 	if p.summary != "" { fmt.sbprintf(&b, ": %s", p.summary) }
-	fmt.sbprintf(&b, "\n\nUsage: %s [options]\n\nOptions:\n", p.name)
-	forms := make([]string, len(options) + 2, context.temp_allocator)
-	width := 0
-	for o, i in options {
-		if o.hidden { continue }
-		forms[i] = form(o)
-		width = max(width, len(forms[i]))
+	fmt.sbprintf(&b, "\n\nUsage: %s [options]\n", p.name)
+	builtin := [2]Option{{name = "help", help = "this help", group = "Help"}, {name = "version", help = "the version", group = "Help"}}
+	all := make([dynamic]Option, context.temp_allocator)
+	for o in options { if !o.hidden { append(&all, o) } }
+	append(&all, builtin[0])
+	if p.version != "" { append(&all, builtin[1]) }
+	// (a column per section, its widest name and a gap; widths in characters, not bytes)
+	cols :: proc(names: []string) -> (w: int) {
+		for n in names { w = max(w, utf8.rune_count_in_string(n)) }
+		return
 	}
-	builtin := [2]Option{{name = "help", help = "this help"}, {name = "version", help = "the version"}}
-	for o, i in builtin { forms[len(options) + i] = form(o); width = max(width, len(forms[len(options) + i])) }
 	line :: proc(b: ^strings.Builder, f, help: string, width: int) {
 		fmt.sbprintf(b, "  %s", f)
-		if help != "" { fmt.sbprintf(b, "%*s  %s", width - len(f), "", help) }
+		if help != "" { fmt.sbprintf(b, "%*s  %s", width - utf8.rune_count_in_string(f), "", help) }
 		strings.write_byte(b, '\n')
 	}
-	for o, i in options { if !o.hidden { line(&b, forms[i], o.help, width) } }
-	line(&b, forms[len(options)], builtin[0].help, width)
-	if p.version != "" { line(&b, forms[len(options) + 1], builtin[1].help, width) }
+	forms := make([]string, len(all), context.temp_allocator)
+	for o, i in all { forms[i] = form(o) }
+	width := cols(forms)   // (the options: one column, whatever their group, they read as one table)
+	group := ""
+	for o, i in all {
+		g := o.group != "" ? o.group : (i == 0 ? "Options" : group)
+		if i == 0 || g != group { fmt.sbprintf(&b, "\n%s:\n", g); group = g }
+		line(&b, forms[i], o.help, width)
+	}
+	if len(p.examples) > 0 {
+		fmt.sbprintf(&b, "\nExamples:\n")
+		lines := make([]string, len(p.examples), context.temp_allocator)
+		for e, i in p.examples { lines[i] = e.line }
+		w := cols(lines)
+		for e in p.examples { line(&b, e.line, e.what, w) }
+	}
+	if len(p.environment) > 0 {
+		fmt.sbprintf(&b, "\nEnvironment:\n")
+		names := make([]string, len(p.environment), context.temp_allocator)
+		for v, i in p.environment { names[i] = v.name }
+		w := cols(names)
+		for v in p.environment { line(&b, v.name, v.what, w) }
+	}
 	if p.footer != "" { fmt.sbprintf(&b, "\n%s\n", p.footer) }
 	return strings.to_string(b)
 }

@@ -5,14 +5,15 @@ import "core:testing"
 import cli "../../src/cli"
 
 @(private = "file")
-P :: cli.Program{name = "prog", summary = "a program", version = "1.2.3"}
+P := cli.Program{name = "prog", summary = "a program", version = "1.2.3",
+	examples = {{"prog --session=s1", "that session"}}, environment = {{"PROG_DEBUG=1", "says more"}}}
 
 @(private = "file")
 OPTIONS := []cli.Option{
-	{name = "session", value = "id", help = "open that session"},
+	{name = "session", value = "id", help = "open that session", group = "Start"},
 	{name = "settings", value = "n", optional = true, help = "open the settings"},
 	{name = "pref", value = "name=value", separate = true, help = "a preference"},
-	{name = "setup", help = "open Setup"},
+	{name = "setup", help = "open Setup", group = "Install"},
 	{name = "seek-subagent", hidden = true},
 }
 
@@ -30,6 +31,8 @@ help_and_version_stop_with_zero :: proc(t: ^testing.T) {
 	testing.expect(t, stop && code == cli.EXIT_OK)
 	testing.expect(t, strings.contains(out, "--session=<id>") && strings.contains(out, "--settings[=<n>]") && strings.contains(out, "--pref <name=value>"), out)
 	testing.expect(t, !strings.contains(out, "seek-subagent"), "a hidden option is not listed")
+	testing.expect(t, strings.index(out, "Start:") < strings.index(out, "--session=") && strings.index(out, "Install:") < strings.index(out, "--setup"), out)
+	testing.expect(t, strings.contains(out, "Examples:\n  prog --session=s1") && strings.contains(out, "Environment:\n  PROG_DEBUG=1"), out)
 	out, code, stop = cli.check(P, OPTIONS, {"--version"})
 	testing.expect(t, stop && code == cli.EXIT_OK && out == "prog 1.2.3\n", out)
 }

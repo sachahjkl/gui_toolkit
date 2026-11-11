@@ -25,6 +25,10 @@ if out, code, stop := cli.check({name = "prog", summary = "what it is", version 
 | `optional` | the value may be left out (`--settings`, `--settings=2`) |
 | `separate` | the value may be the next argument (`--pref name=value`) |
 | `hidden` | accepted, not in the help |
+| `group` | the heading it is listed under; the options that follow keep it until another names one |
+
+`Program.examples` (a line, what it does) and `Program.environment` (a variable, what it does) come after the options,
+`footer` last (where the program keeps its files).
 
 What each option does stays the program's: `check` only says whether the line is one it understands. `usage` gives the
-help alone (`Program.footer`: what follows the options, such as where the program keeps its files).
+help alone.
