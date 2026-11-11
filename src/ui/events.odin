@@ -47,7 +47,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mouse = e.pos
 			s.mouse_valid = true
 			// the click that ends a latched autoscroll does nothing else
-			if s.auto_enabled && autoscroll_click(&s.auto) { continue }
+			if !s.auto_off && autoscroll_click(&s.auto) { continue }
 			append(&s.mouse_events, e)
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)

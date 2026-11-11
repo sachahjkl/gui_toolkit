@@ -1684,7 +1684,7 @@ autoscroll_ending_click_does_nothing_else :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	ui.set_autoscroll_enabled(&f.s, true)
+	// (on by default: nothing to turn on)
 	r: Edit_Run
 	defer ui.field_destroy(&r.field)
 	frame(&f, nil, build_auto, &r)
@@ -1917,4 +1917,22 @@ a_lazy_column_lets_its_view_move_by_less_than_a_pixel :: proc(t: ^testing.T) {
 		frame(f, nil, build_lazy_glide, nil)
 		if !testing.expectf(t, abs(lazy_scroller.view_off.y - y) < 0.01, "frame %d: at %v, sent to %v", i, lazy_scroller.view_off.y, y) { return }
 	}
+}
+
+// Turned off, a click of the wheel scrolls nothing (a program whose middle button is its own).
+@(test)
+autoscroll_turned_off :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	ui.set_autoscroll_enabled(&f.s, false)
+	r: Edit_Run
+	defer ui.field_destroy(&r.field)
+	frame(&f, nil, build_auto, &r)
+	frame(&f, nil, build_auto, &r)
+	tap := middle_tap({100, 100})
+	frame(&f, tap[:], build_auto, &r)
+	testing.expect(t, !ui.autoscroll_running(&f.s), "off: no session")
 }

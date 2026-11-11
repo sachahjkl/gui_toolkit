@@ -15,10 +15,11 @@ import "core:math"
 import "../draw"
 import "../platform"
 
-// Turns middle-click autoscroll on or off for every scroll region (off by default). An app that wants it calls this
-// once after `init`; `set_autoscroll_settings` tunes the curve.
+// Turns middle-click autoscroll on or off for every scroll region (on by default: a click of the wheel scrolls by the
+// pointer, as in the browsers). An app whose middle button does something else calls it with false once after `init`;
+// `set_autoscroll_settings` tunes the curve.
 set_autoscroll_enabled :: proc(s: ^State, on: bool) {
-	s.auto_enabled = on
+	s.auto_off = !on
 	if !on { autoscroll_cancel(&s.auto) }
 }
 
@@ -46,7 +47,7 @@ autoscroll_running :: proc(s: ^State) -> bool { return autoscroll_active(&s.auto
 // latched session.
 @(private)
 autoscroll_handle_input :: proc(s: ^State) {
-	if !s.auto_enabled {
+	if s.auto_off {
 		autoscroll_cancel(&s.auto)
 		return
 	}

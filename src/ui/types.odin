@@ -456,7 +456,7 @@ State :: struct {
 	auto:            Autoscroll,
 	auto_cfg:        Autoscroll_Settings,
 	auto_cfg_set:    bool,
-	auto_enabled:    bool,       // set_autoscroll_enabled; off by default (an app opts in, so nothing changes silently)
+	auto_off:        bool,       // set_autoscroll_enabled(false): on by default, every scroll region takes the wheel's click
 
 	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
 	wrap_cache:      map[Wrap_Key]Wrap_Entry,

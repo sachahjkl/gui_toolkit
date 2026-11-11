@@ -13,12 +13,14 @@ There are two layers:
   `.View_Scroll_X` / `.View_Scroll_Y` starts a session, every frame its velocity is integrated into the box's scroll
   target, the marker is drawn and the cursor follows.
 
-## Turning it on for the toolkit's scroll regions
+## The toolkit's scroll regions
 
-Off by default, so adding the toolkit never changes an app's middle-click behaviour silently. Opt in once after `init`:
+On by default: every scroll region of every program takes the wheel's click. A program whose middle button does
+something else in a scroll region turns it off once after `init` (a box that handles the middle button itself,
+`.Middle_Click` such as a tab that closes, keeps it anyway):
 
 ```odin
-ui.set_autoscroll_enabled(&s, true)
+ui.set_autoscroll_enabled(&s, false)
 // optional: tune the curve
 ui.set_autoscroll_settings(&s, ui.Autoscroll_Settings{
 	dead_zone = 12, max_speed = 15000, full_dist = 300, doubling = 60,

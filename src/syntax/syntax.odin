@@ -5,6 +5,7 @@
 //	l, ok := syntax.language_of_file("main.odin")       // by the file's extension (or syntax.language("odin", nil))
 //	spans: [dynamic]syntax.Span
 //	syntax.spans(text, l, &spans)                       // byte ranges and their classes, in order, none overlapping
+//	l, ok = syntax.guess(clipboard_text)                // by what the text holds (a #! line, signs, keywords): no name
 package tk_syntax
 
 import "core:strings"
@@ -25,6 +26,9 @@ Language :: struct {
 	char_quote:   bool,       // ' quotes a character or a string
 	variable:     byte,       // a variable's first byte ($ in PowerShell and the shell), coloured as a type; 0: none
 	preprocessor: bool,       // # at the start of a line runs to its end (C)
+	fold_case:    bool,       // its keywords and types in any case (SQL); the lists in small letters
+	// What betrays it in a text with no name (guess): pieces only its code is likely to hold ("fn ", ":= proc", "#include")
+	signs:        []string,
 }
 
 // What a run of characters is.
@@ -40,44 +44,50 @@ Span :: struct {
 @(rodata)
 LANGUAGES := [?]Language{
 	{
-		names = {"odin"}, extensions = {"odin"}, label = "Odin", highlight = true, line_comment = "//", block_open = "/*", block_close = "*/", sigil = '#', char_quote = true,
+		names = {"odin"}, extensions = {"odin"}, label = "Odin", highlight = true, signs = {":: proc", ":: struct", ":= ", "package ", "import \"core:", "#partial", "defer ", "or_return"}, line_comment = "//", block_open = "/*", block_close = "*/", sigil = '#', char_quote = true,
 		keywords = {"package", "import", "proc", "return", "if", "else", "for", "switch", "case", "in", "when", "defer", "using", "struct", "union", "enum", "bit_set", "map", "distinct", "foreign", "cast", "transmute", "auto_cast", "or_else", "or_return", "break", "continue", "fallthrough", "do", "dynamic", "context", "nil", "true", "false", "matrix", "bit_field"},
 		types = {"int", "uint", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f16", "f32", "f64", "bool", "b8", "b16", "b32", "b64", "byte", "rune", "string", "cstring", "rawptr", "uintptr", "any", "typeid", "complex64", "complex128"},
 	},
 	{
-		names = {"c"}, extensions = {"c", "h", "cpp", "hpp", "cc", "cxx"}, label = "C", highlight = true, line_comment = "//", block_open = "/*", block_close = "*/", char_quote = true, preprocessor = true,
+		names = {"c"}, extensions = {"c", "h", "cpp", "hpp", "cc", "cxx"}, label = "C", highlight = true, signs = {"#include", "#define", "int main(", "printf(", "->", "};", "NULL", "unsigned "}, line_comment = "//", block_open = "/*", block_close = "*/", char_quote = true, preprocessor = true,
 		keywords = {"if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue", "return", "goto", "sizeof", "typedef", "struct", "union", "enum", "static", "const", "extern", "inline", "volatile", "register", "restrict", "_Bool", "NULL"},
 		types = {"void", "char", "short", "int", "long", "float", "double", "unsigned", "signed", "size_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t", "bool"},
 	},
 	{
-		names = {"js", "javascript", "ts", "typescript"}, extensions = {"js", "mjs", "cjs", "ts", "tsx", "jsx"}, label = "JavaScript", highlight = true, line_comment = "//", block_open = "/*", block_close = "*/",
+		names = {"js", "javascript", "ts", "typescript"}, extensions = {"js", "mjs", "cjs", "ts", "tsx", "jsx"}, label = "JavaScript", highlight = true, signs = {"=> ", "const ", "let ", "function ", "console.", "===", "require(", "export "}, line_comment = "//", block_open = "/*", block_close = "*/",
 		keywords = {"var", "let", "const", "function", "return", "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue", "new", "delete", "typeof", "instanceof", "in", "of", "class", "extends", "super", "this", "try", "catch", "finally", "throw", "async", "await", "yield", "import", "export", "from", "as", "void", "null", "undefined", "true", "false"},
 		types = {"Object", "Array", "String", "Number", "Boolean", "Promise", "Map", "Set", "Symbol", "JSON", "Math", "Date", "RegExp", "Error", "console", "document", "window"},
 	},
 	{
-		names = {"powershell", "ps1", "pwsh"}, extensions = {"ps1", "psm1"}, label = "PowerShell", highlight = true, line_comment = "#", block_open = "<#", block_close = "#>", variable = '$',
+		names = {"powershell", "ps1", "pwsh"}, extensions = {"ps1", "psm1"}, label = "PowerShell", highlight = true, signs = {"$_", "Get-", "Set-", "-eq ", "-ne ", "param(", "Write-Host", "| Where-Object"}, line_comment = "#", block_open = "<#", block_close = "#>", variable = '$',
 		keywords = {"if", "else", "elseif", "for", "foreach", "while", "do", "switch", "function", "return", "break", "continue", "try", "catch", "finally", "throw", "param", "begin", "process", "end", "in", "filter"},
 		types = {"true", "false", "null"},
 	},
 	{names = {"json"}, extensions = {"json"}, label = "JSON", highlight = true, keywords = {"true", "false", "null"}},
 	{
-		names = {"rust", "rs"}, extensions = {"rs"}, label = "Rust", highlight = true, line_comment = "//", block_open = "/*", block_close = "*/", char_quote = true,
+		names = {"sql"}, extensions = {"sql"}, label = "SQL", highlight = true, line_comment = "--", block_open = "/*", block_close = "*/", char_quote = true, fold_case = true,
+		signs = {"select ", "from ", "where ", "insert into", "update ", "create table", "join ", "order by", "group by", "values ("},
+		keywords = {"select", "from", "where", "and", "or", "not", "insert", "into", "values", "update", "set", "delete", "create", "table", "drop", "alter", "index", "join", "left", "right", "inner", "outer", "on", "as", "order", "by", "group", "having", "limit", "offset", "distinct", "union", "all", "case", "when", "then", "else", "end", "null", "is", "in", "like", "between", "exists", "primary", "key", "foreign", "references", "default", "with", "returning", "begin", "commit", "true", "false"},
+		types = {"int", "integer", "bigint", "smallint", "text", "varchar", "char", "boolean", "real", "float", "double", "numeric", "decimal", "date", "timestamp", "blob", "json", "uuid", "serial"},
+	},
+	{
+		names = {"rust", "rs"}, extensions = {"rs"}, label = "Rust", highlight = true, signs = {"fn ", "let mut ", "impl ", "pub fn", "-> ", "::", "&mut ", "println!"}, line_comment = "//", block_open = "/*", block_close = "*/", char_quote = true,
 		keywords = {"fn", "let", "mut", "const", "static", "struct", "enum", "trait", "impl", "for", "while", "loop", "if", "else", "match", "return", "break", "continue", "pub", "use", "mod", "crate", "self", "super", "as", "where", "move", "ref", "dyn", "async", "await", "unsafe", "extern", "type", "true", "false"},
 		types = {"i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str", "String", "Vec", "Option", "Result", "Box"},
 	},
 	{names = {"html"}, extensions = {"html", "htm"}, label = "HTML"},
 	{names = {"css"}, extensions = {"css"}, label = "CSS"},
 	{
-		names = {"bash", "sh", "shell"}, extensions = {"sh", "bash", "zsh"}, label = "Shell", highlight = true, line_comment = "#", variable = '$',
+		names = {"bash", "sh", "shell"}, extensions = {"sh", "bash", "zsh"}, label = "Shell", highlight = true, signs = {"fi\n", "done", "$(", "${", "echo ", "then\n", "esac", "&& "}, line_comment = "#", variable = '$',
 		keywords = {"if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "in", "function", "return", "break", "continue", "local", "export", "readonly", "set", "unset", "echo", "exit"},
 	},
 	{
-		names = {"python", "py"}, extensions = {"py", "pyw"}, label = "Python", highlight = true, line_comment = "#", char_quote = true, sigil = '@',
+		names = {"python", "py"}, extensions = {"py", "pyw"}, label = "Python", highlight = true, signs = {"def ", "self.", "import ", "elif ", "print(", "__init__", "None", "):\n"}, line_comment = "#", char_quote = true, sigil = '@',
 		keywords = {"def", "class", "return", "if", "elif", "else", "for", "while", "in", "not", "and", "or", "is", "import", "from", "as", "with", "try", "except", "finally", "raise", "pass", "break", "continue", "lambda", "yield", "global", "nonlocal", "assert", "del", "async", "await", "None", "True", "False", "self"},
 		types = {"int", "float", "str", "bytes", "bool", "list", "dict", "set", "tuple", "object"},
 	},
 	{
-		names = {"go", "golang"}, extensions = {"go"}, label = "Go", highlight = true, line_comment = "//", block_open = "/*", block_close = "*/", char_quote = true,
+		names = {"go", "golang"}, extensions = {"go"}, label = "Go", highlight = true, signs = {"func ", ":= ", "package ", "fmt.", "err != nil", "chan ", "go func", "[]string"}, line_comment = "//", block_open = "/*", block_close = "*/", char_quote = true,
 		keywords = {"package", "import", "func", "return", "if", "else", "for", "range", "switch", "case", "default", "break", "continue", "go", "defer", "select", "chan", "map", "struct", "interface", "type", "var", "const", "nil", "true", "false", "fallthrough", "goto"},
 		types = {"int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "float32", "float64", "string", "bool", "byte", "rune", "error", "any"},
 	},
@@ -101,6 +111,90 @@ language_of_file :: proc(file_name: string) -> (l: Language, ok: bool) {
 		for e in x.extensions { if e == ext { return x, true } }
 	}
 	return
+}
+
+// The language of a text that comes with no name (a copy, a paste): its #! line, else the language whose signs and
+// keywords it holds the most of, the project's languages first. ok = false: prose, or nothing sure enough. Reads the
+// first GUESS_READ bytes.
+guess :: proc(text: string, project: []Language = nil) -> (l: Language, ok: bool) {
+	src := strings.trim_left_space(text[:min(len(text), GUESS_READ)])
+	if strings.has_prefix(src, "#!") {
+		line := src
+		if nl := strings.index_byte(src, '\n'); nl >= 0 { line = src[:nl] }
+		switch {
+		case strings.contains(line, "python"): return language("python")
+		case strings.contains(line, "node") || strings.contains(line, "deno") || strings.contains(line, "bun"): return language("js")
+		case strings.contains(line, "pwsh"): return language("powershell")
+		case strings.contains(line, "sh"): return language("bash")
+		}
+	}
+	if (strings.has_prefix(src, "{") || strings.has_prefix(src, "[")) && json_like(src) { return language("json") }
+	lower := ascii.lower(src)
+	best, best_score := -1, 0
+	score_of :: proc(x: Language, src, lower: string) -> int {
+		if !x.highlight { return 0 }
+		n := 0
+		for sign in x.signs { if strings.contains(x.fold_case ? lower : src, sign) { n += GUESS_SIGN } }
+		// (each keyword once: prose says "if" and "for" often)
+		words := x.fold_case ? lower : src
+		for k in x.keywords { if len(k) > 2 && has_word(words, k) { n += 1 } }
+		return n
+	}
+	all := make([dynamic]Language, context.temp_allocator)
+	append(&all, ..project)
+	append(&all, ..LANGUAGES[:])
+	for x, i in all {
+		if n := score_of(x, src, lower); n > best_score { best, best_score = i, n }
+	}
+	if best < 0 || best_score < GUESS_ENOUGH || !code_like(src) { return }
+	return all[best], true
+}
+
+// What guess reads of a text, what a sign weighs against a keyword, and the score under which a text is not code.
+GUESS_READ   :: 8 * 1024
+GUESS_SIGN   :: 3
+GUESS_ENOUGH :: 5
+
+// Whether `w` is in `s` as a word of its own.
+@(private = "file")
+has_word :: proc(s, w: string) -> bool {
+	rest := s
+	at := 0
+	for {
+		i := strings.index(rest, w)
+		if i < 0 { return false }
+		a := at + i
+		b := a + len(w)
+		if (a == 0 || !is_ident(s[a - 1])) && (b >= len(s) || !is_ident(s[b])) { return true }
+		at = a + 1
+		rest = s[at:]
+	}
+}
+
+// Code has its punctuation: brackets, operators, ends of statements. A sentence has few of them for its letters.
+@(private = "file")
+code_like :: proc(src: string) -> bool {
+	marks, letters := 0, 0
+	for c in transmute([]u8)src {
+		switch c {
+		case '{', '}', '(', ')', '[', ']', ';', '=', '<', '>', '$', '#', '|', '&', ':': marks += 1
+		case 'a' ..= 'z', 'A' ..= 'Z': letters += 1
+		}
+	}
+	return marks * GUESS_MARKS_PER >= letters
+}
+
+// Of the letters, at least one mark in GUESS_MARKS_PER.
+GUESS_MARKS_PER :: 40
+
+// A text that opens and closes as JSON, with a quoted key or only values in it.
+@(private = "file")
+json_like :: proc(src: string) -> bool {
+	t := strings.trim_right_space(src)
+	if len(t) < 2 { return false }
+	open, close := t[0], t[len(t) - 1]
+	if !(open == '{' && close == '}') && !(open == '[' && close == ']') { return false }
+	return open == '[' || strings.contains(t, "\":")
 }
 
 // The runs of `src` in `l`'s classes, appended to `out` in order (the plain ones left out).
@@ -167,9 +261,10 @@ spans :: proc(src: string, l: Language, out: ^[dynamic]Span) {
 			for j < n && is_ident(src[j]) { j += 1 }
 			word := src[i:j]
 			token := Class.Plain
+			folded := l.fold_case ? ascii.lower(word) : word
 			switch {
-			case contains_word(l.keywords, word): token = .Keyword
-			case contains_word(l.types, word):    token = .Type
+			case contains_word(l.keywords, folded): token = .Keyword
+			case contains_word(l.types, folded):    token = .Type
 			case is_call(src, j):                 token = .Func
 			case looks_like_type(word):           token = .Type
 			}
