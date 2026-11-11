@@ -501,6 +501,26 @@ UNSORTED_COLUMNS := [?]ui.Table_Column{
 }
 
 @(private = "file")
+DATE_COLUMNS := [?]ui.Table_Column{
+	{title = "Name", width = 0},
+	{title = "Modified", width = 9, descending_first = true},
+}
+
+// A date's title sorts the newest first at its first click, the oldest at its second, nothing at its third.
+@(test)
+a_date_sorts_the_newest_first :: proc(t: ^testing.T) {
+	l: ui.Table_Layout
+	ui.table_layout_init(&l, DATE_COLUMNS[:])
+	defer ui.table_layout_destroy(&l)
+	ui.table_sort_click(&l, 1)
+	testing.expect(t, l.sort == 1 && l.descending, "the newest first")
+	ui.table_sort_click(&l, 1)
+	testing.expect(t, l.sort == 1 && !l.descending, "the oldest first")
+	ui.table_sort_click(&l, 1)
+	testing.expect_value(t, l.sort, ui.TABLE_UNSORTED)
+}
+
+@(private = "file")
 Extra_App :: struct {
 	l:      ui.Table_Layout,
 	leads:  int,

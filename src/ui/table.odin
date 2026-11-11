@@ -66,6 +66,7 @@ Table_Column :: struct {
 	weak:   bool,   // its text in the weak colour (details beside the name)
 	hidden: bool,   // not shown until the user asks (table_column_items)
 	unsorted: bool, // its title sorts nothing (a column with no order of its own): a click on it does nothing
+	descending_first: bool,   // a text sorted from the largest at the first click, as a number is (a date: the newest first)
 }
 
 // What a program builds in the header besides the titles (every field optional). `user` is given back to each.
@@ -358,7 +359,7 @@ table_move_drag :: proc(l: ^Table_Layout, sig: Signal, places: []Rect, titles: ^
 // second click the other way; a third unsorted (TABLE_UNSORTED: the rows in the data's own order).
 table_sort_click :: proc(l: ^Table_Layout, k: int) {
 	c := l.columns[k]
-	first := c.number && !c.low_first
+	first := (c.number && !c.low_first) || c.descending_first
 	switch {
 	case l.sort != k:           l.sort, l.descending = k, first
 	case l.descending == first: l.descending = !first
