@@ -26,6 +26,8 @@ SLUG_MAX :: 48
 SLUG_CUT_MIN :: 16
 // yyyyMMdd-HHmmss-
 NAME_STAMP_BYTES :: 16
+// a badge's colour, after its version
+@(private = "file") BADGE_HEX_BYTES :: 6
 
 // What is particular to a project.
 Options :: struct {
@@ -440,4 +442,26 @@ section :: proc(root, version: string) -> (body: string, ok: bool) {
 	end := len(c.lines)
 	for i in start + 1 ..< len(c.lines) { if strings.has_prefix(c.lines[i], "## ") || is_link(c.lines[i]) { end = i; break } }
 	return fmt.tprintf("%s\n", strings.trim_space(strings.join(c.lines[start + 1:end], "\n", context.temp_allocator))), true
+}
+
+// A README's version badge (shields.io): `badge/version-<v>-<hex6>` and `alt="version <v>"`, the version replaced. What a
+// project's set_version writes along with its sources.
+with_badge :: proc(text, version: string) -> string {
+	out := text
+	BADGE :: "badge/version-"
+	if at := strings.index(out, BADGE); at >= 0 {
+		rest := out[at + len(BADGE):]
+		if end := strings.index_byte(rest, '"'); end > BADGE_HEX_BYTES {
+			escaped, _ := strings.replace_all(version, "-", "--", context.temp_allocator)
+			out = fmt.tprintf("%s%s%s%s", out[:at + len(BADGE)], escaped, rest[end - BADGE_HEX_BYTES - 1:end], rest[end:])
+		}
+	}
+	ALT :: `alt="version `
+	if at := strings.index(out, ALT); at >= 0 {
+		rest := out[at + len(ALT):]
+		if end := strings.index_byte(rest, '"'); end >= 0 {
+			out = fmt.tprintf("%s%s%s", out[:at + len(ALT)], version, rest[end:])
+		}
+	}
+	return out
 }

@@ -19,7 +19,6 @@ import changelog "../../src/changelog"
 
 LINK :: "https://github.com/sachahjkl/gui_toolkit/releases/tag/v%s"
 VERSION_FILE :: "src/ui/version.odin"
-BADGE_HEX_BYTES :: 6
 
 // The toolkit's checkout at `root`, for the package.
 options :: proc(root: string) -> changelog.Options {
@@ -77,29 +76,8 @@ write_source_version :: proc(root, version: string) -> bool {
 	}
 	if !write_text(path, strings.to_string(sb)) { return false }
 	path = fmt.tprintf("%s/README.md", root)
-	if readme, has := read_text(path); has { return write_text(path, with_badge(readme, version)) }
+	if readme, has := read_text(path); has { return write_text(path, changelog.with_badge(readme, version)) }
 	return true
-}
-
-// `badge/version-<v>-<hex6>` and `alt="version <v>"`: the version replaced.
-with_badge :: proc(text, version: string) -> string {
-	out := text
-	BADGE :: "badge/version-"
-	if at := strings.index(out, BADGE); at >= 0 {
-		rest := out[at + len(BADGE):]
-		if end := strings.index_byte(rest, '"'); end > BADGE_HEX_BYTES {
-			escaped, _ := strings.replace_all(version, "-", "--", context.temp_allocator)
-			out = fmt.tprintf("%s%s%s%s", out[:at + len(BADGE)], escaped, rest[end - BADGE_HEX_BYTES - 1:end], rest[end:])
-		}
-	}
-	ALT :: `alt="version `
-	if at := strings.index(out, ALT); at >= 0 {
-		rest := out[at + len(ALT):]
-		if end := strings.index_byte(rest, '"'); end >= 0 {
-			out = fmt.tprintf("%s%s%s", out[:at + len(ALT)], version, rest[end:])
-		}
-	}
-	return out
 }
 
 main :: proc() {
