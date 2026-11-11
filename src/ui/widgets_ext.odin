@@ -617,13 +617,19 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 		// (machined: the box draws nothing of its own, seg_draw carves the slot)
 		b := build_box(mach ? {} : {.Draw_Background, .Draw_Border, .Sunken}, id)
 		d := frame_new(Seg_Draw)
-		d.t, d.n, d.accent, d.pad = t, len(labels), accent, em * 0.25
+		d.t, d.n, d.accent, d.pad = t, len(labels), accent, math.round(em * 0.25)   // (whole pixels: the key and the labels share it)
 		d.face, d.well = color("background"), color("well")
 		d.radius = max(b.radius, rad(em * 0.4))
 		b.custom, b.custom_user = seg_draw, d
 		a11y_default(b, {role = .Radio_Group, orientation = .X})
 		if parent(b) {
-			spacer(px(em * 0.25))
+			// (the labels on the width the key slides on: the track less its padding on each side, as seg_draw divides
+			// it; on the whole width each label sat further right of its key than the one before)
+			spacer(px(d.pad))
+			next({width = fill(), height = pct(1), axis = .X})
+			inner := build_box({}, "###seg_inner")
+			push_parent(inner)
+			defer { pop_parent(); spacer(px(d.pad)) }
 			for label, i in labels {
 				fg := i == selected^ ? text_on : text_off
 				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg, radius = max(0, b.radius - em * 0.125)})
@@ -637,7 +643,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 				a11y_default(item, {role = .Radio_Button, toggled = i == selected^ ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
 			}
 			// (the item clicked this frame is the selected one: the earlier items said otherwise)
-			if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
+			if changed { for c := inner.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 		}
 	}
 	return
