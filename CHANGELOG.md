@@ -5,6 +5,29 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.191.0] - 2026-11-11
+
+### Added
+- **`tk_changelog.with_badge`**: a README's version badge (shields.io) and its alt text set to a version, for a program's `set_version` (it was the toolkit's own tool's).
+- **`Table_Column.descending_first`**: a column of text sorted from the largest at its first click, as a number is (a date: the newest first).
+- **A table's header holds the program's own pieces**: `Table_Header_Options` builds a lead before the first title (a box that checks every row) and a piece in each title (a filter's funnel, shown while the pointer is on it); `Table_Column.unsorted` marks a column whose title sorts nothing (a count beside the sizes).
+- **In the edged finish a dock's stack is a window**: its strip is a title, the accent fading out from its left, lit where the keyboard's focus is and dimmed toward the bar elsewhere (`caption_face(..., lit)`).
+- **`section_header(..., inline = true)`**: as wide as its words, for a header in a row with other things (the keys a panel answers, a button).
+- **`strip_grid`: a strip that opens into a grid**: its cells on one line that scrolls sideways; "Show all" under it lays them out as a grid wrapped to the width, "Show fewer" folds them back. The button is there only when the line does not hold them all.
+- **`Palette_Options`**: a program's palette shows the commands run last on top, puts a command first while searching (an alias typed whole), shows its own text of each command's keys (its user's keys, a sequence) and a foot line; Ctrl, Alt or Shift with Enter chooses too (`Command_Palette.chosen_mods`), for what else the program does with the command.
+- **`cli`: a program's command line from one table of its options**: `cli.check` answers `--help` with the help made from the table and `--version` with the version, and refuses an option the table does not have (why, then the help; exit code 2), so a typo or a guess no longer starts the program as if nothing was said. Options take a value (`--session=<id>`), an optional one (`--settings[=<n>]`), one in the next argument (`--pref <name=value>`), or are hidden (what tools pass). The help lists the options by group, then examples, the environment the program reads, and its files.
+
+### Changed
+- **A table's tinted cell is square** (`table_cell` with `bg`), whatever radius the style has: it is part of its row, as the rows are.
+- **The Console theme is named Kernel**: the name of what it comes from. A program that stored "Console" finds no theme of that name.
+- **A row is square**: a row of a list, of a table or of a menu has no rounded corners, whatever radius the style around it has: a selected row's fill runs from edge to edge, row under row.
+- **An offscreen renderer does not pre-warm** (WebGPU): it makes a pipeline when it first draws with it. Pre-warmed, each one compiled all eight pipelines on a thread and `destroy` waited for them, used or not: every test session paid them, and on WARP the slowest CI packages spent most of their time there (`subpixel_slug` and `scenarios`: 48 s to 30 s on a GPU). A window's renderer still pre-warms: its start hides the compiles. `TOOLKIT_WGPU_PREWARM` is gone.
+
+### Fixed
+- **A wheel turned up past the top no longer glides over what comes above it**: content inserted above the view while it heads for a top it was stopped at (a page read before the first, a lazy column) carries that stop along, as any other place. A view sent to the start as such goes there with the new `view_top` (Home), and still ends at the start whatever comes above.
+- **A test run by `unwatched.run` keeps its name in `build/session/`**: its folder had the anonymous body's procedure name ("pkg::test$anon-pkg:file.odin:123"), so a tool that looks for a test's pictures by its name found none.
+- **`changelog.new_fragment` with no root writes in the current folder**: it wrote `/changelog.d`, at the root of the disk, and refused the fragment it could not read back ("it is empty").
+
 ## [0.190.2] - 2026-11-11
 
 ### Fixed
@@ -2574,6 +2597,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.191.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.191.0
 [0.190.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.2
 [0.190.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.1
 [0.190.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.0
