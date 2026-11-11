@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.175.0] - 2026-11-11
+
+### Added
+- **Code in the theme's colours**: `ui.code_runs` (runs for `rich_paragraph`) and `ui.code_highlight` (a `text_edit`'s highlight) colour tk_syntax's classes with the theme's new entries `code_keyword`, `code_string`, `code_comment`, `code_func` and `code_type`. A `Palette` carries the theme's other hues (`blue`, `purple`, `cyan`, `rose`).
+
 ## [0.174.0] - 2026-11-11
 
 ### Added
@@ -2421,6 +2426,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.175.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.175.0
 [0.174.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.174.0
 [0.173.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.173.0
 [0.172.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.172.0
