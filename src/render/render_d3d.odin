@@ -9,6 +9,7 @@ package render
 
 @(require) import "core:fmt"
 @(require) import "core:mem"
+@(require) import "core:time"
 @(require) import "base:runtime"
 @(require) import win "core:sys/windows"
 @(require) import "vendor:directx/d3d11"
@@ -106,10 +107,36 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 	return true
 }
 
-// Releases every GPU object and the renderer's memory (textures still alive included). The renderer can be
-// initialized again afterwards.
+// How long a renderer that ends waits for the GPU to finish what it was given (a frame submitted, not read back).
+@(private = "file") GPU_IDLE_WAIT_MS :: 2000
+
+// Waits for the GPU to finish the work given to the context: a query of its end, flushed, until it is done or the wait ends.
+// An offscreen frame is only flushed (no present tells when it is over): a device released while WARP's threads still
+// drew it kept its memory until later, or ended the process (a test package of a hundred sessions fell at about the
+// hundred and twentieth).
+@(private = "file")
+d3d_gpu_idle :: proc(r: ^Renderer) {
+	if r.ctx == nil || r.device == nil || r.lost { return }
+	q: ^d3d11.IQuery
+	if hr_failed(r.device->CreateQuery(&{Query = .EVENT}, &q)) || q == nil { return }
+	defer q->Release()
+	r.ctx->End((^d3d11.IAsynchronous)(q))
+	r.ctx->Flush()
+	start := time.tick_now()
+	for {
+		done: win.BOOL
+		hr := r.ctx->GetData((^d3d11.IAsynchronous)(q), &done, size_of(win.BOOL), 0)
+		if hr_failed(hr) || (hr == 0 && bool(done)) { return }
+		if time.duration_milliseconds(time.tick_since(start)) > GPU_IDLE_WAIT_MS { return }
+		win.SwitchToThread()
+	}
+}
+
+// Releases every GPU object and the renderer's memory (textures still alive included), once the GPU has finished what
+// it was given. The renderer can be initialized again afterwards.
 d3d_destroy :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	d3d_gpu_idle(r)
 	readback_renderer_gone(r)
 	canvas_pipeline_release(r)
 	for i in 1 ..< len(r.textures) { destroy_texture(r, Texture(i)) }

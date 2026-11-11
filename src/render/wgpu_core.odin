@@ -1118,6 +1118,8 @@ wgpu_release_device :: proc(r: ^Renderer) {
 
 @(private)
 wgpu_destroy :: proc(r: ^Renderer) {
+	// (the GPU finishes what it was given first, and what waited to be freed is: an offscreen frame is submitted, not waited)
+	if r.wg.device != nil { wgpu_poll(r, wait = true) }
 	for i in 1 ..< len(r.textures) { wgpu_destroy_texture(r, Texture(i)) }
 	wgpu_latency_stop(r)
 	wgpu_prewarm_stop(&r.wg)
