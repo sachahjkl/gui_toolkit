@@ -25,7 +25,8 @@ DEFS := [?]config.Def{
 A `Def` carries its dotted lower-case `name`, a `description` (a settings UI shows its first sentence and folds the rest),
 a `kind` (`.Bool / .Int / .Float / .String`), a `default`, optional `bounded` bounds, a `choices` list for strings, a
 `unit` ("ms", "bytes"), `bytes` (an int that accepts `K`/`M`/`G` when typed), `restart` (takes effect at the next start)
-and a `category` (defaults to the first name segment). A `hidden` preference is the program's own (a layout, a last
+and a `category` (defaults to the first name segment). Its `tags` are other words a search finds it by, that its name, title and
+description do not say ("colours", "dark" for a theme). A `hidden` preference is the program's own (a layout, a last
 choice): it is kept and read as the others, but no settings page shows it, nor anything that lists the settings.
 
 ## The registry
@@ -86,7 +87,7 @@ config.unwatch(&p, id)
 title := config.title_of(d)                    // "net.http.max_connections" -> "HTTP max connections"
 head  := config.category_title("devtools")      // "DevTools"
 summary, more := config.summary_of(d.description)
-if config.matches(d, query) { ... }             // every word of the query in the name, title or description
+if config.matches(d, query) { ... }             // every word of the query in the name, title, description or tags
 ```
 
 ### A search over pages

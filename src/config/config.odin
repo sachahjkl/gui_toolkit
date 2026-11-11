@@ -53,6 +53,8 @@ Def :: struct {
 	bytes:       bool,        // Int: accepts K / M / G suffixes when typed
 	category:    string,      // grouping in about:config; defaults to the first name segment
 	hidden:      bool,        // the program's own (a layout, a last choice): no settings page shows it, nor what lists the settings
+	// other words a search finds it by, that its name, title and description do not say ("colours", "dark" for a theme)
+	tags:        []string,
 }
 
 Source :: enum u8 { Default, User, Command_Line, Policy }

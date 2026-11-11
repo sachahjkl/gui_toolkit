@@ -55,4 +55,7 @@ search_matches_every_word :: proc(t: ^testing.T) {
 	testing.expect(t, matches(d, "blocker.badge"))       // the name
 	testing.expect(t, !matches(d, "badge network"))      // every word must match
 	testing.expect(t, !matches(d, "cookies"))
+	d.tags = {"counter", "icon"}
+	testing.expect(t, matches(d, "icon"), "a tag")
+	testing.expect(t, matches(d, "badge counter"), "a word of the title and a tag")
 }

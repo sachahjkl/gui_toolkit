@@ -32,7 +32,7 @@ ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 | | |
 |---|---|
 | `Chord{key, mods}` | a key and its modifiers; the zero value is no key |
-| `Command{label, group, keys}` | `keys`: two chords at most, the first one shown in menus and tooltips |
+| `Command{label, group, keys, icon, tags}` | `keys`: two chords at most, the first one shown in menus and tooltips; `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
 | `chord_text(chord)` | `Ctrl+Shift+P`, `Shift+Delete`, `F5`: modifiers in the order Ctrl, Shift, Alt |
 | `key_name(key)` | a key's printed name (`Page Down`, `Enter`, `Escape`) |
 | `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |

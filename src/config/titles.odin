@@ -66,8 +66,10 @@ summary_of :: proc(description: string) -> (summary, more: string) {
 }
 
 // Whether a preference matches a search: every word of `query` (lower case, separated by spaces) appears in its name,
-// its title or its description. An empty query matches everything.
-matches :: proc(d: Def, query: string) -> bool { return words_match(query, d.name, title_of(d), d.description) }
+// its title, its description or its tags. An empty query matches everything.
+matches :: proc(d: Def, query: string) -> bool {
+	return words_match(query, d.name, title_of(d), d.description, strings.join(d.tags, " ", context.temp_allocator))
+}
 
 @(private = "file")
 split_words :: proc(s: string, allocator := context.temp_allocator) -> []string {

@@ -56,7 +56,7 @@ typed :: proc(r: rune) -> platform.Event { return {kind = .Text, text = r} }
 @(private = "file")
 PALETTE_COMMANDS := [?]ui.Command{
 	{label = "End task", group = "Processes", keys = {{.Delete, {}}, {}}},
-	{label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}, {}}},
+	{label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}, {}}, tags = {"terminate", "force"}},
 	{label = "Start", group = "Services", keys = {{.S, {.Ctrl}}, {}}},
 	{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}},
 }
@@ -125,6 +125,15 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	frame(&f, {key(.Return)}, build_palette, &r)
 	testing.expect_value(t, r.chosen, 1)
 	testing.expect(t, !r.pal.open, "choosing closes the palette")
+
+	// a word the label does not say: its tags
+	r.chosen = -1
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
+	frame(&f, nil, build_palette, &r)
+	for c in "termin" { frame(&f, {typed(c)}, build_palette, &r) }
+	frame(&f, nil, build_palette, &r)
+	frame(&f, {key(.Return)}, build_palette, &r)
+	testing.expect_value(t, r.chosen, 1)
 
 	// the best match first: "c" is in the group of End task, Kill and Start (Processes, Services), and at the start of
 	// Command palette's label: Command palette comes first, though it is last in the table

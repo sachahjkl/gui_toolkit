@@ -34,6 +34,8 @@ PALETTE_ROW_EM :: 2
 PALETTE_HEADING_EM :: 1.9
 // What a match of the group's letters (not the label's alone) loses against one of the label's.
 PALETTE_GROUP_MATCH_PENALTY :: 100
+// What a match of a tag (a word the label does not say) loses against one of the label's, less than one of the group's.
+@(private = "file") PALETTE_TAG_MATCH_PENALTY :: 50
 // The sheet's width, in em; its list's height at most, a share of the window's height.
 SHEET_WIDTH_EM :: 34
 SHEET_HEIGHT :: 0.7
@@ -47,6 +49,8 @@ Chord :: struct {
 Command :: struct {
 	label: string,     // "End task": the menu's, the palette's and the sheet's text
 	group: string,     // "Processes": the palette's and the sheet's heading ("" none)
+	// other words the palette finds it by, that its label does not say ("exit", "close" for Quit)
+	tags:  []string,
 	keys:  [2]Chord,   // its keys, the first one shown in menus and tooltips; {} none
 	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
 }
@@ -314,10 +318,13 @@ palette_list :: proc(commands: []Command, query: string) -> []Palette_Line {
 	Ranked :: struct { index, score: int }
 	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
 	for c, i in commands {
+		tags := strings.join(c.tags, " ", context.temp_allocator)
 		if score, _, ok := fuzzy_words(query, c.label); ok {
 			append(&ranked, Ranked{i, score})
-		} else if score2, _, ok2 := fuzzy_words(query, fmt.tprintf("%s %s", c.label, c.group)); ok2 {
-			append(&ranked, Ranked{i, score2 - PALETTE_GROUP_MATCH_PENALTY})
+		} else if score2, _, ok2 := fuzzy_words(query, fmt.tprintf("%s %s", c.label, tags)); ok2 && tags != "" {
+			append(&ranked, Ranked{i, score2 - PALETTE_TAG_MATCH_PENALTY})
+		} else if score3, _, ok3 := fuzzy_words(query, fmt.tprintf("%s %s %s", c.label, c.group, tags)); ok3 {
+			append(&ranked, Ranked{i, score3 - PALETTE_GROUP_MATCH_PENALTY})
 		}
 	}
 	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })

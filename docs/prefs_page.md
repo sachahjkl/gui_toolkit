@@ -82,7 +82,9 @@ closes the page on Escape leaves that Escape to the field.
 ## The settings in the command palette
 
 `palette_commands(prefs, options)` gives one `ui.Command` per preference the pages show (a hidden one is not): its label
-is the title the page gives it, its group `Settings · <page>`, its icon the page's (else Lucide's sliders). A program puts
+is the title the page gives it, its group `Settings · <page>`, its icon the page's (else Lucide's sliders), its tags the
+preference's (`config.Def.tags`: other words the settings' search and the palette find it by, "colours" and "dark" for a
+theme). A program puts
 them after its own commands in `ui.palette`; when one is chosen, it opens its settings and calls `show(page, prefs,
 options, name)`: the page's search holds the preference's name in quotes, so it shows alone with its control, and the
 page under the search is its own (clearing the search lands there).

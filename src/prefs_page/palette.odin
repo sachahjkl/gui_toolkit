@@ -28,7 +28,8 @@ palette_commands :: proc(prefs: ^config.Prefs, o: Options, allocator := context.
 		icon := pg.icon != "" ? pg.icon : lucide.SLIDERS_HORIZONTAL
 		for name in page_names(prefs, pg) {
 			r := prefs.index[name]
-			append(&out, ui.Command{label = config.title_of(prefs.entries[r].def, allocator), group = group, icon = icon})
+			d := prefs.entries[r].def
+			append(&out, ui.Command{label = config.title_of(d, allocator), group = group, icon = icon, tags = d.tags})
 			append(&ns, name)
 		}
 	}
