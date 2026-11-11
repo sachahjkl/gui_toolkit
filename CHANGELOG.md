@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.195.1] - 2026-11-11
+
+### Changed
+- **The command palette as in opencode native**: a magnifier before its field and the number of results at the end of the line, a carved line under the field, and the selected line sunk in a well with a bar of the accent at its left, its text in the theme's own colour (it was a raised face of the accent, the text on it hard to read).
+
+### Fixed
+- **What a search found is readable**: it is drawn in the text's own colour on the tint of the accent (theme `match`); the accent's colour on its own tint read badly, worst on a dark theme. This is true in the palette, a list, and a table's filter.
+
 ## [0.195.0] - 2026-11-11
 
 ### Added
@@ -2642,6 +2650,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.195.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.1
 [0.195.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.0
 [0.194.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.194.0
 [0.193.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.193.0
