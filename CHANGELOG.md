@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.191.1] - 2026-11-11
+
+### Fixed
+- **A `strip_grid` line scrolls with a mouse's wheel**: over a line that is cut, the wheel turned the usual way scrolls it sideways (it went to the page, and only a wheel turned sideways or a touchpad moved the line). A line that holds all its cells leaves the wheel to the page.
+- **A box that fills its parent fills it under a box that scrolls sideways too**: under a box with `Allow_Overflow_X` (a table's titles, its rows), a `fill()` kept the size its parent had before an ancestor shrank, the window's width: a table beside a sidebar was as wide as the window and scrolled for nothing.
+
 ## [0.191.0] - 2026-11-11
 
 ### Added
@@ -2597,6 +2603,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.191.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.191.1
 [0.191.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.191.0
 [0.190.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.2
 [0.190.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.1
