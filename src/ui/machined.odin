@@ -56,6 +56,7 @@ edged :: proc() -> bool {
 @(private = "file") EDGED_WELL_TOP2     :: 0.22
 @(private = "file") EDGED_LIP_ALPHA     :: 0.08
 @(private = "file") EDGED_EDGE_ALPHA    :: 0.85
+@(private = "file") EDGED_PLATE_EDGE_LIGHTEN :: 0.12   // a panel's outline: its border colour this much toward white
 
 // A hairline `p` thick along the top of `r` (inside it), and one along its bottom, kept off the rounded corners.
 @(private = "file")
@@ -281,7 +282,11 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	if .Plate in b.flags && b.bg.a >= 0.99 {
 		// a raised panel: its face a shade lighter at the top, a lit rim, a dark edge; a shadow under it unless it has its own
 		// (.Draw_Shadow: a dialog, a menu)
-		machined_plate(dc, r, radius, lighten(b.bg, PLATE_TOP_LIGHTEN), darken(b.bg, PLATE_BOTTOM_DARKEN), .Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX)
+		// (edged: its edge is its own border's colour, lit a little, as a console's window is outlined: a dark one was lost on
+		// the dimmed page around a dialog)
+		edge := Color{0, 0, 0, 0.85}
+		if edged() { edge = lighten(b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border"), EDGED_PLATE_EDGE_LIGHTEN) }
+		machined_plate(dc, r, radius, lighten(b.bg, PLATE_TOP_LIGHTEN), darken(b.bg, PLATE_BOTTOM_DARKEN), .Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX, border = edge)
 		return true, true
 	}
 	if .Sunken in b.flags {

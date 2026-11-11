@@ -165,3 +165,21 @@ edged_corners_are_square :: proc(t: ^testing.T) {
 		testing.expectf(t, session.near(corner, page, 2) == (finish != .Edged), "%v: the corner %v, the page %v", finish, corner, page)
 	}
 }
+
+// An edged panel is outlined all around, its sides too: its edge is its border's colour, lit, not a dark line lost on a
+// dark page (a dialog over its dimmed window).
+@(test)
+an_edged_panel_is_outlined_on_its_sides :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {200, 120}, palette = ui.palette_of("Console"), build = proc(s: ^session.Session) {
+		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(200), height = ui.px(120), bg = {0, 0, 0, 1}})
+		if ui.column(flags = {.Draw_Background}, id = "###page") {
+			ui.next({fixed_x = 40, fixed_y = 30, width = ui.px(120), height = ui.px(60), bg = ui.color("background"), border = ui.color("border")})
+			ui.build_box({.Draw_Background, .Draw_Border, .Plate, .Draw_Shadow}, "###panel")
+		}
+	}})
+	img := session.capture(s)
+	left, inside, page := session.pixel(img, 40, 60), session.pixel(img, 45, 60), session.pixel(img, 20, 60)
+	testing.expectf(t, sum(left) > sum(page) + 40 && sum(left) > sum(inside), "its left side: %v (inside %v, the page %v)", left, inside, page)
+	right := session.pixel(img, 159, 60)
+	testing.expectf(t, sum(right) > sum(page) + 40, "its right side: %v", right)
+}
