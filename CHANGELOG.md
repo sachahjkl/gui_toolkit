@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.180.2] - 2026-11-11
+
+### Fixed
+- **A segmented control's labels are centred on their key**: they were laid out on the whole track while the key slides on the track less its padding, each a little further right of its key than the one before.
+
 ## [0.180.1] - 2026-11-11
 
 ### Fixed
@@ -2475,6 +2480,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.180.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.2
 [0.180.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.1
 [0.180.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.0
 [0.179.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.179.0
