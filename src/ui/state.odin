@@ -859,6 +859,7 @@ update_animations :: proc(s: ^State) {
 			scroll_flag := axis == .X ? Box_Flag.View_Scroll_X : Box_Flag.View_Scroll_Y
 			if scroll_flag not_in b.flags { continue }
 			b.view_target[int(axis)] = clamp(b.view_target[int(axis)], 0, view_limit(b, axis))
+			if b.view_target[int(axis)] != 0 { b.view_top_held[int(axis)] = false }   // (moved off the start since view_top)
 			scroll_step(s, b, int(axis))
 		}
 	}

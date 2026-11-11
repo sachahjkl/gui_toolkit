@@ -123,14 +123,14 @@ a_shift_carries_a_glide_along :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.view_anim[1].start, was.start)   // (a new move would have started now)
 }
 
-// A view on its way back to the top ends there, however much the content above it grew meanwhile.
+// A view sent back to the top ends there, however much the content above it grew meanwhile.
 @(test)
 a_shift_leaves_the_top_the_top :: proc(t: ^testing.T) {
 	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
 	b := session.get(s, "view")
 	ui.view_jump(b, FAR)
 	session.frames(s, 1)
-	b.view_target.y = 0
+	ui.view_top(b)
 	session.frames(s, 1)
 	if !testing.expect(t, b.view_anim[1].active && b.view_off.y > 0, "on its way") { return }
 	off := b.view_off.y
@@ -139,6 +139,29 @@ a_shift_leaves_the_top_the_top :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.view_target.y, 0)
 	session.wait_idle(s)
 	testing.expect_value(t, b.view_off.y, 0)
+}
+
+// A wheel turned up past the top stops there; content that comes above it then (a page read before the first) carries
+// that stop along: the view does not glide over all of it.
+@(test)
+a_wheel_stopped_at_the_top_moves_with_the_content :: proc(t: ^testing.T) {
+	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
+	b := session.get(s, "view")
+	ui.view_jump(b, ROW_H * 2)
+	session.frames(s, 1)
+	session.wheel(s, session.center(b), {0, -WHEEL_NOTCHES * 4})
+	session.frames(s, 1)
+	if !testing.expect(t, b.view_target.y == 0 && b.view_anim[1].active, "on its way to the top, stopped there") { return }
+	ui.view_shift(b, FAR, ui.view_limit(b))
+	testing.expect_value(t, b.view_target.y, FAR)
+	session.wait_idle(s)
+	testing.expect_value(t, b.view_off.y, FAR)
+	// moved off the top and back by the wheel: a place like any other again
+	ui.view_top(b)
+	session.frames(s, 1)
+	session.wheel(s, session.center(b), {0, WHEEL_NOTCHES})
+	session.frames(s, 1)
+	testing.expect(t, !b.view_top_held[1], "the wheel took it off the start")
 }
 
 @(test)

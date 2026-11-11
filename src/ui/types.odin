@@ -157,6 +157,7 @@ Box :: struct {
 	text_dim:    Vec2,           // measured size of `text` (without padding)
 	view_off:    Vec2,           // scroll offset, animated
 	view_target: Vec2,           // scroll offset target
+	view_top_held: [2]bool,      // the target is the content's start as asked (view_top), not where a move stopped (view_shift)
 	view_bounds: Vec2,           // extent of the children (for clamping)
 	view_anim:   [2]Scroll_Anim, // smooth scrolling toward view_target (scroll_anim.odin)
 

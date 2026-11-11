@@ -126,17 +126,26 @@ view_reveal_box :: proc(p, b: ^Box, axis := Axis.Y, margin: f32 = 0) {
 view_jump :: proc(b: ^Box, at: f32, axis := Axis.Y) {
 	ai := int(axis)
 	b.view_off[ai], b.view_target[ai] = at, at
+	b.view_top_held[ai] = false
 	b.view_anim[ai].active = false
+}
+
+// Heads for the content's start as such (Home): content that comes above the view on the way does not stop it short
+// (view_shift). A move that stops at the start (the wheel, Page Up) is a place like any other.
+view_top :: proc(b: ^Box, axis := Axis.Y) {
+	b.view_target[int(axis)] = 0
+	b.view_top_held[int(axis)] = true
 }
 
 // The content moved by `by` under the view: the view follows, what it showed stays on screen, and a glide under way
 // goes on from where it was instead of starting over. `limit`: the largest scroll of the content as it now is, which
-// view_limit does not know before the layout. A target at the top stays there: a view going back to the top still ends
-// there (the glide, shifted with the rest, turns to it at its speed).
+// view_limit does not know before the layout. The target follows too, even at the start where a move stopped (a wheel
+// turned up past the top while a page is read before it: it would glide over all of that page); a view sent to the
+// start as such (view_top) still ends there (the glide, shifted with the rest, turns to it at its speed).
 view_shift :: proc(b: ^Box, by, limit: f32, axis := Axis.Y) {
 	ai := int(axis)
 	b.view_off[ai] = clamp(b.view_off[ai] + by, 0, limit)
-	if b.view_target[ai] > 0 { b.view_target[ai] = clamp(b.view_target[ai] + by, 0, limit) }
+	if b.view_target[ai] > 0 || !b.view_top_held[ai] { b.view_target[ai] = clamp(b.view_target[ai] + by, 0, limit) }
 	if a := &b.view_anim[ai]; a.active { a.from += f64(by); a.to += f64(by) }
 }
 
