@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.192.3] - 2026-11-11
+
+### Fixed
+- **The command palette keeps its edge along its field**: the field's darker strip began on the dialog's lit rim (machined and edged finishes), so the dialog's edge showed only at its corners. The strip now begins inside it.
+
 ## [0.192.2] - 2026-11-11
 
 ### Fixed
@@ -2618,6 +2623,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.192.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.3
 [0.192.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.2
 [0.192.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.1
 [0.192.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.0
