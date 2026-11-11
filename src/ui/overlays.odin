@@ -32,6 +32,7 @@ set_toast_area :: proc(r: Rect) { gs().toast_area = r; gs().toast_area_set = tru
 @(private = "file") TOAST_FADE_IN_S :: 0.25
 @(private = "file") TOAST_FADE_OUT_S :: 0.35
 @(private = "file") TOAST_GLIDE_RATE :: 40
+@(private = "file") TOAST_PAD_Y_EM :: 0.65   // above and below its words
 
 // Queue a message. Toasts fade in, stay ~3.8 s, fade out; click to dismiss (toast_action: to do something). Oldest is replaced when all slots are used.
 toast :: proc(kind: Toast_Kind, format: string, args: ..any) { toast_add(kind, nil, nil, fmt.tprintf(format, ..args)) }
@@ -42,8 +43,23 @@ toast_action :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr,
 	toast_add(kind, action, user, fmt.tprintf(format, ..args))
 }
 
+// A toast of two parts: `title` in bold on its line (cut with "…" when long), `body` under it, on as many lines as it needs.
+// `action`: what a click does (nil: it only dismisses it).
+toast_titled :: proc(kind: Toast_Kind, title, body: string, action: proc(user: rawptr) = nil, user: rawptr = nil) {
+	toast_add(kind, action, user, body, title)
+}
+
+// (`text` cut to `buf`, between clusters, not inside a character)
 @(private = "file")
-toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, msg: string) {
+toast_copy :: proc(buf: []u8, text: string) -> int {
+	n := min(len(text), len(buf))
+	if n < len(text) { n = font.grapheme_prev(text, n + 1) }
+	copy(buf, text[:n])
+	return n
+}
+
+@(private = "file")
+toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, msg: string, title := "") {
 	s := gs()
 	slot := -1
 	oldest_ms := max(f64)
@@ -56,9 +72,8 @@ toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, ms
 	t := &s.toasts[slot]
 	t^ = {}
 	t.action, t.user = action, user
-	t.len = min(len(msg), len(t.text))
-	if t.len < len(msg) { t.len = font.grapheme_prev(msg, t.len + 1) }   // cut between clusters, not inside a character
-	copy(t.text[:], msg[:t.len])
+	t.len = toast_copy(t.text[:], msg)
+	t.title_len = toast_copy(t.title[:], title)
 	s.toast_serial += 1
 	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_now_ms(), TOAST_LIFE_MS, s.toast_serial
 }
@@ -73,7 +88,7 @@ toasts_build :: proc() {
 	em := font_size()
 	area := s.toast_area_set ? s.toast_area : Rect{{0, 0}, s.window_size}
 	w := min(em * 26, (area.max.x - area.min.x) * 0.9)
-	h, gap, margin := em * 3.0, em * 0.6, em * 1.1
+	min_h, gap, margin := em * 3.0, em * 0.6, em * 1.1
 	pos := s.toast_pos
 
 	// alive toasts, newest first
@@ -97,7 +112,15 @@ toasts_build :: proc() {
 	top := pos == .Top_Left || pos == .Top_Center || pos == .Top_Right
 	bottom := pos == .Bottom_Left || pos == .Bottom_Center || pos == .Bottom_Right
 	x := left ? area.min.x + margin : (right ? area.max.x - margin - w : (area.min.x + area.max.x - w) * 0.5)
-	stack_h := f32(n) * h + f32(n - 1) * gap
+	// each as tall as its lines (what its words took in the last layout; a new one the least, while it fades in)
+	heights := make([]f32, n, context.temp_allocator)
+	stack_h := f32(n - 1) * gap
+	for idx, slot in order {
+		words := s.boxes[key_from_string(key_from_string(s.root.key, fmt.tprintf("###toast_%d", s.toasts[idx].serial)), "###words")]
+		heights[slot] = words != nil ? max(min_h, math.ceil(words.size.y + em * TOAST_PAD_Y_EM * 2)) : min_h
+		stack_h += heights[slot]
+	}
+	before: f32   // the heights and gaps of the toasts nearer the anchored edge
 
 	icons := [Toast_Kind]string{.Info = ICON_INFO, .Good = ICON_CHECK, .Warn = ICON_WARN, .Bad = ICON_WARN_BIG}
 	tag := [Toast_Kind]string{.Info = "accent", .Good = "good", .Warn = "warn", .Bad = "bad"}
@@ -121,12 +144,14 @@ toasts_build :: proc() {
 			left_ms := int((life - age) * 1000) + WAKE_MARGIN_MS
 			wake_within(s, left_ms)
 		}
+		h := heights[slot]
 		target_y: f32
 		switch {
-		case top:    target_y = area.min.y + margin + f32(slot) * (h + gap)
-		case bottom: target_y = area.max.y - margin - h - f32(slot) * (h + gap)
-		case:        target_y = (area.min.y + area.max.y - stack_h) * 0.5 + f32(slot) * (h + gap)
+		case top:    target_y = area.min.y + margin + before
+		case bottom: target_y = area.max.y - margin - h - before
+		case:        target_y = (area.min.y + area.max.y - stack_h) * 0.5 + before
 		}
+		before += h + gap
 		id := fmt.tprintf("###toast_%d", t.serial)
 		key := key_from_string(s.root.key, id)
 		y := anim(key_from_string(key, "y"), target_y, TOAST_GLIDE_RATE, target_y)
@@ -161,13 +186,31 @@ toasts_build :: proc() {
 		}
 		// announced when it appears (a live region): a problem at once, the rest when the reader is free
 		urgent := t.kind == .Bad || t.kind == .Warn
-		a11y_default(b, {role = urgent ? .Alert : .Status, name = strings.clone(string(t.text[:t.len]), frame_allocator()), live = urgent ? .Assertive : .Polite, no_children = true})
+		said := t.title_len > 0 ? fmt.tprintf("%s: %s", string(t.title[:t.title_len]), string(t.text[:t.len])) : string(t.text[:t.len])
+		a11y_default(b, {role = urgent ? .Alert : .Status, name = strings.clone(said, frame_allocator()), live = urgent ? .Assertive : .Polite, no_children = true})
 		push_parent(b)
 		spacer(px(em * 0.6))
 		widget_icon(icons[t.kind], em * 1.8, tint)
 		spacer(px(em * 0.4))
-		next({width = fill(), height = pct(1)})
-		build_box({.Draw_Text}, fmt.tprintf("%s###msg", string(t.text[:t.len])))
+		// the words: a title on its line, the text under it on as many as it needs, centered in the toast
+		next({width = fill(), height = children_sum(), axis = .Y})
+		push_parent(build_box({}, "###words"))
+		if t.title_len > 0 {
+			st := top_style()
+			next({width = fill(), height = text_size(), text_pad = 0, font = font.styled_face(s.fonts, st.font, true, false)})
+			build_box({.Draw_Text}, fmt.tprintf("%s###title", string(t.title[:t.title_len])))
+			spacer(px(em * 0.15))
+			if t.len > 0 {
+				push_tags("weak")
+				next({width = fill(), height = text_size(), text_pad = 0})
+				build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###msg", string(t.text[:t.len])))
+				pop_tags()
+			}
+		} else {
+			next({width = fill(), height = text_size(), text_pad = 0})
+			build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###msg", string(t.text[:t.len])))
+		}
+		pop_parent()
 		spacer(px(em * 0.8))
 		pop_parent()
 		pop_tags()   // floating (push_style_copy is popped with the style stack below)

@@ -272,6 +272,7 @@ Timer :: struct {
 // Toasts shown at once (the oldest gives way), and the bytes of a toast's text that are kept.
 @(private) TOAST_SLOTS :: 8
 @(private) TOAST_TEXT_MAX_BYTES :: 112
+@(private) TOAST_TITLE_MAX_BYTES :: 80
 
 Toast_Kind :: enum u8 { Info, Good, Warn, Bad }
 
@@ -281,6 +282,8 @@ Toast :: struct {
 	kind:    Toast_Kind,
 	text:    [TOAST_TEXT_MAX_BYTES]u8,
 	len:     int,
+	title:   [TOAST_TITLE_MAX_BYTES]u8,   // toast_titled's first line ("": the text alone)
+	title_len: int,
 	born_ms: f64,
 	life_ms: f64,
 	action:  proc(user: rawptr),   // what a click does besides dismissing it (toast_action)
