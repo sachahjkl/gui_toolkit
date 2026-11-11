@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.180.0] - 2026-11-11
+
+### Added
+- **`ui.preview`** and **`ui.preview_image`**: content (a picture, a page, a diagram) that fits its box, then zooms with the wheel around the pointer, moves with a drag, goes to its pixels and back with a double click, answers +, −, 0 and the arrows; a bar over its corner (`Preview_Options.buttons`) shows the zoom and −, +, 1:1, Fit. docs/preview.md.
+
+### Changed
+- **Machined: a segmented control is a slot with a key in it**: the track carved in the surface (`machined_well`), grooves between its segments, the chosen one a raised metal key, in the text's colour, its corners rounded. **A switch's channel and knob lie on whole device pixels**, and **a well's surface stops inside its edge**: a lit colour (a switch that is on) no longer spills onto the rim around the opening.
+
 ## [0.179.0] - 2026-11-11
 
 ### Changed
@@ -2462,6 +2470,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.180.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.180.0
 [0.179.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.179.0
 [0.178.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.178.0
 [0.177.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.177.1
