@@ -609,7 +609,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			set_next_axis(.X, .Center)
 			s.next_mod.width = px(width)
 			s.next_mod.height = px(dense(em * (s.menu_item_em > 0 ? s.menu_item_em : MENU_ITEM_EM)))
-			s.next_mod.radius = em * 0.35
+			s.next_mod.radius = 0   // (a row of a list: square, as a list's and a table's)
 			if !highlight { s.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
 			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
 			if highlight { pop_tags() }

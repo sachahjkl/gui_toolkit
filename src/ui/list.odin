@@ -297,6 +297,7 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
 	m.axis = .X
+	m.radius = 0   // (a row is square, whatever the style: its fill runs from edge to edge, row under row)
 	s.next_mod = m
 	s.has_next = true
 	flags := Box_Flags{.Clickable}
