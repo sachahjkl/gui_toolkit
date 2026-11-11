@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.177.0] - 2026-11-11
+
+### Changed
+- **Tables as in a file manager**: a column's rule is at its right edge and resizes that column, the columns after it move (the fill column takes its width at the first drag; the table then scrolls); a third click on a title comes back to the table's own sort (`table_sort_click`). **A horizontal scroll bar** for every box that scrolls sideways (`View_Scroll_X`), along its bottom edge.
+- **The palette's field is flush with its edges**, on a strip with a line under it; the commands' keys stay clear of the scroll bar.
+
 ## [0.176.1] - 2026-11-11
 
 ### Fixed
@@ -2441,6 +2447,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.177.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.177.0
 [0.176.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.176.1
 [0.176.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.176.0
 [0.175.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.175.1
