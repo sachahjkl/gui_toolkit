@@ -62,7 +62,7 @@ The desktop finds the program's `<id>.desktop` by it, for the icon and the name 
 the executable's file name. On Windows it does nothing: the program declares its AppUserModelID itself.
 
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
-`is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `set_chrome_regions`, `show_system_menu`,
+`is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `system_title_available`, `set_chrome_regions`, `show_system_menu`,
 `needs_top_border`, `needs_frame_outline`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,
 `set_offscreen_dpi`, `set_offscreen_active`.
 
@@ -128,6 +128,9 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **Decorations.** Windows and KDE (zxdg-decoration) draw a server title bar; **GNOME draws none** — set an integrated
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
   frame as Windows). X11 asks the window manager for no decorations through Motif hints when integrated.
+  `system_title_available(w)` says whether the system can draw the title bar (Windows, X11, a Wayland compositor with
+  zxdg-decoration): where it can, a program offers the choice (a preference "the system's title bar") and switches at
+  any time with `set_integrated_title`; `ui.window_buttons` draws nothing while the title bar is the system's.
 - **An integrated title bar's frame on Linux** (`frame_linux.odin`). Windows moves, resizes and maximizes a window from
   its hit test; Wayland and X11 leave that to the client. A left press on the caption becomes the compositor's move
   (`xdg_toplevel.move`, X11 `_NET_WM_MOVERESIZE`), on a band along any of the four sides its resize, a double click on

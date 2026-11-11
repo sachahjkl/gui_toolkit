@@ -78,6 +78,7 @@ Options :: struct {
 	no_renderer: bool,               // build and layout only: no device is made, `capture` is refused. For what no pixel depends on
 	space:      render.Blend_Space,
 	system_fonts: bool,              // the system's font first, as an application does (false: the fonts compiled in: the same on every machine)
+	integrated_title: bool,          // the interface draws the title bar (platform.set_integrated_title): ui.window_buttons shows
 }
 
 // What `attach` needs of an application that makes its own frames.
@@ -151,6 +152,7 @@ start :: proc(t: ^testing.T, o: Options, loc := #caller_location) -> ^Session {
 	context = s.ctx
 	size := o.size.x > 0 ? o.size : DEFAULT_SIZE
 	s.win = platform.open_window_offscreen(s.name, size, o.dpi_scale)
+	if o.integrated_title { platform.set_integrated_title(s.win, true) }
 	if s.win == nil { failed(s, "no offscreen window", loc) }
 	font.init(&own.fonts)
 	ok: bool

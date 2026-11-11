@@ -1012,6 +1012,8 @@ wl_set_decorations :: proc(w: ^Window, on: bool) {
 	wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_SET_MODE, nil, wl.proxy_get_version(st.decoration), 0, mode)
 	wl.display_flush(wlc.display)
 }
+// Whether the compositor decorates this window when asked (zxdg_decoration_manager_v1: KDE has it, GNOME not).
+@(private) wl_server_decorations :: proc(w: ^Window) -> bool { return wl_state(w).decoration != nil }
 @(private) wl_set_dark :: proc(w: ^Window, dark: bool) {}
 @(private) wl_transparent :: proc(w: ^Window) -> bool { return wl_state(w).transparent }
 @(private) wl_fd :: proc(w: ^Window) -> i32 { return wlc.link == .Connected ? wlc.fd : -1 }

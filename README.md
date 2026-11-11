@@ -210,7 +210,9 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   window, clickable boxes stay the app's; the system gets its usual answers (double-click to maximize, Aero Snap, Snap
   Layouts over the maximize button on Windows 11, system menu, resize along the top edge), maximized windows stay on
   their monitor (auto-hidden taskbars still come up). Caption buttons with the system's sizes, glyphs and colours.
-  `platform.set_fullscreen`. Try `fidget --integrated`.
+  `platform.set_fullscreen`. Try `fidget --integrated`. Where the system can draw the title bar
+  (`platform.system_title_available`: Windows, X11, KDE) a program can offer it and switch at any time; the window
+  buttons then are the system's (`ui.window_buttons` draws none).
 - **Cursors**: every CSS cursor (`platform.Cursor`, `cursor_from_css`); on Windows the system's own when it has one, on Linux the user's theme (X11: libxcb-cursor, else the server's cursor font; Wayland: `wp_cursor_shape_v1`, else libwayland-cursor), the
   others (grab, grabbing, zoom, cell, copy, alias...) drawn in the user's pointer scheme and size; custom cursors from
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,

@@ -282,6 +282,9 @@ set_integrated_title :: proc(w: ^Window, on: bool) {
 
 is_integrated_title :: proc(w: ^Window) -> bool { return w.integrated }
 
+// Whether the system can draw this window's title bar (set_integrated_title false): on Windows, always.
+system_title_available :: proc(w: ^Window) -> bool { return true }
+
 is_maximized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Maximized : bool(win.IsZoomed(w.hwnd)) }
 is_minimized :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Minimized : bool(win.IsIconic(w.hwnd)) }
 is_fullscreen :: proc(w: ^Window) -> bool { return w.offscreen ? w.off_state == .Fullscreen : w.fullscreen }
