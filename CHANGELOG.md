@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.189.0] - 2026-11-11
+
+### Added
+- **`ui.key_held(key)`**: whether a key is held now, from its press in the window to its release, by its own events (not by the modifiers' state, which a compositor may leave stale); none once the user left the window. Ctrl held alone, for a monitor that stops its refresh while it is.
+
 ## [0.188.0] - 2026-11-11
 
 ### Added
@@ -2549,6 +2554,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.189.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.189.0
 [0.188.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.188.0
 [0.187.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.2
 [0.187.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.1
