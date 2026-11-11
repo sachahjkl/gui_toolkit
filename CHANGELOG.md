@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.172.0] - 2026-11-11
+
+### Added
+- **`platform.drop_types`**: the MIME types a drag over the window offers, from its enter on. On Linux the data is read only at the drop: a target judges a drop of a program's own format by its types (it refused it before).
+
+### Changed
+- **The command palette is a dialog the user resizes** (`Command_Palette`, `palette_open(&p)`, `palette(&p, commands, enabled) -> (chosen, resized)`): `modal_sized` with its corner's grip, `PALETTE_WIDTH_EM` by `PALETTE_HEIGHT_EM` at first, its size the program's to keep; a command's `icon` before its label. **A table narrower than its columns scrolls sideways** (`table_min_width`, `table_scroll_sync`; `table_build` does it); `Size.least` is a floor of the resolved size too.
+
 ## [0.171.0] - 2026-11-10
 
 ### Added
@@ -2397,6 +2405,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.172.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.172.0
 [0.171.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.171.0
 [0.170.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.170.0
 [0.169.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.169.0
