@@ -592,6 +592,12 @@ frame_shown_ask :: proc(w: ^Window) {
 	wl_frame_shown_ask(w)
 }
 
+// The word asked by frame_shown_ask is not waited for: no picture was presented after all (nothing changed on screen).
+frame_shown_forget :: proc(w: ^Window) {
+	if w == nil || w.offscreen || w.backend != .Wayland { return }
+	wl_frame_shown_forget(w)
+}
+
 // Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.
 @(private)
 wait_is_over :: proc(w: ^Window) -> bool {

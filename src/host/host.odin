@@ -300,8 +300,11 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	ui.draw_tree(&h.state, &sh.dc)
 	draw.end_frame(&sh.dc)
 	t_present := time.tick_now()
+	presents, _, _ := render.present_totals(r)
 	platform.frame_shown_ask(h.win)   // (with the picture's commit)
 	render.frame_end(r, h.paced && !at_once)
+	// (nothing presented: nothing changed on screen, or no image. The word would come with a later commit, or never)
+	if after, _, _ := render.present_totals(r); after == presents { platform.frame_shown_forget(h.win) }
 	if h.paced { render.paced_present(&h.pacer) }
 	h.times = {draw = time.tick_diff(t_draw, t_present), present = time.tick_since(t_present)}
 	h.shown = h.win.size

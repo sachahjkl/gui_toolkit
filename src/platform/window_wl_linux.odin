@@ -815,6 +815,16 @@ wl_frame_shown_ask :: proc(w: ^Window) {
 	if st.frame_cb != nil { wl.proxy_add_listener(st.frame_cb, &frame_shown_listener, st) }
 }
 
+// The word asked is not waited for: no picture went with it (its request stays on the surface, its answer goes to a
+// proxy that is gone).
+@(private)
+wl_frame_shown_forget :: proc(w: ^Window) {
+	st := wl_state(w)
+	if st == nil || st.frame_cb == nil { return }
+	wl.proxy_destroy(st.frame_cb)
+	st.frame_cb = nil
+}
+
 @(private)
 wl_frame_shown_pending :: proc(w: ^Window) -> bool {
 	st := wl_state(w)

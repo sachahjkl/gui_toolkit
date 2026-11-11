@@ -128,7 +128,7 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **A window not shown.** Wayland's compositor tells when it shows a window's picture (`wl_surface.frame`), and a present
   in Fifo waits for that word about the last one: a window it does not show (covered whole, minimized, on another
   workspace) never gets it. `frame_shown_ask(w)`, just before a picture is presented, asks for it; `frame_shown_pending(w)`
-  says it has not come. `host` presents no picture while it is pending (the input is still read and built), and the word
+  says it has not come; `frame_shown_forget(w)` drops it when no picture was presented after all. `host` presents no picture while it is pending (the input is still read and built), and the word
   asks for a repaint. False and nothing elsewhere.
 - **Decorations.** Windows and KDE (zxdg-decoration) draw a server title bar; **GNOME draws none** — set an integrated
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
