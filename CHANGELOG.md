@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.192.2] - 2026-11-11
+
+### Fixed
+- **All of a resize grip's bevel is its corner**: the pointer on the bevel's upper part, past the corner's size, showed the bottom or the right edge's cursor and took that edge; it now has the corner's cursor and resizes from the corner (a dialog's grip, a floating panel's).
+
 ## [0.192.1] - 2026-11-11
 
 ### Changed
@@ -2613,6 +2618,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.192.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.2
 [0.192.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.1
 [0.192.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.0
 [0.191.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.191.1
