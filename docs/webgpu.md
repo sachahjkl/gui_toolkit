@@ -57,7 +57,6 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
 ## Environment
 
 `TOOLKIT_RENDER_TRACE=1`: the time of the first present, the surface calls, the CPU time per phase of a frame (once per second).
-`TOOLKIT_WGPU_PREWARM=0`: no pre-warming of the pipelines.
 
 ## Differences to know about
 

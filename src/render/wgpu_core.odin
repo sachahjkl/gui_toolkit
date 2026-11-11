@@ -2,7 +2,7 @@ package render
 
 import "base:runtime"
 import "core:fmt"
-import "core:os"
+@(require) import "core:os"   // (DXC's files, on Windows)
 import "core:strings"
 import "core:math/bits"
 import "core:sync"
@@ -669,7 +669,9 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 		r.text = text_rendering_default(r.space)
 	}
 	ok := g.module_rect != nil && g.module_fx != nil && g.module_mip != nil
-	if ok { wgpu_prewarm_start(r) }
+	// (a window's: its start hides the compiles. An offscreen renderer (a test, an export) makes a pipeline when it first
+	// draws with it: pre-warmed, each one compiled all eight and waited for them at its end, used or not)
+	if ok && g.surface != nil { wgpu_prewarm_start(r) }
 	return ok
 }
 
@@ -1016,12 +1018,12 @@ wgpu_heaps_destroy :: proc(r: ^Renderer) {
 ////////////////////////////////
 // Teardown and device loss
 
-// Compiling a shader into a pipeline takes 0.3 s and more (see wgpu_costs): the pipelines the renderer is going to need are made on
-// a thread of their own, the one for the frame first, while the program starts up; a pipeline the render thread needs before the
-// thread made it is made by the render thread (wgpu_pipeline holds the lock for each).
+// Compiling a shader into a pipeline takes 0.3 s and more (see wgpu_costs): the pipelines a window's renderer is going to need are
+// made on a thread of their own, the one for the frame first, while the program starts up; a pipeline the render thread needs
+// before the thread made it is made by the render thread (wgpu_pipeline holds the lock for each).
 @(private)
 wgpu_prewarm_start :: proc(r: ^Renderer) {
-	if r.wg.prewarm != nil || os.get_env("TOOLKIT_WGPU_PREWARM", context.temp_allocator) == "0" { return }
+	if r.wg.prewarm != nil { return }
 	r.wg.prewarm_format = r.wg.view_format
 	// (the thread holds `r`: a Renderer does not move between init and its first frame, what wgpu_prewarm_stop waits for at the latest)
 	r.wg.prewarm = thread.create_and_start_with_data(r, proc(data: rawptr) {
