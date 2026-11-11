@@ -1,5 +1,6 @@
 # Writes the Direct3D 11 shaders of a branch (HLSL by naga, DXBC by D3DCompile: tools/shaders) and commits them to it.
-# D3DCompile exists only on Windows: a WGSL change made on Linux gets its HLSL and DXBC here.
+# D3DCompile exists only on Windows: a WGSL change made on Linux gets its HLSL and DXBC here, and the blob of the test's
+# application shader (tests/appshaders), which is built from rect.wgsl too.
 #   gh workflow run shaders.yml --ref <branch>
 name: Shaders
 
@@ -27,11 +28,14 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           odin run tools/shaders -vet -out:build/shaders_tool.exe
           if ($LASTEXITCODE) { exit 1 }
+          # the test's application shader: its blob is built from rect.wgsl too (tests/appshaders)
+          odin run tools/shaders -vet -out:build/shaders_tool.exe -- app test tests/appshaders/test.wgsl tests/appshaders/shaders
+          if ($LASTEXITCODE) { exit 1 }
 
       - name: Commit what changed
         shell: pwsh
         run: |
-          git add src/render/shaders
+          git add src/render/shaders tests/appshaders/shaders
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) { Write-Output "the shaders were up to date"; exit 0 }
           git -c user.name=sachahjkl -c user.email=sacha@sacha.house commit -m "render: the Direct3D 11 shaders written from the WGSL (shaders.yml)"
