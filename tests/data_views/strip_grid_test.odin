@@ -51,3 +51,21 @@ a_short_strip_has_no_button :: proc(t: ^testing.T) {
 	session.frames(s, 3)
 	testing.expect(t, session.find(s, "strip_toggle") == nil, "all on the line: nothing to show")
 }
+
+// A mouse's wheel turns one way only: over a line that is cut, it scrolls the line sideways; over one that holds all its
+// cells, it goes to the page.
+@(test)
+the_wheel_scrolls_a_strip_sideways :: proc(t: ^testing.T) {
+	st := Strip{count = 9}
+	s := session.start(t, {size = {400, 400}, user = &st, build = strip_build})
+	session.frames(s, 3)
+	x := session.get(s, "c0").rect.min.x
+	session.wheel(s, session.center(session.get(s, "c0")), {0, 3})
+	session.wait_idle(s)
+	testing.expectf(t, session.get(s, "c0").rect.min.x < x - 1, "the line went left: %v, then %v", x, session.get(s, "c0").rect.min.x)
+	short := Strip{count = 2}
+	s2 := session.start(t, {size = {400, 400}, user = &short, build = strip_build})
+	session.frames(s2, 3)
+	view := session.get(s2, "strip_view")
+	testing.expect(t, .Scroll_Self not_in view.flags, "all on the line: the wheel is the page's")
+}

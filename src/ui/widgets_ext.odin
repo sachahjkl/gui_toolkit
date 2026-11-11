@@ -1050,11 +1050,18 @@ strip_grid :: proc(id: string, open: ^bool, gap: Vec2 = {}, show_all := "Show al
 	next({width = fill(), height = children_sum(), axis = .Y})
 	push_parent(build_box({}, id))
 	if !open^ {
-		// (a line as wide as its cells, in a view that scrolls it: a wheel turned sideways, the bar under it)
+		// (a line as wide as its cells, in a view that scrolls it: the wheel, turned either way, and the bar under it. A
+		// mouse's wheel turns only one way: over a line that is cut, it scrolls the line, not the page around it)
+		key := key_from_string(parent_box().key, "###strip_view")
+		last := box_from_key(key)
+		cut := last != nil && last.first != nil && last.first.size.x > last.size.x + 0.5
 		set_next_axis(.X)
 		next({width = fill(), height = children_sum()})
-		view := build_box({.Clip, .View_Scroll_X, .View_Clamp_X, .Allow_Overflow_X}, "###strip_view")
-		_ = signal(view)
+		view := build_box(cut ? {.Clip, .View_Scroll_X, .View_Clamp_X, .Allow_Overflow_X, .Scroll_Self} : {.Clip, .View_Scroll_X, .View_Clamp_X, .Allow_Overflow_X}, "###strip_view")
+		sig := signal(view)
+		if cut && sig.scrolled.y != 0 && sig.scrolled.x == 0 {
+			view.view_target.x = clamp(view.view_target.x + sig.scrolled.y * wheel_step(view, .X), 0, view_limit(view, .X))
+		}
 		push_parent(view)
 	}
 	// (the cells: a flow, wrapped to the width when open; as wide as they are on one line when folded. Built here, not with
