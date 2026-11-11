@@ -81,18 +81,25 @@ preview_reset :: proc(p: ^Preview) { p^ = {zoom = 1} }
 
 @(private = "file")
 Preview_Draw :: struct {
-	fn:    Preview_Draw_Proc,
-	user:  rawptr,
-	shown: Vec2,
-	pan:   Vec2,
+	fn:      Preview_Draw_Proc,
+	user:    rawptr,
+	content: Vec2,
+	zoom:    f32,
+	pan:     Vec2,
+	grow:    bool,
 }
 
+// (what fits is worked out here, from the box as laid out this frame: the build knows only last frame's size, none for a
+// box new this frame, and the content showed at its pixels for a frame before it fitted)
 @(private = "file")
 preview_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Preview_Draw)(user)
 	r := b.rect
-	c := (r.min + r.max) * 0.5 + d.pan
-	lo, hi := c - d.shown * 0.5, c + d.shown * 0.5
+	view := r.max - r.min
+	shown := d.content * preview_fit(d.content, view, d.grow) * d.zoom
+	pan := preview_pan_clamp(d.pan, shown, view)
+	c := (r.min + r.max) * 0.5 + pan
+	lo, hi := c - shown * 0.5, c + shown * 0.5
 	draw.push_clip(dc, r)
 	d.fn(dc, {{math.round(lo.x), math.round(lo.y)}, {math.round(hi.x), math.round(hi.y)}}, d.user)
 	draw.pop_clip(dc)
@@ -148,7 +155,7 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	shown = content * fit * p.zoom
 	p.pan = preview_pan_clamp(p.pan, shown, view)
 	d := frame_new(Preview_Draw)
-	d^ = {fn, user, shown, p.pan}
+	d^ = {fn, user, content, p.zoom, p.pan, o.grow}
 	b.custom, b.custom_user = preview_draw, d
 	a11y_default(b, {role = .Image, name = "Preview"})
 	res.changed = p.zoom != before.zoom || p.pan != before.pan

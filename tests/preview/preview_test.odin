@@ -84,3 +84,12 @@ the_buttons_and_keys :: proc(t: ^testing.T) {
 	session.frame(s)
 	testing.expect_value(t, r.p.zoom, f32(1))
 }
+
+// The first frame of a preview already fits: the box is new, the build knows no size of it yet.
+@(test)
+the_first_frame_fits :: proc(t: ^testing.T) {
+	r: Run
+	s := start(t, &r)
+	session.frame(s)
+	testing.expect(t, r.drawn.max.x - r.drawn.min.x <= 401, "no larger than its box at its first frame")
+}
