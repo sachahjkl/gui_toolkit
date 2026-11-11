@@ -22,6 +22,7 @@ import "core:fmt"
 import "core:math"
 import "core:slice"
 import "core:strings"
+import "../draw"
 import "../platform"
 
 // The palette's size at first, in em, and the least it is made; where its top is, a share of the window's height; a line's
@@ -158,6 +159,21 @@ Command_Palette :: struct {
 	chosen_mods: platform.Modifiers,
 }
 
+// The field's strip: a field's darker background, its top corners the dialog's. A raised dialog (machined, edged) has a
+// lit rim just inside its border: the strip begins inside it, or the dialog's edge was lost along the strip's top and sides
+// and showed only at its corners.
+@(private = "file")
+palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
+	r := b.rect
+	if machined() {
+		p := px1()
+		r = {{r.min.x + p, r.min.y + p}, {r.max.x - p, r.max.y}}
+	}
+	radius := max(0, b.radius - (r.min.y - b.rect.min.y))
+	well := color_from_tags(gs(), b.tags_key, "well")
+	draw.rect_corners(dc, r, {well, well, well, well}, {radius, 0, radius, 0})
+}
+
 // What a program adds to its palette (every field optional).
 Palette_Options :: struct {
 	recent:       []int,       // commands run last (their indices, the last first): a group of their own on top while nothing is typed
@@ -207,10 +223,10 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 	before := p.size
 	if modal_sized("palette", {em * PALETTE_WIDTH_EM, em * PALETTE_HEIGHT_EM}, &p.size, &p.open, {em * PALETTE_MIN_EM.x, em * PALETTE_MIN_EM.y}, top = PALETTE_TOP) {
 		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's, but the
-		// darker background of a field, so that it reads as the place to type; its top corners are the dialog's)
-		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, bg = color("well"), radius = em * 0.8})
-		if row(.Center, {.Draw_Background, .Draw_Side_Bottom}, "###palette_top") {
-			parent_box().square_corners = {.Bottom_Left, .Bottom_Right}
+		// darker background of a field, so that it reads as the place to type: palette_strip_draw)
+		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, radius = em * 0.8})
+		if row(.Center, {.Draw_Side_Bottom}, "###palette_top") {
+			parent_box().custom = palette_strip_draw
 			spacer(px(em * 0.4))
 			next({width = fill(), height = pct(1), font_size = em * 1.05})
 			push_tags("bare")
