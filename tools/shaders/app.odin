@@ -54,7 +54,7 @@ app_main :: proc() {
 	cmd := strings.builder_make(context.temp_allocator)
 	fmt.sbprintf(&cmd, "\"%s\" \"%s\" 50", exe, hlsl)
 	for b in render.APP_BINDINGS { fmt.sbprintf(&cmd, " %s", b) }
-	fmt.sbprintf(&cmd, " -- \"%s\\render\\rect.wgsl\" \"%s\\render\\app.wgsl\" \"%s\"", root, root, file_abs)
+	fmt.sbprintf(&cmd, " -- \"%s\\src\\render\\rect.wgsl\" \"%s\\src\\render\\app.wgsl\" \"%s\"", root, root, file_abs)   // (the packages are in src/)
 	if libc.system(strings.clone_to_cstring(fmt.tprintf("\"%s\"", strings.to_string(cmd)), context.temp_allocator)) != 0 {
 		fmt.eprintln("shaders: naga failed on", file)
 		os.exit(1)
