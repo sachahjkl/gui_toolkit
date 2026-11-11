@@ -364,6 +364,19 @@ set_fullscreen :: proc(w: ^Window, on: bool) {
 	}
 }
 
+// Whether the system can draw this window's title bar (set_integrated_title false): X11's window manager does; on Wayland
+// a compositor that offers server-side decorations (KDE, wlroots' with the protocol), not GNOME's: there the program draws
+// its own or the window has none. An offscreen window: true (as on Windows).
+system_title_available :: proc(w: ^Window) -> bool {
+	if w.offscreen { return true }
+	switch w.backend {
+	case .Wayland: return wl_server_decorations(w)
+	case .X11:     return true
+	case .None:
+	}
+	return false
+}
+
 set_integrated_title :: proc(w: ^Window, on: bool) {
 	if w.integrated == on { return }
 	w.integrated = on

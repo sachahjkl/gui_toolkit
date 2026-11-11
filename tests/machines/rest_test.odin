@@ -170,7 +170,7 @@ a_descendant_gone_is_not_named :: proc(t: ^testing.T) {
 caption_buttons_gone_are_forgotten :: proc(t: ^testing.T) {
 	Run :: struct { show: bool }
 	r := Run{show = true}
-	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+	s := session.start(t, {size = WINDOW, user = &r, integrated_title = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if r.show { _, _ = ui.window_buttons() }
 	}})
