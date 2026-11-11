@@ -90,10 +90,13 @@ read_text :: proc(path: string) -> (string, bool) {
 	return string(data), err == nil
 }
 
-// The folder of the changelog and its fragments, for gt:changelog.
-@(private = "file")
+// The folder of the changelog and its fragments, for gt:changelog. A bare "CHANGELOG.md" is in the current folder:
+// os.dir gives "" for it, and the changelog was then looked for at the root of the disk.
+@(private = "package")
 changelog_options :: proc(c: Config) -> changelog.Options {
-	return {root = os.dir(c.changelog), link = fmt.tprintf("%s/releases/tag/v%%s", c.repository)}
+	root := os.dir(c.changelog)
+	if root == "" { root = "." }
+	return {root = root, link = fmt.tprintf("%s/releases/tag/v%%s", c.repository)}
 }
 
 // `notes <version>`: the changelog's section on the standard output.

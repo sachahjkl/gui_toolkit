@@ -77,3 +77,10 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	testing.expect_value(t, verr, update.Error.None)
 	testing.expect_value(t, m.version, "1.2.3")
 }
+
+// A project names its changelog by a bare file name ("CHANGELOG.md"): its folder is the current one.
+@(test)
+a_bare_changelog_name_is_in_the_current_folder :: proc(t: ^testing.T) {
+	testing.expect_value(t, changelog_options({changelog = "CHANGELOG.md"}).root, ".")
+	testing.expect_value(t, changelog_options({changelog = "docs/CHANGELOG.md"}).root, "docs")
+}
