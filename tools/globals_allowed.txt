@@ -158,6 +158,7 @@ platform/window_wl_linux.odin decoration_listener const  # a listener table (pas
 platform/window_wl_linux.odin activation_token_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin fractional_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin data_device_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin frame_shown_listener const  # a listener table (passed by address to libwayland)
 platform/window_x11_linux.odin x11c thread  # this thread's X11 connection: its events, its windows, its selections
 platform/wl_protocol_linux.odin zwp_ti_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin zwp_ti_iface const  # a protocol table, built once (wayland_lib), then read
