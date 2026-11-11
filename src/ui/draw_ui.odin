@@ -176,7 +176,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		if b.hot_t > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && .Clickable in flags {
 			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > DRAW_INVISIBLE_EPS { border = srgb_step(border, k, k.a * b.hot_t) }
 		}
-		draw.rect_corners(dc, r, colors4(border), radii, max(1, math.round(scale)))
+		draw.rect_corners(dc, r, colors4(border), radii, max(1, math.round(scale)), backdrop = box_under(b))
 	}
 	if flags & {.Draw_Side_Top, .Draw_Side_Bottom, .Draw_Side_Left, .Draw_Side_Right} != {} {
 		t := max(1, math.round(scale))

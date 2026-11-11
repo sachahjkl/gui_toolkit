@@ -431,6 +431,20 @@ fn vs_main(i: VSIn) -> PSIn {
 	return o;
 }
 
+// The coverage of a ring's edge that blends, in a linear target, as `c` would in sRGB values over the backdrop `bd`
+// (opaque, linear; alpha 0: not known, `c` as it is): the pixels a curve cuts weigh as a browser's, not paler.
+fn edge_like_srgb(c: f32, fg: float3, bd: float4) -> f32 {
+	if (g.target_space != SPACE_LINEAR || bd.a <= 0.0 || c <= 0.0 || c >= 1.0) { return c; }
+	let lum = float3(0.2126, 0.7152, 0.0722);
+	let yf = saturate(dot(fg, lum));
+	let yb = saturate(dot(bd.rgb, lum));
+	if (abs(yf - yb) < 1e-4) { return c; }
+	let sf = srgb_encode(float3(yf, yf, yf)).x;
+	let sb = srgb_encode(float3(yb, yb, yb)).x;
+	let want = srgb_decode1(sb + c * (sf - sb));
+	return saturate((want - yb) / (yf - yb));
+}
+
 // Glyph coverage to alpha (render.Text_Rendering): exponent, then Skia's correction prepared by the vertex shader.
 fn text_coverage(a0: f32, i: PSIn) -> f32 {
 	var a = a0;
@@ -1125,6 +1139,7 @@ var<private> lcd_weight: float3 = float3(1.0, 1.0, 1.0);
 				var inner = id.x;
 				if (xf) { inner = to_px(inner, id.yz, dpx, dpy); }
 				coverage = coverage * saturate(inner + 0.5);
+				coverage = edge_like_srgb(coverage, color.rgb, i.src * max(i.style.w, 1.0));
 			}
 		}
 		color.a = color.a * coverage;

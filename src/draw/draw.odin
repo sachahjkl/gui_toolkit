@@ -510,8 +510,8 @@ Rect_Style :: struct {
 }
 
 // Filled (or outlined) rounded rect, uniform color.
-rect :: proc(c: ^Context, r: Rect, color: Color, radius: f32 = 0, border: f32 = 0, soft: f32 = 1) {
-	rect_corners(c, r, {color, color, color, color}, {radius, radius, radius, radius}, border, soft)
+rect :: proc(c: ^Context, r: Rect, color: Color, radius: f32 = 0, border: f32 = 0, soft: f32 = 1, backdrop: Color = {}) {
+	rect_corners(c, r, {color, color, color, color}, {radius, radius, radius, radius}, border, soft, backdrop)
 }
 
 // Filled triangle, in one-pixel rows: each row spans where the triangle crosses the row's middle (a small glyph such as a
@@ -554,7 +554,10 @@ polyline :: proc(c: ^Context, points: []Vec2, width: f32, color: Color) {
 
 // Per-corner colors (gradients) and radii; corner order: top-left, bottom-left, top-right, bottom-right. Colors are
 // interpolated premultiplied, in the space set_interpolation chooses.
-rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, border: f32 = 0, soft: f32 = 1) {
+// `backdrop` (opaque, linear; alpha 0: not known): what a ring (`border` > 0) is drawn over. In a linear blend space the
+// pixels its curved edges cut weigh then as they do blended in sRGB values, as a browser draws them: a thin dark ring on
+// a light surface is as heavy in its corners as along its sides (linear light makes them paler).
+rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, border: f32 = 0, soft: f32 = 1, backdrop: Color = {}) {
 	xf, alpha, shape := cur(c)
 	flags: u32 = c.circular ? render.FLAG_CIRCLE : 0
 	switch c.interp {
@@ -563,6 +566,8 @@ rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, bord
 	case .Linear: flags |= render.FLAG_LERP_LINEAR
 	}
 	inst := render.Rect_Inst{colors = colors, soft = soft, use_tex = render.KIND_SHAPE, tex_size = font.ATLAS_SIZE, clip = shape, flags = flags}
+	// (a shape samples no texture: its src carries the backdrop, in atlas units as the vertex shader divides it)
+	if border > 0 && backdrop.a > 0 { inst.src = backdrop * font.ATLAS_SIZE }
 	if xf.simple {
 		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 		inst.dst = {r.min.x * s + o.x, r.min.y * s + o.y, r.max.x * s + o.x, r.max.y * s + o.y}

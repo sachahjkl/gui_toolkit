@@ -41,7 +41,7 @@ GPU_TIMING :: #config(GPU_TIMING, false)
 // in local space, so rotated / skewed rects keep exact rounded corners and a 1 px antialiased edge.
 Rect_Inst :: struct #packed {
 	dst:    [4]f32,       // x0 y0 x1 y1 (pixels, or local units with a transform)
-	src:    [4]f32,       // u0 v0 u1 v1 (texels)
+	src:    [4]f32,       // u0 v0 u1 v1 (texels); KIND_SHAPE with a border: the backdrop's linear rgba times tex_size (draw.rect_corners)
 	colors: [4][4]f32,    // top-left, bottom-left, top-right, bottom-right (linear rgba)
 	radii:  [4]f32,       // same corner order
 	border: f32,          // > 0: draw only a ring of this thickness
