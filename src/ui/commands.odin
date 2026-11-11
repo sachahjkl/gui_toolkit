@@ -187,19 +187,21 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 	p.mouse = mouse
 	before := p.size
 	if modal_sized("palette", {em * PALETTE_WIDTH_EM, em * PALETTE_HEIGHT_EM}, &p.size, &p.open, {em * PALETTE_MIN_EM.x, em * PALETTE_MIN_EM.y}, top = PALETTE_TOP) {
-		spacer(px(em * 0.6))
-		next({width = fill(), height = px(dense(em * 2.2)), axis = .X, cross = .Center})
-		if row(.Center, id = "###palette_top") {
-			spacer(px(em * 0.6))
-			next({width = fill(), height = pct(1)})
+		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's)
+		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center})
+		if row(.Center, {.Draw_Side_Bottom}, "###palette_top") {
+			spacer(px(em * 0.4))
+			next({width = fill(), height = pct(1), font_size = em * 1.05})
+			push_tags("bare")
 			res := line_edit("###palette_field", &p.field, "Type to search")
+			pop_tags()
 			if p.fresh { set_focus(res.box.key); p.fresh = false }
 			if res.changed { p.sel = 0; p.reveal = true }
 			if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
 			if res.committed && n > 0 && list[p.sel].index >= 0 && can(enabled, list[p.sel].index) { chosen = list[p.sel].index }
-			spacer(px(em * 0.6))
+			spacer(px(em * 0.4))
 		}
-		spacer(px(em * 0.4))
+		spacer(px(em * 0.3))
 		next({width = fill(), height = fill()})
 		if scroll_y("###palette_list") {
 			lb := parent_box()
@@ -260,7 +262,9 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 							label(fmt.tprintf("%s###k", keys))
 						}
 					}
-					spacer(px(em * 0.7))
+					// (clear of the scroll bar, along the list's right edge)
+					bar_w, bar_m := scrollbar_size(em)
+					spacer(px(em * 0.5 + bar_w + 2 * bar_m))
 				}
 				if sel { pop_tags() }
 				pop_tags()
