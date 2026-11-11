@@ -111,8 +111,10 @@ press, so it ends with it (the release, the box held going, the user leaving the
   bottom), four at the edges of the space (an edge of the whole main tree), and the strips: between two tabs, a line
   shows where it goes (also how a tab moves along its own strip). Let go anywhere else, it floats there, as large as its
   stack was (at most `DOCK_FLOAT_DEFAULT_EM`). **Escape** cancels the drag: nothing moves when the button goes up.
-- **A floating panel** is an overlay of the dock space with a frame and a shadow (inside the application's window: a
-  panel in a window of its own would need a `ui.State` of its own, and the panel's content is built in the app's one).
+- **A floating panel** is an overlay of the dock space with a frame and a shadow, inside the application's window.
+- **A window of its own** (`Dock_Options.windows`): the menu's *Open in a window* lets the panel go, as a close does, and
+  `Dock_Result.windowed` names it in that frame. The app opens the window (another `host.Host` on the same `Shared`,
+  with its `ui.State`) and builds the panel's content there; when that window closes, `dock_add` brings the panel back.
   The empty part of its strip moves it (the drop targets show: let go over one, it docks there with all its stacks), its
   corner resizes it (at least `DOCK_FLOAT_MIN_EM`), a double click on its strip docks it back. A press on it brings it
   to the front. It stays inside the space.

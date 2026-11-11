@@ -127,13 +127,14 @@ Dock :: struct {
 	saved:  u64,                       // the serial on_save last saw
 	begin_serial: u64,                 // the serial when this frame's dock_begin began
 	closed: u32,                       // the panel a user closed this frame
+	windowed: u32,                     // the panel a user asked a window of its own for this frame
 	menu_panel: u32,                   // the panel the open "Dock to" menu is for
 	pending: [dynamic]Dock_Action,     // asked for while the boxes are built: done by dock_end
 }
 
 // A change of the tree asked for in the middle of the build (a close button, a double click on a floating panel's title):
 // the stacks being built stay as they are until dock_end does it.
-Dock_Action_Kind :: enum u8 { Close, Redock }
+Dock_Action_Kind :: enum u8 { Close, Redock, Window }
 Dock_Action :: struct {
 	kind:  Dock_Action_Kind,
 	panel: u32,

@@ -58,6 +58,7 @@ Dock_Labels :: struct {
 	dock_to, join, left, right, above, below: string,
 	edge_left, edge_right, edge_top, edge_bottom: string,
 	floating, dock_back, move_left, move_right, close, close_panel, menu, empty: string,
+	window: string,
 }
 
 DOCK_LABELS :: Dock_Labels{
@@ -65,6 +66,7 @@ DOCK_LABELS :: Dock_Labels{
 	edge_left = "At the left edge", edge_right = "At the right edge", edge_top = "At the top edge", edge_bottom = "At the bottom edge",
 	floating = "Float", dock_back = "Dock back", move_left = "Move the tab left", move_right = "Move the tab right",
 	close = "Close", close_panel = "Close %s", menu = "Stack menu", empty = "(empty)",
+	window = "Open in a window",
 }
 
 // A tab being built (Dock_Options.tab builds its content inside `box`, whose width is that of what it builds).
@@ -92,6 +94,10 @@ Dock_Options :: struct {
 	tab_height:  f32,    // frame px (0: DOCK_TAB_EM)
 	handle:      f32,    // a split's handle across it (frame px; 0: the splitter's)
 	close_buttons: bool, // a close button on the tabs of the panels that can be closed
+	// the menu offers a window of its own for a panel (Dock_Labels.window): the dock lets the panel go, as a close does,
+	// and Dock_Result.windowed names it; the app opens the window and builds the panel there (its own host on the same
+	// Shared), then brings it back with dock_add when the window closes
+	windows:     bool,
 }
 
 Dock_Result :: struct {
@@ -99,6 +105,7 @@ Dock_Result :: struct {
 	finished: bool,      // ... and the user is done (on_save was called)
 	dragging: bool,      // a tab or a floating panel is being dragged
 	closed:   u32,       // the panel the user closed this frame (DOCK_NO_PANEL: none)
+	windowed: u32,       // the panel the user asked a window of its own for this frame (Dock_Options.windows; DOCK_NO_PANEL: none)
 }
 
 @(private) DOCK_TABS_ID :: "###dock_tabs"   // a strip's tabs and its empty part
@@ -132,7 +139,7 @@ dock_begin :: proc(d: ^Dock, id: string, opts := Dock_Options{}) {
 	s := gs()
 	dock_ready(d)
 	d.opts = opts
-	d.closed = DOCK_NO_PANEL
+	d.closed, d.windowed = DOCK_NO_PANEL, DOCK_NO_PANEL
 	if d.saved == 0 { d.saved = d.serial }   // (the layout the app made or loaded is not a change of the user's)
 	d.begin_serial = d.serial
 	em := font_size()
@@ -200,7 +207,7 @@ dock_end :: proc(d: ^Dock) -> (res: Dock_Result) {
 	menu := key_from_string(d.space_key, "###dock_menu")
 	if ctx_menu(menu, font_size() * DOCK_MENU_WIDTH_EM) { dock_menu_items(d, d.menu_panel) }
 	dock_do_pending(d)   // (the menu's Close)
-	res.closed = d.closed
+	res.closed, res.windowed = d.closed, d.windowed
 	res.dragging = d.drag.state == .Dragging
 	res.changed = d.serial != d.begin_serial
 	if d.serial != d.saved && d.drag.state == .Idle && !dock_held(d) {
@@ -616,6 +623,7 @@ dock_do_pending :: proc(d: ^Dock) {
 	for a in d.pending {
 		switch a.kind {
 		case .Close:  if dock_close(d, a.panel) { d.closed = a.panel }
+		case .Window: if dock_close(d, a.panel) { d.windowed = a.panel }
 		case .Redock: if dock_valid_node(d, a.node) && dock_is_floating(d, a.node) { dock_redock(d, a.node) }
 		}
 	}
@@ -817,6 +825,9 @@ dock_menu_items :: proc(d: ^Dock, p: u32) {
 		if menu_item(fmt.tprintf("%s###dock_m_back", lb.dock_back)).clicked { dock_redock(d, root) }
 	} else if menu_item(fmt.tprintf("%s###dock_m_float", lb.floating)).clicked {
 		dock_float(d, p, dock_float_place(d))
+	}
+	if d.opts.windows && menu_item(fmt.tprintf("%s###dock_m_window", lb.window)).clicked {
+		append(&d.pending, Dock_Action{kind = .Window, panel = p})
 	}
 	at := 0
 	for q, k in tabs { if q == p { at = k } }

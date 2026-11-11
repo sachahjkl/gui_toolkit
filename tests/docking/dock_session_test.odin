@@ -19,6 +19,7 @@ App :: struct {
 	saves:  int,
 	result: ui.Dock_Result,
 	hide:   bool,        // the dock is not built
+	windowed: u32,      // the panel the dock let go to a window of its own
 }
 
 @(private = "file")
@@ -31,7 +32,7 @@ build :: proc(s: ^session.Session) {
 	ui.dock_begin(&app.dock, "###dock", {
 		title = proc(user: rawptr, id: u32) -> string { return TITLES[id] },
 		on_save = proc(user: rawptr, d: ^ui.Dock) { (^App)(user).saves += 1 },
-		user = app, close_buttons = true,
+		user = app, close_buttons = true, windows = true,
 	})
 	for p in u32(1) ..= 4 {
 		app.built[p] = false
@@ -41,6 +42,7 @@ build :: proc(s: ^session.Session) {
 		}
 	}
 	app.result = ui.dock_end(&app.dock)
+	if app.result.windowed != ui.DOCK_NO_PANEL { app.windowed = app.result.windowed }
 }
 
 // a and b in one stack at the left, c at the right
@@ -468,4 +470,25 @@ a_close_button_closes_the_panel :: proc(t: ^testing.T) {
 	testing.expect_value(t, layout(&app), "dock1 x0.500([*b] [*c])")
 	session.click(s, "dock_tab_3", button = platform.Mouse_Button.Middle)
 	testing.expect_value(t, layout(&app), "dock1 [*b]")
+}
+
+// "Open in a window" (Dock_Options.windows): the panel leaves the layout, its content is no longer built in the dock, the
+// result names it once, and the layout is saved; dock_add brings it back.
+@(test)
+a_panel_goes_to_a_window_of_its_own_and_comes_back :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	saves := app.saves
+	ui.dock_open_menu(&app.dock, 2, {100, 100})
+	session.frame(s)
+	session.click_text(s, "Open in a window")
+	testing.expect_value(t, app.windowed, 2)
+	testing.expect(t, !ui.dock_has(&app.dock, 2) && !app.built[2], "out of the dock")
+	testing.expect_value(t, layout(&app), "dock1 x0.500([*a] [*c])")
+	testing.expect(t, app.saves > saves, "the layout saved")
+	testing.expect_value(t, app.result.windowed, ui.DOCK_NO_PANEL)   // (told once)
+	ui.dock_add(&app.dock, 2, ui.dock_with(&app.dock, 1))
+	session.frames(s, 2)
+	testing.expect(t, ui.dock_has(&app.dock, 2), "the window closed: back in the dock")
 }
