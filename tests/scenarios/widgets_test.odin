@@ -477,3 +477,30 @@ a_dialog_holds_the_keys :: proc(t: ^testing.T) {
 	session.key(s, .Escape)
 	testing.expect(t, r.outside, "closed: the page's again")
 }
+
+// A dialog closed by its own button gives the keys back at once: the first key after the click is the page's, with no
+// frame between them (a dialog of the last build that closed in it holds none).
+@(test)
+a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) {
+	Run :: struct { open: bool, outside: bool }
+	r := Run{open = true}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if ui.key_press(.Escape) { r.outside = true }
+		if ui.modal("###closed_dialog", 300, &r.open) {
+			if ui.button("Close###close").clicked { r.open = false }
+		}
+	}})
+	session.frames(s, 2)
+	// (by hand: the click's release builds the frame that closes it, and the key comes in the very next one)
+	at := session.center(session.get(s, "close"))
+	session.move(s, at)
+	session.event(s, {kind = .Mouse_Press, button = .Left, pos = at})
+	session.frame(s)
+	session.event(s, {kind = .Mouse_Release, button = .Left, pos = at})
+	session.frame(s)
+	testing.expect(t, !r.open, "the button closes it")
+	session.event(s, {kind = .Key_Press, key = .Escape})
+	session.frame(s)
+	testing.expect(t, r.outside, "the next key is the page's")
+}

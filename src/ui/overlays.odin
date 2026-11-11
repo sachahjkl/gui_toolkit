@@ -442,6 +442,12 @@ modal_end :: proc() {
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
 		m := pop(&s.modal_stack)
 		if m.size != nil { modal_grips(s, m) }
+		// closed in this build (a button set its `open` false): it holds no key in the next one, where it is not built
+		if m.open != nil && !m.open^ {
+			for b, i in s.modals_built {
+				if b.panel == m.panel { ordered_remove(&s.modals_built, i); break }
+			}
+		}
 		phase, _ := modal_phase(s, m.panel)
 		if phase != .Below && len(s.menus) == 0 && key_press_any(.Escape) { s.modal_escape_taken = true }
 	}
