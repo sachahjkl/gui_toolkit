@@ -1,4 +1,4 @@
-package scenarios_test
+package edged_test
 
 // The edged finish: the machined reliefs drawn crisp. A raised face has a lit line along its top and a dark one along its
 // bottom, a well a dark line under its opening's top; nothing is blurred out of them (no soft shadow around a face).

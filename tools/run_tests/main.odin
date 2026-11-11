@@ -130,6 +130,7 @@ STEPS := []Step{
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
+	{name = "edged", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the edged finish, Console, the dashboard's pieces: a process of their own)
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
