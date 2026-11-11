@@ -163,7 +163,7 @@ jobs:
   # Linux: odin check -vet of every package, the examples built (native text, Vulkan through wgpu-native), the tests that
   # need no window (tk ci). Odin and wgpu-native pinned by SHA-256, crates by Cargo.lock.
   linux:
-    name: Linux (Debian 12: check, examples, tests)
+    name: "Linux (Debian 12: check, examples, tests)"
     runs-on: ubuntu-24.04
     container: debian:bookworm
     timeout-minutes: 30
