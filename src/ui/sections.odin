@@ -32,13 +32,13 @@ hue :: proc(h: Hue) -> Color {
 @(private = "file") SECTION_VALUE_SCALE :: 1.5
 
 // A section's header: a stripe of `c`, `title` in capitals and bold in `c`, `note` weak after it, `value` large at its right
-// ("" : none). As tall as its words; full width.
-section_header :: proc(id, title: string, note := "", value := "", c: Color) {
+// ("" : none). As tall as its words; full width, or as wide as its words when `inline` (in a row with other things).
+section_header :: proc(id, title: string, note := "", value := "", c: Color, inline := false) {
 	s := gs()
 	em := font_size()
 	st := top_style()
 	bold := styled_face(st.font, true, false)
-	next({width = fill(), height = children_sum()})
+	next({width = inline ? children_sum() : fill(), height = children_sum()})
 	set_next_axis(.X, .Center)
 	row_box := build_box({}, id)
 	a11y_default(row_box, {role = .Heading, name = title})
@@ -53,10 +53,10 @@ section_header :: proc(id, title: string, note := "", value := "", c: Color) {
 	if note != "" {
 		spacer(px(em * 0.7))
 		push_tags("weak")
-		next({width = fill(), height = text_size(), text_pad = 0, font_size = small})
-		build_box({.Draw_Text}, fmt.tprintf("%s###note", note))
+		next({width = inline ? text_size() : fill(), height = text_size(), text_pad = 0, font_size = small})
+		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###note", note))
 		pop_tags()
-	} else {
+	} else if !inline {
 		spacer(fill())
 	}
 	if value != "" {

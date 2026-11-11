@@ -216,7 +216,7 @@ if ui.title_strip("###boot", "Boot") { open = false }
 
 | Procedure | What it is |
 |---|---|
-| `section_header(id, title, note, value, color)` | a stripe of the colour, the title in capitals and bold in it, a weak note, a large value at the right |
+| `section_header(id, title, note, value, color, inline)` | a stripe of the colour, the title in capitals and bold in it, a weak note, a large value at the right; full width, or as wide as its words (`inline`: in a row with other things) |
 | `tile(id, text, color, clickable)` | a tile of the colour over what is under it, its words light; as wide as they are |
 | `stacked_bar(id, parts)` | a well cut in `Bar_Part`s (share, colour, words), the words of each in it when they fit; full width, 1.9 lines |
 | `title_strip(id, title, closable)` | a title, white and bold, on the accent fading to the bar's colour; a red block closes (true) |
