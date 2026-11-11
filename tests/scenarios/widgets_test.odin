@@ -3,10 +3,12 @@ package scenarios_test
 // Widgets no other package reaches, each by what it is for: the colour pickers, toasts, popovers, Tab stops turned off, muted scopes, density, rounding,
 // a virtual list scrolled by the program, a menu's heading, posted calls by the window, selection cleared.
 
+import "core:strings"
 import "core:testing"
 import "../../src/platform"
 import "../../src/testkit/session"
 import "../../src/ui"
+import syntax "../../src/syntax"
 
 @(private = "file") WINDOW :: [2]int{500, 400}
 // A toast's life is over by then (ui TOAST_LIFE_MS, its fade out).
@@ -420,4 +422,35 @@ escape_gives_a_hotkey_recording_up :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.hotkey_recording())
 	testing.expect_value(t, recorded, platform.Hotkey{key = .V, mods = {.Ctrl}})
 	testing.expect_value(t, recorded_changes, 0)
+}
+
+////////////////////////////////
+// code_runs
+
+// Code as runs: each class in its theme colour, the plain text between them as it was, the whole text kept.
+@(test)
+code_takes_the_theme_s_colours :: proc(t: ^testing.T) {
+	Run :: struct { runs: [dynamic]ui.Rich_Run, keyword, str: ui.Color }
+	r: Run
+	defer delete(r.runs)
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		l, _ := syntax.language("odin")
+		clear(&r.runs)   // (kept past the frame: the test reads them)
+		ui.code_runs(`x := proc() { return "hi" }`, l, {}, &r.runs)
+		r.keyword, r.str = ui.color("code_keyword"), ui.color("code_string")
+		ui.rich_paragraph("###code", r.runs[:])
+	}})
+	session.frame(s)
+	whole := ""
+	for run in r.runs { whole = strings.concatenate({whole, run.text}, context.temp_allocator) }
+	testing.expect_value(t, whole, `x := proc() { return "hi" }`)
+	found_kw, found_str := false, false
+	for run in r.runs {
+		if run.text == "proc" { found_kw = run.color == r.keyword }
+		if run.text == `"hi"` { found_str = run.color == r.str }
+	}
+	testing.expect(t, found_kw, "a keyword in code_keyword")
+	testing.expect(t, found_str, "a string in code_string")
+	testing.expect(t, r.keyword != r.str, "two colours")
 }

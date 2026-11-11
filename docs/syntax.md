@@ -35,3 +35,20 @@ punctuation of code: at least one bracket, operator or `;` for `GUESS_MARKS_PER`
 an address, a path. A project's languages (with their `signs`) are tried first.
 
 `Language.fold_case` matches keywords and types in any case (SQL's `SELECT` and `select`; the lists in small letters).
+
+## In a program's window
+
+The `ui` package colours code with the theme: `code_runs(text, language, style, &runs)` makes runs for `rich_paragraph`,
+each class in its colour (`code_color`: the theme's `code_keyword`, `code_string`, `code_comment` in italics, `code_func`
+and `code_type`), and `code_highlight(language)` gives `text_edit` its `highlight`, line by line (a block comment over
+several lines is coloured on its first line only). The theme's colours are its hues: purple, green, the weak text, blue
+and cyan (`Palette.blue`, `purple`, `cyan`, `rose`; the accent when a palette has none).
+
+```odin
+l, ok := syntax.guess(text)
+if ok {
+    runs := make([dynamic]ui.Rich_Run, context.temp_allocator)
+    ui.code_runs(text, l, {font = mono}, &runs)
+    ui.rich_paragraph("###code", runs[:])
+}
+```

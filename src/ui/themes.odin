@@ -76,6 +76,7 @@ theme_palette :: proc(t: Theme_Def, light: bool, finish: Finish = .Flat) -> Pale
 		text = c.texts[2], weak = c.texts[1],
 		accent = c.hues[0], accent_text = accent_text, good = c.hues[3], warn = c.hues[4], bad = c.hues[5],
 		dark = !is_light, finish = t.finish.? or_else finish, translucent = t.translucent,
+		blue = c.hues[1], purple = c.hues[2], cyan = c.hues[6], rose = c.hues[7],
 	}
 }
 

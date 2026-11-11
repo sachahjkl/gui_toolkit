@@ -11,11 +11,13 @@ Palette :: struct {
 	bar:    u32,      // menu / status bars (0 = panel)
 	well:   u32,      // sunken surfaces: fields, wells (0 = the page a step darker)
 	translucent: bool, // `bg` has alpha < 1 and the app shows the OS backdrop behind it (see platform.set_backdrop)
+	// the theme's other hues, for code's colours (0: the accent)
+	blue, purple, cyan, rose: u32,
 }
 
 // Slots a theme entry can point at.
 @(private)
-Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well }
+Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well, Blue, Purple, Cyan, Rose }
 
 @(private)
 Entry :: struct { tags: string, slot: Slot, alpha: f32 }
@@ -30,6 +32,8 @@ entries := [?]Entry{
 	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
+	// source code's classes (code.odin, tk_syntax): keywords, strings, comments, calls and directives, types and numbers
+	{"code_keyword", .Purple, 1}, {"code_string", .Good, 1}, {"code_comment", .Weak, 1}, {"code_func", .Blue, 1}, {"code_type", .Cyan, 1},
 	{"resize_grip shade", .Border, 1},   // the bevel in a dialog's or a floating panel's corner: toward the border, darker on a light theme, lighter on a dark one
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
@@ -121,6 +125,10 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	case .White: return 0xffffffff
 	case .Black: return 0x000000ff
 	case .Hover: return p.dark ? 0xffffffff : 0x000000ff
+	case .Blue: return p.blue != 0 ? p.blue : p.accent
+	case .Purple: return p.purple != 0 ? p.purple : p.accent
+	case .Cyan: return p.cyan != 0 ? p.cyan : p.accent
+	case .Rose: return p.rose != 0 ? p.rose : p.accent
 	}
 	return 0xff00ffff
 }
