@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.196.2] - 2026-11-11
+
+### Fixed
+- **The command palette's field strip has the dialog's corners**: it was rounded at the theme's radius whatever the program's rounding, so a dialog with square or little rounded corners showed a second, rounder corner inside its own. `box_drawn_radius` gives a custom draw the corners a box is drawn with.
+
 ## [0.196.1] - 2026-11-11
 
 ### Changed
@@ -2662,6 +2667,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.196.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.2
 [0.196.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.1
 [0.196.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.0
 [0.195.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.1
