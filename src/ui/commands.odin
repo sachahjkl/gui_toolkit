@@ -204,7 +204,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil)
 		if scroll_y("###palette_list") {
 			lb := parent_box()
 			view_h := lb.rect.max.y - lb.rect.min.y
-			if p.reveal && view_h > row_h {
+			if p.reveal && view_h > row_h && n > 0 {   // (a search that keeps nothing: no line to show)
 				top := palette_line_top(list, p.sel, row_h, em)
 				lb.view_target.y = view_reveal_offset(lb.view_target.y, top, top + row_h, view_h)
 				p.reveal = false

@@ -148,6 +148,17 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	frame(&f, nil, build_palette, &r)   // (a dialog takes Escape at the end of a build: it closes at the next)
 	testing.expect(t, !r.pal.open, "Escape closes it")
 
+	// a search that keeps nothing: the palette says so, and goes on
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
+	frame(&f, nil, build_palette, &r)
+	for c in "zzqx" { frame(&f, {typed(c)}, build_palette, &r) }
+	frame(&f, nil, build_palette, &r)
+	frame(&f, {key(.Down)}, build_palette, &r)
+	frame(&f, {key(.Return)}, build_palette, &r)
+	testing.expect_value(t, r.chosen, -1)
+	frame(&f, {key(.Escape)}, build_palette, &r)
+	frame(&f, nil, build_palette, &r)
+
 	// a size of the user's: the palette opens at it
 	r.pal.size = {500, 300}
 	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
