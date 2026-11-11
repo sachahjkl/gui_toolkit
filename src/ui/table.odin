@@ -65,6 +65,16 @@ Table_Column :: struct {
 	low_first: bool,   // a number sorted from the lowest at the first click (an id)
 	weak:   bool,   // its text in the weak colour (details beside the name)
 	hidden: bool,   // not shown until the user asks (table_column_items)
+	unsorted: bool, // its title sorts nothing (a column with no order of its own): a click on it does nothing
+}
+
+// What a program builds in the header besides the titles (every field optional). `user` is given back to each.
+//   lead:  in the room before the first title (lead_em wide): a box that checks every row
+//   title: in column k's title, after its words (a filter's funnel); `hot`: the pointer is on that title
+Table_Header_Options :: struct {
+	user:  rawptr,
+	lead:  proc(user: rawptr, em: f32),
+	title: proc(user: rawptr, k: int, hot: bool, em: f32),
 }
 
 // What the header edits; a program saves it (the widths, which are shown, their order, the sort).
@@ -222,7 +232,8 @@ Table_Header_Events :: struct {
 
 // The columns' titles in a row of the width `next` gives (its height: TABLE_HEADER_EM; `next` may set a background).
 // `lead_em`: the room before the first title, in ems (where the rows put a chevron or an icon).
-table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: Table_Header_Events) {
+// `opts`: what the program builds in the lead and in the titles (Table_Header_Options).
+table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := Table_Header_Options{}) -> (ev: Table_Header_Events) {
 	s := gs()
 	em := font_size()
 	m := s.has_next ? s.next_mod : Style_Mod{}
@@ -254,19 +265,26 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 			sorting := l.sort == k
 			next({width = table_width(l, k), height = pct(1)})
 			sig: Signal
-			if row(.Center, {.Clickable, .Draw_Hot_Effects}, fmt.tprintf("###hd_%d", k)) {
+			if row(.Center, {.Clickable, .Draw_Hot_Effects, .Hot_Within}, fmt.tprintf("###hd_%d", k)) {
 				sig = signal(parent_box())
+				hot := parent_box().hot_t > 0
 				if prev >= 0 {
 					if table_rule(l, prev, em, prev_px) { ev.resized = true }
+				} else if opts.lead != nil {
+					next({width = px(em * lead_em), height = pct(1), axis = .X, cross = .Center})
+					if row(.Center, {}, "###lead") { opts.lead(opts.user, em) }
 				} else {
 					spacer(px(em * lead_em))
 				}
+				// (a number's title keeps its edge over its values: what the program adds goes before it)
 				if c.number { spacer(fill()) }
+				if c.number && opts.title != nil { opts.title(opts.user, k, hot, em) }
 				if !sorting { push_tags("weak") }
 				next({width = text_size(), height = pct(1), text_pad = 0})
 				label(fmt.tprintf("%s###t", text_shown(c.title)))
 				if !sorting { pop_tags() }
 				if !c.number { spacer(fill()) }
+				if !c.number && opts.title != nil { opts.title(opts.user, k, hot, em) }
 				if sorting {
 					if tags("weak") { table_arrow(l.descending, em * TABLE_ARROW_EM) }
 				} else {
@@ -278,7 +296,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 			// a title dragged sideways moves its column (the first stays): its release is no click then
 			if k > 0 && !l.moving && sig.dragging && abs(sig.drag_delta.x) > em * TABLE_MOVE_EM { l.moving, l.moving_col = true, k }
 			if l.moving && l.moving_col == k { moving = sig }
-			if sig.clicked && !(l.moving && l.moving_col == k) {
+			if sig.clicked && !c.unsorted && !(l.moving && l.moving_col == k) {
 				table_sort_click(l, k)
 				ev.sorted = true
 			}

@@ -493,3 +493,61 @@ a_third_click_leaves_the_rows_unsorted :: proc(t: ^testing.T) {
 	ui.table_sort_click(&l, 0)
 	testing.expect(t, l.sort == ui.TABLE_UNSORTED)
 }
+
+@(private = "file")
+UNSORTED_COLUMNS := [?]ui.Table_Column{
+	{title = "Name", width = 0},
+	{title = "Count", width = 6, number = true, unsorted = true},
+}
+
+@(private = "file")
+Extra_App :: struct {
+	l:      ui.Table_Layout,
+	leads:  int,
+	titles: [2]int,
+	ev:     ui.Table_Header_Events,
+}
+
+@(private = "file")
+build_extra :: proc(s: ^session.Session) {
+	app := (^Extra_App)(s.user)
+	ui.next({width = ui.px(400), height = ui.px(30)})
+	ev := ui.table_header("###extra_head", &app.l, 2, {
+		user = app,
+		lead = proc(user: rawptr, em: f32) {
+			app := (^Extra_App)(user)
+			app.leads += 1
+			ui.next({width = ui.px(em), height = ui.px(em)})
+			ui.build_box({}, "###lead_box")
+		},
+		title = proc(user: rawptr, k: int, hot: bool, em: f32) {
+			app := (^Extra_App)(user)
+			app.titles[k] += 1
+			ui.next({width = ui.px(em), height = ui.px(em)})
+			ui.build_box({}, "###funnel")
+		},
+	})
+	if ev.sorted { app.ev = ev }
+}
+
+// What a program builds in the header: its lead (before the first title) and a piece in each title; a column of no
+// order of its own is not sorted by a click on its title.
+@(test)
+a_header_holds_the_program_s_pieces :: proc(t: ^testing.T) {
+	app: Extra_App
+	ui.table_layout_init(&app.l, UNSORTED_COLUMNS[:])
+	defer ui.table_layout_destroy(&app.l)
+	s := session.start(t, {build = build_extra, user = &app, no_renderer = true})
+	session.frames(s, 3)
+	testing.expect(t, app.leads > 0 && app.titles[0] > 0 && app.titles[1] > 0, "the lead and each title's piece are built")
+	testing.expect(t, session.find(s, "lead_box") != nil, "the lead's box")
+	count := session.get(s, "hd_1")
+	if count == nil { return }
+	session.click(s, "hd_1")
+	session.frames(s, 2)
+	testing.expect_value(t, app.l.sort, 0)
+	testing.expect(t, !app.ev.sorted, "no sort by a column of no order")
+	session.click(s, "hd_0")
+	session.frames(s, 2)
+	testing.expect(t, app.ev.sorted, "the name's title sorts")
+}
