@@ -20,20 +20,45 @@ Memory_Font :: struct {
 	key:       u64,
 }
 
-// Memory fonts by key. A key is never used twice: DirectWrite's shared factory caches files by (loader, key), so a key
-// made from an address could bring back the faces of a font freed before at that address.
+// Memory fonts by key. DirectWrite's shared factory caches files by (loader, key), for the process: a key is the bytes'
+// own (a hash of them and their length), so the same font loaded again (each State of a program, each session of a test)
+// meets its faces in that cache instead of adding them once more (a key of its own each time added about two megabytes a
+// test session on Windows, until a package of a hundred of them ended the process). A key made from an address could
+// bring back the faces of another font freed before at that address; one made from the bytes brings back their own.
+// Two fonts of different bytes with one hash (never seen) take a key of their own each (memory_next, its top bit set).
 @(private) memory_mu: sync.Mutex
 @(private) memory_fonts: map[u64]^Memory_Font
 @(private) memory_next: u64
 
+@(private) MEMORY_KEY_UNIQUE :: u64(1) << 63
+
+// The bytes' key: FNV-1a over them, their length mixed in (without the unique keys' top bit).
+@(private)
+memory_key_of :: proc(data: []byte) -> u64 {
+	h: u64 = 0xcbf29ce484222325
+	for b in data { h = (h ~ u64(b)) * 0x100000001b3 }
+	h = (h ~ u64(len(data))) * 0x100000001b3
+	return h & ~MEMORY_KEY_UNIQUE
+}
+
+// The memory font of `data`: the one alive with the same bytes (shared: `data` is freed when owned), else a new one.
 @(private)
 memory_font_new :: proc(data: []byte, owned: bool) -> ^Memory_Font {
 	context.allocator = runtime.heap_allocator()
-	m := new(Memory_Font)
-	m.refs, m.data, m.owned = 1, data, owned
+	key := memory_key_of(data)
 	sync.mutex_lock(&memory_mu)
-	memory_next += 1
-	m.key = memory_next
+	if old, ok := memory_fonts[key]; ok {
+		if len(old.data) == len(data) && (raw_data(old.data) == raw_data(data) || string(old.data) == string(data)) {
+			old.refs += 1
+			sync.mutex_unlock(&memory_mu)
+			if owned && raw_data(old.data) != raw_data(data) { delete(data) }
+			return old
+		}
+		memory_next += 1
+		key = memory_next | MEMORY_KEY_UNIQUE   // (other bytes, one hash: a key of its own)
+	}
+	m := new(Memory_Font)
+	m.refs, m.data, m.owned, m.key = 1, data, owned, key
 	memory_fonts[m.key] = m
 	sync.mutex_unlock(&memory_mu)
 	return m

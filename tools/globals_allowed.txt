@@ -32,7 +32,7 @@ font/com.odin memory_fonts process  # the fonts loaded from memory: DirectWrite'
 font/com.odin memory_next process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
 font/com.odin memory_stream_vtable const  # a COM vtable (passed by address)
 font/com.odin memory_loader_vtable const  # a COM vtable (passed by address)
-font/com.odin memory_loader const  # the memory font loader's COM object: its vtable only (registered on each font.State's own factory)
+font/com.odin memory_loader const  # the memory font loader's COM object: its vtable only (registered per font.State, loader_users)
 font/com.odin EMPTY_LOCALE const  # an empty locale name (passed by address)
 font/com.odin source_vtable const  # a COM vtable (passed by address)
 font/com.odin sink_vtable const  # a COM vtable (passed by address)
@@ -93,6 +93,8 @@ font/failures.odin forced_failures thread  # the failures a test forces, on its 
 font/font_other.odin other_system const  # a system font service's table of procedures
 font/font_system_linux.odin fc_once process  # fontconfig's initialization, once for the process
 font/font_system_linux.odin fc_ok const  # written under fc_once, then only read
+font/font_windows.odin loader_mu process  # the memory font loader's registration with the shared factory (locked: loader_mu)
+font/font_windows.odin loader_users process  # the memory font loader's registration with the shared factory (locked: loader_mu)
 font/font_windows.odin IID_IDWriteFontFace const  # a COM interface id (passed by address)
 font/shape.odin words_epochs process  # the epochs of the word caches, unique in the process (atomic)
 font/shape.odin l1_words thread  # the thread's own cache of short words' widths

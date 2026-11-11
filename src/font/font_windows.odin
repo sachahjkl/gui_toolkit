@@ -5,6 +5,7 @@ import "base:runtime"
 import "core:math"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "../ascii"
 
 // The platform part of the package on Windows: DirectWrite opens every face (system collection, files, memory) and
@@ -46,14 +47,16 @@ Platform_State :: struct {
 	color_queue:  Color_Queue,         // the color glyph thread (color_async.odin)
 }
 
+@(private)
+loader_mu: sync.Mutex
+@(private)
+loader_users: int
+
 // DirectWrite's factory, collection, analyzer and fallback. false: no DirectWrite (every face then fails to load).
-// The factory is the State's own (isolated): what it caches of its faces (their files, outlines, glyphs) goes with it. A
-// shared one is the process's: a face from memory has a key of its own each time it is loaded, so every State that ended
-// left its faces in that cache (about two megabytes a test session, until a package of a hundred of them fell).
 @(private)
 platform_init :: proc(s: ^State) -> bool {
 	f: rawptr
-	if DWriteCreateFactory(.ISOLATED, &IID_IDWriteFactory, &f) < 0 || f == nil { return false }
+	if DWriteCreateFactory(.SHARED, &IID_IDWriteFactory, &f) < 0 || f == nil { return false }
 	s.factory = (^IDWriteFactory)(f)
 	s.factory2 = com_query(s.factory, &IID_IDWriteFactory2, IDWriteFactory2)
 	s.factory4 = com_query(s.factory, &IID_IDWriteFactory4, IDWriteFactory4)
@@ -63,7 +66,10 @@ platform_init :: proc(s: ^State) -> bool {
 	if s.factory2 != nil {
 		if s.factory2->GetSystemFontFallback(&s.fallback) < 0 { s.fallback = nil }
 	}
-	s.factory->RegisterFontFileLoader(&memory_loader.iface)   // (on this factory: the faces from memory it makes)
+	sync.mutex_lock(&loader_mu)
+	if loader_users == 0 { s.factory->RegisterFontFileLoader(&memory_loader.iface) }
+	loader_users += 1
+	sync.mutex_unlock(&loader_mu)
 	s.system_fonts = &dwrite_system
 	return true
 }
@@ -78,7 +84,12 @@ platform_stop :: proc(s: ^State) {
 
 @(private)
 platform_destroy :: proc(s: ^State) {
-	if s.factory != nil { s.factory->UnregisterFontFileLoader(&memory_loader.iface) }
+	if s.factory != nil {
+		sync.mutex_lock(&loader_mu)
+		loader_users -= 1
+		if loader_users == 0 { s.factory->UnregisterFontFileLoader(&memory_loader.iface) }
+		sync.mutex_unlock(&loader_mu)
+	}
 	com_release(s.fallback)
 	com_release(s.analyzer)
 	com_release(s.system)
