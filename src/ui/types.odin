@@ -379,6 +379,7 @@ State :: struct {
 	events:      Events,
 	typed:       [dynamic]rune,
 	typed_mods:  platform.Modifiers,   // the modifiers of this frame's key presses (none: the text came without one, an input method's)
+	keys_held:   platform.Keys,        // pressed in the window and not released yet (key_held)
 	mouse:       Vec2,
 	mouse_valid: bool,
 	mods:        platform.Modifiers,

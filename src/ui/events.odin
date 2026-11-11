@@ -98,6 +98,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			append(&s.typed, e.text)
 		case .Key_Release:
 			s.mods = e.mods
+			s.keys_held -= {e.key}
 		case .Activate:
 			if s.window != nil && !s.window.active { left = true }
 		case .Frame_Press:
@@ -105,6 +106,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 		case .Key_Press:
 			s.mods = e.mods
 			s.typed_mods += e.mods
+			if e.key != .None { s.keys_held += {e.key} }
 			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
 				#partial switch e.key {
 				case .Equal, .Num_Add: s.zoom = clamp(s.zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
@@ -138,6 +140,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 window_left :: proc(s: ^State) {
 	for &k in s.active_key { k = 0 }
 	s.mods = {}
+	s.keys_held = {}
 	if len(s.menus) > 0 { menu_pop_to(0) }
 	autoscroll_cancel(&s.auto)
 	selection_drag_end(s)
@@ -224,6 +227,12 @@ scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways: bool) -> Key {
 
 @(private)
 contains :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
+
+// Whether `key` is held now: pressed in this window and not released yet, by its own presses and releases (not by the
+// modifiers' state, which a compositor may leave stale). A key pressed before the window had the keyboard is not held;
+// none is once the user left the window. Ctrl, Shift and Alt are keys here: Ctrl held alone (a monitor that stops its
+// refresh while it is, as Windows' Task Manager).
+key_held :: proc(key: platform.Key) -> bool { return key in gs().keys_held }
 
 // Consuming keyboard query: true once if a matching key press (exact modifiers) is pending.
 key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {

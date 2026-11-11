@@ -271,3 +271,25 @@ the_words_of_a_query_in_a_line :: proc(t: ^testing.T) {
 	testing.expect(t, slice.equal(ui.word_ranges("Session 12 and Session 2", `"session 2"`), []ui.Fuzzy_Range{{15, 24}}), "a phrase")
 	testing.expect_value(t, len(ui.word_ranges("text", "")), 0)
 }
+
+@(private = "file")
+nothing :: proc(f: ^Fx, user: rawptr) {}
+
+// A key held: from its press to its release, by its own events; none once the user left the window.
+@(test)
+a_key_is_held_from_its_press_to_its_release :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f)) { return }
+	defer close(&f)
+	frame(&f, {}, nothing, nil)
+	testing.expect(t, !ui.key_held(.Ctrl), "nothing held at first")
+	frame(&f, {key(.Ctrl)}, nothing, nil)
+	testing.expect(t, ui.key_held(.Ctrl), "Ctrl pressed: held")
+	frame(&f, {}, nothing, nil)
+	testing.expect(t, ui.key_held(.Ctrl), "still held, with no event")
+	frame(&f, {{kind = .Key_Release, key = .Ctrl, mods = {.Ctrl}}}, nothing, nil)
+	testing.expect(t, !ui.key_held(.Ctrl), "released, though its event says Ctrl (the modifiers' state before it)")
+	frame(&f, {key(.Ctrl)}, nothing, nil)
+	frame(&f, {{kind = .Frame_Press}}, nothing, nil)
+	testing.expect(t, !ui.key_held(.Ctrl), "the window left: none held")
+}

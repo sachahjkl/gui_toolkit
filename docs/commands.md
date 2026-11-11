@@ -54,4 +54,9 @@ and the sheet.
 
 A program's settings go in its palette too: `prefs_page.palette_commands` and `prefs_page.show` (docs/prefs_page.md).
 
-`tests/commands` tests the texts, the keys and the palette.
+A key held, not pressed: `ui.key_held(key)` is true from its press in the window to its release, by the key's own
+events (not by the modifiers' state, which a compositor may leave stale after one of its own shortcuts). A key pressed
+before the window had the keyboard is not held, and none is once the user left the window. Ctrl, Shift and Alt are keys
+there: a monitor stops its refresh while Ctrl is held alone.
+
+`tests/commands` tests the texts, the keys, the keys held and the palette.
