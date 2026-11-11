@@ -1,4 +1,4 @@
-package scenarios_test
+package data_views_test
 
 // A strip of cells on one line that scrolls sideways; "Show all" lays them out as a grid wrapped to the width, "Show fewer"
 // folds them back. With few cells, no button.

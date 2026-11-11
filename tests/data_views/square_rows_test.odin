@@ -1,4 +1,4 @@
-package scenarios_test
+package data_views_test
 
 // A row of a list, of a table or of a menu is square, and so is a table's tinted cell, whatever radius the style around it has: a selected row's fill runs
 // from edge to edge, row under row.
