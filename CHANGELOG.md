@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.192.0] - 2026-11-11
+
+### Added
+- **A dock's panel in a window of its own** (`Dock_Options.windows`): the menu's *Open in a window* lets the panel go as a close does, `Dock_Result.windowed` names it, and the program opens the window and builds the panel there; `dock_add` brings it back when the window closes.
+
 ## [0.191.1] - 2026-11-11
 
 ### Fixed
@@ -2603,6 +2608,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.192.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.192.0
 [0.191.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.191.1
 [0.191.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.191.0
 [0.190.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.190.2
