@@ -41,3 +41,16 @@ a_monitor_followed_by_its_name :: proc(t: ^testing.T) {
 	_, ok = platform.active_monitor_parse("mouse")
 	testing.expect(t, !ok)
 }
+
+// The portal's color-scheme: dark, light, or no preference, which says nothing (the desktop's other settings decide).
+@(test)
+a_color_scheme_of_no_preference_says_nothing :: proc(t: ^testing.T) {
+	when ODIN_OS == .Linux {
+		dark, ok := platform.color_scheme_of(1)
+		testing.expect(t, ok && dark)
+		dark, ok = platform.color_scheme_of(2)
+		testing.expect(t, ok && !dark)
+		_, ok = platform.color_scheme_of(0)
+		testing.expect(t, !ok, "no preference: the GTK theme decides")
+	}
+}

@@ -212,7 +212,17 @@ portal_read_color_scheme :: proc(conn: ^dbus.Conn) -> (dark: bool, ok: bool) {
 	r := dbus.msg_reader(&msg)
 	// the reply is a variant holding a u (some portals double-wrap it: v(v(u))); read one variant, then a u
 	scheme := dbus.read_variant_u32_nested(&r)
-	return scheme == 1, true
+	return color_scheme_of(scheme)
+}
+
+// The portal's color-scheme: 1 dark, 2 light; 0 is no preference, which says nothing (ok = false): the desktop's other
+// settings decide then (a session whose portal has no backend for it answers 0, its GTK theme dark all the same).
+color_scheme_of :: proc(scheme: u32) -> (dark: bool, ok: bool) {
+	switch scheme {
+	case 1: return true, true
+	case 2: return false, true
+	}
+	return false, false
 }
 
 // The icon theme the desktop shows, as the Settings portal gives it (org.gnome.desktop.interface icon-theme: GNOME's,
