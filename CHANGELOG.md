@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.179.0] - 2026-11-11
+
+### Changed
+- **Machined: a segmented control is a slot with a key in it**: the track carved in the surface (`machined_well`), grooves between its segments, the chosen one a raised metal key with a small light of the accent under its label (`machined_light`), in the text's colour. **A switch's channel and knob lie on whole device pixels**: their 1 px rims no longer step along the curves.
+
 ## [0.178.0] - 2026-11-11
 
 ### Fixed
@@ -2457,6 +2462,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.179.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.179.0
 [0.178.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.178.0
 [0.177.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.177.1
 [0.177.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.177.0
