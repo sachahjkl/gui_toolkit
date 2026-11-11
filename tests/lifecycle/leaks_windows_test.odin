@@ -25,38 +25,51 @@ foreign kernel32 {
 @(private = "file") LEAK_BYTES_PER_ROUND :: 64 * 1024   // the heap's own slack, not a renderer's atlas (megabytes)
 @(private = "file") LEAK_HANDLES :: 2   // over all the rounds
 
-// The pieces of a test session (testkit/session: start, a frame of text and shapes, the end), in its order.
+// The pieces of a test session (testkit/session: start, a frame of text and shapes, the end), in its order; `upto`: the last
+// piece made (a survey of which keeps memory).
 @(private = "file")
-session_pieces :: proc() -> bool {
+Piece :: enum { Window, Fonts, Renderer, Draw, Frame, Rect, Text, Read, Ui }
+
+@(private = "file")
+session_pieces :: proc(upto := Piece.Ui) -> bool {
 	w := platform.open_window_offscreen("leaks", {720, 560})
 	if w == nil { return false }
+	defer platform.destroy_window(w)
+	if upto == .Window { return true }
 	fonts: font.State
 	font.init(&fonts)
+	defer font.destroy(&fonts)
 	face, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
 	_, _ = font.load_embedded(&fonts, font.FALLBACK_MONO_DATA)
 	_, _ = font.load_embedded(&fonts, ui.ICON_FONT_DATA)
+	if upto == .Fonts { return true }
 	r: render.Renderer
-	if !render.init_offscreen(&r, w.size, warp = true) { font.destroy(&fonts); platform.destroy_window(w); return false }
+	if !render.init_offscreen(&r, w.size, warp = true) { return false }
+	defer render.destroy(&r)
+	if upto == .Renderer { return true }
 	dc: draw.Context
 	draw.init(&dc, &r, &fonts)
-	theme: ui.Theme
-	ui.apply_palette(&theme, ui.palette_of("Console"))
-	state: ui.State
-	ui.init(&state, &fonts, &theme)
+	defer draw.destroy(&dc)
+	if upto == .Draw { return true }
 	draw.begin_frame(&dc, {720, 560})
 	render.frame_begin(&r, {0.04, 0.05, 0.08, 1})
-	draw.rect(&dc, {{20, 20}, {300, 80}}, {0.2, 0.3, 0.5, 1}, 6)
-	draw.box_shadow(&dc, {{20, 120}, {300, 180}}, {6, 6, 6, 6}, 8, {0, 0, 0, 0.6})
-	draw.text(&dc, face, 16, {24, 60}, {1, 1, 1, 1}, "The quick brown fox jumps over the lazy dog 0123")
+	if upto >= .Rect {
+		draw.rect(&dc, {{20, 20}, {300, 80}}, {0.2, 0.3, 0.5, 1}, 6)
+		draw.box_shadow(&dc, {{20, 120}, {300, 180}}, {6, 6, 6, 6}, 8, {0, 0, 0, 0.6})
+	}
+	if upto >= .Text { draw.text(&dc, face, 16, {24, 60}, {1, 1, 1, 1}, "The quick brown fox jumps over the lazy dog 0123") }
 	draw.end_frame(&dc)
 	render.frame_end(&r)
-	_ = render.read_pixels(&r, context.temp_allocator)
-	ui.destroy(&state)
-	ui.theme_destroy(&theme)
-	draw.destroy(&dc)
-	render.destroy(&r)
-	font.destroy(&fonts)
-	platform.destroy_window(w)
+	if upto >= .Read { _ = render.read_pixels(&r, context.temp_allocator) }
+	if upto >= .Ui {
+		theme: ui.Theme
+		ui.apply_palette(&theme, ui.palette_of("Console"))
+		state: ui.State
+		ui.init(&state, &fonts, &theme)
+		ui.destroy(&state)
+		ui.theme_destroy(&theme)
+	}
+	free_all(context.temp_allocator)
 	return true
 }
 
@@ -72,6 +85,14 @@ process_use :: proc() -> (private_bytes: int, handles: int) {
 
 @(test)
 a_session_s_pieces_leave_nothing :: proc(t: ^testing.T) {
+	// (each piece alone first: what keeps memory says itself)
+	for upto in Piece {
+		for _ in 0 ..< LEAK_WARM { session_pieces(upto) }
+		m0, _ := process_use()
+		for _ in 0 ..< LEAK_ROUNDS { session_pieces(upto) }
+		m1, _ := process_use()
+		fmt.printf("up to %v: %d KiB a round\n", upto, (m1 - m0) / LEAK_ROUNDS / 1024)
+	}
 	for _ in 0 ..< LEAK_WARM { if !testing.expect(t, session_pieces(), "a window, a renderer, the faces") { return } }
 	m0, h0 := process_use()
 	for _ in 0 ..< LEAK_ROUNDS { if !testing.expect(t, session_pieces(), "a window, a renderer, the faces") { return } }
