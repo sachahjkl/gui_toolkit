@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.189.1] - 2026-11-11
+
+### Fixed
+- **An open dialog holds the keys**: code built outside it gets no key from `key_press`, `key_take`, `key_pressed_peek` or `command_pressed` while it is open. A program reads its keys before it builds its dialogs: Escape in a dialog opened from the palette closed the window behind it instead. `ui.set_keys_behind_dialogs(&state, true)` turns it off; `ui.dialog_open()` says whether one is open.
+
 ## [0.189.0] - 2026-11-11
 
 ### Added
@@ -2554,6 +2559,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.189.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.189.1
 [0.189.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.189.0
 [0.188.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.188.0
 [0.187.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.2
