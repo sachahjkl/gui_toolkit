@@ -69,7 +69,6 @@ session_pieces :: proc(upto := Piece.Ui) -> bool {
 		ui.destroy(&state)
 		ui.theme_destroy(&theme)
 	}
-	free_all(context.temp_allocator)
 	return true
 }
 
