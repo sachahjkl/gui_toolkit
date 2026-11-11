@@ -370,3 +370,19 @@ fuzzy_typos_forgive_a_slip :: proc(t: ^testing.T) {
 	_, _, twice := ui.fuzzy_typos("open open", "Restart opencode native")
 	testing.expect(t, !twice, "two words of the needle, two words of the text")
 }
+
+// One entry of a palette: its label first, then its tags, then its group, then with slips; what lights is in the label.
+@(test)
+a_palette_entry_is_found_by_its_label_its_tags_or_a_slip :: proc(t: ^testing.T) {
+	tags := []string{"exit", "close"}
+	label, _, ok := ui.palette_match("quit", "Quit", "General", tags)
+	testing.expect(t, ok, "its label")
+	tag, tr, ok2 := ui.palette_match("exit", "Quit", "General", tags)
+	testing.expect(t, ok2 && tr == nil, "its tags, nothing lit")
+	testing.expect(t, label > tag, "the label before its tags")
+	slip, sr, ok3 := ui.palette_match("Qestart pencode", "Restart opencode native", "General", nil)
+	testing.expect(t, ok3 && len(sr) == 2, "a slip, the words lit")
+	testing.expect(t, tag > slip, "an exact match before a slip")
+	_, _, none := ui.palette_match("zebra", "Quit", "General", tags)
+	testing.expect(t, !none, "nothing")
+}

@@ -183,6 +183,26 @@ Palette_Options :: struct {
 	foot:         string,      // a line under the list (its keys' help)
 }
 
+// What a palette makes of `query` for one of its entries, best first: its label holds it whole or at the starts of its words
+// (fuzzy_words), then with its tags (other words it is found by), then with its group; then the same with a slip or two in
+// each word (fuzzy_typos), after every exact match. `ranges`: what lights in the label (none when the tags or the group
+// found it). A program's own palette (sessions, settings and commands together) ranks its entries with it too.
+palette_match :: proc(query, label, group: string, tags: []string) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	if s, r, found := fuzzy_words(query, label); found { return s, r, true }
+	joined := strings.join(tags, " ", context.temp_allocator)
+	if joined != "" {
+		if s, _, found := fuzzy_words(query, fmt.tprintf("%s %s", label, joined)); found { return s - PALETTE_TAG_MATCH_PENALTY, nil, true }
+	}
+	if group != "" {
+		if s, _, found := fuzzy_words(query, fmt.tprintf("%s %s %s", label, group, joined)); found { return s - PALETTE_GROUP_MATCH_PENALTY, nil, true }
+	}
+	if s, r, found := fuzzy_typos(query, label); found { return s, r, true }
+	if joined != "" {
+		if s, _, found := fuzzy_typos(query, fmt.tprintf("%s %s", label, joined)); found { return s - PALETTE_TAG_MATCH_PENALTY, nil, true }
+	}
+	return 0, nil, false
+}
+
 palette_destroy :: proc(p: ^Command_Palette) { field_destroy(&p.field) }
 
 // Opens the palette, its field empty and its first command selected.
@@ -294,13 +314,8 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 					// (what the search found in the label lit; its tags, which the line does not show, light nothing)
 					ranges: []Fuzzy_Range
 					if query != "" {
-						if _, r, ok := fuzzy_words(query, c.label); ok {
-							ranges = r
-						} else if _, rt, okt := fuzzy_typos(query, c.label); okt {
-							ranges = rt
-						} else {
-							ranges = word_ranges(c.label, query)
-						}
+						_, ranges, _ = palette_match(query, c.label, c.group, c.tags)
+						if ranges == nil { ranges = word_ranges(c.label, query) }   // (found by its tags or group: its words that are in the label)
 					}
 					next({width = fill(), text_pad = 0})
 					matched_label("###t", text, ranges)
@@ -390,18 +405,7 @@ palette_list :: proc(commands: []Command, query: string, opts: Palette_Options) 
 	Ranked :: struct { index, score: int }
 	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
 	for c, i in commands {
-		tags := strings.join(c.tags, " ", context.temp_allocator)
-		if score, _, ok := fuzzy_words(query, c.label); ok {
-			append(&ranked, Ranked{i, score})
-		} else if score2, _, ok2 := fuzzy_words(query, fmt.tprintf("%s %s", c.label, tags)); ok2 && tags != "" {
-			append(&ranked, Ranked{i, score2 - PALETTE_TAG_MATCH_PENALTY})
-		} else if score3, _, ok3 := fuzzy_words(query, fmt.tprintf("%s %s %s", c.label, c.group, tags)); ok3 {
-			append(&ranked, Ranked{i, score3 - PALETTE_GROUP_MATCH_PENALTY})
-		} else if score4, _, ok4 := fuzzy_typos(query, c.label); ok4 {   // (a slip in what was typed: after every exact match)
-			append(&ranked, Ranked{i, score4})
-		} else if score5, _, ok5 := fuzzy_typos(query, fmt.tprintf("%s %s", c.label, tags)); ok5 && tags != "" {
-			append(&ranked, Ranked{i, score5 - PALETTE_TAG_MATCH_PENALTY})
-		}
+		if score, _, ok := palette_match(query, c.label, c.group, c.tags); ok { append(&ranked, Ranked{i, score}) }
 	}
 	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
 	if f, ok := opts.first.?; ok && f >= 0 && f < len(commands) {

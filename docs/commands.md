@@ -54,6 +54,9 @@ before one that needs the group's letters), the headings go and each line says i
 it. A command that cannot act now is greyed and is not chosen. Escape closes the palette,
 and the sheet.
 
+A program with a palette of its own (commands, sessions and settings in one list) ranks each entry the same way:
+`ui.palette_match(query, label, group, tags)` gives its score and what lights in its label.
+
 A program's settings go in its palette too: `prefs_page.palette_commands` and `prefs_page.show` (docs/prefs_page.md).
 
 A key held, not pressed: `ui.key_held(key)` is true from its press in the window to its release, by the key's own
