@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.196.1] - 2026-11-11
+
+### Changed
+- **`flate` and `png.decode` are faster**: `flate.deflate` takes a quarter to a third less time and `flate.inflate` gives 1.3 to 2 times its rate, for the same bytes. `png.decode` of an 8-bit RGBA picture takes less than half its time. `render.readback_poll` of a linear target moves opaque pixels 4 at once, as it does for an sRGB target.
+- **Reading pixels back is faster**: a capture of the frame and `render.readback_poll` of an sRGB target move opaque pixels 4 at once (about 5 times less time for the capture, about 20 times for an opaque readback). The pixels are the same.
+- **`png.encode` and `flate.deflate` are faster**: `.Small` writes a 1400 x 925 screenshot in about 30 ms where it took about 95 ms, and `flate.deflate` takes about half its time on pictures. The filters of a row and the bytes of a match are compared 16 at once (SSE, NEON). A row with bytes of value 128 can take another filter than before: such a file differs by a few bytes, and reads back to the same pixels.
+
 ## [0.196.0] - 2026-11-11
 
 ### Fixed
@@ -2655,6 +2662,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.196.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.1
 [0.196.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.0
 [0.195.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.1
 [0.195.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.195.0
