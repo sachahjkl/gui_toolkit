@@ -44,7 +44,7 @@ Span :: struct {
 @(rodata)
 LANGUAGES := [?]Language{
 	{
-		names = {"odin"}, extensions = {"odin"}, label = "Odin", highlight = true, signs = {":: proc", ":: struct", ":= ", "package ", "import \"core:", "#partial", "defer ", "or_return"}, line_comment = "//", block_open = "/*", block_close = "*/", sigil = '#', char_quote = true,
+		names = {"odin"}, extensions = {"odin"}, label = "Odin", highlight = true, signs = {":: proc", ":: struct", ":= ", "proc ", "proc(", "package ", "import \"core:", "#partial", "or_return"}, line_comment = "//", block_open = "/*", block_close = "*/", sigil = '#', char_quote = true,
 		keywords = {"package", "import", "proc", "return", "if", "else", "for", "switch", "case", "in", "when", "defer", "using", "struct", "union", "enum", "bit_set", "map", "distinct", "foreign", "cast", "transmute", "auto_cast", "or_else", "or_return", "break", "continue", "fallthrough", "do", "dynamic", "context", "nil", "true", "false", "matrix", "bit_field"},
 		types = {"int", "uint", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f16", "f32", "f64", "bool", "b8", "b16", "b32", "b64", "byte", "rune", "string", "cstring", "rawptr", "uintptr", "any", "typeid", "complex64", "complex128"},
 	},

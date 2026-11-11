@@ -36,6 +36,8 @@ a_language_is_guessed_from_the_text :: proc(t: ^testing.T) {
 		{"#!/usr/bin/env bash\nset -euo pipefail\necho hi", "Shell"},
 		{"#!/usr/bin/python3\nprint(1)", "Python"},
 		{"proc fibonacci(n: u64) -> u64 {\n\tif n < 2 { return n }\n\treturn fibonacci(n - 1) + fibonacci(n - 2)\n}\nx := 3", "Odin"},
+		{"proc fibonacci(n: u64) -> u64 {\n\tif n < 2 { return n }\n\treturn fibonacci(n - 1) + fibonacci(n - 2)\n}", "Odin"},
+		{"SELECT name, email FROM users\nWHERE created_at > now() - interval '7 days'\nORDER BY created_at DESC;", "SQL"},
 		{"SELECT name, email FROM users WHERE created_at > '2026-01-01' ORDER BY name;", "SQL"},
 		{"def greet(self, name):\n    print(f\"hello {name}\")\n    return None", "Python"},
 		{"const add = (a, b) => a + b;\nconsole.log(add(1, 2));", "JavaScript"},
