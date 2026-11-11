@@ -175,7 +175,7 @@ main :: proc() {
 	if bold, bok := font.load_system(&app.fonts, "Segoe UI", 700); bok {
 		italic, _ := font.load_system(&app.fonts, "Segoe UI", 400, .Italic)
 		bi, _ := font.load_system(&app.fonts, "Segoe UI", 700, .Italic)
-		ui.rich_set_faces(&app.ui_state, app.ui_font, bold, italic, bi)
+		ui.set_family(&app.ui_state, app.ui_font, bold, italic, bi)
 	}
 	app.last = time.tick_now()
 	app.frames = 4

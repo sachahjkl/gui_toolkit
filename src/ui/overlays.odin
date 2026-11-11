@@ -197,7 +197,7 @@ toasts_build :: proc() {
 		push_parent(build_box({}, "###words"))
 		if t.title_len > 0 {
 			st := top_style()
-			next({width = fill(), height = text_size(), text_pad = 0, font = font.styled_face(s.fonts, st.font, true, false)})
+			next({width = fill(), height = text_size(), text_pad = 0, font = styled_face(st.font, true, false)})
 			build_box({.Draw_Text}, fmt.tprintf("%s###title", string(t.title[:t.title_len])))
 			spacer(px(em * 0.15))
 			if t.len > 0 {

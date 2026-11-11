@@ -37,7 +37,7 @@ section_header :: proc(id, title: string, note := "", value := "", c: Color) {
 	s := gs()
 	em := font_size()
 	st := top_style()
-	bold := font.styled_face(s.fonts, st.font, true, false)
+	bold := styled_face(st.font, true, false)
 	next({width = fill(), height = children_sum()})
 	set_next_axis(.X, .Center)
 	row_box := build_box({}, id)
@@ -155,7 +155,7 @@ stacked_bar :: proc(id: string, parts: []Bar_Part) {
 	if s.next_mod.width == nil { s.next_mod.width = fill() }
 	if s.next_mod.height == nil { s.next_mod.height = px(dense(em * 1.9)) }
 	s.has_next = true
-	if s.next_mod.font == nil { s.next_mod.font = font.styled_face(s.fonts, mono_font(), true, false) }   // (bold: words on colour)
+	if s.next_mod.font == nil { s.next_mod.font = styled_face(mono_font(), true, false) }   // (bold: words on colour)
 	b := build_box({}, id)
 	d := frame_new(Stacked_Draw)
 	d.parts = make([]Bar_Part, len(parts), frame_allocator())
@@ -256,7 +256,7 @@ title_strip :: proc(id, title: string, closable := true) -> (closed: bool) {
 	push_parent(b)
 	defer pop_parent()
 	spacer(px(em * 0.8))
-	next({width = fill(), height = pct(1), font = font.styled_face(s.fonts, top_style().font, true, false), fg = {1, 1, 1, 1}})
+	next({width = fill(), height = pct(1), font = styled_face(top_style().font, true, false), fg = {1, 1, 1, 1}})
 	build_box({.Draw_Text}, fmt.tprintf("%s###title", title))
 	if closable {
 		next({width = px(math.round(h * 1.25)), height = pct(1)})

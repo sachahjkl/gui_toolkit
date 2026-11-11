@@ -468,7 +468,7 @@ State :: struct {
 	trunc_cache:     map[Trunc_Key]Trunc_Entry,
 	// rich text: layouts by content, the faces of bold / italic runs, the link each focused paragraph is on (rich_text.odin)
 	rich_cache:      map[u64]Rich_Cache_Entry,
-	rich_faces:      map[font.Font_Id][4]font.Font_Id,
+	families:      map[font.Font_Id][4]font.Font_Id,
 	rich_link:       map[Key]int,
 	// find in page: the needle, the matches of the last layout (find.odin)
 	find:            Find_State,

@@ -90,7 +90,8 @@ result's `link_hovered`, `link_clicked`, `link` and `link_focused` (the paragrap
 through its links, Enter / Space choose one; the pointer is a hand over them). `ui.rich_links(text, style, &runs)` turns
 plain text into runs whose web addresses (`http://`, `https://`) are links, without the sentence's closing marks
 (`web_address_len` finds one). Bold and italic runs take the faces given
-by `ui.rich_set_faces(state, regular, bold, italic, bold_italic)`, else simulated ones. Layouts are kept by content
+by `ui.set_family(state, regular, bold, italic, bold_italic)`, else the system's family, else simulated ones; a widget
+asks `ui.styled_face(face, bold, italic)` and gets the same (a toast's title, a section's name). Layouts are kept by content
 (`rich_layout_cached`): thousands of runs are laid out once. The geometry is public for selection and custom drawing:
 `rich_layout`, `rich_text` (the whole text), `rich_index_at` (hit test), `rich_caret`, `rich_range_rects`,
 `rich_link_at`. Example: `examples/markdown`.

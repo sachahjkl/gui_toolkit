@@ -52,3 +52,30 @@ a_toast_is_as_tall_as_its_words :: proc(t: ^testing.T) {
 	testing.expect(t, a.max.y <= b.min.y + 0.5 || b.max.y <= a.min.y + 0.5, "one does not cover the other")
 	session.save_png(s, "toasts.png")
 }
+
+// A toast's title is the bold of the family the program gave (ui.set_family: an embedded font's own bold), not a bold
+// simulated from the regular face: its strokes thickened by an algorithm, the bar of an e lost its join at small sizes.
+// (The monospaced face stands for the family's bold here: one that is not simulated, and not the regular.)
+@(test)
+a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) {
+	Titled :: struct { fired: bool }
+	r: Titled
+	s := session.start(t, {size = {900, 400}, user = &r, build = proc(s: ^session.Session) {
+		r := (^Titled)(s.user)
+		ui.set_family(s.state, ui.top_style().font, s.state.mono_font, 0, 0)
+		if !r.fired {
+			r.fired = true
+			ui.toast_titled(.Warn, "Custom ShojiWM Desktop", "Permission: shell rm -rf /tmp/x")
+		}
+		ui.toasts_build()
+		ui.section_header("###sec", "Memory", "a note", "", {1, 0, 0, 1})
+	}})
+	session.frames(s, 3)
+	title := session.find(s, "title")
+	if !testing.expect(t, title != nil, "the toast's title") { return }
+	testing.expect_value(t, title.font, s.state.mono_font)
+	sec := session.find(s, "sec")
+	if !testing.expect(t, sec != nil && sec.first != nil, "the section's header") { return }
+	name := sec.first.next.next   // (its stripe, a space, then its name)
+	testing.expect(t, name != nil && name.font == s.state.mono_font, "the section's name in the family's bold")
+}

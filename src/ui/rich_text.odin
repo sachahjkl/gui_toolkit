@@ -16,13 +16,13 @@ import "../font"
 //   rich_paragraph(id, runs, max_lines = 0): the box (full width, as tall as its lines; `next` may say otherwise).
 //   rich_layout / rich_index_at / rich_caret / rich_range_rects / rich_link_at: the layout and its geometry.
 //   rich_links(text, style, &runs): plain text as runs, each web address in it a link.
-//   rich_set_faces(state, regular, bold, italic, bold_italic): the faces `bold` / `italic` runs of a family take (else the
-//   regular face with simulated bold / slant).
+//   set_family(state, regular, bold, italic, bold_italic): the faces a family's bold and italic take, in runs and in every
+//   widget (styled_face); else the system's family, else the regular face with simulated bold / slant.
 
 Rich_Style :: struct {
 	font:       font.Font_Id,   // 0: the box's
 	size:       f32,            // 0: the box's
-	bold:       bool,           // the bold face of `font`: rich_set_faces, else the family's (font.styled_face), else simulated
+	bold:       bool,           // the bold face of `font`: set_family, else the family's (font.styled_face), else simulated
 	italic:     bool,
 	code:       bool,           // inline code: the mono font, the theme's "code_bg" behind
 	color:      Color,          // alpha 0: the box's text colour (a link's: the theme's "link")
@@ -125,7 +125,7 @@ Rich_Context :: struct {
 	mono:      font.Font_Id,   // inline code (0: the base font)
 	line_height: f32,          // frame pixels (0: each line as tall as its tallest run). Every line this tall, its baseline
 	                           // from the base font's metrics: a run in another face moves neither (CSS line-height)
-	faces:     ^map[font.Font_Id][4]font.Font_Id,   // rich_set_faces (may be nil)
+	faces:     ^map[font.Font_Id][4]font.Font_Id,   // set_family (may be nil)
 }
 
 // The whole text of the runs, concatenated (what selection and copy see).
@@ -146,6 +146,19 @@ rich_face :: proc(c: Rich_Context, r: Rich_Style) -> (font.Font_Id, f32) {
 		if set, ok := c.faces[base]; ok && set[k] != 0 { return set[k], size }
 	}
 	return font.styled_face(c.fonts, base, r.bold, r.italic), size
+}
+
+// The bold and / or italic face of `face`, as the interface draws it: the family the program gave (set_family: an
+// embedded font's own bold, Hanken Grotesk 600), else the system's family, else simulated. A widget that wants a bold
+// title asks here: font.styled_face alone simulated the bold of an embedded face, its strokes thickened by an algorithm
+// (an e's bar lost its join at small sizes).
+styled_face :: proc(face: font.Font_Id, bold, italic: bool) -> font.Font_Id {
+	s := gs()
+	if !bold && !italic { return face }
+	if set, ok := s.families[face]; ok {
+		if f := set[(bold ? 1 : 0) + (italic ? 2 : 0)]; f != 0 { return f }
+	}
+	return font.styled_face(s.fonts, face, bold, italic)
 }
 
 // An ellipsis at the very start of a line: ellipsis_x > 0 is what marks one.
@@ -401,11 +414,11 @@ rich_link_at :: proc(l: ^Rich_Layout, runs: []Rich_Run, p: Vec2) -> int {
 	return -1
 }
 
-// The faces of a family that bold / italic runs take: `regular` is the family's (the font a run names, or the box's).
-rich_set_faces :: proc(s: ^State, regular, bold, italic, bold_italic: font.Font_Id) {
+// The faces of a family that its bold and italic take (rich text's runs, styled_face's widgets): `regular` is the family's.
+set_family :: proc(s: ^State, regular, bold, italic, bold_italic: font.Font_Id) {
 	set := [4]font.Font_Id{regular, bold, italic, bold_italic}
-	if old, ok := s.rich_faces[regular]; ok && old == set { return }
-	s.rich_faces[regular] = set
+	if old, ok := s.families[regular]; ok && old == set { return }
+	s.families[regular] = set
 	rich_cache_clear(s)   // (laid out with the old faces)
 }
 
@@ -513,7 +526,7 @@ rich_cache_clear :: proc(s: ^State) {
 rich_cache_destroy :: proc(s: ^State) {
 	rich_cache_clear(s)
 	delete(s.rich_cache)
-	delete(s.rich_faces)
+	delete(s.families)
 	delete(s.rich_link)
 }
 
@@ -545,7 +558,7 @@ Rich_Draw :: struct {
 @(private)
 rich_ctx :: proc(b: ^Box) -> Rich_Context {
 	s := gs()
-	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = s.mono_font, faces = &s.rich_faces}
+	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = s.mono_font, faces = &s.families}
 }
 
 @(private)

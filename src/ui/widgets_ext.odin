@@ -668,7 +668,7 @@ segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []str
 	a11y_default(b, {role = .Radio_Group, orientation = .X})
 	if parent(b) {
 		st := top_style()
-		bold := font.styled_face(s.fonts, st.font, true, false)
+		bold := styled_face(st.font, true, false)
 		for label, i in labels {
 			if i > 0 {
 				spacer(px(math.round(em * SEGMENTED_TEXT_GAP_EM)))

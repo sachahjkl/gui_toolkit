@@ -160,7 +160,7 @@ selection_across_boxes :: proc(t: ^testing.T) {
 	delete(frame(f, {press({440, 280}), release({440, 280})}))
 	testing.expect(t, !ui.has_selection(&f.s), "cleared")
 	// a press on a link clicks it and selects nothing
-	ll := ui.rich_layout_cached(RICH, {fonts = &f.fonts, base_font = f.ui_font, base_size = 15, faces = &f.s.rich_faces}, r.size.x - 12)
+	ll := ui.rich_layout_cached(RICH, {fonts = &f.fonts, base_font = f.ui_font, base_size = 15, faces = &f.s.families}, r.size.x - 12)
 	lr := ui.rich_range_rects(ll, &f.fonts, RICH, 16, 20)
 	lp := r.rect.min + {6, 6} + (lr[0].min + lr[0].max) * 0.5
 	delete(frame(f, {move(lp)}))

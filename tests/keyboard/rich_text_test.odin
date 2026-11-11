@@ -211,7 +211,7 @@ rich_links_pointer_keyboard_and_drawing :: proc(t: ^testing.T) {
 	b := ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###rich"))
 	if !testing.expect(t, b != nil, "built") { return }
 	text := ui.rich_text(RUNS)
-	l := ui.rich_layout_cached(RUNS, {fonts = &f.fonts, base_font = f.ui_font, base_size = 15, mono = f.mono, faces = &f.s.rich_faces}, b.size.x - 12)
+	l := ui.rich_layout_cached(RUNS, {fonts = &f.fonts, base_font = f.ui_font, base_size = 15, mono = f.mono, faces = &f.s.families}, b.size.x - 12)
 	testing.expectf(t, abs(b.size.y - (l.size.y + 12)) < 1, "as tall as its lines (%v, %v)", b.size.y, l.size.y)
 	li := strings.index(text, "a link")
 	lr := ui.rich_range_rects(l, &f.fonts, RUNS, li, li + 6)
@@ -256,7 +256,7 @@ rich_links_pointer_keyboard_and_drawing :: proc(t: ^testing.T) {
 	testing.expectf(t, best >= span * 9 / 10, "the link is underlined (best row %d of %d)", best, span)
 }
 
-// rich_set_faces changes what a bold run is drawn with: the layouts kept go. Two contexts with other faces do not share
+// set_family changes what a bold run is drawn with: the layouts kept go. Two contexts with other faces do not share
 // a layout, and the padding bytes of a run's style are no part of its content.
 @(test)
 rich_cache_key_is_what_the_layout_depends_on :: proc(t: ^testing.T) {
@@ -268,13 +268,13 @@ rich_cache_key_is_what_the_layout_depends_on :: proc(t: ^testing.T) {
 	defer close(f)
 	runs := []ui.Rich_Run{{text = "bold", style = {bold = true}}}
 	c := ctx(f)
-	c.faces = &f.s.rich_faces
+	c.faces = &f.s.families
 	before := ui.rich_layout_cached(runs, c, 300).frags[0].face
 	testing.expect(t, before != f.mono, "not the face set below")
-	ui.rich_set_faces(&f.s, f.ui_font, f.mono, f.mono, f.mono)
+	ui.set_family(&f.s, f.ui_font, f.mono, f.mono, f.mono)
 	testing.expect_value(t, ui.rich_layout_cached(runs, c, 300).frags[0].face, f.mono)
 	n := ui.rich_cache_len(&f.s)
-	ui.rich_set_faces(&f.s, f.ui_font, f.mono, f.mono, f.mono)
+	ui.set_family(&f.s, f.ui_font, f.mono, f.mono, f.mono)
 	testing.expect_value(t, ui.rich_cache_len(&f.s), n)   // (the same faces: nothing to lay out again)
 
 	other: map[font.Font_Id][4]font.Font_Id
