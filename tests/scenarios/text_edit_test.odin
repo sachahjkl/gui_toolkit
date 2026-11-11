@@ -23,6 +23,7 @@ Editors :: struct {
 	field:  ui.Text_Field,
 	secret: ui.Text_Field,
 	shown:  ui.Text_Field,   // a secret that can be revealed
+	search: ui.Text_Field,   // a clearable one
 	reveal: bool,
 	area:   ui.Text_Area,
 	grow:   ui.Text_Area,
@@ -38,6 +39,8 @@ editors_build :: proc(s: ^session.Session) {
 	ui.line_edit("###secret", &e.secret, secret = true)
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	ui.line_edit("###shown", &e.shown, secret = true, reveal = &e.reveal)
+	ui.next({width = ui.px(FIELD_WIDTH)})
+	ui.line_edit("###search", &e.search, clearable = true)
 	ui.next({width = ui.px(AREA_SIZE.x), height = ui.px(AREA_SIZE.y)})
 	ui.text_edit("###area", &e.area, tab_indents = true)
 	ui.next({width = ui.px(AREA_NARROW)})
@@ -52,6 +55,7 @@ editors_start :: proc(t: ^testing.T, no_renderer := true, loc := #caller_locatio
 		ui.field_destroy(&e.field)
 		ui.field_destroy(&e.secret)
 		ui.field_destroy(&e.shown)
+		ui.field_destroy(&e.search)
 		ui.area_destroy(&e.area)
 		ui.area_destroy(&e.grow)
 		free(e)
@@ -167,6 +171,12 @@ a_field_has_a_menu :: proc(t: ^testing.T) {
 	session.click(s, "field", .Right)
 	session.frames(s, 2)
 	testing.expect(t, ui.ctx_menu_any_open(), "a right click opens it")
+	// a menu, not a field's: its own tags (the field's made its panel see-through)
+	panel := s.state.boxes[s.state.menus[0].panel]
+	if testing.expect(t, panel != nil, "its panel") {
+		tags := s.state.tag_sets[panel.tags_key]
+		testing.expectf(t, len(tags) == 1 && tags[0] == "floating", "its own tags, not the field's: %v", tags)
+	}
 	icons := 0
 	for i := 0; session.find(s, "ico", i) != nil; i += 1 { icons += 1 }
 	testing.expectf(t, icons == 7, "an icon on each item: %d", icons)
@@ -191,6 +201,24 @@ a_field_has_a_menu :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect_value(t, session.clipboard(s), "abXY")
 	session.key(s, .Escape)
+}
+
+// A clearable field has a cross while it holds text: it empties it, the field keeps the keyboard, and Undo brings the text back.
+@(test)
+a_clearable_field_has_a_cross :: proc(t: ^testing.T) {
+	s, e := editors_start(t)
+	testing.expect(t, session.find(s, "clear") == nil, "empty: no cross")
+	session.click(s, "search")
+	session.type_text(s, "needle")
+	session.frames(s, 2)
+	testing.expect(t, session.find(s, "clear") != nil, "the cross")
+	session.click(s, "clear")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&e.search), "")
+	testing.expect(t, session.find(s, "clear") == nil, "emptied: no cross")
+	testing.expect_value(t, ui.focus_key(), session.find(s, "search").key)
+	session.key(s, .Z, {.Ctrl})
+	testing.expect_value(t, ui.field_string(&e.search), "needle")
 }
 
 // A secret field shows no text and gives none away.

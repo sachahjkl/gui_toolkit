@@ -340,7 +340,9 @@ State :: struct {
 	space:          draw.Blend_Space, // what the tree is drawn into (set by draw_tree): translucent colors adapt (tuned)
 	backdrop:       Color,           // the theme's background (set by draw_tree): what `tuned` assumes is under a color
 	tag_marks:    [dynamic]int,       // tag stack depth to restore on pop (for `tags` scopes)
-	tag_keys:     [dynamic]Key,       // running hash of the tag stack (tag_keys[i] covers tag_stack[:i+1])
+	tag_keys:     [dynamic]Key,       // running hash of the tag stack (tag_keys[i] covers tag_stack[tag_base:i+1])
+	tag_base:     int,                // where the tags that count begin: a popup's are its own (push_tags_isolated)
+	tag_bases:    [dynamic]int,       // the tag_base to restore at each pop_tags_isolated
 	tag_sets:     map[Key][]string,   // per-frame: tag stack contents by key, for theme lookups while drawing
 	color_memo:   map[[2]u64]Color,   // per-frame: (tags key, name hash) -> resolved color
 	next_mod:     Style_Mod,

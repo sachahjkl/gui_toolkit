@@ -492,9 +492,11 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	lv.eff_width = w
 	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : Vec2{panel.size.x, min(panel.view_bounds.y, s.window_size.y)}
 	pos := menu_place(lv, depth, size, s.window_size, em)
+	// (wherever it is built, a menu is a menu: its own tags and the window's style, not those of the field or the dialog
+	// that opens it)
 	push_parent(s.root)
-	push_tags("floating")
-	push_style_copy()
+	push_tags_isolated("floating")
+	append(&s.style_stack, s.style_stack[0])
 	set_next_axis(.Y)
 	s.next_mod.fixed_x = pos.x
 	s.next_mod.fixed_y = pos.y
@@ -567,7 +569,7 @@ ctx_menu_end :: proc() {
 	if pop(&s.popup_stack) {
 		pop_parent()     // panel
 		pop(&s.style_stack)
-		pop_tags()
+		pop_tags_isolated()
 		pop_parent()     // root
 	}
 }
@@ -803,7 +805,7 @@ tooltip_last_size :: proc(em: f32) -> Vec2 {
 tooltip_open :: proc(pos: Vec2, em: f32) {
 	s := gs()
 	push_parent(s.root)
-	push_tags("floating")
+	push_tags_isolated("floating")
 	push_style_copy()
 	st := top_style()
 	for a in Axis { if st.pref[a].kind == .Percent { st.pref[a] = text_size() } }

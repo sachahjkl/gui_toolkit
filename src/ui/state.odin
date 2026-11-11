@@ -84,6 +84,7 @@ destroy :: proc(s: ^State) {
 	delete(s.tab_stops_off)
 	delete(s.tag_marks)
 	delete(s.tag_keys)
+	delete(s.tag_bases)
 	delete(s.events.list)
 	delete(s.events.consumed)
 	delete(s.typed)
@@ -194,6 +195,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	for _, b in s.boxes { b.text, b.name, b.a11y, b.custom_user = "", "", nil, nil }
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
+	clear(&s.tag_bases); s.tag_base = 0
 	clear(&s.tag_sets); clear(&s.color_memo)
 	clear(&s.disabled_stack); s.disabled_depth = 0
 	clear(&s.tab_stops_off); s.tab_skip = 0
@@ -651,9 +653,24 @@ push_tags :: proc(names: ..string) {
 	append(&s.tag_marks, len(s.tag_stack))
 	for n in names {
 		append(&s.tag_stack, n)
-		append(&s.tag_keys, key_from_string(len(s.tag_keys) > 0 ? s.tag_keys[len(s.tag_keys) - 1] : 0, n))
+		append(&s.tag_keys, key_from_string(len(s.tag_keys) > s.tag_base ? s.tag_keys[len(s.tag_keys) - 1] : 0, n))
 	}
 	push_tags_key(s)
+}
+
+// Tags that start afresh: what is built until pop_tags_isolated wears these alone, not the tags around it (a menu
+// opened from inside a field is a menu, not a field's).
+push_tags_isolated :: proc(names: ..string) {
+	s := gs()
+	append(&s.tag_bases, s.tag_base)
+	s.tag_base = len(s.tag_stack)
+	push_tags(..names)
+}
+
+pop_tags_isolated :: proc() {
+	s := gs()
+	pop_tags()
+	s.tag_base = pop(&s.tag_bases)
 }
 
 pop_tags :: proc() {
@@ -665,11 +682,11 @@ pop_tags :: proc() {
 
 @(private)
 current_tags_key :: proc(s: ^State) -> Key {
-	if len(s.tag_keys) == 0 { return 0 }
+	if len(s.tag_keys) <= s.tag_base { return 0 }
 	k := s.tag_keys[len(s.tag_keys) - 1]
 	if _, ok := s.tag_sets[k]; !ok {
-		cp := make([]string, len(s.tag_stack), frame_allocator())
-		copy(cp, s.tag_stack[:])
+		cp := make([]string, len(s.tag_stack) - s.tag_base, frame_allocator())
+		copy(cp, s.tag_stack[s.tag_base:])
 		s.tag_sets[k] = cp
 	}
 	return k

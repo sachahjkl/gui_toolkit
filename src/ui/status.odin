@@ -459,7 +459,7 @@ popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above
 	if side == .Below && y + size.y > s.window_size.y && anchor.min.y - gap - size.y >= 0 { y = anchor.min.y - gap - size.y }
 	pos := clamp_popup({x, y}, size, s.window_size)
 	push_parent(s.root)
-	push_tags("floating")
+	push_tags_isolated("floating")
 	push_style_copy()
 	set_next_axis(.Y)
 	s.next_mod.fixed_x = pos.x

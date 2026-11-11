@@ -293,9 +293,11 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut. With `reveal`, a button
 // at its end (an eye) shows it as text and hides it again; `reveal^` says which, and is the caller's to keep.
 // A right press on it opens its menu (field_menu: Undo, Cut, Copy, Paste...); `menu` false: the program has its own.
-line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil, menu := true) -> (res: Edit_Result) {
+// `clearable`: while it holds text, a cross at its end empties it (a search's field; Undo brings the text back).
+line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil, menu := true, clearable := false) -> (res: Edit_Result) {
 	s := gs()
 	revealable := secret && reveal != nil
+	clears := clearable && !revealable && len(f.buf) > 0
 	// (revealed, it is text: shown, copied, its words selected; the person chose to see it)
 	masked := secret && !(revealable && reveal^)
 	if tags("input") {
@@ -309,7 +311,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		before_hash := hash_bytes(f.buf[:])
 		c0, m0 := f.cursor, f.mark
 		pad := b.text_pad
-		end: f32 = revealable ? math.round(b.font_size * REVEAL_EM) : 0
+		end: f32 = revealable || clears ? math.round(b.font_size * REVEAL_EM) : 0
 
 		// a screen reader sets the text, types over the selection, or moves the caret
 		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
@@ -435,6 +437,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			a11y_default(b, {role = .Text_Input, placeholder = placeholder})
 		}
 		if revealable { reveal_button(b, reveal, end) }
+		if clears && clear_button(b, f, end) { res.changed = true }
 		if menu {
 			key := key_from_string(b.key, "field_menu")
 			if s.pressed_any[.Right] && s.pressed_key[.Right] == b.key && !ctx_menu_any_open() {
@@ -482,6 +485,27 @@ reveal_button :: proc(field: ^Box, reveal: ^bool, w: f32) {
 	a11y_default(eye, {role = .Button, name = shown ? "Hide the password" : "Show the password"})
 	// (the field keeps the keyboard: one looks at what was typed, then goes on typing)
 	if signal(eye).clicked { reveal^ = !shown; gs().focus_key = field.key }
+}
+
+// The cross at the end of a clearable field: its child, over its right end. True: it emptied the field.
+@(private)
+clear_button :: proc(field: ^Box, f: ^Text_Field, w: f32) -> bool {
+	field.layout_axis = .X
+	push_parent(field)
+	defer pop_parent()
+	spacer(fill())
+	next({width = px(w), height = pct(1), font = lucide_icons(), text_align = .Center, text_pad = 0})
+	push_tags("weak")
+	x := build_box({.Clickable, .Draw_Text, .No_Text_Trunc, .Draw_Hot_Effects}, fmt.tprintf("%s###clear", lucide.X))
+	pop_tags()
+	x.cursor = .Hand
+	a11y_default(x, {role = .Button, name = "Clear"})
+	if !signal(x).clicked { return false }
+	// (through the edit history: Undo brings it back; the field keeps the keyboard, to type the next search)
+	field_select_all(f)
+	field_delete(f)
+	gs().focus_key = field.key
+	return true
 }
 
 SECRET_BULLET :: "•"

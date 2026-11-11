@@ -307,7 +307,7 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	em := font_size()
 	push_parent(s.root)
-	push_tags("floating")
+	push_tags_isolated("floating")   // (a dialog is a dialog, whatever the tags where it is built)
 	push_style_copy()
 
 	// (what the app said with `a11y` is the panel's, not the scrim's)
