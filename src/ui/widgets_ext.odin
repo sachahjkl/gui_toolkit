@@ -196,7 +196,20 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 	if parent(row_box) {
 		t := anim(key_from_string(row_box.key, "t"), on ? 1 : 0, MARK_RATE)
 		spacer(px(em * 0.4))
-		next({width = px(em * 1.4), height = px(em * 1.4)})
+		// (wrapped, the mark stands on the first line: centered in that line's height, as the label's box lays it out)
+		cell := em * 1.4
+		lined := false
+		if wrap {
+			st := top_style()
+			line := font.metrics(gs().fonts, st.font, st.font_size).line_height + 2 * st.text_pad
+			if line > cell {
+				next({width = px(cell), height = px(line), axis = .Y})
+				push_parent(build_box({}, "###mark_line"))
+				spacer(px(math.round((line - cell) * 0.5)))
+				lined = true
+			}
+		}
+		next({width = px(cell), height = px(cell)})
 		d := frame_new(Mark_Draw)
 		d.t = t
 		d.accent = color("accent")
@@ -206,6 +219,7 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 		d.size = em * 0.95
 		d.radio = radio
 		custom("mark", mark_draw, d)
+		if lined { pop_parent() }
 		spacer(px(em * 0.6))
 		if wrap {
 			next({width = fill(), height = text_size()})
