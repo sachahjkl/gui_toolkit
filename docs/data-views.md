@@ -62,7 +62,7 @@ both.
 
 ### The layout, the header and the cells
 
-`Table_Layout` holds the columns (`Table_Column`), their widths now in ems, which are shown, the sort column and its
+`Table_Layout` holds the columns (`Table_Column`), their widths now in ems, which are shown, their order (`order`, the first column always first), the sort column (`TABLE_UNSORTED`: none) and its
 direction. A program saves it and reads it back.
 
 | `Table_Column` | |
@@ -77,12 +77,14 @@ direction. A program saves it and reads it back.
 | Procedure | |
 |---|---|
 | `table_layout_init(l, columns, sort, descending)`, `table_layout_destroy(l)` | the widths and the shown columns from the columns' own |
-| `table_layout_reset(l)` | the columns' own widths and visibility back (the "Default columns" of a menu) |
+| `table_layout_reset(l)` | the columns' own widths, visibility and order back (the "Default columns" of a menu) |
+| `table_layout_move(l, k, to)` | moves column `k` to place `to` of `order` (from 1: the first column stays first) |
 | `table_layout_toggle(l, k)` | shows or hides column `k` (never the first); true when the sort moved to the first column |
-| `table_header(id, l, lead_em)` | the titles: a click sorts by a column, a second click reverses it, a third comes back to the table's own sort (`table_sort_click`); the rule at a column's right edge, dragged, resizes that column and moves those after it (the fill column takes its width of the moment at the first drag: then the table scrolls when wider than its room); the sort's arrow at the title's end. Returns `sorted`, `resized` (a rule let go: save the layout) and `menu` (a right click on the header). `next` may set the header's background and height |
+| `table_header(id, l, lead_em)` | the titles: a click sorts by a column, a second click reverses it, a third leaves the rows in the data's own order (`table_sort_click`, `TABLE_UNSORTED`); a title dragged sideways moves its column (not the first), a line in the accent's colour where it will go, and its release is no click; the rule at a column's right edge, dragged, resizes that column and moves those after it (the fill column takes its width of the moment at the first drag: then the table scrolls when wider than its room); the sort's arrow at the title's end. Returns `sorted`, `resized` (a rule let go: save the layout), `moved` (a column moved: save the layout) and `menu` (a right click on the header). `next` may set the header's background and height |
 | `table_widths_text(l, keys)`, `table_widths_apply(l, keys, text)` | the widths that are not the columns' own, as a preference's text (`pid=6.5,command=30`, in ems; `keys[k]` names column k), and back (bounded; a name it does not know is skipped) |
-| `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending), and back (only to a column shown) |
-| `table_column_items(l)` | the columns' menu items, in the caller's `ctx_menu`: each column but the first, checked when shown |
+| `table_order_text(l, keys)`, `table_order_apply(l, keys, text)` | the columns' order as a text (`name,cpu,pid`), and back: the columns it names take their places in its order, the others stay where they are, a name it does not know is skipped |
+| `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending, `none` unsorted), and back (only to a column shown) |
+| `table_column_items(l)` | the columns' menu items, in the caller's `ctx_menu`: each column but the first, in their order, checked when shown |
 | `table_min_width(l)`, `table_scroll_sync(l, header, list)` | the least width of a row (the columns shown, the fill column's least, the scroll bar's room); the rows' sideways scroll given to the titles in the same build. A table narrower than its columns scrolls sideways (Shift+wheel, a touchpad): `table_build` does it; a program that builds its rows gives its list `View_Scroll_X`, `Allow_Overflow_X` and its rows `fill_least(table_min_width(l))`, then calls `table_scroll_sync` |
 | `table_width(l, k)` | a column's width: its own, or for the fill column what the others leave, never under `TABLE_FILL_MIN_EM` (`fill_least`, resolved in the same build) (too narrow a window: the last columns go past the edge, cut, instead of the fill column going to nothing). A cell a program builds itself takes it |
 | `table_cell(l, col, text, bg, fg, border)` | a cell under its title, clipped to the column, on a background `bg` with its text in `fg` and a 1 px outline in `border` (each optional: a busy cell's tint, the text that reads on it, a stronger shade of the tint). True when the pointer is on it and its text is cut |

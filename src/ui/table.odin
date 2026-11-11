@@ -4,8 +4,9 @@ package ui
 //
 // The layout and its header, for any table (a program that builds its own rows, with groups or tinted cells, uses these):
 //   Table_Layout: the columns, their widths now (in ems), which are shown, the sort column and its direction
-//   table_header: the columns' titles; a click sorts by a column, a second click reverses; the rule before a title,
-//                 dragged, resizes the column; a right click asks for the columns' menu (table_column_items)
+//   table_header: the columns' titles; a click sorts by a column, a second click reverses, a third gives the rows their
+//                 own order back (unsorted); a title dragged sideways moves its column (not the first); the rule before
+//                 a title, dragged, resizes the column; a right click asks for the columns' menu (table_column_items)
 //   table_cell:   a cell under its title; says whether the pointer is on it and its text is cut (table_cell_tip shows it)
 //
 // The table of texts, on top of them (rows of texts and numbers, filtered and sorted by the table):
@@ -45,6 +46,12 @@ TABLE_ROW_EM :: 1.9
 // The fill column (width 0) never goes narrower: when the window is too narrow, the last columns go past the right edge
 // (cut by the rows) instead of the fill column going to nothing under its neighbours' text.
 TABLE_FILL_MIN_EM :: 10
+// How far a title is dragged sideways before it moves its column (a shorter press is a click), in ems.
+@(private = "file") TABLE_MOVE_EM :: 0.6
+// The width of the line that shows where a moved column goes, in pixels before the scale.
+@(private = "file") TABLE_DROP_PX :: 2
+// The sort of a table that has none: its rows in the data's own order.
+TABLE_UNSORTED :: -1
 // Room for the sort's arrow, and the pad of a number's cell at its right.
 @(private = "file") TABLE_ARROW_EM :: 1.5
 @(private = "file") TABLE_NUMBER_PAD_EM :: 0.6
@@ -60,43 +67,49 @@ Table_Column :: struct {
 	hidden: bool,   // not shown until the user asks (table_column_items)
 }
 
-// What the header edits; a program saves it (the widths, which are shown, the sort).
+// What the header edits; a program saves it (the widths, which are shown, their order, the sort).
 Table_Layout :: struct {
 	columns:    []Table_Column,
 	width:      []f32,    // the columns' widths now, in ems (owned)
 	shown:      []bool,   // (owned) the first column is always shown
-	sort:       int,
+	order:      []int,    // (owned) the columns from left to right, indices of `columns`; the first is always first
+	sort:       int,      // the column the rows are sorted by; TABLE_UNSORTED: none, the data's own order
 	descending: bool,
-	default_sort: int,    // the sort a third click on a title comes back to (table_layout_init's)
-	default_descending: bool,
 	scroll_x:   f32,      // the rows' and the titles' sideways scroll at the last build (table_scroll_sync)
+	// a title dragged sideways (table_header): its column
+	moving:     bool,
+	moving_col: int,
 }
 
+// `sort`: the column sorted by at first (TABLE_UNSORTED: none).
 table_layout_init :: proc(l: ^Table_Layout, columns: []Table_Column, sort := 0, descending := false) {
 	l.columns = columns
 	l.width = make([]f32, len(columns))
 	l.shown = make([]bool, len(columns))
-	table_layout_reset(l)
+	l.order = make([]int, len(columns))
 	l.sort, l.descending = sort, descending
-	l.default_sort, l.default_descending = sort, descending
+	table_layout_reset(l)
 }
 
 table_layout_destroy :: proc(l: ^Table_Layout) {
 	delete(l.width)
 	delete(l.shown)
-	l.width, l.shown = nil, nil
+	delete(l.order)
+	l.width, l.shown, l.order = nil, nil, nil
 }
 
-// The columns' own widths and visibility back. A sort on a column hidden now goes to the first column.
+// The columns' own widths, visibility and order back. A sort on a column hidden now goes to the first column.
 table_layout_reset :: proc(l: ^Table_Layout) {
 	for c, i in l.columns {
 		l.width[i] = c.width
 		l.shown[i] = i == 0 || !c.hidden
+		l.order[i] = i
 	}
-	if !l.shown[l.sort] { l.sort, l.descending = 0, false }
+	if l.sort >= 0 && !l.shown[l.sort] { l.sort, l.descending = 0, false }
 }
 
-// Shows or hides column `k` (never the first). A sort on it goes to the first column. True when the sort changed.
+// Shows or hides column `k` (never the first); shown again, it is where it was. A sort on it goes to the first
+// column. True when the sort changed.
 table_layout_toggle :: proc(l: ^Table_Layout, k: int) -> (sort_changed: bool) {
 	if k <= 0 || k >= len(l.columns) { return }
 	l.shown[k] = !l.shown[k]
@@ -107,9 +120,18 @@ table_layout_toggle :: proc(l: ^Table_Layout, k: int) -> (sort_changed: bool) {
 	return
 }
 
+// Moves column `k` to place `to` of the order (1 and after: the first column stays first), the others shifted.
+table_layout_move :: proc(l: ^Table_Layout, k, to: int) {
+	from := -1
+	for c, i in l.order { if c == k { from = i } }
+	if from <= 0 || to <= 0 || to >= len(l.order) { return }
+	list_move(l.order, from, to, from)
+}
+
 // The layout as a preference's text, and back. `keys[k]` names column k (a stable name: the titles may be translated).
 //   widths: the columns whose width is not their own, "pid=6.5,command=30" (ems)
-//   sort:   the sort's column, "-" before it when descending: "memory", "-memory"
+//   order:  the columns from left to right, "name,cpu,pid"
+//   sort:   the sort's column, "-" before it when descending: "memory", "-memory"; "none": unsorted
 table_widths_text :: proc(l: ^Table_Layout, keys: []string, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	for c, k in l.columns {
@@ -134,14 +156,49 @@ table_widths_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
 	}
 }
 
+table_order_text :: proc(l: ^Table_Layout, keys: []string, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	for k, i in l.order {
+		if k >= len(keys) { continue }
+		if i > 0 { strings.write_byte(&b, ',') }
+		strings.write_string(&b, keys[k])
+	}
+	return strings.to_string(b)
+}
+
+// Puts the columns a text of table_order_text names in its order, in the places they hold now: a column it does not
+// name stays where it is (one added since the text was written), a name it does not know is skipped, the first column
+// stays first.
+table_order_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
+	named := make([dynamic]int, context.temp_allocator)
+	rest := text
+	for name in strings.split_iterator(&rest, ",") {
+		k := table_key_index(keys, strings.trim_space(name))
+		if k <= 0 || k >= len(l.columns) || slice.contains(named[:], k) { continue }
+		append(&named, k)
+	}
+	n := 0
+	for k, i in l.order {
+		if slice.contains(named[:], k) {
+			l.order[i] = named[n]
+			n += 1
+		}
+	}
+}
+
 table_sort_text :: proc(l: ^Table_Layout, keys: []string, allocator := context.temp_allocator) -> string {
+	if l.sort == TABLE_UNSORTED { return strings.clone("none", allocator) }
 	if l.sort < 0 || l.sort >= len(keys) { return "" }
 	return strings.concatenate({l.descending ? "-" : "", keys[l.sort]}, allocator)
 }
 
-// Sets the sort a text of table_sort_text names, when it names a column shown; else the sort stays.
+// Sets the sort a text of table_sort_text names, when it names a column shown ("none": unsorted); else the sort stays.
 table_sort_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
 	t := strings.trim_space(text)
+	if t == "none" {
+		l.sort, l.descending = TABLE_UNSORTED, false
+		return
+	}
 	descending := strings.has_prefix(t, "-")
 	k := table_key_index(keys, strings.trim_prefix(t, "-"))
 	if k < 0 || k >= len(l.columns) || !l.shown[k] { return }
@@ -158,6 +215,7 @@ table_key_index :: proc(keys: []string, key: string) -> int {
 Table_Header_Events :: struct {
 	sorted:  bool,   // a title was clicked: the sort changed (the caller sorts its rows again)
 	resized: bool,   // a column's rule was let go: its width changed (the caller saves the layout)
+	moved:   bool,   // a title was dragged to another place: the columns' order changed (the caller saves the layout)
 	menu:    bool,   // a right click on the header: the columns' menu, at the pointer
 	view:    Key,    // the box the titles scroll in, sideways (table_scroll_sync: with the rows)
 }
@@ -182,12 +240,17 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 		push_parent(view)
 		defer pop_parent()
 		next({width = fill_least(table_min_width(l)), height = pct(1), axis = .X, cross = .Center})
-		push_parent(build_box({}, "###hd_row"))
+		titles_row := build_box({}, "###hd_row")
+		push_parent(titles_row)
 		defer pop_parent()
+		// (each title's place at the last layout, for a moved column's drop; the moved one's signal)
+		places := make([]Rect, len(l.columns), context.temp_allocator)
+		moving: Signal
 		// (each column's right edge is a rule, at the start of the next title; the last one's after it)
 		prev, prev_px := -1, f32(0)
-		for c, k in l.columns {
+		for k in l.order {
 			if !l.shown[k] { continue }
+			c := l.columns[k]
 			sorting := l.sort == k
 			next({width = table_width(l, k), height = pct(1)})
 			sig: Signal
@@ -211,7 +274,11 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 				}
 			}
 			a11y_default(sig.box, {role = .Column_Header, name = c.title})
-			if sig.clicked {
+			if sig.box != nil { places[k] = sig.box.rect }
+			// a title dragged sideways moves its column (the first stays): its release is no click then
+			if k > 0 && !l.moving && sig.dragging && abs(sig.drag_delta.x) > em * TABLE_MOVE_EM { l.moving, l.moving_col = true, k }
+			if l.moving && l.moving_col == k { moving = sig }
+			if sig.clicked && !(l.moving && l.moving_col == k) {
 				table_sort_click(l, k)
 				ev.sorted = true
 			}
@@ -223,21 +290,61 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 			if row(id = "###last_rule") { if table_rule(l, prev, em, prev_px) { ev.resized = true } }
 		}
 		spacer(px(em * (TABLE_SCROLLBAR_EM - TABLE_RULE_GRIP_EM)))
+		if l.moving { ev.moved = table_move_drag(l, moving, places, titles_row) }
+	}
+	return
+}
+
+// A column whose title is dragged: where it would go (before the first other title whose middle is right of the
+// pointer), shown by a line in the accent's colour; let go, it goes there. True when the order changed.
+@(private = "file")
+table_move_drag :: proc(l: ^Table_Layout, sig: Signal, places: []Rect, titles: ^Box) -> (moved: bool) {
+	if sig.box == nil {   // (its column was hidden while it was dragged)
+		l.moving = false
+		return
+	}
+	x := mouse_pos().x
+	from := 0
+	for k, i in l.order { if k == l.moving_col { from = i } }
+	// its place among the others (it taken out), from 1: the first column stays first; `edge`: where the line goes
+	to := len(l.order) - 1
+	edge := f32(-1)
+	slot := 0
+	for k in l.order {
+		if k == l.moving_col { continue }
+		if slot > 0 && l.shown[k] && x < (places[k].min.x + places[k].max.x) * 0.5 {
+			to, edge = slot, places[k].min.x
+			break
+		}
+		if l.shown[k] { edge = places[k].max.x }
+		slot += 1
+	}
+	if !sig.dragging {
+		l.moving = false
+		if to != from {
+			table_layout_move(l, l.moving_col, to)
+			moved = true
+		}
+		return
+	}
+	if edge >= 0 && titles != nil {
+		w := max(1, TABLE_DROP_PX * scale())
+		next({width = px(w), height = pct(1), bg = color("accent")})
+		b := build_box({.Floating_X, .Draw_Background}, "###hd_drop")
+		b.fixed_pos.x = edge - titles.rect.min.x - w * 0.5
 	}
 	return
 }
 
 // A click on column `k`'s title: the column, in its own first direction (numbers from the largest, unless low_first); a
-// second click the other way; a third back to the table's own sort (table_layout_init's). The table's own column goes
-// from one direction to the other.
+// second click the other way; a third unsorted (TABLE_UNSORTED: the rows in the data's own order).
 table_sort_click :: proc(l: ^Table_Layout, k: int) {
 	c := l.columns[k]
 	first := c.number && !c.low_first
 	switch {
-	case l.sort != k:                               l.sort, l.descending = k, first
-	case k == l.default_sort:                       l.descending = !l.descending
-	case l.descending == first:                     l.descending = !first
-	case:                                           l.sort, l.descending = l.default_sort, l.default_descending
+	case l.sort != k:           l.sort, l.descending = k, first
+	case l.descending == first: l.descending = !first
+	case:                       l.sort, l.descending = TABLE_UNSORTED, false
 	}
 }
 
@@ -293,8 +400,9 @@ arrow_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // The menu items of the columns (in the caller's ctx_menu): each column but the first, checked when shown; a click
 // shows or hides it and keeps the menu open. True when the sort changed (a hidden column was sorted by).
 table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
-	for c, k in l.columns {
+	for k in l.order {
 		if k == 0 { continue }
+		c := l.columns[k]
 		if menu_item(c.title, checked = l.shown[k], keep_open = true).clicked {
 			if table_layout_toggle(l, k) { sort_changed = true }
 			changed = true
@@ -440,7 +548,7 @@ table_data_text :: proc(d: ^Table_Data, row, col: int) -> string { return d.cell
 
 Table :: struct {
 	using layout: Table_Layout,
-	order:     [dynamic]int,    // the rows shown: filtered, sorted (indices of the data)
+	rows:      [dynamic]int,    // the rows shown: filtered, sorted (indices of the data)
 	ids:       [dynamic]u64,    // their identities (the list's keys)
 	vl:        Virtual_List,
 	query:     string,          // the filter applied, in lower case (owned)
@@ -459,17 +567,17 @@ table_init :: proc(t: ^Table, columns: []Table_Column, sort := 0, descending := 
 
 table_destroy :: proc(t: ^Table) {
 	table_layout_destroy(&t.layout)
-	delete(t.order)
+	delete(t.rows)
 	delete(t.ids)
 	delete(t.query)
 	vlist_destroy(&t.vl)
-	t.order, t.ids, t.query = nil, nil, ""
+	t.rows, t.ids, t.query = nil, nil, ""
 }
 
 // The data row selected, -1 for none.
 table_selected :: proc(t: ^Table) -> int {
-	if t.vl.sel < 0 || t.vl.sel >= len(t.order) { return -1 }
-	return t.order[t.vl.sel]
+	if t.vl.sel < 0 || t.vl.sel >= len(t.rows) { return -1 }
+	return t.rows[t.vl.sel]
 }
 
 // Filters and sorts the rows again (new data, a new filter, a new sort). `query` is matched in each row's search text,
@@ -488,14 +596,34 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 			vlist_scroll_to(&t.vl, 0)
 		}
 	}
-	clear(&t.order)
+	clear(&t.rows)
 	for i in 0 ..< len(d.ids) {
-		if q == "" || strings.contains(d.search[i], q) { append(&t.order, i) }
+		if q == "" || strings.contains(d.search[i], q) { append(&t.rows, i) }
 	}
+	if t.sort >= 0 { table_sort_rows(t, d) }
+	clear(&t.ids)
+	for i in t.rows { append(&t.ids, d.ids[i]) }
+	vlist_invalidate(&t.vl)
+	t.vl.sel = -1
+	if has_keep {
+		for id, i in t.ids {
+			if id == keep {
+				t.vl.sel = i
+				if q == "" { list_select(&t.vl, i) }   // (a cleared filter: the row stays in view)
+				break
+			}
+		}
+	}
+	if t.vl.sel < 0 && q != "" && len(t.ids) > 0 { list_select(&t.vl, 0) }
+}
+
+// The rows shown, by the sort's column (its number or its text, case ignored), ties by the first column, then as read.
+@(private = "file")
+table_sort_rows :: proc(t: ^Table, d: ^Table_Data) {
 	Sort_Ctx :: struct { d: ^Table_Data, col: int, number: bool }
 	ctx := Sort_Ctx{d, t.sort, t.columns[t.sort].number}
 	context.user_ptr = &ctx
-	slice.sort_by(t.order[:], proc(a, b: int) -> bool {
+	slice.sort_by(t.rows[:], proc(a, b: int) -> bool {
 		x := (^Sort_Ctx)(context.user_ptr)
 		if x.number {
 			na, nb := x.d.nums[a * x.d.cols + x.col], x.d.nums[b * x.d.cols + x.col]
@@ -509,21 +637,7 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 		if c != 0 { return c < 0 }
 		return a < b
 	})
-	if t.descending { slice.reverse(t.order[:]) }
-	clear(&t.ids)
-	for i in t.order { append(&t.ids, d.ids[i]) }
-	vlist_invalidate(&t.vl)
-	t.vl.sel = -1
-	if has_keep {
-		for id, i in t.ids {
-			if id == keep {
-				t.vl.sel = i
-				if q == "" { list_select(&t.vl, i) }   // (a cleared filter: the row stays in view)
-				break
-			}
-		}
-	}
-	if t.vl.sel < 0 && q != "" && len(t.ids) > 0 { list_select(&t.vl, 0) }
+	if t.descending { slice.reverse(t.rows[:]) }
 }
 
 // Selects the row of `id` and brings it into view, when it is shown.
@@ -545,6 +659,7 @@ Table_Events :: struct {
 	activated: bool,   // a double click on a row, or Enter
 	sorted:    bool,   // a title was clicked: table_apply again
 	resized:   bool,   // a column's rule was let go (save the layout)
+	moved:     bool,   // a title was dragged to another place (save the layout)
 	columns:   bool,   // a right click on the header: the columns' menu at the pointer (table_column_items)
 }
 
@@ -588,7 +703,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 	if column(id = id) {
 		if t.header_bg != nil { next({bg = t.header_bg}) }
 		h := table_header("###header", &t.layout, lead_em)
-		ev.sorted, ev.resized, ev.columns = h.sorted, h.resized, h.menu
+		ev.sorted, ev.resized, ev.moved, ev.columns = h.sorted, h.resized, h.moved, h.menu
 		row_h := dense(em * TABLE_ROW_EM)
 		least := table_min_width(&t.layout)
 		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
@@ -596,7 +711,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 			// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
 			t.vl.focused = !inactive()
 			for i in rows.first ..< rows.last {
-				r := t.order[i]
+				r := t.rows[i]
 				next({width = fill_least(least), height = px(row_h)})
 				row := list_row(&t.vl, i, table_label(d, r))
 				tip := ""
@@ -635,8 +750,9 @@ table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em: f32) -> (tip
 	if tone == .Dim { push_tags("weak") }
 	if tone == .Bad { push_tags("bad") }
 	defer if tone != .Normal { pop_tags() }
-	for c, k in t.columns {
+	for k in t.order {
 		if !t.shown[k] { continue }
+		c := t.columns[k]
 		text := table_data_text(d, r, k)
 		if k == 0 {
 			// the first column: the lead (an icon), then the text

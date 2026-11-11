@@ -1,4 +1,4 @@
-// The table of texts (ui.Table): sort by a title's click, reverse, filter, the selection kept by identity, a column
+// The table of texts (ui.Table): sort by a title's click, reverse, unsorted at the third, a column moved by its title, filter, the selection kept by identity, a column
 // resized by its rule, a cut cell's tooltip; type_to_field (typing anywhere goes to the filter, not when another field
 // has the keyboard); a segment's tooltip.
 //   odin test tests/data_views -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
@@ -75,11 +75,11 @@ build :: proc(s: ^session.Session) {
 	ui.next({width = ui.px(TABLE_W), height = ui.px(300)})
 	ev := ui.table_build("###table", &app.t, &app.d, "Nothing here")
 	if ev.sorted { ui.table_apply(&app.t, &app.d, ui.field_string(&app.search)) }
-	if ev.sorted || ev.resized { app.ev = ev }
+	if ev.sorted || ev.resized || ev.moved { app.ev = ev }
 }
 
 @(private = "file")
-first_name :: proc(app: ^App) -> string { return ui.table_data_text(&app.d, app.t.order[0], 0) }
+first_name :: proc(app: ^App) -> string { return ui.table_data_text(&app.d, app.t.rows[0], 0) }
 
 @(test)
 a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
@@ -93,6 +93,10 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	testing.expect_value(t, first_name(&app), "echo##x")   // a number: largest first at the first click
 	session.click(s, "hd_1")
 	testing.expect_value(t, first_name(&app), "Alpha")
+	// a third click: the rows in the data's own order
+	session.click(s, "hd_1")
+	testing.expect_value(t, app.t.sort, ui.TABLE_UNSORTED)
+	testing.expect_value(t, first_name(&app), "delta")
 	// an id: from the lowest at the first click
 	session.click(s, "hd_3")
 	testing.expect_value(t, first_name(&app), "delta")
@@ -107,7 +111,7 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	session.type_text(s, "BR")
 	testing.expect_value(t, session.focused_name(s), "search")
 	testing.expect_value(t, ui.field_string(&app.search), "BR")
-	testing.expect_value(t, len(app.t.order), 1)
+	testing.expect_value(t, len(app.t.rows), 1)
 	testing.expect_value(t, ui.table_data_text(&app.d, ui.table_selected(&app.t), 0), "bravo")
 	// a shortcut's letter is not typing: Alt+P gives the text "p" too, the filter does not take it
 	session.click(s, "lrow_0")
@@ -151,6 +155,28 @@ a_table_column_is_resized_and_a_cut_cell_shows_its_text :: proc(t: ^testing.T) {
 	session.advance(s, TIP_WAIT_MS)
 	tip := session.get(s, "tooltip_text")
 	testing.expect_value(t, ui.box_text(tip), LONG_TEXT)
+}
+
+@(test)
+a_column_is_moved_by_its_title :: proc(t: ^testing.T) {
+	app: App
+	app_init(&app)
+	defer app_destroy(&app)
+	s := session.start(t, {build = build, user = &app, no_renderer = true})
+	// Notes' title dragged to the left of Size's middle: Notes before Size; the release sorts nothing
+	notes, size := session.get(s, "hd_2"), session.get(s, "hd_1")
+	session.drag(s, session.center(notes), {size.rect.min.x + 4, session.center(size).y})
+	testing.expect(t, app.ev.moved, "the move is told")
+	testing.expect(t, !app.ev.sorted, "the release is no click")
+	testing.expect_value(t, app.t.order[1], 2)
+	testing.expect_value(t, app.t.order[2], 1)
+	testing.expect(t, session.get(s, "hd_2").rect.min.x < session.get(s, "hd_1").rect.min.x, "Notes' title now left of Size's")
+	// the first column stays first: Name dragged right moves nothing
+	app.ev = {}
+	name := session.get(s, "hd_0")
+	session.drag(s, session.center(name), session.center(session.get(s, "hd_3")))
+	testing.expect(t, !app.ev.moved)
+	testing.expect_value(t, app.t.order[0], 0)
 }
 
 @(test)
@@ -251,6 +277,21 @@ a_layout_as_text_and_back :: proc(t: ^testing.T) {
 	testing.expect(t, m.sort == 3 && m.descending, "the sort read")
 	ui.table_sort_apply(&m, keys, "unknown")
 	testing.expect_value(t, m.sort, 3)
+	// unsorted, as a text and back
+	l.sort = ui.TABLE_UNSORTED
+	testing.expect_value(t, ui.table_sort_text(&l, keys), "none")
+	ui.table_sort_apply(&m, keys, "none")
+	testing.expect_value(t, m.sort, ui.TABLE_UNSORTED)
+	// the order: the columns named take their places in the text's order; the others and the first stay
+	testing.expect_value(t, ui.table_order_text(&l, keys), "name,size,notes,id")
+	ui.table_order_apply(&m, keys, "id,nothing,size,name,id")
+	testing.expect_value(t, ui.table_order_text(&m, keys), "name,id,notes,size")
+	ui.table_layout_move(&m, 2, 1)
+	testing.expect_value(t, ui.table_order_text(&m, keys), "name,notes,id,size")
+	ui.table_layout_move(&m, 0, 2)
+	testing.expect_value(t, ui.table_order_text(&m, keys), "name,notes,id,size")
+	ui.table_layout_reset(&m)
+	testing.expect_value(t, ui.table_order_text(&m, keys), "name,size,notes,id")
 }
 
 @(private = "file") HEAT_BG :: ui.Color{0.8, 0.1, 0.1, 1}
@@ -432,10 +473,10 @@ a_row_wider_than_its_box_scrolls :: proc(t: ^testing.T) {
 	if testing.expect(t, scroller != nil) { testing.expect(t, ui.view_limit(scroller, .X) > 0, "the box scrolls sideways") }
 }
 
-// A title clicked: its column; again: the other way; a third time: the table's own sort. The table's own column goes
-// from one way to the other.
+// A title clicked: its column; again: the other way; a third time: unsorted (the data's own order). The table's first
+// column too.
 @(test)
-a_third_click_comes_back_to_the_tables_sort :: proc(t: ^testing.T) {
+a_third_click_leaves_the_rows_unsorted :: proc(t: ^testing.T) {
 	l: ui.Table_Layout
 	ui.table_layout_init(&l, COLUMNS[:])
 	defer ui.table_layout_destroy(&l)
@@ -444,9 +485,11 @@ a_third_click_comes_back_to_the_tables_sort :: proc(t: ^testing.T) {
 	ui.table_sort_click(&l, 1)
 	testing.expect(t, l.sort == 1 && !l.descending)
 	ui.table_sort_click(&l, 1)
-	testing.expect(t, l.sort == 0 && !l.descending, "back to the table's sort")
+	testing.expect(t, l.sort == ui.TABLE_UNSORTED, "unsorted")
+	ui.table_sort_click(&l, 0)   // Name: a text, A to Z first
+	testing.expect(t, l.sort == 0 && !l.descending)
 	ui.table_sort_click(&l, 0)
 	testing.expect(t, l.sort == 0 && l.descending)
 	ui.table_sort_click(&l, 0)
-	testing.expect(t, l.sort == 0 && !l.descending)
+	testing.expect(t, l.sort == ui.TABLE_UNSORTED)
 }
