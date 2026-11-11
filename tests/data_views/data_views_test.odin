@@ -135,11 +135,12 @@ a_table_column_is_resized_and_a_cut_cell_shows_its_text :: proc(t: ^testing.T) {
 	app_init(&app)
 	defer app_destroy(&app)
 	s := session.start(t, {build = build, user = &app, no_renderer = true})
-	before := app.t.width[1]
+	// (the first rule is the first column's right edge: dragged right, that column is wider)
+	before := app.t.width[0]
 	rule := session.center(session.get(s, "rule"))
 	session.drag(s, rule, rule + {DRAG_PX, 0})
 	testing.expect(t, app.ev.resized)
-	testing.expect(t, abs(app.t.width[1] - (before - DRAG_PX / session.BASE_FONT_SIZE)) < 0.01, "the column narrower")
+	testing.expect(t, abs(app.t.width[0] - (before + DRAG_PX / session.BASE_FONT_SIZE)) < 0.01, "the column at the rule's left wider")
 	// the long note is cut: resting on it shows it whole
 	ui.table_select_id(&app.t, 3)
 	session.frame(s)
@@ -244,7 +245,7 @@ a_layout_as_text_and_back :: proc(t: ^testing.T) {
 	ui.table_layout_init(&m, COLUMNS[:])
 	defer ui.table_layout_destroy(&m)
 	ui.table_widths_apply(&m, keys, "size=9.0,notes=12,nothing=4,id=x,name=1000")
-	testing.expect(t, m.width[1] == 9 && m.width[2] == 0 && m.width[3] == COLUMNS[3].width, "a width read; the room-left column and the bad ones skipped")
+	testing.expect(t, m.width[1] == 9 && m.width[2] == 12 && m.width[3] == COLUMNS[3].width, "the widths read (the fill column's too); the bad ones skipped")
 	testing.expect_value(t, m.width[0], ui.TABLE_COLUMN_MAX_EM)
 	ui.table_sort_apply(&m, keys, sort)
 	testing.expect(t, m.sort == 3 && m.descending, "the sort read")
@@ -429,4 +430,23 @@ a_row_wider_than_its_box_scrolls :: proc(t: ^testing.T) {
 	testing.expect(t, row.size.x > NARROW_W, "past the box's edge")
 	scroller := session.get(s, "scroller")
 	if testing.expect(t, scroller != nil) { testing.expect(t, ui.view_limit(scroller, .X) > 0, "the box scrolls sideways") }
+}
+
+// A title clicked: its column; again: the other way; a third time: the table's own sort. The table's own column goes
+// from one way to the other.
+@(test)
+a_third_click_comes_back_to_the_tables_sort :: proc(t: ^testing.T) {
+	l: ui.Table_Layout
+	ui.table_layout_init(&l, COLUMNS[:])
+	defer ui.table_layout_destroy(&l)
+	ui.table_sort_click(&l, 1)   // Size: a number, the largest first
+	testing.expect(t, l.sort == 1 && l.descending)
+	ui.table_sort_click(&l, 1)
+	testing.expect(t, l.sort == 1 && !l.descending)
+	ui.table_sort_click(&l, 1)
+	testing.expect(t, l.sort == 0 && !l.descending, "back to the table's sort")
+	ui.table_sort_click(&l, 0)
+	testing.expect(t, l.sort == 0 && l.descending)
+	ui.table_sort_click(&l, 0)
+	testing.expect(t, l.sort == 0 && !l.descending)
 }

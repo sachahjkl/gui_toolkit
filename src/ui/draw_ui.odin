@@ -169,6 +169,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	}
 	if .Clip in flags { draw.pop_clip(dc) }
 	if .View_Scroll_Y in flags { draw_scrollbar(s, dc, b) }
+	if .View_Scroll_X in flags { draw_scrollbar(s, dc, b, .X) }
 
 	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS && !machined_whole {
 		border := b.border

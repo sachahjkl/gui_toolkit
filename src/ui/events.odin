@@ -163,6 +163,14 @@ hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 			return k
 		}
 	}
+	if bar, _, _, _, ok := scrollbar_parts(b, .X); ok {
+		toward, away := scrollbar_grab()
+		if contains(Rect{{bar.min.x, bar.min.y - toward}, {bar.max.x, bar.max.y + away}}, p) {
+			k := scrollbar_key(b, .X)
+			gs().sb_owner[k] = b.key
+			return k
+		}
+	}
 	child_clip := clip
 	if .Clip in b.flags {
 		child_clip = Rect{{max(clip.min.x, b.rect.min.x), max(clip.min.y, b.rect.min.y)}, {min(clip.max.x, b.rect.max.x), min(clip.max.y, b.rect.max.y)}}

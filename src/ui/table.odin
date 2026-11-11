@@ -67,6 +67,8 @@ Table_Layout :: struct {
 	shown:      []bool,   // (owned) the first column is always shown
 	sort:       int,
 	descending: bool,
+	default_sort: int,    // the sort a third click on a title comes back to (table_layout_init's)
+	default_descending: bool,
 	scroll_x:   f32,      // the rows' and the titles' sideways scroll at the last build (table_scroll_sync)
 }
 
@@ -76,6 +78,7 @@ table_layout_init :: proc(l: ^Table_Layout, columns: []Table_Column, sort := 0, 
 	l.shown = make([]bool, len(columns))
 	table_layout_reset(l)
 	l.sort, l.descending = sort, descending
+	l.default_sort, l.default_descending = sort, descending
 }
 
 table_layout_destroy :: proc(l: ^Table_Layout) {
@@ -118,7 +121,7 @@ table_widths_text :: proc(l: ^Table_Layout, keys: []string, allocator := context
 }
 
 // Sets the widths a text of table_widths_text names (bounded to TABLE_COLUMN_MIN_EM..TABLE_COLUMN_MAX_EM); a name it does
-// not know or a width it cannot read is skipped. A column of width 0 (the room left) keeps it.
+// not know or a width it cannot read is skipped. The fill column too: a width the user gave it (table_rule).
 table_widths_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
 	rest := text
 	for pair in strings.split_iterator(&rest, ",") {
@@ -126,7 +129,7 @@ table_widths_apply :: proc(l: ^Table_Layout, keys: []string, text: string) {
 		if eq < 0 { continue }
 		k := table_key_index(keys, strings.trim_space(pair[:eq]))
 		w, ok := strconv.parse_f32(strings.trim_space(pair[eq + 1:]))
-		if k < 0 || !ok || k >= len(l.columns) || l.columns[k].width == 0 { continue }
+		if k < 0 || !ok || k >= len(l.columns) { continue }
 		l.width[k] = clamp(w, TABLE_COLUMN_MIN_EM, TABLE_COLUMN_MAX_EM)
 	}
 }
@@ -181,6 +184,8 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 		next({width = fill_least(table_min_width(l)), height = pct(1), axis = .X, cross = .Center})
 		push_parent(build_box({}, "###hd_row"))
 		defer pop_parent()
+		// (each column's right edge is a rule, at the start of the next title; the last one's after it)
+		prev, prev_px := -1, f32(0)
 		for c, k in l.columns {
 			if !l.shown[k] { continue }
 			sorting := l.sort == k
@@ -188,10 +193,10 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 			sig: Signal
 			if row(.Center, {.Clickable, .Draw_Hot_Effects}, fmt.tprintf("###hd_%d", k)) {
 				sig = signal(parent_box())
-				if k > 0 && l.width[k] > 0 {
-					if table_rule(l, k, em) { ev.resized = true }
+				if prev >= 0 {
+					if table_rule(l, prev, em, prev_px) { ev.resized = true }
 				} else {
-					spacer(px(em * (k == 0 ? lead_em : TABLE_RULE_GRIP_EM)))
+					spacer(px(em * lead_em))
 				}
 				if c.number { spacer(fill()) }
 				if !sorting { push_tags("weak") }
@@ -207,24 +212,41 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6) -> (ev: T
 			}
 			a11y_default(sig.box, {role = .Column_Header, name = c.title})
 			if sig.clicked {
-				if l.sort == k {
-					l.descending = !l.descending
-				} else {
-					l.sort, l.descending = k, c.number && !c.low_first
-				}
+				table_sort_click(l, k)
 				ev.sorted = true
 			}
 			if sig.right_clicked { ev.menu = true }
+			prev, prev_px = k, sig.box != nil ? sig.box.size.x : 0
 		}
-		spacer(px(em * TABLE_SCROLLBAR_EM))
+		if prev >= 0 {
+			next({width = px(em * TABLE_RULE_GRIP_EM), height = pct(1)})
+			if row(id = "###last_rule") { if table_rule(l, prev, em, prev_px) { ev.resized = true } }
+		}
+		spacer(px(em * (TABLE_SCROLLBAR_EM - TABLE_RULE_GRIP_EM)))
 	}
 	return
 }
 
-// The line before a column's title: dragged, the column grows or shrinks (the fill column takes what is left). True
-// when it is let go after a drag.
+// A click on column `k`'s title: the column, in its own first direction (numbers from the largest, unless low_first); a
+// second click the other way; a third back to the table's own sort (table_layout_init's). The table's own column goes
+// from one direction to the other.
+table_sort_click :: proc(l: ^Table_Layout, k: int) {
+	c := l.columns[k]
+	first := c.number && !c.low_first
+	switch {
+	case l.sort != k:                               l.sort, l.descending = k, first
+	case k == l.default_sort:                       l.descending = !l.descending
+	case l.descending == first:                     l.descending = !first
+	case:                                           l.sort, l.descending = l.default_sort, l.default_descending
+	}
+}
+
+// The line at a column's right edge (built at the start of the next column's title): dragged, that column grows or
+// shrinks and the columns after it move with its edge, as in a file manager. The fill column takes its width of the
+// moment (`from_px`) at the first drag: from then on every column has its own, and a table wider than its room scrolls.
+// True when it is let go after a drag.
 @(private = "file")
-table_rule :: proc(l: ^Table_Layout, k: int, em: f32) -> (released: bool) {
+table_rule :: proc(l: ^Table_Layout, k: int, em: f32, from_px: f32) -> (released: bool) {
 	next({width = px(em * TABLE_RULE_GRIP_EM), height = pct(1), cursor = .Resize_H})
 	grip := build_box({.Clickable}, "###rule")
 	sig := signal(grip)
@@ -235,8 +257,11 @@ table_rule :: proc(l: ^Table_Layout, k: int, em: f32) -> (released: bool) {
 		build_box({.Draw_Background}, "###line")
 		spacer(fill())
 	}
-	if sig.pressed { drag_store({l.width[k], 0, 0, 0}) }
-	if sig.dragging { l.width[k] = clamp(drag_load()[0] - sig.drag_delta.x / em, TABLE_COLUMN_MIN_EM, TABLE_COLUMN_MAX_EM) }
+	if sig.pressed {
+		if l.width[k] == 0 { l.width[k] = clamp(from_px / em, TABLE_COLUMN_MIN_EM, TABLE_COLUMN_MAX_EM) }
+		drag_store({l.width[k], 0, 0, 0})
+	}
+	if sig.dragging { l.width[k] = clamp(drag_load()[0] + sig.drag_delta.x / em, TABLE_COLUMN_MIN_EM, TABLE_COLUMN_MAX_EM) }
 	return sig.released
 }
 
