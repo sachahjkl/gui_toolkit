@@ -32,7 +32,7 @@ font/com.odin memory_fonts process  # the fonts loaded from memory: DirectWrite'
 font/com.odin memory_next process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
 font/com.odin memory_stream_vtable const  # a COM vtable (passed by address)
 font/com.odin memory_loader_vtable const  # a COM vtable (passed by address)
-font/com.odin memory_loader const  # the memory font loader's COM object: its vtable only (registered per font.State, loader_users)
+font/com.odin memory_loader const  # the memory font loader's COM object: its vtable only (registered on each font.State's own factory)
 font/com.odin EMPTY_LOCALE const  # an empty locale name (passed by address)
 font/com.odin source_vtable const  # a COM vtable (passed by address)
 font/com.odin sink_vtable const  # a COM vtable (passed by address)
