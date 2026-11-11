@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.187.1] - 2026-11-11
+
+### Fixed
+- `ui.preview` fits its content from its very first frame: what fits was worked out from last frame's size of the box, none for a box new this frame, and a picture showed at its pixels, too large and off centre, for a frame.
+
 ## [0.187.0] - 2026-11-11
 
 ### Added
@@ -2531,6 +2536,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.187.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.1
 [0.187.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.187.0
 [0.186.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.186.0
 [0.185.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.185.0
