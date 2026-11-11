@@ -479,6 +479,12 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
 	strip: ^Box
 	if tags("bar") { strip = build_box({.Clip, .Draw_Background}, dock_leaf_id(leaf)) }
+	if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
+		focus, _ := dock_focus_leaf(d)
+		sd := frame_new(Dock_Strip_Draw)
+		sd^ = {bar = strip.bg, lit = focus == leaf}
+		strip.custom, strip.custom_user = dock_strip_draw, sd
+	}
 	a11y_set(strip, {role = .Tab_List, orientation = .X, name = dock_stack_label(d, leaf)})
 	if parent(strip) {
 		if d.opts.strip_begin != nil { d.opts.strip_begin(d.opts.user, d, leaf) }
@@ -856,4 +862,13 @@ dock_to_items :: proc(d: ^Dock, p: u32) {
 	if menu_item(fmt.tprintf("%s###dock_m_fl", lb.floating), enabled = !dock_is_floating(d, own) || dock_tab_count(d, own) > 1).clicked {
 		dock_float(d, p, dock_float_place(d))
 	}
+}
+
+@(private)
+Dock_Strip_Draw :: struct { bar: Color, lit: bool }
+
+@(private)
+dock_strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Dock_Strip_Draw)(user)
+	caption_face(dc, b.rect, d.bar, d.bar, d.lit)
 }

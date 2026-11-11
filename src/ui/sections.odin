@@ -172,13 +172,16 @@ stacked_bar :: proc(id: string, parts: []Bar_Part) {
 // most this far (logical pixels: a wide window's title bar is blue at its start, not along its whole length).
 @(private = "file") CAPTION_FADE_END :: 0.9
 @(private = "file") CAPTION_FADE_MAX_PX :: 720
+// How far an unlit caption's accent goes toward the bar's colour (a stack of panels without the focus, a window behind).
+@(private = "file") CAPTION_UNLIT :: 0.72
 // How far the words on an edged caption go toward white: they stand on the accent.
 @(private = "file") CAPTION_INK_WHITE :: 0.8
 
 // The face of a title bar (a window's, a dialog's) in the finish shown. In the edged one: the accent fading to `top` from
 // the left, a lit line along its top, a dark one along its bottom (a console's window). In the others: `top` at its top to
-// `bottom` at its bottom, lit along its top in the machined finish; flat, the colour between them.
-caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color) {
+// `bottom` at its bottom, lit along its top in the machined finish; flat, the colour between them. `lit` false: the one not in
+// use (the accent dimmed toward `top`, edged only).
+caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color, lit := true) {
 	p := px1()
 	switch {
 	case !machined():   // (flat: one colour, between the two)
@@ -190,6 +193,7 @@ caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color) {
 		return
 	}
 	from := color_from_tags(gs(), 0, "accent")
+	if !lit { from = draw.mix(from, top, CAPTION_UNLIT) }   // (not the one in use: the accent dimmed toward the bar, as a window behind)
 	end := r.min.x + math.min((r.max.x - r.min.x) * CAPTION_FADE_END, CAPTION_FADE_MAX_PX * scale())
 	draw.rect_corners(dc, {r.min, {end, r.max.y}}, {from, from, top, top}, {})
 	draw.rect(dc, {{end, r.min.y}, r.max}, top)
