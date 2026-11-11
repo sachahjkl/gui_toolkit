@@ -44,7 +44,7 @@ App :: struct {
 app_build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
 	ui.next({width = ui.fill(), height = ui.fill()})
-	prefs_page.build(&app.page, &app.prefs, {user = app, pages = PAGES[:], hotkeys = HOTKEYS[:], updater = app.updater, update_pref = "net.cache", problem = proc(user: rawptr, name: string) -> string {
+	prefs_page.build(&app.page, &app.prefs, {user = app, version = "Sample 1.2.3", pages = PAGES[:], hotkeys = HOTKEYS[:], updater = app.updater, update_pref = "net.cache", problem = proc(user: rawptr, name: string) -> string {
 		return name == "look.keys" && config.string_of(&(^App)(user).prefs, "look.keys") == "Ctrl+Alt+Delete" ? "Windows holds it" : ""
 	}, changed = proc(user: rawptr, name: string) {
 		app := (^App)(user)
@@ -289,4 +289,13 @@ a_search_lights_its_words :: proc(t: ^testing.T) {
 	s := app_start(t, &app, "cache")
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "d") != nil, "its runs")
+}
+
+// The program's version, at the bottom of the pages.
+@(test)
+the_version_shows :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app)
+	testing.expect(t, session.find_text(s, "Sample 1.2.3") != nil)
 }

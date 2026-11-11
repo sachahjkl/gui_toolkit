@@ -63,6 +63,8 @@ Options :: struct {
 	icon_font: font.Font_Id,   // the font of the pages' icons, and of the two below (0: none, words instead)
 	search_icon, reset_icon: string,
 	foot:      string,         // a faint line under the pages ("prefs: prefs.txt")
+	// the program and its version ("Papier 0.15.0"): a line at the bottom of the pages, above the foot ("" none)
+	version:   string,
 }
 
 // The page's state, kept by the program between frames (destroy).
@@ -252,6 +254,17 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, narrow: bool, em
 				}
 				ui.spacer(ui.px(em * 0.2))
 			}
+		}
+		if o.version != "" {
+			ui.next({width = ui.fill(), height = ui.px(em * 1.6), axis = .X, cross = .Center})
+			if ui.row(id = "###prefs_version") {
+				ui.spacer(ui.px(em * (icons ? 0.4 : 0.9)))
+				if ui.tags("weak") {
+					ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.8), text_pad = 0})
+					ui.label(fmt.tprintf("%s###version", o.version))
+				}
+			}
+			if o.foot == "" || icons { ui.spacer(ui.px(em * 0.6)) }
 		}
 		if o.foot != "" && !icons {
 			ui.next({width = ui.fill(), height = ui.px(em * 1.6), axis = .X, cross = .Center})

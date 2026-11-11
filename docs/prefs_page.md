@@ -49,6 +49,8 @@ The controls:
 | a name in `Options.custom_names` | the program's own (`Options.custom`), under the words |
 | a name in `Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
 
+`Options.version` ("Papier 0.15.0") shows the program and its version at the bottom of the pages, above `foot`.
+
 A locked preference (a policy, the command line) shows its control disabled. `Options.problem(user, name)` gives what
 the program has to say under a line (a shortcut another program holds): it shows in red.
 
