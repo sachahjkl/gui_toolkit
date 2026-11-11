@@ -170,7 +170,8 @@ palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 		p := px1()
 		r = {{r.min.x + p, r.min.y + p}, {r.max.x - p, r.max.y}}
 	}
-	radius := max(0, b.radius - (r.min.y - b.rect.min.y))
+	// (the dialog's corners as they are drawn: a window with little rounding, or none, has a strip with as little)
+	radius := max(0, box_drawn_radius(gs(), b) - (r.min.y - b.rect.min.y))
 	well := color_from_tags(gs(), b.tags_key, "well")
 	draw.rect_corners(dc, r, {well, well, well, well}, {radius, 0, radius, 0})
 	// the line that parts the field from the results: carved (machined, edged), the border's colour (flat)

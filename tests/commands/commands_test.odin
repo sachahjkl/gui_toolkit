@@ -386,3 +386,18 @@ a_palette_entry_is_found_by_its_label_its_tags_or_a_slip :: proc(t: ^testing.T) 
 	_, _, none := ui.palette_match("zebra", "Quit", "General", tags)
 	testing.expect(t, !none, "nothing")
 }
+
+// A box's corners as drawn: its radius times the rounding (a custom draw's too: the palette's strip meets its dialog's
+// corners), none in the edged finish, its own when it is part of its shape.
+@(test)
+a_box_is_drawn_with_the_rounding :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f)) { return }
+	defer close(&f)
+	ui.set_rounding(&f.s, 0.25)
+	b := ui.Box{radius = 8}
+	ui.use(&f.s)
+	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 2)
+	b.flags += {.Fixed_Radius}
+	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 8)
+}

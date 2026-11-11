@@ -100,13 +100,20 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 @(private = "file") FOCUS_GLOW_ALPHA :: 0.55
 @(private = "file") FOCUS_RING_PX :: 1.5
 
+// The radius a box's corners are drawn with: its own times the state's rounding (set_rounding; none in the edged
+// finish), unless it is part of its shape (Fixed_Radius). What a box's custom draw rounds takes it too: its corners then
+// meet the box's own and its parents'.
+box_drawn_radius :: proc(s: ^State, b: ^Box) -> f32 {
+	return .Fixed_Radius in b.flags ? b.radius : b.radius * rounding(s)
+}
+
 @(private)
 draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	// what the box draws, its children apart, is compared with its last frame's (set_partial_redraw)
 	draw.damage_span_begin(dc, u64(b.key))
 	defer draw.damage_span_end(dc)
 	r := b.rect
-	radius := .Fixed_Radius in b.flags ? b.radius : b.radius * rounding(s)
+	radius := box_drawn_radius(s, b)
 	radii := box_radii(radius, b.square_corners)
 	flags := b.flags
 	if b.transparency != 0 { draw.push_alpha(dc, 1 - b.transparency) }
