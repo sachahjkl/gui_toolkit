@@ -282,7 +282,12 @@ date_of :: proc(when_: time.Time) -> string {
 	return fmt.tprintf("%04d-%02d-%02d", y, int(mo), d)
 }
 
-// Writes a fragment: its path, or why not.
+// The folder of the fragments of the checkout at `root` ("": the current folder, as Options.root; "/changelog.d" was
+// written at the root of the disk).
+@(private = "package")
+fragments_dir :: proc(root: string) -> string { return fmt.tprintf("%s/changelog.d", root != "" ? root : ".") }
+
+// Writes a fragment: its path, or why not. `root`: the checkout ("": the current folder).
 new_fragment :: proc(root, type, subject, text: string, when_ := time.Time{}) -> (path: string, why: string) {
 	t := canonical_type(type)
 	if t == "" { return "", fmt.tprintf("the type is Added, Changed, Deprecated, Removed, Fixed or Security (got '%s')", type) }
@@ -293,7 +298,7 @@ new_fragment :: proc(root, type, subject, text: string, when_ := time.Time{}) ->
 	y, mo, d := time.date(now)
 	h, mi, s := time.clock(now)
 	stem := fmt.tprintf("%04d%02d%02d-%02d%02d%02d-%s", y, int(mo), d, h, mi, s, slug(subject != "" ? subject : text))
-	dir := fmt.tprintf("%s/changelog.d", root)
+	dir := fragments_dir(root)
 	_ = os.make_directory_all(dir)
 	name := fmt.tprintf("%s.md", stem)
 	for k := 2; os.exists(fmt.tprintf("%s/%s", dir, name)); k += 1 { name = fmt.tprintf("%s-%d.md", stem, k) }
