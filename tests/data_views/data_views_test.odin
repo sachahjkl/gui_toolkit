@@ -571,3 +571,30 @@ a_header_holds_the_program_s_pieces :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, app.ev.sorted, "the name's title sorts")
 }
+
+@(private = "file")
+build_beside :: proc(s: ^session.Session) {
+	app := (^Heat_App)(s.user)
+	// (a sidebar's width beside the table: the table's column is what the row leaves, after the violations)
+	ui.next({width = ui.fill(), height = ui.px(60), axis = .X})
+	if ui.row(id = "###beside") {
+		ui.next({width = ui.px(200), height = ui.pct(1)})
+		ui.build_box({}, "###side")
+		ui.next({width = ui.fill(), height = ui.pct(1), axis = .Y})
+		if ui.column(id = "###table_side") { ui.table_header("###beside_head", &app.l) }
+	}
+}
+
+// A header beside a box of its own: its titles' row is as wide as the room it has, not as the window (a percentage
+// under a box that scrolls sideways kept the size it had before its ancestors shrank).
+@(test)
+a_header_beside_a_sidebar_fits_its_room :: proc(t: ^testing.T) {
+	app: Heat_App
+	ui.table_layout_init(&app.l, COLUMNS[:])
+	defer ui.table_layout_destroy(&app.l)
+	s := session.start(t, {build = build_beside, user = &app, no_renderer = true})
+	session.frames(s, 3)
+	room, titles := session.get(s, "table_side"), session.get(s, "hd_row")
+	if room == nil || titles == nil { return }
+	testing.expectf(t, abs(titles.size.x - room.size.x) < 1, "the titles' row %v wide in a room %v wide", titles.size.x, room.size.x)
+}

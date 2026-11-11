@@ -138,6 +138,15 @@ wrap_height :: proc(b: ^Box) -> f32 {
 layout_violations :: proc(b: ^Box, axis: Axis) {
 	ai := int(axis)
 	overflow := axis == .X ? .Allow_Overflow_X in b.flags : .Allow_Overflow_Y in b.flags
+	// (a percentage is of the box's size now, the violations above it done: the upward pass gave it the box's size
+	// before an ancestor shrank, and a box that lets its children overflow kept them that large)
+	if overflow && b.pref[axis].kind != .Children_Sum {
+		avail := b.size[ai] - 2 * border_inset(b)
+		for c := b.first; c != nil; c = c.next {
+			if is_floating(c, axis) || c.pref[axis].kind != .Percent { continue }
+			c.size[ai] = max(0, avail * c.pref[axis].value, c.pref[axis].least)
+		}
+	}
 	if !overflow {
 		avail := b.size[ai] - 2 * border_inset(b)
 		if .Wrap in b.flags {
