@@ -152,8 +152,10 @@ rich_face :: proc(c: Rich_Context, r: Rich_Style) -> (font.Font_Id, f32) {
 // embedded font's own bold, Hanken Grotesk 600), else the system's family, else simulated. A widget that wants a bold
 // title asks here: font.styled_face alone simulated the bold of an embedded face, its strokes thickened by an algorithm
 // (an e's bar lost its join at small sizes).
-styled_face :: proc(face: font.Font_Id, bold, italic: bool) -> font.Font_Id {
-	s := gs()
+styled_face :: proc(face: font.Font_Id, bold, italic: bool) -> font.Font_Id { return styled_face_of(gs(), face, bold, italic) }
+
+// styled_face of a given State: for what draws outside a build (a custom draw of a picture, an export).
+styled_face_of :: proc(s: ^State, face: font.Font_Id, bold, italic: bool) -> font.Font_Id {
 	if !bold && !italic { return face }
 	if set, ok := s.families[face]; ok {
 		if f := set[(bold ? 1 : 0) + (italic ? 2 : 0)]; f != 0 { return f }
