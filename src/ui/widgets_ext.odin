@@ -601,9 +601,15 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	paint_rect(dc, pill, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
 }
 
+// How a segmented control looks: a sliding pill in a track, or words in a line, the chosen one bold and underlined,
+// `separator` between them ("All / Active 2 / Done 1").
+Segmented_Look :: enum u8 { Pills, Text }
+
 // Sliding-pill segmented control. Returns true when the selection changed. `tips`: a tooltip per segment, shown when the
-// pointer rests on it ("" or a missing entry: none); a screen reader reads it as the segment's description.
-segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string = nil) -> (changed: bool) {
+// pointer rests on it ("" or a missing entry: none); a screen reader reads it as the segment's description. `look`
+// .Text: words in a line, as wide as they are (`separator` between them).
+segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string = nil, look := Segmented_Look.Pills, separator := "/") -> (changed: bool) {
+	if look == .Text { return segmented_text(id, labels, selected, tips, separator) }
 	em := font_size()
 	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), f32(selected^), SEGMENTED_RATE, f32(selected^))
 	accent := color("accent")
@@ -647,6 +653,67 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 		}
 	}
 	return
+}
+
+// (on each side of a separator)
+@(private = "file") SEGMENTED_TEXT_GAP_EM :: 0.45
+
+@(private = "file")
+segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []string, separator: string) -> (changed: bool) {
+	s := gs()
+	em := font_size()
+	set_next_axis(.X, .Center)
+	if !s.has_next || s.next_mod.width == nil { s.next_mod.width = children_sum(); s.has_next = true }
+	b := build_box({}, id)
+	a11y_default(b, {role = .Radio_Group, orientation = .X})
+	if parent(b) {
+		st := top_style()
+		bold := font.styled_face(s.fonts, st.font, true, false)
+		for label, i in labels {
+			if i > 0 {
+				spacer(px(math.round(em * SEGMENTED_TEXT_GAP_EM)))
+				if tags("weak") {
+					next({width = text_size(0, 0), height = pct(1), text_pad = 0})
+					sep := build_box({.Draw_Text}, fmt.tprintf("%s###sep%d", separator, i))
+					a11y_default(sep, {ignore = true})
+				}
+				spacer(px(math.round(em * SEGMENTED_TEXT_GAP_EM)))
+			}
+			on := i == selected^
+			if !on { push_tags("weak") }   // (the chosen one in the text's own colour)
+			next({width = text_size(0, 0), height = pct(1), text_pad = 0, font = on ? bold : st.font, cursor = .Hand})
+			item := build_box({.Clickable, .Focusable, .Draw_Text}, fmt.tprintf("%s###seg%d", label, i))
+			if !on { pop_tags() }
+			isig := signal(item)
+			if !on && isig.hovering { item.text_color = color("text") }
+			if on {
+				d := frame_new(Underline_Draw)
+				d.color = item.text_color
+				item.custom, item.custom_user = underline_draw, d
+			}
+			if isig.clicked && !on { selected^ = i; changed = true }
+			tip := i < len(tips) ? tips[i] : ""
+			if tip != "" && hovered_for(isig, SEGMENT_TOOLTIP_DELAY_S) { if tooltip() { tooltip_text(tip) } }
+			a11y_default(item, {role = .Radio_Button, toggled = on ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
+		}
+		if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
+	}
+	return
+}
+
+@(private = "file")
+Underline_Draw :: struct { color: Color }
+
+// A line under a box's text, where its face puts an underline.
+@(private = "file")
+underline_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	s := gs()
+	d := (^Underline_Draw)(user)
+	m := font.metrics(s.fonts, b.font, b.font_size)
+	o := text_origin(s, b, b.text_dim)
+	th := max(1, math.round(m.underline_thickness))
+	y := math.round(o.y + m.underline_offset)
+	draw.rect(dc, {{o.x, y}, {o.x + b.text_dim.x, y + th}}, d.color)
 }
 
 // Toggle chips: bit i of `mask` is chip i. They wrap onto more lines when there is not enough room.
