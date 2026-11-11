@@ -713,3 +713,31 @@ updater_under :: proc(o: Options, em: f32) {
 		}
 	}
 }
+
+// For a program's status bar: what its Updater has to say now, as a button the user acts on there: "Install 0.16.0"
+// when a version is on offer, "Downloading 0.16.0…" while it comes, "Restart to update to 0.16.0" once it is in place
+// (`restart`: the program starts again). Nothing when there is nothing to do; true when it built something. Its height
+// is the caller's (`next`), its width its words'.
+update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawptr) -> bool {
+	if u == nil { return false }
+	em := ui.font_size()
+	st := update.status(u)
+	text: string
+	#partial switch st.phase {
+	case .Available:   text = fmt.tprintf("Install %s###update_badge", st.version)
+	case .Downloading: text = fmt.tprintf("Downloading %s…###update_badge", st.version)
+	case .Installed:   text = fmt.tprintf("Restart to update to %s###update_badge", st.version)
+	case:              return false
+	}
+	ui.next_merge({width = ui.text_size(em * 0.6), radius = em * 0.35, font_size = math.round(em * 0.88), text_align = .Center})
+	if st.phase == .Downloading {
+		if ui.tags("weak") { ui.label(text) }
+		return true
+	}
+	if ui.tags("accent_button") {
+		if ui.button(text).clicked {
+			if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
+		}
+	}
+	return true
+}

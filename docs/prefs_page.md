@@ -99,3 +99,9 @@ if i, _ := ui.palette(&app.palette, all, enabled); i >= len(app_commands) {
     prefs_page.show(&app.page, &app.prefs, opts, names[i - len(app_commands)])
 }
 ```
+
+## The update in the status bar
+
+`update_badge(updater, restart, user)` is a button for a program's status bar: "Install 0.16.0" when a version is on
+offer, "Downloading 0.16.0…" while it comes, "Restart to update to 0.16.0" once it is in place (`restart(user)`: the
+program starts again). It builds nothing when there is nothing to do, and returns whether it built something.

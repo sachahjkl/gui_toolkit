@@ -83,22 +83,26 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		return
 	}
 	face := lighten(face_color, 0.06 * hot)
+	// (filled shapes from the outside in, each over the antialiased edge of the one under it: the edge, then the face
+	// inside it. Strokes side by side left gaps in the curves at a small size, and their greys changed along them)
+	inner, ir := draw.rect_pad(r, -p), max(0, radius - p)
 	if pressed < 0.5 {
 		draw.box_shadow(dc, draw.rect_shift(r, {0, 1.5 * s}), rr, 2.2 * s, {0, 0, 0, 0.65})
 		// (under the pointer only, and tight: a wide halo reached what is above it)
 		if g := glow_of(); glow.a > 0 && hot > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 2.5 * s, with_alpha(glow, 0.2 * hot * g)) }
+		draw.rect(dc, r, {0, 0, 0, 0.85}, radius)
 		top, bot := lighten(face, BEVEL_TOP_LIGHTEN), darken(face, BEVEL_BOTTOM_DARKEN)
-		draw.rect_corners(dc, r, {top, bot, top, bot}, rr)
-		// the rim: light along the top, dark along the bottom
-		draw.rect_corners(dc, draw.rect_pad(r, -p), {{1, 1, 1, BEVEL_RIM_ALPHA}, {1, 1, 1, 0.03}, {1, 1, 1, BEVEL_RIM_ALPHA}, {1, 1, 1, 0.03}}, radii4(max(0, radius - p)), p)
+		draw.rect_corners(dc, inner, {top, bot, top, bot}, radii4(ir))
+		// the rim: light along the top, dark along the bottom, on the face's own edge
+		draw.rect_corners(dc, inner, {{1, 1, 1, BEVEL_RIM_ALPHA}, {1, 1, 1, 0.03}, {1, 1, 1, BEVEL_RIM_ALPHA}, {1, 1, 1, 0.03}}, radii4(ir), p)
 		draw.rect(dc, {{r.min.x + radius * 0.8, r.max.y - 2 * p}, {r.max.x - radius * 0.8, r.max.y - p}}, {0, 0, 0, 0.25})
 	} else {
-		draw.rect(dc, r, darken(face, 0.22), radius)
-		draw.inset_shadow(dc, r, rr, draw.rect_shift(draw.rect_pad(r, -1 * s), {0, 2 * s}), rr, 2.5 * s, {0, 0, 0, 0.8})
+		draw.rect(dc, r, {0, 0, 0, 0.85}, radius)
+		draw.rect(dc, inner, darken(face, 0.22), ir)
+		draw.inset_shadow(dc, inner, radii4(ir), draw.rect_shift(draw.rect_pad(inner, -1 * s), {0, 2 * s}), radii4(ir), 2.5 * s, {0, 0, 0, 0.8})
 		// the lip of the hole catches the light below
 		draw.rect(dc, {{r.min.x + radius * 0.7, r.max.y}, {r.max.x - radius * 0.7, r.max.y + p}}, {1, 1, 1, 0.06})
 	}
-	draw.rect(dc, r, {0, 0, 0, 0.85}, radius, p)
 }
 
 // A sunken surface of colour `base`; `focus` (0..1) lights a ring of `accent` around it.
@@ -112,14 +116,17 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 		return
 	}
 	if g := glow_of(); focus > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 4 * s, with_alpha(accent, 0.12 * focus * g)) }
-	// (the surface stops inside the edge: under it, a lit colour's soft fringe spilled onto the rim around the opening)
-	draw.rect(dc, draw.rect_pad(r, -p), base, max(0, radius - p))
-	draw.inset_shadow(dc, r, rr, draw.rect_shift(draw.rect_pad(r, -0.5 * s), {0, 2.5 * s}), rr, 3.5 * s, {0, 0, 0, 0.85})
-	draw.rect(dc, {{r.min.x + radius * 0.6, r.max.y}, {r.max.x - radius * 0.6, r.max.y + p}}, {1, 1, 1, 0.07})
-	edge := focus > VISIBLE ? draw.mix(Color{0, 0, 0, 0.9}, with_alpha(accent, 0.85), focus) : Color{0, 0, 0, 0.9}
-	draw.rect(dc, r, edge, radius, p)
+	// (filled shapes from the outside in, each over the antialiased edge of the one under it: the lit rim of the opening,
+	// the dark edge, the surface. Three strokes side by side left gaps in the curves at a small size, their greys
+	// changing along them; and the surface stops inside the edge, so a lit colour spills nothing onto the rim)
 	// the rim of the opening, lit: without it a dark well on a dark panel has no edge (the accent's ring replaces it)
-	if focus < 0.99 { draw.rect(dc, draw.rect_pad(r, p), {1, 1, 1, 0.1 * (1 - focus)}, radius + p, p) }
+	if focus < 0.99 { draw.rect(dc, draw.rect_pad(r, p), {1, 1, 1, 0.1 * (1 - focus)}, radius + p) }
+	edge := focus > VISIBLE ? draw.mix(Color{0, 0, 0, 0.9}, with_alpha(accent, 0.85), focus) : Color{0, 0, 0, 0.9}
+	draw.rect(dc, r, edge, radius)
+	inner, ir := draw.rect_pad(r, -p), max(0, radius - p)
+	draw.rect(dc, inner, base, ir)
+	draw.inset_shadow(dc, inner, radii4(ir), draw.rect_shift(draw.rect_pad(inner, -0.5 * s), {0, 2.5 * s}), radii4(ir), 3.5 * s, {0, 0, 0, 0.85})
+	draw.rect(dc, {{r.min.x + radius * 0.6, r.max.y}, {r.max.x - radius * 0.6, r.max.y + p}}, {1, 1, 1, 0.07})
 }
 
 // A carved line from `a` to `b` (horizontal, or `vertical`).

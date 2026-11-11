@@ -299,3 +299,17 @@ the_version_shows :: proc(t: ^testing.T) {
 	s := app_start(t, &app)
 	testing.expect(t, session.find_text(s, "Sample 1.2.3") != nil)
 }
+
+// The badge of the status bar shows nothing when the updater has nothing to do.
+@(test)
+no_badge_with_nothing_to_do :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	app.updater = update.updater_start({product = {name = "app"}, folder = "http://127.0.0.1:1/", current = "1.0.0", exe = "/nix/store/x-app/bin/app"})
+	defer update.updater_stop(app.updater)
+	built := true
+	s := app_start(t, &app)
+	_ = s
+	built = prefs_page.update_badge(app.updater, nil, nil)
+	testing.expect(t, !built)
+}
