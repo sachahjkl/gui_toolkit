@@ -40,7 +40,7 @@ machined :: proc() -> bool {
 }
 
 // One device pixel at least, rounded.
-@(private = "file")
+@(private)
 px1 :: proc() -> f32 { return max(1, math.round(scale())) }
 
 @(private = "file")
@@ -119,6 +119,14 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 	draw.rect(dc, r, edge, radius, p)
 	// the rim of the opening, lit: without it a dark well on a dark panel has no edge (the accent's ring replaces it)
 	if focus < 0.99 { draw.rect(dc, draw.rect_pad(r, p), {1, 1, 1, 0.1 * (1 - focus)}, radius + p, p) }
+}
+
+// A small light of `accent` set in a surface (a key's mark that it is the chosen one): the light, its halo (the theme's
+// glow).
+machined_light :: proc(dc: ^draw.Context, r: Rect, accent: Color) {
+	h := r.max.y - r.min.y
+	if g := glow_of(); g > 0 { draw.box_shadow(dc, r, radii4(h * 0.5), 3 * scale(), with_alpha(accent, 0.5 * g)) }
+	draw.rect(dc, r, accent, h * 0.5)
 }
 
 // A carved line from `a` to `b` (horizontal, or `vertical`).

@@ -278,6 +278,13 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	kw := kd * (1 + TOGGLE_KNOB_PRESS_STRETCH * d.active + TOGGLE_KNOB_HOT_STRETCH * d.hot)
 	x := math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t)
 	if machined() {   // a channel carved in the surface, lit with the accent when on; the knob a raised key in it
+		// (on whole device pixels: the 1 px rims of the channel and of the key, at a fraction, step along the curves)
+		r = draw.Rect{{math.round(r.min.x), math.round(r.min.y)}, {math.round(r.max.x), math.round(r.max.y)}}
+		h = r.max.y - r.min.y
+		pad = math.max(math.round(h * TOGGLE_KNOB_PAD_FRACTION), px1())
+		kd = h - 2 * pad
+		kw = math.round(kd * (1 + TOGGLE_KNOB_PRESS_STRETCH * d.active + TOGGLE_KNOB_HOT_STRETCH * d.hot))
+		x = math.round(math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t))
 		well := color_from_tags(gs(), b.tags_key, "well")
 		machined_well(dc, r, rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT))
 		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, rad(kd * 0.5), TOGGLE_MACHINED_KNOB, d.hot, d.active)
@@ -553,17 +560,49 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 @(private = "file") SEGMENTED_RATE :: 40
 @(private = "file") SEGMENT_TOOLTIP_DELAY_S :: 0.5
 
-Seg_Draw :: struct { t: f32, n: int, accent: Color, pad: f32 }
+Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius: f32 }
+
+// machined: the key's face toward the accent, the light under its label, its height and its reach (of the key's width)
+@(private = "file") SEG_KEY_ACCENT :: 0.1
+@(private = "file") SEG_LIGHT_PX :: 2
+@(private = "file") SEG_LIGHT_REACH :: 0.34
+// a groove between two segments: its share of the track's height, and how far from the key it shows in full
+@(private = "file") SEG_GROOVE_HEIGHT :: 0.5
 
 @(private)
 seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Seg_Draw)(user)
 	r := b.rect
 	if d.n <= 0 { return }
+	if machined() {
+		// a slot carved in the surface, grooves between its segments, the chosen one a raised key with a lit line
+		r = draw.Rect{{math.round(r.min.x), math.round(r.min.y)}, {math.round(r.max.x), math.round(r.max.y)}}
+		h := r.max.y - r.min.y
+		pad := math.max(math.round(d.pad), px1())
+		machined_well(dc, r, d.radius, d.well)
+		iw := ((r.max.x - r.min.x) - 2 * pad) / f32(d.n)
+		for i in 1 ..< d.n {
+			// (none beside the key: it covers its edges)
+			if f32(i) > d.t - 0.5 && f32(i) < d.t + 1.5 { continue }
+			gx := math.round(r.min.x + pad + f32(i) * iw)
+			gh := math.round(h * SEG_GROOVE_HEIGHT * 0.5)
+			cy := math.round((r.min.y + r.max.y) * 0.5)
+			machined_groove(dc, {gx, cy - gh}, {gx, cy + gh}, vertical = true)
+		}
+		x := math.round(r.min.x + pad + d.t * iw)
+		key := Rect{{x, r.min.y + pad}, {math.round(x + iw), r.max.y - pad}}
+		machined_bevel(dc, key, max(0, d.radius - pad), draw.mix(d.face, d.accent, SEG_KEY_ACCENT), 0, 0, glow = d.accent)
+		lw := math.round((key.max.x - key.min.x) * SEG_LIGHT_REACH)
+		lx := math.round((key.min.x + key.max.x - lw) * 0.5)
+		lp := SEG_LIGHT_PX * px1()
+		ly := key.max.y - lp - 2 * px1()   // (low on the key: clear of the label)
+		light := Rect{{lx, ly}, {lx + lw, ly + lp}}
+		machined_light(dc, light, d.accent)
+		return
+	}
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
 	x := r.min.x + d.pad + d.t * iw
 	pill := Rect{{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}
-	if machined() { machined_bevel(dc, pill, rad(max(0, b.radius - d.pad * 0.5)), d.accent, 0, 0); return }
 	paint_rect(dc, pill, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
 }
 
@@ -573,14 +612,19 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 	em := font_size()
 	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), f32(selected^), SEGMENTED_RATE, f32(selected^))
 	accent := color("accent")
+	mach := machined()
 	text_on, text_off: Color
-	if tags("accent_button") { text_on = color("text") }
+	// (machined: the chosen label on a metal key, in the text's colour; flat: on the accent)
+	if mach { text_on = color("text") } else if tags("accent_button") { text_on = color("text") }
 	if tags("weak") { text_off = color("text") }
 	if tags("button") {
 		set_next_axis(.X)
-		b := build_box({.Draw_Background, .Draw_Border, .Sunken}, id)   // (machined: a sunken track, its pill bevelled)
+		// (machined: the box draws nothing of its own, seg_draw carves the slot)
+		b := build_box(mach ? {} : {.Draw_Background, .Draw_Border, .Sunken}, id)
 		d := frame_new(Seg_Draw)
 		d.t, d.n, d.accent, d.pad = t, len(labels), accent, em * 0.25
+		d.face, d.well = color("background"), color("well")
+		d.radius = max(b.radius, rad(em * 0.4))
 		b.custom, b.custom_user = seg_draw, d
 		a11y_default(b, {role = .Radio_Group, orientation = .X})
 		if parent(b) {
