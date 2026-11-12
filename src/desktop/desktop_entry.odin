@@ -253,6 +253,7 @@ desktop_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> 
 		for a in id.actions { strings.write_string(&ids, a.id); strings.write_byte(&ids, ';') }
 		line(&sb, "Actions", strings.to_string(ids))
 	}
+	for kv in id.entry_extra { line(&sb, kv[0], escape_value(kv[1])) }
 	line(&sb, id.entry_marker, id.slug)
 	// (the actions' groups after the main one: a key after a group's header is that group's)
 	for a in id.actions {

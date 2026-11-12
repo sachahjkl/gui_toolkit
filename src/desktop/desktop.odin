@@ -58,6 +58,9 @@ Identity :: struct {
 	categories:   string,   // "Network;WebBrowser;"
 	keywords:     string,   // "Internet;WWW;Browser;Web;"
 	actions:      []Desktop_Action,   // the entry's actions: what a launcher's right click offers besides the program
+	// more keys of the entry, as they are ({"X-KDE-Wayland-Interfaces", "org_kde_plasma_window_management"}: what
+	// KWin gives the program besides the common protocols)
+	entry_extra:  [][2]string,
 
 	// NixOS (nixos_linux.odin): the installed copy runs by itself. No libraries: the copy is not adapted.
 	nix_runtime_name: string,     // the name of the Nix profile of the runtime ("wren-runtime")

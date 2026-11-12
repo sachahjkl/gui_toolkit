@@ -43,6 +43,7 @@ them with a job on another thread.
 | `uninstall_arguments` | `--setup` | Settings > Apps runs `"<exe>" <uninstall_arguments>` |
 | `generic_name`, `categories`, `keywords` | `Web Browser`, `Network;WebBrowser;` | the `.desktop` lines (`""`: the line is left out) |
 | `actions` | `{{id = "services", name = "Services", arguments = "--section services"}}` | the entry's actions (`Desktop_Action`): `Actions=` and a `[Desktop Action <id>]` group each, which runs the program with its arguments; a launcher's right click offers them |
+| `entry_extra` | `{{"X-KDE-Wayland-Interfaces", "org_kde_plasma_window_management"}}` | more keys of the entry, written as they are (escaped): what KWin gives the program besides the common protocols |
 | `nix_runtime_name`, `nixos_libraries` | `wren-runtime`, `glibc`... | the Nix profile the installed copy runs with on NixOS (no libraries: the copy is not adapted) |
 | `watch_thread_name` | `wren-desktop-watch` | the watcher's thread |
 | `cleanup_name` | `wren_cleanup` | the stem of the batch file of a deferred deletion (`""`: the slug) |
