@@ -42,6 +42,7 @@ Platform and system
   archive.md          archive: zip and tar
   syntax.md           syntax: the colours of code
   ascii.md            ascii: the case of names
+  timefmt.md          timefmt: times as people read them
   instance.md         instance: one running copy
   winrt.md            winrt: Windows Runtime APIs
   setup.md            setup: a program installs itself

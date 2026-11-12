@@ -32,3 +32,21 @@ if out, code, stop := cli.check({name = "prog", summary = "what it is", version 
 
 What each option does stays the program's: `check` only says whether the line is one it understands. `usage` gives the
 help alone.
+
+Once `check` accepted the line, `parse` reads it by the same table, once, and the program fills its own options from the
+result at start (a struct it passes where they are used), instead of looking through `os.args` again in each place:
+
+| Procedure | Result |
+|---|---|
+| `parse(options, args, allocator) -> []Given` | the options in their order, a `separate` value joined to its option; what the table does not have is skipped |
+| `Given{name, value, has_value}` | one option as given; its strings are slices of `args` |
+| `value(given, name) -> (string, bool)` | its value, the last one when it was given twice; `false` when not given with a value |
+| `values(given, name) -> []string` | every value of an option given more than once (`--pref a=1 --pref b=2`), in order |
+| `has(given, name)` | whether it was given, with a value or without (a switch) |
+
+```odin
+given := cli.parse(OPTIONS, os.args[1:])
+opts.session, _ = cli.value(given, "session")
+opts.setup = cli.has(given, "setup")
+for spec in cli.values(given, "pref") { apply_pref(spec) }
+```

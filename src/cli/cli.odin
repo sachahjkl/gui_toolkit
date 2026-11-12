@@ -135,6 +135,55 @@ check :: proc(p: Program, options: []Option, args: []string) -> (out: string, co
 	return "", EXIT_OK, false
 }
 
+// One option of a line, as given: `value` is "" for a switch, or for an optional value left out (`has_value` says which).
+// The strings are slices of the line's arguments.
+Given :: struct {
+	name:      string,
+	value:     string,
+	has_value: bool,
+}
+
+// The options of the line `args`, in their order, read by the table: a `separate` value joined to its option. Call it after
+// `check` accepted the line: what the table does not have is skipped. The program then reads its options from the result
+// once (value, values, has), instead of looking through the line again where each is used.
+parse :: proc(options: []Option, args: []string, allocator := context.allocator) -> []Given {
+	out := make([dynamic]Given, 0, len(args), allocator)
+	for i := 0; i < len(args); i += 1 {
+		a := args[i]
+		if !strings.has_prefix(a, "--") { continue }
+		name, _, value := strings.partition(a[2:], "=")
+		has_value := strings.contains_rune(a, '=')
+		o, known := find(options, name)
+		if !known { continue }
+		if o.value != "" && !has_value && o.separate && i + 1 < len(args) {
+			i += 1
+			value, has_value = args[i], true
+		}
+		append(&out, Given{name, value, has_value})
+	}
+	return out[:]
+}
+
+// The value of the option `name`, the last one when it was given twice (as a later option overrides an earlier one). `ok`:
+// it was given with a value.
+value :: proc(given: []Given, name: string) -> (value: string, ok: bool) {
+	#reverse for g in given { if g.name == name && g.has_value { return g.value, true } }
+	return "", false
+}
+
+// Every value of an option that may be given more than once (--pref a=1 --pref b=2), in order.
+values :: proc(given: []Given, name: string, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	for g in given { if g.name == name && g.has_value { append(&out, g.value) } }
+	return out[:]
+}
+
+// Whether the option `name` was given, with a value or without.
+has :: proc(given: []Given, name: string) -> bool {
+	for g in given { if g.name == name { return true } }
+	return false
+}
+
 @(private = "file")
 find :: proc(options: []Option, name: string) -> (Option, bool) {
 	for o in options { if o.name == name { return o, true } }

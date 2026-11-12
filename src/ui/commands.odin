@@ -20,7 +20,6 @@ package ui
 
 import "core:fmt"
 import "core:math"
-import "core:slice"
 import "core:strings"
 import "../draw"
 import lucide "../lucide"
@@ -447,12 +446,7 @@ palette_list :: proc(commands: []Command, query: string, opts: Palette_Options) 
 		}
 		return out[:]
 	}
-	Ranked :: struct { index, score: int }
-	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
-	for c, i in commands {
-		if score, _, ok := palette_match(query, c.label, c.group, c.tags); ok { append(&ranked, Ranked{i, score}) }
-	}
-	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
+	ranked := rank(query, commands, proc(c: ^Command, _: rawptr) -> Rank_Entry { return {label = c.label, group = c.group, tags = c.tags} })
 	if f, ok := opts.first.?; ok && f >= 0 && f < len(commands) {
 		append(&out, Palette_Line{f, 0, ""})
 	}

@@ -416,6 +416,38 @@ a_palette_entry_is_found_by_its_label_its_tags_or_a_slip :: proc(t: ^testing.T) 
 	testing.expect(t, !none, "nothing")
 }
 
+// A ranked list: the hits alone, the best first, equal scores in the list's order; a skipped item never; the last text finds
+// what nothing else does, lighting nothing; a bonus lifts a hit; an empty query keeps the list as it is.
+@(test)
+a_list_is_ranked_best_first :: proc(t: ^testing.T) {
+	Item :: struct { label, key: string, skip: bool, boost: f64 }
+	items := []Item{
+		{label = "Previous section"},
+		{label = "Raise the priority"},
+		{label = "Priority", skip = true},
+		{label = "System title", key = "appearance.prio"},
+		{label = "Lower the priority"},
+	}
+	entry :: proc(it: ^Item, _: rawptr) -> ui.Rank_Entry { return {label = it.label, last = it.key, skip = it.skip} }
+	index :: proc(hits: []ui.Rank_Hit) -> []int {
+		out := make([]int, len(hits), context.temp_allocator)
+		for h, i in hits { out[i] = h.index }
+		return out
+	}
+	hits := ui.rank("prio", items, entry)
+	testing.expect(t, slice.equal(index(hits), []int{1, 4, 3}), "the label's hits in order, then the key's")
+	testing.expect(t, len(hits) == 3 && hits[2].ranges == nil && len(hits[0].ranges) > 0, "the key lights nothing")
+	testing.expect(t, hits[0].score == hits[1].score, "equal scores keep the list's order")
+	items[4].boost = 1
+	boosted := ui.rank("prio", items, entry, bonus = proc(it: ^Item, _: rawptr) -> f64 { return it.boost })
+	testing.expect(t, slice.equal(index(boosted), []int{4, 1, 3}), "a bonus lifts a hit")
+	testing.expect(t, slice.equal(index(ui.rank("", items, entry)), []int{0, 1, 3, 4}), "an empty query: every item but the skipped one, in order")
+	fuzzy := ui.rank("cs5", []Item{{label = "gpt-5"}, {label = "claude-sonnet-5"}}, entry, match = ui.fuzzy_match)
+	testing.expect(t, slice.equal(index(fuzzy), []int{1}), "fuzzy_match: letters scattered")
+	_, _, by_group := ui.fuzzy_match("anth", "claude", "Anthropic", nil)
+	testing.expect(t, by_group, "fuzzy_match reads the group after the label")
+}
+
 // A box's corners as drawn: its radius times the rounding (a custom draw's too: the palette's strip meets its dialog's
 // corners), none in the edged finish, its own when it is part of its shape.
 @(test)
