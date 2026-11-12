@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.216.1] - 2026-11-12
+
+### Fixed
+- **A matched label is centred as a label is**: `ui.matched_label` (a name the filter lit, in a table's row) drew its line at the top of a row taller than it, while the labels beside it were centred. A rich paragraph of one line (`max_lines = 1`) is now centred across its box; its links, its selection and find's matches follow.
+
 ## [0.216.0] - 2026-11-12
 
 ### Changed
@@ -2883,6 +2888,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.216.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.1
 [0.216.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.0
 [0.215.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.215.0
 [0.214.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.214.0
