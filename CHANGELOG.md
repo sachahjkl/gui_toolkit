@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.227.0] - 2026-11-12
+
+### Changed
+- **A palette at rest costs nothing**: `ui.rank` takes a `version` of its items; with a cache, the same query and version return the hits kept, with no item read. The search for slips (`fuzzy_typos`) allocates nothing for a text it does not find and compares each word once. `ui.vlist_row_name(i)` names a row a program builds itself in a `vlist`, so the list measures it.
+
 ## [0.226.2] - 2026-11-12
 
 ### Fixed
@@ -2992,6 +2997,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.227.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.227.0
 [0.226.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.2
 [0.226.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.1
 [0.226.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.0
