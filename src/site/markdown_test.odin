@@ -86,6 +86,6 @@ code_blocks_are_coloured :: proc(t: ^testing.T) {
 	write_code_block(&b, "main x", "odin", mine)
 	testing.expect_value(t, strings.to_string(b), "<div class=\"code\"><div class=\"file\">Mine</div><pre><code><span class=\"k\">main</span> x</code></pre></div>\n")
 	strings.builder_reset(&b)
-	write_code_block(&b, "a", "zig")
-	testing.expect_value(t, strings.to_string(b), "<div class=\"code\"><div class=\"file\">zig</div><pre><code>a</code></pre></div>\n")
+	write_code_block(&b, "a", "cobol")
+	testing.expect_value(t, strings.to_string(b), "<div class=\"code\"><div class=\"file\">cobol</div><pre><code>a</code></pre></div>\n")
 }
