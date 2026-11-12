@@ -3,6 +3,6 @@ package ui
 // gui_toolkit version (semantic versioning: while 0.x, minor bumps may change the API). See CHANGELOG.md.
 // Written by tk release (tools/tk) when a version is published, never by hand in a branch (CONTRIBUTING.md).
 VERSION_MAJOR :: 0
-VERSION_MINOR :: 206
+VERSION_MINOR :: 207
 VERSION_PATCH :: 0
-VERSION :: "0.206.0"
+VERSION :: "0.207.0"
