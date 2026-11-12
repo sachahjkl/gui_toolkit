@@ -1,6 +1,6 @@
 // Package h264: screen frames (BGRA or RGBA, 8 bits a channel) to an H.264 stream, with the encoders the system has:
-// VA-API (the GPU) then openh264 on Linux, Media Foundation's encoders (the GPU's, then Microsoft's) on Windows. No
-// ffmpeg. The libraries are opened at run time: a program starts on a system without them, and `available` says so.
+// NVENC (NVIDIA's driver) first on both systems, then VA-API (the GPU) and openh264 on Linux, Media Foundation's
+// encoders (the GPU's, then Microsoft's) on Windows. No ffmpeg. The libraries are opened at run time: a program starts on a system without them, and `available` says so.
 //
 // Every call blocks (the GPU, the encoder's own threads): a program calls them on a worker, one encoder for one thread.
 // The pure parts (the bit writer, SPS / PPS / slice headers, the colour conversions, Annex B) run everywhere and are
@@ -12,6 +12,7 @@ import "core:time"
 
 // An encoder of the system.
 Backend :: enum u8 {
+	Nvenc,                       // Linux, Windows: NVIDIA's GPU encoder through its own driver (CUDA)
 	Vaapi,                       // Linux: the GPU through libva (Intel, AMD, NVIDIA with nouveau)
 	Openh264,                    // Linux: Cisco's software encoder (libopenh264)
 	Media_Foundation_Hardware,   // Windows: the GPU's H.264 encoder MFT (its vendor's driver)
@@ -21,7 +22,7 @@ Backend :: enum u8 {
 Backends :: bit_set[Backend]
 
 // The backends that run on a GPU.
-HARDWARE_BACKENDS :: Backends{.Vaapi, .Media_Foundation_Hardware}
+HARDWARE_BACKENDS :: Backends{.Nvenc, .Vaapi, .Media_Foundation_Hardware}
 
 // The kind of encoder `open` takes.
 Preference :: enum u8 {

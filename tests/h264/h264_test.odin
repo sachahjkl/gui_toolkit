@@ -307,7 +307,7 @@ check_packets :: proc(t: ^testing.T, packets: []h264.Packet, seen: ^Seen) {
 encode_with_the_system :: proc(t: ^testing.T) {
 	found := h264.available()
 	if found == {} {
-		log.info("h264: no encoder on this system (no libva driver that encodes H.264, no libopenh264, no Media Foundation): the encoding is not tested")
+		log.info("h264: no encoder on this system (no NVENC, no libva driver that encodes H.264, no libopenh264, no Media Foundation): the encoding is not tested")
 		return
 	}
 	// (odd sides: the padding to even goes through each encoder too)

@@ -1,12 +1,14 @@
 #+build linux
 package tk_h264
 
-// Linux: VA-API (the GPU) first, then openh264 (software), as the options' preference allows.
+// Linux: NVENC (NVIDIA's driver) first, then VA-API (the GPU through libva), then openh264 (software), as the options'
+// preference allows. A backend that fails to open gives way to the next one.
 
 import "core:time"
 
 @(private)
 System_Encoder :: union {
+	^Nvenc_Encoder,
 	^Vaapi_Encoder,
 	^Openh264_Encoder,
 }
@@ -14,6 +16,7 @@ System_Encoder :: union {
 @(private)
 system_available :: proc() -> Backends {
 	found: Backends
+	if nvenc_probe() { found += {.Nvenc} }
 	if vaapi_probe() { found += {.Vaapi} }
 	if openh264_probe() { found += {.Openh264} }
 	return found
@@ -22,6 +25,10 @@ system_available :: proc() -> Backends {
 @(private)
 system_open :: proc(e: ^Encoder) -> Error {
 	if e.options.backend != .Software {
+		if n, ok := nvenc_open(e); ok {
+			e.system, e.backend = n, .Nvenc
+			return .None
+		}
 		if v, ok := vaapi_open(e); ok {
 			e.system, e.backend = v, .Vaapi
 			return .None
@@ -39,19 +46,24 @@ system_open :: proc(e: ^Encoder) -> Error {
 @(private)
 system_encode :: proc(e: ^Encoder, frame: Frame, timestamp: time.Duration, keyframe: bool) -> Error {
 	switch s in e.system {
+	case ^Nvenc_Encoder:    return nvenc_encode(e, s, frame, timestamp, keyframe)
 	case ^Vaapi_Encoder:    return vaapi_encode(e, s, frame, timestamp, keyframe)
 	case ^Openh264_Encoder: return openh264_encode(e, s, frame, timestamp, keyframe)
 	}
 	return .Failed
 }
 
-// (both encode a frame before encode returns: nothing is held back)
+// (each encodes a frame before encode returns: nothing is held back; NVENC's end of stream only closes its session's)
 @(private)
-system_flush :: proc(e: ^Encoder) -> Error { return .None }
+system_flush :: proc(e: ^Encoder) -> Error {
+	if s, ok := e.system.(^Nvenc_Encoder); ok { return nvenc_flush(e, s) }
+	return .None
+}
 
 @(private)
 system_close :: proc(e: ^Encoder) {
 	switch s in e.system {
+	case ^Nvenc_Encoder:    nvenc_close(e, s)
 	case ^Vaapi_Encoder:    vaapi_close(e, s)
 	case ^Openh264_Encoder: openh264_close(e, s)
 	}
