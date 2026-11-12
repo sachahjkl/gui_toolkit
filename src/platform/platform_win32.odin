@@ -645,6 +645,7 @@ events_waiting :: proc(w: ^Window) -> bool { return len(w.events) > w.returned |
 
 // Wayland's word that a picture was shown (platform_linux.odin): Windows' presents do not wait for a window it does not show.
 frame_shown_pending :: proc(w: ^Window) -> bool { return false }
+frame_shown_waited_ms :: proc(w: ^Window) -> int { return -1 }
 frame_shown_ask :: proc(w: ^Window) {}
 frame_shown_forget :: proc(w: ^Window) {}
 frame_shown_held :: proc(w: ^Window) {}

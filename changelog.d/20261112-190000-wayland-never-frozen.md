@@ -1,0 +1,3 @@
+type: Fixed
+
+**A Wayland window no longer freezes when the compositor holds back its frame callback**: under NVIDIA's driver a present in Fifo waited behind a barrier the compositor lifts only once the last picture is shown, and a compositor that counted the window on the wrong output (ShojiWM) never lifted it, so the window drew nothing again. The renderer now presents in a mailbox on Wayland when the driver offers one (the window still paces itself on the compositor's word, `render.present_may_block`), and `host` waits for that word at most 250 ms when it has a picture to show (`FRAME_SHOWN_PATIENCE_MS`), not at all after a key or a click; `platform.frame_shown_waited_ms` says how long it has waited.

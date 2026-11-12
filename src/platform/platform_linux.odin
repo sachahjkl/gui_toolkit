@@ -665,6 +665,14 @@ frame_shown_pending :: proc(w: ^Window) -> bool {
 	return wl_frame_shown_pending(w)
 }
 
+// How long the word asked by frame_shown_ask has been waited for, in ms (-1: none is pending). A compositor may keep it
+// long for a window it shows: ShojiWM sent it once a second to a window it counted on the wrong output. A window whose
+// presents cannot wait (render.present_may_block false) need not wait for it for ever (host gives it up).
+frame_shown_waited_ms :: proc(w: ^Window) -> int {
+	if w == nil || w.offscreen || w.backend != .Wayland { return -1 }
+	return wl_frame_shown_waited_ms(w)
+}
+
 // Asks for the compositor's word that it shows the window's next picture: just before it is presented. Wayland only.
 frame_shown_ask :: proc(w: ^Window) {
 	if w == nil || w.offscreen || w.backend != .Wayland { return }

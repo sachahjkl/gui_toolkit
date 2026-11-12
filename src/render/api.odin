@@ -153,6 +153,13 @@ frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 // What wait_for_frame waits at most, by default.
 FRAME_WAIT_TIMEOUT_MS :: 100
 
+// Whether a present of the surface in use may wait for the compositor (Fifo): a window must then present only once the
+// compositor showed its last picture (platform.frame_shown_pending), or its thread may wait for ever. A mailbox, a
+// tearing present and Direct3D's flip model never wait so.
+present_may_block :: proc(r: ^Renderer) -> bool {
+	when USE_WGPU { return r.wg.present_mode == .Fifo || r.wg.present_mode == .FifoRelaxed } else { return false }
+}
+
 wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
 	when USE_WGPU { return wgpu_wait_for_frame(r, timeout_ms) } else { return d3d_wait_for_frame(r, timeout_ms) }
 }

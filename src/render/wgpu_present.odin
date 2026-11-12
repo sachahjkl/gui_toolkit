@@ -184,6 +184,12 @@ wgpu_pick_present_mode :: proc(r: ^Renderer) -> wgpu.PresentMode {
 		if r.present.mailbox_ok { return .Mailbox }
 		if r.present.tearing_ok { return .Immediate }
 	}
+	// Wayland: the window paces itself on the compositor's word (platform.frame_shown_pending): a picture a refresh, and a
+	// compositor never tears a mailbox. A Fifo present adds a barrier the compositor keeps the commit behind (wp_fifo_v1,
+	// NVIDIA's driver), with the word the commit carries: a barrier never lifted left the window without a picture.
+	if r.surface_handles.backend == .Wayland && r.present.mailbox_ok && present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode == .Vsync {
+		return .Mailbox
+	}
 	return present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode == .Tearing ? .Immediate : .Fifo
 }
 

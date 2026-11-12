@@ -233,19 +233,45 @@ host_frame :: proc(h: ^Host, inner := false) {
 	// (the last picture not shown yet: the compositor does not show the window, covered or minimized. No picture in this
 	// frame: its swap chain's image is not even taken (a present in Fifo would wait for ever for that word, and an image
 	// taken and not presented would hold the next). Decided once, here: the word may come while the input is read)
-	shown := !platform.frame_shown_pending(h.win)
+	pending := platform.frame_shown_pending(h.win)
+	// (a present that cannot wait (a mailbox): a word kept FRAME_SHOWN_PATIENCE_MS is waited for no longer, so a compositor
+	// that keeps it for a window it shows does not freeze it)
+	free := pending && host_present_free(h)
+	if free && platform.frame_shown_waited_ms(h.win) >= FRAME_SHOWN_PATIENCE_MS {
+		platform.frame_shown_forget(h.win)
+		pending = false
+	}
+	shown := !pending
 	at_once := shown ? host_pace(h, inner) : false
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }
 	events := platform.poll_events(h.win, false)
+	// (the user's input: they look at the window, whatever the compositor says. Drawn at once, when that cannot wait)
+	if !shown && free && len(events) > 0 {
+		platform.frame_shown_forget(h.win)
+		shown = true
+	}
 	// (this frame is the repaint the system asked for: a request left would end every wait, and the loop would never sleep)
 	_ = platform.take_paint_request(h.win)
 	if platform.is_closed(h.win) { return }
 	ui.use(&h.state)   // (a frame of another window may have run in that call)
 	host_picture(h, events, at_once, shown)
 	if h.after_frame != nil { h.after_frame(h) }
-	if !inner && h.settle > 0 { h.settle -= 1 }
+	// (a frame that drew no picture, held for the compositor's word, owes it still: the patience above draws it)
+	if !inner && h.settle > 0 && shown { h.settle -= 1 }
 	free_all(context.temp_allocator)
+}
+
+// How long a window whose presents cannot wait waits for the compositor's word that it showed its last picture, when it
+// has another to show. A compositor may keep the word for a window it shows (ShojiWM, counting the window on another
+// output, sent it once a second).
+FRAME_SHOWN_PATIENCE_MS :: 250
+
+// Whether the window's presents never wait for the compositor (render.present_may_block): it may present before the word.
+@(private = "file")
+host_present_free :: proc(h: ^Host) -> bool {
+	render.surface_scope(&h.shared.r, &h.surface)
+	return !render.present_may_block(&h.shared.r)
 }
 
 // Takes the window off the screen, its interface kept: the renderer's surface goes first, then the window's (Wayland
@@ -350,6 +376,11 @@ hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
 		pending := platform.frame_shown_pending(h.win)
 		if !pending && (h.settle > 0 || ui.needs_frame(&h.state)) { return true, 0 }
 		if w := ui.wake_in_ms(&h.state); w > 0 && (wake_ms == 0 || w < wake_ms) { wake_ms = w }
+		// (and when the word is given up, if it does not come: host_frame)
+		if pending && (h.settle > 0 || ui.needs_frame(&h.state)) && host_present_free(h) {
+			w := max(FRAME_SHOWN_PATIENCE_MS - platform.frame_shown_waited_ms(h.win), 1)
+			if wake_ms == 0 || w < wake_ms { wake_ms = w }
+		}
 	}
 	return
 }

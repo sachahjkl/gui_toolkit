@@ -135,6 +135,7 @@ Wl_Window_State :: struct {
 	win:         ^Window,          // back pointer for the listeners
 	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
 	frame_held:  bool,             // a picture waited for that word (wl_frame_shown_held): its coming asks for a repaint
+	frame_asked: time.Tick,        // when frame_cb was asked (wl_frame_shown_waited_ms)
 	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
 	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
 	presented:   bool,
@@ -927,6 +928,7 @@ wl_frame_shown_ask :: proc(w: ^Window) {
 	if st.presented { wl_activation_flush(w, st) }
 	st.presented = true
 	if st.frame_cb != nil { return }
+	st.frame_asked = time.tick_now()
 	st.frame_cb = wl.proxy_marshal_flags(st.surface, WL_SURFACE_FRAME, wl.callback_interface, wl.proxy_get_version(st.surface), 0, nil)
 	if st.frame_cb != nil { wl.proxy_add_listener(st.frame_cb, &frame_shown_listener, st) }
 }
@@ -939,6 +941,14 @@ wl_frame_shown_forget :: proc(w: ^Window) {
 	if st == nil || st.frame_cb == nil { return }
 	wl.proxy_destroy(st.frame_cb)
 	st.frame_cb = nil
+}
+
+// How long the word asked has been waited for, in ms (-1: none is asked).
+@(private)
+wl_frame_shown_waited_ms :: proc(w: ^Window) -> int {
+	st := wl_state(w)
+	if st == nil || st.frame_cb == nil { return -1 }
+	return int(time.duration_milliseconds(time.tick_since(st.frame_asked)))
 }
 
 @(private)

@@ -139,7 +139,11 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
   in Fifo waits for that word about the last one: a window it does not show (covered whole, minimized, on another
   workspace) never gets it. `frame_shown_ask(w)`, just before a picture is presented, asks for it; `frame_shown_pending(w)`
   says it has not come; `frame_shown_forget(w)` drops it when no picture was presented after all. `host` presents no picture while it is pending (the input is still read and built), and the word
-  asks for a repaint. False and nothing elsewhere.
+  asks for a repaint. False and nothing elsewhere. A compositor may also keep the word for a window it shows (ShojiWM,
+  counting a window on the wrong output, sent it once a second, and a Fifo barrier held the commit for good): on Wayland
+  the renderer presents in a mailbox when the driver offers one (`render.present_may_block` false), and then `host` waits
+  for the word at most `FRAME_SHOWN_PATIENCE_MS` (250 ms) when it has a picture to show, and not at all after the user's
+  input. `frame_shown_waited_ms(w)` says how long it has waited.
 - **Decorations.** Windows and KDE (zxdg-decoration) draw a server title bar; **GNOME draws none** — set an integrated
   title bar (`set_integrated_title`) and draw it yourself (the toolkit's `ui.window_buttons` already does, the same
   frame as Windows). X11 asks the window manager for no decorations through Motif hints when integrated.
