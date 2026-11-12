@@ -108,6 +108,16 @@ image.watermark_text(shot, &fonts, face, "example.com", 18, image.WHITE, .Bottom
 On Linux, text is shaped by the native text backend, the default there, as everything that shapes text is
 ([font-backend.md](font-backend.md)).
 
+## Files
+
+| Procedure | What it makes |
+| --- | --- |
+| `jpeg_encode(img, quality = 90)` | a baseline JPEG, written here in Odin: the colours not subsampled (4:4:4), so a screenshot's text keeps its edges; alpha laid over white |
+| `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp, loaded when first asked; `lossless` keeps every pixel. nil where libwebp is not there |
+| `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: libwebp.dll beside the program) |
+
+A PNG is `gt:png`'s `png.encode`.
+
 ## How it stays fast
 
 The procedures run on 4K pictures on a worker. Each one is a few passes, with no allocation per pixel:
@@ -123,4 +133,5 @@ The procedures run on 4K pictures on a worker. Each one is a few passes, with no
 `tests/image`: exact pixels for crop, flip, rotate, pad, border, invert, grayscale, threshold, sepia, draw_over, pixelate
 and the anchors; properties for the rest (blur keeps the sum, resize, blur and sharpen keep a flat colour, round corners
 clear the corners, a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn from the embedded
-face lands at its anchor.
+face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its picture, a lower quality makes a smaller
+file; a WebP file is a RIFF WEBP file where libwebp is there.
