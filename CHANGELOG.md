@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.215.0] - 2026-11-12
+
+### Added
+- **`ui.scrollbar_gutter`**: the room a vertical scroll bar takes at the edge of its box (its width and margins), so that a list's content keeps clear of the bar it is drawn under when it scrolls.
+
 ## [0.214.0] - 2026-11-12
 
 ### Added
@@ -2873,6 +2878,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.215.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.215.0
 [0.214.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.214.0
 [0.213.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.213.0
 [0.212.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.212.0
