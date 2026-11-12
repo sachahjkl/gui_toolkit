@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.197.2] - 2026-11-12
+
+### Added
+- **`ui.confirm`: the question before an act that is not taken back**: a title, a note, what it acts on a line each (the others counted), Cancel and the act's button in the danger colours; Enter answers what is safe (Cancel, or the act with `enter_confirms`) and its button says "(Enter)"; it answers `.Confirmed` or `.Cancelled`. Its own words are in `Confirm_Labels`.
+
+### Changed
+- **A scroll bar in the interface's colours**: its thumb a surface's border at rest, the weak text under the pointer, the accent while held, its track the theme's track, with a rim a little toward the text (every finish but Flat). The text's light, up to 55 %, made it near white on a dark theme.
+
 ## [0.197.1] - 2026-11-12
 
 ### Changed
@@ -2685,6 +2693,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.197.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.2
 [0.197.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.1
 [0.197.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.0
 [0.196.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.3
