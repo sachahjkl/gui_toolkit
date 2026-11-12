@@ -395,9 +395,11 @@ a_box_is_drawn_with_the_rounding :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f)) { return }
 	defer close(&f)
 	ui.set_rounding(&f.s, 0.25)
-	b := ui.Box{radius = 8}
+	b := ui.Box{radius = 16}
 	ui.use(&f.s)
-	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 2)
+	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 4)
+	b.radius = 10   // (2.5 px: a blob outside a 1 px edge's corner, not a curve)
+	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 0)
 	b.flags += {.Fixed_Radius}
-	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 8)
+	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 10)
 }

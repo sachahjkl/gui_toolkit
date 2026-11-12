@@ -101,11 +101,17 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 @(private = "file") FOCUS_RING_PX :: 1.5
 
 // The radius a box's corners are drawn with: its own times the state's rounding (set_rounding; none in the edged
-// finish), unless it is part of its shape (Fixed_Radius). What a box's custom draw rounds takes it too: its corners then
+// finish), square under ROUND_LEAST_PX, unless it is part of its shape (Fixed_Radius). What a box's custom draw rounds takes it too: its corners then
 // meet the box's own and its parents'.
 box_drawn_radius :: proc(s: ^State, b: ^Box) -> f32 {
-	return .Fixed_Radius in b.flags ? b.radius : b.radius * rounding(s)
+	if .Fixed_Radius in b.flags { return b.radius }
+	r := b.radius * rounding(s)
+	// (under ROUND_LEAST_PX a corner rounds nothing that shows: its antialiasing is a blob outside a 1 px edge's corner)
+	return r < ROUND_LEAST_PX * max(1, scale()) ? 0 : r
 }
+
+// The least radius a box's corners are rounded with (logical pixels): under it, they are square.
+ROUND_LEAST_PX :: 3
 
 @(private)
 draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
