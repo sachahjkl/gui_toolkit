@@ -81,12 +81,28 @@ Turn :: enum u8 { Normal, Rot90, Rot180, Rot270, Flipped, Flipped90, Flipped180,
 // every pixel gets 255. Otherwise the buffer's alpha is premultiplied (Wayland's and X11's ARGB are) and is made straight.
 // `y_invert`: the rows are bottom to top (wlr-screencopy's flag). The frame's origin and scale are the caller's to set.
 @(private)
-frame_from_buffer :: proc(src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool, allocator: runtime.Allocator) -> Frame #no_bounds_check {
+frame_from_buffer :: proc(src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool, allocator: runtime.Allocator) -> Frame {
+	ow, oh := turned_size(width, height, turn)
+	pixels := make([]u8, int(ow) * int(oh) * 4, allocator)
+	f := frame_from_buffer_into(pixels, src, width, height, stride, order, turn, y_invert, opaque)
+	f.allocator = allocator
+	return f
+}
+
+// The size of a buffer of `width` x `height` once upright.
+@(private)
+turned_size :: proc(width, height: i32, turn: Turn) -> (w, h: i32) {
 	quarter := turn == .Rot90 || turn == .Rot270 || turn == .Flipped90 || turn == .Flipped270
-	ow, oh := width, height
-	if quarter { ow, oh = height, width }
-	f := Frame{width = ow, height = oh, stride = ow * 4, scale = 1, allocator = allocator}
-	f.pixels = make([]u8, int(ow) * int(oh) * 4, allocator)
+	return quarter ? height : width, quarter ? width : height
+}
+
+// frame_from_buffer into `dst` (turned_size's pixels, packed rows): what a stream does with each frame, without an
+// allocation. The frame's pixels are `dst`; it does not own them.
+@(private)
+frame_from_buffer_into :: proc(dst: []u8, src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool) -> Frame #no_bounds_check {
+	ow, oh := turned_size(width, height, turn)
+	f := Frame{width = ow, height = oh, stride = ow * 4, scale = 1}
+	f.pixels = dst[:int(ow) * int(oh) * 4]
 	flipped := turn >= .Flipped
 	k := u8(turn) & 3
 	for y in 0 ..< oh {

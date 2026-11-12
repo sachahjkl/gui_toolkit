@@ -17,6 +17,7 @@ package capture
 import "base:runtime"
 import "core:math"
 import "core:strings"
+import "core:time"
 import win "core:sys/windows"
 import d3d11 "vendor:directx/d3d11"
 import dxgi "vendor:directx/dxgi"
@@ -522,20 +523,49 @@ staging_read :: proc(device_context: ^d3d11.IDeviceContext, staging: ^d3d11.ITex
 surface_read :: proc(src: [^]u8, pitch, sw, sh: i32, rotation: Win32_Rotation, allocator: runtime.Allocator) -> Frame {
 	w, h := sw, sh
 	if rotation == .Rotate90 || rotation == .Rotate270 { w, h = sh, sw }
-	f := Frame{width = w, height = h, stride = w * 4, allocator = allocator}
-	f.pixels = make([]u8, int(w * h * 4), allocator)
+	pixels := make([]u8, int(w * h * 4), allocator)
+	f := surface_read_into(pixels, {w, h}, src, pitch, sw, sh, rotation)
+	f.allocator = allocator
+	return f
+}
+
+// surface_read into `dst`, a frame of `size` (packed rows) that does not own its pixels: what the upright surface has
+// beyond `size` is cut, what it lacks is black. A stream's frames keep one size this way.
+@(private = "file")
+surface_read_into :: proc(dst: []u8, size: [2]i32, src: [^]u8, pitch, sw, sh: i32, rotation: Win32_Rotation) -> Frame {
+	w, h := size.x, size.y
+	f := Frame{width = w, height = h, stride = w * 4}
+	f.pixels = dst[:int(w * h * 4)]
+	uw, uh := sw, sh   // the surface upright
+	if rotation == .Rotate90 || rotation == .Rotate270 { uw, uh = sh, sw }
+	cw, ch := min(w, uw), min(h, uh)
+	if cw < w || ch < h { runtime.mem_zero(raw_data(f.pixels), len(f.pixels)) }
 	if rotation == .Identity || rotation == .Unspecified {
-		for y in 0 ..< h { copy(f.pixels[int(y * w * 4):][:int(w * 4)], src[int(y * pitch):][:int(w * 4)]) }
+		for y in 0 ..< ch { copy(f.pixels[int(y * w * 4):][:int(cw * 4)], src[int(y * pitch):][:int(cw * 4)]) }
 	} else {
-		for y in 0 ..< h {
-			for x in 0 ..< w {
-				sx, sy := win32_rotated_source(rotation, x, y, w, h)
+		for y in 0 ..< ch {
+			for x in 0 ..< cw {
+				sx, sy := win32_rotated_source(rotation, x, y, uw, uh)
 				copy(f.pixels[int((y * w + x) * 4):][:4], src[int(sy * pitch + sx * 4):][:4])
 			}
 		}
 	}
 	opaque(f.pixels)
 	return f
+}
+
+// The picture in `staging` into `dst` as a frame of `size`, its `content` first pixels read (0: all of it).
+@(private)
+staging_read_into :: proc(device_context: ^d3d11.IDeviceContext, staging: ^d3d11.ITexture2D, rotation: Win32_Rotation, dst: []u8, size: [2]i32, content := [2]i32{}) -> (f: Frame, ok: bool) {
+	if len(dst) < int(size.x) * int(size.y) * 4 { return }
+	desc: d3d11.TEXTURE2D_DESC
+	staging->GetDesc(&desc)
+	sw, sh := i32(desc.Width), i32(desc.Height)
+	if content.x > 0 && content.y > 0 { sw, sh = min(sw, content.x), min(sh, content.y) }
+	mapped: d3d11.MAPPED_SUBRESOURCE
+	if device_context->Map(staging, 0, .READ, {}, &mapped) < 0 || mapped.pData == nil { return }
+	defer device_context->Unmap(staging, 0)
+	return surface_read_into(dst, size, ([^]u8)(mapped.pData), i32(mapped.RowPitch), sw, sh, rotation), true
 }
 
 // A screen has no transparency: whatever the alpha byte holds (DWM leaves it undefined, GDI zero) becomes 255.
@@ -642,3 +672,149 @@ until_nul :: proc(s: []u16) -> []u16 {
 	for c, i in s { if c == 0 { return s[:i] } }
 	return s
 }
+
+////////////////////////////////
+// Streams
+
+// A stream: Windows.Graphics.Capture for a window, and for a monitor where it is there (the pointer drawn in when
+// asked); else Desktop Duplication of the monitor, whose frames never show the pointer. A region is its monitor's
+// frames cut (stream.odin).
+@(private = "file")
+Win_Stream :: struct {
+	wgc:     Wgc_Stream,
+	use_wgc: bool,
+	monitor: u64,      // the output's id (an output, a region): looked up at each frame, the list may be read again
+	origin:  [2]i32,   // where a Windows.Graphics.Capture frame is on the desktop, logical, as at the start
+	scale:   f32,
+	losses:  int,      // duplications lost in a row
+}
+
+@(private = "file") DUPLICATION_LOSSES_MAX :: 3
+
+@(private)
+platform_stream_open :: proc(s: ^Session, st: ^Stream) -> (err: Error) {
+	impl := (^Impl)(s.impl)
+	monitors_read(impl)
+	ws := new(Win_Stream, st.allocator)
+	defer if err != .None { free(ws, st.allocator) }
+	switch v in st.source {
+	case Stream_Output:
+		ws.monitor = v.id
+	case Stream_Region:
+		outs := make([]Output, len(impl.monitors), context.temp_allocator)
+		for m, i in impl.monitors { outs[i] = Output{id = monitor_id(m.handle), rect = m.logical, scale = m.scale} }
+		i := output_most_of(outs, v.rect)
+		if i < 0 { return .Failed }
+		ws.monitor = outs[i].id
+	case Stream_Window:
+		handle := win.HWND(uintptr(v.id))
+		if !win.IsWindow(handle) { return .Gone }
+		if win.IsIconic(handle) { return .Failed }   // (a minimized window draws nothing)
+		frame := window_frame(handle)
+		i := output_of(frame, monitors_physical(impl))
+		if i < 0 { return .Failed }
+		m := impl.monitors[i]
+		logical := physical_to_logical(frame, m.physical, m.logical, m.scale)
+		ws.origin, ws.scale = {logical.x, logical.y}, m.scale
+		if err = wgc_stream_open(&impl.window_capture, &ws.wgc, handle, nil, st.options.cursor); err != .None { return }
+		ws.use_wgc = true
+		st.cursor = st.options.cursor
+		st.impl = ws
+		return .None
+	case:
+		return .Failed
+	}
+	m := monitor_find(impl, ws.monitor)
+	if m == nil { return .Gone }
+	ws.origin, ws.scale = {m.logical.x, m.logical.y}, m.scale
+	if wgc_stream_open(&impl.window_capture, &ws.wgc, nil, m.handle, st.options.cursor) == .None {
+		ws.use_wgc = true
+		st.cursor = st.options.cursor
+	} else {
+		// (made now: an output that duplication cannot read says so at the start, not at the first frame)
+		if m.duplication.duplication == nil && !duplication_open(impl, m) { return .Unsupported }
+		st.cursor = false
+	}
+	st.impl = ws
+	return .None
+}
+
+@(private)
+platform_stream_next :: proc(st: ^Stream, timeout: time.Duration) -> (f: Stream_Frame, ok: bool, err: Error) {
+	impl := (^Impl)(st.session.impl)
+	ws := (^Win_Stream)(st.impl)
+	if impl == nil || ws == nil { return {}, false, .Failed }
+	if ws.use_wgc { return wgc_stream_next(&impl.window_capture, &ws.wgc, st, ws.origin, ws.scale, timeout) }
+	return duplication_stream_next(impl, ws, st, timeout)
+}
+
+@(private)
+platform_stream_close :: proc(st: ^Stream) {
+	ws := (^Win_Stream)(st.impl)
+	if ws == nil { return }
+	if ws.use_wgc { wgc_stream_close(&ws.wgc) }
+	free(ws, st.allocator)
+	st.impl = nil
+}
+
+// The monitor's next new picture through its duplication (AcquireNextFrame waits for a change).
+@(private = "file")
+duplication_stream_next :: proc(impl: ^Impl, ws: ^Win_Stream, st: ^Stream, timeout: time.Duration) -> (f: Stream_Frame, ok: bool, err: Error) {
+	deadline := monotonic_ns() + i64(timeout)
+	for {
+		now := monotonic_ns()
+		due := stream_pacer_due(&st.pacer)
+		if now < due {
+			if now >= deadline { return {}, false, .None }
+			win.Sleep(u32(max((min(due, deadline) - now) / 1_000_000, 1)))
+			continue
+		}
+		m := monitor_find(impl, ws.monitor)
+		if m == nil {
+			monitors_read(impl)
+			m = monitor_find(impl, ws.monitor)
+			if m == nil { return {}, false, .Gone }
+		}
+		d := &m.duplication
+		if d.duplication == nil && !duplication_open(impl, m) { return {}, false, .Failed }
+		info: dxgi.OUTDUPL_FRAME_INFO
+		resource: ^dxgi.IResource
+		hr := d.duplication->AcquireNextFrame(u32(max((deadline - now) / 1_000_000, 0)), &info, &resource)
+		if hr == dxgi.ERROR_ACCESS_LOST {
+			// A mode change, the secure desktop: this duplication is dead, a new one works (a few times in a row at most).
+			duplication_close(d)
+			ws.losses += 1
+			if ws.losses > DUPLICATION_LOSSES_MAX { return {}, false, .Failed }
+			continue
+		}
+		if hr == dxgi.ERROR_WAIT_TIMEOUT { return {}, false, .None }
+		if hr < 0 || resource == nil {
+			duplication_close(d)
+			return {}, false, .Failed
+		}
+		ws.losses = 0
+		// (a frame with no present time moved only the pointer, which these frames do not show)
+		presented := info.LastPresentTime != 0
+		copied := presented && duplication_copy(d, resource)
+		resource->Release()
+		d.duplication->ReleaseFrame()
+		if !presented { continue }
+		if !copied { return {}, false, .Failed }
+		desc: d3d11.TEXTURE2D_DESC
+		d.staging->GetDesc(&desc)
+		size := [2]i32{i32(desc.Width), i32(desc.Height)}
+		if d.rotation == .Rotate90 || d.rotation == .Rotate270 { size = {size.y, size.x} }
+		dst := stream_frame_target(st, size.x, size.y)
+		frame, read := staging_read_into(d.device_context, d.staging, d.rotation, dst, size)
+		if !read { return {}, false, .Failed }
+		frame.origin, frame.scale = {m.logical.x, m.logical.y}, m.scale
+		f, ok = stream_frame_finish(st, frame, now)
+		if !ok { return {}, false, .Gone }
+		return f, true, .None
+	}
+}
+
+// QueryPerformanceCounter in nanoseconds (time.tick_now's clock): the clock of Windows.Graphics.Capture's
+// SystemRelativeTime, so a stream's own times and the frames' are one.
+@(private)
+monotonic_ns :: proc() -> i64 { return time.tick_now()._nsec }

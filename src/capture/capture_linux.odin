@@ -7,6 +7,8 @@ package capture
 
 import "base:runtime"
 import "core:os"
+import "core:sys/posix"
+import "core:time"
 import "wm"
 
 @(private = "file")
@@ -141,4 +143,47 @@ platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (f: Frame
 	case .None, .Windows:
 	}
 	return {}, .Unsupported
+}
+
+// Streams: Wayland's protocols and X11. The portal backend has none: the ScreenCast portal hands a PipeWire stream, and
+// reading one needs libpipewire's loop and SPA's pod buffers, not written yet.
+@(private)
+platform_stream_open :: proc(s: ^Session, st: ^Stream) -> Error {
+	impl := (^Linux_Impl)(s.impl)
+	switch s.backend {
+	case .Wayland_Image_Copy, .Wayland_Screencopy: return wl_stream_open(impl.wl, st)
+	case .X11:                                     return x11_stream_open(impl.x11, s, st)
+	case .Portal, .None, .Windows:
+	}
+	return .Unsupported
+}
+
+@(private)
+platform_stream_next :: proc(st: ^Stream, timeout: time.Duration) -> (f: Stream_Frame, ok: bool, err: Error) {
+	impl := (^Linux_Impl)(st.session.impl)
+	if impl == nil || st.impl == nil { return {}, false, .Failed }
+	switch st.session.backend {
+	case .Wayland_Image_Copy, .Wayland_Screencopy: return wl_stream_next(impl.wl, st, timeout)
+	case .X11:                                     return x11_stream_next(impl.x11, st, timeout)
+	case .Portal, .None, .Windows:
+	}
+	return {}, false, .Unsupported
+}
+
+@(private)
+platform_stream_close :: proc(st: ^Stream) {
+	switch st.session.backend {
+	case .Wayland_Image_Copy, .Wayland_Screencopy: wl_stream_close(st)
+	case .X11:                                     x11_stream_close(st)
+	case .Portal, .None, .Windows:
+	}
+}
+
+// CLOCK_MONOTONIC in nanoseconds: the clock of Wayland's presentation times, so a stream's own times and the
+// compositor's are one.
+@(private)
+monotonic_ns :: proc() -> i64 {
+	ts: posix.timespec
+	posix.clock_gettime(.MONOTONIC, &ts)
+	return i64(ts.tv_sec) * 1_000_000_000 + i64(ts.tv_nsec)
 }

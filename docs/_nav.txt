@@ -69,6 +69,7 @@ Frames and threads
   flate.md            flate: DEFLATE streams
   png.md              png: the PNG codec
   gif.md              gif: animated GIF encoder
+  h264.md             h264: H.264 with the system's encoders
   mux.md              mux: MP4 and WebM files
   qr.md               qr: QR Codes, written and read
   ocr.md              ocr: the text in a picture

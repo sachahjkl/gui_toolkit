@@ -95,6 +95,7 @@ STEPS := []Step{
 	{name = "store", oses = EVERYWHERE},
 	{name = "capture", oses = EVERYWHERE},
 	{name = "gif", oses = EVERYWHERE},
+	{name = "h264", oses = EVERYWHERE},
 	{name = "mux", oses = EVERYWHERE},
 	{name = "shortcuts", oses = EVERYWHERE},
 	{name = "ocr", oses = EVERYWHERE},   // (the engine's test passes with a log line where none is installed)

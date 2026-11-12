@@ -12,6 +12,9 @@ package capture
 //                               adds it, capture_places_linux.odin, or the compositor's IPC, capture/wm).
 //   wl_output, zxdg_output_v1   the outputs: logical position and size, mode, scale, name.
 //
+// A stream (the end of this file) keeps ext_image_copy_capture's session open and asks a frame per picture, or asks
+// wlr-screencopy a frame per picture (copy_with_damage after the first), into two wl_shm buffers taken in turn.
+//
 // libwayland-client is opened by dlopen, as the platform package does (a program starts without it). The tables of the
 // protocols the library does not ship are written by hand from the XML (wayland-protocols 1.49 staging and unstable,
 // wlr-protocols' screencopy version 3) into the session's state: they point at the library's wl_output_interface and
@@ -77,6 +80,9 @@ Wl_Message :: struct {
 @(private = "file") SCREENCOPY_CAPTURE_OUTPUT :: 0
 @(private = "file") SCREENCOPY_FRAME_COPY :: 0
 @(private = "file") SCREENCOPY_FRAME_DESTROY :: 1
+@(private = "file") SCREENCOPY_FRAME_COPY_WITH_DAMAGE :: 2   // (since 2)
+@(private = "file") SCREENCOPY_COPY_WITH_DAMAGE_SINCE :: 2
+@(private = "file") COPY_SESSION_PAINT_CURSORS :: 1          // create_session's options: the pointer drawn in
 
 @(private = "file") COPY_FAILED_BUFFER_CONSTRAINTS :: 1
 @(private = "file") COPY_FAILED_STOPPED :: 2
@@ -205,6 +211,31 @@ Wl_Listeners :: struct {
 		failed:            proc "c" (data: rawptr, f: Wl_Proxy, reason: u32),
 	},
 	screencopy_frame: struct {
+		buffer:       proc "c" (data: rawptr, f: Wl_Proxy, format, w, h, stride: u32),
+		flags:        proc "c" (data: rawptr, f: Wl_Proxy, flags: u32),
+		ready:        proc "c" (data: rawptr, f: Wl_Proxy, sec_hi, sec_lo, nsec: u32),
+		failed:       proc "c" (data: rawptr, f: Wl_Proxy),
+		damage:       proc "c" (data: rawptr, f: Wl_Proxy, x, y, w, h: u32),
+		linux_dmabuf: proc "c" (data: rawptr, f: Wl_Proxy, format, w, h: u32),
+		buffer_done:  proc "c" (data: rawptr, f: Wl_Proxy),
+	},
+	// a stream's (data: its Wl_Stream), in the same shapes as the three above
+	stream_session: struct {
+		buffer_size:   proc "c" (data: rawptr, s: Wl_Proxy, w, h: u32),
+		shm_format:    proc "c" (data: rawptr, s: Wl_Proxy, format: u32),
+		dmabuf_device: proc "c" (data: rawptr, s: Wl_Proxy, device: ^Wl_Array),
+		dmabuf_format: proc "c" (data: rawptr, s: Wl_Proxy, format: u32, modifiers: ^Wl_Array),
+		done:          proc "c" (data: rawptr, s: Wl_Proxy),
+		stopped:       proc "c" (data: rawptr, s: Wl_Proxy),
+	},
+	stream_frame: struct {
+		transform:         proc "c" (data: rawptr, f: Wl_Proxy, transform: u32),
+		damage:            proc "c" (data: rawptr, f: Wl_Proxy, x, y, w, h: i32),
+		presentation_time: proc "c" (data: rawptr, f: Wl_Proxy, sec_hi, sec_lo, nsec: u32),
+		ready:             proc "c" (data: rawptr, f: Wl_Proxy),
+		failed:            proc "c" (data: rawptr, f: Wl_Proxy, reason: u32),
+	},
+	stream_screencopy: struct {
 		buffer:       proc "c" (data: rawptr, f: Wl_Proxy, format, w, h, stride: u32),
 		flags:        proc "c" (data: rawptr, f: Wl_Proxy, flags: u32),
 		ready:        proc "c" (data: rawptr, f: Wl_Proxy, sec_hi, sec_lo, nsec: u32),
@@ -463,6 +494,9 @@ wl_set_listeners :: proc(st: ^Wl_State) {
 	ls.copy_session = {session_buffer_size, session_shm_format, session_dmabuf_device, session_dmabuf_format, session_done, session_stopped}
 	ls.copy_frame = {frame_transform, frame_damage, frame_presentation_time, frame_ready, frame_failed}
 	ls.screencopy_frame = {sc_buffer, sc_flags, sc_ready, sc_failed, sc_damage, sc_linux_dmabuf, sc_buffer_done}
+	ls.stream_session = {ss_buffer_size, ss_shm_format, session_dmabuf_device, session_dmabuf_format, ss_done, ss_stopped}
+	ls.stream_frame = {sf_transform, frame_damage, sf_presentation_time, sf_ready, sf_failed}
+	ls.stream_screencopy = {ssc_buffer, ssc_flags, ssc_ready, ssc_failed, sc_damage, sc_linux_dmabuf, ssc_buffer_done}
 }
 
 ////////////////////////////////
@@ -1142,3 +1176,471 @@ wl_window_frame :: proc(st: ^Wl_State, id: u64, allocator: runtime.Allocator) ->
 	return f, .None
 }
 
+
+////////////////////////////////
+// streams
+
+// A stream's capture, kept open from frame to frame. ext_image_copy_capture: one session for the source, its buffer
+// constraints said again whenever they change, a frame asked per picture (the compositor answers once the source was
+// damaged). wlr-screencopy: a frame object per picture, its buffer said each time, copy for the first and
+// copy_with_damage after (it waits for a change). Either way two shm buffers are taken in turn: the compositor fills one
+// while the other is read.
+@(private)
+Wl_Stream :: struct {
+	st:            ^Wl_State,
+	screencopy:    bool,
+	is_window:     bool,
+	output:        u64,        // the output's id (an output, a region), looked up each time: it may go
+	toplevel:      u64,        // the window's id
+	opaque:        bool,       // a screen: the alpha byte means nothing
+	cursor:        bool,
+	source:        Wl_Proxy,   // ext_image_capture_source_v1
+	session:       Wl_Proxy,   // ext_image_copy_capture_session_v1
+	stopped:       bool,       // the session ended: the source is gone
+
+	// the session's constraints as said last, and the ones being said (taken at done)
+	size:          [2]i32,
+	format:        u32,
+	has_format:    bool,
+	known:         bool,
+	pending_size:  [2]i32,
+	pending_format: u32,
+	pending_has_format: bool,
+	done_since_start: bool,    // constraints were said since the frame in flight was asked
+
+	buffers:       [2]Wl_Buffer,
+	buffer_size:   [2]i32,     // what the buffers were made for
+	buffer_stride: i32,
+	buffer_format: u32,
+	next_buffer:   int,
+	copied:        bool,       // a screencopy frame was copied: the next ones wait for damage
+
+	// the frame in flight (frame nil: none)
+	frame:         Wl_Proxy,
+	stage:         Wl_Stage,
+	err:           Error,
+	retry:         bool,       // it failed on the buffer's constraints: asked again with the new ones
+	buffer:        int,        // the buffer it fills
+	turn:          Turn,
+	y_invert:      bool,
+	present:       i64,        // when it was presented (ns, the compositor's monotonic clock); 0: not said
+	sc_size:       [2]i32,     // screencopy's buffer, as this frame's events say
+	sc_stride:     i32,
+	sc_format:     u32,
+	sc_has_format: bool,
+}
+
+// How long a stream's start waits for the compositor's constraints.
+@(private = "file") STREAM_OPEN_TIMEOUT :: 2 * time.Second
+
+@(private)
+wl_stream_open :: proc(st: ^Wl_State, stream: ^Stream) -> (err: Error) {
+	l := &st.lib
+	l.display_roundtrip(st.display)   // (an output or a window gone since the lists: Gone, not a protocol error)
+	ws := new(Wl_Stream, stream.allocator)
+	ws^ = {st = st, cursor = stream.options.cursor}
+	defer if err != .None {
+		wl_stream_end(ws)
+		free(ws, stream.allocator)
+	}
+
+	switch v in stream.source {
+	case Stream_Output:
+		ws.output = v.id
+	case Stream_Region:
+		outs := make([dynamic]Output, context.temp_allocator)
+		for o in st.outputs {
+			if o.mode.x <= 0 || o.mode.y <= 0 { continue }
+			r, scale := wl_output_place(o)
+			append(&outs, Output{id = u64(o.global), rect = r, scale = scale})
+		}
+		i := output_most_of(outs[:], v.rect)
+		if i < 0 { return .Failed }
+		ws.output = outs[i].id
+	case Stream_Window:
+		ws.is_window = true
+		ws.toplevel = v.id
+	case:
+		return .Failed
+	}
+
+	if !ws.is_window {
+		o := wl_output_by_id(st, ws.output)
+		if o == nil { return .Gone }
+		ws.opaque = true
+		switch {
+		case st.copy_manager != nil && st.output_sources != nil:
+			ws.source = l.proxy_marshal_flags(st.output_sources, SOURCE_MANAGER_CREATE, &st.tables.source, l.proxy_get_version(st.output_sources), 0, nil, o.proxy)
+		case st.screencopy != nil:
+			// (no session to open: each frame says its buffer)
+			ws.screencopy = true
+			stream.cursor = ws.cursor
+			stream.impl = ws
+			return .None
+		case:
+			return .Unsupported
+		}
+	} else {
+		if st.copy_manager == nil || st.toplevel_sources == nil { return .Unsupported }
+		t: ^Wl_Toplevel
+		for x in st.toplevels { if x.id == ws.toplevel { t = x } }
+		if t == nil { return .Gone }
+		ws.source = l.proxy_marshal_flags(st.toplevel_sources, SOURCE_MANAGER_CREATE, &st.tables.source, l.proxy_get_version(st.toplevel_sources), 0, nil, t.handle)
+	}
+	if ws.source == nil { return .Failed }
+	options := u32(ws.cursor ? COPY_SESSION_PAINT_CURSORS : 0)
+	ws.session = l.proxy_marshal_flags(st.copy_manager, COPY_MANAGER_CREATE_SESSION, &st.tables.copy_session, l.proxy_get_version(st.copy_manager), 0, nil, ws.source, options)
+	if ws.session == nil { return .Failed }
+	l.proxy_add_listener(ws.session, &st.listeners.stream_session, ws)
+
+	// the constraints, before the first frame can be asked
+	start := time.tick_now()
+	for !ws.known && !ws.stopped {
+		left := STREAM_OPEN_TIMEOUT - time.tick_since(start)
+		if left <= 0 { return .Failed }
+		if !wl_dispatch_wait(st, left, wl_stream_known, ws) { return .Failed }
+	}
+	if ws.stopped { return .Gone }
+	if !ws.has_format { return .Unsupported }   // (dmabuf only)
+	stream.cursor = ws.cursor
+	stream.impl = ws
+	return .None
+}
+
+@(private)
+wl_stream_close :: proc(stream: ^Stream) {
+	ws := (^Wl_Stream)(stream.impl)
+	if ws == nil { return }
+	wl_stream_end(ws)
+	free(ws, stream.allocator)
+	stream.impl = nil
+}
+
+// Everything of a stream given back to the compositor.
+@(private = "file")
+wl_stream_end :: proc(ws: ^Wl_Stream) {
+	st := ws.st
+	l := &st.lib
+	wl_stream_frame_end(ws)
+	if ws.session != nil { l.proxy_marshal_flags(ws.session, COPY_SESSION_DESTROY, nil, l.proxy_get_version(ws.session), WL_MARSHAL_FLAG_DESTROY) }
+	if ws.source != nil { l.proxy_marshal_flags(ws.source, SOURCE_DESTROY, nil, l.proxy_get_version(ws.source), WL_MARSHAL_FLAG_DESTROY) }
+	ws.session, ws.source = nil, nil
+	for &b in ws.buffers { wl_buffer_free(st, &b) }
+	l.display_flush(st.display)
+}
+
+@(private)
+wl_stream_next :: proc(st: ^Wl_State, stream: ^Stream, timeout: time.Duration) -> (f: Stream_Frame, ok: bool, err: Error) {
+	ws := (^Wl_Stream)(stream.impl)
+	deadline := monotonic_ns() + i64(timeout)
+	for {
+		now := monotonic_ns()
+		if ws.frame == nil {
+			if ws.stopped { return {}, false, .Gone }
+			due := stream_pacer_due(&stream.pacer)
+			ready_to_ask := ws.screencopy || ws.known
+			if now < due || !ready_to_ask {
+				if now >= deadline { return {}, false, .None }
+				// (the pace: only the end of the session cuts the wait short; the constraints: their done does)
+				until := ready_to_ask ? min(due, deadline) : deadline
+				done := ready_to_ask ? wl_stream_stopped : wl_stream_known
+				if !wl_dispatch_wait(st, time.Duration(max(until - now, 0)), done, ws) { return {}, false, .Failed }
+				continue
+			}
+			if e := wl_stream_frame_start(ws); e != .None { return {}, false, e }
+		}
+		if ws.stage == .Constraints || ws.stage == .Copying {
+			// (the frame stays asked past the deadline: the next call waits for it)
+			if now >= deadline { return {}, false, .None }
+			if !wl_dispatch_wait(st, time.Duration(deadline - now), wl_stream_frame_settled, ws) { return {}, false, .Failed }
+			continue
+		}
+		stage, frame_err, retry, filled := ws.stage, ws.err, ws.retry, ws.buffer
+		wl_stream_frame_end(ws)
+		if stage == .Failed {
+			if retry { continue }
+			return {}, false, frame_err != .None ? frame_err : .Failed
+		}
+		ws.next_buffer = 1 - filled
+		ws.copied = true
+		at := ws.present != 0 ? ws.present : monotonic_ns()
+		f, ok = wl_stream_frame(ws, stream, filled, at)
+		if !ok { return {}, false, .Gone }   // (the region is off its output: the output changed)
+		// The next frame asked now when it is due already (the conversion took the interval): the compositor fills the
+		// other buffer while the caller encodes this one.
+		if monotonic_ns() >= stream_pacer_due(&stream.pacer) && !ws.stopped && (ws.screencopy || ws.known) {
+			_ = wl_stream_frame_start(ws)
+		}
+		return f, true, .None
+	}
+}
+
+// A frame asked into the next buffer.
+@(private = "file")
+wl_stream_frame_start :: proc(ws: ^Wl_Stream) -> Error {
+	st := ws.st
+	l := &st.lib
+	ws.buffer = ws.next_buffer
+	ws.err, ws.retry, ws.present, ws.y_invert, ws.turn = .None, false, 0, false, .Normal
+	ws.done_since_start = false
+	if ws.screencopy {
+		o := wl_output_by_id(st, ws.output)
+		if o == nil { return .Gone }
+		// (screencopy's buffer is the output's, before its transform: the output's own says how it is turned)
+		ws.turn = Turn(u8(clamp(o.transform, 0, 7)))
+		ws.sc_has_format = false
+		ws.frame = l.proxy_marshal_flags(st.screencopy, SCREENCOPY_CAPTURE_OUTPUT, &st.tables.screencopy_frame, l.proxy_get_version(st.screencopy), 0, nil, i32(ws.cursor ? 1 : 0), o.proxy)
+		if ws.frame == nil { return .Failed }
+		ws.stage = .Constraints
+		l.proxy_add_listener(ws.frame, &st.listeners.stream_screencopy, ws)
+	} else {
+		if !wl_stream_buffers(ws, ws.size, ws.size.x * 4, ws.format) { return .Failed }
+		ws.frame = l.proxy_marshal_flags(ws.session, COPY_SESSION_CREATE_FRAME, &st.tables.copy_frame, l.proxy_get_version(ws.session), 0, nil)
+		if ws.frame == nil { return .Failed }
+		l.proxy_add_listener(ws.frame, &st.listeners.stream_frame, ws)
+		v := l.proxy_get_version(ws.frame)
+		l.proxy_marshal_flags(ws.frame, COPY_FRAME_ATTACH_BUFFER, nil, v, 0, ws.buffers[ws.buffer].proxy)
+		// (the whole buffer: what it holds is the frame two before, not the one the compositor last wrote in it)
+		l.proxy_marshal_flags(ws.frame, COPY_FRAME_DAMAGE_BUFFER, nil, v, 0, i32(0), i32(0), ws.size.x, ws.size.y)
+		l.proxy_marshal_flags(ws.frame, COPY_FRAME_CAPTURE, nil, v, 0)
+		ws.stage = .Copying
+	}
+	l.display_flush(st.display)
+	return .None
+}
+
+@(private = "file")
+wl_stream_frame_end :: proc(ws: ^Wl_Stream) {
+	if ws.frame == nil { return }
+	l := &ws.st.lib
+	op := u32(ws.screencopy ? SCREENCOPY_FRAME_DESTROY : COPY_FRAME_DESTROY)
+	l.proxy_marshal_flags(ws.frame, op, nil, l.proxy_get_version(ws.frame), WL_MARSHAL_FLAG_DESTROY)
+	ws.frame = nil
+}
+
+// Both buffers made for `size`, `stride` and `format`, unless they are already.
+@(private = "file")
+wl_stream_buffers :: proc(ws: ^Wl_Stream, size: [2]i32, stride: i32, format: u32) -> bool {
+	if ws.buffers[0].proxy != nil && ws.buffer_size == size && ws.buffer_stride == stride && ws.buffer_format == format { return true }
+	for &b in ws.buffers { wl_buffer_free(ws.st, &b) }
+	for &b in ws.buffers {
+		made, ok := wl_buffer_make(ws.st, size, stride, format)
+		if !ok {
+			for &x in ws.buffers { wl_buffer_free(ws.st, &x) }
+			return false
+		}
+		b = made
+	}
+	ws.buffer_size, ws.buffer_stride, ws.buffer_format = size, stride, format
+	return true
+}
+
+// screencopy's buffer is said: the copy asked (with damage after the first: the compositor waits for a change; the
+// first is a plain copy, or a still screen would never give one).
+@(private = "file")
+wl_stream_sc_copy :: proc(ws: ^Wl_Stream) {
+	if ws.stage != .Constraints { return }
+	if !ws.sc_has_format { wl_stream_fail(ws, .Unsupported); return }
+	if !wl_stream_buffers(ws, ws.sc_size, ws.sc_stride, ws.sc_format) { wl_stream_fail(ws, .Failed); return }
+	l := &ws.st.lib
+	op := u32(SCREENCOPY_FRAME_COPY)
+	if ws.copied && ws.st.screencopy_version >= SCREENCOPY_COPY_WITH_DAMAGE_SINCE { op = SCREENCOPY_FRAME_COPY_WITH_DAMAGE }
+	l.proxy_marshal_flags(ws.frame, op, nil, l.proxy_get_version(ws.frame), 0, ws.buffers[ws.buffer].proxy)
+	ws.stage = .Copying
+}
+
+@(private = "file")
+wl_stream_fail :: proc(ws: ^Wl_Stream, err: Error) {
+	if ws.stage == .Ready || ws.stage == .Failed { return }
+	ws.stage = .Failed
+	ws.err = err
+}
+
+// The filled buffer as the stream's frame, placed on the desktop.
+@(private = "file")
+wl_stream_frame :: proc(ws: ^Wl_Stream, stream: ^Stream, filled: int, at: i64) -> (Stream_Frame, bool) {
+	st := ws.st
+	b := ws.buffers[filled]
+	src := ([^]u8)(b.mem)[:b.bytes]
+	order := Pixel_Order.BGRA
+	if ws.buffer_format == SHM_ABGR8888 || ws.buffer_format == SHM_XBGR8888 { order = .RGBA }
+	opaque := ws.opaque || ws.buffer_format == SHM_XRGB8888 || ws.buffer_format == SHM_XBGR8888
+	w, h := turned_size(ws.buffer_size.x, ws.buffer_size.y, ws.turn)
+	dst := stream_frame_target(stream, w, h)
+	f := frame_from_buffer_into(dst, src, ws.buffer_size.x, ws.buffer_size.y, ws.buffer_stride, order, ws.turn, ws.y_invert, opaque)
+	if !ws.is_window {
+		if o := wl_output_by_id(st, ws.output); o != nil {
+			r, _ := wl_output_place(o)
+			f.origin = {r.x, r.y}
+			f.scale = r.w > 0 ? f32(f.width) / f32(r.w) : 1
+		}
+	} else {
+		t: ^Wl_Toplevel
+		for x in st.toplevels { if x.id == ws.toplevel { t = x } }
+		if t != nil && t.has_rect && t.rect.w > 0 {
+			f.origin = {t.rect.x, t.rect.y}
+			f.scale = f32(f.width) / f32(t.rect.w)
+		} else {
+			scale: f32 = 1
+			for o in st.outputs { _, s := wl_output_place(o); scale = max(scale, s) }
+			f.scale = scale
+		}
+	}
+	return stream_frame_finish(stream, f, at)
+}
+
+@(private = "file")
+wl_stream_known :: proc(data: rawptr) -> bool {
+	ws := (^Wl_Stream)(data)
+	return ws.known || ws.stopped
+}
+
+@(private = "file")
+wl_stream_stopped :: proc(data: rawptr) -> bool { return (^Wl_Stream)(data).stopped }
+
+@(private = "file")
+wl_stream_frame_settled :: proc(data: rawptr) -> bool {
+	ws := (^Wl_Stream)(data)
+	return ws.stage == .Ready || ws.stage == .Failed
+}
+
+// Dispatches what came, waiting up to `wait` for more unless `done` says it is there already. False: the connection is
+// broken.
+@(private = "file")
+wl_dispatch_wait :: proc(st: ^Wl_State, wait: time.Duration, done: proc(data: rawptr) -> bool, data: rawptr) -> bool {
+	l := &st.lib
+	d := st.display
+	if l.display_dispatch_pending(d) < 0 { return false }
+	if done(data) { l.display_flush(d); return true }
+	for l.display_prepare_read(d) != 0 {
+		if l.display_dispatch_pending(d) < 0 { return false }
+	}
+	if done(data) {
+		l.display_cancel_read(d)
+		l.display_flush(d)
+		return true
+	}
+	l.display_flush(d)
+	ms := i32(0)
+	if wait > 0 { ms = i32(max(time.duration_milliseconds(wait), 1)) }
+	p := posix.pollfd{fd = posix.FD(st.fd), events = {.IN}}
+	if posix.poll(&p, 1, ms) > 0 {
+		if l.display_read_events(d) < 0 { return false }
+		return l.display_dispatch_pending(d) >= 0
+	}
+	l.display_cancel_read(d)
+	return true
+}
+
+// a stream's ext_image_copy_capture_session_v1 events: the constraints, taken whole at done
+
+@(private = "file")
+ss_buffer_size :: proc "c" (data: rawptr, s: Wl_Proxy, w, h: u32) { (^Wl_Stream)(data).pending_size = {i32(w), i32(h)} }
+
+@(private = "file")
+ss_shm_format :: proc "c" (data: rawptr, s: Wl_Proxy, format: u32) {
+	context = cb_ctx()
+	ws := (^Wl_Stream)(data)
+	if format_rank(format) > (ws.pending_has_format ? format_rank(ws.pending_format) : 0) {
+		ws.pending_format = format
+		ws.pending_has_format = true
+	}
+}
+
+@(private = "file")
+ss_done :: proc "c" (data: rawptr, s: Wl_Proxy) {
+	ws := (^Wl_Stream)(data)
+	ws.size, ws.format, ws.has_format = ws.pending_size, ws.pending_format, ws.pending_has_format
+	ws.pending_has_format = false
+	ws.known = ws.has_format && ws.size.x > 0 && ws.size.y > 0
+	ws.done_since_start = true
+}
+
+@(private = "file")
+ss_stopped :: proc "c" (data: rawptr, s: Wl_Proxy) {
+	ws := (^Wl_Stream)(data)
+	ws.stopped = true
+	if ws.frame != nil && ws.stage != .Ready && ws.stage != .Failed {
+		ws.stage = .Failed
+		ws.err = .Gone
+	}
+}
+
+// a stream's ext_image_copy_capture_frame_v1 events
+
+@(private = "file")
+sf_transform :: proc "c" (data: rawptr, f: Wl_Proxy, transform: u32) { (^Wl_Stream)(data).turn = Turn(u8(min(transform, 7))) }
+
+@(private = "file")
+sf_presentation_time :: proc "c" (data: rawptr, f: Wl_Proxy, sec_hi, sec_lo, nsec: u32) {
+	(^Wl_Stream)(data).present = presentation_ns(sec_hi, sec_lo, nsec)
+}
+
+@(private = "file")
+sf_ready :: proc "c" (data: rawptr, f: Wl_Proxy) {
+	ws := (^Wl_Stream)(data)
+	if ws.stage == .Copying { ws.stage = .Ready }
+}
+
+// A frame that failed on the buffer's constraints is asked again: at once when the new constraints were said already,
+// else once they are (known goes false until the session's done).
+@(private = "file")
+sf_failed :: proc "c" (data: rawptr, f: Wl_Proxy, reason: u32) {
+	ws := (^Wl_Stream)(data)
+	if ws.stage == .Ready || ws.stage == .Failed { return }
+	ws.stage = .Failed
+	switch reason {
+	case COPY_FAILED_BUFFER_CONSTRAINTS:
+		ws.retry = true
+		if !ws.done_since_start { ws.known = false }
+	case COPY_FAILED_STOPPED:
+		ws.err = .Gone
+		ws.stopped = true
+	case:
+		ws.err = .Failed
+	}
+}
+
+// a stream's zwlr_screencopy_frame_v1 events
+
+@(private = "file")
+ssc_buffer :: proc "c" (data: rawptr, f: Wl_Proxy, format, w, h, stride: u32) {
+	context = cb_ctx()
+	ws := (^Wl_Stream)(data)
+	if format_rank(format) > (ws.sc_has_format ? format_rank(ws.sc_format) : 0) {
+		ws.sc_format, ws.sc_has_format = format, true
+		ws.sc_size, ws.sc_stride = {i32(w), i32(h)}, i32(stride)
+	}
+	// (before version 3 no buffer_done follows: the one buffer event is all)
+	if ws.st.screencopy_version < SCREENCOPY_BUFFER_DONE_SINCE { wl_stream_sc_copy(ws) }
+}
+
+@(private = "file")
+ssc_flags :: proc "c" (data: rawptr, f: Wl_Proxy, flags: u32) { (^Wl_Stream)(data).y_invert = flags & SCREENCOPY_FLAG_Y_INVERT != 0 }
+
+@(private = "file")
+ssc_ready :: proc "c" (data: rawptr, f: Wl_Proxy, sec_hi, sec_lo, nsec: u32) {
+	ws := (^Wl_Stream)(data)
+	ws.present = presentation_ns(sec_hi, sec_lo, nsec)
+	if ws.stage == .Copying { ws.stage = .Ready }
+}
+
+@(private = "file")
+ssc_failed :: proc "c" (data: rawptr, f: Wl_Proxy) {
+	ws := (^Wl_Stream)(data)
+	if ws.stage == .Ready || ws.stage == .Failed { return }
+	ws.stage = .Failed
+	ws.err = .Failed
+}
+
+@(private = "file")
+ssc_buffer_done :: proc "c" (data: rawptr, f: Wl_Proxy) {
+	context = cb_ctx()
+	wl_stream_sc_copy((^Wl_Stream)(data))
+}
+
+// A presentation time (seconds in two halves, nanoseconds) in nanoseconds.
+@(private = "file")
+presentation_ns :: proc "contextless" (sec_hi, sec_lo, nsec: u32) -> i64 {
+	return i64(u64(sec_hi) << 32 | u64(sec_lo)) * 1_000_000_000 + i64(nsec)
+}

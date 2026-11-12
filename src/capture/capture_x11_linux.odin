@@ -7,11 +7,13 @@ package capture
 // windows come from _NET_CLIENT_LIST_STACKING (bottom to top: read reversed), named by _NET_WM_NAME (else WM_NAME) and
 // WM_CLASS; a window's rect is its frame: its position on the root (TranslateCoordinates) grown by _NET_FRAME_EXTENTS
 // (the window manager's decorations) and shrunk by _GTK_FRAME_EXTENTS (a client-side shadow). A window's picture is the
-// root cut to that rect: what covers the window shows in it. X11 has no logical pixels: scale 1 everywhere.
+// root cut to that rect: what covers the window shows in it. X11 has no logical pixels: scale 1 everywhere. A stream
+// (the end of this file) reads its rectangle at its pace and gives what changed.
 
 import "base:runtime"
 import "core:strings"
 import "core:sys/posix"
+import "core:time"
 
 @(private = "file") Xcb_Connection :: distinct rawptr
 @(private = "file") Xcb_Cookie :: struct { sequence: u32 }
@@ -374,4 +376,118 @@ x11_grab :: proc(st: ^X11_State, r: Rect, allocator: runtime.Allocator) -> (f: F
 @(private)
 x11_desktop :: proc(st: ^X11_State, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
 	return x11_grab(st, {0, 0, i32(st.screen.width_in_pixels), i32(st.screen.height_in_pixels)}, allocator)
+}
+
+////////////////////////////////
+// streams
+
+// A stream on X11 reads its rectangle of the root at the stream's pace and gives a frame when the pixels differ from
+// the last ones (no XDamage yet: a still screen costs a read and a comparison per interval). A region is read as it is,
+// not cut from its output. A window is the root at its frame: its position followed, its size the one it had at the
+// start. The pointer is never in the picture (GetImage leaves it out).
+@(private)
+X11_Stream :: struct {
+	rect:   Rect,   // what is read of the root
+	window: u32,
+	follow: bool,   // a window: its position read again before each frame
+}
+
+@(private)
+x11_stream_open :: proc(st: ^X11_State, s: ^Session, stream: ^Stream) -> Error {
+	if st.screen.root_depth != 24 && st.screen.root_depth != 32 { return .Unsupported }
+	if !st.lsb_first { return .Unsupported }
+	xs := X11_Stream{}
+	switch v in stream.source {
+	case Stream_Output:
+		found := false
+		for o in outputs(s) {
+			if o.id != v.id { continue }
+			xs.rect, found = o.rect, true
+		}
+		if !found { return .Gone }
+	case Stream_Region:
+		xs.rect = v.rect
+		stream.cropping = false   // (read as it is: nothing to cut)
+	case Stream_Window:
+		r, ok := x11_frame_rect(st, u32(v.id))
+		if !ok { return .Gone }
+		xs.rect, xs.window, xs.follow = r, u32(v.id), true
+	case:
+		return .Failed
+	}
+	xs.rect = x11_rect_on_root(st, xs.rect)
+	if xs.rect.w <= 0 || xs.rect.h <= 0 { return .Failed }
+	impl := new(X11_Stream, stream.allocator)
+	impl^ = xs
+	stream.impl = impl
+	stream.cursor = false
+	return .None
+}
+
+@(private)
+x11_stream_close :: proc(stream: ^Stream) {
+	if stream.impl != nil { free(stream.impl, stream.allocator) }
+	stream.impl = nil
+}
+
+@(private)
+x11_stream_next :: proc(st: ^X11_State, stream: ^Stream, timeout: time.Duration) -> (f: Stream_Frame, ok: bool, err: Error) {
+	xs := (^X11_Stream)(stream.impl)
+	deadline := monotonic_ns() + i64(timeout)
+	for {
+		now := monotonic_ns()
+		due := stream_pacer_due(&stream.pacer)
+		if now < due {
+			if now >= deadline { return {}, false, .None }
+			time.sleep(time.Duration(min(due, deadline) - now))
+			continue
+		}
+		if xs.follow {
+			r, found := x11_frame_rect(st, xs.window)
+			if !found { return {}, false, .Gone }
+			// (the size stays the first one: an encoder's frames all have one size)
+			xs.rect = x11_rect_on_root(st, {r.x, r.y, xs.rect.w, xs.rect.h})
+		}
+		dst := frame_ring_take(&stream.ring, int(xs.rect.w) * int(xs.rect.h) * 4)
+		if !x11_read_into(st, xs.rect, dst) { return {}, false, .Failed }
+		previous := stream.ring.buffers[stream.ring.next][:]
+		if stream.frames > 0 && len(previous) == len(dst) && x11_same(previous, dst) {
+			// Nothing changed: the buffer is taken again next time (the frame given last stays as it is), and the next
+			// read waits an interval.
+			frame_ring_return(&stream.ring)
+			stream_pacer_poll(&stream.pacer, now)
+			continue
+		}
+		frame := Frame{pixels = dst, width = xs.rect.w, height = xs.rect.h, stride = xs.rect.w * 4, scale = 1, origin = {xs.rect.x, xs.rect.y}}
+		f, ok = stream_frame_finish(stream, frame, now)
+		return f, ok, .None
+	}
+}
+
+// `r` moved (not shrunk, unless it is larger than the root) to lie inside the root: a stream's size does not change.
+@(private = "file")
+x11_rect_on_root :: proc(st: ^X11_State, r: Rect) -> Rect {
+	rw, rh := i32(st.screen.width_in_pixels), i32(st.screen.height_in_pixels)
+	out := Rect{r.x, r.y, min(r.w, rw), min(r.h, rh)}
+	out.x = clamp(out.x, 0, rw - out.w)
+	out.y = clamp(out.y, 0, rh - out.h)
+	return out
+}
+
+// `r` of the root (inside it) read into `dst` (r.w * r.h * 4 bytes), upright, opaque.
+@(private = "file")
+x11_read_into :: proc(st: ^X11_State, r: Rect, dst: []u8) -> bool {
+	l := &st.lib
+	reply := l.get_image_reply(st.c, l.get_image(st.c, XCB_IMAGE_FORMAT_Z_PIXMAP, st.screen.root, i16(r.x), i16(r.y), u16(r.w), u16(r.h), ~u32(0)), nil)
+	if reply == nil { return false }
+	defer posix.free(reply)
+	n := int(l.get_image_data_length(reply))
+	if n < int(r.w) * int(r.h) * 4 || len(dst) < int(r.w) * int(r.h) * 4 { return false }
+	frame_from_buffer_into(dst, l.get_image_data(reply)[:n], r.w, r.h, r.w * 4, .BGRA, .Normal, false, true)
+	return true
+}
+
+@(private = "file")
+x11_same :: proc(a, b: []u8) -> bool {
+	return len(a) == len(b) && runtime.memory_compare(raw_data(a), raw_data(b), len(a)) == 0
 }

@@ -2,7 +2,8 @@
 
 The screens and the windows of the desktop, as pictures: what a screenshot tool or a screen recorder needs from the
 system. The outputs (monitors) and where they are, the windows and where they are (when the system says it), and a
-picture of an output, of a window, or of the whole desktop.
+picture of an output, of a window, or of the whole desktop. For a recording, a stream of the frames of an output, a
+window or a region ([Streams](#streams)).
 
 ```odin
 import "gt:capture"
@@ -28,6 +29,54 @@ opened it.
 The desktop's, in logical pixels (what a window's size is given in), the outputs side by side as the system places them.
 A `Frame` is in physical pixels, `scale` of them per logical pixel, and says where on the desktop its first pixel is
 (`origin`, logical). Pixels are BGRA, 8 bits a channel, straight alpha (opaque for a screen).
+
+## Streams
+
+A screen recorder needs frames, not pictures: `stream_open` keeps the capture of one source open, and `stream_next`
+gives a frame each time the source changed, at most `fps` a second.
+
+```odin
+st, err := capture.stream_open(s, capture.Stream_Output{outs[0].id}, {fps = 30, cursor = true})
+for recording {
+	f, ok, err := capture.stream_next(st, 100 * time.Millisecond)   // blocks
+	if err != .None { break }                                       // .Gone: the source went away
+	if ok { encode(f.pixels, f.width, f.height, f.timestamp) }      // ok false: nothing changed meanwhile
+}
+capture.stream_close(st)
+```
+
+- **Sources.** `Stream_Output{id}` is a whole output. `Stream_Window{id}` is one window. `Stream_Region{rect}` is a
+  rectangle of the desktop, logical: the frames of the output that holds most of it, cut to it (a region across two
+  outputs gives the part on one of them).
+- **When a frame comes.** `stream_next` returns when the source changed (the backend's damage), and never sooner than
+  `1 / fps` after the frame before. If nothing changes before `timeout`, it returns `ok = false` with no error: ask
+  again. An error ends the stream.
+- **Timestamps.** `timestamp` is in nanoseconds since the first frame, which is 0. It always increases. It is the time
+  the compositor presented the frame where the backend says it, else the time the frame came.
+- **Pixels.** A frame is BGRA, opaque, rows packed (`stride = width * 4`). Its pixels belong to the stream: do not free
+  them. They stay valid until `stream_next` is called twice more: two buffers are used in turn, so the frame before the
+  last one can still be read while the next one is made.
+- **Size.** The frames of an output or a region keep one size while the output's mode does not change. A window's
+  frames keep the size it had at the start on Windows and on X11 (cut or padded with black); on Wayland they follow the
+  window's size.
+- **The pointer.** `options.cursor` asks for the pointer in the frames; `Stream.cursor` says whether the backend draws it.
+- **Threads.** Call the three procedures on the session's thread, and no other procedure of the session while a stream
+  is open. A recorder opens a session of its own on its own thread.
+
+| Backend | Output, region | Window | Changes | Pointer |
+|---|---|---|---|---|
+| `ext_image_copy_capture_v1` | a session kept open | a session kept open | the compositor's damage | `paint_cursors` |
+| `zwlr_screencopy_v1` | a frame per picture, `copy_with_damage` | no | the compositor's damage | `overlay_cursor` |
+| Portal | no | no | | |
+| X11 | `GetImage` at the pace | the root at its frame | the pixels compared | no |
+| Windows | Windows.Graphics.Capture, else Desktop Duplication | Windows.Graphics.Capture | the system's | Graphics Capture only |
+
+The portal backend has no stream: the ScreenCast portal hands a PipeWire stream, which needs libpipewire and is not
+written. On X11 there is no MIT-SHM nor XDamage yet: a still screen costs one read and one comparison per interval.
+
+The pure parts are public and tested on every system (`tests/capture/capture_stream_test.odin`): `Stream_Pacer` (when
+the next capture may start, each frame's timestamp), `Frame_Ring` (the two buffers) and `crop_into` / `crop_size` (a
+region cut into a buffer of the caller's).
 
 ## Linux
 

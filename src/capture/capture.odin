@@ -13,6 +13,8 @@
 //   capture.frame_free(&f)
 //   capture.close(s)
 //
+// A screen recorder opens a stream instead (stream.odin): the source's capture kept open, a frame each time it changed.
+//
 // Coordinates: the desktop's, in logical pixels (what a window's size is given in), the outputs side by side as the system
 // places them. A Frame is in physical pixels (`scale` of them per logical pixel) and says where on the desktop its first
 // pixel is (`origin`, logical).
@@ -143,20 +145,43 @@ desktop :: proc(s: ^Session, allocator := context.allocator) -> (f: Frame, err: 
 
 // `r` (logical, on the desktop) cut from `f`, in a new frame.
 crop :: proc(f: Frame, r: Rect, allocator := context.allocator) -> (out: Frame, ok: bool) {
-	x0 := i32(f32(r.x - f.origin.x) * f.scale)
-	y0 := i32(f32(r.y - f.origin.y) * f.scale)
-	w := i32(f32(r.w) * f.scale)
-	h := i32(f32(r.h) * f.scale)
-	x0, y0 = max(x0, 0), max(y0, 0)
-	w, h = min(w, f.width - x0), min(h, f.height - y0)
-	if w <= 0 || h <= 0 { return {}, false }
-	out = Frame{width = w, height = h, stride = w * 4, scale = f.scale, origin = {r.x, r.y}, allocator = allocator}
-	out.pixels = make([]u8, int(w * h * 4), allocator)
+	_, _, w, h := crop_bounds(f, r) or_return
+	pixels := make([]u8, int(w) * int(h) * 4, allocator)
+	out, ok = crop_into(f, r, pixels)
+	out.allocator = allocator
+	return
+}
+
+// `r` (logical, on the desktop) cut from `f` into `pixels`, which must hold crop_size's bytes: no allocation, what a
+// stream does with each frame of a region. The frame's pixels are `pixels`; it does not own them (no allocator).
+crop_into :: proc(f: Frame, r: Rect, pixels: []u8) -> (out: Frame, ok: bool) {
+	x0, y0, w, h := crop_bounds(f, r) or_return
+	if len(pixels) < int(w) * int(h) * 4 { return {}, false }
+	out = Frame{width = w, height = h, stride = w * 4, scale = f.scale, origin = {r.x, r.y}}
+	out.pixels = pixels[:int(w) * int(h) * 4]
 	for y in 0 ..< h {
 		src := f.pixels[int((y0 + y) * f.stride + x0 * 4):][:int(w * 4)]
 		copy(out.pixels[int(y * w * 4):], src)
 	}
 	return out, true
+}
+
+// The size in physical pixels of `r` cut from `f` (0, 0 when they do not meet).
+crop_size :: proc(f: Frame, r: Rect) -> (w, h: i32) {
+	_, _, w, h, _ = crop_bounds(f, r)
+	return
+}
+
+@(private = "file")
+crop_bounds :: proc(f: Frame, r: Rect) -> (x0, y0, w, h: i32, ok: bool) {
+	x0 = i32(f32(r.x - f.origin.x) * f.scale)
+	y0 = i32(f32(r.y - f.origin.y) * f.scale)
+	w = i32(f32(r.w) * f.scale)
+	h = i32(f32(r.h) * f.scale)
+	x0, y0 = max(x0, 0), max(y0, 0)
+	w, h = min(w, f.width - x0), min(h, f.height - y0)
+	if w <= 0 || h <= 0 { return 0, 0, 0, 0, false }
+	return x0, y0, w, h, true
 }
 
 frame_free :: proc(f: ^Frame) {

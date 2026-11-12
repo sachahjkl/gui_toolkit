@@ -4,11 +4,13 @@ package capture
 // A window's picture through Windows.Graphics.Capture (Windows 10 1903 and later): the window's own content, whatever
 // covers it. One frame from a free-threaded Direct3D11CaptureFramePool, then everything is closed: a window capture is
 // rare enough (a click in a screenshot tool) that keeping a session open would only keep the capture border on screen.
+// A stream (the end of this file) keeps its pool and its session open instead, of a window or of a monitor.
 //
 // The interfaces are declared here with no projection (docs/winrt.md): vtables in the order of the SDK's headers
 // (windows.graphics.capture.h, windows.graphics.directx.direct3d11.interop.h).
 
 import "base:runtime"
+import "core:time"
 import win "core:sys/windows"
 import d3d11 "vendor:directx/d3d11"
 import dxgi "vendor:directx/dxgi"
@@ -46,7 +48,7 @@ IGraphicsCaptureItemInterop_Vtbl :: struct {
 	AddRef:           rawptr,
 	Release:          rawptr,
 	CreateForWindow:  proc "system" (this: rawptr, window: win.HWND, riid: ^winrt.GUID, item: ^rawptr) -> win.HRESULT,
-	CreateForMonitor: rawptr,
+	CreateForMonitor: proc "system" (this: rawptr, monitor: win.HMONITOR, riid: ^winrt.GUID, item: ^rawptr) -> win.HRESULT,
 }
 
 @(private = "file")
@@ -92,7 +94,7 @@ IGraphicsCaptureSession2_Vtbl :: struct {
 IDirect3D11CaptureFrame_Vtbl :: struct {
 	using base:             winrt.IInspectable_Vtbl,
 	get_Surface:            proc "system" (this: rawptr, surface: ^rawptr) -> win.HRESULT,
-	get_SystemRelativeTime: rawptr,
+	get_SystemRelativeTime: proc "system" (this: rawptr, time: ^i64) -> win.HRESULT,   // a TimeSpan: 100 ns units, QueryPerformanceCounter's clock
 	get_ContentSize:        proc "system" (this: rawptr, size: ^SizeInt32) -> win.HRESULT,
 }
 
@@ -272,4 +274,173 @@ closable_close :: proc(object: rawptr) {
 		winrt.vtable(closable, IClosable_Vtbl).Close(closable)
 		winrt.release(closable)
 	}
+}
+
+////////////////////////////////
+// streams
+
+// A stream through Windows.Graphics.Capture: the item (a window or a monitor), a free-threaded frame pool of two
+// buffers and its session, kept open while the stream is. The pool gives a frame each time the content changed; each
+// step takes the newest one and drops the older ones. Every frame has the size the item had at the start (a window
+// that grows is cut, one that shrinks is padded with black): an encoder's frames all have one size.
+@(private)
+Wgc_Stream :: struct {
+	item:       rawptr,             // GraphicsCaptureItem
+	pool:       rawptr,             // Direct3D11CaptureFramePool
+	session:    rawptr,             // GraphicsCaptureSession
+	token:      i64,
+	registered: bool,               // the FrameArrived handler is added (token is its)
+	event:      win.HANDLE,         // auto-reset, set by the pool's thread at each frame
+	window:     win.HWND,           // nil: a monitor
+	size:       SizeInt32,          // the pool's, and every frame's
+	staging:    ^d3d11.ITexture2D,
+}
+
+@(private = "file") STREAM_BUFFERS :: 2
+
+// The stream opened on `window`, or else on `monitor`, with the device of the session's window captures.
+// .Unsupported: no Windows.Graphics.Capture here (the caller takes Desktop Duplication for a monitor).
+@(private)
+wgc_stream_open :: proc(c: ^Window_Capture, ws: ^Wgc_Stream, window: win.HWND, monitor: win.HMONITOR, cursor: bool) -> (err: Error) {
+	if c.unsupported { return .Unsupported }
+	if c.device == nil && !window_capture_open(c) {
+		window_capture_close(c)
+		c.unsupported = true
+		return .Unsupported
+	}
+	ws^ = {window = window}
+	defer if err != .None { wgc_stream_close(ws) }
+
+	interop, hr := winrt.factory(CLASS_ITEM, IID_IGraphicsCaptureItemInterop)
+	if !winrt.ok(hr) || interop == nil { return .Unsupported }
+	defer winrt.release(interop)
+	item_iid := IID_IGraphicsCaptureItem
+	interop_vtbl := winrt.vtable(interop, IGraphicsCaptureItemInterop_Vtbl)
+	if window != nil {
+		hr = interop_vtbl.CreateForWindow(interop, window, &item_iid, &ws.item)
+	} else {
+		hr = interop_vtbl.CreateForMonitor(interop, monitor, &item_iid, &ws.item)
+	}
+	if !winrt.ok(hr) || ws.item == nil {
+		if window != nil && !win.IsWindow(window) { return .Gone }
+		return .Failed
+	}
+	if !winrt.ok(winrt.vtable(ws.item, IGraphicsCaptureItem_Vtbl).get_Size(ws.item, &ws.size)) || ws.size.width <= 0 || ws.size.height <= 0 {
+		return .Failed
+	}
+
+	statics: rawptr
+	statics, hr = winrt.factory(CLASS_FRAME_POOL, IID_IDirect3D11CaptureFramePoolStatics2)
+	if !winrt.ok(hr) || statics == nil { return .Unsupported }
+	defer winrt.release(statics)
+	if !winrt.ok(winrt.vtable(statics, IDirect3D11CaptureFramePoolStatics2_Vtbl).CreateFreeThreaded(statics, c.graphics_device, PIXEL_FORMAT_B8G8R8A8, STREAM_BUFFERS, ws.size, &ws.pool)) || ws.pool == nil {
+		return .Failed
+	}
+	pool_vtbl := winrt.vtable(ws.pool, IDirect3D11CaptureFramePool_Vtbl)
+
+	ws.event = win.CreateEventW(nil, false, false, nil)
+	if ws.event == nil { return .Failed }
+	handler_iid := winrt.typed_event_handler_iid(winrt.sig_class(CLASS_FRAME_POOL, IID_IDirect3D11CaptureFramePool), winrt.SIG_INSPECTABLE)
+	handler := winrt.event_handler_make(handler_iid, proc(user: rawptr, sender: rawptr, args: rawptr) {
+		win.SetEvent(win.HANDLE(user))
+	}, rawptr(ws.event))
+	hr = pool_vtbl.add_FrameArrived(ws.pool, handler, &ws.token)
+	winrt.release(handler)   // the pool holds its own reference until remove_FrameArrived
+	if !winrt.ok(hr) { return .Failed }
+	ws.registered = true
+
+	if !winrt.ok(pool_vtbl.CreateCaptureSession(ws.pool, ws.item, &ws.session)) || ws.session == nil { return .Failed }
+	// (Windows 10 2004 and later; before, the pointer is always drawn in)
+	if session2 := winrt.query(ws.session, IID_IGraphicsCaptureSession2); session2 != nil {
+		winrt.vtable(session2, IGraphicsCaptureSession2_Vtbl).put_IsCursorCaptureEnabled(session2, b8(cursor))
+		winrt.release(session2)
+	}
+	if !winrt.ok(winrt.vtable(ws.session, IGraphicsCaptureSession_Vtbl).StartCapture(ws.session)) { return .Failed }
+	return .None
+}
+
+@(private)
+wgc_stream_close :: proc(ws: ^Wgc_Stream) {
+	if ws.registered { winrt.vtable(ws.pool, IDirect3D11CaptureFramePool_Vtbl).remove_FrameArrived(ws.pool, ws.token) }
+	if ws.session != nil {
+		closable_close(ws.session)
+		winrt.release(ws.session)
+	}
+	if ws.pool != nil {
+		closable_close(ws.pool)
+		winrt.release(ws.pool)
+	}
+	winrt.release(ws.item)
+	if ws.staging != nil { ws.staging->Release() }
+	// (after the handler is removed: a late FrameArrived never sets a closed handle)
+	if ws.event != nil { win.CloseHandle(ws.event) }
+	ws^ = {}
+}
+
+// The newest frame of the pool once the pace allows, placed at `origin` and `scale`. ok false: none came within
+// `timeout`.
+@(private)
+wgc_stream_next :: proc(c: ^Window_Capture, ws: ^Wgc_Stream, stream: ^Stream, origin: [2]i32, scale: f32, timeout: time.Duration) -> (f: Stream_Frame, ok: bool, err: Error) {
+	deadline := monotonic_ns() + i64(timeout)
+	pool_vtbl := winrt.vtable(ws.pool, IDirect3D11CaptureFramePool_Vtbl)
+	for {
+		now := monotonic_ns()
+		due := stream_pacer_due(&stream.pacer)
+		if now < due {
+			if now >= deadline { return {}, false, .None }
+			win.Sleep(u32(max((min(due, deadline) - now) / 1_000_000, 1)))
+			continue
+		}
+		// the newest frame; the ones before it were already late
+		frame: rawptr
+		for {
+			next: rawptr
+			if !winrt.ok(pool_vtbl.TryGetNextFrame(ws.pool, &next)) || next == nil { break }
+			if frame != nil {
+				closable_close(frame)
+				winrt.release(frame)
+			}
+			frame = next
+		}
+		if frame == nil {
+			if ws.window != nil && !win.IsWindow(ws.window) { return {}, false, .Gone }
+			if now >= deadline { return {}, false, .None }
+			win.WaitForSingleObject(ws.event, u32(max((deadline - now) / 1_000_000, 1)))
+			continue
+		}
+		f, ok = wgc_stream_read(c, ws, stream, frame, origin, scale)
+		closable_close(frame)
+		winrt.release(frame)
+		if !ok { return {}, false, .Failed }
+		return f, true, .None
+	}
+}
+
+@(private = "file")
+wgc_stream_read :: proc(c: ^Window_Capture, ws: ^Wgc_Stream, stream: ^Stream, frame: rawptr, origin: [2]i32, scale: f32) -> (f: Stream_Frame, ok: bool) {
+	frame_vtbl := winrt.vtable(frame, IDirect3D11CaptureFrame_Vtbl)
+	at := monotonic_ns()
+	relative: i64
+	if winrt.ok(frame_vtbl.get_SystemRelativeTime(frame, &relative)) && relative > 0 { at = relative * 100 }
+	content := ws.size
+	if !winrt.ok(frame_vtbl.get_ContentSize(frame, &content)) { content = ws.size }
+	surface: rawptr
+	if !winrt.ok(frame_vtbl.get_Surface(frame, &surface)) || surface == nil { return }
+	defer winrt.release(surface)
+	access := winrt.query(surface, IID_IDirect3DDxgiInterfaceAccess)
+	if access == nil { return }
+	defer winrt.release(access)
+	texture_iid := transmute(winrt.GUID)d3d11.ITexture2D_UUID^
+	texture: ^d3d11.ITexture2D
+	if !winrt.ok(winrt.vtable(access, IDirect3DDxgiInterfaceAccess_Vtbl).GetInterface(access, &texture_iid, (^rawptr)(&texture))) || texture == nil {
+		return
+	}
+	defer texture->Release()
+	if !staging_copy(c.device, c.device_context, &ws.staging, texture) { return }
+	size := [2]i32{ws.size.width, ws.size.height}
+	dst := stream_frame_target(stream, size.x, size.y)
+	frame_out := staging_read_into(c.device_context, ws.staging, .Identity, dst, size, {content.width, content.height}) or_return
+	frame_out.origin = origin
+	frame_out.scale = scale
+	return stream_frame_finish(stream, frame_out, at)
 }
