@@ -470,6 +470,43 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	return
 }
 
+@(private = "file") NAV_ITEM_RADIUS_PX :: 6
+@(private = "file") NAV_ITEM_HEIGHT_EM :: 2.1
+
+@(private = "file")
+Nav_Item_Draw :: struct { pressed: bool, face: Color, radius: f32 }
+
+// A line of a navigation list (a settings page, a document of a side list): an icon (a glyph of `icon_font`; "" none)
+// and `title`, from the left edge, as wide as its parent. A ghost under the pointer, pressed in while `pressed` (the
+// one shown; machined: a bevel, flat in the other finishes). Its signal: a click shows it, a double click may rename it.
+nav_item :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bool, em: f32) -> Signal {
+	next({width = fill(), height = px(math.round(em * NAV_ITEM_HEIGHT_EM)), axis = .X, cross = .Center, cursor = .Hand})
+	a11y({role = .Button, name = title})
+	b := build_box({.Clickable, .Focusable}, id)
+	d := frame_new(Nav_Item_Draw)
+	d^ = {pressed, color("track"), NAV_ITEM_RADIUS_PX * scale()}
+	b.custom = proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+		d := (^Nav_Item_Draw)(user)
+		if !d.pressed && b.hot_t < 0.01 { return }
+		machined_bevel(dc, b.rect, d.radius, d.face, b.hot_t, d.pressed ? 1 : b.active_t * b.hot_t)
+	}
+	b.custom_user = d
+	sig := signal(b)
+	if parent(b) {
+		spacer(px(em * 0.6))
+		if icon != "" && icon_font != 0 {
+			next({width = px(em * 1.4), height = pct(1), font = icon_font, text_align = .Center, text_pad = 0})
+			if pressed { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ic", icon)) } else if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ic", icon)) }
+			if title != "" { spacer(px(em * 0.45)) }
+		}
+		if title != "" {
+			next({width = fill(), height = pct(1), text_pad = 0})
+			if pressed { label(fmt.tprintf("%s###t", title)) } else if tags("weak") { label(fmt.tprintf("%s###t", title)) }
+		}
+	}
+	return sig
+}
+
 // The field of a slider_field: kept by the program between frames (slider_field_destroy).
 Slider_Field :: struct {
 	text:  Text_Field,

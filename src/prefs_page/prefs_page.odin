@@ -183,7 +183,6 @@ back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (bac
 @(private = "file") CARD_H_EM       :: 3.6
 @(private = "file") CARD_RADIUS_PX  :: 8
 @(private = "file") CARDS_PER_ROW   :: 3
-@(private = "file") BUTTON_RADIUS_PX :: 6
 
 // The pages of `o`, or each category of the registry by name.
 @(private)
@@ -313,7 +312,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, narrow: bool, em
 				if ui.row(id = fmt.tprintf("###nv%d", i)) {
 					ui.spacer(ui.px(em * 0.7))
 					shown := i == cur && !config.searching(&p.search)
-					if nav_button(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, pg.icon, o.icon_font, shown, em) {
+					if ui.nav_item(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, pg.icon, o.icon_font, shown, em).clicked {
 						delete(p.current)
 						p.current = strings.clone(pg.category)
 						ui.field_set(&p.query, "")   // (a page chosen: the search is done)
@@ -346,39 +345,6 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, narrow: bool, em
 			ui.spacer(ui.px(em * 0.6))
 		}
 	}
-}
-
-@(private = "file")
-Bevel :: struct { pressed: bool, face: ui.Color, radius: f32 }
-
-// A page's button: a ghost under the pointer, pressed in when its page is shown (machined; flat outside that finish).
-@(private = "file")
-nav_button :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bool, em: f32) -> bool {
-	ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, cursor = .Hand})
-	ui.a11y({role = .Button, name = title})
-	b := ui.build_box({.Clickable, .Focusable}, id)
-	d := ui.frame_new(Bevel)
-	d^ = {pressed, ui.color("track"), BUTTON_RADIUS_PX * ui.scale()}
-	b.custom = proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
-		d := (^Bevel)(user)
-		if !d.pressed && b.hot_t < 0.01 { return }
-		ui.machined_bevel(dc, b.rect, d.radius, d.face, b.hot_t, d.pressed ? 1 : b.active_t * b.hot_t)
-	}
-	b.custom_user = d
-	sig := ui.signal(b)
-	if ui.parent(b) {
-		ui.spacer(ui.px(em * 0.6))
-		if icon != "" && icon_font != 0 {
-			ui.next({width = ui.px(em * 1.4), height = ui.pct(1), font = icon_font, text_align = .Center, text_pad = 0})
-			if pressed { ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ic", icon)) } else if ui.tags("weak") { ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ic", icon)) }
-			if title != "" { ui.spacer(ui.px(em * 0.45)) }
-		}
-		if title != "" {
-			ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0})
-			if pressed { ui.label(fmt.tprintf("%s###t", title)) } else if ui.tags("weak") { ui.label(fmt.tprintf("%s###t", title)) }
-		}
-	}
-	return sig.clicked
 }
 
 // Whether a preference of the page is the user's and not its default.
