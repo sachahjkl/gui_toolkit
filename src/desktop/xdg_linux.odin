@@ -33,6 +33,14 @@ xdg_config_home :: proc(allocator := context.temp_allocator) -> string {
 	return strings.concatenate({home, "/.config"}, allocator)
 }
 
+// The user's cache directory ($XDG_CACHE_HOME, else ~/.cache): the shared thumbnails are under its thumbnails folder.
+xdg_cache_home :: proc(allocator := context.temp_allocator) -> string {
+	if v, ok := os.lookup_env("XDG_CACHE_HOME", allocator); ok && filepath.is_abs(v) { return v }
+	home, err := os.user_home_dir(allocator)
+	if err != nil || home == "" { return "" }
+	return strings.concatenate({home, "/.cache"}, allocator)
+}
+
 // The user's desktop folder: $XDG_DESKTOP_DIR, else the one of user-dirs.dirs ($XDG_CONFIG_HOME/user-dirs.dirs, written by
 // xdg-user-dirs: `XDG_DESKTOP_DIR="$HOME/Bureau"` on a French desktop), else ~/Desktop.
 xdg_desktop_dir :: proc(allocator := context.temp_allocator) -> string {

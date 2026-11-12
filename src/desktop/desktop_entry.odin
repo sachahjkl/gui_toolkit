@@ -197,6 +197,12 @@ exec_expand :: proc(exec_value, path, name, icon, desktop_file: string, allocato
 // The value of `key` in the [Desktop Entry] group ("" when absent). Comments, blank lines, other groups and
 // localized keys (Name[fr]) are skipped; the value is returned as written (not unescaped).
 entry_value :: proc(text, key: string) -> (value: string, found: bool) {
+	return group_value(text, "[Desktop Entry]", key)
+}
+
+// The value of `key` in the group whose header is `group` ("[Thumbnailer Entry]"), as entry_value reads it.
+@(private)
+group_value :: proc(text, group, key: string) -> (value: string, found: bool) {
 	in_group := false
 	rest := text
 	for len(rest) > 0 {
@@ -205,7 +211,7 @@ entry_value :: proc(text, key: string) -> (value: string, found: bool) {
 		line = strings.trim_right(line, "\r")
 		trimmed := strings.trim_space(line)
 		if trimmed == "" || trimmed[0] == '#' { continue }
-		if trimmed[0] == '[' { in_group = trimmed == "[Desktop Entry]"; continue }
+		if trimmed[0] == '[' { in_group = trimmed == group; continue }
 		if !in_group { continue }
 		eq := strings.index_byte(trimmed, '=')
 		if eq < 0 { continue }

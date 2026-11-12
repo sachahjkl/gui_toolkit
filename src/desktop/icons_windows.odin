@@ -41,6 +41,14 @@ IID_IImageList := win.GUID{0x46EB5926, 0x582E, 0x4017, {0x9F, 0xDF, 0xE8, 0x99, 
 
 @(private = "file", thread_local) com_started: bool
 
+// COM on this thread, started once and kept while the thread lives (the shell's icons and thumbnails need it).
+@(private)
+com_thread_start :: proc() {
+	if com_started { return }
+	win.CoInitializeEx(nil, .APARTMENTTHREADED)
+	com_started = true
+}
+
 @(default_calling_convention = "system", private = "file")
 foreign shell32 {
 	SHGetFileInfoW :: proc(path: win.LPCWSTR, attributes: win.DWORD, info: ^SHFILEINFOW, size: win.UINT, flags: win.UINT) -> uintptr ---
@@ -91,10 +99,7 @@ image_list_for :: proc(size: int) -> i32 {
 
 @(private)
 icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
-	if !com_started {
-		win.CoInitializeEx(nil, .APARTMENTTHREADED)
-		com_started = true
-	}
+	com_thread_start()
 	info: SHFILEINFOW
 	wpath := win.utf8_to_wstring(path, context.temp_allocator)
 	if SHGetFileInfoW(wpath, 0, &info, size_of(info), SHGFI_SYSICONINDEX) == 0 {

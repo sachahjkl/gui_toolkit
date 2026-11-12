@@ -14,6 +14,8 @@ pixels, w, h, ok := png.decode(file)                  // straight RGBA8, rows fr
 |---|---|
 | `encode(rgba, width, height, compression = .Small, allocator) -> []u8` | `width` x `height` straight RGBA8 pixels, rows from the top, as a PNG file: 8 bits, colour type 6, one `IDAT`. nil when the size is empty or `rgba` is shorter than the size says. |
 | `decode(data, allocator) -> (rgba, width, height, ok)` | a PNG file as straight RGBA8, rows from the top. ok is false for anything that is not a whole, valid PNG. |
+| `texts(data, allocator) -> ([]Text, ok)` | the `tEXt` chunks of a PNG file (`Text`: `keyword`, `text`), in order, without decoding its pixels; the strings are slices of `data`. ok is false when the file's chunks do not hold together up to `IEND` (each length and CRC checked). |
+| `with_texts(data, add, allocator) -> []u8` | the file with `add` as `tEXt` chunks right after `IHDR`; a `tEXt` it had of the same keyword is left out. nil when `data` is not a whole PNG file, a keyword is empty or longer than 79 bytes, or a keyword or text holds a NUL. The freedesktop.org thumbnails carry their file's URI and date this way (`desktop.thumbnail`). |
 | `rgba8_of(^image.Image, allocator) -> (rgba, width, height, ok)` | any picture a `core:image` loader read (PNG, JPEG, BMP...: 1 to 4 channels, 8 or 16 bits) as straight RGBA8. `platform.clipboard_image_decode` reads another program's JPEG and BMP with it. |
 
 ## Encoding
@@ -37,5 +39,5 @@ thread, and the file only goes to another program on this machine). For the same
 rounded to the nearest 8-bit value. Alpha stays straight (not premultiplied). The decoder's own picture is on the heap and
 freed before `decode` returns, whatever the caller's allocator (a screenshot is tens of MB).
 
-Tests: `odin test src/png -vet` (both levels read back pixel for pixel, at sizes either side of deflate's window; grey,
+Tests: `odin test src/png -vet` (`tEXt` chunks written and read back, a keyword given again replaces the old chunk, files cut short or with a wrong CRC refused; both levels read back pixel for pixel, at sizes either side of deflate's window; grey,
 1-bit grey, grey and alpha, 16-bit RGB, a palette with `tRNS`; files cut short or not PNG are refused).

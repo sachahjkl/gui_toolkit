@@ -13,6 +13,7 @@ is in the user's profile: no administrator rights, nothing system-wide. A progra
   it placed. `uninstall` removes the integration, the system's record and exactly those files. On NixOS the copy is made
   to run by itself.
 - **A command line**: `install`, `remove`, `status` and `uninstall` without a window, for scripts and tests.
+- **The system's thumbnails** of files, read from its cache or made by its thumbnailers (`thumbnail`).
 - **A watcher**: the system tells the program when a place of the integration changes (`watch_start`).
 
 Nothing is a preference: the state is read from the disk each time. Removal deletes only what carries the program's mark.
@@ -203,6 +204,32 @@ if ic, ok := desktop.theme_icon(entry.icon, 32); ok {
 	render.update_texture_rgba(&r, tex, 0, 0, ic.size.x, ic.size.y, ic.rgba)
 }
 ```
+
+## Thumbnails
+
+`thumbnail(path, size)` gives the system's thumbnail of a file (`path` absolute), at most `size` pixels on its longer side,
+as straight RGBA8 (`Thumbnail`; `thumbnail_destroy` frees it): a PDF's first page, a frame of a video, a document, a
+picture, whatever the system has a thumbnailer for. On a miss it has the system make one and waits for it (seconds for a
+long video): call it from a worker, never from the interface's thread. `ok` is false when the system has none and cannot
+make one. `thumbnail_cached(path, size)` reads the system's cache only: a miss is `ok = false` at once.
+`thumbnail_store(path, rgba, width, height)` keeps a picture the program made itself in the system's cache (Linux), where
+`thumbnail_cached` and the other programs find it.
+
+```odin
+// on a worker
+if th, ok := desktop.thumbnail(path, 256); ok {
+	defer desktop.thumbnail_destroy(&th)
+	post(th.rgba, th.size)   // the interface's thread makes the texture
+}
+```
+
+| System | Where the thumbnail comes from |
+|---|---|
+| Linux | The freedesktop.org Thumbnail Managing Standard. The cache is `$XDG_CACHE_HOME/thumbnails` (default `~/.cache/thumbnails`): `normal` (128 pixels), `large` (256), `x-large` (512), `xx-large` (1024); a file's thumbnail is the MD5 of its `file://` URI (escaped as GLib does) in hex, `.png`. It is valid while its `Thumb::URI` and `Thumb::MTime` (the file's date in seconds) are the file's. The folder of the size asked is read, then the larger ones (reduced). On a miss, the thumbnailer of the file's type (its name's MIME type, then the types it is a kind of): the `*.thumbnailer` files under `thumbnailers/` of each data directory (`[Thumbnailer Entry]`: `TryExec`, `Exec` with `%i` `%u` `%o` `%s` `%%`, `MimeType`). It runs at most 30 seconds; its PNG goes to the cache with `Thumb::URI`, `Thumb::MTime`, `Thumb::Size` and `Software` (`THUMBNAIL_SOFTWARE`), 0600 in 0700 folders, through a file renamed onto its name. A thumbnailer that fails leaves `fail/gui_toolkit/<name>.png`: it is not run again for that file until the file changes. A type with no thumbnailer has none. |
+| Windows | The shell's: `IShellItemImageFactory::GetImage` with `SIIGBF_THUMBNAILONLY` (a thumbnail, never the type's icon: `file_icon` gives that), from the system's thumbnail cache or made by the type's handler; `thumbnail_cached` adds `SIIGBF_INCACHEONLY`. A handler with no thumbnail of that size is asked for a larger one, reduced. The bitmap's premultiplied BGRA is read back as straight RGBA. COM is started on each thread that asks. `thumbnail_store` writes nothing (the shell fills its own cache). |
+| Other systems | None (`ok` false). |
+
+The thumbnailers read are kept while no file or folder read has changed (a stat of each per call).
 
 ## A terminal in a folder
 

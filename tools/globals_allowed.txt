@@ -68,13 +68,15 @@ desktop/icons_linux.odin theme_name process  # the icon theme's name, asked once
 desktop/icons_linux.odin theme_known process  # whether theme_name was asked (theme_mutex)
 desktop/icons_linux.odin theme_mutex process  # guards theme_name and theme_known
 desktop/icons_windows.odin IID_IImageList const  # a COM interface id (a variable: the call takes its address)
-desktop/icons_windows.odin com_started thread  # COM started on this thread (the shell's icons need it)
+desktop/icons_windows.odin com_started thread  # COM started on this thread (the shell's icons and thumbnails need it)
 desktop/terminal_linux.odin TERMINALS const  # the terminals tried, in order
 desktop/svg_linux.odin rsvg process  # librsvg and cairo, opened once (sync.Once) and then only read
 desktop/com_windows.odin IID_IPersistFile const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin IID_IPropertyStore const  # a COM interface id (a variable: the calls take its address)
 desktop/com_windows.odin PKEY_AppUserModel_ID const  # a property key (a variable: the calls take its address)
 desktop/desktop_entry.odin CONTENT_TYPES const  # a table: the web documents' extensions and MIME types
+desktop/thumbnail_linux.odin thumbnailer_cache process  # the thumbnailers read last, by every worker that asks a thumbnail (locked: thumbnailer_cache.mutex)
+desktop/thumbnail_windows.odin IID_IShellItemImageFactory const  # a COM interface id (a variable: the call takes its address)
 desktop/open_with_linux.odin mime_cache process  # the XDG MIME database read last, for every window of the process (locked: mime_cache.mutex)
 desktop/desktop_entry_test.odin BROWSER_SCHEMES test
 desktop/identity_test.odin TEST_SCHEMES test
