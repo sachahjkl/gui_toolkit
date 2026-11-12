@@ -102,6 +102,8 @@ Wayland_Lib :: struct {
 	data_offer_interface:   ^Wl_Interface,
 	callback_interface:     ^Wl_Interface,
 	region_interface:       ^Wl_Interface,
+	subcompositor_interface: ^Wl_Interface,
+	subsurface_interface:   ^Wl_Interface,
 }
 
 // The process's libraries of the system: loaded once (sync.Once), then only read by any thread.
@@ -148,6 +150,8 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 		wl.data_offer_interface          = auto_cast lib_sym(h, "wl_data_offer_interface")
 		wl.callback_interface            = auto_cast lib_sym(h, "wl_callback_interface")
 		wl.region_interface              = auto_cast lib_sym(h, "wl_region_interface")
+		wl.subcompositor_interface       = auto_cast lib_sym(h, "wl_subcompositor_interface")
+		wl.subsurface_interface          = auto_cast lib_sym(h, "wl_subsurface_interface")
 		wl.ok = wl.display_connect != nil && wl.proxy_marshal_flags != nil && wl.proxy_add_listener != nil &&
 			wl.registry_interface != nil && wl.compositor_interface != nil && wl.surface_interface != nil
 		if !wl.ok { return }

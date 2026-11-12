@@ -146,7 +146,12 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
   its hit test; Wayland and X11 leave that to the client. A left press on the caption becomes the compositor's move
   (`xdg_toplevel.move`, X11 `_NET_WM_MOVERESIZE`), on a band along any of the four sides its resize, a double click on
   the caption maximizes or restores, a right click there opens the compositor's window menu (Wayland), and the pointer
-  over a band shows the resize cursor. The app gets an `Event.Frame_Press` instead of the press. Where the window has
+  over a band shows the resize cursor. The app gets an `Event.Frame_Press` instead of the press. On Wayland the bands are
+  **outside the window**: a ring of 8 px around it, an empty subsurface that takes the pointer there only, and the
+  window's geometry (`set_window_geometry`) its surface alone, so the compositor places and tiles the window without
+  it. The whole window is the app's: a scrollbar along its edge is grabbed on its whole width. Only a free window has the
+  ring (not maximized, full screen, tiled, nor framed by the compositor); X11, and a compositor without
+  `wl_subcompositor` or `wp_viewporter`, keep the bands inside the window. Where the window has
   no frame of the system's, `needs_frame_outline` is true and `ui` draws a 1-pixel outline in the theme's border colour:
   not when the compositor chose server-side decorations, when it tiles the window (the `tiled_*` states: sway,
   Hyprland and niri draw their own border), when the X11 window manager reports `_NET_FRAME_EXTENTS`, nor when the

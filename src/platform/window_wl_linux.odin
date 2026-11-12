@@ -43,6 +43,9 @@ Wl_Conn :: struct {
 	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
 	activation: Wl_Proxy,         // xdg_activation_v1 (optional): raise_window asks the focus with it
 	virtual_keyboards: Wl_Proxy,  // zwp_virtual_keyboard_manager_v1 (optional): send_hotkey types with it
+	subcompositor: Wl_Proxy,      // wl_subcompositor (optional): the resize bands outside the window (outside_bands_wl_linux.odin)
+	clear_buffer: Wl_Proxy,       // one transparent pixel, the picture of those bands (made on first use)
+	pointer_surface: Wl_Proxy,    // the surface the pointer is on: a window's, or the ring of its bands
 	toplevel_manager: Wl_Proxy,   // zwlr_foreign_toplevel_manager_v1 (optional): the session's windows (toplevels)
 	toplevels:  [dynamic]Wl_Toplevel,
 	toplevel_serial: u64,         // the last toplevel's id
@@ -129,6 +132,7 @@ Wl_Window_State :: struct {
 	win:         ^Window,          // back pointer for the listeners
 	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
 	frame_held:  bool,             // a picture waited for that word (wl_frame_shown_held): its coming asks for a repaint
+	outside:     Wl_Outside_Bands, // the resize bands around the window (outside_bands_wl_linux.odin)
 }
 
 @(private)
@@ -238,6 +242,7 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
 	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
 	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)
+	case "wl_subcompositor": if wl.subcompositor_interface != nil { wlc.subcompositor = bind(name, wl.subcompositor_interface, 1, version) }
 	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
 	case "xdg_activation_v1": wlc.activation = bind(name, &xdg_activation_iface, 1, version)
 	case "zwp_virtual_keyboard_manager_v1": wlc.virtual_keyboards = bind(name, &vk_manager_iface, 1, version)
@@ -380,10 +385,12 @@ window_of_surface :: proc "contextless" (surface: Wl_Proxy) -> ^Window {
 ptr_enter :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy, sx, sy: Wl_Fixed) {
 	context = wl_ctx_real()
 	wlc.pointer_focus = window_of_surface(surface)
-	scale: f32 = wlc.pointer_focus != nil ? wlc.pointer_focus.dpi_scale : 1   // (as ptr_motion: a click before any motion lands here)
-	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)) * scale, f32(wl_fixed_to_f64(sy)) * scale}
+	wlc.pointer_surface = surface
+	// (as ptr_motion: a click before any motion lands here)
+	if wlc.pointer_focus != nil { wlc.pointer_pos = wl_pointer_point(wlc.pointer_focus, surface, sx, sy) }
 	wlc.enter_serial = serial
-	if wlc.pointer_focus != nil { wl_apply_cursor(wlc.pointer_focus) }   // (the compositor forgot it when the pointer left)
+	// (the band under the pointer now: entering the ring shows its resize cursor before any motion)
+	if w := wlc.pointer_focus; w != nil { w.frame_hover = frame_hit(w, wlc.pointer_pos); wl_apply_cursor(w) }   // (the compositor forgot it when the pointer left)
 }
 @(private)
 ptr_leave :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy) {
@@ -393,13 +400,14 @@ ptr_leave :: proc "c" (data: rawptr, p: Wl_Proxy, serial: u32, surface: Wl_Proxy
 		wl_push(w, {kind = .Mouse_Leave})
 	}
 	wlc.pointer_focus = nil
+	wlc.pointer_surface = nil
 }
 @(private)
 ptr_motion :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, sx, sy: Wl_Fixed) {
 	context = wl_ctx_real()
 	w := wlc.pointer_focus
 	if w == nil { return }
-	wlc.pointer_pos = {f32(wl_fixed_to_f64(sx)) * w.dpi_scale, f32(wl_fixed_to_f64(sy)) * w.dpi_scale}
+	wlc.pointer_pos = wl_pointer_point(w, wlc.pointer_surface, sx, sy)
 	frame_hover_at(w, wlc.pointer_pos)
 	wl_push(w, {kind = .Mouse_Move, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
 }
@@ -649,6 +657,7 @@ xdg_surface_configure :: proc "c" (data: rawptr, s: Wl_Proxy, serial: u32) {
 		st.logical = st.floating   // (no size asked for, after a maximize: the one before it)
 		wl_size_from_logical(w, st)
 	}
+	wl_outside_bands_update(w, st)   // (a state without a size: maximized, tiled, back to normal)
 	w.paint_requested = true
 }
 
@@ -697,10 +706,12 @@ Decoration_Listener :: struct { configure: proc "c" (data: rawptr, d: Wl_Proxy, 
 @(private) decoration_listener := Decoration_Listener{decoration_configure}
 @(private)
 decoration_configure :: proc "c" (data: rawptr, d: Wl_Proxy, mode: u32) {
+	context = wl_ctx_real()
 	st := (^Wl_Window_State)(data)
 	if st == nil || st.win == nil { return }
 	st.server_side = mode == ZXDG_TOPLEVEL_DECORATION_MODE_SERVER_SIDE
 	st.win.system_frame = st.server_side || st.tiled
+	wl_outside_bands_update(st.win, st)
 }
 
 ////////////////////////////////
@@ -713,6 +724,7 @@ wl_size_from_logical :: proc(w: ^Window, st: ^Wl_Window_State) {
 	if st.viewport != nil {
 		wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_SET_DESTINATION, nil, wl.proxy_get_version(st.viewport), 0, i32(max(st.logical.x, 1)), i32(max(st.logical.y, 1)))
 	}
+	wl_outside_bands_update(w, st)
 }
 
 @(private)
@@ -790,6 +802,8 @@ wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
 @(private)
 wl_surface_destroy :: proc(st: ^Wl_Window_State) {
 	wl_activation_drop(st)
+	wl_outside_bands_destroy(st)
+	if st.win != nil { st.win.outside_band = 0 }
 	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }
 	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
@@ -1068,6 +1082,7 @@ wl_set_fullscreen :: proc(w: ^Window, on: bool) {
 @(private)
 wl_set_decorations :: proc(w: ^Window, on: bool) {
 	st := wl_state(w)
+	wl_outside_bands_update(w, st)   // (w.integrated changed: the bands follow it)
 	if st.decoration == nil { return }
 	mode: u32 = on ? ZXDG_TOPLEVEL_DECORATION_MODE_SERVER_SIDE : ZXDG_TOPLEVEL_DECORATION_MODE_CLIENT_SIDE
 	wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_SET_MODE, nil, wl.proxy_get_version(st.decoration), 0, mode)

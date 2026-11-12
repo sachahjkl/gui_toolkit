@@ -43,6 +43,7 @@ Native_Window :: struct {
 	buttons_down: Mouse_Buttons,
 	// the frame of an integrated title bar (frame_linux.odin): the resize band under the pointer, the last caption press
 	frame_hover:  Hit,
+	outside_band: f32,              // Wayland: the resize bands are a ring this wide around the window (outside_bands_wl_linux.odin); 0: inside it
 	system_frame: bool,             // the compositor or window manager draws a frame around it (frame_linux.odin)
 	caption_ms:   u32,
 	caption_pos:  [2]f32,

@@ -15,9 +15,16 @@ package platform
 @(private)
 frame_hit :: proc(w: ^Window, pos: [2]f32) -> Hit {
 	if w == nil || !w.integrated || w.offscreen || w.show == .Fullscreen { return .Client }
+	size := [2]f32{f32(w.size.x), f32(w.size.y)}
+	if b := w.outside_band; b > 0 {
+		// the bands around the window: the ring is a client area grown by them, with no regions; the window is the app's
+		none: Chrome_Regions
+		if h := hit_test_chrome(&none, pos + b, size + 2 * b, b, b * 3, {.Left, .Top, .Right, .Bottom}); h != .Client { return h }
+		return hit_test_chrome(&w.chrome, pos, size, 0, 0, {})
+	}
 	border := f32(resize_border(w))
 	sides: Sides = w.show == .Maximized ? {} : {.Left, .Top, .Right, .Bottom}
-	return hit_test_chrome(&w.chrome, pos, {f32(w.size.x), f32(w.size.y)}, border, border * 2, sides)
+	return hit_test_chrome(&w.chrome, pos, size, border, border * 2, sides)
 }
 
 // The caption buttons are the app's widgets; the caption and the bands are the frame's.

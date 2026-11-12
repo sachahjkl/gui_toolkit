@@ -2154,3 +2154,37 @@ a_held_button_keeps_the_pointer_on_x11 :: proc(t: ^testing.T) {
 	sh("xdotool mouseup 1")
 	testing.expect(t, wait_kind(w, &seen, .Mouse_Leave, 2000), "the leave comes with the release")
 }
+// An integrated title bar's resize bands are outside the window (Wayland): a press 3 px inside its right edge is the
+// app's (a scrollbar is there), one 4 px outside resizes the window. The compositor places the window without the ring.
+@(test)
+the_resize_bands_are_outside_the_window :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := platform.open_window("bands", {300, 200}, integrated_title = true)
+	testing.expect(t, w != nil, "the window opens")
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	platform.show_window(w)
+	platform.test_show_plain(w)
+	pump_for(w, 150)
+	// free (sway tiles a new window): at 200,200, its size again
+	sh("swaymsg -q '[title=\"^bands$\"]' floating enable, resize set 300 200, move position 200 200")
+	for i := 0; i < 200 && !(w.size == {300, 200} && w.outside_band > 0); i += 1 { pump_for(w, 10) }
+	testing.expect(t, w.outside_band > 0, "a free window has its bands outside")
+	platform.test_show_plain(w)   // (its picture at its size: the ring goes on the screen with it)
+	pump_for(w, 150)
+	seen: Seen
+	defer delete(seen.events)
+	press :: proc(x, y: int) {
+		sh("swaymsg -q seat seat0 cursor set ", x, " ", y, "; sleep 0.3; swaymsg -q seat seat0 cursor press button1; sleep 0.1; swaymsg -q seat seat0 cursor release button1")
+	}
+	press(500 - 3, 300)
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Press), "3 px inside the right edge: the app's press")
+	for e in seen.events { if e.kind == .Mouse_Press { testing.expectf(t, abs(e.pos.x - 297) < 1.5 && abs(e.pos.y - 100) < 1.5, "where it was: %v", e.pos) } }
+	for e in seen.events { testing.expect(t, e.kind != .Frame_Press, "no resize there") }
+	clear(&seen.events)
+	press(500 + 4, 300)
+	testing.expect(t, wait_kind(w, &seen, .Frame_Press), "4 px outside it: the band's, a resize")
+	for e in seen.events { if e.kind == .Frame_Press { testing.expectf(t, abs(e.pos.x - 304) < 1.5, "the press is outside the window: %v", e.pos) } }
+	for e in seen.events { testing.expect(t, e.kind != .Mouse_Press, "the app does not get it") }
+}
