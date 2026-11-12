@@ -533,7 +533,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	s.next_mod.fixed_y = pos.y
 	s.next_mod.width = children_sum()
 	s.next_mod.height = lv.scrolls ? px(s.window_size.y) : children_sum()
-	s.next_mod.radius = em * MENU_RADIUS_EM
+	s.next_mod.radius = em * 0.5
 	if first { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
 	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Plate}, id)
 	p.cursor = .Arrow
@@ -869,18 +869,13 @@ tooltip_end :: proc() { ctx_menu_end() }
 // menu's separator under it (no frame of its own: the menu's border is its border), a magnifier, what is typed and a caret that blinks
 // as a field's does, so that the person sees the keys go there. The menu keeps the keys: the field is drawn, not focused.
 @(private = "file")
-// A menu's corners, in ems (its panel's and its search field's top ones).
-MENU_RADIUS_EM :: 0.5
-
 menu_search_field :: proc(s: ^State, lv: ^Menu_Level, w, em: f32) {
 	q := menu_query(lv)
-	// (its top corners are the menu's own, its bottom ones square: an input's rounding, or a square band, drew a second
-	// corner inside the menu's)
-	next({width = px(w), height = px(dense(em * 2.3)), radius = em * MENU_RADIUS_EM})
+	// (no rounding of its own, not an input's: the corners it fills are the menu's, box_drawn_radii)
+	next({width = px(w), height = px(dense(em * 2.3)), radius = 0})
 	set_next_axis(.X, .Center)
 	push_tags("input")
 	band := build_box({.Draw_Background}, "###menu_search")
-	band.square_corners = {.Bottom_Left, .Bottom_Right}
 	pop_tags()
 	if parent(band) {
 		spacer(px(em * 0.5))

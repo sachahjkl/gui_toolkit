@@ -116,22 +116,31 @@ radius_drawn :: proc(s: ^State, radius: f32) -> f32 {
 	return r < ROUND_LEAST_PX * max(1, scale()) ? 0 : r
 }
 
-// The radii a box is drawn with: its own, and at a corner where it meets the corner of a box around it that is rounded
-// (a title bar's background in a dialog's corner, a header at the top of a card), that box's: a box's square corner
-// showed outside the rounded one it fills. The boxes around it are looked through while their corner is that one.
+// The radii a box is drawn with: its own, and at a corner where it fills the corner of a box around it that is rounded
+// (a title bar's background in a dialog's corner, a header at the top of a card, a menu's search field), that box's:
+// a box's square corner, or its own rounding, showed a second corner inside the one it fills. A box laid against its
+// parent's border (inside it by the border's width) fills that corner too, and takes the radius less that inset, so
+// that the two curves are concentric. The boxes around it are looked through while their corner is that one.
 box_drawn_radii :: proc(s: ^State, b: ^Box) -> (radii: [4]f32) {
 	radii = box_radii(box_drawn_radius(s, b), b.square_corners)
 	CORNER_MEET_PX :: 0.5
 	r := b.rect
 	for c in Corner {
 		left, top := c == .Top_Left || c == .Bottom_Left, c == .Top_Left || c == .Top_Right
+		filled := false
 		for a := b.parent; a != nil; a = a.parent {
 			q := a.rect
 			x := left ? abs(r.min.x - q.min.x) : abs(r.max.x - q.max.x)
 			y := top ? abs(r.min.y - q.min.y) : abs(r.max.y - q.max.y)
-			if x > CORNER_MEET_PX || y > CORNER_MEET_PX { break }
+			// (its border's width: what is laid inside a bordered box starts there)
+			edge: f32 = .Draw_Border in a.flags ? max(1, math.round(s.scale)) : 0
+			if x > edge + CORNER_MEET_PX || y > edge + CORNER_MEET_PX { break }
 			if c in a.square_corners { continue }
-			if ar := box_drawn_radius(s, a); ar > radii[int(c)] { radii[int(c)] = ar }
+			ar := max(box_drawn_radius(s, a) - max(x, y), 0)
+			if ar <= 0 { continue }
+			// (the corner it fills decides it: its own rounding there drew a second corner)
+			if !filled || ar > radii[int(c)] { radii[int(c)] = ar }
+			filled = true
 		}
 	}
 	return

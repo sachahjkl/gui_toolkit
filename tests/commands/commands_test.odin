@@ -495,8 +495,8 @@ a_box_is_drawn_with_the_rounding :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 10)
 }
 
-// A box in a rounded corner of a box around it takes that corner (a title bar's background in a dialog's corner); one
-// that does not reach the corner keeps its own.
+// A box in a rounded corner of a box around it takes that corner (a title bar's background in a dialog's corner), also
+// laid against that box's border; one that does not reach the corner keeps its own.
 @(test)
 a_box_takes_the_corner_it_fills :: proc(t: ^testing.T) {
 	f: Fx
@@ -511,6 +511,15 @@ a_box_takes_the_corner_it_fills :: proc(t: ^testing.T) {
 	testing.expect(t, radii[int(ui.Corner.Bottom_Left)] == 0 && radii[int(ui.Corner.Bottom_Right)] == 0, "its bottom ones in the middle: its own")
 	inner := ui.Box{rect = {{4, 4}, {196, 30}}, parent = &column}
 	testing.expect_value(t, ui.box_drawn_radii(&f.s, &inner)[int(ui.Corner.Top_Left)], 0)
+
+	// against a bordered box's border (a menu's search field): that corner, concentric, even over a rounding of its own
+	menu := ui.Box{radius = 12, rect = {{0, 0}, {200, 300}}, flags = {.Draw_Border}}
+	field := ui.Box{radius = 6, rect = {{1, 1}, {199, 36}}, parent = &menu}
+	got := ui.box_drawn_radii(&f.s, &field)
+	testing.expect(t, got[int(ui.Corner.Top_Left)] == 11 && got[int(ui.Corner.Top_Right)] == 11, "its top corners, the menu's less its border")
+	testing.expect(t, got[int(ui.Corner.Bottom_Left)] == 6, "its bottom ones in the middle: its own")
+	away := ui.Box{rect = {{4, 4}, {196, 36}}, parent = &menu}
+	testing.expect_value(t, ui.box_drawn_radii(&f.s, &away)[int(ui.Corner.Top_Left)], 0)
 }
 
 // A text as wide as it measures (a tooltip's box) stays one line: its glyphs' advances added one by one, without their
