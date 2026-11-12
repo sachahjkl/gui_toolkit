@@ -189,7 +189,8 @@ mp4_add_packet :: proc(m: ^Muxer, t: ^Track_State, data: []u8, timestamp, durati
 				// MP4 holds H.264 in AVCC, not in Annex B: the avcC comes from the first packet's SPS and PPS
 				record, sps, ok := avc_config_from_annex_b(data)
 				if !ok { return .No_Parameter_Sets }
-				if sps.display_width != t.video.width || sps.display_height != t.video.height {
+				// (4:2:0 crops by pairs of pixels: an odd side is coded one pixel larger, and the track keeps the true size)
+				if !size_fits(sps.display_width, t.video.width) || !size_fits(sps.display_height, t.video.height) {
 					delete(record)
 					return .Size_Mismatch
 				}
@@ -702,4 +703,10 @@ mp4_destroy :: proc(m: ^Muxer) {
 	}
 	delete(m.mp4.chunks)
 	delete(m.mp4.scratch)
+}
+
+// The SPS's side against the track's: the same, or one more for an odd side (H.264 4:2:0 cannot crop a single pixel).
+@(private = "file")
+size_fits :: proc(coded, track: int) -> bool {
+	return coded == track || (track % 2 == 1 && coded == track + 1)
 }

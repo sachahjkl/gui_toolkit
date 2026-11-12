@@ -389,6 +389,12 @@ mp4_high_profile_and_cropping :: proc(t: ^testing.T) {
 	track, _ := mux.add_video_track(m2, {codec = .AVC, width = 1920, height = 1088, frame_rate = 25})
 	testing.expect_value(t, mux.add_packet(m2, track, frames[0].data, 0, 0.04, true), mux.Error.Size_Mismatch)
 	mux.destroy(m2)
+
+	// an odd side is coded one pixel larger (4:2:0 crops by pairs): the track keeps the true size
+	m3, _ := mux.mp4_open_memory()
+	odd, _ := mux.add_video_track(m3, {codec = .AVC, width = 1919, height = 1079, frame_rate = 25})
+	testing.expect_value(t, mux.add_packet(m3, odd, frames[0].data, 0, 0.04, true), mux.Error.None)
+	mux.destroy(m3)
 }
 
 @(test)
