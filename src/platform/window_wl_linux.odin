@@ -138,6 +138,7 @@ Wl_Window_State :: struct {
 	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
 	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
 	presented:   bool,
+	output:      u32,              // the registry name of the output the surface entered last (wl_surface.enter); 0: none yet
 	activate_pending: bool,        // raise_window asked the focus before the first picture
 	activate_token:   string,      // raise_window_token did (owned)
 	outside:     Wl_Outside_Bands, // the resize bands around the window (outside_bands_wl_linux.odin)
@@ -821,10 +822,10 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 // again (wl_hide destroyed them).
 @(private)
 wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
-	st.presented = false
+	st.presented, st.output = false, 0
 	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
 	if st.surface == nil { return false }
-	wl.proxy_set_user_data(st.surface, st)
+	wl.proxy_add_listener(st.surface, &surface_listener, st)   // (also its user data: st)
 	if wlc.fractional_manager != nil && wlc.viewporter != nil {
 		st.viewport = wl.proxy_marshal_flags(wlc.viewporter, WP_VIEWPORTER_GET_VIEWPORT, &wp_viewport_iface, wl.proxy_get_version(wlc.viewporter), 0, nil, st.surface)
 		st.fractional = wl.proxy_marshal_flags(wlc.fractional_manager, WP_FRACTIONAL_MANAGER_GET, &wp_fractional_iface, wl.proxy_get_version(wlc.fractional_manager), 0, nil, st.surface)
@@ -855,6 +856,39 @@ wl_surface_destroy :: proc(st: ^Wl_Window_State) {
 	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
 	if st.frame_cb != nil { wl.proxy_destroy(st.frame_cb) }
 	st.fractional, st.viewport, st.surface, st.frame_cb = nil, nil, nil, nil
+}
+
+// Where the compositor shows the surface: the output it entered last is the window's (window_output_name).
+@(private)
+Wl_Surface_Listener :: struct {
+	enter:                      proc "c" (data: rawptr, s: Wl_Proxy, output: Wl_Proxy),
+	leave:                      proc "c" (data: rawptr, s: Wl_Proxy, output: Wl_Proxy),
+	preferred_buffer_scale:     proc "c" (data: rawptr, s: Wl_Proxy, factor: i32),
+	preferred_buffer_transform: proc "c" (data: rawptr, s: Wl_Proxy, transform: u32),
+}
+@(private) surface_listener := Wl_Surface_Listener{wl_surface_enter, wl_surface_leave, wl_surface_buffer_scale, wl_surface_buffer_transform}
+
+@(private)
+wl_surface_enter :: proc "c" (data: rawptr, s: Wl_Proxy, output: Wl_Proxy) {
+	st := (^Wl_Window_State)(data)
+	for o in wlc.outputs { if o.proxy == output { st.output = o.name } }
+}
+@(private)
+wl_surface_leave :: proc "c" (data: rawptr, s: Wl_Proxy, output: Wl_Proxy) {
+	st := (^Wl_Window_State)(data)
+	for o in wlc.outputs { if o.proxy == output && st.output == o.name { st.output = 0 } }
+}
+// (the scale comes from wp_fractional_scale; the transform is the output's)
+@(private) wl_surface_buffer_scale :: proc "c" (data: rawptr, s: Wl_Proxy, factor: i32) {}
+@(private) wl_surface_buffer_transform :: proc "c" (data: rawptr, s: Wl_Proxy, transform: u32) {}
+
+// The name of the output the window is on ("" when the compositor has not said).
+@(private)
+wl_window_output_name :: proc(w: ^Window) -> string {
+	st := wl_state(w)
+	if st == nil || st.output == 0 { return "" }
+	for o in wlc.outputs { if o.name == st.output { return o.output_name } }
+	return ""
 }
 
 // The compositor's word that it shows a window's picture: wl_surface.frame, asked with the picture (wl_frame_shown_ask),

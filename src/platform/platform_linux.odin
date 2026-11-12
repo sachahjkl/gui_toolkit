@@ -181,6 +181,17 @@ clear_input_region :: proc(w: ^Window) {
 // Whether the window is an overlay (open_overlay).
 is_overlay :: proc(w: ^Window) -> bool { return w != nil && w.overlay }
 
+// The name of the output (monitor) the window is on, as gt:capture names outputs ("DP-2"; Windows: "\\.\DISPLAY1"):
+// the one the compositor showed it on last. "" when the system has not said yet (before its first picture), or cannot
+// (X11 here).
+window_output_name :: proc(w: ^Window) -> string {
+	if w == nil || w.offscreen { return "" }
+	#partial switch w.backend {
+	case .Wayland: return wl_window_output_name(w)
+	}
+	return ""
+}
+
 @(private = "file")
 window_make :: proc(kind: Backend_Kind, user: rawptr, on_frame: proc(user: rawptr)) -> ^Window {
 	w := new(Window)

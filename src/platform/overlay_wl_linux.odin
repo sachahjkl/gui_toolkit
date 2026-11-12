@@ -20,6 +20,7 @@ Wl_Output_Info :: struct {
 	transform:    i32,
 	logical_pos:  [2]i32,     // zxdg_output_v1's
 	logical_size: [2]i32,
+	output_name:  string,     // zxdg_output_v1's ("DP-2"; owned; "" until it says it)
 }
 
 @(private)
@@ -35,7 +36,12 @@ Xdg_Output_Listener :: struct {
 @(private) xdg_output_position :: proc "c" (data: rawptr, o: Wl_Proxy, x, y: i32) { (^Wl_Output_Info)(data).logical_pos = {x, y} }
 @(private) xdg_output_size :: proc "c" (data: rawptr, o: Wl_Proxy, w, h: i32) { (^Wl_Output_Info)(data).logical_size = {w, h} }
 @(private) xdg_output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {}
-@(private) xdg_output_name :: proc "c" (data: rawptr, o: Wl_Proxy, name: cstring) {}
+@(private) xdg_output_name :: proc "c" (data: rawptr, o: Wl_Proxy, name: cstring) {
+	context = wl_ctx_real()
+	info := (^Wl_Output_Info)(data)
+	delete(info.output_name, wlc.outputs.allocator)
+	info.output_name = strings.clone(string(name), wlc.outputs.allocator)
+}
 @(private) xdg_output_description :: proc "c" (data: rawptr, o: Wl_Proxy, description: cstring) {}
 
 // A wl_output the registry announced (bound by the caller): kept with its listener, and its xdg-output asked for.
@@ -70,6 +76,7 @@ wl_output_remove :: proc(name: u32) {
 			wl.proxy_destroy(o.proxy)
 		}
 		ordered_remove(&wlc.outputs, i)
+		delete(o.output_name, wlc.outputs.allocator)
 		free(o, wlc.outputs.allocator)
 		return
 	}

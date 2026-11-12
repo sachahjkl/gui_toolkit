@@ -85,6 +85,19 @@ clear_input_region :: proc(w: ^Window) {
 // Whether the window is an overlay (open_overlay).
 is_overlay :: proc(w: ^Window) -> bool { return w != nil && w.overlay }
 
+// The name of the monitor the window is on, as gt:capture names it ("\\\\.\\DISPLAY1"); "" when it cannot be read.
+window_output_name :: proc(w: ^Window) -> string {
+	if w == nil || w.offscreen { return "" }
+	mon := win.MonitorFromWindow(w.hwnd, .MONITOR_DEFAULTTONEAREST)
+	mi: win.MONITORINFOEXW
+	mi.cbSize = size_of(win.MONITORINFOEXW)
+	if !win.GetMonitorInfoW(mon, (^win.MONITORINFO)(&mi)) { return "" }
+	n := 0
+	for n < len(mi.szDevice) && mi.szDevice[n] != 0 { n += 1 }
+	s, _ := win.utf16_to_utf8(mi.szDevice[:n], context.temp_allocator)
+	return s
+}
+
 // The physical rect of the monitor whose logical place (as gt:capture gives it) is `area`; the primary monitor's when
 // none is (or `area` is all zero).
 @(private = "file")

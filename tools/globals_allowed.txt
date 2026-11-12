@@ -313,3 +313,4 @@ platform/wl_protocol_linux.odin zwlr_layer_shell_iface const  # a protocol table
 platform/wl_protocol_linux.odin zwlr_layer_surface_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin zxdg_output_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin zxdg_output_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/window_wl_linux.odin surface_listener const  # a listener table (passed by address to libwayland)

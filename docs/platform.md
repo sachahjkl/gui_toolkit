@@ -67,6 +67,10 @@ the executable's file name. On Windows it does nothing: the program declares its
 `needs_top_border`, `needs_frame_outline`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,
 `set_offscreen_dpi`, `set_offscreen_active`.
 
+**Where it is** — `window_output_name(w)`: the monitor the window is on, by the name `gt:capture` gives outputs
+("DP-2", "\\\\.\\DISPLAY1"). Wayland says it with `wl_surface.enter`, after the window's first picture; two monitors of the
+same size are told apart by it, where a window's size cannot. "" before then, and on X11.
+
 **An offscreen window's machine** (`virtual.odin`) — `virtual_screen_set`, `virtual_screen`: the screen `monitor_size` and `display_info` answer for it; its input comes through `inject_event`, its cursor is `w.cursor`, its clipboard the process's store: nothing of the machine it runs on is read or written.
 
 **Loop** — `poll_events` (re-entrancy safe; drops what the last call returned, keeps what came since), `wait_event`,
