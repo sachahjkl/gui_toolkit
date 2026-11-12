@@ -170,6 +170,31 @@ a_held_frame_shows_nothing_and_comes_back :: proc(t: ^testing.T) {
 	testing.expect_value(t, h.shown, SIZE)
 }
 
+// A size no picture is drawn at (the picture held) leaves the renderer as it was: it takes the window's size with the
+// next picture drawn.
+@(test)
+a_size_with_no_picture_leaves_the_renderer :: proc(t: ^testing.T) {
+	p: Probe
+	defer delete(p.seen)
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	open_main(t, &sh, h, &p)
+	defer host.host_close(h)
+	step(h)
+	testing.expect_value(t, sh.r.size, SIZE)
+	h.hold = proc(h: ^host.Host, size: host.Vec2) -> int { return (^Probe)(h.user).hold }
+	p.hold = HOLD_MS
+	h.win.size = {SIZE.x + 40, SIZE.y}
+	step(h)
+	h.win.size = {SIZE.x + 80, SIZE.y}
+	step(h)
+	testing.expect_value(t, sh.r.size, SIZE)
+	p.hold = 0
+	step(h)
+	testing.expect_value(t, sh.r.size, [2]int{SIZE.x + 80, SIZE.y})
+}
+
 // The loop sleeps until the soonest of what the windows asked for, and not at all while one still moves or settles.
 @(test)
 the_wait_is_the_soonest_of_all :: proc(t: ^testing.T) {

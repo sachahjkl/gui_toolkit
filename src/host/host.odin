@@ -278,7 +278,6 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	if len(events) > 0 { h.settle = max(h.settle, h.after_input) }
 	if h.still != nil && h.still(h, events) { return }
 	if h.input != nil { events = h.input(h, events) }
-	render.resize(r, h.win.size)
 	size := Vec2{f32(h.win.size.x), f32(h.win.size.y)}
 	now := ui.now_ms()
 	dt := clamp(f32((now - h.last_ms) / 1000), DT_MIN_S, DT_MAX_S)
@@ -296,6 +295,9 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 		platform.frame_shown_held(h.win)   // (the word, when it comes, asks for the picture)
 		return
 	}
+	// (the swap chain at the window's size only for a picture drawn: a resize's sizes that no picture showed (held, or the
+	// last one not shown yet) cost a reconfigure each, three for every one presented)
+	render.resize(r, h.win.size)
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	render.frame_begin(r, h.background)
