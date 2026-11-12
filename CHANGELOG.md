@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.224.1] - 2026-11-12
+
+### Fixed
+- **`platform.user_dir` follows `%APPDATA%` and `%LOCALAPPDATA%` on Windows**: an absolute variable is taken, as XDG's are on Linux, so a test or a portable copy that points them elsewhere is followed; without them, the known folders.
+
 ## [0.224.0] - 2026-11-12
 
 ### Changed
@@ -2964,6 +2969,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.224.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.224.1
 [0.224.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.224.0
 [0.223.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.223.0
 [0.222.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.222.0
