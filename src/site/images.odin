@@ -1,25 +1,24 @@
 package tk_site
 
 // The pictures of a built site, made light. A screenshot published as a PNG is many times larger than the same picture in WebP,
-// and a page often shows it narrower than it is. build_images turns the PNGs of a folder of the built site into WebP (cwebp,
-// libwebp's encoder) at their own width and at narrower ones, points the pages at them, and removes the PNGs it replaced. An
-// <img> gets a srcset of its widths: the browser takes the one its layout needs, which the page says with `sizes` (its own: only
-// the page knows how wide it shows a picture). Run on the built site, after its pages are made.
+// and a page often shows it narrower than it is. build_images makes the pictures of a folder of the built site WebP at their own
+// width and at narrower ones (toolbox.webp_encode), points the pages at them, and removes the PNGs it replaced. A picture kept
+// as a WebP is published as it is, with its narrower copies made from it. An <img> gets a srcset of its widths: the browser takes
+// the one its layout needs, which the page says with `sizes` (its own: only the page knows how wide it shows a picture). Run on
+// the built site, after its pages are made.
 
 import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import toolbox "../toolbox"
 
 Images_Options :: struct {
 	dir:     string,     // the folder of the pictures, under the site ("img")
-	widths:  []int,      // the narrower copies, in pixels; the picture's own width is always made
-	quality: int,        // cwebp's -q (0: IMAGES_QUALITY)
+	widths:  []int,      // the narrower copies, in pixels; the picture's own width is always there
 	keep:    []string,   // the PNGs left as they are, by file name: what other sites read (a sharing card, a logo, a favicon)
+	encoder: string,     // cwebp (toolbox.webp_encoder)
 }
-
-// With -preset text: a screenshot's small text stays as sharp as in the PNG, the file some twenty times smaller.
-IMAGES_QUALITY :: 90
 
 // A picture made in WebP: its widths, the narrowest first, the last its own.
 Picture :: struct { widths: []int }
@@ -28,28 +27,27 @@ build_images :: proc(out: string, o: Images_Options) -> bool {
 	at := fmt.tprintf("%s/%s", out, o.dir)
 	entries, err := os.read_all_directory_by_path(at, context.temp_allocator)
 	if err != nil { fmt.eprintfln("site: no folder %s", at); return false }
-	quality := fmt.tprintf("%d", o.quality > 0 ? o.quality : IMAGES_QUALITY)
 	made := make(map[string]Picture, allocator = context.temp_allocator)
+	pngs := make([dynamic]string, context.temp_allocator)
 	for e in entries {
-		if e.type == .Directory || !strings.has_suffix(e.name, ".png") || slice.contains(o.keep, e.name) { continue }
-		name := e.name[:len(e.name) - len(".png")]
+		png := strings.has_suffix(e.name, ".png")
+		if e.type == .Directory || !(png || strings.has_suffix(e.name, ".webp")) || slice.contains(o.keep, e.name) { continue }
+		name := e.name[:strings.last_index_byte(e.name, '.')]
 		src := fmt.tprintf("%s/%s", at, e.name)
-		own, ok := png_width(src)
-		if !ok { fmt.eprintfln("site: %s is not a PNG", src); return false }
+		data, rerr := os.read_entire_file(src, context.temp_allocator)
+		own, ok := toolbox.image_width(data)
+		if rerr != nil || !ok { fmt.eprintfln("site: %s is not a picture read", src); return false }
 		widths := make([dynamic]int, context.temp_allocator)
 		for w in o.widths { if w < own && !slice.contains(widths[:], w) { append(&widths, w) } }
 		slice.sort(widths[:])
 		append(&widths, own)
 		for w in widths {
+			if w == own && !png { continue }   // (a WebP is its own width: not encoded again)
 			dst := fmt.tprintf("%s/%s", at, webp_name(name, w, own))
-			// (-preset first: cwebp reads it before the options it sets)
-			command := make([dynamic]string, context.temp_allocator)
-			append(&command, "cwebp", "-preset", "text", "-q", quality, "-metadata", "none", "-quiet")
-			if w < own { append(&command, "-resize", fmt.tprintf("%d", w), "0") }
-			append(&command, src, "-o", dst)
-			if !cwebp(command[:]) { return false }
+			if !toolbox.webp_encode(o.encoder, src, dst, w == own ? 0 : w) { return false }
 		}
 		made[name] = Picture{widths[:]}
+		if png { append(&pngs, src) }
 	}
 	pages, listed := site_pages(out)
 	if !listed { fmt.eprintfln("site: the pages of %s not listed", out); return false }
@@ -60,8 +58,8 @@ build_images :: proc(out: string, o: Images_Options) -> bool {
 		html := images_html(string(data), o.dir, made)
 		if html != string(data) && !write_text(path, html) { return false }
 	}
-	for name in made {
-		if os.remove(fmt.tprintf("%s/%s.png", at, name)) != nil { fmt.eprintfln("site: %s/%s.png not removed", at, name); return false }
+	for path in pngs {
+		if os.remove(path) != nil { fmt.eprintfln("site: %s not removed", path); return false }
 	}
 	return true
 }
@@ -119,9 +117,11 @@ img_srcset :: proc(tag, dir: string, made: map[string]Picture) -> string {
 	if length < 0 { return tag }
 	src := tag[from:from + length]
 	slash := strings.last_index_byte(src, '/')
-	if slash < 0 || !strings.has_suffix(src[:slash], dir) || !strings.has_suffix(src, ".png") { return tag }
+	if slash < 0 || !strings.has_suffix(src[:slash], dir) { return tag }
 	if slash > len(dir) && src[slash - len(dir) - 1] != '/' { return tag }   // (a folder whose name only ends like it)
-	name := src[slash + 1:len(src) - len(".png")]
+	dot := strings.last_index_byte(src, '.')
+	if dot < slash || (src[dot:] != ".png" && src[dot:] != ".webp") { return tag }
+	name := src[slash + 1:dot]
 	p, ok := made[name]
 	if !ok { return tag }
 	own := p.widths[len(p.widths) - 1]
@@ -141,26 +141,4 @@ img_srcset :: proc(tag, dir: string, made: map[string]Picture) -> string {
 @(private = "file")
 webp_name :: proc(name: string, width, own: int) -> string {
 	return width == own ? fmt.tprintf("%s.webp", name) : fmt.tprintf("%s-%d.webp", name, width)
-}
-
-// A PNG's width, from its header.
-@(private = "file")
-png_width :: proc(path: string) -> (width: int, ok: bool) {
-	data, err := os.read_entire_file(path, context.temp_allocator)
-	if err != nil || len(data) < 24 || string(data[:8]) != "\x89PNG\r\n\x1a\n" { return }
-	return int(data[16]) << 24 | int(data[17]) << 16 | int(data[18]) << 8 | int(data[19]), true
-}
-
-@(private = "file")
-cwebp :: proc(command: []string) -> bool {
-	state, _, stderr, err := os.process_exec({command = command}, context.temp_allocator)
-	if err != nil {
-		fmt.eprintln("site: cwebp did not start: it is libwebp's encoder, which the pictures need (nix: libwebp; Debian: webp)")
-		return false
-	}
-	if !state.exited || state.exit_code != 0 {
-		fmt.eprintfln("site: cwebp failed: %s", strings.trim_space(string(stderr)))
-		return false
-	}
-	return true
 }

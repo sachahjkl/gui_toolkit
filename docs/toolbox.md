@@ -72,6 +72,14 @@ program of that name earlier on the PATH. On other systems, `system_program` ret
 The tests (`odin test src/toolbox`) run without a network: the hashes, `env_with`, a run with a log and a time limit, a
 capture in another folder and environment, a pinned file kept, a `file:` URL downloaded, and a wrong SHA-256 refused.
 
+## WebP
+
+`webp_encoder(dir) -> (encoder, why)` is cwebp, libwebp's encoder: the system's elsewhere (nix `libwebp`, Debian `webp`), and on
+Windows libwebp's own build, fetched into `dir` once and pinned by its SHA-256. `webp_encode(encoder, src, dst, width = 0,
+quality = WEBP_QUALITY)` writes `src` (PNG, JPEG, TIFF or WebP) as a WebP, `width` pixels wide (0: its own), with `-preset text`:
+a screenshot's small text stays as sharp as in its PNG, the file some twenty times smaller. `image_width(data)` reads a PNG's or
+a WebP's width from its header (pure).
+
 ## A program's logo
 
 Each program draws its own logo; `write_logo(logo)` writes what every program makes of it. The program gives

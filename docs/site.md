@@ -44,10 +44,11 @@ when there is none, and with `m.root_domain` also `robots.txt` and `favicon.ico`
 
 ## Light pictures
 
-`build_images(out, o)` turns the PNGs of the folder `o.dir` of a built site into WebP, at their own width and at each of
-`o.widths` narrower than it, with `cwebp` (libwebp's encoder, which must be on the path: nix `libwebp`, Debian `webp`). It runs
-`-preset text -q 90` (`o.quality`): a screenshot's small text stays as sharp as in the PNG, the file some twenty times smaller.
-Each `<img>` of a picture made gets its WebP and a `srcset` of its widths; the page says how wide it shows it with `sizes`, its
+`build_images(out, o)` makes the pictures of the folder `o.dir` of a built site WebP, at their own width and at each of
+`o.widths` narrower than it, with `o.encoder` (`toolbox.webp_encoder`: the system's `cwebp`, nix `libwebp`, Debian `webp`;
+libwebp's own build on Windows, fetched once and pinned). A PNG is encoded at its width too; a WebP is published as it is (a
+project keeps its screenshots in WebP: `toolbox.webp_encode`). `-preset text -q 90`: a screenshot's small text stays as sharp as
+in the PNG, the file some twenty times smaller. Each `<img>` of a picture made gets its WebP and a `srcset` of its widths; the page says how wide it shows it with `sizes`, its
 own. Every other mention of the PNG (a link that opens it whole) gets the WebP at its own width, and the PNGs replaced are
 removed. `o.keep` names the PNGs left as they are: what other sites read (the sharing card, a logo, a favicon). Run it on the
 built site, after `build_meta`.

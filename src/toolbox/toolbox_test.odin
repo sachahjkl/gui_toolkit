@@ -199,3 +199,29 @@ only_a_release_goes_through_the_api :: proc(t: ^testing.T) {
 	testing.expect(t, !download_through_api("https://github.com/owner/repo/archive/refs/tags/v1.zip", path, quiet = true), "not a release's file")
 	testing.expect(t, !os.exists(path), "nothing written")
 }
+
+// A picture's width from its header: a PNG's, and a WebP's of each kind (lossy, lossless, extended); anything else is not one.
+@(test)
+a_picture_says_its_width :: proc(t: ^testing.T) {
+	png := []u8{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 13, 'I', 'H', 'D', 'R', 0, 0, 0x05, 0xb3, 0, 0, 0x03, 0x98}
+	riff :: proc(kind: string, rest: []u8) -> []u8 {
+		b := make([dynamic]u8, context.temp_allocator)
+		append(&b, "RIFF")
+		append(&b, 0, 0, 0, 0)
+		append(&b, "WEBP")
+		append(&b, kind)
+		append(&b, 0, 0, 0, 0)
+		append(&b, ..rest)
+		for len(b) < 30 { append(&b, 0) }
+		return b[:]
+	}
+	lossy := riff("VP8 ", {0, 0, 0, 0x9d, 0x01, 0x2a, 0xb3, 0x05, 0x98, 0x03})        // (frame tag, start code, 1459 then 920)
+	lossless := riff("VP8L", {0x2f, 0xb2, 0x05, 0, 0})                                // (1459 - 1 in its first 14 bits)
+	extended := riff("VP8X", {0, 0, 0, 0, 0xb2, 0x05, 0, 0x97, 0x03, 0})               // (flags, then 1459 - 1 and 920 - 1)
+	for c in ([][]u8{png, lossy, lossless, extended}) {
+		w, ok := image_width(c)
+		testing.expect(t, ok && w == 1459, "1459 pixels wide")
+	}
+	_, ok := image_width(transmute([]u8)string("GIF89a and the rest of a picture"))
+	testing.expect(t, !ok, "not a PNG or a WebP")
+}
