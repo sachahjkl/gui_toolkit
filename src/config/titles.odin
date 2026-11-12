@@ -21,6 +21,7 @@ import "core:unicode/utf8"
 // `keep_unit`: the unit word stays ("DevTools network max body KB"), for the rare category where two preferences differ
 // by their unit only (about:config asks for it then).
 title_of :: proc(d: Def, allocator := context.temp_allocator, keep_unit := false) -> string {
+	if d.title != "" { return strings.clone(d.title, allocator) }   // (the program's words: an acronym, a phrase)
 	rest := d.name
 	cat := d.category != "" ? d.category : first_segment(d.name)
 	if len(rest) > len(cat) && strings.has_prefix(rest, cat) && rest[len(cat)] == '.' {

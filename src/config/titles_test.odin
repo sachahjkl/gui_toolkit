@@ -59,3 +59,12 @@ search_matches_every_word :: proc(t: ^testing.T) {
 	testing.expect(t, matches(d, "icon"), "a tag")
 	testing.expect(t, matches(d, "badge counter"), "a word of the title and a tag")
 }
+
+// A title the program gives wins over the one made from the name.
+@(test)
+a_title_of_its_own :: proc(t: ^testing.T) {
+	d := Def{name = "shortcut.qr", category = "shortcuts", kind = .String, title = "Read a QR code"}
+	testing.expect_value(t, title_of(d), "Read a QR code")
+	d.title = ""
+	testing.expect_value(t, title_of(d), "Qr")
+}

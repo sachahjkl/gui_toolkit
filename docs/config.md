@@ -96,6 +96,9 @@ summary, more := config.summary_of(d.description)
 if config.matches(d, query) { ... }             // every word of the query in the name, title, description or tags
 ```
 
+`Def.title` gives the words a settings page shows when the name does not make them ("Read a QR code", "Start with the
+session"); empty, `title_of` makes them from the name.
+
 ### A search over pages
 
 A settings dialog made of pages shows, while a query is typed, the matching preferences of every page under their page's

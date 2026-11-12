@@ -42,6 +42,7 @@ Value :: struct {
 
 Def :: struct {
 	name:        string,      // dotted, lower case: "network.max_connections_per_host"
+	title:       string,      // what a settings page calls it ("": made from the name, title_of)
 	description: string,
 	kind:        Kind,
 	default:     Value,       // `s` must be a literal or otherwise outlive the registry
