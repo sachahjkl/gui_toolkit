@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.232.0] - 2026-11-12
+
+### Added
+- **`gt:image` writes JPEG and WebP files**: `jpeg_encode` (written in Odin, its colours not subsampled so a screenshot's text stays sharp) and `webp_encode` (lossy or lossless, by libwebp loaded when first asked; `webp_available` says whether it is there).
+- **The clipboard takes a picture's PNG made elsewhere** (`Clipboard_Image.png`): a program encodes it on its worker, and setting the clipboard encodes nothing on the interface's thread.
+
+### Fixed
+- **A shortcut field records the Super key**: Super+S (Windows+S) is taken as a shortcut, as Ctrl+S is. `Event.super` says the key was held on Wayland, X11 and Windows.
+
 ## [0.231.0] - 2026-11-12
 
 ### Changed
@@ -3025,6 +3034,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.232.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.232.0
 [0.231.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.231.0
 [0.230.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.230.0
 [0.229.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.229.0
