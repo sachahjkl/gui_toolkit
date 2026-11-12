@@ -25,7 +25,6 @@ Colors :: struct {
 	table_frame:  ui.Color,   // behind a table, when Config.frame is nil (the theme's "well")
 	table_stripe: ui.Color,   // every other row of a table (the text's, faint)
 	table_rule:   ui.Color,   // under a table's header (the marker's, faint)
-	scroll_bar:   ui.Color,   // the bar under a table that scrolls sideways, drawn faint (the text's)
 }
 
 // What a fenced code block gives Config.code.

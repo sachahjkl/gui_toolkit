@@ -10,7 +10,6 @@ import "../ui"
 
 TABLE_COL_MAX_EM    :: 28    // a table's column is no wider (its words wrap past it); a table wider than its place scrolls sideways
 TABLE_FADE_EM       :: 2     // the fade at a side of a table that scrolls, where it hides more
-TABLE_BAR_PX        :: 4     // the bar under a table that scrolls sideways, at a scale of 1
 TABLE_STRIPE_ALPHA  :: 0.045 // every other row: the text's colour, this faint
 TABLE_RULE_ALPHA    :: 0.35  // the rule under the header: the marker colour, this faint
 TABLE_MEASURE_W     :: 1e6   // a cell is laid out this wide to measure it: on one line
@@ -195,11 +194,11 @@ table_block :: proc(id: string, d: ^Doc, n: int, cfg: ^Config, c: Colors, fs: f3
 	frame_open(id, cfg, .Table, c.table_frame)
 	ui.spacer(ui.px(em * 0.3))
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-	hs: ^ui.Box
 	if ui.row(id = "###in") {
 		ui.spacer(ui.px(edge))
-		// (sideways: the rows in a box that scrolls; a fade on the side that hides more, and a bar under them, say so)
-		hs = table_scroller(overflow, total, em)
+		// (sideways: the rows in a box that scrolls; a fade on the side that hides more, and the box's own scroll bar
+		// under them, say so: the toolkit's, as every box that scrolls has; a second bar of the table's drew two)
+		_ = table_scroller(overflow, total, em)
 		ui.next({width = overflow ? ui.px(total, 1) : ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###rows") {
 			for ri in 0 ..< t.rows {
@@ -223,11 +222,12 @@ table_block :: proc(id: string, d: ^Doc, n: int, cfg: ^Config, c: Colors, fs: f3
 				}
 				if ri == 0 { ui.next({width = ui.fill(), height = ui.px(2), bg = rule}); ui.build_box({.Draw_Background}, "###hl") }
 			}
+			// (the room of the scroll bar under the rows: it is drawn over the box's bottom edge, not over a row)
+			if overflow { ui.spacer(ui.px(ui.scrollbar_gutter())) }
 		}
 		ui.pop_parent()   // (table_scroller's box)
 		ui.spacer(ui.px(edge))
 	}
-	if overflow { table_scroll_bar(hs, total, em, c.scroll_bar.a > 0 ? c.scroll_bar : c.text) }
 	ui.spacer(ui.px(em * 0.3))
 	if cfg.table_corner != nil { table_corner(cfg, t, block_lines(d, n), em) }
 	ui.pop_parent()   // (the frame)
@@ -264,37 +264,6 @@ table_scroller :: proc(overflow: bool, total, em: f32) -> ^ui.Box {
 	}
 	ui.push_parent(hs)
 	return hs
-}
-
-@(private = "file")
-Table_Bar_Draw :: struct { track: ui.Rect, at, thumb: f32, hot: bool, color: ui.Color }
-
-// Under a table that scrolls sideways: a thin track and where the view is on it. A press or a drag on it takes the view there.
-@(private = "file")
-table_scroll_bar :: proc(hs: ^ui.Box, total, em: f32, color: ui.Color) {
-	h := math.round(TABLE_BAR_PX * ui.scale())
-	ui.next({width = ui.fill(), height = ui.px(h + math.round(em * 0.5)), cursor = .Hand})
-	bar := ui.build_box({.Clickable}, "###hbar")
-	sig := ui.signal(bar)
-	w := hs.rect.max.x - hs.rect.min.x
-	if w <= 0 || total <= w { return }
-	limit := total - w
-	track := ui.Rect{{bar.rect.min.x + em * 0.6, bar.rect.min.y + em * 0.15}, {bar.rect.max.x - em * 0.6, bar.rect.min.y + em * 0.15 + h}}
-	tw := track.max.x - track.min.x
-	thumb := max(tw * w / total, em * 2)
-	if (sig.pressed || sig.dragging) && tw > thumb {
-		t := clamp((ui.mouse_pos().x - track.min.x - thumb * 0.5) / (tw - thumb), 0, 1)
-		hs.view_target.x = t * limit
-	}
-	d := ui.frame_new(Table_Bar_Draw)
-	d^ = {track = track, at = track.min.x + (tw - thumb) * clamp(hs.view_off.x / limit, 0, 1), thumb = thumb, hot = sig.hovering || sig.dragging, color = color}
-	bar.custom = proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
-		d := (^Table_Bar_Draw)(user)
-		r := (d.track.max.y - d.track.min.y) * 0.5
-		draw.rect(dc, d.track, with_alpha(d.color, 0.08), r)
-		draw.rect(dc, {{d.at, d.track.min.y}, {d.at + d.thumb, d.track.max.y}}, with_alpha(d.color, d.hot ? 0.45 : 0.28), r)
-	}
-	bar.custom_user = d
 }
 
 // A table as HTML for the clipboard: a plain grid that takes the style of the program it is pasted in (its fonts, its

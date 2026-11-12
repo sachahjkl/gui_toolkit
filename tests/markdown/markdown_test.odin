@@ -186,6 +186,25 @@ a_table_is_a_grid :: proc(t: ^testing.T) {
 	testing.expect_value(t, tb.measure_key, measured)
 }
 
+// A table wider than its place scrolls sideways in one box, with the toolkit's one scroll bar: no bar of its own under
+// it (two bars showed), and room under its rows for that bar.
+@(test)
+a_wide_table_has_one_scroll_bar :: proc(t: ^testing.T) {
+	r: Run
+	defer finish(&r)
+	wide := strings.repeat("word ", 30, context.temp_allocator)
+	s := start(t, &r, strings.concatenate({"| A | B | C |\n|---|---|---|\n| ", wide, " | ", wide, " | ", wide, " |\n"}, context.temp_allocator))
+	session.frames(s, 4)
+	hs := session.find(s, "hs")
+	if !testing.expect(t, hs != nil, "the box the rows scroll in") { return }
+	testing.expect(t, .View_Scroll_X in hs.flags, "it scrolls sideways")
+	testing.expect(t, session.find(s, "hbar") == nil, "no bar of the table's own")
+	last := session.find(s, "tr1")
+	if testing.expect(t, last != nil, "the last row") {
+		testing.expectf(t, hs.rect.max.y - last.rect.max.y >= ui.scrollbar_gutter() - 1, "room for the bar under the rows: %v", hs.rect.max.y - last.rect.max.y)
+	}
+}
+
 // A fenced block of a known language: its keywords in the theme's colour; the callback is given its runs, made once.
 @(test)
 a_code_block_is_highlighted :: proc(t: ^testing.T) {
