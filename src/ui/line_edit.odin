@@ -300,8 +300,16 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Escape and typed text are the caller's. `owner`: the key a paste is asked for (field_paste; its text comes in a later
 // build, field_paste_answer). `masked`: a secret, neither copied nor cut. line_edit reads its keys with it; a field the
 // keyboard reaches another way (a menu's search) gives it its own.
-field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.Modifiers, masked := false) -> bool {
+field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.Modifiers, masked := false, read_only := false) -> bool {
 	ctrl, shift, cs := platform.Modifiers{.Ctrl}, platform.Modifiers{.Shift}, platform.Modifiers{.Ctrl, .Shift}
+	// (read only: the caret moves, the text is selected and copied; nothing changes it)
+	if read_only {
+		#partial switch key {
+		case .Left, .Right, .Home, .End, .A, .C: // below
+		case .Insert: if mods != ctrl { return false }
+		case: return false
+		}
+	}
 	move :: proc(f: ^Text_Field, to: int, extend: bool) {
 		f.cursor = to
 		if !extend { f.mark = to }
@@ -380,7 +388,9 @@ field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.
 // at its end (an eye) shows it as text and hides it again; `reveal^` says which, and is the caller's to keep.
 // A right press on it opens its menu (field_menu: Undo, Cut, Copy, Paste...); `menu` false: the program has its own.
 // `clearable`: while it holds text, a cross at its end empties it (a search's field; Undo brings the text back).
-line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil, menu := true, clearable := false) -> (res: Edit_Result) {
+// `read_only`: its text is shown, selected and copied (keys, a drag, the menu's Copy), never changed (a value made for the
+// person to take: a generated password, a key).
+line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil, menu := true, clearable := false, read_only := false) -> (res: Edit_Result) {
 	s := gs()
 	revealable := secret && reveal != nil
 	clears := clearable && !revealable && len(f.buf) > 0
@@ -438,15 +448,17 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 
 		if focused {
 			// (a paste asked in an earlier build: before what was typed since)
-			field_paste_answer(f, b.key)
-			for r in s.typed {
-				field_checkpoint(f, .Typing)
-				insert_text(f, utf8.runes_to_string({r}, context.temp_allocator))
+			if !read_only {
+				field_paste_answer(f, b.key)
+				for r in s.typed {
+					field_checkpoint(f, .Typing)
+					insert_text(f, utf8.runes_to_string({r}, context.temp_allocator))
+				}
 			}
 			// (the keys in the order they came; a dialog open over the field holds them)
 			if !keys_held_by_dialog(s) {
 				for e, i in s.events.list {
-					if !s.events.consumed[i] && field_key(f, b.key, e.key, e.mods, masked) { s.events.consumed[i] = true }
+					if !s.events.consumed[i] && field_key(f, b.key, e.key, e.mods, masked, read_only) { s.events.consumed[i] = true }
 				}
 			}
 			if key_press(.Return) { res.committed = true }
@@ -503,7 +515,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 				s.focus_key = b.key
 				ctx_menu_open(key, s.mouse)
 			}
-			field_menu(key, f, b.key, masked)
+			field_menu(key, f, b.key, masked, read_only)
 		}
 	}
 	return
@@ -512,17 +524,21 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 // The menu of a text field, `key` its menu (ctx_menu_open opens it): the edits of field_undo, field_cut, field_copy,
 // field_paste, field_delete and field_select_all, each with its keys and its icon (Lucide's: lucide_icons). `owner`: the
 // field's widget, which a paste's text comes to (field_paste). A secret is neither copied nor cut.
-field_menu :: proc(key: Key, f: ^Text_Field, owner: Key, secret := false) {
+field_menu :: proc(key: Key, f: ^Text_Field, owner: Key, secret := false, read_only := false) {
 	if ctx_menu(key) {
 		ico := lucide_icons()
 		sel := field_has_selection(f)
-		if menu_item("Undo", "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = field_can_undo(f)).clicked { field_undo(f) }
-		if menu_item("Redo", "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = field_can_redo(f)).clicked { field_redo(f) }
-		menu_separator()
-		if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { field_cut(f) }
+		if !read_only {
+			if menu_item("Undo", "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = field_can_undo(f)).clicked { field_undo(f) }
+			if menu_item("Redo", "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = field_can_redo(f)).clicked { field_redo(f) }
+			menu_separator()
+			if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { field_cut(f) }
+		}
 		if menu_item("Copy", "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { field_copy(f) }
-		if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
-		if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { field_delete(f) }
+		if !read_only {
+			if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
+			if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { field_delete(f) }
+		}
 		menu_separator()
 		if menu_item("Select all", "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(f.buf) > 0).clicked { field_select_all(f) }
 	}

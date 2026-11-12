@@ -241,6 +241,9 @@ menu_capture_keys :: proc(s: ^State, events: []platform.Event) {
 	clear(&s.menu_keys.list)
 	clear(&s.menu_keys.consumed)
 	if len(s.menus) == 0 { return }
+	// (a field of an open menu has the focus, a panel's search: its keys are its own; the menu took them all, and what
+	// was typed in the field went nowhere)
+	if f := s.boxes[s.focus_key] or_else nil; f != nil && .Text_Input in f.flags && menu_holds(s, s.focus_key) { return }
 	at := 0   // (the keys process_events kept, in their order: what took one of them, Ctrl+zoom or autoscroll's Escape, had it)
 	for e in events {
 		if e.kind == .Key_Press {
