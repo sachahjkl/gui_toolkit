@@ -77,7 +77,7 @@ Tile_Draw :: struct { face: Color }
 tile_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Tile_Draw)(user)
 	face := draw.mix(d.face, Color{1, 1, 1, 1}, 0.06 * b.hot_t)
-	relief_face(dc, b.rect, face, b.radius)
+	relief_face(dc, b.rect, face, box_drawn_radius(gs(), b))
 	draw_box_text(gs(), dc, b)   // (over its face: a box's own text is drawn before its custom drawing)
 }
 

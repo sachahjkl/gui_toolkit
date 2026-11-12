@@ -70,7 +70,7 @@ swatch_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.push_clip(dc, b.rect)
 	defer draw.pop_clip(dc)
 	checker_draw(dc, b.rect, b.font_size)
-	draw.rect(dc, b.rect, draw.srgb(d.c.r, d.c.g, d.c.b, d.c.a), b.radius)
+	draw.rect(dc, b.rect, draw.srgb(d.c.r, d.c.g, d.c.b, d.c.a), box_drawn_radius(gs(), b))
 }
 
 color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {

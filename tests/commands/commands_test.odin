@@ -403,3 +403,21 @@ a_box_is_drawn_with_the_rounding :: proc(t: ^testing.T) {
 	b.flags += {.Fixed_Radius}
 	testing.expect_value(t, ui.box_drawn_radius(&f.s, &b), 10)
 }
+
+// A box in a rounded corner of a box around it takes that corner (a title bar's background in a dialog's corner); one
+// that does not reach the corner keeps its own.
+@(test)
+a_box_takes_the_corner_it_fills :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f)) { return }
+	defer close(&f)
+	ui.use(&f.s)
+	dialog := ui.Box{radius = 12, rect = {{0, 0}, {200, 100}}}
+	column := ui.Box{rect = {{0, 0}, {200, 100}}, parent = &dialog}
+	title := ui.Box{rect = {{0, 0}, {200, 30}}, parent = &column}
+	radii := ui.box_drawn_radii(&f.s, &title)
+	testing.expect(t, radii[int(ui.Corner.Top_Left)] == 12 && radii[int(ui.Corner.Top_Right)] == 12, "its top corners, the dialog's (through the column)")
+	testing.expect(t, radii[int(ui.Corner.Bottom_Left)] == 0 && radii[int(ui.Corner.Bottom_Right)] == 0, "its bottom ones in the middle: its own")
+	inner := ui.Box{rect = {{4, 4}, {196, 30}}, parent = &column}
+	testing.expect_value(t, ui.box_drawn_radii(&f.s, &inner)[int(ui.Corner.Top_Left)], 0)
+}

@@ -42,7 +42,7 @@ scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
 }
 
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
-rad :: proc(r: f32) -> f32 { return r * rounding(gs()) }
+rad :: proc(r: f32) -> f32 { return radius_drawn(gs(), r) }
 
 // A radius that is a widget's shape, not a corner (a switch's pill, a slider's slot): the rounding setting scales it, the
 // edged finish's square corners leave it.

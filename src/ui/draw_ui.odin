@@ -105,9 +105,36 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 // meet the box's own and its parents'.
 box_drawn_radius :: proc(s: ^State, b: ^Box) -> f32 {
 	if .Fixed_Radius in b.flags { return b.radius }
-	r := b.radius * rounding(s)
-	// (under ROUND_LEAST_PX a corner rounds nothing that shows: its antialiasing is a blob outside a 1 px edge's corner)
+	return radius_drawn(s, b.radius)
+}
+
+// A corner's radius as drawn: times the state's rounding (none in the edged finish), square under ROUND_LEAST_PX (a
+// corner rounded at a pixel or two rounds nothing that shows: its antialiasing is a blob outside a 1 px edge's corner).
+// What a widget's custom draw rounds a corner with goes through it (`rad`), its box's own included (box_drawn_radius).
+radius_drawn :: proc(s: ^State, radius: f32) -> f32 {
+	r := radius * rounding(s)
 	return r < ROUND_LEAST_PX * max(1, scale()) ? 0 : r
+}
+
+// The radii a box is drawn with: its own, and at a corner where it meets the corner of a box around it that is rounded
+// (a title bar's background in a dialog's corner, a header at the top of a card), that box's: a box's square corner
+// showed outside the rounded one it fills. The boxes around it are looked through while their corner is that one.
+box_drawn_radii :: proc(s: ^State, b: ^Box) -> (radii: [4]f32) {
+	radii = box_radii(box_drawn_radius(s, b), b.square_corners)
+	CORNER_MEET_PX :: 0.5
+	r := b.rect
+	for c in Corner {
+		left, top := c == .Top_Left || c == .Bottom_Left, c == .Top_Left || c == .Top_Right
+		for a := b.parent; a != nil; a = a.parent {
+			q := a.rect
+			x := left ? abs(r.min.x - q.min.x) : abs(r.max.x - q.max.x)
+			y := top ? abs(r.min.y - q.min.y) : abs(r.max.y - q.max.y)
+			if x > CORNER_MEET_PX || y > CORNER_MEET_PX { break }
+			if c in a.square_corners { continue }
+			if ar := box_drawn_radius(s, a); ar > radii[int(c)] { radii[int(c)] = ar }
+		}
+	}
+	return
 }
 
 // The least radius a box's corners are rounded with (logical pixels): under it, they are square.
@@ -119,8 +146,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	draw.damage_span_begin(dc, u64(b.key))
 	defer draw.damage_span_end(dc)
 	r := b.rect
-	radius := box_drawn_radius(s, b)
-	radii := box_radii(radius, b.square_corners)
+	radii := box_drawn_radii(s, b)
 	flags := b.flags
 	if b.transparency != 0 { draw.push_alpha(dc, 1 - b.transparency) }
 	// disabled: the outermost disabled box fades itself and its subtree (nested disabled boxes do not compound)

@@ -34,7 +34,7 @@ CHECKER_EM :: 0.4
 sat_val_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Picker_Draw)(user)
 	r := b.rect
-	rad := b.radius
+	rad := box_drawn_radius(gs(), b)
 	hue_c := draw.hsv(d.hue, 1, 1)
 	white, clear_c, black := Color{1, 1, 1, 1}, Color{0, 0, 0, 0}, Color{0, 0, 0, 1}
 	// corner order: top-left, bottom-left, top-right, bottom-right
@@ -70,7 +70,7 @@ hue_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Picker_Draw)(user)
 	r := b.rect
 	long := d.horizontal ? r.max.x - r.min.x : r.max.y - r.min.y
-	rr := b.radius
+	rr := box_drawn_radius(gs(), b)
 	for i in 0 ..< HUE_BANDS {
 		a := long * f32(i) / HUE_BANDS
 		z := long * f32(i + 1) / HUE_BANDS + 0.5
@@ -108,10 +108,11 @@ alpha_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	c := draw.hsv(d.hue, d.sat, d.val)
 	clear_c := c
 	clear_c.a = 0
+	br := box_drawn_radius(gs(), b)
 	if d.horizontal {
-		draw.rect_corners(dc, r, {clear_c, clear_c, c, c}, {b.radius, b.radius, b.radius, b.radius})
+		draw.rect_corners(dc, r, {clear_c, clear_c, c, c}, {br, br, br, br})
 	} else {
-		draw.rect_corners(dc, r, {clear_c, c, clear_c, c}, {b.radius, b.radius, b.radius, b.radius})
+		draw.rect_corners(dc, r, {clear_c, c, clear_c, c}, {br, br, br, br})
 	}
 	bar_marker(dc, r, d.alpha, d.horizontal)
 }
