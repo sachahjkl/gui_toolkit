@@ -332,6 +332,7 @@ end_build :: proc() {
 	}
 	s.a11y.pressed = 0
 	s.double_key = 0
+	s.caption_clicked = false
 	s.metrics.total_ms = real_ms() - s.build_start
 	build_of = nil
 }

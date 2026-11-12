@@ -243,6 +243,7 @@ Window :: struct {
 	user:         rawptr,
 	on_frame:     proc(user: rawptr),   // called while Windows owns the message loop (resize, move, menus)
 	chrome:       Chrome_Regions,       // integrated title bar: what the app drew where (set_chrome_regions)
+	caption_menu_app: bool,             // set_caption_menu_app: a right click on the caption is the app's, not the system's window menu
 	post_queue:   rawptr,               // atomic: the ^base.Post_Queue of the ui State built for this window (ui.post_window)
 	destroy_hook: proc(w: ^Window, user: rawptr),   // window_on_destroy
 	destroy_hook_user: rawptr,
@@ -427,6 +428,15 @@ set_chrome_regions :: proc(w: ^Window, c: ^Chrome_Regions) {
 	append(&w.chrome.slanted, ..c.slanted[:])
 	append(&w.chrome.overlays, ..c.overlays[:])
 	w.chrome.buttons = c.buttons
+}
+
+// Who takes a right click on the caption of an integrated title bar. Off (the default): the system, which opens its
+// window menu (Windows; Wayland's compositor; X11 has none and always gives the click to the app). On: the app, as a
+// Mouse_Press and a Mouse_Release of .Right at that point, as on its own area (ui.caption_right_clicked tells it), to
+// open its own menu of the title bar; show_system_menu still opens the system's, from an item of that menu.
+set_caption_menu_app :: proc(w: ^Window, on: bool) {
+	if w == nil { return }
+	w.caption_menu_app = on
 }
 
 // Sets an offscreen window's emulated scale (dpi/96) and resizes its client area to keep the same logical size, as a

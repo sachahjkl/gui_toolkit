@@ -63,6 +63,42 @@ reorder_slot :: proc(pos, pitch: f32, n: int) -> int {
 	return clamp(int(math.floor((pos + pitch * 0.5) / pitch)), 0, n - 1)
 }
 
+// The slot of a dragged item among items of different sizes (a bar of bookmarks, of buttons). `sizes`: each item's size
+// in the list's order, the dragged one at `current`; `origin`: the first item's leading edge; `gap`: the space between two
+// items; `pos`: the dragged item's leading edge now. The item takes a neighbour's place as soon as its edge on that side
+// goes `into` of the neighbour's size inside it, and `hysteresis` further: with the middles' rule of reorder_slot, a
+// narrow item had to pass the whole of a wide one. Going back takes the same rule from the new order, so `into` >= 0.5,
+// or a `hysteresis` > 0, leaves a band between the two where nothing moves (no swap back and forth on one pixel).
+// One call moves the item as many places as the pointer went, in one direction.
+reorder_slot_sized :: proc(pos, origin, gap: f32, sizes: []f32, current: int, into: f32 = 0.5, hysteresis: f32 = 0) -> int {
+	n := len(sizes)
+	if n <= 0 { return 0 }
+	if current < 0 || current >= n { return clamp(current, 0, n - 1) }
+	// the others in order, without the dragged item: the one after it when it is at slot t is other(t), before it other(t - 1)
+	other :: proc(sizes: []f32, current, k: int) -> f32 { return sizes[k < current ? k : k + 1] }
+	d := sizes[current]
+	f := clamp(into, 0, 1)
+	lead := origin
+	for k in 0 ..< current { lead += sizes[k] + gap }
+	t := current
+	for t + 1 < n {
+		o := other(sizes, current, t)
+		next_at := lead + d + gap
+		if pos + d <= next_at + o * f + hysteresis { break }
+		lead += o + gap
+		t += 1
+	}
+	if t != current { return t }
+	for t > 0 {
+		o := other(sizes, current, t - 1)
+		prev_end := lead - gap
+		if pos >= prev_end - o * f - hysteresis { break }
+		lead -= o + gap
+		t -= 1
+	}
+	return t
+}
+
 // Moves the element at `from` to `to`, shifting those between; returns where the element at `current` went.
 list_move :: proc(list: []$T, from, to, current: int) -> int {
 	if from == to || from < 0 || to < 0 || from >= len(list) || to >= len(list) { return current }

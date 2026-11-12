@@ -27,3 +27,18 @@ window_buttons_follow_the_title_bar :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "wb_close") == nil, "the system's again")
 }
+
+// An offscreen window has no menu of the system's to show (show_system_menu does nothing there): an app does not offer
+// the item that opens it. The option that gives the app the caption's right clicks is the window's.
+@(test)
+system_menu_of_an_offscreen_window :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {600, 200}, build = proc(s: ^session.Session) {
+		ui.next({width = ui.fill(), height = ui.px(32)})
+		if ui.title_bar("###tb") { ui.spacer(ui.fill()) }
+	}})
+	testing.expect(t, !platform.system_menu_available(s.win), "offscreen: no system menu")
+	testing.expect(t, !s.win.caption_menu_app, "the system's by default")
+	platform.set_caption_menu_app(s.win, true)
+	testing.expect(t, s.win.caption_menu_app)
+	platform.set_caption_menu_app(nil, true)   // (no window: nothing)
+}

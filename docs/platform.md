@@ -63,6 +63,7 @@ the executable's file name. On Windows it does nothing: the program declares its
 
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
 `is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `system_title_available`, `set_chrome_regions`, `show_system_menu`,
+`set_caption_menu_app`, `system_menu_available`,
 `needs_top_border`, `needs_frame_outline`, `resize_border`, `set_backdrop`, `set_square_corners`, `set_border_color`, `set_dark_title`,
 `set_offscreen_dpi`, `set_offscreen_active`.
 
@@ -149,6 +150,21 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
   not when the compositor chose server-side decorations, when it tiles the window (the `tiled_*` states: sway,
   Hyprland and niri draw their own border), when the X11 window manager reports `_NET_FRAME_EXTENTS`, nor when the
   window is maximized or full screen. Windows always has the system's.
+- **The app's menu of the title bar.** A right click on the caption of an integrated title bar opens the system's window
+  menu: Windows' (Restore, Move, Size...), the Wayland compositor's (`xdg_toplevel.show_window_menu`). X11 has none: the
+  click is the app's there. `set_caption_menu_app(w, true)` gives that click to the app on every system: a `Mouse_Press`
+  and a `Mouse_Release` of `.Right` at that point (Windows: `WM_NCRBUTTONDOWN` over `HTCAPTION` is taken and captured,
+  and the `WM_CONTEXTMENU` of its release is not given to `DefWindowProc`). `ui.caption_right_clicked()` says that such
+  a click came on an empty part of the title bar this frame, and where; the app opens its own menu there.
+  `show_system_menu(w, pos)` still opens the system's, from an item of that menu; `system_menu_available(w)` says
+  whether there is one to open (Windows, Wayland; not X11 nor an offscreen window). Call
+  `set_caption_menu_app` once per window; the left button, the double click and the resize bands stay the system's.
+
+  ```odin
+  platform.set_caption_menu_app(w, true)
+  // in the build, after the title bar:
+  if at, ok := ui.caption_right_clicked(); ok { ui.ctx_menu_open(menu_key, at) }
+  ```
 - **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is `wp_fractional_scale_v1` with `wp_viewporter`:
   the buffer has the scaled size, the surface the logical one; without them the `wl_output` integer scale. A window that
   the compositor has given no fractional scale yet follows the integer scale. A window never shown has a surface with no

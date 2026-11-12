@@ -59,6 +59,7 @@ another place while the others slide out of the way. The geometry is pure and in
 | `reorder_item_size(avail, n, min, max)` | each item's size: an equal share between a minimum and a maximum (past the minimum the list scrolls) |
 | `reorder_offset(offset, n, pitch, view, current, follow)` | the scroll in range, moved just enough to show the current item when it changed |
 | `reorder_slot(pos, pitch, n)` | the slot a dragged item's middle is over |
+| `reorder_slot_sized(pos, origin, gap, sizes, current, into = 0.5, hysteresis = 0)` | items of different sizes: the dragged item takes a neighbour's place once its edge is `into` of the neighbour inside it, `hysteresis` further; going back takes the same rule from the new order, so nothing swaps back and forth |
 | `list_move(list, from, to, current)` | moves an element, returns where the current one went |
 | `reorder_edge_scroll(pos, size, view_off, view, limit, target)` | an item held past an edge of the view scrolls the list |
 | `reorder_moved(delta, axis, across)` | how far a press moved, along the axis (and across it when leaving the list is a gesture of its own) |

@@ -429,7 +429,8 @@ ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: 
 	}
 }
 // A press on the frame of an integrated title bar (frame_linux.odin): the compositor moves or resizes the window, a
-// double click on the caption maximizes it, a right click there opens the compositor's window menu. True when it was
+// double click on the caption maximizes it, a right click there opens the compositor's window menu (unless the app takes
+// it: set_caption_menu_app). True when it was
 // the frame's: the app does not get the press.
 @(private)
 wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool {
@@ -449,7 +450,7 @@ wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool
 		wl.display_flush(wlc.display)
 		return true
 	case .Right:
-		if h != .Caption { return false }
+		if h != .Caption || w.caption_menu_app { return false }   // (the app's: set_caption_menu_app)
 		wl_show_window_menu(w, wlc.pointer_pos)
 		return true
 	}

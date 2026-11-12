@@ -60,6 +60,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.press_pos[e.button] = e.pos
 			s.pressed_key[e.button] = hot
 			s.pressed_any[e.button] = true
+			if e.button == .Right { s.caption_right_down = hot == 0 && on_empty_caption(s, e.pos) }
 			if e.button == .Left { scrollbar_press(s, hot, e.pos) }
 			if e.button == .Left {
 				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < DOUBLE_CLICK_MS {
@@ -83,6 +84,10 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			hot := hit_test(s, e.pos)
 			s.released_key[e.button] = s.active_key[e.button]
 			if !e.lost && s.active_key[e.button] != 0 && s.active_key[e.button] == hot { s.clicked_key[e.button] = hot }
+			if e.button == .Right && s.caption_right_down {
+				s.caption_right_down = false
+				if !e.lost && hot == 0 && on_empty_caption(s, e.pos) { s.caption_clicked, s.caption_click_at = true, e.pos }
+			}
 			s.active_key[e.button] = 0
 		case .Scroll:
 			s.mouse = e.pos
@@ -139,6 +144,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 @(private)
 window_left :: proc(s: ^State) {
 	for &k in s.active_key { k = 0 }
+	s.caption_right_down = false
 	s.mods = {}
 	s.keys_held = {}
 	if len(s.menus) > 0 { menu_pop_to(0) }

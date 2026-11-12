@@ -400,6 +400,12 @@ show_system_menu :: proc(w: ^Window, pos: [2]f32) {
 	}
 }
 
+// Whether show_system_menu shows a menu: on Wayland (the compositor's window menu), not on X11 nor for an offscreen
+// window. An app's own menu of the title bar offers the item that opens it only where it does.
+system_menu_available :: proc(w: ^Window) -> bool {
+	return w != nil && !w.offscreen && w.backend == .Wayland
+}
+
 // Whether a 1-pixel top line should be drawn over an integrated title bar. The compositors draw their own borders, so
 // the toolkit does not need the Windows-10 top-line workaround: always false.
 needs_top_border :: proc(w: ^Window) -> bool { return false }

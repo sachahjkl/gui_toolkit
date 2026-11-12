@@ -356,6 +356,9 @@ show_system_menu :: proc(w: ^Window, pos: [2]f32) {
 	if cmd != 0 { win.PostMessageW(w.hwnd, win.WM_SYSCOMMAND, win.WPARAM(cmd), 0) }
 }
 
+// Whether show_system_menu shows a menu: on Windows, for any window that is not offscreen.
+system_menu_available :: proc(w: ^Window) -> bool { return w != nil && !w.offscreen }
+
 // Windows 10 draws no line along the top of a window whose client area covers its title bar: the app draws it there
 // (1 px, the theme's border colour) while the window is neither maximized nor full screen.
 // The system draws a window's outline on Windows.
@@ -964,11 +967,28 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		push(w, {kind = .Frame_Press})
 	case win.WM_NCRBUTTONDOWN, win.WM_NCRBUTTONDBLCLK:
 		if w.integrated && is_caption_button(wparam) { return 0 }
+		// the app's menu of the title bar (set_caption_menu_app): the press is the app's, captured, so the release comes
+		// as WM_RBUTTONUP; DefWindowProc would run its own loop to the release and open the system menu
+		if w.integrated && !w.fullscreen && w.caption_menu_app && wparam == win.HTCAPTION {
+			button_down(w, .Right, screen_to_client(hwnd, lparam))
+			return 0
+		}
 		push(w, {kind = .Frame_Press})
 	case win.WM_NCMBUTTONDOWN:
 		push(w, {kind = .Frame_Press})
 	case win.WM_NCLBUTTONUP, win.WM_NCRBUTTONUP:
 		if w.integrated && is_caption_button(wparam) { return 0 }
+		if msg == win.WM_NCRBUTTONUP && w.integrated && w.caption_menu_app && wparam == win.HTCAPTION {
+			button_up(w, .Right, screen_to_client(hwnd, lparam))
+			return 0
+		}
+	case win.WM_CONTEXTMENU:
+		// DefWindowProc answers the release of a right button with WM_CONTEXTMENU, and over a caption it opens the system
+		// menu: not when the app took that click (set_caption_menu_app). (-1, -1: from the keyboard, not over the caption.)
+		if w.integrated && !w.fullscreen && w.caption_menu_app && win.HWND(wparam) == hwnd && !(win.GET_X_LPARAM(lparam) == -1 && win.GET_Y_LPARAM(lparam) == -1) {
+			p := screen_to_client(hwnd, lparam)
+			if hit_test_chrome(&w.chrome, p, {f32(w.size.x), f32(w.size.y)}, 0, 0, {}) == .Caption { return 0 }
+		}
 
 	case win.WM_SETCURSOR:
 		// over the client area the app's cursor (cursors_win32.odin); elsewhere (resize bands, the caption of an

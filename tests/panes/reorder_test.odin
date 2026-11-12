@@ -28,6 +28,25 @@ reorder_geometry :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.reorder_slot(900, 100, 5), 4)
 	testing.expect_value(t, ui.reorder_slot(10, 0, 5), 0)
 
+	// items of different sizes: a narrow item (40) between two wide ones (100), 2 apart from 10: it takes the next one's
+	// place once its right edge is half into it (pos 164: not yet, 165: there), not once its middle passes the other's
+	sized := [3]f32{100, 40, 100}
+	testing.expect_value(t, ui.reorder_slot_sized(164, 10, 2, sized[:], 1), 1)
+	testing.expect_value(t, ui.reorder_slot_sized(165, 10, 2, sized[:], 1), 2)
+	testing.expect_value(t, ui.reorder_slot_sized(60, 10, 2, sized[:], 1), 1)
+	testing.expect_value(t, ui.reorder_slot_sized(59, 10, 2, sized[:], 1), 0)
+	// once moved, it does not come back on the pixel it moved at: the band 162 .. 164 moves nothing either way
+	moved := [3]f32{100, 100, 40}
+	testing.expect_value(t, ui.reorder_slot_sized(163, 10, 2, moved[:], 2), 2)
+	testing.expect_value(t, ui.reorder_slot_sized(161, 10, 2, moved[:], 2), 1)
+	// the hysteresis widens the band; a fast pointer moves the item several places at once; out of range stays in it
+	testing.expect_value(t, ui.reorder_slot_sized(166, 10, 2, sized[:], 1, hysteresis = 4), 1)
+	testing.expect_value(t, ui.reorder_slot_sized(169, 10, 2, sized[:], 1, hysteresis = 4), 2)
+	testing.expect_value(t, ui.reorder_slot_sized(-500, 10, 2, moved[:], 2), 0)
+	testing.expect_value(t, ui.reorder_slot_sized(900, 10, 2, sized[:], 0), 2)
+	testing.expect_value(t, ui.reorder_slot_sized(0, 0, 0, nil, 0), 0)
+	testing.expect_value(t, ui.reorder_slot_sized(0, 0, 0, sized[:], 7), 2)
+
 	l := [5]int{0, 1, 2, 3, 4}
 	cur := ui.list_move(l[:], 1, 3, 1)
 	testing.expect_value(t, l, [5]int{0, 2, 3, 1, 4})

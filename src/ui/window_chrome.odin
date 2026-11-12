@@ -279,3 +279,19 @@ is_caption_button_key :: proc(s: ^State, k: Key) -> bool {
 // The title bar regions of the last build (what end_build gave the window): for tests and for apps that hit test
 // themselves.
 chrome_regions :: proc(s: ^State) -> ^platform.Chrome_Regions { return &s.chrome }
+
+// A right click (the press and the release) on an empty part of the title bar this frame: on a box with .Window_Caption
+// where no clickable box is, as the last build left them. `pos`: where the button came up. The app opens its own menu of
+// the title bar there. A press there reaches the app on X11; on Wayland and Windows only once
+// platform.set_caption_menu_app gave the app those clicks (else they open the system's window menu).
+caption_right_clicked :: proc() -> (pos: Vec2, ok: bool) {
+	s := gs()
+	return s.caption_click_at, s.caption_clicked
+}
+
+// Whether `p` is on the caption of the last build's title bar and on nothing of the app's there (an open menu, a hole).
+@(private)
+on_empty_caption :: proc(s: ^State, p: Vec2) -> bool {
+	// (no resize band: the window answers those before a press reaches the app)
+	return platform.hit_test_chrome(&s.chrome, p, {}, 0, 0, {}) == .Caption
+}

@@ -359,6 +359,49 @@ caption_button_click :: proc(t: ^testing.T) {
 	testing.expect_value(t, run.clicked, platform.Caption_Button.Close)
 }
 
+// A right click on an empty part of the title bar is told to the app (ui.caption_right_clicked), where it came up; not
+// one on a box of the app's there, nor one below the title bar, nor one pressed on the caption and released elsewhere,
+// nor a left click.
+@(test)
+caption_right_click :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	Run :: struct { clicks: int, at: ui.Vec2, tab_menu: int }
+	run: Run
+	body :: proc(f: ^Fx, user: rawptr) {
+		r := (^Run)(user)
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.title_bar("###tb") {
+			ui.next({width = ui.px(100), height = ui.pct(1)})
+			if ui.button("Tab###tab").right_clicked { r.tab_menu += 1 }
+			ui.spacer(ui.fill())
+			_, _ = ui.window_buttons()
+		}
+		if at, ok := ui.caption_right_clicked(); ok { r.clicks += 1; r.at = at }
+	}
+	click :: proc(f: ^Fx, run: ^Run, press, release: ui.Vec2, button := platform.Mouse_Button.Right) {
+		frame(f, {{kind = .Mouse_Move, pos = press}, {kind = .Mouse_Press, pos = press, button = button}}, body, run)
+		frame(f, {{kind = .Mouse_Move, pos = release}, {kind = .Mouse_Release, pos = release, button = button}}, body, run)
+	}
+	for _ in 0 ..< 3 { frame(f, nil, body, &run) }
+	click(f, &run, {400, 20}, {402, 21})
+	testing.expect_value(t, run.clicks, 1)
+	testing.expect_value(t, run.at, ui.Vec2{402, 21})
+	frame(f, nil, body, &run)
+	testing.expect_value(t, run.clicks, 1)   // (one frame only)
+	click(f, &run, {50, 20}, {50, 20})       // the tab: its own menu
+	testing.expect_value(t, run.clicks, 1)
+	testing.expect_value(t, run.tab_menu, 1)
+	click(f, &run, {400, 300}, {400, 300})   // below the title bar
+	click(f, &run, {400, 20}, {400, 300})    // released off the title bar
+	click(f, &run, {400, 20}, {400, 20}, .Left)
+	testing.expect_value(t, run.clicks, 1)
+}
+
 ////////////////////////////////
 // Virtualized list
 
