@@ -20,7 +20,10 @@ import "../font"
 Hue :: enum u8 { Accent, Blue, Purple, Green, Yellow, Red, Cyan, Rose }
 
 // The colour of a hue of the theme shown.
-hue :: proc(h: Hue) -> Color {
+hue :: proc(h: Hue) -> Color { return hue_color(h) }
+
+// hue(), under a name a parameter called `hue` does not hide.
+hue_color :: proc(h: Hue) -> Color {
 	NAMES :: [Hue]string{.Accent = "hue_accent", .Blue = "hue_blue", .Purple = "hue_purple", .Green = "hue_green", .Yellow = "hue_yellow", .Red = "hue_red", .Cyan = "hue_cyan", .Rose = "hue_rose"}
 	names := NAMES
 	return color_from_tags(gs(), 0, names[h])

@@ -1102,8 +1102,9 @@ form_row_end :: proc() {
 // Button with an icon-font glyph and a label. Push a kind tag first ("accent_button", "danger_button", "ghost_button").
 // `width`: {} as wide as what is in it; fill() a share of the row, as flex: 1 (two buttons side by side, or one across
 // the whole width), px(...) a width of its own: what is in it stays centred. `icon_font`: the glyph's font (0:
-// State.icon_font; lucide_icons() for Lucide's).
-button_icon :: proc(id: string, glyph, text: string, disabled := false, width: Size = {}, icon_font: font.Font_Id = 0) -> (sig: Signal) {
+// State.icon_font; lucide_icons() for Lucide's). `hue`: filled with one of the theme's hues (hue()), its words in
+// ink_on of it: a colour by meaning that every theme has (a green Unlock, a red Delete), whatever the theme.
+button_icon :: proc(id: string, glyph, text: string, disabled := false, width: Size = {}, icon_font: font.Font_Id = 0, hue: Maybe(Hue) = nil) -> (sig: Signal) {
 	s := gs()
 	em := font_size()
 	// a disabled scope, so the label and icon inside go neutral too
@@ -1112,6 +1113,13 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false, width: S
 	if tags("button") {
 		set_next_axis(.X, .Center)
 		s.next_mod.width = width == {} ? children_sum() : width
+		ink: Maybe(Color)
+		if h, tinted := hue.?; tinted {
+			fill_c := hue_color(h)
+			fill_c.a = 1
+			s.next_mod.bg, s.next_mod.border = fill_c, fill_c
+			ink = ink_on(fill_c)
+		}
 		s.next_mod.height = px(dense(em * 2.2))
 		s.next_mod.radius = em * 0.45
 		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
@@ -1124,10 +1132,10 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false, width: S
 			if width != {} { spacer(fill()) }   // (wider than what is in it: that stays in the middle)
 			if glyph != "" {
 				face := icon_font != 0 ? icon_font : s.icon_font
-				next({width = px(em * 1.5), height = pct(1), font = face, text_align = .Center})
+				next({width = px(em * 1.5), height = pct(1), font = face, text_align = .Center, fg = ink})
 				build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph))
 			}
-			next({width = text_size(), height = pct(1)})
+			next({width = text_size(), height = pct(1), fg = ink})
 			label := build_box({.Draw_Text}, text)
 			if width != {} { spacer(fill()) }
 			spacer(px(em * 0.95))

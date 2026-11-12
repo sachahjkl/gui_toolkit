@@ -82,6 +82,8 @@ HISTORY             :: "\ue1f5"   // history
 HOME                :: "\ue0f5"   // home
 IMAGE               :: "\ue0f6"   // image
 INFO                :: "\ue0f9"   // info
+KEY                 :: "\ue0fd"   // key
+KEY_ROUND           :: "\ue4a3"   // key-round
 KEYBOARD            :: "\ue284"   // keyboard
 LAYERS_2            :: "\ue52a"   // layers-2
 LAYOUT_GRID         :: "\ue0ff"   // layout-grid
@@ -93,6 +95,8 @@ LIST_CHECKS         :: "\ue1d0"   // list-checks
 LIST_TREE           :: "\ue408"   // list-tree
 LOADER              :: "\ue109"   // loader
 LOCK                :: "\ue10b"   // lock
+LOCK_KEYHOLE        :: "\ue531"   // lock-keyhole
+LOCK_OPEN           :: "\ue10c"   // lock-open
 LOG_OUT             :: "\ue10e"   // log-out
 MENU                :: "\ue115"   // menu
 MESSAGE_SQUARE      :: "\ue117"   // message-square
@@ -131,6 +135,7 @@ SERVER              :: "\ue153"   // server
 SETTINGS            :: "\ue154"   // settings
 SHIELD              :: "\ue158"   // shield
 SLIDERS_HORIZONTAL  :: "\ue29a"   // sliders-horizontal
+SMARTPHONE          :: "\ue163"   // smartphone
 SQUARE              :: "\ue167"   // square
 SQUARE_TERMINAL     :: "\ue20a"   // square-terminal
 STAR                :: "\ue176"   // star

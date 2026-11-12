@@ -28,6 +28,15 @@ from_oklch :: proc(lch: [3]f64, alpha: f32 = 1) -> draw.Color {
 	return draw.srgb(s[0], s[1], s[2], alpha)
 }
 
+// The words on a filled `ground` (a coloured button, a badge): of the theme's page colour and its text colour, the one
+// that reads better on it, made readable there for text (WCAG AA, 4.5).
+ink_on :: proc(ground: draw.Color) -> draw.Color {
+	dark := color("background")
+	light := color("text")
+	dark.a, light.a = 1, 1
+	return readable(contrast(ground, dark) >= contrast(ground, light) ? dark : light, ground, 4.5)
+}
+
 // `fg` as it reads on `ground` at `ratio` at least: as it is if it does, else moved along its OKLCH lightness away from the ground's
 // (lighter on a dark ground, darker on a light one) until it does; at the end of the way, black or white.
 readable :: proc(fg, ground: draw.Color, ratio: f32) -> draw.Color {
