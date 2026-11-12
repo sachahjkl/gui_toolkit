@@ -359,13 +359,14 @@ Slider_Draw :: struct {
 	track, accent, text: Color,
 	value_text: string,
 	mono:       font.Font_Id,
+	no_text:    bool,   // no value at the right end: the track runs to it (a slider_field's number is its field)
 }
 
 @(private)
-slider_geom :: proc(r: Rect, em: f32) -> (x0, x1: f32) {
+slider_geom :: proc(r: Rect, em: f32, value_room := true) -> (x0, x1: f32) {
 	pad := em * 0.75
 	x0 = r.min.x + pad
-	x1 = r.max.x - em * SLIDER_VALUE_ROOM_EM - pad
+	x1 = r.max.x - (value_room ? em * SLIDER_VALUE_ROOM_EM : 0) - pad
 	if x1 < x0 + SLIDER_TRACK_MIN_PX * scale() { x1 = x0 + SLIDER_TRACK_MIN_PX * scale() }
 	return
 }
@@ -375,7 +376,7 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Slider_Draw)(user)
 	em := b.font_size
 	r := b.rect
-	x0, x1 := slider_geom(r, em)
+	x0, x1 := slider_geom(r, em, !d.no_text)
 	cy := (r.min.y + r.max.y) * 0.5
 	th := em * SLIDER_TRACK_EM
 	fx0 := d.range ? math.lerp(x0, x1, d.t0) : x0
@@ -421,14 +422,14 @@ slider_value :: proc(dc: ^draw.Context, d: ^Slider_Draw, r: Rect, cy, em, sc: f3
 }
 
 @(private)
-slider_pct :: proc(b: ^Box) -> f32 {
-	x0, x1 := slider_geom(b.rect, font_size())
+slider_pct :: proc(b: ^Box, value_room := true) -> f32 {
+	x0, x1 := slider_geom(b.rect, font_size(), value_room)
 	if x1 - x0 < 1 { return 0 }
 	return clamp((gs().mouse.x - x0) / (x1 - x0), 0, 1)
 }
 
 // `format` is a printf format for the value text, e.g. "%.0f" or "%.1f C"; text without a % is shown as is
-// (pick it per value for labels such as "Off"). step 0 = continuous.
+// (pick it per value for labels such as "Off"); "": no value text, the track runs to the right end. step 0 = continuous.
 // Keyboard (when focused): Left / Down and Right / Up step the value (`step`, or 1 % of the range), Home / End jump
 // to the ends, Page Up / Page Down move by 10 steps.
 slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f") -> (sig: Signal) {
@@ -448,7 +449,7 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 		value^ = clamp(v, lo, hi)
 	}
 	if sig.pointer_pressed || sig.dragging {
-		v := lo + slider_pct(b) * (hi - lo)
+		v := lo + slider_pct(b, format != "") * (hi - lo)
 		if step > 0 { v = math.round(v / step) * step }
 		value^ = clamp(v, lo, hi)
 	}
@@ -463,6 +464,7 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	d.track, d.accent, d.text = off_track(), color("accent"), color("text")
 	d.value_text = strings.index_byte(format, '%') >= 0 ? fmt.aprintf(format, value^, allocator = frame_allocator()) : format
 	d.mono = mono_font()
+	d.no_text = format == ""
 	b.custom, b.custom_user = slider_draw, d
 	a11y_default(b, {role = .Slider, numeric = f64(value^), min = f64(lo), max = f64(hi), step = step > 0 ? f64(step) : nil, value = d.value_text, orientation = .X})
 	return
