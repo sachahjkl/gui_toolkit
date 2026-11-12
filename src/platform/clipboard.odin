@@ -52,11 +52,15 @@ Clipboard_Formats :: bit_set[Clipboard_Format; u8]
 Clipboard_Image :: struct {
 	rgba: []u8,
 	size: [2]int,
+	// the same picture as a PNG file, made off the interface's thread (a program's worker): taken as is. nil: rgba is
+	// encoded here, on the thread that sets the clipboard (a 4K screenshot is tens of ms there)
+	png:  []u8,
 }
 
-// The image as a PNG file, nil when it is empty. png.encode's .Fast: a copy runs on the UI thread (a 1400 x 925 screenshot
-// in 2 ms, not 90), and the file only goes from one program to another on this machine.
+// The image as a PNG file, nil when it is empty: the one given (Clipboard_Image.png), else encoded here. png.encode's
+// .Fast: the file only goes from one program to another on this machine.
 png_encode :: proc(img: Clipboard_Image, allocator := context.allocator) -> []u8 {
+	if len(img.png) > 0 { return slice.clone(img.png, allocator) }
 	return png.encode(img.rgba, img.size.x, img.size.y, .Fast, allocator)
 }
 
@@ -398,7 +402,7 @@ dib_to_rgba :: proc(dib: []u8, allocator := context.allocator) -> (img: Clipboar
 			dst[4 * x], dst[4 * x + 1], dst[4 * x + 2], dst[4 * x + 3] = r, g, b, a
 		}
 	}
-	return {out, {w, h}}, true
+	return {rgba = out, size = {w, h}}, true
 }
 
 // CF_HDROP's bytes for a list of paths: a DROPFILES header, then the paths in UTF-16, each ended by a zero, and a last

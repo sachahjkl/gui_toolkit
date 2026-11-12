@@ -36,7 +36,7 @@ px :: proc(img: platform.Clipboard_Image, x, y: int) -> [4]u8 {
 @(test)
 v5_round_trip_keeps_alpha :: proc(t: ^testing.T) {
 	src := []u8{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 10, 20, 30, 40, 1, 2, 3, 4, 200, 100, 50, 25}
-	img := platform.Clipboard_Image{src, {3, 2}}
+	img := platform.Clipboard_Image{rgba = src, size = {3, 2}}
 	b := platform.rgba_to_dib(img, .Alpha_V5)
 	defer delete(b)
 	testing.expect_value(t, len(b), 124 + 3 * 2 * 4)
@@ -50,7 +50,7 @@ v5_round_trip_keeps_alpha :: proc(t: ^testing.T) {
 @(test)
 opaque_dib_is_over_white :: proc(t: ^testing.T) {
 	src := []u8{255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 128}
-	b := platform.rgba_to_dib({src, {3, 1}}, .Opaque_Over_White)
+	b := platform.rgba_to_dib({rgba = src, size = {3, 1}}, .Opaque_Over_White)
 	defer delete(b)
 	out, ok := platform.dib_to_rgba(b)
 	defer delete(out.rgba)
@@ -58,7 +58,7 @@ opaque_dib_is_over_white :: proc(t: ^testing.T) {
 	testing.expect_value(t, px(out, 0, 0), [4]u8{255, 0, 0, 255})
 	testing.expect_value(t, px(out, 1, 0), [4]u8{255, 255, 255, 255})   // transparent: white
 	testing.expect_value(t, px(out, 2, 0), [4]u8{127, 127, 127, 255})   // half black over white
-	testing.expect(t, platform.rgba_to_dib({src[:4], {3, 1}}, .Opaque_Over_White) == nil, "too few pixels")
+	testing.expect(t, platform.rgba_to_dib({rgba = src[:4], size = {3, 1}}, .Opaque_Over_White) == nil, "too few pixels")
 }
 
 @(test)
@@ -134,7 +134,7 @@ dib_32_bit_alpha_byte :: proc(t: ^testing.T) {
 // A V5 header with the three masks repeated after it (seen from some writers): the rows are found after them.
 @(test)
 dib_v5_with_trailing_masks :: proc(t: ^testing.T) {
-	b := platform.rgba_to_dib({[]u8{1, 2, 3, 4}, {1, 1}}, .Alpha_V5)
+	b := platform.rgba_to_dib({rgba = []u8{1, 2, 3, 4}, size = {1, 1}}, .Alpha_V5)
 	defer delete(b)
 	quirk := make([]u8, len(b) + 12)
 	defer delete(quirk)
@@ -225,7 +225,7 @@ html_format_offsets :: proc(t: ^testing.T) {
 @(test)
 png_round_trip :: proc(t: ^testing.T) {
 	src := []u8{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255}
-	png := platform.png_encode({src, {2, 2}})
+	png := platform.png_encode({rgba = src, size = {2, 2}})
 	defer delete(png)
 	testing.expect(t, len(png) > 8 && string(png[1:4]) == "PNG", "a PNG file")
 	img, ok := platform.png_decode(png)
@@ -280,7 +280,7 @@ jpeg_and_bmp_read_as_rgba :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "a BMP")
 	testing.expect_value(t, img.size, [2]int{4, 2})
 	if ok { testing.expect_value(t, [4]u8{img.rgba[4], img.rgba[5], img.rgba[6], img.rgba[7]}, [4]u8{0x30, 0x80, 0xc0, 255}) }
-	png := platform.png_encode({img.rgba, img.size}, context.temp_allocator)
+	png := platform.png_encode({rgba = img.rgba, size = img.size}, context.temp_allocator)
 	back, pok := platform.clipboard_image_decode("image/png", png, context.temp_allocator)
 	testing.expect(t, pok && string(back.rgba) == string(img.rgba), "a PNG")
 	_, bad := platform.clipboard_image_decode("image/webp", RED_JPEG, context.temp_allocator)
@@ -349,4 +349,14 @@ clipboard_changed_tells_once :: proc(t: ^testing.T) {
 	testing.expect(t, platform.clipboard_changed(w))
 	testing.expect(t, !platform.clipboard_changed(w))
 	platform.clipboard_set(w, {})   // (the store outlives the test: leave it empty)
+}
+
+// A PNG made elsewhere (a program's worker) is the clipboard's file as it is: nothing is encoded again.
+@(test)
+a_png_given_is_taken_as_it_is :: proc(t: ^testing.T) {
+	src := []u8{1, 2, 3, 255}
+	made := []u8{9, 8, 7}   // (not even a PNG: it is not looked at)
+	got := platform.png_encode({rgba = src, size = {1, 1}, png = made}, context.temp_allocator)
+	testing.expect(t, string(got) == string(made))
+	testing.expect(t, raw_data(got) != raw_data(made), "a copy: the program keeps its own")
 }
