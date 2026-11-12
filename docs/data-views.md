@@ -110,6 +110,15 @@ marked by its identity: a `vlist`'s id (a mark goes when its row is no longer in
 | `list_mark(st, i, on)`, `list_mark_all(st)`, `list_marks_clear(st)` | the program's own changes (its Ctrl+A when another field has the keyboard); `marks_changed` says the frame changed them |
 | `list_row_id(st, i)` | the identity a row is marked by |
 
+### A long list's cost (`src/ui/vlist.odin`)
+
+A `vlist` builds the rows in view only. A build where the ids and the measured heights are the same as the last build's
+does no pass over the rows: the copy of the ids and the rows' offsets are made again only when the ids change or a row
+is measured at another height. `vlist(id, st, ids, labels, selectable, ids_version)`: with `ids_version` 0 the list
+compares the ids with the last build's (one `memcmp`); a program that keeps its ids passes a count it raises at each
+change of them, and the list compares nothing. Pass nil `labels` with no type-ahead and nil `selectable` when every row
+can be selected: neither is then read per row. `offsets_made` counts the builds that made the offsets again.
+
 ### Stripes, rules and a row's tint
 
 Two fields of the list's state (`List_State`, so a `vlist`'s and a `Table`'s `vl` too) set the look of its rows:

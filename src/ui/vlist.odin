@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:slice"
 
 // A virtualized keyboard list: only the rows in view (and a margin around it) are built, whatever the row count.
 //
@@ -23,6 +24,11 @@ import "core:math"
 // all the rows, built or not; the active row is scrolled into view at once. With `multi`, Ctrl and Shift clicks and
 // Ctrl+A mark rows besides the active one (List_State); a mark goes with its row when the row is no longer in `ids`. `labels` / `selectable` may be nil (no
 // type-ahead / every row selectable).
+//
+// A build with the same rows and no height measured anew does no work in proportion to the rows: the offsets are made
+// again only when the ids or a measured height change. `ids_version` says when the ids change: a program that keeps
+// its ids and counts their changes passes that count, and the list compares nothing; 0 compares the ids with the last
+// build's.
 
 @(private = "file") VLIST_FIRST_ESTIMATE_EM :: 2.4     // a row's height before any was measured
 // Measured rows that may be gone from the data before they are looked for, beyond twice the rows there are.
@@ -48,6 +54,10 @@ Virtual_List :: struct {
 	has_anchor:  bool,
 	reveal_wait: int,              // builds the active row has been waited for (to be laid out, to measure it)
 	scroll_to:   Maybe(f32),       // vlist_scroll_to on a list with no box: where the next build puts the view
+	ids_version: u64,              // the `ids_version` the ids were copied at (0: compared)
+	measured_sum: f64,             // the heights in `measured` added up (their average is `est`)
+	offsets_due: bool,             // a height measured or forgotten since the offsets were made
+	offsets_made: int,             // the builds that made the offsets again (an unchanged list makes none)
 }
 
 Vlist_Rows :: struct { first, last: int }
@@ -61,7 +71,10 @@ vlist_destroy :: proc(st: ^Virtual_List) {
 }
 
 // Forgets every measured height (the content of all rows changed in a way their identities do not tell).
-vlist_invalidate :: proc(st: ^Virtual_List) { clear(&st.measured) }
+vlist_invalidate :: proc(st: ^Virtual_List) {
+	clear(&st.measured)
+	st.measured_sum, st.offsets_due = 0, true
+}
 
 // Puts the view at content position `y` at once (e.g. back to the top when the rows are filtered anew).
 vlist_scroll_to :: proc(st: ^Virtual_List, y: f32) {
@@ -99,7 +112,7 @@ vlist_row_at :: proc(offsets: []f32, y: f32) -> int {
 }
 
 @(deferred_out = vlist_end)
-vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil, selectable: []bool = nil) -> (rows: Vlist_Rows, ok: bool) {
+vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil, selectable: []bool = nil, ids_version: u64 = 0) -> (rows: Vlist_Rows, ok: bool) {
 	s := gs()
 	set_next_axis(.Y)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
@@ -117,10 +130,15 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	// 1. heights of the rows laid out last build, for the size they were laid out at
 	// (the box's size is last layout's: the size those rows were laid out at)
 	key := u64(key_from_u64(key_from_u64(key_from_u64(0, u64(math.round(b.size.x))), u64(transmute(u32)s.scale)), u64(transmute(u32)(b.font_size * s.density))))
-	if key != st.layout_key { clear(&st.measured); st.layout_key = key }
+	if key != st.layout_key { vlist_invalidate(st); st.layout_key = key }
 	for pid, k in st.prev_ids {
 		r := box_from_key(vlist_row_key(b.key, st.prev_first + k))
-		if r != nil && r.last_build + 1 == s.build_index && r.size.y > 0 { st.measured[pid] = r.size.y }
+		if r == nil || r.last_build + 1 != s.build_index || r.size.y <= 0 { continue }
+		old, had := st.measured[pid]
+		if had && old == r.size.y { continue }
+		st.measured[pid] = r.size.y
+		st.measured_sum += f64(r.size.y) - (had ? f64(old) : 0)
+		st.offsets_due = true
 	}
 	// rows whose identity is gone (the data was replaced, filtered, rotated) are forgotten once they are the bulk
 	if len(st.measured) > 2 * n + VLIST_MEASURED_SLACK {
@@ -128,23 +146,30 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		for id in ids { live[id] = {} }
 		gone := make([dynamic]u64, context.temp_allocator)
 		for id in st.measured { if id not_in live { append(&gone, id) } }
-		for id in gone { delete_key(&st.measured, id) }
+		for id in gone {
+			_, h := delete_key(&st.measured, id)
+			st.measured_sum -= f64(h)
+		}
+		st.offsets_due = true
 	}
 	if len(st.measured) > 0 {
-		sum: f32
-		for _, h in st.measured { sum += h }
-		st.est = sum / f32(len(st.measured))
+		st.est = f32(st.measured_sum / f64(len(st.measured)))
 	} else if st.est <= 0 {
 		st.est = math.round(b.font_size * VLIST_FIRST_ESTIMATE_EM)
 	}
 
-	// 2. this build's rows and where they are
-	resize(&st.ids, n)
-	copy(st.ids[:], ids)
+	// 2. this build's rows and where they are (made again only when they changed: a frame of a list of 100 000 rows that
+	// changed nothing does no pass over them)
+	same := len(ids) == len(st.ids) && (ids_version != 0 ? ids_version == st.ids_version : slice.simple_equal(ids, st.ids[:]))
+	if !same {
+		resize(&st.ids, n)
+		copy(st.ids[:], ids)
+		st.ids_version = ids_version
+	}
 	st.row_ids = st.ids[:]
 	st.marks_changed = false
 	// (a marked row that is gone, or filtered out, is no longer marked)
-	if len(st.marks) > 0 {
+	if !same && len(st.marks) > 0 {
 		live := make(map[u64]struct{}, n, context.temp_allocator)
 		for id in ids { live[id] = {} }
 		gone := make([dynamic]u64, context.temp_allocator)
@@ -152,15 +177,19 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		for id in gone { delete_key(&st.marks, id) }
 		if len(gone) > 0 { st.marks_changed = true }
 	}
-	resize(&st.offsets, n + 1)
-	y: f32
-	for i in 0 ..< n {
-		st.offsets[i] = y
-		h, found := st.measured[ids[i]]
-		y += found ? h : st.est
+	if !same || st.offsets_due || len(st.offsets) != n + 1 {
+		resize(&st.offsets, n + 1)
+		y: f32
+		for i in 0 ..< n {
+			st.offsets[i] = y
+			h, found := st.measured[ids[i]]
+			y += found ? h : st.est
+		}
+		st.offsets[n] = y
+		st.offsets_due = false
+		st.offsets_made += 1
 	}
-	st.offsets[n] = y
-	total := y
+	total := st.offsets[n]
 
 	// 3. the view stays on the row it showed, wherever that row is now
 	view_h := b.size.y > 0 ? b.size.y : s.window_size.y
@@ -180,8 +209,13 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	b.view_off.y = clamp(b.view_off.y, 0, max(limit, b.view_off.y))
 
 	// 4. keyboard, over all the rows
-	resize(&st.selectable, n)
-	if selectable != nil && len(selectable) == n { copy(st.selectable[:], selectable) } else { for &v in st.selectable { v = true } }
+	// (none given: every row; a row past the end of `selectable` is selectable, so nothing per row is kept)
+	if selectable != nil && len(selectable) == n {
+		resize(&st.selectable, n)
+		copy(st.selectable[:], selectable)
+	} else {
+		clear(&st.selectable)
+	}
 	st.count = n
 	old := st.sel
 	if st.sel >= n { st.sel = n - 1 }
@@ -191,7 +225,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	if st.focused { list_keys(s, st) }
 	if st.seek {
 		if labels != nil && len(labels) == n {
-			for i in 0 ..< n { if st.selectable[i] { list_seek_row(st, i, labels[i]) } }
+			for i in 0 ..< n { if i >= len(st.selectable) || st.selectable[i] { list_seek_row(st, i, labels[i]) } }
 		}
 		pick := st.seek_after >= 0 ? st.seek_after : st.seek_first
 		if pick >= 0 { st.sel = pick; st.reveal = LIST_REVEAL_FRAMES }

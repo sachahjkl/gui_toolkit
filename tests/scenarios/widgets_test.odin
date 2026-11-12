@@ -1,7 +1,7 @@
 package scenarios_test
 
 // Widgets no other package reaches, each by what it is for: the colour pickers, toasts, popovers, Tab stops turned off, muted scopes, density, rounding,
-// a virtual list scrolled by the program, a menu's heading, posted calls by the window, selection cleared.
+// a virtual list scrolled by the program (and one of 100 000 rows that changes nothing, not walked), a menu's heading, posted calls by the window, selection cleared.
 
 import "core:fmt"
 import "core:strings"
@@ -21,6 +21,7 @@ import syntax "../../src/syntax"
 @(private = "file") LIST_ROWS :: 200
 @(private = "file") SCROLL_TO_Y :: 500
 @(private = "file") LIST_ROW_HEIGHT :: 30
+@(private = "file") LONG_LIST_ROWS :: 100_000
 
 // A press on the saturation and value square gives the colour under it: right is more saturated, up is brighter. The hue strip goes from top to bottom.
 @(test)
@@ -195,6 +196,44 @@ a_virtual_list_is_scrolled_by_the_program :: proc(t: ^testing.T) {
 	ui.vlist_invalidate(&r.st)
 	session.wait_idle(s)
 	testing.expect(t, r.built > 0, "it measures again")
+}
+
+// A virtual list of 100 000 rows: a build that changes nothing does no pass over the rows (its offsets are not made
+// again); new ids, by their content or by the program's version of them, make them again once.
+@(test)
+an_unchanged_long_list_is_not_walked :: proc(t: ^testing.T) {
+	Run :: struct { st: ui.Virtual_List, ids: []u64, version: u64 }
+	r := new(Run)
+	r.ids = make([]u64, LONG_LIST_ROWS)
+	defer { ui.vlist_destroy(&r.st); delete(r.ids); free(r) }
+	for i in 0 ..< LONG_LIST_ROWS { r.ids[i] = u64(i + 1) }
+	s := session.start(t, {size = WINDOW, user = r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if rows, ok := ui.vlist("###list", &r.st, r.ids, ids_version = r.version); ok {
+			for i in rows.first ..< rows.last {
+				ui.next({height = ui.px(LIST_ROW_HEIGHT)})
+				ui.list_row(&r.st.list, i, "")
+			}
+		}
+	}})
+	// (the first builds measure the rows in view: their heights make the offsets again)
+	session.frames(s, 4)
+	made := r.st.offsets_made
+	session.frames(s, 5)
+	testing.expect_value(t, r.st.offsets_made, made)
+	_, height := ui.vlist_row_extent(&r.st, 0)
+	testing.expect_value(t, height, LIST_ROW_HEIGHT)
+	// the ids compared: one changed, the offsets once more
+	r.ids[LONG_LIST_ROWS - 1] = 0
+	session.frames(s, 3)
+	testing.expect_value(t, r.st.offsets_made, made + 1)
+	// the program's version: the ids are not compared, a new version makes the offsets again
+	r.version = 1
+	session.frames(s, 3)
+	testing.expect_value(t, r.st.offsets_made, made + 2)
+	session.frames(s, 3)
+	testing.expect_value(t, r.st.offsets_made, made + 2)
 }
 
 // A dialog open over a list that has the keyboard holds its keys: Enter is the dialog's, the row behind is not opened.
