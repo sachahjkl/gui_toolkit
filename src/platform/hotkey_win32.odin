@@ -84,6 +84,7 @@ vk_of_key :: proc(k: Key) -> u32 {
 	case .Return:    return win.VK_RETURN
 	case .Escape:    return win.VK_ESCAPE
 	case .Insert:    return win.VK_INSERT
+	case .Print:     return win.VK_SNAPSHOT
 	case .Delete:    return win.VK_DELETE
 	case .Home:      return win.VK_HOME
 	case .End:       return win.VK_END

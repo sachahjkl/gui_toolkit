@@ -18,7 +18,7 @@ CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", 
 LINUX_FLAGS :: [?]string{"-define:FONT_BACKEND=native", "-extra-linker-flags:-Wl,--allow-multiple-definition"}
 
 // The packages of the library, under src/.
-PACKAGES :: [?]string{"arena", "ascii", "base", "capture", "cdp", "changelog", "config", "dbus", "desktop", "devtools", "diff", "draw", "flate", "font", "fsx", "gif", "host", "i18n", "instance", "markdown", "mermaid", "paint", "platform", "png", "process", "qr", "remote", "render", "site", "store", "svg", "term", "testkit", "timefmt", "toolbox", "ui", "update"}
+PACKAGES :: [?]string{"arena", "ascii", "base", "capture", "cdp", "changelog", "config", "dbus", "desktop", "devtools", "diff", "draw", "flate", "font", "fsx", "gif", "host", "i18n", "instance", "markdown", "mermaid", "paint", "platform", "png", "process", "qr", "remote", "render", "shortcuts", "site", "store", "svg", "term", "testkit", "timefmt", "toolbox", "ui", "update"}
 
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource

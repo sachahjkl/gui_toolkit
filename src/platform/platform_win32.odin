@@ -809,6 +809,7 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 	case win.VK_BACK:    return .Backspace
 	case win.VK_DELETE:  return .Delete
 	case win.VK_INSERT:  return .Insert
+	case win.VK_SNAPSHOT: return .Print
 	case win.VK_LEFT:    return .Left
 	case win.VK_RIGHT:   return .Right
 	case win.VK_UP:      return .Up
@@ -1111,6 +1112,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		if msg == win.WM_SYSKEYDOWN && key != .None && wparam != win.VK_F4 && wparam != win.VK_SPACE { return 0 }
 	case win.WM_KEYUP, win.WM_SYSKEYUP:
 		key := key_from_vk(wparam)
+		// (Print Screen sends no WM_KEYDOWN: its release is its press too)
+		if key == .Print { push(w, {kind = .Key_Press, key = key, mods = current_mods()}) }
 		if key != .None && key_changes(w, key, false) { push(w, {kind = .Key_Release, key = key, mods = current_mods()}) }
 
 	case win.WM_CHAR:

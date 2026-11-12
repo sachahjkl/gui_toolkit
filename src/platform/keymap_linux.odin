@@ -20,6 +20,7 @@ key_from_keysym :: proc(sym: Xkb_Keysym) -> Key {
 	case 0xff08: return .Backspace
 	case 0xffff: return .Delete
 	case 0xff63: return .Insert
+	case 0xff61: return .Print
 	case 0xff51: return .Left
 	case 0xff53: return .Right
 	case 0xff52: return .Up

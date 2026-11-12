@@ -30,11 +30,11 @@ hotkey_field :: proc(id: string, hk: ^platform.Hotkey) -> (changed: bool) {
 			switch {
 			case got.key == .Escape && got.mods == {}:
 				s.hotkey_recorder, recording = 0, false
-			case got.mods != {}:
+			case platform.hotkey_complete(got):
 				hk^ = got
 				changed = true
 				s.hotkey_recorder, recording = 0, false
-			}   // (a key alone is no shortcut: the field waits for one)
+			}   // (a key alone is no shortcut, Print Screen apart: the field waits for one)
 		}
 	}
 	empty := hk.key == .None && hk.char == 0

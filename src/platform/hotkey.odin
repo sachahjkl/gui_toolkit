@@ -53,8 +53,14 @@ hotkey_parse :: proc(text: string) -> (hk: Hotkey, ok: bool) {
 			return {}, false
 		}
 	}
-	// (a key, and a modifier: a lone letter would take that letter from every program)
-	return hk, (hk.key != .None || hk.char != 0) && (hk.mods != {} || hk.super)
+	return hk, hotkey_complete(hk)
+}
+
+// Whether a combination can be a shortcut: a key and a modifier (a lone letter would take that letter from every
+// program), or Print Screen alone (no program types with it).
+hotkey_complete :: proc(hk: Hotkey) -> bool {
+	if hk.key == .None && hk.char == 0 { return false }
+	return hk.mods != {} || hk.super || hk.key == .Print
 }
 
 // The text of a hotkey, as hotkey_parse reads it ("Ctrl+Shift+V").
@@ -79,7 +85,7 @@ HOTKEY_KEY_NAMES := #partial [Key]string{
 	.F10 = "F10", .F11 = "F11", .F12 = "F12",
 	.Space = "Space", .Tab = "Tab", .Return = "Return", .Escape = "Escape", .Insert = "Insert", .Delete = "Delete",
 	.Home = "Home", .End = "End", .Page_Up = "Page_Up", .Page_Down = "Page_Down",
-	.Left = "Left", .Right = "Right", .Up = "Up", .Down = "Down",
+	.Left = "Left", .Right = "Right", .Up = "Up", .Down = "Down", .Print = "Print",
 }
 
 // The xkb name of a hotkey's key ("v", "F5", "Insert", "U00F9" for a key named by its character), for a keymap; "" for a
@@ -102,7 +108,7 @@ KEYSYM_NAMES := #partial [Key]string{
 	.F10 = "F10", .F11 = "F11", .F12 = "F12",
 	.Space = "space", .Tab = "Tab", .Return = "Return", .Escape = "Escape", .Insert = "Insert", .Delete = "Delete",
 	.Home = "Home", .End = "End", .Page_Up = "Prior", .Page_Down = "Next",
-	.Left = "Left", .Right = "Right", .Up = "Up", .Down = "Down",
+	.Left = "Left", .Right = "Right", .Up = "Up", .Down = "Down", .Print = "Print",
 }
 
 @(private)
@@ -110,5 +116,6 @@ hotkey_key_of :: proc(word: string) -> Key {
 	for name, k in HOTKEY_KEY_NAMES { if name != "" && ascii.equal_fold(name, word) { return k } }
 	if ascii.equal_fold(word, "enter") { return .Return }
 	if ascii.equal_fold(word, "esc") { return .Escape }
+	if ascii.equal_fold(word, "printscreen") || ascii.equal_fold(word, "print_screen") || ascii.equal_fold(word, "prtsc") { return .Print }
 	return .None
 }

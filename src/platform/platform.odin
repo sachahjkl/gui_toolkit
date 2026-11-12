@@ -223,6 +223,7 @@ Key :: enum u8 {
 	Shift, Ctrl, Alt,
 	Menu,                       // the context-menu (application) key
 	Num_Add, Num_Subtract,      // keypad + and - (keypad digits arrive as N0..N9)
+	Print,                      // Print Screen (Windows: its release only, given as a press and a release)
 }
 
 Keys :: bit_set[Key; u128]
