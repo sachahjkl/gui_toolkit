@@ -62,8 +62,8 @@ shape_rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 @(private) SCROLLBAR_THUMB_REST_ALPHA :: 0.22
 @(private = "file") SCROLLBAR_THUMB_HOT_ALPHA :: 0.4
 @(private = "file") SCROLLBAR_THUMB_HELD_ALPHA :: 0.55
-// the thumb drawn as a thing to take (every finish but Flat): a rim a little stronger than its face, and three grip lines across
-// its middle, cut in the background's colour; the lines only on a thumb long enough to hold them
+// the thumb drawn as a thing to take (every finish but Flat): a rim a little toward the text from its face, and three grip lines
+// across its middle, cut in the background's colour; the lines only on a thumb long enough to hold them
 @(private = "file") SCROLLBAR_RIM_ALPHA :: 0.18
 @(private = "file") SCROLLBAR_GRIP_ALPHA :: 0.7
 @(private = "file") SCROLLBAR_GRIP_LINES :: 3
@@ -257,8 +257,8 @@ scrollbar_drag :: proc(s: ^State) {
 @(private = "file")
 scrollbar_thumb_marks :: proc(s: ^State, dc: ^draw.Context, b: ^Box, thumb: Rect, face: Color, radius: f32, axis: Axis, shows: f32) {
 	px := max(math.round(s.scale), 1)
-	rim := face
-	rim.a = min(1, face.a + SCROLLBAR_RIM_ALPHA * shows)
+	rim := draw.mix(face, color_from_tags(s, b.tags_key, "text"), SCROLLBAR_RIM_ALPHA)   // (a little toward the text: its edge)
+	rim.a = face.a
 	draw.rect(dc, thumb, tuned(rim), radius, px)
 	across := axis == .Y ? thumb.max.x - thumb.min.x : thumb.max.y - thumb.min.y
 	along := axis == .Y ? thumb.max.y - thumb.min.y : thumb.max.x - thumb.min.x
@@ -287,14 +287,24 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 	c := color_from_tags(s, b.tags_key, "text")
 	w := axis == .Y ? track.max.x - track.min.x : track.max.y - track.min.y
 	if hot || active {
+		// (its track a surface of the theme: "track"; flat, a tint of the text)
 		tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows
+		if s.theme == nil || s.theme.finish != .Flat { tc = color_from_tags(s, b.tags_key, "track"); tc.a *= shows }
 		draw.rect(dc, track, tuned(tc), w * 0.5 * rounding(s))
 	}
 	glyph := c
 	c.a = (active && s.sb_arrow == 0 ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
 	radius := w * 0.5 * rounding(s)
-	draw.rect(dc, thumb, tuned(c), radius)
-	if s.theme == nil || s.theme.finish != .Flat { scrollbar_thumb_marks(s, dc, b, thumb, c, radius, axis, shows) }
+	// (the thumb in the interface's own colours, not the text's light: a surface's border at rest, the weak text under the
+	// pointer, the accent held, as what is active elsewhere)
+	if s.theme == nil || s.theme.finish != .Flat {
+		face := color_from_tags(s, b.tags_key, active && s.sb_arrow == 0 ? "accent" : hot ? "weak text" : "border")
+		face.a *= shows
+		draw.rect(dc, thumb, tuned(face), radius)
+		scrollbar_thumb_marks(s, dc, b, thumb, face, radius, axis, shows)
+	} else {
+		draw.rect(dc, thumb, tuned(c), radius)
+	}
 	if axis == .X { return }
 	start, end, arrows := scrollbar_arrow_rects(b)
 	if !arrows { return }
