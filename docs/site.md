@@ -42,6 +42,16 @@ left alone. It writes `feed.xml` (Atom, the last 30 versions), `sitemap.xml`, `s
 when there is none, and with `m.root_domain` also `robots.txt` and `favicon.ico`. The sharing card (`m.card`) must be there:
 `draw_card(m, site)` draws it once, by hand, in a local Chromium (`CHROME`, or the usual places).
 
+## Light pictures
+
+`build_images(out, o)` turns the PNGs of the folder `o.dir` of a built site into WebP, at their own width and at each of
+`o.widths` narrower than it, with `cwebp` (libwebp's encoder, which must be on the path: nix `libwebp`, Debian `webp`). It runs
+`-preset text -q 90` (`o.quality`): a screenshot's small text stays as sharp as in the PNG, the file some twenty times smaller.
+Each `<img>` of a picture made gets its WebP and a `srcset` of its widths; the page says how wide it shows it with `sizes`, its
+own. Every other mention of the PNG (a link that opens it whole) gets the WebP at its own width, and the PNGs replaced are
+removed. `o.keep` names the PNGs left as they are: what other sites read (the sharing card, a logo, a favicon). Run it on the
+built site, after `build_meta`.
+
 ## The documentation pages
 
 `build_docs(&d)` makes a page of each Markdown document of `d.source` (the repository's `docs/`) in `d.out` (the site's `docs/`):
@@ -134,4 +144,4 @@ its profile) is removed, and a run that cannot remove it fails.
 
 `src/site/site_test.odin` (the changelog, the classic links, what a page says when shared), `check_test.odin` (the files the
 server gives and refuses, the links and anchors, the browser's port file), `markdown_test.odin` (the Markdown and the colours of
-code), `docs_test.odin` (a documentation site made end to end in a scratch folder, checked again, its links read back).
+code), `images_test.odin` (a page pointed at its pictures in WebP), `docs_test.odin` (a documentation site made end to end in a scratch folder, checked again, its links read back).
