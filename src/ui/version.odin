@@ -4,5 +4,5 @@ package ui
 // Written by tk release (tools/tk) when a version is published, never by hand in a branch (CONTRIBUTING.md).
 VERSION_MAJOR :: 0
 VERSION_MINOR :: 226
-VERSION_PATCH :: 1
-VERSION :: "0.226.1"
+VERSION_PATCH :: 2
+VERSION :: "0.226.2"

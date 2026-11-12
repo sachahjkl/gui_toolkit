@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.226.2] - 2026-11-12
+
+### Fixed
+- **A lazy column shows its items in the frame its view jumps**: a view moved far in one build (a conversation just read, put at its bottom) showed only empty space for a frame, because the column placed its items from its last position and the new offset together.
+
 ## [0.226.1] - 2026-11-12
 
 ### Fixed
@@ -2987,6 +2992,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.226.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.2
 [0.226.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.1
 [0.226.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.0
 [0.225.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.225.0
