@@ -431,6 +431,40 @@ a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) {
 	testing.expectf(t, found, "the area's thumb is the view's: %v", want)
 }
 
+// A lazy column whose view jumps far in one build (a conversation just read, put at its bottom at once) builds the items that the
+// view shows in that very build: it placed them from the last layout's rect and the new offset together, off by the jump, and
+// the view showed only spaces for a frame.
+@(test)
+a_lazy_column_builds_where_its_view_jumped :: proc(t: ^testing.T) {
+	Run :: struct { jump: bool, last_seen: bool }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.scroll_y("###view") {
+			sb := ui.parent_box()
+			if r.jump { ui.view_jump(sb, ui.view_limit(sb)); r.jump = false }
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column() {
+				lz := ui.lazy_begin()
+				r.last_seen = false
+				for i in 0 ..< 400 {
+					if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+						ui.next({height = ui.px(f32(20 + (i % 7) * 13))})
+						ui.label(fmt.tprintf("item %d", i))
+						if i == 399 { r.last_seen = true }
+					}
+				}
+			}
+		}
+	}})
+	session.frames(s, 3)
+	testing.expect(t, !r.last_seen, "at the top: the last item is not built")
+	r.jump = true
+	session.frames(s, 1)
+	testing.expect(t, r.last_seen, "the build that jumped to the bottom built the last item")
+}
+
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
 a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {

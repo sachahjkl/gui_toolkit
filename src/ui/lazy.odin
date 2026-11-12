@@ -57,6 +57,8 @@ Lazy_Column :: struct {
 	seen:       u64,
 	pin_found:  bool,  // the pinned item was built and laid out at the last build
 	pin_moved:  bool,  // ... and the view had to move to stay on it
+	top:        f32,   // where the column starts in the content of its scroll box, at the last layout (whatever the view's offset)
+	top_known:  bool,
 }
 
 LAZY_MARGIN :: 1.0   // screens built above and below the view
@@ -91,8 +93,10 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	lz.hi = sb.view_off.y + view * (1 + LAZY_MARGIN)
 	lz.tlo = sb.view_target.y - view * LAZY_MARGIN
 	lz.thi = sb.view_target.y + view * (1 + LAZY_MARGIN)
-	// the column's top in the content, from the last layout
-	lz.y = col.rect.min.y - sb.rect.min.y + sb.view_off.y
+	// the column's top in the content, from the last layout. Not from its rect: that was placed at the offset of the last layout,
+	// and the view may have moved since (a jump to the bottom of a conversation just read, before this build): the rect and the
+	// new offset together put every item off by the jump, and the ones in view were not built
+	lz.y = c.top_known ? c.top : col.rect.min.y - sb.rect.min.y + sb.view_off.y
 	return
 }
 
@@ -202,6 +206,7 @@ lazy_settle :: proc(s: ^State) {
 		sb := lz.scroll
 		c, ok := &s.lazy_columns[lz.column]
 		if !ok || sb == nil || sb.last_build != s.build_index { continue }
+		if col := box_from_key(lz.column); col != nil { c.top, c.top_known = content_top(sb, col), true }
 		dragging := s.active_key[.Left] == scrollbar_key(sb)
 		c.pin_found, c.pin_moved = false, false
 		if lz.pin != 0 {
