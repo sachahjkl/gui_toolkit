@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.235.0] - 2026-11-12
+
+### Added
+- **`gt:notices` keeps a log of what the user missed, and `ui.badge` shows a count on a button**: a program puts an entry when a run ends or a question waits; an entry put again while open counts once more instead of adding a line. Entries are New, Seen or Acknowledged; what was acknowledged stays in a history of 200 entries by default, and what is open is never dropped. The log survives a restart, and its groups are made again only after a change. `ui.badge` draws a count in a pill on a button's corner, "99+" past 99, nothing at 0.
+
 ## [0.234.1] - 2026-11-12
 
 ### Fixed
@@ -3054,6 +3059,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.235.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.235.0
 [0.234.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.1
 [0.234.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.0
 [0.233.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.1
