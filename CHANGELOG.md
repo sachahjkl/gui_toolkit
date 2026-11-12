@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.223.0] - 2026-11-12
+
+### Added
+- **`image`: transformations of RGBA8 pictures on the CPU**: a program can crop, resize (Lanczos3, bilinear, box), scale, rotate, flip and pad a picture; give it a border, rounded corners, a drop shadow or a background of a colour or a gradient; adjust grayscale, invert, brightness and contrast, saturation, hue, sepia and threshold; blur, sharpen or pixelate it; draw one picture over another; and put a picture or a text as a watermark at a corner ([docs/image.md](docs/image.md)).
+- **`ui.nav_item`, a line of a navigation list**: an icon and a title from the left edge, a ghost under the pointer, pressed in when it is the one shown: the settings' pages use it, and a program's side list can too.
+- **A program can ask where the pointer is, even on Wayland**: `capture.pointer(s)` gives the pointer's place on the desktop (logical) and the output it is on, through the compositor's cursor sessions (`ext_image_copy_capture_cursor_session_v1`) on Wayland, `QueryPointer` on X11 and `GetCursorPos` on Windows; `capture.pointer_from_buffer` turns a point of an output's buffer, turned and scaled, into a point of the desktop.
+- **`ui.node_graph`**: a program edits a graph of nodes and links visually: nodes with a header, ports coloured by kind, a run's state, a thumbnail and widgets of their own; links drawn as curves from port to port, checked by the program's `can_link`; selection by click and band, moves snapped to a grid, pan and zoom (Ctrl+wheel, a touchpad's pinch), a minimap. The program keeps the model and applies the events it returns (`Graph_Moved`, `Graph_Linked`, `Graph_Deleted`...). A box with the new flag `.Ctrl_Wheel` gets Ctrl+wheel instead of the interface's zoom.
+
 ## [0.222.0] - 2026-11-12
 
 ### Added
@@ -2951,6 +2959,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.223.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.223.0
 [0.222.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.222.0
 [0.221.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.1
 [0.221.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.0
