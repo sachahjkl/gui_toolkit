@@ -154,6 +154,8 @@ list_seek_row :: proc(st: ^List_State, i: int, label: string) {
 // The keys of a focused list: moves, Enter, Escape, type-ahead (resolved later, against the rows' labels).
 @(private)
 list_keys :: proc(s: ^State, st: ^List_State) {
+	// (a dialog open over the list holds the keys: its Enter is its own, not the row's behind it)
+	if keys_held_by_dialog(s) { return }
 	page := max(st.page_rows - 1, 1)
 	up :: proc(st: ^List_State) -> int { return st.sel < 0 ? list_next_selectable(st, -1, 1) : list_next_selectable(st, st.sel, -1) }
 	for e, i in s.events.list {

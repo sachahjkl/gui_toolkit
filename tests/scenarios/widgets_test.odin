@@ -197,6 +197,40 @@ a_virtual_list_is_scrolled_by_the_program :: proc(t: ^testing.T) {
 	testing.expect(t, r.built > 0, "it measures again")
 }
 
+// A dialog open over a list that has the keyboard holds its keys: Enter is the dialog's, the row behind is not opened.
+@(test)
+a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) {
+	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, asking, activated, moved: bool }
+	r := new(Run)
+	defer { ui.vlist_destroy(&r.st); free(r) }
+	for i in 0 ..< LIST_ROWS { r.ids[i], r.labels[i] = u64(i + 1), "A row" }
+	s := session.start(t, {size = WINDOW, user = r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if rows, ok := ui.vlist("###list", &r.st, r.ids[:], r.labels[:]); ok {
+			if s.frames == 1 { ui.set_focus(r.st.key) }
+			for i in rows.first ..< rows.last {
+				ui.next({height = ui.px(LIST_ROW_HEIGHT)})
+				ui.list_row(&r.st.list, i, r.labels[i])
+			}
+			if r.st.list.activated { r.activated = true }
+		}
+		if ui.confirm("ask", &r.asking, {title = "Delete it?", act = "Delete"}) != .None { r.asking = false }
+	}})
+	session.frames(s, 2)
+	session.key(s, .Down)
+	testing.expect(t, r.st.list.sel >= 0, "the list has the keys")
+	sel := r.st.list.sel
+	r.asking = true
+	session.frames(s, 2)
+	session.key(s, .Down)
+	session.key(s, .Return)
+	session.frames(s, 2)
+	testing.expect(t, !r.activated, "Enter answered the dialog, not the row")
+	testing.expect_value(t, r.st.list.sel, sel)
+	testing.expect(t, !r.asking, "the dialog answered")
+}
+
 // Text selected outside a field, then taken away by the program.
 @(test)
 a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) {
