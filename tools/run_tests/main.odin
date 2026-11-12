@@ -96,6 +96,7 @@ STEPS := []Step{
 	{name = "store", oses = EVERYWHERE},
 	{name = "capture", oses = EVERYWHERE},
 	{name = "gif", oses = EVERYWHERE},
+	{name = "image", text = true, oses = EVERYWHERE},   // (text = true: watermark_text's test draws the embedded face)
 	{name = "h264", oses = EVERYWHERE},
 	{name = "mux", oses = EVERYWHERE},
 	{name = "shortcuts", oses = EVERYWHERE},
