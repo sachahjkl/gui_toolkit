@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.237.0] - 2026-11-12
+
+### Added
+- **An overlay can take the keyboard from its showing** (`Overlay_Keyboard.Exclusive`, `host.Open.overlay_keyboard`): a selection of a region reads Escape, the arrows and Enter at once, with no window animation, as a layer surface.
+
+### Changed
+- **A node that did not run says so with a mark**: `ui.node_graph` draws a crossed-out ring in a Skipped node's header, beside its fading, as Done has its check and Failed its cross.
+
+### Fixed
+- **An overlay shows the windows below where it draws nothing** on Linux: its surface is composited with its alpha (`Surface_Handles.see_through`), where it was black.
+
 ## [0.236.1] - 2026-11-12
 
 ### Fixed
@@ -3072,6 +3083,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.237.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.237.0
 [0.236.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.1
 [0.236.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.0
 [0.235.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.235.0
