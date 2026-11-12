@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.234.0] - 2026-11-12
+
+### Added
+- **`ui.announce` says what a program did in a system notification**: copied, saved, deleted go to the system's notifications, without waiting on the interface's thread (`platform.notify_async`), and to a toast of the window only where the system shows none. The standard preference `general.messages` (System, Window, Off) chooses where; a failure is always said.
+
 ## [0.233.1] - 2026-11-12
 
 ### Fixed
@@ -3044,6 +3049,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.234.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.0
 [0.233.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.1
 [0.233.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.0
 [0.232.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.232.0
