@@ -109,6 +109,14 @@ scrollbar_under :: proc(b: ^Box, p: Vec2) -> (axis: Axis, ok: bool) {
 	return
 }
 
+// What a vertical bar takes at the edge of a scroll box: its width and its margins. The bar is drawn over what is in
+// the box: content that must stay clear of it (a row's buttons at its right end) leaves this much room there when the
+// box scrolls.
+scrollbar_gutter :: proc() -> f32 {
+	w, m := scrollbar_size(font_size())
+	return w + 2 * m
+}
+
 // A bar's width and its margin from the edges of its box.
 @(private)
 scrollbar_size :: proc(font_size: f32) -> (w, m: f32) {
