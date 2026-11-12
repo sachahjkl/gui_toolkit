@@ -278,5 +278,5 @@ bitmap_rgba :: proc(h: win.HBITMAP, allocator := context.allocator) -> (img: Cli
 	win.ReleaseDC(nil, dc)
 	if got == 0 { delete(px, allocator); return }
 	for i := 0; i < len(px); i += 4 { px[i], px[i + 2], px[i + 3] = px[i + 2], px[i], 255 }
-	return {px, {w, hh}}, true
+	return {rgba = px, size = {w, hh}}, true
 }
