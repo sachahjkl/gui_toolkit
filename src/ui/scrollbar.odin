@@ -84,6 +84,23 @@ scrollbar_axis :: proc(b: ^Box, sbk: Key) -> Axis { return sbk == scrollbar_key(
 @(private)
 scrollbar_grab :: proc() -> (toward, away: f32) { return SCROLLBAR_GRAB_IN_PX * gs().scale, SCROLLBAR_GRAB_OUT_PX * gs().scale }
 
+// The bar of `b` that takes a press at `p` (window pixels): the one it shows, a little wider toward the content. ok = false:
+// none. A program that hears the pointer before the interface (a terminal's grid in a box that scrolls) leaves such a press
+// to it.
+scrollbar_under :: proc(b: ^Box, p: Vec2) -> (axis: Axis, ok: bool) {
+	if bar, _, _, _, has := scrollbar_parts(b); has {
+		toward, away := scrollbar_grab()
+		grab := Rect{{bar.min.x - toward, bar.min.y}, {bar.max.x + away, bar.max.y}}
+		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = bar.min.x - away, bar.max.x + toward }
+		if contains(grab, p) { return .Y, true }
+	}
+	if bar, _, _, _, has := scrollbar_parts(b, .X); has {
+		toward, away := scrollbar_grab()
+		if contains(Rect{{bar.min.x, bar.min.y - toward}, {bar.max.x, bar.max.y + away}}, p) { return .X, true }
+	}
+	return
+}
+
 // A bar's width and its margin from the edges of its box.
 @(private)
 scrollbar_size :: proc(font_size: f32) -> (w, m: f32) {
