@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.228.0] - 2026-11-12
+
+### Added
+- **`ui.modal_header`, `ui.modal_corner`, `ui.corner_place`, `ui.concentric_radius`**: a control in a dialog's top right corner (a close button) is placed by the toolkit: the same margin from the dialog's top and right edges, its corners concentric with the dialog's (radius `max(R - m, 0)`), and the row across the dialog's top centered with it and kept clear of it. The grips of a resized dialog leave it its corner. `corner_place` places a control in any rounded corner by the same rule. The Setup dialog's close control is placed this way.
+
 ## [0.227.0] - 2026-11-12
 
 ### Changed
@@ -2997,6 +3002,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.228.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.0
 [0.227.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.227.0
 [0.226.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.2
 [0.226.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.1
