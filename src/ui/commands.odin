@@ -161,11 +161,13 @@ Command_Palette :: struct {
 	search:      Fuzzy_Cache,   // the query and the commands folded, from one frame to the next (palette_entry_cached)
 }
 
-// A strip across the top of a dialog (a title, a search field), as a box's custom draw: its background (`bg`; none: a
-// field's darker one, the theme's "well"), its top corners the dialog's as they are drawn, a line under it. A raised
-// dialog (machined, edged) has a lit rim just inside its border: the strip begins inside it, and the dialog's frame is
-// drawn over it (machined_plate_over). Give the box the dialog's radius (`next({radius = ...})`, the dialog's own).
-dialog_top_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
+// A strip across the top of a dialog (a title, a search field), as a box's custom draw: its background (`custom_user`, a
+// ^Color; nil: a field's, the theme's "input background", as a menu's search band has it: one look for every place that
+// searches), its top corners the dialog's as they are drawn, a line under it. A raised dialog (machined, edged) has a lit
+// rim just inside its border: the strip begins inside it, and the dialog's frame is drawn over it (machined_plate_over).
+// Give the box the dialog's radius (`next({radius = ...})`, the dialog's own). (Not the box's `bg`: inside a dialog every
+// box has the dialog's, and the strip was the dialog's colour.)
+dialog_top_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	if machined() {
 		p := px1()
@@ -173,7 +175,7 @@ dialog_top_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	}
 	// (the dialog's corners as they are drawn: a window with little rounding, or none, has a strip with as little)
 	radius := max(0, box_drawn_radius(gs(), b) - (r.min.y - b.rect.min.y))
-	well := b.bg.a > 0.01 ? b.bg : color_from_tags(gs(), b.tags_key, "well")
+	well := user != nil ? (^Color)(user)^ : color_from_tags(gs(), b.tags_key, "input background")
 	draw.rect_corners(dc, r, {well, well, well, well}, {radius, 0, radius, 0})
 	// the line that parts the field from the results: carved (machined, edged), the border's colour (flat)
 	y := b.rect.max.y - (machined() ? 2 : 1) * px1()

@@ -56,7 +56,9 @@ button, Escape, a press outside) or `.None` while it waits.
 ## A strip across a dialog's top
 
 A strip across the top of a dialog (its title, a search field) is a box whose custom draw is `dialog_top_draw`: give it
-the dialog's radius (`radius = em * DIALOG_RADIUS_EM`) and its background (`bg`; none: a field's darker one). Its top
+the dialog's radius (`radius = em * DIALOG_RADIUS_EM`) and, for a colour of its own, a `^Color` in `custom_user` (none: a
+field's, `input background`, the colour of a menu's search band: every place that searches looks alike; not the box's
+`bg`, which inside a dialog is the dialog's). Its top
 corners are the dialog's as drawn, it begins inside the dialog's rim, and a line parts it from what is under it. A raised
 dialog's rim and edge are drawn over what is in it (`machined_plate_frame`): a child's background or line never covers
 them.
