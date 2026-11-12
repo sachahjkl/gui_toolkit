@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.224.0] - 2026-11-12
+
+### Changed
+- **A program's standard folders, one call on every system**: `platform.user_dir(kind, program)` gives its folder of configuration, data, state or cache (Linux: the XDG ones, an absolute variable or its default; Windows: the roaming application data for the configuration, the local one for the rest, with `state` and `cache` folders of their own). It replaces `platform.config_dir`, `desktop.xdg_data_home`, `desktop.xdg_config_home` and `desktop.xdg_cache_home`, which are gone.
+
 ## [0.223.0] - 2026-11-12
 
 ### Added
@@ -2959,6 +2964,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.224.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.224.0
 [0.223.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.223.0
 [0.222.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.222.0
 [0.221.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.1
