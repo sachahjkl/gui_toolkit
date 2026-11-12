@@ -30,7 +30,6 @@ import "wm"
 @(private = "file") WS_GROUP_DESTROY :: 1
 @(private = "file") WS_DESTROY :: 0
 @(private = "file") KDE_WM_GET_WINDOW_BY_UUID :: 2
-@(private = "file") KDE_WINDOW_DESTROY :: 8
 @(private = "file") KDE_VD_MANAGER_GET :: 0
 
 // Enum values.
@@ -391,7 +390,7 @@ places_close :: proc(st: ^Wl_State) {
 	l := &st.lib
 	for w in pl.workspaces { l.proxy_destroy(w.proxy); free(w, st.allocator) }
 	for g in pl.groups { l.proxy_destroy(g) }
-	for w in pl.kde_windows { kde_window_free(w, false) }
+	for w in pl.kde_windows { kde_window_free(w) }
 	for d in pl.kde_desktops { l.proxy_destroy(d.proxy); delete(d.id, st.allocator); free(d, st.allocator) }
 	for p in ([?]Wl_Proxy{pl.cosmic, pl.ws_manager, pl.kde, pl.kde_vd}) { if p != nil { l.proxy_destroy(p) } }
 	delete(pl.workspaces)
@@ -684,10 +683,10 @@ kde_shown :: proc(st: ^Wl_State, w: ^Kde_Window) -> bool {
 }
 
 @(private = "file")
-kde_window_free :: proc(w: ^Kde_Window, release: bool) {
+kde_window_free :: proc(w: ^Kde_Window) {
 	st := w.st
 	l := &st.lib
-	if release { l.proxy_marshal_flags(w.proxy, KDE_WINDOW_DESTROY, nil, l.proxy_get_version(w.proxy), FLAG_DESTROY) } else { l.proxy_destroy(w.proxy) }
+	l.proxy_destroy(w.proxy)
 	delete(w.uuid, st.allocator)
 	delete(w.title, st.allocator)
 	delete(w.app_id, st.allocator)
@@ -762,7 +761,9 @@ kde_unmapped :: proc "c" (data: rawptr, p: Wl_Proxy) {
 		ordered_remove(&pl.kde_windows, i)
 		break
 	}
-	kde_window_free(w, true)
+	// (the proxy only: ShojiWM's server reads this destroy as get_icon and ends the connection; a window that is gone
+	// sends nothing more, and the server frees its object with the connection)
+	kde_window_free(w)
 }
 
 @(private = "file")
