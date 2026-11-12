@@ -644,10 +644,12 @@ Table :: struct {
 	vl:        Virtual_List,
 	query:     string,          // the filter applied, in lower case (owned)
 	sel_rect:  Rect,            // the selected row, as last built (where the Menu key opens the menu)
-	// Builds what goes before the first cell's text of data row `row` (an icon `size` wide); nil: nothing.
+	// Builds what goes before the first cell's text of data row `row`: `size` high (an icon, or with row_em a
+	// thumbnail's height: its width is the lead's); nil: nothing.
 	lead:      proc(t: ^Table, row: int, size: f32),
 	lead_user: rawptr,
 	lead_em:   f32,             // the room before the first title and the first cell (0: 0.6)
+	row_em:    f32,             // a row's height in ems (0: TABLE_ROW_EM): taller rows for a lead that shows a thumbnail
 	header_bg: Maybe(Color),    // the header's background (nil: none)
 }
 
@@ -801,7 +803,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 		if t.header_bg != nil { next({bg = t.header_bg}) }
 		h := table_header("###header", &t.layout, lead_em)
 		ev.sorted, ev.resized, ev.moved, ev.columns = h.sorted, h.resized, h.moved, h.menu
-		row_h := dense(em * TABLE_ROW_EM)
+		row_h := dense(em * (t.row_em > 0 ? t.row_em : TABLE_ROW_EM))
 		least := table_min_width(&t.layout)
 		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
 		if rows, ok := vlist("###rows", &t.vl, t.ids[:]); ok {
@@ -812,7 +814,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 				next({width = fill_least(least), height = px(row_h)})
 				row := list_row(&t.vl, i, table_label(d, r))
 				tip := ""
-				if parent(row.box) { tip = table_cells(t, d, r, em, lead_em) }
+				if parent(row.box) { tip = table_cells(t, d, r, em, lead_em, row_h) }
 				table_cell_tip(row, tip)
 				if i == t.vl.sel { t.sel_rect = row.box.rect }
 				if row.double_clicked { ev.activated = true }
@@ -842,7 +844,7 @@ table_label :: proc(d: ^Table_Data, r: int) -> string {
 
 // The cells of data row `r`. Returns the whole text of the cell under the pointer when it is cut.
 @(private = "file")
-table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em: f32) -> (tip: string) {
+table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em, row_h: f32) -> (tip: string) {
 	tone := d.tones[r]
 	if tone == .Dim { push_tags("weak") }
 	if tone == .Bad { push_tags("bad") }
@@ -857,7 +859,8 @@ table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em: f32) -> (tip
 			if row(id = "###c_first") {
 				spacer(px(em * lead_em * 0.8))
 				if t.lead != nil {
-					t.lead(t, r, em * 1.5)
+					// (an icon at the default height; a taller row's lead fills it, less a margin above and below)
+					t.lead(t, r, t.row_em > 0 ? row_h - em * 0.5 : em * 1.5)
 					spacer(px(em * 0.4))
 				}
 				if ranges := word_ranges(text, t.highlight); len(ranges) > 0 {
