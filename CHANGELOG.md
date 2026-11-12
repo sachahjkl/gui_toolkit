@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.198.0] - 2026-11-12
+
+### Added
+- **`process.Signal`: `Quit`, `User1`, `User2`** (SIGQUIT, SIGUSR1, SIGUSR2): what a program's "Send signal" menu offers besides the others.
+- **`dialog_top_draw`: a strip across the top of a dialog** (a title, a search field), as a box's custom draw: its `bg` (else a field's darker background), the dialog's top corners as drawn (`DIALOG_RADIUS_EM`), inside its rim, a line under it. The command palette's field uses it.
+
+### Fixed
+- **A corner rounded at under 3 px is square**: with a program's little rounding a dialog's corner was rounded at two pixels and a half, and its antialiasing made a blob outside the corner of its 1 px edge (`ROUND_LEAST_PX`).
+- **A raised panel's frame over what is in it** (machined and edged finishes): a dialog's lit rim and edge were drawn under its content, so a title's background or a tab's line covered them along one side and not the next. The frame is drawn after the panel's children (`machined_plate_frame`).
+- **A window at rest sleeps again on Wayland**: since 0.196.0 the compositor's word that it showed a picture asked for a repaint each time, so a window at rest drew a new picture at every refresh, for ever (a core kept busy). The word now asks for a repaint only when a picture waited for it (`platform.frame_shown_held`, which host calls); a covered window still draws its picture when it is shown again.
+
 ## [0.197.3] - 2026-11-12
 
 ### Changed
@@ -2698,6 +2709,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.198.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.198.0
 [0.197.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.3
 [0.197.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.2
 [0.197.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.1
