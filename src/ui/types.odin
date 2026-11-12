@@ -94,6 +94,7 @@ Box_Flag :: enum u8 {
 	Plate,               // a raised panel (a card, a dialog, a menu, a tooltip): the machined finish lifts it (machined_box)
 	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`field_frame`)
 	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
+	Ctrl_Wheel,          // a .Scroll_Self box that zooms with Ctrl+wheel itself (a node graph, a map): over it, the wheel with Ctrl is its own, not the interface's zoom
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 

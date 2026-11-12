@@ -93,7 +93,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mouse = e.pos
 			s.mouse_valid = true   // (the wheel is where its event says: a first notch with no move before it scrolls too)
 			s.mods = e.mods        // (what a wheel steps by: field_num_step)
-			if zoom_keys && .Ctrl in e.mods {
+			if zoom_keys && .Ctrl in e.mods && !ctrl_wheel_taken(s, e.pos, e.delta) {
 				// Ctrl+wheel zooms (wheel up = delta.y < 0 = bigger) instead of scrolling
 				s.zoom = clamp(s.zoom * math.pow(ZOOM_STEP, -e.delta.y), ZOOM_MIN, ZOOM_MAX)
 			} else {
@@ -247,6 +247,15 @@ scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways: bool) -> Key {
 	takes := .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
 	if takes && contains(b.rect, p) { return b.key }
 	return 0
+}
+
+// Whether the box the wheel at `p` goes to zooms with Ctrl+wheel itself (.Ctrl_Wheel): then the interface keeps its zoom.
+// (A touchpad's pinch comes as Ctrl+wheel on Windows and in browsers: a canvas under it zooms, not the whole window.)
+@(private)
+ctrl_wheel_taken :: proc(s: ^State, p, d: Vec2) -> bool {
+	k := scroll_hit_test(s, p, d)
+	b := s.boxes[k] if k != 0 else nil
+	return b != nil && .Ctrl_Wheel in b.flags
 }
 
 @(private)

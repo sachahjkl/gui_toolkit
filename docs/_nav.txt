@@ -28,6 +28,7 @@ Widgets and layout
   data-views.md       Tables, graphs and meters
   term.md             term: a terminal's grid
   preview.md          Preview: zoom and pan
+  node_graph.md       Node graph
   markdown.md         markdown: Markdown in a window
   dragdrop.md         Drag and drop
   accessibility.md    Accessibility
