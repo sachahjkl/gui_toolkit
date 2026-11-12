@@ -71,9 +71,8 @@ fuzzy_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
-@(private = "file") FUZZY_HIGHLIGHT_ALPHA :: 0.30
-
-// A label whose matched ranges (from `fuzzy_find`) are highlighted with the accent color.
+// A label whose matched ranges (from `fuzzy_find`) are lit on the theme's "match_bg", as a list's matches are (match.odin): a
+// heavier tint of the accent (30 %, blended in linear light) left the text on it hard to read.
 label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 	b := build_box({.Draw_Text}, text)
 	if len(ranges) > 0 {
@@ -81,9 +80,7 @@ label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 		d.ranges = make([]Fuzzy_Range, len(ranges), frame_allocator())
 		copy(d.ranges, ranges)
 		d.text = b.text
-		d.color = color("accent")
-		d.color.a *= FUZZY_HIGHLIGHT_ALPHA
-		d.color = tuned(d.color)
+		d.color = color("match_bg")
 		b.custom, b.custom_user = fuzzy_draw, d
 	}
 	return signal(b)
