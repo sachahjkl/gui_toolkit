@@ -5,6 +5,25 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.206.0] - 2026-11-12
+
+### Added
+- **A setting's own title**: `config.Def.title` gives the words a settings page shows when the preference's name does not make good ones (an acronym, a phrase); empty, the title is made from the name as before.
+- **`gt:h264`, H.264 with the system's encoders**: a program encodes screen frames to H.264 with no ffmpeg: VA-API on the GPU, else openh264, on Linux; Media Foundation's encoders on Windows. The libraries are opened at run time; `available` says which there are.
+- **`gt:ocr`, the text in a picture**: a program reads the text of a screenshot or any picture, as lines and words with their places, with what the system has (Windows' own text recognition, Tesseract on Linux). Light text on a dark theme and small screen text are read too; a system without an engine says so instead of failing to start.
+- **`gt:mux`, MP4 and WebM files**: a program writes encoded video and audio packets (H.264, HEVC, VP8, VP9, AV1, AAC, Opus) into an MP4 file (moov first, moov last, or fragmented so a crash leaves a playable file) or a WebM file, in memory, in a file or through a writer procedure. H.264 from the encoder in Annex B, and AAC in ADTS, are converted. A port of Mediabunny's muxers (MPL-2.0).
+- **`http.request`**: a program sends any method (POST, PUT, PATCH, DELETE...) with headers and a body, and reads the answer's headers and the address that answered; `http.multipart` and `http.form_urlencoded` build the bodies of forms, a file upload included.
+- **`gt:capture` streams, for screen recorders**: `capture.stream_open` keeps the capture of an output, a window or a region of the desktop open, and `stream_next` gives a frame each time it changed, at most at the rate asked, with its timestamp, the pointer drawn in where the system can (Wayland's `ext_image_copy_capture_v1` and `zwlr_screencopy_v1`, X11, Windows.Graphics.Capture and Desktop Duplication). A region is cut with no allocation per frame (`capture.crop_into`).
+- **More keys in a program's desktop entry**: `desktop.Identity.entry_extra` writes keys of the program's own into its `.desktop` file, such as the protocols KWin gives it (`X-KDE-Wayland-Interfaces`).
+- **Restore a whole page of settings**: a settings page built by `gt:prefs_page` shows a "Restore defaults" button beside its title while one of its settings is changed. A program can also say a setting's state plainly under its line (`Options.status`) and show its own content under a page (`Options.page_foot`).
+- **`gt:shortcuts`, global shortcuts**: a program names its actions and the keys it would like; on Linux the desktop portal binds them (KDE, GNOME, Hyprland, ShojiWM's desktop) and says which keys each one got, on Windows RegisterHotKey. Print Screen is a key now (`platform.Key.Print`), and a shortcut of its own without a modifier.
+- **`png.texts`, `png.with_texts`**: the `tEXt` chunks of a PNG file read and written without decoding its pixels.
+- **`desktop.thumbnail`**: the system's thumbnail of a file (a PDF's page, a video's frame, a document), for a worker: on Linux the freedesktop.org cache in `~/.cache/thumbnails` and the thumbnailers of the desktop (made on a miss, kept in the cache, failures remembered), on Windows the shell's (`IShellItemImageFactory`). `thumbnail_cached` reads the cache only; `thumbnail_store` keeps a program's own picture in it (Linux).
+
+### Fixed
+- **A window closed no longer ends the capture session on ShojiWM**: when KDE's window management protocol said a window was gone, `gt:capture` asked the compositor to destroy its object, which ShojiWM refused with a protocol error that closed the connection.
+- **A resize costs less on Wayland**: the swap chain was reconfigured for every size the compositor asked for, also those no picture was drawn at (while the last picture waited to be shown), about three reconfigures for each picture shown; it now takes the window's size only with a picture drawn.
+
 ## [0.205.0] - 2026-11-12
 
 ### Added
@@ -2792,6 +2811,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.206.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.206.0
 [0.205.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.205.0
 [0.204.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.204.0
 [0.203.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.203.0
