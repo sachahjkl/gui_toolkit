@@ -638,6 +638,7 @@ wake :: proc(w: ^Window) {
 }
 
 get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
+	if w == nil { return "" }   // (no window: nothing to read through, as on Linux)
 	if w.offscreen { return clip_store_text(allocator) }
 	if !win.OpenClipboard(w.hwnd) { return "" }
 	defer win.CloseClipboard()
@@ -654,6 +655,7 @@ get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
 }
 
 set_clipboard :: proc(w: ^Window, text: string) {
+	if w == nil { return }   // (no window: nothing to write through, as on Linux)
 	if w.offscreen { clip_store_put({text = text}); return }
 	if !win.OpenClipboard(w.hwnd) { return }
 	defer win.CloseClipboard()
