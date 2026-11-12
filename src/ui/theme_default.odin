@@ -17,7 +17,9 @@ Palette :: struct {
 
 // Slots a theme entry can point at.
 @(private)
-Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well, Blue, Purple, Cyan, Rose }
+Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well, Blue, Purple, Cyan, Rose,
+	// an intent's soft pair (soft_pair_on of its hue on the page): its fill, its words
+	Accent_Soft, Accent_Ink, Info_Soft, Info_Ink, Good_Soft, Good_Ink, Warn_Soft, Warn_Ink, Bad_Soft, Bad_Ink }
 
 @(private)
 Entry :: struct { tags: string, slot: Slot, alpha: f32 }
@@ -51,13 +53,18 @@ entries := [?]Entry{
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
 	{"bad border", .Bad, 1}, {"good border", .Good, 1}, {"warn border", .Warn, 1},
-	{"accent_button background", .Accent, 1}, {"accent_button text", .Accent_Text, 1}, {"accent_button border", .Accent, 1},
-	{"danger_button background", .Bad, 1}, {"danger_button text", .White, 1}, {"danger_button border", .Bad, 1},
+	// (the intents' buttons: a soft fill of their hue, their words in that hue, deep enough to read: soft_pair_on)
+	{"accent_button background", .Accent_Soft, 1}, {"accent_button text", .Accent_Ink, 1}, {"accent_button border", .Accent_Soft, 1},
+	{"danger_button background", .Bad_Soft, 1}, {"danger_button text", .Bad_Ink, 1}, {"danger_button border", .Bad_Soft, 1},
+	{"success_button background", .Good_Soft, 1}, {"success_button text", .Good_Ink, 1}, {"success_button border", .Good_Soft, 1},
+	{"info_button background", .Info_Soft, 1}, {"info_button text", .Info_Ink, 1}, {"info_button border", .Info_Soft, 1},
+	{"cancel_button background", .Bad_Soft, 1}, {"cancel_button text", .Bad_Ink, 1}, {"cancel_button border", .Bad_Soft, 1},
 	// a button whose action is undone with care, not lost (end a task, stop a service): amber, dark text on it
-	{"warn_button background", .Warn, 1}, {"warn_button text", .Black, 1}, {"warn_button border", .Warn, 1},
+	{"warn_button background", .Warn_Soft, 1}, {"warn_button text", .Warn_Ink, 1}, {"warn_button border", .Warn_Soft, 1},
 	{"ghost_button background", .Panel, 0}, {"ghost_button border", .Panel, 0}, {"ghost_button sheen", .White, 0},
 	{"icon_button background", .Panel, 0}, {"icon_button sheen", .White, 0},
 	{"accent_button sheen", .White, 1}, {"danger_button sheen", .White, 1}, {"warn_button sheen", .White, 1},
+	{"success_button sheen", .White, 1}, {"info_button sheen", .White, 1}, {"cancel_button sheen", .White, 1},
 	{"button background", .Panel2, 1}, {"button border", .Border, 1}, {"button sheen", .White, 1},
 	// a segmented control's labels: half sit on the sliding pill, half on the track; an engraving (lit below on the pill,
 	// shadowed above on the track) set them a pixel apart to the eye
@@ -102,6 +109,9 @@ state_entries := [?]Entry{
 	{"accent_button hover_fill", .Hover, 0.10}, {"accent_button press_fill", .Hover, 0.18},
 	{"danger_button hover_fill", .Hover, 0.10}, {"danger_button press_fill", .Hover, 0.18},
 	{"warn_button hover_fill", .Hover, 0.10}, {"warn_button press_fill", .Hover, 0.18},
+	{"success_button hover_fill", .Hover, 0.10}, {"success_button press_fill", .Hover, 0.18},
+	{"info_button hover_fill", .Hover, 0.10}, {"info_button press_fill", .Hover, 0.18},
+	{"cancel_button hover_fill", .Hover, 0.10}, {"cancel_button press_fill", .Hover, 0.18},
 	{"ghost_button hover_fill", .Hover, 0.08}, {"ghost_button press_fill", .Hover, 0.14},
 	{"icon_button hover_fill", .Hover, 0.08}, {"icon_button press_fill", .Hover, 0.14},
 	{"segment hover_fill", .Hover, 0.07}, {"segment press_fill", .Hover, 0.12},
@@ -142,8 +152,32 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	case .Purple: return p.purple != 0 ? p.purple : p.accent
 	case .Cyan: return p.cyan != 0 ? p.cyan : p.accent
 	case .Rose: return p.rose != 0 ? p.rose : p.accent
+	case .Accent_Soft, .Accent_Ink, .Info_Soft, .Info_Ink, .Good_Soft, .Good_Ink, .Warn_Soft, .Warn_Ink, .Bad_Soft, .Bad_Ink:
+		return 0xff00ffff   // (computed colours: slot_rgba)
 	}
 	return 0xff00ffff
+}
+
+// A slot's colour (linear): the palette's, or for an intent's soft pair, made from its hue on the palette's page.
+@(private)
+slot_rgba :: proc(p: Palette, s: Slot) -> draw.Color {
+	soft :: proc(p: Palette, hue: Slot, ink: bool) -> draw.Color {
+		fill, words := soft_pair_on(draw.hex(slot_color(p, hue) | 0xff), draw.hex(slot_color(p, .Bg_Solid)))
+		return ink ? words : fill
+	}
+	#partial switch s {
+	case .Accent_Soft: return soft(p, .Accent, false)
+	case .Accent_Ink:  return soft(p, .Accent, true)
+	case .Info_Soft:   return soft(p, .Blue, false)
+	case .Info_Ink:    return soft(p, .Blue, true)
+	case .Good_Soft:   return soft(p, .Good, false)
+	case .Good_Ink:    return soft(p, .Good, true)
+	case .Warn_Soft:   return soft(p, .Warn, false)
+	case .Warn_Ink:    return soft(p, .Warn, true)
+	case .Bad_Soft:    return soft(p, .Bad, false)
+	case .Bad_Ink:     return soft(p, .Bad, true)
+	}
+	return draw.hex(slot_color(p, s))
 }
 
 // Creates the entries on first use, then only updates colors (so box colors cross-fade between palettes). `space`: the
@@ -159,7 +193,7 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	bg := draw.hex(slot_color(p, .Bg_Solid))
 	changed := false
 	for e, i in entries {
-		c := draw.hex(slot_color(p, e.slot))
+		c := slot_rgba(p, e.slot)
 		c.a *= e.alpha
 		c.a = draw.alpha_like_linear(space, c, c.a, bg)
 		k := t.palette_at + i

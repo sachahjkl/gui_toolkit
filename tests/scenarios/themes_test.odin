@@ -298,15 +298,20 @@ a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) {
 	testing.expectf(t, !session.near(lit, pane, 2), "the lit line %v is not under the pane %v", lit, pane)
 }
 
-// warn_button: the warning hue behind black text, as danger_button is the bad hue behind white text.
+// The intents' buttons are soft: a deep fill of their hue on a dark page, words of that hue on it that read (AA).
 @(test)
-a_warn_button_is_amber_with_dark_text :: proc(t: ^testing.T) {
+an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	shown: ui.Theme_Shown
 	testing.expect(t, ui.theme_show(&th, ui.THEMES[:], {name = ui.THEMES[0].name, mode = .Dark}, &shown, .Linear))
-	testing.expect_value(t, ui.theme_lookup(&th, {"warn_button"}, "background"), ui.theme_lookup(&th, {"warn"}, "text"))
-	testing.expect_value(t, ui.theme_lookup(&th, {"danger_button"}, "background"), ui.theme_lookup(&th, {"bad"}, "text"))
-	black := ui.theme_lookup(&th, {}, "find_text")
-	testing.expect_value(t, ui.theme_lookup(&th, {"warn_button"}, "text"), black)
+	page := ui.theme_lookup(&th, {}, "background")
+	for pair in ([][2]string{{"warn_button", "warn"}, {"danger_button", "bad"}, {"success_button", "good"}}) {
+		fill := ui.theme_lookup(&th, {pair[0]}, "background")
+		words := ui.theme_lookup(&th, {pair[0]}, "text")
+		hue := ui.theme_lookup(&th, {pair[1]}, "text")
+		testing.expectf(t, ui.luminance(fill) < ui.luminance(hue) && ui.luminance(fill) <= ui.luminance(page) + 0.05, "%s: a deep fill of its hue", pair[0])
+		testing.expectf(t, ui.contrast(words, fill) >= 4.5, "%s: its words read on it (%.2f)", pair[0], ui.contrast(words, fill))
+		testing.expectf(t, abs(ui.to_oklch(words)[2] - ui.to_oklch(hue)[2]) < 12, "%s: its words are of its hue", pair[0])
+	}
 }

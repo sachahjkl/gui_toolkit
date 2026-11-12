@@ -43,3 +43,40 @@ oklch_goes_and_comes_back :: proc(t: ^testing.T) {
 		testing.expectf(t, math.abs(back.r - c.r) < 0.002 && math.abs(back.g - c.g) < 0.002 && math.abs(back.b - c.b) < 0.002, "%08x back as it was", v)
 	}
 }
+
+// The shades of a colour go from its lightest tint to its deepest, its hue kept; of them, shade_on finds one that reads on
+// a ground.
+@(test)
+shades_go_from_tint_to_deep :: proc(t: ^testing.T) {
+	blue := draw.hex(0x3b82f6ff)
+	prev := 2.0
+	for s in ui.Shade {
+		c := ui.shade(blue, s)
+		lch := ui.to_oklch(c)
+		testing.expectf(t, lch[0] < prev, "%v is darker than the shade before it", s)
+		prev = lch[0]
+		if s >= .S300 && s <= .S800 {
+			testing.expectf(t, math.abs(lch[2] - ui.to_oklch(blue)[2]) < 8, "%v keeps the hue: %.1f", s, lch[2])
+		}
+	}
+	for ground in ([]u32{0xffffffff, 0x101010ff, 0xdbeafeff, 0x1e3a8aff}) {
+		g := draw.hex(ground)
+		testing.expectf(t, ui.contrast(ui.shade_on(blue, g, 4.5), g) >= 4.5, "a shade of blue reads on %x", ground)
+	}
+}
+
+// Every theme's intents, dark and light: a soft fill of the intent's hue and words of that hue that read on it (AA).
+@(test)
+every_soft_pair_reads :: proc(t: ^testing.T) {
+	for th in ui.THEMES {
+		for light in ([]bool{false, true}) {
+			if (light && th.versions == .Dark_Only) || (!light && th.versions == .Light_Only) { continue }
+			p := ui.theme_palette(th, light)
+			page := draw.hex(p.bg | 0xff)
+			for hue in ([]u32{p.accent, p.good, p.warn, p.bad, p.blue != 0 ? p.blue : p.accent}) {
+				fill, ink := ui.soft_pair_on(draw.hex(hue | 0xff), page)
+				testing.expectf(t, ui.contrast(ink, fill) >= 4.5, "%s (%s): %x's words read on its soft fill (%.2f)", th.name, light ? "light" : "dark", hue, ui.contrast(ink, fill))
+			}
+		}
+	}
+}

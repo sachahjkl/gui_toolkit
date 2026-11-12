@@ -1103,22 +1103,32 @@ form_row_end :: proc() {
 // `width`: {} as wide as what is in it; fill() a share of the row, as flex: 1 (two buttons side by side, or one across
 // the whole width), px(...) a width of its own: what is in it stays centred. `icon_font`: the glyph's font (0:
 // State.icon_font; lucide_icons() for Lucide's). `hue`: filled with one of the theme's hues (hue()), its words in
-// ink_on of it: a colour by meaning that every theme has (a green Unlock, a red Delete), whatever the theme.
-button_icon :: proc(id: string, glyph, text: string, disabled := false, width: Size = {}, icon_font: font.Font_Id = 0, hue: Maybe(Hue) = nil) -> (sig: Signal) {
+// ink_on of it: a colour by meaning that every theme has (a green Unlock, a red Delete), whatever the theme. `intent`:
+// what the act means (Intent), its hue: prefer it to a hue when the act has one. Both are soft (soft_pair: a tinted
+// fill, its words of the same hue) unless `solid`: the hue itself, its words dark or light, whichever reads (ink_on).
+button_icon :: proc(id: string, glyph, text: string, disabled := false, width: Size = {}, icon_font: font.Font_Id = 0, hue: Maybe(Hue) = nil, solid := false, intent := Intent.Neutral) -> (sig: Signal) {
 	s := gs()
 	em := font_size()
 	// a disabled scope, so the label and icon inside go neutral too
 	push_disabled(disabled)
 	defer pop_disabled()
+	// (soft, an intent is its theme's button; solid, its hue as any hue)
+	tag := solid ? "" : intent_tag(intent)
+	h := hue
+	if solid && intent != .Neutral && h == nil { h = intent_hue(intent) }
+	if tag != "" { push_tags(tag) }
+	defer if tag != "" { pop_tags() }
 	if tags("button") {
 		set_next_axis(.X, .Center)
 		s.next_mod.width = width == {} ? children_sum() : width
 		ink: Maybe(Color)
-		if h, tinted := hue.?; tinted {
-			fill_c := hue_color(h)
-			fill_c.a = 1
+		if hh, tinted := h.?; tinted {
+			base := hue_color(hh)
+			base.a = 1
+			fill_c, words := soft_pair(base)
+			if solid { fill_c, words = base, ink_on(base) }
 			s.next_mod.bg, s.next_mod.border = fill_c, fill_c
-			ink = ink_on(fill_c)
+			ink = words
 		}
 		s.next_mod.height = px(dense(em * 2.2))
 		s.next_mod.radius = em * 0.45
