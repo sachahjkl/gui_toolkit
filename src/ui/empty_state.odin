@@ -30,8 +30,9 @@ empty_state :: proc(id: string, e: Empty_State) -> (clicked: int) {
 	if parent(build_box({}, fmt.tprintf("###%s", id))) {
 		spacer(fill())
 		if e.icon != "" {
-			next({width = px(em * 3.2), height = px(em * 3.2)})
-			if row() { icon(e.icon, em * 3.2, color("weak text")) }
+			// (the icon at the size of a heading's picture: `icon` keeps the text's size)
+			next({width = px(em * 3.2), height = px(em * 3.2), font = gs().icon_font, font_size = em * 2.4, text_align = .Center, fg = color("weak text")})
+			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###empty_icon", e.icon))
 			spacer(px(em * 0.6))
 		}
 		next({width = fill(), height = px(em * 1.8), font_size = em * 1.1, text_align = .Center})
