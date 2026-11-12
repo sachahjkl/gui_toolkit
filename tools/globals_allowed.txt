@@ -105,6 +105,10 @@ font/slug_dwrite.odin outline_sink_vtable const  # a COM vtable (passed by addre
 font/slug_dwrite.odin IID_ID2D1SimplifiedGeometrySink const  # a COM interface id (passed by address)
 instance/instance_linux.odin owners_mu process  # the instance owners started in the process (locked: owners_mu)
 instance/instance_linux.odin owners process  # the instance owners started in the process (locked: owners_mu)
+ocr/ocr.odin LANGUAGE_CODES const  # a table: ISO 639-1 to Tesseract's codes
+ocr/ocr_linux.odin tess process  # a library of the system, loaded once (sync.Once), then only read
+ocr/ocr_linux.odin tess_once process  # a library of the system, loaded once (sync.Once), then only read
+ocr/ocr_linux.odin tess_found process  # a library of the system, loaded once (sync.Once), then only read
 platform/a11y_accesskit.odin a11y_abi_checked process  # whether the accessibility library's ABI matches (atomic)
 platform/clipboard.odin clip process  # the process's clipboard store (locked: Clip_Store.mutex)
 platform/hotkey.odin HOTKEY_KEY_NAMES const  # a table: the names of the keys a hotkey can name

@@ -70,6 +70,7 @@ Frames and threads
   png.md              png: the PNG codec
   gif.md              gif: animated GIF encoder
   qr.md               qr: QR Codes, written and read
+  ocr.md              ocr: the text in a picture
   shortcuts.md        shortcuts: global shortcuts
   lucide.md           lucide: the Lucide icons
 

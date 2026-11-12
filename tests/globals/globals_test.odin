@@ -30,7 +30,7 @@ ROOT :: #directory + "/../.."
 GLOBALS_LIST :: ROOT + "/tools/globals_allowed.txt"
 // The packages whose globals are listed, under the repository's src (tools/globals_allowed.txt names them from there).
 GLOBALS_DIRS :: [?]string{
-	"arena", "ascii", "base", "cdp", "changelog", "config", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "i18n", "instance", "paint", "platform", "png", "process", "qr", "render", "site", "term", "toolbox", "update",
+	"arena", "ascii", "base", "cdp", "changelog", "config", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "i18n", "instance", "ocr", "paint", "platform", "png", "process", "qr", "render", "site", "term", "toolbox", "update",
 	"testkit", "testkit/session", "ui",
 }
 GLOBAL_CLASSES :: [?]string{"const", "process", "thread", "test"}
