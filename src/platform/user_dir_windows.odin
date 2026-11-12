@@ -1,14 +1,17 @@
 #+build windows
 package platform
 
+import "core:os"
+import "core:path/filepath"
 import win "core:sys/windows"
 
 @(private) USER_DIR_SEPARATOR :: "\\"
 
-// The known folder of `kind`: the roaming application data for the configuration, the local one for the rest (temp memory; "":
-// the system would not give it).
+// %APPDATA% for the configuration, %LOCALAPPDATA% for the rest, when they are absolute paths (a test, a portable copy points them
+// elsewhere, as XDG's variables are on Linux); else the known folder they name (temp memory; "": the system would not give it).
 @(private)
 user_dir_base :: proc(kind: User_Dir) -> string {
+	if v, ok := os.lookup_env(kind == .Config ? "APPDATA" : "LOCALAPPDATA", context.temp_allocator); ok && filepath.is_abs(v) { return v }
 	id := kind == .Config ? win.FOLDERID_RoamingAppData : win.FOLDERID_LocalAppData
 	path: win.LPWSTR
 	if win.SHGetKnownFolderPath(&id, 0, nil, &path) < 0 || path == nil { return "" }

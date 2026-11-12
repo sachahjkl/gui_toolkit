@@ -10,9 +10,9 @@ import "core:strings"
 //	State    Linux $XDG_STATE_HOME/<program>  (~/.local/state)   Windows %LOCALAPPDATA%\<program>\state
 //	Cache    Linux $XDG_CACHE_HOME/<program>  (~/.cache)         Windows %LOCALAPPDATA%\<program>\cache
 //
-// An XDG variable counts only when it is an absolute path (the specification says a relative one is ignored). Windows' folders
-// are the system's known folders (SHGetKnownFolderPath), not variables a process may have changed. Nothing is made: a program
-// makes its folder when it writes there (fsx).
+// A variable counts only when it is an absolute path (the XDG specification says a relative one is ignored), on Windows too
+// (%APPDATA%, %LOCALAPPDATA%): a test or a portable copy points them elsewhere. Without them, Windows' known folders
+// (SHGetKnownFolderPath). Nothing is made: a program makes its folder when it writes there (fsx).
 User_Dir :: enum u8 { Config, Data, State, Cache }
 
 // The folder of `program` for `kind` ("": the folder every program's is in, as the system names it). "": the system has none
