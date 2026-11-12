@@ -71,11 +71,12 @@ read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = R
 // Writes `data` to `path` through a temporary file next to it, renamed over it: a reader sees the old file or the new
 // one, and two writers each their own whole file (the last rename stays). The name is this thread's, so no other live
 // writer has it: a crash leaves it behind, `<path>.<pid>.<thread>.tmp`. `flush`: on the disk when it returns; false then
-// may also mean the file was replaced but its directory could not be synced (replace).
-write_atomic :: proc(path: string, data: []byte, flush := false) -> bool {
+// may also mean the file was replaced but its directory could not be synced (replace). `private`: readable by its user
+// only (POSIX: mode 0600; Windows: the folder's access list, as any file).
+write_atomic :: proc(path: string, data: []byte, flush := false, private := false) -> bool {
 	tmp := fmt.tprintf("%s.%d.%d.tmp", path, os.get_pid(), os.get_current_thread_id())
 	parts := [1][]byte{data}
-	if !write_parts(tmp, parts[:], flush) { delete_file(tmp); return false }
+	if !write_parts(tmp, parts[:], flush, private) { delete_file(tmp); return false }
 	if !replace(tmp, path, flush) { delete_file(tmp); return false }
 	return true
 }

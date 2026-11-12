@@ -7,7 +7,9 @@ import win "core:sys/windows"
 @(private = "file")
 wide :: proc(s: string) -> win.LPCWSTR { return win.utf8_to_wstring(s, context.temp_allocator) }
 
-write_parts :: proc(path: string, parts: [][]byte, flush: bool) -> bool {
+// `private` asks nothing more here: a file takes its folder's access list, and a program's own folder (under the profile)
+// is its user's already.
+write_parts :: proc(path: string, parts: [][]byte, flush: bool, private := false) -> bool {
 	h := win.CreateFileW(wide(path), win.GENERIC_WRITE, 0, nil, win.CREATE_ALWAYS, win.FILE_ATTRIBUTE_NORMAL, nil)
 	if h == win.INVALID_HANDLE_VALUE { return false }
 	ok := true
