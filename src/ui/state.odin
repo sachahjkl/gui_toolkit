@@ -70,6 +70,7 @@ destroy :: proc(s: ^State) {
 	delete(s.boxes)
 	delete(s.free_boxes)
 	delete(s.anims)
+	delete(s.wheel_rest)
 	delete(s.timers)
 	press_data_destroy(s)
 	delete(s.tag_sets)

@@ -86,3 +86,45 @@ the_wheel_and_the_buttons_step_the_value :: proc(t: ^testing.T) {
 	session.wheel(s, session.center(session.get(s, "value")), {0, -1}, {.Shift})
 	testing.expect_value(t, r.v, 12)
 }
+
+// The wheel is the slider's own, not slider_field's: a plain slider follows it too.
+@(test)
+a_plain_slider_follows_the_wheel :: proc(t: ^testing.T) {
+	Plain :: struct { v: f32 }
+	r := Plain{v = 4}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Plain)(s.user)
+		ui.next({width = ui.px(ROW_WIDTH), height = ui.px(ROW_HEIGHT)})
+		ui.slider("###plain", &r.v, 0, 10, 1)
+	}})
+	session.wheel(s, session.center(session.get(s, "plain")), {0, -1})
+	testing.expect_value(t, r.v, 5)
+	session.wheel(s, session.center(session.get(s, "plain")), {0, 3})
+	testing.expect_value(t, r.v, 2)
+}
+
+// In a view that scrolls, the wheel over a slider scrolls the view, until the slider has the keyboard.
+@(test)
+a_slider_in_a_scrolling_view_takes_the_wheel_once_focused :: proc(t: ^testing.T) {
+	Page :: struct { v: f32 }
+	r := Page{v = 4}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Page)(s.user)
+		ui.next({width = ui.px(ROW_WIDTH), height = ui.px(200), axis = .Y})
+		page := ui.build_box({.View_Scroll_Y, .Clip}, "###page")
+		_ = ui.signal(page)   // (a box scrolls in its signal)
+		ui.push_parent(page)
+		ui.next({width = ui.px(ROW_WIDTH - 40), height = ui.px(ROW_HEIGHT)})
+		ui.slider("###in_page", &r.v, 0, 10, 1)
+		ui.next({width = ui.px(10), height = ui.px(1000)})
+		ui.build_box({}, "###tall")
+		ui.pop_parent()
+	}})
+	at := session.center(session.get(s, "in_page"))
+	session.wheel(s, at, {0, -1})
+	testing.expect_value(t, r.v, 4)   // (the page had it)
+	session.click_at(s, session.center(session.get(s, "in_page")))
+	before := r.v
+	session.wheel(s, session.center(session.get(s, "in_page")), {0, -1})
+	testing.expect_value(t, r.v, before + 1)
+}

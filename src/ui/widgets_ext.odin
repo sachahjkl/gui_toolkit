@@ -432,10 +432,17 @@ slider_pct :: proc(b: ^Box, value_room := true) -> f32 {
 // (pick it per value for labels such as "Off"); "": no value text, the track runs to the right end. step 0 = continuous.
 // Keyboard (when focused): Left / Down and Right / Up step the value (`step`, or 1 % of the range), Home / End jump
 // to the ends, Page Up / Page Down move by 10 steps.
+// Wheel (wheel_steps): a notch up is a step more, Shift ten; in a view that scrolls, once the slider has the keyboard.
 slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f") -> (sig: Signal) {
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
 	sig = signal(b)
+	if n := wheel_steps(b, sig.focused); n != 0 {
+		k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
+		v := value^ + n * k * (.Shift in gs().mods ? SLIDER_WHEEL_SHIFT : 1)
+		if step > 0 { v = math.round(v / step) * step }
+		value^ = clamp(v, lo, hi)
+	}
 	if sig.focused {
 		k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
 		v := value^
@@ -507,11 +514,32 @@ nav_item :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bool
 	return sig
 }
 
+@(private) SLIDER_WHEEL_SHIFT :: 10   // steps a notch with Shift
+
+// Whole notches of the wheel turned over `b` this frame, up positive: what a slider or a spin field moves by. `b` takes
+// the wheel when the pointer is over it; in a view that scrolls (a page of settings), only once it has the keyboard
+// (`focused`), so that the wheel over it scrolls the view as it passes. Fractions of a notch (a touchpad) add up.
+wheel_steps :: proc(b: ^Box, focused: bool) -> f32 {
+	s := gs()
+	scrolls := false
+	for p := b.parent; p != nil; p = p.parent {
+		if .View_Scroll_Y in p.flags || .View_Scroll_X in p.flags { scrolls = true; break }
+	}
+	if scrolls && !focused { b.flags -= {.Scroll_Self}; return 0 }
+	// (the flag is read by the next frame's hit test: taken from now on)
+	b.flags += {.Scroll_Self}
+	if s.scroll_key != b.key { return 0 }
+	rest := s.wheel_rest[b.key] - (s.scroll_delta.y + s.scroll_delta.x)
+	n := math.trunc(rest)
+	rest -= n
+	if abs(rest) < 1e-3 { delete_key(&s.wheel_rest, b.key) } else { s.wheel_rest[b.key] = rest }
+	return n
+}
+
 // The field of a slider_field: kept by the program between frames (slider_field_destroy).
 Slider_Field :: struct {
 	text:  Text_Field,
 	box:   Key,   // the field's box, to know whether it has the keyboard
-	wheel: f32,   // notches of the wheel not yet a step (a touchpad sends fractions of one)
 }
 
 // A slider, then − and + around a field where the exact value is typed, then its unit (`unit`; "" none). The field
@@ -533,7 +561,7 @@ slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, ste
 	if row(.Center, {}, id) {
 		before := value^
 		next({width = fill(), height = pct(1)})
-		slider_sig := slider("###slider", value, lo, hi, step, "")   // (no value text on the knob: the field says it)
+		slider("###slider", value, lo, hi, step, "")   // (no value text on the knob: the field says it; the wheel is its own)
 		spacer(px(math.round(em * 0.4)))
 		typing := f.box != 0 && focus_key() == f.box
 		side := math.round(em * 1.6)
@@ -543,8 +571,8 @@ slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, ste
 				next({width = px(math.round(em * (3 + f32(decimals) * 0.6))), height = pct(1)})
 				res := line_edit("###value", &f.text, "", menu = false)
 				f.box = res.box.key
-				// (the wheel over the field moves the value: it is one line, nothing in it scrolls)
-				res.box.flags += {.Scroll_Self}
+				// (the wheel over the field moves the value as over the slider: it is one line, nothing in it scrolls)
+				if n := wheel_steps(res.box, res.focused || typing); n != 0 { move(value, n * k * (.Shift in s.mods ? SLIDER_WHEEL_SHIFT : 1), lo, hi, step) }
 				left := !res.focused && typing   // (the keyboard went elsewhere this frame)
 				if res.committed || left {
 					if v, ok := strconv.parse_f32(strings.trim_space(field_string(&f.text))); ok { move(value, v - value^, lo, hi, step) }
@@ -554,22 +582,7 @@ slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, ste
 			}
 			next({width = px(side), height = px(side), font = widget_icons(), font_size = math.round(em * 0.9)})
 			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
-			by := dir * k * (.Shift in sig.mods ? 10 : 1)
-			key := sig.box.key
-			if sig.pressed { move(value, by, lo, hi, step); timer_set(key, STEPPER_REPEAT_DELAY_MS) }
-			else if sig.dragging && sig.hovering && timer_due(key) { move(value, by, lo, hi, step); timer_set(key, STEPPER_REPEAT_MS) }
-			if sig.dragging {
-				// a wake at the next repeat, not a frame at every refresh while the button is held
-				if t, ok := s.timers[key]; ok { wake_within(s, max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))) }
-			}
-		}
-		slider_sig.box.flags += {.Scroll_Self}
-		if s.scroll_key != 0 && (s.scroll_key == slider_sig.box.key || s.scroll_key == f.box) {
-			// (up: more, as on a spin box)
-			f.wheel -= s.scroll_delta.y + s.scroll_delta.x
-			n := math.trunc(f.wheel)
-			f.wheel -= n
-			if n != 0 { move(value, n * k * (.Shift in s.mods ? 10 : 1), lo, hi, step) }
+			if repeat_pressed(sig) { move(value, dir * k * (.Shift in sig.mods ? SLIDER_WHEEL_SHIFT : 1), lo, hi, step) }
 		}
 		changed = value^ != before
 		if changed && !typing { field_set(&f.text, text_of(value^, decimals)) }
@@ -638,12 +651,26 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 // Stepper, segmented control, chips, rating
 
 @(private = "file") STEPPER_SHIFT_AMOUNT :: 10
-@(private) STEPPER_REPEAT_DELAY_MS :: 420
-@(private) STEPPER_REPEAT_MS :: 55
+@(private = "file") REPEAT_DELAY_MS :: 420
+@(private = "file") REPEAT_MS :: 55
+
+// A button that repeats while it is held (a stepper's − and +, a scroll bar's arrow): true at the press, then again
+// every REPEAT_MS after REPEAT_DELAY_MS while the pointer stays on it (off the button it waits). It wakes the loop at
+// the next repeat, not at every refresh while the button is held.
+repeat_pressed :: proc(sig: Signal) -> bool {
+	s := gs()
+	key := sig.box.key
+	fire := false
+	if sig.pressed { fire = true; timer_set(key, REPEAT_DELAY_MS) }
+	else if sig.dragging && sig.hovering && timer_due(key) { fire = true; timer_set(key, REPEAT_MS) }
+	if sig.dragging {
+		if t, ok := s.timers[key]; ok { wake_within(s, max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))) }
+	}
+	return fire
+}
 
 // [-] value [+]: hold a button to repeat, Shift = x10. Returns true when the value changed.
 stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
-	s := gs()
 	em := font_size()
 	set_next_axis(.X, .Center)
 	row_box := build_box({}, id)
@@ -664,17 +691,8 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 			next({width = px(em * 2.2), height = px(em * 2.2), font = widget_icons()})
 			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
 			amount := .Shift in sig.mods ? STEPPER_SHIFT_AMOUNT : 1
-			key := sig.box.key
 			old := value^
-			if sig.pressed { value^ += dir * amount; timer_set(key, STEPPER_REPEAT_DELAY_MS) }
-			else if sig.dragging && sig.hovering && timer_due(key) { value^ += dir * amount; timer_set(key, STEPPER_REPEAT_MS) }   // (off the button it waits, as a scroll bar's arrow does)
-			if sig.dragging {
-				// a wake at the next repeat, not a frame at every refresh while the button is held
-				if t, ok := s.timers[key]; ok {
-					left := max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))
-					wake_within(s, left)
-				}
-			}
+			if repeat_pressed(sig) { value^ += dir * amount }
 			value^ = clamp(value^, lo, hi)
 			if value^ != old { changed = true }
 		}

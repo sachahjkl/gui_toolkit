@@ -315,6 +315,7 @@ State :: struct {
 	boxes:       map[Key]^Box,
 	free_boxes:  [dynamic]^Box,
 	anims:       map[Key]Animation,
+	wheel_rest:  map[Key]f32,     // wheel_steps: per box, the notches not yet a whole step (a touchpad sends fractions)
 	arena:       virtual.Arena,
 	build_index: u64,
 	zoom:        f32,                // user zoom factor (Ctrl+wheel, Ctrl +/-/0); multiplies the DPI scale
