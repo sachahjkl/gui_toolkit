@@ -69,9 +69,9 @@ Present_State :: struct {
 	expected:      f64,                    // refreshes per frame of app-timed frames (0: interval)
 	tearing_ok:    bool,                   // the system can present with tearing
 	mailbox_ok:    bool,                   // ... or in a mailbox: the newest frame shown at the next refresh, no wait
-	// the window's frames never wait for the screen (set_present_wait): a window that is not the paced one. On Wayland a
-	// present in Fifo waits for the compositor's frame callback, which a window it does not show (covered, closing) never
-	// gets: the thread of every window would wait for ever
+	// the window's frames never wait for the screen (set_present_wait): a window that is not the paced one, or the paced
+	// one while it is resized (pace_frame). On Wayland a present in Fifo waits for the compositor's frame callback, which a
+	// window it does not show (covered, closing) never gets: the thread of every window would wait for ever
 	no_wait:       bool,
 	ring:          [PRESENT_RING]Present_Slot,
 	input:         time.Tick,              // set_frame_input for the next present
@@ -101,7 +101,9 @@ Present_State :: struct {
 set_present_mode :: proc(r: ^Renderer, mode: Present_Mode) { r.present.mode = mode }
 
 // Whether the frames of the window in use wait for the screen (true: the default). A window other than the paced one says
-// false (host does): its frames go out in a mailbox (else with tearing), never waiting for the compositor to show it.
+// false (host does): its frames go out in a mailbox (else with tearing), never waiting for the compositor to show it. The
+// paced window says false while it is resized (pace_frame): the screen shows the newest size, not the oldest one queued.
+// (Read by the wgpu backend when it configures its surface; Direct3D 11 chooses at each present.)
 set_present_wait :: proc(r: ^Renderer, wait: bool) { r.present.no_wait = !wait }
 present_mode :: proc(r: ^Renderer) -> Present_Mode { return present_call(r.present.mode, r.present.tearing_ok, r.present.interval, true).mode }
 
