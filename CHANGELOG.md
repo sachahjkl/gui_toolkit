@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.217.1] - 2026-11-12
+
+### Fixed
+- **A large picture comes whole through the Wayland clipboard**: a screenshot pasted from some programs came cut at 64 KiB ("image unreadable"). The pipe of a read is non-blocking on the reader's side only, so an owner that writes a picture in one go no longer stops at a full pipe; and the toolkit's own clipboard and drag sources write a flavour whole, on a thread of their own, whatever pipe the reader gave.
+
 ## [0.217.0] - 2026-11-12
 
 ### Added
@@ -2898,6 +2903,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.217.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.1
 [0.217.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.0
 [0.216.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.1
 [0.216.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.0
