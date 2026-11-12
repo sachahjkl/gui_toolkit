@@ -65,6 +65,7 @@ shape_rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 // the thumb drawn as a thing to take (every finish but Flat): a rim a little toward the text from its face, and three grip lines
 // across its middle, cut in the background's colour; the lines only on a thumb long enough to hold them
 @(private = "file") SCROLLBAR_RIM_ALPHA :: 0.18
+@(private = "file") SCROLLBAR_HELD_TOWARD_TEXT :: 0.5   // a thumb held: from the weak text this far toward the text
 @(private = "file") SCROLLBAR_GRIP_ALPHA :: 0.7
 @(private = "file") SCROLLBAR_GRIP_LINES :: 3
 @(private = "file") SCROLLBAR_GRIP_PITCH_PX :: 3
@@ -295,10 +296,11 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 	glyph := c
 	c.a = (active && s.sb_arrow == 0 ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
 	radius := w * 0.5 * rounding(s)
-	// (the thumb in the interface's own colours, not the text's light: a surface's border at rest, the weak text under the
-	// pointer, the accent held, as what is active elsewhere)
+	// (the thumb in the interface's own greys, not the text's light: a surface's border at rest, the weak text under the
+	// pointer, held a step further toward the text; no accent, which the rest of the window already shows)
 	if s.theme == nil || s.theme.finish != .Flat {
-		face := color_from_tags(s, b.tags_key, active && s.sb_arrow == 0 ? "accent" : hot ? "weak text" : "border")
+		face := color_from_tags(s, b.tags_key, hot || active ? "weak text" : "border")
+		if active && s.sb_arrow == 0 { face = draw.mix(face, color_from_tags(s, b.tags_key, "text"), SCROLLBAR_HELD_TOWARD_TEXT) }
 		face.a *= shows
 		draw.rect(dc, thumb, tuned(face), radius)
 		scrollbar_thumb_marks(s, dc, b, thumb, face, radius, axis, shows)
