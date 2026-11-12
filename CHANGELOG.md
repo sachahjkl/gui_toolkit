@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.222.0] - 2026-11-12
+
+### Added
+- **Shades, soft pairs and intents**: `shade(c, .S100)` … `.S950` (and `hue_shade`) give a colour's tints and deep shades along its OKLCH lightness, its hue kept; `shade_on(c, ground, 4.5)` the shade of a colour that reads on a ground; `soft_pair(c)` a soft fill of a colour for the theme shown and words of the same colour that read on it. `Intent` (Primary, Info, Success, Warning, Danger, Cancel) names what an act means: `intent_hue`, `intent_tag`, and `button_icon(..., intent = .Danger)`; `button_icon(..., hue = ...)` is soft unless `solid`.
+
+### Changed
+- **The intents' buttons are soft**: `accent_button`, `danger_button` and `warn_button`, and the new `success_button`, `info_button` and `cancel_button`, are a soft fill of their hue with words of that hue (`soft_pair`), readable in every theme, light or dark, instead of a solid fill.
+
 ## [0.221.1] - 2026-11-12
 
 ### Fixed
@@ -2943,6 +2951,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.222.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.222.0
 [0.221.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.1
 [0.221.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.0
 [0.220.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.220.0
