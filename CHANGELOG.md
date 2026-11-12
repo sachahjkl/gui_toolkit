@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.234.1] - 2026-11-12
+
+### Fixed
+- **No bars of white or of the desktop in a window on Wayland**: a transparent window took half floats wherever its surface offered them (NVIDIA's Vulkan on Wayland does), though Linux composites it opaque; a compositor read their alpha, and what the interface draws past the [0, 1] range (a highlight, a halo) showed as bars of white or of what is behind the window. Half floats are now for a surface composited with its alpha only (DirectComposition); others are 8 bits a channel, as tests render.
+
 ## [0.234.0] - 2026-11-12
 
 ### Added
@@ -3049,6 +3054,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.234.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.1
 [0.234.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.0
 [0.233.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.1
 [0.233.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.0
