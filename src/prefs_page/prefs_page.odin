@@ -49,8 +49,12 @@ Options :: struct {
 	// the String preferences that hold a key combination (platform.hotkey_text): a field that records the keys pressed
 	// (ui.hotkey_field) in place of one to type in
 	hotkeys:   []string,
-	// what the program has to say under a preference's line ("" nothing): a shortcut another program holds...
+	// what the program has to say under a preference's line ("" nothing): a shortcut another program holds... (in red)
 	problem:   proc(user: rawptr, name: string) -> string,
+	// what the program says of a preference's state under its line, plainly ("" nothing): the keys a shortcut got
+	status:    proc(user: rawptr, name: string) -> string,
+	// what the program shows under a page's preferences (not in a search): its own buttons, a list
+	page_foot: proc(user: rawptr, category: string, em: f32),
 	custom:    proc(user: rawptr, name: string, em: f32),
 	// the program's Updater (gt:update): under the line of update_pref ("update.auto"), its state and its buttons (Check
 	// now; Install when a version is on offer; Restart now, by `restart`, when one is installed)
@@ -198,8 +202,15 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 							}
 						}
 					} else {
-						page_title(pages[cur].title, em)
-						for name in page_names(prefs, pages[cur]) { setting(p, prefs, o, name, em) }
+						names := page_names(prefs, pages[cur])
+						if page_header(pages[cur].title, page_changed(prefs, names), o, em) {
+							for name in names {
+								e := config.entry(prefs, config.ref_of(prefs, name))
+								if e.source == .User { reset(p, prefs, o, name) }
+							}
+						}
+						for name in names { setting(p, prefs, o, name, em) }
+						if o.page_foot != nil { o.page_foot(o.user, pages[cur].category, em) }
 					}
 					ui.spacer(ui.px(em * 1.5))
 				}
@@ -313,6 +324,35 @@ nav_button :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bo
 	return sig.clicked
 }
 
+// Whether a preference of the page is the user's (not its default, not locked).
+@(private = "file")
+page_changed :: proc(prefs: ^config.Prefs, names: []string) -> bool {
+	for name in names {
+		if config.entry(prefs, config.ref_of(prefs, name)).source == .User { return true }
+	}
+	return false
+}
+
+// The page's title, and while a preference of it is the user's, a button that puts them all back to their defaults.
+// True: it was pressed.
+@(private = "file")
+page_header :: proc(title: string, changed: bool, o: Options, em: f32) -> (restore: bool) {
+	ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
+	if ui.row(id = "###prefs_head") {
+		ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.3), text_pad = 0})
+		ui.label(fmt.tprintf("%s###prefs_title", title))
+		if changed {
+			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 1.7)), radius = em * 0.35, font_size = math.round(em * 0.86)})
+			sig: ui.Signal
+			if ui.tags("ghost_button") { sig = ui.button("Restore defaults###restore") }
+			ui.a11y_default(sig.box, {name = "Put every setting of this page back to its default"})
+			restore = sig.clicked
+		}
+	}
+	ui.spacer(ui.px(em * 0.6))
+	return
+}
+
 @(private = "file")
 page_title :: proc(title: string, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(em * 2), font_size = math.round(em * 1.3), text_pad = 0})
@@ -383,6 +423,14 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 			}
 		}
 		if o.updater != nil && name == o.update_pref { updater_under(o, em) }
+		if o.status != nil {
+			if said := o.status(o.user, name); said != "" {
+				if ui.tags("weak") {
+					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+					ui.paragraph(fmt.tprintf("%s###status", said))
+				}
+			}
+		}
 		if o.problem != nil {
 			if why := o.problem(o.user, name); why != "" {
 				if ui.tags("bad") {

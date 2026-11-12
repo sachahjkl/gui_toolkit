@@ -52,7 +52,12 @@ The controls:
 `Options.version` ("Papier 0.15.0") shows the program and its version at the bottom of the pages, above `foot`.
 
 A locked preference (a policy, the command line) shows its control disabled. `Options.problem(user, name)` gives what
-the program has to say under a line (a shortcut another program holds): it shows in red.
+the program has to say under a line (a shortcut another program holds): it shows in red. `Options.status(user, name)` says a
+preference's state plainly, under its line, in the weak text (the keys a shortcut got). `Options.page_foot(user,
+category, em)` draws the program's own content under a page's preferences (not in a search): buttons, a list.
+
+While a preference of the page shown is the user's, a **Restore defaults** button beside the page's title puts all of
+them back (each through `Options.changed`, as its own reset button does).
 
 A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `Options.updater`, and in `update_pref` the
 preference whose line shows it (its own switch, "update.auto"). Under that line: the state in words (`update.status_words`:
