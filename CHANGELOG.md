@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.203.0] - 2026-11-12
+
+### Added
+- **`gt:gif`, an animated GIF encoder for screen recordings**: BGRA frames in, a GIF89a file out, in memory or through a writer. Each frame is only the rectangle that changed, with transparency; an unchanged frame is folded into the last one's delay; a frame's colours are kept exactly when they fit in 256, else a median cut.
+- **`capture` on Windows**: the monitors and their pictures (DXGI Desktop Duplication, GDI where it is unavailable), every monitor in one picture at the highest scale, the windows a screenshot tool lists (front to back, framed without their invisible borders and shadow, with their executable's name), and a window's own picture through Windows.Graphics.Capture, even when other windows cover it.
+- **`gt:capture`, the screens and the windows as pictures**, for a screenshot tool or a screen recorder. On Linux: Wayland's ext_image_copy_capture (outputs and windows) or zwlr_screencopy, else the Screenshot portal, else X11. Where the windows are, on Wayland: COSMIC's toplevel info protocol (COSMIC, ShojiWM), Hyprland's and sway's IPC, or KDE's window management protocol (KWin); on X11, the X server. Every output in one picture at the highest scale, a region cut from it, the window under the pointer.
+- **`ascii.lower_run`, `ascii.index_any_byte`**: the ASCII run at the start of a text lowered, and the first byte of a small set (or a control character, or a byte >= 0x80), 16 bytes at a time with `core:simd`, the same bytes as the scalar loops.
+
+### Changed
+- **`ui.rank` folds a list once**: a `cache` (a `ui.Fuzzy_Cache`) keeps the query and each item's texts folded from one call to the next, so a list ranked every frame folds again only what changed. The matchers are now `ui.rank_palette` (the default) and `ui.rank_fuzzy`, in the place of `palette_match` and `fuzzy_match`; a program's own matcher gets the query folded and folds its texts in the cache. `palette_entry_cached` takes the first of its three slots.
+- **The fuzzy matching folds once**: `ui.fuzzy_needle`, `ui.fuzzy_text` and `ui.palette_entry` fold a query and a text once, and `fuzzy_find`, `fuzzy_score`, `fuzzy_words`, `fuzzy_typos` and `palette_match` take them as well as strings, with the same results. A `ui.Fuzzy_Cache` keeps them from one frame to the next: the palette folds its query once per query and each command once while it stays the same, where it folded both for every command, up to five times, every frame. The fold of the ASCII runs goes 16 bytes at a time.
+
+### Fixed
+- **A text that fits its box stays on one line**: a tooltip as wide as its text broke its last letter onto a line of its own ("C:/code/project_" then "0"), because the wrap added the glyphs' advances one by one, without their kerning. A paragraph that fits measured whole now stays one line.
+
 ## [0.202.0] - 2026-11-12
 
 ### Added
@@ -2756,6 +2771,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.203.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.203.0
 [0.202.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.202.0
 [0.201.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.201.0
 [0.200.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.200.0
