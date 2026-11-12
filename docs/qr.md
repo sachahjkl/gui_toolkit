@@ -1,7 +1,8 @@
 # qr: QR Codes
 
 `import "gt:qr"` (or the relative path of the submodule). Pure Odin: no platform code, no C library, any target. It
-encodes a text or bytes as a QR Code (ISO/IEC 18004, model 2). `ui.qr_code` draws one in a box.
+encodes a text or bytes as a QR Code (ISO/IEC 18004, model 2), and reads one from a picture (see [Reading](#reading)).
+`ui.qr_code` draws one in a box.
 
 ```odin
 code, err := qr.encode("https://example.org/pair/0123", .Medium)   // context.allocator
@@ -47,6 +48,45 @@ of two-column strips; each of the 8 masks scored by the standard penalty (runs, 
 balance of dark modules), and the lowest one kept. For one text and level, the matrix is the one Nayuki's `encode_segments`
 gives with `boostecl = False`.
 
+## Reading
+
+```odin
+d, err := qr.decode_rgba(pixels, width, height, stride)   // or decode_gray, decode_modules
+if err != .None { ... }                                    // Not_Found, Too_Damaged, ...
+defer qr.decoded_destroy(&d)
+fmt.println(string(d.data))
+```
+
+| Procedure | |
+|---|---|
+| `decode_gray(gray, width, height, stride, allocator) -> (Decoded, Decode_Error)` | the first QR Code in a picture of 8-bit luminance (0 black). |
+| `decode_rgba(pixels, width, height, stride, bgra = false, allocator) -> (Decoded, Decode_Error)` | the same from RGBA (BGRA when `bgra`) pixels; alpha is not read. |
+| `decode_modules(modules, size, allocator) -> (Decoded, Decode_Error)` | a matrix of modules as `Code.modules` holds them, into its data. |
+| `decoded_destroy(&d, allocator)` | frees `d.data`. |
+
+`Decoded` is `{data, version, ecc, mask, errors}`: `data` is what the segments hold (a text's UTF-8 when `encode` wrote
+it), `errors` the codewords the Reed–Solomon code corrected.
+
+`Decode_Error`: `Not_Found` (no symbol in the picture), `Bad_Size`, `Bad_Format` (the format information is too
+damaged), `Too_Damaged` (a block has more errors than its code corrects), `Bad_Data`, `Unsupported_Mode` (kanji).
+
+How it reads a picture:
+
+1. **Black and white.** One threshold for the picture (Otsu's method), else one per block of 8 pixels from the 5 x 5
+   blocks around it; each also inverted, for light modules on a dark ground.
+2. **The finder patterns.** Runs of dark, light, dark, light, dark in the ratios 1:1:3:1:1 along each row, checked
+   down their column and again along their row; the ones seen on most rows are kept.
+3. **The symbol.** Three patterns at the corners of a right isosceles triangle: the right angle is the top left, the
+   turn says which other is the top right. Their distance in modules gives the size; past version 6 the version
+   information read from the symbol corrects it.
+4. **The modules**, read at their centres through the affine map the three patterns make, then decoded: the format
+   information (the nearest of the 32 valid ones, both copies), the mask removed, the blocks taken apart and each
+   corrected (Berlekamp–Massey, Chien search, Forney), the segments read (numeric, alphanumeric, bytes; ECI, FNC1 and
+   structured append markers are skipped).
+
+The map is affine: a picture of a screen (scaled by any factor, turned by quarter turns), not a photograph seen at an
+angle (no perspective, no alignment pattern search). A mirrored symbol is not read. Of several symbols, one is read.
+
 ## ui.qr_code
 
 ```odin
@@ -67,7 +107,9 @@ draws the white square alone. Partial redraw needs nothing more: the modules are
 
 To a screen reader it is an image (`.Image`) named "QR code: " and the text.
 
-Tests: `odin test src/qr -vet` (the matrices of Nayuki's reference for numeric, alphanumeric, UTF-8, empty and URL texts
+Tests: `odin test src/qr -vet` (reading: every mode and level and versions 1 to 40 read back from the encoder's
+matrices; Reed–Solomon with random errors up to its reach; pictures at whole and fractional scales, turned, inverted,
+among other shapes, in BGRA; a picture with no symbol. Writing: the matrices of Nayuki's reference for numeric, alphanumeric, UTF-8, empty and URL texts
 at each level; the CRC-32 of its matrices at versions 11, 32 and 40; the version at each version's capacity and one
 character over it, for each mode and level; `.Too_Long`), and `tests/scenarios` (`qr_code_test.odin`: every pixel of
 the symbol and of its quiet zone black or white as its module says, on a dark theme; a new text through partial redraw;

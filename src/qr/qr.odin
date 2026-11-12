@@ -57,8 +57,8 @@ destroy :: proc(code: ^Code, allocator := context.allocator) {
 
 @(private = "file") MODE_BITS := [Mode]u32{.Numeric = 0x1, .Alphanumeric = 0x2, .Byte = 0x4}
 // Bits of the character count, for versions 1-9, 10-26 and 27-40.
-@(private = "file") COUNT_BITS := [Mode][3]int{.Numeric = {10, 12, 14}, .Alphanumeric = {9, 11, 13}, .Byte = {8, 16, 16}}
-@(private = "file") ALPHANUMERIC :: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
+@(private) COUNT_BITS := [Mode][3]int{.Numeric = {10, 12, 14}, .Alphanumeric = {9, 11, 13}, .Byte = {8, 16, 16}}
+@(private) ALPHANUMERIC :: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
 
 @(private)
 is_numeric :: proc(s: string) -> bool {
@@ -78,7 +78,7 @@ alphanumeric_index :: proc(c: u8) -> int {
 	return -1
 }
 
-@(private = "file")
+@(private)
 count_bits :: proc(mode: Mode, version: int) -> int { return COUNT_BITS[mode][(version + 7) / 17] }
 
 // Bits of the one segment (header included) at that version; -1 when its length overflows the count field. An empty text
@@ -186,7 +186,7 @@ encode_mode :: proc(data: []u8, mode: Mode, ecc: Ecc, allocator: runtime.Allocat
 ////////////////////////////////
 // The matrix
 
-@(private = "file")
+@(private)
 Matrix :: struct {
 	size, version: int,
 	ecc:           Ecc,
@@ -200,7 +200,7 @@ set_function :: proc(m: ^Matrix, x, y: int, dark: bool) {
 	m.function[y * m.size + x] = true
 }
 
-@(private = "file")
+@(private)
 draw_function_patterns :: proc(m: ^Matrix) {
 	for i in 0 ..< m.size {
 		set_function(m, 6, i, i % 2 == 0)
@@ -240,7 +240,7 @@ draw_function_patterns :: proc(m: ^Matrix) {
 }
 
 // The centres of the alignment patterns along each axis, in increasing order (none at version 1).
-@(private = "file")
+@(private)
 alignment_positions :: proc(version: int) -> []int {
 	if version == 1 { return nil }
 	n := version / 7 + 2
@@ -322,7 +322,7 @@ draw_codewords :: proc(m: ^Matrix, data: []u8) {
 	}
 }
 
-@(private = "file")
+@(private)
 apply_mask :: proc(m: ^Matrix, mask: int) {
 	for y in 0 ..< m.size {
 		for x in 0 ..< m.size {
@@ -422,7 +422,7 @@ rs_multiply :: proc(x, y: u8) -> u8 {
 }
 
 // The generator polynomial of that degree, highest coefficient first, the leading 1 left out.
-@(private = "file")
+@(private)
 rs_divisor :: proc(degree: int) -> []u8 {
 	result := make([]u8, degree, context.temp_allocator)
 	result[degree - 1] = 1
@@ -437,7 +437,7 @@ rs_divisor :: proc(degree: int) -> []u8 {
 	return result
 }
 
-@(private = "file")
+@(private)
 rs_remainder :: proc(data, divisor: []u8, out: []u8) {
 	for &r in out { r = 0 }
 	for b in data {
