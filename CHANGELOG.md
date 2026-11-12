@@ -5,6 +5,18 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.205.0] - 2026-11-12
+
+### Added
+- **`gt:qr` reads QR Codes too**: `decode_rgba` and `decode_gray` find a code in a picture (any scale, turned by quarter turns, dark on light or light on dark) and return its data; `decode_modules` reads a matrix of modules. Damaged codes are corrected as far as their level allows.
+- **`platform.clipboard_request`**: reads the clipboard's text or files without waiting for the program that owns it. The call returns an id at once; the answer comes in a later `poll_events` as a `Clipboard_Data` event (`Event.clipboard`: the text, the paths, whether they were cut). On Linux the window's loop reads another program's clipboard (a Wayland pipe it polls, X11 selection events) and gives up after 2 s of silence: a slow or hung owner no longer freezes a paste.
+
+### Changed
+- **A paste in a text field no longer waits for the clipboard**: Ctrl+V, Shift+Insert and a field menu's Paste in `ui.line_edit`, `ui.text_edit` and a menu's search ask the window's clipboard with `platform.clipboard_request`, and the text is inserted in a later build, in one undo step, if the field still has the focus. A slow or hung clipboard owner no longer freezes the window. New: `ui.paste_request`, `ui.paste_answer`, `ui.field_paste_answer`. `ui.field_key`, `ui.field_paste` and `ui.field_menu` take the key of the field's widget (`owner`). `ui.window_clipboard_get` is removed: leave `Build_Params.clipboard_get` nil to paste from the window's clipboard; a program's own `clipboard_get` is read at the request and its text given in the next build. A program that reads the window's events before the ui passes the `Clipboard_Data` events on to `begin_build`.
+
+### Fixed
+- **Shift+Insert pastes in a multi-line text too**: a `ui.text_area` took only Ctrl+C, Ctrl+X and Ctrl+V; it now takes Ctrl+Insert to copy, Shift+Delete to cut and Shift+Insert to paste, as a line edit and a terminal do.
+
 ## [0.204.0] - 2026-11-12
 
 ### Added
@@ -2780,6 +2792,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.205.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.205.0
 [0.204.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.204.0
 [0.203.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.203.0
 [0.202.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.202.0
