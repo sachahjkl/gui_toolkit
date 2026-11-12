@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.236.0] - 2026-11-12
+
+### Added
+- **`line_edit(..., read_only = true)`**: its text is shown, selected and copied (keys, a drag, the menu's Copy), never changed: a value made for the person to take. `field_key` and `field_menu` take `read_only` too.
+
+### Fixed
+- **A field in an open menu takes its keys**: a search field in a panel opened as a menu (`ctx_menu_open_rect`) got no typed text, the menu took every key; while such a field has the focus, its keys are its own.
+
 ## [0.235.0] - 2026-11-12
 
 ### Added
@@ -3059,6 +3067,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.236.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.0
 [0.235.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.235.0
 [0.234.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.1
 [0.234.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.0
