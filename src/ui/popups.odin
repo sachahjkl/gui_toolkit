@@ -264,16 +264,21 @@ menu_capture_keys :: proc(s: ^State, events: []platform.Event) {
 // over it and take its pointer. Levels keep their order (a submenu over its menu).
 @(private)
 menus_raise :: proc(s: ^State) {
-	for lv in s.menus {
-		b := s.boxes[lv.panel]
-		if b == nil || b.last_build != s.build_index || b.parent != s.root || s.root.last == b { continue }
-		p := b.parent
-		if b.prev != nil { b.prev.next = b.next } else { p.first = b.next }
-		if b.next != nil { b.next.prev = b.prev } else { p.last = b.prev }
-		b.prev, b.next = p.last, nil
-		if p.last != nil { p.last.next = b } else { p.first = b }
-		p.last = b
-	}
+	for lv in s.menus { root_raise(s, s.boxes[lv.panel]) }
+	// (then the tooltip, over the menus: a tooltip of a menu's button, or of a panel opened as a menu, showed under it)
+	root_raise(s, s.boxes[key_from_string(s.root.key, "###tooltip")])
+}
+
+// A box of the root, built this frame, goes last among the root's children: drawn over the others, first to take the pointer.
+@(private = "file")
+root_raise :: proc(s: ^State, b: ^Box) {
+	if b == nil || b.last_build != s.build_index || b.parent != s.root || s.root.last == b { return }
+	p := b.parent
+	if b.prev != nil { b.prev.next = b.next } else { p.first = b.next }
+	if b.next != nil { b.next.prev = b.prev } else { p.last = b.prev }
+	b.prev, b.next = p.last, nil
+	if p.last != nil { p.last.next = b } else { p.first = b }
+	p.last = b
 }
 
 // Levels the app stopped building close (end_build).
