@@ -43,6 +43,9 @@ Wl_Conn :: struct {
 	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
 	activation: Wl_Proxy,         // xdg_activation_v1 (optional): raise_window asks the focus with it
 	virtual_keyboards: Wl_Proxy,  // zwp_virtual_keyboard_manager_v1 (optional): send_hotkey types with it
+	toplevel_manager: Wl_Proxy,   // zwlr_foreign_toplevel_manager_v1 (optional): the session's windows (toplevels)
+	toplevels:  [dynamic]Wl_Toplevel,
+	toplevel_serial: u64,         // the last toplevel's id
 	pointer:    Wl_Proxy,
 	keyboard:   Wl_Proxy,
 	fd:         i32,
@@ -238,6 +241,9 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
 	case "xdg_activation_v1": wlc.activation = bind(name, &xdg_activation_iface, 1, version)
 	case "zwp_virtual_keyboard_manager_v1": wlc.virtual_keyboards = bind(name, &vk_manager_iface, 1, version)
+	case "zwlr_foreign_toplevel_manager_v1":
+		wlc.toplevel_manager = bind(name, &ftl_manager_iface, 3, version)
+		wl.proxy_add_listener(wlc.toplevel_manager, &ftl_manager_listener, nil)
 	}
 }
 

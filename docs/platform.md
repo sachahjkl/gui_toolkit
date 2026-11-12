@@ -125,6 +125,10 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **Window position.** X11 and Windows report and set the outer rectangle. **Wayland does not let a client know or set
   its absolute position** (the compositor places windows): `client_origin` is `{0,0}`, `move_window` is a no-op. Save
   and restore the **size** and the **maximized** state (both work everywhere), not the position, on Wayland.
+- **The session's windows.** `toplevels(w)` lists the windows of the session, other programs' too (their app id,
+  title, focus, minimized), and `toplevel_activate(w, id)` brings one to the front: where the compositor offers
+  wlr-foreign-toplevel-management (sway, Hyprland, niri, labwc, river, ShojiWM). Elsewhere (GNOME, KDE, X11, Windows)
+  the list is empty: a program hides what needs it.
 - **A window not shown.** Wayland's compositor tells when it shows a window's picture (`wl_surface.frame`), and a present
   in Fifo waits for that word about the last one: a window it does not show (covered whole, minimized, on another
   workspace) never gets it. `frame_shown_ask(w)`, just before a picture is presented, asks for it; `frame_shown_pending(w)`
