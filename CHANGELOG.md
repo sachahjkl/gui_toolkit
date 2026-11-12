@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.216.0] - 2026-11-12
+
+### Changed
+- **Every context menu can be filtered**: `ctx_menu_open` searches by default (`search = true`): typing in an open context menu filters its items, as the menus that asked for it did. Pass `search = false` for a menu of a few fixed choices. **`State.menu_icon_font`**: the font of the menus' icons when it is not `icon_font` (a program whose menus use Lucide sets `lucide_icons()`).
+
 ## [0.215.0] - 2026-11-12
 
 ### Added
@@ -2878,6 +2883,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.216.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.0
 [0.215.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.215.0
 [0.214.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.214.0
 [0.213.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.213.0
