@@ -34,7 +34,15 @@ a_row_is_square :: proc(t: ^testing.T) {
 	if testing.expect(t, row != nil, "a list's row") { testing.expect_value(t, row.radius, 0) }
 	item: ^ui.Box
 	for k, b in s.state.boxes { if b.a11y != nil && b.a11y.role == .Menu_Item { item = b; _ = k; break } }
-	if testing.expect(t, item != nil, "a menu's row") { testing.expect_value(t, item.radius, 0) }
+	if testing.expect(t, item != nil, "a menu's row") {
+		testing.expect_value(t, item.radius, 0)
+		// (flush: from one edge of the menu to the other)
+		panel := item.parent
+		for panel != nil && !(.Plate in panel.flags) { panel = panel.parent }
+		if testing.expect(t, panel != nil, "its menu") {
+			testing.expectf(t, item.rect.min.x <= panel.rect.min.x + 1 && item.rect.max.x >= panel.rect.max.x - 1, "edge to edge: %v in %v", item.rect, panel.rect)
+		}
+	}
 	cell := session.find(s, "c0")
 	if testing.expect(t, cell != nil, "a table's tinted cell") { testing.expect_value(t, cell.radius, 0) }
 }
