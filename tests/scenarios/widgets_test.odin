@@ -208,7 +208,8 @@ a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if rows, ok := ui.vlist("###list", &r.st, r.ids[:], r.labels[:]); ok {
-			if s.frames == 1 { ui.set_focus(r.st.key) }
+			// (the list keeps the keyboard under the dialog: a dialog that takes no focus, a recorder of keys)
+			if s.frames == 1 || r.asking { ui.set_focus(r.st.key) }
 			for i in rows.first ..< rows.last {
 				ui.next({height = ui.px(LIST_ROW_HEIGHT)})
 				ui.list_row(&r.st.list, i, r.labels[i])
