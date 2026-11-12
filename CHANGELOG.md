@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.211.0] - 2026-11-12
+
+### Added
+- **Tray menu shortcuts**: an item of a tray menu can show its keyboard shortcut (`Tray_Menu_Item.shortcut`, "Ctrl+Print"): right-aligned in the menu on Windows, as dbusmenu's `shortcut` property on Linux for the panels that show it.
+- **prefs_page: the standard settings**: `standard_register` gives a program its look (theme, light or dark, finish, text size) and its place on the desktop (in the application menu, started with the session) with their words, and the page draws them with no code of the program's: the themes as cards (`Options.themes`), and global shortcuts that record keys and say what the system made of them (`Options.shortcuts`, `shortcut_prefs`; the words are `shortcuts.status_text` and `problem_text`). `back_bar` and `escape_leaves` show the settings in place of a program's main view, and `desktop.apply` makes the desktop what those settings ask.
+- **Overlay windows**: a program can open a transparent window above all others over one output (`platform.open_overlay`, `host.Open.overlay`), which does not move the other windows and takes the keyboard only when clicked. `platform.set_input_region` lets the pointer through to the windows below everywhere but the given rects (a screen recorder's frame and its bar of buttons). Wayland needs a compositor with the layer shell.
+
+### Fixed
+- **prefs_page: no reset button on a default value**: a setting the user set back to its default value no longer shows its reset button, nor the page's Restore defaults; a key combination counts as the same in other words ("ctrl+print" is "Ctrl+Print").
+
 ## [0.210.0] - 2026-11-12
 
 ### Changed
@@ -2845,6 +2855,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.211.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.211.0
 [0.210.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.210.0
 [0.209.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.209.1
 [0.209.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.209.0
