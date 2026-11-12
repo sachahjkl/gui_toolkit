@@ -708,17 +708,19 @@ edit_keys_deleting :: proc(e: ^Edit_Build) {
 	}
 }
 
-// Select all, copy, cut, paste (line ends and tabs made the editor's).
+// Select all, copy, cut, paste (line ends and tabs made the editor's). Copy, cut and paste have their IBM chords too
+// (Ctrl+Insert, Shift+Delete, Shift+Insert), as a line edit and a terminal have: one set of keys wherever text is typed.
 @(private="file")
 edit_keys_clipboard :: proc(e: ^Edit_Build) {
 	s, a := e.s, e.a
 	ctrl := Mods{.Ctrl}
+	shift := Mods{.Shift}
 	if key_press(.A, ctrl) { a.mark = 0; a.cursor = len(a.buf); a.upstream = false }
-	if key_press(.C, ctrl) {
+	if key_press(.C, ctrl) || key_press(.Insert, ctrl) {
 		lo, hi := sel(a)
 		if lo != hi && s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
 	}
-	if key_press(.X, ctrl) {
+	if key_press(.X, ctrl) || key_press(.Delete, shift) {
 		lo, hi := sel(a)
 		if lo != hi {
 			if s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
@@ -727,7 +729,7 @@ edit_keys_clipboard :: proc(e: ^Edit_Build) {
 			a.upstream = false
 		}
 	}
-	if key_press(.V, ctrl) && s.clipboard_get != nil {
+	if (key_press(.V, ctrl) || key_press(.Insert, shift)) && s.clipboard_get != nil {
 		clip := s.clipboard_get()
 		clean, _ := strings.replace_all(clip, "\r\n", "\n", context.temp_allocator)
 		clean, _ = strings.replace_all(clean, "\r", "\n", context.temp_allocator)

@@ -105,6 +105,26 @@ fidget_editor_undo_and_redo :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.focused_name(s), "")
 }
 
+// The multi-line editor takes the clipboard's IBM chords as a line edit does: Ctrl+Insert copies, Shift+Delete cuts,
+// Shift+Insert pastes.
+@(test)
+fidget_editor_clipboard_by_insert_and_delete :: proc(t: ^testing.T) {
+	s, app := start_fidget(t, INPUTS_ARGS)
+	session.click(s, "editor")
+	session.key(s, .A, {.Ctrl})
+	session.key(s, .Delete)
+	session.type_text(s, "hello")
+	session.key(s, .A, {.Ctrl})
+	session.key(s, .Insert, {.Ctrl})
+	testing.expect_value(t, session.clipboard(s), "hello")
+	session.key(s, .Delete, {.Shift})
+	testing.expect_value(t, len(app.editor.buf), 0)
+	testing.expect_value(t, session.clipboard(s), "hello")
+	session.key(s, .Insert, {.Shift})
+	session.key(s, .Insert, {.Shift})
+	testing.expect_value(t, ui.area_string(&app.editor), "hellohello")
+}
+
 // Ctrl +, Ctrl -, Ctrl 0, and the zoom is written to the settings.
 @(test)
 fidget_zoom_keys_and_settings :: proc(t: ^testing.T) {

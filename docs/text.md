@@ -65,6 +65,9 @@ redo). A field the keyboard reaches another way gives it its keys: the search of
 search = true)` is a `Text_Field` edited by it, the menu keeping the arrows, Enter and Escape. That menu keeps the corner and
 the width of its first layout while it filters.
 
+**The clipboard's keys** are one set wherever text is typed (`ui.line_edit`, `ui.text_area`, `term`): Ctrl+C or Ctrl+Insert
+copies, Ctrl+X or Shift+Delete cuts, Ctrl+V or Shift+Insert pastes.
+
 **Editing wrapped text** (`src/ui/text_lines.odin`, `src/ui/text_edit.odin`). `ui.text_visual_lines(fonts, font, size, text,
 width)` gives the visual lines of edited text: each paragraph ("\n") breaks at the backend's line break opportunities
 (`line_breaks` on the whole paragraph: spaces, hyphens, CJK, Thai / Lao / Khmer / Myanmar words), a word wider than the
