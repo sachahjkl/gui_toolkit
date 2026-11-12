@@ -12,7 +12,6 @@ package platform
 import "base:runtime"
 import "core:strings"
 import "core:time"
-import "core:sys/posix"
 
 @(private = "file") WL_DND_ACTIONS_SINCE :: 3   // the version of the data device that has actions
 @(private = "file") WL_DND_POLL_MS :: 100       // between two checks of the limit of a drag
@@ -181,15 +180,16 @@ wl_read_drag_data :: proc(offer: Wl_Proxy, mimes: []string, allocator := context
 @(private)
 wl_write_drag_flavour :: proc(fd: i32, mime: string) {
 	d := &wlc.drag.data
+	data: []u8
 	switch mime {
-	case WL_MIME_TEXT, WL_MIME_TEXT2: wl_fd_write_all(fd, transmute([]u8)d.text)
-	case WL_MIME_HTML:                wl_fd_write_all(fd, transmute([]u8)d.html)
-	case WL_MIME_PNG:                 wl_fd_write_all(fd, d.image)
-	case WL_MIME_URIS:                wl_fd_write_all(fd, transmute([]u8)wl_drag_uris())
+	case WL_MIME_TEXT, WL_MIME_TEXT2: data = transmute([]u8)d.text
+	case WL_MIME_HTML:                data = transmute([]u8)d.html
+	case WL_MIME_PNG:                 data = d.image
+	case WL_MIME_URIS:                data = transmute([]u8)wl_drag_uris()
 	case:
-		for e in d.custom { if e.mime == mime { wl_fd_write_all(fd, transmute([]u8)e.data); break } }
+		for e in d.custom { if e.mime == mime { data = transmute([]u8)e.data; break } }
 	}
-	posix.close(posix.FD(fd))
+	wl_fd_send(fd, data)   // (it closes the pipe)
 }
 
 @(private)

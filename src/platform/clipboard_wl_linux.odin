@@ -9,7 +9,10 @@ package platform
 // The clip store (clipboard_linux.odin) holds what this process put on the clipboard; here we expose it to the
 // compositor. A get of a flavour another client owns reads it back over the selection transport.
 
+import "base:runtime"
+import "core:slice"
 import "core:strings"
+import "core:thread"
 import "core:sys/posix"
 
 // The MIME types the toolkit offers, in the order a paste target prefers them. Text has two aliases because clients
@@ -82,32 +85,49 @@ ds_dnd_finished :: proc "c" (data: rawptr, src: Wl_Proxy) {
 }
 @(private) ds_action :: proc "c" (data: rawptr, src: Wl_Proxy, action: u32) { wlc.dnd_source_action = action }
 
-// Writes one clipboard flavour to `fd` (the pipe the compositor gave) then closes it. A blocking write to a pipe the
-// peer reads is bounded by the pipe buffer; large flavours (a PNG) are written in a loop that tolerates short writes.
+// Sends one clipboard flavour to `fd` (the pipe the compositor gave), then closes it (wl_fd_send).
 @(private)
 wl_write_clip_flavour :: proc(fd: i32, mime: string) {
-	defer posix.close(posix.FD(fd))
 	sync_lock_clip()
 	defer sync_unlock_clip()
+	data: []u8
 	switch mime {
-	case WL_MIME_TEXT, WL_MIME_TEXT2: wl_fd_write_all(fd, transmute([]u8)clip_text_locked())
-	case WL_MIME_HTML:                wl_fd_write_all(fd, transmute([]u8)clip_html_locked())
-	case WL_MIME_PNG:                 wl_fd_write_all(fd, clip_png_locked())
-	case WL_MIME_URIS:                wl_fd_write_all(fd, transmute([]u8)clip_uris_locked())
-	case WL_MIME_GNOME_FILES:         wl_fd_write_all(fd, transmute([]u8)clip_gnome_files_locked())
-	case WL_MIME_KDE_CUT:             if clip_files_cut_locked() { wl_fd_write_all(fd, transmute([]u8)string("1")) }
+	case WL_MIME_TEXT, WL_MIME_TEXT2: data = transmute([]u8)clip_text_locked()
+	case WL_MIME_HTML:                data = transmute([]u8)clip_html_locked()
+	case WL_MIME_PNG:                 data = clip_png_locked()
+	case WL_MIME_URIS:                data = transmute([]u8)clip_uris_locked()
+	case WL_MIME_GNOME_FILES:         data = transmute([]u8)clip_gnome_files_locked()
+	case WL_MIME_KDE_CUT:             if clip_files_cut_locked() { data = transmute([]u8)string("1") }
 	}
+	wl_fd_send(fd, data)
 }
 
-// Writes all of `data` to the pipe fd, tolerating short writes (the reader drains it). Bounded by the peer reading.
+// All of `data` to the pipe `fd` a reader gave, on a thread of its own, then the pipe closed. The pipe may be the reader's
+// non-blocking one (the toolkit's was, both ends): it is made blocking for this write, which stopped at the first EAGAIN and
+// gave a large picture cut at what the pipe held (64 KiB, a screenshot "unreadable"). On a thread: a reader slow to drain it,
+// or gone, holds no window.
 @(private)
-wl_fd_write_all :: proc(fd: i32, data: []u8) {
-	off := 0
-	for off < len(data) {
-		n := sys_write(fd, &data[off], uint(len(data)) - uint(off))
-		if n <= 0 { break }   // EPIPE (the peer gave up) or an error: stop, the fd closes on return
-		off += int(n)
-	}
+wl_fd_send :: proc(fd: i32, data: []u8) {
+	Send :: struct { fd: i32, data: []u8 }
+	s := new(Send, runtime.heap_allocator())
+	s^ = {fd, slice.clone(data, runtime.heap_allocator())}
+	thread.create_and_start_with_poly_data(s, proc(s: ^Send) {
+		defer {
+			posix.close(posix.FD(s.fd))
+			delete(s.data, runtime.heap_allocator())
+			free(s, runtime.heap_allocator())
+		}
+		if flags := posix.fcntl(posix.FD(s.fd), .GETFL); flags >= 0 && flags & WL_O_NONBLOCK != 0 {
+			posix.fcntl(posix.FD(s.fd), .SETFL, flags &~ WL_O_NONBLOCK)
+		}
+		off := 0
+		for off < len(s.data) {
+			n := sys_write(s.fd, &s.data[off], uint(len(s.data)) - uint(off))
+			if n < 0 && posix.errno() == .EINTR { continue }
+			if n <= 0 { break }   // EPIPE (the reader gave up) or an error: the pipe closes
+			off += n
+		}
+	}, self_cleanup = true)
 }
 
 // Claims the CLIPBOARD selection for this process: makes a wl_data_source offering every flavour the clip store holds,
@@ -238,13 +258,29 @@ wl_pipe_read_all :: proc(fd: posix.FD, allocator := context.allocator) -> []u8 {
 @(private)
 wl_request_start :: proc(mime: string) -> posix.FD {
 	if wlc.offer == nil || wlc.data_source != nil { return -1 }
-	fds: [2]i32
-	if pipe2(&fds, WL_REQUEST_PIPE_FLAGS) != 0 { return -1 }
+	read, write, ok := wl_read_pipe()
+	if !ok { return -1 }
+	fds := [2]i32{i32(read), i32(write)}
 	c := strings.clone_to_cstring(mime, context.temp_allocator)
 	wl.proxy_marshal_flags(wlc.offer, WL_DATA_OFFER_RECEIVE, nil, wl.proxy_get_version(wlc.offer), 0, c, fds[1])
 	wl.display_flush(wlc.display)
 	posix.close(posix.FD(fds[1]))   // (the compositor has its copy: ours must close for the read to see the end)
 	return posix.FD(fds[0])
+}
+
+// A pipe for a read of the clipboard: ours (read) does not wait, the owner's (write) is a pipe as it is. An owner that writes a
+// large picture in one go and stops at EAGAIN, as many do, gave only what the pipe held when its end was non-blocking too.
+@(private)
+wl_read_pipe :: proc() -> (read, write: posix.FD, ok: bool) {
+	fds: [2]i32
+	if pipe2(&fds, WL_REQUEST_PIPE_FLAGS) != 0 { return }
+	flags := posix.fcntl(posix.FD(fds[0]), .GETFL)
+	if flags < 0 || posix.fcntl(posix.FD(fds[0]), .SETFL, flags | WL_O_NONBLOCK) < 0 {
+		posix.close(posix.FD(fds[0]))
+		posix.close(posix.FD(fds[1]))
+		return
+	}
+	return posix.FD(fds[0]), posix.FD(fds[1]), true
 }
 
 // Appends what the pipe holds now to `buf`, without waiting. True at its end, or on an error (then `buf` is emptied).
@@ -264,7 +300,8 @@ wl_request_take :: proc(fd: posix.FD, buf: ^[dynamic]u8) -> (done: bool) {
 	}
 }
 
-@(private = "file") WL_REQUEST_PIPE_FLAGS :: 0o2004000   // O_CLOEXEC | O_NONBLOCK
+@(private = "file") WL_REQUEST_PIPE_FLAGS :: 0o2000000   // O_CLOEXEC
+@(private) WL_O_NONBLOCK :: 0o4000
 foreign import libc_clip "system:c"
 @(default_calling_convention = "c", private = "file")
 foreign libc_clip {

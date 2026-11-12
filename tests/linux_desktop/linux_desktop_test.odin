@@ -21,6 +21,7 @@ import "core:time"
 import "../../src/dbus"
 import "../../src/host"
 import "../../src/platform"
+import png "../../src/png"
 import "../../src/ui"
 
 @(private = "file") desktop :: proc() -> string {
@@ -2187,4 +2188,56 @@ the_resize_bands_are_outside_the_window :: proc(t: ^testing.T) {
 	testing.expect(t, wait_kind(w, &seen, .Frame_Press), "4 px outside it: the band's, a resize")
 	for e in seen.events { if e.kind == .Frame_Press { testing.expectf(t, abs(e.pos.x - 304) < 1.5, "the press is outside the window: %v", e.pos) } }
 	for e in seen.events { testing.expect(t, e.kind != .Mouse_Press, "the app does not get it") }
+}
+
+// A large picture another program put on the clipboard (a screenshot: wl-copy, xclip) comes whole to clipboard_request, read
+// as a program's loop reads it: a poll, then a frame's work, then the next poll.
+@(test)
+a_large_clipboard_image_comes_in_whole :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("clip image")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	// (noise: it does not compress, a screenshot's size)
+	side :: 600
+	px := make([]u8, side * side * 4, context.temp_allocator)
+	seed: u32 = 12345
+	for i in 0 ..< len(px) { seed = seed * 1103515245 + 12345; px[i] = u8(seed >> 16) }
+	file := png.encode(px, side, side, .Fast, context.temp_allocator)
+	path := "/tmp/gt_clip_image.png"
+	testing.expect(t, os.write_entire_file(path, file) == nil)
+	defer os.remove(path)
+	pump_for(w, 200)
+	if x11() {
+		sh("xclip -i -selection clipboard -t image/png < ", path, " >/dev/null 2>&1")
+	} else {
+		sh("(wl-copy -t image/png < ", path, ") >/dev/null 2>&1")
+	}
+	pump_for(w, 500)
+	asked := platform.clipboard_request(w, .Image)
+	testing.expect(t, asked != 0)
+	got: []u8
+	answered := false
+	start := time.tick_now()
+	for !answered && time.duration_milliseconds(time.tick_since(start)) < 10_000 {
+		for e in platform.poll_events(w, false) {
+			if e.kind == .Clipboard_Data && e.clipboard.id == asked {
+				answered = true
+				got = slice_clone(e.clipboard.data)
+			}
+		}
+		time.sleep(16 * time.Millisecond)   // (a frame's work between two polls)
+	}
+	testing.expect(t, answered, "answered")
+	testing.expectf(t, len(got) == len(file), "the whole picture: %d bytes of %d", len(got), len(file))
+	testing.expect(t, string(got) == string(file), "as it was")
+}
+
+@(private = "file")
+slice_clone :: proc(b: []u8) -> []u8 {
+	out := make([]u8, len(b))
+	copy(out, b)
+	return out
 }

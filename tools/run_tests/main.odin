@@ -78,6 +78,7 @@ STEPS := []Step{
 	{name = "update", path = "src/update", oses = EVERYWHERE},
 	{name = "changelog", oses = EVERYWHERE},
 	{name = "clipboard", oses = EVERYWHERE},
+	{name = "platform_pkg", path = "src/platform", oses = LINUX_ONLY},   // (its Linux clipboard pipes: clipboard_pipe_linux_test.odin)
 	{name = "clipboard_station"},
 	{name = "clock", oses = EVERYWHERE},
 	{name = "dialogs"},
