@@ -340,7 +340,8 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
 	m.size, m.preferred, m.wh, m.lo, m.hi, m.top = size, preferred, wh, lo, hi, top >= 0
-	// (its resize grip's corner is square: the grip's bevel fills it)
+	// (its resize grip's corner is square, the grip's bevel filling it: a choice of the design, not a corner the rounding
+	// forgot. Keep it square)
 	if panel := box_from_key(m.panel); panel != nil { panel.square_corners = {.Bottom_Right} }
 	return true
 }
