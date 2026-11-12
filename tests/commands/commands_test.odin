@@ -5,6 +5,7 @@ package commands_test
 
 import "core:math"
 import "core:slice"
+import "core:strings"
 import "core:testing"
 import "../../src/font"
 import lucide "../../src/lucide"
@@ -442,10 +443,39 @@ a_list_is_ranked_best_first :: proc(t: ^testing.T) {
 	boosted := ui.rank("prio", items, entry, bonus = proc(it: ^Item, _: rawptr) -> f64 { return it.boost })
 	testing.expect(t, slice.equal(index(boosted), []int{4, 1, 3}), "a bonus lifts a hit")
 	testing.expect(t, slice.equal(index(ui.rank("", items, entry)), []int{0, 1, 3, 4}), "an empty query: every item but the skipped one, in order")
-	fuzzy := ui.rank("cs5", []Item{{label = "gpt-5"}, {label = "claude-sonnet-5"}}, entry, match = ui.fuzzy_match)
-	testing.expect(t, slice.equal(index(fuzzy), []int{1}), "fuzzy_match: letters scattered")
-	_, _, by_group := ui.fuzzy_match("anth", "claude", "Anthropic", nil)
-	testing.expect(t, by_group, "fuzzy_match reads the group after the label")
+	fuzzy := ui.rank("cs5", []Item{{label = "gpt-5"}, {label = "claude-sonnet-5"}}, entry, match = ui.rank_fuzzy)
+	testing.expect(t, slice.equal(index(fuzzy), []int{1}), "rank_fuzzy: letters scattered")
+	Model :: struct { name, provider: string }
+	models := []Model{{"claude", "Anthropic"}, {"gpt", "OpenAI"}}
+	by_group := ui.rank("anth", models, proc(m: ^Model, _: rawptr) -> ui.Rank_Entry { return {label = m.name, group = m.provider} }, match = ui.rank_fuzzy)
+	testing.expect(t, slice.equal(index(by_group), []int{0}), "rank_fuzzy reads the group after the label")
+}
+
+// A list ranked each frame with a cache: what did not change is not folded again, what changed is, and a shorter list
+// lets go of the slots it no longer uses; the hits are those of a rank without a cache.
+@(test)
+a_ranked_list_folds_once :: proc(t: ^testing.T) {
+	Item :: struct { label: string }
+	entry :: proc(it: ^Item, _: rawptr) -> ui.Rank_Entry { return {label = it.label} }
+	index :: proc(hits: []ui.Rank_Hit) -> []int {
+		out := make([]int, len(hits), context.temp_allocator)
+		for h, i in hits { out[i] = h.index }
+		return out
+	}
+	cache: ui.Fuzzy_Cache
+	defer ui.fuzzy_cache_destroy(&cache)
+	items := []Item{{"Fork the session"}, {"Rename the session"}, {"Quit"}}
+	first := ui.rank("ses", items, entry, cache = &cache)
+	testing.expect(t, slice.equal(index(first), index(ui.rank("ses", items, entry))), "the same hits as without a cache")
+	folded := raw_data(cache.texts[0].low)
+	// (the same texts again, in other strings: the frame builds its list anew)
+	again := []Item{{strings.clone("Fork the session", context.temp_allocator)}, {"Rename the session"}, {"Quit"}}
+	testing.expect(t, slice.equal(index(ui.rank("sess", again, entry, cache = &cache)), []int{0, 1}), "a new query, the same hits")
+	testing.expect(t, raw_data(cache.texts[0].low) == folded, "a text that did not change is not folded again")
+	again[0].label = "Quit the session"
+	testing.expect(t, slice.contains(index(ui.rank("quit", again, entry, cache = &cache)), 0), "a changed text is folded again")
+	ui.rank("quit", again[:1], entry, cache = &cache)
+	testing.expect(t, len(cache.texts) <= 4, "a shorter list lets go of the slots it no longer uses")
 }
 
 // A box's corners as drawn: its radius times the rounding (a custom draw's too: the palette's strip meets its dialog's

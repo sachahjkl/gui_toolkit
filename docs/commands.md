@@ -60,7 +60,7 @@ A program with a palette of its own (commands, sessions and settings in one list
 
 ### A ranked list
 
-`ui.rank(query, items, entry, user, match, bonus) -> []Rank_Hit` filters any list the way the palette does: each item is
+`ui.rank(query, items, entry, user, match, bonus, cache) -> []Rank_Hit` filters any list the way the palette does: each item is
 matched, the hits are kept, the best first; equal scores keep the list's order, and an empty query keeps every item in
 order. A picker, a slash menu, a mention list and a palette call it with their own items.
 
@@ -68,16 +68,16 @@ order. A picker, a slash menu, a mention list and a palette call it with their o
 |---|---|
 | `Rank_Entry{label, group, tags, last, skip}` | an item as `entry(&item, user)` gives it: the text that lights, its group, other words that find it, a last text that finds it when nothing else does (nothing lights then), and `skip` for an item that is never in the list |
 | `Rank_Hit{index, score, ranges}` | a kept item: its index in `items`, its score (higher first), what lights in its label |
-| `Rank_Match` | how a query matches: `palette_match` (the default), `fuzzy_match` (`fuzzy_score` of "label  group"), or a program's own |
+| `Rank_Match` | how a query matches: `rank_palette` (the default: `palette_match`), `rank_fuzzy` (`fuzzy_score` of "label  group"), or a program's own, which folds its texts in the cache's slots it is given (`fuzzy_cache_text`, at most `RANK_MATCH_SLOTS`) |
 | `bonus(&item, user) -> f64` | optional: added to the score of a hit only (how often the user chose it lately) |
+| `cache: ^Fuzzy_Cache` | optional: the query and each item's texts folded, kept between calls; a list ranked each frame folds again only the texts that changed |
 
-The hits and their ranges are in temp memory. The work is in proportion to the list: rank it when the query or the list
-changes.
+The hits and their ranges are in temp memory.
 
 ```odin
 hits := ui.rank(query, models, proc(m: ^Model, _: rawptr) -> ui.Rank_Entry {
 	return {label = m.name, group = m.provider}
-}, match = ui.fuzzy_match)
+}, match = ui.rank_fuzzy, cache = &picker.search)
 for h in hits { ui.matched_label(fmt.tprintf("###m%d", h.index), models[h.index].name, h.ranges) }
 ```
 

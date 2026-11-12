@@ -248,9 +248,9 @@ palette_entry :: proc(label, group: string, tags: []string, allocator := context
 	return e
 }
 
-// palette_entry kept in `c` at `slot` (it takes the cache's slots 3 * slot to 3 * slot + 2), folded again only when the
-// label, the group or the tags changed.
-palette_entry_cached :: proc(c: ^Fuzzy_Cache, slot: int, label, group: string, tags: []string) -> Palette_Entry {
+// palette_entry kept in `c` (it takes the cache's slots `first` to `first + 2`), folded again only when the label, the
+// group or the tags changed.
+palette_entry_cached :: proc(c: ^Fuzzy_Cache, first: int, label, group: string, tags: []string) -> Palette_Entry {
 	// (the texts as parts, spaces between: compared with the slots as they are, joined only to be folded)
 	joined := make([dynamic]string, 0, 2 * len(tags), context.temp_allocator)
 	joined_len := 0
@@ -270,9 +270,9 @@ palette_entry_cached :: proc(c: ^Fuzzy_Cache, slot: int, label, group: string, t
 		append(&with_group, ..joined[:])
 	}
 	return {
-		label      = fuzzy_cache_text(c, 3 * slot, label),
-		with_tags  = fuzzy_cache_text(c, 3 * slot + 1, ..with_tags[:]),   // (none: the slot is emptied)
-		with_group = fuzzy_cache_text(c, 3 * slot + 2, ..with_group[:]),
+		label      = fuzzy_cache_text(c, first, label),
+		with_tags  = fuzzy_cache_text(c, first + 1, ..with_tags[:]),   // (none: the slot is emptied)
+		with_group = fuzzy_cache_text(c, first + 2, ..with_group[:]),
 	}
 }
 
@@ -507,7 +507,7 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 	has_first = has_first && first >= 0 && first < len(commands)
 	first_ranges: []Fuzzy_Range
 	for c, i in commands {
-		score, ranges, ok := palette_match(needle, palette_entry_cached(&p.search, i, c.label, c.group, c.tags))
+		score, ranges, ok := palette_match(needle, palette_entry_cached(&p.search, 3 * i, c.label, c.group, c.tags))
 		if ok { append(&ranked, Ranked{i, score, ranges}) }
 		if has_first && i == first { first_ranges = ranges }
 	}
