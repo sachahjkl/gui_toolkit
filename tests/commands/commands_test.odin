@@ -512,3 +512,18 @@ a_box_takes_the_corner_it_fills :: proc(t: ^testing.T) {
 	inner := ui.Box{rect = {{4, 4}, {196, 30}}, parent = &column}
 	testing.expect_value(t, ui.box_drawn_radii(&f.s, &inner)[int(ui.Corner.Top_Left)], 0)
 }
+
+// A text as wide as it measures (a tooltip's box) stays one line: its glyphs' advances added one by one, without their
+// kerning, go past that width, and the last letter went to a line of its own.
+@(test)
+a_text_as_wide_as_it_measures_stays_one_line :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f)) { return }
+	defer close(&f)
+	ui.use(&f.s)
+	for text in ([]string{"C:/code/project_0", "AVATAR WAVE To Yo", "Tyrannosaurus.", "LT. AVA TYPO"}) {
+		w := font.text_width(&f.fonts, f.base_font, 15, text)
+		lines := ui.wrap_lines(f.base_font, 15, text, w)
+		testing.expectf(t, len(lines) == 1, "%q at its own width (%v): %d lines", text, w, len(lines))
+	}
+}

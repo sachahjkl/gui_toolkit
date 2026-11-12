@@ -19,6 +19,14 @@ wrap_lines :: proc(f: font.Font_Id, size: f32, text: string, width: f32, allocat
 	for para_start <= len(text) {
 		para_end := para_start
 		for para_end < len(text) && text[para_end] != '\n' { para_end += 1 }
+		// A paragraph measured whole (kerned, as a label measures it) that fits stays one line. The clusters' advances added
+		// one by one go past that width: a box as wide as its text (a tooltip) would break its last letter off.
+		if para_end > para_start && font.text_width(gs().fonts, f, size, text[para_start:para_end]) <= w {
+			append(&lines, [2]int{para_start, trim_end(text, para_start, para_end)})
+			if para_end >= len(text) { break }
+			para_start = para_end + 1
+			continue
+		}
 		start := para_start
 		for {
 			for start < para_end && text[start] == ' ' && start > para_start { start += 1 }
