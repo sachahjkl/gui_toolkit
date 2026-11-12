@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.226.0] - 2026-11-12
+
+### Added
+- **`gt:syntax` knows more languages, and Markdown and diffs**: Java, C#, Kotlin, Swift, Dart, PHP, Ruby, Lua, Zig, Nix,
+YAML, TOML, INI, Dockerfile and Makefile are coloured; HTML, XML and CSS are coloured now (tags, attributes, selectors,
+properties). `language_of_file` finds `Dockerfile` and `Makefile` by their whole name, and `guess` finds every one of
+these in a pasted text, and says when a text is Markdown or a diff (`highlight = false`: the label, no colours).
+
 ## [0.224.1] - 2026-11-12
 
 ### Fixed
@@ -2969,6 +2977,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.226.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.0
 [0.224.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.224.1
 [0.224.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.224.0
 [0.223.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.223.0
