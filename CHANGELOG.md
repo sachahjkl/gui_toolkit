@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.208.0] - 2026-11-12
+
+### Added
+- **A site's pictures in WebP**: `site.build_images` turns the PNG screenshots of a built site into WebP at their own width and at narrower ones (cwebp), gives each `<img>` a `srcset` of them and points every link at the WebP. A screenshot weighs some twenty times less, with its text as sharp.
+- **ui.typed_take**: takes the first character typed in a build before a field gets it, for a key that is the program's while a field holds a given text (Space in an empty filter opens a preview, and the field never shows the space).
+
 ## [0.207.1] - 2026-11-12
 
 ### Added
@@ -2824,6 +2830,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.208.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.208.0
 [0.207.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.207.1
 [0.207.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.207.0
 [0.206.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.206.0
