@@ -608,7 +608,7 @@ an_empty_state_offers_its_actions :: proc(t: ^testing.T) {
 	r := Run{clicked = -1}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		if a := ui.empty_state("empty", {icon = "x", title = "No row matches", note = "The filter hides every row.", actions = {"Clear the filter", "Show hidden files"}}); a >= 0 { r.clicked = a }
+		if a := ui.empty_state("empty", {icon = "x", title = "No row matches", note = "The filter hides every row.", actions = {{text = "Clear the filter"}, {text = "Show hidden files"}}}); a >= 0 { r.clicked = a }
 	}})
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "No row matches") != nil && session.find_text(s, "The filter hides every row.") != nil, "its title and note")

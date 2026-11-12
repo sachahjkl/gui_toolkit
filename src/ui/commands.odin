@@ -586,8 +586,7 @@ sheet_body :: proc(commands: []Command, open: ^bool, title: string, w, em, windo
 		next({width = px(w), height = children_sum()})
 		if row(.Center, {}, "###sheet_foot") {
 			spacer(fill())
-			next({width = text_size(em * 1.2), height = px(dense(em * 2.1))})
-			if button("Close###sheet_close").clicked { open^ = false }
+			if button_icon("sheet_close", lucide.X, "Close", icon_font = lucide_icons(), intent = .Cancel).clicked { open^ = false }
 			spacer(px(pad))
 		}
 		spacer(px(em * 0.6))

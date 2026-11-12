@@ -17,6 +17,7 @@ import "core:strconv"
 import "core:strings"
 import desktop "../desktop"
 import process "../process"
+import "../ui"
 
 // What a program gives the setup.
 Config :: struct {
@@ -38,7 +39,8 @@ Config :: struct {
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
 	// its buttons, and the close control in its corner (its box built with ui.modal_corner: the toolkit places it).
 	backdrop:       proc(user: rawptr),
-	button:         proc(id, label: string, kind: Button_Kind, em: f32, user: rawptr) -> bool,
+	// A button: its words, a Lucide glyph and its intent (what it does: Danger uninstalls, Success installs or opens).
+	button:         proc(id, label, glyph: string, intent: ui.Intent, em: f32, user: rawptr) -> bool,
 	close:          proc(id: string, em: f32, user: rawptr) -> bool,
 }
 
@@ -47,9 +49,6 @@ Choice :: struct {
 	label: string,
 	on:    bool,
 }
-
-// What a button of the dialog does: Normal, Accent (what installs or opens), Danger (Uninstall).
-Button_Kind :: enum u8 { Normal, Accent, Danger }
 
 State :: enum u8 {
 	Not_Installed,

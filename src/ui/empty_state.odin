@@ -6,7 +6,7 @@ import "core:fmt"
 // of the box it fills, an icon in the weak colour, a title, a note, and a button for each thing that can be done about it.
 // One line of grey text at the top said what but offered nothing; the person had to know the key.
 //
-//   if a := ui.empty_state("empty", {icon = lucide.FILTER, title = "No row matches", note = "...", actions = {"Clear the filter"}}); a == 0 {
+//   if a := ui.empty_state("empty", {icon = lucide.FILTER, title = "No row matches", note = "...", actions = {{text = "Clear the filter", icon = lucide.X, intent = .Primary}}}); a == 0 {
 //       clear_filter()
 //   }
 
@@ -14,7 +14,14 @@ Empty_State :: struct {
 	icon:    string,     // a glyph of the icon font (Lucide's): "" none
 	title:   string,
 	note:    string,     // "" none
-	actions: []string,   // the buttons' words, in their order
+	actions: []Empty_Action,   // the buttons, in their order
+}
+
+// A button of an empty state, drawn as any button_icon: its words, a Lucide glyph ("" none) and the soft pair of an intent.
+Empty_Action :: struct {
+	text:   string,
+	icon:   string,
+	intent: Intent,
 }
 
 // Fills its parent (or what `next` says); returns the action clicked (-1: none).
@@ -49,8 +56,7 @@ empty_state :: proc(id: string, e: Empty_State) -> (clicked: int) {
 			if row(.Center, {}, "###empty_actions") {
 				for a, i in e.actions {
 					if i > 0 { spacer(px(em * 0.6)) }
-					next({width = text_size(em * 1.2), height = pct(1)})
-					if button(fmt.tprintf("%s###empty_action%d", text_shown(a), i)).clicked { clicked = i }
+					if button_icon(fmt.tprintf("empty_action%d", i), a.icon, text_shown(a.text), icon_font = lucide_icons(), intent = a.intent).clicked { clicked = i }
 				}
 			}
 		}

@@ -30,6 +30,7 @@ import "core:sync"
 import "core:thread"
 import desktop "../desktop"
 import "../draw"
+import lucide "../lucide"
 import "../platform"
 import "../render"
 import "../ui"
@@ -591,7 +592,7 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(c, em, 0.3)})
 			_ = ui.line_edit("###setup_folder", &d.folder)
 			ui.spacer(ui.px(em * 0.4))
-			if button(c, "###setup_pick", "Choose…", .Normal, em) && !busy { pick_folder(d, c) }
+			if button(c, "###setup_pick", "Choose…", lucide.FOLDER_OPEN, .Primary, em) && !busy { pick_folder(d, c) }
 		} else {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(c, em, 0.3)})
 			well: ^ui.Box
@@ -805,7 +806,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			// (beside a Nix package, what goes is only what an earlier install left)
 			nix := d.facts.state == .Nix_Package
 			words := d.confirm ? (nix ? "Click again to remove" : "Click again to uninstall") : (nix ? "Remove what is left" : "Uninstall")
-			if button(c, "###setup_uninstall", words, .Danger, em) && !busy(d) {
+			if button(c, "###setup_uninstall", words, lucide.TRASH_2, .Danger, em) && !busy(d) {
 				if d.confirm { start_uninstall(d, c) } else { d.confirm = true }
 			}
 			mark(d, .Uninstall, "###setup_uninstall")
@@ -815,16 +816,16 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 		how := closing(d, c)
 		CLOSING_WORDS := [Closing]string{.Close = "Close", .Not_Now = "Not now", .Keep_Standalone = "Keep standalone"}
 		CLOSING_IDS := [Closing]string{.Close = "###setup_close", .Not_Now = "###setup_later", .Keep_Standalone = "###setup_standalone"}
-		if button(c, CLOSING_IDS[how], CLOSING_WORDS[how], .Normal, em) { ev = close(d, how) }
+		if button(c, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Cancel, em) { ev = close(d, how) }
 		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }
 		if just_installed {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_launch", "Open the installed copy", .Accent, em) { ev = open_installed(d) }
+			if button(c, "###setup_launch", "Open the installed copy", lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
 			mark(d, .Secondary, "###setup_launch")
 		}
 		if label := install_label(d, c); label != "" {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_install", label, .Accent, em) && !busy(d) { start_install(d, c) }
+			if button(c, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, c) }
 			mark(d, .Install, "###setup_install")
 		}
 		ui.spacer(ui.px(em * MARGIN_EM))
@@ -833,13 +834,12 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 	return
 }
 
-// A button: the program's (Config.button), else a button of the theme of its kind.
+// A button: the program's (Config.button), else the toolkit's button with its glyph and the soft pair of its intent.
 @(private = "file")
-button :: proc(c: Config, id, label: string, kind: Button_Kind, em: f32) -> bool {
-	if c.button != nil { return c.button(id, label, kind, em, c.user) }
-	TAGS := [Button_Kind]string{.Normal = "button", .Accent = "accent_button", .Danger = "danger_button"}
-	ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2.2)), radius = rad(c, em, 0.4)})
-	clicked := false
-	if ui.tags(TAGS[kind]) { clicked = ui.button(fmt.tprintf("%s%s", label, id)).clicked }
+button :: proc(c: Config, id, label, glyph: string, intent: ui.Intent, em: f32) -> bool {
+	if c.button != nil { return c.button(id, label, glyph, intent, em, c.user) }
+	clicked := ui.button_icon(id, glyph, label, icon_font = ui.lucide_icons(), intent = intent).clicked
+	// (button_icon rounds its own corners: a square dialog squares them after, before they are drawn)
+	if c.square { if b := ui.prev_box(id); b != nil { b.radius = 0 } }
 	return clicked
 }

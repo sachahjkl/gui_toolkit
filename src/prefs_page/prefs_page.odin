@@ -811,17 +811,18 @@ updater_under :: proc(o: Options, em: f32) {
 	ui.next({height = ui.children_sum()})
 	if ui.row() {
 		busy := st.phase == .Checking || st.phase == .Downloading || st.phase == .Installed
-		ui.next({height = ui.px(math.round(em * CONTROL_H_EM))})
-		if ui.disabled(busy) { if ui.button("Check now###update_check").clicked { update.check_now(o.updater) } }
+		if ui.button_icon("update_check", lucide.REFRESH_CW, "Check now", disabled = busy, icon_font = ui.lucide_icons(), intent = .Primary).clicked && !busy {
+			update.check_now(o.updater)
+		}
 		if st.phase == .Available {
 			ui.spacer(ui.px(em * 0.5))
-			ui.next({height = ui.px(math.round(em * CONTROL_H_EM))})
-			if ui.button(fmt.tprintf("Install %s###update_install", st.version)).clicked { update.install_now(o.updater) }
+			if ui.button_icon("update_install", lucide.DOWNLOAD, fmt.tprintf("Install %s", st.version), icon_font = ui.lucide_icons(), intent = .Success).clicked {
+				update.install_now(o.updater)
+			}
 		}
 		if st.phase == .Installed && o.restart != nil {
 			ui.spacer(ui.px(em * 0.5))
-			ui.next({height = ui.px(math.round(em * CONTROL_H_EM))})
-			if ui.button("Restart now###update_restart").clicked { o.restart(o.user) }
+			if ui.button_icon("update_restart", lucide.POWER, "Restart now", icon_font = ui.lucide_icons(), intent = .Success).clicked { o.restart(o.user) }
 		}
 	}
 }
@@ -834,22 +835,21 @@ update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawp
 	if u == nil { return false }
 	em := ui.font_size()
 	st := update.status(u)
-	text: string
+	words, glyph: string
 	#partial switch st.phase {
-	case .Available:   text = fmt.tprintf("Install %s###update_badge", st.version)
-	case .Downloading: text = fmt.tprintf("Downloading %s…###update_badge", st.version)
-	case .Installed:   text = fmt.tprintf("Restart to update to %s###update_badge", st.version)
+	case .Available:   words, glyph = fmt.tprintf("Install %s", st.version), lucide.DOWNLOAD
+	case .Downloading: words = fmt.tprintf("Downloading %s…", st.version)
+	case .Installed:   words, glyph = fmt.tprintf("Restart to update to %s", st.version), lucide.POWER
 	case:              return false
 	}
-	ui.next_merge({width = ui.text_size(em * 0.6), radius = em * 0.35, font_size = math.round(em * 0.88), text_align = .Center})
 	if st.phase == .Downloading {
-		if ui.tags("weak") { ui.label(text) }
+		ui.next_merge({width = ui.text_size(em * 0.6), font_size = math.round(em * 0.88), text_align = .Center})
+		if ui.tags("weak") { ui.label(fmt.tprintf("%s###update_badge", words)) }
 		return true
 	}
-	if ui.tags("accent_button") {
-		if ui.button(text).clicked {
-			if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
-		}
+	ui.next_merge({font_size = math.round(em * 0.88)})
+	if ui.button_icon("update_badge", glyph, words, icon_font = ui.lucide_icons(), intent = .Success).clicked {
+		if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
 	}
 	return true
 }

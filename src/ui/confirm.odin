@@ -1,10 +1,11 @@
 package ui
 
 import "core:fmt"
+import lucide "../lucide"
 
 // The question before an act that is not taken back (a file deleted for good, a process killed, a service stopped): a
 // title, a note in the weak text (what comes of it), what it acts on a line each, then Cancel and the act's button in
-// the danger colours. Enter answers what is safe: Cancel, unless `enter_confirms` (a safe act); the button Enter presses
+// the danger colours (a safe act's: the success colours). Enter answers what is safe: Cancel, unless `enter_confirms` (a safe act); the button Enter presses
 // says "(Enter)". Escape and a press outside cancel, as with any modal. `open` is the caller's: true opens it, the
 // answer closes it.
 //
@@ -74,18 +75,17 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 					next({width = fill(), height = children_sum()})
 					if row() {
 						spacer(fill())
-						next({width = text_size(em * 1.2), height = px(dense(em * 2.2))})
 						cancel_word := o.enter_confirms ? labels.cancel : fmt.tprintf(labels.enter, labels.cancel)
-						if button(fmt.tprintf("%s###confirm_cancel", cancel_word)).clicked || (!o.enter_confirms && key_press(.Return)) {
+						if button_icon("confirm_cancel", lucide.X, cancel_word, icon_font = lucide_icons(), intent = .Cancel).clicked || (!o.enter_confirms && key_press(.Return)) {
 							answer, open^ = .Cancelled, false
 						}
 						spacer(px(em * 0.6))
-						next({width = text_size(em * 1.2), height = px(dense(em * 2.2))})
-						if tags("danger_button") {
-							act_word := o.enter_confirms ? fmt.tprintf(labels.enter, o.act) : o.act
-							if button(fmt.tprintf("%s###confirm_act", act_word)).clicked || (o.enter_confirms && key_press(.Return)) {
-								answer, open^ = .Confirmed, false
-							}
+						// (an act asked for as safe confirms as any OK does; else it is the one not taken back)
+						act_word := o.enter_confirms ? fmt.tprintf(labels.enter, o.act) : o.act
+						act_glyph := o.enter_confirms ? lucide.CHECK : lucide.TRASH_2
+						act_intent := o.enter_confirms ? Intent.Success : Intent.Danger
+						if button_icon("confirm_act", act_glyph, act_word, icon_font = lucide_icons(), intent = act_intent).clicked || (o.enter_confirms && key_press(.Return)) {
+							answer, open^ = .Confirmed, false
 						}
 					}
 				}
