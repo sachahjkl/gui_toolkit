@@ -298,3 +298,18 @@ platform/toplevels_wl_linux.odin ftl_manager_listener const  # a listener table 
 platform/toplevels_wl_linux.odin ftl_handle_listener const  # a listener table (passed by address to libwayland)
 update/update_test.odin OTHER_SEED test
 update/update_test.odin TEST_SEED test
+platform/overlay_wl_linux.odin layer_surface_listener const  # a listener table (passed by address to libwayland)
+platform/overlay_wl_linux.odin xdg_output_listener const  # a listener table (passed by address to libwayland)
+platform/wl_protocol_linux.odin lsh_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin lsu_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin lsu_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_lsh_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_lsu_popup const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xom_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xo_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xo_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xom_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zwlr_layer_shell_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zwlr_layer_surface_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_output_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin zxdg_output_manager_iface const  # a protocol table, built once (wayland_lib), then read

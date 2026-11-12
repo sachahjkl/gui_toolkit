@@ -29,6 +29,7 @@ Native_Window :: struct {
 	closed:       bool,
 	in_poll:      bool,
 	integrated:   bool,             // set_integrated_title: the app draws the title bar (client-side decorations)
+	overlay:      bool,             // open_overlay: above the others, over one output, no frame, no task bar entry
 	show:         Show_State,       // as the server last said (or the emulated one of an offscreen window)
 	dark_title:   bool,
 	display:      Display_Info,
@@ -124,28 +125,80 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 		if missing != "" { report_missing(missing) }
 		return nil
 	}
-	w := new(Window)
-	w.user = user
-	w.on_frame = on_frame
-	w.dpi_scale = 1
-	w.display_stale = true
+	w := window_make(kind, user, on_frame)
 	w.integrated = integrated_title
-	w.backend = kind
-	if fd := eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK); fd > 0 { w.off_event = posix.FD(fd) }
 	ok := false
 	switch kind {
 	case .Wayland: ok = wl_open(w, title, size, transparent)
 	case .X11:     ok = x11_open(w, title, size, transparent)
 	case .None:
 	}
-	if !ok {
-		if w.off_event > 0 { posix.close(w.off_event) }
-		delete(w.events)
-		delete(w.injected)
-		free(w)
+	if !ok { window_discard(w); return nil }
+	return w
+}
+
+// An overlay window over the output at `area` (overlay.odin). Shown at once, transparent. nil when there is no display
+// server, or the compositor has no layer shell (Wayland).
+open_overlay :: proc(title: string, area: [4]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
+	kind, missing := choose_backend()
+	if kind == .None {
+		if missing != "" { report_missing(missing) }
 		return nil
 	}
+	w := window_make(kind, user, on_frame)
+	w.overlay = true
+	ok := false
+	switch kind {
+	case .Wayland: ok = wl_open_overlay(w, title, area)
+	case .X11:     ok = x11_open_overlay(w, title, area)
+	case .None:
+	}
+	if !ok { window_discard(w); return nil }
 	return w
+}
+
+// Only `rects` (window-relative logical pixels) take the pointer; elsewhere it reaches the windows below. Empty: no
+// part of the window takes it. Wayland applies it with the window's next picture (a repaint is asked for).
+set_input_region :: proc(w: ^Window, rects: [][4]int) {
+	if w == nil || w.offscreen { return }
+	switch w.backend {
+	case .Wayland: wl_set_input_region(w, rects, true)
+	case .X11:     x11_set_input_region(w, rects, true)
+	case .None:
+	}
+}
+
+// The whole window takes the pointer again.
+clear_input_region :: proc(w: ^Window) {
+	if w == nil || w.offscreen { return }
+	switch w.backend {
+	case .Wayland: wl_set_input_region(w, nil, false)
+	case .X11:     x11_set_input_region(w, nil, false)
+	case .None:
+	}
+}
+
+// Whether the window is an overlay (open_overlay).
+is_overlay :: proc(w: ^Window) -> bool { return w != nil && w.overlay }
+
+@(private = "file")
+window_make :: proc(kind: Backend_Kind, user: rawptr, on_frame: proc(user: rawptr)) -> ^Window {
+	w := new(Window)
+	w.user = user
+	w.on_frame = on_frame
+	w.dpi_scale = 1
+	w.display_stale = true
+	w.backend = kind
+	if fd := eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK); fd > 0 { w.off_event = posix.FD(fd) }
+	return w
+}
+
+@(private = "file")
+window_discard :: proc(w: ^Window) {
+	if w.off_event > 0 { posix.close(w.off_event) }
+	delete(w.events)
+	delete(w.injected)
+	free(w)
 }
 
 // A window with no surface: it renders to an offscreen target and never appears, so it runs where there is no display
@@ -213,6 +266,7 @@ set_size :: proc(w: ^Window, size: [2]int) {
 		w.off_place[2], w.off_place[3] = w.size.x, w.size.y
 		return
 	}
+	if w.overlay { return }   // (its size is its output's)
 	px := [2]int{max(int(f32(size.x) * w.dpi_scale), 1), max(int(f32(size.y) * w.dpi_scale), 1)}
 	switch w.backend {
 	case .Wayland: wl_set_size(w, px)

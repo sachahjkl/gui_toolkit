@@ -4,7 +4,7 @@ package platform
 // com.canonical.dbusmenu for the tray's context menu (tray_linux.odin). The host (the panel) reads the menu layout
 // with GetLayout, draws it, and reports a click with Event; we turn that into a Menu_Item Tray_Event. The layout is a
 // recursive (ia{sv}av) structure: an id, a dictionary of properties (label, type, enabled, visible, toggle-type,
-// toggle-state, children-display), and an array of child variants.
+// toggle-state, children-display, shortcut), and an array of child variants.
 //
 // dbusmenu ids are integers of our own (0 is the root); tray.menu_ids maps them to the app's Tray_Menu_Item.id.
 
@@ -97,6 +97,15 @@ dbusmenu_write_item :: proc(t: ^Tray, w: ^dbus.Writer, it: ^Tray_Menu_Item) {
 		if len(it.children) > 0 {
 			dbus.arg_dict_entry(w, "children-display")
 			dbus.arg_variant_string(w, "submenu")
+		} else if keys, ok := dbusmenu_shortcut(it.shortcut); ok {
+			// aas: one array per key press of a sequence; ours are single presses
+			dbus.arg_dict_entry(w, "shortcut")
+			dbus.w_signature(w, "aas")
+			sl, sc := dbus.w_array_begin(w, 4)
+			kl, kc := dbus.w_array_begin(w, 4)
+			for k in keys { dbus.w_string(w, k) }
+			dbus.w_array_end(w, kl, kc)
+			dbus.w_array_end(w, sl, sc)
 		}
 	}
 	dbus.arg_dict_end(w, pl, pc)

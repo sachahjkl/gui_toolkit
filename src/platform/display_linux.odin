@@ -33,6 +33,7 @@ display_invalidate :: proc(w: ^Window) { w.display_stale = true }
 monitor_size :: proc(w: ^Window) -> [2]int {
 	if w == nil { return {} }
 	if w.offscreen { return virtual_screen().size }
+	if w.overlay { return w.size }   // (its output may be another than the first one, and its size never changes)
 	switch w.backend {
 	case .Wayland:
 		if wlc.output_px.x > 0 && wlc.output_px.y > 0 {

@@ -222,6 +222,48 @@ x11_randr_rate :: proc(w: ^Window) -> (num, den: u32, top_hz: f64, ok: bool) {
 	return
 }
 
+// The rects of the monitors lit (RandR's CRTCs), in root pixels; empty without RandR. (An overlay's choice of monitor.)
+@(private)
+x11_monitor_rects :: proc(allocator := context.temp_allocator) -> [][4]int {
+	rects := make([dynamic][4]int, allocator)
+	if x11c.randr_event == 0 { return rects[:] }
+	r := randr.resources_reply(x11c.c, randr.resources(x11c.c, x11c.screen.root), nil)
+	if r == nil { return rects[:] }
+	defer free_c(r)
+	config_ts := ([^]u32)(r)[3]   // (as in x11_randr_rate)
+	for crtc in randr.res_crtcs(r)[:randr.res_crtcs_len(r)] {
+		c := randr.crtc_info_reply(x11c.c, randr.crtc_info(x11c.c, crtc, config_ts), nil)
+		if c == nil { continue }
+		defer free_c(c)
+		b := ([^]u8)(c)
+		if get_u32(b[20:]) == 0 { continue }   // (no mode: off)
+		append(&rects, [4]int{int(i16(u16(b[12]) | u16(b[13]) << 8)), int(i16(u16(b[14]) | u16(b[15]) << 8)), int(u16(b[16]) | u16(b[17]) << 8), int(u16(b[18]) | u16(b[19]) << 8)})
+	}
+	return rects[:]
+}
+
+// The pointer reaches the window only through `rects` (window pixels), with XFIXES' region as the SHAPE extension's
+// input shape; `limited` false gives it the whole window again. False without XFIXES.
+@(private)
+x11_window_input_rects :: proc(id: Xcb_Window, rects: [][4]int, limited: bool) -> bool {
+	if x11c.xfixes_event == 0 || xfixes.create_region == nil || xfixes.set_shape_region == nil || xfixes.destroy_region == nil { return false }
+	if !limited {
+		xfixes.set_shape_region(x11c.c, id, XFIXES_SHAPE_KIND_INPUT, 0, 0, 0)   // (region None: the default shape)
+		return true
+	}
+	Xcb_Rectangle :: struct { x, y: i16, width, height: u16 }
+	boxes := make([dynamic]Xcb_Rectangle, 0, len(rects), context.temp_allocator)
+	for r in rects {
+		if r[2] <= 0 || r[3] <= 0 { continue }
+		append(&boxes, Xcb_Rectangle{i16(r[0]), i16(r[1]), u16(r[2]), u16(r[3])})
+	}
+	region := xcb.generate_id(x11c.c)
+	xfixes.create_region(x11c.c, region, u32(len(boxes)), raw_data(boxes))
+	xfixes.set_shape_region(x11c.c, id, XFIXES_SHAPE_KIND_INPUT, 0, 0, region)
+	xfixes.destroy_region(x11c.c, region)
+	return true
+}
+
 // The server's serial of the pointer image shown now, to tell two cursors apart (cursor_on_screen).
 @(private)
 x11_pointer_image_serial :: proc() -> (serial: u64, ok: bool) {

@@ -53,6 +53,8 @@ package platform
 @(private) WL_SURFACE_ATTACH :: 1
 @(private) WL_SURFACE_FRAME :: 3
 @(private) WL_SURFACE_SET_OPAQUE_REGION :: 4
+@(private) WL_SURFACE_SET_INPUT_REGION :: 5
+@(private) WL_REGION_DESTROY :: 0
 @(private) WL_SURFACE_COMMIT :: 6
 @(private) WL_SURFACE_SET_BUFFER_SCALE :: 8
 @(private) WL_SEAT_GET_POINTER :: 0
@@ -350,6 +352,74 @@ t_fullscreen_types :: proc() -> []^Wl_Interface { t_output_opt[0] = wl.output_in
 
 @(private)
 raw_types :: proc(s: []^Wl_Interface) -> [^]^Wl_Interface { return len(s) > 0 ? ([^]^Wl_Interface)(&s[0]) : nil }
+
+// wlr-layer-shell-unstable-v1 (overlay windows, overlay_wl_linux.odin): a surface on a layer of an output, above or
+// below the windows, anchored to its edges. Version 4 is the one asked: keyboard interactivity on_demand came in it.
+@(private) ZWLR_LAYER_SHELL_GET_LAYER_SURFACE :: 0
+@(private) ZWLR_LAYER_SHELL_DESTROY :: 1
+@(private) ZWLR_LAYER_SURFACE_SET_SIZE :: 0
+@(private) ZWLR_LAYER_SURFACE_SET_ANCHOR :: 1
+@(private) ZWLR_LAYER_SURFACE_SET_EXCLUSIVE_ZONE :: 2
+@(private) ZWLR_LAYER_SURFACE_SET_MARGIN :: 3
+@(private) ZWLR_LAYER_SURFACE_SET_KEYBOARD_INTERACTIVITY :: 4
+@(private) ZWLR_LAYER_SURFACE_ACK_CONFIGURE :: 6
+@(private) ZWLR_LAYER_SURFACE_DESTROY :: 7
+@(private) ZWLR_LAYER_OVERLAY :: 3
+@(private) ZWLR_ANCHOR_ALL :: 1 | 2 | 4 | 8   // top, bottom, left, right
+@(private) ZWLR_KEYBOARD_ON_DEMAND :: 2
+@(private) ZWLR_LAYER_SHELL_VERSION :: 4
+@(private) zwlr_layer_shell_iface: Wl_Interface
+@(private) zwlr_layer_surface_iface: Wl_Interface
+@(private = "file") lsh_methods: [2]Wl_Message
+@(private = "file") lsu_methods: [9]Wl_Message
+@(private = "file") lsu_events: [2]Wl_Message
+@(private = "file") t_lsh_get: [5]^Wl_Interface
+@(private = "file") t_lsu_popup: [1]^Wl_Interface
+
+// xdg-output-unstable-v1: an output's place on the desktop in logical units (what gt:capture and a program's regions
+// use), which wl_output alone does not give under a fractional scale.
+@(private) ZXDG_OUTPUT_MANAGER_GET_XDG_OUTPUT :: 1
+@(private) ZXDG_OUTPUT_DESTROY :: 0
+@(private) ZXDG_OUTPUT_MANAGER_VERSION :: 3
+@(private) zxdg_output_manager_iface: Wl_Interface
+@(private) zxdg_output_iface: Wl_Interface
+@(private = "file") xom_methods: [2]Wl_Message
+@(private = "file") xo_methods: [1]Wl_Message
+@(private = "file") xo_events: [5]Wl_Message
+@(private = "file") t_xom_get: [2]^Wl_Interface
+
+@(private)
+overlay_build_tables :: proc() {
+	t_lsh_get[0], t_lsh_get[1], t_lsh_get[2] = &zwlr_layer_surface_iface, wl.surface_interface, wl.output_interface
+	lsh_methods[0] = {"get_layer_surface", "no?ous", raw_types(t_lsh_get[:])}
+	lsh_methods[1] = {"destroy", "3", nil}
+	zwlr_layer_shell_iface = {"zwlr_layer_shell_v1", ZWLR_LAYER_SHELL_VERSION, 2, &lsh_methods[0], 0, nil}
+	lsu_methods[0] = {"set_size", "uu", nil}
+	lsu_methods[1] = {"set_anchor", "u", nil}
+	lsu_methods[2] = {"set_exclusive_zone", "i", nil}
+	lsu_methods[3] = {"set_margin", "iiii", nil}
+	lsu_methods[4] = {"set_keyboard_interactivity", "u", nil}
+	t_lsu_popup[0] = &xdg_surface_iface   // (an xdg_popup in the protocol; never called, a valid pointer keeps the table sound)
+	lsu_methods[5] = {"get_popup", "o", raw_types(t_lsu_popup[:])}
+	lsu_methods[6] = {"ack_configure", "u", nil}
+	lsu_methods[7] = {"destroy", "", nil}
+	lsu_methods[8] = {"set_layer", "2u", nil}
+	lsu_events[0] = {"configure", "uuu", nil}
+	lsu_events[1] = {"closed", "", nil}
+	zwlr_layer_surface_iface = {"zwlr_layer_surface_v1", ZWLR_LAYER_SHELL_VERSION, 9, &lsu_methods[0], 2, &lsu_events[0]}
+
+	t_xom_get[0], t_xom_get[1] = &zxdg_output_iface, wl.output_interface
+	xom_methods[0] = {"destroy", "", nil}
+	xom_methods[1] = {"get_xdg_output", "no", raw_types(t_xom_get[:])}
+	zxdg_output_manager_iface = {"zxdg_output_manager_v1", ZXDG_OUTPUT_MANAGER_VERSION, 2, &xom_methods[0], 0, nil}
+	xo_methods[0] = {"destroy", "", nil}
+	xo_events[0] = {"logical_position", "ii", nil}
+	xo_events[1] = {"logical_size", "ii", nil}
+	xo_events[2] = {"done", "", nil}
+	xo_events[3] = {"name", "2s", nil}
+	xo_events[4] = {"description", "2s", nil}
+	zxdg_output_iface = {"zxdg_output_v1", ZXDG_OUTPUT_MANAGER_VERSION, 1, &xo_methods[0], 5, &xo_events[0]}
+}
 
 // zwp_virtual_keyboard_unstable_v1: a client types as a keyboard of the seat would, to whatever has the keyboard (another
 // program's window): its keymap (an xkb keymap in a file), then keys and modifiers (send_hotkey).

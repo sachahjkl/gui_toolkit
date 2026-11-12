@@ -25,6 +25,7 @@ Native_Window :: struct {
 	display:        Display_Info,   // display_info's cache
 	display_stale:  bool,
 	integrated:     bool,           // set_integrated_title: the client area covers the title bar
+	overlay:        bool,           // open_overlay (overlay_win32.odin): a topmost popup over one monitor
 	fullscreen:     bool,
 	nc_tracking:    bool,           // TrackMouseEvent asked for WM_NCMOUSELEAVE
 	saved_style:    i32,            // before full screen
@@ -100,7 +101,7 @@ windows_build :: proc() -> u32 {
 	return build
 }
 
-@(private = "file") WINDOW_CLASS_NAME :: "gui_toolkit_window"
+@(private) WINDOW_CLASS_NAME :: "gui_toolkit_window"
 // The process's window class, registered by the first window of any thread.
 @(private) window_class: sync.Once
 
@@ -118,22 +119,7 @@ can_hide_windows :: proc() -> bool { return true }
 // `integrated_title`: the app draws the title bar (set_integrated_title); `size` is then the whole window's inside.
 // Returns nil when the system could not make the window.
 open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil, transparent := false, integrated_title := false) -> ^Window {
-	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
-	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
-	sync.once_do(&window_class, proc() {
-		instance := win.HINSTANCE(win.GetModuleHandleW(nil))
-		icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
-		wc := win.WNDCLASSEXW{
-			cbSize        = size_of(win.WNDCLASSEXW),
-			style         = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_DBLCLKS,
-			lpfnWndProc   = window_proc,
-			hInstance     = instance,
-			hIcon         = win.LoadIconA(instance, cstring(icon_res)),   // resource id 1 = app icon when present
-			hCursor       = nil,
-			lpszClassName = win.L(WINDOW_CLASS_NAME),
-		}
-		win.RegisterClassExW(&wc)
-	})
+	instance := window_class_register()
 
 	w := new(Window)
 	w.user = user
@@ -153,7 +139,33 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 		free(w)
 		return nil
 	}
+	return open_window_sized(w, size)
+}
 
+// The process's DPI awareness and window class, set once by the first window of any thread (open_window, open_overlay).
+@(private)
+window_class_register :: proc() -> win.HINSTANCE {
+	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+	sync.once_do(&window_class, proc() {
+		instance := win.HINSTANCE(win.GetModuleHandleW(nil))
+		icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
+		wc := win.WNDCLASSEXW{
+			cbSize        = size_of(win.WNDCLASSEXW),
+			style         = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_DBLCLKS,
+			lpfnWndProc   = window_proc,
+			hInstance     = instance,
+			hIcon         = win.LoadIconA(instance, cstring(icon_res)),   // resource id 1 = app icon when present
+			hCursor       = nil,
+			lpszClassName = win.L(WINDOW_CLASS_NAME),
+		}
+		win.RegisterClassExW(&wc)
+	})
+	return win.HINSTANCE(win.GetModuleHandleW(nil))
+}
+
+// The rest of open_window: the window's scale, then its size from `size` (logical), centred on the work area.
+@(private = "file")
+open_window_sized :: proc(w: ^Window, size: [2]int) -> ^Window {
 	dpi := win.GetDpiForWindow(w.hwnd)
 	w.dpi_scale = f32(dpi) / DPI_BASE
 	if dpi == 0 { w.dpi_scale = 1 }
@@ -258,6 +270,7 @@ set_size :: proc(w: ^Window, size: [2]int) {
 		w.off_place[2], w.off_place[3] = w.size.x, w.size.y
 		return
 	}
+	if w.overlay { return }   // (its size is its monitor's)
 	dpi := win.GetDpiForWindow(w.hwnd)
 	ow, oh := outer_size(w, int(f32(size.x) * w.dpi_scale), int(f32(size.y) * w.dpi_scale), dpi)
 	win.SetWindowPos(w.hwnd, nil, 0, 0, i32(ow), i32(oh), win.SWP_NOMOVE | win.SWP_NOZORDER | win.SWP_NOACTIVATE)
@@ -416,6 +429,7 @@ show_window :: proc(w: ^Window) {
 		if w.want_maximized { w.off_state = .Maximized; w.want_maximized = false }
 		return
 	}
+	if w.overlay { win.ShowWindow(w.hwnd, win.SW_SHOWNOACTIVATE); return }   // (it takes the keyboard only when clicked)
 	win.ShowWindow(w.hwnd, w.want_maximized ? win.SW_SHOWMAXIMIZED : win.SW_SHOW)
 	w.want_maximized = false
 	win.SetForegroundWindow(w.hwnd)
@@ -838,6 +852,9 @@ key_from_vk :: proc(vk: win.WPARAM) -> Key {
 
 @(private)
 button_down :: proc(w: ^Window, b: Mouse_Button, pos: [2]f32) {
+	// (WS_EX_NOACTIVATE: a click does not activate an overlay, which takes the keyboard itself; the click is this
+	// process's last input, so the system lets it)
+	if w.overlay && win.GetForegroundWindow() != w.hwnd { win.SetForegroundWindow(w.hwnd) }
 	if win.GetCapture() != w.hwnd { win.SetCapture(w.hwnd) }
 	w.buttons_down += {b}
 	append(&w.events, Event{kind = .Mouse_Press, button = b, pos = pos, mods = current_mods(), stamp = time.tick_now(), buttons = w.buttons_down, emulated = mouse_emulated(), pointer = mouse_emulated_by()})

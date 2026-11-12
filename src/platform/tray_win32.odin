@@ -339,7 +339,7 @@ tray_menu_build :: proc(items: []Tray_Menu_Item, ids: ^[dynamic]int) -> win.HMEN
 	if menu == nil { return nil }
 	MFT_RADIOCHECK :: 0x200
 	for it in items {
-		text := win.utf8_to_wstring(it.text, context.temp_allocator)
+		text := win.utf8_to_wstring(tray_item_label(it), context.temp_allocator)
 		flags: u32 = it.disabled ? win.MF_GRAYED : win.MF_ENABLED
 		if len(it.children) > 0 {
 			sub := tray_menu_build(it.children, ids)

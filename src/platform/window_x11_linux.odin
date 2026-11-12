@@ -340,6 +340,7 @@ x11_destroy :: proc(w: ^Window) {
 	if x11c.dnd_target.window == w { x11c.dnd_target.window = nil }
 	if x11c.clip_owner == st.id { x11c.clip_owner = 0; delete(x11c.clip_text); x11c.clip_text = "" }
 	xcb.destroy_window(x11c.c, st.id)
+	if st.colormap != 0 && xcb.free_colormap != nil { xcb.free_colormap(x11c.c, st.colormap) }   // (an overlay's)
 	xcb.flush(x11c.c)
 	delete(st.title)
 	delete(st.paste.buf)
@@ -740,6 +741,8 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 			// (event time at [4], root x and y at [16] and [18])
 			time := u32(b[4]) | u32(b[5]) << 8 | u32(b[6]) << 16 | u32(b[7]) << 24
 			root := [2]i16{i16(u16(b[16]) | u16(b[17]) << 8), i16(u16(b[18]) | u16(b[19]) << 8)}
+			// (no window manager gives an override-redirect window the keyboard: a click on an overlay takes it)
+			if press && w.overlay { x11_overlay_focus(w, time) }
 			if press && x11_frame_press(w, btn, pos, root, time) {
 				x11_push(w, {kind = .Frame_Press, button = btn, pos = pos, mods = mods, buttons = w.buttons_down})
 				break

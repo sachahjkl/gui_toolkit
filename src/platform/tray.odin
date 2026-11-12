@@ -17,6 +17,8 @@ package platform
 //
 // Icons are PNG files' bytes (nil: the exe's own icon) or RGBA pixels (tray_set_icon_rgba).
 
+import "core:strings"
+
 Tray_Event_Kind :: enum u8 {
 	None,
 	Click,           // left click, or Enter / Space on the icon (`keyboard`)
@@ -50,6 +52,9 @@ Tray_Menu_Item :: struct {
 	checked:  bool,       // Check / Radio
 	disabled: bool,
 	default:  bool,       // shown in bold: what a double click on the icon would do
+	// the keys that do the same, in hotkey_text form ("Ctrl+Print"); "" none. Only shown: the program binds them itself
+	// (hotkey_register, or the compositor's shortcuts on Linux)
+	shortcut: string,
 	children: []Tray_Menu_Item,
 }
 
@@ -115,10 +120,33 @@ tray_menu_find :: proc(items: []Tray_Menu_Item, id: int) -> ^Tray_Menu_Item {
 	return nil
 }
 
+// The text a Windows menu shows for an item: its text, then a tab and its shortcut, which Windows draws right-aligned.
+tray_item_label :: proc(it: Tray_Menu_Item, allocator := context.temp_allocator) -> string {
+	if it.shortcut == "" { return it.text }
+	return strings.concatenate({it.text, "\t", it.shortcut}, allocator)
+}
+
+// A shortcut in hotkey_text form ("Ctrl+Shift+Print") as the keys of dbusmenu's "shortcut" property: the modifiers by
+// dbusmenu's names, in libdbusmenu's order (Control, Alt, Shift, Super), then the key's XKB keysym name ("Print", "q",
+// "F5"). false for a text hotkey_parse refuses, so a panel is never given a shortcut it cannot read.
+dbusmenu_shortcut :: proc(shortcut: string, allocator := context.temp_allocator) -> (keys: []string, ok: bool) {
+	hk := hotkey_parse(shortcut) or_return
+	key := keysym_of(hk, allocator)
+	if key == "" { return nil, false }
+	out := make([dynamic]string, 0, 5, allocator)
+	if .Ctrl in hk.mods  { append(&out, "Control") }
+	if .Alt in hk.mods   { append(&out, "Alt") }
+	if .Shift in hk.mods { append(&out, "Shift") }
+	if hk.super          { append(&out, "Super") }
+	append(&out, key)
+	return out[:], true
+}
+
 @(private)
 tray_item_clone :: proc(it: Tray_Menu_Item) -> Tray_Menu_Item {
 	out := it
 	out.text = clone_string(it.text)
+	out.shortcut = clone_string(it.shortcut)
 	if len(it.children) > 0 {
 		out.children = make([]Tray_Menu_Item, len(it.children))
 		for c, i in it.children { out.children[i] = tray_item_clone(c) }
@@ -130,6 +158,7 @@ tray_item_clone :: proc(it: Tray_Menu_Item) -> Tray_Menu_Item {
 tray_menu_free :: proc(items: []Tray_Menu_Item) {
 	for it in items {
 		delete(it.text)
+		delete(it.shortcut)
 		tray_menu_free(it.children)
 		delete(it.children)
 	}

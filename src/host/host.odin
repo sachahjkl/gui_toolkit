@@ -65,6 +65,10 @@ Open :: struct {
 	integrated_title: bool,   // platform.open_window's
 	headless:         bool,   // the first window only: no window of the system, the software renderer, the font compiled in
 	under_children:   bool,   // render.surface_init's: a window that gets a child window from elsewhere (a web view)
+	// an overlay window (platform.open_overlay) over the output at `overlay_area` (logical, on the desktop; all zero:
+	// the system's choice), shown at once. Its frames are cleared to transparent: only what the build draws shows
+	overlay:          bool,
+	overlay_area:     [4]int,
 }
 
 Host :: struct {
@@ -75,7 +79,7 @@ Host :: struct {
 	pacer:      render.Pacer,
 	paced:      bool,             // frames follow the pacer; else each is shown at once. The first window's by default
 	user:       rawptr,
-	background: draw.Color,       // what the frame is cleared to
+	background: draw.Color,       // what the frame is cleared to (an overlay's: always transparent)
 	partial_redraw: bool,         // each frame redraws only what changed in the interface (ui.set_partial_redraw); read at every frame
 	settle:     int,              // frames still owed, whatever else asks for one (what a change set off settles)
 	after_input: int,             // frames owed after an event
@@ -123,6 +127,8 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open, build: proc(h: ^Host, size: Ve
 	if first { font.init(&sh.fonts) }
 	if o.headless {
 		h.win = platform.open_window_offscreen(o.title, o.size)
+	} else if o.overlay {
+		h.win = platform.open_overlay(o.title, o.overlay_area)
 	} else {
 		h.win = platform.open_window(o.title, o.size, transparent = true, integrated_title = o.integrated_title)
 	}
@@ -300,7 +306,8 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	render.resize(r, h.win.size)
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
-	render.frame_begin(r, h.background)
+	// (an overlay shows the windows below wherever the build draws nothing, whatever `background` says)
+	render.frame_begin(r, platform.is_overlay(h.win) ? draw.Color{} : h.background)
 	ui.set_partial_redraw(&h.state, h.partial_redraw)
 	ui.draw_tree(&h.state, &sh.dc)
 	draw.end_frame(&sh.dc)

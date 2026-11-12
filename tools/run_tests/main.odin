@@ -105,6 +105,7 @@ STEPS := []Step{
 	{name = "ime", oses = EVERYWHERE},
 	{name = "instance"},
 	{name = "hotkey", oses = EVERYWHERE},
+	{name = "overlay", oses = EVERYWHERE},   // (the pure parts: no window opens)
 	{name = "notify", one = true, oses = EVERYWHERE},   // (Linux: a bus and a notification server of its own)
 	{name = "winrt", path = "src/winrt", oses = EVERYWHERE},
 	{name = "console_launcher", path = "src/console_launcher", oses = EVERYWHERE},

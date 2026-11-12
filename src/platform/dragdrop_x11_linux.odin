@@ -24,10 +24,10 @@ import "core:sys/posix"
 @(private = "file") X11_PUT_IMAGE_ROWS :: 64      // rows per request: a large picture passes the request limit of a server without BIG-REQUESTS
 @(private = "file") XCB_IMAGE_FORMAT_Z_PIXMAP :: 2
 @(private = "file") XCB_CW_BACK_PIXMAP :: 1 << 0
-@(private = "file") XCB_CW_BORDER_PIXEL :: 1 << 3
-@(private = "file") XCB_CW_OVERRIDE_REDIRECT :: 1 << 9
+@(private) XCB_CW_BORDER_PIXEL :: 1 << 3
+@(private) XCB_CW_OVERRIDE_REDIRECT :: 1 << 9
 @(private = "file") XCB_VISUAL_CLASS_TRUE_COLOR :: 4
-@(private = "file") X11_ARGB_DEPTH :: 32
+@(private) X11_ARGB_DEPTH :: 32
 
 @(private)
 x11_dnd_intern_atoms :: proc() {
@@ -619,9 +619,18 @@ X11_Image_Lib :: struct {
 // (of this thread: with its connection)
 @(private = "file", thread_local) x11_image: X11_Image_Lib
 
-// The first visual of 32 bits (a compositor blends its alpha), 0 when the screen has none.
-@(private = "file")
+// The first visual of 32 bits (a compositor blends its alpha), 0 when the screen has none. (Also an overlay's:
+// overlay_x11_linux.odin.)
+@(private)
 x11_argb_visual :: proc() -> u32 {
+	h := xcb.handle
+	if x11_image.allowed_depths == nil {
+		x11_image.allowed_depths = auto_cast lib_sym(h, "xcb_screen_allowed_depths_iterator")
+		x11_image.depth_next     = auto_cast lib_sym(h, "xcb_depth_next")
+		x11_image.depth_visuals  = auto_cast lib_sym(h, "xcb_depth_visuals")
+		x11_image.depth_visuals_len = auto_cast lib_sym(h, "xcb_depth_visuals_length")
+	}
+	if x11_image.allowed_depths == nil || x11_image.depth_next == nil || x11_image.depth_visuals == nil || x11_image.depth_visuals_len == nil { return 0 }
 	it := x11_image.allowed_depths(x11c.screen)
 	for it.rem > 0 {
 		if (^u8)(it.data)^ == X11_ARGB_DEPTH {

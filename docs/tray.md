@@ -7,7 +7,7 @@ toolkit's (`src/platform/tray.odin`); Windows implements it with `Shell_NotifyIc
 ```odin
 tray := platform.tray_create(app.win, #load("chat.png"), "Chat")
 platform.tray_set_menu(tray, {
-	{id = 1, text = "Open", default = true},
+	{id = 1, text = "Open", default = true, shortcut = "Ctrl+Shift+O"},
 	{kind = .Separator},
 	{id = 2, text = "Mute", kind = .Check, checked = app.muted},
 	{text = "Status", children = {{id = 10, text = "Online", kind = .Radio, checked = true}, {id = 11, text = "Away", kind = .Radio}}},
@@ -36,6 +36,14 @@ platform.tray_notify(tray, {title = "Ada", body = "Lunch?", icon = .App})
 | `tray_notify(t, Tray_Notify)` | a notification from the icon: title, body, icon (none, info, warning, error, the app's), silent, quiet time. Linux: shown by `notify`'s code, info is a low urgency and error a critical one. A notification with no icon and with buttons: [notifications.md](notifications.md) |
 | `tray_destroy(t)` | removes the icon; `destroy_window` removes the icons of the window |
 
+An item's `shortcut` shows the keys that do the same, in `hotkey_text` form (`"Ctrl+Print"`, `"Print"`; `""` none).
+The menu only shows them: the program binds the keys itself (`hotkey_register`, `gt:shortcuts`).
+
+- Windows: the item's text, a tab, then the shortcut. Windows draws it right-aligned.
+- Linux: dbusmenu's `shortcut` property (`aas`): the modifiers by dbusmenu's names (`Control`, `Alt`, `Shift`,
+  `Super`), then the key's XKB keysym name (`Print`, `q`, `F5`). `dbusmenu_shortcut(text)` makes that list. A text
+  that `hotkey_parse` refuses is not sent. The panel decides whether it shows the shortcut.
+
 Events (`Tray_Event_Kind`): `Click` (left click; Enter or Space on the icon: `keyboard`), `Double_Click` (a double click
 also makes a `Click` first, as the system reports it), `Right_Click`, `Middle_Click`, `Menu_Item` (`item` = the id),
 `Notify_Shown`, `Notify_Click`, `Notify_Timeout`, `Notify_Hidden`, `Hover_Open`, `Hover_Close`, `Recreated`. `pos` is in
@@ -50,4 +58,5 @@ id per window identifies it.
 Tests: `tests/tray` (the translation of the notifications, the calls to the shell through `tray_test_hook`, two icons on
 one window, a shell restart, menus, the native menu of a model read back with `GetMenuItemInfoW`, icons from pixels): no icon appears, `tray_inject` sends the shell's notifications
 through the window procedure. `tray_menu_build(items, &ids)` makes the native popup menu of a model (Windows: the
-caller destroys it; command n is the item `ids[n - 1]`) without showing it.
+caller destroys it; command n is the item `ids[n - 1]`) without showing it. `tests/hotkey/tray_shortcut_test.odin`
+tests the shortcut in both forms, on every system.

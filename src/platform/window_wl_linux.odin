@@ -47,6 +47,9 @@ Wl_Conn :: struct {
 	clear_buffer: Wl_Proxy,       // one transparent pixel, the picture of those bands (made on first use)
 	pointer_surface: Wl_Proxy,    // the surface the pointer is on: a window's, or the ring of its bands
 	toplevel_manager: Wl_Proxy,   // zwlr_foreign_toplevel_manager_v1 (optional): the session's windows (toplevels)
+	layer_shell: Wl_Proxy,        // zwlr_layer_shell_v1 (optional): overlay windows (overlay_wl_linux.odin)
+	xdg_output_manager: Wl_Proxy, // zxdg_output_manager_v1 (optional): the outputs' logical places
+	outputs:    [dynamic]^Wl_Output_Info,   // every wl_output (`output` is the first one's proxy)
 	toplevels:  [dynamic]Wl_Toplevel,
 	toplevel_serial: u64,         // the last toplevel's id
 	pointer:    Wl_Proxy,
@@ -133,6 +136,14 @@ Wl_Window_State :: struct {
 	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
 	frame_held:  bool,             // a picture waited for that word (wl_frame_shown_held): its coming asks for a repaint
 	outside:     Wl_Outside_Bands, // the resize bands around the window (outside_bands_wl_linux.odin)
+	// an overlay (open_overlay): a layer surface instead of a toplevel, on the output of that registry name (0: the
+	// compositor's choice)
+	overlay:     bool,
+	layer_surface: Wl_Proxy,
+	overlay_output: u32,
+	// set_input_region: the rects (logical) that take the pointer, when `input_limited`; kept so a new surface gets them
+	input_limited: bool,
+	input_rects: [dynamic][4]int,
 }
 
 @(private)
@@ -159,6 +170,7 @@ wl_connect_now :: proc() -> bool {
 	l := wayland_lib()
 	if !l.ok { return false }
 	wlc.windows.allocator = runtime.heap_allocator()   // (outlives whatever allocator the first window was made under)
+	wlc.outputs.allocator = runtime.heap_allocator()
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
 	sigpipe_ignored()
@@ -230,7 +242,14 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	switch s {
 	case "wl_compositor": wlc.compositor = bind(name, wl.compositor_interface, WL_COMPOSITOR_VERSION, version)
 	case "wl_shm":        wlc.shm = bind(name, wl.shm_interface, 1, version)
-	case "wl_output":     if wlc.output == nil { wlc.output = bind(name, wl.output_interface, 2, version); wl.proxy_add_listener(wlc.output, &output_listener, nil) }
+	case "wl_output":
+		// (each one, for an overlay's choice of output; the first one gives the scale of the windows)
+		o := wl_output_add(name, bind(name, wl.output_interface, 2, version))
+		if wlc.output == nil && o != nil { wlc.output = o.proxy }
+	case "zxdg_output_manager_v1":
+		wlc.xdg_output_manager = bind(name, &zxdg_output_manager_iface, ZXDG_OUTPUT_MANAGER_VERSION, version)
+		for o in wlc.outputs { wl_xdg_output_of(o) }
+	case "zwlr_layer_shell_v1": wlc.layer_shell = bind(name, &zwlr_layer_shell_iface, ZWLR_LAYER_SHELL_VERSION, version)
 	case "wl_seat":
 		if wlc.seat == nil {
 			wlc.seat = bind(name, wl.seat_interface, WL_SEAT_VERSION, version)
@@ -253,7 +272,10 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 }
 
 @(private)
-registry_global_remove :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32) {}
+registry_global_remove :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32) {
+	context = wl_ctx_real()
+	wl_output_remove(name)
+}
 
 ////////////////////////////////
 // xdg_wm_base (ping)
@@ -277,20 +299,29 @@ Output_Listener :: struct {
 	scale:    proc "c" (data: rawptr, o: Wl_Proxy, factor: i32),
 }
 @(private) output_listener := Output_Listener{output_geometry, output_mode, output_done, output_scale_ev}
+// (`data` is the output's Wl_Output_Info; the connection's own fields follow the first output, `wlc.output`)
 @(private)
-output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: i32, make, model: cstring, transform: i32) {}
+output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: i32, make, model: cstring, transform: i32) {
+	if info := (^Wl_Output_Info)(data); info != nil { info.position, info.transform = {x, y}, transform }
+}
 @(private)
-output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) { if flags & 1 != 0 { wlc.output_refresh_mhz = refresh; wlc.output_px = {w, h} } }
+output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) {
+	if flags & 1 == 0 { return }
+	if info := (^Wl_Output_Info)(data); info != nil { info.mode = {w, h} }
+	if o == wlc.output { wlc.output_refresh_mhz = refresh; wlc.output_px = {w, h} }
+}
 // A change of the output is complete: the windows' rate and monitor are read again, and a window without a fractional
 // scale follows the output's integer one. So does a window with one that the compositor has given no scale yet: it
 // sends one when the surface enters an output or gets its role, not to a surface that was never shown.
 @(private)
 output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {
 	context = wl_ctx_real()
+	if o != wlc.output { return }
 	for w in wlc.windows {
 		w.display_stale = true
 		st := wl_state(w)
-		if st.scale_given || w.dpi_scale == f32(wlc.output_scale) { continue }
+		// (an overlay's scale is its own output's: wl_open_overlay, fractional_preferred)
+		if st.overlay || st.scale_given || w.dpi_scale == f32(wlc.output_scale) { continue }
 		w.dpi_scale = f32(wlc.output_scale)
 		// (a hidden window has no surface: wl_surface_make sets the buffer scale of the next one)
 		if st.surface != nil && st.viewport == nil {
@@ -302,7 +333,11 @@ output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {
 	}
 }
 @(private)
-output_scale_ev :: proc "c" (data: rawptr, o: Wl_Proxy, factor: i32) { if factor > 0 { wlc.output_scale = factor } }
+output_scale_ev :: proc "c" (data: rawptr, o: Wl_Proxy, factor: i32) {
+	if factor <= 0 { return }
+	if info := (^Wl_Output_Info)(data); info != nil { info.scale = factor }
+	if o == wlc.output { wlc.output_scale = factor }
+}
 
 ////////////////////////////////
 // wl_seat and input
@@ -790,10 +825,15 @@ wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
 		if st.fractional != nil { wl.proxy_add_listener(st.fractional, &fractional_listener, st) }
 	}
 	wl_size_from_logical(w, st)
-	if wlc.output_scale > 1 && st.viewport == nil {
-		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, wlc.output_scale)
+	// (an overlay is on one output, whose integer scale wl_open_overlay put in dpi_scale)
+	buffer_scale := st.overlay ? i32(max(w.dpi_scale, 1)) : wlc.output_scale
+	if buffer_scale > 1 && st.viewport == nil {
+		wl.proxy_marshal_flags(st.surface, WL_SURFACE_SET_BUFFER_SCALE, nil, wl.proxy_get_version(st.surface), 0, buffer_scale)
 	}
-	if role { wl_role_make(w, st) }
+	wl_input_region_apply(st)
+	if role {
+		if st.overlay { wl_layer_make(st) } else { wl_role_make(w, st) }
+	}
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 	return true
 }
@@ -897,6 +937,10 @@ wl_role_make :: proc(w: ^Window, st: ^Wl_Window_State) {
 // (The decoration goes before its toplevel, as the protocol asks.)
 @(private)
 wl_role_destroy :: proc(st: ^Wl_Window_State) {
+	if st.layer_surface != nil {
+		wl.proxy_marshal_flags(st.layer_surface, ZWLR_LAYER_SURFACE_DESTROY, nil, wl.proxy_get_version(st.layer_surface), WL_MARSHAL_FLAG_DESTROY)
+		st.layer_surface = nil
+	}
 	if st.decoration != nil { wl.proxy_marshal_flags(st.decoration, ZXDG_TOPLEVEL_DECORATION_DESTROY, nil, wl.proxy_get_version(st.decoration), WL_MARSHAL_FLAG_DESTROY) }
 	if st.xdg_toplevel != nil { wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_DESTROY, nil, wl.proxy_get_version(st.xdg_toplevel), WL_MARSHAL_FLAG_DESTROY) }
 	if st.xdg_surface != nil { wl.proxy_marshal_flags(st.xdg_surface, XDG_SURFACE_DESTROY, nil, wl.proxy_get_version(st.xdg_surface), WL_MARSHAL_FLAG_DESTROY) }
@@ -935,6 +979,7 @@ wl_destroy :: proc(w: ^Window) {
 	wl_surface_destroy(st)
 	wl.display_flush(wlc.display)
 	delete(st.title)
+	delete(st.input_rects)
 	free(st)
 	w.wl = nil
 }
@@ -961,6 +1006,16 @@ wl_set_size :: proc(w: ^Window, px: [2]int) {
 @(private)
 wl_show :: proc(w: ^Window) {
 	st := wl_state(w)
+	if st.overlay {
+		// (shown from its opening; after a hide, a new surface and layer surface)
+		if st.surface != nil { return }
+		if !wl_surface_make(w, st, role = true) { return }
+		w.shown_again += 1
+		wl_first_configure_wait(st)
+		w.show = .Normal
+		w.paint_requested = true
+		return
+	}
 	if st.surface == nil || st.xdg_toplevel == nil {
 		st.toplevel = .Normal
 		if st.surface == nil {
@@ -974,13 +1029,7 @@ wl_show :: proc(w: ^Window) {
 			wl_role_make(w, st)
 			wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 		}
-		// A buffer before the first configure is acked is a protocol error, and a compositor may send that configure after
-		// a roundtrip (Hyprland lays the window out first): wait for it. The next frame's buffer maps the window.
-		deadline := time.tick_add(time.tick_now(), WL_FIRST_CONFIGURE_WAIT_MS * time.Millisecond)
-		for !st.acked && time.tick_diff(time.tick_now(), deadline) > 0 {
-			wl.display_roundtrip(wlc.display)
-			if !st.acked { poll_fd_wait(wlc.fd, WL_FIRST_CONFIGURE_POLL_MS) }
-		}
+		wl_first_configure_wait(st)
 		// a minimize asked before the show: the role exists and is configured, the next frame maps it minimized (as GTK's
 		// minimize of an unmapped window). No configure state says minimized: w.show stays the toplevel's.
 		if st.minimize_wanted {
@@ -995,6 +1044,17 @@ wl_show :: proc(w: ^Window) {
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 	wl.display_flush(wlc.display)
 	w.show = st.toplevel
+}
+
+// A buffer before the first configure is acked is a protocol error, and a compositor may send that configure after a
+// roundtrip (Hyprland lays the window out first): wait for it. The next frame's buffer maps the window.
+@(private)
+wl_first_configure_wait :: proc(st: ^Wl_Window_State) {
+	deadline := time.tick_add(time.tick_now(), WL_FIRST_CONFIGURE_WAIT_MS * time.Millisecond)
+	for !st.acked && time.tick_diff(time.tick_now(), deadline) > 0 {
+		wl.display_roundtrip(wlc.display)
+		if !st.acked { poll_fd_wait(wlc.fd, WL_FIRST_CONFIGURE_POLL_MS) }
+	}
 }
 
 // Asks the compositor to give the window the focus (xdg_activation_v1): a token for the surface, then `activate` with
