@@ -27,6 +27,9 @@ st := shortcuts.status(s, "region")   // {.Bound, "Print"}
 | `feed(s, event) -> bool` | Windows: a `Hotkey` event of the window that is one of the service's, taken. |
 | `hold(s, held)` | Windows: while a field records keys, the shortcuts let them go. |
 | `portal_trigger(hotkey) -> string` | the portal's format of a combination: `CTRL+SHIFT+a`, `LOGO+Print`. |
+| `status_text(asked, status, allocator) -> string` | a settings page's words of the state, plainly: "Works in every program: Print.", "The system gave other keys: …", "Waiting for the system's answer…" (`""`: nothing to say). `asked`: the keys the program asked for. |
+| `problem_text(asked, status, allocator) -> string` | what went wrong, for a red line: keys another program holds, refused, keys that do not parse, no shortcuts on this desktop (`""`: nothing). |
+| `same_keys(a, b) -> bool` | the same combination in other words: `Ctrl+Shift+4` and `CTRL+SHIFT+4`. |
 | `stop(s)` | |
 
 `State`: `Waiting`, `Bound`, `No_Keys` (none asked, none given), `Taken` (another program holds the keys: Windows),

@@ -1,0 +1,3 @@
+type: Added
+
+**prefs_page: the standard settings**: `standard_register` gives a program its look (theme, light or dark, finish, text size) and its place on the desktop (in the application menu, started with the session) with their words, and the page draws them with no code of the program's: the themes as cards (`Options.themes`), and global shortcuts that record keys and say what the system made of them (`Options.shortcuts`, `shortcut_prefs`; the words are `shortcuts.status_text` and `problem_text`). `back_bar` and `escape_leaves` show the settings in place of a program's main view, and `desktop.apply` makes the desktop what those settings ask.

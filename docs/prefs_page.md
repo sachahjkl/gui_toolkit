@@ -16,12 +16,45 @@ prefs_page.build(&page, &prefs, {
 		app.prefs_changed = true   // the loop saves: config.serialize_user, then config.write_user_file on a worker
 		apply(app)
 	},
-	custom_names = {"look.theme"},
+	themes = app.themes, themes_light = app.theme_shown.light,   // appearance.theme as cards
+	custom_names = {"look.font"},
 	custom  = proc(user: rawptr, name: string, em: f32) {   // the program's own control, under the words
-		if at := prefs_page.theme_cards(themes, current, light, em); at >= 0 { /* set look.theme */ }
+		/* a font picker */
 	},
 })
 ```
+
+## The standard settings
+
+Every program has the same look and the same place on the desktop. `standard_register` registers those preferences,
+with their titles, descriptions, choices, bounds and search tags; the page then draws them with no code of the program's.
+
+```odin
+d := prefs_page.STANDARD_DEFAULTS   // system, machined, 14 px, in the menu, not started with the session
+d.theme, d.app_name = "cliche", "cliche"
+prefs_page.standard_register(&prefs, {.Appearance, .Session}, d)
+config.register(&prefs, PREF_DEFS[:])   // the program's own, after them
+
+a := prefs_page.appearance_read(&prefs)   // what to apply; again after each change
+defer prefs_page.appearance_free(&a)
+ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
+```
+
+| Set | Preference | Control |
+|---|---|---|
+| `Appearance` (page `appearance`) | `appearance.theme` | the themes' cards when `Options.themes` is set |
+| | `appearance.mode`: `system`, `dark`, `light` | a segmented choice |
+| | `appearance.finish`: `machined`, `edged`, `flat`, `gradient`, `glass` | a segmented choice, or a list |
+| | `appearance.font_size`: 10 to 24 px | a slider |
+| `Session` (page `general`) | `general.menu`: in the application menu | a switch |
+| | `general.autostart`: start with the session | a switch |
+
+Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` off. `app_name` goes in the descriptions ("Start
+cliche with the session"); those texts are made in the `allocator` argument and must live as long as the registry. The
+names are fixed: the programs' files hold them. A program applies `general.menu` and `general.autostart` on a worker
+with `desktop.apply` ([desktop.md](desktop.md)).
+
+`appearance_read` reads a preference that is not registered as its standard default.
 
 ## What it shows
 
@@ -32,7 +65,7 @@ prefs_page.build(&page, &prefs, {
 - On the right: the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
   effect at the next start" when it applies) on the left, its control on the right, a reset button while the user's
-  value is set, a carved line under it.
+  value differs from the default, a carved line under it.
 - While a search is typed (title, name or description: `config.matches`): what matches in every page, under each page's
   title.
 
@@ -48,6 +81,8 @@ The controls:
 | other numbers, sizes in bytes | a field, its unit after it |
 | a name in `Options.custom_names` | the program's own (`Options.custom`), under the words |
 | a name in `Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
+| a `pref` of `Options.shortcut_prefs` | the same field, and what the system made of the keys under it (see below) |
+| `appearance.theme`, with `Options.themes` | the themes' cards, under the words |
 
 `Options.version` ("Papier 0.15.0") shows the program and its version at the bottom of the pages, above `foot`.
 
@@ -56,8 +91,33 @@ the program has to say under a line (a shortcut another program holds): it shows
 preference's state plainly, under its line, in the weak text (the keys a shortcut got). `Options.page_foot(user,
 category, em)` draws the program's own content under a page's preferences (not in a search): buttons, a list.
 
-While a preference of the page shown is the user's, a **Restore defaults** button beside the page's title puts all of
-them back (each through `Options.changed`, as its own reset button does).
+Each line whose value is the user's and differs from its default shows the reset button, whatever its control:
+`differs_from_default(prefs, name, keys)` says when (`keys`: compared as key combinations, so "ctrl+print" is
+"Ctrl+Print"). A value the user set equal to the default shows none. While one line of the page shown has it, a
+**Restore defaults** button beside the page's title puts all of them back (each through `Options.changed`, as its own
+reset button does).
+
+## Global shortcuts
+
+A program with global shortcuts ([shortcuts.md](shortcuts.md)) gives its service in `Options.shortcuts` and, in
+`Options.shortcut_prefs`, each preference that holds a shortcut's keys with the shortcut's id in the service:
+
+```odin
+SHORTCUTS := [?]prefs_page.Shortcut_Pref{{pref = "shortcut.region", id = "region"}, {pref = "shortcut.screen", id = "screen"}}
+opts.shortcuts, opts.shortcut_prefs = app.shortcuts, SHORTCUTS[:]
+```
+
+Each line records keys. Under it, in the weak text, `shortcuts.status_text` ("Works in every program: Ctrl+Print.", "The
+system gave other keys…", "Waiting for the system's answer…"); in red, `shortcuts.problem_text` ("Another program holds
+Ctrl+Print: choose other keys.", "The system refused this shortcut.", keys that do not parse). While a field records
+keys, the page holds the service (`shortcuts.hold`): Windows would take the very keys being recorded. The program's
+`status` and `problem` run for its other preferences.
+
+## Themes from the program
+
+With `Options.themes` (the program's list: its own theme, then `ui.THEMES`), `appearance.theme` shows as the themes'
+cards and a click sets it. The cards show the version `appearance.mode` asks; for `system`, the one the program shows
+now (`Options.themes_light`: its `ui.Theme_Shown.light`; the page does not ask the system each frame).
 
 A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `Options.updater`, and in `update_pref` the
 preference whose line shows it (its own switch, "update.auto"). Under that line: the state in words (`update.status_words`:
@@ -79,6 +139,34 @@ each value set or reset: save the file from there (`config.serialize_user`, then
 `theme_cards(list, current, light, em)` draws the themes of `list` three to a row, each in its own colours (its version
 `light`): its surface, its name in its text, its hues as dots, a ring of its accent around the one named `current`. It
 returns the index of the one clicked, or -1.
+
+## The settings in place of the main view
+
+A program with one window shows its settings in place of its main view (papier: in place of the history):
+
+```odin
+// the state: settings_open: bool, page: prefs_page.Page
+open_settings :: proc(app: ^App) {   // the gear button, Ctrl+,
+	app.settings_open = true
+	prefs_page.focus_search(&app.page)
+}
+
+// in the build
+if app.settings_open {
+	o := settings_options(app)
+	if !dialog_open && prefs_page.escape_leaves(&app.page) { app.settings_open = false }
+	if prefs_page.back_bar(&app.page, o, "Settings", "Back to the history (Escape)", em) { app.settings_open = false }
+	ui.next({width = ui.fill(), height = ui.fill()})
+	prefs_page.build(&app.page, &app.prefs, o)
+} else {
+	build_main_view(app)
+}
+```
+
+`back_bar(page, options, title, back_tip, em)` is a bar as wide as its parent: a back arrow (Lucide's `arrow-left` in
+`Options.icon_font`, else the word "Back") whose tooltip is `back_tip`, then the title. It returns true when the arrow
+was pressed. `escape_leaves(page)` is true when Escape was pressed and no editor of a preference has the keyboard: that
+Escape gives up the editor first.
 
 ## Keyboard
 

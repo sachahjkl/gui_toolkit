@@ -71,6 +71,26 @@ missing or incomplete, or when a part runs another executable (`stale_exe`: the 
 line, `parts_wanted` and `supported_parts` say which parts exist here, `menu_name`, `default_apps_name` and `targets` give the
 words of this system.
 
+### What the settings ask
+
+`apply(&o)` makes the desktop what `o` asks, and writes only what differs. A program calls it at each start and after a
+change of its `general.menu` or `general.autostart` preference ([prefs_page.md](prefs_page.md)), on a worker: it reads
+and writes files, and on Windows the registry.
+
+```odin
+o := desktop.options_make(IDENTITY)
+o.icons = ICONS
+o.start_menu, o.autostart = menu, autostart
+o.autostart_arguments = "--hidden"
+if r := desktop.apply(&o); r.error != .None { report(r.detail) }
+```
+
+- No part on: the integration is removed when there is one.
+- Some part on: `install` runs when the state is `Absent` or `Repair` (a part missing, or one that runs another copy).
+  Nothing is written when it is `Installed` and no part that is off is there (a launcher left from before
+  `general.menu` went off is taken away).
+- A platform with no integration returns no error.
+
 ## Windows
 
 | Part | What is written |

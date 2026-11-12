@@ -8,7 +8,10 @@
 //     while it is not at its default, a carved line under it.
 //   * While a search is typed: what matches in every page, under each page's title (config.Search).
 //
-// A preference can get a control of the program's own (Options.custom): the themes as cards (theme_cards), a font picker.
+// A preference can get a control of the program's own (Options.custom): a font picker. The standard preferences
+// (standard.odin) need none: Options.themes shows appearance.theme as cards, Options.shortcut_prefs shows global
+// shortcuts with what the system said of them. A program shows the page in place of its main view with back_bar and
+// escape_leaves.
 //
 // A change goes through config.set_from_string at the User layer, so every observer of the registry runs; then
 // Options.changed, where the program saves its file (config.serialize_user, config.write_user_file) and applies what changed.
@@ -22,7 +25,9 @@ import "../ascii"
 import config "../config"
 import "../draw"
 import "../font"
+import lucide "../lucide"
 import "../platform"
+import shortcuts "../shortcuts"
 import "../ui"
 import update "../update"
 
@@ -33,6 +38,10 @@ Page_Info :: struct {
 	category, title, icon: string,
 	names:                 []string,
 }
+
+// A global shortcut's preference: `pref` holds its keys (as platform.hotkey_text writes them), `id` is the shortcut's id
+// in the program's shortcuts.Service.
+Shortcut_Pref :: struct { pref, id: string }
 
 // What a program gives the page.
 Options :: struct {
@@ -69,6 +78,16 @@ Options :: struct {
 	foot:      string,         // a faint line under the pages ("prefs: prefs.txt")
 	// the program and its version ("Papier 0.15.0"): a line at the bottom of the pages, above the foot ("" none)
 	version:   string,
+	// the program's themes: appearance.theme shows as their cards (theme_cards), in the version appearance.mode asks
+	// (nil: appearance.theme is a field, or the program's custom control); when it asks the system's, themes_light says
+	// which version the program shows now (its ui.Theme_Shown.light: the page does not ask the system each frame)
+	themes:       []ui.Theme_Def,
+	themes_light: bool,
+	// the program's global shortcuts: each preference of shortcut_prefs records keys, and says under its line what the
+	// system made of them (shortcuts.status_text, shortcuts.problem_text); while a field records, the page holds the
+	// service (shortcuts.hold)
+	shortcuts:      ^shortcuts.Service,
+	shortcut_prefs: []Shortcut_Pref,
 }
 
 // The page's state, kept by the program between frames (destroy).
@@ -111,6 +130,42 @@ editing :: proc(p: ^Page) -> bool {
 	if k == 0 { return false }
 	for _, f in p.fields { if f.box == k { return true } }
 	return false
+}
+
+// Whether Escape leaves the settings shown in place of the program's main view: it was pressed, and no editor of a
+// preference has the keyboard (that Escape is the editor's). A program with its own dialogs open asks only when none is.
+escape_leaves :: proc(p: ^Page) -> bool {
+	return ui.key_press(.Escape) && !editing(p)
+}
+
+// A bar above the page shown in place of the main view: a back arrow (Lucide's in Options.icon_font, else the word),
+// whose tooltip is `back_tip` ("Back to the history (Escape)"), then `title`; as wide as its parent, 2.6 ems high. True
+// when the arrow was pressed. `p`: the page it leaves.
+back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (back: bool) {
+	ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.6)), axis = .X, cross = .Center})
+	if ui.row(id = "###prefs_back_bar") {
+		ui.spacer(ui.px(em * 0.5))
+		icon := o.icon_font != 0
+		if icon {
+			ui.next({width = ui.px(math.round(em * 2.1)), height = ui.px(math.round(em * 2.1)), font = o.icon_font, radius = em * 0.4})
+		} else {
+			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 2.1)), radius = em * 0.4})
+		}
+		sig: ui.Signal
+		if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###prefs_back", icon ? lucide.ARROW_LEFT : "Back")) }
+		ui.a11y_default(sig.box, {name = back_tip})
+		if ui.hovered_for(sig, 0.4) {
+			if ui.tooltip() {
+				ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 1.8))})
+				ui.label(fmt.tprintf("%s###tip", back_tip))
+			}
+		}
+		back = sig.clicked
+		ui.spacer(ui.px(em * 0.5))
+		ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.05), text_pad = 0})
+		ui.label(fmt.tprintf("%s###prefs_back_title", title))
+	}
+	return
 }
 
 // Sizes, in ems: the pages' column (with its icons alone, and the page width under which it is), the margins of the
@@ -175,6 +230,8 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 	if len(pages) == 0 { return }
 	cur := 0
 	for pg, i in pages { if pg.category == p.current { cur = i } }
+	// (Windows would take the very keys a field records: the shortcuts let them go meanwhile)
+	if o.shortcuts != nil && len(o.shortcut_prefs) > 0 { shortcuts.hold(o.shortcuts, ui.hotkey_recording()) }
 	config.search_begin(&p.search, ui.field_string(&p.query))
 	if ui.row(.Start, {.Draw_Background}, "###prefs_page") {
 		narrow := ui.parent_box().size.x > 0 && ui.parent_box().size.x < em * NARROW_EM
@@ -203,7 +260,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 						}
 					} else {
 						names := page_names(prefs, pages[cur])
-						if page_header(pages[cur].title, page_changed(prefs, names), o, em) {
+						if page_header(pages[cur].title, page_changed(prefs, o, names), o, em) {
 							for name in names {
 								e := config.entry(prefs, config.ref_of(prefs, name))
 								if e.source == .User { reset(p, prefs, o, name) }
@@ -324,13 +381,34 @@ nav_button :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bo
 	return sig.clicked
 }
 
-// Whether a preference of the page is the user's (not its default, not locked).
+// Whether a preference of the page is the user's and not its default.
 @(private = "file")
-page_changed :: proc(prefs: ^config.Prefs, names: []string) -> bool {
+page_changed :: proc(prefs: ^config.Prefs, o: Options, names: []string) -> bool {
 	for name in names {
-		if config.entry(prefs, config.ref_of(prefs, name)).source == .User { return true }
+		if differs_from_default(prefs, name, is_hotkey(o, name)) { return true }
 	}
 	return false
+}
+
+// Whether the preference holds a key combination: a field that records the keys.
+@(private = "file")
+is_hotkey :: proc(o: Options, name: string) -> bool {
+	if slice.contains(o.hotkeys, name) { return true }
+	_, ok := shortcut_of(o, name)
+	return ok
+}
+
+@(private = "file")
+shortcut_of :: proc(o: Options, name: string) -> (id: string, ok: bool) {
+	for sp in o.shortcut_prefs { if sp.pref == name { return sp.id, true } }
+	return
+}
+
+// Whether the preference's control goes under its words, drawn by control_under: the themes' cards, the program's own.
+@(private = "file")
+is_custom :: proc(o: Options, name: string) -> bool {
+	if len(o.themes) > 0 && name == THEME_PREF { return true }
+	return o.custom != nil && slice.contains(o.custom_names, name)
 }
 
 // The page's title, and while a preference of it is the user's, a button that puts them all back to their defaults.
@@ -403,7 +481,7 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 				ui.spacer(ui.px(em * 0.2))
 			}
 			ui.spacer(ui.px(em * 0.8))
-			if !locked && e.source == .User {
+			if !locked && differs_from_default(prefs, name, is_hotkey(o, name)) {
 				if reset_button(o, em) { reset(p, prefs, o, name) }
 				ui.spacer(ui.px(em * 0.3))
 			}
@@ -423,20 +501,26 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 			}
 		}
 		if o.updater != nil && name == o.update_pref { updater_under(o, em) }
-		if o.status != nil {
-			if said := o.status(o.user, name); said != "" {
-				if ui.tags("weak") {
-					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###status", said))
-				}
+		// (a global shortcut's lines are the toolkit's words of what the system said; the others', the program's)
+		said, why: string
+		if id, ok := shortcut_of(o, name); ok {
+			asked := strings.trim_space(e.value.s)
+			st := shortcuts.status(o.shortcuts, id)
+			said, why = shortcuts.status_text(asked, st), shortcuts.problem_text(asked, st)
+		} else {
+			if o.status != nil { said = o.status(o.user, name) }
+			if o.problem != nil { why = o.problem(o.user, name) }
+		}
+		if said != "" {
+			if ui.tags("weak") {
+				ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+				ui.paragraph(fmt.tprintf("%s###status", said))
 			}
 		}
-		if o.problem != nil {
-			if why := o.problem(o.user, name); why != "" {
-				if ui.tags("bad") {
-					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###problem", why))
-				}
+		if why != "" {
+			if ui.tags("bad") {
+				ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+				ui.paragraph(fmt.tprintf("%s###problem", why))
 			}
 		}
 		ui.spacer(ui.px(em * 0.5))
@@ -483,7 +567,7 @@ reset_button :: proc(o: Options, em: f32) -> bool {
 @(private = "file")
 control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32) -> bool {
 	name := e.def.name
-	if o.custom != nil && slice.contains(o.custom_names, name) { return false }   // (under the words: control_under)
+	if is_custom(o, name) { return false }   // (under the words: control_under)
 	switch e.def.kind {
 	case .Bool:
 		v := e.value.b
@@ -491,7 +575,7 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 		ui.a11y({name = config.title_of(e.def)})
 		if ui.toggle("###sw", "", &v).clicked { apply(p, prefs, o, name, v ? "true" : "false") }
 	case .String:
-		if slice.contains(o.hotkeys, name) {
+		if is_hotkey(o, name) {
 			hk, _ := platform.hotkey_parse(e.value.s)
 			ui.next({width = ui.px(em * 13), height = ui.px(math.round(em * CONTROL_H_EM))})
 			if ui.hotkey_field("###keys", &hk) { apply(p, prefs, o, name, platform.hotkey_text(hk)) }
@@ -540,9 +624,23 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 	return true
 }
 
-// A control under the words: the program's own (Options.custom), or a choice too wide for the line.
+// A control under the words: the themes' cards, the program's own (Options.custom), or a choice too wide for the line.
 @(private = "file")
 control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32) {
+	if len(o.themes) > 0 && e.def.name == THEME_PREF && e.def.kind == .String {
+		// (the cards in the version the look shows: appearance.mode's, or the one the program shows for the system's)
+		light := o.themes_light
+		if m := config.ref_of(prefs, MODE_PREF); m != config.NO_REF {
+			#partial switch ui.theme_mode_of(config.get_string(prefs, m)) {
+			case .Dark:  light = false
+			case .Light: light = true
+			}
+		}
+		if at := theme_cards(o.themes, e.value.s, light, em); at >= 0 {
+			apply(p, prefs, o, THEME_PREF, o.themes[at].name)
+		}
+		return
+	}
 	if o.custom != nil && slice.contains(o.custom_names, e.def.name) { o.custom(o.user, e.def.name, em); return }
 	if e.def.kind == .String {
 		labels, values := choices_of(o, e)

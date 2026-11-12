@@ -256,3 +256,28 @@ linux_user_dirs_desktop :: proc(t: ^testing.T) {
 	_, found = user_dirs_desktop("XDG_MUSIC_DIR=\"$HOME/Music\"\n", "/home/ada")
 	testing.expect(t, !found)
 }
+
+// What the settings ask (apply): the launcher, then the start with the session alone (the launcher goes), then nothing.
+@(test)
+linux_apply_follows_the_settings :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.register_browser = false
+	expect_ok(t, apply(o))
+	st := status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, st.parts[.Launcher].present && !st.parts[.Autostart].present, "the launcher alone")
+	expect_ok(t, apply(o))   // (nothing differs: nothing written, nothing refused)
+
+	o.start_menu, o.autostart = false, true
+	expect_ok(t, apply(o))
+	st = status(o, context.temp_allocator)
+	testing.expect(t, !st.parts[.Launcher].present, "the launcher went with general.menu")
+	testing.expect(t, st.parts[.Autostart].present, "the start with the session came")
+
+	o.autostart = false
+	expect_ok(t, apply(o))
+	st = status(o, context.temp_allocator)
+	testing.expect(t, !st.parts[.Launcher].present && !st.parts[.Autostart].present, "nothing asked: nothing there")
+}
