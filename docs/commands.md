@@ -44,7 +44,8 @@ ui.shortcuts_sheet("keys", COMMANDS[:], &sheet_open)
 
 The palette is a dialog (`modal_sized`: its edges and its corner's grip resize it, `PALETTE_WIDTH_EM` by
 `PALETTE_HEIGHT_EM` at first, never under `PALETTE_MIN_EM`) with a field at its top and the commands under it; a command's
-`icon` (a glyph of the state's `icon_font`) shows before its label. Up, Down, Page Up, Page Down move the selection;
+`icon` (a glyph of the state's `icon_font`) shows before its label. Its list holds a whole number of lines at any size
+(what is left of a line goes under it), so the foot never cuts its last line. Up, Down, Page Up, Page Down move the selection;
 the pointer moving over a line selects it. What is typed keeps the commands whose label
 (or label and group) holds it whole, or in pieces that each begin a word, the words in order (`fuzzy_words`: "prio" finds
 "Raise the priority", "ks" "Keyboard shortcuts"; letters scattered in a word match nothing, so "prio" does not find

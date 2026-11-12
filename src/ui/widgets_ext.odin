@@ -296,6 +296,15 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, {1, 1, 1, 1}, rad(kd * 0.5))
 }
 
+// The part of a switch or a slider that is off: a tint of the text, so that it shows on any surface (the theme's "track"
+// is a surface, the colour of a dialog in some themes: a slider's track on it was not seen, only its lit run).
+@(private = "file")
+off_track :: proc() -> Color {
+	c := color("text")
+	c.a = TOGGLE_TRACK_ALPHA
+	return tuned(c)
+}
+
 // Switch (named `toggle` because `switch` is an Odin keyword).
 toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 	em := font_size()
@@ -313,9 +322,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 		d := frame_new(Toggle_Draw)
 		d.t = anim(key_from_string(row_box.key, "t"), value^ ? 1 : 0, TOGGLE_RATE)
 		d.hot, d.active = row_box.hot_t, row_box.active_t
-		d.track = color("text")
-		d.track.a = TOGGLE_TRACK_ALPHA
-		d.track = tuned(d.track)
+		d.track = off_track()
 		d.accent = color("accent")
 		custom("track", toggle_draw, d)
 		spacer(px(em * 0.4))
@@ -453,7 +460,7 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	t := clamp((value^ - lo) / (hi - lo), 0, 1)
 	d.t1 = anim(key_from_string(b.key, "t"), t, SLIDER_RATE, t)
 	d.hot, d.active = b.hot_t, b.active_t
-	d.track, d.accent, d.text = color("track"), color("accent"), color("text")
+	d.track, d.accent, d.text = off_track(), color("accent"), color("text")
 	d.value_text = strings.index_byte(format, '%') >= 0 ? fmt.aprintf(format, value^, allocator = frame_allocator()) : format
 	d.mono = mono_font()
 	b.custom, b.custom_user = slider_draw, d
@@ -501,7 +508,7 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 	d.t0 = anim(key_from_string(b.key, "t0"), t0, SLIDER_RATE, t0)
 	d.t1 = anim(key_from_string(b.key, "t1"), t1, SLIDER_RATE, t1)
 	d.hot, d.active = b.hot_t, b.active_t
-	d.track, d.accent, d.text = color("track"), color("accent"), color("text")
+	d.track, d.accent, d.text = off_track(), color("accent"), color("text")
 	d.value_text = fmt.aprintf("%.0f-%.0f", lo_v^, hi_v^, allocator = frame_allocator())
 	d.mono = mono_font()
 	b.custom, b.custom_user = slider_draw, d

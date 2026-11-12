@@ -187,6 +187,27 @@ every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) {
 	}
 }
 
+// A slider's track shows on the theme's "track" surface (a dialog's colour in some themes): at 0, its whole length is
+// the part that is off, and it is not the colour under it.
+@(test)
+a_sliders_track_shows_on_any_surface :: proc(t: ^testing.T) {
+	Run :: struct { value: f32 }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		fixed_box("###surface", 0, 0, 320, 200, ui.color("track"))
+		ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(280), height = ui.px(30)})
+		ui.slider("###sl", &r.value, 0, 1)
+	}})
+	b := session.get(s, "sl")
+	img := session.capture(s)
+	// (halfway along the track, away from the knob at its left end and the value at its right)
+	x := int(b.rect.min.x + (b.rect.max.x - b.rect.min.x) * 0.4)
+	cy := int((b.rect.min.y + b.rect.max.y) * 0.5)
+	surface := session.pixel(img, x, int(b.rect.min.y) + 2)
+	testing.expect(t, !session.near(session.pixel(img, x, cy), surface, 8), "the track is not the surface's colour")
+}
+
 // A cascade: each character from the first face that has it (no system font in this: both faces are compiled in).
 @(test)
 a_cascade_takes_each_character_from_its_face :: proc(t: ^testing.T) {

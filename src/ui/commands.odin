@@ -264,9 +264,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 	p.mouse = mouse
 	before := p.size
 	if modal_sized("palette", {em * PALETTE_WIDTH_EM, em * PALETTE_HEIGHT_EM}, &p.size, &p.open, {em * PALETTE_MIN_EM.x, em * PALETTE_MIN_EM.y}, top = PALETTE_TOP) {
+		// (the strip, the gaps and the foot in whole pixels: the list's height is what is left, cut to whole lines below)
+		top_h := math.round(dense(em * 2.6))
+		gap_h := math.round(em * 0.3)
+		foot_h := math.round(opts.foot != "" ? dense(em * 2) : em * 0.4)
 		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's, but the
 		// darker background of a field, so that it reads as the place to type: dialog_top_draw)
-		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, radius = em * DIALOG_RADIUS_EM})
+		next({width = fill(), height = px(top_h), axis = .X, cross = .Center, radius = em * DIALOG_RADIUS_EM})
 		if row(.Center, {}, "###palette_top") {
 			parent_box().custom = dialog_top_draw
 			spacer(px(em * 0.8))
@@ -296,7 +300,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			}
 			spacer(px(em * 0.8))
 		}
-		spacer(px(em * 0.3))
+		spacer(px(gap_h))
+		// The list ends on a whole line: what a line short of it is left goes under the list, so that the foot never
+		// cuts its last line in half.
+		dialog := parent_box()
+		inner := gs().modal_stack[len(gs().modal_stack) - 1].wh.y - 2 * border_inset(dialog)
+		avail := max(inner - top_h - gap_h - foot_h, 0)
+		rest := avail >= row_h ? avail - math.floor(avail / row_h) * row_h : 0
 		next({width = fill(), height = fill()})
 		if scroll_y("###palette_list") {
 			lb := parent_box()
@@ -368,8 +378,9 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 				pop_tags()
 			}
 		}
+		spacer(px(rest))
 		if opts.foot != "" {
-			next({width = fill(), height = px(dense(em * 2)), axis = .X, cross = .Center})
+			next({width = fill(), height = px(foot_h), axis = .X, cross = .Center})
 			if row(.Center, {.Draw_Side_Top}, "###palette_foot") {
 				spacer(px(em * 0.7))
 				if tags("weak") {
@@ -379,7 +390,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 				spacer(px(em * 1.4))   // (the corner's grip)
 			}
 		} else {
-			spacer(px(em * 0.4))
+			spacer(px(foot_h))
 		}
 	}
 	resized = p.size != before

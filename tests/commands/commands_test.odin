@@ -3,6 +3,7 @@
 //   odin run tools/run_tests -- commands   (on Linux it needs the native text backend: tools/tk build_text)
 package commands_test
 
+import "core:math"
 import "core:slice"
 import "core:testing"
 import "../../src/font"
@@ -330,6 +331,34 @@ palette_options :: proc(t: ^testing.T) {
 	frame(&f, {key(.Return, {.Ctrl})}, build_palette, &r)
 	testing.expect_value(t, r.chosen, 0)
 	testing.expect_value(t, r.mods, platform.Modifiers{.Ctrl})
+}
+
+// The palette's list ends on a whole line, whatever the dialog's height: the foot under it never cuts its last line.
+@(test)
+the_palettes_list_ends_on_a_whole_line :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Palette_Run{chosen = -1}
+	defer ui.palette_destroy(&r.pal)
+	r.enabled = {true, true, true, true}
+	r.opts = {foot = "Enter: run"}
+	for h in ([]f32{300, 317, 331}) {
+		r.pal.size = {500, h}
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
+		frame(&f, nil, build_palette, &r)
+		frame(&f, {typed('k')}, build_palette, &r)   // (a search: lines only, no headings)
+		frame(&f, nil, build_palette, &r)
+		list := ui.box_from_key(ui.key_from_string(ui.key_from_string(f.s.root.key, "###modal_palette"), "###palette_list"))
+		if !testing.expect(t, list != nil && list.first != nil, "the list and a line") { return }
+		row_h := list.first.rect.max.y - list.first.rect.min.y
+		list_h := list.rect.max.y - list.rect.min.y
+		testing.expectf(t, row_h > 0 && list_h >= row_h && abs(list_h - math.round(list_h / row_h) * row_h) < 0.5, "%v: the list (%v px) holds whole lines of %v px", h, list_h, row_h)
+		foot := find_text(&f, "Enter: run")
+		if testing.expect(t, foot != nil, "the foot line") { testing.expect(t, foot.rect.min.y >= list.rect.max.y, "the foot under the list") }
+		frame(&f, {key(.Escape)}, build_palette, &r)
+		frame(&f, nil, build_palette, &r)
+	}
 }
 
 // A box of the last build that shows `text` (nil: none).
