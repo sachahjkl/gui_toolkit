@@ -62,6 +62,13 @@ shape_rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 @(private) SCROLLBAR_THUMB_REST_ALPHA :: 0.22
 @(private = "file") SCROLLBAR_THUMB_HOT_ALPHA :: 0.4
 @(private = "file") SCROLLBAR_THUMB_HELD_ALPHA :: 0.55
+// the thumb drawn as a thing to take (every finish but Flat): a rim a little stronger than its face, and three grip lines across
+// its middle, cut in the background's colour; the lines only on a thumb long enough to hold them
+@(private = "file") SCROLLBAR_RIM_ALPHA :: 0.18
+@(private = "file") SCROLLBAR_GRIP_ALPHA :: 0.7
+@(private = "file") SCROLLBAR_GRIP_LINES :: 3
+@(private = "file") SCROLLBAR_GRIP_PITCH_PX :: 3
+@(private = "file") SCROLLBAR_GRIP_SPAN :: 0.5   // of the thumb's width
 @(private = "file") SCROLLBAR_KEY_SALT :: 0x5c5c_5c5c
 @(private = "file") SCROLLBAR_X_KEY_SALT :: 0x5c5c_5c5d
 @(private = "file") SCROLLBAR_REVEAL_MS :: 900
@@ -246,6 +253,28 @@ scrollbar_drag :: proc(s: ^State) {
 	s.anim_busy = true
 }
 
+// A thumb's rim and its grip lines, across it (horizontal lines on a vertical bar), where it is long enough for them.
+@(private = "file")
+scrollbar_thumb_marks :: proc(s: ^State, dc: ^draw.Context, b: ^Box, thumb: Rect, face: Color, radius: f32, axis: Axis, shows: f32) {
+	px := max(math.round(s.scale), 1)
+	rim := face
+	rim.a = min(1, face.a + SCROLLBAR_RIM_ALPHA * shows)
+	draw.rect(dc, thumb, tuned(rim), radius, px)
+	across := axis == .Y ? thumb.max.x - thumb.min.x : thumb.max.y - thumb.min.y
+	along := axis == .Y ? thumb.max.y - thumb.min.y : thumb.max.x - thumb.min.x
+	pitch := math.round(SCROLLBAR_GRIP_PITCH_PX * s.scale)
+	if along < pitch * (SCROLLBAR_GRIP_LINES + 3) { return }
+	line := color_from_tags(s, b.tags_key, "background")
+	line.a = SCROLLBAR_GRIP_ALPHA * shows
+	half := math.round(across * SCROLLBAR_GRIP_SPAN * 0.5)
+	mid := draw.rect_center(thumb)
+	for k in 0 ..< SCROLLBAR_GRIP_LINES {
+		at := math.round(mid[axis == .Y ? 1 : 0] + (f32(k) - f32(SCROLLBAR_GRIP_LINES - 1) * 0.5) * pitch)
+		r := axis == .Y ? Rect{{mid.x - half, at}, {mid.x + half, at + px}} : Rect{{at, mid.y - half}, {at + px, mid.y + half}}
+		draw.rect(dc, r, tuned(line))
+	}
+}
+
 @(private)
 draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 	track, thumb, ok := scrollbar_geom(b, axis)
@@ -263,7 +292,9 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 	}
 	glyph := c
 	c.a = (active && s.sb_arrow == 0 ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
-	draw.rect(dc, thumb, tuned(c), w * 0.5 * rounding(s))
+	radius := w * 0.5 * rounding(s)
+	draw.rect(dc, thumb, tuned(c), radius)
+	if s.theme == nil || s.theme.finish != .Flat { scrollbar_thumb_marks(s, dc, b, thumb, c, radius, axis, shows) }
 	if axis == .X { return }
 	start, end, arrows := scrollbar_arrow_rects(b)
 	if !arrows { return }
