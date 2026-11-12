@@ -51,7 +51,7 @@ Platform and system
   winrt.md            winrt: Windows Runtime APIs
   setup.md            setup: a program installs itself
   update.md           update: signed updates
-  http.md             http: one GET
+  http.md             http: requests
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
   config.md           config: preferences
