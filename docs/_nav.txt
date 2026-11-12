@@ -27,6 +27,7 @@ Widgets and layout
   autoscroll.md       Middle-click autoscroll
   data-views.md       Tables, graphs and meters
   preview.md          Preview: zoom and pan
+  markdown.md         markdown: Markdown in a window
   dragdrop.md         Drag and drop
   accessibility.md    Accessibility
   i18n.md             i18n: the text shown

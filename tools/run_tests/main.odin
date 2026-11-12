@@ -108,6 +108,7 @@ STEPS := []Step{
 	{name = "placement"},
 	{name = "placement_text", oses = EVERYWHERE},
 	{name = "preview", one = true, oses = EVERYWHERE, text = true},
+	{name = "markdown", one = true, oses = EVERYWHERE, text = true},
 	{name = "svg", text = true, oses = EVERYWHERE},
 	{name = "mermaid", one = true, need = .Mermaid_Lib, text = true, oses = EVERYWHERE},   // (Linux: tk ci builds the library first)
 	{name = "size_move"},
