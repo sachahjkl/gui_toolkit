@@ -1,9 +1,9 @@
 package ui
 
 // A field that records a key combination (a program's global shortcut, a command's keys): a click, or Enter or Space
-// while it has the keyboard, arms it; the next combination pressed with Ctrl, Shift or Alt is its value. Escape gives the
-// recording up, and so does the keyboard going elsewhere. Nothing is typed: a key Key does not name is taken by the
-// character it types (platform.Hotkey.char: the French ù).
+// while it has the keyboard, arms it; the next combination pressed with Ctrl, Shift, Alt or Super (Event.super) is its
+// value. Escape gives the recording up, and so does the keyboard going elsewhere. Nothing is typed: a key Key does not
+// name is taken by the character it types (platform.Hotkey.char: the French ù).
 //
 //   if ui.hotkey_field("###keys", &app.hotkey) { save(app.hotkey) }
 //

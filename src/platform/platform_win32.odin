@@ -1102,11 +1102,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_KEYDOWN, win.WM_SYSKEYDOWN:
 		key := key_from_vk(wparam)
-		if key != .None && key_changes(w, key, true) { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & KEYDOWN_WAS_DOWN_BIT) != 0}) }
+		if key != .None && key_changes(w, key, true) { push(w, {kind = .Key_Press, key = key, mods = current_mods(), repeat = (lparam & KEYDOWN_WAS_DOWN_BIT) != 0, super = super_held()}) }
 		// a key Key does not name: its character on the layout, with no modifier (the high bit: a dead key)
 		if key == .None && (lparam & KEYDOWN_WAS_DOWN_BIT) == 0 {
 			if ch := MapVirtualKeyW(u32(wparam), MAPVK_VK_TO_CHAR) & 0x7FFF_FFFF; ch > ' ' && ch != 0x7F {
-				push(w, {kind = .Key_Press, char = unicode_lower(rune(ch)), mods = current_mods()})
+				push(w, {kind = .Key_Press, char = unicode_lower(rune(ch)), mods = current_mods(), super = super_held()})
 			}
 		}
 		// no menu-bar beep on Alt+key; Alt+F4 closes, Alt+Space opens the system menu
@@ -1114,7 +1114,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_KEYUP, win.WM_SYSKEYUP:
 		key := key_from_vk(wparam)
 		// (Print Screen sends no WM_KEYDOWN: its release is its press too)
-		if key == .Print { push(w, {kind = .Key_Press, key = key, mods = current_mods()}) }
+		if key == .Print { push(w, {kind = .Key_Press, key = key, mods = current_mods(), super = super_held()}) }
 		if key != .None && key_changes(w, key, false) { push(w, {kind = .Key_Release, key = key, mods = current_mods()}) }
 
 	case win.WM_CHAR:
@@ -1191,3 +1191,7 @@ foreign user32_map { MapVirtualKeyW :: proc(code: u32, map_type: u32) -> u32 ---
 // (MapVirtualKeyW gives a letter in capitals: the key types it in small letters without Shift)
 @(private = "file")
 unicode_lower :: proc(r: rune) -> rune { return unicode.to_lower(r) }
+
+// Whether a Windows key is held: Super, which is not a Modifier (Event.super).
+@(private = "file")
+super_held :: proc() -> bool { return win.GetKeyState(win.VK_LWIN) < 0 || win.GetKeyState(win.VK_RWIN) < 0 }

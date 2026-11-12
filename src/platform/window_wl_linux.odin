@@ -611,12 +611,13 @@ wl_key_emit :: proc(w: ^Window, keycode: u32, press, repeat: bool) {
 	k := xkb_lib()
 	kk := key_from_xkb(wlc.xkb_keymap, wlc.xkb_state, keycode)
 	mods := wl_mods()
-	if kk != .None && key_changes(w, kk, press) { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat}) }
+	super := wl_super()
+	if kk != .None && key_changes(w, kk, press) { wl_push(w, {kind = press ? .Key_Press : .Key_Release, key = kk, mods = mods, repeat = repeat, super = super}) }
 	// a key Key does not name: the character of its first level, with no modifier (a recorder of shortcuts reads it)
 	if kk == .None && press && !repeat && k.keymap_key_get_syms_by_level != nil && k.state_key_get_layout != nil {
 		syms: [^]Xkb_Keysym
 		if k.keymap_key_get_syms_by_level(wlc.xkb_keymap, keycode, k.state_key_get_layout(wlc.xkb_state, keycode), 0, &syms) >= 1 {
-			if ch := rune(k.keysym_to_utf32(syms[0])); ch > ' ' && ch != RUNE_DEL { wl_push(w, {kind = .Key_Press, char = ch, mods = mods}) }
+			if ch := rune(k.keysym_to_utf32(syms[0])); ch > ' ' && ch != RUNE_DEL { wl_push(w, {kind = .Key_Press, char = ch, mods = mods, super = super}) }
 		}
 	}
 	if press && .Ctrl not_in mods && .Alt not_in mods {
@@ -665,6 +666,14 @@ kb_modifiers :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, dep, latched, lock
 kb_repeat :: proc "c" (data: rawptr, kb: Wl_Proxy, rate, delay: i32) {
 	wlc.key_repeat.rate, wlc.key_repeat.delay_ms = int(rate), int(delay)
 	if rate <= 0 { wlc.key_repeat.held = false }
+}
+
+// Whether the Super key is held (xkb's Mod4, where every layout puts it).
+@(private)
+wl_super :: proc "contextless" () -> bool {
+	k := &xkb
+	if !k.ok || wlc.xkb_state == nil { return false }
+	return k.state_mod_name_is_active(wlc.xkb_state, "Mod4", XKB_STATE_MODS_EFFECTIVE) > 0
 }
 
 @(private)

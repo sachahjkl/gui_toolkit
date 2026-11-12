@@ -920,7 +920,8 @@ x11_key :: proc(w: ^Window, keycode: u32, state: u16, press: bool) {
 	mods := x11_mods(state)
 	if key != .None {
 		repeat := press && key in w.keys_down
-		if key_changes(w, key, press) { x11_push(w, {kind = press ? .Key_Press : .Key_Release, key = key, mods = mods, repeat = repeat}) }
+		// (Mod4Mask: the Super key, where every layout puts it)
+		if key_changes(w, key, press) { x11_push(w, {kind = press ? .Key_Press : .Key_Release, key = key, mods = mods, repeat = repeat, super = state & 0x40 != 0}) }
 	}
 	if press && text != 0 && .Ctrl not_in mods && .Alt not_in mods {
 		x11_push(w, {kind = .Text, text = text, mods = mods})

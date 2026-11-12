@@ -296,7 +296,7 @@ key_take :: proc() -> (hk: platform.Hotkey, ok: bool) {
 		if s.events.consumed[i] || e.kind != .Key_Press || (e.key == .None && e.char == 0) { continue }
 		if e.key == .Shift || e.key == .Ctrl || e.key == .Alt { continue }
 		s.events.consumed[i] = true
-		return {key = e.key, mods = e.mods, char = e.key == .None ? e.char : 0}, true
+		return {key = e.key, mods = e.mods, super = e.super, char = e.key == .None ? e.char : 0}, true
 	}
 	return
 }

@@ -840,6 +840,19 @@ a_hotkey_field_records_the_keys_pressed :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Ctrl+Shift+ù") != nil)
 }
 
+// Super is a shortcut's modifier like the others: Super+S alone is a shortcut, recorded with its Super.
+@(test)
+a_hotkey_field_records_super :: proc(t: ^testing.T) {
+	s := hotkey_session(t)
+	session.click(s, "keys")
+	session.event(s, {kind = .Key_Press, key = .S, super = true})
+	session.frame(s)
+	session.frame(s)
+	testing.expect_value(t, recorded, platform.Hotkey{key = .S, super = true})
+	testing.expect(t, !ui.hotkey_recording(), "done")
+	testing.expect(t, session.find_text(s, platform.hotkey_text({key = .S, super = true})) != nil, "it shows")
+}
+
 // Escape gives the recording up: the value stays.
 @(test)
 escape_gives_a_hotkey_recording_up :: proc(t: ^testing.T) {
