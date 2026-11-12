@@ -1111,12 +1111,7 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false, width: S
 	defer pop_disabled()
 	if tags("button") {
 		set_next_axis(.X, .Center)
-		w := width
-		if w != {} && w.least == 0 {
-			// (a share of the row is never narrower than what is in it: its label is never cut, nor drawn over its padding)
-			w.least = math.ceil(em * 1.9 + (glyph != "" ? em * 1.5 : 0) + text_width(top_style().font, em, text_shown(text)))
-		}
-		s.next_mod.width = width == {} ? children_sum() : w
+		s.next_mod.width = width == {} ? children_sum() : width
 		s.next_mod.height = px(dense(em * 2.2))
 		s.next_mod.radius = em * 0.45
 		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
@@ -1133,9 +1128,14 @@ button_icon :: proc(id: string, glyph, text: string, disabled := false, width: S
 				build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph))
 			}
 			next({width = text_size(), height = pct(1)})
-			build_box({.Draw_Text}, text)
+			label := build_box({.Draw_Text}, text)
 			if width != {} { spacer(fill()) }
 			spacer(px(em * 0.95))
+			// (a share of the row is never narrower than what is in it, its padding on both sides included: the label,
+			// measured as the layout will (its text and text_pad), is never cut nor drawn against an edge)
+			if width != {} && width.least == 0 {
+				b.pref[.X].least = math.ceil(em * 0.95 * 2 + (glyph != "" ? em * 1.5 : 0) + label.text_dim.x + 2 * label.text_pad)
+			}
 		}
 	}
 	return
