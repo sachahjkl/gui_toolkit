@@ -94,6 +94,7 @@ STEPS := []Step{
 	{name = "frame_slots", oses = EVERYWHERE},
 	{name = "fsx"},
 	{name = "store", oses = EVERYWHERE},
+	{name = "notices", oses = EVERYWHERE},
 	{name = "capture", oses = EVERYWHERE},
 	{name = "gif", oses = EVERYWHERE},
 	{name = "image", text = true, oses = EVERYWHERE},   // (text = true: watermark_text's test draws the embedded face)
