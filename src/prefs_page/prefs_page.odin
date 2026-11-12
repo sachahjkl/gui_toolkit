@@ -11,7 +11,7 @@
 // A preference can get a control of the program's own (Options.custom): the themes as cards (theme_cards), a font picker.
 //
 // A change goes through config.set_from_string at the User layer, so every observer of the registry runs; then
-// Options.changed, where the program saves its file (config.save_user) and applies what changed.
+// Options.changed, where the program saves its file (config.serialize_user, config.write_user_file) and applies what changed.
 package tk_prefs_page
 
 import "core:fmt"

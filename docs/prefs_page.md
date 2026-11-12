@@ -13,7 +13,7 @@ prefs_page.build(&page, &prefs, {
 	icon_font = app.icons, search_icon = ICO_SEARCH, reset_icon = ICO_RESET,
 	changed = proc(user: rawptr, name: string) {   // a value was set or reset
 		app := (^App)(user)
-		config.save_user(&app.prefs, prefs_file())
+		app.prefs_changed = true   // the loop saves: config.serialize_user, then config.write_user_file on a worker
 		apply(app)
 	},
 	custom_names = {"look.theme"},
@@ -67,7 +67,7 @@ its text on Enter or when it loses the keyboard; a refused value stays as it was
 ("out of range: 1 to 64 KB"). A slider applies its value when the drag ends, or at each key; while it is held,
 `Options.preview(user, name, value)` gets each value it moves to, for the program to show at once (a rounding, a size)
 without writing it. `Options.changed` runs after
-each value set or reset: save the file there (`config.save_user`) and apply the change.
+each value set or reset: save the file from there (`config.serialize_user`, then `config.write_user_file`) and apply the change.
 
 ## Themes as cards
 

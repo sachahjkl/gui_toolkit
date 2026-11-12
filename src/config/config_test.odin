@@ -16,6 +16,10 @@ DEFS := [?]Def{
 	{name = "ui.mode", description = "Mode", kind = .String, default = {s = "auto"}, choices = {"auto", "dark", "light"}, restart = true},
 }
 
+// What a program does on one thread: the text, then the file.
+@(private = "file")
+save :: proc(p: ^Prefs, path: string) -> bool { return write_user_file(path, serialize_user(p, context.temp_allocator)) }
+
 @(private = "file")
 Seen :: struct { names: [dynamic]string, calls: int }
 
@@ -171,7 +175,7 @@ persistence :: proc(t: ^testing.T) {
 		set_from_string(&p, "net.agent", "tab\tand\nnewline\\", .User)
 		set_from_string(&p, "ui.scale", "2", .Command_Line)        // not persisted
 		set_from_string(&p, "future.pref", "kept", .User)           // unknown now: must survive a round trip
-		testing.expect(t, save_user(&p, path))
+		testing.expect(t, save(&p, path))
 	}
 	p := prefs_make()
 	defer prefs_destroy(&p)
@@ -183,7 +187,7 @@ persistence :: proc(t: ^testing.T) {
 	testing.expect_value(t, string_of(&p, "net.agent"), "tab\tand\nnewline\\")
 	testing.expect_value(t, float_of(&p, "ui.scale"), 1.0)
 	// only user changes are written
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	q := prefs_make()
 	defer prefs_destroy(&q)
 	load_file(&q, path, .User)
@@ -227,7 +231,7 @@ higher_layers_keep_the_user_value :: proc(t: ^testing.T) {
 	testing.expect_value(t, applied, 2)   // the byte-order mark is not part of the magic
 	register(&p, DEFS[:])
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 7)
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	q := prefs_make()
 	defer prefs_destroy(&q)
 	register(&q, DEFS[:])
@@ -237,7 +241,7 @@ higher_layers_keep_the_user_value :: proc(t: ^testing.T) {
 	// a change by the user while the command line decides: refused for this run, kept for the next
 	testing.expect_value(t, set_from_string(&p, "net.max_conns", "9", .User), Set_Error.Locked)
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 7)
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	r := prefs_make()
 	defer prefs_destroy(&r)
 	register(&r, DEFS[:])
@@ -246,7 +250,7 @@ higher_layers_keep_the_user_value :: proc(t: ^testing.T) {
 	// reset: the user value goes, the command line's stays
 	testing.expect_value(t, reset(&p, "net.max_conns"), Set_Error.None)
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 7)
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	s := prefs_make()
 	defer prefs_destroy(&s)
 	register(&s, DEFS[:])
@@ -280,11 +284,11 @@ a_refused_reset_keeps_the_user_value :: proc(t: ^testing.T) {
 	register(&p, DEFS[:])
 	set_from_string(&p, "net.max_conns", "8", .User)
 	set_from_string(&p, "net.max_conns", "3", .Policy)
-	p.dirty = false
+	written := p.user_version
 	testing.expect_value(t, reset(&p, "net.max_conns"), Set_Error.Locked)
 	s, ok := user_text(&p, "net.max_conns")
 	testing.expect(t, ok && s == "8", "the user's value is still there")
-	testing.expect(t, !p.dirty, "nothing changed")
+	testing.expect_value(t, p.user_version, written)   // nothing changed
 }
 
 // An observer of a policy value sees it locked.
@@ -316,7 +320,7 @@ a_refused_value_waiting_stays_in_the_profile :: proc(t: ^testing.T) {
 	testing.expect_value(t, register(&p, DEFS[:]), 1)
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 6)
 	testing.expect(t, is_default(&p, ref_of(&p, "net.max_conns")))
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	testing.expect(t, err == nil)
 	testing.expect(t, strings.contains(string(data), "net.max_conns\t999\n"), "the line is still there")
@@ -335,15 +339,16 @@ a_refused_line_of_the_profile_stays :: proc(t: ^testing.T) {
 	testing.expect_value(t, n, 0)
 	testing.expect_value(t, len(problems), 1)
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 6)
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	testing.expect(t, err == nil)
 	testing.expect(t, strings.contains(string(data), "net.max_conns\t999\n"), "the line is still there")
 }
 
-// `dirty` says what the file does not have yet: a change under a higher layer, a value not registered, never what was just read.
+// `user_version` counts what the file does not have yet: a change under a higher layer, a value not registered, never what
+// was just read.
 @(test)
-dirty_is_what_the_profile_does_not_have :: proc(t: ^testing.T) {
+user_version_counts_what_the_profile_does_not_have :: proc(t: ^testing.T) {
 	path := fmt.tprintf("%s/wb_config_dirty_test.txt", fsx.temp_dir(context.temp_allocator))
 	defer os.remove(path)
 	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("wbprefs 1\nnet.max_conns\t9\nui.scale\t2\n")) == nil)
@@ -351,19 +356,55 @@ dirty_is_what_the_profile_does_not_have :: proc(t: ^testing.T) {
 	defer prefs_destroy(&p)
 	register(&p, DEFS[:1])
 	load_file(&p, path, .User)
-	testing.expect(t, !p.dirty, "a registered value, just read")
+	testing.expect_value(t, p.user_version, 0)   // a registered value, just read
 	register(&p, DEFS[:])
-	testing.expect(t, !p.dirty, "a waiting value, just read")
+	testing.expect_value(t, p.user_version, 0)   // a waiting value, just read
 	testing.expect_value(t, float_of(&p, "ui.scale"), 2.0)
 
 	set_from_string(&p, "net.agent", "cli", .Command_Line)
-	testing.expect(t, !p.dirty, "not the user's")
+	testing.expect_value(t, p.user_version, 0)   // not the user's
 	testing.expect_value(t, set_from_string(&p, "net.agent", "mine", .User), Set_Error.Locked)
-	testing.expect(t, p.dirty, "under the command line: the file does not have it")
+	testing.expect(t, p.user_version != 0, "under the command line: the file does not have it")
 
-	p.dirty = false
+	written := p.user_version
 	set_from_string(&p, "not.yet", "1", .User)
-	testing.expect(t, p.dirty, "not registered: the file does not have it")
+	testing.expect(t, p.user_version != written, "not registered: the file does not have it")
+}
+
+// A program serializes on its loop and writes on a worker: the text is a copy, so a change made while it is written is
+// not in this file, and it moves user_version past the version the file has, so the next save writes it.
+@(test)
+a_change_during_a_write_is_saved_next :: proc(t: ^testing.T) {
+	path := fmt.tprintf("%s/wb_config_split_save_test.txt", fsx.temp_dir(context.temp_allocator))
+	defer os.remove(path)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	set_from_string(&p, "net.max_conns", "9", .User)
+	text := serialize_user(&p)
+	defer delete(text)
+	written := p.user_version
+	set_from_string(&p, "net.max_conns", "10", .User)   // (on the loop, while the worker writes)
+	testing.expect(t, write_user_file(path, text))
+	testing.expect(t, p.user_version != written, "10 is still to be saved")
+	q := prefs_make()
+	defer prefs_destroy(&q)
+	register(&q, DEFS[:])
+	load_file(&q, path, .User)
+	testing.expect_value(t, int_of(&q, "net.max_conns"), 9)
+}
+
+// The same layer gives the same bytes: values no definition registers come sorted, not in the map's order.
+@(test)
+the_same_layer_gives_the_same_text :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	names := [?]string{"zz.one", "aa.two", "mm.three", "bb.four"}
+	for name in names { set_from_string(&p, name, "1", .User) }
+	set_from_string(&p, "net.max_conns", "9", .User)
+	testing.expect_value(t, serialize_user(&p, context.temp_allocator),
+		"wbprefs 1\nnet.max_conns\t9\naa.two\t1\nbb.four\t1\nmm.three\t1\nzz.one\t1\n")
 }
 
 // A save that cannot replace the file leaves all there was: never a profile removed in the hope of a second try.
@@ -378,8 +419,7 @@ a_save_that_fails_leaves_what_was_there :: proc(t: ^testing.T) {
 	defer prefs_destroy(&p)
 	register(&p, DEFS[:])
 	set_from_string(&p, "net.max_conns", "9", .User)
-	testing.expect(t, !save_user(&p, path), "it failed")
-	testing.expect(t, p.dirty, "still to be saved")
+	testing.expect(t, !save(&p, path), "it failed")
 	testing.expect_value(t, fsx.path_kind(path), fsx.Path_Kind.Directory)
 	testing.expect_value(t, len(fsx.list_files(dir)), 0)   // (no temporary file left)
 }
@@ -412,7 +452,7 @@ the_first_save_makes_its_folder :: proc(t: ^testing.T) {
 	defer prefs_destroy(&p)
 	register(&p, DEFS[:])
 	set_from_string(&p, "net.max_conns", "9", .User)
-	testing.expect(t, save_user(&p, path))
+	testing.expect(t, save(&p, path))
 	q := prefs_make()
 	defer prefs_destroy(&q)
 	register(&q, DEFS[:])

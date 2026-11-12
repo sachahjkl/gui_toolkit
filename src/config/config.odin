@@ -86,7 +86,10 @@ Prefs :: struct {
 	observers: [dynamic]Observer,
 	next_observer: int,
 	version:   u64,                  // bumped on every change
-	dirty:     bool,                 // the user's layer differs from what was last read or saved
+	// bumped on every change of the user's layer that its file does not have: a change under a higher layer counts,
+	// reading a file does not. A program keeps the value it last wrote (serialize_user) and saves when it differs, so a
+	// write done on another thread needs no flag that the loop and the writer would share.
+	user_version: u64,
 	allocator: runtime.Allocator,
 }
 
@@ -159,8 +162,8 @@ register :: proc(p: ^Prefs, defs: []Def, category := "") -> (refused: int) {
 		if pv, found := p.pending[d.name]; found {
 			key, _ := delete_key(&p.pending, d.name)
 			delete(key, p.allocator)
-			// (it was dirty, or not, when it came)
-			dirty := p.dirty
+			// (the file has these values, or not, as it had when they came)
+			user_version := p.user_version
 			layers := [3]Source{.User, .Command_Line, .Policy}
 			for src in layers {
 				if pv.has[src] {
@@ -172,7 +175,7 @@ register :: proc(p: ^Prefs, defs: []Def, category := "") -> (refused: int) {
 				}
 				delete(pv.value[src], p.allocator)
 			}
-			p.dirty = dirty
+			p.user_version = user_version
 		}
 	}
 	return
@@ -285,7 +288,7 @@ set_from_string :: proc(p: ^Prefs, name: string, text: string, source: Source) -
 			pv.value[source] = strings.clone(text, p.allocator)
 			pv.has[source] = true
 			p.pending[name] = pv
-			if source == .User { p.dirty = true }
+			if source == .User { p.user_version += 1 }
 		}
 		return .Unknown
 	}
@@ -296,7 +299,7 @@ set_from_string :: proc(p: ^Prefs, name: string, text: string, source: Source) -
 		// a higher layer decides for this run: the user's value is kept for the profile file
 		if source == .User {
 			keep_user_text(p, e, text)
-			p.dirty = true
+			p.user_version += 1
 		}
 		return .Locked
 	}
@@ -323,7 +326,7 @@ assign :: proc(p: ^Prefs, i: int, v: Value, source: Source) {
 	if source != e.source || changed {
 		e.source = source
 		p.version += 1
-		if source == .User { p.dirty = true }
+		if source == .User { p.user_version += 1 }
 		notify(p, e.def.name)
 	}
 }
@@ -344,12 +347,12 @@ reset :: proc(p: ^Prefs, name: string) -> Set_Error {
 	if e.has_user {
 		delete(e.user_text, p.allocator)
 		e.user_text, e.has_user = "", false
-		p.dirty = true
+		p.user_version += 1
 	}
 	if e.source == .Command_Line { return .None }   // this run keeps the command line's value
 	if e.source == .Default { return .None }
 	assign(p, i, e.def.default, .Default)
-	p.dirty = true
+	p.user_version += 1
 	return .None
 }
 
@@ -423,10 +426,11 @@ apply_args :: proc(p: ^Prefs, args: []string, allocator := context.allocator) ->
 USER_MAGIC :: "wbprefs 1"
 POLICY_MAGIC :: "wbpolicy 1"
 
-// Writes the user's changes (and only those), on the disk when it returns. Atomic: a crash or a failure leaves the previous
-// file intact, and a failure no temporary file. Its folder is made when it is not there (the first save of a program).
-save_user :: proc(p: ^Prefs, path: string) -> bool {
-	sb := strings.builder_make(context.temp_allocator)
+// The text of the user's file: the user's changes (and only those), with the values a higher layer hides and those no
+// definition registers in this run, so a round trip loses none. Pure and cheap (a few KiB): the loop calls it, then hands
+// the text to write_user_file on any thread. The caller records `p.user_version` as the version this text has.
+serialize_user :: proc(p: ^Prefs, allocator := context.allocator) -> string {
+	sb := strings.builder_make(allocator)
 	strings.write_string(&sb, USER_MAGIC)
 	strings.write_byte(&sb, '\n')
 	for name in sorted_names(p) {
@@ -436,26 +440,39 @@ save_user :: proc(p: ^Prefs, path: string) -> bool {
 		case e.has_user:        fmt.sbprintf(&sb, "%s\t%s\n", name, escape(e.user_text))
 		}
 	}
-	// values for preferences that are not registered in this run must survive a round trip
-	for name, pv in p.pending {
-		if pv.has[.User] { fmt.sbprintf(&sb, "%s\t%s\n", name, escape(pv.value[.User])) }
-	}
+	// values for preferences that are not registered in this run must survive a round trip; sorted, so the same layer
+	// gives the same bytes whatever the map's order
+	waiting := make([dynamic]string, context.temp_allocator)
+	for name, pv in p.pending { if pv.has[.User] { append(&waiting, name) } }
+	slice.sort(waiting[:])
+	for name in waiting { fmt.sbprintf(&sb, "%s\t%s\n", name, escape(p.pending[name].value[.User])) }
+	return strings.to_string(sb)
+}
+
+// Writes `text` (from serialize_user) to `path`, on the disk when it returns. Atomic: a crash or a failure leaves the
+// previous file intact, and a failure no temporary file. Its folder is made when it is not there (the first save of a
+// program). It reads no registry state, so a worker thread may call it while the loop changes preferences.
+write_user_file :: proc(path: string, text: string) -> bool {
 	if dir := filepath.dir(path); dir != "" && dir != "." { fsx.make_dirs(dir) }
-	if !fsx.write_atomic(path, transmute([]byte)strings.to_string(sb), flush = true) { return false }
-	p.dirty = false
-	return true
+	return fsx.write_atomic(path, transmute([]byte)text, flush = true)
+}
+
+// Both at once, on the calling thread: for a program whose preferences change rarely enough that a write on its loop
+// does not matter (a settings page's Save). A program that saves often serializes on its loop and writes on a worker.
+save_user :: proc(p: ^Prefs, path: string) -> bool {
+	return write_user_file(path, serialize_user(p, context.temp_allocator))
 }
 
 // Reads a preference file as `source` (User for the profile, Policy for the enterprise file), whose first line must be that
 // layer's tag. Missing file = no changes. `applied` counts the lines accepted, including those waiting for their definition.
 // A line of the profile that its definition refuses is a problem, and stays in the profile (register). What was read is
-// not dirty: the file has it.
+// not a change of user_version: the file has it.
 load_file :: proc(p: ^Prefs, path: string, source: Source) -> (applied: int, problems: [dynamic]string) {
 	problems = make([dynamic]string, context.temp_allocator)
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return 0, problems }
-	dirty := p.dirty
-	defer p.dirty = dirty
+	user_version := p.user_version
+	defer p.user_version = user_version
 	text := string(data)
 	first := true
 	for line in strings.split_lines_iterator(&text) {

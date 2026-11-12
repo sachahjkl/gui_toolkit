@@ -44,13 +44,13 @@ restore :: proc(p: ^Prefs, s: []Pref_State) -> (changed: int) {
 		if same_value && e.source == st.source && same_user { continue }
 		changed += 1
 		// (what the profile file keeps changes too: assign says so only of a value that becomes the user's)
-		if e.source == .User { p.dirty = true }
+		if e.source == .User { p.user_version += 1 }
 		assign(p, i, st.value, st.source)
 		e = &p.entries[i]   // (an observer may have registered: the entries moved)
 		if !same_user {
 			delete(e.user_text, p.allocator)
 			e.user_text, e.has_user = strings.clone(st.user_text, p.allocator), st.has_user
-			p.dirty = true
+			p.user_version += 1
 		}
 	}
 	return

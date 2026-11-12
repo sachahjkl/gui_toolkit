@@ -57,9 +57,9 @@ a_restore_over_a_saved_user_value_is_to_be_saved :: proc(t: ^testing.T) {
 	snap := snapshot(&p)   // (everything is a default)
 	defer snapshot_destroy(snap)
 	testing.expect_value(t, set_from_string(&p, "net.max_conns", "9", .User), Set_Error.None)
-	p.dirty = false   // (as save_user leaves it)
+	written := p.user_version   // (the version a save wrote)
 	testing.expect_value(t, restore(&p, snap), 1)
-	testing.expect(t, p.dirty, "the profile file still has 9")
+	testing.expect(t, p.user_version != written, "the profile file still has 9")
 }
 
 @(test)

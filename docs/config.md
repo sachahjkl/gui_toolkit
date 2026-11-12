@@ -61,8 +61,11 @@ config.reset(&p, "net.max_connections")                                   // bac
 ## Persistence (user changes only, atomically)
 
 ```odin
-config.save_user(&p, profile_path)        // writes only user-set values; atomic and flushed (fsx.write_atomic)
-config.load_file(&p, profile_path, .User) // missing file = no changes
+text := config.serialize_user(&p)            // the user-set values only, as the file's text (on the loop: it reads the registry)
+written = p.user_version                     // the version this text has
+config.write_user_file(profile_path, text)   // atomic and flushed (fsx.write_atomic); any thread: it reads no registry state
+config.load_file(&p, profile_path, .User)    // missing file = no changes
+config.save_user(&p, profile_path)           // serialize_user then write_user_file, on the calling thread
 ```
 
 A value read before its definition is registered (the profile file and the command line are read early) is remembered per
@@ -70,7 +73,10 @@ layer and applied when `register` arrives, and survives a round trip even if no 
 the definition refuses, in `register` (which counts them) or in `load_file` (a problem), leaves the default in place and stays
 in the profile: another version may take it.
 
-`p.dirty` says the user's layer differs from what was last read or saved: a change under a higher layer counts, reading a file does not.
+`p.user_version` counts the changes of the user's layer: a change under a higher layer counts, reading a file does not. A
+program keeps the version it last serialized and saves when `p.user_version` differs; a change made while a worker writes the
+file moves it again, so the next save has it. If a write fails, the program forgets the version it recorded, so the next save
+tries again.
 
 ## Observers (apply without a restart)
 
@@ -118,7 +124,7 @@ changed := config.restore(&p, s)                 // put them all back (policy va
 
 ## File format
 
-`save_user` writes one tag line (`wbprefs 1`) then `name<TAB>value` with `\\`, `\n`, `\r`, `\t` escapes. `load_file` wants the
+`serialize_user` writes one tag line (`wbprefs 1`) then `name<TAB>value` with `\\`, `\n`, `\r`, `\t` escapes. `load_file` wants the
 tag of the layer it reads, `wbpolicy 1` for `.Policy` and `wbprefs 1` otherwise, and skips `#` comments and a leading byte-order
-mark. The tags are kept as they are so files an existing application already wrote stay readable. `save_user` writes what it
+mark. The tags are kept as they are so files an existing application already wrote stay readable. `serialize_user` writes what it
 knows, so a comment or a line that is no `name<TAB>value` does not survive it.
