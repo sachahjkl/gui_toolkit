@@ -84,6 +84,11 @@ Fuzzy_Cache :: struct {
 	ready:  bool,                 // `needle` was made
 	arena:  virtual.Arena,
 	texts:  [dynamic]Fuzzy_Text,  // by slot (each one's text and fold in one allocation of the heap)
+	// what rank found last, kept for a call with the same query and the same version of the items (rank's `version`)
+	ranked:         []Rank_Hit,   // (in `ranked_arena`, their ranges too)
+	ranked_query:   string,
+	ranked_version: u64,          // 0: none kept
+	ranked_arena:   virtual.Arena,
 }
 
 // The needle of `query`, folded when the query is not the one of the last call.
@@ -135,6 +140,7 @@ fuzzy_cache_destroy :: proc(c: ^Fuzzy_Cache) {
 	fuzzy_cache_keep(c, 0)
 	delete(c.texts)
 	virtual.arena_destroy(&c.arena)
+	virtual.arena_destroy(&c.ranked_arena)
 	c^ = {}
 }
 
@@ -376,63 +382,84 @@ fuzzy_typos_strings :: proc(needle, hay: string, allocator := context.temp_alloc
 
 fuzzy_typos_folded :: proc(needle: Fuzzy_Needle, h: Fuzzy_Text, allocator := context.temp_allocator) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
 	if len(needle.words) == 0 { return 0, nil, true }
+	// (a palette tries this on every item the exact search did not find, at each search: nothing is allocated for a text
+	// it does not find, and each word of the text is compared once with each word typed)
+	if len(needle.word_runes) > TYPO_NEEDLE_WORDS_MAX { return 0, nil, false }
 	hay, low := h.text, h.low
-	// the words of `hay`: runs of letters and digits
-	Word :: struct { from, to: int, runes: []rune }
-	words := make([dynamic]Word, context.temp_allocator)
-	start := -1
-	for r, i in low {
-		inside := unicode.is_letter(r) || unicode.is_digit(r)
-		if inside && start < 0 { start = i }
-		if !inside && start >= 0 { append(&words, Word{start, i, utf8.string_to_runes(low[start:i], context.temp_allocator)}); start = -1 }
-	}
-	if start >= 0 { append(&words, Word{start, len(low), utf8.string_to_runes(low[start:], context.temp_allocator)}) }
-	used := make([]bool, len(words), context.temp_allocator)
-	out := make([dynamic]Fuzzy_Range, allocator)
+	found: [TYPO_NEEDLE_WORDS_MAX]Fuzzy_Range
 	slips := 0
-	for want in needle.word_runes {
+	for want, wi in needle.word_runes {
+		if len(want) > TYPO_WORD_MAX { return 0, nil, false }
 		allowed := len(want) <= TYPO_FREE_LEN ? 0 : len(want) <= TYPO_ONE_LEN ? 1 : 2
-		best, best_d, best_n := -1, allowed + 1, 0
-		for word, k in words {
-			if used[k] { continue }
-			// the whole word, or its beginning as long as what was typed (one letter more or less: a slip in it)
-			d, n := typo_distance(want, word.runes), len(word.runes)
-			for l in max(len(want) - 1, 1) ..= min(len(want) + 1, len(word.runes)) {
-				if pd := typo_distance(want, word.runes[:l]); pd < d { d, n = pd, l }
+		best, best_d := Fuzzy_Range{-1, -1}, allowed + 1
+		// the words of `hay`: runs of letters and digits
+		for i := 0; i < len(low); {
+			r, w := utf8.decode_rune_in_string(low[i:])
+			if !typo_word_rune(r) { i += w; continue }
+			from := i
+			// its runes, as many as a match can read (the whole word when it is short enough to be one, else its beginning),
+			// and where each one ends in `low`
+			word: [TYPO_WORD_MAX + 2]rune
+			ends: [TYPO_WORD_MAX + 3]int
+			n := 0
+			for i < len(low) {
+				r, w = utf8.decode_rune_in_string(low[i:])
+				if !typo_word_rune(r) { break }
+				i += w
+				if n < len(word) { word[n] = r; ends[n + 1] = i }
+				n += 1
 			}
-			if d < best_d { best, best_d, best_n = k, d, n }
+			taken := false
+			for k in 0 ..< wi { if found[k][0] == from { taken = true; break } }
+			// (shorter than what was typed by more than the slips allowed: neither it nor its beginnings are near)
+			if taken || n < len(want) - allowed { continue }
+			whole := n <= len(want) + allowed
+			m := whole ? n : min(len(want) + 1, n)
+			last := typo_distances(want, word[:m])
+			// the whole word, or its beginning as long as what was typed (one letter more or less: a slip in it)
+			d, end := allowed + 1, -1
+			if whole { d, end = last[m], i }
+			for l in max(len(want) - 1, 1) ..= min(len(want) + 1, m) {
+				if last[l] < d { d, end = last[l], ends[l] }
+			}
+			if d < best_d { best, best_d = {from, end}, d }
 		}
-		if best < 0 { return 0, nil, false }
-		used[best] = true
+		if best[0] < 0 { return 0, nil, false }
+		found[wi] = best
 		slips += best_d
-		word := words[best]
-		end := word.from + len(utf8.runes_to_string(word.runes[:best_n], context.temp_allocator))
-		append(&out, Fuzzy_Range{word.from, end})
 	}
+	out := make([]Fuzzy_Range, len(needle.word_runes), allocator)
+	copy(out, found[:len(out)])
 	// (in the order they are in the text: a highlight is drawn from left to right)
 	for i in 1 ..< len(out) {
 		for j := i; j > 0 && out[j][0] < out[j - 1][0]; j -= 1 { out[j], out[j - 1] = out[j - 1], out[j] }
 	}
-	return TYPOS_SCORE - TYPO_COST * slips - len(hay) / FUZZY_BYTES_PER_LENGTH_POINT, out[:], true
+	return TYPOS_SCORE - TYPO_COST * slips - len(hay) / FUZZY_BYTES_PER_LENGTH_POINT, out, true
 }
 
-// The slips that make `a` into `b`: a letter missing, one too many, one for another, two side by side swapped (the optimal
-// string alignment distance).
+// The longest word typed that fuzzy_typos compares (in letters), and the most words: past them nothing is found.
+@(private = "file") TYPO_WORD_MAX :: 48
+@(private = "file") TYPO_NEEDLE_WORDS_MAX :: 16
+
 @(private = "file")
-typo_distance :: proc(a, b: []rune) -> int {
-	n, m := len(a), len(b)
-	row := make([][]int, n + 1, context.temp_allocator)
-	for i in 0 ..= n {
-		row[i] = make([]int, m + 1, context.temp_allocator)
-		row[i][0] = i
-	}
-	for j in 0 ..= m { row[0][j] = j }
-	for i in 1 ..= n {
+typo_word_rune :: proc(r: rune) -> bool { return unicode.is_letter(r) || unicode.is_digit(r) }
+
+// The slips that make `a` into each beginning of `b`: element `l` is the distance from `a` to `b[:l]` (a letter missing,
+// one too many, one for another, two side by side swapped: the optimal string alignment distance). One table gives every
+// beginning: its last row. (Three rows of it are kept, on the stack: a transposition looks two rows back.)
+@(private = "file")
+typo_distances :: proc(a, b: []rune) -> (last: [TYPO_WORD_MAX + 3]int) {
+	m := len(b)
+	two, one, cur: [TYPO_WORD_MAX + 3]int
+	for j in 0 ..= m { one[j] = j }
+	for i in 1 ..= len(a) {
+		cur[0] = i
 		for j in 1 ..= m {
 			cost := a[i - 1] == b[j - 1] ? 0 : 1
-			row[i][j] = min(row[i - 1][j] + 1, row[i][j - 1] + 1, row[i - 1][j - 1] + cost)
-			if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] { row[i][j] = min(row[i][j], row[i - 2][j - 2] + 1) }
+			cur[j] = min(one[j] + 1, cur[j - 1] + 1, one[j - 1] + cost)
+			if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] { cur[j] = min(cur[j], two[j - 2] + 1) }
 		}
+		two, one = one, cur
 	}
-	return row[n][m]
+	return one
 }

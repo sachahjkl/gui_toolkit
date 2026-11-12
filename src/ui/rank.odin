@@ -1,6 +1,8 @@
 package ui
 
-@(require) import "core:slice"   // (rank is generic: its body is checked only where a program uses it)
+@(require) import "core:mem/virtual"   // (rank is generic: its body is checked only where a program uses it)
+@(require) import "core:slice"
+@(require) import "core:strings"
 
 // A filtered list, the same way everywhere: each item matched against the query, the hits kept, the best first. A picker,
 // a slash menu, a mention list and a palette differ only in how an item reads (Rank_Entry) and which matcher scores it.
@@ -49,11 +51,17 @@ rank_fuzzy :: proc(needle: Fuzzy_Needle, e: Rank_Entry, c: ^Fuzzy_Cache, first: 
 // passed to both. The hits and their ranges are in temp memory. `cache`: the query and the items' texts folded, kept from
 // one call to the next (an item's texts by its index in `items`), so that a list ranked each frame folds only what
 // changed; nil folds everything for this call alone. The matching itself is in proportion to the list.
+// `version`, with a cache: the items' version as the caller counts their changes (what they are, what the bonus reads).
+// A call with the query and the version (not 0) of the last one returns the hits that one found and reads no item: a list
+// shown at each frame costs nothing while neither changes. The hits are then the cache's, kept until its next rank.
 rank :: proc(query: string, items: []$T, entry: proc(it: ^T, user: rawptr) -> Rank_Entry, user: rawptr = nil,
-	match: Rank_Match = rank_palette, bonus: proc(it: ^T, user: rawptr) -> f64 = nil, cache: ^Fuzzy_Cache = nil) -> []Rank_Hit {
+	match: Rank_Match = rank_palette, bonus: proc(it: ^T, user: rawptr) -> f64 = nil, cache: ^Fuzzy_Cache = nil, version: u64 = 0) -> []Rank_Hit {
+	keep := cache != nil && version != 0
+	if keep && cache.ranked_version == version && cache.ranked_query == query { return cache.ranked }
 	once: Fuzzy_Cache
 	c := cache != nil ? cache : &once
 	defer if cache == nil { fuzzy_cache_destroy(&once) }   // (the hits' ranges are in temp memory, not in the cache)
+	if cache != nil { cache.ranked_version = 0 }
 	needle := fuzzy_cache_needle(c, query)
 	hits := make([dynamic]Rank_Hit, 0, len(items), context.temp_allocator)
 	for &it, i in items {
@@ -72,5 +80,17 @@ rank :: proc(query: string, items: []$T, entry: proc(it: ^T, user: rawptr) -> Ra
 	}
 	if cache != nil { fuzzy_cache_keep(cache, RANK_SLOTS * len(items)) }
 	slice.stable_sort_by(hits[:], proc(a, b: Rank_Hit) -> bool { return a.score > b.score })
-	return hits[:]
+	if !keep { return hits[:] }
+	virtual.arena_free_all(&c.ranked_arena)
+	a := virtual.arena_allocator(&c.ranked_arena)
+	kept := make([]Rank_Hit, len(hits), a)
+	for h, i in hits {
+		kept[i] = h
+		if len(h.ranges) > 0 {
+			kept[i].ranges = make([]Fuzzy_Range, len(h.ranges), a)
+			copy(kept[i].ranges, h.ranges)
+		}
+	}
+	c.ranked, c.ranked_query, c.ranked_version = kept, strings.clone(query, a), version
+	return kept
 }

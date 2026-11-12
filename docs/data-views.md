@@ -119,6 +119,10 @@ compares the ids with the last build's (one `memcmp`); a program that keeps its 
 change of them, and the list compares nothing. Pass nil `labels` with no type-ahead and nil `selectable` when every row
 can be selected: neither is then read per row. `offsets_made` counts the builds that made the offsets again.
 
+A program that builds its rows itself (its own look, no `list_row`) names each row `vlist_row_name(i)`: the list measures
+the rows under that name. `list_select(&st.list, i)` makes a row active and brings it into view, for a list whose keys
+are read elsewhere (a palette's field keeps the keyboard).
+
 ### Stripes, rules and a row's tint
 
 Two fields of the list's state (`List_State`, so a `vlist`'s and a `Table`'s `vl` too) set the look of its rows:

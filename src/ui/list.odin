@@ -319,7 +319,7 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 		s.next_mod = m
 	}
 	if st.rules { flags += {.Draw_Side_Bottom}; push_tags("rule") }
-	b := build_box(flags, fmt.tprintf("###lrow_%d", i))
+	b := build_box(flags, vlist_row_name(i))
 	if st.rules { pop_tags() }
 	if zebra { pop_tags() }
 	if m.cursor == nil { b.cursor = .Arrow }   // (a row that opens something: `next({cursor = .Hand})`)

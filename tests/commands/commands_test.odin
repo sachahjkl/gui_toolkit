@@ -6,6 +6,7 @@ package commands_test
 import "core:math"
 import "core:slice"
 import "core:strings"
+import "core:mem"
 import "core:testing"
 import "../../src/font"
 import lucide "../../src/lucide"
@@ -374,6 +375,40 @@ find_text :: proc(f: ^Fx, text: string) -> ^ui.Box {
 	return walk(f.s.root, text)
 }
 
+// The search for slips runs on every item the exact search left, at each search of a palette: a text it does not find costs
+// no allocation, one it finds only its ranges; a range ends where the word's letters do, accents and all.
+@(test)
+fuzzy_typos_allocate_only_what_they_find :: proc(t: ^testing.T) {
+	needle := ui.fuzzy_needle("frmae pacnig", context.allocator)
+	defer free_all(context.temp_allocator)
+	miss := ui.fuzzy_text("Restart opencode native and its server", context.allocator)
+	hit := ui.fuzzy_text("Frame pacing of the window", context.allocator)
+	accented := ui.fuzzy_text("Réglages du thème", context.allocator)
+	needle_accented := ui.fuzzy_needle("thme", context.allocator)
+	defer { delete(needle.words); delete(needle.word_runes); delete(miss.low); delete(hit.low); delete(accented.low); delete(needle_accented.words); delete(needle_accented.word_runes) }
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	{
+		context.allocator = mem.tracking_allocator(&track)
+		context.temp_allocator = mem.tracking_allocator(&track)
+		_, _, ok := ui.fuzzy_typos(needle, miss, context.allocator)
+		testing.expect(t, !ok, "not there")
+		testing.expect_value(t, track.total_allocation_count, 0)
+		_, ranges, found := ui.fuzzy_typos(needle, hit, context.allocator)
+		testing.expect(t, found, "two words, a slip each")
+		testing.expect_value(t, track.total_allocation_count, 1)
+		if testing.expect_value(t, len(ranges), 2) {
+			testing.expect_value(t, ranges[0], ui.Fuzzy_Range{0, 5})
+			testing.expect_value(t, ranges[1], ui.Fuzzy_Range{6, 12})
+		}
+		_, theme, in_theme := ui.fuzzy_typos(needle_accented, accented, context.allocator)
+		testing.expect(t, in_theme, "a letter missing")
+		if testing.expect_value(t, len(theme), 1) { testing.expect_value(t, theme[0], ui.Fuzzy_Range{13, 19}) }
+		free_all(context.allocator)
+	}
+}
+
 // A word typed with a slip still finds its word: a letter for another, one missing, two swapped; its beginning too. Too many
 // slips for its length find nothing, and two words of the needle are two words of the text.
 @(test)
@@ -476,6 +511,32 @@ a_ranked_list_folds_once :: proc(t: ^testing.T) {
 	testing.expect(t, slice.contains(index(ui.rank("quit", again, entry, cache = &cache)), 0), "a changed text is folded again")
 	ui.rank("quit", again[:1], entry, cache = &cache)
 	testing.expect(t, len(cache.texts) <= 4, "a shorter list lets go of the slots it no longer uses")
+}
+
+// A list ranked at each frame while neither its query nor its items change (a palette at rest) reads no item: the hits of the
+// same query and version are kept, theirs to keep past the frame's memory; another version or query ranks again.
+@(test)
+rank_keeps_its_hits_while_nothing_changes :: proc(t: ^testing.T) {
+	Item :: struct { label: string }
+	items := []Item{{"Fork the session"}, {"Rename the session"}, {"Quit"}}
+	reads := 0
+	entry :: proc(it: ^Item, user: rawptr) -> ui.Rank_Entry { (^int)(user)^ += 1; return {label = it.label} }
+	cache: ui.Fuzzy_Cache
+	defer ui.fuzzy_cache_destroy(&cache)
+	first := ui.rank("sesion", items, entry, &reads, cache = &cache, version = 7)
+	testing.expect_value(t, len(first), 2)
+	testing.expect_value(t, reads, 3)
+	free_all(context.temp_allocator)
+	kept := ui.rank("sesion", items, entry, &reads, cache = &cache, version = 7)
+	testing.expect_value(t, reads, 3)
+	if testing.expect_value(t, len(kept), 2) { testing.expect(t, len(kept[0].ranges) > 0 && kept[0].ranges[0][1] > kept[0].ranges[0][0], "their ranges kept too") }
+	ui.rank("sesion", items, entry, &reads, cache = &cache, version = 8)
+	testing.expect_value(t, reads, 6)
+	ui.rank("quit", items, entry, &reads, cache = &cache, version = 8)
+	testing.expect_value(t, reads, 9)
+	ui.rank("quit", items, entry, &reads, cache = &cache)
+	ui.rank("quit", items, entry, &reads, cache = &cache)
+	testing.expect_value(t, reads, 15)   // (no version: ranked each time)
 }
 
 // A box's corners as drawn: its radius times the rounding (a custom draw's too: the palette's strip meets its dialog's

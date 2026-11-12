@@ -60,7 +60,7 @@ A program with a palette of its own (commands, sessions and settings in one list
 
 ### A ranked list
 
-`ui.rank(query, items, entry, user, match, bonus, cache) -> []Rank_Hit` filters any list the way the palette does: each item is
+`ui.rank(query, items, entry, user, match, bonus, cache, version) -> []Rank_Hit` filters any list the way the palette does: each item is
 matched, the hits are kept, the best first; equal scores keep the list's order, and an empty query keeps every item in
 order. A picker, a slash menu, a mention list and a palette call it with their own items.
 
@@ -71,8 +71,9 @@ order. A picker, a slash menu, a mention list and a palette call it with their o
 | `Rank_Match` | how a query matches: `rank_palette` (the default: `palette_match`), `rank_fuzzy` (`fuzzy_score` of "label  group"), or a program's own, which folds its texts in the cache's slots it is given (`fuzzy_cache_text`, at most `RANK_MATCH_SLOTS`) |
 | `bonus(&item, user) -> f64` | optional: added to the score of a hit only (how often the user chose it lately) |
 | `cache: ^Fuzzy_Cache` | optional: the query and each item's texts folded, kept between calls; a list ranked each frame folds again only the texts that changed |
+| `version: u64` | optional, with a cache: the items' version as the program counts their changes (what they are, what `bonus` reads). A call with the query and the version (not 0) of the last one returns the hits it kept and reads no item: a list shown at each frame costs nothing while neither changes |
 
-The hits and their ranges are in temp memory.
+The hits and their ranges are in temp memory; with a `version`, they are the cache's, kept until its next `rank`.
 
 ```odin
 hits := ui.rank(query, models, proc(m: ^Model, _: rawptr) -> ui.Rank_Entry {

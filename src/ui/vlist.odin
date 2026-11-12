@@ -95,7 +95,14 @@ vlist_row_extent :: proc(st: ^Virtual_List, i: int) -> (top, height: f32) {
 @(private)
 vlist_row_key :: proc(list_key: Key, i: int) -> Key {
 	buf: [32]u8
-	return key_from_string(list_key, fmt.bprintf(buf[:], "###lrow_%d", i))
+	return key_from_string(list_key, vlist_row_name(i, buf[:]))
+}
+
+// The name row `i` of a list is built under (list_row's): a row a program builds itself in a vlist, its own look and
+// behaviour, takes it, so that the list measures its height (into `buf`, temp memory when none).
+vlist_row_name :: proc(i: int, buf: []u8 = nil) -> string {
+	if buf == nil { return fmt.tprintf("###lrow_%d", i) }
+	return fmt.bprintf(buf, "###lrow_%d", i)
 }
 
 // Row index at content position `y` (the last row whose top is <= y).
