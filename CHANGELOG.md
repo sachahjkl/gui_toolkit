@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.238.0] - 2026-11-12
+
+### Changed
+- **The toolkit's dialogs and pages draw their action buttons with a glyph and an intent**: the confirmation (Cancel, and the act in red or, when it is safe, in green), an empty state's actions, the shortcut sheet's Close, the Setup dialog (Choose, Uninstall, Close or Not now, Install, Open the installed copy) and the update buttons of the preferences (Check now, Install, Restart now, and the status bar's badge) now look as `ui.button_icon` does: a Lucide glyph beside the words, in the soft colours of what the button does.
+  - `ui.Empty_State.actions` is now a list of `ui.Empty_Action` (`text`, `icon`, `intent`).
+  - `setup.Config.button` is now `proc(id, label, glyph: string, intent: ui.Intent, em: f32, user: rawptr) -> bool`; `setup.Button_Kind` is removed.
+
+### Fixed
+- **A tooltip over the menus**: the tooltip of a button in a menu, or in a panel opened as a menu, showed under it; it is drawn over the open menus now.
+
 ## [0.237.0] - 2026-11-12
 
 ### Added
@@ -3083,6 +3093,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.238.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.238.0
 [0.237.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.237.0
 [0.236.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.1
 [0.236.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.0
