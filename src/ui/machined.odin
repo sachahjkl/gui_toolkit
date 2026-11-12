@@ -199,18 +199,27 @@ machined_groove :: proc(dc: ^draw.Context, a, b: Vec2, vertical := false) {
 
 // A raised panel (cards, popover bodies): a face from `top` to `bottom`, a lit rim of `rim` (alpha), a soft shadow of
 // `shadow` logical pixels, an edge of `border`, a halo of `glow`.
-machined_plate :: proc(dc: ^draw.Context, r: Rect, radius: f32, top, bottom: Color, shadow: f32 = 6, rim: f32 = 0.07, border := Color{0, 0, 0, 0.85}, glow := Color{}) {
+// `frame` false: the face alone; its rim and edge come after what is in it (machined_plate_frame), a box's children drawn
+// over the face and under the frame (draw_box does it for a .Plate box).
+machined_plate :: proc(dc: ^draw.Context, r: Rect, radius: f32, top, bottom: Color, shadow: f32 = 6, rim: f32 = 0.07, border := Color{0, 0, 0, 0.85}, glow := Color{}, frame := true) {
 	s := scale()
 	p := px1()
 	rr := radii4(radius)
 	if !machined() {
 		draw.rect(dc, r, draw.mix(top, bottom, 0.5), radius)
-		if border.a > 0 { draw.rect(dc, r, flat_edge(0), radius, p) }
+		if border.a > 0 && frame { draw.rect(dc, r, flat_edge(0), radius, p) }
 		return
 	}
 	if shadow > 0 { draw.box_shadow(dc, draw.rect_shift(r, {0, 2 * s}), rr, shadow * s, {0, 0, 0, 0.6}) }
 	if g := glow_of(); glow.a > 0 && g > 0 { draw.box_shadow(dc, r, rr, 6 * s, with_alpha(glow, glow.a * 0.5 * g)) }
 	draw.rect_corners(dc, r, {top, bottom, top, bottom}, rr)
+	if frame { machined_plate_frame(dc, r, radius, rim, border) }
+}
+
+// A raised panel's frame: its lit rim (edged: a line of light along its top and a shade along its bottom) and its edge.
+// Drawn over what is in the panel, a child's background or line does not cover it.
+machined_plate_frame :: proc(dc: ^draw.Context, r: Rect, radius: f32, rim: f32 = 0.07, border := Color{0, 0, 0, 0.85}) {
+	p := px1()
 	if edged() {   // (a line along its top, of light at once, not a rim fading down its sides)
 		edged_lines(dc, r, radius, p, {1, 1, 1, max(rim, 0.10)}, {0, 0, 0, EDGED_SHADE_ALPHA * 0.6})
 	} else if rim > 0 {
@@ -263,6 +272,17 @@ machined_pip :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color) {
 // no other); `whole`: also its edge and its focus (draw_box draws neither). A .Groove box is a groove along its length; a .Sunken box with a
 // background a well (a clear one sits in a well: a bare field); an opaque background with a sheen is raised: bevelled
 // when it can be clicked, else a face with a lit rim.
+// A .Plate box's frame, after its children (machined_box drew its face): its rim and edge over what fills it.
+// (edged: its edge is its own border's colour, lit a little, as a console's window is outlined: a dark one was lost on
+// the dimmed page around a dialog)
+@(private)
+machined_plate_over :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32) {
+	if !machined() || .Plate not_in b.flags || .Draw_Background not_in b.flags || b.bg.a < 0.99 { return }
+	edge := Color{0, 0, 0, 0.85}
+	if edged() { edge = lighten(b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border"), EDGED_PLATE_EDGE_LIGHTEN) }
+	machined_plate_frame(dc, r, radii[0], border = edge)
+}
+
 @(private)
 machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32, keyboard_focus: bool) -> (face, whole: bool) {
 	radius := radii[0]   // (a well or a bevel: one radius; a raised panel takes each corner's)
@@ -284,9 +304,8 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 		// (.Draw_Shadow: a dialog, a menu)
 		// (edged: its edge is its own border's colour, lit a little, as a console's window is outlined: a dark one was lost on
 		// the dimmed page around a dialog)
-		edge := Color{0, 0, 0, 0.85}
-		if edged() { edge = lighten(b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border"), EDGED_PLATE_EDGE_LIGHTEN) }
-		machined_plate(dc, r, radius, lighten(b.bg, PLATE_TOP_LIGHTEN), darken(b.bg, PLATE_BOTTOM_DARKEN), .Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX, border = edge)
+		// (its frame after its children: machined_plate_over)
+		machined_plate(dc, r, radius, lighten(b.bg, PLATE_TOP_LIGHTEN), darken(b.bg, PLATE_BOTTOM_DARKEN), .Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX, frame = false)
 		return true, true
 	}
 	if .Sunken in b.flags {

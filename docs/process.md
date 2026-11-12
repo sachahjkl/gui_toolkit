@@ -40,8 +40,8 @@ r, errno = process.set_affinity(pid, start, cpus)    // for every thread; an emp
 | `Failed` | another error: `errno` says which |
 | `Unsupported` | not on this system |
 
-`Signal` is `Terminate` (SIGTERM), `Kill` (SIGKILL), `Stop` (SIGSTOP), `Continue` (SIGCONT), `Hangup` (SIGHUP) or
-`Interrupt` (SIGINT).
+`Signal` is `Terminate` (SIGTERM), `Kill` (SIGKILL), `Stop` (SIGSTOP), `Continue` (SIGCONT), `Hangup` (SIGHUP),
+`Interrupt` (SIGINT), `Quit` (SIGQUIT), `User1` (SIGUSR1) or `User2` (SIGUSR2).
 
 How it acts on Linux: `pidfd_open` pins the process, and so does a descriptor of its folder `/proc/<pid>`: once the
 process ends, every read through that folder fails, even when the pid names a new process. The start time is read

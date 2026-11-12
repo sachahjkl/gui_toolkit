@@ -371,7 +371,7 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	s.next_mod.fixed_y = at.y
 	s.next_mod.width = px(wh.x)
 	s.next_mod.height = wh.y > 0 ? px(wh.y) : children_sum()
-	s.next_mod.radius = em * 0.8
+	s.next_mod.radius = DIALOG_RADIUS_EM * em
 	panel := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
 	_ = signal(panel)
@@ -387,6 +387,9 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	append(&s.modals_built, Modal_Open{panel = panel.key, focus = focus})
 	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open})
 }
+
+// A dialog's corners (before the rounding), in ems: what a strip across its top (dialog_top_draw) takes too.
+DIALOG_RADIUS_EM :: 0.8
 
 // What the press of a dialog's grip keeps (press_data): the size it started from, and whether it moved yet.
 @(private = "file")

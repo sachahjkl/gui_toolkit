@@ -21,6 +21,9 @@ Signal :: enum u8 {
 	Continue,    // resumes it (SIGCONT)
 	Hangup,      // SIGHUP
 	Interrupt,   // SIGINT
+	Quit,        // SIGQUIT: ends it, with a core dump where the system keeps them
+	User1,       // SIGUSR1: what the program makes of it (many read their configuration again)
+	User2,       // SIGUSR2
 }
 
 // What became of an act on another process.

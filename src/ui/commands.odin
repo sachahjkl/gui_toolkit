@@ -160,11 +160,11 @@ Command_Palette :: struct {
 	chosen_mods: platform.Modifiers,
 }
 
-// The field's strip: a field's darker background, its top corners the dialog's, a line under it. A raised dialog
-// (machined, edged) has a lit rim just inside its border: the strip begins inside it, or the dialog's edge was lost along
-// the strip's top and sides and showed only at its corners.
-@(private = "file")
-palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
+// A strip across the top of a dialog (a title, a search field), as a box's custom draw: its background (`bg`; none: a
+// field's darker one, the theme's "well"), its top corners the dialog's as they are drawn, a line under it. A raised
+// dialog (machined, edged) has a lit rim just inside its border: the strip begins inside it, and the dialog's frame is
+// drawn over it (machined_plate_over). Give the box the dialog's radius (`next({radius = ...})`, the dialog's own).
+dialog_top_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	if machined() {
 		p := px1()
@@ -172,7 +172,7 @@ palette_strip_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	}
 	// (the dialog's corners as they are drawn: a window with little rounding, or none, has a strip with as little)
 	radius := max(0, box_drawn_radius(gs(), b) - (r.min.y - b.rect.min.y))
-	well := color_from_tags(gs(), b.tags_key, "well")
+	well := b.bg.a > 0.01 ? b.bg : color_from_tags(gs(), b.tags_key, "well")
 	draw.rect_corners(dc, r, {well, well, well, well}, {radius, 0, radius, 0})
 	// the line that parts the field from the results: carved (machined, edged), the border's colour (flat)
 	y := b.rect.max.y - (machined() ? 2 : 1) * px1()
@@ -265,10 +265,10 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 	before := p.size
 	if modal_sized("palette", {em * PALETTE_WIDTH_EM, em * PALETTE_HEIGHT_EM}, &p.size, &p.open, {em * PALETTE_MIN_EM.x, em * PALETTE_MIN_EM.y}, top = PALETTE_TOP) {
 		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's, but the
-		// darker background of a field, so that it reads as the place to type: palette_strip_draw)
-		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, radius = em * 0.8})
+		// darker background of a field, so that it reads as the place to type: dialog_top_draw)
+		next({width = fill(), height = px(dense(em * 2.6)), axis = .X, cross = .Center, radius = em * DIALOG_RADIUS_EM})
 		if row(.Center, {}, "###palette_top") {
-			parent_box().custom = palette_strip_draw
+			parent_box().custom = dialog_top_draw
 			spacer(px(em * 0.8))
 			// (a magnifier before the field and the number of results after it, faint: what the strip is for, and what it
 			// found)

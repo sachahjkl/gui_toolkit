@@ -77,3 +77,19 @@ int_text :: proc(n: int) -> string {
 	buf: [24]u8
 	return strings.clone(strconv.write_int(buf[:], i64(n), 10), context.temp_allocator)
 }
+
+// The test's own children, sleeps: each signal of a program's menu ends one by its own number (a sleep takes none).
+@(test)
+each_signal_is_its_own :: proc(t: ^testing.T) {
+	SIGNALS :: [?]struct { sig: Signal, number: int }{{.Hangup, 1}, {.Interrupt, 2}, {.Quit, 3}, {.User1, 10}, {.User2, 12}}
+	for s in SIGNALS {
+		child, err := os.process_start({command = {"sleep", "30"}})
+		if !testing.expect(t, err == nil, "sleep starts") { return }
+		pid := i32(child.pid)
+		start, _ := process_start_time(pid)
+		r, _ := signal_process(pid, start, s.sig)
+		testing.expect_value(t, r, Act_Result.Done)
+		state, werr := os.process_wait(child, TEST_WAIT)
+		testing.expectf(t, werr == nil && state.exit_code == s.number, "%v ends it by signal %d (%v)", s.sig, s.number, state)
+	}
+}

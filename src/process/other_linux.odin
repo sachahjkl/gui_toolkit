@@ -26,6 +26,9 @@ linux_signal :: proc(sig: Signal) -> linux.Signal {
 	case .Continue:  return .SIGCONT
 	case .Hangup:    return .SIGHUP
 	case .Interrupt: return .SIGINT
+	case .Quit:      return .SIGQUIT
+	case .User1:     return .SIGUSR1
+	case .User2:     return .SIGUSR2
 	}
 	return .SIGTERM
 }
