@@ -36,7 +36,7 @@ Config :: struct {
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
-	// its buttons, and a close control in its corner (none: the dialog closes from its buttons and Escape).
+	// its buttons, and the close control in its corner (its box built with ui.modal_corner: the toolkit places it).
 	backdrop:       proc(user: rawptr),
 	button:         proc(id, label: string, kind: Button_Kind, em: f32, user: rawptr) -> bool,
 	close:          proc(id: string, em: f32, user: rawptr) -> bool,

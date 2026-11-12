@@ -472,23 +472,20 @@ rad :: proc(c: Config, em, k: f32) -> f32 { return c.square ? 0 : math.round(em 
 // The dialog's own title bar: "<name> Setup", and the close control (the program's, else a cross).
 @(private = "file")
 title_bar :: proc(d: ^Dialog, c: Config, em: f32) {
-	h := math.round(em * 2.3)
-	ui.next({width = ui.fill(), height = ui.px(h), axis = .X, cross = .Center})
-	if ui.row(.Center, id = "###setup_title_bar") {
+	if ui.modal_header("###setup_title_bar", math.round(em * 1.7), math.round(em * 0.3)) {
 		ui.spacer(ui.px(em * MARGIN_EM))
 		ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0})
 		ui.label(fmt.tprintf("%s Setup###setup_title", c.identity.name))
 		if c.close != nil {
 			if c.close("###setup_close_x", em, c.user) { d.open = false }
-		} else {
-			side := math.round(em * 1.7)
-			ui.next({width = ui.px(side), height = ui.px(side), radius = rad(c, em, 0.3), text_pad = 0})
-			if ui.tags("ghost_button") {
-				x := ui.button("×###setup_close_x")
-				if x.clicked { d.open = false }
-			}
+		} else if ui.tags("ghost_button", "button") {
+			// (ui.button's box, in the corner: its radius the corner's, square when the dialog is)
+			ui.next({text_pad = 0})
+			x := ui.modal_corner({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Text, .Draw_Hot_Effects}, "×###setup_close_x")
+			x.text_align = .Center
+			x.squish = ui.press_squish(x)
+			if ui.signal(x).clicked { d.open = false }
 		}
-		ui.spacer(ui.px(em * 0.6))
 	}
 }
 

@@ -136,7 +136,7 @@ box_drawn_radii :: proc(s: ^State, b: ^Box) -> (radii: [4]f32) {
 			edge: f32 = .Draw_Border in a.flags ? max(1, math.round(s.scale)) : 0
 			if x > edge + CORNER_MEET_PX || y > edge + CORNER_MEET_PX { break }
 			if c in a.square_corners { continue }
-			ar := max(box_drawn_radius(s, a) - max(x, y), 0)
+			ar := concentric_radius(box_drawn_radius(s, a), max(x, y))
 			if ar <= 0 { continue }
 			// (the corner it fills decides it: its own rounding there drew a second corner)
 			if !filled || ar > radii[int(c)] { radii[int(c)] = ar }
@@ -144,6 +144,18 @@ box_drawn_radii :: proc(s: ^State, b: ^Box) -> (radii: [4]f32) {
 		}
 	}
 	return
+}
+
+// The radius of a corner inset by `inset` from both edges of a corner of radius `outer`: the two curves are then concentric,
+// and the gap between them is `inset` all along. Past the outer radius, the inner corner is square.
+concentric_radius :: proc(outer, inset: f32) -> f32 { return max(outer - inset, 0) }
+
+// A control of `size` in corner `c` of `outer` (drawn with corners of `outer_radius`), `inset` from both edges that meet
+// there: the same margin from the side and from the top or bottom. `radius`: its corner there, concentric with `outer`'s.
+corner_place :: proc(outer: Rect, outer_radius: f32, c: Corner, size: Vec2, inset: f32) -> (r: Rect, radius: f32) {
+	left, top := c == .Top_Left || c == .Bottom_Left, c == .Top_Left || c == .Top_Right
+	at := Vec2{left ? outer.min.x + inset : outer.max.x - inset - size.x, top ? outer.min.y + inset : outer.max.y - inset - size.y}
+	return {at, at + size}, concentric_radius(outer_radius, inset)
 }
 
 // The least radius a box's corners are rounded with (logical pixels): under it, they are square.

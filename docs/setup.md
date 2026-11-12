@@ -84,7 +84,7 @@ nil, and `Config.user` is passed to them):
 |---|---|
 | `backdrop(user)` | drawn first in the dialog: what lies behind it (a blur of the window, a dim of its own); nil: the theme's scrim |
 | `button(id, label, kind, em, user) -> bool` | each button, `kind` one of `Button_Kind` (`Normal`, `Accent`: what installs or opens, `Danger`: Uninstall); clicked: true |
-| `close(id, em, user) -> bool` | a close control in the dialog's corner, built last (over what is in the dialog); nil: none (Close, Not now and Escape close it) |
+| `close(id, em, user) -> bool` | the close control in the dialog's top right corner: build its box with `ui.modal_corner(flags, id)`, which gives its place, its size and its radius ([modals](modals.md)); nil: the toolkit's ghost × |
 
 ## The states
 

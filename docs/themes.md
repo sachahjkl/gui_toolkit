@@ -94,6 +94,15 @@ is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot
 radius the rounding setting scales and the edged finish leaves).
 `Theme.glow` (0..1) sets the strength of its halos: a focused well, a lamp.
 
+### Corners in corners
+
+A shape inset by `m` from both edges of a corner of radius `R` has a radius `r = max(R - m, 0)`: the two curves are
+concentric and the gap between them is `m` all along. `concentric_radius(outer, inset)` gives it.
+`corner_place(outer, outer_radius, corner, size, inset) -> (rect, radius)` places a control of `size` in a corner of a
+rect, the same `inset` from both edges that meet there, with that radius: give it the radius the outer shape is drawn
+with (`box_drawn_radius`), and draw the control with the radius it returns. A box laid against its parent's corner takes
+the same rule (`box_drawn_radii`); a dialog's corner control is placed by it (`modal_corner`, [modals](modals.md)).
+
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
 background is a well (`line_edit`, `text_edit`, `field_frame`, the track of `segmented`; a clear background sits in a
 well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips); an

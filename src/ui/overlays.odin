@@ -240,6 +240,8 @@ Modal_Scope :: struct {
 	wh:      Vec2,      // its size in this frame
 	lo, hi:  Vec2,      // how small and how large it may be, in this window
 	top:     bool,      // modal_sized with `top`: its top stays where it is; its bottom follows the pointer (no grips at its top)
+	corner_side:  f32,  // modal_header: the side of the control in its top right corner (0: none)
+	corner_inset: f32,  // and its margin from the dialog's top and right edges
 }
 
 // A dialog of this build or the last. `focus`: what had the focus when it opened, and gets it back when it closes.
@@ -386,11 +388,68 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 		s.focus_key = 0
 	}
 	append(&s.modals_built, Modal_Open{panel = panel.key, focus = focus})
-	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open})
+	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open, wh = wh})
 }
 
 // A dialog's corners (before the rounding), in ems: what a strip across its top (dialog_top_draw) takes too.
 DIALOG_RADIUS_EM :: 0.8
+
+// `if modal_header("###head", side, inset) { ... }`: the row across the top of the dialog being built, with a control in its
+// top right corner (modal_corner). The row is `side` tall and `inset` below the dialog's top, so what is in it is centered
+// with the control; its right end (`inset + side + inset`) is left free for the control. Build it first in a box whose top
+// right corner is the dialog's: the dialog itself, or a column along its top and right edges.
+@(deferred_none = modal_header_end)
+modal_header :: proc(id: string, side, inset: f32) -> bool { return modal_header_begin(id, side, inset) }
+
+// modal_header's start, for a program's own `if` form (its side and margin given once): `@(deferred_none =
+// ui.modal_header_end)` on a procedure that returns this. (Wrapping modal_header itself would end the header twice: its
+// end is deferred to the scope it is called in.)
+modal_header_begin :: proc(id: string, side, inset: f32) -> bool {
+	s := gs()
+	assert(len(s.modal_stack) > 0, "modal_header: outside a dialog")
+	m := &s.modal_stack[len(s.modal_stack) - 1]
+	m.corner_side, m.corner_inset = side, inset
+	// (the control's margin is from the dialog's edge, its border's outside; the header is inside the border. exact: the
+	// margin is not the density's)
+	spacer(px(max(inset - modal_border(m^), 0)), exact = true)
+	next({width = fill(), height = px(side), axis = .X, cross = .Center})
+	push_parent(build_box({}, id))
+	return true
+}
+
+// The end of modal_header and of modal_header_begin.
+modal_header_end :: proc() {
+	m := gs().modal_stack[len(gs().modal_stack) - 1]
+	spacer(px(max(m.corner_inset + m.corner_side + m.corner_inset - modal_border(m), 0)), exact = true)
+	pop_parent()
+}
+
+// The width of the border of the dialog `m` (what its content is inside of).
+@(private = "file")
+modal_border :: proc(m: Modal_Scope) -> f32 {
+	panel := box_from_key(m.panel)
+	return panel != nil ? border_inset(panel) : 0
+}
+
+// The control in the top right corner of the dialog being built, declared by its modal_header: a box of `flags`, a square of
+// the header's height, the same margin from the dialog's top and from its right edge, its corners concentric with the dialog's
+// (corner_place; Fixed_Radius: `radius` is as drawn, its look draws it with that). The program gives it its look (its
+// children, a custom draw); what `next` said is kept, but for its place, its size and its radius.
+modal_corner :: proc(flags: Box_Flags, id: string) -> ^Box {
+	s := gs()
+	assert(len(s.modal_stack) > 0, "modal_corner: outside a dialog")
+	m := s.modal_stack[len(s.modal_stack) - 1]
+	assert(m.corner_side > 0, "modal_corner: the dialog has no modal_header")
+	panel := box_from_key(m.panel)
+	outer: f32 = .Top_Right in panel.square_corners ? 0 : box_drawn_radius(s, panel)
+	side := m.corner_side
+	r, radius := corner_place({{0, 0}, m.wh}, outer, .Top_Right, {side, side}, m.corner_inset)
+	if radius < ROUND_LEAST_PX * max(1, s.scale) { radius = 0 }   // (as radius_drawn: a corner of a pixel or two is a blob)
+	next_merge({fixed_x = r.min.x, fixed_y = r.min.y, width = px(side), height = px(side), radius = radius, flags = {.Fixed_Radius}})
+	push_parent(panel)   // (its place is the dialog's, wherever it is built)
+	defer pop_parent()
+	return build_box(flags, id)
+}
 
 // What the press of a dialog's grip keeps (press_data): the size it started from, and whether it moved yet.
 @(private = "file")
@@ -413,6 +472,8 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 		corner := g.dir.x != 0 && g.dir.y != 0
 		t := corner ? c : e
 		if g.dir == {1, 1} { t = c + RESIZE_GRIP_BEVEL_PAST_PX * sc }   // (the grip's bevel: all of it takes the press, with its cursor)
+		// (a control in the top right corner holds it: the grips there stay within its margin, they are built after it)
+		if m.corner_side > 0 && (g.dir == {1, -1} || g.dir == {0, -1} || g.dir == {1, 0}) { t = min(t, m.corner_inset) }
 		gw := g.dir.x != 0 ? t : w - 2 * c
 		gh := g.dir.y != 0 ? t : h - 2 * c
 		gx := g.dir.x < 0 ? 0 : g.dir.x > 0 ? w - gw : c

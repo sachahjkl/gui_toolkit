@@ -14,6 +14,33 @@
 
 Several dialogs may be open, one in another or one after the other; the one built last is on top. It has the keyboard: Tab goes round its own stops and Escape closes it, the ones under it wait (it is known at the end of the build, so `open` turns false at the next one: an Escape read as a dialog opens is that dialog's). A dialog that opens takes the focus from what had it, and gives it back when it closes, unless something else took it meanwhile.
 
+## A control in a dialog's corner
+
+A close control (or any other) in the top right corner of a dialog comes with the row across its top:
+
+```odin
+if ui.modal_sized("files", preferred, &size, &open) {
+    if ui.modal_header("###head", side, inset) {   // first in the dialog
+        ui.label("Files")                           // the title, the header's controls
+    }
+    ...                                             // what is in the dialog
+    b := ui.modal_corner({.Clickable, .Focusable}, "###close")
+    if ui.signal(b).clicked { open = false }        // its look is the program's: children, a custom draw
+}
+```
+
+- `modal_header(id, side, inset)` is a row `side` tall, `inset` below the dialog's top: what is in it is centered with
+  the control. Its right end, `inset + side + inset`, stays free: the control is never on the header's controls. Build it
+  first in a box whose top right corner is the dialog's (the dialog itself, or a column along its top and right edges).
+- `modal_corner(flags, id)` builds the control's box: a square of `side`, `inset` from the dialog's top and from its right
+  edge, its corners concentric with the dialog's (`corner_place`, [themes](themes.md#corners-in-corners)), as drawn
+  (`Fixed_Radius`: a custom draw rounds with `b.radius`). Its place is the dialog's wherever it is built; what `next`
+  said is kept, but for its place, size and radius.
+- A program that gives every dialog the same side and margin wraps it once:
+  `@(deferred_none = ui.modal_header_end) my_header :: proc(id: string) -> bool { return ui.modal_header_begin(id, SIDE, INSET) }`
+  (`modal_header_begin`, not `modal_header`: that one ends its header in the scope it is called in, and the header would end twice).
+- The grips of a resized dialog leave the corner to it: at its top and right, they are no deeper than `inset`.
+
 ## A confirmation (`src/ui/confirm.odin`)
 
 `ui.confirm(id, &open, options)` is the question before an act that is not taken back: a title, a note in the weak text
