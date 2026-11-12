@@ -405,20 +405,29 @@ adapter_description :: proc(r: ^Renderer) -> string {
 	}
 }
 
+// Whether the frame is stored in half floats: a transparent window blended in linear light, which its compositor takes with its
+// alpha (premultiplied: DirectComposition's panel), on a surface that offers them. A surface composited opaque (Vulkan on X11
+// and Wayland: the alpha mode is Opaque there) is 8 bits a channel, as an opaque window's: in half floats a compositor that has
+// no format without alpha for them reads the alpha all the same, and what is drawn past [0, 1] (a highlight, a halo) showed as
+// bars of white, or of the desktop behind the window, where 8 bits clamp it.
+@(private)
+wgpu_wants_fp16 :: proc(transparent: bool, space: Blend_Space, premultiplied, surface_has_fp16: bool) -> bool {
+	return transparent && space == .Linear && premultiplied && surface_has_fp16
+}
+
 // Storage and view formats of the frame for the renderer's blend space (the Direct3D swap chain's choices).
 @(private)
 wgpu_frame_formats :: proc(r: ^Renderer) {
 	g := &r.wg
-	fp16 := r.transparent && r.space == .Linear
-	if fp16 && g.surface != nil && g.adapter != nil {
-		// a surface that takes no half floats (Vulkan on X11 / Wayland: BGRA8 only): 8 bits a channel, as an opaque window
+	has_fp16 := false
+	if r.transparent && g.surface != nil && g.adapter != nil {
 		caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter)
 		defer wgpu.SurfaceCapabilitiesFreeMembers(caps)
 		if st == .Success {
-			fp16 = false
-			for i in 0 ..< caps.formatCount { if caps.formats[i] == .RGBA16Float { fp16 = true } }
+			for i in 0 ..< caps.formatCount { if caps.formats[i] == .RGBA16Float { has_fp16 = true } }
 		}
 	}
+	fp16 := wgpu_wants_fp16(r.transparent, r.space, wgpu_surface_alpha(r) == .Premultiplied, has_fp16)
 	g.surface_format = fp16 ? .RGBA16Float : .BGRA8Unorm
 	g.view_format = fp16 ? .RGBA16Float : (r.space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
 	r.frame_format = fp16 ? dxgi.FORMAT.R16G16B16A16_FLOAT : dxgi.FORMAT.B8G8R8A8_UNORM
