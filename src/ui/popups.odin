@@ -154,9 +154,10 @@ menu_matches :: proc(lv: ^Menu_Level, text: string) -> bool {
 // Opens the menu `key` with its top-left corner at `pos` (window pixels), replacing any open menu.
 // `anchor`: the box that opens the menu (dropdown button, menu bar entry): pressing it again is not a press "outside",
 // so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
-// `search`: what is typed searches the items (fuzzy, File Pilot's): a field at the top shows it (a magnifier, a caret), the items that do not
-// match go, a submenu's items come up into the menu, the first match is selected (Enter chooses it).
-ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false, search := false) { menu_open(key, pos, {}, anchor, from_keyboard, search) }
+// `search` (on: every context menu can be filtered): what is typed searches the items (fuzzy, File Pilot's): a field at the top
+// shows it (a magnifier, a caret), the items that do not match go, a submenu's items come up into the menu, the first match is
+// selected (Enter chooses it). Off for a menu of a few fixed choices.
+ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false, search := true) { menu_open(key, pos, {}, anchor, from_keyboard, search) }
 
 // Opens the menu below `rect` (above it when there is no room below), e.g. under the button that opens it.
 ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard := false) { menu_open(key, {rect.min.x, rect.max.y}, rect, anchor, from_keyboard) }
@@ -658,7 +659,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 				next({width = px(em * 1.5), height = pct(1)})
 				if checked && widget_icons() != 0 {
 					if style({font = widget_icons(), text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###chk", ICON_CHECK)) }
-				} else if face := glyph_font != 0 ? glyph_font : s.icon_font; glyph != "" && face != 0 {
+				} else if face := glyph_font != 0 ? glyph_font : (s.menu_icon_font != 0 ? s.menu_icon_font : s.icon_font); glyph != "" && face != 0 {
 					if style({font = face, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph)) }
 				} else {
 					build_box({}, "###nochk")
