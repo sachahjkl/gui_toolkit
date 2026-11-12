@@ -230,3 +230,10 @@ In the machined and edged finishes a tile, a part and the strip are lit along th
 sideways (the wheel, either way, and the bar under it); "Show all" under it lays them out as a grid wrapped to the width,
 "Show fewer" folds them back. The button is there only when the line does not hold them all, or when open. `open` is the
 program's to keep (a preference, if it should last).
+
+## An empty view (`src/ui/empty_state.odin`)
+
+`ui.empty_state(id, {icon, title, note, actions})` is what a view shows when it has nothing to show: an empty folder, a
+filter that hides every row, a search with no result. It fills its parent and puts in its middle an icon in the weak colour,
+the title, the note (folded at `EMPTY_STATE_NOTE_EM`), and a button for each action. It returns the index of the action
+clicked (-1: none): "Clear the filter", "Show hidden files", "New folder".

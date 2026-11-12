@@ -349,6 +349,23 @@ a_confirmation_answers :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.answers, 3)
 }
 
+// An empty state: its title, its note, a button for each action; a click answers its index.
+@(test)
+an_empty_state_offers_its_actions :: proc(t: ^testing.T) {
+	Run :: struct { clicked: int }
+	r := Run{clicked = -1}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if a := ui.empty_state("empty", {title = "No row matches", note = "The filter hides every row.", actions = {"Clear the filter", "Show hidden files"}}); a >= 0 { r.clicked = a }
+	}})
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "No row matches") != nil && session.find_text(s, "The filter hides every row.") != nil, "its title and note")
+	title := session.find(s, "empty_title")
+	if title != nil { testing.expectf(t, title.rect.min.y > f32(WINDOW.y) * 0.2, "in the middle, not at the top (%v)", title.rect) }
+	session.click(s, "empty_action1")
+	testing.expect_value(t, r.clicked, 1)
+}
+
 // key_take: the frame's first key press not taken yet, with its modifiers; a key a build took already is not given.
 @(test)
 the_first_key_not_taken_is_given :: proc(t: ^testing.T) {
