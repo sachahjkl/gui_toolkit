@@ -233,6 +233,44 @@ wl_pipe_read_all :: proc(fd: posix.FD, allocator := context.allocator) -> []u8 {
 	}
 }
 
+// A read for clipboard_request (clipboard_linux.odin): wl_data_offer.receive into a pipe whose read end does not block;
+// the window's loop watches it (poll_sources) and wl_request_take reads what came. -1: nothing to ask (the offer went).
+@(private)
+wl_request_start :: proc(mime: string) -> posix.FD {
+	if wlc.offer == nil || wlc.data_source != nil { return -1 }
+	fds: [2]i32
+	if pipe2(&fds, WL_REQUEST_PIPE_FLAGS) != 0 { return -1 }
+	c := strings.clone_to_cstring(mime, context.temp_allocator)
+	wl.proxy_marshal_flags(wlc.offer, WL_DATA_OFFER_RECEIVE, nil, wl.proxy_get_version(wlc.offer), 0, c, fds[1])
+	wl.display_flush(wlc.display)
+	posix.close(posix.FD(fds[1]))   // (the compositor has its copy: ours must close for the read to see the end)
+	return posix.FD(fds[0])
+}
+
+// Appends what the pipe holds now to `buf`, without waiting. True at its end, or on an error (then `buf` is emptied).
+@(private)
+wl_request_take :: proc(fd: posix.FD, buf: ^[dynamic]u8) -> (done: bool) {
+	chunk: [WL_PIPE_CHUNK_BYTES]u8
+	for {
+		n := sys_read(i32(fd), &chunk[0], size_of(chunk))
+		if n > 0 { append(buf, ..chunk[:n]); continue }
+		if n == 0 { return true }
+		#partial switch posix.errno() {
+		case .EINTR:  continue
+		case .EAGAIN: return false
+		}
+		clear(buf)
+		return true
+	}
+}
+
+@(private = "file") WL_REQUEST_PIPE_FLAGS :: 0o2004000   // O_CLOEXEC | O_NONBLOCK
+foreign import libc_clip "system:c"
+@(default_calling_convention = "c", private = "file")
+foreign libc_clip {
+	pipe2 :: proc(fds: ^[2]i32, flags: i32) -> i32 ---
+}
+
 ////////////////////////////////
 // the text clipboard entry points platform_linux.odin calls
 

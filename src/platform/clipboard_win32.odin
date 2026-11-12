@@ -6,6 +6,7 @@ package platform
 // (CRLF line ends), "HTML Format", "PNG" + CF_DIBV5 (alpha) + CF_DIB (opaque over white), CF_HDROP with "Preferred
 // DropEffect" = copy, or move for files that were cut. PNG goes through the toolkit's own codec (src/png, clipboard.odin).
 
+import "base:runtime"
 import "core:strings"
 import "core:sync"
 import win "core:sys/windows"
@@ -102,6 +103,31 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (path
 		if s, err := win.utf16_to_utf8(buf[:got], allocator); err == nil { append(&out, s) }
 	}
 	return out[:], true
+}
+
+// Asks for the clipboard's text or files: the answer comes with the next poll_events (a Clipboard_Data event), as on Linux.
+// Windows keeps what a program copies in its own memory: the read is done here, in the time open_clipboard's few tries
+// take at most, and only queued. (A format the owner renders late, WM_RENDERFORMAT, is asked of it by the system; text and
+// file lists are almost never given late.) Html and Image are answered not ok.
+clipboard_request :: proc(w: ^Window, format: Clipboard_Format) -> u64 {
+	if w == nil { return 0 }
+	r := Clipboard_Reply{id = clipboard_next_id(w), format = format}
+	if clip_is_virtual(w) {
+		clip_store_reply(&r)
+	} else {
+		context.allocator = runtime.heap_allocator()
+		#partial switch format {
+		case .Text:
+			r.text = get_clipboard(w)
+			r.ok = r.text != ""
+		case .Files:
+			r.files, _ = clipboard_get_files(w)
+			r.ok = len(r.files) > 0
+			r.cut = r.ok && clipboard_files_cut(w)
+		}
+	}
+	clipboard_reply_queue(w, r)
+	return r.id
 }
 
 // Whether the files on the clipboard were cut (a paste moves them): "Preferred DropEffect" says move, as Explorer's Cut

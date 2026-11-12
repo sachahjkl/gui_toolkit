@@ -64,6 +64,8 @@ Event_Kind :: enum u8 {
 	Notification_Click,    // a click on its body
 	Notification_Action,   // a button: Event.notification.action is its id
 	Notification_Closed,   // it is gone (Event.notification.reason): no event of it comes after
+	// the answer to a clipboard_request (clipboard.odin): Event.clipboard
+	Clipboard_Data,
 }
 
 Mouse_Button :: enum u8 { Left, Right, Middle, Back, Forward }   // (Back, Forward: the side buttons)
@@ -111,6 +113,7 @@ Event :: struct {
 	hotkey: int,        // Hotkey: the id given to hotkey_register
 	                    // elsewhere (an app that reads the cursor's position from the system uses `pos` for these)
 	notification: Notification_Event,   // Notification_*: which notification, its button, why it went
+	clipboard: Clipboard_Reply,   // Clipboard_Data: what was read; its text and paths live until the next poll_events
 }
 
 // Where Display_Info.hz comes from, most exact first.
@@ -248,6 +251,7 @@ Window :: struct {
 	destroy_hook: proc(w: ^Window, user: rawptr),   // window_on_destroy
 	destroy_hook_user: rawptr,
 	shown_again:  u32,   // counts the show_window calls that brought back a hidden window (the host remakes its swap chain then)
+	clip_request_id: u64,   // the id of the last clipboard_request
 }
 
 // `fn(w, user)` runs when `w` is destroyed, before it is freed (nil: nothing). One per window: returns what was there. For
@@ -518,8 +522,16 @@ drop_returned :: proc(w: ^Window) {
 	n := min(w.returned, len(w.events))
 	w.returned = 0
 	if n == 0 { return }
+	for &e in w.events[:n] { if e.kind == .Clipboard_Data { clipboard_reply_free(&e.clipboard) } }
 	copy(w.events[:], w.events[n:])
 	resize(&w.events, len(w.events) - n)
+}
+
+// Frees what the window's events not handed out hold (a clipboard reply), before the window goes.
+@(private)
+events_release :: proc(w: ^Window) {
+	for &e in w.events { if e.kind == .Clipboard_Data { clipboard_reply_free(&e.clipboard) } }
+	clear(&w.events)
 }
 
 @(private)
@@ -530,6 +542,8 @@ take_injected :: proc(w: ^Window) {
 		e.stamp = now
 		e.injected = true
 		if e.kind == .Close { w.closed = true }   // as WM_CLOSE: a loop that tests is_closed ends
+		// (a reply made by a test, of another program's clipboard: its strings become the window's, as a real one's)
+		if e.kind == .Clipboard_Data { e.clipboard = clipboard_reply_clone(e.clipboard) }
 		append(&w.events, e)
 	}
 	clear(&w.injected)

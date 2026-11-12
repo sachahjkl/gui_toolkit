@@ -545,6 +545,7 @@ destroy_window :: proc(w: ^Window) {
 	if w.off_event != nil { win.CloseHandle(w.off_event); w.off_event = nil }
 	if w.offscreen { offscreen_closed() }
 	cursors_destroy(w)
+	events_release(w)
 	delete(w.events)
 	delete(w.batch)
 	delete(w.injected)

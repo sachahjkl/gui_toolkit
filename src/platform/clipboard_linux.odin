@@ -10,12 +10,17 @@ package platform
 // program's JPEG or BMP is read too when it offers no PNG (clipboard_image_decode), GNOME Files' list when there is no
 // text/uri-list.
 //
+// clipboard_request reads without waiting (the answer is an event); the clipboard_get_* procedures and get_clipboard wait
+// for the owner, up to seconds when it does not answer.
+//
 // clipboard_changed tells a window once when the clipboard changes hands: through wl_data_device on Wayland, XFIXES on
 // X11. An X server without XFIXES only tells this process when it loses the clipboard.
 
 import "base:runtime"
 import "core:strings"
 import "core:sync"
+import "core:time"
+import "core:sys/posix"
 
 clipboard_sequence :: proc() -> u32 { return sync.atomic_load(&clip.seq) }
 
@@ -124,6 +129,212 @@ clip_foreign_owner :: proc(w: ^Window) -> bool {
 	case .None:
 	}
 	return false
+}
+
+////////////////////////////////
+// clipboard_request: another client's flavours read by the window's loop, without waiting. Each request is a list of
+// MIME types read one after the other; the first request of the window runs, the others wait their turn. Wayland: a pipe
+// the owner writes into, watched by the loop's poll (poll_sources) and read when it has bytes. X11: ConvertSelection, the
+// answer (and an INCR transfer) handled with the other events of the connection. The answer is queued when every type
+// was read.
+
+@(private) CLIP_READ_SILENCE_MS :: 2000   // an owner silent this long is given up: the answer says nothing came
+// (the files from text/uri-list, else GNOME Files' list; the cut from KDE's flag, else that list's first line)
+@(private = "file") CLIP_REQUEST_FILES_MIMES :: [?]string{"text/uri-list", CLIPBOARD_GNOME_FILES_MIME, CLIPBOARD_KDE_CUT_MIME}
+
+// One request's reads (heap).
+@(private)
+Clip_Read :: struct {
+	reply:   Clipboard_Reply,   // the id and the format asked; the rest is filled when every type is read
+	mimes:   [dynamic]string,   // the types to read, in order
+	got:     [dynamic][]u8,     // what each brought, in that order (nil: nothing)
+	running: bool,              // the read of mimes[len(got)] is asked
+	fd:      posix.FD,          // Wayland: the pipe the owner writes into (-1: none)
+	buf:     [dynamic]u8,       // Wayland: what came on it so far
+	size:    int,               // the bytes that had come when the owner was last heard
+	heard:   time.Tick,         // when: a silence of CLIP_READ_SILENCE_MS gives the read up
+}
+
+clipboard_request :: proc(w: ^Window, format: Clipboard_Format) -> u64 {
+	if w == nil { return 0 }
+	reply := Clipboard_Reply{id = clipboard_next_id(w), format = format}
+	if !clip_foreign_owner(w) {   // (an offscreen window, or this process owns the clipboard: the store, at once)
+		clip_store_reply(&reply)
+		clipboard_reply_queue(w, reply)
+		return reply.id
+	}
+	mimes := clip_request_mimes(w, format)
+	if len(mimes) == 0 {   // (nothing of it on the clipboard)
+		clipboard_reply_queue(w, reply)
+		return reply.id
+	}
+	context.allocator = runtime.heap_allocator()
+	r := Clip_Read{reply = reply, fd = -1}
+	for m in mimes { append(&r.mimes, strings.clone(m)) }
+	append(&w.clip_reads, r)
+	clip_reads_pump(w)   // (starts it when no other runs)
+	return reply.id
+}
+
+// The types a request reads (temp allocator): on Wayland those the offer has; X11 asks for each (an owner refuses what it
+// does not hold as quickly as it would list its TARGETS, and asking for the list first would be one more wait).
+@(private = "file")
+clip_request_mimes :: proc(w: ^Window, format: Clipboard_Format) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	wayland := w.backend == .Wayland
+	if wayland && (wlc.offer == nil || wlc.data_source != nil) { return nil }
+	#partial switch format {
+	case .Text:
+		if !wayland {
+			append(&out, "text/plain")
+		} else if m := wl_offer_pick_text(); m != "" {
+			append(&out, m)
+		}
+	case .Files:
+		wanted := CLIP_REQUEST_FILES_MIMES
+		for m in wanted {
+			if !wayland || wl_offer_has_mime(wlc.offer_mimes[:], m) { append(&out, m) }
+		}
+	}
+	return out[:]
+}
+
+// Moves the window's reads on without waiting: what came is taken, a request whose types are all read is answered, the next
+// one starts. poll_events calls it, and the X11 events that answer a read.
+@(private)
+clip_reads_pump :: proc(w: ^Window) {
+	context.allocator = runtime.heap_allocator()
+	for len(w.clip_reads) > 0 {
+		r := &w.clip_reads[0]
+		for len(r.got) < len(r.mimes) {
+			if !r.running {
+				r.running, r.size, r.heard = true, 0, time.tick_now()
+				clip_read_start(w, r)
+			}
+			data, done, size := clip_read_take(w, r)
+			if !done && size != r.size { r.size, r.heard = size, time.tick_now() }
+			if !done && time.duration_milliseconds(time.tick_since(r.heard)) > CLIP_READ_SILENCE_MS {
+				clip_read_stop(w, r)
+				data, done = nil, true
+			}
+			if !done { return }
+			append(&r.got, data)
+			r.running = false
+		}
+		clip_read_answer(w, r)
+		clip_read_free(r)
+		ordered_remove(&w.clip_reads, 0)
+	}
+}
+
+// The longest a wait of the window's loop may last while a read runs: until its owner's silence gives it up (poll_sources).
+@(private)
+clip_reads_wait_cap :: proc(w: ^Window, timeout_ms: int) -> int {
+	if len(w.clip_reads) == 0 || !w.clip_reads[0].running { return timeout_ms }
+	left := max(int(CLIP_READ_SILENCE_MS - time.duration_milliseconds(time.tick_since(w.clip_reads[0].heard))) + 1, 0)
+	return timeout_ms < 0 ? left : min(timeout_ms, left)
+}
+
+// The pipe of the read running on Wayland, which the loop's poll watches (-1: none).
+@(private)
+clip_reads_fd :: proc(w: ^Window) -> i32 {
+	if len(w.clip_reads) == 0 || !w.clip_reads[0].running { return -1 }
+	return i32(w.clip_reads[0].fd)
+}
+
+// The window goes: its reads are given up, nothing is answered.
+@(private)
+clip_reads_drop :: proc(w: ^Window) {
+	context.allocator = runtime.heap_allocator()
+	for &r in w.clip_reads {
+		if r.running { clip_read_stop(w, &r) }
+		clip_read_free(&r)
+	}
+	delete(w.clip_reads)
+	w.clip_reads = nil
+}
+
+@(private = "file")
+clip_read_start :: proc(w: ^Window, r: ^Clip_Read) {
+	mime := r.mimes[len(r.got)]
+	clear(&r.buf)
+	switch w.backend {
+	case .Wayland: r.fd = wl_request_start(mime)
+	case .X11:     x11_request_start(w, mime)
+	case .None:
+	}
+}
+
+// What came for the read running, without waiting: `done` with its bytes (heap; nil: none came), else the bytes so far.
+@(private = "file")
+clip_read_take :: proc(w: ^Window, r: ^Clip_Read) -> (data: []u8, done: bool, size: int) {
+	switch w.backend {
+	case .Wayland:
+		if r.fd < 0 { return nil, true, 0 }
+		if !wl_request_take(r.fd, &r.buf) { return nil, false, len(r.buf) }
+		posix.close(r.fd)
+		r.fd = -1
+		if len(r.buf) > 0 {
+			data = make([]u8, len(r.buf))
+			copy(data, r.buf[:])
+		}
+		clear(&r.buf)
+		return data, true, 0
+	case .X11:
+		return x11_request_take(w)
+	case .None:
+	}
+	return nil, true, 0
+}
+
+@(private = "file")
+clip_read_stop :: proc(w: ^Window, r: ^Clip_Read) {
+	switch w.backend {
+	case .Wayland:
+		if r.fd >= 0 { posix.close(r.fd) }
+		r.fd = -1
+	case .X11:
+		x11_request_stop(w)
+	case .None:
+	}
+}
+
+// The request's answer from what each type brought.
+@(private = "file")
+clip_read_answer :: proc(w: ^Window, r: ^Clip_Read) {
+	reply := r.reply
+	#partial switch reply.format {
+	case .Text:
+		if len(r.got) > 0 && len(r.got[0]) > 0 {
+			reply.text = strings.clone(string(r.got[0]))
+			reply.ok = true
+		}
+	case .Files:
+		for b, i in r.got {
+			mime := r.mimes[i]
+			if len(reply.files) == 0 && mime != CLIPBOARD_KDE_CUT_MIME && len(b) > 0 {
+				// (GNOME Files' list is a "copy" or "cut" line, then the URIs: uri_list_to_paths skips that line)
+				list := uri_list_to_paths(string(b))
+				if len(list) > 0 { reply.files = list } else { delete(list) }
+			}
+			if mime != "text/uri-list" && clipboard_files_cut_decode(mime, b) { reply.cut = true }
+		}
+		reply.ok = len(reply.files) > 0
+		reply.cut = reply.ok && reply.cut
+	}
+	clipboard_reply_queue(w, reply)
+}
+
+@(private = "file")
+clip_read_free :: proc(r: ^Clip_Read) {
+	for m in r.mimes { delete(m) }
+	for b in r.got { delete(b) }
+	delete(r.mimes)
+	delete(r.got)
+	delete(r.buf)
+	if r.fd >= 0 { posix.close(r.fd) }
+	r^ = {}
+	r.fd = -1
 }
 
 // Reads a flavour another client owns over the selection transport (bytes, temp allocator by default).

@@ -17,13 +17,51 @@ if .Image in fmts {
 }
 ```
 
+## Reading without waiting
+
+Another program owns what it copied: a read asks it, and it may be slow or hung. `get_clipboard` and the
+`clipboard_get_*` procedures wait for it (on Linux up to 0.5 s for the text, 2 to 3 s for the other flavours: the window
+does not move meanwhile). A paste reads with `clipboard_request`, which returns at once; the answer comes in a later
+`poll_events`, as a `Clipboard_Data` event:
+
+```odin
+// Ctrl+V: ask, and remember where the files go
+app.paste = {id = platform.clipboard_request(app.win, .Files), dir = strings.clone(dir)}
+
+// later, among the window's events
+for e in events {
+	if e.kind != .Clipboard_Data || e.clipboard.id != app.paste.id { continue }
+	r := e.clipboard
+	if r.ok { start_job(r.cut ? .Move : .Copy, r.files, app.paste.dir) }   // (job_add clones the paths)
+}
+```
+
+| | |
+|---|---|
+| `clipboard_request(w, format) -> u64` | `.Text` or `.Files`; the request's id (never 0; 0: no window). `.Html` and `.Image` are answered not ok |
+| `Event.clipboard: Clipboard_Reply` | `id`, `format`, `ok` (it was there), `text`, `files` (absolute paths), `cut` (a paste moves them) |
+
+- One answer per request, in a later `poll_events`, never in the call. The text and the paths belong to the window: they
+  live until the next `poll_events`. A program clones what it keeps.
+- `ok` is false when the clipboard holds no such thing, or when its owner said nothing for 2 s (Linux): the read gives up.
+- The process's store answers at once (for the next poll): an offscreen window, or the clipboard this process owns.
+- Linux, another program's clipboard: the window's loop reads it. Wayland: `wl_data_offer.receive` into a pipe that
+  does not block, watched by the loop's `poll` with the connection. X11: `ConvertSelection` into a property of the
+  request's own, the answer (and an INCR transfer) taken with the connection's other events. A wait of the loop is
+  shortened while a read runs, so that a silent owner is given up in time. The requests of a window run one after
+  the other.
+- Windows: the system keeps what was copied, the read is done in the call and its answer queued.
+- `inject_event` of a `Clipboard_Data` (a test playing another program's clipboard): its strings are copied.
+
+## The procedures
+
 | Procedure | |
 |---|---|
 | `clipboard_set(w, Clipboard_Content) -> bool` | every flavour given, one owner: `text`, `html` (a fragment) + `source_url`, `image`, `files` + `files_cut` |
 | `clipboard_set_html`, `clipboard_set_image`, `clipboard_set_files` | shorthands |
 | `clipboard_get_image(w) -> (Clipboard_Image, ok)` | straight RGBA8, top row first |
 | `clipboard_get_html(w) -> (html, source_url, ok)` | the fragment between the offsets (or the comments), and the page it came from |
-| `clipboard_get_files(w) -> ([]string, ok)` | absolute paths (copied in a file manager) |
+| `clipboard_get_files(w) -> ([]string, ok)` | absolute paths (copied in a file manager); waits for the owner: a paste uses `clipboard_request` |
 | `clipboard_files_cut(w) -> bool` | true when the files on the clipboard were cut: a paste moves them |
 | `clipboard_formats() -> Clipboard_Formats` | `{.Text, .Html, .Image, .Files}` that are there, without opening the clipboard |
 | `clipboard_format_names(w)` | every format by name (diagnostics) |
@@ -96,4 +134,5 @@ WebP decoder. On Wayland the compositor tells a window what the clipboard holds 
 
 Tests: `tests/clipboard` (conversions only: the user's clipboard is never touched by the tests; the Linux types above,
 `clipboard_pick_mime`, a JPEG, a BMP and a PNG through `clipboard_image_decode`, the GNOME list and the cut flags).
-`tests/scenarios` sets files, cut and copied, on an offscreen window and reads `clipboard_files_cut` back.
+`tests/scenarios` sets files, cut and copied, on an offscreen window and reads `clipboard_files_cut` back, and asks with
+`clipboard_request`: no answer in the call, one per request at the next poll, none after.

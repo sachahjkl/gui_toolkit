@@ -20,7 +20,7 @@ Win32 or Wayland. It opens a window, polls events, draws, and asks for services,
   the fields every backend fills: `size` (physical pixels), `dpi_scale` (dpi/96), `focused`, `active`, `events`,
   `chrome`, `user`, `on_frame`.
 - **`Event`** (`Event_Kind`: `Key_Press`/`Release`, `Text`, `Mouse_*`, `Scroll`, `Close`, `Activate`, `Pointer_*`,
-  `Drop_*`, `Accessibility`), with `pos` in client pixels, `delta` in wheel notches (`+y` scrolls content down),
+  `Drop_*`, `Accessibility`, `Hotkey`, `Notification_*`, `Clipboard_Data`), with `pos` in client pixels, `delta` in wheel notches (`+y` scrolls content down),
   `mods`, `buttons`, `stamp`, `pointer`, `injected`.
 - **`Key`**, **`Mouse_Button`**, **`Modifier`**, **`Cursor`** (named after the CSS keywords), **`Display_Info`**
   (refresh rate for pacing), **`Chrome_Regions`** (the integrated title bar's regions, hit-tested by
@@ -87,7 +87,8 @@ for a screen-sized fixed surface).
 `_info`, `cursors_destroy`.
 
 **Text clipboard** — `get_clipboard`, `set_clipboard`. **Rich clipboard** (`clipboard.odin`) —
-`clipboard_set` / `_get_image` / `_get_html` / `_get_files` / `_formats` / `_sequence` / `_watch` / `_changed`.
+`clipboard_request` (a read that does not wait: a `Clipboard_Data` event answers it), `clipboard_set` / `_get_image` /
+`_get_html` / `_get_files` / `_formats` / `_sequence` / `_watch` / `_changed`.
 
 **Dialogs and shell** — `open_file_dialog`, `save_file_dialog`, `pick_folder_dialog`, `known_folder_path`, `open_url`,
 `open_path`, `reveal_in_folder`. `launch_detached(args)` (Linux) starts a program and does not wait for it, its output

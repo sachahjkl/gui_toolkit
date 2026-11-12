@@ -6,8 +6,11 @@ package platform
 //
 //   * clipboard_set writes several flavours at once with one owner (text, HTML with its source URL, an image, files);
 //     clipboard_set_html / _image / _files are shorthands.
+//   * clipboard_request asks for the text or the files and returns at once: the answer comes in a later poll_events,
+//     a Clipboard_Data event. A program's paste uses it.
 //   * clipboard_get_image (RGBA8), clipboard_get_html (the fragment and its source URL), clipboard_get_files (paths),
-//     clipboard_files_cut (whether those files were cut: a paste moves them).
+//     clipboard_files_cut (whether those files were cut: a paste moves them), get_clipboard (the text): these wait for
+//     the program that owns the clipboard (on Linux up to seconds when it does not answer).
 //   * clipboard_formats says what is there without reading it (a Paste item enabled or not); clipboard_sequence changes
 //     whenever another program (or this one) writes the clipboard; clipboard_watch makes the window wake when that
 //     happens and clipboard_changed tells it once.
@@ -19,6 +22,7 @@ package platform
 import "base:runtime"
 import "core:strings"
 import "core:sync"
+import "core:time"
 import "core:image"
 import "core:image/bmp"
 import "core:image/jpeg"
@@ -182,6 +186,72 @@ clip_store_files_cut :: proc() -> bool {
 	sync.mutex_lock(&clip.mutex)
 	defer sync.mutex_unlock(&clip.mutex)
 	return clip.files_cut
+}
+
+////////////////////////////////
+// Reading without waiting: clipboard_request (each system's file) asks, the answer comes later as an event. Another
+// program owns what it put on the clipboard and may be slow or hung: a read that waits for it would freeze the window.
+
+// What a clipboard_request read (Event.clipboard of a Clipboard_Data event). The text and the paths belong to the window:
+// they live until the next poll_events, a program clones what it keeps.
+Clipboard_Reply :: struct {
+	id:     u64,                // what clipboard_request returned
+	format: Clipboard_Format,   // what was asked
+	ok:     bool,               // it was there (false: something else, nothing, or an owner that did not answer in time)
+	text:   string,             // .Text
+	files:  []string,           // .Files: absolute paths
+	cut:    bool,               // .Files: they were cut, a paste moves them
+}
+
+// The next request's id: never 0, which is "no request".
+@(private)
+clipboard_next_id :: proc(w: ^Window) -> u64 {
+	w.clip_request_id += 1
+	return w.clip_request_id
+}
+
+// Queues the answer for the window's next poll_events, and ends a wait of its loop. `r`'s strings are the heap's.
+@(private)
+clipboard_reply_queue :: proc(w: ^Window, r: Clipboard_Reply) {
+	append(&w.events, Event{kind = .Clipboard_Data, clipboard = r, stamp = time.tick_now()})
+	wake(w)
+}
+
+// The answer from the process's store (an offscreen window's clipboard, or what this process put on the system's), on the
+// heap. Only text and files are read this way.
+@(private)
+clip_store_reply :: proc(r: ^Clipboard_Reply) {
+	context.allocator = runtime.heap_allocator()
+	#partial switch r.format {
+	case .Text:
+		r.text = clip_store_text()
+		r.ok = r.text != ""
+	case .Files:
+		r.files, r.ok = clip_store_files()
+		r.cut = r.ok && clip_store_files_cut()
+	}
+}
+
+@(private)
+clipboard_reply_clone :: proc(r: Clipboard_Reply) -> (out: Clipboard_Reply) {
+	context.allocator = runtime.heap_allocator()
+	out = r
+	out.text = strings.clone(r.text)
+	out.files = nil
+	if len(r.files) > 0 {
+		out.files = make([]string, len(r.files))
+		for p, i in r.files { out.files[i] = strings.clone(p) }
+	}
+	return
+}
+
+@(private)
+clipboard_reply_free :: proc(r: ^Clipboard_Reply) {
+	context.allocator = runtime.heap_allocator()
+	delete(r.text)
+	for p in r.files { delete(p) }
+	delete(r.files)
+	r.text, r.files = "", nil
 }
 
 // How rgba_to_dib writes the pixels.

@@ -577,6 +577,60 @@ files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) {
 	testing.expect(t, !platform.clipboard_files_cut(w), "no files, no cut")
 }
 
+// A read of the clipboard asked for returns at once: nothing is answered in the call, each request gets one answer at the
+// next poll_events, by its id, and none comes after. A reply injected (another program's clipboard, played) comes whole.
+@(test)
+a_clipboard_request_is_answered_at_the_next_poll :: proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, no_renderer = true})
+	w := s.win
+	_ = platform.poll_events(w, false)   // (what the start queued)
+	paths := []string{"C:/a.txt", "C:/b c.txt"}
+	testing.expect(t, platform.clipboard_set(w, {files = paths, files_cut = true, text = "two files"}), "cut")
+	files := platform.clipboard_request(w, .Files)
+	text := platform.clipboard_request(w, .Text)
+	image := platform.clipboard_request(w, .Image)
+	testing.expect(t, files != 0 && text != 0 && image != 0 && files != text && text != image, "each request has its id")
+	testing.expect(t, platform.events_waiting(w), "the answers wait for the next poll")
+	answers := 0
+	for e in platform.poll_events(w, false) {
+		if e.kind != .Clipboard_Data { continue }
+		answers += 1
+		r := e.clipboard
+		if r.id == files {
+			testing.expect(t, r.ok && r.format == .Files && len(r.files) == 2 && r.files[1] == "C:/b c.txt" && r.cut, "the files, cut")
+		} else if r.id == text {
+			testing.expect(t, r.ok && r.format == .Text && r.text == "two files", "the text")
+		} else if r.id == image {
+			testing.expect(t, !r.ok, "an image is not read this way")
+		} else {
+			testing.expect(t, false, "an answer no request asked for")
+		}
+	}
+	testing.expect_value(t, answers, 3)
+	for e in platform.poll_events(w, false) { testing.expect(t, e.kind != .Clipboard_Data, "answered once") }
+
+	// copied, not cut; and an empty clipboard answers not ok
+	testing.expect(t, platform.clipboard_set_files(w, paths), "copied")
+	copied := platform.clipboard_request(w, .Files)
+	for e in platform.poll_events(w, false) {
+		if e.kind == .Clipboard_Data { testing.expect(t, e.clipboard.id == copied && e.clipboard.ok && !e.clipboard.cut, "copied, not cut") }
+	}
+	testing.expect(t, platform.clipboard_set(w, {}), "emptied")
+	none := platform.clipboard_request(w, .Files)
+	for e in platform.poll_events(w, false) {
+		if e.kind == .Clipboard_Data { testing.expect(t, e.clipboard.id == none && !e.clipboard.ok && len(e.clipboard.files) == 0, "no files") }
+	}
+
+	// another program's answer, played: its strings outlive the literals given
+	name := strings.clone("/home/x/played.txt", context.temp_allocator)
+	platform.inject_event(w, {kind = .Clipboard_Data, clipboard = {id = 99, format = .Files, ok = true, files = {name}}})
+	played := false
+	for e in platform.poll_events(w, false) {
+		if e.kind == .Clipboard_Data && e.clipboard.id == 99 { played = len(e.clipboard.files) == 1 && e.clipboard.files[0] == "/home/x/played.txt" && raw_data(e.clipboard.files[0]) != raw_data(name) }
+	}
+	testing.expect(t, played, "the injected answer, copied")
+}
+
 ////////////////////////////////
 // hotkey_field
 

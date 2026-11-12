@@ -39,6 +39,7 @@ Native_Window :: struct {
 	paint_requested: bool,
 	stats:        Pump_Stats,
 	clip_seen:    u32,              // clipboard_changed: the count last told, plus one (0: not asked yet)
+	clip_reads:   [dynamic]Clip_Read,   // clipboard_request's reads of another client's clipboard, the first one running
 	buttons_down: Mouse_Buttons,
 	// the frame of an integrated title bar (frame_linux.odin): the resize band under the pointer, the last caption press
 	frame_hover:  Hit,
@@ -180,6 +181,7 @@ destroy_window :: proc(w: ^Window) {
 	if w == nil { return }
 	if w.destroy_hook != nil { w.destroy_hook(w, w.destroy_hook_user) }
 	clipboard_watch(w, false)
+	clip_reads_drop(w)   // (before the backend's state goes: an X11 read is its)
 	idle_release_window(w)
 	tray_destroy_all(w)
 	notify_detach(w)
@@ -193,6 +195,7 @@ destroy_window :: proc(w: ^Window) {
 	cursors_destroy(w)
 	if w.off_event > 0 { posix.close(w.off_event); w.off_event = 0 }
 	if w.offscreen { offscreen_closed() }
+	events_release(w)
 	delete(w.events)
 	delete(w.batch)
 	delete(w.injected)
@@ -492,6 +495,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 	case .None:
 	}
 	a11y_pump(w)
+	clip_reads_pump(w)   // (what came on a clipboard pipe, or an owner silent too long)
 	if w.off_event > 0 { off_drain(w) }
 	take_injected(w)
 	return hand_out(w)
@@ -561,15 +565,17 @@ poll_fd_wait :: proc(fd: i32, timeout_ms: int) -> int {
 }
 
 // poll(2) on all that ends a window's wait: its connection (-1: lost), its wake fd, the session bus, its accessibility
-// bus. Consumes nothing: the pump that follows takes what came.
+// bus, the pipe of a clipboard read. Consumes nothing: the pump that follows takes what came. A clipboard read running
+// shortens the wait to its owner's silence, which gives it up.
 @(private)
 poll_sources :: proc(w: ^Window, conn_fd: i32, timeout_ms: int) -> (r: Poll_Sources) {
-	fds: [4]Pollfd
+	fds: [5]Pollfd
 	n: uint = 0
-	for fd in ([4]i32{conn_fd, wake_fd(w), dbus_fd(), a11y_fd(w)}) {
+	for fd in ([5]i32{conn_fd, wake_fd(w), dbus_fd(), a11y_fd(w), clip_reads_fd(w)}) {
 		if fd >= 0 { fds[n] = {fd = fd, events = POLLIN}; n += 1 }
 	}
-	if n == 0 || poll(&fds[0], n, i32(timeout_ms)) <= 0 { return }
+	wait_ms := clip_reads_wait_cap(w, timeout_ms)
+	if n == 0 || poll(&fds[0], n, i32(wait_ms)) <= 0 { return }
 	for f in fds[:n] {
 		if f.revents & POLL_DONE == 0 { continue }
 		if f.fd == conn_fd { r.conn = true } else { r.other = true }

@@ -30,7 +30,7 @@ X11_Conn :: struct {
 	// atoms interned once
 	wm_protocols, wm_delete_window, net_wm_name, utf8_string, net_wm_state,
 	net_wm_state_fullscreen, net_wm_state_maximized_horz, net_wm_state_maximized_vert,
-	net_wm_state_hidden, net_wm_moveresize, motif_wm_hints, clipboard, primary, targets, wren_selection,
+	net_wm_state_hidden, net_wm_moveresize, motif_wm_hints, clipboard, primary, targets, wren_selection, request_selection,
 	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager, net_frame_extents,
 	// the rich-clipboard target atoms (clipboard_x11_linux.odin): the MIME types and the protocol atoms
 	mime_text_html, mime_image_png, mime_uri_list, mime_gnome_files, mime_kde_cut, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
@@ -62,10 +62,18 @@ X11_Window_State :: struct {
 	map_phase: X11_Map_Phase,
 	withdrawn: bool,                  // hide_window took it off the screen (show_window maps it again)
 	first_state: [dynamic]Xcb_Atom,   // what _NET_WM_STATE asks for before the first map
-	// a read of a selection (clipboard_x11_linux.odin): what was asked, how far it is, the bytes that came
-	paste:     X11_Paste_Phase,
-	paste_selection, paste_target: Xcb_Atom,
-	paste_buf: [dynamic]u8,
+	// the reads of a selection (clipboard_x11_linux.odin): the waiting one of x11_selection_read, and clipboard_request's
+	paste:     X11_Selection_Read,
+	request:   X11_Selection_Read,
+}
+
+// A read of a selection: what was asked, how far it is, the bytes that came. `property` is where the owner puts them: each
+// read has its own, so that one never takes the other's answer.
+@(private)
+X11_Selection_Read :: struct {
+	phase:     X11_Paste_Phase,
+	selection, target, property: Xcb_Atom,
+	buf:       [dynamic]u8,
 }
 
 // Where a window is with the server. Unmapped: an iconified window, under a window manager that does not say
@@ -138,6 +146,7 @@ x11_intern_atoms :: proc() {
 	x11c.primary = x11_atom("PRIMARY")
 	x11c.targets = x11_atom("TARGETS")
 	x11c.wren_selection = x11_atom("GUI_TOOLKIT_SELECTION")
+	x11c.request_selection = x11_atom("GUI_TOOLKIT_REQUEST")
 	x11c.net_wm_window_type = x11_atom("_NET_WM_WINDOW_TYPE")
 	x11c.net_wm_window_type_normal = x11_atom("_NET_WM_WINDOW_TYPE_NORMAL")
 	x11c.net_active_window = x11_atom("_NET_ACTIVE_WINDOW")
@@ -333,7 +342,8 @@ x11_destroy :: proc(w: ^Window) {
 	xcb.destroy_window(x11c.c, st.id)
 	xcb.flush(x11c.c)
 	delete(st.title)
-	delete(st.paste_buf)
+	delete(st.paste.buf)
+	delete(st.request.buf)
 	delete(st.first_state)
 	free(st)
 	w.x11 = nil
@@ -816,8 +826,9 @@ x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 			x11_read_frame_extents(w)
 		} else if pstate == 1 {   // Deleted: a requestor consumed an INCR chunk, send the next
 			x11_incr_on_property_delete(pwin, patom)
-		} else if pwin == st.id && st.paste == .Receiving && patom == x11c.wren_selection {
-			x11_incr_receive_chunk(w)
+		} else if pwin == st.id {
+			x11_incr_receive_chunk(st, &st.paste, patom)
+			if x11_incr_receive_chunk(st, &st.request, patom) { clip_reads_pump(w) }
 		}
 	}
 }
@@ -939,59 +950,66 @@ x11_handle_selection_request :: proc(w: ^Window, b: [^]u8) {
 @(private)
 x11_handle_selection_notify :: proc(w: ^Window, b: [^]u8) {
 	st := x11_state(w)
-	// xcb_selection_notify_event_t: requestor at [8], selection, target, property. The answer to the read now running: a
-	// read that gave up may hear from its owner when the next one runs
-	if st.paste != .Waiting || Xcb_Atom(get_u32(b[12:])) != st.paste_selection || Xcb_Atom(get_u32(b[16:])) != st.paste_target { return }
+	x11_read_notify(st, &st.paste, b)
+	if x11_read_notify(st, &st.request, b) { clip_reads_pump(w) }
+}
+
+// A SelectionNotify for read `r`: its answer, or the owner's refusal. Whether it was `r`'s. (A refusal names no property:
+// it ends both reads when both asked the same.) A read that gave up may hear from its owner when the next one runs.
+@(private = "file")
+x11_read_notify :: proc(st: ^X11_Window_State, r: ^X11_Selection_Read, b: [^]u8) -> bool {
+	// xcb_selection_notify_event_t: requestor at [8], selection, target, property
+	if r.phase != .Waiting || Xcb_Atom(get_u32(b[12:])) != r.selection || Xcb_Atom(get_u32(b[16:])) != r.target { return false }
 	property := Xcb_Atom(get_u32(b[20:]))
-	if property == 0 { st.paste = .Done; return }
+	if property == 0 { r.phase = .Done; return true }
+	if property != r.property { return false }
 	// read the property without deleting it first, so we can tell an INCR hand-off (type = INCR) from real data
 	cookie := xcb.get_property(x11c.c, 0, st.id, property, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
-	if reply == nil { st.paste = .Done; return }
+	if reply == nil { r.phase = .Done; return true }
 	// xcb_get_property_reply_t: type at [8]
 	ptype := Xcb_Atom(get_u32(([^]u8)(reply)[8:]))
 	n := int(xcb.get_property_value_length(reply))
 	if ptype == x11c.atom_incr {
 		// the real data streams in: delete the property to ask for the first chunk, then read on each PropertyNotify
 		posix.free(reply)
-		st.paste = .Receiving
-		clear(&st.paste_buf)
+		r.phase = .Receiving
+		clear(&r.buf)
 		xcb.delete_property(x11c.c, st.id, property)
 		xcb.flush(x11c.c)
-		return
+		return true
 	}
 	if n > 0 {
 		data := ([^]u8)(xcb.get_property_value(reply))
-		clear(&st.paste_buf)
-		append(&st.paste_buf, ..data[:n])
+		clear(&r.buf)
+		append(&r.buf, ..data[:n])
 	}
 	posix.free(reply)
 	xcb.delete_property(x11c.c, st.id, property)   // (the answer is read: nothing of it stays on the window)
 	xcb.flush(x11c.c)
-	st.paste = .Done
+	r.phase = .Done
+	return true
 }
 
-// One INCR chunk arrived on our scratch property (PropertyNotify NewValue while Receiving): append it, delete the
-// property to ask for the next. A zero-length chunk ends the transfer.
+// One INCR chunk arrived on read `r`'s property (PropertyNotify NewValue while Receiving): append it, delete the property
+// to ask for the next. A zero-length chunk ends the transfer. Whether it was `r`'s.
 @(private)
-x11_incr_receive_chunk :: proc(w: ^Window) {
-	st := x11_state(w)
-	cookie := xcb.get_property(x11c.c, 0, st.id, x11c.wren_selection, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
+x11_incr_receive_chunk :: proc(st: ^X11_Window_State, r: ^X11_Selection_Read, property: Xcb_Atom) -> bool {
+	if r.phase != .Receiving || property != r.property { return false }
+	cookie := xcb.get_property(x11c.c, 0, st.id, r.property, 0, 0, X11_SELECTION_PROP_MAX_WORDS)
 	reply := xcb.get_property_reply(x11c.c, cookie, nil)
-	if reply == nil { return }
+	if reply == nil { return true }
 	n := int(xcb.get_property_value_length(reply))
 	if n > 0 {
 		data := ([^]u8)(xcb.get_property_value(reply))
-		append(&st.paste_buf, ..data[:n])
-		posix.free(reply)
-		xcb.delete_property(x11c.c, st.id, x11c.wren_selection)   // ask for the next chunk
-		xcb.flush(x11c.c)
+		append(&r.buf, ..data[:n])
 	} else {
-		posix.free(reply)
-		st.paste = .Done   // the empty terminator
-		xcb.delete_property(x11c.c, st.id, x11c.wren_selection)
-		xcb.flush(x11c.c)
+		r.phase = .Done   // the empty terminator
 	}
+	posix.free(reply)
+	xcb.delete_property(x11c.c, st.id, r.property)   // (ask for the next chunk; after the last, nothing stays)
+	xcb.flush(x11c.c)
+	return true
 }
 
 @(private)

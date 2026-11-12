@@ -245,15 +245,16 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 	if st == nil { return nil }
 	target := x11_target_for_mime(mime)
 	if target == 0 { return nil }
-	clear(&st.paste_buf)
-	st.paste = .Waiting
-	st.paste_selection, st.paste_target = selection, target
-	defer st.paste = .Idle
-	x11_convert_selection(st.id, selection, target, x11c.wren_selection)
+	r := &st.paste
+	clear(&r.buf)
+	r.phase = .Waiting
+	r.selection, r.target, r.property = selection, target, x11c.wren_selection
+	defer r.phase = .Idle
+	x11_convert_selection(st.id, selection, target, r.property)
 	xcb.flush(x11c.c)
 	last := time.tick_now()
 	size := 0
-	for st.paste != .Done {
+	for r.phase != .Done {
 		if ev := xcb.poll_for_event(x11c.c); ev != nil {
 			x11_handle_event(w, ev)
 			posix.free(ev)
@@ -262,16 +263,63 @@ x11_selection_read :: proc(w: ^Window, selection: Xcb_Atom, mime: string, alloca
 			if x11c.link != .Connected { return nil }
 			poll_fd_wait(x11c.fd, X11_SELECTION_POLL_MS)
 		}
-		if len(st.paste_buf) != size { size = len(st.paste_buf); last = time.tick_now() }
-		if st.paste != .Done && time.duration_milliseconds(time.tick_since(last)) > wait_ms {
-			clear(&st.paste_buf)
+		if len(r.buf) != size { size = len(r.buf); last = time.tick_now() }
+		if r.phase != .Done && time.duration_milliseconds(time.tick_since(last)) > wait_ms {
+			clear(&r.buf)
 			return nil
 		}
 	}
-	if len(st.paste_buf) == 0 { return nil }
-	out := make([]u8, len(st.paste_buf), allocator)
-	copy(out, st.paste_buf[:])
+	if len(r.buf) == 0 { return nil }
+	out := make([]u8, len(r.buf), allocator)
+	copy(out, r.buf[:])
 	return out
+}
+
+// clipboard_request's read of `mime` from CLIPBOARD (clipboard_linux.odin): ConvertSelection into the window's request
+// property, then nothing waits. The answer (and an INCR transfer) comes with the connection's other events
+// (x11_handle_selection_notify), which move the request on.
+@(private)
+x11_request_start :: proc(w: ^Window, mime: string) {
+	st := x11_state(w)
+	if st == nil { return }
+	target := x11_target_for_mime(mime)
+	if target == 0 { return }
+	r := &st.request
+	clear(&r.buf)
+	r.phase = .Waiting
+	r.selection, r.target, r.property = x11c.clipboard, target, x11c.request_selection
+	x11_convert_selection(st.id, r.selection, r.target, r.property)
+	xcb.flush(x11c.c)
+}
+
+// The request's read: `done` with its bytes (context allocator; nil: none came), else the bytes so far. A read never
+// asked (Idle) is done with nothing.
+@(private)
+x11_request_take :: proc(w: ^Window) -> (data: []u8, done: bool, size: int) {
+	st := x11_state(w)
+	if st == nil { return nil, true, 0 }
+	r := &st.request
+	switch r.phase {
+	case .Idle:                return nil, true, 0
+	case .Waiting, .Receiving: return nil, false, len(r.buf)
+	case .Done:
+	}
+	r.phase = .Idle
+	if len(r.buf) > 0 {
+		data = make([]u8, len(r.buf))
+		copy(data, r.buf[:])
+	}
+	clear(&r.buf)
+	return data, true, 0
+}
+
+// The request's read is given up: what its owner says later is not heard.
+@(private)
+x11_request_stop :: proc(w: ^Window) {
+	st := x11_state(w)
+	if st == nil { return }
+	st.request.phase = .Idle
+	clear(&st.request.buf)
 }
 
 // What another client's CLIPBOARD offers (its TARGETS): read again when the clipboard changed hands; without the notice of
