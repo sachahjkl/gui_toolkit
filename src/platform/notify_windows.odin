@@ -267,6 +267,13 @@ notify_open :: proc(w: ^Window) -> bool {
 	return true
 }
 
+// notify_linux.odin's notify_async: Windows shows a toast at once, so `done` runs before it returns.
+notify_async :: proc(w: ^Window, n: Notification, done: Notify_Done = nil, user: rawptr = nil) -> bool {
+	id, ok := notify(w, n)
+	if done != nil { done(user, id, ok) }
+	return true
+}
+
 notify :: proc(w: ^Window, n: Notification) -> (id: Notification_Id, ok: bool) {
 	if w == nil || !notify_open(w) { return 0, false }
 	s := &w.notify

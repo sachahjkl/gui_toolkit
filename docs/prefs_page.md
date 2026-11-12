@@ -48,6 +48,7 @@ ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 | | `appearance.font_size`: 10 to 24 px | a slider |
 | `Session` (page `general`) | `general.menu`: in the application menu | a switch |
 | | `general.autostart`: start with the session | a switch |
+| | `general.messages`: where the program says what it did (System, Window, Off; read by `messages_mode` for ui.announce) | a choice |
 
 Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` off. `app_name` goes in the descriptions ("Start
 cliche with the session"); those texts are made in the `allocator` argument and must live as long as the registry. The

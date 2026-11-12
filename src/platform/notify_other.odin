@@ -12,5 +12,6 @@ Notify_State :: struct {}
 
 notify_supported :: proc() -> bool { return false }
 notify :: proc(w: ^Window, n: Notification) -> (id: Notification_Id, ok: bool) { return 0, false }
+notify_async :: proc(w: ^Window, n: Notification, done: Notify_Done = nil, user: rawptr = nil) -> bool { return false }
 notify_close :: proc(w: ^Window, id: Notification_Id) {}
 notify_activation_token :: proc(w: ^Window) -> string { return "" }

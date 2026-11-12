@@ -30,6 +30,8 @@ for e in platform.poll_events(w, true) {
 | `notify_set_app(Notify_App)` | the program's name, its Windows AppUserModelID and its icon file; once, at start, before the first window |
 | `notify_supported() -> bool` | Linux: a notification server answers on the session bus. Windows: Windows 10 or later, with toasts |
 | `notify(w, Notification) -> (Notification_Id, bool)` | shows a notification; its results come as events of `w` |
+| `notify_async(w, Notification, done, user) -> bool` | the same without waiting: the call goes out at once, `done(user, id, ok)` runs from the window loop when the system answers (Linux: the D-Bus reply; Windows: at once). What the interface's thread calls |
+| `notification_clone`, `notification_free` | a notification that owns its text, kept until it is sent |
 | `notify_close(w, id)` | takes it away; `Notification_Closed` (reason `Closed`) follows |
 | `notify_activation_token(w) -> string` | Linux: the xdg-activation token of the last click on a notification of `w`, for 10 s |
 
@@ -93,6 +95,20 @@ uses the server's activation token, so the compositor gives the window the focus
 - A click after the program has ended starts nothing: the toolkit registers no COM activator.
 - The window needs its HWND: an offscreen window shows no toasts.
 - Windows gives no activation token: `notify_activation_token` is `""`.
+
+## Saying what was done: ui.announce
+
+A program says what it just did (copied, saved, deleted) with `ui.announce(&announcer, kind, title, body)`: a
+notification of the system (`notify_async`: nothing waits on the interface's thread; the next one replaces the last), a
+toast of the window where the system shows none, or where the person chose it. `Announcer.mode` comes from
+prefs_page's standard preference `general.messages` (`prefs_page.messages_mode`): System, Window or Off. A failure
+(kind .Bad) is said even with Off.
+
+```odin
+app.announcer = {mode = prefs_page.messages_mode(&app.prefs), window = app.anchor}
+ui.announce(&app.announcer, .Good, "Copied to the clipboard")
+ui.announce(&app.announcer, .Good, "Saved", path)
+```
 
 ## Limits
 

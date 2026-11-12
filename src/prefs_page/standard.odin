@@ -19,7 +19,7 @@ import "../ui"
 
 Standard_Set :: enum u8 {
 	Appearance,   // appearance.theme, appearance.mode, appearance.finish, appearance.font_size
-	Session,      // general.menu, general.autostart
+	Session,      // general.menu, general.autostart, general.messages
 }
 Standard :: bit_set[Standard_Set]
 
@@ -44,6 +44,7 @@ FINISH_PREF    :: "appearance.finish"
 FONT_SIZE_PREF :: "appearance.font_size"
 MENU_PREF      :: "general.menu"
 AUTOSTART_PREF :: "general.autostart"
+MESSAGES_PREF  :: "general.messages"
 
 FONT_SIZE_MIN :: 10
 FONT_SIZE_MAX :: 24
@@ -58,6 +59,8 @@ MODE_CHOICES := [?]string{"system", "dark", "light"}
 // (static: the registry keeps the slices of a Def)
 @(private = "file", rodata) MENU_TAGS := [?]string{"launcher", "desktop file", "start menu", "icon"}
 @(private = "file", rodata) AUTOSTART_TAGS := [?]string{"login", "startup", "boot", "session"}
+@(private = "file", rodata) MESSAGES_TAGS := [?]string{"notifications", "toasts", "messages", "feedback", "copied", "saved"}
+@(private = "file", rodata) MESSAGES_CHOICES := [?]string{"system", "window", "off"}
 @(private = "file", rodata) THEME_TAGS := [?]string{"colours", "colors", "palette", "dark", "light", "look"}
 @(private = "file", rodata) MODE_TAGS := [?]string{"dark", "light", "night", "day"}
 @(private = "file", rodata) FINISH_TAGS := [?]string{"style", "look", "bevel", "flat"}
@@ -85,6 +88,11 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			name = AUTOSTART_PREF, title = "Start with the session", category = "general", kind = .Bool, default = {b = d.autostart},
 			description = fmt.aprintf("Start %s with the session, so that its shortcuts work from the start.", name, allocator = a),
 			tags = AUTOSTART_TAGS[:],
+		})
+		append(&defs, config.Def{
+			name = MESSAGES_PREF, title = "Messages", category = "general", kind = .String, default = {s = "system"},
+			description = fmt.aprintf("Where %s says what it did (copied, saved, deleted). System: the system's notifications, or %s's window where the system has none. Window: only in %s's window. Off: nowhere; a failure is always said.", name, name, name, allocator = a),
+			choices = MESSAGES_CHOICES[:], tags = MESSAGES_TAGS[:],
 		})
 	}
 	if .Appearance in sets {
@@ -117,6 +125,13 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 @(private = "file")
 menu_words :: proc() -> string {
 	when ODIN_OS == .Windows { return "Start menu" } else { return "application menu" }
+}
+
+// Where the program's messages go (ui.Announcer.mode): general.messages, System when it is not registered.
+messages_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
+	r := config.ref_of(prefs, MESSAGES_PREF)
+	if r == config.NO_REF { return .System }
+	return ui.announce_mode_of(config.get_string(prefs, r))
 }
 
 // The look, as a program applies it.

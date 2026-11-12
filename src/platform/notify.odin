@@ -13,6 +13,7 @@ package platform
 // The pure parts (the D-Bus arguments, the toast's XML, the escaping, the image) are here, tested on every system.
 
 import "core:fmt"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "../dbus"
@@ -40,6 +41,30 @@ Notification :: struct {
 	actions:  []Notification_Action,   // buttons (a system may show fewer: Windows at most 5)
 	replace:  Notification_Id,         // an earlier notification of the window this one updates in place (0: a new one)
 	silent:   bool,                    // no sound
+}
+
+// What notify_async calls once the system answered: the notification's id, or ok false (no notification server, or it
+// refused). From the window loop, on the interface's thread.
+Notify_Done :: #type proc(user: rawptr, id: Notification_Id, ok: bool)
+
+// A copy of `n` that owns its strings and bytes (notification_free): what an asynchronous send keeps until it is out.
+notification_clone :: proc(n: Notification, allocator := context.allocator) -> Notification {
+	out := n
+	out.title = strings.clone(n.title, allocator)
+	out.body = strings.clone(n.body, allocator)
+	out.icon_png = slice.clone(n.icon_png, allocator)
+	out.actions = make([]Notification_Action, len(n.actions), allocator)
+	for a, i in n.actions { out.actions[i] = {id = a.id, label = strings.clone(a.label, allocator)} }
+	return out
+}
+
+notification_free :: proc(n: ^Notification, allocator := context.allocator) {
+	delete(n.title, allocator)
+	delete(n.body, allocator)
+	delete(n.icon_png, allocator)
+	for a in n.actions { delete(a.label, allocator) }
+	delete(n.actions, allocator)
+	n^ = {}
 }
 
 // Why a notification is gone.

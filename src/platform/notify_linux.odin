@@ -101,6 +101,71 @@ notify_send :: proc(w: ^Window, n: Notification, tray: ^Tray) -> (id: Notificati
 	return id, true
 }
 
+// notify, without waiting for the server: the call goes out now, `done` runs from the window loop (the bus is pumped
+// there) once the server answers, with the notification's id, or ok false when there is no server or it refused. The
+// server's capabilities are asked first the same way when they are not known yet. `w` must outlive the answer (a
+// program's long-lived window: its anchor, its main window). False: nothing was sent (no session bus): `done` will not
+// run.
+notify_async :: proc(w: ^Window, n: Notification, done: Notify_Done = nil, user: rawptr = nil) -> bool {
+	if w == nil { return false }
+	conn := session_bus()
+	if conn == nil { return false }
+	req := new(Notify_Request)
+	req^ = {w = w, n = notification_clone(n), done = done, user = user}
+	if session.notify_caps_known { return notify_request_send(conn, req) }
+	handler :: proc(user: rawptr, status: dbus.Call_Status, msg: ^dbus.Message) {
+		req := (^Notify_Request)(user)
+		conn := session_bus()
+		if status != .Ok || msg == nil || conn == nil { notify_request_end(req, 0, false); return }
+		r := dbus.msg_reader(msg)
+		names := make([dynamic]string, context.temp_allocator)
+		end := dbus.r_array_begin(&r, "s")
+		for r.pos < end && !r.err { append(&names, dbus.r_string(&r)) }
+		session.notify_caps = notify_caps_of(names[:])
+		session.notify_caps_known = true
+		if !notify_request_send(conn, req) { notify_request_end(req, 0, false) }
+	}
+	if dbus.call_async(conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "GetCapabilities", "", nil, handler, req, DBUS_QUICK_CALL_MS) { return true }
+	notify_request_end(req, 0, false)
+	return false
+}
+
+@(private = "file")
+Notify_Request :: struct {
+	w:    ^Window,
+	n:    Notification,   // owned
+	done: Notify_Done,
+	user: rawptr,
+}
+
+@(private = "file")
+notify_request_send :: proc(conn: ^dbus.Conn, req: ^Notify_Request) -> bool {
+	name := notify_app.name != "" ? notify_app.name : app_id_or_exe()
+	icon := notify_app.icon_path != "" ? file_uri_of_unix_path(notify_app.icon_path) : ""
+	body := notify_dbus_body(req.n, name, icon, app_id_or_exe(), session.notify_caps)
+	handler :: proc(user: rawptr, status: dbus.Call_Status, msg: ^dbus.Message) {
+		req := (^Notify_Request)(user)
+		if status != .Ok || msg == nil { notify_request_end(req, 0, false); return }
+		r := dbus.msg_reader(msg)
+		id := Notification_Id(dbus.r_u32(&r))
+		if r.err || id == 0 { notify_request_end(req, 0, false); return }
+		// (the window's list, as notify keeps it: its signals are listened to, a replaced one is forgotten)
+		if conn := session_bus(); conn != nil { notify_listen(req.w, conn) }
+		if req.n.replace != 0 { notify_forget(req.w, req.n.replace) }
+		notify_forget(req.w, id)
+		append(&req.w.notify.live, Notify_Live{id = id})
+		notify_request_end(req, id, true)
+	}
+	return dbus.call_async(conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "Notify", NOTIFY_SIGNATURE, body, handler, req, NOTIFY_CALL_MS)
+}
+
+@(private = "file")
+notify_request_end :: proc(req: ^Notify_Request, id: Notification_Id, ok: bool) {
+	if req.done != nil { req.done(req.user, id, ok) }
+	notification_free(&req.n)
+	free(req)
+}
+
 @(private = "file")
 file_uri_of_unix_path :: proc(path: string) -> string {
 	return len(path) > 0 && path[0] == '/' ? concat_temp("file://", path) : path
