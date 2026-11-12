@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.221.0] - 2026-11-12
+
+### Added
+- **Buttons of any hue of the theme**: `button_icon(..., hue = .Green)` fills a button with one of the hues every theme defines (`hue()`: accent, blue, purple, green, yellow, red, cyan, rose), its words and icon in `ink_on` of it. **`ink_on(ground)`**: of the theme's page and text colours, the one that reads on a filled ground, made readable (WCAG AA). **`hue_color`**: `hue()` under a name a parameter does not hide. Lucide: `KEY`, `KEY_ROUND`, `LOCK_KEYHOLE`, `LOCK_OPEN`, `SMARTPHONE`.
+
 ## [0.220.0] - 2026-11-12
 
 ### Changed
@@ -2933,6 +2938,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.221.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.0
 [0.220.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.220.0
 [0.219.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.219.1
 [0.219.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.219.0
