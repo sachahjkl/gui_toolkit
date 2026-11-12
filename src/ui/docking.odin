@@ -651,7 +651,9 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 		end.custom = dock_float_unclip
 	}
 	g := math.round(DOCK_GRIP_EM * em) + RESIZE_GRIP_BEVEL_PAST_PX * scale()   // (the bevel's square: resize_grip_draw)
-	next({fixed_x = r.max.x - g, fixed_y = r.max.y - g, width = px(g), height = px(g), cursor = platform.Cursor.Resize_NWSE})
+	// (the corner's own cursor, as a window's bottom right corner and a dialog's grip have it: se-resize is in every theme, and
+	// nwse-resize is not; a theme without it fell back to a name some themes draw the other way, bd_double_arrow)
+	next({fixed_x = r.max.x - g, fixed_y = r.max.y - g, width = px(g), height = px(g), cursor = platform.Cursor.Resize_SE})
 	gb := build_box({.Clickable}, dock_grip_id(root))
 	resize_grip_paint(gb, signal(gb))
 }

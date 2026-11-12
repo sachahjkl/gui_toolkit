@@ -461,6 +461,20 @@ the_dock_is_held_as_long_as_the_press :: proc(t: ^testing.T) {
 	session.release(s, g + {10, 10})
 }
 
+// A floating panel's corner shows the cursor of a bottom right corner, as a window's and a dialog's do: it showed the
+// double arrow of a diagonal (nwse-resize), which a theme without it drew the other way.
+@(test)
+a_floating_panels_corner_has_a_corners_cursor :: proc(t: ^testing.T) {
+	app: App
+	defer ui.dock_destroy(&app.dock)
+	s := setup(t, &app)
+	testing.expect(t, ui.dock_float(&app.dock, 2, {{50, 50}, {250, 200}}))
+	session.frames(s, 2)
+	session.move(s, session.center(session.get(s, fmt.tprintf("dock_grip_%d", app.dock.floats[0]))))
+	session.frames(s, 2)
+	testing.expect_value(t, session.cursor(s), platform.Cursor.Resize_SE)
+}
+
 @(test)
 a_close_button_closes_the_panel :: proc(t: ^testing.T) {
 	app: App
