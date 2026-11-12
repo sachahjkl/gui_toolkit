@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.197.1] - 2026-11-12
+
+### Changed
+- **A scroll bar's thumb looks like a thing to take**: a rim a little stronger than its face, and three grip lines across its middle cut in the background's colour (on a thumb long enough to hold them), in every finish but Flat.
+
 ## [0.197.0] - 2026-11-12
 
 ### Added
@@ -2680,6 +2685,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.197.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.1
 [0.197.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.0
 [0.196.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.3
 [0.196.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.2
