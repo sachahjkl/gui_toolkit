@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.204.0] - 2026-11-12
+
+### Added
+- **`term`**: a terminal's grid as a widget, over a screen source of the program's (`term.Source`: rows of cells with dirty flags, the cursor, the scrollback, a selection, the bytes sent back). Rows are drawn from a cache built again only for the rows that changed; a selection is made with the pointer; keys and the mouse become bytes (`xterm_key` for a source without an encoder); the scrollback is under the toolkit's scroll bar; each grid has its own zoom. The widget emulates nothing.
+- **`ui.Deferred`**: something done once things are quiet, by the toolkit's clock: asked again it moves back, never later than its cap after the first ask (`deferred_ask`, `deferred_take`, `deferred_in_ms`).
+- **`remote`**: how the reading of a value from a server stands (idle, loading, ready, refused, failed), with a ticket that drops the answer of a reading given up.
+- **`markdown`**: Markdown in a window: headings, paragraphs, lists, quotes, rules, tables that scroll sideways, fenced code highlighted by `syntax`, and inline emphasis, code and links, each block a selectable `ui.rich_paragraph`. A `Doc` the program keeps reads its text only when it changes (a text that grows in place: only its last block), and keeps each block's runs, highlight and table widths; a `Config` gives the faces, sizes and colours, and what a link, a code block, a table's frame and its corner do.
+- **`diff`**: a unified diff read into its lines once (`parse`, `Doc`: read again only when its text changes), with their numbers, its hunks and what changed in a changed line; two texts compared (`between`); and its rows (`lines_view`, `view`: stacked or split, only the rows in view built), in the theme's new `diff_added` / `diff_removed` / `diff` colours and the code's colours.
+
 ## [0.203.0] - 2026-11-12
 
 ### Added
@@ -2771,6 +2780,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.204.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.204.0
 [0.203.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.203.0
 [0.202.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.202.0
 [0.201.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.201.0
