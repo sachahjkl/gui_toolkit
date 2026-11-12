@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.213.0] - 2026-11-12
+
+### Fixed
+- **A resizable dialog's grip corner in the machined finish**: the panel, its rim and its edge keep the square corner under the resize grip (they were drawn rounded over it); `ui.machined_plate_corners` and `ui.machined_plate_frame_corners` take a radius per corner.
+
 ## [0.212.0] - 2026-11-12
 
 ### Added
@@ -2860,6 +2865,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.213.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.213.0
 [0.212.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.212.0
 [0.211.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.211.0
 [0.210.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.210.0
