@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.228.1] - 2026-11-12
+
+### Fixed
+- **The keyboard tests of the classic menu**: they open their menus with `search = false`, as their letter selection and their turn at a window's edge are the classic menu's; the menus that search have their own tests.
+
 ## [0.228.0] - 2026-11-12
 
 ### Added
@@ -3002,6 +3007,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.228.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.1
 [0.228.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.0
 [0.227.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.227.0
 [0.226.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.226.2
