@@ -44,7 +44,7 @@ color_scheme_watch :: proc() {
 // by the desktop. ok = false when the file or the key is absent.
 @(private)
 gtk_setting :: proc(key: string) -> (value: string, ok: bool) {
-	dir := config_dir(context.temp_allocator)
+	dir := user_dir(.Config, "", context.temp_allocator)
 	if dir == "" { return "", false }
 	path := strings.concatenate({dir, "/gtk-3.0/settings.ini"}, context.temp_allocator)
 	data, read_err := os.read_entire_file(path, context.temp_allocator)

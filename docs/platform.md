@@ -98,7 +98,21 @@ for a screen-sized fixed surface).
 `open_path`, `reveal_in_folder`. `launch_detached(args)` (Linux) starts a program and does not wait for it, its output
 nowhere: xdg-open, an application of "Open with" (`desktop.open_with`).
 
-**System** — `config_dir`, `system_font_path`, `os_animations_enabled`, `app_icon_rgba`.
+**System** — `user_dir`, `system_font_path`, `os_animations_enabled`, `app_icon_rgba`.
+
+**A program's folders** (`user_dir.odin`) — `user_dir(kind, program)` is where a program keeps what it keeps, one folder of its own
+per kind, the same call on every system (`program` ""; the folder every program's is in). Nothing is made: the program makes it
+when it writes there.
+
+| `User_Dir` | Linux | Windows |
+|---|---|---|
+| `.Config` (its settings) | `$XDG_CONFIG_HOME/<program>` (`~/.config`) | `%APPDATA%\<program>` |
+| `.Data` (what it made and keeps) | `$XDG_DATA_HOME/<program>` (`~/.local/share`) | `%LOCALAPPDATA%\<program>` |
+| `.State` (logs, crash reports, what it remembers between runs) | `$XDG_STATE_HOME/<program>` (`~/.local/state`) | `%LOCALAPPDATA%\<program>\state` |
+| `.Cache` (what it can make again) | `$XDG_CACHE_HOME/<program>` (`~/.cache`) | `%LOCALAPPDATA%\<program>\cache` |
+
+An XDG variable counts only when it is an absolute path, as the specification says. Windows' folders are its known folders
+(`SHGetKnownFolderPath`), not the variables.
 
 **Network interfaces** (`net_interfaces.odin`) — `interface_addresses()` lists every IPv4 and IPv6 address of every
 interface, IPv4 first (`Interface_Address`: the interface's name, the family, the address and the netmask in network

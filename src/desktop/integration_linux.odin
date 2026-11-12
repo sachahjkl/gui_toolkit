@@ -23,6 +23,7 @@ import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "../fsx"
+import "../platform"
 
 @(private = "file")
 LINUX_BACKEND := Backend{
@@ -46,7 +47,7 @@ platform_backend :: proc() -> ^Backend { return &LINUX_BACKEND }
 // folder is the record.
 @(private = "file")
 linux_default_install_dir :: proc(o: ^Options, allocator: runtime.Allocator) -> string {
-	data_home := xdg_data_home()
+	data_home := platform.user_dir(.Data, "", context.temp_allocator)
 	if data_home == "" { return "" }
 	return strings.concatenate({data_home, "/", o.identity.slug}, allocator)
 }
@@ -69,7 +70,7 @@ Layout :: struct {
 layout_of :: proc(o: ^Options) -> (l: Layout, ok: bool) {
 	data_home := ""
 	if o.applications_dir == "" || o.icons_dir == "" {
-		data_home = xdg_data_home()
+		data_home = platform.user_dir(.Data, "", context.temp_allocator)
 		if data_home == "" { return {}, false }
 	}
 	l.applications = o.applications_dir != "" ? o.applications_dir : strings.concatenate({data_home, "/applications"}, context.temp_allocator)
@@ -161,7 +162,7 @@ linux_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
 autostart_path :: proc(o: ^Options) -> string {
 	dir := o.autostart_dir
 	if dir == "" {
-		config := xdg_config_home()
+		config := platform.user_dir(.Config, "", context.temp_allocator)
 		if config == "" { return "" }
 		dir = strings.concatenate({config, "/autostart"}, context.temp_allocator)
 	}

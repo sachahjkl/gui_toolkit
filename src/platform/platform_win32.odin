@@ -725,23 +725,6 @@ dark_mode_preferred :: proc() -> bool {
 @(private)
 color_scheme_watch :: proc() {}
 
-// Per-user config directory (%APPDATA%).
-config_dir :: proc(allocator := context.allocator) -> string {
-	name := win.utf8_to_wstring("APPDATA", context.temp_allocator)
-	buf: [win.MAX_PATH]u16
-	n := win.GetEnvironmentVariableW(name, &buf[0], len(buf))
-	if n == 0 { return "" }
-	wide := buf[:]
-	if int(n) >= len(buf) {
-		// longer than MAX_PATH: n is the size needed, with the terminating zero
-		wide = make([]u16, n, context.temp_allocator)
-		n = win.GetEnvironmentVariableW(name, &wide[0], u32(len(wide)))
-		if n == 0 || int(n) >= len(wide) { return "" }
-	}
-	s, _ := win.utf16_to_utf8(wide[:n], allocator)
-	return s
-}
-
 ////////////////////////////////
 // internals
 

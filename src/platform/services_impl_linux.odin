@@ -72,7 +72,7 @@ idle_uninhibit_linux :: proc(h: Idle_Inhibit) {
 @(private)
 add_recent_file_linux :: proc(path: string, mime: string) {
 	if path == "" { return }
-	dir := recent_dir()
+	dir := user_dir(.Data, "", context.temp_allocator)
 	if dir == "" { return }
 	file := strings.concatenate({dir, "/recently-used.xbel"}, context.temp_allocator)
 	uri := file_uri(path)
@@ -104,13 +104,6 @@ add_recent_file_linux :: proc(path: string, mime: string) {
 	}
 	out := strings.concatenate({text[:idx], entry, text[idx:]}, context.temp_allocator)
 	_ = os.write_entire_file(file, transmute([]u8)out)
-}
-
-@(private)
-recent_dir :: proc() -> string {
-	if x := posix_getenv("XDG_DATA_HOME"); x != "" { return x }
-	if home := posix_getenv("HOME"); home != "" { return strings.concatenate({home, "/.local/share"}, context.temp_allocator) }
-	return ""
 }
 
 @(private)

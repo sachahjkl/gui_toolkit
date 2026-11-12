@@ -23,6 +23,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:sys/linux"
 import "core:thread"
+import "../platform"
 
 WATCH_LINUX_PLACES :: 6
 
@@ -60,8 +61,8 @@ watch_start_linux :: proc(o: ^Options, wake: Watch_Proc, user: rawptr) -> ^Watch
 	st.allocator = context.allocator
 
 	// the places of the layout the integration uses; one the options do not set is the XDG default
-	data := xdg_data_home()
-	config := xdg_config_home()
+	data := platform.user_dir(.Data, "", context.temp_allocator)
+	config := platform.user_dir(.Config, "", context.temp_allocator)
 	paths := [WATCH_LINUX_PLACES]string{
 		o.applications_dir != "" ? o.applications_dir : (data == "" ? "" : strings.concatenate({data, "/applications"}, context.temp_allocator)),
 		o.icons_dir != "" ? o.icons_dir : (data == "" ? "" : strings.concatenate({data, "/icons/hicolor"}, context.temp_allocator)),

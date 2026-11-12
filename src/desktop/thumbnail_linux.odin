@@ -72,12 +72,12 @@ Thumbnailer_Cache :: struct {
 
 @(private)
 thumbnail_native :: proc(path: string, size: int, mode: Thumbnail_Mode, allocator: runtime.Allocator) -> (thumb: Thumbnail, ok: bool) {
-	return thumbnail_in(xdg_roots(), xdg_cache_home(), path, size, mode, allocator)
+	return thumbnail_in(xdg_roots(), platform.user_dir(.Cache, "", context.temp_allocator), path, size, mode, allocator)
 }
 
 @(private)
 thumbnail_store_native :: proc(path: string, rgba: []u8, width, height: int) -> bool {
-	return thumbnail_store_in(xdg_cache_home(), path, rgba, width, height)
+	return thumbnail_store_in(platform.user_dir(.Cache, "", context.temp_allocator), path, rgba, width, height)
 }
 
 // The thumbnail of `path` from the data directories of `roots` and the cache under `cache_home` (the tests give theirs).

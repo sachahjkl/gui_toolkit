@@ -2,7 +2,7 @@
 package platform
 
 // The Linux window backend: the same public API as platform_win32.odin (open_window, poll_events, the window-state
-// calls, text clipboard, config_dir...), dispatching to Wayland (window_wl_linux.odin) or X11 (window_x11_linux.odin),
+// calls, text clipboard, user_dir...), dispatching to Wayland (window_wl_linux.odin) or X11 (window_x11_linux.odin),
 // chosen at open_window from the environment (choose_backend in linux_lib.odin). Everything a backend does not vary
 // (the offscreen path, the event queue bookkeeping, inject_event) lives here so both backends share it, exactly as the
 // Win32 file is a single backend.
@@ -764,17 +764,6 @@ os_animations_enabled :: proc() -> bool { return !reduce_motion_preferred() }
 
 // What a notch of the wheel moves: the desktops have no one setting for it, so the usual three lines.
 wheel_lines :: proc(across := false) -> f32 { return WHEEL_LINES_DEFAULT }
-
-// Per-user config directory: $XDG_CONFIG_HOME, else $HOME/.config.
-config_dir :: proc(allocator := context.allocator) -> string {
-	if x := posix.getenv("XDG_CONFIG_HOME"); x != nil && string(x) != "" {
-		return strings.clone(string(x), allocator)
-	}
-	if home := posix.getenv("HOME"); home != nil && string(home) != "" {
-		return strings.concatenate({string(home), "/.config"}, allocator)
-	}
-	return ""
-}
 
 // Path of a font the system ships, by its file name (e.g. "DejaVuSans.ttf"), searched under the usual font folders.
 // font_system_linux.odin in the font package is the richer lookup; this is the Win32 system_font_path's counterpart.

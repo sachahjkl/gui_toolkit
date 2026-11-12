@@ -24,7 +24,7 @@ clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
 
 settings_dir :: proc() -> string {
 	if the_app.settings_in != "" { return the_app.settings_in }
-	return fmt.tprintf("%s/gui_toolkit_fidget", platform.config_dir(context.temp_allocator))
+	return platform.user_dir(.Config, "gui_toolkit_fidget", context.temp_allocator)
 }
 
 snapshot :: proc(app: ^App) -> Saved_Settings {

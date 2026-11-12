@@ -68,7 +68,7 @@ icon_theme_current :: proc() -> string {
 		if theme_known { return strings.clone(theme_name, context.temp_allocator) }
 	}
 	name, asked := platform.portal_icon_theme(runtime.heap_allocator())
-	if !asked { name = icon_theme_name(xdg_config_home(), runtime.heap_allocator()) }
+	if !asked { name = icon_theme_name(platform.user_dir(.Config, "", context.temp_allocator), runtime.heap_allocator()) }
 	sync.mutex_guard(&theme_mutex)
 	if theme_known {
 		delete(name, runtime.heap_allocator())

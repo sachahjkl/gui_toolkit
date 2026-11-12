@@ -50,7 +50,7 @@ ICON_X :: "x"
 
 data_dir :: proc() -> string {
 	if the_app.data_in != "" { return the_app.data_in }
-	return fmt.tprintf("%s/gui_toolkit_todo", platform.config_dir(context.temp_allocator))
+	return platform.user_dir(.Config, "gui_toolkit_todo", context.temp_allocator)
 }
 
 save :: proc(app: ^App) {

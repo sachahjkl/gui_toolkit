@@ -239,17 +239,17 @@ a_close_can_be_taken_back :: proc(t: ^testing.T) {
 	testing.expect(t, !platform.is_closed(w))
 }
 
-// %APPDATA% longer than MAX_PATH (a roaming profile on a deep UNC path) is read whole, not sliced out of bounds.
+// A program's folders on Windows: the configuration in the roaming application data, the rest in the local one, the state and the
+// cache each in a folder of its own there (SHGetKnownFolderPath: not the variables, which a process may have changed).
 @(test)
-config_dir_with_a_long_path :: proc(t: ^testing.T) {
-	name := win.utf8_to_wstring("APPDATA", context.temp_allocator)
-	old: [win.MAX_PATH]u16
-	n := win.GetEnvironmentVariableW(name, &old[0], len(old))
-	defer if n > 0 && int(n) < len(old) { win.SetEnvironmentVariableW(name, win.wstring(&old[0])) }
-	long := strings.concatenate({"C:\\", strings.repeat("a123456789\\", 30, context.temp_allocator)}, context.temp_allocator)   // 333 characters
-	win.SetEnvironmentVariableW(name, win.utf8_to_wstring(long, context.temp_allocator))
-	dir := platform.config_dir(context.temp_allocator)
-	testing.expect_value(t, dir, long)
+a_program_s_folders_are_windows_known_folders :: proc(t: ^testing.T) {
+	roaming := platform.user_dir(.Config, "", context.temp_allocator)
+	local := platform.user_dir(.Data, "", context.temp_allocator)
+	testing.expect(t, roaming != "" && local != "" && roaming != local, "two known folders")
+	testing.expect_value(t, platform.user_dir(.Config, "prog", context.temp_allocator), strings.concatenate({roaming, "\\prog"}, context.temp_allocator))
+	testing.expect_value(t, platform.user_dir(.Data, "prog", context.temp_allocator), strings.concatenate({local, "\\prog"}, context.temp_allocator))
+	testing.expect_value(t, platform.user_dir(.State, "prog", context.temp_allocator), strings.concatenate({local, "\\prog\\state"}, context.temp_allocator))
+	testing.expect_value(t, platform.user_dir(.Cache, "prog", context.temp_allocator), strings.concatenate({local, "\\prog\\cache"}, context.temp_allocator))
 }
 
 Frames :: struct { n: int }

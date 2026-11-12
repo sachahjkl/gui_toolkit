@@ -41,11 +41,11 @@ xdg_roots :: proc() -> Xdg_Roots {
 	data := make([dynamic]string, context.temp_allocator)
 	config := make([dynamic]string, context.temp_allocator)
 	desktops := make([dynamic]string, context.temp_allocator)
-	if h := xdg_data_home(); h != "" { append(&data, h) }
+	if h := platform.user_dir(.Data, "", context.temp_allocator); h != "" { append(&data, h) }
 	dirs := os.get_env("XDG_DATA_DIRS", context.temp_allocator)
 	if dirs == "" { dirs = "/usr/local/share:/usr/share" }
 	for d in strings.split(dirs, ":", context.temp_allocator) { if filepath.is_abs(d) { append(&data, d) } }
-	if h := xdg_config_home(); h != "" { append(&config, h) }
+	if h := platform.user_dir(.Config, "", context.temp_allocator); h != "" { append(&config, h) }
 	cdirs := os.get_env("XDG_CONFIG_DIRS", context.temp_allocator)
 	if cdirs == "" { cdirs = "/etc/xdg" }
 	for d in strings.split(cdirs, ":", context.temp_allocator) { if filepath.is_abs(d) { append(&config, d) } }
