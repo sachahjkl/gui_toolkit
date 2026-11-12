@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.200.0] - 2026-11-12
+
+### Added
+- **`platform.toplevels`, `toplevel_activate`: the session's windows**, other programs' too (their app id, title, focus, minimized), and one brought to the front: Wayland's wlr-foreign-toplevel-management (sway, Hyprland, niri, labwc, ShojiWM); none elsewhere yet.
+- **`List_State.no_typeahead`: the letters typed are the program's**: a list with it does not take the letters typed for its type-ahead, so a filter given them by `type_to_field` gets them while the list has the keyboard (a file manager's list).
+
+### Fixed
+- **A window whose picture the compositor has not shown yet keeps its timers**: a program's timed work (a sample, a poll) goes on while its window is on a hidden workspace, or on an output with nothing else to draw; it stopped until the compositor showed the window again.
+- **An empty state's icon is large**: `ui.empty_state` drew its icon at the text's size, a small mark over the title; it is drawn at 2.4 times the text's size now.
+- **A dialog holds the keys of the list behind it**: a list that had the keyboard took Enter, Escape and the arrows while a dialog was open over it, so an Enter that answered the dialog also opened the row behind. A list now reads no key while a dialog it is not in is open.
+
 ## [0.199.0] - 2026-11-12
 
 ### Added
@@ -2722,6 +2733,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.200.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.200.0
 [0.199.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.199.0
 [0.197.4]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.4
 [0.198.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.198.0
