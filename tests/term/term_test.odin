@@ -324,3 +324,34 @@ the_zoom_keys_and_the_wheel :: proc(t: ^testing.T) {
 	term.event(&v, {kind = .Key_Press, key = .Page_Up, mods = {.Shift}})
 	testing.expect_value(t, f.scrolled, -v.rows)
 }
+
+// The grid is centered in its box: what the whole cells leave goes half on each side, not all under the last row (an empty
+// band at the bottom the prompt never reached). The pointer finds the cell drawn under it, and a program that tracks the
+// mouse is told the margin on each side.
+@(test)
+the_grid_is_centered_in_its_box :: proc(t: ^testing.T) {
+	f := Fake{lines = {"abc", "", "", ""}, modes = {.Mouse_Tracking}}
+	defer delete(f.out)
+	Told :: struct { lo, hi: [2]f32 }
+	@(static) told: Told
+	src := fake_source(&f)
+	src.encode_mouse = proc(data: rawptr, m: term.Mouse_Input, buf: []u8) -> int {
+		told = {m.pad_lo, m.pad_hi}
+		return copy(buf, "P")
+	}
+	v: term.View
+	term.init(&v, src, 80, 4)
+	defer term.destroy(&v)
+	v.style.pad = 6
+	v.rect = {{100, 50}, {760, 140}}   // (660 by 90: 640 by 64 of cells, 20 and 26 pixels left)
+	v.metrics.cell_w, v.metrics.cell_h = 8, 16
+	v.origin = term.grid_origin(&v, v.rect)
+	testing.expect_value(t, v.origin, [2]f32{110, 63})
+	testing.expect_value(t, term.cell_at(&v, {110 + 8 * 3 + 1, 63 + 16 * 2 + 1}), [2]int{3, 2})
+	term.event(&v, {kind = .Mouse_Press, button = .Left, pos = {130, 70}})
+	testing.expect_value(t, told.lo, [2]f32{10, 13})
+	testing.expect_value(t, told.hi, [2]f32{10, 13})
+	// a box too small for its cells (a zoom that moves): from its corner and the pad, as the cells have no room to be centered in
+	v.rect = {{0, 0}, {600, 60}}
+	testing.expect_value(t, term.grid_origin(&v, v.rect), [2]f32{6, 6})
+}

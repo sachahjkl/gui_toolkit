@@ -51,6 +51,13 @@ The selection is the source's: an emulator knows where its ends go when rows com
 oldest rows, when the grid is wrapped again. The widget makes the gesture: a press begins a drag on a cell (`Begin`), the
 selection starts once the pointer leaves that cell (`Extend`), the release ends it (`End`); typing drops it.
 
+## Where the cells are
+
+The grid holds as many whole cells as its box takes, at least `Style.pad` from each edge. What the cells leave goes half on
+each side: the grid is centered (`grid_origin(&v, rect)`, kept in `v.origin` at each build), not drawn from the top left
+with an empty band under its last row. The pointer reads the cell under it from there (`cell_at`), and a program that
+tracks the mouse is told the margin on each side (`Mouse_Input.pad_lo`: left and top, `pad_hi`: right and bottom).
+
 ## The rows drawn
 
 The widget keeps each row as it draws it, in columns: runs of text of one look (`Run`), background rectangles (`Fill`),

@@ -19,6 +19,7 @@ build :: proc(v: ^View, style: Style, take_focus := false) -> (b: ^ui.Box, sig: 
 	v.box, v.rect, v.focused = b.key, b.rect, ui.focus_key() == b.key
 	metrics_set(v)
 	fit(v, b.rect)
+	v.origin = grid_origin(v, b.rect)
 	scroll_sync(v, b)
 	// (the space the box scrolls over: the view its part, the bar's thumb)
 	if ui.parent(b) {
@@ -56,6 +57,20 @@ fit :: proc(v: ^View, r: draw.Rect) {
 	cols := int(clamp((r.max.x - r.min.x - 2 * pad) / m.cell_w, 2, 1000))
 	rows := int(clamp((r.max.y - r.min.y - 2 * pad) / m.cell_h, 2, 1000))
 	size_set(v, cols, rows, {int(m.cell_w), int(m.cell_h)})
+}
+
+// Where the cells start in `r`: the grid centered in it. The box holds whole cells; what is left of a cell, and the pad, goes
+// half on each side, not all under the last row (an empty band at the bottom that the prompt never reached). Whole pixels:
+// a cell's edges stay on the pixel grid.
+grid_origin :: proc(v: ^View, r: draw.Rect) -> [2]f32 {
+	m := &v.metrics
+	w, h := f32(v.cols) * m.cell_w, f32(v.rows) * m.cell_h
+	// (a grid larger than its box, a zoom that moves: from its top left, as the cells have no room to be centered in)
+	x := max(math.floor((r.max.x - r.min.x - w) * 0.5), v.style.pad)
+	y := max(math.floor((r.max.y - r.min.y - h) * 0.5), v.style.pad)
+	if w + 2 * v.style.pad > r.max.x - r.min.x { x = v.style.pad }
+	if h + 2 * v.style.pad > r.max.y - r.min.y { y = v.style.pad }
+	return r.min + {x, y}
 }
 
 // The grid's size in cells, told to the source (the build does it; a test, or a program that lays the grid out itself).
@@ -100,7 +115,7 @@ draw_view :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	st := &v.style
 	draw.rect(dc, b.rect, st.background)
 	if !refresh(v) { return }
-	origin := b.rect.min + st.pad
+	origin := grid_origin(v, b.rect)   // (this frame's rect: the build's may be a layout old)
 	m := &v.metrics
 	at :: proc(origin: f32, col: u16, w: f32) -> f32 { return origin + f32(col) * w }
 	for &r, y in v.lines {

@@ -298,8 +298,8 @@ press_end :: proc(v: ^View) {
 
 // The cell under `p` (window pixels), in the rows shown: past the grid's left or top edge, the first.
 cell_at :: proc(v: ^View, p: [2]f32) -> [2]int {
-	x := int((p.x - v.rect.min.x - v.style.pad) / max(v.metrics.cell_w, 1))
-	y := int((p.y - v.rect.min.y - v.style.pad) / max(v.metrics.cell_h, 1))
+	x := int((p.x - v.origin.x) / max(v.metrics.cell_w, 1))
+	y := int((p.y - v.origin.y) / max(v.metrics.cell_h, 1))
 	return {max(x, 0), max(y, 0)}
 }
 
@@ -334,7 +334,8 @@ mouse_send :: proc(v: ^View, action: Mouse_Action, button: Mouse_Button, at: [2]
 	pos := [2]f32{clamp(at.x, r.min.x, r.max.x - 1), clamp(at.y, r.min.y, r.max.y - 1)}
 	m := Mouse_Input{
 		action = action, button = button, mods = mods, held = held,
-		pos = pos - r.min, size = r.max - r.min, cell = {v.metrics.cell_w, v.metrics.cell_h}, pad = v.style.pad,
+		pos = pos - r.min, size = r.max - r.min, cell = {v.metrics.cell_w, v.metrics.cell_h},
+		pad_lo = v.origin - r.min, pad_hi = r.max - v.origin - {f32(v.cols) * v.metrics.cell_w, f32(v.rows) * v.metrics.cell_h},
 	}
 	buf: [KEY_BYTES]u8
 	n := v.source.encode_mouse(v.source.data, m, buf[:])

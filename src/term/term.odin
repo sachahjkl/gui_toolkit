@@ -98,7 +98,8 @@ Mouse_Input :: struct {
 	pos:    [2]f32,    // in the grid's box, from its top left, inside it
 	size:   [2]f32,    // the box
 	cell:   [2]f32,    // a cell
-	pad:    f32,       // between the box and the cells, on each side
+	pad_lo: [2]f32,    // between the box and the cells: at its left and its top (the grid is centered: grid_origin)
+	pad_hi: [2]f32,    // ... at its right and its bottom
 }
 
 // The screen behind the widget. `data` goes to each procedure. The ones marked optional may be nil.
@@ -132,7 +133,7 @@ Style :: struct {
 	font:         tk_font.Font_Id,
 	font_bold:    tk_font.Font_Id,
 	font_size:    f32,   // at zoom 1
-	pad:          f32,   // between the box and the cells
+	pad:          f32,   // between the box and the cells, at least (what the cells leave goes half on each side)
 	background:   Color,
 	selection:    Color,
 	faint:        f32,   // the alpha of a faint cell's text, times its colour's
@@ -180,6 +181,7 @@ View :: struct {
 	// As last built
 	box:       ui.Key,
 	rect:      draw.Rect,
+	origin:    [2]f32,   // the top left of the cells: the grid centered in the box (grid_origin)
 	metrics:   Metrics,
 	style:     Style,
 	focused:   bool,     // its box has the keyboard: a solid cursor
