@@ -111,8 +111,8 @@ when it writes there.
 | `.State` (logs, crash reports, what it remembers between runs) | `$XDG_STATE_HOME/<program>` (`~/.local/state`) | `%LOCALAPPDATA%\<program>\state` |
 | `.Cache` (what it can make again) | `$XDG_CACHE_HOME/<program>` (`~/.cache`) | `%LOCALAPPDATA%\<program>\cache` |
 
-An XDG variable counts only when it is an absolute path, as the specification says. Windows' folders are its known folders
-(`SHGetKnownFolderPath`), not the variables.
+A variable counts only when it is an absolute path, as the XDG specification says, on Windows too (`%APPDATA%`, `%LOCALAPPDATA%`):
+a test or a portable copy points them elsewhere. Without them, Windows' known folders (`SHGetKnownFolderPath`).
 
 **Network interfaces** (`net_interfaces.odin`) — `interface_addresses()` lists every IPv4 and IPv6 address of every
 interface, IPv4 first (`Interface_Address`: the interface's name, the family, the address and the netmask in network
