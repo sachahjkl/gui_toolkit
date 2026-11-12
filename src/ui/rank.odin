@@ -1,6 +1,6 @@
 package ui
 
-import "core:slice"
+@(require) import "core:slice"   // (rank is generic: its body is checked only where a program uses it)
 
 // A filtered list, the same way everywhere: each item matched against the query, the hits kept, the best first. A picker,
 // a slash menu, a mention list and a palette differ only in how an item reads (Rank_Entry) and which matcher scores it.

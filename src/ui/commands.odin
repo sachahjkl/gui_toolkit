@@ -20,6 +20,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "core:strings"
 import "../draw"
 import lucide "../lucide"
@@ -157,6 +158,7 @@ Command_Palette :: struct {
 	// the modifiers of the Enter that chose (Ctrl+Enter, Alt+Enter, Shift+Enter: what else the program does with the
 	// command chosen; {} plain Enter or a click)
 	chosen_mods: platform.Modifiers,
+	search:      Fuzzy_Cache,   // the query and the commands folded, from one frame to the next (palette_entry_cached)
 }
 
 // A strip across the top of a dialog (a title, a search field), as a box's custom draw: its background (`bg`; none: a
@@ -207,24 +209,77 @@ Palette_Options :: struct {
 // What a palette makes of `query` for one of its entries, best first: its label holds it whole or at the starts of its words
 // (fuzzy_words), then with its tags (other words it is found by), then with its group; then the same with a slip or two in
 // each word (fuzzy_typos), after every exact match. `ranges`: what lights in the label (none when the tags or the group
-// found it). A program's own palette (sessions, settings and commands together) ranks its entries with it too.
-palette_match :: proc(query, label, group: string, tags: []string) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
-	if s, r, found := fuzzy_words(query, label); found { return s, r, true }
-	joined := strings.join(tags, " ", context.temp_allocator)
-	if joined != "" {
-		if s, _, found := fuzzy_words(query, fmt.tprintf("%s %s", label, joined)); found { return s - PALETTE_TAG_MATCH_PENALTY, nil, true }
+// found it). A program's own palette (sessions, settings and commands together) ranks its entries with it too: with a
+// needle and entries folded once (fuzzy_cache_needle, palette_entry_cached), nothing is folded again for each frame.
+palette_match :: proc{palette_match_strings, palette_match_folded}
+
+palette_match_strings :: proc(query, label, group: string, tags: []string) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	return palette_match_folded(fuzzy_needle(query), palette_entry(label, group, tags))
+}
+
+palette_match_folded :: proc(needle: Fuzzy_Needle, e: Palette_Entry) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	if s, r, found := fuzzy_words(needle, e.label); found { return s, r, true }
+	if e.with_tags.text != "" {
+		if s, _, found := fuzzy_words(needle, e.with_tags); found { return s - PALETTE_TAG_MATCH_PENALTY, nil, true }
 	}
-	if group != "" {
-		if s, _, found := fuzzy_words(query, fmt.tprintf("%s %s %s", label, group, joined)); found { return s - PALETTE_GROUP_MATCH_PENALTY, nil, true }
+	if e.with_group.text != "" {
+		if s, _, found := fuzzy_words(needle, e.with_group); found { return s - PALETTE_GROUP_MATCH_PENALTY, nil, true }
 	}
-	if s, r, found := fuzzy_typos(query, label); found { return s, r, true }
-	if joined != "" {
-		if s, _, found := fuzzy_typos(query, fmt.tprintf("%s %s", label, joined)); found { return s - PALETTE_TAG_MATCH_PENALTY, nil, true }
+	if s, r, found := fuzzy_typos(needle, e.label); found { return s, r, true }
+	if e.with_tags.text != "" {
+		if s, _, found := fuzzy_typos(needle, e.with_tags); found { return s - PALETTE_TAG_MATCH_PENALTY, nil, true }
 	}
 	return 0, nil, false
 }
 
-palette_destroy :: proc(p: ^Command_Palette) { field_destroy(&p.field) }
+// An entry of a palette as palette_match reads it: its label, the label with its tags, the label with its group and its
+// tags, each folded.
+Palette_Entry :: struct {
+	label:      Fuzzy_Text,
+	with_tags:  Fuzzy_Text,   // "<label> <tags>" ("": it has no tags)
+	with_group: Fuzzy_Text,   // "<label> <group> <tags>" ("": it has no group)
+}
+
+palette_entry :: proc(label, group: string, tags: []string, allocator := context.temp_allocator) -> Palette_Entry {
+	e := Palette_Entry{label = fuzzy_text(label, allocator)}
+	joined := strings.join(tags, " ", allocator)
+	if joined != "" { e.with_tags = fuzzy_text(fmt.aprintf("%s %s", label, joined, allocator = allocator), allocator) }
+	if group != "" { e.with_group = fuzzy_text(fmt.aprintf("%s %s %s", label, group, joined, allocator = allocator), allocator) }
+	return e
+}
+
+// palette_entry kept in `c` at `slot` (it takes the cache's slots 3 * slot to 3 * slot + 2), folded again only when the
+// label, the group or the tags changed.
+palette_entry_cached :: proc(c: ^Fuzzy_Cache, slot: int, label, group: string, tags: []string) -> Palette_Entry {
+	// (the texts as parts, spaces between: compared with the slots as they are, joined only to be folded)
+	joined := make([dynamic]string, 0, 2 * len(tags), context.temp_allocator)
+	joined_len := 0
+	for t, i in tags {
+		if i > 0 { append(&joined, " ") }
+		append(&joined, t)
+		joined_len += (i > 0 ? 1 : 0) + len(t)
+	}
+	with_tags := make([dynamic]string, 0, 2 + len(joined), context.temp_allocator)
+	with_group := make([dynamic]string, 0, 4 + len(joined), context.temp_allocator)
+	if joined_len > 0 {
+		append(&with_tags, label, " ")
+		append(&with_tags, ..joined[:])
+	}
+	if group != "" {
+		append(&with_group, label, " ", group, " ")
+		append(&with_group, ..joined[:])
+	}
+	return {
+		label      = fuzzy_cache_text(c, 3 * slot, label),
+		with_tags  = fuzzy_cache_text(c, 3 * slot + 1, ..with_tags[:]),   // (none: the slot is emptied)
+		with_group = fuzzy_cache_text(c, 3 * slot + 2, ..with_group[:]),
+	}
+}
+
+palette_destroy :: proc(p: ^Command_Palette) {
+	field_destroy(&p.field)
+	fuzzy_cache_destroy(&p.search)
+}
 
 // Opens the palette, its field empty and its first command selected.
 palette_open :: proc(p: ^Command_Palette) {
@@ -245,7 +300,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 	if !p.open { return }
 	em := font_size()
 	query := strings.trim_space(field_string(&p.field))
-	list := palette_list(commands, query, opts)
+	list := palette_list(p, commands, query, opts)
 	n := len(list)
 	can :: proc(enabled: []bool, i: int) -> bool { return enabled == nil || (i < len(enabled) && enabled[i]) }
 	row_h := math.round(dense(em * PALETTE_ROW_EM))
@@ -355,11 +410,8 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 						spacer(px(em * 0.5))
 					}
 					// (what the search found in the label lit; its tags, which the line does not show, light nothing)
-					ranges: []Fuzzy_Range
-					if query != "" {
-						_, ranges, _ = palette_match(query, c.label, c.group, c.tags)
-						if ranges == nil { ranges = word_ranges(c.label, query) }   // (found by its tags or group: its words that are in the label)
-					}
+					ranges := line.ranges
+					if query != "" && ranges == nil { ranges = word_ranges(c.label, query) }   // (found by its tags or group: its words that are in the label)
 					next({width = fill(), text_pad = 0})
 					matched_label("###t", text, ranges)
 					keys := line.index < len(opts.keys) ? opts.keys[line.index] : command_shortcut(c)
@@ -412,15 +464,17 @@ palette_line_top :: proc(list: []Palette_Line, k: int, row_h, em: f32) -> f32 {
 	return f32(k) * row_h + f32(list[k].headings) * (em * PALETTE_HEADING_EM)
 }
 
-// A command's line, the headings above it (to place it), and the heading shown just above it ("": none).
+// A command's line, the headings above it (to place it), the heading shown just above it ("": none), and what the search
+// found in its label (palette_match's ranges).
 @(private = "file")
-Palette_Line :: struct { index, headings: int, heading: string }
+Palette_Line :: struct { index, headings: int, heading: string, ranges: []Fuzzy_Range }
 
 // The commands the palette lists for `query`: every one in the table's order (with no query; the recent ones first, under
 // their heading), else the matches, the best first (the label's letters matter more than the group's), `opts.first` before
 // them.
+// The query and each command are folded once, kept in `p.search` from one frame to the next.
 @(private = "file")
-palette_list :: proc(commands: []Command, query: string, opts: Palette_Options) -> []Palette_Line {
+palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, opts: Palette_Options) -> []Palette_Line {
 	out := make([dynamic]Palette_Line, 0, len(commands), context.temp_allocator)
 	if query == "" {
 		headings := 0
@@ -432,7 +486,7 @@ palette_list :: proc(commands: []Command, query: string, opts: Palette_Options) 
 				heading = opts.recent_title != "" ? opts.recent_title : "Recent"
 				headings += 1
 			}
-			append(&out, Palette_Line{i, headings, heading})
+			append(&out, Palette_Line{i, headings, heading, nil})
 			recent += 1
 		}
 		group := ""
@@ -442,17 +496,27 @@ palette_list :: proc(commands: []Command, query: string, opts: Palette_Options) 
 				if c.group != "" { heading = c.group; headings += 1 }
 				group = c.group
 			}
-			append(&out, Palette_Line{i, headings, heading})
+			append(&out, Palette_Line{i, headings, heading, nil})
 		}
 		return out[:]
 	}
-	ranked := rank(query, commands, proc(c: ^Command, _: rawptr) -> Rank_Entry { return {label = c.label, group = c.group, tags = c.tags} })
-	if f, ok := opts.first.?; ok && f >= 0 && f < len(commands) {
-		append(&out, Palette_Line{f, 0, ""})
+	Ranked :: struct { index, score: int, ranges: []Fuzzy_Range }
+	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
+	needle := fuzzy_cache_needle(&p.search, query)
+	first, has_first := opts.first.?
+	has_first = has_first && first >= 0 && first < len(commands)
+	first_ranges: []Fuzzy_Range
+	for c, i in commands {
+		score, ranges, ok := palette_match(needle, palette_entry_cached(&p.search, i, c.label, c.group, c.tags))
+		if ok { append(&ranked, Ranked{i, score, ranges}) }
+		if has_first && i == first { first_ranges = ranges }
 	}
+	fuzzy_cache_keep(&p.search, 3 * len(commands))
+	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
+	if has_first { append(&out, Palette_Line{first, 0, "", first_ranges}) }
 	for r in ranked {
-		if f, ok := opts.first.?; ok && r.index == f { continue }
-		append(&out, Palette_Line{r.index, 0, ""})
+		if has_first && r.index == first { continue }
+		append(&out, Palette_Line{r.index, 0, "", r.ranges})
 	}
 	return out[:]
 }

@@ -81,6 +81,29 @@ hits := ui.rank(query, models, proc(m: ^Model, _: rawptr) -> ui.Rank_Entry {
 for h in hits { ui.matched_label(fmt.tprintf("###m%d", h.index), models[h.index].name, h.ranges) }
 ```
 
+
+A list that a program builds again each frame folds its texts once with a `ui.Fuzzy_Cache` (the palette keeps one):
+
+| Procedure | Result |
+|---|---|
+| `fuzzy_needle(query) -> Fuzzy_Needle`, `fuzzy_text(s) -> Fuzzy_Text` | the query and a text folded once, for many matches: `fuzzy_find`, `fuzzy_score`, `fuzzy_words`, `fuzzy_typos` and `palette_match` take them in the place of strings, with the same results |
+| `palette_entry(label, group, tags) -> Palette_Entry` | an entry folded: its label, the label with its tags, the label with its group and its tags |
+| `fuzzy_cache_needle(&c, query)` | the needle, folded again only when the query changed |
+| `fuzzy_cache_text(&c, slot, ..parts)` | the text of a slot (an item's place in the list; `parts` one after the other), folded again only when it changed: it is compared with what the slot held, byte by byte |
+| `palette_entry_cached(&c, slot, label, group, tags)` | an entry kept in the slots `3 * slot` to `3 * slot + 2` |
+| `fuzzy_cache_keep(&c, slots)`, `fuzzy_cache_destroy(&c)` | lets go of the slots from `slots` on; of all |
+
+```odin
+needle := ui.fuzzy_cache_needle(&app.search, query)
+for it, i in items {
+	if score, ranges, ok := ui.palette_match(needle, ui.palette_entry_cached(&app.search, i, it.title, "", it.tags)); ok { ... }
+}
+ui.fuzzy_cache_keep(&app.search, 3 * len(items))
+```
+
+The fold of a text goes 16 bytes at a time over its ASCII runs (`ascii.lower_run`) and a rune at a time past them, with
+the same bytes as `unicode.to_lower`.
+
 A program's settings go in its palette too: `prefs_page.palette_commands` and `prefs_page.show` (docs/prefs_page.md).
 
 A key held, not pressed: `ui.key_held(key)` is true from its press in the window to its release, by the key's own

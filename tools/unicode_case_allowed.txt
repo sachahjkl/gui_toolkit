@@ -40,6 +40,7 @@ src/ui/find.odin n0 = unicode.to_lower(n0)  # user text: find in page
 src/ui/find.odin if unicode.to_lower(r) == n0 {  # user text: find in page
 src/ui/find.odin if unicode.to_lower(a) != unicode.to_lower(b)  # user text: find in page
 src/ui/fuzzy.odin l := unicode.to_lower(r)  # user text: the fuzzy match of what is typed
+tests/commands/fuzzy_fold_test.odin l := unicode.to_lower(r)  # user text: the fuzzy match's fold a rune at a time, the reference of its ASCII path
 src/ui/list.odin strings.has_prefix(strings.to_lower(label[  # user text: a list's type-ahead
 src/ui/list.odin utf8.encode_rune(unicode.to_lower(r))  # user text: a list's type-ahead
 src/ui/popups.odin want := unicode.to_lower(e.text)  # user text: a menu's type-ahead (the letter typed)
