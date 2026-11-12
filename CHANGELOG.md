@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.229.0] - 2026-11-12
+
+### Changed
+- **The machined and edged finishes on light palettes**: a light theme no longer falls back to the flat finish. Its
+buttons, wells, grooves, panels, lamps and title bars keep their relief, drawn by its light: soft shades and strong white
+rims and lips. Dark palettes look exactly as before. `machined_plate`'s `border` defaults to the relief's own edge (a
+zero colour); a program's own relief takes the same colours from `relief_shade_for` and `relief_shine_for`.
+
 ## [0.228.1] - 2026-11-12
 
 ### Fixed
@@ -3007,6 +3015,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.229.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.229.0
 [0.228.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.1
 [0.228.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.0
 [0.227.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.227.0
