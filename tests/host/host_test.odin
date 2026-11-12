@@ -3,7 +3,6 @@
 package host_test
 
 import "core:testing"
-import "core:time"
 import win "core:sys/windows"
 import "../../src/draw"
 import "../../src/font"
@@ -260,32 +259,6 @@ a_resize_step_is_the_window_s_own :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(p.seen), 1)   // (no rest frame)
 	testing.expect_value(t, p.builds, built + 1)
 	testing.expect_value(t, h.shown, h.win.size)
-}
-
-// A resize's frames do not wait for the screen (a mailbox: the newest size shown at the next refresh, not the oldest
-// queued); once the burst is over they wait again.
-@(test)
-a_resize_does_not_wait_for_the_screen :: proc(t: ^testing.T) {
-	p: Probe
-	defer delete(p.seen)
-	sh: host.Shared
-	h := new(host.Host)
-	defer free(h)
-	open_main(t, &sh, h, &p)
-	defer host.host_close(h)
-	step(h)
-	step(h)
-	testing.expect(t, !sh.r.present.no_wait, "at rest: the frames wait for the screen")
-	h.win.size = {SIZE.x + 40, SIZE.y}
-	step(h)
-	testing.expect(t, sh.r.present.no_wait, "a resize step: shown at once")
-	h.win.size = {SIZE.x + 80, SIZE.y}
-	step(h)
-	testing.expect(t, sh.r.present.no_wait, "the next step too")
-	// (the burst is on the real clock: CADENCE_RESIZE_HOLD_NS)
-	time.sleep(time.Duration(platform.CADENCE_RESIZE_HOLD_NS) + 20 * time.Millisecond)
-	step(h)
-	testing.expect(t, !sh.r.present.no_wait, "the burst over: they wait again")
 }
 
 _ :: render

@@ -46,11 +46,6 @@ Why each one:
   showed them one per refresh, and the picture advanced in jumps.
 - **Resize burst**: a program that resizes the window from outside (AltSnap) waits for the thread at every step; a frame
   asleep in Present for a refresh stalled each step.
-- **"At once" on wgpu (Linux)**: a Fifo surface waits for the refresh whatever the present asks, and only a reconfigure
-  changes its mode. So while the window is resized (a step or its burst) `pace_frame` says `set_present_wait(false)`: the
-  surface, reconfigured at each step anyway, goes to a mailbox and the screen takes the newest size at each refresh. In
-  Fifo the frames queued behind one another and the content trailed the compositor's edge by two refreshes (33 ms at 60 Hz:
-  `SurfacePresent` held 10 ms a frame, 1 ms in a mailbox). The first frame after the burst goes back to Fifo.
 - **Drag**: a panel dragged inside the window keeps the window's size; as a resize step it would skip the slot, a frame a
   millisecond under a 1 kHz mouse. On a variable refresh screen (`Cadence.variable`, the plan's) its frames are shown at
   once, two queued, as a resize's burst: there a frame that waits for a refresh waits for the rate the system reports, which

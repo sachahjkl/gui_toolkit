@@ -66,11 +66,6 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 	}
 	// (Present_State says what the swap chain has: a new one starts over, and a backend that cannot set it is asked again for nothing)
 	if latency != max(r.present.max_latency, 1) { set_max_frame_latency(r, latency) }
-	// A resize's frames in a mailbox: the screen takes the newest at each refresh. In Fifo (wgpu: Linux) each one queued
-	// behind the last, whatever frame_end asked, and the window's content trailed the compositor's resize by two
-	// refreshes: 33 ms at 60 Hz, there behind the hand where 144 Hz kept up. A step reconfigures the surface anyway, so the
-	// mode changes with it; once the burst is over the next frame goes back to Fifo (one reconfigure, at rest).
-	set_present_wait(r, !platform.cadence_resizing(&p.cadence))
 	return
 }
 
