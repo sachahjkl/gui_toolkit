@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.221.1] - 2026-11-12
+
+### Fixed
+- **A Wayland window no longer freezes when the compositor holds back its frame callback**: under NVIDIA's driver a present in Fifo waited behind a barrier the compositor lifts only once the last picture is shown, and a compositor that counted the window on the wrong output (ShojiWM) never lifted it, so the window drew nothing again. The renderer now presents in a mailbox on Wayland when the driver offers one (the window still paces itself on the compositor's word, `render.present_may_block`), and `host` waits for that word at most 250 ms when it has a picture to show (`FRAME_SHOWN_PATIENCE_MS`), not at all after a key or a click; `platform.frame_shown_waited_ms` says how long it has waited.
+
 ## [0.221.0] - 2026-11-12
 
 ### Added
@@ -2938,6 +2943,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.221.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.1
 [0.221.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.221.0
 [0.220.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.220.0
 [0.219.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.219.1
