@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.239.0] - 2026-11-12
+
+### Added
+- **A table's rows can be taller** (`Table.row_em`): its lead fills the height, so a list can show a thumbnail at the start of each row.
+
 ## [0.238.0] - 2026-11-12
 
 ### Changed
@@ -3093,6 +3098,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.239.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.239.0
 [0.238.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.238.0
 [0.237.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.237.0
 [0.236.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.1
