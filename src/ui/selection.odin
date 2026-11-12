@@ -13,7 +13,7 @@ import "../platform"
 // {.Selectable}})`, or a `style` scope around a whole reply). One selection for the whole window, which may run across
 // several boxes in build order (a chat reply made of many paragraphs):
 //   press and drag: select; Shift+click: extend; double click: a word; triple click: the box's paragraph;
-//   Shift+arrows / Shift+Home / Shift+End: move its moving end (when no field has the keyboard); Ctrl+C: copy (boxes
+//   Shift+arrows / Shift+Home / Shift+End: move its moving end (when no field has the keyboard); Ctrl+C or Ctrl+Insert: copy (boxes
 //   joined by new lines); Ctrl+A on a selectable box: all of it; a press on nothing clickable: no selection (a press on
 //   a button keeps it).
 // The pointer is the text cursor over selectable text (not over a link or a clickable box above it). The selection is
@@ -395,6 +395,20 @@ para_at :: proc(text: string, at: int) -> (lo, hi: int) {
 @(private = "file") SEL_MULTI_CLICK_SLOP_PX :: 4
 
 // end_build, after layout: the pointer and the keys act on the selection of this build's tree.
+// A key for the selection in box `k`. It is read at the end of the build, outside every dialog, where key_press gives nothing
+// while one is open: the keys are the selection's when its box is in the dialog on top (text selected in a dialog is copied by
+// Ctrl+C), not when a dialog is over it.
+@(private = "file")
+sel_key_press :: proc(s: ^State, k: Key, key: platform.Key, mods: platform.Modifiers) -> bool {
+	if len(s.modals_built) > 0 {
+		top := s.modals_built[len(s.modals_built) - 1].panel
+		inside := false
+		for b := s.boxes[k]; b != nil; b = b.parent { if b.key == top { inside = true; break } }
+		if !inside { return false }
+	}
+	return key_press_any(key, mods)
+}
+
 @(private)
 selection_update :: proc(s: ^State) {
 	sel := &s.sel
@@ -482,7 +496,7 @@ selection_update :: proc(s: ^State) {
 	// keys: when no field has the keyboard
 	field := s.focus_key != 0 && s.boxes[s.focus_key] != nil && .Text_Input in s.boxes[s.focus_key].flags
 	if !field {
-		if has_selection(s) && key_press(.C, {.Ctrl}) {
+		if has_selection(s) && (sel_key_press(s, sel.focus.box, .C, {.Ctrl}) || sel_key_press(s, sel.focus.box, .Insert, {.Ctrl})) {
 			if s.clipboard_set != nil { s.clipboard_set(selected_text_of_boxes(s, context.temp_allocator)) }
 		}
 		if sel.phase != .None {
@@ -491,17 +505,17 @@ selection_update :: proc(s: ^State) {
 				text := sel_text(s, fb, context.temp_allocator)
 				shift := platform.Modifiers{.Shift}
 				switch {
-				case key_press(.Left, shift):  sel_step(s, -1)
-				case key_press(.Right, shift): sel_step(s, 1)
-				case key_press(.Home, shift):  sel.focus.index = para_lo(text, sel.focus.index)
-				case key_press(.End, shift):   sel.focus.index = para_hi(text, sel.focus.index)
-				case key_press(.Up, shift):    sel_vertical(s, -1)
-				case key_press(.Down, shift):  sel_vertical(s, 1)
+				case sel_key_press(s, sel.focus.box, .Left, shift):  sel_step(s, -1)
+				case sel_key_press(s, sel.focus.box, .Right, shift): sel_step(s, 1)
+				case sel_key_press(s, sel.focus.box, .Home, shift):  sel.focus.index = para_lo(text, sel.focus.index)
+				case sel_key_press(s, sel.focus.box, .End, shift):   sel.focus.index = para_hi(text, sel.focus.index)
+				case sel_key_press(s, sel.focus.box, .Up, shift):    sel_vertical(s, -1)
+				case sel_key_press(s, sel.focus.box, .Down, shift):  sel_vertical(s, 1)
 				}
 			}
 		}
 		if s.mouse_valid {
-			if k := sel_box_at(s, s.mouse); k != 0 && key_press(.A, {.Ctrl}) { select_box(s, k) }
+			if k := sel_box_at(s, s.mouse); k != 0 && sel_key_press(s, k, .A, {.Ctrl}) { select_box(s, k) }
 		}
 	}
 	// the text cursor over selectable text (a clickable box or a link over it keeps its own)

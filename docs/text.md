@@ -120,7 +120,7 @@ boxes in it stay buttons) share one selection that runs across boxes in build or
 nearest selectable box when the pointer leaves the text: above a box its start, below it its end), Shift+click
 extends, a double click selects a word, a triple click the box's paragraph (the drag then extends by words /
 paragraphs), Shift+Left / Right / Up / Down / Home / End move the moving end when no field has the keyboard, Ctrl+C
-copies (boxes joined by "\n"), Ctrl+A over a box selects it all, a press on nothing clickable clears (a press on a button
+or Ctrl+Insert copies (in a dialog too: text selected in the dialog on top is copied, text behind it is not) (boxes joined by "\n"), Ctrl+A over a box selects it all, a press on nothing clickable clears (a press on a button
 keeps it: a Copy button reads it on release). Text in a dialog or a popover selects like any other: their panel is
 `.Press_Stop`, clickable only so that what is under it gets no press, so a press on it is a press on nothing, and a
 selection stays on the surface it started on. A press on a link clicks the link. The pointer is the text cursor over

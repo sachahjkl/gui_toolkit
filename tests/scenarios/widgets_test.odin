@@ -316,6 +316,47 @@ a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.has_selection(s.state), "gone")
 }
 
+// Text selected in a dialog is copied: Ctrl+C and Ctrl+Insert, which the selection reads outside the dialog's build, are its
+// while the dialog on top holds it. Text selected behind a dialog is not: the dialog holds the keys.
+@(test)
+text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) {
+	Run :: struct { open, behind: bool }
+	r := Run{open = true}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), flags = {.Selectable}})
+		ui.label("Words behind it###behind")
+		if r.behind { return }
+		if ui.modal("dialog", 400, &r.open) {
+			ui.next({width = ui.fill(), flags = {.Selectable}})
+			ui.label("/home/sacha/.local/bin/a-path###path")
+		}
+	}})
+	session.frames(s, 3)
+	b := session.get(s, "path")
+	session.drag(s, {b.rect.min.x + 1, session.center(b).y}, {b.rect.max.x - 1, session.center(b).y})
+	testing.expect(t, ui.has_selection(s.state), "selected in the dialog")
+	want := ui.selected_text(s.state, context.temp_allocator)
+	testing.expect(t, len(want) > 0, "it has text")
+	session.key(s, .C, {.Ctrl})
+	testing.expect_value(t, session.clipboard(s), want)
+	session.set_clipboard(s, "")
+	session.key(s, .Insert, {.Ctrl})
+	testing.expect_value(t, session.clipboard(s), want)
+	// behind a dialog: the selection is not the keys'
+	ui.clear_selection(s.state)
+	r.behind = true
+	session.frames(s, 2)
+	w := session.get(s, "behind")
+	session.drag(s, {w.rect.min.x + 1, session.center(w).y}, {w.rect.max.x - 1, session.center(w).y})
+	testing.expect(t, ui.has_selection(s.state), "selected behind")
+	r.behind = false
+	session.frames(s, 2)
+	session.set_clipboard(s, "")
+	session.key(s, .C, {.Ctrl})
+	testing.expect_value(t, session.clipboard(s), "")
+}
+
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
 a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {
