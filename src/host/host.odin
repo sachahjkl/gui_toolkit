@@ -69,6 +69,7 @@ Open :: struct {
 	// the system's choice), shown at once. Its frames are cleared to transparent: only what the build draws shows
 	overlay:          bool,
 	overlay_area:     [4]int,
+	overlay_keyboard: platform.Overlay_Keyboard,   // On_Demand: the keyboard once clicked; Exclusive: from its showing
 }
 
 Host :: struct {
@@ -128,7 +129,7 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open, build: proc(h: ^Host, size: Ve
 	if o.headless {
 		h.win = platform.open_window_offscreen(o.title, o.size)
 	} else if o.overlay {
-		h.win = platform.open_overlay(o.title, o.overlay_area)
+		h.win = platform.open_overlay(o.title, o.overlay_area, o.overlay_keyboard)
 	} else {
 		h.win = platform.open_window(o.title, o.size, transparent = true, integrated_title = o.integrated_title)
 	}

@@ -139,7 +139,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 
 // An overlay window over the output at `area` (overlay.odin). Shown at once, transparent. nil when there is no display
 // server, or the compositor has no layer shell (Wayland).
-open_overlay :: proc(title: string, area: [4]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
+open_overlay :: proc(title: string, area: [4]int, keyboard := Overlay_Keyboard.On_Demand, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
 	kind, missing := choose_backend()
 	if kind == .None {
 		if missing != "" { report_missing(missing) }
@@ -149,8 +149,8 @@ open_overlay :: proc(title: string, area: [4]int, user: rawptr = nil, on_frame: 
 	w.overlay = true
 	ok := false
 	switch kind {
-	case .Wayland: ok = wl_open_overlay(w, title, area)
-	case .X11:     ok = x11_open_overlay(w, title, area)
+	case .Wayland: ok = wl_open_overlay(w, title, area, keyboard)
+	case .X11:     ok = x11_open_overlay(w, title, area, keyboard)
 	case .None:
 	}
 	if !ok { window_discard(w); return nil }
@@ -374,11 +374,11 @@ native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
 	case .Wayland:
 		st := wl_state(w)
 		if st == nil { return {} }
-		return {backend = .Wayland, display = rawptr(wlc.display), surface = rawptr(st.surface)}
+		return {backend = .Wayland, display = rawptr(wlc.display), surface = rawptr(st.surface), see_through = w.overlay}
 	case .X11:
 		st := x11_state(w)
 		if st == nil { return {} }
-		return {backend = .X11, display = rawptr(x11c.c), window = u64(st.id)}
+		return {backend = .X11, display = rawptr(x11c.c), window = u64(st.id), see_through = w.overlay}
 	case .None:
 	}
 	return {}

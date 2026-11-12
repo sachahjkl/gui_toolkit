@@ -126,13 +126,14 @@ layer_surface_closed :: proc "c" (data: rawptr, ls: Wl_Proxy) {
 }
 
 @(private)
-wl_open_overlay :: proc(w: ^Window, title: string, area: [4]int) -> bool {
+wl_open_overlay :: proc(w: ^Window, title: string, area: [4]int, keyboard: Overlay_Keyboard) -> bool {
 	if !wl_connect() { report_missing("libwayland-client (or xdg-shell)"); return false }
 	if wlc.layer_shell == nil { report_missing("zwlr_layer_shell_v1 (an overlay window)"); return false }
 	st := new(Wl_Window_State)
 	st.win = w
 	st.transparent = true
 	st.overlay = true
+	st.overlay_keyboard = keyboard
 	st.title = strings.clone(title)
 	st.toplevel = .Normal
 	w.wl = st
@@ -178,6 +179,7 @@ wl_layer_make :: proc(st: ^Wl_Window_State) {
 	// (before version 4 the value was a bool, and 1 took the keyboard for good: none then)
 	KEYBOARD_ON_DEMAND_SINCE :: 4
 	interactivity: u32 = v >= KEYBOARD_ON_DEMAND_SINCE ? ZWLR_KEYBOARD_ON_DEMAND : 0
+	if st.overlay_keyboard == .Exclusive { interactivity = ZWLR_KEYBOARD_EXCLUSIVE }
 	wl.proxy_marshal_flags(ls, ZWLR_LAYER_SURFACE_SET_KEYBOARD_INTERACTIVITY, nil, v, 0, interactivity)
 }
 

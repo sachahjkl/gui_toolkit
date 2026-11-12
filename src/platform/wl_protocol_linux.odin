@@ -367,6 +367,7 @@ raw_types :: proc(s: []^Wl_Interface) -> [^]^Wl_Interface { return len(s) > 0 ? 
 @(private) ZWLR_LAYER_OVERLAY :: 3
 @(private) ZWLR_ANCHOR_ALL :: 1 | 2 | 4 | 8   // top, bottom, left, right
 @(private) ZWLR_KEYBOARD_ON_DEMAND :: 2
+@(private) ZWLR_KEYBOARD_EXCLUSIVE :: 1
 @(private) ZWLR_LAYER_SHELL_VERSION :: 4
 @(private) zwlr_layer_shell_iface: Wl_Interface
 @(private) zwlr_layer_surface_iface: Wl_Interface

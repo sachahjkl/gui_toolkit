@@ -14,7 +14,7 @@ import "core:strings"
 @(private = "file") XCB_INPUT_FOCUS_PARENT :: 2
 
 @(private)
-x11_open_overlay :: proc(w: ^Window, title: string, area: [4]int) -> bool {
+x11_open_overlay :: proc(w: ^Window, title: string, area: [4]int, keyboard: Overlay_Keyboard) -> bool {
 	if !x11_connect() { report_missing("libxcb"); return false }
 	x := &xcb
 	root := x11c.screen.root
@@ -60,6 +60,8 @@ x11_open_overlay :: proc(w: ^Window, title: string, area: [4]int) -> bool {
 	st.map_phase = .Asked
 	above := [1]u32{XCB_STACK_MODE_ABOVE}
 	x.configure_window(x11c.c, id, XCB_CONFIG_WINDOW_STACK_MODE, &above[0])
+	// (no window manager gives an override-redirect window the keyboard: it takes it itself)
+	if keyboard == .Exclusive && x.set_input_focus != nil { x.set_input_focus(x11c.c, XCB_INPUT_FOCUS_PARENT, id, 0) }
 	x.flush(x11c.c)
 	w.show = .Normal
 	w.paint_requested = true

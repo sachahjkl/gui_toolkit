@@ -34,7 +34,7 @@ Monitor_List :: struct {
 
 // An overlay window over the monitor at `area` (overlay.odin), shown at once without taking the keyboard. nil when the
 // system could not make the window.
-open_overlay :: proc(title: string, area: [4]int, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
+open_overlay :: proc(title: string, area: [4]int, keyboard := Overlay_Keyboard.On_Demand, user: rawptr = nil, on_frame: proc(user: rawptr) = nil) -> ^Window {
 	instance := window_class_register()
 	place := overlay_monitor_place(area)
 
@@ -44,9 +44,10 @@ open_overlay :: proc(title: string, area: [4]int, user: rawptr = nil, on_frame: 
 	w.dpi_scale = 1
 	w.display_stale = true
 	w.overlay = true
-	EX_STYLE :: win.WS_EX_TOPMOST | win.WS_EX_TOOLWINDOW | win.WS_EX_NOACTIVATE | win.WS_EX_NOREDIRECTIONBITMAP
+	ex_style := win.WS_EX_TOPMOST | win.WS_EX_TOOLWINDOW | win.WS_EX_NOREDIRECTIONBITMAP
+	if keyboard == .On_Demand { ex_style |= win.WS_EX_NOACTIVATE }
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
-	w.hwnd = win.CreateWindowExW(EX_STYLE, win.L(WINDOW_CLASS_NAME), wtitle, win.WS_POPUP,
+	w.hwnd = win.CreateWindowExW(ex_style, win.L(WINDOW_CLASS_NAME), wtitle, win.WS_POPUP,
 		i32(place[0]), i32(place[1]), i32(max(place[2], 1)), i32(max(place[3], 1)), nil, nil, instance, w)
 	if w.hwnd == nil {
 		free(w)
@@ -56,7 +57,12 @@ open_overlay :: proc(title: string, area: [4]int, user: rawptr = nil, on_frame: 
 	w.dpi_scale = dpi > 0 ? f32(dpi) / DPI_BASE : 1
 	update_client_size(w)
 	a11y_attach(w)   // (before the window is shown, as open_window)
-	win.ShowWindow(w.hwnd, win.SW_SHOWNOACTIVATE)
+	if keyboard == .Exclusive {
+		win.ShowWindow(w.hwnd, win.SW_SHOW)
+		win.SetForegroundWindow(w.hwnd)
+	} else {
+		win.ShowWindow(w.hwnd, win.SW_SHOWNOACTIVATE)
+	}
 	return w
 }
 

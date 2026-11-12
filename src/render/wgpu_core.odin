@@ -480,9 +480,21 @@ wgpu_create_offscreen :: proc(r: ^Renderer) -> bool {
 	return g.frame_rtv != nil
 }
 
+// How the compositor blends the surface: Windows' translucent windows through DirectComposition's panel; an overlay
+// (its handles' see_through) with an alpha mode the surface offers, premultiplied first, or the windows below it would
+// show black; every other window opaque.
 @(private)
 wgpu_surface_alpha :: proc(r: ^Renderer) -> wgpu.CompositeAlphaMode {
-	return r.transparent && r.wg.panel != nil ? .Premultiplied : .Opaque
+	if r.transparent && r.wg.panel != nil { return .Premultiplied }
+	if !r.surface_handles.see_through || r.wg.surface == nil { return .Opaque }
+	caps, st := wgpu.SurfaceGetCapabilities(r.wg.surface, r.wg.adapter)
+	defer wgpu.SurfaceCapabilitiesFreeMembers(caps)
+	if st != .Success { return .Opaque }
+	offered := caps.alphaModes[:caps.alphaModeCount]
+	for want in ([]wgpu.CompositeAlphaMode{.Premultiplied, .Inherit, .Unpremultiplied}) {
+		for m in offered { if m == want { return want } }
+	}
+	return .Opaque
 }
 
 // (Re)configures the surface for the current size, format, present mode and latency.

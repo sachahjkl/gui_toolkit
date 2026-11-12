@@ -278,6 +278,9 @@ Surface_Handles :: struct {
 	display:    rawptr,   // Wayland: wl_display; X11: the xcb_connection
 	surface:    rawptr,   // Wayland: wl_surface
 	window:     u64,      // X11: the xcb_window id
+	// an overlay (open_overlay): what it does not draw shows the windows below, so its surface is composited with its
+	// alpha (Windows' windows go through DirectComposition for that already)
+	see_through: bool,
 }
 
 ////////////////////////////////

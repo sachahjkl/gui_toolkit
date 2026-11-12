@@ -148,6 +148,7 @@ Wl_Window_State :: struct {
 	overlay:     bool,
 	layer_surface: Wl_Proxy,
 	overlay_output: u32,
+	overlay_keyboard: Overlay_Keyboard,   // an overlay's: whether it takes the keyboard from its showing
 	// set_input_region: the rects (logical) that take the pointer, when `input_limited`; kept so a new surface gets them
 	input_limited: bool,
 	input_rects: [dynamic][4]int,

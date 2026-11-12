@@ -343,7 +343,13 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if d.subtitle != "" { node_graph_text(dc, d.font, d.em * 0.85, x, header.min.y + g.header * k * 0.72, right, c.weak, d.subtitle) }
 	mark := [2]f32{r.max.x - pad - mark_w * 0.5, title_mid}
 	switch d.state {
-	case .Idle, .Skipped:
+	case .Idle:
+	case .Skipped:
+		// a ring crossed out: nothing ran here (what came before failed, or gave nothing), said beside the fading
+		e := d.em * 0.3
+		w := max(1.5 * d.sc, d.em * 0.11)
+		draw.rect(dc, {mark - e, mark + e}, c.weak, e, w)
+		draw.line(dc, mark + {-e * 0.7, e * 0.7}, mark + {e * 0.7, -e * 0.7}, w, c.weak)
 	case .Running:
 		machined_lamp(dc, mark, d.em * 0.55, c.accent, 1, 0.5 + 0.5 * math.sin(d.phase * 2 * math.PI))
 		// a bar that crosses the header's bottom edge: the node is at work

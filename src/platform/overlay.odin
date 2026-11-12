@@ -21,6 +21,11 @@ package platform
 //
 // The rects of an input region are window-relative logical pixels (physical pixels divided by `dpi_scale`).
 
+// Whether an overlay takes the keyboard: On_Demand once it is clicked (a bar of buttons over the desktop, which the
+// person goes on using); Exclusive from its showing until it goes (a selection of a region, read with Escape, the
+// arrows and Enter: the windows below get no key meanwhile).
+Overlay_Keyboard :: enum u8 { On_Demand, Exclusive }
+
 // The index of the output an overlay over `area` covers, from the outputs' places (x, y, width, height, logical); -1
 // when `area` is all zero (the system chooses) or there is no output.
 overlay_output_index :: proc(outputs: [][4]int, area: [4]int) -> int {

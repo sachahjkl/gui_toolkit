@@ -527,7 +527,7 @@ is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 // The native handles a renderer makes a surface from (neutral; see Surface_Handles). An offscreen window has none.
 native_surface_handles :: proc(w: ^Window) -> Surface_Handles {
 	if w == nil || w.offscreen || w.hwnd == nil { return {} }
-	return {backend = .Windows, hwnd = rawptr(w.hwnd), hinstance = rawptr(win.GetModuleHandleW(nil))}
+	return {backend = .Windows, hwnd = rawptr(w.hwnd), hinstance = rawptr(win.GetModuleHandleW(nil)), see_through = w.overlay}
 }
 
 // An opaque wake handle an offscreen window waits on in wait_event / poll_events, for a thread that wants to wake the loop
