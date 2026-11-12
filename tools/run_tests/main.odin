@@ -90,6 +90,7 @@ STEPS := []Step{
 	{name = "frame_slots", oses = EVERYWHERE},
 	{name = "fsx"},
 	{name = "store", oses = EVERYWHERE},
+	{name = "capture", oses = EVERYWHERE},
 	{name = "globals", oses = EVERYWHERE},
 	{name = "unicode_case", oses = EVERYWHERE},
 	{name = "i18n", oses = EVERYWHERE},
