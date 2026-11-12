@@ -18,14 +18,25 @@ Qr_Cached :: struct {
 @(private = "file")
 Qr_Draw :: struct { code: qr.Code }
 
+// The corners of the white square, in ems (its quiet zone keeps the modules away from them).
+QR_RADIUS_EM :: f32(0.6)
+// The gap between the border and the white square, in ems.
+QR_FRAME_GAP_EM :: f32(0.3)
+// The border's opacity: the theme's text colour, faint (a frame, not a line that competes with the code).
+QR_FRAME_ALPHA :: f32(0.35)
+
 // A QR Code of `text` in a square of `size` pixels (like `px`), its quiet zone included. Dark modules on white, whatever
 // the theme: scanners need dark on light. Each module is a whole number of device pixels, the code centred in the box; a
 // box too small for one pixel a module is clipped. A text too long for version 40 shows the white square alone. To a
 // screen reader it is an image named "QR code: <text>". See docs/qr.md.
 qr_code :: proc(id: string, text: string, size: f32, ecc := qr.Ecc.Medium) -> Signal {
 	s := gs()
-	next_merge({width = px(size), height = px(size)})
-	b := build_box({}, id)
+	// (a rounded border of the theme, a gap inside it, then the white square: a frame around the code, which on a dark
+	// dialog reads as drawn, not cut out)
+	edge := color("text")
+	edge.a *= QR_FRAME_ALPHA
+	next_merge({width = px(size), height = px(size), radius = font_size() * QR_RADIUS_EM, border = edge})
+	b := build_box({.Draw_Border}, id)
 	c, kept := &s.qr_codes[b.key]
 	if !kept || c.text != text || c.ecc != ecc {
 		allocator := s.qr_codes.allocator
@@ -52,13 +63,17 @@ qr_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	code := (^Qr_Draw)(user).code
 	draw.push_clip(dc, b.rect)
 	defer draw.pop_clip(dc)
-	draw.rect(dc, b.rect, {1, 1, 1, 1})
+	gap := math.round(font_size() * QR_FRAME_GAP_EM)
+	white := draw.rect_pad(b.rect, -gap)
+	radii := box_drawn_radii(gs(), b)
+	for &r in radii { r = max(0, r - gap) }
+	draw.rect_corners(dc, white, colors4({1, 1, 1, 1}), radii)
 	if code.size == 0 { return }
-	box := draw.rect_size(b.rect)
+	box := draw.rect_size(white)
 	unit := qr_module_pixels(min(box.x, box.y), code.size)
 	side := unit * f32(code.size + 2 * qr.QUIET_ZONE)
 	// whole pixels from the box's corner, centred: every module edge on a pixel edge
-	origin := [2]f32{math.round(b.rect.min.x + (box.x - side) / 2), math.round(b.rect.min.y + (box.y - side) / 2)} + unit * qr.QUIET_ZONE
+	origin := [2]f32{math.round(white.min.x + (box.x - side) / 2), math.round(white.min.y + (box.y - side) / 2)} + unit * qr.QUIET_ZONE
 	// one rect per horizontal run of dark modules
 	for y in 0 ..< code.size {
 		x := 0
