@@ -468,6 +468,55 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	return
 }
 
+// The field of a slider_field: kept by the program between frames (slider_field_destroy).
+Slider_Field :: struct {
+	text: Text_Field,
+	box:  Key,   // the field's box, to know whether it has the keyboard
+}
+
+// A slider and, beside it, a field where the exact value is typed, then its unit (`unit`; "" none). The field shows
+// the value while it does not have the keyboard; Enter, or the keyboard going elsewhere, applies what was typed:
+// clamped to [lo, hi], rounded to `step` (0: as typed); Escape or text that is not a number gives the value back.
+// `decimals`: the field's digits after the point. Its size: the parent's `next` (the slider takes the room the field
+// and the unit leave). True when the value changed this frame, by the slider or the field.
+slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, step: f32 = 0, decimals := 0, unit := "") -> (changed: bool) {
+	em := font_size()
+	text_of :: proc(v: f32, decimals: int) -> string { return fmt.tprintf(fmt.tprintf("%%.%df", decimals), v) }
+	if row(.Center, {}, id) {
+		before := value^
+		next({width = fill(), height = pct(1)})
+		slider("###slider", value, lo, hi, step, "")   // (no value text on the knob: the field says it)
+		changed = value^ != before
+		spacer(px(math.round(em * 0.4)))
+		typing := f.box != 0 && focus_key() == f.box
+		if !typing && field_string(&f.text) != text_of(value^, decimals) { field_set(&f.text, text_of(value^, decimals)) }
+		next({width = px(math.round(em * (3 + f32(decimals) * 0.6))), height = pct(1)})
+		res := line_edit("###value", &f.text, "", menu = false)
+		f.box = res.box.key
+		left := !res.focused && typing   // (the keyboard went elsewhere this frame)
+		if res.committed || left {
+			if v, ok := strconv.parse_f32(strings.trim_space(field_string(&f.text))); ok {
+				if step > 0 { v = math.round(v / step) * step }
+				v = clamp(v, lo, hi)
+				changed |= v != value^
+				value^ = v
+			}
+			field_set(&f.text, text_of(value^, decimals))
+		}
+		if res.cancelled { field_set(&f.text, text_of(value^, decimals)) }
+		if unit != "" {
+			spacer(px(math.round(em * 0.3)))
+			if tags("weak") {
+				next({width = text_size(0), height = pct(1), text_pad = 0})
+				label(fmt.tprintf("%s###unit", unit))
+			}
+		}
+	}
+	return
+}
+
+slider_field_destroy :: proc(f: ^Slider_Field) { field_destroy(&f.text) }
+
 // A request of a screen reader for a numeric widget `key` this build (set the value, increment, decrement by `step`):
 // the value it asks for.
 a11y_numeric_request :: proc(key: Key, value, step: f32) -> (f32, bool) {
