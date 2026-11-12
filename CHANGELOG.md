@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.217.3] - 2026-11-12
+
+### Fixed
+- **A box in a bordered box's corner takes that corner**: a box laid against the border of a rounded box around it (a menu's search field, a header in a bordered card) now takes that box's corner, concentric, instead of its own rounding or a square corner: no second corner shows inside the first in any program.
+
 ## [0.217.2] - 2026-11-12
 
 ### Fixed
@@ -2908,6 +2913,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.217.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.3
 [0.217.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.2
 [0.217.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.1
 [0.217.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.0
