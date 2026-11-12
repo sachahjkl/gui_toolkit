@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.217.0] - 2026-11-12
+
+### Added
+- **`render.preload_device` can say when the device is made** (`done`): a program whose loop sleeps wakes itself and opens its windows early, hidden.
+- **A window knows which monitor it is on** (`platform.window_output_name`), by the name screen captures give monitors: two monitors of the same size are told apart.
+
+### Changed
+- **Screen captures are read faster, in the order asked**: an upright screen is read a row at a time instead of a pixel at a time, and `capture.set_pixel_order(s, .RGBA)` gives frames a texture or a PNG encoder takes at once, with no pass of the program to swap their channels (`Frame.order` says which).
+- **`ui.slider_field` follows the wheel and has − and + buttons**: the wheel over the slider or the field moves the value a step, the buttons too (held: they repeat; Shift: ten steps).
+
 ## [0.216.1] - 2026-11-12
 
 ### Fixed
@@ -2888,6 +2898,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.217.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.0
 [0.216.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.1
 [0.216.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.216.0
 [0.215.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.215.0
