@@ -5,7 +5,7 @@ package ui
 // Keys when focused:
 //   typing, Enter (new line), Backspace / Delete (Ctrl = word), arrows (Ctrl = word), Up / Down keep the column,
 //   Home / End (line), Ctrl+Home / Ctrl+End (document), Page Up / Page Down, Shift + any move selects,
-//   Ctrl+A / C / X / V, Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo, Ctrl+Enter = committed, Escape = leave the field.
+//   Ctrl+A / C / X / V (Shift+Insert pastes too; the clipboard's text comes in a later build, paste.odin), Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo, Ctrl+Enter = committed, Escape = leave the field.
 //   Tab moves the focus to the next widget, unless `tab_indents` (then Tab inserts 4 spaces, Ctrl+Tab... leaves).
 // Mouse: click places the caret, drag selects, Shift+click extends, double-click selects a word, wheel scrolls.
 
@@ -444,6 +444,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		if a.cursor != c0 || hash_bytes(a.buf[:]) != before_hash { e.lines = edit_lines(&e) }
 		edit_pointer(&e)
 		if res.focused {
+			edit_paste_answer(&e)
 			edit_keys_typing(&e, tab_indents)
 			edit_keys_moves(&e)
 			edit_keys_deleting(&e)
@@ -729,13 +730,22 @@ edit_keys_clipboard :: proc(e: ^Edit_Build) {
 			a.upstream = false
 		}
 	}
-	if (key_press(.V, ctrl) || key_press(.Insert, shift)) && s.clipboard_get != nil {
-		clip := s.clipboard_get()
-		clean, _ := strings.replace_all(clip, "\r\n", "\n", context.temp_allocator)
-		clean, _ = strings.replace_all(clean, "\r", "\n", context.temp_allocator)
-		clean, _ = strings.replace_all(clean, "\t", "    ", context.temp_allocator)
-		if clean != "" { begin_edit(a, .Other, e.now); insert(a, clean); a.upstream = false }
-	}
+	// (the text comes in a later build: edit_paste_answer)
+	if key_press(.V, ctrl) || key_press(.Insert, {.Shift}) { paste_request(e.b.key) }
+}
+
+// The text a paste asked for in an earlier build came: over the selection, in one undo step, before what was typed since.
+@(private="file")
+edit_paste_answer :: proc(e: ^Edit_Build) {
+	a := e.a
+	clip, ok := paste_answer(e.b.key)
+	if !ok { return }
+	clean, _ := strings.replace_all(clip, "\r\n", "\n", context.temp_allocator)
+	clean, _ = strings.replace_all(clean, "\r", "\n", context.temp_allocator)
+	clean, _ = strings.replace_all(clean, "\t", "    ", context.temp_allocator)
+	begin_edit(a, .Other, e.now)
+	insert(a, clean)
+	a.upstream = false
 }
 
 // The caret's rectangle, the scroll that keeps it in view, the scroll in range. Returns the content's size.

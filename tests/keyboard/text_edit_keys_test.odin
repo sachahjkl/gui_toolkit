@@ -137,19 +137,31 @@ text_edit_clipboard :: proc(t: ^testing.T) {
 	tap(f, .A, {.Ctrl})
 	set_clip("a\r\nb\tc\rd")
 	tap(f, .V, {.Ctrl})
+	testing.expect_value(t, text(f), "hello world")   // (asked: the text comes in the next build)
+	frame(f)
 	testing.expect_value(t, text(f), "a\nb    c\nd")
 	expect_caret(t, f, 10, 10)
+	// one undo step takes it back; Shift+Insert pastes too
+	tap(f, .Z, {.Ctrl})
+	testing.expect_value(t, text(f), "hello world")
+	tap(f, .End, {.Ctrl})
+	set_clip("!")
+	tap(f, .Insert, {.Shift})
+	frame(f)
+	testing.expect_value(t, text(f), "hello world!")
 	// an empty clipboard is no edit
 	n := len(f.area.undo)
 	set_clip("")
 	tap(f, .V, {.Ctrl})
+	frame(f)
 	testing.expect_value(t, len(f.area.undo), n)
-	// no clipboard given: the cut still cuts, the paste does nothing
+	// no clipboard given (and no window): the cut still cuts, the paste does nothing
 	f.no_clipboard = true
 	tap(f, .A, {.Ctrl})
 	tap(f, .C, {.Ctrl})
 	tap(f, .V, {.Ctrl})
-	testing.expect_value(t, text(f), "a\nb    c\nd")
+	frame(f)
+	testing.expect_value(t, text(f), "hello world!")
 	tap(f, .X, {.Ctrl})
 	testing.expect_value(t, text(f), "")
 }

@@ -160,6 +160,55 @@ cut_copy_paste_through_the_clipboard :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(ui.field_string(&e.field), "\n"), "no line break in a line edit")
 }
 
+// Ctrl+V in one frame: the key, and nothing after it (the build that sees it asks the clipboard).
+@(private = "file")
+ctrl_v_one_frame :: proc(s: ^session.Session) {
+	session.event(s, {kind = .Key_Press, key = .V, mods = {.Ctrl}})
+	session.event(s, {kind = .Key_Release, key = .V, mods = {.Ctrl}})
+	session.frame(s)
+}
+
+// A paste does not wait for the clipboard: the build of Ctrl+V asks, and the text comes in a later one (the window's
+// clipboard_request), in one undo step, to the field or the editor that asked.
+@(test)
+a_paste_comes_in_a_later_build :: proc(t: ^testing.T) {
+	s, e := editors_start(t)
+	session.set_clipboard(s, "pasted")
+	session.click(s, "field")
+	session.type_text(s, "ab")
+	ctrl_v_one_frame(s)
+	testing.expect_value(t, ui.field_string(&e.field), "ab")
+	session.wait_until(s, e, proc(s: ^session.Session, e: ^Editors) -> bool { return ui.field_string(&e.field) == "abpasted" }, "the field's paste")
+	session.key(s, .Z, {.Ctrl})
+	testing.expect_value(t, ui.field_string(&e.field), "ab")
+	// the editor: the same, its line ends kept
+	session.set_clipboard(s, "one\ntwo")
+	session.click(s, "area")
+	ctrl_v_one_frame(s)
+	testing.expect_value(t, ui.area_string(&e.area), "")
+	session.wait_until(s, e, proc(s: ^session.Session, e: ^Editors) -> bool { return ui.area_string(&e.area) == "one\ntwo" }, "the editor's paste")
+	session.key(s, .Z, {.Ctrl})
+	testing.expect_value(t, ui.area_string(&e.area), "")
+}
+
+// An answer that comes when the field that asked has lost the focus is dropped: neither it nor the focused one takes it.
+@(test)
+a_paste_for_a_field_left_is_dropped :: proc(t: ^testing.T) {
+	s, e := editors_start(t)
+	session.set_clipboard(s, "late")
+	session.click(s, "field")
+	session.type_text(s, "ab")
+	ctrl_v_one_frame(s)
+	ui.set_focus(session.get(s, "search").key)   // (before the build the answer comes in)
+	// (the process's store answers at the next poll: the frame after the request has it)
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&e.field), "ab")
+	testing.expect_value(t, ui.field_string(&e.search), "")
+	session.click(s, "field")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&e.field), "ab")
+}
+
 // A right click on a field opens its menu, an icon on each item: Paste puts the clipboard at the caret, Cut takes the
 // selection, and a secret's menu neither copies nor cuts.
 @(test)

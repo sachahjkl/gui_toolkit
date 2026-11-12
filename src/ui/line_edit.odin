@@ -119,7 +119,8 @@ field_has_selection :: proc(f: ^Text_Field) -> bool { return f.cursor != f.mark 
 field_selection :: proc(f: ^Text_Field) -> string { lo, hi := sel_range(f); return string(f.buf[lo:hi]) }
 field_select_all :: proc(f: ^Text_Field) { f.mark, f.cursor = 0, len(f.buf) }
 
-// Edit commands for menus (they go through the edit history; the clipboard is the one given to begin_build).
+// Edit commands for menus (they go through the edit history; the clipboard is the one given to begin_build). A paste asks
+// the clipboard for the field `owner` (field_paste): the text comes in a later build.
 field_copy :: proc(f: ^Text_Field) -> bool {
 	if !field_has_selection(f) || current == nil || current.clipboard_set == nil { return false }
 	gs().clipboard_set(field_selection(f))
@@ -149,11 +150,16 @@ field_insert :: proc(f: ^Text_Field, text: string) {
 	insert_text(f, clean)
 }
 
-field_paste :: proc(f: ^Text_Field) -> bool {
-	if current == nil || current.clipboard_get == nil { return false }
-	clip := gs().clipboard_get()
-	if clip == "" { return false }
-	field_insert(f, clip)
+// Asks the clipboard's text for the field whose widget is `owner` (line_edit's box: its result's box.key). line_edit
+// inserts it over its selection when it comes, if it still has the focus; a field the keyboard reaches another way
+// takes it with field_paste_answer. False: there is no clipboard to ask.
+field_paste :: proc(owner: Key) -> bool { return paste_request(owner) }
+
+// Inserts the text a field_paste of `owner` asked for, in the build it came (one undo step). True: it was inserted.
+field_paste_answer :: proc(f: ^Text_Field, owner: Key) -> bool {
+	text, ok := paste_answer(owner)
+	if !ok { return false }
+	field_insert(f, text)
 	return true
 }
 
@@ -291,9 +297,10 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Shift: the selection with it); Backspace and Delete take a letter (Ctrl: a word) or the selection; Ctrl+A selects all;
 // Ctrl+C, X, V copy, cut and paste (Ctrl+Insert, Shift+Delete, Shift+Insert too); Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z
 // redo. True when the key is one of those (applied to `f`, whether it changed it or not): the caller takes it. Return,
-// Escape and typed text are the caller's. `masked`: a secret, neither copied nor cut. line_edit reads its keys with it; a
-// field the keyboard reaches another way (a menu's search) gives it its own.
-field_key :: proc(f: ^Text_Field, key: platform.Key, mods: platform.Modifiers, masked := false) -> bool {
+// Escape and typed text are the caller's. `owner`: the key a paste is asked for (field_paste; its text comes in a later
+// build, field_paste_answer). `masked`: a secret, neither copied nor cut. line_edit reads its keys with it; a field the
+// keyboard reaches another way (a menu's search) gives it its own.
+field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.Modifiers, masked := false) -> bool {
 	ctrl, shift, cs := platform.Modifiers{.Ctrl}, platform.Modifiers{.Shift}, platform.Modifiers{.Ctrl, .Shift}
 	move :: proc(f: ^Text_Field, to: int, extend: bool) {
 		f.cursor = to
@@ -343,12 +350,12 @@ field_key :: proc(f: ^Text_Field, key: platform.Key, mods: platform.Modifiers, m
 	case .Insert:
 		switch mods {
 		case ctrl:  if masked { return false }; field_copy(f)
-		case shift: field_paste(f)
+		case shift: field_paste(owner)
 		case: return false
 		}
 	case .V:
 		if mods != ctrl { return false }
-		field_paste(f)
+		field_paste(owner)
 	case .Z:
 		switch mods {
 		case ctrl: field_undo(f)
@@ -430,6 +437,8 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		}
 
 		if focused {
+			// (a paste asked in an earlier build: before what was typed since)
+			field_paste_answer(f, b.key)
 			for r in s.typed {
 				field_checkpoint(f, .Typing)
 				insert_text(f, utf8.runes_to_string({r}, context.temp_allocator))
@@ -437,7 +446,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			// (the keys in the order they came; a dialog open over the field holds them)
 			if !keys_held_by_dialog(s) {
 				for e, i in s.events.list {
-					if !s.events.consumed[i] && field_key(f, e.key, e.mods, masked) { s.events.consumed[i] = true }
+					if !s.events.consumed[i] && field_key(f, b.key, e.key, e.mods, masked) { s.events.consumed[i] = true }
 				}
 			}
 			if key_press(.Return) { res.committed = true }
@@ -494,16 +503,16 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 				s.focus_key = b.key
 				ctx_menu_open(key, s.mouse)
 			}
-			field_menu(key, f, masked)
+			field_menu(key, f, b.key, masked)
 		}
 	}
 	return
 }
 
 // The menu of a text field, `key` its menu (ctx_menu_open opens it): the edits of field_undo, field_cut, field_copy,
-// field_paste, field_delete and field_select_all, each with its keys and its icon (Lucide's: lucide_icons). A secret is
-// neither copied nor cut.
-field_menu :: proc(key: Key, f: ^Text_Field, secret := false) {
+// field_paste, field_delete and field_select_all, each with its keys and its icon (Lucide's: lucide_icons). `owner`: the
+// field's widget, which a paste's text comes to (field_paste). A secret is neither copied nor cut.
+field_menu :: proc(key: Key, f: ^Text_Field, owner: Key, secret := false) {
 	if ctx_menu(key) {
 		ico := lucide_icons()
 		sel := field_has_selection(f)
@@ -512,7 +521,7 @@ field_menu :: proc(key: Key, f: ^Text_Field, secret := false) {
 		menu_separator()
 		if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { field_cut(f) }
 		if menu_item("Copy", "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { field_copy(f) }
-		if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(f) }
+		if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
 		if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { field_delete(f) }
 		menu_separator()
 		if menu_item("Select all", "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(f.buf) > 0).clicked { field_select_all(f) }

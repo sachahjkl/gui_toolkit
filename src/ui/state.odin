@@ -88,6 +88,7 @@ destroy :: proc(s: ^State) {
 	delete(s.events.list)
 	delete(s.events.consumed)
 	delete(s.typed)
+	delete(s.paste.text)
 	delete(s.focus_order)
 	delete(s.popup_stack)
 	delete(s.modal_stack)
@@ -138,9 +139,13 @@ Build_Params :: struct {
 	dpi_scale:      f32,       // OS scale (dpi / 96); 0 is treated as 1
 	base:           Style,     // root style in LOGICAL pixels: font_size, text_pad, radius and pixel sizes are multiplied by dpi_scale * zoom
 	disable_zoom:   bool,      // true: ignore Ctrl+wheel and Ctrl +/-/0
+	// A paste reads `clipboard_get`, a program's own clipboard (in memory: a test's); nil: the window's, asked without
+	// waiting (paste.odin). Either answers in a later build. `clipboard_set` is what a copy writes (window_clipboard_set:
+	// the window's).
 	clipboard_get:  proc() -> string,
 	clipboard_set:  proc(text: string),
-	window:         ^platform.Window,   // optional: with an integrated title bar, gets its regions after each build
+	window:         ^platform.Window,   // optional: with an integrated title bar, gets its regions after each build;
+	                                    // the clipboard a paste asks when clipboard_get is nil
 	frame_ms:       f64,                // optional: the frame's time in ms (a display clock: when it will be shown);
 	                                    // scroll animations are sampled on it. 0: now_ms()
 	time_ms:        f64,                // optional: the build's clock in ms (caret blink, double clicks, timers, toasts,
@@ -149,12 +154,8 @@ Build_Params :: struct {
 	                                    // the caret of a focused text field is not drawn and does not blink (inactive())
 }
 
-// Build_Params.clipboard_get and clipboard_set of the system's clipboard, for the window of the build being made
-// (Build_Params.window): what a program would otherwise keep a global for, the procedures taking no argument.
-window_clipboard_get :: proc() -> string {
-	if current == nil || current.window == nil { return "" }
-	return platform.get_clipboard(current.window, context.temp_allocator)
-}
+// Build_Params.clipboard_set of the system's clipboard, for the window of the build being made (Build_Params.window):
+// what a program would otherwise keep a global for, the procedure taking no argument.
 window_clipboard_set :: proc(text: string) {
 	if current != nil && current.window != nil { platform.set_clipboard(current.window, text) }
 }
@@ -235,6 +236,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 
 	// calls posted from other threads change the app's data before the frame reads it (post.odin)
 	post_begin_build(s, p.window)
+	paste_begin_build(s, p.events)
 	selection_begin(s)
 	process_events(s, p.events, !p.disable_zoom, left)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
@@ -297,6 +299,7 @@ end_build :: proc() {
 	menu_prune(s)
 	boxes_gone(s)
 	press_data_sweep(s)   // (a press whose box went: what it kept with it)
+	paste_end_build(s)
 	selection_update(s)
 	modals_settle(s)
 	handle_tab_navigation(s)

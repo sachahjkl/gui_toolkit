@@ -436,7 +436,6 @@ frame :: proc(app: ^App, inner := false) {
 		smooth_scroll = ui.Smooth_Scroll(app.smooth),
 		dpi_scale = app.win.dpi_scale, window = app.win,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = app.font, font_size = 15, text_pad = 6, cursor = .Arrow},
-		clipboard_get = proc() -> string { return platform.get_clipboard(the_app.win, context.temp_allocator) },
 		clipboard_set = proc(text: string) { platform.set_clipboard(the_app.win, text) },
 	})
 	ui.set_layout_warnings(&app.s, true)   // (on in debug builds; this page shows them in any build)

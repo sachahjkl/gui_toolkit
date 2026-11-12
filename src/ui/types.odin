@@ -430,6 +430,7 @@ State :: struct {
 	cursor_request: platform.Cursor,
 	clipboard_get: proc() -> string,
 	clipboard_set: proc(text: string),
+	paste:         Paste,            // the paste waiting for the clipboard's text (paste.odin)
 
 	// popups
 	menu_item_em:    f32,                   // height of a menu item in em (0 = the default, MENU_ITEM_EM); set_menu_item_height

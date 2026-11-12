@@ -113,7 +113,7 @@ a_path_is_copied :: proc(t: ^testing.T) {
 	path := `C:\Users\someone\AppData\Local\Programs\sample\sample.exe`
 	s := start(t, &app, {state = .This_Copy, exe = strings.clone(path), running = strings.clone(path), exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
 	session.click(s, "copy")
-	testing.expect_value(t, ui.window_clipboard_get(), path)
+	testing.expect_value(t, session.clipboard(s), path)
 	testing.expect(t, app.d.copied != "", "the button shows it")
 }
 

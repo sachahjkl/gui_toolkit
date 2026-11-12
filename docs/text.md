@@ -59,11 +59,20 @@ code point or a cluster), `is_grapheme_boundary`, `grapheme_count`. The arrows, 
 `ui.text_edit`, clicks (`hit_index`), the cut of a toast and the line breaks of `ui.wrap_lines` work on clusters: nothing
 is ever left of a half emoji.
 
-**A field's keys** (`ui.field_key(f, key, mods)`): what a key does to a `Text_Field`, as `ui.line_edit` does it (the caret by
-clusters and by words, Shift for the selection, Backspace and Delete with Ctrl for a word, Ctrl+A, the clipboard, undo and
-redo). A field the keyboard reaches another way gives it its keys: the search of a menu opened with `ctx_menu_open(...,
-search = true)` is a `Text_Field` edited by it, the menu keeping the arrows, Enter and Escape. That menu keeps the corner and
-the width of its first layout while it filters.
+**A field's keys** (`ui.field_key(f, owner, key, mods)`): what a key does to a `Text_Field`, as `ui.line_edit` does it (the
+caret by clusters and by words, Shift for the selection, Backspace and Delete with Ctrl for a word, Ctrl+A, the clipboard,
+undo and redo). A field the keyboard reaches another way gives it its keys: the search of a menu opened with
+`ctx_menu_open(..., search = true)` is a `Text_Field` edited by it, the menu keeping the arrows, Enter and Escape. That menu
+keeps the corner and the width of its first layout while it filters.
+
+**Paste** (`src/ui/paste.odin`). Ctrl+V and Shift+Insert in a `line_edit` or a `text_edit`, and a field menu's Paste, do not
+wait for the clipboard: the build that sees the key asks for the text (`ui.paste_request(key)`, `key` the widget's), and the
+widget inserts it in a later build, when the answer has come (`ui.paste_answer(key)`): over its selection, in one undo step,
+if it is still built and still has the focus. Otherwise the answer is dropped. The window's clipboard is asked with
+`platform.clipboard_request`; `Build_Params.clipboard_get`, when a program gives one (its own clipboard in memory, a
+test's), is read at once and its text given in the next build. A field reached another way names its `owner` for
+`field_key`, `field_paste(owner)` and `field_menu(key, f, owner)`, and inserts the answer with
+`field_paste_answer(f, owner)` in each build (the menu's search does). See [clipboard.md](clipboard.md).
 
 **The clipboard's keys** are one set wherever text is typed (`ui.line_edit`, `ui.text_area`, `term`): Ctrl+C or Ctrl+Insert
 copies, Ctrl+X or Shift+Delete cuts, Ctrl+V or Shift+Insert pastes.

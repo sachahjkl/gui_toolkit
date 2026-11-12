@@ -136,7 +136,7 @@ menu_query_key :: proc(lv: ^Menu_Level, e: platform.Event) -> bool {
 	}
 	before := strings.clone(menu_query(lv), context.temp_allocator)
 	c0, m0 := lv.query.cursor, lv.query.mark
-	if !field_key(&lv.query, e.key, e.mods) { return false }
+	if !field_key(&lv.query, lv.key, e.key, e.mods) { return false }
 	if menu_query(lv) != before { lv.pick_first, lv.sel = true, -1 }
 	if menu_query(lv) != before || lv.query.cursor != c0 || lv.query.mark != m0 { lv.typed_ms = now_ms() }
 	return true
@@ -450,6 +450,11 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 		if lv.from_keyboard && len(items) > 0 {
 			if lv.sel < 0 { lv.sel = menu_step(items, -1, 1) }
 			lv.from_keyboard = false
+		}
+		// (a paste in the search, asked in an earlier build: its text came)
+		if lv.search && field_paste_answer(&lv.query, lv.key) {
+			lv.pick_first, lv.sel = true, -1
+			lv.typed_ms = now_ms()
 		}
 		keys: for e, i in s.menu_keys.list {
 			if s.menu_keys.consumed[i] { continue }

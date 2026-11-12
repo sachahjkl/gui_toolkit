@@ -125,7 +125,6 @@ build_ui :: proc(app: ^App) {
 	}
 }
 
-clip_get :: proc() -> string { return platform.get_clipboard(the_app.win, context.temp_allocator) }
 clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
 
 frame :: proc(app: ^App, inner := false) {
@@ -142,7 +141,7 @@ frame :: proc(app: ^App, inner := false) {
 	ui.begin_build(&app.ui_state, {
 		window_size = size, events = events, dt = dt, animations = true, dpi_scale = app.win.dpi_scale,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(34)}, font = app.ui_font, font_size = 16, text_pad = 8},
-		clipboard_get = clip_get, clipboard_set = clip_set,
+		clipboard_set = clip_set,
 	})
 	build_ui(app)
 	ui.end_build()

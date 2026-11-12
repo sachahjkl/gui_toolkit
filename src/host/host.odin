@@ -205,7 +205,7 @@ host_build :: proc(h: ^Host, size: Vec2, events: []platform.Event, dt: f32) {
 		window_size = size, events = events, dt = dt, animations = platform.os_animations_enabled(),
 		dpi_scale = h.win.dpi_scale, window = h.win,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(BASE_ROW_HEIGHT)}, font = h.shared.font, font_size = BASE_FONT_SIZE, text_pad = BASE_TEXT_PAD, cursor = .Arrow},
-		clipboard_get = ui.window_clipboard_get, clipboard_set = ui.window_clipboard_set,
+		clipboard_set = ui.window_clipboard_set,   // (a paste asks the window's clipboard without waiting: `window`)
 	}
 	if h.params != nil { h.params(h, &p) }
 	ui.begin_build(&h.state, p)

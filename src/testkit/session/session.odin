@@ -319,7 +319,7 @@ own_frame :: proc(s: ^Session) {
 		window_size = size, events = events, dt = FRAME_MS / 1000, animations = own.animations, smooth_scroll = own.smooth_scroll,
 		dpi_scale = s.win.dpi_scale, window = s.win,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(BASE_ROW_HEIGHT)}, font = own.ui_font, font_size = BASE_FONT_SIZE, text_pad = BASE_TEXT_PAD, cursor = .Arrow},
-		clipboard_get = clipboard_of_current, clipboard_set = set_clipboard_of_current,
+		clipboard_set = set_clipboard_of_current,   // (a paste asks the window: the store answers at the next poll)
 		inactive = !s.win.active,
 	})
 	if own.build != nil { own.build(s) }
@@ -338,7 +338,6 @@ own_frame :: proc(s: ^Session) {
 	render.frame_end(s.renderer, false)
 }
 
-@(private) clipboard_of_current :: proc() -> string { return platform.get_clipboard(current.win, context.temp_allocator) }
 @(private) set_clipboard_of_current :: proc(text: string) { platform.set_clipboard(current.win, text) }
 
 // `n` frames.

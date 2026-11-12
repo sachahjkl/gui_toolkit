@@ -17,7 +17,6 @@ import "../../src/ascii"
 
 the_app: ^App
 
-clip_get :: proc() -> string { return platform.get_clipboard(the_app.win, context.temp_allocator) }
 clip_set :: proc(text: string) { platform.set_clipboard(the_app.win, text) }
 
 ////////////////////////////////
@@ -143,7 +142,7 @@ frame :: proc(app: ^App, inner := false) {
 	base := ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(math.round(36 * dens))}, font = app.ui_font, font_size = 15, text_pad = 7 * (0.4 + 0.6 * dens), cursor = .Arrow}
 	ui.begin_build(&app.ui_state, {
 		window_size = size, events = events, dt = dt * (app.slowmo ? 0.2 : 1), animations = animations_enabled(app),
-		dpi_scale = scale, base = base, clipboard_get = clip_get, clipboard_set = clip_set,
+		dpi_scale = scale, base = base, clipboard_set = clip_set,   // (a paste asks the window's clipboard: `window`)
 		window = app.win,   // with --integrated: the menu bar is the title bar
 	})
 	build_ui(app)

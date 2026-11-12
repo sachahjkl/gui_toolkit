@@ -53,6 +53,21 @@ for e in events {
 - Windows: the system keeps what was copied, the read is done in the call and its answer queued.
 - `inject_event` of a `Clipboard_Data` (a test playing another program's clipboard): its strings are copied.
 
+### The toolkit's fields
+
+`ui.line_edit` and `ui.text_edit` paste this way (`src/ui/paste.odin`). Ctrl+V, Shift+Insert or a field menu's Paste asks
+with `ui.paste_request(key)`; `begin_build` finds the answer among the events it is given, and the widget `key` inserts it
+in that build (`ui.paste_answer(key)`) over its selection, in one undo step, if it is built and has the focus. Otherwise the
+answer is dropped. One paste waits at a time: a second request replaces the first.
+
+- The ui takes the answers whose id it asked for and leaves the others to the program. A program that reads the events
+  before the ui (its own requests) passes every `Clipboard_Data` event on to `begin_build`, and checks each id against its
+  own requests.
+- `Build_Params.window` is the clipboard asked. `Build_Params.clipboard_get` (a program's own clipboard in memory, a test
+  without a window) is read at the request instead, and its text is given in the next build.
+- A test's offscreen window: the process's store answers at the next poll, so the frame after the key has the text
+  (`session.key` makes two).
+
 ## The procedures
 
 | Procedure | |
@@ -135,4 +150,6 @@ WebP decoder. On Wayland the compositor tells a window what the clipboard holds 
 Tests: `tests/clipboard` (conversions only: the user's clipboard is never touched by the tests; the Linux types above,
 `clipboard_pick_mime`, a JPEG, a BMP and a PNG through `clipboard_image_decode`, the GNOME list and the cut flags).
 `tests/scenarios` sets files, cut and copied, on an offscreen window and reads `clipboard_files_cut` back, and asks with
-`clipboard_request`: no answer in the call, one per request at the next poll, none after.
+`clipboard_request`: no answer in the call, one per request at the next poll, none after. `tests/scenarios`
+(`text_edit_test.odin`) pastes into a line edit and an editor (nothing in the build of Ctrl+V, the text after the answer,
+one undo step) and drops an answer for a field that lost the focus; `tests/keyboard` pastes from a `clipboard_get`.

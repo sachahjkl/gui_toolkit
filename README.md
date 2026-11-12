@@ -197,7 +197,8 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   keyboard (Up / Down / Home / End over enabled items, Right / Left through submenus, letters jump, Escape closes one
   level); lists keep an active row; `tab_stops(false)` scopes leave widgets out of the Tab order; `tab_direction` and
   `focus_step` let an app hand the focus to content of its own (a document view) and back. Line edits keep an edit
-  history (Ctrl+Z / Ctrl+Y) and expose their edit commands for menus (`field_cut`, `field_paste`, `field_undo`...).
+  history (Ctrl+Z / Ctrl+Y) and expose their edit commands for menus (`field_cut`, `field_paste`, `field_undo`...); a paste
+  asks the clipboard without waiting and inserts its text when it comes ([docs/clipboard.md](docs/clipboard.md)).
 - **Disabled / muted** scopes: `if ui.disabled(cond) { ... }` disables a whole subtree with a neutral look.
 - **Status bars and frame statistics** (`status.odin`): `status_bar` (a bar along the bottom, smaller text),
   `status_fill` (its flexible, clipped part), `status_item` (compact text, tones, monospace digits, clickable),
