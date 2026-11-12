@@ -7,6 +7,9 @@ package tk_desktop
 import "base:runtime"
 
 @(private)
+type_name_native :: proc(name: string, allocator: runtime.Allocator) -> string { return "" }
+
+@(private)
 handlers_for_file_native :: proc(path: string, allocator: runtime.Allocator) -> []Handler { return make([]Handler, 0, allocator) }
 
 @(private)

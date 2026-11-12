@@ -136,6 +136,11 @@ exist: its name says its type). The default comes first (`Handler.default`), the
 an `id` and a `name` for a menu; free the list with `handlers_destroy`. `open_with(path, id)` opens the file with one of
 them. The system's default application is `platform.open_path`.
 
+`type_name(name)` is what the system calls the type of a file of that name ("Plain text document", "PNG image"): on
+Linux the English `<comment>` of `mime/<type>.xml` for the type shared-mime-info's globs give the name, on Windows the
+shell's type name (`SHGetFileInfoW`, `SHGFI_TYPENAME`, from the extension alone). "" when the system says nothing. It
+reads the system's files the first time a type is asked: call it on a worker and keep the answer by extension.
+
 - Linux reads the XDG specifications: the type from shared-mime-info (`mime/globs2` and `mime/subclasses` under each data
   directory; every `text/*` is also `text/plain`), the applications from the desktop entries under `applications/` (their
   `MimeType`; not `Hidden`, not `Terminal`, an `Exec` line that `exec_expand` accepts). The MIME Applications

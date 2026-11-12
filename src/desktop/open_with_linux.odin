@@ -56,6 +56,49 @@ xdg_roots :: proc() -> Xdg_Roots {
 }
 
 @(private)
+type_name_native :: proc(name: string, allocator: runtime.Allocator) -> string {
+	sync.mutex_guard(&mime_cache.mutex)
+	roots := xdg_roots()
+	return type_name_of(mime_cache_get(&mime_cache, roots), roots, name, allocator)
+}
+
+// The comment of the type `name` says, in the database of `roots` (kept in it once read).
+@(private)
+type_name_of :: proc(db: ^Mime_Database, roots: Xdg_Roots, name: string, allocator: runtime.Allocator) -> string {
+	mime := mime_of_name(db, name)
+	if mime == "application/octet-stream" { return "" }
+	comment, known := db.comments[mime]
+	if !known {
+		// (the first of the data directories that has the type's file, as update-mime-database writes it)
+		for d in roots.data {
+			path, _ := filepath.join({d, "mime", strings.concatenate({mime, ".xml"}, context.temp_allocator)}, context.temp_allocator)
+			text, err := os.read_entire_file(path, context.temp_allocator)
+			if err != nil { continue }
+			comment = mime_comment(string(text))
+			if comment != "" { break }
+		}
+		db.comments[strings.clone(mime, db.allocator)] = strings.clone(comment, db.allocator)
+	}
+	return strings.clone(comment, allocator)
+}
+
+// The first <comment> of a type's file with no language (the English one), its entities read.
+@(private)
+mime_comment :: proc(xml: string) -> string {
+	OPEN :: "<comment>"
+	i := strings.index(xml, OPEN)
+	if i < 0 { return "" }
+	rest := xml[i + len(OPEN):]
+	j := strings.index(rest, "</comment>")
+	if j < 0 { return "" }
+	text := strings.trim_space(rest[:j])
+	for e in ([][2]string{{"&lt;", "<"}, {"&gt;", ">"}, {"&quot;", "\""}, {"&apos;", "'"}, {"&amp;", "&"}}) {
+		text, _ = strings.replace_all(text, e[0], e[1], context.temp_allocator)
+	}
+	return text
+}
+
+@(private)
 handlers_for_file_native :: proc(path: string, allocator: runtime.Allocator) -> []Handler {
 	sync.mutex_guard(&mime_cache.mutex)
 	return handlers_of(mime_cache_get(&mime_cache, xdg_roots()), path, allocator)
@@ -127,6 +170,7 @@ Mime_Database :: struct {
 	globs:     [dynamic]Mime_Glob,
 	parents:   map[string][dynamic]string,
 	icons:     map[string]string,   // mime/icons: a type's own icon name
+	comments:  map[string]string,   // a type's comment, read from mime/<type>.xml when first asked (type_name)
 	generic:   map[string]string,   // mime/generic-icons: the icon of its family (image-x-generic)
 	stamps:    [dynamic]File_Stamp,
 }
@@ -201,6 +245,7 @@ mime_database :: proc(roots: Xdg_Roots, allocator: runtime.Allocator) -> Mime_Da
 		globs     = make([dynamic]Mime_Glob, a),
 		parents   = make(map[string][dynamic]string, a),
 		icons     = make(map[string]string, a),
+		comments  = make(map[string]string, a),
 		generic   = make(map[string]string, a),
 		stamps    = make([dynamic]File_Stamp, a),
 	}

@@ -9,6 +9,8 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import win "core:sys/windows"
+
+foreign import shell32_types "system:Shell32.lib"
 import "../ascii"
 
 @(private) ASSOC_FILTER_RECOMMENDED :: 0x1
@@ -123,4 +125,36 @@ open_with_native :: proc(path: string, id: string) -> bool {
 		return false
 	}, &r)
 	return r.done
+}
+
+@(private = "file") SHGFI_TYPENAME_FLAG :: 0x400
+@(private = "file") SHGFI_ATTRIBUTES_GIVEN :: 0x10   // SHGFI_USEFILEATTRIBUTES: the name alone, no file read
+@(private = "file") FILE_NORMAL :: 0x80
+
+@(private = "file")
+Type_Info :: struct {
+	hIcon:         win.HICON,
+	iIcon:         i32,
+	dwAttributes:  win.DWORD,
+	szDisplayName: [win.MAX_PATH]u16,
+	szTypeName:    [80]u16,
+}
+
+@(default_calling_convention = "system", private = "file")
+foreign shell32_types {
+	@(link_name = "SHGetFileInfoW")
+	type_info_get :: proc(path: win.LPCWSTR, attributes: win.DWORD, info: ^Type_Info, size: win.UINT, flags: win.UINT) -> uintptr ---
+}
+
+@(private)
+type_name_native :: proc(name: string, allocator: runtime.Allocator) -> string {
+	ext := filepath.ext(name)
+	if ext == "" { return "" }
+	info: Type_Info
+	if type_info_get(win.utf8_to_wstring(ext, context.temp_allocator), FILE_NORMAL, &info, size_of(Type_Info), SHGFI_TYPENAME_FLAG | SHGFI_ATTRIBUTES_GIVEN) == 0 { return "" }
+	n := 0
+	for n < len(info.szTypeName) && info.szTypeName[n] != 0 { n += 1 }
+	if n == 0 { return "" }
+	text, err := win.utf16_to_utf8(info.szTypeName[:n], allocator)
+	return err == nil ? text : ""
 }

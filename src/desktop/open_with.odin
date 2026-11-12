@@ -28,6 +28,14 @@ handlers_destroy :: proc(hs: []Handler, allocator := context.allocator) {
 	delete(hs, allocator)
 }
 
+// What the system calls the type of a file named `name` ("Plain text document", "PNG image"): on Linux the comment
+// shared-mime-info gives the type its name says, on Windows the shell's type name. "" when the system says nothing (a
+// name of no known type). Reads the system's files the first time a type is asked (Linux): call it on a worker, and keep
+// the answer by extension.
+type_name :: proc(name: string, allocator := context.allocator) -> string {
+	return type_name_native(name, allocator)
+}
+
 // Opens the file at `path` with the handler `id` (one of handlers_for_file's). False when it cannot start.
 open_with :: proc(path: string, id: string) -> bool {
 	return open_with_native(path, id)
