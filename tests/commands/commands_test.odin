@@ -527,3 +527,29 @@ a_text_as_wide_as_it_measures_stays_one_line :: proc(t: ^testing.T) {
 		testing.expectf(t, len(lines) == 1, "%q at its own width (%v): %d lines", text, w, len(lines))
 	}
 }
+
+// A matched label in a row taller than its line sits where a label does, centred across: in a table's row the name the
+// filter lit showed at the row's top while the label beside it was centred. Their "H", found, is on the same rows.
+@(test)
+a_matched_label_is_centred_as_a_label :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f)) { return }
+	defer close(&f)
+	body :: proc(f: ^Fx, user: rawptr) {
+		ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(300), height = ui.px(48), axis = .X, cross = .Center})
+		if ui.row(id = "###r") {
+			ui.next({width = ui.text_size(), height = ui.pct(1), text_pad = 0})
+			ui.label("Hp###l")
+			ui.spacer(ui.px(20))
+			ui.next({width = ui.text_size(), height = ui.pct(1), text_pad = 0})
+			ui.matched_label("###m", "Hp", {{1, 2}})
+		}
+		ui.find("H")
+	}
+	for _ in 0 ..< 3 { frame(&f, nil, body, nil) }
+	ms := ui.find_matches()
+	if !testing.expect_value(t, len(ms), 2) { return }
+	a, b := ms[0].rect, ms[1].rect
+	testing.expectf(t, a.min.x != b.min.x, "one in each (%v, %v)", a, b)
+	testing.expectf(t, abs(a.min.y - b.min.y) <= 1 && abs(a.max.y - b.max.y) <= 1, "on the same rows: %v and %v", a, b)
+}

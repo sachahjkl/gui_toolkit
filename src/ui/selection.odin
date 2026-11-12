@@ -214,7 +214,7 @@ plain_lines :: proc(s: ^State, b: ^Box, allocator := context.temp_allocator) -> 
 rich_of :: proc(b: ^Box) -> (^Rich_Draw, ^Rich_Layout, Vec2) {
 	d := (^Rich_Draw)(b.custom_user)
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
-	return d, l, b.rect.min + {b.text_pad, b.text_pad}
+	return d, l, b.rect.min + rich_inset(b, d, l)
 }
 
 // The byte index nearest to window point `p` (clamped into the box).

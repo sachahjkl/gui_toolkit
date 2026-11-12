@@ -557,6 +557,18 @@ Rich_Draw :: struct {
 	version:  u64,          // the layout cache's key for these runs (0: their hash): rich_paragraph's `version`
 }
 
+// Where a rich paragraph's text starts in its box, from its top left: inside its padding. One line (max_lines 1) in a
+// box taller than it is centred across, as a label's text is: matched_label stands for a label in a row, whose name
+// showed at the row's top while the labels beside it were centred.
+@(private)
+rich_inset :: proc(b: ^Box, d: ^Rich_Draw, l: ^Rich_Layout) -> Vec2 {
+	if d.max_lines == 1 {
+		room := (b.rect.max.y - b.rect.min.y) - l.size.y
+		if room > 2 * b.text_pad { return {b.text_pad, room / 2} }
+	}
+	return {b.text_pad, b.text_pad}
+}
+
 @(private)
 rich_ctx :: proc(b: ^Box) -> Rich_Context {
 	s := gs()
@@ -579,7 +591,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Rich_Draw)(user)
 	s := gs()
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
-	o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
+	o := b.rect.min + rich_inset(b, d, l)
 	clip := draw.current_clip(dc)
 	// the runs' backgrounds first: the selection and the matches go over them, under the text (draw_box leaves both to here)
 	for li in l.lines {
@@ -609,7 +621,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 rich_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	d := (^Rich_Draw)(b.custom_user)
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
-	o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
+	o := b.rect.min + rich_inset(b, d, l)
 	clip := draw.current_clip(dc)
 	for li in l.lines {
 		if o.y + li.y > clip.max.y { break }
@@ -709,7 +721,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 	if s.a11y.wanted {
 		parts = make([dynamic]A11y_Part, frame_allocator())
 		runs_of := make([dynamic]int, context.temp_allocator)
-		origin := b.rect.min + {b.text_pad, b.text_pad}
+		origin := b.rect.min + rich_inset(b, d, l)
 		lo := 0
 		for i := 0; i < len(runs); {
 			j, hi := i, lo
@@ -734,12 +746,12 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		}
 	}
 	if res.hovering {
-		res.link_hovered = rich_link_at(l, d.runs, res.mouse - {b.text_pad, b.text_pad})
+		res.link_hovered = rich_link_at(l, d.runs, res.mouse - rich_inset(b, d, l))
 		if res.link_hovered >= 0 { s.cursor_request = .Hand }
 	}
 	cur, known := s.rich_link[b.key]
 	if res.pointer_clicked {
-		if k := rich_link_at(l, d.runs, res.mouse - {b.text_pad, b.text_pad}); k >= 0 { res.link_clicked = k }
+		if k := rich_link_at(l, d.runs, res.mouse - rich_inset(b, d, l)); k >= 0 { res.link_clicked = k }
 	}
 	if res.focused {
 		pos := -1

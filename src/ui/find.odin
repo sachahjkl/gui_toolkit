@@ -204,7 +204,7 @@ find_box_hits :: proc(s: ^State, b: ^Box, needle: string, hits: ^[dynamic][2]int
 		text := rich_text(d.runs)
 		clear(hits)
 		find_in(text, needle, hits)
-		o := Vec2{b.rect.min.x + b.text_pad, b.rect.min.y + b.text_pad}
+		o := b.rect.min + rich_inset(b, d, l)
 		for h in hits {
 			for r, k in rich_range_rects(l, s.fonts, d.runs, h[0], h[1]) { append(out, Find_Hit{{r.min + o, r.max + o}, k > 0}) }
 		}
