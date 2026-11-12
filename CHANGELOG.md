@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.201.0] - 2026-11-12
+
+### Added
+- **`platform.set_caption_menu_app`, `ui.caption_right_clicked`, `platform.system_menu_available`**: an app can open its own menu on a right click on the empty part of an integrated title bar. When an app sets this option, Windows and Wayland give that click to the app instead of opening the system's window menu (X11 always does). `ui.caption_right_clicked` tells the app that the click came and where. `platform.show_system_menu` still opens the system's menu, and `platform.system_menu_available` tells whether there is one (Windows, Wayland).
+- **`ui.reorder_slot_sized`**: the place of a dragged item among items of different sizes. The item takes a neighbour's place as soon as its edge is a set share inside that neighbour (half by default), with an optional dead band so that it does not swap back and forth; a narrow item no longer has to pass the whole of a wide one.
+- **`desktop.type_name`: what the system calls a type of file**: "Plain text document", "PNG image", from shared-mime-info on Linux and from the shell on Windows, for a file manager's Type column.
+
 ## [0.200.0] - 2026-11-12
 
 ### Added
@@ -2733,6 +2740,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.201.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.201.0
 [0.200.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.200.0
 [0.199.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.199.0
 [0.197.4]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.4
