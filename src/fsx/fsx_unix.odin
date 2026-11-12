@@ -21,8 +21,10 @@ open_retry :: proc(path: string, flags: posix.O_Flags, mode := posix.mode_t{.IRU
 	}
 }
 
-write_parts :: proc(path: string, parts: [][]byte, flush: bool) -> bool {
-	fd := open_retry(path, {.WRONLY, .CREAT, .TRUNC})
+write_parts :: proc(path: string, parts: [][]byte, flush: bool, private := false) -> bool {
+	// (private: readable by its user only, from its creation on: no moment where another user could open it)
+	mode := private ? posix.mode_t{.IRUSR, .IWUSR} : posix.mode_t{.IRUSR, .IWUSR, .IRGRP, .IROTH}
+	fd := open_retry(path, {.WRONLY, .CREAT, .TRUNC}, mode)
 	if fd < 0 { return false }
 	ok := true
 	for p in parts {

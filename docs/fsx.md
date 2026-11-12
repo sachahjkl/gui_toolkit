@@ -15,7 +15,12 @@ touching the callers.
 data, ok := fsx.read_all(path)                   // the whole file, false when larger than max_size (default 1 TiB)
 ok = fsx.write_atomic(path, data)                // through a temporary file renamed over path: a reader sees old or new, never half
 ok = fsx.write_atomic(path, data, flush = true)  // flush: on the disk when it returns
+ok = fsx.write_atomic(path, data, private = true) // readable by its user only (POSIX: 0600, from its creation)
 ```
+
+`private` is for a file that holds a secret (a password, even sealed): on POSIX the temporary file is created with mode
+`0600`, so no other user can open it at any moment. On Windows a file takes its folder's access list, and a program's
+folder under the user's profile is that user's already: it asks nothing more.
 
 `write_atomic` is how a store replaces a file without a reader ever seeing a torn write: it writes
 `<path>.<pid>.<thread>.tmp` in full, then renames it over `path` (`replace`, atomic on both systems). A reader that opened the
@@ -30,7 +35,7 @@ whole, the old or the new one, or not at all after a few tries.
 ```odin
 n, ok := fsx.read_at(path, offset, buf)          // up to len(buf) bytes from offset; short at end of file
 size, stamp, ok := fsx.stat(path)                // size and an opaque modification stamp (compare to a kept one)
-ok = fsx.write_parts(path, parts[:], flush)      // create/truncate, write the slices one after the other
+ok = fsx.write_parts(path, parts[:], flush)      // create/truncate, write the slices one after the other (private as above)
 ok = fsx.replace(from, to, durable)              // rename from over to atomically; durable: on the disk when it returns,
                                                  // and false may mean renamed, but the directory could not be synced
 ok = fsx.delete_file(path)                        // true when the file is gone (including: was already absent)

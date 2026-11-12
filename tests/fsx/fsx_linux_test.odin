@@ -33,3 +33,14 @@ a_durable_replace_says_it_could_not_sync :: proc(t: ^testing.T) {
 	defer posix.chmod(dir, {.IRUSR, .IWUSR, .IXUSR})
 	testing.expect(t, !fsx.replace(from, to, true), "it is not on the disk")
 }
+// A private file is its user's from its creation: the temporary file is made 0600, and the rename keeps it.
+@(test)
+a_private_write_is_readable_by_its_user_only :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_private")
+	defer fsx.remove_tree(root)
+	path := fmt.tprintf("%s/secret", root)
+	testing.expect(t, fsx.write_atomic(path, transmute([]byte)string("data"), private = true))
+	st: posix.stat_t
+	testing.expect(t, posix.stat(strings.clone_to_cstring(path, context.temp_allocator), &st) == .OK, "written")
+	testing.expect_value(t, st.st_mode & {.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH}, posix.mode_t{})
+}
