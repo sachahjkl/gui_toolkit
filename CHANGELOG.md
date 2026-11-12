@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.197.0] - 2026-11-12
+
+### Added
+- **`scrollbar_under(box, point)`**: which bar of a box takes a press at a point (the one shown, a little wider toward the content), for a program that hears the pointer before the interface and leaves that press to the bar (a terminal's grid in a box that scrolls).
+
+### Fixed
+- **A menu's search is a field and the menu holds still**: what is typed in a menu opened with `search` is edited with a field's keys (`ui.field_key`, which `line_edit` uses too): Ctrl+A, Backspace on the selection, Ctrl+Backspace for a word, the caret moved by the arrows once something is typed, a paste. While it filters, the menu keeps the corner and the width of its first layout: it no longer narrows at each letter or moves from under the pointer.
+
 ## [0.196.3] - 2026-11-12
 
 ### Fixed
@@ -2672,6 +2680,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.197.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.0
 [0.196.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.3
 [0.196.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.2
 [0.196.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.196.1
