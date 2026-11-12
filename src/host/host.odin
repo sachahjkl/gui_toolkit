@@ -335,9 +335,11 @@ hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
 	for h in hosts {
 		if platform.is_closed(h.win) { continue }
 		if platform.events_waiting(h.win) { return true, 0 }
-		// (its last picture not shown yet: what moves or settles waits for the compositor's word, which wakes the loop)
-		if platform.frame_shown_pending(h.win) { continue }
-		if h.settle > 0 || ui.needs_frame(&h.state) { return true, 0 }
+		// (its last picture not shown yet: what moves or settles waits for the compositor's word, which wakes the loop; a
+		// timer still wakes it: the word may never come, on a hidden workspace or an output with nothing else to draw,
+		// and the program's own work (a sample) goes on, its picture held)
+		pending := platform.frame_shown_pending(h.win)
+		if !pending && (h.settle > 0 || ui.needs_frame(&h.state)) { return true, 0 }
 		if w := ui.wake_in_ms(&h.state); w > 0 && (wake_ms == 0 || w < wake_ms) { wake_ms = w }
 	}
 	return
