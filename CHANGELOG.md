@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.233.1] - 2026-11-12
+
+### Fixed
+- **A dialog's search strip is a field's, as a menu's search band**: `dialog_top_draw` took the box's background, which inside a dialog is the dialog's: a palette's search strip was the dialog's colour, lighter than a menu's. Its colour of its own is now a `^Color` in `custom_user`; none, a field's (`input background`).
+
 ## [0.233.0] - 2026-11-12
 
 ### Added
@@ -3039,6 +3044,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.233.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.1
 [0.233.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.233.0
 [0.232.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.232.0
 [0.231.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.231.0
