@@ -71,6 +71,7 @@ Window :: struct {
 // A picture: BGRA, 8 bits a channel, straight alpha (opaque for a screen), rows top to bottom, `stride` bytes apart.
 Frame :: struct {
 	pixels: []u8,
+	order:  Pixel_Order,          // B, G, R, A in memory, unless the session asks R, G, B, A (set_pixel_order)
 	width, height, stride: i32,   // physical pixels
 	scale:  f32,                  // physical pixels per logical one
 	origin: [2]i32,               // where its first pixel is on the desktop, logical
@@ -80,6 +81,7 @@ Frame :: struct {
 Session :: struct {
 	backend:   Backend,
 	allocator: runtime.Allocator,
+	order:     Pixel_Order,       // the frames' (set_pixel_order)
 	outputs:   [dynamic]Output,   // as last read (outputs)
 	windows:   [dynamic]Window,   // as last read (windows)
 	impl:      rawptr,            // the backend's own state
@@ -127,20 +129,32 @@ windows :: proc(s: ^Session) -> []Window {
 // Whether `windows` says where each window is: a region can then be framed on the window under the pointer.
 windows_have_rects :: proc(s: ^Session) -> bool { return platform_windows_have_rects(s) }
 
+// The order of the channels of the frames `output`, `window` and `desktop` give from now on: B, G, R, A (the
+// default: the systems' own) or R, G, B, A (what a texture, a PNG encoder or a clipboard takes). Asked here, the
+// channels are put in place while the system's buffer is read (Wayland), or swapped once after: a program never swaps
+// them again itself. Streams stay B, G, R, A.
+set_pixel_order :: proc(s: ^Session, order: Pixel_Order) { s.order = order }
+
 // One output's picture.
 output :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Frame, err: Error) {
-	return platform_output(s, id, allocator)
+	f = platform_output(s, id, allocator) or_return
+	frame_order_set(&f, s.order)
+	return
 }
 
 // One window's picture, its own content (what is over it is not in it). .Unsupported where the backend cannot.
 window :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Frame, err: Error) {
-	return platform_window(s, id, allocator)
+	f = platform_window(s, id, allocator) or_return
+	frame_order_set(&f, s.order)
+	return
 }
 
 // Every output in one picture, at the highest scale of them, the desktop's bounding rectangle (what is outside every
 // output, transparent). What a region is cut from, and what a selection is drawn over.
 desktop :: proc(s: ^Session, allocator := context.allocator) -> (f: Frame, err: Error) {
-	return platform_desktop(s, allocator)
+	f = platform_desktop(s, allocator) or_return
+	frame_order_set(&f, s.order)
+	return
 }
 
 // `r` (logical, on the desktop) cut from `f`, in a new frame.
@@ -157,7 +171,7 @@ crop :: proc(f: Frame, r: Rect, allocator := context.allocator) -> (out: Frame, 
 crop_into :: proc(f: Frame, r: Rect, pixels: []u8) -> (out: Frame, ok: bool) {
 	x0, y0, w, h := crop_bounds(f, r) or_return
 	if len(pixels) < int(w) * int(h) * 4 { return {}, false }
-	out = Frame{width = w, height = h, stride = w * 4, scale = f.scale, origin = {r.x, r.y}}
+	out = Frame{width = w, height = h, stride = w * 4, scale = f.scale, origin = {r.x, r.y}, order = f.order}
 	out.pixels = pixels[:int(w) * int(h) * 4]
 	for y in 0 ..< h {
 		src := f.pixels[int((y0 + y) * f.stride + x0 * 4):][:int(w * 4)]

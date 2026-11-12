@@ -34,6 +34,8 @@ Device_Preload :: struct {
 	worker: ^thread.Thread,
 	began:  time.Tick,
 	held:   Renderer,               // where the thread makes the device: device and ctx (Direct3D 11), wg (wgpu)
+	done:   proc(user: rawptr),     // preload_device's: called by the thread once the device is made (or failed)
+	user:   rawptr,
 }
 
 @(private)
@@ -41,10 +43,13 @@ preload: Device_Preload
 
 // Starts making the device on a thread of its own: `warp`, the software rasterizer (as init_offscreen's). False: one is
 // already being made or waits to be taken, or no thread could be started (init then makes the device as usual).
-preload_device :: proc(warp := false) -> bool {
+// `done`, when given, is called on that thread once the state is Ready or Failed: a program's loop that sleeps until
+// an event wakes itself with it (platform.wake), then opens its windows while the device waits.
+preload_device :: proc(warp := false, done: proc(user: rawptr) = nil, user: rawptr = nil) -> bool {
 	sync.guard(&preload.lock)
 	if sync.atomic_load(&preload.state) != .Not_Started { return false }
 	preload.warp = warp
+	preload.done, preload.user = done, user
 	preload.began = time.tick_now()
 	when USE_WGPU { preload.held.wg.shared = new(Wgpu_Shared) }   // (the caller's allocator, as wgpu_create_device's)
 	sync.atomic_store(&preload.state, .Creating)
@@ -107,6 +112,7 @@ make_preloaded_device :: proc() {
 		ok = create_device(&preload.held, preload.warp ? .WARP : .HARDWARE)
 	}
 	sync.atomic_store(&preload.state, ok ? .Ready : .Failed)
+	if preload.done != nil { preload.done(preload.user) }
 }
 
 @(private = "file")

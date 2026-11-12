@@ -44,6 +44,10 @@ render.preload_device()                 // first thing: Not_Started -> Creating 
 render.init_window(&r, w, w.size)       // takes it; render.device_preload_state() is Not_Started again
 ```
 
+A program whose loop sleeps until an event (one living in the notification area, its windows opened later) passes
+`done`: `render.preload_device(done = wake, user = app)` calls it on the thread once the device is Ready or Failed, and
+the loop opens its window then, hidden, so that showing it later costs no driver load.
+
 A device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device`
 lets an unused one go. On wgpu the adapter is chosen without a surface; init makes the window's surface on its instance and
 makes its own device when that adapter cannot present to it.

@@ -310,6 +310,7 @@ Wl_Capture :: struct {
 
 @(private)
 Wl_State :: struct {
+	order:          Pixel_Order,   // the frames' (the session's, set before each capture)
 	allocator:        runtime.Allocator,
 	lib:              Wl_Lib,
 	tables:           Wl_Tables,
@@ -954,7 +955,7 @@ capture_frame :: proc(c: ^Wl_Capture, allocator: runtime.Allocator) -> Frame {
 	order := Pixel_Order.BGRA
 	if c.format == SHM_ABGR8888 || c.format == SHM_XBGR8888 { order = .RGBA }
 	opaque := c.opaque || c.format == SHM_XRGB8888 || c.format == SHM_XBGR8888
-	return frame_from_buffer(src, c.size.x, c.size.y, c.stride, order, c.turn, c.y_invert, opaque, allocator)
+	return frame_from_buffer(src, c.size.x, c.size.y, c.stride, order, c.turn, c.y_invert, opaque, allocator, c.st.order)
 }
 
 // Dispatches until every capture is Ready or Failed, bounded by CAPTURE_TIMEOUT (the late ones then Failed).

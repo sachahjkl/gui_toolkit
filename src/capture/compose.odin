@@ -24,6 +24,7 @@ compose :: proc(parts: []Frame, allocator := context.allocator) -> (out: Frame, 
 	w := i32(math.ceil(f32(x1 - x0) * scale))
 	h := i32(math.ceil(f32(y1 - y0) * scale))
 	out = Frame{width = w, height = h, stride = w * 4, scale = scale, origin = {x0, y0}, allocator = allocator}
+	if len(parts) > 0 { out.order = parts[0].order }   // (the parts of one capture are read in one order)
 	out.pixels = make([]u8, int(w) * int(h) * 4, allocator)
 	for p in parts {
 		if p.width <= 0 || p.height <= 0 || p.scale <= 0 { continue }
@@ -65,8 +66,7 @@ frame_rect :: proc(f: Frame) -> Rect {
 	return {f.origin.x, f.origin.y, i32(math.round(f32(f.width) / f.scale)), i32(math.round(f32(f.height) / f.scale))}
 }
 
-// How a system's buffer holds its pixels, as far as the conversion to a Frame cares.
-@(private)
+// The order of a pixel's four bytes in memory: a system's buffer's, a frame's (Frame.order, set_pixel_order).
 Pixel_Order :: enum u8 {
 	BGRA,   // B, G, R, A in memory (Wayland's ARGB8888 and XRGB8888 on a little-endian machine, X11's 32-bit visuals)
 	RGBA,   // R, G, B, A in memory (Wayland's ABGR8888 and XBGR8888)
@@ -74,19 +74,28 @@ Pixel_Order :: enum u8 {
 
 // The orientation of a buffer: wl_output.transform's values. A buffer with a transform holds the picture turned as the
 // value says; the picture upright is the buffer turned back.
-@(private)
 Turn :: enum u8 { Normal, Rot90, Rot180, Rot270, Flipped, Flipped90, Flipped180, Flipped270 }
 
-// A system's buffer as an upright, straight-alpha BGRA frame. `opaque`: the alpha byte means nothing (XRGB, a screen):
+// A system's buffer (`order`'s channels) as an upright, straight-alpha frame in `out`'s order, in one pass over its
+// pixels. `opaque`: the alpha byte means nothing (XRGB, a screen):
 // every pixel gets 255. Otherwise the buffer's alpha is premultiplied (Wayland's and X11's ARGB are) and is made straight.
 // `y_invert`: the rows are bottom to top (wlr-screencopy's flag). The frame's origin and scale are the caller's to set.
-@(private)
-frame_from_buffer :: proc(src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool, allocator: runtime.Allocator) -> Frame {
+frame_from_buffer :: proc(src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool, allocator: runtime.Allocator, out := Pixel_Order.BGRA) -> Frame {
 	ow, oh := turned_size(width, height, turn)
 	pixels := make([]u8, int(ow) * int(oh) * 4, allocator)
-	f := frame_from_buffer_into(pixels, src, width, height, stride, order, turn, y_invert, opaque)
+	f := frame_from_buffer_into(pixels, src, width, height, stride, order, turn, y_invert, opaque, out)
 	f.allocator = allocator
 	return f
+}
+
+// `f`'s channels put in `order`, in place, when they are not already (a backend that read them in the other).
+frame_order_set :: proc(f: ^Frame, order: Pixel_Order) #no_bounds_check {
+	if f.order == order || len(f.pixels) == 0 { return }
+	for y in 0 ..< int(f.height) {
+		row := ([^]u32)(raw_data(f.pixels[y * int(f.stride):]))[:f.width]
+		for &p in row { p = (p & 0xff00ff00) | ((p >> 16) & 0xff) | ((p & 0xff) << 16) }
+	}
+	f.order = order
 }
 
 // The size of a buffer of `width` x `height` once upright.
@@ -99,10 +108,26 @@ turned_size :: proc(width, height: i32, turn: Turn) -> (w, h: i32) {
 // frame_from_buffer into `dst` (turned_size's pixels, packed rows): what a stream does with each frame, without an
 // allocation. The frame's pixels are `dst`; it does not own them.
 @(private)
-frame_from_buffer_into :: proc(dst: []u8, src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool) -> Frame #no_bounds_check {
+frame_from_buffer_into :: proc(dst: []u8, src: []u8, width, height, stride: i32, order: Pixel_Order, turn: Turn, y_invert, opaque: bool, out := Pixel_Order.BGRA) -> Frame #no_bounds_check {
 	ow, oh := turned_size(width, height, turn)
-	f := Frame{width = ow, height = oh, stride = ow * 4, scale = 1}
+	f := Frame{width = ow, height = oh, stride = ow * 4, scale = 1, order = out}
 	f.pixels = dst[:int(ow) * int(oh) * 4]
+	if turn == .Normal && opaque {
+		// (the usual case, a screen upright with no alpha: a row at a time, a pixel a 32-bit word, which the compiler
+		// makes vector code of. The general loop below costs a switch per pixel: 8 million of them for a 4K screen)
+		swap := order != out
+		for y in 0 ..< oh {
+			sy := y_invert ? height - 1 - y : y
+			s := ([^]u32)(raw_data(src[int(sy * stride):]))[:ow]
+			d := ([^]u32)(raw_data(f.pixels[int(y * f.stride):]))[:ow]
+			if swap {
+				for p, i in s { d[i] = (p & 0x0000ff00) | ((p >> 16) & 0xff) | ((p & 0xff) << 16) | 0xff000000 }
+			} else {
+				for p, i in s { d[i] = p | 0xff000000 }
+			}
+		}
+		return f
+	}
 	flipped := turn >= .Flipped
 	k := u8(turn) & 3
 	for y in 0 ..< oh {
@@ -122,6 +147,7 @@ frame_from_buffer_into :: proc(dst: []u8, src: []u8, width, height, stride: i32,
 			d := f.pixels[int(y * f.stride + x * 4):][:4]
 			b, g, r, a := s[0], s[1], s[2], s[3]
 			if order == .RGBA { b, r = r, b }
+			if out == .RGBA { b, r = r, b }
 			if opaque {
 				a = 255
 			} else if a != 0 && a != 255 {
