@@ -206,9 +206,10 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 		k := t.palette_at + len(entries) + i
 		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
 	}
-	// (the machined reliefs are made for the dark: a light palette is flat)
-	finish := (p.finish == .Machined || p.finish == .Edged) && !p.dark ? Finish.Flat : p.finish
-	if t.finish != finish { t.finish = finish; changed = true }
+	// (the finish asked is drawn on both: on a light palette the reliefs take lighter shades and stronger lights,
+	// machined.odin's relief_shade and relief_shine)
+	if t.finish != p.finish { t.finish = p.finish; changed = true }
+	if t.dark != p.dark { t.dark = p.dark; changed = true }
 	if changed { t.serial += 1 }
 }
 

@@ -248,7 +248,7 @@ Finish :: enum u8 {
 	Flat,       // plain colour
 	Gradient,   // a face a few percent lighter at its top than at its bottom, a fine lit line along its top, glowing focus
 	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
-	Machined,   // bevelled buttons, sunken wells, carved lines (machined.odin); flat on a light palette
+	Machined,   // bevelled buttons, sunken wells, carved lines (machined.odin); on a light palette, light shades and strong lights
 	Edged,      // the machined reliefs drawn crisp: a dark hairline around, a lit line along the top, a shade along the bottom, no blur
 }
 
@@ -261,6 +261,7 @@ Theme :: struct {
 	palette_at:    int,    // apply_palette: where its entries start in `patterns` (after any the app added before)
 	palette_made:  bool,
 	finish:        Finish,
+	dark:          bool,  // the palette's background is dark (apply_palette): the reliefs' shades and lights follow it
 	transition_ms: f32,   // 0: states change at once (default)
 	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"
 	glow:          f32,   // the halos of the machined finish (a focused well, a lamp, a hot accent button), 0..1; 0: none

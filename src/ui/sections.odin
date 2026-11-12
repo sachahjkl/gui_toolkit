@@ -91,9 +91,9 @@ relief_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32) {
 	if !machined() || r.max.y - r.min.y < 4 { return }
 	p := px1()
 	inset := max(p, radius * 0.6)
-	draw.rect(dc, {{r.min.x + inset, r.min.y}, {r.max.x - inset, r.min.y + p}}, {1, 1, 1, 0.22})
-	draw.rect(dc, {{r.min.x + inset, r.max.y - 2 * p}, {r.max.x - inset, r.max.y}}, {0, 0, 0, 0.25})
-	draw.rect(dc, r, {0, 0, 0, 0.55}, radius, p)
+	draw.rect(dc, {{r.min.x + inset, r.min.y}, {r.max.x - inset, r.min.y + p}}, relief_shine(0.22))
+	draw.rect(dc, {{r.min.x + inset, r.max.y - 2 * p}, {r.max.x - inset, r.max.y}}, relief_shade(0.25))
+	draw.rect(dc, r, relief_shade(0.55), radius, p)
 }
 
 // A tile of colour `c` with `text` on it, as wide as its words (in a `flow`: a wall of tiles). `clickable`: it answers the
@@ -192,7 +192,7 @@ caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color, lit := true
 		return
 	case !edged():
 		draw.rect_corners(dc, r, {top, bottom, top, bottom}, {})
-		draw.rect(dc, {r.min, {r.max.x, r.min.y + p}}, {1, 1, 1, 0.05})
+		draw.rect(dc, {r.min, {r.max.x, r.min.y + p}}, relief_shine(0.05))
 		return
 	}
 	from := color_from_tags(gs(), 0, "accent")
@@ -200,8 +200,8 @@ caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color, lit := true
 	end := r.min.x + math.min((r.max.x - r.min.x) * CAPTION_FADE_END, CAPTION_FADE_MAX_PX * scale())
 	draw.rect_corners(dc, {r.min, {end, r.max.y}}, {from, from, top, top}, {})
 	draw.rect(dc, {{end, r.min.y}, r.max}, top)
-	draw.rect(dc, {r.min, {r.max.x, r.min.y + p}}, {1, 1, 1, 0.28})
-	draw.rect(dc, {{r.min.x, r.max.y - p}, r.max}, {0, 0, 0, 0.45})
+	draw.rect(dc, {r.min, {r.max.x, r.min.y + p}}, relief_shine(0.28))
+	draw.rect(dc, {{r.min.x, r.max.y - p}, r.max}, relief_shade(0.45))
 }
 
 // The colour words of colour `c` take on a caption_face: in the edged finish toward white (they stand on the accent), else

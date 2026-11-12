@@ -87,7 +87,12 @@ light.accent = #b58900
 | `Machined` | bevelled: a soft shadow, a lit rim, a dark edge, engraved text; pressed, it sinks. Panels (cards, dialogs, menus, tooltips) are plates: a shaded face, a lit rim, a shadow | a well: inner shadow, lit lip, a ring of the accent when focused. Check boxes, radios, switches, sliders and progress bars are wells, what is on a raised key or a lit face in them | a carved groove |
 | `Edged` | the machined reliefs drawn crisp, nothing blurred: a dark hairline around, a lit line along the top, a shade along the bottom; pressed, the shade along the top. Panels: a lit line along their top, a shadow | a well: a dark hairline around, dark lines under its top, a lit lip under it | a carved groove |
 
-The machined and edged reliefs are made for the dark: on a light palette, `apply_palette` makes the finish `Flat`.
+The machined and edged reliefs are drawn on both palettes. They are made for the dark: strong black shadows and edges,
+faint white rims. On a light palette (`Theme.dark` false, set by `apply_palette`) the same reliefs are drawn by their
+light: lighter shades and stronger white rims, lips and highlights (`RELIEF_ON_LIGHT`: shades × 0.3, lights 0.25 +
+3.5 × their alpha up to 0.9, a face's bottom and a pressed face darkened × 0.45). A program's own relief takes the same
+colours from `relief_shade_for(alpha, theme.dark)` and `relief_shine_for(alpha, theme.dark)`, with the alpha written for
+the dark.
 The theme `Kernel` (blue black, square tiles of colour) is made for `Edged`: it brings it whatever the program's finish.
 The edged finish has square corners whatever the rounding asked (`rounding(s)` is 0 there, and `rad(r)` with it). What
 is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot and knob, a lamp (`shape_rad(r)`: a
@@ -117,7 +122,7 @@ these two its flat form, so one call serves every finish (`machined()`: the reli
 | `machined_bevel(dc, r, radius, face, hot, pressed, glow)` | a raised face; `glow`: a halo under the pointer |
 | `machined_well(dc, r, radius, base, focus, accent)` | a sunken surface, its focus a ring of `accent` |
 | `machined_groove(dc, a, b, vertical)` | a carved line |
-| `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers |
+| `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers; `border` zero (the default): the relief's edge, another colour of alpha 0: none |
 | `machined_lamp(dc, c, d, color, lit, glow)` | a status lamp: a glass bead and its halo |
 | `machined_pip(dc, c, d, color)` | a small hole with a dab of colour: what is over |
 | `relief_face(dc, r, color, radius)` | a face of colour lit along its top, shaded along its bottom (a tile, a part of a bar) |

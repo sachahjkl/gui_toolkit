@@ -322,7 +322,7 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		if machined() { draw.box_shadow(dc, ring, {radius, radius, radius, radius}, 4 * d.sc, {c.accent.r, c.accent.g, c.accent.b, 0.35}) }
 		draw.rect(dc, ring, c.accent, radius + 2 * p, 2 * p)
 	}
-	machined_plate(dc, r, radius, c.panel, srgb_step(c.panel, {0, 0, 0, 1}, 0.06), 6 * min(d.k / d.sc, 1))
+	machined_plate(dc, r, radius, c.panel, relief_darken(c.panel, 0.06), 6 * min(d.k / d.sc, 1))
 
 	// the header: the node's accent over the panel, its icon, title and subtitle, the state's mark at its right
 	header := Rect{r.min, {r.max.x, r.min.y + g.header * k}}

@@ -3,7 +3,7 @@ package scenarios_test
 // Themes (ui themes.odin): theme_show applies a choice once and again only when what it shows changes (the choice, the
 // theme's colours, the blend space, the glow); theme_recolor moves a program's colours to another theme; themes_read
 // reads a user's file; the names of the modes and of the finishes. The machined finish by its pixels: its halos follow
-// Theme.glow, its well is sunken, and a light palette or another finish draws it flat.
+// Theme.glow, its well is sunken, another finish draws it flat; a light palette keeps it, with light shades and strong lights.
 
 import "core:testing"
 import "../../src/draw"
@@ -259,19 +259,36 @@ a_machined_well_is_sunken :: proc(t: ^testing.T) {
 	testing.expectf(t, int(m.r) + int(m.g) + int(m.b) < int(f.r) + int(f.g) + int(f.b), "the top of the well, flat %v, machined %v", f, m)
 }
 
-// The reliefs are made for the dark: a light palette is drawn flat.
+// A light palette keeps the machined finish: its reliefs take lighter shades and stronger lights (relief_shade_for,
+// relief_shine_for); on a dark one they are the alphas as written. The well stays sunken on paper.
 @(test)
-a_light_palette_is_drawn_flat :: proc(t: ^testing.T) {
+a_light_palette_keeps_the_reliefs :: proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	p := ui.palette_of("Midnight", light = true)
 	p.finish = .Machined
 	ui.apply_palette(&th, p)
-	testing.expect_value(t, th.finish, ui.Finish.Flat)
-	p = ui.palette_of("Midnight")
-	p.finish = .Machined
-	ui.apply_palette(&th, p)
 	testing.expect_value(t, th.finish, ui.Finish.Machined)
+	testing.expect(t, !th.dark, "a light palette: Theme.dark false")
+	near :: proc(a, b: f32) -> bool { return abs(a - b) < 1e-5 }
+	shade, faint, strong, none := ui.relief_shade_for(0.85, th.dark), ui.relief_shine_for(0.07, th.dark), ui.relief_shine_for(0.22, th.dark), ui.relief_shine_for(0, th.dark)
+	testing.expectf(t, shade.rgb == [3]f32{0, 0, 0} && near(shade.a, 0.85 * ui.RELIEF_ON_LIGHT.shade_scale), "a lighter shade: %v", shade)
+	testing.expectf(t, faint.rgb == [3]f32{1, 1, 1} && near(faint.a, ui.RELIEF_ON_LIGHT.shine_floor + 0.07 * ui.RELIEF_ON_LIGHT.shine_scale), "a stronger light: %v", faint)
+	testing.expectf(t, near(strong.a, ui.RELIEF_ON_LIGHT.shine_max), "a light up to its most: %v", strong)
+	testing.expectf(t, none.a == 0, "no light stays none (a rim fading down): %v", none)
+	p = ui.palette_of("Midnight")
+	p.finish = .Edged
+	ui.apply_palette(&th, p)
+	testing.expect_value(t, th.finish, ui.Finish.Edged)
+	testing.expect(t, th.dark, "a dark palette: Theme.dark true")
+	testing.expect_value(t, ui.relief_shade_for(0.85, th.dark), ui.Color{0, 0, 0, 0.85})
+	testing.expect_value(t, ui.relief_shine_for(0.07, th.dark), ui.Color{1, 1, 1, 0.07})
+	testing.expect_value(t, ui.relief_shine_for(0, th.dark), ui.Color{1, 1, 1, 0})
+	flat := session.capture(well_session(t, .Flat, light = true))
+	machined := session.capture(well_session(t, .Machined, light = true))
+	x, y := int(WELL.min.x + WELL.max.x) / 2, int(WELL.min.y) + 3
+	f, m := session.pixel(flat, x, y), session.pixel(machined, x, y)
+	testing.expectf(t, int(m.r) + int(m.g) + int(m.b) < int(f.r) + int(f.g) + int(f.b), "on paper the well is sunken too: flat %v, machined %v", f, m)
 }
 
 // A machined rule between two panes keeps its two lines, the dark one and the lit one under it: both are inside its box,

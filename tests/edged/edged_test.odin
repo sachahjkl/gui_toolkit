@@ -73,9 +73,9 @@ kernel_is_dark_and_edged :: proc(t: ^testing.T) {
 	ui.apply_palette(&th, p)
 	testing.expect_value(t, th.finish, ui.Finish.Edged)
 	light := p
-	light.dark = false   // (the reliefs are made for the dark)
+	light.dark = false   // (the reliefs are drawn on a light palette too, by their light)
 	ui.apply_palette(&th, light)
-	testing.expect_value(t, th.finish, ui.Finish.Flat)
+	testing.expect_value(t, th.finish, ui.Finish.Edged)
 }
 
 // The built-in widgets in Kernel, for the eye: build/session/console_widgets/console.png.
