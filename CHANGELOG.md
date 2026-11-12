@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.230.0] - 2026-11-12
+
+### Changed
+- **A terminal's grid is centered in its box**: what its whole cells leave goes half on each side, not all under the last row. `term.grid_origin` gives where the cells start (`View.origin`); `Mouse_Input.pad` is now `pad_lo` and `pad_hi`, the margin on each side.
+
 ## [0.229.0] - 2026-11-12
 
 ### Changed
@@ -3015,6 +3020,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.230.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.230.0
 [0.229.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.229.0
 [0.228.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.1
 [0.228.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.228.0
