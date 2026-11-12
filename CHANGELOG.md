@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.210.0] - 2026-11-12
+
+### Changed
+- **The resize bands of an integrated title bar are outside the window on Wayland**: an invisible ring of 8 px around a free window resizes it, and the whole window is the app's: a scrollbar, a tab or a field along an edge no longer loses the pointer to a band. The compositor places, tiles and snaps the window without the ring. Maximized, full screen or tiled, a window has none; X11 keeps the bands inside.
+
 ## [0.209.1] - 2026-11-12
 
 ### Fixed
@@ -2840,6 +2845,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.210.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.210.0
 [0.209.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.209.1
 [0.209.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.209.0
 [0.208.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.208.0
