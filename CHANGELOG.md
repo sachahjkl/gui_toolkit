@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.202.0] - 2026-11-12
+
+### Added
+- **`cli.parse`**: reads a line `cli.check` accepted by the same table of options, once: each option given, in order, with its value (a separate value joined to it). `cli.value` gives the last value of an option, `cli.values` every value of a repeated one, `cli.has` whether it was given.
+- **`ui.rank`**: filters a list the way the palette does: each item matched against the query (`palette_match`, `fuzzy_match` or a program's own matcher), the hits kept with what lights in their labels, the best first, equal scores in the list's order. An optional bonus lifts a hit (how often the user chose it). The palette ranks its commands with it.
+- **`timefmt`**: times as a person reads them, in pure Odin: `duration` ("4m 12s", "1h 03m", "2d 05h"), `age` ("now", "3m", "2h", "5d", "1w"), `clock` ("14:32", "2:32 pm", with seconds on request), `date` ("Nov 10") and `local_day`. The local clock takes the machine's offset as a parameter: no procedure makes a system call.
+- **`store`**: a program's small files of keys and values (`key<separator>value` lines, the files a program already has load as they are), read once at the start, kept in memory and written later on a worker of their own, once the changes rest, through a temporary file renamed over them: `open`, `get`, `set`, `remove`, `replace`, `list`, `flush`, `close`. A `Writer` does the same for a file the program formats itself. `fsx.write_atomic` and `fsx.write_parts` take `private`: on POSIX the file is readable by its user only from its creation.
+
+### Changed
+- **Preferences can be written off the interface thread**: `config.serialize_user` builds the text of the user's file on the loop and `config.write_user_file` writes it on any thread, so a slow disk does not stop the interface; `config.save_user` does both at once, as before. `Prefs.user_version` replaces `Prefs.dirty`: it counts the changes of the user's layer, and a program saves when it differs from the version it last wrote.
+- **A long list costs nothing when it does not change**: a `vlist` makes its rows' offsets again only when its ids or a measured height change, so a frame of a list of 100 000 rows that changed nothing does no pass over them. `vlist` takes an `ids_version` (the program's count of the changes of its ids) to skip even the comparison of the ids.
+
+### Fixed
+- **A slider's whole track shows**: the part of a slider's track that is off is a tint of the text, as a switch's is, so it shows on every surface; on a dialog of a theme whose colour was the track's, only the lit run showed, and the slider looked a few pixels wide.
+- **The palette's last line is whole**: the palette's list holds a whole number of lines at any size of the dialog, so its foot line no longer cuts the last command in half.
+
 ## [0.201.0] - 2026-11-12
 
 ### Added
@@ -2740,6 +2756,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.202.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.202.0
 [0.201.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.201.0
 [0.200.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.200.0
 [0.199.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.199.0
