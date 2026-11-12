@@ -38,7 +38,9 @@ COOKIE              :: "\ue26b"   // cookie
 COPY                :: "\ue09e"   // copy
 CORNER_LEFT_UP      :: "\ue0a4"   // corner-left-up
 CPU                 :: "\ue0a9"   // cpu
+CREDIT_CARD         :: "\ue0aa"   // credit-card
 DATABASE            :: "\ue0ad"   // database
+DICES               :: "\ue2c5"   // dices
 DISC                :: "\ue0af"   // disc
 DOWNLOAD            :: "\ue0b2"   // download
 EDIT                :: "\ue172"   // edit
@@ -80,6 +82,7 @@ HASH                :: "\ue0ef"   // hash
 HAT_GLASSES         :: "\ue683"   // hat-glasses
 HISTORY             :: "\ue1f5"   // history
 HOME                :: "\ue0f5"   // home
+ID_CARD             :: "\ue617"   // id-card
 IMAGE               :: "\ue0f6"   // image
 INFO                :: "\ue0f9"   // info
 KEY                 :: "\ue0fd"   // key
@@ -98,6 +101,7 @@ LOCK                :: "\ue10b"   // lock
 LOCK_KEYHOLE        :: "\ue531"   // lock-keyhole
 LOCK_OPEN           :: "\ue10c"   // lock-open
 LOG_OUT             :: "\ue10e"   // log-out
+MAIL                :: "\ue10f"   // mail
 MENU                :: "\ue115"   // menu
 MESSAGE_SQUARE      :: "\ue117"   // message-square
 MESSAGE_SQUARE_QUOTE:: "\ue572"   // message-square-quote
