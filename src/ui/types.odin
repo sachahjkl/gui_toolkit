@@ -386,6 +386,7 @@ State :: struct {
 	mouse_valid: bool,
 	mods:        platform.Modifiers,
 	hot_key:     Key,
+	front_key:   Key,   // the topmost box under the pointer that draws a surface or takes a click (pointer_on)
 	active_key:  [platform.Mouse_Button]Key,
 	press_pos:   [platform.Mouse_Button]Vec2,
 	pressed_key:  [platform.Mouse_Button]Key,

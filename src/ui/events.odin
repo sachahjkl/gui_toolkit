@@ -133,6 +133,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	if s.mouse_valid { hit = hit_test(s, s.mouse) }
 	active := s.active_key[.Left]
 	s.hot_key = (active == 0 || hit == active) ? hit : 0
+	s.front_key = s.mouse_valid && s.root != nil ? front_test_box(s.root, s.mouse, s.root.rect) : 0
 	scrollbar_drag(s)
 	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse, scroll_view_delta(s)) : 0
 	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = s.time_ms }
@@ -176,6 +177,36 @@ hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 	}
 	if .Clickable in b.flags && .Disabled not_in b.flags && box_contains(b, p) { return b.key }
 	return 0
+}
+
+// The topmost box at `p` that is something on the screen: it draws a surface or takes a click. A box only of layout, or of text
+// over a surface, is not one: what is under it shows.
+@(private)
+front_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
+	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
+	child_clip := clip
+	if .Clip in b.flags {
+		child_clip = Rect{{max(clip.min.x, b.rect.min.x), max(clip.min.y, b.rect.min.y)}, {min(clip.max.x, b.rect.max.x), min(clip.max.y, b.rect.max.y)}}
+	}
+	for c := b.last; c != nil; c = c.prev {
+		if k := front_test_box(c, p, child_clip); k != 0 { return k }
+	}
+	solid := .Clickable in b.flags || .Draw_Background in b.flags || .Plate in b.flags
+	if solid && box_contains(b, p) { return b.key }
+	return 0
+}
+
+// Whether the pointer is on `b` with nothing drawn over it there (the last build's layout): the surface in front at the pointer
+// is `b`, a box in it, or one around it. A box under another one, which a later sibling covers (a message the conversation
+// scrolls under its composer, a panel under a floating one), is not: what is in front takes a press, a right one included.
+pointer_on :: proc(b: ^Box) -> bool {
+	s := gs()
+	if b == nil || !s.mouse_valid || !box_contains(b, s.mouse) { return false }
+	front := box_from_key(s.front_key)
+	if front == nil { return true }   // (nothing drawn there: no other box covers it)
+	for x := front; x != nil; x = x.parent { if x == b { return true } }
+	for x := b.parent; x != nil; x = x.parent { if x == front { return true } }
+	return false
 }
 
 // Whether `p` is on the box's shape: its rect, or the trapezoid `slant` makes of it.

@@ -357,6 +357,41 @@ text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.clipboard(s), "")
 }
 
+// What is in front at the pointer has it: a panel a later one covers is not under the pointer where it is covered, the one
+// in front is, and so is what is in a panel (its text) and what is around it where nothing else covers it.
+@(test)
+the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) {
+	Run :: struct { back, front, label, around: bool }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(400), height = ui.px(300)})
+		around := ui.build_box({}, "###around")
+		if ui.parent(around) {
+			ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(200), height = ui.px(200)})
+			back := ui.build_box({.Draw_Background}, "###back")
+			if ui.parent(back) {
+				ui.next({width = ui.px(150), height = ui.px(30)})
+				label := ui.build_box({.Draw_Text}, "Words###label")
+				r.label = ui.pointer_on(label)
+			}
+			ui.next({fixed_x = 120, fixed_y = 20, width = ui.px(200), height = ui.px(200)})
+			front := ui.build_box({.Draw_Background}, "###front")
+			r.back, r.front = ui.pointer_on(back), ui.pointer_on(front)
+		}
+		r.around = ui.pointer_on(around)
+	}})
+	at :: proc(s: ^session.Session, p: [2]f32) { session.move(s, p); session.frames(s, 2) }
+	at(s, {60, 30})    // (on the back panel's text, nothing over it)
+	testing.expect(t, r.back && !r.front && r.label && r.around, "the back panel and its text")
+	at(s, {150, 100})  // (where the front panel covers the back one)
+	testing.expect(t, !r.back && r.front && r.around, "the front panel, not the one it covers")
+	at(s, {300, 100})  // (the front panel alone)
+	testing.expect(t, !r.back && r.front, "the front panel")
+	at(s, {380, 280})  // (neither: only what is around them)
+	testing.expect(t, !r.back && !r.front && r.around, "what is around them")
+}
+
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
 a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {

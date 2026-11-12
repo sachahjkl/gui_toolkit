@@ -231,6 +231,11 @@ known; a new one gets `?` until it is classified, or moved into its struct.
 - **Keys**: widgets are found again from frame to frame by their id. `"Label"` alone uses the text as the id: two
   buttons labelled "OK" collide and a label whose text changes loses its state. Use `"Text###stable_id"` (the part after
   `###` is the key) for anything whose text changes, as hello does for the counter.
+- **A press on a box that is not a button** (a right click that opens a menu on a message, a card): check it with
+  `ui.pointer_on(box)`, not with its rect alone. It says whether the pointer is on the box with nothing drawn over it there,
+  as the last build laid it out: a box that a later sibling covers (a message the conversation scrolls under its composer,
+  a panel under a floating one) is not under the pointer, the box in front is. A `.Clickable` box's own `right_clicked`
+  already goes to what is in front.
 - **Free the frame's temporaries**: `free_all(context.temp_allocator)` at the end of each frame (the `fmt.tprintf`
   strings of labels live there). `ui.field_destroy` the `Text_Field`s you made.
 - **`expect_assert` in tests**: on Windows the test runner's handling of an assertion races the system's end of the
