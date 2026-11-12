@@ -314,6 +314,41 @@ a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.chosen, "open")
 }
 
+// A confirmation: Enter cancels an act that is not safe, the act's button acts; what it acts on is named, the rest counted.
+@(test)
+a_confirmation_answers :: proc(t: ^testing.T) {
+	Run :: struct { open, safe: bool, answer: ui.Confirm_Answer, answers: int }
+	r := Run{open = true}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		lines := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+		if a := ui.confirm("ask", &r.open, {title = "Delete 10 items for good?", note = "They do not go to the trash.", lines = lines, act = "Delete", enter_confirms = r.safe}); a != .None {
+			r.answer = a
+			r.answers += 1
+		}
+	}})
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Cancel (Enter)") != nil, "Enter cancels: it says so")
+	testing.expect(t, session.find(s, "confirm_line_7") != nil && session.find(s, "confirm_line_8") == nil, "eight named")
+	testing.expect(t, session.find_text(s, "and 2 more") != nil, "the others counted")
+	session.key(s, .Return)
+	session.frames(s, 1)
+	testing.expect_value(t, r.answer, ui.Confirm_Answer.Cancelled)
+	testing.expect(t, !r.open, "closed")
+	r.open, r.safe = true, true
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Delete (Enter)") != nil, "a safe act: Enter acts")
+	session.click(s, "confirm_act")
+	session.frames(s, 1)
+	testing.expect_value(t, r.answer, ui.Confirm_Answer.Confirmed)
+	r.open = true
+	session.frames(s, 2)
+	session.key(s, .Escape)
+	session.frames(s, 2)
+	testing.expect_value(t, r.answer, ui.Confirm_Answer.Cancelled)
+	testing.expect_value(t, r.answers, 3)
+}
+
 // key_take: the frame's first key press not taken yet, with its modifiers; a key a build took already is not given.
 @(test)
 the_first_key_not_taken_is_given :: proc(t: ^testing.T) {

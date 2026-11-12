@@ -13,3 +13,15 @@
 - its bottom right corner is square, with the resize grip in it: a bevel in the theme's `resize_grip shade` (the border colour: darker on a light theme, lighter on a dark one) and dots on it. A floating panel of the dock has the same grip.
 
 Several dialogs may be open, one in another or one after the other; the one built last is on top. It has the keyboard: Tab goes round its own stops and Escape closes it, the ones under it wait (it is known at the end of the build, so `open` turns false at the next one: an Escape read as a dialog opens is that dialog's). A dialog that opens takes the focus from what had it, and gives it back when it closes, unless something else took it meanwhile.
+
+## A confirmation (`src/ui/confirm.odin`)
+
+`ui.confirm(id, &open, options)` is the question before an act that is not taken back: a title, a note in the weak text
+(what comes of it), what it acts on one per line when there is more than one (`CONFIRM_LINES_MAX` shown, the others
+counted), then Cancel and the act's button in the danger colours. It answers `.Confirmed`, `.Cancelled` (the Cancel
+button, Escape, a press outside) or `.None` while it waits.
+
+- Enter answers what is safe: Cancel, and the act only with `enter_confirms` (an act that is safe and was asked for). The
+  button Enter presses says so: "Cancel (Enter)".
+- Its words other than the caller's (`Confirm_Labels`: Cancel, "and %d more", "%s (Enter)") are set once by a program
+  that translates them.

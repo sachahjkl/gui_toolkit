@@ -1,0 +1,99 @@
+package ui
+
+import "core:fmt"
+
+// The question before an act that is not taken back (a file deleted for good, a process killed, a service stopped): a
+// title, a note in the weak text (what comes of it), what it acts on a line each, then Cancel and the act's button in
+// the danger colours. Enter answers what is safe: Cancel, unless `enter_confirms` (a safe act); the button Enter presses
+// says "(Enter)". Escape and a press outside cancel, as with any modal. `open` is the caller's: true opens it, the
+// answer closes it.
+//
+//   switch ui.confirm("delete", &app.asking, {title = "Delete 3 items for good?", note = "...", lines = names, act = "Delete"}) {
+//   case .Confirmed: delete_them(app)
+//   case .Cancelled, .None:
+//   }
+
+// The words of a confirmation that are not the caller's own question (translated: a program sets them once).
+Confirm_Labels :: struct { cancel, more, enter: string }   // more: "%d" the lines not shown; enter: "%s" the button's word
+CONFIRM_LABELS :: Confirm_Labels{cancel = "Cancel", more = "and %d more", enter = "%s (Enter)"}
+
+Confirm_Options :: struct {
+	title:          string,
+	note:           string,     // what comes of it ("": none)
+	lines:          []string,   // what it acts on, a line each, when there is more than one (CONFIRM_LINES_MAX shown)
+	act:            string,     // the act's button: "Delete", "Kill"
+	enter_confirms: bool,       // Enter acts (a safe act, asked for); else Enter cancels
+	width_em:       f32,        // 0: CONFIRM_WIDTH_EM
+	labels:         Confirm_Labels,   // zero: CONFIRM_LABELS
+}
+
+Confirm_Answer :: enum u8 { None, Confirmed, Cancelled }
+
+CONFIRM_WIDTH_EM :: 29
+CONFIRM_LINES_MAX :: 8
+
+confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm_Answer) {
+	was := open^
+	labels := o.labels == {} ? CONFIRM_LABELS : o.labels
+	em := font_size()
+	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
+	if modal(id, w, open) {
+		pad := em * 1.2
+		if style({width = px(w)}) {
+			spacer(px(pad))
+			next({width = px(w), height = children_sum()})
+			if row() {
+				spacer(px(pad))
+				next({width = px(w - 2 * pad), height = children_sum(), axis = .Y})
+				if column() {
+					next({width = fill(), font_size = em * 1.15})
+					paragraph(fmt.tprintf("%s###confirm_title", text_shown(o.title)))
+					if o.note != "" {
+						spacer(px(em * 0.4))
+						if tags("weak") {
+							next({width = fill()})
+							paragraph(fmt.tprintf("%s###confirm_note", text_shown(o.note)))
+						}
+					}
+					// (each one by its name: what the act takes is seen before it acts)
+					if len(o.lines) > 1 {
+						spacer(px(em * 0.5))
+						for l, i in o.lines {
+							if i == CONFIRM_LINES_MAX { break }
+							next({width = fill(), height = px(em * 1.5), text_pad = em * 0.6})
+							label(fmt.tprintf("%s###confirm_line_%d", text_shown(l), i))
+						}
+						if more := len(o.lines) - CONFIRM_LINES_MAX; more > 0 {
+							if tags("weak") {
+								next({width = fill(), height = px(em * 1.5), text_pad = em * 0.6})
+								label(fmt.tprintf("%s###confirm_more", fmt.tprintf(labels.more, more)))
+							}
+						}
+					}
+					spacer(px(em * 1.1))
+					next({width = fill(), height = children_sum()})
+					if row() {
+						spacer(fill())
+						next({width = text_size(em * 1.2), height = px(dense(em * 2.2))})
+						cancel_word := o.enter_confirms ? labels.cancel : fmt.tprintf(labels.enter, labels.cancel)
+						if button(fmt.tprintf("%s###confirm_cancel", cancel_word)).clicked || (!o.enter_confirms && key_press(.Return)) {
+							answer, open^ = .Cancelled, false
+						}
+						spacer(px(em * 0.6))
+						next({width = text_size(em * 1.2), height = px(dense(em * 2.2))})
+						if tags("danger_button") {
+							act_word := o.enter_confirms ? fmt.tprintf(labels.enter, o.act) : o.act
+							if button(fmt.tprintf("%s###confirm_act", act_word)).clicked || (o.enter_confirms && key_press(.Return)) {
+								answer, open^ = .Confirmed, false
+							}
+						}
+					}
+				}
+			}
+			spacer(px(pad))
+		}
+	}
+	// (closed otherwise: Escape, a press outside)
+	if answer == .None && was && !open^ { answer = .Cancelled }
+	return
+}
