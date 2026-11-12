@@ -11,6 +11,8 @@ package capture
 //   ext_foreign_toplevel_list_v1  the windows: title, app_id, identifier (no position: COSMIC's or KDE's protocol
 //                               adds it, capture_places_linux.odin, or the compositor's IPC, capture/wm).
 //   wl_output, zxdg_output_v1   the outputs: logical position and size, mode, scale, name.
+//   ext_image_copy_capture_cursor_session_v1  where the pointer is: a session per output for the first wl_seat's
+//                               pointer, its enter, leave and position kept (pointer).
 //
 // A stream (the end of this file) keeps ext_image_copy_capture's session open and asks a frame per picture, or asks
 // wlr-screencopy a frame per picture (copy_with_damage after the first), into two wl_shm buffers taken in turn.
@@ -57,6 +59,8 @@ Wl_Message :: struct {
 @(private = "file") WL_SHM_POOL_DESTROY :: 1
 @(private = "file") WL_BUFFER_DESTROY :: 0
 @(private = "file") WL_OUTPUT_MODE_CURRENT :: 1
+@(private = "file") WL_SEAT_GET_POINTER :: 0
+@(private = "file") WL_SEAT_CAPABILITY_POINTER :: 1
 
 // wl_shm.format: the four this backend reads.
 @(private = "file") SHM_ARGB8888 :: 0
@@ -70,6 +74,8 @@ Wl_Message :: struct {
 @(private = "file") SOURCE_DESTROY :: 0
 @(private = "file") SOURCE_MANAGER_CREATE :: 0
 @(private = "file") COPY_MANAGER_CREATE_SESSION :: 0
+@(private = "file") COPY_MANAGER_CREATE_POINTER_CURSOR_SESSION :: 1
+@(private = "file") CURSOR_SESSION_DESTROY :: 0
 @(private = "file") COPY_SESSION_CREATE_FRAME :: 0
 @(private = "file") COPY_SESSION_DESTROY :: 1
 @(private = "file") COPY_FRAME_DESTROY :: 0
@@ -93,6 +99,7 @@ Wl_Message :: struct {
 @(private = "file") XDG_OUTPUT_MANAGER_VERSION :: 3
 @(private = "file") SCREENCOPY_VERSION :: 3
 @(private = "file") SCREENCOPY_BUFFER_DONE_SINCE :: 3
+@(private = "file") WL_SEAT_VERSION :: 5   // (its events, capabilities and name, are the same up to 10)
 
 // How long a capture may take before it is given up: a compositor that never answers must not hold the worker.
 @(private = "file") CAPTURE_TIMEOUT :: 5 * time.Second
@@ -120,6 +127,7 @@ Wl_Lib :: struct {
 	shm_pool_interface:       ^Wl_Interface,
 	buffer_interface:         ^Wl_Interface,
 	pointer_interface:        ^Wl_Interface,
+	seat_interface:           ^Wl_Interface,
 }
 
 // The interfaces the library does not ship, and their messages and types arrays (each array one entry per argument).
@@ -139,6 +147,8 @@ Wl_Tables :: struct {
 	cm_methods: [3]Wl_Message,
 	cs_methods: [2]Wl_Message,
 	cs_events: [6]Wl_Message,
+	cus_methods: [2]Wl_Message,
+	cus_events: [4]Wl_Message,
 	cf_methods: [4]Wl_Message,
 	cf_events: [5]Wl_Message,
 	tl_methods: [2]Wl_Message,
@@ -154,6 +164,7 @@ Wl_Tables :: struct {
 	t_cm_session: [3]^Wl_Interface,
 	t_cm_cursor: [3]^Wl_Interface,
 	t_cs_frame: [1]^Wl_Interface,
+	t_cus_session: [1]^Wl_Interface,
 	t_cf_attach: [1]^Wl_Interface,
 	t_tl_toplevel: [1]^Wl_Interface,
 	t_scm_capture: [3]^Wl_Interface,
@@ -202,6 +213,17 @@ Wl_Listeners :: struct {
 		dmabuf_format: proc "c" (data: rawptr, s: Wl_Proxy, format: u32, modifiers: ^Wl_Array),
 		done:          proc "c" (data: rawptr, s: Wl_Proxy),
 		stopped:       proc "c" (data: rawptr, s: Wl_Proxy),
+	},
+	seat: struct {
+		capabilities: proc "c" (data: rawptr, s: Wl_Proxy, capabilities: u32),
+		name:         proc "c" (data: rawptr, s: Wl_Proxy, name: cstring),
+	},
+	// (data: the Wl_Output whose cursor session it is)
+	cursor_session: struct {
+		enter:    proc "c" (data: rawptr, s: Wl_Proxy),
+		leave:    proc "c" (data: rawptr, s: Wl_Proxy),
+		position: proc "c" (data: rawptr, s: Wl_Proxy, x, y: i32),
+		hotspot:  proc "c" (data: rawptr, s: Wl_Proxy, x, y: i32),
 	},
 	copy_frame: struct {
 		transform:         proc "c" (data: rawptr, f: Wl_Proxy, transform: u32),
@@ -259,6 +281,11 @@ Wl_Output :: struct {
 	scale:        i32,          // wl_output.scale, an integer
 	logical_pos:  [2]i32,       // zxdg_output_v1's
 	logical_size: [2]i32,
+	// where the pointer is on it (pointer): its cursor session, made at the first call, and what that said last
+	cursor_source:  Wl_Proxy,   // ext_image_capture_source_v1
+	cursor_session: Wl_Proxy,   // ext_image_copy_capture_cursor_session_v1
+	cursor_in:      bool,       // between enter and leave
+	cursor_at:      [2]i32,     // position's: physical pixels of the output upright, from its top left
 }
 
 // A window as ext_foreign_toplevel_list_v1 tells it.
@@ -326,6 +353,9 @@ Wl_State :: struct {
 	toplevel_list:    Wl_Proxy,   // ext_foreign_toplevel_list_v1
 	screencopy:       Wl_Proxy,   // zwlr_screencopy_manager_v1
 	screencopy_version: u32,
+	seat:             Wl_Proxy,   // the first wl_seat: its pointer is the one cursor sessions follow
+	seat_capabilities: u32,
+	pointer:          Wl_Proxy,   // wl_pointer, made at the first pointer(), never given a listener (no surface of ours)
 	outputs:          [dynamic]^Wl_Output,
 	toplevels:        [dynamic]^Wl_Toplevel,
 	toplevel_serial:  u64,
@@ -374,7 +404,7 @@ wl_close :: proc(st: ^Wl_State) {
 		for o in st.outputs { wl_output_free(o, false) }
 		for t in st.toplevels { wl_toplevel_free(t) }
 		places_close(st)
-		for p in ([?]Wl_Proxy{st.shm, st.xdg_output_manager, st.copy_manager, st.output_sources, st.toplevel_sources, st.toplevel_list, st.screencopy, st.registry}) {
+		for p in ([?]Wl_Proxy{st.pointer, st.seat, st.shm, st.xdg_output_manager, st.copy_manager, st.output_sources, st.toplevel_sources, st.toplevel_list, st.screencopy, st.registry}) {
 			if p != nil { l.proxy_destroy(p) }
 		}
 		l.display_disconnect(st.display)
@@ -413,6 +443,7 @@ wl_lib_load :: proc(l: ^Wl_Lib) -> bool {
 	l.shm_pool_interface       = auto_cast posix.dlsym(h, "wl_shm_pool_interface")
 	l.buffer_interface         = auto_cast posix.dlsym(h, "wl_buffer_interface")
 	l.pointer_interface        = auto_cast posix.dlsym(h, "wl_pointer_interface")
+	l.seat_interface           = auto_cast posix.dlsym(h, "wl_seat_interface")
 	return l.display_connect != nil && l.display_dispatch_pending != nil && l.display_prepare_read != nil &&
 		l.display_read_events != nil && l.display_cancel_read != nil && l.display_roundtrip != nil &&
 		l.proxy_marshal_flags != nil && l.proxy_add_listener != nil && l.proxy_destroy != nil && l.proxy_get_version != nil &&
@@ -449,12 +480,16 @@ wl_build_tables :: proc(st: ^Wl_State) {
 	t.tsm_methods = {{"create_source", "no", types(t.t_tsm_create[:])}, {"destroy", "", nil}}
 	t.toplevel_sources = {"ext_foreign_toplevel_image_capture_source_manager_v1", 1, 2, &t.tsm_methods[0], 0, nil}
 
-	// ext-image-copy-capture-v1, version 1 (the cursor session is never made: its interface only names it)
+	// ext-image-copy-capture-v1, version 1 (a cursor session is made for where the pointer is: its capture session,
+	// the cursor's picture, is never asked)
 	t.t_cm_session = {&t.copy_session, &t.source, nil}
 	t.t_cm_cursor = {&t.cursor_session, &t.source, l.pointer_interface}
 	t.cm_methods = {{"create_session", "nou", types(t.t_cm_session[:])}, {"create_pointer_cursor_session", "noo", types(t.t_cm_cursor[:])}, {"destroy", "", nil}}
 	t.copy_manager = {"ext_image_copy_capture_manager_v1", 1, 3, &t.cm_methods[0], 0, nil}
-	t.cursor_session = {"ext_image_copy_capture_cursor_session_v1", 1, 0, nil, 0, nil}
+	t.t_cus_session = {&t.copy_session}
+	t.cus_methods = {{"destroy", "", nil}, {"get_capture_session", "n", types(t.t_cus_session[:])}}
+	t.cus_events = {{"enter", "", nil}, {"leave", "", nil}, {"position", "ii", none}, {"hotspot", "ii", none}}
+	t.cursor_session = {"ext_image_copy_capture_cursor_session_v1", 1, 2, &t.cus_methods[0], 4, &t.cus_events[0]}
 	t.t_cs_frame = {&t.copy_frame}
 	t.cs_methods = {{"create_frame", "n", types(t.t_cs_frame[:])}, {"destroy", "", nil}}
 	t.cs_events = {{"buffer_size", "uu", none}, {"shm_format", "u", none}, {"dmabuf_device", "a", none}, {"dmabuf_format", "ua", none}, {"done", "", nil}, {"stopped", "", nil}}
@@ -493,6 +528,8 @@ wl_set_listeners :: proc(st: ^Wl_State) {
 	ls.toplevel_list = {toplevel_new, toplevel_list_finished}
 	ls.toplevel_handle = {toplevel_closed, toplevel_done, toplevel_title, toplevel_app_id, toplevel_identifier}
 	ls.copy_session = {session_buffer_size, session_shm_format, session_dmabuf_device, session_dmabuf_format, session_done, session_stopped}
+	ls.seat = {seat_capabilities, seat_name}
+	ls.cursor_session = {cursor_enter, cursor_leave, cursor_position, cursor_hotspot}
 	ls.copy_frame = {frame_transform, frame_damage, frame_presentation_time, frame_ready, frame_failed}
 	ls.screencopy_frame = {sc_buffer, sc_flags, sc_ready, sc_failed, sc_damage, sc_linux_dmabuf, sc_buffer_done}
 	ls.stream_session = {ss_buffer_size, ss_shm_format, session_dmabuf_device, session_dmabuf_format, ss_done, ss_stopped}
@@ -526,6 +563,10 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 		append(&st.outputs, o)
 		// (an output plugged in later: its logical rect is asked at once)
 		if st.xdg_output_manager != nil { wl_xdg_output_of(st, o) }
+	case "wl_seat":
+		if st.seat != nil || st.lib.seat_interface == nil { return }
+		st.seat = wl_bind(st, name, st.lib.seat_interface, WL_SEAT_VERSION, version)
+		if st.seat != nil { st.lib.proxy_add_listener(st.seat, &st.listeners.seat, st) }
 	case "zxdg_output_manager_v1":
 		st.xdg_output_manager = wl_bind(st, name, &t.xdg_output_manager, XDG_OUTPUT_MANAGER_VERSION, version)
 	case "ext_image_copy_capture_manager_v1":
@@ -577,6 +618,13 @@ wl_describe_outputs :: proc(st: ^Wl_State) {
 wl_output_free :: proc(o: ^Wl_Output, release: bool) {
 	st := o.st
 	l := &st.lib
+	// (the cursor session before its source, the source before its output)
+	if o.cursor_session != nil {
+		if release { l.proxy_marshal_flags(o.cursor_session, CURSOR_SESSION_DESTROY, nil, l.proxy_get_version(o.cursor_session), WL_MARSHAL_FLAG_DESTROY) } else { l.proxy_destroy(o.cursor_session) }
+	}
+	if o.cursor_source != nil {
+		if release { l.proxy_marshal_flags(o.cursor_source, SOURCE_DESTROY, nil, l.proxy_get_version(o.cursor_source), WL_MARSHAL_FLAG_DESTROY) } else { l.proxy_destroy(o.cursor_source) }
+	}
 	if o.xdg != nil {
 		if release { l.proxy_marshal_flags(o.xdg, XDG_OUTPUT_DESTROY, nil, l.proxy_get_version(o.xdg), WL_MARSHAL_FLAG_DESTROY) } else { l.proxy_destroy(o.xdg) }
 	}
@@ -673,6 +721,76 @@ wl_outputs :: proc(st: ^Wl_State, s: ^Session) {
 wl_output_by_id :: proc(st: ^Wl_State, id: u64) -> ^Wl_Output {
 	for o in st.outputs { if u64(o.global) == id { return o } }
 	return nil
+}
+
+////////////////////////////////
+// where the pointer is: wl_seat, and a cursor session per output
+
+@(private = "file")
+seat_capabilities :: proc "c" (data: rawptr, s: Wl_Proxy, capabilities: u32) { (^Wl_State)(data).seat_capabilities = capabilities }
+@(private = "file")
+seat_name :: proc "c" (data: rawptr, s: Wl_Proxy, name: cstring) {}
+
+@(private = "file")
+cursor_enter :: proc "c" (data: rawptr, s: Wl_Proxy) { (^Wl_Output)(data).cursor_in = true }
+@(private = "file")
+cursor_leave :: proc "c" (data: rawptr, s: Wl_Proxy) { (^Wl_Output)(data).cursor_in = false }
+@(private = "file")
+cursor_position :: proc "c" (data: rawptr, s: Wl_Proxy, x, y: i32) { (^Wl_Output)(data).cursor_at = {x, y} }
+@(private = "file")
+cursor_hotspot :: proc "c" (data: rawptr, s: Wl_Proxy, x, y: i32) {}
+
+// The output's cursor session: a source of the output, and the session on it for the session's pointer.
+@(private = "file")
+wl_cursor_session_of :: proc(st: ^Wl_State, o: ^Wl_Output) {
+	l := &st.lib
+	if o.cursor_source == nil {
+		o.cursor_source = l.proxy_marshal_flags(st.output_sources, SOURCE_MANAGER_CREATE, &st.tables.source, l.proxy_get_version(st.output_sources), 0, nil, o.proxy)
+		if o.cursor_source == nil { return }
+	}
+	o.cursor_session = l.proxy_marshal_flags(st.copy_manager, COPY_MANAGER_CREATE_POINTER_CURSOR_SESSION, &st.tables.cursor_session, l.proxy_get_version(st.copy_manager), 0, nil, o.cursor_source, st.pointer)
+	if o.cursor_session != nil { l.proxy_add_listener(o.cursor_session, &st.listeners.cursor_session, o) }
+}
+
+// Where the pointer is, from the cursor sessions: made for the outputs that have none (the first call, an output
+// plugged in since; an output unplugged takes its own with it), then one round trip for what they say now.
+@(private)
+wl_pointer :: proc(st: ^Wl_State) -> (at: [2]i32, output: u64, ok: bool) {
+	l := &st.lib
+	if st.copy_manager == nil || st.output_sources == nil || st.seat == nil || l.pointer_interface == nil { return }
+	if st.pointer == nil {
+		// (asking a seat with no pointer for one is a protocol error since wl_seat 5)
+		if st.seat_capabilities & WL_SEAT_CAPABILITY_POINTER == 0 { return }
+		st.pointer = l.proxy_marshal_flags(st.seat, WL_SEAT_GET_POINTER, l.pointer_interface, l.proxy_get_version(st.seat), 0, nil)
+		if st.pointer == nil { return }
+	}
+	for o in st.outputs { if o.cursor_session == nil { wl_cursor_session_of(st, o) } }
+	if l.display_roundtrip(st.display) < 0 { return }
+	// The cursor's picture may meet two outputs: the one whose buffer holds the hotspot is where the pointer is.
+	fallback: ^Wl_Output
+	for o in st.outputs {
+		if !o.cursor_in || o.mode.x <= 0 || o.mode.y <= 0 { continue }
+		size := wl_output_upright(o)
+		if o.cursor_at.x >= 0 && o.cursor_at.y >= 0 && o.cursor_at.x < size.x && o.cursor_at.y < size.y {
+			return wl_pointer_on(o), u64(o.global), true
+		}
+		if fallback == nil { fallback = o }
+	}
+	if fallback != nil { return wl_pointer_on(fallback), u64(fallback.global), true }
+	return
+}
+
+// The position is in "transformed buffer pixel coordinates": the output's physical pixels as seen, upright.
+@(private = "file")
+wl_pointer_on :: proc(o: ^Wl_Output) -> [2]i32 {
+	place, _ := wl_output_place(o)
+	return pointer_from_buffer(o.cursor_at, wl_output_upright(o), .Normal, place)
+}
+
+// An output's size in physical pixels, upright.
+@(private = "file")
+wl_output_upright :: proc(o: ^Wl_Output) -> [2]i32 {
+	return o.transform & 1 != 0 ? [2]i32{o.mode.y, o.mode.x} : o.mode
 }
 
 ////////////////////////////////

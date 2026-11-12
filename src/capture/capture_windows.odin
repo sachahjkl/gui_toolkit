@@ -132,6 +132,22 @@ platform_outputs :: proc(s: ^Session) {
 @(private)
 platform_windows_have_rects :: proc(s: ^Session) -> bool { return true }
 
+// GetCursorPos gives physical pixels to this per-monitor aware thread: the monitor that holds the point turns it
+// logical, as it does a window's rect.
+@(private)
+platform_pointer :: proc(s: ^Session) -> (at: [2]i32, output: u64, ok: bool) {
+	impl := (^Impl)(s.impl)
+	p: win.POINT
+	if !win.GetCursorPos(&p) { return }
+	monitors_read(impl)
+	spot := Rect{p.x, p.y, 1, 1}
+	i := output_of(spot, monitors_physical(impl))
+	if i < 0 { return }
+	m := impl.monitors[i]
+	r := physical_to_logical(spot, m.physical, m.logical, m.scale)
+	return {r.x, r.y}, monitor_id(m.handle), true
+}
+
 @(private)
 platform_windows :: proc(s: ^Session) {
 	impl := (^Impl)(s.impl)

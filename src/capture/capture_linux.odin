@@ -148,6 +148,21 @@ platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (f: Frame
 	return {}, .Unsupported
 }
 
+// Wayland: the compositor's cursor sessions, on the session's own connection (the portal backend keeps one to list
+// the outputs). X11: QueryPointer.
+@(private)
+platform_pointer :: proc(s: ^Session) -> (at: [2]i32, output: u64, ok: bool) {
+	impl := (^Linux_Impl)(s.impl)
+	if impl == nil { return }
+	switch s.backend {
+	case .Wayland_Image_Copy, .Wayland_Screencopy, .Portal:
+		if impl.wl != nil { return wl_pointer(impl.wl) }
+	case .X11: return x11_pointer(impl.x11)
+	case .None, .Windows:
+	}
+	return
+}
+
 // Streams: Wayland's protocols and X11. The portal backend has none: the ScreenCast portal hands a PipeWire stream, and
 // reading one needs libpipewire's loop and SPA's pod buffers, not written yet.
 @(private)

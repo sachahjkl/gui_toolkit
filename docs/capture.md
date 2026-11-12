@@ -30,6 +30,32 @@ The desktop's, in logical pixels (what a window's size is given in), the outputs
 A `Frame` is in physical pixels, `scale` of them per logical pixel, and says where on the desktop its first pixel is
 (`origin`, logical). Pixels are BGRA, 8 bits a channel, straight alpha (opaque for a screen).
 
+## The pointer
+
+`pointer` says where the pointer is: a point on the desktop, logical, and the id of the output it is on.
+
+```odin
+at, output, ok := capture.pointer(s)   // blocks for at most one round trip: call it on the session's worker
+if ok { o := output_by_id(outs, output) }
+```
+
+- **Wayland.** A compositor tells a client where the pointer is only over the client's own surfaces. `pointer` asks
+  through `ext_image_copy_capture_cursor_session_v1`. At the first call it gets a `wl_pointer` of the first `wl_seat`
+  and makes a cursor session per output. The sessions stay with their outputs; an output plugged in later gets one at
+  the next call. Each call then makes one round trip and reads what the sessions said last (`enter`, `position`,
+  `leave`). The session's position is in the output's physical pixels as seen; `pointer` turns it logical with the
+  output's place and size (`pointer_from_buffer`). `ok` is false when the compositor has no
+  `ext_image_copy_capture_manager_v1` or no output source manager, when the seat has no pointer, or when no session
+  says the pointer is on its output.
+- **X11.** `QueryPointer` on the root window. The output is the RandR monitor that holds the point.
+- **Windows.** `GetCursorPos`, physical pixels to the session's thread, turned logical through the output that holds
+  the point, as a window's rect is.
+- **Elsewhere and with the portal alone** (no Wayland connection), `ok` is false.
+
+`pointer_from_buffer(pos, size, turn, place)` is the pure part: a point of a buffer of `size` physical pixels, shown
+turned as `turn` says, on an output at `place`. The buffer once upright covers `place` exactly, so the scale is the
+ratio of the two. `tests/capture/capture_pointer_test.odin` checks it against `frame_from_buffer` for the eight turns.
+
 ## Streams
 
 A screen recorder needs frames, not pictures: `stream_open` keeps the capture of one source open, and `stream_next`

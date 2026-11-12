@@ -59,6 +59,8 @@ Xcb_Screen :: struct {
 @(private = "file") MONITORS_COUNT_AT :: 12
 @(private = "file") MONITORS_FIRST_AT :: 32
 @(private = "file") MONITOR_BYTES :: 24
+@(private = "file") POINTER_SAME_SCREEN_AT :: 1   // xcb_query_pointer_reply_t
+@(private = "file") POINTER_ROOT_X_AT :: 16
 
 @(private = "file")
 Xcb_Lib :: struct {
@@ -88,6 +90,8 @@ Xcb_Lib :: struct {
 	get_atom_name_reply:   proc "c" (c: Xcb_Connection, cookie: Xcb_Cookie, e: rawptr) -> rawptr,
 	get_atom_name_name:    proc "c" (reply: rawptr) -> [^]u8,
 	get_atom_name_name_length: proc "c" (reply: rawptr) -> i32,
+	query_pointer:         proc "c" (c: Xcb_Connection, window: u32) -> Xcb_Cookie,
+	query_pointer_reply:   proc "c" (c: Xcb_Connection, cookie: Xcb_Cookie, e: rawptr) -> rawptr,
 	// libxcb-randr (optional)
 	randr_id:              rawptr,
 	randr_query_version:   proc "c" (c: Xcb_Connection, major, minor: u32) -> Xcb_Cookie,
@@ -185,6 +189,8 @@ x11_lib_load :: proc(l: ^Xcb_Lib) -> bool {
 	l.get_atom_name_reply     = auto_cast posix.dlsym(h, "xcb_get_atom_name_reply")
 	l.get_atom_name_name      = auto_cast posix.dlsym(h, "xcb_get_atom_name_name")
 	l.get_atom_name_name_length = auto_cast posix.dlsym(h, "xcb_get_atom_name_name_length")
+	l.query_pointer           = auto_cast posix.dlsym(h, "xcb_query_pointer")
+	l.query_pointer_reply     = auto_cast posix.dlsym(h, "xcb_query_pointer_reply")
 	return l.connect != nil && l.disconnect != nil && l.connection_has_error != nil && l.get_setup != nil &&
 		l.setup_roots_iterator != nil && l.screen_next != nil && l.intern_atom != nil && l.intern_atom_reply != nil &&
 		l.get_property != nil && l.get_property_reply != nil && l.get_property_value != nil && l.get_property_value_length != nil &&
@@ -259,29 +265,62 @@ x11_words :: proc(b: []u8) -> []u32 {
 
 @(private)
 x11_outputs :: proc(st: ^X11_State, s: ^Session) {
-	root := Rect{0, 0, i32(st.screen.width_in_pixels), i32(st.screen.height_in_pixels)}
-	if st.has_randr {
-		l := &st.lib
-		reply := l.randr_get_monitors_reply(st.c, l.randr_get_monitors(st.c, st.screen.root, 1), nil)
-		if reply != nil {
-			defer posix.free(reply)
-			b := ([^]u8)(reply)
-			count := int(get_u32_le(b[MONITORS_COUNT_AT:]))
-			at := MONITORS_FIRST_AT
-			// xcb_randr_monitor_info_t: name 0, primary 4, automatic 5, nOutput 6, x 8, y 10, width 12, height 14, the
-			// outputs after its 24 bytes
-			for _ in 0 ..< count {
-				m := b[at:]
-				name_atom := get_u32_le(m)
-				n_outputs := int(get_u16(m[6:]))
-				r := Rect{i32(get_i16(m[8:])), i32(get_i16(m[10:])), i32(get_u16(m[12:])), i32(get_u16(m[14:]))}
-				append(&s.outputs, Output{id = u64(name_atom), name = x11_atom_name(st, name_atom, s.allocator), rect = r, scale = 1})
-				at += MONITOR_BYTES + 4 * n_outputs
-			}
-			if count > 0 { return }
-		}
+	monitors := x11_monitors(st)
+	for m in monitors {
+		append(&s.outputs, Output{id = u64(m.atom), name = x11_atom_name(st, m.atom, s.allocator), rect = m.rect, scale = 1})
 	}
+	if len(monitors) > 0 { return }
+	root := Rect{0, 0, i32(st.screen.width_in_pixels), i32(st.screen.height_in_pixels)}
 	append(&s.outputs, Output{id = 0, name = strings.clone("screen", s.allocator), rect = root, scale = 1})
+}
+
+// RandR's monitors (temporary memory): none without RandR 1.5, and then the root is the one output, id 0.
+@(private = "file")
+X11_Monitor :: struct { atom: u32, rect: Rect }   // the atom of its name is its output's id
+
+@(private = "file")
+x11_monitors :: proc(st: ^X11_State) -> []X11_Monitor {
+	list := make([dynamic]X11_Monitor, context.temp_allocator)
+	if !st.has_randr { return list[:] }
+	l := &st.lib
+	reply := l.randr_get_monitors_reply(st.c, l.randr_get_monitors(st.c, st.screen.root, 1), nil)
+	if reply == nil { return list[:] }
+	defer posix.free(reply)
+	b := ([^]u8)(reply)
+	count := int(get_u32_le(b[MONITORS_COUNT_AT:]))
+	at := MONITORS_FIRST_AT
+	// xcb_randr_monitor_info_t: name 0, primary 4, automatic 5, nOutput 6, x 8, y 10, width 12, height 14, the
+	// outputs after its 24 bytes
+	for _ in 0 ..< count {
+		m := b[at:]
+		n_outputs := int(get_u16(m[6:]))
+		r := Rect{i32(get_i16(m[8:])), i32(get_i16(m[10:])), i32(get_u16(m[12:])), i32(get_u16(m[14:]))}
+		append(&list, X11_Monitor{get_u32_le(m), r})
+		at += MONITOR_BYTES + 4 * n_outputs
+	}
+	return list[:]
+}
+
+// QueryPointer on the root: the pointer on the root's screen, in its pixels (X11's are logical ones, scale 1).
+@(private)
+x11_pointer :: proc(st: ^X11_State) -> (at: [2]i32, output: u64, ok: bool) {
+	l := &st.lib
+	if l.query_pointer == nil || l.query_pointer_reply == nil { return }
+	reply := l.query_pointer_reply(st.c, l.query_pointer(st.c, st.screen.root), nil)
+	if reply == nil { return }
+	b := ([^]u8)(reply)
+	same_screen := b[POINTER_SAME_SCREEN_AT] != 0
+	at = {i32(get_i16(b[POINTER_ROOT_X_AT:])), i32(get_i16(b[POINTER_ROOT_X_AT + 2:]))}
+	posix.free(reply)
+	if !same_screen { return {}, 0, false }
+	monitors := x11_monitors(st)
+	for m in monitors {
+		r := m.rect
+		if at.x >= r.x && at.x < r.x + r.w && at.y >= r.y && at.y < r.y + r.h { return at, u64(m.atom), true }
+	}
+	// (no RandR: the root is the one output x11_outputs gives, id 0; with it, a point on no monitor is on no output)
+	if len(monitors) > 0 { return {}, 0, false }
+	return at, 0, true
 }
 
 @(private = "file")

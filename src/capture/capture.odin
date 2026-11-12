@@ -10,6 +10,7 @@
 //   wins := capture.windows(s)                // the windows, front to back; a rect when the system says where it is
 //   f, err := capture.output(s, outs[0].id)   // one screen's picture
 //   d, err := capture.desktop(s)              // every screen in one picture: what a region is cut from
+//   at, out, ok := capture.pointer(s)         // where the pointer is, and on which output (pointer.odin)
 //   capture.frame_free(&f)
 //   capture.close(s)
 //
