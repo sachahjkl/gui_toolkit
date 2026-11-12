@@ -8,7 +8,7 @@ PowerShell 5.1).
 
 | What | Version | Needed for |
 |---|---|---|
-| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library, `-define:FONT_BACKEND=native` (`tk ci` builds that way). No macOS backend. |
+| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library (the native text backend, `FONT_BACKEND`'s default off Windows). No macOS backend. |
 | [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-11) | **`dev-2026-11`** (`odin version` says `dev-2026-11-nightly:9a69916`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
 | MSVC: Visual Studio 2022 or its Build Tools, workload "Desktop development with C++" (MSVC x64 and a Windows 10/11 SDK) | | Odin links with `link.exe` and finds it by itself (no developer prompt needed); `rc.exe` for an exe icon (`-resource:`) |
 | PowerShell 5.1 or 7 | | the scripts of `tools\` |
@@ -135,7 +135,7 @@ if ui.field_frame("###search") {
 `odin run tools/tk -- build <example> [-debug]` (in the toolkit's folder; `build.bat` and `./build.sh` are its shortcuts) is
 `odin build examples/<example> -out:build/<example> -o:speed -vet` (or `-debug` instead of `-o:speed`). On Windows it adds
 `-subsystem:windows` and `-resource:examples/<example>/<example>.rc` when the example has an icon; on Linux it builds the native
-text backend first and adds `-define:FONT_BACKEND=native`. It builds the examples only; your project calls `odin build` itself as
+text backend first (the default backend there). It builds the examples only; your project calls `odin build` itself as
 above.
 
 ## 4. Choices made when compiling (`-define:`)

@@ -18,7 +18,9 @@ import "base:runtime"
 
 Backend :: enum u8 { Dwrite, Native }
 
-FONT_BACKEND :: #config(FONT_BACKEND, "dwrite")
+// (native by default but on Windows: elsewhere DirectWrite is not there, and a build without the define had no text)
+@(private = "file") FONT_BACKEND_DEFAULT :: "dwrite" when ODIN_OS == .Windows else "native"
+FONT_BACKEND :: #config(FONT_BACKEND, FONT_BACKEND_DEFAULT)
 #assert(FONT_BACKEND == "dwrite" || FONT_BACKEND == "native", "FONT_BACKEND is dwrite or native")
 
 // Whether the native library is linked into this build.

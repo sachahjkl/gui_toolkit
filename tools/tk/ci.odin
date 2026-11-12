@@ -13,9 +13,10 @@ EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "e
 CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking"}
 CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew"}
 
-// What a program of the toolkit needs on Linux: the native text backend (build/text/libgt_text.a, which the examples link
-// themselves), and wgpu-native beside it: both carry Rust's standard library, whose few unmangled symbols are the same code.
-LINUX_FLAGS :: [?]string{"-define:FONT_BACKEND=native", "-extra-linker-flags:-Wl,--allow-multiple-definition"}
+// What a program of the toolkit needs on Linux: the native text backend (build/text/libgt_text.a, the default there, which
+// the examples link themselves), and wgpu-native beside it: both carry Rust's standard library, whose few unmangled symbols
+// are the same code.
+LINUX_FLAGS :: [?]string{"-extra-linker-flags:-Wl,--allow-multiple-definition"}
 
 // The packages of the library, under src/.
 PACKAGES :: [?]string{"arena", "ascii", "base", "capture", "cdp", "changelog", "config", "dbus", "desktop", "devtools", "diff", "draw", "flate", "font", "fsx", "gif", "h264", "host", "i18n", "image", "instance", "markdown", "mermaid", "mux", "ocr", "paint", "platform", "png", "process", "qr", "remote", "render", "shortcuts", "site", "store", "svg", "term", "testkit", "timefmt", "toolbox", "ui", "update"}
@@ -66,7 +67,7 @@ run_ci :: proc(a: ^Args) -> string {
 	for p in PACKAGES {
 		cmd := make([dynamic]string, context.temp_allocator)
 		append(&cmd, "odin", "check", join({root, "src", p}), "-no-entry-point", "-vet")
-		when ODIN_OS != .Windows { append(&cmd, "-target:linux_amd64", LINUX_FLAGS[0]) }
+		when ODIN_OS != .Windows { append(&cmd, "-target:linux_amd64") }
 		if toolbox.run(cmd[:]) {   // (the compiler says what is wrong, and nothing when all is well)
 			fmt.printfln("check ok   %s", p)
 		} else {

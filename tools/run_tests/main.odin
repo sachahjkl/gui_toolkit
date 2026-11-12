@@ -194,6 +194,7 @@ STEPS := []Step{
 	{name = "color_glyphs_builtin", path = "tests/color_glyphs", defines = {"COLR_ENGINE=builtin"}},
 	{name = "color_native", oses = LINUX_ONLY, text = true},
 	{name = "text_backends"},
+	{name = "font_default", oses = EVERYWHERE},   // (built with no define: the backend each system gets by default)
 	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Text_Lib},
 	// what must keep compiling
 	{name = "uia_probe", path = "tools/uia_probe", kind = .Build},
@@ -384,7 +385,7 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 		when ODIN_OS == .Linux {
 			if !s.one { append(&cmd, "-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true") }
 			// (wgpu-native is the other Rust library in them: its few unmangled symbols of Rust's standard library are the same code)
-			if s.text { append(&cmd, "-define:FONT_BACKEND=native", "-extra-linker-flags:-Wl,--allow-multiple-definition") }
+			if s.text { append(&cmd, "-extra-linker-flags:-Wl,--allow-multiple-definition") }
 		}
 	case .Build:
 		append(&cmd, "odin", "build", s.path, "-vet", fmt.tprintf("-out:%s", exe))

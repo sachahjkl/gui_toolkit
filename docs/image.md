@@ -105,8 +105,8 @@ face, _ := font.load_embedded(&fonts, font.FALLBACK_UI_DATA)
 image.watermark_text(shot, &fonts, face, "example.com", 18, image.WHITE, .Bottom_Right, 16, 0.6)
 ```
 
-On Linux, text needs the native text backend (`-define:FONT_BACKEND=native`), as everything that shapes text does
-([font-backend.md](font-backend.md)). Without it, no glyph is drawn.
+On Linux, text is shaped by the native text backend, the default there, as everything that shapes text is
+([font-backend.md](font-backend.md)).
 
 ## How it stays fast
 
