@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.218.0] - 2026-11-12
+
+### Added
+- **`ui.button_icon` takes a width and an icon font**: `width = fill()` shares the row as `flex: 1` does (two buttons side by side, or one across the whole width), `px(...)` gives it a width of its own, the default stays as wide as what is in it; its content stays centred. `icon_font` draws the glyph in another font than `State.icon_font` (`lucide_icons()`).
+
 ## [0.217.3] - 2026-11-12
 
 ### Fixed
@@ -2913,6 +2918,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.218.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.218.0
 [0.217.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.3
 [0.217.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.2
 [0.217.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.217.1
