@@ -293,6 +293,26 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 	sbk := scrollbar_key(b, axis)
 	hot := s.hot_key == sbk
 	active := s.active_key[.Left] == sbk
+	scrollbar_paint(s, dc, b, track, thumb, axis, hot, active, active && s.sb_arrow == 0, shows)
+	if axis == .X { return }
+	start, end, arrows := scrollbar_arrow_rects(b)
+	if !arrows { return }
+	glyph := color_from_tags(s, b.tags_key, "text")
+	w := track.max.x - track.min.x
+	half := w * SCROLLBAR_ARROW_GLYPH_FRACTION * 0.5
+	for r, i in ([2]Rect{start, end}) {
+		dir: f32 = i == 0 ? -1 : 1
+		held := active && s.sb_arrow == dir
+		glyph.a = (held ? SCROLLBAR_THUMB_HELD_ALPHA : (hot && contains(r, s.mouse) ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
+		mid := draw.rect_center(r)
+		draw.triangle(dc, {mid.x, mid.y + dir * half}, {mid.x - half, mid.y - dir * half}, {mid.x + half, mid.y - dir * half}, tuned(glyph))
+	}
+}
+
+// How a scroll bar looks, whatever scrolls (a view, a text area that scrolls itself): its track when the pointer is on it or it
+// is held (`hot`, `active`), its thumb in the interface's own greys, held (`held`) a step further toward the text. One look for
+// every bar: a widget with a bar of its own draws it with this, at its own place.
+scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, track, thumb: Rect, axis: Axis, hot, active, held: bool, shows: f32) {
 	c := color_from_tags(s, b.tags_key, "text")
 	w := axis == .Y ? track.max.x - track.min.x : track.max.y - track.min.y
 	if hot || active {
@@ -301,29 +321,17 @@ draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
 		if s.theme == nil || s.theme.finish != .Flat { tc = color_from_tags(s, b.tags_key, "track"); tc.a *= shows }
 		draw.rect(dc, track, tuned(tc), w * 0.5 * rounding(s))
 	}
-	glyph := c
-	c.a = (active && s.sb_arrow == 0 ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
+	c.a = (held ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
 	radius := w * 0.5 * rounding(s)
 	// (the thumb in the interface's own greys, not the text's light: a surface's border at rest, the weak text under the
 	// pointer, held a step further toward the text; no accent, which the rest of the window already shows)
 	if s.theme == nil || s.theme.finish != .Flat {
 		face := color_from_tags(s, b.tags_key, hot || active ? "weak text" : "border")
-		if active && s.sb_arrow == 0 { face = draw.mix(face, color_from_tags(s, b.tags_key, "text"), SCROLLBAR_HELD_TOWARD_TEXT) }
+		if held { face = draw.mix(face, color_from_tags(s, b.tags_key, "text"), SCROLLBAR_HELD_TOWARD_TEXT) }
 		face.a *= shows
 		draw.rect(dc, thumb, tuned(face), radius)
 		scrollbar_thumb_marks(s, dc, b, thumb, face, radius, axis, shows)
 	} else {
 		draw.rect(dc, thumb, tuned(c), radius)
-	}
-	if axis == .X { return }
-	start, end, arrows := scrollbar_arrow_rects(b)
-	if !arrows { return }
-	half := w * SCROLLBAR_ARROW_GLYPH_FRACTION * 0.5
-	for r, i in ([2]Rect{start, end}) {
-		dir: f32 = i == 0 ? -1 : 1
-		held := active && s.sb_arrow == dir
-		glyph.a = (held ? SCROLLBAR_THUMB_HELD_ALPHA : (hot && contains(r, s.mouse) ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
-		mid := draw.rect_center(r)
-		draw.triangle(dc, {mid.x, mid.y + dir * half}, {mid.x - half, mid.y - dir * half}, {mid.x + half, mid.y - dir * half}, tuned(glyph))
 	}
 }

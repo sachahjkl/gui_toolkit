@@ -392,6 +392,45 @@ the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) {
 	testing.expect(t, !r.back && !r.front && r.around, "what is around them")
 }
 
+// A text area that scrolls itself has the toolkit's scroll bar: its thumb at rest is the one of a view that scrolls, in the
+// interface's greys in the machined finish (it had a look of its own, a tint of the text).
+@(test)
+a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) {
+	Run :: struct { area: ui.Text_Area, view: ui.Rect }
+	r: Run
+	ui.area_set(&r.area, strings.repeat("a line of the text area\n", 60, context.temp_allocator))
+	defer ui.area_destroy(&r.area)
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
+		if ui.row() {
+			ui.next({width = ui.pct(0.5), height = ui.fill()})
+			if ui.scroll_y("###view") {
+				r.view = ui.parent_box().rect
+				for i in 0 ..< 60 { ui.label(fmt.tprintf("row %d###r%d", i, i)) }
+			}
+			ui.next({width = ui.pct(0.5), height = ui.fill()})
+			ui.text_edit("###area", &r.area)
+		}
+	}})
+	// (the machined finish, a program's: its thumbs in the interface's greys; flat, both are a tint of the text)
+	if s.state.theme != nil { s.state.theme.finish = .Machined }
+	session.frames(s, 3)
+	img := session.capture(s)
+	view := session.get(s, "view")
+	_, thumb, ok := ui.scrollbar_rects(view)
+	if !testing.expect(t, ok, "the view scrolls") { return }
+	want := session.pixel(img, int((thumb.min.x + thumb.max.x) * 0.5), int((thumb.min.y + thumb.max.y) * 0.5))
+	area := session.get(s, "area")
+	found := false
+	for x in int(area.rect.max.x) - 16 ..< int(area.rect.max.x) {
+		for y in int(area.rect.min.y) ..< int(area.rect.min.y) + 40 {
+			if session.near(session.pixel(img, x, y), want, 2) { found = true }
+		}
+	}
+	testing.expectf(t, found, "the area's thumb is the view's: %v", want)
+}
+
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
 a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {

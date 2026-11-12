@@ -27,7 +27,6 @@ TEXT_UNDO_MAX :: 200
 @(private="file") end_slack :: proc() -> f32 { return TEXT_EDIT_END_SLACK_PX * gs().scale }
 // What the selection shows of a line break.
 @(private="file") TEXT_EDIT_BREAK_SELECTION_EM :: 0.35
-@(private="file") TEXT_EDIT_THUMB_HOT_ALPHA :: 0.45
 @(private="file") TEXT_EDIT_GUTTER_BG_ALPHA_FACTOR :: 0.35
 @(private="file") TEXT_EDIT_ERROR_COLOR :: Color{0.85, 0.25, 0.25, 1}
 @(private="file") TEXT_EDIT_ERROR_LINE_DIVISOR :: 12   // the error underline's thickness: font size over this
@@ -247,8 +246,8 @@ Text_Edit_Draw :: struct {
 	selection, caret, weak, gutter_bg, gutter_line: Color,
 	mono:        font.Font_Id,
 	bars:        Editor_Bars,
-	bar_color:   Color,
 	bar_hot:     Text_Scrollbar,   // hovered or held
+	bar_held:    Text_Scrollbar,   // held
 	highlight:   ^Text_Highlight,   // nil: plain text in b.text_color
 	error_color: Color,
 }
@@ -319,20 +318,16 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if d.focused && d.caret_on { draw.rect(dc, caret_rect, d.caret) }
 	draw.pop_clip(dc)
 
-	// scrollbars
+	// scrollbars: the toolkit's look (scrollbar_paint), at the editor's place: it scrolls itself
 	for which in ([2]Text_Scrollbar{.Vertical, .Horizontal}) {
 		has := which == .Vertical ? d.bars.has_v : d.bars.has_h
 		if !has { continue }
-		track := which == .Vertical ? d.bars.vtrack : d.bars.htrack
-		thumb := which == .Vertical ? d.bars.vthumb : d.bars.hthumb
-		w := which == .Vertical ? track.max.x - track.min.x : track.max.y - track.min.y
-		c := d.bar_color
-		hot := d.bar_hot == which
 		shows := scrollbar_opacity(s, b)
 		if shows <= SCROLLBAR_HIDDEN_ALPHA { continue }
-		if hot { tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows; draw.rect(dc, track, tuned(tc), w * 0.5 * rounding(s)) }
-		c.a = (hot ? TEXT_EDIT_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA) * shows
-		draw.rect(dc, thumb, tuned(c), w * 0.5 * rounding(s))
+		track := which == .Vertical ? d.bars.vtrack : d.bars.htrack
+		thumb := which == .Vertical ? d.bars.vthumb : d.bars.hthumb
+		held := d.bar_held == which
+		scrollbar_paint(s, dc, b, track, thumb, which == .Vertical ? .Y : .X, d.bar_hot == which, held, held, shows)
 	}
 
 	// line numbers (not scrolled horizontally): one per paragraph, on its first visual line
@@ -809,7 +804,7 @@ edit_fill_draw :: proc(e: ^Edit_Build, content: Vec2, placeholder: string, mono:
 		if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
 	}
 	d.bars = editor_bars(b.rect, gutter, pad, b.font_size, content, a.scroll, e.wrap_w > 0)
-	d.bar_color = color("text")
+	d.bar_held = a.sb_drag
 	mpos := b.rect.min + res.mouse
 	if a.sb_drag != .None { d.bar_hot = a.sb_drag } else if res.hovering {
 		toward, _ := scrollbar_grab()
