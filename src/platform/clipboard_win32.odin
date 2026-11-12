@@ -7,6 +7,7 @@ package platform
 // DropEffect" = copy, or move for files that were cut. PNG goes through the toolkit's own codec (src/png, clipboard.odin).
 
 import "base:runtime"
+import "core:slice"
 import "core:strings"
 import "core:sync"
 import win "core:sys/windows"
@@ -73,6 +74,25 @@ clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img:
 	return
 }
 
+// The clipboard's image as it holds it, still encoded (heap): its PNG, else its DIB. The decoding is the program's, off its
+// interface's thread (clipboard_image_decode).
+@(private = "file")
+clip_image_bytes :: proc(w: ^Window) -> (data: []u8, mime: string, ok: bool) {
+	if !open_clipboard(w) { return }
+	defer win.CloseClipboard()
+	for name in ([]string{"PNG", "image/png"}) {
+		if b := clip_bytes(u32(registered_format(name)), context.temp_allocator); len(b) > 0 {
+			return slice.clone(b, runtime.heap_allocator()), strings.clone("image/png", runtime.heap_allocator()), true
+		}
+	}
+	for f in ([]u32{win.CF_DIBV5, win.CF_DIB}) {
+		if b := clip_bytes(f, context.temp_allocator); len(b) > 0 {
+			return slice.clone(b, runtime.heap_allocator()), strings.clone("image/x-dib", runtime.heap_allocator()), true
+		}
+	}
+	return
+}
+
 // The clipboard's HTML: the fragment (UTF-8 markup) and the page it came from (allocator).
 clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html, source_url: string, ok: bool) {
 	if clip_is_virtual(w) { return clip_store_html(allocator) }
@@ -124,6 +144,8 @@ clipboard_request :: proc(w: ^Window, format: Clipboard_Format) -> u64 {
 			r.files, _ = clipboard_get_files(w)
 			r.ok = len(r.files) > 0
 			r.cut = r.ok && clipboard_files_cut(w)
+		case .Image:
+			r.data, r.mime, r.ok = clip_image_bytes(w)
 		}
 	}
 	clipboard_reply_queue(w, r)

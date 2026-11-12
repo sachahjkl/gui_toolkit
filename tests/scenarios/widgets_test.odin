@@ -4,6 +4,7 @@ package scenarios_test
 // a virtual list scrolled by the program (and one of 100 000 rows that changes nothing, not walked), a menu's heading, posted calls by the window, selection cleared.
 
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import "core:testing"
 import "../../src/platform"
@@ -577,6 +578,28 @@ files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) {
 	testing.expect(t, !platform.clipboard_files_cut(w), "no files, no cut")
 }
 
+// An image asked for comes as its owner holds it, still encoded, and decodes off the interface's thread to its pixels.
+@(test)
+a_clipboard_image_comes_encoded :: proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, no_renderer = true})
+	w := s.win
+	_ = platform.poll_events(w, false)   // (what the start queued)
+	px := []u8{255, 0, 0, 255, 0, 0, 255, 128}
+	testing.expect(t, platform.clipboard_set_image(w, {px, {2, 1}}), "an image")
+	asked := platform.clipboard_request(w, .Image)
+	answers := 0
+	for e in platform.poll_events(w, false) {
+		if e.kind != .Clipboard_Data { continue }
+		answers += 1
+		r := e.clipboard
+		testing.expect(t, r.id == asked && r.ok && r.format == .Image, "the image")
+		testing.expect_value(t, r.mime, "image/png")
+		img, ok := platform.clipboard_image_decode(r.mime, r.data, context.temp_allocator)
+		testing.expect(t, ok && img.size == {2, 1} && slice.equal(img.rgba, px), "its pixels")
+	}
+	testing.expect_value(t, answers, 1)
+}
+
 // A read of the clipboard asked for returns at once: nothing is answered in the call, each request gets one answer at the
 // next poll_events, by its id, and none comes after. A reply injected (another program's clipboard, played) comes whole.
 @(test)
@@ -601,7 +624,7 @@ a_clipboard_request_is_answered_at_the_next_poll :: proc(t: ^testing.T) {
 		} else if r.id == text {
 			testing.expect(t, r.ok && r.format == .Text && r.text == "two files", "the text")
 		} else if r.id == image {
-			testing.expect(t, !r.ok, "an image is not read this way")
+			testing.expect(t, !r.ok, "no image on it")
 		} else {
 			testing.expect(t, false, "an answer no request asked for")
 		}

@@ -38,8 +38,9 @@ for e in events {
 
 | | |
 |---|---|
-| `clipboard_request(w, format) -> u64` | `.Text` or `.Files`; the request's id (never 0; 0: no window). `.Html` and `.Image` are answered not ok |
-| `Event.clipboard: Clipboard_Reply` | `id`, `format`, `ok` (it was there), `text`, `files` (absolute paths), `cut` (a paste moves them) |
+| `clipboard_request(w, format) -> u64` | `.Text`, `.Files` or `.Image`; the request's id (never 0; 0: no window). `.Html` is answered not ok |
+| `Event.clipboard: Clipboard_Reply` | `id`, `format`, `ok` (it was there), `text`, `files` (absolute paths), `cut` (a paste moves them), `data` and `mime` (an image as its owner holds it, still encoded: PNG, JPEG, BMP, or `image/x-dib` on Windows) |
+| `clipboard_image_decode(mime, data) -> (Clipboard_Image, ok)` | the pixels of a reply's image; pure, for a thread of the program's: a large picture is not decoded on the interface's thread |
 
 - One answer per request, in a later `poll_events`, never in the call. The text and the paths belong to the window: they
   live until the next `poll_events`. A program clones what it keeps.
@@ -83,7 +84,6 @@ answer is dropped. One paste waits at a time: a second request replaces the firs
 | `clipboard_sequence() -> u32` | changes whenever a program (this one too) writes |
 | `clipboard_watch(w, on)`, `clipboard_changed(w)` | the window wakes when the clipboard changes; `clipboard_changed` says so once (the first call says true) |
 | `png_encode(img) -> []u8`, `png_decode(bytes) -> (Clipboard_Image, ok)` | PNG through the toolkit's codec ([png.md](png.md)), on every system; `png_encode` at `.Fast` |
-| `clipboard_image_decode(mime, bytes) -> (Clipboard_Image, ok)` | an image file of `image/png`, `image/jpeg`, `image/bmp` or `image/x-bmp` as straight RGBA8 (pure) |
 | `clipboard_pick_mime(offered, wanted) -> string` | the first of `wanted` that `offered` holds, the case ignored; "" when none (pure) |
 | `gnome_copied_files_encode(paths, cut) -> string` | the text of `x-special/gnome-copied-files` (pure) |
 | `clipboard_files_cut_decode(mime, bytes) -> bool` | whether `x-special/gnome-copied-files` or `application/x-kde-cutselection` says cut (pure) |

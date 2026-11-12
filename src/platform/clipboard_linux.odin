@@ -17,6 +17,7 @@ package platform
 // X11. An X server without XFIXES only tells this process when it loses the clipboard.
 
 import "base:runtime"
+import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:time"
@@ -195,6 +196,11 @@ clip_request_mimes :: proc(w: ^Window, format: Clipboard_Format) -> []string {
 		for m in wanted {
 			if !wayland || wl_offer_has_mime(wlc.offer_mimes[:], m) { append(&out, m) }
 		}
+	case .Image:
+		wanted := CLIPBOARD_IMAGE_MIMES
+		for m in wanted {
+			if !wayland || wl_offer_has_mime(wlc.offer_mimes[:], m) { append(&out, m) }
+		}
 	}
 	return out[:]
 }
@@ -220,6 +226,8 @@ clip_reads_pump :: proc(w: ^Window) {
 			if !done { return }
 			append(&r.got, data)
 			r.running = false
+			// (an image is one of its types, the best first: the others would be the same picture, converted by its owner)
+			if r.reply.format == .Image && len(data) > 0 { break }
 		}
 		clip_read_answer(w, r)
 		clip_read_free(r)
@@ -321,6 +329,12 @@ clip_read_answer :: proc(w: ^Window, r: ^Clip_Read) {
 		}
 		reply.ok = len(reply.files) > 0
 		reply.cut = reply.ok && reply.cut
+	case .Image:
+		for b, i in r.got {
+			if len(b) == 0 { continue }
+			reply.data, reply.mime, reply.ok = slice.clone(b), strings.clone(r.mimes[i]), true
+			break
+		}
 	}
 	clipboard_reply_queue(w, reply)
 }

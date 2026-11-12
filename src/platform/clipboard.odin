@@ -20,6 +20,7 @@ package platform
 // (html_format_wrap / html_format_fragment, dragdrop.odin).
 
 import "base:runtime"
+import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:time"
@@ -201,6 +202,8 @@ Clipboard_Reply :: struct {
 	text:   string,             // .Text
 	files:  []string,           // .Files: absolute paths
 	cut:    bool,               // .Files: they were cut, a paste moves them
+	data:   []u8,               // .Image: the image as its owner gave it, still encoded: a program decodes it off its interface's thread (clipboard_image_decode)
+	mime:   string,             // .Image: what `data` is (one of CLIPBOARD_IMAGE_MIMES, or "image/x-dib": a Windows DIB)
 }
 
 // The next request's id: never 0, which is "no request".
@@ -229,6 +232,10 @@ clip_store_reply :: proc(r: ^Clipboard_Reply) {
 	case .Files:
 		r.files, r.ok = clip_store_files()
 		r.cut = r.ok && clip_store_files_cut()
+	case .Image:
+		sync.mutex_lock(&clip.mutex)
+		defer sync.mutex_unlock(&clip.mutex)
+		if len(clip.image_png) > 0 { r.data, r.mime, r.ok = slice.clone(clip.image_png), strings.clone("image/png"), true }
 	}
 }
 
@@ -237,6 +244,7 @@ clipboard_reply_clone :: proc(r: Clipboard_Reply) -> (out: Clipboard_Reply) {
 	context.allocator = runtime.heap_allocator()
 	out = r
 	out.text = strings.clone(r.text)
+	out.data, out.mime = slice.clone(r.data), strings.clone(r.mime)
 	out.files = nil
 	if len(r.files) > 0 {
 		out.files = make([]string, len(r.files))
@@ -251,7 +259,8 @@ clipboard_reply_free :: proc(r: ^Clipboard_Reply) {
 	delete(r.text)
 	for p in r.files { delete(p) }
 	delete(r.files)
-	r.text, r.files = "", nil
+	delete(r.data); delete(r.mime)
+	r.text, r.files, r.data, r.mime = "", nil, nil, ""
 }
 
 // How rgba_to_dib writes the pixels.
@@ -548,7 +557,8 @@ clipboard_mime_in :: proc(m: string, list: []string) -> bool {
 	return false
 }
 
-// The pixels of an image file of one of CLIPBOARD_IMAGE_MIMES (PNG, JPEG, BMP), as straight RGBA. Pure.
+// The pixels of an image file of one of CLIPBOARD_IMAGE_MIMES (PNG, JPEG, BMP), or of a Windows DIB ("image/x-dib": a
+// Clipboard_Reply's on Windows), as straight RGBA. Pure: on any thread.
 clipboard_image_decode :: proc(mime: string, data: []u8, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
 	heap := runtime.heap_allocator()   // (the decoder's own picture, freed here)
 	decoded: ^image.Image
@@ -560,6 +570,8 @@ clipboard_image_decode :: proc(mime: string, data: []u8, allocator := context.al
 		decoded, err = jpeg.load_from_bytes(data, {}, heap)
 	case ascii.equal_fold(mime, "image/bmp"), ascii.equal_fold(mime, "image/x-bmp"):
 		decoded, err = bmp.load_from_bytes(data, {}, heap)
+	case ascii.equal_fold(mime, "image/x-dib"):
+		return dib_to_rgba(data, allocator)
 	case:
 		return
 	}
