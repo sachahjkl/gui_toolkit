@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.236.1] - 2026-11-12
+
+### Fixed
+- **A floating panel's corner has a corner's cursor**: it asked for `nwse-resize`, which some cursor themes lack; their fallback (`bd_double_arrow`) is drawn the other way in some of them, a diagonal toward the bottom left. It asks for `se-resize`, as a window's corner and a dialog's grip do.
+
 ## [0.236.0] - 2026-11-12
 
 ### Added
@@ -3067,6 +3072,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.236.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.1
 [0.236.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.236.0
 [0.235.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.235.0
 [0.234.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.234.1
