@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.212.0] - 2026-11-12
+
+### Added
+- **`config.User_Writer`: the preferences written off the loop**. `user_writer_save`, once per round of a program's loop, serializes the user's values when they changed and hands them to the writer's thread, which writes the file; a newer text replaces one not written yet. `user_writer_failed` tells a failed write once, `user_writer_stop` writes the last changes and ends the thread. A disk write on the loop froze the window at each change.
+
 ## [0.211.0] - 2026-11-12
 
 ### Added
@@ -2855,6 +2860,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.212.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.212.0
 [0.211.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.211.0
 [0.210.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.210.0
 [0.209.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.209.1
