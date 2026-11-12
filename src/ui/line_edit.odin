@@ -287,6 +287,85 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
+// What a key does to a field, as every field of the toolkit does it: Left, Right, Home, End move the caret (Ctrl: by words;
+// Shift: the selection with it); Backspace and Delete take a letter (Ctrl: a word) or the selection; Ctrl+A selects all;
+// Ctrl+C, X, V copy, cut and paste (Ctrl+Insert, Shift+Delete, Shift+Insert too); Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z
+// redo. True when the key is one of those (applied to `f`, whether it changed it or not): the caller takes it. Return,
+// Escape and typed text are the caller's. `masked`: a secret, neither copied nor cut. line_edit reads its keys with it; a
+// field the keyboard reaches another way (a menu's search) gives it its own.
+field_key :: proc(f: ^Text_Field, key: platform.Key, mods: platform.Modifiers, masked := false) -> bool {
+	ctrl, shift, cs := platform.Modifiers{.Ctrl}, platform.Modifiers{.Shift}, platform.Modifiers{.Ctrl, .Shift}
+	move :: proc(f: ^Text_Field, to: int, extend: bool) {
+		f.cursor = to
+		if !extend { f.mark = to }
+	}
+	deleting :: proc(f: ^Text_Field, back: bool) -> bool {
+		can := f.cursor != f.mark || (back ? f.cursor > 0 : f.cursor < len(f.buf))
+		if can { field_checkpoint(f, .Deleting) }
+		return can
+	}
+	text := field_string(f)
+	lo, hi := sel_range(f)
+	#partial switch key {
+	case .Left, .Right, .Home, .End:
+		ext := mods == shift || mods == cs
+		if mods == {} || mods == shift {
+			#partial switch key {
+			case .Left:  move(f, (lo != hi && !ext) ? lo : prev_index(text, f.cursor), ext)
+			case .Right: move(f, (lo != hi && !ext) ? hi : next_index(text, f.cursor), ext)
+			case .Home:  move(f, 0, ext)
+			case .End:   move(f, len(f.buf), ext)
+			}
+		} else if (mods == ctrl || mods == cs) && (key == .Left || key == .Right) {
+			move(f, key == .Left ? word_left(text, f.cursor) : word_right(text, f.cursor), ext)
+		} else {
+			return false
+		}
+	case .Backspace:
+		switch mods {
+		case {}:   if deleting(f, true) && !delete_selection(f) { at := prev_index(text, f.cursor); remove_range(&f.buf, at, f.cursor); f.cursor, f.mark = at, at }
+		case ctrl: if deleting(f, true) && !delete_selection(f) { at := word_left(text, f.cursor); remove_range(&f.buf, at, f.cursor); f.cursor, f.mark = at, at }
+		case: return false
+		}
+	case .Delete:
+		switch mods {
+		case {}:    if deleting(f, false) && !delete_selection(f) { remove_range(&f.buf, f.cursor, next_index(text, f.cursor)) }
+		case ctrl:  if deleting(f, false) && !delete_selection(f) { remove_range(&f.buf, f.cursor, word_right(text, f.cursor)) }
+		case shift: if masked { return false }; field_cut(f)
+		case: return false
+		}
+	case .A:
+		if mods != ctrl { return false }
+		field_select_all(f)
+	case .C, .X:
+		if mods != ctrl || masked { return false }
+		if key == .C { field_copy(f) } else { field_cut(f) }
+	case .Insert:
+		switch mods {
+		case ctrl:  if masked { return false }; field_copy(f)
+		case shift: field_paste(f)
+		case: return false
+		}
+	case .V:
+		if mods != ctrl { return false }
+		field_paste(f)
+	case .Z:
+		switch mods {
+		case ctrl: field_undo(f)
+		case cs:   field_redo(f)
+		case: return false
+		}
+	case .Y:
+		if mods != ctrl { return false }
+		field_redo(f)
+	case:
+		return false
+	}
+	f.cursor = clamp(f.cursor, 0, len(f.buf))
+	f.mark = clamp(f.mark, 0, len(f.buf))
+	return true
+}
+
 // Single-line editor. Tags used: "input" (+ whatever the caller pushed, e.g. "bad" for an invalid value).
 // Supports: typing, selection (shift, mouse drag, double-click word), Home/End, ctrl+arrows (words),
 // Backspace/Delete (ctrl = word), ctrl+A/C/X/V, Enter (committed), Escape (cancelled, drops focus).
@@ -351,45 +430,16 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		}
 
 		if focused {
-			ctrl := platform.Modifiers{.Ctrl}
-			shift := platform.Modifiers{.Shift}
-			cs := platform.Modifiers{.Ctrl, .Shift}
-			move :: proc(f: ^Text_Field, to: int, extend: bool) {
-				f.cursor = to
-				if !extend { f.mark = to }
-			}
 			for r in s.typed {
 				field_checkpoint(f, .Typing)
 				insert_text(f, utf8.runes_to_string({r}, context.temp_allocator))
 			}
-			for mods in ([?]platform.Modifiers{{}, shift}) {
-				ext := mods == shift
-				lo, hi := sel_range(f)
-				if key_press(.Left, mods)  { move(f, (lo != hi && !ext) ? lo : prev_index(field_string(f), f.cursor), ext) }
-				if key_press(.Right, mods) { move(f, (lo != hi && !ext) ? hi : next_index(field_string(f), f.cursor), ext) }
-				if key_press(.Home, mods)  { move(f, 0, ext) }
-				if key_press(.End, mods)   { move(f, len(f.buf), ext) }
+			// (the keys in the order they came; a dialog open over the field holds them)
+			if !keys_held_by_dialog(s) {
+				for e, i in s.events.list {
+					if !s.events.consumed[i] && field_key(f, e.key, e.mods, masked) { s.events.consumed[i] = true }
+				}
 			}
-			for mods in ([?]platform.Modifiers{ctrl, cs}) {
-				ext := mods == cs
-				if key_press(.Left, mods)  { move(f, word_left(field_string(f), f.cursor), ext) }
-				if key_press(.Right, mods) { move(f, word_right(field_string(f), f.cursor), ext) }
-			}
-			deleting :: proc(f: ^Text_Field, back: bool) -> bool {
-				can := f.cursor != f.mark || (back ? f.cursor > 0 : f.cursor < len(f.buf))
-				if can { field_checkpoint(f, .Deleting) }
-				return can
-			}
-			if key_press(.Backspace) && deleting(f, true) { if !delete_selection(f) { lo := prev_index(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
-			if key_press(.Delete) && deleting(f, false)    { if !delete_selection(f) { hi := next_index(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
-			if key_press(.Backspace, ctrl) && deleting(f, true) { if !delete_selection(f) { lo := word_left(field_string(f), f.cursor); remove_range(&f.buf, lo, f.cursor); f.cursor, f.mark = lo, lo } }
-			if key_press(.Delete, ctrl) && deleting(f, false)    { if !delete_selection(f) { hi := word_right(field_string(f), f.cursor); remove_range(&f.buf, f.cursor, hi) } }
-			if key_press(.A, ctrl) { field_select_all(f) }
-			if !masked && (key_press(.C, ctrl) || key_press(.Insert, ctrl)) { field_copy(f) }
-			if !masked && (key_press(.X, ctrl) || key_press(.Delete, shift)) { field_cut(f) }
-			if key_press(.V, ctrl) || key_press(.Insert, shift) { field_paste(f) }
-			if key_press(.Z, ctrl) { field_undo(f) }
-			if key_press(.Y, ctrl) || key_press(.Z, cs) { field_redo(f) }
 			if key_press(.Return) { res.committed = true }
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			f.cursor = clamp(f.cursor, 0, len(f.buf))

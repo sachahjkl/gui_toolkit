@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 import "../draw"
@@ -108,17 +109,38 @@ Menu_Level :: struct {
 	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
 	search:       bool,      // typing searches its items (ctx_menu_open's `search`)
-	query:        [MENU_QUERY_BYTES]u8,   // what was typed (search), query_len bytes of UTF-8
-	query_len:    int,
+	query:        Text_Field,   // what was typed (search): a field's text, edited by a field's keys (field_key)
 	typed_ms:     f64,       // when the query last changed (or the menu opened): its caret is solid, then blinks
 	pick_first:   bool,      // the query changed: the first item that matches is selected when it is built
+	// a menu that searches stays where it was first laid out and never narrows: what is typed takes items away, and the
+	// menu that flipped or moved, narrower at each letter, ran from under the pointer
+	held:         bool,
+	held_pos:     Vec2,
+	held_width:   f32,
 }
-
-@(private) MENU_QUERY_BYTES :: 64
 
 // What was typed in a menu that searches ("" none).
 @(private)
-menu_query :: proc(lv: ^Menu_Level) -> string { return string(lv.query[:lv.query_len]) }
+menu_query :: proc(lv: ^Menu_Level) -> string { return field_string(&lv.query) }
+
+// A key in a menu that searches: a field's key (field_key: the caret, the selection, Ctrl+A, a word taken back, a paste)
+// goes to its query; the menu keeps what moves in its items and what chooses or closes. While nothing is typed, Left,
+// Right, Home and End are the menu's (a submenu, the first and the last item). A space is typed, not a choice. True:
+// the key was the query's.
+@(private = "file")
+menu_query_key :: proc(lv: ^Menu_Level, e: platform.Event) -> bool {
+	#partial switch e.key {
+	case .Up, .Down, .Page_Up, .Page_Down, .Return, .Escape, .Tab: return false
+	case .Space: return e.mods == {}
+	case .Left, .Right, .Home, .End: if len(lv.query.buf) == 0 { return false }
+	}
+	before := strings.clone(menu_query(lv), context.temp_allocator)
+	c0, m0 := lv.query.cursor, lv.query.mark
+	if !field_key(&lv.query, e.key, e.mods) { return false }
+	if menu_query(lv) != before { lv.pick_first, lv.sel = true, -1 }
+	if menu_query(lv) != before || lv.query.cursor != c0 || lv.query.mark != m0 { lv.typed_ms = now_ms() }
+	return true
+}
 
 // Whether a row of the level that is being built is shown: no search, or its label has the query's letters in order.
 @(private = "file")
@@ -197,12 +219,13 @@ menu_pop_to :: proc(n: int) {
 		lv := pop(&s.menus)
 		delete(lv.items)
 		delete(lv.prev)
+		field_destroy(&lv.query)
 	}
 }
 
 @(private)
 menus_destroy :: proc(s: ^State) {
-	for &lv in s.menus { delete(lv.items); delete(lv.prev) }
+	for &lv in s.menus { delete(lv.items); delete(lv.prev); field_destroy(&lv.query) }
 	delete(s.menus)
 	delete(s.menu_build)
 	delete(s.menu_keys.list)
@@ -433,23 +456,16 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			s.menu_keys.consumed[i] = true
 			valid := lv.sel >= 0 && lv.sel < len(items) && items[lv.sel].enabled
 			if lv.search && e.kind == .Text {
-				buf, n := utf8.encode_rune(e.text)
-				if lv.query_len + n <= MENU_QUERY_BYTES && e.text >= ' ' {
-					copy(lv.query[lv.query_len:], buf[:n])
-					lv.query_len += n
+				if e.text >= ' ' {
+					buf, n := utf8.encode_rune(e.text)
+					field_checkpoint(&lv.query, .Typing)
+					insert_text(&lv.query, string(buf[:n]))
 					lv.pick_first, lv.sel = true, -1
 					lv.typed_ms = now_ms()
 				}
 				continue
 			}
-			if lv.search && e.kind != .Text && e.key == .Backspace && lv.query_len > 0 {
-				_, size := utf8.decode_last_rune_in_string(menu_query(lv))
-				lv.query_len -= size
-				lv.pick_first, lv.sel = true, -1
-				lv.typed_ms = now_ms()
-				continue
-			}
-			if lv.search && e.kind != .Text && e.key == .Space { continue }   // (a space is typed, not a choice)
+			if lv.search && e.kind != .Text && menu_query_key(lv, e) { continue }
 			if e.kind == .Text {
 				want := unicode.to_lower(e.text)
 				for k in 1 ..= len(items) {
@@ -489,9 +505,18 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	// (its content's height: the last layout's; taller than the window, the rows leave room for the scroll bar)
 	lv.scrolls = !first && panel.view_bounds.y > s.window_size.y
 	w := (width > 0 ? width : max(lv.prev_width, em * MENU_MIN_WIDTH_EM)) + menu_bar_room(lv, em)
+	if lv.search {
+		w = max(w, lv.held_width)
+		lv.held_width = w
+	}
 	lv.eff_width = w
 	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : Vec2{panel.size.x, min(panel.view_bounds.y, s.window_size.y)}
 	pos := menu_place(lv, depth, size, s.window_size, em)
+	// (a menu that searches: its corner where its first measured frame put it, held in the window)
+	if lv.search && !first {
+		if !lv.held { lv.held, lv.held_pos = true, pos }
+		pos = clamp_popup(lv.held_pos, size, s.window_size)
+	}
 	// (wherever it is built, a menu is a menu: its own tags and the window's style, not those of the field or the dialog
 	// that opens it)
 	push_parent(s.root)
@@ -857,12 +882,16 @@ menu_search_field :: proc(s: ^State, lv: ^Menu_Level, w, em: f32) {
 		caret_on := !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
 		caret_wake(s, since)
 		if q != "" {
-			next({width = text_size(), height = pct(1), text_pad = 0})
-			label(fmt.tprintf("%s###menu_query", q))
-		}
-		next({width = px(max(1, math.round(em / CARET_WIDTH_DIVISOR))), height = px(math.round(em * 1.25)), bg = caret_on ? color("cursor") : Color{}})
-		build_box({.Draw_Background}, "###menu_caret")
-		if q == "" {
+			// (drawn as a field draws itself: the caret where it is, the selection; its text the box's, for what reads it)
+			next({width = fill(), height = pct(1), text_pad = 0})
+			b := build_box({.Clip}, fmt.tprintf("%s###menu_query", text_shown(q)))
+			d := frame_new(Line_Edit_Draw)
+			d^ = {text = strings.clone(q, frame_allocator()), cursor = lv.query.cursor, mark = lv.query.mark, focused = true,
+				caret_on = caret_on, selection = color("selection"), caret = color("cursor")}
+			b.custom, b.custom_user = line_edit_draw, d
+		} else {
+			next({width = px(max(1, math.round(em / CARET_WIDTH_DIVISOR))), height = px(math.round(em * 1.25)), bg = caret_on ? color("cursor") : Color{}})
+			build_box({.Draw_Background}, "###menu_caret")
 			spacer(px(em * 0.2))
 			if tags("weak") {
 				next({width = fill(), height = pct(1), text_pad = 0})

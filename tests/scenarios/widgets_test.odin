@@ -3,6 +3,7 @@ package scenarios_test
 // Widgets no other package reaches, each by what it is for: the colour pickers, toasts, popovers, Tab stops turned off, muted scopes, density, rounding,
 // a virtual list scrolled by the program, a menu's heading, posted calls by the window, selection cleared.
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import "../../src/platform"
@@ -266,6 +267,51 @@ a_menu_that_searches :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Rename") == nil, "the others went")
 	session.key(s, .Return)
 	testing.expect_value(t, r.chosen, "date")
+}
+
+// A menu's search is a field: Ctrl+A and Backspace empty it, Ctrl+Backspace takes a word back, the caret moves. While
+// it filters the menu keeps its corner and its width (it ran from under the pointer, narrower at each letter).
+@(test)
+a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) {
+	Run :: struct { chosen: string }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		key := ui.key_from_string(0, "menu")
+		if s.frames == 1 { ui.ctx_menu_open(key, {50, 50}, search = true) }
+		if ui.ctx_menu(key) {
+			if ui.menu_item("Open").clicked { r.chosen = "open" }
+			if ui.menu_item("Rename the selected files").clicked { r.chosen = "rename" }
+			if ui.menu_item("Copy path").clicked { r.chosen = "copy" }
+		}
+	}})
+	session.frames(s, 3)
+	panel :: proc(s: ^session.Session) -> ui.Rect {
+		b := session.find(s, fmt.tprintf("menu_%d", u64(ui.key_from_string(0, "menu"))))
+		return b != nil ? b.rect : {}
+	}
+	before := panel(s)
+	testing.expect(t, before.max.x > before.min.x, "the menu")
+	session.type_text(s, "copy pa")
+	session.frames(s, 2)
+	after := panel(s)
+	testing.expectf(t, after.min == before.min, "its corner kept (%v, was %v)", after.min, before.min)
+	testing.expectf(t, after.max.x - after.min.x == before.max.x - before.min.x, "its width kept (%v, was %v)", after, before)
+	testing.expect(t, session.find_text(s, "Open") == nil, "filtered")
+	session.key(s, .Backspace, {.Ctrl})
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "copy ") != nil, "Ctrl+Backspace: a word back")
+	session.key(s, .A, {.Ctrl})
+	session.key(s, .Backspace)
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Type to search") != nil && session.find_text(s, "Open") != nil, "Ctrl+A, Backspace: empty, all the items")
+	session.type_text(s, "opn")
+	session.key(s, .Left)
+	session.type_text(s, "e")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "open") != nil, "the caret moved: a letter typed in the middle")
+	session.key(s, .Return)
+	testing.expect_value(t, r.chosen, "open")
 }
 
 // key_take: the frame's first key press not taken yet, with its modifiers; a key a build took already is not given.
