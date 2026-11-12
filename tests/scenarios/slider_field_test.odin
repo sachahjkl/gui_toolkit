@@ -66,3 +66,23 @@ the_slider_moves_the_number :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.v, 39)
 	testing.expect_value(t, ui.field_string(&r.f.text), "39")
 }
+
+// The wheel up over the field or the slider is a step more, down a step less; − and + a step each.
+@(test)
+the_wheel_and_the_buttons_step_the_value :: proc(t: ^testing.T) {
+	r := Run{v = 4}
+	defer ui.slider_field_destroy(&r.f)
+	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	session.wheel(s, session.center(session.get(s, "value")), {0, -1})
+	testing.expect_value(t, r.v, 5)
+	session.wheel(s, session.center(session.get(s, "slider")), {0, 2})
+	testing.expect_value(t, r.v, 3)
+	testing.expect_value(t, ui.field_string(&r.f.text), "3")
+	session.click(s, "inc")
+	testing.expect_value(t, r.v, 4)
+	session.click(s, "dec")
+	session.click(s, "dec")
+	testing.expect_value(t, r.v, 2)
+	session.wheel(s, session.center(session.get(s, "value")), {0, -1}, {.Shift})
+	testing.expect_value(t, r.v, 12)
+}

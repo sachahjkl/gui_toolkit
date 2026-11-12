@@ -472,40 +472,70 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 
 // The field of a slider_field: kept by the program between frames (slider_field_destroy).
 Slider_Field :: struct {
-	text: Text_Field,
-	box:  Key,   // the field's box, to know whether it has the keyboard
+	text:  Text_Field,
+	box:   Key,   // the field's box, to know whether it has the keyboard
+	wheel: f32,   // notches of the wheel not yet a step (a touchpad sends fractions of one)
 }
 
-// A slider and, beside it, a field where the exact value is typed, then its unit (`unit`; "" none). The field shows
-// the value while it does not have the keyboard; Enter, or the keyboard going elsewhere, applies what was typed:
-// clamped to [lo, hi], rounded to `step` (0: as typed); Escape or text that is not a number gives the value back.
-// `decimals`: the field's digits after the point. Its size: the parent's `next` (the slider takes the room the field
-// and the unit leave). True when the value changed this frame, by the slider or the field.
+// A slider, then − and + around a field where the exact value is typed, then its unit (`unit`; "" none). The field
+// shows the value while it does not have the keyboard; Enter, or the keyboard going elsewhere, applies what was typed:
+// clamped to [lo, hi], rounded to `step` (0: as typed); Escape or text that is not a number gives the value back. The
+// wheel over the slider or the field, and the buttons (held: they repeat), move it a step (Shift: ten); `step` 0: a
+// hundredth of the range. `decimals`: the field's digits after the point. Its size: the parent's `next` (the slider
+// takes the room the rest leaves). True when the value changed this frame.
 slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, step: f32 = 0, decimals := 0, unit := "") -> (changed: bool) {
+	s := gs()
 	em := font_size()
+	k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
 	text_of :: proc(v: f32, decimals: int) -> string { return fmt.tprintf(fmt.tprintf("%%.%df", decimals), v) }
+	move :: proc(value: ^f32, by, lo, hi, step: f32) {
+		v := value^ + by
+		if step > 0 { v = math.round(v / step) * step }
+		value^ = clamp(v, lo, hi)
+	}
 	if row(.Center, {}, id) {
 		before := value^
 		next({width = fill(), height = pct(1)})
-		slider("###slider", value, lo, hi, step, "")   // (no value text on the knob: the field says it)
-		changed = value^ != before
+		slider_sig := slider("###slider", value, lo, hi, step, "")   // (no value text on the knob: the field says it)
 		spacer(px(math.round(em * 0.4)))
 		typing := f.box != 0 && focus_key() == f.box
-		if !typing && field_string(&f.text) != text_of(value^, decimals) { field_set(&f.text, text_of(value^, decimals)) }
-		next({width = px(math.round(em * (3 + f32(decimals) * 0.6))), height = pct(1)})
-		res := line_edit("###value", &f.text, "", menu = false)
-		f.box = res.box.key
-		left := !res.focused && typing   // (the keyboard went elsewhere this frame)
-		if res.committed || left {
-			if v, ok := strconv.parse_f32(strings.trim_space(field_string(&f.text))); ok {
-				if step > 0 { v = math.round(v / step) * step }
-				v = clamp(v, lo, hi)
-				changed |= v != value^
-				value^ = v
+		side := math.round(em * 1.6)
+		for dir in ([2]f32{-1, 1}) {
+			if dir > 0 {
+				if !typing && field_string(&f.text) != text_of(value^, decimals) { field_set(&f.text, text_of(value^, decimals)) }
+				next({width = px(math.round(em * (3 + f32(decimals) * 0.6))), height = pct(1)})
+				res := line_edit("###value", &f.text, "", menu = false)
+				f.box = res.box.key
+				// (the wheel over the field moves the value: it is one line, nothing in it scrolls)
+				res.box.flags += {.Scroll_Self}
+				left := !res.focused && typing   // (the keyboard went elsewhere this frame)
+				if res.committed || left {
+					if v, ok := strconv.parse_f32(strings.trim_space(field_string(&f.text))); ok { move(value, v - value^, lo, hi, step) }
+					field_set(&f.text, text_of(value^, decimals))
+				}
+				if res.cancelled { field_set(&f.text, text_of(value^, decimals)) }
 			}
-			field_set(&f.text, text_of(value^, decimals))
+			next({width = px(side), height = px(side), font = widget_icons(), font_size = math.round(em * 0.9)})
+			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
+			by := dir * k * (.Shift in sig.mods ? 10 : 1)
+			key := sig.box.key
+			if sig.pressed { move(value, by, lo, hi, step); timer_set(key, STEPPER_REPEAT_DELAY_MS) }
+			else if sig.dragging && sig.hovering && timer_due(key) { move(value, by, lo, hi, step); timer_set(key, STEPPER_REPEAT_MS) }
+			if sig.dragging {
+				// a wake at the next repeat, not a frame at every refresh while the button is held
+				if t, ok := s.timers[key]; ok { wake_within(s, max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))) }
+			}
 		}
-		if res.cancelled { field_set(&f.text, text_of(value^, decimals)) }
+		slider_sig.box.flags += {.Scroll_Self}
+		if s.scroll_key != 0 && (s.scroll_key == slider_sig.box.key || s.scroll_key == f.box) {
+			// (up: more, as on a spin box)
+			f.wheel -= s.scroll_delta.y + s.scroll_delta.x
+			n := math.trunc(f.wheel)
+			f.wheel -= n
+			if n != 0 { move(value, n * k * (.Shift in s.mods ? 10 : 1), lo, hi, step) }
+		}
+		changed = value^ != before
+		if changed && !typing { field_set(&f.text, text_of(value^, decimals)) }
 		if unit != "" {
 			spacer(px(math.round(em * 0.3)))
 			if tags("weak") {
@@ -571,8 +601,8 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 // Stepper, segmented control, chips, rating
 
 @(private = "file") STEPPER_SHIFT_AMOUNT :: 10
-@(private = "file") STEPPER_REPEAT_DELAY_MS :: 420
-@(private = "file") STEPPER_REPEAT_MS :: 55
+@(private) STEPPER_REPEAT_DELAY_MS :: 420
+@(private) STEPPER_REPEAT_MS :: 55
 
 // [-] value [+]: hold a button to repeat, Shift = x10. Returns true when the value changed.
 stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
