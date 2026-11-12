@@ -125,6 +125,7 @@ Wl_Window_State :: struct {
 	scale_given: bool,             // a preferred_scale came: until then the scale follows the output's integer one
 	win:         ^Window,          // back pointer for the listeners
 	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
+	frame_held:  bool,             // a picture waited for that word (wl_frame_shown_held): its coming asks for a repaint
 }
 
 @(private)
@@ -802,8 +803,17 @@ wl_frame_shown_done :: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) {
 	wl.proxy_destroy(cb)
 	if st.frame_cb != cb { return }
 	st.frame_cb = nil
-	// (the window's next picture, which waited for this: a repaint wakes the loop)
-	if st.win != nil { st.win.paint_requested = true }
+	// (a picture that waited for this: a repaint makes it. None waited: the word only wakes the loop, which finds nothing
+	// due and sleeps. A repaint at each word drew a window at rest again at every refresh, for ever)
+	if st.frame_held && st.win != nil { st.win.paint_requested = true }
+	st.frame_held = false
+}
+
+// A frame drew no picture: the last one was not shown yet. The word, when it comes, asks for a repaint.
+@(private)
+wl_frame_shown_held :: proc(w: ^Window) {
+	st := wl_state(w)
+	if st != nil && st.frame_cb != nil { st.frame_held = true }
 }
 
 // Asks the word for the window's next commit: call it just before the picture is presented (the present commits it).

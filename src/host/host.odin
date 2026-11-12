@@ -292,7 +292,10 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	}
 	// (the input was read and built; the word that the last picture is shown asks for the next, drawn against the last one
 	// drawn)
-	if !shown { return }
+	if !shown {
+		platform.frame_shown_held(h.win)   // (the word, when it comes, asks for the picture)
+		return
+	}
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	render.frame_begin(r, h.background)

@@ -580,7 +580,8 @@ events_waiting :: proc(w: ^Window) -> bool { return wait_is_over(w) }
 // Whether the compositor has not yet shown the window's last picture: Wayland's word (wl_surface.frame) asked by
 // frame_shown_ask has not come. A compositor does not show a window that is covered, minimized or on another workspace,
 // and a present in Fifo waits for that word: the window's thread would wait for ever. The picture's owner makes none
-// while it is pending (host does); the word, when it comes, asks for a repaint. False on X11 and for an offscreen window.
+// while it is pending (host does) and says so (frame_shown_held); the word, when it comes, asks for a repaint then. False
+// on X11 and for an offscreen window.
 frame_shown_pending :: proc(w: ^Window) -> bool {
 	if w == nil || w.offscreen || w.backend != .Wayland { return false }
 	return wl_frame_shown_pending(w)
@@ -590,6 +591,13 @@ frame_shown_pending :: proc(w: ^Window) -> bool {
 frame_shown_ask :: proc(w: ^Window) {
 	if w == nil || w.offscreen || w.backend != .Wayland { return }
 	wl_frame_shown_ask(w)
+}
+
+// A frame drew no picture while frame_shown_pending: the word, when it comes, asks for a repaint (which draws it). Without
+// a picture held the word asks nothing: a window at rest sleeps.
+frame_shown_held :: proc(w: ^Window) {
+	if w == nil || w.offscreen || w.backend != .Wayland { return }
+	wl_frame_shown_held(w)
 }
 
 // The word asked by frame_shown_ask is not waited for: no picture was presented after all (nothing changed on screen).
