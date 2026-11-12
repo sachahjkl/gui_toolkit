@@ -14,7 +14,7 @@
 // escape_leaves.
 //
 // A change goes through config.set_from_string at the User layer, so every observer of the registry runs; then
-// Options.changed, where the program saves its file (config.serialize_user, config.write_user_file) and applies what changed.
+// Options.changed, where the program applies what changed (its loop writes the file: config.user_writer_save).
 package tk_prefs_page
 
 import "core:fmt"

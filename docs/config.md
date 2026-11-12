@@ -68,6 +68,16 @@ config.load_file(&p, profile_path, .User)    // missing file = no changes
 config.save_user(&p, profile_path)           // serialize_user then write_user_file, on the calling thread
 ```
 
+A program writes its file off its loop with a `User_Writer`: a disk write there froze the window at each change.
+
+```odin
+config.user_writer_start(&writer, &p, profile_path)   // after the file was read: it has what p holds
+config.user_writer_save(&writer, &p)                  // once per round of the loop: serializes when user_version moved,
+                                                      // the writer's thread writes; a newer text replaces one not written
+if config.user_writer_failed(&writer) { ... }         // a write failed (told once); the next change tries again
+config.user_writer_stop(&writer, &p)                  // at the end: the last changes written, the thread joined
+```
+
 A value read before its definition is registered (the profile file and the command line are read early) is remembered per
 layer and applied when `register` arrives, and survives a round trip even if no definition ever registers it. A user's value
 the definition refuses, in `register` (which counts them) or in `load_file` (a problem), leaves the default in place and stays

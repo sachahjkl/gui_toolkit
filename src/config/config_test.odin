@@ -459,3 +459,51 @@ the_first_save_makes_its_folder :: proc(t: ^testing.T) {
 	load_file(&q, path, .User)
 	testing.expect_value(t, int_of(&q, "net.max_conns"), 9)
 }
+
+// The writer writes the user's file off the loop: nothing while nothing changed, the last of many changes once stopped.
+@(test)
+the_writer_writes_what_changed :: proc(t: ^testing.T) {
+	path := fmt.tprintf("%s/wb_config_writer_test.txt", fsx.temp_dir(context.temp_allocator))
+	os.remove(path)
+	defer os.remove(path)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	wr: User_Writer
+	user_writer_start(&wr, &p, path)
+	user_writer_save(&wr, &p)
+	for v in ([]string{"7", "8", "9"}) {
+		set_from_string(&p, "net.max_conns", v, .User)
+		user_writer_save(&wr, &p)
+	}
+	testing.expect(t, user_writer_stop(&wr, &p), "written")
+	q := prefs_make()
+	defer prefs_destroy(&q)
+	register(&q, DEFS[:])
+	load_file(&q, path, .User)
+	s, ok := user_text(&q, "net.max_conns")
+	testing.expect(t, ok && s == "9", "the last value is in the file")
+
+	// started on what the file has: stopped with no change, it writes nothing
+	os.remove(path)
+	user_writer_start(&wr, &q, path)
+	testing.expect(t, user_writer_stop(&wr, &q))
+	testing.expect_value(t, fsx.path_kind(path), fsx.Path_Kind.Absent)
+}
+
+// A write that fails is told once, and stop says so too.
+@(test)
+the_writer_tells_a_failed_write :: proc(t: ^testing.T) {
+	dir := fmt.tprintf("%s/wb_config_writer_failed_test", fsx.temp_dir(context.temp_allocator))
+	fsx.remove_tree(dir)
+	defer fsx.remove_tree(dir)
+	path := fmt.tprintf("%s/profile", dir)
+	testing.expect(t, os.make_directory_all(path) == nil)   // (what cannot be replaced by a file)
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	wr: User_Writer
+	user_writer_start(&wr, &p, path)
+	set_from_string(&p, "net.max_conns", "9", .User)
+	testing.expect(t, !user_writer_stop(&wr, &p), "stop tells the failure")
+}
