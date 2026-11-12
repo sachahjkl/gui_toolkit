@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.199.0] - 2026-11-12
+
+### Added
+- **`ui.empty_state`: what a view shows when it has nothing to show**: in the middle of the view, an icon in the weak colour, a title, a note, and a button for each thing that can be done about it (the action clicked is returned).
+
+### Fixed
+- **A box in a rounded corner takes that corner**: a title bar's background, a header or any box that fills the corner of a rounded box around it (a dialog, a card, a menu) is rounded there too (`box_drawn_radii`): its square corner showed outside the rounded one. And every widget's own drawing (`rad`, the colour pickers, the tiles, the floating panels' clip) is square under 3 px, as the boxes are (`radius_drawn`).
+
 ## [0.197.4] - 2026-11-12
 
 ### Fixed
@@ -2714,6 +2722,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.199.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.199.0
 [0.197.4]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.4
 [0.198.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.198.0
 [0.197.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.197.3
