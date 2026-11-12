@@ -27,6 +27,17 @@ type_to_field :: proc(field: Key) -> bool {
 	return true
 }
 
+// Takes `r` out of the text typed this build when it is its first character, so no field built after it gets it: a key
+// that is the program's while a field holds a given text (Space in an empty filter opens a preview, and the field never
+// shows a space). Only the first: what follows it in the same build was typed after it ("b r" typed at once keeps its
+// space). True when it took it. Call it before the field is built.
+typed_take :: proc(r: rune) -> bool {
+	s := gs()
+	if len(s.typed) == 0 || s.typed[0] != r { return false }
+	ordered_remove(&s.typed, 0)
+	return true
+}
+
 // A box that edits text (line_edit, text_edit): it takes keys and text itself and is not a list (lists take keys too,
 // for their type-ahead, and scroll their rows).
 @(private)

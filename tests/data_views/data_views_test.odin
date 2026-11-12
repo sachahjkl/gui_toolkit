@@ -34,6 +34,8 @@ App :: struct {
 	search_key: ui.Key,
 	ev:         ui.Table_Events,
 	seg:        int,
+	space_free: bool,   // Space in the empty filter is the program's (typed_take)
+	spaces:     int,    // how many times it was
 }
 
 @(private = "file")
@@ -65,6 +67,7 @@ app_destroy :: proc(app: ^App) {
 build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
 	ui.type_to_field(app.search_key)
+	if app.space_free && ui.focus_key() == app.search_key && ui.field_string(&app.search) == "" && ui.typed_take(' ') { app.spaces += 1 }
 	ui.next({width = ui.px(200), height = ui.px(30)})
 	app.search_key = ui.line_edit("###search", &app.search).box.key
 	if app.t.query != ui.field_string(&app.search) { ui.table_apply(&app.t, &app.d, ui.field_string(&app.search)) }
@@ -629,4 +632,22 @@ new_rows_scroll_nothing :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.t.highlight, "a")
 	ui.table_apply(&app.t, &app.d, "")
 	testing.expect(t, app.t.vl.reveal > 0, "the filter cleared: the row comes into view")
+}
+
+// typed_take: Space in the empty filter is the program's, the field never gets it; once the filter has text it is a space.
+@(test)
+a_character_taken_before_the_field_never_reaches_it :: proc(t: ^testing.T) {
+	app: App
+	app_init(&app)
+	defer app_destroy(&app)
+	app.space_free = true
+	s := session.start(t, {build = build, user = &app, no_renderer = true})
+	session.click(s, "search")
+	testing.expect_value(t, session.focused_name(s), "search")
+	session.type_text(s, " ")
+	testing.expect_value(t, app.spaces, 1)
+	testing.expect_value(t, ui.field_string(&app.search), "")
+	session.type_text(s, "b r")
+	testing.expect_value(t, app.spaces, 1)
+	testing.expect_value(t, ui.field_string(&app.search), "b r")
 }

@@ -193,6 +193,15 @@ if !dialog_open { ui.type_to_field(view.search_key) }
 view.search_key = ui.line_edit("###search", &view.search, "Filter").box.key
 ```
 
+`typed_take(r)` takes the character `r` out of the text typed in this build when it is its first character, so no field
+built after it gets it. True when it took it. The characters after it stay: "b r" typed in one build keeps its space. Use it for a key that is the program's while a field holds a given text: Space in an empty filter
+opens a preview, and the field never shows the space, not even for one frame.
+
+```odin
+if ui.focus_key() == view.search_key && ui.field_string(&view.search) == "" && ui.typed_take(' ') { preview_toggle() }
+view.search_key = ui.line_edit("###search", &view.search, "Filter").box.key
+```
+
 ## A tooltip per segment
 
 `segmented(id, labels, selected, tips)` shows `tips[i]` when the pointer rests on segment `i` ("" or a missing entry: no
