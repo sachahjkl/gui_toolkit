@@ -135,6 +135,11 @@ Wl_Window_State :: struct {
 	win:         ^Window,          // back pointer for the listeners
 	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
 	frame_held:  bool,             // a picture waited for that word (wl_frame_shown_held): its coming asks for a repaint
+	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
+	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
+	presented:   bool,
+	activate_pending: bool,        // raise_window asked the focus before the first picture
+	activate_token:   string,      // raise_window_token did (owned)
 	outside:     Wl_Outside_Bands, // the resize bands around the window (outside_bands_wl_linux.odin)
 	// an overlay (open_overlay): a layer surface instead of a toplevel, on the output of that registry name (0: the
 	// compositor's choice)
@@ -816,6 +821,7 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 // again (wl_hide destroyed them).
 @(private)
 wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
+	st.presented = false
 	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
 	if st.surface == nil { return false }
 	wl.proxy_set_user_data(st.surface, st)
@@ -868,6 +874,7 @@ wl_frame_shown_done :: proc "c" (data: rawptr, cb: Wl_Proxy, time: u32) {
 	// due and sleeps. A repaint at each word drew a window at rest again at every refresh, for ever)
 	if st.frame_held && st.win != nil { st.win.paint_requested = true }
 	st.frame_held = false
+	if st.win != nil { wl_activation_flush(st.win, st) }   // (shown: the compositor knows the window now)
 }
 
 // A frame drew no picture: the last one was not shown yet. The word, when it comes, asks for a repaint.
@@ -881,7 +888,11 @@ wl_frame_shown_held :: proc(w: ^Window) {
 @(private)
 wl_frame_shown_ask :: proc(w: ^Window) {
 	st := wl_state(w)
-	if st == nil || st.surface == nil || st.frame_cb != nil { return }
+	if st == nil || st.surface == nil { return }
+	// (the picture before this one was committed: the window is mapped)
+	if st.presented { wl_activation_flush(w, st) }
+	st.presented = true
+	if st.frame_cb != nil { return }
 	st.frame_cb = wl.proxy_marshal_flags(st.surface, WL_SURFACE_FRAME, wl.callback_interface, wl.proxy_get_version(st.surface), 0, nil)
 	if st.frame_cb != nil { wl.proxy_add_listener(st.frame_cb, &frame_shown_listener, st) }
 }
@@ -979,6 +990,7 @@ wl_destroy :: proc(w: ^Window) {
 	wl_surface_destroy(st)
 	wl.display_flush(wlc.display)
 	delete(st.title)
+	delete(st.activate_token)
 	delete(st.input_rects)
 	free(st)
 	w.wl = nil
@@ -1065,6 +1077,7 @@ wl_first_configure_wait :: proc(st: ^Wl_Window_State) {
 wl_activate :: proc(w: ^Window) {
 	st := wl_state(w)
 	if st == nil || st.surface == nil || wlc.activation == nil { return }
+	if !st.presented { st.activate_pending = true; return }
 	wl_activation_drop(st)   // (one request at a time: the newest)
 	token := wl.proxy_marshal_flags(wlc.activation, XDG_ACTIVATION_GET_TOKEN, &xdg_activation_token_iface, wl.proxy_get_version(wlc.activation), 0, nil)
 	if token == nil { return }
@@ -1084,9 +1097,28 @@ wl_activate :: proc(w: ^Window) {
 wl_activate_token :: proc(w: ^Window, token: string) {
 	st := wl_state(w)
 	if st == nil || st.surface == nil || wlc.activation == nil { return }
+	if !st.presented {
+		delete(st.activate_token)
+		st.activate_token = strings.clone(token)
+		return
+	}
 	ctoken := strings.clone_to_cstring(token, context.temp_allocator)
 	wl.proxy_marshal_flags(wlc.activation, XDG_ACTIVATION_ACTIVATE, nil, wl.proxy_get_version(wlc.activation), 0, ctoken, st.surface)
 	wl.display_flush(wlc.display)
+}
+
+// The activation asked before the window's first picture, sent now that the compositor shows it.
+@(private)
+wl_activation_flush :: proc(w: ^Window, st: ^Wl_Window_State) {
+	if st.activate_token != "" {
+		token := st.activate_token
+		st.activate_token, st.activate_pending = "", false
+		wl_activate_token(w, token)
+		delete(token)
+	} else if st.activate_pending {
+		st.activate_pending = false
+		wl_activate(w)
+	}
 }
 
 @(private)
