@@ -232,6 +232,34 @@ a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) {
 	testing.expect(t, !r.asking, "the dialog answered")
 }
 
+// A list with no type-ahead leaves the letters typed for the program: its filter takes them though the list has the keyboard.
+@(test)
+a_list_with_no_typeahead_leaves_the_letters :: proc(t: ^testing.T) {
+	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, filter: ui.Text_Field, field: ui.Key }
+	r := new(Run)
+	defer { ui.vlist_destroy(&r.st); ui.field_destroy(&r.filter); free(r) }
+	for i in 0 ..< LIST_ROWS { r.ids[i], r.labels[i] = u64(i + 1), "A row" }
+	r.st.list.no_typeahead = true
+	s := session.start(t, {size = WINDOW, user = r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.px(200)})
+		if rows, ok := ui.vlist("###list", &r.st, r.ids[:], r.labels[:]); ok {
+			if s.frames == 1 { ui.set_focus(r.st.key) }
+			for i in rows.first ..< rows.last {
+				ui.next({height = ui.px(LIST_ROW_HEIGHT)})
+				ui.list_row(&r.st.list, i, r.labels[i])
+			}
+		}
+		ui.type_to_field(r.field)
+		res := ui.line_edit("###filter", &r.filter)
+		r.field = res.box != nil ? res.box.key : 0
+	}})
+	session.frames(s, 2)
+	session.type_text(s, "ro")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&r.filter), "ro")
+}
+
 // Text selected outside a field, then taken away by the program.
 @(test)
 a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) {

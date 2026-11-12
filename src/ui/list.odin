@@ -47,6 +47,9 @@ List_State :: struct {
 	typed_len:   int,
 	typed_ms:    f64,
 	seek:        bool,    // type-ahead pending: resolved while the rows are built
+	// the letters typed are not the list's: no type-ahead, they stay for the program (type_to_field: a filter that takes
+	// what is typed over its list, as a file manager's does)
+	no_typeahead: bool,
 	seek_after, seek_first: int,
 	reveal:      int,     // frames left to keep scrolling the active row into view
 	page_rows:   int,     // rows that fit in the view (last frame)
@@ -184,7 +187,7 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 			if st.multi && e.key != .Return && e.key != .Escape { list_marks_clear(st) }   // (a move alone: the active row is the selection)
 		}
 	}
-	if len(s.typed) > 0 {
+	if len(s.typed) > 0 && !st.no_typeahead {
 		if s.time_ms - st.typed_ms > LIST_TYPEAHEAD_MS { st.typed_len = 0 }
 		st.typed_ms = s.time_ms
 		for r in s.typed {

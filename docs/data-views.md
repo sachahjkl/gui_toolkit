@@ -174,8 +174,9 @@ before the first title and the first cell (0: 0.6 em). `Table.header_bg` is the 
 ## Type to filter (`src/ui/type_to_field.odin`)
 
 `type_to_field(field)` gives the keyboard to one field (a filter, a search box) when a printable character was typed in
-this build and no text field has the keyboard. The field takes the character in the same build. A list that has the
-keyboard does not keep the character for its type-ahead: the field gets it. Call it in the build before the field is
+this build and no text field has the keyboard. The field takes the character in the same build. Called before the
+list, it takes the character from a list that has the keyboard; a field built after its list (a filter in a footer) needs
+the list's `no_typeahead`, else the list keeps the letters for its type-ahead. Call it in the build before the field is
 built; the field's key is its box's key from the build before.
 
 ```odin
