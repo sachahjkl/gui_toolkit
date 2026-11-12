@@ -40,6 +40,13 @@ entries := [?]Entry{
 	{"match", .Text, 1}, {"match_bg", .Accent, 0.18},
 	// source code's classes (code.odin, tk_syntax): keywords, strings, comments, calls and directives, types and numbers
 	{"code_keyword", .Purple, 1}, {"code_string", .Good, 1}, {"code_comment", .Weak, 1}, {"code_func", .Blue, 1}, {"code_type", .Cyan, 1},
+	// a diff (tk_diff, under the tag "diff"): a line added or removed on a tint, what changed in it on a stronger one. (Those of a
+	// kind first: under the tag "diff", "diff_added text" and "diff text" tie, the first wins.)
+	{"diff_added background", .Good, 0.13}, {"diff_removed background", .Bad, 0.13},
+	{"diff_added mark", .Good, 0.36}, {"diff_removed mark", .Bad, 0.36},
+	{"diff_added text", .Text, 1}, {"diff_removed text", .Text, 1}, {"diff_added sign", .Good, 1}, {"diff_removed sign", .Bad, 1},
+	{"diff text", .Text, 1}, {"diff sign", .Weak, 1}, {"diff mark_text", .Text, 1}, {"diff line_number", .Weak, 1},
+	{"diff gap", .Weak, 1}, {"diff divider", .Border, 1},
 	{"resize_grip shade", .Border, 1},   // the bevel in a dialog's or a floating panel's corner: toward the border, darker on a light theme, lighter on a dark one
 	// variants
 	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},

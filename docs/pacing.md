@@ -116,6 +116,20 @@ platform.cadence_presented(&c, now)
 so motion advances by whole refresh periods whatever the jitter of the thread's wake-ups; on a timed cadence, the slot the
 frame was timed for. Never before the previous frame's; `dt` is clamped to 0.5 .. 100 ms.
 
+## Deferred: something done once things are quiet
+
+`ui.Deferred` is a debounce with a cap, by the toolkit's clock (`now_ms`: a test's clock moves it). Asked again, it moves back,
+so it comes after what asked for it (a list read again a little after the last event that changed it); but never later than
+`most_ms` after the first ask, so events without end still get it done.
+
+```odin
+ui.deferred_ask(&app.refresh, 150, 1000)            // at each event: due 150 ms after the last, 1 s after the first at most
+if ui.deferred_take(&app.refresh) { refresh(app) }  // at each frame: true once, when it is due; then nothing is asked
+sleep := ui.deferred_in_ms(&app.refresh)            // how long a window at rest may wait (0: nothing asked)
+```
+
+`most_ms` 0: no later than the first wait. To start a wait over, clear it (`d^ = {}`) before asking.
+
 ## What is a choice and what is not
 
 The application's choices are the target rate, the ceiling, `Variable_Refresh` and tearing. The rest follows from the

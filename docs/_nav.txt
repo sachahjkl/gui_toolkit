@@ -43,6 +43,8 @@ Platform and system
   fsx.md              fsx: file helpers
   archive.md          archive: zip and tar
   syntax.md           syntax: the colours of code
+  diff.md             diff: a unified diff, read and shown
+  remote.md           remote: a value read from a server
   ascii.md            ascii: the case of names
   timefmt.md          timefmt: times as people read them
   instance.md         instance: one running copy

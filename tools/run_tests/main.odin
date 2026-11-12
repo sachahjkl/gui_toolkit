@@ -87,6 +87,8 @@ STEPS := []Step{
 	{name = "archive", oses = EVERYWHERE},
 	{name = "syntax", path = "src/syntax", oses = EVERYWHERE},
 	{name = "term", oses = EVERYWHERE},   // (the terminal widget on a screen of its own: no window, no font)
+	{name = "remote", oses = EVERYWHERE},
+	{name = "deferred", oses = EVERYWHERE},
 	{name = "frame_gate"},
 	{name = "frame_slots", oses = EVERYWHERE},
 	{name = "fsx"},
@@ -134,6 +136,7 @@ STEPS := []Step{
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},
+	{name = "diff", one = true, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
