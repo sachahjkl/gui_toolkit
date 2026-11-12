@@ -64,6 +64,7 @@ Frames and threads
   arena.md            arena: lifetimes
   flate.md            flate: DEFLATE streams
   png.md              png: the PNG codec
+  gif.md              gif: animated GIF encoder
   qr.md               qr: QR Codes
   lucide.md           lucide: the Lucide icons
 
