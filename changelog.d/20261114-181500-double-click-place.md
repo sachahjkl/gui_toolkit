@@ -1,0 +1,3 @@
+type: Fixed
+
+**A double click is two presses in one place**: two quick presses at the two ends of a wide box are two clicks, as in a text (a press on a picture, then one beside it, zoomed instead of closing).

@@ -391,9 +391,6 @@ para_at :: proc(text: string, at: int) -> (lo, hi: int) {
 	return
 }
 
-// Presses this close in place (and in time: DOUBLE_CLICK_MS) count up: double, triple click.
-@(private = "file") SEL_MULTI_CLICK_SLOP_PX :: 4
-
 // end_build, after layout: the pointer and the keys act on the selection of this build's tree.
 // A key for the selection in box `k`. It is read at the end of the build, outside every dialog, where key_press gives nothing
 // while one is open: the keys are the selection's when its box is in the dialog on top (text selected in a dialog is copied by
@@ -440,7 +437,7 @@ selection_update :: proc(s: ^State) {
 				continue
 			}
 			now := s.time_ms
-			if now - sel.click_ms < DOUBLE_CLICK_MS && abs(e.pos.x - sel.click_pos.x) < SEL_MULTI_CLICK_SLOP_PX * s.scale && abs(e.pos.y - sel.click_pos.y) < SEL_MULTI_CLICK_SLOP_PX * s.scale {
+			if now - sel.click_ms < DOUBLE_CLICK_MS && abs(e.pos.x - sel.click_pos.x) < MULTI_CLICK_SLOP_PX * s.scale && abs(e.pos.y - sel.click_pos.y) < MULTI_CLICK_SLOP_PX * s.scale {
 				sel.clicks = sel.clicks % 3 + 1
 			} else {
 				sel.clicks = 1

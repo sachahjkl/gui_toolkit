@@ -1020,3 +1020,20 @@ a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) { unwatched.run(
 	session.frame(s)
 	testing.expect(t, r.outside, "the next key is the page's")
 }) }
+
+// Two quick presses far apart on one box are two clicks: a double click is close in time and in place.
+@(test)
+a_double_click_is_two_presses_in_one_place :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Doubles :: struct { n: int }
+	d: Doubles
+	s := session.start(t, {size = {600, 300}, user = &d, build = proc(s: ^session.Session) {
+		ui.next({width = ui.px(400), height = ui.px(100)})
+		if ui.button("wide", "Wide").double_clicked { (^Doubles)(s.user).n += 1 }
+	}})
+	b := session.get(s, "wide")
+	session.click_at(s, b.rect.min + 5)
+	session.click_at(s, b.rect.max - 5)
+	testing.expect_value(t, d.n, 0)
+	session.click_at(s, b.rect.max - 5)
+	testing.expect_value(t, d.n, 1)
+}) }

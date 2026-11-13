@@ -11,6 +11,8 @@ _ :: fmt   // used by the UI_PROBE debug output only
 
 // Presses this close count as a double click (widgets' signal, words of selected text).
 @(private) DOUBLE_CLICK_MS :: 450
+// How far apart (logical pixels) the presses of a double or triple click may be: the same for a box's click and a text's.
+@(private) MULTI_CLICK_SLOP_PX :: 4
 WHEEL_LINE_PX :: 100.0 / 3   // a line of the wheel, in logical px: a browser's (a notch of three lines is 100 px), so a page scrolls here as there
 @(private) HOT_ANCESTORS_MAX :: 64                // ancestors of the hot box that count as hot within (hot_within, .Hot_Within)
 
@@ -63,12 +65,15 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			if e.button == .Right { s.caption_right_down = hot == 0 && on_empty_caption(s, e.pos) }
 			if e.button == .Left { scrollbar_press(s, hot, e.pos) }
 			if e.button == .Left {
-				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < DOUBLE_CLICK_MS {
+				// (two presses at the two ends of a wide box are two clicks, not a double one)
+				near := abs(e.pos.x - s.last_click_pos.x) < MULTI_CLICK_SLOP_PX * s.scale && abs(e.pos.y - s.last_click_pos.y) < MULTI_CLICK_SLOP_PX * s.scale
+				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < DOUBLE_CLICK_MS && near {
 					s.double_key = hot
 					s.last_click_key = 0
 				} else {
 					s.last_click_key = hot
 					s.last_click_ms = s.time_ms
+					s.last_click_pos = e.pos
 				}
 				// keyboard focus follows the click (not into an open menu: what opened it has the keyboard when it closes;
 				// but a field of a menu, a panel's search, takes it: its keys are its own, menu_capture_keys)

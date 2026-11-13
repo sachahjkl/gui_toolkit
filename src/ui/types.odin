@@ -411,6 +411,7 @@ State :: struct {
 	scroll_key:   Key,
 	last_click_key:  Key,
 	last_click_ms:   f64,
+	last_click_pos:  Vec2,   // (a double click is two presses close in time AND in place)
 	inspected:    Key,               // set_inspected: the box lit over everything
 	partial_redraw: bool,            // set_partial_redraw: each frame redraws only what changed (draw_tree)
 	partial_redraw_set: bool,        // draw_tree turned the renderer's partial redraw on: off again when the state is
