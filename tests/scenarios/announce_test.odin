@@ -85,3 +85,12 @@ announce_with_an_action_is_a_toast_even_off :: proc(t: ^testing.T) { unwatched.r
 	ui.announce(&a, .Info, "Version 2 is ready", action = proc(user: rawptr) {})
 	testing.expect_value(t, toasts_alive(s), 1)
 }) }
+
+// A hint about the window itself (press Esc to leave full screen): a toast of the window, even with the messages off.
+@(test)
+announce_in_window_is_a_toast_even_off :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {600, 300}, build = proc(s: ^session.Session) {}})
+	a := ui.Announcer{mode = .Off, state = s.state}
+	ui.announce(&a, .Info, "Press Esc to leave full screen", in_window = true)
+	testing.expect_value(t, toasts_alive(s), 1)
+}) }

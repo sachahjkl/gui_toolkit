@@ -104,7 +104,9 @@ A program says what it just did (copied, saved, deleted) with `ui.announce(&anno
 notification of the system (`notify_async`: nothing waits on the interface's thread; the next one replaces the last), a
 toast of the window where the system shows none, or where the person chose it. `Announcer.mode` comes from
 prefs_page's standard preference `general.messages` (`prefs_page.announce_mode`): System, Window or Off. A failure
-(kind .Bad) is said even with Off.
+(kind .Bad) is said even with Off. A message with an `action` (a button: install, open the report) is always a toast of
+the window, as is one with `in_window = true`: a hint about the window itself ("press Esc to leave full screen"), which a
+notification would show away from it and which Off must not hide.
 
 ```odin
 app.announcer = {mode = prefs_page.announce_mode(&app.prefs), window = app.anchor}

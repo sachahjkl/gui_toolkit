@@ -15,7 +15,8 @@ button :: proc(id: string, text := "", icon := "", o := Button_Options{}) -> Sig
 ```
 
 `id` is its id (key.odin: `"save"` or `"###save"`); what it shows is `text`, its words, and `icon`, a glyph of
-`o.icon_font` (0: `State.icon_font`; `lucide_icons()` for Lucide's). Changing them keeps its state. What the call asks
+`o.icon_font` (0: `State.icon_font`; `lucide_icons()` for Lucide's), in `o.icon_color` when given (a glyph that shows a
+mode by its colour), else the words' colour. Changing them keeps its state. What the call asks
 for decides how it is laid out:
 
 | Call | How it is laid out |

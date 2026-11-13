@@ -893,7 +893,13 @@ choices_of :: proc(o: Options, e: ^config.Entry) -> (labels, values: []string) {
 		for c, i in e.def.choices { out[i] = i18n.tr(own ? e.def.choice_labels[i] : capitalised(c)) }
 		return out, e.def.choices
 	}
-	if o.choices != nil { return o.choices(o.user, e.def.name) }
+	if o.choices != nil {
+		// (the program's labels are its English, i18n.later: translated here, where they show)
+		labels, values = o.choices(o.user, e.def.name)
+		out := make([]string, len(labels), context.temp_allocator)
+		for l, i in labels { out[i] = i18n.tr(l) }
+		return out, values
+	}
 	return
 }
 

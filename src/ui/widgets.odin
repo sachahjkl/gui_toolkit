@@ -170,6 +170,7 @@ Button_Options :: struct {
 	disabled:  bool,                 // shown faded, not clickable
 	tip:       string,               // a tooltip when the pointer rests on it ("" none), its description for a screen reader
 	icon_font: font.Font_Id,         // the glyph's font (0: State.icon_font; lucide_icons() for Lucide's)
+	icon_color: Maybe(Color),        // the glyph's own colour (a mode it shows: a shield red in one mode); nil: the words'
 }
 
 // A button: `text`, its words ("" none), beside `icon`, a glyph of `o.icon_font` ("" none). `id` is its id (key.odin:
@@ -222,6 +223,7 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 	push_button_tags(o.intent, face, face == .Ghost ? "icon_button" : "button")
 	defer pop_tags()
 	if face == .Ghost { if ink, ok := button_ink(o.intent).?; ok { next_default({fg = ink}) } }
+	if c, ok := o.icon_color.?; ok { next_default({fg = c}) }
 	next_size(o.width, o.height)
 	if style({font = o.icon_font != 0 ? o.icon_font : s.icon_font}) {
 		aligned := text_align_given()
@@ -314,7 +316,7 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 		glyph_w: f32 = 0
 		if icon != "" {
 			glyph_w = em * BUTTON_GLYPH_EM
-			next({width = px(glyph_w), height = pct(1), font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, fg = ink})
+			next({width = px(glyph_w), height = pct(1), font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, fg = o.icon_color != nil ? o.icon_color : ink})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
 		}
 		words := Style_Mod{fg = fg, font = m.font, font_size = words_size, text_pad = m.text_pad, text_align = align}
@@ -374,7 +376,7 @@ button_link :: proc(id, text, icon: string, o: Button_Options) -> Signal {
 		if weak { push_tags("weak") }
 		defer if weak { pop_tags() }
 		if icon != "" {
-			next({width = px(math.round(em * 1.2)), height = pct(1), font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, text_pad = 0, fg = col})
+			next({width = px(math.round(em * 1.2)), height = pct(1), font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, text_pad = 0, fg = o.icon_color != nil ? o.icon_color : col})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
 			if text != "" { spacer(px(math.round(em * 0.3))) }
 		}
