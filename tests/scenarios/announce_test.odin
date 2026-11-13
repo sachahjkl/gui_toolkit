@@ -52,3 +52,16 @@ announce_off_still_says_a_failure :: proc(t: ^testing.T) { unwatched.run(t, proc
 	testing.expect_value(t, ui.announce_mode_of("window"), ui.Announce_Mode.Window)
 	testing.expect_value(t, ui.announce_mode_of("nonsense"), ui.Announce_Mode.System)
 }) }
+
+// Said between builds while another window's state is in use (a command, a task's result): the toast goes to the
+// announcer's own state.
+@(test)
+announce_between_builds_goes_to_its_state :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {600, 300}, build = proc(s: ^session.Session) { ui.toasts_build() }})
+	other := session.start(t, {size = {300, 200}, build = proc(s: ^session.Session) { ui.toasts_build() }})
+	a := ui.Announcer{mode = .Window, state = s.state}
+	ui.use(other.state)
+	ui.announce(&a, .Good, "Copied to the clipboard")
+	testing.expect_value(t, toasts_alive(s), 1)
+	testing.expect_value(t, toasts_alive(other), 0)
+}) }

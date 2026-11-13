@@ -4,12 +4,12 @@ package ui
 // the window and goes to the system's own list; a toast of the window only where the system shows none, or where the
 // person chose it (prefs_page's general.messages). A failure is always said, even with messages off.
 //
-//   app.announcer = {mode = ui.announce_mode_of(...), window = app.anchor}
+//   app.announcer = {mode = ui.announce_mode_of(...), window = app.anchor, state = &app.ui}
 //   ui.announce(&app.announcer, .Good, "Copied to the clipboard")
 //
 // The notification goes out without waiting for the system (platform.notify_async): nothing waits on the interface's
-// thread. The next one replaces the last rather than piling up. A toast goes to the ui state in use (the caller's
-// window, ui.use).
+// thread. The next one replaces the last rather than piling up. A toast goes to Announcer.state (nil: the ui state in
+// use, ui.use): a command run between two builds, or a task's result, then still says it in the right window.
 
 import "core:fmt"
 import "../platform"
@@ -29,6 +29,7 @@ announce_mode_of :: proc(name: string) -> Announce_Mode {
 Announcer :: struct {
 	mode:    Announce_Mode,
 	window:  ^platform.Window,            // whose notifications they are: a window that lives as long as the program
+	state:   ^State,                      // whose toasts they are (nil: the state in use when it is said)
 	last:    platform.Notification_Id,    // the last notification shown: the next one replaces it
 	missing: bool,                        // the system has no notifications: toasts from now on
 }
@@ -47,6 +48,9 @@ announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "") {
 		}
 		fallthrough
 	case .Window:
+		prev := current
+		if a.state != nil { use(a.state) }
+		defer if a.state != nil { use(prev) }
 		if body != "" { toast(kind, "%s: %s", title, body) } else { toast(kind, "%s", title) }
 	}
 }
