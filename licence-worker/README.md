@@ -29,7 +29,8 @@ dead-letter), reports **bounces** (`POST /mail/bounce`) and **purges the buyer's
 
 ## A product
 
-1. Copy `products/example.jsonc` to `products/<program>.jsonc`. Set every value marked `SET`: the product's values are
+1. Write `products/<program>.jsonc` with the program's tool: `<tool> licence worker products/<program>.jsonc
+   -origin:URL -mail:"Name <address>"` (from its `licence.Product`), or copy `products/example.jsonc`. Set every value marked `SET`: the product's values are
    the program's `licence.Product` (`PRODUCT`, `VERSION_TAG`, `SIGN_CONTEXT`, `FILE_EXTENSION`, `EDITIONS`,
    `UPDATE_YEARS`, `LICENSE_PUBLIC_KEY`), the shop's are `PRICES` (what `<tool> paddle -apply` prints), `ALLOWED_ORIGIN`
    (the site), `MAIL_FROM`. The sandbox block takes the development pair's public key and the sandbox's price ids.

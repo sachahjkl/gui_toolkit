@@ -135,3 +135,23 @@ paddle_catalogue_bodies :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(paddle_price_body(TOOL_PRODUCT, tool.paddle, "", amounts[0]), "product_id"))
 	testing.expect_value(t, paddle_prices_setting({"pri_a", "pri_b"}, amounts), `{"pri_a":"supporter","pri_b":"patron"}`)
 }
+
+// The Worker's file of a product: it reads as JSON with comments, and says what the product says.
+@(test)
+the_worker_file_says_the_product :: proc(t: ^testing.T) {
+	text := worker_config(TOOL_PRODUCT, {origin = "https://sample.example.org"}, context.temp_allocator)
+	v, err := json.parse_string(text, .JSON5, allocator = context.temp_allocator)
+	if !testing.expectf(t, err == nil, "JSON with comments: %v\n%s", err, text) { return }
+	top := v.(json.Object)
+	vars := top["vars"].(json.Object)
+	testing.expect_value(t, top["name"].(json.String), "sample-licence")
+	testing.expect_value(t, vars["VERSION_TAG"].(json.String), TOOL_PRODUCT.version_tag)
+	testing.expect_value(t, vars["SIGN_CONTEXT"].(json.String), TOOL_PRODUCT.sign_context)
+	testing.expect_value(t, vars["FILE_EXTENSION"].(json.String), TOOL_PRODUCT.file_extension)
+	editions, eerr := json.parse_string(vars["EDITIONS"].(json.String), allocator = context.temp_allocator)
+	if !testing.expectf(t, eerr == nil, "the editions: %v in %q", eerr, vars["EDITIONS"]) { return }
+	testing.expect_value(t, editions.(json.Array)[0].(json.Object)["id"].(json.String), TOOL_PRODUCT.editions[0].id)
+	sandbox := top["env"].(json.Object)["sandbox"].(json.Object)["vars"].(json.Object)
+	testing.expect_value(t, sandbox["LICENSE_PUBLIC_KEY"].(json.String), TOOL_PRODUCT.dev_public_key)
+	testing.expect_value(t, sandbox["PADDLE_API_BASE"].(json.String), PADDLE_SANDBOX)
+}

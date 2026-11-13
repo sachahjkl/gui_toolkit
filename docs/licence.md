@@ -266,7 +266,9 @@ Everything above is ready; these steps need the maintainer's accounts:
 3. Paddle: a client-side token (Developer tools > Authentication), a notification destination for
    `transaction.completed` at `https://<program>-licence.<account>.workers.dev/paddle/webhook`; its secret and a server-side
    key with `customer.read` go in the sops file.
-4. The Worker: `products/<program>.jsonc` from `products/example.jsonc`, its settings set; `apptool licence secrets`; deploy
+4. The Worker: `apptool licence worker <toolkit>/licence-worker/products/<program>.jsonc -origin:https://<site>
+   -mail:"App <licence@mail.<domain>>"` writes its file from the program's `Product` (make it again rather than edit
+   the product's values), then the price ids and the public key where it says SET; `apptool licence secrets`; deploy
    the sandbox, then production (`licence-worker/README.md`); `GET /health` says what is missing.
 5. The site: `Shop` with the client token, the price ids, the Worker's address; the pages built and published.
 6. A purchase in the sandbox, from the pricing page to the key in the program.

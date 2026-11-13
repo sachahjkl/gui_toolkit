@@ -7,6 +7,7 @@ package tk_toolbox
 //   licence issue -name:N -email:E -edition:ID -order:ID [-date:YYYY-MM-DD] [-private:FILE | -dev] [-out:FILE]
 //   licence verify FILE | -text:KEY [-public:KEY | -dev]
 //   licence secrets <secrets.yaml> <out.env> [-keys:A,B]   the worker's secrets, decrypted by sops, to a git-ignored file
+//   licence worker <out.jsonc> [-origin:URL] [-mail:"Name <address>"]   the Worker's file of the product (licence_worker.odin)
 //   paddle [-apply] [-environment:sandbox|live] [-name:N] [-description:D] [-amounts:ID=CENTS,...] [-currency:EUR]
 // keygen, pubkey, issue and verify need no network; paddle talks to Paddle's API (gt:http) only with -apply.
 
@@ -53,7 +54,7 @@ PADDLE_LIVE    :: "https://api.paddle.com"
 licence_commands :: proc(tool: Licence_Tool) -> [2]Command {
 	user := new_clone(tool)
 	return {
-		{name = "licence", usage = "keygen | pubkey | issue | verify | secrets: the licences of the program (docs/licence.md)", run_with = licence_run, user = user},
+		{name = "licence", usage = "keygen | pubkey | issue | verify | secrets | worker: the licences of the program (docs/licence.md)", run_with = licence_run, user = user},
 		{name = "paddle", usage = "[-apply] [-environment:sandbox|live] [-name:N] [-description:D] [-amounts:ID=CENTS,...] [-currency:C]: the Paddle catalogue",
 			run_with = paddle_run, user = user, checked = true, flags = PADDLE_FLAGS[:], positionals = 0},
 	}
@@ -68,6 +69,7 @@ licence pubkey [-private:FILE | -dev]
 licence issue -name:N -email:E -edition:ID -order:ID [-date:YYYY-MM-DD] [-private:FILE | -dev] [-out:FILE]
 licence verify FILE | -text:KEY [-public:KEY | -dev]
 licence secrets <secrets.yaml> <out.env> [-keys:A,B]
+licence worker <out.jsonc> [-origin:URL] [-mail:"Name <address>"]
 `
 
 @(private = "file")
@@ -80,6 +82,7 @@ licence_run :: proc(args: []string, user: rawptr) -> int {
 	case "pubkey":  return done(licence_pubkey(tool, rest))
 	case "issue":   return done(licence_issue(tool, rest))
 	case "verify":  return done(licence_verify(tool, rest))
+	case "worker":  return done(licence_worker(tool, rest))
 	case "secrets":
 		plain := plain_args(rest)
 		if len(plain) != 2 { break }
