@@ -6,7 +6,7 @@
 //       app: App
 //       s := session.start(t, {user = &app, build = proc(s: ^session.Session) {
 //           app := (^App)(s.user)
-//           if ui.button("Add###add").clicked { app.clicks += 1 }
+//           if ui.button("add", "Add").clicked { app.clicks += 1 }
 //       }})
 //       session.click(s, "add")
 //       testing.expect_value(t, app.clicks, 1)

@@ -144,7 +144,7 @@ the lip of a well). A region redrawn on its own must hold that much around its b
 
 ## Button variants
 
-A button's colours come from its intent and its face (`ui.button("Delete###del", intent = .Danger)`, `face = .Ghost`:
+A button's colours come from its intent and its face (`ui.button("del", "Delete", o = {intent = .Danger})`, `face = .Ghost`:
 widgets.md). The theme gives them under these tags, named by the intent (`intent_tag`) and the ghost face; a program
 says the intent, not the tag:
 
@@ -154,5 +154,5 @@ says the intent, not the tag:
 | `info_button` (`.Info`), `success_button` (`.Success`) | the blue's, the green's soft pair | to inform, to confirm or save |
 | `warn_button` (`.Warning`) | the warning hue's soft pair | an action done with care (end a task, stop a service) |
 | `danger_button` (`.Danger`), `cancel_button` (`.Cancel`) | the bad hue's soft pair | an action that loses something (kill, delete); giving up |
-| `ghost_button`, `icon_button` (`face = .Ghost`) | no background until hovered | a tool among many |
+| `ghost_button`, `icon_button` (`face = .Ghost`; a glyph alone) | no background until hovered | a tool among many |
 | `well` | the theme's well, carved in | `ui.well`: a sunken box |

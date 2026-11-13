@@ -99,7 +99,7 @@ text_is_drawn_in_its_box :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^test
 a_button_shows_its_states :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 40, fixed_y = 40, width = ui.px(120), height = ui.px(40)})
-		ui.button("###b")
+		ui.button("b")
 	}})
 	at := [2]int{50, 50}
 	rest := session.pixel(session.capture(s), at.x, at.y)
@@ -168,7 +168,7 @@ every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) { unwatched.run
 	s := session.start(t, {size = {500, 300}, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(120)})
-		ui.button("Button###b")
+		ui.button("b", "Button")
 		ui.next({width = ui.px(200)})
 		ui.checkbox("###c", "Check", &r.on)
 		ui.next({width = ui.px(200)})
@@ -178,7 +178,7 @@ every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) { unwatched.run
 		ui.next({width = ui.px(200)})
 		ui.line_edit("###f", &r.field, "Placeholder")
 		ui.next({width = ui.px(200)})
-		if ui.tags("menu_item") { ui.button("Item###i") }
+		if ui.tags("menu_item") { ui.button("i", "Item") }
 	}})
 	magenta := session.Color{255, 0, 255, 255}
 	for p in ui.theme_palettes(ui.THEMES[:]) {

@@ -75,7 +75,7 @@ build_ui :: proc(app: ^App) {
 		if ui.row(.Center, {.Draw_Background}, "###bar") {
 			ui.spacer(ui.px(em))
 			ui.next({width = ui.text_size(), height = ui.pct(1)})
-			if ui.button("View###view").clicked { ui.ctx_menu_open(ui.key_from_string(0, "view_menu"), ui.mouse_pos()) }
+			if ui.button("view", "View").clicked { ui.ctx_menu_open(ui.key_from_string(0, "view_menu"), ui.mouse_pos()) }
 			if ui.ctx_menu(ui.key_from_string(0, "view_menu")) {
 				for p in Panel {
 					if ui.menu_item(fmt.tprintf("%s###v%d", PANEL_TITLES[p], int(p)), checked = ui.dock_has(&app.dock, u32(p))).clicked {

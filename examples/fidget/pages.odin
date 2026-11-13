@@ -98,10 +98,10 @@ page_controls :: proc(app: ^App) {
 				if ui.card("Buttons", ICON_PLAY) {
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###btnrow") {
-						if ui.button_icon("###b_primary", ICON_PLAY, "Primary", intent = .Primary).clicked { ui.toast(.Good, "Primary clicked") }
-						if ui.button_icon("###b_secondary", "", "Secondary").clicked { ui.toast(.Info, "Secondary clicked") }
-						if ui.button_icon("###b_danger", ICON_TRASH, "Danger", intent = .Danger).clicked { ui.toast(.Bad, "Danger clicked") }
-						if ui.button_icon("###b_ghost", "", "Ghost", face = .Ghost).clicked { ui.toast(.Info, "Ghost clicked") }
+						if ui.button("###b_primary", "Primary", ICON_PLAY, {intent = .Primary}).clicked { ui.toast(.Good, "Primary clicked") }
+						if ui.button("###b_secondary", "Secondary").clicked { ui.toast(.Info, "Secondary clicked") }
+						if ui.button("###b_danger", "Danger", ICON_TRASH, {intent = .Danger}).clicked { ui.toast(.Bad, "Danger clicked") }
+						if ui.button("###b_ghost", "Ghost", o = {face = .Ghost}).clicked { ui.toast(.Info, "Ghost clicked") }
 					}
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.2, em * 0.2}, "###iconrow") {
@@ -109,14 +109,14 @@ page_controls :: proc(app: ^App) {
 						tips := [?]string{"Play", "Pause", "Stop", "Refresh", "Save", "Pin", "Copy", "Settings"}
 						for g, i in icons {
 							ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
-							sig := ui.icon_button(fmt.tprintf("ib_%d", i), g, tip = tips[i])
+							sig := ui.button(fmt.tprintf("ib_%d", i), icon = g, o = {tip = tips[i]})
 							if sig.clicked { ui.toast(.Info, "%s", tips[i]) }
 						}
 					}
 					ui.spacer(ui.px(em * 0.3))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###disrow") {
-						ui.button_icon("###b_disabled", "", "Disabled", disabled = true)
+						ui.button("###b_disabled", "Disabled", o = {disabled = true})
 						ui.spacer(ui.px(em * 0.8))
 						if ui.tags("weak") {
 							ui.next({width = ui.fill(), height = ui.pct(1)})
@@ -151,7 +151,7 @@ page_controls :: proc(app: ^App) {
 					ui.spacer(ui.px(em * 0.7))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###tiprow") {
-						sig := ui.button_icon("###b_tip", ui.ICON_INFO, "Hover for a rich tooltip")
+						sig := ui.button("###b_tip", "Hover for a rich tooltip", ui.ICON_INFO)
 						if ui.hovered_for(sig) {
 							if ui.tooltip() {
 								if ui.style({width = ui.text_size(em * 0.5), height = ui.px(ui.dense(em * 2))}) {
@@ -201,23 +201,23 @@ page_controls :: proc(app: ^App) {
 					if ui.form_row("Loading") { ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.55))}); ui.progress("###pr_ind", 0, true) }
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###dlrow") {
-						if ui.button_icon("###b_dl", app.progress_run ? ICON_PAUSE : ICON_PLAY, app.progress_run ? "Pause" : "Start", intent = .Primary).clicked {
+						if ui.button("###b_dl", app.progress_run ? "Pause" : "Start", app.progress_run ? ICON_PAUSE : ICON_PLAY, {intent = .Primary}).clicked {
 							if app.progress >= 1 { app.progress = 0 }
 							app.progress_run = !app.progress_run
 						}
-						if ui.button_icon("###b_dl_reset", ICON_UNDO, "Reset").clicked { app.progress, app.progress_run = 0, false }
+						if ui.button("###b_dl_reset", "Reset", ICON_UNDO).clicked { app.progress, app.progress_run = 0, false }
 					}
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###toastrow") {
-						if ui.button_icon("###t_info", "", "Info").clicked { run_cmd(app, .Toast_Info) }
-						if ui.button_icon("###t_good", "", "Success").clicked { run_cmd(app, .Toast_Good) }
-						if ui.button_icon("###t_warn", "", "Warning").clicked { run_cmd(app, .Toast_Warn) }
-						if ui.button_icon("###t_bad", "", "Error").clicked { run_cmd(app, .Toast_Bad) }
+						if ui.button("###t_info", "Info").clicked { run_cmd(app, .Toast_Info) }
+						if ui.button("###t_good", "Success").clicked { run_cmd(app, .Toast_Good) }
+						if ui.button("###t_warn", "Warning").clicked { run_cmd(app, .Toast_Warn) }
+						if ui.button("###t_bad", "Error").clicked { run_cmd(app, .Toast_Bad) }
 					}
 					ui.spacer(ui.px(em * 0.3))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###modalrow") {
-						if ui.button_icon("###b_modal", ICON_QUESTION, "Open dialog", face = .Ghost).clicked { app.modal_open = true }
+						if ui.button("###b_modal", "Open dialog", ICON_QUESTION, {face = .Ghost}).clicked { app.modal_open = true }
 					}
 				}
 			}
@@ -343,7 +343,7 @@ page_inputs :: proc(app: ^App) {
 									ui.next({width = ui.text_size(), height = ui.pct(1)})
 									ui.label(tag)
 									ui.next({width = ui.px(em * 1.6), height = ui.px(em * 1.6)})
-									if ui.icon_button(fmt.tprintf("tag_x_%d", i), ui.ICON_X).clicked { remove = i }
+									if ui.button(fmt.tprintf("tag_x_%d", i), icon = ui.ICON_X).clicked { remove = i }
 									ui.spacer(ui.px(em * 0.3))
 								}
 							}
@@ -365,7 +365,7 @@ page_inputs :: proc(app: ^App) {
 					ui.checkbox("###ck_agree", "I agree to the terms", &app.agree)
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###submitrow") {
-						if ui.button_icon("###b_submit", ui.ICON_CHECK, "Submit", disabled = !can_submit, intent = .Primary).clicked {
+						if ui.button("###b_submit", "Submit", ui.ICON_CHECK, {disabled = !can_submit, intent = .Primary}).clicked {
 							ui.toast(.Good, "Submitted: %s <%s>", ui.field_string(&app.name), ui.field_string(&app.email))
 						}
 						ui.spacer(ui.px(em * 0.8))

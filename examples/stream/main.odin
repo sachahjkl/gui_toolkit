@@ -81,10 +81,10 @@ build_ui :: proc(app: ^App) {
 		ui.spacer(ui.fill())
 		paused := sync.atomic_load(&app.paused)
 		ui.next({width = ui.text_size(em), height = ui.px(em * 2)})
-		if ui.button(paused ? "Resume###pause" : "Pause###pause").clicked { sync.atomic_store(&app.paused, !paused) }
+		if ui.button("pause", paused ? "Resume" : "Pause").clicked { sync.atomic_store(&app.paused, !paused) }
 		ui.spacer(ui.px(em * 0.4))
 		ui.next({width = ui.text_size(em), height = ui.px(em * 2)})
-		if ui.button("Burst of 20000###burst").clicked { sync.atomic_store(&app.burst, 20000) }
+		if ui.button("burst", "Burst of 20000").clicked { sync.atomic_store(&app.burst, 20000) }
 		ui.spacer(ui.px(em * 0.6))
 	}
 	ui.next({width = ui.fill(), height = ui.fill()})

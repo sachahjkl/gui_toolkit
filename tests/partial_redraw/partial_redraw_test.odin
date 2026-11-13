@@ -55,7 +55,7 @@ app_build :: proc(s: ^session.Session) {
 		ui.apply_palette(s.state.theme, p)
 		app.palette = nil
 	}
-	ui.button("Hover me###hover")
+	ui.button("hover", "Hover me")
 	ui.next({width = ui.px(240)})
 	ui.line_edit("###field", &app.field)
 	ui.next({width = ui.px(CUSTOM_SIZE.x), height = ui.px(CUSTOM_SIZE.y)})

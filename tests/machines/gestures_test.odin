@@ -148,7 +148,7 @@ Menus :: struct {
 @(private = "file")
 menu_build :: proc(s: ^session.Session) {
 	r := (^Menus)(s.user)
-	ui.button("Page###page")
+	ui.button("page", "Page")
 	if ui.ctx_menu(r.key) {
 		if ui.menu_submenu("Sub###sub", enabled = r.sub_on) { ui.menu_item("Inner###inner") }
 		if ui.menu_item("Plain###plain", enabled = false).clicked {}
@@ -349,7 +349,7 @@ a_screen_readers_click_leaves_the_caret :: proc(t: ^testing.T) {
 		r := (^Texts)(s.user)
 		ui.next({width = ui.px(FIELD_WIDTH)})
 		ui.line_edit("###f", &r.f)
-		ui.button("Far###far")
+		ui.button("far", "Far")
 	}})
 	ui.a11y_capture(s.state, true)
 	session.frames(s, 2)
@@ -538,9 +538,9 @@ keys_of_one_frame_all_count :: proc(t: ^testing.T) {
 	r: Two
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		if ui.row() {
-			ui.button("A###a")
-			ui.button("B###b")
-			ui.button("C###c")
+			ui.button("a", "A")
+			ui.button("b", "B")
+			ui.button("c", "C")
 		}
 	}})
 	session.key(s, .Tab)
@@ -558,7 +558,7 @@ the_modifiers_follow_their_release :: proc(t: ^testing.T) {
 	r: Mods
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Mods)(s.user)
-		r.sig = ui.button("Hold###hold")
+		r.sig = ui.button("hold", "Hold")
 	}})
 	session.event(s, {kind = .Key_Press, key = .Shift, mods = {.Shift}})
 	session.frame(s)

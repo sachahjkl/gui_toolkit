@@ -17,7 +17,7 @@ Empty_State :: struct {
 	actions: []Empty_Action,   // the buttons, in their order
 }
 
-// A button of an empty state, drawn as any button_icon: its words, a Lucide glyph ("" none) and the soft pair of an intent.
+// A button of an empty state, drawn as any button: its words, a Lucide glyph ("" none) and the soft pair of an intent.
 Empty_Action :: struct {
 	text:   string,
 	icon:   string,
@@ -56,7 +56,7 @@ empty_state :: proc(id: string, e: Empty_State) -> (clicked: int) {
 			if row(.Center, {}, "###empty_actions") {
 				for a, i in e.actions {
 					if i > 0 { spacer(px(em * 0.6)) }
-					if button_icon(fmt.tprintf("empty_action%d", i), a.icon, text_shown(a.text), icon_font = lucide_icons(), intent = a.intent).clicked { clicked = i }
+					if button(fmt.tprintf("empty_action%d", i), a.text, a.icon, {icon_font = lucide_icons(), intent = a.intent}).clicked { clicked = i }
 				}
 			}
 		}

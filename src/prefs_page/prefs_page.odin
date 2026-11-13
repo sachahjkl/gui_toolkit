@@ -190,7 +190,7 @@ back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (bac
 			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 2.1)), radius = em * 0.4})
 		}
 		sig: ui.Signal
-		if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###prefs_back", icon ? lucide.ARROW_LEFT : i18n.tr("Back"))) }
+		if ui.tags("ghost_button") { sig = ui.button("prefs_back", icon ? lucide.ARROW_LEFT : i18n.tr("Back")) }
 		ui.a11y_default(sig.box, {name = back_tip})
 		if ui.hovered_for(sig) {
 			if ui.tooltip() {
@@ -473,7 +473,9 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 				if ui.row(id = fmt.tprintf("###nv%d", i)) {
 					ui.spacer(ui.px(em * 0.7))
 					shown := i == cur && !config.searching(&p.search)
-					if ui.nav_item(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, pg.icon, o.icon_font, shown, em).clicked {
+					glyph := o.icon_font != 0 ? pg.icon : ""
+					line := ui.Button_Options{face = shown ? .Toggled : .Ghost, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
+					if ui.button(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, glyph, line).clicked {
 						delete(p.current)
 						p.current = strings.clone(pg.category)
 						ui.field_set(&p.query, "")   // (a page chosen: the search is done)
@@ -497,6 +499,9 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 		ui.spacer(ui.px(em * 0.6))
 	}
 }
+
+// A line of the sidebar: as tall as this many font sizes.
+@(private = "file") NAV_LINE_HEIGHT_EM :: 2.1
 
 // The sidebar's foot: the settings file (a click opens it), Export and Import, and what the last of them did.
 @(private = "file")
@@ -524,11 +529,11 @@ nav_foot :: proc(p: ^Page, o: Options, em: f32) {
 		h := ui.px(math.round(em * 1.7))
 		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
 		export_sig, import_sig: ui.Signal
-		if ui.tags("ghost_button") { export_sig = ui.button(fmt.tprintf("%s###prefs_export", i18n.tr("Export…"))) }
+		if ui.tags("ghost_button") { export_sig = ui.button("prefs_export", i18n.tr("Export…")) }
 		ui.a11y_default(export_sig.box, {name = i18n.tr("Export the settings to a file (JSON, TOML, INI or this program's own)")})
 		ui.spacer(ui.px(em * 0.3))
 		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
-		if ui.tags("ghost_button") { import_sig = ui.button(fmt.tprintf("%s###prefs_import", i18n.tr("Import…"))) }
+		if ui.tags("ghost_button") { import_sig = ui.button("prefs_import", i18n.tr("Import…")) }
 		ui.a11y_default(import_sig.box, {name = i18n.tr("Import settings exported by this program")})
 		if export_sig.clicked { export_ask(p) }
 		if import_sig.clicked { import_ask(p) }
@@ -616,7 +621,7 @@ page_header :: proc(title: string, changed: bool, o: Options, em: f32) -> (resto
 		if changed {
 			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 1.7)), radius = em * 0.35, font_size = math.round(em * 0.86)})
 			sig: ui.Signal
-			if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###restore", i18n.tr("Restore defaults"))) }
+			if ui.tags("ghost_button") { sig = ui.button("restore", i18n.tr("Restore defaults")) }
 			ui.a11y_default(sig.box, {name = i18n.tr("Put every setting of this page back to its default")})
 			restore = sig.clicked
 		}
@@ -762,7 +767,7 @@ reset_button :: proc(o: Options, em: f32) -> bool {
 	}
 	label := o.icon_font != 0 && o.reset_icon != "" ? o.reset_icon : i18n.tr("Reset")
 	sig: ui.Signal
-	if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###reset", label)) }
+	if ui.tags("ghost_button") { sig = ui.button("reset", label) }
 	ui.a11y_default(sig.box, {name = i18n.tr("Back to the default")})
 	if ui.hovered_for(sig) {
 		if ui.tooltip() {
@@ -1099,18 +1104,18 @@ updater_under :: proc(o: Options, em: f32) {
 	ui.next({height = ui.children_sum()})
 	if ui.row() {
 		busy := st.phase == .Checking || st.phase == .Downloading || st.phase == .Installed
-		if ui.button_icon("update_check", lucide.REFRESH_CW, i18n.tr("Check now"), disabled = busy, icon_font = ui.lucide_icons(), intent = .Primary).clicked && !busy {
+		if ui.button("update_check", i18n.tr("Check now"), lucide.REFRESH_CW, {disabled = busy, icon_font = ui.lucide_icons(), intent = .Primary}).clicked && !busy {
 			update.check_now(o.updater)
 		}
 		if st.phase == .Available {
 			ui.spacer(ui.px(em * 0.5))
-			if ui.button_icon("update_install", lucide.DOWNLOAD, fmt.tprintf(i18n.tr("Install %s"), st.version), icon_font = ui.lucide_icons(), intent = .Success).clicked {
+			if ui.button("update_install", fmt.tprintf(i18n.tr("Install %s"), st.version), lucide.DOWNLOAD, {icon_font = ui.lucide_icons(), intent = .Success}).clicked {
 				update.install_now(o.updater)
 			}
 		}
 		if st.phase == .Installed && o.restart != nil {
 			ui.spacer(ui.px(em * 0.5))
-			if ui.button_icon("update_restart", lucide.POWER, i18n.tr("Restart now"), icon_font = ui.lucide_icons(), intent = .Success).clicked { o.restart(o.user) }
+			if ui.button("update_restart", i18n.tr("Restart now"), lucide.POWER, {icon_font = ui.lucide_icons(), intent = .Success}).clicked { o.restart(o.user) }
 		}
 	}
 }
@@ -1136,7 +1141,7 @@ update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawp
 		return true
 	}
 	ui.next_merge({font_size = math.round(em * 0.88)})
-	if ui.button_icon("update_badge", glyph, words, icon_font = ui.lucide_icons(), intent = .Success).clicked {
+	if ui.button("update_badge", words, glyph, {icon_font = ui.lucide_icons(), intent = .Success}).clicked {
 		if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
 	}
 	return true

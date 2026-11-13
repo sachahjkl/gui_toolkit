@@ -13,7 +13,7 @@ import "../../src/ui"
 @(private = "file")
 counter_app :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
-	if ui.button("Add###add").clicked { app.clicks += 1 }
+	if ui.button("add", "Add").clicked { app.clicks += 1 }
 	ui.line_edit("###field", &app.field)
 }
 

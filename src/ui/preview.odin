@@ -205,12 +205,12 @@ preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: P
 			}
 			spacer(px(em * 0.3))
 			items := [?]struct { id, text: string, which: Preview_Button }{
-				{"###preview_out", "−", .Out}, {"###preview_in", "+", .In}, {"###preview_native", "1:1", .Native}, {"###preview_fit", i18n.tr("Fit"), .Fit},
+				{"preview_out", "−", .Out}, {"preview_in", "+", .In}, {"preview_native", "1:1", .Native}, {"preview_fit", i18n.tr("Fit"), .Fit},
 			}
 			for it in items {
 				next({width = text_size(em * 0.45), height = px(h - em * 0.5), radius = rad(em * 0.3)})
 				a11y({name = it.which == .Out ? i18n.tr("Zoom out") : it.which == .In ? i18n.tr("Zoom in") : it.which == .Native ? i18n.tr("Actual size") : i18n.tr("Fit")})
-				if button(fmt.tprintf("%s%s", it.text, it.id), face = .Ghost).clicked { clicked = it.which }
+				if button(it.id, it.text, o = {face = .Ghost}).clicked { clicked = it.which }
 			}
 			spacer(px(em * 0.3))
 		}

@@ -24,7 +24,7 @@ Pick :: struct { cp: ui.Color_Pick }
 @(private = "file")
 pick_build :: proc(s: ^session.Session) {
 	r := (^Pick)(s.user)
-	ui.button("Away###away")
+	ui.button("away", "Away")
 	ui.color_picker("###pick", &r.cp)
 }
 
@@ -60,7 +60,7 @@ a_step_back_enters_a_paragraph_by_its_last_link :: proc(t: ^testing.T) {
 	r: Links
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Links)(s.user)
-		ui.button("First###first")
+		ui.button("first", "First")
 		ui.next({width = ui.px(SCROLL_SIZE)})
 		r.rich = ui.rich_paragraph("###rich", {{text = "one", link = "a"}, {text = " and "}, {text = "two", link = "b"}})
 		if r.step { r.step = false; ui.focus_step(s.state, 0, -1) }   // (after the stops of this build)
@@ -132,7 +132,7 @@ a_sweep_in_a_glide_finds_the_same_place :: proc(t: ^testing.T) {
 // No tree made is no tree: not the last one made.
 @(test)
 a_tree_not_made_is_none :: proc(t: ^testing.T) {
-	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) { ui.button("A###a") }})
+	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) { ui.button("a", "A") }})
 	ui.a11y_capture(s.state, true)
 	session.frames(s, 2)
 	testing.expect(t, len(ui.a11y_tree(s.state).nodes) > 0, "made")
@@ -151,7 +151,7 @@ a_descendant_gone_is_not_named :: proc(t: ^testing.T) {
 		ui.a11y({role = .List_Box, active_descendant = r.key})
 		b := ui.build_box({.Clickable}, "Holder###holder")
 		r.holder = b.key
-		if r.show { r.key = ui.button("Row###row").box.key }
+		if r.show { r.key = ui.button("row", "Row").box.key }
 	}})
 	ui.a11y_capture(s.state, true)
 	session.frames(s, 2)

@@ -151,12 +151,12 @@ title_bar_regions :: proc(t: ^testing.T) {
 			ui.spacer(ui.px(20))
 			ui.label("Title")                                  // text, not clickable: drags
 			ui.next({width = ui.px(100), height = ui.pct(1)})
-			ui.button("Tab###tab")                             // the app's
+			ui.button("tab", "Tab")                             // the app's
 			ui.spacer(ui.fill())
 			_, _ = ui.window_buttons()
 		}
 		ui.next({width = ui.fill(), height = ui.fill()})
-		ui.button("Content###content")                         // not over the title bar: no hole
+		ui.button("content", "Content")                         // not over the title bar: no hole
 	}
 	for _ in 0 ..< 3 { frame(f, nil, body, nil) }
 	c := ui.chrome_regions(&f.s)
@@ -222,7 +222,7 @@ open_menu_over_resize_bands_and_later_boxes :: proc(t: ^testing.T) {
 		if ui.title_bar("###tb") {
 			ui.spacer(ui.fill())
 			ui.next({width = ui.px(40), height = ui.pct(1)})
-			b := ui.button("=###burger")
+			b := ui.button("burger", "=")
 			if b.clicked { ui.ctx_menu_open_rect(ui.key_from_string(0, MENU), b.box.rect, b.box.key) }
 			_, _ = ui.window_buttons()
 		}
@@ -377,7 +377,7 @@ caption_right_click :: proc(t: ^testing.T) {
 		ui.next({width = ui.fill(), height = ui.px(40)})
 		if ui.title_bar("###tb") {
 			ui.next({width = ui.px(100), height = ui.pct(1)})
-			if ui.button("Tab###tab").right_clicked { r.tab_menu += 1 }
+			if ui.button("tab", "Tab").right_clicked { r.tab_menu += 1 }
 			ui.spacer(ui.fill())
 			_, _ = ui.window_buttons()
 		}

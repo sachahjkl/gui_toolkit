@@ -192,7 +192,7 @@ toasts_build :: proc() {
 		a11y_default(b, {role = urgent ? .Alert : .Status, name = strings.clone(said, frame_allocator()), live = urgent ? .Assertive : .Polite, no_children = true})
 		push_parent(b)
 		spacer(px(em * 0.6))
-		widget_icon(icons[t.kind], em * 1.8, tint)
+		icon(icons[t.kind], em * 1.8, tint, widget_icons())
 		spacer(px(em * 0.4))
 		// the words: a title on its line, the text under it on as many as it needs, centered in the toast
 		next({width = fill(), height = children_sum(), axis = .Y})

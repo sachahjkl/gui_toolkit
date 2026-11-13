@@ -102,11 +102,11 @@ build :: proc(app: ^App) {
 			gap(em)
 			for p in Page {
 				ui.next({width = ui.fill(), text_align = .Left, text_pad = em})
-				id := fmt.tprintf("%d  %s###nav%d", int(p) + 1, PAGE_NAMES[p], int(p))
+				id, text := fmt.tprintf("nav%d", int(p)), fmt.tprintf("%d  %s", int(p) + 1, PAGE_NAMES[p])
 				if p == app.page {
-					if ui.tags("menu_item", "selected") { ui.button(id) }
+					if ui.tags("menu_item", "selected") { ui.button(id, text) }
 				} else if ui.tags("menu_item") {
-					if ui.button(id).clicked { app.page = p }
+					if ui.button(id, text).clicked { app.page = p }
 				}
 			}
 			gap(em)
@@ -247,7 +247,7 @@ page_emboss :: proc(app: ^App, em: f32) {
 	if ui.row(id = "###samples") {
 		for s, i in samples {
 			ui.next({width = ui.px(em * 11), height = ui.px(em * 3.4), font_size = em * 1.4, bg = draw.hex(s.bg), fg = draw.hex(s.fg), text_align = .Center})
-			ui.button(fmt.tprintf("%s###s%d", s.label, i))
+			ui.button(fmt.tprintf("s%d", i), s.label)
 			gap(em)
 		}
 	}
@@ -324,7 +324,7 @@ page_wheel :: proc(app: ^App, em: f32) {
 			for i in 0 ..< 80 {
 				ui.next({width = ui.fill(), text_align = .Left})
 				if ui.tags("menu_item") {
-					if ui.button(fmt.tprintf("Row %d###r%d", i, i)).hovering { app.under[0] = i }
+					if ui.button(fmt.tprintf("r%d", i), fmt.tprintf("Row %d", i)).hovering { app.under[0] = i }
 				}
 			}
 		}

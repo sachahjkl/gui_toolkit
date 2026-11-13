@@ -99,11 +99,11 @@ holds no line break. `open` drops a line that it cannot read. If two open entrie
 ## ui.badge: a count on a button
 
 `ui.badge(box, count, intent = .Primary)` draws `count` on the top right corner of `box`. Call it right after the box is
-built (an `icon_button`'s, a `button_icon`'s). The count is in a pill of the intent's hue, its digits in `ink_on` of it.
+built (a `button`'s). The count is in a pill of the intent's hue, its digits in `ink_on` of it.
 Past 99 it shows "99+". At 0 or less it shows nothing.
 
 ```odin
-sig := ui.icon_button("notices", ui.ICON_UP)
+sig := ui.button("notices", icon = ui.ICON_UP)
 ui.badge(sig.box, app.log.counts[.New])
 ```
 

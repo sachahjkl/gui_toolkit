@@ -53,7 +53,7 @@ frame :: proc(f: ^Sx, events: []platform.Event = nil, draw_it := false) -> []u8 
 	ui.next({fixed_x = 10, fixed_y = 200, width = ui.px(300), flags = {.Selectable}})
 	f.link = ui.rich_paragraph("###r", RICH)
 	ui.next({fixed_x = 330, fixed_y = 10, width = ui.px(100)})
-	if ui.button("Copy###b").clicked { f.clicks += 1 }
+	if ui.button("b", "Copy").clicked { f.clicks += 1 }
 	if ui.modal("sel", 300, &f.dialog, 0.1) {
 		ui.next({flags = {.Selectable}})
 		f.in_dialog[0] = ui.label("Said in a dialog###dl").box

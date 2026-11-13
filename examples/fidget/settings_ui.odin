@@ -116,7 +116,7 @@ build_settings :: proc(app: ^App) {
 				ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.35)})
 				ui.label("Settings")
 				ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
-				if ui.icon_button("st_close", ui.ICON_X).clicked { app.settings_open = false }
+				if ui.button("st_close", icon = ui.ICON_X).clicked { app.settings_open = false }
 				ui.spacer(ui.px(pad - em * 0.4))
 			}
 
@@ -200,7 +200,7 @@ build_settings :: proc(app: ^App) {
 							ui.spacer(ui.px(em * 0.5))
 							ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 							if ui.row(.Center, id = "###st_test_row") {
-								if ui.button_icon("###st_test", ICON_PLAY, "Send a test toast").clicked {
+								if ui.button("###st_test", "Send a test toast", ICON_PLAY).clicked {
 									kinds := [?]ui.Toast_Kind{.Info, .Good, .Warn, .Bad}
 									texts := [?]string{"Heads up: an info toast", "Saved successfully", "Careful: disk almost full", "Something went wrong"}
 									k := int(rand_u64() % 4)
@@ -213,7 +213,7 @@ build_settings :: proc(app: ^App) {
 					ui.spacer(ui.px(em * 1.2))
 					ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 2.6))})
 					if ui.row(.Center, id = "###st_foot") {
-						if ui.button_icon("###st_reset", ICON_UNDO, "Restore defaults", face = .Ghost).clicked {
+						if ui.button("###st_reset", "Restore defaults", ICON_UNDO, {face = .Ghost}).clicked {
 							set_palette(app, palette_index(DEFAULT_PALETTE))
 							app.anim_mode = .System
 							app.os_anim_checked_ms = 0
@@ -227,7 +227,7 @@ build_settings :: proc(app: ^App) {
 							ui.toast(.Good, "Settings restored to defaults")
 						}
 						ui.spacer(ui.fill())
-						if ui.button_icon("###st_done", "", "Done", intent = .Primary).clicked { app.settings_open = false }
+						if ui.button("###st_done", "Done", o = {intent = .Primary}).clicked { app.settings_open = false }
 					}
 				}
 				ui.spacer(ui.px(pad))

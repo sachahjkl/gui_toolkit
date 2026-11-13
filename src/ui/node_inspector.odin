@@ -129,7 +129,7 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 	case .Color:
 		open := ins.color_open == i + 1
 		next({width = fill(), height = row_height})
-		if button_icon("###color", lucide.PALETTE, flowgraph.color_text(p.color)).clicked {
+		if button("###color", flowgraph.color_text(p.color), lucide.PALETTE).clicked {
 			ins.color_open = open ? 0 : i + 1
 			if !open { color_pick_set(&ins.color, srgba_of_rgba8(p.color), {format = .Hex}) }
 		}
@@ -150,7 +150,7 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		if d.type == .Folder {
 			spacer(px(math.round(em * 0.4)))
 			next({width = text_size(em * 0.8), height = row_height})
-			if button(fmt.tprintf("%s###choose", i18n.tr("Choose…"))).clicked { res.pick_folder = i }
+			if button("choose", i18n.tr("Choose…")).clicked { res.pick_folder = i }
 		}
 	case .List:
 		names: []string

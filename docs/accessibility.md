@@ -55,8 +55,7 @@ What the widgets say:
 
 | Widget | Role | Name, states |
 |---|---|---|
-| `button`, `button_icon` | Button | its text (a Toggled face: pressed); its tip as description |
-| `icon_button` | Button | its `name`, else its `tip`, else the id |
+| `button` | Button | its words (a Toggled face: pressed); its tip as description; a glyph alone: its `tip`, else its id |
 | `checkbox`, `radio`, `toggle` | CheckBox, RadioButton, Switch | label, checked |
 | `slider`, `rating` | Slider | value, min, max, step, value text |
 | `range_slider` | Group of two Sliders (its thumbs) | each: value, min, max (the other thumb), step, value text |
@@ -90,7 +89,7 @@ What the widgets say:
 
 ```odin
 ui.a11y({role = .Button, name = tr("Back"), shortcut = "Alt+Left"})   // the next box built
-if ui.icon_button("back", ICON_BACK).clicked { ... }
+if ui.button("back", icon = ICON_BACK).clicked { ... }
 
 b := ui.build_box({.Clickable, .Focusable}, "###tab_7")
 ui.a11y_set(b, {role = .Tab, name = title, selected = active, position = 7, set_size = 12})

@@ -36,13 +36,6 @@ lucide_icons :: proc() -> font.Font_Id {
 	return s.lucide_font
 }
 
-// A widget's mark (one of the ICON_ characters), `width` wide, in the toolkit's icon font.
-@(private)
-widget_icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
-	next({width = px(width), height = pct(1), font = widget_icons(), text_align = .Center, fg = fg})
-	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", glyph, parent_box().child_count))
-}
-
 // Characters of the toolkit's icon font (widget_icons) that the widgets use.
 ICON_CHECK :: "V"
 ICON_UP :: "^"
@@ -61,10 +54,11 @@ mono_font :: proc() -> font.Font_Id { return gs().mono_font != 0 ? gs().mono_fon
 ////////////////////////////////
 // Small building blocks
 
-// Fixed-width icon cell (icon font), full height of the parent.
-icon :: proc(glyph: string, width: f32, fg: Maybe(Color) = nil) {
-	next({width = px(width), height = pct(1), font = gs().icon_font, text_align = .Center, fg = fg})
-	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", glyph, parent_box().child_count))
+// A glyph in a cell `width` wide, as tall as its parent: `icon`, a character of `icon_font` (0: State.icon_font, the
+// program's icons; widget_icons() for one of the ICON_ marks of the toolkit's own), in `fg` (nil: the words' colour).
+icon :: proc(icon: string, width: f32, fg: Maybe(Color) = nil, icon_font: font.Font_Id = 0) {
+	next({width = px(width), height = pct(1), font = icon_font != 0 ? icon_font : gs().icon_font, text_align = .Center, fg = fg})
+	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", icon, parent_box().child_count))
 }
 
 // A horizontal rule across `width`: a line of the border's colour; in the machined finish a groove, a dark line and the
@@ -484,43 +478,6 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	return
 }
 
-@(private = "file") NAV_ITEM_RADIUS_PX :: 6
-@(private = "file") NAV_ITEM_HEIGHT_EM :: 2.1
-
-@(private = "file")
-Nav_Item_Draw :: struct { pressed: bool, face: Color, radius: f32 }
-
-// A line of a navigation list (a settings page, a document of a side list): an icon (a glyph of `icon_font`; "" none)
-// and `title`, from the left edge, as wide as its parent. A ghost under the pointer, pressed in while `pressed` (the
-// one shown; machined: a bevel, flat in the other finishes). Its signal: a click shows it, a double click may rename it.
-nav_item :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bool, em: f32) -> Signal {
-	next({width = fill(), height = px(math.round(em * NAV_ITEM_HEIGHT_EM)), axis = .X, cross = .Center, cursor = .Hand})
-	a11y({role = .Button, name = title})
-	b := build_box({.Clickable, .Focusable}, id)
-	d := frame_new(Nav_Item_Draw)
-	d^ = {pressed, color("track"), NAV_ITEM_RADIUS_PX * scale()}
-	b.custom = proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-		d := (^Nav_Item_Draw)(user)
-		if !d.pressed && b.hot_t < 0.01 { return }
-		machined_bevel(dc, b.rect, d.radius, d.face, b.hot_t, d.pressed ? 1 : b.active_t * b.hot_t)
-	}
-	b.custom_user = d
-	sig := signal(b)
-	if parent(b) {
-		spacer(px(em * 0.6))
-		if icon != "" && icon_font != 0 {
-			next({width = px(em * 1.4), height = pct(1), font = icon_font, text_align = .Center, text_pad = 0})
-			if pressed { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ic", icon)) } else if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ic", icon)) }
-			if title != "" { spacer(px(em * 0.45)) }
-		}
-		if title != "" {
-			next({width = fill(), height = pct(1), text_pad = 0})
-			if pressed { label(fmt.tprintf("%s###t", title)) } else if tags("weak") { label(fmt.tprintf("%s###t", title)) }
-		}
-	}
-	return sig
-}
-
 // What a step is multiplied by with these modifiers: Feel.step_shift with Shift, else 1. The step of a slider, a slider
 // field, a number, by key, notch or button.
 @(private)
@@ -681,7 +638,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, format, uni
 			next({width = px(side), height = px(side), font_size = math.round(em * 0.9)})
 			sig: Signal
 			// (one Tab stop, the field: the buttons are the pointer's)
-			if tab_stops(false) { sig = icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD, icon_font = widget_icons(), disabled = at_end || disabled) }
+			if tab_stops(false) { sig = button(dir < 0 ? "dec" : "inc", icon = dir < 0 ? ICON_MINUS : ICON_ADD, o = {icon_font = widget_icons(), disabled = at_end || disabled}) }
 			if repeat_pressed(sig) {
 				number_set(value, f64(value^) + dir * k * f64(shift_steps(sig.mods)), lo, hi, step)
 				moved = true
@@ -1234,7 +1191,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 			spacer(px(em * 0.8))
 			next({width = fill(), height = pct(1)})
 			build_box({.Draw_Text}, fmt.tprintf("%s###cur", cur))
-			if tags("weak") { widget_icon(open ? ICON_UP : ICON_DOWN, em * 1.8) }
+			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8, nil, widget_icons()) }
 		}
 	}
 	// Down / Alt+Down on the focused button opens the list from the keyboard too
@@ -1336,7 +1293,7 @@ kbd :: proc(text: string) {
 
 // `if card("Title", ICON) { ... }`: a titled panel, full width, height from its content. Tags used: "card".
 @(require_results, deferred_none = card_end)
-card :: proc(title: string, icon_glyph: string = "") -> bool {
+card :: proc(title: string, icon := "") -> bool {
 	em := font_size()
 	push_tags("card")
 	set_next_axis(.Y)
@@ -1359,7 +1316,11 @@ card :: proc(title: string, icon_glyph: string = "") -> bool {
 	if title != "" {
 		next({width = fill(), height = px(dense(em * 2.2))})
 		if row(.Center) {
-			if icon_glyph != "" { if tags("weak") { icon(icon_glyph, em * 1.8) } }
+			if icon != "" {
+				// (the icon procedure is hidden by the parameter: its cell, as icon builds it)
+				next({width = px(em * 1.8), height = pct(1), font = gs().icon_font, text_align = .Center})
+				if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico%d", icon, parent_box().child_count)) }
+			}
 			next({width = fill(), height = pct(1)})
 			if style({font_size = em * 1.1}) {
 				// (the card's name: not read a second time)
@@ -1415,104 +1376,6 @@ form_row_end :: proc() {
 	pop_parent()
 }
 
-
-// A labelled button: a glyph of an icon font ("" none) and its words. `intent`: what the act means, and so its colour
-// (its soft pair: a tinted fill, its words of the same hue). `face`: how it sits (a ghost has no face until the pointer
-// is over it; an intent then colours its words; Toggled: held down, the option chosen). `width`: {} as wide as what is
-// in it; fill() a share of the row, as flex: 1 (two buttons side by side, or one across the whole width), px(...) a width
-// of its own: what is in it stays centred, or at its left with `left`. `height`: of one line, in pixels (0: the
-// toolkit's). `icon_font`: the glyph's font (0: State.icon_font; lucide_icons() for Lucide's); `icon_color`: the glyph's
-// own colour (a state it says; the words stay the button's). `hue`: filled with one of the theme's hues (hue()), its
-// words in it: a colour by meaning that every theme has; prefer `intent` when the act has one. Both are soft unless
-// `solid`: the hue itself, its words dark or light, whichever reads (ink_on). `quiet`: a secondary act, smaller; a
-// Neutral one's words are weak until the pointer is over it. `lit`: drawn as under the pointer (while its menu is open).
-// `wrap`: words longer than the button's width go on more lines and the button grows to hold them (with a `width`; none:
-// fill()). `tip`: a tooltip when the pointer rests on it. Drawn by the theme's finish (bevelled in the machined one).
-button_icon :: proc(id: string, glyph, text: string, intent := Intent.Neutral, face := Button_Face.Raised, disabled := false,
-	width: Size = {}, height: f32 = 0, icon_font: font.Font_Id = 0, icon_color: Maybe(Color) = nil, hue: Maybe(Hue) = nil,
-	solid := false, quiet := false, lit := false, wrap := false, left := false, tip := "") -> (sig: Signal) {
-	s := gs()
-	em := font_size()
-	// a disabled scope, so the label and icon inside go neutral too
-	push_disabled(disabled)
-	defer pop_disabled()
-	// (soft, an intent is its theme's button; solid, its hue as any hue)
-	h := hue
-	if solid && intent != .Neutral && h == nil { h = intent_hue(intent) }
-	push_button_tags(solid ? .Neutral : intent, face)
-	defer pop_tags()
-	w := width
-	if wrap && w == {} { w = fill() }
-	set_next_axis(.X, .Center)
-	s.next_mod.width = w == {} ? children_sum() : w
-	line := height > 0 ? height : dense(em * 2.2)
-	s.next_mod.height = wrap ? children_sum() : px(line)
-	if s.next_mod.radius == nil { s.next_mod.radius = em * 0.45 }
-	ink: Maybe(Color)
-	if hh, tinted := h.?; tinted {
-		base := hue_color(hh)
-		base.a = 1
-		fill_c, words := soft_pair(base)
-		if solid { fill_c, words = base, ink_on(base) }
-		s.next_mod.bg, s.next_mod.border = fill_c, fill_c
-		ink = words
-	} else if face == .Ghost {
-		ink = button_ink(intent)
-	}
-	flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
-	if face == .Toggled { flags += {.Held} }
-	if lit { flags += {.Lit} }
-	b := build_box(flags, id)
-	b.squish = press_squish(b)
-	sig = signal(b)
-	button_a11y(b, face, text == "" ? tip : "", tip)
-	button_tip(sig, tip)
-	// (a secondary act's words: weak until the pointer is over it, unless they say an intent)
-	weak := quiet && intent == .Neutral && h == nil && !sig.hovering && !lit
-	fs := quiet ? math.round(em * BUTTON_QUIET_SCALE) : em
-	if parent(b) {
-		if weak { push_tags("weak") }
-		defer if weak { pop_tags() }
-		pad := text != "" ? em * 0.95 : em * 0.55
-		centred := w != {} && !left
-		spacer(px(pad))
-		if centred && !wrap { spacer(fill()) }   // (wider than what is in it: that stays in the middle)
-		if glyph != "" {
-			face_font := icon_font != 0 ? icon_font : s.icon_font
-			next({width = px(em * 1.5), height = pct(1), font = face_font, text_align = .Center, fg = icon_color != nil ? icon_color : ink})
-			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph))
-		}
-		label: ^Box
-		if text != "" && wrap {
-			// (between margins that make one line `line` tall)
-			st := top_style()
-			lh := math.ceil(font.metrics(s.fonts, st.font, fs).line_height)
-			margin := max(math.round((line - lh) * 0.5), 0)
-			next({width = fill(), height = children_sum(), axis = .Y})
-			if column() {
-				spacer(px(margin), exact = true)
-				next({width = fill(), fg = ink, font_size = fs})
-				paragraph(text)
-				spacer(px(margin), exact = true)
-			}
-		} else if text != "" {
-			next({width = text_size(), height = pct(1), fg = ink, font_size = fs})
-			label = build_box({.Draw_Text}, text)
-		}
-		if centred && !wrap { spacer(fill()) }
-		spacer(px(pad))
-		// (a share of the row is never narrower than what is in it, its padding on both sides included: the label,
-		// measured as the layout will (its text and text_pad), is never cut nor drawn against an edge)
-		if w != {} && w.least == 0 && label != nil {
-			b.pref[.X].least = math.ceil(2 * pad + (glyph != "" ? em * 1.5 : 0) + label.text_dim.x + 2 * label.text_pad)
-		}
-	}
-	return
-}
-
-// A quiet button's words, of the font size.
-@(private = "file") BUTTON_QUIET_SCALE :: 0.9
-
 // `if well("###id") { ... }`: a sunken box, carved in the surface (code, a preview, a list of facts): the theme's well
 // (its "well" colour; the machined finish carves it in, with a lit lower lip). Its size and corners from `next`; `axis`:
 // how its children are laid out. Tags used: "well".
@@ -1524,42 +1387,6 @@ well :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}) -> bool {
 	pop_tags()
 	push_parent(b)
 	return true
-}
-
-// A hint's words that say an act, away from the pointer: this much of their colour.
-@(private = "file") HINT_ACTION_REST_ALPHA :: 0.75
-
-// Words that say what can be done and do it, as a link does: weak like a hint, lit under the pointer. `icon`: a glyph of
-// `icon_font` (0: State.icon_font) before them ("" none). `intent`: their colour (its soft pair's words, which read on
-// the page), a little quieter away from the pointer. As wide as they are, unless `next` says otherwise.
-hint_action :: proc(id, text: string, icon := "", icon_font: font.Font_Id = 0, intent := Intent.Neutral) -> Signal {
-	s := gs()
-	em := font_size()
-	set_next_axis(.X, .Center)
-	if s.next_mod.width == nil { s.next_mod.width = children_sum() }
-	if s.next_mod.height == nil { s.next_mod.height = px(math.round(em * 1.4)) }
-	if s.next_mod.cursor == nil { s.next_mod.cursor = .Hand }
-	b := build_box({.Clickable, .Focusable}, id)
-	sig := signal(b)
-	a11y_default(b, {role = .Button, name = text})
-	col := button_ink(intent)
-	if c, ok := col.?; ok && !sig.hovering {
-		c.a *= HINT_ACTION_REST_ALPHA
-		col = c
-	}
-	weak := intent == .Neutral && !sig.hovering
-	if parent(b) {
-		if weak { push_tags("weak") }
-		defer if weak { pop_tags() }
-		if icon != "" {
-			next({width = px(math.round(em * 1.2)), height = pct(1), font = icon_font != 0 ? icon_font : s.icon_font, text_align = .Center, text_pad = 0, fg = col})
-			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
-			spacer(px(math.round(em * 0.3)))
-		}
-		next({width = text_size(0), height = pct(1), text_pad = 0, fg = col})
-		build_box({.Draw_Text}, fmt.tprintf("%s###t", text_shown(text)))
-	}
-	return sig
 }
 
 ////////////////////////////////
@@ -1623,7 +1450,7 @@ strip_grid_end :: proc(id: string, open: ^bool, gap: Vec2, show_all, show_fewer:
 		if row(id = "###strip_more") {
 			spacer(fill())
 			next({width = text_size(em * 0.6), height = px(dense(em * 1.8)), font_size = math.round(em * 0.9)})
-			if button(fmt.tprintf("%s###strip_toggle", open^ ? (show_fewer != "" ? show_fewer : i18n.tr("Show fewer")) : (show_all != "" ? show_all : i18n.tr("Show all"))), face = .Ghost).clicked { open^ = !open^ }
+			if button("strip_toggle", open^ ? (show_fewer != "" ? show_fewer : i18n.tr("Show fewer")) : (show_all != "" ? show_all : i18n.tr("Show all")), o = {face = .Ghost}).clicked { open^ = !open^ }
 		}
 	}
 	pop_parent()   // the strip

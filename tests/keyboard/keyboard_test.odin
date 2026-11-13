@@ -284,9 +284,9 @@ build_nested :: proc(f: ^Fx, user: rawptr) {
 	r := (^Nested_Run)(user)
 	if ui.ctx_menu(r.key, 300) {
 		ui.next({width = ui.px(300), height = ui.px(30)})
-		r.row = ui.button("A row###row").box
+		r.row = ui.button("row", "A row").box
 		ui.next({width = ui.px(300), height = ui.px(30)})
-		ui.button("Another row###row2")
+		ui.button("row2", "Another row")
 		if r.open_at != {} { ui.menu_nested_open(r.nested, r.open_at); r.open_at = {} }
 		if ui.menu_nested(r.nested) {
 			if ui.menu_item("Open").clicked { r.chosen = "open" }
@@ -1551,7 +1551,7 @@ Sel_Run :: struct { label: ui.Key, read: string, copied: bool }
 build_copy_above_text :: proc(f: ^Fx, user: rawptr) {
 	r := (^Sel_Run)(user)
 	ui.next({fixed_x = 300, fixed_y = 0, width = ui.px(100)})
-	if ui.button("Copy###copy").clicked {
+	if ui.button("copy", "Copy").clicked {
 		r.read = ui.selected_text(&f.s)
 		r.copied = true
 	}

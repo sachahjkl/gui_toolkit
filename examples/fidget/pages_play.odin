@@ -195,12 +195,12 @@ page_playground :: proc(app: ^App) {
 					if ui.form_row("Bounce") { ui.slider("###ph_b", &app.bounce, 0.1, 1, 0, "%.2f") }
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###spawnrow") {
-						if ui.button_icon("###ph_add", ui.ICON_ADD, "25 balls", intent = .Primary).clicked { spawn_balls(app, 25) }
-						if ui.button_icon("###ph_shake", "", "Shake").clicked {
+						if ui.button("###ph_add", "25 balls", ui.ICON_ADD, {intent = .Primary}).clicked { spawn_balls(app, 25) }
+						if ui.button("###ph_shake", "Shake").clicked {
 							for &b in app.balls { if b.alive { b.v += {rand_range(-900, 900), -rand_range(300, 1400)} } }
 						}
-						if ui.button_icon("###ph_conf", ICON_TARGET, "Confetti").clicked { run_cmd(app, .Confetti) }
-						if ui.button_icon("###ph_clear", ICON_TRASH, "Clear", face = .Ghost).clicked { run_cmd(app, .Clear_Balls) }
+						if ui.button("###ph_conf", "Confetti", ICON_TARGET).clicked { run_cmd(app, .Confetti) }
+						if ui.button("###ph_clear", "Clear", ICON_TRASH, {face = .Ghost}).clicked { run_cmd(app, .Clear_Balls) }
 					}
 					ui.spacer(ui.px(em * 0.3))
 
@@ -293,7 +293,7 @@ page_playground :: proc(app: ^App) {
 					ui.spacer(ui.px(em * 0.3))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###accresetrow") {
-						if ui.button_icon("###acc_reset", ICON_UNDO, "Reset to palette accent", disabled = !app.accent_override).clicked {
+						if ui.button("###acc_reset", "Reset to palette accent", ICON_UNDO, {disabled = !app.accent_override}).clicked {
 							set_palette(app, app.palette_idx)
 						}
 					}

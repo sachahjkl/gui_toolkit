@@ -16,8 +16,8 @@ in the font (`arrow-up-down` is `ARROW_UP_DOWN`; a name that starts with a digit
 font, then the command again. The names are the font's own, which are older than lucide.dev's for a few icons
 (`ALERT_TRIANGLE` for triangle-alert, `SEND_HORIZONAL` for send-horizontal).
 
-A program may make it its icon font (`ui.State.icon_font = icons`): `ui.icon`, `ui.icon_button`, a menu item's `icon`
-and `ui.button_icon` then draw Lucide's characters. The widgets' own marks (a menu's or a check box's check, a
+A program may make it its icon font (`ui.State.icon_font = icons`): `ui.icon`, `ui.button`'s `icon` and a menu item's
+`icon` then draw Lucide's characters. The widgets' own marks (a menu's or a check box's check, a
 dropdown's arrow, a submenu's arrow, a number's − and +, a toast's sign) are characters of the toolkit's icon font
 (`ui.ICON_FONT_DATA`), which `ui.widget_icons()` loads the first time a widget draws one: they stay right whatever the
 program's icon font is.
@@ -45,7 +45,7 @@ instead of 917 KB.
 ## A program's own icons
 
 A program needs no icon of the toolkit: any icon font it loads can be its icon font, and an icon is a character of it
-(a string). The menus, `ui.icon` and `ui.icon_button` draw whatever `ui.State.icon_font` holds.
+(a string). The menus, `ui.icon` and `ui.button` draw whatever `ui.State.icon_font` holds.
 
 ```odin
 // the program's own font, beside its executable or embedded in it

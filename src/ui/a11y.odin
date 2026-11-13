@@ -15,7 +15,7 @@ import "../platform"
 // cannot know (an icon button's purpose) and describes its own boxes:
 //
 //   ui.a11y({role = .Button, name = tr("Back")})   // applies to the next box built
-//   if ui.icon_button("back", ICON_BACK).clicked { ... }
+//   if ui.button("back", icon = ICON_BACK).clicked { ... }
 //
 // The tree is only built when an assistive technology reads the window (platform.a11y_state), or when a test asks for
 // it (a11y_capture); then only the nodes that changed go to the adapter (platform.A11y_Diff). Requests of assistive

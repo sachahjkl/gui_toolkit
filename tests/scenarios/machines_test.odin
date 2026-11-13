@@ -29,13 +29,13 @@ dialogs_build :: proc(s: ^session.Session) {
 	ui.line_edit("###page", &d.page)
 	if ui.modal("first", 400, &d.first) {
 		ui.next({width = ui.px(100)})
-		ui.button("Below###below")
+		ui.button("below", "Below")
 	}
 	if ui.modal("second", 300, &d.second) {
 		ui.next({width = ui.px(FIELD_WIDTH)})
 		ui.line_edit("###field", &d.field)
 		ui.next({width = ui.px(100)})
-		ui.button("Above###above")
+		ui.button("above", "Above")
 	}
 }
 

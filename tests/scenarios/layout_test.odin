@@ -137,9 +137,9 @@ what_is_clipped_takes_no_click :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 		ui.next({width = ui.px(100), height = ui.px(100), flags = {.Clip}})
 		if ui.column(flags = {.Clip}, id = "###clip") {
 			ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(40), height = ui.px(40)})
-			if ui.button("###inside").clicked { c.inside += 1 }
+			if ui.button("inside").clicked { c.inside += 1 }
 			ui.next({fixed_x = 150, fixed_y = 10, width = ui.px(40), height = ui.px(40)})
-			if ui.button("###outside").clicked { c.outside += 1 }
+			if ui.button("outside").clicked { c.outside += 1 }
 		}
 	}})
 	session.click(s, "inside")

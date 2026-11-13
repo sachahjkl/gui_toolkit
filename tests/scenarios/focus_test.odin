@@ -31,13 +31,13 @@ form_build :: proc(s: ^session.Session) {
 	ui.checkbox("###agree", "Agree", &f.agree)
 	if ui.disabled(f.disabled) {
 		ui.next({width = ui.px(100)})
-		if ui.button("Save###save").clicked { f.saves += 1 }
+		if ui.button("save", "Save").clicked { f.saves += 1 }
 	}
 	if ui.modal("dialog", 300, &f.modal) {
 		ui.next({width = ui.px(100)})
-		ui.button("One###m_one")
+		ui.button("m_one", "One")
 		ui.next({width = ui.px(100)})
-		ui.button("Two###m_two")
+		ui.button("m_two", "Two")
 	}
 }
 
