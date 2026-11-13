@@ -96,11 +96,9 @@ top_bar :: proc(app: ^App, em: f32) {
 				ui.label(fmt.tprintf("showcase  ·  %s###what", ui.VERSION))
 			}
 			ui.spacer(ui.fill())
-			if ui.button_icon("###search", lucide.SEARCH, "Search the commands", face = .Ghost, width = ui.px(em * 16), left = true, tip = "The command palette (Ctrl+K)").clicked {
+			if ui.search_launcher("###search", "Search the commands", "Ctrl+K", tip = "The command palette").clicked {
 				ui.palette_open(&app.palette)
 			}
-			ui.spacer(ui.px(em * 0.4))
-			ui.kbd("Ctrl+K")
 			ui.spacer(ui.px(em * 1.2))
 			light := app.shown.light
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})

@@ -1630,3 +1630,33 @@ strip_grid_end :: proc(id: string, open: ^bool, gap: Vec2, show_all, show_fewer:
 // (number_of's parameter `slider` hides the widget)
 @(private = "file")
 slider_widget :: proc(id: string, v: ^f32, lo, hi, step: f32, format: string) { slider(id, v, lo, hi, step, format) }
+
+// A search field that opens a search elsewhere (the command palette): it looks like the fields one types in (sunken, an
+// input's border and corners), its magnifying glass, `hint` in weak words, `keys` at its end (the shortcut that opens
+// it too: the program's). It holds no text: a click, Enter or Space is its signal's `clicked`.
+// Its size comes from `next` (default: 19 ems wide, a field's height).
+search_launcher :: proc(id: string, hint: string, keys := "", tip := "") -> Signal {
+	em := font_size()
+	next_default({width = px(em * 19), height = px(dense(em * 2.1)), radius = em * 0.45})
+	set_next_axis(.X, .Center)
+	push_tags("input")
+	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken}, id)
+	pop_tags()
+	b.cursor = .Hand
+	a11y_default(b, {role = .Button, name = hint})
+	push_parent(b)
+	if tags("weak") {
+		next({width = px(em * 2), height = pct(1), font = lucide_icons(), text_align = .Center, text_pad = 0})
+		build_box({.Draw_Text, .No_Text_Trunc}, lucide.SEARCH + "###sl_icon")
+		next({width = fill(), height = pct(1), text_pad = 0})
+		build_box({.Draw_Text}, fmt.tprintf("%s###sl_hint", hint))
+	}
+	if keys != "" {
+		kbd(keys)
+		spacer(px(em * 0.4))
+	}
+	pop_parent()
+	sig := signal(b)
+	button_tip(sig, tip)
+	return sig
+}

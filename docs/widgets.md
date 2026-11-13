@@ -60,6 +60,10 @@ flags count): a program's own draw of a button reads them.
 A well around a field that shows when the field has the keyboard (a composer, a search): `flags = {.Focus_Within,
 .Draw_Focus_Ring}`, the ring of the well lit while any box in it has the keyboard.
 
+`ui.search_launcher(id, hint, keys, tip)` is a search field that opens a search elsewhere (a title bar's "Search the
+commands" that opens the palette): sunken with an input's border, its magnifying glass, the hint in weak words, the keys
+at its end. It holds no text; a click, Enter or Space is its `clicked`. Its size comes from `next` (19 ems wide).
+
 `ui.hint_action(id, text, icon, icon_font, intent)` is words that say what can be done and do it, as a link does: weak
 like a hint, lit under the pointer; an intent colours them. It returns its `Signal`.
 

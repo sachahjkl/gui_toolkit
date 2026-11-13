@@ -492,3 +492,21 @@ undo_steps_bound_a_field_and_an_area_alike :: proc(t: ^testing.T) { unwatched.ru
 	testing.expect_value(t, undone, UNDO_LIMIT)
 	testing.expect_value(t, ui.area_string(&e.area), KEPT)
 }) }
+
+// A search launcher: a field to look at, nothing to type in; a click opens what it searches, and so does Enter once
+// Tab gave it the keyboard.
+@(test)
+a_search_launcher_opens_its_search :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Launch :: struct { opened: int }
+	l: Launch
+	s := session.start(t, {size = {600, 200}, user = &l, build = proc(s: ^session.Session) {
+		if ui.search_launcher("###find", "Search the commands", "Ctrl+K").clicked { (^Launch)(s.user).opened += 1 }
+	}})
+	b := session.get(s, "find")
+	testing.expect(t, .Sunken in b.flags, "sunken, as a field")
+	testing.expect(t, session.find_text(s, "Search the commands") != nil && session.find_text(s, "Ctrl+K") != nil, "its hint and its keys")
+	session.click(s, "find")
+	testing.expect_value(t, l.opened, 1)
+	session.key(s, .Return)
+	testing.expect_value(t, l.opened, 2)
+}) }
