@@ -117,7 +117,7 @@ run_ci :: proc(a: ^Args) -> string {
 	for e in examples {
 		if why := build_example(root, e, false); why != "" { append(&failed, why) }
 	}
-	if !toolbox.run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, {dir = root}) {
+	if !toolbox.run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", "-keep-executable", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, {dir = root}) {
 		append(&failed, "tools/run_tests")
 	}
 	when ODIN_OS != .Windows {
