@@ -51,7 +51,7 @@ Every field may stay zero.
 | `colors` | `Colors`: text, headings, quotes, list markers, a quote's rail, inline code, code, a table's header, frame, stripes, rule and scroll bar; alpha 0 takes the theme's (`text`, `weak text`, `accent`, `code_bg`, `well`) |
 | `user` | what the procedures are given |
 | `link(user, url)` | a link clicked or chosen with Enter (nil: links open nothing). The target is as written: a program checks it before it hands it to the system |
-| `code(user, id, c: Code)` | a fenced block, built in its place: its language, text, highlighted runs, whether its fence closed, a version for `rich_paragraph` (a diagram, a header with a copy button). nil: `code_block` |
+| `code(user, id, c: Code)` | a fenced block, built in its place: its language, text, highlighted runs, whether its fence closed, a version for `rich_paragraph`, its number among the fenced blocks (`fence`: a diagram laid out ahead is found by it) (a diagram, a header with a copy button). nil: `code_block` |
 | `frame(user, box, kind)` | paints the box a table or a code block sits in (nil: its colour, rounded) |
 | `rule(user, id)` | a rule (nil: `ui.hline`) |
 | `table_corner(user, table, source, size)` | built in a table's top right corner while the pointer is on it, over its rows: a copy button (`table_html`, `source` its lines) |

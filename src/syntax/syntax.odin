@@ -365,19 +365,24 @@ hunk_header :: proc(line: string) -> bool {
 	return j >= 0 && strings.has_prefix(line[j:], " @@")
 }
 
-// Markdown: a fenced code block (``` to ```: a snippet with a few words around it), or two kinds of its signs among a
-// heading, a list, a link, emphasis, a table and a quote, or one of the last three with `inline code`. One kind is not
-// enough: a note has a list, a script has "# " comments and a shell's `backticks`.
+// Markdown: a fenced code block (``` to ```: a snippet with a few words around it), or a whole table (a row of cells and,
+// under it, its rule of as many cells: pipes alone are a shell's pipeline or a log's column), or two kinds of its signs
+// among a heading, a list, a link, emphasis, a table's rule and a quote, or one of the last three with `inline code`.
+// One kind is not enough: a note has a list, a script has "# " comments and a shell's `backticks`.
 @(private = "file")
 markdown_like :: proc(src: string) -> bool {
 	Sign :: enum { Heading, List, Quote, Link, Emphasis, Table, Code }
 	signs: bit_set[Sign]
 	fences := 0
+	row_cells := 0   // the cells of the line before when it is a row ("| a | b |"), else 0
 	rest := src
 	for raw in strings.split_lines_iterator(&rest) {
 		line := strings.trim_right(raw, "\r")
-		if strings.has_prefix(strings.trim_left_space(line), "```") { fences += 1; continue }
+		if strings.has_prefix(strings.trim_left_space(line), "```") { fences += 1; row_cells = 0; continue }
 		if fences % 2 == 1 { continue }   // (inside a fence: code, not signs)
+		t := strings.trim_space(line)
+		if row_cells > 0 && table_rule(t) && table_cells(t) == row_cells { return true }
+		row_cells = strings.has_prefix(t, "|") ? table_cells(t) : 0
 		switch {
 		case heading_line(line):            signs += {.Heading}
 		case list_item(line):               signs += {.List}
@@ -420,6 +425,19 @@ emphasis :: proc(line: string) -> bool {
 	if b <= 0 { return false }
 	c := a + 2 + b
 	return line[c - 1] != ' ' && (c + 2 >= len(line) || !is_ident(line[c + 2]))
+}
+
+// The cells of a table's row that begins with "|": its unescaped pipes, the one at its end not counted.
+@(private = "file")
+table_cells :: proc(row: string) -> int {
+	n := 0
+	for i := 1; i < len(row); i += 1 {
+		switch row[i] {
+		case '\\': i += 1
+		case '|':  if i < len(row) - 1 { n += 1 }
+		}
+	}
+	return n + 1
 }
 
 // A table's rule under its header: "| --- | :-: |".

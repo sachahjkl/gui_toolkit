@@ -86,6 +86,7 @@ the_new_languages_are_guessed :: proc(t: ^testing.T) {
 		{"# papier\n\nA clipboard manager.\n\n## Install\n\n- download the archive\n- run `papier`\n\nSee [the docs](https://example.org).", "Markdown"},
 		{"Here is the fix:\n\n```odin\nx := proc() -> int { return 1 }\n```\n", "Markdown"},
 		{"Steps:\n1. open it\n2. copy\n\n**Note**: it keeps 500 entries.", "Markdown"},
+		{"| Level | Entity | Role |\n|---|---|---|\n| Executive | Council | Votes the budget |\n| Local | Town halls | Civil status |", "Markdown"},
 		{"diff --git a/app.py b/app.py\nindex 83db48f..bf269f4 100644\n--- a/app.py\n+++ b/app.py\n@@ -1,3 +1,4 @@\n import os\n+import sys\n def main():\n     print(os.getcwd())", "Diff"},
 		{"@@ -10,6 +10,7 @@ main :: proc() {\n \tx := 1\n-\ty := 2\n+\ty := 3\n }", "Diff"},
 	}
@@ -103,6 +104,8 @@ the_new_languages_are_guessed :: proc(t: ^testing.T) {
 		"A plain paragraph, with a comma: and a colon, and nothing else that would mark it as anything but prose at all.",
 		"# install the dependencies first\napt-get install -y curl\ncurl -fsSL `cat url.txt` | sh",
 		"From: Ada\nTo: Bob\nSubject: the report",
+		"| a | b |\n| c | d |",   // (rows with no rule under the first)
+		"| a | b |\n|---|---|---|",   // (a rule of another number of cells)
 	}
 	for p in not_markdown {
 		l, _ := guess(p)

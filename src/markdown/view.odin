@@ -34,6 +34,7 @@ Code :: struct {
 	runs:    []ui.Rich_Run,   // its text highlighted (code_runs): kept by the doc, valid through the build
 	closed:  bool,            // its closing fence came (one still being written is not)
 	version: u64,             // for rich_paragraph's `version`: the same while its text is
+	fence:   int,             // its number among the text's fenced blocks, from 0 (what a program laid out ahead, a diagram, is found by it)
 }
 
 // What Config.frame paints.
@@ -79,6 +80,7 @@ view :: proc(d: ^Doc, id: string, src: string, cfg: Config, size: f32 = 0) {
 	// (a marker's column holds its text, the gap and the padding on both sides of a box: LIST_MARKER_EM in all at least)
 	pad := ui.parent_box().text_pad
 	marker_w := marker_widths(d, measure, prose, prose_fs, math.round(em * LIST_MARKER_EM) - 2 * pad, math.round(em * LIST_MARKER_GAP_EM))
+	fence := 0
 	for &bl, n in d.blocks {
 		bid := fmt.tprintf("###%s_b%d", id, n)
 		lines := block_lines(d, n)
@@ -90,7 +92,8 @@ view :: proc(d: ^Doc, id: string, src: string, cfg: Config, size: f32 = 0) {
 		case .Code:
 			mono := cfg.mono != 0 ? cfg.mono : ui.mono_font()
 			code := Code{lang = bl.lang, text = block_text(d, n), runs = code_runs(d, n, {font = mono, color = c.code_text}), closed = bl.closed,
-				version = len(lines) > 0 ? source_version(lines[0], lines[len(lines) - 1], em) : 0}
+				version = len(lines) > 0 ? source_version(lines[0], lines[len(lines) - 1], em) : 0, fence = fence}
+			fence += 1
 			if cfg.code != nil { cfg.code(cfg.user, bid, code) } else { code_block(bid, code, cfg) }
 		case .Table:
 			table_block(bid, d, n, &cfg, c, fs)
