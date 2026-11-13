@@ -152,11 +152,16 @@ Theme_Read_Job :: struct {
 
 // Looks whether the file changed, at most every THEMES_FILE_POLL_MS (a task: its stamp, and its text when it changed,
 // read and parsed off this thread). True on the build its new themes came in: `all` changed.
+@(private = "file") THEMES_FILE_LOST_MS :: 30_000
+
 themes_file_poll :: proc(tf: ^Themes_File, s: ^ui.State) -> (changed: bool) {
 	changed = tf.serial != tf.seen
 	tf.seen = tf.serial
-	if tf.path == "" || tf.busy { return }
+	if tf.path == "" { return }
 	now := ui.now_ms()
+	// (a poll whose task was dropped with its state, a window closed, never answers: past THEMES_FILE_LOST_MS it is
+	// taken as lost and the file is asked again)
+	if tf.busy && now < tf.due_ms + THEMES_FILE_LOST_MS { return }
 	if now < tf.due_ms { return }
 	tf.busy = true
 	tf.due_ms = now + THEMES_FILE_POLL_MS

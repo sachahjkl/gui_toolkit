@@ -99,13 +99,14 @@ every_standard_set_registers_and_applies :: proc(t: ^testing.T) {
 	// a reset puts the toolkit's default back
 	config.reset(&c.prefs, "timing.tooltip_delay")
 	testing.expect_value(t, ui.feel(st).tooltip_delay_ms, ui.FEEL_DEFAULT.tooltip_delay_ms)
-	// what the user set before the watch is applied by it; what nobody set is left as the program made it
+	// the watch applies every standard preference: the user's, and the defaults too (a program's own default is its
+	// Standard_Defaults.values, never a setter called beside the registry)
 	ui.set_density(st, 1)
 	ui.set_scrollbar_arrows(st, true)
 	prefs_page.standard_unwatch(&c.watch)
 	prefs_page.standard_watch(&c.watch, &c.prefs, st)
 	testing.expect_value(t, ui.density(st), f32(0.8))
-	testing.expect(t, st.scrollbar_arrows, "a preference at its default does not undo the program's setting")
+	testing.expect(t, !st.scrollbar_arrows, "the default applied")
 }
 
 // The advanced preferences of a page are under "Advanced", folded until a click.

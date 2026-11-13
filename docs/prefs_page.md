@@ -72,7 +72,8 @@ order among a program's own (theirs have the order 0): General, Appearance and W
 
 ### Applying them
 
-`standard_apply(prefs, state, targets)` gives every standard preference that is registered and not at its default to
+`standard_apply(prefs, state, targets)` gives every standard preference that is registered, at its default too (a program's own default is its
+`Standard_Defaults.values`), to
 the toolkit's setters: `ui.set_feel` (repeats, undo, typeahead, steps, zoom step, tooltips, menus, the fade, the
 wheel's lines, the fling), `set_zoom`, `set_density`, `set_rounding`, `set_animations`, `set_smooth_scroll`,
 `set_scroll_settings`, `set_autoscroll_enabled`, `set_autoscroll_settings`, `set_scrollbar_autohide`,

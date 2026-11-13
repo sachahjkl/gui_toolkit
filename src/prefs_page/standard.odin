@@ -77,6 +77,8 @@ MESSAGES_PREF  :: "general.messages"
 LANGUAGE_PREF  :: "general.language"
 SYSTEM_TITLE_PREF :: "window.system_title"
 UPDATE_AUTO_PREF  :: "update.auto"
+UPDATE_CHANNEL_PREF  :: "update.channel"
+UPDATE_BASE_URL_PREF :: "update.base_url"
 UI_FONT_PREF    :: "appearance.text.ui_font"
 MONO_FONT_PREF  :: "appearance.text.mono_font"
 PROSE_FONT_PREF :: "appearance.text.prose_font"
@@ -509,12 +511,12 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			tags = UPDATE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "update.channel", title = "Channel", kind = .String, default = {s = d.update_channel}, restart = true,
+			name = UPDATE_CHANNEL_PREF, title = "Channel", kind = .String, default = {s = d.update_channel}, restart = true,
 			description = "The channel the updates come from (stable, beta...). Empty: the only one.",
 			tags = UPDATE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "update.base_url", title = "Address", kind = .String, default = {s = d.update_base_url}, restart = true, advanced = true,
+			name = UPDATE_BASE_URL_PREF, title = "Address", kind = .String, default = {s = d.update_base_url}, restart = true, advanced = true,
 			description = "Where the updates are published (a folder of the web).",
 			tags = UPDATE_TAGS[:],
 		})
@@ -651,16 +653,14 @@ Standard_Targets :: struct {
 	partial_redraw: ^bool,
 }
 
-// Applies every standard preference that is registered and not at its default (the user's, the command line's, a
-// policy's: where nobody said anything, what the program set stays) to the toolkit's setters (ui.set_feel, set_zoom, set_density,
+// Applies every standard preference that is registered, at its default too (a program's own defaults are
+// Standard_Defaults.values: they reach the interface as the user's do), to the toolkit's setters (ui.set_feel, set_zoom, set_density,
 // set_rounding, set_animations, set_smooth_scroll, the scroll and autoscroll settings, set_toast_position; the renderer's
 // and the fonts' when `t` gives them). What is not registered is left as it is. The theme (appearance.theme, mode,
 // finish, glow, font_size) stays the program's to show (appearance_read, ui.theme_show), as do the fonts by name, the
 // title bar, the updates and the session (read at the start: Def.restart, or by the program's Updater and desktop.apply).
 standard_apply :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets = {}) {
-	for e in prefs.entries {
-		if e.source != .Default { standard_apply_one(prefs, s, t, e.def.name) }
-	}
+	for e in prefs.entries { standard_apply_one(prefs, s, t, e.def.name) }
 }
 
 // standard_apply now, then again for each standard preference that changes (config.watch: a change applies that one
