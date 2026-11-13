@@ -18,6 +18,10 @@ capture.frame_free(&d)
 capture.close(s)
 ```
 
+A session lives as long as the program. When its connection to the display server breaks (a protocol error, the
+compositor restarted), the next call opens it again before it acts: the program does not open another. A session with a
+stream open waits for that stream to close (the stream uses the connection, and ends with an error of its own).
+
 ## The threading rule
 
 Every procedure may block: a round trip to the compositor, a portal's dialog, a GPU readback. Call them on a worker,
