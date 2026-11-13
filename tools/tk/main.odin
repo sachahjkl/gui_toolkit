@@ -63,132 +63,44 @@ package tk
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
-import "core:strconv"
 import "core:strings"
-import "../cmdline"
 import toolbox "../../src/toolbox"
 
-// What a stamp file ends with, as PowerShell's Set-Content wrote them (the ones already built stay valid).
-NEWLINE :: "\r\n" when ODIN_OS == .Windows else "\n"
-// Exit codes.
-EXIT_FAILED :: 1
-EXIT_USAGE :: 2
-
-Command :: struct {
-	name:        string,
-	flags:       []string,                 // what it takes: "name" a switch, "name:" a flag with a value
-	positionals: int,                      // how many plain arguments it takes (-1: none or one)
-	run:         proc(a: ^Args) -> string, // "" when the work is done, else why it is not
-	raw:         bool,                     // every argument is a plain one: the command reads its own (--name value)
+COMMANDS := []toolbox.Command {
+	{name = "build_text", usage = "[-force]: the native text backend (native/text) -> build/text, unless its stamp says it is up to date", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(run_build_text(args)) }},
+	{name = "build_a11y", usage = "[-force]: the AccessKit adapter (native/a11y) -> build/a11y, the same way", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(run_build_a11y(args)) }},
+	{name = "build_mermaid", usage = "[-force]: Mermaid diagrams to SVG (native/mermaid) -> build/mermaid, the same way", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(run_build_mermaid(args)) }},
+	{name = "build_naga", usage = ": the WGSL to HLSL translator (tools/wgsl2hlsl) -> build/naga/wgsl2hlsl.exe, its Cargo.lock pinned", checked = true, run = proc(args: []string) -> int { return toolbox.done(run_build_naga(args)) }},
+	{name = "fetch_emoji", usage = "[-dest:dir] [-unicode]: Noto Color Emoji COLR v1 and OFL.txt -> build/emoji; -unicode: Unicode's emoji files too", checked = true, flags = {"dest:", "unicode"}, run = proc(args: []string) -> int { return toolbox.done(run_fetch_emoji(args)) }},
+	{name = "fetch_wgpu", usage = "[-dest:dir] [-no-dxc] [-odin:exe]: wgpu-native as pinned (Windows: its DLL and DXC's; Linux: Odin's vendor library)", checked = true, flags = {"dest:", "no-dxc", "odin:"}, run = proc(args: []string) -> int { return toolbox.done(run_fetch_wgpu(args)) }},
+	{name = "gen_emoji_data", usage = "[-data:file]: font/emoji_data.odin from Unicode's emoji-data.txt", checked = true, flags = {"data:"}, run = proc(args: []string) -> int { return toolbox.done(run_gen_emoji_data(args)) }},
+	{name = "make_icon", usage = "-png:file -out:file: a multi-size .ico (PNG, 16 to 256 px) from the 512 px logo", checked = true, flags = {"png:", "out:"}, run = proc(args: []string) -> int { return toolbox.done(run_make_icon(args)) }},
+	{name = "make_logo", usage = "[-out:file]: draws the logo, 512 px (default .project/image.png)", checked = true, flags = {"out:"}, run = proc(args: []string) -> int { return toolbox.done(run_make_logo(args)) }},
+	{name = "ppm_diff", usage = "a.ppm b.ppm [-tolerance:2]: the largest and mean difference of two P6 PPM files, the pixels over the tolerance", checked = true, flags = {"tolerance:"}, positionals = 2, run = proc(args: []string) -> int { return toolbox.done(run_ppm_diff(args)) }},
+	{name = "emoji_board", usage = "[-size:32] [-scale:1] [-step:37] [-font:ttf] [-out-dir:dir]: the COLR interpreter against a headless Edge", checked = true, flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = proc(args: []string) -> int { return toolbox.done(run_emoji_board(args)) }},
+	{name = "crash_symbolize", usage = "<report> <symbols>: a crash report with the program's frames named (a map, a folder of maps, or the executable)", checked = true, positionals = 2, run = proc(args: []string) -> int { return toolbox.done(run_crash_symbolize(args)) }},
+	{name = "gen_lucide", usage = ": src/lucide/lucide.odin from lucide.ttf, a constant per icon", checked = true, run = proc(args: []string) -> int { return toolbox.done(run_gen_lucide(args)) }},
+	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> int { return toolbox.done(run_release(args)) }},
+	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> int { return toolbox.done(run_build(args)) }},
+	{name = "site_docs", usage = "<site> <out>: every docs/*.md as a page of <out>/docs, docs/_nav.txt the menu", checked = true, positionals = 2, run = proc(args: []string) -> int { return toolbox.done(run_site_docs(args)) }},
+	{name = "site_build", usage = "<site> <out>: the site as published (site_changelog, site_meta, site_docs), then its links", checked = true, positionals = 2, run = proc(args: []string) -> int { return toolbox.done(run_site_build(args)) }},
+	{name = "site_changelog", usage = "<site> <out>: a copy of <site> with the history from CHANGELOG.md and the classic pages", checked = true, positionals = 2, run = proc(args: []string) -> int { return toolbox.done(run_site_changelog(args)) }},
+	{name = "site_meta", usage = "<site> <out>: what each page says when shared, the feed, the sitemap, the files around the pages", checked = true, positionals = 2, run = proc(args: []string) -> int { return toolbox.done(run_site_meta(args)) }},
+	{name = "site_card", usage = ": draws site/img/card.png in a local Chromium, once, by hand", checked = true, run = proc(args: []string) -> int { return toolbox.done(run_site_card(args)) }},
+	{name = "site_check", usage = "[--site folder] [--shot file.png] [--browser program]: the site's pages in Chrome or Edge with no window", run = proc(args: []string) -> int { return toolbox.done(run_site_check(args)) }},
+	{name = "cdp", usage = "[--port 9222] <command> [args] [, <command> [args]]...: drives a toolkit window over the DevTools protocol (cdp.odin)", run = proc(args: []string) -> int { return toolbox.done(run_cdp(args)) }},
+	{name = "screenshots", usage = "[-build] [-only:a,b] [-width:1400]: docs/screenshots and site/img from the examples, their own frames", checked = true, flags = {"build", "only:", "width:"}, run = proc(args: []string) -> int { return toolbox.done(run_screenshots(args)) }},
+	{name = "theme_shots", usage = "[-build] [-out:dir] [-page:Find] [-find:the] [-only:a,b]: examples/whatsnew in every named palette", checked = true, flags = {"build", "out:", "page:", "find:", "only:"}, run = proc(args: []string) -> int { return toolbox.done(run_theme_shots(args)) }},
+	{name = "finish_shots", usage = "[-build] [-out:dir] [-page:0] [-theme:0]: fidget's page in every finish", checked = true, flags = {"build", "out:", "page:", "theme:"}, run = proc(args: []string) -> int { return toolbox.done(run_finish_shots(args)) }},
+	{name = "timeline_test", usage = "[-exe:file] [-out:dir] [-port:9477]: the timelines of src/cdp against examples/whatsnew --headless", checked = true, flags = {"exe:", "out:", "port:"}, run = proc(args: []string) -> int { return toolbox.done(run_timeline_test(args)) }},
+	{name = "doc_check", usage = "[--root folder] [--extra folder]...: the files, flags and names the documentation cites exist", run = proc(args: []string) -> int { return toolbox.done(run_doc_check(args)) }},
+	{name = "ci", usage = ": what the CI checks on this system: odin check of every package, the examples, the tests", checked = true, run = proc(args: []string) -> int { return toolbox.done(run_ci(args)) }},
+	{name = "desktop_tests", usage = "[x11|randr|wayland]: Linux: the backends against real servers on a virtual desktop nobody sees", checked = true, positionals = -1, run = proc(args: []string) -> int { return toolbox.done(run_desktop_tests(args)) }},
 }
 
-COMMANDS := []Command {
-	{name = "build_text", flags = {"force"}, run = run_build_text},
-	{name = "build_a11y", flags = {"force"}, run = run_build_a11y},
-	{name = "build_mermaid", flags = {"force"}, run = run_build_mermaid},
-	{name = "build_naga", run = run_build_naga},
-	{name = "fetch_emoji", flags = {"dest:", "unicode"}, run = run_fetch_emoji},
-	{name = "fetch_wgpu", flags = {"dest:", "no-dxc", "odin:"}, run = run_fetch_wgpu},
-	{name = "gen_emoji_data", flags = {"data:"}, run = run_gen_emoji_data},
-	{name = "make_icon", flags = {"png:", "out:"}, run = run_make_icon},
-	{name = "make_logo", flags = {"out:"}, run = run_make_logo},
-	{name = "ppm_diff", flags = {"tolerance:"}, positionals = 2, run = run_ppm_diff},
-	{name = "crash_symbolize", positionals = 2, run = run_crash_symbolize},
-	{name = "emoji_board", flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = run_emoji_board},
-	{name = "gen_lucide", run = run_gen_lucide},
-	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},
-	{name = "build", flags = {"debug"}, positionals = -1, run = run_build},
-	{name = "site_docs", positionals = 2, run = run_site_docs},
-	{name = "site_build", positionals = 2, run = run_site_build},
-	{name = "site_changelog", positionals = 2, run = run_site_changelog},
-	{name = "site_meta", positionals = 2, run = run_site_meta},
-	{name = "site_card", run = run_site_card},
-	{name = "site_check", raw = true, run = run_site_check},
-	{name = "cdp", raw = true, run = run_cdp},
-	{name = "screenshots", flags = {"build", "only:", "width:"}, run = run_screenshots},
-	{name = "theme_shots", flags = {"build", "out:", "page:", "find:", "only:"}, run = run_theme_shots},
-	{name = "finish_shots", flags = {"build", "out:", "page:", "theme:"}, run = run_finish_shots},
-	{name = "timeline_test", flags = {"exe:", "out:", "port:"}, run = run_timeline_test},
-	{name = "doc_check", raw = true, run = run_doc_check},
-	{name = "ci", run = run_ci},
-	{name = "desktop_tests", positionals = -1, run = run_desktop_tests},
-}
-
-Flag :: struct {
-	name, value: string,
-}
-
-Args :: struct {
-	command:     ^Command,
-	flags:       [dynamic]Flag,
-	positionals: [dynamic]string,
-}
-
+// (each command's work says why it fails; done turns that into the exit code and says it as "tk <command>: why")
 main :: proc() {
-	a, why := parse(cmdline.joined(os.args[1:]))
-	if why != "" {
-		fmt.eprintfln("tk: %s", why)
-		fmt.eprint("commands:")
-		for c in COMMANDS { fmt.eprintf(" %s", c.name) }
-		fmt.eprintln(" (see the head of tools/tk/main.odin)")
-		os.exit(EXIT_USAGE)
-	}
-	if why = a.command.run(&a); why != "" {
-		fmt.eprintfln("tk %s: %s", a.command.name, why)
-		os.exit(EXIT_FAILED)
-	}
-}
-
-// The command line (without the program) read against COMMANDS. why != "": not one tk understands.
-parse :: proc(args: []string, allocator := context.temp_allocator) -> (a: Args, why: string) {
-	a.flags = make([dynamic]Flag, allocator)
-	a.positionals = make([dynamic]string, allocator)
-	if len(args) == 0 { return a, "no command" }
-	for &c in COMMANDS { if c.name == args[0] { a.command = &c } }
-	if a.command == nil { return a, fmt.tprintf("no command %s", args[0]) }
-	if a.command.raw {
-		append(&a.positionals, ..args[1:])
-		return a, ""
-	}
-	for arg in args[1:] {
-		if len(arg) < 2 || arg[0] != '-' { append(&a.positionals, arg); continue }
-		name, value := arg[1:], ""
-		colon := strings.index_byte(name, ':')
-		if colon >= 0 { name, value = name[:colon], name[colon + 1:] }
-		spelled := colon >= 0 ? fmt.tprintf("%s:", name) : name
-		known := false
-		for f in a.command.flags { known ||= f == spelled }
-		if !known { return a, fmt.tprintf("%s takes no flag -%s", a.command.name, spelled) }
-		append(&a.flags, Flag{name, value})
-	}
-	if a.command.positionals >= 0 && len(a.positionals) != a.command.positionals || len(a.positionals) > 1 && a.command.positionals < 0 {
-		return a, fmt.tprintf("%s takes %d plain arguments, not %d", a.command.name, a.command.positionals, len(a.positionals))
-	}
-	return a, ""
-}
-
-has_flag :: proc(a: ^Args, name: string) -> bool {
-	for f in a.flags { if f.name == name { return true } }
-	return false
-}
-
-// The value of a flag, or `default` when it is not given (the last one given wins).
-flag_value :: proc(a: ^Args, name: string, default := "") -> string {
-	v := default
-	for f in a.flags { if f.name == name { v = f.value } }
-	return v
-}
-
-int_flag :: proc(a: ^Args, name: string, default: int) -> (int, string) {
-	if !has_flag(a, name) { return default, "" }
-	n, ok := strconv.parse_int(flag_value(a, name))
-	return n, ok ? "" : fmt.tprintf("-%s: not a whole number", name)
-}
-
-f64_flag :: proc(a: ^Args, name: string, default: f64) -> (f64, string) {
-	if !has_flag(a, name) { return default, "" }
-	n, ok := strconv.parse_f64(flag_value(a, name))
-	return n, ok ? "" : fmt.tprintf("-%s: not a number", name)
+	toolbox.tool_main("tk", COMMANDS[:])
 }
 
 // The toolkit's checkout: two folders above this file.
@@ -228,62 +140,50 @@ find_file :: proc(dir, name, within: string) -> string {
 	return ""
 }
 
-// The text of a stamp file, with its line end.
-write_stamp :: proc(path, text: string) -> bool {
-	return os.write_entire_file(path, fmt.tprintf("%s%s", text, NEWLINE)) == nil
+run_build_text :: proc(args: []string) -> string { return build_rust_lib(toolkit_root(), TEXT_LIB, toolbox.has_flag(args, "force")) }
+run_build_a11y :: proc(args: []string) -> string { return build_rust_lib(toolkit_root(), A11Y_LIB, toolbox.has_flag(args, "force")) }
+run_build_mermaid :: proc(args: []string) -> string { return build_rust_lib(toolkit_root(), MERMAID_LIB, toolbox.has_flag(args, "force")) }
+run_build_naga :: proc(args: []string) -> string { return build_naga(toolkit_root()) }
+
+run_fetch_emoji :: proc(args: []string) -> string {
+	return fetch_emoji({dest = toolbox.flag_value(args, "dest", join({toolkit_root(), EMOJI_DEST})), unicode = toolbox.has_flag(args, "unicode")})
 }
 
-// The output is there and the stamp beside it says `expected`.
-stamp_holds :: proc(output, stamp, expected: string) -> bool {
-	if !os.exists(output) { return false }
-	text, ok := read_text(stamp)
-	return ok && strings.trim_space(text) == expected
+run_fetch_wgpu :: proc(args: []string) -> string {
+	return fetch_wgpu({dest = toolbox.flag_value(args, "dest", join({toolkit_root(), "build"})), no_dxc = toolbox.has_flag(args, "no-dxc"), odin = toolbox.flag_value(args, "odin", "odin")})
 }
 
-run_build_text :: proc(a: ^Args) -> string { return build_rust_lib(toolkit_root(), TEXT_LIB, has_flag(a, "force")) }
-run_build_a11y :: proc(a: ^Args) -> string { return build_rust_lib(toolkit_root(), A11Y_LIB, has_flag(a, "force")) }
-run_build_mermaid :: proc(a: ^Args) -> string { return build_rust_lib(toolkit_root(), MERMAID_LIB, has_flag(a, "force")) }
-run_build_naga :: proc(a: ^Args) -> string { return build_naga(toolkit_root()) }
-
-run_fetch_emoji :: proc(a: ^Args) -> string {
-	return fetch_emoji({dest = flag_value(a, "dest", join({toolkit_root(), EMOJI_DEST})), unicode = has_flag(a, "unicode")})
-}
-
-run_fetch_wgpu :: proc(a: ^Args) -> string {
-	return fetch_wgpu({dest = flag_value(a, "dest", join({toolkit_root(), "build"})), no_dxc = has_flag(a, "no-dxc"), odin = flag_value(a, "odin", "odin")})
-}
-
-run_gen_emoji_data :: proc(a: ^Args) -> string {
+run_gen_emoji_data :: proc(args: []string) -> string {
 	root := toolkit_root()
-	return gen_emoji_data(root, flag_value(a, "data", join({root, EMOJI_DEST, "emoji-data.txt"})))
+	return gen_emoji_data(root, toolbox.flag_value(args, "data", join({root, EMOJI_DEST, "emoji-data.txt"})))
 }
 
-run_make_icon :: proc(a: ^Args) -> string {
-	png, out := flag_value(a, "png"), flag_value(a, "out")
+run_make_icon :: proc(args: []string) -> string {
+	png, out := toolbox.flag_value(args, "png"), toolbox.flag_value(args, "out")
 	if png == "" || out == "" { return "-png:<logo.png> and -out:<icon.ico> are both needed" }
 	return make_icon(png, out)
 }
 
-run_make_logo :: proc(a: ^Args) -> string {
-	return make_logo(flag_value(a, "out", join({toolkit_root(), LOGO_DEFAULT_OUT})))
+run_make_logo :: proc(args: []string) -> string {
+	return make_logo(toolbox.flag_value(args, "out", join({toolkit_root(), LOGO_DEFAULT_OUT})))
 }
 
-run_ppm_diff :: proc(a: ^Args) -> string {
-	tolerance, why := int_flag(a, "tolerance", PPM_TOLERANCE)
+run_ppm_diff :: proc(args: []string) -> string {
+	tolerance, why := toolbox.int_flag(args, "tolerance", PPM_TOLERANCE)
 	if why != "" { return why }
 	d: Ppm_Diff
-	d, why = ppm_diff_files(a.positionals[0], a.positionals[1], tolerance)
+	d, why = ppm_diff_files(toolbox.plain_args(args)[0], toolbox.plain_args(args)[1], tolerance)
 	if why != "" { return why }
 	fmt.printfln("%dx%d: max %d, mean %.3f, pixels over %d: %d", d.w, d.h, d.max, d.mean, tolerance, d.over)
 	return ""
 }
 
-run_emoji_board :: proc(a: ^Args) -> string {
-	o := Board_Options{font = flag_value(a, "font"), out_dir = flag_value(a, "out-dir")}
+run_emoji_board :: proc(args: []string) -> string {
+	o := Board_Options{font = toolbox.flag_value(args, "font"), out_dir = toolbox.flag_value(args, "out-dir")}
 	why: string
-	if o.size, why = int_flag(a, "size", BOARD_SIZE); why != "" { return why }
-	if o.scale, why = f64_flag(a, "scale", BOARD_SCALE); why != "" { return why }
-	if o.step, why = int_flag(a, "step", BOARD_STEP); why != "" { return why }
+	if o.size, why = toolbox.int_flag(args, "size", BOARD_SIZE); why != "" { return why }
+	if o.scale, why = toolbox.f64_flag(args, "scale", BOARD_SCALE); why != "" { return why }
+	if o.step, why = toolbox.int_flag(args, "step", BOARD_STEP); why != "" { return why }
 	if o.step < 1 { return "-step: at least 1" }
 	return emoji_board(toolkit_root(), o)
 }

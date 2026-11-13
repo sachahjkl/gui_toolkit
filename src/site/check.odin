@@ -663,7 +663,7 @@ check_all :: proc(s: ^Check, o: Check_Options, program: string) -> bool {
 	if made_err != nil { fmt.eprintfln("site check: %v", made_err); return false }
 	defer site_remove(s, made)
 	s.root = fmt.aprintf("%s/site", made)
-	if !o.generate(o.site, s.root) { return false }
+	if !o.generate(o.site, s.root, o.user) { return false }
 	pages, listed := site_pages(s.root)
 	if !listed { fmt.eprintfln("site check: no pages in %s", s.root); return false }
 
@@ -688,9 +688,9 @@ Check_Options :: struct {
 	site:     string,   // the site's sources
 	shot:     string,   // a picture of the home page with the viewer open ("": none)
 	browser:  string,   // Chrome or Edge ("": the first found, CHROME first)
-	generate: proc(site, out: string) -> bool,   // the pages the project makes of `site`, into `out`
+	generate: proc(site, out: string, user: rawptr) -> bool,   // the pages the project makes of `site`, into `out`; it gets `user`
 	extra:    proc(s: ^Check),                   // the project's own checks, on the same page, after the others (nil: none)
-	user:     rawptr,                            // what `extra` needs, as `s.user`
+	user:     rawptr,                            // what `generate` and `extra` need (`extra`: as `s.user`)
 }
 
 // "--site folder", "--shot file.png", "--browser program" into `o`. "": understood; else what is not.

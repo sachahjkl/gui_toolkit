@@ -4,16 +4,24 @@
 release workflow; a project's own tool (`tools/<tool>`) gives them its `Config` and calls them as its commands.
 
 ```odin
-CONFIG :: release.Config{
-	name = "classeur", repository = "https://github.com/sachahjkl/classeur",
-	changelog = "CHANGELOG.md", version_file = VERSION_FILE, version_line = "APP_VERSION :: ",   // (the file of APP_VERSION)
-	program = "build/classeur", dist = "build/dist",
-	files = {{"README.md", "README.md"}, {"LICENSE", "LICENSE"}},
-	check = run_check,
+config :: proc() -> release.Config {
+	@(static) files := [?][2]string{{"README.md", "README.md"}, {"LICENSE", "LICENSE"}}
+	return {project = project(), dist = "build/dist", files = files[:], check = proc() -> int { return run_check(nil) }}
 }
-release.package_(CONFIG, args)   // <tool> package [version]
-release.notes(CONFIG, args)      // <tool> notes <version>
-release.ship(CONFIG, args)       // <tool> ship <patch|minor|major|x.y.z> [--dry-run]
+release.package_(config(), args)   // <tool> package [version]
+release.notes(config(), args)      // <tool> notes <version>
+release.ship(config(), args)       // <tool> ship <patch|minor|major|x.y.z> [--dry-run]
+```
+
+`Config.project` is the project's `toolbox.Project` ([toolbox.md](toolbox.md)): its name, repository, changelog, version file
+and line, and release build; its fields read as the Config's (`c.name`).
+
+`commands(config) -> [3]toolbox.Command` gives the three as commands of the project's tool (`package`, `notes`, `ship`), for
+`toolbox.tool_main`; the Config is copied, its slices must live as long as the tool (a `@(static)` table, or main's frame):
+
+```odin
+release_commands := release.commands(config())
+toolbox.tool_main("classeurtool", {build, test, check, release_commands[0], release_commands[1], release_commands[2]}, toolbox.ROOT_MARK_DEFAULT)
 ```
 
 | Step | What it does |
@@ -33,8 +41,8 @@ and its manifest and `.sig` (`manifest_name`), signed by `$UPDATE_SIGNING_KEY` (
 version given) without the key is refused; a package without a version is not signed. The release workflow gives the key
 as a secret and uploads `<dist>/*`.
 
-The pure parts are there for a project's own steps: `version_of`, `version_set`, `semver`, `semver_newer`. The changelog's
-are in `gt:changelog` ([changelog.md](changelog.md)).
+The pure parts are there for a project's own steps: `semver`, `semver_newer`; the version line's (`version_of`,
+`version_set`) are `gt:toolbox`'s ([toolbox.md](toolbox.md)). The changelog's are in `gt:changelog` ([changelog.md](changelog.md)).
 
 A release workflow on a tag `v*` runs the project's checks, `package`, then `gh release create <tag> <dist>/* --notes-file`
 with `notes`' output (classeur's and papier's `.github/workflows/release.yml`).

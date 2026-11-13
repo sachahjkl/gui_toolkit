@@ -14,7 +14,7 @@ package changelog_tool
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "../cmdline"
+import toolbox "../../src/toolbox"
 import changelog "../../src/changelog"
 
 LINK :: "https://github.com/sachahjkl/gui_toolkit/releases/tag/v%s"
@@ -40,7 +40,7 @@ split_lines :: proc(s: string) -> []string {
 }
 
 // The value of `VERSION :: "text"` in ui/version.odin.
-source_version :: proc(root: string) -> string {
+source_version :: proc(root: string, user: rawptr) -> string {
 	text, _ := read_text(fmt.tprintf("%s/%s", root, VERSION_FILE))
 	for l in split_lines(text) {
 		rest := strings.trim_prefix(l, "VERSION ")
@@ -54,7 +54,7 @@ source_version :: proc(root: string) -> string {
 }
 
 // The version is written in the sources and in the README's badge.
-write_source_version :: proc(root, version: string) -> bool {
+write_source_version :: proc(root, version: string, user: rawptr) -> bool {
 	path := fmt.tprintf("%s/%s", root, VERSION_FILE)
 	text, ok := read_text(path)
 	if !ok { return false }
@@ -82,7 +82,7 @@ write_source_version :: proc(root, version: string) -> bool {
 
 main :: proc() {
 	flag :: proc(name: string) -> (string, bool) {
-		for a in cmdline.joined(os.args[1:], context.temp_allocator) {
+		for a in toolbox.args_joined(os.args[1:], context.temp_allocator) {
 			if a == name { return "", true }
 			if strings.has_prefix(a, name) && len(a) > len(name) && a[len(name)] == ':' { return a[len(name) + 1:], true }
 		}

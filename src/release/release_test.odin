@@ -8,18 +8,6 @@ import toolbox "../toolbox"
 import update "../update"
 
 @(test)
-the_version_is_read_and_written :: proc(t: ^testing.T) {
-	LINE :: "APP_VERSION :: "
-	src := "package x\n\nAPP_VERSION :: \"0.1.0\"\n\nmain :: proc() {}\n"
-	testing.expect_value(t, version_of(src, LINE), "0.1.0")
-	out, ok := version_set(src, LINE, "0.2.0")
-	testing.expect(t, ok)
-	testing.expect_value(t, version_of(out, LINE), "0.2.0")
-	_, ok = version_set("package x\n", LINE, "1.0.0")
-	testing.expect(t, !ok, "no version line")
-}
-
-@(test)
 versions_compare_as_numbers :: proc(t: ^testing.T) {
 	testing.expect(t, semver_newer("0.9.0", "0.10.0"))
 	testing.expect(t, semver_newer("0.1.9", "0.2.0"))
@@ -39,7 +27,7 @@ the_notes_are_the_section :: proc(t: ^testing.T) {
 	path := fmt.tprintf("%s/CHANGELOG.md", dir)
 	text := "# Changelog\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[0.1.0]: https://github.com/someone/something/releases/tag/v0.1.0\n"
 	testing.expect(t, os.write_entire_file(path, text) == nil)
-	c := Config{name = "sample", repository = "https://github.com/someone/something", changelog = path}
+	c := Config{project = {name = "sample", repository = "https://github.com/someone/something", changelog = path}}
 	testing.expect_value(t, notes(c, {"v0.1.0"}), 0)
 	testing.expect_value(t, notes(c, {"0.2.0"}), 1)
 }
@@ -59,7 +47,7 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	when ODIN_OS == .Windows { program := fmt.tprintf("%s/sample.exe", dir) } else { program := fmt.tprintf("%s/sample", dir) }
 	self, err := os.read_entire_file(os.args[0], context.temp_allocator)
 	testing.expect(t, err == nil && os.write_entire_file(program, self) == nil, "the program")
-	c := Config{name = "sample", changelog = "", version_file = version_file, version_line = "APP_VERSION :: ", program = program, dist = fmt.tprintf("%s/dist", dir), update = product}
+	c := Config{project = {name = "sample", version_file = version_file, version_line = "APP_VERSION :: ", program = program}, dist = fmt.tprintf("%s/dist", dir), update = product}
 
 	os.unset_env(toolbox.UPDATE_KEY_ENV)
 	testing.expect_value(t, package_(c, {"v1.2.3"}), 1)   // (a release without the key)
@@ -81,6 +69,24 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 // A project names its changelog by a bare file name ("CHANGELOG.md"): its folder is the current one.
 @(test)
 a_bare_changelog_name_is_in_the_current_folder :: proc(t: ^testing.T) {
-	testing.expect_value(t, changelog_options({changelog = "CHANGELOG.md"}).root, ".")
-	testing.expect_value(t, changelog_options({changelog = "docs/CHANGELOG.md"}).root, "docs")
+	testing.expect_value(t, changelog_options({project = {changelog = "CHANGELOG.md"}}).root, ".")
+	testing.expect_value(t, changelog_options({project = {changelog = "docs/CHANGELOG.md"}}).root, "docs")
+}
+
+// The release's commands of a tool: package, notes and ship, each with what it does, over the project's Config.
+@(test)
+the_release_commands_run_over_the_config :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t)
+	path := fmt.tprintf("%s/CHANGELOG.md", dir)
+	text := "# Changelog\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[0.1.0]: https://github.com/o/r/releases/tag/v0.1.0\n"
+	testing.expect(t, os.write_entire_file(path, text) == nil)
+	cs := commands({project = {name = "sample", repository = "https://github.com/o/r", changelog = path}})
+	defer free(cs[0].user)   // (one Config for the three)
+	testing.expect_value(t, cs[0].name, "package")
+	testing.expect_value(t, cs[1].name, "notes")
+	testing.expect_value(t, cs[2].name, "ship")
+	for c in cs { testing.expectf(t, c.usage != "" && c.run_with != nil, "%s says what it does", c.name) }
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"notes", "0.1.0"}), 0)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"notes"}), 2)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"ship"}), 2)
 }

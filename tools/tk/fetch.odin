@@ -222,7 +222,7 @@ fetch_wgpu_windows :: proc(odin_root: string, o: Wgpu_Options) -> string {
 	stamp := join({o.dest, DXC_STAMP})
 	have := os.exists(stamp)
 	for f in DXC_FILES { have &&= os.exists(join({o.dest, f})) }
-	if have && stamp_holds(stamp, stamp, DXC_ZIP.sha256) {
+	if have && toolbox.stamp_holds(stamp, stamp, DXC_ZIP.sha256) {
 		fmt.printfln("DXC: %s is as pinned", o.dest)
 		return ""
 	}
@@ -237,7 +237,7 @@ fetch_wgpu_windows :: proc(odin_root: string, o: Wgpu_Options) -> string {
 		if src == "" { return fmt.tprintf("%s (%s) is not in the DXC archive", f, DXC_ARCH) }
 		if os.copy_file(join({o.dest, f}), src) != nil { return fmt.tprintf("%s cannot be written", join({o.dest, f})) }
 	}
-	if !write_stamp(stamp, DXC_ZIP.sha256) { return fmt.tprintf("%s cannot be written", stamp) }
+	if !toolbox.write_stamp(stamp, DXC_ZIP.sha256) { return fmt.tprintf("%s cannot be written", stamp) }
 	_ = os.remove_all(x)
 	fmt.printfln("DXC %s installed in %s", DXC_VERSION, o.dest)
 	return ""
@@ -246,7 +246,7 @@ fetch_wgpu_windows :: proc(odin_root: string, o: Wgpu_Options) -> string {
 fetch_wgpu_linux :: proc(odin_root: string) -> string {
 	dest := join({odin_root, WGPU_LINUX_DIR})
 	stamp := join({dest, WGPU_LINUX_STAMP})
-	if stamp_holds(join({dest, WGPU_LINUX_LIB}), stamp, WGPU_VERSION) {
+	if toolbox.stamp_holds(join({dest, WGPU_LINUX_LIB}), stamp, WGPU_VERSION) {
 		fmt.printfln("wgpu-native %s in %s", WGPU_VERSION, dest)
 		return ""
 	}

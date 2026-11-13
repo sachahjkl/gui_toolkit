@@ -15,6 +15,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import cdp "../../src/cdp"
+import toolbox "../../src/toolbox"
 
 TIMELINE_TEST_PORT :: 9477
 // What the recording waits around each action: what a person leaves between two.
@@ -46,11 +47,11 @@ idle :: proc(t: ^Test) {
 	if !ok || !still { fail(t, "still moving after 10 s") }
 }
 
-run_timeline_test :: proc(a: ^Args) -> string {
+run_timeline_test :: proc(args: []string) -> string {
 	root := toolkit_root()
-	port, why := int_flag(a, "port", TIMELINE_TEST_PORT)
+	port, why := toolbox.int_flag(args, "port", TIMELINE_TEST_PORT)
 	if why != "" { return why }
-	return timeline_test(flag_value(a, "exe", join({root, "build", fmt.tprintf("whatsnew%s", EXE)})), flag_value(a, "out", join({root, "build", "e2e"})), port)
+	return timeline_test(toolbox.flag_value(args, "exe", join({root, "build", fmt.tprintf("whatsnew%s", EXE)})), toolbox.flag_value(args, "out", join({root, "build", "e2e"})), port)
 }
 
 @(private = "file")

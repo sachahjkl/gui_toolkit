@@ -1,6 +1,6 @@
 // tools/tk in process: its command line, ppm_diff on two small pictures, the font with a table dropped, the stamps that make a second
 // build nothing, font/emoji_data.odin from a small emoji-data.txt, the
-// board's list and cells, the command line PowerShell splits (tools/cmdline), and the logo and the icon (drawn by the paint package).
+// board's list and cells, and the logo and the icon (drawn by the paint package).
 //   odin test tests/tk -vet
 package tk_test
 
@@ -11,7 +11,6 @@ import "core:slice"
 import "core:strings"
 import "core:testing"
 import tk "../../tools/tk"
-import "../../tools/cmdline"
 import "../../src/testkit"
 import "../../src/ascii"
 import toolbox "../../src/toolbox"
@@ -22,30 +21,19 @@ import toolbox "../../src/toolbox"
 @(private = "file") write :: proc(path: string, data: []byte) { _ = os.write_entire_file(path, data) }
 @(private = "file") read :: proc(path: string) -> []byte { d, _ := os.read_entire_file(path, context.temp_allocator); return d }
 
+// tk's commands, on the toolbox's dispatcher: each line read against the command's flags and plain arguments.
 @(test)
 the_command_line :: proc(t: ^testing.T) {
-	a, why := tk.parse({"fetch_wgpu", "-dest:build/x", "-no-dxc"})
-	testing.expect_value(t, why, "")
-	testing.expect_value(t, a.command.name, "fetch_wgpu")
-	testing.expect_value(t, tk.flag_value(&a, "dest", "?"), "build/x")
-	testing.expect_value(t, tk.flag_value(&a, "odin", "odin"), "odin")
-	testing.expect(t, tk.has_flag(&a, "no-dxc"))
-
-	a, why = tk.parse({"crash_symbolize", "crash-20261113-170300-1.txt", "build/x-5F00000012345.map"})
-	testing.expect_value(t, why, "")
-	testing.expect_value(t, len(a.positionals), 2)
-	_, why = tk.parse({"crash_symbolize", "crash-20261113-170300-1.txt"})
-	testing.expect(t, why != "", "a report and its symbols")
-
-	a, why = tk.parse({"ppm_diff", "a.ppm", "b.ppm", "-tolerance:5"})
-	testing.expect_value(t, why, "")
-	testing.expect_value(t, len(a.positionals), 2)
-	n, nwhy := tk.int_flag(&a, "tolerance", 2)
-	testing.expect_value(t, n, 5)
-	testing.expect_value(t, nwhy, "")
-
+	line := proc(args: []string) -> string {
+		c, found := toolbox.command_find(tk.COMMANDS, args[0])
+		if !found { return "no such command" }
+		return toolbox.args_check(c, args[1:])
+	}
+	testing.expect_value(t, line({"fetch_wgpu", "-dest:build/x", "-no-dxc"}), "")
+	testing.expect_value(t, line({"ppm_diff", "a.ppm", "b.ppm", "-tolerance:5"}), "")
+	testing.expect_value(t, line({"crash_symbolize", "crash-20261113-170300-1.txt", "build/x-5F00000012345.map"}), "")
+	testing.expect(t, line({"crash_symbolize", "crash-20261113-170300-1.txt"}) != "", "a report and its symbols")
 	refused := [][]string{
-		{},                                    // no command
 		{"fetch_fonts"},                       // no such command
 		{"fetch_emoji", "-Unicode"},           // the flags are the lower case ones
 		{"fetch_emoji", "-unicode:yes"},       // a switch takes no value
@@ -53,13 +41,15 @@ the_command_line :: proc(t: ^testing.T) {
 		{"ppm_diff", "a.ppm"},                 // two pictures
 		{"build_naga", "extra"},
 	}
-	for r in refused {
-		_, w := tk.parse(r)
-		testing.expectf(t, w != "", "%v is refused", r)
+	for r in refused { testing.expectf(t, line(r) != "", "%v is refused", r) }
+	testing.expect_value(t, toolbox.dispatch("tk", tk.COMMANDS, {"fetch_fonts"}), 2)
+	testing.expect_value(t, toolbox.dispatch("tk", tk.COMMANDS, {"ppm_diff", "a.ppm"}), 2)
+	seen := make(map[string]bool, context.temp_allocator)
+	for c in tk.COMMANDS {
+		testing.expectf(t, c.name not_in seen, "%s twice", c.name)
+		testing.expectf(t, c.usage != "" && (c.run != nil || c.run_with != nil), "%s says what it does", c.name)
+		seen[c.name] = true
 	}
-	a, _ = tk.parse({"emoji_board", "-size:big"})
-	_, nwhy = tk.int_flag(&a, "size", 32)
-	testing.expect(t, nwhy != "", "a size that is not a number is refused")
 }
 
 @(private = "file")
@@ -159,10 +149,10 @@ the_stamps_of_the_builds :: proc(t: ^testing.T) {
 	again, _ := tk.rust_stamp(crate, steps)
 	testing.expect_value(t, again, first)
 	lib, stamp := fmt.tprintf("%s/x.lib", dir), fmt.tprintf("%s/STAMP", dir)
-	testing.expect(t, !tk.stamp_holds(lib, stamp, first), "nothing built yet")
+	testing.expect(t, !toolbox.stamp_holds(lib, stamp, first), "nothing built yet")
 	write(lib, {1})
 	write(stamp, transmute([]byte)first)
-	testing.expect(t, tk.stamp_holds(lib, stamp, first), "built: the second build does nothing")
+	testing.expect(t, toolbox.stamp_holds(lib, stamp, first), "built: the second build does nothing")
 	write(fmt.tprintf("%s/src/deep/more.rs", crate), transmute([]byte)string("changed"))
 	changed, _ := tk.rust_stamp(crate, steps)
 	testing.expect(t, changed != first, "a source changed: built again")
@@ -178,7 +168,7 @@ the_stamps_of_the_builds :: proc(t: ^testing.T) {
 	testing.expect_value(t, parts[0], ascii.upper(sum))
 	// a stamp PowerShell's Set-Content wrote ends with a line end
 	write(stamp, transmute([]byte)fmt.tprintf("%s\r\n", sources))
-	testing.expect(t, tk.stamp_holds(lib, stamp, sources))
+	testing.expect(t, toolbox.stamp_holds(lib, stamp, sources))
 }
 
 @(private = "file")
@@ -262,18 +252,6 @@ the_logo_and_its_icon :: proc(t: ^testing.T) {
 	testing.expect_value(t, int(count), len(tk.ICON_SIZES))
 }
 
-// PowerShell 7 hands `-name:value` typed after `--` to a program as `-name:` and `value`: the tools join them again; what
-// another shell passes whole stays as it is.
-@(test)
-a_flag_split_at_its_colon_is_joined :: proc(t: ^testing.T) {
-	got := cmdline.joined({"-backend:", "wgpu", "-group:", "ci1", "text", "-list", "-define:A=b"}, context.temp_allocator)
-	testing.expect(t, slice.equal(got, []string{"-backend:wgpu", "-group:ci1", "text", "-list", "-define:A=b"}), fmt.tprint(got))
-	last := cmdline.joined({"text", "-group:"}, context.temp_allocator)   // (nothing after it: left as it is)
-	testing.expect(t, slice.equal(last, []string{"text", "-group:"}), fmt.tprint(last))
-	a, why := tk.parse(cmdline.joined({"fetch_wgpu", "-dest:", "build/x"}, context.temp_allocator))
-	testing.expect_value(t, why, "")
-	testing.expect_value(t, len(a.flags), 1)
-}
 // site_docs: the toolkit's Docs section, made by src/site's build_docs (its tests: src/site/docs_test.odin) with the home page's
 // header and script.
 @(private = "file") has :: proc(t: ^testing.T, html, part: string, loc := #caller_location) {
@@ -316,12 +294,10 @@ site_docs_writes_pages_in_the_sites_header :: proc(t: ^testing.T) {
 // A command that reads its own arguments (cdp, doc_check, site_check) gets them all, its "--name value" ones too.
 @(test)
 a_raw_command_gets_every_argument :: proc(t: ^testing.T) {
-	a, why := tk.parse({"cdp", "--port", "9300", "click", "--name", "nav0", ",", "idle"})
-	testing.expect_value(t, why, "")
-	testing.expect_value(t, strings.join(a.positionals[:], " ", context.temp_allocator), "--port 9300 click --name nav0 , idle")
-	testing.expect_value(t, len(a.flags), 0)
-	_, why = tk.parse({"screenshots", "--only", "about"})
-	testing.expect(t, why != "", "the others still read their flags")
+	cdp, _ := toolbox.command_find(tk.COMMANDS, "cdp")
+	testing.expect_value(t, toolbox.args_check(cdp, {"--port", "9300", "click", "--name", "nav0", ",", "idle"}), "")
+	shots, _ := toolbox.command_find(tk.COMMANDS, "screenshots")
+	testing.expect(t, toolbox.args_check(shots, {"--only", "about"}) != "", "the others still read their flags")
 }
 
 // theme_shots: the themes' names, from the toolkit's one list of them.

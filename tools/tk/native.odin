@@ -69,7 +69,7 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 		file, stamp_file := join({out, name}), join({out, RUST_STAMP})
 		stamp, ok := rust_stamp(crate, BUILD_STEPS_SOURCE)
 		if !ok { return fmt.tprintf("the sources of %s cannot be read", crate) }
-		if !force && stamp_holds(file, stamp_file, stamp) {
+		if !force && toolbox.stamp_holds(file, stamp_file, stamp) {
 			fmt.printfln("%s up to date in %s", lib.name, out)
 			return ""
 		}
@@ -77,7 +77,7 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 		if !toolbox.run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
 		_ = os.make_directory_all(out)
 		if os.copy_file(file, join({target, "release", name})) != nil { return fmt.tprintf("%s cannot be written", file) }
-		if !write_stamp(stamp_file, stamp) { return fmt.tprintf("%s cannot be written", stamp_file) }
+		if !toolbox.write_stamp(stamp_file, stamp) { return fmt.tprintf("%s cannot be written", stamp_file) }
 		fmt.printfln("built %s", file)
 		return ""
 	} else {
@@ -86,7 +86,7 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 		stamp_file := join({out, RUST_STAMP})
 		stamp, ok := rust_stamp(crate, BUILD_STEPS_SOURCE)
 		if !ok { return fmt.tprintf("the sources of %s cannot be read", crate) }
-		if !force && stamp_holds(file, stamp_file, stamp) {
+		if !force && toolbox.stamp_holds(file, stamp_file, stamp) {
 			fmt.printfln("%s up to date in %s", lib.name, out)
 			return ""
 		}
@@ -146,14 +146,14 @@ build_naga :: proc(root: string) -> string {
 	}
 	sources, ok := naga_sources(crate)
 	if !ok { return "the sources of tools/wgsl2hlsl cannot be read" }
-	if stamp_holds(exe, stamp_file, sources) {
+	if toolbox.stamp_holds(exe, stamp_file, sources) {
 		fmt.printfln("naga: %s is up to date", exe)
 		return ""
 	}
 	_ = os.make_directory_all(out)
 	if !toolbox.run({"cargo", "build", "--release", "--locked", "--target-dir", join({out, "target"})}, {dir = crate}) { return "cargo build failed" }
 	if os.copy_file(exe, join({out, "target", "release", NAGA_EXE})) != nil { return fmt.tprintf("%s cannot be written", exe) }
-	if !write_stamp(stamp_file, sources) { return fmt.tprintf("%s cannot be written", stamp_file) }
+	if !toolbox.write_stamp(stamp_file, sources) { return fmt.tprintf("%s cannot be written", stamp_file) }
 	fmt.printfln("naga: built %s", exe)
 	return ""
 }

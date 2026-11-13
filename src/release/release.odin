@@ -26,13 +26,11 @@ import toolbox "../toolbox"
 import update "../update"
 
 Config :: struct {
-	name:         string,     // the program ("classeur"): the archive's name, the commit's and the tag's message
-	repository:   string,     // https://github.com/<owner>/<repo>: the versions' links
-	changelog:    string,     // "CHANGELOG.md", its fragments in changelog.d/ beside it
-	version_file: string,     // the source that holds the version ("src/main.odin")
-	version_line: string,     // the start of its line ("APP_VERSION :: "), the version in quotes after it
-	program:      string,     // the release build ("build/classeur", "build/classeur.exe")
-	dist:         string,     // where the archive goes ("build/dist")
+	// the program: its name (the archive's, the commit's and the tag's message), its repository (the versions' links), its
+	// changelog (its fragments in changelog.d/ beside it), where its version is (version_file, version_line), its release
+	// build (program)
+	using project: toolbox.Project,
+	dist:         string,        // where the archive goes ("build/dist")
 	files:        [][2]string,   // what goes beside the program: a file and its name in the archive
 	check:        proc() -> int, // the project's checks, run by ship before it commits (0: they passed)
 	// a program that updates itself (gt:update; its name set): package_ writes the program alone, what an installed copy
@@ -40,28 +38,20 @@ Config :: struct {
 	update:       update.Product,
 }
 
-// The version of the sources: the value in quotes after `line` ("" when the line is not there).
-version_of :: proc(source, line: string) -> string {
-	rest := source
-	for l in strings.split_lines_iterator(&rest) {
-		if !strings.has_prefix(l, line) { continue }
-		v := strings.trim_space(l[len(line):])
-		if len(v) >= 2 && v[0] == '"' {
-			if end := strings.index_byte(v[1:], '"'); end >= 0 { return v[1:end + 1] }
-		}
+// The release's commands of a project's tool: package, notes and ship, over `c` (copied; the slices it holds must live as
+// long as the tool: a package's table, or main's frame, which tool_main never leaves).
+commands :: proc(c: Config) -> [3]toolbox.Command {
+	cfg := new_clone(c)
+	return {
+		{name = "package", usage = "[version]: the archive of a release build and its SHA-256 (and the signed update of a program that updates itself)", run_with = run_package, user = cfg},
+		{name = "notes", usage = "<version>: the changelog's section of that version (a release's notes)", run_with = run_notes, user = cfg},
+		{name = "ship", usage = "<patch|minor|major|x.y.z> [--dry-run]: from a clean checkout, the changelog, the version, the checks, a commit, the tag, the push", run_with = run_ship, user = cfg},
 	}
-	return ""
 }
 
-// The sources with the version set to `version`; ok = false when the line is not there.
-version_set :: proc(source, line, version: string, allocator := context.temp_allocator) -> (out: string, ok: bool) {
-	old := version_of(source, line)
-	if old == "" { return "", false }
-	from := fmt.tprintf("%s\"%s\"", line, old)
-	to := fmt.tprintf("%s\"%s\"", line, version)
-	out, _ = strings.replace(source, from, to, 1, allocator)
-	return out, out != source || old == version
-}
+@(private = "file") run_package :: proc(args: []string, user: rawptr) -> int { return package_((^Config)(user)^, args) }
+@(private = "file") run_notes :: proc(args: []string, user: rawptr) -> int { return notes((^Config)(user)^, args) }
+@(private = "file") run_ship :: proc(args: []string, user: rawptr) -> int { return ship((^Config)(user)^, args) }
 
 // The three numbers of "x.y.z"; ok = false for anything else.
 semver :: proc(v: string) -> (n: [3]int, ok: bool) {
@@ -111,7 +101,7 @@ notes :: proc(c: Config, args: []string) -> int {
 // `package [version]`: the archive of the release build and its SHA-256.
 package_ :: proc(c: Config, args: []string) -> int {
 	source, _ := read_text(c.version_file)
-	version := version_of(source, c.version_line)
+	version := toolbox.version_of(source, c.version_line)
 	if len(args) > 0 {
 		asked := strings.trim_prefix(args[0], "v")
 		if asked != version { fmt.eprintfln("%s: the tag says %s, the sources %s", c.name, asked, version); return 1 }
@@ -185,7 +175,7 @@ ship :: proc(c: Config, args: []string) -> int {
 	asked := strings.trim_prefix(args[0], "v")
 	dry := len(args) > 1 && args[1] == "--dry-run"
 	source, _ := read_text(c.version_file)
-	current := version_of(source, c.version_line)
+	current := toolbox.version_of(source, c.version_line)
 	if _, ok := version_next(current, asked); !ok { fmt.eprintfln("%s: %s is not patch, minor, major or a version after %s", c.name, asked, current); return 2 }
 	o := changelog_options(c)
 	problems, _ := changelog.check(o)
@@ -210,7 +200,7 @@ ship_write :: proc(version: string, user: rawptr) -> (paths: []string, subject: 
 	c := (^Config)(user)^
 	o := changelog_options(c)
 	source, _ := read_text(c.version_file)
-	new_source, sok := version_set(source, c.version_line, version)
+	new_source, sok := toolbox.version_set(source, c.version_line, version)
 	if !sok { return nil, "", fmt.tprintf("%s has no %s line", c.version_file, c.version_line) }
 	_, fragments := changelog.check(o)
 	_, errors := changelog.assemble(o, version)

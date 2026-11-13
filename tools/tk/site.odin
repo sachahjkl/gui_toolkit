@@ -12,6 +12,7 @@ package tk
 
 import "core:fmt"
 import tk_site "../../src/site"
+import toolbox "../../src/toolbox"
 
 SITE_META :: tk_site.Meta{
 	url         = "https://gt.sacha.house/",
@@ -54,15 +55,15 @@ site_changelog :: proc(site, out: string) -> bool {
 	return tk_site.build_changelog(site, out, {changes = join({toolkit_root(), "CHANGELOG.md"})})
 }
 
-run_site_changelog :: proc(a: ^Args) -> string {
-	return site_changelog(a.positionals[0], a.positionals[1]) ? "" : "the pages were not made"
+run_site_changelog :: proc(args: []string) -> string {
+	return site_changelog(toolbox.plain_args(args)[0], toolbox.plain_args(args)[1]) ? "" : "the pages were not made"
 }
 
-run_site_meta :: proc(a: ^Args) -> string {
-	return tk_site.build_meta(site_meta(toolkit_root()), a.positionals[0], a.positionals[1]) ? "" : "the pages were not made"
+run_site_meta :: proc(args: []string) -> string {
+	return tk_site.build_meta(site_meta(toolkit_root()), toolbox.plain_args(args)[0], toolbox.plain_args(args)[1]) ? "" : "the pages were not made"
 }
 
-run_site_card :: proc(a: ^Args) -> string {
+run_site_card :: proc(args: []string) -> string {
 	root := toolkit_root()
 	return tk_site.draw_card(site_meta(root), join({root, "site"})) ? "" : "no card"
 }
@@ -79,15 +80,15 @@ site_build :: proc(site, out: string) -> string {
 	return ""
 }
 
-run_site_build :: proc(a: ^Args) -> string { return site_build(a.positionals[0], a.positionals[1]) }
+run_site_build :: proc(args: []string) -> string { return site_build(toolbox.plain_args(args)[0], toolbox.plain_args(args)[1]) }
 
-run_site_check :: proc(a: ^Args) -> string {
-	generate :: proc(site, out: string) -> bool {
+run_site_check :: proc(args: []string) -> string {
+	generate :: proc(site, out: string, user: rawptr) -> bool {
 		why := site_build(site, out)
 		if why != "" { fmt.eprintln(why) }
 		return why == ""
 	}
 	o := tk_site.Check_Options{site = join({toolkit_root(), "site"}), generate = generate}
-	if why := tk_site.check_arguments(a.positionals[:], &o); why != "" { return why }
+	if why := tk_site.check_arguments(args, &o); why != "" { return why }
 	return tk_site.check(o) ? "" : fmt.tprintf("the site differs from what it must be")
 }

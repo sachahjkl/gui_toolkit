@@ -34,9 +34,10 @@ Options :: struct {
 	root:        string,   // the checkout: its CHANGELOG.md and changelog.d/ ("": the current folder)
 	link:        string,   // a version's link, %s for the version: "https://github.com/o/r/releases/tag/v%s" ("": none)
 	// where the project keeps its version (nil: nowhere the package knows). check says when it differs from the last
-	// released one (a branch never writes it); assemble writes the new one after CHANGELOG.md.
-	version:     proc(root: string) -> string,
-	set_version: proc(root, version: string) -> bool,
+	// released one (a branch never writes it); assemble writes the new one after CHANGELOG.md. Each gets `user`.
+	version:     proc(root: string, user: rawptr) -> string,
+	set_version: proc(root, version: string, user: rawptr) -> bool,
+	user:        rawptr,
 }
 
 // A change: a fragment's file, or an entry of a hand-written [Unreleased] section (no name, no path).
@@ -338,7 +339,7 @@ check :: proc(o: Options, release := "") -> (errors: [dynamic]string, fragments:
 		if other, twice := seen[key]; twice { append(&errors, fmt.tprintf("changelog.d/%s: the same text as changelog.d/%s", f.name, other)) } else { seen[key] = f.name }
 	}
 	if o.version != nil {
-		said := o.version(root)
+		said := o.version(root, o.user)
 		if said == "" {
 			append(&errors, "the version is not found in the sources")
 		} else if c.last_version != "" && said != c.last_version {
@@ -428,7 +429,7 @@ assemble :: proc(o: Options, version: string, date := "") -> (entries: int, erro
 		append(&errors, "CHANGELOG.md cannot be written")
 		return
 	}
-	if o.set_version != nil && !o.set_version(root, version) { append(&errors, fmt.tprintf("the version %s cannot be written in the sources", version)) }
+	if o.set_version != nil && !o.set_version(root, version, o.user) { append(&errors, fmt.tprintf("the version %s cannot be written in the sources", version)) }
 	for f in changes { if f.path != "" { _ = os.remove(f.path) } }
 	return len(changes), errors
 }

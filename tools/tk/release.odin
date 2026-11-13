@@ -21,16 +21,16 @@ Release_Job :: struct {
 	summary:   string,
 }
 
-run_release :: proc(a: ^Args) -> string {
-	job := Release_Job{root = toolkit_root(), summary = flag_value(a, "summary")}
+run_release :: proc(args: []string) -> string {
+	job := Release_Job{root = toolkit_root(), summary = toolbox.flag_value(args, "summary")}
 	job.changelog = join({job.root, "build", "changelog.exe" when ODIN_OS == .Windows else "changelog"})
 	if !toolbox.run({"odin", "build", join({job.root, "tools", "changelog"}), fmt.tprintf("-out:%s", job.changelog)}) { return "building tools/changelog failed" }
 	if !toolbox.run({job.changelog, "-check"}, {dir = job.root}) { return "changelog.d has fragments to fix first" }
 
-	version, why := release.publish({dir = job.root, asked = a.positionals[0], write = release_write, user = &job, no_push = has_flag(a, "no-push")})
+	version, why := release.publish({dir = job.root, asked = toolbox.plain_args(args)[0], write = release_write, user = &job, no_push = toolbox.has_flag(args, "no-push")})
 	if why != "" { return why }
 	tag := fmt.tprintf("v%s", version)
-	if has_flag(a, "no-push") { fmt.printfln("committed and tagged %s (not pushed)", tag); return "" }
+	if toolbox.has_flag(args, "no-push") { fmt.printfln("committed and tagged %s (not pushed)", tag); return "" }
 
 	notes := join({job.root, "build", fmt.tprintf("gui_toolkit-%s-notes.md", version)})
 	if !toolbox.run({job.changelog, "-section", fmt.tprintf("-version:%s", version), fmt.tprintf("-out:%s", notes)}, {dir = job.root}) { return "reading the CHANGELOG section failed" }

@@ -50,8 +50,8 @@ CDP_PORT :: 9222
 @(private = "file") CAST_EVERY_MS :: 200
 @(private = "file") CAST_PUMP :: 100 * time.Millisecond
 
-run_cdp :: proc(a: ^Args) -> string {
-	args := a.positionals[:]
+run_cdp :: proc(line: []string) -> string {
+	args := line   // (its own reading: it moves through them)
 	port := CDP_PORT
 	if len(args) >= 2 && args[0] == "--port" {
 		n, ok := strconv.parse_int(args[1])

@@ -14,10 +14,6 @@ EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "e
 CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking"}
 CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew"}
 
-// What a program of the toolkit needs on Linux: the native text backend (build/text/libgt_text.a, the default there, which
-// the examples link themselves), and wgpu-native beside it: both carry Rust's standard library, whose few unmangled symbols
-// are the same code.
-LINUX_FLAGS :: [?]string{"-extra-linker-flags:-Wl,--allow-multiple-definition"}
 
 // The packages of the library: every folder under src/ that holds Odin files (a list written by hand forgot ten).
 library_packages :: proc(root: string) -> []string {
@@ -43,13 +39,13 @@ library_packages :: proc(root: string) -> []string {
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource
 // when there is one. Linux: the native text backend first (build_text).
-run_build :: proc(a: ^Args) -> string {
-	example := len(a.positionals) > 0 ? a.positionals[0] : "fidget"
+run_build :: proc(args: []string) -> string {
+	example := len(toolbox.plain_args(args)) > 0 ? toolbox.plain_args(args)[0] : "fidget"
 	known := false
 	for e in EXAMPLES { known ||= e == example }
 	all := EXAMPLES
 	if !known { return fmt.tprintf("no example %s (%s)", example, strings.join(all[:], ", ", context.temp_allocator)) }
-	return build_example(toolkit_root(), example, has_flag(a, "debug"))
+	return build_example(toolkit_root(), example, toolbox.has_flag(args, "debug"))
 }
 
 build_example :: proc(root, example: string, debug: bool) -> string {
@@ -65,8 +61,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 		rc := join({root, "examples", example, fmt.tprintf("%s.rc", example)})
 		if os.exists(rc) { append(&cmd, fmt.tprintf("-resource:%s", rc)) }
 	} else {
-		flags := LINUX_FLAGS
-		append(&cmd, ..flags[:])
+		append(&cmd, toolbox.LINUX_LINK_FLAG)   // (the examples link the native text backend themselves)
 	}
 	if !toolbox.run(cmd[:]) { return fmt.tprintf("building examples/%s failed", example) }
 	fmt.printfln("built %s", out)
@@ -76,7 +71,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 // ci: what the CI checks on this system, every step run whatever an earlier one said, then the failures. odin check -vet of every
 // package (Linux: for Linux, with the native text backend), the CI's examples built, and the tests of tools/run_tests (its list
 // says which run here; Linux's pixels: Vulkan's software rasterizer).
-run_ci :: proc(a: ^Args) -> string {
+run_ci :: proc(args: []string) -> string {
 	root := toolkit_root()
 	failed := make([dynamic]string, context.temp_allocator)
 	when ODIN_OS != .Windows {
