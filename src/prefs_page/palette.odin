@@ -4,9 +4,12 @@ package tk_prefs_page
 // page's title; chosen, the program opens its settings and `show` puts that one alone on the page (its search holds its
 // name), on its page underneath (the search cleared, the page is there).
 //
-//	settings, names := prefs_page.palette_commands(&app.prefs, opts)
-//	all := slice.concatenate([][]ui.Command{app_commands, settings}, context.temp_allocator)
-//	if i, _ := ui.palette(&app.palette, all, disabled); i >= len(app_commands) {
+//	// when the settings change (app.prefs.version), in memory of the program's: not at each frame
+//	settings, names := prefs_page.palette_commands(&app.prefs, opts, table_allocator)
+//	app.table = slice.concatenate([][]ui.Command{app_commands, settings}, table_allocator)
+//	app.table_version = app.prefs.version + 1
+//	// each frame
+//	if i, _ := ui.palette(&app.palette, app.table, disabled, {version = app.table_version}); i >= len(app_commands) {
 //		app.settings_open = true
 //		prefs_page.show(&app.page, &app.prefs, opts, names[i - len(app_commands)])
 //	}

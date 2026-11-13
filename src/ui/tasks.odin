@@ -100,6 +100,9 @@ task :: proc(s: ^State, work: tasks.Work, done: Post_Proc, data: rawptr, lost: t
 	sync.atomic_add(&b.refs, 1)
 	t := new(Task, runtime.heap_allocator())
 	t^ = {b, work, done, lost, data}
+	// (the chores' queue is the process's: it grows in the heap, not in the caller's allocator, which may be a frame's
+	// or a test's tracker)
+	context.allocator = runtime.heap_allocator()
 	if sync.atomic_load(&chores_stopped) || !tasks.add(chores(), task_run, t) { task_end(t, false) }
 }
 

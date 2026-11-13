@@ -64,6 +64,8 @@ App :: struct {
 
 	// the overlays
 	palette:      ui.Command_Palette,
+	choices:      ui.Choice_Memory,   // (in memory only: the showcase keeps no file)
+	palette_table: Palette_Table,
 	dialog_open:  bool,
 	dialog_size:  ui.Vec2,
 	file_name:    ui.Line_Edit,
@@ -151,6 +153,8 @@ close :: proc(app: ^App) {
 	graph_destroy(app)
 	settings_close(app)
 	ui.palette_destroy(&app.palette)
+	ui.choice_memory_close(&app.choices)
+	palette_table_destroy(&app.palette_table)
 	ui.line_edit_destroy(&app.file_name)
 	ui.line_edit_wipe(&app.pin)
 	ui.line_edit_destroy(&app.pin)
