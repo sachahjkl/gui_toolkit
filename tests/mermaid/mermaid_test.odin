@@ -62,3 +62,30 @@ a_diagram_is_drawn :: proc(t: ^testing.T) {
 	inside := session.count_other(img, {int(b.rect.min.x) + 4, int(b.rect.min.y) + 4}, {int(b.rect.max.x) - 4, int(b.rect.max.y) - 4}, session.pixel(img, int(b.rect.min.x) + 2, int(b.rect.min.y) + 2))
 	testing.expect(t, inside > 1000, "something is drawn")
 }
+
+// A flowchart's header and the `direction` line of the other graphs say their direction: the text rewritten, the layout runs
+// the other way (wider than tall from left to right); a diagram that takes none is left as it is.
+@(test)
+a_graph_is_laid_out_in_another_direction :: proc(t: ^testing.T) {
+	testing.expect_value(t, mermaid.direction_of(FLOW), mermaid.Direction.Top_Down)
+	testing.expect_value(t, mermaid.direction_of("%% a note\ngraph\nA-->B"), mermaid.Direction.Top_Down)
+	testing.expect_value(t, mermaid.direction_of("---\ntitle: x\n---\nflowchart RL\nA-->B"), mermaid.Direction.Right_Left)
+	testing.expect_value(t, mermaid.direction_of("classDiagram\ndirection LR\nclass A"), mermaid.Direction.Left_Right)
+	testing.expect_value(t, mermaid.direction_of("pie\n\"a\": 1"), mermaid.Direction.Text)
+	testing.expect(t, !mermaid.takes_direction("sequenceDiagram\nA->>B: hi"), "a sequence has no direction")
+
+	testing.expect_value(t, mermaid.with_direction("graph TD;A-->B", .Left_Right, context.temp_allocator), "graph LR;A-->B")
+	testing.expect_value(t, mermaid.with_direction("  flowchart\nA-->B", .Bottom_Top, context.temp_allocator), "  flowchart BT\nA-->B")
+	testing.expect_value(t, mermaid.with_direction("stateDiagram-v2\ndirection TB\n[*] --> A\n", .Right_Left, context.temp_allocator), "stateDiagram-v2\ndirection RL\n[*] --> A\n")
+	testing.expect_value(t, mermaid.with_direction("pie\n\"a\": 1", .Left_Right, context.temp_allocator), "pie\n\"a\": 1")
+
+	tall, why := mermaid.diagram(FLOW)
+	defer svg.destroy(&tall)
+	wide, why2 := mermaid.diagram(FLOW, direction = .Left_Right)
+	defer svg.destroy(&wide)
+	testing.expect(t, why == "" && why2 == "", "both are diagrams")
+	testing.expectf(t, wide.view[2] / wide.view[3] > tall.view[2] / tall.view[3], "left to right is the wider: %v %v", wide.view, tall.view)
+	er, why3 := mermaid.diagram("erDiagram\nA ||--o{ B : has\nB ||--o{ C : has\n", direction = .Left_Right)
+	defer svg.destroy(&er)
+	testing.expectf(t, why3 == "" && er.view[2] > er.view[3], "an ER diagram from left to right: %v %s", er.view, why3)
+}

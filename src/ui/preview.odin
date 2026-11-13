@@ -1,7 +1,8 @@
 package ui
 
 // A preview: content (a picture, a page, a diagram) in a box that fits it, then zooms and pans. The wheel zooms around the
-// pointer, a drag moves the content when it is larger than the box, a double click goes from what fits to its pixels and
+// pointer (with `wheel_pans`: it moves the content, and Ctrl with it, a touchpad's pinch, zooms), a drag moves the content
+// when it is larger than the box, a double click goes from what fits to its pixels and
 // back; with the keyboard on it, + and - zoom, 0 fits, the arrows move. A bar over its corner may show the zoom and the
 // buttons −, +, 1:1 and Fit. The program keeps a Preview per thing shown (preview_reset when another comes).
 //
@@ -44,6 +45,7 @@ Preview_Options :: struct {
 	zoom_min: f32,      // the least, of what fits (0: PREVIEW_ZOOM_MIN)
 	radius:   f32,      // the content's corners (an image's)
 	no_keys:  bool,     // its keys are the program's
+	wheel_pans: bool,   // the wheel moves the content (Shift: across); Ctrl with it (a touchpad's pinch) zooms, not the interface
 }
 
 Preview_Result :: struct {
@@ -113,7 +115,7 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	if p.zoom <= 0 { p.zoom = 1 }
 	if !s.has_next || s.next_mod.width == nil { next_merge({width = fill()}) }
 	if s.next_mod.height == nil { next_merge({height = fill()}) }
-	b := build_box({.Clickable, .Focusable, .Scroll_Self, .Clip}, id)
+	b := build_box({.Clickable, .Focusable, .Scroll_Self, .Clip} | (o.wheel_pans ? Box_Flags{.Ctrl_Wheel} : Box_Flags{}), id)
 	res.box = b
 	view := b.rect.max - b.rect.min   // (last frame's: the box keeps its key)
 	fit := preview_fit(content, view, o.grow)
@@ -125,7 +127,13 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	b.cursor = pannable ? (s.active_key[.Left] == b.key ? .Grabbing : .Grab) : .Arrow
 	sig := signal(b)
 	at := sig.mouse - view * 0.5
-	if sig.scrolled.y != 0 { preview_zoom_to(p, p.zoom * math.pow(f32(PREVIEW_ZOOM_STEP), -sig.scrolled.y), least, most, at) }
+	if o.wheel_pans && .Ctrl not_in sig.mods {
+		d := sig.scrolled
+		if .Shift in sig.mods && d.x == 0 { d = {d.y, 0} }
+		p.pan -= {d.x * wheel_step(b, .X), d.y * wheel_step(b, .Y)}
+	} else if sig.scrolled.y != 0 {
+		preview_zoom_to(p, p.zoom * math.pow(f32(PREVIEW_ZOOM_STEP), -sig.scrolled.y), least, most, at)
+	}
 	if sig.pointer_pressed { p.grab = p.pan; set_focus(b.key) }
 	if sig.dragging && pannable { p.pan = p.grab + sig.drag_delta }
 	if sig.double_clicked {

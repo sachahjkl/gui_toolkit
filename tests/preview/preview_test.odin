@@ -93,3 +93,36 @@ the_first_frame_fits :: proc(t: ^testing.T) {
 	session.frame(s)
 	testing.expect(t, r.drawn.max.x - r.drawn.min.x <= 401, "no larger than its box at its first frame")
 }
+
+@(private = "file")
+start_panning :: proc(t: ^testing.T, r: ^Run) -> ^session.Session {
+	r.p = {zoom = 1}
+	return session.start(t, {size = {600, 400}, user = r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.px(400), height = ui.px(300)})
+		r.res = ui.preview("###pv", &r.p, {800, 600}, proc(dc: ^draw.Context, dst: ui.Rect, user: rawptr) {
+			(^Run)(user).drawn = dst
+		}, r, {wheel_pans = true})
+	}})
+}
+
+// With wheel_pans, the wheel moves the content and Ctrl with it zooms the preview, not the interface.
+@(test)
+the_wheel_pans_and_ctrl_zooms :: proc(t: ^testing.T) {
+	r: Run
+	s := start_panning(t, &r)
+	session.frames(s, 2)
+	c := session.center(r.res.box)
+	session.wheel(s, c, {0, -2}, {.Ctrl})
+	session.frame(s)
+	testing.expect(t, r.p.zoom > 1.5, "Ctrl and the wheel zoom it")
+	testing.expect_value(t, s.state.zoom, f32(1))   // (the interface keeps its zoom)
+	zoom, before := r.p.zoom, r.p.pan
+	session.wheel(s, c, {0, 1})
+	session.frame(s)
+	testing.expect_value(t, r.p.zoom, zoom)
+	testing.expect(t, r.p.pan.y < before.y, "the wheel down moves the content up")
+	session.wheel(s, c, {0, 1}, {.Shift})
+	session.frame(s)
+	testing.expect(t, r.p.pan.x < before.x, "with Shift, across")
+}
