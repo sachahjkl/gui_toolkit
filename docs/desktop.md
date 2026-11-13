@@ -64,7 +64,7 @@ s := desktop.status(&o)               // .Absent, .Installed or .Repair, part by
 defer desktop.status_destroy(&s)
 ```
 
-`Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `register_browser` with its
+`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `register_browser` with its
 `file_types`, the `launcher` bytes, the `icons`) and where everything goes. `install` writes the parts that are on and takes
 away the ones that are off: applying a change of options is the same call. `status` says `Repair` when a wanted part is
 missing or incomplete, or when a part runs another executable (`stale_exe`: the program was moved). `describe` says it in one
@@ -285,7 +285,7 @@ with files left for after the process ends.
 
 ## The tests' scratch roots
 
-Every place is a field of `Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
+Every place is a field of `Integration_Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
 HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `install_dir`. A test points them at a scratch folder and a
 scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
 (`ROOT_NAMES`), so a program's own end-to-end tests run it on scratch places; any of them set turns the notification off.

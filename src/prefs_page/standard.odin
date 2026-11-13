@@ -3,7 +3,7 @@ package tk_prefs_page
 // The preferences every program of the toolkit has, declared once here: what changes the look, the text, the scrolling,
 // the hand's feel, the timings, the rendering, the updates and the program on the desktop. Each is a setting of the
 // toolkit with today's default; nothing is blocked: a technical one is `advanced` (shown, folded), never hidden. Their
-// names are fixed: the programs' files hold them, and the page knows some of them (Options.themes shows
+// names are fixed: the programs' files hold them, and the page knows some of them (Page_Options.themes shows
 // appearance.theme as cards). docs/settings.md lists them all.
 //
 //	d := prefs_page.STANDARD_DEFAULTS

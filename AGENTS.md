@@ -12,7 +12,7 @@ Read first: [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md) (a change
 Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists them), on Windows and Linux:
 
 - `odin run tools/tk -- build <example> [-debug]` builds an example. `build.bat` and `./build.sh` are its shortcuts.
-- `odin run tools/tk -- ci` runs what the CI checks on this system: `odin check` of every package, the examples, the tests.
+- `odin run tools/tk -- ci` runs what the CI checks on this system: `odin check` of every package and every tool, the examples, the tests.
 - `odin run tools/run_tests -- <name>` runs one test package. `odin run tools/tk -- desktop_tests` runs the Linux backends on a
   virtual desktop.
 - Linux: `nix develop` first (`flake.nix`: the pinned Odin with wgpu-native, Rust, the servers of the virtual desktops).

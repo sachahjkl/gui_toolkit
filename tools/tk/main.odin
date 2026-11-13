@@ -28,7 +28,7 @@
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
 //   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
 //                                             information; Windows: no console, its .rc; Linux: the native text backend first
-//   ci                                        what the CI checks on this system: odin check of every package, the examples, the
+//   ci                                        what the CI checks on this system: odin check of every package and tool, the examples, the
 //                                             tests (tools/run_tests); every step runs, then the failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop

@@ -11,7 +11,7 @@ import "core:slice"
 import "core:strconv"
 import "core:time"
 import "../../src/font"
-import stbi "vendor:stb/image"
+import png "../../src/png"
 
 Img :: struct {
 	w, h:  int,
@@ -196,8 +196,8 @@ main :: proc() {
 				}
 			}
 		}
-		name := fmt.ctprintf("%s/worst.png", out)
-		stbi.write_png(name, i32(W), i32(H), 4, raw_data(img), i32(W * 4))
+		name := fmt.tprintf("%s/worst.png", out)
+		_ = os.write_entire_file(name, png.encode(slice.to_bytes(img), W, H, allocator = context.temp_allocator))
 		fmt.println("sheet:", name)
 	}
 	font.destroy(&sd)

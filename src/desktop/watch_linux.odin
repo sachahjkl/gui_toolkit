@@ -49,7 +49,7 @@ Watch_Linux :: struct {
 @(private = "file")
 WATCH_MASK :: linux.Inotify_Event_Mask{.CREATE, .DELETE, .MOVED_FROM, .MOVED_TO, .CLOSE_WRITE, .ATTRIB, .DELETE_SELF, .MOVE_SELF}
 
-watch_start_linux :: proc(o: ^Options, wake: Watch_Proc, user: rawptr) -> ^Watcher {
+watch_start_linux :: proc(o: ^Integration_Options, wake: Watch_Proc, user: rawptr) -> ^Watcher {
 	ino, ierr := linux.inotify_init1({.NONBLOCK, .CLOEXEC})
 	if ierr != .NONE { return nil }
 	ev, everr := linux.eventfd(0, {.CLOEXEC})

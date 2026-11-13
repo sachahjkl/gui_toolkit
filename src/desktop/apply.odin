@@ -8,7 +8,7 @@ package tk_desktop
 // when there is one. Else it is written when it is not all there or runs another copy of the program (Repair, Absent);
 // nothing is written when it is Installed and no part that is off is there. A platform with no integration is no error. Blocking: it reads and writes
 // files, and on Windows the registry.
-apply :: proc(o: ^Options) -> Result {
+apply :: proc(o: ^Integration_Options) -> Result {
 	if !supported() { return {} }
 	wanted := o.start_menu || o.desktop_shortcut || o.add_to_path || o.autostart || o.register_browser
 	st := status(o, context.temp_allocator)

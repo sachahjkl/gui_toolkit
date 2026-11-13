@@ -19,7 +19,7 @@ Watcher :: struct {
 
 // Starts watching what `o` names. Nil when nothing could be watched (the platform has no watcher, a place could not be
 // opened): the caller's periodic check stays.
-watch_start :: proc(o: ^Options, wake: Watch_Proc, user: rawptr) -> ^Watcher {
+watch_start :: proc(o: ^Integration_Options, wake: Watch_Proc, user: rawptr) -> ^Watcher {
 	when ODIN_OS == .Windows { return watch_start_windows(o, wake, user) }
 	else when ODIN_OS == .Linux { return watch_start_linux(o, wake, user) }
 	else { return nil }
@@ -34,7 +34,7 @@ watch_stop :: proc(w: ^Watcher) {
 
 // The watcher thread's name, nil when the identity gives none.
 @(private)
-thread_name :: proc(o: ^Options) -> Maybe(string) {
+thread_name :: proc(o: ^Integration_Options) -> Maybe(string) {
 	if o.identity.watch_thread_name == "" { return nil }
 	return o.identity.watch_thread_name
 }

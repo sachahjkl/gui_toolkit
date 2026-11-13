@@ -61,16 +61,16 @@ Stream :: struct {
 // Opens a stream of `source`. It blocks (a round trip to the compositor; on Windows the capture's start): call it on the
 // session's thread. .Unsupported: the backend cannot stream this source (a window with wlr-screencopy, the portal
 // backend: the ScreenCast portal is not written); .Gone: the output or the window is no more.
-stream_open :: proc(s: ^Session, source: Stream_Source, options := Stream_Options{}, allocator := context.allocator) -> (st: ^Stream, err: Error) {
+stream_open :: proc(s: ^Session, source: Stream_Source, o := Stream_Options{}, allocator := context.allocator) -> (st: ^Stream, err: Error) {
 	if s == nil { return nil, .Unsupported }
 	st = new(Stream, allocator)
 	st.session = s
 	st.source = source
-	st.options = options
+	st.options = o
 	st.allocator = allocator
 	st.scratch.allocator = allocator
 	st.ring.allocator = allocator
-	fps := options.fps > 0 ? min(options.fps, STREAM_MAX_FPS) : STREAM_DEFAULT_FPS
+	fps := o.fps > 0 ? min(o.fps, STREAM_MAX_FPS) : STREAM_DEFAULT_FPS
 	st.options.fps = fps
 	stream_pacer_init(&st.pacer, fps)
 	if r, is_region := source.(Stream_Region); is_region {

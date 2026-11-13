@@ -137,9 +137,9 @@ send_all :: proc(s: linux.Fd, data: []u8, deadline: time.Tick) -> Reply {
 	return .Accepted
 }
 
-// Hands `message` to the owner of `cfg.name` without trying to become the owner: a pure "ping the running copy".
-send :: proc(cfg: Config, message: []byte) -> Outcome {
-	switch forward_once(cfg.name, cfg.identity, message, max(cfg.wait_ms, FORWARD_MIN_MS)) {
+// Hands `message` to the owner of `o.name` without trying to become the owner: a pure "ping the running copy".
+send :: proc(o: Instance_Options, message: []byte) -> Outcome {
+	switch forward_once(o.name, o.identity, message, max(o.wait_ms, FORWARD_MIN_MS)) {
 	case .Accepted:        return .Forwarded
 	case .Other_Instance:  return .Other_Instance
 	case .No_Window, .Refused, .Timeout: return .Unresponsive
@@ -147,20 +147,20 @@ send :: proc(cfg: Config, message: []byte) -> Outcome {
 	return .Unresponsive
 }
 
-// Takes the name of `cfg.name` or hands `message` to the copy that has it. Tries for up to `cfg.wait_ms` while the owner is
+// Takes the name of `o.name` or hands `message` to the copy that has it. Tries for up to `o.wait_ms` while the owner is
 // starting or closing; a silent owner ends the wait at once (it is busy or hung: not worth waiting for).
-acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
-	deadline := time.tick_add(time.tick_now(), time.Duration(cfg.wait_ms) * time.Millisecond)
-	lock_path := strings.clone_to_cstring(path_of(cfg.name, ".lock"), context.temp_allocator)
+acquire :: proc(o: Instance_Options, message: []byte) -> (Outcome, Owner) {
+	deadline := time.tick_add(time.tick_now(), time.Duration(o.wait_ms) * time.Millisecond)
+	lock_path := strings.clone_to_cstring(path_of(o.name, ".lock"), context.temp_allocator)
 	for {
 		fd, err := linux.open(lock_path, {.RDWR, .CREAT, .CLOEXEC}, {.IRUSR, .IWUSR})
 		if err != .NONE { return .Unresponsive, {} }   // (no runtime directory: carry on as if it was not asked)
 		if linux.flock(fd, {.EX, .NB}) == .NONE {
-			return .First, Owner{name = strings.clone(cfg.name), identity = strings.clone(cfg.identity), state = .Claimed, lock = fd}
+			return .First, Owner{name = strings.clone(o.name), identity = strings.clone(o.identity), state = .Claimed, lock = fd}
 		}
 		linux.close(fd)
 		left := int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
-		switch forward_once(cfg.name, cfg.identity, message, max(left, FORWARD_MIN_MS)) {
+		switch forward_once(o.name, o.identity, message, max(left, FORWARD_MIN_MS)) {
 		case .Accepted:        return .Forwarded, {}
 		case .Other_Instance:  return .Other_Instance, {}
 		case .Timeout:         return .Unresponsive, {}

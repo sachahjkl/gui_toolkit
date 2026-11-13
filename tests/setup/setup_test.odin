@@ -43,7 +43,7 @@ a_start_offers_it_when_there_is_something_to_do :: proc(t: ^testing.T) {
 @(private = "file")
 App :: struct {
 	d:     setup.Dialog,
-	cfg:   setup.Config,
+	cfg:   setup.Setup_Options,
 	event: setup.Event,
 }
 
@@ -157,7 +157,7 @@ Scratch :: struct { root, install: string }
 
 // Everything an install touches in a folder of the test's own.
 @(private = "file")
-scratch_prepare :: proc(o: ^desktop.Options, choices: []bool, user: rawptr) {
+scratch_prepare :: proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) {
 	sc := (^Scratch)(user)
 	o.applications_dir = fmt.tprintf("%s/share/applications", sc.root)
 	o.icons_dir = fmt.tprintf("%s/share/icons/hicolor", sc.root)
@@ -204,7 +204,7 @@ the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
 // dialog's.
 @(test)
 a_screen_of_its_own_asks_the_controller :: proc(t: ^testing.T) {
-	cfg := setup.Config{identity = desktop.Identity{name = "Sample"}, version = "1.0.0"}
+	cfg := setup.Setup_Options{identity = desktop.Identity{name = "Sample"}, version = "1.0.0"}
 	d: setup.Dialog
 	defer setup.destroy(&d)
 	d.open, d.known = true, true
@@ -245,7 +245,7 @@ an_update_of_the_installed_copy_is_recorded :: proc(t: ^testing.T) {
 	sc.install = fmt.tprintf("%s/programs/sample", sc.root)
 	testing.expect(t, os.make_directory_all(sc.root) == nil)
 	defer os.remove_all(sc.root)
-	cfg := setup.Config{identity = desktop.Identity{
+	cfg := setup.Setup_Options{identity = desktop.Identity{
 		name = "Sample", key = "Sample", slug = "sample", aumid = "GuiToolkit.Sample.Test", description = "A test.",
 		vendor = "Gui Toolkit", exe_name = "sample", entry_marker = "X-Sample-Integration", registry_mark = "SampleIntegration",
 		vendor_key = "GuiToolkitTest", manifest_name = "sample_install.txt", manifest_header = "# Written by the setup tests.",

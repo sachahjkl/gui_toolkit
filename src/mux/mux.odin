@@ -149,49 +149,49 @@ Track_State :: struct {
 // Opening
 
 // A muxer whose file stays in memory: finalize returns it.
-mp4_open_memory :: proc(options := Mp4_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
-	m := muxer_new(.MP4, .Memory, options.creation_time, allocator)
-	return m, mp4_start(m, options)
+mp4_open_memory :: proc(o := Mp4_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
+	m := muxer_new(.MP4, .Memory, o.creation_time, allocator)
+	return m, mp4_start(m, o)
 }
 
 // A muxer writing the file at `path` (created or truncated).
-mp4_open_file :: proc(path: string, options := Mp4_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
+mp4_open_file :: proc(path: string, o := Mp4_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
 	file, err := os.create(path)
 	if err != nil { return nil, .Open_Failed }
-	m := muxer_new(.MP4, .File, options.creation_time, allocator)
+	m := muxer_new(.MP4, .File, o.creation_time, allocator)
 	m.writer.file = file
-	return m, mp4_start(m, options)
+	return m, mp4_start(m, o)
 }
 
 // A muxer giving its bytes to `write` (Write_Proc says which positions it gets).
-mp4_open_stream :: proc(write: Write_Proc, user: rawptr, options := Mp4_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
-	m := muxer_new(.MP4, .Stream, options.creation_time, allocator)
+mp4_open_stream :: proc(write: Write_Proc, user: rawptr, o := Mp4_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
+	m := muxer_new(.MP4, .Stream, o.creation_time, allocator)
 	m.writer.write, m.writer.user = write, user
-	return m, mp4_start(m, options)
+	return m, mp4_start(m, o)
 }
 
 mp4_open :: proc{mp4_open_file, mp4_open_stream, mp4_open_memory}
 
 // A muxer whose file stays in memory: finalize returns it.
-webm_open_memory :: proc(options := Webm_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
-	m := muxer_new(.WebM, .Memory, options.creation_time, allocator)
-	return m, webm_start(m, options)
+webm_open_memory :: proc(o := Webm_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
+	m := muxer_new(.WebM, .Memory, o.creation_time, allocator)
+	return m, webm_start(m, o)
 }
 
 // A muxer writing the file at `path` (created or truncated).
-webm_open_file :: proc(path: string, options := Webm_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
+webm_open_file :: proc(path: string, o := Webm_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
 	file, err := os.create(path)
 	if err != nil { return nil, .Open_Failed }
-	m := muxer_new(.WebM, .File, options.creation_time, allocator)
+	m := muxer_new(.WebM, .File, o.creation_time, allocator)
 	m.writer.file = file
-	return m, webm_start(m, options)
+	return m, webm_start(m, o)
 }
 
 // A muxer giving its bytes to `write` (Write_Proc says which positions it gets).
-webm_open_stream :: proc(write: Write_Proc, user: rawptr, options := Webm_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
-	m := muxer_new(.WebM, .Stream, options.creation_time, allocator)
+webm_open_stream :: proc(write: Write_Proc, user: rawptr, o := Webm_Options{}, allocator := context.allocator) -> (^Muxer, Error) {
+	m := muxer_new(.WebM, .Stream, o.creation_time, allocator)
 	m.writer.write, m.writer.user = write, user
-	return m, webm_start(m, options)
+	return m, webm_start(m, o)
 }
 
 webm_open :: proc{webm_open_file, webm_open_stream, webm_open_memory}

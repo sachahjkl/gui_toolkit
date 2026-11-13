@@ -1,7 +1,7 @@
 package prefs_page_test
 
 // The standard preferences (standard.odin): they register beside a program's own, read back as the look, and the page's
-// reset rule (a user's value that is not the default); the themes' cards from Options.themes; the back bar.
+// reset rule (a user's value that is not the default); the themes' cards from Page_Options.themes; the back bar.
 
 import "core:testing"
 import config "../../src/config"
@@ -120,7 +120,7 @@ the_themes_show_as_cards :: proc(t: ^testing.T) {
 	defer { prefs_page.destroy(&l.page); config.prefs_destroy(&l.prefs) }
 	s := session.start(t, {size = {1200, 900}, user = &l, build = proc(s: ^session.Session) {
 		l := (^Look)(s.user)
-		o := prefs_page.Options{pages = LOOK_PAGES[:], themes = ui.THEMES[:6]}
+		o := prefs_page.Page_Options{pages = LOOK_PAGES[:], themes = ui.THEMES[:6]}
 		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 		if ui.column(id = "###look") {
 			if prefs_page.back_bar(&l.page, o, "Settings", "Back (Escape)", ui.font_size()) { l.back += 1 }

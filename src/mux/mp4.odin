@@ -124,16 +124,16 @@ rational_denominator :: proc(x: f64, max_denominator: f64) -> i64 {
 // Start and tracks
 
 @(private)
-mp4_start :: proc(m: ^Muxer, options: Mp4_Options) -> Error {
+mp4_start :: proc(m: ^Muxer, o: Mp4_Options) -> Error {
 	mp := &m.mp4
-	mp.fast_start = options.fast_start
+	mp.fast_start = o.fast_start
 	if mp.fast_start == .Default {
 		// In memory, fast start costs no more memory: the file is held whole anyway
 		mp.fast_start = m.writer.sink == .Memory ? .In_Memory : .Off
 	}
 	mp.fragmented = mp.fast_start == .Fragmented
 	mp.creation_time = time.time_to_unix(m.creation_time) + TIMESTAMP_OFFSET
-	mp.minimum_fragment = options.minimum_fragment_duration > 0 ? options.minimum_fragment_duration : 1
+	mp.minimum_fragment = o.minimum_fragment_duration > 0 ? o.minimum_fragment_duration : 1
 	mp.next_fragment = 1
 	mp.max_written_timestamp = math.inf_f64(-1)
 	mp.chunks = make([dynamic]^Chunk, m.allocator)

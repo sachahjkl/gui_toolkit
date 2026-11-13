@@ -8,8 +8,8 @@
 //	path     the file's path
 //
 // A line is formatted and kept on the thread that logs, under one lock, in the order the lines came; the writer (one job of a pool
-// of one thread, gt:tasks) appends what is waiting to the file and, with Options.echo, to standard error: the thread that logs never
-// waits on the disk. Past Options.max_bytes the file is renamed <program>.log.1 (the one before .log.2, and so on, Options.keep of
+// of one thread, gt:tasks) appends what is waiting to the file and, with Install_Options.echo, to standard error: the thread that logs never
+// waits on the disk. Past Install_Options.max_bytes the file is renamed <program>.log.1 (the one before .log.2, and so on, Install_Options.keep of
 // them) and a new one is started.
 //
 // The last lines are also kept in a ring in memory, read with no lock by tail: a crash report shows them, the ones the writer had
@@ -38,7 +38,7 @@ TAIL_LINES_DEFAULT :: 100
 TAIL_BYTES :: 32 * 1024
 EXTENSION :: ".log"
 
-Options :: struct {
+Install_Options :: struct {
 	program:    string,                 // the file's name, and its folder when dir is ""
 	dir:        string,                 // "": platform.user_dir(.State, program)/logs
 	level:      runtime.Logger_Level,   // the lowest level written (the zero value: .Debug)
@@ -51,7 +51,7 @@ Options :: struct {
 
 // A log. Its fields are the package's: a program holds the runtime.Logger install gives.
 Log :: struct {
-	o:         Options,
+	o:         Install_Options,
 	path:      string,
 	allocator: runtime.Allocator,
 	lock:      sync.Mutex,
@@ -73,7 +73,7 @@ Log :: struct {
 }
 
 // The log of a program, its writer started. Set what it returns as context.logger (core:log's procedures then write there).
-install :: proc(o: Options, allocator := context.allocator) -> runtime.Logger {
+install :: proc(o: Install_Options, allocator := context.allocator) -> runtime.Logger {
 	l := new(Log, allocator)
 	l.o = o
 	l.allocator = allocator
@@ -98,7 +98,7 @@ install :: proc(o: Options, allocator := context.allocator) -> runtime.Logger {
 	return runtime.Logger{procedure = logger_proc, data = l, lowest_level = o.level, options = o.options}
 }
 
-// The folder of `program`'s logs when Options.dir is "": platform.user_dir(.State, program)/logs ("": the system has none).
+// The folder of `program`'s logs when Install_Options.dir is "": platform.user_dir(.State, program)/logs ("": the system has none).
 default_dir :: proc(program: string, allocator := context.allocator) -> string {
 	state := platform.user_dir(.State, program, context.temp_allocator)
 	if state == "" { return "" }
@@ -142,7 +142,7 @@ close :: proc(logger: runtime.Logger) {
 	free(l, l.allocator)
 }
 
-// The last lines (Options.tail_lines at most), whole, oldest first, copied into `buf`: how many bytes. `user` is the logger's data
+// The last lines (Install_Options.tail_lines at most), whole, oldest first, copied into `buf`: how many bytes. `user` is the logger's data
 // (runtime.Logger.data). It takes no lock and allocates nothing: a crash handler calls it, on a thread that may hold the log's lock.
 // A line being logged meanwhile may be missing.
 tail :: proc "contextless" (user: rawptr, buf: []u8) -> int {
@@ -303,7 +303,7 @@ open_file :: proc(l: ^Log) -> bool {
 	return true
 }
 
-// <program>.log becomes .log.1, .log.1 becomes .log.2 ..., the oldest past Options.keep goes.
+// <program>.log becomes .log.1, .log.1 becomes .log.2 ..., the oldest past Install_Options.keep goes.
 @(private)
 rotate :: proc(l: ^Log) {
 	if l.file != nil { os.close(l.file); l.file = nil }

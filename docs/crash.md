@@ -20,9 +20,9 @@ Importing the package does nothing. A program opts in with the call to `install`
 
 ## Install
 
-`install(o: Options) -> bool` installs the handler of crashes, once for the process. A second call does nothing and returns false.
+`install(o: Install_Options) -> bool` installs the handler of crashes, once for the process. A second call does nothing and returns false.
 
-| `Options` | |
+| `Install_Options` | |
 |---|---|
 | `program` | the program's name: its report folder and the report's `program` line |
 | `version` | the program's version |

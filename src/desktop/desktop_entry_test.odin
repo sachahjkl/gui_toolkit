@@ -16,7 +16,7 @@ browser_identity :: proc() -> Identity {
 
 @(test)
 desktop_entry_exact_text :: proc(t: ^testing.T) {
-	o := Options{identity = browser_identity(), exe = "/home/u/bin/sample", register_browser = true, file_types = {".html", ".htm", "svg", ".webp"}}
+	o := Integration_Options{identity = browser_identity(), exe = "/home/u/bin/sample", register_browser = true, file_types = {".html", ".htm", "svg", ".webp"}}
 	want := `[Desktop Entry]
 Type=Application
 Version=1.0
@@ -42,7 +42,7 @@ X-Sample-Integration=sample
 desktop_entry_of_a_program :: proc(t: ^testing.T) {
 	id := test_identity()
 	id.url_schemes, id.generic_name, id.keywords = nil, "", ""
-	o := Options{identity = id, exe = "/opt/sample/sample"}
+	o := Integration_Options{identity = id, exe = "/opt/sample/sample"}
 	want := `[Desktop Entry]
 Type=Application
 Version=1.0
@@ -62,7 +62,7 @@ X-Sample-Integration=sample
 
 @(test)
 desktop_entry_without_browser_registration :: proc(t: ^testing.T) {
-	o := Options{identity = browser_identity(), exe = "/opt/sample/sample", register_browser = false}
+	o := Integration_Options{identity = browser_identity(), exe = "/opt/sample/sample", register_browser = false}
 	text := desktop_entry_text(&o)
 	testing.expect(t, !strings.contains(text, "MimeType"), "no MimeType when the program is not registered as a browser")
 	testing.expect(t, strings.contains(text, "Categories=Network;WebBrowser;\n"), "it is still in the browsers' category")
@@ -82,7 +82,7 @@ exec_quoting_follows_the_specification :: proc(t: ^testing.T) {
 	testing.expect_value(t, quote_exec_argument("100%"), "100%%")
 
 	// the file's string escape comes after: every backslash doubles again
-	o := Options{identity = test_identity(), exe = `/h/a b/q"r`}
+	o := Integration_Options{identity = test_identity(), exe = `/h/a b/q"r`}
 	text := desktop_entry_text(&o)
 	exec, _ := entry_value(text, "Exec")
 	testing.expect_value(t, exec, `"/h/a b/q\\"r" %U`)
@@ -182,7 +182,7 @@ desktop_entry_actions :: proc(t: ^testing.T) {
 	id.url_schemes, id.generic_name, id.keywords = nil, "", ""
 	actions := []Desktop_Action{{id = "services", name = "Services", arguments = "--section services"}, {id = "new", name = "New window"}}
 	id.actions = actions
-	o := Options{identity = id, exe = "/opt/sample/sample"}
+	o := Integration_Options{identity = id, exe = "/opt/sample/sample"}
 	want := `[Desktop Entry]
 Type=Application
 Version=1.0

@@ -87,10 +87,10 @@ forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -
 	return .Refused
 }
 
-// Hands `message` to the owner of `cfg.name` without trying to become the owner: a pure "ping the running copy". Returns
+// Hands `message` to the owner of `o.name` without trying to become the owner: a pure "ping the running copy". Returns
 // Forwarded (taken), Other_Instance, or Unresponsive (no owner, a different identity refused, or no answer).
-send :: proc(cfg: Config, message: []byte) -> Outcome {
-	switch forward_once(cfg.name, cfg.identity, message, max(cfg.wait_ms, FORWARD_MIN_MS)) {
+send :: proc(o: Instance_Options, message: []byte) -> Outcome {
+	switch forward_once(o.name, o.identity, message, max(o.wait_ms, FORWARD_MIN_MS)) {
 	case .Accepted:        return .Forwarded
 	case .Other_Instance:  return .Other_Instance
 	case .No_Window, .Refused, .Timeout: return .Unresponsive
@@ -98,17 +98,17 @@ send :: proc(cfg: Config, message: []byte) -> Outcome {
 	return .Unresponsive
 }
 
-// Takes the name of `cfg.name` or hands `message` to the copy that has it. Tries for up to `cfg.wait_ms` while the owner is
+// Takes the name of `o.name` or hands `message` to the copy that has it. Tries for up to `o.wait_ms` while the owner is
 // starting or closing; a silent owner ends the wait at once (it is busy or hung: not worth waiting for).
-acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) {
-	deadline := time.tick_add(time.tick_now(), time.Duration(cfg.wait_ms) * time.Millisecond)
+acquire :: proc(o: Instance_Options, message: []byte) -> (Outcome, Owner) {
+	deadline := time.tick_add(time.tick_now(), time.Duration(o.wait_ms) * time.Millisecond)
 	for {
-		mutex, existing := claim(cfg.name)
+		mutex, existing := claim(o.name)
 		if mutex == nil { return .Unresponsive, {} }   // (no kernel object: carry on as if it was not asked)
-		if !existing { return .First, Owner{name = strings.clone(cfg.name), state = .Claimed, mutex = mutex, identity = strings.clone(cfg.identity)} }
+		if !existing { return .First, Owner{name = strings.clone(o.name), state = .Claimed, mutex = mutex, identity = strings.clone(o.identity)} }
 		win.CloseHandle(mutex)
 		left := int(time.duration_milliseconds(time.tick_diff(time.tick_now(), deadline)))
-		switch forward_once(cfg.name, cfg.identity, message, max(left, FORWARD_MIN_MS)) {
+		switch forward_once(o.name, o.identity, message, max(left, FORWARD_MIN_MS)) {
 		case .Accepted:        return .Forwarded, {}
 		case .Other_Instance:  return .Other_Instance, {}
 		case .Timeout:         return .Unresponsive, {}

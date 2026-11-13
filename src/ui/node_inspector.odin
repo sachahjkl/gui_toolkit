@@ -52,7 +52,7 @@ node_inspector_destroy :: proc(ins: ^Node_Inspector) {
 }
 
 // The controls of `n`'s parameters, one under the other, each with its title, in a column of the width `next` gives.
-node_inspector :: proc(id: string, ins: ^Node_Inspector, cat: ^flowgraph.Catalog, n: ^flowgraph.Node, opts: Node_Inspector_Options = {}) -> (res: Node_Inspector_Result) {
+node_inspector :: proc(id: string, ins: ^Node_Inspector, cat: ^flowgraph.Catalog, n: ^flowgraph.Node, o: Node_Inspector_Options = {}) -> (res: Node_Inspector_Result) {
 	res.changed, res.pick_folder = -1, -1
 	def := flowgraph.node_def(cat, n)
 	if def == nil { return }
@@ -77,7 +77,7 @@ node_inspector :: proc(id: string, ins: ^Node_Inspector, cat: ^flowgraph.Catalog
 					next({width = fill(), height = px(math.round(em * 1.6))})
 					label(fmt.tprintf("%s###title", i18n.tr(d.title)))
 				}
-				value, changed := node_param_control(ins, n, i, d, em, opts, &res)
+				value, changed := node_param_control(ins, n, i, d, em, o, &res)
 				if changed {
 					res.changed, res.value = i, value
 					key := [2]u64{n.id, u64(i + 1)}
@@ -92,7 +92,7 @@ node_inspector :: proc(id: string, ins: ^Node_Inspector, cat: ^flowgraph.Catalog
 
 // One parameter's control: its new value when it changed.
 @(private = "file")
-node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: flowgraph.Param_Def, em: f32, opts: Node_Inspector_Options, res: ^Node_Inspector_Result) -> (value: flowgraph.Param, changed: bool) {
+node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: flowgraph.Param_Def, em: f32, o: Node_Inspector_Options, res: ^Node_Inspector_Result) -> (value: flowgraph.Param, changed: bool) {
 	p := n.params[i]
 	value = p
 	row_height := px(math.round(em * 1.9))
@@ -154,9 +154,9 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		}
 	case .List:
 		names: []string
-		if opts.lists != nil { names = opts.lists(opts.user, n, d) }
+		if o.lists != nil { names = o.lists(o.user, n, d) }
 		items := make([]string, len(names) + 1, context.temp_allocator)
-		items[0] = d.placeholder != "" ? i18n.tr(d.placeholder) : (opts.default_text != "" ? i18n.tr(opts.default_text) : i18n.tr("The default"))
+		items[0] = d.placeholder != "" ? i18n.tr(d.placeholder) : (o.default_text != "" ? i18n.tr(o.default_text) : i18n.tr("The default"))
 		chosen := 0
 		for name, k in names {
 			items[k + 1] = name

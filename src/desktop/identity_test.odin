@@ -32,7 +32,7 @@ EXE_SUFFIX :: ".exe" when ODIN_OS == .Windows else ""
 
 @(test)
 identity_is_validated :: proc(t: ^testing.T) {
-	o := Options{identity = test_identity(), exe = "x"}
+	o := Integration_Options{identity = test_identity(), exe = "x"}
 	testing.expect_value(t, validate(&o, false).error, Error.None)
 	Case :: struct { what: string, change: proc(id: ^Identity) }
 	cases := [?]Case{
@@ -89,7 +89,7 @@ cli_flag_parsing :: proc(t: ^testing.T) {
 
 @(test)
 roots_come_from_the_environment :: proc(t: ^testing.T) {
-	o := Options{identity = test_identity(), notify_system = true}
+	o := Integration_Options{identity = test_identity(), notify_system = true}
 	roots_from_env(&o, proc(name: string) -> string {
 		switch name {
 		case "SAMPLE_DESKTOP_BIN_DIR":      return "/scratch/bin"
@@ -103,14 +103,14 @@ roots_come_from_the_environment :: proc(t: ^testing.T) {
 	testing.expect_value(t, o.menu_dir, "")
 	testing.expect(t, !o.notify_system, "a scratch root tells the system nothing")
 
-	o2 := Options{identity = test_identity(), notify_system = true}
+	o2 := Integration_Options{identity = test_identity(), notify_system = true}
 	roots_from_env(&o2, proc(name: string) -> string { return "" })
 	testing.expect(t, o2.notify_system, "no root: the real desktop, told")
 }
 
 @(test)
 options_clone_owns_its_roots :: proc(t: ^testing.T) {
-	o := Options{identity = test_identity(), exe = "/a/sample", bin_dir = "/b", file_types = {".html"}}
+	o := Integration_Options{identity = test_identity(), exe = "/a/sample", bin_dir = "/b", file_types = {".html"}}
 	c := options_clone(o)
 	defer options_destroy(&c)
 	testing.expect_value(t, c.bin_dir, "/b")

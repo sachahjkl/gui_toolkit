@@ -107,10 +107,10 @@ What the program applies itself:
 | ![The Scrolling page: the middle button's group, then Advanced unfolded](screenshots/showcase_settings_advanced.webp) | ![The settings searched for "scroll": what matches in every page](screenshots/showcase_settings_search.webp) |
 
 - On the left, the sidebar: the search in a well, then the pages, each a button with its icon and its title; the page
-  shown is pressed in. A page is a top group of the registry (the first segment of the name). `Options.pages` gives
+  shown is pressed in. A page is a top group of the registry (the first segment of the name). `Page_Options.pages` gives
   their order, titles and icons (a page with no preference in the registry is not shown); without it, each top group
-  shows, by `config.groups_of`, with its `config.group_title`. At its foot: `Options.version` ("Papier 0.15.0"), the
-  settings file (`Options.file`, shortened with `~`: a click opens it with the system's program, `ui.open`), then
+  shows, by `config.groups_of`, with its `config.group_title`. At its foot: `Page_Options.version` ("Papier 0.15.0"), the
+  settings file (`Page_Options.file`, shortened with `~`: a click opens it with the system's program, `ui.open`), then
   **Export…** and **Import…** (below) and what the last of them did.
 - A page of the program's own: a `Page_Info` with `build` has no preference; the page shows its title and calls
   `build(user, em)` under it (a server's state, a list the program keeps). A search does not look in it. `heading`
@@ -137,31 +137,31 @@ The controls:
 | Preference | Control |
 |---|---|
 | `Bool` | a switch |
-| `String` with up to 4 choices (its own `choices`, or the program's `Options.choices`) | a segmented choice; under the words when it takes more than 45 % of the line |
+| `String` with up to 4 choices (its own `choices`, or the program's `Page_Options.choices`) | a segmented choice; under the words when it takes more than 45 % of the line |
 | `String` with more choices | a list |
 | `String` with no choices | a field |
 | `Int`, `Float` bounded | a number (`ui.number` with its slider: − and +, a field for its exact value, its unit after it); a float's step is round (0.1, 1, 10...) |
 | other numbers, sizes in bytes | a field, its unit after it |
-| a name in `Options.custom_names` | the program's own (`Options.custom`), under the words |
-| a name in `Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
-| a `pref` of `Options.shortcut_prefs` | the same field, and what the system made of the keys under it (see below) |
-| `appearance.theme`, with `Options.themes` | the themes' cards, under the words |
+| a name in `Page_Options.custom_names` | the program's own (`Page_Options.custom`), under the words |
+| a name in `Page_Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
+| a `pref` of `Page_Options.shortcut_prefs` | the same field, and what the system made of the keys under it (see below) |
+| `appearance.theme`, with `Page_Options.themes` | the themes' cards, under the words |
 
-A locked preference (a policy, the command line) shows its control disabled. `Options.problem(user, name)` gives what
-the program has to say under a line (a shortcut another program holds): it shows in red. `Options.status(user, name)` says a
-preference's state plainly, under its line, in the weak text (the keys a shortcut got). `Options.page_foot(user,
+A locked preference (a policy, the command line) shows its control disabled. `Page_Options.problem(user, name)` gives what
+the program has to say under a line (a shortcut another program holds): it shows in red. `Page_Options.status(user, name)` says a
+preference's state plainly, under its line, in the weak text (the keys a shortcut got). `Page_Options.page_foot(user,
 category, em)` draws the program's own content under a page's preferences (not in a search): buttons, a list.
 
 Each line whose value is the user's and differs from its default shows the reset button, whatever its control:
 `differs_from_default(prefs, name, keys)` says when (`keys`: compared as key combinations, so "ctrl+print" is
 "Ctrl+Print"). A value the user set equal to the default shows none. While one line of the page shown has it, a
-**Restore defaults** button beside the page's title puts all of them back (each through `Options.changed`, as its own
+**Restore defaults** button beside the page's title puts all of them back (each through `Page_Options.changed`, as its own
 reset button does).
 
 ## Global shortcuts
 
-A program with global shortcuts ([shortcuts.md](shortcuts.md)) gives its service in `Options.shortcuts` and, in
-`Options.shortcut_prefs`, each preference that holds a shortcut's keys with the shortcut's id in the service:
+A program with global shortcuts ([shortcuts.md](shortcuts.md)) gives its service in `Page_Options.shortcuts` and, in
+`Page_Options.shortcut_prefs`, each preference that holds a shortcut's keys with the shortcut's id in the service:
 
 ```odin
 SHORTCUTS := [?]prefs_page.Shortcut_Pref{{pref = "shortcut.region", id = "region"}, {pref = "shortcut.screen", id = "screen"}}
@@ -176,23 +176,23 @@ keys, the page holds the service (`shortcuts.hold`): Windows would take the very
 
 ## Themes from the program
 
-With `Options.themes` (the program's list: its own theme, then `ui.THEMES`), `appearance.theme` shows as the themes'
+With `Page_Options.themes` (the program's list: its own theme, then `ui.THEMES`), `appearance.theme` shows as the themes'
 cards and a click sets it. The cards show the version `appearance.mode` asks; for `system`, the one the program shows
-now (`Options.themes_light`: its `ui.Theme_Shown.light`; the page does not ask the system each frame).
+now (`Page_Options.themes_light`: its `ui.Theme_Shown.light`; the page does not ask the system each frame).
 
-A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `Options.updater`, and in `update_pref` the
+A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `Page_Options.updater`, and in `update_pref` the
 preference whose line shows it ("": the standard `update.auto`). Under that line: the state in words (`update.status_words`:
 up to date, a version available, downloading, installed, the last check's failure, or that a package manager updates this
 copy), a **Check now** button, **Install <version>** when one is on offer, and **Restart now** when one is installed and the
-program gives `Options.restart`.
+program gives `Page_Options.restart`.
 
 ## Changes
 
 A value goes through `config.set_from_string` at the `User` layer: every observer of the registry runs. A field applies
 its text on Enter or when it loses the keyboard; a refused value stays as it was, and the reason shows under the line
 ("out of range: 1 to 64 KB"). A number applies a key, a click, a notch of the wheel, a button or what is typed at once;
-a drag of its slider when it is let go. While the slider is held, `Options.preview(user, name, value)` gets each value
-it moves to, for the program to show at once (a rounding, a size) without writing it. `Options.changed` runs after each
+a drag of its slider when it is let go. While the slider is held, `Page_Options.preview(user, name, value)` gets each value
+it moves to, for the program to show at once (a rounding, a size) without writing it. `Page_Options.changed` runs after each
 value set or reset: apply the change from there (or let `standard_watch` do it); the loop's `config.user_writer_save`
 writes the file off the loop.
 
@@ -202,7 +202,7 @@ writes the file off the loop.
 the defaults) in the format of its extension: JSON (as the `settings.json` of Zed or VS Code), TOML, INI, or the
 program's own (`.txt`: `config.export` with `.Own`). The text is made on the interface's thread, a task writes it. **Import…**
 reads a file of the program's own format (a task reads it, `config.load_text` sets its values as the user's): settings
-carried from another machine. `Options.changed` hears of each value that changed; the loop's writer saves them. JSON,
+carried from another machine. `Page_Options.changed` hears of each value that changed; the loop's writer saves them. JSON,
 TOML and INI are written only.
 
 ```odin
@@ -218,7 +218,7 @@ it shows at the sidebar's foot.
 ## Themes of the user's own
 
 Every program can let the user make themes: a file beside the preferences, `[Name]` sections of colours
-([themes.md](themes.md), "A user's themes"). `Themes_File` keeps it, and `Options.themes_file` shows it under the
+([themes.md](themes.md), "A user's themes"). `Themes_File` keeps it, and `Page_Options.themes_file` shows it under the
 themes' cards: a line that says themes can be made, then the file's path as a link. A click makes the file from
 `THEMES_TEMPLATE` when it is not there (comment lines: the keys, the colour format, `from = ...`, the light versions, a
 commented example; nothing changes until a line is written) and opens it in the system's editor, on a task. It is read
@@ -273,8 +273,8 @@ if app.settings_open {
 }
 ```
 
-`back_bar(page, options, title, back_tip, em)` is a bar as wide as its parent: a back arrow (Lucide's `arrow-left` in
-`Options.icon_font`, else the word "Back") whose tooltip is `back_tip`, then the title. It returns true when the arrow
+`back_bar(page, o, title, back_tip, em)` is a bar as wide as its parent: a back arrow (Lucide's `arrow-left` in
+`Page_Options.icon_font`, else the word "Back") whose tooltip is `back_tip`, then the title. It returns true when the arrow
 was pressed. `escape_leaves(page)` is true when Escape was pressed and no editor of a preference has the keyboard: that
 Escape gives up the editor first.
 
@@ -286,7 +286,7 @@ closes the page on Escape leaves that Escape to the field.
 
 ## The settings in the command palette
 
-`palette_commands(prefs, options)` gives one `ui.Command` per preference the pages show (a hidden one is not): its label
+`palette_commands(prefs, o)` gives one `ui.Command` per preference the pages show (a hidden one is not): its label
 is the title the page gives it, its group `Settings · <page>`, its icon the page's (else Lucide's sliders), its tags the
 preference's (`config.Def.tags`: other words the settings' search and the palette find it by, "colours" and "dark" for a
 theme). A program puts

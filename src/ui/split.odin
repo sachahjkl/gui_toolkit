@@ -46,22 +46,22 @@ Splitter_Result :: struct {
 }
 
 // The limits of a pane's size: its own, and what the other side needs. The smaller limit wins when they cross.
-splitter_limits :: proc(min_size, max_size: f32, opts: Splitter_Options) -> (lo, hi: f32) {
+splitter_limits :: proc(min_size, max_size: f32, o: Splitter_Options) -> (lo, hi: f32) {
 	lo, hi = min_size, max_size
-	if opts.total > 0 { hi = min(hi, opts.total - opts.min_other) }
+	if o.total > 0 { hi = min(hi, o.total - o.min_other) }
 	if hi < lo { hi = lo }
 	return
 }
 
 // A handle along `axis` (.X: a vertical bar between side-by-side panes, .Y: a horizontal bar between stacked panes)
-// that resizes the pane whose size is `size` (in logical pixels unless `opts.unit` says otherwise). Its length fills the
+// that resizes the pane whose size is `size` (in logical pixels unless `o.unit` says otherwise). Its length fills the
 // parent unless `next` sets it.
-splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, opts := Splitter_Options{}) -> (res: Splitter_Result) {
+splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, o := Splitter_Options{}) -> (res: Splitter_Result) {
 	s := gs()
-	unit := opts.unit > 0 ? opts.unit : s.scale
-	grab := opts.thickness > 0 ? opts.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale)
+	unit := o.unit > 0 ? o.unit : s.scale
+	grab := o.thickness > 0 ? o.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale)
 	line := max(math.round(s.scale), 1)
-	across := opts.flush ? line : grab
+	across := o.flush ? line : grab
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if axis == .X {
 		m.width = px(across)
@@ -74,14 +74,14 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	m.cursor = cur
 	next(m)
 	flags := Box_Flags{.Clickable}
-	if !opts.no_keyboard { flags += {.Focusable} }
+	if !o.no_keyboard { flags += {.Focusable} }
 	b := build_box(flags, id)
-	if opts.flush { b.hit_outset = math.ceil((grab - line) * 0.5) }
-	enter := !opts.no_keyboard && s.focus_key == b.key && key_pressed_peek(.Return)   // (signal takes Enter as a click)
+	if o.flush { b.hit_outset = math.ceil((grab - line) * 0.5) }
+	enter := !o.no_keyboard && s.focus_key == b.key && key_pressed_peek(.Return)   // (signal takes Enter as a click)
 	res.sig = signal(b)
-	lo, hi := splitter_limits(min_size, max_size, opts)
+	lo, hi := splitter_limits(min_size, max_size, o)
 	before := size^
-	if v, ok := a11y_numeric_request(b.key, size^, opts.step > 0 ? opts.step : SPLITTER_KEY_STEP_PX * s.scale / unit); ok {
+	if v, ok := a11y_numeric_request(b.key, size^, o.step > 0 ? o.step : SPLITTER_KEY_STEP_PX * s.scale / unit); ok {
 		size^ = clamp(v, lo, hi)
 		res.finished = true
 	}
@@ -91,17 +91,17 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	if res.sig.dragging && press != nil {
 		s.cursor_request = cur   // (also when the pointer runs ahead of the handle)
 		d := (axis == .X ? res.sig.drag_delta.x : res.sig.drag_delta.y) / unit
-		if opts.after { d = -d }
+		if o.after { d = -d }
 		size^ = clamp(press.from + d, lo, hi)
 	}
 	if res.sig.released { res.finished = true }
-	if res.sig.double_clicked && opts.default_size > 0 {
-		size^ = clamp(opts.default_size, lo, hi)
+	if res.sig.double_clicked && o.default_size > 0 {
+		size^ = clamp(o.default_size, lo, hi)
 		if press != nil { press.from = size^ }   // (the button is still down: a move from here starts at the default)
 		res.finished = true
 	}
-	if res.sig.focused && !opts.no_keyboard {
-		step := opts.step > 0 ? opts.step : SPLITTER_KEY_STEP_PX * s.scale / unit
+	if res.sig.focused && !o.no_keyboard {
+		step := o.step > 0 ? o.step : SPLITTER_KEY_STEP_PX * s.scale / unit
 		dir: f32
 		back, fwd: platform.Key = axis == .X ? .Left : .Up, axis == .X ? .Right : .Down
 		for mods in ([]platform.Modifiers{{}, {.Ctrl}}) {
@@ -109,11 +109,11 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 			if key_press(back, mods) { dir -= k }
 			if key_press(fwd, mods) { dir += k }
 		}
-		if opts.after { dir = -dir }
+		if o.after { dir = -dir }
 		if dir != 0 { size^ = clamp(size^ + dir, lo, hi); res.finished = true }
 		if key_press(.Home) { size^ = lo; res.finished = true }
 		if key_press(.End) { size^ = hi; res.finished = true }
-		if enter && opts.default_size > 0 { size^ = clamp(opts.default_size, lo, hi); res.finished = true }
+		if enter && o.default_size > 0 { size^ = clamp(o.default_size, lo, hi); res.finished = true }
 	}
 	// (a size outside the limits at rest is left alone: the window shrank, the app draws the pane clamped and the user's
 	// size comes back when there is room again)
@@ -123,11 +123,11 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, op
 	d.hot = res.sig.hovering || res.dragging || (res.sig.focused && s.focus_visible)
 	d.color = d.hot ? color("accent") : color("border")
 	d.line = max(math.round(s.scale), 1)
-	d.fill, d.at = opts.fill, opts.line_at
+	d.fill, d.at = o.fill, o.line_at
 	b.custom, b.custom_user = splitter_draw, d
 	// (a bar between side-by-side panes is vertical: its orientation is across `axis`)
 	a11y_default(b, {role = .Splitter, numeric = f64(size^), min = f64(lo), max = f64(hi), orientation = axis == .X ? Axis.Y : Axis.X,
-		actions = opts.no_keyboard ? {} : {.Increment, .Decrement, .Set_Value}})
+		actions = o.no_keyboard ? {} : {.Increment, .Decrement, .Set_Value}})
 	return
 }
 

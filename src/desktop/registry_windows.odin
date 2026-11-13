@@ -9,7 +9,7 @@ import "../ascii"
 
 // The key that stands for HKCU\Software: "Software" itself, or a scratch key under it for the tests.
 @(private)
-registry_root_of :: proc(o: ^Options) -> string { return o.registry_root != "" ? o.registry_root : "Software" }
+registry_root_of :: proc(o: ^Integration_Options) -> string { return o.registry_root != "" ? o.registry_root : "Software" }
 
 @(private)
 reg_join :: proc(parts: ..string) -> string { return strings.join(parts, "\\", context.temp_allocator) }

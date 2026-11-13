@@ -6,7 +6,7 @@ package tk_desktop
 // output nor its exit code. cmd.exe and PowerShell prefer `<stem>.com` to `<stem>.exe` when `<stem>` is typed: the
 // launcher, which the program provides, starts the program and gives its output and code through.
 //
-// The program passes the launcher's bytes in `Options.launcher` (it can embed them: the release stays one file). It is
+// The program passes the launcher's bytes in `Integration_Options.launcher` (it can embed them: the release stays one file). It is
 // written only next to the executable of an integration whose PATH part is on: never in another folder, never without the
 // PATH entry that makes it reachable. Removal deletes only a file that carries `Identity.launcher_mark`.
 
@@ -26,7 +26,7 @@ launcher_file :: proc(exe: string, allocator := context.temp_allocator) -> strin
 }
 
 // Is the file at `path` a launcher of ours (it carries the identity's mark)? Never without a mark.
-launcher_is_ours :: proc(o: ^Options, path: string) -> bool {
+launcher_is_ours :: proc(o: ^Integration_Options, path: string) -> bool {
 	mark := o.identity.launcher_mark
 	if mark == "" || path == "" || !os.is_file(path) { return false }
 	if info, err := os.stat(path, context.temp_allocator); err != nil || info.size <= 0 || info.size > LAUNCHER_MAX_BYTES { return false }
@@ -35,14 +35,14 @@ launcher_is_ours :: proc(o: ^Options, path: string) -> bool {
 }
 
 // Is there a launcher of ours beside the executable of these options?
-launcher_current :: proc(o: ^Options) -> bool {
+launcher_current :: proc(o: ^Integration_Options) -> bool {
 	return launcher_is_ours(o, launcher_file(o.exe))
 }
 
 // Writes the launcher beside `o.exe`, unless the options carry none. A file that is not the launcher's (no mark) is never
 // replaced. One that is the same bytes is left alone (it may be running); another version is renamed aside and replaced,
 // as a running program's file can be renamed, not overwritten.
-launcher_write :: proc(o: ^Options) -> Result {
+launcher_write :: proc(o: ^Integration_Options) -> Result {
 	if len(o.launcher) == 0 { return {} }
 	path := launcher_file(o.exe)
 	if path == "" { return {} }
@@ -77,7 +77,7 @@ launcher_write :: proc(o: ^Options) -> Result {
 
 // Deletes the launcher beside `exe` when it is ours (and the `.old` a replacement left). One that runs now cannot be
 // deleted: it is renamed aside so that the name is free, and the next removal gets it.
-launcher_remove :: proc(o: ^Options, exe: string) -> Result {
+launcher_remove :: proc(o: ^Integration_Options, exe: string) -> Result {
 	path := launcher_file(exe)
 	if path == "" { return {} }
 	old := strings.concatenate({path, OLD_SUFFIX}, context.temp_allocator)

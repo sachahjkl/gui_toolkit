@@ -70,7 +70,7 @@ Layout :: struct {
 }
 
 @(private = "file")
-layout_of :: proc(o: ^Options) -> (l: Layout, ok: bool) {
+layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
 	root := registry_root_of(o)
 	l.menu_dir = o.menu_dir != "" ? o.menu_dir : programs_folder()
 	if l.menu_dir == "" { return {}, false }
@@ -107,7 +107,7 @@ known_folder :: proc(folder: win.GUID) -> string {
 // Status
 
 @(private = "file")
-windows_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
+windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> Status {
 	s: Status
 	l, ok := layout_of(o)
 	if !ok { s.error = .System; return s }
@@ -170,7 +170,7 @@ windows_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
 }
 
 @(private = "file")
-shortcut_status :: proc(o: ^Options, lnk: string, allocator: runtime.Allocator) -> (ps: Part_Status) {
+shortcut_status :: proc(o: ^Integration_Options, lnk: string, allocator: runtime.Allocator) -> (ps: Part_Status) {
 	if !os.is_file(lnk) { return }
 	target, aumid, read := read_shortcut(lnk)
 	if !(read && (aumid == o.identity.aumid || same_path(target, o.exe))) { return }
@@ -215,7 +215,7 @@ read_shortcut :: proc(path: string) -> (target, aumid: string, read: bool) {
 // Install
 
 @(private = "file")
-windows_install :: proc(o: ^Options) -> Result {
+windows_install :: proc(o: ^Integration_Options) -> Result {
 	l, ok := layout_of(o)
 	if !ok { return {.System, "the Start menu folder is unknown"} }
 	com := com_enter()
@@ -271,7 +271,7 @@ windows_install :: proc(o: ^Options) -> Result {
 
 // Deletes a shortcut when it is the program's (its AppUserModelID or its executable); another file of that name stays.
 @(private = "file")
-remove_shortcut :: proc(o: ^Options, lnk: string) -> Result {
+remove_shortcut :: proc(o: ^Integration_Options, lnk: string) -> Result {
 	if !os.is_file(lnk) { return {} }
 	target, aumid, read := read_shortcut(lnk)
 	if !(read && (aumid == o.identity.aumid || same_path(target, o.exe))) { return {} }
@@ -280,7 +280,7 @@ remove_shortcut :: proc(o: ^Options, lnk: string) -> Result {
 }
 
 @(private = "file")
-write_shortcut :: proc(o: ^Options, path: string) -> Result {
+write_shortcut :: proc(o: ^Integration_Options, path: string) -> Result {
 	link: ^IShellLinkW
 	if win.CoCreateInstance(&CLSID_ShellLink, nil, win.CLSCTX_INPROC_SERVER, &IID_IShellLinkW, cast(^rawptr)&link) < 0 || link == nil { return {.System, "the shell link class is not available"} }
 	defer link->Release()
@@ -329,7 +329,7 @@ exe_dir :: proc(exe: string) -> string {
 }
 
 @(private = "file")
-write_registration :: proc(o: ^Options, l: Layout) -> Result {
+write_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	id := o.identity
 	exe := o.exe
 	icon := strings.concatenate({exe, ",0"}, context.temp_allocator)
@@ -386,7 +386,7 @@ notify_associations :: proc() { win.SHChangeNotify(win.SHCNE_ASSOCCHANGED, 0, ni
 // Remove
 
 @(private = "file")
-windows_remove :: proc(o: ^Options) -> Result {
+windows_remove :: proc(o: ^Integration_Options) -> Result {
 	l, ok := layout_of(o)
 	if !ok { return {.System, "the Start menu folder is unknown"} }
 	com := com_enter()
@@ -418,7 +418,7 @@ windows_remove :: proc(o: ^Options) -> Result {
 // Deletes the keys that are the program's (a mark, or its executable in the command) and the list entry that names
 // its Capabilities key.
 @(private = "file")
-remove_registration :: proc(o: ^Options, l: Layout) -> Result {
+remove_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	res: Result
 	failed :: proc(path: string) -> Result { return {.System, strings.concatenate({"cannot delete HKCU\\", path}, context.temp_allocator)} }
 
@@ -443,7 +443,7 @@ remove_registration :: proc(o: ^Options, l: Layout) -> Result {
 
 // A link scheme's key: its command, and whether it is the program's (the mark, or the executable in the command).
 @(private = "file")
-link_key_status :: proc(o: ^Options, key: string) -> (command: string, command_ok, mine: bool) {
+link_key_status :: proc(o: ^Integration_Options, key: string) -> (command: string, command_ok, mine: bool) {
 	command, command_ok = reg_get(reg_join(key, "shell", "open", "command"), "")
 	mark, _ := reg_get(key, o.identity.registry_mark)
 	mine = mark == o.identity.aumid || (command_ok && same_path(command_program(command), o.exe))
@@ -461,11 +461,11 @@ windows_open_defaults :: proc() -> bool {
 
 // HKCU\<registry root>\Microsoft\Windows\CurrentVersion\Run: the programs that start with the session, one value each.
 @(private = "file")
-run_key :: proc(o: ^Options) -> string { return reg_join(registry_root_of(o), "Microsoft", "Windows", "CurrentVersion", "Run") }
+run_key :: proc(o: ^Integration_Options) -> string { return reg_join(registry_root_of(o), "Microsoft", "Windows", "CurrentVersion", "Run") }
 
 // The command of the program's Run value: the executable, quoted, and `autostart_arguments`.
 @(private = "file")
-autostart_command :: proc(o: ^Options) -> string {
+autostart_command :: proc(o: ^Integration_Options) -> string {
 	c := strings.concatenate({"\"", o.exe, "\""}, context.temp_allocator)
 	if o.autostart_arguments != "" { c = strings.concatenate({c, " ", o.autostart_arguments}, context.temp_allocator) }
 	return c

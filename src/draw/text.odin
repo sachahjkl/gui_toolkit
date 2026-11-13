@@ -166,9 +166,9 @@ text :: proc(c: ^Context, id: font.Font_Id, size: f32, pos: Vec2, color: Color, 
 }
 
 // `text` with shaping options (direction, letter / word spacing).
-text_ex :: proc(c: ^Context, id: font.Font_Id, size: f32, pos: Vec2, color: Color, s: string, opts: font.Shape_Options) -> f32 {
+text_ex :: proc(c: ^Context, id: font.Font_Id, size: f32, pos: Vec2, color: Color, s: string, o: font.Shape_Options) -> f32 {
 	if len(s) == 0 { return 0 }
-	sh := font.shape(c.fonts, id, size, s, opts, context.temp_allocator)
+	sh := font.shape(c.fonts, id, size, s, o, context.temp_allocator)
 	glyph_run(c, size, pos, color, sh.glyphs)
 	return sh.width
 }

@@ -30,7 +30,7 @@ NAME_STAMP_BYTES :: 16
 @(private = "file") BADGE_HEX_BYTES :: 6
 
 // What is particular to a project.
-Options :: struct {
+Project_Options :: struct {
 	root:        string,   // the checkout: its CHANGELOG.md and changelog.d/ ("": the current folder)
 	link:        string,   // a version's link, %s for the version: "https://github.com/o/r/releases/tag/v%s" ("": none)
 	// where the project keeps its version (nil: nowhere the package knows). check says when it differs from the last
@@ -79,7 +79,7 @@ read_text :: proc(path: string) -> (string, bool) {
 
 @(private = "file") write_text :: proc(path, text: string) -> bool { return os.write_entire_file(path, transmute([]byte)text) == nil }
 
-@(private = "file") root_of :: proc(o: Options) -> string { return o.root != "" ? o.root : "." }
+@(private = "file") root_of :: proc(o: Project_Options) -> string { return o.root != "" ? o.root : "." }
 
 // A link's definition at the end of the file: "[label]: url".
 @(private = "file") is_link :: proc(l: string) -> bool { return strings.has_prefix(l, "[") && strings.contains(l, "]: ") }
@@ -285,7 +285,7 @@ date_of :: proc(when_: time.Time) -> string {
 	return fmt.tprintf("%04d-%02d-%02d", y, int(mo), d)
 }
 
-// The folder of the fragments of the checkout at `root` ("": the current folder, as Options.root; "/changelog.d" was
+// The folder of the fragments of the checkout at `root` ("": the current folder, as Project_Options.root; "/changelog.d" was
 // written at the root of the disk).
 @(private = "package")
 fragments_dir :: proc(root: string) -> string { return fmt.tprintf("%s/changelog.d", root != "" ? root : ".") }
@@ -317,7 +317,7 @@ new_fragment :: proc(root, type, subject, text: string, when_ := time.Time{}) ->
 }
 
 // Whether all is well: what is wrong in `errors`, the number of fragments. `release`: and ready to tag that version.
-check :: proc(o: Options, release := "") -> (errors: [dynamic]string, fragments: int) {
+check :: proc(o: Project_Options, release := "") -> (errors: [dynamic]string, fragments: int) {
 	errors.allocator = context.temp_allocator
 	root := root_of(o)
 	c := read_changelog(root)
@@ -379,8 +379,8 @@ preview :: proc(root: string) -> (text: string, errors: [dynamic]string) {
 }
 
 // The release: the version's section above the last one, its link with the others, a hand-written [Unreleased] section
-// gone, the version written (Options.set_version), the fragments deleted. `date` "": today. `entries`: the changes.
-assemble :: proc(o: Options, version: string, date := "") -> (entries: int, errors: [dynamic]string) {
+// gone, the version written (Project_Options.set_version), the fragments deleted. `date` "": today. `entries`: the changes.
+assemble :: proc(o: Project_Options, version: string, date := "") -> (entries: int, errors: [dynamic]string) {
 	root := root_of(o)
 	c := read_changelog(root)
 	changes: []Fragment

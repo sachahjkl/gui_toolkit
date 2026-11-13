@@ -142,24 +142,24 @@ dock_body_key :: proc(d: ^Dock, panel: u32) -> Key { return key_from_string(d.sp
 
 // The dock space: lays out the dock, takes the user's drags, drops and keys, and builds the strips, the handles and the
 // floating panels' frames. The panels' content follows (dock_panel), then dock_end.
-dock_begin :: proc(d: ^Dock, id: string, opts := Dock_Options{}) {
+dock_begin :: proc(d: ^Dock, id: string, o := Dock_Options{}) {
 	s := gs()
 	dock_ready(d)
-	d.opts = opts
+	d.opts = o
 	d.closed, d.windowed = DOCK_NO_PANEL, DOCK_NO_PANEL
 	if d.saved == 0 { d.saved = d.serial }   // (the layout the app made or loaded is not a change of the user's)
 	d.begin_serial = d.serial
 	em := font_size()
 	d.space_key = key_from_string(parent_box().key, id)
-	size := opts.size
+	size := o.size
 	if prev := box_from_key(d.space_key); prev != nil {
 		d.origin = prev.rect.min
 		if size.x <= 0 || size.y <= 0 { size = prev.rect.max - prev.rect.min }
 	}
 	if size.x <= 0 || size.y <= 0 { size = s.window_size - d.origin }
 	m := Dock_Metrics{
-		strip  = opts.tab_height > 0 ? opts.tab_height : math.round(DOCK_TAB_EM * em),
-		handle = opts.handle > 0 ? opts.handle : math.round(SPLITTER_THICKNESS_PX * s.scale),
+		strip  = o.tab_height > 0 ? o.tab_height : math.round(DOCK_TAB_EM * em),
+		handle = o.handle > 0 ? o.handle : math.round(SPLITTER_THICKNESS_PX * s.scale),
 		folded = math.round(PANE_STRIP_EM * em),
 		min    = DOCK_MIN_EM * em,
 		marker = math.round(DOCK_MARKER_EM * em),

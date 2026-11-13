@@ -8,8 +8,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strconv"
-import "core:strings"
-import stbi "vendor:stb/image"
+import png "../../src/png"
 import "../../src/draw"
 import "../../src/font"
 import "../../src/render"
@@ -153,9 +152,9 @@ main :: proc() {
 				delete(img)
 			}
 			name := fmt.tprintf("%s/%s_%.0f.png", out, s.name, dpr * 100)
-			stbi.write_png(strings.clone_to_cstring(name, context.temp_allocator), i32(w), i32((h + gap) * len(VARIANTS)), 4, raw_data(sheet), i32(w * 4))
+			_ = os.write_entire_file(name, png.encode(sheet, w, (h + gap) * len(VARIANTS), allocator = context.temp_allocator))
 			zname := fmt.tprintf("%s/%s_%.0f_zoom.png", out, s.name, dpr * 100)
-			stbi.write_png(strings.clone_to_cstring(zname, context.temp_allocator), i32(cw * Z), i32((ch * Z + gap) * len(VARIANTS)), 4, raw_data(zoom), i32(cw * Z * 4))
+			_ = os.write_entire_file(zname, png.encode(zoom, cw * Z, (ch * Z + gap) * len(VARIANTS), allocator = context.temp_allocator))
 			fmt.println("wrote", name, zname)
 		}
 	}

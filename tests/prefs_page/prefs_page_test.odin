@@ -38,7 +38,7 @@ App :: struct {
 	page:    prefs_page.Page,
 	changed: [dynamic]string,
 	updater: ^update.Updater,
-	preview: f64,   // the last value a held slider showed (Options.preview)
+	preview: f64,   // the last value a held slider showed (Page_Options.preview)
 }
 
 @(private = "file")
@@ -245,7 +245,7 @@ a_number_writes_its_unit :: proc(t: ^testing.T) {
 	if v.a11y != nil { testing.expect_value(t, v.a11y.value, "45 %") }
 }
 
-// A number's slider held shows its value at once (Options.preview: the program applies it), the preference written at the release.
+// A number's slider held shows its value at once (Page_Options.preview: the program applies it), the preference written at the release.
 @(test)
 a_held_slider_previews_its_value :: proc(t: ^testing.T) {
 	app: App

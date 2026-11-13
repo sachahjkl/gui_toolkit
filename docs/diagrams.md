@@ -5,7 +5,7 @@ A diagram is drawn by the toolkit itself, in its paths and its fonts: no browser
 ## svg: a drawing in SVG
 
 `svg.parse(text)` reads a drawing into shapes (paths in the drawing's coordinates, with their fill, stroke, width and dashes)
-and texts (a line each, with its pen, anchor, size and weight). `svg.draw_doc(dc, &doc, at, scale, options)` draws it with
+and texts (a line each, with its pen, anchor, size and weight). `svg.draw_doc(dc, &doc, at, scale, o)` draws it with
 its top-left corner at `at`, `scale` screen pixels per unit of its viewBox; `svg.size(&doc, scale)` is its size there.
 `svg.destroy(&doc)` frees it.
 
@@ -21,9 +21,9 @@ It reads what diagrams and icons use: `svg`, `g`, `path` (every command, arcs to
 `fill`, `stroke`, `stroke-width`, `stroke-dasharray`, the opacities, `font-size`, `font-weight`, `text-anchor` and the
 `style` attribute. A linear gradient is its first colour. Style sheets, filters, images and clips are left out; the rest
 is drawn. The paths are built at the screen's scale: curves are smooth and strokes as wide as the scale makes them at
-every zoom. `Options.recolor` turns the drawing's colours into the program's (its theme).
+every zoom. `Draw_Options.recolor` turns the drawing's colours into the program's (its theme).
 
-`svg.raster(&doc, scale, fonts, options, background)` makes the same drawing into pixels on the CPU, where no frame is
+`svg.raster(&doc, scale, fonts, o, background)` makes the same drawing into pixels on the CPU, where no frame is
 drawn: a `paint.Canvas` to copy (`paint.to_rgba8`) or to save (`paint.png_encode`). Its texts are filled from the outlines
 of the options' faces; a glyph without an outline (a colour emoji) is left out.
 

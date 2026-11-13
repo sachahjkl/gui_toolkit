@@ -42,7 +42,7 @@ Status :: struct {
 
 Backend :: enum u8 { None, Portal, Windows }
 
-Options :: struct {
+Service_Options :: struct {
 	app_id: string,              // Linux: the name of the program's .desktop file, without ".desktop"
 	window: ^platform.Window,    // Windows: the window RegisterHotKey reports to
 	// called from any thread when there is something to take (an activation, a status): wake the program's loop
@@ -51,7 +51,7 @@ Options :: struct {
 }
 
 Service :: struct {
-	options:      Options,
+	options:      Service_Options,
 	lock:         sync.Mutex,
 	activated:    [dynamic]string,       // guarded by lock; owned
 	statuses:     map[string]Status,     // guarded by lock; keys and triggers owned
@@ -61,7 +61,7 @@ Service :: struct {
 	allocator:    runtime.Allocator,
 }
 
-start :: proc(o: Options, allocator := context.allocator) -> ^Service {
+start :: proc(o: Service_Options, allocator := context.allocator) -> ^Service {
 	s := new(Service, allocator)
 	s.options = o
 	s.options.app_id = strings.clone(o.app_id, allocator)

@@ -1,6 +1,6 @@
 # Modal dialogs (`src/ui/overlays.odin`)
 
-`ui.modal(id, &open, options)` dims the page and shows a panel: `if ui.modal("about", &open, {width_em = 32}) { ... }`.
+`ui.modal(id, &open, o)` dims the page and shows a panel: `if ui.modal("about", &open, {width_em = 32}) { ... }`.
 `open` is the caller's: true opens it; Escape, a press outside or its close button set it false. Its `Modal_Options`, the
 sizes in ems of the style where `modal` is called:
 
@@ -66,7 +66,7 @@ it stays on top while the body scrolls.
 |---|---|
 | ![A confirmation: what it deletes, a line each; Cancel answers Enter](screenshots/showcase_confirm.webp) | ![A prompt for a PIN, its eye at the end of the field](screenshots/showcase_prompt.webp) |
 
-`ui.confirm(id, &open, options)` is the question before an act that is not taken back: a title, a note in the weak text
+`ui.confirm(id, &open, o)` is the question before an act that is not taken back: a title, a note in the weak text
 (what comes of it), what it acts on one per line when there is more than one (`CONFIRM_LINES_MAX` shown, the others
 counted), then Cancel (intent `.Cancel`) and the act's button in the danger colours. It answers `.Confirmed`, `.Cancelled` (the Cancel
 button, Escape, a press outside) or `.None` while it waits.
@@ -78,7 +78,7 @@ button, Escape, a press outside) or `.None` while it waits.
 
 ## A prompt (`src/ui/confirm.odin`)
 
-`ui.prompt(id, &open, &field, options)` asks for an answer typed in: a title, a sentence (`note`: what to type), one
+`ui.prompt(id, &open, &field, o)` asks for an answer typed in: a title, a sentence (`note`: what to type), one
 field, Cancel (intent `.Cancel`) and OK (`act`, else `Prompt_Labels.ok`). The field has the keyboard as it opens. Enter
 in it answers `.Confirmed` (the text is the field's); Escape, Cancel or a press outside `.Cancelled`; `.None` while it
 waits. `secret` makes it a password field (`reveal`: the caller's bool for the eye that shows it); once the answer is

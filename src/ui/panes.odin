@@ -85,35 +85,35 @@ Pane_Result :: struct {
 
 // The limits of the pane's size along `axis` (logical px): its minimum, and the room less what the other side keeps. The
 // minimum wins when they cross.
-pane_limits :: proc(opts: Pane_Options) -> (lo, hi: f32) {
+pane_limits :: proc(o: Pane_Options) -> (lo, hi: f32) {
 	s := gs()
 	em := font_size() / s.scale
-	lo = opts.min_size > 0 ? opts.min_size : PANE_MIN_EM * em
-	other := opts.min_other > 0 ? opts.min_other : PANE_MIN_EM * em
-	hi = opts.total > 0 ? opts.total - other : PANE_NO_LIMIT
+	lo = o.min_size > 0 ? o.min_size : PANE_MIN_EM * em
+	other := o.min_other > 0 ? o.min_other : PANE_MIN_EM * em
+	hi = o.total > 0 ? o.total - other : PANE_NO_LIMIT
 	if hi < lo { hi = lo }
 	return
 }
 
 // The pane's size to lay out along `axis` (logical px; 0: folded): its own, in the limits; the default when it has none.
-pane_extent :: proc(p: ^Pane, axis: Axis, opts := Pane_Options{}) -> f32 {
+pane_extent :: proc(p: ^Pane, axis: Axis, o := Pane_Options{}) -> f32 {
 	if p.collapsed { return 0 }
-	lo, hi := pane_limits(opts)
+	lo, hi := pane_limits(o)
 	sz := p.size[axis]
-	if sz <= 0 { sz = opts.default_size > 0 ? opts.default_size : lo * 2 }
+	if sz <= 0 { sz = o.default_size > 0 ? o.default_size : lo * 2 }
 	return clamp(sz, lo, hi)
 }
 
 // The handle between the pane and the other side, along `axis` (.X: side by side, a vertical bar; .Y: stacked). The app
 // builds the pane `pane_extent` wide (none when folded) before the handle (side .Before) or after it (.After). Its length
 // fills the parent unless `next` sets it.
-pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> (res: Pane_Result) {
+pane_split :: proc(id: string, axis: Axis, p: ^Pane, o := Pane_Options{}) -> (res: Pane_Result) {
 	s := gs()
 	em := font_size()
-	lo, hi := pane_limits(opts)
+	lo, hi := pane_limits(o)
 	was := p^
-	open := pane_extent(p, axis, opts)
-	across := p.collapsed ? math.round(PANE_STRIP_EM * em) : (opts.thickness > 0 ? opts.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale))
+	open := pane_extent(p, axis, o)
+	across := p.collapsed ? math.round(PANE_STRIP_EM * em) : (o.thickness > 0 ? o.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale))
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	cur := axis == .X ? platform.Cursor.Resize_H : platform.Cursor.Resize_V
 	if axis == .X {
@@ -126,10 +126,10 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	m.cursor = p.collapsed ? platform.Cursor.Arrow : cur
 	next(m)
 	flags := Box_Flags{.Clickable}
-	if !opts.no_keyboard { flags += {.Focusable} }
+	if !o.no_keyboard { flags += {.Focusable} }
 	b: ^Box
 	if tags("pane_strip") { b = build_box(flags, id) }   // (the folded strip's colours)
-	enter := !opts.no_keyboard && s.focus_key == b.key && key_pressed_peek(.Return)   // (signal takes Enter as a click)
+	enter := !o.no_keyboard && s.focus_key == b.key && key_pressed_peek(.Return)   // (signal takes Enter as a click)
 	res.sig = signal(b)
 	step: f32 = SPLITTER_KEY_STEP_PX
 
@@ -139,10 +139,10 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	if res.sig.dragging && res.sig.drag_delta != {} {
 		s.cursor_request = cur
 		d := (axis == .X ? res.sig.drag_delta.x : res.sig.drag_delta.y) / s.scale
-		if opts.side == .After { d = -d }
+		if o.side == .After { d = -d }
 		from := drag_load()
 		want := from[0] + d
-		if opts.collapsible && want < lo * PANE_SNAP_FRACTION {
+		if o.collapsible && want < lo * PANE_SNAP_FRACTION {
 			if !p.collapsed && pane_press() == .Bar { p.size[axis] = from[0] }   // (folded by a drag: it comes back at the size it had)
 			p.collapsed = true
 		} else {
@@ -153,22 +153,22 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	}
 	if res.sig.released { res.finished = true }
 	switch {
-	case enter && opts.collapsible:
+	case enter && o.collapsible:
 		p.collapsed = !p.collapsed
-	case enter && !p.collapsed && opts.default_size > 0:
-		p.size[axis] = clamp(opts.default_size, lo, hi)
+	case enter && !p.collapsed && o.default_size > 0:
+		p.size[axis] = clamp(o.default_size, lo, hi)
 	case res.sig.clicked && p.collapsed && (!res.sig.pointer_clicked || pane_press() == .Strip):   // a click on the strip (not a drag out of it)
 		p.collapsed = false
 	case res.sig.double_clicked && !p.collapsed && prev == .Bar:
-		if opts.collapsible {
+		if o.collapsible {
 			p.collapsed = true
 			drag_store({0, f32(Pane_Press.Strip_Used), 0, 0})   // (the button is still down: a move from here pulls the pane out again)
-		} else if opts.default_size > 0 {
-			p.size[axis] = clamp(opts.default_size, lo, hi)
+		} else if o.default_size > 0 {
+			p.size[axis] = clamp(o.default_size, lo, hi)
 			drag_store({p.size[axis], f32(Pane_Press.Bar), 0, 0})   // (the button is still down: a move from here starts at the default)
 		}
 	}
-	if res.sig.focused && !opts.no_keyboard && !p.collapsed {
+	if res.sig.focused && !o.no_keyboard && !p.collapsed {
 		dir: f32
 		back, fwd: platform.Key = axis == .X ? .Left : .Up, axis == .X ? .Right : .Down
 		for mods in ([]platform.Modifiers{{}, {.Ctrl}}) {
@@ -176,7 +176,7 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 			if key_press(back, mods) { dir -= k }
 			if key_press(fwd, mods) { dir += k }
 		}
-		if opts.side == .After { dir = -dir }
+		if o.side == .After { dir = -dir }
 		if dir != 0 { p.size[axis] = clamp(open + dir, lo, hi) }
 		if key_press(.Home) { p.size[axis] = lo }
 		if key_press(.End) { p.size[axis] = hi }
@@ -184,34 +184,34 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> 
 	res.toggled = p.collapsed != was.collapsed
 	res.changed = p.collapsed != was.collapsed || p.size != was.size
 	if res.changed && !res.sig.dragging { res.finished = true }
-	if res.finished && opts.on_save != nil { opts.on_save(opts.user, p) }
-	res.size = pane_extent(p, axis, opts)
+	if res.finished && o.on_save != nil { o.on_save(o.user, p) }
+	res.size = pane_extent(p, axis, o)
 
 	d := frame_new(Pane_Draw)
 	d.hot = res.sig.hovering || res.dragging || (res.sig.focused && s.focus_visible)
 	d.split = {hot = d.hot, color = d.hot ? color("accent") : color("border"), line = max(math.round(s.scale), 1)}
-	d.collapsed, d.axis, d.side = p.collapsed, axis, opts.side
-	d.chevron = {t = pane_chevron_turns(axis, opts.side, false), color = d.hot ? color("accent") : color("text")}
+	d.collapsed, d.axis, d.side = p.collapsed, axis, o.side
+	d.chevron = {t = pane_chevron_turns(axis, o.side, false), color = d.hot ? color("accent") : color("text")}
 	d.bg = color_from_tags(s, b.tags_key, "background")
 	d.hover = state_fill(b, "hover_fill", d.bg)
 	b.custom, b.custom_user = pane_draw, d
-	if p.collapsed && opts.title != "" && hovered_for(res.sig) { if tooltip() { tooltip_text(opts.title) } }
-	info := A11y_Info{role = .Splitter, name = opts.title, numeric = f64(res.size), min = f64(lo), max = f64(hi),
-		orientation = axis == .X ? Axis.Y : Axis.X, actions = opts.no_keyboard ? {} : {.Increment, .Decrement, .Set_Value}}
-	if opts.collapsible { info.expanded = !p.collapsed }
+	if p.collapsed && o.title != "" && hovered_for(res.sig) { if tooltip() { tooltip_text(o.title) } }
+	info := A11y_Info{role = .Splitter, name = o.title, numeric = f64(res.size), min = f64(lo), max = f64(hi),
+		orientation = axis == .X ? Axis.Y : Axis.X, actions = o.no_keyboard ? {} : {.Increment, .Decrement, .Set_Value}}
+	if o.collapsible { info.expanded = !p.collapsed }
 	a11y_default(b, info)
 	if v, ok := a11y_numeric_request(b.key, res.size, step); ok {
 		if p.collapsed { res.toggled = true }
 		p.collapsed, d.collapsed = false, false
 		p.size[axis] = clamp(v, lo, hi)
 		res.size, res.changed, res.finished = p.size[axis], true, true
-		if opts.on_save != nil { opts.on_save(opts.user, p) }
+		if o.on_save != nil { o.on_save(o.user, p) }
 	}
 	return
 }
 
 // A chevron button that folds the pane and brings it back (for a header next to it). Returns whether it did.
-pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) -> bool {
+pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, o := Pane_Options{}) -> bool {
 	em := font_size()
 	m := gs().has_next ? gs().next_mod : Style_Mod{}
 	if m.width == nil { m.width = px(math.round(PANE_TOGGLE_EM * em)) }
@@ -221,10 +221,10 @@ pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) ->
 	sig := signal(b)
 	if sig.clicked {
 		p.collapsed = !p.collapsed
-		if opts.on_save != nil { opts.on_save(opts.user, p) }
+		if o.on_save != nil { o.on_save(o.user, p) }
 	}
 	d := frame_new(Chevron_Draw)
-	d.t = pane_chevron_turns(axis, opts.side, !p.collapsed)
+	d.t = pane_chevron_turns(axis, o.side, !p.collapsed)
 	d.color = sig.hovering ? color("accent") : color("text")
 	b.custom, b.custom_user = proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		c := draw.rect_center(b.rect)
@@ -236,9 +236,9 @@ pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) ->
 	// (whole sentences: a language puts the pane's title where its grammar wants it)
 	name: string
 	switch {
-	case opts.title == "": name = p.collapsed ? i18n.tr("Show") : i18n.tr("Hide")
-	case p.collapsed:      name = fmt.tprintf(i18n.tr("Show %s"), i18n.tr(opts.title))
-	case:                  name = fmt.tprintf(i18n.tr("Hide %s"), i18n.tr(opts.title))
+	case o.title == "": name = p.collapsed ? i18n.tr("Show") : i18n.tr("Hide")
+	case p.collapsed:      name = fmt.tprintf(i18n.tr("Show %s"), i18n.tr(o.title))
+	case:                  name = fmt.tprintf(i18n.tr("Hide %s"), i18n.tr(o.title))
 	}
 	if hovered_for(sig) { if tooltip() { tooltip_text(name) } }
 	a11y_default(b, {role = .Button, name = name, expanded = !p.collapsed})

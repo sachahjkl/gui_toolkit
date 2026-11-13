@@ -232,7 +232,7 @@ LOG_DIR :: "build/test_logs"
 THIS_OS :: Os.Windows when ODIN_OS == .Windows else Os.Linux
 EXE_SUFFIX :: ".exe" when ODIN_OS == .Windows else ""
 
-Options :: struct {
+Run_Options :: struct {
 	only:    [dynamic]string,
 	backend: string,
 	group:   string,
@@ -256,14 +256,14 @@ Pool :: struct {
 	steps:   []^Step,
 	results: []Result,
 	next:    int,
-	o:       ^Options,
+	o:       ^Run_Options,
 	print:   sync.Mutex,
 }
 
 main :: proc() {
 	code := 0
 	if on_own_desktop(&code) { os.exit(code) }
-	o := Options{limit = RUN_LIMIT_SECONDS}
+	o := Run_Options{limit = RUN_LIMIT_SECONDS}
 	for a in toolbox.args_joined(os.args[1:]) {
 		switch {
 		case a == "-list": o.list = true
@@ -311,7 +311,7 @@ main :: proc() {
 }
 
 // The steps asked for, on this system and this backend.
-choose :: proc(o: ^Options) -> []^Step {
+choose :: proc(o: ^Run_Options) -> []^Step {
 	out: [dynamic]^Step
 	for &s in STEPS {
 		if s.path == "" { s.path = fmt.aprintf("tests/%s", s.name) }
@@ -376,7 +376,7 @@ missing_need :: proc(n: Need) -> string {
 	return os.exists(file) ? "" : fmt.tprintf("%s is not there: build it first", file)
 }
 
-run_step :: proc(s: ^Step, o: ^Options) -> Result {
+run_step :: proc(s: ^Step, o: ^Run_Options) -> Result {
 	began := time.tick_now()
 	r := Result{step = s}
 	need := s.need
@@ -391,7 +391,7 @@ run_step :: proc(s: ^Step, o: ^Options) -> Result {
 	return r
 }
 
-carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
+carry_out :: proc(s: ^Step, o: ^Run_Options, r: ^Result) {
 	log_file, err := os.open(log_path(s), os.O_WRONLY + os.O_CREATE + os.O_TRUNC + os.O_INHERITABLE)
 	if err != nil { r.why = "cannot write its log"; return }
 	defer os.close(log_file)

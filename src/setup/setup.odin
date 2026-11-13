@@ -4,9 +4,9 @@
 //
 // The installed copy:
 //   Windows  %LOCALAPPDATA%\Programs\<folder>\<exe>, the Start menu's shortcut, the Settings > Apps record (its uninstall
-//            runs `<exe> <identity.uninstall_arguments>`), and what Config.prepare adds (the start with the session, the
+//            runs `<exe> <identity.uninstall_arguments>`), and what Setup_Options.prepare adds (the start with the session, the
 //            PATH and its console launcher)
-//   Linux    ~/.local/share/<folder>/<exe>, the applications menu's entry, the icons, and what Config.prepare adds
+//   Linux    ~/.local/share/<folder>/<exe>, the applications menu's entry, the icons, and what Setup_Options.prepare adds
 // and in the install folder the manifest: the version and the files placed, which Uninstall removes.
 package tk_setup
 
@@ -22,7 +22,7 @@ import "../ui"
 import base "../base"
 
 // What a program gives the setup.
-Config :: struct {
+Setup_Options :: struct {
 	identity:       desktop.Identity,
 	version:        string,          // this copy's ("0.6.1")
 	install_folder: string,          // the install folder's name beside the default ("": the desktop package's default)
@@ -34,7 +34,7 @@ Config :: struct {
 	// The program's own parts of the options, set before anything is read or written, the install folder known: the start
 	// with the session, the PATH and its console launcher, the places of a test (desktop.roots_from_env)... `choices`: the
 	// boxes' values.
-	prepare:        proc(o: ^desktop.Options, choices: []bool, user: rawptr),
+	prepare:        proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr),
 	folder:         bool,            // the dialog lets the user choose the install folder before the first install
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
@@ -46,7 +46,7 @@ Config :: struct {
 	close:          proc(id: string, em: f32, user: rawptr) -> bool,
 }
 
-// An option of the program's install (Config.choices).
+// An option of the program's install (Setup_Options.choices).
 Choice :: struct {
 	label: string,   // English, shown in the language in use (i18n.later)
 	on:    bool,
@@ -95,40 +95,40 @@ state_of :: proc(f: Facts) -> State {
 leftover :: proc(f: Facts) -> bool { return !f.exe_there && (f.start_lnk || f.desk_lnk || f.record || f.manifest) }
 
 // The options of the program's integration, its install folder set: the one the system recorded (Windows), else
-// Config.install_folder beside the default. `recorded`: the system has a record of it.
-options :: proc(c: Config, choices: []bool = nil) -> (o: desktop.Options, recorded: bool) {
-	o = desktop.options_make(c.identity)
-	o.icons = c.icons
-	default := desktop.default_install_dir(&o)
+// Setup_Options.install_folder beside the default. `recorded`: the system has a record of it.
+options :: proc(o: Setup_Options, choices: []bool = nil) -> (integration: desktop.Integration_Options, recorded: bool) {
+	integration = desktop.options_make(o.identity)
+	integration.icons = o.icons
+	default := desktop.default_install_dir(&integration)
 	// (the record alone: an install in the default folder is recorded too; install_target would give the default
 	// for no record, and telling the two apart by the folder made such an install one "to repair")
-	if found := desktop.install_recorded(&o); found != "" {
-		o.install_dir, recorded = found, true
-	} else if default != "" && c.install_folder != "" {
-		o.install_dir = join({process.parent_dir(default), c.install_folder})
+	if found := desktop.install_recorded(&integration); found != "" {
+		integration.install_dir, recorded = found, true
+	} else if default != "" && o.install_folder != "" {
+		integration.install_dir = join({process.parent_dir(default), o.install_folder})
 	} else {
-		o.install_dir = default
+		integration.install_dir = default
 	}
 	// (last: the program sees the folder, and may put every place elsewhere: a test's)
-	if c.prepare != nil { c.prepare(&o, choices_or_first(c, choices), c.user) }
+	if o.prepare != nil { o.prepare(&integration, choices_or_first(o, choices), o.user) }
 	return
 }
 
 // The state of the install, as the disk and the system say it (strings in temp memory).
-facts :: proc(c: Config, choices: []bool = nil, loc := #caller_location) -> (f: Facts) {
+facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) -> (f: Facts) {
 	base.blocking("setup.facts", loc)
-	o, recorded := options(c, choices)
+	integration, recorded := options(o, choices)
 	f.running = process.executable_path()
-	f.dir = o.install_dir
-	info := desktop.installed_info(&o, f.dir, context.temp_allocator)
-	f.exe = info.exe != "" ? info.exe : join({f.dir, desktop.exe_name_of(o.identity)})
+	f.dir = integration.install_dir
+	info := desktop.installed_info(&integration, f.dir, context.temp_allocator)
+	f.exe = info.exe != "" ? info.exe : join({f.dir, desktop.exe_name_of(integration.identity)})
 	f.exe_there = info.exe_present
 	f.manifest = info.manifest
 	f.missing = info.missing
 	f.version = info.version
 	f.running_it = desktop.same_path(f.exe, f.running)
-	o.exe = f.exe   // (the integration is measured against the installed copy)
-	s := desktop.status(&o, context.temp_allocator)
+	integration.exe = f.exe   // (the integration is measured against the installed copy)
+	s := desktop.status(&integration, context.temp_allocator)
 	launcher := s.parts[.Launcher]
 	f.start_lnk = launcher.present && !launcher.stale && !launcher.partial
 	shortcut := s.parts[.Desktop_Shortcut]
@@ -138,7 +138,7 @@ facts :: proc(c: Config, choices: []bool = nil, loc := #caller_location) -> (f: 
 	} else {
 		icons := s.parts[.Icons]
 		// (a program with no icons has nothing of a record to install: complete when it is there, no leftover when not)
-		f.record = recorded || icons.present || (len(c.icons) == 0 && f.exe_there)
+		f.record = recorded || icons.present || (len(o.icons) == 0 && f.exe_there)
 	}
 	f.nixos = desktop.is_nixos()
 	f.from_nix = desktop.in_nix_store(f.running)
@@ -149,56 +149,56 @@ facts :: proc(c: Config, choices: []bool = nil, loc := #caller_location) -> (f: 
 // Copies this program into the install folder (unless it runs from there), writes its launchers, the program's own parts
 // and the system's record. The installed program (temp memory), or why not.
 // `choices`: the program's options (nil: their first values); `folder`: another install folder than the default ("").
-install :: proc(c: Config, desktop_shortcut: bool, choices: []bool = nil, folder := "") -> (ok: bool, exe_or_why: string) {
-	o, _ := options(c, choices)
+install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil, folder := "") -> (ok: bool, exe_or_why: string) {
+	integration, _ := options(o, choices)
 	if folder != "" {
-		if why := desktop.check_install_dir(folder, c.identity.name, probe = true); why != "" { return false, why }
-		o.install_dir = folder
+		if why := desktop.check_install_dir(folder, o.identity.name, probe = true); why != "" { return false, why }
+		integration.install_dir = folder
 	}
-	if o.install_dir == "" { return false, i18n.tr("the install folder is unknown") }
-	exe_name := desktop.exe_name_of(o.identity)
+	if integration.install_dir == "" { return false, i18n.tr("the install folder is unknown") }
+	exe_name := desktop.exe_name_of(integration.identity)
 	plan := desktop.Install_Plan{
-		identity = o.identity, src_exe = process.executable_path(), dir = o.install_dir, exe_name = exe_name,
-		version = c.version, channel = "release", adapt = true,
+		identity = integration.identity, src_exe = process.executable_path(), dir = integration.install_dir, exe_name = exe_name,
+		version = o.version, channel = "release", adapt = true,
 	}
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
-	o.exe = join({o.install_dir, exe_name})
-	o.desktop_shortcut = desktop_shortcut
-	if r := desktop.install(&o); r.error != .None { return false, failure(r) }
-	if r := desktop.record_install(&o, o.install_dir, c.version); r.error != .None { return false, failure(r) }
-	return true, o.exe
+	integration.exe = join({integration.install_dir, exe_name})
+	integration.desktop_shortcut = desktop_shortcut
+	if r := desktop.install(&integration); r.error != .None { return false, failure(r) }
+	if r := desktop.record_install(&integration, integration.install_dir, o.version); r.error != .None { return false, failure(r) }
+	return true, integration.exe
 }
 
 // After an update put a new program in place of the installed copy (update.Updater): its install manifest and the
 // system's record (Settings > Apps) say `version`. Nothing to do for `exe` when it is not the installed copy. why: "" when
 // done (temp memory).
-updated :: proc(c: Config, version: string, exe := "") -> (ok: bool, why: string) {
+updated :: proc(o: Setup_Options, version: string, exe := "") -> (ok: bool, why: string) {
 	running := exe != "" ? exe : process.executable_path()
-	o, _ := options(c)
-	info := desktop.installed_info(&o, o.install_dir, context.temp_allocator)
+	integration, _ := options(o)
+	info := desktop.installed_info(&integration, integration.install_dir, context.temp_allocator)
 	if !info.manifest || info.exe == "" || !desktop.same_path(info.exe, running) { return true, "" }
-	exe_name := desktop.exe_name_of(o.identity)
+	exe_name := desktop.exe_name_of(integration.identity)
 	plan := desktop.Install_Plan{
-		identity = o.identity, src_exe = running, dir = o.install_dir, exe_name = exe_name,
+		identity = integration.identity, src_exe = running, dir = integration.install_dir, exe_name = exe_name,
 		version = version, channel = "release", adapt = true,
 	}
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
-	o.exe = running
-	if r := desktop.record_install(&o, o.install_dir, version); r.error != .None { return false, failure(r) }
+	integration.exe = running
+	if r := desktop.record_install(&integration, integration.install_dir, version); r.error != .None { return false, failure(r) }
 	return true, ""
 }
 
 // Removes the launchers and parts (ours only), the system's record and the installed files. The files of the copy that
 // runs (Windows: they cannot be deleted while it runs) are in `leftovers` (heap, the caller's): remove_later deletes them
 // once this process has ended.
-uninstall :: proc(c: Config, choices: []bool = nil) -> (ok: bool, leftovers: [dynamic]string, why: string) {
-	o, _ := options(c, choices)   // (the program's parts are taken away too)
-	o.exe = join({o.install_dir, desktop.exe_name_of(o.identity)})
-	ur := desktop.uninstall(&o, process.executable_path(), context.temp_allocator)
+uninstall :: proc(o: Setup_Options, choices: []bool = nil) -> (ok: bool, leftovers: [dynamic]string, why: string) {
+	integration, _ := options(o, choices)   // (the program's parts are taken away too)
+	integration.exe = join({integration.install_dir, desktop.exe_name_of(integration.identity)})
+	ur := desktop.uninstall(&integration, process.executable_path(), context.temp_allocator)
 	if len(ur.leftovers) > 0 {
 		leftovers = make([dynamic]string)
 		for l in ur.leftovers { append(&leftovers, strings.clone(l)) }
-		append(&leftovers, strings.clone(join({ur.folder, o.identity.manifest_name})))   // (it stays while they are there)
+		append(&leftovers, strings.clone(join({ur.folder, integration.identity.manifest_name})))   // (it stays while they are there)
 	}
 	if ur.result.error != .None { return false, leftovers, failure(ur.result) }
 	return true, leftovers, ""
@@ -206,9 +206,9 @@ uninstall :: proc(c: Config, choices: []bool = nil) -> (ok: bool, leftovers: [dy
 
 // Deletes `files`, then the install folder when it is empty, once this process has ended (a helper of the system's;
 // false when there is none).
-remove_later :: proc(c: Config, files: []string) -> bool {
-	o, _ := options(c)
-	return desktop.cleanup_later(&o, files, o.install_dir, desktop.current_process_id())
+remove_later :: proc(o: Setup_Options, files: []string) -> bool {
+	integration, _ := options(o)
+	return desktop.cleanup_later(&integration, files, integration.install_dir, desktop.current_process_id())
 }
 
 // Starts the installed copy (after an install from a downloaded copy).
@@ -247,10 +247,10 @@ is_downgrade :: proc(f: Facts, version: string) -> bool {
 
 // The values of the program's options: those given, else their first ones (temp memory).
 @(private)
-choices_or_first :: proc(c: Config, choices: []bool) -> []bool {
-	if len(choices) == len(c.choices) { return choices }
-	out := make([]bool, len(c.choices), context.temp_allocator)
-	for x, i in c.choices { out[i] = x.on }
+choices_or_first :: proc(o: Setup_Options, choices: []bool) -> []bool {
+	if len(choices) == len(o.choices) { return choices }
+	out := make([]bool, len(o.choices), context.temp_allocator)
+	for x, i in o.choices { out[i] = x.on }
 	return out
 }
 

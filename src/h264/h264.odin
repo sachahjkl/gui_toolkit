@@ -53,7 +53,7 @@ Packet :: struct {
 }
 
 // The zero value is the defaults: constant quantiser DEFAULT_QP, a keyframe every 2 seconds, the best backend.
-Options :: struct {
+Encoder_Options :: struct {
 	bitrate:           int,             // bits a second (a variable or constant rate, as the backend offers); 0: `qp`
 	qp:                int,             // constant quantiser, 1 (best) ..= 51; 0: DEFAULT_QP. Used when bitrate is 0
 	keyframe_interval: time.Duration,   // 0: DEFAULT_KEYFRAME_INTERVAL
@@ -78,7 +78,7 @@ Encoder :: struct {
 	width, height:               int,   // the frames' size: what the muxer writes in its header
 	stream_width, stream_height: int,   // the stream's picture: the frames' size rounded up to even (see even_size)
 	fps:                         int,
-	options:                     Options,
+	options:                     Encoder_Options,
 	backend:                     Backend,
 	keyframe_frames:             int,   // a keyframe every this many frames
 	frames:                      int,   // the frames given to encode
@@ -103,13 +103,13 @@ available :: proc() -> Backends { return system_available() }
 // timestamps given to encode are what the packets carry). Odd sides are padded: the last column or row is repeated
 // once, and the stream's picture is the even size (`stream_width`, `stream_height`); a muxer writes `width` x
 // `height`. Blocks. The packets and the encoder live in `allocator`.
-open :: proc(width, height: int, fps: int, options := Options{}, allocator := context.allocator) -> (^Encoder, Error) {
+open :: proc(width, height: int, fps: int, o := Encoder_Options{}, allocator := context.allocator) -> (^Encoder, Error) {
 	if width < 1 || height < 1 || width > MAX_SIDE || height > MAX_SIDE || fps < 1 || fps > 240 { return nil, .Bad_Size }
 	e := new(Encoder, allocator)
 	e.width, e.height = width, height
 	e.stream_width, e.stream_height = even_size(width, height)
 	e.fps = fps
-	e.options = options
+	e.options = o
 	if e.options.qp == 0 { e.options.qp = DEFAULT_QP }
 	e.options.qp = clamp(e.options.qp, 1, 51)
 	if e.options.keyframe_interval <= 0 { e.options.keyframe_interval = DEFAULT_KEYFRAME_INTERVAL }

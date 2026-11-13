@@ -7,9 +7,8 @@ import "core:fmt"
 import "core:math"
 import "core:os"
 import "core:strconv"
-import "core:strings"
 import "core:time"
-import stbi "vendor:stb/image"
+import png "../../src/png"
 import "../../src/draw"
 import "../../src/font"
 import "../../src/render"
@@ -210,7 +209,7 @@ main :: proc() {
 			}
 		}
 		name := fmt.tprintf("%s/%s_%s_%.0f.png", out, s.name, space_name, dpr * 100)
-		stbi.write_png(strings.clone_to_cstring(name, context.temp_allocator), i32(w * 3), i32(h), 4, raw_data(sheet), i32(w * 3 * 4))
+		_ = os.write_entire_file(name, png.encode(sheet, w * 3, h, allocator = context.temp_allocator))
 		fmt.printf("%-11s ink slug/atlas %.3f  ", s.name, ink_s / max(ink_a, 1))
 		fmt.printfln("mean|diff| %.2f/255  first paint ms %.2f/%.2f  CPU ms/frame %.3f/%.3f  GPU ms %.3f/%.3f  glyph GPU memory KB %d/%d  (atlas/slug) -> %s",
 			diff_sum / f64(w * h), first[0], first[1], cpu[0], cpu[1], gpu[0], gpu[1], mem[0] / 1024, mem[1] / 1024, name)

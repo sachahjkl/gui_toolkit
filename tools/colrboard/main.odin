@@ -18,7 +18,7 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "../../src/font"
-import stbi "vendor:stb/image"
+import png "../../src/png"
 
 COLS :: 12
 
@@ -156,7 +156,7 @@ blit :: proc(s: ^font.State, gi: font.Glyph_Image, img: [][4]u8, w, h: int, dx, 
 }
 
 write_png :: proc(path: string, img: [][4]u8, w, h: int) {
-	stbi.write_png(strings.clone_to_cstring(path, context.temp_allocator), i32(w), i32(h), 4, raw_data(img), i32(w * 4))
+	_ = os.write_entire_file(path, png.encode(slice.to_bytes(img), w, h, allocator = context.temp_allocator))
 }
 
 Tile_Result :: struct {
@@ -168,12 +168,11 @@ Tile_Result :: struct {
 
 compare :: proc(b: ^Board, edge_png, out: string) {
 	mine, w, h := render_mine(b)
-	cs := strings.clone_to_cstring(edge_png, context.temp_allocator)
-	ew, eh, ch: i32
-	edge_px := stbi.load(cs, &ew, &eh, &ch, 4)
-	if edge_px == nil { fmt.println("cannot read", edge_png); os.exit(2) }
-	defer stbi.image_free(edge_px)
-	edge := ([^][4]u8)(edge_px)[:int(ew) * int(eh)]
+	data, read_err := os.read_entire_file(edge_png, context.temp_allocator)
+	edge_px, ew, eh, ok := png.decode(data)
+	if read_err != nil || !ok { fmt.println("cannot read", edge_png); os.exit(2) }
+	defer delete(edge_px)
+	edge := slice.reinterpret([][4]u8, edge_px)
 	fmt.printf("board %d x %d, browser capture %d x %d\n", w, h, ew, eh)
 	tw, th := dev(b, b.cell_w), dev(b, b.cell_h)
 	results := make([dynamic]Tile_Result)
@@ -243,6 +242,6 @@ compare :: proc(b: ^Board, edge_png, out: string) {
 		fmt.printf("  tile %3d  %.2f  best shift (%d,%d)  %s\n", r.index, r.mean, r.shift.x, r.shift.y, strings.join(cps[:], " ", context.temp_allocator))
 	}
 	write_png(fmt.tprintf("%s/diff.png", out), diff_img, w, h)
-	stbi.write_png(strings.clone_to_cstring(fmt.tprintf("%s/side.png", out), context.temp_allocator), i32(w * 3), i32(h), 4, raw_data(side), i32(w * 3 * 4))
+	write_png(fmt.tprintf("%s/side.png", out), side, w * 3, h)
 	fmt.println("wrote", out)
 }

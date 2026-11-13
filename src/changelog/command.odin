@@ -20,9 +20,9 @@ command :: proc(p: toolbox.Project) -> toolbox.Command {
 }
 
 // What the project is to this package: its changelog's folder, its versions' link, its version line when it has one.
-project_options :: proc(p: ^toolbox.Project) -> Options {
+project_options :: proc(p: ^toolbox.Project) -> Project_Options {
 	root := os.dir(p.changelog != "" ? p.changelog : "CHANGELOG.md")
-	o := Options{root = root != "" ? root : ".", user = p}
+	o := Project_Options{root = root != "" ? root : ".", user = p}
 	if p.repository != "" { o.link = fmt.tprintf("%s/releases/tag/v%%s", p.repository) }
 	if p.version_file != "" { o.version = project_version }
 	return o

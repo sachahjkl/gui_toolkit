@@ -36,7 +36,7 @@ Flow_Nodes :: struct {
 
 // `out` made again from `g`: a port's id is its place in its kind's list, its kind the flowgraph's (kind_colors[kind]). The
 // catalog's titles and port names (the program's English, i18n.later) in the language in use.
-flow_nodes_make :: proc(out: ^Flow_Nodes, g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, opts: Flow_Options = {}) {
+flow_nodes_make :: proc(out: ^Flow_Nodes, g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, o: Flow_Options = {}) {
 	clear(&out.nodes)
 	clear(&out.ports)
 	clear(&out.links)
@@ -56,7 +56,7 @@ flow_nodes_make :: proc(out: ^Flow_Nodes, g: ^flowgraph.Graph, cat: ^flowgraph.C
 		middle := len(out.ports)
 		for p, i in def.outputs { append(&out.ports, Graph_Port{id = u32(i), name = i18n.tr(p.name), kind = p.kind, side = .Out}) }
 		look: Flow_Node_Look
-		if opts.look != nil { look = opts.look(opts.user, &n, def) }
+		if o.look != nil { look = o.look(o.user, &n, def) }
 		subtitle := flow_text(out, look.subtitle)
 		message := flow_text(out, look.message)
 		append(&out.nodes, Graph_Node{

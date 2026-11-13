@@ -24,7 +24,7 @@ Engine :: enum u8 {
 	Windows,     // Windows.Media.Ocr
 }
 
-Options :: struct {
+Recognize_Options :: struct {
 	// The languages to read, in the engine's own codes as `languages` lists them: Tesseract's ("eng", "fra", "chi_sim"),
 	// all of them at once; Windows' BCP-47 tags ("en-US", "fr-FR"), the first one installed (its engine reads one
 	// language). Empty: the user's (default_languages; Windows: the languages of the user's profile).
@@ -79,13 +79,13 @@ error_text :: proc(e: Error) -> string {
 // Blocks (it may load a library, list files, start the Windows Runtime).
 available :: proc() -> (engine: Engine, ok: bool) { return system_available() }
 
-// The languages installed, in the engine's own codes (Options.languages). Blocks.
+// The languages installed, in the engine's own codes (Recognize_Options.languages). Blocks.
 languages :: proc(allocator := context.allocator) -> []string { return system_languages(allocator) }
 
 // The text in `pixels` (`width` x `height`, `stride` bytes a row, 4 bytes a pixel in `format`; alpha is not read).
 // Blocks: a second or more on a large picture. A picture with no text is no Error: its Result has no lines. The
 // rectangles are in the pixels given.
-recognize :: proc(pixels: []u8, width, height, stride: int, format: Format, options := Options{}, allocator := context.allocator) -> (r: Result, err: Error) {
+recognize :: proc(pixels: []u8, width, height, stride: int, format: Format, o := Recognize_Options{}, allocator := context.allocator) -> (r: Result, err: Error) {
 	if width <= 0 || height <= 0 || stride < width * 4 || len(pixels) < stride * (height - 1) + width * 4 { return {}, .Bad_Picture }
 	max_side := system_max_side()
 	if max_side > 0 && max(width, height) > max_side { return {}, .Too_Large }
@@ -93,7 +93,7 @@ recognize :: proc(pixels: []u8, width, height, stride: int, format: Format, opti
 	defer prepared_destroy(&p)
 	lines: [dynamic]Line
 	lines.allocator = allocator
-	r.engine, r.language, err = system_recognize(p, options, &lines, allocator)
+	r.engine, r.language, err = system_recognize(p, o, &lines, allocator)
 	if err != .None {
 		lines_destroy(lines[:], allocator)
 		delete(lines)

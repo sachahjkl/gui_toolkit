@@ -237,8 +237,8 @@ Table_Header_Events :: struct {
 
 // The columns' titles in a row of the width `next` gives (its height: TABLE_HEADER_EM; `next` may set a background).
 // `lead_em`: the room before the first title, in ems (where the rows put a chevron or an icon).
-// `opts`: what the program builds in the lead and in the titles (Table_Header_Options).
-table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := Table_Header_Options{}) -> (ev: Table_Header_Events) {
+// `o`: what the program builds in the lead and in the titles (Table_Header_Options).
+table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, o := Table_Header_Options{}) -> (ev: Table_Header_Events) {
 	s := gs()
 	em := font_size()
 	m := s.has_next ? s.next_mod : Style_Mod{}
@@ -275,21 +275,21 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := T
 				hot := parent_box().hot_t > 0
 				if prev >= 0 {
 					if table_rule(l, prev, em, prev_px) { ev.resized = true }
-				} else if opts.lead != nil {
+				} else if o.lead != nil {
 					next({width = px(em * lead_em), height = pct(1), axis = .X, cross = .Center})
-					if row(.Center, {}, "###lead") { opts.lead(opts.user, em) }
+					if row(.Center, {}, "###lead") { o.lead(o.user, em) }
 				} else {
 					spacer(px(em * lead_em))
 				}
 				// (a number's title keeps its edge over its values: what the program adds goes before it)
 				if c.number { spacer(fill()) }
-				if c.number && opts.title != nil { opts.title(opts.user, k, hot, em) }
+				if c.number && o.title != nil { o.title(o.user, k, hot, em) }
 				if !sorting { push_tags("weak") }
 				next({width = text_size(), height = pct(1), text_pad = 0})
 				label(fmt.tprintf("%s###t", text_shown(i18n.tr(c.title))))
 				if !sorting { pop_tags() }
 				if !c.number { spacer(fill()) }
-				if !c.number && opts.title != nil { opts.title(opts.user, k, hot, em) }
+				if !c.number && o.title != nil { o.title(o.user, k, hot, em) }
 				if sorting {
 					if tags("weak") { table_arrow(l.descending, em * TABLE_ARROW_EM) }
 				} else {

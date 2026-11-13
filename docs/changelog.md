@@ -23,7 +23,7 @@ type: Added
 end. It has no `## [Unreleased]` section: the fragments are what is not released.
 
 ```odin
-o := changelog.Options{
+o := changelog.Project_Options{
 	root = ".",                                                     // CHANGELOG.md and changelog.d/ ("": the current folder)
 	link = "https://github.com/owner/repo/releases/tag/v%s",        // a version's link ("": none)
 	version = read_version, set_version = write_version,           // optional: where the project keeps its version
@@ -40,19 +40,19 @@ body, ok := changelog.section(".", "1.4.0")          // the body of that version
 | Procedure | What it does |
 |---|---|
 | `new_fragment(root, type, subject, text, when_ = {})` | Writes a fragment and returns its path, or why not. The subject is made from `subject`, or from the text's bold part. |
-| `check(o, release = "")` | The problems and the number of fragments. A fragment is malformed, already in a released section, or the same text as another. With `Options.version`: the version in the sources differs from the last released one (a branch never writes it). With `release`: fragments are left, or the newest section or the sources' version is another one. |
+| `check(o, release = "")` | The problems and the number of fragments. A fragment is malformed, already in a released section, or the same text as another. With `Project_Options.version`: the version in the sources differs from the last released one (a branch never writes it). With `release`: fragments are left, or the newest section or the sources' version is another one. |
 | `preview(root)` | The body that `assemble` writes, without writing it. |
-| `assemble(o, version, date = "")` | Refuses a malformed fragment, a version that is not `x.y.z`, a version already released, and nothing to publish. Otherwise: the section `## [<version>] - <date>` above the newest one, by type in the order above and newest fragment first, the version's link before the other links, `Options.set_version` called, the fragments deleted. |
+| `assemble(o, version, date = "")` | Refuses a malformed fragment, a version that is not `x.y.z`, a version already released, and nothing to publish. Otherwise: the section `## [<version>] - <date>` above the newest one, by type in the order above and newest fragment first, the version's link before the other links, `Project_Options.set_version` called, the fragments deleted. |
 | `section(root, version)` | The body of a version's section, without the links at the end of the file. `ok` is false when the section is not there. |
 
-`Options.version` is `proc(root: string, user: rawptr) -> string` and `Options.set_version` is `proc(root, version: string,
-user: rawptr) -> bool`; each gets `Options.user`.
+`Project_Options.version` is `proc(root: string, user: rawptr) -> string` and `Project_Options.set_version` is `proc(root, version: string,
+user: rawptr) -> bool`; each gets `Project_Options.user`.
 
 ## The changelog command of a project's tool
 
 `command(project) -> toolbox.Command` is the `changelog` command of a project's tool ([toolbox.md](toolbox.md)), over its
 `toolbox.Project` (copied): the changelog beside `Project.changelog`, the versions' link from `Project.repository`, and the
-version line, which `check` compares with the last released version. `project_options(&project)` gives these Options.
+version line, which `check` compares with the last released version. `project_options(&project)` gives these Project_Options.
 
 | Line | What it does |
 |---|---|

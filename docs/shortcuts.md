@@ -18,7 +18,7 @@ st := shortcuts.status(s, "region")   // {.Bound, "Print"}
 
 | Procedure | |
 |---|---|
-| `start(options) -> ^Service` | starts the system's side (Linux: a thread). `Options`: `app_id` (the `.desktop` file's name), `window` (Windows), `wake(user)` (called from any thread when there is something to take). |
+| `start(o) -> ^Service` | starts the system's side (Linux: a thread). `Service_Options`: `app_id` (the `.desktop` file's name), `window` (Windows), `wake(user)` (called from any thread when there is something to take). |
 | `bind(s, list)` | the whole set of actions and their keys, replacing the one before. Each is `Waiting` until the system answers. |
 | `take(s, allocator) -> []string` | the ids pressed since the last call. |
 | `status(s, id, allocator) -> Status` | `{state, trigger}`: `trigger` is the keys as the system words them. |
@@ -52,7 +52,7 @@ The shortcuts work while the program runs: the session ends with its connection.
 
 ## Windows
 
-`RegisterHotKey` on `Options.window`, one id per action from 1, from the window's thread (`bind` and `hold` are called
+`RegisterHotKey` on `Service_Options.window`, one id per action from 1, from the window's thread (`bind` and `hold` are called
 there). A press comes as a `Hotkey` event of the window: `feed` turns it into an activation. Keys another program holds
 are `Taken`.
 

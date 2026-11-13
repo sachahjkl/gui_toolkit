@@ -12,7 +12,7 @@ Scratch :: struct {
 	dir:  string,
 	exe:  string,
 	exe2: string,
-	opts: Options,
+	opts: Integration_Options,
 }
 
 @(private = "file")
@@ -30,7 +30,7 @@ scratch_make :: proc() -> Scratch {
 	png := transmute([]byte)string("\x89PNG\r\n\x1a\n")
 	icons := make([]Icon, 3, context.temp_allocator)
 	for i, k in ([]int{16, 64, 256}) { icons[k] = Icon{size = i, png = png} }
-	s.opts = Options{
+	s.opts = Integration_Options{
 		identity = test_identity(),
 		exe = s.exe, register_browser = true, start_menu = true, file_types = split_list(".html,.svg", context.temp_allocator), icons = icons,
 		applications_dir = fmt.aprintf("%s/share/applications", s.dir), icons_dir = fmt.aprintf("%s/share/icons/hicolor", s.dir),

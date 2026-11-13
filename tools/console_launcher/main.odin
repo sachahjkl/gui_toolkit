@@ -7,7 +7,7 @@
 //       -define:LAUNCHER_DEFAULT=wait|detach                 what a command line does
 //       -define:LAUNCHER_OTHERS=<comma-separated>            those that do the other (console_launcher.Rules)
 //
-// and embeds the bytes (#load) to give them to desktop.install (Options.launcher). It imports the core library and the
+// and embeds the bytes (#load) to give them to desktop.install (Integration_Options.launcher). It imports the core library and the
 // pure package only: a small console program.
 package console_launcher
 

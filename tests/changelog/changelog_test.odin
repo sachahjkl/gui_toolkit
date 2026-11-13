@@ -182,7 +182,7 @@ a_hand_written_unreleased_section_is_assembled_too :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t, "changelog")
 	_ = os.make_directory_all(fmt.tprintf("%s/changelog.d", dir))
 	write(fmt.tprintf("%s/CHANGELOG.md", dir), "# Changelog\n\n## [Unreleased]\n\n### Added\n- **By hand**: one.\n  - a sub-item.\n\n### Fixed\n- A fix by hand.\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[Unreleased]: https://github.com/o/r/compare/v0.1.0...HEAD\n[0.1.0]: https://github.com/o/r/releases/tag/v0.1.0\n")
-	o := changelog.Options{root = dir, link = "https://github.com/o/r/releases/tag/v%s"}
+	o := changelog.Project_Options{root = dir, link = "https://github.com/o/r/releases/tag/v%s"}
 	errors, n := changelog.check(o)
 	testing.expectf(t, len(errors) == 0 && n == 0, "no fragment, the section by hand is well formed: %v", errors)
 	frag(dir, "20261111-100000-fragment.md", "type: Added\n\n**From a fragment**: two.\n")
@@ -205,7 +205,7 @@ a_malformed_unreleased_section_is_said_so :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t, "changelog")
 	before := "# Changelog\n\n## [Unreleased]\n\n### Improved\n- Something.\n"
 	write(fmt.tprintf("%s/CHANGELOG.md", dir), before)
-	o := changelog.Options{root = dir}
+	o := changelog.Project_Options{root = dir}
 	errors, _ := changelog.check(o)
 	testing.expect(t, says(errors[:], "subsection 'Improved'"), "an unknown subsection")
 	_, aerr := changelog.assemble(o, "0.1.0")

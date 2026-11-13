@@ -67,7 +67,7 @@ OUT_DIR :: "session"
 FAILURE_CAPTURE :: "failure.png"
 FAILURE_TREE :: "failure_tree.txt"
 
-Options :: struct {
+Session_Options :: struct {
 	build:      proc(s: ^Session),   // the interface: called between ui.begin_build and ui.end_build, once a frame
 	user:       rawptr,              // what `build` works on
 	size:       [2]int,              // the client area in physical pixels (0: DEFAULT_SIZE)
@@ -139,7 +139,7 @@ Own :: struct {
 @(private) live_sessions: int   // (atomic)
 
 // An application around `o.build`, offscreen, with the embedded fonts and the offscreen renderer. It ends with the test.
-start :: proc(t: ^testing.T, o: Options, loc := #caller_location) -> ^Session {
+start :: proc(t: ^testing.T, o: Session_Options, loc := #caller_location) -> ^Session {
 	s := session_new(t, loc)
 	s.user = o.user
 	own := new(Own)

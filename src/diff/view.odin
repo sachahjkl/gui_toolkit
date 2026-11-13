@@ -25,7 +25,7 @@ Layout :: enum u8 {
 Numbers :: enum u8 { Both, Old, New, None }
 
 // How rows look. Sizes are pixels; 0: the default said.
-Options :: struct {
+View_Options :: struct {
 	font:         tk_font.Font_Id,           // of the lines (0: ui.mono_font())
 	sign_font:    tk_font.Font_Id,           // of the signs (0: `font`)
 	number_font:  tk_font.Font_Id,           // of the numbers (0: `font`)
@@ -45,7 +45,7 @@ Options :: struct {
 // The options with their defaults resolved, and the colours, read once for a build.
 @(private)
 Look :: struct {
-	using o:    Options,
+	using o:    View_Options,
 	background: [Kind]ui.Color,
 	mark:       [Kind]ui.Color,
 	text:       [Kind]ui.Color,
@@ -58,7 +58,7 @@ Look :: struct {
 
 // (under the tag "diff": call it there)
 @(private)
-look_of :: proc(o: Options) -> (k: Look) {
+look_of :: proc(o: View_Options) -> (k: Look) {
 	k.o = o
 	if k.font == 0 { k.font = ui.mono_font() }
 	if k.sign_font == 0 { k.sign_font = k.font }
@@ -84,7 +84,7 @@ look_of :: proc(o: Options) -> (k: Look) {
 
 // `lines` on rows, each built: an excerpt (a program shows the first lines of a patch and a way to the whole). `numbered`: with
 // the gutters of their numbers (Parsed.numbered: a patch without hunks has none).
-lines_view :: proc(id: string, lines: []Line, numbered: bool, o: Options = {}) {
+lines_view :: proc(id: string, lines: []Line, numbered: bool, o: View_Options = {}) {
 	if len(lines) == 0 { return }
 	if ui.tags("diff") {
 		k := look_of(o)
@@ -103,7 +103,7 @@ lines_view :: proc(id: string, lines: []Line, numbered: bool, o: Options = {}) {
 
 // `d`'s rows in a box that fills its parent and scrolls, stacked or split. Only the rows in view, and VIEW_MARGIN_ROWS beyond, are
 // built. The box is returned (its scroll: view_off, view_target).
-view :: proc(id: string, d: ^Doc, layout: Layout, o: Options = {}) -> ^ui.Box {
+view :: proc(id: string, d: ^Doc, layout: Layout, o: View_Options = {}) -> ^ui.Box {
 	box: ^ui.Box
 	if ui.tags("diff") {
 		k := look_of(o)

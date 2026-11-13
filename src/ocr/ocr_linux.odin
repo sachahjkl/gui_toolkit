@@ -146,11 +146,11 @@ system_languages :: proc(allocator := context.allocator) -> []string {
 }
 
 @(private)
-system_recognize :: proc(p: Prepared, options: Options, lines: ^[dynamic]Line, allocator := context.allocator) -> (engine: Engine, language: string, err: Error) {
+system_recognize :: proc(p: Prepared, o: Recognize_Options, lines: ^[dynamic]Line, allocator := context.allocator) -> (engine: Engine, language: string, err: Error) {
 	sync.once_do(&tess_once, tess_load)
 	if !tess_found { return .None, "", .No_Engine }
 	folder, installed := tessdata()
-	asked := options.languages
+	asked := o.languages
 	if len(asked) == 0 { asked = default_languages(messages_locale(), installed, context.temp_allocator) }
 	use := make([dynamic]string, context.temp_allocator)
 	for a in asked { if slice.contains(installed, a) && !slice.contains(use[:], a) { append(&use, a) } }

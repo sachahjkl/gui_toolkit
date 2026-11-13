@@ -36,6 +36,45 @@ library_packages :: proc(root: string) -> []string {
 	return out[:]
 }
 
+// A folder of tools/ that holds Odin files: a program, or a package the programs and tests import.
+Tool :: struct {
+	name:         string,
+	windows_only: bool,   // every file is *_windows.odin: nothing to check for another system
+}
+
+// The defines a tool needs to compile at all (a check links nothing, so any value will do).
+TOOL_DEFINES :: [?][2]string{
+	{"console_launcher", "-define:LAUNCHER_MARK=(tk ci)"},
+}
+
+// Every tool, so that a tool nobody runs still compiles against the library of today (a list written by hand let seven rot).
+tool_packages :: proc(root: string) -> []Tool {
+	out := make([dynamic]Tool, context.temp_allocator)
+	entries, err := os.read_all_directory_by_path(join({root, "tools"}), context.temp_allocator)
+	if err != nil { return nil }
+	for e in entries {
+		if e.type != .Directory { continue }
+		files, _ := os.read_all_directory_by_path(e.fullpath, context.temp_allocator)
+		odin, windows := 0, 0
+		for f in files {
+			if !strings.has_suffix(f.name, ".odin") { continue }
+			odin += 1
+			if strings.has_suffix(f.name, "_windows.odin") { windows += 1 }
+		}
+		if odin > 0 { append(&out, Tool{name = e.name, windows_only = windows == odin}) }
+	}
+	slice.sort_by(out[:], proc(a, b: Tool) -> bool { return a.name < b.name })
+	return out[:]
+}
+
+// The flags of a tool's check: no entry point (some tools are packages), and its defines.
+tool_check_flags :: proc(name: string) -> []string {
+	flags := make([dynamic]string, context.temp_allocator)
+	append(&flags, "-no-entry-point")
+	for d in TOOL_DEFINES { if d[0] == name { append(&flags, d[1]) } }
+	return flags[:]
+}
+
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer), with the devtools endpoint (TOOLKIT_DEVTOOLS: tk cdp and tk screenshots drive the release
 // builds). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource when there is one.
@@ -70,7 +109,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 }
 
 // ci: what the CI checks on this system, every step run whatever an earlier one said, then the failures. odin check -vet of every
-// package (Linux: for Linux, with the native text backend), the CI's examples built, and the tests of tools/run_tests (its list
+// package and of every tool under tools/ (Linux: for Linux, with the native text backend, and for Windows), the CI's examples built, and the tests of tools/run_tests (its list
 // says which run here; Linux's pixels: Vulkan's software rasterizer).
 run_ci :: proc(args: []string) -> string {
 	root := toolkit_root()
@@ -100,6 +139,28 @@ run_ci :: proc(args: []string) -> string {
 			} else {
 				fmt.printfln("check FAIL %s (windows)", p)
 				append(&failed, fmt.tprintf("check %s (windows)", p))
+			}
+		}
+	}
+	for t in tool_packages(root) {
+		path := join({root, "tools", t.name})
+		if !t.windows_only || ODIN_OS == .Windows {
+			cmd := make([dynamic]string, context.temp_allocator)
+			append(&cmd, "odin", "check", path, "-vet")
+			append(&cmd, ..tool_check_flags(t.name))
+			if toolbox.run(cmd[:]) {
+				fmt.printfln("check ok   tools/%s", t.name)
+			} else {
+				fmt.printfln("check FAIL tools/%s", t.name)
+				append(&failed, fmt.tprintf("check tools/%s", t.name))
+			}
+		}
+		when ODIN_OS != .Windows {
+			if toolbox.odin_check(path, "windows_amd64", tool_check_flags(t.name), join({root, toolbox.CHECK_ROOT_DEFAULT})) {
+				fmt.printfln("check ok   tools/%s (windows)", t.name)
+			} else {
+				fmt.printfln("check FAIL tools/%s (windows)", t.name)
+				append(&failed, fmt.tprintf("check tools/%s (windows)", t.name))
 			}
 		}
 	}

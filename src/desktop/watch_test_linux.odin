@@ -38,7 +38,7 @@ watch_follows_places_that_come_and_go :: proc(t: ^testing.T) {
 	defer delete(root)
 	testing.expect(t, os.make_directory_all(root) == nil)
 	defer os.remove_all(root)
-	o := Options{
+	o := Integration_Options{
 		identity = test_identity(),
 		applications_dir = fmt.tprintf("%s/share/applications", root), icons_dir = fmt.tprintf("%s/share/icons/hicolor", root),
 		bin_dir = fmt.tprintf("%s/bin", root), autostart_dir = fmt.tprintf("%s/config/autostart", root),
