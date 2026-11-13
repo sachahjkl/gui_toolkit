@@ -45,7 +45,7 @@ CAPTION_CLOSE_HOT    :: 0xc42b1cff   // the system's close button under the poin
 @(private = "file") CAPTION_RESTORE_OFFSET :: 0.2   // the back square of the restore shape, of the glyph's size
 
 // `if title_bar(id) { ... }`: a row (size from `next` / the style) whose empty parts drag the window.
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 	set_next_axis(.X, .Center)
 	b := build_box(flags + {.Window_Caption}, id)

@@ -183,7 +183,7 @@ dock_begin :: proc(d: ^Dock, id: string, opts := Dock_Options{}) {
 
 // The panel's content follows in the block, in its stack's room, while it is shown (its stack's tab on top, not folded).
 // `if dock_panel(d, p) { ... }`: the box is let go at the end of the statement (not `if !dock_panel(d, p) { continue }`).
-@(deferred_in_out = dock_panel_end)
+@(require_results, deferred_in_out = dock_panel_end)
 dock_panel :: proc(d: ^Dock, panel: u32) -> bool {
 	if !dock_shown(d, panel) { return false }
 	b := box_from_key(dock_body_key(d, panel))

@@ -30,7 +30,7 @@ row_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 
 // `if row() { ... }`: children are laid out left to right. Size comes from the style stack (or a preceding `next`).
 // Pass `flags` (e.g. {.Draw_Background}) and a stable `id` to make it a visible, persistent container.
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 row :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") -> bool {
 	set_next_axis(.X, cross)
 	push_parent(build_box(flags, id))
@@ -41,7 +41,7 @@ row :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") 
 // out left to right. It has an input's background, border and corners (radius from `next` or the style), and one focus
 // ring around all of it while a box inside has the keyboard focus (.Focus_Within). Build the field inside under the tag
 // "bare": the field then draws no background, border or focus ring of its own.
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 field_frame :: proc(id: string, cross := Cross_Align.Center) -> bool {
 	set_next_axis(.X, cross)
 	push_tags("input")
@@ -52,7 +52,7 @@ field_frame :: proc(id: string, cross := Cross_Align.Center) -> bool {
 }
 
 // `if column() { ... }`: children are laid out top to bottom.
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 column :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") -> bool {
 	set_next_axis(.Y, cross)
 	push_parent(build_box(flags, id))
@@ -268,7 +268,7 @@ icon_button :: proc(id: string, icon: string, tip := "", name := "", icon_font: 
 // Scrolling
 
 // Vertical scroll region: children are laid out in a column and clipped; the mouse wheel scrolls it.
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 scroll_y :: proc(id: string) -> bool {
 	set_next_axis(.Y)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}, id)
@@ -279,7 +279,7 @@ scroll_y :: proc(id: string) -> bool {
 
 // `if flow({em * 0.5, em * 0.5}) { ... }`: children flow left to right and wrap onto new lines when the row is too
 // narrow, instead of overflowing. Full width and as tall as its lines unless `next` says otherwise.
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 flow :: proc(gap: Vec2 = {}, id: string = "") -> bool {
 	s := gs()
 	m := s.has_next ? s.next_mod : Style_Mod{}

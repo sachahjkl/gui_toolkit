@@ -169,7 +169,7 @@ ACCORDION_RATE :: 28
 
 // `if ui.accordion("###net", "Network", &app.net_open) { ...content... }`: a header that folds the content built in the
 // block. The block runs while the section is open or still folding (the content is clipped to the animated height).
-@(deferred_out = accordion_end)
+@(require_results, deferred_out = accordion_end)
 accordion :: proc(id: string, title: string, open: ^bool) -> bool {
 	s := gs()
 	em := font_size()

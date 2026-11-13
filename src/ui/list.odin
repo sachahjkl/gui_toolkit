@@ -218,7 +218,7 @@ list_next_selectable :: proc(st: ^List_State, from, dir: int) -> int {
 }
 
 // `if list(id, &state) { list_row(...) ... }`: the list's scroll region (fills what `next` / the style give it).
-@(deferred_none = list_end)
+@(require_results, deferred_none = list_end)
 list :: proc(id: string, st: ^List_State) -> bool {
 	s := gs()
 	set_next_axis(.Y)

@@ -116,7 +116,7 @@ lazy_pinned :: proc(lz: ^Lazy) -> (found, moved: bool) {
 }
 
 // One item: true when it is built now (its box is the parent until the block ends); false when a space stands for it.
-@(deferred_out = lazy_item_end)
+@(require_results, deferred_out = lazy_item_end)
 lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	s := gs()
 	key := key_from_string(parent_box().key, id)

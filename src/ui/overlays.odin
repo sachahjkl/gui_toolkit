@@ -307,7 +307,7 @@ MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
 @(private = "file") MODAL_EDGE_EM :: 0.4     // what takes a press along an edge (inside the dialog: the scrim is the rest)
 @(private = "file") MODAL_CORNER_EM :: 0.9   // and in a corner
 
-@(deferred_none = modal_end)
+@(require_results, deferred_none = modal_end)
 modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
 	s := gs()
 	modal_take_escape(s, id, open)
@@ -329,7 +329,7 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 }
 
 // `preferred.y` 0: as tall as what is in it (modal_content_height), within `min_size` and the window.
-@(deferred_none = modal_end)
+@(require_results, deferred_none = modal_end)
 modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}, top: f32 = -1) -> bool {
 	s := gs()
 	modal_take_escape(s, id, open)

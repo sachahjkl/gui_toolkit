@@ -1334,7 +1334,7 @@ kbd :: proc(text: string) {
 }
 
 // `if card("Title", ICON) { ... }`: a titled panel, full width, height from its content. Tags used: "card".
-@(deferred_none = card_end)
+@(require_results, deferred_none = card_end)
 card :: proc(title: string, icon_glyph: string = "") -> bool {
 	em := font_size()
 	push_tags("card")
@@ -1384,7 +1384,7 @@ card_end :: proc() {
 
 // `if form_row("Name") { widget }`: label on the left (34 %), the widget fills the rest. Widgets inside default to
 // full width and 2.3 em height.
-@(deferred_none = form_row_end)
+@(require_results, deferred_none = form_row_end)
 form_row :: proc(label_text: string) -> bool {
 	em := font_size()
 	// as tall as its widget (at least one line): wrapped content such as chips grows the row
@@ -1515,7 +1515,7 @@ button_icon :: proc(id: string, glyph, text: string, intent := Intent.Neutral, f
 // `if well("###id") { ... }`: a sunken box, carved in the surface (code, a preview, a list of facts): the theme's well
 // (its "well" colour; the machined finish carves it in, with a lit lower lip). Its size and corners from `next`; `axis`:
 // how its children are laid out. Tags used: "well".
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 well :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}) -> bool {
 	set_next_axis(axis)
 	push_tags("well")
@@ -1570,7 +1570,7 @@ STRIP_FADE_EM :: 2.5
 // `if strip_grid("###themes", &open, {gap, gap}) { cells... }`: its cells (each its own width) on one line that scrolls
 // sideways; "Show all" under it lays them out as a grid, wrapped to the width, and "Show fewer" folds them back. The button
 // is there only when the line does not hold them all (or when open). `open` is the program's to keep.
-@(deferred_in = strip_grid_end)
+@(require_results, deferred_in = strip_grid_end)
 strip_grid :: proc(id: string, open: ^bool, gap: Vec2 = {}, show_all := "Show all", show_fewer := "Show fewer") -> bool {
 	next({width = fill(), height = children_sum(), axis = .Y})
 	push_parent(build_box({}, id))

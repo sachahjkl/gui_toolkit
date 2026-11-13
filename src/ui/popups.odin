@@ -349,7 +349,7 @@ menu_step :: proc(items: []Menu_Item_Info, from, dir: int) -> int {
 
 // `if ctx_menu(key, width) { menu_item(...) ... }`: builds the menu `key` when it is open. `width` 0 = as wide as the
 // widest item. Closes on Escape, on a press outside every open level, or when an item is chosen.
-@(deferred_none = menu_end)
+@(require_results, deferred_none = menu_end)
 ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
 	s := gs()
 	if !ctx_menu_is_open(key) {
@@ -405,7 +405,7 @@ menu_nested_push :: proc(key: Key, pos: Vec2, around: Rect, from_keyboard: bool)
 // `if menu_nested(key, width) { menu_item(...) }`, in the block of the menu that opened it: builds the nested menu
 // `key` while it is open. `width` 0 = as wide as the widest item. A press outside it (and the levels it opened) closes
 // only it.
-@(deferred_none = menu_end)
+@(require_results, deferred_none = menu_end)
 menu_nested :: proc(key: Key, width: f32 = 0) -> bool {
 	s := gs()
 	_, depth := menu_current()
@@ -787,7 +787,7 @@ menu_separator :: proc() {
 // `if menu_submenu("Label") { menu_item(...) }`: an item that opens a nested menu (to its right, or its left when there
 // is no room). Opens on click, after the pointer rests on it, or with Right / Enter / Space; the block builds the
 // submenu's items while it is open.
-@(deferred_none = menu_end)
+@(require_results, deferred_none = menu_end)
 menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
 	s := gs()
 	lv, depth := menu_current()
@@ -839,7 +839,7 @@ hovered_for :: proc(sig: Signal) -> bool {
 // `if tooltip() { tooltip_text("...") }` near the pointer: below it, above it when it does not fit, inside the window.
 // Not clickable, so it never blocks the box below. It is as large as what is built in it: a size relative to the
 // window (the app's style may fill) is the content's own there.
-@(deferred_none = tooltip_end)
+@(require_results, deferred_none = tooltip_end)
 tooltip :: proc() -> bool {
 	s := gs()
 	em := font_size()
@@ -860,7 +860,7 @@ tooltip_text :: proc(text: string) -> Signal {
 
 // `tooltip` beside the pointer instead of below it: to its right (to its left when there is no room), centered on it. For
 // the rows of a list or a table, where a tooltip below the pointer would cover the rows under the one it is about.
-@(deferred_none = tooltip_end)
+@(require_results, deferred_none = tooltip_end)
 tooltip_beside :: proc() -> bool {
 	s := gs()
 	em := font_size()

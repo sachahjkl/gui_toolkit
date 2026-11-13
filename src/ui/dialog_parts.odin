@@ -21,7 +21,7 @@ Dialog_Header :: struct {
 // darker than the dialog (dialog_top_draw: the dialog's top corners, a groove under it), its title and an icon at its
 // start, then what the block builds (the header's own controls, a toolbar), and the close button in the corner. Build it
 // first in the dialog, before its body, so that it stays on top while the body scrolls.
-@(deferred_none = dialog_header_end)
+@(require_results, deferred_none = dialog_header_end)
 dialog_header :: proc(id: string, title: string, opts := Dialog_Header{}) -> bool { return dialog_header_begin(id, title, opts) }
 
 // dialog_header's start, for a program's own `if` form: `@(deferred_none = ui.dialog_header_end)` on a procedure that
@@ -147,7 +147,7 @@ CHOICE_ROW_ONE_EM :: f32(2.2)
 
 // `if dialog_body("id") { ... }`: a dialog's body, between its header and its buttons: a column with the dialog's
 // margins on each side (DIALOG_MARGIN_EM) and above and below. What is in it fills its width.
-@(deferred_none = dialog_body_end)
+@(require_results, deferred_none = dialog_body_end)
 dialog_body :: proc(id: string) -> bool {
 	em := font_size()
 	next({width = fill(), height = children_sum(), axis = .X})
@@ -169,7 +169,7 @@ dialog_body_end :: proc() {
 
 // `if dialog_buttons("id") { ... }`: a dialog's row of buttons at its bottom, at its right end (the main act last), with
 // the dialog's margins.
-@(deferred_none = dialog_buttons_end)
+@(require_results, deferred_none = dialog_buttons_end)
 dialog_buttons :: proc(id: string) -> bool {
 	next({width = fill(), height = children_sum(), axis = .X, cross = .Center})
 	push_parent(build_box({}, strings.concatenate({"###", id}, frame_allocator())))

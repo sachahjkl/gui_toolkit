@@ -323,7 +323,7 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 
 // `if status_bar("###status") { ... }`: a row along the bottom of a window (theme tags "bar"), its text a little
 // smaller than the window's. Its items are laid out left to right; `spacer(fill())` pushes the rest to the right.
-@(deferred_none = status_bar_end)
+@(require_results, deferred_none = status_bar_end)
 status_bar :: proc(id: string, height_em: f32 = 1.9, text_scale: f32 = 0.88) -> bool {
 	em := font_size()
 	push_tags("bar")
@@ -349,7 +349,7 @@ status_bar_end :: proc() {
 
 // `if status_fill("###left") { ... }`: the flexible part of a status bar: takes the room the other items leave, its
 // items clipped when they do not fit (a bar's items keep their natural width).
-@(deferred_none = pop_parent)
+@(require_results, deferred_none = pop_parent)
 status_fill :: proc(id: string) -> bool {
 	next({width = fill(), height = pct(1)})
 	set_next_axis(.X, .Center)
@@ -445,7 +445,7 @@ Popover_Side :: enum u8 { Above, Below }
 // on the other side when it does not fit; right-aligned with the anchor when `align_right`), clamped to the window.
 // It stays open as long as the app builds it: the app decides when it closes (a toggle, a close button, Escape).
 // It takes the clicks that land on it; `popover_rect` tells the app where it is (input it routes itself).
-@(deferred_none = popover_end)
+@(require_results, deferred_none = popover_end)
 popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above, align_right := true) -> bool {
 	s := gs()
 	em := font_size()
