@@ -443,3 +443,22 @@ the_cursor_says_what_is_under_the_pointer :: proc(t: ^testing.T) {
 	session.move(s, {f32(session.DEFAULT_SIZE.x - 1), f32(session.DEFAULT_SIZE.y - 1)})
 	testing.expect_value(t, session.cursor(s), platform.Cursor.Arrow)
 }
+
+// A field built for the first time, its text set with the caret at its end (a rename: the name selected), shows the text
+// from its start: its width is not known in that build, and a scroll then showed only the text's end for one frame.
+@(test)
+a_new_field_is_not_scrolled :: proc(t: ^testing.T) {
+	New_Field :: struct { field: ui.Text_Field, shown: bool }
+	n: New_Field
+	defer ui.field_destroy(&n.field)
+	s := session.start(t, {user = &n, no_renderer = true, build = proc(s: ^session.Session) {
+		n := (^New_Field)(s.user)
+		if !n.shown { return }
+		ui.next({width = ui.px(AREA_NARROW)})
+		ui.line_edit("###new", &n.field)
+	}})
+	ui.field_set(&n.field, "Screenshot of the whole desktop, then copied")
+	n.shown = true
+	session.frames(s, 1)
+	testing.expect_value(t, n.field.scroll_x, 0)
+}

@@ -43,6 +43,9 @@ Vec2 :: draw.Vec2
 // A frame's dt stays within this: after a long stall the animations go on, they do not jump.
 DT_MIN_S :: 0.0005
 DT_MAX_S :: 0.1
+// The dt of a frame after a rest (the loop slept: nothing moved), when the display's refresh is not measured yet. The
+// time slept is no animation's: a switch clicked then would make most of its way in the first frame.
+DT_RESTED_S :: 1.0 / 60
 
 // The base style's defaults, in logical pixels (Build_Params.base; `params` changes them).
 BASE_ROW_HEIGHT :: 30
@@ -100,6 +103,7 @@ Host :: struct {
 	after_frame:  proc(h: ^Host),   // the picture is out (or held): what the program does between two frames. Not after a frame that found its window closed
 
 	slept:   bool,     // the loop slept before this frame (hosts_wait)
+	rested:  bool,     // this frame comes after a sleep: its dt is one refresh (host_picture)
 	times:   Host_Times,   // the last picture's steps
 	shown:   [2]int,   // the size of the last picture
 	shown_again: u32,  // the window's count of shows after a hide, as of the last frame (a new one remakes the swap chain)
@@ -244,6 +248,7 @@ host_frame :: proc(h: ^Host, inner := false) {
 	}
 	shown := !pending
 	at_once := shown ? host_pace(h, inner) : false
+	h.rested = h.slept
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }
 	events := platform.poll_events(h.win, false)
@@ -314,6 +319,10 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	size := Vec2{f32(h.win.size.x), f32(h.win.size.y)}
 	now := ui.now_ms()
 	dt := clamp(f32((now - h.last_ms) / 1000), DT_MIN_S, DT_MAX_S)
+	if h.rested {
+		hz := render.measured_refresh_hz(r)
+		dt = hz > 0 ? f32(1 / hz) : DT_RESTED_S
+	}
 	h.last_ms = now
 	if h.builds != nil { h.builds(h, size, events, dt) } else { host_build(h, size, events, dt) }
 	platform.set_cursor(h.win, ui.cursor(&h.state))

@@ -477,13 +477,16 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		shown, cursor, mark := text, f.cursor, f.mark
 		if masked { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
 
-		// keep the caret visible
-		inner := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - 2 * pad - end)
-		cx := font.x_from_index(s.fonts, b.font, b.font_size, shown, cursor)
-		total := font.text_width(s.fonts, b.font, b.font_size, shown)
-		if cx - f.scroll_x > inner { f.scroll_x = cx - inner }
-		if cx - f.scroll_x < 0 { f.scroll_x = cx }
-		f.scroll_x = clamp(f.scroll_x, 0, max(0, total - inner + 2 * s.scale))
+		// keep the caret visible; a field built for the first time has no width yet (its layout comes after this build):
+		// its scroll waits for it, or the text would show scrolled to its end for one frame
+		if b.rect.max.x > b.rect.min.x {
+			inner := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - 2 * pad - end)
+			cx := font.x_from_index(s.fonts, b.font, b.font_size, shown, cursor)
+			total := font.text_width(s.fonts, b.font, b.font_size, shown)
+			if cx - f.scroll_x > inner { f.scroll_x = cx - inner }
+			if cx - f.scroll_x < 0 { f.scroll_x = cx }
+			f.scroll_x = clamp(f.scroll_x, 0, max(0, total - inner + 2 * s.scale))
+		}
 
 		d := frame_new(Line_Edit_Draw)
 		d.text = strings.clone(shown, frame_allocator())
