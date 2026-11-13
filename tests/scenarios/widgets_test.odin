@@ -566,6 +566,32 @@ a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.chosen, "open")
 }
 
+// A field in a panel opened as a menu (a vault's search): a click gives it the focus, what is typed goes into it, and the
+// menu stays open.
+@(test)
+a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) {
+	Run :: struct { field: ui.Text_Field }
+	r: Run
+	defer ui.field_destroy(&r.field)
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		key := ui.key_from_string(0, "panel")
+		if s.frames == 1 { ui.ctx_menu_open_rect(key, {{40, 20}, {80, 40}}) }
+		if ui.ctx_menu(key) {
+			ui.next({width = ui.px(200), height = ui.px(30)})
+			_ = ui.line_edit("###panel_search", &r.field, "Search")
+			if ui.menu_item("Item").clicked {}
+		}
+	}})
+	session.frames(s, 3)
+	session.click(s, "panel_search")
+	session.frames(s, 2)
+	session.type_text(s, "abc")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.field_string(&r.field), "abc")
+	testing.expect(t, ui.ctx_menu_any_open(), "the menu stays open")
+}
+
 // A confirmation: Enter cancels an act that is not safe, the act's button acts; what it acts on is named, the rest counted.
 @(test)
 a_confirmation_answers :: proc(t: ^testing.T) {

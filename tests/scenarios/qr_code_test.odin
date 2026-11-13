@@ -18,17 +18,21 @@ import "../../src/ui"
 @(private = "file") WHITE :: session.Color{255, 255, 255, 255}
 @(private = "file") QR_URL :: "https://abcdef0123456789.cfmfdgcrti5w.opentunnel.xyz/auth/connect/0123456789abcdef0123456789abcdef"
 
-// Every pixel of the symbol, quiet zone included, is exactly black or white as its module says, from the box's rect.
+// Every pixel of the symbol, quiet zone included, is exactly black or white as its module says, from the white square
+// inside the box's frame (its gap in from the border); the square's rounded corners, in the quiet zone, are not looked at.
 @(private = "file")
 expect_code :: proc(t: ^testing.T, s: ^session.Session, text: string, loc := #caller_location) {
 	img := session.capture(s)
-	box := session.get(s, "qr").rect
+	b := session.get(s, "qr")
+	gap := math.round(b.font_size * ui.QR_FRAME_GAP_EM)
+	corner := int(math.ceil(max(0, b.font_size * ui.QR_RADIUS_EM - gap)))
+	testing.expect(t, b.rect.max.x - b.rect.min.x == QR_SIZE && b.rect.max.y - b.rect.min.y == QR_SIZE, "the size asked", loc = loc)
+	box := ui.Rect{b.rect.min + gap, b.rect.max - gap}
 	code, err := qr.encode(text)
 	defer qr.destroy(&code)
 	testing.expect(t, err == .None, "encodes", loc = loc)
 	n := code.size + 2 * qr.QUIET_ZONE
 	w, h := box.max.x - box.min.x, box.max.y - box.min.y
-	testing.expect(t, w == QR_SIZE && h == QR_SIZE, "the size asked", loc = loc)
 	unit := int(math.floor(min(w, h) / f32(n)))
 	side := unit * n
 	ox := int(math.round(box.min.x + (w - f32(side)) / 2))
@@ -36,6 +40,8 @@ expect_code :: proc(t: ^testing.T, s: ^session.Session, text: string, loc := #ca
 	wrong := 0
 	for py in 0 ..< side {
 		for px in 0 ..< side {
+			// (the white square's corner: rounded, its pixels blend with the frame)
+			if (px < corner || px >= side - corner) && (py < corner || py >= side - corner) { continue }
 			dark := qr.module(code, px / unit - qr.QUIET_ZONE, py / unit - qr.QUIET_ZONE)
 			if !session.near(session.pixel(img, ox + px, oy + py), dark ? BLACK : WHITE, 0) { wrong += 1 }
 		}
@@ -46,8 +52,8 @@ expect_code :: proc(t: ^testing.T, s: ^session.Session, text: string, loc := #ca
 		x, y := ox + (c.x + qr.QUIET_ZONE) * unit, oy + (c.y + qr.QUIET_ZONE) * unit
 		testing.expect(t, session.near(session.pixel(img, x, y), BLACK, 0), "a finder's corner is dark", loc = loc)
 	}
-	testing.expect(t, session.near(session.pixel(img, ox, oy), WHITE, 0), "the quiet zone is light", loc = loc)
-	testing.expect(t, session.near(session.pixel(img, ox + side - 1, oy + side - 1), WHITE, 0), "to its last pixel", loc = loc)
+	testing.expect(t, session.near(session.pixel(img, ox + corner, oy + corner), WHITE, 0), "the quiet zone is light", loc = loc)
+	testing.expect(t, session.near(session.pixel(img, ox + side - 1 - corner, oy + side - 1 - corner), WHITE, 0), "to its last pixel", loc = loc)
 }
 
 @(test)

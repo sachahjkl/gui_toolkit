@@ -70,9 +70,10 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 					s.last_click_key = hot
 					s.last_click_ms = s.time_ms
 				}
-				// keyboard focus follows the click (not into an open menu: what opened it has the keyboard when it closes)
+				// keyboard focus follows the click (not into an open menu: what opened it has the keyboard when it closes;
+				// but a field of a menu, a panel's search, takes it: its keys are its own, menu_capture_keys)
 				b := s.boxes[hot] if hot != 0 else nil
-				if !menu_holds(s, hot) {
+				if !menu_holds(s, hot) || (b != nil && .Text_Input in b.flags) {
 					s.focus_key = (b != nil && .Focusable in b.flags) ? hot : 0
 					s.focus_visible = false
 				}
