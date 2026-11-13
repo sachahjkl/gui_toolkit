@@ -106,6 +106,9 @@ platform_open :: proc(s: ^Session) -> Error {
 }
 
 @(private)
+platform_broken :: proc(s: ^Session) -> bool { return false }   // (DXGI's losses are met where each capture is made)
+
+@(private)
 platform_close :: proc(s: ^Session) {
 	impl := (^Impl)(s.impl)
 	if impl == nil { return }

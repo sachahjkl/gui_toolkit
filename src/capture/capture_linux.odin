@@ -64,6 +64,15 @@ platform_close :: proc(s: ^Session) {
 	s.impl = nil
 }
 
+// The connection to the display server has an error: every request on it fails from now on (revive opens another).
+@(private)
+platform_broken :: proc(s: ^Session) -> bool {
+	impl := (^Linux_Impl)(s.impl)
+	if impl.wl != nil && impl.wl.display != nil && impl.wl.lib.display_get_error(impl.wl.display) != 0 { return true }
+	if impl.x11 != nil && impl.x11.c != nil && impl.x11.lib.connection_has_error(impl.x11.c) != 0 { return true }
+	return false
+}
+
 @(private)
 platform_outputs :: proc(s: ^Session) {
 	impl := (^Linux_Impl)(s.impl)

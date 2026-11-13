@@ -86,6 +86,7 @@ Session :: struct {
 	outputs:   [dynamic]Output,   // as last read (outputs)
 	windows:   [dynamic]Window,   // as last read (windows)
 	impl:      rawptr,            // the backend's own state
+	streams:   int,               // the streams open on it: a session that revives waits for none (they use its connection)
 }
 
 // The system's capture. Error .Unsupported: none of the backends of this system can run here (no compositor protocol, no
@@ -111,11 +112,23 @@ close :: proc(s: ^Session) {
 	free(s, s.allocator)
 }
 
+// A session whose connection to the system broke (a protocol error, the compositor's restart: every call then fails) is
+// opened again before what is asked of it, the program never sees it. Not while a stream is open on it: the stream uses
+// that connection, and ends with an error of its own. False: no session (it broke, and none could open again).
+@(private)
+revive :: proc(s: ^Session) -> bool {
+	if s.impl == nil { return platform_open(s) == .None }
+	if s.streams > 0 || !platform_broken(s) { return true }
+	platform_close(s)
+	s.backend = .None
+	return platform_open(s) == .None
+}
+
 // The outputs, read again from the system (the slice is the session's: valid until the next call).
 outputs :: proc(s: ^Session) -> []Output {
 	strings_free_outputs(s)
 	clear(&s.outputs)
-	platform_outputs(s)
+	if revive(s) { platform_outputs(s) }
 	return s.outputs[:]
 }
 
@@ -123,12 +136,12 @@ outputs :: proc(s: ^Session) -> []Output {
 windows :: proc(s: ^Session) -> []Window {
 	strings_free_windows(s)
 	clear(&s.windows)
-	platform_windows(s)
+	if revive(s) { platform_windows(s) }
 	return s.windows[:]
 }
 
 // Whether `windows` says where each window is: a region can then be framed on the window under the pointer.
-windows_have_rects :: proc(s: ^Session) -> bool { return platform_windows_have_rects(s) }
+windows_have_rects :: proc(s: ^Session) -> bool { return revive(s) && platform_windows_have_rects(s) }
 
 // The order of the channels of the frames `output`, `window` and `desktop` give from now on: B, G, R, A (the
 // default: the systems' own) or R, G, B, A (what a texture, a PNG encoder or a clipboard takes). Asked here, the
@@ -138,6 +151,7 @@ set_pixel_order :: proc(s: ^Session, order: Pixel_Order) { s.order = order }
 
 // One output's picture.
 output :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Frame, err: Error) {
+	if !revive(s) { return {}, .Failed }
 	f = platform_output(s, id, allocator) or_return
 	frame_order_set(&f, s.order)
 	return
@@ -145,6 +159,7 @@ output :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Fram
 
 // One window's picture, its own content (what is over it is not in it). .Unsupported where the backend cannot.
 window :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Frame, err: Error) {
+	if !revive(s) { return {}, .Failed }
 	f = platform_window(s, id, allocator) or_return
 	frame_order_set(&f, s.order)
 	return
@@ -153,6 +168,7 @@ window :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Fram
 // Every output in one picture, at the highest scale of them, the desktop's bounding rectangle (what is outside every
 // output, transparent). What a region is cut from, and what a selection is drawn over.
 desktop :: proc(s: ^Session, allocator := context.allocator) -> (f: Frame, err: Error) {
+	if !revive(s) { return {}, .Failed }
 	f = platform_desktop(s, allocator) or_return
 	frame_order_set(&f, s.order)
 	return

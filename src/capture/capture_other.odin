@@ -8,6 +8,7 @@ import "core:time"
 // (no capture on this system: open says so)
 @(private) platform_open :: proc(s: ^Session) -> Error { return .Unsupported }
 @(private) platform_close :: proc(s: ^Session) {}
+@(private) platform_broken :: proc(s: ^Session) -> bool { return false }
 @(private) platform_outputs :: proc(s: ^Session) {}
 @(private) platform_windows :: proc(s: ^Session) {}
 @(private) platform_windows_have_rects :: proc(s: ^Session) -> bool { return false }

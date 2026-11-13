@@ -80,10 +80,15 @@ stream_open :: proc(s: ^Session, source: Stream_Source, options := Stream_Option
 		}
 		st.region, st.cropping = r.rect, true
 	}
+	if !revive(s) {
+		stream_free(st)
+		return nil, .Failed
+	}
 	if err = platform_stream_open(s, st); err != .None {
 		stream_free(st)
 		return nil, err
 	}
+	s.streams += 1
 	return st, .None
 }
 
@@ -98,6 +103,7 @@ stream_next :: proc(st: ^Stream, timeout: time.Duration) -> (f: Stream_Frame, ok
 stream_close :: proc(st: ^Stream) {
 	if st == nil { return }
 	platform_stream_close(st)
+	st.session.streams -= 1
 	stream_free(st)
 }
 

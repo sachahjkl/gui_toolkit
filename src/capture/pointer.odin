@@ -11,7 +11,7 @@ import "core:math"
 // (ext_image_copy_capture_cursor_session_v1) is the way to know it elsewhere. The sessions are made at the first call
 // and kept with the outputs.
 pointer :: proc(s: ^Session) -> (at: [2]i32, output: u64, ok: bool) {
-	if s == nil { return }
+	if s == nil || !revive(s) { return }
 	return platform_pointer(s)
 }
 
