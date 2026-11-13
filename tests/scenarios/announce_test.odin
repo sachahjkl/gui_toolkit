@@ -5,6 +5,7 @@ package scenarios_test
 
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file")
@@ -36,18 +37,18 @@ toasts_after :: proc(t: ^testing.T, mode: ui.Announce_Mode, kind: ui.Toast_Kind)
 }
 
 @(test)
-announce_to_the_window_is_a_toast :: proc(t: ^testing.T) { testing.expect_value(t, toasts_after(t, .Window, .Good), 1) }
+announce_to_the_window_is_a_toast :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) { testing.expect_value(t, toasts_after(t, .Window, .Good), 1) }) }
 
 // (no window to notify from here, as where the system shows no notification)
 @(test)
-announce_without_a_system_is_a_toast :: proc(t: ^testing.T) { testing.expect_value(t, toasts_after(t, .System, .Good), 1) }
+announce_without_a_system_is_a_toast :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) { testing.expect_value(t, toasts_after(t, .System, .Good), 1) }) }
 
 @(test)
-announce_off_says_nothing :: proc(t: ^testing.T) { testing.expect_value(t, toasts_after(t, .Off, .Good), 0) }
+announce_off_says_nothing :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) { testing.expect_value(t, toasts_after(t, .Off, .Good), 0) }) }
 
 @(test)
-announce_off_still_says_a_failure :: proc(t: ^testing.T) {
+announce_off_still_says_a_failure :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	testing.expect_value(t, toasts_after(t, .Off, .Bad), 1)
 	testing.expect_value(t, ui.announce_mode_of("window"), ui.Announce_Mode.Window)
 	testing.expect_value(t, ui.announce_mode_of("nonsense"), ui.Announce_Mode.System)
-}
+}) }

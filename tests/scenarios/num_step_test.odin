@@ -7,10 +7,11 @@ package scenarios_test
 import "core:testing"
 import "../../src/platform"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(test)
-numbers_step_by_each_modifier :: proc(t: ^testing.T) {
+numbers_step_by_each_modifier :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Case :: struct { key: platform.Key, mods: platform.Modifiers, delta: f64 }
 	cases := [?]Case{
 		{.Up, {}, 1}, {.Down, {}, -1}, {.Up, {.Shift}, 10}, {.Down, {.Shift}, -10}, {.Up, {.Alt}, 0.1}, {.Down, {.Alt}, -0.1},
@@ -22,10 +23,10 @@ numbers_step_by_each_modifier :: proc(t: ^testing.T) {
 	}
 	_, ok := ui.num_step_delta(.Left, {})
 	testing.expect(t, !ok, "Left does not step")
-}
+}) }
 
 @(test)
-the_number_at_the_caret_steps_with_its_unit :: proc(t: ^testing.T) {
+the_number_at_the_caret_steps_with_its_unit :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Case :: struct { text: string, caret: int, delta: f64, want: string, number: string }
 	cases := [?]Case{
 		{"10px", 2, 1, "11px", "11"},
@@ -51,10 +52,10 @@ the_number_at_the_caret_steps_with_its_unit :: proc(t: ^testing.T) {
 		_, _, _, ok := ui.num_step_text(text, 0, 1)
 		testing.expectf(t, !ok, "%q has no number", text)
 	}
-}
+}) }
 
 @(test)
-a_field_steps_its_number_by_keys_and_wheel :: proc(t: ^testing.T) {
+a_field_steps_its_number_by_keys_and_wheel :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { f: ui.Text_Field, changed: int }
 	r: Run
 	defer ui.field_destroy(&r.f)
@@ -82,4 +83,4 @@ a_field_steps_its_number_by_keys_and_wheel :: proc(t: ^testing.T) {
 	session.key(s, .Z, {.Ctrl})
 	testing.expect_value(t, ui.field_string(&r.f), "margin: 20.9px 5px")   // a step is an edit of the field's history
 	testing.expect(t, r.changed == 4, "each step says it changed")
-}
+}) }

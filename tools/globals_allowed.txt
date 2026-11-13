@@ -5,6 +5,10 @@
 # or bound to a thread the note names). thread: @(thread_local). test: a test's. There is no class for one window's or one
 # app's state: it is a field of the struct that owns it (the Window, the render device or Renderer, ui.State).
 # Rewrite it from the code (keeping the classes known): odin test tests/globals -define:GLOBALS_WRITE=true
+base/blocking.odin interface_thread thread  # this thread builds an interface (ui.begin_build marks it)
+base/blocking.odin blocking_seen process  # the blocking calls seen on the interfaces' threads (atomic)
+base/blocking.odin blocking_lock process  # guards blocking_sites
+base/blocking.odin blocking_sites process  # the call sites already said (locked)
 changelog/changelog.odin TYPE_NAMES const  # Keep a Changelog's types, a table
 config/config_test.odin DEFS test
 config/search_test.odin SEARCH_DEFS test
@@ -278,6 +282,9 @@ ui/state.odin tick_origin process  # the clock of the interfaces, started by the
 ui/state.odin build_of thread  # the state whose build is open on this thread
 ui/themes.odin THEMES const  # the toolkit's themes, read only
 ui/themes.odin THEME_MODE_NAMES const  # a table of names, read only
+ui/tasks.odin chores_pool process  # the program's one pool of chores, started once (sync.Once), locked inside
+ui/tasks.odin chores_once process  # starts the chores once
+ui/tasks.odin chores_stopped process  # the chores stopped (atomic)
 ui/themes.odin FINISH_NAMES const  # a table of names, read only
 ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table

@@ -6,6 +6,7 @@ package scenarios_test
 import "core:fmt"
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") VIEW_H :: 200
@@ -27,58 +28,58 @@ rows_build :: proc(s: ^session.Session) {
 }
 
 @(test)
-the_limit_is_what_does_not_fit :: proc(t: ^testing.T) {
+the_limit_is_what_does_not_fit :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	b := ui.Box{size = {100, 200}, view_bounds = {300, 150}}
 	testing.expect_value(t, ui.view_limit(&b), 0)
 	testing.expect_value(t, ui.view_limit(&b, .X), 200)
 	b.view_bounds.y = 500
 	testing.expect_value(t, ui.view_limit(&b), 300)
-}
+}) }
 
 @(test)
-what_is_revealed_moves_the_view_no_further_than_it_must :: proc(t: ^testing.T) {
+what_is_revealed_moves_the_view_no_further_than_it_must :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	testing.expect_value(t, ui.view_reveal_offset(100, 150, 180, 200), 100)   // shown: stays
 	testing.expect_value(t, ui.view_reveal_offset(100, 40, 70, 200), 40)      // above
 	testing.expect_value(t, ui.view_reveal_offset(100, 320, 350, 200), 150)   // below
-}
+}) }
 
 // A row taller than the view shows its top, from above as from below: that is where it is read from.
 @(test)
-what_is_taller_than_the_view_keeps_its_top :: proc(t: ^testing.T) {
+what_is_taller_than_the_view_keeps_its_top :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	testing.expect_value(t, ui.view_reveal_offset(0, 300, 800, 200), 300)
 	testing.expect_value(t, ui.view_reveal_offset(900, 300, 800, 200), 300)
 	testing.expect_value(t, ui.view_reveal_offset(900, 300, 800, 200, 10), 290)
-}
+}) }
 
 // The margin is where a move lands: what already shows, however near an edge, does not move for it.
 @(test)
-a_margin_is_for_what_had_to_move :: proc(t: ^testing.T) {
+a_margin_is_for_what_had_to_move :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	testing.expect_value(t, ui.view_reveal_offset(100, 102, 130, 200, 16), 100)
 	testing.expect_value(t, ui.view_reveal_offset(100, 40, 70, 200, 16), 24)
 	testing.expect_value(t, ui.view_reveal_offset(100, 320, 350, 200, 16), 166)
-}
+}) }
 
 // view_reveal glides: it moves the target and says so, the offset is the update's. Asked again, nothing moves.
 @(test)
-a_reveal_heads_there_and_says_it_moved :: proc(t: ^testing.T) {
+a_reveal_heads_there_and_says_it_moved :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	b := ui.Box{size = {100, 200}, view_off = {0, 100}, view_target = {0, 100}}
 	testing.expect(t, ui.view_reveal(&b, 320, 350), "the target moved")
 	testing.expect_value(t, b.view_target.y, 150)
 	testing.expect_value(t, b.view_off.y, 100)
 	testing.expect(t, !ui.view_reveal(&b, 320, 350), "already there")
-}
+}) }
 
 @(test)
-a_reveal_along_x :: proc(t: ^testing.T) {
+a_reveal_along_x :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	b := ui.Box{size = {100, 200}}
 	testing.expect(t, ui.view_reveal(&b, 150, 180, .X), "along X")
 	testing.expect_value(t, b.view_target, [2]f32{80, 0})
-}
+}) }
 
 // The target being the glide's own target is the case where a jump that left the glide running would be pulled back on
 // its curve by the next update.
 @(test)
-a_jump_ends_a_glide_even_onto_its_target :: proc(t: ^testing.T) {
+a_jump_ends_a_glide_even_onto_its_target :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
 	b := session.get(s, "view")
 	session.wheel(s, session.center(b), {0, WHEEL_NOTCHES})
@@ -90,10 +91,10 @@ a_jump_ends_a_glide_even_onto_its_target :: proc(t: ^testing.T) {
 	session.frames(s, 1)
 	testing.expect_value(t, b.view_off.y, to)
 	testing.expect_value(t, b.view_target.y, to)
-}
+}) }
 
 @(test)
-a_jump_elsewhere_does_not_glide :: proc(t: ^testing.T) {
+a_jump_elsewhere_does_not_glide :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
 	b := session.get(s, "view")
 	session.wheel(s, session.center(b), {0, WHEEL_NOTCHES})
@@ -103,11 +104,11 @@ a_jump_elsewhere_does_not_glide :: proc(t: ^testing.T) {
 	session.frames(s, 1)
 	testing.expect_value(t, b.view_off.y, FAR)
 	testing.expect_value(t, b.view_target.y, FAR)
-}
+}) }
 
 // Content moved under a glide: the glide goes on, from the same point of its curve, by as much.
 @(test)
-a_shift_carries_a_glide_along :: proc(t: ^testing.T) {
+a_shift_carries_a_glide_along :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
 	b := session.get(s, "view")
 	session.wheel(s, session.center(b), {0, WHEEL_NOTCHES})
@@ -121,11 +122,11 @@ a_shift_carries_a_glide_along :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.view_anim[1].to, was.to + SHIFT)
 	session.frames(s, 1)
 	testing.expect_value(t, b.view_anim[1].start, was.start)   // (a new move would have started now)
-}
+}) }
 
 // A view sent back to the top ends there, however much the content above it grew meanwhile.
 @(test)
-a_shift_leaves_the_top_the_top :: proc(t: ^testing.T) {
+a_shift_leaves_the_top_the_top :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
 	b := session.get(s, "view")
 	ui.view_jump(b, FAR)
@@ -139,12 +140,12 @@ a_shift_leaves_the_top_the_top :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.view_target.y, 0)
 	session.wait_idle(s)
 	testing.expect_value(t, b.view_off.y, 0)
-}
+}) }
 
 // A wheel turned up past the top stops there; content that comes above it then (a page read before the first) carries
 // that stop along: the view does not glide over all of it.
 @(test)
-a_wheel_stopped_at_the_top_moves_with_the_content :: proc(t: ^testing.T) {
+a_wheel_stopped_at_the_top_moves_with_the_content :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {build = rows_build, no_renderer = true, smooth_scroll = .On, animations = true})
 	b := session.get(s, "view")
 	ui.view_jump(b, ROW_H * 2)
@@ -162,10 +163,10 @@ a_wheel_stopped_at_the_top_moves_with_the_content :: proc(t: ^testing.T) {
 	session.wheel(s, session.center(b), {0, WHEEL_NOTCHES})
 	session.frames(s, 1)
 	testing.expect(t, !b.view_top_held[1], "the wheel took it off the start")
-}
+}) }
 
 @(test)
-a_shift_stays_in_the_content :: proc(t: ^testing.T) {
+a_shift_stays_in_the_content :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	b := ui.Box{view_off = {0, 280}, view_target = {0, 280}}
 	ui.view_shift(&b, 50, 300)
 	testing.expect_value(t, b.view_off.y, 300)
@@ -173,4 +174,4 @@ a_shift_stays_in_the_content :: proc(t: ^testing.T) {
 	ui.view_shift(&b, -400, 300)
 	testing.expect_value(t, b.view_off.y, 0)
 	testing.expect_value(t, b.view_target.y, 0)
-}
+}) }

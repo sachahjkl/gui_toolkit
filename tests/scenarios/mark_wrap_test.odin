@@ -4,6 +4,7 @@ package scenarios_test
 
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file")
@@ -13,7 +14,7 @@ LONG :: "Contrat entre unités - Format d'unité, description des fonctions, con
 Marks :: struct { a, b: bool }
 
 @(test)
-a_long_check_box_label_wraps_in_its_column :: proc(t: ^testing.T) {
+a_long_check_box_label_wraps_in_its_column :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	m: Marks
 	s := session.start(t, {size = {400, 300}, user = &m, build = proc(s: ^session.Session) {
 		m := (^Marks)(s.user)
@@ -44,4 +45,4 @@ a_long_check_box_label_wraps_in_its_column :: proc(t: ^testing.T) {
 	session.click_at(s, session.center(wrapped))
 	session.frames(s, 1)
 	testing.expect(t, m.a, "a click on it checks it")
-}
+}) }

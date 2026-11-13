@@ -7,6 +7,7 @@ package scenarios_test
 import "core:strings"
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{500, 500}
@@ -41,7 +42,7 @@ picker :: proc(t: ^testing.T, r: ^Run) -> ^session.Session {
 }
 
 @(test)
-the_colour_picker_gives_the_colour_under_the_pointer :: proc(t: ^testing.T) {
+the_colour_picker_gives_the_colour_under_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: Run
 	defer { ui.color_pick_destroy(&r.cp); delete(r.text) }
 	ui.color_pick_set(&r.cp, {1, 0, 0, 1}, {.Hex, false})
@@ -74,10 +75,10 @@ the_colour_picker_gives_the_colour_under_the_pointer :: proc(t: ^testing.T) {
 	h := r.cp.hue
 	session.key(s, .Right, repeat = 3)
 	testing.expectf(t, abs(r.cp.hue - (h + 3.0 / 360)) < 0.0001, "three degrees: %v -> %v", h, r.cp.hue)
-}
+}) }
 
 @(test)
-the_colour_picker_reads_and_writes_each_format :: proc(t: ^testing.T) {
+the_colour_picker_reads_and_writes_each_format :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: Run
 	defer { ui.color_pick_destroy(&r.cp); delete(r.text) }
 	ui.color_pick_set(&r.cp, {0, 0, 1, 1}, {.Hex, false})
@@ -105,10 +106,10 @@ the_colour_picker_reads_and_writes_each_format :: proc(t: ^testing.T) {
 	back, _, ok := ui.color_parse(r.text)
 	testing.expectf(t, ok && near(back, ui.color_pick_rgba(&r.cp)), "%s reads back as the colour", r.text)
 	testing.expect_value(t, ui.field_string(&r.cp.field), r.text)
-}
+}) }
 
 @(test)
-colour_text_reads_back_in_every_style :: proc(t: ^testing.T) {
+colour_text_reads_back_in_every_style :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	colours := [?]ui.Srgba{{1, 0, 0, 1}, {0.2, 0.4, 0.6, 1}, {0.1, 0.9, 0.35, 0.5}, {0, 0, 0, 0}, {1, 1, 1, 1}, {0.5, 0.5, 0.5, 0.25}}
 	for c in colours {
 		for f in ui.Color_Format {
@@ -134,4 +135,4 @@ colour_text_reads_back_in_every_style :: proc(t: ^testing.T) {
 	testing.expect(t, !bad, "five digits are not a colour")
 	turn, _, _ := ui.color_parse("hsl(0.5turn 100% 50%)")
 	testing.expect(t, near(turn, {0, 1, 1, 1}), "half a turn is cyan")
-}
+}) }

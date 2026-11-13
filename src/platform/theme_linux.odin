@@ -11,6 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "../ascii"
+import "../base"
 
 // Whether the user asked to reduce animations (GNOME "Reduce Animation", KDE "animation speed: instant"). Read from the
 // GTK settings file's gtk-enable-animations, else false (animations on). os_animations_enabled negates this.
@@ -22,7 +23,8 @@ reduce_motion_preferred :: proc() -> bool {
 // Whether the user prefers a dark theme. The XDG appearance portal is authoritative (org.freedesktop.appearance
 // color-scheme) and gives a live value; the GTK settings are the fallback when the portal is absent. An app that calls
 // set_dark_title follows this, and watch_color_scheme (portal_linux.odin) tells it when the user flips it at run time.
-dark_mode_preferred :: proc() -> bool {
+dark_mode_preferred :: proc(loc := #caller_location) -> bool {
+	base.blocking("platform.dark_mode_preferred", loc)
 	if dark, ok := portal_dark_mode(); ok { return dark }
 	if v, ok := gtk_setting("gtk-application-prefer-dark-theme"); ok && (v == "1" || v == "true") { return true }
 	if t := posix.getenv("GTK_THEME"); t != nil && strings.contains(string(t), "dark") { return true }

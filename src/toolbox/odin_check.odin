@@ -6,11 +6,16 @@ import "core:strings"
 
 // Where odin_check makes its Odin root for a check of another system, under a project's build folder.
 CHECK_ROOT_DEFAULT :: "build/odin_root"
+// The wgpu-native libraries a check of another system needs beside Odin's vendor/wgpu (empty files: a check links nothing).
 @(private = "file")
-WGPU_WINDOWS_LIB :: "lib/wgpu-windows-x86_64-msvc-release/lib/wgpu_native.lib"
+WGPU_OTHER_LIBS :: [?]string{
+	"lib/wgpu-windows-x86_64-msvc-release/lib/wgpu_native.lib",
+	"lib/wgpu-macos-aarch64-release/lib/libwgpu_native.a",
+	"lib/wgpu-macos-x86_64-release/lib/libwgpu_native.a",
+}
 
-// `odin check <pkg> -vet -target:<target> <extra>`, also for another system than this one: the Windows code is checked
-// from Linux (it is not run here; a check at least sees it compile), on the environment check_env gives.
+// `odin check <pkg> -vet -target:<target> <extra>`, also for another system than this one: the Windows and macOS code is
+// checked from Linux (it is not run here; a check at least sees it compile), on the environment check_env gives.
 odin_check :: proc(pkg, target: string, extra: []string = nil, root := CHECK_ROOT_DEFAULT, how := Run{}) -> bool {
 	command := make([dynamic]string, context.temp_allocator)
 	append(&command, "odin", "check", pkg, "-vet", fmt.tprintf("-target:%s", target))
@@ -23,18 +28,20 @@ odin_check :: proc(pkg, target: string, extra: []string = nil, root := CHECK_ROO
 }
 
 // The environment of an `odin check` for `target` from this system; nil: this process's will do. Odin's wgpu package
-// refuses to be checked without its Windows library, which a check does not link: a Windows check from elsewhere runs on
-// an Odin root of links to the real one (made at `root`, default CHECK_ROOT_DEFAULT), whose vendor/wgpu is a copy with an
-// empty library beside it (Odin follows links: a linked file is in the real folder). The Nix wrappers of Odin keep an
-// ODIN_ROOT they are given (--set-default).
+// refuses to be checked without the library of the system checked, which a check does not link: a check of Windows or
+// macOS from elsewhere runs on an Odin root of links to the real one (made at `root`, default CHECK_ROOT_DEFAULT), whose
+// vendor/wgpu is a copy with empty libraries beside it (Odin follows links: a linked file is in the real folder). The Nix
+// wrappers of Odin keep an ODIN_ROOT they are given (--set-default).
 check_env :: proc(target: string, root := CHECK_ROOT_DEFAULT) -> (env: []string, why: string) {
-	if !strings.has_prefix(target, "windows") || ODIN_OS == .Windows { return nil, "" }
+	windows, darwin := strings.has_prefix(target, "windows"), strings.has_prefix(target, "darwin")
+	if !(windows && ODIN_OS != .Windows) && !(darwin && ODIN_OS != .Darwin) { return nil, "" }
 	if why = check_root_make(root); why != "" { return nil, why }
 	absolute, _ := os.get_absolute_path(root, context.temp_allocator)
 	return env_with({"ODIN_ROOT"}, fmt.tprintf("ODIN_ROOT=%s/", absolute)), ""
 }
 
-// An Odin root for a Windows check: links to the real root's entries, its vendor/wgpu a copy with an empty library.
+// An Odin root for a check of another system: links to the real root's entries, its vendor/wgpu a copy with empty
+// libraries.
 // Made again each time (the real root changes when the flake moves Odin).
 @(private = "file")
 check_root_make :: proc(root: string) -> string {
@@ -61,8 +68,11 @@ check_root_make :: proc(root: string) -> string {
 		if !strings.has_suffix(e.name, ".odin") { continue }
 		if os.copy_file(fmt.tprintf("%s/%s", wgpu, e.name), e.fullpath) != nil { return fmt.tprintf("%s cannot be copied", e.fullpath) }
 	}
-	lib := fmt.tprintf("%s/%s", wgpu, WGPU_WINDOWS_LIB)
-	_ = os.make_directory_all(lib[:strings.last_index_byte(lib, '/')])
-	if os.write_entire_file(lib, []u8{}) != nil { return fmt.tprintf("%s cannot be written", lib) }
+	libs := WGPU_OTHER_LIBS
+	for name in libs {
+		lib := fmt.tprintf("%s/%s", wgpu, name)
+		_ = os.make_directory_all(lib[:strings.last_index_byte(lib, '/')])
+		if os.write_entire_file(lib, []u8{}) != nil { return fmt.tprintf("%s cannot be written", lib) }
+	}
 	return ""
 }

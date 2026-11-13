@@ -5,6 +5,7 @@ package scenarios_test
 import "core:math"
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{400, 300}
@@ -16,7 +17,7 @@ height_of :: proc(s: ^session.Session, name: string, loc := #caller_location) ->
 
 // A row of a fixed box, a firm share, and what fills the rest.
 @(test)
-a_row_shares_its_room :: proc(t: ^testing.T) {
+a_row_shares_its_room :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(40)})
 		if ui.row(id = "###row") {
@@ -37,11 +38,11 @@ a_row_shares_its_room :: proc(t: ^testing.T) {
 	session.resize(s, {WINDOW.x * 2, WINDOW.y})
 	testing.expect_value(t, width_of(s, "fixed"), 100)
 	testing.expect_value(t, width_of(s, "share"), f32(WINDOW.x) * 0.5)
-}
+}) }
 
 // A column whose height is the sum of its children, its width the widest.
 @(test)
-a_box_can_take_its_size_from_its_children :: proc(t: ^testing.T) {
+a_box_can_take_its_size_from_its_children :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.children_sum(), height = ui.children_sum()})
 		if ui.column(id = "###col") {
@@ -54,11 +55,11 @@ a_box_can_take_its_size_from_its_children :: proc(t: ^testing.T) {
 	testing.expect_value(t, height_of(s, "col"), 50)
 	testing.expect_value(t, width_of(s, "col"), 70)
 	testing.expect_value(t, session.get(s, "b").rect.min.y, session.get(s, "a").rect.max.y)
-}
+}) }
 
 // What is too wide gives way by its strictness: a box that may shrink does, one that may not keeps its size; what shrinks shares the loss by its size.
 @(test)
-what_may_shrink_shares_the_loss :: proc(t: ^testing.T) {
+what_may_shrink_shares_the_loss :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(40)})
 		if ui.row(id = "###row") {
@@ -74,10 +75,10 @@ what_may_shrink_shares_the_loss :: proc(t: ^testing.T) {
 	share, rest := width_of(s, "soft_share"), width_of(s, "soft_rest")
 	testing.expect_value(t, 100 + share + rest, f32(WINDOW.x))
 	testing.expect_value(t, rest, share * 4)
-}
+}) }
 
 @(test)
-what_is_too_much_gives_way_by_its_strictness :: proc(t: ^testing.T) {
+what_is_too_much_gives_way_by_its_strictness :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(40)})
 		if ui.row(id = "###row") {
@@ -89,11 +90,11 @@ what_is_too_much_gives_way_by_its_strictness :: proc(t: ^testing.T) {
 	}})
 	testing.expect_value(t, width_of(s, "firm"), 300)
 	testing.expect_value(t, width_of(s, "soft"), f32(WINDOW.x) - 300)
-}
+}) }
 
 // The cross alignment of a row: centred children keep their own height, in the middle.
 @(test)
-a_row_centres_across :: proc(t: ^testing.T) {
+a_row_centres_across :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(100)})
 		if ui.row(.Center, id = "###row") {
@@ -104,11 +105,11 @@ a_row_centres_across :: proc(t: ^testing.T) {
 	b := session.get(s, "small")
 	testing.expect_value(t, b.rect.min.y, 40)
 	testing.expect_value(t, b.rect.max.y, 60)
-}
+}) }
 
 // A flow wraps at the width of its box, and its height is its lines'.
 @(test)
-a_flow_wraps_into_lines :: proc(t: ^testing.T) {
+a_flow_wraps_into_lines :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {200, 300}, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.children_sum()})
 		if ui.flow({10, 5}, "###flow") {
@@ -124,11 +125,11 @@ a_flow_wraps_into_lines :: proc(t: ^testing.T) {
 	testing.expect(t, session.get(s, "f3").rect.min.y >= session.get(s, "f0").rect.max.y + 5, "the fourth does not fit: next line")
 	testing.expect_value(t, session.get(s, "f3").rect.min.x, 0)
 	testing.expect_value(t, height_of(s, "flow"), 2 * 20 + 5)
-}
+}) }
 
 // Floating boxes do not take part in the layout, and what is clipped takes no click.
 @(test)
-what_is_clipped_takes_no_click :: proc(t: ^testing.T) {
+what_is_clipped_takes_no_click :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Clicks :: struct { inside, outside: int }
 	c: Clicks
 	s := session.start(t, {size = WINDOW, no_renderer = true, user = &c, build = proc(s: ^session.Session) {
@@ -145,11 +146,11 @@ what_is_clipped_takes_no_click :: proc(t: ^testing.T) {
 	testing.expect_value(t, c.inside, 1)
 	session.click(s, "outside")
 	testing.expect_value(t, c.outside, 0)
-}
+}) }
 
 // The layout says what it sees as a mistake: a box with no room for its percent of a parent sized by its children.
 @(test)
-a_layout_mistake_is_said :: proc(t: ^testing.T) {
+a_layout_mistake_is_said :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.set_layout_warnings(s.state, true)
 		ui.next({width = ui.children_sum(), height = ui.px(20)})
@@ -160,11 +161,11 @@ a_layout_mistake_is_said :: proc(t: ^testing.T) {
 	}})
 	session.frame(s)
 	testing.expect(t, len(ui.layout_warnings()) > 0, "a percent of a parent sized by its children")
-}
+}) }
 
 // DPI: pixels are physical, sizes in the root style and px() in logical ones; the window keeps its logical size.
 @(test)
-a_scale_multiplies_what_is_logical :: proc(t: ^testing.T) {
+a_scale_multiplies_what_is_logical :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.text_size()})
 		ui.label("Some words###text")
@@ -184,11 +185,11 @@ a_scale_multiplies_what_is_logical :: proc(t: ^testing.T) {
 	session.set_dpi(s, 1)
 	testing.expect_value(t, s.win.size, WINDOW)
 	testing.expect_value(t, height_of(s, "text"), h1)
-}
+}) }
 
 // A click lands by physical pixels at any scale, and the frame is the size of the window.
 @(test)
-at_a_scale_clicks_and_pixels_are_where_they_should_be :: proc(t: ^testing.T) {
+at_a_scale_clicks_and_pixels_are_where_they_should_be :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Clicks :: struct { n: int }
 	c: Clicks
 	s := session.start(t, {size = WINDOW, user = &c, dpi_scale = 1.5, build = proc(s: ^session.Session) {
@@ -204,11 +205,11 @@ at_a_scale_clicks_and_pixels_are_where_they_should_be :: proc(t: ^testing.T) {
 	b := session.get(s, "target")
 	testing.expect(t, session.near(session.pixel(img, int(session.center(b).x), int(session.center(b).y)), {0, 255, 0, 255}), "the box is where it says")
 	testing.expect(t, !session.near(session.pixel(img, int(b.rect.max.x) + 2, int(session.center(b).y)), {0, 255, 0, 255}), "and ends where it says")
-}
+}) }
 
 // Ctrl and the wheel, Ctrl + and Ctrl 0 zoom what the build says in logical pixels, and the fonts.
 @(test)
-the_zoom_is_a_scale_of_the_user_s :: proc(t: ^testing.T) {
+the_zoom_is_a_scale_of_the_user_s :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.text_size()})
 		ui.label("Words###text")
@@ -222,4 +223,4 @@ the_zoom_is_a_scale_of_the_user_s :: proc(t: ^testing.T) {
 	testing.expect_value(t, height_of(s, "text"), h)
 	session.wheel(s, {10, 10}, {0, 1}, {.Ctrl})
 	testing.expect(t, ui.zoom(s.state) != 1, "Ctrl and the wheel")
-}
+}) }

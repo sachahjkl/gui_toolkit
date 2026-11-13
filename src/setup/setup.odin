@@ -18,6 +18,7 @@ import "core:strings"
 import desktop "../desktop"
 import process "../process"
 import "../ui"
+import "../base"
 
 // What a program gives the setup.
 Config :: struct {
@@ -113,7 +114,8 @@ options :: proc(c: Config, choices: []bool = nil) -> (o: desktop.Options, record
 }
 
 // The state of the install, as the disk and the system say it (strings in temp memory).
-facts :: proc(c: Config, choices: []bool = nil) -> (f: Facts) {
+facts :: proc(c: Config, choices: []bool = nil, loc := #caller_location) -> (f: Facts) {
+	base.blocking("setup.facts", loc)
 	o, recorded := options(c, choices)
 	f.running = process.executable_path()
 	f.dir = o.install_dir

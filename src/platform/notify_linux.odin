@@ -13,6 +13,7 @@ package platform
 
 import "core:time"
 import "../dbus"
+import "../base"
 
 @(private) NOTIFY_SERVICE :: "org.freedesktop.Notifications"
 @(private) NOTIFY_PATH :: "/org/freedesktop/Notifications"
@@ -44,7 +45,8 @@ notify_supported :: proc() -> bool {
 	return ok
 }
 
-notify :: proc(w: ^Window, n: Notification) -> (id: Notification_Id, ok: bool) {
+notify :: proc(w: ^Window, n: Notification, loc := #caller_location) -> (id: Notification_Id, ok: bool) {
+	base.blocking("platform.notify", loc)
 	return notify_send(w, n, nil)
 }
 

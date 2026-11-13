@@ -6,13 +6,14 @@ package scenarios_test
 import "core:testing"
 import "../../src/font"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file")
 Words :: struct { sel: int }
 
 @(test)
-a_segmented_control_in_words :: proc(t: ^testing.T) {
+a_segmented_control_in_words :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	w: Words
 	s := session.start(t, {size = {360, 80}, user = &w, build = proc(s: ^session.Session) {
 		w := (^Words)(s.user)
@@ -33,4 +34,4 @@ a_segmented_control_in_words :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect_value(t, w.sel, 2)
 	testing.expect(t, session.find(s, "seg2").custom != nil && session.find(s, "seg0").custom == nil, "the underline went with it")
-}
+}) }

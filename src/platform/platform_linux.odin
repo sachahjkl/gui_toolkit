@@ -15,6 +15,7 @@ import "core:os"
 import "core:time"
 import "core:strings"
 import "core:sys/posix"
+import "../base"
 
 // The window state each backend keeps, behind one pointer so this struct stays free of Wayland and XCB types. The
 // backend allocates it in open_window and frees it in destroy_window.
@@ -738,7 +739,8 @@ off_drain :: proc(w: ^Window) {
 ////////////////////////////////
 // Plain-text clipboard (the rich clipboard is in clipboard_linux.odin). Both backends own their selection.
 
-get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
+get_clipboard :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> string {
+	base.blocking("platform.get_clipboard", loc)
 	if w == nil { return "" }
 	if w.offscreen { return clip_store_text(allocator) }
 	switch w.backend {

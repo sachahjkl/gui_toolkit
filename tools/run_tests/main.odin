@@ -63,7 +63,8 @@ STEPS := []Step{
 	{name = "arena", path = "src/arena"},
 	{name = "ascii", path = "src/ascii", oses = EVERYWHERE},
 	{name = "timefmt", path = "src/timefmt", oses = EVERYWHERE},
-	{name = "base", path = "src/base"},
+	{name = "tasks", path = "src/tasks", oses = EVERYWHERE},
+	{name = "base", path = "src/base", oses = EVERYWHERE},
 	{name = "cdp", path = "src/cdp", oses = EVERYWHERE},
 	{name = "site", path = "src/site", oses = EVERYWHERE},
 	{name = "config", path = "src/config", oses = EVERYWHERE},
@@ -130,7 +131,7 @@ STEPS := []Step{
 	{name = "tk"},
 	{name = "autoscroll", oses = EVERYWHERE},
 	// the interface, with no window
-	{name = "post", one = true},
+	{name = "post", one = true, oses = EVERYWHERE, text = true},
 	{name = "machines", one = true},
 	{name = "panes", one = true},
 	{name = "docking", one = true},
@@ -400,7 +401,7 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 	if o.check != "" {
 		append(&cmd, "odin", "check", s.path, "-vet", fmt.tprintf("-target:%s", o.check))
 		// (odin check has no test mode, so ODIN_TEST is false: the hooks a test build turns on, turned on by name)
-		if s.kind == .Test { append(&cmd, "-no-entry-point", "-define:FONT_FAILURE_HOOKS=true", "-define:DRAW_FAILURE_HOOKS=true") }
+		if s.kind == .Test { append(&cmd, "-no-entry-point", "-ignore-unused-defineables", "-define:FONT_FAILURE_HOOKS=true", "-define:DRAW_FAILURE_HOOKS=true") }
 		if s.one { append(&cmd, "-define:ODIN_TEST_THREADS=1") }
 		for d in s.defines { append(&cmd, fmt.tprintf("-define:%s", d)) }
 		for d in o.defines { append(&cmd, fmt.tprintf("-define:%s", d)) }

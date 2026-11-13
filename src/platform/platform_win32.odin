@@ -9,6 +9,7 @@ import "core:time"
 import "core:unicode/utf16"
 import "core:unicode"
 import win "core:sys/windows"
+import "../base"
 
 Native_Window :: struct {
 	hwnd:           win.HWND,
@@ -656,7 +657,8 @@ wake :: proc(w: ^Window) {
 	win.PostMessageW(w.hwnd, win.WM_NULL, 0, 0)
 }
 
-get_clipboard :: proc(w: ^Window, allocator := context.allocator) -> string {
+get_clipboard :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> string {
+	base.blocking("platform.get_clipboard", loc)
 	if w == nil { return "" }   // (no window: nothing to read through, as on Linux)
 	if w.offscreen { return clip_store_text(allocator) }
 	if !win.OpenClipboard(w.hwnd) { return "" }
@@ -713,7 +715,8 @@ wheel_lines :: proc(across := false) -> f32 {
 
 // Whether the user prefers dark apps (Settings > Personalization > Colors > "Choose your app mode"; the registry's
 // AppsUseLightTheme, 0: dark). Absent (older systems): light, Windows' own default.
-dark_mode_preferred :: proc() -> bool {
+dark_mode_preferred :: proc(loc := #caller_location) -> bool {
+	base.blocking("platform.dark_mode_preferred", loc)
 	v, size: win.DWORD = 1, size_of(win.DWORD)
 	key := win.utf8_to_wstring(`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`)
 	name := win.utf8_to_wstring("AppsUseLightTheme")

@@ -9,6 +9,7 @@ import "core:testing"
 import "../../src/qr"
 import "../../src/render"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") QR_WINDOW :: [2]int{320, 320}
@@ -57,7 +58,7 @@ expect_code :: proc(t: ^testing.T, s: ^session.Session, text: string, loc := #ca
 }
 
 @(test)
-a_qr_code_is_drawn_in_whole_pixels :: proc(t: ^testing.T) {
+a_qr_code_is_drawn_in_whole_pixels :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { text: string }
 	r := Run{"HELLO WORLD"}
 	s := session.start(t, {size = QR_WINDOW, user = &r, build = proc(s: ^session.Session) {
@@ -79,4 +80,4 @@ a_qr_code_is_drawn_in_whole_pixels :: proc(t: ^testing.T) {
 	testing.expect_value(t, render.damage_verify_differences(s.renderer), 0)
 	expect_code(t, s, QR_URL)
 	testing.expect_value(t, session.get(s, "qr").a11y.name, fmt.tprintf("QR code: %s", QR_URL))
-}
+}) }

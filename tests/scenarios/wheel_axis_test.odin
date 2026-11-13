@@ -5,6 +5,7 @@ package scenarios_test
 
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") PAGE :: [2]int{400, 300}
@@ -39,7 +40,7 @@ fmt_row :: proc(i: int) -> string {
 }
 
 @(test)
-the_wheel_goes_to_the_box_that_scrolls_its_way :: proc(t: ^testing.T) {
+the_wheel_goes_to_the_box_that_scrolls_its_way :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = PAGE, build = wheel_build})
 	session.frames(s, 3)
 	at := session.center(session.get(s, "table"))
@@ -51,4 +52,4 @@ the_wheel_goes_to_the_box_that_scrolls_its_way :: proc(t: ^testing.T) {
 	session.event(s, {kind = .Scroll, pos = at, delta = {0, 2}})
 	session.frames(s, 30)
 	testing.expect(t, session.get(s, "page").view_off.y > 0, "a vertical wheel over the table scrolls the page")
-}
+}) }

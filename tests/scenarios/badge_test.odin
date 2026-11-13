@@ -4,6 +4,7 @@ package scenarios_test
 
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file")
@@ -19,7 +20,7 @@ badged_build :: proc(s: ^session.Session) {
 }
 
 @(test)
-a_badge_shows_its_count_on_the_corner :: proc(t: ^testing.T) {
+a_badge_shows_its_count_on_the_corner :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := Badged{count = 3}
 	s := session.start(t, {size = {400, 300}, user = &r, no_renderer = true, build = badged_build})
 	pill := session.get(s, "badge_count")
@@ -38,4 +39,4 @@ a_badge_shows_its_count_on_the_corner :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "badge_count") == nil, "no badge at 0")
 	testing.expect(t, session.find(s, "badge") == nil)
-}
+}) }

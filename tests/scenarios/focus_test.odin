@@ -5,6 +5,7 @@ package scenarios_test
 
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file")
@@ -54,7 +55,7 @@ form_start :: proc(t: ^testing.T, loc := #caller_location) -> (^session.Session,
 }
 
 @(test)
-tab_goes_through_the_stops_in_order_and_round :: proc(t: ^testing.T) {
+tab_goes_through_the_stops_in_order_and_round :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, _ := form_start(t)
 	testing.expect_value(t, session.focused_name(s), "")
 	order := []string{"name", "mail", "agree", "save", "name"}
@@ -67,20 +68,20 @@ tab_goes_through_the_stops_in_order_and_round :: proc(t: ^testing.T) {
 	session.key(s, .Tab, {.Shift})
 	testing.expect_value(t, session.focused_name(s), "agree")
 	testing.expect(t, s.state.focus_visible, "the focus came from the keyboard: its ring shows")
-}
+}) }
 
 @(test)
-a_click_takes_the_focus_and_shows_no_ring :: proc(t: ^testing.T) {
+a_click_takes_the_focus_and_shows_no_ring :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, _ := form_start(t)
 	session.click(s, "mail")
 	testing.expect_value(t, session.focused_name(s), "mail")
 	testing.expect(t, !s.state.focus_visible, "the focus came from the mouse: no ring on what is not a field")
 	session.key(s, .Tab)
 	testing.expect_value(t, session.focused_name(s), "agree")
-}
+}) }
 
 @(test)
-a_disabled_button_is_no_stop_and_no_target :: proc(t: ^testing.T) {
+a_disabled_button_is_no_stop_and_no_target :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, f := form_start(t)
 	f.disabled = true
 	session.frame(s)
@@ -90,10 +91,10 @@ a_disabled_button_is_no_stop_and_no_target :: proc(t: ^testing.T) {
 	}
 	session.click(s, "save")
 	testing.expect_value(t, f.saves, 0)
-}
+}) }
 
 @(test)
-space_and_enter_press_what_has_the_focus :: proc(t: ^testing.T) {
+space_and_enter_press_what_has_the_focus :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, f := form_start(t)
 	session.key(s, .Tab, repeat = 3)
 	testing.expect_value(t, session.focused_name(s), "agree")
@@ -104,11 +105,11 @@ space_and_enter_press_what_has_the_focus :: proc(t: ^testing.T) {
 	testing.expect_value(t, f.saves, 1)
 	session.key(s, .Space)
 	testing.expect_value(t, f.saves, 2)
-}
+}) }
 
 // A field that goes takes the focus with it: Tab starts over, nothing is typed anywhere.
 @(test)
-the_focus_goes_with_its_box :: proc(t: ^testing.T) {
+the_focus_goes_with_its_box :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, f := form_start(t)
 	session.click(s, "mail")
 	session.type_text(s, "a")
@@ -118,11 +119,11 @@ the_focus_goes_with_its_box :: proc(t: ^testing.T) {
 	session.type_text(s, "b")
 	testing.expect_value(t, ui.field_string(&f.mail), "a")
 	testing.expect_value(t, ui.field_string(&f.name), "")
-}
+}) }
 
 // In a modal, Tab stays inside; Esc closes it; the page's stops come back.
 @(test)
-a_modal_keeps_tab_inside :: proc(t: ^testing.T) {
+a_modal_keeps_tab_inside :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, f := form_start(t)
 	session.click(s, "name")
 	f.modal = true
@@ -141,11 +142,11 @@ a_modal_keeps_tab_inside :: proc(t: ^testing.T) {
 	testing.expect(t, !f.agree, "the page is behind the dialog")
 	session.key(s, .Escape)
 	testing.expect(t, !f.modal, "Esc closes it")
-}
+}) }
 
 // Arrows move the focus through space between the widgets that do not use them.
 @(test)
-arrows_move_the_focus_through_space :: proc(t: ^testing.T) {
+arrows_move_the_focus_through_space :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, _ := form_start(t)
 	session.key(s, .Tab, repeat = 3)
 	testing.expect_value(t, session.focused_name(s), "agree")
@@ -153,4 +154,4 @@ arrows_move_the_focus_through_space :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.focused_name(s), "save")
 	session.key(s, .Up)
 	testing.expect_value(t, session.focused_name(s), "agree")
-}
+}) }

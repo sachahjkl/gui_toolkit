@@ -5,6 +5,7 @@ package scenarios_test
 
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{600, 500}
@@ -40,7 +41,7 @@ dialogs_build :: proc(s: ^session.Session) {
 
 // A dialog under another one is not opening again at each frame: what the top one's field was given, it keeps.
 @(test)
-a_field_of_the_top_dialog_keeps_the_keyboard :: proc(t: ^testing.T) {
+a_field_of_the_top_dialog_keeps_the_keyboard :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d := Dialogs{first = true, second = true}
 	defer { ui.field_destroy(&d.page); ui.field_destroy(&d.field) }
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
@@ -48,11 +49,11 @@ a_field_of_the_top_dialog_keeps_the_keyboard :: proc(t: ^testing.T) {
 	session.click(s, "field")
 	session.type_text(s, "hi")
 	testing.expect_value(t, ui.field_string(&d.field), "hi")
-}
+}) }
 
 // Tab goes round the dialog on top, not through the one under it.
 @(test)
-tab_stays_in_the_top_dialog :: proc(t: ^testing.T) {
+tab_stays_in_the_top_dialog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d := Dialogs{first = true, second = true}
 	defer { ui.field_destroy(&d.page); ui.field_destroy(&d.field) }
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
@@ -62,11 +63,11 @@ tab_stays_in_the_top_dialog :: proc(t: ^testing.T) {
 		session.key(s, .Tab)
 		testing.expect(t, s.state.focus_key != 0 && s.state.focus_key != below, "the focus is in the dialog on top")
 	}
-}
+}) }
 
 // What had the focus when a dialog opened has it again when it closes.
 @(test)
-a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) {
+a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d: Dialogs
 	defer { ui.field_destroy(&d.page); ui.field_destroy(&d.field) }
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
@@ -80,11 +81,11 @@ a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) {
 	testing.expect(t, !d.first, "Escape closed it")
 	session.type_text(s, "back")
 	testing.expect_value(t, ui.field_string(&d.page), "back")
-}
+}) }
 
 // The sweep that was due when the page went away is due no longer: the loop goes back to sleep.
 @(test)
-a_sweep_nobody_asks_for_lets_the_loop_sleep :: proc(t: ^testing.T) {
+a_sweep_nobody_asks_for_lets_the_loop_sleep :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { on_page: bool }
 	r := Run{on_page = true}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
@@ -99,11 +100,11 @@ a_sweep_nobody_asks_for_lets_the_loop_sleep :: proc(t: ^testing.T) {
 	r.on_page = false
 	for _ in 0 ..< SETTLE_FRAMES { session.frame(s) }
 	testing.expect(t, !ui.needs_frame(s.state), "nothing is waiting for it")
-}
+}) }
 
 // A double click takes the word, and a frame made while the button is still down does not put it back to a caret.
 @(test)
-a_word_stays_selected_while_the_button_is_held :: proc(t: ^testing.T) {
+a_word_stays_selected_while_the_button_is_held :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { f: ui.Text_Field }
 	r: Run
 	defer ui.field_destroy(&r.f)
@@ -122,11 +123,11 @@ a_word_stays_selected_while_the_button_is_held :: proc(t: ^testing.T) {
 	session.release(s, {at.x + 1, at.y})
 	testing.expect_value(t, min(r.f.cursor, r.f.mark), 0)
 	testing.expect_value(t, max(r.f.cursor, r.f.mark), len("hello"))
-}
+}) }
 
 // Enter on a focused slider is no press at the place of the pointer: what it shows stays what it was.
 @(test)
-a_key_on_a_slider_is_not_the_pointer :: proc(t: ^testing.T) {
+a_key_on_a_slider_is_not_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { v: f32 }
 	r := Run{v = 0.25}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
@@ -140,4 +141,4 @@ a_key_on_a_slider_is_not_the_pointer :: proc(t: ^testing.T) {
 	session.move(s, {b.rect.max.x - 2, session.center(b).y})
 	session.key(s, .Return)
 	testing.expect_value(t, r.v, before)
-}
+}) }

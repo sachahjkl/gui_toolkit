@@ -3,6 +3,7 @@ package fsx
 import "base:runtime"
 import "core:strings"
 import win "core:sys/windows"
+import "../base"
 
 @(private = "file")
 wide :: proc(s: string) -> win.LPCWSTR { return win.utf8_to_wstring(s, context.temp_allocator) }
@@ -33,14 +34,16 @@ replace :: proc(from, to: string, durable: bool) -> bool {
 	return bool(win.MoveFileExW(wide(from), wide(to), flags))
 }
 
-delete_file :: proc(path: string) -> bool {
+delete_file :: proc(path: string, loc := #caller_location) -> bool {
+	base.blocking("fsx.delete_file", loc)
 	if win.DeleteFileW(wide(path)) { return true }
 	e := win.GetLastError()
 	return e == win.ERROR_FILE_NOT_FOUND || e == win.ERROR_PATH_NOT_FOUND
 }
 
 // The stamp is the last write time (FILETIME, 100 ns since 1601).
-stat :: proc(path: string) -> (size: i64, stamp: i64, ok: bool) {
+stat :: proc(path: string, loc := #caller_location) -> (size: i64, stamp: i64, ok: bool) {
+	base.blocking("fsx.stat", loc)
 	data: win.WIN32_FILE_ATTRIBUTE_DATA
 	if !win.GetFileAttributesExW(wide(path), win.GetFileExInfoStandard, &data) { return 0, 0, false }
 	if data.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY != 0 { return 0, 0, false }
@@ -76,7 +79,8 @@ read_open :: proc(path: string, max_size: i64, allocator: runtime.Allocator) -> 
 	return nil, .Changed
 }
 
-read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {
+read_at :: proc(path: string, offset: i64, buf: []byte, loc := #caller_location) -> (n: int, ok: bool) {
+	base.blocking("fsx.read_at", loc)
 	h := win.CreateFileW(wide(path), win.GENERIC_READ, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_ATTRIBUTE_NORMAL, nil)
 	if h == win.INVALID_HANDLE_VALUE { return 0, false }
 	defer win.CloseHandle(h)
@@ -97,7 +101,8 @@ read_at :: proc(path: string, offset: i64, buf: []byte) -> (n: int, ok: bool) {
 	return n, true
 }
 
-make_dirs :: proc(dir: string) {
+make_dirs :: proc(dir: string, loc := #caller_location) {
+	base.blocking("fsx.make_dirs", loc)
 	// every level, from the root (CreateDirectory fails harmlessly on the ones that exist)
 	for i in 0 ..< len(dir) {
 		if (dir[i] == '\\' || dir[i] == '/') && i > 0 && dir[i - 1] != ':' { win.CreateDirectoryW(wide(dir[:i]), nil) }
@@ -105,7 +110,8 @@ make_dirs :: proc(dir: string) {
 	win.CreateDirectoryW(wide(dir), nil)
 }
 
-list_files :: proc(dir: string, allocator := context.temp_allocator) -> []Dir_File {
+list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #caller_location) -> []Dir_File {
+	base.blocking("fsx.list_files", loc)
 	out := make([dynamic]Dir_File, allocator)
 	fd: win.WIN32_FIND_DATAW
 	h := win.FindFirstFileW(wide(strings.concatenate({dir, "\\*"}, context.temp_allocator)), &fd)
@@ -124,7 +130,8 @@ list_files :: proc(dir: string, allocator := context.temp_allocator) -> []Dir_Fi
 	return out[:]
 }
 
-path_kind :: proc(path: string) -> Path_Kind {
+path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {
+	base.blocking("fsx.path_kind", loc)
 	attrs := win.GetFileAttributesW(wide(path))
 	if attrs == win.INVALID_FILE_ATTRIBUTES { return .Absent }
 	if attrs & win.FILE_ATTRIBUTE_REPARSE_POINT != 0 { return .Link }

@@ -7,6 +7,7 @@ import "../../src/draw"
 import "../../src/font"
 import "../../src/render"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{320, 200}
@@ -23,7 +24,7 @@ fixed_box :: proc(id: string, x, y, w, h: f32, bg: ui.Color, flags: ui.Box_Flags
 }
 
 @(test)
-boxes_are_where_they_are_in_their_order :: proc(t: ^testing.T) {
+boxes_are_where_they_are_in_their_order :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		fixed_box("###under", 10, 10, 50, 50, {1, 0, 0, 1})
 		fixed_box("###over", 30, 30, 50, 50, {0, 1, 0, 1})
@@ -33,10 +34,10 @@ boxes_are_where_they_are_in_their_order :: proc(t: ^testing.T) {
 	testing.expect(t, session.near(session.pixel(img, 40, 40), GREEN), "the later one over it")
 	testing.expect_value(t, session.count_color(img, {0, 0}, WINDOW, RED), 50 * 50 - 30 * 30)
 	testing.expect_value(t, session.count_color(img, {0, 0}, WINDOW, GREEN), 50 * 50)
-}
+}) }
 
 @(test)
-a_clip_cuts_what_is_inside :: proc(t: ^testing.T) {
+a_clip_cuts_what_is_inside :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(40), height = ui.px(40)})
 		if ui.column(flags = {.Clip}, id = "###clip") {
@@ -47,11 +48,11 @@ a_clip_cuts_what_is_inside :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.count_color(img, {0, 0}, WINDOW, BLUE), 40 * 40)
 	testing.expect(t, session.near(session.pixel(img, 59, 59), BLUE), "to its last pixel")
 	testing.expect(t, !session.near(session.pixel(img, 60, 60), BLUE), "and no further")
-}
+}) }
 
 // A corner's radius takes pixels out of a corner, and leaves its edges.
 @(test)
-a_rounded_box_has_no_corners :: proc(t: ^testing.T) {
+a_rounded_box_has_no_corners :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		fixed_box("###round", 20, 20, 60, 60, {1, 0, 0, 1}, radius = 20)
 	}})
@@ -61,10 +62,10 @@ a_rounded_box_has_no_corners :: proc(t: ^testing.T) {
 	testing.expect(t, session.near(session.pixel(img, 50, 50), RED), "the inside")
 	covered := session.count_color(img, {0, 0}, WINDOW, RED, 40)
 	testing.expect(t, covered < 60 * 60 && covered > 60 * 60 * 3 / 4, "about what a rounded square covers")
-}
+}) }
 
 @(test)
-a_box_s_transparency_lets_through_what_is_under_it :: proc(t: ^testing.T) {
+a_box_s_transparency_lets_through_what_is_under_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, palette = ui.palette_of("Midnight"), build = proc(s: ^session.Session) {
 		fixed_box("###white", 0, 0, 100, 100, {1, 1, 1, 1})
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(100), height = ui.px(100), bg = {0, 0, 0, 1}, transparency = 0.5})
@@ -73,11 +74,11 @@ a_box_s_transparency_lets_through_what_is_under_it :: proc(t: ^testing.T) {
 	c := session.pixel(session.capture(s), 50, 50)
 	testing.expect(t, c.r > 60 && c.r < 200, "between black and white")
 	testing.expect_value(t, c.a, 255)
-}
+}) }
 
 // Text draws ink in its box, in its colour, and more text draws more.
 @(test)
-text_is_drawn_in_its_box :: proc(t: ^testing.T) {
+text_is_drawn_in_its_box :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(200), height = ui.px(40), fg = {1, 1, 1, 1}, bg = {0, 0, 0, 1}})
 		ui.build_box({.Draw_Text, .Draw_Background}, "Hamburgefonts###words")
@@ -91,11 +92,11 @@ text_is_drawn_in_its_box :: proc(t: ^testing.T) {
 	testing.expect(t, letter > 10, "a letter has ink")
 	testing.expect(t, words > letter * 3, "more letters, more ink")
 	testing.expect(t, session.count_color(img, {10, 10}, {210, 50}, {255, 255, 255, 255}, 10) > 0, "white at its strongest")
-}
+}) }
 
 // Hover and press show at once, in the frame's colours; leaving brings the first back.
 @(test)
-a_button_shows_its_states :: proc(t: ^testing.T) {
+a_button_shows_its_states :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 40, fixed_y = 40, width = ui.px(120), height = ui.px(40)})
 		ui.button("###b")
@@ -112,11 +113,11 @@ a_button_shows_its_states :: proc(t: ^testing.T) {
 	session.release(s, p)
 	session.move(s, {f32(WINDOW.x - 1), f32(WINDOW.y - 1)})
 	testing.expect(t, session.near(session.pixel(session.capture(s), at.x, at.y), rest, 0), "it comes back")
-}
+}) }
 
 // A pattern with more tags wins; the same widget under a tag takes its colours; a change of the theme shows in the next frame.
 @(test)
-the_theme_goes_by_tags :: proc(t: ^testing.T) {
+the_theme_goes_by_tags :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(60), height = ui.px(40)})
 		ui.build_box({.Draw_Background}, "###plain")
@@ -137,11 +138,11 @@ the_theme_goes_by_tags :: proc(t: ^testing.T) {
 	ui.theme_set(theme, "special background", {0, 1, 0, 1})
 	session.advance(s, FADE_OVER_MS)
 	testing.expect(t, session.near(session.pixel(session.capture(s), 110, 20), GREEN), "a change shows")
-}
+}) }
 
 // Another palette cross-fades by the clock: the colours are between the two on the way, the new ones at the end. With no animations it jumps.
 @(test)
-a_palette_change_fades_by_the_clock :: proc(t: ^testing.T) {
+a_palette_change_fades_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, animations = true, palette = ui.palette_of("Midnight"), build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(60), height = ui.px(40)})
 		ui.build_box({.Draw_Background}, "###panel")
@@ -156,11 +157,11 @@ a_palette_change_fades_by_the_clock :: proc(t: ^testing.T) {
 	light := session.pixel(session.capture(s), 30, 20)
 	testing.expect(t, int(light.r) > int(dark.r), "a lighter palette")
 	testing.expect(t, int(between.r) > int(dark.r) && int(between.r) < int(light.r), "in between on the way")
-}
+}) }
 
 // Every palette names what the widgets ask for: nothing is drawn in the colour of a missing entry (magenta).
 @(test)
-every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) {
+every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { on: bool, value: f32, field: ui.Text_Field }
 	r: Run
 	defer ui.field_destroy(&r.field)
@@ -185,12 +186,12 @@ every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) {
 		session.advance(s, FADE_OVER_MS)
 		testing.expectf(t, session.count_color(session.capture(s), {0, 0}, {500, 300}, magenta, 8) == 0, "%s has them all", p.name)
 	}
-}
+}) }
 
 // A slider's track shows on the theme's "track" surface (a dialog's colour in some themes): at 0, its whole length is
 // the part that is off, and it is not the colour under it.
 @(test)
-a_sliders_track_shows_on_any_surface :: proc(t: ^testing.T) {
+a_sliders_track_shows_on_any_surface :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { value: f32 }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
@@ -206,11 +207,11 @@ a_sliders_track_shows_on_any_surface :: proc(t: ^testing.T) {
 	cy := int((b.rect.min.y + b.rect.max.y) * 0.5)
 	surface := session.pixel(img, x, int(b.rect.min.y) + 2)
 	testing.expect(t, !session.near(session.pixel(img, x, cy), surface, 8), "the track is not the surface's colour")
-}
+}) }
 
 // A cascade: each character from the first face that has it (no system font in this: both faces are compiled in).
 @(test)
-a_cascade_takes_each_character_from_its_face :: proc(t: ^testing.T) {
+a_cascade_takes_each_character_from_its_face :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	own := s.own
 	c := font.cascade(&own.fonts, {{font = own.mono_font, ranges = {{'0', '9'}}}, {font = own.ui_font}}, no_system_fallback = true)
@@ -220,11 +221,11 @@ a_cascade_takes_each_character_from_its_face :: proc(t: ^testing.T) {
 	digit := font.shape(&own.fonts, own.mono_font, 16, "1", {}, context.temp_allocator)
 	testing.expect_value(t, sh.glyphs[1].face, digit.glyphs[0].face)
 	testing.expect_value(t, sh.glyphs[1].id, digit.glyphs[0].id)
-}
+}) }
 
 // A character no face has: with no system fallback, the first face's "missing" glyph; with it, a face that has it, when the system has one.
 @(test)
-a_character_no_face_has :: proc(t: ^testing.T) {
+a_character_no_face_has :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	CJK :: "漢"
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	own := s.own
@@ -241,11 +242,11 @@ a_character_no_face_has :: proc(t: ^testing.T) {
 			testing.expect(t, with.glyphs[0].face != none.glyphs[0].face, "in another face")
 		}
 	}
-}
+}) }
 
 // A label through a cascade measures what its characters measure, whatever face each comes from.
 @(test)
-a_label_measures_its_cascade :: proc(t: ^testing.T) {
+a_label_measures_its_cascade :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Fonts :: struct { c: font.Font_Id }
 	f: Fonts
 	s := session.start(t, {size = WINDOW, user = &f, no_renderer = true, build = proc(s: ^session.Session) {
@@ -260,11 +261,11 @@ a_label_measures_its_cascade :: proc(t: ^testing.T) {
 	b := session.get(s, "mixed")
 	want := font.measure(&own.fonts, own.ui_font, b.font_size, "ab") + font.measure(&own.fonts, own.mono_font, b.font_size, "12")
 	testing.expectf(t, abs(b.text_dim.x - want) <= 2, "its width is its characters': %v and %v", b.text_dim.x, want)
-}
+}) }
 
 // Partial redraw through the session's renderer: a frame of a region changes the region and nothing else, and matches a whole frame.
 @(test)
-a_region_redraws_only_itself :: proc(t: ^testing.T) {
+a_region_redraws_only_itself :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { color: ui.Color, region: Maybe(draw.Rect) }
 	r := Run{color = {1, 0, 0, 1}}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
@@ -294,4 +295,4 @@ a_region_redraws_only_itself :: proc(t: ^testing.T) {
 	session.frame(s)
 	testing.expect_value(t, render.damage_verify_differences(s.renderer), 0)
 	testing.expect(t, session.near(session.pixel(session.capture(s), 200, 50), BLUE), "the whole region is drawn")
-}
+}) }

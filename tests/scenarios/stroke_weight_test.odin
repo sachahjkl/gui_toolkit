@@ -6,6 +6,7 @@ package scenarios_test
 import "core:testing"
 import "../../src/draw"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") RING :: draw.Rect{{20, 20}, {120, 80}}
@@ -14,7 +15,7 @@ import "../../src/ui"
 @(private = "file") STROKE :: draw.Color{0.05, 0.25, 0.05, 1}
 
 @(test)
-a_rings_corners_weigh_as_its_sides :: proc(t: ^testing.T) {
+a_rings_corners_weigh_as_its_sides :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {320, 120}, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(320), height = ui.px(120)})
 		ui.custom("###rings", proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
@@ -40,4 +41,4 @@ a_rings_corners_weigh_as_its_sides :: proc(t: ^testing.T) {
 	testing.expectf(t, f32(given) > f32(plain) * 1.15, "the corner with its backdrop is heavier: %d against %d", given, plain)
 	side, side_given := session.pixel(img, 70, 20), session.pixel(img, 70 + SHIFT, 20)
 	testing.expectf(t, session.near(side, side_given, 1), "the straight side the same: %v against %v", side, side_given)
-}
+}) }

@@ -7,6 +7,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:sync"
 import "core:time"
+import "../base"
 import "../draw"
 import "../font"
 import "../platform"
@@ -64,7 +65,8 @@ destroy :: proc(s: ^State) {
 	box_edits_clear(s)
 	delete(s.edits)
 	draw.damage_memory_destroy(&s.damage)
-	post_destroy(s)   // (first: the threads still posting get false from now on)
+	task_box_shut(s)  // (first: a task that ends from now on posts nothing to this State)
+	post_destroy(s)   // (then: the threads still posting get false from now on)
 	for _, b in s.boxes { free(b) }
 	for b in s.free_boxes { free(b) }
 	delete(s.boxes)
@@ -183,6 +185,7 @@ build_now_ms :: proc() -> f64 { return build_of != nil && build_of == current ? 
 inactive :: proc() -> bool { return current != nil && current.inactive }
 
 begin_build :: proc(s: ^State, p: Build_Params) {
+	base.interface_thread_mark()   // (from now on, a call of the toolkit that blocks on this thread is said: base.blocking)
 	// (a frame made from a message pumped during a build: a loop of the system such as TrackPopupMenu, a modal dialog)
 	assert(build_of == nil, "ui: begin_build inside another build")
 	build_of = s

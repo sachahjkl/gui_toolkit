@@ -24,6 +24,7 @@ package fsx
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "../base"
 
 // The most one system call is asked to read or write: a larger request is split.
 @(private)
@@ -53,7 +54,8 @@ Path_Kind :: enum u8 {
 // file, whatever takes its name meanwhile (write_atomic's renames). Two stats of the name could not say so: a file
 // replaced and replaced again within one tick of the clock had the size and the time of the first (Windows), and the
 // start of the larger one between came back.
-read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = READ_ALL_MAX_BYTES) -> ([]byte, bool) {
+read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = READ_ALL_MAX_BYTES, loc := #caller_location) -> ([]byte, bool) {
+	base.blocking("fsx.read_all", loc)
 	for _ in 0 ..< READ_ALL_TRIES {
 		buf, got := read_open(path, max_size, allocator)
 		switch got {
@@ -73,7 +75,8 @@ read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = R
 // writer has it: a crash leaves it behind, `<path>.<pid>.<thread>.tmp`. `flush`: on the disk when it returns; false then
 // may also mean the file was replaced but its directory could not be synced (replace). `private`: readable by its user
 // only (POSIX: mode 0600; Windows: the folder's access list, as any file).
-write_atomic :: proc(path: string, data: []byte, flush := false, private := false) -> bool {
+write_atomic :: proc(path: string, data: []byte, flush := false, private := false, loc := #caller_location) -> bool {
+	base.blocking("fsx.write_atomic", loc)
 	tmp := fmt.tprintf("%s.%d.%d.tmp", path, os.get_pid(), os.get_current_thread_id())
 	parts := [1][]byte{data}
 	if !write_parts(tmp, parts[:], flush, private) { delete_file(tmp); return false }
@@ -94,7 +97,8 @@ temp_dir :: proc(allocator := context.allocator) -> string {
 // it for a directory that is not empty, and the shell does not survive being called from a process under
 // AddressSanitizer once other threads have run. A junction or symbolic link to a directory is removed, never followed
 // (path_kind tells it apart, so its target is left alone). Absent: nothing to do. True when nothing is left.
-remove_tree :: proc(path: string) -> bool {
+remove_tree :: proc(path: string, loc := #caller_location) -> bool {
+	base.blocking("fsx.remove_tree", loc)
 	if path == "" { return true }
 	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 	if path_kind(path) == .Directory {

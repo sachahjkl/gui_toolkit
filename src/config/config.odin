@@ -30,6 +30,7 @@ import "core:path/filepath"
 import "core:strings"
 import "../ascii"
 import "../fsx"
+import "../base"
 
 Kind :: enum u8 { Bool, Int, Float, String }
 
@@ -453,14 +454,16 @@ serialize_user :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 // Writes `text` (from serialize_user) to `path`, on the disk when it returns. Atomic: a crash or a failure leaves the
 // previous file intact, and a failure no temporary file. Its folder is made when it is not there (the first save of a
 // program). It reads no registry state, so a worker thread may call it while the loop changes preferences.
-write_user_file :: proc(path: string, text: string) -> bool {
+write_user_file :: proc(path: string, text: string, loc := #caller_location) -> bool {
+	base.blocking("config.write_user_file", loc)
 	if dir := filepath.dir(path); dir != "" && dir != "." { fsx.make_dirs(dir) }
 	return fsx.write_atomic(path, transmute([]byte)text, flush = true)
 }
 
 // Both at once, on the calling thread: for a program whose preferences change rarely enough that a write on its loop
 // does not matter (a settings page's Save). A program that saves often serializes on its loop and writes on a worker.
-save_user :: proc(p: ^Prefs, path: string) -> bool {
+save_user :: proc(p: ^Prefs, path: string, loc := #caller_location) -> bool {
+	base.blocking("config.save_user", loc)
 	return write_user_file(path, serialize_user(p, context.temp_allocator))
 }
 
@@ -468,7 +471,8 @@ save_user :: proc(p: ^Prefs, path: string) -> bool {
 // layer's tag. Missing file = no changes. `applied` counts the lines accepted, including those waiting for their definition.
 // A line of the profile that its definition refuses is a problem, and stays in the profile (register). What was read is
 // not a change of user_version: the file has it.
-load_file :: proc(p: ^Prefs, path: string, source: Source) -> (applied: int, problems: [dynamic]string) {
+load_file :: proc(p: ^Prefs, path: string, source: Source, loc := #caller_location) -> (applied: int, problems: [dynamic]string) {
+	base.blocking("config.load_file", loc)
 	problems = make([dynamic]string, context.temp_allocator)
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return 0, problems }

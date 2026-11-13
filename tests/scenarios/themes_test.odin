@@ -8,6 +8,7 @@ package scenarios_test
 import "core:testing"
 import "../../src/draw"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 // The colours of a theme's palette entries, to compare two themes.
@@ -35,7 +36,7 @@ applied :: proc(p: ui.Palette, space: draw.Blend_Space) -> []ui.Color {
 }
 
 @(test)
-theme_show_applies_once_and_again_on_a_change :: proc(t: ^testing.T) {
+theme_show_applies_once_and_again_on_a_change :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	shown: ui.Theme_Shown
@@ -58,11 +59,11 @@ theme_show_applies_once_and_again_on_a_change :: proc(t: ^testing.T) {
 	testing.expect(t, ui.theme_show(&th, ui.THEMES[:], {name = "no such theme", mode = .Dark}, &shown, .Linear))
 	testing.expect_value(t, shown.def.name, ui.THEMES[0].name)
 	testing.expect(t, !ui.theme_show(&th, nil, choice, &shown, .Linear), "no theme to show")
-}
+}) }
 
 // A program that draws in sRGB gets the alphas of its translucent entries for sRGB, and a change of space applies again.
 @(test)
-theme_show_applies_for_the_blend_space :: proc(t: ^testing.T) {
+theme_show_applies_for_the_blend_space :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	shown: ui.Theme_Shown
@@ -78,11 +79,11 @@ theme_show_applies_for_the_blend_space :: proc(t: ^testing.T) {
 	testing.expect(t, ui.theme_show(&th, ui.THEMES[:], choice, &shown, .Linear), "another space applies")
 	testing.expect(t, same_colors(entry_colors(&th), linear), "the entries of the linear space")
 	testing.expect(t, th.serial != serial, "and bumps the serial")
-}
+}) }
 
 // The user edits the themes file and the program reads it again: the same name, other colours, and they show.
 @(test)
-theme_show_applies_a_definition_read_again :: proc(t: ^testing.T) {
+theme_show_applies_a_definition_read_again :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	shown: ui.Theme_Shown
@@ -96,11 +97,11 @@ theme_show_applies_a_definition_read_again :: proc(t: ^testing.T) {
 	testing.expect(t, ui.theme_show(&th, again[:], choice, &shown, .Linear), "the same name with other colours applies")
 	testing.expect_value(t, ui.theme_lookup(&th, {}, "background"), draw.hex(0x405060ff))
 	testing.expect(t, !ui.theme_show(&th, again[:], choice, &shown, .Linear), "and once")
-}
+}) }
 
 // The glow is part of the look: a change of it alone applies and bumps the serial.
 @(test)
-theme_show_applies_the_glow :: proc(t: ^testing.T) {
+theme_show_applies_the_glow :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	shown: ui.Theme_Shown
@@ -112,20 +113,20 @@ theme_show_applies_the_glow :: proc(t: ^testing.T) {
 	testing.expect(t, ui.theme_show(&th, ui.THEMES[:], choice, &shown, .Linear), "another glow applies")
 	testing.expect_value(t, th.glow, 1)
 	testing.expect(t, th.serial != serial, "and bumps the serial")
-}
+}) }
 
 @(test)
-modes_and_finishes_by_their_names :: proc(t: ^testing.T) {
+modes_and_finishes_by_their_names :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	for name, m in ui.THEME_MODE_NAMES { testing.expect_value(t, ui.theme_mode_of(name), m) }
 	testing.expect_value(t, ui.theme_mode_of("LIGHT"), ui.Theme_Mode.Light)
 	testing.expect_value(t, ui.theme_mode_of("sepia"), ui.Theme_Mode.System)
 	for name, f in ui.FINISH_NAMES { testing.expect_value(t, ui.finish_of(name), f) }
 	testing.expect_value(t, ui.finish_of("Machined"), ui.Finish.Machined)
 	testing.expect_value(t, ui.finish_of(""), ui.Finish.Flat)
-}
+}) }
 
 @(test)
-themes_read_reads_a_users_file :: proc(t: ^testing.T) {
+themes_read_reads_a_users_file :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	text := `accent = #ff0000
 # a comment
 ; another
@@ -162,10 +163,10 @@ dark.text = #eeeeee
 	testing.expect_value(t, derived.light.steps, nord.light.steps)
 	testing.expect_value(t, derived.dark.hues[0], nord.dark.hues[0])
 	testing.expect_value(t, derived.dark.texts[2], 0xeeeeeeff)
-}
+}) }
 
 @(test)
-theme_recolor_moves_a_programs_colours :: proc(t: ^testing.T) {
+theme_recolor_moves_a_programs_colours :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	// (Graphite's greys are neutral: a tinted grey is a mix of a hue, see THEME_GREY_SPREAD)
 	ref_def, _, _ := ui.theme_find(ui.THEMES[:], "Graphite")
 	nord, _, _ := ui.theme_find(ui.THEMES[:], "Nord")
@@ -179,7 +180,7 @@ theme_recolor_moves_a_programs_colours :: proc(t: ^testing.T) {
 	testing.expect(t, near_u32(ui.theme_recolor(&ref, nord.light, mine.steps[1]), nord.light.steps[1], 1), "the page to the light version's page")
 	// to its own theme, a colour stays
 	testing.expect(t, near_u32(ui.theme_recolor(&ref, mine, mine.hues[3]), mine.hues[3], 2), "to itself, the same")
-}
+}) }
 
 @(private = "file")
 near_u32 :: proc(a, b: u32, d: int) -> bool {
@@ -226,7 +227,7 @@ halo_changes :: proc(a, b: session.Image) -> (n: int) {
 }
 
 @(test)
-machined_halos_follow_the_glow :: proc(t: ^testing.T) {
+machined_halos_follow_the_glow :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := well_session(t, .Machined)
 	s.own.theme.glow = 0
 	session.frame(s)
@@ -235,10 +236,10 @@ machined_halos_follow_the_glow :: proc(t: ^testing.T) {
 	session.frame(s)
 	lit := session.capture(s)
 	testing.expect(t, halo_changes(dark, lit) > 0, "a focused well has a halo with the glow, none without")
-}
+}) }
 
 @(test)
-other_finishes_have_no_halo :: proc(t: ^testing.T) {
+other_finishes_have_no_halo :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := well_session(t, .Flat)
 	s.own.theme.glow = 0
 	session.frame(s)
@@ -247,22 +248,22 @@ other_finishes_have_no_halo :: proc(t: ^testing.T) {
 	session.frame(s)
 	b := session.capture(s)
 	testing.expect_value(t, halo_changes(a, b), 0)
-}
+}) }
 
 // The machined well is sunken: its inner shadow darkens its top, which the flat one draws in its plain colour.
 @(test)
-a_machined_well_is_sunken :: proc(t: ^testing.T) {
+a_machined_well_is_sunken :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	flat := session.capture(well_session(t, .Flat))
 	machined := session.capture(well_session(t, .Machined))
 	x, y := int(WELL.min.x + WELL.max.x) / 2, int(WELL.min.y) + 3
 	f, m := session.pixel(flat, x, y), session.pixel(machined, x, y)
 	testing.expectf(t, int(m.r) + int(m.g) + int(m.b) < int(f.r) + int(f.g) + int(f.b), "the top of the well, flat %v, machined %v", f, m)
-}
+}) }
 
 // A light palette keeps the machined finish: its reliefs take lighter shades and stronger lights (relief_shade_for,
 // relief_shine_for); on a dark one they are the alphas as written. The well stays sunken on paper.
 @(test)
-a_light_palette_keeps_the_reliefs :: proc(t: ^testing.T) {
+a_light_palette_keeps_the_reliefs :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	p := ui.palette_of("Midnight", light = true)
@@ -289,12 +290,12 @@ a_light_palette_keeps_the_reliefs :: proc(t: ^testing.T) {
 	x, y := int(WELL.min.x + WELL.max.x) / 2, int(WELL.min.y) + 3
 	f, m := session.pixel(flat, x, y), session.pixel(machined, x, y)
 	testing.expectf(t, int(m.r) + int(m.g) + int(m.b) < int(f.r) + int(f.g) + int(f.b), "on paper the well is sunken too: flat %v, machined %v", f, m)
-}
+}) }
 
 // A machined rule between two panes keeps its two lines, the dark one and the lit one under it: both are inside its box,
 // which the pane under it, drawn after, does not cover.
 @(test)
-a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) {
+a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	p := ui.palette_of("Midnight", false)
 	p.finish = .Machined
 	s := session.start(t, {size = MACHINED_WINDOW, palette = p, build = proc(s: ^session.Session) {
@@ -313,11 +314,11 @@ a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) {
 	dark, lit, pane := session.pixel(img, 100, 40), session.pixel(img, 100, 41), session.pixel(img, 100, 50)
 	testing.expectf(t, int(lit.r) > int(dark.r), "two lines: the dark %v, the lit %v", dark, lit)
 	testing.expectf(t, !session.near(lit, pane, 2), "the lit line %v is not under the pane %v", lit, pane)
-}
+}) }
 
 // The intents' buttons are soft: a deep fill of their hue on a dark page, words of that hue on it that read (AA).
 @(test)
-an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) {
+an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	th: ui.Theme
 	defer ui.theme_destroy(&th)
 	shown: ui.Theme_Shown
@@ -331,4 +332,4 @@ an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) {
 		testing.expectf(t, ui.contrast(words, fill) >= 4.5, "%s: its words read on it (%.2f)", pair[0], ui.contrast(words, fill))
 		testing.expectf(t, abs(ui.to_oklch(words)[2] - ui.to_oklch(hue)[2]) < 12, "%s: its words are of its hue", pair[0])
 	}
-}
+}) }

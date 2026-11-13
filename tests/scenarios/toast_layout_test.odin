@@ -6,6 +6,7 @@ package scenarios_test
 import "core:fmt"
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file")
@@ -15,7 +16,7 @@ LONG_BODY :: "Permission: bash git push origin release/0.44.0 --force-with-lease
 Toasts :: struct { fired: bool }
 
 @(test)
-a_toast_is_as_tall_as_its_words :: proc(t: ^testing.T) {
+a_toast_is_as_tall_as_its_words :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: Toasts
 	s := session.start(t, {size = {900, 500}, user = &r, build = proc(s: ^session.Session) {
 		r := (^Toasts)(s.user)
@@ -51,13 +52,13 @@ a_toast_is_as_tall_as_its_words :: proc(t: ^testing.T) {
 	a, b := short.rect, long.rect
 	testing.expect(t, a.max.y <= b.min.y + 0.5 || b.max.y <= a.min.y + 0.5, "one does not cover the other")
 	session.save_png(s, "toasts.png")
-}
+}) }
 
 // A toast's title is the bold of the family the program gave (ui.set_family: an embedded font's own bold), not a bold
 // simulated from the regular face: its strokes thickened by an algorithm, the bar of an e lost its join at small sizes.
 // (The monospaced face stands for the family's bold here: one that is not simulated, and not the regular.)
 @(test)
-a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) {
+a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Titled :: struct { fired: bool }
 	r: Titled
 	s := session.start(t, {size = {900, 400}, user = &r, build = proc(s: ^session.Session) {
@@ -78,4 +79,4 @@ a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) {
 	if !testing.expect(t, sec != nil && sec.first != nil, "the section's header") { return }
 	name := sec.first.next.next   // (its stripe, a space, then its name)
 	testing.expect(t, name != nil && name.font == s.state.mono_font, "the section's name in the family's bold")
-}
+}) }

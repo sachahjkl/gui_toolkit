@@ -7,18 +7,22 @@ package platform
 import "core:hash"
 import "core:strings"
 import win "core:sys/windows"
+import "../base"
 
-open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
+	base.blocking("platform.open_file_dialog", loc)
 	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_OPEN, d, allocator) }
 	return file_dialog_show(DIALOG_OPEN, d, allocator)
 }
 
-save_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+save_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
+	base.blocking("platform.save_file_dialog", loc)
 	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_SAVE, d, allocator) }
 	return file_dialog_show(DIALOG_SAVE, d, allocator)
 }
 
-pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
+	base.blocking("platform.pick_folder_dialog", loc)
 	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_FOLDER, d, allocator) }
 	return file_dialog_show(DIALOG_FOLDER, d, allocator)
 }
@@ -201,19 +205,22 @@ shell_execute :: proc(verb, file, params: string) -> bool {
 }
 
 // The system's handler of a URL (http(s), mailto...): the default browser, the mail client.
-open_url :: proc(url: string) -> bool {
+open_url :: proc(url: string, loc := #caller_location) -> bool {
+	base.blocking("platform.open_url", loc)
 	if url == "" { return false }
 	return shell_execute("open", url, "")
 }
 
 // A file or folder opened by the application of its type (a folder: the file manager).
-open_path :: proc(path: string) -> bool {
+open_path :: proc(path: string, loc := #caller_location) -> bool {
+	base.blocking("platform.open_path", loc)
 	if path == "" { return false }
 	return shell_execute("open", path, "")
 }
 
 // The file manager on the folder of `path`, with it selected.
-reveal_in_folder :: proc(path: string) -> bool {
+reveal_in_folder :: proc(path: string, loc := #caller_location) -> bool {
+	base.blocking("platform.reveal_in_folder", loc)
 	if path == "" { return false }
 	p, _ := strings.replace_all(path, "/", "\\", context.temp_allocator)
 	return shell_execute("open", "explorer.exe", strings.concatenate({"/select,\"", p, "\""}, context.temp_allocator))

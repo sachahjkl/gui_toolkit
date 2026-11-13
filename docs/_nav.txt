@@ -67,6 +67,7 @@ Frames and threads
   pacing.md           The cadence model
   frame_gate.md       The frame gate
   post.md             Calls from other threads
+  tasks.md            Work off the interface's thread
   locks.md            Locks
   arena.md            arena: lifetimes
   flate.md            flate: DEFLATE streams

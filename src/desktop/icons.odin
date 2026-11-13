@@ -5,6 +5,8 @@ package tk_desktop
 // size nearest to the one asked; PNG files decoded, SVG files rendered by librsvg); on Windows the shell's icon of the
 // path. See docs/desktop.md, "Icons".
 
+import "../base"
+
 
 // An icon: straight (not premultiplied) RGBA8, row by row from the top.
 File_Icon :: struct {
@@ -36,6 +38,7 @@ file_icon :: proc(path: string, folder: bool, size: int, choose := 0, allocator 
 // the theme, the themes it inherits, hicolor, then the pixmaps folder of each data directory. An absolute path is the
 // file itself (a PNG or an SVG). ok is false when there is none, and on systems other than Linux. It reads files: call it
 // once per name and size, or from a worker.
-theme_icon :: proc(name: string, size: int, allocator := context.allocator) -> (icon: File_Icon, ok: bool) {
+theme_icon :: proc(name: string, size: int, allocator := context.allocator, loc := #caller_location) -> (icon: File_Icon, ok: bool) {
+	base.blocking("desktop.theme_icon", loc)
 	return theme_icon_native(name, size, allocator)
 }

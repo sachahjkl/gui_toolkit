@@ -3,10 +3,11 @@ package scenarios_test
 import "core:strings"
 import "core:testing"
 import "../../src/ui"
+import "../../src/testkit/unwatched"
 
 // rich_links: the web addresses of plain text become link runs, without the marks that end the sentence around them.
 @(test)
-rich_links_finds_web_addresses :: proc(t: ^testing.T) {
+rich_links_finds_web_addresses :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Case :: struct { text: string, links: []string }
 	cases := []Case{
 		{"see https://sacha.house.", {"https://sacha.house"}},
@@ -34,4 +35,4 @@ rich_links_finds_web_addresses :: proc(t: ^testing.T) {
 		testing.expectf(t, len(got) == len(c.links), "%q: links %v, wanted %v", c.text, got[:], c.links)
 		for l, i in c.links { if i < len(got) { testing.expectf(t, got[i] == l, "%q: link %q, wanted %q", c.text, got[i], l) } }
 	}
-}
+}) }

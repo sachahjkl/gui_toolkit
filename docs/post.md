@@ -60,44 +60,7 @@ A `Block` push from the interface's own thread (a call that posts, on a full rin
 The queue itself is `ui.Post_Queue` (`post_queue_init`, `post_queue_push`, `post_queue_drain`...), usable without a
 State by a loop of its own. Tests: `tests/post`.
 
-## A reader on its own thread (`ui.Worker`)
+## Work off the interface's thread
 
-Something slow that the interface asks for again and again (a scan of every process's files, a D-Bus call that waits for
-polkit, a network file system that does not answer) runs on a thread of its own, a `Worker`. The interface asks for a
-run; the thread runs the job, which reads into a new result of its own and swaps it in under the worker's lock; the
-thread then wakes the window, which takes the result at its next frame.
-
-```odin
-job :: proc(w: ^ui.Worker) {                      // on the worker's thread
-	view := (^View)(w.user)
-	fresh := read_everything()                    // no lock while it reads
-	ui.worker_lock(w)
-	view.next, fresh = fresh, view.next           // swapped in
-	ui.worker_unlock(w)
-	free_reading(fresh)
-	ui.worker_published(w)                        // marks it, wakes the window
-}
-
-ui.worker_start(&view.worker, job, &view, win)   // the thread waits: nothing runs before the first ask
-ui.worker_ask(&view.worker)                       // in a build: the view is shown, F5 was pressed
-if ui.worker_take(&view.worker) {                 // once per published result
-	ui.worker_lock(&view.worker)
-	use(view.next)
-	ui.worker_unlock(&view.worker)
-}
-reading := ui.worker_busy(&view.worker)           // a run is asked or going on
-ui.worker_stop(&view.worker)                      // joins the thread
-```
-
-| Procedure | |
-|---|---|
-| `worker_start(w, job, user, win)` | starts the thread; `job` gets the worker (`w.user` is `user`); `win` is woken when a result is published (nil: none) |
-| `worker_ask(w)` | a run is wanted. Asks that come while a run goes on make one more run, not one each |
-| `worker_busy(w)` | a run is asked or going on |
-| `worker_take(w)` | true once per published result |
-| `worker_lock(w)`, `worker_unlock(w)` | the lock of what the job and the interface share |
-| `worker_published(w)` | called by the job, under no lock, once its result is swapped in |
-| `worker_stop(w)` | stops the thread and joins it (a run going on ends first) |
-
-One job runs at a time. The thread's temporary allocator is freed after each run. What the job reads (a unit to start,
-an option) is set under the lock before `worker_ask`. Test: `tests/post/worker_test.odin`.
+A thread that posts is most often a task of the program's chores: `ui.task(s, work, done, data)` runs `work` there and
+posts `done`; a reader asked again and again is a `tasks.Job`. Both are in [tasks.md](tasks.md).

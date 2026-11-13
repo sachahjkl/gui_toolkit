@@ -12,18 +12,22 @@ package platform
 import "base:runtime"
 import "core:strings"
 import "core:sys/posix"
+import "../base"
 
-open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
+	base.blocking("platform.open_file_dialog", loc)
 	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_OPEN, d, allocator) }
 	return file_dialog_spawn(DIALOG_OPEN, d, allocator)
 }
 
-save_file_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+save_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
+	base.blocking("platform.save_file_dialog", loc)
 	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_SAVE, d, allocator) }
 	return file_dialog_spawn(DIALOG_SAVE, d, allocator)
 }
 
-pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
+	base.blocking("platform.pick_folder_dialog", loc)
 	if dialog_test_hook != nil { return dialog_test_hook(DIALOG_FOLDER, d, allocator) }
 	return file_dialog_spawn(DIALOG_FOLDER, d, allocator)
 }
@@ -47,11 +51,13 @@ known_folder_path :: proc(k: Known_Folder, allocator := context.allocator) -> st
 	return strings.concatenate({home, "/", sub}, allocator)
 }
 
-open_url :: proc(url: string) -> bool {
+open_url :: proc(url: string, loc := #caller_location) -> bool {
+	base.blocking("platform.open_url", loc)
 	if portal_open_uri(url) { return true }   // the portal (OpenURI) first; xdg-open otherwise
 	return launch_detached({"xdg-open", url})
 }
-open_path :: proc(path: string) -> bool {
+open_path :: proc(path: string, loc := #caller_location) -> bool {
+	base.blocking("platform.open_path", loc)
 	uri := strings.concatenate({"file://", path}, context.temp_allocator)
 	if portal_open_uri(uri) { return true }
 	return launch_detached({"xdg-open", path})
@@ -60,7 +66,8 @@ open_path :: proc(path: string) -> bool {
 // Reveal a file in the file manager with it selected: the GTK file managers answer the D-Bus
 // org.freedesktop.FileManager1.ShowItems; without a D-Bus client here, open the containing folder (xdg-open on the
 // parent), which every desktop handles. Selecting the item itself is the portal's job, noted for later.
-reveal_in_folder :: proc(path: string) -> bool {
+reveal_in_folder :: proc(path: string, loc := #caller_location) -> bool {
+	base.blocking("platform.reveal_in_folder", loc)
 	dir := path
 	if i := strings.last_index_byte(path, '/'); i > 0 { dir = path[:i] }
 	return launch_detached({"xdg-open", dir})
@@ -185,7 +192,8 @@ have_program :: proc(name: string) -> bool {
 // output nowhere. True when the start itself succeeded: a program that is not there is not seen here. A shell in between
 // starts it in the background and ends at once: the program is the system's child from then on, and waiting for the
 // shell leaves no zombie.
-launch_detached :: proc(args: []string) -> bool {
+launch_detached :: proc(args: []string, loc := #caller_location) -> bool {
+	base.blocking("platform.launch_detached", loc)
 	SHELL_ARGS := [?]string{"sh", "-c", `"$@" >/dev/null 2>&1 </dev/null &`, "sh"}
 	argv := make([]cstring, len(SHELL_ARGS) + len(args) + 1, context.temp_allocator)
 	for a, i in SHELL_ARGS { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }

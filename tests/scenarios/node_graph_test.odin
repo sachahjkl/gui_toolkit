@@ -5,6 +5,7 @@ package scenarios_test
 import "core:math"
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") WINDOW :: [2]int{900, 520}
@@ -95,7 +96,7 @@ port_of :: proc(r: ^Run, i: int, side: ui.Graph_Port_Side, index: int) -> [2]f32
 near :: proc(a, b: [2]f32, eps: f32 = 0.5) -> bool { return abs(a.x - b.x) <= eps && abs(a.y - b.y) <= eps }
 
 @(test)
-a_node_dragged_moves_by_the_drag :: proc(t: ^testing.T) {
+a_node_dragged_moves_by_the_drag :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
@@ -106,10 +107,10 @@ a_node_dragged_moves_by_the_drag :: proc(t: ^testing.T) {
 	testing.expect(t, near(r.nodes[0].pos, {160, 130}), "the node is where it was dropped")
 	testing.expect_value(t, len(r.selected), 1)
 	testing.expect_value(t, r.nodes[1].pos, [2]f32{460, 80})
-}
+}) }
 
 @(test)
-two_ports_of_a_kind_link :: proc(t: ^testing.T) {
+two_ports_of_a_kind_link :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
@@ -117,10 +118,10 @@ two_ports_of_a_kind_link :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.linked, 1)
 	testing.expect_value(t, len(r.links), 1)
 	if len(r.links) == 1 { testing.expect_value(t, r.links[0], ui.Graph_Link{1, 1, 2, 2}) }
-}
+}) }
 
 @(test)
-a_link_between_kinds_is_refused :: proc(t: ^testing.T) {
+a_link_between_kinds_is_refused :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
@@ -129,10 +130,10 @@ a_link_between_kinds_is_refused :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(r.links), 0)
 	// (let go where no port takes it: the program may offer a node there)
 	testing.expect_value(t, r.dropped, 1)
-}
+}) }
 
 @(test)
-a_band_selects_the_nodes_it_touches :: proc(t: ^testing.T) {
+a_band_selects_the_nodes_it_touches :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
@@ -141,10 +142,10 @@ a_band_selects_the_nodes_it_touches :: proc(t: ^testing.T) {
 	// a click on nothing clears it
 	session.click_at(s, ui.graph_to_screen(&r.view, {20, 400}))
 	testing.expect_value(t, len(r.selected), 0)
-}
+}) }
 
 @(test)
-delete_removes_the_selection_and_its_links :: proc(t: ^testing.T) {
+delete_removes_the_selection_and_its_links :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	append(&r.links, ui.Graph_Link{1, 1, 2, 2})
@@ -155,10 +156,10 @@ delete_removes_the_selection_and_its_links :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.deleted, 1)
 	testing.expect_value(t, len(r.nodes), 1)
 	testing.expect_value(t, len(r.links), 0)
-}
+}) }
 
 @(test)
-the_zoom_keeps_the_point_under_the_pointer :: proc(t: ^testing.T) {
+the_zoom_keeps_the_point_under_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
@@ -172,10 +173,10 @@ the_zoom_keeps_the_point_under_the_pointer :: proc(t: ^testing.T) {
 	// the wheel without Ctrl moves the view
 	session.wheel(s, at, {0, 1})
 	testing.expect(t, r.view.offset.y < 0, "the wheel moves the view")
-}
+}) }
 
 @(test)
-fit_shows_every_node :: proc(t: ^testing.T) {
+fit_shows_every_node :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
 	defer run_destroy(&r)
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
@@ -190,4 +191,4 @@ fit_shows_every_node :: proc(t: ^testing.T) {
 		testing.expect(t, lo.x >= 0 && lo.y >= 0 && hi.x <= f32(WINDOW.x) && hi.y <= f32(WINDOW.y), "a node in view")
 	}
 	testing.expect(t, r.view.zoom <= 1 && !math.is_nan(r.view.zoom), "no closer than 1")
-}
+}) }

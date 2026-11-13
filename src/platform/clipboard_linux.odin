@@ -22,6 +22,7 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 import "core:sys/posix"
+import "../base"
 
 clipboard_sequence :: proc() -> u32 { return sync.atomic_load(&clip.seq) }
 
@@ -47,7 +48,8 @@ clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []
 	return out[:]
 }
 
-clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
+clipboard_get_image :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> (img: Clipboard_Image, ok: bool) {
+	base.blocking("platform.clipboard_get_image", loc)
 	if !clip_foreign_owner(w) { return clip_store_image(allocator) }   // our own image
 	// another process owns it: read its best image type over the selection
 	wanted := CLIPBOARD_IMAGE_MIMES
@@ -58,7 +60,8 @@ clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img:
 	return clipboard_image_decode(mime, b, allocator)
 }
 
-clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html, source_url: string, ok: bool) {
+clipboard_get_html :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> (html, source_url: string, ok: bool) {
+	base.blocking("platform.clipboard_get_html", loc)
 	sync.mutex_lock(&clip.mutex)
 	own_html := clip.html
 	owned := !clip_foreign_owner(w)
@@ -72,7 +75,8 @@ clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html,
 	return strings.clone(string(b), allocator), "", true
 }
 
-clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (paths: []string, ok: bool) {
+clipboard_get_files :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> (paths: []string, ok: bool) {
+	base.blocking("platform.clipboard_get_files", loc)
 	sync.mutex_lock(&clip.mutex)
 	owned := !clip_foreign_owner(w) && len(clip.files) > 0
 	own: []string

@@ -11,6 +11,7 @@ import "core:slice"
 import "core:strings"
 import "core:sync"
 import win "core:sys/windows"
+import "../base"
 
 @(private = "file") CLIPBOARD_FORMAT_NAME_MAX_CHARS :: 256
 @(private = "file") CLIPBOARD_OPEN_ATTEMPTS :: 5
@@ -56,7 +57,8 @@ clipboard_format_names :: proc(w: ^Window, allocator := context.allocator) -> []
 }
 
 // The clipboard's image, if any (allocator: the pixels; clipboard_image_destroy frees them).
-clipboard_get_image :: proc(w: ^Window, allocator := context.allocator) -> (img: Clipboard_Image, ok: bool) {
+clipboard_get_image :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> (img: Clipboard_Image, ok: bool) {
+	base.blocking("platform.clipboard_get_image", loc)
 	if clip_is_virtual(w) { return clip_store_image(allocator) }
 	if !open_clipboard(w) { return }
 	defer win.CloseClipboard()
@@ -94,7 +96,8 @@ clip_image_bytes :: proc(w: ^Window) -> (data: []u8, mime: string, ok: bool) {
 }
 
 // The clipboard's HTML: the fragment (UTF-8 markup) and the page it came from (allocator).
-clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html, source_url: string, ok: bool) {
+clipboard_get_html :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> (html, source_url: string, ok: bool) {
+	base.blocking("platform.clipboard_get_html", loc)
 	if clip_is_virtual(w) { return clip_store_html(allocator) }
 	if !open_clipboard(w) { return }
 	defer win.CloseClipboard()
@@ -107,7 +110,8 @@ clipboard_get_html :: proc(w: ^Window, allocator := context.allocator) -> (html,
 }
 
 // The files on the clipboard (copied in a file manager): absolute paths (allocator, each and the slice).
-clipboard_get_files :: proc(w: ^Window, allocator := context.allocator) -> (paths: []string, ok: bool) {
+clipboard_get_files :: proc(w: ^Window, allocator := context.allocator, loc := #caller_location) -> (paths: []string, ok: bool) {
+	base.blocking("platform.clipboard_get_files", loc)
 	if clip_is_virtual(w) { return clip_store_files(allocator) }
 	if !open_clipboard(w) { return }
 	defer win.CloseClipboard()

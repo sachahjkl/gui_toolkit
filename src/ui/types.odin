@@ -494,6 +494,7 @@ State :: struct {
 	posts_more:      bool,                  // the last drain left some: needs_frame
 	post_wake_own:   bool,                  // set_post_wake gave the app's own wake: Build_Params.window does not replace it
 	post_windows:    [dynamic]^platform.Window,   // the windows that hold the queue (they forget it at ui.destroy)
+	task_box:        ^Task_Box,   // where ui.task's results are posted, shut at ui.destroy (nil: no task asked yet)
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)
 	a11y:            A11y_Data,
 }

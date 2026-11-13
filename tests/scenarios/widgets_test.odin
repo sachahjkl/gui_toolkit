@@ -9,6 +9,7 @@ import "core:strings"
 import "core:testing"
 import "../../src/platform"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 import syntax "../../src/syntax"
 
@@ -26,7 +27,7 @@ import syntax "../../src/syntax"
 
 // A press on the saturation and value square gives the colour under it: right is more saturated, up is brighter. The hue strip goes from top to bottom.
 @(test)
-the_colour_pickers_take_a_press :: proc(t: ^testing.T) {
+the_colour_pickers_take_a_press :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { hue, sat, val: f32, changed: int }
 	r := Run{hue = 0.5, sat = 0.5, val = 0.5}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
@@ -54,11 +55,11 @@ the_colour_pickers_take_a_press :: proc(t: ^testing.T) {
 	testing.expect(t, session.near(black, {0, 0, 0, 255}, CORNER_TOLERANCE), "black at the bottom")
 	white := session.pixel(img, int(sv.rect.min.x) + 3, int(sv.rect.min.y) + 3)
 	testing.expect(t, session.near(white, {255, 255, 255, 255}, CORNER_TOLERANCE), "white at the top left")
-}
+}) }
 
 // A toast comes, in its place, says what it was given, and goes by the clock.
 @(test)
-a_toast_goes_by_the_clock :: proc(t: ^testing.T) {
+a_toast_goes_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { say, clear: bool }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -84,11 +85,11 @@ a_toast_goes_by_the_clock :: proc(t: ^testing.T) {
 	r.clear = true
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "Saved 3 files") == nil, "toasts_clear takes them")
-}
+}) }
 
 // A toast that says what can be done does it when clicked, once, and goes.
 @(test)
-a_toast_with_an_action_does_it_when_clicked :: proc(t: ^testing.T) {
+a_toast_with_an_action_does_it_when_clicked :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { say: bool, done: int }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -106,11 +107,11 @@ a_toast_with_an_action_does_it_when_clicked :: proc(t: ^testing.T) {
 	session.wait_idle(s)
 	testing.expect_value(t, r.done, 1)
 	testing.expect(t, session.find_text(s, "Version 2: click to install") == nil, "gone")
-}
+}) }
 
 // A popover stays open while the app builds it, by its anchor.
 @(test)
-a_popover_stands_by_its_anchor :: proc(t: ^testing.T) {
+a_popover_stands_by_its_anchor :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		anchor := ui.Rect{{200, 200}, {260, 230}}
 		if ui.popover("###pop", anchor, 150) {
@@ -123,11 +124,11 @@ a_popover_stands_by_its_anchor :: proc(t: ^testing.T) {
 	if !testing.expect(t, pop != nil, "its content") { return }
 	testing.expect(t, pop.rect.max.y <= 200, "above its anchor, by default")
 	testing.expect(t, session.find_text(s, "Frames") != nil, "with its rows")
-}
+}) }
 
 // What is built under tab_stops(false) can be clicked, and Tab goes over it.
 @(test)
-tab_stops_can_be_turned_off :: proc(t: ^testing.T) {
+tab_stops_can_be_turned_off :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.px(100)})
 		ui.button("A###a")
@@ -145,11 +146,11 @@ tab_stops_can_be_turned_off :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.tab_direction(s.state), 0)   // (only in the build right after the move)
 	session.click(s, "b")
 	testing.expect_value(t, session.focused_name(s), "b")
-}
+}) }
 
 // Density and the corners: what the settings of an application change.
 @(test)
-density_and_rounding_change_what_is_drawn :: proc(t: ^testing.T) {
+density_and_rounding_change_what_is_drawn :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({fixed_x = 40, fixed_y = 40, width = ui.px(100), height = ui.px(ui.dense(40)), radius = 20, bg = {1, 0, 0, 1}})
 		ui.build_box({.Draw_Background}, "###box")
@@ -164,11 +165,11 @@ density_and_rounding_change_what_is_drawn :: proc(t: ^testing.T) {
 	ui.set_rounding(s.state, 0)
 	session.frames(s, 2)
 	testing.expect(t, session.near(session.pixel(session.capture(s), 40, 40), {255, 0, 0, 255}), "with no rounding, a square one")
-}
+}) }
 
 // A virtual list: only what is in view is built; the program can take it elsewhere.
 @(test)
-a_virtual_list_is_scrolled_by_the_program :: proc(t: ^testing.T) {
+a_virtual_list_is_scrolled_by_the_program :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, first, built: int }
 	r := new(Run)
 	defer { ui.vlist_destroy(&r.st); free(r) }
@@ -197,12 +198,12 @@ a_virtual_list_is_scrolled_by_the_program :: proc(t: ^testing.T) {
 	ui.vlist_invalidate(&r.st)
 	session.wait_idle(s)
 	testing.expect(t, r.built > 0, "it measures again")
-}
+}) }
 
 // A virtual list of 100 000 rows: a build that changes nothing does no pass over the rows (its offsets are not made
 // again); new ids, by their content or by the program's version of them, make them again once.
 @(test)
-an_unchanged_long_list_is_not_walked :: proc(t: ^testing.T) {
+an_unchanged_long_list_is_not_walked :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { st: ui.Virtual_List, ids: []u64, version: u64 }
 	r := new(Run)
 	r.ids = make([]u64, LONG_LIST_ROWS)
@@ -235,11 +236,11 @@ an_unchanged_long_list_is_not_walked :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.st.offsets_made, made + 2)
 	session.frames(s, 3)
 	testing.expect_value(t, r.st.offsets_made, made + 2)
-}
+}) }
 
 // A dialog open over a list that has the keyboard holds its keys: Enter is the dialog's, the row behind is not opened.
 @(test)
-a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) {
+a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, asking, activated, moved: bool }
 	r := new(Run)
 	defer { ui.vlist_destroy(&r.st); free(r) }
@@ -270,11 +271,11 @@ a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) {
 	testing.expect(t, !r.activated, "Enter answered the dialog, not the row")
 	testing.expect_value(t, r.st.list.sel, sel)
 	testing.expect(t, !r.asking, "the dialog answered")
-}
+}) }
 
 // A list with no type-ahead leaves the letters typed for the program: its filter takes them though the list has the keyboard.
 @(test)
-a_list_with_no_typeahead_leaves_the_letters :: proc(t: ^testing.T) {
+a_list_with_no_typeahead_leaves_the_letters :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, filter: ui.Text_Field, field: ui.Key }
 	r := new(Run)
 	defer { ui.vlist_destroy(&r.st); ui.field_destroy(&r.filter); free(r) }
@@ -298,11 +299,11 @@ a_list_with_no_typeahead_leaves_the_letters :: proc(t: ^testing.T) {
 	session.type_text(s, "ro")
 	session.frames(s, 2)
 	testing.expect_value(t, ui.field_string(&r.filter), "ro")
-}
+}) }
 
 // Text selected outside a field, then taken away by the program.
 @(test)
-a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) {
+a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), flags = {.Selectable}})
 		ui.label("Some words to select###words")
@@ -314,12 +315,12 @@ a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) {
 	testing.expect(t, len(text) > 0, "it has text")
 	ui.clear_selection(s.state)
 	testing.expect(t, !ui.has_selection(s.state), "gone")
-}
+}) }
 
 // Text selected in a dialog is copied: Ctrl+C and Ctrl+Insert, which the selection reads outside the dialog's build, are its
 // while the dialog on top holds it. Text selected behind a dialog is not: the dialog holds the keys.
 @(test)
-text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) {
+text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { open, behind: bool }
 	r := Run{open = true}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -355,12 +356,12 @@ text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) {
 	session.set_clipboard(s, "")
 	session.key(s, .C, {.Ctrl})
 	testing.expect_value(t, session.clipboard(s), "")
-}
+}) }
 
 // What is in front at the pointer has it: a panel a later one covers is not under the pointer where it is covered, the one
 // in front is, and so is what is in a panel (its text) and what is around it where nothing else covers it.
 @(test)
-the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) {
+the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { back, front, label, around: bool }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -390,12 +391,12 @@ the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) {
 	testing.expect(t, !r.back && r.front, "the front panel")
 	at(s, {380, 280})  // (neither: only what is around them)
 	testing.expect(t, !r.back && !r.front && r.around, "what is around them")
-}
+}) }
 
 // A text area that scrolls itself has the toolkit's scroll bar: its thumb at rest is the one of a view that scrolls, in the
 // interface's greys in the machined finish (it had a look of its own, a tint of the text).
 @(test)
-a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) {
+a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { area: ui.Text_Area, view: ui.Rect }
 	r: Run
 	ui.area_set(&r.area, strings.repeat("a line of the text area\n", 60, context.temp_allocator))
@@ -429,13 +430,13 @@ a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expectf(t, found, "the area's thumb is the view's: %v", want)
-}
+}) }
 
 // A lazy column whose view jumps far in one build (a conversation just read, put at its bottom at once) builds the items that the
 // view shows in that very build: it placed them from the last layout's rect and the new offset together, off by the jump, and
 // the view showed only spaces for a frame.
 @(test)
-a_lazy_column_builds_where_its_view_jumped :: proc(t: ^testing.T) {
+a_lazy_column_builds_where_its_view_jumped :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { jump: bool, last_seen: bool }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -463,11 +464,11 @@ a_lazy_column_builds_where_its_view_jumped :: proc(t: ^testing.T) {
 	r.jump = true
 	session.frames(s, 1)
 	testing.expect(t, r.last_seen, "the build that jumped to the bottom built the last item")
-}
+}) }
 
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
-a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {
+a_menu_heading_is_not_an_item :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { chosen: string }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -484,12 +485,12 @@ a_menu_heading_is_not_an_item :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Section") != nil, "the heading shows")
 	session.key(s, .Return)
 	testing.expect_value(t, r.chosen, "first")
-}
+}) }
 
 // A menu that searches: typed letters keep the items that have them in order (a submenu's items come up), the first
 // match is selected; Backspace takes a letter back; Enter chooses it.
 @(test)
-a_menu_that_searches :: proc(t: ^testing.T) {
+a_menu_that_searches :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { chosen: string }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -519,12 +520,12 @@ a_menu_that_searches :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Rename") == nil, "the others went")
 	session.key(s, .Return)
 	testing.expect_value(t, r.chosen, "date")
-}
+}) }
 
 // A menu's search is a field: Ctrl+A and Backspace empty it, Ctrl+Backspace takes a word back, the caret moves. While
 // it filters the menu keeps its corner and its width (it ran from under the pointer, narrower at each letter).
 @(test)
-a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) {
+a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { chosen: string }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -564,12 +565,12 @@ a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "open") != nil, "the caret moved: a letter typed in the middle")
 	session.key(s, .Return)
 	testing.expect_value(t, r.chosen, "open")
-}
+}) }
 
 // A field in a panel opened as a menu (a vault's search): a click gives it the focus, what is typed goes into it, and the
 // menu stays open.
 @(test)
-a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) {
+a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { field: ui.Text_Field }
 	r: Run
 	defer ui.field_destroy(&r.field)
@@ -590,12 +591,12 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect_value(t, ui.field_string(&r.field), "abc")
 	testing.expect(t, ui.ctx_menu_any_open(), "the menu stays open")
-}
+}) }
 
 // A menu opened against the window's right edge (a burger menu) shows in its place from its first visible frame: its
 // rows learn their width a frame late, and it showed past the edge, then jumped back.
 @(test)
-a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) {
+a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {800, 600}, no_renderer = true, build = proc(s: ^session.Session) {
 		key := ui.key_from_string(0, "burger")
 		if s.frames == 2 { ui.ctx_menu_open_rect(key, {{760, 10}, {790, 40}}) }
@@ -616,11 +617,11 @@ a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) {
 		shown, seen = b.rect, true
 	}
 	testing.expect(t, seen, "the menu shows")
-}
+}) }
 
 // A list to choose from in a dialog: the pointer moving over a row selects it, a click chooses it.
 @(test)
-a_choice_follows_the_pointer :: proc(t: ^testing.T) {
+a_choice_follows_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { sel, chosen: int }
 	r := Run{chosen = -1}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -641,11 +642,11 @@ a_choice_follows_the_pointer :: proc(t: ^testing.T) {
 	session.frames(s, 1)
 	testing.expect_value(t, r.chosen, 1)
 	testing.expect_value(t, r.sel, 1)
-}
+}) }
 
 // A confirmation: Enter cancels an act that is not safe, the act's button acts; what it acts on is named, the rest counted.
 @(test)
-a_confirmation_answers :: proc(t: ^testing.T) {
+a_confirmation_answers :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { open, safe: bool, answer: ui.Confirm_Answer, answers: int }
 	r := Run{open = true}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -676,11 +677,11 @@ a_confirmation_answers :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect_value(t, r.answer, ui.Confirm_Answer.Cancelled)
 	testing.expect_value(t, r.answers, 3)
-}
+}) }
 
 // An empty state: its title, its note, a button for each action; a click answers its index.
 @(test)
-an_empty_state_offers_its_actions :: proc(t: ^testing.T) {
+an_empty_state_offers_its_actions :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { clicked: int }
 	r := Run{clicked = -1}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -694,11 +695,11 @@ an_empty_state_offers_its_actions :: proc(t: ^testing.T) {
 	if icon := session.find(s, "empty_icon"); icon != nil { testing.expectf(t, icon.font_size > ui.font_size() * 2, "its icon large (%v)", icon.font_size) } else { testing.expect(t, false, "its icon") }
 	session.click(s, "empty_action1")
 	testing.expect_value(t, r.clicked, 1)
-}
+}) }
 
 // key_take: the frame's first key press not taken yet, with its modifiers; a key a build took already is not given.
 @(test)
-the_first_key_not_taken_is_given :: proc(t: ^testing.T) {
+the_first_key_not_taken_is_given :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { key: platform.Key, mods: platform.Modifiers, ok: bool, enter_taken: bool }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -714,11 +715,11 @@ the_first_key_not_taken_is_given :: proc(t: ^testing.T) {
 	r = {}
 	session.key(s, .Return)
 	testing.expect(t, r.enter_taken && !r.ok, "taken by the build before: not given")
-}
+}) }
 
 // A call posted to a window runs in that window's next build, on its thread.
 @(test)
-a_call_posted_to_a_window_runs_in_its_next_build :: proc(t: ^testing.T) {
+a_call_posted_to_a_window_runs_in_its_next_build :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { calls: int, words: u64 }
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true})
@@ -734,11 +735,11 @@ a_call_posted_to_a_window_runs_in_its_next_build :: proc(t: ^testing.T) {
 	session.frame(s)
 	testing.expect_value(t, r.calls, 1)
 	testing.expect_value(t, r.words, 7)
-}
+}) }
 
 // A window's state on the virtual screen: what the system would do for a real one.
 @(test)
-an_offscreen_window_has_the_state_of_a_window :: proc(t: ^testing.T) {
+an_offscreen_window_has_the_state_of_a_window :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	w := s.win
 	testing.expect(t, !platform.is_minimized(w) && !platform.is_fullscreen(w) && !platform.is_maximized(w), "normal at first")
@@ -760,11 +761,11 @@ an_offscreen_window_has_the_state_of_a_window :: proc(t: ^testing.T) {
 	seen := false
 	for e in platform.poll_events(w, false) { if e.kind == .Close { seen = true } }
 	testing.expect(t, seen && platform.is_closed(w), "a close asked for comes as an event")
-}
+}) }
 
 // Every flavour of the process's clipboard, and nothing of the machine's.
 @(test)
-the_process_s_clipboard_keeps_every_flavour :: proc(t: ^testing.T) {
+the_process_s_clipboard_keeps_every_flavour :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	w := s.win
 	testing.expect(t, platform.clipboard_set_html(w, "<b>x</b>", "x", "https://a.example/"), "html and its text")
@@ -786,11 +787,11 @@ the_process_s_clipboard_keeps_every_flavour :: proc(t: ^testing.T) {
 	testing.expect(t, platform.clipboard_set_image(w, {rgba = px, size = {2, 1}}), "an image")
 	img, iok := platform.clipboard_get_image(w, context.temp_allocator)
 	testing.expect(t, iok && img.size == {2, 1} && img.rgba[4] == 0 && img.rgba[5] == 255 && img.rgba[7] == 128, "comes back whole")
-}
+}) }
 
 // A cut comes back with its files (a file manager's paste moves them); a plain set of files is a copy.
 @(test)
-files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) {
+files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	w := s.win
 	paths := []string{"C:/a.txt", "C:/b c.txt"}
@@ -802,11 +803,11 @@ files_cut_on_the_process_s_clipboard :: proc(t: ^testing.T) {
 	testing.expect(t, !platform.clipboard_files_cut(w), "said copied")
 	testing.expect(t, platform.clipboard_set(w, {text = "x", files_cut = true}), "text alone")
 	testing.expect(t, !platform.clipboard_files_cut(w), "no files, no cut")
-}
+}) }
 
 // An image asked for comes as its owner holds it, still encoded, and decodes off the interface's thread to its pixels.
 @(test)
-a_clipboard_image_comes_encoded :: proc(t: ^testing.T) {
+a_clipboard_image_comes_encoded :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	w := s.win
 	_ = platform.poll_events(w, false)   // (what the start queued)
@@ -824,12 +825,12 @@ a_clipboard_image_comes_encoded :: proc(t: ^testing.T) {
 		testing.expect(t, ok && img.size == {2, 1} && slice.equal(img.rgba, px), "its pixels")
 	}
 	testing.expect_value(t, answers, 1)
-}
+}) }
 
 // A read of the clipboard asked for returns at once: nothing is answered in the call, each request gets one answer at the
 // next poll_events, by its id, and none comes after. A reply injected (another program's clipboard, played) comes whole.
 @(test)
-a_clipboard_request_is_answered_at_the_next_poll :: proc(t: ^testing.T) {
+a_clipboard_request_is_answered_at_the_next_poll :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, no_renderer = true})
 	w := s.win
 	_ = platform.poll_events(w, false)   // (what the start queued)
@@ -878,7 +879,7 @@ a_clipboard_request_is_answered_at_the_next_poll :: proc(t: ^testing.T) {
 		if e.kind == .Clipboard_Data && e.clipboard.id == 99 { played = len(e.clipboard.files) == 1 && e.clipboard.files[0] == "/home/x/played.txt" && raw_data(e.clipboard.files[0]) != raw_data(name) }
 	}
 	testing.expect(t, played, "the injected answer, copied")
-}
+}) }
 
 ////////////////////////////////
 // hotkey_field
@@ -897,7 +898,7 @@ hotkey_session :: proc(t: ^testing.T) -> ^session.Session {
 
 // A click arms the field; the combination pressed is its value; a key named by the character it types is taken too.
 @(test)
-a_hotkey_field_records_the_keys_pressed :: proc(t: ^testing.T) {
+a_hotkey_field_records_the_keys_pressed :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := hotkey_session(t)
 	testing.expect(t, session.find_text(s, "Ctrl+V") != nil, "the value shows")
 	session.click(s, "keys")
@@ -915,11 +916,11 @@ a_hotkey_field_records_the_keys_pressed :: proc(t: ^testing.T) {
 	session.frame(s)
 	testing.expect_value(t, recorded, platform.Hotkey{mods = {.Ctrl, .Shift}, char = 'ù'})
 	testing.expect(t, session.find_text(s, "Ctrl+Shift+ù") != nil)
-}
+}) }
 
 // Super is a shortcut's modifier like the others: Super+S alone is a shortcut, recorded with its Super.
 @(test)
-a_hotkey_field_records_super :: proc(t: ^testing.T) {
+a_hotkey_field_records_super :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := hotkey_session(t)
 	session.click(s, "keys")
 	session.event(s, {kind = .Key_Press, key = .S, super = true})
@@ -928,25 +929,25 @@ a_hotkey_field_records_super :: proc(t: ^testing.T) {
 	testing.expect_value(t, recorded, platform.Hotkey{key = .S, super = true})
 	testing.expect(t, !ui.hotkey_recording(), "done")
 	testing.expect(t, session.find_text(s, platform.hotkey_text({key = .S, super = true})) != nil, "it shows")
-}
+}) }
 
 // Escape gives the recording up: the value stays.
 @(test)
-escape_gives_a_hotkey_recording_up :: proc(t: ^testing.T) {
+escape_gives_a_hotkey_recording_up :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := hotkey_session(t)
 	session.click(s, "keys")
 	session.key(s, .Escape)
 	testing.expect(t, !ui.hotkey_recording())
 	testing.expect_value(t, recorded, platform.Hotkey{key = .V, mods = {.Ctrl}})
 	testing.expect_value(t, recorded_changes, 0)
-}
+}) }
 
 ////////////////////////////////
 // code_runs
 
 // Code as runs: each class in its theme colour, the plain text between them as it was, the whole text kept.
 @(test)
-code_takes_the_theme_s_colours :: proc(t: ^testing.T) {
+code_takes_the_theme_s_colours :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { runs: [dynamic]ui.Rich_Run, keyword, str: ui.Color }
 	r: Run
 	defer delete(r.runs)
@@ -970,11 +971,11 @@ code_takes_the_theme_s_colours :: proc(t: ^testing.T) {
 	testing.expect(t, found_kw, "a keyword in code_keyword")
 	testing.expect(t, found_str, "a string in code_string")
 	testing.expect(t, r.keyword != r.str, "two colours")
-}
+}) }
 
 // A dialog holds the keys: code built outside it gets no Escape while it is open; inside, it does.
 @(test)
-a_dialog_holds_the_keys :: proc(t: ^testing.T) {
+a_dialog_holds_the_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { open: bool, outside, inside: bool }
 	r := Run{open = true}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -993,12 +994,12 @@ a_dialog_holds_the_keys :: proc(t: ^testing.T) {
 	testing.expect(t, !r.open, "Escape closes it")
 	session.key(s, .Escape)
 	testing.expect(t, r.outside, "closed: the page's again")
-}
+}) }
 
 // A dialog closed by its own button gives the keys back at once: the first key after the click is the page's, with no
 // frame between them (a dialog of the last build that closed in it holds none).
 @(test)
-a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) {
+a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { open: bool, outside: bool }
 	r := Run{open = true}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -1020,4 +1021,4 @@ a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) {
 	session.event(s, {kind = .Key_Press, key = .Escape})
 	session.frame(s)
 	testing.expect(t, r.outside, "the next key is the page's")
-}
+}) }

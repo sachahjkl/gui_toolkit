@@ -24,6 +24,7 @@ import "core:sync"
 import "core:time"
 import win "core:sys/windows"
 import winrt "../winrt"
+import "../base"
 
 @(private) NOTIFY_MESSAGE :: win.WM_APP + 0x3A3
 @(private = "file") TOAST_GROUP :: "gt"
@@ -274,7 +275,8 @@ notify_async :: proc(w: ^Window, n: Notification, done: Notify_Done = nil, user:
 	return true
 }
 
-notify :: proc(w: ^Window, n: Notification) -> (id: Notification_Id, ok: bool) {
+notify :: proc(w: ^Window, n: Notification, loc := #caller_location) -> (id: Notification_Id, ok: bool) {
+	base.blocking("platform.notify", loc)
 	if w == nil || !notify_open(w) { return 0, false }
 	s := &w.notify
 	xml := toast_xml(n, notify_icon_uri(n.icon_png))

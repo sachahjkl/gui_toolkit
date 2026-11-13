@@ -5,6 +5,7 @@ package scenarios_test
 import "core:fmt"
 import "core:testing"
 import "../../src/testkit/session"
+import "../../src/testkit/unwatched"
 import "../../src/ui"
 
 @(private = "file") VIEW_SIZE :: [2]f32{300, 200}
@@ -40,7 +41,7 @@ max_scroll :: proc(s: ^session.Session) -> f32 {
 }
 
 @(test)
-everything_fits_no_bar :: proc(t: ^testing.T) {
+everything_fits_no_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = FEW_ROWS}
 	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
 	_, _, ok := ui.scrollbar_rects(session.get(s, "view"))
@@ -52,10 +53,10 @@ everything_fits_no_bar :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	_, _, ok = ui.scrollbar_rects(session.get(s, "view"))
 	testing.expect(t, ok, "fifty do not")
-}
+}) }
 
 @(test)
-the_wheel_scrolls_and_stops_at_the_ends :: proc(t: ^testing.T) {
+the_wheel_scrolls_and_stops_at_the_ends :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS}
 	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
 	mid := session.center(session.get(s, "view"))
@@ -72,10 +73,10 @@ the_wheel_scrolls_and_stops_at_the_ends :: proc(t: ^testing.T) {
 	session.wheel(s, mid, {0, -ROWS})
 	session.wait_idle(s)
 	testing.expect_value(t, session.get(s, "view").view_off.y, 0)
-}
+}) }
 
 @(test)
-the_thumb_follows_the_pointer :: proc(t: ^testing.T) {
+the_thumb_follows_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS}
 	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
 	track, thumb, ok := ui.scrollbar_rects(session.get(s, "view"))
@@ -91,11 +92,11 @@ the_thumb_follows_the_pointer :: proc(t: ^testing.T) {
 	grab = (thumb.min.y + thumb.max.y) * 0.5
 	session.drag(s, {x, grab}, {x, grab + span * 4})
 	testing.expect_value(t, session.get(s, "view").view_off.y, max_scroll(s))
-}
+}) }
 
 // A press on the track centres the thumb there.
 @(test)
-a_press_on_the_track_goes_there :: proc(t: ^testing.T) {
+a_press_on_the_track_goes_there :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS}
 	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
 	track, thumb, _ := ui.scrollbar_rects(session.get(s, "view"))
@@ -105,11 +106,11 @@ a_press_on_the_track_goes_there :: proc(t: ^testing.T) {
 	session.release(s, {x, y})
 	session.wait_idle(s)
 	testing.expect(t, session.get(s, "view").view_off.y > max_scroll(s) * 0.5, "towards the end")
-}
+}) }
 
 // What is under the pointer at a row of the view after a scroll: the row that is drawn there, not the one that was.
 @(test)
-a_click_lands_on_what_scrolled_there :: proc(t: ^testing.T) {
+a_click_lands_on_what_scrolled_there :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS}
 	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
 	mid := session.center(session.get(s, "view"))
@@ -121,11 +122,11 @@ a_click_lands_on_what_scrolled_there :: proc(t: ^testing.T) {
 	testing.expect(t, r.rect.min.y >= b.rect.min.y && r.rect.max.y <= b.rect.max.y, "that row is in view")
 	off_screen := session.find(s, fmt.tprintf("row%d", 0))
 	testing.expect(t, off_screen == nil || off_screen.rect.max.y <= b.rect.min.y, "the first is above the view")
-}
+}) }
 
 // Auto-hide: no bar at rest, the bar while the pointer is over the box, gone by the clock when it leaves; still there to grab.
 @(test)
-an_autohide_bar_comes_and_goes_with_the_pointer :: proc(t: ^testing.T) {
+an_autohide_bar_comes_and_goes_with_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS, autohide = true}
 	s := session.start(t, {build = scroller_build, user = &sc, animations = true})
 	session.wait_idle(s)
@@ -153,11 +154,11 @@ an_autohide_bar_comes_and_goes_with_the_pointer :: proc(t: ^testing.T) {
 	session.drag(s, {x, y}, {x, y + 60})
 	session.wait_idle(s)
 	testing.expect(t, session.get(s, "view").view_off.y > 0, "the thumb is grabbed")
-}
+}) }
 
 // Scrolled by something other than the pointer: its bar shows for a moment, wherever the pointer is, and goes by the clock.
 @(test)
-an_autohide_bar_reveals_itself_for_a_moment :: proc(t: ^testing.T) {
+an_autohide_bar_reveals_itself_for_a_moment :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS, autohide = true}
 	s := session.start(t, {build = scroller_build, user = &sc, animations = true, no_renderer = true})
 	session.wait_idle(s)
@@ -167,11 +168,11 @@ an_autohide_bar_reveals_itself_for_a_moment :: proc(t: ^testing.T) {
 	session.advance(s, HIDE_WAIT_MS)
 	session.wait_idle(s)
 	testing.expect_value(t, ui.scrollbar_opacity(s.state, session.get(s, "view")), 0)
-}
+}) }
 
 // Without auto-hide it always shows, and a window made taller lets the content fit: the bar goes, the offset with it.
 @(test)
-a_bar_follows_the_box_s_size :: proc(t: ^testing.T) {
+a_bar_follows_the_box_s_size :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = FEW_ROWS * 4}
 	s := session.start(t, {user = &sc, no_renderer = true, build = proc(s: ^session.Session) {
 		sc := (^Scroller)(s.user)
@@ -192,12 +193,12 @@ a_bar_follows_the_box_s_size :: proc(t: ^testing.T) {
 	_, _, ok := ui.scrollbar_rects(session.get(s, "view"))
 	testing.expect(t, !ok, "it all fits now")
 	testing.expect_value(t, session.get(s, "view").view_off.y, 0)
-}
+}) }
 
 // Arrow buttons (set_scrollbar_arrows): none by default; on, they take the ends of the bar from its track; a click on one
 // scrolls a step, held it repeats by the clock and stops when let go.
 @(test)
-arrow_buttons_step_and_repeat :: proc(t: ^testing.T) {
+arrow_buttons_step_and_repeat :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS}
 	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
 	_, _, ok := ui.scrollbar_arrow_rects(session.get(s, "view"))
@@ -230,4 +231,4 @@ arrow_buttons_step_and_repeat :: proc(t: ^testing.T) {
 	session.click_at(s, (start.min + start.max) * 0.5)
 	session.wait_idle(s)
 	testing.expect_value(t, session.get(s, "view").view_off.y, held - step)
-}
+}) }
