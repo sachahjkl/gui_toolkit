@@ -37,3 +37,10 @@ the_runtime_folder_is_the_sessions :: proc(t: ^testing.T) {
 	os.unset_env("XDG_RUNTIME_DIR")
 	testing.expect(t, user_dir(.Runtime, "", context.temp_allocator) != "", "a temporary folder without it")
 }
+
+// The system's language from the POSIX locale: its tag; C is none.
+@(test)
+the_language_of_the_locale :: proc(t: ^testing.T) {
+	testing.expect_value(t, locale_tag("fr_FR.UTF-8@euro", context.temp_allocator), "fr-FR")
+	testing.expect_value(t, locale_tag("de", context.temp_allocator), "de")
+}

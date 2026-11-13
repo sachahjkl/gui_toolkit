@@ -52,6 +52,7 @@ Def :: struct {
 	min, max:    f64,         // Int / Float bounds, only when `bounded`
 	bounded:     bool,
 	choices:     []string,    // String: the allowed values (empty = free text)
+	choice_labels: []string,  // how each of choices reads, in their order (nil: the value, its first letter upper case)
 	unit:        string,      // shown by about:config: "ms", "bytes", ...
 	restart:     bool,        // takes effect at the next start
 	bytes:       bool,        // Int: accepts K / M / G suffixes when typed

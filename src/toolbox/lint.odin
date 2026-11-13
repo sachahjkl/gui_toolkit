@@ -4,6 +4,7 @@ package tk_toolbox
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 
 // The toolkit's ui package, beside this one: where its scopes are read.
@@ -75,8 +76,9 @@ check_scopes :: proc(src_dir: string, ui_dir := UI_DIR_DEFAULT) -> bool {
 	return ok
 }
 
-// The .odin files under `dir`, its folders' too.
-@(private = "file")
+// The .odin files under `dir`, its folders' too, in the order of their paths (a file written from them is the same at
+// each run).
+@(private)
 odin_files :: proc(dir: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	w := os.walker_create_path(dir)
@@ -84,5 +86,6 @@ odin_files :: proc(dir: string) -> []string {
 	for fi in os.walker_walk(&w) {
 		if fi.type != .Directory && strings.has_suffix(fi.name, ".odin") { append(&out, strings.clone(fi.fullpath, context.temp_allocator)) }
 	}
+	slice.sort(out[:])
 	return out[:]
 }

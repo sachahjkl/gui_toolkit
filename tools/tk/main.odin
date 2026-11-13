@@ -50,6 +50,7 @@
 //                                             examples/whatsnew in every named palette, no window -> build/theme_shots
 //   timeline_test [-exe:file] [-out:dir] [-port:9477]
 //                                             the timelines of src/cdp against examples/whatsnew --headless over a real socket
+//   i18n <language> [-check]                  src/i18n/lang/<language>.txt from the tr calls of src (docs/i18n.md)
 //   doc_check [--root folder] [--extra folder]...
 //                                             the files, flags and names the documentation cites exist (doc_check.odin)
 //   release <patch|minor|major|x.y.z> [-summary:text] [-no-push]
@@ -101,7 +102,11 @@ COMMANDS := []toolbox.Command {
 
 // (each command's work says why it fails; done turns that into the exit code and says it as "tk <command>: why")
 main :: proc() {
-	toolbox.tool_main("tk", COMMANDS[:])
+	commands := make([dynamic]toolbox.Command)
+	append(&commands, ..COMMANDS[:])
+	// (the toolkit's own texts: src/i18n/lang, embedded in every program by i18n.TOOLKIT_CATALOGS)
+	append(&commands, toolbox.i18n_command({dirs = {"src"}, folder = "src/i18n/lang"}))
+	toolbox.tool_main("tk", commands[:])
 }
 
 // The toolkit's checkout: two folders above this file.

@@ -15,11 +15,14 @@ package tk_prefs_page
 //	ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 
 import "core:fmt"
+import "core:log"
 import "core:math"
 import "core:strconv"
 import "core:strings"
 import config "../config"
 import "../font"
+import i18n "../i18n"
+import "../platform"
 import "../render"
 import shortcuts "../shortcuts"
 import "../ui"
@@ -118,6 +121,10 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) UPDATE_TAGS := [?]string{"upgrade", "version", "release"}
 @(private = "file", rodata) VSYNC_TAGS := [?]string{"vsync", "tearing", "latency", "fps"}
 @(private = "file", rodata) LANGUAGE_TAGS := [?]string{"locale", "translation", "language"}
+// English, then each language of the toolkit's catalogues (i18n.TOOLKIT_CATALOGS), by their own names: one reads the name
+// of one's language in it
+@(private = "file", rodata) LANGUAGE_CHOICES := [?]string{"system", "en", "fr"}
+@(private = "file", rodata) LANGUAGE_LABELS := [?]string{"System", "English", "Français"}
 
 // The order of the standard groups among a program's own (theirs are 0): the session and the look first, the technical
 // ones last.
@@ -168,8 +175,8 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		})
 		append(&defs, config.Def{
 			name = LANGUAGE_PREF, title = "Language", kind = .String, default = {s = "system"}, restart = true,
-			description = "The language of the interface, as a language tag (\"fr\", \"en-GB\"). System: the system's.",
-			tags = LANGUAGE_TAGS[:],
+			description = "The language of the interface. System: the system's, English where the program has no text in it.",
+			choices = LANGUAGE_CHOICES[:], choice_labels = LANGUAGE_LABELS[:], tags = LANGUAGE_TAGS[:],
 		})
 	}
 	if .Appearance in sets {
@@ -571,6 +578,19 @@ messages_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
 	r := config.ref_of(prefs, MESSAGES_PREF)
 	if r == config.NO_REF { return .System }
 	return ui.announce_mode_of(config.get_string(prefs, r))
+}
+
+// The language of general.language ("system": the system's) made from the toolkit's catalogue and the program's, in use
+// from now on (English: no language). At the start, after the settings are read and before the first build: the setting
+// takes effect at the next start. `tag`: the language asked for; a line a catalogue could not read is logged.
+language_start :: proc(prefs: ^config.Prefs, program: []i18n.Catalog) -> (tag: string) {
+	tag = "system"
+	if r := config.ref_of(prefs, LANGUAGE_PREF); r != config.NO_REF { tag = config.get_string(prefs, r) }
+	if tag == "system" { tag = platform.system_language(context.temp_allocator) }
+	l, bad := i18n.load(tag, program)
+	for b in bad { log.warnf("a catalogue of %s: %s", tag, b) }
+	i18n.use(l)
+	return
 }
 
 // The look, as a program applies it.

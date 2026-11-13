@@ -56,6 +56,10 @@ tr_count :: proc "contextless" (count: int, one: string, other: string) -> strin
 	return one if count == 1 else other
 }
 
+// A text translated later, where it is shown (`tr(def.title)`): the English as it is, marked for the catalogue's tool.
+// For a text kept before the language is known (a setting's title, registered before the settings are read).
+later :: #force_inline proc "contextless" (text: string) -> string { return text }
+
 ////////////////////////////////
 // The language in use
 

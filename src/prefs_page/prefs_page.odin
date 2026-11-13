@@ -874,6 +874,7 @@ themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
 @(private = "file")
 choices_of :: proc(o: Options, e: ^config.Entry) -> (labels, values: []string) {
 	if len(e.def.choices) > 0 {
+		if len(e.def.choice_labels) == len(e.def.choices) { return e.def.choice_labels, e.def.choices }
 		out := make([]string, len(e.def.choices), context.temp_allocator)
 		for c, i in e.def.choices { out[i] = capitalised(c) }
 		return out, e.def.choices

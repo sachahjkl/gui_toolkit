@@ -31,15 +31,16 @@ TOOLKIT_CATALOGS :: [?]Catalog{
 	{"fr", #load("lang/fr.txt", string)},
 }
 
-// The language of `tag` ("fr", "fr-CA", "fr_FR.UTF-8") made from the toolkit's catalogue and the program's of its primary
-// subtag, in one table; nil when it is English or no catalogue has it. `bad`: the lines no catalogue could read, as
+// The language of `tag` ("fr", "fr-CA", "fr_FR.UTF-8") made from the toolkit's catalogue (unless `with_toolkit` is false:
+// a tool reading one file) and the program's of its primary subtag, in one table; nil when it is English or no catalogue
+// has it. `bad`: the lines no catalogue could read, as
 // "<line>: <why>" (a catalogue in the repository is checked by the tool: this is said, not fatal). Allocated in
 // `allocator` and never freed while the program runs (use).
-load :: proc(tag: string, program: []Catalog, allocator := context.allocator) -> (l: ^Language, bad: []string) {
+load :: proc(tag: string, program: []Catalog, with_toolkit := true, allocator := context.allocator) -> (l: ^Language, bad: []string) {
 	primary := primary_of(tag)
 	if primary == "" || primary == "en" { return nil, nil }
 	texts := make([dynamic]string, context.temp_allocator)
-	for c in TOOLKIT_CATALOGS { if c.language == primary { append(&texts, c.text) } }
+	if with_toolkit { for c in TOOLKIT_CATALOGS { if c.language == primary { append(&texts, c.text) } } }
 	for c in program { if c.language == primary { append(&texts, c.text) } }
 	if len(texts) == 0 { return nil, nil }
 	l = new(Language, allocator)
