@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.245.0] - 2026-11-13
+
+### Fixed
+- **A menu opens in its place**: a menu against the window's right edge (a burger menu) showed for one frame past the edge at its first width, then jumped to its place; it is placed at the width it is built with from its first visible frame.
+
 ## [0.244.0] - 2026-11-13
 
 ### Fixed
@@ -3129,6 +3134,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.245.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.245.0
 [0.244.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.244.0
 [0.243.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.243.0
 [0.242.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.242.0
