@@ -624,6 +624,14 @@ inject_event :: proc(w: ^Window, e: Event) {
 	if w.offscreen && w.off_event != nil { win.SetEvent(w.off_event) }   // wake an offscreen loop waiting in wait_event
 }
 
+// Blocks until an event is pending for any of `ws` or `timeout_ms` elapsed (0 = no timeout). The thread's message queue
+// is every window's: what is left is the events already read for one of them.
+wait_event_any :: proc(ws: []^Window, timeout_ms := 0) {
+	if len(ws) == 0 { return }
+	for w in ws { if len(w.events) > w.returned || len(w.injected) > 0 || w.paint_requested { return } }
+	wait_event(ws[0], timeout_ms)
+}
+
 // Blocks until a message is pending or `timeout_ms` elapsed (0 = no timeout). Does not consume anything: follow
 // with render.wait_for_frame, then poll_events(w, false), so the frame is built from the freshest input.
 wait_event :: proc(w: ^Window, timeout_ms := 0) {

@@ -395,15 +395,16 @@ hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
 	return
 }
 
-// Before a round of frames: sleeps until one is due. 0 % CPU at rest. A sleep is for the whole thread's windows, so one of them
-// can stand for all; an offscreen window has no such thing, and only the first of those wakes this.
+// Before a round of frames: sleeps until one is due. 0 % CPU at rest. The input of any of them ends it; offscreen windows
+// have no shared sleep, and only the first of those wakes this.
 hosts_wait :: proc(hosts: []^Host) {
 	now, wake := hosts_due(hosts)
 	if now { return }
-	for h in hosts {
-		if platform.is_closed(h.win) { continue }
-		platform.wait_event(h.win, wake)
-		for o in hosts { o.slept = true }
-		return
-	}
+	wins := make([dynamic]^platform.Window, 0, len(hosts), context.temp_allocator)
+	for h in hosts { if !platform.is_closed(h.win) { append(&wins, h.win) } }
+	if len(wins) == 0 { return }
+	// (any of them ends the sleep: on Wayland a wait on one window alone sleeps through the others' input and the
+	// compositor's word for them, to the timeout)
+	platform.wait_event_any(wins[:], wake)
+	for o in hosts { o.slept = true }
 }

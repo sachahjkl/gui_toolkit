@@ -583,6 +583,18 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 	}
 }
 
+// Blocks until an event is pending for any of `ws` or `timeout_ms` elapsed (0 = no timeout): what a loop that draws
+// several windows sleeps on, so that the input of one, or the compositor's word that it showed its picture, ends the
+// sleep (wait_event on one of them waits for that one alone: on Wayland the others' wait to the timeout). Consumes
+// nothing. Pass the windows shown: a hidden one's events wait for its next poll.
+wait_event_any :: proc(ws: []^Window, timeout_ms := 0) {
+	if len(ws) == 0 { return }
+	for w in ws { if wait_is_over(w) { return } }
+	w := ws[0]
+	if w.offscreen || w.backend != .Wayland { wait_event(w, timeout_ms); return }
+	wl_wait(w, timeout_ms, ws)
+}
+
 // Waits until `handle` is signaled or `timeout_ms` passed (0: no limit), taking the window's keyboard and mouse input
 // as it arrives (time-stamped, kept for the next poll_events). `handle` is a render frame-latency fd (poll(2)-able):
 // render.frame_waitable returns one on wgpu. Returns true when the handle was signaled. The frame then starts on fresh
