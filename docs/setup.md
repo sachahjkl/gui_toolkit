@@ -65,17 +65,18 @@ The same options in every program, listed in its table of options (`setup.COMMAN
 |---|---|
 | `--install` | installs this copy for the user, as the Install button does (`install`): no window |
 | `--uninstall` | removes the installed copy (`uninstall`, then `remove_later` for what the running copy holds); the user's settings and data stay: no window |
+| `--status` | says the state in a word, then a fact a line (the program, its version, this copy, the menu entry, the start with the session, the PATH, `running: true` when a copy runs: `Setup_Options.running`, the program's single-instance check); exit code 0 installed (a Nix package too), 2 to repair, 1 not installed: no window |
 | `--setup` | starts the program with the install shown (`prefs_page.install_open`); Settings > Apps' Uninstall runs it (`Identity.uninstall_arguments = "--setup"`) |
 
 ```odin
 cmd, rest := setup.command_of(os.args[1:])
-if cmd == .Install || cmd == .Uninstall { os.exit(setup.command_run(cmd, setup_options(), process.console_write)) }
+if setup.command_alone(cmd) { os.exit(setup.command_run(cmd, setup_options(), process.console_write)) }   // install, uninstall, status
 // ... the window; then for .Setup: prefs_page.install_open(&app.install)
 ```
 
 `command_run` says what happened on one line, in English (a script reads it): `<name>: installed: <exe>`, `<name>:
 uninstalled (your settings and data stay)`, or why it failed; its exit code is `COMMAND_DONE` (0) or `COMMAND_FAILED`
-(1). It reads and writes the disk: call it before the window, never from a frame. The flag of `desktop.parse_cli`
+(1). `--status` is `status_text` and `status_code` (`COMMAND_REPAIR`, 2, for an install to repair). It reads and writes the disk: call it before the window, never from a frame. The flag of `desktop.parse_cli`
 (`Identity.cli_flag`) stays for scripts and tests that want the integration alone.
 
 ## A screen of the program's own

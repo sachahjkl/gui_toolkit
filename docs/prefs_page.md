@@ -59,7 +59,7 @@ ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 | `Input` | `input` | key and button repeats, undo steps and merge, type to find, the zoom step; advanced: the steps of Shift, Ctrl, Alt and Page |
 | `Timing` | `timing` | the tooltip delay, the submenu delay, a menu item's height, the colour fade |
 | `Rendering` | `rendering` | all advanced: presentation (vsync, tearing), frames queued, partial redraw, the blur limit, the filters' precision |
-| `Update` | `update` | `update.auto`, `update.channel`, `update.base_url` (advanced) |
+| `Update` | `update` | `update.auto`, `update.channel` (only with `Standard_Defaults.update_channels`: a choice of them), `update.base_url` (advanced); `update_source` reads the last two for the Updater |
 | `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `announce_mode` for ui.announce), `general.language` (`system`; at once, `language_start`) |
 
 `STANDARD_ALL` is every set. Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` and `update_auto` off.
@@ -93,8 +93,8 @@ What the program applies itself:
 - the theme (`appearance.theme`, `mode`, `finish`, `glow`, `font_size`): `appearance_read`, `appearance_choice`,
   `ui.theme_show`. After a change of `appearance.text.blend_space`, show the theme again with `render.blend_space(r)`;
 - the fonts by name (`appearance.text.ui_font`, `mono_font`, `prose_font`, `emoji_font`), `appearance.text.page_size`,
-  `window.system_title`, `update.channel` and `update.base_url`: read at the start (`Def.restart`: "Takes effect at the
-  next start");
+  `window.system_title` and `update.base_url`: read at the start (`Def.restart`: "Takes effect at the next start");
+- `update.channel`: at once, by `update.set_channel` on the program's Updater ([update.md](update.md), "Channels");
 - `general.language`: `language_start(prefs, catalogues)` at the start, which then switches the language at once at each
   change of it ([i18n.md](i18n.md), "Changing the language");
 - `general.menu` and `general.autostart`, on a worker with `desktop.apply` ([desktop.md](desktop.md)); `update.auto` by

@@ -902,8 +902,8 @@ fr Chercher de temps en temps une nouvelle version de %s, et l'installer : elle 
 en Channel
 fr Canal
 
-en The channel the updates come from (stable, beta...). Empty: the only one.
-fr Le canal d'où viennent les mises à jour (stable, beta...). Vide : le seul.
+en The releases %s installs. Each channel publishes its own, signed for that channel.
+fr Les versions que %s installe. Chaque canal publie les siennes, signées pour ce canal.
 
 en Address
 fr Adresse
@@ -1767,6 +1767,9 @@ fr la version %s n'a pas été installée : %s
 
 en version %s is installed: it runs at the next start
 fr la version %s est installée : elle sera lancée au prochain démarrage
+
+en the channel %s has no address
+fr le canal %s n'a pas d'adresse
 
 en the server answered %d
 fr le serveur a répondu %d

@@ -94,6 +94,19 @@ release_files :: proc(version: string, program: []byte) -> map[string][]byte {
 	return files
 }
 
+// The files of a release of `version` on `channel`, under `prefix` ("beta/": a folder of the server), into `files`.
+@(private = "file")
+channel_files :: proc(files: ^map[string][]byte, prefix, channel, version: string, program: []byte) {
+	p := updater_product()
+	m := manifest_of(p, program, {version = version, platform = PLATFORM, channel = channel, published = "2026-11-13"}, context.temp_allocator)
+	bytes := manifest_bytes(p, m, context.temp_allocator)
+	sig, _ := sign(p, TEST_SEED[:], bytes, context.temp_allocator)
+	name := manifest_name(PLATFORM, channel, context.temp_allocator)
+	files^[fmt.tprintf("%s%s", prefix, name)] = bytes
+	files^[fmt.tprintf("%s%s.sig", prefix, name)] = transmute([]byte)sig
+	files^[fmt.tprintf("%s%s", prefix, m.file)] = program
+}
+
 // Waits for the updater to reach `phase` (10 s at most).
 @(private = "file")
 wait_phase :: proc(u: ^Updater, phase: Phase) -> Status {
@@ -205,6 +218,62 @@ nothing_newer_is_up_to_date :: proc(t: ^testing.T) {
 	testing.expect(t, st.failed && st.asked, "the failure said")
 	testing.expect_value(t, st.phase, Phase.Idle)
 	updater_stop(u)
+}
+
+// Each channel is read in its own folder; another channel drops what the first offered, and its own version is installed
+// from its folder.
+@(test)
+a_channel_reads_its_own_folder :: proc(t: ^testing.T) {
+	if PLATFORM == "" { return }
+	dir, exe := program_folder("channels")
+	defer fsx.remove_tree(dir)
+	stable, beta := program_bytes(5), program_bytes(6)
+	files := make(map[string][]byte, context.temp_allocator)
+	channel_files(&files, "s/", "stable", "1.1.0", stable)
+	channel_files(&files, "b/", "beta", "2.0.0", beta)
+	s := release_serve(t, files)
+	defer release_end(s)
+	base := fmt.tprintf("http://127.0.0.1:%d/", s.port)
+	channels := []Channel{{"stable", fmt.tprintf("%ss/", base)}, {"beta", fmt.tprintf("%sb/", base)}}
+	u := updater_start({product = updater_product(), channels = channels, channel = "stable", current = "1.0.0", exe = exe})
+	defer updater_stop(u)
+
+	check_now(u)
+	st := wait_phase(u, .Available)
+	testing.expect_value(t, st.version, "1.1.0")
+
+	set_channel(u, "beta")
+	st = status(u)
+	testing.expect_value(t, st.phase, Phase.Idle)
+	testing.expect_value(t, st.result, "")
+
+	check_now(u)
+	st = wait_phase(u, .Available)
+	testing.expect_value(t, st.version, "2.0.0")
+	install_now(u)
+	st = wait_phase(u, .Installed)
+	testing.expect_value(t, st.phase, Phase.Installed)
+	back, _ := os.read_entire_file_from_path(exe, context.temp_allocator)
+	testing.expect(t, string(back) == string(beta), "the beta's program, from its folder")
+}
+
+// A folder given holds every channel's files (a mirror): the channels' own folders are not read.
+@(test)
+a_folder_given_holds_every_channel :: proc(t: ^testing.T) {
+	if PLATFORM == "" { return }
+	dir, exe := program_folder("mirror")
+	defer fsx.remove_tree(dir)
+	files := make(map[string][]byte, context.temp_allocator)
+	channel_files(&files, "", "stable", "1.1.0", program_bytes(7))
+	channel_files(&files, "", "beta", "2.0.0", program_bytes(8))
+	s := release_serve(t, files)
+	defer release_end(s)
+	channels := []Channel{{"stable", "http://127.0.0.1:9/s/"}, {"beta", "http://127.0.0.1:9/b/"}}
+	u := updater_start({product = updater_product(), folder = fmt.tprintf("http://127.0.0.1:%d/", s.port), channels = channels, channel = "beta", current = "1.0.0", exe = exe})
+	defer updater_stop(u)
+	check_now(u)
+	st := wait_phase(u, .Available)
+	testing.expect_value(t, st.version, "2.0.0")
 }
 
 // A copy of the Nix store: its package manager updates it; nothing is asked.

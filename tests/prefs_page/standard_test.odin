@@ -48,6 +48,31 @@ only_the_sets_asked_register :: proc(t: ^testing.T) {
 	testing.expect(t, config.ref_of(&p, "general.menu") == config.NO_REF, "the session's are not")
 }
 
+// update.channel is there only for a program that has channels, as a choice of them; update_source reads it with the
+// address, a "/" at its end.
+@(test)
+the_channel_is_a_choice_of_the_programs_channels :: proc(t: ^testing.T) {
+	p := config.prefs_make()
+	defer config.prefs_destroy(&p)
+	prefs_page.standard_register(&p, {.Update}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	testing.expect(t, config.ref_of(&p, prefs_page.UPDATE_CHANNEL_PREF) == config.NO_REF, "no channels, no channel")
+	folder, channel := prefs_page.update_source(&p)
+	testing.expect(t, folder == "" && channel == "", "the program's own address, no channel")
+
+	q := config.prefs_make()
+	defer config.prefs_destroy(&q)
+	d := prefs_page.STANDARD_DEFAULTS
+	d.update_channels = {"stable", "beta"}
+	prefs_page.standard_register(&q, {.Update}, d, context.temp_allocator)
+	testing.expect_value(t, config.string_of(&q, prefs_page.UPDATE_CHANNEL_PREF), "stable")
+	testing.expect_value(t, config.set_from_string(&q, prefs_page.UPDATE_CHANNEL_PREF, "nightly", .User), config.Set_Error.Not_A_Choice)
+	testing.expect_value(t, config.set_from_string(&q, prefs_page.UPDATE_CHANNEL_PREF, "beta", .User), config.Set_Error.None)
+	testing.expect_value(t, config.set_from_string(&q, prefs_page.UPDATE_BASE_URL_PREF, "https://mirror.example/app", .User), config.Set_Error.None)
+	folder, channel = prefs_page.update_source(&q)
+	testing.expect_value(t, folder, "https://mirror.example/app/")
+	testing.expect_value(t, channel, "beta")
+}
+
 @(test)
 the_look_reads_back :: proc(t: ^testing.T) {
 	p := standard_prefs()

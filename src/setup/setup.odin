@@ -35,6 +35,9 @@ Setup_Options :: struct {
 	// with the session, the PATH and its console launcher, the places of a test (desktop.roots_from_env)... `choices`: the
 	// boxes' values.
 	prepare:        proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr),
+	// whether a copy of the program runs and answers (its single instance: instance.acquire's owner), for --status; nil:
+	// never said to run. Called from a process with no window, before any: it may wait a moment for the answer
+	running:        proc() -> bool,
 	folder:         bool,            // the dialog lets the user choose the install folder before the first install
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,

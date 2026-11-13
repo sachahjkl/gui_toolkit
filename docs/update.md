@@ -28,7 +28,32 @@ update.install_now(u)           // the version on offer (phase Available), when 
 update.updater_stop(u)          // at the end: no news after it; a download under way ends by itself
 ```
 
-`updater_start` removes what an earlier update left (`remove_leftovers`) and starts a thread that waits. With `check` on, it
+### Channels
+
+A product whose releases come on channels (stable, beta...) gives each channel's folder, and the channel followed:
+
+```odin
+CHANNELS := []update.Channel{
+    {"stable", "https://github.com/me/app/releases/latest/download/"},
+    {"beta",   "https://github.com/me/app/releases/download/channel-beta/"},
+}
+u := update.updater_start({product = PRODUCT, channels = CHANNELS, channel = "stable", ...})
+update.set_channel(u, "beta")   // the user chose another channel: followed at once
+```
+
+The manifest read is `manifest_name(PLATFORM, channel)` in the channel's folder; a manifest signed for another channel is
+refused. `folder`, when set, holds every channel's files (a mirror: the manifests' names differ) and the channels' own folders
+are not read; `folder_of(options, channel)` says which folder a channel reads. `set_channel` drops what was on offer (the
+other channel's) and its result; a check under way is made again for the new channel; a download under way goes on, from
+the folder of the channel its offer came from. With `set_auto` on, the new channel is checked at once.
+
+The standard Updates set (`prefs_page`, `Standard_Defaults.update_channels`) shows `update.channel` as a choice of the
+program's channels, and only for a program that has some. `prefs_page.update_source(prefs)` reads `update.base_url` and
+`update.channel` for `updater_start`; the program calls `set_channel` when `update.channel` changes.
+
+### What it does
+
+`updater_start` touches no disk: it starts a thread, which removes what an earlier update left (`remove_leftovers`), then waits. With `check` on, it
 checks `first_check` after the start (`FIRST_CHECK`, 20 s: the session's network may come later than the program), then every
 `every` (`CHECK_EVERY`, a day); a check that failed is made again after `retry` (`RETRY_AFTER`, an hour). With `install` on,
 what a check finds is downloaded and put in place at once. The phases:

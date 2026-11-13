@@ -56,7 +56,11 @@ Standard_Defaults :: struct {
 	menu:         bool,     // in the application menu
 	autostart:    bool,     // started with the session
 	update_auto:  bool,     // updates come by themselves
-	update_channel:  string,   // the channel updates come from ("": a product without channels; a literal)
+	// a program whose releases come on channels (gt:update's Channel): their names, in the order shown, and their words
+	// (i18n.later; nil: the names). None: update.channel is not registered. Literals: the registry keeps them.
+	update_channels:       []string,
+	update_channel_labels: []string,
+	update_channel:  string,   // the channel followed by default ("": the first of update_channels; a literal)
 	update_base_url: string,   // where they come from (a literal)
 	app_name:     string,   // "Start <app_name> with the session"
 	// any other standard setting's default, as the program wants it (its rounding, its partial redraw...): a name and its
@@ -527,11 +531,15 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("Look for a new version of %s now and then, and install it: it takes effect at the next start."), program = name,
 			tags = UPDATE_TAGS[:],
 		})
-		append(&defs, config.Def{
-			name = UPDATE_CHANNEL_PREF, title = i18n.later("Channel"), kind = .String, default = {s = d.update_channel}, restart = true,
-			description = i18n.later("The channel the updates come from (stable, beta...). Empty: the only one."),
-			tags = UPDATE_TAGS[:],
-		})
+		if len(d.update_channels) > 0 {
+			// (not read at the start only: the program's Updater follows a change at once, update.set_channel)
+			append(&defs, config.Def{
+				name = UPDATE_CHANNEL_PREF, title = i18n.later("Channel"), kind = .String,
+				default = {s = d.update_channel != "" ? d.update_channel : d.update_channels[0]},
+				description = i18n.later("The releases %s installs. Each channel publishes its own, signed for that channel."), program = name,
+				choices = d.update_channels, choice_labels = d.update_channel_labels, tags = UPDATE_TAGS[:],
+			})
+		}
 		append(&defs, config.Def{
 			name = UPDATE_BASE_URL_PREF, title = i18n.later("Address"), kind = .String, default = {s = d.update_base_url}, restart = true, advanced = true,
 			description = i18n.later("Where the updates are published (a folder of the web)."),
@@ -591,6 +599,18 @@ labels :: proc(allocator: runtime.Allocator, words: ..string) -> []string {
 decimal :: proc(v: f32) -> f64 {
 	d, _ := strconv.parse_f64(fmt.tprintf("%v", v))
 	return d
+}
+
+// Where the updates come from, as the standard Updates set says: `folder`, update.base_url with a "/" at its end ("": the
+// program's own address; update.Updater_Options.folder takes it as it is), and `channel`, update.channel ("": the
+// program has no channels). Both "" when the set is not registered. In `allocator`.
+update_source :: proc(prefs: ^config.Prefs, allocator := context.temp_allocator) -> (folder, channel: string) {
+	if config.ref_of(prefs, UPDATE_BASE_URL_PREF) != config.NO_REF {
+		base := strings.trim_space(config.string_of(prefs, UPDATE_BASE_URL_PREF))
+		if base != "" { folder = strings.has_suffix(base, "/") ? strings.clone(base, allocator) : strings.concatenate({base, "/"}, allocator) }
+	}
+	if config.ref_of(prefs, UPDATE_CHANNEL_PREF) != config.NO_REF { channel = strings.clone(config.string_of(prefs, UPDATE_CHANNEL_PREF), allocator) }
+	return
 }
 
 // Where the program's messages go (ui.Announcer.mode): general.messages, System when it is not registered.

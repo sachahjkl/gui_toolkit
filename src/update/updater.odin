@@ -12,6 +12,9 @@ package tk_update
 //	...   // on_news (the updater's thread) posts to the interface's thread, which reads update.status(u)
 //	update.updater_stop(u)
 //
+// A product with channels gives each one's folder (`channels`) and the one followed (`channel`); set_channel follows
+// another while it runs.
+//
 // A copy installed by a package manager (from the Nix store) is never updated: its phase is Managed, and nothing is asked.
 
 import "base:runtime"
@@ -30,10 +33,20 @@ FIRST_CHECK :: 20 * time.Second
 // A manifest and its signature are small; the program is bounded by the manifest.
 MANIFEST_TIMEOUT :: 30 * time.Second
 
+// A channel of a product's releases: its name (in its manifests' names and in what they sign) and the URL of the folder
+// of its files, "/" at the end.
+Channel :: struct {
+	name:   string,
+	folder: string,
+}
+
 Updater_Options :: struct {
 	product:     Product,
-	folder:      string,          // the URL of the folder of the release's files, "/" at the end: its manifest, .sig and program
-	channel:     string,          // "": a product without channels
+	// the URL of the folder of the release's files, "/" at the end: its manifest, .sig and program. A product with channels:
+	// "" takes each channel's own folder; set, it holds every channel's files (a mirror: their manifests' names differ)
+	folder:      string,
+	channels:    []Channel,       // a product with channels: each one's folder (nil: none; the caller's, read at the start only)
+	channel:     string,          // the channel followed, a name of `channels` ("": a product without channels); set_channel changes it
 	current:     string,          // the running version (X.Y.Z)
 	exe:         string,          // the running program, the one replaced
 	user_agent:  string,          // "": tk_http's
@@ -88,11 +101,14 @@ Updater :: struct {
 heap :: proc() -> runtime.Allocator { return runtime.heap_allocator() }
 
 // Starts the updater of the running program, its thread waiting. Nothing is checked before set_auto or check_now. What an
-// earlier update left beside the program is removed (remove_leftovers).
+// earlier update left beside the program is removed first, on its thread (remove_leftovers): nothing here touches the disk.
 updater_start :: proc(o: Updater_Options) -> ^Updater {
 	u := new(Updater, heap())
 	o := o
 	o.folder = strings.clone(o.folder, heap())
+	channels := make([]Channel, len(o.channels), heap())
+	for c, i in o.channels { channels[i] = {strings.clone(c.name, heap()), strings.clone(c.folder, heap())} }
+	o.channels = channels
 	o.channel = strings.clone(o.channel, heap())
 	o.current = strings.clone(o.current, heap())
 	o.exe = strings.clone(o.exe, heap())
@@ -107,7 +123,6 @@ updater_start :: proc(o: Updater_Options) -> ^Updater {
 		u.holders = 1
 		return u
 	}
-	remove_leftovers(o.exe)
 	u.holders = 2
 	// (the thread frees itself when it ends, maybe after the caller's allocator: it is the heap's, like the rest)
 	context.allocator = heap()
@@ -152,6 +167,31 @@ install_now :: proc(u: ^Updater) {
 	sync.cond_signal(&u.cond)
 }
 
+// Follows `channel` (a name of Updater_Options.channels) from now on. What was on offer was the other channel's: it is
+// dropped, and its result with it. A check under way is made again for this channel; a download under way goes on (it
+// was asked for). With set_auto on, the new channel is checked at once.
+set_channel :: proc(u: ^Updater, channel: string) {
+	sync.guard(&u.mutex)
+	if u.options.channel == channel { return }
+	u.options.channel = replace(u.options.channel, channel)
+	if u.phase == .Managed { return }
+	if u.phase == .Available {
+		manifest_destroy(&u.offer, heap())
+		u.phase = .Idle
+		u.result, u.failed, u.asked = replace(u.result, ""), false, false
+		tell(u)
+	}
+	if u.auto != .Off { u.next_check = time.now() }
+	sync.cond_signal(&u.cond)
+}
+
+// The folder of `channel`'s files: Updater_Options.folder when set, else the channel's own.
+folder_of :: proc(o: Updater_Options, channel: string) -> string {
+	if o.folder != "" { return o.folder }
+	for c in o.channels { if c.name == channel { return c.folder } }
+	return ""
+}
+
 status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 	sync.guard(&u.mutex)
 	version := u.phase == .Installed ? u.version : (u.phase == .Available || u.phase == .Downloading) ? u.offer.version : ""
@@ -193,6 +233,8 @@ updater_release :: proc(u: ^Updater) {
 	if !last { return }
 	o := &u.options
 	delete(o.folder, heap()); delete(o.channel, heap()); delete(o.current, heap()); delete(o.exe, heap()); delete(o.user_agent, heap())
+	for c in o.channels { delete(c.name, heap()); delete(c.folder, heap()) }
+	delete(o.channels, heap())
 	manifest_destroy(&u.offer, heap())
 	delete(u.version, heap()); delete(u.result, heap())
 	free(u, heap())
@@ -207,6 +249,8 @@ tell :: proc(u: ^Updater) {
 
 @(private = "file")
 updater_run :: proc(u: ^Updater) {
+	// (here, not in updater_start: the caller is the interface's thread, which touches no disk; options.exe never changes)
+	remove_leftovers(u.options.exe)
 	sync.lock(&u.mutex)
 	for !u.stopped {
 		install := u.want_install && u.phase == .Available
@@ -240,9 +284,23 @@ updater_check :: proc(u: ^Updater, asked: bool) {
 	u.phase = .Checking
 	tell(u)
 	o := u.options
+	// (set_channel may replace the channel's string while the lock is let go)
+	o.channel = strings.clone(o.channel, context.temp_allocator)
 	sync.unlock(&u.mutex)
 	m, why, nothing_new := fetch_release(o)
 	sync.lock(&u.mutex)
+	if u.options.channel != o.channel {
+		// (the channel changed meanwhile: the answer is another question's; the new channel's is asked, as this one was)
+		// (and what was on offer before the check was the old channel's too)
+		if why == "" && !nothing_new { manifest_destroy(&m, heap()) }
+		manifest_destroy(&u.offer, heap())
+		u.phase = .Idle
+		u.result, u.failed = replace(u.result, ""), false
+		u.want_check = true
+		u.want_asked = u.want_asked || asked
+		tell(u)
+		return
+	}
 	u.asked = asked
 	switch {
 	case why != "":
@@ -273,7 +331,8 @@ updater_install :: proc(u: ^Updater, asked: bool) {
 	m := u.offer   // (stays u's: only this thread changes the offer)
 	sync.unlock(&u.mutex)
 	why := ""
-	status, data, err := http.get(strings.concatenate({o.folder, m.file}, context.temp_allocator), {max_bytes = int(m.size), user_agent = o.user_agent}, heap())
+	// (the folder of the channel the offer came from, whatever the channel followed is by now)
+	status, data, err := http.get(strings.concatenate({folder_of(o, m.channel), m.file}, context.temp_allocator), {max_bytes = int(m.size), user_agent = o.user_agent}, heap())
 	switch {
 	case err != .None: why = http.error_text(err)
 	case status != 200: why = fmt.tprintf(i18n.tr("the server answered %d for %s"), status, m.file)
@@ -289,6 +348,11 @@ updater_install :: proc(u: ^Updater, asked: bool) {
 	if why != "" {
 		u.result, u.failed = replace(u.result, fmt.tprintf(i18n.tr("version %s was not installed: %s"), m.version, why)), true
 		u.phase = .Available
+		// (the channel changed during the download: its offer is not one of the channel followed now)
+		if m.channel != u.options.channel {
+			manifest_destroy(&u.offer, heap())
+			u.phase = .Idle
+		}
 	} else {
 		u.version = replace(u.version, m.version)
 		u.result, u.failed = replace(u.result, fmt.tprintf(i18n.tr("version %s is installed: it runs at the next start"), m.version)), false
@@ -301,14 +365,16 @@ updater_install :: proc(u: ^Updater, asked: bool) {
 @(private = "file")
 fetch_release :: proc(o: Updater_Options) -> (m: Manifest, why: string, nothing_new: bool) {
 	name := manifest_name(PLATFORM, o.channel, context.temp_allocator)
+	folder := folder_of(o, o.channel)
+	if folder == "" { return {}, fmt.tprintf(i18n.tr("the channel %s has no address"), o.channel), false }
 	req := http.Request{max_bytes = MAX_MANIFEST, user_agent = o.user_agent, timeout = MANIFEST_TIMEOUT}
-	status, manifest, err := http.get(strings.concatenate({o.folder, name}, context.temp_allocator), req, context.temp_allocator)
+	status, manifest, err := http.get(strings.concatenate({folder, name}, context.temp_allocator), req, context.temp_allocator)
 	if err != .None { return {}, http.error_text(err), false }
 	if status == 404 { return {}, "", true }   // (no release for this system yet)
 	if status != 200 { return {}, fmt.tprintf(i18n.tr("the server answered %d"), status), false }
 	sig_req := req
 	sig_req.max_bytes = MAX_SIGNATURE_TEXT
-	sig_status, signature, sig_err := http.get(strings.concatenate({o.folder, name, ".sig"}, context.temp_allocator), sig_req, context.temp_allocator)
+	sig_status, signature, sig_err := http.get(strings.concatenate({folder, name, ".sig"}, context.temp_allocator), sig_req, context.temp_allocator)
 	if sig_err != .None { return {}, http.error_text(sig_err), false }
 	if sig_status != 200 { return {}, i18n.tr("the update has no signature: refused"), false }
 	found, e := check_release(o.product, manifest, strings.trim_space(string(signature)), {platform = PLATFORM, channel = o.channel, current = o.current}, heap())

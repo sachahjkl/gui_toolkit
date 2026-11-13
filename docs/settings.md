@@ -123,7 +123,7 @@ names every standard preference.
 | Name | Default | Range, choices | Applied by |
 |---|---|---|---|
 | `update.auto` | Program (`true`) | | the program's `update.Updater`; the page shows its state under it |
-| `update.channel` | Program ("") | a channel | start; the program's `update.Updater` |
+| `update.channel` | Program (the first channel) | the program's channels (`Standard_Defaults.update_channels`); not registered without them | at once: `update.set_channel` on the program's `update.Updater` |
 | `update.base_url` | Program ("") | an address | Advanced; start |
 
 ## Rendering (`Rendering`, all advanced)

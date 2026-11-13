@@ -1,5 +1,6 @@
 package tk_setup
 
+import "core:strings"
 import "core:testing"
 
 // What the facts of an install make of it.
@@ -71,6 +72,16 @@ the_command_line_of_the_install :: proc(t: ^testing.T) {
 	testing.expect_value(t, rest[1], "--hidden")
 	c, rest = command_of({"--setup"})
 	testing.expect_value(t, c, Command.Setup)
+	testing.expect(t, !command_alone(.Setup) && command_alone(.Status), "--status runs without a window")
+	c, rest = command_of({"--status"})
+	testing.expect_value(t, c, Command.Status)
+	// what scripts read: the state in a word, then "running: true" when a copy runs; 0 installed, 2 to repair, 1 not
+	text := status_text({state = .Other_Copy, exe_there = true, exe = "/x/app", version = "1.0"}, {identity = {name = "App"}, version = "1.1"}, true)
+	testing.expectf(t, strings.has_prefix(text, "App: installed (another copy)\n"), "%s", text)
+	testing.expectf(t, strings.contains(text, "  running: true\n") && strings.contains(text, "  version: 1.0\n"), "%s", text)
+	testing.expect_value(t, status_code(.Other_Copy), COMMAND_DONE)
+	testing.expect_value(t, status_code(.Repair), COMMAND_REPAIR)
+	testing.expect_value(t, status_code(.Not_Installed), COMMAND_FAILED)
 	c, rest = command_of({"--installer", "install"})
 	testing.expect_value(t, c, Command.None)   // (a word, or an option that only begins like one, is not it)
 	testing.expect_value(t, len(rest), 2)
