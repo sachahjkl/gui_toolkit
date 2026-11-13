@@ -11,6 +11,7 @@ base/blocking.odin blocking_lock process  # guards blocking_sites
 base/blocking.odin blocking_sites process  # the call sites already said (locked)
 changelog/changelog.odin TYPE_NAMES const  # Keep a Changelog's types, a table
 config/config_test.odin DEFS test
+config/export_test.odin EXPORT_DEFS test
 config/search_test.odin SEARCH_DEFS test
 config/snapshot_test.odin SNAP_DEFS test
 config/snapshot_test.odin LATE_DEFS test

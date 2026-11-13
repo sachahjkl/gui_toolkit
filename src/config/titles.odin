@@ -1,45 +1,105 @@
 package tk_config
 
 // What a settings UI shows of a preference besides its dotted name: a readable title, the first sentence of its
-// description (the rest goes behind a "details" fold), a heading for its category, and the search over all of them.
-// Pure functions of the definitions: nothing here allocates outside the given allocator.
+// description (the rest goes behind a "details" fold), the groups its name puts it in and their headings, and the
+// search over all of them. Nothing here allocates outside the given allocator, but title_register (the registry's).
 
+import "core:slice"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 
 // The title of a preference, derived from its name (the definitions stay one name each: no second label to keep in
-// step, and every preference gets one). The category's own segment is dropped (the page shows it as the group heading), the remaining segments and words read as a phrase in
-// sentence case with acronyms spelt as such, a trailing unit word goes (about:config shows the unit by the value), and so
-// does the "enabled" of a switch (its toggle says it):
+// step, and every preference gets one). Its groups are the name's other segments (path_of), which a settings page shows
+// as headings (group_title): the title is the last segment alone, read as a phrase in sentence case with acronyms spelt
+// as such. A trailing unit word goes (about:config shows the unit by the value), and so does the "enabled" of a switch
+// (its toggle says it):
 //
-//   blocker.badge.style            -> Badge style
-//   blocker.cosmetic.debounce_ms   -> Cosmetic debounce
-//   network.http.max_connections   -> HTTP max connections
-//   blocker.badge.enabled          -> Badge
+//   blocker.badge.style            -> Style            (under Blocker, Badge)
+//   blocker.cosmetic.debounce_ms   -> Debounce
+//   network.http.max_connections   -> Max connections
+//   blocker.badge.enabled          -> Enabled          (one word: nothing else to say)
+//   appearance.dark_mode_enabled   -> Dark mode
 //
-// `keep_unit`: the unit word stays ("DevTools network max body KB"), for the rare category where two preferences differ
-// by their unit only (about:config asks for it then).
+// `keep_unit`: the unit word stays ("Max body KB"), for the rare group where two preferences differ by their unit only
+// (about:config asks for it then).
 title_of :: proc(d: Def, allocator := context.temp_allocator, keep_unit := false) -> string {
 	if d.title != "" { return strings.clone(d.title, allocator) }   // (the program's words: an acronym, a phrase)
-	rest := d.name
-	cat := d.category != "" ? d.category : first_segment(d.name)
-	if len(rest) > len(cat) && strings.has_prefix(rest, cat) && rest[len(cat)] == '.' {
-		rest = rest[len(cat) + 1:]
-	} else if i := strings.index_byte(rest, '.'); i >= 0 && i + 1 < len(rest) {
-		rest = rest[i + 1:]   // a category of its own ("testing"): the first segment still names the subsystem
-		// ... unless the category is the second segment ("browser.tabs.position" in "tabs"): the heading says it
-		if len(rest) > len(cat) && strings.has_prefix(rest, cat) && rest[len(cat)] == '.' { rest = rest[len(cat) + 1:] }
-	}
-	words := split_words(rest, context.temp_allocator)
+	words := split_words(leaf_of(d.name), context.temp_allocator)
 	if !keep_unit && len(words) > 1 && is_unit_word(words[len(words) - 1]) { words = words[:len(words) - 1] }
 	if d.kind == .Bool && len(words) > 1 && words[len(words) - 1] == "enabled" { words = words[:len(words) - 1] }
 	return phrase(words, allocator)
 }
 
-// The heading of a category ("devtools" -> "DevTools", "privacy" -> "Privacy").
-category_title :: proc(category: string, allocator := context.temp_allocator) -> string {
-	return phrase(split_words(category, context.temp_allocator), allocator)
+////////////////////////////////
+// The hierarchy: a preference's groups are the segments of its name but the last ("appearance.text.gamma": the group
+// "appearance", in it the group "appearance.text"). The name is the one source of where a preference goes; the titles
+// of the groups come from a table the program and the toolkit fill (title_register).
+
+// A group's title and its place among its siblings.
+Group :: struct {
+	title: string,   // owned
+	order: int,      // lower first; equal orders keep the order their first preference was registered in
+}
+
+// The path of each group of `name`, from the top: "appearance.text.gamma" -> {"appearance", "appearance.text"}; a name of
+// one segment is in no group. The strings are slices of `name`.
+path_of :: proc(name: string, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	for i in 0 ..< len(name) { if name[i] == '.' && i > 0 { append(&out, name[:i]) } }
+	return out[:]
+}
+
+// Gives the group at `path` ("appearance", "appearance.text") its title and its order. Again for the same path: the
+// last one wins (a program's words over the toolkit's, when it registers after it).
+title_register :: proc(p: ^Prefs, path: string, title: string, order := 0) {
+	if old, ok := p.groups[path]; ok {
+		delete(old.title, p.allocator)
+		p.groups[path] = {title = strings.clone(title, p.allocator), order = order}
+		return
+	}
+	p.groups[strings.clone(path, p.allocator)] = {title = strings.clone(title, p.allocator), order = order}
+}
+
+// The title of the group at `path`: the registered one, else made from its last segment ("devtools" -> "DevTools",
+// "web_platform" -> "Web platform").
+group_title :: proc(p: ^Prefs, path: string, allocator := context.temp_allocator) -> string {
+	if g, ok := p.groups[path]; ok { return strings.clone(g.title, allocator) }
+	return phrase(split_words(leaf_of(path), context.temp_allocator), allocator)
+}
+
+// The groups directly in `parent` ("": the top ones) that hold a preference a settings page shows (not hidden), sorted
+// by their order, then by the registration of their first preference.
+groups_of :: proc(p: ^Prefs, parent := "", allocator := context.temp_allocator) -> []string {
+	Child :: struct { path: string, order, first: int }
+	kids := make([dynamic]Child, context.temp_allocator)
+	for e, i in p.entries {
+		if e.def.hidden { continue }
+		for path in path_of(e.def.name) {
+			if parent_of(path) != parent { continue }
+			found := false
+			for k in kids { if k.path == path { found = true; break } }
+			if !found { append(&kids, Child{path = path, order = p.groups[path].order, first = i}) }
+		}
+	}
+	slice.sort_by(kids[:], proc(a, b: Child) -> bool { return a.order != b.order ? a.order < b.order : a.first < b.first })
+	out := make([]string, len(kids), allocator)
+	for k, i in kids { out[i] = k.path }
+	return out
+}
+
+// The last segment of a dotted name or path.
+@(private)
+leaf_of :: proc(name: string) -> string {
+	if i := strings.last_index_byte(name, '.'); i >= 0 && i + 1 < len(name) { return name[i + 1:] }
+	return name
+}
+
+// The path a group is in ("" for a top group).
+@(private = "file")
+parent_of :: proc(path: string) -> string {
+	if i := strings.last_index_byte(path, '.'); i >= 0 { return path[:i] }
+	return ""
 }
 
 // The first sentence of a description, and what follows it (trimmed; empty when the description is one sentence). A
@@ -67,9 +127,13 @@ summary_of :: proc(description: string) -> (summary, more: string) {
 }
 
 // Whether a preference matches a search: every word of `query` (lower case, separated by spaces) appears in its name,
-// its title, its description or its tags. An empty query matches everything.
-matches :: proc(d: Def, query: string) -> bool {
-	return words_match(query, d.name, title_of(d), d.description, strings.join(d.tags, " ", context.temp_allocator))
+// its title, its description, its tags or the titles of its groups ("text gamma" finds "appearance.text.gamma" under
+// "Text and fonts"). An empty query matches everything. An advanced preference matches as any other.
+matches :: proc(p: ^Prefs, d: Def, query: string) -> bool {
+	groups := make([dynamic]string, context.temp_allocator)
+	for path in path_of(d.name) { append(&groups, group_title(p, path)) }
+	return words_match(query, d.name, title_of(d), d.description, strings.join(d.tags, " ", context.temp_allocator),
+		strings.join(groups[:], " ", context.temp_allocator))
 }
 
 @(private = "file")

@@ -22,12 +22,18 @@ DEFS := [?]config.Def{
 }
 ```
 
-A `Def` carries its dotted lower-case `name`, a `description` (a settings UI shows its first sentence and folds the rest),
-a `kind` (`.Bool / .Int / .Float / .String`), a `default`, optional `bounded` bounds, a `choices` list for strings, a
-`unit` ("ms", "bytes"), `bytes` (an int that accepts `K`/`M`/`G` when typed), `restart` (takes effect at the next start)
-and a `category` (defaults to the first name segment). Its `tags` are other words a search finds it by, that its name, title and
-description do not say ("colours", "dark" for a theme). A `hidden` preference is the program's own (a layout, a last
-choice): it is kept and read as the others, but no settings page shows it, nor anything that lists the settings.
+A `Def` carries its dotted lower-case `name` (its segments but the last are its groups: see below), a `description` (a
+settings UI shows its first sentence and folds the rest), a `kind` (`.Bool / .Int / .Float / .String`), a `default`,
+optional `bounded` bounds, a `choices` list for strings, a `unit` ("ms", "bytes"), `bytes` (an int that accepts
+`K`/`M`/`G` when typed) and `restart` (takes effect at the next start). Its `tags` are other words a search finds it by,
+that its name, title and description do not say ("colours", "dark" for a theme).
+
+### Advanced and hidden
+
+- `advanced`: a technical setting. A settings page shows it, folded under an "Advanced" part of its group. A search finds
+  it as any other, and nothing blocks a change to it.
+- `hidden`: the program's state, not a setting (a layout, a last choice). It is kept, read and saved as the others, but no
+  settings page shows it, `groups_of` does not count it, and the JSON, TOML and INI exports leave it out.
 
 ## The registry
 
@@ -61,11 +67,11 @@ config.reset(&p, "net.max_connections")                                   // bac
 ## Persistence (user changes only, atomically)
 
 ```odin
-text := config.serialize_user(&p)            // the user-set values only, as the file's text (on the loop: it reads the registry)
+text := config.export_own(&p)                // the user-set values only, as the file's text (on the loop: it reads the registry)
 written = p.user_version                     // the version this text has
 config.write_user_file(profile_path, text)   // atomic and flushed (fsx.write_atomic); any thread: it reads no registry state
 config.load_file(&p, profile_path, .User)    // missing file = no changes
-config.save_user(&p, profile_path)           // serialize_user then write_user_file, on the calling thread
+config.save_user(&p, profile_path)           // export_own then write_user_file, on the calling thread
 ```
 
 A program writes its file off its loop with a `User_Writer`: a disk write there froze the window at each change.
@@ -97,17 +103,39 @@ config.unwatch(&p, id)
 
 `fn` runs synchronously, on the changing thread, after any preference whose name starts with `prefix` changes.
 
+## Groups and their titles
+
+The name is the one source of where a preference goes. Its segments but the last are its groups, from the top:
+`appearance.text.gamma` is in the group `appearance`, and in it the group `appearance.text`. A name of one segment is in
+no group. The program and the toolkit fill a table of the titles of the groups; a group with no title gets one made from
+its last segment.
+
+```odin
+path := config.path_of("appearance.text.gamma")          // {"appearance", "appearance.text"} (slices of the name)
+config.title_register(&p, "appearance", "Appearance", order = -1)
+config.title_register(&p, "appearance.text", "Text and fonts")
+config.group_title(&p, "appearance.text")                // "Text and fonts"
+config.group_title(&p, "devtools")                       // "DevTools" (no title registered)
+top   := config.groups_of(&p)                            // the top groups, in their order
+inner := config.groups_of(&p, "appearance")              // the groups in "appearance"
+```
+
+- `title_register(p, path, title, order := 0)`: a second call for the same path replaces the first, so a program that
+  registers after the toolkit gives its own words.
+- `groups_of(p, parent := "", allocator)`: the groups directly in `parent` that hold a preference that is not hidden.
+  They are sorted by `order` (lower first), then by the registration of their first preference.
+
 ## Titles, summary and search (for a settings UI)
 
 ```odin
-title := config.title_of(d)                    // "net.http.max_connections" -> "HTTP max connections"
-head  := config.category_title("devtools")      // "DevTools"
+title := config.title_of(d)                    // "network.http.max_connections" -> "Max connections"
 summary, more := config.summary_of(d.description)
-if config.matches(d, query) { ... }             // every word of the query in the name, title, description or tags
+if config.matches(&p, d, query) { ... }        // every word of the query in the name, title, description, tags or group titles
 ```
 
-`Def.title` gives the words a settings page shows when the name does not make them ("Read a QR code", "Start with the
-session"); empty, `title_of` makes them from the name.
+`title_of` reads the last segment of the name only: its groups are headings (`group_title`). It drops a trailing unit
+word ("debounce_ms" -> "Debounce") and the "enabled" of a switch. `Def.title` gives the words a settings page shows when
+the name does not make them ("Read a QR code", "Start with the session"); empty, `title_of` makes them from the name.
 
 ### A search over pages
 
@@ -137,7 +165,40 @@ changed := config.restore(&p, s)                 // put them all back (policy va
 
 ## File format
 
-`serialize_user` writes one tag line (`wbprefs 1`) then `name<TAB>value` with `\\`, `\n`, `\r`, `\t` escapes. `load_file` wants the
-tag of the layer it reads, `wbpolicy 1` for `.Policy` and `wbprefs 1` otherwise, and skips `#` comments and a leading byte-order
-mark. The tags are kept as they are so files an existing application already wrote stay readable. `serialize_user` writes what it
-knows, so a comment or a line that is no `name<TAB>value` does not survive it.
+`export_own` writes one tag line (`wbprefs 1`) then `name<TAB>value` sorted by name, with `\\`, `\n`, `\r`, `\t` escapes. A
+float is written in the fewest digits that read back as the same value. `load_file` wants the tag of the layer it reads,
+`wbpolicy 1` for `.Policy` and `wbprefs 1` otherwise, and skips `#` comments and a leading byte-order mark. The tags are kept
+as they are so files an existing application already wrote stay readable. `export_own` writes what it knows, so a comment
+or a line that is no `name<TAB>value` does not survive it.
+
+## Export
+
+```odin
+own  := config.export_own(&p)                  // our format: what the profile file holds; load_file reads it back
+own   = config.export_own(&p, all = true)      // every value of this run, in our format
+json := config.export_json(&p)                 // {"appearance.theme": "dark"}
+toml := config.export_toml(&p)                 // [appearance] theme = "dark", [appearance.text] gamma = 1.8
+ini  := config.export_ini(&p)                  // [appearance] theme=dark
+```
+
+Each exporter takes `(p: ^Prefs, all := false, allocator := context.allocator) -> string`.
+
+- `all = false`: the user's layer only, which is what differs from the defaults. A user value under a command line or
+  policy value is in it. `all = true`: every preference, with the value it has for this run.
+- JSON, TOML and INI hold the settings: a hidden preference is not in them. A user value that no definition registers or
+  accepts in this run has no type, and is not in them either. `export_own` holds all of these, so a round trip loses
+  nothing.
+- These files are written only. The registry reads no JSON, TOML or INI.
+
+The formats:
+
+- JSON: one flat object sorted by name, as the `settings.json` of Zed or VS Code. A string has the escapes of RFC 8259
+  (`\"`, `\\`, the control characters). An int is an integer. A float always has a decimal point or an exponent, in the
+  fewest digits that read back as the same value.
+- TOML: a table per group, a key per preference (its last segment); a name of one segment goes before the first table. A
+  key that is no bare key is quoted. A name that is also a group's path (`browser.tabs` beside `browser.tabs.width`) cannot
+  be a key and a table at once: it goes before the first table under its whole quoted name (`"browser.tabs" = true`).
+  Strings are basic strings, with DEL and the control characters escaped.
+- INI: a section per group, `key=value` per preference. A string is written as it is, or between double quotes with the
+  escapes of JSON when a reader would not read it back as it is (a space at an end, a control character, `"`, `\`, `;`,
+  `#`).

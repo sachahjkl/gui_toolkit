@@ -37,7 +37,7 @@ user_writer_start :: proc(wr: ^User_Writer, p: ^Prefs, path: string) {
 user_writer_save :: proc(wr: ^User_Writer, p: ^Prefs) {
 	if !wr.open || p.user_version == wr.version { return }
 	wr.version = p.user_version
-	store.writer_put(&wr.file, transmute([]u8)serialize_user(p, context.temp_allocator))
+	store.writer_put(&wr.file, transmute([]u8)export_own(p, allocator = context.temp_allocator))
 }
 
 // Whether a write failed since the last call (a full disk, a folder that cannot be made); the next change tries again.

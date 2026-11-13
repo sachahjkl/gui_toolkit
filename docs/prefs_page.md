@@ -67,7 +67,7 @@ with `desktop.apply` ([desktop.md](desktop.md)).
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
   effect at the next start" when it applies) on the left, its control on the right, a reset button while the user's
   value differs from the default, a carved line under it.
-- While a search is typed (title, name or description: `config.matches`): what matches in every page, under each page's
+- While a search is typed (title, name, description, tags or a group's title: `config.matches`): what matches in every page, under each page's
   title.
 
 The controls:

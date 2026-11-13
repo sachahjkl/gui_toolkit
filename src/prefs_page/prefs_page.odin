@@ -71,7 +71,7 @@ Options :: struct {
 	update_pref: string,
 	restart:     proc(user: rawptr),
 	// the pages in their order (one with no preference is not shown); nil: each category of the registry, by name, its
-	// title from config.category_title
+	// title from config.group_title
 	pages:     []Page_Info,
 	icon_font: font.Font_Id,   // the font of the pages' icons, and of the two below (0: none, words instead)
 	search_icon, reset_icon: string,
@@ -194,10 +194,9 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 		return kept[:]
 	}
 	cats := make([dynamic]string, context.temp_allocator)
-	for e in prefs.entries { if !e.def.hidden && !slice.contains(cats[:], e.def.category) { append(&cats, e.def.category) } }
-	slice.sort(cats[:])
+	for c in config.groups_of(prefs) { append(&cats, c) }
 	out := make([]Page_Info, len(cats), context.temp_allocator)
-	for c, i in cats { out[i] = {category = c, title = config.category_title(c)} }
+	for c, i in cats { out[i] = {category = c, title = config.group_title(prefs, c)} }
 	return out
 }
 
@@ -218,7 +217,10 @@ page_names :: proc(prefs: ^config.Prefs, pg: Page_Info) -> []string {
 @(private)
 names_of :: proc(prefs: ^config.Prefs, category: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
-	for e in prefs.entries { if e.def.category == category && !e.def.hidden { append(&out, e.def.name) } }
+	for e in prefs.entries {
+		path := config.path_of(e.def.name)
+		if len(path) > 0 && path[0] == category && !e.def.hidden { append(&out, e.def.name) }
+	}
 	return out[:]
 }
 
