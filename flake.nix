@@ -27,6 +27,12 @@
       url = "https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-linux-x86_64-release.zip";
       sha256 = "95a4d90c071005a98d03eab348beaa6b07e16eb00d1dcdb9f8348f75eb97ec5a";
     };
+    # The macOS build of the same release: vendor:wgpu stops the compiler when it is absent, and macOS renders through
+    # wgpu (Metal), so `odin check -target:darwin_arm64` of the renderer needs it here.
+    wgpu-macos = pkgs.fetchurl {
+      url = "https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-macos-aarch64-release.zip";
+      sha256 = "a5797a37b1adf720bcd5dcffb291edbbd5b7b14be0a3874c28e6393a655a7a3e";
+    };
 
     # The compiler the toolkit is written for (README: dev-2026-11a). It is statically linked: nothing to patch.
     odin = pkgs.stdenv.mkDerivation {
@@ -47,6 +53,10 @@
         mkdir -p $dest
         unzip -qo ${wgpu} -d $dest
         echo 29.0.1.1 > $dest/VERSION
+        dest_macos=$out/lib/odin/vendor/wgpu/lib/wgpu-macos-aarch64-release
+        mkdir -p $dest_macos
+        unzip -qo ${wgpu-macos} -d $dest_macos
+        echo 29.0.1.1 > $dest_macos/VERSION
         makeWrapper $out/lib/odin/odin $out/bin/odin --set-default ODIN_ROOT $out/lib/odin/ --prefix PATH : ${lib.makeBinPath [pkgs.clang pkgs.lld]}
       '';
     };
