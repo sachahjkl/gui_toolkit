@@ -5,6 +5,108 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.250.0] - 2026-11-13
+
+### Added
+- **Previews and diagrams**: with `Preview_Options.wheel_pans`, the wheel moves a preview's content, Shift across, and Ctrl (a touchpad's pinch on Windows) zooms the preview around the pointer, not the interface. `mermaid.diagram(..., direction = .Left_Right)` lays a flowchart, class, state, ER or requirement diagram out in any of the four directions; `with_direction`, `direction_of` and `takes_direction` work on its text.
+- **Markdown tables and fences**: `syntax.guess` takes a text that is a whole Markdown table (a row of cells, the rule under it, rows of as many cells) for Markdown. `markdown.Code.fence` is a fenced block's number, by which a program finds what it laid out ahead (a diagram).
+- **Folders and sizes**: `platform.user_dir(.Runtime, program)` gives the folder of what lasts a session (sockets, pipes): `$XDG_RUNTIME_DIR` on Linux, `%TEMP%` on Windows. `desktop.xdg_roots` is public: the XDG data and configuration folders and the desktop's names, read once. `timefmt.size` says a size in bytes as file managers do ("7.0 KB", "12 MB").
+- **Ready for a macOS port**: every package of the toolkit compiles for macOS (Apple silicon). There is no window yet: a program learns at once that it has none.
+- **`licence worker`**: the command of a program's tool writes its licence Worker's file from its `licence.Product`, so the program and its shop agree on what a licence is.
+- **`Host.close_asked`**: the program decides what a close of the window does (hide it, ask first). The window stays open, and the program is told once.
+- **The settings page takes a program's own pages and defaults.** A `Page_Info` with `build` is a page with no preference, built by the program (a server's state, a list); `heading` starts a group of pages in the sidebar. `Standard_Defaults.values` gives the program's own default for any standard setting (its rounding, its partial redraw). A reset comes back to it, and `standard_apply` applies it from the start.
+- **`examples/showcase`: a scene per feature.** The intents and hues, the numbers and ranges, the command palette, a menu that searches, the dialogs (`confirm`, `prompt`), the settings page with every standard setting, a node graph and its inspector, the toasts, every theme and finish. Its data is fixed: a scene is the same picture at each run. `--scene=`, `--theme=`, `--light`, `--finish=`, `--page=`, `--advanced`, `--headless` and `--size=` choose what it shows.
+- **`ui.mark_rail`: a rail of marks beside a view.** It draws a dot for each item that counts, where the item is in the content, and a band over the part in view. The pointer over a dot shows the item's first line. A press goes there at once, with no glide. The keyboard goes from mark to mark, and a filter keeps the marks that hold what is typed (docs/mark-rail.md).
+- **`ui.search_band` and `ui.search_launcher`: one look for every search.** `search_band(id, &field, Search_Band_Options)` draws a band from edge to edge in a field's background: a line under it, a magnifier, the field and an optional `count`. Its top corners are those of the box it begins (a dialog, a menu, a popover); `owner_keys` gives the field the keys of its owner (a menu). The command palette and a menu that searches use it. `search_launcher(id, hint, keys, tip)` is a field that opens a search elsewhere (the palette). `Line_Edit_Options.placeholder_focused` keeps the hint while the field has the keyboard.
+- **`ui.Choice_Memory`: the palette remembers what the user chooses.** It keeps a count and a time per choice, halved every 14 days. The palette lists the heaviest choices first while nothing is typed, and raises them while something is. The file is read and written off the interface's thread. `ui.choice_note` records a choice; `ui.choice_bonus` gives the same raise to a list ranked with `ui.rank`.
+- **Languages: the toolkit and a program in their user's language.** `i18n.load` and `i18n.use` read the toolkit's catalogue and the program's; `prefs_page.language_start` follows the Language setting (System: the system's, read by `platform.system_language`), now a choice of English and French. `config.Def.choice_labels` says how each choice of a setting reads ("Français"). The `i18n <language>` command of a project's tool writes a catalogue from the code's `tr` calls, and `-check` says what is not translated. In French, the toolkit's own words are French: the field menu, dialogs and their buttons, the command palette and the key sheet, the dock's and the tables' menus, key names, the settings page and every standard setting, Export and Import, the update and shortcut lines, licence and install messages, the Setup dialog, file dialogs' filters, ages, durations and dates. The texts a program declares with `i18n.later` (its settings, commands, flowgraph nodes, table columns) and the choices it gives (`Page_Options.choices`) show in the user's language where the toolkit shows them. The settings search finds a setting by its translated words and by its English.
+
+### Changed
+- **`tk ci` checks every tool**: each folder of `tools/` is checked for this system and, from Linux, for Windows. `tools/text_bench` compiles again. `tools/colrboard`, `colrcompare`, `slugsmall` and `textcompare` write their pictures with `gt:png` and need no STB library. `tools/render_probe`, `resize_probe` and `shaders` are Windows programs.
+- **Screenshots and site**: `tk screenshots` draws the showcase's scenes with no window, in the themes and finishes that show them (machined dark and light, edged, glass, gradient), into `docs/screenshots/showcase_*.webp` and `site/img`. The site shows them as a carousel: one picture at a time with its title, what it shows and the procedures that make it, linked to their documentation; Previous and Next, the arrow keys, a swipe and thumbnails (a grid without its script). `tk site_build` publishes the pictures in WebP at their own width and at 360, 720 and 1100 pixels (`site.build_images`), each `<img>` with its `srcset`. It needs `cwebp` (`nix develop`, Debian's `webp`; fetched and pinned on Windows).
+- **`window.system_title`** no longer says it takes effect at the next start: programs switch the title bar at once.
+- **Test sessions**: the `deadline` parameter of `session.wait_idle`, `wait_until`, `wait_box`, `wait_text` and `wait_gone` is `bound`, and `session.DEFAULT_DEADLINE` is `session.DEFAULT_BOUND`. `session.find` and `session.get` take `within`: a box looked for under another one (a settings row whose parts have the names of every other row's). `ui.box_text` (and `session.find_text`, devtools) reads a field's hint while it shows.
+- **Work pools stop with a bound, and one word per thing**: `tasks.stop(p, lost, bound)` and `ui.chores_stop(bound)` (2 s by default) no longer keep a closed program alive when a work hangs (a disk asleep, a share that does not answer). How a program moves:
+  - `tasks.stop(p, drop = f)` → `tasks.stop(p, lost = f)`.
+  - `tasks.ask` → `tasks.job_ask`, `tasks.busy` → `tasks.job_busy`, `tasks.state` → `tasks.counts`, `tasks.State` → `tasks.Counts`.
+  - `tasks.Options` → `tasks.Pool_Options`, `tasks.Add` → `tasks.Add_Options` (its parameter `o`).
+- **`gt:signing` reads and writes the Ed25519 keys** of licences and updates: `licence.key_decode`, `update.public_key_decode` and `update.seed_decode` → `signing.key_decode`; `licence.key_encode` and `update.seed_encode` → `signing.key_encode`; `licence.public_key_of` and `update.public_key_of` → `signing.public_key_of`.
+- **A port of a flow graph is one value, `flowgraph.Port_Ref`**: `{node, port, side}` with `flowgraph.Side` (`.In`, `.Out`). The node graph widget uses it too. How a program moves:
+  - `flowgraph.fit_port(g, cat, node, port, output, kind)` → `fit_port(g, cat, {node, port, side}, kind)`.
+  - `node_add_linked(g, cat, kind, pos, node, port, output)` → `node_add_linked(g, cat, kind, pos, {node, port, side})`.
+  - `ui.Graph_Port_Ref` → `flowgraph.Port_Ref`, in `Graph_Port`, the events and `flow_palette`'s `from`.
+- **Updates: one mode, one target**: what the updater does by itself is an `update.Auto_Mode` (`.Off`, `.Check`, `.Install`), and a release is checked against an `update.Release_Target`. How a program moves:
+  - `update.set_auto(u, true, true)` → `set_auto(u, .Install)`; `true, false` → `.Check`; `false, false` → `.Off`.
+  - `check_release(p, manifest, signature, platform, channel, current, announced)` → `check_release(p, manifest, signature, {platform = …, channel = …, current = …, announced = …})`.
+  - `verify(p, manifest, signature, platform, channel)` → `verify(p, manifest, signature, {platform = …, channel = …})`.
+  - `manifest_of(p, data, version, platform, channel, published)` → `manifest_of(p, data, {version = …, platform = …, channel = …, published = …})`.
+- **Preferences read and set by name, exported by one call**: `config.get_bool`, `get_int`, `get_float` and `get_string` (by `Ref`) are gone; read with `bool_of`, `int_of`, `float_of` and `string_of`. `set_bool`, `set_int` and `set_string` take the name, and the new `set_float` sets a Float without formatting it. They return the `Set_Error` of `set_from_string`, which stays for text a user typed. `config.export(p, format, all)` with `config.Export_Format` (`Json`, `Toml`, `Ini`, `Own`) replaces the four `export_*`. How a program moves:
+  - `config.set_int(&p, config.ref_of(&p, "x"), 3)` → `config.set_int(&p, "x", 3)`.
+  - `config.export_json(p, all)` → `config.export(p, .Json, all)`, and the same for `Toml`, `Ini` and `Own`.
+  - `prefs_page.export_text` is gone: call `config.export`. `prefs_page.Export_Format` → `config.Export_Format`.
+- **Names: one word per thing across the toolkit.** A struct of options is `<Stem>_Options` and its parameter is `o`; `_destroy` frees what a value owns; `_make` returns a new value, `_init` makes one in place, `_start` and `_stop` are for what owns a thread. Old → new:
+  - Option structs: `cdp.Options` → `cdp.Command_Options`, `changelog.Options` → `changelog.Project_Options`, `crash.Options` → `crash.Install_Options`, `desktop.Options` → `desktop.Integration_Options`, `diff.Options` → `diff.View_Options`, `gif.Options` → `gif.Encoder_Options`, `h264.Options` → `h264.Encoder_Options`, `host.Open` → `host.Open_Options`, `instance.Config` → `instance.Instance_Options`, `log.Options` → `log.Install_Options`, `markdown.Config` → `markdown.View_Options`, `ocr.Options` → `ocr.Recognize_Options`, `prefs_page.Options` → `prefs_page.Page_Options`, `release.Config` → `release.Release_Options`, `session.Options` → `session.Session_Options`, `setup.Config` → `setup.Setup_Options`, `shortcuts.Options` → `shortcuts.Service_Options`, `svg.Options` → `svg.Draw_Options`, `toolbox.Run` → `toolbox.Run_Options`, `ui.Frame_Graph_Opts` → `ui.Frame_Graph_Options`, `ui.Line_Graph_Opts` → `ui.Line_Graph_Options`.
+  - A call that names the options' parameter (`options`, `opts`, `cfg`, `c`, `how`) names it `o`: `h264.open(w, h, fps, options = {...})` → `h264.open(w, h, fps, o = {...})`.
+  - Destroy: `flowgraph.graph_free`, `run_free`, `set_free`, `entry_free`, `node_params_free` → `graph_destroy`, `run_destroy`, `set_destroy`, `entry_destroy`, `node_params_destroy`; `prefs_page.appearance_free` → `appearance_destroy`; `capture.frame_free`, `capture.frame_ring_free` → `frame_destroy`, `frame_ring_destroy`; `wm.windows_free` → `windows_destroy`; `platform.notification_free` → `notification_destroy`.
+  - Verbs: `flowgraph.run_start` → `flowgraph.run_init`; `prefs_page.themes_file_make` → `themes_file_write_template`; `ui.dialog_top_draw` → `ui.top_strip_draw` (give its box `radius = 0`: it fills the corners of `box_drawn_radii`).
+  - Order: `rich_layout(c, runs, ...)` → `rich_layout(runs, c, ...)`; `section_header(id, title, note, value, c, inline)` → `section_header(id, title, c, note, value, inline)`.
+  - State: `set_window_button_names(min, max, restore, close)` → `set_window_button_names(&state, min, max, restore, close)`; `styled_face_of(&state, face, b, i)` → `styled_face(face, b, i)` (outside a build, `ui.use(&state)` first).
+  - Package: `gt:base` is the package `gt_base`, so a program with a `base` package of its own builds; import it as `import base "gt:base"`.
+- **`announce` is the one call that says something**: `toast`, `toast_action` and `toast_titled` are gone. `announce(&announcer, kind, title, body, action, user, in_window)` obeys the person's Messages setting. A failure is always said. A title and a body are a titled toast. A message with an `action`, or with `in_window = true` (a hint about the window itself), is a toast of the window whatever the setting. Toasts show at the bottom right by default (`window.toast_position`): at the top right they covered the toolbar. How a program moves:
+  - `ui.toast(kind, f, args)` → `ui.announce(&app.announcer, kind, fmt.tprintf(f, args))`.
+  - `ui.toast_titled(kind, title, body)` → `ui.announce(&app.announcer, kind, title, body)`.
+  - `ui.toast_action(kind, f, user, fmt, args)` → `ui.announce(&app.announcer, kind, fmt.tprintf(fmt, args), action = f, user = user)`.
+  - `prefs_page.messages_mode` → `prefs_page.announce_mode` (the setting is still `general.messages`).
+- **Parameters nobody gave are gone**: `tabs` has no `right_clicked` and `middle_clicked`; `segmented` no `separator` (the words of `.Text` are separated by a slash); `radio` no `wrap`; `tile` no `clickable`; `title_strip` no `closable`; `history_find_tag` no `within` (`HISTORY_TAG_LOOKBACK`); `history_stats` no `budget` (and `History_Stats.over` is gone); `qr_code` no `ecc` (Medium).
+- **Every value widget returns whether its value changed**: `checkbox`, `radio`, `toggle`, `slider` and `range_slider` return `changed: bool` in place of a `Signal`, as `number`, `dropdown`, `segmented` and `tabs` do. A click on the radio already chosen is no change. A range slider's keys move a thumb as a slider's do. How a program moves:
+  - `if ui.toggle(id, text, &v).clicked { ... }` → `if ui.toggle(id, text, &v) { ... }`.
+  - `sig.right_clicked` or `sig.box.key` → `ui.signal(ui.prev_box(id)).right_clicked` or `ui.prev_box(id).key`, right after the widget.
+  - `number(..., track = true)` → `number(..., slider = true)`; its `format` and `tip` are gone.
+  - `hue_picker(id, &h)` → `hue_picker(id, &h, .Y)`; `alpha_picker(..., &a)` → `alpha_picker(..., &a, .X)`; `horizontal = true` → `.X`.
+- **One dialog call, its sizes in ems**: `modal(id, &open, Modal_Options)` replaces `modal` and `modal_sized`, with `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`, `size` (nil: not resizable; else the size the person gave it, in ems) and `top` (a fraction of the window's height; nil: centered). A confirmation and a prompt are centered now. How a program moves:
+  - `modal(id, w, &open, y)` → `modal(id, &open, {width_em = w / em, top = y})`.
+  - `modal_sized(id, preferred, &size, &open, min, top = t)` → `modal(id, &open, {width_em = preferred.x / em, height_em = preferred.y / em, min_width_em = min.x / em, min_height_em = min.y / em, size = &size, top = t})`. A kept `size` is in ems now, not logical pixels (`Command_Palette.size` and the Setup dialog's `Dialog.size` too).
+  - `CONFIRM_WIDTH_EM` → `DIALOG_WIDTH_EM`, the width of a dialog that gives none.
+  - `dialog_header_begin(id, title, Dialog_Header)` → `dialog_header(id, title, Dialog_Header_Options)`.
+- **Menus have one stem and an id, as widgets do**: a menu is named by a string `id`, opened by `menu_open(id, at, anchor, from_keyboard, search, nested)` where `at` is a point or a rect (`Menu_At`), and built by `menu(id, width)`, nested or not. `search` is on by default: a menu of a few fixed choices says `search = false`. A menu row and a command say `disabled`, as a button does. How a program moves:
+  - `ctx_menu(key, w)` and `menu_nested(key, w)` → `menu(id, w)`.
+  - `ctx_menu_open(key, pos, …)` → `menu_open(id, pos, …)`; `ctx_menu_open_rect(key, rect, anchor, kb)` → `menu_open(id, rect, anchor, kb, search = false)`.
+  - `menu_nested_open(key, pos)` and `menu_nested_open_rect(key, rect)` → `menu_open(id, at, nested = true, search = false)`.
+  - `ctx_menu_close` → `menu_close`, `ctx_menu_is_open(key)` → `menu_is_open(id)` (any level), `ctx_menu_any_open` → `menu_any_open`.
+  - `ui.key_from_string(0, "x")` given as a menu's key → `"x"`; `menu_bar_button` and `edit_menu` take the id.
+  - `menu_item(…, enabled = x)` → `menu_item(…, disabled = !x)`, `menu_submenu(text, icon, enabled)` → `menu_submenu(text, icon, disabled)`, `command_pressed(c, can)` → `command_pressed(c, !can)`.
+- **Text fields: one name each, their options in a struct.** `ui.Text_Field` is `ui.Line_Edit`, `ui.Text_Area` is `ui.Text_Edit`, each with its procedures. `line_edit(id, f, o: Line_Edit_Options)` and `text_edit(id, a, o: Text_Edit_Options)` take their options in a struct. A line edit's `kind` (`Line_Edit_Kind`: `.Plain`, `.Secret`, `.Read_Only`) replaces `secret` and `read_only`. `Field_Snapshot` and `Text_Snapshot` are one `Edit_Snapshot`, and one `Edit_Kind` serves both. How a program moves:
+  - `Text_Field` → `Line_Edit`; `field_destroy`, `field_string`, `field_set`, `field_clear`, `field_wipe`, `field_can_undo`, `field_can_redo`, `field_undo`, `field_redo`, `field_has_selection`, `field_selection`, `field_select_all`, `field_copy`, `field_cut`, `field_delete`, `field_insert`, `field_paste_answer`, `field_key`, `field_num_step` → `line_edit_` and the same end. `line_edit_clear_history` is new.
+  - `Text_Area` → `Text_Edit`; `area_string`, `area_set`, `area_clear_history`, `area_destroy`, `area_line_count`, `area_undo`, `area_redo` → `text_edit_` and the same end.
+  - `field_menu` → `edit_menu`, `field_paste` → `edit_paste`, `field_frame` → `input_frame` (no `cross`: its children are centred).
+  - `line_edit(id, &f, "Name")` → `line_edit(id, &f, {placeholder = "Name"})`; `secret = true, reveal = &shown` → `{kind = .Secret, reveal = &shown}`; `read_only = true` → `{kind = .Read_Only}`; `clearable = true` → `{clearable = true}`; `menu = false` → `{own_menu = true}`.
+  - `text_edit(id, &a, "Notes", wrap = true, max_lines = 4)` → `text_edit(id, &a, {placeholder = "Notes", wrap = true, max_lines = 4})`; the same for `line_numbers`, `tab_indents`, `auto_height`, `min_lines`, `highlight`; `menu = false` → `{own_menu = true}`.
+  - `edit_menu(id, target, owner, secret = true)` → `edit_menu(id, target, owner, .Secret)`; `line_edit_key` takes the same `kind`.
+- **One `ui.button`**: `button(id, text, icon, o: Button_Options) -> Signal` replaces `button`, `button_icon`, `icon_button` and `hint_action`; `nav_item` is gone (the settings page's sidebar lines are buttons). `id` is the id alone ("add" or "###add"). The options are fields of `Button_Options`: `intent`, `face`, `width`, `height`, `quiet`, `wrap`, `left`, `lit`, `disabled`, `tip`, `icon_font`, `icon_color`. Words, with a glyph or not, are always the toolkit's row: its size from `o.width`, `o.height` or `next`, else as wide as its words and padding, a line high, its corners rounded. How a program moves:
+  - `button("Add###add", intent = .Primary)` → `button("add", "Add", o = {intent = .Primary})`.
+  - `button_icon(id, glyph, text, ...)` → `button(id, text, glyph, {...})`. `hue` and `solid` are gone.
+  - `icon_button(id, glyph, tip = t, ...)` → `button(id, icon = glyph, o = {tip = t, ...})`: a glyph alone is a ghost unless `face` says otherwise. `name` is gone: call `ui.a11y({name = ...})` before it.
+  - `hint_action(id, text, icon, icon_font, intent)` → `button(id, text, icon, {face = .Link, icon_font = icon_font, intent = intent})`.
+  - `icon(glyph, width, fg)` takes the font as a fourth parameter, `icon_font`; `card(title, icon_glyph)` names its glyph `icon`.
+- **The command palette and the key sheet**: they do no work in proportion to the commands at a frame. The palette ranks again only when the query, the commands, `first`, the memory or the language changes, and both build only the lines near their view. How a program moves:
+  - `Palette_Options{recent = indices}` → `{memory = &app.choices, names = keys}`, and `ui.choice_note(&app.choices, keys[i])` for each command chosen.
+  - A table of commands built again each frame, or changed in place, gives `Palette_Options.version` and bumps it when it changes.
+  - `ui.palette(p, commands, enabled, opts)` → `ui.palette(p, commands, disabled, o)` with `disabled[i] = !can(i)`; `ui.flow_palette` returns `disabled` too.
+  - `ui.shortcuts_sheet(id, commands, &open, title, width_em)` → `ui.shortcuts_sheet(&app.sheet, id, commands, title, version)` with `app.sheet.open` (a `ui.Shortcuts_Sheet`), and `ui.shortcuts_sheet_destroy(&app.sheet)` at the end.
+- **A command has any number of keys**: `ui.Command.keys` is a `[]Chord`, not `[2]Chord` (Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=). Write `keys = {{.K, {.Ctrl}}}` for `keys = {{.K, {.Ctrl}}, {}}`. The first key that is not zero is the one shown. Keys that the user rebinds are a copy of the constant table, passed to every reader (docs/commands.md, "Keys the user changes").
+
+### Removed
+- **`tools/emojiperf`**: nothing used it; `tk emoji_board` and `tools/textcompare` measure the emoji and the text.
+- **`ui.chips`, `ui.rating` and `ui.strip_grid`**: no program used them. The `fidget` example keeps `chips` and `rating` as its own widgets (`examples/fidget/widgets.odin`), which a program can copy. `strip_grid` and `STRIP_FADE_EM` are gone.
+
+### Fixed
+- **`ui.task` no longer grows the chores' queue in the caller's allocator**: a program or a test with a tracking allocator saw it as a leak.
+- **A double click is two presses in one place**: two quick presses at the two ends of a wide box are two clicks, as in a text. A press on a picture, then one beside it, zoomed instead of closing.
+- **The devtools' `Toolkit.click` clicks a box at rest**: it waits until the box has kept its place for two frames. A click on a dialog that was still taking its place was lost on its scrim.
+- **The user's themes file** is read again after a window that was reading it closed.
+- **The Rounding setting** is found by "corners", "round", "square" and "radius" in a settings search or the palette.
+- **Two views that scroll the same way, one in the other, show one bar**: the innermost's. A fixed-width table that scrolls sideways in a page that scrolls sideways showed two bars, one under the other.
+
 ## [0.249.0] - 2026-11-13
 
 ### Added
@@ -3242,6 +3344,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.250.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.250.0
 [0.249.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.249.0
 [0.248.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.248.0
 [0.247.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.247.0
