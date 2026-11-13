@@ -1,4 +1,4 @@
-package base
+package gt_base
 
 // The interface's thread makes no system call (docs/tasks.md): a disk asleep, a network share, polkit or a D-Bus peer
 // that does not answer would freeze the window. Every procedure of the toolkit that waits on the system (a file read or

@@ -1,4 +1,4 @@
-package base
+package gt_base
 
 import "core:testing"
 import "core:thread"

@@ -18,7 +18,7 @@ import "core:strings"
 import desktop "../desktop"
 import process "../process"
 import "../ui"
-import "../base"
+import base "../base"
 
 // What a program gives the setup.
 Config :: struct {

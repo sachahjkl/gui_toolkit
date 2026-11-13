@@ -22,7 +22,7 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 import "core:sys/posix"
-import "../base"
+import base "../base"
 
 clipboard_sequence :: proc() -> u32 { return sync.atomic_load(&clip.seq) }
 

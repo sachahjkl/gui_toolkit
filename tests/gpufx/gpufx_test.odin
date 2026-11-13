@@ -6,7 +6,7 @@ package gpufx_test
 
 import "core:math"
 import "core:testing"
-import "../../src/base"
+import base "../../src/base"
 import "../../src/draw"
 import "../../src/font"
 import "../../src/render"

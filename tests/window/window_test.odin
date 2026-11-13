@@ -9,7 +9,7 @@ import "core:thread"
 import "core:testing"
 import "core:time"
 import win "core:sys/windows"
-import "../../src/base"
+import base "../../src/base"
 import "../../src/platform"
 import "../../src/render"
 

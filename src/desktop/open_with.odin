@@ -6,7 +6,7 @@ package tk_desktop
 // is platform.open_path.
 
 import "base:runtime"
-import "../base"
+import base "../base"
 
 // An application that opens a type of file.
 Handler :: struct {

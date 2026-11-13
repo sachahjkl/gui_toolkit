@@ -1,6 +1,6 @@
 // Opt-in performance checks: the assertions on durations, CPU time, rates or frame counts in a time window run only when
 // GUI_PERF is 1 or true, and never in CI (where the machines' speeds are unknown).
-package base
+package gt_base
 
 import "core:fmt"
 import "core:os"

@@ -13,7 +13,7 @@ package platform
 
 import "core:time"
 import "../dbus"
-import "../base"
+import base "../base"
 
 @(private) NOTIFY_SERVICE :: "org.freedesktop.Notifications"
 @(private) NOTIFY_PATH :: "/org/freedesktop/Notifications"

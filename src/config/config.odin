@@ -30,7 +30,7 @@ import "core:path/filepath"
 import "core:strings"
 import "../ascii"
 import "../fsx"
-import "../base"
+import base "../base"
 
 Kind :: enum u8 { Bool, Int, Float, String }
 

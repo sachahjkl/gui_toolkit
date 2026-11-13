@@ -6,7 +6,7 @@ import "core:strings"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/base"
+import base "../../src/base"
 import "../../src/font"
 
 Tbl :: [dynamic]u8

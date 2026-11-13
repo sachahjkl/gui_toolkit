@@ -3,7 +3,7 @@ package fsx
 import "base:runtime"
 import "core:strings"
 import win "core:sys/windows"
-import "../base"
+import base "../base"
 
 @(private = "file")
 wide :: proc(s: string) -> win.LPCWSTR { return win.utf8_to_wstring(s, context.temp_allocator) }

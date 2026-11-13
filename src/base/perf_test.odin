@@ -1,4 +1,4 @@
-package base
+package gt_base
 
 import "core:os"
 import "core:testing"

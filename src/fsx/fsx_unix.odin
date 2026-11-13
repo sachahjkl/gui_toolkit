@@ -7,7 +7,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:sys/posix"
-import "../base"
+import base "../base"
 
 @(private = "file") NS_PER_SECOND :: 1_000_000_000
 

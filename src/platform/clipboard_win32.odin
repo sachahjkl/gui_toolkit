@@ -11,7 +11,7 @@ import "core:slice"
 import "core:strings"
 import "core:sync"
 import win "core:sys/windows"
-import "../base"
+import base "../base"
 
 @(private = "file") CLIPBOARD_FORMAT_NAME_MAX_CHARS :: 256
 @(private = "file") CLIPBOARD_OPEN_ATTEMPTS :: 5

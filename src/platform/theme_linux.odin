@@ -11,7 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "../ascii"
-import "../base"
+import base "../base"
 
 // Whether the user asked to reduce animations (GNOME "Reduce Animation", KDE "animation speed: instant"). Read from the
 // GTK settings file's gtk-enable-animations, else false (animations on). os_animations_enabled negates this.

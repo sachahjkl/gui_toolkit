@@ -5,7 +5,7 @@ package tk_desktop
 // size nearest to the one asked; PNG files decoded, SVG files rendered by librsvg); on Windows the shell's icon of the
 // path. See docs/desktop.md, "Icons".
 
-import "../base"
+import base "../base"
 
 
 // An icon: straight (not premultiplied) RGBA8, row by row from the top.

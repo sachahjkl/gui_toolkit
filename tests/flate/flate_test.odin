@@ -11,7 +11,7 @@ import "core:mem"
 import "core:strings"
 import "core:testing"
 import "core:time"
-import "../../src/base"
+import base "../../src/base"
 import "../../src/flate"
 
 // gzip of the numbers (i * 7919) % 10007 for i in 0 ..< 300, joined by spaces, made by .NET's GZipStream (dynamic codes)

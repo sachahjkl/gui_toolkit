@@ -24,7 +24,7 @@ import "core:sync"
 import "core:time"
 import win "core:sys/windows"
 import winrt "../winrt"
-import "../base"
+import base "../base"
 
 @(private) NOTIFY_MESSAGE :: win.WM_APP + 0x3A3
 @(private = "file") TOAST_GROUP :: "gt"

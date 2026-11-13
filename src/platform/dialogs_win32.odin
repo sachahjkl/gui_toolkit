@@ -7,7 +7,7 @@ package platform
 import "core:hash"
 import "core:strings"
 import win "core:sys/windows"
-import "../base"
+import base "../base"
 
 open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
 	base.blocking("platform.open_file_dialog", loc)

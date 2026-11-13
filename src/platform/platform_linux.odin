@@ -15,7 +15,7 @@ import "core:os"
 import "core:time"
 import "core:strings"
 import "core:sys/posix"
-import "../base"
+import base "../base"
 
 // The window state each backend keeps, behind one pointer so this struct stays free of Wayland and XCB types. The
 // backend allocates it in open_window and frees it in destroy_window.

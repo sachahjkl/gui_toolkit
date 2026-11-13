@@ -15,7 +15,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:sync"
 import "../ascii"
-import "../base"
+import base "../base"
 import "../fsx"
 import "../platform"
 

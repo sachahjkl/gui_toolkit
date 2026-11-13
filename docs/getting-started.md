@@ -38,7 +38,7 @@ build\myapp.exe                  # the window
 build\myapp.exe --frames=3       # three frames of the hidden window, prints "hello: 3 frames, 11 boxes", exits 0
 ```
 
-`import "gt:ui"`, `"gt:draw"`, `"gt:render"`, `"gt:font"`, `"gt:platform"` (and `"gt:flate"`, `"gt:base"`) are the
+`import "gt:ui"`, `"gt:draw"`, `"gt:render"`, `"gt:font"`, `"gt:platform"` (and `"gt:flate"`, `"gt:base"`, whose package is named `gt_base` so that a program keeps its own `base`) are the
 packages, in the toolkit's `src` folder; they import each other by relative paths, so any collection name works. `-o:speed` for a release build
 (about 9 s for hello), `-debug` for a debugger (and the Direct3D debug layer: `D3D_DEBUG` follows `-debug`).
 `-subsystem:windows` gives no console: what the program prints is lost unless it is redirected

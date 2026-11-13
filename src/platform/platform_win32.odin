@@ -9,7 +9,7 @@ import "core:time"
 import "core:unicode/utf16"
 import "core:unicode"
 import win "core:sys/windows"
-import "../base"
+import base "../base"
 
 Native_Window :: struct {
 	hwnd:           win.HWND,

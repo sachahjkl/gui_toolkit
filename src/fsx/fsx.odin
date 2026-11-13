@@ -24,7 +24,7 @@ package fsx
 import "base:runtime"
 import "core:fmt"
 import "core:os"
-import "../base"
+import base "../base"
 
 // The most one system call is asked to read or write: a larger request is split.
 @(private)
