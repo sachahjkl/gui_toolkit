@@ -192,7 +192,7 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
   ```odin
   platform.set_caption_menu_app(w, true)
   // in the build, after the title bar:
-  if at, ok := ui.caption_right_clicked(); ok { ui.ctx_menu_open(menu_key, at) }
+  if at, ok := ui.caption_right_clicked(); ok { ui.menu_open("caption_menu", at) }
   ```
 - **DPI.** Windows is per-monitor (physical pixels, `dpi_scale` = dpi/96). Wayland is `wp_fractional_scale_v1` with `wp_viewporter`:
   the buffer has the scaled size, the surface the logical one; without them the `wl_output` integer scale. A window that

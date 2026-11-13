@@ -84,11 +84,11 @@ todo_tooltip_context_menu_and_theme :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Delete task") != nil, "the tooltip, after its delay")
 
 	session.click(s, fmt.tprintf("chk_%d", row), .Right)
-	testing.expect(t, ui.ctx_menu_any_open(), "the right button opens the menu")
+	testing.expect(t, ui.menu_any_open(), "the right button opens the menu")
 	testing.expect_value(t, app.menu_task, row)
 	testing.expect(t, session.find_text(s, "Mark as done") != nil, "with what it can do")
 	session.key(s, .Escape)
-	testing.expect(t, !ui.ctx_menu_any_open(), "Esc closes it")
+	testing.expect(t, !ui.menu_any_open(), "Esc closes it")
 
 	bg_dark := session.pixel(session.capture(s), BACKGROUND_AT, BACKGROUND_AT)
 	session.click(s, "toggle_theme")

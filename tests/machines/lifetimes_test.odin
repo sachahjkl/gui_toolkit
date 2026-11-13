@@ -30,7 +30,7 @@ Run :: struct {
 	size:   f32,
 	finished: int,
 	first, second: bool,
-	menu:   ui.Key,
+	menu:   string,
 	rich:   ui.Rich_Result,
 }
 
@@ -186,14 +186,14 @@ a_menu_closes_with_the_window :: proc(t: ^testing.T) {
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		r.menu = ui.key_from_string(0, "menu")
-		if ui.ctx_menu(r.menu) { ui.menu_item("Item###item") }
+		r.menu = "menu"
+		if ui.menu(r.menu) { ui.menu_item("Item###item") }
 	}})
-	ui.ctx_menu_open(r.menu, {10, 10})
+	ui.menu_open(r.menu, ui.Vec2{10, 10})
 	session.frames(s, SETTLE_FRAMES)
-	testing.expect(t, ui.ctx_menu_any_open(), "open")
+	testing.expect(t, ui.menu_any_open(), "open")
 	session.activate(s, false)
-	testing.expect(t, !ui.ctx_menu_any_open(), "closed with the window")
+	testing.expect(t, !ui.menu_any_open(), "closed with the window")
 }
 
 @(test)
@@ -321,16 +321,16 @@ the_escape_of_autoscroll_is_not_the_menus :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		scroller()
-		r.menu = ui.key_from_string(0, "menu")
-		if ui.ctx_menu(r.menu) { ui.menu_item("Item###item") }
+		r.menu = "menu"
+		if ui.menu(r.menu) { ui.menu_item("Item###item") }
 	}})
 	ui.set_autoscroll_enabled(s.state, true)
 	session.press(s, session.center(session.get(s, "region")), .Middle)
-	ui.ctx_menu_open(r.menu, {SCROLL_SIZE + FAR_PX, 10})
+	ui.menu_open(r.menu, ui.Vec2{SCROLL_SIZE + FAR_PX, 10})
 	session.frames(s, SETTLE_FRAMES)
 	session.key(s, .Escape)
 	testing.expect(t, !ui.autoscroll_running(s.state), "the session ended")
-	testing.expect(t, ui.ctx_menu_any_open(), "the menu stays")
+	testing.expect(t, ui.menu_any_open(), "the menu stays")
 }
 
 // An Escape read in the frame a new dialog opens is the new dialog's: the one under it stays.
@@ -339,8 +339,8 @@ escape_in_the_first_frame_of_a_dialog_is_its_own :: proc(t: ^testing.T) {
 	r := Run{first = true}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		if ui.modal("first", 400, &r.first) { ui.label("First") }
-		if ui.modal("second", 300, &r.second) { ui.label("Second") }
+		if ui.modal("first", &r.first, {width_em = 400 / ui.font_size()}) { ui.label("First") }
+		if ui.modal("second", &r.second, {width_em = 300 / ui.font_size()}) { ui.label("Second") }
 	}})
 	session.frames(s, SETTLE_FRAMES)
 	session.event(s, {kind = .Key_Press, key = .Escape})
@@ -358,13 +358,13 @@ next_goes_with_what_builds_nothing :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Latches)(s.user)
 		ui.next({width = ui.px(ODD_WIDTH)})
-		if ui.modal("closed", 300, &r.open) {}
+		if ui.modal("closed", &r.open, {width_em = 300 / ui.font_size()}) {}
 		ui.button("a", "A")
 		ui.next({width = ui.px(ODD_WIDTH)})
-		if ui.modal_sized("closed2", {300, 300}, &r.size, &r.open) {}
+		if ui.modal("closed2", &r.open, {width_em = 300 / ui.font_size(), height_em = 300 / ui.font_size(), size = &r.size}) {}
 		ui.button("b", "B")
 		ui.next({width = ui.px(ODD_WIDTH)})
-		if ui.ctx_menu(ui.key_from_string(0, "closed3")) {}
+		if ui.menu("closed3") {}
 		ui.button("c", "C")
 	}})
 	session.frame(s)

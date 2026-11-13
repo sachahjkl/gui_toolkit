@@ -4,6 +4,7 @@ package scenarios_test
 
 import "core:math"
 import "core:testing"
+import flowgraph "../../src/flowgraph"
 import "../../src/testkit/session"
 import "../../src/testkit/unwatched"
 import "../../src/ui"
@@ -88,7 +89,7 @@ header_of :: proc(r: ^Run, i: int) -> [2]f32 {
 }
 
 @(private = "file")
-port_of :: proc(r: ^Run, i: int, side: ui.Graph_Port_Side, index: int) -> [2]f32 {
+port_of :: proc(r: ^Run, i: int, side: flowgraph.Side, index: int) -> [2]f32 {
 	return ui.graph_to_screen(&r.view, ui.graph_port_pos(&r.view, &r.nodes[i], side, index))
 }
 

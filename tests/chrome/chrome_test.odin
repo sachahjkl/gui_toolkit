@@ -186,7 +186,7 @@ caption_button_names_are_a_states :: proc(t: ^testing.T) {
 	defer { free(a); free(b) }
 	if !testing.expect(t, open(a)) { return }
 	defer close(a)
-	ui.set_window_button_names("Réduire", "Agrandir", "Restaurer", "Fermer")   // (a's State is current: open made it so)
+	ui.set_window_button_names(&a.s, "Réduire", "Agrandir", "Restaurer", "Fermer")
 	if !testing.expect(t, open(b)) { return }
 	defer close(b)
 	body :: proc(f: ^Fx, user: rawptr) {
@@ -223,10 +223,10 @@ open_menu_over_resize_bands_and_later_boxes :: proc(t: ^testing.T) {
 			ui.spacer(ui.fill())
 			ui.next({width = ui.px(40), height = ui.pct(1)})
 			b := ui.button("burger", "=")
-			if b.clicked { ui.ctx_menu_open_rect(ui.key_from_string(0, MENU), b.box.rect, b.box.key) }
+			if b.clicked { ui.menu_open(MENU, b.box.rect, b.box.key, search = false) }
 			_, _ = ui.window_buttons()
 		}
-		if ui.ctx_menu(ui.key_from_string(0, MENU), 300) {
+		if ui.menu(MENU, 300) {
 			for i in 0 ..< 40 {
 				s := ui.menu_item(fmt.tprintf("Item %d###it%d", i, i))
 				if s.clicked { r.item_clicks += 1 }
@@ -243,7 +243,7 @@ open_menu_over_resize_bands_and_later_boxes :: proc(t: ^testing.T) {
 	frame(f, {{kind = .Mouse_Move, pos = {bx, 20}}, {kind = .Mouse_Press, pos = {bx, 20}, button = .Left}}, body, &run)
 	frame(f, {{kind = .Mouse_Release, pos = {bx, 20}, button = .Left}}, body, &run)
 	for _ in 0 ..< 3 { frame(f, nil, body, &run) }
-	if !testing.expect(t, ui.ctx_menu_any_open(), "the menu opened") { return }
+	if !testing.expect(t, ui.menu_any_open(), "the menu opened") { return }
 	r, _, _ := ui.menu_rect(0)
 	testing.expect(t, r.max.x >= WINDOW.x - 1 && r.max.y >= WINDOW.y - 1, "the menu reaches the window's right edge and bottom")
 	c := ui.chrome_regions(&f.s)

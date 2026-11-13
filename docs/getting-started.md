@@ -208,7 +208,7 @@ the toolkit itself follows [CONTRIBUTING.md](../CONTRIBUTING.md): a fragment in 
 
 What is one window's or one app's lives in the struct that owns it, so that several apps run in one process, each on a thread of
 its own: the window's in `platform.Window`, the device's in `render.Renderer`, the interface's in `ui.State` (the names of the
-caption buttons too: `ui.set_window_button_names` translates the current State's). A package-level variable is one of four
+caption buttons too: `ui.set_window_button_names(s, ...)` translates a State's). A package-level variable is one of four
 classes, and only these:
 
 | Class | What | Example |

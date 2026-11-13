@@ -48,6 +48,9 @@ ICON_TRASH :: "3"
 ICON_PALETTE :: "E"
 ICON_X :: "x"
 
+// The menu of a task row (the task is app.menu_task).
+TASK_MENU :: "task_menu"
+
 data_dir :: proc() -> string {
 	if the_app.data_in != "" { return the_app.data_in }
 	return platform.user_dir(.Config, "gui_toolkit_todo", context.temp_allocator)
@@ -145,8 +148,7 @@ build_ui :: proc(app: ^App) {
 		}
 
 		// context menu for a task row
-		menu_key := ui.key_from_string(0, "task_menu")
-		if ui.ctx_menu(menu_key, em * 14) {
+		if ui.menu(TASK_MENU, em * 14) {
 			idx := -1
 			for t, i in app.tasks { if t.id == app.menu_task { idx = i } }
 			if idx >= 0 {
@@ -225,7 +227,6 @@ build_filters :: proc(app: ^App, em: f32, total, done: int) {
 
 build_list :: proc(app: ^App, em: f32) {
 	ui.next({width = ui.fill(), height = ui.fill()})
-	menu_key := ui.key_from_string(0, "task_menu")
 	if ui.scroll_y("###list") {
 		query := ui.field_string(&app.search)
 		shown := 0
@@ -243,7 +244,7 @@ build_list :: proc(app: ^App, em: f32) {
 					sig := ui.checkbox(fmt.tprintf("###chk_%d", t.id), t.title, &t.done)
 					if dim { ui.pop_tags() }
 					if sig.clicked { app.dirty = true }
-					if sig.right_clicked { app.menu_task = t.id; ui.ctx_menu_open(menu_key, ui.mouse_pos()) }
+					if sig.right_clicked { app.menu_task = t.id; ui.menu_open(TASK_MENU, ui.mouse_pos()) }
 					ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
 					del := ui.button(fmt.tprintf("del_%d", t.id), icon = ICON_TRASH)
 					if del.clicked { remove_id = t.id }

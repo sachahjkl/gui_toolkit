@@ -53,13 +53,12 @@ history_aggregates :: proc(t: ^testing.T) {
 		s := ui.history_push(&h, f64(i) * 10)
 		s.v[0], s.v[1] = f32(i - 1), 1
 	}
-	st := ui.history_stats(&h, 0, 16.7)
+	st := ui.history_stats(&h, 0)
 	testing.expect_value(t, st.n, 100)
 	testing.expect_value(t, st.min, 1)
 	testing.expect_value(t, st.max, 100)
 	testing.expect_value(t, st.p50, 50)
 	testing.expect_value(t, st.p95, 95)
-	testing.expect_value(t, st.over, 84)   // 17 .. 100
 	testing.expect(t, abs(st.mean - 50.5) < 1e-3)
 	testing.expect(t, abs(st.series_mean[1] - 1) < 1e-6)
 	testing.expect_value(t, st.series_max[0], 99)

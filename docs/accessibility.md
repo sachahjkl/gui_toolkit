@@ -80,7 +80,7 @@ What the widgets say:
 | `pane_toggle` | Button | name ("Hide Styles"), expanded |
 | `accordion` | Button | expanded |
 | `card`, `form_row` | Group (named by the title); a form row's label names its widget |
-| `title_bar`, `window_buttons` | TitleBar; Buttons (the toolkit's names, in the language in use; `set_window_button_names` gives the current State's own: once per window) |
+| `title_bar`, `window_buttons` | TitleBar; Buttons (the toolkit's names, in the language in use; `set_window_button_names(s, ...)` gives a State's own: once per window) |
 | `status_bar` | Status | |
 | `label`, `paragraph` | Label | the text |
 | `rich_paragraph` | Label, or Paragraph with Label and Link parts | links: click, focus, URL |

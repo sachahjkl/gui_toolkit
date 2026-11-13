@@ -7,6 +7,7 @@ package ui
 import "core:math"
 import "core:strings"
 import "../draw"
+import "../flowgraph"
 import "../font"
 import "../render"
 
@@ -54,7 +55,7 @@ Node_Graph_Port_Mark :: enum u8 { Plain, Glow, Dim }
 Node_Graph_Port_Draw :: struct {
 	name:      string,
 	color:     Color,
-	side:      Graph_Port_Side,
+	side:      flowgraph.Side,
 	index:     int,
 	linked:    bool,
 	mark:      Node_Graph_Port_Mark,
@@ -132,14 +133,14 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 	ad := frame_new(Node_Graph_Area_Draw)
 	ad^ = {offset = view.offset * f.sc, k = k, least = node_graph_curve_least(f), colors = colors, sc = f.sc}
 	links := make([dynamic]Node_Graph_Link_Draw, 0, len(f.links), frame_allocator())
-	linked := make(map[Graph_Port_Ref]bool, len(f.links) * 2, context.temp_allocator)
+	linked := make(map[flowgraph.Port_Ref]bool, len(f.links) * 2, context.temp_allocator)
 	selected_link, has_selected := view.link.?
 	hover_link, has_hover := view.hover.?
 	base_width := GRAPH_LINK_PX * f.sc * clamp(z, 0.6, 1.5)
 	for l in f.links {
 		if wiring && has_detached && l == detached { continue }
-		from := Graph_Port_Ref{l.from_node, l.from_port, .Out}
-		to := Graph_Port_Ref{l.to_node, l.to_port, .In}
+		from := flowgraph.Port_Ref{l.from_node, l.from_port, .Out}
+		to := flowgraph.Port_Ref{l.to_node, l.to_port, .In}
 		linked[from], linked[to] = true, true
 		a, ok_a := node_graph_port_screen(f, from)
 		b, ok_b := node_graph_port_screen(f, to)
@@ -184,9 +185,9 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 			nd.geo.rect = {{}, g.rect.max - g.rect.min}   // (drawn from the box's top-left)
 			ports := make([]Node_Graph_Port_Draw, len(n.inputs) + len(n.outputs), frame_allocator())
 			at := 0
-			for side in Graph_Port_Side {
+			for side in flowgraph.Side {
 				for p, idx in (side == .In ? n.inputs : n.outputs) {
-					ref := Graph_Port_Ref{n.id, p.id, side}
+					ref := flowgraph.Port_Ref{n.id, p.id, side}
 					mark := Node_Graph_Port_Mark.Plain
 					if wiring && ref != wire.from {
 						mark = node_graph_compatible(f, wire.from, ref) ? .Glow : .Dim

@@ -8,7 +8,7 @@ import i18n "../i18n"
 import lucide "../lucide"
 
 // What a dialog's header shows besides its title.
-Dialog_Header :: struct {
+Dialog_Header_Options :: struct {
 	icon:        string,         // a glyph of `icon_font` before the title ("": none)
 	icon_font:   font.Font_Id,   // 0: the state's icon font
 	// A close button in the dialog's top right corner (modal_corner: the same margin from its top and right edges, its
@@ -23,16 +23,12 @@ Dialog_Header :: struct {
 // start, then what the block builds (the header's own controls, a toolbar), and the close button in the corner. Build it
 // first in the dialog, before its body, so that it stays on top while the body scrolls.
 @(require_results, deferred_none = dialog_header_end)
-dialog_header :: proc(id: string, title: string, opts := Dialog_Header{}) -> bool { return dialog_header_begin(id, title, opts) }
-
-// dialog_header's start, for a program's own `if` form: `@(deferred_none = ui.dialog_header_end)` on a procedure that
-// returns this. (Wrapping dialog_header itself would end the header twice: its end is deferred to the scope it is called in.)
-dialog_header_begin :: proc(id: string, title: string, opts := Dialog_Header{}) -> bool {
+dialog_header :: proc(id: string, title: string, o := Dialog_Header_Options{}) -> bool {
 	s := gs()
 	em := font_size()
 	panel := parent_box()
 	h := math.round(dense(em * DIALOG_HEADER_EM))
-	if opts.close {
+	if o.close {
 		assert(len(s.modal_stack) > 0, "dialog_header: a close button outside a dialog")
 		m := &s.modal_stack[len(s.modal_stack) - 1]
 		// (the button centered on the strip, which begins inside the dialog's border; its margin from the right edge the same)
@@ -40,7 +36,7 @@ dialog_header_begin :: proc(id: string, title: string, opts := Dialog_Header{}) 
 		m.corner_side = math.round(min(em * DIALOG_CLOSE_EM, h))
 		m.corner_inset = border + math.round((h - m.corner_side) * 0.5)
 		m.close = true
-		m.close_label = opts.close_label != "" ? opts.close_label : i18n.tr("Close")
+		m.close_label = o.close_label != "" ? o.close_label : i18n.tr("Close")
 	}
 	shade := frame_new(Color)
 	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
@@ -50,10 +46,10 @@ dialog_header_begin :: proc(id: string, title: string, opts := Dialog_Header{}) 
 	a11y_default(b, {role = .Heading, name = title})
 	push_parent(b)
 	spacer(px(em * 1.0))
-	if opts.icon != "" {
-		f := opts.icon_font != 0 ? opts.icon_font : s.icon_font
+	if o.icon != "" {
+		f := o.icon_font != 0 ? o.icon_font : s.icon_font
 		next({width = px(em * 1.4), height = pct(1), font = f, font_size = em * 1.1, text_align = .Center, text_pad = 0, fg = color("accent")})
-		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s_icon", opts.icon, id))
+		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s_icon", o.icon, id))
 		spacer(px(em * 0.55))
 	}
 	next({width = fill(), height = pct(1), font_size = em * 1.05, text_pad = 0})
@@ -61,8 +57,9 @@ dialog_header_begin :: proc(id: string, title: string, opts := Dialog_Header{}) 
 	return true
 }
 
-// The end of dialog_header and of dialog_header_begin: its right end, clear of the corner's control when it has one (the
-// control's margin on each side of it: a control of the header never touches it).
+// The end of dialog_header: its right end, clear of the corner's control when it has one (the control's margin on each
+// side of it: a control of the header never touches it).
+@(private)
 dialog_header_end :: proc() {
 	s := gs()
 	em := font_size()

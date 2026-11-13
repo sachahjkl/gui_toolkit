@@ -13,32 +13,35 @@ import "../platform"
 // Popups (menus, dropdowns, tooltips) are floating boxes appended to the ROOT, so they draw above everything built so
 // far and win hit testing. Their contents inherit the style of the call site.
 //
-// Menus. One menu is open at a time, with any depth of open submenus and nested menus (`State.menus`, outermost first):
+// Menus. One menu is open at a time, with any depth of open submenus and nested menus (`State.menus`, outermost first).
+// A menu is named by its `id`, as a widget is; the name is the window's (two menus of one id are one menu: a menu of a
+// row puts the row in its id):
 //
-//   if ui.ctx_menu(key) {                      // width 0: as wide as its widest item (measured on the previous frame)
+//   if sig.right_clicked { ui.menu_open("item_menu", ui.mouse_pos()) }
+//   if ui.menu("item_menu") {                    // width 0: as wide as its widest item (measured on the previous frame)
 //       if ui.menu_item("Copy", "Ctrl+C").clicked { ... }
 //       ui.menu_separator()
 //       if ui.menu_submenu("Search with") {
 //           if ui.menu_item("Engine A").clicked { ... }
 //       }
-//       if ui.menu_item("Paste", "Ctrl+V", enabled = can_paste).clicked { ... }
+//       if ui.menu_item("Paste", "Ctrl+V", disabled = !can_paste).clicked { ... }
 //   }
 //
 // Keyboard (the open menu owns every key press and typed character of the frame): Up / Down / Home / End move over the
 // enabled items (wrapping), Right / Enter / Space open the selected submenu, Enter / Space choose the selected item,
 // Left / Escape close the innermost submenu, Escape closes the menu, a typed letter selects the next item starting
-// with it (a menu opened with `search`: what is typed searches the items, see ctx_menu_open). Pointer: hovering selects, resting on a submenu item opens it (and on another item closes it) after
+// with it (a menu opened with `search`: what is typed searches the items, see menu_open). Pointer: hovering selects, resting on a submenu item opens it (and on another item closes it) after
 // Feel.menu_hover_ms, clicking chooses; a press outside every open level closes the menu. A menu opens where asked and
 // stays on screen: it flips to the other side of the point (or of the anchor rect) when it does not fit, then is
 // clamped to the window. A level taller than the window is as tall as the window and scrolls (wheel, scroll bar; the
 // keyboard's selection is brought into view).
 //
-// A nested menu is a menu opened from inside an open one, at a point or under a rect (a row's context menu in a
-// drop-down panel), over it; the menu stays open behind it:
+// A nested menu is a menu opened from inside an open one (`nested`), at a point or under a rect (a row's context menu in
+// a drop-down panel), over it; the menu stays open behind it:
 //
-//   if ui.ctx_menu(key) {
-//       if row_sig.right_clicked { ui.menu_nested_open(row_menu, ui.mouse_pos()) }
-//       if ui.menu_nested(row_menu) { if ui.menu_item("Open").clicked { ... } }
+//   if ui.menu("list_menu") {
+//       if row_sig.right_clicked { ui.menu_open("row_menu", ui.mouse_pos(), nested = true) }
+//       if ui.menu("row_menu") { if ui.menu_item("Open").clicked { ... } }
 //   }
 //
 // It closes like a submenu: a press outside it closes only it, Escape closes it, choosing an item closes the menu.
@@ -90,7 +93,7 @@ Menu_Level :: struct {
 	anchor:       Key,       // level 0: the widget that opened it (pressing it again is not a press "outside")
 	pos:          Vec2,      // where it was asked to open (top-left corner)
 	around:       Rect,      // not empty: open next to this rect (level 0, nested: below, else above; submenus: right, else left)
-	nested:       bool,      // opened by menu_nested_open: placed like level 0, not closed by resting on its menu's items
+	nested:       bool,      // opened with menu_open's `nested`: placed like level 0, not closed by resting on its menu's items
 	open_build:   u64,
 	built_build:  u64,
 	sel:          int,       // selected item (-1: none)
@@ -105,7 +108,7 @@ Menu_Level :: struct {
 	hover_since:  f64,
 	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
-	search:       bool,      // typing searches its items (ctx_menu_open's `search`)
+	search:       bool,      // typing searches its items (menu_open's `search`)
 	query:        Text_Field,   // what was typed (search): a field's text, edited by a field's keys (field_key)
 	typed_ms:     f64,       // when the query last changed (or the menu opened): its caret is solid, then blinks
 	pick_first:   bool,      // the query changed: the first item that matches is selected when it is built
@@ -148,31 +151,65 @@ menu_matches :: proc(lv: ^Menu_Level, text: string) -> bool {
 	return ok
 }
 
-// Opens the menu `key` with its top-left corner at `pos` (window pixels), replacing any open menu.
-// `anchor`: the box that opens the menu (dropdown button, menu bar entry): pressing it again is not a press "outside",
-// so the widget can toggle the menu itself. `from_keyboard`: the first enabled item starts selected.
-// `search` (on: every context menu can be filtered): what is typed searches the items (fuzzy, File Pilot's): a field at the top
-// shows it (a magnifier, a caret), the items that do not match go, a submenu's items come up into the menu, the first match is
-// selected (Enter chooses it). Off for a menu of a few fixed choices.
-ctx_menu_open :: proc(key: Key, pos: Vec2, anchor: Key = 0, from_keyboard := false, search := true) { menu_open(key, pos, {}, anchor, from_keyboard, search) }
+// Where a menu opens: its top-left corner at a point (window pixels), or below a rect (above it when there is no room
+// below), e.g. under the button that opens it.
+Menu_At :: union { Vec2, Rect }
 
-// Opens the menu below `rect` (above it when there is no room below), e.g. under the button that opens it.
-ctx_menu_open_rect :: proc(key: Key, rect: Rect, anchor: Key = 0, from_keyboard := false) { menu_open(key, {rect.min.x, rect.max.y}, rect, anchor, from_keyboard) }
+// Opens the menu `id` at `at`, replacing any open menu. `anchor`: the box that opens the menu (dropdown button, menu bar
+// entry): pressing it again is not a press "outside", so the widget can toggle the menu itself. `from_keyboard`: the
+// first enabled item starts selected. `search` (on: every menu can be filtered): what is typed searches the items (fuzzy,
+// File Pilot's): a field at the top shows it (a magnifier, a caret), the items that do not match go, a submenu's items
+// come up into the menu, the first match is selected (Enter chooses it); off: a typed letter selects the next item that
+// starts with it (a menu of a few fixed choices). `nested`: called in the block of an open menu, the menu opens over it,
+// in place of any submenu or nested menu that menu had open, and the menu stays open behind it (it does nothing outside a
+// menu's block).
+menu_open :: proc(id: string, at: Menu_At, anchor: Key = 0, from_keyboard := false, search := true, nested := false) {
+	pos: Vec2
+	around: Rect
+	switch v in at {
+	case Vec2: pos = v
+	case Rect: pos, around = {v.min.x, v.max.y}, v
+	}
+	lv := Menu_Level{key = menu_key(id), pos = pos, around = around, nested = nested, open_build = gs().build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, typed_ms = now_ms()}
+	if nested { menu_nest(lv) } else { lv.anchor = anchor; menu_push(lv) }
+}
+
+// The key of the menu `id`: the window's, not that of where it is built.
+@(private)
+menu_key :: proc(id: string) -> Key { return key_from_string(0, id) }
 
 // In the block of an open menu the rows still to come are that menu's: this one opens when the block ends (menu_end).
 @(private = "file")
-menu_open :: proc(key: Key, pos: Vec2, around: Rect, anchor: Key, from_keyboard: bool, search := false) {
+menu_push :: proc(lv: Menu_Level) {
 	s := gs()
-	lv := Menu_Level{key = key, anchor = anchor, pos = pos, around = around, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, typed_ms = now_ms()}
 	if len(s.menu_build) > 0 { s.menu_next = lv; return }
 	menu_pop_to(0)
 	s.menu_close_pending = false   // (the menu asked to close is gone: this one is new)
 	append(&s.menus, lv)
 }
 
-ctx_menu_close :: proc() { menu_pop_to(0) }
-ctx_menu_is_open :: proc(key: Key) -> bool { return key != 0 && len(gs().menus) > 0 && gs().menus[0].key == key }
-ctx_menu_any_open :: proc() -> bool { return len(gs().menus) > 0 }
+// A nested menu goes over the level being built.
+@(private = "file")
+menu_nest :: proc(lv: Menu_Level) {
+	s := gs()
+	_, depth := menu_current()
+	if depth < 0 { return }
+	menu_pop_to(depth + 1)
+	append(&s.menus, lv)
+}
+
+// Closes the open menu, every level of it.
+menu_close :: proc() { menu_pop_to(0) }
+
+// Whether the menu `id` is open, at any level (a nested menu too).
+menu_is_open :: proc(id: string) -> bool {
+	key := menu_key(id)
+	for lv in gs().menus { if lv.key == key { return true } }
+	return false
+}
+
+// Whether any menu is open.
+menu_any_open :: proc() -> bool { return len(gs().menus) > 0 }
 
 // Is `p` (window pixels) on a level of the open menu (a submenu, a nested menu, a drop-down's list), as the last build
 // laid it out? The wheel there is the menu's (`wheel_consumed`): an app that routes the wheel to its own content (a
@@ -348,19 +385,32 @@ menu_step :: proc(items: []Menu_Item_Info, from, dir: int) -> int {
 	return -1
 }
 
-// `if ctx_menu(key, width) { menu_item(...) ... }`: builds the menu `key` when it is open. `width` 0 = as wide as the
-// widest item. Closes on Escape, on a press outside every open level, or when an item is chosen.
+// `if menu(id, width) { menu_item(...) ... }`: builds the menu `id` while it is open (a nested menu: in the block of the
+// menu that opened it). `width` 0 = as wide as the widest item; a width given is a minimum. Closes on Escape, on a press
+// outside every open level (a nested menu: outside it and the levels it opened, which closes only it), or when an item is
+// chosen.
 @(require_results, deferred_none = menu_end)
-ctx_menu :: proc(key: Key, width: f32 = 0) -> bool {
+menu :: proc(id: string, width: f32 = 0) -> bool {
 	s := gs()
-	if !ctx_menu_is_open(key) {
+	key := menu_key(id)
+	_, depth := menu_current()
+	if d := depth + 1; depth >= 0 && d < len(s.menus) && s.menus[d].key == key && s.menus[d].nested {
+		if s.build_index > s.menus[d].open_build && menu_pressed_outside(s, d, 0) {
+			menu_pop_to(d)
+			next_drop(s)
+			append(&s.popup_stack, false)
+			return false
+		}
+		return menu_level_begin(d, width)
+	}
+	if len(s.menus) == 0 || s.menus[0].key != key || s.menus[0].nested {
 		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
 	}
 	// a press outside every open level closes the whole menu
 	if s.build_index > s.menus[0].open_build && menu_pressed_outside(s, 0, s.menus[0].anchor) {
-		ctx_menu_close()
+		menu_close()
 		next_drop(s)
 		append(&s.popup_stack, false)
 		return false
@@ -385,44 +435,6 @@ menu_pressed_outside :: proc(s: ^State, from: int, anchor: Key) -> bool {
 		if p := s.boxes[lv.panel]; p != nil && is_descendant(hb, p) { return false }
 	}
 	return true
-}
-
-// Opens the nested menu `key` over the menu being built (call it in that menu's block), its top-left corner at `pos`,
-// in place of any submenu or nested menu that menu had open. Does nothing outside a menu's block.
-menu_nested_open :: proc(key: Key, pos: Vec2, from_keyboard := false) { menu_nested_push(key, pos, {}, from_keyboard) }
-
-// Opens the nested menu below `rect` (above it when there is no room below), e.g. under a row's menu button.
-menu_nested_open_rect :: proc(key: Key, rect: Rect, from_keyboard := false) { menu_nested_push(key, {rect.min.x, rect.max.y}, rect, from_keyboard) }
-
-@(private = "file")
-menu_nested_push :: proc(key: Key, pos: Vec2, around: Rect, from_keyboard: bool) {
-	s := gs()
-	_, depth := menu_current()
-	if depth < 0 { return }
-	menu_pop_to(depth + 1)
-	append(&s.menus, Menu_Level{key = key, pos = pos, around = around, nested = true, open_build = s.build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard})
-}
-
-// `if menu_nested(key, width) { menu_item(...) }`, in the block of the menu that opened it: builds the nested menu
-// `key` while it is open. `width` 0 = as wide as the widest item. A press outside it (and the levels it opened) closes
-// only it.
-@(require_results, deferred_none = menu_end)
-menu_nested :: proc(key: Key, width: f32 = 0) -> bool {
-	s := gs()
-	_, depth := menu_current()
-	d := depth + 1
-	if depth < 0 || d >= len(s.menus) || s.menus[d].key != key || !s.menus[d].nested {
-		next_drop(s)
-		append(&s.popup_stack, false)
-		return false
-	}
-	if s.build_index > s.menus[d].open_build && menu_pressed_outside(s, d, 0) {
-		menu_pop_to(d)
-		next_drop(s)
-		append(&s.popup_stack, false)
-		return false
-	}
-	return menu_level_begin(d, width)
 }
 
 @(private)
@@ -595,20 +607,21 @@ menu_end :: proc() {
 		pop(&s.menu_build)
 		if len(s.menu_build) == 0 && s.menu_close_pending {
 			s.menu_close_pending = false
-			ctx_menu_close()
+			menu_close()
 		}
 		if lv, opens := s.menu_next.?; opens && len(s.menu_build) == 0 {
 			s.menu_next = nil
 			s.menu_close_pending = false
-			ctx_menu_close()
+			menu_close()
 			append(&s.menus, lv)
 		}
 	}
-	ctx_menu_end()
+	popup_end()
 }
 
+// The end of a floating box of the root (a menu's level, a tooltip, a dialog, a popover) that its start opened.
 @(private)
-ctx_menu_end :: proc() {
+popup_end :: proc() {
 	s := gs()
 	if pop(&s.popup_stack) {
 		pop_parent()     // panel
@@ -749,10 +762,10 @@ menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 }
 
 // One item of the menu being built. Tags used: "menu_item" (+ "selected" on the selected one). Closes the whole menu
-// when chosen (click, or Enter / Space on the selected item). A disabled item (`enabled` false, or inside a `disabled`
+// when chosen (click, or Enter / Space on the selected item). A disabled item (`disabled`, or inside a `disabled`
 // scope) is shown muted and skipped by the keyboard. `icon` is a character of `icon_font` (0: State.icon_font, the
 // program's icons; a menu of the toolkit's own gives lucide_icons()).
-menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", enabled := true, keep_open := false, icon_font: font.Font_Id = 0) -> Signal {
+menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", disabled := false, keep_open := false, icon_font: font.Font_Id = 0) -> Signal {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil {
@@ -760,7 +773,7 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 		return button(text, display_part(text))
 	}
 	if !menu_matches(lv, text) { return {} }
-	en := enabled && s.disabled_depth == 0
+	en := !disabled && s.disabled_depth == 0
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, first = first_letter(display_part(text))})
 	if lv.pick_first && en { lv.sel, lv.pick_first, lv.reveal = idx, false, true }
@@ -790,16 +803,16 @@ menu_separator :: proc() {
 // is no room). Opens on click, after the pointer rests on it, or with Right / Enter / Space; the block builds the
 // submenu's items while it is open.
 @(require_results, deferred_none = menu_end)
-menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
+menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil { append(&s.popup_stack, false); return false }
 	// (a search: the submenu's items come up into this level, the submenu itself is not shown)
 	if menu_query(lv) != "" {
 		append(&s.popup_stack, false)
-		return enabled && s.disabled_depth == 0
+		return !disabled && s.disabled_depth == 0
 	}
-	en := enabled && s.disabled_depth == 0
+	en := !disabled && s.disabled_depth == 0
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, submenu = true, first = first_letter(display_part(text))})
 	sub_key := key_from_string(lv.key, hash_part(text))
@@ -903,7 +916,7 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 }
 
 @(private)
-tooltip_end :: proc() { ctx_menu_end() }
+tooltip_end :: proc() { popup_end() }
 
 
 // The search of a menu opened with `search`: a band from edge to edge at its top, in a field's background with the

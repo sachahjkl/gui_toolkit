@@ -43,7 +43,7 @@ Dialog :: struct {
 	shortcut:  bool,               // the Desktop's shortcut, asked of Install
 	choices:   [dynamic]bool,      // the program's options (Config.choices), as ticked
 	folder:    ui.Text_Field,      // the install folder (Config.folder): set from the facts when they first come
-	size:      [2]f32,             // what the user made it, logical pixels ({}: DIALOG_EM; the program may keep it)
+	size:      [2]f32,             // what the user made it, in ems ({}: DIALOG_EM; the program may keep it)
 	note:      string,             // what the last action said (owned)
 	note_good: bool,
 	installed: string,             // the copy just installed, to open (owned; "": none)
@@ -365,7 +365,7 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 	if !d.open { return }
 	was_open := d.open
 	busy := d.job != nil && d.job.kind != .Read
-	if ui.modal_sized("setup", DIALOG_EM * em, &d.size, &d.open, DIALOG_MIN_EM * em) {
+	if ui.modal("setup", &d.open, {width_em = DIALOG_EM.x, height_em = DIALOG_EM.y, min_width_em = DIALOG_MIN_EM.x, min_height_em = DIALOG_MIN_EM.y, size = &d.size}) {
 		f := &d.facts
 		if c.square { ui.parent_box().radius = 0 }
 		if c.backdrop != nil { c.backdrop(c.user) }

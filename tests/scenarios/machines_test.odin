@@ -27,11 +27,11 @@ dialogs_build :: proc(s: ^session.Session) {
 	d := (^Dialogs)(s.user)
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	ui.line_edit("###page", &d.page)
-	if ui.modal("first", 400, &d.first) {
+	if ui.modal("first", &d.first, {width_em = 400 / ui.font_size()}) {
 		ui.next({width = ui.px(100)})
 		ui.button("below", "Below")
 	}
-	if ui.modal("second", 300, &d.second) {
+	if ui.modal("second", &d.second, {width_em = 300 / ui.font_size()}) {
 		ui.next({width = ui.px(FIELD_WIDTH)})
 		ui.line_edit("###field", &d.field)
 		ui.next({width = ui.px(100)})

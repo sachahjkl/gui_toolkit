@@ -318,14 +318,13 @@ options_card :: proc(app: ^App, em: f32) {
 ////////////////////////////////
 // Menus
 
-// The key of the menu opened on a file: a context menu that searches.
+// The id of the menu opened on a file: a context menu that searches.
 @(private = "file")
-MENU_SEED :: "showcase_file_menu"
+FILE_MENU :: "showcase_file_menu"
 
 @(private = "file")
 menus_build :: proc(app: ^App, em: f32) {
 	heading("Menus", "A menu is as wide as its widest row: its icons, its words, its keys. Typing searches it: a band at its top shows what is typed, the rows that do not match go, a submenu's rows come up.", em)
-	menu := ui.key_from_string(0, MENU_SEED)
 	if ui.card("~/Pictures/Shots", lucide.FOLDER_OPEN) {
 		for f, i in FILES {
 			chosen := i == FILE_CHOSEN
@@ -344,12 +343,12 @@ menus_build :: proc(app: ^App, em: f32) {
 				weak("date", f[2], em * 8, em)
 			}
 			ui.pop_tags()
-			if ui.signal(b).right_clicked { ui.ctx_menu_open(menu, ui.mouse_pos()) }
+			if ui.signal(b).right_clicked { ui.menu_open(FILE_MENU, ui.mouse_pos()) }
 			// (the menu stands open on the chosen file from the second build, once its row is laid out)
-			if chosen && app.builds == 2 { ui.ctx_menu_open(menu, {b.rect.min.x + em * 13, b.rect.max.y - em * 0.4}) }
+			if chosen && app.builds == 2 { ui.menu_open(FILE_MENU, ui.Vec2{b.rect.min.x + em * 13, b.rect.max.y - em * 0.4}) }
 		}
 	}
-	if ui.ctx_menu(menu) {
+	if ui.menu(FILE_MENU) {
 		ui.menu_item("Open", "Enter", icon = lucide.FOLDER_OPEN)
 		if ui.menu_submenu("Open with", lucide.EXTERNAL_LINK) {
 			ui.menu_item("The picture viewer", icon = lucide.IMAGE)
@@ -367,7 +366,7 @@ menus_build :: proc(app: ^App, em: f32) {
 		}
 		ui.menu_separator()
 		ui.menu_item("Show the hidden files", "Ctrl+H", checked = true)
-		ui.menu_item("Compress into an archive", icon = lucide.ARCHIVE, enabled = false)
+		ui.menu_item("Compress into an archive", icon = lucide.ARCHIVE, disabled = true)
 		ui.menu_separator()
 		ui.menu_item("Delete", "Delete", icon = lucide.TRASH_2)
 	}
@@ -416,7 +415,7 @@ themes_build :: proc(app: ^App, em: f32) {
 
 // A dialog of its own: its header with the close button in its corner, its body, its buttons. It fades in.
 dialog_build :: proc(app: ^App, em: f32) {
-	if ui.modal_sized("export", {em * 31, 0}, &app.dialog_size, &app.dialog_open) {
+	if ui.modal("export", &app.dialog_open, {width_em = 31, size = &app.dialog_size}) {
 		if ui.dialog_header("export_head", "Export pictures", {icon = lucide.DOWNLOAD, icon_font = ui.lucide_icons(), close = true}) {}
 		if ui.dialog_body("export_body") {
 			if ui.form_row("Name") { ui.line_edit("###export_name", &app.file_name, "The file's name") }
@@ -444,8 +443,8 @@ dialog_build :: proc(app: ^App, em: f32) {
 
 // What a program says of what it did: toasts of the window here (Announcer.mode Window), a line or a title and its words.
 toasts_say :: proc(app: ^App) {
-	ui.toast(.Info, "Workflow saved: 7 nodes, 6 links")
+	ui.announce(&app.announcer, .Info, "Workflow saved: 7 nodes, 6 links")
 	ui.announce(&app.announcer, .Good, "Link copied", "https://example.org/s/4hx2")
-	ui.toast(.Warn, "The host is slow: 4 s for the last picture")
-	ui.toast_titled(.Bad, "Upload failed", "The server refused the picture: 413, too large. Lower the quality and try again.")
+	ui.announce(&app.announcer, .Warn, "The host is slow: 4 s for the last picture")
+	ui.announce(&app.announcer, .Bad, "Upload failed", "The server refused the picture: 413, too large. Lower the quality and try again.")
 }

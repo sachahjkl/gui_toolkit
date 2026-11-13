@@ -22,9 +22,9 @@ a_row_is_square :: proc(t: ^testing.T) {
 			if ui.list("###l", &r.list) {
 				for i in 0 ..< 3 { ui.list_row(&r.list, i, "row") }
 			}
-			key := ui.key_from_string(0, "m")
-			if !r.menu_open { r.menu_open = true; ui.ctx_menu_open(key, {50, 50}) }
-			if ui.ctx_menu(key) { ui.menu_item("An item") }
+			key := "m"
+			if !r.menu_open { r.menu_open = true; ui.menu_open(key, ui.Vec2{50, 50}) }
+			if ui.menu(key) { ui.menu_item("An item") }
 			ui.next({width = ui.px(300), height = ui.px(24), axis = .X})
 			if ui.row(id = "###trow") { ui.table_cell(&r.table.layout, 0, "busy", bg = ui.Color{0.8, 0.2, 0.2, 1}) }
 		}

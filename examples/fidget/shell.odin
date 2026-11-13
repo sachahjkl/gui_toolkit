@@ -18,25 +18,25 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Go_Playground: app.page = .Playground
 	case .Toggle_Machined:
 		app.machined = !app.machined
-		ui.toast(.Info, "Finish: %s", app.machined ? "machined" : "the theme's")
+		ui.announce(&app.announcer, .Info, fmt.tprintf("Finish: %s", app.machined ? "machined" : "the theme's"))
 	case .Next_Theme:
 		set_palette(app, app.palette_idx + 1)
-		ui.toast(.Info, "Theme: %s", palettes[app.palette_idx].name)
+		ui.announce(&app.announcer, .Info, fmt.tprintf("Theme: %s", palettes[app.palette_idx].name))
 	case .Toggle_Status: app.show_status = !app.show_status
 	case .Toggle_Animations:
 		app.anim_mode = animations_enabled(app) ? .Off : .On
-		ui.toast(.Info, "Animations %s", app.anim_mode == .Off ? "off" : "on")
-	case .Anim_System: app.anim_mode = .System; app.os_anim_checked_ms = 0; ui.toast(.Info, "Animations follow the system setting")
-	case .Anim_On: app.anim_mode = .On; ui.toast(.Info, "Animations always on")
-	case .Anim_Off: app.anim_mode = .Off; ui.toast(.Info, "Animations always off")
+		ui.announce(&app.announcer, .Info, fmt.tprintf("Animations %s", app.anim_mode == .Off ? "off" : "on"))
+	case .Anim_System: app.anim_mode = .System; app.os_anim_checked_ms = 0; ui.announce(&app.announcer, .Info, "Animations follow the system setting")
+	case .Anim_On: app.anim_mode = .On; ui.announce(&app.announcer, .Info, "Animations always on")
+	case .Anim_Off: app.anim_mode = .Off; ui.announce(&app.announcer, .Info, "Animations always off")
 	case .Toggle_Slowmo:
 		app.slowmo = !app.slowmo
-		ui.toast(.Info, app.slowmo ? "Slow motion: animations at 1/5 speed" : "Slow motion off")
+		ui.announce(&app.announcer, .Info, app.slowmo ? "Slow motion: animations at 1/5 speed" : "Slow motion off")
 	case .Toggle_Boxes: app.show_boxes = !app.show_boxes
-	case .Toast_Info: ui.toast(.Info, "Heads up: this is an info toast")
-	case .Toast_Good: ui.toast(.Good, "Saved successfully")
-	case .Toast_Warn: ui.toast(.Warn, "Careful: the disk is 91%% full")
-	case .Toast_Bad: ui.toast(.Bad, "Something went wrong (just kidding)")
+	case .Toast_Info: ui.announce(&app.announcer, .Info, "Heads up: this is an info toast")
+	case .Toast_Good: ui.announce(&app.announcer, .Good, "Saved successfully")
+	case .Toast_Warn: ui.announce(&app.announcer, .Warn, "Careful: the disk is 91% full")
+	case .Toast_Bad: ui.announce(&app.announcer, .Bad, "Something went wrong (just kidding)")
 	case .Clear_Toasts: ui.toasts_clear()
 	case .Open_Modal: app.modal_open = true
 	case .About: app.about_open = true
@@ -44,7 +44,7 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Spawn_Balls: app.page = .Playground; spawn_balls(app, 25)
 	case .Confetti: app.page = .Playground; spawn_confetti(app, {app.arena_size.x * 0.5, app.arena_size.y * 0.7}, 120)
 	case .Clear_Balls: for &b in app.balls { b.alive = false }
-	case .Reset_Values: reset_values(app); ui.toast(.Good, "All widget values reset")
+	case .Reset_Values: reset_values(app); ui.announce(&app.announcer, .Good, "All widget values reset")
 	case .Zoom_In: ui.set_zoom(&app.ui_state, ui.zoom(&app.ui_state) * ui.feel(&app.ui_state).zoom_step)
 	case .Zoom_Out: ui.set_zoom(&app.ui_state, ui.zoom(&app.ui_state) / ui.feel(&app.ui_state).zoom_step)
 	case .Zoom_Reset: ui.set_zoom(&app.ui_state, 1)
@@ -83,10 +83,10 @@ handle_shortcuts :: proc(app: ^App) {
 build_ui :: proc(app: ^App) {
 	handle_shortcuts(app)
 	if app.debug_toasts && app.frame_index == 3 {
-		ui.toast(.Info, "Heads up: this is an info toast")
-		ui.toast(.Good, "Saved successfully")
-		ui.toast(.Warn, "Careful: the disk is almost full")
-		ui.toast(.Bad, "Something went wrong")
+		ui.announce(&app.announcer, .Info, "Heads up: this is an info toast")
+		ui.announce(&app.announcer, .Good, "Saved successfully")
+		ui.announce(&app.announcer, .Warn, "Careful: the disk is almost full")
+		ui.announce(&app.announcer, .Bad, "Something went wrong")
 	}
 	em := ui.font_size()
 	if ui.style({width = ui.fill(), height = ui.fill(), radius = em * 0.45}) {
@@ -144,13 +144,13 @@ build_menubar :: proc(app: ^App, em: f32) {
 			ui.spacer(ui.px(em * 0.8))
 			if app.integrated { _, _ = ui.window_buttons() }
 
-			if ui.ctx_menu(file_m, menu_w) {
+			if ui.menu(file_m, menu_w) {
 				if ui.menu_item("Reset all values", "", false, ICON_UNDO).clicked { run_cmd(app, .Reset_Values) }
 				if ui.menu_item("Dismiss all toasts", "", false, ui.ICON_X).clicked { run_cmd(app, .Clear_Toasts) }
 				ui.menu_separator()
 				if ui.menu_item("Quit", "Alt+F4", false, ICON_STOP).clicked { run_cmd(app, .Quit) }
 			}
-			if ui.ctx_menu(view_m, menu_w) {
+			if ui.menu(view_m, menu_w) {
 				if ui.menu_item("Settings...", "Ctrl+,", false, ICON_GEAR).clicked { run_cmd(app, .Settings) }
 				ui.menu_separator()
 				if ui.menu_item("Status bar", "Ctrl+B", app.show_status).clicked { run_cmd(app, .Toggle_Status) }
@@ -165,7 +165,7 @@ build_menubar :: proc(app: ^App, em: f32) {
 				if ui.menu_submenu("Zoom") {
 					if ui.menu_item("Zoom in", "Ctrl +").clicked { run_cmd(app, .Zoom_In) }
 					if ui.menu_item("Zoom out", "Ctrl -").clicked { run_cmd(app, .Zoom_Out) }
-					if ui.menu_item("Reset zoom", "Ctrl 0", enabled = ui.zoom(&app.ui_state) != 1).clicked { run_cmd(app, .Zoom_Reset) }
+					if ui.menu_item("Reset zoom", "Ctrl 0", disabled = ui.zoom(&app.ui_state) == 1).clicked { run_cmd(app, .Zoom_Reset) }
 				}
 				if ui.menu_submenu("Go to page") {
 					for p in Page {
@@ -173,15 +173,15 @@ build_menubar :: proc(app: ^App, em: f32) {
 					}
 				}
 			}
-			if ui.ctx_menu(theme_m, menu_w) {
+			if ui.menu(theme_m, menu_w) {
 				for p, i in palettes {
-					if ui.menu_item(p.name, "", app.palette_idx == i).clicked { set_palette(app, i); ui.toast(.Info, "Theme: %s", p.name) }
+					if ui.menu_item(p.name, "", app.palette_idx == i).clicked { set_palette(app, i); ui.announce(&app.announcer, .Info, fmt.tprintf("Theme: %s", p.name)) }
 				}
 				ui.menu_separator()
 				if ui.menu_item("Machined finish", "Ctrl+M", app.machined).clicked { run_cmd(app, .Toggle_Machined) }
 				if ui.menu_item("Cycle next", "Ctrl+T", false, ICON_REFRESH).clicked { run_cmd(app, .Next_Theme) }
 			}
-			if ui.ctx_menu(help_m, menu_w) {
+			if ui.menu(help_m, menu_w) {
 				if ui.menu_item("Command palette", "Ctrl+K", false, ICON_FIND).clicked { palette_toggle(app) }
 				if ui.menu_item("Confirm dialog demo", "", false, ICON_QUESTION).clicked { run_cmd(app, .Open_Modal) }
 				ui.menu_separator()
@@ -267,7 +267,7 @@ build_palette :: proc(app: ^App) {
 	app.palette_mouse = mouse
 	run := -1
 
-	if ui.modal("palette", pw, &app.palette_open, 0.11) {
+	if ui.modal("palette", &app.palette_open, {width_em = pw / em, top = 0.11}) {
 		if ui.style({width = ui.px(pw)}) {
 			ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 3.4))})
 			if ui.row(.Center, id = "###pal_head") {
@@ -337,7 +337,7 @@ build_palette :: proc(app: ^App) {
 build_confirm :: proc(app: ^App) {
 	em := ui.font_size()
 	w := min(em * 30, f32(app.win.size.x) / app.win.dpi_scale * 0.9)
-	if ui.modal("confirm", w, &app.modal_open) {
+	if ui.modal("confirm", &app.modal_open, {width_em = w / em}) {
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.2))
 			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.4))})
@@ -357,9 +357,9 @@ build_confirm :: proc(app: ^App) {
 			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.6))})
 			if ui.row(.Center, id = "###cf_btns") {
 				ui.spacer(ui.fill())
-				if ui.button("cf_cancel", "Cancel").clicked { app.modal_open = false; ui.toast(.Info, "Cancelled") }
+				if ui.button("cf_cancel", "Cancel").clicked { app.modal_open = false; ui.announce(&app.announcer, .Info, "Cancelled") }
 				ui.spacer(ui.px(em * 0.6))
-				if ui.button("cf_ok", "Delete", ICON_TRASH, {intent = .Danger}).clicked { app.modal_open = false; ui.toast(.Bad, "Deleted... nothing, it's a demo") }
+				if ui.button("cf_ok", "Delete", ICON_TRASH, {intent = .Danger}).clicked { app.modal_open = false; ui.announce(&app.announcer, .Bad, "Deleted... nothing, it's a demo") }
 				ui.spacer(ui.px(em * 1.4))
 			}
 			ui.spacer(ui.px(em * 1.2))
@@ -387,7 +387,7 @@ build_about :: proc(app: ^App) {
 	w := min(em * 32, f32(app.win.size.x) * 0.9)
 	pad := em * 1.6
 	inner := w - 2 * pad
-	if ui.modal("about", w, &app.about_open, 0.16) {
+	if ui.modal("about", &app.about_open, {width_em = w / em, top = 0.16}) {
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.6))
 			// header: logo + name + tagline
@@ -460,7 +460,7 @@ build_about :: proc(app: ^App) {
 					sb := strings.builder_make(context.temp_allocator)
 					for f in facts { fmt.sbprintf(&sb, "%s: %s\n", f.k, f.v) }
 					platform.set_clipboard(app.win, strings.to_string(sb))
-					ui.toast(.Good, "Copied to the clipboard")
+					ui.announce(&app.announcer, .Good, "Copied to the clipboard")
 				}
 				ui.spacer(ui.px(em * 0.6))
 				if ui.button("###ab_close", "Close", o = {intent = .Primary}).clicked { app.about_open = false }

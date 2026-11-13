@@ -18,7 +18,7 @@ import "../../src/ui"
 
 @(private = "file")
 Wide_Menu :: struct {
-	width:    f32,    // ctx_menu's `width` (a minimum)
+	width:    f32,    // menu's `width` (a minimum)
 	text_pad: f32,    // the window's style's text_pad (0: the session's)
 	label:    string,
 	open_now: bool,   // the next build opens it (anew)
@@ -31,9 +31,9 @@ wide_menu_start :: proc(t: ^testing.T, m: ^Wide_Menu) -> ^session.Session {
 		m := (^Wide_Menu)(s.user)
 		// (a theme of wider padding: the window's style, which a menu's rows are built in)
 		if m.text_pad > 0 { s.state.style_stack[0].text_pad = m.text_pad }
-		key := ui.key_from_string(0, "wide_menu")
-		if m.open_now { ui.ctx_menu_open(key, {40, 40}); m.open_now = false }
-		if ui.ctx_menu(key, m.width) {
+		key := "wide_menu"
+		if m.open_now { ui.menu_open(key, ui.Vec2{40, 40}); m.open_now = false }
+		if ui.menu(key, m.width) {
 			_ = ui.menu_item(m.label, "Ctrl+Shift+Q")
 			_ = ui.menu_item("Copy", "Ctrl+C")
 			if ui.menu_submenu("Show as a list of things") { _ = ui.menu_item("Inner") }
@@ -118,7 +118,7 @@ opening_start :: proc(t: ^testing.T, o: ^Opening) -> ^session.Session {
 	return session.start(t, {size = MD_WINDOW, user = o, animations = true, no_renderer = true, build = proc(s: ^session.Session) {
 		o := (^Opening)(s.user)
 		if o.sized {
-			if ui.modal_sized("fit", {320, 0}, &o.size, &o.open, {200, 80}) {
+			if ui.modal("fit", &o.open, {width_em = 320 / ui.font_size(), min_width_em = 200 / ui.font_size(), min_height_em = 80 / ui.font_size(), size = &o.size}) {
 				ui.next({width = ui.fill(), height = ui.px(40)})
 				ui.build_box({}, "###fit_top")
 				ui.next({width = ui.fill(), height = ui.fill()})
@@ -129,7 +129,7 @@ opening_start :: proc(t: ^testing.T, o: ^Opening) -> ^session.Session {
 			}
 		} else {
 			// (taller than the window's lower part: its first place, at y_fraction, would go past the bottom)
-			if ui.modal("tall", 300, &o.open) {
+			if ui.modal("tall", &o.open, {width_em = 300 / ui.font_size()}) {
 				ui.next({width = ui.fill(), height = ui.px(480)})
 				ui.build_box({}, "###tall_body")
 			}
@@ -170,7 +170,7 @@ a_dialog_opens_where_it_stays :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	}, "the fade's end")
 }) }
 
-// A modal_sized of preferred height 0 is as tall as what is in it (a region that scrolls counted whole), from its first
+// A resizable modal of height_em 0 is as tall as what is in it (a region that scrolls counted whole), from its first
 // frame shown.
 @(test)
 a_fitted_dialog_is_as_tall_as_its_content :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
@@ -231,7 +231,7 @@ a_text_area_has_the_field_menu :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	session.type_text(s, "one\ntwo")
 	session.click(s, "area", .Right)
 	session.frames(s, 2)
-	testing.expect(t, ui.ctx_menu_any_open(), "a right click opens it")
+	testing.expect(t, ui.menu_any_open(), "a right click opens it")
 	testing.expect(t, session.find(s, "menu_search") != nil, "it searches, as every context menu")
 	icons := 0
 	for i := 0; session.find(s, "ico", i) != nil; i += 1 { icons += 1 }

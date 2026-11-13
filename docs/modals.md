@@ -1,19 +1,26 @@
 # Modal dialogs (`src/ui/overlays.odin`)
 
-`ui.modal(id, width, &open, y_fraction)` dims the page and shows a panel as tall as what is in it. It stays in the window: narrower than `width` if it must, higher than `y_fraction` says when what is in it would pass the bottom.
+`ui.modal(id, &open, options)` dims the page and shows a panel: `if ui.modal("about", &open, {width_em = 32}) { ... }`.
+`open` is the caller's: true opens it; Escape, a press outside or its close button set it false. Its `Modal_Options`, the
+sizes in ems of the style where `modal` is called:
 
-`ui.modal_sized(id, preferred, &size, &open, min_size)` is a dialog of a size of its own, what is in it filling it (`height = fill()`):
+| Field | What it says |
+|---|---|
+| `width_em` | its width (0: `DIALOG_WIDTH_EM`, 29) |
+| `height_em` | its height, what is in it filling it (`height = fill()`); 0: as tall as what is in it |
+| `min_width_em`, `min_height_em` | how small the person can make it (with `size`) |
+| `size` | `nil`: not resizable. Else the size the person gave it, in ems, the program's to keep (`{}`: none yet) |
+| `top` | its top held at this fraction of the window's height (a command palette); `nil`: centered |
 
-- centered, and always within the window however small: the window has the last word over `min_size`;
-- `preferred` is what it opens at, in pixels (in em, it follows the text);
-- the person resizes it by its edges and corners; it stays centered, so the opposite side moves too, and the side held stays under the pointer;
-- a double click on an edge or a corner goes back to `preferred`;
-- `size` is the application's to keep (logical pixels, `{}`: `preferred`): a window made smaller does not change it.
-- `preferred.y` 0: the dialog is as tall as what is in it, between `min_size` and the window. What fills it (`fill()`)
-  counts as what it holds, and a region that scrolls counts as all of its content, measured on the last frame. No program
-  adds up its header and its buttons to size it.
-- `top` (0 to 1, a fraction of the window's height; default centered): its top is held there, as a command palette's is; its bottom edge and corners follow the pointer, the top has no grips.
-- its bottom right corner is square, with the resize grip in it: a bevel in the theme's `resize_grip shade` (the border colour: darker on a light theme, lighter on a dark one) and dots on it. A floating panel of the dock has the same grip.
+- It is always within the window however small: narrower than it asks if it must (the window has the last word over the
+  least size), and never past its bottom.
+- With `size`, the person resizes it by its edges and corners; it stays centered, so the opposite side moves too, and the
+  side held stays under the pointer. A double click on an edge or a corner goes back to `width_em` × `height_em`. A window
+  made smaller does not change `size`. With `top`, its bottom edge and corners follow the pointer, the top has no grips.
+- A resizable dialog of `height_em` 0 opens as tall as what is in it, between its least size and the window. What fills it
+  (`fill()`) counts as what it holds, and a region that scrolls counts as all of its content, measured on the last frame.
+  No program adds up its header and its buttons to size it.
+- A resizable dialog's bottom right corner is square, with the resize grip in it: a bevel in the theme's `resize_grip shade` (the border colour: darker on a light theme, lighter on a dark one) and dots on it. A floating panel of the dock has the same grip.
 
 A dialog that opens is laid out once unseen, and the next frame comes at once: the first frame that shows it has it at its
 size and place, and what is in it laid out. Its scrim and its panel then fade in together (`MODAL_FADE_MS`, 120 ms; at once
@@ -24,10 +31,10 @@ Several dialogs may be open, one in another or one after the other; the one buil
 
 ## A dialog's header and its close button (`src/ui/dialog_parts.odin`)
 
-![A dialog of modal_sized: dialog_header with its close button in the corner, dialog_body, dialog_buttons (examples/showcase)](screenshots/showcase_dialog.webp)
+![A resizable dialog: dialog_header with its close button in the corner, dialog_body, dialog_buttons (examples/showcase)](screenshots/showcase_dialog.webp)
 
 ```odin
-if ui.modal_sized("files", preferred, &size, &open) {
+if ui.modal("files", &open, {width_em = 40, height_em = 28, size = &size}) {
     if ui.dialog_header("files_head", "Files", {icon = lucide.FOLDER, icon_font = ui.lucide_icons(), close = true}) {
         ...                                         // the header's own controls, after the title (a toolbar)
     }
@@ -35,24 +42,20 @@ if ui.modal_sized("files", preferred, &size, &open) {
 }
 ```
 
-`dialog_header(id, title, opts)` is a strip across the dialog's top, a shade darker than the dialog
-(`DIALOG_HEADER_DARKEN`), `DIALOG_HEADER_EM` tall: an icon of the accent at its start (`opts.icon`, `opts.icon_font`; 0: the
+`dialog_header(id, title, o)` is a strip across the dialog's top, a shade darker than the dialog
+(`DIALOG_HEADER_DARKEN`), `DIALOG_HEADER_EM` tall: an icon of the accent at its start (`o.icon`, `o.icon_font`; 0: the
 state's icon font), the title, then what its block builds. Build it first in the dialog, before the body's scroll, so that
 it stays on top while the body scrolls.
 
-- `opts.close`: a close button (Lucide's X, a ghost button) in the dialog's top right corner. It is a square of
+- `o.close` (`Dialog_Header_Options`): a close button (Lucide's X, a ghost button) in the dialog's top right corner. It is a square of
   `DIALOG_CLOSE_EM`, centered on the strip, at the same margin `m` from the dialog's top and right edges, its corners
   concentric with the dialog's: radius `max(R - m, 0)` (`corner_place`, [themes](themes.md#corners-in-corners)). A click closes
-  the dialog (its `open`). It is built last in the dialog: the last stop of Tab. `opts.close_label` is its name to a screen
+  the dialog (its `open`). It is built last in the dialog: the last stop of Tab. `o.close_label` is its name to a screen
   reader ("": "Close").
 - The header's right end, `m + side + m`, stays free: a control of the header never touches the button.
 - `modal_corner(flags, id)` builds the corner's control of a program's own look, in the header's block: its place, its size
   and its radius are the button's (`Fixed_Radius`: a custom draw rounds with `b.radius`); what `next` said is kept, but for
   those. The toolkit's button is then not built. The click is the program's.
-- `dialog_header_begin(id, title, opts)` and `dialog_header_end()`: a program's own `if` form, its options given once:
-  `@(deferred_none = ui.dialog_header_end) my_header :: proc(id, title: string) -> bool { return ui.dialog_header_begin(id, title, {close = true}) }`
-  (`dialog_header_begin`, not `dialog_header`: that one ends its header in the scope it is called in, and the header would
-  end twice).
 - The grips of a resized dialog leave the corner to it: at its top and right, they are no deeper than `m`.
 
 `confirm`, `shortcuts_sheet` and the Setup dialog have this header and its close button.

@@ -585,7 +585,7 @@ decimal :: proc(v: f32) -> f64 {
 }
 
 // Where the program's messages go (ui.Announcer.mode): general.messages, System when it is not registered.
-messages_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
+announce_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
 	if config.ref_of(prefs, MESSAGES_PREF) == config.NO_REF { return .System }
 	return ui.announce_mode_of(config.string_of(prefs, MESSAGES_PREF))
 }

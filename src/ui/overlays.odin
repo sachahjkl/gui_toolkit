@@ -34,21 +34,6 @@ set_toast_area :: proc(r: Rect) { gs().toast_area = r; gs().toast_area_set = tru
 @(private = "file") TOAST_GLIDE_RATE :: 40
 @(private = "file") TOAST_PAD_Y_EM :: 0.65   // above and below its words
 
-// Queue a message. Toasts fade in, stay ~3.8 s, fade out; click to dismiss (toast_action: to do something). Oldest is replaced when all slots are used.
-toast :: proc(kind: Toast_Kind, format: string, args: ..any) { toast_add(kind, nil, nil, fmt.tprintf(format, ..args)) }
-
-// A toast that says what can be done: a click on it does `action`, and dismisses it. (Called while the interface is built, after the
-// toasts are; `user` must still be good when it is clicked.)
-toast_action :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, format: string, args: ..any) {
-	toast_add(kind, action, user, fmt.tprintf(format, ..args))
-}
-
-// A toast of two parts: `title` in bold on its line (cut with "…" when long), `body` under it, on as many lines as it needs.
-// `action`: what a click does (nil: it only dismisses it).
-toast_titled :: proc(kind: Toast_Kind, title, body: string, action: proc(user: rawptr) = nil, user: rawptr = nil) {
-	toast_add(kind, action, user, body, title)
-}
-
 // (`text` cut to `buf`, between clusters, not inside a character)
 @(private = "file")
 toast_copy :: proc(buf: []u8, text: string) -> int {
@@ -58,7 +43,11 @@ toast_copy :: proc(buf: []u8, text: string) -> int {
 	return n
 }
 
-@(private = "file")
+// Queues a toast of the state in use (announce says what a program says: it is the one call). It fades in, stays ~3.8 s,
+// fades out; a click dismisses it, and does `action` (nil: nothing more; `user` must still be good when it is clicked).
+// `title` is in bold on its line, cut with "…" when long, and `msg` is under it, on as many lines as it needs; a toast of
+// no title is `msg` alone. The oldest is replaced when all slots are used.
+@(private)
 toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, msg: string, title := "") {
 	s := gs()
 	slot := -1
@@ -223,25 +212,38 @@ toasts_build :: proc() {
 ////////////////////////////////
 // Modal dialog
 
-// `if modal("confirm", width, &open) { ... }`: dims the page, centers a panel, closes on a click outside or on Escape:
-// what is inside it has Escape first (a focused field), and of several dialogs the one on top (opened last) takes it. It stays in
-// the window: narrower than `width` if it must, and higher than `y_fraction` says when what is in it would go past the bottom.
+// `if modal("confirm", &open, {width_em = 29}) { ... }`: dims the page, shows a panel, closes on a click outside or on
+// Escape: what is inside it has Escape first (a focused field), and of several dialogs the one on top (opened last) takes
+// it. It stays in the window, however small: narrower than it asks if it must, and never past its bottom.
 //
-// `if modal_sized("settings", preferred, &size, &open, min_size) { ... }`: a dialog of a size of its own, what is in it filling it
-// (`height = fill()`). Centered and always within the window, however small; `preferred` is what it opens at (pixels), and the
-// person resizes it by its edges and corners, the two sides moving together as it stays centered; a double click on one goes back
-// to `preferred`. `size` is the application's to keep (logical pixels, {}: `preferred`): a smaller window does not change it.
-// `top` (0..1, of the window's height): its top is held there instead (a command palette); its bottom edge follows the pointer.
+// The sizes are in ems (of the style where `modal` is called). A dialog of `height_em` 0 is as tall as what is in it;
+// one of a height of its own has what is in it fill it (`height = fill()`). With `size`, the person resizes it by its
+// edges and corners, the two sides moving together as it stays centered; a double click on one goes back to
+// `width_em` × `height_em`. `size` is the program's to keep, in ems ({}: `width_em` × `height_em`): a smaller window does
+// not change it. A resizable dialog of `height_em` 0 opens as tall as what is in it (modal_content_height).
+Modal_Options :: struct {
+	width_em:      f32,          // 0: DIALOG_WIDTH_EM
+	height_em:     f32,          // 0: as tall as what is in it
+	min_width_em:  f32,          // how small the person can make it (with `size`)
+	min_height_em: f32,
+	size:          ^Vec2,        // nil: not resizable; else the size the person gave it, in ems ({}: none yet)
+	top:           Maybe(f32),   // its top held at this fraction of the window's height (a command palette; resized, its bottom edge alone follows the pointer); nil: centered
+}
+
+// A dialog's width when its options give none, in ems.
+DIALOG_WIDTH_EM :: 29
+
 @(private)
 Modal_Scope :: struct {
 	panel:   Key,
 	order:   int,       // its place among this build's dialogs, from 1: what Tab goes by (Focus_Entry.modal)
 	open:    ^bool,
-	size:    ^Vec2,     // modal_sized: what the person chose
-	preferred: Vec2,    // modal_sized: what a double click on an edge goes back to
-	wh:      Vec2,      // its size in this frame
+	size:    ^Vec2,     // Modal_Options.size: what the person chose, in ems (nil: not resizable)
+	em:      f32,       // the em of its sizes
+	preferred: Vec2,    // what a double click on an edge goes back to (pixels)
+	wh:      Vec2,      // its size in this frame (a height of 0: that of what is in it)
 	lo, hi:  Vec2,      // how small and how large it may be, in this window
-	top:     bool,      // modal_sized with `top`: its top stays where it is; its bottom follows the pointer (no grips at its top)
+	top:     bool,      // Modal_Options.top: its top stays where it is; its bottom follows the pointer (no grips at its top)
 	corner_side:  f32,  // dialog_header with `close`: the side of the control in its top right corner (0: none)
 	corner_inset: f32,  // and its margin from the dialog's top and right edges
 	close:        bool, // dialog_header asked for a close button
@@ -308,7 +310,7 @@ MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
 @(private = "file") MODAL_CORNER_EM :: 0.9   // and in a corner
 
 @(require_results, deferred_none = modal_end)
-modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bool {
+modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 	s := gs()
 	modal_take_escape(s, id, open)
 	if !open^ {
@@ -316,52 +318,37 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 		append(&s.popup_stack, false)
 		return false
 	}
-	margin := font_size() * MODAL_MARGIN_EM
-	w := max(min(width, s.window_size.x - 2 * margin), 1)
-	y := s.window_size.y * y_fraction
-	// (from the height of the last frame: nothing is laid out yet. Its first build is not drawn (modal_begin): the frame
-	// that shows it is already where it stays)
-	if b := box_from_key(modal_key(s, id)); b != nil {
-		y = max(min(y, s.window_size.y - b.size.y - margin), min(margin, y))
-	}
-	modal_begin(s, id, open, {(s.window_size.x - w) * 0.5, y}, {w, 0})
-	return true
-}
-
-// `preferred.y` 0: as tall as what is in it (modal_content_height), within `min_size` and the window.
-@(require_results, deferred_none = modal_end)
-modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}, top: f32 = -1) -> bool {
-	s := gs()
-	modal_take_escape(s, id, open)
-	if !open^ {
-		next_drop(s)
-		append(&s.popup_stack, false)
-		return false
-	}
-	margin := font_size() * MODAL_MARGIN_EM
+	em := font_size()
+	margin := em * MODAL_MARGIN_EM
 	hi := Vec2{max(s.window_size.x - 2 * margin, 1), max(s.window_size.y - 2 * margin, 1)}
-	lo := Vec2{min(min_size.x, hi.x), min(min_size.y, hi.y)}
-	pref := preferred
-	if pref.y <= 0 {
-		// (its first build, unseen, lays what is in it out in all the room there is; then it is as tall as that was)
-		key := modal_key(s, id)
+	lo := Vec2{min(o.min_width_em * em, hi.x), min(o.min_height_em * em, hi.y)}
+	pref := Vec2{(o.width_em > 0 ? o.width_em : DIALOG_WIDTH_EM) * em, o.height_em * em}
+	key := modal_key(s, id)
+	panel := box_from_key(key)
+	if pref.y <= 0 && o.size != nil {
+		// (resizable, it needs a height of its own: its first build, unseen, lays what is in it out in all the room there
+		// is; then it is as tall as that was)
 		phase, _ := modal_phase(s, key)
-		panel := box_from_key(key)
 		pref.y = phase != .Opening && panel != nil ? modal_content_height(panel) : hi.y
 	}
-	want := size^ != {} ? size^ * s.scale : pref
-	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), math.round(clamp(want.y, lo.y, hi.y))}
-	y := math.round((s.window_size.y - wh.y) * 0.5)
-	if top >= 0 {
+	want := o.size != nil && o.size^ != {} ? o.size^ * em : pref
+	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), want.y > 0 ? math.round(clamp(want.y, lo.y, hi.y)) : 0}
+	// (as tall as what is in it: placed by the height of the last frame, nothing is laid out yet. Its first build is not
+	// drawn (modal_begin): the frame that shows it is already where it stays)
+	h := wh.y > 0 ? wh.y : (panel != nil ? panel.size.y : 0)
+	y := math.round(max((s.window_size.y - h) * 0.5, margin))
+	if top, held := o.top.?; held {
 		// held at `top` of the window's height, unless it would go past its bottom
-		y = math.round(clamp(s.window_size.y * top, margin, max(s.window_size.y - margin - wh.y, margin)))
+		y = math.round(clamp(s.window_size.y * top, margin, max(s.window_size.y - margin - h, margin)))
 	}
 	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
-	m.size, m.preferred, m.wh, m.lo, m.hi, m.top = size, pref, wh, lo, hi, top >= 0
+	m.em = em
+	if o.size == nil { return true }
+	m.size, m.preferred, m.lo, m.hi, m.top = o.size, pref, lo, hi, o.top != nil
 	// (its resize grip's corner is square, the grip's bevel filling it: a choice of the design, not a corner the rounding
 	// forgot. Keep it square)
-	if panel := box_from_key(m.panel); panel != nil { panel.square_corners = {.Bottom_Right} }
+	if p := box_from_key(m.panel); p != nil { p.square_corners = {.Bottom_Right} }
 	return true
 }
 
@@ -370,7 +357,7 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 modal_key :: proc(s: ^State, id: string) -> Key { return key_from_string(s.root.key, fmt.tprintf("###modal_%s", id)) }
 
 // The height of what is in a dialog (as the last build laid it out), its border counted: what fills it (`fill()`) counts as
-// what it holds, a region that scrolls as all of its content. A modal_sized of `preferred.y` 0 is that tall.
+// what it holds, a region that scrolls as all of its content. A resizable dialog of `height_em` 0 is that tall.
 @(private)
 modal_content_height :: proc(panel: ^Box) -> f32 {
 	natural :: proc(b: ^Box) -> f32 {
@@ -528,7 +515,7 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 		nw := g.dir.x != 0 ? clamp(press.from.x + 2 * g.dir.x * sig.drag_delta.x, m.lo.x, m.hi.x) : w
 		// (centred, the opposite side moves too: twice the pointer; held at its top, the bottom alone follows it)
 		nh := g.dir.y != 0 ? clamp(press.from.y + (m.top ? 1 : 2) * g.dir.y * sig.drag_delta.y, m.lo.y, m.hi.y) : h
-		m.size^ = {nw / sc, nh / sc}
+		m.size^ = {nw / m.em, nh / m.em}
 	}
 }
 
@@ -548,25 +535,23 @@ modal_end :: proc() {
 		phase, _ := modal_phase(s, m.panel)
 		if phase != .Below && len(s.menus) == 0 && key_press_any(.Escape) { s.modal_escape_taken = true }
 	}
-	ctx_menu_end()
+	popup_end()
 }
 
 ////////////////////////////////
 // Menu bar
 
-@(private = "file") MENU_BAR_KEY_SALT :: 0xbabe
-
-// A menu bar entry. Returns the key to pass to `ctx_menu`. Clicking toggles the menu; while another bar menu is open,
-// hovering switches to this one.
-menu_bar_button :: proc(id: string) -> Key {
+// A menu bar entry. Returns the id of its menu, to pass to `menu` (valid for the frame). Clicking toggles the menu; while
+// another bar menu is open, hovering switches to this one.
+menu_bar_button :: proc(id: string) -> string {
 	s := gs()
 	em := font_size()
 	key := key_from_string(parent_box().key, id)
-	menu_key := key_from_u64(key, MENU_BAR_KEY_SALT)
-	append(&s.bar_keys, menu_key)
-	open := ctx_menu_is_open(menu_key)
+	menu_id := fmt.tprintf("###menu_bar_%x", u64(key))
+	append(&s.bar_keys, menu_key(menu_id))
+	open := menu_is_open(menu_id)
 	bar_active := false
-	for k in s.bar_keys_prev { if ctx_menu_is_open(k) { bar_active = true } }
+	for k in s.bar_keys_prev { if len(s.menus) > 0 && s.menus[0].key == k { bar_active = true } }
 
 	push_tags(open ? "selected" : "ghost_button")
 	next({width = px(font_text_width(id) + em * 1.6), height = px(dense(em * 1.9)), text_align = .Center, radius = em * 0.4})
@@ -576,11 +561,11 @@ menu_bar_button :: proc(id: string) -> Key {
 	a11y_default(b, {role = .Menu_Item, popup = .Menu, expanded = open})
 	sig := signal(b)
 	if sig.clicked {
-		if open { ctx_menu_close() } else { ctx_menu_open_rect(menu_key, b.rect, b.key) }
+		if open { menu_close() } else { menu_open(menu_id, b.rect, b.key, search = false) }
 	} else if sig.hovering && bar_active && !open {
-		ctx_menu_open_rect(menu_key, b.rect, b.key)
+		menu_open(menu_id, b.rect, b.key, search = false)
 	}
-	return menu_key
+	return menu_id
 }
 
 @(private)

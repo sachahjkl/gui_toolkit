@@ -83,7 +83,7 @@ build_palette :: proc(f: ^Fx, user: rawptr) {
 @(private = "file")
 build_command_keys :: proc(f: ^Fx, user: rawptr) {
 	r := (^Palette_Run)(user)
-	for c, i in PALETTE_COMMANDS { r.pressed[i] = ui.command_pressed(c, r.enabled[i]) }
+	for c, i in PALETTE_COMMANDS { r.pressed[i] = ui.command_pressed(c, !r.enabled[i]) }
 }
 
 @(test)
@@ -175,7 +175,7 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	frame(&f, nil, build_palette, &r)
 
 	// a size of the user's: the palette opens at it
-	r.pal.size = {500, 300}
+	r.pal.size = ui.Vec2{500, 300} / 15   // (in ems: the base style is 15 px)
 	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
 	frame(&f, nil, build_palette, &r)
 	frame(&f, nil, build_palette, &r)
@@ -248,12 +248,12 @@ the_widgets_marks_are_the_toolkits :: proc(t: ^testing.T) {
 	lucide_font, ok := font.load_embedded(&f.fonts, lucide.DATA)
 	if !testing.expect(t, ok, "Lucide loads") { return }
 	f.s.icon_font = lucide_font
-	key := ui.Key(0x5e1ec7)
+	key := "kept_menu"
 	build :: proc(f: ^Fx, user: rawptr) {
-		key := (^ui.Key)(user)^
-		if ui.ctx_menu(key) { ui.menu_item("Kept", checked = true) }
+		key := (^string)(user)^
+		if ui.menu(key) { ui.menu_item("Kept", checked = true) }
 	}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.ctx_menu_open((^ui.Key)(user)^, {10, 10}) }, &key)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^string)(user)^, ui.Vec2{10, 10}) }, &key)
 	frame(&f, nil, build, &key)
 	frame(&f, nil, build, &key)
 	marks := ui.widget_icons()
@@ -346,7 +346,7 @@ the_palettes_list_ends_on_a_whole_line :: proc(t: ^testing.T) {
 	r.enabled = {true, true, true, true}
 	r.opts = {foot = "Enter: run"}
 	for h in ([]f32{300, 317, 331}) {
-		r.pal.size = {500, h}
+		r.pal.size = ui.Vec2{500, h} / 15   // (in ems)
 		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.palette_open(&(^Palette_Run)(user).pal) }, &r)
 		frame(&f, nil, build_palette, &r)
 		frame(&f, {typed('k')}, build_palette, &r)   // (a search: lines only, no headings)

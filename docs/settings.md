@@ -18,7 +18,7 @@ names every standard preference.
 |---|---|---|---|
 | `general.menu` | Program (`true`) | | `desktop.apply` |
 | `general.autostart` | Program (`false`) | | `desktop.apply` |
-| `general.messages` | `system` | `system`, `window`, `off` | `messages_mode`, `ui.Announcer` |
+| `general.messages` | `system` | `system`, `window`, `off` | `announce_mode`, `ui.Announcer` |
 | `general.language` | `system` | a language tag | the program, at the start (i18n to come) |
 
 ## Appearance (`Appearance`)
