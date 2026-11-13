@@ -43,3 +43,14 @@ The layout is mermaid-svg's (native/mermaid, a Rust crate of one dependency, MIT
 `build/mermaid/gt_mermaid.lib` (`libgt_mermaid.a` on Linux), which the package links. A program that has a Rust library of
 its own builds `gt_mermaid` into it (`gt_mermaid = { path = "…/native/mermaid" }`, its `gt_mermaid_*` functions stay
 exported) and builds with `-define:MERMAID_NATIVE_LINK=false`, as for the text backend. It adds about 1 MB to a program.
+
+### A graph laid out in another direction
+
+A flowchart says its direction on its header (`flowchart LR`); a class, state, ER or requirement diagram on a line of its
+own (`direction LR`). `mermaid.diagram(text, dark, direction = .Left_Right)` lays the same diagram out another way:
+`.Top_Down`, `.Left_Right`, `.Bottom_Top`, `.Right_Left` (`.Text`: as the text says). `takes_direction(text)` says whether
+its kind has one, `direction_of(text)` which one its text says, `with_direction(text, d)` gives the text rewritten.
+mermaid-svg has one layout (layered, Sugiyama): `flowchart-elk` and `layout: elk` are laid out with it too.
+
+A layout takes time in proportion to the diagram: a program that lays one out again while it shows it (a viewer where the
+person picks the direction) does it in a task (`ui.task`) and keeps the result.
