@@ -1302,13 +1302,15 @@ wl_check_link :: proc() {
 // the accessibility bus, or the time. The connection's fd alone is not enough: the renderer's own traffic (the presentation
 // feedback and the FIFO events of the frame just shown, the ids of its callbacks) makes it readable at each refresh, and a
 // wait that ended there drew a frame at each refresh, for ever.
-wl_wait :: proc(w: ^Window, timeout_ms: int) {
+// `also`: other windows whose events end the wait too (wait_event_any).
+wl_wait :: proc(w: ^Window, timeout_ms: int, also: []^Window = nil) {
 	deadline := time.tick_add(time.tick_now(), time.Duration(timeout_ms) * time.Millisecond)
 	clip_was := clipboard_sequence()
 	for {
 		// (what a roundtrip read: poll(2) would not see it; kept for the next poll_events)
 		wl_read_available()
 		if wait_is_over(w) || clipboard_sequence() != clip_was { return }
+		for o in also { if wait_is_over(o) { return } }
 		wl.display_flush(wlc.display)
 		left := -1
 		if timeout_ms > 0 {
