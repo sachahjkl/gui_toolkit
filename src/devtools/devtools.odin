@@ -573,11 +573,10 @@ cmd_toolkit :: proc(c: ^Cmd) -> Answer {
 	case "Toolkit.find":
 		find(sb, srv, s, p)
 	case "Toolkit.click":
-		b := find_one(s, p)
-		if b == nil { error_reply(to, CDP_ERROR_SERVER, "no box with that name or text"); return .Sent }
-		cast_touch(srv)
-		x, y := click(srv, b, p)
-		fmt.sbprintf(sb, `{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key))
+		// (answered once the box is at rest: wait.odin)
+		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, "click: a name or a text"); return .Sent }
+		wait_add(srv, s, to, .Click, p)
+		return .Sent
 	case "Toolkit.state":
 		d := dpi(srv)
 		fmt.sbprintf(sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g,"encoding":%d}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d, sync.atomic_load(&srv.encoding))

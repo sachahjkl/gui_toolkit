@@ -9,12 +9,13 @@ import "core:time"
 import "../platform"
 import "../ui"
 
-// Answers that wait for the interface: Toolkit.waitFor (a box there, or gone) and Toolkit.waitIdle (nothing moving). A
-// script says what it waits for instead of sleeping a guess. Checked at each frame; while one waits, the ticker keeps
+// Answers that wait for the interface: Toolkit.waitFor (a box there, or gone), Toolkit.waitIdle (nothing moving) and
+// Toolkit.click (the box at rest: a dialog that is still taking its place, centred once it is measured, would take the
+// click on its scrim, which closes it). A script says what it waits for instead of sleeping a guess. Checked at each frame; while one waits, the ticker keeps
 // the window waking, so a timeout comes on time in a program that is not drawing.
 
 @(private)
-Wait_Kind :: enum { Box, Idle }
+Wait_Kind :: enum { Box, Idle, Click }
 
 @(private)
 Wait :: struct {
@@ -28,7 +29,14 @@ Wait :: struct {
 	quiet:    int,         // builds in a row with nothing moving (Idle)
 	deadline: time.Tick,
 	timeout:  f64,
+	params:   json.Value,   // (Click) the call's parameters, the server's heap
+	at:       ui.Rect,      // (Click) where the box was at the last build looked at
+	key:      ui.Key,
 }
+
+// Builds in a row a box must keep its place in before it is clicked.
+@(private)
+CLICK_REST_BUILDS :: 2
 
 // What input sent just before needs: the press in the next build, a release the one after.
 @(private)
@@ -45,7 +53,10 @@ TICK_INTERVAL :: 8 * time.Millisecond
 wait_add :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, kind: Wait_Kind, p: json.Object) {
 	h := runtime.heap_allocator()
 	ms := num(p["timeout"], WAIT_DEFAULT_MS)
+	params: json.Value
+	if kind == .Click { params = json.clone_value(p, h) }
 	append(&srv.waits, Wait{
+		params = params,
 		to = hold(to), kind = kind,
 		name = strings.clone(str(p["name"]), h), text = strings.clone(str(p["text"]), h), gone = bool_of(p["gone"]),
 		first = s.build_index + WAIT_BUILDS, seen = s.build_index, timeout = ms,
@@ -57,6 +68,7 @@ wait_add :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, kind: Wait_Kind, p: j
 wait_free :: proc(w: Wait) {
 	h := runtime.heap_allocator()
 	release(w.to)
+	json.destroy_value(w.params, h)
 	delete(w.name, h)
 	delete(w.text, h)
 }
@@ -75,11 +87,15 @@ waits_poll :: proc(srv: ^Server, s: ^ui.State) {
 			over = wait_box(srv, s, &w)
 		case w.kind == .Idle:
 			over = wait_idle(srv, s, &w)
+		case w.kind == .Click:
+			over = wait_click(srv, s, &w)
 		}
 		if !over && time.tick_diff(now, w.deadline) <= 0 {
 			over = true
 			if w.kind == .Idle {
 				reply(w.to, fmt.tprintf(`{{"idle":false,"build":%d}}`, s.build_index))   // (something moves for good: not an error)
+			} else if w.kind == .Click {
+				error_reply(w.to, CDP_ERROR_SERVER, w.key == 0 ? "no box with that name or text" : "the box never came to rest")
 			} else {
 				error_reply(w.to, CDP_ERROR_SERVER, fmt.tprintf("waitFor: %s after %.0f ms", w.gone ? "still there" : "not there", w.timeout))
 			}
@@ -115,6 +131,22 @@ wait_idle :: proc(srv: ^Server, s: ^ui.State, w: ^Wait) -> bool {
 	w.quiet = ui.needs_frame(s) || len(srv.later) > 0 ? 0 : w.quiet + 1
 	if w.quiet < IDLE_BUILDS { return false }
 	reply(w.to, fmt.tprintf(`{{"idle":true,"build":%d}}`, s.build_index))
+	return true
+}
+
+// A click asked for: the box found and at the same place for CLICK_REST_BUILDS builds, then clicked at its middle.
+@(private)
+wait_click :: proc(srv: ^Server, s: ^ui.State, w: ^Wait) -> bool {
+	if s.build_index == w.seen { return false }
+	w.seen = s.build_index
+	p, _ := w.params.(json.Object)
+	b := find_one(s, p)
+	if b == nil { w.quiet = 0; return false }
+	if b.key == w.key && b.rect == w.at { w.quiet += 1 } else { w.key, w.at, w.quiet = b.key, b.rect, 0 }
+	if w.quiet < CLICK_REST_BUILDS { return false }
+	cast_touch(srv)
+	x, y := click(srv, b, p)
+	reply(w.to, fmt.tprintf(`{{"x":%.1f,"y":%.1f,"key":"%x"}}`, x, y, u64(b.key)))
 	return true
 }
 
