@@ -269,7 +269,14 @@ sign_payload :: proc(p: Product, seed: []byte, payload: []byte, allocator := con
 file_text :: proc(p: Product, lic: Licence, key: string, hint := "", allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
 	title := p.title != "" ? p.title : p.name
-	fmt.sbprintfln(&b, "# %s licence (%s) for %s", title, edition_english(p, lic.edition), one_line(lic.name))
+	// (the edition is in the signed key whatever this line says; it is named here only when the product sells several)
+	editions := 0
+	for e in p.editions { if e.id != "" { editions += 1 } }
+	if editions > 1 {
+		fmt.sbprintfln(&b, "# %s licence (%s) for %s", title, edition_english(p, lic.edition), one_line(lic.name))
+	} else {
+		fmt.sbprintfln(&b, "# %s licence for %s", title, one_line(lic.name))
+	}
 	fmt.sbprintfln(&b, "# Order %s, %s.", one_line(lic.order), one_line(lic.date))
 	if lic.updates_until != "" { fmt.sbprintfln(&b, "# Updates until %s.", lic.updates_until) }
 	if hint != "" { fmt.sbprintfln(&b, "# %s", one_line(hint)) }

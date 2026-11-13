@@ -185,7 +185,9 @@ async function makeSigner(privateKey: string, publicKey: string, p: Product): Pr
 // The key wrapped at 76 columns under comment lines: the file the toolkit's licence.file_text writes.
 export function licenceFile(p: Product, key: string, f: Fields): string {
 	const lines = key.match(/.{1,76}/g) ?? [];
-	let head = `# ${p.title} licence (${editionTitle(p, f.edition)}) for ${f.name}\n# Order ${f.order}, ${f.date}.\n`;
+	// (the edition is in the signed key whatever this line says; it is named here only when the product sells several)
+	const edition = p.editions.length > 1 ? ` (${editionTitle(p, f.edition)})` : "";
+	let head = `# ${p.title} licence${edition} for ${f.name}\n# Order ${f.order}, ${f.date}.\n`;
 	if (f.updates_until) head += `# Updates until ${f.updates_until}.\n`;
 	if (p.fileHint) head += `# ${cleanField(p.fileHint)}\n`;
 	return `${head}${lines.join("\n")}\n`;

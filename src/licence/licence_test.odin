@@ -1,5 +1,6 @@
 package tk_licence
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import signing "../signing"
@@ -319,4 +320,17 @@ years_of_updates :: proc(t: ^testing.T) {
 	testing.expect_value(t, date_add_years("2028-02-29", 4), "2032-02-29")
 	testing.expect_value(t, date_add_years("2028-2-29", 1), "")
 	testing.expect(t, !date_valid("2028/02/29"))
+}
+
+// One licence for sale: the file's first line names no edition, and the key still carries it.
+@(test)
+a_single_edition_is_not_named :: proc(t: ^testing.T) {
+	p := SAMPLE
+	p.editions = {0 = {id = "supporter", title = "Supporter"}}
+	l := sample()
+	file := file_text(p, l, dev_text(l), allocator = context.temp_allocator)
+	testing.expectf(t, strings.has_prefix(file, fmt.tprintf("# Sample licence for %s\n", l.name)), "%q", file)
+	lic, err := verify(p, file, DEV_PUBLIC_KEY, context.temp_allocator)
+	testing.expect_value(t, err, Error.None)
+	testing.expect_value(t, lic.edition, l.edition)
 }

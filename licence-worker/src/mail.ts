@@ -26,7 +26,7 @@ const RETRY_CODES = new Set(["E_RATE_LIMIT_EXCEEDED", "E_DAILY_LIMIT_EXCEEDED", 
 // line breaks made odd cuts in a narrow one).
 export const DEFAULT_MAIL_TEXT = `{hello}
 
-Thank you for buying {title}. Your licence ({edition_title}) is below, and attached as a file.
+Thank you for buying {title}. Your licence{edition_note} is below, and attached as a file.
 
 To register it, open {title} and paste the whole key below where it asks for a licence, or open the attached {file_name} file with {title}.
 
@@ -60,6 +60,8 @@ export function mailValues(p: Product, s: Stored): Record<string, string> {
 		title: p.title,
 		edition: s.edition,
 		edition_title: editionTitle(p, s.edition),
+		// (" (Supporter)" where the product sells several editions; one licence needs no name)
+		edition_note: p.editions.length > 1 ? ` (${editionTitle(p, s.edition)})` : "",
 		key: s.licence.match(/.{1,76}/g)!.join("\n"),
 		order: s.order,
 		date: s.date,
