@@ -20,6 +20,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:time"
 import cdp "../../src/cdp"
+import toolbox "../../src/toolbox"
 
 SHOTS_PORT        :: 9390
 THEME_SHOTS_PORT  :: 9393
@@ -59,17 +60,17 @@ Shots_Options :: struct {
 	width: int,
 }
 
-run_screenshots :: proc(a: ^Args) -> string {
-	o := Shots_Options{build = has_flag(a, "build"), only = list_flag(a, "only")}
+run_screenshots :: proc(args: []string) -> string {
+	o := Shots_Options{build = toolbox.has_flag(args, "build"), only = list_flag(args, "only")}
 	why: string
-	if o.width, why = int_flag(a, "width", SHOTS_WIDTH); why != "" { return why }
+	if o.width, why = toolbox.int_flag(args, "width", SHOTS_WIDTH); why != "" { return why }
 	return screenshots(toolkit_root(), o)
 }
 
 // "a,b" -> {"a", "b"}; nil when the flag is not given.
-list_flag :: proc(a: ^Args, name: string) -> []string {
-	if !has_flag(a, name) { return nil }
-	return strings.split(flag_value(a, name), ",", context.temp_allocator)
+list_flag :: proc(args: []string, name: string) -> []string {
+	if !toolbox.has_flag(args, name) { return nil }
+	return strings.split(toolbox.flag_value(args, name), ",", context.temp_allocator)
 }
 
 @(private = "file")
@@ -181,11 +182,11 @@ Theme_Shots_Options :: struct {
 	only:       []string,
 }
 
-run_theme_shots :: proc(a: ^Args) -> string {
+run_theme_shots :: proc(args: []string) -> string {
 	root := toolkit_root()
 	return theme_shots(root, {
-		build = has_flag(a, "build"), out = flag_value(a, "out", join({root, "build", "theme_shots"})),
-		page = flag_value(a, "page", "Find"), find = flag_value(a, "find", "the"), only = list_flag(a, "only"),
+		build = toolbox.has_flag(args, "build"), out = toolbox.flag_value(args, "out", join({root, "build", "theme_shots"})),
+		page = toolbox.flag_value(args, "page", "Find"), find = toolbox.flag_value(args, "find", "the"), only = list_flag(args, "only"),
 	})
 }
 
@@ -243,15 +244,15 @@ theme_shot :: proc(exe, name: string, o: Theme_Shots_Options) -> string {
 
 FINISHES :: [?]string{"flat", "gradient", "glass", "machined"}
 
-run_finish_shots :: proc(a: ^Args) -> string {
+run_finish_shots :: proc(args: []string) -> string {
 	root := toolkit_root()
-	if has_flag(a, "build") {
+	if toolbox.has_flag(args, "build") {
 		if why := build_example(root, "fidget", false); why != "" { return why }
 	}
-	out := flag_value(a, "out", join({root, "build", "finish_shots"}))
+	out := toolbox.flag_value(args, "out", join({root, "build", "finish_shots"}))
 	_ = os.make_directory_all(out)
-	page := flag_value(a, "page", "0")
-	theme := flag_value(a, "theme", "0")
+	page := toolbox.flag_value(args, "page", "0")
+	theme := toolbox.flag_value(args, "theme", "0")
 	for f in FINISHES {
 		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200}
 		if why := capture_shot(root, s, 0, out); why != "" { return why }

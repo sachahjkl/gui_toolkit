@@ -3,6 +3,7 @@ package tk
 import "core:fmt"
 import "core:strings"
 import tk_site "../../src/site"
+import toolbox "../../src/toolbox"
 
 // site_docs <site> <out>: the Docs section, <out>/docs/, made by src/site (tk_site.build_docs, docs/site.md) of docs/*.md and
 // docs/_nav.txt. This file says what is the toolkit's: the home page's header and menu script (from <site>/index.html, so a
@@ -10,8 +11,8 @@ import tk_site "../../src/site"
 
 GITHUB :: "https://github.com/sachahjkl/gui_toolkit"
 
-run_site_docs :: proc(a: ^Args) -> string {
-	return build_docs(join({toolkit_root(), "docs"}), a.positionals[0], a.positionals[1])
+run_site_docs :: proc(args: []string) -> string {
+	return build_docs(join({toolkit_root(), "docs"}), toolbox.plain_args(args)[0], toolbox.plain_args(args)[1])
 }
 
 // Reads `docs_dir` and `site`/index.html, writes `out`/docs/.

@@ -43,8 +43,44 @@ systems. The per-drive entries of Windows (`=C:=C:\work`) stay.
 `start_group(command, env, out)` starts a command in a process group of its own (`setsid`). `env` is its whole environment
 (nil: this process's); `out` receives its standard output and error (nil: none). `stop_group(p, wait)` sends SIGTERM to
 the whole group, waits for the leader at most `wait` (default `GROUP_STOP_WAIT`, 3 s), then sends SIGKILL to what is left.
-Use them for a program that runs beside a tool, such as a compositor for tests: a wrapper (NixOS's `sway` is
+`group_ended(p)`: the leader was waited for and ended; what it left in its group is killed, and the group is no longer
+stopped. Use them for a program that runs beside a tool, such as a compositor for tests: a wrapper (NixOS's `sway` is
 `dbus-run-session`) starts the real program as its child, and a signal to the wrapper alone leaves that child running.
+
+`guard_groups()` installs a handler of SIGTERM, SIGINT and SIGHUP (timeout's signal, Ctrl+C, a closed terminal): it kills
+every group that `start_group` started and `stop_group` did not stop, then ends the tool. Call it once, before the first
+group.
+
+## A desktop nobody sees: the sway session (Linux)
+
+`sway_start(&s, dir, options)` starts sway with no screen (headless) in `dir`, made anew, and waits until it answers
+(`swaymsg -t get_outputs`), at most `options.wait` (`SWAY_WAIT`, 8 s). It returns "" when sway runs, else why not.
+Nothing of the person's desktop is reached:
+
+- its own runtime directory, `<dir>/run` (mode 700): its own Wayland socket and IPC socket;
+- no `DISPLAY`, no session bus (`DBUS_SESSION_BUS_ADDRESS`), no `XDG_CURRENT_DESKTOP`;
+- one headless output at `options.output` (`SWAY_OUTPUT_DEFAULT`, 1600x1000), no XWayland, no input devices;
+- with `options.homes`, the programs' `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` are `<dir>/config`, `data`
+  and `state`; with `options.cache`, `XDG_CACHE_HOME` is `<dir>/cache`.
+
+`options.config` adds lines to sway's config (`for_window [app_id="x"] floating enable`); `options.renderer` is `pixman`
+(the CPU, default) or `vulkan`. `sway_config(options)` is that config. The session's fields: `dir`, `runtime`, `display`
+(`WAYLAND_DISPLAY`), `ipc` (`SWAYSOCK`) and `env`, what a program in the session gets.
+
+`sway_program(&s, command, env, log)` starts a program in the session, in a group of its own, with `s.env` and `env`
+("NAME=value", over it). Its output goes to `log` (`""`: `<dir>/<program>.log`). `sway_wait(&s, p, limit)` waits at most
+`limit` for it to end (a quit asked): `ended` and its `state`, what it left in its group killed. `sway_stop(&s)` stops the session's programs, then sway, each with all it started, and frees the
+session. On another system, `sway_start` returns why it does not run.
+
+```odin
+s: toolbox.Sway
+defer toolbox.sway_stop(&s)
+toolbox.guard_groups()
+if why := toolbox.sway_start(&s, "build/live", {config = `for_window [app_id="papier"] floating enable`, homes = true}); why != "" { return fail(why) }
+p, why := toolbox.sway_program(&s, {"build/papier", "--hidden"}, {"TOOLKIT_DEVTOOLS=9300"})
+```
+
+`tk desktop_tests wayland` runs the toolkit's desktop tests in this session.
 
 ## Hashes
 
@@ -91,6 +127,7 @@ Each program draws its own logo; `write_logo(logo)` writes what every program ma
   is drawn at its size. The sizes from `ico_png_from` are PNG entries, the ones below are classic DIBs (0: all PNG).
 - `project_image`: `PROJECT_IMAGE` (`.project/image.png`, 512 px), the picture of the repository and of opencode's
   sessions of it.
+- `files`: more PNG files, each a `Logo_File` (a path and a size): the site's logo.
 
 It says each file it writes and returns "" when all are written, else the file that is not. Folders are made.
 
@@ -98,6 +135,9 @@ It says each file it writes and returns "" when all are written, else the file t
 why := toolbox.write_logo({render = logo_render, dir = "assets", master = 1024, sizes = {16, 32, 64, 128, 256},
                            ico = "assets/papier.ico", project_image = true})
 ```
+
+`logo_command(logo) -> Command` is the `logo` command of a project's tool: `write_logo` of `logo` (copied; its slices
+must live as long as the tool).
 
 ## A Windows executable's version and icon
 
@@ -129,3 +169,118 @@ shortcut and the window show. A build checks with it that the resource is linked
 - `update verify <manifest.json> <channel>`: the manifest and its `.sig`, checked with the product's key.
 
 `update_manifest(product, program, version, channel, out)` is the manifest step alone, for a tool's release step.
+
+## A project's tool
+
+A project's tool is one program with a command each: `tools/tk` here, and every program's (`classeurtool`, `papiertool`...).
+It is a list of `Command`s given to `tool_main`:
+
+```odin
+main :: proc() {
+	p := project()
+	r := release.commands({project = p, dist = "build/dist", files = FILES[:], check = proc() -> int { return run_check(nil) }})
+	toolbox.tool_main("classeurtool", {
+		{name = "build", usage = "[release]: the program", run = run_build},
+		{name = "check", usage = ": the checks of the CI", run = run_check},
+		changelog.command(p), site.command({meta = site_meta()}), toolbox.logo_command(LOGO), r[0], r[1], r[2],
+	}, toolbox.ROOT_MARK_DEFAULT)
+}
+```
+
+A `Command` has a `name`, a `usage` (its arguments and what it does, one line) and `run(args) -> exit code`, the arguments
+after its name. A command made for a project (`changelog.command`, `site.command`, `release.commands`, `logo_command`,
+`notices_command`) has `run_with(args, user)` and its `user` instead. With `checked`, the line is checked first: a flag is
+`-name` (a switch) or `-name:value`, and must be one of `flags` (`"name"`, `"name:"`); `positionals` is the number of
+plain arguments (-1: none or one). A command not checked reads its own arguments (`--port 9222`, `--dry-run`).
+
+`tool_main(program, commands, root_mark = "")`:
+
+1. reads the line, each `-name:` and its value joined again (`args_joined`: PowerShell 7 splits `-name:value` typed after
+   `--` into two arguments);
+2. with a `root_mark` (`ROOT_MARK_DEFAULT`: `odin.version`), finds the project's root, the first folder from the working
+   directory up that holds it (`project_root(start, mark)`), and works there; none: exit code 2;
+3. runs the command (`dispatch(program, commands, args)`) and ends with its exit code.
+
+| Line | Exit code |
+|---|---|
+| no command, `help`, `-h`, `--help` | 0: the commands and their usages (`tool_usage`); `help <command>`: that one |
+| a command it does not know | 2, the commands said |
+| a checked command's line that is not one it takes | 2, its usage said |
+| a command | its own: `EXIT_DONE` (0) when the work is done, `EXIT_FAILED` (1) when it failed, `EXIT_USAGE` (2) for a line it does not take |
+
+`done(why) -> int` is the exit code of a work that says why it failed (`""`: 0), the failure said as `<tool> <command>: why`.
+`command_find(commands, name)` and `args_check(command, args)` are the dispatcher's steps.
+
+The flags of a line: `has_flag(args, name)`, `flag_value(args, name, default)` (the last one given wins),
+`int_flag(args, name, default)` and `f64_flag(args, name, default)` (why: not a number), `plain_args(args)` (the arguments
+that are not flags; a lone `-` is plain).
+
+## A project
+
+`Project` is what a program's project is to its tool, and to the standard commands:
+
+| Field | What it is |
+|---|---|
+| `name` | the program (`classeur`): its archive's, its commit's, the launcher's answer |
+| `repository` | `https://github.com/<owner>/<repo>` |
+| `changelog` | `CHANGELOG.md` (`""`: that), its fragments in `changelog.d/` beside it |
+| `version_file`, `version_line` | the source of the version (the program's main file) and its line's start (`APP_VERSION :: `) |
+| `program` | the release build (`build/classeur`) |
+| `src` | the program's package (`""`: `src`) |
+| `toolkit` | the toolkit's checkout (`""`: `$GT`, else `TOOLKIT_DEFAULT`, `ext/gui_toolkit`) |
+| `collections` | more collections than `gt`: a name and its folder |
+| `linux_defines` | what every odin command of the program gets on Linux |
+| `launcher` | Windows: its console launcher, a `Launcher` (`out` `""`: none) |
+| `licence` | its licence, for its notices (`""`: MIT) |
+| `native_crates` | the toolkit's crates it links statically (nil: `native/text`) |
+
+- `version_of(source, line)` is the version in quotes after `line` (`""`: no such line); `version_set(source, line, version)`
+  is the source with it replaced (ok = false: no such line). `project_version(p)` reads it from `version_file`.
+- `toolkit_dir(p)` is the toolkit's checkout.
+- `odin_command(p, verb, pkg = "", extra = nil)` is `odin <verb> <pkg> -collection:gt=<toolkit>/src <collections> -vet`,
+  on Linux the defines and, but for `check`, `LINUX_LINK_FLAG` (the native text backend and wgpu-native carry the same
+  Rust standard library), then `extra`. `pkg` `""`: the program's.
+- `build_native_text(p)` builds the toolkit's native text backend on Linux, by the toolkit's own `tk build_text` in the
+  project's checkout of it (nothing when it is up to date); elsewhere it does nothing.
+- `build_launcher(p)` builds the console launcher on Windows from the toolkit's `tools/console_launcher`, with the
+  `Launcher`'s mark (`LAUNCHER_MARK`), rule (`default_rule`: `wait` or `detach`) and `others`. The program embeds it: it
+  comes before a check or a build. `check_launcher(p)` checks it beside a release build: `<out> version` says
+  `<name> <version>`, and with `refuses_exit`, an unknown command ends with that code.
+- `check_windows(p)` and `check_darwin(p)` are `odin check` of the program for Windows (`windows_amd64`) and macOS
+  (`darwin_arm64`), from any system (`odin_check`).
+
+## Builds made once
+
+A build that is slow makes its output once: a stamp beside it holds the hash of what it is made from.
+`stamp_holds(output, stamp, expected)` is true when the output is there and the stamp says `expected` (its line end aside).
+`write_stamp(path, text)` writes one, with this system's line end (`STAMP_NEWLINE`).
+
+`build_c_lib(name, sources, out, cflags)` builds `<out>/lib<name>.a` from `sources`: each `.c` file compiled by `cc` with
+`cflags`, then `ar`; another file (a header) is hashed only. It does nothing when `<out>/STAMP` says these sources and flags
+(`c_lib_stamp(sources, cflags)`: the SHA-256 of each source and of the flags). For a C library a program builds itself
+(papier's SQLite), on Linux and macOS.
+
+## A check of the scopes
+
+The scopes of the ui package (`ui.row`, `ui.parent`, `ui.menu`...) end with the statement that opens them:
+`if !ui.row(...) { return }` closes the row at once, and what follows goes to the parent's parent. The compiler accepts it.
+`check_scopes(src_dir, ui_dir = UI_DIR_DEFAULT)` says each such line of the `.odin` files under `src_dir`, and is true when
+there is none. The scopes are read from the ui package's sources (`ui_scopes(sources)`: the procedures with a deferred
+end), so a new scope is checked at once. `scope_misuses(text, scopes)` is the check of one file's text.
+
+## Third-party notices
+
+`third_party_notices(p, out, check_only = false)` writes the licences of what the project's executable holds besides its
+own code at `out` (`NOTICES_FILE`, `THIRD-PARTY-NOTICES`), or with `check_only` says whether `out` is up to date. It returns
+"" when all is well, else why not:
+
+- gui_toolkit (MIT) and its attributions (`NOTICE.md`), Roboto, Inconsolata and Lucide's icons, from the toolkit's checkout;
+- Odin's core library (`<odin root>/LICENSE`, BSD-3-Clause);
+- wgpu-native (MIT or Apache-2.0), whose texts the toolbox keeps (`src/toolbox/licences`: its release archive has none);
+- the Rust crates of `Project.native_crates`: `cargo metadata` of each (`--locked --offline`, for `NOTICES_TARGET`, this
+  system's), the crates the library links (`notices_crates(metadata)`: the normal dependencies from its package, crate after
+  crate; never a build script's, a test's or a procedural macro), each with its licence files (`LICENSE*`, `LICENCE*`,
+  `COPYING*`, `NOTICE*`, and its manifest's `license-file`). A crate with no licence file is an error.
+
+`notices_text(p, works, crates, native)` is the file: the list, then each work's texts, then each crate's text once with
+the crates that ship it. `notices_command(p)` is the `notices [--check]` command of a project's tool.

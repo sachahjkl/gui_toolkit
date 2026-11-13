@@ -4,7 +4,6 @@ package tk
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sys/posix"
 import "core:time"
 import toolbox "../../src/toolbox"
 
@@ -19,7 +18,8 @@ import toolbox "../../src/toolbox"
 // all of that group: a server may be a wrapper (NixOS's sway is dbus-run-session, which starts sway and a session bus
 // beside it), and a signal to the wrapper alone leaves the compositor and the bus running. What they print goes to files in
 // <out>, never to tk's own output: a process left behind would hold it open. The test program's log is printed when it ends.
-// A signal that ends tk (timeout's SIGTERM, Ctrl+C, a closed terminal) stops the groups first.
+// A signal that ends tk (timeout's SIGTERM, Ctrl+C, a closed terminal) stops the groups first (toolbox.guard_groups). The
+// Wayland desktop is the toolbox's sway session (toolbox.sway_start), its socket and IPC given to the programs started here.
 
 @(private = "file")
 Desk :: struct {
@@ -28,49 +28,10 @@ Desk :: struct {
 	servers:   [dynamic]os.Process,   // each the leader of its process group
 }
 
-// The process groups that run now, for the signal handler (it may read nothing else). Written by the main thread only,
-// the count after the slot.
-@(private = "file") MAX_GROUPS :: 16
-@(private = "file") running_groups: [MAX_GROUPS]posix.pid_t
-@(private = "file") running_count: int
-
-@(private = "file")
-group_add :: proc(pid: posix.pid_t) {
-	if running_count < MAX_GROUPS {
-		running_groups[running_count] = pid
-		running_count += 1
-	}
-}
-
-@(private = "file")
-group_remove :: proc(pid: posix.pid_t) {
-	for i in 0 ..< running_count {
-		if running_groups[i] != pid { continue }
-		running_count -= 1
-		running_groups[i] = running_groups[running_count]
-		return
-	}
-}
-
-// tk ends on a signal: every group it started ends too. (kill and _exit only: what a signal handler may call)
-@(private = "file")
-on_end_signal :: proc "c" (sig: posix.Signal) {
-	for i in 0 ..< running_count { posix.kill(-running_groups[i], .SIGKILL) }
-	posix._exit(128 + i32(sig))
-}
-
-// A program in a process group of its own (toolbox.start_group), its output in `out`, known to the signal handler.
+// A program in a process group of its own (toolbox.start_group), its output in `out`.
 @(private = "file")
 start_group :: proc(d: ^Desk, out: ^os.File, command: ..string) -> (p: os.Process, err: os.Error) {
-	p = toolbox.start_group(command, d.env[:], out) or_return
-	group_add(posix.pid_t(p.pid))
-	return p, nil
-}
-
-@(private = "file")
-stop_group :: proc(p: os.Process) {
-	toolbox.stop_group(p)
-	group_remove(posix.pid_t(p.pid))
+	return toolbox.start_group(command, d.env[:], out)
 }
 
 @(private = "file")
@@ -98,7 +59,7 @@ start :: proc(d: ^Desk, log: string, command: ..string) -> bool {
 
 @(private = "file")
 stop_all :: proc(d: ^Desk) {
-	for p in d.servers { stop_group(p) }
+	for p in d.servers { toolbox.stop_group(p) }
 	clear(&d.servers)
 }
 
@@ -112,7 +73,7 @@ run_env :: proc(d: ^Desk, limit: time.Duration, log: string, command: ..string) 
 	os.close(f)
 	if err != nil { return false }
 	st, werr := os.process_wait(p, limit)
-	stop_group(p)
+	if werr == nil { toolbox.group_ended(p) } else { toolbox.stop_group(p) }
 	if werr != nil { fmt.printfln("desktop: %s took more than %v", command[0], limit); return false }
 	return st.exited && st.exit_code == 0
 }
@@ -166,12 +127,13 @@ Section "Screen"
 EndSection
 `
 
-SWAY_CONF :: "xwayland disable\nfocus_on_window_activation focus\noutput HEADLESS-1 resolution 1280x1024@60Hz\ndefault_border none\n"
+// (what sway_start's config does not say: the output's mode is its Sway_Options.output)
+SWAY_CONF :: "focus_on_window_activation focus\ndefault_border none\n"
 
-run_desktop_tests :: proc(a: ^Args) -> string {
-	only := len(a.positionals) > 0 ? a.positionals[0] : ""
+run_desktop_tests :: proc(args: []string) -> string {
+	only := len(toolbox.plain_args(args)) > 0 ? toolbox.plain_args(args)[0] : ""
 	if only != "" && only != "x11" && only != "randr" && only != "wayland" { return "x11, randr or wayland" }
-	for sig in ([?]posix.Signal{.SIGTERM, .SIGINT, .SIGHUP}) { posix.signal(sig, on_end_signal) }
+	toolbox.guard_groups()
 	d := Desk{root = toolkit_root()}
 	d.out = fmt.tprintf("%s/gt_desktop_%d", os.get_env("TMPDIR", context.temp_allocator) != "" ? os.get_env("TMPDIR", context.temp_allocator) : "/tmp", os.get_pid())
 	bin, run_dir := join({d.out, "bin"}), join({d.out, "run"})
@@ -184,6 +146,8 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 	env_set(&d, "PATH", fmt.tprintf("%s:%s", bin, os.get_env("PATH", context.temp_allocator)))
 	env_unset(&d, "DBUS_SESSION_BUS_ADDRESS")   // (no session bus of a person: open_url must come to the xdg-open here)
 	env_set(&d, "XDG_RUNTIME_DIR", run_dir)
+	sway: toolbox.Sway
+	defer toolbox.sway_stop(&sway)   // (deferred before stop_all: it runs after it, the programs in the session stopped first)
 	defer stop_all(&d)
 
 	tests := join({d.root, "tests", "linux_desktop"})
@@ -194,8 +158,7 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 	if why := build_rust_lib(d.root, TEXT_LIB, false); why != "" { return why }
 	test_cmd := make([dynamic]string, context.temp_allocator)
 	append(&test_cmd, "odin", "build", tests, "-build-mode:test", "-vet", "-define:ODIN_TEST_THREADS=1", "-debug", fmt.tprintf("-out:%s", join({d.out, "desktop_test"})))
-	flags := LINUX_FLAGS
-	append(&test_cmd, ..flags[:])
+	append(&test_cmd, toolbox.LINUX_LINK_FLAG)
 	if names := os.get_env("GUI_TEST_NAMES", context.temp_allocator); names != "" { append(&test_cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", names)) }
 	if !toolbox.run(test_cmd[:]) { return "building tests/linux_desktop failed" }
 
@@ -244,28 +207,15 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		if xorg != "" { _ = toolbox.run({"sudo", "-n", "pkill", "-f", "Xorg :96"}) }   // (an Xorg started through sudo is not this one's to stop)
 	}
 	if only == "" || only == "wayland" {
-		// Wayland: sway on no hardware. Its virtual output and seat take the test's cursor; wtype is a virtual keyboard
+		// Wayland: sway on no hardware (the toolbox's session). Its virtual output and seat take the test's cursor; wtype is a
+		// virtual keyboard
 		env_unset(&d, "DISPLAY")
-		env_set(&d, "WLR_BACKENDS", "headless")
-		env_set(&d, "WLR_RENDERER", "pixman")
-		env_set(&d, "WLR_LIBINPUT_NO_DEVICES", "1")
-		env_set(&d, "WLR_HEADLESS_OUTPUTS", "1")
-		conf := join({d.out, "sway.conf"})
-		if os.write_entire_file(conf, SWAY_CONF) != nil { return "sway.conf cannot be written" }
-		ok := start(&d, "sway.log", "sway", "--unsupported-gpu", "-c", conf)
-		display, sock := "", ""
-		for _ in 0 ..< 100 {
-			entries, _ := os.read_all_directory_by_path(run_dir, context.temp_allocator)
-			for e in entries {
-				if strings.has_prefix(e.name, "wayland-") && !strings.has_suffix(e.name, ".lock") { display = e.name }
-				if strings.has_prefix(e.name, "sway-ipc.") { sock = e.fullpath }
-			}
-			if display != "" && sock != "" { break }
-			time.sleep(100 * time.Millisecond)
-		}
-		env_set(&d, "WAYLAND_DISPLAY", display != "" ? display : "wayland-1")
-		env_set(&d, "SWAYSOCK", sock)
-		time.sleep(500 * time.Millisecond)
+		why := toolbox.sway_start(&sway, join({d.out, "sway"}), {output = "1280x1024@60Hz", config = SWAY_CONF})
+		if why != "" { fmt.printfln("desktop: %s", why) }
+		ok := why == ""
+		env_set(&d, "XDG_RUNTIME_DIR", sway.runtime)
+		env_set(&d, "WAYLAND_DISPLAY", sway.display)
+		env_set(&d, "SWAYSOCK", sway.ipc)
 		// the seat's devices: a pointer the tests move with swaymsg, a keyboard (wtype sleeping); a device stays while its client
 		// does (a test takes the pointer away and makes it again: the file says which one to stop)
 		pid_file := join({d.out, "pointer.pid"})
@@ -277,7 +227,7 @@ run_desktop_tests :: proc(a: ^Args) -> string {
 		env_set(&d, "GUI_TEST_DESKTOP", "wayland")
 		if !ok || !desktop_run(&d, "wayland", 240 * time.Second) {
 			append(&failed, "wayland")
-			if log, err := os.read_entire_file(join({d.out, "sway.log"}), context.temp_allocator); err == nil { fmt.println(last_lines(string(log), 20)) }
+			if log, err := os.read_entire_file(join({d.out, "sway", "sway.log"}), context.temp_allocator); err == nil { fmt.println(last_lines(string(log), 20)) }
 		}
 		// (a test may have stopped the pointer and made another: the file names the one that runs)
 		if data, err := os.read_entire_file(pid_file, context.temp_allocator); err == nil {

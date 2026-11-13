@@ -27,6 +27,7 @@ o := changelog.Options{
 	root = ".",                                                     // CHANGELOG.md and changelog.d/ ("": the current folder)
 	link = "https://github.com/owner/repo/releases/tag/v%s",        // a version's link ("": none)
 	version = read_version, set_version = write_version,           // optional: where the project keeps its version
+	user = &project,                                                // what version and set_version get
 }
 path, why := changelog.new_fragment(".", "Added", "thing", "**`ui.thing`**: what it does.")
 errors, fragments := changelog.check(o)              // every fragment well formed, none already released (CI)
@@ -43,6 +44,23 @@ body, ok := changelog.section(".", "1.4.0")          // the body of that version
 | `preview(root)` | The body that `assemble` writes, without writing it. |
 | `assemble(o, version, date = "")` | Refuses a malformed fragment, a version that is not `x.y.z`, a version already released, and nothing to publish. Otherwise: the section `## [<version>] - <date>` above the newest one, by type in the order above and newest fragment first, the version's link before the other links, `Options.set_version` called, the fragments deleted. |
 | `section(root, version)` | The body of a version's section, without the links at the end of the file. `ok` is false when the section is not there. |
+
+`Options.version` is `proc(root: string, user: rawptr) -> string` and `Options.set_version` is `proc(root, version: string,
+user: rawptr) -> bool`; each gets `Options.user`.
+
+## The changelog command of a project's tool
+
+`command(project) -> toolbox.Command` is the `changelog` command of a project's tool ([toolbox.md](toolbox.md)), over its
+`toolbox.Project` (copied): the changelog beside `Project.changelog`, the versions' link from `Project.repository`, and the
+version line, which `check` compares with the last released version. `project_options(&project)` gives these Options.
+
+| Line | What it does |
+|---|---|
+| `changelog new <type> <text> [-subject:<subject>]` | One fragment (`new_fragment`); its name from the subject, else from the text. Exit code 1 when the type or the text is refused. |
+| `changelog check` | Every fragment well formed, the sources' version the last released one (`check`). |
+| `changelog preview` | What the next version brings (`preview`). |
+
+Another line is refused with exit code 2.
 
 ## A changelog written by hand
 

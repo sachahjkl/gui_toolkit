@@ -124,7 +124,7 @@ it made.
 
 ## The check in a browser
 
-`check(o)` makes the pages with `o.generate` into a temporary folder, serves them on 127.0.0.1, and drives Chrome or Edge with
+`check(o)` makes the pages with `o.generate(site, out, o.user)` into a temporary folder, serves them on 127.0.0.1, and drives Chrome or Edge with
 no window over `src/cdp`:
 
 - the image viewer of `gallery.js` on the home page and the classic screenshots: a click opens it, the picture loads at its
@@ -140,6 +140,29 @@ no window over `src/cdp`:
 
 `check_arguments` reads `--site folder`, `--shot file.png` and `--browser program`. What the browser leaves (its processes,
 its profile) is removed, and a run that cannot remove it fails.
+
+## The site command of a project's tool
+
+`command(Project_Site) -> toolbox.Command` is the `site` command of a project's tool ([toolbox.md](toolbox.md)). The
+`Project_Site` (copied; its slices must live as long as the tool) says what the site is:
+
+- `meta`: its `Meta` (its address, names, colours; `Meta.changes` its CHANGELOG.md);
+- `dir`: its sources in the repository (`""`: `site`);
+- `pages`: the `Changelog_Options` of its pages, the home page's version mark and downloads (`changes` `""`: `Meta.changes`);
+- `extra`: the project's own checks of `site check` (`s.user` is the `^Project_Site`).
+
+| Line | What it does |
+|---|---|
+| `site build <site> <out>` | `build_changelog` then `build_meta` into `<out>`: what is published (`project_build`). |
+| `site check [--site folder] [--shot file.png] [--browser program]` | `check`, the pages made by `build_changelog`. |
+| `site card` | `draw_card` into the site's folder, once, by hand. |
+
+Another line is refused with exit code 2.
+
+```odin
+@(rodata) DOWNLOADS := [?]site.Download{{os = "linux", label = "Linux", href = "...", detail = "..."}}
+toolbox.tool_main("classeurtool", {..., site.command({meta = site_meta(), pages = {version_mark = "{{version}}", downloads = DOWNLOADS[:]}, extra = site_downloads})}, toolbox.ROOT_MARK_DEFAULT)
+```
 
 ## Tests
 

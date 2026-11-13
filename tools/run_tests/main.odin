@@ -7,7 +7,7 @@
 //   odin run tools/run_tests -- -check:windows_amd64        every package of that system checked (odin check, its defines), not run:
 //                                                           Windows' code compiled from Linux (toolbox.check_env)
 // Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). (PowerShell 7 splits a `-name:value` typed after
-// `--` into `-name:` and `value`: tools/cmdline joins them again.) Needs what the CI's steps build first: the native
+// `--` into `-name:` and `value`: toolbox.args_joined joins them again.) Needs what the CI's steps build first: the native
 // libraries (tools/tk build_text, build_a11y), the emoji font (tools/tk fetch_emoji -unicode), wgpu-native and DXC (tools/tk fetch_wgpu). A log of each step
 // is left in build/test_logs/.
 package run_tests
@@ -17,7 +17,6 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import "../cmdline"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -257,7 +256,7 @@ main :: proc() {
 	code := 0
 	if on_own_desktop(&code) { os.exit(code) }
 	o := Options{limit = RUN_LIMIT_SECONDS}
-	for a in cmdline.joined(os.args[1:]) {
+	for a in toolbox.args_joined(os.args[1:]) {
 		switch {
 		case a == "-list": o.list = true
 		case strings.has_prefix(a, "-backend:"): o.backend = a[len("-backend:"):]

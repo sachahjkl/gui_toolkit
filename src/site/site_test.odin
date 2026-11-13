@@ -4,6 +4,7 @@ import "core:encoding/json"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import toolbox "../toolbox"
 
 SAMPLE_CHANGES :: `# Changelog
 
@@ -354,4 +355,29 @@ a_download_for_each_system :: proc(t: ^testing.T) {
 	testing.expect_value(t, none_why, "")
 	_, why = with_downloads(page, nil)
 	testing.expect(t, why != "", "a mark and no system")
+}
+
+// The site command of a project's tool: `site build` makes the pages and what they say when shared, from the project's
+// Meta (its CHANGELOG.md the pages' too); a line it does not take is refused.
+@(test)
+the_site_command_builds_the_project_site :: proc(t: ^testing.T) {
+	root, err := os.make_directory_temp("", "tk_site_command_*", context.temp_allocator)
+	testing.expect(t, err == nil, "a folder")
+	defer os.remove_all(root)
+	site, out, changes := cat(root, "/site"), cat(root, "/out"), cat(root, "/CHANGELOG.md")
+	testing.expect(t, os.make_directory_all(cat(site, "/img")) == nil)
+	png := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 'I', 'H', 'D', 'R', 0, 0, 2, 0, 0, 0, 1, 0}
+	testing.expect(t, os.write_entire_file(cat(site, "/img/logo.png"), png) == nil)
+	testing.expect(t, os.write_entire_file(cat(site, "/img/card.png"), png) == nil)
+	testing.expect(t, os.write_entire_file(cat(site, "/index.html"), SAMPLE_HOME) == nil)
+	testing.expect(t, os.write_entire_file(changes, SAMPLE_CHANGES) == nil)
+	m := sample_meta()
+	m.changes = changes
+	c := command({meta = m, dir = site})
+	defer free(c.user)
+	cs := []toolbox.Command{c}
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site, out}), 0)
+	testing.expect(t, os.exists(cat(out, "/changelog.html")) && os.exists(cat(out, "/feed.xml")), "the pages and the feed")
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site}), 2)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "check", "--what"}), 2)
 }

@@ -24,10 +24,10 @@ import toolbox "../../src/toolbox"
 @(private = "file") SYSTEM_FLAGS :: [?]string{"--recursive", "--init", "--locked", "--release", "--force", "--target-dir", "--no-verify"}
 @(private = "file") NOT_NAMES :: [?]string{"odin", "md", "mjs", "exe", "wgsl"}
 
-run_doc_check :: proc(a: ^Args) -> string {
+run_doc_check :: proc(line: []string) -> string {
 	root := toolkit_root()
 	extra := make([dynamic]string, context.temp_allocator)
-	args := a.positionals[:]
+	args := line   // (its own reading: it moves through them)
 	for i := 0; i < len(args); i += 1 {
 		switch {
 		case args[i] == "--root" && i + 1 < len(args):

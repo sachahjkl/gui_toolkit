@@ -16,6 +16,13 @@
 //	write_version_header  the C header of a version of three numbers, for a Windows executable's VERSIONINFO
 //	exe_has_icon     (Windows) a Windows executable carries its icon (group 1)
 //	update_command   the update command of a project's tool: keygen, pubkey, the signed manifest of a release, verify
+//	tool_main        a project's tool: its commands (Command), the help, the exit codes, the line PowerShell splits joined
+//	Project          a program's project: odin_command, build_native_text, build_launcher, check_launcher, check_windows
+//	version_of       the version of the sources after its line's start; version_set writes it
+//	build_c_lib      a static C library, built again when the stamp of its sources and flags changes (stamp_holds)
+//	check_scopes     the ui package's scopes opened under a negation, which end them at once
+//	third_party_notices  THIRD-PARTY-NOTICES: the licences of the toolkit, Odin, wgpu-native and the linked crates
+//	sway_start       (Linux) a desktop nobody sees, for live tests and pictures; sway_program, sway_stop
 package tk_toolbox
 
 import "core:crypto/sha2"
@@ -106,6 +113,12 @@ succeeded :: proc(state: os.Process_State) -> bool { return state.exited && stat
 env_with :: proc(without: []string, extra: ..string) -> []string {
 	all, err := os.environ(context.temp_allocator)
 	if err != nil { return nil }
+	return env_merge(all, without, extra)
+}
+
+// `all` without the variables named in `without` nor those that `extra` sets, then `extra`. In the frame's allocator.
+@(private)
+env_merge :: proc(all, without, extra: []string) -> []string {
 	out := make([dynamic]string, 0, len(all) + len(extra), context.temp_allocator)
 	next: for e in all {
 		name := env_name(e)

@@ -26,6 +26,13 @@ Logo :: struct {
 	ico_sizes:     []int,    // nil: ICO_SIZES
 	ico_png_from:  int,      // the sizes below are classic DIBs (old readers); 0: all PNG
 	project_image: bool,     // PROJECT_IMAGE, PROJECT_IMAGE_SIZE px
+	files:         []Logo_File,   // more PNG files, anywhere (the site's logo)
+}
+
+// A PNG file of the logo at a size.
+Logo_File :: struct {
+	path: string,
+	size: int,
 }
 
 // Writes the files of the logo and says each. why: "" when all are written, else the file that is not.
@@ -62,5 +69,19 @@ write_logo :: proc(logo: Logo) -> (why: string) {
 	if logo.project_image {
 		if why = png(logo, PROJECT_IMAGE_SIZE, PROJECT_IMAGE); why != "" { return }
 	}
+	for f in logo.files {
+		if why = png(logo, f.size, f.path); why != "" { return }
+	}
 	return ""
+}
+
+// The `logo` command of a project's tool: write_logo of `logo` (copied; its slices must live as long as the tool).
+logo_command :: proc(logo: Logo) -> Command {
+	return {name = "logo", usage = "the files of the logo, drawn by the toolkit's paint package", run_with = logo_run, user = new_clone(logo)}
+}
+
+@(private = "file")
+logo_run :: proc(args: []string, user: rawptr) -> int {
+	if len(args) > 0 { fmt.eprintln("logo takes no argument"); return EXIT_USAGE }
+	return done(write_logo((^Logo)(user)^))
 }

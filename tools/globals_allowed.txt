@@ -274,7 +274,16 @@ testkit/folders.odin temp_folder.serial test  # the test folders' names (atomic)
 testkit/session/session.odin current test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin owner_thread test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin live_sessions test  # the session a test runs (one test at a time: owner_thread checks it)
+toolbox/group_linux.odin running_groups process  # the process groups started, for the signal handler (the thread that starts them writes it)
+toolbox/group_linux.odin running_count process  # how many of them (written after the slot)
 toolbox/logo.odin ICO_SIZES const  # the sizes Windows asks an .ico for
+toolbox/notices.odin NOTICE_FILE_PREFIXES const  # what a licence file is named, a table
+toolbox/notices.odin TOOLKIT_NOTICES const  # the toolkit's works and their licence files, a table
+toolbox/tool.odin running_program process  # the tool whose command runs (one dispatch per process)
+toolbox/tool.odin running_command process  # the command that runs, for done
+toolbox/tool_test.odin seen_args test
+toolbox/tool_test.odin seen_user test
+toolbox/tool_test.odin SAMPLE_COMMANDS test
 ui/color_text.odin COLOR_FORMAT_NAMES const  # a table
 ui/overlays.odin toast_position_names const  # a table
 ui/state.odin current thread  # the State this thread builds

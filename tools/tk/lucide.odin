@@ -8,7 +8,7 @@ import "core:strings"
 // gen_lucide: src/lucide/lucide.odin from src/lucide/lucide.ttf, one constant per icon of the font, named after the
 // glyph's name in its 'post' table ("arrow-up-down" is ARROW_UP_DOWN), its character from the 'cmap' table. Every icon
 // is then named: none is added by hand, and a newer font gives its new icons by running this again.
-run_gen_lucide :: proc(a: ^Args) -> string {
+run_gen_lucide :: proc(args: []string) -> string {
 	root := toolkit_root()
 	ttf := join({root, "src", "lucide", "lucide.ttf"})
 	data, err := os.read_entire_file(ttf, context.temp_allocator)
