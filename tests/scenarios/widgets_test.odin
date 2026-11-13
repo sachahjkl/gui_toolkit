@@ -592,6 +592,32 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) {
 	testing.expect(t, ui.ctx_menu_any_open(), "the menu stays open")
 }
 
+// A menu opened against the window's right edge (a burger menu) shows in its place from its first visible frame: its
+// rows learn their width a frame late, and it showed past the edge, then jumped back.
+@(test)
+a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {800, 600}, no_renderer = true, build = proc(s: ^session.Session) {
+		key := ui.key_from_string(0, "burger")
+		if s.frames == 2 { ui.ctx_menu_open_rect(key, {{760, 10}, {790, 40}}) }
+		if ui.ctx_menu(key) {
+			_ = ui.menu_item("New tab", "Ctrl+T")
+			_ = ui.menu_item("New window with a long name", "Ctrl+N")
+			_ = ui.menu_item("Settings")
+		}
+	}})
+	shown: ui.Rect
+	seen := false
+	for i in 0 ..< 6 {
+		session.frame(s)
+		b := session.find(s, fmt.tprintf("menu_%d", u64(ui.key_from_string(0, "burger"))))
+		if b == nil || b.transparency >= 1 { continue }
+		testing.expectf(t, b.rect.max.x <= 800, "frame %d: inside the window (%v)", i, b.rect)
+		if seen { testing.expectf(t, b.rect == shown, "frame %d: where it first showed (%v, then %v)", i, shown, b.rect) }
+		shown, seen = b.rect, true
+	}
+	testing.expect(t, seen, "the menu shows")
+}
+
 // A list to choose from in a dialog: the pointer moving over a row selects it, a click chooses it.
 @(test)
 a_choice_follows_the_pointer :: proc(t: ^testing.T) {

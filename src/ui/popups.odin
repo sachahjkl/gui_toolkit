@@ -523,8 +523,12 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 		w = max(w, lv.held_width)
 		lv.held_width = w
 	}
+	// (placed with the width it is built with this frame, its frame added (what the last frame's panel had over the width
+	// it was built with): the last frame's was narrower when its rows learned their width only then (lv.prev_width), and a
+	// menu at the window's right edge showed past it, then jumped back)
+	frame_w: f32 = first ? 0 : max(0, panel.size.x - lv.eff_width)
 	lv.eff_width = w
-	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : Vec2{panel.size.x, min(panel.view_bounds.y, s.window_size.y)}
+	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : Vec2{max(panel.size.x, w + frame_w), min(panel.view_bounds.y, s.window_size.y)}
 	pos := menu_place(lv, depth, size, s.window_size, em)
 	// (a menu that searches: its corner where its first measured frame put it, held in the window)
 	if lv.search && !first {
