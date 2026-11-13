@@ -5,6 +5,7 @@
 
 Start
   getting-started.md  Getting started
+  builds.md           What a build holds
 
 Drawing and text
   draw.md             Drawing

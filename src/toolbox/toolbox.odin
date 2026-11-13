@@ -18,7 +18,9 @@
 //	update_command   the update command of a project's tool: keygen, pubkey, the signed manifest of a release, verify
 //	crash_symbolize  a crash report's frames named from the build's map or executable (crash_symbolize.odin)
 //	tool_main        a project's tool: its commands (Command), the help, the exit codes, the line PowerShell splits joined
-//	Project          a program's project: odin_command, build_native_text, build_launcher, check_launcher, check_windows
+//	Project          a program's project: odin_command, build_native, build_launcher, check_launcher, check_windows; its
+//	                 Features (feature_defines, native_crates)
+//	font_subset      a TrueType font with only the glyphs of some characters; lucide_subset: a program's Lucide icons
 //	version_of       the version of the sources after its line's start; version_set writes it
 //	build_c_lib      a static C library, built again when the stamp of its sources and flags changes (stamp_holds)
 //	check_scopes     the ui package's scopes opened under a negation, which end them at once

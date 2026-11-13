@@ -148,6 +148,11 @@ above.
 | `A11Y_ACCESSKIT` | `false` (default), `true` | `odin run libs/gui_toolkit/tools/tk -- build_a11y` (cargo, about 20 s) -> `libs\gui_toolkit\build\a11y\gt_a11y.lib` |
 | `FONT_TEXT_RENDERER` | `atlas` (default on Windows), `slug` (default elsewhere, the only one there) | nothing (Slug: glyphs drawn from their outlines on the GPU; also per `font.State` at run time) |
 | `TOOLKIT_WGPU_DX12_COMPILER` | `auto` (default), `dxc`, `fxc` | |
+| `TOOLKIT_DEVTOOLS` | `true` in a `-debug` build and a test, else `false` | `true`: the CDP endpoint of `devtools.start_from_env` in a release build ([devtools.md](devtools.md)) |
+| `LUCIDE_SUBSET` | `""` (default: the whole Lucide font), an absolute path | the program's icons only, made by `toolbox.lucide_subset` ([lucide.md](lucide.md)) |
+| `FONT_EMBED_FALLBACK` | `true` (default), `false` | `false`: no Roboto or Inconsolata compiled in; only for a program that loads its fonts itself |
+
+What each costs in the executable: [builds.md](builds.md). A program's tool declares them once in `toolbox.Project.features`.
 
 The three commands of `tools/tk` are independent (any order; each does nothing when its output is current: a `STAMP` file next to it).
 They write into the toolkit's own `build\` folder, where its packages link them from (`foreign import

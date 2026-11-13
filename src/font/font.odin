@@ -565,8 +565,18 @@ primary_face :: proc(s: ^State, id: Font_Id) -> Font_Id {
 
 // Fallback fonts compiled into every exe that loads them (Odin's #load: no file next to the exe). Used when a system
 // font is missing, e.g. under Wine. Roboto: Apache 2.0, Inconsolata: SIL OFL 1.1 (licences in font/data).
-FALLBACK_UI_DATA   :: #load("data/Roboto-Regular.ttf")
-FALLBACK_MONO_DATA :: #load("data/Inconsolata-Regular.ttf")
+// -define:FONT_EMBED_FALLBACK=false leaves them out (Roboto 159 KB, Inconsolata 85 KB): both are then empty, and
+// load_system_or_embedded fails when the system's font is missing. Only for a program that loads its fonts itself: on
+// Linux there is no Segoe UI, and Roboto is host.host_open's interface font.
+FONT_EMBED_FALLBACK :: #config(FONT_EMBED_FALLBACK, true)
+
+when FONT_EMBED_FALLBACK {
+	FALLBACK_UI_DATA   :: #load("data/Roboto-Regular.ttf")
+	FALLBACK_MONO_DATA :: #load("data/Inconsolata-Regular.ttf")
+} else {
+	FALLBACK_UI_DATA   :: []byte{}
+	FALLBACK_MONO_DATA :: []byte{}
+}
 
 // Loads a system font file, or `fallback` (embedded data) when the file is missing or unreadable.
 load_system_or_embedded :: proc(s: ^State, path: string, fallback: []byte) -> (id: Font_Id, ok: bool, from_system: bool) {

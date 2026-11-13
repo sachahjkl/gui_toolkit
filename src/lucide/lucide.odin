@@ -2,10 +2,19 @@
 // and each constant one icon's character in it, named as the font names its glyph. A program draws an icon as text in
 // that face. One set for every program of the toolkit.
 //
+// -define:LUCIDE_SUBSET=<absolute path>: DATA is that font instead, the icons the program uses (toolbox.lucide_subset,
+// Feature.Lucide_Subset: 900 KB less). A constant whose icon it does not hold draws nothing.
+//
 // Generated from lucide.ttf by `odin run tools/tk -- gen_lucide`: do not edit; a newer font, then that command again.
 package tk_lucide
 
-DATA :: #load("lucide.ttf")
+LUCIDE_SUBSET :: #config(LUCIDE_SUBSET, "")
+
+when LUCIDE_SUBSET != "" {
+	DATA :: #load(LUCIDE_SUBSET)
+} else {
+	DATA :: #load("lucide.ttf")
+}
 
 A_ARROW_DOWN                       :: "\ue585"   // a-arrow-down
 A_ARROW_UP                         :: "\ue586"   // a-arrow-up

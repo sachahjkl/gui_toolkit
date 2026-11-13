@@ -6,7 +6,7 @@ package tk_toolbox
 //   - gui_toolkit (MIT) and its attributions (NOTICE.md), the fonts it embeds (Roboto, Inconsolata), Lucide's icons;
 //   - Odin's core library (the compiler's root, `odin root`);
 //   - wgpu-native (MIT or Apache-2.0), linked statically (its release archive has no licence: the texts are kept here);
-//   - the Rust crates of the toolkit's native libraries the program links (Project.native_crates): those a library's build
+//   - the Rust crates of the toolkit's native libraries the program links (native_crates of Project.features): those a library's build
 //     links (not its build scripts' crates, not a procedural macro), from `cargo metadata`, each with its licence files.
 
 import "core:encoding/json"
@@ -77,7 +77,7 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 	append(&works, Notice_Work{"wgpu-native (wgpu, naga)", "MIT OR Apache-2.0", slice.clone([]string{WGPU_MIT, WGPU_APACHE}, context.temp_allocator)})
 
 	crates := make([dynamic]Notice_Crate, context.temp_allocator)
-	native := p.native_crates != nil ? p.native_crates : []string{"native/text"}
+	native := native_crates(p.features)
 	for dir in native {
 		meta, mcode := capture({"cargo", "metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", NOTICES_TARGET, "--manifest-path", fmt.tprintf("%s/%s/Cargo.toml", gt, dir)})
 		if mcode != 0 { return fmt.tprintf("cargo metadata of %s failed (its crates are fetched by a build)", dir) }

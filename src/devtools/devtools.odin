@@ -37,6 +37,10 @@ import "../ui"
 
 VERSION :: ui.VERSION
 
+// Whether start_from_env, service and stop do anything: a release build of a program that does not ask for the endpoint
+// (-define:TOOLKIT_DEVTOOLS=true) links none of the server (350 KB, Linux, -o:speed). Debug builds and tests have it.
+TOOLKIT_DEVTOOLS :: #config(TOOLKIT_DEVTOOLS, ODIN_DEBUG || ODIN_TEST)
+
 // The protocol's error codes (JSON-RPC's).
 @(private)
 CDP_ERROR_SERVER :: -32000
@@ -145,99 +149,114 @@ start :: proc(win: ^platform.Window, port: int, title := "") -> ^Server {
 	return srv
 }
 
-// TOOLKIT_DEVTOOLS=<port> in the environment: start on it; else nil (service and stop do nothing with nil).
+// TOOLKIT_DEVTOOLS=<port> in the environment: start on it; else nil (service and stop do nothing with nil). Always nil in a
+// build without the endpoint (the define TOOLKIT_DEVTOOLS false: a release build's default).
 start_from_env :: proc(win: ^platform.Window, title := "") -> ^Server {
+	when TOOLKIT_DEVTOOLS {
+		port := env_port()
+		return port > 0 ? start(win, port, title) : nil
+	} else {
+		return nil
+	}
+}
+
+// The port TOOLKIT_DEVTOOLS names in the environment (DEFAULT_PORT for another value), 0 when it is not set.
+@(private)
+env_port :: proc() -> int {
 	v := os.get_env("TOOLKIT_DEVTOOLS", context.temp_allocator)
-	if v == "" { return nil }
+	if v == "" { return 0 }
 	port, ok := strconv.parse_int(v)
-	if !ok || port <= 0 || port > MAX_PORT { port = DEFAULT_PORT }
-	return start(win, port, title)
+	return ok && port > 0 && port <= MAX_PORT ? port : DEFAULT_PORT
 }
 
 // `s`: for a program that goes on after this, the ui it served: the edits of DOM and CSS, the highlight and the accessibility
 // tree asked of it end too. nil, the usual end of a program, leaves it alone, and it may be gone by now.
 stop :: proc(srv: ^Server, s: ^ui.State = nil) {
-	if srv == nil { return }
-	sync.atomic_store(&srv.stopping, true)
-	if srv.accepter != nil {   // (start_local has neither)
-		net.close(srv.listener)
-		// (accept may not return on a closed socket everywhere: a connection to ourselves unblocks it)
-		if s, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = srv.port}); err == nil { net.close(s) }
-		thread.join(srv.accepter)
-		thread.destroy(srv.accepter)
-		thread.join(srv.ticking)
-		thread.destroy(srv.ticking)
+	when TOOLKIT_DEVTOOLS {
+		if srv == nil { return }
+		sync.atomic_store(&srv.stopping, true)
+		if srv.accepter != nil {   // (start_local has neither)
+			net.close(srv.listener)
+			// (accept may not return on a closed socket everywhere: a connection to ourselves unblocks it)
+			if s, err := net.dial_tcp(net.Endpoint{address = net.IP4_Loopback, port = srv.port}); err == nil { net.close(s) }
+			thread.join(srv.accepter)
+			thread.destroy(srv.accepter)
+			thread.join(srv.ticking)
+			thread.destroy(srv.ticking)
+		}
+		sync.lock(&srv.lock)
+		conns := srv.conns[:]
+		sync.unlock(&srv.lock)
+		for sync.atomic_load(&srv.encoding) > 0 { time.sleep(time.Millisecond) }   // (they answer on the connections)
+		// (shut down, not closed: the thread reading it closes it, and a closed socket's number can be another's by now)
+		for c in conns {
+			if c.local { continue }
+			sync.lock(&c.write)
+			if !c.closed { net.shutdown(c.sock, .Both) }
+			sync.unlock(&c.write)
+		}
+		for c in conns {
+			input_release(srv, c)
+			conn_free(c)
+		}
+		delete(srv.conns)
+		if s != nil {
+			dom_reset(srv, s, gone = true)
+			if srv.captured == s { ui.a11y_capture(s, false) }
+		}
+		for m in srv.inbox { delete(m.text, runtime.heap_allocator()) }
+		delete(srv.inbox)
+		for w in srv.captures { release(w.to) }
+		delete(srv.captures)
+		for w in srv.waits { wait_free(w) }
+		delete(srv.waits)
+		cast_stop(srv)
+		delete(srv.later)
+		rec_destroy(&srv.rec)
+		dom_destroy(srv)
+		delete(srv.title)
+		delete(srv.id)
+		free(srv)
 	}
-	sync.lock(&srv.lock)
-	conns := srv.conns[:]
-	sync.unlock(&srv.lock)
-	for sync.atomic_load(&srv.encoding) > 0 { time.sleep(time.Millisecond) }   // (they answer on the connections)
-	// (shut down, not closed: the thread reading it closes it, and a closed socket's number can be another's by now)
-	for c in conns {
-		if c.local { continue }
-		sync.lock(&c.write)
-		if !c.closed { net.shutdown(c.sock, .Both) }
-		sync.unlock(&c.write)
-	}
-	for c in conns {
-		input_release(srv, c)
-		conn_free(c)
-	}
-	delete(srv.conns)
-	if s != nil {
-		dom_reset(srv, s, gone = true)
-		if srv.captured == s { ui.a11y_capture(s, false) }
-	}
-	for m in srv.inbox { delete(m.text, runtime.heap_allocator()) }
-	delete(srv.inbox)
-	for w in srv.captures { release(w.to) }
-	delete(srv.captures)
-	for w in srv.waits { wait_free(w) }
-	delete(srv.waits)
-	cast_stop(srv)
-	delete(srv.later)
-	rec_destroy(&srv.rec)
-	dom_destroy(srv)
-	delete(srv.title)
-	delete(srv.id)
-	free(srv)
 }
 
 // Each frame, before poll_events and begin_build (the tree read is the last build's, its memory still alive): the
 // commands that came in are carried out, input injected into the window's queue for this frame.
 service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
-	if srv == nil { return }
-	ended := sync.atomic_exchange(&srv.ended, false)   // (before anything looks at the connections: one that ends after this is seen next time)
-	// (first: the time between frames is the program's rhythm, and a frame that reads a capture back is not late for it)
-	if s != nil { metrics_sample(srv, s) }
-	if len(srv.later) > 0 { cast_touch(srv) }
-	for e in srv.later { platform.inject_event(srv.win, e) }
-	clear(&srv.later)
-	screenshots_poll(srv, s, r)
-	if s != nil {
-		cast_poll(srv, s, r)
-		if srv.captured != s { ui.a11y_capture(s, true); srv.captured = s }
-		rec_poll(srv, s)
-		waits_poll(srv, s)
-		dom_sync(srv, s)
+	when TOOLKIT_DEVTOOLS {
+		if srv == nil { return }
+		ended := sync.atomic_exchange(&srv.ended, false)   // (before anything looks at the connections: one that ends after this is seen next time)
+		// (first: the time between frames is the program's rhythm, and a frame that reads a capture back is not late for it)
+		if s != nil { metrics_sample(srv, s) }
+		if len(srv.later) > 0 { cast_touch(srv) }
+		for e in srv.later { platform.inject_event(srv.win, e) }
+		clear(&srv.later)
+		screenshots_poll(srv, s, r)
+		if s != nil {
+			cast_poll(srv, s, r)
+			if srv.captured != s { ui.a11y_capture(s, true); srv.captured = s }
+			rec_poll(srv, s)
+			waits_poll(srv, s)
+			dom_sync(srv, s)
+		}
+		sync.lock(&srv.lock)
+		msgs := srv.inbox
+		srv.inbox = {}
+		sync.atomic_store(&srv.asked, false)
+		sync.unlock(&srv.lock)
+		defer delete(msgs)
+		for m in msgs {
+			handle(srv, s, r, m)
+			delete(m.text, runtime.heap_allocator())
+		}
+		// (after its last commands: they may press)
+		if ended { conns_release(srv) }
+		// What needs another frame. Through the ticker: a wake sent from here is taken by the poll_events of the frame about to be
+		// built, and the window would then sleep until its next timer (a real window's; an offscreen one keeps it).
+		sync.atomic_store(&srv.waiting, len(srv.waits) + len(srv.later) + len(srv.captures) + (srv.screencast.owed || srv.screencast.phase == .Capturing ? 1 : 0))
+		sync.atomic_store(&srv.cast_dirty, s != nil && srv.screencast.phase != .Off && s.build_index + 1 != srv.screencast.last_build)
+		conns_reap(srv)
 	}
-	sync.lock(&srv.lock)
-	msgs := srv.inbox
-	srv.inbox = {}
-	sync.atomic_store(&srv.asked, false)
-	sync.unlock(&srv.lock)
-	defer delete(msgs)
-	for m in msgs {
-		handle(srv, s, r, m)
-		delete(m.text, runtime.heap_allocator())
-	}
-	// (after its last commands: they may press)
-	if ended { conns_release(srv) }
-	// What needs another frame. Through the ticker: a wake sent from here is taken by the poll_events of the frame about to be
-	// built, and the window would then sleep until its next timer (a real window's; an offscreen one keeps it).
-	sync.atomic_store(&srv.waiting, len(srv.waits) + len(srv.later) + len(srv.captures) + (srv.screencast.owed || srv.screencast.phase == .Capturing ? 1 : 0))
-	sync.atomic_store(&srv.cast_dirty, s != nil && srv.screencast.phase != .Off && s.build_index + 1 != srv.screencast.last_build)
-	conns_reap(srv)
 }
 
 // What the clients that went held down goes up: a drag does not stay under way for want of a client.

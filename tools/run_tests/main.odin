@@ -201,6 +201,8 @@ STEPS := []Step{
 	{name = "color_native", oses = LINUX_ONLY, text = true},
 	{name = "text_backends"},
 	{name = "font_default", oses = EVERYWHERE},   // (built with no define: the backend each system gets by default)
+	{name = "lucide_subset", oses = EVERYWHERE, text = true},
+	{name = "lean_build", oses = EVERYWHERE, defines = {"TOOLKIT_DEVTOOLS=false", "FONT_EMBED_FALLBACK=false"}, text = true},
 	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Text_Lib},
 	// what must keep compiling
 	{name = "uia_probe", path = "tools/uia_probe", kind = .Build},
