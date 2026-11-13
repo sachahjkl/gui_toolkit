@@ -37,7 +37,7 @@ close :: proc(f: ^Fx) {
 
 @(private = "file")
 Run :: struct {
-	area:   ui.Text_Area,
+	area:   ui.Text_Edit,
 	width:  f32,
 	min_l, max_l: int,
 	res:    ui.Edit_Result,
@@ -46,7 +46,7 @@ Run :: struct {
 @(private = "file")
 build :: proc(r: ^Run) {
 	ui.next({width = ui.px(r.width), height = ui.px(40)})
-	r.res = ui.text_edit("###w", &r.area, wrap = true, auto_height = true, min_lines = r.min_l, max_lines = r.max_l)
+	r.res = ui.text_edit("###w", &r.area, {wrap = true, auto_height = true, min_lines = r.min_l, max_lines = r.max_l})
 }
 
 @(private = "file")
@@ -118,7 +118,7 @@ wrapped_editor_keys_height_and_caret :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Run{width = 150, min_l = 2, max_l = 4}
-	defer ui.area_destroy(&r.area)
+	defer ui.text_edit_destroy(&r.area)
 	m := font.metrics(&f.fonts, f.ui_font, 15)
 	lh := f32(int(m.line_height * 1.15 + 0.5))
 	frame(&f, &r)
@@ -127,11 +127,11 @@ wrapped_editor_keys_height_and_caret :: proc(t: ^testing.T) {
 	if !testing.expect(t, b != nil, "built") { return }
 	testing.expectf(t, abs(b.size.y - (2 * lh + 12)) < 1, "empty: min_lines tall (%v)", b.size.y)
 	ui.set_focus(b.key)
-	ui.area_set(&r.area, "one two three four five six seven eight nine ten eleven twelve thirteen")
+	ui.text_edit_set(&r.area, "one two three four five six seven eight nine ten eleven twelve thirteen")
 	r.area.cursor, r.area.mark = 0, 0
 	frame(&f, &r)
 	frame(&f, &r)
-	lines := ui.text_visual_lines(&f.fonts, f.ui_font, 15, ui.area_string(&r.area), 150 - 12, context.allocator)
+	lines := ui.text_visual_lines(&f.fonts, f.ui_font, 15, ui.text_edit_string(&r.area), 150 - 12, context.allocator)
 	defer delete(lines)
 	testing.expect(t, len(lines) >= 3, "several visual lines")
 	want := min(len(lines), 4)
@@ -157,6 +157,6 @@ wrapped_editor_keys_height_and_caret :: proc(t: ^testing.T) {
 	testing.expect(t, !drawn, "not drawn without a renderer")
 	// Ctrl+End: the last line, scrolled into view within max_lines
 	frame(&f, &r, {key(.End, {.Ctrl})})
-	testing.expect_value(t, r.area.cursor, len(ui.area_string(&r.area)))
+	testing.expect_value(t, r.area.cursor, len(ui.text_edit_string(&r.area)))
 	if len(lines) > 4 { testing.expect(t, r.area.scroll.y > 0, "scrolls past max_lines") }
 }

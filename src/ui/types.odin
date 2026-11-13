@@ -89,10 +89,10 @@ Box_Flag :: enum u8 {
 	Scrollbar_None,      // a scroll box that shows no bar (its view follows another's: a table's titles over its rows)
 	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
 	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
-	Sunken,              // a well (fields, field_frame, well): the machined finish carves it in, its focus a ring of light
+	Sunken,              // a well (fields, input_frame, well): the machined finish carves it in, its focus a ring of light
 	Groove,              // a separator (hline, vline): the machined finish carves it as a groove
 	Plate,               // a raised panel (a card, a dialog, a menu, a tooltip): the machined finish lifts it (machined_box)
-	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`field_frame`)
+	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`input_frame`)
 	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
 	Ctrl_Wheel,          // a .Scroll_Self box that zooms with Ctrl+wheel itself (a node graph, a map): over it, the wheel with Ctrl is its own, not the interface's zoom
 	Held,                // drawn pressed in, as while the button is held on it (a toggled button: the option chosen)
@@ -320,7 +320,7 @@ State :: struct {
 	free_boxes:  [dynamic]^Box,
 	anims:       map[Key]Animation,
 	wheel_rest:  map[Key]f32,     // wheel_steps: per box, the notches not yet a whole step (a touchpad sends fractions)
-	number_edit: Text_Field,      // the text typed in the field of a `number` that has the keyboard (one at a time has it)
+	number_edit: Line_Edit,      // the text typed in the field of a `number` that has the keyboard (one at a time has it)
 	number_key:  Key,             // that field's box (0: none is typed in)
 	arena:       virtual.Arena,
 	build_index: u64,
@@ -333,7 +333,7 @@ State :: struct {
 	menu_icon_font: font.Font_Id,        // the menus' icons when not icon_font (a program whose menus use Lucide: lucide_icons()); 0: icon_font
 	widget_icon_font: font.Font_Id,      // the toolkit's own (ICON_FONT_DATA): the widgets' marks, loaded when first needed
 	lucide_font:      font.Font_Id,      // the lucide package's face: the marks the toolkit's own has not (lucide_icons)
-	mono_font:   font.Font_Id,           // optional: used by sliders, kbd chips and tables (falls back to the UI font)
+	mono_font:   font.Font_Id,           // optional: used by sliders, key caps and tables (falls back to the UI font)
 	timers:      map[Key]Timer,
 	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)
 	hotkey_recorder: Key,               // the hotkey_field that records the next combination (0: none)

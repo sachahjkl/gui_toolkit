@@ -219,9 +219,9 @@ a_confirmation_closes_from_its_corner :: proc(t: ^testing.T) { unwatched.run(t, 
 // A right click in a text area opens the field's menu: Select all, then Cut, empties it.
 @(test)
 a_text_area_has_the_field_menu :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { area: ui.Text_Area }
+	Run :: struct { area: ui.Text_Edit }
 	r: Run
-	defer ui.area_destroy(&r.area)
+	defer ui.text_edit_destroy(&r.area)
 	s := session.start(t, {size = MD_WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(300), height = ui.px(160)})
@@ -244,8 +244,8 @@ a_text_area_has_the_field_menu :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	session.frames(s, 2)
 	session.click_text(s, "Cut")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.area_string(&r.area), "")
+	testing.expect_value(t, ui.text_edit_string(&r.area), "")
 	testing.expect_value(t, session.clipboard(s), "one\ntwo")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.area_string(&r.area), "one\ntwo")
+	testing.expect_value(t, ui.text_edit_string(&r.area), "one\ntwo")
 }) }

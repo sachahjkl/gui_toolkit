@@ -29,8 +29,8 @@ App :: struct {
 
 	tasks:     [dynamic]Task,
 	next_id:   int,
-	input:     ui.Text_Field,
-	search:    ui.Text_Field,
+	input:     ui.Line_Edit,
+	search:    ui.Line_Edit,
 	filter:    Filter,
 	dark:      bool,
 	dirty:     bool,
@@ -195,14 +195,14 @@ build_input_row :: proc(app: ^App, em: f32) {
 	if ui.row(.Center) {
 		input_key := ui.key_from_string(ui.parent_box().key, "###new_task")
 		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.6))})
-		res := ui.line_edit("###new_task", &app.input, "What needs doing?")
+		res := ui.line_edit("###new_task", &app.input, {placeholder = "What needs doing?"})
 		submit := res.committed
 		ui.spacer(ui.px(em * 0.6))
 		ui.next({width = ui.text_size(em * 1.2), height = ui.px(ui.dense(em * 2.6))})
 		if ui.button("add", "Add", o = {intent = .Primary}).clicked { submit = true }
 		if submit && len(app.input.buf) > 0 {
-			add_task(app, ui.field_string(&app.input))
-			ui.field_clear(&app.input)
+			add_task(app, ui.line_edit_string(&app.input))
+			ui.line_edit_clear(&app.input)
 			ui.set_focus(input_key)   // keep typing after pressing the Add button
 		}
 	}
@@ -221,14 +221,14 @@ build_filters :: proc(app: ^App, em: f32, total, done: int) {
 		}
 		ui.spacer(ui.fill())
 		ui.next({width = ui.px(em * 11, 0), height = ui.px(em * 2.2)})   // strictness 0: shrinks when the window (or zoom) leaves no room
-		ui.line_edit("###search", &app.search, "Search")
+		ui.line_edit("###search", &app.search, {placeholder = "Search"})
 	}
 }
 
 build_list :: proc(app: ^App, em: f32) {
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.scroll_y("###list") {
-		query := ui.field_string(&app.search)
+		query := ui.line_edit_string(&app.search)
 		shown := 0
 		remove_id := -1
 		for &t in app.tasks {
@@ -241,10 +241,10 @@ build_list :: proc(app: ^App, em: f32) {
 					dim := t.done   // the checkbox toggles t.done: remember what we pushed
 					if dim { ui.push_tags("weak") }
 					ui.next({width = ui.fill(), height = ui.pct(1)})
-					sig := ui.checkbox(fmt.tprintf("###chk_%d", t.id), t.title, &t.done)
+					chk := fmt.tprintf("###chk_%d", t.id)
+					if ui.checkbox(chk, t.title, &t.done) { app.dirty = true }
 					if dim { ui.pop_tags() }
-					if sig.clicked { app.dirty = true }
-					if sig.right_clicked { app.menu_task = t.id; ui.menu_open(TASK_MENU, ui.mouse_pos()) }
+					if ui.signal(ui.prev_box(chk)).right_clicked { app.menu_task = t.id; ui.menu_open(TASK_MENU, ui.mouse_pos()) }
 					ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
 					del := ui.button(fmt.tprintf("del_%d", t.id), icon = ICON_TRASH)
 					if del.clicked { remove_id = t.id }
@@ -361,8 +361,8 @@ close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
 	for t in app.tasks { delete(t.title) }
 	delete(app.tasks)
-	ui.field_destroy(&app.input)
-	ui.field_destroy(&app.search)
+	ui.line_edit_destroy(&app.input)
+	ui.line_edit_destroy(&app.search)
 	host.host_close(&app.main)
 	the_app = nil
 	free(app)

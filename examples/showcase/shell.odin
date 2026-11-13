@@ -227,7 +227,7 @@ overlays :: proc(app: ^App, em: f32) {
 		title = "Unlock the key", note = "Type the PIN of the security key to sign the release.", placeholder = "PIN",
 		secret = true, reveal = &app.reveal, act = "Unlock",
 	}) {
-	case .Confirmed, .Cancelled: ui.field_wipe(&app.pin)
+	case .Confirmed, .Cancelled: ui.line_edit_wipe(&app.pin)
 	case .None:
 	}
 }

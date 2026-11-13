@@ -106,11 +106,11 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 // field answers (Confirmed: the text is the field's); Escape, Cancel or a press outside cancel, as with any modal. The
 // field has the keyboard when it opens. `f` and `open` are the caller's: true opens it, the answer closes it.
 // `secret`: a password, bullets in place of its characters (with `reveal`, the eye that shows it: the caller's bool).
-// After a secret is used or given up, field_wipe(f) leaves nothing of it in memory.
+// After a secret is used or given up, line_edit_wipe(f) leaves nothing of it in memory.
 //
 //   switch ui.prompt("unlock", &app.asking, &app.pin, {title = "Unlock", note = "Type the PIN of the key.", secret = true}) {
-//   case .Confirmed: unlock(app, ui.field_string(&app.pin)); ui.field_wipe(&app.pin)
-//   case .Cancelled: ui.field_wipe(&app.pin)
+//   case .Confirmed: unlock(app, ui.line_edit_string(&app.pin)); ui.line_edit_wipe(&app.pin)
+//   case .Cancelled: ui.line_edit_wipe(&app.pin)
 //   case .None:
 //   }
 
@@ -130,7 +130,7 @@ Prompt_Options :: struct {
 	labels:      Prompt_Labels,   // zero: prompt_default_labels()
 }
 
-prompt :: proc(id: string, open: ^bool, f: ^Text_Field, o: Prompt_Options) -> (answer: Confirm_Answer) {
+prompt :: proc(id: string, open: ^bool, f: ^Line_Edit, o: Prompt_Options) -> (answer: Confirm_Answer) {
 	s := gs()
 	was := open^
 	labels := o.labels == {} ? prompt_default_labels() : o.labels
@@ -152,7 +152,7 @@ prompt :: proc(id: string, open: ^bool, f: ^Text_Field, o: Prompt_Options) -> (a
 						spacer(px(em * 0.6))
 					}
 					next({width = fill(), height = px(dense(em * 2.2))})
-					res := line_edit("###prompt_field", f, o.placeholder, secret = o.secret, reveal = o.secret ? o.reveal : nil)
+					res := line_edit("###prompt_field", f, {placeholder = o.placeholder, kind = o.secret ? .Secret : .Plain, reveal = o.secret ? o.reveal : nil})
 					// (the keyboard is the field's as the dialog opens: it took it from the page)
 					if s.focus_key == 0 { s.focus_key = res.box.key }
 					if res.committed { answer, open^ = .Confirmed, false }

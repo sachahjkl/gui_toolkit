@@ -104,7 +104,7 @@ rich_layout_breaks_across_runs :: proc(t: ^testing.T) {
 	frame(f)   // the ui state is current (faces of bold / italic runs)
 	text := ui.rich_text(RUNS)
 	W :: f32(180)
-	l := ui.rich_layout(ctx(f), RUNS, W)
+	l := ui.rich_layout(RUNS, ctx(f), W)
 	defer ui.rich_layout_destroy(&l)
 	testing.expect(t, len(l.lines) >= 4, "wrapped")
 	for li, i in l.lines {
@@ -147,7 +147,7 @@ rich_layout_breaks_across_runs :: proc(t: ^testing.T) {
 	testing.expect(t, len(lr) > 0 && ui.rich_link_at(&l, RUNS, (lr[0].min + lr[0].max) * 0.5) == 7, "link hit")
 	testing.expect_value(t, ui.rich_link_at(&l, RUNS, {1, l.lines[0].y + 2}), -1)
 	// no width: only "\n" breaks
-	nw := ui.rich_layout(ctx(f), RUNS, 0)
+	nw := ui.rich_layout(RUNS, ctx(f), 0)
 	defer ui.rich_layout_destroy(&nw)
 	testing.expect_value(t, len(nw.lines), 2)
 }
@@ -162,14 +162,14 @@ rich_layout_limits_and_alignment :: proc(t: ^testing.T) {
 	defer close(f)
 	frame(f)
 	W :: f32(160)
-	two := ui.rich_layout(ctx(f), RUNS, W, max_lines = 2)
+	two := ui.rich_layout(RUNS, ctx(f), W, max_lines = 2)
 	defer ui.rich_layout_destroy(&two)
 	testing.expect_value(t, len(two.lines), 2)
 	testing.expect(t, two.truncated && two.lines[1].ellipsis_x > 0, "\"…\" on the last line")
 	testing.expectf(t, two.lines[1].width <= W + 0.01, "the line with its ellipsis fits (%v)", two.lines[1].width)
 	// a word wider than the line: cut between clusters, nothing lost
 	long := []ui.Rich_Run{{text = "Pneumonoultramicroscopicsilicovolcanoconiosis"}, {text = "AndMoreOfIt", style = {bold = true}}}
-	ll := ui.rich_layout(ctx(f), long, 120)
+	ll := ui.rich_layout(long, ctx(f), 120)
 	defer ui.rich_layout_destroy(&ll)
 	testing.expect(t, len(ll.lines) >= 2, "a long word is cut")
 	total := 0
@@ -177,11 +177,11 @@ rich_layout_limits_and_alignment :: proc(t: ^testing.T) {
 	testing.expect_value(t, total, len(ui.rich_text(long)))
 	// alignment: right lines end at the width, centred ones sit in the middle
 	short := []ui.Rich_Run{{text = "short"}}
-	r := ui.rich_layout(ctx(f), short, 300, align = .Right)
+	r := ui.rich_layout(short, ctx(f), 300, align = .Right)
 	defer ui.rich_layout_destroy(&r)
 	fr := r.frags[0]
 	testing.expectf(t, abs(fr.x + fr.width - 300) < 1, "right aligned (%v)", fr.x + fr.width)
-	cl := ui.rich_layout(ctx(f), short, 300, align = .Center)
+	cl := ui.rich_layout(short, ctx(f), 300, align = .Center)
 	defer ui.rich_layout_destroy(&cl)
 	testing.expectf(t, abs(cl.frags[0].x - (300 - cl.frags[0].width) * 0.5) < 1, "centred")
 	// thousands of runs: laid out once, then from the cache
@@ -323,7 +323,7 @@ rich_line_height_is_even :: proc(t: ^testing.T) {
 		{text = "big code big code big code big code", style = {code = true, size = 30}},
 		{text = word}, {text = word},
 	}
-	natural := ui.rich_layout(ctx(f), runs, 200)
+	natural := ui.rich_layout(runs, ctx(f), 200)
 	defer ui.rich_layout_destroy(&natural)
 	uneven := false
 	for li in natural.lines { if li.height != natural.lines[0].height { uneven = true } }
@@ -331,7 +331,7 @@ rich_line_height_is_even :: proc(t: ^testing.T) {
 
 	c := ctx(f)
 	c.line_height = 22
-	even := ui.rich_layout(c, runs, 200)
+	even := ui.rich_layout(runs, c, 200)
 	defer ui.rich_layout_destroy(&even)
 	if !testing.expect(t, len(even.lines) > 3) { return }
 	for li, i in even.lines {

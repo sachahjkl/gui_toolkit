@@ -5,7 +5,7 @@ package ui
 // keep it for its type-ahead: the field gets it.
 //
 //   if !modal_open { ui.type_to_field(view.search_key) }   // in the build, before the field and the list are built
-//   res := ui.line_edit("###search", &view.search, "Filter")
+//   res := ui.line_edit("###search", &view.search, {placeholder = "Filter"})
 //   (line_edit returns its box: view.search_key = res.box.key, kept for the next build)
 //
 // The field's key is its box's (`Box.key`): keep it from the build that made it. A modal dialog or a menu that takes

@@ -208,7 +208,7 @@ read_by_ui_automation :: proc(t: ^testing.T) {
 	defer close(&f)
 	a: Uia_App
 	defer app_destroy(&a.app)
-	ui.field_set(&a.field, "Ada")
+	ui.line_edit_set(&a.field, "Ada")
 	a.volume = 40
 	testing.expect(t, platform.a11y_available(), "built with the adapter")
 

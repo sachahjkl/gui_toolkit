@@ -277,7 +277,7 @@ page_playground :: proc(app: ^App) {
 						if ui.sat_val_picker("###sv", app.hue, &app.sat, &app.val) { app.accent_override = true }
 						ui.spacer(ui.px(em * 0.7))
 						ui.next({width = ui.px(em * 1.9), height = ui.px(em * 9), radius = em * 0.4})
-						if ui.hue_picker("###hue", &app.hue) { app.accent_override = true }
+						if ui.hue_picker("###hue", &app.hue, .Y) { app.accent_override = true }
 					}
 					ui.spacer(ui.px(em * 0.5))
 					ui.spacer(ui.px(em * 0.3))

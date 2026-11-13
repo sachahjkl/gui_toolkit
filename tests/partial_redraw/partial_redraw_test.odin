@@ -29,7 +29,7 @@ import "../../src/ui"
 
 @(private = "file")
 App :: struct {
-	field:     ui.Text_Field,
+	field:     ui.Line_Edit,
 	square_x:  f32,    // where the changing custom draw puts its square
 	toast_now: bool,
 	menu_now:  bool,
@@ -123,7 +123,7 @@ expect_exact :: proc(t: ^testing.T, s: ^session.Session, what: string, loc := #c
 @(test)
 an_idle_frame_redraws_nothing :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	settle(s)
 	for _ in 0 ..< 5 {
@@ -142,7 +142,7 @@ an_idle_frame_redraws_nothing :: proc(t: ^testing.T) {
 @(test)
 a_hover_redraws_the_button :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	settle(s)
 	// (the event alone: session.hover would make the frames of the change itself)
@@ -162,7 +162,7 @@ a_hover_redraws_the_button :: proc(t: ^testing.T) {
 @(test)
 a_caret_blink_redraws_a_small_rect :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	session.click(s, "field")
 	session.type_text(s, "hello partial")
@@ -184,7 +184,7 @@ a_caret_blink_redraws_a_small_rect :: proc(t: ^testing.T) {
 @(test)
 a_scrolled_list_redraws_exactly :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	list := session.get(s, "list")
 	session.wheel(s, session.center(list), {0, 3})
@@ -199,7 +199,7 @@ a_scrolled_list_redraws_exactly :: proc(t: ^testing.T) {
 @(test)
 overlays_come_and_go_exactly :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	app.toast_now = true
 	settle(s)
@@ -217,7 +217,7 @@ overlays_come_and_go_exactly :: proc(t: ^testing.T) {
 @(test)
 a_palette_change_is_exact :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	settle(s)
 	app.palette = ui.palette_of("Midnight", light = true)
@@ -232,7 +232,7 @@ a_palette_change_is_exact :: proc(t: ^testing.T) {
 @(test)
 custom_draws_are_compared_by_what_they_draw :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	settle(s)
 	app.square_x = 40
@@ -251,7 +251,7 @@ custom_draws_are_compared_by_what_they_draw :: proc(t: ^testing.T) {
 @(test)
 a_resize_redraws_the_whole_frame :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := open(t, &app)
 	settle(s)
 	// (by hand: session.resize makes two frames, the second one partial again)
@@ -270,7 +270,7 @@ a_resize_redraws_the_whole_frame :: proc(t: ^testing.T) {
 @(test)
 the_check_catches_a_region_that_misses :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := session.start(t, {size = WINDOW, build = app_build, user = &app, palette = ui.palette_of("Midnight")})
 	dc := session.draw_context(s)
 	draw.set_partial_redraw(dc, true)
@@ -347,7 +347,7 @@ boxes_open :: proc(t: ^testing.T, app: ^App) -> ^session.Session {
 @(test)
 ten_thousand_spans_cost_little :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := boxes_open(t, &app)
 	memory: draw.Damage_Memory
 	defer draw.damage_memory_destroy(&memory)
@@ -382,7 +382,7 @@ ten_thousand_spans_cost_little :: proc(t: ^testing.T) {
 @(test)
 added_removed_and_raised_spans :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := boxes_open(t, &app)
 	memory: draw.Damage_Memory
 	defer draw.damage_memory_destroy(&memory)
@@ -422,7 +422,7 @@ added_removed_and_raised_spans :: proc(t: ^testing.T) {
 @(test)
 a_volatile_span_is_redrawn_every_frame :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := boxes_open(t, &app)
 	memory: draw.Damage_Memory
 	defer draw.damage_memory_destroy(&memory)
@@ -446,7 +446,7 @@ a_volatile_span_is_redrawn_every_frame :: proc(t: ^testing.T) {
 @(test)
 damage_whole_makes_one_frame_whole :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := boxes_open(t, &app)
 	memory: draw.Damage_Memory
 	defer draw.damage_memory_destroy(&memory)
@@ -467,7 +467,7 @@ damage_whole_makes_one_frame_whole :: proc(t: ^testing.T) {
 @(test)
 a_reset_memory_makes_the_next_frame_whole :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := boxes_open(t, &app)
 	memory: draw.Damage_Memory
 	defer draw.damage_memory_destroy(&memory)
@@ -490,7 +490,7 @@ a_reset_memory_makes_the_next_frame_whole :: proc(t: ^testing.T) {
 @(test)
 an_offscreen_target_damages_nothing :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := boxes_open(t, &app)
 	memory: draw.Damage_Memory
 	defer draw.damage_memory_destroy(&memory)

@@ -166,7 +166,7 @@ command_pressed :: proc(c: Command, disabled := false) -> bool {
 Command_Palette :: struct {
 	open:   bool,
 	size:   Vec2,
-	field:  Text_Field,
+	field:  Line_Edit,
 	sel:    int,    // the line selected, among the commands listed
 	fresh:  bool,   // opened this frame: the field takes the keyboard
 	reveal: bool,   // the selected line is brought into view at the next build
@@ -295,14 +295,14 @@ palette_entry_cached :: proc(c: ^Fuzzy_Cache, first: int, label, group: string, 
 }
 
 palette_destroy :: proc(p: ^Command_Palette) {
-	field_destroy(&p.field)
+	line_edit_destroy(&p.field)
 	fuzzy_cache_destroy(&p.search)
 }
 
 // Opens the palette, its field empty and its first command selected.
 palette_open :: proc(p: ^Command_Palette) {
 	p.open, p.fresh, p.sel, p.reveal = true, true, 0, true
-	field_clear(&p.field)
+	line_edit_clear(&p.field)
 }
 
 // The palette while it is open: every command, under its group's heading, with its keys. What is typed keeps the
@@ -317,7 +317,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 	p.chosen_mods = {}
 	if !p.open { return }
 	em := font_size()
-	query := strings.trim_space(field_string(&p.field))
+	query := strings.trim_space(line_edit_string(&p.field))
 	list := palette_list(p, commands, query, opts)
 	n := len(list)
 	can :: proc(enabled: []bool, i: int) -> bool { return enabled == nil || (i < len(enabled) && enabled[i]) }
@@ -354,7 +354,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			}
 			next({width = fill(), height = pct(1), font_size = em * 1.05})
 			push_tags("bare")
-			res := line_edit("###palette_field", &p.field, i18n.tr("Type to search"))
+			res := line_edit("###palette_field", &p.field, {placeholder = i18n.tr("Type to search")})
 			pop_tags()
 			if p.fresh { set_focus(res.box.key); p.fresh = false }
 			if res.changed { p.sel = 0; p.reveal = true }

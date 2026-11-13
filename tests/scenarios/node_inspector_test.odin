@@ -135,7 +135,7 @@ the_inspector_edits_a_node_by_its_schema :: proc(t: ^testing.T) { unwatched.run(
 	testing.expect_value(t, param_of(&r, "name").text, "")
 	testing.expect_value(t, param_of(&r, "format").number, 0)
 	testing.expect_value(t, param_of(&r, "open").number, 1)
-	testing.expect_value(t, ui.field_string(&r.ins.texts[3]), "")   // (the field shows the model again)
+	testing.expect_value(t, ui.line_edit_string(&r.ins.texts[3]), "")   // (the field shows the model again)
 	again, _ := undo.redo(&r.history, r.graph)
 	r.graph = again
 	testing.expect_value(t, param_of(&r, "format").number, 1)

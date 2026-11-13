@@ -21,13 +21,13 @@ import "../../src/ui"
 
 @(private = "file")
 Editors :: struct {
-	field:  ui.Text_Field,
-	secret: ui.Text_Field,
-	shown:  ui.Text_Field,   // a secret that can be revealed
-	search: ui.Text_Field,   // a clearable one
+	field:  ui.Line_Edit,
+	secret: ui.Line_Edit,
+	shown:  ui.Line_Edit,   // a secret that can be revealed
+	search: ui.Line_Edit,   // a clearable one
 	reveal: bool,
-	area:   ui.Text_Area,
-	grow:   ui.Text_Area,
+	area:   ui.Text_Edit,
+	grow:   ui.Text_Edit,
 	result: ui.Edit_Result,
 }
 
@@ -37,15 +37,15 @@ editors_build :: proc(s: ^session.Session) {
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	e.result = ui.line_edit("###field", &e.field)
 	ui.next({width = ui.px(FIELD_WIDTH)})
-	ui.line_edit("###secret", &e.secret, secret = true)
+	ui.line_edit("###secret", &e.secret, {kind = .Secret})
 	ui.next({width = ui.px(FIELD_WIDTH)})
-	ui.line_edit("###shown", &e.shown, secret = true, reveal = &e.reveal)
+	ui.line_edit("###shown", &e.shown, {kind = .Secret, reveal = &e.reveal})
 	ui.next({width = ui.px(FIELD_WIDTH)})
-	ui.line_edit("###search", &e.search, clearable = true)
+	ui.line_edit("###search", &e.search, {clearable = true})
 	ui.next({width = ui.px(AREA_SIZE.x), height = ui.px(AREA_SIZE.y)})
-	ui.text_edit("###area", &e.area, tab_indents = true)
+	ui.text_edit("###area", &e.area, {tab_indents = true})
 	ui.next({width = ui.px(AREA_NARROW)})
-	ui.text_edit("###grow", &e.grow, wrap = true, auto_height = true, min_lines = 1, max_lines = 4)
+	ui.text_edit("###grow", &e.grow, {wrap = true, auto_height = true, min_lines = 1, max_lines = 4})
 }
 
 @(private = "file")
@@ -53,12 +53,12 @@ editors_start :: proc(t: ^testing.T, no_renderer := true, loc := #caller_locatio
 	e := new(Editors)   // (a cleanup runs after the test's procedure has returned)
 	testing.cleanup(t, proc(p: rawptr) {
 		e := (^Editors)(p)
-		ui.field_destroy(&e.field)
-		ui.field_destroy(&e.secret)
-		ui.field_destroy(&e.shown)
-		ui.field_destroy(&e.search)
-		ui.area_destroy(&e.area)
-		ui.area_destroy(&e.grow)
+		ui.line_edit_destroy(&e.field)
+		ui.line_edit_destroy(&e.secret)
+		ui.line_edit_destroy(&e.shown)
+		ui.line_edit_destroy(&e.search)
+		ui.text_edit_destroy(&e.area)
+		ui.text_edit_destroy(&e.grow)
 		free(e)
 	}, e)
 	return session.start(t, {build = editors_build, user = e, no_renderer = no_renderer}, loc), e
@@ -73,19 +73,19 @@ a_line_edit_moves_selects_and_deletes :: proc(t: ^testing.T) { unwatched.run(t, 
 	session.key(s, .Left, {.Ctrl})
 	testing.expect_value(t, e.field.cursor, len("hello brave "))
 	session.key(s, .Backspace, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "hello world")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "hello world")
 	session.key(s, .Home)
 	testing.expect_value(t, e.field.cursor, 0)
 	session.key(s, .Right, {.Shift}, repeat = 5)
-	testing.expect_value(t, ui.field_selection(&e.field), "hello")
+	testing.expect_value(t, ui.line_edit_selection(&e.field), "hello")
 	session.type_text(s, "bye")
-	testing.expect_value(t, ui.field_string(&e.field), "bye world")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "bye world")
 	session.key(s, .Left, {.Ctrl})
 	session.key(s, .Delete, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), " world")
+	testing.expect_value(t, ui.line_edit_string(&e.field), " world")
 	session.key(s, .End)
 	session.key(s, .Left, {.Ctrl, .Shift})
-	testing.expect_value(t, ui.field_selection(&e.field), "world")
+	testing.expect_value(t, ui.line_edit_selection(&e.field), "world")
 }) }
 
 // A character of several code points is one step for the caret and for Backspace.
@@ -101,7 +101,7 @@ a_line_edit_moves_by_graphemes :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	testing.expect_value(t, e.field.cursor, 1)
 	session.key(s, .Right)
 	session.key(s, .Backspace)
-	testing.expect_value(t, ui.field_string(&e.field), "ab")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "ab")
 }) }
 
 // Enter says committed, Esc cancelled and the focus goes.
@@ -111,13 +111,13 @@ a_line_edit_says_committed_and_cancelled :: proc(t: ^testing.T) { unwatched.run(
 	s := session.start(t, {user = &e, no_renderer = true, build = proc(s: ^session.Session) {
 		e := (^Editors)(s.user)
 		e.result = ui.line_edit("###field", &e.field)
-		if e.result.committed { ui.field_set(&e.field, "done") }
+		if e.result.committed { ui.line_edit_set(&e.field, "done") }
 	}})
-	defer ui.field_destroy(&e.field)
+	defer ui.line_edit_destroy(&e.field)
 	session.click(s, "field")
 	session.type_text(s, "x")
 	session.key(s, .Return)
-	testing.expect_value(t, ui.field_string(&e.field), "done")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "done")
 	testing.expect_value(t, session.focused_name(s), "field")
 	session.key(s, .Escape)
 	testing.expect_value(t, session.focused_name(s), "")
@@ -131,15 +131,15 @@ undo_steps_go_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^te
 	session.type_slowly(s, "one")
 	session.advance(s, PAUSE_OVER_MERGE_MS)
 	session.type_slowly(s, "two")
-	testing.expect_value(t, ui.field_string(&e.field), "onetwo")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "onetwo")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "one")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "one")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "")
 	session.key(s, .Y, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "one")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "one")
 	session.key(s, .Z, {.Ctrl, .Shift})
-	testing.expect_value(t, ui.field_string(&e.field), "onetwo")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "onetwo")
 }) }
 
 @(test)
@@ -149,16 +149,16 @@ cut_copy_paste_through_the_clipboard :: proc(t: ^testing.T) { unwatched.run(t, p
 	session.type_text(s, "take me")
 	session.key(s, .A, {.Ctrl})
 	session.key(s, .X, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "")
 	testing.expect_value(t, session.clipboard(s), "take me")
 	session.key(s, .V, {.Ctrl})
 	session.key(s, .V, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "take metake me")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "take metake me")
 	// a line edit has one line: what is pasted has none other
 	session.set_clipboard(s, "a\nb")
 	session.key(s, .A, {.Ctrl})
 	session.key(s, .V, {.Ctrl})
-	testing.expect(t, !strings.contains(ui.field_string(&e.field), "\n"), "no line break in a line edit")
+	testing.expect(t, !strings.contains(ui.line_edit_string(&e.field), "\n"), "no line break in a line edit")
 }) }
 
 // Ctrl+V in one frame: the key, and nothing after it (the build that sees it asks the clipboard).
@@ -178,18 +178,18 @@ a_paste_comes_in_a_later_build :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	session.click(s, "field")
 	session.type_text(s, "ab")
 	ctrl_v_one_frame(s)
-	testing.expect_value(t, ui.field_string(&e.field), "ab")
-	session.wait_until(s, e, proc(s: ^session.Session, e: ^Editors) -> bool { return ui.field_string(&e.field) == "abpasted" }, "the field's paste")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "ab")
+	session.wait_until(s, e, proc(s: ^session.Session, e: ^Editors) -> bool { return ui.line_edit_string(&e.field) == "abpasted" }, "the field's paste")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.field), "ab")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "ab")
 	// the editor: the same, its line ends kept
 	session.set_clipboard(s, "one\ntwo")
 	session.click(s, "area")
 	ctrl_v_one_frame(s)
-	testing.expect_value(t, ui.area_string(&e.area), "")
-	session.wait_until(s, e, proc(s: ^session.Session, e: ^Editors) -> bool { return ui.area_string(&e.area) == "one\ntwo" }, "the editor's paste")
+	testing.expect_value(t, ui.text_edit_string(&e.area), "")
+	session.wait_until(s, e, proc(s: ^session.Session, e: ^Editors) -> bool { return ui.text_edit_string(&e.area) == "one\ntwo" }, "the editor's paste")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.area_string(&e.area), "")
+	testing.expect_value(t, ui.text_edit_string(&e.area), "")
 }) }
 
 // An answer that comes when the field that asked has lost the focus is dropped: neither it nor the focused one takes it.
@@ -203,11 +203,11 @@ a_paste_for_a_field_left_is_dropped :: proc(t: ^testing.T) { unwatched.run(t, pr
 	ui.set_focus(session.get(s, "search").key)   // (before the build the answer comes in)
 	// (the process's store answers at the next poll: the frame after the request has it)
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&e.field), "ab")
-	testing.expect_value(t, ui.field_string(&e.search), "")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "ab")
+	testing.expect_value(t, ui.line_edit_string(&e.search), "")
 	session.click(s, "field")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&e.field), "ab")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "ab")
 }) }
 
 // A right click on a field opens its menu, an icon on each item: Paste puts the clipboard at the caret, Cut takes the
@@ -232,14 +232,14 @@ a_field_has_a_menu :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T)
 	testing.expectf(t, icons == 7, "an icon on each item: %d", icons)
 	session.click_text(s, "Paste")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&e.field), "abXY")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "abXY")
 	testing.expect(t, !ui.menu_any_open(), "chosen: it closes")
 	session.key(s, .A, {.Ctrl})
 	session.click(s, "field", .Right)
 	session.frames(s, 2)
 	session.click_text(s, "Cut")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&e.field), "")
+	testing.expect_value(t, ui.line_edit_string(&e.field), "")
 	testing.expect_value(t, session.clipboard(s), "abXY")
 	// a secret's: no copy, no cut
 	session.click(s, "secret")
@@ -264,11 +264,11 @@ a_clearable_field_has_a_cross :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	testing.expect(t, session.find(s, "clear") != nil, "the cross")
 	session.click(s, "clear")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&e.search), "")
+	testing.expect_value(t, ui.line_edit_string(&e.search), "")
 	testing.expect(t, session.find(s, "clear") == nil, "emptied: no cross")
 	testing.expect_value(t, ui.focus_key(), session.find(s, "search").key)
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&e.search), "needle")
+	testing.expect_value(t, ui.line_edit_string(&e.search), "needle")
 }) }
 
 // A secret field shows no text and gives none away.
@@ -283,7 +283,7 @@ a_secret_field_does_not_copy :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^
 	testing.expect_value(t, session.clipboard(s), "before")
 	session.key(s, .X, {.Ctrl})
 	testing.expect_value(t, session.clipboard(s), "before")
-	testing.expect_value(t, ui.field_string(&e.secret), "hunter2")
+	testing.expect_value(t, ui.line_edit_string(&e.secret), "hunter2")
 	testing.expect(t, session.find_text(s, "hunter2") == nil, "it is shown by no box")
 }) }
 
@@ -307,7 +307,7 @@ a_secret_field_can_be_revealed :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	testing.expect_value(t, shown_text(session.find(s, "shown")), "hunter2")
 	testing.expect_value(t, session.focused_name(s), "shown")   // (the field keeps the keyboard)
 	session.type_text(s, "!")
-	testing.expect_value(t, ui.field_string(&e.shown), "hunter2!")
+	testing.expect_value(t, ui.line_edit_string(&e.shown), "hunter2!")
 	session.key(s, .Backspace)
 	session.key(s, .A, {.Ctrl})
 	session.key(s, .C, {.Ctrl})
@@ -315,14 +315,14 @@ a_secret_field_can_be_revealed :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	session.click(s, "reveal")
 	testing.expect(t, !e.reveal, "hidden again")
 	testing.expect_value(t, shown_text(session.find(s, "shown")), "•••••••")
-	testing.expect_value(t, ui.field_string(&e.shown), "hunter2")
+	testing.expect_value(t, ui.line_edit_string(&e.shown), "hunter2")
 }) }
 
 // By the mouse: a press puts the caret, a drag selects, a double click a word.
 @(test)
 a_line_edit_by_the_mouse :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s, e := editors_start(t)
-	ui.field_set(&e.field, "alpha beta gamma")
+	ui.line_edit_set(&e.field, "alpha beta gamma")
 	session.frames(s, 2)
 	b := session.get(s, "field")
 	x0, x1 := b.rect.min.x + 2, b.rect.max.x - 2
@@ -331,12 +331,12 @@ a_line_edit_by_the_mouse :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^test
 	testing.expect_value(t, e.field.cursor, len("alpha beta gamma"))
 	session.advance(s, session.SEPARATE_CLICK_MS)   // (a press this soon would be a double click)
 	session.drag(s, {x1, y}, {x0, y})
-	testing.expect_value(t, ui.field_selection(&e.field), "alpha beta gamma")
+	testing.expect_value(t, ui.line_edit_selection(&e.field), "alpha beta gamma")
 	// a double click takes the word
 	session.advance(s, session.SEPARATE_CLICK_MS)
 	mid := b.rect.min.x + font.measure(s.state.fonts, b.font, b.font_size, "alpha be") + b.text_pad
 	session.click_at(s, {mid, y}, count = 2)
-	testing.expect_value(t, ui.field_selection(&e.field), "beta")
+	testing.expect_value(t, ui.line_edit_selection(&e.field), "beta")
 }) }
 
 @(test)
@@ -348,7 +348,7 @@ a_text_area_goes_by_lines :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^tes
 	session.type_text(s, "xxxx line")
 	session.key(s, .Return)
 	session.type_text(s, "3")
-	testing.expect_value(t, ui.area_line_count(&e.area), 3)
+	testing.expect_value(t, ui.text_edit_line_count(&e.area), 3)
 	session.key(s, .Up)
 	testing.expect_value(t, e.area.cursor, len("xxxxx\nx"))
 	session.key(s, .Up)
@@ -356,16 +356,16 @@ a_text_area_goes_by_lines :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^tes
 	session.key(s, .Home, {.Ctrl})
 	testing.expect_value(t, e.area.cursor, 0)
 	session.key(s, .End, {.Ctrl})
-	testing.expect_value(t, e.area.cursor, len(ui.area_string(&e.area)))
+	testing.expect_value(t, e.area.cursor, len(ui.text_edit_string(&e.area)))
 	session.key(s, .Home)
 	session.key(s, .Tab)
-	testing.expect(t, strings.has_suffix(ui.area_string(&e.area), " 3"), "Tab indents where it is asked to")
+	testing.expect(t, strings.has_suffix(ui.text_edit_string(&e.area), " 3"), "Tab indents where it is asked to")
 	testing.expect_value(t, session.focused_name(s), "area")
 	session.key(s, .A, {.Ctrl})
 	session.key(s, .Backspace)
-	testing.expect_value(t, ui.area_string(&e.area), "")
+	testing.expect_value(t, ui.text_edit_string(&e.area), "")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.area_line_count(&e.area), 3)
+	testing.expect_value(t, ui.text_edit_line_count(&e.area), 3)
 }) }
 
 // A long text: the view follows the caret, there and back.
@@ -374,7 +374,7 @@ a_text_area_follows_its_caret :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	s, e := editors_start(t, no_renderer = false)   // (the caret's place is known once it is drawn)
 	sb := strings.builder_make(context.temp_allocator)
 	for _ in 0 ..< LONG_LINES { strings.write_string(&sb, "a line\n") }
-	ui.area_set(&e.area, strings.to_string(sb))
+	ui.text_edit_set(&e.area, strings.to_string(sb))
 	session.click(s, "area")
 	testing.expect_value(t, e.area.scroll.y, 0)
 	session.key(s, .End, {.Ctrl})
@@ -449,16 +449,16 @@ the_cursor_says_what_is_under_the_pointer :: proc(t: ^testing.T) { unwatched.run
 // from its start: its width is not known in that build, and a scroll then showed only the text's end for one frame.
 @(test)
 a_new_field_is_not_scrolled :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	New_Field :: struct { field: ui.Text_Field, shown: bool }
+	New_Field :: struct { field: ui.Line_Edit, shown: bool }
 	n: New_Field
-	defer ui.field_destroy(&n.field)
+	defer ui.line_edit_destroy(&n.field)
 	s := session.start(t, {user = &n, no_renderer = true, build = proc(s: ^session.Session) {
 		n := (^New_Field)(s.user)
 		if !n.shown { return }
 		ui.next({width = ui.px(AREA_NARROW)})
 		ui.line_edit("###new", &n.field)
 	}})
-	ui.field_set(&n.field, "Screenshot of the whole desktop, then copied")
+	ui.line_edit_set(&n.field, "Screenshot of the whole desktop, then copied")
 	n.shown = true
 	session.frames(s, 1)
 	testing.expect_value(t, n.field.scroll_x, 0)
@@ -478,19 +478,19 @@ undo_steps_bound_a_field_and_an_area_alike :: proc(t: ^testing.T) { unwatched.ru
 
 	session.click(s, "field")
 	session.type_slowly(s, TYPED)
-	testing.expect_value(t, ui.field_string(&e.field), TYPED)
+	testing.expect_value(t, ui.line_edit_string(&e.field), TYPED)
 	undone := 0
-	for ui.field_undo(&e.field) { undone += 1 }
+	for ui.line_edit_undo(&e.field) { undone += 1 }
 	testing.expect_value(t, undone, UNDO_LIMIT)
-	testing.expect_value(t, ui.field_string(&e.field), KEPT)
+	testing.expect_value(t, ui.line_edit_string(&e.field), KEPT)
 
 	session.click(s, "area")
 	session.type_slowly(s, TYPED)
-	testing.expect_value(t, ui.area_string(&e.area), TYPED)
+	testing.expect_value(t, ui.text_edit_string(&e.area), TYPED)
 	undone = 0
-	for ui.area_undo(&e.area) { undone += 1 }
+	for ui.text_edit_undo(&e.area) { undone += 1 }
 	testing.expect_value(t, undone, UNDO_LIMIT)
-	testing.expect_value(t, ui.area_string(&e.area), KEPT)
+	testing.expect_value(t, ui.text_edit_string(&e.area), KEPT)
 }) }
 
 // A search launcher: a field to look at, nothing to type in; a click opens what it searches, and so does Enter once

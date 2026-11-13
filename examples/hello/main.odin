@@ -16,7 +16,7 @@ import "../../src/ui"
 App :: struct {
 	shared: host.Shared,   // the device, the fonts, the theme
 	main:   host.Host,     // the window, its interface, its frames
-	name:   ui.Text_Field,
+	name:   ui.Line_Edit,
 	clicks: int,
 }
 
@@ -38,9 +38,9 @@ build_column :: proc(app: ^App, em: f32) {
 		ui.label("Hello from gui_toolkit###title")
 		ui.spacer(ui.px(em * 0.5))
 		ui.next({width = ui.px(em * 16)})
-		ui.line_edit("###name", &app.name, "Your name")
+		ui.line_edit("###name", &app.name, {placeholder = "Your name"})
 		ui.spacer(ui.px(em * 0.5))
-		name := ui.field_string(&app.name)
+		name := ui.line_edit_string(&app.name)
 		ui.label(fmt.tprintf("Hello, %s!###greeting", name if name != "" else "world"))
 		ui.spacer(ui.px(em * 0.5))
 		if ui.button("count", fmt.tprintf("Clicked %d times", app.clicks), o = {intent = .Primary}).clicked { app.clicks += 1 }
@@ -58,7 +58,7 @@ main :: proc() {
 	// clipped by the window, never stretched over the new one; frames from inside the system's loops (live resize, a menu)
 	if !host.host_open(&app.main, &app.shared, {title = "Hello, gui_toolkit", size = {640, 400}}, build, app) { os.exit(1) }
 	defer host.host_close(&app.main)
-	defer ui.field_destroy(&app.name)
+	defer ui.line_edit_destroy(&app.name)
 	app.main.background = ui.theme_lookup(&app.shared.theme, {}, "background")   // the palette's window colour
 	platform.set_dark_title(app.main.win, true)
 

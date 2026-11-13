@@ -21,7 +21,7 @@ Color_Pick :: struct {
 	hue, sat, val, alpha: f32,   // the colour in the picker's coordinates (sRGB HSV: a grey keeps its hue)
 	style:  Color_Style,         // how the text writes it
 	old:    Srgba,               // the colour it was opened with
-	field:  Text_Field,
+	field:  Line_Edit,
 	typed:  bool,                // the last change came from the field, which has the focus: its text is the colour as the user wrote it
 }
 
@@ -35,7 +35,7 @@ Color_Pick :: struct {
 
 color_picker_width :: proc() -> f32 { return math.round(font_size() * COLOR_PICKER_EM) }
 
-color_pick_destroy :: proc(cp: ^Color_Pick) { field_destroy(&cp.field) }
+color_pick_destroy :: proc(cp: ^Color_Pick) { line_edit_destroy(&cp.field) }
 
 // Starts the picker on `c` written in `style` (its old colour too).
 color_pick_set :: proc(cp: ^Color_Pick, c: Srgba, style: Color_Style) {
@@ -50,7 +50,7 @@ color_pick_rgba :: proc(cp: ^Color_Pick) -> Srgba {
 
 // The colour as text: as typed when it was typed, else written in the picker's style (temporary allocator).
 color_pick_text :: proc(cp: ^Color_Pick) -> string {
-	if cp.typed { return field_string(&cp.field) }
+	if cp.typed { return line_edit_string(&cp.field) }
 	return color_text(color_pick_rgba(cp), cp.style)
 }
 
@@ -109,10 +109,10 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 		next({width = fill(), height = children_sum(), axis = .Y})
 		if column() {
 			next({width = pct(1), height = px(math.round(em * BAR_EM)), radius = em * BAR_EM * 0.5})
-			if hue_picker("###hue", &cp.hue, horizontal = true) { changed = true; cp.typed = false }
+			if hue_picker("###hue", &cp.hue, .X) { changed = true; cp.typed = false }
 			spacer(px(gap))
 			next({width = pct(1), height = px(math.round(em * BAR_EM)), radius = em * BAR_EM * 0.5})
-			if alpha_picker("###alpha", cp.hue, cp.sat, cp.val, &cp.alpha) { changed = true; cp.typed = false }
+			if alpha_picker("###alpha", cp.hue, cp.sat, cp.val, &cp.alpha, .X) { changed = true; cp.typed = false }
 		}
 	}
 	spacer(px(gap))
@@ -127,12 +127,12 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 	// the text: made again when the colour or the format changed elsewhere (not while it is being typed in)
 	key := key_from_string(root.key, "###text")
 	want := color_text(color_pick_rgba(cp), cp.style)
-	if focus_key() != key && !cp.typed && field_string(&cp.field) != want { field_set(&cp.field, want) }
+	if focus_key() != key && !cp.typed && line_edit_string(&cp.field) != want { line_edit_set(&cp.field, want) }
 	next({width = px(w), height = px(math.round(em * ROW_EM)), font = mono_font(), radius = em * SWATCH_RADIUS_EM})
 	res := line_edit("###text", &cp.field)
 	a11y_default(res.box, {role = .Text_Input, name = i18n.tr("Colour")})
 	if res.changed {
-		if c, style, ok := color_parse(field_string(&cp.field)); ok {
+		if c, style, ok := color_parse(line_edit_string(&cp.field)); ok {
 			color_pick_from(cp, c)
 			cp.style, cp.typed, changed = style, true, true
 		}

@@ -38,10 +38,10 @@ typed_then_left :: proc(t: ^testing.T, text: string, want: string) {
 	session.click(s, "text")
 	session.key(s, .A, {.Ctrl})
 	session.type_text(s, text)
-	testing.expect_value(t, ui.field_string(&r.cp.field), text)
+	testing.expect_value(t, ui.line_edit_string(&r.cp.field), text)
 	session.click(s, "away")
 	session.frames(s, SETTLE_FRAMES)
-	testing.expect_value(t, ui.field_string(&r.cp.field), want)
+	testing.expect_value(t, ui.line_edit_string(&r.cp.field), want)
 }
 
 // Left, the field says the colour as the picker writes it: not a spelling of the user's, not what is no colour.

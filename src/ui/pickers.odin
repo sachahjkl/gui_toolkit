@@ -171,8 +171,9 @@ sat_val_picker :: proc(id: string, hue: f32, sat, val: ^f32) -> (changed: bool) 
 	return
 }
 
-// The hue bar, from top to bottom (`horizontal`: from left to right).
-hue_picker :: proc(id: string, hue: ^f32, horizontal := false) -> (changed: bool) {
+// The hue bar along `axis`: from top to bottom (.Y), or from left to right (.X).
+hue_picker :: proc(id: string, hue: ^f32, axis: Axis) -> (changed: bool) {
+	horizontal := axis == .X
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
 	sig := signal(b)
@@ -194,8 +195,10 @@ hue_picker :: proc(id: string, hue: ^f32, horizontal := false) -> (changed: bool
 	return
 }
 
-// The alpha bar of the colour (hue, sat, val): from transparent to opaque, over a checkerboard, left to right (or top to bottom).
-alpha_picker :: proc(id: string, hue, sat, val: f32, alpha: ^f32, horizontal := true) -> (changed: bool) {
+// The alpha bar of the colour (hue, sat, val) along `axis`: from transparent to opaque, over a checkerboard, left to right
+// (.X) or top to bottom (.Y).
+alpha_picker :: proc(id: string, hue, sat, val: f32, alpha: ^f32, axis: Axis) -> (changed: bool) {
+	horizontal := axis == .X
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
 	sig := signal(b)

@@ -196,7 +196,7 @@ built; the field's key is its box's key from the build before.
 
 ```odin
 if !dialog_open { ui.type_to_field(view.search_key) }
-view.search_key = ui.line_edit("###search", &view.search, "Filter").box.key
+view.search_key = ui.line_edit("###search", &view.search, {placeholder = "Filter"}).box.key
 ```
 
 `typed_take(r)` takes the character `r` out of the text typed in this build when it is its first character, so no field
@@ -204,8 +204,8 @@ built after it gets it. True when it took it. The characters after it stay: "b r
 opens a preview, and the field never shows the space, not even for one frame.
 
 ```odin
-if ui.focus_key() == view.search_key && ui.field_string(&view.search) == "" && ui.typed_take(' ') { preview_toggle() }
-view.search_key = ui.line_edit("###search", &view.search, "Filter").box.key
+if ui.focus_key() == view.search_key && ui.line_edit_string(&view.search) == "" && ui.typed_take(' ') { preview_toggle() }
+view.search_key = ui.line_edit("###search", &view.search, {placeholder = "Filter"}).box.key
 ```
 
 ## A tooltip per segment
@@ -234,7 +234,7 @@ Pieces of a dense dashboard (`sections.odin`). `hue(.Cyan)` is a hue of the them
 green, yellow, red, cyan, rose), for what a program colours by meaning.
 
 ```odin
-ui.section_header("###mem", "Memory", "what the boot program left", "462 MiB", ui.hue(.Cyan))
+ui.section_header("###mem", "Memory", ui.hue(.Cyan), "what the boot program left", "462 MiB")
 ui.stacked_bar("###time", {{20.6, ui.hue(.Yellow), "20.6 ms"}, {33.2, ui.hue(.Blue), "33.2 ms"}})
 if ui.flow({4, 4}) { for f, i in files { ui.tile(fmt.tprintf("###f%d", i), f, ui.hue(.Green)) } }
 if ui.title_strip("###boot", "Boot") { open = false }
@@ -242,20 +242,12 @@ if ui.title_strip("###boot", "Boot") { open = false }
 
 | Procedure | What it is |
 |---|---|
-| `section_header(id, title, note, value, color, inline)` | a stripe of the colour, the title in capitals and bold in it, a weak note, a large value at the right; full width, or as wide as its words (`inline`: in a row with other things) |
+| `section_header(id, title, color, note, value, inline)` | a stripe of the colour, the title in capitals and bold in it, a weak note, a large value at the right; full width, or as wide as its words (`inline`: in a row with other things) |
 | `tile(id, text, color, clickable)` | a tile of the colour over what is under it, its words light; as wide as they are |
 | `stacked_bar(id, parts)` | a well cut in `Bar_Part`s (share, colour, words), the words of each in it when they fit; full width, 1.9 lines |
 | `title_strip(id, title, closable)` | a title, white and bold, on the accent fading to the bar's colour; a red block closes (true) |
 
 In the machined and edged finishes a tile, a part and the strip are lit along their top and shaded along their bottom.
-
-## A strip that opens into a grid
-
-`if ui.strip_grid("###themes", &open, {gap, gap}) { cells... }`: the cells (each its own width) on one line that scrolls
-sideways (the wheel, either way, and the bar under it, in room of its own: never over the cells; a fade at a side that
-hides cells, `STRIP_FADE_EM` wide); "Show all" under it lays them out as a grid wrapped to the width,
-"Show fewer" folds them back. The button is there only when the line does not hold them all, or when open. `open` is the
-program's to keep (a preference, if it should last).
 
 ## An empty view (`src/ui/empty_state.odin`)
 

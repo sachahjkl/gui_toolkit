@@ -10,12 +10,12 @@
 A test is an `@(test)` procedure on Odin's own test runner, and it calls the toolkit directly (`src/testkit/session`, `toolkit:testkit/session` from an application):
 
 ```odin
-App :: struct { clicks: int, name: ui.Text_Field }
+App :: struct { clicks: int, name: ui.Line_Edit }
 
 @(test)
 the_button_counts :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.name)
+	defer ui.line_edit_destroy(&app.name)
 	s := session.start(t, {user = &app, build = proc(s: ^session.Session) {
 		app := (^App)(s.user)
 		if ui.button("add", "Add").clicked { app.clicks += 1 }

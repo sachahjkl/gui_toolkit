@@ -45,7 +45,7 @@ rebuild_order :: proc(app: ^App) {
 	key := h ~ (u64(app.sort_col) << 1) ~ (app.sort_asc ? 1 : 0)
 	if key == app.order_key { return }
 	app.order_key = key
-	query := strings.to_lower(ui.field_string(&app.filter), context.temp_allocator)
+	query := strings.to_lower(ui.line_edit_string(&app.filter), context.temp_allocator)
 	n := 0
 	for &r, i in app.rows {
 		if query != "" {
@@ -118,7 +118,7 @@ page_data :: proc(app: ^App) {
 			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 			if ui.row(.Center, id = "###data_bar") {
 				ui.next({width = ui.px(em * 20, 0), height = ui.px(em * 2.3)})
-				ui.line_edit("###data_filter", &app.filter, "Filter rows (name or department)")
+				ui.line_edit("###data_filter", &app.filter, {placeholder = "Filter rows (name or department)"})
 				ui.spacer(ui.px(em))
 				if ui.tags("weak") {
 					ui.next({width = ui.fill(), height = ui.pct(1)})

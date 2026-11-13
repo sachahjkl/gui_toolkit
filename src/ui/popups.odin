@@ -109,7 +109,7 @@ Menu_Level :: struct {
 	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
 	search:       bool,      // typing searches its items (menu_open's `search`)
-	query:        Text_Field,   // what was typed (search): a field's text, edited by a field's keys (field_key)
+	query:        Line_Edit,   // what was typed (search): a field's text, edited by a field's keys (line_edit_key)
 	typed_ms:     f64,       // when the query last changed (or the menu opened): its caret is solid, then blinks
 	pick_first:   bool,      // the query changed: the first item that matches is selected when it is built
 	// a menu that searches stays where it was first laid out and never narrows: what is typed takes items away, and the
@@ -121,9 +121,9 @@ Menu_Level :: struct {
 
 // What was typed in a menu that searches ("" none).
 @(private)
-menu_query :: proc(lv: ^Menu_Level) -> string { return field_string(&lv.query) }
+menu_query :: proc(lv: ^Menu_Level) -> string { return line_edit_string(&lv.query) }
 
-// A key in a menu that searches: a field's key (field_key: the caret, the selection, Ctrl+A, a word taken back, a paste)
+// A key in a menu that searches: a field's key (line_edit_key: the caret, the selection, Ctrl+A, a word taken back, a paste)
 // goes to its query; the menu keeps what moves in its items and what chooses or closes. While nothing is typed, Left,
 // Right, Home and End are the menu's (a submenu, the first and the last item). A space is typed, not a choice. True:
 // the key was the query's.
@@ -136,7 +136,7 @@ menu_query_key :: proc(lv: ^Menu_Level, e: platform.Event) -> bool {
 	}
 	before := strings.clone(menu_query(lv), context.temp_allocator)
 	c0, m0 := lv.query.cursor, lv.query.mark
-	if !field_key(&lv.query, lv.key, e.key, e.mods) { return false }
+	if !line_edit_key(&lv.query, lv.key, e.key, e.mods) { return false }
 	if menu_query(lv) != before { lv.pick_first, lv.sel = true, -1 }
 	if menu_query(lv) != before || lv.query.cursor != c0 || lv.query.mark != m0 { lv.typed_ms = now_ms() }
 	return true
@@ -254,13 +254,13 @@ menu_pop_to :: proc(n: int) {
 		lv := pop(&s.menus)
 		delete(lv.items)
 		delete(lv.prev)
-		field_destroy(&lv.query)
+		line_edit_destroy(&lv.query)
 	}
 }
 
 @(private)
 menus_destroy :: proc(s: ^State) {
-	for &lv in s.menus { delete(lv.items); delete(lv.prev); field_destroy(&lv.query) }
+	for &lv in s.menus { delete(lv.items); delete(lv.prev); line_edit_destroy(&lv.query) }
 	delete(s.menus)
 	delete(s.menu_build)
 	delete(s.menu_keys.list)
@@ -470,7 +470,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			lv.from_keyboard = false
 		}
 		// (a paste in the search, asked in an earlier build: its text came)
-		if lv.search && field_paste_answer(&lv.query, lv.key) {
+		if lv.search && line_edit_paste_answer(&lv.query, lv.key) {
 			lv.pick_first, lv.sel = true, -1
 			lv.typed_ms = now_ms()
 		}
@@ -481,7 +481,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			if lv.search && e.kind == .Text {
 				if e.text >= ' ' {
 					buf, n := utf8.encode_rune(e.text)
-					field_checkpoint(&lv.query, .Typing)
+					line_edit_checkpoint(&lv.query, .Insert)
 					insert_text(&lv.query, string(buf[:n]))
 					lv.pick_first, lv.sel = true, -1
 					lv.typed_ms = now_ms()

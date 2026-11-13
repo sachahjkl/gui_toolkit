@@ -13,7 +13,7 @@ import "../platform"
 //   num_step_text(text, caret, delta)   the text with the number at the caret moved (else the next one after it, else the
 //                                       last one before), and where that number is in it now
 //   num_step_delta(key, mods)           what a key press steps by (ok false: a key that does not step)
-//   field_num_step(f, box)              the steps of this build in field `f` (its line_edit `box`) while it has the keyboard:
+//   line_edit_num_step(f, box)              the steps of this build in field `f` (its line_edit `box`) while it has the keyboard:
 //                                       its keys, and the wheel over it (with the keys' modifiers); the number stays selected
 
 // A result is rounded to this many decimals: steps of 0.1 add no noise (10.1, not 10.100000000000001).
@@ -95,14 +95,14 @@ concat3 :: proc(a, b, c: string) -> string {
 
 // The keys and the wheel of this build that step the number of `f`, the field of `box` (a line_edit's), while it has the
 // keyboard. True when the text changed (an edit of the field's history; the number it moved is selected).
-field_num_step :: proc(f: ^Text_Field, box: ^Box) -> (changed: bool) {
+line_edit_num_step :: proc(f: ^Line_Edit, box: ^Box) -> (changed: bool) {
 	s := gs()
 	if box == nil || s.focus_key != box.key { return }
 	box.flags += {.Scroll_Self}   // (the wheel over it is its own while it has the keyboard)
-	step :: proc(f: ^Text_Field, delta: f64) -> bool {
-		out, lo, hi, ok := num_step_text(field_string(f), f.cursor, delta)
+	step :: proc(f: ^Line_Edit, delta: f64) -> bool {
+		out, lo, hi, ok := num_step_text(line_edit_string(f), f.cursor, delta)
 		if !ok { return false }
-		field_checkpoint(f, .Other)
+		line_edit_checkpoint(f, .Other)
 		clear(&f.buf)
 		append(&f.buf, out)
 		f.mark, f.cursor = lo, hi

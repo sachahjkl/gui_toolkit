@@ -67,7 +67,7 @@ a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) { unwatched.run(t, proc
 			r.fired = true
 			ui.announce(&ui.Announcer{mode = .Window}, .Warn, "Custom ShojiWM Desktop", "Permission: shell rm -rf /tmp/x")
 		}
-		ui.section_header("###sec", "Memory", "a note", "", {1, 0, 0, 1})
+		ui.section_header("###sec", "Memory", {1, 0, 0, 1}, "a note")
 	}})
 	session.frames(s, 3)
 	title := session.find(s, "title")

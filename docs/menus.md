@@ -49,11 +49,11 @@ label cut.
 
 ## The menu of a text field
 
-`field_menu(id, target, owner, secret, read_only)` builds the menu of a text field, `id` its menu: Undo, Redo, Cut, Copy,
+`edit_menu(id, target, owner, kind)` builds the menu of a text field, `id` its menu: Undo, Redo, Cut, Copy,
 Paste, Delete and Select all, each with its keys and its Lucide icon, and the search band of every context menu. `target`
-is an `Edit_Target`: a `line_edit`'s `^Text_Field` or a `text_edit`'s `^Text_Area`; each edit goes through its own edit
-history, as its keys do. `owner` is the field's widget, which a paste's text comes to (`field_paste`). A `secret` is
-neither copied nor cut; a field `read_only` is only copied and selected.
+is an `Edit_Target`: a `line_edit`'s `^Line_Edit` or a `text_edit`'s `^Text_Edit`; each edit goes through its own edit
+history, as its keys do. `owner` is the field's widget, which a paste's text comes to (`edit_paste`). `kind`
+(`Line_Edit_Kind`): a `.Secret` is neither copied nor cut; a `.Read_Only` field is only copied and selected.
 
-`line_edit` and `text_edit` open it on a right press, the field taking the keyboard (their `menu`, true by default; false:
+`line_edit` and `text_edit` open it on a right press, the field taking the keyboard (unless their options' `own_menu`:
 the program has its own).

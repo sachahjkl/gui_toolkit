@@ -35,7 +35,7 @@ the_colour_pickers_take_a_press :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 		ui.next({width = ui.px(PICKER_SIZE), height = ui.px(PICKER_SIZE)})
 		if ui.sat_val_picker("###sv", r.hue, &r.sat, &r.val) { r.changed += 1 }
 		ui.next({width = ui.px(HUE_WIDTH), height = ui.px(PICKER_SIZE)})
-		if ui.hue_picker("###hue", &r.hue) { r.changed += 1 }
+		if ui.hue_picker("###hue", &r.hue, .Y) { r.changed += 1 }
 	}})
 	sv := session.get(s, "sv")
 	session.click_at(s, {sv.rect.max.x - 2, sv.rect.min.y + 2})
@@ -274,9 +274,9 @@ a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) { unwatched.ru
 // A list with no type-ahead leaves the letters typed for the program: its filter takes them though the list has the keyboard.
 @(test)
 a_list_with_no_typeahead_leaves_the_letters :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, filter: ui.Text_Field, field: ui.Key }
+	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, filter: ui.Line_Edit, field: ui.Key }
 	r := new(Run)
-	defer { ui.vlist_destroy(&r.st); ui.field_destroy(&r.filter); free(r) }
+	defer { ui.vlist_destroy(&r.st); ui.line_edit_destroy(&r.filter); free(r) }
 	for i in 0 ..< LIST_ROWS { r.ids[i], r.labels[i] = u64(i + 1), "A row" }
 	r.st.list.no_typeahead = true
 	s := session.start(t, {size = WINDOW, user = r, no_renderer = true, build = proc(s: ^session.Session) {
@@ -296,7 +296,7 @@ a_list_with_no_typeahead_leaves_the_letters :: proc(t: ^testing.T) { unwatched.r
 	session.frames(s, 2)
 	session.type_text(s, "ro")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&r.filter), "ro")
+	testing.expect_value(t, ui.line_edit_string(&r.filter), "ro")
 }) }
 
 // Text selected outside a field, then taken away by the program.
@@ -395,10 +395,10 @@ the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) { unwatched.run(t, pro
 // interface's greys in the machined finish (it had a look of its own, a tint of the text).
 @(test)
 a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { area: ui.Text_Area, view: ui.Rect }
+	Run :: struct { area: ui.Text_Edit, view: ui.Rect }
 	r: Run
-	ui.area_set(&r.area, strings.repeat("a line of the text area\n", 60, context.temp_allocator))
-	defer ui.area_destroy(&r.area)
+	ui.text_edit_set(&r.area, strings.repeat("a line of the text area\n", 60, context.temp_allocator))
+	defer ui.text_edit_destroy(&r.area)
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
@@ -569,16 +569,16 @@ a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) { unwatched.run(t, proc(
 // menu stays open.
 @(test)
 a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { field: ui.Text_Field }
+	Run :: struct { field: ui.Line_Edit }
 	r: Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		key := "panel"
 		if s.frames == 1 { ui.menu_open(key, ui.Rect{{40, 20}, {80, 40}}, search = false) }
 		if ui.menu(key) {
 			ui.next({width = ui.px(200), height = ui.px(30)})
-			_ = ui.line_edit("###panel_search", &r.field, "Search")
+			_ = ui.line_edit("###panel_search", &r.field, {placeholder = "Search"})
 			if ui.menu_item("Item").clicked {}
 		}
 	}})
@@ -587,7 +587,7 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatche
 	session.frames(s, 2)
 	session.type_text(s, "abc")
 	session.frames(s, 2)
-	testing.expect_value(t, ui.field_string(&r.field), "abc")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "abc")
 	testing.expect(t, ui.menu_any_open(), "the menu stays open")
 }) }
 

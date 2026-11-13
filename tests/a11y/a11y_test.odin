@@ -46,7 +46,7 @@ App :: struct {
 	wrap:     bool,
 	volume:   f32,
 	tab:      int,
-	field:    ui.Text_Field,
+	field:    ui.Line_Edit,
 	list:     ui.List_State,
 	open:     bool,
 	clicks:   int,
@@ -55,7 +55,7 @@ App :: struct {
 }
 
 app_destroy :: proc(a: ^App) {
-	ui.field_destroy(&a.field)
+	ui.line_edit_destroy(&a.field)
 	ui.list_state_destroy(&a.list)
 }
 
@@ -75,11 +75,13 @@ body :: proc(a: ^App) {
 			if s.clicked { a.clicks += 1 }
 		}
 		ui.next({width = ui.px(300), height = ui.px(30)})
-		a.keys.wrap = ui.checkbox("###wrap", "Wrap lines", &a.wrap).box.key
+		ui.checkbox("###wrap", "Wrap lines", &a.wrap)
+		a.keys.wrap = ui.prev_box("###wrap").key
 		ui.next({width = ui.px(300), height = ui.px(30)})
-		a.keys.volume = ui.slider("###volume", &a.volume, 0, 100, 1, "%.0f").box.key
+		ui.slider("###volume", &a.volume, 0, 100, 1, "%.0f")
+		a.keys.volume = ui.prev_box("###volume").key
 		ui.next({width = ui.px(300), height = ui.px(30)})
-		a.keys.field = ui.line_edit("###name", &a.field, "Your name").box.key
+		a.keys.field = ui.line_edit("###name", &a.field, {placeholder = "Your name"}).box.key
 		ui.next({width = ui.px(400), height = ui.px(30)})
 		if ui.row(id = "###tabs") {
 			a.keys.tabs = ui.parent_box().key
@@ -136,7 +138,7 @@ tree_from_boxes :: proc(t: ^testing.T) {
 	defer close(&f)
 	a: App
 	defer app_destroy(&a)
-	ui.field_set(&a.field, "Ada")
+	ui.line_edit_set(&a.field, "Ada")
 	a.volume = 40
 	a.wrap = true
 	a.open = true
@@ -362,7 +364,7 @@ requests_act_like_input :: proc(t: ^testing.T) {
 	// Value: the field's text, the slider's value; RangeValue steps
 	ui.a11y_inject(&f.s, {action = .Set_Value, data = .Value, value = "Grace", target = u64(a.keys.field)})
 	frame(&f, &a)
-	testing.expect_value(t, ui.field_string(&a.field), "Grace")
+	testing.expect_value(t, ui.line_edit_string(&a.field), "Grace")
 	ui.a11y_inject(&f.s, {action = .Set_Value, data = .Numeric_Value, num = 70, target = u64(a.keys.volume)})
 	frame(&f, &a)
 	testing.expect_value(t, a.volume, 70)

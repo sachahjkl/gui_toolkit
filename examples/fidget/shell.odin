@@ -56,7 +56,7 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 palette_toggle :: proc(app: ^App) {
 	app.palette_open = !app.palette_open
 	if app.palette_open {
-		ui.field_clear(&app.palette_field)
+		ui.line_edit_clear(&app.palette_field)
 		app.palette_sel, app.palette_scroll, app.palette_frames = 0, 0, 0
 		app.palette_focus = true
 	}
@@ -238,7 +238,7 @@ build_palette :: proc(app: ^App) {
 
 	// rank commands: every space-separated needle part must match somewhere in the title
 	entries := make([dynamic]Palette_Entry, context.temp_allocator)
-	needle := ui.field_string(&app.palette_field)
+	needle := ui.line_edit_string(&app.palette_field)
 	for cmd in Command {
 		ranges, ok := ui.fuzzy_find(needle, command_info[cmd].title)
 		if ok { append(&entries, Palette_Entry{cmd, ranges}) }
@@ -274,7 +274,7 @@ build_palette :: proc(app: ^App) {
 				ui.spacer(ui.px(em * 0.9))
 				input_key := ui.key_from_string(ui.parent_box().key, "###pal_input")
 				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
-				field_ui := ui.line_edit("###pal_input", &app.palette_field, "Type a command...")
+				field_ui := ui.line_edit("###pal_input", &app.palette_field, {placeholder = "Type a command..."})
 				if field_ui.changed { app.palette_sel, app.palette_scroll = 0, 0 }
 				if field_ui.cancelled { app.palette_open = false }   // (its foot says it: Esc closes, the field has the first Esc)
 				if field_ui.committed && n > 0 { run = int(entries[app.palette_sel].cmd) }

@@ -1,4 +1,4 @@
-// Package undo: the undo and redo steps of a model, as snapshots. One stack serves a text field (ui.Text_Field), a
+// Package undo: the undo and redo steps of a model, as snapshots. One stack serves a text field (ui.Line_Edit), a
 // graph (a flowgraph.Graph's copy), a drawing: the owner says what a snapshot is and how one is freed.
 //
 //	history: undo.Stack(Graph)

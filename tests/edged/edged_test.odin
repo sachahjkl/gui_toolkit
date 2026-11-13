@@ -81,7 +81,7 @@ kernel_is_dark_and_edged :: proc(t: ^testing.T) {
 // The built-in widgets in Kernel, for the eye: build/session/console_widgets/console.png.
 @(test)
 console_widgets :: proc(t: ^testing.T) {
-	Widgets :: struct { on, off: bool, level: f32, pick: int, field: ui.Text_Field }
+	Widgets :: struct { on, off: bool, level: f32, pick: int, field: ui.Line_Edit }
 	w: Widgets
 	w.on, w.level, w.pick = true, 0.4, 1
 	s := session.start(t, {size = {720, 560}, palette = ui.palette_of("Kernel"), user = &w, build = proc(s: ^session.Session) {
@@ -91,11 +91,11 @@ console_widgets :: proc(t: ^testing.T) {
 			ui.title_strip("###strip", "boot")
 			ui.spacer(ui.px(12))
 			if ui.card("") {
-				ui.section_header("###time", "The line of time", "a frame, from input to present", "11.4 ms", ui.hue(.Blue))
+				ui.section_header("###time", "The line of time", ui.hue(.Blue), "a frame, from input to present", "11.4 ms")
 				ui.spacer(ui.px(10))
 				ui.stacked_bar("###bar", {{1.0, ui.hue(.Purple), "1.0"}, {2.7, ui.hue(.Yellow), "2.7 ms"}, {3.5, ui.hue(.Blue), "3.5 ms"}, {2.1, ui.hue(.Cyan), "2.1 ms"}})
 				ui.spacer(ui.px(14))
-				ui.section_header("###files", "Files", "touched by this session", "", ui.hue(.Yellow))
+				ui.section_header("###files", "Files", ui.hue(.Yellow), "touched by this session")
 				ui.spacer(ui.px(8))
 				ui.next({width = ui.fill(), height = ui.children_sum()})
 				if ui.flow({4, 4}) {
@@ -110,7 +110,7 @@ console_widgets :: proc(t: ^testing.T) {
 					ui.button("s", "Send", o = {intent = .Primary}); ui.spacer(ui.px(8))
 					ui.button("c", "Cancel", o = {face = .Ghost}); ui.spacer(ui.px(8))
 					ui.next({width = ui.px(240)})
-					ui.line_edit("###search", &w.field, "Search the sessions")
+					ui.line_edit("###search", &w.field, {placeholder = "Search the sessions"})
 				}
 				ui.spacer(ui.px(12))
 				if ui.row(id = "###marks") {

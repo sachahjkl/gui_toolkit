@@ -162,9 +162,9 @@ a_palette_change_fades_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, pr
 // Every palette names what the widgets ask for: nothing is drawn in the colour of a missing entry (magenta).
 @(test)
 every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { on: bool, value: f32, field: ui.Text_Field }
+	Run :: struct { on: bool, value: f32, field: ui.Line_Edit }
 	r: Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	s := session.start(t, {size = {500, 300}, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(120)})
@@ -176,7 +176,7 @@ every_palette_gives_every_widget_a_colour :: proc(t: ^testing.T) { unwatched.run
 		ui.next({width = ui.px(200)})
 		ui.slider("###sl", &r.value, 0, 1)
 		ui.next({width = ui.px(200)})
-		ui.line_edit("###f", &r.field, "Placeholder")
+		ui.line_edit("###f", &r.field, {placeholder = "Placeholder"})
 		ui.next({width = ui.px(200)})
 		if ui.tags("menu_item") { ui.button("i", "Item") }
 	}})

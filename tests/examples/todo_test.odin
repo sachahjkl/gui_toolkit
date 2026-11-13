@@ -49,7 +49,7 @@ todo_add_tick_filter_delete :: proc(t: ^testing.T) {
 	session.key(s, .Return)
 	testing.expect_value(t, len(app.tasks), first_tasks + 1)
 	testing.expect(t, strings.contains(saved(app), "0\tTest the Odin port"), "Enter adds it, and it is saved")
-	testing.expect_value(t, ui.field_string(&app.input), "")
+	testing.expect_value(t, ui.line_edit_string(&app.input), "")
 	testing.expect_value(t, session.focused_name(s), "new_task")
 
 	// the box of the second task

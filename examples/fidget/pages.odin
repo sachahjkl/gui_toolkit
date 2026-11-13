@@ -27,14 +27,14 @@ reset_values :: proc(app: ^App) {
 	app.dd = {0, 1}
 	app.rating = 3
 	app.progress, app.progress_run = 0.35, false
-	ui.field_set(&app.name, "Ada Lovelace")
-	ui.field_set(&app.email, "ada@example.com")
-	ui.field_set(&app.number, "42")
-	ui.field_clear(&app.search)
-	ui.field_clear(&app.tag_input)
-	ui.field_clear(&app.bio)
-	ui.field_clear(&app.filter)
-	ui.area_set(&app.editor, "# Notes\n\nA multi-line editor from gui_toolkit:\n  - Enter keeps the indentation\n  - Ctrl+Z / Ctrl+Y undo and redo\n  - Up / Down keep the column\n  - Tab moves the focus (or indents, see below)\n")
+	ui.line_edit_set(&app.name, "Ada Lovelace")
+	ui.line_edit_set(&app.email, "ada@example.com")
+	ui.line_edit_set(&app.number, "42")
+	ui.line_edit_clear(&app.search)
+	ui.line_edit_clear(&app.tag_input)
+	ui.line_edit_clear(&app.bio)
+	ui.line_edit_clear(&app.filter)
+	ui.text_edit_set(&app.editor, "# Notes\n\nA multi-line editor from gui_toolkit:\n  - Enter keeps the indentation\n  - Ctrl+Z / Ctrl+Y undo and redo\n  - Up / Down keep the column\n  - Tab moves the focus (or indents, see below)\n")
 	// every tag is heap-owned (removing one deletes its string)
 	for t in app.tags { delete(t) }
 	clear(&app.tags)
@@ -126,7 +126,7 @@ page_controls :: proc(app: ^App) {
 				}
 				if ui.card("Selection", ICON_LIST) {
 					if ui.form_row("Range") { ui.segmented("###seg1", seg_labels[:], &app.seg) }
-					if ui.form_row("Tags") { ui.chips("chips1", chip_labels[:], &app.chips) }
+					if ui.form_row("Tags") { chips("chips1", chip_labels[:], &app.chips) }
 					if ui.form_row("Language") { ui.dropdown("###dd_lang", lang_items[:], &app.dd[0]) }
 					if ui.form_row("Sort by") { ui.dropdown("###dd_sort", sort_items[:], &app.dd[1]) }
 				}
@@ -186,8 +186,8 @@ page_controls :: proc(app: ^App) {
 						if ui.form_row("Temperature") { ui.slider("###sl2", &app.slider[2], -10, 40, 0.5, "%.1f C") }
 						if ui.form_row("Range") { ui.range_slider("###rng1", &app.range_lo, &app.range_hi, 0, 100) }
 						if ui.form_row("Number") { ui.number("###step1", &app.stepper, lo = 0, hi = 99) }
-						if ui.form_row("Size") { ui.number("###size1", &app.size, lo = 1, hi = 40, step = 0.5, unit = "px", track = true) }
-						if ui.form_row("Rating") { ui.rating("###rate1", &app.rating) }
+						if ui.form_row("Size") { ui.number("###size1", &app.size, lo = 1, hi = 40, step = 0.5, unit = "px", slider = true) }
+						if ui.form_row("Rating") { rating("###rate1", &app.rating) }
 					}
 				}
 				if ui.card("Progress & feedback", ui.ICON_INFO) {
@@ -233,15 +233,15 @@ words := [?]string{
 	"signal flags", "style stack", "theme tags", "tooltip root", "virtual list", "zero is initialization",
 }
 
-email_valid :: proc(f: ^ui.Text_Field) -> bool {
-	s := ui.field_string(f)
+email_valid :: proc(f: ^ui.Line_Edit) -> bool {
+	s := ui.line_edit_string(f)
 	at := strings.index_byte(s, '@')
 	if at <= 0 || at >= len(s) - 1 { return false }
 	return strings.index_byte(s[at:], '.') > 0
 }
 
-number_valid :: proc(f: ^ui.Text_Field) -> bool {
-	s := ui.field_string(f)
+number_valid :: proc(f: ^ui.Line_Edit) -> bool {
+	s := ui.line_edit_string(f)
 	if len(s) == 0 { return false }
 	for c, i in s { if !(c >= '0' && c <= '9' || (i == 0 && c == '-')) { return false } }
 	return true
@@ -256,16 +256,16 @@ page_inputs :: proc(app: ^App) {
 				if ui.card("Text inputs", ICON_PENCIL) {
 					email_ok := email_valid(&app.email)
 					num_ok := number_valid(&app.number)
-					if ui.form_row("Name") { ui.line_edit("###in_name", &app.name, "Your name") }
+					if ui.form_row("Name") { ui.line_edit("###in_name", &app.name, {placeholder = "Your name"}) }
 					if ui.form_row("Email") {
 						if len(app.email.buf) > 0 && !email_ok { ui.push_tags("bad") }
-						ui.line_edit("###in_email", &app.email, "you@example.com")
+						ui.line_edit("###in_email", &app.email, {placeholder = "you@example.com"})
 						if len(app.email.buf) > 0 && !email_ok { ui.pop_tags() }
 					}
 					hint(app, em, len(app.email.buf) == 0 ? 0 : (email_ok ? 1 : 2), "We never share it.", "Looks good.", "Needs an @ and a domain.")
 					if ui.form_row("Number") {
 						if len(app.number.buf) > 0 && !num_ok { ui.push_tags("bad") }
-						ui.line_edit("###in_num", &app.number, "digits only")
+						ui.line_edit("###in_num", &app.number, {placeholder = "digits only"})
 						if len(app.number.buf) > 0 && !num_ok { ui.pop_tags() }
 					}
 					hint(app, em, len(app.number.buf) == 0 ? 0 : (num_ok ? 1 : 2), "Try typing letters.", "Valid integer.", "Not a number.")
@@ -276,8 +276,8 @@ page_inputs :: proc(app: ^App) {
 				}
 				if ui.card("Live fuzzy search", ICON_FIND) {
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
-					ui.line_edit("###in_search", &app.search, "Search concepts (try: ar al)")
-					needle := ui.field_string(&app.search)
+					ui.line_edit("###in_search", &app.search, {placeholder = "Search concepts (try: ar al)"})
+					needle := ui.line_edit_string(&app.search)
 					matches := 0
 					for w, i in words {
 						ranges, ok := ui.fuzzy_find(needle, w)
@@ -306,22 +306,22 @@ page_inputs :: proc(app: ^App) {
 			if half("###right") {
 				if ui.card("Multi-line editor", ICON_PENCIL) {
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 13))})
-					res := ui.text_edit("###editor", &app.editor, "Write something...", line_numbers = true, tab_indents = app.editor_tab_indents)
-					if res.committed { ui.announce(&app.announcer, .Good, fmt.tprintf("Ctrl+Enter: %d lines", ui.area_line_count(&app.editor))) }
+					res := ui.text_edit("###editor", &app.editor, {placeholder = "Write something...", line_numbers = true, tab_indents = app.editor_tab_indents})
+					if res.committed { ui.announce(&app.announcer, .Good, fmt.tprintf("Ctrl+Enter: %d lines", ui.text_edit_line_count(&app.editor))) }
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
 					if ui.row(.Center, id = "###editor_bar") {
 						ui.next({width = ui.pct(0.55), height = ui.pct(1)})
 						ui.checkbox("###editor_tab", "Tab inserts spaces", &app.editor_tab_indents)
 						if ui.tags("weak") {
 							ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.85), text_align = .Right})
-							ui.label(fmt.tprintf("%d lines, %d chars", ui.area_line_count(&app.editor), len(app.editor.buf)))
+							ui.label(fmt.tprintf("%d lines, %d chars", ui.text_edit_line_count(&app.editor), len(app.editor.buf)))
 						}
 					}
 					// a chat composer: long lines wrap, the box grows with them up to 5 lines, then scrolls
 					ui.spacer(ui.px(em * 0.5))
 					ui.next({width = ui.fill()})
-					cres := ui.text_edit("###composer", &app.composer, "Message (wraps, grows to 5 lines)", wrap = true, auto_height = true, min_lines = 1, max_lines = 5)
-					if cres.committed { ui.announce(&app.announcer, .Good, fmt.tprintf("Sent %d chars", len(app.composer.buf))); ui.area_set(&app.composer, "") }
+					cres := ui.text_edit("###composer", &app.composer, {placeholder = "Message (wraps, grows to 5 lines)", wrap = true, auto_height = true, min_lines = 1, max_lines = 5})
+					if cres.committed { ui.announce(&app.announcer, .Good, fmt.tprintf("Sent %d chars", len(app.composer.buf))); ui.text_edit_set(&app.composer, "") }
 					if caret, _, ok := ui.text_edit_caret_rect(&app.composer); ok {
 						if ui.tags("weak") {
 							ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.8)), font_size = math.round(em * 0.85)})
@@ -351,21 +351,21 @@ page_inputs :: proc(app: ^App) {
 					}
 					ui.spacer(ui.px(em * 0.3))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
-					ts := ui.line_edit("###in_tag", &app.tag_input, len(app.tags) >= 8 ? "Tag limit reached" : "Type a tag, press Enter")
+					ts := ui.line_edit("###in_tag", &app.tag_input, {placeholder = len(app.tags) >= 8 ? "Tag limit reached" : "Type a tag, press Enter"})
 					if ts.committed && len(app.tag_input.buf) > 0 && len(app.tags) < 8 {
-						append(&app.tags, strings.clone(ui.field_string(&app.tag_input)))
-						ui.field_clear(&app.tag_input)
+						append(&app.tags, strings.clone(ui.line_edit_string(&app.tag_input)))
+						ui.line_edit_clear(&app.tag_input)
 					}
 				}
 				if ui.card("A small form", ICON_CLIPBOARD) {
 					can_submit := len(app.name.buf) > 0 && email_valid(&app.email) && app.agree
-					if ui.form_row("Title") { ui.line_edit("###in_bio", &app.bio, "Engineer, designer, ...") }
+					if ui.form_row("Title") { ui.line_edit("###in_bio", &app.bio, {placeholder = "Engineer, designer, ..."}) }
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
 					ui.checkbox("###ck_agree", "I agree to the terms", &app.agree)
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###submitrow") {
 						if ui.button("###b_submit", "Submit", ui.ICON_CHECK, {disabled = !can_submit, intent = .Primary}).clicked {
-							ui.announce(&app.announcer, .Good, fmt.tprintf("Submitted: %s <%s>", ui.field_string(&app.name), ui.field_string(&app.email)))
+							ui.announce(&app.announcer, .Good, fmt.tprintf("Submitted: %s <%s>", ui.line_edit_string(&app.name), ui.line_edit_string(&app.email)))
 						}
 						ui.spacer(ui.px(em * 0.8))
 						if ui.tags(can_submit ? "good" : "weak") {

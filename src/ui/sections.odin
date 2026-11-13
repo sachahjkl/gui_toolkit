@@ -2,7 +2,7 @@ package ui
 
 // Pieces of a dense dashboard (a console's look; they serve every theme):
 //
-//   section_header("###mem", "Memory", "what the boot program left", "462 MiB", hue(.Cyan))
+//   section_header("###mem", "Memory", hue(.Cyan), "what the boot program left", "462 MiB")
 //                                  a stripe of the hue, its title in capitals in the hue, a note, a value at its right
 //   tile("###t3", "rect.wgsl", hue(.Green))      a tile of colour with its words: in a flow, a wall of them
 //   stacked_bar("###time", parts)                 a bar cut in parts of their colours, each part's words in it
@@ -37,7 +37,7 @@ hue_color :: proc(h: Hue) -> Color {
 
 // A section's header: a stripe of `c`, `title` in capitals and bold in `c`, `note` weak after it, `value` large at its right
 // ("" : none). As tall as its words; full width, or as wide as its words when `inline` (in a row with other things).
-section_header :: proc(id, title: string, note := "", value := "", c: Color, inline := false) {
+section_header :: proc(id, title: string, c: Color, note := "", value := "", inline := false) {
 	s := gs()
 	em := font_size()
 	st := top_style()

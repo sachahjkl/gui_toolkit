@@ -42,7 +42,7 @@ Dialog :: struct {
 	facts:     Facts,              // as last read (strings owned)
 	shortcut:  bool,               // the Desktop's shortcut, asked of Install
 	choices:   [dynamic]bool,      // the program's options (Config.choices), as ticked
-	folder:    ui.Text_Field,      // the install folder (Config.folder): set from the facts when they first come
+	folder:    ui.Line_Edit,      // the install folder (Config.folder): set from the facts when they first come
 	size:      [2]f32,             // what the user made it, in ems ({}: DIALOG_EM; the program may keep it)
 	note:      string,             // what the last action said (owned)
 	note_good: bool,
@@ -89,7 +89,7 @@ open :: proc(d: ^Dialog, c: Config) {
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
 	clear(&d.choices)
 	for x in c.choices { append(&d.choices, x.on) }
-	ui.field_clear(&d.folder)
+	ui.line_edit_clear(&d.folder)
 	say(d, true, "")
 	watch_begin(d, c)
 	job_start(d, c, .Read)
@@ -125,7 +125,7 @@ destroy :: proc(d: ^Dialog) {
 	delete(d.installed)
 	delete(d.copied)
 	delete(d.choices)
-	ui.field_destroy(&d.folder)
+	ui.line_edit_destroy(&d.folder)
 	for l in d.leftovers { delete(l) }
 	delete(d.leftovers)
 	d^ = {}
@@ -204,7 +204,7 @@ job_start :: proc(d: ^Dialog, c: Config, kind: Job_Kind) {
 	j.kind, j.d, j.c, j.shortcut, j.removed = kind, d, c, d.shortcut, d.removed
 	j.choices = make([]bool, len(d.choices))
 	copy(j.choices, d.choices[:])
-	j.folder = strings.clone(strings.trim_space(ui.field_string(&d.folder)))
+	j.folder = strings.clone(strings.trim_space(ui.line_edit_string(&d.folder)))
 	j.allocator = context.allocator
 	j.thread = thread.create_and_start_with_data(j, job_run, priority = .Low)
 	if j.thread == nil {
@@ -263,7 +263,7 @@ job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 	d.job = nil
 	defer job_free(j)
 	if j.kind == .Pick_Folder {
-		if j.ok { ui.field_set(&d.folder, j.text) }
+		if j.ok { ui.line_edit_set(&d.folder, j.text) }
 		return
 	}
 	switch j.kind {
@@ -301,7 +301,7 @@ job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 	if !d.known {
 		d.known = true
 		d.shortcut = d.facts.desk_lnk
-		if ui.field_string(&d.folder) == "" { ui.field_set(&d.folder, d.facts.dir) }
+		if ui.line_edit_string(&d.folder) == "" { ui.line_edit_set(&d.folder, d.facts.dir) }
 	}
 	return
 }
@@ -609,7 +609,7 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 		ui.spacer(ui.px(em * MARGIN_EM))
 	}
 	if choose {
-		if why := desktop.check_install_dir(strings.trim_space(ui.field_string(&d.folder)), c.identity.name); why != "" {
+		if why := desktop.check_install_dir(strings.trim_space(ui.line_edit_string(&d.folder)), c.identity.name); why != "" {
 			line_next()
 			if ui.row(id = "###setup_folder_why_row") {
 				ui.spacer(ui.px(em * MARGIN_EM))

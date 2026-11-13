@@ -19,7 +19,7 @@ import "../../src/ui"
 @(private = "file")
 Dialogs :: struct {
 	first, second: bool,
-	page, field:   ui.Text_Field,
+	page, field:   ui.Line_Edit,
 }
 
 @(private = "file")
@@ -43,19 +43,19 @@ dialogs_build :: proc(s: ^session.Session) {
 @(test)
 a_field_of_the_top_dialog_keeps_the_keyboard :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d := Dialogs{first = true, second = true}
-	defer { ui.field_destroy(&d.page); ui.field_destroy(&d.field) }
+	defer { ui.line_edit_destroy(&d.page); ui.line_edit_destroy(&d.field) }
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.frame(s)
 	session.click(s, "field")
 	session.type_text(s, "hi")
-	testing.expect_value(t, ui.field_string(&d.field), "hi")
+	testing.expect_value(t, ui.line_edit_string(&d.field), "hi")
 }) }
 
 // Tab goes round the dialog on top, not through the one under it.
 @(test)
 tab_stays_in_the_top_dialog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d := Dialogs{first = true, second = true}
-	defer { ui.field_destroy(&d.page); ui.field_destroy(&d.field) }
+	defer { ui.line_edit_destroy(&d.page); ui.line_edit_destroy(&d.field) }
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.frame(s)
 	below := session.get(s, "below").key
@@ -69,7 +69,7 @@ tab_stays_in_the_top_dialog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^t
 @(test)
 a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d: Dialogs
-	defer { ui.field_destroy(&d.page); ui.field_destroy(&d.field) }
+	defer { ui.line_edit_destroy(&d.page); ui.line_edit_destroy(&d.field) }
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.click(s, "page")
 	d.first = true
@@ -80,7 +80,7 @@ a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) { unwatched.run(t, p
 	session.frame(s)
 	testing.expect(t, !d.first, "Escape closed it")
 	session.type_text(s, "back")
-	testing.expect_value(t, ui.field_string(&d.page), "back")
+	testing.expect_value(t, ui.line_edit_string(&d.page), "back")
 }) }
 
 // The sweep that was due when the page went away is due no longer: the loop goes back to sleep.
@@ -105,10 +105,10 @@ a_sweep_nobody_asks_for_lets_the_loop_sleep :: proc(t: ^testing.T) { unwatched.r
 // A double click takes the word, and a frame made while the button is still down does not put it back to a caret.
 @(test)
 a_word_stays_selected_while_the_button_is_held :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { f: ui.Text_Field }
+	Run :: struct { f: ui.Line_Edit }
 	r: Run
-	defer ui.field_destroy(&r.f)
-	ui.field_set(&r.f, "hello world")
+	defer ui.line_edit_destroy(&r.f)
+	ui.line_edit_set(&r.f, "hello world")
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(FIELD_WIDTH)})

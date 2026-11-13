@@ -25,7 +25,7 @@ import lucide "../lucide"
 // program changed the parameters itself: an undo) makes them again.
 Node_Inspector :: struct {
 	node:        u64,                                   // the node the fields were made for
-	texts:       [flowgraph.PARAMS_MAX]Text_Field,      // Text and Folder
+	texts:       [flowgraph.PARAMS_MAX]Line_Edit,      // Text and Folder
 	color:       Color_Pick,
 	color_open:  int,                                   // the parameter whose picker is open, plus one (0: none)
 	last_change: [2]u64,                                // the node and the parameter (plus one) of the last change ({}: none)
@@ -46,7 +46,7 @@ Node_Inspector_Result :: struct {
 }
 
 node_inspector_destroy :: proc(ins: ^Node_Inspector) {
-	for &f in ins.texts { field_destroy(&f) }
+	for &f in ins.texts { line_edit_destroy(&f) }
 	color_pick_destroy(&ins.color)
 	ins^ = {}
 }
@@ -62,7 +62,7 @@ node_inspector :: proc(id: string, ins: ^Node_Inspector, cat: ^flowgraph.Catalog
 		ins.color_open = 0
 		for d, i in def.params {
 			if i >= flowgraph.PARAMS_MAX { break }
-			if d.type == .Text || d.type == .Folder { field_set(&ins.texts[i], n.params[i].text) }
+			if d.type == .Text || d.type == .Folder { line_edit_set(&ins.texts[i], n.params[i].text) }
 		}
 	}
 	em := font_size()
@@ -102,7 +102,7 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		lo, hi: Maybe(int)
 		if d.hi > d.lo { lo, hi = int(d.lo), int(d.hi) }
 		next({width = fill(), height = row_height})
-		if number("###number", &v, lo, hi, max(int(d.step), 0), unit = i18n.tr(d.unit), track = d.hi > d.lo) {
+		if number("###number", &v, lo, hi, max(int(d.step), 0), unit = i18n.tr(d.unit), slider = d.hi > d.lo) {
 			value.number, changed = f64(v), true
 		}
 	case .Float:
@@ -110,7 +110,7 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		lo, hi: Maybe(f64)
 		if d.hi > d.lo { lo, hi = d.lo, d.hi }
 		next({width = fill(), height = row_height})
-		if number("###number", &v, lo, hi, d.step, unit = i18n.tr(d.unit), track = d.hi > d.lo) {
+		if number("###number", &v, lo, hi, d.step, unit = i18n.tr(d.unit), slider = d.hi > d.lo) {
 			value.number, changed = v, true
 		}
 	case .Bool:
@@ -141,10 +141,10 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		}
 	case .Text, .Folder:
 		next({width = fill(), height = row_height})
-		r := line_edit("###text", &ins.texts[i], i18n.tr(d.placeholder), clearable = true)
+		r := line_edit("###text", &ins.texts[i], {placeholder = i18n.tr(d.placeholder), clearable = true})
 		res.typing ||= r.focused
 		if r.changed {
-			text := strings.trim_space(field_string(&ins.texts[i]))
+			text := strings.trim_space(line_edit_string(&ins.texts[i]))
 			if text != p.text { value.text, changed = strings.clone(text, context.temp_allocator), true }
 		}
 		if d.type == .Folder {
