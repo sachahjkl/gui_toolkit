@@ -33,6 +33,8 @@ Widgets and layout
   term.md             term: a terminal's grid
   preview.md          Preview: zoom and pan
   node_graph.md       Node graph
+  flowgraph.md        flowgraph: graphs a person edits and runs
+  undo.md             undo: undo and redo steps
   markdown.md         markdown: Markdown in a window
   dragdrop.md         Drag and drop
   accessibility.md    Accessibility

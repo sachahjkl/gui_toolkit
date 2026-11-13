@@ -17,7 +17,7 @@ Text_Field :: struct {
 	mark:      int,           // other end of the selection (== cursor when nothing is selected)
 	scroll_x:  f32,           // horizontal scroll in pixels, keeps the caret visible
 	edited_ms: f64,           // time of the last edit/move (caret stays solid right after)
-	undo, redo: [dynamic]Edit_Snapshot,   // edit history (Ctrl+Z / Ctrl+Y, field_undo / field_redo)
+	history:    Edit_History, // edit history (Ctrl+Z / Ctrl+Y, field_undo / field_redo)
 	last_edit:  Field_Edit,   // what the last recorded edit was: consecutive typing is one undo step
 	last_edit_ms: f64,
 	word:       Word_Drag,    // the word a double click took, while its button is held
@@ -68,9 +68,8 @@ caret_wake :: proc(s: ^State, since: f64) {
 
 field_destroy :: proc(f: ^Text_Field) {
 	delete(f.buf)
-	field_forget_history(f)
-	delete(f.undo)
-	delete(f.redo)
+	edit_history_destroy(&f.history)
+	f.last_edit = .None
 }
 
 field_string :: proc(f: ^Text_Field) -> string { return string(f.buf[:]) }
@@ -99,7 +98,7 @@ field_wipe :: proc(f: ^Text_Field) {
 
 @(private)
 field_forget_history :: proc(f: ^Text_Field) {
-	edit_history_forget(&f.undo, &f.redo)
+	edit_history_forget(&f.history)
 	f.last_edit = .None
 }
 
@@ -108,22 +107,22 @@ field_forget_history :: proc(f: ^Text_Field) {
 field_checkpoint :: proc(f: ^Text_Field, kind: Field_Edit) {
 	now := build_now_ms()
 	cfg := feel_now()
-	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < f64(cfg.undo_merge_ms) && len(f.undo) > 0
+	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < f64(cfg.undo_merge_ms) && len(f.history.undo) > 0
 	f.last_edit, f.last_edit_ms = kind, now
-	edit_history_record(&f.undo, &f.redo, f.buf[:], f.cursor, f.mark, cfg.undo_steps, merge)
+	edit_history_record(&f.history, f.buf[:], f.cursor, f.mark, cfg.undo_steps, merge)
 }
 
 @(private)
-field_restore :: proc(f: ^Text_Field, from, to: ^[dynamic]Edit_Snapshot) -> bool {
-	if !edit_history_step(from, to, &f.buf, &f.cursor, &f.mark) { return false }
+field_restore :: proc(f: ^Text_Field, back: bool) -> bool {
+	if !edit_history_step(&f.history, back, &f.buf, &f.cursor, &f.mark) { return false }
 	f.last_edit = .None
 	return true
 }
 
-field_can_undo :: proc(f: ^Text_Field) -> bool { return len(f.undo) > 0 }
-field_can_redo :: proc(f: ^Text_Field) -> bool { return len(f.redo) > 0 }
-field_undo :: proc(f: ^Text_Field) -> bool { return field_restore(f, &f.undo, &f.redo) }
-field_redo :: proc(f: ^Text_Field) -> bool { return field_restore(f, &f.redo, &f.undo) }
+field_can_undo :: proc(f: ^Text_Field) -> bool { return len(f.history.undo) > 0 }
+field_can_redo :: proc(f: ^Text_Field) -> bool { return len(f.history.redo) > 0 }
+field_undo :: proc(f: ^Text_Field) -> bool { return field_restore(f, true) }
+field_redo :: proc(f: ^Text_Field) -> bool { return field_restore(f, false) }
 
 field_has_selection :: proc(f: ^Text_Field) -> bool { return f.cursor != f.mark }
 field_selection :: proc(f: ^Text_Field) -> string { lo, hi := sel_range(f); return string(f.buf[lo:hi]) }
@@ -582,7 +581,7 @@ edit_target_text :: proc(t: Edit_Target) -> (buf: []u8, cursor, mark: int) {
 edit_target_can :: proc(t: Edit_Target, undo: bool) -> bool {
 	switch v in t {
 	case ^Text_Field: return undo ? field_can_undo(v) : field_can_redo(v)
-	case ^Text_Area:  return len(undo ? v.undo : v.redo) > 0
+	case ^Text_Area:  return len(undo ? v.history.undo : v.history.redo) > 0
 	}
 	return false
 }

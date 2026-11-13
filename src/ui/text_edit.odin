@@ -41,7 +41,7 @@ Text_Area :: struct {
 	pref_x:     f32,       // column kept by Up / Down (valid when has_pref: any other move or edit ends it, in text_edit)
 	has_pref:   bool,
 	edited_ms:  f64,
-	undo, redo: [dynamic]Edit_Snapshot,
+	history:    Edit_History,
 	group:      Edit_Kind, // consecutive edits of one kind within a second form one undo step
 	group_ms:   f64,
 	sb_drag:    Text_Scrollbar,   // the scrollbar held
@@ -155,13 +155,14 @@ area_set :: proc(a: ^Text_Area, text: string) {
 }
 
 area_clear_history :: proc(a: ^Text_Area) {
-	edit_history_forget(&a.undo, &a.redo)
+	edit_history_forget(&a.history)
 	a.group = .None
 }
 
 area_destroy :: proc(a: ^Text_Area) {
-	area_clear_history(a)
-	delete(a.undo); delete(a.redo); delete(a.buf)
+	edit_history_destroy(&a.history)
+	a.group = .None
+	delete(a.buf)
 }
 
 area_line_count :: proc(a: ^Text_Area) -> int { return strings.count(area_string(a), "\n") + 1 }
@@ -174,18 +175,18 @@ area_line_count :: proc(a: ^Text_Area) -> int { return strings.count(area_string
 begin_edit :: proc(a: ^Text_Area, kind: Edit_Kind, now: f64) {
 	cfg := feel_now()
 	merge := kind == a.group && kind != .Other && now - a.group_ms < f64(cfg.undo_merge_ms)
-	edit_history_record(&a.undo, &a.redo, a.buf[:], a.cursor, a.mark, cfg.undo_steps, merge)
+	edit_history_record(&a.history, a.buf[:], a.cursor, a.mark, cfg.undo_steps, merge)
 	a.group, a.group_ms = kind, now
 }
 
 area_undo :: proc(a: ^Text_Area) -> bool {
-	if !edit_history_step(&a.undo, &a.redo, &a.buf, &a.cursor, &a.mark) { return false }
+	if !edit_history_step(&a.history, true, &a.buf, &a.cursor, &a.mark) { return false }
 	a.group = .None
 	return true
 }
 
 area_redo :: proc(a: ^Text_Area) -> bool {
-	if !edit_history_step(&a.redo, &a.undo, &a.buf, &a.cursor, &a.mark) { return false }
+	if !edit_history_step(&a.history, false, &a.buf, &a.cursor, &a.mark) { return false }
 	a.group = .None
 	return true
 }
