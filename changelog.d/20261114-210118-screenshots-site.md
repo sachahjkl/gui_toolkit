@@ -1,0 +1,3 @@
+type: Changed
+
+**Screenshots and site**: `tk screenshots` draws the showcase's scenes with no window, in the themes and finishes that show them (machined dark and light, edged, glass, gradient), into `docs/screenshots/showcase_*.webp` and `site/img`. The site shows them as a carousel: one picture at a time with its title, what it shows and the procedures that make it, linked to their documentation; Previous and Next, the arrow keys, a swipe and thumbnails (a grid without its script). `tk site_build` publishes the pictures in WebP at their own width and at 360, 720 and 1100 pixels (`site.build_images`), each `<img>` with its `srcset`. It needs `cwebp` (`nix develop`, Debian's `webp`; fetched and pinned on Windows).
