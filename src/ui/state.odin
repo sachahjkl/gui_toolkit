@@ -624,7 +624,7 @@ apply_mod :: proc(st: ^Style, m: Style_Mod) {
 // Style, parent and tag scopes
 
 // `if style({...}) { ... }`: override the style for the block.
-@(require_results, deferred_none = pop_style)
+@(deferred_none = pop_style)
 style :: proc(m: Style_Mod) -> bool {
 	st := top_style()^
 	apply_mod(&st, m)
@@ -650,7 +650,7 @@ next_drop :: proc(s: ^State) {
 	s.a11y.has_next = false
 }
 
-@(require_results, deferred_none = pop_parent)
+@(deferred_none = pop_parent)
 parent :: proc(b: ^Box) -> bool {
 	append(&gs().parent_stack, b)
 	return true
@@ -659,7 +659,7 @@ parent :: proc(b: ^Box) -> bool {
 pop_parent :: proc() { pop(&gs().parent_stack) }
 
 // `if tags("card", "accent") { ... }`: push theme tags for the block.
-@(require_results, deferred_none = pop_tags)
+@(deferred_none = pop_tags)
 tags :: proc(names: ..string) -> bool {
 	push_tags(..names)
 	return true
@@ -714,7 +714,7 @@ push_tags_key :: proc(s: ^State) { _ = current_tags_key(s) }
 
 // `if disabled(!enabled) { ... }`: when `cond` is true, every box built in the block is disabled: no clicks,
 // no hover, no keyboard focus, and it fades to a muted look. Scopes nest; `disabled(false)` changes nothing.
-@(require_results, deferred_none = pop_disabled)
+@(deferred_none = pop_disabled)
 disabled :: proc(cond := true) -> bool {
 	push_disabled(cond)
 	return true
@@ -733,7 +733,7 @@ pop_disabled :: proc() {
 // `if tab_stops(false) { ... }`: the widgets built in the block are no Tab stops (Tab and the arrow keys skip them);
 // they still take the focus when clicked or through set_focus. For rows of a list whose editors only the active row
 // should offer, and the like. Scopes nest; `tab_stops(true)` changes nothing.
-@(require_results, deferred_none = pop_tab_stops)
+@(deferred_none = pop_tab_stops)
 tab_stops :: proc(on: bool) -> bool {
 	append(&gs().tab_stops_off, !on)
 	if !on { gs().tab_skip += 1 }
@@ -745,7 +745,7 @@ pop_tab_stops :: proc() {
 }
 
 // `if muted() { ... }`: secondary content, drawn with the theme's weak text colour. Still interactive (see `disabled`).
-@(require_results, deferred_none = pop_tags)
+@(deferred_none = pop_tags)
 muted :: proc() -> bool {
 	push_tags("weak")
 	return true
