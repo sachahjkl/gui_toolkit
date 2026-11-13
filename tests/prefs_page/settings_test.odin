@@ -290,3 +290,34 @@ a_program_s_own_default_is_the_default :: proc(t: ^testing.T) {
 	testing.expect_value(t, config.default_string(&prefs, config.ref_of(&prefs, "appearance.rounding")), "0.25")
 	if config.ref_of(&prefs, "rendering.partial_redraw") != config.NO_REF { testing.expect(t, config.bool_of(&prefs, "rendering.partial_redraw")) }
 }
+
+// A page of the program's own: in the sidebar under its heading, built by the program under its title when chosen.
+@(test)
+a_program_s_own_page_is_in_the_sidebar :: proc(t: ^testing.T) {
+	Own :: struct { c: Common, built: int }
+	own: Own
+	defer common_end(&own.c)
+	own.c.prefs = config.prefs_make()
+	d := prefs_page.STANDARD_DEFAULTS
+	d.theme, d.app_name = "Midnight", "Sample"
+	prefs_page.standard_register(&own.c.prefs, prefs_page.STANDARD_ALL, d, context.temp_allocator)
+	s := session.start(t, {size = {1200, 800}, user = &own, build = proc(s: ^session.Session) {
+		o := (^Own)(s.user)
+		pages := []prefs_page.Page_Info{
+			{category = "appearance", title = "Appearance", heading = "CLIENT"},
+			{category = "server", title = "The server", heading = "SERVER", build = proc(user: rawptr, em: f32) {
+				(^Own)(user).built += 1
+				ui.label("Running###server_state")
+			}},
+		}
+		ui.next({width = ui.fill(), height = ui.fill()})
+		prefs_page.build(&o.c.page, &o.c.prefs, {user = o, pages = pages})
+	}})
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "SERVER") != nil, "its heading")
+	testing.expect_value(t, own.built, 0)
+	session.click(s, "nav1")
+	session.frames(s, 2)
+	testing.expect(t, own.built > 0, "built when chosen")
+	testing.expect(t, session.find(s, "server_state") != nil, "what it built")
+}

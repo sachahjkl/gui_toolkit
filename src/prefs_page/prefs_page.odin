@@ -42,6 +42,11 @@ import update "../update"
 Page_Info :: struct {
 	category, title, icon: string,
 	names:                 []string,
+	// a page of the program's own, with no preference (a server's state, a list it keeps): it builds the page under its
+	// title (a search does not look in it). `category` still names it (Page.current, show)
+	build:                 proc(user: rawptr, em: f32),
+	// a heading above the page in the sidebar, which starts a group of pages ("CLIENT", "SERVER"; "": none)
+	heading:               string,
 }
 
 // A global shortcut's preference: `pref` holds its keys (as platform.hotkey_text writes them), `id` is the shortcut's id
@@ -239,7 +244,7 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 	if o.pages != nil {
 		// (a page with no preference in this registry is not shown: a program that registers some only on one system)
 		kept := make([dynamic]Page_Info, context.temp_allocator)
-		for pg in o.pages { if len(page_names(prefs, pg)) > 0 { append(&kept, pg) } }
+		for pg in o.pages { if pg.build != nil || len(page_names(prefs, pg)) > 0 { append(&kept, pg) } }
 		return kept[:]
 	}
 	cats := make([dynamic]string, context.temp_allocator)
@@ -252,6 +257,7 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 // The preferences of a page: its own list (those registered), else its category's; never a hidden one (Def.hidden: the
 // program's own).
 page_names :: proc(prefs: ^config.Prefs, pg: Page_Info) -> []string {
+	if pg.build != nil { return nil }
 	if pg.names == nil { return names_of(prefs, pg.category) }
 	out := make([dynamic]string, 0, len(pg.names), context.temp_allocator)
 	for name in pg.names {
@@ -331,21 +337,26 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 						}
 					} else {
 						pg := pages[cur]
-						names := page_names(prefs, pg)
-						if page_header(pg.title, page_changed(prefs, o, names), o, em) {
-							for name in names {
-								e := config.entry(prefs, config.ref_of(prefs, name))
-								if e.source == .User { reset(p, prefs, o, name) }
+						if pg.build != nil {
+							page_title(pg.title, em)
+							pg.build(o.user, em)
+						} else {
+							names := page_names(prefs, pg)
+							if page_header(pg.title, page_changed(prefs, o, names), o, em) {
+								for name in names {
+									e := config.entry(prefs, config.ref_of(prefs, name))
+									if e.source == .User { reset(p, prefs, o, name) }
+								}
 							}
+							basic := make([dynamic]string, context.temp_allocator)
+							advanced := make([dynamic]string, context.temp_allocator)
+							for name in names {
+								if config.entry(prefs, config.ref_of(prefs, name)).def.advanced { append(&advanced, name) } else { append(&basic, name) }
+							}
+							sections(p, prefs, o, pg.category, basic[:], em)
+							if len(advanced) > 0 { advanced_part(p, prefs, o, pg.category, advanced[:], em) }
+							if o.page_foot != nil { o.page_foot(o.user, pg.category, em) }
 						}
-						basic := make([dynamic]string, context.temp_allocator)
-						advanced := make([dynamic]string, context.temp_allocator)
-						for name in names {
-							if config.entry(prefs, config.ref_of(prefs, name)).def.advanced { append(&advanced, name) } else { append(&basic, name) }
-						}
-						sections(p, prefs, o, pg.category, basic[:], em)
-						if len(advanced) > 0 { advanced_part(p, prefs, o, pg.category, advanced[:], em) }
-						if o.page_foot != nil { o.page_foot(o.user, pg.category, em) }
 					}
 					ui.spacer(ui.px(em * 1.5))
 				}
@@ -437,6 +448,19 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 		if ui.scroll_y("###prefs_nav_list") {
 			ui.spacer(ui.px(em * 0.6))
 			for pg, i in pages {
+				if pg.heading != "" && !icons {
+					if i > 0 { ui.spacer(ui.px(em * 0.6)) }
+					ui.next({width = ui.fill(), height = ui.px(em * 1.5), axis = .X, cross = .Center})
+					if ui.row(id = fmt.tprintf("###nh%d", i)) {
+						ui.spacer(ui.px(em * 1.1))
+						if ui.tags("weak") {
+							ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.75), text_pad = 0})
+							ui.label(fmt.tprintf("%s###nhl%d", pg.heading, i))
+						}
+					}
+				} else if pg.heading != "" && i > 0 {
+					ui.spacer(ui.px(em * 0.6))
+				}
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if ui.row(id = fmt.tprintf("###nv%d", i)) {
 					ui.spacer(ui.px(em * 0.7))

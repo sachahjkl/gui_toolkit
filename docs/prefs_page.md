@@ -105,6 +105,10 @@ What the program applies itself:
   shows, by `config.groups_of`, with its `config.group_title`. At its foot: `Options.version` ("Papier 0.15.0"), the
   settings file (`Options.file`, shortened with `~`: a click opens it with the system's program, `ui.open`), then
   **Export…** and **Import…** (below) and what the last of them did.
+- A page of the program's own: a `Page_Info` with `build` has no preference; the page shows its title and calls
+  `build(user, em)` under it (a server's state, a list the program keeps). A search does not look in it. `heading`
+  puts a small title above a page, which starts a group ("CLIENT", "SERVER"): one sidebar for the settings and the
+  program's pages, not two.
 - The sidebar's handle (`ui.splitter`) resizes it with the mouse; a double click puts 14 ems back. Its width is kept in
   the hidden preference `prefs_page.sidebar_width` (`SIDEBAR_PREF`, in ems; the page registers it at its first build),
   written when the handle is let go. It stays between 9 ems and half of the page. A page narrower than 40 ems shows the
