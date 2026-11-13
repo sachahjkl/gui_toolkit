@@ -59,6 +59,8 @@ Platform and system
   http.md             http: requests
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
+  crash.md            crash: crash reports
+  log.md              log: a program's log
   config.md           config: preferences
   store.md            store: small files of keys and values
   notices.md          notices: what the user missed

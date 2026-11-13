@@ -19,7 +19,7 @@ import toolbox "../../src/toolbox"
 // The folders a cited path starts with.
 @(private = "file") PATH_ROOTS :: [?]string{"tools", "examples", "tests", "docs", "src", "native", "res", "assets", "ui", "draw", "render", "font", "platform", "devtools"}
 // The packages whose names are checked: `ui.box`, `cdp.connect`.
-@(private = "file") PACKAGES :: [?]string{"ui", "draw", "render", "font", "platform", "config", "arena", "instance", "testkit", "i18n", "fsx", "flate", "devtools", "cdp", "site", "desktop", "process", "update", "paint", "png", "qr", "toolbox", "svg", "mermaid", "store", "notices"}
+@(private = "file") PACKAGES :: [?]string{"ui", "draw", "render", "font", "platform", "config", "arena", "instance", "testkit", "i18n", "fsx", "flate", "devtools", "cdp", "site", "desktop", "process", "update", "paint", "png", "qr", "toolbox", "svg", "mermaid", "store", "notices", "crash"}
 // Flags of other programs (git, cargo).
 @(private = "file") SYSTEM_FLAGS :: [?]string{"--recursive", "--init", "--locked", "--release", "--force", "--target-dir", "--no-verify"}
 @(private = "file") NOT_NAMES :: [?]string{"odin", "md", "mjs", "exe", "wgsl"}

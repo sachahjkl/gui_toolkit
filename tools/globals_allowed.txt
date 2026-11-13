@@ -15,6 +15,9 @@ config/export_test.odin EXPORT_DEFS test
 config/search_test.odin SEARCH_DEFS test
 config/snapshot_test.odin SNAP_DEFS test
 config/snapshot_test.odin LATE_DEFS test
+crash/crash.odin kept process  # the crash handler's settings and buffers: written once by install (an atomic flag) before a crash reads them; the session flag is atomic
+crash/crash_linux.odin sys process  # the signal handler's buffers and state, taken at install: one handler for the process (its flags atomic)
+crash/crash_windows.odin sys process  # the exception filter's buffers, events and writer thread, taken at install: one for the process (its flags atomic)
 flate/flate.odin LEN_BASE const  # a table of RFC 1951
 flate/flate.odin LEN_EXTRA const  # a table of RFC 1951
 flate/flate.odin DIST_BASE const  # a table of RFC 1951

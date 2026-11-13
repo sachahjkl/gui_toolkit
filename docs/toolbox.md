@@ -129,3 +129,29 @@ shortcut and the window show. A build checks with it that the resource is linked
 - `update verify <manifest.json> <channel>`: the manifest and its `.sig`, checked with the product's key.
 
 `update_manifest(product, program, version, channel, out)` is the manifest step alone, for a tool's release step.
+
+## Crash reports
+
+A program's crash reports ([crash.md](crash.md)) give each frame as a module and an offset. These name the offsets of the
+program's own module offline, with what its build left:
+
+- `CRASH_LINKER_FLAGS`: what the program's `-extra-linker-flags:` must hold. Windows: `/MAP` (the linker's map of every
+  function). Linux: `-Wl,--build-id` (the build id the report names).
+- `crash_publish_symbols(exe, allocator) -> (named, why)`: after each link. Windows: `<dir>/<stem>.map` becomes
+  `<dir>/<stem>-<build>.map`, and the older maps of that stem go; keep it with the release. Linux: checks that the
+  executable has a build id; `named` is the executable. `why` says what is wrong ("": done).
+- `crash_build_id(path, allocator) -> (id, ok)`: the build a file is, as a report names it: a PE file's link time stamp and
+  image size (`%08X%X`), an ELF file's GNU build id. Any system reads either.
+- `crash_symbolize(report_path, symbols, allocator) -> (text, why)`: the report with the program's frames named. `symbols` is a
+  map, a folder that holds `<stem>-<build>.map`, or (a Linux report) the executable that crashed, read through `addr2line`.
+  The map is read in pure Odin: a Windows report is named on any system. An executable of another build is refused; a map of
+  another link gives a `symbols-warning` line. The text is a report again, with a `symbols` line that says from what.
+
+`tk crash_symbolize <report> <symbols>` prints it.
+
+```odin
+// a program's build tool, after its link
+append(&flags, fmt.tprintf("-extra-linker-flags:%s", toolbox.CRASH_LINKER_FLAGS))
+...
+if named, why := toolbox.crash_publish_symbols(exe); why != "" { return why }
+```

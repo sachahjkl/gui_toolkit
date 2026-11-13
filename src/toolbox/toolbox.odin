@@ -16,6 +16,7 @@
 //	write_version_header  the C header of a version of three numbers, for a Windows executable's VERSIONINFO
 //	exe_has_icon     (Windows) a Windows executable carries its icon (group 1)
 //	update_command   the update command of a project's tool: keygen, pubkey, the signed manifest of a release, verify
+//	crash_symbolize  a crash report's frames named from the build's map or executable (crash_symbolize.odin)
 package tk_toolbox
 
 import "core:crypto/sha2"
