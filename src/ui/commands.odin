@@ -3,7 +3,8 @@ package ui
 // A program's commands in one table: each one's name, its group and its keys. The same table gives:
 //
 //   command_pressed   the key handling: a command's keys, pressed this frame
-//   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)")
+//   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)");
+//                     key_tip, a tooltip's for a control that is no command
 //   palette           the command palette: a dialog the user resizes, that searches (fuzzy_words), every command with
 //                     its keys, grouped
 //   shortcuts_sheet   a dialog that lists every command's keys, grouped
@@ -61,63 +62,19 @@ Command :: struct {
 	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
 }
 
-// "Ctrl+Shift+P", "Delete", "F5" ("" for no key). Modifiers come first, in the order Ctrl, Shift, Alt.
+// "Ctrl+Shift+P", "Delete", "F5" ("" for no key), in the language in use ("Ctrl+Maj+P"): platform.key_text's words.
+// Modifiers come first, in the order Ctrl, Shift, Alt.
 chord_text :: proc(c: Chord, allocator := context.temp_allocator) -> string {
-	if c.key == .None { return "" }
-	b := strings.builder_make(allocator)
-	// (the modifiers as the keyboards of the language say them: Shift is "Maj" on a French one)
-	if .Ctrl in c.mods { strings.write_string(&b, i18n.tr("key", "Ctrl")); strings.write_byte(&b, '+') }
-	if .Shift in c.mods { strings.write_string(&b, i18n.tr("key", "Shift")); strings.write_byte(&b, '+') }
-	if .Alt in c.mods { strings.write_string(&b, i18n.tr("key", "Alt")); strings.write_byte(&b, '+') }
-	strings.write_string(&b, key_name(c.key))
-	return strings.to_string(b)
+	return platform.key_text(platform.Hotkey{key = c.key, mods = c.mods}, allocator)
 }
 
-// A key's name as keyboards and menus print it.
-key_name :: proc(k: platform.Key) -> string {
-	#partial switch k {
-	case .A ..= .Z:
-		letters := KEY_LETTERS
-		return letters[int(k) - int(platform.Key.A)]
-	case .N0 ..= .N9:
-		digits := KEY_DIGITS
-		return digits[int(k) - int(platform.Key.N0)]
-	case .F1 ..= .F12:
-		functions := KEY_FUNCTIONS
-		return functions[int(k) - int(platform.Key.F1)]
-	case .Escape:     return i18n.tr("key", "Escape")
-	case .Return:     return i18n.tr("key", "Enter")
-	case .Tab:        return i18n.tr("key", "Tab")
-	case .Space:      return i18n.tr("key", "Space")
-	case .Backspace:  return i18n.tr("key", "Backspace")
-	case .Delete:     return i18n.tr("key", "Delete")
-	case .Insert:     return i18n.tr("key", "Insert")
-	case .Left:       return i18n.tr("key", "Left")
-	case .Right:      return i18n.tr("key", "Right")
-	case .Up:         return i18n.tr("key", "Up")
-	case .Down:       return i18n.tr("key", "Down")
-	case .Home:       return i18n.tr("key", "Home")
-	case .End:        return i18n.tr("key", "End")
-	case .Page_Up:    return i18n.tr("key", "Page Up")
-	case .Page_Down:  return i18n.tr("key", "Page Down")
-	case .Comma:      return ","
-	case .Period:     return "."
-	case .Slash:      return "/"
-	case .Minus:      return "-"
-	case .Equal:      return "="
-	case .Menu:       return i18n.tr("key", "Menu")
-	case .Num_Add:    return "Num +"
-	case .Num_Subtract: return "Num -"
-	}
-	return ""
+// A tooltip's text: what a control does and its key ("Settings (Ctrl+,)"), the key in the language in use; the label
+// alone with no key. command_tip is the same for a command.
+key_tip :: proc(label: string, c: Chord, allocator := context.temp_allocator) -> string {
+	k := chord_text(c, context.temp_allocator)
+	if k == "" { return strings.clone(label, allocator) }
+	return fmt.aprintf("%s (%s)", label, k, allocator = allocator)
 }
-
-@(private = "file")
-KEY_LETTERS :: [26]string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
-@(private = "file")
-KEY_DIGITS :: [10]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-@(private = "file")
-KEY_FUNCTIONS :: [12]string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"}
 
 // The text of a command's first key, for a menu's line ("" when it has none).
 command_shortcut :: proc(c: Command) -> string {
@@ -141,10 +98,9 @@ command_keys_text :: proc(c: Command, allocator := context.temp_allocator) -> st
 
 // A tooltip's text: the label and its first key ("Kill (Shift+Delete)"), or the label alone; in the language in use.
 command_tip :: proc(c: Command, allocator := context.temp_allocator) -> string {
-	k := command_shortcut(c)
-	label := i18n.tr(c.label)
-	if k == "" { return strings.clone(label, allocator) }
-	return fmt.aprintf("%s (%s)", label, k, allocator = allocator)
+	first: Chord
+	for k in c.keys { if k.key != .None { first = k; break } }
+	return key_tip(i18n.tr(c.label), first, allocator)
 }
 
 // A command as the palette and the sheet show it: its label and its group in the language in use (a program's table holds

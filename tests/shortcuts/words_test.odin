@@ -11,7 +11,9 @@ the_words_of_each_state :: proc(t: ^testing.T) {
 		{"Ctrl+Print", {.Waiting, ""}, "Waiting for the system's answer…", ""},
 		{"", {.Waiting, ""}, "", ""},
 		{"Ctrl+Print", {.Bound, "Ctrl+Print"}, "Works in every program: Ctrl+Print.", ""},
-		{"Shift+Print", {.Bound, "SHIFT+Print"}, "Works in every program: SHIFT+Print.", ""},
+		// (the system's words for the keys read as the toolkit names them)
+		{"Shift+Print", {.Bound, "SHIFT+Print"}, "Works in every program: Shift+Print.", ""},
+		{"Ctrl+Shift+A", {.Bound, "CTRL+SHIFT+a"}, "Works in every program: Ctrl+Shift+A.", ""},
 		{"Ctrl+Print", {.Bound, "Alt+Print"}, "The system gave other keys: Alt+Print. Change them in its shortcut settings.", ""},
 		{"", {.Bound, "Alt+Print"}, "Works in every program: Alt+Print.", ""},
 		{"", {.No_Keys, ""}, "No keys.", ""},

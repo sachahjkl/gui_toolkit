@@ -4,6 +4,7 @@
 package hotkey_test
 
 import "core:testing"
+import i18n "../../src/i18n"
 import "../../src/platform"
 
 @(test)
@@ -45,4 +46,45 @@ a_key_named_by_its_character :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.keysym_of({key = .V}), "v")
 	_, ok = platform.hotkey_parse("Ctrl+ùù")
 	testing.expect(t, !ok, "one character")
+}
+
+// A key's text for a person, from each form a key takes, in English and in French (the toolkit's catalogue alone: a
+// program adds no key's word). hotkey_text stays English whatever the language: a file keeps it.
+@(test)
+a_key_reads_in_the_language :: proc(t: ^testing.T) {
+	texts :: proc() -> [10]string {
+		return {
+			platform.key_text(platform.Key.Page_Down),
+			platform.key_text(platform.Key.Print),
+			platform.key_text(platform.Hotkey{key = .Print, mods = {.Ctrl, .Shift}}),
+			platform.key_text(platform.Hotkey{key = .Space, mods = {.Alt}, super = true}),
+			platform.key_text(platform.Hotkey{mods = {.Ctrl}, char = 'ù'}),
+			platform.key_text(platform.Hotkey{}),
+			platform.key_text("Ctrl+K, Ctrl+Shift+P"),
+			platform.key_text("CTRL+SHIFT+a"),
+			platform.key_text("Ctrl+Esc, PageUp, Ctrl+,, Ctrl++"),
+			platform.key_text("Shift+Insert, Delete, Return, Page_Down, Escape, Ctrl+Enter, Click"),
+		}
+	}
+	EN :: [10]string{
+		"Page Down", "Print", "Ctrl+Shift+Print", "Alt+Win+Space", "Ctrl+ù", "",
+		"Ctrl+K, Ctrl+Shift+P", "Ctrl+Shift+A", "Ctrl+Escape, Page Up, Ctrl+,, Ctrl++",
+		"Shift+Insert, Delete, Enter, Page Down, Escape, Ctrl+Enter, Click",
+	}
+	FR :: [10]string{
+		"Pg suiv", "Impr. écran", "Ctrl+Maj+Impr. écran", "Alt+Win+Espace", "Ctrl+ù", "",
+		"Ctrl+K, Ctrl+Maj+P", "Ctrl+Maj+A", "Ctrl+Échap, Pg préc, Ctrl+,, Ctrl++",
+		"Maj+Inser, Suppr, Entrée, Pg suiv, Échap, Ctrl+Entrée, Click",
+	}
+	en, fr := EN, FR
+	got := texts()
+	for g, i in got { testing.expectf(t, g == en[i], "English %d: %q, want %q", i, g, en[i]) }
+
+	l, bad := i18n.load("fr", nil)
+	defer { i18n.use(nil); i18n.destroy(l) }
+	testing.expect_value(t, len(bad), 0)
+	i18n.use(l)
+	got = texts()
+	for g, i in got { testing.expectf(t, g == fr[i], "French %d: %q, want %q", i, g, fr[i]) }
+	testing.expect_value(t, platform.hotkey_text({key = .Print, mods = {.Shift}}), "Shift+Print")
 }

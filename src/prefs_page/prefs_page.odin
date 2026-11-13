@@ -222,8 +222,7 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 
 // Sizes, in ems: the sidebar (its default, least and most width, and the share of the page it may take), its icons
 // alone and the page width under which it shows them, the margins of the page, a control's height, the least width of
-// the words beside a control, a segmented choice's room around its longest label and the share of its line past which
-// it goes under its words, a theme's card.
+// the words beside a control, the share of its line past which a segmented choice goes under its words, a theme's card.
 @(private = "file") NAV_EM          :: 14
 @(private = "file") NAV_MIN_EM      :: 9
 @(private = "file") NAV_MAX_EM      :: 30
@@ -233,7 +232,6 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 @(private = "file") MARGIN_EM       :: 1.4
 @(private = "file") CONTROL_H_EM    :: 2
 @(private = "file") WORDS_MIN_EM    :: 12
-@(private = "file") SEGMENT_PAD_EM  :: 1.8
 @(private = "file") WIDE_SHARE      :: 0.45
 @(private = "file") SEGMENTS_MAX    :: 4      // more choices: a list
 @(private = "file") NUMBER_EM       :: 15
@@ -857,11 +855,7 @@ control_width :: proc(o: Page_Options, e: ^config.Entry, em: f32) -> (w: f32, sh
 		if is_hotkey(o, name) { return em * LIST_EM, share }
 		labels, values := choices_of(o, e)
 		if len(values) == 0 { return em * FIELD_EM, share }
-		if len(values) <= SEGMENTS_MAX {
-			widest: f32
-			for l in labels { widest = max(widest, ui.text_width(ui.top_style().font, em, l)) }
-			return f32(len(labels)) * (widest + em * SEGMENT_PAD_EM), WIDE_SHARE
-		}
+		if len(values) <= SEGMENTS_MAX { return ui.segmented_width(labels), WIDE_SHARE }
 		return em * LIST_EM, share
 	case .Int, .Float:
 		if is_number(e.def) { return em * NUMBER_EM, share }

@@ -2031,6 +2031,36 @@ a_repaint_asked_for_ends_a_wait :: proc(t: ^testing.T) {
 	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 1000, "the wait ends at once")
 }
 
+// A loop waits for all its windows on one of them (host.hosts_wait): the size the compositor gives another window ends
+// that wait, and that window has its new size and a repaint asked. (The wait slept over it: a tiling compositor's size
+// for an editor shown beside another window stayed unused, its picture at the size it was opened with.)
+@(test)
+another_windows_new_size_ends_a_wait_on_wayland :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open("waiter")
+	testing.expect(t, a != nil)
+	if a == nil { return }
+	defer platform.destroy_window(a)
+	b := open("resized")
+	testing.expect(t, b != nil)
+	if b == nil { return }
+	defer platform.destroy_window(b)
+	sh("swaymsg -q '[title=\"^resized$\"]' floating enable, resize set 300 200")
+	for i := 0; i < 200 && b.size != {300, 200}; i += 1 { pump_for(a, 10) }
+	testing.expect_value(t, b.size, [2]int{300, 200})
+	platform.test_show_plain(b)
+	pump_for(a, 150)
+	_ = platform.take_paint_request(a)
+	_ = platform.take_paint_request(b)
+	sh("(sleep 0.3; swaymsg -q '[title=\"^resized$\"]' resize set 420 260) &")
+	start := time.tick_now()
+	platform.wait_event(a, 4000)
+	testing.expectf(t, time.duration_milliseconds(time.tick_since(start)) < 2500, "the wait ends with the configure, not its time: %v ms", time.duration_milliseconds(time.tick_since(start)))
+	testing.expect_value(t, b.size, [2]int{420, 260})
+	testing.expect(t, platform.take_paint_request(b), "the resized window is to be drawn again")
+}
+
 ////////////////////////////////
 // cursors
 

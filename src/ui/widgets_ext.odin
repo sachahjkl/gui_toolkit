@@ -900,11 +900,31 @@ seg_key_radius :: proc(track_radius, slot_radius, pad: f32, mach: bool) -> f32 {
 // slash between them ("All / Active 2 / Done 1").
 Segmented_Look :: enum u8 { Pills, Text }
 
+// A segment's room beside its label's padding, in ems: the key's rounded ends never touch the words.
+@(private = "file") SEGMENT_ROOM_EM :: 0.8
+
+// The width a pill segmented control takes with no width given, in the style in effect: every segment as wide as the
+// widest label with its padding (the segments are equal: seg_draw divides the track), and the track's padding. A
+// language's longer word widens the control instead of being cut. A layout that places the control (beside a field, or
+// on a line of its own when the window is narrow) reads it before the control is built.
+segmented_width :: proc(labels: []string) -> f32 {
+	if len(labels) == 0 { return 0 }
+	em := font_size()
+	st := top_style()
+	widest: f32
+	for l in labels { widest = max(widest, text_width(st.font, em, l)) }
+	segment := math.ceil(widest + 2 * st.text_pad + em * SEGMENT_ROOM_EM)
+	return f32(len(labels)) * segment + 2 * math.round(em * 0.25)   // (seg_draw's pad on each side)
+}
+
 // Sliding-pill segmented control. Returns true when the selection changed. `tips`: a tooltip per segment, shown when the
 // pointer rests on it ("" or a missing entry: none); a screen reader reads it as the segment's description. `look`
-// .Text: words in a line, as wide as they are.
+// .Text: words in a line, as wide as they are. With no width given (next), it is segmented_width wide: no label is cut,
+// in any language; a width given is kept.
 segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string = nil, look := Segmented_Look.Pills) -> (changed: bool) {
 	if look == .Text { return segmented_text(id, labels, selected, tips) }
+	s := gs()
+	if !s.has_next || s.next_mod.width == nil { s.next_mod.width = px(segmented_width(labels)); s.has_next = true }
 	em := font_size()
 	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), f32(selected^), SEGMENTED_RATE, f32(selected^))
 	accent := color("accent")

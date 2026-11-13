@@ -63,7 +63,8 @@ hotkey_complete :: proc(hk: Hotkey) -> bool {
 	return hk.mods != {} || hk.super || hk.key == .Print
 }
 
-// The text of a hotkey, as hotkey_parse reads it ("Ctrl+Shift+V").
+// The text of a hotkey, as hotkey_parse reads it ("Ctrl+Shift+V"): English, for a file. A text a person reads is
+// key_text's, in the language in use.
 hotkey_text :: proc(hk: Hotkey, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	if .Ctrl in hk.mods  { strings.write_string(&b, "Ctrl+") }
@@ -117,5 +118,10 @@ hotkey_key_of :: proc(word: string) -> Key {
 	if ascii.equal_fold(word, "enter") { return .Return }
 	if ascii.equal_fold(word, "esc") { return .Escape }
 	if ascii.equal_fold(word, "printscreen") || ascii.equal_fold(word, "print_screen") || ascii.equal_fold(word, "prtsc") { return .Print }
+	// (the other ways programs and people write them: key_text reads a program's table with these words)
+	if ascii.equal_fold(word, "pageup") || ascii.equal_fold(word, "page up") || ascii.equal_fold(word, "pgup") { return .Page_Up }
+	if ascii.equal_fold(word, "pagedown") || ascii.equal_fold(word, "page down") || ascii.equal_fold(word, "pgdn") { return .Page_Down }
+	if ascii.equal_fold(word, "del") { return .Delete }
+	if ascii.equal_fold(word, "ins") { return .Insert }
 	return .None
 }

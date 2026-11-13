@@ -212,6 +212,86 @@ fr Tous les fichiers
 en All files (*.*)
 fr Tous les fichiers (*.*)
 
+ctx key
+en Escape
+fr Échap
+
+ctx key
+en Enter
+fr Entrée
+
+ctx key
+en Tab
+fr Tab
+
+ctx key
+en Space
+fr Espace
+
+ctx key
+en Backspace
+fr Retour arrière
+
+ctx key
+en Delete
+fr Suppr
+
+ctx key
+en Insert
+fr Inser
+
+ctx key
+en Left
+fr Gauche
+
+ctx key
+en Right
+fr Droite
+
+ctx key
+en Up
+fr Haut
+
+ctx key
+en Down
+fr Bas
+
+ctx key
+en Home
+fr Début
+
+ctx key
+en End
+fr Fin
+
+ctx key
+en Page Up
+fr Pg préc
+
+ctx key
+en Page Down
+fr Pg suiv
+
+ctx key
+en Shift
+fr Maj
+
+ctx key
+en Ctrl
+fr Ctrl
+
+ctx key
+en Alt
+fr Alt
+
+ctx key
+en Menu
+fr Menu
+
+ctx key
+en Print
+fr Impr. écran
+
 en Diagnostics
 fr Diagnostics
 
@@ -354,7 +434,7 @@ en Advanced
 fr Avancé
 
 en Search settings
-fr Chercher un réglage
+fr Rechercher un réglage
 
 en Open the settings file
 fr Ouvrir le fichier des réglages
@@ -957,7 +1037,7 @@ en Update by itself
 fr Mise à jour automatique
 
 en Look for a new version of %s now and then, and install it: it takes effect at the next start.
-fr %s cherche de temps en temps une nouvelle version et l'installe : elle prend effet au prochain démarrage.
+fr %s recherche de temps en temps une nouvelle version et l'installe : elle prend effet au prochain démarrage.
 
 en Channel
 fr Canal
@@ -1428,82 +1508,6 @@ fr Nouvelle couleur
 en Colour
 fr Couleur
 
-ctx key
-en Ctrl
-fr Ctrl
-
-ctx key
-en Shift
-fr Maj
-
-ctx key
-en Alt
-fr Alt
-
-ctx key
-en Escape
-fr Échap
-
-ctx key
-en Enter
-fr Entrée
-
-ctx key
-en Tab
-fr Tab
-
-ctx key
-en Space
-fr Espace
-
-ctx key
-en Backspace
-fr Retour arrière
-
-ctx key
-en Delete
-fr Suppr
-
-ctx key
-en Insert
-fr Inser
-
-ctx key
-en Left
-fr Gauche
-
-ctx key
-en Right
-fr Droite
-
-ctx key
-en Up
-fr Haut
-
-ctx key
-en Down
-fr Bas
-
-ctx key
-en Home
-fr Début
-
-ctx key
-en End
-fr Fin
-
-ctx key
-en Page Up
-fr Pg préc
-
-ctx key
-en Page Down
-fr Pg suiv
-
-ctx key
-en Menu
-fr Menu
-
 en Nothing matches
 fr Aucun résultat
 
@@ -1688,7 +1692,7 @@ en Marks
 fr Repères
 
 en Type to search
-fr Tapez pour chercher
+fr Tapez pour rechercher
 
 en Reset %s
 fr Réinitialiser %s

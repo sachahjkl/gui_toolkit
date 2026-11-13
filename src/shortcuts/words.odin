@@ -17,8 +17,9 @@ status_text :: proc(asked: string, st: Status, allocator := context.temp_allocat
 		if asked == "" { return "" }
 		return strings.clone(i18n.tr("Waiting for the system's answer…"), allocator)
 	case .Bound:
-		if asked == "" || same_keys(asked, st.trigger) { return fmt.aprintf(i18n.tr("Works in every program: %s."), st.trigger, allocator = allocator) }
-		return fmt.aprintf(i18n.tr("The system gave other keys: %s. Change them in its shortcut settings."), st.trigger, allocator = allocator)
+		// (the keys in the language's words, whatever words the system used: "CTRL+SHIFT+a" reads "Ctrl+Maj+A")
+		if asked == "" || same_keys(asked, st.trigger) { return fmt.aprintf(i18n.tr("Works in every program: %s."), platform.key_text(st.trigger), allocator = allocator) }
+		return fmt.aprintf(i18n.tr("The system gave other keys: %s. Change them in its shortcut settings."), platform.key_text(st.trigger), allocator = allocator)
 	case .No_Keys:
 		if asked == "" { return strings.clone(i18n.tr("No keys."), allocator) }
 		return strings.clone(i18n.tr("The system gave no keys yet: choose them in its shortcut settings."), allocator)
@@ -34,7 +35,7 @@ problem_text :: proc(asked: string, st: Status, allocator := context.temp_alloca
 		}
 	}
 	#partial switch st.state {
-	case .Taken:   return fmt.aprintf(i18n.tr("Another program holds %s: choose other keys."), st.trigger, allocator = allocator)
+	case .Taken:   return fmt.aprintf(i18n.tr("Another program holds %s: choose other keys."), platform.key_text(st.trigger), allocator = allocator)
 	case .Refused: return strings.clone(i18n.tr("The system refused this shortcut."), allocator)
 	case .Unavailable:
 		if asked == "" { return "" }

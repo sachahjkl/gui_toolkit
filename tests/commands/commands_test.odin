@@ -104,6 +104,8 @@ command_texts :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.command_keys_text(PALETTE_COMMANDS[3]), "Ctrl+K, Ctrl+Shift+P")
 	testing.expect_value(t, ui.command_tip(PALETTE_COMMANDS[1]), "Kill… (Shift+Delete)")
 	testing.expect_value(t, ui.command_tip({label = "Open"}), "Open")
+	testing.expect_value(t, ui.key_tip("Settings", {.Comma, {.Ctrl}}), "Settings (Ctrl+,)")
+	testing.expect_value(t, ui.key_tip("Open the folder", {}), "Open the folder")
 }
 
 @(test)

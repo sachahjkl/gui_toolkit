@@ -35,7 +35,7 @@ hotkey_field :: proc(id: string, hk: ^platform.Hotkey) -> (changed: bool) {
 		}
 	}
 	empty := hk.key == .None && hk.char == 0
-	text := recording ? i18n.tr("Press the keys…") : empty ? i18n.tr("Click, then press the keys") : platform.hotkey_text(hk^)
+	text := recording ? i18n.tr("Press the keys…") : empty ? i18n.tr("Click, then press the keys") : platform.key_text(hk^)
 	if !s.has_next || s.next_mod.height == nil { next({height = px(math.round(em * 2))}) }
 	push_tags("input")
 	if recording || empty { push_tags("weak") }

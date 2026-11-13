@@ -95,6 +95,38 @@ widgets_survive_odd_arguments :: proc(t: ^testing.T) {
 	}
 }
 
+Fit_Run :: struct { labels: []string, sel: int, given: bool, fit, placed, need: f32 }
+
+build_fit :: proc(f: ^Fx, user: rawptr) {
+	r := (^Fit_Run)(user)
+	// (the rect the frame before placed: a build reads the last layout)
+	if b := ui.box_from_key(ui.key_from_string(ui.parent_box().key, "###fit")); b != nil { r.placed = b.rect.max.x - b.rect.min.x }
+	st := ui.top_style()
+	r.need = 0
+	for l in r.labels { r.need = max(r.need, ui.text_width(st.font, ui.font_size(), l) + 2 * st.text_pad) }
+	r.fit = ui.segmented_width(r.labels)
+	if r.given { ui.next({width = ui.px(120), height = ui.px(30)}) }
+	ui.segmented("###fit", r.labels, &r.sel)
+}
+
+// A segmented control with no width given is as wide as its labels need: every segment holds the widest label with its
+// padding (a language's longer word is never cut). A width given is kept.
+@(test)
+a_segmented_control_fits_its_labels :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Fit_Run{labels = {"Tout", "Épinglés", "Images et captures d'écran"}}
+	for _ in 0 ..< 3 { frame(&f, nil, build_fit, &r) }
+	testing.expectf(t, r.placed == r.fit, "placed %v, segmented_width %v", r.placed, r.fit)
+	pad := math.round(f32(15) * 0.25)   // (the track's padding at a font size of 15)
+	segment := (r.fit - 2 * pad) / f32(len(r.labels))
+	testing.expectf(t, segment >= r.need, "a segment of %v holds a label of %v", segment, r.need)
+	r.given = true
+	for _ in 0 ..< 3 { frame(&f, nil, build_fit, &r) }
+	testing.expect_value(t, r.placed, 120)
+}
+
 @(test)
 theme_edited_before_the_palette :: proc(t: ^testing.T) {
 	th: ui.Theme

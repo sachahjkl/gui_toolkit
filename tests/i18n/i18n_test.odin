@@ -150,7 +150,7 @@ each_catalogue_is_its_domain :: proc(t: ^testing.T) {
 	testing.expect_value(t, i18n.tr_text("Paste", toolkit), "Coller")
 	// the other domain's text: the program's in the toolkit's widgets, the toolkit's in the program
 	testing.expect_value(t, i18n.tr_text("Open the history", toolkit), "Ouvrir l'historique")
-	testing.expect_value(t, i18n.tr("Search settings"), "Chercher un réglage")
+	testing.expect_value(t, i18n.tr("Search settings"), "Rechercher un réglage")
 }
 
 // French typography is set at load: the space before : ; ? ! % » and after « never ends a line; a format verb, a time, an

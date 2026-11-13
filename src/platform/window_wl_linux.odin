@@ -1308,7 +1308,7 @@ wl_wait :: proc(w: ^Window, timeout_ms: int) {
 	for {
 		// (what a roundtrip read: poll(2) would not see it; kept for the next poll_events)
 		wl_read_available()
-		if wait_is_over(w) || clipboard_sequence() != clip_was { return }
+		if wl_wait_over(w) || clipboard_sequence() != clip_was { return }
 		wl.display_flush(wlc.display)
 		left := -1
 		if timeout_ms > 0 {
@@ -1321,6 +1321,18 @@ wl_wait :: proc(w: ^Window, timeout_ms: int) {
 		r := poll_sources(w, wl_fd(w), wl_poll_timeout(left))
 		if !r.conn || r.other { return }   // (the time, a key's repeat, or another source)
 	}
+}
+
+// Whether the wait of `w` is over. A loop sleeps for all the windows of its thread at once, on one of them (host.hosts_wait
+// waits on the first shown), and one connection brings the events of all: a configure of another shown window (the size
+// a tiling compositor gives it, at its mapping or later) asks that window's repaint, which must end the wait too. Else the
+// window kept its last size until something came for the one waited on. (Its input stays out: a window the loop does
+// not frame could hold some for ever; a hidden window's repaint waits for its show, as wait_is_over says.)
+@(private)
+wl_wait_over :: proc(w: ^Window) -> bool {
+	if wait_is_over(w) { return true }
+	for x in wlc.windows { if x != w && x.paint_requested && x.show != .Hidden { return true } }
+	return false
 }
 
 @(private)

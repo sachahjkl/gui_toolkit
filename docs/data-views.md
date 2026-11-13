@@ -213,6 +213,20 @@ view.search_key = ui.line_edit("###search", &view.search, {placeholder = "Filter
 `segmented(id, labels, selected, tips)` shows `tips[i]` when the pointer rests on segment `i` ("" or a missing entry: no
 tooltip). A screen reader reads it as the segment's description.
 
+## A segmented control's width
+
+With no width given (`next`), a segmented control (`look = .Pills`) is `segmented_width(labels)` wide: every segment
+holds the widest label with its padding, in the style in effect, so a language's longer word widens the control instead
+of being cut. A width given is kept. A layout that must know the width before the control is built (to put it on a line
+of its own when the window is narrow) calls `segmented_width` itself:
+
+```odin
+fits := room - ui.segmented_width(labels[:]) >= search_least
+ui.segmented("###filter", labels[:], &app.filter)   // segmented_width wide
+```
+
+Tests: `tests/ui_robust` (`a_segmented_control_fits_its_labels`).
+
 Tests: `tests/data_views` (the table, type to filter, a segment's tooltip).
 
 ### What a search found

@@ -974,7 +974,7 @@ a_hotkey_field_records_super :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^
 	session.frame(s)
 	testing.expect_value(t, recorded, platform.Hotkey{key = .S, super = true})
 	testing.expect(t, !ui.hotkey_recording(), "done")
-	testing.expect(t, session.find_text(s, platform.hotkey_text({key = .S, super = true})) != nil, "it shows")
+	testing.expect(t, session.find_text(s, platform.key_text(platform.Hotkey{key = .S, super = true})) != nil, "it shows")
 }) }
 
 // Escape gives the recording up: the value stays.

@@ -35,14 +35,30 @@ ui.shortcuts_sheet(&app.sheet, "keys", COMMANDS[:])   // app.sheet.open = true s
 |---|---|
 | `Chord{key, mods}` | a key and its modifiers; the zero value is no key |
 | `Command{label, group, keys, icon, tags}` | `keys`: its chords, as many as it has (`[]Chord`; Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=), the first one shown in menus and tooltips (a zero chord among them is none); `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
-| `chord_text(chord)` | `Ctrl+Shift+P`, `Shift+Delete`, `F5`: modifiers in the order Ctrl, Shift, Alt |
-| `key_name(key)` | a key's printed name (`Page Down`, `Enter`, `Escape`) |
+| `chord_text(chord)` | `Ctrl+Shift+P`, `Shift+Delete`, `F5`: modifiers in the order Ctrl, Shift, Alt; in the language in use (`Ctrl+Maj+P`): the words of `platform.key_text`, which names a `Key`, a `Hotkey` and keys written in English (below) |
+| `key_tip(label, chord)` | a tooltip's text for a control that is no command: `Settings (Ctrl+,)`, the label alone with no key |
 | `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |
 | `command_pressed(c, disabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act (`disabled`) takes no key |
 | `palette_open(&p)` | opens the palette (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty |
 | `palette(&p, commands, disabled, o) -> (int, resized)` | while it is open: the commands under their groups' headings, each with its icon and its first key; the index chosen, or -1; `resized`: the user changed its size (`p.size`, logical pixels: keep it). Ctrl, Alt or Shift with Enter chooses too: `p.chosen_mods` says which |
 | `Palette_Options{memory, names, recent_title, first, keys, foot, version}` | what a program adds: `version`, its commands' version (below); what the user chose before (`memory`, a `Choice_Memory`, and each command's key in it, `names`; below), the heaviest choices on top under their heading ("Recent") while nothing is typed and a match raised by its weight while something is; a command first while something is (an alias typed whole); per command the text of its keys as the program shows them (its user's own, a sequence "Ctrl+M, T"); a line under the list |
 | `shortcuts_sheet(&sheet, id, commands, title, version)`, `shortcuts_sheet_destroy(&sheet)` | while `sheet.open` (a `Shortcuts_Sheet`, the program's): a dialog, every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `version` as the palette's |
+
+### A key's text
+
+Every text a person reads names a key with `platform.key_text`, in the language in use; the toolkit's catalogue has the
+words (context `key`: Shift is `Maj` in French, Print `Impr. écran`, Page Down `Pg suiv`). A program adds none.
+
+| Call | English | French |
+|---|---|---|
+| `platform.key_text(.Page_Down)` | `Page Down` | `Pg suiv` |
+| `platform.key_text(platform.Hotkey{key = .Print, mods = {.Shift}})` | `Shift+Print` | `Maj+Impr. écran` |
+| `platform.key_text("Ctrl+K, Ctrl+Shift+P")` | `Ctrl+K, Ctrl+Shift+P` | `Ctrl+K, Ctrl+Maj+P` |
+| `ui.chord_text({.Escape, {}})` | `Escape` | `Échap` |
+
+The text form reads `hotkey_text`'s words (`Page_Up`, `Return`), a portal's (`CTRL+SHIFT+a`) and the usual short ones
+(`Esc`, `Enter`, `PageDown`, `Del`), a list apart by commas; a word that names no key (`,`, `ù`) stays as it is. A file
+keeps `platform.hotkey_text`'s English, never this text: `hotkey_parse` reads that one back.
 
 ### Nothing in proportion to the commands at a frame
 
