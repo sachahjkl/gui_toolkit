@@ -7,6 +7,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:testing"
 import "../fsx"
+import signing "../signing"
 
 @(private = "file")
 STORE_PRODUCT :: Product{
@@ -25,7 +26,7 @@ STORE_PRODUCT :: Product{
 
 @(private = "file")
 issued :: proc(seed_text: string) -> string {
-	seed, _ := key_decode(seed_text)
+	seed, _ := signing.key_decode(seed_text)
 	text, ok := sign(STORE_PRODUCT, seed[:], {edition = "supporter", name = "Jeanne Dupont", email = "jeanne@example.org", date = "2026-10-22", order = "SAMPLE-0001"}, context.temp_allocator)
 	assert(ok)
 	return text

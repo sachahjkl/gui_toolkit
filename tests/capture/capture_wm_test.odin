@@ -25,7 +25,7 @@ HYPR_CLIENTS :: `[
 @(test)
 hyprland_orders_by_focus_and_says_visible :: proc(t: ^testing.T) {
 	list, ok := wm.hyprland_parse(HYPR_CLIENTS, HYPR_MONITORS)
-	defer wm.windows_free(list)
+	defer wm.windows_destroy(list)
 	testing.expect(t, ok)
 	if !testing.expect_value(t, len(list), 5) { return }
 	testing.expect_value(t, list[0].app_id, "firefox")
@@ -74,7 +74,7 @@ SWAY_TREE :: `{"id": 1, "type": "root", "nodes": [
 @(test)
 sway_floating_first_then_focus_order :: proc(t: ^testing.T) {
 	list, ok := wm.sway_parse(SWAY_TREE)
-	defer wm.windows_free(list)
+	defer wm.windows_destroy(list)
 	testing.expect(t, ok)
 	if !testing.expect_value(t, len(list), 3) { return }   // (the empty container is not a window)
 	testing.expect_value(t, list[0].app_id, "pavucontrol")

@@ -63,18 +63,18 @@ own order (a pool per connection; the pictures last asked for first).
 
 | Procedure | |
 |---|---|
-| `start(p, Options)` | `threads` started now (0: none, see below), `grow` more while all are held for `stuck` (1 s), an added one ending after `extra_idle` (5 s) with nothing to do; `newest_first`; `clock` a test's clock |
-| `add(p, work, data, Add{after_ms, urgent})` | work for a thread: in the order it came (or the newest first), `urgent` before all that waits, `after_ms` from now with no thread asleep for it. False once `stop` began |
-| `stop(p, drop = nil, bound = 0)` | without `drop`, what waits runs first (timed work too); with it, what waits does not run and `drop` gets its data. The threads are joined: work that hangs holds the stop, unless `bound` > 0: then it returns false after that long and leaves the pool to the process's end (a later `stop` joins it) |
-| `ask(p, &job)` | a run of a `Job{work, data}`: asked while one waits, nothing more; asked while it runs, one more run after it |
-| `busy(p, &job)` | a run waits or goes on |
-| `state(p)`, `wait_rest(p, bound)` | for tests: what waits and runs; until it rests |
+| `start(p, Pool_Options)` | `threads` started now (0: none, see below), `grow` more while all are held for `stuck` (1 s), an added one ending after `extra_idle` (5 s) with nothing to do; `newest_first`; `clock` a test's clock |
+| `add(p, work, data, Add_Options{after_ms, urgent})` | work for a thread: in the order it came (or the newest first), `urgent` before all that waits, `after_ms` from now with no thread asleep for it. False once `stop` began |
+| `stop(p, lost = nil, bound = 0)` | without `lost`, what waits runs first (timed work too); with it, what waits does not run and `lost` gets its data (as `ui.task`'s `lost`). The threads are joined: work that hangs holds the stop, unless `bound` > 0: then it returns false after that long and leaves the pool to the process's end (a later `stop` joins it) |
+| `job_ask(p, &job, Add_Options{})` | a run of a `Job{work, data}`: asked while one waits, nothing more; asked while it runs, one more run after it |
+| `job_busy(p, &job)` | a run waits or goes on |
+| `counts(p) -> Counts`, `wait_rest(p, bound)` | for tests: how much waits and runs, how many threads; until it rests |
 
 A reader asked again and again (a folder read again each time it changes, a scan of every process) is a `Job`: its work
 reads into a result of its own, then posts it (`ui.post`) or swaps it in under a lock of its own.
 
 **A pool of no thread** (`threads = 0`) runs work at once on the thread that adds it, and timed work when `pump(p)` says,
-by `Options.clock` (`poke(p)` after the test moves it): a test drives it in its own order and by its own clock.
+by `Pool_Options.clock` (`poke(p)` after the test moves it): a test drives it in its own order and by its own clock.
 
 Tests: `src/tasks/tasks_test.odin` (order, urgent and newest first, the test's clock, a job's merged asks, a held pool
 that grows then shrinks, a stop that hands back what waits), `tests/post/task_test.odin` (a task's result on the

@@ -2,7 +2,7 @@ package tk_prefs_page
 
 // Export and Import, at the foot of the sidebar. Export writes the user's settings (what differs from the defaults) in
 // the format of the file's extension: JSON (as the settings.json of Zed or VS Code), TOML, INI, or this program's own
-// (config.export_own), which Import reads back: settings carried from one machine to another. The other formats are
+// (config.export with .Own), which Import reads back: settings carried from one machine to another. The other formats are
 // written only (docs/config.md, "Export").
 //
 // The dialogs and the disk are tasks: the system's file dialog (ui.file_dialog), then the text made here (it reads the
@@ -19,14 +19,12 @@ import "../fsx"
 import "../platform"
 import "../ui"
 
-// The formats Export writes, in the order of its dialog's types.
-Export_Format :: enum u8 { Json, Toml, Ini, Own }
-
-@(private = "file", rodata) EXPORT_EXTS := [Export_Format]string{.Json = "json", .Toml = "toml", .Ini = "ini", .Own = "txt"}
+// The extension of each format (config.Export_Format: the order of the dialog's types).
+@(private = "file", rodata) EXPORT_EXTS := [config.Export_Format]string{.Json = "json", .Toml = "toml", .Ini = "ini", .Own = "txt"}
 
 // The format of a file by its extension ("settings.json": Json); a name with none of them: `chosen`, the type picked in
 // the dialog.
-export_format_of :: proc(path: string, chosen := Export_Format.Json) -> Export_Format {
+export_format_of :: proc(path: string, chosen := config.Export_Format.Json) -> config.Export_Format {
 	dot := strings.last_index_byte(path, '.')
 	slash := max(strings.last_index_byte(path, '/'), strings.last_index_byte(path, '\\'))
 	if dot > slash {
@@ -34,17 +32,6 @@ export_format_of :: proc(path: string, chosen := Export_Format.Json) -> Export_F
 		for e, f in EXPORT_EXTS { if ascii.equal_fold(ext, e) { return f } }
 	}
 	return chosen
-}
-
-// The user's settings as the text of `format`.
-export_text :: proc(prefs: ^config.Prefs, format: Export_Format, allocator := context.allocator) -> string {
-	switch format {
-	case .Json: return config.export_json(prefs, allocator = allocator)
-	case .Toml: return config.export_toml(prefs, allocator = allocator)
-	case .Ini:  return config.export_ini(prefs, allocator = allocator)
-	case .Own:  return config.export_own(prefs, allocator = allocator)
-	}
-	return ""
 }
 
 // The Export button: the system's dialog to save, then export_to.
@@ -60,7 +47,7 @@ export_ask :: proc(p: ^Page) {
 		proc(r: platform.Dialog_Result, user: rawptr) {
 			p := (^Page)(user)
 			if r.status != .Chosen || len(r.paths) == 0 { return }
-			chosen := Export_Format(clamp(r.filter, 0, int(max(Export_Format))))
+			chosen := config.Export_Format(clamp(r.filter, 0, int(max(config.Export_Format))))
 			export_to(p, r.paths[0], export_format_of(r.paths[0], chosen))
 		}, p)
 }
@@ -75,11 +62,11 @@ Write_Job :: struct {
 
 // Writes the user's settings to `path` in `format`: the text is made now, a task writes it; what came of it shows at the
 // foot of the sidebar (Page.note). The page's state must be built once (build) before.
-export_to :: proc(p: ^Page, path: string, format: Export_Format) {
+export_to :: proc(p: ^Page, path: string, format: config.Export_Format) {
 	if p.state == nil || p.prefs == nil { return }
 	a := runtime.heap_allocator()
 	j := new(Write_Job, a)
-	j^ = {page = p, path = strings.clone(path, a), text = export_text(p.prefs, format, a)}
+	j^ = {page = p, path = strings.clone(path, a), text = config.export(p.prefs, format, allocator = a)}
 	work :: proc(d: rawptr) {
 		j := (^Write_Job)(d)
 		j.ok = fsx.write_atomic(j.path, transmute([]u8)j.text)
@@ -124,7 +111,7 @@ Import_Job :: struct {
 	ok:   bool,
 }
 
-// Reads settings exported in this program's own format (Export_Format.Own) from `path`: a task reads the file, then its
+// Reads settings exported in this program's own format (config.Export_Format.Own) from `path`: a task reads the file, then its
 // values are the user's, as if set on the page (Options.changed for each that changed; the loop's writer saves them).
 // What came of it shows at the foot of the sidebar.
 import_from :: proc(p: ^Page, path: string) {

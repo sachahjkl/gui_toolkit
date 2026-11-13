@@ -1,6 +1,6 @@
 package tk_flowgraph
 
-// A run of a graph: pure, on one thread (the interface's), tested without a window. The program starts it (run_start),
+// A run of a graph: pure, on one thread (the interface's), tested without a window. The program starts it (run_init),
 // takes the nodes that are ready (run_next), does each one's work where its kind says (a job of a worker, the interface,
 // a person), and gives back how it ended (run_finish, run_cancel, run_skip). The run is over when every node is decided
 // (run_over).
@@ -151,20 +151,20 @@ Result :: struct {
 	outputs: [PORTS_MAX]Value,     // Done: each value output's value, by port (payload nil: not made); taken
 }
 
-// Starts a run of `g` (copied) against `cat` (kept: it must outlive the run). Every node waits.
-run_start :: proc(run: ^Run, g: Graph, cat: ^Catalog, opts: Run_Options = {}) {
-	run^ = {id = opts.id, dry = opts.dry, catalog = cat}
+// A run of `g` (copied) against `cat` (kept: it must outlive the run), made in `run`. Every node waits.
+run_init :: proc(run: ^Run, g: Graph, cat: ^Catalog, o: Run_Options = {}) {
+	run^ = {id = o.id, dry = o.dry, catalog = cat}
 	run.graph = graph_clone(g)
 	run.nodes = make([]Run_Node, len(run.graph.nodes))
 }
 
-run_free :: proc(run: ^Run) {
+run_destroy :: proc(run: ^Run) {
 	for &rn in run.nodes {
 		for &o in rn.outputs { value_release(&o.value) }
 		delete(rn.message)
 	}
 	delete(run.nodes)
-	graph_free(&run.graph)
+	graph_destroy(&run.graph)
 	run^ = {}
 }
 

@@ -109,7 +109,7 @@ stream_close :: proc(st: ^Stream) {
 
 @(private = "file")
 stream_free :: proc(st: ^Stream) {
-	frame_ring_free(&st.ring)
+	frame_ring_destroy(&st.ring)
 	delete(st.scratch)
 	free(st, st.allocator)
 }
@@ -226,7 +226,7 @@ frame_ring_return :: proc(r: ^Frame_Ring) {
 	r.next = 1 - r.next
 }
 
-frame_ring_free :: proc(r: ^Frame_Ring) {
+frame_ring_destroy :: proc(r: ^Frame_Ring) {
 	for &b in r.buffers { delete(b) }
 	r.buffers = {}
 	r.next = 0

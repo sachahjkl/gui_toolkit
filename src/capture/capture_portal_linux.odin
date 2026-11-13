@@ -149,7 +149,7 @@ portal_outputs :: proc(p: ^Portal_State, s: ^Session) {
 	if p.size.x <= 0 {
 		f, err := portal_screenshot(p, s.allocator)
 		if err != .None { return }
-		frame_free(&f)
+		frame_destroy(&f)
 	}
 	append(&s.outputs, Output{id = 0, name = strings.clone("screen", s.allocator), rect = {0, 0, p.size.x, p.size.y}, scale = 1})
 }

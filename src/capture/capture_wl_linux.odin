@@ -885,7 +885,7 @@ wl_windows :: proc(st: ^Wl_State, provider: wm.Provider, s: ^Session) {
 	} else if st != nil {
 		placed = places_kde_windows(st, s.allocator)
 	}
-	defer wm.windows_free(placed, s.allocator)
+	defer wm.windows_destroy(placed, s.allocator)
 	if st == nil || st.toplevel_list == nil {
 		for p in placed {
 			append(&s.windows, Window{id = p.id, title = strings.clone(p.title, s.allocator), app_id = strings.clone(p.app_id, s.allocator),
@@ -1256,7 +1256,7 @@ wl_desktop :: proc(st: ^Wl_State, allocator: runtime.Allocator) -> (f: Frame, er
 	if len(ids) == 0 { return {}, .Failed }
 	frames := wl_capture_outputs(st, ids[:], allocator) or_return
 	defer {
-		for &p in frames { frame_free(&p) }
+		for &p in frames { frame_destroy(&p) }
 		delete(frames, allocator)
 	}
 	if len(frames) == 1 {

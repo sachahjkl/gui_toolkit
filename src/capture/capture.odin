@@ -11,7 +11,7 @@
 //   f, err := capture.output(s, outs[0].id)   // one screen's picture
 //   d, err := capture.desktop(s)              // every screen in one picture: what a region is cut from
 //   at, out, ok := capture.pointer(s)         // where the pointer is, and on which output (pointer.odin)
-//   capture.frame_free(&f)
+//   capture.frame_destroy(&f)
 //   capture.close(s)
 //
 // A screen recorder opens a stream instead (stream.odin): the source's capture kept open, a frame each time it changed.
@@ -215,7 +215,7 @@ crop_bounds :: proc(f: Frame, r: Rect) -> (x0, y0, w, h: i32, ok: bool) {
 	return x0, y0, w, h, true
 }
 
-frame_free :: proc(f: ^Frame) {
+frame_destroy :: proc(f: ^Frame) {
 	if f.pixels != nil { delete(f.pixels, f.allocator) }
 	f^ = {}
 }

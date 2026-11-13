@@ -9,6 +9,7 @@ import "core:testing"
 import "core:thread"
 import "core:time"
 import "../fsx"
+import signing "../signing"
 
 // A release served on the loopback: its files by name, 404 for the others. Stopped by a last connection of its own.
 @(private = "file")
@@ -65,7 +66,7 @@ release_end :: proc(s: ^Release_Server) {
 
 @(private = "file")
 updater_product :: proc() -> Product {
-	key, _ := public_key_of(TEST_SEED[:], context.temp_allocator)
+	key, _ := signing.public_key_of(TEST_SEED[:], context.temp_allocator)
 	return {name = "app", sign_context = "app-update-v1\n", public_key = key}
 }
 
@@ -82,7 +83,7 @@ program_bytes :: proc(mark: byte) -> []byte {
 @(private = "file")
 release_files :: proc(version: string, program: []byte) -> map[string][]byte {
 	p := updater_product()
-	m := manifest_of(p, program, version, PLATFORM, "", "2026-11-10", context.temp_allocator)
+	m := manifest_of(p, program, {version = version, platform = PLATFORM, published = "2026-11-10"}, context.temp_allocator)
 	bytes := manifest_bytes(p, m, context.temp_allocator)
 	sig, _ := sign(p, TEST_SEED[:], bytes, context.temp_allocator)
 	files := make(map[string][]byte, context.temp_allocator)
@@ -161,7 +162,7 @@ an_update_installed_by_itself :: proc(t: ^testing.T) {
 	defer release_end(s)
 	u := updater_start({product = updater_product(), folder = fmt.tprintf("http://127.0.0.1:%d/", s.port), current = "1.0.0", exe = exe, first_check = time.Millisecond})
 	defer updater_stop(u)
-	set_auto(u, check = true, install = true)
+	set_auto(u, .Install)
 	st := wait_phase(u, .Installed)
 	testing.expect_value(t, st.phase, Phase.Installed)
 	testing.expect(t, !st.asked, "not asked")
@@ -211,7 +212,7 @@ nothing_newer_is_up_to_date :: proc(t: ^testing.T) {
 a_managed_copy_is_left_alone :: proc(t: ^testing.T) {
 	u := updater_start({product = updater_product(), folder = "http://127.0.0.1:9/", current = "1.0.0", exe = "/nix/store/abc-app-1.0.0/bin/app"})
 	defer updater_stop(u)
-	set_auto(u, true, true)
+	set_auto(u, .Install)
 	check_now(u)
 	st := status(u)
 	testing.expect_value(t, st.phase, Phase.Managed)

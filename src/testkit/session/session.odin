@@ -17,7 +17,7 @@
 // the system exists, nothing can take the focus, the mouse or the keyboard of whoever is at the machine), its events go through
 // platform.inject_event and poll_events, the frames are the real renderer's, offscreen, made as fast as they are asked for and
 // readable pixel by pixel. Its time is a clock of its own: `advance` moves it, and nothing here sleeps. A barrier makes frames
-// until what it waits for holds; a deadline only ends a failing run.
+// until what it waits for holds; a bound only ends a failing run.
 //
 // `start` makes a whole application around a `build` procedure. `attach` drives an application that makes its own window,
 // renderer and frames (an example, a browser): the same input, barriers and pixels.
@@ -44,10 +44,10 @@ import "../../platform"
 import "../../render"
 import "../../ui"
 
-// What a test may take in all before the runner stops it (a barrier's deadline comes first).
+// What a test may take in all before the runner stops it (a barrier's bound comes first).
 TEST_LIMIT :: 5 * time.Minute
 // How long a barrier may take before the test is said to have failed (real time).
-DEFAULT_DEADLINE :: 60 * time.Second
+DEFAULT_BOUND :: 60 * time.Second
 // The window when a test does not say.
 DEFAULT_SIZE :: [2]int{800, 600}
 // One frame of the clock, ms: a screen of 60 Hz.
@@ -353,29 +353,29 @@ advance :: proc(s: ^Session, ms: f64, loc := #caller_location) {
 
 // Nothing moves any more: the frames it takes, each one of the usual length to the clock. A timed wake is no movement (a
 // caret blinks for ever): what it waits for is `advance`'s.
-wait_idle :: proc(s: ^Session, deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) {
-	end := time.tick_add(time.tick_now(), deadline)
+wait_idle :: proc(s: ^Session, bound: time.Duration = DEFAULT_BOUND, loc := #caller_location) {
+	end := time.tick_add(time.tick_now(), bound)
 	quiet := 0
 	for quiet < IDLE_BUILDS {
-		if time.tick_diff(time.tick_now(), end) <= 0 { failed(s, fmt.tprintf("%v passed and something still moves", deadline), loc) }
+		if time.tick_diff(time.tick_now(), end) <= 0 { failed(s, fmt.tprintf("%v passed and something still moves", bound), loc) }
 		frame(s)
 		quiet = ui.needs_frame(s.state) ? 0 : quiet + 1
 	}
 }
 
 // Any condition: `ready(s)` is looked at before each frame. What it needs comes as `data` in the second form.
-wait_until_plain :: proc(s: ^Session, ready: proc(s: ^Session) -> bool, what := "a condition", deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) {
-	end := time.tick_add(time.tick_now(), deadline)
+wait_until_plain :: proc(s: ^Session, ready: proc(s: ^Session) -> bool, what := "a condition", bound: time.Duration = DEFAULT_BOUND, loc := #caller_location) {
+	end := time.tick_add(time.tick_now(), bound)
 	for !ready(s) {
-		if time.tick_diff(time.tick_now(), end) <= 0 { failed(s, fmt.tprintf("%v passed waiting for %s", deadline, what), loc) }
+		if time.tick_diff(time.tick_now(), end) <= 0 { failed(s, fmt.tprintf("%v passed waiting for %s", bound, what), loc) }
 		frame(s)
 	}
 }
 
-wait_until_with :: proc(s: ^Session, data: $D, ready: proc(s: ^Session, data: D) -> bool, what := "a condition", deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) {
-	end := time.tick_add(time.tick_now(), deadline)
+wait_until_with :: proc(s: ^Session, data: $D, ready: proc(s: ^Session, data: D) -> bool, what := "a condition", bound: time.Duration = DEFAULT_BOUND, loc := #caller_location) {
+	end := time.tick_add(time.tick_now(), bound)
 	for !ready(s, data) {
-		if time.tick_diff(time.tick_now(), end) <= 0 { failed(s, fmt.tprintf("%v passed waiting for %s", deadline, what), loc) }
+		if time.tick_diff(time.tick_now(), end) <= 0 { failed(s, fmt.tprintf("%v passed waiting for %s", bound, what), loc) }
 		frame(s)
 	}
 }
@@ -383,20 +383,20 @@ wait_until_with :: proc(s: ^Session, data: $D, ready: proc(s: ^Session, data: D)
 wait_until :: proc { wait_until_plain, wait_until_with }
 
 // A box with this name is in the tree.
-wait_box :: proc(s: ^Session, name: string, deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) -> ^ui.Box {
-	wait_until(s, name, proc(s: ^Session, name: string) -> bool { return find(s, name) != nil }, fmt.tprintf("the box %q", name), deadline, loc)
+wait_box :: proc(s: ^Session, name: string, bound: time.Duration = DEFAULT_BOUND, loc := #caller_location) -> ^ui.Box {
+	wait_until(s, name, proc(s: ^Session, name: string) -> bool { return find(s, name) != nil }, fmt.tprintf("the box %q", name), bound, loc)
 	return find(s, name)
 }
 
 // A box shows this text (ASCII case does not count).
-wait_text :: proc(s: ^Session, text: string, deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) -> ^ui.Box {
-	wait_until(s, text, proc(s: ^Session, text: string) -> bool { return find_text(s, text) != nil }, fmt.tprintf("the text %q", text), deadline, loc)
+wait_text :: proc(s: ^Session, text: string, bound: time.Duration = DEFAULT_BOUND, loc := #caller_location) -> ^ui.Box {
+	wait_until(s, text, proc(s: ^Session, text: string) -> bool { return find_text(s, text) != nil }, fmt.tprintf("the text %q", text), bound, loc)
 	return find_text(s, text)
 }
 
 // No box with this name any more.
-wait_gone :: proc(s: ^Session, name: string, deadline: time.Duration = DEFAULT_DEADLINE, loc := #caller_location) {
-	wait_until(s, name, proc(s: ^Session, name: string) -> bool { return find(s, name) == nil }, fmt.tprintf("the box %q to go", name), deadline, loc)
+wait_gone :: proc(s: ^Session, name: string, bound: time.Duration = DEFAULT_BOUND, loc := #caller_location) {
+	wait_until(s, name, proc(s: ^Session, name: string) -> bool { return find(s, name) == nil }, fmt.tprintf("the box %q to go", name), bound, loc)
 }
 
 ////////////////////////////////

@@ -86,7 +86,7 @@ graph_make :: proc(app: ^App) {
 graph_destroy :: proc(app: ^App) {
 	ui.node_inspector_destroy(&app.inspector)
 	ui.flow_nodes_destroy(&app.flow)
-	flowgraph.graph_free(&app.graph)
+	flowgraph.graph_destroy(&app.graph)
 	delete(app.selected)
 }
 

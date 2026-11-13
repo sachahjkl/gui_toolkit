@@ -6,6 +6,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../fsx"
+import signing "../signing"
 import licence "../licence"
 
 @(private = "file")
@@ -60,9 +61,9 @@ licence_keys_and_issue :: proc(t: ^testing.T) {
 	file, _ := os.read_entire_file(out, context.temp_allocator)
 	testing.expect(t, strings.has_prefix(string(file), "# Sample licence (Patron) for Jeanne Dupont\n# Order SAMPLE-7, 2026-10-22.\n# Open this file with Sample.\n"), string(file))
 	data, _ := os.read_entire_file(key_file, context.temp_allocator)
-	seed, ok := licence.key_decode(licence.normalize(string(data), context.temp_allocator))
+	seed, ok := signing.key_decode(licence.normalize(string(data), context.temp_allocator))
 	testing.expect(t, ok)
-	pub, _ := licence.public_key_of(seed[:], context.temp_allocator)
+	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	lic, err := licence.verify(TOOL_PRODUCT, string(file), pub, context.temp_allocator)
 	testing.expect_value(t, err, licence.Error.None)
 	testing.expect_value(t, lic.edition, "patron")

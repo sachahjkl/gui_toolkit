@@ -11,15 +11,40 @@ package tk_config
 //
 // The writers build the text by hand: a value is data and never reaches a format string.
 
+import "base:runtime"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
 
-// Our own format: a tag line (USER_MAGIC), then `name<TAB>value` sorted by name, with `\\`, `\n`, `\r`, `\t` escapes.
-// With `all = false` it is the profile file's text: the user's changes (and only those), with the values a higher layer
-// hides and those no definition registers in this run. Pure and cheap (a few KiB): the loop calls it, then hands the text
-// to write_user_file on any thread, and records `p.user_version` as the version this text has.
-export_own :: proc(p: ^Prefs, all := false, allocator := context.allocator) -> string {
+// The formats of export.
+//
+//   - Own: a tag line (USER_MAGIC), then `name<TAB>value` sorted by name, with `\\`, `\n`, `\r`, `\t` escapes. With
+//     `all = false` it is the profile file's text: the user's changes (and only those), with the values a higher layer
+//     hides and those no definition registers in this run. Pure and cheap (a few KiB): the loop calls it, then hands the
+//     text to write_user_file on any thread, and records `p.user_version` as the version this text has.
+//   - Json: one flat object, a key per preference, as the settings.json of Zed or VS Code (`{"appearance.theme": "dark"}`).
+//     A Float always has a decimal point or an exponent, so a reader keeps its type.
+//   - Toml: a table per group, a key per preference (its name's last segment): `[appearance.text]` then `gamma = 1.8`. A
+//     name of one segment goes before the first table. A preference whose name is also a group's path ("browser.tabs"
+//     and "browser.tabs.width") cannot be a key and a table at once: it goes there too, under its whole name quoted
+//     (`"browser.tabs" = true`).
+//   - Ini: a section per group, `key=value` per preference (its name's last segment). A name of one segment goes before
+//     the first section. INI has no standard escapes: a string is written as it is, and between double quotes with the
+//     escapes of JSON when it would not read back so (spaces at an end, a control character, `"`, `\`, `;` or `#`).
+Export_Format :: enum u8 { Json, Toml, Ini, Own }
+
+// The preferences as the text of `format`.
+export :: proc(p: ^Prefs, format: Export_Format, all := false, allocator := context.allocator) -> string {
+	switch format {
+	case .Own:  return own_text(p, all, allocator)
+	case .Json: return json_text(p, all, allocator)
+	case .Toml, .Ini: return export_tables(p, all, format, allocator)
+	}
+	return ""
+}
+
+@(private = "file")
+own_text :: proc(p: ^Prefs, all: bool, allocator: runtime.Allocator) -> string {
 	sb := strings.builder_make(allocator)
 	strings.write_string(&sb, USER_MAGIC)
 	strings.write_byte(&sb, '\n')
@@ -40,15 +65,8 @@ export_own :: proc(p: ^Prefs, all := false, allocator := context.allocator) -> s
 	return strings.to_string(sb)
 }
 
-// One flat object, a key per preference, as the settings.json of Zed or VS Code:
-//
-//   {
-//     "appearance.text.gamma": 1.8,
-//     "appearance.theme": "dark"
-//   }
-//
-// A Float always has a decimal point or an exponent, so a reader keeps its type.
-export_json :: proc(p: ^Prefs, all := false, allocator := context.allocator) -> string {
+@(private = "file")
+json_text :: proc(p: ^Prefs, all: bool, allocator: runtime.Allocator) -> string {
 	sb := strings.builder_make(allocator)
 	items := exported(p, all)
 	if len(items) == 0 {
@@ -60,45 +78,12 @@ export_json :: proc(p: ^Prefs, all := false, allocator := context.allocator) -> 
 		strings.write_string(&sb, "  ")
 		quoted(&sb, it.name)
 		strings.write_string(&sb, ": ")
-		typed(&sb, it, .JSON)
+		typed(&sb, it, .Json)
 		strings.write_string(&sb, i + 1 < len(items) ? ",\n" : "\n")
 	}
 	strings.write_string(&sb, "}\n")
 	return strings.to_string(sb)
 }
-
-// A table per group, a key per preference (its name's last segment):
-//
-//   [appearance]
-//   theme = "dark"
-//
-//   [appearance.text]
-//   gamma = 1.8
-//
-// A name of one segment goes before the first table. A preference whose name is also a group's path ("browser.tabs" and
-// "browser.tabs.width") cannot be a key and a table at once: it goes there too, under its whole name quoted
-// (`"browser.tabs" = true`).
-export_toml :: proc(p: ^Prefs, all := false, allocator := context.allocator) -> string {
-	return export_tables(p, all, .TOML, allocator)
-}
-
-// A section per group, `key=value` per preference (its name's last segment):
-//
-//   [appearance]
-//   theme=dark
-//
-//   [appearance.text]
-//   gamma=1.8
-//
-// A name of one segment goes before the first section. INI has no standard escapes: a string is written as it is, and
-// between double quotes with the escapes of JSON when it would not read back so (spaces at an end, a control character,
-// `"`, `\`, `;` or `#`).
-export_ini :: proc(p: ^Prefs, all := false, allocator := context.allocator) -> string {
-	return export_tables(p, all, .INI, allocator)
-}
-
-@(private = "file")
-Format :: enum u8 { JSON, TOML, INI }
 
 // A preference an export writes, with the value it has in the chosen layer.
 @(private = "file")
@@ -136,10 +121,10 @@ exported :: proc(p: ^Prefs, all: bool) -> []Item {
 
 // TOML and INI: the preferences of no group first, then a table per group, in the order of their paths.
 @(private = "file")
-export_tables :: proc(p: ^Prefs, all: bool, format: Format, allocator := context.allocator) -> string {
+export_tables :: proc(p: ^Prefs, all: bool, format: Export_Format, allocator := context.allocator) -> string {
 	sb := strings.builder_make(allocator)
 	items := exported(p, all)
-	if format == .TOML {
+	if format == .Toml {
 		// a key cannot also be a table: a name that is a group's path goes to the top, whole
 		groups := make(map[string]bool, context.temp_allocator)
 		for it in items { for path in path_of(it.name) { groups[path] = true } }
@@ -152,7 +137,7 @@ export_tables :: proc(p: ^Prefs, all: bool, format: Format, allocator := context
 	for table in tables {
 		if len(sb.buf) > 0 { strings.write_byte(&sb, '\n') }
 		strings.write_byte(&sb, '[')
-		if format == .TOML {
+		if format == .Toml {
 			rest := table
 			first := true
 			for segment in strings.split_iterator(&rest, ".") {
@@ -170,8 +155,8 @@ export_tables :: proc(p: ^Prefs, all: bool, format: Format, allocator := context
 }
 
 @(private = "file")
-table_line :: proc(sb: ^strings.Builder, it: Item, format: Format) {
-	if format == .TOML {
+table_line :: proc(sb: ^strings.Builder, it: Item, format: Export_Format) {
+	if format == .Toml {
 		toml_key(sb, it.key)
 		strings.write_string(sb, " = ")
 	} else {
@@ -184,7 +169,7 @@ table_line :: proc(sb: ^strings.Builder, it: Item, format: Format) {
 
 // A value in the syntax of `format`.
 @(private = "file")
-typed :: proc(sb: ^strings.Builder, it: Item, format: Format) {
+typed :: proc(sb: ^strings.Builder, it: Item, format: Export_Format) {
 	switch it.kind {
 	case .Bool:
 		strings.write_string(sb, it.value.b ? "true" : "false")
@@ -194,9 +179,9 @@ typed :: proc(sb: ^strings.Builder, it: Item, format: Format) {
 		s := float_text(it.value.f)
 		strings.write_string(sb, s)
 		// "2" would read back as an integer
-		if format != .INI && strings.index_any(s, ".eE") < 0 { strings.write_string(sb, ".0") }
+		if format != .Ini && strings.index_any(s, ".eE") < 0 { strings.write_string(sb, ".0") }
 	case .String:
-		if format == .INI && !ini_needs_quotes(it.value.s) {
+		if format == .Ini && !ini_needs_quotes(it.value.s) {
 			strings.write_string(sb, it.value.s)
 		} else {
 			quoted(sb, it.value.s)

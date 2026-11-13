@@ -52,7 +52,7 @@ pacer_poll_waits_an_interval :: proc(t: ^testing.T) {
 @(test)
 ring_alternates_its_buffers :: proc(t: ^testing.T) {
 	r: capture.Frame_Ring
-	defer capture.frame_ring_free(&r)
+	defer capture.frame_ring_destroy(&r)
 	a := capture.frame_ring_take(&r, 16)
 	a[0] = 1
 	b := capture.frame_ring_take(&r, 16)

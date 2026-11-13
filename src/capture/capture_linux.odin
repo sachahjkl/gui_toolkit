@@ -111,7 +111,7 @@ platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 	case .Portal, .X11:
 		// (one picture of the whole desktop, cut to the output)
 		d := platform_desktop(s, allocator) or_return
-		defer frame_free(&d)
+		defer frame_destroy(&d)
 		for o in outputs(s) {
 			if o.id != id { continue }
 			out, ok := crop(d, o.rect, allocator)

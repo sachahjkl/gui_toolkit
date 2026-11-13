@@ -113,11 +113,11 @@ timed_work_waits_for_the_clock :: proc(t: ^testing.T) {
 	e := Entry{&log, 7}
 	add(&p, note, &e, {after_ms = 1000})
 	testing.expect(t, wait_rest(&p, WAIT))
-	testing.expect_value(t, state(&p).timed, 1)
+	testing.expect_value(t, counts(&p).timed, 1)
 	sync.atomic_store(&clock, 1000)
 	poke(&p)
 	deadline := time.tick_now()
-	for state(&p).timed > 0 && time.tick_since(deadline) < WAIT { time.sleep(time.Millisecond) }
+	for counts(&p).timed > 0 && time.tick_since(deadline) < WAIT { time.sleep(time.Millisecond) }
 	testing.expect(t, wait_rest(&p, WAIT))
 	stop(&p)
 	testing.expect_value(t, len(log.order), 1)
@@ -147,12 +147,12 @@ a_jobs_asks_merge :: proc(t: ^testing.T) {
 	p: Pool
 	start(&p, {threads = 2})
 	j := Job{work = job_work, data = &st}
-	testing.expect(t, !busy(&p, &j), "nothing before an ask")
-	ask(&p, &j)
-	testing.expect(t, busy(&p, &j))
+	testing.expect(t, !job_busy(&p, &j), "nothing before an ask")
+	job_ask(&p, &j)
+	testing.expect(t, job_busy(&p, &j))
 	testing.expect(t, sync.sema_wait_with_timeout(&st.started, WAIT), "the run begins")
-	ask(&p, &j)
-	ask(&p, &j)
+	job_ask(&p, &j)
+	job_ask(&p, &j)
 	for _ in 0 ..< 2 {
 		sync.sema_post(&st.gate)
 		testing.expect(t, sync.sema_wait_with_timeout(&st.done, WAIT), "a run")
@@ -161,7 +161,7 @@ a_jobs_asks_merge :: proc(t: ^testing.T) {
 	testing.expect(t, !sync.sema_wait_with_timeout(&st.done, NONE), "no third run")
 	testing.expect(t, wait_rest(&p, WAIT))
 	testing.expect_value(t, st.runs, 2)
-	testing.expect(t, !busy(&p, &j))
+	testing.expect(t, !job_busy(&p, &j))
 	stop(&p)
 }
 
@@ -188,15 +188,15 @@ a_held_pool_grows_and_shrinks :: proc(t: ^testing.T) {
 	if len(log.order) == 1 { testing.expect_value(t, log.order[0], 1) }
 	sync.sema_post(&log.gate)
 	began = time.tick_now()
-	for state(&p).extras > 0 && time.tick_since(began) < WAIT { time.sleep(5 * time.Millisecond) }
-	testing.expect_value(t, state(&p).extras, 0)
+	for counts(&p).extras > 0 && time.tick_since(began) < WAIT { time.sleep(5 * time.Millisecond) }
+	testing.expect_value(t, counts(&p).extras, 0)
 	stop(&p)
 }
 
 @(private = "file")
-Stop_Run :: struct { p: ^Pool, done: sync.Sema, dropped: int }
+Stop_Run :: struct { p: ^Pool, done: sync.Sema, lost: int }
 
-// A stop with `drop`: the work waiting does not run, its data is handed back; nothing is added once it stops; the
+// A stop with `lost`: the work waiting does not run, its data is handed back; nothing is added once it stops; the
 // work that runs ends first.
 @(test)
 a_stop_hands_back_what_waits :: proc(t: ^testing.T) {
@@ -214,7 +214,7 @@ a_stop_hands_back_what_waits :: proc(t: ^testing.T) {
 	th := thread.create_and_start_with_poly_data(&run, proc(r: ^Stop_Run) {
 		@(static) counted: ^Stop_Run
 		counted = r
-		stop(r.p, proc(d: rawptr) { counted.dropped += 1 })
+		stop(r.p, proc(d: rawptr) { counted.lost += 1 })
 		sync.sema_post(&r.done)
 	})
 	began := time.tick_now()
@@ -224,7 +224,7 @@ a_stop_hands_back_what_waits :: proc(t: ^testing.T) {
 	testing.expect(t, sync.sema_wait_with_timeout(&run.done, WAIT), "the stop ends")
 	thread.join(th)
 	thread.destroy(th)
-	testing.expect_value(t, run.dropped, 2)
+	testing.expect_value(t, run.lost, 2)
 	testing.expect_value(t, len(log.order), 1)   // (only the work that ran)
 }
 

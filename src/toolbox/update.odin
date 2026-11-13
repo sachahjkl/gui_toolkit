@@ -13,6 +13,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:time"
+import signing "../signing"
 import update "../update"
 
 // The environment variable of the private key (base64url of its 32 bytes): a secret of the release workflow.
@@ -27,7 +28,7 @@ update_command :: proc(product: update.Product, args: []string) -> int {
 	case what == "pubkey" && len(args) == 1:
 		seed, ok := update_seed()
 		if !ok { return 1 }
-		pub, _ := update.public_key_of(seed[:], context.temp_allocator)
+		pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 		fmt.println(pub)
 		return 0
 	case what == "manifest" && len(args) == 5:
@@ -54,7 +55,7 @@ update_manifest :: proc(product: update.Product, program, version, channel, out:
 	data, err := os.read_entire_file(program, context.temp_allocator)
 	if err != nil { return fmt.tprintf("cannot read %s", program) }
 	y, m, d := time.date(time.now())
-	manifest := update.manifest_of(product, data, version, platform, channel, fmt.tprintf("%04d-%02d-%02d", y, int(m), d), context.temp_allocator)
+	manifest := update.manifest_of(product, data, {version = version, platform = platform, channel = channel, published = fmt.tprintf("%04d-%02d-%02d", y, int(m), d)}, context.temp_allocator)
 	bytes := update.manifest_bytes(product, manifest, context.temp_allocator)
 	sig, signed := update.sign(product, seed[:], bytes, context.temp_allocator)
 	if !signed { return "cannot sign" }
@@ -68,7 +69,7 @@ update_manifest :: proc(product: update.Product, program, version, channel, out:
 update_seed :: proc() -> (seed: [32]byte, ok: bool) {
 	text := strings.trim_space(os.get_env(UPDATE_KEY_ENV, context.temp_allocator))
 	if text == "" { fmt.eprintfln("update: no update key: set %s", UPDATE_KEY_ENV); return }
-	seed, ok = update.seed_decode(text)
+	seed, ok = signing.key_decode(text)
 	if !ok { fmt.eprintfln("update: %s is not an update private key (32 bytes of base64url)", UPDATE_KEY_ENV) }
 	return
 }
@@ -99,8 +100,8 @@ update_keygen :: proc(path: string) -> int {
 	if os.exists(path) { fmt.eprintfln("update: %s exists already: a second key would orphan the releases signed with the first", path); return 1 }
 	seed: [32]byte
 	crypto.rand_bytes(seed[:])
-	text := update.seed_encode(seed[:], context.temp_allocator)
-	pub, _ := update.public_key_of(seed[:], context.temp_allocator)
+	text := signing.key_encode(seed[:], context.temp_allocator)
+	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	if dir := filepath.dir(path); dir != "" { _ = os.make_directory_all(dir) }
 	if os.write_entire_file(path, transmute([]u8)text) != nil { fmt.eprintfln("update: cannot write %s", path); return 1 }
 	fmt.println(pub)   // (the public half only: the private one stays in the file)
@@ -115,7 +116,7 @@ update_verify :: proc(product: update.Product, file, channel: string) -> int {
 	platform := ""
 	for p in update.PLATFORMS { if filepath.base(file) == update.manifest_name(p, channel, context.temp_allocator) { platform = p } }
 	if platform == "" { fmt.eprintfln("update: %s is not named as a manifest of that channel", file); return 1 }
-	m, err := update.verify(product, data, strings.trim_space(string(sig)), platform, channel, context.temp_allocator)
+	m, err := update.verify(product, data, strings.trim_space(string(sig)), {platform = platform, channel = channel}, context.temp_allocator)
 	if err != .None { fmt.eprintln(update.error_text(err)); return 1 }
 	fmt.printfln("good: %s %s", m.version, m.file)
 	return 0

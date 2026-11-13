@@ -17,7 +17,7 @@ entry_of :: proc(name: string, labels: []string, g: Graph) -> (e: Graph_Entry) {
 the_text_gives_back_the_graphs :: proc(t: ^testing.T) {
 	cat := &SAMPLE
 	set: Graph_Set
-	defer set_free(&set)
+	defer set_destroy(&set)
 	set_add(&set, entry_of("Screenshot é", {"region", "screen"}, sample_graph({.Capture, .Resize, .Save, .Reveal}, {{0, 1}, {1, 2}, {2, 3}})))
 	set_add(&set, entry_of("Empty", {}, {}))
 	g := &set.list[0].graph
@@ -38,7 +38,7 @@ the_text_gives_back_the_graphs :: proc(t: ^testing.T) {
 	text := set_text(&set, cat)
 	defer delete(text)
 	back, why := set_parse(text, cat)
-	defer set_free(&back)
+	defer set_destroy(&back)
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(back.list), len(set.list))
 	testing.expect_value(t, back.next_id, set.next_id)
@@ -81,7 +81,7 @@ what_the_text_gets_wrong_is_dropped :: proc(t: ^testing.T) {
 		           {"from": 1, "from_port": 0, "to": 2, "to_port": 0}]},
 		{"id": 4, "name": "B", "nodes": [], "links": []}]}`
 	set, why := set_parse(text, &SAMPLE)
-	defer set_free(&set)
+	defer set_destroy(&set)
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(set.list), 2)
 	a, b := &set.list[0], &set.list[1]
@@ -100,7 +100,7 @@ a_broken_text_is_refused :: proc(t: ^testing.T) {
 	for text in cases {
 		set, why := set_parse(text, &SAMPLE)
 		testing.expectf(t, why != "", "%q is refused", text)
-		set_free(&set)
+		set_destroy(&set)
 	}
 }
 
@@ -109,7 +109,7 @@ a_broken_text_is_refused :: proc(t: ^testing.T) {
 the_format_names_the_keys :: proc(t: ^testing.T) {
 	format := Store_Format{version = 2, list = "workflows", labels = "triggers"}
 	set: Graph_Set
-	defer set_free(&set)
+	defer set_destroy(&set)
 	set_add(&set, entry_of("Edit then share", {"edit"}, sample_graph({.Capture}, {})))
 	text := set_text(&set, &SAMPLE, format)
 	defer delete(text)
@@ -117,7 +117,7 @@ the_format_names_the_keys :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(text, `"triggers": ["edit"]`))
 	testing.expect(t, strings.contains(text, `"version": 2`))
 	back, why := set_parse(text, &SAMPLE, format)
-	defer set_free(&back)
+	defer set_destroy(&back)
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, back.list[0].labels[0], "edit")
 	_, newer := set_parse(text, &SAMPLE)   // (version 2 is newer than the default's 1)

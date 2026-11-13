@@ -18,7 +18,7 @@ DEFS := [?]Def{
 
 // What a program does on one thread: the text, then the file.
 @(private = "file")
-save :: proc(p: ^Prefs, path: string) -> bool { return write_user_file(path, export_own(p, allocator = context.temp_allocator)) }
+save :: proc(p: ^Prefs, path: string) -> bool { return write_user_file(path, export(p, .Own, allocator = context.temp_allocator)) }
 
 @(private = "file")
 Seen :: struct { names: [dynamic]string, calls: int }
@@ -71,6 +71,28 @@ validation :: proc(t: ^testing.T) {
 	testing.expect_value(t, set_from_string(&p, "net.agent", "  spaced  ", .User), Set_Error.None)
 	testing.expect_value(t, string_of(&p, "net.agent"), "  spaced  ")
 	testing.expect_value(t, set_from_string(&p, "no.such", "1", .User), Set_Error.Unknown)
+}
+
+// The typed sets take a name and validate as the text does: a program formats no number.
+@(test)
+typed_sets_by_name :: proc(t: ^testing.T) {
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+	testing.expect_value(t, set_int(&p, "net.max_conns", 12), Set_Error.None)
+	testing.expect_value(t, int_of(&p, "net.max_conns"), 12)
+	testing.expect_value(t, set_int(&p, "net.max_conns", 65), Set_Error.Out_Of_Range)
+	scale := 1.1
+	scale += 0.2   // (1.3000000000000003: the shortest text of it is not "1.3")
+	testing.expect_value(t, set_float(&p, "ui.scale", scale), Set_Error.None)
+	testing.expect_value(t, float_of(&p, "ui.scale"), scale)
+	testing.expect_value(t, set_float(&p, "ui.scale", 9), Set_Error.Out_Of_Range)
+	testing.expect_value(t, set_bool(&p, "net.enabled", false), Set_Error.None)
+	testing.expect_value(t, bool_of(&p, "net.enabled"), false)
+	testing.expect_value(t, set_string(&p, "ui.mode", "neon"), Set_Error.Not_A_Choice)
+	testing.expect_value(t, set_string(&p, "ui.mode", "dark", .Command_Line), Set_Error.None)
+	testing.expect_value(t, set_string(&p, "ui.mode", "light"), Set_Error.Locked)
+	testing.expect_value(t, set_int(&p, "no.such", 1), Set_Error.Unknown)
 }
 
 @(test)
@@ -381,7 +403,7 @@ a_change_during_a_write_is_saved_next :: proc(t: ^testing.T) {
 	defer prefs_destroy(&p)
 	register(&p, DEFS[:])
 	set_from_string(&p, "net.max_conns", "9", .User)
-	text := export_own(&p)
+	text := export(&p, .Own)
 	defer delete(text)
 	written := p.user_version
 	set_from_string(&p, "net.max_conns", "10", .User)   // (on the loop, while the worker writes)
@@ -403,7 +425,7 @@ the_same_layer_gives_the_same_text :: proc(t: ^testing.T) {
 	names := [?]string{"zz.one", "aa.two", "mm.three", "bb.four"}
 	for name in names { set_from_string(&p, name, "1", .User) }
 	set_from_string(&p, "net.max_conns", "9", .User)
-	testing.expect_value(t, export_own(&p, allocator = context.temp_allocator),
+	testing.expect_value(t, export(&p, .Own, allocator = context.temp_allocator),
 		"wbprefs 1\nnet.max_conns\t9\naa.two\t1\nbb.four\t1\nmm.three\t1\nzz.one\t1\n")
 }
 

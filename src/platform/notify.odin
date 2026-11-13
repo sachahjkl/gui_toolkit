@@ -47,7 +47,7 @@ Notification :: struct {
 // refused). From the window loop, on the interface's thread.
 Notify_Done :: #type proc(user: rawptr, id: Notification_Id, ok: bool)
 
-// A copy of `n` that owns its strings and bytes (notification_free): what an asynchronous send keeps until it is out.
+// A copy of `n` that owns its strings and bytes (notification_destroy): what an asynchronous send keeps until it is out.
 notification_clone :: proc(n: Notification, allocator := context.allocator) -> Notification {
 	out := n
 	out.title = strings.clone(n.title, allocator)
@@ -58,7 +58,7 @@ notification_clone :: proc(n: Notification, allocator := context.allocator) -> N
 	return out
 }
 
-notification_free :: proc(n: ^Notification, allocator := context.allocator) {
+notification_destroy :: proc(n: ^Notification, allocator := context.allocator) {
 	delete(n.title, allocator)
 	delete(n.body, allocator)
 	delete(n.icon_png, allocator)

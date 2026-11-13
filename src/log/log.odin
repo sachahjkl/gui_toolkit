@@ -117,7 +117,7 @@ flush :: proc(logger: runtime.Logger) {
 	sync.lock(&l.lock)
 	target := l.queued
 	sync.unlock(&l.lock)
-	tasks.ask(&l.pool, &l.job)
+	tasks.job_ask(&l.pool, &l.job)
 	sync.lock(&l.lock)
 	for l.done < target && !l.closing { sync.cond_wait(&l.written, &l.lock) }
 	sync.unlock(&l.lock)
@@ -190,7 +190,7 @@ logger_proc :: proc(data: rawptr, level: runtime.Logger_Level, text: string, opt
 	l.queued += 1
 	ring_put(l, transmute([]u8)line)
 	sync.unlock(&l.lock)
-	tasks.ask(&l.pool, &l.job)
+	tasks.job_ask(&l.pool, &l.job)
 }
 
 // "2026-11-13T17:03:00.123Z INFO  text (file.odin:12)\n"; a line end inside the text starts a line indented by four spaces.

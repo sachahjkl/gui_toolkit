@@ -47,7 +47,7 @@ prefs_page.standard_watch(&app.standard, &prefs, &app.state, {renderer = &app.r,
 defer prefs_page.standard_unwatch(&app.standard)
 
 a := prefs_page.appearance_read(&prefs)   // the theme: the program shows it; again after each change
-defer prefs_page.appearance_free(&a)
+defer prefs_page.appearance_destroy(&a)
 ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 ```
 
@@ -200,7 +200,7 @@ writes the file off the loop.
 
 **Export…** asks for a file (the system's dialog, `ui.file_dialog`), then writes the user's settings (what differs from
 the defaults) in the format of its extension: JSON (as the `settings.json` of Zed or VS Code), TOML, INI, or the
-program's own (`.txt`: `config.export_own`). The text is made on the interface's thread, a task writes it. **Import…**
+program's own (`.txt`: `config.export` with `.Own`). The text is made on the interface's thread, a task writes it. **Import…**
 reads a file of the program's own format (a task reads it, `config.load_text` sets its values as the user's): settings
 carried from another machine. `Options.changed` hears of each value that changed; the loop's writer saves them. JSON,
 TOML and INI are written only.
@@ -208,10 +208,10 @@ TOML and INI are written only.
 ```odin
 prefs_page.export_to(&page, path, prefs_page.export_format_of(path))   // what the dialog's answer does
 prefs_page.import_from(&page, path)
-text := prefs_page.export_text(&prefs, .Toml)
+text := config.export(&prefs, .Toml)
 ```
 
-`export_format_of(path, chosen = .Json)` is the format of a file's extension (`Export_Format`: `Json`, `Toml`, `Ini`,
+`export_format_of(path, chosen = .Json)` is the format of a file's extension (`config.Export_Format`: `Json`, `Toml`, `Ini`,
 `Own`), else `chosen`. The page must have been built once: its tasks answer to the state it is built in. What came of
 it shows at the sidebar's foot.
 
@@ -239,7 +239,7 @@ opts.themes, opts.themes_file = app.themes_file.all[:], &app.themes_file
   a window at rest is not woken for it, its next build looks.
 - `themes_file_open(tf, state)` makes and opens the file (the link's click); a file that could not be written says so
   under the link (`tf.error`).
-- `themes_file_make(path) -> bool` writes the template, and its folder, when there is no file; a file there is never
+- `themes_file_write_template(path) -> bool` writes the template, and its folder, when there is no file; a file there is never
   touched. It touches the disk: a task's.
 
 Keep the `Themes_File` as long as the `ui.State` its tasks answer to.

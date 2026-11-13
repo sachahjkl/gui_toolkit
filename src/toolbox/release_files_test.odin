@@ -6,6 +6,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:testing"
 import "../paint"
+import signing "../signing"
 import update "../update"
 
 // Each size drawn by the program; the .ico holds its sizes in order, the small ones as DIBs when asked.
@@ -59,7 +60,7 @@ a_version_header :: proc(t: ^testing.T) {
 an_update_manifest_is_signed :: proc(t: ^testing.T) {
 	seed: [32]byte
 	for i in 0 ..< 32 { seed[i] = byte(i + 1) }
-	public, _ := update.public_key_of(seed[:], context.temp_allocator)
+	public, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	product := update.Product{name = "app", sign_context = "app-update-v1\n", public_key = public}
 	base, _ := os.temp_directory(context.temp_allocator)
 	dir := fmt.tprintf("%s/tk_toolbox_update_%d", base, os.get_pid())
@@ -69,13 +70,13 @@ an_update_manifest_is_signed :: proc(t: ^testing.T) {
 	data := make([]u8, update.MIN_BINARY, context.temp_allocator)
 	copy(data, "\x7fELF")
 	_ = os.write_entire_file(program, data)
-	os.set_env(UPDATE_KEY_ENV, update.seed_encode(seed[:], context.temp_allocator))
+	os.set_env(UPDATE_KEY_ENV, signing.key_encode(seed[:], context.temp_allocator))
 	defer os.unset_env(UPDATE_KEY_ENV)
 	out := fmt.tprintf("%s/%s", dir, update.manifest_name(update.PLATFORM_LINUX_X64, "", context.temp_allocator))
 	testing.expect_value(t, update_manifest(product, program, "1.2.3", "", out), "")
 	manifest, _ := os.read_entire_file(out, context.temp_allocator)
 	sig, _ := os.read_entire_file(fmt.tprintf("%s.sig", out), context.temp_allocator)
-	m, err := update.verify(product, manifest, string(sig), update.PLATFORM_LINUX_X64, "", context.temp_allocator)
+	m, err := update.verify(product, manifest, string(sig), {platform = update.PLATFORM_LINUX_X64}, context.temp_allocator)
 	testing.expect_value(t, err, update.Error.None)
 	testing.expect_value(t, m.version, "1.2.3")
 	testing.expect(t, update_manifest(product, program, "1.2.4", "", out) != "", "named for another version")

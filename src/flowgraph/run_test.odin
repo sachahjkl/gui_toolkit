@@ -6,10 +6,10 @@ import "core:testing"
 @(test)
 nodes_run_in_the_order_of_their_links :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Resize, .Save}, {{0, 1}, {1, 2}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	run: Run
 	start_with_capture(&run, g, 4, 4)
-	defer run_free(&run)
+	defer run_destroy(&run)
 	testing.expect_value(t, run.nodes[0].state, Node_State.Done)
 
 	tasks := run_next(&run)
@@ -41,10 +41,10 @@ nodes_run_in_the_order_of_their_links :: proc(t: ^testing.T) {
 @(test)
 fan_out_gives_each_branch_the_same_value :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Copy_Image, .Save, .Blur}, {{0, 1}, {0, 2}, {0, 3}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	run: Run
 	start_with_capture(&run, g, 3, 3)
-	defer run_free(&run)
+	defer run_destroy(&run)
 	tasks := run_next(&run)
 	testing.expect_value(t, len(tasks), 3)
 	for task in tasks { testing.expect(t, task.inputs[0].value.payload == run.nodes[0].outputs[0].value.payload) }
@@ -57,7 +57,7 @@ fan_out_gives_each_branch_the_same_value :: proc(t: ^testing.T) {
 @(test)
 a_branch_sends_the_value_one_way :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	capture := node_add(&g, cat, int(Sample.Capture), {})
 	branch := node_add(&g, cat, int(Sample.Branch), {})
@@ -82,7 +82,7 @@ a_branch_sends_the_value_one_way :: proc(t: ^testing.T) {
 	{
 		run: Run
 		start_with_capture(&run, g, 200, 10)
-		defer run_free(&run)
+		defer run_destroy(&run)
 		decide(&run)
 		testing.expect(t, slice.equal(task_ids(run_next(&run)), []u64{yes}))
 		testing.expect_value(t, run.nodes[1].state, Node_State.Done)
@@ -92,7 +92,7 @@ a_branch_sends_the_value_one_way :: proc(t: ^testing.T) {
 	{
 		run: Run
 		start_with_capture(&run, g, 50, 10)
-		defer run_free(&run)
+		defer run_destroy(&run)
 		decide(&run)
 		testing.expect(t, slice.equal(task_ids(run_next(&run)), []u64{no}))
 		testing.expect_value(t, run.nodes[2].state, Node_State.Skipped)
@@ -102,10 +102,10 @@ a_branch_sends_the_value_one_way :: proc(t: ^testing.T) {
 @(test)
 a_failure_skips_what_follows_it :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Resize, .Save, .Reveal, .Copy_Image}, {{0, 1}, {1, 2}, {2, 3}, {0, 4}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	run: Run
 	start_with_capture(&run, g, 4, 4)
-	defer run_free(&run)
+	defer run_destroy(&run)
 	testing.expect_value(t, len(run_next(&run)), 2)   // (Resize and Copy image)
 	testing.expect(t, run_finish(&run, 1, {outcome = .Failed, message = "too small"}))
 	testing.expect_value(t, len(run_next(&run)), 0)
@@ -127,7 +127,7 @@ a_failure_skips_what_follows_it :: proc(t: ^testing.T) {
 @(test)
 a_condition_waits_for_the_editor :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	capture := node_add(&g, cat, int(Sample.Capture), {})
 	editor := node_add(&g, cat, int(Sample.Editor), {})
@@ -146,7 +146,7 @@ a_condition_waits_for_the_editor :: proc(t: ^testing.T) {
 	{
 		run: Run
 		start_with_capture(&run, g, 4, 4)
-		defer run_free(&run)
+		defer run_destroy(&run)
 		// (Save has its picture, but waits for the editor)
 		testing.expect(t, slice.equal(task_ids(run_next(&run)), []u64{editor}))
 		testing.expect_value(t, run.nodes[2].state, Node_State.Waiting)
@@ -163,7 +163,7 @@ a_condition_waits_for_the_editor :: proc(t: ^testing.T) {
 	{
 		run: Run
 		start_with_capture(&run, g, 4, 4)
-		defer run_free(&run)
+		defer run_destroy(&run)
 		_ = run_next(&run)
 		testing.expect(t, run_cancel(&run, 1, "closed without Done"))
 		testing.expect_value(t, run.nodes[1].state, Node_State.Cancelled)
@@ -184,10 +184,10 @@ a_condition_waits_for_the_editor :: proc(t: ^testing.T) {
 @(test)
 a_cancelled_node_gives_no_value :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Editor, .Save}, {{0, 1}, {1, 2}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	run: Run
 	start_with_capture(&run, g, 4, 4)
-	defer run_free(&run)
+	defer run_destroy(&run)
 	testing.expect(t, slice.equal(task_ids(run_next(&run)), []u64{2}))
 	testing.expect(t, run_cancel(&run, 1, ""))
 	testing.expect_value(t, len(run_next(&run)), 0)
@@ -200,10 +200,10 @@ a_cancelled_node_gives_no_value :: proc(t: ^testing.T) {
 @(test)
 a_dry_run_skips_the_effects :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Blur, .Save, .Read_Qr}, {{0, 1}, {1, 2}, {0, 3}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	run: Run
 	start_with_capture(&run, g, 4, 4, {id = 7, dry = true})
-	defer run_free(&run)
+	defer run_destroy(&run)
 	testing.expect_value(t, run.id, 7)
 	tasks := run_next(&run)
 	testing.expect(t, slice.equal(task_ids(tasks), []u64{2, 4}))
@@ -219,11 +219,11 @@ a_dry_run_skips_the_effects :: proc(t: ^testing.T) {
 @(test)
 two_runs_go_on_side_by_side :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Editor, .Copy_Image}, {{0, 1}, {1, 2}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	a, b: Run
 	start_with_capture(&a, g, 4, 4, {id = 1})
 	start_with_capture(&b, g, 6, 6, {id = 2})
-	defer { run_free(&a); run_free(&b) }
+	defer { run_destroy(&a); run_destroy(&b) }
 	_ = run_next(&a)
 	_ = run_next(&b)
 	// (the first waits on the editor while the second goes on)
@@ -241,10 +241,10 @@ two_runs_go_on_side_by_side :: proc(t: ^testing.T) {
 @(test)
 a_run_copies_its_graph :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Copy_Image}, {{0, 1}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	run: Run
 	start_with_capture(&run, g, 2, 2)
-	defer run_free(&run)
+	defer run_destroy(&run)
 	// (the person changes the graph while it runs: the run keeps what it started with)
 	gone := [1]u64{2}
 	nodes_delete(&g, &SAMPLE, gone[:])
@@ -255,7 +255,7 @@ a_run_copies_its_graph :: proc(t: ^testing.T) {
 @(test)
 a_value_is_freed_at_its_last_release :: proc(t: ^testing.T) {
 	g := sample_graph({.Capture, .Blur}, {{0, 1}})
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	freed := 0
 	run: Run
 	start_with_capture(&run, g, 4, 4, {}, &freed)
@@ -267,7 +267,7 @@ a_value_is_freed_at_its_last_release :: proc(t: ^testing.T) {
 	value_release(&job)
 	testing.expect_value(t, freed, 2)   // (the Capture's: the job's hold was the last)
 	testing.expect(t, job.payload == nil)
-	run_free(&run)
+	run_destroy(&run)
 	testing.expect_value(t, freed, 2)
 }
 

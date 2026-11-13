@@ -14,7 +14,7 @@ wins := capture.windows(s)                // the windows, front to back
 d, _ := capture.desktop(s)                // every screen in one picture: what a region is cut from
 part, _ := capture.crop(d, {x, y, w, h})  // a region, logical
 w := capture.window_at(wins, pointer)     // the window under the pointer (when windows_have_rects)
-capture.frame_free(&d)
+capture.frame_destroy(&d)
 capture.close(s)
 ```
 

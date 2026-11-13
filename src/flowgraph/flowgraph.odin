@@ -25,7 +25,7 @@ Kind_Def :: struct {
 	name:      string,        // the reader's word ("picture")
 	accepts:   []Port_Kind,   // the other kinds an input of this kind takes (a text takes an address); itself always
 	any:       bool,          // an input of this kind takes every kind but ACTION
-	transient: bool,          // its values are let go as soon as no node waits for them (pictures); else at run_free
+	transient: bool,          // its values are let go as soon as no node waits for them (pictures); else at run_destroy
 }
 
 Port_Def :: struct {
@@ -140,8 +140,8 @@ port_accepts :: proc(cat: ^Catalog, from, to: Port_Kind) -> bool {
 ////////////////////////////////
 // Whole graphs
 
-graph_free :: proc(g: ^Graph) {
-	for &n in g.nodes { node_params_free(&n) }
+graph_destroy :: proc(g: ^Graph) {
+	for &n in g.nodes { node_params_destroy(&n) }
 	delete(g.nodes)
 	delete(g.links)
 	g^ = {}
@@ -162,7 +162,7 @@ node_clone :: proc(n: Node, allocator := context.allocator) -> Node {
 	return out
 }
 
-node_params_free :: proc(n: ^Node) {
+node_params_destroy :: proc(n: ^Node) {
 	for &p in n.params {
 		delete(p.text)
 		p.text = ""
@@ -206,35 +206,45 @@ can_add :: proc(g: ^Graph, cat: ^Catalog, kind: int) -> bool {
 	return m <= 0 || graph_count(g, kind) < m
 }
 
-// The first port of a new node of `kind` that a link can join to port `port` of node `node`: an input of the new node
-// when `port` is an output (`output`), else one of its outputs. -1: none (the add palette greys the kind out).
-fit_port :: proc(g: ^Graph, cat: ^Catalog, node: u64, port: u32, output: bool, kind: int) -> int {
-	n := graph_node(g, node)
+// The side of a node a port is on: its inputs or its outputs.
+Side :: enum u8 { In, Out }
+
+// A port of a node: the index `port` among the node's inputs (In) or outputs (Out).
+Port_Ref :: struct {
+	node: u64,
+	port: u32,
+	side: Side,
+}
+
+// The first port of a new node of `kind` that a link can join to `at`: an input of the new node when `at` is an output,
+// else one of its outputs. -1: none (the add palette greys the kind out).
+fit_port :: proc(g: ^Graph, cat: ^Catalog, at: Port_Ref, kind: int) -> int {
+	n := graph_node(g, at.node)
 	if n == nil || kind < 0 || kind >= len(cat.nodes) { return -1 }
 	have := node_def(cat, n)
 	if have == nil { return -1 }
 	other := &cat.nodes[kind]
-	if output {
-		if int(port) >= len(have.outputs) { return -1 }
-		for p, i in other.inputs { if port_accepts(cat, have.outputs[port].kind, p.kind) { return i } }
-	} else {
-		if int(port) >= len(have.inputs) { return -1 }
-		for p, i in other.outputs { if port_accepts(cat, p.kind, have.inputs[port].kind) { return i } }
+	switch at.side {
+	case .Out:
+		if int(at.port) >= len(have.outputs) { return -1 }
+		for p, i in other.inputs { if port_accepts(cat, have.outputs[at.port].kind, p.kind) { return i } }
+	case .In:
+		if int(at.port) >= len(have.inputs) { return -1 }
+		for p, i in other.outputs { if port_accepts(cat, p.kind, have.inputs[at.port].kind) { return i } }
 	}
 	return -1
 }
 
-// A node of `kind` at `pos`, linked to port `port` of node `node` by its first port that fits (fit_port): what a link
-// let go on nothing and a kind chosen in the add palette make. Returns its id; 0 when refused (as node_add). A kind with
-// no port that fits is added unlinked.
-node_add_linked :: proc(g: ^Graph, cat: ^Catalog, kind: int, pos: [2]f32, node: u64, port: u32, output: bool) -> u64 {
-	fit := fit_port(g, cat, node, port, output, kind)
+// A node of `kind` at `pos`, linked to `at` by its first port that fits (fit_port): what a link let go on nothing and a
+// kind chosen in the add palette make. Returns its id; 0 when refused (as node_add). A kind with no port that fits is
+// added unlinked.
+node_add_linked :: proc(g: ^Graph, cat: ^Catalog, kind: int, pos: [2]f32, at: Port_Ref) -> u64 {
+	fit := fit_port(g, cat, at, kind)
 	id := node_add(g, cat, kind, pos)
 	if id == 0 || fit < 0 { return id }
-	if output {
-		_, _ = link(g, cat, {node, port, id, u32(fit)})
-	} else {
-		_, _ = link(g, cat, {id, u32(fit), node, port})
+	switch at.side {
+	case .Out: _, _ = link(g, cat, {at.node, at.port, id, u32(fit)})
+	case .In:  _, _ = link(g, cat, {id, u32(fit), at.node, at.port})
 	}
 	return id
 }
@@ -252,7 +262,7 @@ node_copy :: proc(g: ^Graph, cat: ^Catalog, id: u64, offset: [2]f32) -> u64 {
 
 // The parameters of `n` set to its kind's defaults.
 node_params_default :: proc(cat: ^Catalog, n: ^Node) {
-	node_params_free(n)
+	node_params_destroy(n)
 	n.params = {}
 	def := node_def(cat, n)
 	if def == nil { return }
@@ -312,7 +322,7 @@ nodes_delete :: proc(g: ^Graph, cat: ^Catalog, ids: []u64) -> (deleted: int) {
 		if i < 0 { continue }
 		kind := g.nodes[i].kind
 		if kind >= 0 && kind < len(cat.nodes) && graph_count(g, kind) <= cat.nodes[kind].min_count { continue }
-		node_params_free(&g.nodes[i])
+		node_params_destroy(&g.nodes[i])
 		ordered_remove(&g.nodes, i)
 		deleted += 1
 		for j := len(g.links) - 1; j >= 0; j -= 1 {

@@ -62,7 +62,7 @@ Shared :: struct {
 	main:  ^Host,          // the first window: the renderer's own, and the interface that is current between frames
 }
 
-Open :: struct {
+Open_Options :: struct {
 	title:            string,
 	size:             [2]int,
 	integrated_title: bool,   // platform.open_window's
@@ -129,7 +129,7 @@ host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^H
 
 // Opens a window: the first one makes what is shared, the others a surface on it. `h` stays where it is until host_close (the window
 // calls back with it). False: it cannot open, has said why and has left nothing behind.
-host_open :: proc(h: ^Host, sh: ^Shared, o: Open, build: proc(h: ^Host, size: Vec2), user: rawptr = nil) -> bool {
+host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, size: Vec2), user: rawptr = nil) -> bool {
 	first := sh.main == nil
 	h.shared, h.build, h.user, h.paced = sh, build, user, first
 	if first { font.init(&sh.fonts) }
@@ -181,7 +181,7 @@ shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless: bool) -> bool {
 }
 
 @(private = "file")
-surface_open :: proc(h: ^Host, o: Open) -> bool {
+surface_open :: proc(h: ^Host, o: Open_Options) -> bool {
 	sh := h.shared
 	ok := render.surface_init(&sh.r, &h.surface, platform.native_surface_handles(h.win), h.win.size, transparent = true,
 		fixed_size = platform.monitor_size(h.win), under_children = o.under_children)

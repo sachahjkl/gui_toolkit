@@ -7,6 +7,7 @@ import "core:encoding/base64"
 import "core:strings"
 import "core:testing"
 import "../fsx"
+import signing "../signing"
 
 // A key pair of the tests (public on purpose: it signs nothing real).
 TEST_SEED := [32]byte{'a', 'p', 'p', '-', 'u', 'p', 'd', 'a', 't', 'e', '-', 't', 'e', 's', 't', '-', 's', 'e', 'e', 'd', '-', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1'}
@@ -38,7 +39,7 @@ test_manifest :: proc(version: string, data: []byte) -> Manifest {
 test_public :: proc(seed: []byte = nil) -> string {
 	s := seed
 	if s == nil { s = TEST_SEED[:] }
-	key, _ := public_key_of(s, context.temp_allocator)
+	key, _ := signing.public_key_of(s, context.temp_allocator)
 	return key
 }
 
@@ -56,7 +57,7 @@ signed :: proc(m: Manifest, seed: []byte = nil) -> (manifest: []byte, sig: strin
 a_signed_manifest_is_read :: proc(t: ^testing.T) {
 	data := test_file(MIN_BINARY)
 	manifest, sig := signed(test_manifest("0.6.29", data))
-	m, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	m, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, err, Error.None)
 	testing.expect_value(t, m.version, "0.6.29")
 	testing.expect_value(t, m.file, "app-0.6.29-windows-x64.exe")
@@ -69,22 +70,22 @@ a_signed_manifest_is_read :: proc(t: ^testing.T) {
 an_unsigned_channel_is_read_only_when_the_signature_is_turned_off :: proc(t: ^testing.T) {
 	manifest, _ := signed(test_manifest("0.6.29", test_file(MIN_BINARY)))
 	// required (the default): no signature, no update
-	_, err := check_release(test_product(), manifest, "", PLATFORM_WINDOWS_X64, "", "0.6.28", "0.6.29", context.temp_allocator)
+	_, err := check_release(test_product(), manifest, "", {platform = PLATFORM_WINDOWS_X64, current = "0.6.28", announced = "0.6.29"}, context.temp_allocator)
 	testing.expect(t, err != .None, "refused without a signature")
 	// turned off: read, and still only when it is for this platform, the announced version, and newer
-	m, err2 := check_release(product_with_key(""), manifest, "", PLATFORM_WINDOWS_X64, "", "0.6.28", "0.6.29", context.temp_allocator, require_signature = false)
+	m, err2 := check_release(product_with_key(""), manifest, "", {platform = PLATFORM_WINDOWS_X64, current = "0.6.28", announced = "0.6.29"}, context.temp_allocator, require_signature = false)
 	testing.expect_value(t, err2, Error.None)
 	testing.expect_value(t, m.version, "0.6.29")
-	_, err3 := check_release(product_with_key(""), manifest, "", PLATFORM_WINDOWS_X64, "", "0.6.29", "0.6.29", context.temp_allocator, require_signature = false)
+	_, err3 := check_release(product_with_key(""), manifest, "", {platform = PLATFORM_WINDOWS_X64, current = "0.6.29", announced = "0.6.29"}, context.temp_allocator, require_signature = false)
 	testing.expect_value(t, err3, Error.Not_Newer)
-	_, err4 := check_release(product_with_key(""), manifest, "", PLATFORM_WINDOWS_X64, "", "0.6.28", "0.6.30", context.temp_allocator, require_signature = false)
+	_, err4 := check_release(product_with_key(""), manifest, "", {platform = PLATFORM_WINDOWS_X64, current = "0.6.28", announced = "0.6.30"}, context.temp_allocator, require_signature = false)
 	testing.expect_value(t, err4, Error.Version_Mismatch)
 }
 
 @(test)
 another_key_is_refused :: proc(t: ^testing.T) {
 	manifest, sig := signed(test_manifest("0.6.29", test_file(MIN_BINARY)), OTHER_SEED[:])
-	_, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, err, Error.Bad_Signature)
 }
 
@@ -94,11 +95,11 @@ an_altered_manifest_is_refused :: proc(t: ^testing.T) {
 	// one digit of the version changes: still a valid manifest, no longer a signed one
 	text, _ := strings.replace(string(manifest), "0.6.29", "0.6.30", 1, context.temp_allocator)
 	altered := transmute([]byte)text
-	_, err := verify(test_product(), altered, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, err := verify(test_product(), altered, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, err, Error.Bad_Signature)
 	// and the hash: an attacker who swaps the file must change it
 	text2, _ := strings.replace(string(manifest), `"sha256":"`, `"sha256":"0`, 1, context.temp_allocator)
-	_, err2 := verify(test_product(), transmute([]byte)text2, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, err2 := verify(test_product(), transmute([]byte)text2, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect(t, err2 == .Bad_Signature, "a changed checksum does not verify")
 }
 
@@ -107,16 +108,16 @@ a_damaged_signature_is_refused :: proc(t: ^testing.T) {
 	manifest, sig := signed(test_manifest("0.6.29", test_file(MIN_BINARY)))
 	b := transmute([]byte)strings.clone(sig, context.temp_allocator)
 	b[10] = b[10] == 'A' ? 'B' : 'A'
-	_, err := verify(test_product(), manifest, string(b), PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, err := verify(test_product(), manifest, string(b), {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, err, Error.Bad_Signature)
 
-	_, e2 := verify(test_product(), manifest, "", PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e2 := verify(test_product(), manifest, "", {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e2, Error.Bad_Encoding)
-	_, e3 := verify(test_product(), manifest, "not base64!!", PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e3 := verify(test_product(), manifest, "not base64!!", {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e3, Error.Bad_Encoding)
 	// 64 bytes are expected
 	short := base64.encode(make([]byte, 32, context.temp_allocator), base64.ENC_URL_TABLE, context.temp_allocator, {.No_Padding})
-	_, e4 := verify(test_product(), manifest, short, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e4 := verify(test_product(), manifest, short, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e4, Error.Bad_Encoding)
 }
 
@@ -133,7 +134,7 @@ the_signature_is_for_updates_only :: proc(t: ^testing.T) {
 		raw: [ed25519.SIGNATURE_SIZE]byte
 		ed25519.sign(&priv, msg, raw[:])
 		sig := base64.encode(raw[:], base64.ENC_URL_TABLE, context.temp_allocator, {.No_Padding})
-		_, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+		_, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 		testing.expectf(t, err == .Bad_Signature, "context %q must not verify, got %v", context_text, err)
 	}
 }
@@ -141,11 +142,11 @@ the_signature_is_for_updates_only :: proc(t: ^testing.T) {
 @(test)
 keys_are_checked :: proc(t: ^testing.T) {
 	manifest, sig := signed(test_manifest("0.6.29", test_file(MIN_BINARY)))
-	_, e1 := verify(product_with_key(""), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e1 := verify(product_with_key(""), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e1, Error.No_Public_Key)
-	_, e2 := verify(product_with_key("not a key"), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e2 := verify(product_with_key("not a key"), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e2, Error.Bad_Public_Key)
-	_, e3 := verify(product_with_key("AAAA"), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e3 := verify(product_with_key("AAAA"), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e3, Error.Bad_Public_Key)
 }
 
@@ -171,26 +172,26 @@ a_release_is_checked_in_one_call :: proc(t: ^testing.T) {
 	data := test_file(MIN_BINARY)
 	manifest, sig := signed(test_manifest("0.6.29", data))
 
-	m, err := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", "0.6.28", "0.6.29", context.temp_allocator)
+	m, err := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "0.6.28", announced = "0.6.29"}, context.temp_allocator)
 	testing.expect_value(t, err, Error.None)
 	testing.expect_value(t, m.version, "0.6.29")
 
 	// a release that claims no version (the caller has none): the manifest's own is used
-	_, e0 := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", "0.6.28", "", context.temp_allocator)
+	_, e0 := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "0.6.28"}, context.temp_allocator)
 	testing.expect_value(t, e0, Error.None)
 
 	// the signed manifest of 0.6.29 carried by the release of 0.6.31: a replay of an older one
-	_, e1 := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", "0.6.28", "0.6.31", context.temp_allocator)
+	_, e1 := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "0.6.28", announced = "0.6.31"}, context.temp_allocator)
 	testing.expect_value(t, e1, Error.Version_Mismatch)
 
 	// already up to date, or ahead
-	_, e2 := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", "0.6.29", "0.6.29", context.temp_allocator)
+	_, e2 := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "0.6.29", announced = "0.6.29"}, context.temp_allocator)
 	testing.expect_value(t, e2, Error.Not_Newer)
-	_, e3 := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", "0.7.0", "0.6.29", context.temp_allocator)
+	_, e3 := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "0.7.0", announced = "0.6.29"}, context.temp_allocator)
 	testing.expect_value(t, e3, Error.Not_Newer)
 
 	// the signature comes first: another key says so before anything else is looked at
-	_, e4 := check_release(product_with_key(test_public(OTHER_SEED[:])), manifest, sig, PLATFORM_WINDOWS_X64, "", "0.6.28", "0.6.29", context.temp_allocator)
+	_, e4 := check_release(product_with_key(test_public(OTHER_SEED[:])), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "0.6.28", announced = "0.6.29"}, context.temp_allocator)
 	testing.expect_value(t, e4, Error.Bad_Signature)
 }
 
@@ -214,14 +215,14 @@ platform_product_and_schema_are_checked :: proc(t: ^testing.T) {
 	good := test_manifest("0.6.29", data)
 
 	manifest, sig := signed(good)
-	_, e1 := verify(test_product(), manifest, sig, "linux-x64", "", context.temp_allocator)
+	_, e1 := verify(test_product(), manifest, sig, {platform = "linux-x64"}, context.temp_allocator)
 	testing.expect_value(t, e1, Error.Wrong_Platform)
 
 	other := good
 	other.platform = "linux-x64"
 	other.file = expected_file_name(test_product(), "0.6.29", "linux-x64", context.temp_allocator)
 	m2, s2 := signed(other)
-	_, e2 := verify(test_product(), m2, s2, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e2 := verify(test_product(), m2, s2, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e2, Error.Wrong_Platform)
 
 	// a signed manifest of another product or schema (made with the same key, as a leak would allow)
@@ -229,7 +230,7 @@ platform_product_and_schema_are_checked :: proc(t: ^testing.T) {
 		text, _ := strings.replace(string(manifest), pair[0], pair[1], 1, context.temp_allocator)
 		altered := transmute([]byte)text
 		resigned, _ := sign(test_product(), TEST_SEED[:], altered, context.temp_allocator)
-		_, err := verify(test_product(), altered, resigned, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+		_, err := verify(test_product(), altered, resigned, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 		testing.expectf(t, err == .Wrong_Product || err == .Wrong_Schema, "%q: got %v", pair[1], err)
 	}
 }
@@ -244,7 +245,7 @@ a_signed_manifest_cannot_name_another_file :: proc(t: ^testing.T) {
 		m := test_manifest("0.6.29", data)
 		m.file = name
 		manifest, sig := signed(m)
-		_, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+		_, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 		testing.expectf(t, err == .Bad_File_Name || err == .Bad_Manifest, "%q must be refused, got %v", name, err)
 	}
 }
@@ -261,14 +262,14 @@ checksums_and_sizes_are_checked :: proc(t: ^testing.T) {
 		m := test_manifest("0.6.29", data)
 		m.sha256 = hash
 		manifest, sig := signed(m)
-		_, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+		_, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 		testing.expectf(t, err == .Bad_Hash, "%q must be refused, got %v", hash, err)
 	}
 	for size in ([]i64{0, -1, MIN_BINARY - 1, MAX_BINARY + 1, 1 << 40}) {
 		m := test_manifest("0.6.29", data)
 		m.size = size
 		manifest, sig := signed(m)
-		_, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+		_, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 		testing.expectf(t, err == .Bad_Size, "size %d must be refused, got %v", size, err)
 	}
 	// the bounds themselves are fine
@@ -276,7 +277,7 @@ checksums_and_sizes_are_checked :: proc(t: ^testing.T) {
 		m := test_manifest("0.6.29", data)
 		m.size = size
 		manifest, sig := signed(m)
-		_, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+		_, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 		testing.expectf(t, err == .None, "size %d is allowed, got %v", size, err)
 	}
 }
@@ -284,15 +285,15 @@ checksums_and_sizes_are_checked :: proc(t: ^testing.T) {
 @(test)
 a_manifest_of_the_wrong_length_is_refused :: proc(t: ^testing.T) {
 	_, sig := signed(test_manifest("0.6.29", test_file(MIN_BINARY)))
-	_, e1 := verify(test_product(), nil, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e1 := verify(test_product(), nil, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e1, Error.Too_Long)
 	big := make([]byte, MAX_MANIFEST + 1, context.temp_allocator)
-	_, e2 := verify(test_product(), big, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e2 := verify(test_product(), big, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e2, Error.Too_Long)
 	// not JSON, but signed: refused as a manifest, never read as anything
 	junk := transmute([]byte)string("this is not json")
 	js, _ := sign(test_product(), TEST_SEED[:], junk, context.temp_allocator)
-	_, e3 := verify(test_product(), junk, js, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, e3 := verify(test_product(), junk, js, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, e3, Error.Bad_Manifest)
 }
 
@@ -328,7 +329,7 @@ a_manifest_made_here_is_the_manifest_read_back :: proc(t: ^testing.T) {
 	data := test_file(MIN_BINARY)
 	m := test_manifest("12.34.56", data)
 	manifest, sig := signed(m)
-	read, err := verify(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	read, err := verify(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, err, Error.None)
 	testing.expect_value(t, read.version, m.version)
 	testing.expect_value(t, read.published, m.published)
@@ -352,16 +353,16 @@ the_channel_is_signed :: proc(t: ^testing.T) {
 	m := test_manifest("1.2.3", data)
 	m.channel = "beta"
 	manifest, sig := signed(m)
-	read, err := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "beta", "1.2.2", "", context.temp_allocator)
+	read, err := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, channel = "beta", current = "1.2.2"}, context.temp_allocator)
 	testing.expect_value(t, err, Error.None)
 	testing.expect_value(t, read.channel, "beta")
-	_, stable := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "stable", "1.2.2", "", context.temp_allocator)
+	_, stable := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, channel = "stable", current = "1.2.2"}, context.temp_allocator)
 	testing.expect_value(t, stable, Error.Wrong_Channel)
-	_, none := check_release(test_product(), manifest, sig, PLATFORM_WINDOWS_X64, "", "1.2.2", "", context.temp_allocator)
+	_, none := check_release(test_product(), manifest, sig, {platform = PLATFORM_WINDOWS_X64, current = "1.2.2"}, context.temp_allocator)
 	testing.expect_value(t, none, Error.Wrong_Channel)
 	// a manifest without a channel, asked on one
 	plain, psig := signed(test_manifest("1.2.3", data))
-	_, asked := check_release(test_product(), plain, psig, PLATFORM_WINDOWS_X64, "stable", "1.2.2", "", context.temp_allocator)
+	_, asked := check_release(test_product(), plain, psig, {platform = PLATFORM_WINDOWS_X64, channel = "stable", current = "1.2.2"}, context.temp_allocator)
 	testing.expect_value(t, asked, Error.Wrong_Channel)
 	testing.expect(t, !strings.contains(string(plain), "channel"), "no channel, no key")
 }
@@ -387,7 +388,7 @@ a_product_bounds_its_program :: proc(t: ^testing.T) {
 	m.size = 2 * MIN_BINARY + 1
 	manifest := manifest_bytes(p, m, context.temp_allocator)
 	sig, _ := sign(p, TEST_SEED[:], manifest, context.temp_allocator)
-	_, err := verify(p, manifest, sig, PLATFORM_WINDOWS_X64, "", context.temp_allocator)
+	_, err := verify(p, manifest, sig, {platform = PLATFORM_WINDOWS_X64}, context.temp_allocator)
 	testing.expect_value(t, err, Error.Bad_Size)
 }
 

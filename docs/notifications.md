@@ -31,7 +31,7 @@ for e in platform.poll_events(w, true) {
 | `notify_supported() -> bool` | Linux: a notification server answers on the session bus. Windows: Windows 10 or later, with toasts |
 | `notify(w, Notification) -> (Notification_Id, bool)` | shows a notification; its results come as events of `w` |
 | `notify_async(w, Notification, done, user) -> bool` | the same without waiting: the call goes out at once, `done(user, id, ok)` runs from the window loop when the system answers (Linux: the D-Bus reply; Windows: at once). What the interface's thread calls |
-| `notification_clone`, `notification_free` | a notification that owns its text, kept until it is sent |
+| `notification_clone`, `notification_destroy` | a notification that owns its text, kept until it is sent |
 | `notify_close(w, id)` | takes it away; `Notification_Closed` (reason `Closed`) follows |
 | `notify_activation_token(w) -> string` | Linux: the xdg-activation token of the last click on a notification of `w`, for 10 s |
 

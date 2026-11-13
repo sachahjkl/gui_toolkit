@@ -8,7 +8,7 @@ made and how it is freed; the stack keeps them in order.
 history: undo.Stack(flowgraph.Graph)
 
 // before a change
-undo.push(&history, flowgraph.graph_clone(app.graph), 100, flowgraph.graph_free)
+undo.push(&history, flowgraph.graph_clone(app.graph), 100, flowgraph.graph_destroy)
 
 // Ctrl+Z
 if undo.can_undo(&history) {

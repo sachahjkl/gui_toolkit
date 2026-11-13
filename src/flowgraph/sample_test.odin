@@ -112,8 +112,8 @@ done_with :: proc(run: ^Run, node: int, v: Value) -> bool {
 }
 
 // The run started and its first node, the Capture, given a picture of `w` × `h`.
-start_with_capture :: proc(run: ^Run, g: Graph, w, h: int, opts: Run_Options = {}, freed: ^int = nil) {
-	run_start(run, g, &SAMPLE, opts)
+start_with_capture :: proc(run: ^Run, g: Graph, w, h: int, o: Run_Options = {}, freed: ^int = nil) {
+	run_init(run, g, &SAMPLE, o)
 	for t in run_next(run) {
 		if Sample(t.kind) == .Capture { done_with(run, t.node, pic_value(w, h, freed)) }
 	}

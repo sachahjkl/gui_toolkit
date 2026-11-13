@@ -60,14 +60,14 @@ The edits keep the graph valid, so a run never meets a graph it cannot read:
 | Procedure | What it does |
 |---|---|
 | `node_add(g, cat, kind, pos) -> u64` | a node with its kind's defaults; 0 when refused (`can_add`: not a kind of the catalog, or at its `max_count`) |
-| `node_add_linked(g, cat, kind, pos, node, port, output) -> u64` | the same, linked to `port` of `node` by its first port that fits (`fit_port`); what a link let go on nothing makes |
+| `node_add_linked(g, cat, kind, pos, at: Port_Ref) -> u64` | the same, linked to the port `at` (`{node, port, side}`, `side` `.In` or `.Out`) by its first port that fits (`fit_port(g, cat, at, kind)`); what a link let go on nothing makes |
 | `node_copy(g, cat, id, offset) -> u64` | a copy of a node, its parameters, no link |
 | `can_link(g, cat, l)`, `link(g, cat, l) -> (replaced, ok)` | both ends exist and differ, the kinds agree, no cycle; an input that takes one link loses the old one (`replaced`) |
 | `unlink(g, l)` | removes a link |
 | `nodes_delete(g, cat, ids) -> int` | removes nodes and their links; a kind at its `min_count` stays |
 | `nodes_move(g, ids, delta)` | moves nodes |
 | `reaches(g, from, to)` | whether `to` comes after `from` along the links |
-| `graph_clone`, `graph_free`, `graph_node`, `graph_node_index`, `graph_count`, `node_def`, `kind_named`, `node_params_default` | the rest |
+| `graph_clone`, `graph_destroy`, `graph_node`, `graph_node_index`, `graph_count`, `node_def`, `kind_named`, `node_params_default` | the rest |
 
 The parameters read clamped to their range or their choices, as a hand-edited file may hold anything: `param_int`,
 `param_float`, `param_bool`, `param_text`, `param_color`, `param_choice_text`; `param(cat, n, name)` is the `^Param`,
@@ -80,7 +80,7 @@ does each one's work where it must be done (a job of a worker, the interface, a 
 
 ```odin
 run: flowgraph.Run
-flowgraph.run_start(&run, graph, &CATALOG, {id = 1})
+flowgraph.run_init(&run, graph, &CATALOG, {id = 1})
 for !flowgraph.run_over(&run) {
 	for task in flowgraph.run_next(&run) {
 		switch Kind(task.kind) {
@@ -91,7 +91,7 @@ for !flowgraph.run_over(&run) {
 	}
 	wait_for_a_result()
 }
-flowgraph.run_free(&run)
+flowgraph.run_destroy(&run)
 ```
 
 | Node_State | |
@@ -134,7 +134,7 @@ frees the data. The count is atomic: a job holds a value while it works on a wor
 
 A run shares values, read only: fan-out gives each branch the same payload; a node that changes it makes a new one. The
 inputs a task gets are the run's; a job keeps what it reads with `value_hold`. A transient kind's value is let go as soon
-as every node that reads it is decided; the others stay until `run_free`, for the program to read (`run.nodes[i].outputs`).
+as every node that reads it is decided; the others stay until `run_destroy`, for the program to read (`run.nodes[i].outputs`).
 
 ## The file
 
@@ -151,7 +151,7 @@ keys, so a program keeps those of its file (`{version = 1, list = "workflows", l
 A parameter is written under its name: a number, `true` / `false`, `"#rrggbbaa"` (`color_text`, `color_parse`), a
 string. What the text lacks takes its default; a node of an unknown kind, a link that is not valid, an id taken twice
 are dropped or given a new id; a text of a newer version is refused (`why`). Reading and writing the file is the
-program's, on a worker. `set_find`, `set_add`, `set_remove`, `set_free`, `entry_clone`, `entry_free` edit a set.
+program's, on a worker. `set_find`, `set_add`, `set_remove`, `set_destroy`, `entry_clone`, `entry_destroy` edit a set.
 
 ## In a window
 
@@ -177,7 +177,7 @@ events := ui.node_graph("###flow", &app.view, app.flow.nodes[:], app.flow.links[
   `Skipped`).
 - `flow_palette(g, cat, from) -> (commands, enabled)` is the add palette for `ui.palette`: a command per kind, the index
   chosen is the kind; off at its `max_count`, and with `from` (`Graph_Dropped_Link.from`) off without a port that fits.
-  Then `flowgraph.node_add_linked(g, cat, kind, at, from.node, from.port, from.side == .Out)`.
+  Then `flowgraph.node_add_linked(g, cat, kind, at, {from.node, from.port, flowgraph.Side(from.side)})`.
 
 ![The same graph and its inspector in Glacier's light version, edged (examples/showcase, graph.odin: a whole program of this)](screenshots/showcase_graph_light.webp)
 
@@ -197,7 +197,7 @@ while a field has the keyboard. The program takes its undo step, then applies th
 ```odin
 res := ui.node_inspector("###params", &app.inspector, &CATALOG, node)
 if res.changed >= 0 {
-	if res.new_step { undo.push(&app.history, flowgraph.graph_clone(app.graph), 100, flowgraph.graph_free) }
+	if res.new_step { undo.push(&app.history, flowgraph.graph_clone(app.graph), 100, flowgraph.graph_destroy) }
 	flowgraph.param_set(node, res.changed, res.value)
 }
 ```

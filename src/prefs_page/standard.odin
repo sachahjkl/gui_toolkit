@@ -11,7 +11,7 @@ package tk_prefs_page
 //	prefs_page.standard_register(&prefs, prefs_page.STANDARD_ALL, d)
 //	config.register(&prefs, PREF_DEFS[:])   // the program's own
 //	prefs_page.standard_watch(&app.standard, &prefs, &app.state, {renderer = &r, fonts = &fonts})   // applied now, and at each change
-//	a := prefs_page.appearance_read(&prefs); defer prefs_page.appearance_free(&a)
+//	a := prefs_page.appearance_read(&prefs); defer prefs_page.appearance_destroy(&a)
 //	ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 
 import "base:runtime"
@@ -586,9 +586,8 @@ decimal :: proc(v: f32) -> f64 {
 
 // Where the program's messages go (ui.Announcer.mode): general.messages, System when it is not registered.
 messages_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
-	r := config.ref_of(prefs, MESSAGES_PREF)
-	if r == config.NO_REF { return .System }
-	return ui.announce_mode_of(config.get_string(prefs, r))
+	if config.ref_of(prefs, MESSAGES_PREF) == config.NO_REF { return .System }
+	return ui.announce_mode_of(config.string_of(prefs, MESSAGES_PREF))
 }
 
 // The language of general.language ("system": the system's) made from the toolkit's catalogue and the program's, in use
@@ -596,7 +595,7 @@ messages_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
 // takes effect at the next start. `tag`: the language asked for; a line a catalogue could not read is logged.
 language_start :: proc(prefs: ^config.Prefs, program: []i18n.Catalog) -> (tag: string) {
 	tag = "system"
-	if r := config.ref_of(prefs, LANGUAGE_PREF); r != config.NO_REF { tag = config.get_string(prefs, r) }
+	if config.ref_of(prefs, LANGUAGE_PREF) != config.NO_REF { tag = config.string_of(prefs, LANGUAGE_PREF) }
 	if tag == "system" { tag = platform.system_language(context.temp_allocator) }
 	l, bad := i18n.load(tag, program)
 	for b in bad { log.warnf("a catalogue of %s: %s", tag, b) }
@@ -606,7 +605,7 @@ language_start :: proc(prefs: ^config.Prefs, program: []i18n.Catalog) -> (tag: s
 
 // The look, as a program applies it.
 Appearance :: struct {
-	theme:     string,   // owned (appearance_free)
+	theme:     string,   // owned (appearance_destroy)
 	mode:      ui.Theme_Mode,
 	finish:    ui.Finish,
 	font_size: f32,
@@ -619,15 +618,15 @@ appearance_read :: proc(prefs: ^config.Prefs, allocator := context.allocator) ->
 	a.finish = .Machined
 	a.font_size = 14
 	a.glow = 1
-	if r := config.ref_of(prefs, THEME_PREF); r != config.NO_REF { a.theme = strings.clone(config.get_string(prefs, r), allocator) }
-	if r := config.ref_of(prefs, MODE_PREF); r != config.NO_REF { a.mode = ui.theme_mode_of(config.get_string(prefs, r)) }
-	if r := config.ref_of(prefs, FINISH_PREF); r != config.NO_REF { a.finish = ui.finish_of(config.get_string(prefs, r)) }
-	if r := config.ref_of(prefs, FONT_SIZE_PREF); r != config.NO_REF { a.font_size = f32(config.get_float(prefs, r)) }
-	if r := config.ref_of(prefs, GLOW_PREF); r != config.NO_REF { a.glow = f32(config.get_float(prefs, r)) }
+	if config.ref_of(prefs, THEME_PREF) != config.NO_REF { a.theme = strings.clone(config.string_of(prefs, THEME_PREF), allocator) }
+	if config.ref_of(prefs, MODE_PREF) != config.NO_REF { a.mode = ui.theme_mode_of(config.string_of(prefs, MODE_PREF)) }
+	if config.ref_of(prefs, FINISH_PREF) != config.NO_REF { a.finish = ui.finish_of(config.string_of(prefs, FINISH_PREF)) }
+	if config.ref_of(prefs, FONT_SIZE_PREF) != config.NO_REF { a.font_size = f32(config.float_of(prefs, FONT_SIZE_PREF)) }
+	if config.ref_of(prefs, GLOW_PREF) != config.NO_REF { a.glow = f32(config.float_of(prefs, GLOW_PREF)) }
 	return
 }
 
-appearance_free :: proc(a: ^Appearance, allocator := context.allocator) {
+appearance_destroy :: proc(a: ^Appearance, allocator := context.allocator) {
 	delete(a.theme, allocator)
 	a^ = {}
 }
@@ -713,7 +712,7 @@ number_value :: proc(prefs: ^config.Prefs, name: string) -> (v: f64, ok: bool) {
 choice_value :: proc(prefs: ^config.Prefs, name: string, choices: []string) -> (at: int, ok: bool) {
 	r := config.ref_of(prefs, name)
 	if r == config.NO_REF || config.entry(prefs, r).def.kind != .String { return }
-	v := config.get_string(prefs, r)
+	v := config.string_of(prefs, name)
 	for c, i in choices { if c == v { return i, true } }
 	return
 }
@@ -722,7 +721,7 @@ choice_value :: proc(prefs: ^config.Prefs, name: string, choices: []string) -> (
 bool_value :: proc(prefs: ^config.Prefs, name: string) -> (v: bool, ok: bool) {
 	r := config.ref_of(prefs, name)
 	if r == config.NO_REF || config.entry(prefs, r).def.kind != .Bool { return }
-	return config.get_bool(prefs, r), true
+	return config.bool_of(prefs, name), true
 }
 
 // One preference to its setter: what a change of it applies (the others of a struct it is part of stay as they are, so

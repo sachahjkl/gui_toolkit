@@ -68,7 +68,7 @@ inspect_build :: proc(s: ^session.Session) {
 		r.changes += 1
 		if res.new_step {
 			r.steps += 1
-			undo.push(&r.history, flowgraph.graph_clone(r.graph), 100, flowgraph.graph_free)
+			undo.push(&r.history, flowgraph.graph_clone(r.graph), 100, flowgraph.graph_destroy)
 		}
 		flowgraph.param_set(n, res.changed, res.value)
 	}
@@ -84,8 +84,8 @@ inspected_make :: proc() -> (r: Inspected) {
 @(private = "file")
 inspected_destroy :: proc(r: ^Inspected) {
 	ui.node_inspector_destroy(&r.ins)
-	undo.destroy(&r.history, flowgraph.graph_free)
-	flowgraph.graph_free(&r.graph)
+	undo.destroy(&r.history, flowgraph.graph_destroy)
+	flowgraph.graph_destroy(&r.graph)
 }
 
 @(private = "file")
@@ -183,7 +183,7 @@ port_at :: proc(r: ^Shown, node: int, side: ui.Graph_Port_Side, index: int) -> [
 @(test)
 a_flowgraph_is_shown_and_linked :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r: Shown
-	defer { ui.flow_nodes_destroy(&r.flow); flowgraph.graph_free(&r.graph) }
+	defer { ui.flow_nodes_destroy(&r.flow); flowgraph.graph_destroy(&r.graph) }
 	capture := flowgraph.node_add(&r.graph, &CATALOG, CAPTURE, {60, 80})
 	save := flowgraph.node_add(&r.graph, &CATALOG, SAVE, {460, 40})
 	copy_text := flowgraph.node_add(&r.graph, &CATALOG, COPY_TEXT, {460, 300})
@@ -209,7 +209,7 @@ a_flowgraph_is_shown_and_linked :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 @(test)
 the_palette_follows_the_catalog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	g: flowgraph.Graph
-	defer flowgraph.graph_free(&g)
+	defer flowgraph.graph_destroy(&g)
 	capture := flowgraph.node_add(&g, &CATALOG, CAPTURE, {})
 	commands, enabled := ui.flow_palette(&g, &CATALOG)
 	testing.expect_value(t, len(commands), 3)

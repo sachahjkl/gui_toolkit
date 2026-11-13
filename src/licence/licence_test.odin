@@ -2,6 +2,7 @@ package tk_licence
 
 import "core:strings"
 import "core:testing"
+import signing "../signing"
 
 // A sample product, with the same constants as the worker's tests (licence-worker/test/fixtures/sample-product.json).
 @(private = "file")
@@ -44,7 +45,7 @@ sample :: proc() -> Licence {
 
 @(private = "file")
 seed_of :: proc(text: string) -> [32]byte {
-	s, ok := key_decode(text)
+	s, ok := signing.key_decode(text)
 	assert(ok)
 	return s
 }
@@ -271,14 +272,14 @@ public_key_problems :: proc(t: ^testing.T) {
 @(test)
 dev_public_key_matches_its_seed :: proc(t: ^testing.T) {
 	s := seed_of(DEV_SEED)
-	k, ok := public_key_of(s[:], context.temp_allocator)
+	k, ok := signing.public_key_of(s[:], context.temp_allocator)
 	testing.expect(t, ok)
 	testing.expect_value(t, k, DEV_PUBLIC_KEY)
 	o := seed_of(OTHER_SEED)
-	k, _ = public_key_of(o[:], context.temp_allocator)
+	k, _ = signing.public_key_of(o[:], context.temp_allocator)
 	testing.expect_value(t, k, OTHER_PUBLIC_KEY)
 	w := seed_of(WREN_DEV_SEED)
-	k, _ = public_key_of(w[:], context.temp_allocator)
+	k, _ = signing.public_key_of(w[:], context.temp_allocator)
 	testing.expect_value(t, k, WREN.public_key)
 }
 

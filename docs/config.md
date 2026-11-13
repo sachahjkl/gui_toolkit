@@ -41,13 +41,11 @@ that its name, title and description do not say ("colours", "dark" for a theme).
 p := config.prefs_make();  defer config.prefs_destroy(&p)
 config.register(&p, DEFS[:])                      // idempotent; a second kind for a name is a programming error
 
-r := config.ref_of(&p, "net.max_connections")     // resolve once, read on hot paths
-n := config.get_int(&p, r)                         // get_bool / get_float / get_string
-n = config.int_of(&p, "net.max_connections")       // by name, for rare reads
+n := config.int_of(&p, "net.max_connections")      // bool_of / float_of / string_of
 ```
 
-Reads never hash a string on a hot path: resolve a `Ref` once, or copy the values into a plain struct and refresh it from
-an observer. An unknown name or a kind mismatch is a programming error (it asserts).
+Reads never hash a string on a hot path: copy the values into a plain struct and refresh it from an observer (`watch`). An
+unknown name or a kind mismatch is a programming error (it asserts).
 
 ## Layers
 
@@ -58,7 +56,7 @@ still kept for the profile file. `.Default` is no layer to set: it always answer
 
 ```odin
 err := config.set_from_string(&p, "net.max_connections", "12", .User)   // full validation; Set_Error
-config.set_int(&p, r, 12)                                                 // by Ref, .User by default
+config.set_int(&p, "net.max_connections", 12)                             // set_bool / set_float / set_string; .User by default
 rest, errors := config.apply_args(&p, os.args[1:])                        // --pref name=value (returns the rest)
 config.load_file(&p, policy_path, .Policy)                                // an enterprise policy file
 config.reset(&p, "net.max_connections")                                   // back to the default (user layer only)
@@ -67,11 +65,11 @@ config.reset(&p, "net.max_connections")                                   // bac
 ## Persistence (user changes only, atomically)
 
 ```odin
-text := config.export_own(&p)                // the user-set values only, as the file's text (on the loop: it reads the registry)
+text := config.export(&p, .Own)              // the user-set values only, as the file's text (on the loop: it reads the registry)
 written = p.user_version                     // the version this text has
 config.write_user_file(profile_path, text)   // atomic and flushed (fsx.write_atomic); any thread: it reads no registry state
 config.load_file(&p, profile_path, .User)    // missing file = no changes
-config.save_user(&p, profile_path)           // export_own then write_user_file, on the calling thread
+config.save_user(&p, profile_path)           // export then write_user_file, on the calling thread
 ```
 
 `load_text(p, text, source, origin := "", change := false)` reads the text of such a file, read elsewhere: a task reads the
@@ -171,28 +169,29 @@ changed := config.restore(&p, s)                 // put them all back (policy va
 
 ## File format
 
-`export_own` writes one tag line (`wbprefs 1`) then `name<TAB>value` sorted by name, with `\\`, `\n`, `\r`, `\t` escapes. A
+`export` with `.Own` writes one tag line (`wbprefs 1`) then `name<TAB>value` sorted by name, with `\\`, `\n`, `\r`, `\t` escapes. A
 float is written in the fewest digits that read back as the same value. `load_file` wants the tag of the layer it reads,
 `wbpolicy 1` for `.Policy` and `wbprefs 1` otherwise, and skips `#` comments and a leading byte-order mark. The tags are kept
-as they are so files an existing application already wrote stay readable. `export_own` writes what it knows, so a comment
+as they are so files an existing application already wrote stay readable. `export` with `.Own` writes what it knows, so a comment
 or a line that is no `name<TAB>value` does not survive it.
 
 ## Export
 
 ```odin
-own  := config.export_own(&p)                  // our format: what the profile file holds; load_file reads it back
-own   = config.export_own(&p, all = true)      // every value of this run, in our format
-json := config.export_json(&p)                 // {"appearance.theme": "dark"}
-toml := config.export_toml(&p)                 // [appearance] theme = "dark", [appearance.text] gamma = 1.8
-ini  := config.export_ini(&p)                  // [appearance] theme=dark
+own  := config.export(&p, .Own)                // our format: what the profile file holds; load_file reads it back
+own   = config.export(&p, .Own, all = true)    // every value of this run, in our format
+json := config.export(&p, .Json)               // {"appearance.theme": "dark"}
+toml := config.export(&p, .Toml)               // [appearance] theme = "dark", [appearance.text] gamma = 1.8
+ini  := config.export(&p, .Ini)                // [appearance] theme=dark
 ```
 
-Each exporter takes `(p: ^Prefs, all := false, allocator := context.allocator) -> string`.
+`export(p: ^Prefs, format: Export_Format, all := false, allocator := context.allocator) -> string`. `Export_Format` is
+`Json`, `Toml`, `Ini` or `Own`.
 
 - `all = false`: the user's layer only, which is what differs from the defaults. A user value under a command line or
   policy value is in it. `all = true`: every preference, with the value it has for this run.
 - JSON, TOML and INI hold the settings: a hidden preference is not in them. A user value that no definition registers or
-  accepts in this run has no type, and is not in them either. `export_own` holds all of these, so a round trip loses
+  accepts in this run has no type, and is not in them either. `.Own` holds all of these, so a round trip loses
   nothing.
 - These files are written only. The registry reads no JSON, TOML or INI.
 

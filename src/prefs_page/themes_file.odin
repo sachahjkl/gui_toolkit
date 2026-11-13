@@ -88,7 +88,7 @@ themes_file_destroy :: proc(tf: ^Themes_File) {
 
 // Writes the template when there is no file at `path` (a file that is there is never touched). False: it could not be
 // written. It touches the disk: a task's, never the interface's thread.
-themes_file_make :: proc(path: string) -> bool {
+themes_file_write_template :: proc(path: string) -> bool {
 	if os.exists(path) { return true }
 	if dir := parent_dir(path); dir != "" { _ = os.make_directory_all(dir) }
 	return fsx.write_atomic(path, transmute([]u8)string(THEMES_TEMPLATE))
@@ -118,7 +118,7 @@ themes_file_open :: proc(tf: ^Themes_File, s: ^ui.State) {
 	j^ = {tf = tf, path = strings.clone(tf.path, a)}
 	work :: proc(d: rawptr) {
 		j := (^Open_Job)(d)
-		j.ok = themes_file_make(j.path)
+		j.ok = themes_file_write_template(j.path)
 		if j.ok { _ = platform.open_path(j.path) }
 	}
 	done :: proc(d: rawptr, _: u64) {

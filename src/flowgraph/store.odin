@@ -36,11 +36,11 @@ Store_Format :: struct {
 	labels:  string,   // the key of each graph's labels ("labels")
 }
 
-entry_free :: proc(e: ^Graph_Entry) {
+entry_destroy :: proc(e: ^Graph_Entry) {
 	delete(e.name)
 	for l in e.labels { delete(l) }
 	delete(e.labels)
-	graph_free(&e.graph)
+	graph_destroy(&e.graph)
 	e^ = {}
 }
 
@@ -53,8 +53,8 @@ entry_clone :: proc(e: Graph_Entry, allocator := context.allocator) -> Graph_Ent
 	return out
 }
 
-set_free :: proc(s: ^Graph_Set) {
-	for &e in s.list { entry_free(&e) }
+set_destroy :: proc(s: ^Graph_Set) {
+	for &e in s.list { entry_destroy(&e) }
 	delete(s.list)
 	s^ = {}
 }
@@ -77,7 +77,7 @@ set_add :: proc(s: ^Graph_Set, e: Graph_Entry) -> u64 {
 set_remove :: proc(s: ^Graph_Set, id: u64) -> bool {
 	for &e, i in s.list {
 		if e.id != id { continue }
-		entry_free(&e)
+		entry_destroy(&e)
 		ordered_remove(&s.list, i)
 		return true
 	}
@@ -262,7 +262,7 @@ set_parse :: proc(text: string, cat: ^Catalog, format: Store_Format = {}) -> (s:
 				if !is_node { continue }
 				n, known := node_parse(no, cat)
 				if !known { continue }
-				if n.id == 0 || graph_node(&e.graph, n.id) != nil { node_params_free(&n); continue }
+				if n.id == 0 || graph_node(&e.graph, n.id) != nil { node_params_destroy(&n); continue }
 				append(&e.graph.nodes, n)
 				e.graph.next_id = max(e.graph.next_id, n.id)
 			}

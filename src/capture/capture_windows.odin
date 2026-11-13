@@ -218,7 +218,7 @@ platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 	// window's rect, where what is over the window shows.
 	d, desktop_err := platform_desktop(s, allocator)
 	if desktop_err != .None { return {}, desktop_err }
-	defer frame_free(&d)
+	defer frame_destroy(&d)
 	out, ok := crop(d, logical, allocator)
 	if !ok { return {}, .Failed }
 	return out, .None
@@ -264,12 +264,12 @@ platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (Frame, E
 			at.h = i32(math.round(f64(m.logical.h) * f64(scale)))
 		}
 		frame_draw(&f, part, at)
-		frame_free(&part)
+		frame_destroy(&part)
 		drawn += 1
 	}
 	// One output that failed leaves its place transparent; none drawn is the error of the first.
 	if drawn == 0 {
-		frame_free(&f)
+		frame_destroy(&f)
 		return {}, first_err
 	}
 	return f, .None

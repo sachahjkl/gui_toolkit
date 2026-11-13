@@ -2,13 +2,13 @@ package tk_update
 
 // The Updater: what a program runs to update itself. A thread of its own checks the release (its manifest and signature, then
 // check_release), downloads the program it names (tk_http) and puts it in place (place). It checks a while after the start,
-// then every `every`; a check that failed is made again after `retry`. With auto_install, what a check finds is installed at
-// once; else the program offers it and calls install_now. The program restarts itself when it wants to: the new program is in
-// place, the running one goes on.
+// then every `every`; a check that failed is made again after `retry`. In the mode Install (set_auto), what a check finds
+// is installed at once; else the program offers it and calls install_now. The program restarts itself when it wants to:
+// the new program is in place, the running one goes on.
 //
 //	u := update.updater_start({product = PRODUCT, folder = "https://github.com/o/app/releases/latest/download/",
 //	                           current = APP_VERSION, exe = process.executable_path(), news = on_news, user = app})
-//	update.set_auto(u, check = true, install = true)
+//	update.set_auto(u, .Install)
 //	...   // on_news (the updater's thread) posts to the interface's thread, which reads update.status(u)
 //	update.updater_stop(u)
 //
@@ -49,7 +49,7 @@ Updater_Options :: struct {
 Phase :: enum {
 	Idle,          // nothing on offer: the last check found nothing newer, or none was made
 	Checking,
-	Available,     // a newer version, signed and checked, not installed (auto_install off)
+	Available,     // a newer version, signed and checked, not installed (the mode is not Install)
 	Downloading,   // and put in place
 	Installed,     // the new program is in place: it runs at the next start
 	Managed,       // a package manager updates this copy: nothing is checked
@@ -76,7 +76,7 @@ Updater :: struct {
 	failed:    bool,
 	asked:     bool,
 	serial:    int,
-	auto_check, auto_install: bool,
+	auto:      Auto_Mode,
 	want_check, want_install: bool,
 	want_asked: bool,             // the check or install wanted was asked by the user
 	next_check: time.Time,
@@ -89,9 +89,9 @@ heap :: proc() -> runtime.Allocator { return runtime.heap_allocator() }
 
 // Starts the updater of the running program, its thread waiting. Nothing is checked before set_auto or check_now. What an
 // earlier update left beside the program is removed (remove_leftovers).
-updater_start :: proc(options: Updater_Options) -> ^Updater {
+updater_start :: proc(o: Updater_Options) -> ^Updater {
 	u := new(Updater, heap())
-	o := options
+	o := o
 	o.folder = strings.clone(o.folder, heap())
 	o.channel = strings.clone(o.channel, heap())
 	o.current = strings.clone(o.current, heap())
@@ -124,10 +124,13 @@ updater_stop :: proc(u: ^Updater) {
 	updater_release(u)   // (unlocks)
 }
 
-// Whether the updater checks by itself (after the start, then every `every`), and installs what it finds.
-set_auto :: proc(u: ^Updater, check, install: bool) {
+// What the updater does by itself: nothing (check_now and install_now only), check (after the start, then every
+// `every`) and offer what it finds, or check and install what it finds.
+Auto_Mode :: enum u8 { Off, Check, Install }
+
+set_auto :: proc(u: ^Updater, mode: Auto_Mode) {
 	sync.guard(&u.mutex)
-	u.auto_check, u.auto_install = check, install
+	u.auto = mode
 	sync.cond_signal(&u.cond)
 }
 
@@ -207,10 +210,10 @@ updater_run :: proc(u: ^Updater) {
 	sync.lock(&u.mutex)
 	for !u.stopped {
 		install := u.want_install && u.phase == .Available
-		check := u.want_check || (u.auto_check && time.diff(time.now(), u.next_check) <= 0)
+		check := u.want_check || (u.auto != .Off && time.diff(time.now(), u.next_check) <= 0)
 		if u.phase == .Installed { check, install = false, false }
 		if !install && !check {
-			if u.auto_check && u.phase != .Installed {
+			if u.auto != .Off && u.phase != .Installed {
 				_ = sync.cond_wait_with_timeout(&u.cond, &u.mutex, max(time.diff(time.now(), u.next_check), time.Millisecond))
 			} else {
 				sync.cond_wait(&u.cond, &u.mutex)
@@ -223,7 +226,7 @@ updater_run :: proc(u: ^Updater) {
 			updater_install(u, asked)
 		} else {
 			updater_check(u, asked)
-			if u.phase == .Available && u.auto_install && !u.stopped { updater_install(u, asked) }
+			if u.phase == .Available && u.auto == .Install && !u.stopped { updater_install(u, asked) }
 		}
 		free_all(context.temp_allocator)
 	}
@@ -308,7 +311,7 @@ fetch_release :: proc(o: Updater_Options) -> (m: Manifest, why: string, nothing_
 	sig_status, signature, sig_err := http.get(strings.concatenate({o.folder, name, ".sig"}, context.temp_allocator), sig_req, context.temp_allocator)
 	if sig_err != .None { return {}, http.error_text(sig_err), false }
 	if sig_status != 200 { return {}, i18n.tr("the update has no signature: refused"), false }
-	found, e := check_release(o.product, manifest, strings.trim_space(string(signature)), PLATFORM, o.channel, o.current, "", heap())
+	found, e := check_release(o.product, manifest, strings.trim_space(string(signature)), {platform = PLATFORM, channel = o.channel, current = o.current}, heap())
 	#partial switch e {
 	case .None:      return found, "", false
 	case .Not_Newer: return {}, "", true

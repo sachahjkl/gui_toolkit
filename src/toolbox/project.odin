@@ -221,7 +221,7 @@ check_other :: proc(p: Project, target: string) -> bool {
 	extra := make([dynamic]string, context.temp_allocator)
 	collection_flags(p, &extra)
 	ordered_remove(&extra, len(extra) - 1)   // (odin_check passes -vet itself)
-	return odin_check(project_src(p), target, extra[:], how = {echo = true})
+	return odin_check(project_src(p), target, extra[:], o = {echo = true})
 }
 
 @(private)

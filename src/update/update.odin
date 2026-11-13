@@ -16,7 +16,7 @@
 // The public half of the key is built into the program (Product.public_key); the private half signs in the release workflow
 // (sign). A program that updates itself:
 //
-//   1. check_release(product, manifest, signature, its platform, its channel, its version, ...): the signature, then the content
+//   1. check_release(product, manifest, signature, {platform, channel, current, announced}): the signature, then the content
 //      (read only once signed), the channel, the version the release announced, and that it is newer (a downgrade replays an old,
 //      signed, vulnerable release: the version is in what is signed, and it must grow)
 //   2. downloads `m.file`, then place(exe, bytes, m): the length and the SHA-256 against the signed manifest, then the new program
@@ -36,6 +36,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import i18n "../i18n"
+import signing "../signing"
 
 // What a program says of itself, the same in the program that checks and in the tool that signs.
 Product :: struct {
@@ -196,35 +197,6 @@ b64_decode :: proc(s: string) -> ([]byte, base64.Error) {
 	return base64.decode(s, base64.DEC_URL_TABLE, allocator = context.temp_allocator, options = {.Strict, .No_Padding})
 }
 
-public_key_decode :: proc(text: string) -> (key: [ed25519.PUBLIC_KEY_SIZE]byte, ok: bool) {
-	b, err := b64_decode(strings.trim_space(text))
-	if err != nil || len(b) != ed25519.PUBLIC_KEY_SIZE { return {}, false }
-	copy(key[:], b)
-	return key, true
-}
-
-// The seed of a private key written as base64url (32 bytes).
-seed_decode :: proc(text: string) -> (seed: [32]byte, ok: bool) {
-	b, err := b64_decode(strings.trim_space(text))
-	if err != nil || len(b) != 32 { return {}, false }
-	copy(seed[:], b)
-	return seed, true
-}
-
-seed_encode :: proc(seed: []byte, allocator := context.allocator) -> string {
-	return base64.encode(seed, base64.ENC_URL_TABLE, allocator, {.No_Padding})
-}
-
-// The public key (base64url) of a private key.
-public_key_of :: proc(seed: []byte, allocator := context.allocator) -> (key: string, ok: bool) {
-	priv: ed25519.Private_Key
-	if !ed25519.private_key_set_bytes(&priv, seed) { return "", false }
-	defer ed25519.private_key_clear(&priv)
-	pub: [ed25519.PUBLIC_KEY_SIZE]byte
-	ed25519.private_key_public_bytes(&priv, pub[:])
-	return base64.encode(pub[:], base64.ENC_URL_TABLE, allocator, {.No_Padding}), true
-}
-
 // The product's sign_context then the manifest: what the signature covers.
 signed_bytes :: proc(p: Product, manifest: []byte, allocator := context.temp_allocator) -> []byte {
 	out := make([]byte, len(p.sign_context) + len(manifest), allocator)
@@ -246,12 +218,15 @@ sign :: proc(p: Product, seed: []byte, manifest: []byte, allocator := context.al
 ////////////////////////////////
 // The manifest
 
-// The manifest of the release file `data` (the release tool's): its size and SHA-256, its name for `version` on `platform`.
-manifest_of :: proc(p: Product, data: []byte, version, platform, channel, published: string, allocator := context.allocator) -> Manifest {
+// The manifest of the release file `data` (the release tool's). `release` says its version, platform, channel and
+// published date; the rest is made here: the file's name for that version and platform, its size and SHA-256 (what
+// `release` has in them is ignored). The strings are copied into `allocator` (manifest_destroy).
+manifest_of :: proc(p: Product, data: []byte, release: Manifest, allocator := context.allocator) -> Manifest {
 	return {
-		channel = strings.clone(channel, allocator), version = strings.clone(version, allocator), platform = strings.clone(platform, allocator),
-		file = expected_file_name(p, version, platform, allocator), sha256 = sha256_hex(data, allocator),
-		published = strings.clone(published, allocator), size = i64(len(data)),
+		channel = strings.clone(release.channel, allocator), version = strings.clone(release.version, allocator),
+		platform = strings.clone(release.platform, allocator),
+		file = expected_file_name(p, release.version, release.platform, allocator), sha256 = sha256_hex(data, allocator),
+		published = strings.clone(release.published, allocator), size = i64(len(data)),
 	}
 }
 
@@ -321,9 +296,18 @@ hex_digest_ok :: proc(s: string) -> bool {
 	return true
 }
 
-// Reads and checks a manifest against the product's public key for `platform` and `channel` ("": none). On success the fields are
-// owned by `allocator` (manifest_destroy). Nothing but a manifest signed with the matching private key is read at all.
-verify :: proc(p: Product, manifest: []byte, signature, platform, channel: string, allocator := context.allocator) -> (m: Manifest, err: Error) {
+// What a program asks of a release: the platform and channel it runs, its version, and the version the release announced.
+Release_Target :: struct {
+	platform:  string,   // PLATFORM for the running program
+	channel:   string,   // "": a product without channels
+	current:   string,   // the running version (X.Y.Z): check_release wants a newer one; verify does not read it
+	announced: string,   // the version of the release's tag ("": none claimed); verify does not read it
+}
+
+// Reads and checks a manifest against the product's public key for the target's platform and channel. On success the
+// fields are owned by `allocator` (manifest_destroy). Nothing but a manifest signed with the matching private key is read
+// at all.
+verify :: proc(p: Product, manifest: []byte, signature: string, target: Release_Target, allocator := context.allocator) -> (m: Manifest, err: Error) {
 	if len(manifest) == 0 || len(manifest) > MAX_MANIFEST { return {}, .Too_Long }
 	sig_text := strings.trim_space(signature)
 	if sig_text == "" || len(sig_text) > MAX_SIGNATURE_TEXT { return {}, .Bad_Encoding }
@@ -331,31 +315,31 @@ verify :: proc(p: Product, manifest: []byte, signature, platform, channel: strin
 	if serr != nil || len(sig) != ed25519.SIGNATURE_SIZE { return {}, .Bad_Encoding }
 
 	if p.public_key == "" { return {}, .No_Public_Key }
-	pk_bytes, pk_ok := public_key_decode(p.public_key)
+	pk_bytes, pk_ok := signing.key_decode(p.public_key)
 	if !pk_ok { return {}, .Bad_Public_Key }
 	pk: ed25519.Public_Key
 	if !ed25519.public_key_set_bytes(&pk, pk_bytes[:]) { return {}, .Bad_Public_Key }
 	if !ed25519.verify(&pk, signed_bytes(p, manifest, context.temp_allocator), sig) { return {}, .Bad_Signature }
 
 	// signed by the publisher: its content is read only now
-	return manifest_read(p, manifest, platform, channel, allocator)
+	return manifest_read(p, manifest, target.platform, target.channel, allocator)
 }
 
 // What a program does with the manifest and the signature it downloaded for a release: the signature and the content (verify),
 // that it is the version the release announced (a signed manifest of an old version put under a new release is a replay), and
-// that it is newer than `current`. `announced` is the version of the release's tag ("" when none is claimed).
+// that it is newer than `target.current`. `target.announced` is the version of the release's tag ("" when none is claimed).
 // `require_signature` false (a channel of the user's own, where the user turned the signature off) reads the manifest without a
 // signature: only the length and the SHA-256 of the file are then checked against it, which proves nothing about who made it.
-check_release :: proc(p: Product, manifest: []byte, signature, platform, channel, current, announced: string, allocator := context.allocator, require_signature := true) -> (m: Manifest, err: Error) {
+check_release :: proc(p: Product, manifest: []byte, signature: string, target: Release_Target, allocator := context.allocator, require_signature := true) -> (m: Manifest, err: Error) {
 	if require_signature {
-		m, err = verify(p, manifest, signature, platform, channel, allocator)
+		m, err = verify(p, manifest, signature, target, allocator)
 	} else {
 		if len(manifest) == 0 || len(manifest) > MAX_MANIFEST { return {}, .Too_Long }
-		m, err = manifest_read(p, manifest, platform, channel, allocator)
+		m, err = manifest_read(p, manifest, target.platform, target.channel, allocator)
 	}
 	if err != .None { return {}, err }
-	if announced != "" && m.version != announced { manifest_destroy(&m, allocator); return {}, .Version_Mismatch }
-	if e := check_newer(m, current); e != .None { manifest_destroy(&m, allocator); return {}, e }
+	if target.announced != "" && m.version != target.announced { manifest_destroy(&m, allocator); return {}, .Version_Mismatch }
+	if e := check_newer(m, target.current); e != .None { manifest_destroy(&m, allocator); return {}, e }
 	return m, .None
 }
 

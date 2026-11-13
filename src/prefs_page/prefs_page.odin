@@ -842,8 +842,8 @@ control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref,
 	if len(o.themes) > 0 && e.def.name == THEME_PREF && e.def.kind == .String {
 		// (the cards in the version the look shows: appearance.mode's, or the one the program shows for the system's)
 		light := o.themes_light
-		if m := config.ref_of(prefs, MODE_PREF); m != config.NO_REF {
-			#partial switch ui.theme_mode_of(config.get_string(prefs, m)) {
+		if config.ref_of(prefs, MODE_PREF) != config.NO_REF {
+			#partial switch ui.theme_mode_of(config.string_of(prefs, MODE_PREF)) {
 			case .Dark:  light = false
 			case .Light: light = true
 			}

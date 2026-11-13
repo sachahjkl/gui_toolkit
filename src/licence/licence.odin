@@ -25,6 +25,7 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 import i18n "../i18n"
+import signing "../signing"
 
 // Longest key text taken, and longest value of a field: a licence is a few hundred bytes.
 MAX_TEXT  :: 8192
@@ -157,28 +158,6 @@ b64_decode :: proc(s: string) -> ([]byte, base64.Error) {
 	return base64.decode(s, base64.DEC_URL_TABLE, allocator = context.temp_allocator, options = {.Strict, .No_Padding})
 }
 
-// A key (public, or the seed of a private one) of base64url text: its 32 bytes.
-key_decode :: proc(text: string) -> (key: [32]byte, ok: bool) {
-	b, err := b64_decode(strings.trim_space(text))
-	if err != nil || len(b) != 32 { return {}, false }
-	copy(key[:], b)
-	return key, true
-}
-
-key_encode :: proc(key: []byte, allocator := context.allocator) -> string {
-	return base64.encode(key, base64.ENC_URL_TABLE, allocator, {.No_Padding})
-}
-
-// The public key (base64url) of a private key's 32-byte seed.
-public_key_of :: proc(seed: []byte, allocator := context.allocator) -> (key: string, ok: bool) {
-	priv: ed25519.Private_Key
-	if !ed25519.private_key_set_bytes(&priv, seed) { return "", false }
-	defer ed25519.private_key_clear(&priv)
-	pub: [ed25519.PUBLIC_KEY_SIZE]byte
-	ed25519.private_key_public_bytes(&priv, pub[:])
-	return key_encode(pub[:], allocator), true
-}
-
 // Reads and checks a licence of `p` against `public_key` (base64url text of the 32 bytes; "": the product's). On success
 // the fields are owned by `allocator` (licence_destroy). Nothing but a signature made with the matching private key passes.
 verify :: proc(p: Product, text: string, public_key := "", allocator := context.allocator) -> (lic: Licence, err: Error) {
@@ -194,7 +173,7 @@ verify :: proc(p: Product, text: string, public_key := "", allocator := context.
 	if e1 != nil || e2 != nil { return {}, .Bad_Encoding }
 
 	if key == "" { return {}, .No_Public_Key }
-	pk_bytes, pk_ok := key_decode(key)
+	pk_bytes, pk_ok := signing.key_decode(key)
 	if !pk_ok { return {}, .Bad_Public_Key }
 	pk: ed25519.Public_Key
 	if !ed25519.public_key_set_bytes(&pk, pk_bytes[:]) { return {}, .Bad_Public_Key }

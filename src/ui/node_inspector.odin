@@ -10,7 +10,7 @@ package ui
 //
 //	res := ui.node_inspector("###params", &app.inspector, &CATALOG, node)
 //	if res.changed >= 0 {
-//		if res.new_step { undo.push(&app.history, flowgraph.graph_clone(app.graph), 100, graph_free) }
+//		if res.new_step { undo.push(&app.history, flowgraph.graph_clone(app.graph), 100, graph_destroy) }
 //		flowgraph.param_set(node, res.changed, res.value)
 //	}
 

@@ -111,7 +111,7 @@ flow_palette :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(G
 	for def, k in cat.nodes {
 		commands[k] = {label = def.title, group = def.group, tags = def.tags, icon = def.icon}
 		enabled[k] = flowgraph.can_add(g, cat, k)
-		if f, has := from.?; has { enabled[k] &&= flowgraph.fit_port(g, cat, f.node, f.port, f.side == .Out, k) >= 0 }
+		if f, has := from.?; has { enabled[k] &&= flowgraph.fit_port(g, cat, {f.node, f.port, flowgraph.Side(f.side)}, k) >= 0 }
 	}
 	return
 }

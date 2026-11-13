@@ -7,7 +7,7 @@ import "core:testing"
 @(test)
 an_edit_keeps_the_graph_valid :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	capture := node_add(&g, cat, int(Sample.Capture), {})
 	a := node_add(&g, cat, int(Sample.Blur), {})
@@ -51,7 +51,7 @@ an_edit_keeps_the_graph_valid :: proc(t: ^testing.T) {
 @(test)
 max_count_limits_a_kind :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	capture := node_add(&g, cat, int(Sample.Capture), {})
 	testing.expect(t, capture != 0)
@@ -72,7 +72,7 @@ max_count_limits_a_kind :: proc(t: ^testing.T) {
 @(test)
 actions_link_to_actions :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	capture := node_add(&g, cat, int(Sample.Capture), {})
 	editor := node_add(&g, cat, int(Sample.Editor), {})
@@ -89,7 +89,7 @@ actions_link_to_actions :: proc(t: ^testing.T) {
 @(test)
 parameters_read_clamped :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	n := graph_node(&g, node_add(&g, cat, int(Sample.Save), {}))
 	testing.expect_value(t, param_int(cat, n, "quality"), 90)
@@ -111,29 +111,29 @@ parameters_read_clamped :: proc(t: ^testing.T) {
 @(test)
 a_node_added_from_a_link_joins_it :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	capture := node_add(&g, cat, int(Sample.Capture), {})
 	save := node_add(&g, cat, int(Sample.Save), {})
-	testing.expect_value(t, fit_port(&g, cat, capture, 0, true, int(Sample.Blur)), 0)
-	testing.expect_value(t, fit_port(&g, cat, capture, 0, true, int(Sample.Copy_Text)), -1)   // (a picture is no text)
-	testing.expect_value(t, fit_port(&g, cat, save, 0, true, int(Sample.Copy_Text)), 0)       // (a file's path is)
-	testing.expect_value(t, fit_port(&g, cat, save, 1, false, int(Sample.Editor)), 1)         // (its "when" takes the editor's "done")
-	blur := node_add_linked(&g, cat, int(Sample.Blur), {200, 0}, capture, 0, true)
+	testing.expect_value(t, fit_port(&g, cat, {capture, 0, .Out}, int(Sample.Blur)), 0)
+	testing.expect_value(t, fit_port(&g, cat, {capture, 0, .Out}, int(Sample.Copy_Text)), -1)   // (a picture is no text)
+	testing.expect_value(t, fit_port(&g, cat, {save, 0, .Out}, int(Sample.Copy_Text)), 0)       // (a file's path is)
+	testing.expect_value(t, fit_port(&g, cat, {save, 1, .In}, int(Sample.Editor)), 1)         // (its "when" takes the editor's "done")
+	blur := node_add_linked(&g, cat, int(Sample.Blur), {200, 0}, {capture, 0, .Out})
 	testing.expect(t, blur != 0)
 	testing.expect_value(t, len(g.links), 1)
 	testing.expect_value(t, g.links[0], Link{capture, 0, blur, 0})
-	editor := node_add_linked(&g, cat, int(Sample.Editor), {0, 200}, save, 1, false)
+	editor := node_add_linked(&g, cat, int(Sample.Editor), {0, 200}, {save, 1, .In})
 	testing.expect_value(t, g.links[1], Link{editor, 1, save, 1})
 	testing.expect(t, !can_add(&g, cat, int(Sample.Capture)))
-	testing.expect_value(t, node_add_linked(&g, cat, int(Sample.Capture), {}, blur, 0, false), 0)
+	testing.expect_value(t, node_add_linked(&g, cat, int(Sample.Capture), {}, {blur, 0, .In}), 0)
 }
 
 // param_set copies the text it is given; the node frees its own.
 @(test)
 param_set_copies_the_text :: proc(t: ^testing.T) {
 	g: Graph
-	defer graph_free(&g)
+	defer graph_destroy(&g)
 	cat := &SAMPLE
 	n := graph_node(&g, node_add(&g, cat, int(Sample.Save), {}))
 	_, i := param_def(cat, n, "name")

@@ -60,7 +60,7 @@ json_reads_back_as_the_values :: proc(t: ^testing.T) {
 	set_from_string(&p, "general.on", "true", .Command_Line)   // the user's value under it is the one exported
 
 	for all in ([]bool{false, true}) {
-		text := export_json(&p, all, context.temp_allocator)
+		text := export(&p, .Json, all, context.temp_allocator)
 		v, err := json.parse_string(text, spec = .JSON, parse_integers = true, allocator = context.temp_allocator)
 		testing.expectf(t, err == .None, "%v parses: %v", text, err)
 		obj, ok := v.(json.Object)
@@ -91,7 +91,7 @@ json_reads_back_as_the_values :: proc(t: ^testing.T) {
 	}
 	q := prefs_make()
 	defer prefs_destroy(&q)
-	testing.expect_value(t, export_json(&q, allocator = context.temp_allocator), "{}\n")
+	testing.expect_value(t, export(&q, .Json, allocator = context.temp_allocator), "{}\n")
 }
 
 @(test)
@@ -99,7 +99,7 @@ toml_has_a_table_per_group :: proc(t: ^testing.T) {
 	p: Prefs
 	export_prefs(&p)
 	defer prefs_destroy(&p)
-	testing.expect_value(t, export_toml(&p, allocator = context.temp_allocator), `"browser.tabs" = true
+	testing.expect_value(t, export(&p, .Toml, allocator = context.temp_allocator), `"browser.tabs" = true
 solo = 3
 
 [appearance]
@@ -116,7 +116,7 @@ width = 240
 name = "plain words"
 `)
 	// every value: the defaults too, never the program's state
-	all := export_toml(&p, all = true, allocator = context.temp_allocator)
+	all := export(&p, .Toml, all = true, allocator = context.temp_allocator)
 	testing.expect(t, contains_line(all, "on = true"), "a default")
 	testing.expect(t, !contains_line(all, "split = 0.25"), "hidden")
 	// a key that is no bare key, and the control characters TOML does not take raw
@@ -124,7 +124,7 @@ name = "plain words"
 	defer prefs_destroy(&q)
 	register(&q, []Def{{name = "odd.with space", kind = .String}})
 	set_from_string(&q, "odd.with space", "\x01\x7F", .User)
-	testing.expect_value(t, export_toml(&q, allocator = context.temp_allocator), "[odd]\n\"with space\" = \"\\u0001\\u007F\"\n")
+	testing.expect_value(t, export(&q, .Toml, allocator = context.temp_allocator), "[odd]\n\"with space\" = \"\\u0001\\u007F\"\n")
 }
 
 @(test)
@@ -132,7 +132,7 @@ ini_has_a_section_per_group :: proc(t: ^testing.T) {
 	p: Prefs
 	export_prefs(&p)
 	defer prefs_destroy(&p)
-	testing.expect_value(t, export_ini(&p, allocator = context.temp_allocator), `solo=3
+	testing.expect_value(t, export(&p, .Ini, allocator = context.temp_allocator), `solo=3
 
 [appearance]
 theme="dark \"x\"\\y"
@@ -151,9 +151,9 @@ width=240
 name=plain words
 `)
 	set_from_string(&p, "general.name", " padded", .User)
-	testing.expect(t, contains_line(export_ini(&p, allocator = context.temp_allocator), `name=" padded"`), "a space a reader trims")
+	testing.expect(t, contains_line(export(&p, .Ini, allocator = context.temp_allocator), `name=" padded"`), "a space a reader trims")
 	set_from_string(&p, "general.name", "a ; b", .User)
-	testing.expect(t, contains_line(export_ini(&p, allocator = context.temp_allocator), `name="a ; b"`), "a comment's mark")
+	testing.expect(t, contains_line(export(&p, .Ini, allocator = context.temp_allocator), `name="a ; b"`), "a comment's mark")
 }
 
 // Our own format is what the profile file holds; with `all`, every value, and load_file reads either back.
@@ -167,7 +167,7 @@ own_format_round_trips :: proc(t: ^testing.T) {
 	set_from_string(&p, "general.name", AWKWARD, .User)
 	set_from_string(&p, "num.sum", "0.30000000000000004", .User)
 	set_from_string(&p, "num.tiny", "5e-324", .Command_Line)
-	testing.expect_value(t, export_own(&p, allocator = context.temp_allocator),
+	testing.expect_value(t, export(&p, .Own, allocator = context.temp_allocator),
 		"wbprefs 1\n" +
 		"appearance.text.gamma\t2\n" +
 		"appearance.text.label\ta\\tb\\n\n" +
@@ -178,7 +178,7 @@ own_format_round_trips :: proc(t: ^testing.T) {
 		"layout.split\t0.25\n" +
 		"num.sum\t0.30000000000000004\n" +
 		"solo\t3\n")
-	testing.expect(t, write_user_file(path, export_own(&p, all = true, allocator = context.temp_allocator)))
+	testing.expect(t, write_user_file(path, export(&p, .Own, all = true, allocator = context.temp_allocator)))
 	q := prefs_make()
 	defer prefs_destroy(&q)
 	register(&q, EXPORT_DEFS[:])

@@ -164,7 +164,7 @@ notify_request_send :: proc(conn: ^dbus.Conn, req: ^Notify_Request) -> bool {
 @(private = "file")
 notify_request_end :: proc(req: ^Notify_Request, id: Notification_Id, ok: bool) {
 	if req.done != nil { req.done(req.user, id, ok) }
-	notification_free(&req.n)
+	notification_destroy(&req.n)
 	free(req)
 }
 

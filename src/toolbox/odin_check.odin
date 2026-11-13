@@ -16,15 +16,15 @@ WGPU_OTHER_LIBS :: [?]string{
 
 // `odin check <pkg> -vet -target:<target> <extra>`, also for another system than this one: the Windows and macOS code is
 // checked from Linux (it is not run here; a check at least sees it compile), on the environment check_env gives.
-odin_check :: proc(pkg, target: string, extra: []string = nil, root := CHECK_ROOT_DEFAULT, how := Run{}) -> bool {
+odin_check :: proc(pkg, target: string, extra: []string = nil, root := CHECK_ROOT_DEFAULT, o := Run_Options{}) -> bool {
 	command := make([dynamic]string, context.temp_allocator)
 	append(&command, "odin", "check", pkg, "-vet", fmt.tprintf("-target:%s", target))
 	append(&command, ..extra)
 	env, why := check_env(target, root)
-	if why != "" { say_error(how.log, fmt.tprintfln("odin_check: %s", why)); return false }
-	run_how := how
-	if env != nil { run_how.env = env }
-	return run(command[:], run_how)
+	if why != "" { say_error(o.log, fmt.tprintfln("odin_check: %s", why)); return false }
+	run_options := o
+	if env != nil { run_options.env = env }
+	return run(command[:], run_options)
 }
 
 // The environment of an `odin check` for `target` from this system; nil: this process's will do. Odin's wgpu package

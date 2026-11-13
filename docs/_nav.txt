@@ -60,6 +60,7 @@ Platform and system
   setup.md            setup: a program installs itself
   update.md           update: signed updates
   licence.md          licence: a paid licence
+  signing.md          signing: keys as text
   http.md             http: requests
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process

@@ -8,7 +8,7 @@ The input region sets which parts of the overlay take the pointer. Elsewhere, cl
 
 ```odin
 // with gt:host: the first window of the program, or a later one
-o := host.Open{title = "cliche", overlay = true, overlay_area = output.rect}   // output: a capture.Output
+o := host.Open_Options{title = "cliche", overlay = true, overlay_area = output.rect}   // output: a capture.Output
 host.host_open(&app.bar, &app.shared, o, build_bar, app)
 
 // in the build, each frame: only the bar takes the pointer
@@ -27,7 +27,7 @@ render.init_window(&r, w, w.size, transparent = true)
 |---|---|
 | `open_overlay(title, area, user = nil, on_frame = nil) -> ^Window` | opens and shows the overlay over the output at `area`. nil when the system has no such window. |
 | `set_input_region(w, rects)` | only `rects` take the pointer. Window-relative logical pixels. Empty: no part of the window takes it. |
-| `open_overlay(title, area, keyboard)` | `keyboard`: `.On_Demand` (default) takes the keyboard once clicked, for a bar of buttons over a desktop still in use; `.Exclusive` takes it from its showing until it goes, for a selection read with Escape, the arrows and Enter. `host.Open.overlay_keyboard` passes it. |
+| `open_overlay(title, area, keyboard)` | `keyboard`: `.On_Demand` (default) takes the keyboard once clicked, for a bar of buttons over a desktop still in use; `.Exclusive` takes it from its showing until it goes, for a selection read with Escape, the arrows and Enter. `host.Open_Options.overlay_keyboard` passes it. |
 | `clear_input_region(w)` | the whole window takes the pointer again. |
 | `is_overlay(w) -> bool` | the window was opened with `open_overlay`. |
 | `overlay_output_index(outputs, area) -> int` | the output an area names (pure; see below). |

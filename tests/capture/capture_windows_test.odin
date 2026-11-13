@@ -37,14 +37,14 @@ the_windows_desktop_is_captured :: proc(t: ^testing.T) {
 			testing.expect(t, abs(f32(f.width) - f32(o.rect.w) * o.scale) <= o.scale + 1, o.name)
 			testing.expect_value(t, f.origin, [2]i32{o.rect.x, o.rect.y})
 			testing.expect(t, len(f.pixels) == 0 || f.pixels[3] == 255, "opaque")
-			capture.frame_free(&f)
+			capture.frame_destroy(&f)
 		}
 	}
 
 	d, derr := capture.desktop(s)
 	testing.expect_value(t, derr, capture.Error.None)
 	testing.expect(t, d.width > 0 && d.height > 0)
-	capture.frame_free(&d)
+	capture.frame_destroy(&d)
 
 	wins := capture.windows(s)
 	for w in wins {
@@ -53,7 +53,7 @@ the_windows_desktop_is_captured :: proc(t: ^testing.T) {
 		f, werr := capture.window(s, w.id)
 		testing.expectf(t, werr == .None, "%s (%s): %v", w.title, w.app_id, werr)
 		testing.expect(t, f.width > 0 && f.height > 0, w.title)
-		capture.frame_free(&f)
+		capture.frame_destroy(&f)
 		break
 	}
 }

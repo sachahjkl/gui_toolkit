@@ -38,7 +38,7 @@ import "core:time"
 import "../ascii"
 
 // How a command runs. The zero value: in this process's folder and environment, its output on this process's, no time limit.
-Run :: struct {
+Run_Options :: struct {
 	dir:   string,          // its working directory; "": this process's
 	env:   []string,        // its whole environment ("NAME=value", env_with makes one); nil: this process's
 	log:   string,          // "": its output on this process's; else its standard output and error appended to this file
@@ -47,16 +47,16 @@ Run :: struct {
 }
 
 // Runs a command and waits for it. True when it started and exited with 0.
-run :: proc(command: []string, how := Run{}) -> bool {
+run :: proc(command: []string, o := Run_Options{}) -> bool {
 	if len(command) == 0 { return false }
-	if how.echo { say(how.log, fmt.tprintfln("> %s", strings.join(command, " ", context.temp_allocator))) }
-	desc := os.Process_Desc{command = command, working_dir = how.dir, env = how.env}
+	if o.echo { say(o.log, fmt.tprintfln("> %s", strings.join(command, " ", context.temp_allocator))) }
+	desc := os.Process_Desc{command = command, working_dir = o.dir, env = o.env}
 	log: ^os.File
-	if how.log != "" {
+	if o.log != "" {
 		err: os.Error
-		log, err = os.open(how.log, {.Write, .Create, .Append, .Inheritable})   // (Windows: a handle the child does not inherit is no output for it)
+		log, err = os.open(o.log, {.Write, .Create, .Append, .Inheritable})   // (Windows: a handle the child does not inherit is no output for it)
 		if err != nil {
-			fmt.eprintfln("%s: %v", how.log, err)
+			fmt.eprintfln("%s: %v", o.log, err)
 			return false
 		}
 		desc.stdout, desc.stderr = log, log
@@ -66,29 +66,29 @@ run :: proc(command: []string, how := Run{}) -> bool {
 	defer if log != nil { os.close(log) }
 	p, err := os.process_start(desc)
 	if err != nil {
-		say_error(how.log, fmt.tprintfln("%s cannot start: %v", command[0], err))
+		say_error(o.log, fmt.tprintfln("%s cannot start: %v", command[0], err))
 		return false
 	}
-	state, wait_err := os.process_wait(p, how.limit > 0 ? how.limit : os.TIMEOUT_INFINITE)
+	state, wait_err := os.process_wait(p, o.limit > 0 ? o.limit : os.TIMEOUT_INFINITE)
 	if wait_err == os.General_Error.Timeout {
 		_ = os.process_kill(p)
 		_, _ = os.process_wait(p)
-		say_error(how.log, fmt.tprintfln("%s: stopped after %v", command[0], how.limit))
+		say_error(o.log, fmt.tprintfln("%s: stopped after %v", command[0], o.limit))
 		return false
 	}
 	if wait_err != nil {
-		say_error(how.log, fmt.tprintfln("%s: %v", command[0], wait_err))
+		say_error(o.log, fmt.tprintfln("%s: %v", command[0], wait_err))
 		return false
 	}
 	return succeeded(state)
 }
 
 // Runs a command and returns its standard output and its exit code (-1: it did not start or did not exit). When it fails, its
-// standard error is shown on this process's. `how.dir` and `how.env` apply; its output is the result, so `how.log` and `how.echo`
+// standard error is shown on this process's. `o.dir` and `o.env` apply; its output is the result, so `o.log` and `o.echo`
 // do not.
-capture :: proc(command: []string, how := Run{}, allocator := context.temp_allocator) -> (out: string, code: int) {
+capture :: proc(command: []string, o := Run_Options{}, allocator := context.temp_allocator) -> (out: string, code: int) {
 	if len(command) == 0 { return "", -1 }
-	state, stdout, stderr, err := os.process_exec({command = command, working_dir = how.dir, env = how.env}, allocator)
+	state, stdout, stderr, err := os.process_exec({command = command, working_dir = o.dir, env = o.env}, allocator)
 	defer delete(stderr, allocator)
 	if err != nil {
 		delete(stdout, allocator)

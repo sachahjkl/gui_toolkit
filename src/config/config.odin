@@ -11,8 +11,8 @@
 //     subsystem supports it (`restart` marks the ones that do not);
 //   * persistence of user changes only (defaults are never written), atomically.
 //
-// Reads never go through string lookups on hot paths: callers resolve a name to a `Ref` once, or copy the values they need
-// into a plain Settings struct and refresh it from an observer.
+// Reads never go through string lookups on hot paths: callers copy the values they need into a plain Settings struct and
+// refresh it from an observer.
 //
 // The package name is `tk_config` (the directory is `config`, imported as `toolkit:config`): an application that keeps a
 // thin `config` alias package of its own — as Wren does, so its many callers write `config.Prefs`, `config.register`,
@@ -96,7 +96,7 @@ Prefs :: struct {
 	next_observer: int,
 	version:   u64,                  // bumped on every change
 	// bumped on every change of the user's layer that its file does not have: a change under a higher layer counts,
-	// reading a file does not. A program keeps the value it last wrote (export_own) and saves when it differs, so a
+	// reading a file does not. A program keeps the value it last wrote (export) and saves when it differs, so a
 	// write done on another thread needs no flag that the loop and the writer would share.
 	user_version: u64,
 	groups:    map[string]Group,     // titles of the groups, by path (title_register); keys owned
@@ -208,31 +208,21 @@ sorted_names :: proc(p: ^Prefs, allocator := context.temp_allocator) -> []string
 }
 
 ////////////////////////////////
-// Reads. An unknown name or a kind mismatch is a programming error: it asserts (and a release build without asserts would
-// fail the bounds check).
+// Reads, by name. An unknown name or a kind mismatch is a programming error: it asserts (and a release build without
+// asserts would fail the bounds check). A hot path does not look a name up: it copies the values it needs into a plain
+// Settings struct and refreshes it from an observer (watch).
 
-get_bool :: proc(p: ^Prefs, r: Ref) -> bool {
-	assert(r != NO_REF && p.entries[int(r)].def.kind == .Bool)
-	return p.entries[int(r)].value.b
-}
-get_int :: proc(p: ^Prefs, r: Ref) -> i64 {
-	assert(r != NO_REF && p.entries[int(r)].def.kind == .Int)
-	return p.entries[int(r)].value.i
-}
-get_float :: proc(p: ^Prefs, r: Ref) -> f64 {
-	assert(r != NO_REF && p.entries[int(r)].def.kind == .Float)
-	return p.entries[int(r)].value.f
-}
-get_string :: proc(p: ^Prefs, r: Ref) -> string {
-	assert(r != NO_REF && p.entries[int(r)].def.kind == .String)
-	return p.entries[int(r)].value.s
-}
+bool_of :: proc(p: ^Prefs, name: string) -> bool { return value_of(p, name, .Bool).b }
+int_of :: proc(p: ^Prefs, name: string) -> i64 { return value_of(p, name, .Int).i }
+float_of :: proc(p: ^Prefs, name: string) -> f64 { return value_of(p, name, .Float).f }
+string_of :: proc(p: ^Prefs, name: string) -> string { return value_of(p, name, .String).s }
 
-// By name: convenient for rare reads; hot paths resolve a Ref once.
-bool_of :: proc(p: ^Prefs, name: string) -> bool { return get_bool(p, ref_of(p, name)) }
-int_of :: proc(p: ^Prefs, name: string) -> i64 { return get_int(p, ref_of(p, name)) }
-float_of :: proc(p: ^Prefs, name: string) -> f64 { return get_float(p, ref_of(p, name)) }
-string_of :: proc(p: ^Prefs, name: string) -> string { return get_string(p, ref_of(p, name)) }
+@(private)
+value_of :: proc(p: ^Prefs, name: string, kind: Kind) -> Value {
+	r := ref_of(p, name)
+	assert(r != NO_REF && p.entries[int(r)].def.kind == kind)
+	return p.entries[int(r)].value
+}
 
 ////////////////////////////////
 // Writes
@@ -336,11 +326,19 @@ assign :: proc(p: ^Prefs, i: int, v: Value, source: Source) {
 	}
 }
 
-set_bool :: proc(p: ^Prefs, r: Ref, v: bool, source := Source.User) -> Set_Error { return set_from_string(p, p.entries[int(r)].def.name, v ? "true" : "false", source) }
-set_int :: proc(p: ^Prefs, r: Ref, v: i64, source := Source.User) -> Set_Error {
-	return set_from_string(p, p.entries[int(r)].def.name, fmt.tprintf("%d", v), source)
+// Typed sets by name, with the validation of set_from_string (which is for text a user typed).
+set_bool :: proc(p: ^Prefs, name: string, v: bool, source := Source.User) -> Set_Error {
+	return set_from_string(p, name, v ? "true" : "false", source)
 }
-set_string :: proc(p: ^Prefs, r: Ref, v: string, source := Source.User) -> Set_Error { return set_from_string(p, p.entries[int(r)].def.name, v, source) }
+set_int :: proc(p: ^Prefs, name: string, v: i64, source := Source.User) -> Set_Error {
+	return set_from_string(p, name, fmt.tprintf("%d", v), source)
+}
+set_float :: proc(p: ^Prefs, name: string, v: f64, source := Source.User) -> Set_Error {
+	return set_from_string(p, name, float_text(v), source)
+}
+set_string :: proc(p: ^Prefs, name: string, v: string, source := Source.User) -> Set_Error {
+	return set_from_string(p, name, v, source)
+}
 
 // Back to the default (the user layer only: a command line value stays for this run). Under a policy it is refused
 // (`.Locked`) and changes nothing.
@@ -431,7 +429,7 @@ apply_args :: proc(p: ^Prefs, args: []string, allocator := context.allocator) ->
 USER_MAGIC :: "wbprefs 1"
 POLICY_MAGIC :: "wbpolicy 1"
 
-// Writes `text` (from export_own) to `path`, on the disk when it returns. Atomic: a crash or a failure leaves the
+// Writes `text` (from export) to `path`, on the disk when it returns. Atomic: a crash or a failure leaves the
 // previous file intact, and a failure no temporary file. Its folder is made when it is not there (the first save of a
 // program). It reads no registry state, so a worker thread may call it while the loop changes preferences.
 write_user_file :: proc(path: string, text: string, loc := #caller_location) -> bool {
@@ -444,7 +442,7 @@ write_user_file :: proc(path: string, text: string, loc := #caller_location) -> 
 // does not matter (a settings page's Save). A program that saves often serializes on its loop and writes on a worker.
 save_user :: proc(p: ^Prefs, path: string, loc := #caller_location) -> bool {
 	base.blocking("config.save_user", loc)
-	return write_user_file(path, export_own(p, allocator = context.temp_allocator))
+	return write_user_file(path, export(p, .Own, allocator = context.temp_allocator))
 }
 
 // Reads a preference file as `source` (User for the profile, Policy for the enterprise file), whose first line must be that

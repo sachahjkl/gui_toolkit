@@ -1,14 +1,14 @@
 // Package tasks: work off the interface's thread. A Pool is a few threads that run work in the order it came (or the
 // newest first), work that waits for its time with no thread asleep for it, and work that must run before the rest.
 // A pool may grow: work that hangs (a read of a network share that does not answer) holds its thread for good, so when
-// work waits, no thread is free and none has moved for Options.stuck, one more thread starts, up to Options.grow; such a
-// thread ends after Options.extra_idle with nothing to do.
+// work waits, no thread is free and none has moved for Pool_Options.stuck, one more thread starts, up to
+// Pool_Options.grow; such a thread ends after Pool_Options.extra_idle with nothing to do.
 //
 // A Job is work asked again and again whose runs merge: asked while it waits, nothing more; asked while it runs, one
 // more run after it (a re-read of a folder each time it changes: one read with the newest state, not one per change).
 //
 // A pool of no thread runs work at once on the thread that adds it, and timed work when pump says: a test drives it so,
-// in its own order and by its own clock (Options.clock).
+// in its own order and by its own clock (Pool_Options.clock).
 //
 // The result of a work goes back to the interface's thread by ui.post (ui.task does both: docs/tasks.md).
 package tasks
@@ -22,7 +22,7 @@ Work :: #type proc(data: rawptr)
 STUCK_DEFAULT :: time.Second
 EXTRA_IDLE_DEFAULT :: 5 * time.Second
 
-Options :: struct {
+Pool_Options :: struct {
 	threads:      int,            // started now; 0: work runs on the thread that adds it (timed work at pump)
 	grow:         int,            // threads it may add while its own are held
 	stuck:        time.Duration,  // no thread free nor moving this long while work waits: one more starts (0: STUCK_DEFAULT)
@@ -32,7 +32,7 @@ Options :: struct {
 }
 
 // How a work is added.
-Add :: struct {
+Add_Options :: struct {
 	after_ms: int,    // runs this long from now (0: as soon as a thread is free)
 	urgent:   bool,   // runs before every work waiting
 }
@@ -41,7 +41,7 @@ Add :: struct {
 Item :: struct { work: Work, data: rawptr, due_ms: i64 }
 
 Pool :: struct {
-	o:        Options,
+	o:        Pool_Options,
 	lock:     sync.Mutex,
 	changed:  sync.Cond,          // work came, the clock moved, the stop: the threads look again
 	rested:   sync.Cond,          // a work ended, or a thread waits: wait_rest looks again
@@ -60,11 +60,12 @@ Pool :: struct {
 	watch_wake: sync.Cond,        // the stop, for the watcher (its own: a signal for a work must reach a worker)
 }
 
-State :: struct { ready, timed, running, waiting, threads, extras, looks: int }
+// How much work and how many threads a pool has now (counts).
+Counts :: struct { ready, timed, running, waiting, threads, extras, looks: int }
 
 // Starts the pool's threads, with the caller's context (its allocator is theirs; their temporary memory is freed after
 // each work).
-start :: proc(p: ^Pool, o: Options) {
+start :: proc(p: ^Pool, o: Pool_Options) {
 	p.o, p.origin, p.moved = o, time.tick_now(), time.tick_now()
 	if p.o.stuck <= 0 { p.o.stuck = STUCK_DEFAULT }
 	if p.o.extra_idle <= 0 { p.o.extra_idle = EXTRA_IDLE_DEFAULT }
@@ -74,18 +75,18 @@ start :: proc(p: ^Pool, o: Options) {
 }
 
 // Work for a thread of the pool. False once stop has begun: the work will not run (the data is the caller's again).
-add :: proc(p: ^Pool, work: Work, data: rawptr, how := Add{}) -> bool {
-	if p.o.threads == 0 && how.after_ms <= 0 && !p.stopping { work(data); return true }
+add :: proc(p: ^Pool, work: Work, data: rawptr, o := Add_Options{}) -> bool {
+	if p.o.threads == 0 && o.after_ms <= 0 && !p.stopping { work(data); return true }
 	sync.lock(&p.lock)
 	defer sync.unlock(&p.lock)
 	if p.stopping { return false }
 	it := Item{work, data, 0}
-	if how.after_ms > 0 {
-		it.due_ms = now(p) + i64(how.after_ms)
+	if o.after_ms > 0 {
+		it.due_ms = now(p) + i64(o.after_ms)
 		append(&p.timed, it)
 		sync.cond_broadcast(&p.changed)   // (the soonest may be this one: every waiting thread computes its wait again)
 	} else {
-		queue(p, it, how.urgent)
+		queue(p, it, o.urgent)
 		sync.cond_signal(&p.changed)
 	}
 	return true
@@ -113,17 +114,17 @@ pump :: proc(p: ^Pool, all_timed := false) -> (ran: int) {
 	}
 }
 
-// Ends the pool. Without `drop`, every work waiting runs first (timed work too, its time not waited for); with `drop`,
-// the work waiting does not run and `drop` gets its data. `bound` 0: the threads are joined, a work that hangs holds the
+// Ends the pool. Without `lost`, every work waiting runs first (timed work too, its time not waited for); with `lost`,
+// the work waiting does not run and `lost` gets its data (to free it). `bound` 0: the threads are joined, a work that hangs holds the
 // stop. `bound` > 0 (a program that quits): the stop waits that long at most; when a work still runs (a disk asleep), it
 // returns false and leaves the pool as it is, its threads and memory to the process's end (a later stop, bound 0,
 // joins them).
-stop :: proc(p: ^Pool, drop: Work = nil, bound: time.Duration = 0) -> (all: bool) {
+stop :: proc(p: ^Pool, lost: Work = nil, bound: time.Duration = 0) -> (all: bool) {
 	sync.lock(&p.lock)
 	p.stopping = true
-	if drop != nil {
-		for it in p.ready { drop(it.data) }
-		for it in p.timed { drop(it.data) }
+	if lost != nil {
+		for it in p.ready { lost(it.data) }
+		for it in p.timed { lost(it.data) }
 		clear(&p.ready)
 		clear(&p.timed)
 	}
@@ -157,7 +158,7 @@ stop :: proc(p: ^Pool, drop: Work = nil, bound: time.Duration = 0) -> (all: bool
 	return true
 }
 
-state :: proc(p: ^Pool) -> State {
+counts :: proc(p: ^Pool) -> Counts {
 	sync.lock(&p.lock)
 	defer sync.unlock(&p.lock)
 	return {len(p.ready), len(p.timed), p.running, p.waiting, len(p.threads), p.extras, p.looks}
@@ -180,7 +181,7 @@ wait_rest :: proc(p: ^Pool, bound: time.Duration) -> bool {
 ////////////////////////////////
 // Jobs
 
-// Work whose runs merge (ask). Its fields are the pool's, under its lock.
+// Work whose runs merge (job_ask). Its fields are the pool's, under its lock.
 Job :: struct {
 	work:    Work,
 	data:    rawptr,
@@ -192,14 +193,14 @@ Job :: struct {
 
 // A run of the job is wanted: queued unless one waits; asked during a run, one more run follows it. False once the
 // pool stops.
-ask :: proc(p: ^Pool, j: ^Job, how := Add{}) -> bool {
+job_ask :: proc(p: ^Pool, j: ^Job, o := Add_Options{}) -> bool {
 	sync.lock(&p.lock)
 	if p.stopping { sync.unlock(&p.lock); return false }
 	if j.queued { sync.unlock(&p.lock); return true }
 	if j.running { j.again = true; sync.unlock(&p.lock); return true }
 	j.queued, j.pool = true, p
 	sync.unlock(&p.lock)
-	if !add(p, job_run, j, how) {
+	if !add(p, job_run, j, o) {
 		sync.lock(&p.lock)
 		j.queued = false
 		sync.unlock(&p.lock)
@@ -209,7 +210,7 @@ ask :: proc(p: ^Pool, j: ^Job, how := Add{}) -> bool {
 }
 
 // Whether a run of the job waits or goes on.
-busy :: proc(p: ^Pool, j: ^Job) -> bool {
+job_busy :: proc(p: ^Pool, j: ^Job) -> bool {
 	sync.lock(&p.lock)
 	defer sync.unlock(&p.lock)
 	return j.queued || j.running || j.again

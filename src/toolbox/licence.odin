@@ -21,6 +21,7 @@ import "core:strings"
 import "core:time"
 import http "../http"
 import "../fsx"
+import signing "../signing"
 import licence "../licence"
 import "../platform"
 
@@ -120,7 +121,7 @@ private_path :: proc(tool: Licence_Tool, args: []string) -> string {
 chosen_seed :: proc(tool: Licence_Tool, args: []string) -> (seed: [32]byte, why: string) {
 	if has_flag(args, "dev") {
 		if tool.dev_seed == "" { return {}, "this program has no development pair (Licence_Tool.dev_seed)" }
-		s, ok := licence.key_decode(tool.dev_seed)
+		s, ok := signing.key_decode(tool.dev_seed)
 		if !ok { return {}, "Licence_Tool.dev_seed is not 32 bytes of base64url" }
 		return s, ""
 	}
@@ -128,7 +129,7 @@ chosen_seed :: proc(tool: Licence_Tool, args: []string) -> (seed: [32]byte, why:
 	if path == "" { return {}, "no folder for the private key: pass -private:FILE" }
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return {}, fmt.tprintf("cannot read the private key %s: run `licence keygen` first, or pass -private:FILE", path) }
-	s, ok := licence.key_decode(licence.normalize(string(data), context.temp_allocator))
+	s, ok := signing.key_decode(licence.normalize(string(data), context.temp_allocator))
 	if !ok { return {}, fmt.tprintf("%s is not a licence private key", path) }
 	return s, ""
 }
@@ -145,9 +146,9 @@ licence_keygen :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 	crypto.rand_bytes(seed[:])
 	fsx.make_dirs(filepath.dir(path))
 	text := fmt.tprintf("# %s licence signing key (Ed25519). SECRET: whoever has it can issue licences.\n# Never commit it, never send it. Keep a backup outside this computer.\n%s\n",
-		licence_title(tool.product), licence.key_encode(seed[:], context.temp_allocator))
+		licence_title(tool.product), signing.key_encode(seed[:], context.temp_allocator))
 	if !fsx.write_atomic(path, transmute([]byte)text, flush = true, private = true) { return fmt.tprintf("cannot write %s", path) }
-	pub, _ := licence.public_key_of(seed[:], context.temp_allocator)
+	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	fmt.printfln("Private key written to %s", path)
 	fmt.printfln("Public key: %s\n\nPut it in the program's licence.Product (public_key), and in the worker's LICENSE_PUBLIC_KEY.", pub)
 	return ""
@@ -157,7 +158,7 @@ licence_keygen :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 licence_pubkey :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 	seed, w := chosen_seed(tool, args)
 	if w != "" { return w }
-	pub, _ := licence.public_key_of(seed[:], context.temp_allocator)
+	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	fmt.println(pub)
 	return ""
 }
@@ -187,7 +188,7 @@ licence_issue :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 	text, signed := licence.sign(p, seed[:], l, context.temp_allocator)
 	if !signed { return "signing failed" }
 	// never hand out what the program would refuse
-	pub, _ := licence.public_key_of(seed[:], context.temp_allocator)
+	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	back, err := licence.verify(p, text, pub, context.temp_allocator)
 	if err != .None || back.name != l.name || back.order != l.order { return fmt.tprintf("the licence does not verify (%v)", err) }
 
@@ -220,7 +221,7 @@ licence_verify :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 	case has_flag(args, "dev"):
 		seed, w := chosen_seed(tool, args)
 		if w != "" { return w }
-		public, _ = licence.public_key_of(seed[:], context.temp_allocator)
+		public, _ = signing.public_key_of(seed[:], context.temp_allocator)
 	case has_flag(args, "public"):
 		public = flag_value(args, "public")
 	}

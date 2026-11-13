@@ -5,6 +5,7 @@ import "core:os"
 import "core:testing"
 import "../testkit"
 import toolbox "../toolbox"
+import signing "../signing"
 import update "../update"
 
 @(test)
@@ -39,7 +40,7 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t)
 	seed: [32]byte
 	for &b, i in seed { b = u8(i * 7 + 1) }
-	public, _ := update.public_key_of(seed[:], context.temp_allocator)
+	public, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	product := update.Product{name = "sample", sign_context = "sample-update-v1\n", public_key = public}
 	version_file := fmt.tprintf("%s/version.odin", dir)
 	testing.expect(t, os.write_entire_file(version_file, "APP_VERSION :: \"1.2.3\"\n") == nil)
@@ -52,7 +53,7 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	os.unset_env(toolbox.UPDATE_KEY_ENV)
 	testing.expect_value(t, package_(c, {"v1.2.3"}), 1)   // (a release without the key)
 
-	os.set_env(toolbox.UPDATE_KEY_ENV, update.seed_encode(seed[:], context.temp_allocator))
+	os.set_env(toolbox.UPDATE_KEY_ENV, signing.key_encode(seed[:], context.temp_allocator))
 	defer os.unset_env(toolbox.UPDATE_KEY_ENV)
 	testing.expect_value(t, package_(c, {"v1.2.3"}), 0)
 	alone := fmt.tprintf("%s/%s", c.dist, update.expected_file_name(product, "1.2.3", update.PLATFORM, context.temp_allocator))
@@ -61,7 +62,7 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	manifest, merr := os.read_entire_file(manifest_path, context.temp_allocator)
 	sig, serr := os.read_entire_file(fmt.tprintf("%s.sig", manifest_path), context.temp_allocator)
 	testing.expect(t, merr == nil && serr == nil, "the manifest and its signature")
-	m, verr := update.verify(product, manifest, string(sig), update.PLATFORM, "", context.temp_allocator)
+	m, verr := update.verify(product, manifest, string(sig), {platform = update.PLATFORM}, context.temp_allocator)
 	testing.expect_value(t, verr, update.Error.None)
 	testing.expect_value(t, m.version, "1.2.3")
 }

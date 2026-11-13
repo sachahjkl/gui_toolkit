@@ -16,8 +16,8 @@ why := toolbox.download_pinned(URL, "build/x.zip", X_SHA256)                 // 
 
 ## Run
 
-`run(command, how)` starts the command and waits for it. It returns true when the command started and exited with 0. The
-fields of `Run`, all optional:
+`run(command, o: Run_Options)` starts the command and waits for it. It returns true when the command started and exited
+with 0. The fields of `Run_Options`, all optional:
 
 - `dir`: the working directory ("": this process's).
 - `env`: the whole environment of the command (nil: this process's). `env_with` makes one.
@@ -27,8 +27,8 @@ fields of `Run`, all optional:
   the processes that it started.
 - `echo`: `run` writes `> command` first.
 
-`capture(command, how)` returns the standard output of the command and its exit code. The code is -1 when the command did not
-start. When the command fails, its standard error is written to this process's. `how.dir` and `how.env` apply.
+`capture(command, o)` returns the standard output of the command and its exit code. The code is -1 when the command did not
+start. When the command fails, its standard error is written to this process's. `o.dir` and `o.env` apply.
 
 `exit_code(state)` is the exit code of a finished process (-1 when it did not exit). Windows gives the code as an unsigned
 number: `exit_code` reads it back as a 32-bit signed integer, so `exit(-1)` gives -1 and a crash gives a negative NTSTATUS.

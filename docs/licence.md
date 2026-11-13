@@ -35,9 +35,9 @@ the key in the program, or opens the file.
 
 `verify(product, text, public_key = "")` checks the format, the signature (with `public_key`, or the product's), then reads
 the payload and refuses a licence of another product. `sign(product, seed, licence)` makes a key (the tool and the tests);
-`sign_payload` signs any payload (the tests' damaged ones). `public_key_of(seed)`, `key_decode`, `key_encode` convert the
-keys. `file_text(product, licence, key, hint)` is the text of a licence file: comment lines that say whose it is, then the
-key wrapped at 76 columns. `payload_of` is the payload's JSON: the Worker makes the same bytes. `signed_bytes(product,
+`sign_payload` signs any payload (the tests' damaged ones). The keys are text of the package `signing`
+([signing.md](signing.md)): `signing.public_key_of(seed)`, `signing.key_decode`, `signing.key_encode`. `file_text(product,
+licence, key, hint)` is the text of a licence file: comment lines that say whose it is, then the key wrapped at 76 columns. `payload_of` is the payload's JSON: the Worker makes the same bytes. `signed_bytes(product,
 payload)` is what the signature covers. A `Licence` that `verify` returns is owned by its allocator: `licence_destroy` frees it.
 
 `Error` names what is wrong: `Empty`, `Too_Long`, `Bad_Format`, `Bad_Encoding`, `Bad_Payload`, `Wrong_Product`,

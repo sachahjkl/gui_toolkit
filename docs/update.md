@@ -20,11 +20,11 @@ u := update.updater_start({
     news    = proc(user: rawptr) { ui.post(&(^App)(user).state, on_update_news, user) },
     user    = app,
 })
-update.set_auto(u, check = true, install = true)   // from the program's preference
+update.set_auto(u, .Install)   // from the program's preference: .Off, .Check (offer what it finds) or .Install
 ...
 st := update.status(u)          // on the interface's thread, in on_update_news: phase, version, result, failed, asked, serial
 update.check_now(u)             // "Check for updates": its result is said even when nothing is new (st.asked)
-update.install_now(u)           // the version on offer (phase Available), when install is not automatic
+update.install_now(u)           // the version on offer (phase Available), when the mode is not .Install
 update.updater_stop(u)          // at the end: no news after it; a download under way ends by itself
 ```
 
@@ -76,12 +76,16 @@ product that has channels:
 
 A product without channels passes channel `""`: its manifests have no `"channel"`, and a manifest of a channel is refused there.
 
-The release tool: `seed_decode` (the private key from its secret), `manifest_of` (the manifest of the program's bytes),
-`manifest_bytes`, `sign`. `public_key_of` and `seed_encode` make and show a key pair.
+The release tool: `signing.key_decode` (the private key from its secret), `manifest_of(product, data, {version, platform,
+channel, published})` (the manifest of the program's bytes: its file name, size and SHA-256 are made from them),
+`manifest_bytes`, `sign`. `signing.public_key_of` and `signing.key_encode` make and show a key pair
+([signing.md](signing.md)).
 
 ## What the program does
 
-1. `check_release(product, manifest, signature, PLATFORM, channel, APP_VERSION, announced)`: the signature first (`verify`), then
+1. `check_release(product, manifest, signature, {platform = PLATFORM, channel = channel, current = APP_VERSION, announced =
+   tag})` (a `Release_Target`): the signature first (`verify(product, manifest, signature, target)`, which reads its platform
+   and channel), then
    what the manifest says (schema, product, channel, platform, version, file name, checksum, size), the version the release
    announced (`""`: none claimed; another one is a replay), and that it is newer (`check_newer`; a version that is not `X.Y.Z`, a
    development build, never updates). `require_signature = false` reads an unsigned manifest, for a channel of the user's own.

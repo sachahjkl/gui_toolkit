@@ -25,7 +25,7 @@ Window :: struct {
 	visible: bool,       // on a workspace shown now, not hidden: its rect is on the screen
 }
 
-windows_free :: proc(list: []Window, allocator := context.allocator) {
+windows_destroy :: proc(list: []Window, allocator := context.allocator) {
 	for w in list {
 		delete(w.title, allocator)
 		delete(w.app_id, allocator)

@@ -2,7 +2,7 @@
 // graph (a flowgraph.Graph's copy), a drawing: the owner says what a snapshot is and how one is freed.
 //
 //	history: undo.Stack(Graph)
-//	undo.push(&history, graph_clone(g), 100, graph_free)   // before a change
+//	undo.push(&history, graph_clone(g), 100, graph_destroy)   // before a change
 //	if undo.can_undo(&history) {
 //		back, _ := undo.undo(&history, g^)                   // the model as it is goes to redo
 //		g^ = back
