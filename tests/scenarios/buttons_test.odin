@@ -111,3 +111,25 @@ a_cut_label_shows_its_whole_text :: proc(t: ^testing.T) { unwatched.run(t, proc(
 	box := session.wait_box(s, "tooltip_text")
 	testing.expect_value(t, ui.box_text(box), "A name far too long for its box")
 }) }
+
+// A dot with no intent takes the colour of the text where it stands (a button's words: a sibling label's); with one,
+// the intent's hue.
+@(test)
+a_dot_takes_the_text_s_colour_or_its_intent_s :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {300, 200}, build = proc(s: ^session.Session) {
+		if ui.tags("button", "danger_button") {
+			if ui.row(.Center, {}, "###dots") {
+				ui.dot("###ink")
+				ui.dot("###danger", intent = .Primary)
+				ui.label("Record###words")
+			}
+		}
+	}})
+	ink_box := session.get(s, "ink")
+	ink := (^ui.Dot_Draw)(ink_box.custom_user)
+	testing.expect(t, !ink.own, "no colour of its own")
+	words := session.get(s, "words").text_color
+	testing.expect_value(t, ink_box.text_color, words)
+	danger := (^ui.Dot_Draw)(session.get(s, "danger").custom_user)
+	testing.expect(t, danger.own && danger.color != words, "the intent's hue")
+}) }

@@ -98,7 +98,7 @@ moves the active thumb (none: the one nearest the pointer). `format` is each val
 | Procedure | What it is |
 |---|---|
 | `spinner(id, size)` | the busy arc, turning: three quarters of a circle in the accent. While shown it asks for the next frames itself (none with animations off); a busy progress indicator to a screen reader |
-| `dot(id, size, intent)` | a filled disc of the intent's hue (a recording, a state): the icon fonts have no filled circle |
+| `dot(id, size, intent)` | a filled disc of the intent's hue (a recording, a state); with no intent, of the text's colour where it stands (a dot in a button's words). The icon fonts have no filled circle |
 | `label_tip(text)` | a label whose whole text shows in a tooltip when its box cuts it and the pointer rests on it (`Feel.tooltip_delay_ms`); it takes no press |
 
 ## A secret's memory

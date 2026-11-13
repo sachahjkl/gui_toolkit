@@ -1178,19 +1178,25 @@ spinner :: proc(id: string, size: f32 = 0) {
 	a11y_default(b, {role = .Progress_Indicator, busy = true})
 }
 
-// A filled disc `size` across (0: half the font size), of the hue of `intent` (a recording, a state): the icon fonts
-// have no filled circle. Its colour says nothing to a screen reader: give it a name with `a11y` when it means something.
-dot :: proc(id: string, size: f32 = 0, intent := Intent.Primary) {
+// A filled disc `size` across (0: half the font size): the icon fonts have no filled circle. Its colour: the hue of
+// `intent` (a recording, a state); none, the text's where it stands, as a glyph beside it would be (a dot in a button's
+// words). Its colour says nothing to a screen reader: give it a name with `a11y` when it means something.
+dot :: proc(id: string, size: f32 = 0, intent: Maybe(Intent) = nil) {
 	side := size > 0 ? size : math.round(font_size() * 0.5)
-	c := hue_color(intent_hue(intent))
-	c.a = 1
 	next_default({width = px(side), height = px(side)})
 	b := build_box({}, id)
-	d := frame_new(Color)
-	d^ = c
+	d := frame_new(Dot_Draw)
+	if it, ok := intent.?; ok {
+		d.color = hue_color(intent_hue(it))
+		d.color.a = 1
+		d.own = true
+	}
 	b.custom, b.custom_user = dot_draw, d
 	if b.a11y == nil { a11y_default(b, {ignore = true}) }
 }
+
+// The colour of a dot: its intent's (own), else its box's text colour when it is drawn.
+Dot_Draw :: struct { color: Color, own: bool }
 
 // (a circle, not the rounded square of a box's corners)
 @(private = "file")
@@ -1199,7 +1205,9 @@ dot_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	w := min(r.max.x - r.min.x, r.max.y - r.min.y)
 	c := draw.rect_center(r)
 	prev := draw.set_circular_corners(dc, true)
-	draw.rect(dc, {c - w * 0.5, c + w * 0.5}, (^Color)(user)^, w * 0.5)
+	d := (^Dot_Draw)(user)
+	// (no intent: the text's colour, as the box's style resolved it for this frame)
+	draw.rect(dc, {c - w * 0.5, c + w * 0.5}, d.own ? d.color : b.text_color, w * 0.5)
 	draw.set_circular_corners(dc, prev)
 }
 
