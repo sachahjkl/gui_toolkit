@@ -275,6 +275,29 @@ platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (Frame, E
 	return f, .None
 }
 
+// Each monitor's own picture, at its own scale. One that fails is left out; none read is the error of the first.
+@(private)
+platform_desktop_parts :: proc(s: ^Session, allocator: runtime.Allocator) -> ([]Frame, Error) {
+	impl := (^Impl)(s.impl)
+	monitors_read(impl)
+	if len(impl.monitors) == 0 { return nil, .Failed }
+	parts := make([dynamic]Frame, 0, len(impl.monitors), allocator)
+	first_err := Error.None
+	for &m in impl.monitors {
+		part, err := output_frame(impl, &m, allocator)
+		if err != .None {
+			if first_err == .None { first_err = err }
+			continue
+		}
+		append(&parts, part)
+	}
+	if len(parts) == 0 {
+		delete(parts)
+		return nil, first_err
+	}
+	return parts[:], .None
+}
+
 ////////////////////////////////
 // Monitors
 

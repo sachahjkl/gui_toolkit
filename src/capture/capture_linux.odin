@@ -157,6 +157,23 @@ platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (f: Frame
 	return {}, .Unsupported
 }
 
+// Wayland's protocols capture each output: its own picture. The portal and X11 read the desktop as one picture: that one.
+@(private)
+platform_desktop_parts :: proc(s: ^Session, allocator: runtime.Allocator) -> (parts: []Frame, err: Error) {
+	impl := (^Linux_Impl)(s.impl)
+	if impl.wl != nil { impl.wl.order = s.order }
+	switch s.backend {
+	case .Wayland_Image_Copy, .Wayland_Screencopy: return wl_desktop_parts(impl.wl, allocator)
+	case .Portal, .X11:
+		d := platform_desktop(s, allocator) or_return
+		parts = make([]Frame, 1, allocator)
+		parts[0] = d
+		return parts, .None
+	case .None, .Windows:
+	}
+	return nil, .Unsupported
+}
+
 // Wayland: the compositor's cursor sessions, on the session's own connection (the portal backend keeps one to list
 // the outputs). X11: QueryPointer.
 @(private)

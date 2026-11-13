@@ -15,6 +15,7 @@ import "core:time"
 @(private) platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (Frame, Error) { return {}, .Unsupported }
 @(private) platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (Frame, Error) { return {}, .Unsupported }
 @(private) platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (Frame, Error) { return {}, .Unsupported }
+@(private) platform_desktop_parts :: proc(s: ^Session, allocator: runtime.Allocator) -> ([]Frame, Error) { return nil, .Unsupported }
 @(private) platform_stream_open :: proc(s: ^Session, st: ^Stream) -> Error { return .Unsupported }
 @(private) platform_stream_next :: proc(st: ^Stream, timeout: time.Duration) -> (Stream_Frame, bool, Error) { return {}, false, .Unsupported }
 @(private) platform_stream_close :: proc(st: ^Stream) {}
