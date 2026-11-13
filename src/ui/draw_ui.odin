@@ -267,6 +267,19 @@ box_radii :: proc(radius: f32, square: Corners) -> (radii: [4]f32) {
 }
 
 // Radii of a shape grown by `d` around it (shrunk when negative): a round corner follows, a square one stays square.
+// The halo of a focused box as the theme draws it around a field (focus 0..1, `c` its "focus border" colour): a box
+// drawn by a program that sits on a field's edge (a part of it of its own colour) glows as the field does.
+focus_glow :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, c: Color, focus: f32) {
+	s := gs()
+	if s.theme == nil || focus <= DRAW_INVISIBLE_EPS { return }
+	if machined() { machined_focus_glow(dc, r, radii, c, focus); return }
+	if s.theme.finish == .Flat { return }
+	k := c
+	k.a *= focus * FOCUS_GLOW_ALPHA
+	glow := FOCUS_GLOW_PX * s.scale
+	draw.rect_corners(dc, draw.rect_pad(r, glow), colors4(tuned(k)), radii_grown(radii, glow), 0, glow)
+}
+
 radii_grown :: proc(radii: [4]f32, d: f32) -> (out: [4]f32) {
 	for r, i in radii { out[i] = r > 0 ? max(r + d, 0) : 0 }
 	return

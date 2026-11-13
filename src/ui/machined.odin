@@ -183,6 +183,12 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 	}
 }
 
+// The halo of a focused well (focus_glow, draw_ui.odin): the one machined_well draws.
+@(private)
+machined_focus_glow :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, accent: Color, focus: f32) {
+	if g := glow_of(); focus > VISIBLE && g > 0 { draw.box_shadow(dc, r, radii, 4 * scale(), with_alpha(accent, 0.12 * focus * g)) }
+}
+
 // A sunken surface of colour `base`; `focus` (0..1) lights a ring of `accent` around it.
 machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focus: f32 = 0, accent := Color{}) {
 	s := scale()
@@ -193,7 +199,7 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 		draw.rect(dc, r, draw.mix(flat_edge(0), with_alpha(accent, 0.9), focus), radius, p)
 		return
 	}
-	if g := glow_of(); focus > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 4 * s, with_alpha(accent, 0.12 * focus * g)) }
+	machined_focus_glow(dc, r, rr, accent, focus)
 	if edged() {
 		// (filled shapes from the outside in, as the machined well: the dark hairline (the accent's when focused), the
 		// surface inside it, then the dark lines under its top and the lit lip under it)
