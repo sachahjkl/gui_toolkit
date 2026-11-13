@@ -18,8 +18,6 @@ import "../platform"
 
 @(private="file") Mods :: platform.Modifiers
 
-TEXT_UNDO_MAX :: 200
-@(private="file") TEXT_UNDO_GROUP_MS :: 1000
 @(private="file") TEXT_EDIT_LINE_HEIGHT :: 1.15   // of the font's line height
 @(private="file") TEXT_EDIT_GUTTER_FONT_SCALE :: 0.85
 // Room kept past the longest line, so the caret at its end is seen.
@@ -171,11 +169,12 @@ area_line_count :: proc(a: ^Text_Area) -> int { return strings.count(area_string
 ////////////////////////////////
 // editing primitives
 
-// Records an undo step before an edit (grouping same-kind edits made within a second of each other).
+// Records an undo step before an edit (grouping same-kind edits made within Feel.undo_merge_ms of each other, as a field's).
 @(private="file")
 begin_edit :: proc(a: ^Text_Area, kind: Edit_Kind, now: f64) {
-	merge := kind == a.group && kind != .Other && now - a.group_ms <= TEXT_UNDO_GROUP_MS
-	edit_history_record(&a.undo, &a.redo, a.buf[:], a.cursor, a.mark, TEXT_UNDO_MAX, merge)
+	cfg := feel_now()
+	merge := kind == a.group && kind != .Other && now - a.group_ms < f64(cfg.undo_merge_ms)
+	edit_history_record(&a.undo, &a.redo, a.buf[:], a.cursor, a.mark, cfg.undo_steps, merge)
 	a.group, a.group_ms = kind, now
 }
 

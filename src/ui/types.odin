@@ -255,7 +255,7 @@ Finish :: enum u8 {
 // Interaction states (hover, press, focus, selection, disabled) show at once by default: the frame that sees the pointer
 // enter a box draws it hot, with no fade in or out. `transition_ms` > 0 brings back short cross-fades of those states;
 // `press_squish` > 0 shrinks a pressed button by that fraction (at once, no animation). A change of palette still
-// cross-fades every colour for PALETTE_FADE_MS (apply_palette bumps `serial`).
+// cross-fades every colour for Feel.palette_fade_ms (apply_palette bumps `serial`).
 Theme :: struct {
 	patterns:      [dynamic]Theme_Pattern,
 	palette_at:    int,    // apply_palette: where its entries start in `patterns` (after any the app added before)
@@ -427,7 +427,7 @@ State :: struct {
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
 	scrollbar_arrows: bool,          // set_scrollbar_arrows
 	sb_arrow:     f32,               // the arrow button held: -1 toward the start, 1 toward the end, 0 none
-	sb_arrow_next_ms: f64,           // when the held arrow steps again
+	feel:         Feel,              // set_feel: delays, repeats, steps (feel.odin)
 	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)
 	rounding:     f32,               // corner rounding factor applied to every rounded shape (0 = square, 1 = default)
 	time_ms:      f64,
@@ -438,7 +438,6 @@ State :: struct {
 	paste:         Paste,            // the paste waiting for the clipboard's text (paste.odin)
 
 	// popups
-	menu_item_em:    f32,                   // height of a menu item in em (0 = the default, MENU_ITEM_EM); set_menu_item_height
 	menus:           [dynamic]Menu_Level,   // the open menu and its open submenus, outermost first (menu.odin)
 	menu_build:      [dynamic]int,          // levels whose items are being built (innermost last)
 	menu_close_pending: bool,               // an item was chosen: the menu closes when its block ends, not in the middle of it

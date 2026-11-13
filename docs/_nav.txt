@@ -20,6 +20,7 @@ Drawing and text
 
 Widgets and layout
   themes.md           Themes and finishes
+  feel.md             Feel: delays, repeats, steps
   docking.md          Docking
   panes.md            Splitter and panes
   modals.md           Modal dialogs

@@ -10,6 +10,7 @@ import "core:strconv"
 import "core:strings"
 import "../draw"
 import "../font"
+import "../platform"
 import lucide "../lucide"
 
 // The icon font (raddebugger's icons.ttf), compiled into every app that uses the toolkit: load it with
@@ -347,9 +348,8 @@ toggle :: proc(id: string, text: string, value: ^bool) -> Signal {
 @(private = "file") SLIDER_KNOB_DOT_FRACTION :: 0.38
 // machined: the slot is this much thicker than the flat track (an inner shadow needs the room)
 @(private = "file") SLIDER_MACHINED_TRACK :: 1.5
-// Without a step, the arrow keys move a hundredth of the range. Page keys: this many arrow moves.
+// Without a step, the arrow keys move a hundredth of the range.
 @(private = "file") SLIDER_FINE_DIVISIONS :: 100
-@(private = "file") SLIDER_PAGE_STEPS :: 10
 @(private = "file") RANGE_SLIDER_SAME_EPS :: 0.001       // thumbs this close: the side of the press picks one
 
 Slider_Draw :: struct {
@@ -431,25 +431,30 @@ slider_pct :: proc(b: ^Box, value_room := true) -> f32 {
 // `format` is a printf format for the value text, e.g. "%.0f" or "%.1f C"; text without a % is shown as is
 // (pick it per value for labels such as "Off"); "": no value text, the track runs to the right end. step 0 = continuous.
 // Keyboard (when focused): Left / Down and Right / Up step the value (`step`, or 1 % of the range), Home / End jump
-// to the ends, Page Up / Page Down move by 10 steps.
-// Wheel (wheel_steps): a notch up is a step more, Shift ten; in a view that scrolls, once the slider has the keyboard.
+// to the ends, Page Up / Page Down move by Feel.step_page steps. Shift multiplies a key's move by Feel.step_shift.
+// Wheel (wheel_steps): a notch up is a step more, Shift Feel.step_shift; in a view that scrolls, once the slider has the
+// keyboard.
 slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f") -> (sig: Signal) {
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
 	sig = signal(b)
 	if n := wheel_steps(b, sig.focused); n != 0 {
 		k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
-		v := value^ + n * k * (.Shift in gs().mods ? SLIDER_WHEEL_SHIFT : 1)
+		v := value^ + n * k * shift_steps(gs().mods)
 		if step > 0 { v = math.round(v / step) * step }
 		value^ = clamp(v, lo, hi)
 	}
 	if sig.focused {
 		k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
+		page := f32(gs().feel.step_page)
 		v := value^
-		if key_press(.Left) || key_press(.Down) { v -= k }
-		if key_press(.Right) || key_press(.Up) { v += k }
-		if key_press(.Page_Down) { v -= SLIDER_PAGE_STEPS * k }
-		if key_press(.Page_Up) { v += SLIDER_PAGE_STEPS * k }
+		for sh in ([2]platform.Modifiers{{}, {.Shift}}) {
+			by := k * shift_steps(sh)
+			if key_press(.Left, sh) || key_press(.Down, sh) { v -= by }
+			if key_press(.Right, sh) || key_press(.Up, sh) { v += by }
+			if key_press(.Page_Down, sh) { v -= page * by }
+			if key_press(.Page_Up, sh) { v += page * by }
+		}
 		if key_press(.Home) { v = lo }
 		if key_press(.End) { v = hi }
 		if step > 0 { v = math.round(v / step) * step }
@@ -514,7 +519,10 @@ nav_item :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bool
 	return sig
 }
 
-@(private) SLIDER_WHEEL_SHIFT :: 10   // steps a notch with Shift
+// What a step is multiplied by with these modifiers: Feel.step_shift with Shift, else 1. The step of a slider, a slider
+// field, a stepper, by key, notch or button.
+@(private)
+shift_steps :: proc(mods: platform.Modifiers) -> f32 { return .Shift in mods ? f32(gs().feel.step_shift) : 1 }
 
 // Whole notches of the wheel turned over `b` this frame, up positive: what a slider or a spin field moves by. `b` takes
 // the wheel when the pointer is over it; in a view that scrolls (a page of settings), only once it has the keyboard
@@ -545,7 +553,7 @@ Slider_Field :: struct {
 // A slider, then − and + around a field where the exact value is typed, then its unit (`unit`; "" none). The field
 // shows the value while it does not have the keyboard; Enter, or the keyboard going elsewhere, applies what was typed:
 // clamped to [lo, hi], rounded to `step` (0: as typed); Escape or text that is not a number gives the value back. The
-// wheel over the slider or the field, and the buttons (held: they repeat), move it a step (Shift: ten); `step` 0: a
+// wheel over the slider or the field, and the buttons (held: they repeat), move it a step (Shift: Feel.step_shift); `step` 0: a
 // hundredth of the range. `decimals`: the field's digits after the point. Its size: the parent's `next` (the slider
 // takes the room the rest leaves). True when the value changed this frame.
 slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, step: f32 = 0, decimals := 0, unit := "") -> (changed: bool) {
@@ -572,7 +580,7 @@ slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, ste
 				res := line_edit("###value", &f.text, "", menu = false)
 				f.box = res.box.key
 				// (the wheel over the field moves the value as over the slider: it is one line, nothing in it scrolls)
-				if n := wheel_steps(res.box, res.focused || typing); n != 0 { move(value, n * k * (.Shift in s.mods ? SLIDER_WHEEL_SHIFT : 1), lo, hi, step) }
+				if n := wheel_steps(res.box, res.focused || typing); n != 0 { move(value, n * k * shift_steps(s.mods), lo, hi, step) }
 				left := !res.focused && typing   // (the keyboard went elsewhere this frame)
 				if res.committed || left {
 					if v, ok := strconv.parse_f32(strings.trim_space(field_string(&f.text))); ok { move(value, v - value^, lo, hi, step) }
@@ -582,7 +590,7 @@ slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, ste
 			}
 			next({width = px(side), height = px(side), font = widget_icons(), font_size = math.round(em * 0.9)})
 			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
-			if repeat_pressed(sig) { move(value, dir * k * (.Shift in sig.mods ? SLIDER_WHEEL_SHIFT : 1), lo, hi, step) }
+			if repeat_pressed(sig) { move(value, dir * k * shift_steps(sig.mods), lo, hi, step) }
 		}
 		changed = value^ != before
 		if changed && !typing { field_set(&f.text, text_of(value^, decimals)) }
@@ -650,26 +658,34 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 ////////////////////////////////
 // Stepper, segmented control, chips, rating
 
-@(private = "file") STEPPER_SHIFT_AMOUNT :: 10
-@(private = "file") REPEAT_DELAY_MS :: 420
-@(private = "file") REPEAT_MS :: 55
+// A button that repeats while it is held (a stepper's − and +, a slider field's): true at the press, then again every
+// Feel.repeat_interval_ms after Feel.repeat_delay_ms while the pointer stays on it (off the button it waits). It wakes
+// the loop at the next repeat, not at every refresh while the button is held. A scroll bar's arrow repeats by the same rule.
+repeat_pressed :: proc(sig: Signal) -> bool { return repeat_fires(gs(), sig.box.key, sig.pressed, sig.dragging, sig.hovering) }
 
-// A button that repeats while it is held (a stepper's − and +, a scroll bar's arrow): true at the press, then again
-// every REPEAT_MS after REPEAT_DELAY_MS while the pointer stays on it (off the button it waits). It wakes the loop at
-// the next repeat, not at every refresh while the button is held.
-repeat_pressed :: proc(sig: Signal) -> bool {
-	s := gs()
-	key := sig.box.key
+// The rule of repeat_pressed for any held thing named by `key`: `pressed` this frame, `held` since, `on` it (the pointer
+// is over it). Its timer is the State's (s.timers): a held thing that is not a widget (a scroll bar's arrow) has one too.
+@(private)
+repeat_fires :: proc(s: ^State, key: Key, pressed, held, on: bool) -> bool {
 	fire := false
-	if sig.pressed { fire = true; timer_set(key, REPEAT_DELAY_MS) }
-	else if sig.dragging && sig.hovering && timer_due(key) { fire = true; timer_set(key, REPEAT_MS) }
-	if sig.dragging {
+	if pressed {
+		fire = true
+		s.timers[key] = Timer{next_ms = s.time_ms + f64(s.feel.repeat_delay_ms), last_build = s.build_index}
+	} else if held {
+		if t, ok := s.timers[key]; ok {
+			t.last_build = s.build_index
+			if on && s.time_ms >= t.next_ms { fire = true; t.next_ms = s.time_ms + f64(s.feel.repeat_interval_ms) }
+			s.timers[key] = t
+		}
+	}
+	// (off it, its next repeat waits for the pointer, whose move is an event: a wake then would come every millisecond)
+	if held && on {
 		if t, ok := s.timers[key]; ok { wake_within(s, max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))) }
 	}
 	return fire
 }
 
-// [-] value [+]: hold a button to repeat, Shift = x10. Returns true when the value changed.
+// [-] value [+]: hold a button to repeat, Shift = Feel.step_shift times. Returns true when the value changed.
 stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 	em := font_size()
 	set_next_axis(.X, .Center)
@@ -690,7 +706,7 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 			}
 			next({width = px(em * 2.2), height = px(em * 2.2), font = widget_icons()})
 			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
-			amount := .Shift in sig.mods ? STEPPER_SHIFT_AMOUNT : 1
+			amount := int(math.round(shift_steps(sig.mods)))
 			old := value^
 			if repeat_pressed(sig) { value^ += dir * amount }
 			value^ = clamp(value^, lo, hi)
@@ -701,7 +717,6 @@ stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
 }
 
 @(private = "file") SEGMENTED_RATE :: 40
-@(private = "file") SEGMENT_TOOLTIP_DELAY_S :: 0.5
 
 Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius: f32 }
 
@@ -788,7 +803,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 				isig := signal(item)
 				if isig.clicked && i != selected^ { selected^ = i; changed = true }
 				tip := i < len(tips) ? tips[i] : ""
-				if tip != "" && hovered_for(isig, SEGMENT_TOOLTIP_DELAY_S) { if tooltip() { tooltip_text(tip) } }
+				if tip != "" && hovered_for(isig) { if tooltip() { tooltip_text(tip) } }
 				a11y_default(item, {role = .Radio_Button, toggled = i == selected^ ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
 			}
 			// (the item clicked this frame is the selected one: the earlier items said otherwise)
@@ -836,7 +851,7 @@ segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []str
 			}
 			if isig.clicked && !on { selected^ = i; changed = true }
 			tip := i < len(tips) ? tips[i] : ""
-			if tip != "" && hovered_for(isig, SEGMENT_TOOLTIP_DELAY_S) { if tooltip() { tooltip_text(tip) } }
+			if tip != "" && hovered_for(isig) { if tooltip() { tooltip_text(tip) } }
 			a11y_default(item, {role = .Radio_Button, toggled = on ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
 		}
 		if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }

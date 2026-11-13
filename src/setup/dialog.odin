@@ -745,7 +745,7 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 				delete(d.copied)
 				d.copied = ""   // (the check goes when the pointer leaves)
 			}
-			if ui.hovered_for(sig, 0.4) || ui.hovered_for(bsig, 0.4) {
+			if ui.hovered_for(sig) || ui.hovered_for(bsig) {
 				if ui.tooltip() {
 					ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 1.8), font = ui.mono_font(), font_size = math.round(em * 0.86)})
 					ui.label(fmt.tprintf("%s###tip", copied ? "Copied" : value))

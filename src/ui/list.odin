@@ -19,11 +19,10 @@ import "../platform"
 // While the list has the keyboard focus: Up / Down move the active row, Page Up / Page Down by a page, Home / End to
 // the ends (rows built with selectable = false, e.g. group headers, are skipped), Enter activates the row, Escape
 // cancels (`cancelled`), typing letters jumps to the next row whose label starts with them (type-ahead: keys typed
-// within LIST_TYPEAHEAD_MS of each other add up). The active row stays in view. A click makes a row active and gives
+// within Feel.typeahead_ms of each other add up). The active row stays in view. A click makes a row active and gives
 // the list the focus; the wheel scrolls as in any scroll region. The focus ring shows on the list when it came from
 // the keyboard; the active row is drawn with the "selected" tags (strong while the list is focused).
 
-LIST_TYPEAHEAD_MS :: 900.0
 @(private) LIST_TYPED_MAX_BYTES :: 32
 // Frames the active row keeps being scrolled into view (its rect is the last frame's).
 @(private) LIST_REVEAL_FRAMES :: 3
@@ -188,7 +187,7 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 		}
 	}
 	if len(s.typed) > 0 && !st.no_typeahead {
-		if s.time_ms - st.typed_ms > LIST_TYPEAHEAD_MS { st.typed_len = 0 }
+		if s.time_ms - st.typed_ms > f64(s.feel.typeahead_ms) { st.typed_len = 0 }
 		st.typed_ms = s.time_ms
 		for r in s.typed {
 			buf, n := utf8.encode_rune(unicode.to_lower(r))

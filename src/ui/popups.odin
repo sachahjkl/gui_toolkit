@@ -27,7 +27,7 @@ import "../platform"
 // enabled items (wrapping), Right / Enter / Space open the selected submenu, Enter / Space choose the selected item,
 // Left / Escape close the innermost submenu, Escape closes the menu, a typed letter selects the next item starting
 // with it (a menu opened with `search`: what is typed searches the items, see ctx_menu_open). Pointer: hovering selects, resting on a submenu item opens it (and on another item closes it) after
-// MENU_HOVER_MS, clicking chooses; a press outside every open level closes the menu. A menu opens where asked and
+// Feel.menu_hover_ms, clicking chooses; a press outside every open level closes the menu. A menu opens where asked and
 // stays on screen: it flips to the other side of the point (or of the anchor rect) when it does not fit, then is
 // clamped to the window. A level taller than the window is as tall as the window and scrolls (wheel, scroll bar; the
 // keyboard's selection is brought into view).
@@ -41,12 +41,6 @@ import "../platform"
 //   }
 //
 // It closes like a submenu: a press outside it closes only it, Escape closes it, choosing an item closes the menu.
-
-MENU_HOVER_MS :: 280.0
-
-// The height of a menu item, in em, unless `set_menu_item_height` says otherwise (times the density): about the rows of
-// Windows 11's and Chrome's menus, 28 to 32 px for 14 to 15 px text.
-MENU_ITEM_EM :: 1.9
 
 // A menu is at least this wide; a level not measured yet is taken to be this tall.
 @(private) MENU_MIN_WIDTH_EM :: 10
@@ -63,10 +57,6 @@ TOOLTIP_ABOVE_EM :: 0.5
 @(private = "file") TOOLTIP_RADIUS_EM :: 0.4
 // tooltip_text wraps its lines past this width.
 TOOLTIP_MAX_WIDTH_EM :: 24
-
-// Menus built from now on have items of `em` times the font size in height (0: back to MENU_ITEM_EM). A dense tool
-// panel sets it while it builds its menus, and resets it after.
-set_menu_item_height :: proc(em: f32) { gs().menu_item_em = em }
 
 // A small weak title above a group of items (not an item: the keyboard skips it).
 menu_heading :: proc(text: string) {
@@ -651,7 +641,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 			if highlight { push_tags("selected") }
 			set_next_axis(.X, .Center)
 			s.next_mod.width = px(width)
-			s.next_mod.height = px(dense(em * (s.menu_item_em > 0 ? s.menu_item_em : MENU_ITEM_EM)))
+			s.next_mod.height = px(dense(em * s.feel.menu_item_em))
 			s.next_mod.radius = 0   // (a row of a list: square, as a list's and a table's)
 			if !highlight { s.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
 			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
@@ -710,14 +700,15 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 	return sig
 }
 
-// The pointer has rested on item `idx` of `lv` for MENU_HOVER_MS (asks for a timed wake while waiting).
+// The pointer has rested on item `idx` of `lv` for Feel.menu_hover_ms (asks for a timed wake while waiting).
 @(private)
 menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 	s := gs()
 	if lv.hover_item != idx { return false }
 	waited := s.time_ms - lv.hover_since
-	if waited >= MENU_HOVER_MS { return true }
-	wake_within(s, max(1, int(MENU_HOVER_MS - waited) + WAKE_MARGIN_MS))
+	hover := f64(s.feel.menu_hover_ms)
+	if waited >= hover { return true }
+	wake_within(s, max(1, int(hover - waited) + WAKE_MARGIN_MS))
 	return false
 }
 
@@ -799,13 +790,15 @@ menu_submenu :: proc(text: string, icon := "", enabled := true) -> bool {
 	return menu_level_begin(depth + 1, 0)
 }
 
-// True once the pointer has rested on the box for `seconds` (asks the app loop for a timed wake while waiting).
-hovered_for :: proc(sig: Signal, seconds: f32) -> bool {
+// True once the pointer has rested on the box for Feel.tooltip_delay_ms: its tooltip shows (asks the app loop for a timed
+// wake while waiting). One delay for every tooltip, so that the user's setting reaches them all.
+hovered_for :: proc(sig: Signal) -> bool {
 	s := gs()
 	if !sig.hovering { return false }
+	delay := f64(s.feel.tooltip_delay_ms)
 	waited := s.time_ms - s.hover_since_ms
-	if waited >= f64(seconds) * 1000 { return true }
-	wake_within(s, max(1, int(f64(seconds) * 1000 - waited) + WAKE_MARGIN_MS))
+	if waited >= delay { return true }
+	wake_within(s, max(1, int(delay - waited) + WAKE_MARGIN_MS))
 	return false
 }
 

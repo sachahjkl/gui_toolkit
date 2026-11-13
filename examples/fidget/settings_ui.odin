@@ -83,7 +83,7 @@ position_picker :: proc(app: ^App, size: ui.Vec2) -> (changed: bool) {
 							ui.toast(.Info, "Toasts: %s", ui.toast_position_names[p])
 							changed = true
 						}
-						if ui.hovered_for(sig, 0.35) {
+						if ui.hovered_for(sig) {
 							if ui.tooltip() {
 								ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 								ui.label(ui.toast_position_names[p])

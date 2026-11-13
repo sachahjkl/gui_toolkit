@@ -708,8 +708,8 @@ os_animations_enabled :: proc() -> bool {
 // What a notch of the wheel moves, as the system says (Settings > Bluetooth & devices > Mouse): lines, or across, characters. 0 is a page
 // at a time. (Asked at each notch: it is no cost, and a change of the setting is seen at once.)
 wheel_lines :: proc(across := false) -> f32 {
-	n: win.UINT = WHEEL_LINES_DEFAULT
-	if !win.SystemParametersInfoW(across ? win.SPI_GETWHEELSCROLLCHARS : win.SPI_GETWHEELSCROLLLINES, 0, &n, 0) { return WHEEL_LINES_DEFAULT }
+	n: win.UINT
+	if !win.SystemParametersInfoW(across ? win.SPI_GETWHEELSCROLLCHARS : win.SPI_GETWHEELSCROLLLINES, 0, &n, 0) { return input_defaults().wheel_lines }
 	return n == win.WHEEL_PAGESCROLL ? 0 : f32(n)
 }
 

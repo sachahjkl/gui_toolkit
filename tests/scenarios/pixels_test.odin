@@ -14,7 +14,7 @@ import "../../src/ui"
 @(private = "file") RED :: session.Color{255, 0, 0, 255}
 @(private = "file") GREEN :: session.Color{0, 255, 0, 255}
 @(private = "file") BLUE :: session.Color{0, 0, 255, 255}
-// Longer than a palette's cross-fade (ui PALETTE_FADE_MS).
+// Longer than a palette's cross-fade (ui.Feel.palette_fade_ms).
 @(private = "file") FADE_OVER_MS :: 1000
 
 @(private = "file")

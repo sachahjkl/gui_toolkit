@@ -33,8 +33,6 @@ import "core:strings"
 import "../ascii"
 import "../draw"
 
-// Seconds the pointer rests on a cut cell before its whole text shows.
-TABLE_TIP_DELAY_S :: 0.5
 // A column's width, in ems, when dragged.
 TABLE_COLUMN_MIN_EM :: 3
 TABLE_COLUMN_MAX_EM :: 80
@@ -573,9 +571,9 @@ text_cut_under_mouse :: proc(b: ^Box, text: string, pad: f32) -> bool {
 	return text_width(b.font, b.font_size, text) + 2 * pad > r.max.x - r.min.x
 }
 
-// The whole text of a cut cell, beside the pointer, once it has rested on the row for TABLE_TIP_DELAY_S.
+// The whole text of a cut cell, beside the pointer, once it has rested on the row for Feel.tooltip_delay_ms.
 table_cell_tip :: proc(row: Signal, text: string) {
-	if text == "" || !hovered_for(row, TABLE_TIP_DELAY_S) { return }
+	if text == "" || !hovered_for(row) { return }
 	if tooltip_beside() { tooltip_text(text) }
 }
 

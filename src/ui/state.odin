@@ -41,6 +41,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.caption_names = WINDOW_BUTTON_NAMES
 	s.rounding = 1
 	s.density = 1
+	set_feel(s, FEEL_DEFAULT)
 	s.sb_owner = make(map[Key]Key)
 	_ = virtual.arena_init_growing(&s.arena)
 	s.boxes = make(map[Key]^Box)
@@ -228,7 +229,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.frame_ms = p.frame_ms > 0 ? p.frame_ms : s.time_ms
 	if s.theme != nil && s.theme.serial != s.theme_serial {
 		// another palette (not the first one): every colour cross-fades to it for a moment
-		if s.theme_serial != 0 { s.fade_until_ms = s.time_ms + PALETTE_FADE_MS }
+		if s.theme_serial != 0 { s.fade_until_ms = s.time_ms + f64(s.feel.palette_fade_ms) }
 		s.theme_serial = s.theme.serial
 	}
 	s.clipboard_get = p.clipboard_get
@@ -382,9 +383,9 @@ density :: proc(s: ^State) -> f32 { return s.density }
 set_density :: proc(s: ^State, d: f32) { s.density = clamp(d, DENSITY_MIN, DENSITY_MAX) }
 dense :: proc(v: f32) -> f32 { return math.round(v * gs().density) }
 
+// The interface's zoom stays within these; a step of it is Feel.zoom_step.
 ZOOM_MIN :: 0.5
 ZOOM_MAX :: 3.0
-ZOOM_STEP :: 1.1
 
 zoom :: proc(s: ^State) -> f32 { return s.zoom }
 set_zoom :: proc(s: ^State, z: f32) { s.zoom = clamp(z, ZOOM_MIN, ZOOM_MAX) }
@@ -799,9 +800,6 @@ animations_on :: proc() -> bool { return gs().anim_rate != 0 }
 
 // Asks for the next frame: a program's own animation, drawn from the clock (now_ms), is still moving.
 keep_animating :: proc() { gs().anim_busy = true }
-
-// How long a palette change cross-fades the colours of the boxes.
-PALETTE_FADE_MS :: 160.0
 
 // The cross-fade's halvings per second; log2(20): the halvings that cover 95 % of the way.
 @(private = "file") PALETTE_FADE_HALVINGS_PER_S :: 60

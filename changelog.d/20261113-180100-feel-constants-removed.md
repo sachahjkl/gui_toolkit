@@ -1,0 +1,3 @@
+type: Removed
+
+**The constants `ui.Feel` replaces, and `ui.set_menu_item_height`**: `PANE_TOOLTIP_DELAY_S`, `TABLE_TIP_DELAY_S`, `MENU_HOVER_MS`, `MENU_ITEM_EM`, `PALETTE_FADE_MS`, `LIST_TYPEAHEAD_MS`, `FIELD_UNDO_STEPS`, `FIELD_UNDO_MERGE_MS`, `TEXT_UNDO_MAX`, `NUM_STEP_PAGE`, `NUM_STEP_CTRL`, `NUM_STEP_SHIFT`, `NUM_STEP_ALT`, `ZOOM_STEP`, and in `platform` `WHEEL_LINES_DEFAULT`, `TOUCH_FLING_STOP_SPEED`, `KEY_REPEAT_DEFAULT_RATE`, `KEY_REPEAT_DEFAULT_DELAY_MS`; set the field of `ui.Feel` instead (`menu_item_em` for the menu's item height). `ui.hovered_for(sig)` takes no delay: every tooltip waits `Feel.tooltip_delay_ms`. `platform.touch_fling` takes no stop speed: it is the thread's `input_defaults().fling_stop_speed`.

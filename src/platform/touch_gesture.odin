@@ -43,7 +43,6 @@ Touch_Gesture_Event :: struct {
 
 @(private) TOUCH_MAX_FINGERS :: 10
 @(private) TOUCH_SAMPLES :: 16
-TOUCH_FLING_STOP_SPEED :: 20                      // pixels per second under which a fling is over (touch_fling's default)
 @(private) TOUCH_FLING_MIN_FRICTION :: 0.01       // keeps the division by the friction finite
 @(private) TOUCH_FLING_MIN_STOP_SPEED :: 0.01     // keeps the logarithm of the speed's fall finite
 
@@ -221,8 +220,9 @@ touch_gesture_tick :: proc(g: ^Touch_Gesture, ms: f64) -> Touch_Gesture_Event {
 
 // Where a fling glides to and for how long, under a friction that slows it exponentially (`friction` per second: the
 // speed falls by e every 1/friction s): the distance is velocity / friction; the time is until the speed falls under
-// `stop_speed` (pixels per second). For a scroll animation that eases out over that time.
-touch_fling :: proc(velocity: [2]f32, friction: f32, stop_speed: f32 = TOUCH_FLING_STOP_SPEED) -> (distance: [2]f32, ms: f64) {
+// input_defaults().fling_stop_speed (pixels per second). For a scroll animation that eases out over that time.
+touch_fling :: proc(velocity: [2]f32, friction: f32) -> (distance: [2]f32, ms: f64) {
+	stop_speed := input_defaults().fling_stop_speed
 	k := max(friction, TOUCH_FLING_MIN_FRICTION)
 	distance = velocity / k
 	speed := math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y)

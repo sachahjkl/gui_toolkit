@@ -22,7 +22,7 @@ import "../../src/ui"
 @(private = "file") ZOOM_OUT_TWICE_PCT :: 91
 // A wheel's worth of notches on the Controls page: the page moves.
 @(private = "file") WHEEL_NOTCHES :: 6
-// Longer than a hovered_for of the examples (0.4 s).
+// Longer than a tooltip's delay (ui.FEEL_DEFAULT.tooltip_delay_ms, 500 ms).
 @(private = "file") TOOLTIP_WAIT_MS :: 600
 // A press at this share of the Volume slider's track, and what its value may then be.
 @(private = "file") SLIDER_AT :: 0.35

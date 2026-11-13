@@ -45,8 +45,8 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Confetti: app.page = .Playground; spawn_confetti(app, {app.arena_size.x * 0.5, app.arena_size.y * 0.7}, 120)
 	case .Clear_Balls: for &b in app.balls { b.alive = false }
 	case .Reset_Values: reset_values(app); ui.toast(.Good, "All widget values reset")
-	case .Zoom_In: ui.set_zoom(&app.ui_state, ui.zoom(&app.ui_state) * ui.ZOOM_STEP)
-	case .Zoom_Out: ui.set_zoom(&app.ui_state, ui.zoom(&app.ui_state) / ui.ZOOM_STEP)
+	case .Zoom_In: ui.set_zoom(&app.ui_state, ui.zoom(&app.ui_state) * ui.feel(&app.ui_state).zoom_step)
+	case .Zoom_Out: ui.set_zoom(&app.ui_state, ui.zoom(&app.ui_state) / ui.feel(&app.ui_state).zoom_step)
 	case .Zoom_Reset: ui.set_zoom(&app.ui_state, 1)
 	case .Quit: app.want_quit = true
 	}

@@ -192,7 +192,26 @@ Custom_Cursor :: distinct u64
 // fallback is).
 CUSTOM_CURSOR_MAX_CSS :: 128
 
-WHEEL_LINES_DEFAULT :: 3   // what a notch of the wheel moves where the system does not say (wheel_lines)
+// What the platform takes where the system says nothing: the lines of a notch of the wheel (wheel_lines), the repeat of a held
+// key where the program makes it (Wayland, until the compositor gives its own), the speed under which a fling is over
+// (touch_fling). ui.set_feel sets them from the user's settings.
+Input_Defaults :: struct {
+	wheel_lines:         f32,   // 3
+	key_repeat_delay_ms: int,   // before the first repeat. 600
+	key_repeat_rate:     int,   // repeats per second. 25
+	fling_stop_speed:    f32,   // pixels per second. 20
+}
+
+INPUT_DEFAULTS :: Input_Defaults{wheel_lines = 3, key_repeat_delay_ms = 600, key_repeat_rate = 25, fling_stop_speed = 20}
+
+// Of the thread: its interface sets them, its windows read them (a Wayland connection is a thread's).
+@(private, thread_local) input_defaults_set: Maybe(Input_Defaults)
+
+// The input defaults of this thread from now on.
+set_input_defaults :: proc(d: Input_Defaults) { input_defaults_set = d }
+
+// This thread's input defaults: the last set_input_defaults, else INPUT_DEFAULTS.
+input_defaults :: proc() -> Input_Defaults { return input_defaults_set.? or_else INPUT_DEFAULTS }
 
 // Bumped each time the system's light / dark preference may have changed (Windows: WM_SETTINGCHANGE "ImmersiveColorSet";
 // Linux: the appearance portal's SettingChanged). An app that follows dark_mode_preferred keeps the last value it saw and
