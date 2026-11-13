@@ -16,7 +16,7 @@ name: a program may as well name a character of the face itself (`MY_ICON :: "\u
 
 A program may make it its icon font (`ui.State.icon_font = icons`): `ui.icon`, `ui.icon_button`, a menu item's `icon`
 and `ui.button_icon` then draw Lucide's characters. The widgets' own marks (a menu's or a check box's check, a
-dropdown's arrow, a submenu's arrow, a stepper's signs, a toast's sign) are characters of the toolkit's icon font
+dropdown's arrow, a submenu's arrow, a number's − and +, a toast's sign) are characters of the toolkit's icon font
 (`ui.ICON_FONT_DATA`), which `ui.widget_icons()` loads the first time a widget draws one: they stay right whatever the
 program's icon font is.
 

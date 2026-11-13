@@ -132,11 +132,15 @@ the lip of a well). A region redrawn on its own must hold that much around its b
 
 ## Button variants
 
-A button takes the colours of a variant from the tags around it (`if ui.tags("danger_button") { ui.button(...) }`):
+A button's colours come from its intent and its face (`ui.button("Delete###del", intent = .Danger)`, `face = .Ghost`:
+widgets.md). The theme gives them under these tags, named by the intent (`intent_tag`) and the ghost face; a program
+says the intent, not the tag:
 
 | Tag | Colours | For |
 |---|---|---|
-| `accent_button` | the accent, its text colour | the action a dialog is for |
-| `warn_button` | the warning hue, black text | an action done with care (end a task, stop a service) |
-| `danger_button` | the bad hue, white text | an action that loses something (kill, delete) |
-| `ghost_button`, `icon_button` | no background until hovered | a tool among many |
+| `accent_button` (`.Primary`) | the accent's soft pair | the action a dialog is for |
+| `info_button` (`.Info`), `success_button` (`.Success`) | the blue's, the green's soft pair | to inform, to confirm or save |
+| `warn_button` (`.Warning`) | the warning hue's soft pair | an action done with care (end a task, stop a service) |
+| `danger_button` (`.Danger`), `cancel_button` (`.Cancel`) | the bad hue's soft pair | an action that loses something (kill, delete); giving up |
+| `ghost_button`, `icon_button` (`face = .Ghost`) | no background until hovered | a tool among many |
+| `well` | the theme's well, carved in | `ui.well`: a sunken box |

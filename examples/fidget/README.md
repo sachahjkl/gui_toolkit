@@ -4,7 +4,7 @@ The widget gallery, built entirely on the `ui` package.
 `odin run tools/tk -- build fidget` at the repo root, then `build/fidget`.
 
 - **Controls**: buttons (accent / secondary / danger / ghost; hover and press show at once), icon buttons with tooltips,
-  switches, checkboxes, radios, segmented control (sliding pill), chips, sliders, range slider, stepper
+  switches, checkboxes, radios, segmented control (sliding pill), chips, sliders, range slider, numbers
   (hold to repeat), rating, progress bars, toasts, modal dialog, context menu
 - **Inputs**: validated text fields, live fuzzy search with highlighted matches, tag input, a small form,
   shortcut cheat sheet

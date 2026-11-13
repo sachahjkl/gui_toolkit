@@ -95,6 +95,8 @@ Box_Flag :: enum u8 {
 	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`field_frame`)
 	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
 	Ctrl_Wheel,          // a .Scroll_Self box that zooms with Ctrl+wheel itself (a node graph, a map): over it, the wheel with Ctrl is its own, not the interface's zoom
+	Held,                // drawn pressed in, as while the button is held on it (a toggled button: the option chosen)
+	Lit,                 // drawn as under the pointer (a button whose menu is open)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -202,6 +204,7 @@ Style :: struct {
 	font_size:    f32,
 	text_pad:     f32,
 	text_align:   Text_Align,
+	text_aligned: bool,   // a style or a `next` set text_align: a widget that centres its text by default keeps this one
 	radius:       f32,
 	transparency: f32,
 	squish:       f32,
@@ -317,6 +320,8 @@ State :: struct {
 	free_boxes:  [dynamic]^Box,
 	anims:       map[Key]Animation,
 	wheel_rest:  map[Key]f32,     // wheel_steps: per box, the notches not yet a whole step (a touchpad sends fractions)
+	number_edit: Text_Field,      // the text typed in the field of a `number` that has the keyboard (one at a time has it)
+	number_key:  Key,             // that field's box (0: none is typed in)
 	arena:       virtual.Arena,
 	build_index: u64,
 	zoom:        f32,                // user zoom factor (Ctrl+wheel, Ctrl +/-/0); multiplies the DPI scale

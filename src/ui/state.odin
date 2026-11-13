@@ -73,6 +73,7 @@ destroy :: proc(s: ^State) {
 	delete(s.free_boxes)
 	delete(s.anims)
 	delete(s.wheel_rest)
+	field_destroy(&s.number_edit)
 	delete(s.timers)
 	press_data_destroy(s)
 	delete(s.tag_sets)
@@ -604,7 +605,7 @@ apply_mod :: proc(st: ^Style, m: Style_Mod) {
 	if v, ok := m.font.?; ok { st.font = v }
 	if v, ok := m.font_size.?; ok { st.font_size = v }
 	if v, ok := m.text_pad.?; ok { st.text_pad = v }
-	if v, ok := m.text_align.?; ok { st.text_align = v }
+	if v, ok := m.text_align.?; ok { st.text_align, st.text_aligned = v, true }
 	if v, ok := m.radius.?; ok { st.radius = v }
 	if v, ok := m.transparency.?; ok { st.transparency = v }
 	if v, ok := m.squish.?; ok { st.squish = v }

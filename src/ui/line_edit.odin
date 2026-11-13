@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "core:mem"
 import "core:strings"
 import "core:unicode/utf8"
 import "../draw"
@@ -87,6 +88,18 @@ field_set :: proc(f: ^Text_Field, text: string) {
 }
 
 field_clear :: proc(f: ^Text_Field) { field_set(f, "") }
+
+// Empties a field and leaves nothing of its text in memory: its bytes (all its capacity: what a shorter text left after
+// it too) and every step of its undo and redo history are zeroed before they go. For a secret (a password, a PIN) once it
+// is used or given up. What it held before its buffer last grew was in a block freed then, out of reach: reserve the
+// capacity of a secret's field before it is typed in (`reserve(&f.buf, n)`).
+field_wipe :: proc(f: ^Text_Field) {
+	if cap(f.buf) > 0 { mem.zero_explicit(raw_data(f.buf), cap(f.buf)) }
+	clear(&f.buf)
+	f.cursor, f.mark, f.scroll_x = 0, 0, 0
+	f.word = {}
+	field_forget_history(f)   // (each step zeroed: snapshot_free)
+}
 
 @(private)
 field_forget_history :: proc(f: ^Text_Field) {

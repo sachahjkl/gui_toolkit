@@ -1,7 +1,7 @@
 package machines_test
 
-// Gestures and latches over several frames: an edge of a dialog held, a pane pulled out and pushed back, a stepper held off
-// its button, the keyboard latches of a menu, the undo steps and the column of a text, the rows of a list that go.
+// Gestures and latches over several frames: an edge of a dialog held, a pane pulled out and pushed back, a number's + held with the pointer off
+// it, the keyboard latches of a menu, the undo steps and the column of a text, the rows of a list that go.
 
 import "core:testing"
 import "../../src/platform"
@@ -118,14 +118,14 @@ a_value_set_on_a_folded_pane_toggles :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.toggles, 1)
 }
 
-// A stepper held with the pointer off its button waits, as a scroll bar's arrow does.
+// A number's + held with the pointer off it waits, as a scroll bar's arrow does.
 @(test)
-a_stepper_held_off_its_button_waits :: proc(t: ^testing.T) {
+a_number_held_off_its_button_waits :: proc(t: ^testing.T) {
 	Step :: struct { v: int }
 	r: Step
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Step)(s.user)
-		ui.stepper("###st", &r.v, 0, 1000)
+		ui.number("###st", &r.v, lo = 0, hi = 1000)
 	}})
 	at := session.center(session.get(s, "inc"))
 	session.press(s, at)

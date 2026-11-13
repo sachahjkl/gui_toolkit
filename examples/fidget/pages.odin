@@ -21,6 +21,7 @@ reset_values :: proc(app: ^App) {
 	app.slider = {64, 0.75, 21.5}
 	app.range_lo, app.range_hi = 20, 70
 	app.stepper = 5
+	app.size = 12
 	app.seg = 1
 	app.chips = 0x5
 	app.dd = {0, 1}
@@ -97,16 +98,10 @@ page_controls :: proc(app: ^App) {
 				if ui.card("Buttons", ICON_PLAY) {
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###btnrow") {
-						if ui.tags("accent_button") {
-							if ui.button_icon("###b_primary", ICON_PLAY, "Primary").clicked { ui.toast(.Good, "Primary clicked") }
-						}
+						if ui.button_icon("###b_primary", ICON_PLAY, "Primary", intent = .Primary).clicked { ui.toast(.Good, "Primary clicked") }
 						if ui.button_icon("###b_secondary", "", "Secondary").clicked { ui.toast(.Info, "Secondary clicked") }
-						if ui.tags("danger_button") {
-							if ui.button_icon("###b_danger", ICON_TRASH, "Danger").clicked { ui.toast(.Bad, "Danger clicked") }
-						}
-						if ui.tags("ghost_button") {
-							if ui.button_icon("###b_ghost", "", "Ghost").clicked { ui.toast(.Info, "Ghost clicked") }
-						}
+						if ui.button_icon("###b_danger", ICON_TRASH, "Danger", intent = .Danger).clicked { ui.toast(.Bad, "Danger clicked") }
+						if ui.button_icon("###b_ghost", "", "Ghost", face = .Ghost).clicked { ui.toast(.Info, "Ghost clicked") }
 					}
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.2, em * 0.2}, "###iconrow") {
@@ -114,13 +109,7 @@ page_controls :: proc(app: ^App) {
 						tips := [?]string{"Play", "Pause", "Stop", "Refresh", "Save", "Pin", "Copy", "Settings"}
 						for g, i in icons {
 							ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
-							sig := ui.icon_button(fmt.tprintf("ib_%d", i), g)
-							if ui.hovered_for(sig, 0.4) {
-								if ui.tooltip() {
-									ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
-									ui.label(tips[i])
-								}
-							}
+							sig := ui.icon_button(fmt.tprintf("ib_%d", i), g, tip = tips[i])
 							if sig.clicked { ui.toast(.Info, "%s", tips[i]) }
 						}
 					}
@@ -189,7 +178,7 @@ page_controls :: proc(app: ^App) {
 						ui.radio("###rd2", "Large", &app.radio_sel, 2)
 					}
 				}
-				if ui.card("Sliders & steppers", ICON_GRID) {
+				if ui.card("Sliders & numbers", ICON_GRID) {
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
 					ui.toggle("###sl_on", "Enabled", &app.sliders_on)
 					if ui.disabled(!app.sliders_on) {
@@ -197,7 +186,8 @@ page_controls :: proc(app: ^App) {
 						if ui.form_row("Opacity") { ui.slider("###sl1", &app.slider[1], 0, 1, 0, "%.2f") }
 						if ui.form_row("Temperature") { ui.slider("###sl2", &app.slider[2], -10, 40, 0.5, "%.1f C") }
 						if ui.form_row("Range") { ui.range_slider("###rng1", &app.range_lo, &app.range_hi, 0, 100) }
-						if ui.form_row("Stepper") { ui.stepper("###step1", &app.stepper, 0, 99) }
+						if ui.form_row("Number") { ui.number("###step1", &app.stepper, lo = 0, hi = 99) }
+						if ui.form_row("Size") { ui.number("###size1", &app.size, lo = 1, hi = 40, step = 0.5, unit = "px", track = true) }
 						if ui.form_row("Rating") { ui.rating("###rate1", &app.rating) }
 					}
 				}
@@ -211,11 +201,9 @@ page_controls :: proc(app: ^App) {
 					if ui.form_row("Loading") { ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.55))}); ui.progress("###pr_ind", 0, true) }
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###dlrow") {
-						if ui.tags("accent_button") {
-							if ui.button_icon("###b_dl", app.progress_run ? ICON_PAUSE : ICON_PLAY, app.progress_run ? "Pause" : "Start").clicked {
-								if app.progress >= 1 { app.progress = 0 }
-								app.progress_run = !app.progress_run
-							}
+						if ui.button_icon("###b_dl", app.progress_run ? ICON_PAUSE : ICON_PLAY, app.progress_run ? "Pause" : "Start", intent = .Primary).clicked {
+							if app.progress >= 1 { app.progress = 0 }
+							app.progress_run = !app.progress_run
 						}
 						if ui.button_icon("###b_dl_reset", ICON_UNDO, "Reset").clicked { app.progress, app.progress_run = 0, false }
 					}
@@ -229,9 +217,7 @@ page_controls :: proc(app: ^App) {
 					ui.spacer(ui.px(em * 0.3))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###modalrow") {
-						if ui.tags("ghost_button") {
-							if ui.button_icon("###b_modal", ICON_QUESTION, "Open dialog").clicked { app.modal_open = true }
-						}
+						if ui.button_icon("###b_modal", ICON_QUESTION, "Open dialog", face = .Ghost).clicked { app.modal_open = true }
 					}
 				}
 			}
@@ -379,10 +365,8 @@ page_inputs :: proc(app: ^App) {
 					ui.checkbox("###ck_agree", "I agree to the terms", &app.agree)
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###submitrow") {
-						if ui.tags("accent_button") {
-							if ui.button_icon("###b_submit", ui.ICON_CHECK, "Submit", disabled = !can_submit).clicked {
-								ui.toast(.Good, "Submitted: %s <%s>", ui.field_string(&app.name), ui.field_string(&app.email))
-							}
+						if ui.button_icon("###b_submit", ui.ICON_CHECK, "Submit", disabled = !can_submit, intent = .Primary).clicked {
+							ui.toast(.Good, "Submitted: %s <%s>", ui.field_string(&app.name), ui.field_string(&app.email))
 						}
 						ui.spacer(ui.px(em * 0.8))
 						if ui.tags(can_submit ? "good" : "weak") {

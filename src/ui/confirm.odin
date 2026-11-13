@@ -96,3 +96,80 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 	if answer == .None && was && !open^ { answer = .Cancelled }
 	return
 }
+
+// A question that takes an answer typed in: a title, a sentence (what to type), one field, Cancel and OK. Enter in the
+// field answers (Confirmed: the text is the field's); Escape, Cancel or a press outside cancel, as with any modal. The
+// field has the keyboard when it opens. `f` and `open` are the caller's: true opens it, the answer closes it.
+// `secret`: a password, bullets in place of its characters (with `reveal`, the eye that shows it: the caller's bool).
+// After a secret is used or given up, field_wipe(f) leaves nothing of it in memory.
+//
+//   switch ui.prompt("unlock", &app.asking, &app.pin, {title = "Unlock", note = "Type the PIN of the key.", secret = true}) {
+//   case .Confirmed: unlock(app, ui.field_string(&app.pin)); ui.field_wipe(&app.pin)
+//   case .Cancelled: ui.field_wipe(&app.pin)
+//   case .None:
+//   }
+
+// The words of a prompt that are not the caller's own question (translated: a program sets them once).
+Prompt_Labels :: struct { cancel, ok: string }
+PROMPT_LABELS :: Prompt_Labels{cancel = "Cancel", ok = "OK"}
+
+Prompt_Options :: struct {
+	title:       string,
+	note:        string,          // the sentence: what to type ("": none)
+	placeholder: string,          // the empty field's hint
+	secret:      bool,            // a password: bullets, neither copied nor cut
+	reveal:      ^bool,           // with `secret`: the eye that shows it, and whether it is shown (nil: no eye)
+	act:         string,          // the OK button's word ("": labels.ok)
+	width_em:    f32,             // 0: CONFIRM_WIDTH_EM
+	labels:      Prompt_Labels,   // zero: PROMPT_LABELS
+}
+
+prompt :: proc(id: string, open: ^bool, f: ^Text_Field, o: Prompt_Options) -> (answer: Confirm_Answer) {
+	s := gs()
+	was := open^
+	labels := o.labels == {} ? PROMPT_LABELS : o.labels
+	em := font_size()
+	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
+	if modal(id, w, open) {
+		pad := em * 1.2
+		dialog_header("prompt_title", text_shown(o.title), o.secret ? lucide.KEY_ROUND : lucide.PENCIL, lucide_icons())
+		if style({width = px(w)}) {
+			spacer(px(pad))
+			next({width = px(w), height = children_sum()})
+			if row() {
+				spacer(px(pad))
+				next({width = px(w - 2 * pad), height = children_sum(), axis = .Y})
+				if column() {
+					if o.note != "" {
+						next({width = fill()})
+						paragraph(fmt.tprintf("%s###prompt_note", text_shown(o.note)))
+						spacer(px(em * 0.6))
+					}
+					next({width = fill(), height = px(dense(em * 2.2))})
+					res := line_edit("###prompt_field", f, o.placeholder, secret = o.secret, reveal = o.secret ? o.reveal : nil)
+					// (the keyboard is the field's as the dialog opens: it took it from the page)
+					if s.focus_key == 0 { s.focus_key = res.box.key }
+					if res.committed { answer, open^ = .Confirmed, false }
+					if res.cancelled { answer, open^ = .Cancelled, false }
+					spacer(px(em * 1.1))
+					next({width = fill(), height = children_sum()})
+					if row() {
+						spacer(fill())
+						if button_icon("prompt_cancel", lucide.X, labels.cancel, icon_font = lucide_icons(), intent = .Cancel).clicked {
+							answer, open^ = .Cancelled, false
+						}
+						spacer(px(em * 0.6))
+						act := o.act != "" ? o.act : labels.ok
+						if button_icon("prompt_ok", lucide.CHECK, act, icon_font = lucide_icons(), intent = .Primary).clicked {
+							answer, open^ = .Confirmed, false
+						}
+					}
+				}
+			}
+			spacer(px(pad))
+		}
+	}
+	// (closed otherwise: Escape, a press outside)
+	if answer == .None && was && !open^ { answer = .Cancelled }
+	return
+}

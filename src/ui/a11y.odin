@@ -10,7 +10,7 @@ import "../platform"
 // Not every box is a node: a box is one when it has a role (given by its widget, or by the app with `a11y`), or when
 // it shows text (a static text, role Label). Layout boxes are not: their nodes go to the nearest node above them. A
 // node's id is its box's Key (stable across frames), its bounds its rect, its parent the nearest node above it. The
-// widgets of the toolkit give their role, name and states (button, check box, radio, toggle, slider, stepper, fields,
+// widgets of the toolkit give their role, name and states (button, check box, radio, toggle, slider, number, fields,
 // lists, menus, tabs, splitter, accordion, progress, dropdown, tooltip, toasts...); the app names what the toolkit
 // cannot know (an icon button's purpose) and describes its own boxes:
 //
@@ -37,7 +37,7 @@ A11y_Info :: struct {
 	selected:         Maybe(bool),           // tabs, list rows
 	expanded:         Maybe(bool),           // menus, accordions, tree rows
 	read_only, required, multiselectable, modal, hidden, busy: bool,
-	numeric:          Maybe(f64),            // sliders, steppers, progress
+	numeric:          Maybe(f64),            // sliders, numbers, progress
 	min, max, step:   Maybe(f64),
 	level:            int,                   // headings, tree rows (1-based; 0: none)
 	position, set_size: int,                 // "3 of 7" (1-based; 0: none)

@@ -138,10 +138,8 @@ build_menubar :: proc(app: ^App, em: f32) {
 			theme_m := ui.menu_bar_button("Theme###menu_theme")
 			help_m := ui.menu_bar_button("Help###menu_help")
 			ui.spacer(ui.fill())
-			if ui.tags("ghost_button") {
-				ui.next({width = ui.px(em * 15), height = ui.px(em * 2)})
-				if ui.button_icon("bar_palette###bar_palette", ICON_FIND, "Command palette").clicked { palette_toggle(app) }
-			}
+			ui.next({width = ui.px(em * 15), height = ui.px(em * 2)})
+			if ui.button_icon("bar_palette###bar_palette", ICON_FIND, "Command palette", face = .Ghost).clicked { palette_toggle(app) }
 			ui.spacer(ui.px(em * 0.4))
 			ui.kbd("Ctrl+K")
 			ui.spacer(ui.px(em * 0.8))
@@ -362,9 +360,7 @@ build_confirm :: proc(app: ^App) {
 				ui.spacer(ui.fill())
 				if ui.button_icon("Cancel###cf_cancel", "", "Cancel").clicked { app.modal_open = false; ui.toast(.Info, "Cancelled") }
 				ui.spacer(ui.px(em * 0.6))
-				if ui.tags("danger_button") {
-					if ui.button_icon("Delete###cf_ok", ICON_TRASH, "Delete").clicked { app.modal_open = false; ui.toast(.Bad, "Deleted... nothing, it's a demo") }
-				}
+				if ui.button_icon("Delete###cf_ok", ICON_TRASH, "Delete", intent = .Danger).clicked { app.modal_open = false; ui.toast(.Bad, "Deleted... nothing, it's a demo") }
 				ui.spacer(ui.px(em * 1.4))
 			}
 			ui.spacer(ui.px(em * 1.2))
@@ -468,9 +464,7 @@ build_about :: proc(app: ^App) {
 					ui.toast(.Good, "Copied to the clipboard")
 				}
 				ui.spacer(ui.px(em * 0.6))
-				if ui.tags("accent_button") {
-					if ui.button_icon("###ab_close", "", "Close").clicked { app.about_open = false }
-				}
+				if ui.button_icon("###ab_close", "", "Close", intent = .Primary).clicked { app.about_open = false }
 				ui.spacer(ui.px(pad))
 			}
 			ui.spacer(ui.px(em * 1.4))

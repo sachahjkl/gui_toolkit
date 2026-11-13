@@ -45,13 +45,30 @@ if ui.modal_sized("files", preferred, &size, &open) {
 
 `ui.confirm(id, &open, options)` is the question before an act that is not taken back: a title, a note in the weak text
 (what comes of it), what it acts on one per line when there is more than one (`CONFIRM_LINES_MAX` shown, the others
-counted), then Cancel and the act's button in the danger colours. It answers `.Confirmed`, `.Cancelled` (the Cancel
+counted), then Cancel (intent `.Cancel`) and the act's button in the danger colours. It answers `.Confirmed`, `.Cancelled` (the Cancel
 button, Escape, a press outside) or `.None` while it waits.
 
 - Enter answers what is safe: Cancel, and the act only with `enter_confirms` (an act that is safe and was asked for). The
   button Enter presses says so: "Cancel (Enter)".
 - Its words other than the caller's (`Confirm_Labels`: Cancel, "and %d more", "%s (Enter)") are set once by a program
   that translates them.
+
+## A prompt (`src/ui/confirm.odin`)
+
+`ui.prompt(id, &open, &field, options)` asks for an answer typed in: a title, a sentence (`note`: what to type), one
+field, Cancel (intent `.Cancel`) and OK (`act`, else `Prompt_Labels.ok`). The field has the keyboard as it opens. Enter
+in it answers `.Confirmed` (the text is the field's); Escape, Cancel or a press outside `.Cancelled`; `.None` while it
+waits. `secret` makes it a password field (`reveal`: the caller's bool for the eye that shows it); once the answer is
+used or given up, `ui.field_wipe(&field)` leaves nothing of it in memory. Its words other than the caller's
+(`Prompt_Labels`: Cancel, OK) are set once by a program that translates them.
+
+```odin
+switch ui.prompt("unlock", &app.asking, &app.pin, {title = "Unlock", note = "Type the PIN of the key.", secret = true}) {
+case .Confirmed: unlock(app, ui.field_string(&app.pin)); ui.field_wipe(&app.pin)
+case .Cancelled: ui.field_wipe(&app.pin)
+case .None:
+}
+```
 
 ## A strip across a dialog's top
 

@@ -64,9 +64,7 @@ Screenshots are regenerated with `odin run tools/tk -- screenshots -build` (defa
 if ui.style({width = ui.fill(), radius = em * 0.45}) {
 	if ui.row(.Center) {
 		res := ui.line_edit("###new_task", &app.input, "What needs doing?")
-		if ui.tags("accent_button") {
-			if ui.button("Add###add").clicked || res.committed { add_task(app, ui.field_string(&app.input)) }
-		}
+		if ui.button("Add###add", intent = .Primary).clicked || res.committed { add_task(app, ui.field_string(&app.input)) }
 	}
 	if ui.scroll_y("###list") {
 		for &t in app.tasks {
@@ -143,8 +141,9 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   the effective scale is dpi scale x zoom). Apps write sizes in logical pixels.
 - **DPI**: per-monitor aware, window sized from the monitor DPI and clamped to the work area.
 - **Animations** follow the OS "show animations" setting (`Build_Params.animations`); when off, every transition jumps.
-- **Widgets**: label, button (+icon variant), icon button, checkbox, radio, switch, slider, slider with a field for
-  the exact value (`slider_field`), range slider, stepper, segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
+- **Widgets**: label, button (an intent, a face: raised, ghost, toggled), icon button, labelled button with a glyph,
+  checkbox, radio, switch, slider, number (a typed value, − and +, a slider, a unit: `number`), range slider, spinner,
+  segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
   (selection, word moves, clipboard, mouse), **multi-line editor** (`text_edit`: undo / redo, line numbers,
   indentation, Up / Down keep the column), scroll region, **menus** (context menus, dropdowns, menu bar: submenus,
   separators, disabled items, shortcuts, full keyboard, kept on screen), **keyboard lists** (`List_State`: active row,

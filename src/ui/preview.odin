@@ -208,12 +208,8 @@ preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: P
 			}
 			for it in items {
 				next({width = text_size(em * 0.45), height = px(h - em * 0.5), radius = rad(em * 0.3)})
-				push_tags("ghost_button")
-				ib := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc}, fmt.tprintf("%s%s", it.text, it.id))
-				pop_tags()
-				ib.text_align = .Center
-				a11y_default(ib, {role = .Button, name = it.which == .Out ? "Zoom out" : it.which == .In ? "Zoom in" : it.which == .Native ? "Actual size" : "Fit"})
-				if signal(ib).clicked { clicked = it.which }
+				a11y({name = it.which == .Out ? "Zoom out" : it.which == .In ? "Zoom in" : it.which == .Native ? "Actual size" : "Fit"})
+				if button(fmt.tprintf("%s%s", it.text, it.id), face = .Ghost).clicked { clicked = it.which }
 			}
 			spacer(px(em * 0.3))
 		}

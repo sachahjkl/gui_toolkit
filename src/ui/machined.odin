@@ -371,7 +371,7 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	}
 	if b.bg.a < 0.99 || box_sheen(s, b) <= VISIBLE { return }
 	if .Clickable in b.flags {
-		machined_bevel(dc, r, radius, b.bg, b.hot_t, b.active_t * b.hot_t)
+		machined_bevel(dc, r, radius, b.bg, box_hot(b), box_held(b))
 		return true, !keyboard_focus   // (a keyboard's focus keeps the theme's ring)
 	}
 	// a raised panel (a bar, a key cap): its face, a lit rim along its top

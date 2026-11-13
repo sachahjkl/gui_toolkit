@@ -108,6 +108,7 @@ The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.
 
 A password is `ui.line_edit(id, &field, secret = true)`: bullets in place of its characters, and it is neither copied nor cut.
+Once it is used, `ui.field_wipe(&field)` leaves nothing of it in memory (widgets.md, "A secret's memory").
 Give it `reveal = &shown` (a `bool` the program keeps) and an eye at its end shows the text and hides it again; shown, it is
 text like any other. The field keeps the keyboard when the eye is clicked.
 
