@@ -851,8 +851,9 @@ build_scroller :: proc(f: ^Fx, user: rawptr) {
 @(private = "file")
 scroll_after_notch :: proc(f: ^Fx, smooth: ui.Smooth_Scroll) -> (off, target: f32, busy: bool) {
 	one :: proc(f: ^Fx, events: []platform.Event, smooth: ui.Smooth_Scroll) {
+		ui.set_smooth_scroll(&f.s, smooth)
 		ui.begin_build(&f.s, {
-			window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, smooth_scroll = smooth, dpi_scale = 1,
+			window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
 			base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
 		})
 		build_scroller(f, nil)
@@ -866,7 +867,7 @@ scroll_after_notch :: proc(f: ^Fx, smooth: ui.Smooth_Scroll) -> (off, target: f3
 }
 
 // Smooth scrolling is its own setting: with the interface's animations off, a wheel notch still glides when the
-// application says so (smooth_scroll = .On), and jumps when it follows the animations.
+// application says so (set_smooth_scroll .On), and jumps when it follows the animations.
 @(test)
 smooth_scroll_without_animations :: proc(t: ^testing.T) {
 	f := new(Fx)

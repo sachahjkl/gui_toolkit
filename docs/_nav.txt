@@ -67,6 +67,7 @@ Platform and system
   capture.md          capture: screens and windows as pictures
   cli.md              cli: the command line
   prefs_page.md       prefs_page: the settings page
+  settings.md         The common settings of every program
 
 Frames and threads
   pacing.md           The cadence model

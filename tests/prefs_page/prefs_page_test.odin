@@ -18,7 +18,7 @@ import update "../../src/update"
 @(private = "file")
 DEFS := [?]config.Def{
 	{name = "net.cache", description = "Keep a cache of the responses.", kind = .Bool, default = {b = true}},
-	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB"},
+	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB", bytes = true},
 	{name = "look.style", description = "How surfaces are drawn.", kind = .String, default = {s = "flat"}, choices = {"flat", "machined"}},
 	{name = "look.zoom", description = "How large the interface is drawn.", kind = .Float, default = {f = 1}, bounded = true, min = 0.5, max = 2},
 	{name = "look.shade", description = "How dark the screen is around a choice.", kind = .Int, default = {i = 45}, bounded = true, min = 0, max = 90, unit = "%"},
@@ -216,14 +216,14 @@ a_managed_copy_offers_nothing :: proc(t: ^testing.T) {
 	testing.expect(t, session.find(s, "update_check") == nil, "no Check now")
 }
 
-// A slider dragged and let go keeps where it was let go: ui.slider moves its value only while the button is down, the page
-// keeps it until the release writes it (it went back to the old value at the release).
+// A number's slider dragged and let go keeps where it was let go: the page keeps the value while the button is down, the
+// release writes it.
 @(test)
 a_slider_keeps_where_it_was_let_go :: proc(t: ^testing.T) {
 	app: App
 	defer app_end(&app)
 	s := app_start(t, &app, "interface is drawn")
-	sl := session.get(s, "sl")
+	sl := session.get(s, "slider")
 	r := sl.rect
 	from := [2]f32{r.min.x + (r.max.x - r.min.x) * (1 - 0.5) / 1.5, (r.min.y + r.max.y) * 0.5}   // (1 on 0.5 .. 2)
 	to := [2]f32{r.max.x - 2, from.y}
@@ -234,24 +234,24 @@ a_slider_keeps_where_it_was_let_go :: proc(t: ^testing.T) {
 	testing.expect(t, len(app.changed) > 0 && app.changed[len(app.changed) - 1] == "look.zoom", "the program is told")
 }
 
-// A slider's unit is written as it is, "%" too (the slider's text is a format of fmt: its unit's "%" is not a verb).
+// A number's unit is written as it is, "%" too.
 @(test)
-a_slider_writes_its_unit :: proc(t: ^testing.T) {
+a_number_writes_its_unit :: proc(t: ^testing.T) {
 	app: App
 	defer app_end(&app)
 	s := app_start(t, &app, "dark the screen")
-	sl := session.get(s, "sl")
-	testing.expect(t, sl.a11y != nil, "the slider says its value")
-	if sl.a11y != nil { testing.expect_value(t, sl.a11y.value, "45 %") }
+	v := session.get(s, "value")
+	testing.expect(t, v.a11y != nil, "the number says its value")
+	if v.a11y != nil { testing.expect_value(t, v.a11y.value, "45 %") }
 }
 
-// A slider held shows its value at once (Options.preview: the program applies it), the preference written at the release.
+// A number's slider held shows its value at once (Options.preview: the program applies it), the preference written at the release.
 @(test)
 a_held_slider_previews_its_value :: proc(t: ^testing.T) {
 	app: App
 	defer app_end(&app)
 	s := app_start(t, &app, "interface is drawn")
-	sl := session.get(s, "sl")
+	sl := session.get(s, "slider")
 	r := sl.rect
 	from := [2]f32{r.min.x + (r.max.x - r.min.x) * (1 - 0.5) / 1.5, (r.min.y + r.max.y) * 0.5}   // (1 on 0.5 .. 2)
 	to := [2]f32{r.max.x - 2, from.y}

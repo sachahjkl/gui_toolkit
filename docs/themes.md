@@ -77,6 +77,10 @@ accent = #e5c07b
 light.accent = #b58900
 ```
 
+A program does not read the file itself: `prefs_page.Themes_File` keeps it beside the preferences, makes it from a
+commented template, opens it in the system's editor and reads it again when it changes, all on tasks
+([prefs_page.md](prefs_page.md), "Themes of the user's own").
+
 ## Finishes
 
 | Finish | Raised surfaces (buttons, bars) | Sunken ones (fields) | Separators |

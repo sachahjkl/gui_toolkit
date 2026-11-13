@@ -14,7 +14,22 @@ ui.set_feel(&app.state, f)
 `ui.set_feel(s, f)` takes `f` for every build from then on. It brings each value within what works (below), and gives
 the platform its part through `platform.set_input_defaults`. The other settings of the State keep their own setters:
 `set_zoom`, `set_density`, `set_rounding`, `set_scrollbar_autohide`, `set_scrollbar_arrows`, `set_toast_position`,
-`set_scroll_settings`, `set_autoscroll_settings`.
+`set_scroll_settings`, `set_autoscroll_settings`, `set_animations`, `set_smooth_scroll`. Every one of them is a standard
+preference of the settings page ([settings.md](settings.md)): `prefs_page.standard_watch` applies them.
+
+## Motion
+
+`Build_Params.animations` is what the system asks (`platform.os_animations_enabled`: its setting to reduce motion). The
+user's word goes over it:
+
+```odin
+ui.set_animations(&s, .Off)        // System (the default): as Build_Params.animations; On: always; Off: never
+ui.set_smooth_scroll(&s, .On)      // Follow (the default): a notch glides when the window animates; On: always; Off: never
+a := ui.animations(&s)             // the setting; animations_on() says whether this build animates
+m := ui.smooth_scroll(&s)
+```
+
+Both take effect at the next build. `set_smooth_scroll` replaces the former `Build_Params.smooth_scroll`.
 
 ## Fields
 

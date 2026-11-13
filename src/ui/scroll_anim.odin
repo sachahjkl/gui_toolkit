@@ -9,8 +9,8 @@ import "core:math"
 //     with zero speed and never overshoot. Exponential: the toolkit's former easing (halves the distance every 1/60 s).
 //   * A new target while moving keeps the speed it has when that is faster than the curve's own start (notches add up
 //     into a glide, they do not brake it).
-//   * Dragging a scroll bar's thumb moves at once. No glide when Build_Params.smooth_scroll says so (by default: when
-//     animations are off).
+//   * Dragging a scroll bar's thumb moves at once. No glide when set_smooth_scroll says so (by default: when animations
+//     are off).
 
 Scroll_Curve :: enum u8 { Impulse, Ease_Out, Exponential }
 
@@ -29,6 +29,10 @@ DEFAULT_SCROLL :: Scroll_Settings{curve = .Impulse, impulse = 5, duration_ms = 1
 
 set_scroll_settings :: proc(s: ^State, cfg: Scroll_Settings) { s.scroll_cfg = cfg; s.scroll_cfg_set = true }
 scroll_settings :: proc(s: ^State) -> Scroll_Settings { return s.scroll_cfg_set ? s.scroll_cfg : DEFAULT_SCROLL }
+
+// Whether scrolling glides (Follow by default: as the animations do). From the next build on.
+set_smooth_scroll :: proc(s: ^State, m: Smooth_Scroll) { s.smooth_scroll = m }
+smooth_scroll :: proc(s: ^State) -> Smooth_Scroll { return s.smooth_scroll }
 
 Scroll_Anim :: struct {
 	from, to:   f64,

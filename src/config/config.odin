@@ -448,12 +448,19 @@ save_user :: proc(p: ^Prefs, path: string, loc := #caller_location) -> bool {
 // not a change of user_version: the file has it.
 load_file :: proc(p: ^Prefs, path: string, source: Source, loc := #caller_location) -> (applied: int, problems: [dynamic]string) {
 	base.blocking("config.load_file", loc)
-	problems = make([dynamic]string, context.temp_allocator)
 	data, err := os.read_entire_file(path, context.temp_allocator)
-	if err != nil { return 0, problems }
+	if err != nil { return 0, make([dynamic]string, context.temp_allocator) }
+	return load_text(p, string(data), source, path)
+}
+
+// load_file of a file's text read elsewhere (on a worker: the registry is the interface's, the disk is not). `origin` names
+// it in the problems. `change`: what is read is a change of the user's layer (an import, from another machine), so
+// user_version moves and the program saves it; false: the profile file itself, which already holds it.
+load_text :: proc(p: ^Prefs, text: string, source: Source, origin := "", change := false) -> (applied: int, problems: [dynamic]string) {
+	problems = make([dynamic]string, context.temp_allocator)
 	user_version := p.user_version
-	defer p.user_version = user_version
-	text := string(data)
+	defer if !change { p.user_version = user_version }
+	text := text
 	first := true
 	for line in strings.split_lines_iterator(&text) {
 		if first {
@@ -461,7 +468,7 @@ load_file :: proc(p: ^Prefs, path: string, source: Source, loc := #caller_locati
 			// a byte-order mark (a file saved by Notepad) is not part of the magic
 			magic := strings.trim_prefix(line, "\xEF\xBB\xBF")
 			if magic == (source == .Policy ? POLICY_MAGIC : USER_MAGIC) { continue }
-			append(&problems, fmt.aprintf("%s: not a preference file", path, allocator = context.temp_allocator))
+			append(&problems, fmt.aprintf("%s: not a preference file", origin != "" ? origin : "the text", allocator = context.temp_allocator))
 			return
 		}
 		if line == "" || line[0] == '#' { continue }
