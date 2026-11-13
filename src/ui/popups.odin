@@ -54,6 +54,14 @@ MENU_ITEM_EM :: 1.9
 // Space above the first item and below the last, and on each side of a separator's line.
 @(private = "file") MENU_PAD_EM :: 0.25
 @(private = "file") MENU_SEPARATOR_GAP_EM :: 0.2
+// The columns of a row, in em (menu_row builds them, menu_row_width measures them: one source for both).
+@(private = "file") MENU_ROW_LEAD_EM :: 0.6    // before the icon column
+@(private = "file") MENU_ICON_EM :: 1.5        // the icon or check column
+@(private = "file") MENU_KEY_PAD_EM :: 0.5     // a shortcut's padding on each side, on top of its text_pad
+@(private = "file") MENU_ARROW_EM :: 1.2       // a submenu's arrow
+@(private = "file") MENU_ROW_TRAIL_EM :: 0.5   // after the last column
+// A row cut by the window (a menu wider than it) shows its whole label as a tooltip after this rest.
+@(private) MENU_TIP_DELAY_S :: 0.5
 // A tooltip's size before it was measured.
 @(private = "file") TOOLTIP_FIRST_WIDTH_EM :: 10
 @(private = "file") TOOLTIP_FIRST_HEIGHT_EM :: 3
@@ -512,13 +520,15 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 		}
 	}
 
-	em := font_size()
+	// (the rows are built in the window's style, below: the menu's sizes are in its em, not the caller's)
+	em := s.style_stack[0].font_size
 	id := fmt.tprintf("###menu_%d", u64(lv.key))
 	panel := s.boxes[key_from_string(s.root.key, id)]
 	first := panel == nil
 	// (its content's height: the last layout's; taller than the window, the rows leave room for the scroll bar)
 	lv.scrolls = !first && panel.view_bounds.y > s.window_size.y
-	w := (width > 0 ? width : max(lv.prev_width, em * MENU_MIN_WIDTH_EM)) + menu_bar_room(lv, em)
+	// As wide as its widest row (measured on the last frame), `width` at least: a width given is a minimum, never a cut.
+	w := max(lv.prev_width, width, em * MENU_MIN_WIDTH_EM) + menu_bar_room(lv, em)
 	if lv.search {
 		w = max(w, lv.held_width)
 		lv.held_width = w
@@ -526,7 +536,9 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	// (placed with the width it is built with this frame, its frame added (what the last frame's panel had over the width
 	// it was built with): the last frame's was narrower when its rows learned their width only then (lv.prev_width), and a
 	// menu at the window's right edge showed past it, then jumped back)
-	frame_w: f32 = first ? 0 : max(0, panel.size.x - lv.eff_width)
+	frame_w: f32 = first ? 2 * max(1, math.round(s.scale)) : max(0, panel.size.x - lv.eff_width)
+	// (wider than the window: as wide as the window, its rows cut, each showing its whole label as a tooltip)
+	w = max(0, min(w, s.window_size.x - frame_w))
 	lv.eff_width = w
 	size := first ? Vec2{w, em * MENU_FIRST_HEIGHT_EM} : Vec2{max(panel.size.x, w + frame_w), min(panel.view_bounds.y, s.window_size.y)}
 	pos := menu_place(lv, depth, size, s.window_size, em)
@@ -633,16 +645,28 @@ first_letter :: proc(label: string) -> rune {
 	return 0
 }
 
+// The width a row of `st` needs to show `label`, `shortcut` and a submenu's arrow whole: the columns menu_row lays out, in
+// the same numbers (its border, the lead, the icon column, the label and its padding, the shortcut's box as the layout
+// sizes it, the arrow, the trail). The room of a scroll bar is not in it (menu_bar_room).
+@(private = "file")
+menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool) -> f32 {
+	em, pad := st.font_size, st.text_pad
+	w := 2 * max(1, math.round(gs().scale))   // (the row is always bordered: border_inset)
+	w += em * (MENU_ROW_LEAD_EM + MENU_ICON_EM + MENU_ROW_TRAIL_EM)
+	w += text_width(st.font, em, label) + 2 * pad
+	// (the layout ceils a text box: layout_standalone)
+	if shortcut != "" { w += math.ceil(text_width(st.font, em, shortcut) + 2 * (pad + em * MENU_KEY_PAD_EM)) }
+	if submenu && widget_icons() != 0 { w += em * MENU_ARROW_EM }
+	return math.ceil(w)
+}
+
 // One row: check mark or icon, label, shortcut (weak), submenu arrow. Returns the row's signal.
 @(private)
 menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, checked, enabled, submenu, highlight: bool, glyph_font: font.Font_Id = 0) -> Signal {
 	s := gs()
 	em := font_size()
 	label := display_part(text)
-	// spacers, icon cell, label and its padding, borders (with a little room so the label never gets "...")
-	natural := em * 0.6 + em * 1.5 + text_width(top_style().font, em, label) + 2 * top_style().text_pad + em * 0.5 + em * 0.6 + 4 * max(1, scale())
-	if shortcut != "" { natural += text_width(top_style().font, em, shortcut) + em * 2.5 }
-	if submenu { natural += em * 1.6 }
+	natural := menu_row_width(top_style(), label, shortcut, submenu)
 	lv.width = max(lv.width, natural)
 	width := lv.eff_width
 	sig: Signal
@@ -667,8 +691,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 				a11y_default(b, info)
 			}
 			if parent(b) {
-				spacer(px(em * 0.6))
-				next({width = px(em * 1.5), height = pct(1)})
+				spacer(px(em * MENU_ROW_LEAD_EM))
+				next({width = px(em * MENU_ICON_EM), height = pct(1)})
 				if checked && widget_icons() != 0 {
 					if style({font = widget_icons(), text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###chk", ICON_CHECK)) }
 				} else if face := glyph_font != 0 ? glyph_font : (s.menu_icon_font != 0 ? s.menu_icon_font : s.icon_font); glyph != "" && face != 0 {
@@ -687,16 +711,20 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 				}
 				if shortcut != "" {
 					if tags("weak") {
-						next({width = text_size(em * 0.5), height = pct(1)})
+						next({width = text_size(em * MENU_KEY_PAD_EM), height = pct(1)})
 						build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###key", shortcut))
 					}
 				}
 				if submenu && widget_icons() != 0 {
-					if tags("weak") { widget_icon(">", em * 1.2) }
+					if tags("weak") { widget_icon(">", em * MENU_ARROW_EM) }
 				}
-				spacer(px(em * 0.5 + menu_bar_room(lv, em)))
+				spacer(px(em * MENU_ROW_TRAIL_EM + menu_bar_room(lv, em)))
 			}
 		}
+	}
+	// (a row narrower than its content: the window cut the menu; its whole label in a tooltip)
+	if sig.box != nil && natural + menu_bar_room(lv, em) > width + 0.5 && hovered_for(sig, MENU_TIP_DELAY_S) {
+		if tooltip() { tooltip_text(label) }
 	}
 	if sig.hovering {
 		if s.mouse_moved || lv.sel < 0 { lv.sel = idx }
@@ -708,6 +736,14 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 		lv.sel = -1
 	}
 	return sig
+}
+
+// Box `b`, a line of `text`, was laid out narrower than its text (last layout): it shows "...". For a list whose width
+// the person chose (the palette): its cut lines show their whole text as a tooltip.
+@(private)
+label_cut :: proc(b: ^Box, text: string) -> bool {
+	if b == nil || b.first_build == gs().build_index { return false }
+	return text_width(b.font, b.font_size, text) + 2 * b.text_pad > (b.rect.max.x - b.rect.min.x) + 0.5
 }
 
 // The pointer has rested on item `idx` of `lv` for MENU_HOVER_MS (asks for a timed wake while waiting).

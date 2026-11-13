@@ -512,38 +512,108 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		}
 		if revealable { reveal_button(b, reveal, end) }
 		if clears && clear_button(b, f, end) { res.changed = true }
-		if menu {
-			key := key_from_string(b.key, "field_menu")
-			if s.pressed_any[.Right] && s.pressed_key[.Right] == b.key && !ctx_menu_any_open() {
-				s.focus_key = b.key
-				ctx_menu_open(key, s.mouse)
-			}
-			field_menu(key, f, b.key, masked, read_only)
-		}
+		if menu { field_context_menu(b, f, masked, read_only) }
 	}
 	return
 }
 
-// The menu of a text field, `key` its menu (ctx_menu_open opens it): the edits of field_undo, field_cut, field_copy,
-// field_paste, field_delete and field_select_all, each with its keys and its icon (Lucide's: lucide_icons). `owner`: the
-// field's widget, which a paste's text comes to (field_paste). A secret is neither copied nor cut.
-field_menu :: proc(key: Key, f: ^Text_Field, owner: Key, secret := false, read_only := false) {
+// What a field's menu edits: a line_edit's Text_Field or a text_edit's Text_Area. Each edit goes through its own edit
+// history, as its keys do.
+Edit_Target :: union { ^Text_Field, ^Text_Area }
+
+// The menu of a text field, `key` its menu (ctx_menu_open opens it): Undo, Redo, Cut, Copy, Paste, Delete and Select all,
+// each with its keys and its icon (Lucide's: lucide_icons), on a line_edit's field or a text_edit's area. `owner`: the
+// field's widget, which a paste's text comes to (field_paste). A secret is neither copied nor cut; a field `read_only` is
+// only copied and selected. line_edit and text_edit open it on a right press (their `menu`).
+field_menu :: proc(key: Key, target: Edit_Target, owner: Key, secret := false, read_only := false) {
 	if ctx_menu(key) {
 		ico := lucide_icons()
-		sel := field_has_selection(f)
+		buf, cursor, mark := edit_target_text(target)
+		sel := cursor != mark
 		if !read_only {
-			if menu_item("Undo", "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = field_can_undo(f)).clicked { field_undo(f) }
-			if menu_item("Redo", "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = field_can_redo(f)).clicked { field_redo(f) }
+			if menu_item("Undo", "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = edit_target_can(target, true)).clicked { edit_target_step(target, true) }
+			if menu_item("Redo", "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = edit_target_can(target, false)).clicked { edit_target_step(target, false) }
 			menu_separator()
-			if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { field_cut(f) }
+			if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { edit_target_cut(target) }
 		}
-		if menu_item("Copy", "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { field_copy(f) }
+		if menu_item("Copy", "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { edit_target_copy(target) }
 		if !read_only {
 			if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
-			if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { field_delete(f) }
+			if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { edit_target_delete(target) }
 		}
 		menu_separator()
-		if menu_item("Select all", "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(f.buf) > 0).clicked { field_select_all(f) }
+		if menu_item("Select all", "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(buf) > 0).clicked { edit_target_select_all(target) }
+	}
+}
+
+// A right press on the field's box `b` opens its menu there (the field takes the keyboard: its edits are the menu's), and the
+// menu is built while it is open.
+@(private)
+field_context_menu :: proc(b: ^Box, target: Edit_Target, secret, read_only: bool) {
+	s := gs()
+	key := key_from_string(b.key, "field_menu")
+	if s.pressed_any[.Right] && s.pressed_key[.Right] == b.key && !ctx_menu_any_open() {
+		s.focus_key = b.key
+		ctx_menu_open(key, s.mouse)
+	}
+	field_menu(key, target, b.key, secret, read_only)
+}
+
+@(private = "file")
+edit_target_text :: proc(t: Edit_Target) -> (buf: []u8, cursor, mark: int) {
+	switch v in t {
+	case ^Text_Field: return v.buf[:], v.cursor, v.mark
+	case ^Text_Area:  return v.buf[:], v.cursor, v.mark
+	}
+	return
+}
+
+@(private = "file")
+edit_target_can :: proc(t: Edit_Target, undo: bool) -> bool {
+	switch v in t {
+	case ^Text_Field: return undo ? field_can_undo(v) : field_can_redo(v)
+	case ^Text_Area:  return len(undo ? v.undo : v.redo) > 0
+	}
+	return false
+}
+
+@(private = "file")
+edit_target_step :: proc(t: Edit_Target, undo: bool) {
+	switch v in t {
+	case ^Text_Field: _ = undo ? field_undo(v) : field_redo(v)
+	case ^Text_Area:  _ = undo ? area_undo(v) : area_redo(v)
+	}
+}
+
+@(private = "file")
+edit_target_copy :: proc(t: Edit_Target) {
+	switch v in t {
+	case ^Text_Field: _ = field_copy(v)
+	case ^Text_Area:  _ = area_copy(v)
+	}
+}
+
+@(private = "file")
+edit_target_cut :: proc(t: Edit_Target) {
+	switch v in t {
+	case ^Text_Field: _ = field_cut(v)
+	case ^Text_Area:  _ = area_cut(v)
+	}
+}
+
+@(private = "file")
+edit_target_delete :: proc(t: Edit_Target) {
+	switch v in t {
+	case ^Text_Field: _ = field_delete(v)
+	case ^Text_Area:  _ = area_delete(v)
+	}
+}
+
+@(private = "file")
+edit_target_select_all :: proc(t: Edit_Target) {
+	switch v in t {
+	case ^Text_Field: field_select_all(v)
+	case ^Text_Area:  area_select_all(v)
 	}
 }
 

@@ -41,7 +41,7 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 	if modal(id, w, open) {
 		pad := em * 1.2
 		// (a safe act is a plain question; the others warn before they act)
-		dialog_header("confirm_title", text_shown(o.title), o.enter_confirms ? lucide.INFO : lucide.TRIANGLE_ALERT, lucide_icons())
+		if dialog_header("confirm_title", text_shown(o.title), {icon = o.enter_confirms ? lucide.INFO : lucide.TRIANGLE_ALERT, icon_font = lucide_icons(), close = true}) {}
 		if style({width = px(w)}) {
 			spacer(px(pad))
 			next({width = px(w), height = children_sum()})

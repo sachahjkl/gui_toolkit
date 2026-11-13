@@ -75,7 +75,7 @@ widget inserts it in a later build, when the answer has come (`ui.paste_answer(k
 if it is still built and still has the focus. Otherwise the answer is dropped. The window's clipboard is asked with
 `platform.clipboard_request`; `Build_Params.clipboard_get`, when a program gives one (its own clipboard in memory, a
 test's), is read at once and its text given in the next build. A field reached another way names its `owner` for
-`field_key`, `field_paste(owner)` and `field_menu(key, f, owner)`, and inserts the answer with
+`field_key`, `field_paste(owner)` and `field_menu(key, target, owner)` ([menus](menus.md)), and inserts the answer with
 `field_paste_answer(f, owner)` in each build (the menu's search does). See [clipboard.md](clipboard.md).
 
 **The clipboard's keys** are one set wherever text is typed (`ui.line_edit`, `ui.text_edit`, `term`): Ctrl+C or Ctrl+Insert

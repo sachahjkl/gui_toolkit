@@ -470,22 +470,13 @@ closed_event :: proc(d: ^Dialog) -> Event {
 @(private = "file")
 rad :: proc(c: Config, em, k: f32) -> f32 { return c.square ? 0 : math.round(em * k) }
 
-// The dialog's own title bar: "<name> Setup", and the close control (the program's, else a cross).
+// The dialog's own header: "<name> Setup", and the close control in its corner (the program's, else the toolkit's button,
+// which closes the dialog through its `open`).
 @(private = "file")
 title_bar :: proc(d: ^Dialog, c: Config, em: f32) {
-	if ui.modal_header("###setup_title_bar", math.round(em * 1.7), math.round(em * 0.3)) {
-		ui.spacer(ui.px(em * MARGIN_EM))
-		ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0})
-		ui.label(fmt.tprintf("%s Setup###setup_title", c.identity.name))
+	if ui.dialog_header("setup_title_bar", fmt.tprintf("%s Setup", c.identity.name), {close = true}) {
 		if c.close != nil {
 			if c.close("###setup_close_x", em, c.user) { d.open = false }
-		} else if ui.tags("ghost_button", "button") {
-			// (ui.button's box, in the corner: its radius the corner's, square when the dialog is)
-			ui.next({text_pad = 0})
-			x := ui.modal_corner({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Text, .Draw_Hot_Effects}, "×###setup_close_x")
-			x.text_align = .Center
-			x.squish = ui.press_squish(x)
-			if ui.signal(x).clicked { d.open = false }
 		}
 	}
 }

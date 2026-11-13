@@ -415,7 +415,9 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 					ranges := line.ranges
 					if query != "" && ranges == nil { ranges = word_ranges(c.label, query) }   // (found by its tags or group: its words that are in the label)
 					next({width = fill(), text_pad = 0})
-					matched_label("###t", text, ranges)
+					tb := matched_label("###t", text, ranges)
+					// (the palette as narrow as the person made it: a line it cuts says itself whole)
+					if label_cut(tb, text) && hovered_for(rs, MENU_TIP_DELAY_S) { if tooltip() { tooltip_text(text) } }
 					keys := line.index < len(opts.keys) ? opts.keys[line.index] : command_shortcut(c)
 					if keys != "" {
 						if tags("weak") {
@@ -527,27 +529,22 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 // The sheet of the keys
 
 // The dialog `id` while `open`: every command that has a key, under its group's heading, its keys at the right. It
-// scrolls when it is taller than SHEET_HEIGHT of the window; Escape and its Close button close it.
+// scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close button of its header close it.
 shortcuts_sheet :: proc(id: string, commands: []Command, open: ^bool, title := "Keyboard shortcuts", width_em: f32 = SHEET_WIDTH_EM) {
 	s := gs()
 	em := font_size()
 	w := em * width_em
-	if modal(id, w, open) { sheet_body(commands, open, title, w, em, s.window_size.y) }
+	if modal(id, w, open) {
+		if dialog_header("sheet_title", title, {icon = lucide.KEYBOARD, icon_font = lucide_icons(), close = true}) {}
+		sheet_body(commands, w, em, s.window_size.y)
+	}
 }
 
 @(private = "file")
-sheet_body :: proc(commands: []Command, open: ^bool, title: string, w, em, window_h: f32) {
+sheet_body :: proc(commands: []Command, w, em, window_h: f32) {
 	pad := em * 1.2
 	next({width = px(w), height = children_sum(), axis = .Y})
 	if column(id = "###sheet") {
-		spacer(px(pad * 0.8))
-		next({width = px(w), height = children_sum()})
-		if row(.Center, {}, "###sheet_title") {
-			spacer(px(pad))
-			next({width = fill(), height = px(em * 1.8), font_size = em * 1.2, text_pad = 0})
-			label(fmt.tprintf("%s###sheet_title_text", title))
-			spacer(px(pad))
-		}
 		spacer(px(em * 0.5))
 		lines := 0
 		for c in commands { if c.keys[0].key != .None { lines += 1 } }
@@ -581,14 +578,5 @@ sheet_body :: proc(commands: []Command, open: ^bool, title: string, w, em, windo
 			}
 			spacer(px(em * 0.5))
 		}
-		hline(px(w))
-		spacer(px(em * 0.6))
-		next({width = px(w), height = children_sum()})
-		if row(.Center, {}, "###sheet_foot") {
-			spacer(fill())
-			if button_icon("sheet_close", lucide.X, "Close", icon_font = lucide_icons(), intent = .Cancel).clicked { open^ = false }
-			spacer(px(pad))
-		}
-		spacer(px(em * 0.6))
 	}
 }

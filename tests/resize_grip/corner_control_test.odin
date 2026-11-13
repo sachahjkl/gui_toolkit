@@ -1,9 +1,9 @@
 package resize_grip_test
 
-// A control in a dialog's corner (modal_header, modal_corner): the same margin from the dialog's top and right edges, its
-// corners concentric with the dialog's, the header's controls clear of it and centered with it, the grips out of its way.
+// A control in a dialog's corner (dialog_header's close button, modal_corner): the same margin from the dialog's top and
+// right edges, its corners concentric with the dialog's, the header's controls clear of it and centered with it, the grips
+// out of its way.
 
-import "core:math"
 import "core:testing"
 import "../../src/testkit/session"
 import "../../src/ui"
@@ -32,29 +32,26 @@ Corner_Dialog :: struct {
 	sized:         bool,     // modal_sized, else modal
 	square:        bool,     // the dialog's corners square
 	size:          ui.Vec2,
-	side, inset:   f32,
 	outer:         f32,      // the dialog's radius as drawn
 	panel, corner: ui.Rect,
-	radius:        f32,      // the control's
 	own_header:    bool,     // the header through a program's own `if` form
+	own_control:   bool,     // the corner's control of the program's own look (modal_corner), not the toolkit's button
 }
 
 @(private = "file")
-wide :: proc(d: ^Corner_Dialog) {
-	ui.next({width = ui.fill(), height = ui.px(d.side - 6)})
+wide :: proc() {
+	ui.next({width = ui.fill(), height = ui.px(ui.font_size())})
 	ui.build_box({.Draw_Background}, "###wide")   // (a header control as wide as it may be)
 }
 
-// A program's own header: its side and margin given once.
-@(private = "file", deferred_none = ui.modal_header_end)
-own_header :: proc(d: ^Corner_Dialog) -> bool { return ui.modal_header_begin("###head", d.side, d.inset) }
+// A program's own header: its options given once.
+@(private = "file", deferred_none = ui.dialog_header_end)
+own_header :: proc() -> bool { return ui.dialog_header_begin("head", "Files", {close = true}) }
 
 @(private = "file")
 corner_dialog :: proc(t: ^testing.T, d: ^Corner_Dialog) -> ^session.Session {
 	return session.start(t, {size = {500, 360}, user = d, build = proc(s: ^session.Session) {
 		d := (^Corner_Dialog)(s.user)
-		em := ui.font_size()
-		d.side, d.inset = math.round(em * 2), math.round(em * 0.5)
 		if d.sized {
 			if ui.modal_sized("corner", {320, 200}, &d.size, &d.open) { corner_content(s, d) }
 		} else {
@@ -67,37 +64,51 @@ corner_dialog :: proc(t: ^testing.T, d: ^Corner_Dialog) -> ^session.Session {
 corner_content :: proc(s: ^session.Session, d: ^Corner_Dialog) {
 	if d.square { ui.parent_box().radius = 0 }
 	d.outer = ui.box_drawn_radius(s.state, ui.parent_box())
+	d.panel = ui.parent_box().rect   // (of the last layout: the test reads it after a few frames)
 	if d.own_header {
-		if own_header(d) { wide(d) }
+		if own_header() { wide() }
 	} else {
-		if ui.modal_header("###head", d.side, d.inset) { wide(d) }
+		if ui.dialog_header("head", "Files", {close = true}) {
+			wide()
+			if d.own_control {
+				b := ui.modal_corner({.Clickable}, "###own_close")
+				if ui.signal(b).clicked { d.open = false }
+			}
+		}
 	}
 	ui.next({width = ui.fill(), height = ui.px(120)})
 	ui.build_box({}, "###body")
-	b := ui.modal_corner({.Clickable}, "###close")
-	d.radius = b.radius
-	if ui.signal(b).clicked { d.open = false }
-	d.panel = b.parent.rect   // (of the last layout: the test reads it after a few frames)
+}
+
+// The corner's control: the toolkit's close button, or the program's own.
+@(private = "file")
+corner_box :: proc(s: ^session.Session, d: ^Corner_Dialog) -> ^ui.Box {
+	return session.find(s, d.own_control ? "own_close" : "dialog_close")
 }
 
 @(private = "file")
 inset_alike :: proc(t: ^testing.T, square: bool) {
 	d := Corner_Dialog{open = true, square = square}
 	s := corner_dialog(t, &d)
-	session.frames(s, 2)
-	b := session.find(s, "close")
+	session.frames(s, 3)
+	b := corner_box(s, &d)
 	if !testing.expect(t, b != nil, "the corner control") { return }
 	r := b.rect
-	testing.expect_value(t, r.min.y - d.panel.min.y, d.inset)
-	testing.expect_value(t, d.panel.max.x - r.max.x, d.inset)
-	testing.expect_value(t, r.max.x - r.min.x, d.side)
-	testing.expect_value(t, r.max.y - r.min.y, d.side)
+	inset := r.min.y - d.panel.min.y
+	testing.expect(t, inset > 0, "a margin from the dialog's top")
+	testing.expect_value(t, d.panel.max.x - r.max.x, inset)
+	testing.expect_value(t, r.max.x - r.min.x, r.max.y - r.min.y)
 	testing.expect(t, .Fixed_Radius in b.flags, "its radius is as drawn")
 	if square {
-		testing.expect_value(t, d.radius, f32(0))
+		testing.expect_value(t, b.radius, f32(0))
 	} else {
-		testing.expect(t, d.outer > d.inset, "the dialog's corner is rounder than the margin")
-		testing.expect_value(t, d.radius, ui.concentric_radius(d.outer, d.inset))
+		testing.expect(t, d.outer > inset, "the dialog's corner is rounder than the margin")
+		testing.expect_value(t, b.radius, ui.concentric_radius(d.outer, inset))
+	}
+	// centered on the header's strip
+	head := session.find(s, "head")
+	if testing.expect(t, head != nil, "the header") {
+		testing.expectf(t, abs(session.center(head).y - session.center(b).y) <= 1, "the strip's middle %v, the button's %v", session.center(head).y, session.center(b).y)
 	}
 }
 
@@ -108,21 +119,29 @@ the_corner_control_is_inset_alike_from_the_top_and_the_right :: proc(t: ^testing
 the_corner_control_of_a_square_dialog_is_square :: proc(t: ^testing.T) { inset_alike(t, true) }
 
 @(test)
-the_header_leaves_the_corner_to_its_control :: proc(t: ^testing.T) { header_clear(t, false) }
+the_header_leaves_the_corner_to_its_control :: proc(t: ^testing.T) { header_clear(t, false, false) }
 
-// A program's own `if` form of the header ends it once: wrapping modal_header ended it twice, and the build's parents with it.
+// A program's own `if` form of the header ends it once: wrapping dialog_header ended it twice, and the build's parents with it.
 @(test)
-a_program_s_own_header_is_the_same :: proc(t: ^testing.T) { header_clear(t, true) }
+a_program_s_own_header_is_the_same :: proc(t: ^testing.T) { header_clear(t, true, false) }
+
+// A control of the program's own look in the corner takes the place of the toolkit's button: one control there, placed alike.
+@(test)
+a_program_s_own_corner_control_replaces_the_close_button :: proc(t: ^testing.T) {
+	header_clear(t, false, true)
+}
 
 @(private = "file")
-header_clear :: proc(t: ^testing.T, own: bool) {
-	d := Corner_Dialog{open = true, sized = true, own_header = own}
+header_clear :: proc(t: ^testing.T, own, own_control: bool) {
+	d := Corner_Dialog{open = true, sized = true, own_header = own, own_control = own_control}
 	s := corner_dialog(t, &d)
-	session.frames(s, 2)
-	corner, wide := session.find(s, "close"), session.find(s, "wide")
+	session.frames(s, 3)
+	corner, wide := corner_box(s, &d), session.find(s, "wide")
 	if !testing.expect(t, corner != nil && wide != nil, "the control and the header") { return }
-	testing.expectf(t, wide.rect.max.x <= corner.rect.min.x - d.inset, "the header ends at %v, the control begins at %v", wide.rect.max.x, corner.rect.min.x)
-	testing.expect_value(t, session.center(wide).y, session.center(corner).y)
+	if own_control { testing.expect(t, session.find(s, "dialog_close") == nil, "the toolkit's button is not built besides the program's") }
+	inset := corner.rect.min.y - d.panel.min.y
+	testing.expectf(t, wide.rect.max.x <= corner.rect.min.x - inset, "the header ends at %v, the control begins at %v", wide.rect.max.x, corner.rect.min.x)
+	testing.expectf(t, abs(session.center(wide).y - session.center(corner).y) <= 1, "the header's control at %v, the corner's at %v", session.center(wide).y, session.center(corner).y)
 	// the dialog's top right grip is out of the control's way: a press in its top right corner is the control's
 	grip := session.find(s, "modal_grip5")
 	if testing.expect(t, grip != nil, "the top right grip") {

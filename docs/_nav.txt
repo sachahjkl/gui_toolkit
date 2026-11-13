@@ -22,6 +22,7 @@ Widgets and layout
   themes.md           Themes and finishes
   docking.md          Docking
   panes.md            Splitter and panes
+  menus.md            Menus
   modals.md           Modal dialogs
   commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
