@@ -62,6 +62,8 @@ STEPS := []Step{
 	{name = "arena", path = "src/arena"},
 	{name = "ascii", path = "src/ascii", oses = EVERYWHERE},
 	{name = "timefmt", path = "src/timefmt", oses = EVERYWHERE},
+	{name = "undo", path = "src/undo", oses = EVERYWHERE},
+	{name = "flowgraph", path = "src/flowgraph", oses = EVERYWHERE},
 	{name = "tasks", path = "src/tasks", oses = EVERYWHERE},
 	{name = "base", path = "src/base", oses = EVERYWHERE},
 	{name = "cdp", path = "src/cdp", oses = EVERYWHERE},

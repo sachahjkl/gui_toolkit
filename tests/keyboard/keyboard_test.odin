@@ -1845,7 +1845,7 @@ text_edit_deleting_nothing_is_no_edit :: proc(t: ^testing.T) {
 	frame(&f, {key(.Delete, {.Ctrl})}, build_area, &r)
 	frame(&f, {key(.Home), key(.Backspace)}, build_area, &r)
 	frame(&f, {key(.Backspace, {.Ctrl})}, build_area, &r)
-	testing.expect(t, len(r.area.redo) == 1, "redo kept")
+	testing.expect(t, len(r.area.history.redo) == 1, "redo kept")
 	frame(&f, {key(.Y, {.Ctrl})}, build_area, &r)
 	testing.expect_value(t, ui.area_string(&r.area), "ax")
 }

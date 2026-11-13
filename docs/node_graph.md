@@ -18,6 +18,9 @@ for e in events { apply(app, e) }
 
 The box takes the size that `next` gives it. Without a size, it fills its parent.
 
+A program whose model is a `flowgraph.Graph` makes the widget's nodes with `ui.flow_nodes_make`, edits a node with
+`ui.node_inspector` and offers the kinds of its catalog with `ui.flow_palette` ([flowgraph.md](flowgraph.md)).
+
 ## The model
 
 | Type | What it is |

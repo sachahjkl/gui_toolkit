@@ -150,11 +150,11 @@ text_edit_clipboard :: proc(t: ^testing.T) {
 	frame(f)
 	testing.expect_value(t, text(f), "hello world!")
 	// an empty clipboard is no edit
-	n := len(f.area.undo)
+	n := len(f.area.history.undo)
 	set_clip("")
 	tap(f, .V, {.Ctrl})
 	frame(f)
-	testing.expect_value(t, len(f.area.undo), n)
+	testing.expect_value(t, len(f.area.history.undo), n)
 	// no clipboard given (and no window): the cut still cuts, the paste does nothing
 	f.no_clipboard = true
 	tap(f, .A, {.Ctrl})
@@ -248,7 +248,7 @@ text_edit_moves :: proc(t: ^testing.T) {
 	tap(f, .Down, {.Shift})
 	expect_caret(t, f, 25, 25)
 	// a move is no edit
-	testing.expect(t, !f.res.changed && len(f.area.undo) == 0, "nothing to undo")
+	testing.expect(t, !f.res.changed && len(f.area.history.undo) == 0, "nothing to undo")
 }
 
 @(test)
@@ -322,7 +322,7 @@ text_edit_edits :: proc(t: ^testing.T) {
 	testing.expect_value(t, text(f), "ab")
 	tap(f, .Z, {.Ctrl})
 	testing.expect_value(t, text(f), "")
-	testing.expect(t, !f.res.changed || len(f.area.undo) == 0, "the history is empty")
+	testing.expect(t, !f.res.changed || len(f.area.history.undo) == 0, "the history is empty")
 	// typing over a selection; deleting after a pause is its own step
 	start(f, "xyz")
 	tap(f, .A, {.Ctrl})
