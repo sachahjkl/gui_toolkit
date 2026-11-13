@@ -41,3 +41,20 @@ a_catalogue_follows_the_code :: proc(t: ^testing.T) {
 	_ = os.write_entire_file(cat, transmute([]u8)done)
 	testing.expect_value(t, i18n_catalogue({src}, cat, "fr", true), "")
 }
+
+// The command keeps its folders: made from a literal in a procedure that has returned, they are still there.
+@(test)
+the_command_keeps_its_folders :: proc(t: ^testing.T) {
+	made :: proc() -> Command { return i18n_command({dirs = {"src", "more"}, folder = "i18n"}) }
+	c := made()
+	scratch: [64]u8   // (a call that reuses the stack the literal was on)
+	for &b in scratch { b = 'x' }
+	kept := (^I18n_Catalogues)(c.user)
+	testing.expect_value(t, len(kept.dirs), 2)
+	testing.expect_value(t, kept.dirs[1], "more")
+	testing.expect_value(t, kept.folder, "i18n")
+	for d in kept.dirs { delete(d) }
+	delete(kept.dirs)
+	delete(kept.folder)
+	free(kept)
+}

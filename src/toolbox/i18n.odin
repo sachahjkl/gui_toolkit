@@ -25,10 +25,12 @@ I18n_Catalogues :: struct {
 	folder: string,
 }
 
-// The command `i18n` of a project's tool (copied).
+// The command `i18n` of a project's tool (copied, its folders too: a literal's slice lives on the caller's stack).
 i18n_command :: proc(c: I18n_Catalogues) -> Command {
+	kept := new_clone(I18n_Catalogues{dirs = make([]string, len(c.dirs)), folder = strings.clone(c.folder)})
+	for d, i in c.dirs { kept.dirs[i] = strings.clone(d) }
 	return {name = "i18n", usage = "<language> [-check]: the catalogue of a language from the code's tr calls (docs/i18n.md)",
-		run_with = i18n_run, user = new_clone(c), checked = true, flags = I18N_FLAGS[:], positionals = 1}
+		run_with = i18n_run, user = kept, checked = true, flags = I18N_FLAGS[:], positionals = 1}
 }
 
 @(private = "file", rodata)
