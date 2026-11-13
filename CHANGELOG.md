@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.242.0] - 2026-11-13
+
+### Fixed
+- **A click gives the focus to a field of an open menu**: a search field in a panel opened as a menu got no focus from a click (the menu kept it for what opened it), so nothing typed reached it.
+
 ## [0.241.1] - 2026-11-13
 
 ### Fixed
@@ -3113,6 +3118,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.242.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.242.0
 [0.241.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.241.1
 [0.241.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.241.0
 [0.240.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.240.0
