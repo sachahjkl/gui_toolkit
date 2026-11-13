@@ -114,6 +114,7 @@ On Linux, text is shaped by the native text backend, the default there, as every
 | --- | --- |
 | `jpeg_encode(img, quality = 90)` | a baseline JPEG, written here in Odin: the colours not subsampled (4:4:4), so a screenshot's text keeps its edges; alpha laid over white |
 | `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp, loaded when first asked; `lossless` keeps every pixel. nil where libwebp is not there |
+| `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false where libwebp is not there or the bytes are not WebP |
 | `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: libwebp.dll beside the program) |
 
 A PNG is `gt:png`'s `png.encode`.
@@ -134,4 +135,4 @@ The procedures run on 4K pictures on a worker. Each one is a few passes, with no
 and the anchors; properties for the rest (blur keeps the sum, resize, blur and sharpen keep a flat colour, round corners
 clear the corners, a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn from the embedded
 face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its picture, a lower quality makes a smaller
-file; a WebP file is a RIFF WEBP file where libwebp is there.
+file; a WebP file is a RIFF WEBP file where libwebp is there, and a lossless one reads back pixel for pixel.

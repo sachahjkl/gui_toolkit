@@ -3,46 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <title>Imprint - {{name}}</title>
   <meta name="description" content="Who sells the {{product_title}}.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
-    /* the shop's pieces (gt:site, licence.odin); the site's stylesheet gives the rest */
-    .shop { max-width: 760px; margin: 0 auto; padding: 48px 20px; }
-    .offer { max-width: 420px; margin: 24px auto; padding: 24px; border: 1px solid var(--line, #444); border-radius: 10px; }
-    .offer .price { font-size: 48px; font-weight: 700; margin: 0 0 6px; }
-    .offer .btn { display: flex; width: 100%; justify-content: center; margin: 8px 0; }
-    .fine { font-size: 0.9em; opacity: 0.8; }
-    .facts { display: flex; flex-wrap: wrap; gap: 10px; padding: 0; }
-    .facts > div { flex: 1 1 150px; border: 1px solid var(--line, #444); border-radius: 6px; padding: 8px 12px; }
-    .facts dt { font-size: 0.75em; text-transform: uppercase; opacity: 0.7; }
-    .facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-    .key { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; word-break: break-all; white-space: pre-wrap;
-           border: 1px solid var(--line, #444); border-radius: 4px; padding: 12px; user-select: all; }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
-  </style>
+{{shop_css}}  </style>
 </head>
-<body>
+<body class="shop-page">
 <!-- A template of the toolkit's site package (src/site/licence_pages, docs/licence.md): a program copies it into its site,
-     or licence_pages fills it. Its legal words are a starting point: have them checked for your situation. -->
+     or licence_pages fills it. Its style is gt:site's LICENCE_CSS, drawn from the site's colours. Its legal words are a
+     starting point: have them checked for your situation. -->
+<header class="shop-top">
+  <div class="shop-wrap">
+    <a class="shop-brand" href="{{home}}">{{icon_small}}<span>{{name}}</span></a>
+    <a class="shop-back" href="{{home}}">Back to {{name}}</a>
+  </div>
+</header>
 <main id="main" class="shop">
+<div class="shop-wrap shop-doc">
 <h1>Imprint</h1>
 <p>{{seller}}<br>
 {{seller_address}}</p>
 <p>E-mail: <a href="mailto:{{seller_email}}">{{seller_email}}</a><br>
 {{seller_vat}}</p>
 <p>The licences are sold by Paddle.com Market Ltd, the Merchant of Record of the purchases.</p>
+</div>
 </main>
-<footer class="site-foot">
-  <div class="wrap">
-    <nav class="foot-links">
+<footer class="shop-foot">
+  <div class="shop-wrap">
+    <nav>
       <a href="{{home}}">{{name}}</a>
       <a href="../pricing/">Pricing</a>
       <a href="../terms/">Terms</a>
       <a href="../refunds/">Refunds</a>
       <a href="../privacy/">Privacy</a>
-      <a href="../imprint/">Imprint</a>
+      <a href="../imprint/" aria-current="page">Imprint</a>
     </nav>
   </div>
 </footer>

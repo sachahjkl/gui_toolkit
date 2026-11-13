@@ -11,8 +11,9 @@ webp_load :: proc() {
 		l := &webp_lib
 		l.encode_rgba = auto_cast posix.dlsym(h, "WebPEncodeRGBA")
 		l.encode_lossless_rgba = auto_cast posix.dlsym(h, "WebPEncodeLosslessRGBA")
-		l.free = auto_cast posix.dlsym(h, "WebPFree")
-		if l.encode_rgba == nil || l.encode_lossless_rgba == nil || l.free == nil {
+		l.decode_rgba = auto_cast posix.dlsym(h, "WebPDecodeRGBA")
+	l.free = auto_cast posix.dlsym(h, "WebPFree")
+		if l.encode_rgba == nil || l.encode_lossless_rgba == nil || l.decode_rgba == nil || l.free == nil {
 			posix.dlclose(h)
 			webp_lib = {}
 			continue

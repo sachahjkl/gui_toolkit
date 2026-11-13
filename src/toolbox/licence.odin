@@ -407,7 +407,7 @@ paddle_apply :: proc(p: licence.Product, c: Paddle_Catalog, amounts: []Paddle_Am
 	fmt.printfln("\nEnvironment: %s\nProduct:     %s  %s", environment, c.name, product_id)
 	for a, i in amounts { fmt.printfln("Price:       %s %s %s, one payment, taxes included  %s", a.edition, a.amount, c.currency, ids[i]) }
 	fmt.printfln("\nThe worker's setting (licence-worker/products/<program>.jsonc, this environment):\n  \"PRICES\": %s", paddle_quote(paddle_prices_setting(ids, amounts)))
-	fmt.println("The site's buy block: site.Shop.prices, the same ids.")
+	fmt.println("The site's buy block: site.Shop.price_id, the same id.")
 	return ""
 }
 

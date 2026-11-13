@@ -217,22 +217,50 @@ licences.
 ## The site
 
 The pricing and thank-you pages hold marks (`LICENCE_BUY_MARK`, `LICENCE_THANKS_MARK`); `with_licence(page, shop)` puts the
-blocks there, in the site's build. `licence_buy_block(shop)` is the offer, a button per price (`data-price`) and the script
+blocks there, in the site's build. A program sells one licence at one price, so the pages are made for one offer.
+`licence_buy_block(shop)` is the offer's card: the price large with "once, taxes included" beside it, what the licence
+gives as a list with check marks (one payment, the versions that `update_years` covers, the offline check, the code's
+licence, the work it pays for), one button (`data-edition`, `data-price`, `data-label`), the fine print, and the script
 that opens Paddle's checkout (an overlay; Paddle.js is loaded at the first press) and goes to the thank-you page with the
 transaction id. `licence_thanks_block(shop)` asks the Worker for the licence until it is ready, then shows who it is for, the
-order, the key, a download of the file and a copy button; every value is put as text.
+order, the key, a download of the file and a copy button; every value is put as text. Its `data-state` (`waiting`,
+`ready`, `failed`) shows a spinner only while it waits.
 
-While the client token, a price id or the Worker's address is missing, the buttons say "Coming soon" and do nothing
-(`shop_open` says the same): a site can be published before the shop is open.
+While the client token, the price id, the Worker's address or the thank-you page is missing, the button says "Coming soon"
+and does nothing (`shop_open` says the same): a site can be published before the shop is open.
 
-`Shop` holds the words and addresses: the program, the product's title, the price as shown, Paddle's environment and client
-token, the prices, the Worker, the thank-you page, the help page, how to register (HTML), the seller and its imprint, the
-code's licence, the years of updates, the refund window, the days a buyer's data are kept.
+`Shop` holds the words and addresses:
+
+| Field | What it is |
+|---|---|
+| `name` | the program, as it writes its name (`"cliche"`): the pages show it as it is, never mixed into a Title Case heading |
+| `icon` | the program's icon from a template page (`"../img/logo.png"`): the hero and the bar show it; `""`: none |
+| `product_title` | what Paddle sells (`"cliche User Licence"`): the legal pages name it, no heading does |
+| `price` | HTML, as shown (`"15&nbsp;&euro;"`) |
+| `price_note` | HTML, an extra line under the price (`"Launch price until 1.0."`); `""`: none |
+| `environment`, `client_token` | Paddle's (`"sandbox"` or `"production"`; `test_...` or `live_...`) |
+| `edition`, `price_id` | the licence's edition id and its Paddle price (`pri_...`, `""` until `paddle -apply` makes it) |
+| `buy_label` | the button's words (`""`: "Buy the licence") |
+| `worker`, `thanks`, `help` | the licence Worker, the thank-you page (absolute), where a buyer asks for help |
+| `register` | HTML: how to register a licence in the program (the thank-you page says it) |
+| `extension` | the licence file's extension |
+| `seller`, `seller_url`, `seller_address` (HTML), `seller_email`, `seller_vat` | the seller and its imprint |
+| `code_licence`, `update_years`, `refund_days`, `retention_days` | the code's licence, the years of updates, the refund window, the days a buyer's data are kept |
+| `stylesheet`, `home`, `updated` | from a template page: the site's stylesheet, its home; the day the terms last changed |
 
 `src/site/licence_pages/` holds six template pages in neutral words: pricing, thanks, terms, refunds, privacy, imprint,
 with `{{placeholders}}` (`licence_values` lists them). A program copies them into its site and adapts them, or
 `licence_pages(shop)` fills them (`fill_placeholders`, one pass) and gives the six `Page`s. Their legal words are a starting
 point: have them checked for your situation.
+
+The pricing page is a hero (the icon, a quiet "Licence" label, the program's name large, one line), the offer's card, then
+"Before you buy" (the seller, the licence, the delivery, the check, refunds, the code, the terms, questions). Every page has
+a bar with the program's name and a foot with the shop's pages. Their style is `LICENCE_CSS` (`src/site/licence_css.odin`),
+put in each page's head by `{{shop_css}}`: it brings no colour of its own and reads the site's custom properties (`--text`,
+`--muted` or `--weak`, `--soft` or `--faint`, `--surface` or `--bg2`, `--surface-2` or `--bg3`, `--line-2` or `--line`,
+`--accent`, `--accent-ink`), so each program keeps its accent and its light theme, and writes no CSS for these pages. A site
+whose accent is dark sets `--accent-ink`, the text on the button (near black otherwise). Its classes start with `shop-`. A
+program that keeps its own pages puts `LICENCE_CSS` in its stylesheet and `class="shop-page"` on their body.
 
 ## Secrets
 
@@ -270,5 +298,5 @@ Everything above is ready; these steps need the maintainer's accounts:
    -mail:"App <licence@mail.<domain>>"` writes its file from the program's `Product` (make it again rather than edit
    the product's values), then the price ids and the public key where it says SET; `apptool licence secrets`; deploy
    the sandbox, then production (`licence-worker/README.md`); `GET /health` says what is missing.
-5. The site: `Shop` with the client token, the price ids, the Worker's address; the pages built and published.
+5. The site: `Shop` with the client token, the price id (`price_id`), the Worker's address; the pages built and published.
 6. A purchase in the sandbox, from the pricing page to the key in the program.

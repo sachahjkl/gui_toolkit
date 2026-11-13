@@ -39,8 +39,8 @@ stylesheet keeps them hidden even where a `.btn` sets its `display` (`[hidden] {
 A program that sells a licence ([licence.md](licence.md)) has a pricing page and a thank-you page. Their marks become the
 blocks of its `Shop` (`with_licence(page, shop)`): `<!-- licence-buy -->` the offer and the script that opens Paddle's
 checkout (`licence_buy_block`), `<!-- licence-thanks -->` the licence of the purchase, asked of the licence Worker
-(`licence_thanks_block`). The buttons say "Coming soon" until the shop has its client token, its prices and its Worker
-(`shop_open`). `licence_pages(shop)` fills the six template pages of `src/site/licence_pages/` (pricing, thanks, terms,
+(`licence_thanks_block`). The button says "Coming soon" until the shop has its client token, its price and its Worker
+(`shop_open`). The pages carry their own style (`LICENCE_CSS`), drawn from the site's colours. `licence_pages(shop)` fills the six template pages of `src/site/licence_pages/` (pricing, thanks, terms,
 refunds, privacy, imprint) for a program that keeps none of its own.
 
 ## What a page says when shared
