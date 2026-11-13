@@ -71,7 +71,7 @@ build_ui :: proc(app: ^App) {
 				ui.next({width = ui.text_size(), height = ui.px(em * 2)})
 				ui.label(fmt.tprintf("sidebar %.0f px, bottom panel %.0f px, %d saves###info", ui.pane_extent(&app.sidebar, .X, side), ui.pane_extent(&app.bottom, axis, bottom), app.saved))
 				ui.next({width = ui.text_size(), height = ui.px(em * 2)})
-				if ui.button("Place the bottom panel###place").clicked { ui.ctx_menu_open(ui.key_from_string(0, "place_menu"), ui.mouse_pos()) }
+				if ui.button("place", "Place the bottom panel").clicked { ui.ctx_menu_open(ui.key_from_string(0, "place_menu"), ui.mouse_pos()) }
 				if ui.ctx_menu(ui.key_from_string(0, "place_menu")) { ui.pane_place_menu(&app.bottom) }
 			}
 			r := ui.pane_split("###bottom_split", axis, &app.bottom, bottom)

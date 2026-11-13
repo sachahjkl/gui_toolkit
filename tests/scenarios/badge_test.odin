@@ -14,7 +14,7 @@ Badged :: struct { count, clicks: int }
 badged_build :: proc(s: ^session.Session) {
 	r := (^Badged)(s.user)
 	ui.next({fixed_x = 100, fixed_y = 100, width = ui.px(40), height = ui.px(40)})
-	sig := ui.icon_button("bell", ui.ICON_UP)
+	sig := ui.button("bell", icon = ui.ICON_UP)
 	if sig.clicked { r.clicks += 1 }
 	ui.badge(sig.box, r.count)
 }

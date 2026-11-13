@@ -81,7 +81,7 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 					if row() {
 						spacer(fill())
 						cancel_word := o.enter_confirms ? labels.cancel : fmt.tprintf(labels.enter, labels.cancel)
-						if button_icon("confirm_cancel", lucide.X, cancel_word, icon_font = lucide_icons(), intent = .Cancel).clicked || (!o.enter_confirms && key_press(.Return)) {
+						if button("confirm_cancel", cancel_word, lucide.X, {icon_font = lucide_icons(), intent = .Cancel}).clicked || (!o.enter_confirms && key_press(.Return)) {
 							answer, open^ = .Cancelled, false
 						}
 						spacer(px(em * 0.6))
@@ -89,7 +89,7 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 						act_word := o.enter_confirms ? fmt.tprintf(labels.enter, o.act) : o.act
 						act_glyph := o.enter_confirms ? lucide.CHECK : lucide.TRASH_2
 						act_intent := o.enter_confirms ? Intent.Success : Intent.Danger
-						if button_icon("confirm_act", act_glyph, act_word, icon_font = lucide_icons(), intent = act_intent).clicked || (o.enter_confirms && key_press(.Return)) {
+						if button("confirm_act", act_word, act_glyph, {icon_font = lucide_icons(), intent = act_intent}).clicked || (o.enter_confirms && key_press(.Return)) {
 							answer, open^ = .Confirmed, false
 						}
 					}
@@ -162,12 +162,12 @@ prompt :: proc(id: string, open: ^bool, f: ^Text_Field, o: Prompt_Options) -> (a
 					next({width = fill(), height = children_sum()})
 					if row() {
 						spacer(fill())
-						if button_icon("prompt_cancel", lucide.X, labels.cancel, icon_font = lucide_icons(), intent = .Cancel).clicked {
+						if button("prompt_cancel", labels.cancel, lucide.X, {icon_font = lucide_icons(), intent = .Cancel}).clicked {
 							answer, open^ = .Cancelled, false
 						}
 						spacer(px(em * 0.6))
 						act := o.act != "" ? o.act : labels.ok
-						if button_icon("prompt_ok", lucide.CHECK, act, icon_font = lucide_icons(), intent = .Primary).clicked {
+						if button("prompt_ok", act, lucide.CHECK, {icon_font = lucide_icons(), intent = .Primary}).clicked {
 							answer, open^ = .Confirmed, false
 						}
 					}

@@ -268,7 +268,7 @@ Two_App :: struct {
 @(private = "file")
 two_body :: proc(a: ^Two_App) {
 	ui.next({width = ui.px(200), height = ui.px(30)})
-	if ui.button(fmt.tprintf("%s###b", a.name)).clicked { a.clicks += 1 }
+	if ui.button("b", a.name).clicked { a.clicks += 1 }
 	ui.next({width = ui.px(200), height = ui.px(30)})
 	ui.label(fmt.bprintf(a.label[:], "%s: %d###n", a.name, a.clicks))
 }

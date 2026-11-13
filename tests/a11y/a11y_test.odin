@@ -66,11 +66,11 @@ body :: proc(a: ^App) {
 			a.keys.layout = ui.parent_box().key
 			ui.a11y({name = "Go back"})
 			ui.next({width = ui.px(30), height = ui.px(30)})
-			sig := ui.icon_button("back", ui.ICON_UP)
+			sig := ui.button("back", icon = ui.ICON_UP)
 			a.keys.back = sig.box.key
 			if sig.clicked { a.back += 1 }
 			ui.next({width = ui.px(100), height = ui.px(30)})
-			s := ui.button("Save###save")
+			s := ui.button("save", "Save")
 			a.keys.save = s.box.key
 			if s.clicked { a.clicks += 1 }
 		}
@@ -501,7 +501,7 @@ controls_without_a_name_are_found :: proc(t: ^testing.T) {
 	ui.next({width = ui.px(40), height = ui.px(40)})
 	ui.a11y({name = "Named"})
 	ui.build_box({.Clickable}, "###named")
-	ui.button("Has a text###text")
+	ui.button("text", "Has a text")
 	ui.next({width = ui.px(40), height = ui.px(40)})
 	ui.a11y({ignore = true})
 	ui.build_box({.Clickable}, "###aside")

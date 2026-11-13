@@ -845,8 +845,8 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 @(private = "file")
 button :: proc(c: Config, id, label, glyph: string, intent: ui.Intent, em: f32) -> bool {
 	if c.button != nil { return c.button(id, label, glyph, intent, em, c.user) }
-	clicked := ui.button_icon(id, glyph, label, icon_font = ui.lucide_icons(), intent = intent).clicked
-	// (button_icon rounds its own corners: a square dialog squares them after, before they are drawn)
+	clicked := ui.button(id, label, glyph, {icon_font = ui.lucide_icons(), intent = intent}).clicked
+	// (ui.button rounds its own corners: a square dialog squares them after, before they are drawn)
 	if c.square { if b := ui.prev_box(id); b != nil { b.radius = 0 } }
 	return clicked
 }

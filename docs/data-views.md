@@ -262,5 +262,5 @@ program's to keep (a preference, if it should last).
 `ui.empty_state(id, {icon, title, note, actions})` is what a view shows when it has nothing to show: an empty folder, a
 filter that hides every row, a search with no result. It fills its parent and puts in its middle an icon in the weak colour,
 the title, the note (folded at `EMPTY_STATE_NOTE_EM`), and a button for each action. An action (`ui.Empty_Action`) is its
-words, a Lucide glyph and an intent, drawn as `ui.button_icon`. It returns the index of the action clicked (-1: none):
+words, a Lucide glyph and an intent, drawn as `ui.button`. It returns the index of the action clicked (-1: none):
 "Clear the filter", "Show hidden files", "New folder".

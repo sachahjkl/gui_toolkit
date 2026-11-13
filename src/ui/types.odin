@@ -329,7 +329,7 @@ State :: struct {
 	root:        ^Box,
 	theme:       ^Theme,
 	fonts:       ^font.State,
-	icon_font:   font.Font_Id,           // the program's icons (icon, icon_button, a menu item's icon); any icon font
+	icon_font:   font.Font_Id,           // the program's icons (icon, a button's icon, a menu item's icon); any icon font
 	menu_icon_font: font.Font_Id,        // the menus' icons when not icon_font (a program whose menus use Lucide: lucide_icons()); 0: icon_font
 	widget_icon_font: font.Font_Id,      // the toolkit's own (ICON_FONT_DATA): the widgets' marks, loaded when first needed
 	lucide_font:      font.Font_Id,      // the lucide package's face: the marks the toolkit's own has not (lucide_icons)

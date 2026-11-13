@@ -104,22 +104,22 @@ intents_build :: proc(app: ^App, em: f32) {
 			for m, i in marks {
 				ui.next({width = ui.px(em * 2.3), height = ui.px(em * 2.2), radius = em * 0.45})
 				on := held[i] != nil && held[i]^
-				if ui.icon_button(fmt.tprintf("mark%d", i), m, tip = names[i], face = on ? .Toggled : .Raised).clicked && held[i] != nil { held[i]^ = !held[i]^ }
+				if ui.button(fmt.tprintf("mark%d", i), icon = m, o = {tip = names[i], face = on ? .Toggled : .Raised}).clicked && held[i] != nil { held[i]^ = !held[i]^ }
 				ui.spacer(ui.px(em * 0.3))
 			}
 			ui.spacer(ui.px(em * 1.2))
 			views := [2]string{"Grid", "List"}
 			view_glyphs := [2]string{lucide.SQUARE, lucide.ALIGN_LEFT}
 			for v, i in views {
-				if ui.button_icon(fmt.tprintf("###view%d", i), view_glyphs[i], v, face = app.view == i ? .Toggled : .Raised).clicked { app.view = i }
+				if ui.button(fmt.tprintf("###view%d", i), v, view_glyphs[i], {face = app.view == i ? .Toggled : .Raised}).clicked { app.view = i }
 				ui.spacer(ui.px(em * 0.3))
 			}
 			ui.spacer(ui.px(em * 1.2))
-			ui.button_icon("###lit", lucide.CHEVRON_RIGHT, "Lit: its menu is open", lit = true)
+			ui.button("###lit", "Lit: its menu is open", lucide.CHEVRON_RIGHT, {lit = true})
 			ui.spacer(ui.px(em * 0.45))
-			ui.button_icon("###disabled", lucide.CLOUD, "Disabled", disabled = true)
+			ui.button("###disabled", "Disabled", lucide.CLOUD, {disabled = true})
 			ui.spacer(ui.px(em * 0.45))
-			ui.button_icon("###quiet", "", "Quiet", quiet = true)
+			ui.button("###quiet", "Quiet", o = {quiet = true})
 		}
 	}
 	columns(app, "###intents_columns", em, hues_card, marks_card)
@@ -131,7 +131,7 @@ face_row :: proc(words: string, face: ui.Button_Face, em: f32) {
 	if ui.row(id = fmt.tprintf("###face%v", face)) {
 		weak("face_words", words, em * 5.5, em)
 		for it in ui.Intent {
-			ui.button_icon(fmt.tprintf("###%v%v", face, it), INTENT_GLYPHS[it], INTENT_WORDS[it], intent = it, face = face)
+			ui.button(fmt.tprintf("###%v%v", face, it), INTENT_WORDS[it], INTENT_GLYPHS[it], {intent = it, face = face})
 			ui.spacer(ui.px(em * 0.45))
 		}
 	}
@@ -194,15 +194,15 @@ marks_card :: proc(app: ^App, em: f32) {
 			ui.kbd("P")
 			ui.spacer(ui.px(em * 1.2))
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
-			inbox := ui.icon_button("inbox", lucide.BELL, tip = "Messages", face = .Raised)
+			inbox := ui.button("inbox", icon = lucide.BELL, o = {tip = "Messages", face = .Raised})
 			ui.badge(inbox.box, 12)
 		}
 		ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
 		if ui.row(id = "###hints") {
-			weak("hints_words", "ui.hint_action", em * 7.5, em, mono = true)
-			ui.hint_action("###restore", "Restore the defaults", lucide.ROTATE_CCW, ui.lucide_icons())
+			weak("hints_words", "face = .Link", em * 7.5, em, mono = true)
+			ui.button("###restore", "Restore the defaults", lucide.ROTATE_CCW, {face = .Link, icon_font = ui.lucide_icons()})
 			ui.spacer(ui.px(em))
-			ui.hint_action("###clear", "Clear the cache", lucide.TRASH_2, ui.lucide_icons(), .Danger)
+			ui.button("###clear", "Clear the cache", lucide.TRASH_2, {face = .Link, icon_font = ui.lucide_icons(), intent = .Danger})
 		}
 		ui.spacer(ui.px(em * 0.5))
 		ui.next({width = ui.fill(), height = ui.children_sum(), radius = math.round(em * 0.45)})
@@ -210,8 +210,8 @@ marks_card :: proc(app: ^App, em: f32) {
 			ui.spacer(ui.px(em * 0.5))
 			lines := [?]string{
 				`fill, ink := ui.soft_pair(ui.hue_color(.Green))`,
-				`ui.button_icon("save", lucide.SAVE, "Save", intent = .Success)`,
-				`ui.icon_button("bold", lucide.BOLD, face = .Toggled)`,
+				`ui.button("save", "Save", lucide.SAVE, {intent = .Success})`,
+				`ui.button("bold", icon = lucide.BOLD, o = {face = .Toggled})`,
 			}
 			for l, i in lines {
 				ui.next({width = ui.fill(), height = ui.px(em * 1.45), axis = .X})
@@ -308,9 +308,9 @@ options_card :: proc(app: ^App, em: f32) {
 		}
 		ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
 		if ui.row(id = "###encoding_acts") {
-			ui.hint_action("###stop", "Stop", lucide.SQUARE, ui.lucide_icons(), .Danger)
+			ui.button("###stop", "Stop", lucide.SQUARE, {face = .Link, icon_font = ui.lucide_icons(), intent = .Danger})
 			ui.spacer(ui.px(em * 1.2))
-			ui.hint_action("###background", "Go on in the background", lucide.CHEVRON_RIGHT, ui.lucide_icons())
+			ui.button("###background", "Go on in the background", lucide.CHEVRON_RIGHT, {face = .Link, icon_font = ui.lucide_icons()})
 		}
 	}
 }
@@ -432,9 +432,9 @@ dialog_build :: proc(app: ^App, em: f32) {
 			facts_well("###export_facts", em)
 		}
 		if ui.dialog_buttons("export_buttons") {
-			if ui.button_icon("export_cancel", lucide.X, "Cancel", intent = .Cancel).clicked { app.dialog_open = false }
+			if ui.button("export_cancel", "Cancel", lucide.X, {intent = .Cancel}).clicked { app.dialog_open = false }
 			ui.spacer(ui.px(em * 0.6))
-			if ui.button_icon("export_go", lucide.DOWNLOAD, "Export 4 pictures", intent = .Primary).clicked {
+			if ui.button("export_go", "Export 4 pictures", lucide.DOWNLOAD, {intent = .Primary}).clicked {
 				app.dialog_open = false
 				ui.announce(&app.announcer, .Good, "4 pictures exported", "~/Pictures/Shots")
 			}

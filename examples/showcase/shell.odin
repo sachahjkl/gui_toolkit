@@ -102,16 +102,16 @@ top_bar :: proc(app: ^App, em: f32) {
 			ui.spacer(ui.px(em * 1.2))
 			light := app.shown.light
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
-			if ui.icon_button("mode", light ? lucide.MOON : lucide.SUN, tip = light ? "Dark" : "Light").clicked {
+			if ui.button("mode", icon = light ? lucide.MOON : lucide.SUN, o = {tip = light ? "Dark" : "Light"}).clicked {
 				app.choice.mode = light ? .Dark : .Light
 			}
 			ui.spacer(ui.px(em * 0.2))
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
-			bell := ui.icon_button("bell", lucide.BELL, tip = "Messages")
+			bell := ui.button("bell", icon = lucide.BELL, o = {tip = "Messages"})
 			ui.badge(bell.box, 3, .Danger)
 			ui.spacer(ui.px(em * 0.2))
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
-			if ui.icon_button("settings", lucide.SETTINGS, tip = "Settings (Ctrl+,)", face = app.scene == .Settings ? .Toggled : .Ghost).clicked {
+			if ui.button("settings", icon = lucide.SETTINGS, o = {tip = "Settings (Ctrl+,)", face = app.scene == .Settings ? .Toggled : .Ghost}).clicked {
 				app.scene = app.scene == .Settings ? .Intents : .Settings
 			}
 			ui.spacer(ui.px(em * 0.8))
@@ -132,7 +132,7 @@ sidebar :: proc(app: ^App, em: f32) {
 				if ui.row(id = fmt.tprintf("###navrow%v", s)) {
 					ui.spacer(ui.px(em * 0.6))
 					face := s == shown ? ui.Button_Face.Toggled : .Ghost
-					if ui.button_icon(fmt.tprintf("###nav%v", s), SCENE_ICONS[s], SCENE_TITLES[s], face = face, width = ui.fill(), left = true).clicked {
+					if ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = face, width = ui.fill(), left = true}).clicked {
 						app.scene = s
 					}
 					ui.spacer(ui.px(em * 0.6))
@@ -169,13 +169,13 @@ sidebar :: proc(app: ^App, em: f32) {
 	}
 }
 
-// A line of the sidebar that opens an overlay: ui.hint_action, words that do what they say.
+// A line of the sidebar that opens an overlay: a button of the Link face, words that do what they say.
 @(private = "file")
 overlay_link :: proc(app: ^App, id, glyph, words: string, s: Scene, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(em * 1.9), axis = .X, cross = .Center})
 	if ui.row(id = fmt.tprintf("%s_row", id)) {
 		ui.spacer(ui.px(em * 1.1))
-		if ui.hint_action(id, words, glyph, ui.lucide_icons(), app.scene == s ? .Primary : .Neutral).clicked { scene_open(app, s) }
+		if ui.button(id, words, glyph, {face = .Link, icon_font = ui.lucide_icons(), intent = app.scene == s ? .Primary : .Neutral}).clicked { scene_open(app, s) }
 	}
 }
 

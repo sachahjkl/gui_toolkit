@@ -129,13 +129,13 @@ a_popover_stands_by_its_anchor :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 tab_stops_can_be_turned_off :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.px(100)})
-		ui.button("A###a")
+		ui.button("a", "A")
 		if ui.tab_stops(false) {
 			ui.next({width = ui.px(100)})
-			ui.button("B###b")
+			ui.button("b", "B")
 		}
 		ui.next({width = ui.px(100)})
-		ui.button("C###c")
+		ui.button("c", "C")
 	}})
 	session.key(s, .Tab)
 	testing.expect_value(t, session.focused_name(s), "a")
@@ -1004,7 +1004,7 @@ a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) { unwatched.run(
 		r := (^Run)(s.user)
 		if ui.key_press(.Escape) { r.outside = true }
 		if ui.modal("###closed_dialog", 300, &r.open) {
-			if ui.button("Close###close").clicked { r.open = false }
+			if ui.button("close", "Close").clicked { r.open = false }
 		}
 	}})
 	session.frames(s, 2)

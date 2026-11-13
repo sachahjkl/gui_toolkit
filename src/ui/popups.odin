@@ -651,7 +651,7 @@ menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool) -> f3
 
 // One row: check mark or icon, label, shortcut (weak), submenu arrow. Returns the row's signal.
 @(private)
-menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, checked, enabled, submenu, highlight: bool, glyph_font: font.Font_Id = 0) -> Signal {
+menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checked, enabled, submenu, highlight: bool, icon_font: font.Font_Id = 0) -> Signal {
 	s := gs()
 	em := font_size()
 	label := display_part(text)
@@ -684,8 +684,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 				next({width = px(em * MENU_ICON_EM), height = pct(1)})
 				if checked && widget_icons() != 0 {
 					if style({font = widget_icons(), text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###chk", ICON_CHECK)) }
-				} else if face := glyph_font != 0 ? glyph_font : (s.menu_icon_font != 0 ? s.menu_icon_font : s.icon_font); glyph != "" && face != 0 {
-					if style({font = face, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph)) }
+				} else if face := icon_font != 0 ? icon_font : (s.menu_icon_font != 0 ? s.menu_icon_font : s.icon_font); icon != "" && face != 0 {
+					if style({font = face, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon)) }
 				} else {
 					build_box({}, "###nochk")
 				}
@@ -705,7 +705,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, glyph: string, check
 					}
 				}
 				if submenu && widget_icons() != 0 {
-					if tags("weak") { widget_icon(">", em * MENU_ARROW_EM) }
+					next({width = px(em * MENU_ARROW_EM), height = pct(1), font = widget_icons(), text_align = .Center})
+					if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf(">###ico%d", parent_box().child_count)) }
 				}
 				spacer(px(em * MENU_ROW_TRAIL_EM + menu_bar_room(lv, em)))
 			}
@@ -756,7 +757,7 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", en
 	lv, depth := menu_current()
 	if lv == nil {
 		// outside a menu: a plain row (so menu bodies can be factored into procs and reused elsewhere)
-		return button(text)
+		return button(text, display_part(text))
 	}
 	if !menu_matches(lv, text) { return {} }
 	en := enabled && s.disabled_depth == 0

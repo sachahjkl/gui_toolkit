@@ -1,8 +1,8 @@
 package scenarios_test
 
-// Buttons and small widgets: a button's text alignment from its style or `next` (centred when nothing says), an
-// icon_button's tooltip and the name a screen reader reads, a toggled button held down, a lit one, a label that shows its
-// whole text when cut, and a spinner that asks for frames only while it is shown.
+// Buttons and small widgets: how a button is laid out by what it is asked, its text alignment from its style or `next`
+// (centred when nothing says), a glyph alone's tooltip and the name a screen reader reads, a toggled button held down, a
+// lit one, a label that shows its whole text when cut, and a spinner that asks for frames only while it is shown.
 
 import "core:testing"
 import "../../src/testkit/session"
@@ -14,24 +14,71 @@ import "../../src/ui"
 @(private = "file") BUTTON_HEIGHT :: 30
 @(private = "file") CUT_WIDTH :: 60
 
+// The words of a row wider than them go where the style or `next` aligns text, centred when nothing says.
 @(test)
 a_button_keeps_the_text_align_it_is_given :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({width = ui.px(BUTTON_WIDTH), height = ui.px(BUTTON_HEIGHT), text_align = .Left})
-		ui.button("Left###left")
+		ui.button("left", "Left")
 		ui.next({width = ui.px(BUTTON_WIDTH), height = ui.px(BUTTON_HEIGHT)})
-		ui.button("Centre###centre")
+		ui.button("centre", "Centre")
 		if ui.style({text_align = .Right}) {
 			ui.next({width = ui.px(BUTTON_WIDTH), height = ui.px(BUTTON_HEIGHT)})
-			ui.button("Right###right")
+			ui.button("right", "Right")
 		}
 		ui.next({width = ui.px(BUTTON_WIDTH), height = ui.px(BUTTON_HEIGHT), text_align = .Left})
-		ui.icon_button("glyph", ui.ICON_UP)
+		ui.button("glyph", icon = ui.ICON_UP)
 	}})
-	testing.expect_value(t, session.get(s, "left").text_align, ui.Text_Align.Left)
-	testing.expect_value(t, session.get(s, "centre").text_align, ui.Text_Align.Center)
-	testing.expect_value(t, session.get(s, "right").text_align, ui.Text_Align.Right)
+	// (the room left of the words, and right of them)
+	room :: proc(s: ^session.Session, id: string) -> (before, after: f32) {
+		b := session.get(s, id)
+		words := session.get(s, "t", within = b)
+		return words.rect.min.x - b.rect.min.x, b.rect.max.x - words.rect.max.x
+	}
+	lb, la := room(s, "left")
+	testing.expect(t, lb < la, "left: the room is after the words")
+	cb, ca := room(s, "centre")
+	testing.expect(t, abs(cb - ca) <= 1, "centred when nothing says")
+	rb, ra := room(s, "right")
+	testing.expect(t, rb > ra, "right: the room is before the words")
 	testing.expect_value(t, session.get(s, "glyph").text_align, ui.Text_Align.Left)
+}) }
+
+@(private = "file")
+Words :: struct { text: string }
+
+// Words (a glyph before them or not) are one row, its words a box in it, sized by `next`: a text_size(pad) width is
+// the words' and `pad` on each side. A glyph alone is one box that shows it; a Link has no face, its words weak until
+// the pointer is over it. The id alone keys it: new words keep the box.
+@(test)
+a_button_is_laid_out_by_what_it_is_asked :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Words{text = "Save"}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Words)(s.user)
+		ui.button("row", r.text, ui.ICON_UP)
+		ui.button("###glyph", icon = ui.ICON_UP)
+		ui.next({width = ui.text_size(10), height = ui.px(BUTTON_HEIGHT)})
+		ui.button("sized", r.text)
+		ui.button("link", r.text, o = {face = .Link})
+	}})
+	row := session.get(s, "row")
+	testing.expect(t, .Draw_Text not_in row.flags, "a row: its glyph and words are boxes in it")
+	testing.expect_value(t, ui.box_text(session.get(s, "t", within = row)), "Save")
+	testing.expect_value(t, ui.box_text(session.get(s, "glyph")), ui.ICON_UP)
+	sized := session.get(s, "sized")
+	words := session.get(s, "t", within = sized)
+	testing.expect_value(t, sized.size.y, f32(BUTTON_HEIGHT))
+	testing.expectf(t, abs(sized.size.x - (words.size.x + 20)) <= 1, "its words' width and the padding: %v, words %v", sized.size, words.size)
+	link := session.get(s, "link")
+	testing.expect(t, .Draw_Background not_in link.flags, "a link has no face")
+	rest := session.get(s, "t", within = link).text_color
+	session.hover(s, "link")
+	session.frames(s, 2)
+	testing.expect(t, session.get(s, "t", within = session.get(s, "link")).text_color != rest, "lit under the pointer")
+	r.text = "Saved"
+	session.frames(s, 2)
+	testing.expect(t, session.get(s, "sized") == sized, "new words, the same box")
+	testing.expect_value(t, ui.box_text(session.get(s, "t", within = sized)), "Saved")
 }) }
 
 @(private = "file")
@@ -40,12 +87,12 @@ Tips :: struct { clicks: int, on: bool }
 // The tooltip shows once the pointer has rested on the button; its words name the glyph for a screen reader. Disabled, it
 // takes no click.
 @(test)
-an_icon_button_shows_its_tip_and_is_named_by_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+a_glyph_alone_shows_its_tip_and_is_named_by_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := Tips{}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Tips)(s.user)
 		ui.next({width = ui.px(BUTTON_HEIGHT), height = ui.px(BUTTON_HEIGHT)})
-		if ui.icon_button("bell", ui.ICON_UP, tip = "Notifications", intent = .Primary, disabled = r.on).clicked { r.clicks += 1 }
+		if ui.button("bell", icon = ui.ICON_UP, o = {tip = "Notifications", intent = .Primary, disabled = r.on}).clicked { r.clicks += 1 }
 	}})
 	ui.a11y_capture(s.state, true)
 	session.hover(s, "bell")
@@ -65,9 +112,9 @@ an_icon_button_shows_its_tip_and_is_named_by_it :: proc(t: ^testing.T) { unwatch
 @(test)
 a_toggled_button_is_held_and_a_lit_one_hot :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
-		ui.button("Bold###bold", face = .Toggled)
-		ui.button_icon("menu", "", "Menu", lit = true)
-		ui.button_icon("plain", "", "Plain", quiet = true)
+		ui.button("bold", "Bold", o = {face = .Toggled})
+		ui.button("menu", "Menu", o = {lit = true})
+		ui.button("plain", "Plain", o = {quiet = true})
 	}})
 	bold := session.get(s, "bold")
 	testing.expect(t, .Held in bold.flags, "held down")

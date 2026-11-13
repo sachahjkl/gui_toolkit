@@ -164,7 +164,7 @@ build_header :: proc(app: ^App, em: f32, done, total: int) {
 		if ui.style({font_size = math.round(em * 1.7)}) { ui.label("Tasks") }
 		ui.spacer(ui.fill())
 		ui.next({width = ui.px(em * 2.4), height = ui.px(em * 2.4)})
-		sig := ui.icon_button("toggle_theme", ICON_PALETTE)
+		sig := ui.button("toggle_theme", icon = ICON_PALETTE)
 		if sig.clicked { app.dark = !app.dark; app.dirty = true }
 		if ui.hovered_for(sig) {
 			if ui.tooltip() {
@@ -197,7 +197,7 @@ build_input_row :: proc(app: ^App, em: f32) {
 		submit := res.committed
 		ui.spacer(ui.px(em * 0.6))
 		ui.next({width = ui.text_size(em * 1.2), height = ui.px(ui.dense(em * 2.6))})
-		if ui.button("Add###add", intent = .Primary).clicked { submit = true }
+		if ui.button("add", "Add", o = {intent = .Primary}).clicked { submit = true }
 		if submit && len(app.input.buf) > 0 {
 			add_task(app, ui.field_string(&app.input))
 			ui.field_clear(&app.input)
@@ -214,7 +214,7 @@ build_filters :: proc(app: ^App, em: f32, total, done: int) {
 		for f in Filter {
 			selected := app.filter == f
 			ui.next({width = ui.text_size(em * 1.0), height = ui.px(ui.dense(em * 2.2))})
-			if ui.button(fmt.tprintf("%s %d###filter_%d", names[f], counts[f], int(f)), intent = selected ? .Primary : .Neutral).clicked { app.filter = f }
+			if ui.button(fmt.tprintf("filter_%d", int(f)), fmt.tprintf("%s %d", names[f], counts[f]), o = {intent = selected ? .Primary : .Neutral}).clicked { app.filter = f }
 			ui.spacer(ui.px(em * 0.4))
 		}
 		ui.spacer(ui.fill())
@@ -245,7 +245,7 @@ build_list :: proc(app: ^App, em: f32) {
 					if sig.clicked { app.dirty = true }
 					if sig.right_clicked { app.menu_task = t.id; ui.ctx_menu_open(menu_key, ui.mouse_pos()) }
 					ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
-					del := ui.icon_button(fmt.tprintf("del_%d", t.id), ICON_TRASH)
+					del := ui.button(fmt.tprintf("del_%d", t.id), icon = ICON_TRASH)
 					if del.clicked { remove_id = t.id }
 					if ui.hovered_for(del) {
 						if ui.tooltip() {
@@ -281,7 +281,7 @@ build_footer :: proc(app: ^App, em: f32, total, done: int) {
 		ui.spacer(ui.fill())
 		if done > 0 {
 			ui.next({width = ui.text_size(em * 1.0), height = ui.px(ui.dense(em * 2.2))})
-			if ui.button("Clear completed###clear").clicked {
+			if ui.button("clear", "Clear completed").clicked {
 				for i := len(app.tasks) - 1; i >= 0; i -= 1 { if app.tasks[i].done { delete(app.tasks[i].title); ordered_remove(&app.tasks, i) } }
 				app.dirty = true
 			}

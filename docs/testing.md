@@ -18,7 +18,7 @@ the_button_counts :: proc(t: ^testing.T) {
 	defer ui.field_destroy(&app.name)
 	s := session.start(t, {user = &app, build = proc(s: ^session.Session) {
 		app := (^App)(s.user)
-		if ui.button("Add###add").clicked { app.clicks += 1 }
+		if ui.button("add", "Add").clicked { app.clicks += 1 }
 		ui.line_edit("###name", &app.name)
 	}})
 	session.click(s, "add")                                  // by the name after ### in its id

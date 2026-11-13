@@ -106,9 +106,9 @@ console_widgets :: proc(t: ^testing.T) {
 			}
 			if ui.card("Controls") {
 				if ui.row(id = "###buttons") {
-					ui.button("Archive###a"); ui.spacer(ui.px(8))
-					ui.button("Send###s", intent = .Primary); ui.spacer(ui.px(8))
-					ui.button("Cancel###c", face = .Ghost); ui.spacer(ui.px(8))
+					ui.button("a", "Archive"); ui.spacer(ui.px(8))
+					ui.button("s", "Send", o = {intent = .Primary}); ui.spacer(ui.px(8))
+					ui.button("c", "Cancel", o = {face = .Ghost}); ui.spacer(ui.px(8))
 					ui.next({width = ui.px(240)})
 					ui.line_edit("###search", &w.field, "Search the sessions")
 				}

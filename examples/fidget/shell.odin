@@ -138,7 +138,7 @@ build_menubar :: proc(app: ^App, em: f32) {
 			help_m := ui.menu_bar_button("Help###menu_help")
 			ui.spacer(ui.fill())
 			ui.next({width = ui.px(em * 15), height = ui.px(em * 2)})
-			if ui.button_icon("bar_palette###bar_palette", ICON_FIND, "Command palette", face = .Ghost).clicked { palette_toggle(app) }
+			if ui.button("bar_palette", "Command palette", ICON_FIND, {face = .Ghost}).clicked { palette_toggle(app) }
 			ui.spacer(ui.px(em * 0.4))
 			ui.kbd("Ctrl+K")
 			ui.spacer(ui.px(em * 0.8))
@@ -357,9 +357,9 @@ build_confirm :: proc(app: ^App) {
 			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.6))})
 			if ui.row(.Center, id = "###cf_btns") {
 				ui.spacer(ui.fill())
-				if ui.button_icon("Cancel###cf_cancel", "", "Cancel").clicked { app.modal_open = false; ui.toast(.Info, "Cancelled") }
+				if ui.button("cf_cancel", "Cancel").clicked { app.modal_open = false; ui.toast(.Info, "Cancelled") }
 				ui.spacer(ui.px(em * 0.6))
-				if ui.button_icon("Delete###cf_ok", ICON_TRASH, "Delete", intent = .Danger).clicked { app.modal_open = false; ui.toast(.Bad, "Deleted... nothing, it's a demo") }
+				if ui.button("cf_ok", "Delete", ICON_TRASH, {intent = .Danger}).clicked { app.modal_open = false; ui.toast(.Bad, "Deleted... nothing, it's a demo") }
 				ui.spacer(ui.px(em * 1.4))
 			}
 			ui.spacer(ui.px(em * 1.2))
@@ -456,14 +456,14 @@ build_about :: proc(app: ^App) {
 					ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.85)})
 					ui.label("Esc or a click outside closes")
 				}
-				if ui.button_icon("###ab_copy", ICON_CLIPBOARD, "Copy info").clicked {
+				if ui.button("###ab_copy", "Copy info", ICON_CLIPBOARD).clicked {
 					sb := strings.builder_make(context.temp_allocator)
 					for f in facts { fmt.sbprintf(&sb, "%s: %s\n", f.k, f.v) }
 					platform.set_clipboard(app.win, strings.to_string(sb))
 					ui.toast(.Good, "Copied to the clipboard")
 				}
 				ui.spacer(ui.px(em * 0.6))
-				if ui.button_icon("###ab_close", "", "Close", intent = .Primary).clicked { app.about_open = false }
+				if ui.button("###ab_close", "Close", o = {intent = .Primary}).clicked { app.about_open = false }
 				ui.spacer(ui.px(pad))
 			}
 			ui.spacer(ui.px(em * 1.4))

@@ -49,8 +49,8 @@ a_press_ends_with_its_box :: proc(t: ^testing.T) {
 	r := Run{show = true}
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		if r.show { ui.button("Gone###gone") }
-		ui.button("Under###under")
+		if r.show { ui.button("gone", "Gone") }
+		ui.button("under", "Under")
 	}})
 	session.press(s, session.center(session.get(s, "gone")))
 	testing.expect(t, s.state.active_key[.Left] != 0, "held")
@@ -201,7 +201,7 @@ a_hold_and_the_modifiers_end_with_the_window :: proc(t: ^testing.T) {
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		if ui.button("Hold###hold").clicked { r.clicks += 1 }
+		if ui.button("hold", "Hold").clicked { r.clicks += 1 }
 	}})
 	at := session.center(session.get(s, "hold"))
 	session.event(s, {kind = .Key_Press, key = .Shift, mods = {.Shift}})
@@ -260,7 +260,7 @@ a_release_the_system_made_is_no_click :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(100)})
-		if ui.button("Hold###lost").clicked { r.clicks += 1 }
+		if ui.button("lost", "Hold").clicked { r.clicks += 1 }
 	}})
 	at := session.center(session.get(s, "lost"))
 	session.press(s, at)
@@ -359,13 +359,13 @@ next_goes_with_what_builds_nothing :: proc(t: ^testing.T) {
 		r := (^Latches)(s.user)
 		ui.next({width = ui.px(ODD_WIDTH)})
 		if ui.modal("closed", 300, &r.open) {}
-		ui.button("A###a")
+		ui.button("a", "A")
 		ui.next({width = ui.px(ODD_WIDTH)})
 		if ui.modal_sized("closed2", {300, 300}, &r.size, &r.open) {}
-		ui.button("B###b")
+		ui.button("b", "B")
 		ui.next({width = ui.px(ODD_WIDTH)})
 		if ui.ctx_menu(ui.key_from_string(0, "closed3")) {}
-		ui.button("C###c")
+		ui.button("c", "C")
 	}})
 	session.frame(s)
 	for name in ([]string{"a", "b", "c"}) {
@@ -417,7 +417,7 @@ a_press_elsewhere_breaks_a_double_click_on_text :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		ui.next({flags = {.Selectable}})
 		ui.label("Some words to select###words")
-		ui.button("Press###press")
+		ui.button("press", "Press")
 	}})
 	at := session.center(session.get(s, "words"))
 	button := session.center(session.get(s, "press"))

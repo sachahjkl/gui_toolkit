@@ -8,52 +8,73 @@ and keeps its value in the caller's variables.
 
 ![Every intent in the raised, ghost and toggled faces; the hues in their shades and soft pairs (examples/showcase)](screenshots/showcase_intents.webp)
 
-Three buttons, one concept each:
+One procedure:
 
-| Procedure | What it is |
+```odin
+button :: proc(id: string, text := "", icon := "", o := Button_Options{}) -> Signal
+```
+
+`id` is its id (key.odin: `"save"` or `"###save"`); what it shows is `text`, its words, and `icon`, a glyph of
+`o.icon_font` (0: `State.icon_font`; `lucide_icons()` for Lucide's). Changing them keeps its state. What the call asks
+for decides how it is laid out:
+
+| Call | How it is laid out |
 |---|---|
-| `button(id, intent, face, disabled, lit, tip)` | words, its size from the style or `next` |
-| `icon_button(id, icon, tip, name, icon_font, intent, face, disabled, lit)` | a glyph and no words: a tool of a bar, a close cross |
-| `button_icon(id, glyph, text, intent, face, disabled, width, height, icon_font, icon_color, hue, solid, quiet, lit, wrap, left, tip)` | a labelled push button: a glyph ("" none) beside its words |
+| `button(id, text)`, `button(id, text, icon)` | one row: its glyph and words are boxes in it; its corners rounded |
+| `button(id, icon = g)` | a glyph alone (a tool of a bar, a close cross): one box, its size the style's or `next`'s, a ghost unless told |
+| `button(id, text, icon, {face = .Link})` | words (and a glyph) with no face, weak like a hint, lit under the pointer, as a link |
 
-`icon_button` and `button_icon` stay two procedures: a square glyph without words has no label to lay out, to wrap or
-to align, and a screen reader needs a name for it (`name`, else `tip`, else the id).
-
-What they share:
+`Button_Options`:
 
 - **`intent`** (`Intent`: Neutral, Primary, Info, Success, Warning, Danger, Cancel): what the act means, and so its
   colour, the soft pair of its hue (`soft_pair`: a tinted fill, its words of the same hue), the same in every theme.
-- **`face`** (`Button_Face`): how it sits. `.Raised`: a face of its own (bevelled by the machined finish). `.Ghost`: no
-  face until the pointer is over it, a tool among many; an intent then colours its words. `.Toggled`: held down, the
-  option chosen (the box flag `.Held`; a screen reader reads it pressed). `icon_button` is a ghost unless told.
+- **`face`** (`Maybe(Button_Face)`): how it sits. nil: `.Raised`, a glyph alone `.Ghost`. `.Raised`: a face of its own
+  (bevelled by the machined finish). `.Ghost`: no face until the pointer is over it, a tool among many; an intent then
+  colours its words. `.Toggled`: held down, the option chosen (the box flag `.Held`; a screen reader reads it pressed).
+  `.Link`: no face at all, words that say what can be done and do it; an intent colours them, a little quieter away
+  from the pointer.
+- **`width`** (`{}`: as wide as what is in it; `fill()` a share of the row; `px(...)` its own) and **`height`** (of one
+  line, in pixels; 0: the toolkit's). They win over what `next` says.
+- **`left`**: what is in a row wider than it at its left, whatever the style's `text_align`.
+- **`quiet`**: a secondary act, smaller; a Neutral one's words weak until the pointer is over it.
+- **`wrap`**: words longer than its width go on more lines; the button grows to hold them.
 - **`disabled`**: shown faded, takes no press and no focus.
 - **`lit`**: drawn as under the pointer while what it opened is open (a menu). The box flag `.Lit`.
-- **`tip`**: a tooltip once the pointer rests on it for `Feel.tooltip_delay_ms`; its description for a screen reader.
+- **`tip`**: a tooltip once the pointer rests on it for `Feel.tooltip_delay_ms`; its description for a screen reader,
+  and the name of a glyph alone (else its id: a glyph says nothing).
+- **`icon_font`**: the glyph's font.
 
-The text of `button` and the glyph of `icon_button` are centred unless a style or `next` sets `text_align`
-(`next({text_align = .Left})`, `style({text_align = .Right})`): the style's word is kept (`Style.text_aligned`).
+A row takes what the caller says of it, as any box:
 
-`button_icon` has more: `width` (`{}`: as wide as what is in it; `fill()` a share of the row; `px(...)` its own, what is
-in it centred, at its left with `left`), `height` (of one line, in pixels), `icon_color` (the glyph says a state in its
-colour, the words stay the button's), `hue` and `solid` (a colour by meaning that is no intent; `solid`: the hue itself,
-its words dark or light), `quiet` (a secondary act, smaller; a Neutral one's words weak until the pointer is over it) and
-`wrap` (words longer than its width go on more lines, the button grows to hold them).
+- **Its size**: `o.width` and `o.height`, else `next`'s, else as wide as what is in it and a line of the toolkit's
+  height. A `text_size(pad)` width is its words' and `pad` on each side. A `fill()` share is never narrower than what is
+  in it; in a width of pixels too small for it, the padding gives way first.
+- **Its padding**: beside its words, the toolkit's (0.95 of the font size, with the words' own `text_pad`); none when
+  `next` gives a `text_pad`, which is then the words' own.
+- **Its alignment**: what is in a row wider than it is centred unless a style or `next` sets `text_align`
+  (`next({text_align = .Left})`, `style({text_align = .Right})`; `Style.text_aligned`), or `o.left`. The glyph of a
+  glyph alone too.
+- **Its words**: the style's font and size, and what `next` says of them: `font`, `font_size`, `fg`.
 
 ```odin
-if ui.button_icon("save", lucide.SAVE, "Save", intent = .Success, icon_font = ui.lucide_icons()).clicked { save(app) }
-if ui.icon_button("close", lucide.X, tip = "Close", icon_font = ui.lucide_icons()).clicked { app.open = false }
-ui.button("Bold###bold", face = app.bold ? .Toggled : .Raised)
+if ui.button("save", "Save", lucide.SAVE, {intent = .Success, icon_font = ui.lucide_icons()}).clicked { save(app) }
+if ui.button("close", icon = lucide.X, o = {tip = "Close", icon_font = ui.lucide_icons()}).clicked { app.open = false }
+ui.button("bold", "Bold", o = {face = app.bold ? .Toggled : .Raised})
+if ui.button("restore", "Restore the defaults", o = {face = .Link}).clicked { restore(app) }
 ```
 
+`ui.icon(icon, width, fg, icon_font)` is a glyph and no button: a cell `width` wide, as tall as its parent (0:
+`State.icon_font`; `widget_icons()` for the toolkit's own marks, the `ICON_` characters).
+
 The theme's tags of the buttons are named by the intent (`intent_tag`: `accent_button`, `info_button`,
-`success_button`, `warn_button`, `danger_button`, `cancel_button`) and by the ghost face (`ghost_button`,
-`icon_button`): a theme gives them their colours (themes.md, "Button variants"); a program says `intent =` and `face =`,
-not the tags.
+`success_button`, `warn_button`, `danger_button`, `cancel_button`) and by the ghost face (`ghost_button`;
+`icon_button` for a glyph alone): a theme gives them their colours (themes.md, "Button variants"); a program says
+`intent =` and `face =`, not the tags.
 
 `box_hot(b)` and `box_held(b)` say how much a box is drawn under the pointer and pressed in (its `.Lit` and `.Held`
 flags count): a program's own draw of a button reads them.
 
-### Wells and hint actions
+### Wells and search launchers
 
 `if ui.well("###facts") { ... }` is a sunken box, carved in the surface (code, a preview, a list of facts): the theme's
 "well" colour, carved in by the machined finish. Its size and corners come from `next`; `axis` lays out its children.
@@ -63,9 +84,6 @@ A well around a field that shows when the field has the keyboard (a composer, a 
 `ui.search_launcher(id, hint, keys, tip)` is a search field that opens a search elsewhere (a title bar's "Search the
 commands" that opens the palette): sunken with an input's border, its magnifying glass, the hint in weak words, the keys
 at its end. It holds no text; a click, Enter or Space is its `clicked`. Its size comes from `next` (19 ems wide).
-
-`ui.hint_action(id, text, icon, icon_font, intent)` is words that say what can be done and do it, as a link does: weak
-like a hint, lit under the pointer; an intent colours them. It returns its `Signal`.
 
 ## Numbers
 

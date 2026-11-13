@@ -20,7 +20,7 @@ Tip :: struct { shown: bool }
 @(private = "file")
 tip_build :: proc(s: ^session.Session) {
 	tp := (^Tip)(s.user)
-	sig := ui.button("Hover me###btn")
+	sig := ui.button("btn", "Hover me")
 	tp.shown = ui.hovered_for(sig)
 	if tp.shown {
 		if ui.tooltip() { ui.tooltip_text("A tip") }

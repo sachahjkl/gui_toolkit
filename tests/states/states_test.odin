@@ -58,7 +58,7 @@ Run :: struct {
 @(private = "file")
 body :: proc(r: ^Run) {
 	ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(120), height = ui.px(30)})
-	r.btn = ui.button("Press me###btn").box
+	r.btn = ui.button("btn", "Press me").box
 	ui.next({fixed_x = 20, fixed_y = 80, width = ui.px(300), height = ui.px(150)})
 	if ui.list("###list", &r.list) {
 		for i in 0 ..< 3 {
@@ -71,14 +71,14 @@ body :: proc(r: ^Run) {
 				if ui.parent(sig.box) {
 					ui.spacer(ui.fill())
 					ui.next({width = ui.px(30), height = ui.px(30)})
-					if ui.tags("remove_button") { r.cross = ui.icon_button("###x", ui.ICON_X).box }
+					if ui.tags("remove_button") { r.cross = ui.button("###x", icon = ui.ICON_X).box }
 				}
 				r.within = ui.hot_within(sig.box.key)
 			}
 		}
 	}
 	ui.next({fixed_x = 400, fixed_y = 20, width = ui.px(120), height = ui.px(30)})
-	r.other = ui.button("Other###other").box
+	r.other = ui.button("other", "Other").box
 }
 
 @(private = "file")
